@@ -12,10 +12,15 @@ import argparse
 from config import note_folder
 
 
-def run_pipeline(keyword: str, deep: bool, top_n: int, domain: str | None, math: bool):
+def run_pipeline(keyword: str, deep: bool, top_n: int, domain: str | None, math: bool,
+                  label: str | None = None):
+    """keyword는 실제 검색 질의문(길어도 됨), label은 폴더/태그에 쓸 짧은 표시명이다.
+    label을 안 주면 keyword를 그대로 쓴다 (기존 CLI 단발 사용과 호환)."""
     import collector
     import analyzer
     import organizer
+
+    label = label or keyword
 
     if deep:
         import research_graph
@@ -27,8 +32,8 @@ def run_pipeline(keyword: str, deep: bool, top_n: int, domain: str | None, math:
     print(f"\n총 {len(all_candidates)}편 후보 확정. 분석 시작...")
 
     analyses = analyzer.analyze_all(all_candidates)
-    vault_path = note_folder(keyword, domain, "Survey Notes")
-    written = organizer.write_notes(analyses, keyword=keyword, vault_path=vault_path)
+    vault_path = note_folder(label, domain, "Survey Notes")
+    written = organizer.write_notes(analyses, keyword=label, vault_path=vault_path)
 
     print(f"\n완료: {len(written)}개 노트를 {vault_path} 에 기록했다.")
     print("Obsidian에서 그래프뷰를 열면 predecessor 링크로 연결된 발전 계보가 보인다.")
@@ -81,12 +86,13 @@ if __name__ == "__main__":
     parser.add_argument("--math", action="store_true", help="후보 논문마다 원문에서 수학 공식/개념까지 추출 (math_extractor.py 연동)")
     parser.add_argument("--top-n", type=int, default=6, help="기간 구간별 상위 몇 편을 남길지")
     parser.add_argument("--domain", default=None, help='분야 태그, 예: "전자전기컴퓨터" -- "<도메인>/<키워드>" 폴더 구조로 중첩됨')
+    parser.add_argument("--label", default=None, help="폴더/태그용 짧은 표시명. 생략 시 keyword를 그대로 씀 (keyword가 길면 폴더명도 길어짐)")
     parser.add_argument("--ask", metavar="QUESTION", help="수집 대신, vault 전체에 대해 Q&A만 실행")
     args = parser.parse_args()
 
     if args.ask:
         run_ask(args.ask)
     elif args.keyword:
-        run_pipeline(args.keyword, deep=args.deep, top_n=args.top_n, domain=args.domain, math=args.math)
+        run_pipeline(args.keyword, deep=args.deep, top_n=args.top_n, domain=args.domain, math=args.math, label=args.label)
     else:
         parser.print_help()

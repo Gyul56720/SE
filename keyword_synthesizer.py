@@ -2,11 +2,15 @@
 raw 키워드/텍스트 뭉치를 LLM으로 압축해서 검색용 keyword 문장 하나로 재조립하고,
 그 결과를 main.py 파이프라인(collector.collect 이하)에 그대로 넘겨 수집을 시작한다.
 
+폴더 구조는 검색 문장과 분리해서 별도로 뽑는다 -- compressed_keyword는 검색 정확도를 위해
+길어도 되지만, 폴더명은 folder_domain(상위, 추상적) / folder_topic(하위, 구체적) 2단계로만
+짧게 계층화한다 (그 이상 세분화 안 함). --domain을 직접 주면 folder_domain 대신 그걸 쓴다.
+
   python keyword_synthesizer.py "라벨1, 라벨2, ..."        텍스트/키워드 뭉치를 압축만
   python keyword_synthesizer.py --file raw.txt --search     압축 후 바로 파이프라인 실행
   python keyword_synthesizer.py --file raw.txt --search --deep --math --domain "전자전기컴퓨터"
 
-압축 결과(원문 미리보기 + 압축 keyword + 근거)는 keyword_synthesis_log.jsonl에 한 줄씩 누적된다.
+압축 결과(원문 미리보기 + 압축 keyword + 폴더 계층 + 근거)는 keyword_synthesis_log.jsonl에 한 줄씩 누적된다.
 """
 
 from __future__ import annotations
@@ -23,16 +27,35 @@ SCHEMA = {
         "compressed_keyword": {
             "type": "STRING",
             "description": "원문 키워드/텍스트를 압축 재조립한 하나의 검색 문장. "
-                            "arXiv/Semantic Scholar 검색어로 바로 쓸 수 있게 명사구 중심으로 작성.",
+                            "arXiv/Semantic Scholar 검색어로 바로 쓸 수 있게 명사구 중심으로 작성. "
+                            "길어도 됨 -- 이건 검색 정확도용이지 폴더명이 아님.",
         },
-        "rationale": {"type": "STRING", "description": "왜 이렇게 압축했는지 1-2문장"},
+        "folder_domain": {
+            "type": "STRING",
+            "description": "폴더 구조의 상위 계층. 이 주제가 속하는 더 넓고 추상적인 연구 분야를 "
+                            "2~5단어의 짧은 명사구로 (예: '하드웨어 가속기 성능 모델링'). "
+                            "compressed_keyword를 그대로 쓰지 말고 반드시 더 짧고 추상화된 상위 개념으로 압축할 것.",
+        },
+        "folder_topic": {
+            "type": "STRING",
+            "description": "폴더 구조의 하위 계층. folder_domain보다 한 단계 더 구체적인 주제를 "
+                            "2~5단어의 짧은 명사구로 (예: 'TPU-GPU Roofline 분석'). "
+                            "folder_domain의 하위 개념이어야 하고, 그 자체로도 폴더명으로 쓸 만큼 짧아야 함.",
+        },
+        "rationale": {"type": "STRING", "description": "왜 이렇게 압축/계층화했는지 1-2문장"},
     },
-    "required": ["compressed_keyword", "rationale"],
+    "required": ["compressed_keyword", "folder_domain", "folder_topic", "rationale"],
 }
 
-PROMPT_TMPL = """다음은 검색 대상이 될 원문 키워드/텍스트 뭉치다. 여기 담긴 핵심 주제를 분석해서,
-논문 검색(arXiv/Semantic Scholar)에 바로 쓸 수 있는 하나의 압축된 검색 키워드 문장으로 재조립하라.
-나열/중복/무관한 내용은 버리고 핵심 개념만 남길 것. 반드시 지정된 JSON 스키마로만, 한국어로 답하라.
+PROMPT_TMPL = """다음은 검색 대상이 될 원문 키워드/텍스트 뭉치다. 여기 담긴 핵심 주제를 분석해서
+지정된 JSON 스키마로만, 한국어로 답하라.
+
+- compressed_keyword: 논문 검색(arXiv/Semantic Scholar)에 바로 쓸 수 있는 압축된 검색 문장.
+  나열/중복/무관한 내용은 버리고 핵심 개념만 남길 것. 검색 정확도가 우선이라 길어도 된다.
+- folder_domain / folder_topic: 결과가 저장될 폴더 이름으로 쓸 것이므로 반드시 둘 다 짧게.
+  folder_domain은 더 추상적인 상위 연구 분야, folder_topic은 그 아래 더 구체적인 하위 주제.
+  둘을 합쳐도 폴더 깊이는 "<folder_domain>/<folder_topic>" 딱 2단계를 넘지 않는다 -- 그 이상
+  세분화하지 말 것.
 
 --- 원문 시작 ---
 {raw_text}
@@ -44,12 +67,14 @@ LOG_PATH = Path(__file__).parent / "keyword_synthesis_log.jsonl"
 
 
 def synthesize(raw_text: str) -> dict:
-    """원문 키워드/텍스트를 압축된 검색 keyword 문장 하나로 재조립한다."""
+    """원문 키워드/텍스트를 압축된 검색 keyword 문장 + 2단계 폴더 계층(domain/topic)으로 재조립한다."""
     text = raw_text[:MAX_CHARS]
     prompt = PROMPT_TMPL.format(raw_text=text)
     data = gemini_client.generate_json(prompt, SCHEMA)
     return {
         "compressed_keyword": data.get("compressed_keyword", "").strip(),
+        "folder_domain": data.get("folder_domain", "").strip(),
+        "folder_topic": data.get("folder_topic", "").strip(),
         "rationale": data.get("rationale", "").strip(),
     }
 
@@ -89,10 +114,12 @@ if __name__ == "__main__":
     result = synthesize(raw_text)
     log_path = log_result(raw_text, result)
     print(f'[압축 완료] keyword = "{result["compressed_keyword"]}"')
+    print(f'  폴더 구조 = "{result["folder_domain"]}/{result["folder_topic"]}"')
     print(f"  근거: {result['rationale']}")
     print(f"  로그: {log_path}")
 
     if args.search:
         import main
+        domain = args.domain or result["folder_domain"]
         main.run_pipeline(result["compressed_keyword"], deep=args.deep, top_n=args.top_n,
-                           domain=args.domain, math=args.math)
+                           domain=domain, math=args.math, label=result["folder_topic"])
