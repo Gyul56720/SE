@@ -30,7 +30,7 @@ from pypdf import PdfReader
 
 import gemini_client
 from config import OBSIDIAN_VAULT_PATH, note_folder
-from sources import arxiv_source
+from sources import arxiv_source, unpaywall
 
 MAX_CHARS = 400_000  # 안전 상한 (대략 10만 토큰대) -- 대부분의 논문 전문은 이 안에 들어옴
 
@@ -93,17 +93,31 @@ def find_survey_note(query: str, notes: list[dict]) -> dict | None:
 
 
 def _note_to_paper(note: dict) -> arxiv_source.Paper | None:
-    """Survey Note의 arxiv_id로 PDF URL을 바로 구성. arxiv_id가 없으면 폴백 필요."""
+    """Survey Note의 arxiv_id로 PDF URL을 바로 구성. arxiv_id가 없으면 doi로 Unpaywall
+    합법 오픈액세스 조회를 폴백으로 시도한다. 둘 다 없으면 None (호출부가 --pdf 안내)."""
     arxiv_id = note.get("arxiv_id", "")
-    if not arxiv_id:
-        return None
-    return arxiv_source.Paper(
-        title=note["title"],
-        year=int(note.get("year", 0) or 0),
-        arxiv_id=arxiv_id,
-        pdf_url=f"https://arxiv.org/pdf/{arxiv_id}",
-        source="survey-note",
-    )
+    if arxiv_id:
+        return arxiv_source.Paper(
+            title=note["title"],
+            year=int(note.get("year", 0) or 0),
+            arxiv_id=arxiv_id,
+            pdf_url=f"https://arxiv.org/pdf/{arxiv_id}",
+            source="survey-note",
+        )
+    doi = note.get("doi", "")
+    if doi:
+        oa_url = unpaywall.find_oa_pdf_url(doi)
+        if oa_url:
+            print(f"[Unpaywall] '{note['title']}' 합법 오픈액세스 사본 발견: {oa_url}")
+            return arxiv_source.Paper(
+                title=note["title"],
+                year=int(note.get("year", 0) or 0),
+                arxiv_id="",
+                doi=doi,
+                pdf_url=oa_url,
+                source="unpaywall",
+            )
+    return None
 
 
 def resolve_paper(keyword: str | None, arxiv_id: str | None, index: int | None,
@@ -119,7 +133,8 @@ def resolve_paper(keyword: str | None, arxiv_id: str | None, index: int | None,
         if paper:
             print(f"[Survey Notes #{index}] {paper.title} ({paper.year}) -- arxiv:{paper.arxiv_id}")
             return paper
-        raise RuntimeError(f"'{note['title']}'는 arxiv_id가 없는 노트다 (doi만 있음). --arxiv-id나 --pdf로 직접 지정할 것.")
+        raise RuntimeError(f"'{note['title']}'는 arxiv_id도 없고 Unpaywall에서도 오픈액세스 사본을 못 찾았다. "
+                           f"--pdf로 직접 지정할 것.")
 
     if arxiv_id:
         results = arxiv_source.search(arxiv_id, 1990, 2030, max_results=1)

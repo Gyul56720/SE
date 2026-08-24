@@ -56,6 +56,8 @@
 - **적응형 리서치(`--deep`)**: 지금까지 찾은 계보를 Gemini에 보여주고 "빠진 세대 있나?" 판단시켜 후속 검색어 생성 + 인용 그래프(citation walk) 탐색
 - **수학/구조 추출(`--math`)**: 논문 원문 PDF에서 공식(수치 대입 예 포함)과 아키텍처 구성 요소(구조/역할/규격 수치)를 뽑아 `편입 수학/` 폴더에 논문 이름으로 저장
 - **키워드 압축(`keyword_synthesizer.py`)**: 정돈 안 된 raw 키워드/텍스트 뭉치를 LLM으로 압축해 검색용 keyword 문장으로 재조립 후 파이프라인에 바로 연결
+- **오픈액세스 사본 자동 조회(Unpaywall)**: arXiv ID가 없는 DOI-only 논문도 `sources/unpaywall.py`가
+  저작권자가 스스로 공개한 합법 사본을 DOI로 찾아본다 (로그인/인증 불필요, 이메일은 API 식별용)
 - **vault 전체 Q&A**: paper-qa + Gemini로 지금까지 쌓인 노트 전체를 근거로 인용 달린 답변 생성
 
 ## 시작하기
@@ -66,7 +68,7 @@
 - Python 3.9 이상 (`paper-qa 4.9.0` 기준 로컬 검증됨)
 - Gemini API 키 (필수)
 - Obsidian vault 경로 (결과물이 쌓일 곳)
-- 선택: Semantic Scholar API 키, Groq API 키, OpenAlex 연락용 이메일
+- 선택: Semantic Scholar API 키, Groq API 키, OpenAlex/Unpaywall 연락용 이메일
 
 ### 설치
 
@@ -213,7 +215,8 @@ paper-qa
 | 수학/아키텍처 추출 (`math_review.py`) | arXiv PDF 확보 가능한 논문 3편에서 수식(수치 대입 예 포함) + 아키텍처 구조 노트 생성 성공 |
 | 예시: TPU 논문 아키텍처 추출 | 256×256 MAC 배열(65,536개 8-bit MAC), 피크 92 TOPS @ 700MHz, Unified Buffer 24 MiB, Ridge Point 1350 ops/byte 등 논문 실제 수치가 노트에 정확히 반영됨 |
 | Semantic Scholar 429(rate limit) 상황 | 지수 백오프 재시도 후에도 실패 시 arXiv/OpenAlex로 자연 fallback되어 전체 파이프라인은 계속 진행됨 |
-| DOI만 있고 오픈액세스 PDF가 없는 논문 (5/8편) | `--pdf`로 로컬 PDF를 직접 넣지 않는 한 원문 기반 수학/구조 추출은 스킵됨 (의도된 동작, 존재하지 않는 PDF를 지어내지 않음) |
+| DOI만 있고 arXiv가 없는 논문 (5/8편) → Unpaywall 조회 | 실제 DOI 6건으로 조회한 결과 5건에서 `best_oa_location` URL 찾음 (ACM/IEEE 호스팅) — 나머지 1건(TPU 논문, arXiv로는 이미 확보됨)은 OA 사본 자체가 없음 |
+| Unpaywall이 찾은 URL로 실제 다운로드 시도 | ACM(`dl.acm.org`)·IEEE(`ieeexplore.ieee.org`) 호스팅 URL은 5건 모두 403/418로 봇 차단됨 — Unpaywall의 OA 라벨과 별개로 퍼블리셔가 자동화 요청을 막는 게 현실적 한계. 결국 해당 5편은 `--pdf`로 사람이 직접 받은 파일을 넣어야 함 (의도된 동작, 존재하지 않는 PDF를 지어내지 않음) |
 
 ## 기여 가이드
 
@@ -253,7 +256,8 @@ paper-qa
 | paper-qa 쪽에서 `OPENAI_API_KEY` 관련 에러 | paper-qa의 LLM 역할(llm/summary_llm/agent.agent_llm/embedding) 중 하나라도 명시 안 하면 OpenAI로 fallback됨 | `qa_setup.py`가 넷 다 명시하고 있는지 확인. 특히 `embedding` 필드를 빼먹기 쉬움 |
 | `gemini/gemini-embedding-2` 관련 404/model not found | 임베딩 모델명이 계정/리전에 따라 아직 없을 수 있음 | `qa_setup.py`의 `EMBEDDING_MODEL`을 구버전인 `gemini/text-embedding-004`로 교체 |
 | `.env`를 채웠는데도 `GEMINI_API_KEY가 비어있다` 경고 | `.env`가 아니라 `.env.example`을 수정했거나, 실행 위치가 프로젝트 루트가 아님 | `cp .env.example .env` 했는지, 루트에서 실행 중인지 확인 |
-| DOI만 있고 arXiv/오픈액세스 PDF가 없는 논문에서 `math_review.py` 실패 | Semantic Scholar/OpenAlex가 유료 저널(IEEE 등) 논문의 오픈액세스 PDF를 못 찾음 | 자동 로그인/우회는 지원 안 함(퍼블리셔 ToS 위반 소지). 기관 VPN·도서관으로 직접 받은 PDF를 `--pdf ./파일.pdf`로 넣거나, `arxiv_id`가 있는 저자 self-archive 버전을 찾아 `--arxiv-id`로 지정할 것 |
+| DOI만 있고 arXiv가 없는 논문에서 `math_review.py`/`--math`가 여전히 실패 | `sources/unpaywall.py`가 DOI로 합법 오픈액세스 URL을 찾아도(콘솔에 `[Unpaywall] ... 발견` 출력됨), ACM/IEEE 등 퍼블리셔가 자동화 요청 자체를 403/418로 차단하는 경우가 흔함 | 자동 로그인/봇 차단 우회는 지원 안 함(퍼블리셔 ToS 위반 소지). 기관 VPN·도서관으로 직접 받은 PDF를 `--pdf ./파일.pdf`로 넣을 것 |
+| `UNPAYWALL_EMAIL`을 안 채웠는데도 Unpaywall 조회가 항상 실패(None) | Unpaywall API는 `example.com` 같은 placeholder 이메일을 거부함 | `.env`의 `UNPAYWALL_EMAIL` 또는 `OPENALEX_MAILTO`에 실제로 받는 이메일을 채울 것 |
 
 ## 로드맵
 
@@ -265,5 +269,6 @@ paper-qa
   이 경우 `organizer.py`의 `out_path.write_text(...)` 부분만 REST API 호출로 바꾸면 된다.
 - **실제 PDF까지 vault에 두기**: 지금은 `.md` 요약만 인덱싱한다. `c.pdf_url`을 실제로 다운로드해서
   같은 폴더에 넣어두면 paper-qa가 원문까지 근거로 써서 더 정확하게 답한다.
-- **Unpaywall 연동 검토**: DOI만 있고 arXiv가 없는 논문의 합법적 오픈액세스 사본을 이메일 기반
-  Unpaywall API로 조회하는 fallback (로그인/크리덴셜 불필요, 순수 조회형 API).
+- **퍼블리셔 봇 차단 우회(브라우저 헤더/헤드리스)**: Unpaywall이 찾아준 ACM/IEEE URL이 403/418로
+  막히는 경우가 있다. `requests`에 더 정교한 헤더를 주거나 헤드리스 브라우저로 우회하는 건
+  퍼블리셔 ToS와 다시 충돌할 수 있어 신중히 검토할 것 — 지금은 실패 시 `--pdf` 수동 지정으로 유도한다.

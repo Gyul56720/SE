@@ -21,6 +21,9 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 # --- 논문 소스 ---
 SEMANTIC_SCHOLAR_API_KEY = os.getenv("SEMANTIC_SCHOLAR_API_KEY", "")
 OPENALEX_MAILTO = os.getenv("OPENALEX_MAILTO", "")
+# Unpaywall API 식별용 이메일 (로그인/인증 아님, 무료 API 이용 약관상 요구되는 연락처일 뿐).
+# 따로 안 채우면 OPENALEX_MAILTO를 재사용한다.
+UNPAYWALL_EMAIL = os.getenv("UNPAYWALL_EMAIL", "") or OPENALEX_MAILTO
 
 # --- Obsidian ---
 OBSIDIAN_VAULT_PATH = Path(os.getenv("OBSIDIAN_VAULT_PATH", "./vault_output")).expanduser()
