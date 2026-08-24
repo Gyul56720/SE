@@ -73,7 +73,7 @@ if __name__ == "__main__":
     parser.add_argument("--deep", action="store_true", help="적응형 리서치 루프(gap 판단+citation walk) 사용")
     parser.add_argument("--math", action="store_true", help="후보 논문마다 원문에서 수학 공식/개념까지 추출 (math_extractor.py 연동)")
     parser.add_argument("--top-n", type=int, default=6, help="기간 구간별 상위 몇 편을 남길지")
-    parser.add_argument("--domain", default=None, help='분야 태그, 예: "전자전기컴퓨터" -- 상위 폴더가 "<도메인>-<키워드>"로 생김')
+    parser.add_argument("--domain", default=None, help='분야 태그, 예: "전자전기컴퓨터" -- "<도메인>/<키워드>" 폴더 구조로 중첩됨')
     parser.add_argument("--ask", metavar="QUESTION", help="수집 대신, vault 전체에 대해 Q&A만 실행")
     args = parser.parse_args()
 

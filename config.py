@@ -39,15 +39,18 @@ if not GEMINI_API_KEY:
 
 OBSIDIAN_VAULT_PATH.mkdir(parents=True, exist_ok=True)
 
-# --- 도메인-키워드 폴더 구조 ---
+# --- 도메인/키워드 폴더 구조 ---
 # 예: note_folder("GEMM", "전자전기컴퓨터", "Survey Notes")
-#     -> .../Paper Pipeline/전자전기컴퓨터-GEMM/Survey Notes
+#     -> .../Paper Pipeline/전자전기컴퓨터/GEMM/Survey Notes
 PAPER_PIPELINE_ROOT = OBSIDIAN_VAULT_PATH.parent
 _BAD_PATH_CHARS = re.compile(r'[\\/:*?"<>|]')
 
 
 def note_folder(keyword: str, domain: str | None, kind: str) -> Path:
-    """kind: "Survey Notes" 또는 "Deep Reviews". 도메인이 없으면 키워드만으로 상위 폴더를 만든다."""
-    name = f"{domain}-{keyword}" if domain else keyword
-    name = _BAD_PATH_CHARS.sub("_", name)
-    return PAPER_PIPELINE_ROOT / name / kind
+    """kind: "Survey Notes" 또는 "Deep Reviews". 도메인이 있으면 <도메인>/<키워드>/<kind>로 중첩,
+    없으면 <키워드>/<kind>."""
+    keyword_clean = _BAD_PATH_CHARS.sub("_", keyword)
+    if domain:
+        domain_clean = _BAD_PATH_CHARS.sub("_", domain)
+        return PAPER_PIPELINE_ROOT / domain_clean / keyword_clean / kind
+    return PAPER_PIPELINE_ROOT / keyword_clean / kind

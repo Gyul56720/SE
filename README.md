@@ -106,7 +106,7 @@ python3 main.py "roofline model" --deep --math   # 적응형 리서치 + 수학 
 ```
 
 `--math`를 붙이면 Survey Notes를 다 쓴 뒤, PDF URL이 있는 후보 논문마다 `math_extractor.py`를
-호출해 원문에서 수학 공식/개념/근접 개념을 뽑아 같은 `<도메인>-<키워드>/Math Concepts/` 폴더에
+호출해 원문에서 수학 공식/개념/근접 개념을 뽑아 같은 `<도메인>/<키워드>/Math Concepts/` 폴더에
 `[Math] ...md`로 쓴다. 논문마다 원문 PDF를 새로 받아서 Gemini를 한 번 더 호출하므로 시간이
 꽤 걸린다 -- 개별 논문만 골라서 돌리고 싶으면 지금까지처럼 `math_review.py`를 따로 써도 된다.
 
@@ -178,7 +178,7 @@ python math_review.py --arxiv-id 1704.04760
 python math_review.py --image ./photos/eq.jpg --ask "이 유도 과정을 단계별로 설명해줘"
 ```
 
-한 논문당 다음 네 가지를 뽑아서 `<도메인>-<키워드>/Math Concepts/` 폴더에 `[Math] ...md`로 쓴다:
+한 논문당 다음 네 가지를 뽑아서 `<도메인>/<키워드>/Math Concepts/` 폴더에 `[Math] ...md`로 쓴다:
 
 - **핵심 공식**: 원문에 실제로 등장하는 수식만 LaTeX로, 의미와 등장 맥락 포함
 - **핵심 개념 설명**: 편입수학 튜터가 설명하듯 쉽게 풀어쓰되 선행 개념도 명시
