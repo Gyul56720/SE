@@ -41,13 +41,17 @@ class Paper:
 
 def _throttled_get(url: str, params: dict) -> dict:
     global _last_call
-    for attempt in range(4):
+    # 키 없이는 익명 공유 풀이 거의 항상 꽉 차 있어서 429 재시도가 사실상 매번 그냥 시간만
+    # 태우고 또 429로 끝난다 (실측: 세션 내 모든 호출에서 재시도 4번 전부 실패). 키가 있을
+    # 때만 지수 백오프 재시도를 하고, 없으면 1번 시도 후 바로 실패시켜서 헛대기를 없앤다.
+    max_attempts = 4 if SEMANTIC_SCHOLAR_API_KEY else 1
+    for attempt in range(max_attempts):
         wait = _MIN_INTERVAL - (time.time() - _last_call)
         if wait > 0:
             time.sleep(wait)
         resp = requests.get(url, params=params, headers=_HEADERS, timeout=20)
         _last_call = time.time()
-        if resp.status_code == 429 and attempt < 3:
+        if resp.status_code == 429 and attempt < max_attempts - 1:
             time.sleep(2 ** attempt * 2)  # 2s, 4s, 8s
             continue
         resp.raise_for_status()

@@ -12,13 +12,12 @@ from pathlib import Path
 from config import OBSIDIAN_VAULT_PATH
 from analyzer import Analysis
 
-_NA = "N/A -- 이 항목은 논문에 해당하는 정보가 없음"
-
 # README.md 12섹션 템플릿을 논문 한 편짜리 노트에 맞게 재해석한 것.
 # analyzer.py가 실제로 뽑는 5개 필드(one_line_summary/core_claim/upgrades_from/
-# key_numbers/limitations)를 의미가 맞는 헤더 하나씩에 배치하고, 소프트웨어 프로젝트
-# 전용 개념(설치/API/기술스택/기여가이드/라이선스)처럼 논문에 대응 데이터가 없는
-# 섹션은 헤더는 유지하되 본문을 _NA로 채운다.
+# key_numbers/limitations)를 의미가 맞는 헤더 하나씩에 배치한다. 설치/API/프로젝트구조/
+# 기술스택/기여가이드/라이선스처럼 논문에 대응 데이터가 아예 없는 6개 섹션은 헤더째 뺐다
+# (매 노트마다 똑같은 "N/A" 텍스트만 반복되면 paper-qa가 vault 전체를 임베딩할 때 그
+# 필러까지 토큰으로 먹어서 낭비였음).
 _TEMPLATE = """---
 title: "{title}"
 year: {year}
@@ -39,26 +38,8 @@ doi: "{doi}"
 ## 주요 특징 (Features)
 {key_numbers_list}
 
-## 시작하기 (Getting Started)
-{na}
-
-## 사용법 (Usage)
-{na}
-
-## 프로젝트 구조 (Project Structure)
-{na}
-
-## 기술 스택 & 의존성 (Tech Stack)
-{na}
-
 ## 결과/성과 (Results/Performance)
 {limitations}
-
-## 기여 가이드 (Contributing)
-{na}
-
-## 라이선스 (License)
-{na}
 
 ## 연락처/저자 (Contact/Author)
 {authors_list}
@@ -123,8 +104,7 @@ def write_notes(analyses: list[Analysis], keyword: str, vault_path: Path | None 
             one_line_summary=a.one_line_summary,
             overview=overview,
             key_numbers_list="\n".join(f"- {n}" for n in a.key_numbers) or "- (없음)",
-            limitations=a.limitations or _NA,
-            na=_NA,
+            limitations=a.limitations or "(한계 정보 없음)",
             authors_list="\n".join(f"- {au}" for au in authors_list) or "- (저자 정보 없음)",
             pdf_line=f"[PDF]({c.pdf_url})" if c.pdf_url else "(오픈 액세스 링크 없음)",
         )
