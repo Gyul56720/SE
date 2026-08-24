@@ -58,7 +58,11 @@
 - **키워드 압축(`keyword_synthesizer.py`)**: 정돈 안 된 raw 키워드/텍스트 뭉치를 LLM으로 압축해 검색용 keyword 문장으로 재조립 후 파이프라인에 바로 연결
 - **오픈액세스 사본 자동 조회(Unpaywall)**: arXiv ID가 없는 DOI-only 논문도 `sources/unpaywall.py`가
   저작권자가 스스로 공개한 합법 사본을 DOI로 찾아본다 (로그인/인증 불필요, 이메일은 API 식별용)
-- **vault 전체 Q&A**: paper-qa + Gemini로 지금까지 쌓인 노트 전체를 근거로 인용 달린 답변 생성
+- **군더더기 없는 노트 템플릿**: Survey Note는 실제 데이터가 있는 6개 섹션(개요/주요특징/결과성과/
+  연락처저자/참고자료 등)만 쓴다 -- 데이터 없는 섹션을 "N/A"로 채우지 않아서 paper-qa가 vault를
+  임베딩할 때 필러 텍스트에 토큰을 낭비하지 않는다
+- **vault 전체 Q&A**: paper-qa + Gemini로 지금까지 쌓인 노트 전체(`Paper Pipeline/` + `mathmetics/`
+  양쪽 다)를 근거로 인용 달린 답변 생성
 
 ## 시작하기
 
@@ -168,7 +172,8 @@ python3 keyword_synthesizer.py "roofline, operational intensity, TPU 로드맵" 
 python3 main.py --ask "TPU와 GPU의 roofline 차이가 뭐야?"
 ```
 
-vault에 쌓인 노트 전체를 대상으로 근거를 인용해 답한다. 첫 실행은 인덱싱 때문에 시간이 걸릴 수 있다.
+`Paper Pipeline/`과 `mathmetics/` 양쪽을 포함한 vault 루트 전체를 인덱싱해서 근거를 인용해 답한다.
+첫 실행은 인덱싱 때문에 시간이 걸릴 수 있다.
 
 ## 프로젝트 구조
 
@@ -212,6 +217,7 @@ requests>=2.31.0
 python-dotenv>=1.0.0
 arxiv>=2.1.0
 paper-qa
+pypdf>=4.0.0
 ```
 
 ## 실전 검증 결과
@@ -228,6 +234,9 @@ paper-qa
 | Semantic Scholar 429(rate limit) 상황 | 지수 백오프 재시도 후에도 실패 시 arXiv/OpenAlex로 자연 fallback되어 전체 파이프라인은 계속 진행됨 |
 | DOI만 있고 arXiv가 없는 논문 (5/8편) → Unpaywall 조회 | 실제 DOI 6건으로 조회한 결과 5건에서 `best_oa_location` URL 찾음 (ACM/IEEE 호스팅) — 나머지 1건(TPU 논문, arXiv로는 이미 확보됨)은 OA 사본 자체가 없음 |
 | Unpaywall이 찾은 URL로 실제 다운로드 시도 | ACM(`dl.acm.org`)·IEEE(`ieeexplore.ieee.org`) 호스팅 URL은 5건 모두 403/418로 봇 차단됨 — Unpaywall의 OA 라벨과 별개로 퍼블리셔가 자동화 요청을 막는 게 현실적 한계. 결국 해당 5편은 `--pdf`로 사람이 직접 받은 파일을 넣어야 함 (의도된 동작, 존재하지 않는 PDF를 지어내지 않음) |
+| 토큰/쿼리 낭비 감사 (README 포함 전체 코드) | pyflakes로 죽은 코드 스캔 + 실측 기반 분석 → 진짜 버그 4개(죽은 파라미터, 존재하지 않는 이름 참조, 누락된 의존성, 깨진 Q&A 인덱스 경로) 수정 + 최적화 2건(Survey Note N/A 섹션 제거, S2 키 없을 때 재시도 생략) 적용. `compressed_keyword` 필드는 호출당 절약량이 ~25-50토큰뿐이라 유지 결정 |
+| `keyword_synthesizer.py --search --math` 전체 파이프라인 통합 실행 | raw 키워드 → 압축 → 수집(8편) → 분석 → `mathmetics/<주제>/Survey Notes/`에 6섹션 노트 8개 생성 → 그중 PDF 확보된 6편에 수학/구조 추출 시도(3편 성공, `mathmetics/` 최상위에 저장) |
+| 이 실행 중 새로 발견한 버그 2건 | (1) Gemini가 LaTeX(`\frac` 등)를 JSON에 이중이스케이프 없이 내보내서 `json.loads`가 조용히 글자를 삼킴(`\frac{a}{b}` → `rac{a}{b}`) — sanitizer 추가로 수정, 재추출해서 정상 렌더링 확인. (2) 날짜필터 버그를 고치며 검색어에 따옴표를 씌운 게 `--arxiv-id` 직접조회(텍스트 검색으로 우회하던 방식)를 깨뜨린 회귀 — `arxiv.Search(id_list=...)` 기반 전용 조회 함수로 수정, 재검증 완료 |
 
 ## 기여 가이드
 
@@ -269,6 +278,7 @@ paper-qa
 | `.env`를 채웠는데도 `GEMINI_API_KEY가 비어있다` 경고 | `.env`가 아니라 `.env.example`을 수정했거나, 실행 위치가 프로젝트 루트가 아님 | `cp .env.example .env` 했는지, 루트에서 실행 중인지 확인 |
 | DOI만 있고 arXiv가 없는 논문에서 `math_review.py`/`--math`가 여전히 실패 | `sources/unpaywall.py`가 DOI로 합법 오픈액세스 URL을 찾아도(콘솔에 `[Unpaywall] ... 발견` 출력됨), ACM/IEEE 등 퍼블리셔가 자동화 요청 자체를 403/418로 차단하는 경우가 흔함 | 자동 로그인/봇 차단 우회는 지원 안 함(퍼블리셔 ToS 위반 소지). 기관 VPN·도서관으로 직접 받은 PDF를 `--pdf ./파일.pdf`로 넣을 것 |
 | `UNPAYWALL_EMAIL`을 안 채웠는데도 Unpaywall 조회가 항상 실패(None) | Unpaywall API는 `example.com` 같은 placeholder 이메일을 거부함 | `.env`의 `UNPAYWALL_EMAIL` 또는 `OPENALEX_MAILTO`에 실제로 받는 이메일을 채울 것 |
+| `Semantic Scholar 조회 실패` 429 경고가 재시도 없이 바로 뜸 | `SEMANTIC_SCHOLAR_API_KEY`가 없으면 익명 요청 풀이 거의 항상 막혀 있어서(실측: 세션 내 모든 호출 100% 429) 재시도가 의미 없다고 보고 1회 시도 후 바로 실패시킴 -- 의도된 동작 | S2 결과가 자주 필요하면 무료 키를 발급받아 `.env`의 `SEMANTIC_SCHOLAR_API_KEY`에 채울 것. arXiv/OpenAlex만으로도 파이프라인은 정상 진행됨 |
 
 ## 로드맵
 
