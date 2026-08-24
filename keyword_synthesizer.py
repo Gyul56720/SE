@@ -1,16 +1,18 @@
 """
-raw 키워드/텍스트 뭉치를 LLM으로 압축해서 검색용 keyword 문장 하나로 재조립하고,
-그 결과를 main.py 파이프라인(collector.collect 이하)에 그대로 넘겨 수집을 시작한다.
+raw 키워드/텍스트 뭉치를 LLM으로 압축해서, (1) 실제 검색에 쓸 영문 핵심 구 2개(search_terms,
+중요도순) + (2) 폴더 계층 2단계(folder_domain/folder_topic)로 재조립하고, main.py 파이프라인
+(collector.collect 이하)에 그대로 넘겨 수집을 시작한다.
 
-폴더 구조는 검색 문장과 분리해서 별도로 뽑는다 -- compressed_keyword는 검색 정확도를 위해
-길어도 되지만, 폴더명은 folder_domain(상위, 추상적) / folder_topic(하위, 구체적) 2단계로만
-짧게 계층화한다 (그 이상 세분화 안 함). --domain을 직접 주면 folder_domain 대신 그걸 쓴다.
+원문을 통째로 압축한 긴 문장(예: 20단어)을 그대로 검색어로 쓰면 arXiv 쿼리 파서가 깨져서
+submittedDate 범위 필터가 무시되는 버그가 있다 (실측 확인됨 -- 2005-2013 구간 검색에 2025년
+논문이 나옴). 그래서 검색은 LLM이 중요도(weight)로 판단한 최상위 2개 구로만 하고, 폴더명도
+같은 2단계로 짧게 유지한다. --domain을 직접 주면 folder_domain 대신 그걸 쓴다.
 
   python keyword_synthesizer.py "라벨1, 라벨2, ..."        텍스트/키워드 뭉치를 압축만
   python keyword_synthesizer.py --file raw.txt --search     압축 후 바로 파이프라인 실행
   python keyword_synthesizer.py --file raw.txt --search --deep --math --domain "전자전기컴퓨터"
 
-압축 결과(원문 미리보기 + 압축 keyword + 폴더 계층 + 근거)는 keyword_synthesis_log.jsonl에 한 줄씩 누적된다.
+압축 결과(원문 미리보기 + 검색어 2개 + 폴더 계층 + 근거)는 keyword_synthesis_log.jsonl에 한 줄씩 누적된다.
 """
 
 from __future__ import annotations
@@ -42,20 +44,35 @@ SCHEMA = {
                             "2~5단어의 짧은 명사구로 (예: 'TPU-GPU Roofline 분석'). "
                             "folder_domain의 하위 개념이어야 하고, 그 자체로도 폴더명으로 쓸 만큼 짧아야 함.",
         },
+        "search_terms": {
+            "type": "ARRAY",
+            "description": "실제 arXiv/Semantic Scholar 검색에 쓸 영문 핵심 구(phrase) 정확히 2개. "
+                            "원문에 담긴 모든 개념을 중요도(weight)로 판단해서 가장 비중 높은 2개만 "
+                            "남기고 나머지는 버릴 것 -- 20단어짜리 문장을 그대로 검색어로 쓰면 arXiv "
+                            "쿼리 파서가 깨져서 날짜 필터가 무시되는 문제가 있으므로 반드시 2개, 각 "
+                            "2~4단어의 짧은 영문 구로 압축한다. search_terms[0]이 가장 중요도(weight)가 "
+                            "높은 핵심 개념, search_terms[1]이 그다음으로 중요한 보조 개념.",
+            "items": {"type": "STRING"},
+            "minItems": 2,
+            "maxItems": 2,
+        },
         "rationale": {"type": "STRING", "description": "왜 이렇게 압축/계층화했는지 1-2문장"},
     },
-    "required": ["compressed_keyword", "folder_domain", "folder_topic", "rationale"],
+    "required": ["compressed_keyword", "folder_domain", "folder_topic", "search_terms", "rationale"],
 }
 
 PROMPT_TMPL = """다음은 검색 대상이 될 원문 키워드/텍스트 뭉치다. 여기 담긴 핵심 주제를 분석해서
 지정된 JSON 스키마로만, 한국어로 답하라.
 
-- compressed_keyword: 논문 검색(arXiv/Semantic Scholar)에 바로 쓸 수 있는 압축된 검색 문장.
-  나열/중복/무관한 내용은 버리고 핵심 개념만 남길 것. 검색 정확도가 우선이라 길어도 된다.
+- compressed_keyword: 사람이 읽을 참고용 압축 문장(로그에만 남음). 나열/중복/무관한 내용은
+  버리고 핵심 개념만 남길 것.
 - folder_domain / folder_topic: 결과가 저장될 폴더 이름으로 쓸 것이므로 반드시 둘 다 짧게.
   folder_domain은 더 추상적인 상위 연구 분야, folder_topic은 그 아래 더 구체적인 하위 주제.
   둘을 합쳐도 폴더 깊이는 "<folder_domain>/<folder_topic>" 딱 2단계를 넘지 않는다 -- 그 이상
   세분화하지 말 것.
+- search_terms: 실제 검색에 쓰이는 값이라 가장 중요하다. 원문의 모든 개념에 중요도(weight)를
+  매긴 뒤, 가장 비중 높은 2개만 남겨서 각각 2~4단어의 짧은 영문 구로 표현할 것. 나머지 개념은
+  전부 버린다 -- 검색어를 길게 유지하려 하지 말 것 (긴 검색어는 정확도를 오히려 떨어뜨린다).
 
 --- 원문 시작 ---
 {raw_text}
@@ -75,6 +92,7 @@ def synthesize(raw_text: str) -> dict:
         "compressed_keyword": data.get("compressed_keyword", "").strip(),
         "folder_domain": data.get("folder_domain", "").strip(),
         "folder_topic": data.get("folder_topic", "").strip(),
+        "search_terms": [t.strip() for t in data.get("search_terms", []) if t.strip()][:2],
         "rationale": data.get("rationale", "").strip(),
     }
 
@@ -113,7 +131,8 @@ if __name__ == "__main__":
 
     result = synthesize(raw_text)
     log_path = log_result(raw_text, result)
-    print(f'[압축 완료] keyword = "{result["compressed_keyword"]}"')
+    print(f'[압축 완료] 참고용 요약 = "{result["compressed_keyword"]}"')
+    print(f'  검색어(가중치순 2개) = {result["search_terms"]}')
     print(f'  폴더 구조 = "{result["folder_domain"]}/{result["folder_topic"]}"')
     print(f"  근거: {result['rationale']}")
     print(f"  로그: {log_path}")
@@ -121,5 +140,5 @@ if __name__ == "__main__":
     if args.search:
         import main
         domain = args.domain or result["folder_domain"]
-        main.run_pipeline(result["compressed_keyword"], deep=args.deep, top_n=args.top_n,
+        main.run_pipeline(result["search_terms"], deep=args.deep, top_n=args.top_n,
                            domain=domain, math=args.math, label=result["folder_topic"])

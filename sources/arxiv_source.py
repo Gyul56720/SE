@@ -24,10 +24,19 @@ class Paper:
     source: str = "arxiv"
 
 
-def search(keyword: str, year_start: int, year_end: int, max_results: int = 20) -> list[Paper]:
-    """지정한 [year_start, year_end] 구간 안에서 keyword로 arXiv를 검색한다."""
+def search(keyword: str | list[str], year_start: int, year_end: int, max_results: int = 20) -> list[Paper]:
+    """지정한 [year_start, year_end] 구간 안에서 keyword로 arXiv를 검색한다.
+
+    keyword를 따옴표 없이 여러 단어로 그대로 `all:` 필드에 박으면 arXiv 쿼리 파서가
+    깨져서 submittedDate 범위 필터가 무시되는 버그가 있었다 (예: 20단어짜리 키워드를
+    2005-2013 구간으로 검색했는데 2025/2026년 논문이 나옴 -- 실측 확인됨). 그래서 각 구를
+    큰따옴표로 감싸 `all:"phrase"`로 명시적 phrase 매치를 걸고, 여러 구는 OR로 묶는다."""
+    terms = keyword if isinstance(keyword, list) else [keyword]
     date_range = f"submittedDate:[{year_start}01010000 TO {year_end}12312359]"
-    query = f"all:{keyword} AND {date_range}"
+    phrase_query = " OR ".join(f'all:"{t}"' for t in terms)
+    if len(terms) > 1:
+        phrase_query = f"({phrase_query})"
+    query = f"{phrase_query} AND {date_range}"
 
     client = arxiv.Client(page_size=max_results, delay_seconds=3.0, num_retries=3)
     search_obj = arxiv.Search(

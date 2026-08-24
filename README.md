@@ -54,7 +54,7 @@
 - **구조화 분석**: 논문마다 `core_claim` / `upgrades_from` / `key_numbers` / `limitations` / `one_line_summary`를 JSON 스키마로 강제 추출 (환각 방지)
 - **발전 계보 자동 연결**: `upgrades_from` 텍스트에서 같은 배치의 다른 논문 제목이 언급되면 자동으로 `predecessor::` 위키링크 삽입
 - **적응형 리서치(`--deep`)**: 지금까지 찾은 계보를 Gemini에 보여주고 "빠진 세대 있나?" 판단시켜 후속 검색어 생성 + 인용 그래프(citation walk) 탐색
-- **수학/구조 추출(`--math`)**: 논문 원문 PDF에서 공식(수치 대입 예 포함)과 아키텍처 구성 요소(구조/역할/규격 수치)를 뽑아 `편입 수학/` 폴더에 논문 이름으로 저장
+- **수학/구조 추출(`--math`)**: 논문 원문 PDF에서 공식(수치 대입 예 포함)과 아키텍처 구성 요소(구조/역할/규격 수치)를 뽑아 `mathmetics/` 폴더에 논문 이름으로 저장
 - **키워드 압축(`keyword_synthesizer.py`)**: 정돈 안 된 raw 키워드/텍스트 뭉치를 LLM으로 압축해 검색용 keyword 문장으로 재조립 후 파이프라인에 바로 연결
 - **오픈액세스 사본 자동 조회(Unpaywall)**: arXiv ID가 없는 DOI-only 논문도 `sources/unpaywall.py`가
   저작권자가 스스로 공개한 합법 사본을 DOI로 찾아본다 (로그인/인증 불필요, 이메일은 API 식별용)
@@ -131,7 +131,8 @@ python3 main.py "roofline model" --deep --math --domain "전자전기컴퓨터"
 ```
 
 `--domain`을 주면 `Paper Pipeline/<도메인>/<키워드>/Survey Notes`처럼 도메인별로 중첩 정리된다.
-`--math`는 PDF가 있는 후보마다 원문을 받아 수식/아키텍처를 뽑아 `편입 수학/` 폴더에 논문 이름으로 쓴다.
+`--math`는 PDF가 있는 후보마다 원문을 받아 수식/아키텍처를 뽑아 `mathmetics/` 폴더(vault 루트,
+`Paper Pipeline/`과 같은 레벨의 형제 폴더)에 논문 이름으로 쓴다.
 
 ### 논문 한 편만 수학/구조 추출
 
@@ -143,14 +144,21 @@ python3 math_review.py --pdf ./my_paper.pdf        # 로컬 PDF 직접 지정
 python3 math_review.py --image ./photos/eq.jpg --ask "이 유도 과정 설명해줘"   # 수식 사진 질의
 ```
 
-### 키워드 압축 후 검색
+### 키워드 압축 후 검색 (2단계 추상화: 검색어 2개 + 폴더 2단계)
 
 ```bash
 python3 keyword_synthesizer.py --file raw_keywords.txt --search
 python3 keyword_synthesizer.py "roofline, operational intensity, TPU 로드맵"   # 압축만
 ```
 
-정돈 안 된 키워드 나열을 Gemini로 압축해서 검색용 keyword 문장 하나로 재조립한 뒤,
+정돈 안 된 키워드 나열을 Gemini에게 주면 두 가지를 뽑는다:
+- **검색어**: 중요도(weight) 기준 상위 2개 영문 구(phrase)만 남겨서 arXiv에는 `(all:"a" OR all:"b")
+  AND submittedDate:[...]` 형태로 질의한다. 원문을 그대로(예: 20단어) 검색어로 쓰면 arXiv 쿼리
+  파서가 깨져서 날짜 필터가 무시되는 버그가 있었다 (실측 확인: 2005-2013 구간 검색에 2025년 논문이
+  나옴) -- 2개로 압축하고 따옴표로 phrase를 명시해서 고쳤다.
+- **폴더 구조**: `folder_domain`(상위, 추상적 분야) / `folder_topic`(하위, 구체적 주제) 2단계로만,
+  그 이상 세분화하지 않는다.
+
 `--search`를 주면 바로 `main.py` 파이프라인에 연결한다. 압축 로그는 `keyword_synthesis_log.jsonl`에 누적된다.
 
 ### Q&A
@@ -211,7 +219,8 @@ paper-qa
 
 | 검증 항목 | 결과 |
 |---|---|
-| 키워드 압축 → 검색 → 수집 → 분석 → 정리 (`keyword_synthesizer.py --search`) | raw 키워드 텍스트 → 압축 keyword 문장 재조립 → arXiv에서 논문 8편 수집 → Gemini 구조화 분석 → Survey Notes `.md` 8개 생성 성공 |
+| 키워드 압축 → 검색 → 수집 → 분석 → 정리 (`keyword_synthesizer.py --search`) | raw 키워드 텍스트 → 가중치 상위 2개 검색어 + 2단계 폴더로 재조립 → arXiv에서 4개 기간 구간 전부에 걸쳐 연도가 실제로 맞는 논문 11편 수집 → `Paper Pipeline/하드웨어 가속기 성능 모델링/Roofline 모델 분석/Survey Notes`에 `.md` 11개 생성 성공 |
+| arXiv 날짜 필터 버그 재현·수정 | 긴(20단어) 키워드를 따옴표 없이 `all:`에 넣으면 `submittedDate` 필터가 무시됨을 실측 확인(2005-2013 구간 검색에 2025/2026년 논문이 나옴) → 검색어를 가중치 상위 2개 phrase로 줄이고 `all:"phrase"`로 따옴표 처리 후 재검증, 4개 구간 모두 연도가 맞는 논문만 나옴 |
 | 수학/아키텍처 추출 (`math_review.py`) | arXiv PDF 확보 가능한 논문 3편에서 수식(수치 대입 예 포함) + 아키텍처 구조 노트 생성 성공 |
 | 예시: TPU 논문 아키텍처 추출 | 256×256 MAC 배열(65,536개 8-bit MAC), 피크 92 TOPS @ 700MHz, Unified Buffer 24 MiB, Ridge Point 1350 ops/byte 등 논문 실제 수치가 노트에 정확히 반영됨 |
 | Semantic Scholar 429(rate limit) 상황 | 지수 백오프 재시도 후에도 실패 시 arXiv/OpenAlex로 자연 fallback되어 전체 파이프라인은 계속 진행됨 |

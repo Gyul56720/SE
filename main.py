@@ -12,15 +12,17 @@ import argparse
 from config import note_folder
 
 
-def run_pipeline(keyword: str, deep: bool, top_n: int, domain: str | None, math: bool,
+def run_pipeline(keyword: str | list[str], deep: bool, top_n: int, domain: str | None, math: bool,
                   label: str | None = None):
-    """keyword는 실제 검색 질의문(길어도 됨), label은 폴더/태그에 쓸 짧은 표시명이다.
-    label을 안 주면 keyword를 그대로 쓴다 (기존 CLI 단발 사용과 호환)."""
+    """keyword는 실제 검색 질의문 -- 문자열(짧은 키워드) 또는 짧은 구 2개짜리 리스트(권장,
+    arXiv 쿼리 파서가 긴 문자열에서 날짜 필터를 무시하는 버그를 피함). label은 폴더/태그에
+    쓸 짧은 표시명이다. label을 안 주면 keyword를 그대로 쓴다 (기존 CLI 단발 사용과 호환)."""
     import collector
     import analyzer
     import organizer
 
-    label = label or keyword
+    if not label:
+        label = " ".join(keyword) if isinstance(keyword, list) else keyword
 
     if deep:
         import research_graph

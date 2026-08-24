@@ -49,8 +49,9 @@ def _summarize(periods: dict[str, list[Candidate]]) -> str:
     return "\n".join(lines)
 
 
-def judge_gaps(keyword: str, periods: dict[str, list[Candidate]]) -> list[str]:
-    prompt = GAP_PROMPT_TMPL.format(keyword=keyword, summary=_summarize(periods))
+def judge_gaps(keyword: str | list[str], periods: dict[str, list[Candidate]]) -> list[str]:
+    keyword_display = " / ".join(keyword) if isinstance(keyword, list) else keyword
+    prompt = GAP_PROMPT_TMPL.format(keyword=keyword_display, summary=_summarize(periods))
     data = gemini_client.generate_json(prompt, GAP_SCHEMA)
     print(f"[gap 판단] has_gap={data.get('has_gap')} - {data.get('reasoning', '')}")
     return data.get("follow_up_queries", []) or []
@@ -102,7 +103,7 @@ def citation_walk(periods: dict[str, list[Candidate]], max_new_per_paper: int = 
     return new_candidates
 
 
-def deep_collect(keyword: str, max_iterations: int = 2, top_n_per_period: int = 6) -> dict[str, list[Candidate]]:
+def deep_collect(keyword: str | list[str], max_iterations: int = 2, top_n_per_period: int = 6) -> dict[str, list[Candidate]]:
     periods = collector.collect(keyword, top_n_per_period=top_n_per_period)
 
     for it in range(max_iterations):

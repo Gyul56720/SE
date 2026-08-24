@@ -64,26 +64,33 @@ def _merge(records: list[Candidate]) -> list[Candidate]:
     return list(merged.values())
 
 
-def _is_relevant(c: Candidate, keyword: str) -> bool:
-    """제목/초록에 키워드가 실제로 등장하는지 체크.
+def _is_relevant(c: Candidate, terms: list[str]) -> bool:
+    """제목/초록에 검색어 중 하나라도 실제로 등장하는지 체크.
     OpenAlex/S2는 느슨한 검색이라 관련 없는 고인용 논문이 섞여 들어오는데,
     이걸 citation_count로만 정렬하면 그런 논문이 상위를 차지해버린다.
     """
-    kw = keyword.lower()
-    return kw in c.title.lower() or kw in c.abstract.lower()
+    text = f"{c.title} {c.abstract}".lower()
+    return any(t.lower() in text for t in terms)
 
 
-def collect_period(keyword: str, year_start: int, year_end: int, top_n: int = 6) -> list[Candidate]:
-    """한 기간 구간에 대해 3개 소스를 조회. 키워드가 실제 등장하는 후보를 우선하고,
-    그 안에서 citation_count 내림차순으로 상위 top_n개를 반환."""
+def collect_period(keyword: str | list[str], year_start: int, year_end: int, top_n: int = 6) -> list[Candidate]:
+    """한 기간 구간에 대해 3개 소스를 조회. 검색어가 실제 등장하는 후보를 우선하고,
+    그 안에서 citation_count 내림차순으로 상위 top_n개를 반환.
+
+    keyword는 문자열(짧은 키워드) 또는 짧은 구(phrase) 2개짜리 리스트를 받는다 -- 리스트를
+    쓰면 arXiv 쪽은 OR로 묶은 phrase 매치 쿼리를 쓰고(arxiv_source.search 참고), S2/OpenAlex는
+    공백으로 합쳐서 넘긴다. 원문 키워드를 통째로(예: 20단어) 넘기면 arXiv 쿼리가 깨지고
+    _is_relevant도 전부 걸러버려서, 짧은 구 단위로 쪼개 쓰는 게 핵심이다."""
+    terms = keyword if isinstance(keyword, list) else [keyword]
+    query_text = " ".join(terms)
     records: list[Candidate] = []
 
-    for p in arxiv_source.search(keyword, year_start, year_end, max_results=15):
+    for p in arxiv_source.search(terms, year_start, year_end, max_results=15):
         records.append(Candidate(title=p.title, year=p.year, authors=p.authors,
                                   arxiv_id=p.arxiv_id, abstract=p.abstract, pdf_url=p.pdf_url))
 
     try:
-        for p in semantic_scholar.search(keyword, year_start, year_end, limit=15):
+        for p in semantic_scholar.search(query_text, year_start, year_end, limit=15):
             records.append(Candidate(title=p.title, year=p.year, authors=p.authors,
                                       arxiv_id=p.arxiv_id, doi=p.doi, s2_paper_id=p.paper_id,
                                       citation_count=p.citation_count or 0, abstract=p.abstract,
@@ -92,7 +99,7 @@ def collect_period(keyword: str, year_start: int, year_end: int, top_n: int = 6)
         print(f"[경고] Semantic Scholar 조회 실패({year_start}-{year_end}): {e}")
 
     try:
-        for p in openalex.search(keyword, year_start, year_end, per_page=15):
+        for p in openalex.search(query_text, year_start, year_end, per_page=15):
             records.append(Candidate(title=p.title, year=p.year, authors=p.authors,
                                       doi=p.doi, openalex_id=p.openalex_id,
                                       citation_count=p.citation_count or 0, abstract=p.abstract,
@@ -101,7 +108,7 @@ def collect_period(keyword: str, year_start: int, year_end: int, top_n: int = 6)
         print(f"[경고] OpenAlex 조회 실패({year_start}-{year_end}): {e}")
 
     merged = _merge(records)
-    relevant = [c for c in merged if _is_relevant(c, keyword)]
+    relevant = [c for c in merged if _is_relevant(c, terms)]
     rest = [c for c in merged if c not in relevant]
     relevant.sort(key=lambda c: c.citation_count, reverse=True)
     rest.sort(key=lambda c: c.citation_count, reverse=True)
@@ -109,12 +116,13 @@ def collect_period(keyword: str, year_start: int, year_end: int, top_n: int = 6)
     return ranked[:top_n]
 
 
-def collect(keyword: str, top_n_per_period: int = 6) -> dict[str, list[Candidate]]:
+def collect(keyword: str | list[str], top_n_per_period: int = 6) -> dict[str, list[Candidate]]:
     """config.PERIOD_BUCKETS 전체 구간에 대해 수집. {'2009-2013': [...], ...} 형태로 반환."""
+    display = " / ".join(keyword) if isinstance(keyword, list) else keyword
     out: dict[str, list[Candidate]] = {}
     for start, end in PERIOD_BUCKETS:
         label = f"{start}-{end}"
-        print(f"[수집] {label} 구간에서 '{keyword}' 검색 중...")
+        print(f"[수집] {label} 구간에서 '{display}' 검색 중...")
         out[label] = collect_period(keyword, start, end, top_n=top_n_per_period)
     return out
 

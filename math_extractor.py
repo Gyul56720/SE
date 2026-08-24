@@ -25,12 +25,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import gemini_client
-from config import OBSIDIAN_VAULT_PATH, PAPER_PIPELINE_ROOT
+from config import OBSIDIAN_VAULT_PATH, VAULT_ROOT
 
 MAX_CHARS = 300_000  # deep_review.py와 같은 안전 상한 취지 (원문 전체가 이 안에 들어오는 경우가 대부분)
 
 # 모든 수학/구조 정리 노트는 도메인·키워드에 상관없이 이 폴더 하나로 모인다.
-MATH_VAULT_FOLDER = PAPER_PIPELINE_ROOT / "편입 수학"
+# Paper Pipeline 폴더 "안"이 아니라 vault 루트 바로 밑, Paper Pipeline과 같은 레벨(형제 폴더)에 둔다.
+MATH_VAULT_FOLDER = VAULT_ROOT / "mathmetics"
 
 # transfer_math_chatbot/main.py의 system_instruction을 그대로 이식한 페르소나.
 # "편입 수학 전문 튜터"에서 "논문 속 수학 해설"로 적용 범위만 넓혔다.

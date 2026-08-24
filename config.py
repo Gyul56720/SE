@@ -46,6 +46,9 @@ OBSIDIAN_VAULT_PATH.mkdir(parents=True, exist_ok=True)
 # 예: note_folder("GEMM", "전자전기컴퓨터", "Survey Notes")
 #     -> .../Paper Pipeline/전자전기컴퓨터/GEMM/Survey Notes
 PAPER_PIPELINE_ROOT = OBSIDIAN_VAULT_PATH.parent
+# Paper Pipeline 폴더보다 한 단계 위 (vault 루트). math_extractor.py의 "mathmetics" 폴더처럼
+# 개별 논문 파이프라인 결과와 분리해서 vault 최상위에 둘 것들이 여기 기준으로 위치를 잡는다.
+VAULT_ROOT = PAPER_PIPELINE_ROOT.parent
 _BAD_PATH_CHARS = re.compile(r'[\\/:*?"<>|]')
 
 
