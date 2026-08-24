@@ -104,7 +104,7 @@ python3 gemini_client.py        # GEMINI_API_KEY 필요, 자기소개 문장이 
 python3 main.py "roofline model"
 ```
 
-끝나면 `OBSIDIAN_VAULT_PATH`의 상위 폴더(`Paper Pipeline/`) 아래에 `.md` 노트가 쌓인다.
+끝나면 vault 루트의 `mathmetics/<키워드>/Survey Notes/` 아래에 `.md` 노트가 쌓인다.
 Obsidian에서 그래프뷰를 열면 위키링크로 연결된 발전 계보가 보인다.
 
 ## 사용법
@@ -130,9 +130,10 @@ python3 main.py "roofline model" --math
 python3 main.py "roofline model" --deep --math --domain "전자전기컴퓨터"
 ```
 
-`--domain`을 주면 `Paper Pipeline/<도메인>/<키워드>/Survey Notes`처럼 도메인별로 중첩 정리된다.
-`--math`는 PDF가 있는 후보마다 원문을 받아 수식/아키텍처를 뽑아 `mathmetics/` 폴더(vault 루트,
-`Paper Pipeline/`과 같은 레벨의 형제 폴더)에 논문 이름으로 쓴다.
+검색 결과(Survey Notes)는 `mathmetics/<키워드>/Survey Notes`에, `--domain`을 주면
+`mathmetics/<도메인>/<키워드>/Survey Notes`처럼 도메인별로 중첩 정리된다.
+`--math`는 PDF가 있는 후보마다 원문을 받아 수식/아키텍처를 뽑아 `mathmetics/` 폴더 바로 밑에
+(하위 폴더 없이 평평하게) 논문 이름으로 쓴다 -- 검색 결과용 서브폴더와 겹치지 않는다.
 
 ### 논문 한 편만 수학/구조 추출
 
@@ -219,7 +220,8 @@ paper-qa
 
 | 검증 항목 | 결과 |
 |---|---|
-| 키워드 압축 → 검색 → 수집 → 분석 → 정리 (`keyword_synthesizer.py --search`) | raw 키워드 텍스트 → 가중치 상위 2개 검색어 + 2단계 폴더로 재조립 → arXiv에서 4개 기간 구간 전부에 걸쳐 연도가 실제로 맞는 논문 11편 수집 → `Paper Pipeline/하드웨어 가속기 성능 모델링/Roofline 모델 분석/Survey Notes`에 `.md` 11개 생성 성공 |
+| 키워드 압축 → 검색 → 수집 → 분석 → 정리 (`keyword_synthesizer.py --search`) | raw 키워드 텍스트 → 가중치 상위 2개 검색어 + 2단계 폴더로 재조립 → arXiv에서 4개 기간 구간 전부에 걸쳐 연도가 실제로 맞는 논문 11편 수집 → `.md` 11개 생성 성공 (당시엔 `Paper Pipeline/...`에 썼으나 이후 저장 위치가 `mathmetics/...`로 바뀜) |
+| 검색 결과 저장 위치를 `mathmetics/` 하위로 변경 후 재검증 | `main.py "GPU roofline" --top-n 1` 실행 → `mathmetics/GPU roofline/Survey Notes/`에 정상 생성, 기존 `mathmetics/` 최상위 4개 파일은 md5 동일(안 건드림) 확인 |
 | arXiv 날짜 필터 버그 재현·수정 | 긴(20단어) 키워드를 따옴표 없이 `all:`에 넣으면 `submittedDate` 필터가 무시됨을 실측 확인(2005-2013 구간 검색에 2025/2026년 논문이 나옴) → 검색어를 가중치 상위 2개 phrase로 줄이고 `all:"phrase"`로 따옴표 처리 후 재검증, 4개 구간 모두 연도가 맞는 논문만 나옴 |
 | 수학/아키텍처 추출 (`math_review.py`) | arXiv PDF 확보 가능한 논문 3편에서 수식(수치 대입 예 포함) + 아키텍처 구조 노트 생성 성공 |
 | 예시: TPU 논문 아키텍처 추출 | 256×256 MAC 배열(65,536개 8-bit MAC), 피크 92 TOPS @ 700MHz, Unified Buffer 24 MiB, Ridge Point 1350 ops/byte 등 논문 실제 수치가 노트에 정확히 반영됨 |

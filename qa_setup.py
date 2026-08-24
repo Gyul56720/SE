@@ -9,7 +9,7 @@ summary_llm은 evidence 조각마다 호출돼서 빈도가 제일 높다 - GROQ
 """
 from paperqa import Settings, ask
 
-from config import GEMINI_MODEL, GROQ_API_KEY, OBSIDIAN_VAULT_PATH
+from config import GEMINI_MODEL, GROQ_API_KEY, VAULT_ROOT
 
 # gemini-embedding-2 가 현재(2026) GA된 최신 임베딩 모델.
 # 만약 "model not found" 류 에러가 나면 구버전인 gemini/text-embedding-004 로 바꿔볼 것.
@@ -29,7 +29,10 @@ def build_settings(paper_directory=None) -> Settings:
         # 이렇게 agent 하위(agent={"agent_llm": ...})일 수 있다. 아래는 2026.8 기준 확인된 구조.
         agent={
             "agent_llm": main_model,
-            "index": {"paper_directory": str(paper_directory or OBSIDIAN_VAULT_PATH)},
+            # vault 루트 전체를 인덱싱해야 Paper Pipeline/과 mathmetics/ 양쪽에 흩어진
+            # 노트를 다 찾는다 (mathmetics로 결과 저장 위치가 바뀐 뒤로 OBSIDIAN_VAULT_PATH
+            # 하나만 보면 아무것도 못 찾는 문제가 있었음).
+            "index": {"paper_directory": str(paper_directory or VAULT_ROOT)},
         },
     )
 

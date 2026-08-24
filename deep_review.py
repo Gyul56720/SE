@@ -233,7 +233,7 @@ tags: [deep-review]
 
 
 def write_deep_review(paper: arxiv_source.Paper, angle: str, body: str, vault_path: Path | None = None) -> Path:
-    vault_path = vault_path or DEEP_REVIEW_PATH
+    vault_path = vault_path or (OBSIDIAN_VAULT_PATH.parent / "Deep Reviews")
     vault_path.mkdir(parents=True, exist_ok=True)
 
     content = _TEMPLATE.format(

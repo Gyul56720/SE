@@ -56,8 +56,7 @@ def _call(model: str, contents: list[dict], generation_config: dict | None = Non
     raise RuntimeError(f"Gemini API 재시도 초과: {last_err}")
 
 
-def generate(prompt: str, model: str | None = None, system_instruction: str | None = None,
-             images: list[Path] | None = None) -> str:
+def generate(prompt: str, model: str | None = None, images: list[Path] | None = None) -> str:
     """자유 텍스트 응답이 필요할 때. images를 주면 멀티모달 요청(수식 사진 인식 등)."""
     contents = [{"role": "user", "parts": _build_parts(prompt, images)}]
     result = _call(model or GEMINI_MODEL, contents)
