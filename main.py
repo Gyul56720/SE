@@ -34,30 +34,26 @@ def run_pipeline(keyword: str, deep: bool, top_n: int, domain: str | None, math:
     print("Obsidian에서 그래프뷰를 열면 predecessor 링크로 연결된 발전 계보가 보인다.")
 
     if math:
-        run_math_batch(all_candidates, keyword=keyword, domain=domain)
+        run_math_batch(all_candidates)
 
 
-def run_math_batch(candidates: list, keyword: str, domain: str | None):
-    """수집된 후보 논문마다 원문 PDF를 받아 수학 공식/개념을 추출한다 (math_extractor.py 연동).
-    PDF가 없는 논문은 건너뛴다. Survey Notes 분석과 별개 Gemini 호출이라 --math 지정 시에만 돈다."""
+def run_math_batch(candidates: list):
+    """수집된 후보 논문마다 원문 PDF를 받아 수학 공식/구조(아키텍처)를 추출한다 (math_extractor.py 연동).
+    PDF가 없는 논문은 건너뛴다. 결과는 도메인/키워드와 무관하게 '편입 수학/' 폴더 하나에 모인다.
+    Survey Notes 분석과 별개 Gemini 호출이라 --math 지정 시에만 돈다."""
     import math_extractor
-    from config import note_folder as _note_folder
     import deep_review
 
-    math_vault = _note_folder(keyword, domain, "Math Concepts")
-    concept_index = math_extractor.load_existing_concept_index(math_vault)
+    concept_index = math_extractor.load_existing_concept_index()
 
     targets = [c for c in candidates if c.pdf_url]
-    print(f"\n[수학 추출] PDF 있는 후보 {len(targets)}/{len(candidates)}편 대상으로 시작...")
+    print(f"\n[수학/구조 추출] PDF 있는 후보 {len(targets)}/{len(candidates)}편 대상으로 시작...")
     for i, c in enumerate(targets, 1):
-        print(f"[수학 추출 {i}/{len(targets)}] {c.title[:60]}...")
+        print(f"[수학/구조 추출 {i}/{len(targets)}] {c.title[:60]}...")
         try:
             text = deep_review.fetch_pdf_text(c.pdf_url)
             result = math_extractor.extract_math(text, c.title)
-            math_extractor.write_math_note(
-                result, c.title, c.year, domain=domain, topic=keyword,
-                vault_path=math_vault, concept_slug_index=concept_index,
-            )
+            math_extractor.write_math_note(result, c.title, c.year, concept_slug_index=concept_index)
         except Exception as e:
             print(f"  실패: {e}")
 

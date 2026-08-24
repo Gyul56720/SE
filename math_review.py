@@ -11,7 +11,7 @@
   python math_review.py --image ./eq.jpg --ask "이 부분만 설명해줘"
 
 논문 조회/원문 다운로드는 deep_review.py의 로직을 그대로 재사용한다 (같은 로직 두 번 짜지 않기 위함).
-결과는 "<도메인>-<키워드>/Math Concepts/" 폴더에 [Math] 접두어를 붙여 저장하고,
+결과는 도메인/키워드에 상관없이 "편입 수학/" 폴더 하나에 논문 이름 그대로 저장하고,
 같은 폴더의 원 논문 Survey Note로 source_paper 위키링크를, 근접 개념 중 이미 vault에
 있는 것과는 자동으로 상호 위키링크를 건다.
 """
@@ -22,14 +22,6 @@ from pathlib import Path
 
 import deep_review
 import math_extractor
-from config import OBSIDIAN_VAULT_PATH
-
-
-def _resolve_math_vault(domain: str | None, topic: str | None) -> Path:
-    if topic:
-        from config import note_folder
-        return note_folder(topic, domain, "Math Concepts")
-    return OBSIDIAN_VAULT_PATH.parent / "Math Concepts"
 
 
 def run_image(image_paths: list[str], question: str | None):
@@ -59,17 +51,13 @@ def run_paper(keyword: str | None, arxiv_id: str | None, pdf_path: str | None, i
         text = deep_review.fetch_pdf_text(paper.pdf_url)
         title, year = paper.title, paper.year
 
-    print(f"[추출 완료] {len(text)}자. Gemini로 수학 논리/공식 추출 중 (시간 걸릴 수 있음)...")
+    print(f"[추출 완료] {len(text)}자. Gemini로 수학/구조 추출 중 (시간 걸릴 수 있음)...")
     result = math_extractor.extract_math(text, title)
-    print(f"  공식 {len(result.formulas)}개, 핵심 개념 {len(result.key_concepts)}개, "
-          f"근접 개념 {len(result.adjacent_concepts)}개 추출됨")
+    print(f"  공식 {len(result.formulas)}개, 아키텍처 요소 {len(result.architecture)}개, "
+          f"핵심 개념 {len(result.key_concepts)}개, 근접 개념 {len(result.adjacent_concepts)}개 추출됨")
 
-    math_vault = _resolve_math_vault(domain, topic)
-    concept_index = math_extractor.load_existing_concept_index(math_vault)
-    out_path = math_extractor.write_math_note(
-        result, title, year, domain=domain, topic=topic,
-        vault_path=math_vault, concept_slug_index=concept_index,
-    )
+    concept_index = math_extractor.load_existing_concept_index()
+    out_path = math_extractor.write_math_note(result, title, year, concept_slug_index=concept_index)
     print(f"\n완료: {out_path}")
 
 
