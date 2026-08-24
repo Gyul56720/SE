@@ -30,6 +30,7 @@ paper_research_pipeline/
 ├── deep_review.py               (선택) 논문 한 편 PDF 원문 기반 장문 리뷰
 ├── math_extractor.py            (선택) 6. 수학 개념 추출 Agent — transfer_math_chatbot 연동
 ├── math_review.py                수학 개념 추출 CLI 진입점
+├── keyword_synthesizer.py        (선택) raw 텍스트/키워드 뭉치 → LLM 압축 → keyword → 파이프라인 실행
 └── main.py                     CLI 진입점
 ```
 
@@ -109,6 +110,19 @@ python3 main.py "roofline model" --deep --math   # 적응형 리서치 + 수학 
 `[Math] ...md`로 쓴다. 논문마다 원문 PDF를 새로 받아서 Gemini를 한 번 더 호출하므로 시간이
 꽤 걸린다 -- 개별 논문만 골라서 돌리고 싶으면 지금까지처럼 `math_review.py`를 따로 써도 된다.
 
+### 키워드 압축 후 검색 (raw 텍스트 → LLM 압축 → keyword → 파이프라인)
+
+원문이 정돈 안 된 키워드 나열/뭉치 텍스트일 때, `keyword_synthesizer.py`가 Gemini로
+핵심만 압축해서 검색용 keyword 문장 하나로 재조립한 뒤 바로 `main.py` 파이프라인에 넘긴다.
+
+```bash
+python3 keyword_synthesizer.py --file raw_keywords.txt --search
+python3 keyword_synthesizer.py --file raw_keywords.txt --search --deep --math --domain "전자전기컴퓨터"
+python3 keyword_synthesizer.py "roofline, operational intensity, TPU 로드맵"   # 압축만, 검색은 안 함
+```
+
+압축 결과(원문 미리보기/압축 keyword/근거)는 `keyword_synthesis_log.jsonl`에 누적 기록된다(`.gitignore` 처리됨).
+
 ### Q&A
 
 ```bash
@@ -140,6 +154,7 @@ vault에 쌓인 노트 전체를 대상으로 인용 달아 답한다. 첫 실�
 | `research_graph.py` | iteration당 1회 (gap 판단만) | 적응형 탐색 + citation walk |
 | `qa_setup.py` | 질문당 여러 번 (evidence 요약) | paper-qa 설정 + 질의응답 |
 | `math_extractor.py` | 논문당 1회 (+ 이미지 질의 시 별도) | 논문 원문에서 수학 공식/개념/사용법/근접 개념 추출 (transfer_math_chatbot 페르소나 + 이미지 인식 이식) |
+| `keyword_synthesizer.py` | 호출당 1회 | raw 키워드/텍스트 뭉치를 압축된 검색 keyword 문장으로 재조립, `--search` 시 `main.py` 파이프라인 트리거 |
 
 ## 수학 개념 추출 (transfer_math_chatbot 연동)
 
