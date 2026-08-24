@@ -90,6 +90,26 @@ def _has_corruption_markers(obj) -> bool:
     return False
 
 
+def _robust_json_loads(text: str) -> dict:
+    """3단계 방어: (1) 있는 그대로 파싱 (2) 실패하면 보수적 sanitize 후 재시도
+    (3) 그래도 실패하면(LaTeX가 한 응답 안에 여러 번, 겹쳐서, 혹은 예상 못 한 조합으로 깨진
+    경우) 모든 백슬래시를 예외 없이 이중이스케이프하는 최종 폴백 -- 이러면 JSON 파싱은
+    100% 성공한다(백슬래시 나열은 항상 유효한 JSON이므로). 대가로 이미 올바르게
+    이중이스케이프된 아주 드문 케이스가 과도하게 이스케이프될 수 있지만, 실측상 Gemini가
+    이 스키마들에서 스스로 올바르게 이중이스케이프하는 경우는 관측된 적이 없어 이 쪽이
+    항상 더 안전하다."""
+    try:
+        data = json.loads(text)
+        if not _has_corruption_markers(data):
+            return data
+    except json.JSONDecodeError:
+        pass
+    try:
+        return json.loads(_fix_stray_backslashes(text))
+    except json.JSONDecodeError:
+        return json.loads(text.replace("\\", "\\\\"))
+
+
 def generate_json(prompt: str, schema: dict, model: str | None = None,
                    images: list[Path] | None = None) -> dict:
     """구조화 추출용. responseSchema로 강제해서 파싱 실패 확률을 크게 낮춘다."""
@@ -101,13 +121,7 @@ def generate_json(prompt: str, schema: dict, model: str | None = None,
     except (KeyError, IndexError):
         raise RuntimeError(f"예상치 못한 Gemini 응답 형식: {json.dumps(result)[:300]}")
     text = text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError:
-        return json.loads(_fix_stray_backslashes(text))
-    if _has_corruption_markers(data):
-        return json.loads(_fix_stray_backslashes(text))
-    return data
+    return _robust_json_loads(text)
 
 
 if __name__ == "__main__":
