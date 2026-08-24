@@ -1,0 +1,3 @@
+roofline model, operational intensity, FLOP/byte, TPU systolic array, MAC unit,
+memory bandwidth bound vs compute bound, arithmetic intensity, GPU vs TPU roofline,
+NPU accelerator design, quantized inference, INT8 GEMM, hardware utilization ceiling
