@@ -137,10 +137,10 @@ def resolve_paper(keyword: str | None, arxiv_id: str | None, index: int | None,
                            f"--pdf로 직접 지정할 것.")
 
     if arxiv_id:
-        results = arxiv_source.search(arxiv_id, 1990, 2030, max_results=1)
-        if not results:
+        paper = arxiv_source.get_by_id(arxiv_id)
+        if not paper:
             raise RuntimeError(f"arxiv_id '{arxiv_id}'로 논문을 찾지 못했다.")
-        return results[0]
+        return paper
 
     if keyword:
         note = find_survey_note(keyword, notes)

@@ -61,6 +61,27 @@ def search(keyword: str | list[str], year_start: int, year_end: int, max_results
     return results
 
 
+def get_by_id(arxiv_id: str) -> Paper | None:
+    """arXiv ID로 논문 한 편을 직접 조회한다 (id_list 사용 -- 텍스트 검색이 아니라 정확한 조회라
+    빠르고 신뢰성 있음). deep_review.py의 --arxiv-id 옵션이 이걸 쓴다.
+    예전엔 search(arxiv_id, ...)로 "all:" 필드에 ID 문자열을 텍스트 검색하듯 넣어서 썼는데,
+    date-range 쿼리 버그를 고치며 각 구를 큰따옴표로 감싸는 phrase 매치로 바꾼 뒤로는
+    ID가 논문 본문에 그대로 안 나타나는 경우 매치가 안 되는 문제가 생겨 별도 함수로 뺐다."""
+    client = arxiv.Client(page_size=1, delay_seconds=3.0, num_retries=3)
+    search_obj = arxiv.Search(id_list=[arxiv_id])
+    for r in client.results(search_obj):
+        return Paper(
+            title=r.title.strip(),
+            year=r.published.year,
+            authors=[a.name for a in r.authors],
+            arxiv_id=r.get_short_id(),
+            abstract=(r.summary or "").replace("\n", " ").strip(),
+            pdf_url=r.pdf_url,
+            source="arxiv",
+        )
+    return None
+
+
 if __name__ == "__main__":
     # 단독 실행 시 간단히 동작 확인
     for p in search("roofline model", 2009, 2013, max_results=5):

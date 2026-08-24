@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 import json
 import mimetypes
+import re
 import time
 from pathlib import Path
 
@@ -66,6 +67,29 @@ def generate(prompt: str, model: str | None = None, images: list[Path] | None = 
         raise RuntimeError(f"예상치 못한 Gemini 응답 형식: {json.dumps(result)[:300]}")
 
 
+def _fix_stray_backslashes(text: str) -> str:
+    """math_extractor.py처럼 LaTeX(\\frac, \\theta, \\underline 등)를 JSON 문자열 안에 담아달라고
+    하면, Gemini가 이중이스케이프를 안 해서 \\f/\\t/\\b/\\r/\\u 같은 조합이 진짜 JSON 이스케이프
+    (form feed/tab/backspace/...)로 오인된다. 의도된 이스케이프로 볼 만한 \\", \\\\, \\n만 남기고
+    나머지 백슬래시는 전부 이중이스케이프해서 리터럴로 되살린다."""
+    return re.sub(r'\\(?!["\\n])', r"\\\\", text)
+
+
+def _has_corruption_markers(obj) -> bool:
+    """_fix_stray_backslashes가 필요했는지 판단하는 신호. json.loads는 \\f/\\t/\\b/\\r를
+    유효한 이스케이프로 보고 에러 없이 조용히 통과시키므로(실측: "\\frac{a}{b}" ->
+    "\x0crac{a}{b}"), 파싱 자체는 성공해도 결과 문자열에 이 제어문자가 남아있으면 원문이
+    LaTeX 백슬래시였는데 잘못 먹힌 것으로 본다 (이 앱의 텍스트 필드에 이 제어문자가 실제로
+    의도적으로 들어갈 일은 사실상 없음)."""
+    if isinstance(obj, str):
+        return any(ch in obj for ch in "\x08\x09\x0c\x0d")
+    if isinstance(obj, dict):
+        return any(_has_corruption_markers(v) for v in obj.values())
+    if isinstance(obj, list):
+        return any(_has_corruption_markers(v) for v in obj)
+    return False
+
+
 def generate_json(prompt: str, schema: dict, model: str | None = None,
                    images: list[Path] | None = None) -> dict:
     """구조화 추출용. responseSchema로 강제해서 파싱 실패 확률을 크게 낮춘다."""
@@ -77,7 +101,13 @@ def generate_json(prompt: str, schema: dict, model: str | None = None,
     except (KeyError, IndexError):
         raise RuntimeError(f"예상치 못한 Gemini 응답 형식: {json.dumps(result)[:300]}")
     text = text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-    return json.loads(text)
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        return json.loads(_fix_stray_backslashes(text))
+    if _has_corruption_markers(data):
+        return json.loads(_fix_stray_backslashes(text))
+    return data
 
 
 if __name__ == "__main__":
