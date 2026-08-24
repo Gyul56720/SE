@@ -3,6 +3,7 @@
 
   python main.py "roofline model"                 수집(LLM 미사용) -> 분석 -> 정리
   python main.py "roofline model" --deep           적응형 리서치(gap 판단 + citation walk) 포함
+  python main.py "roofline model" --math           위 흐름 + 후보 논문마다 수학 공식/개념 추출까지 연결
   python main.py --ask "TPU와 GPU roofline 차이는?"  Q&A 레이어만 실행 (vault 전체 대상)
 """
 from __future__ import annotations
@@ -11,7 +12,7 @@ import argparse
 from config import note_folder
 
 
-def run_pipeline(keyword: str, deep: bool, top_n: int, domain: str | None):
+def run_pipeline(keyword: str, deep: bool, top_n: int, domain: str | None, math: bool):
     import collector
     import analyzer
     import organizer
@@ -32,6 +33,34 @@ def run_pipeline(keyword: str, deep: bool, top_n: int, domain: str | None):
     print(f"\n완료: {len(written)}개 노트를 {vault_path} 에 기록했다.")
     print("Obsidian에서 그래프뷰를 열면 predecessor 링크로 연결된 발전 계보가 보인다.")
 
+    if math:
+        run_math_batch(all_candidates, keyword=keyword, domain=domain)
+
+
+def run_math_batch(candidates: list, keyword: str, domain: str | None):
+    """수집된 후보 논문마다 원문 PDF를 받아 수학 공식/개념을 추출한다 (math_extractor.py 연동).
+    PDF가 없는 논문은 건너뛴다. Survey Notes 분석과 별개 Gemini 호출이라 --math 지정 시에만 돈다."""
+    import math_extractor
+    from config import note_folder as _note_folder
+    import deep_review
+
+    math_vault = _note_folder(keyword, domain, "Math Concepts")
+    concept_index = math_extractor.load_existing_concept_index(math_vault)
+
+    targets = [c for c in candidates if c.pdf_url]
+    print(f"\n[수학 추출] PDF 있는 후보 {len(targets)}/{len(candidates)}편 대상으로 시작...")
+    for i, c in enumerate(targets, 1):
+        print(f"[수학 추출 {i}/{len(targets)}] {c.title[:60]}...")
+        try:
+            text = deep_review.fetch_pdf_text(c.pdf_url)
+            result = math_extractor.extract_math(text, c.title)
+            math_extractor.write_math_note(
+                result, c.title, c.year, domain=domain, topic=keyword,
+                vault_path=math_vault, concept_slug_index=concept_index,
+            )
+        except Exception as e:
+            print(f"  실패: {e}")
+
 
 def run_ask(question: str):
     import qa_setup
@@ -42,6 +71,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="논문 리서치 파이프라인")
     parser.add_argument("keyword", nargs="?", help="검색 키워드 (예: 'roofline model')")
     parser.add_argument("--deep", action="store_true", help="적응형 리서치 루프(gap 판단+citation walk) 사용")
+    parser.add_argument("--math", action="store_true", help="후보 논문마다 원문에서 수학 공식/개념까지 추출 (math_extractor.py 연동)")
     parser.add_argument("--top-n", type=int, default=6, help="기간 구간별 상위 몇 편을 남길지")
     parser.add_argument("--domain", default=None, help='분야 태그, 예: "전자전기컴퓨터" -- 상위 폴더가 "<도메인>-<키워드>"로 생김')
     parser.add_argument("--ask", metavar="QUESTION", help="수집 대신, vault 전체에 대해 Q&A만 실행")
@@ -50,6 +80,6 @@ if __name__ == "__main__":
     if args.ask:
         run_ask(args.ask)
     elif args.keyword:
-        run_pipeline(args.keyword, deep=args.deep, top_n=args.top_n, domain=args.domain)
+        run_pipeline(args.keyword, deep=args.deep, top_n=args.top_n, domain=args.domain, math=args.math)
     else:
         parser.print_help()

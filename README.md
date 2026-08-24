@@ -97,6 +97,18 @@ python3 main.py "roofline model" --deep
 물은 뒤 후속 검색을 스스로 만들고, 각 논문의 인용 그래프(누가 이 논문을 인용했는지 / 이 논문은 뭘 인용했는지)를
 따라가며 키워드 매칭으론 못 찾는 논문까지 찾는다. LLM 호출이 늘어나니 무료 한도가 빠듯하면 기본 모드부터 써볼 것.
 
+### 통합 파이프라인 (수집→분석→정리→수학 추출까지 한 번에)
+
+```bash
+python3 main.py "roofline model" --math
+python3 main.py "roofline model" --deep --math   # 적응형 리서치 + 수학 추출 동시 적용 가능
+```
+
+`--math`를 붙이면 Survey Notes를 다 쓴 뒤, PDF URL이 있는 후보 논문마다 `math_extractor.py`를
+호출해 원문에서 수학 공식/개념/근접 개념을 뽑아 같은 `<도메인>-<키워드>/Math Concepts/` 폴더에
+`[Math] ...md`로 쓴다. 논문마다 원문 PDF를 새로 받아서 Gemini를 한 번 더 호출하므로 시간이
+꽤 걸린다 -- 개별 논문만 골라서 돌리고 싶으면 지금까지처럼 `math_review.py`를 따로 써도 된다.
+
 ### Q&A
 
 ```bash
