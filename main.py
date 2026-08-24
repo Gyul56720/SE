@@ -9,7 +9,7 @@
 from __future__ import annotations
 import argparse
 
-from config import note_folder
+from config import note_folder, MATHMETICS_ROOT
 
 
 def run_pipeline(keyword: str | list[str], deep: bool, top_n: int, domain: str | None, math: bool,
@@ -34,7 +34,10 @@ def run_pipeline(keyword: str | list[str], deep: bool, top_n: int, domain: str |
     print(f"\n총 {len(all_candidates)}편 후보 확정. 분석 시작...")
 
     analyses = analyzer.analyze_all(all_candidates)
-    vault_path = note_folder(label, domain, "Survey Notes")
+    # 검색 결과는 mathmetics/ 폴더 하위에 쓴다 (math_extractor.py가 쓰는 mathmetics 루트 폴더
+    # 자체는 절대 안 건드림 -- math_extractor.py는 그 밑에 평평하게 계속 쓰고, 여기서는
+    # <label>(또는 --domain/<label>) 서브폴더를 새로 만들어서 그 안에만 쓰므로 파일명이 겹칠 일이 없다).
+    vault_path = note_folder(label, domain, "Survey Notes", root=MATHMETICS_ROOT)
     written = organizer.write_notes(analyses, keyword=label, vault_path=vault_path)
 
     print(f"\n완료: {len(written)}개 노트를 {vault_path} 에 기록했다.")
@@ -87,7 +90,7 @@ if __name__ == "__main__":
     parser.add_argument("--deep", action="store_true", help="적응형 리서치 루프(gap 판단+citation walk) 사용")
     parser.add_argument("--math", action="store_true", help="후보 논문마다 원문에서 수학 공식/개념까지 추출 (math_extractor.py 연동)")
     parser.add_argument("--top-n", type=int, default=6, help="기간 구간별 상위 몇 편을 남길지")
-    parser.add_argument("--domain", default=None, help='분야 태그, 예: "전자전기컴퓨터" -- "<도메인>/<키워드>" 폴더 구조로 중첩됨')
+    parser.add_argument("--domain", default=None, help='분야 태그, 예: "전자전기컴퓨터" -- mathmetics/<도메인>/<키워드> 폴더 구조로 중첩됨')
     parser.add_argument("--label", default=None, help="폴더/태그용 짧은 표시명. 생략 시 keyword를 그대로 씀 (keyword가 길면 폴더명도 길어짐)")
     parser.add_argument("--ask", metavar="QUESTION", help="수집 대신, vault 전체에 대해 Q&A만 실행")
     args = parser.parse_args()

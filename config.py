@@ -49,14 +49,20 @@ PAPER_PIPELINE_ROOT = OBSIDIAN_VAULT_PATH.parent
 # Paper Pipeline 폴더보다 한 단계 위 (vault 루트). math_extractor.py의 "mathmetics" 폴더처럼
 # 개별 논문 파이프라인 결과와 분리해서 vault 최상위에 둘 것들이 여기 기준으로 위치를 잡는다.
 VAULT_ROOT = PAPER_PIPELINE_ROOT.parent
+# math_extractor.py가 쓰는 것과 동일한 mathmetics 폴더 경로. main.py가 검색 결과(Survey Notes)를
+# mathmetics 하위 서브폴더에 쓸 때도 이 상수를 그대로 재사용한다 -- math_extractor.py 자체의
+# 동작(수학/구조 노트를 이 폴더 바로 밑에 평평하게 쓰는 것)은 절대 건드리지 않는다.
+MATHMETICS_ROOT = VAULT_ROOT / "mathmetics"
 _BAD_PATH_CHARS = re.compile(r'[\\/:*?"<>|]')
 
 
-def note_folder(keyword: str, domain: str | None, kind: str) -> Path:
+def note_folder(keyword: str, domain: str | None, kind: str, root: Path | None = None) -> Path:
     """kind: "Survey Notes" 또는 "Deep Reviews". 도메인이 있으면 <도메인>/<키워드>/<kind>로 중첩,
-    없으면 <키워드>/<kind>."""
+    없으면 <키워드>/<kind>. root를 안 주면 Paper Pipeline 밑, MATHMETICS_ROOT를 주면 mathmetics
+    폴더 하위에 같은 규칙으로 중첩된다."""
+    root = root or PAPER_PIPELINE_ROOT
     keyword_clean = _BAD_PATH_CHARS.sub("_", keyword)
     if domain:
         domain_clean = _BAD_PATH_CHARS.sub("_", domain)
-        return PAPER_PIPELINE_ROOT / domain_clean / keyword_clean / kind
-    return PAPER_PIPELINE_ROOT / keyword_clean / kind
+        return root / domain_clean / keyword_clean / kind
+    return root / keyword_clean / kind
