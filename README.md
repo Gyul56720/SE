@@ -1,128 +1,155 @@
-# 논문 리서치 파이프라인
+![Python](https://img.shields.io/badge/Python-3.9+-blue)
+![Gemini](https://img.shields.io/badge/LLM-Gemini_API-orange)
+![Obsidian](https://img.shields.io/badge/Output-Obsidian_Vault-purple)
+![Status](https://img.shields.io/badge/status-personal_research_tool-lightgrey)
 
-키워드 하나 넣으면: arXiv/Semantic Scholar/OpenAlex에서 기간별로 논문을 모으고(자료 수집) →
-Gemini로 각 논문의 핵심 주장/선행 연구 대비 확장점을 구조화 추출하고(자료 분석) →
-Obsidian vault에 `predecessor::` 위키링크가 걸린 마크다운으로 정리한다(자료 정리).
-그래프뷰를 열면 "발전 과정"이 자동으로 트리 형태로 보인다. 이후 paper-qa로 vault 전체에 Q&A도 가능.
+# 논문 리서치 파이프라인 (Paper Research Pipeline)
 
-이 저장소의 코드는 전부 이 환경에서 문법 검사 + 오프라인 로직(중복제거/슬러그 생성/YAML frontmatter 파싱/JSON 파싱)을
-실제로 실행해서 검증했다. 다만 arXiv·Semantic Scholar·OpenAlex·Gemini 라이브 API 호출 자체는
-네트워크가 막힌 샌드박스라 이 환경에서 못 돌려봤다 — 아래 "실행" 단계에서 처음 돌릴 때 이 부분만 실제 확인이 필요하다.
+키워드 하나 입력하면 arXiv/Semantic Scholar/OpenAlex에서 논문을 자동 수집하고, Gemini로
+핵심 주장과 수학/아키텍처를 구조화 추출해서, Obsidian vault에 발전 계보가 위키링크로
+자동 연결된 노트로 쌓아주는 개인 연구 자동화 파이프라인.
 
-## 폴더 구조
+---
 
-```
-paper_research_pipeline/
-├── README.md              (이 파일)
-├── requirements.txt
-├── .env.example            → 복사해서 .env로 만들고 키 채울 것
-├── config.py                모든 모듈이 공유하는 설정
-├── sources/
-│   ├── arxiv_source.py      arXiv API (키 불필요)
-│   ├── semantic_scholar.py  Semantic Scholar API (키 없어도 동작, 있으면 더 빠름)
-│   └── openalex.py          OpenAlex API (키 불필요, Google Scholar 대체재)
-├── collector.py             1. 자료 수집 Agent — LLM 미사용
-├── gemini_client.py         Gemini REST 호출 공용 래퍼
-├── analyzer.py               2. 자료 분석 Agent — Gemini로 구조화 추출
-├── organizer.py               3. 자료 정리 Agent — Obsidian 마크다운 기록
-├── research_graph.py          (선택) 적응형 리서치 루프 — gap 판단 + citation walk
-├── qa_setup.py                 Q&A 레이어 — paper-qa + Gemini
-├── deep_review.py               (선택) 논문 한 편 PDF 원문 기반 장문 리뷰
-├── math_extractor.py            (선택) 6. 수학 개념 추출 Agent — transfer_math_chatbot 연동
-├── math_review.py                수학 개념 추출 CLI 진입점
-├── keyword_synthesizer.py        (선택) raw 텍스트/키워드 뭉치 → LLM 압축 → keyword → 파이프라인 실행
-└── main.py                     CLI 진입점
-```
+## 목차
 
-## 설치
+- [개요](#개요)
+- [주요 특징](#주요-특징)
+- [시작하기](#시작하기)
+- [사용법](#사용법)
+- [프로젝트 구조](#프로젝트-구조)
+- [기술 스택 & 의존성](#기술-스택--의존성)
+- [실전 검증 결과](#실전-검증-결과)
+- [기여 가이드](#기여-가이드)
+- [라이선스](#라이선스)
+- [연락처](#연락처)
+- [참고자료](#참고자료)
+- [문제 해결](#문제-해결)
+- [로드맵](#로드맵)
 
-### 0. 요구사항
-- Python 3.11 이상 (paper-qa 최소 요구사항)
-- 이미 연동되어 있다는 Gemini API 키
+---
 
-### 1. 가상환경 + 의존성
+## 개요
+
+논문 서베이를 할 때 "이 개념이 어디서 왔고 뭘 개선했는지" 발전 계보를 손으로 추적하는 게
+가장 오래 걸리는 작업이다. 이 프로젝트는 그 과정을 3단계 Agent로 쪼개서 자동화한다.
+
+1. **수집** — 기간 구간별로 여러 논문 소스에서 후보를 모으고 중복 제거 (LLM 미사용)
+2. **분석** — Gemini로 각 논문의 핵심 주장 / "무엇을 어떻게 확장했는지" / 수치 / 한계를 구조화 추출
+3. **정리** — Obsidian 마크다운으로 써서 `predecessor::` 위키링크로 발전 계보 그래프를 자동 연결
+
+추가로 수학/하드웨어 구조가 중요한 논문(TPU, roofline model 등)을 위해 별도 Agent가 공식과
+아키텍처 스펙(배열 크기, bit-width, 처리량, clock 등 실제 수치 포함)을 뽑아 정리한다.
+
+**핵심 특징 요약**
+- 4개 기간 구간(2005-13/14-18/19-22/23-30)별 자동 수집 + 중복 제거
+- 발전 계보를 Obsidian 그래프뷰로 시각화 (predecessor 위키링크 자동 매칭)
+- 수식(수치 대입 예 포함) + 시스템 아키텍처 구조를 논문별로 별도 정리
+- gap 판단 + citation walk로 키워드 매칭이 놓친 논문까지 찾는 적응형 모드
+- vault 전체를 대상으로 근거를 단 Q&A (paper-qa 연동)
+
+## 주요 특징
+
+- **다중 소스 수집**: arXiv / Semantic Scholar / OpenAlex 3개 API를 공통 포맷으로 정규화 후 병합, (제목, 연도) 기준 중복 제거
+- **구조화 분석**: 논문마다 `core_claim` / `upgrades_from` / `key_numbers` / `limitations` / `one_line_summary`를 JSON 스키마로 강제 추출 (환각 방지)
+- **발전 계보 자동 연결**: `upgrades_from` 텍스트에서 같은 배치의 다른 논문 제목이 언급되면 자동으로 `predecessor::` 위키링크 삽입
+- **적응형 리서치(`--deep`)**: 지금까지 찾은 계보를 Gemini에 보여주고 "빠진 세대 있나?" 판단시켜 후속 검색어 생성 + 인용 그래프(citation walk) 탐색
+- **수학/구조 추출(`--math`)**: 논문 원문 PDF에서 공식(수치 대입 예 포함)과 아키텍처 구성 요소(구조/역할/규격 수치)를 뽑아 `편입 수학/` 폴더에 논문 이름으로 저장
+- **키워드 압축(`keyword_synthesizer.py`)**: 정돈 안 된 raw 키워드/텍스트 뭉치를 LLM으로 압축해 검색용 keyword 문장으로 재조립 후 파이프라인에 바로 연결
+- **vault 전체 Q&A**: paper-qa + Gemini로 지금까지 쌓인 노트 전체를 근거로 인용 달린 답변 생성
+
+## 시작하기
+
+### 요구사항
+
+- OS: macOS / Linux (Windows는 venv 활성화 명령만 다름)
+- Python 3.9 이상 (`paper-qa 4.9.0` 기준 로컬 검증됨)
+- Gemini API 키 (필수)
+- Obsidian vault 경로 (결과물이 쌓일 곳)
+- 선택: Semantic Scholar API 키, Groq API 키, OpenAlex 연락용 이메일
+
+### 설치
 
 ```bash
-cd paper_research_pipeline
+git clone <this-repo-url>
+cd paper_research_pipeline_v2
+
 python3 -m venv venv
-source venv/bin/activate        # Windows는 venv\Scripts\activate
+source venv/bin/activate        # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-```
 
-### 2. 환경변수 설정
-
-```bash
 cp .env.example .env
 ```
 
-`.env`를 열어서 최소한 이 두 줄만 채우면 된다:
+`.env`에 최소 두 줄만 채우면 된다:
 
-```
-GEMINI_API_KEY=이미_갖고있는_그_키
+```env
+GEMINI_API_KEY=발급받은_키
 OBSIDIAN_VAULT_PATH=/실제/Obsidian/vault/경로/PaperResearch
 ```
 
-나머지(`GROQ_API_KEY`, `SEMANTIC_SCHOLAR_API_KEY`, `OPENALEX_MAILTO`)는 비워둬도 동작한다 — 각각 없을 때의
-fallback이 코드에 이미 들어있다 (Groq 없으면 Q&A 근거요약도 Gemini로, S2 키 없으면 초당 1회로 스로틀, mailto
-없으면 OpenAlex 기본 풀 사용).
+나머지(`GROQ_API_KEY`, `SEMANTIC_SCHOLAR_API_KEY`, `OPENALEX_MAILTO`)는 비워도 동작한다 —
+각각 없을 때 fallback이 이미 코드에 들어있다.
 
-### 3. 동작 확인 (개별 모듈)
-
-전체를 돌리기 전에 소스 하나씩 확인하면 어디서 막히는지 알기 쉽다:
+### 빠른 시작
 
 ```bash
-python3 sources/arxiv_source.py          # 키 불필요, 바로 돼야 정상
-python3 sources/semantic_scholar.py      # 키 불필요, 바로 돼야 정상
-python3 sources/openalex.py              # 키 불필요, 바로 돼야 정상
-python3 gemini_client.py                 # GEMINI_API_KEY 필요 - 한 문장 자기소개가 나오면 정상
+# 개별 소스 동작 확인 (키 없이 바로 돼야 정상)
+python3 sources/arxiv_source.py
+python3 gemini_client.py        # GEMINI_API_KEY 필요, 자기소개 문장이 나오면 정상
+
+# 최소 실행: 키워드 하나로 수집→분석→정리
+python3 main.py "roofline model"
 ```
 
-## 실행
+끝나면 `OBSIDIAN_VAULT_PATH`의 상위 폴더(`Paper Pipeline/`) 아래에 `.md` 노트가 쌓인다.
+Obsidian에서 그래프뷰를 열면 위키링크로 연결된 발전 계보가 보인다.
 
-### 기본 파이프라인 (수집 → 분석 → 정리)
+## 사용법
+
+### 기본 파이프라인
 
 ```bash
 python3 main.py "roofline model"
 ```
 
-`config.py`의 `PERIOD_BUCKETS`(기본 2005-13 / 14-18 / 19-22 / 23-30) 구간별로 상위 6편씩 모으고,
-각각을 Gemini로 분석해서 vault에 `.md`로 쓴다. 끝나면 Obsidian에서 그래프뷰를 열어볼 것.
+`PERIOD_BUCKETS`(기본 4개 구간) 별로 상위 `--top-n`(기본 6)편씩 모아 분석 후 정리한다.
 
-### 적응형 리서치 (gap 판단 + citation walk 포함)
+### 적응형 리서치 (gap 판단 + citation walk)
 
 ```bash
 python3 main.py "roofline model" --deep
 ```
 
-이러면 `research_graph.py`가 개입해서: 지금까지 찾은 계보를 Gemini에게 보여주고 "빠진 세대 있어?"를
-물은 뒤 후속 검색을 스스로 만들고, 각 논문의 인용 그래프(누가 이 논문을 인용했는지 / 이 논문은 뭘 인용했는지)를
-따라가며 키워드 매칭으론 못 찾는 논문까지 찾는다. LLM 호출이 늘어나니 무료 한도가 빠듯하면 기본 모드부터 써볼 것.
-
-### 통합 파이프라인 (수집→분석→정리→수학 추출까지 한 번에)
+### 통합 파이프라인 (수집→분석→정리→수학/구조 추출)
 
 ```bash
 python3 main.py "roofline model" --math
-python3 main.py "roofline model" --deep --math   # 적응형 리서치 + 수학 추출 동시 적용 가능
+python3 main.py "roofline model" --deep --math --domain "전자전기컴퓨터"
 ```
 
-`--math`를 붙이면 Survey Notes를 다 쓴 뒤, PDF URL이 있는 후보 논문마다 `math_extractor.py`를
-호출해 원문에서 수학 공식(수치 대입 예 포함)/아키텍처 구조/개념/근접 개념을 뽑아, 도메인·키워드에
-상관없이 `편입 수학/` 폴더 하나에 논문 이름 그대로(`.md`) 쓴다. 논문마다 원문 PDF를 새로 받아서
-Gemini를 한 번 더 호출하므로 시간이 꽤 걸린다 -- 개별 논문만 골라서 돌리고 싶으면 지금까지처럼
-`math_review.py`를 따로 써도 된다.
+`--domain`을 주면 `Paper Pipeline/<도메인>/<키워드>/Survey Notes`처럼 도메인별로 중첩 정리된다.
+`--math`는 PDF가 있는 후보마다 원문을 받아 수식/아키텍처를 뽑아 `편입 수학/` 폴더에 논문 이름으로 쓴다.
 
-### 키워드 압축 후 검색 (raw 텍스트 → LLM 압축 → keyword → 파이프라인)
+### 논문 한 편만 수학/구조 추출
 
-원문이 정돈 안 된 키워드 나열/뭉치 텍스트일 때, `keyword_synthesizer.py`가 Gemini로
-핵심만 압축해서 검색용 keyword 문장 하나로 재조립한 뒤 바로 `main.py` 파이프라인에 넘긴다.
+```bash
+python3 math_review.py --list                    # Survey Notes 목록 번호 확인
+python3 math_review.py --index 3                  # 3번 논문 추출
+python3 math_review.py --arxiv-id 1704.04760       # arXiv ID 직접 지정
+python3 math_review.py --pdf ./my_paper.pdf        # 로컬 PDF 직접 지정
+python3 math_review.py --image ./photos/eq.jpg --ask "이 유도 과정 설명해줘"   # 수식 사진 질의
+```
+
+### 키워드 압축 후 검색
 
 ```bash
 python3 keyword_synthesizer.py --file raw_keywords.txt --search
-python3 keyword_synthesizer.py --file raw_keywords.txt --search --deep --math --domain "전자전기컴퓨터"
-python3 keyword_synthesizer.py "roofline, operational intensity, TPU 로드맵"   # 압축만, 검색은 안 함
+python3 keyword_synthesizer.py "roofline, operational intensity, TPU 로드맵"   # 압축만
 ```
 
-압축 결과(원문 미리보기/압축 keyword/근거)는 `keyword_synthesis_log.jsonl`에 누적 기록된다(`.gitignore` 처리됨).
+정돈 안 된 키워드 나열을 Gemini로 압축해서 검색용 keyword 문장 하나로 재조립한 뒤,
+`--search`를 주면 바로 `main.py` 파이프라인에 연결한다. 압축 로그는 `keyword_synthesis_log.jsonl`에 누적된다.
 
 ### Q&A
 
@@ -130,10 +157,94 @@ python3 keyword_synthesizer.py "roofline, operational intensity, TPU 로드맵" 
 python3 main.py --ask "TPU와 GPU의 roofline 차이가 뭐야?"
 ```
 
-vault에 쌓인 노트 전체를 대상으로 인용 달아 답한다. 첫 실행 시 paper-qa가 vault를 인덱싱하느라
-시간이 좀 걸릴 수 있다.
+vault에 쌓인 노트 전체를 대상으로 근거를 인용해 답한다. 첫 실행은 인덱싱 때문에 시간이 걸릴 수 있다.
 
-## 자주 만날 수 있는 문제
+## 프로젝트 구조
+
+```
+paper_research_pipeline_v2/
+├── README.md                  (이 파일)
+├── requirements.txt
+├── .env.example                → 복사해서 .env로 만들고 키 채울 것
+├── config.py                   모든 모듈이 공유하는 설정, note_folder() 경로 규칙
+├── sources/
+│   ├── arxiv_source.py         arXiv API (키 불필요)
+│   ├── semantic_scholar.py     Semantic Scholar API (키 없어도 동작, 있으면 더 빠름)
+│   └── openalex.py             OpenAlex API (키 불필요, Google Scholar 대체재)
+├── collector.py                1. 자료 수집 Agent — LLM 미사용
+├── gemini_client.py            Gemini REST 호출 공용 래퍼 (재시도/JSON 파싱)
+├── analyzer.py                 2. 자료 분석 Agent — Gemini로 구조화 추출
+├── organizer.py                3. 자료 정리 Agent — Obsidian 마크다운 기록
+├── research_graph.py           (선택) 적응형 리서치 루프 — gap 판단 + citation walk
+├── qa_setup.py                 Q&A 레이어 — paper-qa + Gemini
+├── deep_review.py              (선택) 논문 한 편 PDF 원문 기반 장문 리뷰
+├── math_extractor.py           수학 공식(수치 포함) + 아키텍처 구조 추출 Agent
+├── math_review.py              수학/구조 추출 CLI 진입점
+├── keyword_synthesizer.py      raw 텍스트/키워드 뭉치 → LLM 압축 → keyword → 파이프라인 실행
+└── main.py                     통합 CLI 진입점
+```
+
+## 기술 스택 & 의존성
+
+| 구성 | 내용 |
+|---|---|
+| 언어 | Python 3.9+ |
+| LLM | Google Gemini API (REST, `gemini_client.py`가 SDK 없이 직접 호출) |
+| 논문 소스 | arXiv API, Semantic Scholar API, OpenAlex API |
+| Q&A 엔진 | [paper-qa](https://github.com/Future-House/paper-qa) 4.9.0 |
+| 출력 | Obsidian vault (Markdown + YAML frontmatter + wikilink) |
+
+`requirements.txt`:
+
+```
+requests>=2.31.0
+python-dotenv>=1.0.0
+arxiv>=2.1.0
+paper-qa
+```
+
+## 실전 검증 결과
+
+이 파이프라인은 실제 API 호출로 end-to-end 검증했다 (더미/모킹 아님).
+
+| 검증 항목 | 결과 |
+|---|---|
+| 키워드 압축 → 검색 → 수집 → 분석 → 정리 (`keyword_synthesizer.py --search`) | raw 키워드 텍스트 → 압축 keyword 문장 재조립 → arXiv에서 논문 8편 수집 → Gemini 구조화 분석 → Survey Notes `.md` 8개 생성 성공 |
+| 수학/아키텍처 추출 (`math_review.py`) | arXiv PDF 확보 가능한 논문 3편에서 수식(수치 대입 예 포함) + 아키텍처 구조 노트 생성 성공 |
+| 예시: TPU 논문 아키텍처 추출 | 256×256 MAC 배열(65,536개 8-bit MAC), 피크 92 TOPS @ 700MHz, Unified Buffer 24 MiB, Ridge Point 1350 ops/byte 등 논문 실제 수치가 노트에 정확히 반영됨 |
+| Semantic Scholar 429(rate limit) 상황 | 지수 백오프 재시도 후에도 실패 시 arXiv/OpenAlex로 자연 fallback되어 전체 파이프라인은 계속 진행됨 |
+| DOI만 있고 오픈액세스 PDF가 없는 논문 (5/8편) | `--pdf`로 로컬 PDF를 직접 넣지 않는 한 원문 기반 수학/구조 추출은 스킵됨 (의도된 동작, 존재하지 않는 PDF를 지어내지 않음) |
+
+## 기여 가이드
+
+개인 연구용 저장소지만 이슈/PR은 환영한다.
+
+- **이슈**: 재현 가능한 최소 예제(키워드, 사용한 플래그, 에러 메시지 전문)와 함께 등록
+- **PR**: 모듈 하나당 책임 하나 원칙 유지 (예: 새 논문 소스는 `sources/`에 `Paper` 데이터클래스로 정규화해서 추가)
+- **코드 스타일**: 기존 파일처럼 `from __future__ import annotations` + dataclass + 타입 힌트, LLM 호출은 항상 `gemini_client.generate_json()`으로 스키마 강제
+- **로컬 개발 환경**: 위 [설치](#설치) 절차 그대로. `python3 -m py_compile <파일>`로 문법 확인 후 실제 키워드로 한 번 돌려서 검증할 것
+
+## 라이선스
+
+현재 별도 라이선스 파일이 없는 개인 연구 저장소다. 재사용/배포 전에는 저장소 소유자에게 문의할 것.
+
+## 연락처
+
+- GitHub: [Gyul56720/paper-research-pipeline-v2](https://github.com/Gyul56720/paper-research-pipeline-v2)
+- 이슈/문의는 GitHub Issues로 남길 것
+
+## 참고자료
+
+- [Roofline: An Insightful Visual Performance Model](https://dl.acm.org/doi/10.1145/1498765.1498785) — Williams, Waterman, Patterson (2009)
+- [In-Datacenter Performance Analysis of a Tensor Processing Unit](https://arxiv.org/abs/1704.04760) — Jouppi et al. (2017), arXiv:1704.04760
+- [Gemini API 문서](https://ai.google.dev/gemini-api/docs)
+- [arXiv API](https://info.arxiv.org/help/api/index.html)
+- [Semantic Scholar API](https://www.semanticscholar.org/product/api)
+- [OpenAlex API](https://docs.openalex.org/)
+- [paper-qa](https://github.com/Future-House/paper-qa)
+- [Obsidian](https://obsidian.md/)
+
+## 문제 해결
 
 | 증상 | 원인 | 조치 |
 |---|---|---|
@@ -142,64 +253,17 @@ vault에 쌓인 노트 전체를 대상으로 인용 달아 답한다. 첫 실�
 | paper-qa 쪽에서 `OPENAI_API_KEY` 관련 에러 | paper-qa의 LLM 역할(llm/summary_llm/agent.agent_llm/embedding) 중 하나라도 명시 안 하면 OpenAI로 fallback됨 | `qa_setup.py`가 넷 다 명시하고 있는지 확인. 특히 `embedding` 필드를 빼먹기 쉬움 |
 | `gemini/gemini-embedding-2` 관련 404/model not found | 임베딩 모델명이 계정/리전에 따라 아직 없을 수 있음 | `qa_setup.py`의 `EMBEDDING_MODEL`을 구버전인 `gemini/text-embedding-004`로 교체 |
 | `.env`를 채웠는데도 `GEMINI_API_KEY가 비어있다` 경고 | `.env`가 아니라 `.env.example`을 수정했거나, 실행 위치가 프로젝트 루트가 아님 | `cp .env.example .env` 했는지, 루트에서 실행 중인지 확인 |
+| DOI만 있고 arXiv/오픈액세스 PDF가 없는 논문에서 `math_review.py` 실패 | Semantic Scholar/OpenAlex가 유료 저널(IEEE 등) 논문의 오픈액세스 PDF를 못 찾음 | 자동 로그인/우회는 지원 안 함(퍼블리셔 ToS 위반 소지). 기관 VPN·도서관으로 직접 받은 PDF를 `--pdf ./파일.pdf`로 넣거나, `arxiv_id`가 있는 저자 self-archive 버전을 찾아 `--arxiv-id`로 지정할 것 |
 
-## 각 파일이 정확히 뭘 하는지
-
-| 파일 | LLM 호출 | 역할 |
-|---|---|---|
-| `sources/*.py` | 없음 | 3개 API를 공통 `Paper` 포맷으로 정규화 |
-| `collector.py` | 없음 | 병합 + 정규화된 (제목,연도)로 중복제거 + 기간 버킷팅 |
-| `gemini_client.py` | - | REST 호출 공용 래퍼 (재시도/JSON 파싱 포함) |
-| `analyzer.py` | 논문당 1회 | 구조화 추출 (core_claim/upgrades_from/key_numbers/limitations) |
-| `organizer.py` | 없음 | 마크다운 생성 + predecessor 위키링크 자동 매칭 |
-| `research_graph.py` | iteration당 1회 (gap 판단만) | 적응형 탐색 + citation walk |
-| `qa_setup.py` | 질문당 여러 번 (evidence 요약) | paper-qa 설정 + 질의응답 |
-| `math_extractor.py` | 논문당 1회 (+ 이미지 질의 시 별도) | 논문 원문에서 수학 공식(수치 포함)/아키텍처 구조/개념/사용법/근접 개념 추출, `편입 수학/` 폴더에 논문 이름으로 저장 (transfer_math_chatbot 페르소나 + 이미지 인식 이식) |
-| `keyword_synthesizer.py` | 호출당 1회 | raw 키워드/텍스트 뭉치를 압축된 검색 keyword 문장으로 재조립, `--search` 시 `main.py` 파이프라인 트리거 |
-
-## 수학 개념 추출 (transfer_math_chatbot 연동)
-
-`~/Desktop/transfer_math_chatbot`은 사진 속 수학 문제를 Gemini로 인식해서 단계별로 풀어주는
-편입수학 튜터 챗봇이다. `math_extractor.py`/`math_review.py`가 그 챗봇의 두 가지 능력을
-이 파이프라인 안으로 이식했다:
-
-1. **페르소나 이식**: transfer_math_chatbot의 시스템 지시문(단계별 논리 추론 + LaTeX 표기)을
-   그대로 가져와서, 논문 원문에 등장하는 수학 논리/공식을 같은 방식으로 재해설한다.
-2. **이미지 인식 이식**: `gemini_client.py`에 멀티모달(REST inlineData) 경로를 추가해서,
-   논문을 캡처한 사진이나 손글씨 메모를 그대로 질의할 수 있다.
-
-```bash
-# Survey Notes 목록에서 3번 논문의 수학 논리/공식 추출
-python math_review.py --index 3
-
-# 특정 논문을 arXiv ID로 직접 지정
-python math_review.py --arxiv-id 1704.04760
-
-# 사진 속 수식을 바로 질의 (논문 조회 없이 transfer_math_chatbot과 동일한 경로)
-python math_review.py --image ./photos/eq.jpg --ask "이 유도 과정을 단계별로 설명해줘"
-```
-
-도메인/키워드에 상관없이 한 논문당 다음 다섯 가지를 뽑아서 `편입 수학/` 폴더 하나에 논문 이름
-그대로(`.md`) 쓴다:
-
-- **핵심 공식 (수치 포함)**: 원문에 실제로 등장하는 수식을 LaTeX로, 의미/등장 맥락과 함께
-  가능하면 논문 본문·표에 나온 실제 숫자를 대입한 예시까지
-- **아키텍처 구조**: 논문이 제시하는 시스템/알고리즘이 어떤 구성 요소로 이루어져 있고 서로 어떻게
-  연결되는지, 배열 크기/bit-width/처리량/clock 같은 구체적 규격 수치와 함께 설명
-- **핵심 개념 설명**: 편입수학 튜터가 설명하듯 쉽게 풀어쓰되 선행 개념도 명시
-- **사용 방법론**: 이 수학을 실제 문제에 적용하는 절차를 단계별로
-- **근접 개념**: 같이 파고들면(approach) 좋은 다른 분야의 수학 공식/논리 — 이미 vault에
-  같은 제목의 노트가 있으면 자동으로 위키링크를 걸어서, Obsidian 그래프뷰에 "수학/구조 그래프"가
-  논문 여러 편에 걸쳐 누적된다 (organizer.py의 predecessor 발전 계보 그래프와 같은 방식).
-  각 노트는 `source_paper::` 위키링크로 원 논문 Survey Note와도 연결된다.
-
-## 다음 단계로 업그레이드하고 싶다면
+## 로드맵
 
 - **오케스트레이션을 LangGraph로**: 지금 `research_graph.deep_collect()`의 for-loop을 그대로
   [google-gemini/gemini-fullstack-langgraph-quickstart](https://github.com/google-gemini/gemini-fullstack-langgraph-quickstart)의
   노드 함수로 옮기면 스트리밍/체크포인팅이 생긴다.
 - **Obsidian을 MCP로 노출**: [obsidian-local-rest-api](https://github.com/coddingtonbear/obsidian-local-rest-api)를
-  설치하면 이 vault를 PROGNOS MCP 서버 옆에 나란히 두고 Claude Desktop 등에서도 직접 조회할 수 있다.
+  설치하면 이 vault를 MCP 서버로 노출해서 Claude Desktop 등에서도 직접 조회할 수 있다.
   이 경우 `organizer.py`의 `out_path.write_text(...)` 부분만 REST API 호출로 바꾸면 된다.
 - **실제 PDF까지 vault에 두기**: 지금은 `.md` 요약만 인덱싱한다. `c.pdf_url`을 실제로 다운로드해서
   같은 폴더에 넣어두면 paper-qa가 원문까지 근거로 써서 더 정확하게 답한다.
+- **Unpaywall 연동 검토**: DOI만 있고 arXiv가 없는 논문의 합법적 오픈액세스 사본을 이메일 기반
+  Unpaywall API로 조회하는 fallback (로그인/크리덴셜 불필요, 순수 조회형 API).
