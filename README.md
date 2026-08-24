@@ -27,6 +27,9 @@ paper_research_pipeline/
 ├── organizer.py               3. 자료 정리 Agent — Obsidian 마크다운 기록
 ├── research_graph.py          (선택) 적응형 리서치 루프 — gap 판단 + citation walk
 ├── qa_setup.py                 Q&A 레이어 — paper-qa + Gemini
+├── deep_review.py               (선택) 논문 한 편 PDF 원문 기반 장문 리뷰
+├── math_extractor.py            (선택) 6. 수학 개념 추출 Agent — transfer_math_chatbot 연동
+├── math_review.py                수학 개념 추출 CLI 진입점
 └── main.py                     CLI 진입점
 ```
 
@@ -124,6 +127,39 @@ vault에 쌓인 노트 전체를 대상으로 인용 달아 답한다. 첫 실�
 | `organizer.py` | 없음 | 마크다운 생성 + predecessor 위키링크 자동 매칭 |
 | `research_graph.py` | iteration당 1회 (gap 판단만) | 적응형 탐색 + citation walk |
 | `qa_setup.py` | 질문당 여러 번 (evidence 요약) | paper-qa 설정 + 질의응답 |
+| `math_extractor.py` | 논문당 1회 (+ 이미지 질의 시 별도) | 논문 원문에서 수학 공식/개념/사용법/근접 개념 추출 (transfer_math_chatbot 페르소나 + 이미지 인식 이식) |
+
+## 수학 개념 추출 (transfer_math_chatbot 연동)
+
+`~/Desktop/transfer_math_chatbot`은 사진 속 수학 문제를 Gemini로 인식해서 단계별로 풀어주는
+편입수학 튜터 챗봇이다. `math_extractor.py`/`math_review.py`가 그 챗봇의 두 가지 능력을
+이 파이프라인 안으로 이식했다:
+
+1. **페르소나 이식**: transfer_math_chatbot의 시스템 지시문(단계별 논리 추론 + LaTeX 표기)을
+   그대로 가져와서, 논문 원문에 등장하는 수학 논리/공식을 같은 방식으로 재해설한다.
+2. **이미지 인식 이식**: `gemini_client.py`에 멀티모달(REST inlineData) 경로를 추가해서,
+   논문을 캡처한 사진이나 손글씨 메모를 그대로 질의할 수 있다.
+
+```bash
+# Survey Notes 목록에서 3번 논문의 수학 논리/공식 추출
+python math_review.py --index 3
+
+# 특정 논문을 arXiv ID로 직접 지정
+python math_review.py --arxiv-id 1704.04760
+
+# 사진 속 수식을 바로 질의 (논문 조회 없이 transfer_math_chatbot과 동일한 경로)
+python math_review.py --image ./photos/eq.jpg --ask "이 유도 과정을 단계별로 설명해줘"
+```
+
+한 논문당 다음 네 가지를 뽑아서 `<도메인>-<키워드>/Math Concepts/` 폴더에 `[Math] ...md`로 쓴다:
+
+- **핵심 공식**: 원문에 실제로 등장하는 수식만 LaTeX로, 의미와 등장 맥락 포함
+- **핵심 개념 설명**: 편입수학 튜터가 설명하듯 쉽게 풀어쓰되 선행 개념도 명시
+- **사용 방법론**: 이 수학을 실제 문제에 적용하는 절차를 단계별로
+- **근접 개념**: 같이 파고들면(approach) 좋은 다른 분야의 수학 공식/논리 — 이미 vault에
+  같은 개념 노트가 있으면 자동으로 위키링크를 걸어서, Obsidian 그래프뷰에 "수학 개념 그래프"가
+  논문 여러 편에 걸쳐 누적된다 (organizer.py의 predecessor 발전 계보 그래프와 같은 방식).
+  각 노트는 `source_paper::` 위키링크로 원 논문 Survey Note와도 연결된다.
 
 ## 다음 단계로 업그레이드하고 싶다면
 

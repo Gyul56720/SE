@@ -2,16 +2,37 @@
 Gemini REST API 얇은 래퍼. SDK 버전 이슈를 피하려고 requests로 직접 호출한다.
 (이미 연동된 Gemini가 SDK 기반이라면 이 파일만 그 SDK 호출로 바꿔치기하면 됨 -
  analyzer.py/research_graph.py는 generate()/generate_json() 시그니처만 보고 쓴다.)
+
+이미지(수식 사진) 인식은 transfer_math_chatbot과 같은 Gemini 멀티모달 경로를 REST로
+재구현한 것 -- generate()/generate_json()에 images 인자를 추가로 받는다.
 """
 
 from __future__ import annotations
+import base64
 import json
+import mimetypes
 import time
+from pathlib import Path
+
 import requests
 
 from config import GEMINI_API_KEY, GEMINI_MODEL
 
 ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+
+
+def _image_part(image_path: Path) -> dict:
+    """이미지 파일을 REST inlineData 파트로 인코딩 (수식 사진 인식용)."""
+    mime_type = mimetypes.guess_type(str(image_path))[0] or "image/jpeg"
+    data = base64.b64encode(image_path.read_bytes()).decode("ascii")
+    return {"inlineData": {"mimeType": mime_type, "data": data}}
+
+
+def _build_parts(prompt: str, images: list[Path] | None) -> list[dict]:
+    parts: list[dict] = [{"text": prompt}]
+    for img in images or []:
+        parts.append(_image_part(img))
+    return parts
 
 
 def _call(model: str, contents: list[dict], generation_config: dict | None = None,
@@ -35,20 +56,21 @@ def _call(model: str, contents: list[dict], generation_config: dict | None = Non
     raise RuntimeError(f"Gemini API 재시도 초과: {last_err}")
 
 
-def generate(prompt: str, model: str | None = None, system_instruction: str | None = None) -> str:
-    """자유 텍스트 응답이 필요할 때."""
-    contents = [{"role": "user", "parts": [{"text": prompt}]}]
-    gen_config = {}
-    result = _call(model or GEMINI_MODEL, contents, gen_config or None)
+def generate(prompt: str, model: str | None = None, system_instruction: str | None = None,
+             images: list[Path] | None = None) -> str:
+    """자유 텍스트 응답이 필요할 때. images를 주면 멀티모달 요청(수식 사진 인식 등)."""
+    contents = [{"role": "user", "parts": _build_parts(prompt, images)}]
+    result = _call(model or GEMINI_MODEL, contents)
     try:
         return result["candidates"][0]["content"]["parts"][0]["text"]
     except (KeyError, IndexError):
         raise RuntimeError(f"예상치 못한 Gemini 응답 형식: {json.dumps(result)[:300]}")
 
 
-def generate_json(prompt: str, schema: dict, model: str | None = None) -> dict:
+def generate_json(prompt: str, schema: dict, model: str | None = None,
+                   images: list[Path] | None = None) -> dict:
     """구조화 추출용. responseSchema로 강제해서 파싱 실패 확률을 크게 낮춘다."""
-    contents = [{"role": "user", "parts": [{"text": prompt}]}]
+    contents = [{"role": "user", "parts": _build_parts(prompt, images)}]
     gen_config = {"responseMimeType": "application/json", "responseSchema": schema}
     result = _call(model or GEMINI_MODEL, contents, gen_config)
     try:
