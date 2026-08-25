@@ -19,6 +19,9 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
 # --- 선택적 백본 ---
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
+OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5-coder:7b")
 
 # --- 논문 소스 ---
 SEMANTIC_SCHOLAR_API_KEY = os.getenv("SEMANTIC_SCHOLAR_API_KEY", "")
@@ -29,6 +32,11 @@ UNPAYWALL_EMAIL = os.getenv("UNPAYWALL_EMAIL", "") or OPENALEX_MAILTO
 
 # --- Obsidian ---
 OBSIDIAN_VAULT_PATH = Path(os.getenv("OBSIDIAN_VAULT_PATH", "./vault_output")).expanduser()
+
+# --- Discord 봇 ---
+DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN", "")
+# 화이트리스트에 없는 유저는 무시한다 (봇이 있는 채널/서버 아무나가 아니라 지정한 유저만 사용 가능).
+DISCORD_ALLOWED_USER_IDS = {int(x) for x in os.getenv("DISCORD_ALLOWED_USER_IDS", "").split(",") if x.strip()}
 
 # --- 기간 버킷 (자료 수집 Agent가 "기간별로 제시"할 때 쓰는 경계) ---
 # 필요하면 여기만 고쳐서 버킷 구간을 조정
