@@ -278,6 +278,60 @@ MULTIVARIABLE_CALCULUS = [
     (21, "발산정리"),
 ]
 
+CALCULUS_REMAINING = [
+    (2, "미분의 정의와 기본 미분법"),
+    (3, "합성함수 미분(연쇄법칙)과 음함수 미분법"),
+    (4, "매개변수함수의 미분과 고차도함수"),
+    (5, "평균값 정리와 로피탈의 정리"),
+    (6, "부정형 극한 (0^0, 1^∞, ∞-∞) 처리"),
+    (7, "함수의 증가/감소와 극값 (1계 도함수 판정법)"),
+    (8, "오목성과 변곡점 (2계 도함수 판정법)"),
+    (9, "그래프 개형과 점근선"),
+    (10, "최적화 응용문제"),
+    (11, "부정적분과 기본 적분공식"),
+    (12, "치환적분법"),
+    (13, "부분적분법"),
+    (14, "삼각치환"),
+    (15, "부분분수분해를 이용한 적분"),
+    (16, "정적분과 미적분의 기본정리"),
+    (17, "정적분을 이용한 넓이 계산"),
+    (18, "정적분을 이용한 부피 계산 (원판법, 셸법)"),
+    (19, "곡선의 길이와 회전체의 겉넓이"),
+    (20, "이상적분"),
+    (21, "수열의 극한"),
+    (22, "급수의 수렴판정법 I (비교판정법, 적분판정법)"),
+    (23, "급수의 수렴판정법 II (비율판정법, 근판정법, 교대급수판정법)"),
+    (24, "거듭제곱급수와 수렴반경"),
+    (25, "테일러 급수와 매클로린 급수"),
+    (26, "극좌표계와 극좌표 그래프"),
+    (27, "극좌표에서의 넓이와 길이"),
+    (28, "매개변수곡선의 미적분"),
+    (29, "미적분학 종합 정리"),
+]
+
+ENGINEERING_MATH = [
+    (1, "1계 상미분방정식 - 변수분리형"),
+    (2, "1계 상미분방정식 - 동차형"),
+    (3, "1계 선형미분방정식과 적분인자"),
+    (4, "완전미분방정식"),
+    (5, "베르누이 방정식"),
+    (6, "2계 선형 동차 상미분방정식 (특성방정식)"),
+    (7, "2계 선형 비동차 상미분방정식 (미정계수법)"),
+    (8, "매개변수변환법"),
+    (9, "오일러-코시 방정식"),
+    (10, "연립 미분방정식 기초"),
+    (11, "급수해법 개요"),
+    (12, "라플라스 변환의 정의와 기본성질"),
+    (13, "라플라스 역변환"),
+    (14, "라플라스 변환을 이용한 미분방정식 풀이"),
+    (15, "단위계단함수와 임펄스함수"),
+    (16, "복소수와 복소평면"),
+    (17, "복소함수와 오일러공식"),
+    (18, "푸리에 급수"),
+    (19, "푸리에 변환 기초"),
+    (20, "공학수학 종합 정리"),
+]
+
 
 def run_batch(domain_folder: str, topics: list[tuple[int, str]], start_from: int = 1):
     prev_topic = None
@@ -301,9 +355,9 @@ def run_batch(domain_folder: str, topics: list[tuple[int, str]], start_from: int
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="편입수학 이론서 자동 생성 (Gemini)")
     parser.add_argument("--test", action="store_true", help="토픽 1개로 품질 테스트 (파일 안 씀)")
-    parser.add_argument("--domain", choices=["02_선형대수학", "03_다변수미적분학"], help="생성할 과목 폴더")
+    parser.add_argument("--domain", choices=["01_미적분학", "02_선형대수학", "03_다변수미적분학", "04_공학수학"], help="생성할 과목 폴더")
     parser.add_argument("--from", dest="from_idx", type=int, default=1, help="이 번호부터 생성")
-    parser.add_argument("--all", action="store_true", help="선형대수학 남은 것 + 다변수미적분학 전체")
+    parser.add_argument("--all", action="store_true", help="4과목 전체(이미 있는 파일은 건너뜀)")
     args = parser.parse_args()
 
     if args.test:
@@ -311,11 +365,17 @@ if __name__ == "__main__":
         import json
         print(json.dumps(data, ensure_ascii=False, indent=2)[:3000])
     elif args.all:
+        run_batch("01_미적분학", CALCULUS_REMAINING, start_from=2)
         run_batch("02_선형대수학", LINEAR_ALGEBRA_REMAINING, start_from=4)
         run_batch("03_다변수미적분학", MULTIVARIABLE_CALCULUS, start_from=1)
+        run_batch("04_공학수학", ENGINEERING_MATH, start_from=1)
+    elif args.domain == "01_미적분학":
+        run_batch("01_미적분학", CALCULUS_REMAINING, start_from=args.from_idx)
     elif args.domain == "02_선형대수학":
         run_batch("02_선형대수학", LINEAR_ALGEBRA_REMAINING, start_from=args.from_idx)
     elif args.domain == "03_다변수미적분학":
         run_batch("03_다변수미적분학", MULTIVARIABLE_CALCULUS, start_from=args.from_idx)
+    elif args.domain == "04_공학수학":
+        run_batch("04_공학수학", ENGINEERING_MATH, start_from=args.from_idx)
     else:
         parser.print_help()
