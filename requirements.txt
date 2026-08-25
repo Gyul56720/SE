@@ -3,3 +3,5 @@ python-dotenv>=1.0.0
 arxiv>=2.1.0
 paper-qa
 pypdf>=4.0.0
+langchain>=0.3.0
+langchain-google-genai>=2.1.0
