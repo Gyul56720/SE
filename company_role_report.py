@@ -67,6 +67,12 @@ PROMPT_TMPL = PERSONA + """
   검증 안 됨.
 - 갭(이미 확인됨): UVM 미사용, SI/PI/PCIe/UCIe/DDR 등 고속 인터페이스 검증 경험 없음, ARM/RISC-V
   서브시스템 검증 경험 없음, Chisel/Rust 경험 없음, 상용 EDA 툴(Cadence/Synopsys) 실습 없음.
+- career-intelligence 파이프라인(이번 세션 산출물, 진행 중): Claude Code를 오케스트레이터로 써서
+  애매한 자연어 요청 해석 -> WebSearch/WebFetch로 실제 채용JD 원문 수집 -> Python 모듈
+  (github_source.py/concept_sites.py/book_generator.py/career_planner.py/company_role_report.py)
+  직접 설계 -> Gemini API(gemini_client.py)에 grounding 텍스트만 전달해 구조화 리포트 생성
+  (지어낸 내용 방지 원칙 코드로 강제) -> git 버전관리 + Obsidian vault 미러링까지 엔드투엔드 운영.
+  tool use/orchestration/context 관리를 실제로 코드로 구현한 경험. 프로덕션 규모/팀 협업 경험은 아님.
 
 위 두 근거만 바탕으로 지정된 JSON 스키마로 답하라. 반드시 한국어로.
 """
