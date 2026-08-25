@@ -17,9 +17,12 @@ from pathlib import Path
 
 import requests
 
-from config import GEMINI_API_KEY, GEMINI_MODEL
+from config import GEMINI_API_KEY, GEMINI_API_KEY_FALLBACK, GEMINI_MODEL
 
 ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+
+# 기본 키가 429(쿼터 초과)로 완전히 막히면 이 순서대로 다음 키로 넘어가서 다시 시도한다.
+_API_KEYS = [k for k in (GEMINI_API_KEY, GEMINI_API_KEY_FALLBACK) if k]
 
 
 def _image_part(image_path: Path) -> dict:
@@ -39,22 +42,29 @@ def _build_parts(prompt: str, images: list[Path] | None) -> list[dict]:
 def _call(model: str, contents: list[dict], generation_config: dict | None = None,
           max_retries: int = 3) -> dict:
     url = ENDPOINT.format(model=model)
-    headers = {"x-goog-api-key": GEMINI_API_KEY, "Content-Type": "application/json"}
     body = {"contents": contents}
     if generation_config:
         body["generationConfig"] = generation_config
 
+    if not _API_KEYS:
+        raise RuntimeError("GEMINI_API_KEY가 비어 있다.")
+
     last_err = None
-    for attempt in range(max_retries):
-        resp = requests.post(url, headers=headers, json=body, timeout=60)
-        if resp.status_code == 200:
-            return resp.json()
-        if resp.status_code == 429:  # 무료 한도(RPM) 초과 - 잠깐 쉬고 재시도
-            time.sleep(2 ** attempt * 5)
-            last_err = f"429 rate limited: {resp.text[:200]}"
-            continue
-        raise RuntimeError(f"Gemini API 오류 {resp.status_code}: {resp.text[:300]}")
-    raise RuntimeError(f"Gemini API 재시도 초과: {last_err}")
+    for key_index, api_key in enumerate(_API_KEYS):
+        headers = {"x-goog-api-key": api_key, "Content-Type": "application/json"}
+        for attempt in range(max_retries):
+            resp = requests.post(url, headers=headers, json=body, timeout=60)
+            if resp.status_code == 200:
+                return resp.json()
+            if resp.status_code == 429:  # 무료 한도(RPM/일일 쿼터) 초과 - 잠깐 쉬고 재시도
+                time.sleep(2 ** attempt * 5)
+                last_err = f"429 rate limited (key {key_index+1}/{len(_API_KEYS)}): {resp.text[:200]}"
+                continue
+            raise RuntimeError(f"Gemini API 오류 {resp.status_code}: {resp.text[:300]}")
+        # 이 키로는 max_retries를 다 써도 429 -- 다음 키(있으면)로 완전히 전환해서 다시 시도
+        if key_index + 1 < len(_API_KEYS):
+            print(f"[gemini_client] 키 {key_index+1}가 쿼터 초과로 보임 -- 보조 키로 전환.")
+    raise RuntimeError(f"Gemini API 재시도 초과 (키 {len(_API_KEYS)}개 다 소진): {last_err}")
 
 
 def generate(prompt: str, model: str | None = None, images: list[Path] | None = None) -> str:

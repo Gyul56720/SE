@@ -39,20 +39,31 @@ LOG_DIR = VERIFY_ROOT / "검증로그"
 SOLVE_PERSONA = """당신은 채점관입니다. 아래 제공되는 "이론서 전문"에 적힌 정의/정리/공식/
 계산테크닉만 근거로 삼아 문제를 풉니다.
 
-이것은 절대적인 규칙이며 예외가 없습니다: 이론서에 명시적으로 나오지 않는 정리, 공식, 계산
-테크닉을 단 하나라도 사용하면 안 됩니다. 당신이 원래 알고 있는 일반 수학 지식으로 빈틈을
-채워 넣는 것은 엄격히 금지됩니다. 이론서만으로 부족하다고 판단되면 절대 추측하지 말고
-반드시 sufficient=false, answer="N/A"로 답하십시오 -- 틀린 답보다 정직한 N/A가 항상 낫습니다.
+**"이론서 밖 지식 금지"의 정확한 의미**: 이론서에 없는 정리나 공식(예: 이론서가 안 가르치는
+새로운 적분 기법, 이론서에 없는 정리)을 끌어오는 것은 금지입니다. 하지만 이론서에 있는
+공식/테크닉을 문제에 주어진 **구체적인 숫자에 대입해서 계산하는 것**은 위반이 아니라 정상적인
+문제 풀이입니다 -- 예를 들어 이론서의 "미정계수법" 테크닉을 이 문제의 특정 다항식 차수에
+적용해서 계산하는 것은 전혀 문제 없습니다. 사칙연산, 인수분해, 미분/적분의 기계적 계산처럼
+모든 수학에서 당연히 전제되는 기초 조작도 금지 대상이 아닙니다.
 
-**경고**: 이 풀이는 이후 별도의 감사(audit) 단계에서, 여기 쓰인 모든 사실/공식/정리가 실제로
-이론서에 있는지 하나하나 대조 검증됩니다. 이론서에 없는 내용을 몰래 사용한 것이 감사에서
-발각되면, 그 문제는 답이 맞았더라도 무조건 N/A(오답)로 강제 처리됩니다 -- 즉 이론서에 없는
-지식으로 우연히 맞히는 것은 아무 의미가 없고 오히려 감사 실패로 이어집니다. 따라서 조금이라도
-이론서에 근거가 불확실한 단계가 있다면 그 지점에서 sufficient=false로 처리하는 것이 유리합니다.
+이론서에 정말로 없는 개념/정리가 필요한 경우에만 sufficient=false, answer="N/A"로 답하십시오.
+단순히 계산이 복잡하거나, 문제의 이미지/텍스트를 읽기 까다롭다는 이유로 N/A로 도피하지
+마십시오 -- 이미지가 실제로 읽을 수 없을 정도로 손상된 경우가 아니라면 최선을 다해 읽고
+풀이를 시도해야 합니다.
+
+**경고**: 이 풀이는 이후 별도의 감사(audit) 단계에서, 여기 쓰인 정리/공식이 실제로 이론서에
+있는지 검증됩니다. 이론서에 아예 없는 정리나 공식을 사용한 것이 발각되면 그 문제는 무조건
+N/A로 강제 처리됩니다. 하지만 이론서에 있는 내용을 정확히 적용해서 얻은 결과는 감사를
+통과하니, 정당하게 풀 수 있는 문제까지 지레 겁먹고 N/A로 도피할 필요는 없습니다.
 
 이론서에 있는 내용만으로 풀 수 있는 문제라면, 정확히 어느 노트의 어느 killing equation/
 테크닉을 썼는지 cited_sources에 파일명으로 밝히고, reasoning에는 사용한 정리/공식을 이론서
-표현 그대로 인용하면서 풀이 과정을 상세히 서술하십시오."""
+표현 그대로 인용하면서 풀이 과정을 상세히 서술하십시오.
+
+**객관식 문제의 답 표기(중요):** 문제에 ①②③④⑤ 또는 1)~5) 같은 보기 번호가 있으면, 최종
+answer는 반드시 "보기번호 (계산한 값)" 형식으로 두 가지를 다 씁니다 (예: "⑤ (178π/15)").
+계산값만 쓰고 보기 번호를 빠뜨리면 채점 단계에서 정답표(보기 번호만 적혀 있는 경우가 많음)와
+비교가 불가능해집니다. 보기가 없는 주관식 문제는 계산된 값만 씁니다."""
 
 SOLVE_SCHEMA = {
     "type": "OBJECT",
@@ -86,8 +97,18 @@ SOLVE_PROMPT_TMPL = SOLVE_PERSONA + """
 {theory_book}
 --- 이론서 전문 끝 ---
 
-첨부된 PDF는 편입수학 시험 문제지다. 문제지에 있는 모든 문제를 지정된 JSON 스키마로 풀어라.
+첨부된 PDF는 편입수학 시험 문제지다. {scope_instruction} 지정된 JSON 스키마로 풀어라.
 """
+
+LIST_NUMBERS_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {
+        "numbers": {"type": "ARRAY", "items": {"type": "STRING"}, "description": "PDF에 있는 모든 문제 번호, 순서대로"},
+    },
+    "required": ["numbers"],
+}
+
+LIST_NUMBERS_PROMPT = "첨부된 PDF는 시험 문제지다. 여기 있는 모든 문제 번호를 순서대로 나열하라 (풀이는 하지 말 것)."
 
 GRADE_SCHEMA = {
     "type": "OBJECT",
@@ -189,11 +210,64 @@ def find_exam_pairs() -> dict[str, dict[str, Path]]:
     return pairs
 
 
-def solve_exam(problem_pdf: Path, theory_book: str) -> list[dict]:
-    prompt = SOLVE_PROMPT_TMPL.format(theory_book=theory_book)
-    print(f"  [풀이 중] {problem_pdf.name} (이론서 {len(theory_book):,}자 문맥으로 제공)...")
+def list_problem_numbers(problem_pdf: Path) -> list[str]:
+    data = gemini_client.generate_json(LIST_NUMBERS_PROMPT, LIST_NUMBERS_SCHEMA, images=[problem_pdf])
+    return data.get("numbers", [])
+
+
+def solve_exam(problem_pdf: Path, theory_book: str, target_numbers: list[str] | None = None) -> list[dict]:
+    scope = (f"이번 호출에서는 문제 번호 {', '.join(target_numbers)}에 해당하는 문제만 풀어라 "
+             f"(그 외 번호는 이번엔 무시할 것). " if target_numbers else "문제지에 있는 모든 문제를 ")
+    prompt = SOLVE_PROMPT_TMPL.format(theory_book=theory_book, scope_instruction=scope)
+    print(f"  [풀이 중] {problem_pdf.name} 문제 {target_numbers or '전체'} (이론서 {len(theory_book):,}자)...")
     data = gemini_client.generate_json(prompt, SOLVE_SCHEMA, images=[problem_pdf])
     return data.get("problems", [])
+
+
+def _checkpoint_path(exam_key: str) -> Path:
+    return LOG_DIR / f"{exam_key}-checkpoint.jsonl"
+
+
+def _load_checkpoint(exam_key: str) -> dict[str, dict]:
+    path = _checkpoint_path(exam_key)
+    if not path.exists():
+        return {}
+    solved_by_num: dict[str, dict] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            entry = json.loads(line)
+            solved_by_num[entry["number"]] = entry
+    return solved_by_num
+
+
+def _append_checkpoint(exam_key: str, entries: list[dict]) -> None:
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    with _checkpoint_path(exam_key).open("a", encoding="utf-8") as f:
+        for e in entries:
+            f.write(json.dumps(e, ensure_ascii=False) + "\n")
+
+
+def solve_exam_batched(problem_pdf: Path, theory_book: str, exam_key: str, batch_size: int = 5) -> list[dict]:
+    """한 번에 문제를 전부 풀게 하면 응답이 길어져서 중간에 잘리는 경우가 있었다 (실측:
+    20문제 요청했는데 10개만 반환됨). 번호만 먼저 가볍게 뽑은 뒤 작은 배치로 나눠서 풀고,
+    배치 하나가 성공할 때마다 즉시 체크포인트 파일(<exam_key>-checkpoint.jsonl)에 append한다.
+    API 쿼터 등으로 중간에 죽어도, 다음 실행 때 이미 푼 번호는 건너뛰고 남은 배치만 이어서
+    처리한다 -- 실행을 몇 번에 걸쳐 나눠 완주할 수 있게 하는 장치."""
+    numbers = list_problem_numbers(problem_pdf)
+    cached = _load_checkpoint(exam_key)
+    remaining = [n for n in numbers if n not in cached]
+    print(f"  [문제 목록] 전체 {len(numbers)}문제, 체크포인트에 {len(cached)}개 이미 있음, "
+          f"이번에 풀 것 {len(remaining)}개: {remaining}")
+    for i in range(0, len(remaining), batch_size):
+        batch = remaining[i:i + batch_size]
+        try:
+            result = solve_exam(problem_pdf, theory_book, target_numbers=batch)
+            _append_checkpoint(exam_key, result)
+            for r in result:
+                cached[r["number"]] = r
+        except Exception as e:
+            print(f"  [배치 실패, 체크포인트에 저장 안 됨 -- 다음 실행에서 재시도됨] {batch}: {e}")
+    return [cached[n] for n in numbers if n in cached]
 
 
 def grade_exam(solved: list[dict], answer_pdf: Path) -> list[dict]:
@@ -204,18 +278,27 @@ def grade_exam(solved: list[dict], answer_pdf: Path) -> list[dict]:
     return data.get("results", [])
 
 
-def audit_exam(solved: list[dict], theory_book: str) -> list[dict]:
+def audit_exam(solved: list[dict], theory_book: str, batch_size: int = 5) -> list[dict]:
     """solve_exam()의 풀이가 실제로 이론서 안의 내용만 썼는지 별도 호출로 재검증한다.
     이 감사는 정답 PDF를 전혀 보지 않으므로, 채점 결과와 무관하게 순수하게 '근거의 정직성'만
     판정한다. 위반이 발견되면 verify_one()에서 그 문제의 answer를 강제로 N/A로 덮어써서,
-    이론서 밖 지식으로 우연히 맞힌 답도 정답으로 인정하지 않는 실질적인 페널티를 적용한다."""
-    audit_input = [{"number": p["number"], "sufficient": p["sufficient"],
-                     "cited_sources": p["cited_sources"], "reasoning": p["reasoning"]} for p in solved]
-    prompt = AUDIT_PROMPT_TMPL.format(theory_book=theory_book,
-                                       solved_json=json.dumps(audit_input, ensure_ascii=False, indent=2))
-    print(f"  [감사 중] 풀이 {len(solved)}건이 이론서 밖 지식을 썼는지 검증...")
-    data = gemini_client.generate_json(prompt, AUDIT_SCHEMA)
-    return data.get("audits", [])
+    이론서 밖 지식으로 우연히 맞힌 답도 정답으로 인정하지 않는 실질적인 페널티를 적용한다.
+    solve와 마찬가지로 배치로 쪼개서, 배치 하나가 API 오류로 실패해도 나머지 배치의 감사
+    결과는 살아남게 한다 (실패한 배치는 감사 미실행으로 남고, 다음 실행에서 재감사됨)."""
+    audits: list[dict] = []
+    for i in range(0, len(solved), batch_size):
+        chunk = solved[i:i + batch_size]
+        audit_input = [{"number": p["number"], "sufficient": p["sufficient"],
+                         "cited_sources": p["cited_sources"], "reasoning": p["reasoning"]} for p in chunk]
+        prompt = AUDIT_PROMPT_TMPL.format(theory_book=theory_book,
+                                           solved_json=json.dumps(audit_input, ensure_ascii=False, indent=2))
+        print(f"  [감사 중] 문제 {[p['number'] for p in chunk]} 이론서 밖 지식 사용 여부 검증...")
+        try:
+            data = gemini_client.generate_json(prompt, AUDIT_SCHEMA)
+            audits.extend(data.get("audits", []))
+        except Exception as e:
+            print(f"  [감사 배치 실패, 이 배치는 미감사로 남김] {[p['number'] for p in chunk]}: {e}")
+    return audits
 
 
 def apply_audit_penalty(solved: list[dict], audits: list[dict]) -> list[dict]:
@@ -287,10 +370,25 @@ def verify_one(exam_key: str, files: dict[str, Path], theory_book: str):
     if "문제" not in files or "정답" not in files:
         print(f"[건너뜀] {exam_key}: 문제/정답 PDF 페어가 안 맞음 ({list(files.keys())})")
         return
-    solved = solve_exam(files["문제"], theory_book)
-    audits = audit_exam(solved, theory_book)
-    solved = apply_audit_penalty(solved, audits)
-    graded = grade_exam(solved, files["정답"])
+    solved = solve_exam_batched(files["문제"], theory_book, exam_key)
+    if not solved:
+        print(f"[중단] {exam_key}: 풀이 결과가 하나도 없어서 로그를 남길 게 없음")
+        return
+
+    try:
+        audits = audit_exam(solved, theory_book)
+        solved = apply_audit_penalty(solved, audits)
+    except Exception as e:
+        print(f"  [감사 실패, 건너뜀] {e}")
+
+    try:
+        graded = grade_exam(solved, files["정답"])
+    except Exception as e:
+        print(f"  [채점 실패, 로그만 남김] {e}")
+        graded = []
+
+    # 감사/채점 중 하나가 실패해도 이미 푼 결과는 반드시 로그에 남긴다 (API 쿼터 등으로
+    # 후반 단계가 죽어도 앞서 얻은 결과가 통째로 날아가지 않도록).
     write_logs(exam_key, solved, graded)
 
 
