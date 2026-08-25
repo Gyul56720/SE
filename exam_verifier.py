@@ -68,7 +68,15 @@ PDF는 보통 "3번"처럼 보기 번호만 적혀 있어서, 이 번호가 실�
 불가능해집니다. 보기가 없는 주관식 문제는 choices를 빈 배열로 둡니다.
 
 최종 answer는 계산으로 얻은 값 자체를 씁니다 (보기 번호를 몰라도 됨 -- 번호 매칭은 채점
-단계가 choices를 보고 알아서 합니다)."""
+단계가 choices를 보고 알아서 합니다).
+
+**LaTeX 표기 규칙(매우 중요, 로그가 옵시디언에서 렌더링되려면 필수):** problem_text,
+choices의 value, reasoning, answer 등 수식이 들어가는 모든 필드에서, 수식은 반드시 옵시디언
+MathJax 델리미터로 감싸십시오 -- 한 줄 안에 있는 짧은 수식은 `$...$`(예: `$x^2+1$`), 독립된
+줄로 띄워 쓸 큰 수식(적분식, 여러 줄 전개 등)은 `$$...$$`. 델리미터 없이 `\\frac{{a}}{{b}}`
+처럼 LaTeX 명령어를 텍스트에 맨몸으로 섞어 쓰면 옵시디언이 수식으로 인식하지 못하고 글자
+그대로 표시됩니다 -- 이런 경우가 절대 없어야 합니다. 문장 중간에 등장하는 변수 하나짜리도
+(예: "$x$가 0에 가까워질 때") 반드시 감싸십시오."""
 
 SOLVE_SCHEMA = {
     "type": "OBJECT",
@@ -160,7 +168,9 @@ GRADE_PROMPT_TMPL = """다음은 편입수학 문제에 대한 풀이 결과다 
 
 표기 형식이 다르더라도(예: "3"과 "x=3") 값이 같으면 "정답"으로 판정한다. 내 답이 "N/A"였던
 문제는 값을 비교하지 말고 무조건 verdict="N/A"로 처리한다. official_answer 필드에는 보기
-번호가 아니라 그 번호가 가리키는 **실제 값**을 적어라. 지정된 JSON 스키마로만 답하라.
+번호가 아니라 그 번호가 가리키는 **실제 값**을 적어라. 이 값에 수식이 포함되면 옵시디언
+MathJax 델리미터로 감싸라 (짧은 수식은 $...$, 큰 수식은 $$...$$). 지정된 JSON 스키마로만
+답하라.
 """
 
 AUDIT_PERSONA = """당신은 엄격한 감사관입니다. 아래는 어떤 학생이 "제공된 이론서 내용만
@@ -205,6 +215,49 @@ AUDIT_PROMPT_TMPL = AUDIT_PERSONA + """
 
 각 문제 번호에 대해 지정된 JSON 스키마로만 감사 결과를 답하라. sufficient=false로 이미
 N/A 처리된 문제는 애초에 이론서 지식을 안 썼다고 주장하는 것이므로 violation=false로 둔다.
+"""
+
+REFORMAT_PERSONA = """당신은 텍스트 포맷터입니다. 아래 문제 풀이 데이터에서 problem_text,
+reasoning, answer, choices[].value 필드의 **내용은 절대 바꾸지 말고**, 그 안에 있는 수식만
+옵시디언 MathJax 델리미터로 감싸십시오 -- 한 줄 안의 짧은 수식은 $...$, 독립된 줄로 띄워 쓸
+큰 수식(적분식, 여러 줄 전개 등)은 $$...$$. 이미 $ 로 감싸져 있는 부분은 그대로 두고, 아직
+델리미터 없이 \\frac{{a}}{{b}} 처럼 LaTeX 명령어가 맨몸으로 섞여 있는 부분에만 델리미터를
+추가하십시오. 숫자, 단어, 계산 결과, 인용 노트 이름 등 내용 자체는 한 글자도 바꾸면 안 됩니다."""
+
+REFORMAT_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {
+        "problems": {
+            "type": "ARRAY",
+            "items": {
+                "type": "OBJECT",
+                "properties": {
+                    "number": {"type": "STRING"},
+                    "problem_text": {"type": "STRING"},
+                    "reasoning": {"type": "STRING"},
+                    "answer": {"type": "STRING"},
+                    "choices": {
+                        "type": "ARRAY",
+                        "items": {
+                            "type": "OBJECT",
+                            "properties": {"label": {"type": "STRING"}, "value": {"type": "STRING"}},
+                            "required": ["label", "value"],
+                        },
+                    },
+                },
+                "required": ["number", "problem_text", "reasoning", "answer", "choices"],
+            },
+        },
+    },
+    "required": ["problems"],
+}
+
+REFORMAT_PROMPT_TMPL = REFORMAT_PERSONA + """
+
+다음은 이미 채점까지 끝난 문제 풀이 데이터다. 지정된 JSON 스키마로, 델리미터만 추가해서
+그대로 돌려줘라 (재계산/재풀이 금지, 순수 포맷 작업만):
+
+{problems_json}
 """
 
 
@@ -292,12 +345,31 @@ def solve_exam_batched(problem_pdf: Path, theory_book: str, exam_key: str, batch
     return [cached[n] for n in numbers if n in cached]
 
 
+def _fix_official_answer_latex(text: str) -> str:
+    """공식 정답은 항상 값 하나뿐이라 API 호출 없이 로컬 정규식으로 고칠 수 있다.
+    (1) gemini_client._robust_json_loads의 전역 blind-escape 폴백이, 이미 올바르게
+    이스케이프돼 있던 응답까지 통째로 다시 이중이스케이프해서 생기는 손상(실측:
+    "\\frac{{4}}{{13}}"가 "\\\\frac{{4}}{{13}}"로, 즉 백슬래시가 2개로 남는 경우)을
+    되돌리고, (2) LaTeX가 있으면 옵시디언 렌더링을 위해 통째로 $...$로 감싼다."""
+    if not text:
+        return text
+    text = re.sub(r'\\\\(?=[a-zA-Z])', r'\\', text)
+    if text.strip().startswith("$"):
+        return text
+    if re.search(r'\\[a-zA-Z]|\^\{|_\{', text):
+        return f"${text}$"
+    return text
+
+
 def grade_exam(solved: list[dict], answer_pdf: Path) -> list[dict]:
     my_answers = [{"number": p["number"], "answer": p["answer"], "choices": p.get("choices", [])} for p in solved]
     prompt = GRADE_PROMPT_TMPL.format(my_answers_json=json.dumps(my_answers, ensure_ascii=False, indent=2))
     print(f"  [채점 중] {answer_pdf.name} 대조...")
     data = gemini_client.generate_json(prompt, GRADE_SCHEMA, images=[answer_pdf])
-    return data.get("results", [])
+    results = data.get("results", [])
+    for r in results:
+        r["official_answer"] = _fix_official_answer_latex(r.get("official_answer", ""))
+    return results
 
 
 def audit_exam(solved: list[dict], theory_book: str, batch_size: int = 5) -> list[dict]:
@@ -337,6 +409,64 @@ def apply_audit_penalty(solved: list[dict], audits: list[dict]) -> list[dict]:
             p["answer"] = "N/A"
             p["sufficient"] = False
     return solved
+
+
+def reformat_checkpoint_latex(exam_key: str, batch_size: int = 5) -> None:
+    """이미 체크포인트에 저장된 풀이의 LaTeX에 옵시디언 델리미터($...$/$$...$$)가 빠져
+    있는 문제를, 재풀이/재채점(PDF 재첨부) 없이 고쳐서 로그를 다시 쓴다. 채점 정보
+    (verdict/official_answer/grading_note)는 이미 만들어진 .jsonl 로그에서 그대로
+    재사용한다 -- grade_exam을 다시 부르지 않으므로 정답 PDF도 다시 필요 없고 채점
+    결과도 바뀌지 않는다. official_answer는 값 하나짜리라 API 왕복 없이
+    _fix_official_answer_latex()로 로컬에서 고친다 (과거 grade_exam 응답이
+    _robust_json_loads의 전역 blind-escape 폴백을 타면서 이중이스케이프로 손상된
+    적이 있어서, 그 복구까지 겸한다)."""
+    cached = _load_checkpoint(exam_key)
+    if not cached:
+        print(f"[중단] {exam_key}: 체크포인트가 없어서 재포맷할 게 없음")
+        return
+    numbers = list(cached.keys())
+    solved = [cached[n] for n in numbers]
+
+    jsonl_path = LOG_DIR / f"{exam_key}-편입수학-검증로그.jsonl"
+    graded_by_num: dict[str, dict] = {}
+    if jsonl_path.exists():
+        for line in jsonl_path.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                entry = json.loads(line)
+                graded_by_num[entry["number"]] = {
+                    "number": entry["number"], "verdict": entry.get("verdict"),
+                    "official_answer": _fix_official_answer_latex(entry.get("official_answer") or ""),
+                    "grading_note": entry.get("grading_note"),
+                }
+    graded = list(graded_by_num.values())
+
+    fixed_by_num: dict[str, dict] = {}
+    for i in range(0, len(solved), batch_size):
+        chunk = solved[i:i + batch_size]
+        payload = [{"number": p["number"], "problem_text": p["problem_text"], "reasoning": p["reasoning"],
+                    "answer": p["answer"], "choices": p.get("choices", [])} for p in chunk]
+        prompt = REFORMAT_PROMPT_TMPL.format(problems_json=json.dumps(payload, ensure_ascii=False, indent=2))
+        print(f"  [LaTeX 재포맷 중] 문제 {[p['number'] for p in chunk]}...")
+        try:
+            data = gemini_client.generate_json(prompt, REFORMAT_SCHEMA)
+            for r in data.get("problems", []):
+                fixed_by_num[r["number"]] = r
+        except Exception as e:
+            print(f"  [재포맷 배치 실패, 원문 유지] {[p['number'] for p in chunk]}: {e}")
+
+    for p in solved:
+        fixed = fixed_by_num.get(p["number"])
+        if fixed:
+            p["problem_text"] = fixed["problem_text"]
+            p["reasoning"] = fixed["reasoning"]
+            p["answer"] = fixed["answer"]
+            p["choices"] = fixed.get("choices", p.get("choices", []))
+
+    with _checkpoint_path(exam_key).open("w", encoding="utf-8") as f:
+        for n in numbers:
+            f.write(json.dumps(cached[n], ensure_ascii=False) + "\n")
+
+    write_logs(exam_key, solved, graded)
 
 
 def write_logs(exam_key: str, solved: list[dict], graded: list[dict]) -> tuple[Path, Path]:
@@ -424,11 +554,14 @@ if __name__ == "__main__":
     parser.add_argument("--list", action="store_true", help="페어링된 시험 목록만 확인")
     parser.add_argument("--exam", help='"<학교>-<연도>" 형식으로 시험 하나만 지정')
     parser.add_argument("--all", action="store_true", help="모의고사_PDF/의 모든 페어 검증")
+    parser.add_argument("--reformat-latex", help='이미 푼 시험의 로그에 LaTeX 델리미터($...$)만 재포맷 (재풀이/재채점 없음)')
     args = parser.parse_args()
 
     pairs = find_exam_pairs()
 
-    if args.list:
+    if args.reformat_latex:
+        reformat_checkpoint_latex(args.reformat_latex)
+    elif args.list:
         for key, files in pairs.items():
             status = "OK" if "문제" in files and "정답" in files else f"불완전({list(files.keys())})"
             print(f"  {key}: {status}")
