@@ -60,10 +60,15 @@ N/A로 강제 처리됩니다. 하지만 이론서에 있는 내용을 정확히
 테크닉을 썼는지 cited_sources에 파일명으로 밝히고, reasoning에는 사용한 정리/공식을 이론서
 표현 그대로 인용하면서 풀이 과정을 상세히 서술하십시오.
 
-**객관식 문제의 답 표기(중요):** 문제에 ①②③④⑤ 또는 1)~5) 같은 보기 번호가 있으면, 최종
-answer는 반드시 "보기번호 (계산한 값)" 형식으로 두 가지를 다 씁니다 (예: "⑤ (178π/15)").
-계산값만 쓰고 보기 번호를 빠뜨리면 채점 단계에서 정답표(보기 번호만 적혀 있는 경우가 많음)와
-비교가 불가능해집니다. 보기가 없는 주관식 문제는 계산된 값만 씁니다."""
+**객관식 문제의 보기 추출(매우 중요, 채점 정확도의 핵심):** 문제에 ①②③④⑤ 또는 1)~5) 같은
+보기가 있으면, choices 배열에 **보기 5개 전부를 label과 실제 값(수식 포함) 그대로** 옮겨
+적으십시오 (예: [{{"label":"①","value":"3π+1"}}, {{"label":"②","value":"4"}}, ...]). 정답표
+PDF는 보통 "3번"처럼 보기 번호만 적혀 있어서, 이 번호가 실제로 어떤 값을 가리키는지는 오직
+이 choices 배열로만 알 수 있습니다 -- 이걸 빠뜨리면 계산이 아무리 정확해도 채점이 원천적으로
+불가능해집니다. 보기가 없는 주관식 문제는 choices를 빈 배열로 둡니다.
+
+최종 answer는 계산으로 얻은 값 자체를 씁니다 (보기 번호를 몰라도 됨 -- 번호 매칭은 채점
+단계가 choices를 보고 알아서 합니다)."""
 
 SOLVE_SCHEMA = {
     "type": "OBJECT",
@@ -75,16 +80,28 @@ SOLVE_SCHEMA = {
                 "type": "OBJECT",
                 "properties": {
                     "number": {"type": "STRING", "description": "문제 번호 (PDF에 적힌 그대로)"},
-                    "problem_text": {"type": "STRING", "description": "문제 원문을 텍스트로 옮겨 적은 것 (수식은 LaTeX)"},
+                    "problem_text": {"type": "STRING", "description": "문제 원문을 텍스트로 옮겨 적은 것 (수식은 LaTeX, 보기 제외)"},
+                    "choices": {
+                        "type": "ARRAY",
+                        "description": "객관식 보기 전부 (label+실제 값). 주관식이면 빈 배열.",
+                        "items": {
+                            "type": "OBJECT",
+                            "properties": {
+                                "label": {"type": "STRING", "description": "보기 기호 (①, 1), a) 등 PDF에 적힌 그대로)"},
+                                "value": {"type": "STRING", "description": "그 보기의 실제 값/수식"},
+                            },
+                            "required": ["label", "value"],
+                        },
+                    },
                     "sufficient": {"type": "BOOLEAN", "description": "제공된 이론서 노트만으로 풀이가 가능했는지 여부"},
                     "cited_sources": {
                         "type": "ARRAY", "items": {"type": "STRING"},
                         "description": "실제로 사용한 이론서 노트 파일명 목록 (sufficient=false면 빈 배열)",
                     },
                     "reasoning": {"type": "STRING", "description": "단계별 풀이 과정 전체 (sufficient=false면 어디서 막혔는지 설명)"},
-                    "answer": {"type": "STRING", "description": "최종 답. sufficient=false면 반드시 \"N/A\""},
+                    "answer": {"type": "STRING", "description": "최종 계산값. sufficient=false면 반드시 \"N/A\""},
                 },
-                "required": ["number", "problem_text", "sufficient", "cited_sources", "reasoning", "answer"],
+                "required": ["number", "problem_text", "choices", "sufficient", "cited_sources", "reasoning", "answer"],
             },
         },
     },
@@ -131,14 +148,19 @@ GRADE_SCHEMA = {
     "required": ["results"],
 }
 
-GRADE_PROMPT_TMPL = """다음은 편입수학 문제에 대한 풀이 결과다 (문제번호, 내가 낸 답):
+GRADE_PROMPT_TMPL = """다음은 편입수학 문제에 대한 풀이 결과다 (문제번호, 내가 낸 답, 그
+문제의 객관식 보기 목록 -- 주관식이면 choices가 빈 배열):
 
 {my_answers_json}
 
-첨부된 PDF는 이 시험의 공식 정답표다. 각 문제 번호에 대해 공식 정답을 읽어서 내 답과
-비교하라. 표기 형식이 다르더라도(예: "3"과 "x=3"과 "③") 값이 같으면 "정답"으로 판정한다.
-내 답이 "N/A"였던 문제는 값을 비교하지 말고 무조건 verdict="N/A"로 처리한다. 지정된 JSON
-스키마로만 답하라.
+첨부된 PDF는 이 시험의 공식 정답표다. 보통 "3번"처럼 보기 번호만 적혀 있다 -- 그 번호가
+실제로 어떤 값인지는 위 choices 배열에서 같은 번호(label)를 찾아 그 value를 보고 판단한다
+(예: 정답표가 "②"이고 choices에 {{"label":"②","value":"4"}}가 있으면 공식 정답의 실제 값은
+"4"). choices가 빈 배열(주관식)이면 정답표에 적힌 값 자체를 그대로 내 답과 비교한다.
+
+표기 형식이 다르더라도(예: "3"과 "x=3") 값이 같으면 "정답"으로 판정한다. 내 답이 "N/A"였던
+문제는 값을 비교하지 말고 무조건 verdict="N/A"로 처리한다. official_answer 필드에는 보기
+번호가 아니라 그 번호가 가리키는 **실제 값**을 적어라. 지정된 JSON 스키마로만 답하라.
 """
 
 AUDIT_PERSONA = """당신은 엄격한 감사관입니다. 아래는 어떤 학생이 "제공된 이론서 내용만
@@ -271,7 +293,7 @@ def solve_exam_batched(problem_pdf: Path, theory_book: str, exam_key: str, batch
 
 
 def grade_exam(solved: list[dict], answer_pdf: Path) -> list[dict]:
-    my_answers = [{"number": p["number"], "answer": p["answer"]} for p in solved]
+    my_answers = [{"number": p["number"], "answer": p["answer"], "choices": p.get("choices", [])} for p in solved]
     prompt = GRADE_PROMPT_TMPL.format(my_answers_json=json.dumps(my_answers, ensure_ascii=False, indent=2))
     print(f"  [채점 중] {answer_pdf.name} 대조...")
     data = gemini_client.generate_json(prompt, GRADE_SCHEMA, images=[answer_pdf])
@@ -324,7 +346,7 @@ def write_logs(exam_key: str, solved: list[dict], graded: list[dict]) -> tuple[P
 
     # 사람이 읽는 로그
     lines = [f"# {exam_key} 편입수학 검증 로그", f"검증 시각: {timestamp}", ""]
-    correct = wrong = na = penalized = 0
+    correct = wrong = na = penalized = ungraded = 0
     for p in solved:
         g = graded_by_num.get(p["number"], {})
         verdict = g.get("verdict", "N/A" if p["answer"] == "N/A" else "채점불가")
@@ -334,6 +356,8 @@ def write_logs(exam_key: str, solved: list[dict], graded: list[dict]) -> tuple[P
             correct += 1
         elif verdict == "N/A":
             na += 1
+        elif verdict == "채점불가":
+            ungraded += 1
         else:
             wrong += 1
         lines.append(f"## 문제 {p['number']} — {verdict}" + (" (감사 위반으로 강제 N/A)" if p.get("audit_violation") else ""))
@@ -347,7 +371,10 @@ def write_logs(exam_key: str, solved: list[dict], graded: list[dict]) -> tuple[P
         lines.append(f"**채점 비고:** {g.get('grading_note','')}")
         lines.append("")
     total = len(solved)
-    lines.insert(2, f"**결과: {correct}/{total} 정답 ({correct/total*100:.1f}%), 오답 {wrong}, N/A(오답 처리) {na} (그중 감사 위반으로 강제 N/A {penalized}건)**\n")
+    graded_total = total - ungraded
+    pct = f"{correct/graded_total*100:.1f}%" if graded_total else "N/A"
+    ungraded_note = f", 채점불가(집계 제외) {ungraded}" if ungraded else ""
+    lines.insert(2, f"**결과: {correct}/{graded_total} 정답 ({pct}), 오답 {wrong}, N/A(오답 처리) {na}{ungraded_note} (그중 감사 위반으로 강제 N/A {penalized}건)**\n")
 
     md_path = LOG_DIR / f"{exam_key}-편입수학-검증로그.md"
     md_path.write_text("\n".join(lines), encoding="utf-8")
@@ -361,7 +388,7 @@ def write_logs(exam_key: str, solved: list[dict], graded: list[dict]) -> tuple[P
                       "official_answer": g.get("official_answer"), "grading_note": g.get("grading_note")}
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
-    print(f"  [결과] {correct}/{total} 정답 ({correct/total*100:.1f}%), 오답 {wrong}, N/A {na} (감사 위반 강제 N/A {penalized}건)")
+    print(f"  [결과] {correct}/{graded_total} 정답 ({pct}), 오답 {wrong}, N/A {na}{ungraded_note} (감사 위반 강제 N/A {penalized}건)")
     print(f"  [로그] {md_path}")
     return md_path, jsonl_path
 

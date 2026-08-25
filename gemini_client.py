@@ -39,8 +39,12 @@ def _build_parts(prompt: str, images: list[Path] | None) -> list[dict]:
     return parts
 
 
+_dead_key_index = -1  # 이 인덱스까지의 키는 이번 프로세스 안에서 이미 쿼터 소진 확인됨
+
+
 def _call(model: str, contents: list[dict], generation_config: dict | None = None,
           max_retries: int = 3) -> dict:
+    global _dead_key_index
     url = ENDPOINT.format(model=model)
     body = {"contents": contents}
     if generation_config:
@@ -50,7 +54,11 @@ def _call(model: str, contents: list[dict], generation_config: dict | None = Non
         raise RuntimeError("GEMINI_API_KEY가 비어 있다.")
 
     last_err = None
-    for key_index, api_key in enumerate(_API_KEYS):
+    # 이미 죽은 걸로 확인된 키는 매번 처음부터 재시도(5+10+20초 백오프)하지 않고 건너뛴다 --
+    # 하루 쿼터 소진은 프로세스 도중에 회복되지 않으므로, 한 번 확인되면 계속 죽어있다고 본다.
+    start_index = min(_dead_key_index + 1, len(_API_KEYS) - 1)
+    for key_index in range(start_index, len(_API_KEYS)):
+        api_key = _API_KEYS[key_index]
         headers = {"x-goog-api-key": api_key, "Content-Type": "application/json"}
         for attempt in range(max_retries):
             resp = requests.post(url, headers=headers, json=body, timeout=60)
@@ -61,9 +69,10 @@ def _call(model: str, contents: list[dict], generation_config: dict | None = Non
                 last_err = f"429 rate limited (key {key_index+1}/{len(_API_KEYS)}): {resp.text[:200]}"
                 continue
             raise RuntimeError(f"Gemini API 오류 {resp.status_code}: {resp.text[:300]}")
-        # 이 키로는 max_retries를 다 써도 429 -- 다음 키(있으면)로 완전히 전환해서 다시 시도
+        # 이 키로는 max_retries를 다 써도 429 -- 죽은 것으로 기록하고 다음 키(있으면)로 전환
+        _dead_key_index = key_index
         if key_index + 1 < len(_API_KEYS):
-            print(f"[gemini_client] 키 {key_index+1}가 쿼터 초과로 보임 -- 보조 키로 전환.")
+            print(f"[gemini_client] 키 {key_index+1}가 쿼터 초과로 보임 -- 보조 키로 전환 (이후 호출은 바로 보조 키로 감).")
     raise RuntimeError(f"Gemini API 재시도 초과 (키 {len(_API_KEYS)}개 다 소진): {last_err}")
 
 
