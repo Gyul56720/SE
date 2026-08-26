@@ -34,6 +34,11 @@ jobs:
           restore-keys: |
             claude-session-${{ vars.CLAUDE_SESSION_ID }}-
 
+      - name: Debug restored cache
+        run: |
+          echo "GITHUB_WORKSPACE=$GITHUB_WORKSPACE"
+          find "$HOME/.claude" -maxdepth 4 2>&1 || true
+
       - name: Run agent
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -41,6 +46,7 @@ jobs:
         run: |
           SLUG=$(echo "$GITHUB_WORKSPACE" | sed 's/\//-/g')
           JSONL="$HOME/.claude/projects${SLUG}/${SESSION_ID}.jsonl"
+          echo "looking for: $JSONL"
           if [ -f "$JSONL" ]; then
             claude -p --resume "$SESSION_ID" --permission-mode bypassPermissions "${{ inputs.prompt }}" > result.txt 2>&1 || true
           else
