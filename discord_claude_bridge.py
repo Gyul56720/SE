@@ -22,7 +22,7 @@ import subprocess
 import requests
 
 ENV_PATH = os.path.join(os.path.dirname(__file__), ".env")
-REPO = "Gyul56720/paper-research-pipeline-v2"
+REPO = "Gyul56720/SE"
 WORKFLOW = "discord-agent.yml"
 
 
