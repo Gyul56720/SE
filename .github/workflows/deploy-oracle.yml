@@ -1,0 +1,31 @@
+name: Deploy to Oracle VM
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "discord_bot_server.py"
+      - "requirements.txt"
+      - "deploy/se-discord-bot.service"
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH and redeploy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.ORACLE_SSH_HOST }}
+          username: ${{ secrets.ORACLE_SSH_USER }}
+          key: ${{ secrets.ORACLE_SSH_KEY }}
+          port: ${{ secrets.ORACLE_SSH_PORT || 22 }}
+          script: |
+            set -e
+            cd /home/ubuntu/SE
+            git pull origin main
+            pip3 install -r requirements.txt discord.py
+            sudo cp deploy/se-discord-bot.service /etc/systemd/system/
+            sudo systemctl daemon-reload
+            sudo systemctl restart se-discord-bot
+            sudo systemctl status se-discord-bot --no-pager
