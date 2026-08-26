@@ -24,11 +24,37 @@ jobs:
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code
 
+      - name: Restore Claude session state
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.claude/projects
+            ~/.claude/session-env
+          key: claude-session-${{ vars.CLAUDE_SESSION_ID }}-${{ github.run_id }}
+          restore-keys: |
+            claude-session-${{ vars.CLAUDE_SESSION_ID }}-
+
       - name: Run agent
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          SESSION_ID: ${{ vars.CLAUDE_SESSION_ID }}
         run: |
-          claude -p "${{ inputs.prompt }}" --permission-mode bypassPermissions > result.txt 2>&1 || true
+          SLUG=$(echo "$GITHUB_WORKSPACE" | sed 's/\//-/g')
+          JSONL="$HOME/.claude/projects${SLUG}/${SESSION_ID}.jsonl"
+          if [ -f "$JSONL" ]; then
+            claude -p --resume "$SESSION_ID" --permission-mode bypassPermissions "${{ inputs.prompt }}" > result.txt 2>&1 || true
+          else
+            claude -p --session-id "$SESSION_ID" --permission-mode bypassPermissions "${{ inputs.prompt }}" > result.txt 2>&1 || true
+          fi
+
+      - name: Save Claude session state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.claude/projects
+            ~/.claude/session-env
+          key: claude-session-${{ vars.CLAUDE_SESSION_ID }}-${{ github.run_id }}
 
       - name: Reply to Discord
         env:
