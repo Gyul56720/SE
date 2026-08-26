@@ -1,0 +1,54 @@
+name: Discord Agent
+
+on:
+  workflow_dispatch:
+    inputs:
+      prompt:
+        description: "Claude에게 보낼 프롬프트"
+        required: true
+      channel_id:
+        description: "결과 회신할 디스코드 채널(DM) ID"
+        required: true
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Run agent
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          claude -p "${{ inputs.prompt }}" --permission-mode bypassPermissions > result.txt 2>&1 || true
+
+      - name: Reply to Discord
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          CHANNEL_ID: ${{ inputs.channel_id }}
+        run: |
+          python3 - <<'EOF'
+          import os, json, urllib.request
+
+          content = open("result.txt", encoding="utf-8", errors="replace").read().strip()
+          content = content[:1900] if content else "(빈 응답)"
+
+          req = urllib.request.Request(
+              f"https://discord.com/api/v10/channels/{os.environ['CHANNEL_ID']}/messages",
+              data=json.dumps({"content": content}).encode("utf-8"),
+              headers={
+                  "Authorization": f"Bot {os.environ['DISCORD_BOT_TOKEN']}",
+                  "Content-Type": "application/json",
+              },
+              method="POST",
+          )
+          urllib.request.urlopen(req)
+          EOF
