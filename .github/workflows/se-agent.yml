@@ -1,17 +1,12 @@
 name: SE Agent
 
 on:
-  workflow_dispatch:
-    inputs:
-      prompt:
-        description: "Claude에게 보낼 프롬프트"
-        required: true
-      channel_id:
-        description: "결과 회신할 디스코드 채널(DM) ID"
-        required: true
+  workflow_dispatch: {}
+  schedule:
+    - cron: "*/5 * * * *"
 
 jobs:
-  run:
+  poll:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -24,62 +19,105 @@ jobs:
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code
 
-      - name: Restore Claude session state
+      - name: Restore state (last seen message id + claude session)
         uses: actions/cache/restore@v4
         with:
           path: |
             ~/.claude/projects
             ~/.claude/session-env
-          key: claude-session-${{ vars.CLAUDE_SESSION_ID }}-${{ github.run_id }}
+            ~/.se-poll-state
+          key: se-poll-state-${{ github.run_id }}
           restore-keys: |
-            claude-session-${{ vars.CLAUDE_SESSION_ID }}-
+            se-poll-state-
 
-      - name: Run agent
+      - name: Poll Discord and run agent
         env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          CHANNEL_ID: ${{ vars.DISCORD_CHANNEL_ID }}
+          ALLOWED_USER_ID: ${{ vars.DISCORD_ALLOWED_USER_ID }}
           SESSION_ID: ${{ vars.CLAUDE_SESSION_ID }}
         run: |
-          SLUG=$(echo "$GITHUB_WORKSPACE" | sed 's/\//-/g')
-          JSONL="$HOME/.claude/projects/${SLUG}/${SESSION_ID}.jsonl"
-          if [ -f "$JSONL" ]; then
-            claude -p --resume "$SESSION_ID" --permission-mode bypassPermissions "${{ inputs.prompt }}" > result.txt 2>&1 || true
-          else
-            claude -p --session-id "$SESSION_ID" --permission-mode bypassPermissions "${{ inputs.prompt }}" > result.txt 2>&1 || true
-          fi
+          python3 - <<'EOF'
+          import os, json, subprocess, urllib.request, urllib.error
 
-      - name: Save Claude session state
+          API = "https://discord.com/api/v10"
+          BOT_TOKEN = os.environ["DISCORD_BOT_TOKEN"]
+          CHANNEL_ID = os.environ["CHANNEL_ID"]
+          ALLOWED_USER_ID = os.environ["ALLOWED_USER_ID"]
+          SESSION_ID = os.environ["SESSION_ID"]
+
+          HEADERS = {
+              "Authorization": f"Bot {BOT_TOKEN}",
+              "Content-Type": "application/json",
+              "User-Agent": "DiscordBot (https://github.com/Gyul56720/SE, 1.0)",
+          }
+
+          STATE_DIR = os.path.expanduser("~/.se-poll-state")
+          STATE_FILE = os.path.join(STATE_DIR, "last_id.txt")
+          os.makedirs(STATE_DIR, exist_ok=True)
+
+          def discord_get(path):
+              req = urllib.request.Request(f"{API}{path}", headers=HEADERS)
+              with urllib.request.urlopen(req) as r:
+                  return json.load(r)
+
+          def discord_send(content):
+              content = content.strip()[:1900] or "(빈 응답)"
+              req = urllib.request.Request(
+                  f"{API}/channels/{CHANNEL_ID}/messages",
+                  data=json.dumps({"content": content}).encode("utf-8"),
+                  headers=HEADERS,
+                  method="POST",
+              )
+              try:
+                  urllib.request.urlopen(req)
+              except urllib.error.HTTPError as e:
+                  print("discord send failed:", e.read().decode())
+
+          def session_jsonl_path():
+              slug = os.environ["GITHUB_WORKSPACE"].replace("/", "-")
+              return os.path.expanduser(f"~/.claude/projects/{slug}/{SESSION_ID}.jsonl")
+
+          def run_claude(prompt):
+              flag = ["--resume", SESSION_ID] if os.path.exists(session_jsonl_path()) else ["--session-id", SESSION_ID]
+              result = subprocess.run(
+                  ["claude", "-p", *flag, "--permission-mode", "bypassPermissions", prompt],
+                  capture_output=True, text=True, timeout=600,
+              )
+              out = (result.stdout or "").strip()
+              err = (result.stderr or "").strip()
+              return out if out else (err or "(출력 없음)")
+
+          last_id = "0"
+          if os.path.exists(STATE_FILE):
+              last_id = open(STATE_FILE).read().strip() or "0"
+
+          msgs = discord_get(f"/channels/{CHANNEL_ID}/messages?after={last_id}&limit=20")
+          msgs = sorted(msgs, key=lambda m: int(m["id"]))
+
+          for m in msgs:
+              last_id = m["id"]
+              if m["author"]["id"] != ALLOWED_USER_ID:
+                  continue
+              content = m["content"].strip()
+              if not content:
+                  continue
+              print(f"[처리] {content}")
+              reply = run_claude(content)
+              print(f"[응답] {reply[:200]}")
+              discord_send(reply)
+
+          with open(STATE_FILE, "w") as f:
+              f.write(last_id)
+          EOF
+
+      - name: Save state
         if: always()
         uses: actions/cache/save@v4
         with:
           path: |
             ~/.claude/projects
             ~/.claude/session-env
-          key: claude-session-${{ vars.CLAUDE_SESSION_ID }}-${{ github.run_id }}
-
-      - name: Reply to Discord
-        env:
-          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
-          CHANNEL_ID: ${{ inputs.channel_id }}
-        run: |
-          python3 - <<'EOF'
-          import os, json, urllib.request, urllib.error
-
-          content = open("result.txt", encoding="utf-8", errors="replace").read().strip()
-          content = content[:1900] if content else "(빈 응답)"
-
-          req = urllib.request.Request(
-              f"https://discord.com/api/v10/channels/{os.environ['CHANNEL_ID']}/messages",
-              data=json.dumps({"content": content}).encode("utf-8"),
-              headers={
-                  "Authorization": f"Bot {os.environ['DISCORD_BOT_TOKEN']}",
-                  "Content-Type": "application/json",
-                  "User-Agent": "DiscordBot (https://github.com/Gyul56720/SE, 1.0)",
-              },
-              method="POST",
-          )
-          try:
-              urllib.request.urlopen(req)
-          except urllib.error.HTTPError as e:
-              print(e.read().decode())
-              raise
-          EOF
+            ~/.se-poll-state
+          key: se-poll-state-${{ github.run_id }}
