@@ -23,7 +23,7 @@ import requests
 
 ENV_PATH = os.path.join(os.path.dirname(__file__), ".env")
 REPO = "Gyul56720/SE"
-WORKFLOW = "discord-agent.yml"
+WORKFLOW = "se-agent.yml"
 
 
 def load_env():
