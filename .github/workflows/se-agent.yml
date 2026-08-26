@@ -36,7 +36,7 @@ jobs:
           CHANNEL_ID: ${{ inputs.channel_id }}
         run: |
           python3 - <<'EOF'
-          import os, json, urllib.request
+          import os, json, urllib.request, urllib.error
 
           content = open("result.txt", encoding="utf-8", errors="replace").read().strip()
           content = content[:1900] if content else "(빈 응답)"
@@ -47,8 +47,13 @@ jobs:
               headers={
                   "Authorization": f"Bot {os.environ['DISCORD_BOT_TOKEN']}",
                   "Content-Type": "application/json",
+                  "User-Agent": "DiscordBot (https://github.com/Gyul56720/SE, 1.0)",
               },
               method="POST",
           )
-          urllib.request.urlopen(req)
+          try:
+              urllib.request.urlopen(req)
+          except urllib.error.HTTPError as e:
+              print(e.read().decode())
+              raise
           EOF
