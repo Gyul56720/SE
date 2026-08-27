@@ -14,19 +14,13 @@ class RuleConfig:
         return "\n".join(cls.RULES)
 
 class AutoRegressivePatcher:
-    def __init__(self, initial_code: str, objective: str, max_iters: int = 5):
+    def __init__(self, initial_code: str, objective: str, max_iters: int = 100):
         self.current_code = initial_code
         self.objective = objective
         self.max_iters = max_iters
 
     def _generate_diff(self, feedback: str) -> str:
-        prompt = f"""
-        {RuleConfig.get_system_prompt()}
-        목표: {self.objective}
-        현재 코드 상태 반영 및 피드백: {feedback}
-        위 조건에 맞춰 원칙 0에 따라 Diff를 생성하라.
-        """
-        return "@@ -... +... @@\n- old\n+ new"
+        return ""
 
     def _apply_diff(self, diff_text: str) -> bool:
         return True
@@ -39,10 +33,12 @@ class AutoRegressivePatcher:
         except Exception as e:
             return False, str(e)
 
-    def run_self_correction_loop(self) -> str:
+    def run_self_correction_loop(self) -> tuple[str, int]:
         feedback = "최초 실행"
         
-        for iteration in range(1, self.max_iters + 1):
+        iteration = 0
+        while iteration < self.max_iters:
+            iteration += 1
             diff = self._generate_diff(feedback)
             
             if not self._apply_diff(diff):
@@ -52,8 +48,8 @@ class AutoRegressivePatcher:
             is_success, error_log = self._evaluate_code()
             
             if is_success:
-                return self.current_code
+                return self.current_code, iteration
                 
             feedback = f"실행 오류 발생:\n{error_log}"
             
-        return self.current_code
+        return self.current_code, self.max_iters
