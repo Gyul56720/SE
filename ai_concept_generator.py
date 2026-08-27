@@ -191,6 +191,10 @@ def _strip_dollar_wrapping(latex: str) -> str:
 
 
 def generate_chapter(domain: str, index: int, topic: str, prev_topic: str | None) -> Path:
+    existing = BOOK_ROOT / domain / f"{index:02d}_{_slug(topic)}.md"
+    if existing.exists():
+        print(f"  [건너뜀] 이미 존재함: {existing}")
+        return existing
     prompt = PROMPT_TMPL.format(domain=domain, topic=topic, prev_topic=prev_topic or "(이 도메인의 첫 챕터)")
     print(f"  [Gemini 호출] {domain} #{index} {topic} ...")
     data = gemini_client.generate_json(prompt, SCHEMA)
