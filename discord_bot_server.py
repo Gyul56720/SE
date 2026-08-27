@@ -35,7 +35,7 @@ BOT_TOKEN = os.environ["DISCORD_BOT_TOKEN"]
 ADMIN_CHANNEL_ID = int(os.environ["DISCORD_CHANNEL_ID"])
 # 공개 채널(길드, 화이트리스트 없음): claude 토큰을 아끼려고 Gemini로만 답한다 -- 셸/git 접근 없음.
 PUBLIC_CHANNEL_ID = int(os.environ["DISCORD_PUBLIC_CHANNEL_ID"])
-PUBLIC_GEMINI_MODEL = os.getenv("DISCORD_PUBLIC_GEMINI_MODEL", "gemini-3.5-lite")
+PUBLIC_GEMINI_MODEL = os.getenv("DISCORD_PUBLIC_GEMINI_MODEL", "gemini-3.5-flash-lite")
 REPO_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_SLUG = REPO_DIR.replace("/", "-")
 # 채널마다 고정된 세션 ID를 부여해 대화 맥락을 이어간다 (jsonl 경로: ~/.claude/projects/<slug>/<id>.jsonl).
