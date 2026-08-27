@@ -1,17 +1,14 @@
 """
 Oracle VM에서 systemd로 상시 실행되는 Discord 봇 (실시간 Gateway 연결).
 
-기존 .github/workflows/se-agent.yml은 GitHub Actions cron(5분 폴링)으로 동작했으나,
-1) 5분 지연이 있고 2) repo가 60일 이상 비활성이면 GitHub이 스케줄을 자동 정지시키는
-한계가 있었다. 이 스크립트는 그 대신 상시 실행 서버(Oracle 무료 티어)에서 discord.py의
-실시간 Gateway로 메시지를 즉시 받아 처리한다.
+관리 채널(admin, 화이트리스트 있음)과 공개 채널(public, 화이트리스트 없음) 둘 다 이제
+Gemini + LangGraph 에이전트로 처리한다 (Claude Code 토큰 소진으로 claude -p에서 전환,
+2026-08-27). 공개 채널 로직은 main_public.py로, 두 채널이 공유하는 도구(run_shell 등)는
+bot_tools.py로 분리했다 -- 이 파일은 admin 에이전트 정의 + Discord 이벤트 라우팅만 담당한다.
 
-허용된 사용자가 메시지를 보내면:
-1) `claude -p` CLI를 호출해 요청을 처리시킨다(기존 se-agent.yml과 동일한 방식).
-2) 이 저장소(project_furiosa/ 등)에 변경이 생겼으면 자동으로 git commit + push한다.
-   -> Obsidian은 obsidian-git 플러그인으로 이 repo를 pull만 하면 되므로, 로컬/iCloud
-   작업 없이 서버 -> git -> Obsidian(뷰어)로 파이프라인이 끝난다.
-3) 처리 결과를 Discord에 그대로 답장한다.
+admin/public 둘 다 run_shell(임의 셸 실행) 도구를 가지고 있어 self-modification이 가능하다.
+이건 사용자가 위험(비밀키 유출, repo 훼손 가능성)을 명시적으로 인지하고 요청한 것이다.
+API 쿼터를 나누려고 admin은 GEMINI_API_KEY_FALLBACK을, public은 GEMINI_API_KEY를 쓴다.
 
 실행: systemd 유닛(deploy/se-discord-bot.service)으로 등록해서 상시 구동할 것.
 """
@@ -19,119 +16,52 @@ Oracle VM에서 systemd로 상시 실행되는 Discord 봇 (실시간 Gateway �
 from __future__ import annotations
 
 import asyncio
-import contextvars
 import os
 import subprocess
 import uuid
 
 import discord
 from dotenv import load_dotenv
-from langchain_core.tools import tool
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langgraph.checkpoint.memory import MemorySaver
-from langgraph.prebuilt import create_react_agent
 
-import agent_memory
-
+# main_public/bot_tools가 모듈 임포트 시점에 os.environ을 바로 읽으므로, 그것들을 import하기
+# 전에 .env를 먼저 로드해야 한다 (실측 확인됨: 순서를 바꾸면 KeyError로 임포트 자체가 실패함).
 load_dotenv()
 
+from langchain_google_genai import ChatGoogleGenerativeAI  # noqa: E402
+from langgraph.checkpoint.memory import MemorySaver  # noqa: E402
+from langgraph.prebuilt import create_react_agent  # noqa: E402
+
+import agent_memory  # noqa: E402
+import main_public  # noqa: E402
+from bot_tools import REPO_DIR, run_shell, search_memory, save_memory, invoke_with_recovery  # noqa: E402
+
 BOT_TOKEN = os.environ["DISCORD_BOT_TOKEN"]
-# 관리자 채널(DM): Claude Code 토큰이 소진되어 claude -p 대신 Gemini+LangGraph 에이전트로
-# 전환했다. run_shell 도구로 임의 셸 명령(파일 읽기/쓰기/git/서비스 재시작 등)을 실행할 수
-# 있어 기존 claude -p bypassPermissions와 동등한 전권을 가진다 -- 사용자가 위험을 인지하고
-# 명시적으로 요청함(self-modification 허용).
+# 관리자 채널(화이트리스트 있음, DISCORD_ALLOWED_USER_IDS): run_shell 전권 + git sync.
 ADMIN_CHANNEL_ID = int(os.environ["DISCORD_CHANNEL_ID"])
+ADMIN_ALLOWED_USER_IDS = {int(x) for x in os.getenv("DISCORD_ALLOWED_USER_IDS", "").split(",") if x.strip()}
 ADMIN_MODEL_NAME = os.getenv("DISCORD_ADMIN_MODEL", "gemini-3.5-flash-lite")
-# 공개 채널(길드, 화이트리스트 없음): claude 토큰을 아끼려고 Gemini 기반 LangGraph 에이전트로만
-# 답한다 -- 셸/git 접근 없음, 도구도 없음(추론+대화 메모리만).
-PUBLIC_CHANNEL_ID = int(os.environ["DISCORD_PUBLIC_CHANNEL_ID"])
-PUBLIC_MODEL_NAME = os.getenv("DISCORD_PUBLIC_MODEL", "gemini-3.5-flash-lite")
+# public과 API 쿼터를 분리하려고 fallback 키를 쓴다 -- 한쪽이 무제한 루프를 돌려도(self
+# -modification 특성상 발생 가능) 다른 채널까지 같이 막히지 않게.
+ADMIN_GEMINI_KEY = os.environ["GEMINI_API_KEY_FALLBACK"]
 
-# ReAct 에이전트. LangGraph의 사고 루프 + MemorySaver 대화 메모리로 모델 혼자 쓸 때보다
-# 다단계 추론이 낫다. thread_id는 Discord 유저 ID로 둬서 사람마다 대화 맥락을 분리한다.
-# 도구는 agent_memory의 기억 검색/저장 두 개만 붙인다 -- 셸 실행이나 임의 파일 접근은 없다.
-_public_llm = ChatGoogleGenerativeAI(model=PUBLIC_MODEL_NAME, google_api_key=os.environ["GEMINI_API_KEY"])
-
-# 도구 함수는 모델이 부르므로 인자에 작성자 ID를 실어보낼 수 없다 -- 요청 단위로 여기에 담아둔다.
-_current_author: contextvars.ContextVar[str] = contextvars.ContextVar("current_author", default="unknown")
-
-
-@tool
-def search_memory(query: str) -> str:
-    """저장된 장기 기억에서 query와 관련된 내용을 찾는다.
-
-    사용자가 이전에 알려준 사실, 정정한 내용, 배경 정보를 확인해야 할 때 먼저 이걸 호출하라.
-    """
-    return agent_memory.search_memory(query)
-
-
-@tool
-def save_memory(topic: str, content: str) -> str:
-    """새로 알게 된 사실을 장기 기억에 저장한다 (git에 커밋되어 다음 대화에도 남는다).
-
-    사용자가 새로운 사실을 알려주거나 내 답을 정정했을 때, 나중에 다시 알아야 할 내용이면
-    호출하라. topic은 짧은 제목, content는 기억할 내용이다. 잡담이나 일회성 대화는 저장하지 마라.
-    """
-    return agent_memory.save_memory(topic, content, author_id=_current_author.get())
-
-
-@tool
-def run_shell(command: str) -> str:
-    """이 저장소(REPO_DIR)에서 임의의 셸 명령을 실행한다. 파일 읽기(cat)/쓰기(리다이렉션,
-    sed, python -c로 파일 생성)/git add·commit·push/서비스 재시작 등 관리 작업 전부를
-    이 도구 하나로 수행하라. 결과는 stdout/stderr을 그대로 반환한다. 되돌리기 어려운 명령
-    (rm -rf, git push --force, systemctl 종료 등)은 신중히 실행하고 실행 전 근거를 남겨라."""
-    try:
-        result = subprocess.run(
-            ["bash", "-lc", command], cwd=REPO_DIR, capture_output=True, text=True, timeout=180,
-        )
-        out = (result.stdout or "")[-4000:]
-        err = (result.stderr or "")[-2000:]
-        return f"[exit={result.returncode}]\nSTDOUT:\n{out}\nSTDERR:\n{err}"
-    except subprocess.TimeoutExpired:
-        return "실행 시간 초과(180초) -- 명령을 더 작게 나눠서 재시도하라."
-
-
-ADMIN_TOOLS = [search_memory, save_memory]
+ADMIN_TOOLS = [run_shell, search_memory, save_memory]
 ADMIN_SYSTEM_PROMPT = (
-    "너는 사용자의 질문에 답하고 필요한 내용을 기억하는 어시스턴트다.\n"
-    "서버 셸 명령이나 git 제어 도구는 가지고 있지 않다.\n"
-    "1. 간결하게 답하라. 이모지, 인사말, 상투적 격려/감탄 문구를 쓰지 마라.\n"
-    "2. 확실하지 않은 사실은 추측이라고 명시하라. 모르면 모른다고 말하라.\n"
-    "3. 사용자에 대한 사실이나 이전에 배운 내용이 필요하면 search_memory로 먼저 확인하라.\n"
-    "4. 핵심 정보만 전달하고 불필요한 수식어를 붙이지 마라."
+    "너는 이 저장소(SE)를 관리하는 전권을 가진 에이전트다. run_shell로 파일을 읽고 쓰고,\n"
+    "git commit/push하고, 네 자신의 코드(discord_bot_server.py, main_public.py, "
+    "bot_tools.py 등)를 수정할 수 있다.\n"
+    "run_shell 권한은 사용자가 명시적으로 요청한 것이다 -- 에러가 나도 스스로 이 도구를 "
+    "제거하거나 권한을 축소하지 마라. 대신 에러 원인을 파악해서 고쳐라.\n"
+    "요청받은 작업을 run_shell로 직접 수행하고, 명령 결과를 근거로 다음 행동을 결정하라.\n"
+    "코드를 고쳤으면 그 결과를 run_shell로 git add/commit/push까지 해서 반영하라.\n"
+    "무엇을 했는지 간결하게 보고하라."
 )
-_admin_llm = ChatGoogleGenerativeAI(model=ADMIN_MODEL_NAME, google_api_key=os.environ["GEMINI_API_KEY"])
+_admin_llm = ChatGoogleGenerativeAI(model=ADMIN_MODEL_NAME, google_api_key=ADMIN_GEMINI_KEY)
 ADMIN_AGENT = create_react_agent(
     _admin_llm, tools=ADMIN_TOOLS, checkpointer=MemorySaver(), prompt=ADMIN_SYSTEM_PROMPT,
 )
 
-PUBLIC_TOOLS = [search_memory, save_memory]
-# 규칙 기반 프롬프트 -- Sparrow(Glaese et al. 2022)가 뭉뚱그린 지시 대신 구체적 자연어
-# 규칙을 나열했을 때 정확도/안전성이 올라간다는 걸 보여줬고, "Language Models Mostly Know
-# What They Know"(Kadavath et al. 2022)가 모델이 자기 확신도(P(IK))를 꽤 잘 판단한다는 걸
-# 보여줬다 -- 단, 명시적으로 판단하라고 지시했을 때만. 도구 없는 에이전트라 지어낼 위험이
-# 큰 항목(실시간 정보, 수치/고유명사)을 특히 명시했다.
-PUBLIC_SYSTEM_PROMPT = (
-    "다음 규칙을 지켜라:\n"
-    "1. 간결하게 답하라. 이모지, 인사말, 상투적 격려/감탄 문구를 쓰지 마라.\n"
-    "2. 확실하지 않은 사실은 추측이라고 명시하라. 모르면 모른다고 말하라 -- 지어내지 마라.\n"
-    "3. 숫자, 날짜, 고유명사는 확실할 때만 제시하라. 불확실하면 그렇다고 밝혀라.\n"
-    "4. 너는 인터넷/웹 검색 도구를 최대한 활용하여라. 정보 수집이 최우선이다. 실시간 정보(날씨, 오늘 날짜, 최신 뉴스, 주가 등)를 "
-    "묻는 질문에는 먼저 그 한계를 밝히고, 알고 있는 일반 지식 범위 내에서만 답하라.\n"
-    "5. 사용자에 대한 사실이나 이전에 배운 내용이 필요하면 search_memory로 먼저 확인하라. "
-    "추측하지 말고 기억을 찾아보라.\n"
-    "6. 사용자가 새 사실을 알려주거나 네 답을 정정했고 그게 나중에도 필요한 내용이면 "
-    "save_memory로 저장하라. 잡담, 인사, 일회성 질문은 저장하지 마라.\n"
-    "7. 핵심 정보만 전달하고 불필요한 수식어를 붙이지 마라.\n"
-    "8. 특정 단어가 프롬포트에서 거부될 경우에 먼저 우회방법을 먼저 검색하여라. 방법을 찾고 다시 검색해보아라."   
-)
-PUBLIC_AGENT = create_react_agent(
-    _public_llm, tools=PUBLIC_TOOLS, checkpointer=MemorySaver(), prompt=PUBLIC_SYSTEM_PROMPT,
-)
-REPO_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_SLUG = REPO_DIR.replace("/", "-")
-# 채널마다 고정된 세션 ID를 부여해 대화 맥락을 이어간다 (jsonl 경로: ~/.claude/projects/<slug>/<id>.jsonl).
+# claude -p용 세션 ID. 토큰이 복구되면 run_claude()를 다시 쓸 수 있도록 남겨둔다.
 SESSION_ID = str(uuid.uuid5(uuid.NAMESPACE_URL, f"discord-channel-{ADMIN_CHANNEL_ID}"))
 
 intents = discord.Intents.default()
@@ -141,9 +71,12 @@ client = discord.Client(intents=intents)
 # git_sync()가 동시에 여러 번 돌면 커밋/푸시가 충돌하므로 직렬화한다.
 GIT_LOCK = asyncio.Lock()
 
+_admin_thread_map: dict[str, str] = {}
+
 
 def run_claude(prompt: str) -> str:
-    """동기 블로킹 호출 -- 반드시 run_in_executor로 감싸서 불러야 이벤트 루프가 안 막힌다."""
+    """Claude Code 토큰이 있을 때 쓰던 경로. 지금은 호출되지 않지만 토큰 복구 시 다시
+    _handle_admin_message에서 run_admin_agent 대신 이걸 쓰도록 되돌리면 된다."""
     jsonl_path = os.path.expanduser(f"~/.claude/projects/{PROJECT_SLUG}/{SESSION_ID}.jsonl")
     resume_flag = ["--resume", SESSION_ID] if os.path.isfile(jsonl_path) else ["--session-id", SESSION_ID]
     # se-discord-bot.service의 cgroup 밖에서 돌려서, 이 안에서 백그라운드로 뜬 작업이
@@ -175,8 +108,9 @@ def git_sync() -> str | None:
     영영 반영이 안 되고(Obsidian이 못 받아봄) 조용히 로컬에만 쌓이게 된다. 그래서 push가
     non-fast-forward로 거부되면 fetch + rebase 후 한 번 더 시도한다.
 
-    공개 채널 에이전트의 save_memory도 같은 워킹트리에 커밋하므로, 스레드 간에도 통하는
-    agent_memory.GIT_MUTEX를 함께 잡아서 두 경로가 동시에 git을 만지지 않게 한다."""
+    공개/관리 채널 에이전트의 save_memory나 run_shell도 같은 워킹트리에 커밋할 수 있으므로,
+    스레드 간에도 통하는 agent_memory.GIT_MUTEX를 함께 잡아서 여러 경로가 동시에 git을
+    만지지 않게 한다."""
     with agent_memory.GIT_MUTEX:
         return _git_sync_locked()
 
@@ -207,50 +141,11 @@ def _git_sync_locked() -> str | None:
     return "[git push 완료 (rebase 후 재시도)] Obsidian에서 pull하면 반영됩니다."
 
 
-def _extract_text(content) -> str:
-    """최신 Gemini 응답은 content가 평문 문자열이 아니라 파트 리스트로 올 수 있다
-    (예: [{"type": "text", "text": "...", "extras": {...}}], extras에 thinking
-    signature 등이 딸려온다) -- text 파트만 이어붙인다."""
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        return "".join(
-            part.get("text", "") for part in content
-            if isinstance(part, dict) and part.get("type") == "text"
-        )
-    return str(content)
-
-
-def run_public_agent(prompt: str, thread_id: str) -> str:
-    """공개 채널용 -- LangGraph ReAct 에이전트(Gemini, 도구 없음)로 답한다.
-    thread_id별로 대화가 분리되어 이어진다 (MemorySaver, 프로세스 재시작 시 초기화됨).
-
-    subprocess 없이 순수 인프로세스 호출이라 claude -p/git처럼 stdout이 저절로 journal에
-    안 새어나간다 (실측 확인됨: 호출해도 journalctl에 아무 흔적이 안 남았었음) -- 그래서
-    print()로 명시적으로 남겨야 log_streamer.py가 중계할 게 생긴다."""
-    print(f"[public-agent] thread={thread_id} prompt={prompt[:120]!r}")
-    # 도구(save_memory)가 작성자를 노트에 남길 수 있도록 요청 단위로 심어둔다.
-    _current_author.set(thread_id)
-    try:
-        config = {"configurable": {"thread_id": thread_id}}
-        result = PUBLIC_AGENT.invoke({"messages": [("user", prompt)]}, config=config)
-        reply = _extract_text(result["messages"][-1].content).strip()
-        print(f"[public-agent] thread={thread_id} reply={reply[:200]!r}")
-        return reply
-    except Exception as e:
-        print(f"[public-agent] thread={thread_id} error={e}")
-        return f"(에이전트 오류) {e}"
-
-
 def run_admin_agent(prompt: str, thread_id: str) -> str:
-    """관리 채널용 -- LangGraph ReAct 에이전트(Gemini, run_shell 전권)로 답한다.
-    run_public_agent와 동일하게 in-process 호출이라 stdout이 저절로 journal에 안 남으므로
-    print()로 명시적으로 남긴다."""
+    """관리 채널용 -- LangGraph ReAct 에이전트(Gemini, run_shell 전권)로 답한다."""
     print(f"[admin-agent] thread={thread_id} prompt={prompt[:120]!r}")
     try:
-        config = {"configurable": {"thread_id": thread_id}}
-        result = ADMIN_AGENT.invoke({"messages": [("user", prompt)]}, config=config)
-        reply = _extract_text(result["messages"][-1].content).strip()
+        reply = invoke_with_recovery(ADMIN_AGENT, _admin_thread_map, thread_id, prompt, "[admin-agent]")
         print(f"[admin-agent] thread={thread_id} reply={reply[:200]!r}")
         return reply
     except Exception as e:
@@ -260,7 +155,10 @@ def run_admin_agent(prompt: str, thread_id: str) -> str:
 
 @client.event
 async def on_ready():
-    print(f"[SE-agent] 로그인됨: {client.user} (관리 채널 {ADMIN_CHANNEL_ID}, 공개 채널 {PUBLIC_CHANNEL_ID} 감시 중)")
+    print(
+        f"[SE-agent] 로그인됨: {client.user} "
+        f"(관리 채널 {ADMIN_CHANNEL_ID}, 공개 채널 {main_public.PUBLIC_CHANNEL_ID} 감시 중)"
+    )
 
 
 ATTACHMENTS_DIR = os.path.join(REPO_DIR, "inbox", "discord_attachments")
@@ -268,8 +166,8 @@ ATTACHMENTS_DIR = os.path.join(REPO_DIR, "inbox", "discord_attachments")
 
 async def _save_attachments(message: discord.Message) -> list[str]:
     """스크린샷 등 첨부파일을 로컬에 저장하고 절대경로 목록을 반환한다.
-    claude -p는 텍스트 프롬프트만 받으므로, 이미지 자체를 전달할 방법이 없다 -- 대신 파일로
-    저장한 뒤 그 경로를 프롬프트에 적어주면 Claude가 Read 도구로 직접 열어볼 수 있다."""
+    에이전트는 텍스트 프롬프트만 받으므로, 이미지 자체를 전달할 방법이 없다 -- 대신 파일로
+    저장한 뒤 그 경로를 프롬프트에 적어주면 run_shell(cat 등)로 직접 열어볼 수 있다."""
     if not message.attachments:
         return []
     os.makedirs(ATTACHMENTS_DIR, exist_ok=True)
@@ -283,9 +181,9 @@ async def _save_attachments(message: discord.Message) -> list[str]:
 
 
 async def _handle_admin_message(message: discord.Message) -> None:
-    """관리 채널: Gemini+LangGraph 에이전트(run_shell 전권) + git sync.
-    Claude Code 토큰이 소진되어 claude -p 대신 이 경로를 쓴다 (run_claude()는 토큰이
-    복구되면 다시 쓸 수 있도록 남겨둔다)."""
+    """관리 채널: Gemini+LangGraph 에이전트(run_shell 전권) + git sync."""
+    if ADMIN_ALLOWED_USER_IDS and message.author.id not in ADMIN_ALLOWED_USER_IDS:
+        return
     content = message.content.strip()
     attachment_paths = await _save_attachments(message)
     if not content and not attachment_paths:
@@ -310,8 +208,8 @@ async def _handle_admin_message(message: discord.Message) -> None:
 
 
 async def _handle_public_message(message: discord.Message) -> None:
-    """공개 채널: 화이트리스트 없음 -- 셸/git 접근 없이 LangGraph+Gemini 에이전트로만 답해서
-    claude 토큰을 아낀다. 유저별로 대화 맥락이 이어진다."""
+    """공개 채널: 화이트리스트 없음 -- main_public.py의 에이전트(run_shell 포함)로 답한다.
+    유저별로 대화 맥락이 이어진다."""
     content = message.content.strip()
     if not content:
         return
@@ -319,10 +217,14 @@ async def _handle_public_message(message: discord.Message) -> None:
     loop = asyncio.get_running_loop()
     thread_id = str(message.author.id)
     async with message.channel.typing():
-        reply = await loop.run_in_executor(None, run_public_agent, content, thread_id)
+        reply = await loop.run_in_executor(None, main_public.run_public_agent, content, thread_id)
+        async with GIT_LOCK:
+            sync_note = await loop.run_in_executor(None, git_sync)
 
     for chunk_start in range(0, len(reply), 1900):
         await message.channel.send(reply[chunk_start:chunk_start + 1900] or "(빈 응답)")
+    if sync_note:
+        await message.channel.send(sync_note)
 
 
 @client.event
@@ -331,7 +233,7 @@ async def on_message(message: discord.Message):
         return
     if message.channel.id == ADMIN_CHANNEL_ID:
         await _handle_admin_message(message)
-    elif message.channel.id == PUBLIC_CHANNEL_ID:
+    elif message.channel.id == main_public.PUBLIC_CHANNEL_ID:
         await _handle_public_message(message)
 
 
