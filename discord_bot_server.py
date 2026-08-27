@@ -43,11 +43,19 @@ PUBLIC_MODEL_NAME = os.getenv("DISCORD_PUBLIC_MODEL", "gemini-3.5-flash-lite")
 # LangGraph의 사고 루프 + MemorySaver 대화 메모리로 모델 혼자 쓸 때보다 다단계 추론이 낫다.
 # thread_id는 Discord 유저 ID로 둬서 사람마다 대화 맥락을 분리한다.
 _public_llm = ChatGoogleGenerativeAI(model=PUBLIC_MODEL_NAME, google_api_key=os.environ["GEMINI_API_KEY"])
-# 시스템 프롬프트를 안 주면 Gemini 기본 말투(이모지, 인사치레, 상투적 격려 문구)로 답해서
-# 출력 토큰을 불필요하게 먹는다 -- 간결하게 답하도록 명시한다.
+# 규칙 기반 프롬프트 -- Sparrow(Glaese et al. 2022)가 뭉뚱그린 지시 대신 구체적 자연어
+# 규칙을 나열했을 때 정확도/안전성이 올라간다는 걸 보여줬고, "Language Models Mostly Know
+# What They Know"(Kadavath et al. 2022)가 모델이 자기 확신도(P(IK))를 꽤 잘 판단한다는 걸
+# 보여줬다 -- 단, 명시적으로 판단하라고 지시했을 때만. 도구 없는 에이전트라 지어낼 위험이
+# 큰 항목(실시간 정보, 수치/고유명사)을 특히 명시했다.
 PUBLIC_SYSTEM_PROMPT = (
-    "간결하게 답하라. 이모지, 인사말, 상투적 격려/감탄 문구를 쓰지 마라. "
-    "핵심 정보만 정확하게 전달하고 불필요한 수식어를 붙이지 마라."
+    "다음 규칙을 지켜라:\n"
+    "1. 간결하게 답하라. 이모지, 인사말, 상투적 격려/감탄 문구를 쓰지 마라.\n"
+    "2. 확실하지 않은 사실은 추측이라고 명시하라. 모르면 모른다고 말하라 -- 지어내지 마라.\n"
+    "3. 숫자, 날짜, 고유명사는 확실할 때만 제시하라. 불확실하면 그렇다고 밝혀라.\n"
+    "4. 너는 검색/인터넷 접근 도구가 없다. 실시간 정보(날씨, 오늘 날짜, 최신 뉴스, 주가 등)를 "
+    "묻는 질문에는 먼저 그 한계를 밝히고, 알고 있는 일반 지식 범위 내에서만 답하라.\n"
+    "5. 핵심 정보만 전달하고 불필요한 수식어를 붙이지 마라."
 )
 PUBLIC_AGENT = create_react_agent(
     _public_llm, tools=[], checkpointer=MemorySaver(), prompt=PUBLIC_SYSTEM_PROMPT,
