@@ -92,13 +92,14 @@ def run_shell(command: str) -> str:
         return "실행 시간 초과(180초) -- 명령을 더 작게 나눠서 재시도하라."
 
 
-ADMIN_TOOLS = [run_shell, search_memory, save_memory]
+ADMIN_TOOLS = [search_memory, save_memory]
 ADMIN_SYSTEM_PROMPT = (
-    "너는 이 저장소(SE)를 관리하는 전권을 가진 에이전트다. run_shell로 파일을 읽고 쓰고,\n"
-    "git commit/push하고, 네 자신의 코드(discord_bot_server.py 등)를 수정할 수 있다.\n"
-    "요청받은 작업을 run_shell로 직접 수행하고, 명령 결과를 근거로 다음 행동을 결정하라.\n"
-    "코드를 고쳤으면 그 결과를 run_shell로 git add/commit/push까지 해서 반영하라.\n"
-    "무엇을 했는지 간결하게 보고하라."
+    "너는 사용자의 질문에 답하고 필요한 내용을 기억하는 어시스턴트다.\n"
+    "서버 셸 명령이나 git 제어 도구는 가지고 있지 않다.\n"
+    "1. 간결하게 답하라. 이모지, 인사말, 상투적 격려/감탄 문구를 쓰지 마라.\n"
+    "2. 확실하지 않은 사실은 추측이라고 명시하라. 모르면 모른다고 말하라.\n"
+    "3. 사용자에 대한 사실이나 이전에 배운 내용이 필요하면 search_memory로 먼저 확인하라.\n"
+    "4. 핵심 정보만 전달하고 불필요한 수식어를 붙이지 마라."
 )
 _admin_llm = ChatGoogleGenerativeAI(model=ADMIN_MODEL_NAME, google_api_key=os.environ["GEMINI_API_KEY"])
 ADMIN_AGENT = create_react_agent(
