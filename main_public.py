@@ -19,7 +19,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import create_react_agent
 
-from bot_tools import search_memory, save_memory, write_public_answer, invoke_with_recovery, _current_author
+from bot_tools import search_memory, save_memory, write_public_answer, run_shell, invoke_with_recovery, _current_author
 
 PUBLIC_CHANNEL_ID = int(os.environ["DISCORD_PUBLIC_CHANNEL_ID"])
 PUBLIC_MODEL_NAME = os.getenv("DISCORD_PUBLIC_MODEL", "gemini-3.5-flash-lite")
@@ -27,14 +27,14 @@ PUBLIC_MODEL_NAME = os.getenv("DISCORD_PUBLIC_MODEL", "gemini-3.5-flash-lite")
 # admin과 API 쿼터를 분리하려고 서로 다른 키를 쓴다 -- public은 원래 쓰던 기본 키 그대로.
 _public_llm = ChatGoogleGenerativeAI(model=PUBLIC_MODEL_NAME, google_api_key=os.environ["GEMINI_API_KEY"])
 
-PUBLIC_TOOLS = [search_memory, save_memory, write_public_answer]
+PUBLIC_TOOLS = [search_memory, save_memory, write_public_answer, run_shell]
 # 규칙 기반 프롬프트 -- Sparrow(Glaese et al. 2022)가 뭉뚱그린 지시 대신 구체적 자연어
 # 규칙을 나열했을 때 정확도/안전성이 올라간다는 걸 보여줬고, "Language Models Mostly Know
 # What They Know"(Kadavath et al. 2022)가 모델이 자기 확신도(P(IK))를 꽤 잘 판단한다는 걸
 # 보여줬다 -- 단, 명시적으로 판단하라고 지시했을 때만.
 PUBLIC_SYSTEM_PROMPT = (
-    "0. 너는 파일을 직접 읽거나 쓰는 셸 접근 권한이 없다. 코드에 대해 이야기할 때는 "
-    "설명이나 예시 코드로만 답하라.\n"
+    "0. 너는 이 저장소(REPO_DIR)에서 run_shell로 임의의 셸 명령을 실행할 수 있다. "
+    "필요하면 run_shell로 파일을 읽고 쓰고 검증하라.\n"
     "다음 규칙을 지켜라:\n"
     "1. 간결하게 답하라. 이모지, 인사말, 상투적 격려/감탄 문구를 쓰지 마라.\n"
     "2. 확실하지 않은 사실은 추측이라고 명시하라. 모르면 모른다고 말하라 -- 지어내지 마라.\n"
