@@ -30,3 +30,20 @@
     "code": 429,
     "message": "You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-a
 [분석 12/12] On Few-Shot Prompting for Controllable Question-Answer Gener...
+  실패: Gemini API 재시도 초과 (키 2개 다 소진): 429 rate limited (key 2/2): {
+  "error": {
+    "code": 429,
+    "message": "You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-a
+[정리] Learning in immersive worlds A review of game-based learning (2006).md
+[정리] Contemporary Psychometrics (2005).md
+[정리] Misconceived Causal Explanations for Emergent Processes (2011).md
+[정리] Optimizing performance through intrinsic motivation and attention for learning T (2016).md
+[정리] A Theory of Organization-EHR Affordance Actualization (2014).md
+[정리] Patient reminder and recall interventions to improve immunization rates (2018).md
+[정리] Internet-augmented language models through few-shot prompting for open-domain qu (2022).md
+[정리] MEAL Stable and Active Learning for Few-Shot Prompting (2022).md
+[정리] The Unreliability of Explanations in Few-shot Prompting for Textual Reasoning (2022).md
+[정리] When Does Few-Shot Prompting Help A Systematic Empirical Study of Shot-Count Eff (2026).md
+
+완료: 10개 노트를 mathmetics/LLM_응답품질/사용자 친화적 퓨샷 설계/Survey Notes 에 기록했다.
+Obsidian에서 그래프뷰를 열면 predecessor 링크로 연결된 발전 계보가 보인다.
