@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import uuid
 
 import discord
 from dotenv import load_dotenv
@@ -30,6 +31,9 @@ BOT_TOKEN = os.environ["DISCORD_BOT_TOKEN"]
 CHANNEL_ID = int(os.environ["DISCORD_CHANNEL_ID"])
 ALLOWED_USER_IDS = {int(x) for x in os.getenv("DISCORD_ALLOWED_USER_IDS", "").split(",") if x.strip()}
 REPO_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_SLUG = REPO_DIR.replace("/", "-")
+# 채널마다 고정된 세션 ID를 부여해 대화 맥락을 이어간다 (jsonl 경로: ~/.claude/projects/<slug>/<id>.jsonl).
+SESSION_ID = str(uuid.uuid5(uuid.NAMESPACE_URL, f"discord-channel-{CHANNEL_ID}"))
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -37,8 +41,10 @@ client = discord.Client(intents=intents)
 
 
 def run_claude(prompt: str) -> str:
+    jsonl_path = os.path.expanduser(f"~/.claude/projects/{PROJECT_SLUG}/{SESSION_ID}.jsonl")
+    resume_flag = ["--resume", SESSION_ID] if os.path.isfile(jsonl_path) else ["--session-id", SESSION_ID]
     result = subprocess.run(
-        ["claude", "-p", "--permission-mode", "bypassPermissions", prompt],
+        ["claude", "-p", *resume_flag, "--permission-mode", "bypassPermissions", prompt],
         cwd=REPO_DIR,
         capture_output=True,
         text=True,
