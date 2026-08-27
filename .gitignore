@@ -5,3 +5,4 @@ __pycache__/
 .DS_Store
 .claude/settings.local.json
 keyword_synthesis_log.jsonl
+inbox/discord_attachments/

@@ -93,6 +93,25 @@ async def on_ready():
     print(f"[SE-agent] 로그인됨: {client.user} (채널 {CHANNEL_ID} 감시 중)")
 
 
+ATTACHMENTS_DIR = os.path.join(REPO_DIR, "inbox", "discord_attachments")
+
+
+async def _save_attachments(message: discord.Message) -> list[str]:
+    """스크린샷 등 첨부파일을 로컬에 저장하고 절대경로 목록을 반환한다.
+    claude -p는 텍스트 프롬프트만 받으므로, 이미지 자체를 전달할 방법이 없다 -- 대신 파일로
+    저장한 뒤 그 경로를 프롬프트에 적어주면 Claude가 Read 도구로 직접 열어볼 수 있다."""
+    if not message.attachments:
+        return []
+    os.makedirs(ATTACHMENTS_DIR, exist_ok=True)
+    saved_paths = []
+    for att in message.attachments:
+        safe_name = f"{message.id}_{att.filename}"
+        path = os.path.join(ATTACHMENTS_DIR, safe_name)
+        await att.save(path)
+        saved_paths.append(path)
+    return saved_paths
+
+
 @client.event
 async def on_message(message: discord.Message):
     if message.author.bot:
@@ -102,8 +121,14 @@ async def on_message(message: discord.Message):
     if message.author.id not in ALLOWED_USER_IDS:
         return
     content = message.content.strip()
-    if not content:
+    attachment_paths = await _save_attachments(message)
+    if not content and not attachment_paths:
         return
+    if attachment_paths:
+        attachments_note = "\n\n첨부 파일(로컬 경로, Read 도구로 열어볼 것):\n" + "\n".join(
+            f"- {p}" for p in attachment_paths
+        )
+        content = (content or "(첨부파일 확인)") + attachments_note
 
     async with message.channel.typing():
         reply = run_claude(content)
