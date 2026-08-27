@@ -5,4 +5,5 @@ paper-qa
 pypdf>=4.0.0
 langchain>=0.3.0
 langchain-google-genai>=2.1.0
+langgraph>=0.2.0
 discord.py>=2.4.0

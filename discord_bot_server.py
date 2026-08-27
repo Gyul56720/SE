@@ -25,17 +25,25 @@ import uuid
 
 import discord
 from dotenv import load_dotenv
-
-import gemini_client
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.prebuilt import create_react_agent
 
 load_dotenv()
 
 BOT_TOKEN = os.environ["DISCORD_BOT_TOKEN"]
 # 관리자 채널(DM): claude -p 전체 권한 + git sync -- 서버 관리/코드 작업/질의응답 전용.
 ADMIN_CHANNEL_ID = int(os.environ["DISCORD_CHANNEL_ID"])
-# 공개 채널(길드, 화이트리스트 없음): claude 토큰을 아끼려고 Gemini로만 답한다 -- 셸/git 접근 없음.
+# 공개 채널(길드, 화이트리스트 없음): claude 토큰을 아끼려고 Gemini 기반 LangGraph 에이전트로만
+# 답한다 -- 셸/git 접근 없음, 도구도 없음(추론+대화 메모리만).
 PUBLIC_CHANNEL_ID = int(os.environ["DISCORD_PUBLIC_CHANNEL_ID"])
 PUBLIC_GEMINI_MODEL = os.getenv("DISCORD_PUBLIC_GEMINI_MODEL", "gemini-3.5-flash-lite")
+
+# ReAct 에이전트: 도구는 아직 없지만(공개 채널이라 셸/파일 접근 도구는 의도적으로 안 붙임),
+# LangGraph의 사고 루프 + MemorySaver 대화 메모리로 gemini-3.5-flash-lite 혼자 쓸 때보다
+# 다단계 추론이 낫다. thread_id는 Discord 유저 ID로 둬서 사람마다 대화 맥락을 분리한다.
+_public_llm = ChatGoogleGenerativeAI(model=PUBLIC_GEMINI_MODEL, google_api_key=os.environ["GEMINI_API_KEY"])
+PUBLIC_AGENT = create_react_agent(_public_llm, tools=[], checkpointer=MemorySaver())
 REPO_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_SLUG = REPO_DIR.replace("/", "-")
 # 채널마다 고정된 세션 ID를 부여해 대화 맥락을 이어간다 (jsonl 경로: ~/.claude/projects/<slug>/<id>.jsonl).
@@ -106,12 +114,29 @@ def git_sync() -> str | None:
     return "[git push 완료 (rebase 후 재시도)] Obsidian에서 pull하면 반영됩니다."
 
 
-def run_gemini_qa(prompt: str) -> str:
-    """공개 채널용 -- 셸/git 접근 없이 Gemini로만 답한다 (claude 토큰 절약)."""
+def _extract_text(content) -> str:
+    """최신 Gemini 응답은 content가 평문 문자열이 아니라 파트 리스트로 올 수 있다
+    (예: [{"type": "text", "text": "...", "extras": {...}}], extras에 thinking
+    signature 등이 딸려온다) -- text 파트만 이어붙인다."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(
+            part.get("text", "") for part in content
+            if isinstance(part, dict) and part.get("type") == "text"
+        )
+    return str(content)
+
+
+def run_public_agent(prompt: str, thread_id: str) -> str:
+    """공개 채널용 -- LangGraph ReAct 에이전트(Gemini, 도구 없음)로 답한다.
+    thread_id별로 대화가 분리되어 이어진다 (MemorySaver, 프로세스 재시작 시 초기화됨)."""
     try:
-        return gemini_client.generate(prompt, model=PUBLIC_GEMINI_MODEL)
+        config = {"configurable": {"thread_id": thread_id}}
+        result = PUBLIC_AGENT.invoke({"messages": [("user", prompt)]}, config=config)
+        return _extract_text(result["messages"][-1].content).strip()
     except Exception as e:
-        return f"(Gemini 오류) {e}"
+        return f"(에이전트 오류) {e}"
 
 
 @client.event
@@ -163,14 +188,16 @@ async def _handle_admin_message(message: discord.Message) -> None:
 
 
 async def _handle_public_message(message: discord.Message) -> None:
-    """공개 채널: 화이트리스트 없음 -- 셸/git 접근 없이 Gemini로만 답해서 claude 토큰을 아낀다."""
+    """공개 채널: 화이트리스트 없음 -- 셸/git 접근 없이 LangGraph+Gemini 에이전트로만 답해서
+    claude 토큰을 아낀다. 유저별로 대화 맥락이 이어진다."""
     content = message.content.strip()
     if not content:
         return
 
     loop = asyncio.get_running_loop()
+    thread_id = str(message.author.id)
     async with message.channel.typing():
-        reply = await loop.run_in_executor(None, run_gemini_qa, content)
+        reply = await loop.run_in_executor(None, run_public_agent, content, thread_id)
 
     for chunk_start in range(0, len(reply), 1900):
         await message.channel.send(reply[chunk_start:chunk_start + 1900] or "(빈 응답)")
