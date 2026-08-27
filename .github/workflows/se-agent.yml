@@ -1,9 +1,9 @@
-name: SE Agent
+# 5분 폴링 지연 때문에 discord_bot_server.py(Oracle VM 상시 실행, 실시간 Discord
+# Gateway)로 대체됨. 이 워크플로는 비상용 수동 폴백으로만 남겨둔다(workflow_dispatch).
+name: SE Agent (수동 폴백 — 평소엔 discord_bot_server.py가 처리함)
 
 on:
   workflow_dispatch: {}
-  schedule:
-    - cron: "*/5 * * * *"
 
 jobs:
   poll:

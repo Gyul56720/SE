@@ -17,7 +17,9 @@ from pathlib import Path
 import gemini_client
 
 VAULT_ROOT = Path("/Users/cogito/Documents/Obsidian Vault")
-BOOK_ROOT = VAULT_ROOT / "project_furiosa"
+# 로컬 맥(iCloud vault 마운트됨)이 아닌 환경(예: 클라우드 원격 세션)에서 돌리면 vault 경로가
+# 존재하지 않으므로, 그럴 때만 저장소 로컬 경로로 폴백한다 -- 로컬에서는 항상 기존 vault를 그대로 씀.
+BOOK_ROOT = (VAULT_ROOT / "project_furiosa") if VAULT_ROOT.exists() else Path(__file__).parent / "project_furiosa"
 
 PERSONA = """당신은 AI 가속기(NPU) 시스템 아키텍처와 SDK를 분석하는 시니어 반도체/시스템 엔지니어이자,
 후배 엔지니어를 위한 개념/이론서를 쓰는 저자입니다. 처음 배우는 사람도 이해할 수 있도록 쉽고
