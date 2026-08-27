@@ -18,6 +18,7 @@ Oracle VM에서 systemd로 상시 실행되는 Discord 봇 (실시간 Gateway �
 
 from __future__ import annotations
 
+import asyncio
 import os
 import subprocess
 import uuid
@@ -39,12 +40,24 @@ intents = discord.Intents.default()
 intents.message_content = True
 client = discord.Client(intents=intents)
 
+# git_sync()가 동시에 여러 번 돌면 커밋/푸시가 충돌하므로 직렬화한다.
+GIT_LOCK = asyncio.Lock()
+
 
 def run_claude(prompt: str) -> str:
+    """동기 블로킹 호출 -- 반드시 run_in_executor로 감싸서 불러야 이벤트 루프가 안 막힌다."""
     jsonl_path = os.path.expanduser(f"~/.claude/projects/{PROJECT_SLUG}/{SESSION_ID}.jsonl")
     resume_flag = ["--resume", SESSION_ID] if os.path.isfile(jsonl_path) else ["--session-id", SESSION_ID]
+    # se-discord-bot.service의 cgroup 밖에서 돌려서, 이 안에서 백그라운드로 뜬 작업이
+    # 서비스 재배포(systemctl restart)에 딸려 죽지 않게 한다 (실측 확인됨: cgroup 안에 있으면
+    # KillMode=control-group 기본값 때문에 setsid로 분리해도 재배포 시 다 같이 죽었음).
+    scope_unit = f"se-claude-{uuid.uuid4().hex[:12]}"
     result = subprocess.run(
-        ["claude", "-p", *resume_flag, "--permission-mode", "bypassPermissions", prompt],
+        [
+            "sudo", "systemd-run", "--scope", "--quiet", "--collect",
+            "--uid=ubuntu", "--gid=ubuntu", f"--unit={scope_unit}",
+            "--", "claude", "-p", *resume_flag, "--permission-mode", "bypassPermissions", prompt,
+        ],
         cwd=REPO_DIR,
         capture_output=True,
         text=True,
@@ -130,9 +143,11 @@ async def on_message(message: discord.Message):
         )
         content = (content or "(첨부파일 확인)") + attachments_note
 
+    loop = asyncio.get_running_loop()
     async with message.channel.typing():
-        reply = run_claude(content)
-        sync_note = git_sync()
+        reply = await loop.run_in_executor(None, run_claude, content)
+        async with GIT_LOCK:
+            sync_note = await loop.run_in_executor(None, git_sync)
 
     for chunk_start in range(0, len(reply), 1900):
         await message.channel.send(reply[chunk_start:chunk_start + 1900] or "(빈 응답)")
