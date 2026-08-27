@@ -1,12 +1,12 @@
 """
 공개 채널(길드, 화이트리스트 없음) 에이전트 -- Gemini + LangGraph.
 
-화이트리스트가 없어 이 채널을 볼 수 있는 누구나 메시지를 보낼 수 있다. 예전에는 admin과
-동일하게 run_shell(임의 셸 실행)을 main_testing.py 파일 한정으로 허용했는데(구 규칙 7),
-화이트리스트 없는 채널에 셸 실행 경로를 열어두는 위험이 이득보다 커서 치웠다. 대신
-write_public_answer로 Public_agent/ 폴더 밖으로 못 나가는 결과물 저장만 허용한다
-(public_agent_files.py가 경로를 코드로 강제, git commit까지만 하고 push는 안 함).
-bot_tools.py의 공유 도구/복구 로직을 그대로 쓴다.
+화이트리스트가 없어 이 채널을 볼 수 있는 누구나 메시지를 보낼 수 있다. run_shell(임의 셸
+실행)을 admin과 동일하게 부여한다 -- 화이트리스트 없는 채널에 셸 실행 경로를 열어두는 위험을
+사용자가 명시적으로 인지하고 감수하겠다고 요청했다. write_public_answer로 Public_agent/
+폴더 밖으로 못 나가는 결과물 저장 도구도 함께 제공한다(public_agent_files.py가 경로를
+코드로 강제, git commit까지만 하고 push는 안 함). bot_tools.py의 공유 도구/복구 로직을
+그대로 쓴다.
 
 discord_bot_server.py가 이 모듈에서 PUBLIC_CHANNEL_ID와 run_public_agent()를 가져다 쓴다.
 """

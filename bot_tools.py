@@ -1,15 +1,16 @@
 """
 Discord 관리 채널(admin)과 공개 채널(public) 에이전트가 공유하는 도구/유틸리티.
 
-REPO_DIR, run_shell(임의 셸 실행, admin 전용) 도구, 기억 검색/저장 도구, 공개 채널 결과물
-저장 도구(write_public_answer), Gemini 응답 파싱, 그리고 LangGraph MemorySaver가 깨졌을 때
+REPO_DIR, run_shell(임의 셸 실행) 도구, 기억 검색/저장 도구, 공개 채널 결과물 저장 도구
+(write_public_answer), Gemini 응답 파싱, 그리고 LangGraph MemorySaver가 깨졌을 때
 (도구 호출 도중 중단되어 ToolMessage가 누락된 경우 등) 자동으로 새 thread로 재시도하는 복구
 헬퍼를 모아둔다. admin/public 양쪽 모듈이 이 파일의 도구를 그대로 가져다 쓴다 -- 중복 정의를
 피하고, 한쪽에서 도구 동작을 고치면 양쪽에 반영되게.
 
-run_shell은 admin 채널만 쓴다. public 채널은 화이트리스트가 없어 임의 셸 실행을 주면
-위험하므로 write_public_answer로 Public_agent/ 폴더 안에만 결과 파일을 남기게 한다
-(public_agent_files.py가 경로를 코드로 강제한다).
+run_shell은 admin/public 채널 둘 다 쓴다. public 채널은 화이트리스트가 없어 임의 셸 실행을
+주는 위험(누구나 트리거 가능)이 있지만, 사용자가 이를 명시적으로 인지하고 감수하겠다고
+요청했다. write_public_answer는 별개로 계속 제공되며 Public_agent/ 폴더 안에만 결과 파일을
+남기게 한다(public_agent_files.py가 경로를 코드로 강제한다).
 """
 
 from __future__ import annotations
@@ -32,7 +33,8 @@ _current_author: contextvars.ContextVar[str] = contextvars.ContextVar("current_a
 
 @tool
 def run_shell(command: str) -> str:
-    """이 저장소(REPO_DIR)에서 임의의 셸 명령을 실행한다 -- admin 채널 전용 전권 도구다.
+    """이 저장소(REPO_DIR)에서 임의의 셸 명령을 실행한다. admin/public 채널 둘 다 쓸 수
+    있다 -- public은 화이트리스트가 없어 위험을 사용자가 감수하고 명시적으로 요청한 것이다.
     결과는 stdout/stderr을 그대로 반환한다."""
     try:
         result = subprocess.run(
