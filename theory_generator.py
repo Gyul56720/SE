@@ -20,7 +20,9 @@ from pathlib import Path
 import gemini_client
 
 VAULT_ROOT = Path("/Users/cogito/Documents/Obsidian Vault")
-BOOK_ROOT = VAULT_ROOT / "편입수학 이론서"
+# 로컬 맥(iCloud vault 마운트됨)이 아닌 환경(예: 클라우드 원격 세션)에서 돌리면 vault 경로가
+# 존재하지 않으므로, 그럴 때만 저장소 로컬 경로로 폴백한다 (furiosa_theory_generator.py와 동일 원칙).
+BOOK_ROOT = (VAULT_ROOT / "편입수학 이론서") if VAULT_ROOT.exists() else Path(__file__).parent / "편입수학 이론서"
 
 PERSONA = """당신은 한국 편입수학 전문 강사이자 수십 년간 미적분학/선형대수학을 가르쳐온
 교육자입니다. 처음 배우는 학생도 이해할 수 있도록 쉽고 꼼꼼하게, 그러나 수학적으로 한 치의
@@ -246,12 +248,13 @@ LINEAR_ALGEBRA_REMAINING = [
     (12, "핵과 상, 차원정리(rank-nullity)"),
     (13, "고유값과 고유벡터"),
     (14, "대각화"),
-    (15, "내적공간과 노름, 코시-슈바르츠 부등식"),
-    (16, "그람-슈미트 직교화"),
-    (17, "직교행렬과 대칭행렬의 직교대각화"),
-    (18, "이차형식과 그 응용"),
-    (19, "벡터의 외적과 기하학적 응용"),
-    (20, "선형대수학 종합 정리"),
+    (15, "행렬의 거듭제곱(멱승): 대각화와 케일리-해밀턴 정리를 이용한 계산"),
+    (16, "내적공간과 노름, 코시-슈바르츠 부등식"),
+    (17, "그람-슈미트 직교화"),
+    (18, "직교행렬과 대칭행렬의 직교대각화"),
+    (19, "이차형식과 그 응용"),
+    (20, "벡터의 외적과 기하학적 응용"),
+    (21, "선형대수학 종합 정리"),
 ]
 
 MULTIVARIABLE_CALCULUS = [
