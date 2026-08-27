@@ -5,8 +5,10 @@ on:
     branches: [main]
     paths:
       - "discord_bot_server.py"
+      - "log_streamer.py"
       - "requirements.txt"
       - "deploy/se-discord-bot.service"
+      - "deploy/se-log-streamer.service"
   workflow_dispatch: {}
 
 jobs:
@@ -26,6 +28,10 @@ jobs:
             git pull origin main
             pip3 install --break-system-packages -r requirements.txt discord.py
             sudo cp deploy/se-discord-bot.service /etc/systemd/system/
+            sudo cp deploy/se-log-streamer.service /etc/systemd/system/
             sudo systemctl daemon-reload
             sudo systemctl restart se-discord-bot
+            sudo systemctl enable --now se-log-streamer
+            sudo systemctl restart se-log-streamer
             sudo systemctl status se-discord-bot --no-pager
+            sudo systemctl status se-log-streamer --no-pager

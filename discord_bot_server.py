@@ -30,7 +30,6 @@ load_dotenv()
 
 BOT_TOKEN = os.environ["DISCORD_BOT_TOKEN"]
 CHANNEL_ID = int(os.environ["DISCORD_CHANNEL_ID"])
-ALLOWED_USER_IDS = {int(x) for x in os.getenv("DISCORD_ALLOWED_USER_IDS", "").split(",") if x.strip()}
 REPO_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_SLUG = REPO_DIR.replace("/", "-")
 # 채널마다 고정된 세션 ID를 부여해 대화 맥락을 이어간다 (jsonl 경로: ~/.claude/projects/<slug>/<id>.jsonl).
@@ -130,8 +129,6 @@ async def on_message(message: discord.Message):
     if message.author.bot:
         return
     if message.channel.id != CHANNEL_ID:
-        return
-    if message.author.id not in ALLOWED_USER_IDS:
         return
     content = message.content.strip()
     attachment_paths = await _save_attachments(message)

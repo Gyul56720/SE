@@ -1,0 +1,16 @@
+[Unit]
+Description=SE Discord log streamer (journalctl -f -> Discord channel)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/SE
+EnvironmentFile=/home/ubuntu/SE/.env
+ExecStart=/usr/bin/python3 /home/ubuntu/SE/log_streamer.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
