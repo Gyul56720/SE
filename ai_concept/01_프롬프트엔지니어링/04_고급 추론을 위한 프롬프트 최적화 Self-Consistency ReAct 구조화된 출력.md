@@ -2,7 +2,7 @@
 title: "고급 추론을 위한 프롬프트 최적화: Self-Consistency, ReAct, 구조화된 출력"
 domain: 01_프롬프트엔지니어링
 tags: [ai_concept, 이론서, 01_프롬프트엔지니어링]
-killing_fact: "\%hat{a} = \%arg\%max_{a} \%sum_{i=1}^{N} \%mathbb{I}(a_i = a) \%quad \%text{where } a_i = \%text{ExtractAnswer}(r_i \%sim p_{\%theta}(r|x))"
+killing_fact: "\\%hat{a} = \\%arg\\%max_{a} \\%sum_{i=1}^{N} \\%mathbb{I}(a_i = a) \\%quad \\%text{where } a_i = \\%text{ExtractAnswer}(r_i \\%sim p_{\\%theta}(r|x))"
 ---
 
 # 04. 고급 추론을 위한 프롬프트 최적화: Self-Consistency, ReAct, 구조화된 출력

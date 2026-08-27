@@ -2,7 +2,7 @@
 title: "RLHF와 RLAIF: 인간·AI 피드백 기반 자가 개선 루프"
 domain: 02_자가학습
 tags: [ai_concept, 이론서, 02_자가학습]
-killing_fact: "\mathcal{L}_{\text{RL}}(\theta) = \mathbb{E}_{(x, y) \sim \pi_\theta} [r(x, y)] - \beta \mathbb{D}_{\text{KL}}(\pi_\theta(y|x) \parallel \pi_{\text{SFT}}(y|x))"
+killing_fact: "\\mathcal{L}_{\\text{RL}}(\\theta) = \\mathbb{E}_{(x, y) \\sim \\pi_\\theta} [r(x, y)] - \\beta \\mathbb{D}_{\\text{KL}}(\\pi_\\theta(y|x) \\parallel \\pi_{\\text{SFT}}(y|x))"
 ---
 
 # 02. RLHF와 RLAIF: 인간·AI 피드백 기반 자가 개선 루프

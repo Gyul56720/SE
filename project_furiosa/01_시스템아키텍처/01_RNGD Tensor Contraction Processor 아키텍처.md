@@ -2,7 +2,7 @@
 title: "RNGD Tensor Contraction Processor 아키텍처"
 domain: 01_시스템아키텍처
 tags: [project_furiosa, 이론서, 01_시스템아키텍처]
-killing_fact: "\text{PE} = 8, \quad \text{SRAM} = 256\text{MB}, \quad \text{HBM3} = 48\text{GB}, \quad \text{TDP} = 150\text{W}"
+killing_fact: "\\text{PE} = 8, \\quad \\text{SRAM} = 256\\text{MB}, \\quad \\text{HBM3} = 48\\text{GB}, \\quad \\text{TDP} = 150\\text{W}"
 sources: ['https://developer.furiosa.ai/latest/en/overview/rngd.html', 'https://furiosa.ai/blog/tensor-contraction-processor-ai-chip-architecture', 'https://furiosa.ai/rngd']
 ---
 

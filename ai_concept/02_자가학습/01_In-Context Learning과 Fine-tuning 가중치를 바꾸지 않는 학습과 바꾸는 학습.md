@@ -2,7 +2,7 @@
 title: "In-Context Learning과 Fine-tuning: 가중치를 바꾸지 않는 학습과 바꾸는 학습"
 domain: 02_자가학습
 tags: [ai_concept, 이론서, 02_자가학습]
-killing_fact: "\theta_{\text{ICL}} = \theta_{\text{frozen}} \quad \text{vs.} \quad \theta_{\text{FT}} \leftarrow \theta_{\text{FT}} - \eta \nabla L(\theta_{\text{FT}})"
+killing_fact: "\\theta_{\\text{ICL}} = \\theta_{\\text{frozen}} \\quad \\text{vs.} \\quad \\theta_{\\text{FT}} \\leftarrow \\theta_{\\text{FT}} - \\eta \\nabla L(\\theta_{\\text{FT}})"
 ---
 
 # 01. In-Context Learning과 Fine-tuning: 가중치를 바꾸지 않는 학습과 바꾸는 학습

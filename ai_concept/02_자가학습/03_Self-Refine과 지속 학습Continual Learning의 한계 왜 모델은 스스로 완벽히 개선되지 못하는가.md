@@ -2,7 +2,7 @@
 title: "Self-Refine과 지속 학습(Continual Learning)의 한계: 왜 모델은 스스로 완벽히 개선되지 못하는가"
 domain: 02_자가학습
 tags: [ai_concept, 이론서, 02_자가학습]
-killing_fact: "\lim_{n \to \infty} D_{\text{KL}}(P_{\text{true}} \parallel P_n) = \infty \quad \text{if } P_n = \mathcal{M}(P_{n-1}) \text{ and } I(\mathcal{M}, \text{Oracle}) = 0"
+killing_fact: "\\lim_{n \\to \\infty} D_{\\text{KL}}(P_{\\text{true}} \\parallel P_n) = \\infty \\quad \\text{if } P_n = \\mathcal{M}(P_{n-1}) \\text{ and } I(\\mathcal{M}, \\text{Oracle}) = 0"
 ---
 
 # 03. Self-Refine과 지속 학습(Continual Learning)의 한계: 왜 모델은 스스로 완벽히 개선되지 못하는가

@@ -214,7 +214,7 @@ def write_topic_note(domain_folder: str, index: int, topic: str, data: dict) -> 
     content = _TEMPLATE.format(
         title=topic,
         subject=subject,
-        killing_eq_frontmatter=data["killing_equation_latex"].replace('"', "'"),
+        killing_eq_frontmatter=data["killing_equation_latex"].replace("\\", "\\\\").replace('"', "'"),
         index=index,
         motivation=data["motivation"],
         definitions_and_theorems=data["definitions_and_theorems"],

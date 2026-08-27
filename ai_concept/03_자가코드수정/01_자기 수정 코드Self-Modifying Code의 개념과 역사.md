@@ -2,7 +2,7 @@
 title: "자기 수정 코드(Self-Modifying Code)의 개념과 역사"
 domain: 03_자가코드수정
 tags: [ai_concept, 이론서, 03_자가코드수정]
-killing_fact: "\text{Code} \equiv \text{Data} \implies W \oplus X \text{ Enforcement Required}"
+killing_fact: "\\text{Code} \\equiv \\text{Data} \\implies W \\oplus X \\text{ Enforcement Required}"
 ---
 
 # 01. 자기 수정 코드(Self-Modifying Code)의 개념과 역사

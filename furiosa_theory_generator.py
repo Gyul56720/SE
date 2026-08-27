@@ -203,7 +203,7 @@ def generate_chapter(domain: str, index: int, topic: str, grounding: str, source
 
     content = _TEMPLATE.format(
         title=topic, domain=domain, index=index,
-        killing_fact_frontmatter=killing_fact_latex.replace('"', "'"),
+        killing_fact_frontmatter=killing_fact_latex.replace("\\", "\\\\").replace('"', "'"),
         killing_fact_latex=killing_fact_latex,
         killing_fact_explanation=data["killing_fact_explanation"],
         motivation=data["motivation"],

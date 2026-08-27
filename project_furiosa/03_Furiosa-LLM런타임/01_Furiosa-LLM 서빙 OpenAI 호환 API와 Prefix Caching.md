@@ -2,7 +2,7 @@
 title: "Furiosa-LLM 서빙: OpenAI 호환 API와 Prefix Caching"
 domain: 03_Furiosa-LLM런타임
 tags: [project_furiosa, 이론서, 03_Furiosa-LLM런타임]
-killing_fact: "\text{Time-to-First-Token Reduction: } 50\% \sim 90\%"
+killing_fact: "\\text{Time-to-First-Token Reduction: } 50\\% \\sim 90\\%"
 sources: ['https://developer.furiosa.ai/v2026.3.0/en/furiosa_llm/intro.html', 'https://developer.furiosa.ai/v2026.3.0/en/furiosa_llm/furiosa-llm-serve.html', 'https://developer.furiosa.ai/v2026.3.0/en/furiosa_llm/prefix-caching.html']
 ---
 

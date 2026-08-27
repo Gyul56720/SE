@@ -2,7 +2,7 @@
 title: "GitHub 오픈소스 저장소 구조: furiosa-sdk와 furiosa-models"
 domain: 04_오픈소스와모델생태계
 tags: [project_furiosa, 이론서, 04_오픈소스와모델생태계]
-killing_fact: "\text{furiosa-sdk v0.9.0 (Commits: 1594) } \land \text{ furiosa-models v0.10.2 (Commits: 357)}"
+killing_fact: "\\text{furiosa-sdk v0.9.0 (Commits: 1594) } \\land \\text{ furiosa-models v0.10.2 (Commits: 357)}"
 sources: ['https://github.com/furiosa-ai/furiosa-sdk', 'https://github.com/furiosa-ai/furiosa-models']
 ---
 

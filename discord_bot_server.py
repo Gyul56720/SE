@@ -56,7 +56,13 @@ def run_claude(prompt: str) -> str:
 
 
 def git_sync() -> str | None:
-    """작업 트리에 변경이 있으면 커밋 + push. 변경 없으면 None 반환."""
+    """작업 트리에 변경이 있으면 커밋 + push. 변경 없으면 None 반환.
+
+    이 VM 말고 다른 곳(예: 개발 세션)에서도 같은 repo에 직접 push할 수 있어서, origin이
+    이 VM의 로컬 HEAD보다 앞서 있는 경우(non-fast-forward)가 실제로 발생한다. 그럴 때 단순
+    `git push`는 거부되고 그대로 실패만 반환했는데, 그러면 이 VM에서 만든 변경이 origin에
+    영영 반영이 안 되고(Obsidian이 못 받아봄) 조용히 로컬에만 쌓이게 된다. 그래서 push가
+    non-fast-forward로 거부되면 fetch + rebase 후 한 번 더 시도한다."""
     status = subprocess.run(["git", "status", "--porcelain"], cwd=REPO_DIR, capture_output=True, text=True)
     if not status.stdout.strip():
         return None
@@ -66,9 +72,20 @@ def git_sync() -> str | None:
         cwd=REPO_DIR, check=True,
     )
     push = subprocess.run(["git", "push"], cwd=REPO_DIR, capture_output=True, text=True)
-    if push.returncode != 0:
-        return f"[git push 실패] {push.stderr.strip()}"
-    return "[git push 완료] Obsidian에서 pull하면 반영됩니다."
+    if push.returncode == 0:
+        return "[git push 완료] Obsidian에서 pull하면 반영됩니다."
+
+    subprocess.run(["git", "fetch", "origin"], cwd=REPO_DIR, capture_output=True, text=True)
+    rebase = subprocess.run(["git", "rebase", "origin/main"], cwd=REPO_DIR, capture_output=True, text=True)
+    if rebase.returncode != 0:
+        subprocess.run(["git", "rebase", "--abort"], cwd=REPO_DIR, capture_output=True, text=True)
+        return (f"[git push 실패] origin이 앞서 있어 자동 rebase를 시도했으나 충돌 발생 -- "
+                f"수동 확인 필요.\n{push.stderr.strip()}")
+
+    retry = subprocess.run(["git", "push"], cwd=REPO_DIR, capture_output=True, text=True)
+    if retry.returncode != 0:
+        return f"[git push 실패] rebase 후에도 실패: {retry.stderr.strip()}"
+    return "[git push 완료 (rebase 후 재시도)] Obsidian에서 pull하면 반영됩니다."
 
 
 @client.event

@@ -2,7 +2,7 @@
 title: "웹 애플리케이션 보안: OWASP Top 10 취약점의 원리와 방어"
 domain: 04_해킹개념
 tags: [ai_concept, 이론서, 04_해킹개념]
-killing_fact: "\text{Security} = \text{Input Whitelisting} \cap \text{Parameterized Queries} \cap \text{Context-Aware Output Encoding} \cap \text{Server-Side Authorization}"
+killing_fact: "\\text{Security} = \\text{Input Whitelisting} \\cap \\text{Parameterized Queries} \\cap \\text{Context-Aware Output Encoding} \\cap \\text{Server-Side Authorization}"
 ---
 
 # 03. 웹 애플리케이션 보안: OWASP Top 10 취약점의 원리와 방어

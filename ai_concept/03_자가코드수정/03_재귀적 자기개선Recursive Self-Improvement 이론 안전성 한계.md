@@ -2,7 +2,7 @@
 title: "재귀적 자기개선(Recursive Self-Improvement): 이론, 안전성, 한계"
 domain: 03_자가코드수정
 tags: [ai_concept, 이론서, 03_자가코드수정]
-killing_fact: "\mathcal{U}(S_{t+1}) > \mathcal{U}(S_t) \iff \mathcal{R}_{\text{verifier}}(S_{t+1}) \to 1 \quad \text{and} \quad \mathcal{C}_{\text{sandbox}} \cap \mathcal{A}_{\text{safety}} \neq \emptyset"
+killing_fact: "\\mathcal{U}(S_{t+1}) > \\mathcal{U}(S_t) \\iff \\mathcal{R}_{\\text{verifier}}(S_{t+1}) \\to 1 \\quad \\text{and} \\quad \\mathcal{C}_{\\text{sandbox}} \\cap \\mathcal{A}_{\\text{safety}} \\neq \\emptyset"
 ---
 
 # 03. 재귀적 자기개선(Recursive Self-Improvement): 이론, 안전성, 한계

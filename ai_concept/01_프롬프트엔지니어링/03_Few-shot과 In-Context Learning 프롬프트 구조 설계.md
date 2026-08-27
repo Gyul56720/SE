@@ -2,7 +2,7 @@
 title: "Few-shot과 In-Context Learning: 프롬프트 구조 설계"
 domain: 01_프롬프트엔지니어링
 tags: [ai_concept, 이론서, 01_프롬프트엔지니어링]
-killing_fact: "\mathcal{P}(y \mid x, \mathcal{D}_{\text{support}}) \propto \text{Softmax}\left(\frac{\mathbf{q}_x \mathbf{K}_{\mathcal{D}_{\text{support}}}^T}{\sqrt{d_k}}\right) \mathbf{V}_{\mathcal{D}_{\text{support}}}"
+killing_fact: "\\mathcal{P}(y \\mid x, \\mathcal{D}_{\\text{support}}) \\propto \\text{Softmax}\\left(\\frac{\\mathbf{q}_x \\mathbf{K}_{\\mathcal{D}_{\\text{support}}}^T}{\\sqrt{d_k}}\\right) \\mathbf{V}_{\\mathcal{D}_{\\text{support}}}"
 ---
 
 # 03. Few-shot과 In-Context Learning: 프롬프트 구조 설계
