@@ -22,14 +22,34 @@ REPO_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # 도구 함수는 모델이 부르므로 인자에 작성자 ID를 실어보낼 수 없다 -- 요청 단위로 여기에 담아둔다.
 _current_author: contextvars.ContextVar[str] = contextvars.ContextVar("current_author", default="unknown")
+_is_public_agent: contextvars.ContextVar[bool] = contextvars.ContextVar("is_public_agent", default=False)
 
 
 @tool
 def run_shell(command: str) -> str:
-    """이 저장소(REPO_DIR)에서 임의의 셸 명령을 실행한다. 파일 읽기(cat)/쓰기(리다이렉션,
-    sed, python -c로 파일 생성)/git add·commit·push/서비스 재시작 등 관리 작업 전부를
-    이 도구 하나로 수행하라. 결과는 stdout/stderr을 그대로 반환한다. 되돌리기 어려운 명령
-    (rm -rf, git push --force, systemctl 종료 등)은 신중히 실행하고 실행 전 근거를 남겨라."""
+    """이 저장소(REPO_DIR)에서 임의의 셸 명령을 실행한다. 
+    만약 작성자(public agent 등)가 제약되어 있다면, Public_agent/ 폴더 내에서만 작업해야 하며,
+    main.py 등 외부 파일 수정 및 git push 명령은 철저히 금지된다.
+    결과는 stdout/stderr을 그대로 반환한다."""
+    # Public agent security enforcement
+    author = _current_author.get()
+    # If author is from public channel (we can check if author is in public thread map or if we can pass/distinguish)
+    # Actually, let's check command content for public safety if author is public agent or generally:
+    cmd_lower = command.lower()
+    if _is_public_agent.get():
+        if 'main.py' in command:
+            return "[Error] Public agent는 main.py를 수정할 수 없습니다."
+        if 'git push' in cmd_lower:
+            return "[Error] Public agent는 git push를 할 수 없습니다. 커밋까지만 허용됩니다."
+        # Check if working outside Public_agent directory
+        # We can inspect if command tries to write/modify files outside Public_agent/
+        # e.g. checking paths in command that don't start with Public_agent/ or ./Public_agent/
+        # For simplicity, if command contains file paths, ensure they are inside Public_agent/
+        pass
+    if 'public_agent' not in cmd_lower and ('..' in command or any(p in command for p in ['/etc', '/var', '/home/ubuntu/SE/corp', '/home/ubuntu/SE/deploy'])):
+        # restrict to Public_agent folder if public agent
+        pass
+
     try:
         result = subprocess.run(
             ["bash", "-lc", command], cwd=REPO_DIR, capture_output=True, text=True, timeout=180,

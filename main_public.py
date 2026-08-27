@@ -17,7 +17,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import create_react_agent
 
-from bot_tools import run_shell, search_memory, save_memory, invoke_with_recovery, _current_author
+from bot_tools import run_shell, search_memory, save_memory, invoke_with_recovery, _current_author, _is_public_agent
 
 PUBLIC_CHANNEL_ID = int(os.environ["DISCORD_PUBLIC_CHANNEL_ID"])
 PUBLIC_MODEL_NAME = os.getenv("DISCORD_PUBLIC_MODEL", "gemini-3.5-flash-lite")
@@ -63,6 +63,7 @@ def run_public_agent(prompt: str, thread_id: str) -> str:
     (실측 확인됨) -- print()로 명시적으로 남겨야 log_streamer.py가 중계할 게 생긴다."""
     print(f"[public-agent] thread={thread_id} prompt={prompt[:120]!r}")
     _current_author.set(thread_id)
+    _is_public_agent.set(True)
     try:
         reply = invoke_with_recovery(PUBLIC_AGENT, _public_thread_map, thread_id, prompt, "[public-agent]")
         print(f"[public-agent] thread={thread_id} reply={reply[:200]!r}")
