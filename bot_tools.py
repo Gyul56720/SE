@@ -23,6 +23,7 @@ from langchain_core.tools import tool
 
 import agent_memory
 import public_agent_files
+import self_correction
 
 REPO_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -70,6 +71,32 @@ def write_public_answer(filename: str, content: str) -> str:
     저장되고 git에 커밋된다(push는 하지 않음, 관리자가 검토 후 push). filename은
     디렉터리 없이 파일명만 지정한다 (예: answer.py, result.md)."""
     return public_agent_files.write_output(filename, content, author_id=_current_author.get())
+
+
+def make_run_self_correction_tool(llm):
+    """llm(공개/관리 채널 각자의 모델 인스턴스)에 연결된 run_self_correction 도구를 만든다.
+    도구 자체가 아니라 팩토리인 이유: self_correction.run()이 diff 생성에 실제 LLM 호출이
+    필요한데, bot_tools.py는 admin/public 어느 쪽 LLM 인스턴스도 몰라야 순환 임포트가
+    안 생긴다(LLM은 main.py/main_public.py 쪽에 있다)."""
+
+    @tool
+    def run_self_correction(objective: str, skeleton_code: str, test_code: str, max_iters: int = 10) -> str:
+        """objective를 만족할 때까지 skeleton_code를 diff 기반으로 자동 반복 수정한다.
+        사용자가 다시 채팅을 치지 않아도 이 호출 하나 안에서 (diff 생성 -> 적용 -> 별도
+        프로세스에서 실행/검증 -> 실패 시 피드백을 반영해 재시도)를 성공하거나 상한(최대
+        10회, 최대 2분)에 닿을 때까지 반복한다. test_code는 완성된 코드 뒤에 그대로
+        이어붙여 실행할 assert 등 검증 코드다. 결과는 Public_agent/self_correction_result.py
+        에 자동 저장된다(git commit까지만, push는 관리자 몫)."""
+        final_code, iterations, success, _history = self_correction.run(
+            llm, objective, skeleton_code, test_code, max_iters=max_iters,
+        )
+        save_msg = public_agent_files.write_output(
+            "self_correction_result.py", final_code, author_id=_current_author.get(),
+        )
+        status = "성공" if success else "실패(상한 도달, 마지막까지 만든 코드를 반환)"
+        return f"{status} -- {iterations}회 반복.\n{save_msg}\n\n최종 코드:\n{final_code}"
+
+    return run_self_correction
 
 
 def extract_text(content) -> str:

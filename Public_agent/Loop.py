@@ -25,6 +25,7 @@ import difflib
 import py_compile
 import subprocess
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional
@@ -180,6 +181,7 @@ class AutoRegressivePatcher:
         evaluator: Optional[Evaluator] = None,
         max_iters: int = 50,
         stuck_after: int = 3,
+        max_seconds: Optional[float] = None,
     ):
         self.current_code = initial_code
         self.objective = objective
@@ -187,6 +189,9 @@ class AutoRegressivePatcher:
         self.evaluator = evaluator or default_subprocess_evaluator()
         self.max_iters = max_iters
         self.stuck_after = stuck_after
+        # LLM 호출처럼 반복당 걸리는 시간을 예측할 수 없는 diff_generator를 쓸 때,
+        # max_iters만으로는 전체 실행 시간을 못 막는다 -- 벽시계 상한을 추가로 둔다.
+        self.max_seconds = max_seconds
         self.history: list = []
 
     def _is_stuck(self, recent_feedbacks: list) -> bool:
@@ -197,9 +202,13 @@ class AutoRegressivePatcher:
         best_code = self.current_code
         feedback = "최초 실행"
         recent_feedbacks: list = []
+        deadline = (time.monotonic() + self.max_seconds) if self.max_seconds else None
 
         iteration = 0
         while iteration < self.max_iters:
+            if deadline is not None and time.monotonic() >= deadline:
+                feedback = f"시간 상한({self.max_seconds}초) 도달로 중단"
+                break
             iteration += 1
             diff = self.diff_generator(best_code, feedback)
 
