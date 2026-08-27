@@ -79,11 +79,12 @@ def _make_test_evaluator(test_code: str) -> Callable[[str], "tuple[bool, str]"]:
     return _evaluate
 
 
-def _make_llm_diff_generator(llm, objective: str) -> Callable[[str, str], str]:
+def _make_llm_diff_generator(llm, objective: str, prior_lessons: str) -> Callable[[str, str], str]:
     prompt_template = (
         "너는 파이썬 코드를 unified diff(git diff -u) 형식으로만 고치는 도구다. "
         "설명 없이 diff 텍스트만 출력하라. 코드펜스(```diff ... ```)로 감싸도 된다.\n\n"
         "[목표]\n{objective}\n\n"
+        "[과거 유사 시도에서 얻은 교훈 -- 참고만 하고 맹신하지 마라]\n{prior_lessons}\n\n"
         "[현재 코드]\n```python\n{code}\n```\n\n"
         "[직전 시도 피드백]\n{feedback}\n\n"
         "이 코드를 목표를 만족하도록 고치는 unified diff만 출력하라. "
@@ -91,12 +92,27 @@ def _make_llm_diff_generator(llm, objective: str) -> Callable[[str, str], str]:
     )
 
     def _generate(code: str, feedback: str) -> str:
-        prompt = prompt_template.format(objective=objective, code=code, feedback=feedback)
+        prompt = prompt_template.format(
+            objective=objective, prior_lessons=prior_lessons or "(없음)", code=code, feedback=feedback,
+        )
         response = llm.invoke(prompt)
         text = response.content if isinstance(response.content, str) else str(response.content)
         return _extract_diff(text)
 
     return _generate
+
+
+def summarize_history(objective: str, iterations: int, success: bool, history: list) -> str:
+    """history(IterationRecord 리스트)를 memory 노트에 남길 수 있는 짧은 교훈으로 압축한다.
+    실패한 시도의 피드백 첫 줄만 남겨서, 다음에 비슷한 objective가 들어왔을 때
+    diff_generator 프롬프트에 '전에 이런 이유로 몇 번 실패했다'를 끼워넣을 수 있게 한다."""
+    lines = [f"목표: {objective}", f"결과: {'성공' if success else '실패'} ({iterations}회 반복)"]
+    for record in history:
+        if record.success:
+            continue
+        first_line = (record.feedback or "").splitlines()[0] if record.feedback else ""
+        lines.append(f"- iter {record.iteration} 실패: {first_line[:200]}")
+    return "\n".join(lines)[:3800]
 
 
 def run(
@@ -105,8 +121,12 @@ def run(
     skeleton_code: str,
     test_code: str,
     max_iters: int = MAX_ITERS_CAP,
+    prior_lessons: str = "",
 ) -> "tuple[str, int, bool, list]":
     """objective를 만족할 때까지(또는 상한까지) diff 자가 수정을 자동 반복한다.
+    prior_lessons는 과거 비슷한 objective에서 겪은 실패 요약(search_memory 결과 등)을
+    diff_generator 프롬프트에 참고 자료로 끼워넣는다 -- 모델 가중치가 바뀌는 학습은
+    아니지만, 이전 시행착오를 프롬프트로 재사용해서 같은 실수를 반복하지 않게 한다.
 
     반환: (최종 코드, 반복 횟수, 성공 여부, IterationRecord 리스트)
     """
@@ -117,7 +137,7 @@ def run(
     patcher = AutoRegressivePatcher(
         initial_code=skeleton_code,
         objective=objective,
-        diff_generator=_make_llm_diff_generator(llm, objective),
+        diff_generator=_make_llm_diff_generator(llm, objective, prior_lessons),
         evaluator=_make_test_evaluator(test_code),
         max_iters=max_iters,
         max_seconds=MAX_TOTAL_SECONDS,

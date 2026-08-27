@@ -86,13 +86,29 @@ def make_run_self_correction_tool(llm):
         프로세스에서 실행/검증 -> 실패 시 피드백을 반영해 재시도)를 성공하거나 상한(최대
         10회, 최대 2분)에 닿을 때까지 반복한다. test_code는 완성된 코드 뒤에 그대로
         이어붙여 실행할 assert 등 검증 코드다. 결과는 Public_agent/self_correction_result.py
-        에 자동 저장된다(git commit까지만, push는 관리자 몫)."""
-        final_code, iterations, success, _history = self_correction.run(
-            llm, objective, skeleton_code, test_code, max_iters=max_iters,
+        에 자동 저장된다(git commit까지만, push는 관리자 몫).
+
+        과거에 비슷한 objective로 실행한 적이 있으면 그 시행착오(실패 이유들)를 자동으로
+        찾아 이번 diff 생성에 참고시키고, 이번 실행이 끝나면 결과를 다시 장기 기억에
+        남긴다 -- 모델 가중치가 바뀌는 학습은 아니지만, 같은 실수를 반복하지 않도록
+        시행착오를 프롬프트로 재사용한다(agent_memory.py의 "쓸수록 아는 게 늘어나는" 구조와
+        동일한 방식)."""
+        prior_lessons = agent_memory.search_memory(f"self-correction {objective}")
+        if "저장된 기억이" in prior_lessons and "없다" in prior_lessons:
+            prior_lessons = ""
+
+        final_code, iterations, success, history = self_correction.run(
+            llm, objective, skeleton_code, test_code, max_iters=max_iters, prior_lessons=prior_lessons,
         )
         save_msg = public_agent_files.write_output(
             "self_correction_result.py", final_code, author_id=_current_author.get(),
         )
+
+        summary = self_correction.summarize_history(objective, iterations, success, history)
+        agent_memory.save_memory(
+            topic=f"self-correction: {objective[:80]}", content=summary, author_id=_current_author.get(),
+        )
+
         status = "성공" if success else "실패(상한 도달, 마지막까지 만든 코드를 반환)"
         return f"{status} -- {iterations}회 반복.\n{save_msg}\n\n최종 코드:\n{final_code}"
 
