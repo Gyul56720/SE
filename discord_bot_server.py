@@ -36,8 +36,12 @@ import agent_memory
 load_dotenv()
 
 BOT_TOKEN = os.environ["DISCORD_BOT_TOKEN"]
-# 관리자 채널(DM): claude -p 전체 권한 + git sync -- 서버 관리/코드 작업/질의응답 전용.
+# 관리자 채널(DM): Claude Code 토큰이 소진되어 claude -p 대신 Gemini+LangGraph 에이전트로
+# 전환했다. run_shell 도구로 임의 셸 명령(파일 읽기/쓰기/git/서비스 재시작 등)을 실행할 수
+# 있어 기존 claude -p bypassPermissions와 동등한 전권을 가진다 -- 사용자가 위험을 인지하고
+# 명시적으로 요청함(self-modification 허용).
 ADMIN_CHANNEL_ID = int(os.environ["DISCORD_CHANNEL_ID"])
+ADMIN_MODEL_NAME = os.getenv("DISCORD_ADMIN_MODEL", "gemini-3.5-flash-lite")
 # 공개 채널(길드, 화이트리스트 없음): claude 토큰을 아끼려고 Gemini 기반 LangGraph 에이전트로만
 # 답한다 -- 셸/git 접근 없음, 도구도 없음(추론+대화 메모리만).
 PUBLIC_CHANNEL_ID = int(os.environ["DISCORD_PUBLIC_CHANNEL_ID"])
@@ -70,6 +74,36 @@ def save_memory(topic: str, content: str) -> str:
     """
     return agent_memory.save_memory(topic, content, author_id=_current_author.get())
 
+
+@tool
+def run_shell(command: str) -> str:
+    """이 저장소(REPO_DIR)에서 임의의 셸 명령을 실행한다. 파일 읽기(cat)/쓰기(리다이렉션,
+    sed, python -c로 파일 생성)/git add·commit·push/서비스 재시작 등 관리 작업 전부를
+    이 도구 하나로 수행하라. 결과는 stdout/stderr을 그대로 반환한다. 되돌리기 어려운 명령
+    (rm -rf, git push --force, systemctl 종료 등)은 신중히 실행하고 실행 전 근거를 남겨라."""
+    try:
+        result = subprocess.run(
+            ["bash", "-lc", command], cwd=REPO_DIR, capture_output=True, text=True, timeout=180,
+        )
+        out = (result.stdout or "")[-4000:]
+        err = (result.stderr or "")[-2000:]
+        return f"[exit={result.returncode}]\nSTDOUT:\n{out}\nSTDERR:\n{err}"
+    except subprocess.TimeoutExpired:
+        return "실행 시간 초과(180초) -- 명령을 더 작게 나눠서 재시도하라."
+
+
+ADMIN_TOOLS = [run_shell, search_memory, save_memory]
+ADMIN_SYSTEM_PROMPT = (
+    "너는 이 저장소(SE)를 관리하는 전권을 가진 에이전트다. run_shell로 파일을 읽고 쓰고,\n"
+    "git commit/push하고, 네 자신의 코드(discord_bot_server.py 등)를 수정할 수 있다.\n"
+    "요청받은 작업을 run_shell로 직접 수행하고, 명령 결과를 근거로 다음 행동을 결정하라.\n"
+    "코드를 고쳤으면 그 결과를 run_shell로 git add/commit/push까지 해서 반영하라.\n"
+    "무엇을 했는지 간결하게 보고하라."
+)
+_admin_llm = ChatGoogleGenerativeAI(model=ADMIN_MODEL_NAME, google_api_key=os.environ["GEMINI_API_KEY"])
+ADMIN_AGENT = create_react_agent(
+    _admin_llm, tools=ADMIN_TOOLS, checkpointer=MemorySaver(), prompt=ADMIN_SYSTEM_PROMPT,
+)
 
 PUBLIC_TOOLS = [search_memory, save_memory]
 # 규칙 기반 프롬프트 -- Sparrow(Glaese et al. 2022)가 뭉뚱그린 지시 대신 구체적 자연어
@@ -207,6 +241,22 @@ def run_public_agent(prompt: str, thread_id: str) -> str:
         return f"(에이전트 오류) {e}"
 
 
+def run_admin_agent(prompt: str, thread_id: str) -> str:
+    """관리 채널용 -- LangGraph ReAct 에이전트(Gemini, run_shell 전권)로 답한다.
+    run_public_agent와 동일하게 in-process 호출이라 stdout이 저절로 journal에 안 남으므로
+    print()로 명시적으로 남긴다."""
+    print(f"[admin-agent] thread={thread_id} prompt={prompt[:120]!r}")
+    try:
+        config = {"configurable": {"thread_id": thread_id}}
+        result = ADMIN_AGENT.invoke({"messages": [("user", prompt)]}, config=config)
+        reply = _extract_text(result["messages"][-1].content).strip()
+        print(f"[admin-agent] thread={thread_id} reply={reply[:200]!r}")
+        return reply
+    except Exception as e:
+        print(f"[admin-agent] thread={thread_id} error={e}")
+        return f"(에이전트 오류) {e}"
+
+
 @client.event
 async def on_ready():
     print(f"[SE-agent] 로그인됨: {client.user} (관리 채널 {ADMIN_CHANNEL_ID}, 공개 채널 {PUBLIC_CHANNEL_ID} 감시 중)")
@@ -232,20 +282,23 @@ async def _save_attachments(message: discord.Message) -> list[str]:
 
 
 async def _handle_admin_message(message: discord.Message) -> None:
-    """관리 채널: claude -p 전체 권한 + git sync (기존 동작 그대로)."""
+    """관리 채널: Gemini+LangGraph 에이전트(run_shell 전권) + git sync.
+    Claude Code 토큰이 소진되어 claude -p 대신 이 경로를 쓴다 (run_claude()는 토큰이
+    복구되면 다시 쓸 수 있도록 남겨둔다)."""
     content = message.content.strip()
     attachment_paths = await _save_attachments(message)
     if not content and not attachment_paths:
         return
     if attachment_paths:
-        attachments_note = "\n\n첨부 파일(로컬 경로, Read 도구로 열어볼 것):\n" + "\n".join(
+        attachments_note = "\n\n첨부 파일(로컬 경로, run_shell로 cat/열어볼 것):\n" + "\n".join(
             f"- {p}" for p in attachment_paths
         )
         content = (content or "(첨부파일 확인)") + attachments_note
 
     loop = asyncio.get_running_loop()
+    thread_id = f"admin-{message.author.id}"
     async with message.channel.typing():
-        reply = await loop.run_in_executor(None, run_claude, content)
+        reply = await loop.run_in_executor(None, run_admin_agent, content, thread_id)
         async with GIT_LOCK:
             sync_note = await loop.run_in_executor(None, git_sync)
 
