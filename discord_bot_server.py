@@ -19,15 +19,19 @@ Oracle VM에서 systemd로 상시 실행되는 Discord 봇 (실시간 Gateway �
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import os
 import subprocess
 import uuid
 
 import discord
 from dotenv import load_dotenv
+from langchain_core.tools import tool
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import create_react_agent
+
+import agent_memory
 
 load_dotenv()
 
@@ -39,10 +43,35 @@ ADMIN_CHANNEL_ID = int(os.environ["DISCORD_CHANNEL_ID"])
 PUBLIC_CHANNEL_ID = int(os.environ["DISCORD_PUBLIC_CHANNEL_ID"])
 PUBLIC_MODEL_NAME = os.getenv("DISCORD_PUBLIC_MODEL", "gemini-3.5-flash-lite")
 
-# ReAct 에이전트: 도구는 아직 없지만(공개 채널이라 셸/파일 접근 도구는 의도적으로 안 붙임),
-# LangGraph의 사고 루프 + MemorySaver 대화 메모리로 모델 혼자 쓸 때보다 다단계 추론이 낫다.
-# thread_id는 Discord 유저 ID로 둬서 사람마다 대화 맥락을 분리한다.
+# ReAct 에이전트. LangGraph의 사고 루프 + MemorySaver 대화 메모리로 모델 혼자 쓸 때보다
+# 다단계 추론이 낫다. thread_id는 Discord 유저 ID로 둬서 사람마다 대화 맥락을 분리한다.
+# 도구는 agent_memory의 기억 검색/저장 두 개만 붙인다 -- 셸 실행이나 임의 파일 접근은 없다.
 _public_llm = ChatGoogleGenerativeAI(model=PUBLIC_MODEL_NAME, google_api_key=os.environ["GEMINI_API_KEY"])
+
+# 도구 함수는 모델이 부르므로 인자에 작성자 ID를 실어보낼 수 없다 -- 요청 단위로 여기에 담아둔다.
+_current_author: contextvars.ContextVar[str] = contextvars.ContextVar("current_author", default="unknown")
+
+
+@tool
+def search_memory(query: str) -> str:
+    """저장된 장기 기억에서 query와 관련된 내용을 찾는다.
+
+    사용자가 이전에 알려준 사실, 정정한 내용, 배경 정보를 확인해야 할 때 먼저 이걸 호출하라.
+    """
+    return agent_memory.search_memory(query)
+
+
+@tool
+def save_memory(topic: str, content: str) -> str:
+    """새로 알게 된 사실을 장기 기억에 저장한다 (git에 커밋되어 다음 대화에도 남는다).
+
+    사용자가 새로운 사실을 알려주거나 내 답을 정정했을 때, 나중에 다시 알아야 할 내용이면
+    호출하라. topic은 짧은 제목, content는 기억할 내용이다. 잡담이나 일회성 대화는 저장하지 마라.
+    """
+    return agent_memory.save_memory(topic, content, author_id=_current_author.get())
+
+
+PUBLIC_TOOLS = [search_memory, save_memory]
 # 규칙 기반 프롬프트 -- Sparrow(Glaese et al. 2022)가 뭉뚱그린 지시 대신 구체적 자연어
 # 규칙을 나열했을 때 정확도/안전성이 올라간다는 걸 보여줬고, "Language Models Mostly Know
 # What They Know"(Kadavath et al. 2022)가 모델이 자기 확신도(P(IK))를 꽤 잘 판단한다는 걸
@@ -53,12 +82,16 @@ PUBLIC_SYSTEM_PROMPT = (
     "1. 간결하게 답하라. 이모지, 인사말, 상투적 격려/감탄 문구를 쓰지 마라.\n"
     "2. 확실하지 않은 사실은 추측이라고 명시하라. 모르면 모른다고 말하라 -- 지어내지 마라.\n"
     "3. 숫자, 날짜, 고유명사는 확실할 때만 제시하라. 불확실하면 그렇다고 밝혀라.\n"
-    "4. 너는 검색/인터넷 접근 도구가 없다. 실시간 정보(날씨, 오늘 날짜, 최신 뉴스, 주가 등)를 "
+    "4. 너는 인터넷/웹 검색 도구가 없다. 실시간 정보(날씨, 오늘 날짜, 최신 뉴스, 주가 등)를 "
     "묻는 질문에는 먼저 그 한계를 밝히고, 알고 있는 일반 지식 범위 내에서만 답하라.\n"
-    "5. 핵심 정보만 전달하고 불필요한 수식어를 붙이지 마라."
+    "5. 사용자에 대한 사실이나 이전에 배운 내용이 필요하면 search_memory로 먼저 확인하라. "
+    "추측하지 말고 기억을 찾아보라.\n"
+    "6. 사용자가 새 사실을 알려주거나 네 답을 정정했고 그게 나중에도 필요한 내용이면 "
+    "save_memory로 저장하라. 잡담, 인사, 일회성 질문은 저장하지 마라.\n"
+    "7. 핵심 정보만 전달하고 불필요한 수식어를 붙이지 마라."
 )
 PUBLIC_AGENT = create_react_agent(
-    _public_llm, tools=[], checkpointer=MemorySaver(), prompt=PUBLIC_SYSTEM_PROMPT,
+    _public_llm, tools=PUBLIC_TOOLS, checkpointer=MemorySaver(), prompt=PUBLIC_SYSTEM_PROMPT,
 )
 REPO_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_SLUG = REPO_DIR.replace("/", "-")
@@ -104,7 +137,15 @@ def git_sync() -> str | None:
     이 VM의 로컬 HEAD보다 앞서 있는 경우(non-fast-forward)가 실제로 발생한다. 그럴 때 단순
     `git push`는 거부되고 그대로 실패만 반환했는데, 그러면 이 VM에서 만든 변경이 origin에
     영영 반영이 안 되고(Obsidian이 못 받아봄) 조용히 로컬에만 쌓이게 된다. 그래서 push가
-    non-fast-forward로 거부되면 fetch + rebase 후 한 번 더 시도한다."""
+    non-fast-forward로 거부되면 fetch + rebase 후 한 번 더 시도한다.
+
+    공개 채널 에이전트의 save_memory도 같은 워킹트리에 커밋하므로, 스레드 간에도 통하는
+    agent_memory.GIT_MUTEX를 함께 잡아서 두 경로가 동시에 git을 만지지 않게 한다."""
+    with agent_memory.GIT_MUTEX:
+        return _git_sync_locked()
+
+
+def _git_sync_locked() -> str | None:
     status = subprocess.run(["git", "status", "--porcelain"], cwd=REPO_DIR, capture_output=True, text=True)
     if not status.stdout.strip():
         return None
@@ -152,6 +193,8 @@ def run_public_agent(prompt: str, thread_id: str) -> str:
     안 새어나간다 (실측 확인됨: 호출해도 journalctl에 아무 흔적이 안 남았었음) -- 그래서
     print()로 명시적으로 남겨야 log_streamer.py가 중계할 게 생긴다."""
     print(f"[public-agent] thread={thread_id} prompt={prompt[:120]!r}")
+    # 도구(save_memory)가 작성자를 노트에 남길 수 있도록 요청 단위로 심어둔다.
+    _current_author.set(thread_id)
     try:
         config = {"configurable": {"thread_id": thread_id}}
         result = PUBLIC_AGENT.invoke({"messages": [("user", prompt)]}, config=config)
