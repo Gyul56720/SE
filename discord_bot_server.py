@@ -25,7 +25,7 @@ import uuid
 
 import discord
 from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_groq import ChatGroq
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import create_react_agent
 
@@ -34,15 +34,18 @@ load_dotenv()
 BOT_TOKEN = os.environ["DISCORD_BOT_TOKEN"]
 # 관리자 채널(DM): claude -p 전체 권한 + git sync -- 서버 관리/코드 작업/질의응답 전용.
 ADMIN_CHANNEL_ID = int(os.environ["DISCORD_CHANNEL_ID"])
-# 공개 채널(길드, 화이트리스트 없음): claude 토큰을 아끼려고 Gemini 기반 LangGraph 에이전트로만
-# 답한다 -- 셸/git 접근 없음, 도구도 없음(추론+대화 메모리만).
+# 공개 채널(길드, 화이트리스트 없음): claude 토큰을 아끼려고 LangGraph 에이전트로만 답한다 --
+# 셸/git 접근 없음, 도구도 없음(추론+대화 메모리만). 백엔드는 openai/gpt-oss-120b(Apache-2.0
+# 오픈웨이트, Groq에서 호스팅) -- gemini-3.5-flash-lite는 속도/비용 최적화 경량 모델이라
+# 추론력에서 gpt-oss-120b(추론 특화 설계, MoE)가 더 낫다고 판단해 교체함
+# (groq_client.py가 이미 이 모델을 검증해 쓰고 있었음).
 PUBLIC_CHANNEL_ID = int(os.environ["DISCORD_PUBLIC_CHANNEL_ID"])
-PUBLIC_GEMINI_MODEL = os.getenv("DISCORD_PUBLIC_GEMINI_MODEL", "gemini-3.5-flash-lite")
+PUBLIC_MODEL_NAME = os.getenv("DISCORD_PUBLIC_MODEL", "openai/gpt-oss-120b")
 
 # ReAct 에이전트: 도구는 아직 없지만(공개 채널이라 셸/파일 접근 도구는 의도적으로 안 붙임),
-# LangGraph의 사고 루프 + MemorySaver 대화 메모리로 gemini-3.5-flash-lite 혼자 쓸 때보다
-# 다단계 추론이 낫다. thread_id는 Discord 유저 ID로 둬서 사람마다 대화 맥락을 분리한다.
-_public_llm = ChatGoogleGenerativeAI(model=PUBLIC_GEMINI_MODEL, google_api_key=os.environ["GEMINI_API_KEY"])
+# LangGraph의 사고 루프 + MemorySaver 대화 메모리로 모델 혼자 쓸 때보다 다단계 추론이 낫다.
+# thread_id는 Discord 유저 ID로 둬서 사람마다 대화 맥락을 분리한다.
+_public_llm = ChatGroq(model=PUBLIC_MODEL_NAME, groq_api_key=os.environ["GROQ_API_KEY"])
 # 시스템 프롬프트를 안 주면 Gemini 기본 말투(이모지, 인사치레, 상투적 격려 문구)로 답해서
 # 출력 토큰을 불필요하게 먹는다 -- 간결하게 답하도록 명시한다.
 PUBLIC_SYSTEM_PROMPT = (
