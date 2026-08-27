@@ -43,9 +43,13 @@ BOT_TOKEN = os.environ["DISCORD_BOT_TOKEN"]
 ADMIN_CHANNEL_ID = int(os.getenv("DISCORD_CHANNEL_ID", "1542081266315427912"))
 ADMIN_ALLOWED_USER_IDS = {int(x) for x in os.getenv("DISCORD_ALLOWED_USER_IDS", "").split(",") if x.strip()}
 ADMIN_MODEL_NAME = os.getenv("DISCORD_ADMIN_MODEL", "gemini-3.5-flash-lite")
-# public과 API 쿼터를 분리하려고 fallback 키를 쓴다 -- 한쪽이 무제한 루프를 돌려도(self
-# -modification 특성상 발생 가능) 다른 채널까지 같이 막히지 않게.
-ADMIN_GEMINI_KEY = os.environ["GEMINI_API_KEY_FALLBACK"]
+# public과 API 쿼터를 분리하려고 별도 fallback 키를 쓴다 -- 한쪽이 무제한 루프를 돌려도(self
+# -modification 특성상 발생 가능) 다른 채널까지 같이 막히지 않게. 다만 fallback 키를 못 챙겨서
+# 비어있는 채로 배포되면 admin 채널 전체가 KeyError로 기동 자체를 못 하고 죽었다(실측 확인됨,
+# 2026-08-27) -- 이러면 정작 API 문제를 고쳐야 할 admin 에이전트가 죽어서 아무것도 못 하게
+# 되므로, 없거나 비어있을 땐 크래시 대신 GEMINI_API_KEY를 그대로 재사용한다(쿼터 분리 이점은
+# 없어지지만 admin 채널은 최소한 살아있게).
+ADMIN_GEMINI_KEY = os.getenv("GEMINI_API_KEY_FALLBACK") or os.environ["GEMINI_API_KEY"]
 
 ADMIN_TOOLS = [run_shell, search_memory, save_memory]
 ADMIN_SYSTEM_PROMPT = (
