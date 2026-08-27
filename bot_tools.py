@@ -1,10 +1,15 @@
 """
 Discord 관리 채널(admin)과 공개 채널(public) 에이전트가 공유하는 도구/유틸리티.
 
-REPO_DIR, run_shell(임의 셸 실행) 도구, 기억 검색/저장 도구, Gemini 응답 파싱, 그리고
-LangGraph MemorySaver가 깨졌을 때(도구 호출 도중 중단되어 ToolMessage가 누락된 경우 등)
-자동으로 새 thread로 재시도하는 복구 헬퍼를 모아둔다. admin/public 양쪽 모듈이 이 파일의
-도구를 그대로 가져다 쓴다 -- 중복 정의를 피하고, 한쪽에서 도구 동작을 고치면 양쪽에 반영되게.
+REPO_DIR, run_shell(임의 셸 실행, admin 전용) 도구, 기억 검색/저장 도구, 공개 채널 결과물
+저장 도구(write_public_answer), Gemini 응답 파싱, 그리고 LangGraph MemorySaver가 깨졌을 때
+(도구 호출 도중 중단되어 ToolMessage가 누락된 경우 등) 자동으로 새 thread로 재시도하는 복구
+헬퍼를 모아둔다. admin/public 양쪽 모듈이 이 파일의 도구를 그대로 가져다 쓴다 -- 중복 정의를
+피하고, 한쪽에서 도구 동작을 고치면 양쪽에 반영되게.
+
+run_shell은 admin 채널만 쓴다. public 채널은 화이트리스트가 없어 임의 셸 실행을 주면
+위험하므로 write_public_answer로 Public_agent/ 폴더 안에만 결과 파일을 남기게 한다
+(public_agent_files.py가 경로를 코드로 강제한다).
 """
 
 from __future__ import annotations
@@ -17,39 +22,18 @@ import uuid
 from langchain_core.tools import tool
 
 import agent_memory
+import public_agent_files
 
 REPO_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # 도구 함수는 모델이 부르므로 인자에 작성자 ID를 실어보낼 수 없다 -- 요청 단위로 여기에 담아둔다.
 _current_author: contextvars.ContextVar[str] = contextvars.ContextVar("current_author", default="unknown")
-_is_public_agent: contextvars.ContextVar[bool] = contextvars.ContextVar("is_public_agent", default=False)
 
 
 @tool
 def run_shell(command: str) -> str:
-    """이 저장소(REPO_DIR)에서 임의의 셸 명령을 실행한다. 
-    만약 작성자(public agent 등)가 제약되어 있다면, Public_agent/ 폴더 내에서만 작업해야 하며,
-    main.py 등 외부 파일 수정 및 git push 명령은 철저히 금지된다.
+    """이 저장소(REPO_DIR)에서 임의의 셸 명령을 실행한다 -- admin 채널 전용 전권 도구다.
     결과는 stdout/stderr을 그대로 반환한다."""
-    # Public agent security enforcement
-    author = _current_author.get()
-    # If author is from public channel (we can check if author is in public thread map or if we can pass/distinguish)
-    # Actually, let's check command content for public safety if author is public agent or generally:
-    cmd_lower = command.lower()
-    if _is_public_agent.get():
-        if 'main.py' in command:
-            return "[Error] Public agent는 main.py를 수정할 수 없습니다."
-        if 'git push' in cmd_lower:
-            return "[Error] Public agent는 git push를 할 수 없습니다. 커밋까지만 허용됩니다."
-        # Check if working outside Public_agent directory
-        # We can inspect if command tries to write/modify files outside Public_agent/
-        # e.g. checking paths in command that don't start with Public_agent/ or ./Public_agent/
-        # For simplicity, if command contains file paths, ensure they are inside Public_agent/
-        pass
-    if 'public_agent' not in cmd_lower and ('..' in command or any(p in command for p in ['/etc', '/var', '/home/ubuntu/SE/corp', '/home/ubuntu/SE/deploy'])):
-        # restrict to Public_agent folder if public agent
-        pass
-
     try:
         result = subprocess.run(
             ["bash", "-lc", command], cwd=REPO_DIR, capture_output=True, text=True, timeout=180,
@@ -78,6 +62,14 @@ def save_memory(topic: str, content: str) -> str:
     호출하라. topic은 짧은 제목, content는 기억할 내용이다. 잡담이나 일회성 대화는 저장하지 마라.
     """
     return agent_memory.save_memory(topic, content, author_id=_current_author.get())
+
+
+@tool
+def write_public_answer(filename: str, content: str) -> str:
+    """공개 채널 에이전트의 답변/결과물을 파일로 남긴다. Public_agent/ 폴더 아래에만
+    저장되고 git에 커밋된다(push는 하지 않음, 관리자가 검토 후 push). filename은
+    디렉터리 없이 파일명만 지정한다 (예: answer.py, result.md)."""
+    return public_agent_files.write_output(filename, content, author_id=_current_author.get())
 
 
 def extract_text(content) -> str:
