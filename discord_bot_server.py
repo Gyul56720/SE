@@ -130,12 +130,20 @@ def _extract_text(content) -> str:
 
 def run_public_agent(prompt: str, thread_id: str) -> str:
     """공개 채널용 -- LangGraph ReAct 에이전트(Gemini, 도구 없음)로 답한다.
-    thread_id별로 대화가 분리되어 이어진다 (MemorySaver, 프로세스 재시작 시 초기화됨)."""
+    thread_id별로 대화가 분리되어 이어진다 (MemorySaver, 프로세스 재시작 시 초기화됨).
+
+    subprocess 없이 순수 인프로세스 호출이라 claude -p/git처럼 stdout이 저절로 journal에
+    안 새어나간다 (실측 확인됨: 호출해도 journalctl에 아무 흔적이 안 남았었음) -- 그래서
+    print()로 명시적으로 남겨야 log_streamer.py가 중계할 게 생긴다."""
+    print(f"[public-agent] thread={thread_id} prompt={prompt[:120]!r}")
     try:
         config = {"configurable": {"thread_id": thread_id}}
         result = PUBLIC_AGENT.invoke({"messages": [("user", prompt)]}, config=config)
-        return _extract_text(result["messages"][-1].content).strip()
+        reply = _extract_text(result["messages"][-1].content).strip()
+        print(f"[public-agent] thread={thread_id} reply={reply[:200]!r}")
+        return reply
     except Exception as e:
+        print(f"[public-agent] thread={thread_id} error={e}")
         return f"(에이전트 오류) {e}"
 
 

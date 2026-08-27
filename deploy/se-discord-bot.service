@@ -8,6 +8,10 @@ Type=simple
 User=ubuntu
 WorkingDirectory=/home/ubuntu/SE
 EnvironmentFile=/home/ubuntu/SE/.env
+# stdout이 TTY가 아니라 systemd 저널로 갈 땐 파이썬이 block-buffer를 써서 print()가
+# 바로 안 나가고 몇 KB 쌓일 때까지 지연된다 -- 실시간 로그 스트리밍(log_streamer.py)이
+# 의미 있으려면 즉시 flush돼야 하므로 unbuffered로 강제한다.
+Environment=PYTHONUNBUFFERED=1
 ExecStart=/usr/bin/python3 /home/ubuntu/SE/discord_bot_server.py
 Restart=on-failure
 RestartSec=5
