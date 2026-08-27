@@ -53,7 +53,7 @@ def run_claude(prompt: str) -> str:
     scope_unit = f"se-claude-{uuid.uuid4().hex[:12]}"
     result = subprocess.run(
         [
-            "sudo", "systemd-run", "--scope", "--quiet", "--collect",
+            "sudo", "-E", "systemd-run", "--scope", "--quiet", "--collect",
             "--uid=ubuntu", "--gid=ubuntu", f"--unit={scope_unit}",
             "--", "claude", "-p", *resume_flag, "--permission-mode", "bypassPermissions", prompt,
         ],
