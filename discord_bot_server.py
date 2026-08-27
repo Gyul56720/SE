@@ -43,7 +43,15 @@ PUBLIC_GEMINI_MODEL = os.getenv("DISCORD_PUBLIC_GEMINI_MODEL", "gemini-3.5-flash
 # LangGraph의 사고 루프 + MemorySaver 대화 메모리로 gemini-3.5-flash-lite 혼자 쓸 때보다
 # 다단계 추론이 낫다. thread_id는 Discord 유저 ID로 둬서 사람마다 대화 맥락을 분리한다.
 _public_llm = ChatGoogleGenerativeAI(model=PUBLIC_GEMINI_MODEL, google_api_key=os.environ["GEMINI_API_KEY"])
-PUBLIC_AGENT = create_react_agent(_public_llm, tools=[], checkpointer=MemorySaver())
+# 시스템 프롬프트를 안 주면 Gemini 기본 말투(이모지, 인사치레, 상투적 격려 문구)로 답해서
+# 출력 토큰을 불필요하게 먹는다 -- 간결하게 답하도록 명시한다.
+PUBLIC_SYSTEM_PROMPT = (
+    "간결하게 답하라. 이모지, 인사말, 상투적 격려/감탄 문구를 쓰지 마라. "
+    "핵심 정보만 정확하게 전달하고 불필요한 수식어를 붙이지 마라."
+)
+PUBLIC_AGENT = create_react_agent(
+    _public_llm, tools=[], checkpointer=MemorySaver(), prompt=PUBLIC_SYSTEM_PROMPT,
+)
 REPO_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_SLUG = REPO_DIR.replace("/", "-")
 # 채널마다 고정된 세션 ID를 부여해 대화 맥락을 이어간다 (jsonl 경로: ~/.claude/projects/<slug>/<id>.jsonl).
