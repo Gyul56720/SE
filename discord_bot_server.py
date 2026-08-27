@@ -26,14 +26,20 @@ import uuid
 import discord
 from dotenv import load_dotenv
 
+import gemini_client
+
 load_dotenv()
 
 BOT_TOKEN = os.environ["DISCORD_BOT_TOKEN"]
-CHANNEL_ID = int(os.environ["DISCORD_CHANNEL_ID"])
+# 관리자 채널(DM): claude -p 전체 권한 + git sync -- 서버 관리/코드 작업/질의응답 전용.
+ADMIN_CHANNEL_ID = int(os.environ["DISCORD_CHANNEL_ID"])
+# 공개 채널(길드, 화이트리스트 없음): claude 토큰을 아끼려고 Gemini로만 답한다 -- 셸/git 접근 없음.
+PUBLIC_CHANNEL_ID = int(os.environ["DISCORD_PUBLIC_CHANNEL_ID"])
+PUBLIC_GEMINI_MODEL = os.getenv("DISCORD_PUBLIC_GEMINI_MODEL", "gemini-3.5-lite")
 REPO_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_SLUG = REPO_DIR.replace("/", "-")
 # 채널마다 고정된 세션 ID를 부여해 대화 맥락을 이어간다 (jsonl 경로: ~/.claude/projects/<slug>/<id>.jsonl).
-SESSION_ID = str(uuid.uuid5(uuid.NAMESPACE_URL, f"discord-channel-{CHANNEL_ID}"))
+SESSION_ID = str(uuid.uuid5(uuid.NAMESPACE_URL, f"discord-channel-{ADMIN_CHANNEL_ID}"))
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -100,9 +106,17 @@ def git_sync() -> str | None:
     return "[git push 완료 (rebase 후 재시도)] Obsidian에서 pull하면 반영됩니다."
 
 
+def run_gemini_qa(prompt: str) -> str:
+    """공개 채널용 -- 셸/git 접근 없이 Gemini로만 답한다 (claude 토큰 절약)."""
+    try:
+        return gemini_client.generate(prompt, model=PUBLIC_GEMINI_MODEL)
+    except Exception as e:
+        return f"(Gemini 오류) {e}"
+
+
 @client.event
 async def on_ready():
-    print(f"[SE-agent] 로그인됨: {client.user} (채널 {CHANNEL_ID} 감시 중)")
+    print(f"[SE-agent] 로그인됨: {client.user} (관리 채널 {ADMIN_CHANNEL_ID}, 공개 채널 {PUBLIC_CHANNEL_ID} 감시 중)")
 
 
 ATTACHMENTS_DIR = os.path.join(REPO_DIR, "inbox", "discord_attachments")
@@ -124,12 +138,8 @@ async def _save_attachments(message: discord.Message) -> list[str]:
     return saved_paths
 
 
-@client.event
-async def on_message(message: discord.Message):
-    if message.author.bot:
-        return
-    if message.channel.id != CHANNEL_ID:
-        return
+async def _handle_admin_message(message: discord.Message) -> None:
+    """관리 채널: claude -p 전체 권한 + git sync (기존 동작 그대로)."""
     content = message.content.strip()
     attachment_paths = await _save_attachments(message)
     if not content and not attachment_paths:
@@ -150,6 +160,30 @@ async def on_message(message: discord.Message):
         await message.channel.send(reply[chunk_start:chunk_start + 1900] or "(빈 응답)")
     if sync_note:
         await message.channel.send(sync_note)
+
+
+async def _handle_public_message(message: discord.Message) -> None:
+    """공개 채널: 화이트리스트 없음 -- 셸/git 접근 없이 Gemini로만 답해서 claude 토큰을 아낀다."""
+    content = message.content.strip()
+    if not content:
+        return
+
+    loop = asyncio.get_running_loop()
+    async with message.channel.typing():
+        reply = await loop.run_in_executor(None, run_gemini_qa, content)
+
+    for chunk_start in range(0, len(reply), 1900):
+        await message.channel.send(reply[chunk_start:chunk_start + 1900] or "(빈 응답)")
+
+
+@client.event
+async def on_message(message: discord.Message):
+    if message.author.bot:
+        return
+    if message.channel.id == ADMIN_CHANNEL_ID:
+        await _handle_admin_message(message)
+    elif message.channel.id == PUBLIC_CHANNEL_ID:
+        await _handle_public_message(message)
 
 
 if __name__ == "__main__":
