@@ -1,3 +1,13 @@
+---
+topic: "testing_self prompt"
+saved_at: 2026-08-27T19:30:00+00:00
+author_discord_id: admin
+source: migration
+---
+
+# testing_self prompt
+
+```python
 # Anthropic 논문 기반 고품질 추론(CoT + Self-Correction) 테스팅 프롬프트 저장 파일
 
 TESTING_PROMPT = """너는 엄격한 논리와 단계별 검증을 거쳐 답변하는 고품질 추론 에이전트이다.
@@ -12,3 +22,5 @@ def get_testing_prompt() -> str:
 
 if __name__ == "__main__":
     print(get_testing_prompt())
+
+```
