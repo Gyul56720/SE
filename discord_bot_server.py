@@ -3,11 +3,14 @@ Oracle VM에서 systemd로 상시 실행되는 Discord 봇 (실시간 Gateway �
 
 관리 채널(admin, 화이트리스트 있음)과 공개 채널(public, 화이트리스트 없음) 둘 다 이제
 Gemini + LangGraph 에이전트로 처리한다 (Claude Code 토큰 소진으로 claude -p에서 전환,
-2026-08-27). 공개 채널 로직은 main_public.py로, 두 채널이 공유하는 도구(run_shell 등)는
-bot_tools.py로 분리했다 -- 이 파일은 admin 에이전트 정의 + Discord 이벤트 라우팅만 담당한다.
+2026-08-27). 공개 채널 로직은 main_public.py로, 두 채널이 공유하는 도구(run_shell,
+write_public_answer 등)는 bot_tools.py로 분리했다 -- 이 파일은 admin 에이전트 정의 +
+Discord 이벤트 라우팅만 담당한다.
 
-admin/public 둘 다 run_shell(임의 셸 실행) 도구를 가지고 있어 self-modification이 가능하다.
-이건 사용자가 위험(비밀키 유출, repo 훼손 가능성)을 명시적으로 인지하고 요청한 것이다.
+admin만 run_shell(임의 셸 실행) 도구를 가지고 있어 self-modification이 가능하다. 이건
+사용자가 위험(비밀키 유출, repo 훼손 가능성)을 명시적으로 인지하고 요청한 것이다. public은
+화이트리스트가 없어 셸 실행을 주지 않고, 대신 write_public_answer로 Public_agent/ 폴더
+안에만 결과물을 남길 수 있다(구 규칙 7 -- main_testing.py 한정 셸 접근 -- 은 제거함).
 API 쿼터를 나누려고 admin은 GEMINI_API_KEY_FALLBACK을, public은 GEMINI_API_KEY를 쓴다.
 
 실행: systemd 유닛(deploy/se-discord-bot.service)으로 등록해서 상시 구동할 것.
