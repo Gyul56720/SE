@@ -8,9 +8,9 @@ class AdvancedFMCWProcessor:
 
     def apply_moisture_phase_correction(self, moisture_coefficient: float):
         num_chirps, num_rx, samples = self.signal.shape
-        t = np.arange(samples).reshape(1, 1, samples)
+        t = np.linspace(-1.0, 1.0, samples).reshape(1, 1, samples)
         phase_shift = moisture_coefficient * (t ** 2)
-        self.signal = self.signal * np.exp(1j * phase_shift)
+        self.signal = self.signal * np.exp(-1j * phase_shift)
 
     def generate_range_doppler(self, attenuation_db: float = 40.0):
         num_chirps, num_rx, samples = self.signal.shape
@@ -24,5 +24,6 @@ class AdvancedFMCWProcessor:
         windowed_rd = range_fft * doppler_win[:, np.newaxis, np.newaxis]
         rd_map = np.fft.fft(windowed_rd, axis=0)
         
-        self.range_doppler_map = np.fft.fftshift(rd_map, axes=(0,))
+        shifted = np.fft.fftshift(rd_map, axes=(0, -1))
+        self.range_doppler_map = np.abs(shifted)
         return self.range_doppler_map
