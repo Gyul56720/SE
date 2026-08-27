@@ -37,7 +37,7 @@ from bot_tools import REPO_DIR, run_shell, search_memory, save_memory, invoke_wi
 
 BOT_TOKEN = os.environ["DISCORD_BOT_TOKEN"]
 # 관리자 채널(화이트리스트 있음, DISCORD_ALLOWED_USER_IDS): run_shell 전권 + git sync.
-ADMIN_CHANNEL_ID = int(os.environ["DISCORD_CHANNEL_ID"])
+ADMIN_CHANNEL_ID = int(os.getenv("DISCORD_CHANNEL_ID", "1542081266315427912"))
 ADMIN_ALLOWED_USER_IDS = {int(x) for x in os.getenv("DISCORD_ALLOWED_USER_IDS", "").split(",") if x.strip()}
 ADMIN_MODEL_NAME = os.getenv("DISCORD_ADMIN_MODEL", "gemini-3.5-flash-lite")
 # public과 API 쿼터를 분리하려고 fallback 키를 쓴다 -- 한쪽이 무제한 루프를 돌려도(self
