@@ -99,6 +99,22 @@ def is_quota_error(e: Exception) -> bool:
     return "RESOURCE_EXHAUSTED" in text or "429" in text
 
 
+def is_unavailable_error(e: Exception) -> bool:
+    """이 (키, 모델) 조합을 "지금 못 쓴다"는 뜻의 에러 전반 -- 쿼터 소진뿐 아니라, 무료
+    티어에서 막힌 유료 전용 모델(403 PERMISSION_DENIED, billing 관련 FAILED_PRECONDITION),
+    이 키/리전에 아예 없는 모델(404 NOT_FOUND) 등도 포함한다. 어떤 모델이 유료 전용인지
+    미리 다 알 방법이 없으므로(목록이 자주 바뀜, 실측 확인됨 2026-08-28 -- 계정에 39개
+    모델이 있었는데 최신 이름들이라 문서로 확정할 수 없었음) 정적으로 걸러내는 대신, 실제
+    호출에서 이런 에러가 나면 다음 후보로 넘어가는 쪽으로 처리한다."""
+    if is_quota_error(e):
+        return True
+    text = str(e)
+    return any(marker in text for marker in (
+        "PERMISSION_DENIED", "403", "FAILED_PRECONDITION", "NOT_FOUND", "404",
+        "billing", "not supported", "not found",
+    ))
+
+
 # ListModels가 돌려주는 이름 중 이런 키워드가 들어간 건 텍스트 채팅용이 아니다(TTS/이미지
 # 생성/로보틱스/deep-research/computer-use/음악 등) -- ChatGoogleGenerativeAI에 그대로
 # 물리면 응답 형식이 안 맞아 429가 아닌 다른 에러가 나고, run_with_fallback_pool은 쿼터
@@ -182,9 +198,11 @@ def build_agent_pool(keys: "list[str | None]", models: "list[str] | None", tools
 
 def run_with_fallback_pool(candidates: "list[tuple[str, object]]", thread_map: dict, base_thread_id: str,
                             prompt: str, log_prefix: str) -> str:
-    """(label, agent) 후보 목록을 순서대로 시도한다 -- 429 쿼터 초과면 다음 후보로 넘어가고,
-    그 외 에러는 그대로 올린다(broken-history 복구는 invoke_with_recovery가 각 후보 안에서
-    처리함). label은 보통 "키 앞 8자리:모델명" 같은 식으로 어떤 조합인지 알아볼 수 있게 짓는다.
+    """(label, agent) 후보 목록을 순서대로 시도한다 -- 이 후보를 "지금 못 쓴다"는 뜻의
+    에러(쿼터 초과, 무료 티어에서 막힌 유료 전용 모델, 존재하지 않는 모델 등 -- is_unavailable_
+    error 참고)면 다음 후보로 넘어가고, 그 외 진짜 버그성 에러는 그대로 올린다(broken-history
+    복구는 invoke_with_recovery가 각 후보 안에서 처리함). label은 "key-<해시8자리>:모델명"
+    형태로 어떤 조합인지 알아볼 수 있게 짓는다.
 
     쿼터는 (프로젝트, 모델) 단위로 걸린다(RetryInfo의 quotaId가
     GenerateRequestsPerDayPerProjectPerModel-FreeTier) -- 즉 같은 키라도 모델을 바꾸면
@@ -206,10 +224,13 @@ def run_with_fallback_pool(candidates: "list[tuple[str, object]]", thread_map: d
                 print(f"{log_prefix} Model have changed {label}")
             return reply
         except Exception as e:
-            if not is_quota_error(e):
+            if not is_unavailable_error(e):
                 raise
-            quota_tracker.record_exhausted(label)
-            print(f"{log_prefix} thread={base_thread_id} candidate={label} quota exhausted, 다음 후보로 전환")
+            if is_quota_error(e):
+                quota_tracker.record_exhausted(label)
+                print(f"{log_prefix} thread={base_thread_id} candidate={label} quota exhausted, 다음 후보로 전환")
+            else:
+                print(f"{log_prefix} thread={base_thread_id} candidate={label} 사용 불가({e}), 다음 후보로 전환")
             last_error = e
     raise last_error if last_error else RuntimeError("후보가 비어있음")
 
@@ -234,7 +255,7 @@ def invoke_with_recovery(agent, thread_map: dict, base_thread_id: str, prompt: s
         result = agent.invoke({"messages": [("user", prompt)]}, config=config)
         return extract_text(result["messages"][-1].content).strip()
     except Exception as e:
-        if is_quota_error(e):
+        if is_unavailable_error(e):
             raise
         print(f"{log_prefix} thread={base_thread_id} invoke_error={e!r} -- 새 thread로 재시도")
         new_thread_id = f"{base_thread_id}-{uuid.uuid4().hex[:8]}"
