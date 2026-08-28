@@ -99,12 +99,25 @@ def is_quota_error(e: Exception) -> bool:
     return "RESOURCE_EXHAUSTED" in text or "429" in text
 
 
+# ListModels가 돌려주는 이름 중 이런 키워드가 들어간 건 텍스트 채팅용이 아니다(TTS/이미지
+# 생성/로보틱스/deep-research/computer-use/음악 등) -- ChatGoogleGenerativeAI에 그대로
+# 물리면 응답 형식이 안 맞아 429가 아닌 다른 에러가 나고, run_with_fallback_pool은 쿼터
+# 에러만 다음 후보로 넘기므로 이런 모델에 걸리면 남은 후보를 더 시도해보지도 못하고 그
+# 자리에서 죽는다(실측 확인됨, 2026-08-28 -- 이 키로 실제 조회했더니 39개 모델 중 다수가
+# 이런 비-채팅 모델이었다).
+_NON_CHAT_MODEL_MARKERS = (
+    "tts", "audio", "image", "transcribe", "robotics", "computer-use",
+    "deep-research", "lyria", "antigravity", "embedding", "aqa", "banana",
+)
+
+
 def list_available_models(api_key: str, timeout: int = 15) -> "list[str]":
-    """이 키로 실제 쓸 수 있는 Gemini 모델 이름 목록을 API에서 직접 조회한다
-    (v1beta ListModels -- 이 호출 자체는 generateContent 쿼터를 소모하지 않는 메타데이터
-    조회다). 채팅 응답 생성이 안 되는 모델(임베딩 전용 등)은 supportedGenerationMethods에
-    "generateContent"가 없어서 자동으로 걸러진다. 조회 자체가 실패하면(네트워크 오류 등)
-    빈 리스트를 반환한다 -- 호출자가 정적 fallback 목록으로 대체해야 한다."""
+    """이 키로 실제 쓸 수 있는 '텍스트 채팅용' Gemini 모델 이름 목록을 API에서 직접
+    조회한다(v1beta ListModels -- 이 호출 자체는 generateContent 쿼터를 소모하지 않는
+    메타데이터 조회다). supportedGenerationMethods에 "generateContent"가 없는 모델과,
+    이름에 _NON_CHAT_MODEL_MARKERS가 들어간 비-채팅 모델은 걸러낸다. 조회 자체가
+    실패하면(네트워크 오류 등) 빈 리스트를 반환한다 -- 호출자가 정적 fallback 목록으로
+    대체해야 한다."""
     try:
         resp = requests.get(
             "https://generativelanguage.googleapis.com/v1beta/models",
@@ -121,7 +134,10 @@ def list_available_models(api_key: str, timeout: int = 15) -> "list[str]":
         if "generateContent" not in m.get("supportedGenerationMethods", []):
             continue
         name = m.get("name", "")
-        names.append(name[len("models/"):] if name.startswith("models/") else name)
+        name = name[len("models/"):] if name.startswith("models/") else name
+        if any(marker in name.lower() for marker in _NON_CHAT_MODEL_MARKERS):
+            continue
+        names.append(name)
     return names
 
 
