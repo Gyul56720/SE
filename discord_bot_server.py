@@ -32,6 +32,7 @@ load_dotenv()
 
 from langgraph.checkpoint.memory import MemorySaver  # noqa: E402
 
+import agent_context  # noqa: E402
 import agent_memory  # noqa: E402
 import main_public  # noqa: E402
 from bot_tools import (  # noqa: E402
@@ -216,8 +217,9 @@ async def _handle_admin_message(message: discord.Message) -> None:
     thread_id = f"admin-{message.author.id}"
     async with message.channel.typing():
         reply = await loop.run_in_executor(None, run_admin_agent, content, thread_id)
-        # 게스트 보안 정책: 김희섭(249746307877437450) Git 제한
-        if str(message.author.id) == "249746307877437450":
+        # 게스트 보안 정책: 차단 목록(agent_context.BLOCKED_USER_IDS, 환경변수
+        # GUEST_BLOCKED_USER_IDS로 지정)에 든 사용자는 git sync를 타지 않는다.
+        if agent_context.is_blocked(message.author.id):
             sync_note = "[보안 제한] 게스트 사용자의 Git 접근이 제한되었습니다."
         else:
             async with GIT_LOCK:
@@ -240,8 +242,9 @@ async def _handle_public_message(message: discord.Message) -> None:
     thread_id = str(message.author.id)
     async with message.channel.typing():
         reply = await loop.run_in_executor(None, main_public.run_public_agent, content, thread_id)
-        # 게스트 보안 정책: 김희섭(249746307877437450) Git 제한
-        if str(message.author.id) == "249746307877437450":
+        # 게스트 보안 정책: 차단 목록(agent_context.BLOCKED_USER_IDS, 환경변수
+        # GUEST_BLOCKED_USER_IDS로 지정)에 든 사용자는 git sync를 타지 않는다.
+        if agent_context.is_blocked(message.author.id):
             sync_note = "[보안 제한] 게스트 사용자의 Git 접근이 제한되었습니다."
         else:
             async with GIT_LOCK:

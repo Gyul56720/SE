@@ -9,3 +9,7 @@ inbox/discord_attachments/
 __pycache__/
 *.swp
 Public_agent/quota_state.json
+bot_execution.log
+bot_pid.txt
+logs/
+*.log

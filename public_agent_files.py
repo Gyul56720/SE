@@ -19,7 +19,8 @@ import re
 import subprocess
 import threading
 from pathlib import Path
-from bot_tools import _current_author
+
+import agent_context
 
 REPO_DIR = Path(__file__).resolve().parent
 OUTPUT_DIR = REPO_DIR / "Public_agent"
@@ -65,9 +66,9 @@ def _commit(message: str) -> str:
 
 
 def write_output(filename: str, content: str, author_id: str = "unknown") -> str:
-    if _current_author.get() == "249746307877437450":
-        return "실패: 게스트는 파일을 쓸 수 없습니다."
     """공개 에이전트의 답변/결과를 Public_agent/ 아래 파일로 쓰고 커밋한다."""
+    if agent_context.is_blocked():
+        return "실패: 게스트는 파일을 쓸 수 없습니다."
     content = content or ""
     if len(content) > MAX_CONTENT_CHARS:
         return f"실패: content가 너무 길다 (최대 {MAX_CONTENT_CHARS}자)."

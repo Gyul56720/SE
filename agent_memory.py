@@ -20,8 +20,9 @@ import re
 import subprocess
 import threading
 from datetime import datetime, timezone
-from bot_tools import _current_author
 from pathlib import Path
+
+import agent_context
 
 REPO_DIR = Path(__file__).resolve().parent
 MEMORY_DIR = REPO_DIR / "public_agent_memory"
@@ -85,9 +86,9 @@ def _commit_and_push(message: str) -> str:
 
 
 def save_memory(topic: str, content: str, author_id: str = "unknown") -> str:
-    if _current_author.get() == "249746307877437450":
-        return "실패: 게스트는 memory를 수정할 수 없습니다."
     """새 기억을 노트로 저장하고 git에 push한다."""
+    if agent_context.is_blocked():
+        return "실패: 게스트는 memory를 수정할 수 없습니다."
     topic = (topic or "").strip()[:MAX_TOPIC_CHARS]
     content = (content or "").strip()
     if not topic or not content:

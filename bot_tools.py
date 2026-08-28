@@ -15,7 +15,6 @@ run_shell은 admin/public 채널 둘 다 쓴다. public 채널은 화이트리�
 
 from __future__ import annotations
 
-import contextvars
 import hashlib
 import os
 import subprocess
@@ -27,23 +26,29 @@ from langchain_core.tools import tool
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.prebuilt import create_react_agent
 
+import agent_context
 import agent_memory
 import public_agent_files
 import quota_tracker
 
 REPO_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# 도구 함수는 모델이 부르므로 인자에 작성자 ID를 실어보낼 수 없다 -- 요청 단위로 여기에 담아둔다.
-_current_author: contextvars.ContextVar[str] = contextvars.ContextVar("current_author", default="unknown")
+# 요청 맥락(호출자 ID)과 게스트 차단 목록은 agent_context.py에 있다 -- 여기 두면
+# agent_memory/public_agent_files와 순환 임포트가 생겨 봇이 기동 불가가 된다(실측 확인됨,
+# 2026-08-28). 예전 이름으로 임포트하던 코드를 위해 그대로 재수출만 한다.
+_current_author = agent_context.current_author
 
 
 @tool
 def run_shell(command: str) -> str:
-    if _current_author.get() == "249746307877437450":
-        return "실패: 게스트는 run_shell을 사용할 수 없습니다."
     """이 저장소(REPO_DIR)에서 임의의 셸 명령을 실행한다. admin/public 채널 둘 다 쓸 수
     있다 -- public은 화이트리스트가 없어 위험을 사용자가 감수하고 명시적으로 요청한 것이다.
     결과는 stdout/stderr을 그대로 반환한다."""
+    # 가드는 반드시 독스트링 '아래'에 둔다 -- 위에 두면 문자열이 독스트링이 아니게 되고,
+    # @tool은 설명이 없는 함수를 ValueError로 거부해서 임포트 자체가 실패한다(실측 확인됨,
+    # 2026-08-28). integrity.check_tool_docstrings가 이 규칙을 강제한다.
+    if agent_context.is_blocked():
+        return "실패: 게스트는 run_shell을 사용할 수 없습니다."
     try:
         result = subprocess.run(
             ["bash", "-lc", command], cwd=REPO_DIR, capture_output=True, text=True, timeout=180,
