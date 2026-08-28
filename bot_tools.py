@@ -16,6 +16,7 @@ run_shell은 admin/public 채널 둘 다 쓴다. public 채널은 화이트리�
 from __future__ import annotations
 
 import contextvars
+import hashlib
 import os
 import subprocess
 import uuid
@@ -114,10 +115,15 @@ def build_agent_pool(keys: "list[str | None]", models: "list[str]", tools: list,
     for key in keys:
         if not key:
             continue
+        # 키 앞 8글자로 라벨을 만들면 Gemini 키들이 흔히 공통 접두사(예: "AQ.Ab8RN")를
+        # 공유해서 서로 다른 키가 같은 라벨로 뭉개진다(실측 확인됨, 2026-08-28) -- quota
+        # 추적/로그가 두 키를 구분 못 해서 잔량 기반 재정렬이 무효화됐었다. 키 전체를
+        # 해시해서 절대 충돌 안 나는 라벨을 쓴다.
+        key_id = hashlib.sha256(key.encode()).hexdigest()[:8]
         for model in models:
             llm = ChatGoogleGenerativeAI(model=model, google_api_key=key)
             agent = create_react_agent(llm, tools=tools, checkpointer=checkpointer, prompt=prompt)
-            label = f"{key[:8]}...:{model}"
+            label = f"key-{key_id}:{model}"
             pool.append((label, agent))
     return pool
 
