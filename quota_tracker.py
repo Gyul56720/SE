@@ -86,3 +86,42 @@ def remaining(label: str, limit: int = DEFAULT_DAILY_LIMIT) -> int:
         if not rec or rec.get("date") != _today():
             return limit
         return max(0, limit - rec["count"])
+
+
+# 429(쿼터 소진)는 매일 자정에 리셋되니까 "오늘자" 기록(위)이면 충분하다. 근데 404(모델
+# 단종/무료 티어에 아예 없음)나 403(유료 전용, billing 필요)은 다르다 -- 이런 건 하루가
+# 지나도 안 풀린다. 그런데 이걸 오늘자 기록과 똑같이 취급했더니, 자정이 지나면(또는
+# quota_state.json을 지우면) 이미 죽은 걸 알고 있던 모델을 처음부터 또 다 두드려보는
+# 낭비가 있었다(실측 확인됨, 2026-08-28 -- gemini-2.5-pro/gemini-2.5-flash/gemini-pro-latest
+# 같은 단종 모델을 매 요청마다 다시 시도). 그래서 영구 소진은 날짜 리셋이 없는 별도
+# 목록("_dead")에 한 번 기록하면 끝까지 건너뛴다 -- "다음 질문이 오기 전에 이미 준비된
+# 상태"를 만드는 핵심이 이 부분이다.
+def mark_dead(label: str, reason: str = "") -> None:
+    with _LOCK:
+        data = _load()
+        dead = data.setdefault("_dead", {})
+        dead[label] = reason
+        _save(data)
+
+
+def is_dead(label: str) -> bool:
+    with _LOCK:
+        data = _load()
+        return label in data.get("_dead", {})
+
+
+# "다음 질문이 오기 전에 이미 준비해두기"의 핵심 -- 매 요청마다 순위를 계산해서 1등을
+# 고르는 대신, 직전에 실제로 성공했던 조합을 그대로 다음 요청에서도 제일 먼저 쓴다.
+# pool_id(예: "public-agent", "admin-agent")별로 하나씩 기억한다.
+def set_pinned(pool_id: str, label: str) -> None:
+    with _LOCK:
+        data = _load()
+        pins = data.setdefault("_pinned", {})
+        pins[pool_id] = label
+        _save(data)
+
+
+def get_pinned(pool_id: str) -> "str | None":
+    with _LOCK:
+        data = _load()
+        return data.get("_pinned", {}).get(pool_id)
