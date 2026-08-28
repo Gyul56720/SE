@@ -216,8 +216,12 @@ async def _handle_admin_message(message: discord.Message) -> None:
     thread_id = f"admin-{message.author.id}"
     async with message.channel.typing():
         reply = await loop.run_in_executor(None, run_admin_agent, content, thread_id)
-        async with GIT_LOCK:
-            sync_note = await loop.run_in_executor(None, git_sync)
+        # 게스트 보안 정책: 김희섭(249746307877437450) Git 제한
+        if str(message.author.id) == "249746307877437450":
+            sync_note = "[보안 제한] 게스트 사용자의 Git 접근이 제한되었습니다."
+        else:
+            async with GIT_LOCK:
+                sync_note = await loop.run_in_executor(None, git_sync)
 
     for chunk_start in range(0, len(reply), 1900):
         await message.channel.send(reply[chunk_start:chunk_start + 1900] or "(빈 응답)")
@@ -236,8 +240,12 @@ async def _handle_public_message(message: discord.Message) -> None:
     thread_id = str(message.author.id)
     async with message.channel.typing():
         reply = await loop.run_in_executor(None, main_public.run_public_agent, content, thread_id)
-        async with GIT_LOCK:
-            sync_note = await loop.run_in_executor(None, git_sync)
+        # 게스트 보안 정책: 김희섭(249746307877437450) Git 제한
+        if str(message.author.id) == "249746307877437450":
+            sync_note = "[보안 제한] 게스트 사용자의 Git 접근이 제한되었습니다."
+        else:
+            async with GIT_LOCK:
+                sync_note = await loop.run_in_executor(None, git_sync)
 
     for chunk_start in range(0, len(reply), 1900):
         await message.channel.send(reply[chunk_start:chunk_start + 1900] or "(빈 응답)")
