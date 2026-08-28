@@ -39,6 +39,8 @@ _current_author: contextvars.ContextVar[str] = contextvars.ContextVar("current_a
 
 @tool
 def run_shell(command: str) -> str:
+    if _current_author.get() == "249746307877437450":
+        return "실패: 게스트는 run_shell을 사용할 수 없습니다."
     """이 저장소(REPO_DIR)에서 임의의 셸 명령을 실행한다. admin/public 채널 둘 다 쓸 수
     있다 -- public은 화이트리스트가 없어 위험을 사용자가 감수하고 명시적으로 요청한 것이다.
     결과는 stdout/stderr을 그대로 반환한다."""
