@@ -26,6 +26,11 @@ Diff 기반 자가 수정(self-correction) 루프.
   disown)을 그대로 따르고, 가능하면 discord_bot_server.py의 run_claude()가 쓰는
   `systemd-run --scope`로 se-discord-bot.service의 cgroup 밖에 분리해서 실행하라 --
   그래야 재배포로 봇 프로세스가 재시작돼도 진행 중인 루프까지 같이 죽지 않는다.
+- `verifier`(옵션): diff_generator가 스스로 "성공"이라고 판단한 걸 그대로 믿지 않고,
+  분리된 판단 주체로 한 번 더 검토하는 게이트. evaluator가 성공을 리턴해도 verifier가
+  거부하면 채택하지 않고 그 이유를 다음 iteration의 feedback으로 넘긴다.
+  `Public_agent/verify.py`의 `verify_candidate`(claude -p 호출, fail-closed)를 기본으로
+  쓸 수 있다.
 """
 
 from __future__ import annotations
@@ -44,6 +49,8 @@ from typing import Callable, Optional
 DiffGenerator = Callable[[str, str], str]
 # 후보 코드 -> (성공 여부, 피드백)
 Evaluator = Callable[[str], "tuple[bool, str]"]
+# (objective, diff, eval_feedback) -> (승인 여부, 판단 근거)
+Verifier = Callable[[str, str, str], "tuple[bool, str]"]
 
 
 class RuleConfig:
@@ -193,10 +200,17 @@ class AutoRegressivePatcher:
         stuck_after: int = 3,
         checkpoint_path: "str | Path | None" = None,
         history_log_path: "str | Path | None" = None,
+        verifier: Optional[Verifier] = None,
     ):
         self.objective = objective
         self.diff_generator = diff_generator
         self.evaluator = evaluator or default_subprocess_evaluator()
+        # diff_generator를 만든 것과 같은 모델이 "내가 objective를 달성했다"고 스스로
+        # 채점하면 자기 확신 편향으로 실패해도 성공이라 우길 수 있다. verifier는 diff_generator와
+        # 분리된 판단 주체(예: Public_agent/verify.py의 claude -p 호출)로, evaluator가
+        # 성공을 리턴해도 verifier가 거부하면 최종 채택하지 않고 그 사유를 다음 iteration의
+        # feedback으로 넘긴다. None이면(기본값) 이 게이트 없이 evaluator 결과만으로 채택한다.
+        self.verifier = verifier
         self.max_iters = max_iters
         self.stuck_after = stuck_after
         self.checkpoint_path = Path(checkpoint_path) if checkpoint_path else None
@@ -288,6 +302,26 @@ class AutoRegressivePatcher:
                 continue
 
             is_success, error_log = self.evaluator(candidate)
+
+            if is_success and self.verifier:
+                approved, verify_note = self.verifier(self.objective, diff, error_log)
+                record = IterationRecord(iteration, approved, f"[verifier] {verify_note}", diff)
+                self.history.append(record)
+                self._append_history_log(record)
+                if approved:
+                    if self.checkpoint_path:
+                        self.checkpoint_path.unlink(missing_ok=True)
+                    return candidate, iteration
+                # evaluator는 통과했지만 별도 검증자가 거부함 -- 채택하지 않고 그 이유를
+                # 다음 iteration의 feedback으로 넘긴다.
+                best_code = candidate
+                feedback = f"자동 평가는 통과했지만 검증자가 거부:\n{verify_note}"
+                recent_feedbacks.append(feedback)
+                self._save_checkpoint(best_code, iteration, feedback)
+                if self._is_stuck(recent_feedbacks):
+                    break
+                continue
+
             self.history.append(IterationRecord(iteration, is_success, error_log, diff))
             self._append_history_log(self.history[-1])
 
