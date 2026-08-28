@@ -36,6 +36,7 @@ import py_compile
 import subprocess
 import tempfile
 from dataclasses import dataclass, asdict
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -191,6 +192,7 @@ class AutoRegressivePatcher:
         max_iters: int = 100,
         stuck_after: int = 3,
         checkpoint_path: "str | Path | None" = None,
+        history_log_path: "str | Path | None" = None,
     ):
         self.objective = objective
         self.diff_generator = diff_generator
@@ -198,6 +200,11 @@ class AutoRegressivePatcher:
         self.max_iters = max_iters
         self.stuck_after = stuck_after
         self.checkpoint_path = Path(checkpoint_path) if checkpoint_path else None
+        # checkpoint_path는 "이어서 돌기 위한" 상태라 성공하면 지운다. 반면 이건 다르다 --
+        # 성공/실패와 무관하게 diff와 그게 왜 나왔는지(feedback)를 영구적으로 계속 쌓아서,
+        # 나중에 다른 LLM 호출이 "이 코드베이스에서 뭘 시도했다가 왜 실패/성공했는지"를
+        # 참고할 수 있게 한다. 체크포인트가 삭제돼도(=한 실행이 끝나도) 이 로그는 안 지운다.
+        self.history_log_path = Path(history_log_path) if history_log_path else None
 
         # discord_bot_server.py를 self-modify한 push는 deploy-oracle.yml의 자동 재배포를
         # 트리거해서 서비스가 재시작된다(실측 확인됨, 2026-08-27) -- 이 루프는 순수 인메모리
@@ -235,6 +242,14 @@ class AutoRegressivePatcher:
         tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
         tmp.replace(self.checkpoint_path)  # 원자적 교체 -- 쓰는 도중 재시작돼도 파일이 깨지지 않는다.
 
+    def _append_history_log(self, record: IterationRecord) -> None:
+        if not self.history_log_path:
+            return
+        self.history_log_path.parent.mkdir(parents=True, exist_ok=True)
+        entry = {"objective": self.objective, "timestamp": datetime.now(timezone.utc).isoformat(), **asdict(record)}
+        with self.history_log_path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
     def _is_stuck(self, recent_feedbacks: list) -> bool:
         tail = recent_feedbacks[-self.stuck_after:]
         return len(tail) == self.stuck_after and len(set(tail)) == 1
@@ -254,6 +269,7 @@ class AutoRegressivePatcher:
             except ValueError as e:
                 feedback = f"diff 적용 실패: {e}"
                 self.history.append(IterationRecord(iteration, False, feedback, diff))
+                self._append_history_log(self.history[-1])
                 recent_feedbacks.append(feedback)
                 self._save_checkpoint(best_code, iteration, feedback)
                 if self._is_stuck(recent_feedbacks):
@@ -264,6 +280,7 @@ class AutoRegressivePatcher:
             if not ok:
                 feedback = f"문법 오류:\n{syntax_err}"
                 self.history.append(IterationRecord(iteration, False, feedback, diff))
+                self._append_history_log(self.history[-1])
                 recent_feedbacks.append(feedback)
                 self._save_checkpoint(best_code, iteration, feedback)
                 if self._is_stuck(recent_feedbacks):
@@ -272,6 +289,7 @@ class AutoRegressivePatcher:
 
             is_success, error_log = self.evaluator(candidate)
             self.history.append(IterationRecord(iteration, is_success, error_log, diff))
+            self._append_history_log(self.history[-1])
 
             if is_success:
                 if self.checkpoint_path:
