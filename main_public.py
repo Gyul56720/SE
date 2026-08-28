@@ -24,10 +24,12 @@ from bot_tools import (
 
 PUBLIC_CHANNEL_ID = int(os.environ["DISCORD_PUBLIC_CHANNEL_ID"])
 PUBLIC_MODEL_NAME = os.getenv("DISCORD_PUBLIC_MODEL", "gemini-3.5-flash-lite")
-# 콤마로 구분한 추가 모델 후보 -- 429는 (프로젝트, 모델) 단위로 걸리므로, 기본 모델이
-# 소진돼도 같은 키로 다른 모델은 아직 쿼터가 남아있을 수 있다. 비워두면 기본 모델 하나만 쓴다.
+# GEMINI_MODEL_POOL을 명시하면 그 모델들만 쓴다(수동 제한용). 비워두면 build_agent_pool이
+# 키마다 실제 쓸 수 있는 모델 전체를 API로 조회해서 자동으로 순환한다 -- 429는
+# (프로젝트, 모델) 단위라 특정 모델이 소진돼도 같은 키의 다른 모델은 살아있을 수 있어서다.
 _extra_models = [m.strip() for m in os.getenv("GEMINI_MODEL_POOL", "").split(",") if m.strip()]
-PUBLIC_MODEL_CANDIDATES = [PUBLIC_MODEL_NAME] + [m for m in _extra_models if m != PUBLIC_MODEL_NAME]
+PUBLIC_MODEL_CANDIDATES = [PUBLIC_MODEL_NAME] + [m for m in _extra_models if m != PUBLIC_MODEL_NAME] \
+    if _extra_models else None
 
 PUBLIC_TOOLS = [search_memory, save_memory, write_public_answer, run_shell]
 # admin과 동일한 "적극적으로 조사해서 근거 기반으로 답하라"는 태도로 통일했다 -- 예전엔
@@ -68,6 +70,7 @@ PUBLIC_AGENT_POOL = build_agent_pool(
     tools=PUBLIC_TOOLS,
     prompt=PUBLIC_SYSTEM_PROMPT,
     checkpointer=_public_checkpointer,
+    fallback_models=[PUBLIC_MODEL_NAME],
 )
 
 _public_thread_map: dict[str, str] = {}

@@ -43,8 +43,11 @@ BOT_TOKEN = os.environ["DISCORD_BOT_TOKEN"]
 ADMIN_CHANNEL_ID = int(os.getenv("DISCORD_CHANNEL_ID", "1542081266315427912"))
 ADMIN_ALLOWED_USER_IDS = {int(x) for x in os.getenv("DISCORD_ALLOWED_USER_IDS", "").split(",") if x.strip()}
 ADMIN_MODEL_NAME = os.getenv("DISCORD_ADMIN_MODEL", "gemini-3.5-flash-lite")
+# GEMINI_MODEL_POOL을 명시하면 그 모델들만 쓴다(수동 제한용). 비워두면 build_agent_pool이
+# 키마다 실제 쓸 수 있는 모델 전체를 API로 조회해서 자동으로 순환한다.
 _admin_extra_models = [m.strip() for m in os.getenv("GEMINI_MODEL_POOL", "").split(",") if m.strip()]
-ADMIN_MODEL_CANDIDATES = [ADMIN_MODEL_NAME] + [m for m in _admin_extra_models if m != ADMIN_MODEL_NAME]
+ADMIN_MODEL_CANDIDATES = [ADMIN_MODEL_NAME] + [m for m in _admin_extra_models if m != ADMIN_MODEL_NAME] \
+    if _admin_extra_models else None
 # public과 API 쿼터를 분리하려고 별도 fallback 키를 쓴다 -- 한쪽이 무제한 루프를 돌려도(self
 # -modification 특성상 발생 가능) 다른 채널까지 같이 막히지 않게. 다만 fallback 키를 못 챙겨서
 # 비어있는 채로 배포되면 admin 채널 전체가 KeyError로 기동 자체를 못 하고 죽었다(실측 확인됨,
@@ -72,6 +75,7 @@ ADMIN_AGENT_POOL = build_agent_pool(
     tools=ADMIN_TOOLS,
     prompt=ADMIN_SYSTEM_PROMPT,
     checkpointer=_admin_checkpointer,
+    fallback_models=[ADMIN_MODEL_NAME],
 )
 
 PROJECT_SLUG = REPO_DIR.replace("/", "-")

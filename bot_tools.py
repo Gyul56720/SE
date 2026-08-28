@@ -22,6 +22,7 @@ import subprocess
 import uuid
 from typing import Optional
 
+import requests
 from langchain_core.tools import tool
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.prebuilt import create_react_agent
@@ -98,12 +99,44 @@ def is_quota_error(e: Exception) -> bool:
     return "RESOURCE_EXHAUSTED" in text or "429" in text
 
 
-def build_agent_pool(keys: "list[str | None]", models: "list[str]", tools: list, prompt: str,
-                      checkpointer) -> "list[tuple[str, object]]":
+def list_available_models(api_key: str, timeout: int = 15) -> "list[str]":
+    """이 키로 실제 쓸 수 있는 Gemini 모델 이름 목록을 API에서 직접 조회한다
+    (v1beta ListModels -- 이 호출 자체는 generateContent 쿼터를 소모하지 않는 메타데이터
+    조회다). 채팅 응답 생성이 안 되는 모델(임베딩 전용 등)은 supportedGenerationMethods에
+    "generateContent"가 없어서 자동으로 걸러진다. 조회 자체가 실패하면(네트워크 오류 등)
+    빈 리스트를 반환한다 -- 호출자가 정적 fallback 목록으로 대체해야 한다."""
+    try:
+        resp = requests.get(
+            "https://generativelanguage.googleapis.com/v1beta/models",
+            params={"key": api_key, "pageSize": 1000},
+            timeout=timeout,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:
+        print(f"[bot_tools] 모델 목록 조회 실패: {e}")
+        return []
+    names = []
+    for m in data.get("models", []):
+        if "generateContent" not in m.get("supportedGenerationMethods", []):
+            continue
+        name = m.get("name", "")
+        names.append(name[len("models/"):] if name.startswith("models/") else name)
+    return names
+
+
+def build_agent_pool(keys: "list[str | None]", models: "list[str] | None", tools: list, prompt: str,
+                      checkpointer, fallback_models: "list[str] | None" = None) -> "list[tuple[str, object]]":
     """(키, 모델) 조합마다 ChatGoogleGenerativeAI + create_react_agent를 하나씩 만들어
     [(label, agent), ...] 로 돌려준다. 키가 먼저 도는 순서(키1+모델1, 키1+모델2, ...,
     키2+모델1, ...)로 우선순위를 매긴다 -- 원래 기본 키를 최대한 먼저 써보고, 그래도
     안 되면 모델을 바꿔보고, 그것도 안 되면 다음 키로 넘어가는 순서.
+
+    models가 None이면 키마다 list_available_models로 그 키가 실제 쓸 수 있는 모델 전체를
+    동적으로 조회해서 쓴다 -- 특정 모델의 일일 쿼터가 소진돼도 같은 키의 다른 모델은 아직
+    쿼터가 남아있을 수 있으므로(429의 quotaId가 GenerateRequestsPerDayPerProjectPerModel),
+    "쓸 수 있는 모델을 다 시도해본다"가 기본 동작이 된다. 조회가 실패하면 fallback_models
+    (없으면 ["gemini-2.5-flash"])로 대체한다.
 
     ChatGoogleGenerativeAI 생성 자체는 API를 호출하지 않으므로(실제 요청은 invoke 시점에만
     나감) 조합을 몇 개를 만들든 미리 만들어두는 것 자체는 쿼터를 안 쓴다 (과거에 시작할 때마다
@@ -120,7 +153,10 @@ def build_agent_pool(keys: "list[str | None]", models: "list[str]", tools: list,
         # 추적/로그가 두 키를 구분 못 해서 잔량 기반 재정렬이 무효화됐었다. 키 전체를
         # 해시해서 절대 충돌 안 나는 라벨을 쓴다.
         key_id = hashlib.sha256(key.encode()).hexdigest()[:8]
-        for model in models:
+        key_models = models
+        if key_models is None:
+            key_models = list_available_models(key) or fallback_models or ["gemini-2.5-flash"]
+        for model in key_models:
             llm = ChatGoogleGenerativeAI(model=model, google_api_key=key)
             agent = create_react_agent(llm, tools=tools, checkpointer=checkpointer, prompt=prompt)
             label = f"key-{key_id}:{model}"
