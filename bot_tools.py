@@ -102,16 +102,18 @@ def is_quota_error(e: Exception) -> bool:
 def is_unavailable_error(e: Exception) -> bool:
     """이 (키, 모델) 조합을 "지금 못 쓴다"는 뜻의 에러 전반 -- 쿼터 소진뿐 아니라, 무료
     티어에서 막힌 유료 전용 모델(403 PERMISSION_DENIED, billing 관련 FAILED_PRECONDITION),
-    이 키/리전에 아예 없는 모델(404 NOT_FOUND) 등도 포함한다. 어떤 모델이 유료 전용인지
-    미리 다 알 방법이 없으므로(목록이 자주 바뀜, 실측 확인됨 2026-08-28 -- 계정에 39개
-    모델이 있었는데 최신 이름들이라 문서로 확정할 수 없었음) 정적으로 걸러내는 대신, 실제
-    호출에서 이런 에러가 나면 다음 후보로 넘어가는 쪽으로 처리한다."""
+    이 키/리전에 아예 없는 모델(404 NOT_FOUND), 일시적 서버 과부하(503 UNAVAILABLE,
+    500 INTERNAL, DEADLINE_EXCEEDED) 등도 포함한다. 어떤 모델이 유료 전용인지, 언제
+    과부하가 걸릴지 미리 다 알 방법이 없으므로(모델 목록도 자주 바뀜, 실측 확인됨
+    2026-08-28) 정적으로 걸러내는 대신, 실제 호출에서 이런 에러가 나면 다음 후보로
+    넘어가는 쪽으로 처리한다."""
     if is_quota_error(e):
         return True
     text = str(e)
     return any(marker in text for marker in (
         "PERMISSION_DENIED", "403", "FAILED_PRECONDITION", "NOT_FOUND", "404",
         "billing", "not supported", "not found",
+        "UNAVAILABLE", "503", "high demand", "INTERNAL", "500", "DEADLINE_EXCEEDED",
     ))
 
 
