@@ -24,14 +24,27 @@ from bot_tools import search_memory, save_memory, write_public_answer, run_shell
 PUBLIC_CHANNEL_ID = int(os.environ["DISCORD_PUBLIC_CHANNEL_ID"])
 PUBLIC_MODEL_NAME = os.getenv("DISCORD_PUBLIC_MODEL", "gemini-3.5-flash-lite")
 
-# admin과 API 쿼터를 분리하려고 서로 다른 키를 쓴다 -- public은 원래 쓰던 기본 키 그대로.
-_public_llm = ChatGoogleGenerativeAI(model=PUBLIC_MODEL_NAME, google_api_key=os.environ["GEMINI_API_KEY"])
+# 키 순서대로 시도하여 쿼터가 남은 키로 ChatGoogleGenerativeAI를 생성한다.
+_api_keys = [os.environ.get("GEMINI_API_KEY"), os.environ.get("GEMINI_API_KEY_FALLBACK")]
+_public_llm = None
+for k in _api_keys:
+    if not k:
+        continue
+    try:
+        candidate_llm = ChatGoogleGenerativeAI(model=PUBLIC_MODEL_NAME, google_api_key=k)
+        # 가벼운 테스트 호출
+        candidate_llm.invoke("ping")
+        _public_llm = candidate_llm
+        print(f"[main_public] Successfully initialized LLM with API key (starts with {k[:8]}...)")
+        break
+    except Exception as e:
+        print(f"[main_public] API key starting with {k[:8]}... failed init/test: {e}")
+
+if not _public_llm:
+    # 모든 키가 실패하면 마지막 키나 기본 키로라도 설정
+    _public_llm = ChatGoogleGenerativeAI(model=PUBLIC_MODEL_NAME, google_api_key=os.environ["GEMINI_API_KEY"])
 
 PUBLIC_TOOLS = [search_memory, save_memory, write_public_answer, run_shell]
-# 규칙 기반 프롬프트 -- Sparrow(Glaese et al. 2022)가 뭉뚱그린 지시 대신 구체적 자연어
-# 규칙을 나열했을 때 정확도/안전성이 올라간다는 걸 보여줬고, "Language Models Mostly Know
-# What They Know"(Kadavath et al. 2022)가 모델이 자기 확신도(P(IK))를 꽤 잘 판단한다는 걸
-# 보여줬다 -- 단, 명시적으로 판단하라고 지시했을 때만.
 PUBLIC_SYSTEM_PROMPT = (
     "0. 너는 이 저장소(REPO_DIR)에서 run_shell로 임의의 셸 명령을 실행할 수 있다. "
     "필요하면 run_shell로 파일을 읽고 쓰고 검증하라.\n"
@@ -58,11 +71,6 @@ _public_thread_map: dict[str, str] = {}
 
 
 def run_public_agent(prompt: str, thread_id: str) -> str:
-    """공개 채널용. thread_id(=Discord 유저 ID)별로 대화가 분리되어 이어진다
-    (MemorySaver, 프로세스 재시작 시 초기화됨).
-
-    subprocess 없이 순수 인프로세스 호출이라 stdout이 저절로 journal에 안 새어나간다
-    (실측 확인됨) -- print()로 명시적으로 남겨야 log_streamer.py가 중계할 게 생긴다."""
     print(f"[public-agent] thread={thread_id} prompt={prompt[:120]!r}")
     _current_author.set(thread_id)
     try:
