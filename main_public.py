@@ -19,7 +19,10 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import create_react_agent
 
-from bot_tools import search_memory, save_memory, write_public_answer, run_shell, invoke_with_recovery, _current_author
+from bot_tools import (
+    search_memory, save_memory, write_public_answer, run_shell,
+    invoke_with_recovery, is_quota_error, _current_author,
+)
 
 PUBLIC_CHANNEL_ID = int(os.environ["DISCORD_PUBLIC_CHANNEL_ID"])
 PUBLIC_MODEL_NAME = os.getenv("DISCORD_PUBLIC_MODEL", "gemini-3.5-flash-lite")
@@ -46,8 +49,9 @@ PUBLIC_SYSTEM_PROMPT = (
     "1. 간결하게 답하라. 이모지, 인사말, 상투적 격려/감탄 문구를 쓰지 마라.\n"
     "2. 확실하지 않은 사실은 추측이라고 명시하라. 모르면 모른다고 말하라 -- 지어내지 마라.\n"
     "3. 숫자, 날짜, 고유명사는 확실할 때만 제시하라. 불확실하면 그렇다고 밝혀라.\n"
-    "4. 실시간 정보(날씨, 오늘 날짜, 최신 뉴스, 주가 등)를 묻는 질문에는 먼저 그 한계를 "
-    "밝히고, 알고 있는 일반 지식 범위 내에서만 답하라.\n"
+    "4. 실시간 정보(날씨, 오늘 날짜, 최신 뉴스, 주가 등)가 필요하면 run_shell로 조회 가능한 "
+    "방법(curl로 공개 API 호출 등)이 있는지 먼저 시도하라. 정말 방법이 없을 때만 그 한계를 "
+    "밝히고 일반 지식 범위 내에서 답하라.\n"
     "5. 사용자에 대한 사실이나 이전에 배운 내용이 필요하면 search_memory로 먼저 확인하라. "
     "추측하지 말고 기억을 찾아보라.\n"
     "6. 사용자가 새 사실을 알려주거나 네 답을 정정했고 그게 나중에도 필요한 내용이면 "
@@ -73,11 +77,6 @@ PUBLIC_AGENT_FALLBACK = (
 _public_thread_map: dict[str, str] = {}
 
 
-def _is_quota_error(e: Exception) -> bool:
-    text = str(e)
-    return "RESOURCE_EXHAUSTED" in text or "429" in text
-
-
 def run_public_agent(prompt: str, thread_id: str) -> str:
     print(f"[public-agent] thread={thread_id} prompt={prompt[:120]!r}")
     _current_author.set(thread_id)
@@ -86,7 +85,7 @@ def run_public_agent(prompt: str, thread_id: str) -> str:
         print(f"[public-agent] thread={thread_id} reply={reply[:200]!r}")
         return reply
     except Exception as e:
-        if PUBLIC_AGENT_FALLBACK is not None and _is_quota_error(e):
+        if PUBLIC_AGENT_FALLBACK is not None and is_quota_error(e):
             print(f"[public-agent] thread={thread_id} quota exhausted, GEMINI_API_KEY_FALLBACK으로 재시도")
             try:
                 reply = invoke_with_recovery(

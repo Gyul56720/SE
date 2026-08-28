@@ -88,6 +88,11 @@ def extract_text(content) -> str:
     return str(content)
 
 
+def is_quota_error(e: Exception) -> bool:
+    text = str(e)
+    return "RESOURCE_EXHAUSTED" in text or "429" in text
+
+
 def invoke_with_recovery(agent, thread_map: dict, base_thread_id: str, prompt: str, log_prefix: str) -> str:
     """LangGraph 에이전트를 호출하되, 대화 기록이 깨져 있으면(예: run_shell 호출 도중
     프로세스가 중단되어 tool_call에 대응하는 ToolMessage가 안 남은 경우) 새 thread_id로
@@ -96,13 +101,20 @@ def invoke_with_recovery(agent, thread_map: dict, base_thread_id: str, prompt: s
     MemorySaver는 프로세스가 살아있는 한 상태가 그대로 남아서, 한 번 깨지면 같은
     thread_id로는 재시작 전까지 계속 같은 INVALID_CHAT_HISTORY 에러가 반복된다
     (실측 확인됨). thread_map에 "원래 thread_id -> 현재 쓰는 thread_id" 매핑을 저장해두고,
-    복구가 필요하면 매핑을 새 값으로 바꿔서 그 사용자만 대화가 초기화되게 한다."""
+    복구가 필요하면 매핑을 새 값으로 바꿔서 그 사용자만 대화가 초기화되게 한다.
+
+    쿼터 초과(429)는 새 thread로 재시도해도 똑같은 키/쿼터라 무조건 또 실패한다 -- 그런데도
+    재시도하면 API 쪽 자체 backoff(길게는 수십 초)를 두 번 기다리게 돼서 응답만 느려진다
+    (실측 확인됨, 2026-08-28). 그래서 쿼터 에러는 재시도 없이 바로 올려서, 호출자가(예:
+    다른 API 키로) 곧장 넘어갈 수 있게 한다."""
     thread_id = thread_map.get(base_thread_id, base_thread_id)
     config = {"configurable": {"thread_id": thread_id}}
     try:
         result = agent.invoke({"messages": [("user", prompt)]}, config=config)
         return extract_text(result["messages"][-1].content).strip()
     except Exception as e:
+        if is_quota_error(e):
+            raise
         print(f"{log_prefix} thread={base_thread_id} invoke_error={e!r} -- 새 thread로 재시도")
         new_thread_id = f"{base_thread_id}-{uuid.uuid4().hex[:8]}"
         thread_map[base_thread_id] = new_thread_id
