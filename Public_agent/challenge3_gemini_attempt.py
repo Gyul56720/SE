@@ -1,6 +1,15 @@
+import sys
+import os
 import base64
 import hashlib
-from Public_agent.challenge3 import OBFUSCATED, MULT, SEED, EXPECTED_SHA256, stride_perm_indices, xorshift32_stream, rotr8
+
+# Ensure parent directory is in sys.path so we can import Public_agent.challenge3
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+try:
+    from Public_agent.challenge3 import OBFUSCATED, MULT, SEED, EXPECTED_SHA256, stride_perm_indices, xorshift32_stream, rotr8
+except ModuleNotFoundError:
+    from challenge3 import OBFUSCATED, MULT, SEED, EXPECTED_SHA256, stride_perm_indices, xorshift32_stream, rotr8
 
 def solve() -> str:
     # 1. Base85 decode
