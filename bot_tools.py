@@ -27,6 +27,7 @@ from langgraph.prebuilt import create_react_agent
 
 import agent_memory
 import public_agent_files
+import quota_tracker
 
 REPO_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -130,17 +131,26 @@ def run_with_fallback_pool(candidates: "list[tuple[str, object]]", thread_map: d
     쿼터는 (프로젝트, 모델) 단위로 걸린다(RetryInfo의 quotaId가
     GenerateRequestsPerDayPerProjectPerModel-FreeTier) -- 즉 같은 키라도 모델을 바꾸면
     별도 쿼터일 수 있다. admin/public 둘 다 [키1+모델A, 키1+모델B, 키2+모델A, ...] 식으로
-    후보를 만들어서 넘기면, API 키뿐 아니라 모델도 순환하며 살아있는 조합을 찾는다."""
+    후보를 만들어서 넘기면, API 키뿐 아니라 모델도 순환하며 살아있는 조합을 찾는다.
+
+    quota_tracker로 후보별 오늘자 호출 수를 미리 추정해서 잔량 많은 순으로 재정렬한다 --
+    실제 429를 맞기 전에(그 자체가 30~50초 걸림, 실측 확인됨) 소진 가능성이 높은 후보를
+    뒤로 미뤄서, 다음 호출은 처음부터 살아있을 가능성이 높은 후보로 간다. 성공하면
+    카운트를 올리고, 실제 429를 맞으면 그 후보를 오늘자로 확정 소진 처리한다 -- 응답을
+    이미 만든 뒤에 하는 기록이라 사용자가 기다리는 시간에는 영향 없다."""
+    ranked = quota_tracker.rank_candidates(candidates)
     last_error: Optional[Exception] = None
-    for i, (label, agent) in enumerate(candidates):
+    for i, (label, agent) in enumerate(ranked):
         try:
             reply = invoke_with_recovery(agent, thread_map, base_thread_id, prompt, f"{log_prefix}[{label}]")
+            quota_tracker.record_success(label)
             if i > 0:
                 print(f"{log_prefix} Model have changed {label}")
             return reply
         except Exception as e:
             if not is_quota_error(e):
                 raise
+            quota_tracker.record_exhausted(label)
             print(f"{log_prefix} thread={base_thread_id} candidate={label} quota exhausted, 다음 후보로 전환")
             last_error = e
     raise last_error if last_error else RuntimeError("후보가 비어있음")
