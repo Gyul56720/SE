@@ -24,27 +24,6 @@ from bot_tools import search_memory, save_memory, write_public_answer, run_shell
 PUBLIC_CHANNEL_ID = int(os.environ["DISCORD_PUBLIC_CHANNEL_ID"])
 PUBLIC_MODEL_NAME = os.getenv("DISCORD_PUBLIC_MODEL", "gemini-3.5-flash-lite")
 
-<<<<<<< HEAD
-# 키 순서대로 시도하여 쿼터가 남은 키로 ChatGoogleGenerativeAI를 생성한다.
-_api_keys = [os.environ.get("GEMINI_API_KEY"), os.environ.get("GEMINI_API_KEY_FALLBACK")]
-_public_llm = None
-for k in _api_keys:
-    if not k:
-        continue
-    try:
-        candidate_llm = ChatGoogleGenerativeAI(model=PUBLIC_MODEL_NAME, google_api_key=k)
-        # 가벼운 테스트 호출
-        candidate_llm.invoke("ping")
-        _public_llm = candidate_llm
-        print(f"[main_public] Successfully initialized LLM with API key (starts with {k[:8]}...)")
-        break
-    except Exception as e:
-        print(f"[main_public] API key starting with {k[:8]}... failed init/test: {e}")
-
-if not _public_llm:
-    # 모든 키가 실패하면 마지막 키나 기본 키로라도 설정
-    _public_llm = ChatGoogleGenerativeAI(model=PUBLIC_MODEL_NAME, google_api_key=os.environ["GEMINI_API_KEY"])
-=======
 # admin과 API 쿼터를 분리하려고 서로 다른 키를 쓴다 -- public은 원래 쓰던 기본 키 그대로.
 # GEMINI_API_KEY_FALLBACK이 설정돼 있으면 public 쿼터 소진 시 admin 쪽 키로 한 번 더
 # 시도한다(_invoke_with_quota_fallback). ChatGoogleGenerativeAI 생성 자체는 API를 호출하지
@@ -58,7 +37,6 @@ _public_llm_fallback = (
     ChatGoogleGenerativeAI(model=PUBLIC_MODEL_NAME, google_api_key=_public_llm_fallback_key)
     if _public_llm_fallback_key else None
 )
->>>>>>> dee38464b3796a9a031ad8d9c5b396f705fc0d39
 
 PUBLIC_TOOLS = [search_memory, save_memory, write_public_answer, run_shell]
 PUBLIC_SYSTEM_PROMPT = (
