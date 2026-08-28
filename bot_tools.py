@@ -99,22 +99,32 @@ def is_quota_error(e: Exception) -> bool:
     return "RESOURCE_EXHAUSTED" in text or "429" in text
 
 
-def is_unavailable_error(e: Exception) -> bool:
-    """이 (키, 모델) 조합을 "지금 못 쓴다"는 뜻의 에러 전반 -- 쿼터 소진뿐 아니라, 무료
-    티어에서 막힌 유료 전용 모델(403 PERMISSION_DENIED, billing 관련 FAILED_PRECONDITION),
-    이 키/리전에 아예 없는 모델(404 NOT_FOUND), 일시적 서버 과부하(503 UNAVAILABLE,
-    500 INTERNAL, DEADLINE_EXCEEDED) 등도 포함한다. 어떤 모델이 유료 전용인지, 언제
-    과부하가 걸릴지 미리 다 알 방법이 없으므로(모델 목록도 자주 바뀜, 실측 확인됨
-    2026-08-28) 정적으로 걸러내는 대신, 실제 호출에서 이런 에러가 나면 다음 후보로
-    넘어가는 쪽으로 처리한다."""
-    if is_quota_error(e):
-        return True
+def is_permanent_error(e: Exception) -> bool:
+    """이 (키, 모델) 조합이 앞으로도 절대 안 될 거라는 뜻의 에러 -- 단종된 모델(404
+    NOT_FOUND), 무료 티어에서 막힌 유료 전용 모델(403 PERMISSION_DENIED, billing 관련
+    FAILED_PRECONDITION). 429 쿼터 소진과 달리 자정에 리셋되지 않으므로 quota_tracker의
+    영구 dead 목록에 올려서 다시는 시도하지 않는다."""
     text = str(e)
     return any(marker in text for marker in (
         "PERMISSION_DENIED", "403", "FAILED_PRECONDITION", "NOT_FOUND", "404",
         "billing", "not supported", "not found",
-        "UNAVAILABLE", "503", "high demand", "INTERNAL", "500", "DEADLINE_EXCEEDED",
     ))
+
+
+def is_transient_error(e: Exception) -> bool:
+    """구글 쪽 일시적 문제(과부하 등)라 이 후보 자체는 멀쩡하지만 지금 이 순간만 안 되는
+    에러. 영구 dead 처리하면 안 된다 -- 다음 요청엔 멀쩡할 수 있다."""
+    text = str(e)
+    return any(marker in text for marker in ("UNAVAILABLE", "503", "high demand", "INTERNAL", "500", "DEADLINE_EXCEEDED"))
+
+
+def is_unavailable_error(e: Exception) -> bool:
+    """이 (키, 모델) 조합을 "지금 못 쓴다"는 뜻의 에러 전반(쿼터 소진 + 영구 불가 + 일시
+    장애) -- 다음 후보로 넘어가야 한다는 신호로 쓴다. 어떤 모델이 유료 전용인지, 언제
+    과부하가 걸릴지 미리 다 알 방법이 없으므로(모델 목록도 자주 바뀜, 실측 확인됨
+    2026-08-28) 정적으로 걸러내는 대신, 실제 호출에서 이런 에러가 나면 다음 후보로
+    넘어가는 쪽으로 처리한다."""
+    return is_quota_error(e) or is_permanent_error(e) or is_transient_error(e)
 
 
 # ListModels가 돌려주는 이름 중 이런 키워드가 들어간 건 텍스트 채팅용이 아니다(TTS/이미지
@@ -238,19 +248,44 @@ def run_with_fallback_pool(candidates: "list[tuple[str, object]]", thread_map: d
     한 번도 안 써서 잔량이 가득 찬 약한 모델(gemma 등)이 정작 쓸 만한 pro/flash보다
     먼저 뽑히는 문제가 있었다(실측 확인됨, 2026-08-28). 성공하면 카운트를 올리고, 실제
     429를 맞으면 그 후보를 오늘자로 확정 소진 처리한다 -- 응답을 이미 만든 뒤에 하는
-    기록이라 사용자가 기다리는 시간에는 영향 없다."""
+    기록이라 사용자가 기다리는 시간에는 영향 없다.
+
+    404/403처럼 하루가 지나도 안 풀리는 에러는 quota_tracker의 영구 dead 목록에 올리고,
+    다음 호출부터는 이 함수 맨 앞에서 API를 부르지도 않고 걸러낸다 -- "다음 질문이
+    들어오기 전에 이미 살아있는 후보만 남겨서 준비해두는" 것이 핵심이다. 이걸 안 하면
+    단종된 모델을 매 요청마다 처음부터 다시 두드려보며 시간을 버리게 된다(실측 확인됨,
+    2026-08-28).
+
+    거기에 더해 "이번에 성공한 후보를 다음 질문에도 그대로 먼저 쓴다"는 pin을 건다
+    (quota_tracker.set_pinned/get_pinned, pool_id=log_prefix에서 뽑음) -- 매번 순위
+    계산으로 1등을 고르는 것과 결과가 비슷할 때가 많지만, 같은 등급 안에서 잔량 차이로
+    이리저리 흔들리는 것 없이 "직전에 확인된 살아있는 조합"을 확정적으로 우선한다. pin된
+    후보가 이번에도 실패하면 정상적으로 다음 후보로 넘어가고, 그때 새로 성공한 쪽으로
+    pin이 갱신된다."""
+    pool_id = log_prefix.strip("[]")
+    live = [c for c in candidates if not quota_tracker.is_dead(c[0])]
+    if not live:
+        live = candidates  # 다 죽었다고 기록된 상태라도 최후의 수단으로는 시도해본다 (기록이 틀렸을 수 있으니).
+
     def _sort_key(candidate):
         label, _ = candidate
         model = label.split(":", 1)[1] if ":" in label else label
         remaining = quota_tracker.remaining(label)
         return (remaining <= 0, _model_quality_rank(model), -remaining)
 
-    ranked = sorted(candidates, key=_sort_key)
+    ranked = sorted(live, key=_sort_key)
+    pinned_label = quota_tracker.get_pinned(pool_id)
+    if pinned_label:
+        pinned = [c for c in ranked if c[0] == pinned_label]
+        if pinned:
+            ranked = pinned + [c for c in ranked if c[0] != pinned_label]
+
     last_error: Optional[Exception] = None
     for i, (label, agent) in enumerate(ranked):
         try:
             reply = invoke_with_recovery(agent, thread_map, base_thread_id, prompt, f"{log_prefix}[{label}]")
             quota_tracker.record_success(label)
+            quota_tracker.set_pinned(pool_id, label)
             if i > 0:
                 print(f"{log_prefix} Model have changed {label}")
             return reply
@@ -260,8 +295,12 @@ def run_with_fallback_pool(candidates: "list[tuple[str, object]]", thread_map: d
             if is_quota_error(e):
                 quota_tracker.record_exhausted(label)
                 print(f"{log_prefix} thread={base_thread_id} candidate={label} quota exhausted, 다음 후보로 전환")
+            elif is_permanent_error(e):
+                quota_tracker.mark_dead(label, str(e)[:200])
+                print(f"{log_prefix} thread={base_thread_id} candidate={label} 영구 사용불가로 확정({e}), "
+                      f"앞으로 건너뜀")
             else:
-                print(f"{log_prefix} thread={base_thread_id} candidate={label} 사용 불가({e}), 다음 후보로 전환")
+                print(f"{log_prefix} thread={base_thread_id} candidate={label} 일시 장애({e}), 다음 후보로 전환")
             last_error = e
     raise last_error if last_error else RuntimeError("후보가 비어있음")
 
