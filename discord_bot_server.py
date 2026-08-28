@@ -22,6 +22,7 @@ import asyncio
 import os
 import subprocess
 import uuid
+from pathlib import Path
 
 import discord
 from dotenv import load_dotenv
@@ -34,6 +35,7 @@ from langgraph.checkpoint.memory import MemorySaver  # noqa: E402
 
 import agent_context  # noqa: E402
 import agent_memory  # noqa: E402
+import gatekeeper  # noqa: E402
 import main_public  # noqa: E402
 from bot_tools import (  # noqa: E402
     REPO_DIR, run_shell, search_memory, save_memory, build_agent_pool, run_with_fallback_pool,
@@ -67,7 +69,24 @@ ADMIN_SYSTEM_PROMPT = (
     "제거하거나 권한을 축소하지 마라. 대신 에러 원인을 파악해서 고쳐라.\n"
     "요청받은 작업을 run_shell로 직접 수행하고, 명령 결과를 근거로 다음 행동을 결정하라.\n"
     "코드를 고쳤으면 그 결과를 run_shell로 git add/commit/push까지 해서 반영하라.\n"
-    "무엇을 했는지 간결하게 보고하라."
+    "무엇을 했는지 간결하게 보고하라.\n"
+    "\n"
+    "[자기 수정 절차 -- 반드시 이 순서로]\n"
+    "1. 기존 파일은 전체를 다시 쓰지 마라. 바꿀 줄만 고쳐라. 고친 뒤 git diff --stat의 "
+    "삭제 줄 수가 요청 크기와 맞는지 확인하라.\n"
+    "2. push 전에 `python3 gatekeeper.py`를 돌려라. 통과(exit 0)해야 커밋된다. "
+    "py_compile은 문법만 잡는다 -- 게이트는 임포트 순환, 독스트링 소실, 안전장치 삭제, "
+    "자격증명 노출, 대량 삭제를 잡는다.\n"
+    "3. 무언가 고장 냈다면 원인을 진단하고, 그 진단을 말로 주장하지 말고 검사 코드로 "
+    "써서 `python3 self_challenge.py prove --candidate <검사> --broken-commit <사고커밋>` "
+    "으로 증명하라. 고치기 전 코드에서 실패(RED)하고 고친 뒤 통과(GREEN)해야 PROVEN=1 이다. "
+    "고치기 전 코드에서 통과해버리면 그건 원인이 아니었다 -- 진단을 다시 세워라.\n"
+    "4. PROVEN=1 이면 그 검사는 gates/ 로 승격되어 이후 모든 커밋을 막는다. "
+    "증명되지 않은 진단은 메모리 노트로도 남기지 마라 -- 읽히지 않는 노트가 늘어나는 것이 "
+    "이 저장소가 실제로 겪은 실패다(2026-08-28: 검증 규칙을 저장하고 2분 뒤 그 규칙을 "
+    "어긴 코드를 push했다).\n"
+    "5. 보고는 기억이 아니라 git diff 출력을 보고 적어라. 함께 커밋된 파일이 있으면 "
+    "요청과 무관해도 보고에 포함하라."
 )
 _admin_checkpointer = MemorySaver()
 ADMIN_AGENT_POOL = build_agent_pool(
@@ -138,6 +157,16 @@ def _git_sync_locked() -> str | None:
     status = subprocess.run(["git", "status", "--porcelain"], cwd=REPO_DIR, capture_output=True, text=True)
     if not status.stdout.strip():
         return None
+
+    # 강제 게이트. 에이전트가 메모리 노트를 읽었는지와 무관하게 여기서 막힌다 -- 그것이
+    # 요점이다. 2026-08-28에 에이전트는 "push 전에 임포트부터 시켜봐라"를 저장하고 2분 뒤
+    # 임포트 불가 코드를 push했다. 진단은 저장소의 마크다운에 있었을 뿐 커밋 경로 위에
+    # 없었다. 게이트를 통과 못 하면 커밋하지 않고 위반 목록을 그대로 돌려준다.
+    report = gatekeeper.run_gates(Path(REPO_DIR))
+    if not report.passed:
+        print(f"[git_sync] 게이트 차단 -- 커밋하지 않음\n{report.summary()}")
+        return report.summary()
+
     subprocess.run(["git", "add", "-A"], cwd=REPO_DIR, check=True)
     subprocess.run(
         ["git", "commit", "-m", "SE-agent: Discord 요청 처리 결과 자동 반영"],
@@ -145,7 +174,7 @@ def _git_sync_locked() -> str | None:
     )
     push = subprocess.run(["git", "push"], cwd=REPO_DIR, capture_output=True, text=True)
     if push.returncode == 0:
-        return "[git push 완료] Obsidian에서 pull하면 반영됩니다."
+        return f"{report.summary()}\n[git push 완료] Obsidian에서 pull하면 반영됩니다."
 
     subprocess.run(["git", "fetch", "origin"], cwd=REPO_DIR, capture_output=True, text=True)
     rebase = subprocess.run(["git", "rebase", "origin/main"], cwd=REPO_DIR, capture_output=True, text=True)
