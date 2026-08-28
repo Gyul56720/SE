@@ -86,11 +86,3 @@ def remaining(label: str, limit: int = DEFAULT_DAILY_LIMIT) -> int:
         if not rec or rec.get("date") != _today():
             return limit
         return max(0, limit - rec["count"])
-
-
-def rank_candidates(candidates: "list[tuple[str, object]]", limit: int = DEFAULT_DAILY_LIMIT
-                     ) -> "list[tuple[str, object]]":
-    """남은 추정 쿼터가 많은 순으로 후보를 재정렬한다. 소진 예상(잔량 0)인 후보는 맨
-    뒤로 밀리되, 다 소진 상태여도(추정이 틀렸을 수 있으니) 완전히 제거하지는 않는다 --
-    최후의 수단으로라도 시도는 되게 남겨둔다."""
-    return sorted(candidates, key=lambda c: remaining(c[0], limit), reverse=True)

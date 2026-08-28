@@ -196,6 +196,27 @@ def build_agent_pool(keys: "list[str | None]", models: "list[str] | None", tools
     return pool
 
 
+# 모델 패밀리별 대략적인 성능 우선순위(낮을수록 먼저 시도) -- pro > flash > flash-lite >
+# gemma(오픈 웨이트, 상대적으로 약함) > 그 외 이름 모를 모델. preview 꼬리표가 붙은 건 같은
+# 패밀리 안에서 정식 버전보다 살짝 뒤로 민다(불안정할 수 있으므로). 어디까지나 이름 기반
+# 휴리스틱이고 Google이 모델을 계속 새로 내놓으므로 완벽할 수 없다 -- 그래도 "쓸 수만 있으면
+# 아무 모델이나"보다는 훨씬 낫다.
+def _model_quality_rank(model: str) -> "tuple[int, int]":
+    name = model.lower()
+    if "gemma" in name:
+        family = 3
+    elif "flash-lite" in name or "flash_lite" in name:
+        family = 2
+    elif "flash" in name:
+        family = 1
+    elif "pro" in name:
+        family = 0
+    else:
+        family = 4
+    is_preview = 1 if "preview" in name else 0
+    return (family, is_preview)
+
+
 def run_with_fallback_pool(candidates: "list[tuple[str, object]]", thread_map: dict, base_thread_id: str,
                             prompt: str, log_prefix: str) -> str:
     """(label, agent) 후보 목록을 순서대로 시도한다 -- 이 후보를 "지금 못 쓴다"는 뜻의
@@ -209,12 +230,20 @@ def run_with_fallback_pool(candidates: "list[tuple[str, object]]", thread_map: d
     별도 쿼터일 수 있다. admin/public 둘 다 [키1+모델A, 키1+모델B, 키2+모델A, ...] 식으로
     후보를 만들어서 넘기면, API 키뿐 아니라 모델도 순환하며 살아있는 조합을 찾는다.
 
-    quota_tracker로 후보별 오늘자 호출 수를 미리 추정해서 잔량 많은 순으로 재정렬한다 --
-    실제 429를 맞기 전에(그 자체가 30~50초 걸림, 실측 확인됨) 소진 가능성이 높은 후보를
-    뒤로 미뤄서, 다음 호출은 처음부터 살아있을 가능성이 높은 후보로 간다. 성공하면
-    카운트를 올리고, 실제 429를 맞으면 그 후보를 오늘자로 확정 소진 처리한다 -- 응답을
-    이미 만든 뒤에 하는 기록이라 사용자가 기다리는 시간에는 영향 없다."""
-    ranked = quota_tracker.rank_candidates(candidates)
+    정렬 우선순위는 (1) 오늘 소진 확정 여부 -- 살아있을 가능성이 있는 후보를 먼저,
+    (2) 모델 성능 등급(_model_quality_rank) -- 같은 조건이면 더 좋은 모델을 먼저,
+    (3) quota_tracker 잔량 추정치 순서다. (1)이 없으면 "잔량만 많으면 1순위"가 돼서,
+    한 번도 안 써서 잔량이 가득 찬 약한 모델(gemma 등)이 정작 쓸 만한 pro/flash보다
+    먼저 뽑히는 문제가 있었다(실측 확인됨, 2026-08-28). 성공하면 카운트를 올리고, 실제
+    429를 맞으면 그 후보를 오늘자로 확정 소진 처리한다 -- 응답을 이미 만든 뒤에 하는
+    기록이라 사용자가 기다리는 시간에는 영향 없다."""
+    def _sort_key(candidate):
+        label, _ = candidate
+        model = label.split(":", 1)[1] if ":" in label else label
+        remaining = quota_tracker.remaining(label)
+        return (remaining <= 0, _model_quality_rank(model), -remaining)
+
+    ranked = sorted(candidates, key=_sort_key)
     last_error: Optional[Exception] = None
     for i, (label, agent) in enumerate(ranked):
         try:
