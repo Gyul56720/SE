@@ -30,26 +30,29 @@ from dotenv import load_dotenv
 # 전에 .env를 먼저 로드해야 한다 (실측 확인됨: 순서를 바꾸면 KeyError로 임포트 자체가 실패함).
 load_dotenv()
 
-from langchain_google_genai import ChatGoogleGenerativeAI  # noqa: E402
 from langgraph.checkpoint.memory import MemorySaver  # noqa: E402
-from langgraph.prebuilt import create_react_agent  # noqa: E402
 
 import agent_memory  # noqa: E402
 import main_public  # noqa: E402
-from bot_tools import REPO_DIR, run_shell, search_memory, save_memory, invoke_with_recovery  # noqa: E402
+from bot_tools import (  # noqa: E402
+    REPO_DIR, run_shell, search_memory, save_memory, build_agent_pool, run_with_fallback_pool,
+)
 
 BOT_TOKEN = os.environ["DISCORD_BOT_TOKEN"]
 # 관리자 채널(화이트리스트 있음, DISCORD_ALLOWED_USER_IDS): run_shell 전권 + git sync.
 ADMIN_CHANNEL_ID = int(os.getenv("DISCORD_CHANNEL_ID", "1542081266315427912"))
 ADMIN_ALLOWED_USER_IDS = {int(x) for x in os.getenv("DISCORD_ALLOWED_USER_IDS", "").split(",") if x.strip()}
 ADMIN_MODEL_NAME = os.getenv("DISCORD_ADMIN_MODEL", "gemini-3.5-flash-lite")
+_admin_extra_models = [m.strip() for m in os.getenv("GEMINI_MODEL_POOL", "").split(",") if m.strip()]
+ADMIN_MODEL_CANDIDATES = [ADMIN_MODEL_NAME] + [m for m in _admin_extra_models if m != ADMIN_MODEL_NAME]
 # public과 API 쿼터를 분리하려고 별도 fallback 키를 쓴다 -- 한쪽이 무제한 루프를 돌려도(self
 # -modification 특성상 발생 가능) 다른 채널까지 같이 막히지 않게. 다만 fallback 키를 못 챙겨서
 # 비어있는 채로 배포되면 admin 채널 전체가 KeyError로 기동 자체를 못 하고 죽었다(실측 확인됨,
-# 2026-08-27) -- 이러면 정작 API 문제를 고쳐야 할 admin 에이전트가 죽어서 아무것도 못 하게
-# 되므로, 없거나 비어있을 땐 크래시 대신 GEMINI_API_KEY를 그대로 재사용한다(쿼터 분리 이점은
-# 없어지지만 admin 채널은 최소한 살아있게).
-ADMIN_GEMINI_KEY = os.getenv("GEMINI_API_KEY_FALLBACK") or os.environ["GEMINI_API_KEY"]
+# 2026-08-27) -- 그래서 없거나 비어있을 땐 GEMINI_API_KEY를 대신 쓴다. 게다가 admin 자기
+# 기본 키(FALLBACK)가 429로 소진돼도 public처럼 실시간으로 다른 키/모델로 못 넘어가서 계속
+# 막혔었다(실측 확인됨, 2026-08-28) -- 그래서 public과 동일한 (키 x 모델) 후보 풀로 바꿨다.
+ADMIN_PRIMARY_KEY = os.getenv("GEMINI_API_KEY_FALLBACK") or os.environ["GEMINI_API_KEY"]
+ADMIN_SECONDARY_KEY = os.environ["GEMINI_API_KEY"] if os.getenv("GEMINI_API_KEY_FALLBACK") else None
 
 ADMIN_TOOLS = [run_shell, search_memory, save_memory]
 ADMIN_SYSTEM_PROMPT = (
@@ -62,9 +65,13 @@ ADMIN_SYSTEM_PROMPT = (
     "코드를 고쳤으면 그 결과를 run_shell로 git add/commit/push까지 해서 반영하라.\n"
     "무엇을 했는지 간결하게 보고하라."
 )
-_admin_llm = ChatGoogleGenerativeAI(model=ADMIN_MODEL_NAME, google_api_key=ADMIN_GEMINI_KEY)
-ADMIN_AGENT = create_react_agent(
-    _admin_llm, tools=ADMIN_TOOLS, checkpointer=MemorySaver(), prompt=ADMIN_SYSTEM_PROMPT,
+_admin_checkpointer = MemorySaver()
+ADMIN_AGENT_POOL = build_agent_pool(
+    keys=[ADMIN_PRIMARY_KEY, ADMIN_SECONDARY_KEY],
+    models=ADMIN_MODEL_CANDIDATES,
+    tools=ADMIN_TOOLS,
+    prompt=ADMIN_SYSTEM_PROMPT,
+    checkpointer=_admin_checkpointer,
 )
 
 PROJECT_SLUG = REPO_DIR.replace("/", "-")
@@ -152,7 +159,7 @@ def run_admin_agent(prompt: str, thread_id: str) -> str:
     """관리 채널용 -- LangGraph ReAct 에이전트(Gemini, run_shell 전권)로 답한다."""
     print(f"[admin-agent] thread={thread_id} prompt={prompt[:120]!r}")
     try:
-        reply = invoke_with_recovery(ADMIN_AGENT, _admin_thread_map, thread_id, prompt, "[admin-agent]")
+        reply = run_with_fallback_pool(ADMIN_AGENT_POOL, _admin_thread_map, thread_id, prompt, "[admin-agent]")
         print(f"[admin-agent] thread={thread_id} reply={reply[:200]!r}")
         return reply
     except Exception as e:

@@ -19,8 +19,11 @@ import contextvars
 import os
 import subprocess
 import uuid
+from typing import Optional
 
 from langchain_core.tools import tool
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langgraph.prebuilt import create_react_agent
 
 import agent_memory
 import public_agent_files
@@ -91,6 +94,56 @@ def extract_text(content) -> str:
 def is_quota_error(e: Exception) -> bool:
     text = str(e)
     return "RESOURCE_EXHAUSTED" in text or "429" in text
+
+
+def build_agent_pool(keys: "list[str | None]", models: "list[str]", tools: list, prompt: str,
+                      checkpointer) -> "list[tuple[str, object]]":
+    """(키, 모델) 조합마다 ChatGoogleGenerativeAI + create_react_agent를 하나씩 만들어
+    [(label, agent), ...] 로 돌려준다. 키가 먼저 도는 순서(키1+모델1, 키1+모델2, ...,
+    키2+모델1, ...)로 우선순위를 매긴다 -- 원래 기본 키를 최대한 먼저 써보고, 그래도
+    안 되면 모델을 바꿔보고, 그것도 안 되면 다음 키로 넘어가는 순서.
+
+    ChatGoogleGenerativeAI 생성 자체는 API를 호출하지 않으므로(실제 요청은 invoke 시점에만
+    나감) 조합을 몇 개를 만들든 미리 만들어두는 것 자체는 쿼터를 안 쓴다 (과거에 시작할 때마다
+    "ping" 테스트 호출로 매 재시작마다 쿼터를 태워버린 적이 있었다 -- 실측 확인됨,
+    2026-08-27 -- 그래서 여기서도 절대 테스트 호출을 하지 않는다).
+    모든 후보가 같은 checkpointer를 공유해서, 후보 간 전환이 일어나도 같은 thread_id의
+    대화 맥락이 끊기지 않는다."""
+    pool: list = []
+    for key in keys:
+        if not key:
+            continue
+        for model in models:
+            llm = ChatGoogleGenerativeAI(model=model, google_api_key=key)
+            agent = create_react_agent(llm, tools=tools, checkpointer=checkpointer, prompt=prompt)
+            label = f"{key[:8]}...:{model}"
+            pool.append((label, agent))
+    return pool
+
+
+def run_with_fallback_pool(candidates: "list[tuple[str, object]]", thread_map: dict, base_thread_id: str,
+                            prompt: str, log_prefix: str) -> str:
+    """(label, agent) 후보 목록을 순서대로 시도한다 -- 429 쿼터 초과면 다음 후보로 넘어가고,
+    그 외 에러는 그대로 올린다(broken-history 복구는 invoke_with_recovery가 각 후보 안에서
+    처리함). label은 보통 "키 앞 8자리:모델명" 같은 식으로 어떤 조합인지 알아볼 수 있게 짓는다.
+
+    쿼터는 (프로젝트, 모델) 단위로 걸린다(RetryInfo의 quotaId가
+    GenerateRequestsPerDayPerProjectPerModel-FreeTier) -- 즉 같은 키라도 모델을 바꾸면
+    별도 쿼터일 수 있다. admin/public 둘 다 [키1+모델A, 키1+모델B, 키2+모델A, ...] 식으로
+    후보를 만들어서 넘기면, API 키뿐 아니라 모델도 순환하며 살아있는 조합을 찾는다."""
+    last_error: Optional[Exception] = None
+    for i, (label, agent) in enumerate(candidates):
+        try:
+            reply = invoke_with_recovery(agent, thread_map, base_thread_id, prompt, f"{log_prefix}[{label}]")
+            if i > 0:
+                print(f"{log_prefix} Model have changed {label}")
+            return reply
+        except Exception as e:
+            if not is_quota_error(e):
+                raise
+            print(f"{log_prefix} thread={base_thread_id} candidate={label} quota exhausted, 다음 후보로 전환")
+            last_error = e
+    raise last_error if last_error else RuntimeError("후보가 비어있음")
 
 
 def invoke_with_recovery(agent, thread_map: dict, base_thread_id: str, prompt: str, log_prefix: str) -> str:
