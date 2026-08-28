@@ -7,3 +7,4 @@ __pycache__/
 keyword_synthesis_log.jsonl
 inbox/discord_attachments/
 __pycache__/
+*.swp
