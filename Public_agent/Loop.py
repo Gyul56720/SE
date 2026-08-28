@@ -14,18 +14,29 @@ Diff 기반 자가 수정(self-correction) 루프.
   코드가 루프 자체의 상태나 이 파일을 손상시킬 수 없다.
 - 매 반복 실패해도 마지막으로 문법이 맞았던 코드를 다음 반복의 기반으로 쓰고,
   같은 에러가 연속으로 반복되면("stuck") 더 돌려봐야 소용없다고 보고 조기 종료한다.
-- `max_iters`는 크게 잡을 수는 있어도 무제한은 아니다. 실제로 서브프로세스를 실행하는
-  루프에 상한이 없으면 러너웨이 프로세스가 된다 -- 이건 성능이 아니라 안전 문제라
+- `max_iters`는 크게 잡을 수는 있어도 무제한은 아니다(기본 100). 실제로 서브프로세스를
+  실행하는 루프에 상한이 없으면 러너웨이 프로세스가 된다 -- 이건 성능이 아니라 안전 문제라
   "조건이 만족될 때까지 무한 반복"으로는 바꾸지 않았다.
+- `checkpoint_path`를 주면 매 iteration마다 진행 상태(best_code/iteration/history)를
+  JSON으로 저장하고, 다음 실행이 같은 경로를 보면 중단된 지점부터 이어간다. 이게 필요한
+  이유: discord_bot_server.py를 self-modify해서 push하면 deploy-oracle.yml의 자동
+  재배포가 걸려 서비스가 재시작되는데(실측 확인됨, 2026-08-27), 이 루프는 순수 인메모리
+  while문이라 재시작되면 상태가 통째로 날아간다.
+- 이 루프를 `run_shell`로 띄울 때는 CLAUDE.md의 백그라운드 실행 규칙(setsid nohup +
+  disown)을 그대로 따르고, 가능하면 discord_bot_server.py의 run_claude()가 쓰는
+  `systemd-run --scope`로 se-discord-bot.service의 cgroup 밖에 분리해서 실행하라 --
+  그래야 재배포로 봇 프로세스가 재시작돼도 진행 중인 루프까지 같이 죽지 않는다.
 """
 
 from __future__ import annotations
 
 import difflib
+import json
 import py_compile
 import subprocess
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -178,16 +189,66 @@ class AutoRegressivePatcher:
         objective: str,
         diff_generator: DiffGenerator,
         evaluator: Optional[Evaluator] = None,
-        max_iters: int = 50,
+        max_iters: int = 100,
         stuck_after: int = 3,
+        checkpoint_path: "str | Path | None" = None,
+        history_log_path: "str | Path | None" = None,
     ):
-        self.current_code = initial_code
         self.objective = objective
         self.diff_generator = diff_generator
         self.evaluator = evaluator or default_subprocess_evaluator()
         self.max_iters = max_iters
         self.stuck_after = stuck_after
+        self.checkpoint_path = Path(checkpoint_path) if checkpoint_path else None
+        # checkpoint_path는 "이어서 돌기 위한" 상태라 성공하면 지운다. 반면 이건 다르다 --
+        # 성공/실패와 무관하게 diff와 그게 왜 나왔는지(feedback)를 영구적으로 계속 쌓아서,
+        # 나중에 다른 LLM 호출이 "이 코드베이스에서 뭘 시도했다가 왜 실패/성공했는지"를
+        # 참고할 수 있게 한다. 체크포인트가 삭제돼도(=한 실행이 끝나도) 이 로그는 안 지운다.
+        self.history_log_path = Path(history_log_path) if history_log_path else None
+
+        # discord_bot_server.py를 self-modify한 push는 deploy-oracle.yml의 자동 재배포를
+        # 트리거해서 서비스가 재시작된다(실측 확인됨, 2026-08-27) -- 이 루프는 순수 인메모리
+        # while문이라 재시작되면 상태가 통째로 날아간다. checkpoint_path가 주어지면 매
+        # iteration마다 진행 상태를 JSON으로 남겨서, 다음 실행이 처음부터 다시 돌지 않고
+        # 중단된 지점부터 이어가게 한다.
+        self.current_code = initial_code
         self.history: list = []
+        self._start_iteration = 0
+        self._resume_feedback = "최초 실행"
+        if self.checkpoint_path and self.checkpoint_path.exists():
+            self._load_checkpoint()
+
+    def _load_checkpoint(self) -> None:
+        data = json.loads(self.checkpoint_path.read_text(encoding="utf-8"))
+        if data.get("objective") != self.objective:
+            return  # 다른 목표의 체크포인트는 무시하고 처음부터 시작한다.
+        self.current_code = data["best_code"]
+        self._start_iteration = data["iteration"]
+        self._resume_feedback = data["feedback"]
+        self.history = [IterationRecord(**rec) for rec in data["history"]]
+
+    def _save_checkpoint(self, best_code: str, iteration: int, feedback: str) -> None:
+        if not self.checkpoint_path:
+            return
+        self.checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+        data = {
+            "objective": self.objective,
+            "best_code": best_code,
+            "iteration": iteration,
+            "feedback": feedback,
+            "history": [asdict(rec) for rec in self.history],
+        }
+        tmp = self.checkpoint_path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp.replace(self.checkpoint_path)  # 원자적 교체 -- 쓰는 도중 재시작돼도 파일이 깨지지 않는다.
+
+    def _append_history_log(self, record: IterationRecord) -> None:
+        if not self.history_log_path:
+            return
+        self.history_log_path.parent.mkdir(parents=True, exist_ok=True)
+        entry = {"objective": self.objective, "timestamp": datetime.now(timezone.utc).isoformat(), **asdict(record)}
+        with self.history_log_path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
     def _is_stuck(self, recent_feedbacks: list) -> bool:
         tail = recent_feedbacks[-self.stuck_after:]
@@ -195,10 +256,10 @@ class AutoRegressivePatcher:
 
     def run_self_correction_loop(self) -> "tuple[str, int]":
         best_code = self.current_code
-        feedback = "최초 실행"
-        recent_feedbacks: list = []
+        feedback = self._resume_feedback
+        recent_feedbacks: list = [rec.feedback for rec in self.history[-self.stuck_after:]]
 
-        iteration = 0
+        iteration = self._start_iteration
         while iteration < self.max_iters:
             iteration += 1
             diff = self.diff_generator(best_code, feedback)
@@ -208,7 +269,9 @@ class AutoRegressivePatcher:
             except ValueError as e:
                 feedback = f"diff 적용 실패: {e}"
                 self.history.append(IterationRecord(iteration, False, feedback, diff))
+                self._append_history_log(self.history[-1])
                 recent_feedbacks.append(feedback)
+                self._save_checkpoint(best_code, iteration, feedback)
                 if self._is_stuck(recent_feedbacks):
                     break
                 continue
@@ -217,20 +280,26 @@ class AutoRegressivePatcher:
             if not ok:
                 feedback = f"문법 오류:\n{syntax_err}"
                 self.history.append(IterationRecord(iteration, False, feedback, diff))
+                self._append_history_log(self.history[-1])
                 recent_feedbacks.append(feedback)
+                self._save_checkpoint(best_code, iteration, feedback)
                 if self._is_stuck(recent_feedbacks):
                     break
                 continue
 
             is_success, error_log = self.evaluator(candidate)
             self.history.append(IterationRecord(iteration, is_success, error_log, diff))
+            self._append_history_log(self.history[-1])
 
             if is_success:
+                if self.checkpoint_path:
+                    self.checkpoint_path.unlink(missing_ok=True)  # 완료됐으니 다음 실행이 이어받지 않게 지운다.
                 return candidate, iteration
 
             best_code = candidate  # 문법은 맞으니 다음 diff의 기반으로 이어간다.
             feedback = f"실행 오류 발생:\n{error_log}"
             recent_feedbacks.append(feedback)
+            self._save_checkpoint(best_code, iteration, feedback)
             if self._is_stuck(recent_feedbacks):
                 break
 
