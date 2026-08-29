@@ -1,8 +1,17 @@
 """
-Matrix multiplication tensor decomposition searcher via CP-ALS (Alternating Least Squares)
-with regularization, momentum/damping, and increased restarts to escape local minima.
+[자유·변경 가능] CP-ALS(교대최소제곱) 기반 행렬곱 분해 탐색기.
 
-Verifier is NEVER modified.
+무작위 샘플링이 아니라 실제 최적화로 '정확한' bilinear 분해를 찾는다. 행렬곱 텐서 T(b)를
+랭크 m의 CP 분해 T ≈ sum_k u_k∘v_k∘w_k 로 근사하고, 잔차가 0으로 수렴하면 그 (U,V,W)가
+곧 b x b 블록을 m번 곱셈으로 계산하는 정확한 스킴이다. 계수는 A/B/C 모두 임의 실수라서
+'정답이 존재한다면 이 표현으로 담을 수 있다' (이전의 계수 고정 구조는 담을 수 없었다).
+
+판정은 하지 않는다 -- propose()는 후보를 만들 뿐이고, 맞는지는 신뢰된 verifier.py 가 정한다.
+verifier.py 는 절대 건드리지 마라 (G008/G009가 커밋을 막는다).
+
+사다리(LADDER): (2,7)로 기계가 실제로 정답을 찾음을 증명한 뒤(=Strassen 재발견),
+(3,23)→(3,22)→(3,21)로 내려가며 도전한다. m=23 미만은 미해결 난제이므로 순수 ALS 로는
+수렴 못 하는 것이 정상이다(honest REJECTED). self_improve_loop 이 성공 시 다음 단으로 올린다.
 """
 from __future__ import annotations
 
@@ -37,31 +46,17 @@ def _kr(P, Q):
     return (P[:, None, :] * Q[None, :, :]).reshape(-1, P.shape[1])
 
 
-def cp_als(T, m, iters=2000, seed=0, tol=1e-12, reg=1e-6):
-    """랭크 m CP-ALS with L2 regularization (ridge regression) to avoid ill-conditioned updates."""
+def cp_als(T, m, iters=1500, seed=0, tol=1e-12):
+    """랭크 m CP-ALS. (U, V, W, 상대잔차) 반환."""
     rng = np.random.default_rng(seed)
     n = T.shape[0]
-    U = rng.standard_normal((n, m)) * 0.1
-    V = rng.standard_normal((n, m)) * 0.1
-    W = rng.standard_normal((n, m)) * 0.1
+    U = rng.standard_normal((n, m)); V = rng.standard_normal((n, m)); W = rng.standard_normal((n, m))
     normT = np.linalg.norm(T)
     res = 1.0
-    
-    eye = reg * np.eye(m)
-
     for it in range(iters):
-        # U update with regularization
-        VTV_WTW = (V.T @ V) * (W.T @ W) + eye
-        U = _unfold(T, 0) @ _kr(V, W) @ np.linalg.pinv(VTV_WTW)
-
-        # V update with regularization
-        UTU_WTW = (U.T @ U) * (W.T @ W) + eye
-        V = _unfold(T, 1) @ _kr(U, W) @ np.linalg.pinv(UTU_WTW)
-
-        # W update with regularization
-        UTU_VTV = (U.T @ U) * (V.T @ V) + eye
-        W = _unfold(T, 2) @ _kr(U, V) @ np.linalg.pinv(UTU_VTV)
-
+        U = _unfold(T, 0) @ _kr(V, W) @ np.linalg.pinv((V.T @ V) * (W.T @ W))
+        V = _unfold(T, 1) @ _kr(U, W) @ np.linalg.pinv((U.T @ U) * (W.T @ W))
+        W = _unfold(T, 2) @ _kr(U, V) @ np.linalg.pinv((U.T @ U) * (V.T @ V))
         if it % 50 == 0 or it == iters - 1:
             R = np.einsum('ir,jr,kr->ijk', U, V, W)
             res = float(np.linalg.norm(R - T) / normT)
@@ -102,14 +97,13 @@ class Searcher:
     def propose(self) -> dict:
         b, m = self.current_target()
         attempt = self.state["attempt"]
-        # 대폭 강화된 restart 수와 반복 횟수 (b=3에서도 충분한 탐색)
-        restarts = 30 if b == 2 else 8
-        iters = 2000 if b == 2 else 1500
+        # 작은 문제는 한 번의 propose 에서 여러 restart(빨리 정답 도달), 큰 문제는 적게
+        # (루프가 여러 번 불러주므로 밤새 restart 가 누적된다).
+        restarts = 20 if b == 2 else 2
+        iters = 1500 if b == 2 else 1000
         best = None
         for r in range(restarts):
-            # 다양한 정규화 계수(reg)와 시드를 조합하여 local minima 탈출 시도
-            reg = 1e-6 if r % 2 == 0 else 1e-5
-            U, V, W, res = cp_als(matmul_tensor(b), m, iters=iters, seed=attempt * 1000 + r * 37, reg=reg)
+            U, V, W, res = cp_als(matmul_tensor(b), m, iters=iters, seed=attempt * 100 + r)
             if best is None or res < best[0]:
                 best = (res, U, V, W)
             if res < 1e-11:
@@ -118,7 +112,7 @@ class Searcher:
         self._save()
         res, U, V, W = best
         scheme = factors_to_scheme(U, V, W, b, m)
-        scheme["_als_residual"] = res
+        scheme["_als_residual"] = res  # 참고용(verifier 는 이 키를 무시한다).
         return scheme
 
     def record(self, ok: bool):
