@@ -1,0 +1,6 @@
+{"ts": 1788034314.4421144, "b": 2, "m": 7, "als_residual": 8.170799799327558e-13, "omega_eff": 2.807354922057604, "status": "VERIFIED"}
+{"ts": 1788034314.900228, "b": 3, "m": 23, "als_residual": 0.04504486124581905, "status": "REJECTED", "reason": "mismatch at size=3"}
+{"ts": 1788034315.4302862, "b": 3, "m": 23, "als_residual": 0.027912598583783588, "status": "REJECTED", "reason": "mismatch at size=3"}
+{"ts": 1788034315.969401, "b": 3, "m": 23, "als_residual": 0.03672199399947097, "status": "REJECTED", "reason": "mismatch at size=3"}
+{"ts": 1788034316.480692, "b": 3, "m": 23, "als_residual": 0.05196110049751357, "status": "REJECTED", "reason": "mismatch at size=3"}
+{"ts": 1788034317.9915156, "b": 3, "m": 23, "als_residual": 0.045243102499672505, "status": "REJECTED", "reason": "mismatch at size=3"}
