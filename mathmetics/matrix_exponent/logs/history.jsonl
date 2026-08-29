@@ -114,3 +114,15 @@
 {"ts": 1788036687.459063, "b": 3, "m": 23, "als_residual": 0.015811665526677836, "status": "REJECTED", "reason": "mismatch at size=3"}
 {"ts": 1788036710.733174, "b": 3, "m": 23, "als_residual": 0.021441092938826404, "status": "REJECTED", "reason": "mismatch at size=3"}
 {"ts": 1788036734.0483632, "b": 2, "m": 7, "als_residual": 2.4091699888454713e-13, "omega_eff": 2.807354922057604, "status": "VERIFIED"}
+{"ts": 1788036754.1165776, "b": 3, "m": 23, "als_residual": 0.04504486124581905, "status": "REJECTED", "reason": "mismatch at size=3"}
+{"ts": 1788036774.6481612, "b": 3, "m": 23, "als_residual": 0.027912598583783588, "status": "REJECTED", "reason": "mismatch at size=3"}
+{"ts": 1788036795.1852043, "b": 3, "m": 23, "als_residual": 0.03672199399947097, "status": "REJECTED", "reason": "mismatch at size=3"}
+{"ts": 1788036815.6957083, "b": 3, "m": 23, "als_residual": 0.05196110049751357, "status": "REJECTED", "reason": "mismatch at size=3"}
+{"ts": 1788036836.2033389, "b": 3, "m": 23, "als_residual": 0.045243102499672505, "status": "REJECTED", "reason": "mismatch at size=3"}
+{"ts": 1788036856.70847, "b": 3, "m": 23, "als_residual": 0.030592922472376972, "status": "REJECTED", "reason": "mismatch at size=3"}
+{"ts": 1788036877.246495, "b": 3, "m": 23, "als_residual": 0.03177728969514966, "status": "REJECTED", "reason": "mismatch at size=3"}
+{"ts": 1788036897.7769947, "b": 3, "m": 23, "als_residual": 0.03896212550676615, "status": "REJECTED", "reason": "mismatch at size=3"}
+{"ts": 1788036918.3064396, "b": 3, "m": 23, "als_residual": 0.01700991667740512, "status": "REJECTED", "reason": "mismatch at size=3"}
+{"ts": 1788036938.8371313, "b": 3, "m": 23, "als_residual": 0.037028210711809284, "status": "REJECTED", "reason": "mismatch at size=3"}
+{"ts": 1788036959.3504481, "b": 3, "m": 23, "als_residual": 0.00998423519195937, "status": "REJECTED", "reason": "mismatch at size=3"}
+{"ts": 1788036969.254961, "b": 3, "m": 23, "als_residual": 0.020596248521951837, "status": "REJECTED", "reason": "mismatch at size=3"}
