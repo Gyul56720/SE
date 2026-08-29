@@ -209,6 +209,55 @@ def _verify_pushed() -> str:
             f"원격 반영 실패 가능. 로컬에만 커밋됐을 수 있으니 수동 확인하라.")
 
 
+# 에이전트가 "저장소에 무언가를 남겼다"고 주장할 때 쓰는 신호어. 이게 응답에 있는데 정작
+# 이번 턴에 커밋된 변경이 없으면(git_sync가 None), 주장과 실제 저장소 상태가 어긋난 것이다.
+# 2026-08-29에 admin/public 에이전트가 "result.md 저장", "searcher 전면 개편", "history
+# 축적"을 보고했지만 원격엔 해당 커밋/파일이 없었다(4회 반복). 메모리 노트로는 못 막혀서
+# 봇 레벨에서 실제 원격 상태를 자동 대조해 사용자에게 알린다.
+_PERSISTENCE_CLAIM_HINTS = (
+    "커밋", "commit", "푸시", "push", "저장했", "저장 완료", "저장하였", "반영",
+    "구현했", "구현하였", "생성했", "생성하였", "작성했", "작성하였", "추가했", "추가하였",
+    "개편", "수정했", "수정하였", "변경했", "변경하였", "고쳤", "갱신했", "업데이트했",
+    "history.jsonl", "result.md", ".py를", ".py에", "파일에 저장",
+)
+
+
+def _claims_persistence(reply: str) -> bool:
+    low = reply.lower()
+    return any(h.lower() in low for h in _PERSISTENCE_CLAIM_HINTS)
+
+
+def _remote_status_note() -> str:
+    """현재 로컬 HEAD가 원격에 반영돼 있는지, 미커밋 변경이 남아있는지 사실만 보고한다.
+    에이전트의 주장이 아니라 저장소의 실제 상태다."""
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO_DIR,
+                          capture_output=True, text=True).stdout.strip()
+    subprocess.run(["git", "fetch", "origin"], cwd=REPO_DIR, capture_output=True, text=True)
+    contains = subprocess.run(["git", "branch", "-r", "--contains", head],
+                              cwd=REPO_DIR, capture_output=True, text=True)
+    dirty = subprocess.run(["git", "status", "--porcelain"], cwd=REPO_DIR,
+                           capture_output=True, text=True).stdout.strip()
+    on_remote = contains.returncode == 0 and "origin/" in contains.stdout
+    short = head[:7]
+    parts = [f"HEAD {short}"]
+    parts.append("원격 반영됨" if on_remote else "⚠️ 원격 미반영")
+    parts.append("미커밋 변경 있음" if dirty else "미커밋 변경 없음")
+    return "[저장소 상태 자동확인] " + " · ".join(parts)
+
+
+def _integrity_note(reply: str, sync_note: str | None) -> str | None:
+    """에이전트가 저장소에 뭔가 남겼다고 '주장'했는데 이번 턴 git_sync가 아무것도 커밋하지
+    않았다면(sync_note is None), 실제 원격 상태를 대조해 붙인다. git_sync가 이미 커밋/차단
+    결과를 냈으면(sync_note가 있으면) 그게 진실을 보여주므로 중복하지 않는다."""
+    if sync_note is not None:
+        return None
+    if not _claims_persistence(reply):
+        return None
+    note = _remote_status_note()
+    return (f"{note}\n(에이전트가 저장/커밋을 주장했으나 이번 턴에 커밋된 변경은 없습니다 -- "
+            f"위 상태로 실제 반영 여부를 확인하세요.)")
+
+
 def _git_sync_locked() -> str | None:
     status = subprocess.run(["git", "status", "--porcelain"], cwd=REPO_DIR, capture_output=True, text=True)
     if not status.stdout.strip():
@@ -322,6 +371,8 @@ async def _handle_admin_message(message: discord.Message) -> None:
             else:
                 async with GIT_LOCK:
                     sync_note = await loop.run_in_executor(None, git_sync)
+            async with GIT_LOCK:
+                integrity_note = await loop.run_in_executor(None, _integrity_note, reply, sync_note)
     except asyncio.CancelledError:
         # "stop"으로 취소됨 -- _handle_stop이 이미 상태 메시지를 보냈으므로 조용히 반환한다.
         return
@@ -333,6 +384,8 @@ async def _handle_admin_message(message: discord.Message) -> None:
         await message.channel.send(reply[chunk_start:chunk_start + 1900] or "(빈 응답)")
     if sync_note:
         await message.channel.send(sync_note)
+    if integrity_note:
+        await message.channel.send(integrity_note)
 
 
 async def _handle_public_message(message: discord.Message) -> None:
@@ -361,6 +414,8 @@ async def _handle_public_message(message: discord.Message) -> None:
             else:
                 async with GIT_LOCK:
                     sync_note = await loop.run_in_executor(None, git_sync)
+            async with GIT_LOCK:
+                integrity_note = await loop.run_in_executor(None, _integrity_note, reply, sync_note)
     except asyncio.CancelledError:
         return
     finally:
@@ -371,6 +426,8 @@ async def _handle_public_message(message: discord.Message) -> None:
         await message.channel.send(reply[chunk_start:chunk_start + 1900] or "(빈 응답)")
     if sync_note:
         await message.channel.send(sync_note)
+    if integrity_note:
+        await message.channel.send(integrity_note)
 
 
 @client.event
