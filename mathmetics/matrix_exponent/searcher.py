@@ -1,7 +1,7 @@
 """
 Matrix multiplication tensor decomposition searcher via CP-ALS (Alternating Least Squares)
-supporting dynamic rank m (e.g., m=22, m=23) with enhanced restarts and iterations,
-while preserving pure ALS for b=2 to satisfy G010 capability ratchet.
+combined with Perturbation & Warm-Start Refinement to escape local minima for tighter ranks (m=22, m=21),
+while strictly preserving pure ALS for b=2 (m=7) to satisfy G010 capability ratchet.
 
 Verifier is NEVER modified.
 """
@@ -15,7 +15,7 @@ import numpy as np
 HERE = Path(__file__).resolve().parent
 STATE_PATH = HERE / "als_state.json"
 
-# 미해결 난제 사다리: b=3에서 m=23부터 시작해 더 타이트한 m=22, m=21로 도전
+# 미해결 난제 사다리: b=3에서 m=23 정복 후 m=22, m=21 도전
 LADDER = [(2, 7), (3, 23), (3, 22), (3, 21)]
 
 
@@ -39,19 +39,28 @@ def _kr(P, Q):
     return (P[:, None, :] * Q[None, :, :]).reshape(-1, P.shape[1])
 
 
-def cp_als(T, m, iters=2000, seed=0, tol=1e-12):
-    """랭크 m CP-ALS. (U, V, W, 상대잔차) 반환."""
+def cp_als(T, m, iters=2000, seed=0, tol=1e-12, init_U=None, init_V=None, init_W=None, noise_scale=0.0):
+    """랭크 m CP-ALS with optional warm-start and perturbation. (U, V, W, 상대잔차) 반환."""
     rng = np.random.default_rng(seed)
     n = T.shape[0]
-    U = rng.standard_normal((n, m))
-    V = rng.standard_normal((n, m))
-    W = rng.standard_normal((n, m))
+    
+    if init_U is not None and init_V is not None and init_W is not None:
+        U = init_U + rng.normal(0, noise_scale, init_U.shape)
+        V = init_V + rng.normal(0, noise_scale, init_V.shape)
+        W = init_W + rng.normal(0, noise_scale, init_W.shape)
+    else:
+        U = rng.standard_normal((n, m))
+        V = rng.standard_normal((n, m))
+        W = rng.standard_normal((n, m))
+        
     normT = np.linalg.norm(T)
     res = 1.0
+    
     for it in range(iters):
         U = _unfold(T, 0) @ _kr(V, W) @ np.linalg.pinv((V.T @ V) * (W.T @ W))
         V = _unfold(T, 1) @ _kr(U, W) @ np.linalg.pinv((U.T @ U) * (W.T @ W))
         W = _unfold(T, 2) @ _kr(U, V) @ np.linalg.pinv((U.T @ U) * (V.T @ V))
+        
         if it % 50 == 0 or it == iters - 1:
             R = np.einsum('ir,jr,kr->ijk', U, V, W)
             res = float(np.linalg.norm(R - T) / normT)
@@ -92,21 +101,57 @@ class Searcher:
     def propose(self) -> dict:
         b, m = self.current_target()
         attempt = self.state["attempt"]
-        # b=2는 확실한 도달을 위해 restarts=20, b=3(m=23, 22 등)은 심층 탐색을 위해 restarts=15, iters=2500
-        restarts = 20 if b == 2 else 15
-        iters = 1500 if b == 2 else 2500
-        best = None
-        for r in range(restarts):
-            U, V, W, res = cp_als(matmul_tensor(b), m, iters=iters, seed=attempt * 100 + r * 13)
-            if best is None or res < best[0]:
-                best = (res, U, V, W)
-            if res < 1e-11:
-                break
+        
+        T = matmul_tensor(b)
+        
+        if b == 2:
+            # G010 래칫 보존을 위한 순수 ALS (b=2 m=7은 기존 방식 그대로 확실하게 도달)
+            restarts = 20
+            iters = 1500
+            best = None
+            for r in range(restarts):
+                U, V, W, res = cp_als(T, m, iters=iters, seed=attempt * 100 + r)
+                if best is None or res < best[0]:
+                    best = (res, U, V, W)
+                if res < 1e-11:
+                    break
+            res, U, V, W = best
+        else:
+            # b=3 (m=23, m=22 등 난제): Multi-stage Perturbation & Warm-Start 최적화 기법 적용
+            restarts = 10
+            iters = 2000
+            best = None
+            best_U, best_V, best_W = None, None, None
+            
+            for r in range(restarts):
+                # 1단계: 기본 ALS 탐색
+                U, V, W, res = cp_als(T, m, iters=iters, seed=attempt * 1000 + r * 31)
+                if best is None or res < best:
+                    best = res
+                    best_U, best_V, best_W = U, V, W
+                if res < 1e-11:
+                    break
+            
+            # 2단계: 최선의 로컬 미니마 지점을 기반으로 미세 섭동(Perturbation)을 준 후 재최적화 (Escape local minima)
+            if best_U is not None and best > 1e-6:
+                for p_idx, noise in enumerate([1e-3, 5e-4, 1e-4]):
+                    U_ref, V_ref, W_ref, res_ref = cp_als(
+                        T, m, iters=2000, seed=attempt * 2000 + p_idx,
+                        init_U=best_U, init_V=best_V, init_W=best_W, noise_scale=noise
+                    )
+                    if res_ref < best:
+                        best = res_ref
+                        best_U, best_V, best_W = U_ref, V_ref, W_ref
+                    if best < 1e-11:
+                        break
+                        
+            U, V, W, res = best_U, best_V, best_W, best
+
         self.state["attempt"] = attempt + 1
         self._save()
-        res, U, V, W = best
+        
         scheme = factors_to_scheme(U, V, W, b, m)
-        scheme["_als_residual"] = res  # 참고용(verifier 는 이 키를 무시한다).
+        scheme["_als_residual"] = res  # 참고용
         return scheme
 
     def record(self, ok: bool):
