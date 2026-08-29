@@ -111,6 +111,29 @@ GIT_LOCK = asyncio.Lock()
 
 _admin_thread_map: dict[str, str] = {}
 
+# thread_id별 현재 처리 중인 on_message 태스크와 그 프롬프트. "stop" 입력 시 이 태스크만
+# 취소한다 -- 서비스(systemd 유닛) 전체를 내리는 게 아니라 그 대화의 응답 대기만 중단한다.
+# 주의: run_shell로 이미 시작된 서브프로세스는 취소해도 백그라운드 스레드에서 계속 돌다가
+# 자연 종료된다(진짜 kill이 아님) -- 취소는 "그 결과를 기다리지 않고 지금까지 상황을
+# 보고한다"는 뜻이다.
+_active_tasks: dict[str, asyncio.Task] = {}
+_active_prompts: dict[str, str] = {}
+
+
+async def _handle_stop(message: discord.Message, thread_id: str) -> None:
+    task = _active_tasks.get(thread_id)
+    if task is None or task.done():
+        await message.channel.send("[중단] 현재 진행 중인 요청이 없습니다.")
+        return
+    prompt = _active_prompts.get(thread_id, "(알 수 없음)")
+    task.cancel()
+    await message.channel.send(
+        "[중단됨] 이번 응답 생성을 멈췄습니다. 봇 자체는 계속 실행 중입니다.\n"
+        f"진행 중이던 프롬프트: {prompt[:300]}\n"
+        "(참고: run_shell로 이미 시작된 명령이 있었다면 그 프로세스는 백그라운드에서 "
+        "자연 종료될 때까지 계속 돌 수 있습니다 -- 강제 kill은 아닙니다.)"
+    )
+
 
 def run_claude(prompt: str) -> str:
     """Claude Code 토큰이 있을 때 쓰던 경로. 지금은 호출되지 않지만 토큰 복구 시 다시
@@ -258,6 +281,12 @@ async def _handle_admin_message(message: discord.Message) -> None:
     if ADMIN_ALLOWED_USER_IDS and message.author.id not in ADMIN_ALLOWED_USER_IDS:
         return
     content = message.content.strip()
+    thread_id = f"admin-{message.author.id}"
+
+    if content.lower() == "stop":
+        await _handle_stop(message, thread_id)
+        return
+
     attachment_paths = await _save_attachments(message)
     if not content and not attachment_paths:
         return
@@ -268,16 +297,24 @@ async def _handle_admin_message(message: discord.Message) -> None:
         content = (content or "(첨부파일 확인)") + attachments_note
 
     loop = asyncio.get_running_loop()
-    thread_id = f"admin-{message.author.id}"
-    async with message.channel.typing():
-        reply = await loop.run_in_executor(None, run_admin_agent, content, thread_id)
-        # 게스트 보안 정책: 차단 목록(agent_context.BLOCKED_USER_IDS, 환경변수
-        # GUEST_BLOCKED_USER_IDS로 지정)에 든 사용자는 git sync를 타지 않는다.
-        if agent_context.is_blocked(message.author.id):
-            sync_note = "[보안 제한] 게스트 사용자의 Git 접근이 제한되었습니다."
-        else:
-            async with GIT_LOCK:
-                sync_note = await loop.run_in_executor(None, git_sync)
+    _active_tasks[thread_id] = asyncio.current_task()
+    _active_prompts[thread_id] = content
+    try:
+        async with message.channel.typing():
+            reply = await loop.run_in_executor(None, run_admin_agent, content, thread_id)
+            # 게스트 보안 정책: 차단 목록(agent_context.BLOCKED_USER_IDS, 환경변수
+            # GUEST_BLOCKED_USER_IDS로 지정)에 든 사용자는 git sync를 타지 않는다.
+            if agent_context.is_blocked(message.author.id):
+                sync_note = "[보안 제한] 게스트 사용자의 Git 접근이 제한되었습니다."
+            else:
+                async with GIT_LOCK:
+                    sync_note = await loop.run_in_executor(None, git_sync)
+    except asyncio.CancelledError:
+        # "stop"으로 취소됨 -- _handle_stop이 이미 상태 메시지를 보냈으므로 조용히 반환한다.
+        return
+    finally:
+        _active_tasks.pop(thread_id, None)
+        _active_prompts.pop(thread_id, None)
 
     for chunk_start in range(0, len(reply), 1900):
         await message.channel.send(reply[chunk_start:chunk_start + 1900] or "(빈 응답)")
@@ -292,17 +329,30 @@ async def _handle_public_message(message: discord.Message) -> None:
     if not content:
         return
 
-    loop = asyncio.get_running_loop()
     thread_id = str(message.author.id)
-    async with message.channel.typing():
-        reply = await loop.run_in_executor(None, main_public.run_public_agent, content, thread_id)
-        # 게스트 보안 정책: 차단 목록(agent_context.BLOCKED_USER_IDS, 환경변수
-        # GUEST_BLOCKED_USER_IDS로 지정)에 든 사용자는 git sync를 타지 않는다.
-        if agent_context.is_blocked(message.author.id):
-            sync_note = "[보안 제한] 게스트 사용자의 Git 접근이 제한되었습니다."
-        else:
-            async with GIT_LOCK:
-                sync_note = await loop.run_in_executor(None, git_sync)
+
+    if content.lower() == "stop":
+        await _handle_stop(message, thread_id)
+        return
+
+    loop = asyncio.get_running_loop()
+    _active_tasks[thread_id] = asyncio.current_task()
+    _active_prompts[thread_id] = content
+    try:
+        async with message.channel.typing():
+            reply = await loop.run_in_executor(None, main_public.run_public_agent, content, thread_id)
+            # 게스트 보안 정책: 차단 목록(agent_context.BLOCKED_USER_IDS, 환경변수
+            # GUEST_BLOCKED_USER_IDS로 지정)에 든 사용자는 git sync를 타지 않는다.
+            if agent_context.is_blocked(message.author.id):
+                sync_note = "[보안 제한] 게스트 사용자의 Git 접근이 제한되었습니다."
+            else:
+                async with GIT_LOCK:
+                    sync_note = await loop.run_in_executor(None, git_sync)
+    except asyncio.CancelledError:
+        return
+    finally:
+        _active_tasks.pop(thread_id, None)
+        _active_prompts.pop(thread_id, None)
 
     for chunk_start in range(0, len(reply), 1900):
         await message.channel.send(reply[chunk_start:chunk_start + 1900] or "(빈 응답)")
