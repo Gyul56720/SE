@@ -54,6 +54,21 @@ def _fired(report) -> "set[str]":
     return {r.rule_id for r in report.results if not r.passed}
 
 
+def _synthetic_requirements_incident() -> "tuple[str, set[str]]":
+    """2026-08-29 requirements 'X' 삽입 사고는 원격에 반영되지 않아 커밋 트리가 없다.
+    사고를 재현한 합성 트리를 만들어 G007이 발동하는지 본다."""
+    import shutil, tempfile
+    tmp = tempfile.mkdtemp()
+    archive = subprocess.run(["git", "archive", "HEAD"], cwd=REPO, capture_output=True, check=True)
+    subprocess.run(["tar", "-x", "-C", tmp], input=archive.stdout, check=True)
+    (Path(tmp) / "requirements.txt").write_text("requests>=2.31.0\nX\n", encoding="utf-8")
+    subprocess.run(["git", "init", "-q", tmp], check=True)
+    subprocess.run(["git", "-C", tmp, "add", "-A"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", tmp, "-c", "user.email=t@t", "-c", "user.name=t",
+                    "commit", "-qm", "req incident"], check=True, capture_output=True)
+    return tmp, {"G007"}
+
+
 def main() -> int:
     failures: list[str] = []
 
@@ -70,6 +85,14 @@ def main() -> int:
                 f"{commit}: {sorted(missing)} 가 사고 트리에서 발동하지 않았다 -- "
                 f"이 게이트는 해당 원인을 잡지 못한다"
             )
+
+    syn_tree, syn_expected = _synthetic_requirements_incident()
+    syn_fired = _fired(gatekeeper.run_gates(Path(syn_tree)))
+    syn_missing = syn_expected - syn_fired
+    print(f"[합성:requirements X 삽입] 기대 {sorted(syn_expected)} / 발동 {sorted(syn_fired)} "
+          f"-> {'RED 성립' if not syn_missing else 'RED 실패'}")
+    if syn_missing:
+        failures.append(f"합성 requirements 사고에서 {sorted(syn_missing)} 미발동")
 
     report = gatekeeper.run_gates(REPO)
     print(f"\n[HEAD] 현재 트리 -> {'GREEN 성립' if report.passed else 'GREEN 실패'}")

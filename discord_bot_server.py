@@ -153,6 +153,31 @@ def git_sync() -> str | None:
         return _git_sync_locked()
 
 
+def _verify_pushed() -> str:
+    """push가 성공 리턴코드를 줬어도 그걸로 끝내지 않고, 로컬 HEAD가 실제로 origin에
+    반영됐는지 fetch로 재확인한다.
+
+    2026-08-29 사고: 관리 채널 에이전트가 'requirements.txt에 X 추가하고 커밋했다,
+    해시 539e168'이라고 보고했는데 그 해시는 origin 어디에도 없었다. push 성공을 그대로
+    믿고 보고하면 로컬에만 쌓인 커밋이나 지어낸 해시를 사용자가 걸러낼 수 없다. 이 저장소
+    메모리에 이미 '산출물은 원격 반영까지 확인하고 보고하라'가 있었지만(20260828-190336)
+    코드가 강제하지 않아 또 어겨졌다. 그래서 보고 문자열 자체를 fetch 확인 결과로 만든다.
+
+    실제 반영 여부만 보고한다 -- 지어낼 해시가 없다."""
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO_DIR,
+                          capture_output=True, text=True).stdout.strip()
+    subprocess.run(["git", "fetch", "origin"], cwd=REPO_DIR, capture_output=True, text=True)
+    contains = subprocess.run(
+        ["git", "branch", "-r", "--contains", head, "origin/main"],
+        cwd=REPO_DIR, capture_output=True, text=True,
+    )
+    short = head[:7]
+    if contains.returncode == 0 and "origin/main" in contains.stdout:
+        return f"[git push 확인됨] origin/main에 {short} 반영됨. Obsidian에서 pull하면 보입니다."
+    return (f"[경고] push는 리턴코드 0이었으나 origin/main에서 {short}를 확인하지 못했다 -- "
+            f"원격 반영 실패 가능. 로컬에만 커밋됐을 수 있으니 수동 확인하라.")
+
+
 def _git_sync_locked() -> str | None:
     status = subprocess.run(["git", "status", "--porcelain"], cwd=REPO_DIR, capture_output=True, text=True)
     if not status.stdout.strip():
@@ -174,7 +199,7 @@ def _git_sync_locked() -> str | None:
     )
     push = subprocess.run(["git", "push"], cwd=REPO_DIR, capture_output=True, text=True)
     if push.returncode == 0:
-        return f"{report.summary()}\n[git push 완료] Obsidian에서 pull하면 반영됩니다."
+        return f"{report.summary()}\n{_verify_pushed()}"
 
     subprocess.run(["git", "fetch", "origin"], cwd=REPO_DIR, capture_output=True, text=True)
     rebase = subprocess.run(["git", "rebase", "origin/main"], cwd=REPO_DIR, capture_output=True, text=True)
@@ -186,7 +211,7 @@ def _git_sync_locked() -> str | None:
     retry = subprocess.run(["git", "push"], cwd=REPO_DIR, capture_output=True, text=True)
     if retry.returncode != 0:
         return f"[git push 실패] rebase 후에도 실패: {retry.stderr.strip()}"
-    return "[git push 완료 (rebase 후 재시도)] Obsidian에서 pull하면 반영됩니다."
+    return "(rebase 후 재시도) " + _verify_pushed()
 
 
 def run_admin_agent(prompt: str, thread_id: str) -> str:

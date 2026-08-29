@@ -52,6 +52,13 @@ REQUIRED: "list[tuple[str, str, str]]" = [
      "커밋 전 강제 게이트 호출 -- 이 한 줄이 사라지면 모든 게이트가 무력화된다"),
     ("gatekeeper.py", "def run_gates", "게이트 러너"),
     ("self_challenge.py", "def prove", "red-green 증명 절차 -- 게이트 승격의 유일한 경로"),
+    # 원격 반영 검증. 2026-08-29에 에이전트가 origin에 없는 해시(539e168)를 커밋 완료라고
+    # 보고했다. push 성공 리턴코드를 그대로 믿지 말고 fetch로 재확인하는 코드가 사라지면
+    # 같은 거짓 보고가 다시 가능해진다.
+    ("discord_bot_server.py", "def _verify_pushed",
+     "push 후 origin 반영을 fetch로 재확인 -- 사라지면 거짓 커밋 보고가 다시 가능"),
+    ("discord_bot_server.py", "_verify_pushed()",
+     "git_sync가 실제로 그 검증을 호출하는지"),
 ]
 
 
