@@ -39,6 +39,7 @@ import gatekeeper  # noqa: E402
 import main_public  # noqa: E402
 from bot_tools import (  # noqa: E402
     REPO_DIR, run_shell, search_memory, save_memory, build_agent_pool, run_with_fallback_pool,
+    register_thread, unregister_thread, request_cancel,
 )
 
 BOT_TOKEN = os.environ["DISCORD_BOT_TOKEN"]
@@ -126,12 +127,19 @@ async def _handle_stop(message: discord.Message, thread_id: str) -> None:
         await message.channel.send("[중단] 현재 진행 중인 요청이 없습니다.")
         return
     prompt = _active_prompts.get(thread_id, "(알 수 없음)")
+    # request_cancel: (1) 다음 fallback 후보로 넘어가기 전에 루프를 멈추게 하는 플래그를
+    # 세우고, (2) 이 스레드가 run_shell로 이미 띄운 서브프로세스가 있으면 실제로
+    # terminate/kill한다 -- proc.wait(timeout=3)이 섞여 있어 이벤트 루프를 막지 않게
+    # 실행기(executor)에서 돌린다.
+    loop = asyncio.get_running_loop()
+    killed = await loop.run_in_executor(None, request_cancel, thread_id)
     task.cancel()
+    note = "실행 중이던 run_shell 서브프로세스를 강제 종료했습니다." if killed else \
+        "죽일 서브프로세스는 없었고, 다음 모델/키 후보로 넘어가기 전 루프를 멈춥니다(이미 나간 API 요청 자체는 취소 불가)."
     await message.channel.send(
         "[중단됨] 이번 응답 생성을 멈췄습니다. 봇 자체는 계속 실행 중입니다.\n"
         f"진행 중이던 프롬프트: {prompt[:300]}\n"
-        "(참고: run_shell로 이미 시작된 명령이 있었다면 그 프로세스는 백그라운드에서 "
-        "자연 종료될 때까지 계속 돌 수 있습니다 -- 강제 kill은 아닙니다.)"
+        f"{note}"
     )
 
 
@@ -240,6 +248,9 @@ def _git_sync_locked() -> str | None:
 def run_admin_agent(prompt: str, thread_id: str) -> str:
     """관리 채널용 -- LangGraph ReAct 에이전트(Gemini, run_shell 전권)로 답한다."""
     print(f"[admin-agent] thread={thread_id} prompt={prompt[:120]!r}")
+    # stop 명령이 이 스레드가 띄운 run_shell 서브프로세스를 죽이고 fallback 루프를 멈출 수
+    # 있도록, 지금 실행 중인 OS 스레드를 discord thread_id에 등록해둔다.
+    register_thread(thread_id)
     try:
         reply = run_with_fallback_pool(ADMIN_AGENT_POOL, _admin_thread_map, thread_id, prompt, "[admin-agent]")
         print(f"[admin-agent] thread={thread_id} reply={reply[:200]!r}")
@@ -247,6 +258,8 @@ def run_admin_agent(prompt: str, thread_id: str) -> str:
     except Exception as e:
         print(f"[admin-agent] thread={thread_id} error={e}")
         return f"(에이전트 오류) {e}"
+    finally:
+        unregister_thread(thread_id)
 
 
 @client.event

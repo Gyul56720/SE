@@ -18,6 +18,7 @@ from __future__ import annotations
 import hashlib
 import os
 import subprocess
+import threading
 import uuid
 from typing import Optional
 
@@ -38,6 +39,67 @@ REPO_DIR = os.path.dirname(os.path.abspath(__file__))
 # 2026-08-28). 예전 이름으로 임포트하던 코드를 위해 그대로 재수출만 한다.
 _current_author = agent_context.current_author
 
+# Discord "stop" 명령이 실제로 뭔가를 멈출 수 있게 하는 두 가지 상태.
+#
+# 1) run_shell이 띄운 서브프로세스: OS 스레드는 강제로 죽일 수 없지만(Python에 안전한
+#    thread-kill이 없다) 서브프로세스는 죽일 수 있다. run_admin_agent/run_public_agent가
+#    실행되는 executor 스레드의 ident를 discord thread_id에 등록해두고, 그 스레드가
+#    run_shell로 띄운 Popen을 ident 기준으로 추적한다.
+# 2) run_with_fallback_pool의 후보(API 키/모델) 순회 루프: 이미 나간 HTTP 요청 자체는
+#    취소할 수 없지만, 한 후보가 끝나고 다음 후보로 넘어가기 '전에' 취소 플래그를 확인해서
+#    quota-exhausted 재시도를 계속 이어가며 API를 더 두드리는 걸 막는다.
+_active_procs: dict[int, subprocess.Popen] = {}
+_active_procs_lock = threading.Lock()
+_thread_registry: dict[str, int] = {}  # discord thread_id -> OS thread ident
+_thread_registry_lock = threading.Lock()
+_cancel_events: dict[str, threading.Event] = {}
+_cancel_events_lock = threading.Lock()
+
+
+def register_thread(thread_id: str) -> None:
+    """run_admin_agent/run_public_agent 시작 시 호출 -- 지금 실행 중인 OS 스레드를
+    discord thread_id와 묶고, 이전 취소 플래그를 지운다."""
+    with _thread_registry_lock:
+        _thread_registry[thread_id] = threading.get_ident()
+    with _cancel_events_lock:
+        _cancel_events.setdefault(thread_id, threading.Event()).clear()
+
+
+def unregister_thread(thread_id: str) -> None:
+    with _thread_registry_lock:
+        _thread_registry.pop(thread_id, None)
+
+
+def request_cancel(thread_id: str) -> bool:
+    """stop 명령에서 호출. 대기 중인 fallback 루프를 다음 후보 전에 멈추게 하고,
+    지금 이 스레드가 run_shell로 띄워둔 서브프로세스가 있으면 실제로 죽인다.
+    서브프로세스를 실제로 죽였으면 True."""
+    with _cancel_events_lock:
+        _cancel_events.setdefault(thread_id, threading.Event()).set()
+    with _thread_registry_lock:
+        ident = _thread_registry.get(thread_id)
+    if ident is None:
+        return False
+    with _active_procs_lock:
+        proc = _active_procs.get(ident)
+    if proc is None or proc.poll() is not None:
+        return False
+    try:
+        proc.terminate()
+        try:
+            proc.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+        return True
+    except ProcessLookupError:
+        return False
+
+
+def _is_cancelled(thread_id: str) -> bool:
+    with _cancel_events_lock:
+        event = _cancel_events.get(thread_id)
+    return event.is_set() if event else False
+
 
 @tool
 def run_shell(command: str) -> str:
@@ -49,15 +111,28 @@ def run_shell(command: str) -> str:
     # 2026-08-28). integrity.check_tool_docstrings가 이 규칙을 강제한다.
     if agent_context.is_blocked():
         return "실패: 게스트는 run_shell을 사용할 수 없습니다."
+    ident = threading.get_ident()
+    proc = subprocess.Popen(
+        ["bash", "-lc", command], cwd=REPO_DIR,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+    )
+    with _active_procs_lock:
+        _active_procs[ident] = proc
     try:
-        result = subprocess.run(
-            ["bash", "-lc", command], cwd=REPO_DIR, capture_output=True, text=True, timeout=180,
-        )
-        out = (result.stdout or "")[-4000:]
-        err = (result.stderr or "")[-2000:]
-        return f"[exit={result.returncode}]\nSTDOUT:\n{out}\nSTDERR:\n{err}"
-    except subprocess.TimeoutExpired:
-        return "실행 시간 초과(180초) -- 명령을 더 작게 나눠서 재시도하라."
+        try:
+            stdout, stderr = proc.communicate(timeout=180)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            stdout, stderr = proc.communicate()
+            return "실행 시간 초과(180초) -- 명령을 더 작게 나눠서 재시도하라."
+        out = (stdout or "")[-4000:]
+        err = (stderr or "")[-2000:]
+        if proc.returncode is not None and proc.returncode < 0:
+            return f"[중단됨] stop 명령으로 강제 종료됨(signal={-proc.returncode}).\nSTDOUT:\n{out}\nSTDERR:\n{err}"
+        return f"[exit={proc.returncode}]\nSTDOUT:\n{out}\nSTDERR:\n{err}"
+    finally:
+        with _active_procs_lock:
+            _active_procs.pop(ident, None)
 
 
 @tool
@@ -289,6 +364,10 @@ def run_with_fallback_pool(candidates: "list[tuple[str, object]]", thread_map: d
 
     last_error: Optional[Exception] = None
     for i, (label, agent) in enumerate(ranked):
+        if _is_cancelled(base_thread_id):
+            print(f"{log_prefix} thread={base_thread_id} stop 명령으로 후보 순회 중단 "
+                  f"({i}/{len(ranked)}까지 시도함)")
+            return f"[중단됨] stop 명령으로 응답 생성을 멈췄습니다. ({i}개 후보 시도 후 중단)"
         try:
             reply = invoke_with_recovery(agent, thread_map, base_thread_id, prompt, f"{log_prefix}[{label}]")
             quota_tracker.record_success(label)

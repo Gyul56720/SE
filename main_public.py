@@ -20,6 +20,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from bot_tools import (
     search_memory, save_memory, write_public_answer, run_shell,
     build_agent_pool, run_with_fallback_pool, _current_author,
+    register_thread, unregister_thread,
 )
 
 PUBLIC_CHANNEL_ID = int(os.environ["DISCORD_PUBLIC_CHANNEL_ID"])
@@ -83,6 +84,9 @@ _public_thread_map: dict[str, str] = {}
 def run_public_agent(prompt: str, thread_id: str) -> str:
     print(f"[public-agent] thread={thread_id} prompt={prompt[:120]!r}")
     _current_author.set(thread_id)
+    # stop 명령이 이 스레드가 띄운 run_shell 서브프로세스를 죽이고 fallback 루프를
+    # 멈출 수 있도록, 지금 실행 중인 OS 스레드를 discord thread_id에 등록해둔다.
+    register_thread(thread_id)
     try:
         reply = run_with_fallback_pool(PUBLIC_AGENT_POOL, _public_thread_map, thread_id, prompt, "[public-agent]")
         print(f"[public-agent] thread={thread_id} reply={reply[:200]!r}")
@@ -90,3 +94,5 @@ def run_public_agent(prompt: str, thread_id: str) -> str:
     except Exception as e:
         print(f"[public-agent] thread={thread_id} error={e}")
         return f"(에이전트 오류, 사용 가능한 API 키/모델 조합 모두 실패) {e}"
+    finally:
+        unregister_thread(thread_id)
