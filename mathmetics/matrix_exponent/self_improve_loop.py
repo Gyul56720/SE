@@ -1,28 +1,28 @@
 """
-자가 수정(self-modification) 루프: skeleton.py 의 SCHEME 을 반복적으로 백업하고,
-검증하고, 개선(더 작은 omega_eff)됐을 때만 채택하는 감시자(watchdog) 스크립트.
+자가 수정 루프: searcher.propose() 가 내놓은 후보를, '신뢰된' verifier 로 독립 검증하고,
+더 낮은 omega_eff 일 때만 best 로 채택하는 감시자(watchdog).
 
-이 스크립트 자체는 "생각"하지 않는다 - SCHEME 을 실제로 고치는 건 SE 에이전트
-(Claude Code 세션, 아래 prompt.txt 참고) 몫이다. 이 루프는:
-  1. 현재 skeleton.py 를 스냅샷/백업한다.
-  2. verify_scheme() 으로 정확성부터 확인한다 (안 맞으면 즉시 이전 버전으로 롤백).
-  3. 맞으면 omega_eff 를 계산해서, 이전 최고 기록보다 작을 때만 best/ 에 보관한다.
-  4. 진행 기록을 logs/history.jsonl 에 append 한다.
+핵심 분리 (이 실험이 신뢰 가능한 이유):
+  - searcher.py 는 SE 가 자유롭게 바꾼다 (ALS든 신종 방법이든). 이 루프는 매 iteration
+    마다 그걸 새로 reload 해서 propose() 를 부른다 -- 즉 '코드 자가 수정'을 실제로 반영한다.
+  - 판정은 언제나 verifier.py(신뢰·보호)가 한다. searcher 가 무엇을 하든 심판은 못 바꾼다.
+  - searcher.py 가 import 조차 안 되거나(문법 오류 등) propose() 가 틀린 스킴을 내면,
+    마지막으로 성공했던 searcher.py 로 자동 롤백한다 -- 프레임워크가 죽지 않게.
 
-CLAUDE.md 규칙에 따라, discord 봇 세션에서 이 스크립트를 몇 분 이상 도는
-백그라운드 작업으로 띄울 때는 반드시:
+이 루프 자신은 "생각"하지 않는다. 개선 방법을 찾는 건 searcher(=SE) 몫이다.
 
+CLAUDE.md 규칙에 따라 백그라운드로 오래 돌릴 때:
     mkdir -p /home/ubuntu/SE/logs
     setsid nohup python3 mathmetics/matrix_exponent/self_improve_loop.py \
-        --iterations 50 > /home/ubuntu/SE/logs/matrix_exponent.log 2>&1 < /dev/null &
+        --iterations 50 --sleep 5 > /home/ubuntu/SE/logs/matrix_exponent.log 2>&1 < /dev/null &
     disown
     echo "PID: $!"
-
-로 실행하고, ps -p <PID> 로 살아있는지 확인한 뒤에만 사용자에게 보고할 것.
 """
+from __future__ import annotations
 
 import argparse
 import importlib
+import importlib.util
 import json
 import math
 import shutil
@@ -31,18 +31,24 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-SKELETON_PATH = HERE / "skeleton.py"
+SEARCHER_PATH = HERE / "searcher.py"
+LAST_GOOD_SEARCHER = HERE / "_last_good_searcher.py"
 BEST_DIR = HERE / "best"
 LOG_PATH = HERE / "logs" / "history.jsonl"
 
 
-def _load_skeleton():
-    if "skeleton" in sys.modules:
-        del sys.modules["skeleton"]
-    sys.path.insert(0, str(HERE))
-    import skeleton  # type: ignore
-    importlib.reload(skeleton)
-    return skeleton
+def _load_module(name: str, path: Path):
+    """이름 충돌 없이 파일을 매번 새로 로드한다 (자가 수정을 반영하기 위해)."""
+    sys.modules.pop(name, None)
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_verifier():
+    # verifier 는 신뢰된 심판 -- 항상 디스크의 현재 버전을 그대로 쓴다.
+    return _load_module("_me_verifier", HERE / "verifier.py")
 
 
 def _append_log(record: dict):
@@ -52,67 +58,85 @@ def _append_log(record: dict):
 
 
 def _best_omega():
-    if not (BEST_DIR / "meta.json").exists():
+    meta = BEST_DIR / "meta.json"
+    if not meta.exists():
         return math.inf
-    return json.loads((BEST_DIR / "meta.json").read_text())["omega_eff"]
+    try:
+        return json.loads(meta.read_text())["omega_eff"]
+    except Exception:
+        return math.inf
 
 
-def run_once(prev_good_snapshot: Path):
+def _save_best(scheme, omega, ts):
+    BEST_DIR.mkdir(parents=True, exist_ok=True)
+    # 튜플 키를 쓰는 dict 이므로 repr 로 저장한다 (유효한 파이썬 리터럴).
+    (BEST_DIR / "scheme.py").write_text(
+        "# verifier 로 검증된 최고 기록 스킴. 자동 생성물.\nSCHEME = " + repr(scheme) + "\n",
+        encoding="utf-8",
+    )
+    (BEST_DIR / "meta.json").write_text(
+        json.dumps({"omega_eff": omega, "b": scheme["b"], "m": scheme["m"], "ts": ts}, indent=2)
+    )
+
+
+def run_once():
     ts = time.time()
-    try:
-        mod = _load_skeleton()
-    except Exception as e:
-        return {"ts": ts, "status": "IMPORT_ERROR", "error": str(e)}
+    verifier = _load_verifier()
 
+    # 1) searcher 를 새로 로드 (SE의 코드 자가 수정을 반영). 깨졌으면 롤백.
     try:
-        ok, msg = mod.verify_scheme(mod.SCHEME)
+        searcher = _load_module("_me_searcher", SEARCHER_PATH)
     except Exception as e:
-        ok, msg = False, f"exception during verify: {e}"
+        if LAST_GOOD_SEARCHER.exists():
+            shutil.copy(LAST_GOOD_SEARCHER, SEARCHER_PATH)
+        return {"ts": ts, "status": "SEARCHER_IMPORT_ERROR_ROLLBACK", "error": str(e)}
+
+    if not hasattr(searcher, "propose") or not callable(searcher.propose):
+        if LAST_GOOD_SEARCHER.exists():
+            shutil.copy(LAST_GOOD_SEARCHER, SEARCHER_PATH)
+        return {"ts": ts, "status": "SEARCHER_NO_PROPOSE_ROLLBACK"}
+
+    # 2) 후보를 받는다.
+    try:
+        scheme = searcher.propose()
+    except Exception as e:
+        if LAST_GOOD_SEARCHER.exists():
+            shutil.copy(LAST_GOOD_SEARCHER, SEARCHER_PATH)
+        return {"ts": ts, "status": "PROPOSE_ERROR_ROLLBACK", "error": str(e)}
+
+    # 3) '신뢰된' 심판으로 검증.
+    try:
+        ok, msg = verifier.verify_scheme(scheme)
+    except Exception as e:
+        ok, msg = False, f"verifier exception: {e}"
 
     if not ok:
-        # 롤백: 마지막으로 검증 통과했던 skeleton.py 로 되돌린다.
-        shutil.copy(prev_good_snapshot, SKELETON_PATH)
+        if LAST_GOOD_SEARCHER.exists():
+            shutil.copy(LAST_GOOD_SEARCHER, SEARCHER_PATH)
         return {"ts": ts, "status": "REJECTED_ROLLBACK", "reason": msg}
 
-    omega = mod.effective_omega(mod.SCHEME)
-    record = {
-        "ts": ts,
-        "status": "VERIFIED",
-        "b": mod.SCHEME["b"],
-        "m": mod.SCHEME["m"],
-        "omega_eff": omega,
-    }
-
-    best = _best_omega()
-    if omega < best - 1e-9:
-        BEST_DIR.mkdir(parents=True, exist_ok=True)
-        shutil.copy(SKELETON_PATH, BEST_DIR / "skeleton.py")
-        (BEST_DIR / "meta.json").write_text(
-            json.dumps({"omega_eff": omega, "b": mod.SCHEME["b"], "m": mod.SCHEME["m"], "ts": ts}, indent=2)
-        )
+    # 4) 통과: 이 searcher 를 다음 롤백 기준점으로 저장하고, 개선이면 best 갱신.
+    shutil.copy(SEARCHER_PATH, LAST_GOOD_SEARCHER)
+    omega = verifier.effective_omega(scheme)
+    record = {"ts": ts, "status": "VERIFIED", "b": scheme["b"], "m": scheme["m"], "omega_eff": omega}
+    if omega < _best_omega() - 1e-9:
+        _save_best(scheme, omega, ts)
         record["status"] = "NEW_BEST"
-
-    # 이번 스냅샷을 다음 롤백 기준점으로 갱신.
-    shutil.copy(SKELETON_PATH, prev_good_snapshot)
     return record
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--iterations", type=int, default=1,
-                         help="몇 번 체크할지. SE 에이전트가 SCHEME 을 고칠 시간을 "
-                              "벌기 위해 --sleep 과 함께 쓴다.")
+    parser.add_argument("--iterations", type=int, default=1)
     parser.add_argument("--sleep", type=float, default=0.0,
-                         help="각 iteration 사이 대기 초(sec). 에이전트가 파일을 "
-                              "고칠 시간을 줄 때 사용.")
+                        help="iteration 사이 대기(초). SE가 searcher.py 를 고칠 시간을 준다.")
     args = parser.parse_args()
 
-    prev_good = HERE / "_last_good_skeleton.py"
-    if not prev_good.exists():
-        shutil.copy(SKELETON_PATH, prev_good)
+    if not LAST_GOOD_SEARCHER.exists():
+        shutil.copy(SEARCHER_PATH, LAST_GOOD_SEARCHER)
 
     for i in range(args.iterations):
-        record = run_once(prev_good)
+        record = run_once()
         _append_log(record)
         print(json.dumps(record, ensure_ascii=False))
         if i + 1 < args.iterations and args.sleep > 0:
