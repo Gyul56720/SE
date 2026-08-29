@@ -1,0 +1,16 @@
+{"ts": 1788022075.2662456, "b": 2, "m": 7, "als_residual": 2.4091699888454713e-13, "omega_eff": 2.807354922057604, "status": "VERIFIED"}
+{"ts": 1788022095.4340756, "b": 3, "m": 23, "als_residual": 0.04504486124581905, "status": "REJECTED", "reason": "mismatch at size=3"}
+{"ts": 1788022115.970594, "b": 3, "m": 23, "als_residual": 0.027912598583783588, "status": "REJECTED", "reason": "mismatch at size=3"}
+{"ts": 1788022136.5154874, "b": 3, "m": 23, "als_residual": 0.03672199399947097, "status": "REJECTED", "reason": "mismatch at size=3"}
+{"ts": 1788022157.030412, "b": 3, "m": 23, "als_residual": 0.05196110049751357, "status": "REJECTED", "reason": "mismatch at size=3"}
+{"ts": 1788022177.5462506, "b": 3, "m": 23, "als_residual": 0.045243102499672505, "status": "REJECTED", "reason": "mismatch at size=3"}
+{"ts": 1788022198.0565372, "b": 3, "m": 23, "als_residual": 0.030592922472376972, "status": "REJECTED", "reason": "mismatch at size=3"}
+{"ts": 1788022221.5737438, "b": 3, "m": 23, "als_residual": 0.03177728969514966, "status": "REJECTED", "reason": "mismatch at size=3"}
+{"ts": 1788022242.186926, "b": 3, "m": 23, "als_residual": 0.03896212550676615, "status": "REJECTED", "reason": "mismatch at size=3"}
+{"ts": 1788022262.720011, "b": 3, "m": 23, "als_residual": 0.01700991667740512, "status": "REJECTED", "reason": "mismatch at size=3"}
+{"ts": 1788022283.2506053, "b": 3, "m": 23, "als_residual": 0.037028210711809284, "status": "REJECTED", "reason": "mismatch at size=3"}
+{"ts": 1788022303.7634063, "b": 3, "m": 23, "als_residual": 0.013057127003303139, "status": "REJECTED", "reason": "mismatch at size=3"}
+{"ts": 1788022324.3020177, "b": 3, "m": 23, "als_residual": 0.044863311420668614, "status": "REJECTED", "reason": "mismatch at size=3"}
+{"ts": 1788022344.7959652, "b": 3, "m": 23, "als_residual": 0.019518873239247593, "status": "REJECTED", "reason": "mismatch at size=3"}
+{"ts": 1788022365.3217843, "b": 3, "m": 23, "als_residual": 0.028122818335355203, "status": "REJECTED", "reason": "mismatch at size=3"}
+{"ts": 1788022385.855705, "b": 3, "m": 23, "als_residual": 0.061797774724367996, "status": "REJECTED", "reason": "mismatch at size=3"}
