@@ -1,6 +1,7 @@
 """
 Matrix multiplication tensor decomposition searcher via CP-ALS (Alternating Least Squares)
-with pure ALS for b=2 (guaranteeing exact G010 convergence) and enhanced restarts/iters for b=3.
+supporting dynamic rank m (e.g., m=22, m=23) with enhanced restarts and iterations,
+while preserving pure ALS for b=2 to satisfy G010 capability ratchet.
 
 Verifier is NEVER modified.
 """
@@ -14,6 +15,7 @@ import numpy as np
 HERE = Path(__file__).resolve().parent
 STATE_PATH = HERE / "als_state.json"
 
+# 미해결 난제 사다리: b=3에서 m=23부터 시작해 더 타이트한 m=22, m=21로 도전
 LADDER = [(2, 7), (3, 23), (3, 22), (3, 21)]
 
 
@@ -37,11 +39,13 @@ def _kr(P, Q):
     return (P[:, None, :] * Q[None, :, :]).reshape(-1, P.shape[1])
 
 
-def cp_als(T, m, iters=1500, seed=0, tol=1e-12):
+def cp_als(T, m, iters=2000, seed=0, tol=1e-12):
     """랭크 m CP-ALS. (U, V, W, 상대잔차) 반환."""
     rng = np.random.default_rng(seed)
     n = T.shape[0]
-    U = rng.standard_normal((n, m)); V = rng.standard_normal((n, m)); W = rng.standard_normal((n, m))
+    U = rng.standard_normal((n, m))
+    V = rng.standard_normal((n, m))
+    W = rng.standard_normal((n, m))
     normT = np.linalg.norm(T)
     res = 1.0
     for it in range(iters):
@@ -88,12 +92,12 @@ class Searcher:
     def propose(self) -> dict:
         b, m = self.current_target()
         attempt = self.state["attempt"]
-        # b=2는 순수 ALS로 확실한 도달을 위해 restarts=20 유지, b=3은 더 많은 탐색(restarts=10, iters=2000)
-        restarts = 20 if b == 2 else 10
-        iters = 1500 if b == 2 else 2000
+        # b=2는 확실한 도달을 위해 restarts=20, b=3(m=23, 22 등)은 심층 탐색을 위해 restarts=15, iters=2500
+        restarts = 20 if b == 2 else 15
+        iters = 1500 if b == 2 else 2500
         best = None
         for r in range(restarts):
-            U, V, W, res = cp_als(matmul_tensor(b), m, iters=iters, seed=attempt * 100 + r)
+            U, V, W, res = cp_als(matmul_tensor(b), m, iters=iters, seed=attempt * 100 + r * 13)
             if best is None or res < best[0]:
                 best = (res, U, V, W)
             if res < 1e-11:
