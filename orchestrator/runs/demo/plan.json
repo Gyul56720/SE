@@ -1,0 +1,40 @@
+{
+  "problem": "N=91에서 x^2≡16 (mod N)의 모든 해를 구하라 (인수분해→소수별 제곱근→CRT)",
+  "final": "C",
+  "nodes": [
+    {
+      "id": "A",
+      "goal": "N 인수분해",
+      "component": "components/factor.py",
+      "verifier": "components/factor_verify.py",
+      "deps": [],
+      "status": "pending",
+      "result_ref": "",
+      "attempts": []
+    },
+    {
+      "id": "B",
+      "goal": "소수별 제곱근",
+      "component": "components/roots.py",
+      "verifier": "components/roots_verify.py",
+      "deps": [
+        "A"
+      ],
+      "status": "pending",
+      "result_ref": "",
+      "attempts": []
+    },
+    {
+      "id": "C",
+      "goal": "CRT 결합",
+      "component": "components/crt.py",
+      "verifier": "components/crt_verify.py",
+      "deps": [
+        "B"
+      ],
+      "status": "pending",
+      "result_ref": "",
+      "attempts": []
+    }
+  ]
+}
