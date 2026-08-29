@@ -1,0 +1,2 @@
+{"ts": "2026-08-29T08:59:03.070108+00:00", "actor": "blue", "action": "verify: VULN-001 command injection patch", "detail": "shlex.split + shell=False 정상 적용, 재검증 완료", "commit": "5d329c19e63f625c239b66c966ea91cb1c52087c", "verdict": "allow"}
+{"ts": "2026-08-29T08:59:03.145896+00:00", "actor": "blue", "action": "verify: VULN-002/003 reports", "detail": "진단은 정확하나 app.py에 패치 코드 미반영 - 재작업 필요", "commit": "5d329c19e63f625c239b66c966ea91cb1c52087c", "verdict": "block"}

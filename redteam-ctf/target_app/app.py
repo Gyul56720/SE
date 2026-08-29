@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -47,7 +48,15 @@ def run_command():
     if role != "admin" and cmd not in ALLOWED_USER_COMMANDS:
         return jsonify({"error": "command not allowed for role=user"}), 403
 
-    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+    try:
+        cmd_args = shlex.split(cmd)
+    except Exception as e:
+        return jsonify({"error": f"invalid command formatting: {e}"}), 400
+
+    if not cmd_args:
+        return jsonify({"error": "empty command"}), 400
+
+    result = subprocess.run(cmd_args, shell=False, capture_output=True, text=True)
     return jsonify({"stdout": result.stdout, "stderr": result.stderr})
 
 
