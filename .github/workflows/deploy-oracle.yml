@@ -36,15 +36,19 @@ jobs:
           script: |
             set -e
             cd /home/ubuntu/SE
-            # 탐색 루프가 돌면서 쓰는 런타임 상태 파일들 때문에 git pull 이
-            # "Your local changes would be overwritten by merge" 로 중단됐다
-            # (배포 #36/#37 연속 실패). 이제 .gitignore 로 추적을 뺐지만, 그 전부터
-            # 서버에 남아 있는 로컬 수정과 이 전환 커밋 자체가 부딪히므로 여기서
-            # 한 번 털어준다. 둘 다 기계 로컬 산출물이라 버려도 런타임에 다시 만들어지고,
-            # 사다리는 b=2 m=7 -> b=3 m=23 을 즉시 재통과해 스스로 복구된다.
-            git checkout -- mathmetics/matrix_exponent/als_state.json \
-                            mathmetics/matrix_exponent/logs/history.jsonl 2>/dev/null || true
-            git pull origin main
+            # 배포가 git pull 에서 계속 막혔다. 두 가지가 겹쳐 있었다:
+            #   #36/#37: 탐색 루프가 쓰는 런타임 상태 파일이 추적 대상이라
+            #            "Your local changes would be overwritten by merge" 로 중단.
+            #   #38:     서버 main 이 origin 과 분기(divergent)해 pull.rebase 미설정으로
+            #            "Need to specify how to reconcile divergent branches" 로 중단.
+            # 이 서버는 배포 대상이지 개발 브랜치가 아니다 -- origin/main 을 정답으로 삼고
+            # 작업 트리를 거기에 맞춘다. 만약을 위해 현재 HEAD 를 로컬 백업 브랜치로
+            # 남겨두므로, 서버에만 있던 커밋이 있었다면 그 브랜치에서 되찾을 수 있다.
+            # reset --hard 는 추적되지 않는 파일을 지우지 않으므로, 이제 gitignore 된
+            # als_state.json / logs/history.jsonl 런타임 상태는 그대로 살아남는다.
+            git fetch origin main
+            git branch -f "deploy-backup-$(date +%Y%m%d-%H%M%S)" HEAD || true
+            git reset --hard origin/main
             pip3 install --break-system-packages -r requirements.txt discord.py
             sudo cp deploy/se-discord-bot.service /etc/systemd/system/
             sudo cp deploy/se-log-streamer.service /etc/systemd/system/
