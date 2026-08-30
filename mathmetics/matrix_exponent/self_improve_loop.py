@@ -5,7 +5,7 @@ import math
 import sys
 import time
 from pathlib import Path
-from .optimizer import update_params
+from .optimizer import escalate_budget, update_params
 
 HERE = Path(__file__).resolve().parent
 LOG_PATH = HERE / "logs" / "history.jsonl"
@@ -23,15 +23,52 @@ def _append_log(record):
     with LOG_PATH.open("a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
-def check_stagnation():
-    if not LOG_PATH.exists(): return False
-    failures = []
-    with LOG_PATH.open("r") as f:
+# 정체 판정 파라미터. 최근 WINDOW회와 그 직전 WINDOW회의 '최소 잔차'를 비교해서, 상대
+# 개선폭이 MIN_GAIN 미만이면 정체로 본다.
+STAGNATION_WINDOW = 50
+STAGNATION_MIN_GAIN = 0.02  # 2% 상대 개선
+
+
+def _residuals_for(b: int, m: int) -> list:
+    """현재 전선(b, m)에 대해 기록된 als_residual을 오래된 순서대로 모은다. 다른 목표의
+    기록과 깨진 줄은 조용히 무시한다(로그는 여러 버전의 코드가 이어 쓴 파일이라 형식이
+    섞여 있다)."""
+    out = []
+    if not LOG_PATH.exists():
+        return out
+    with LOG_PATH.open("r", encoding="utf-8") as f:
         for line in f:
-            entry = json.loads(line)
-            if entry.get("status") == "REJECTED": failures.append(True)
-            else: failures = []
-    return len(failures) >= 5
+            try:
+                entry = json.loads(line)
+            except (json.JSONDecodeError, ValueError):
+                continue
+            if entry.get("b") != b or entry.get("m") != m:
+                continue
+            res = entry.get("als_residual")
+            if isinstance(res, (int, float)) and math.isfinite(res):
+                out.append(float(res))
+    return out
+
+
+def check_stagnation(b: int, m: int) -> bool:
+    """탐색이 실질적으로 제자리인지 판정한다.
+
+    예전 구현은 'REJECTED가 5회 연속이면 정체'였는데, 이 문제에서 REJECTED는 예외가 아니라
+    기본값이다(정확한 스킴을 찾는 일 자체가 드물다). 그래서 한 번 실패가 쌓이기 시작하면
+    이후 영원히 True를 돌려줬고 -- 실측: b=3,m=22에서 1185회 연속 REJECTED -- 매 회
+    "Stagnation detected"를 찍으며 예산을 다시 올리는, 신호 역할을 못 하는 상태가 됐다.
+
+    대신 '잔차가 더 내려가고 있는가'를 본다. 최근 WINDOW회의 최소 잔차가 직전 WINDOW회의
+    최소 잔차보다 MIN_GAIN 이상 낮아지지 않았으면 정체다. 표본이 2*WINDOW에 못 미치면
+    아직 판단할 근거가 없으므로 False(=정체 아님)."""
+    hist = _residuals_for(b, m)
+    if len(hist) < 2 * STAGNATION_WINDOW:
+        return False
+    best_recent = min(hist[-STAGNATION_WINDOW:])
+    best_prior = min(hist[-2 * STAGNATION_WINDOW:-STAGNATION_WINDOW])
+    if best_prior <= 0:
+        return False
+    return (best_prior - best_recent) / best_prior < STAGNATION_MIN_GAIN
 
 def run_once():
     ts = time.time()
@@ -49,17 +86,27 @@ def run_once():
     ok_exact, msg_exact = verifier.verify_scheme(scheme)
 
     status = "REJECTED"
+    tuning = None
     if ok_exact:
         status = "VERIFIED_EXACT"
     elif ok_approx:
         status = "VERIFIED_APPROX"
-        print(f"Approximation achieved! Refining precision for next iteration...")
-        update_params(iters=4000, noise_scale=0.01) # 더 정밀하게 탐색
-    elif check_stagnation():
-        print("Stagnation detected! Increasing search budget...")
-        update_params(iters=5000, noise_scale=0.05)
+        changed, params = update_params(iters=4000, noise_scale=0.01)  # 더 정밀하게 탐색
+        if changed:
+            print(f"Approximation achieved! Refining precision: {params}", flush=True)
+            tuning = "refine"
+    elif check_stagnation(b, m):
+        changed, params = escalate_budget()
+        if changed:
+            print(f"Stagnation detected! Increasing search budget: {params}", flush=True)
+            tuning = "escalate"
+        else:
+            tuning = "escalate_exhausted"  # 사다리 끝 -- 예산으로는 더 할 게 없다.
 
-    record = {"ts": ts, "b": b, "m": m, "als_residual": resid, "status": status, "reason": msg_exact if not ok_exact else "ok"}
+    record = {"ts": ts, "b": b, "m": m, "als_residual": resid, "status": status,
+              "reason": msg_exact if not ok_exact else "ok"}
+    if tuning:
+        record["tuning"] = tuning
     searcher.record(ok_exact) # 정확한 해일 때만 타겟 랭크 전진
     _append_log(record)
     return record

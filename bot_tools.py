@@ -181,6 +181,21 @@ def is_quota_error(e: Exception) -> bool:
     return "RESOURCE_EXHAUSTED" in text or "429" in text
 
 
+def is_rpm_quota_error(e: Exception) -> bool:
+    """429 중에서도 '분당 한도(RPM)'라 1분이면 풀리는 것인지 판별한다. Gemini는 429
+    본문에 quotaId를 실어주는데, 일일 한도는 GenerateRequestsPerDayPerProjectPerModel,
+    분당 한도는 GenerateRequestsPerMinutePerProjectPerModel이다.
+
+    둘을 구분 못 하던 시절엔 RPM까지 전부 '오늘 소진'으로 확정 처리해서, ReAct 루프로 몇
+    초 안에 여러 번 호출하다 RPM에 걸리면 멀쩡한 최상위 조합이 자정까지 봉인됐다.
+
+    판별 실패(quotaId가 없거나 형식이 바뀐 경우)에는 일부러 False를 돌려준다 -- 일일
+    소진을 분당으로 잘못 보면 1분마다 죽은 조합을 다시 두드리며 매번 수십 초 backoff를
+    기다리게 되므로, 모르는 건 기존처럼 보수적으로 일일 소진 취급하는 쪽이 안전하다."""
+    text = str(e)
+    return is_quota_error(e) and ("PerMinute" in text or "per minute" in text.lower())
+
+
 def is_permanent_error(e: Exception) -> bool:
     """이 (키, 모델) 조합이 앞으로도 절대 안 될 거라는 뜻의 에러 -- 단종된 모델(404
     NOT_FOUND), 무료 티어에서 막힌 유료 전용 모델(403 PERMISSION_DENIED, billing 관련
@@ -332,6 +347,12 @@ def run_with_fallback_pool(candidates: "list[tuple[str, object]]", thread_map: d
     429를 맞으면 그 후보를 오늘자로 확정 소진 처리한다 -- 응답을 이미 만든 뒤에 하는
     기록이라 사용자가 기다리는 시간에는 영향 없다.
 
+    단, 429가 '분당 한도(RPM)'면 1분이면 풀리므로 자정까지 소진 처리하지 않고
+    quota_tracker의 짧은 쿨다운에만 올린다(is_rpm_quota_error 참고). 쿨다운 중인 후보는
+    remaining()이 0이라 자연히 뒤로 밀리고, 60초가 지나면 별도 해제 없이 원래 순위로
+    돌아온다 -- ReAct 루프처럼 짧은 시간에 여러 번 호출하다 RPM에 걸렸다는 이유로 가장
+    좋은 조합이 하루 종일 봉인되던 문제를 막는다.
+
     404/403처럼 하루가 지나도 안 풀리는 에러는 quota_tracker의 영구 dead 목록에 올리고,
     다음 호출부터는 이 함수 맨 앞에서 API를 부르지도 않고 걸러낸다 -- "다음 질문이
     들어오기 전에 이미 살아있는 후보만 남겨서 준비해두는" 것이 핵심이다. 이걸 안 하면
@@ -357,6 +378,10 @@ def run_with_fallback_pool(candidates: "list[tuple[str, object]]", thread_map: d
 
     ranked = sorted(live, key=_sort_key)
     pinned_label = quota_tracker.get_pinned(pool_id)
+    # pin은 정렬을 통째로 건너뛰고 맨 앞에 꽂는 장치라, 쿨다운 중인 조합이 pin돼 있으면
+    # remaining()이 0을 돌려줘도 소용없이 매번 먼저 시도돼서 RPM 쿨다운이 무력화된다.
+    if pinned_label and quota_tracker.is_rpm_cooling(pinned_label):
+        pinned_label = None
     if pinned_label:
         pinned = [c for c in ranked if c[0] == pinned_label]
         if pinned:
@@ -378,7 +403,12 @@ def run_with_fallback_pool(candidates: "list[tuple[str, object]]", thread_map: d
         except Exception as e:
             if not is_unavailable_error(e):
                 raise
-            if is_quota_error(e):
+            if is_rpm_quota_error(e):
+                # 분당 한도는 1분이면 풀린다 -- 자정까지 봉인하지 말고 잠깐만 쉬게 한다.
+                quota_tracker.record_rpm_cooldown(label)
+                print(f"{log_prefix} thread={base_thread_id} candidate={label} 분당 한도(RPM) 초과, "
+                      f"{quota_tracker.RPM_COOLDOWN_SECONDS}초 쿨다운 후 복귀 예정 -- 다음 후보로 전환")
+            elif is_quota_error(e):
                 quota_tracker.record_exhausted(label)
                 print(f"{log_prefix} thread={base_thread_id} candidate={label} quota exhausted, 다음 후보로 전환")
             elif is_permanent_error(e):

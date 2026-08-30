@@ -22,11 +22,15 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
 STATE_PATH = Path(__file__).resolve().parent / "Public_agent" / "quota_state.json"
 DEFAULT_DAILY_LIMIT = 500
+# 분당 한도(RPM) 429를 맞았을 때 그 조합을 쉬게 하는 시간. Gemini 무료 티어의 RPM 창이
+# 1분이므로 60초면 충분하다.
+RPM_COOLDOWN_SECONDS = 60
 _LOCK = threading.Lock()
 
 
@@ -78,10 +82,50 @@ def record_exhausted(label: str, limit: int = DEFAULT_DAILY_LIMIT) -> None:
         _save(data)
 
 
-def remaining(label: str, limit: int = DEFAULT_DAILY_LIMIT) -> int:
-    """오늘 남았을 것으로 추정되는 호출 수. 기록이 없으면(=오늘 한 번도 안 씀) limit 그대로."""
+# 429에는 성격이 다른 두 종류가 섞여 있다. 일일 한도(RPD,
+# GenerateRequestsPerDayPerProjectPerModel)는 UTC 자정까지 안 풀리지만, 분당 한도(RPM,
+# GenerateRequestsPerMinutePerProjectPerModel)는 1분만 지나면 풀린다. 그런데 둘을 똑같이
+# record_exhausted로 처리하고 있었다 -- ReAct 루프처럼 짧은 시간에 여러 번 호출하면 RPM에
+# 쉽게 걸리는데, 그때마다 멀쩡한 최상위 조합이 자정까지 후보 뒤로 밀려나 하루 종일 약한
+# 모델만 쓰게 된다. RPM은 별도의 짧은 쿨다운으로 처리해서 1분 뒤 원래 조합으로 돌아오게 한다.
+def record_rpm_cooldown(label: str, seconds: int = RPM_COOLDOWN_SECONDS) -> None:
+    """분당 한도 429를 맞았을 때 호출. 이 조합을 seconds 동안만 쉬게 한다."""
     with _LOCK:
         data = _load()
+        cooling = data.setdefault("_rpm_cooldown", {})
+        cooling[label] = time.time() + seconds
+        _save(data)
+
+
+def _cooling_until(data: dict, label: str) -> float:
+    """_LOCK을 이미 잡은 쪽에서 쓰는 내부 헬퍼 (threading.Lock은 재진입이 안 되므로
+    is_rpm_cooling을 그대로 부르면 교착된다)."""
+    try:
+        return float(data.get("_rpm_cooldown", {}).get(label, 0.0))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def is_rpm_cooling(label: str) -> bool:
+    """지금 이 조합이 RPM 쿨다운 중인가."""
+    with _LOCK:
+        return _cooling_until(_load(), label) > time.time()
+
+
+def rpm_cooldown_remaining(label: str) -> float:
+    """쿨다운이 풀리기까지 남은 초. 쿨다운 중이 아니면 0.0."""
+    with _LOCK:
+        return max(0.0, _cooling_until(_load(), label) - time.time())
+
+
+def remaining(label: str, limit: int = DEFAULT_DAILY_LIMIT) -> int:
+    """오늘 남았을 것으로 추정되는 호출 수. 기록이 없으면(=오늘 한 번도 안 씀) limit 그대로.
+    RPM 쿨다운 중이면 0을 돌려줘서 후보 정렬에서 뒤로 밀리게 한다 -- 쿨다운이 끝나면
+    저절로 원래 잔량으로 돌아온다(별도 해제 작업이 필요 없다)."""
+    with _LOCK:
+        data = _load()
+        if _cooling_until(data, label) > time.time():
+            return 0
         rec = data.get(label)
         if not rec or rec.get("date") != _today():
             return limit
