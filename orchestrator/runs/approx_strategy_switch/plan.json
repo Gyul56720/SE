@@ -1,0 +1,16 @@
+{
+  "problem": "현재 verifier가 verify_approx(epsilon=1e-3)을 지원함. CP-ALS의 tol을 1e-12에서 1e-3으로 완화하여 탐색을 재시작하고, 근사 분해 결과를 확보하라.",
+  "final": "restart_cp_als",
+  "nodes": [
+    {
+      "id": "restart_cp_als",
+      "goal": "CP-ALS의 tol을 1e-12에서 1e-3으로 완화하여 근사 텐서 분해를 수행한다.",
+      "component": "components/restart_cp_als.py",
+      "verifier": "components/restart_cp_als_verify.py",
+      "deps": [],
+      "status": "pending",
+      "result_ref": "",
+      "attempts": []
+    }
+  ]
+}
