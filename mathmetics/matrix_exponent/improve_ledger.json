@@ -1,0 +1,24 @@
+{
+  "version": 2,
+  "best_by_target": {
+    "3,22": 0.012286342200034443
+  },
+  "attempts": [
+    {
+      "ts": 1788061218.2337923,
+      "backend": "mock_proposer",
+      "target": "3,22",
+      "result": "no_improvement",
+      "bench_residual": 0.028319551044703555,
+      "best_prev": 0.012286342200034443
+    },
+    {
+      "ts": 1788061270.1751676,
+      "backend": "mock_proposer",
+      "target": "3,22",
+      "result": "no_improvement",
+      "bench_residual": 0.028319551044703555,
+      "best_prev": 0.012286342200034443
+    }
+  ]
+}

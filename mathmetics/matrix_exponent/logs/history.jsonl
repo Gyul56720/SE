@@ -971,3 +971,4 @@
 {"ts": 1788051471.1132452, "b": 3, "m": 22, "als_residual": 0.04594566081389364, "status": "REJECTED", "reason": "mismatch at size=3"}
 {"ts": 1788051497.144109, "b": 3, "m": 22, "als_residual": 0.19250420073324273, "status": "REJECTED", "reason": "mismatch at size=3"}
 {"ts": 1788051523.3641946, "b": 3, "m": 22, "als_residual": 0.08474781934912648, "status": "REJECTED", "reason": "mismatch at size=3"}
+{"ts": 1788061243.2442293, "b": 3, "m": 22, "als_residual": 0.07832991244817132, "status": "REJECTED", "reason": "mismatch at size=3"}
