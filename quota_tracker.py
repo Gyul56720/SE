@@ -2,31 +2,21 @@
 (API 키, 모델) 조합별로 오늘 몇 번 호출했는지 로컬에 세어서, 실제 429를 맞기 전에
 "이 조합은 오늘 다 썼을 것"이라고 미리 추정하는 트래커.
 
-왜 필요한가: 429가 실제로 나기까지 langchain 내부 재시도/backoff 때문에 매번 30~50초가
-걸린다(실측 확인됨, 2026-08-28). 소진된 조합인 걸 이미 알면서도 매 메시지마다 그 조합을
-먼저 찔러보고 기다리는 건 낭비다. 여기서는 두 가지로 미리 안다:
-
-1. 카운트 기반 추정: 무료 티어 한도(기본 500/일)에 다가가는 걸 로컬 카운터로 추적해서,
-   한도 근처면 실제로 429가 나기 전에 먼저 건너뛴다. Google이 정확한 잔여량을 API로
-   안 주기 때문에 완벽하진 않다(추정치일 뿐) -- 그래서 실제 429를 맞으면 그 즉시 카운터를
-   한도까지 강제로 채워서 확정 소진 처리한다(2번).
-2. 실측 소진: 429를 실제로 맞으면 그 조합을 "오늘 UTC 자정까지 소진"으로 확정 기록한다.
-   (quotaId가 GenerateRequestsPerDayPerProjectPerModel-FreeTier로 일일 쿼터라서 리셋
-   시점을 UTC 자정으로 잡는다.)
-
-Discord 이벤트 루프에서 동기 파일 I/O를 쓰지만, JSON 파일 하나 읽고 원자적으로 쓰는 정도라
-사용자 응답 시간에 체감될 정도로 느리지 않다 -- 응답을 먼저 만든 뒤에 이 기록을 남기므로
-사용자가 기다리는 구간에는 들어가지 않는다.
+RPM(분당 제한) 쿨다운 추가:
+429 에러가 일일 쿼터(RPD) 소진이 아닌 분당 쿼터(RPM) 초과인 경우, 자정까지 죽이는 대신
+60초 동안만 일시적으로 차단하여 1분 후 최우선 모델로 자동 복귀하게 한다.
 """
 from __future__ import annotations
 
 import json
 import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
 STATE_PATH = Path(__file__).resolve().parent / "Public_agent" / "quota_state.json"
 DEFAULT_DAILY_LIMIT = 500
+RPM_COOLDOWN_SECONDS = 60
 _LOCK = threading.Lock()
 
 
@@ -69,17 +59,27 @@ def record_success(label: str) -> None:
 
 
 def record_exhausted(label: str, limit: int = DEFAULT_DAILY_LIMIT) -> None:
-    """실제 429를 맞았다는 걸 확정 기록한다 -- 카운트 추정이 틀렸더라도 이걸로 확실히
-    한도에 도달한 걸로 처리해서, 오늘 안에는 다시 이 조합을 먼저 시도하지 않게 한다."""
+    """429 분당 제한(RPM) 초과 발생 시 60초간 쿨다운 처리한다."""
     with _LOCK:
         data = _load()
-        rec = _entry(data, label)
-        rec["count"] = max(rec["count"], limit)
+        cooldowns = data.setdefault("_rpm_cooldown", {})
+        cooldowns[label] = time.time() + RPM_COOLDOWN_SECONDS
         _save(data)
 
 
+def is_rpm_cooling(label: str) -> bool:
+    """해당 조합이 현재 60초 쿨다운 중인지 확인한다."""
+    with _LOCK:
+        data = _load()
+        cooldowns = data.get("_rpm_cooldown", {})
+        until = cooldowns.get(label, 0)
+        return time.time() < until
+
+
 def remaining(label: str, limit: int = DEFAULT_DAILY_LIMIT) -> int:
-    """오늘 남았을 것으로 추정되는 호출 수. 기록이 없으면(=오늘 한 번도 안 씀) limit 그대로."""
+    """오늘 남았을 것으로 추정되는 호출 수. 쿨다운 중이면 0으로 반환하여 후보에서 임시 제외."""
+    if is_rpm_cooling(label):
+        return 0
     with _LOCK:
         data = _load()
         rec = data.get(label)
@@ -88,14 +88,6 @@ def remaining(label: str, limit: int = DEFAULT_DAILY_LIMIT) -> int:
         return max(0, limit - rec["count"])
 
 
-# 429(쿼터 소진)는 매일 자정에 리셋되니까 "오늘자" 기록(위)이면 충분하다. 근데 404(모델
-# 단종/무료 티어에 아예 없음)나 403(유료 전용, billing 필요)은 다르다 -- 이런 건 하루가
-# 지나도 안 풀린다. 그런데 이걸 오늘자 기록과 똑같이 취급했더니, 자정이 지나면(또는
-# quota_state.json을 지우면) 이미 죽은 걸 알고 있던 모델을 처음부터 또 다 두드려보는
-# 낭비가 있었다(실측 확인됨, 2026-08-28 -- gemini-2.5-pro/gemini-2.5-flash/gemini-pro-latest
-# 같은 단종 모델을 매 요청마다 다시 시도). 그래서 영구 소진은 날짜 리셋이 없는 별도
-# 목록("_dead")에 한 번 기록하면 끝까지 건너뛴다 -- "다음 질문이 오기 전에 이미 준비된
-# 상태"를 만드는 핵심이 이 부분이다.
 def mark_dead(label: str, reason: str = "") -> None:
     with _LOCK:
         data = _load()
@@ -110,9 +102,6 @@ def is_dead(label: str) -> bool:
         return label in data.get("_dead", {})
 
 
-# "다음 질문이 오기 전에 이미 준비해두기"의 핵심 -- 매 요청마다 순위를 계산해서 1등을
-# 고르는 대신, 직전에 실제로 성공했던 조합을 그대로 다음 요청에서도 제일 먼저 쓴다.
-# pool_id(예: "public-agent", "admin-agent")별로 하나씩 기억한다.
 def set_pinned(pool_id: str, label: str) -> None:
     with _LOCK:
         data = _load()
@@ -124,4 +113,7 @@ def set_pinned(pool_id: str, label: str) -> None:
 def get_pinned(pool_id: str) -> "str | None":
     with _LOCK:
         data = _load()
-        return data.get("_pinned", {}).get(pool_id)
+        pinned = data.get("_pinned", {}).get(pool_id)
+        if pinned and is_rpm_cooling(pinned):
+            return None  # 쿨다운 중인 경우 핀 해제하여 다음 후보 시도
+        return pinned
