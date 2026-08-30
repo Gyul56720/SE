@@ -406,19 +406,20 @@ def llm_proposer(context: dict) -> str:
     """Gemini 로 '다음 개선을 추론'해 searcher.py 전체를 다시 쓰게 한다.
     (VM 에서만 동작 -- GEMINI_API_KEY 필요.)"""
     import os
-    from langchain_google_genai import ChatGoogleGenerativeAI
 
     key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY_FALLBACK")
-    # 모델 이름을 코드에 박지 않는다. 기본값이 "gemini-2.5-flash" 였는데 이 계정에는 2.5
-    # 계열이 아예 없고 3.x 계열만 있었다(실측 2026-08-30) -- 없는 이름은 404 라서
-    # llm_proposer 가 매번 조용히 실패했을 것이다. IMPROVE_MODEL 을 명시하면 그걸 쓰고,
-    # 아니면 그 키가 실제로 쓸 수 있는 모델 중 가장 좋은 것을 골라 쓴다.
-    model = os.environ.get("IMPROVE_MODEL")
-    if not model:
-        sys.path.insert(0, str(REPO))
-        import bot_tools
-        model = bot_tools.best_available_model(key)
-    llm = ChatGoogleGenerativeAI(model=model, google_api_key=key)
+    # 모델 이름을 코드에 박지 않고, 하나만 고르지도 않는다.
+    #   - 박아두면 모델이 바뀔 때 조용히 404 난다(기본값이 gemini-2.5-flash 였는데 이
+    #     계정엔 2.5 계열이 없었다).
+    #   - 하나만 고르면 그게 무료 티어에서 못 쓰는 유료 전용 모델일 때 매번 실패한다.
+    #     ListModels 는 pro 계열도 나열하고 품질 순위상 pro 가 1 순위라 반드시 그걸 고른다
+    #     (실측 2026-08-30: gemini-3.1-pro / -pro-preview 에서 RESOURCE_EXHAUSTED).
+    # bot_tools.invoke_text 가 후보를 순회하며 못 쓰는 조합을 quota_tracker 에 기록하고
+    # 건너뛴다 -- 에이전트 경로가 쓰는 fallback 과 같은 방식이다.
+    sys.path.insert(0, str(REPO))
+    import bot_tools
+
+    model = os.environ.get("IMPROVE_MODEL")  # 명시하면 그 모델만 쓴다
     b, m = context["b"], context["m"]
     prompt = (
         "너는 행렬곱 텐서 분해 탐색기(searcher.py)를 개선하는 연구 에이전트다. "
@@ -435,9 +436,8 @@ def llm_proposer(context: dict) -> str:
         "[현재 searcher.py]\n```python\n" + context["current_searcher"] + "\n```\n\n"
         "개선된 searcher.py '전체'를 하나의 코드블록으로만 출력하라. 설명 금지."
     )
-    resp = llm.invoke(prompt)
-    text = resp.content if isinstance(resp.content, str) else "".join(
-        p.get("text", "") for p in resp.content if isinstance(p, dict))
+    text = bot_tools.invoke_text(prompt, key, model=model,
+                                 pool_id="improve-agent", log_prefix="[improve_agent]")
     # 코드블록 추출
     if "```" in text:
         text = text.split("```", 2)[1]

@@ -317,11 +317,70 @@ FALLBACK_MODELS = ["gemini-3.5-flash", "gemini-3.5-flash-lite"]
 
 def best_available_model(api_key: str) -> str:
     """이 키로 쓸 수 있는 모델 중 가장 좋은 것 하나. 조회가 안 되면 FALLBACK_MODELS 첫 항목.
-    모델 이름을 코드에 박지 않으려는 용도다(박아두면 모델이 바뀔 때마다 조용히 404 난다)."""
+
+    주의: '가장 좋은 것 하나'는 단발 호출에 그대로 쓰면 위험하다. ListModels 는 무료 티어에서
+    쿼터가 0 인 유료 전용 모델(pro 계열)도 나열하는데, 품질 순위상 pro 가 1 순위라 반드시
+    그걸 고르고 즉시 429 를 맞는다(실측 2026-08-30: gemini-3.1-pro / -pro-preview 에서
+    RESOURCE_EXHAUSTED). 단발 호출에는 아래 invoke_text 를 써서 후보를 순회하게 하라.
+    """
     models = list_available_models(api_key)
     if not models:
         return FALLBACK_MODELS[0]
     return sorted(models, key=_model_quality_rank)[0]
+
+
+def invoke_text(prompt: str, api_key: str, model: "str | None" = None,
+                pool_id: str = "single-shot", log_prefix: str = "[invoke_text]") -> str:
+    """에이전트가 아닌 '단발' LLM 호출. 후보를 품질 순으로 돌며 지금 못 쓰는 조합은
+    건너뛴다.
+
+    왜 필요한가: 지금까지 단발 호출(improve_agent 의 llm_proposer)은 모델 하나를 골라
+    invoke 한 번 하고 끝이었다. 그 하나가 무료 티어에서 못 쓰는 pro 모델이면 매번
+    RESOURCE_EXHAUSTED 로 실패할 뿐 다음 후보로 넘어가지 못한다 -- 에이전트 경로에는
+    run_with_fallback_pool 이라는 순회가 있는데 단발 경로에만 없었다.
+
+    quota_tracker 를 그대로 쓰므로 자기치유된다: pro 가 429 를 맞으면 그날치 소진으로
+    기록돼 다음 호출부터는 순위 뒤로 밀리고, 실제로 쓸 수 있는 flash 계열이 앞에 온다.
+    """
+    if model:
+        candidates = [model]
+    else:
+        candidates = list_available_models(api_key) or list(FALLBACK_MODELS)
+
+    key_id = hashlib.sha256(api_key.encode()).hexdigest()[:8]
+    labelled = [(f"key-{key_id}:{m}", m) for m in candidates]
+    live = [c for c in labelled if not quota_tracker.is_dead(c[0])] or labelled
+
+    def _sort_key(item):
+        label, name = item
+        remaining = quota_tracker.remaining(label)
+        return (remaining <= 0, _model_quality_rank(name), -remaining)
+
+    ranked = sorted(live, key=_sort_key)
+    pinned_label = quota_tracker.get_pinned(pool_id)
+    if pinned_label:
+        head = [c for c in ranked if c[0] == pinned_label]
+        ranked = head + [c for c in ranked if c[0] != pinned_label]
+
+    last_error: Optional[Exception] = None
+    for label, name in ranked:
+        try:
+            reply = _make_llm(name, api_key).invoke(prompt)
+            quota_tracker.record_success(label)
+            quota_tracker.set_pinned(pool_id, label)
+            return extract_text(reply.content).strip()
+        except Exception as e:
+            if not is_unavailable_error(e):
+                raise
+            if is_rpm_quota_error(e):
+                quota_tracker.record_rpm_cooldown(label)
+            elif is_quota_error(e):
+                quota_tracker.record_exhausted(label)
+            elif is_permanent_error(e):
+                quota_tracker.mark_dead(label, str(e)[:200])
+            print(f"{log_prefix} candidate={label} 사용 불가({type(e).__name__}), 다음 후보로")
+            last_error = e
+    raise last_error if last_error else RuntimeError("후보가 비어있음")
 
 
 def list_available_models(api_key: str, timeout: int = 15) -> "list[str]":
