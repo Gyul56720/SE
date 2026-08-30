@@ -420,33 +420,3 @@ def invoke_with_recovery(agent, thread_map: dict, base_thread_id: str, prompt: s
         result = agent.invoke({"messages": [("user", prompt)]}, config=config)
         reply = extract_text(result["messages"][-1].content).strip()
         return "(이전 대화 기록이 손상되어 대화를 초기화했다)\n\n" + reply
-
-def tune_search_parameters(iters: int, noise_scale: float, use_perturbation: bool) -> str:
-    """행렬곱 탐색 알고리즘의 최적화 파라미터를 동적으로 변경한다.
-    
-    Args:
-        iters: 반복 횟수 (최대 5000)
-        noise_scale: 탐색 섭동 노이즈 크기
-        use_perturbation: 섭동 전략 사용 여부
-    """
-    import json
-    from pathlib import Path
-    
-    path = Path("/home/ubuntu/SE/mathmetics/matrix_exponent/params.json")
-    params = {"iters": 2000, "noise_scale": 0.1, "use_perturbation": False}
-    
-    if path.exists():
-        try:
-            with open(path, 'r') as f:
-                params = json.load(f)
-        except Exception:
-            pass
-            
-    params["iters"] = min(int(iters), 5000)
-    params["noise_scale"] = float(noise_scale)
-    params["use_perturbation"] = bool(use_perturbation)
-    
-    with open(path, 'w') as f:
-        json.dump(params, f, indent=4)
-        
-    return f"Successfully tuned params: {params}"
