@@ -1,4 +1,4 @@
 {
-    "iters": 3000,
+    "iters": 5000,
     "noise_scale": 0.05
 }

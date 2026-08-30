@@ -24,16 +24,13 @@ def _append_log(record):
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 def check_stagnation():
-    """최근 5회 연속 실패 여부 확인"""
     if not LOG_PATH.exists(): return False
     failures = []
     with LOG_PATH.open("r") as f:
         for line in f:
             entry = json.loads(line)
-            if entry.get("status") == "REJECTED":
-                failures.append(True)
-            else:
-                failures = []
+            if entry.get("status") == "REJECTED": failures.append(True)
+            else: failures = []
     return len(failures) >= 5
 
 def run_once():
@@ -45,20 +42,25 @@ def run_once():
     b, m = searcher.current_target()
     scheme = searcher.propose()
     resid = scheme.get("_als_residual")
-    try:
-        ok, msg = verifier.verify_scheme(scheme)
-    except Exception as e:
-        ok, msg = False, f"verifier exception: {e}"
-
-    if check_stagnation():
-        print("Stagnation detected! Automatically tuning parameters...")
-        update_params(iters=3000, noise_scale=0.05)
-        print("Parameters updated.")
-
-    record = {"ts": ts, "b": b, "m": m, "als_residual": resid, "status": "VERIFIED" if ok else "REJECTED"}
-    if not ok: record["reason"] = msg
     
-    searcher.record(ok)
+    # 1. Tier 2: 근사 검증 (성공 시 루프 전진, 그러나 최종 성공은 아님)
+    ok_approx, msg_approx = verifier.verify_approx(scheme, epsilon=1e-3)
+    # 2. Tier 1: 정확 검증 (최종 성공)
+    ok_exact, msg_exact = verifier.verify_scheme(scheme)
+
+    status = "REJECTED"
+    if ok_exact:
+        status = "VERIFIED_EXACT"
+    elif ok_approx:
+        status = "VERIFIED_APPROX"
+        print(f"Approximation achieved! Refining precision for next iteration...")
+        update_params(iters=4000, noise_scale=0.01) # 더 정밀하게 탐색
+    elif check_stagnation():
+        print("Stagnation detected! Increasing search budget...")
+        update_params(iters=5000, noise_scale=0.05)
+
+    record = {"ts": ts, "b": b, "m": m, "als_residual": resid, "status": status, "reason": msg_exact if not ok_exact else "ok"}
+    searcher.record(ok_exact) # 정확한 해일 때만 타겟 랭크 전진
     _append_log(record)
     return record
 
