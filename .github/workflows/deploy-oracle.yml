@@ -12,6 +12,14 @@ on:
       - "deploy/se-matrix-search.service"
       - "mathmetics/matrix_exponent/self_improve_loop.py"
       - "mathmetics/matrix_exponent/improve_agent.py"
+      # 탐색 서비스가 실제로 실행하는 코드들. 빠져 있어서 searcher.py 를 통째로 갈아엎어도
+      # 배포가 트리거되지 않았다 -- 코드가 좋아져도 서버에 도달하지 못하는 경로였다.
+      - "mathmetics/matrix_exponent/searcher.py"
+      - "mathmetics/matrix_exponent/verifier.py"
+      - "mathmetics/matrix_exponent/optimizer.py"
+      - "mathmetics/matrix_exponent/benchmarks.json"
+      # 배포 스크립트 자신. 이게 없으면 배포 방식을 고쳐도 그 수정이 배포되지 않는다.
+      - ".github/workflows/deploy-oracle.yml"
   workflow_dispatch: {}
 
 jobs:
