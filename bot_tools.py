@@ -113,9 +113,15 @@ def run_shell(command: str) -> str:
     if agent_context.is_blocked():
         return "실패: 게스트는 run_shell을 사용할 수 없습니다."
     ident = threading.get_ident()
+    # errors="replace" 가 없으면 명령 출력에 UTF-8 로 디코딩되지 않는 바이트가 하나만
+    # 섞여도 communicate() 가 UnicodeDecodeError 로 터진다(실측: "'utf-8' codec can't
+    # decode bytes in position 147-148: invalid continuation byte"). 도구가 예외로 죽으면
+    # 그 턴 전체가 실패하므로, 깨진 바이트는 대체문자로 바꿔 넣고 계속 진행한다 -- 셸
+    # 출력에는 로그·바이너리 조각·다른 인코딩 텍스트가 얼마든지 섞일 수 있다.
     proc = subprocess.Popen(
         ["bash", "-lc", command], cwd=REPO_DIR,
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        text=True, errors="replace",
     )
     with _active_procs_lock:
         _active_procs[ident] = proc
@@ -289,6 +295,24 @@ _NON_CHAT_MODEL_MARKERS = (
 )
 
 
+# ListModels 조회가 실패했을 때만 쓰는 최후의 목록. 모델 이름은 계속 바뀌므로 여기에
+# 박아두는 건 원칙적으로 임시방편이다 -- 정상 경로는 list_available_models 로 계정이 실제로
+# 쓸 수 있는 목록을 받아오는 것이다. 실제로 이 저장소는 낡은 이름 때문에 여러 번 당했다
+# (2026-08-30 실측: 코드 기본값이 gemini-2.5-* 였는데 그 계정에 2.5 계열은 아예 없고
+# 3.x 계열만 있었다 -- 없는 이름은 404 -> is_permanent_error -> 영구 dead 로 기록된다).
+# 그래서 여기에는 이 저장소에서 실제로 동작이 확인된 이름만 둔다.
+FALLBACK_MODELS = ["gemini-3.5-flash", "gemini-3.5-flash-lite"]
+
+
+def best_available_model(api_key: str) -> str:
+    """이 키로 쓸 수 있는 모델 중 가장 좋은 것 하나. 조회가 안 되면 FALLBACK_MODELS 첫 항목.
+    모델 이름을 코드에 박지 않으려는 용도다(박아두면 모델이 바뀔 때마다 조용히 404 난다)."""
+    models = list_available_models(api_key)
+    if not models:
+        return FALLBACK_MODELS[0]
+    return sorted(models, key=_model_quality_rank)[0]
+
+
 def list_available_models(api_key: str, timeout: int = 15) -> "list[str]":
     """이 키로 실제 쓸 수 있는 '텍스트 채팅용' Gemini 모델 이름 목록을 API에서 직접
     조회한다(v1beta ListModels -- 이 호출 자체는 generateContent 쿼터를 소모하지 않는
@@ -349,7 +373,7 @@ def build_agent_pool(keys: "list[str | None]", models: "list[str] | None", tools
     동적으로 조회해서 쓴다 -- 특정 모델의 일일 쿼터가 소진돼도 같은 키의 다른 모델은 아직
     쿼터가 남아있을 수 있으므로(429의 quotaId가 GenerateRequestsPerDayPerProjectPerModel),
     "쓸 수 있는 모델을 다 시도해본다"가 기본 동작이 된다. 조회가 실패하면 fallback_models
-    (없으면 ["gemini-2.5-flash"])로 대체한다.
+    (없으면 FALLBACK_MODELS)로 대체한다.
 
     ChatGoogleGenerativeAI 생성 자체는 API를 호출하지 않으므로(실제 요청은 invoke 시점에만
     나감) 조합을 몇 개를 만들든 미리 만들어두는 것 자체는 쿼터를 안 쓴다 (과거에 시작할 때마다
@@ -368,7 +392,7 @@ def build_agent_pool(keys: "list[str | None]", models: "list[str] | None", tools
         key_id = hashlib.sha256(key.encode()).hexdigest()[:8]
         key_models = models
         if key_models is None:
-            key_models = list_available_models(key) or fallback_models or ["gemini-2.5-flash"]
+            key_models = list_available_models(key) or fallback_models or list(FALLBACK_MODELS)
         for model in key_models:
             llm = _make_llm(model, key)
             agent = create_react_agent(llm, tools=tools, checkpointer=checkpointer, prompt=prompt)
@@ -382,7 +406,10 @@ def build_agent_pool(keys: "list[str | None]", models: "list[str] | None", tools
 # 패밀리 안에서 정식 버전보다 살짝 뒤로 민다(불안정할 수 있으므로). 어디까지나 이름 기반
 # 휴리스틱이고 Google이 모델을 계속 새로 내놓으므로 완벽할 수 없다 -- 그래도 "쓸 수만 있으면
 # 아무 모델이나"보다는 훨씬 낫다.
-def _model_quality_rank(model: str) -> "tuple[int, int]":
+_VERSION_RE = re.compile(r"(\d+(?:\.\d+)?)")
+
+
+def _model_quality_rank(model: str) -> "tuple[int, float, int]":
     name = model.lower()
     if "gemma" in name:
         family = 3
@@ -394,8 +421,13 @@ def _model_quality_rank(model: str) -> "tuple[int, int]":
         family = 0
     else:
         family = 4
+    # 같은 패밀리 안에서는 버전이 높은 쪽을 먼저 쓴다. 예전엔 이 항이 없어서 한 계정에
+    # flash 계열이 여럿일 때(실측: 3, 3.5, 3.6, 3.7) 전부 동점이 돼 순서가 잔량으로만
+    # 갈렸고, 구형이 최신보다 먼저 뽑히곤 했다. 정렬은 오름차순이므로 음수로 뒤집는다.
+    match = _VERSION_RE.search(name)
+    version = -float(match.group(1)) if match else 0.0
     is_preview = 1 if "preview" in name else 0
-    return (family, is_preview)
+    return (family, version, is_preview)
 
 
 def run_with_fallback_pool(candidates: "list[tuple[str, object]]", thread_map: dict, base_thread_id: str,

@@ -29,7 +29,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # quota_tracker 임포트용
 import quota_tracker  # noqa: E402
 
-FALLBACK_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash"]
+FALLBACK_MODELS = ["gemini-3.5-flash", "gemini-3.5-flash-lite"]
 
 
 def _is_quota(e) -> bool:

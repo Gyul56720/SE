@@ -15,7 +15,7 @@ load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 # 기본 키가 429(쿼터 초과)에 걸렸을 때 자동 전환할 보조 키. 없으면 기존처럼 그냥 실패한다.
 GEMINI_API_KEY_FALLBACK = os.getenv("GEMINI_API_KEY_FALLBACK", "")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
 
 # --- 선택적 백본 ---
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")

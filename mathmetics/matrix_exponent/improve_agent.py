@@ -58,6 +58,7 @@ import argparse
 import importlib.util
 import json
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -408,7 +409,15 @@ def llm_proposer(context: dict) -> str:
     from langchain_google_genai import ChatGoogleGenerativeAI
 
     key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY_FALLBACK")
-    model = os.environ.get("IMPROVE_MODEL", "gemini-2.5-flash")
+    # 모델 이름을 코드에 박지 않는다. 기본값이 "gemini-2.5-flash" 였는데 이 계정에는 2.5
+    # 계열이 아예 없고 3.x 계열만 있었다(실측 2026-08-30) -- 없는 이름은 404 라서
+    # llm_proposer 가 매번 조용히 실패했을 것이다. IMPROVE_MODEL 을 명시하면 그걸 쓰고,
+    # 아니면 그 키가 실제로 쓸 수 있는 모델 중 가장 좋은 것을 골라 쓴다.
+    model = os.environ.get("IMPROVE_MODEL")
+    if not model:
+        sys.path.insert(0, str(REPO))
+        import bot_tools
+        model = bot_tools.best_available_model(key)
     llm = ChatGoogleGenerativeAI(model=model, google_api_key=key)
     b, m = context["b"], context["m"]
     prompt = (
