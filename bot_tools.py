@@ -176,9 +176,23 @@ def extract_text(content) -> str:
     return str(content)
 
 
-def is_quota_error(e: Exception) -> bool:
+def is_rate_limit_error(e: Exception) -> bool:
+    """429이긴 한데 quotaId가 PerMinute(분당 RPM 한도)인 경우 -- 이건 일일 쿼터 소진이
+    아니라 몇 초~몇 분이면 풀리는 일시적 제한이다. 예전엔 is_quota_error가 "429" 문자열만
+    보고 이것도 통째로 "오늘 자정까지 소진"으로 확정 기록해버려서, 분당 한도에 살짝
+    걸렸을 뿐인 멀쩡한 조합을 하루 종일 못 쓰게 되는 오탐이 있었다. quotaId에 PerMinute이
+    찍혀 있으면 분당 한도이므로 여기서 먼저 걸러낸다."""
     text = str(e)
-    return "RESOURCE_EXHAUSTED" in text or "429" in text
+    return ("RESOURCE_EXHAUSTED" in text or "429" in text) and "PerMinute" in text
+
+
+def is_quota_error(e: Exception) -> bool:
+    """일일 쿼터 소진(quotaId가 PerDay, 또는 quotaId를 알 수 없는 일반 429/RESOURCE_EXHAUSTED).
+    분당 한도(is_rate_limit_error)는 따로 취급하므로 여기서는 제외한다."""
+    text = str(e)
+    if not ("RESOURCE_EXHAUSTED" in text or "429" in text):
+        return False
+    return "PerMinute" not in text
 
 
 def is_permanent_error(e: Exception) -> bool:
@@ -206,7 +220,7 @@ def is_unavailable_error(e: Exception) -> bool:
     과부하가 걸릴지 미리 다 알 방법이 없으므로(모델 목록도 자주 바뀜, 실측 확인됨
     2026-08-28) 정적으로 걸러내는 대신, 실제 호출에서 이런 에러가 나면 다음 후보로
     넘어가는 쪽으로 처리한다."""
-    return is_quota_error(e) or is_permanent_error(e) or is_transient_error(e)
+    return is_quota_error(e) or is_rate_limit_error(e) or is_permanent_error(e) or is_transient_error(e)
 
 
 # ListModels가 돌려주는 이름 중 이런 키워드가 들어간 건 텍스트 채팅용이 아니다(TTS/이미지
@@ -381,6 +395,11 @@ def run_with_fallback_pool(candidates: "list[tuple[str, object]]", thread_map: d
             if is_quota_error(e):
                 quota_tracker.record_exhausted(label)
                 print(f"{log_prefix} thread={base_thread_id} candidate={label} quota exhausted, 다음 후보로 전환")
+            elif is_rate_limit_error(e):
+                # 분당 한도는 일일 소진이 아니므로 record_exhausted 안 함 -- 이 후보는
+                # 살아있는 채로 남겨서 다음 요청(또는 다음 후보 순회)에서 다시 시도될 수 있게 한다.
+                print(f"{log_prefix} thread={base_thread_id} candidate={label} 분당 한도(RPM) 초과, "
+                      f"오늘자 소진 처리 없이 다음 후보로 전환")
             elif is_permanent_error(e):
                 quota_tracker.mark_dead(label, str(e)[:200])
                 print(f"{log_prefix} thread={base_thread_id} candidate={label} 영구 사용불가로 확정({e}), "

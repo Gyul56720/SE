@@ -8,7 +8,9 @@
 
 해결: 모든 LLM 호출을 (키 x 모델) 후보 풀로 돌린다. 이 저장소가 Discord 에이전트용으로 이미
 쓰는 quota_tracker 를 그대로 재사용한다 --
-  - 429(쿼터 소진): record_exhausted 로 오늘자 소진 표시 후 다음 후보.
+  - 429(일일 쿼터 소진, quotaId가 PerDay 또는 불명): record_exhausted 로 오늘자 소진 표시 후 다음 후보.
+  - 429(분당 RPM 초과, quotaId에 PerMinute): 일일 소진이 아니므로 기록 없이 다음 후보로만 전환
+    (이 조합은 살아있는 채로 남아 다음 요청에서 다시 시도될 수 있음).
   - 404/403(단종/유료전용): mark_dead 로 영구 제외(자정에도 안 풀림).
   - 503/500(일시 장애): 다음 후보(영구 제외 안 함).
   - 성공: record_success + 그 후보를 pin -> 다음 호출도 그걸 먼저.
@@ -32,9 +34,18 @@ import quota_tracker  # noqa: E402
 FALLBACK_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash"]
 
 
+def _is_rate_limit(e) -> bool:
+    """429이지만 quotaId가 PerMinute(분당 RPM)인 경우 -- 일일 쿼터 소진이 아니라 곧 풀리는
+    일시적 제한이므로 bot_tools.is_rate_limit_error와 같은 규칙으로 따로 구분한다."""
+    t = str(e)
+    return ("RESOURCE_EXHAUSTED" in t or "429" in t) and "PerMinute" in t
+
+
 def _is_quota(e) -> bool:
     t = str(e)
-    return "RESOURCE_EXHAUSTED" in t or "429" in t
+    if not ("RESOURCE_EXHAUSTED" in t or "429" in t):
+        return False
+    return "PerMinute" not in t
 
 
 def _is_permanent(e) -> bool:
@@ -118,6 +129,7 @@ def call(pool, prompt: str, pool_id: str = "orchestrator") -> tuple[str, str]:
                 quota_tracker.record_exhausted(label)
             elif _is_permanent(e):
                 quota_tracker.mark_dead(label, str(e)[:200])
-            # 일시 장애(503 등)는 기록 없이 다음 후보로.
+            # 분당 한도(RPM)는 일일 소진이 아니므로 기록 안 함, 일시 장애(503 등)도 마찬가지 --
+            # 둘 다 기록 없이 다음 후보로 넘어간다.
             last_error = e
     raise last_error if last_error else RuntimeError("빈 후보 풀")
