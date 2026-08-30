@@ -62,7 +62,6 @@ class CertificationEngine:
         return Certificate(status, exact_ok, True, rank=U.shape[1])
 
 def effective_omega(scheme) -> float:
-    """omega_eff = log(m)/log(b). 2.0 이 이론 하한, 낮을수록 좋다."""
     return math.log(scheme["m"]) / math.log(scheme["b"])
 
 def _block_slices(n, b):
@@ -76,17 +75,14 @@ def scheme_multiply(A, B, scheme):
         return _apply_scheme_base(A, B, scheme)
     if n % b != 0:
         raise ValueError(f"size {n} not divisible by block size {b}")
-
     sl = _block_slices(n, b)
     Ablk = [[A[sl[i], sl[j]] for j in range(b)] for i in range(b)]
     Bblk = [[B[sl[i], sl[j]] for j in range(b)] for i in range(b)]
-
     M = []
     for k in range(scheme["m"]):
         Ak = sum(c * Ablk[i][j] for (i, j), c in scheme["A_coeffs"][k].items())
         Bk = sum(c * Bblk[i][j] for (i, j), c in scheme["B_coeffs"][k].items())
         M.append(scheme_multiply(Ak, Bk, scheme))
-
     step = n // b
     C = np.zeros_like(A)
     for entry in scheme["C_coeffs"]:
@@ -114,27 +110,22 @@ def verify_scheme(scheme: dict, trials: int | None = None, seed: int = 0) -> Tup
     b = scheme['b']
     m = scheme['m']
     n = b * b
-    
     U = np.zeros((n, m))
     V = np.zeros((n, m))
     W = np.zeros((n, m))
     lambdas = np.ones(m)
-    
     for r in range(m):
         for (i, j), val in scheme['A_coeffs'][r].items():
             U[i*b + j, r] = val
         for (i, j), val in scheme['B_coeffs'][r].items():
             V[i*b + j, r] = val
-            
     for out_idx in range(n):
         i, j = divmod(out_idx, b)
         if (i, j) in scheme['C_coeffs'][out_idx]:
             for r, val in scheme['C_coeffs'][out_idx][(i, j)]:
                 W[out_idx, r] = val
-
     engine = CertificationEngine(b)
     cert = engine.certify(U, V, W, lambdas)
-    
     if cert.status == "CERTIFIED":
         return True, "ok"
     else:
@@ -148,21 +139,35 @@ def _verify_numerical(scheme, trials, seed):
     trials = MIN_TRIALS if trials is None else max(int(trials), MIN_TRIALS)
     sizes = (b, b * b)
     rng = np.random.default_rng(seed)
-
+    tested = 0
     tested = 0
     for size in sizes:
-        if size % b != 0:
-            continue
+        if size % b != 0: continue
         tested += 1
         for _ in range(trials):
             A = rng.integers(-5, 6, size=(size, size)).astype(np.float64)
             B = rng.integers(-5, 6, size=(size, size)).astype(np.float64)
-            try:
-                got = scheme_multiply(A, B, scheme)
-            except Exception as e:
-                return False, f"exception at size={size}: {e}"
-            if not np.allclose(A @ B, got, atol=MAX_ATOL):
-                return False, f"mismatch at size={size}"
+            try: got = scheme_multiply(A, B, scheme)
+            except Exception as e: return False, f"exception at size={size}: {e}"
+            if not np.allclose(A @ B, got, atol=MAX_ATOL): return False, f"mismatch at size={size}"
+    if tested == 0: return False, "no valid test size"
+    return True, "ok"
+
+def verify_approx(scheme: dict, epsilon: float = 1e-3) -> Tuple[bool, str]:
+    ok, msg = verify_scheme(scheme)
+    if ok: return True, "ok (exact)"
+    b = scheme["b"]
+    sizes = (b, b * b)
+    rng = np.random.default_rng(0)
+    tested = 0
+    for size in sizes:
+        if size % b != 0: continue
+        tested += 1
+        A = rng.integers(-5, 6, size=(size, size)).astype(np.float64)
+        B = rng.integers(-5, 6, size=(size, size)).astype(np.float64)
+        got = scheme_multiply(A, B, scheme)
+        if not np.allclose(A @ B, got, atol=epsilon, rtol=epsilon):
+            return False, f"approx mismatch at size={size}, eps={epsilon}"
     if tested == 0:
         return False, "no valid test size"
-    return True, "ok"
+    return True, f"ok (approx within {epsilon})"
