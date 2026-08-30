@@ -358,10 +358,21 @@ def run_once(proposer) -> dict:
         # apply_candidate 가 후보를 덮어쓰기 전에 현직 값이 대장에 확정되기도 한다.
         "best_bench_residual": incumbent_bench(led, b, m),
         "tried": [a.get("note") or a.get("result") for a in led["attempts"]],
+        # 제약은 게이트가 '실제로' 강제하는 것만 적는다. 예전 문구는 "b=2 m=7 는 순수 ALS 로
+        # 정확 수렴을 유지해야 한다"였는데, G010 은 순수 ALS 를 요구한 적이 없다 --
+        # cp_als(T, m, iters=, seed=) 로 불러 잔차가 1e-9 아래로 내려가는지만 본다. 현재
+        # searcher 자체가 순수 ALS 가 아니라 감쇠 어닐링 + 연마인데도 통과한다. 실제보다
+        # 좁은 제약을 주면 알고리즘을 고치라고 부르고선 고치지 못하게 막는 꼴이 된다.
+        # 또 b=3 m=23 이 래칫에 추가됐는데 제약에 빠져 있어, 그걸 깨뜨린 후보가 이유도
+        # 모른 채 gate_rejected 를 맞을 수 있었다.
         "constraints": [
-            "b=2 m=7 는 순수 ALS 로 정확 수렴을 유지해야 한다 (G010 이 강제).",
+            "cp_als(T, m, iters=..., seed=...) 호출 규약을 유지하라 -- G010 이 이 시그니처로 직접 부른다.",
+            "능력 래칫: b=2 m=7 (seeds 12 x iters 2000) 과 b=3 m=23 (seeds 8 x iters 1500) 이 "
+            "각각 잔차 1e-9 미만으로 수렴해 verifier 를 통과해야 한다. 이 둘만 지키면 cp_als "
+            "내부 알고리즘은 무엇으로든 바꿔도 된다 -- 현재 판도 순수 ALS 가 아니라 감쇠 "
+            "어닐링 + 연마다.",
             "verifier.py 와 gates/ 는 절대 수정하지 마라.",
-            "cp_als/matmul_tensor/factors_to_scheme/propose/Searcher 계약을 유지하라.",
+            "matmul_tensor/cp_als/factors_to_scheme/propose/Searcher 이름을 모두 유지하라.",
             "searcher.py 전체 소스를 반환하라.",
         ],
     }
@@ -408,9 +419,10 @@ def llm_proposer(context: dict) -> str:
         f"[기존 최고 잔차] {context['best_bench_residual']}\n"
         f"[이미 시도해 실패/기각된 전략] {context['tried']}\n"
         "이전에 실패한 전략을 반복하지 마라. 예: 고정 reg 리지는 해를 편향시켜 정확 수렴을 막는다.\n"
-        "고려할 수 있는 방향: reg 어닐링(0으로 점감), 비선형 최소제곱(Levenberg-Marquardt) 정제, "
-        "인자 스케일에 비례하는 큰 섭동으로 분지 이탈, 정체 감지 후 조기 재시작, "
-        "계수 반올림-리프팅({-1,0,1} 로 반올림 후 고정 재수렴), 텐서의 순환 대칭성 활용.\n\n"
+        "현재 판에 이미 들어 있는 것(다시 제안하지 마라): 감쇠 어닐링 ALS, 열 균형화, "
+        "반올림-리프팅, 정확해 분지 진입 후 연마, 예산 분할 다중 재시작.\n"
+        "고려할 수 있는 방향: 비선형 최소제곱(Levenberg-Marquardt) 정제, 분지 이탈 전략, "
+        "텐서의 순환 대칭성 활용, 그 밖에 잔차 추이에서 네가 읽어낸 것.\n\n"
         "[현재 searcher.py]\n```python\n" + context["current_searcher"] + "\n```\n\n"
         "개선된 searcher.py '전체'를 하나의 코드블록으로만 출력하라. 설명 금지."
     )
