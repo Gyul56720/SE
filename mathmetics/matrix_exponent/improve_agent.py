@@ -75,7 +75,7 @@ BENCH_TRIALS = 5            # 후보를 몇 번 propose() 시켜 볼지 (최소 
 # 벤치에 쓸 '고정' attempt 값들. searcher.propose() 는 attempt 로 seed 를 만들므로, 이걸
 # 고정하면 벤치가 결정적이 되고 기존 판과 후보가 '같은 시드'로 짝지어 비교된다.
 BENCH_ATTEMPTS = (0, 1, 2, 3, 4)
-LEDGER_VERSION = 2
+LEDGER_VERSION = 3
 
 # searcher.py 가 지켜야 하는 계약. 하나라도 없으면 self_improve_loop / G010 이 깨진다.
 SEARCHER_CONTRACT = ("matmul_tensor", "cp_als", "factors_to_scheme", "propose", "Searcher")
@@ -99,8 +99,13 @@ def _read_ledger() -> dict:
     if led.get("version") != LEDGER_VERSION:
         # v1 은 목표 구분 없는 단일 best_bench_residual 을 썼다 -- 낡은 m=23 기준이라
         # 이월하지 않고 버린다(이월하면 결함 (c) 가 그대로 살아난다). 시도 이력은 남긴다.
-        led = {"version": LEDGER_VERSION, "best_by_target": {}, "attempts": led.get("attempts", [])}
+        # v2 의 best_by_target 도 버린다: 정체 판정이 '확률적 루프 이력의 최소값'을 그 칸에
+        # 덮어써서 결정적 벤치와 단위가 섞여 있었다(아래 is_stagnant 주석 참고). 오염된
+        # 기준선을 이월하면 그 결함이 그대로 남는다.
+        led = {"version": LEDGER_VERSION, "best_by_target": {}, "best_seen_by_target": {},
+               "attempts": led.get("attempts", [])}
     led.setdefault("best_by_target", {})
+    led.setdefault("best_seen_by_target", {})
     led.setdefault("attempts", [])
     return led
 
@@ -136,11 +141,42 @@ def _recent_residuals(target_b, target_m, n=STAGNATION_WINDOW):
     return out[-n:]
 
 
+def incumbent_bench(led, b, m) -> float:
+    """지금 저장소에 있는 searcher.py 의 '결정적' 벤치값. 후보는 이것과 겨룬다.
+
+    없으면 그 자리에서 재보고 기록한다. 채택이 일어날 때만 갱신되므로, 확률적 루프 이력에
+    오염되지 않는다(아래 is_stagnant 주석 참고)."""
+    key = _target_key(b, m)
+    val = led["best_by_target"].get(key)
+    if val is None:
+        mod = _load_module("_incumbent_searcher", SEARCHER_PATH)
+        val = benchmark_residual(mod)
+        led["best_by_target"][key] = val
+    return val
+
+
 def is_stagnant(led, b, m) -> bool:
-    """전선에서 최근 잔차들이 기존 최고를 의미있게 못 넘으면 정체.
+    """전선에서 최근 잔차들이 '지금까지 본 최소'를 의미있게 못 넘으면 정체.
 
     기준선이 아직 없으면 이번 호출로 세우기만 하고 정체로 보지 않는다 -- 비교 대상 없이
     첫 호출부터 LLM 을 부르는 낭비를 막는다.
+
+    [왜 best_by_target 이 아니라 별도의 best_seen_by_target 을 쓰는가]
+    예전에는 이 함수가 best_by_target 을 덮어썼다. 그런데 그 칸은 apply_candidate 가
+    후보를 판정할 때 쓰는 '결정적 벤치' 기준선이다. 반면 여기서 넣는 값은 self_improve_loop
+    가 남긴 '확률적 propose() 이력의 최근 15 개 중 최소'다 -- 서로 다른 척도의 값이 같은
+    칸에 섞였다.
+
+    운영 서버 실측(2026-08-30)이 그 결과를 그대로 보여줬다. 기준선을 결정적 벤치값
+    0.012777 로 재설정했는데, 루프가 우연히 0.010065 를 뽑자 is_stagnant 가 그 값으로
+    기준선을 덮어썼다. 그 순간 채택 문턱이 0.010065 x 0.9 = 0.00906 이 됐다 -- 현직
+    searcher 의 실제 벤치값은 여전히 0.012777 이므로, 후보는 의도한 10% 가 아니라 29% 를
+    개선해야 통과하게 된다. 게다가 그 문턱은 루프의 운에 따라 계속 흔들린다. 결정적 벤치를
+    도입해 없앤 '운이 판정하는' 문제가 다른 경로로 되살아난 셈이다.
+
+    그래서 두 값을 분리한다:
+      best_by_target      -- 결정적 벤치 기준선. 채택될 때만 갱신된다.
+      best_seen_by_target -- 루프 이력에서 본 최소. 정체 판정에만 쓴다.
     """
     recents = _recent_residuals(b, m)
     if len(recents) < STAGNATION_WINDOW:
@@ -148,14 +184,14 @@ def is_stagnant(led, b, m) -> bool:
 
     key = _target_key(b, m)
     observed = min(recents)
-    best_prev = led["best_by_target"].get(key)
-    if best_prev is None:
-        led["best_by_target"][key] = observed
+    seen_prev = led["best_seen_by_target"].get(key)
+    if seen_prev is None:
+        led["best_seen_by_target"][key] = observed
         return False
 
-    stagnant = observed >= best_prev * IMPROVE_REL
-    if observed < best_prev:
-        led["best_by_target"][key] = observed
+    stagnant = observed >= seen_prev * IMPROVE_REL
+    if observed < seen_prev:
+        led["best_seen_by_target"][key] = observed
     return stagnant
 
 
@@ -224,6 +260,9 @@ def _missing_contract(mod) -> list:
 def apply_candidate(source_text: str, led, b, m) -> dict:
     """후보 searcher.py 를 가드 통과 시에만 채택한다. 결과 dict 반환."""
     key = _target_key(b, m)
+    # 기준선은 반드시 후보를 덮어쓰기 '전에' 잰다 -- 아래 write_text 뒤에 재면 현직이
+    # 아니라 후보 자신을 재게 되고, 후보는 언제나 자기 자신과 비교돼 통과하지 못한다.
+    best_prev = incumbent_bench(led, b, m)
     backup = SEARCHER_PATH.read_text()
     SEARCHER_PATH.write_text(source_text)
 
@@ -251,7 +290,6 @@ def apply_candidate(source_text: str, led, b, m) -> dict:
     except Exception as e:
         return rollback({"result": "candidate_error", "detail": str(e)[-400:]})
 
-    best_prev = led["best_by_target"].get(key)
     solved = res < SOLVED_RES
     improved = solved or (best_prev is not None and res < best_prev * IMPROVE_REL)
     if not improved:
@@ -262,7 +300,11 @@ def apply_candidate(source_text: str, led, b, m) -> dict:
     led["best_by_target"][key] = res
     _write_ledger(led)
     branch = _current_branch()
-    subprocess.run(["git", "add", str(SEARCHER_PATH), str(LEDGER_PATH)],
+    # 대장(improve_ledger.json)은 커밋하지 않는다 -- 서버가 매 실행마다 쓰는 기계 로컬
+    # 런타임 상태라 .gitignore 대상이다(als_state.json / logs 와 같은 부류). 추적하면
+    # 배포의 작업 트리 정렬이 서버의 대장을 매번 덮어써 '이미 실패한 전략' 기억이 조용히
+    # 사라진다. 채택의 기록은 아래 커밋(searcher.py 변경 + 메시지)이 남긴다.
+    subprocess.run(["git", "add", str(SEARCHER_PATH)],
                    cwd=REPO, capture_output=True, text=True)
     subprocess.run(["git", "commit", "-m",
                     f"improve_agent: searcher 개선 채택 (b={b} m={m} 잔차 {res:.3e})"],
@@ -290,7 +332,9 @@ def run_once(proposer) -> dict:
         "m": m,
         "current_searcher": SEARCHER_PATH.read_text(),
         "recent_residuals": _recent_residuals(b, m),
-        "best_bench_residual": led["best_by_target"].get(_target_key(b, m)),
+        # 프롬프트에는 후보가 실제로 넘어야 할 '결정적' 기준선을 준다. 여기서 재두면
+        # apply_candidate 가 후보를 덮어쓰기 전에 현직 값이 대장에 확정되기도 한다.
+        "best_bench_residual": incumbent_bench(led, b, m),
         "tried": [a.get("note") or a.get("result") for a in led["attempts"]],
         "constraints": [
             "b=2 m=7 는 순수 ALS 로 정확 수렴을 유지해야 한다 (G010 이 강제).",
