@@ -1,0 +1,28 @@
+{
+  "problem": "CP-ALS가 b=3에서 mismatch at size=3으로 정체됨. 텐서 분해 알고리즘을 border rank 분해로 전환하거나 더 나은 수학적 접근 방식을 제안하고 구현 계획을 수립하라.",
+  "final": "optimize_border_rank",
+  "nodes": [
+    {
+      "id": "reformulate_border_rank",
+      "goal": "CP-ALS 정체 문제를 해결하기 위해 border rank 분해 수립 및 제안",
+      "component": "components/reformulate_border_rank.py",
+      "verifier": "components/reformulate_border_rank_verify.py",
+      "deps": [],
+      "status": "pending",
+      "result_ref": "",
+      "attempts": []
+    },
+    {
+      "id": "optimize_border_rank",
+      "goal": "수립된 border rank 분해를 바탕으로 ALS/GD 최적화 수행",
+      "component": "components/optimize_border_rank.py",
+      "verifier": "components/optimize_border_rank_verify.py",
+      "deps": [
+        "reformulate_border_rank"
+      ],
+      "status": "pending",
+      "result_ref": "",
+      "attempts": []
+    }
+  ]
+}
