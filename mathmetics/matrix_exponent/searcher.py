@@ -17,15 +17,15 @@ DISCRETE_GRID = np.array([-1.0, -0.5, 0.0, 0.5, 1.0])
 
 TOL = 1e-13
 POLISH_ENTER = 1e-2
-POLISH_ITERS = 25000
+POLISH_ITERS = 30000
 LIFT_ENTER = 5e-2
-LIFT_ROUNDS = 12
+LIFT_ROUNDS = 16
 DAMP0 = 1e-3
 ANNEAL_FRAC = 0.4
 
 
 def load_params():
-    defaults = {"iters": 2000, "noise_scale": 0.1, "use_perturbation": False}
+    defaults = {"iters": 2500, "noise_scale": 0.1, "use_perturbation": False}
     try:
         if PARAMS_PATH.exists():
             with open(PARAMS_PATH, "r") as f:
@@ -126,7 +126,7 @@ def _als_sweep(T, U, V, W, iters, damp0=DAMP0, anneal_frac=ANNEAL_FRAC,
                 res_new = _residual(T, U_extrap, V_extrap, W_extrap, normT)
                 if res_new < res:
                     U, V, W, res = U_extrap, V_extrap, W_extrap, res_new
-                    alpha = min(alpha * 1.08, 1.8)
+                    alpha = min(alpha * 1.08, 1.85)
                 else:
                     res = _residual(T, U, V, W, normT)
                     alpha = 1.0
@@ -141,7 +141,7 @@ def _als_sweep(T, U, V, W, iters, damp0=DAMP0, anneal_frac=ANNEAL_FRAC,
             if res < tol:
                 break
                 
-            if it > 0 and it % 300 == 0 and res > 1e-2 and use_perturbation and rng is not None:
+            if it > 0 and it % 250 == 0 and res > 1e-2 and use_perturbation and rng is not None:
                 scale = noise_scale * (res + 1e-8)
                 U += rng.normal(0, scale, U.shape)
                 V += rng.normal(0, scale, V.shape)
@@ -174,7 +174,7 @@ def _lift(T, U, V, W, res, normT, iters):
     for r in range(LIFT_ROUNDS):
         U0, V0, W0, res0 = best
         Ub, Vb, Wb = _balance(U0, V0, W0)
-        thresh = 0.02 * (r + 1) / LIFT_ROUNDS
+        thresh = 0.018 * (r + 1) / LIFT_ROUNDS
 
         frozen = []
         any_frozen = False
@@ -193,7 +193,7 @@ def _lift(T, U, V, W, res, normT, iters):
         for arr, (mask, val) in zip((Uc, Vc, Wc), frozen):
             arr[mask] = val[mask]
 
-        Uc, Vc, Wc, resc = _als_sweep(T, Uc, Vc, Wc, iters, damp0=1e-8,
+        Uc, Vc, Wc, resc = _als_sweep(T, Uc, Vc, Wc, iters, damp0=1e-9,
                                       frozen=frozen, normT=normT)
         if math.isfinite(resc) and resc < best[3]:
             best = (Uc, Vc, Wc, resc)
@@ -234,14 +234,14 @@ class Searcher:
     def propose(self) -> dict:
         b, m = self.current_target()
         params = load_params()
-        budget = int(params.get("iters", 2000))
+        budget = int(params.get("iters", 2500))
         noise = float(params.get("noise_scale", 0.1))
         perturb = bool(params.get("use_perturbation", False))
 
         T = matmul_tensor(b)
         normT = np.linalg.norm(T)
 
-        per_restart = max(400, budget // 4)
+        per_restart = max(500, budget // 5)
         restarts = max(1, budget // per_restart)
 
         base_seed = int(self.state["attempt"]) * 1337
