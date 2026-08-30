@@ -13,3 +13,9 @@ bot_execution.log
 bot_pid.txt
 logs/
 *.log
+
+# 탐색 루프의 런타임 상태. 서버에서 프로세스가 계속 쓰는 파일을 git 이 추적하면
+# 배포의 git pull 이 "Your local changes would be overwritten by merge" 로 매번 중단된다
+# (실측: 배포 #36/#37 연속 실패). 둘 다 없으면 런타임에 다시 만들어지고, 사다리는
+# b=2 m=7 -> b=3 m=23 을 즉시 다시 통과해 원래 단계로 스스로 복구된다(실측 4초).
+mathmetics/matrix_exponent/als_state.json
