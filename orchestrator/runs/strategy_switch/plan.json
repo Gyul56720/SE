@@ -1,0 +1,28 @@
+{
+  "problem": "정체 지속됨. CP-ALS 알고리즘에 섭동(perturbation) 전략을 적용하라. use_perturbation 파라미터를 True로 변경하고 재실행하라.",
+  "final": "run_cp_als",
+  "nodes": [
+    {
+      "id": "update_parameter",
+      "goal": "CP-ALS 알고리즘의 use_perturbation 파라미터를 True로 변경하고 재실행 가능한 설정 생성",
+      "component": "components/update_parameter.py",
+      "verifier": "components/update_parameter_verify.py",
+      "deps": [],
+      "status": "pending",
+      "result_ref": "",
+      "attempts": []
+    },
+    {
+      "id": "run_cp_als",
+      "goal": "업데이트된 설정(use_perturbation=True)을 바탕으로 CP-ALS 알고리즘을 재실행하여 정체 상태를 해소하고 결과 텐서 분해 도출",
+      "component": "components/run_cp_als.py",
+      "verifier": "components/run_cp_als_verify.py",
+      "deps": [
+        "update_parameter"
+      ],
+      "status": "pending",
+      "result_ref": "",
+      "attempts": []
+    }
+  ]
+}

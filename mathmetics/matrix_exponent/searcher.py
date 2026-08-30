@@ -11,16 +11,8 @@ LADDER = [(2, 7), (3, 23), (3, 22), (3, 21)]
 
 def load_params():
     try:
-        with open(PARAMS_PATH, "r") as f:
-            return json.load(f)
-    except Exception:
-        return {"iters": 2000, "noise_scale": 0.1}
-
-def _kr(A, B):
-    return np.einsum("ir,jr->ijr", A, B).reshape(-1, A.shape[1])
-
-def _unfold(T, mode):
-    return np.transpose(T, [mode] + [i for i in range(T.ndim) if i != mode]).reshape(T.shape[mode], -1)
+        with open(PARAMS_PATH, 'r') as f: return json.load(f)
+    except: return {"iters": 2000, "noise_scale": 0.1, "use_perturbation": False}
 
 def matmul_tensor(b: int) -> np.ndarray:
     n = b * b
@@ -31,7 +23,7 @@ def matmul_tensor(b: int) -> np.ndarray:
                 T[i * b + l, l * b + j, i * b + j] = 1.0
     return T
 
-def cp_als(T, m, iters=2000, seed=0, init_U=None, init_V=None, init_W=None, noise_scale=0.0):
+def cp_als(T, m, iters=2000, seed=0, init_U=None, init_V=None, init_W=None, noise_scale=0.0, use_perturbation=False):
     rng = np.random.default_rng(seed)
     n = T.shape[0]
     U = init_U if init_U is not None else rng.normal(0, 1, (n, m))
@@ -47,12 +39,16 @@ def cp_als(T, m, iters=2000, seed=0, init_U=None, init_V=None, init_W=None, nois
     tol = 1e-12
 
     for it in range(iters):
+        if use_perturbation and it % 10 == 0:
+            U += rng.normal(0, noise_scale * 0.1, U.shape)
+        
+        # Simple ALS steps
         Gram_VW = (V.T @ V) * (W.T @ W)
-        U = _unfold(T, 0) @ _kr(V, W) @ np.linalg.pinv(Gram_VW)
+        U = np.linalg.lstsq(Gram_VW.T, (np.einsum("ijk,jr,kr->ir", T, V, W)).T, rcond=None)[0].T
         Gram_UW = (U.T @ U) * (W.T @ W)
-        V = _unfold(T, 1) @ _kr(U, W) @ np.linalg.pinv(Gram_UW)
+        V = np.linalg.lstsq(Gram_UW.T, (np.einsum("ijk,ir,kr->jr", T, U, W)).T, rcond=None)[0].T
         Gram_UV = (U.T @ U) * (V.T @ V)
-        W = _unfold(T, 2) @ _kr(U, V) @ np.linalg.pinv(Gram_UV)
+        W = np.linalg.lstsq(Gram_UV.T, (np.einsum("ijk,ir,jr->kr", T, U, V)).T, rcond=None)[0].T
 
         if it % 50 == 0 or it == iters - 1:
             R = np.einsum("ir,jr,kr->ijk", U, V, W)
@@ -77,10 +73,8 @@ class Searcher:
 
     def _load(self):
         if STATE_PATH.exists():
-            try:
-                return json.loads(STATE_PATH.read_text())
-            except Exception:
-                pass
+            try: return json.loads(STATE_PATH.read_text())
+            except: pass
         return {"stage": 0, "attempt": 0}
 
     def _save(self):
@@ -91,15 +85,13 @@ class Searcher:
 
     def propose(self) -> dict:
         b, m = self.current_target()
-        attempt = self.state["attempt"]
         params = load_params()
-        
         T = matmul_tensor(b)
-        U, V, W, res = cp_als(T, m, iters=params["iters"], noise_scale=params["noise_scale"], seed=attempt)
-        
+        U, V, W, res = cp_als(T, m, iters=params["iters"], noise_scale=params["noise_scale"], 
+                              use_perturbation=params.get("use_perturbation", False), seed=self.state["attempt"])
         scheme = factors_to_scheme(U, V, W, b, m)
         scheme["_als_residual"] = res
-        self.state["attempt"] = attempt + 1
+        self.state["attempt"] += 1
         self._save()
         return scheme
 
