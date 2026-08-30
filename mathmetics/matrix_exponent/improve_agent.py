@@ -177,19 +177,41 @@ def is_stagnant(led, b, m) -> bool:
     그래서 두 값을 분리한다:
       best_by_target      -- 결정적 벤치 기준선. 채택될 때만 갱신된다.
       best_seen_by_target -- 루프 이력에서 본 최소. 정체 판정에만 쓴다.
+
+    [last_check 를 남기는 이유]
+    정체가 아니면 run_once 는 attempts 에 아무것도 남기지 않는다. 그래서 대장만 보면
+    "attempts 가 비었다"는 사실이 '한 번도 안 돌았다'인지 '돌았지만 정체가 아니었다'인지
+    구분되지 않는다 -- 실제로 이 저장소에서 두 번 오독됐다(2026-08-30: 서버가 best_by_target
+    한 줄만 바꾼 커밋을 올렸는데 attempts 가 비어 있어 'LLM 이 실패했다'로 읽혔지만, 실제로는
+    정체 판정에서 매번 되돌아 나가 LLM 에 도달한 적이 없었다). 매 판정의 근거를 last_check
+    에 남기면 대장 하나만 보고도 '돌았는가 / 왜 제안하지 않았는가'를 알 수 있다.
     """
+    key = _target_key(b, m)
+    now = time.time()
+    led["checks"] = led.get("checks", 0) + 1
+
     recents = _recent_residuals(b, m)
     if len(recents) < STAGNATION_WINDOW:
+        led["last_check"] = {"ts": now, "target": key, "stagnant": False,
+                             "reason": "표본 부족", "samples": len(recents),
+                             "need": STAGNATION_WINDOW}
         return False
 
-    key = _target_key(b, m)
     observed = min(recents)
     seen_prev = led["best_seen_by_target"].get(key)
     if seen_prev is None:
         led["best_seen_by_target"][key] = observed
+        led["last_check"] = {"ts": now, "target": key, "stagnant": False,
+                             "reason": "기준선 수립(첫 판정)", "observed": observed}
         return False
 
     stagnant = observed >= seen_prev * IMPROVE_REL
+    led["last_check"] = {
+        "ts": now, "target": key, "stagnant": stagnant,
+        "reason": "정체" if stagnant else "아직 개선 중",
+        "observed": observed, "best_seen_prev": seen_prev,
+        "threshold": seen_prev * IMPROVE_REL,
+    }
     if observed < seen_prev:
         led["best_seen_by_target"][key] = observed
     return stagnant
