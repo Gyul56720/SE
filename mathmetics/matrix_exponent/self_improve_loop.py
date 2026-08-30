@@ -5,7 +5,14 @@ import math
 import sys
 import time
 from pathlib import Path
-from .optimizer import escalate_budget, update_params
+try:
+    from .optimizer import escalate_budget, update_params
+except ImportError:
+    # systemd 의 ExecStart 는 이 파일을 패키지가 아니라 '스크립트'로 직접 실행한다
+    # (python3 .../self_improve_loop.py). 그 경로에서는 상대 임포트가 ImportError 로
+    # 죽고, Restart=on-failure 와 맞물려 10초마다 무한 재시작하는 꼴이 된다. 스크립트로
+    # 실행되면 sys.path[0] 이 이 파일의 디렉터리이므로 절대 임포트로 넘어간다.
+    from optimizer import escalate_budget, update_params
 
 HERE = Path(__file__).resolve().parent
 LOG_PATH = HERE / "logs" / "history.jsonl"
@@ -111,12 +118,40 @@ def run_once():
     _append_log(record)
     return record
 
+def _try_improve(backend: str) -> dict:
+    """improve_agent 를 한 번 돌린다. 자가개선이 죽어도 탐색 루프는 계속 돌아야 하므로
+    어떤 예외도 여기서 삼키고 사유만 돌려준다 (예: GEMINI_API_KEY 가 없는 환경)."""
+    try:
+        agent = _load("_me_improve_agent", HERE / "improve_agent.py")
+        proposer = agent.BACKENDS[backend]
+        return agent.run_once(proposer)
+    except Exception as e:
+        return {"action": "error", "detail": f"{type(e).__name__}: {e}"}
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--iterations", type=int, default=1)
+    parser.add_argument("--iterations", type=int, default=1,
+                        help="0 이면 무한 (상시 서비스용).")
+    parser.add_argument("--sleep", type=float, default=0.0)
+    parser.add_argument("--improve-every", type=int, default=0,
+                        help="N 회 반복마다 improve_agent 를 호출해 '정체하면 searcher 를 "
+                             "고치는' 피드백 고리를 닫는다. 0 이면 자가개선 없음 -- 이 경우 "
+                             "이 루프는 같은 탐색기를 영원히 반복만 한다.")
+    parser.add_argument("--improve-backend", default="llm", choices=["llm", "mock"])
     args = parser.parse_args()
-    for _ in range(args.iterations):
-        print(json.dumps(run_once()))
+
+    i = 0
+    while args.iterations == 0 or i < args.iterations:
+        print(json.dumps(run_once(), ensure_ascii=False), flush=True)
+        i += 1
+
+        if args.improve_every > 0 and i % args.improve_every == 0:
+            print(json.dumps({"improve": _try_improve(args.improve_backend)},
+                             ensure_ascii=False), flush=True)
+
+        if (args.iterations == 0 or i < args.iterations) and args.sleep > 0:
+            time.sleep(args.sleep)
 
 if __name__ == "__main__":
     main()

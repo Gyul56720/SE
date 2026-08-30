@@ -9,6 +9,9 @@ on:
       - "requirements.txt"
       - "deploy/se-discord-bot.service"
       - "deploy/se-log-streamer.service"
+      - "deploy/se-matrix-search.service"
+      - "mathmetics/matrix_exponent/self_improve_loop.py"
+      - "mathmetics/matrix_exponent/improve_agent.py"
   workflow_dispatch: {}
 
 jobs:
@@ -29,9 +32,13 @@ jobs:
             pip3 install --break-system-packages -r requirements.txt discord.py
             sudo cp deploy/se-discord-bot.service /etc/systemd/system/
             sudo cp deploy/se-log-streamer.service /etc/systemd/system/
+            sudo cp deploy/se-matrix-search.service /etc/systemd/system/
             sudo systemctl daemon-reload
             sudo systemctl restart se-discord-bot
             sudo systemctl enable --now se-log-streamer
             sudo systemctl restart se-log-streamer
             sudo systemctl status se-discord-bot --no-pager
             sudo systemctl status se-log-streamer --no-pager
+            sudo systemctl enable --now se-matrix-search
+            sudo systemctl restart se-matrix-search
+            sudo systemctl status se-matrix-search --no-pager

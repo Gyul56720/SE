@@ -1,0 +1,32 @@
+{
+  "version": 2,
+  "best_by_target": {
+    "3,22": 0.025383344339166367
+  },
+  "attempts": [
+    {
+      "ts": 1788086143.2963529,
+      "backend": "mock_proposer",
+      "target": "3,22",
+      "result": "no_improvement",
+      "bench_residual": 0.19252234324066905,
+      "best_prev": 0.025383344339166367
+    },
+    {
+      "ts": 1788086158.2710524,
+      "backend": "mock_proposer",
+      "target": "3,22",
+      "result": "no_improvement",
+      "bench_residual": 0.19252234324066905,
+      "best_prev": 0.025383344339166367
+    },
+    {
+      "ts": 1788086167.001606,
+      "backend": "mock_proposer",
+      "target": "3,22",
+      "result": "no_improvement",
+      "bench_residual": 0.19252234324066905,
+      "best_prev": 0.025383344339166367
+    }
+  ]
+}

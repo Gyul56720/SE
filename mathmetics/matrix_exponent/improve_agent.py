@@ -2,22 +2,52 @@
 자기 개선 에이전트: '다음 개선을 스스로 추론'해 searcher.py 를 고치되, 개선이 검증될
 때만 채택하는 닫힌 피드백 루프.
 
-지금까지의 문제: self_improve_loop.py 는 searcher.py 를 실행/기록만 할 뿐, 정체를 인지해
-코드를 바꾸는 주체가 없었다(피드백 루프가 끊겨 있었다). 이 에이전트가 그 고리를 잇는다:
+self_improve_loop.py 는 searcher.py 를 실행/기록만 할 뿐, 정체를 인지해 코드를 바꾸는
+주체가 없다(피드백 루프가 끊겨 있다). 이 에이전트가 그 고리를 잇는다:
 
-  1. history.jsonl 을 읽어 '정체'(현재 목표에서 최근 시도들이 잔차를 못 낮춤)를 감지한다.
+  1. history.jsonl 을 읽어 '정체'(현재 전선에서 최근 시도들이 잔차를 못 낮춤)를 감지한다.
   2. 정체면 proposer 에게 새 searcher.py 를 요청한다.
        - LLM proposer(Gemini): 현재 코드 + 잔차 추이 + 지금까지 시도한 전략 대장을 주고
          "다음 개선을 추론해 searcher.py 전체를 다시 써라" 시킨다. (실제 '스스로 추론'.)
-       - mock/deterministic proposer: 테스트/무-LLM 환경용 주입 가능.
+       - mock proposer: LLM 없이 전 경로(정체 감지→적용→게이트→벤치→롤백)를 돌려보는
+         결정론적 백엔드. 테스트/무-API-키 환경용.
   3. 후보를 적용하되 '가드'를 통과할 때만 채택한다 (apply_candidate):
+       - 계약 보존: matmul_tensor/cp_als/factors_to_scheme/propose/Searcher 가 있어야 한다.
        - gatekeeper.py 전체 통과 (G008 심판 무효화 금지, G009 심판 약화 금지,
          G010 능력 후퇴 금지 등). 실패하면 되돌리고 그 사유를 대장에 남긴다.
-       - b=3 벤치 잔차가 기존 최고보다 '실제로' 낮아졌을 때만 커밋. 아니면 되돌린다.
+       - 현재 전선의 벤치 잔차가 기존 최고보다 '실제로' 낮아졌을 때만 커밋. 아니면 되돌린다.
   4. 채택/기각 결과를 improve_ledger.json 에 남겨 같은 실패를 반복하지 않게 한다.
 
 대부분의 개선 아이디어는 실패한다(실측: reg 어닐링은 b=3 을 더 나쁘게 만들었다). 그래서
 '제안'이 아니라 '검증된 채택'이 핵심이다 -- 나쁜 아이디어는 자동으로 되돌려지고 기록된다.
+
+[2026-08-30 수정 이력 — 이 파일이 한 번도 실행된 적 없어 드러나지 않았던 결함들]
+
+  (a) 벤치 대상이 하드코딩(b=3, m=23)이라 낡았다. m=23 은 이미 정복됐고(잔차 8.3e-10,
+      VERIFIED) 전선은 m=22 로 올라갔는데, 정체 감지도 개선 측정도 여전히 m=23 을 보고
+      있었다 -- 엉뚱한 목적함수를 최적화한다. => 사다리 상태(als_state.json)에서 현재
+      전선을 읽는다.
+  (b) 채택 게이트가 공허했다. `res < SOLVED_RES` 단독 통과 조건이 있는데 m=23 은 안정적으로
+      1e-6 아래로 수렴하므로 사실상 '항상 참'이었다 -- LLM 이 뱉은 어떤 후보든 통과해
+      자동 push 됐을 것이다. 이 파일의 존재 이유인 '검증된 채택'이 성립하지 않았다.
+      => 전선을 벤치로 삼으면 이 조건은 '미해결 난제를 실제로 풀었다'는 뜻이 되어 의미를
+      되찾는다. 거기에 기존 최고 대비 실질 개선을 함께 요구한다.
+  (c) 한 번 채택되면 best 가 1e-10 이 되고, 이후 낡은 m=23 이력(~1e-2)과 비교하므로
+      is_stagnant 가 '항상 True' -- 매 실행마다 무조건 LLM 호출. => 최고 잔차를 목표별로
+      분리 보관하고(best_by_target), 정체 판단도 현재 전선 이력으로만 한다.
+  (d) docstring 은 mock proposer 를 약속했지만 argparse 는 choices=["llm"] 뿐이라
+      GEMINI_API_KEY 없이는 스모크 테스트조차 불가능했다. 그래서 한 번도 안 돌았고,
+      그래서 (a)(b)(c) 가 안 잡혔다. (d) 가 나머지의 원인이다. => --backend mock 추가.
+  (e) 벤치를 원시 cp_als 로 쟀다. 탐색기의 실력은 propose() 의 다단계 섭동에 들어
+      있고, 비교 대상인 history.jsonl 잔차도 propose() 산물이라 단위가 안 맞았다.
+      => 후보의 propose() 경로로 잰다(als_state.json 은 스냅샷 후 복원).
+
+[이전 사다리 단 후퇴는 왜 따로 안 막는가]
+b=2 m=7 은 benchmarks.json 에 등록돼 G010 이 매 커밋 강제한다. b=3 m=23 은 별도 가드를
+두지 않는다 -- 랭크 22 분해가 존재하면 0 인 랭크-1 항을 하나 붙여 랭크 23 분해가 항상
+따라오므로, 전선(m=22)에서의 개선이 m=23 능력을 후퇴시킬 수 없다. 게다가 m=23 은 707 회
+시도 끝에 한 번 맞은 것이라 게이트가 감당할 예산으로 재현 가능하지 않다(G010 에 넣으면
+모든 커밋이 막힌다).
 
 절대 규칙: 이 에이전트는 searcher.py 만 건드린다. verifier.py/게이트는 손대지 않는다
 (그리고 gatekeeper 가 그것을 강제한다).
@@ -27,7 +57,6 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
-import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -35,14 +64,18 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
 SEARCHER_PATH = HERE / "searcher.py"
+STATE_PATH = HERE / "als_state.json"
 HISTORY_PATH = HERE / "logs" / "history.jsonl"
 LEDGER_PATH = HERE / "improve_ledger.json"
 
 STAGNATION_WINDOW = 15      # 최근 몇 건을 보고 정체를 판단할지
 IMPROVE_REL = 0.9           # 새 잔차가 기존 최고의 이 배수보다 낮아야 '개선'으로 인정
 SOLVED_RES = 1e-6           # 이보다 낮으면 사실상 해결
-BENCH_B, BENCH_M = 3, 23    # 개선 여부를 재는 벤치(난제 구간)
-BENCH_RESTARTS = 4
+BENCH_TRIALS = 3            # 후보를 몇 번 propose() 시켜 볼지 (최소 잔차 채택)
+LEDGER_VERSION = 2
+
+# searcher.py 가 지켜야 하는 계약. 하나라도 없으면 self_improve_loop / G010 이 깨진다.
+SEARCHER_CONTRACT = ("matmul_tensor", "cp_als", "factors_to_scheme", "propose", "Searcher")
 
 
 def _load_module(name, path):
@@ -52,17 +85,35 @@ def _load_module(name, path):
     return mod
 
 
-def _read_ledger():
+def _read_ledger() -> dict:
     if LEDGER_PATH.exists():
         try:
-            return json.loads(LEDGER_PATH.read_text())
+            led = json.loads(LEDGER_PATH.read_text())
         except Exception:
-            pass
-    return {"best_bench_residual": None, "attempts": []}
+            led = {}
+    else:
+        led = {}
+    if led.get("version") != LEDGER_VERSION:
+        # v1 은 목표 구분 없는 단일 best_bench_residual 을 썼다 -- 낡은 m=23 기준이라
+        # 이월하지 않고 버린다(이월하면 결함 (c) 가 그대로 살아난다). 시도 이력은 남긴다.
+        led = {"version": LEDGER_VERSION, "best_by_target": {}, "attempts": led.get("attempts", [])}
+    led.setdefault("best_by_target", {})
+    led.setdefault("attempts", [])
+    return led
 
 
 def _write_ledger(led):
     LEDGER_PATH.write_text(json.dumps(led, ensure_ascii=False, indent=2))
+
+
+def _target_key(b, m) -> str:
+    return f"{b},{m}"
+
+
+def frontier_target() -> tuple:
+    """현재 사다리 전선 (b, m). als_state.json 의 stage 를 그대로 따른다."""
+    mod = _load_module("_frontier_searcher", SEARCHER_PATH)
+    return tuple(mod.Searcher().current_target())
 
 
 def _recent_residuals(target_b, target_m, n=STAGNATION_WINDOW):
@@ -82,121 +133,193 @@ def _recent_residuals(target_b, target_m, n=STAGNATION_WINDOW):
     return out[-n:]
 
 
-def is_stagnant(led) -> bool:
-    """벤치 목표에서 최근 잔차들이 기존 최고를 의미있게 못 넘으면 정체."""
-    recents = _recent_residuals(BENCH_B, BENCH_M)
+def is_stagnant(led, b, m) -> bool:
+    """전선에서 최근 잔차들이 기존 최고를 의미있게 못 넘으면 정체.
+
+    기준선이 아직 없으면 이번 호출로 세우기만 하고 정체로 보지 않는다 -- 비교 대상 없이
+    첫 호출부터 LLM 을 부르는 낭비를 막는다.
+    """
+    recents = _recent_residuals(b, m)
     if len(recents) < STAGNATION_WINDOW:
         return False
-    best_prev = led.get("best_bench_residual")
+
+    key = _target_key(b, m)
+    observed = min(recents)
+    best_prev = led["best_by_target"].get(key)
     if best_prev is None:
-        best_prev = min(recents)
-        led["best_bench_residual"] = best_prev
-    return min(recents) >= best_prev * IMPROVE_REL
+        led["best_by_target"][key] = observed
+        return False
+
+    stagnant = observed >= best_prev * IMPROVE_REL
+    if observed < best_prev:
+        led["best_by_target"][key] = observed
+    return stagnant
 
 
-def benchmark_residual(searcher_mod) -> float:
-    """후보 searcher 로 벤치(b=3,m=23) 최소 잔차를 잰다."""
-    T = searcher_mod.matmul_tensor(BENCH_B)
-    best = 1.0
-    for s in range(BENCH_RESTARTS):
-        out = searcher_mod.cp_als(T, BENCH_M, iters=1500, seed=1000 + s)
-        best = min(best, out[3])
-        if best < SOLVED_RES:
-            break
-    return best
+def benchmark_residual(searcher_mod, trials=BENCH_TRIALS) -> float:
+    """후보 searcher 의 실제 탐색 경로(propose)로 전선 최소 잔차를 잰다.
+
+    원시 cp_als 가 아니라 propose() 를 쓰는 이유: 탐색기의 실력은 propose() 안의 재시작·
+    섭동 전략에 들어 있고, 비교 기준인 history.jsonl 잔차도 propose() 가 낸 값이다.
+    propose() 는 als_state.json 을 전진시키므로 스냅샷 후 복원한다.
+    """
+    snapshot = STATE_PATH.read_text() if STATE_PATH.exists() else None
+    try:
+        best = 1.0
+        for _ in range(trials):
+            scheme = searcher_mod.Searcher().propose()
+            res = scheme.get("_als_residual")
+            if res is not None:
+                best = min(best, float(res))
+            if best < SOLVED_RES:
+                break
+        return best
+    finally:
+        if snapshot is None:
+            STATE_PATH.unlink(missing_ok=True)
+        else:
+            STATE_PATH.write_text(snapshot)
 
 
-def _run_gatekeeper() -> tuple[bool, str]:
+def _run_gatekeeper() -> tuple:
     res = subprocess.run(["python3", "gatekeeper.py"], cwd=REPO, capture_output=True, text=True)
     return res.returncode == 0, (res.stdout + res.stderr)[-1500:]
 
 
-def apply_candidate(source_text: str, led) -> dict:
+def _current_branch() -> str:
+    res = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                         cwd=REPO, capture_output=True, text=True)
+    return res.stdout.strip() or "HEAD"
+
+
+def _missing_contract(mod) -> list:
+    return [fn for fn in SEARCHER_CONTRACT if not hasattr(mod, fn)]
+
+
+def apply_candidate(source_text: str, led, b, m) -> dict:
     """후보 searcher.py 를 가드 통과 시에만 채택한다. 결과 dict 반환."""
+    key = _target_key(b, m)
     backup = SEARCHER_PATH.read_text()
     SEARCHER_PATH.write_text(source_text)
 
-    # 가드 1: 전체 게이트 (verifier 무효화/약화/능력 후퇴 금지).
-    ok, summary = _run_gatekeeper()
-    if not ok:
+    def rollback(result: dict) -> dict:
         SEARCHER_PATH.write_text(backup)
-        return {"result": "gate_rejected", "detail": summary.strip()[-400:]}
+        return result
 
-    # 가드 2: 벤치가 실제로 개선됐는가.
+    # 가드 1: 계약 보존 (임포트 가능하고, 루프/게이트가 부르는 이름이 다 있는가).
     try:
         cand = _load_module("_cand_searcher", SEARCHER_PATH)
+    except Exception as e:
+        return rollback({"result": "candidate_error", "detail": str(e)[-400:]})
+    missing = _missing_contract(cand)
+    if missing:
+        return rollback({"result": "contract_broken", "detail": f"없는 이름: {', '.join(missing)}"})
+
+    # 가드 2: 전체 게이트 (verifier 무효화/약화/능력 후퇴 금지).
+    ok, summary = _run_gatekeeper()
+    if not ok:
+        return rollback({"result": "gate_rejected", "detail": summary.strip()[-400:]})
+
+    # 가드 3: 전선 벤치가 실제로 개선됐는가.
+    try:
         res = benchmark_residual(cand)
     except Exception as e:
-        SEARCHER_PATH.write_text(backup)
-        return {"result": "candidate_error", "detail": str(e)[-400:]}
+        return rollback({"result": "candidate_error", "detail": str(e)[-400:]})
 
-    best_prev = led.get("best_bench_residual")
-    improved = res < SOLVED_RES or (best_prev is not None and res < best_prev * IMPROVE_REL)
+    best_prev = led["best_by_target"].get(key)
+    solved = res < SOLVED_RES
+    improved = solved or (best_prev is not None and res < best_prev * IMPROVE_REL)
     if not improved:
-        SEARCHER_PATH.write_text(backup)
-        return {"result": "no_improvement", "bench_residual": res, "best_prev": best_prev}
+        return rollback({"result": "no_improvement", "target": key,
+                         "bench_residual": res, "best_prev": best_prev})
 
     # 채택: 커밋 + push.
-    led["best_bench_residual"] = res
-    subprocess.run(["git", "add", str(SEARCHER_PATH)], cwd=REPO, capture_output=True, text=True)
-    subprocess.run(["git", "commit", "-m", f"improve_agent: searcher 개선 채택 (b3 잔차 {res:.3e})"],
+    led["best_by_target"][key] = res
+    _write_ledger(led)
+    branch = _current_branch()
+    subprocess.run(["git", "add", str(SEARCHER_PATH), str(LEDGER_PATH)],
                    cwd=REPO, capture_output=True, text=True)
-    push = subprocess.run(["git", "push"], cwd=REPO, capture_output=True, text=True)
-    return {"result": "applied", "bench_residual": res, "pushed": push.returncode == 0}
+    subprocess.run(["git", "commit", "-m",
+                    f"improve_agent: searcher 개선 채택 (b={b} m={m} 잔차 {res:.3e})"],
+                   cwd=REPO, capture_output=True, text=True)
+    push = subprocess.run(["git", "push", "-u", "origin", branch],
+                          cwd=REPO, capture_output=True, text=True)
+    return {"result": "applied", "target": key, "bench_residual": res,
+            "solved": solved, "pushed": push.returncode == 0}
 
 
 def run_once(proposer) -> dict:
     """proposer: (context dict) -> 새 searcher.py 소스 문자열."""
     led = _read_ledger()
-    if not is_stagnant(led):
+    try:
+        b, m = frontier_target()
+    except Exception as e:
+        return {"action": "error", "detail": f"전선을 읽지 못했다: {e}"}
+
+    if not is_stagnant(led, b, m):
         _write_ledger(led)
-        return {"action": "none", "reason": "not_stagnant"}
+        return {"action": "none", "reason": "not_stagnant", "target": _target_key(b, m)}
 
     context = {
+        "b": b,
+        "m": m,
         "current_searcher": SEARCHER_PATH.read_text(),
-        "recent_residuals": _recent_residuals(BENCH_B, BENCH_M),
-        "best_bench_residual": led.get("best_bench_residual"),
-        "tried": [a.get("strategy", "?") for a in led.get("attempts", [])],
+        "recent_residuals": _recent_residuals(b, m),
+        "best_bench_residual": led["best_by_target"].get(_target_key(b, m)),
+        "tried": [a.get("note") or a.get("result") for a in led["attempts"]],
         "constraints": [
             "b=2 m=7 는 순수 ALS 로 정확 수렴을 유지해야 한다 (G010 이 강제).",
             "verifier.py 와 gates/ 는 절대 수정하지 마라.",
-            "cp_als/matmul_tensor/factors_to_scheme/propose 계약을 유지하라.",
+            "cp_als/matmul_tensor/factors_to_scheme/propose/Searcher 계약을 유지하라.",
             "searcher.py 전체 소스를 반환하라.",
         ],
     }
     source = proposer(context)
     if not source or "def propose" not in source:
-        return {"action": "propose_failed"}
+        return {"action": "propose_failed", "target": _target_key(b, m)}
 
-    outcome = apply_candidate(source, led)
-    led.setdefault("attempts", []).append({
+    outcome = apply_candidate(source, led, b, m)
+    led["attempts"].append({
         "ts": time.time(),
-        "strategy": (proposer.__name__ if hasattr(proposer, "__name__") else "proposer"),
+        "backend": getattr(proposer, "__name__", "proposer"),
+        "target": _target_key(b, m),
         **outcome,
     })
     _write_ledger(led)
     return {"action": "attempted", **outcome}
 
 
+def mock_proposer(context: dict) -> str:
+    """LLM 없이 전 경로를 돌려보는 결정론적 백엔드.
+
+    현재 소스를 그대로 돌려준다 -- 계약·게이트는 통과하고 벤치는 개선되지 않으므로
+    'no_improvement 후 롤백'까지가 정상 결과다. 즉 이 백엔드로 run_once 를 돌리면
+    정체 감지 → 적용 → 가드 3종 → 롤백 → 대장 기록의 전 경로가 검증된다.
+    """
+    return context["current_searcher"]
+
+
 def llm_proposer(context: dict) -> str:
     """Gemini 로 '다음 개선을 추론'해 searcher.py 전체를 다시 쓰게 한다.
-    (VM 에서만 동작 -- GEMINI_API_KEY 필요. 여기서는 호출만 정의.)"""
+    (VM 에서만 동작 -- GEMINI_API_KEY 필요.)"""
     import os
     from langchain_google_genai import ChatGoogleGenerativeAI
 
     key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GEMINI_API_KEY_FALLBACK")
     model = os.environ.get("IMPROVE_MODEL", "gemini-2.5-flash")
     llm = ChatGoogleGenerativeAI(model=model, google_api_key=key)
+    b, m = context["b"], context["m"]
     prompt = (
         "너는 행렬곱 텐서 분해 탐색기(searcher.py)를 개선하는 연구 에이전트다. "
-        "b=3, m=23 정확 분해를 찾도록 CP-ALS 를 개선하되, 아래 제약을 반드시 지켜라.\n\n"
-        f"[제약]\n" + "\n".join(f"- {c}" for c in context["constraints"]) + "\n\n"
-        f"[벤치 최근 잔차 추이] {context['recent_residuals']}\n"
+        f"b={b}, m={m} 정확 분해를 찾도록 탐색 전략을 개선하되, 아래 제약을 반드시 지켜라.\n\n"
+        "[제약]\n" + "\n".join(f"- {c}" for c in context["constraints"]) + "\n\n"
+        f"[전선 최근 잔차 추이] {context['recent_residuals']}\n"
         f"[기존 최고 잔차] {context['best_bench_residual']}\n"
         f"[이미 시도해 실패/기각된 전략] {context['tried']}\n"
         "이전에 실패한 전략을 반복하지 마라. 예: 고정 reg 리지는 해를 편향시켜 정확 수렴을 막는다.\n"
         "고려할 수 있는 방향: reg 어닐링(0으로 점감), 비선형 최소제곱(Levenberg-Marquardt) 정제, "
-        "basin hopping/섭동 재시작, restart 수 증가, 대칭성 활용.\n\n"
+        "인자 스케일에 비례하는 큰 섭동으로 분지 이탈, 정체 감지 후 조기 재시작, "
+        "계수 반올림-리프팅({-1,0,1} 로 반올림 후 고정 재수렴), 텐서의 순환 대칭성 활용.\n\n"
         "[현재 searcher.py]\n```python\n" + context["current_searcher"] + "\n```\n\n"
         "개선된 searcher.py '전체'를 하나의 코드블록으로만 출력하라. 설명 금지."
     )
@@ -212,12 +335,14 @@ def llm_proposer(context: dict) -> str:
     return text.strip()
 
 
+BACKENDS = {"llm": llm_proposer, "mock": mock_proposer}
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--backend", choices=["llm"], default="llm")
+    parser.add_argument("--backend", choices=sorted(BACKENDS), default="llm")
     args = parser.parse_args()
-    proposer = llm_proposer
-    result = run_once(proposer)
+    result = run_once(BACKENDS[args.backend])
     print(json.dumps(result, ensure_ascii=False))
 
 

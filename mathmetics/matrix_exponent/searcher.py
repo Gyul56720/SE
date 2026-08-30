@@ -2,7 +2,12 @@ import json
 import math
 from pathlib import Path
 import numpy as np
-from mathmetics.matrix_exponent.verifier import verify_scheme
+
+# verifier 를 임포트하지 않는다. 쓰지도 않으면서 'mathmetics...' 절대 경로로 끌어오고
+# 있었는데, systemd 처럼 이 트리를 패키지로 인식하지 않는 실행 경로에서는
+# ModuleNotFoundError 로 죽었다. 판정은 self_improve_loop 가 verifier 를 직접 불러
+# 수행하므로 searcher 쪽 의존은 애초에 불필요하다 (searcher 가 판정에 개입하지 않는다는
+# 설계와도 맞는다).
 
 HERE = Path(__file__).resolve().parent
 STATE_PATH = HERE / "als_state.json"

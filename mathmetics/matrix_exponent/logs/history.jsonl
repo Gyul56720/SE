@@ -1190,3 +1190,9 @@
 {"ts": 1788084101.4185634, "b": 3, "m": 22, "als_residual": 0.06786658659708208, "status": "REJECTED", "reason": "mismatch at size=3"}
 {"ts": 1788084972.1579316, "b": 3, "m": 22, "als_residual": 0.47160161209301016, "status": "REJECTED", "reason": "mismatch at size=3", "tuning": "escalate"}
 {"ts": 1788084975.623877, "b": 3, "m": 22, "als_residual": 0.19261738714149346, "status": "REJECTED", "reason": "mismatch at size=3", "tuning": "escalate_exhausted"}
+{"ts": 1788086079.180451, "b": 3, "m": 22, "als_residual": 0.025383344339166367, "status": "REJECTED", "reason": "mismatch at size=3", "tuning": "escalate_exhausted"}
+{"ts": 1788086108.4899485, "b": 3, "m": 22, "als_residual": 0.2722460749547358, "status": "REJECTED", "reason": "mismatch at size=3", "tuning": "escalate_exhausted"}
+{"ts": 1788086110.7909682, "b": 3, "m": 22, "als_residual": 0.19348689777957506, "status": "REJECTED", "reason": "mismatch at size=3", "tuning": "escalate_exhausted"}
+{"ts": 1788086149.1072624, "b": 3, "m": 22, "als_residual": 0.19810810168020657, "status": "REJECTED", "reason": "mismatch at size=3", "tuning": "escalate_exhausted"}
+{"ts": 1788086158.2712662, "b": 3, "m": 22, "als_residual": 0.19264542498072348, "status": "REJECTED", "reason": "mismatch at size=3", "tuning": "escalate_exhausted"}
+{"ts": 1788086172.715848, "b": 3, "m": 22, "als_residual": 0.19252234324066905, "status": "REJECTED", "reason": "mismatch at size=3", "tuning": "escalate_exhausted"}

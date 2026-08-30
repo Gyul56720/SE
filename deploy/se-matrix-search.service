@@ -1,0 +1,23 @@
+[Unit]
+Description=SE Matrix-Exponent Search Loop (CP-ALS 탐색 + improve_agent 자가개선)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/SE
+# improve_agent 의 llm 백엔드가 GEMINI_API_KEY 를 여기서 읽는다. 키가 없으면
+# 자가개선 호출만 error 로 기록되고 탐색 루프 자체는 계속 돈다(_try_improve 가 삼킨다).
+EnvironmentFile=/home/ubuntu/SE/.env
+Environment=PYTHONUNBUFFERED=1
+# --iterations 0 = 무한. --improve-every 40 은 대략 10 분마다 한 번 정체를 점검하는
+# 꼴이다(propose() 1 회가 실측 ~14 초). 정체가 아니면 not_stagnant 로 즉시 빠져나오므로
+# LLM 호출은 실제로 막혔을 때만 발생한다.
+ExecStart=/usr/bin/python3 /home/ubuntu/SE/mathmetics/matrix_exponent/self_improve_loop.py \
+    --iterations 0 --improve-every 40 --improve-backend llm
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
