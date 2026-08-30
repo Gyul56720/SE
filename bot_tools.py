@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import subprocess
 import threading
 import uuid
@@ -176,9 +177,49 @@ def extract_text(content) -> str:
     return str(content)
 
 
+# [2026-08-30] 에러 분류를 구조적으로 바꾼 이유 -- 실측된 오분류
+#
+# 예전 판은 에러 문자열 '전체'에서 3자리 숫자를 substring 으로 찾았다("429" in text 등).
+# 그런데 API 에러 본문에는 3자리 숫자가 도처에 있다. 실측 결과:
+#
+#   input_token_count: 42904          -> "429" 가 걸려 quota 소진으로 오판
+#   request_id: 7b3f404a1c29e5        -> "404" 가 걸려 '영구 dead' 로 오판 (자정에도 안 풀림)
+#   probability_score: 0.4290         -> "429" 가 걸려 quota + transient 동시 오판
+#
+# 그래서 실제로는 한 번도 쿼터에 걸린 적이 없는데도 "quota exhausted" 로 기록되고, 멀쩡한
+# 최상위 조합이 후보 뒤로 밀리거나 영구 목록에 올라갔다. 그 결과 매 요청마다 살아있는 조합을
+# 찾아 후보를 계속 순회하게 되고, 후보 하나당 langchain 내부 재시도/backoff 가 붙어 응답이
+# 수 분씩 걸렸다.
+#
+# 고친 방식: (1) 예외 타입 이름과 code 속성에서 상태코드를 구조적으로 읽고,
+#            (2) 문자열로 떨어질 때만, Google 이 "<코드> <메시지>" 로 직렬화한다는 점을 이용해
+#                '맨 앞'의 3자리만 상태코드로 인정한다. 본문 속 숫자는 더 이상 걸리지 않는다.
+_LEADING_STATUS = re.compile(r"^\s*\(?(\d{3})\b")
+
+
+def _status_code(e: Exception) -> "int | None":
+    """예외에서 HTTP/gRPC 상태코드를 뽑는다. 못 뽑으면 None."""
+    for attr in ("code", "status_code"):
+        value = getattr(e, attr, None)
+        if isinstance(value, int) and not isinstance(value, bool):
+            return value
+    response = getattr(e, "response", None)
+    value = getattr(response, "status_code", None)
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    match = _LEADING_STATUS.match(str(e))
+    return int(match.group(1)) if match else None
+
+
+_QUOTA_NAMES = ("ResourceExhausted", "TooManyRequests", "RateLimitError")
+
+
 def is_quota_error(e: Exception) -> bool:
-    text = str(e)
-    return "RESOURCE_EXHAUSTED" in text or "429" in text
+    if type(e).__name__ in _QUOTA_NAMES:
+        return True
+    if "RESOURCE_EXHAUSTED" in str(e):
+        return True
+    return _status_code(e) == 429
 
 
 def is_rpm_quota_error(e: Exception) -> bool:
@@ -201,18 +242,30 @@ def is_permanent_error(e: Exception) -> bool:
     NOT_FOUND), 무료 티어에서 막힌 유료 전용 모델(403 PERMISSION_DENIED, billing 관련
     FAILED_PRECONDITION). 429 쿼터 소진과 달리 자정에 리셋되지 않으므로 quota_tracker의
     영구 dead 목록에 올려서 다시는 시도하지 않는다."""
+    if type(e).__name__ in ("PermissionDenied", "NotFound", "FailedPrecondition", "Forbidden"):
+        return True
     text = str(e)
-    return any(marker in text for marker in (
-        "PERMISSION_DENIED", "403", "FAILED_PRECONDITION", "NOT_FOUND", "404",
-        "billing", "not supported", "not found",
-    ))
+    if any(marker in text for marker in (
+        "PERMISSION_DENIED", "NOT_FOUND", "FAILED_PRECONDITION",
+        "is not found for API version",   # 단종/미지원 모델에 대한 Google 의 실제 문구
+        "billing",
+    )):
+        return True
+    return _status_code(e) in (403, 404)
 
 
 def is_transient_error(e: Exception) -> bool:
     """구글 쪽 일시적 문제(과부하 등)라 이 후보 자체는 멀쩡하지만 지금 이 순간만 안 되는
     에러. 영구 dead 처리하면 안 된다 -- 다음 요청엔 멀쩡할 수 있다."""
+    if type(e).__name__ in ("ServiceUnavailable", "InternalServerError",
+                            "DeadlineExceeded", "GatewayTimeout", "BadGateway"):
+        return True
     text = str(e)
-    return any(marker in text for marker in ("UNAVAILABLE", "503", "high demand", "INTERNAL", "500", "DEADLINE_EXCEEDED"))
+    if any(marker in text for marker in (
+        "UNAVAILABLE", "INTERNAL", "DEADLINE_EXCEEDED", "overloaded", "high demand",
+    )):
+        return True
+    return _status_code(e) in (500, 502, 503, 504)
 
 
 def is_unavailable_error(e: Exception) -> bool:
@@ -266,6 +319,25 @@ def list_available_models(api_key: str, timeout: int = 15) -> "list[str]":
     return names
 
 
+# 후보 하나당 langchain 이 내부적으로 몇 번 재시도할지. 기본값(6)은 지수 backoff 와 맞물려
+# 실패하는 후보 하나에 30~50초를 쓴다(실측 확인됨, 2026-08-28). 그런데 여기서는 fallback
+# pool 자체가 재시도 전략이다 -- 한 후보가 안 되면 다음 후보로 넘어가면 되므로, 후보 안에서
+# 오래 버티는 건 응답 지연으로만 돌아온다. 일시 장애 한 번은 흡수하도록 2 로 두고, 환경변수로
+# 조정할 수 있게 한다.
+LLM_MAX_RETRIES = int(os.environ.get("GEMINI_MAX_RETRIES", "2"))
+LLM_TIMEOUT = float(os.environ.get("GEMINI_TIMEOUT", "60"))
+
+
+def _make_llm(model: str, key: str):
+    """ChatGoogleGenerativeAI 생성. max_retries/timeout 을 모르는 버전에서도 뜨도록
+    TypeError 면 기본 인자만으로 물러선다."""
+    try:
+        return ChatGoogleGenerativeAI(model=model, google_api_key=key,
+                                      max_retries=LLM_MAX_RETRIES, timeout=LLM_TIMEOUT)
+    except TypeError:
+        return ChatGoogleGenerativeAI(model=model, google_api_key=key)
+
+
 def build_agent_pool(keys: "list[str | None]", models: "list[str] | None", tools: list, prompt: str,
                       checkpointer, fallback_models: "list[str] | None" = None) -> "list[tuple[str, object]]":
     """(키, 모델) 조합마다 ChatGoogleGenerativeAI + create_react_agent를 하나씩 만들어
@@ -298,7 +370,7 @@ def build_agent_pool(keys: "list[str | None]", models: "list[str] | None", tools
         if key_models is None:
             key_models = list_available_models(key) or fallback_models or ["gemini-2.5-flash"]
         for model in key_models:
-            llm = ChatGoogleGenerativeAI(model=model, google_api_key=key)
+            llm = _make_llm(model, key)
             agent = create_react_agent(llm, tools=tools, checkpointer=checkpointer, prompt=prompt)
             label = f"key-{key_id}:{model}"
             pool.append((label, agent))

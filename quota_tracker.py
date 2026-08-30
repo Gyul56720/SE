@@ -33,13 +33,23 @@ Discord 이벤트 루프에서 동기 파일 I/O를 쓰지만, JSON 파일 하�
 from __future__ import annotations
 
 import json
+import os
 import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 
 STATE_PATH = Path(__file__).resolve().parent / "Public_agent" / "quota_state.json"
-DEFAULT_DAILY_LIMIT = 500
+
+# 로컬 카운터의 일일 한도 추정치. 이건 '실제 한도'가 아니라 후보 정렬용 휴리스틱일 뿐이다
+# (실제 소진은 429 를 맞아야 알 수 있다). 500 으로 박혀 있었는데 개인 인증 계정은 하루
+# 15000 까지 쓸 수 있어서, 500 번만 성공해도 remaining() 이 0 이 되고 _sort_key 의 첫
+# 기준(remaining <= 0)에 걸려 '가장 많이 쓴 = 가장 쓸 만한' 조합이 후보 맨 뒤로 밀렸다.
+# 환경변수로 계정 등급에 맞춰 조정한다.
+DEFAULT_DAILY_LIMIT = int(os.environ.get("GEMINI_DAILY_LIMIT", "15000"))
+
+# 상태 파일 스키마 판. 올리면 이전 판정 기록(_dead / 오늘자 카운트)을 버리고 새로 시작한다.
+STATE_VERSION = 2
 # 분당 한도(RPM) 429를 맞았을 때 그 조합을 쉬게 하는 시간. Gemini 무료 티어의 RPM 창이
 # 1분이므로 60초면 충분하다.
 RPM_COOLDOWN_SECONDS = 60
@@ -52,11 +62,19 @@ def _today() -> str:
 
 def _load() -> dict:
     if not STATE_PATH.exists():
-        return {}
+        return {"_version": STATE_VERSION}
     try:
-        return json.loads(STATE_PATH.read_text(encoding="utf-8"))
+        data = json.loads(STATE_PATH.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
-        return {}
+        return {"_version": STATE_VERSION}
+    if data.get("_version") != STATE_VERSION:
+        # v1 의 판정은 믿을 수 없다. 그때의 에러 분류가 에러 문자열 전체에서 3자리 숫자를
+        # substring 으로 찾는 방식이라, input_token_count 의 "42904" 를 쿼터 소진으로,
+        # request_id 의 "404" 를 영구 사용불가로 오판했다(실측). 그렇게 기록된 _dead 목록과
+        # 부풀려진 카운트를 이월하면 분류를 고쳐도 멀쩡한 조합이 계속 배제된다 -- 판정
+        # 기록만 버리고 다시 관측한다. 잃는 건 하루치 추정 카운트뿐이다.
+        data = {"_version": STATE_VERSION}
+    return data
 
 
 def _save(data: dict) -> None:
