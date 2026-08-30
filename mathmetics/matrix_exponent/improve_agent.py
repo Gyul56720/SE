@@ -71,7 +71,10 @@ LEDGER_PATH = HERE / "improve_ledger.json"
 STAGNATION_WINDOW = 15      # 최근 몇 건을 보고 정체를 판단할지
 IMPROVE_REL = 0.9           # 새 잔차가 기존 최고의 이 배수보다 낮아야 '개선'으로 인정
 SOLVED_RES = 1e-6           # 이보다 낮으면 사실상 해결
-BENCH_TRIALS = 3            # 후보를 몇 번 propose() 시켜 볼지 (최소 잔차 채택)
+BENCH_TRIALS = 5            # 후보를 몇 번 propose() 시켜 볼지 (최소 잔차 채택)
+# 벤치에 쓸 '고정' attempt 값들. searcher.propose() 는 attempt 로 seed 를 만들므로, 이걸
+# 고정하면 벤치가 결정적이 되고 기존 판과 후보가 '같은 시드'로 짝지어 비교된다.
+BENCH_ATTEMPTS = (0, 1, 2, 3, 4)
 LEDGER_VERSION = 2
 
 # searcher.py 가 지켜야 하는 계약. 하나라도 없으면 self_improve_loop / G010 이 깨진다.
@@ -162,11 +165,33 @@ def benchmark_residual(searcher_mod, trials=BENCH_TRIALS) -> float:
     원시 cp_als 가 아니라 propose() 를 쓰는 이유: 탐색기의 실력은 propose() 안의 재시작·
     섭동 전략에 들어 있고, 비교 기준인 history.jsonl 잔차도 propose() 가 낸 값이다.
     propose() 는 als_state.json 을 전진시키므로 스냅샷 후 복원한다.
+
+    [왜 시드를 고정하는가 -- 채택 게이트를 실제로 작동하게 만드는 부분]
+    예전에는 이 함수가 propose() 를 '그냥' 여러 번 불러 최소값을 썼다. propose() 는
+    확률적이라 그 최소값의 편차가 채택 문턱보다 훨씬 컸다 -- 실측(2026-08-30, b=3 m=22):
+    min-of-3 이 0.0104 ~ 0.1925 로 18.5 배 출렁였는데 채택 문턱은 '기존 최고의 0.9 배',
+    즉 10% 개선이었다. 대장의 기존 최고 0.0254 기준 문턱 0.0229 아래로 7 회 중 6 회가
+    떨어졌다. 다시 말해 코드를 한 줄도 바꾸지 않은 후보(mock_proposer 는 현재 소스를
+    그대로 돌려준다)조차 운만으로 '개선됨' 판정을 받아 자동 커밋·push 될 수 있었다.
+    측정 노이즈가 신호보다 크면 그 게이트는 개선을 고르는 게 아니라 운을 고른다.
+
+    searcher.propose() 는 als_state.json 의 attempt 로 seed 를 만든다. 그래서 attempt 를
+    고정된 집합(BENCH_ATTEMPTS)으로 못박으면 벤치가 결정적이 되고, 기존 판과 후보가
+    '같은 시드'로 짝지어 비교된다 -- 같은 코드는 항상 같은 값을 내므로 no_improvement 가
+    보장되고, 통과했다면 그건 운이 아니라 실제 개선이다.
     """
     snapshot = STATE_PATH.read_text() if STATE_PATH.exists() else None
     try:
+        try:
+            base_state = json.loads(snapshot) if snapshot else {"stage": 0, "attempt": 0}
+        except Exception:
+            base_state = {"stage": 0, "attempt": 0}
+
         best = 1.0
-        for _ in range(trials):
+        for attempt in BENCH_ATTEMPTS[:trials]:
+            pinned = dict(base_state)
+            pinned["attempt"] = attempt
+            STATE_PATH.write_text(json.dumps(pinned, indent=2))
             scheme = searcher_mod.Searcher().propose()
             res = scheme.get("_als_residual")
             if res is not None:

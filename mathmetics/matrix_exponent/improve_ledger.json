@@ -1,7 +1,7 @@
 {
   "version": 2,
   "best_by_target": {
-    "3,22": 0.025383344339166367
+    "3,22": 0.012777
   },
   "attempts": [
     {
@@ -27,6 +27,34 @@
       "result": "no_improvement",
       "bench_residual": 0.19252234324066905,
       "best_prev": 0.025383344339166367
+    },
+    {
+      "note": "기준선 재설정: 탐색기 교체(어닐링+연마+리프팅)와 결정적 벤치(BENCH_ATTEMPTS 고정) 도입으로 이전 기준선이 무의미해졌다. 옛 기준 0.025383344339166367 는 구판 탐색기 + 확률적 min-of-3 으로 잰 값이라 새 벤치와 단위가 다르다. 새 값 0.012777 은 현재 searcher 로 고정 시드에서 재현되는 결정적 값이다.",
+      "result": "baseline_reset"
+    },
+    {
+      "ts": 1788088961.445957,
+      "backend": "mock_proposer",
+      "target": "3,22",
+      "result": "no_improvement",
+      "bench_residual": 0.012777439518568207,
+      "best_prev": 0.012777
+    },
+    {
+      "ts": 1788088971.9646668,
+      "backend": "mock_proposer",
+      "target": "3,22",
+      "result": "no_improvement",
+      "bench_residual": 0.012777439518568207,
+      "best_prev": 0.012777
+    },
+    {
+      "ts": 1788088981.3775413,
+      "backend": "mock_proposer",
+      "target": "3,22",
+      "result": "no_improvement",
+      "bench_residual": 0.012777439518568207,
+      "best_prev": 0.012777
     }
   ]
 }
