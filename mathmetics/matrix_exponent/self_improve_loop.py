@@ -118,6 +118,14 @@ def run_once():
     _append_log(record)
     return record
 
+def _log_line_count() -> int:
+    """지금까지 누적된 탐색 기록 줄 수. 재시작을 넘어 살아남는 진행도 지표로 쓴다."""
+    if not LOG_PATH.exists():
+        return 0
+    with LOG_PATH.open("r", encoding="utf-8") as f:
+        return sum(1 for _ in f)
+
+
 def _try_improve(backend: str) -> dict:
     """improve_agent 를 한 번 돌린다. 자가개선이 죽어도 탐색 루프는 계속 돌아야 하므로
     어떤 예외도 여기서 삼키고 사유만 돌려준다 (예: GEMINI_API_KEY 가 없는 환경)."""
@@ -141,12 +149,20 @@ def main():
     parser.add_argument("--improve-backend", default="llm", choices=["llm", "mock"])
     args = parser.parse_args()
 
+    # 개선 주기를 프로세스 안의 i 로 세면 배포/재시작 때마다 0 으로 돌아가, 40 회에 닿기
+    # 전에 또 재시작되면 improve_agent 가 영영 안 돌 수 있다. 실제로 그런 정황이 잡혔다
+    # (2026-08-30: 대장에 best_seen_by_target 은 있는데 checks 가 없었다 -- checks 는
+    # is_stagnant 첫 줄에서 무조건 오르므로, 그 조합은 '새 코드 배포 후 improve 가 한 번도
+    # 안 돌았다'는 뜻이다). 배포는 서비스를 재시작하므로 잦은 배포가 곧 주기 리셋이다.
+    # 그래서 재시작을 넘어 살아남는 '누적 로그 줄 수'를 기준으로 센다.
+    total = _log_line_count()
     i = 0
     while args.iterations == 0 or i < args.iterations:
         print(json.dumps(run_once(), ensure_ascii=False), flush=True)
         i += 1
+        total += 1
 
-        if args.improve_every > 0 and i % args.improve_every == 0:
+        if args.improve_every > 0 and total % args.improve_every == 0:
             print(json.dumps({"improve": _try_improve(args.improve_backend)},
                              ensure_ascii=False), flush=True)
 

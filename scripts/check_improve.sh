@@ -1,4 +1,21 @@
 cd ${SE_DIR:-/home/ubuntu/SE} || exit 1
+echo "===== 0. 서버가 들고 있는 코드 (배포가 반영됐는가) ====="
+echo "HEAD: $(git rev-parse --short HEAD)  $(git log -1 --format=%s | cut -c1-60)"
+for feat in "checks" "best_seen_by_target" "_log_line_count"; do
+  if grep -q "$feat" mathmetics/matrix_exponent/improve_agent.py \
+                     mathmetics/matrix_exponent/self_improve_loop.py 2>/dev/null; then
+    echo "  [O] $feat"
+  else
+    echo "  [X] $feat  <- 이 기능이 없는 옛 코드다 (배포 미반영)"
+  fi
+done
+if grep -q "_LEADING_STATUS" bot_tools.py 2>/dev/null; then
+  echo "  [O] 에러분류 수정판(_LEADING_STATUS)"
+else
+  echo "  [X] 에러분류 수정판  <- 옛 substring 매칭 사용 중"
+fi
+
+echo
 echo "===== 1. 서비스/프로세스 ====="
 systemctl is-active se-matrix-search 2>/dev/null || echo "(systemctl 확인 불가)"
 ps -eo pid,etime,args | grep "[s]elf_improve_loop" || echo "!! 루프 프로세스 없음"

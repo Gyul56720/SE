@@ -7,6 +7,13 @@ on:
       - "discord_bot_server.py"
       - "log_streamer.py"
       - "requirements.txt"
+      # 봇이 실제로 실행하는 공용 모듈. 빠져 있어서 에러 분류/쿼터 로직을 고쳐도 배포가
+      # 트리거되지 않았다 -- searcher.py 때와 같은 '코드가 서버에 도달하지 못하는' 경로다.
+      - "bot_tools.py"
+      - "quota_tracker.py"
+      - "main_public.py"
+      - "agent_context.py"
+      - "agent_memory.py"
       - "deploy/se-discord-bot.service"
       - "deploy/se-log-streamer.service"
       - "deploy/se-matrix-search.service"
