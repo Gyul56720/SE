@@ -255,8 +255,19 @@ def is_permanent_error(e: Exception) -> bool:
         "PERMISSION_DENIED", "NOT_FOUND", "FAILED_PRECONDITION",
         "is not found for API version",   # 단종/미지원 모델에 대한 Google 의 실제 문구
         "billing",
+        # 모델이 이 요청 형태를 아예 지원하지 않는 경우(도구 호출/시스템 지시 미지원 등).
+        # 후보 목록을 API 조회로 자동 구성하므로 이런 모델이 섞이는 건 필연이다(실측: 이
+        # 계정 목록에 gemma-4-26b 가 있다). 예전에는 이 에러가 '사용 불가' 어디에도 안 걸려
+        # 그대로 raise 됐고, 그러면 다음 후보로 넘어가지 못한 채 요청 전체가 실패했다.
+        # 그 모델의 영구적 성질이므로 dead 로 기록해 다음부터 건너뛴다.
+        "does not support",
+        "not supported",
+        "Function calling is not enabled",
     )):
         return True
+    # 상태코드만으로는 403/404 까지만 영구로 본다. 400(INVALID_ARGUMENT)은 우리 요청이
+    # 잘못됐을 때도 나므로 코드로 판단하지 않는다 -- 그랬다간 우리 버그 하나로 모든 모델을
+    # dead 로 만들어버린다. 위의 명시적 문구에 걸릴 때만 영구로 처리한다.
     return _status_code(e) in (403, 404)
 
 

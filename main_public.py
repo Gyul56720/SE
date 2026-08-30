@@ -24,7 +24,13 @@ from bot_tools import (
 )
 
 PUBLIC_CHANNEL_ID = int(os.environ["DISCORD_PUBLIC_CHANNEL_ID"])
-PUBLIC_MODEL_NAME = os.getenv("DISCORD_PUBLIC_MODEL", "gemini-3.5-flash-lite")
+# DISCORD_PUBLIC_GEMINI_MODEL 은 예전 이름이다. 이름이 바뀐 뒤에도 .env 에는 옛 이름이
+# 남아 있어서(실측 2026-08-30) 거기 적은 값이 조용히 무시되고 있었다 -- 마침 기본값과 같은
+# 값이라 겉으로 드러나지 않았을 뿐, 바꿔 적었다면 아무 일도 일어나지 않았을 것이다.
+# 설정이 조용히 무시되는 상황을 없애려고 옛 이름도 받아준다.
+PUBLIC_MODEL_NAME = (os.getenv("DISCORD_PUBLIC_MODEL")
+                     or os.getenv("DISCORD_PUBLIC_GEMINI_MODEL")
+                     or "gemini-3.5-flash-lite")
 # GEMINI_MODEL_POOL을 명시하면 그 모델들만 쓴다(수동 제한용). 비워두면 build_agent_pool이
 # 키마다 실제 쓸 수 있는 모델 전체를 API로 조회해서 자동으로 순환한다 -- 429는
 # (프로젝트, 모델) 단위라 특정 모델이 소진돼도 같은 키의 다른 모델은 살아있을 수 있어서다.
