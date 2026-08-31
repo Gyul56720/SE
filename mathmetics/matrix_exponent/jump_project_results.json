@@ -1,0 +1,20 @@
+[
+  {
+    "b": 2,
+    "m": 7,
+    "best_residual": 1.595893166850463,
+    "elapsed_sec": 0.49
+  },
+  {
+    "b": 3,
+    "m": 23,
+    "best_residual": 6.376225372428425,
+    "elapsed_sec": 1.03
+  },
+  {
+    "b": 3,
+    "m": 22,
+    "best_residual": 5.770344443791895,
+    "elapsed_sec": 1.05
+  }
+]
