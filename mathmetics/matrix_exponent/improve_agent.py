@@ -55,8 +55,11 @@ b=2 m=7 은 benchmarks.json 에 등록돼 G010 이 매 커밋 강제한다. b=3 
 from __future__ import annotations
 
 import argparse
+import ast
+import difflib
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 import time
@@ -280,6 +283,119 @@ def _missing_contract(mod) -> list:
     return [fn for fn in SEARCHER_CONTRACT if not hasattr(mod, fn)]
 
 
+# ---------------------------------------------------------------------------
+# 시도 이력을 '무엇을 바꿨는가'로 남기기
+#
+# 예전에는 attempts 에 결과 문자열만 쌓였고, 프롬프트의 tried 도
+# ['no_improvement', 'no_improvement', ...] 였다. 그래서 31 번을 실패해도 LLM 은 자기가
+# 무엇을 시도했는지 전혀 모른 채 매번 첫 호출처럼 굴었다(실측 2026-08-31: 6 시간 동안
+# 24 회 연속 실패하며 같은 축만 반복). 실험 데이터가 통째로 버려지고 있었던 셈이다.
+#
+# 특히 '상수만 바꿨는가 / 구조를 바꿨는가'를 구분해 남긴다. 지금 정체의 정체가 바로
+# "상수만 계속 키우다 한계에 닿았다" 이므로, 그 사실이 이력에 드러나야 LLM 이 축을 바꿀
+# 근거를 갖는다.
+# ---------------------------------------------------------------------------
+# 값 뒤의 인라인 주석은 값이 아니다. 안 떼어내면 주석만 손봐도 '상수가 바뀌었다'로 잡히고,
+# 요약 문자열도 주석째 들어가 읽기 어려워진다(실측 확인됨).
+_CONST_RE = re.compile(r"^([A-Z_][A-Z0-9_]*)\s*=\s*([^#]+?)\s*(?:#.*)?$")
+
+
+def _top_level_consts(src: str) -> dict:
+    return {m.group(1): m.group(2)
+            for line in src.splitlines() if (m := _CONST_RE.match(line))}
+
+
+def _defined_names(src: str) -> set:
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
+        return set()
+    return {n.name for n in ast.walk(tree)
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))}
+
+
+class _ConstBlanker(ast.NodeTransformer):
+    """리터럴을 전부 같은 값으로 지워, 코드의 '형태'만 남긴다."""
+
+    def visit_Constant(self, node):
+        return ast.copy_location(ast.Constant(value=None), node)
+
+
+def _shape(src: str) -> "str | None":
+    """상수 리터럴을 무시한 AST 지문. 두 판의 지문이 같으면 숫자만 바뀐 것이다.
+
+    줄 수로 구조 변경을 판별하려 했더니, 상수 11개를 고친 커밋(+13/-13)이 구조 변경으로
+    오판됐다 -- 함수 안에서 바뀐 상수(예: alpha 상한, defaults 딕셔너리)는 최상위 상수
+    스캔에 안 잡혀 분모가 작아지기 때문이다(실측 확인됨). 형태를 직접 비교하면 그 오차가
+    사라진다: 숫자만 다르면 지문이 같고, 수식·분기·루프가 달라지면 지문이 달라진다."""
+    try:
+        tree = _ConstBlanker().visit(ast.parse(src))
+    except SyntaxError:
+        return None
+    ast.fix_missing_locations(tree)
+    return ast.dump(tree, annotate_fields=False)
+
+
+def summarize_change(old_src: str, new_src: str) -> dict:
+    """후보가 현직 대비 무엇을 바꿨는지 압축 요약."""
+    old_c, new_c = _top_level_consts(old_src), _top_level_consts(new_src)
+    consts = [f"{k} {old_c[k]}->{v}" for k, v in new_c.items() if k in old_c and old_c[k] != v]
+    consts += [f"{k} 신설={v}" for k, v in new_c.items() if k not in old_c]
+    consts += [f"{k} 삭제" for k in old_c if k not in new_c]
+
+    old_n, new_n = _defined_names(old_src), _defined_names(new_src)
+    new_funcs, gone_funcs = sorted(new_n - old_n), sorted(old_n - new_n)
+
+    diff = list(difflib.unified_diff(old_src.splitlines(), new_src.splitlines(),
+                                     lineterm="", n=0))
+    plus = sum(1 for line in diff if line.startswith("+") and not line.startswith("+++"))
+    minus = sum(1 for line in diff if line.startswith("-") and not line.startswith("---"))
+
+    old_shape, new_shape = _shape(old_src), _shape(new_src)
+    if old_shape is None or new_shape is None:
+        structural = True  # 파싱 불가면 판단할 수 없으니 보수적으로 구조 변경 취급.
+    else:
+        structural = bool(new_funcs or gone_funcs) or old_shape != new_shape
+    return {"consts": consts[:10], "new_funcs": new_funcs, "removed_funcs": gone_funcs,
+            "lines": f"+{plus}/-{minus}", "structural": structural}
+
+
+def _format_tried(attempts: list, limit: int = 10) -> str:
+    """최근 시도들을 '무엇을 바꿔서 어떻게 됐는지'로 렌더링한다."""
+    rows = []
+    for a in attempts[-limit:]:
+        ch = a.get("changes") or {}
+        if not ch:
+            rows.append(f"  {a.get('result', '?')} (변경 내역 미기록)")
+            continue
+        desc = ", ".join(ch.get("consts") or []) or "상수 변경 없음"
+        if ch.get("new_funcs"):
+            desc += f" | 새 함수: {', '.join(ch['new_funcs'])}"
+        if ch.get("removed_funcs"):
+            desc += f" | 제거된 함수: {', '.join(ch['removed_funcs'])}"
+        bench = a.get("bench_residual")
+        bench_s = f"{bench:.3e}" if isinstance(bench, (int, float)) else "-"
+        kind = "구조변경" if ch.get("structural") else "상수만"
+        rows.append(f"  [{kind} {ch.get('lines', '')}] {desc}\n"
+                    f"      -> {a.get('result', '?')}, bench={bench_s}")
+    return "\n".join(rows) if rows else "  (없음)"
+
+
+def _stall_report(attempts: list) -> str:
+    """마지막 채택 이후 몇 번을, 어떤 성격으로 실패했는지."""
+    streak = []
+    for a in reversed(attempts):
+        if a.get("result") == "applied":
+            break
+        streak.append(a)
+    if not streak:
+        return "직전 시도가 채택됐다."
+    const_only = sum(1 for a in streak
+                     if (a.get("changes") or {}).get("structural") is False)
+    return (f"마지막 채택 이후 {len(streak)}회 연속 실패했고, 그중 {const_only}회는 "
+            f"상수만 바꾼 시도였다. 같은 축을 반복하는 것으로는 더 나아가지 못한다는 뜻이다.")
+
+
 def apply_candidate(source_text: str, led, b, m) -> dict:
     """후보 searcher.py 를 가드 통과 시에만 채택한다. 결과 dict 반환."""
     key = _target_key(b, m)
@@ -287,10 +403,14 @@ def apply_candidate(source_text: str, led, b, m) -> dict:
     # 아니라 후보 자신을 재게 되고, 후보는 언제나 자기 자신과 비교돼 통과하지 못한다.
     best_prev = incumbent_bench(led, b, m)
     backup = SEARCHER_PATH.read_text()
+    # 무엇을 바꿨는지는 결과와 무관하게 항상 남긴다 -- 기각된 시도의 내역이야말로 다음
+    # 호출이 같은 실패를 반복하지 않게 해주는 정보다.
+    changes = summarize_change(backup, source_text)
     SEARCHER_PATH.write_text(source_text)
 
     def rollback(result: dict) -> dict:
         SEARCHER_PATH.write_text(backup)
+        result["changes"] = changes
         return result
 
     # 가드 1: 계약 보존 (임포트 가능하고, 루프/게이트가 부르는 이름이 다 있는가).
@@ -334,7 +454,7 @@ def apply_candidate(source_text: str, led, b, m) -> dict:
                    cwd=REPO, capture_output=True, text=True)
     push = subprocess.run(["git", "push", "-u", "origin", branch],
                           cwd=REPO, capture_output=True, text=True)
-    return {"result": "applied", "target": key, "bench_residual": res,
+    return {"result": "applied", "target": key, "bench_residual": res, "changes": changes,
             "solved": solved, "pushed": push.returncode == 0}
 
 
@@ -358,7 +478,10 @@ def run_once(proposer) -> dict:
         # 프롬프트에는 후보가 실제로 넘어야 할 '결정적' 기준선을 준다. 여기서 재두면
         # apply_candidate 가 후보를 덮어쓰기 전에 현직 값이 대장에 확정되기도 한다.
         "best_bench_residual": incumbent_bench(led, b, m),
-        "tried": [a.get("note") or a.get("result") for a in led["attempts"]],
+        # 결과 문자열만 넘기던 것을 '무엇을 바꿔서 어떻게 됐는지'로 바꿨다. 이게 없으면
+        # LLM 은 매 호출이 첫 호출이라 같은 축을 무한 반복한다(실측: 24회 연속 실패).
+        "tried": _format_tried(led["attempts"]),
+        "stall": _stall_report(led["attempts"]),
         # 제약은 게이트가 '실제로' 강제하는 것만 적는다. 예전 문구는 "b=2 m=7 는 순수 ALS 로
         # 정확 수렴을 유지해야 한다"였는데, G010 은 순수 ALS 를 요구한 적이 없다 --
         # cp_als(T, m, iters=, seed=) 로 불러 잔차가 1e-9 아래로 내려가는지만 본다. 현재
@@ -427,7 +550,8 @@ def llm_proposer(context: dict) -> str:
         "[제약]\n" + "\n".join(f"- {c}" for c in context["constraints"]) + "\n\n"
         f"[전선 최근 잔차 추이] {context['recent_residuals']}\n"
         f"[기존 최고 잔차] {context['best_bench_residual']}\n"
-        f"[이미 시도해 실패/기각된 전략] {context['tried']}\n"
+        f"[지금까지의 시도 -- 무엇을 바꿔서 어떻게 됐는지]\n{context['tried']}\n"
+        f"[정체 진단] {context['stall']}\n"
         "이전에 실패한 전략을 반복하지 마라. 예: 고정 reg 리지는 해를 편향시켜 정확 수렴을 막는다.\n"
         "현재 판에 이미 들어 있는 것(다시 제안하지 마라): 감쇠 어닐링 ALS, 열 균형화, "
         "반올림-리프팅, 정확해 분지 진입 후 연마, 예산 분할 다중 재시작.\n"
