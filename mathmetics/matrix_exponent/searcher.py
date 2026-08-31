@@ -25,7 +25,7 @@ ANNEAL_FRAC = 0.5
 
 
 def load_params():
-    defaults = {"iters": 6000, "noise_scale": 0.15, "use_perturbation": True}
+    defaults = {"iters": 8000, "noise_scale": 0.12, "use_perturbation": True}
     try:
         if PARAMS_PATH.exists():
             with open(PARAMS_PATH, "r") as f:
@@ -67,22 +67,17 @@ def _balance(U, V, W):
     return rescale(U, nu), rescale(V, nv), rescale(W, nw)
 
 
-def _levenberg_marquardt_polish(T, U, V, W, normT, max_iters=3000, tol=TOL):
-    """
-    Levenberg-Marquardt style damped nonlinear refinement for extremely small residuals (< 1e-3).
-    Operates on flattened factor matrices to achieve quadratic convergence near the exact solution.
-    """
+def _levenberg_marquardt_polish(T, U, V, W, normT, max_iters=5000, tol=TOL):
     m = U.shape[1]
     n = U.shape[0]
     
-    # Pack parameters: x = [U(:), V(:), W(:)]
     x = np.concatenate([U.ravel(), V.ravel(), W.ravel()])
     best_x = x.copy()
     
     res = _residual(T, U, V, W, normT)
     best_res = res
     
-    lam = 1e-4
+    lam = 1e-3
     
     for it in range(max_iters):
         if res < tol:
@@ -101,23 +96,14 @@ def _levenberg_marquardt_polish(T, U, V, W, normT, max_iters=3000, tol=TOL):
             if curr_res < tol:
                 break
                 
-        # Approximate Jacobian transpose multiplication via alternating gradients
-        # Instead of full Jacobian (which is huge), use Gauss-Newton normal equations approximation
-        # via ALS step increments or direct gradient vector.
-        # Here we construct structured steps for LM:
-        # Compute gradient w.r.t U, V, W
         gU = np.einsum("ijk,jr,kr->ir", R, V_c, W_c)
         gV = np.einsum("ijk,ir,kr->jr", R, U_c, W_c)
         gW = np.einsum("ijk,ir,jr->kr", R, U_c, V_c)
         
-        g = np.concatenate([gU.ravel(), gV.ravel(), gW.ravel()])
-        
-        # Approximate Hessian diagonal blocks
         GU = (V_c.T @ V_c) * (W_c.T @ W_c)
         GV = (U_c.T @ U_c) * (W_c.T @ W_c)
         GW = (U_c.T @ U_c) * (V_c.T @ V_c)
         
-        # Simple diagonal augmented step solver for LM
         try:
             dU = np.linalg.solve(GU + lam * np.eye(m), gU.T).T
             dV = np.linalg.solve(GV + lam * np.eye(m), gV.T).T
@@ -139,7 +125,7 @@ def _levenberg_marquardt_polish(T, U, V, W, normT, max_iters=3000, tol=TOL):
             res = res_new
             lam = max(lam / 3.0, 1e-12)
         else:
-            lam = min(lam * 10.0, 1e8)
+            lam = min(lam * 10.0, 1e10)
             
     U_opt = best_x[0:n*m].reshape(n, m)
     V_opt = best_x[n*m:2*n*m].reshape(n, m)
@@ -206,7 +192,7 @@ def _als_sweep(T, U, V, W, iters, damp0=DAMP0, anneal_frac=ANNEAL_FRAC,
                 res_new = _residual(T, U_extrap, V_extrap, W_extrap, normT)
                 if res_new < res:
                     U, V, W, res = U_extrap, V_extrap, W_extrap, res_new
-                    alpha = min(alpha * 1.2, 1.99)
+                    alpha = min(alpha * 1.25, 1.99)
                 else:
                     res = _residual(T, U, V, W, normT)
                     alpha = 1.0
@@ -221,7 +207,7 @@ def _als_sweep(T, U, V, W, iters, damp0=DAMP0, anneal_frac=ANNEAL_FRAC,
             if res < tol:
                 break
                 
-            if it > 0 and it % 80 == 0 and res > 1e-2 and use_perturbation and rng is not None:
+            if it > 0 and it % 60 == 0 and res > 1e-2 and use_perturbation and rng is not None:
                 scale = noise_scale * (res + 1e-8)
                 U += rng.normal(0, scale, U.shape)
                 V += rng.normal(0, scale, V.shape)
@@ -245,7 +231,7 @@ def cp_als(T, m, iters=2000, seed=0, init_U=None, init_V=None, init_W=None,
 
     if polish and TOL <= res < POLISH_ENTER:
         U, V, W, res = _als_sweep(T, U, V, W, POLISH_ITERS, damp0=0.0, normT=normT)
-        if TOL <= res < 1e-3:
+        if TOL <= res < 5e-3:
             U, V, W, res = _levenberg_marquardt_polish(T, U, V, W, normT)
     return U, V, W, res
 
@@ -256,7 +242,7 @@ def _lift(T, U, V, W, res, normT, iters):
     for r in range(LIFT_ROUNDS):
         U0, V0, W0, res0 = best
         Ub, Vb, Wb = _balance(U0, V0, W0)
-        thresh = 0.04 * (r + 1) / LIFT_ROUNDS
+        thresh = 0.05 * (r + 1) / LIFT_ROUNDS
 
         frozen = []
         any_frozen = False
@@ -316,21 +302,21 @@ class Searcher:
     def propose(self) -> dict:
         b, m = self.current_target()
         params = load_params()
-        budget = int(params.get("iters", 6000))
-        noise = float(params.get("noise_scale", 0.15))
+        budget = int(params.get("iters", 8000))
+        noise = float(params.get("noise_scale", 0.12))
         perturb = bool(params.get("use_perturbation", True))
 
         T = matmul_tensor(b)
         normT = np.linalg.norm(T)
 
-        per_restart = max(1000, budget // 6)
+        per_restart = max(1500, budget // 5)
         restarts = max(1, budget // per_restart)
 
-        base_seed = int(self.state["attempt"]) * 49999 + int(b * 100 + m)
+        base_seed = int(self.state["attempt"]) * 73856 + int(b * 1000 + m)
         best = None
         
         for r in range(restarts):
-            U, V, W, res = cp_als(T, m, iters=per_restart, seed=base_seed + r * 37,
+            U, V, W, res = cp_als(T, m, iters=per_restart, seed=base_seed + r * 101,
                                   noise_scale=noise, use_perturbation=perturb)
             
             if res < LIFT_ENTER:
