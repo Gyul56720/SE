@@ -272,11 +272,27 @@ def _git_sync_locked() -> str | None:
         print(f"[git_sync] 게이트 차단 -- 커밋하지 않음\n{report.summary()}")
         return report.summary()
 
-    subprocess.run(["git", "add", "-A"], cwd=REPO_DIR, check=True)
-    subprocess.run(
+    # check=True 로 두면 실패가 CalledProcessError 로 튀어나와 호출자의 답변 전송까지
+    # 무너뜨린다. 게다가 이제 이 저장소에는 git 작성자가 둘이다 -- 이 봇과, 별도
+    # 프로세스(se-matrix-search)로 도는 improve_agent 다. GIT_MUTEX 는 파이썬 스레드
+    # 락이라 프로세스 경계를 못 넘으므로, add 와 commit 사이에 improve_agent 가 커밋해
+    # 인덱스를 비워버리면 여기 commit 이 "nothing to commit"(exit 1)으로 실패한다
+    # (실측 2026-08-30). 그건 정상 상황이므로 조용히 넘어가되, 그 외의 실패는 반드시
+    # 보고한다 -- "실패를 전부 무시"로 뭉뚱그리면 게이트/훅이 막은 것도 성공한 척하게 된다.
+    add = subprocess.run(["git", "add", "-A"], cwd=REPO_DIR, capture_output=True, text=True)
+    if add.returncode != 0:
+        return f"[git add 실패] {add.stderr.strip()}"
+
+    commit = subprocess.run(
         ["git", "commit", "-m", "SE-agent: Discord 요청 처리 결과 자동 반영"],
-        cwd=REPO_DIR, check=True,
+        cwd=REPO_DIR, capture_output=True, text=True,
     )
+    if commit.returncode != 0:
+        combined = f"{commit.stdout}\n{commit.stderr}"
+        if "nothing to commit" in combined or "no changes added to commit" in combined:
+            # 다른 작성자가 먼저 커밋해 갔다. 남길 변경이 없으니 할 일이 끝난 것이다.
+            return None
+        return f"[git commit 실패] {combined.strip()[:500]}"
     push = subprocess.run(["git", "push"], cwd=REPO_DIR, capture_output=True, text=True)
     if push.returncode == 0:
         return f"{report.summary()}\n{_verify_pushed()}"
@@ -361,18 +377,18 @@ async def _handle_admin_message(message: discord.Message) -> None:
     loop = asyncio.get_running_loop()
     _active_tasks[thread_id] = asyncio.current_task()
     _active_prompts[thread_id] = content
+    reply = None
+    sync_note = None
+    integrity_note = None
     try:
         async with message.channel.typing():
             reply = await loop.run_in_executor(None, run_admin_agent, content, thread_id)
-            # 게스트 보안 정책: 차단 목록(agent_context.BLOCKED_USER_IDS, 환경변수
-            # GUEST_BLOCKED_USER_IDS로 지정)에 든 사용자는 git sync를 타지 않는다.
-            if agent_context.is_blocked(message.author.id):
-                sync_note = "[보안 제한] 게스트 사용자의 Git 접근이 제한되었습니다."
-            else:
-                async with GIT_LOCK:
-                    sync_note = await loop.run_in_executor(None, git_sync)
-            async with GIT_LOCK:
-                integrity_note = await loop.run_in_executor(None, _integrity_note, reply, sync_note)
+            # 답변은 이미 완성됐다. 이후 단계(git 동기화 등)에서 무슨 일이 나든 답변 전달을
+            # 막아서는 안 된다 -- 예전엔 이 블록 전체가 하나의 try 였고 except가
+            # CancelledError만 잡아서, git_sync가 던진 예외가 그대로 전파되며 전송 루프에
+            # 도달하지 못했다(실측 2026-08-30: 답변이 로그에는 찍혔는데 Discord로는 안 감).
+            # 그래서 여기서부터는 실패를 예외가 아니라 '보고할 메모'로 바꾼다.
+            sync_note, integrity_note = await _sync_and_note(loop, message, reply)
     except asyncio.CancelledError:
         # "stop"으로 취소됨 -- _handle_stop이 이미 상태 메시지를 보냈으므로 조용히 반환한다.
         return
@@ -380,12 +396,54 @@ async def _handle_admin_message(message: discord.Message) -> None:
         _active_tasks.pop(thread_id, None)
         _active_prompts.pop(thread_id, None)
 
-    for chunk_start in range(0, len(reply), 1900):
+    # reply 가 None 이면 에이전트 호출 자체가 실패한 것이다. 그 경우에도 사용자가 무응답을
+    # 겪지 않도록 사유를 알린다(예전엔 여기서 NameError 가 나며 아무것도 못 보냈다).
+    if not reply:
+        await message.channel.send("(응답 생성 실패 -- 로그를 확인하세요)")
+    for chunk_start in range(0, len(reply or ""), 1900):
         await message.channel.send(reply[chunk_start:chunk_start + 1900] or "(빈 응답)")
     if sync_note:
         await message.channel.send(sync_note)
     if integrity_note:
         await message.channel.send(integrity_note)
+
+
+async def _sync_and_note(loop, message: discord.Message, reply: str) -> "tuple[str | None, str | None]":
+    """답변 생성 이후 단계(git 동기화 + 무결성 확인)를 돌리고 그 결과를 메모로 돌려준다.
+
+    여기서 예외를 밖으로 내보내지 않는 것이 핵심이다. 답변은 이미 만들어져 있는데 부수
+    단계의 실패로 사용자가 답을 못 받는 일은 없어야 한다. 다만 '조용히 삼키는' 것도 안 된다
+    -- 실패하면 그 사유를 메모에 담아 답변과 함께 보낸다. 그래야 "답은 왔는데 저장은 안 됨"을
+    사용자가 알 수 있다.
+
+    CancelledError는 stop 명령의 정상 경로이므로 그대로 올려보낸다.
+    """
+    sync_note = None
+    integrity_note = None
+    try:
+        # 게스트 보안 정책: 차단 목록(agent_context.BLOCKED_USER_IDS, 환경변수
+        # GUEST_BLOCKED_USER_IDS로 지정)에 든 사용자는 git sync를 타지 않는다.
+        if agent_context.is_blocked(message.author.id):
+            sync_note = "[보안 제한] 게스트 사용자의 Git 접근이 제한되었습니다."
+        else:
+            async with GIT_LOCK:
+                sync_note = await loop.run_in_executor(None, git_sync)
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        sync_note = f"[git 동기화 실패] {type(e).__name__}: {e} -- 답변은 정상이며 저장만 실패했다."
+        print(f"[git_sync] 예외: {type(e).__name__}: {e}")
+
+    try:
+        async with GIT_LOCK:
+            integrity_note = await loop.run_in_executor(None, _integrity_note, reply, sync_note)
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        integrity_note = f"[무결성 확인 실패] {type(e).__name__}: {e}"
+        print(f"[_integrity_note] 예외: {type(e).__name__}: {e}")
+
+    return sync_note, integrity_note
 
 
 async def _handle_public_message(message: discord.Message) -> None:
@@ -404,25 +462,25 @@ async def _handle_public_message(message: discord.Message) -> None:
     loop = asyncio.get_running_loop()
     _active_tasks[thread_id] = asyncio.current_task()
     _active_prompts[thread_id] = content
+    reply = None
+    sync_note = None
+    integrity_note = None
     try:
         async with message.channel.typing():
             reply = await loop.run_in_executor(None, main_public.run_public_agent, content, thread_id)
-            # 게스트 보안 정책: 차단 목록(agent_context.BLOCKED_USER_IDS, 환경변수
-            # GUEST_BLOCKED_USER_IDS로 지정)에 든 사용자는 git sync를 타지 않는다.
-            if agent_context.is_blocked(message.author.id):
-                sync_note = "[보안 제한] 게스트 사용자의 Git 접근이 제한되었습니다."
-            else:
-                async with GIT_LOCK:
-                    sync_note = await loop.run_in_executor(None, git_sync)
-            async with GIT_LOCK:
-                integrity_note = await loop.run_in_executor(None, _integrity_note, reply, sync_note)
+            # admin 경로와 같은 이유로 git 단계의 실패가 답변 전달을 막지 못하게 한다.
+            sync_note, integrity_note = await _sync_and_note(loop, message, reply)
     except asyncio.CancelledError:
         return
     finally:
         _active_tasks.pop(thread_id, None)
         _active_prompts.pop(thread_id, None)
 
-    for chunk_start in range(0, len(reply), 1900):
+    # reply 가 None 이면 에이전트 호출 자체가 실패한 것이다. 그 경우에도 사용자가 무응답을
+    # 겪지 않도록 사유를 알린다(예전엔 여기서 NameError 가 나며 아무것도 못 보냈다).
+    if not reply:
+        await message.channel.send("(응답 생성 실패 -- 로그를 확인하세요)")
+    for chunk_start in range(0, len(reply or ""), 1900):
         await message.channel.send(reply[chunk_start:chunk_start + 1900] or "(빈 응답)")
     if sync_note:
         await message.channel.send(sync_note)
