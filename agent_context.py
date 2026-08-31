@@ -29,7 +29,7 @@ _current_author = current_author
 # 276ab13이 "Discord ID는 하드코딩하지 말고 환경변수로 뺄 것"이라고 명시했는데도 재적용 때
 # 다시 박혔다. 기본값으로 기존 ID를 남겨서 환경변수를 안 채워도 보안 정책이 조용히 풀리지
 # 않게 하되, GUEST_BLOCKED_USER_IDS로 덮어쓸 수 있게 한다.
-_DEFAULT_BLOCKED = "249746307877437450"
+_DEFAULT_BLOCKED = ""
 BLOCKED_USER_IDS: frozenset[str] = frozenset(
     x.strip() for x in os.getenv("GUEST_BLOCKED_USER_IDS", _DEFAULT_BLOCKED).split(",") if x.strip()
 )
