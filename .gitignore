@@ -28,4 +28,5 @@ mathmetics/matrix_exponent/improve_ledger.json
 solver/tasks/*/data/
 solver/tasks/*/candidates/
 solver/tasks/*/log
+solver/tasks/*/state.json
 solver/tasks/_*/
