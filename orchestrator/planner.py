@@ -54,6 +54,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import llm_pool  # noqa: E402
+from orchestrator import NODE_TIMEOUT  # noqa: E402  (아래 계층 -- 실행 예산을 프롬프트에 싣는다)
 from plan_schema import Plan, Node  # noqa: E402
 
 # 노드 결과는 파일(JSON)로 오가므로 파이썬 값이 그대로 보존되지 않는다. 이걸 계약으로 못박지
@@ -64,6 +65,13 @@ JSON_CONTRACT = (
     "JSON 이 아닌 값은 쓸 수 없다. 다음 노드에서 값을 꺼낼 때 이 왕복을 계산에 넣어라."
 )
 
+# 오케스트레이터가 노드마다 이 예산을 강제한다. 프롬프트에 실어야 애초에 지수 시간 알고리즘을
+# 덜 낸다 -- 예산 초과는 attempts 에 남아 되먹임으로 돌아오므로 '느림'도 수리 대상이 된다.
+TIME_CONTRACT = (
+    f"각 노드의 solve 와 check 는 {NODE_TIMEOUT:g}초 안에 끝나야 한다. 초과하면 실행이 끊기고 "
+    f"실패로 기록된다. 전수 탐색이 그 안에 안 끝날 규모면 더 나은 알고리즘을 써라."
+)
+
 PLANNER_SYSTEM = (
     "너는 문제를 푸는 알고리즘 파이프라인을 설계하는 플래너다. 주어진 문제를 하위 작업들의 "
     "DAG 로 분해하라. 단일 알고리즘으로 충분하면 노드 1개, 여러 알고리즘이 필요하면 의존 관계를 "
@@ -72,7 +80,7 @@ PLANNER_SYSTEM = (
     "check(output: dict, inputs: dict)->(bool, str) 함수를 작성하라. inputs 에는 선행 노드 "
     "결과가 {dep_id: result} 로 들어온다. check 는 출력이 정말 맞는지 수학적으로/재계산으로 "
     "확인해야 한다(그냥 True 반환 금지).\n"
-    + JSON_CONTRACT + "\n"
+    + JSON_CONTRACT + "\n" + TIME_CONTRACT + "\n"
     "오직 아래 JSON 형식 하나만 출력하라(설명·코드펜스 금지):\n"
     '{"nodes":[{"id":"...","goal":"...","deps":[...],'
     '"component_code":"def solve(inputs):\\n    ...","verifier_code":"def check(output, inputs):\\n    ..."}],'
@@ -85,7 +93,7 @@ REPAIR_SYSTEM = (
     "값, 그리고 실패 이력이 주어진다.\n"
     "실패 이력을 먼저 읽고 같은 실패를 반복하지 마라. 예외라면 그 예외가 나는 정확한 지점을, "
     "verifier 거부라면 거부 사유가 요구하는 성질을 짚어서 고쳐라.\n"
-    + JSON_CONTRACT + "\n"
+    + JSON_CONTRACT + "\n" + TIME_CONTRACT + "\n"
     "verifier 는 신뢰 기반이므로 절대 바꾸려 하지 말고, 그 verifier 를 통과하는 solve 를 써라.\n"
     "오직 파이썬 코드만 출력하라(설명·코드펜스 금지). 최상위에 def solve(inputs): 가 있어야 하고, "
     "필요한 import 는 코드 안에 포함하라."
