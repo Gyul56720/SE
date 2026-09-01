@@ -33,8 +33,8 @@
         "factor",
         "sub_equations"
       ],
-      "status": "failed",
-      "result_ref": "",
+      "status": "verified",
+      "result_ref": "results/crt_combine.json",
       "attempts": [
         {
           "ts": 1788043250.6272576,
@@ -43,6 +43,30 @@
         {
           "ts": 1788043251.7467809,
           "error": "solve: 7"
+        },
+        {
+          "ts": 1788240858.6493356,
+          "error": "solve: 7"
+        },
+        {
+          "ts": 1788240862.6022115,
+          "error": "solve: 7"
+        },
+        {
+          "ts": 1788240965.2112668,
+          "error": "solve: 7"
+        },
+        {
+          "ts": 1788241303.630434,
+          "error": "solve: 7"
+        },
+        {
+          "ts": 1788241350.7005599,
+          "error": "solve: 7"
+        },
+        {
+          "ts": 1788241366.6443686,
+          "repaired_by": "key-29ca714b:gemini-3.5-flash"
         }
       ]
     }
