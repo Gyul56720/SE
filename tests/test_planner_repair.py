@@ -19,6 +19,9 @@ crt_combine 이 `solve: 7`(KeyError) 로 죽어 있다. 결과가 JSON 으로 �
   5. 예산  -- 무한 루프를 도는 노드가 실제로 끊기고, 그 사유가 attempts 를 거쳐 수리 프롬프트에
               실려 더 빠른 코드로 교체된다. 예산이 없으면 hang 이라 attempts 에 아무것도 남지
               않고 되먹임 루프 자체가 조용히 멈춘다 -- '느림'이 수리 대상이 되는지의 증명이다.
+  6. 계획   -- 계획 자체가 깨졌을 때(파싱 불가·구조 오류)도 사유를 되먹여 다시 세운다. 이게
+              없으면 계획 단계만 되먹임 없는 한 번뿐인 관문으로 남는다(실측: 벤치 h3).
+              실패한 시도의 코드 조각이 런 디렉토리에 남지 않는지도 함께 본다.
 
 왜 살아있는 런이 아니라 얼린 사본인가: runs/20260829-224043 은 `solve.py --resume` 이 실제로
 수리해서 verified 로 바꿔버리는 대상이다. 그 디렉토리를 픽스처로 쓰면, 에이전트가 자기 일을
@@ -261,11 +264,53 @@ def test_budget_off_is_explicit(failures: list):
             _check(failures, armed is True, "양수면 타이머를 건다")
 
 
+def test_planning_retries_on_broken_plan(failures: list):
+    """계획: 깨진 계획도 사유를 되먹여 다시 세운다 -- 계획 단계만 개루프로 남지 않게."""
+    print("[계획] 파싱 불가 -> 구조 오류 -> 정상, 3번째에 성공")
+    good = json.dumps({"nodes": [{"id": "brute", "goal": "직접 푼다", "deps": [],
+                                  "component_code": BRUTE_SOLVE, "verifier_code": BRUTE_CHECK}],
+                       "final": "brute"}, ensure_ascii=False)
+    dangling = json.dumps({"nodes": [{"id": "a", "goal": "", "deps": ["없는노드"],
+                                      "component_code": BRUTE_SOLVE,
+                                      "verifier_code": BRUTE_CHECK}],
+                           "final": "b"}, ensure_ascii=False)
+    with tempfile.TemporaryDirectory() as tmp:
+        run = Path(tmp) / "plan_retry"
+        fake = FakeLLM(["여기 계획입니다: (JSON 아님)", dangling, good])
+        out = _with_fake(fake, lambda: planner.make_plan("x^2=4 를 풀어라", str(run),
+                                                         pool=["fake"], attempts=3))
+        comp = sorted(f.name for f in (run / "components").glob("*.py"))
+        _check(failures, out["status"] == "planned", "3번째 시도에서 계획 성립",
+               json.dumps(out, ensure_ascii=False)[:200])
+        _check(failures, out.get("planning_attempts") == 3, "시도 횟수가 3으로 기록된다",
+               str(out.get("planning_attempts")))
+        _check(failures, len(fake.prompts) == 3, "LLM 을 3번 부른다", str(len(fake.prompts)))
+        _check(failures, "계획으로 읽을 수 없었다" in fake.prompts[1],
+               "2번째 프롬프트에 파싱 실패 사유가 실린다")
+        _check(failures, "구조 오류" in fake.prompts[2] and "없는노드" in fake.prompts[2],
+               "3번째 프롬프트에 구조 오류(미정의 의존)가 실린다")
+        _check(failures, comp == ["brute.py", "brute_verify.py"],
+               "실패한 시도의 코드 조각이 남지 않는다", str(comp))
+
+    print("[계획] 끝까지 실패하면 사유를 모아 invalid_plan 으로 끝낸다")
+    with tempfile.TemporaryDirectory() as tmp:
+        run = Path(tmp) / "plan_fail"
+        fake = FakeLLM(["아님", "아님", "아님"])
+        out = _with_fake(fake, lambda: planner.make_plan("문제", str(run), pool=["fake"],
+                                                         attempts=3))
+        _check(failures, out["status"] == "invalid_plan", "invalid_plan 으로 끝난다")
+        _check(failures, len(out.get("errors", [])) == 3, "시도별 사유가 모두 남는다",
+               str(out.get("errors")))
+        _check(failures, not list((run / "components").glob("*.py")),
+               "아무 파일도 쓰이지 않는다")
+
+
 def main() -> int:
     failures: list[str] = []
     for t in (test_red_without_repair, test_green_repair_loop,
               test_escalation_to_replan, test_bad_repair_rejected,
-              test_time_budget_makes_slowness_repairable, test_budget_off_is_explicit):
+              test_time_budget_makes_slowness_repairable, test_budget_off_is_explicit,
+              test_planning_retries_on_broken_plan):
         t(failures)
     if failures:
         print("\n=== 실패 ===")
