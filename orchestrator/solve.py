@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -44,6 +45,10 @@ import llm_pool  # noqa: E402
 from plan_schema import Plan  # noqa: E402
 
 RUNS = HERE / "runs"
+
+
+class _NoPool(RuntimeError):
+    """쓸 수 있는 LLM 후보가 하나도 없다(키 미설정). 장애가 아니라 설정 문제라 따로 구분한다."""
 
 
 def drive(run_dir: str, max_repair_rounds: int = 3, max_node_repairs: int = 2,
@@ -63,6 +68,13 @@ def drive(run_dir: str, max_repair_rounds: int = 3, max_node_repairs: int = 2,
         if pool is None:
             pool = llm_pool.build_pool()
         return pool
+
+    def ask(fn, *a, **kw):
+        """수리/재계획 LLM 호출. 실패해도 traceback 으로 죽지 않는다 -- 런은 파일에 그대로
+        남아 있으므로, 키를 넣거나 쿼터가 풀린 뒤 --resume 으로 이어서 돌리면 된다."""
+        if not get_pool():
+            raise _NoPool("LLM 후보 풀이 비었다 -- GEMINI_API_KEY(또는 _FALLBACK) 를 설정하라")
+        return fn(*a, pool=pool, **kw)
 
     for round_i in range(1, max_repair_rounds + 2):
         res = orchestrator.run_plan(str(run_dir))
@@ -88,29 +100,39 @@ def drive(run_dir: str, max_repair_rounds: int = 3, max_node_repairs: int = 2,
         repairable = [nid for nid in failed
                       if planner.repair_count(plan.node(nid)) < max_node_repairs]
 
-        if repairable:
-            entry["action"] = "repair"
-            entry["repairs"] = [planner.repair_node(str(run_dir), nid, pool=get_pool())
-                                for nid in repairable]
-            # 수리안이 전부 형식 검사에서 반려되면 다음 라운드는 같은 코드를 또 돌릴 뿐이다.
-            if all(r.get("status") == "repair_rejected" for r in entry["repairs"]):
-                if replans < max_replans:
-                    entry["action"] = "repair_rejected -> replan"
-                    entry["replan"] = planner.replan(str(run_dir), pool=get_pool())
-                    replans += 1
-                else:
-                    reason = "수리안이 모두 반려됐고 재계획 한도도 소진"
+        try:
+            if repairable:
+                entry["action"] = "repair"
+                entry["repairs"] = [ask(planner.repair_node, str(run_dir), nid)
+                                    for nid in repairable]
+                # 수리안이 전부 반려되면 다음 라운드는 같은 코드를 또 돌릴 뿐이다.
+                if all(r.get("status") == "repair_rejected" for r in entry["repairs"]):
+                    if replans < max_replans:
+                        entry["action"] = "repair_rejected -> replan"
+                        entry["replan"] = ask(planner.replan, str(run_dir))
+                        replans += 1
+                    else:
+                        reason = "수리안이 모두 반려됐고 재계획 한도도 소진"
+                        break
+            elif replans < max_replans:
+                entry["action"] = "replan"
+                entry["replan"] = ask(planner.replan, str(run_dir))
+                replans += 1
+                if entry["replan"].get("status") != "planned":
+                    reason = "재계획이 유효한 DAG 를 내지 못했다"
                     break
-        elif replans < max_replans:
-            entry["action"] = "replan"
-            entry["replan"] = planner.replan(str(run_dir), pool=get_pool())
-            replans += 1
-            if entry["replan"].get("status") != "planned":
-                reason = "재계획이 유효한 DAG 를 내지 못했다"
+            else:
+                reason = ("노드 수리 한도 소진 후 재계획 한도까지 소진" if failed
+                          else "진전 없음: 고칠 수 있는 실패 노드가 없다")
                 break
-        else:
-            reason = ("노드 수리 한도 소진 후 재계획 한도까지 소진" if failed
-                      else "진전 없음: 고칠 수 있는 실패 노드가 없다")
+        except _NoPool as e:
+            entry["error"] = str(e)
+            reason = str(e)
+            break
+        except Exception as e:   # 쿼터 소진·파싱 실패 등. 런은 남으므로 --resume 으로 재개 가능.
+            entry["error"] = f"{type(e).__name__}: {e}"
+            reason = (f"수리/재계획 LLM 호출이 실패했다 ({type(e).__name__}: {e}) -- "
+                      f"런은 그대로 남아 있으니 --resume 으로 이어서 돌릴 수 있다")
             break
 
     return {"status": "incomplete", "run_dir": str(run_dir), "reason": reason,
@@ -121,7 +143,16 @@ def solve(problem: str, max_repair_rounds: int = 3, max_node_repairs: int = 2,
           max_replans: int = 1, pool=None) -> dict:
     run_dir = RUNS / time.strftime("%Y%m%d-%H%M%S")
     run_dir.mkdir(parents=True, exist_ok=True)
-    plan_res = planner.make_plan(problem, str(run_dir), pool=pool)
+    try:
+        plan_res = planner.make_plan(problem, str(run_dir), pool=pool)
+    except Exception as e:
+        # 최초 계획부터 실패(키 미설정·쿼터 소진·JSON 파싱 실패 등). 아무것도 안 쓰인 빈 런
+        # 디렉토리는 치운다 -- 키 하나 빠졌을 때 runs/ 가 빈 디렉토리로 뒤덮이지 않게.
+        # 파일이 조금이라도 쓰였으면 남긴다(무엇이 쓰였는지가 진단 근거다).
+        if not (run_dir / "plan.json").exists() and not list(run_dir.rglob("*.*")):
+            shutil.rmtree(run_dir, ignore_errors=True)
+        return {"stage": "planning", "status": "planning_failed", "run_dir": str(run_dir),
+                "error": f"{type(e).__name__}: {e}"}
     if plan_res.get("status") != "planned":
         return {"stage": "planning", **plan_res}
     run_res = drive(str(run_dir), max_repair_rounds=max_repair_rounds,
