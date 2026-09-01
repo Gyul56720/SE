@@ -23,3 +23,9 @@ mathmetics/matrix_exponent/als_state.json
 # 덮어써 '이미 실패한 전략' 기억이 사라진다. 채택 기록은 searcher.py 커밋이 남긴다.
 mathmetics/matrix_exponent/improve_ledger.json
 !logs/code_dialogue/
+
+# solver: 과제별 데이터·로그·후보 코드는 크고 자주 바뀐다. 기록(spec/champion/history)만 커밋한다.
+solver/tasks/*/data/
+solver/tasks/*/candidates/
+solver/tasks/*/log
+solver/tasks/_*/
