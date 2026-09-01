@@ -1,9 +1,9 @@
 """
 플래너 되먹임 루프의 red-green 증명 -- "검증 실패가 계획으로 돌아가는가"를 실측 런으로 증명한다.
 
-RED 의 근거는 합성이 아니라 저장소에 커밋돼 있는 실제 실패 런이다:
-  orchestrator/runs/20260829-224043 -- factor / sub_equations 는 verified 인데 최종 노드
-  crt_combine 이 `solve: 7`(KeyError) 로 죽어 있다. 결과가 JSON 으로 왕복하며 dict 키 7 이
+RED 의 근거는 합성이 아니라 실제 실패 런이다 -- orchestrator/runs/20260829-224043 을 그대로
+얼려 tests/fixtures/failed_crt_run/ 에 둔다: factor / sub_equations 는 verified 인데 최종 노드
+crt_combine 이 `solve: 7`(KeyError) 로 죽어 있다. 결과가 JSON 으로 왕복하며 dict 키 7 이
   "7" 이 된 것뿐이라, solutions_mod[str(p1)] 한 곳이면 끝나는 버그다. 그런데 예전 구조에는
   실패 사유를 플래너로 되돌리는 경로가 없어서, 재개해도 같은 코드를 그대로 다시 돌렸고
   attempts 에 똑같은 `solve: 7` 이 두 번 쌓인 채 런이 영구히 미완으로 남았다.
@@ -16,6 +16,12 @@ RED 의 근거는 합성이 아니라 저장소에 커밋돼 있는 실제 실�
               attempts/attemptN/ 으로 보존된다(덮어쓰지 않는다).
   4. 안전  -- 문법이 깨졌거나 def solve 가 없는 수리안은 채택되지 않는다(파일 불변).
               verifier 파일은 어떤 경로로도 다시 쓰이지 않는다.
+
+왜 살아있는 런이 아니라 얼린 사본인가: runs/20260829-224043 은 `solve.py --resume` 이 실제로
+수리해서 verified 로 바꿔버리는 대상이다. 그 디렉토리를 픽스처로 쓰면, 에이전트가 자기 일을
+제대로 해내는 순간 RED 근거가 사라져 테스트가 깨진다(테스트가 관측 대상을 관측 행위로 바꾸는
+꼴이다). 그래서 실패 상태 그대로를 별도 경로에 고정해 두고, 살아있는 런은 자유롭게 수리·커밋
+되게 둔다.
 
 LLM 은 호출하지 않는다. llm_pool.call 을 가짜로 갈아끼워, "무엇을 프롬프트에 넣었는가"와
 "응답을 어떻게 채택/반려하는가"만 검증한다(네트워크·쿼터 없이 매번 같은 결과).
@@ -39,7 +45,7 @@ import planner  # noqa: E402
 import solve as solve_mod  # noqa: E402
 from plan_schema import Plan  # noqa: E402
 
-FIXTURE = ORCH / "runs" / "20260829-224043"   # 실측 실패 런 (커밋돼 있다)
+FIXTURE = REPO / "tests" / "fixtures" / "failed_crt_run"   # 실측 실패 런을 얼린 사본
 FAILED_NODE = "crt_combine"
 
 # 수리안: JSON 왕복으로 문자열이 된 키를 str(p1) 로 꺼낸다.
