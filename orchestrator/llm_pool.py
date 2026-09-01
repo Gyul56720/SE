@@ -31,6 +31,17 @@ import quota_tracker  # noqa: E402
 
 FALLBACK_MODELS = ["gemini-3.5-flash", "gemini-3.5-flash-lite"]
 
+# 후보 하나에 얼마나 버틸 것인가. bot_tools 가 실측으로 얻은 값과 같은 규칙을 여기서도 갖는다
+# (langchain 없이도 임포트되게 값만 복제한다 -- 규칙이 바뀌면 bot_tools 와 함께 갱신).
+# langchain 기본값(max_retries=6, timeout 없음)을 그대로 쓰면 실패하는 후보 하나가 지수 backoff
+# 로 30~50초를 먹고, timeout 이 없어 응답이 안 오는 요청은 영원히 매달린다. 후보 풀 자체가
+# 재시도 전략이므로 한 후보 안에서 오래 버틸 이유가 없다.
+MAX_RETRIES = int(os.environ.get("GEMINI_MAX_RETRIES", "2"))
+TIMEOUT = float(os.environ.get("GEMINI_TIMEOUT", "60"))
+# 풀은 (키 x 실사용 모델) 이라 모델 목록 조회 결과에 따라 수십~백 개가 될 수 있다. 전부 순회하면
+# 최악의 경우 시간 단위로 매달리므로, 시도 후보 수에 상한을 둔다(최악 대기 = 상한 x TIMEOUT).
+MAX_CANDIDATES = int(os.environ.get("GEMINI_MAX_CANDIDATES", "12"))
+
 
 def _is_quota(e) -> bool:
     t = str(e)
@@ -54,8 +65,13 @@ def _key_id(key: str) -> str:
 
 
 def _default_factory(model: str, key: str):
+    """max_retries/timeout 을 모르는 langchain 버전에서도 뜨도록 TypeError 면 물러선다."""
     from langchain_google_genai import ChatGoogleGenerativeAI
-    return ChatGoogleGenerativeAI(model=model, google_api_key=key)
+    try:
+        return ChatGoogleGenerativeAI(model=model, google_api_key=key,
+                                      max_retries=MAX_RETRIES, timeout=TIMEOUT)
+    except TypeError:
+        return ChatGoogleGenerativeAI(model=model, google_api_key=key)
 
 
 def _default_models(key: str):
@@ -91,8 +107,13 @@ def _extract_text(resp) -> str:
     return str(content)
 
 
-def call(pool, prompt: str, pool_id: str = "orchestrator") -> tuple[str, str]:
-    """후보를 쿼터/장애 견디며 순회. (응답텍스트, 성공한 label) 반환. 전부 실패면 예외."""
+def call(pool, prompt: str, pool_id: str = "orchestrator", max_candidates: int = None,
+         verbose: bool = True) -> tuple[str, str]:
+    """후보를 쿼터/장애 견디며 순회. (응답텍스트, 성공한 label) 반환. 전부 실패면 예외.
+
+    max_candidates 로 시도 수를 제한한다(기본 MAX_CANDIDATES). 상한이 없으면 죽은 키로 돌릴 때
+    수십 개 후보 x 타임아웃만큼 말없이 매달린다 -- CLI 에서는 "답이 안 나온다"로만 보인다.
+    verbose 면 실패한 후보를 stderr 에 한 줄씩 남긴다(어디서 막혔는지 보이게)."""
     live = [c for c in pool if not quota_tracker.is_dead(c[0])] or pool
 
     def sort_key(c):
@@ -106,8 +127,11 @@ def call(pool, prompt: str, pool_id: str = "orchestrator") -> tuple[str, str]:
     if pinned:
         ranked = [c for c in ranked if c[0] == pinned] + [c for c in ranked if c[0] != pinned]
 
+    limit = MAX_CANDIDATES if max_candidates is None else max_candidates
+    tried, skipped = 0, max(0, len(ranked) - limit)
     last_error = None
-    for label, llm in ranked:
+    for label, llm in ranked[:limit]:
+        tried += 1
         try:
             text = _extract_text(llm.invoke(prompt))
             quota_tracker.record_success(label)
@@ -119,5 +143,13 @@ def call(pool, prompt: str, pool_id: str = "orchestrator") -> tuple[str, str]:
             elif _is_permanent(e):
                 quota_tracker.mark_dead(label, str(e)[:200])
             # 일시 장애(503 등)는 기록 없이 다음 후보로.
+            if verbose:
+                print(f"[llm_pool] {label} 실패({tried}/{min(limit, len(ranked))}): "
+                      f"{str(e)[:120]}", file=sys.stderr, flush=True)
             last_error = e
-    raise last_error if last_error else RuntimeError("빈 후보 풀")
+    if last_error:
+        raise RuntimeError(
+            f"후보 {tried}개를 모두 실패했다"
+            f"{f' (상한 {limit} 때문에 {skipped}개는 시도 안 함)' if skipped else ''}. "
+            f"마지막 오류: {type(last_error).__name__}: {last_error}") from last_error
+    raise RuntimeError("빈 후보 풀")
