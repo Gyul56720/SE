@@ -8,3 +8,7 @@ langchain-google-genai>=2.1.0
 langchain-groq>=0.2.0
 langgraph>=0.2.0
 discord.py>=2.4.0
+
+# 수학 스택(mathmetics/matrix_exponent/*)과 그 심판 verifier.py 가 쓴다.
+# 없으면 게이트 G009(자가 수정 심판 무결성)가 "심판이 깨졌다"로 커밋을 막는다.
+numpy>=1.24.0
