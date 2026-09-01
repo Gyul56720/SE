@@ -1,0 +1,50 @@
+{
+  "problem": "N=91에서 x^2 ≡ 16 (mod N)의 모든 해를 구하라",
+  "final": "crt_combine",
+  "nodes": [
+    {
+      "id": "factor",
+      "goal": "Find the prime factors of N=91",
+      "component": "components/factor.py",
+      "verifier": "components/factor_verify.py",
+      "deps": [],
+      "status": "verified",
+      "result_ref": "results/factor.json",
+      "attempts": []
+    },
+    {
+      "id": "sub_equations",
+      "goal": "Solve x^2 ≡ 16 (mod p) for each prime factor p of 91 (7 and 13)",
+      "component": "components/sub_equations.py",
+      "verifier": "components/sub_equations_verify.py",
+      "deps": [
+        "factor"
+      ],
+      "status": "verified",
+      "result_ref": "results/sub_equations.json",
+      "attempts": []
+    },
+    {
+      "id": "crt_combine",
+      "goal": "Combine solutions modulo 7 and 13 using Chinese Remainder Theorem to find all solutions mod 91",
+      "component": "components/crt_combine.py",
+      "verifier": "components/crt_combine_verify.py",
+      "deps": [
+        "factor",
+        "sub_equations"
+      ],
+      "status": "failed",
+      "result_ref": "",
+      "attempts": [
+        {
+          "ts": 1788043250.6272576,
+          "error": "solve: 7"
+        },
+        {
+          "ts": 1788043251.7467809,
+          "error": "solve: 7"
+        }
+      ]
+    }
+  ]
+}
