@@ -16,6 +16,9 @@ crt_combine 이 `solve: 7`(KeyError) 로 죽어 있다. 결과가 JSON 으로 �
               attempts/attemptN/ 으로 보존된다(덮어쓰지 않는다).
   4. 안전  -- 문법이 깨졌거나 def solve 가 없는 수리안은 채택되지 않는다(파일 불변).
               verifier 파일은 어떤 경로로도 다시 쓰이지 않는다.
+  5. 예산  -- 무한 루프를 도는 노드가 실제로 끊기고, 그 사유가 attempts 를 거쳐 수리 프롬프트에
+              실려 더 빠른 코드로 교체된다. 예산이 없으면 hang 이라 attempts 에 아무것도 남지
+              않고 되먹임 루프 자체가 조용히 멈춘다 -- '느림'이 수리 대상이 되는지의 증명이다.
 
 왜 살아있는 런이 아니라 얼린 사본인가: runs/20260829-224043 은 `solve.py --resume` 이 실제로
 수리해서 verified 로 바꿔버리는 대상이다. 그 디렉토리를 픽스처로 쓰면, 에이전트가 자기 일을
@@ -34,6 +37,7 @@ import json
 import shutil
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -41,9 +45,10 @@ ORCH = REPO / "orchestrator"
 sys.path.insert(0, str(ORCH))
 
 import llm_pool  # noqa: E402
+import orchestrator  # noqa: E402
 import planner  # noqa: E402
 import solve as solve_mod  # noqa: E402
-from plan_schema import Plan  # noqa: E402
+from plan_schema import Plan, Node  # noqa: E402
 
 FIXTURE = REPO / "tests" / "fixtures" / "failed_crt_run"   # 실측 실패 런을 얼린 사본
 FAILED_NODE = "crt_combine"
@@ -58,6 +63,12 @@ FIXED_SOLVE = '''def solve(inputs):
     out = {(a1 + p1 * ((a2 - a1) * inv % p2)) % N for a1 in sols1 for a2 in sols2}
     return {"solutions": sorted(out)}
 '''
+
+# 예산 테스트용: 절대 끝나지 않는 solve 와, 그것을 대체할 즉답 solve.
+HANGING_SOLVE = 'def solve(inputs):\n    n = 0\n    while True:\n        n += 1\n'
+FAST_SOLVE = 'def solve(inputs):\n    return {"n": 42}\n'
+BUDGET_CHECK = ('def check(output, inputs):\n'
+                '    return output.get("n") == 42, f"n={output.get(\'n\')}"\n')
 
 BRUTE_SOLVE = ('def solve(inputs):\n'
                '    return {"solutions": sorted(x for x in range(91) if (x * x - 16) % 91 == 0)}\n')
@@ -203,10 +214,58 @@ def test_bad_repair_rejected(failures: list):
             _check(failures, planner.repair_count(node) == 0, f"{label}: 수리 횟수로 세지 않는다")
 
 
+def _make_budget_run(tmp: str) -> Path:
+    """무한 루프를 도는 노드 하나짜리 런을 만든다."""
+    run = Path(tmp) / "budget_run"
+    (run / "components").mkdir(parents=True)
+    (run / "components" / "spin.py").write_text(HANGING_SOLVE, encoding="utf-8")
+    (run / "components" / "spin_verify.py").write_text(BUDGET_CHECK, encoding="utf-8")
+    Plan(problem="42 를 내라", final="spin",
+         nodes=[Node(id="spin", goal="42 를 반환한다", deps=[],
+                     component="components/spin.py", verifier="components/spin_verify.py")]
+         ).save(run / "plan.json")
+    return run
+
+
+def test_time_budget_makes_slowness_repairable(failures: list):
+    """예산: 무한 루프가 유계 실패로 바뀌고, 그 사유가 되먹임을 타고 수리로 이어진다."""
+    print("[예산] 무한 루프 노드가 끊기고 수리된다")
+    if not orchestrator.budget_enforceable():
+        print("    SKIP 이 환경에서는 SIGALRM 을 걸 수 없다(POSIX 메인 스레드 아님)")
+        return
+    with tempfile.TemporaryDirectory() as tmp:
+        run = _make_budget_run(tmp)
+        fake = FakeLLM([FAST_SOLVE])
+        t0 = time.time()
+        res = _with_fake(fake, lambda: solve_mod.drive(str(run), max_repair_rounds=3,
+                                                       node_timeout=0.5, pool=["fake"]))
+        elapsed = time.time() - t0
+
+        node = Plan.load(run / "plan.json").node("spin")
+        timeout_msgs = [a.get("error", "") for a in node.attempts if "예산" in str(a.get("error", ""))]
+        p = fake.prompts[0] if fake.prompts else ""
+        _check(failures, res["status"] == "solved", "예산 초과 노드가 수리 후 통과", res.get("reason", ""))
+        _check(failures, elapsed < 30, f"무한 루프가 실제로 끊긴다({elapsed:.1f}초 만에 종료)")
+        _check(failures, timeout_msgs, "예산 초과가 attempts 에 사유로 남는다", str(node.attempts))
+        _check(failures, "예산" in p and "초과" in p, "그 사유가 수리 프롬프트에 실린다")
+        _check(failures, (run / "results" / "spin.json").exists(), "교체된 코드의 결과가 저장된다")
+
+
+def test_budget_off_is_explicit(failures: list):
+    """예산 0 이하는 '무제한'이다 -- 끄는 경로가 조용히 걸려 있지 않은지 확인."""
+    print("[예산] 0 이하면 예산을 걸지 않는다")
+    with orchestrator.time_budget(0) as armed:
+        _check(failures, armed is False, "0 이면 타이머를 걸지 않는다")
+    if orchestrator.budget_enforceable():
+        with orchestrator.time_budget(5) as armed:
+            _check(failures, armed is True, "양수면 타이머를 건다")
+
+
 def main() -> int:
     failures: list[str] = []
     for t in (test_red_without_repair, test_green_repair_loop,
-              test_escalation_to_replan, test_bad_repair_rejected):
+              test_escalation_to_replan, test_bad_repair_rejected,
+              test_time_budget_makes_slowness_repairable, test_budget_off_is_explicit):
         t(failures)
     if failures:
         print("\n=== 실패 ===")

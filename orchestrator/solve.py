@@ -16,6 +16,7 @@ SE 가 아래를 실행하면 된다:
 
 루프의 단계 (아래로 갈수록 비싸다 -- 싼 것부터 쓴다):
   a. 재실행       : 노드 verifier 가 판정한다. 통과한 노드는 건너뛴다(오케스트레이터).
+                   노드마다 실행 시간 예산이 걸려(--node-timeout) 무한 루프도 유계 실패가 된다.
   b. 노드 수리    : 실패한 노드의 solve 만 실패 사유를 보고 다시 쓴다(planner.repair_node).
                    노드당 max_node_repairs 회까지. verifier 는 절대 다시 쓰지 않는다.
   c. 계획 재수립  : 수리로 안 되면 DAG 자체가 틀린 것이므로 통째로 다시 세운다
@@ -52,7 +53,7 @@ class _NoPool(RuntimeError):
 
 
 def drive(run_dir: str, max_repair_rounds: int = 3, max_node_repairs: int = 2,
-          max_replans: int = 1, pool=None) -> dict:
+          max_replans: int = 1, pool=None, node_timeout: float = None) -> dict:
     """plan.json 이 있는 런을 목표 달성까지 몰아붙인다: 실행 -> 검증 -> 실패면 수리/재계획 -> 재실행.
 
     반환 dict 의 status 는 "solved" 이거나 "incomplete" 다. incomplete 면 왜 멈췄는지
@@ -77,7 +78,7 @@ def drive(run_dir: str, max_repair_rounds: int = 3, max_node_repairs: int = 2,
         return fn(*a, pool=pool, **kw)
 
     for round_i in range(1, max_repair_rounds + 2):
-        res = orchestrator.run_plan(str(run_dir))
+        res = orchestrator.run_plan(str(run_dir), node_timeout=node_timeout)
         entry = {"round": round_i, "run_status": res.get("status"),
                  "node_status": res.get("node_status")}
         log.append(entry)
@@ -140,7 +141,7 @@ def drive(run_dir: str, max_repair_rounds: int = 3, max_node_repairs: int = 2,
 
 
 def solve(problem: str, max_repair_rounds: int = 3, max_node_repairs: int = 2,
-          max_replans: int = 1, pool=None) -> dict:
+          max_replans: int = 1, pool=None, node_timeout: float = None) -> dict:
     run_dir = RUNS / time.strftime("%Y%m%d-%H%M%S")
     run_dir.mkdir(parents=True, exist_ok=True)
     try:
@@ -156,7 +157,8 @@ def solve(problem: str, max_repair_rounds: int = 3, max_node_repairs: int = 2,
     if plan_res.get("status") != "planned":
         return {"stage": "planning", **plan_res}
     run_res = drive(str(run_dir), max_repair_rounds=max_repair_rounds,
-                    max_node_repairs=max_node_repairs, max_replans=max_replans, pool=pool)
+                    max_node_repairs=max_node_repairs, max_replans=max_replans, pool=pool,
+                    node_timeout=node_timeout)
     return {"stage": "done", "run_dir": str(run_dir), "plan": plan_res, "run": run_res}
 
 
@@ -170,9 +172,13 @@ def main():
                         help="노드 하나당 수리 시도 상한 (기본 2, 넘으면 재계획으로 승격)")
     parser.add_argument("--max-replans", type=int, default=1,
                         help="계획 전체 재수립 상한 (기본 1)")
+    parser.add_argument("--node-timeout", type=float, default=None,
+                        help=f"노드 하나당 실행 시간 예산(초). 0 이하면 무제한 "
+                             f"(기본 {orchestrator.NODE_TIMEOUT:g})")
     args = parser.parse_args()
     kw = dict(max_repair_rounds=args.max_repair_rounds,
-              max_node_repairs=args.max_node_repairs, max_replans=args.max_replans)
+              max_node_repairs=args.max_node_repairs, max_replans=args.max_replans,
+              node_timeout=args.node_timeout)
     if args.resume:
         result = drive(args.resume, **kw)
     elif args.problem:
