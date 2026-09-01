@@ -49,6 +49,7 @@ sys.path.insert(0, str(REPO / "orchestrator"))
 
 import llm_pool                                    # noqa: E402
 import metric                                      # noqa: E402
+import scorers                                    # noqa: E402
 import task as taskmod                             # noqa: E402
 
 SYSTEM = (
@@ -58,9 +59,9 @@ SYSTEM = (
     "이력을 먼저 읽고 이미 실패한 접근을 반복하지 마라. 점수가 어디서 깎이는지(채점 상세의 "
     "FP/FN, 놓친 분열 수 등)를 보고 그 부분을 노려라. 한 번에 여러 가지를 바꾸지 말고, "
     "무엇이 점수를 올렸는지 알 수 있게 한 가지 가설을 분명히 겨냥해라.\n"
-    "출력 계약: 오직 파이썬 코드만 출력한다(설명·코드펜스 금지). 최상위에 "
+    "오직 파이썬 코드만 출력한다(설명·코드펜스 금지). 최상위에 "
     "def solve(data_dir: str, out_csv: str) -> None 가 있어야 하고, 필요한 import 는 코드 "
-    "안에 포함한다. data_dir 안의 각 .zarr 를 읽어 out_csv 에 제출 형식으로 쓴다.\n"
+    "안에 포함한다. 구체적 출력 계약은 아래 [출력 계약] 절을 따른다.\n"
     "코드 첫 줄에 '# 가설: ...' 형태의 한 줄 주석으로 이번에 무엇을 노렸는지 적어라 -- "
     "그 줄이 이력에 남아 다음 시도의 근거가 된다.\n"
     "쓸 수 있는 외부 패키지는 이 환경에 실제로 설치된 것뿐이다. 없는 패키지를 import 하면 "
@@ -134,7 +135,9 @@ def _history_digest(t: taskmod.Task, limit: int = 12) -> str:
 def build_prompt(t: taskmod.Task) -> str:
     champ = t.champion_path.read_text(encoding="utf-8") if t.champion_path.exists() else "(아직 없음 -- 처음부터 작성하라)"
     score = t.champion_score()
+    contract = scorers.get(t.config().get("scorer", "cell_tracking")).get("contract", "")
     return (SYSTEM
+            + "\n\n[출력 계약]\n" + contract
             + "\n\n[이 환경에 설치된 패키지]\n" + installed_packages()
             + "\n\n[과제 설명 원문]\n" + t.spec()
             + "\n\n[지금 챔피언 코드]\n" + champ
@@ -161,16 +164,14 @@ def run_candidate(code_path: Path, data_dir: Path, out_csv: Path, timeout: float
     return {"ok": True, "seconds": sec, "stdout_tail": (p.stdout or "")[-800:]}
 
 
-def evaluate(out_csv: Path, gt_csv: Path) -> dict:
-    pred = taskmod.read_submission(out_csv)
-    gt = taskmod.read_submission(gt_csv)
-    return metric.score(pred, gt)
+def evaluate(out_csv: Path, cfg: dict) -> dict:
+    """config 의 scorer 이름으로 도메인 심판을 찾아 채점. 반환 dict 엔 'combined' 가 있다."""
+    return scorers.get(cfg.get("scorer", "cell_tracking"))["evaluate"](Path(out_csv), cfg)
 
 
 def one_iteration(t: taskmod.Task, cfg: dict, n: int, pool) -> dict:
     rec = {"iteration": n, "ts": time.time(), "adopted": False, "combined": None}
-    data_dir = Path(cfg["data_dir"]) / "train"
-    gt_csv = data_dir / "ground_truth.csv"
+    input_dir = Path(cfg["data_dir"]) / "train"
 
     try:
         text, label = llm_pool.call(pool, build_prompt(t), pool_id=f"solver-{t.slug}")
@@ -192,25 +193,22 @@ def one_iteration(t: taskmod.Task, cfg: dict, n: int, pool) -> dict:
 
     with tempfile.TemporaryDirectory() as tmp:
         out_csv = Path(tmp) / "submission.csv"
-        run = run_candidate(cand, data_dir, out_csv, float(cfg.get("candidate_timeout", 1800)))
+        run = run_candidate(cand, input_dir, out_csv, float(cfg.get("candidate_timeout", 1800)))
         rec["seconds"] = run.get("seconds")
         if not run["ok"]:
             rec["error"] = run["error"]
             return rec
         if not out_csv.exists():
-            rec["error"] = "실행은 끝났으나 제출 CSV 를 만들지 않았다"
+            rec["error"] = "실행은 끝났으나 출력 파일을 만들지 않았다"
             return rec
         try:
-            s = evaluate(out_csv, gt_csv)
+            s = evaluate(out_csv, cfg)
         except Exception as e:                                  # noqa: BLE001
-            rec["error"] = f"채점 실패(제출 형식 오류일 가능성): {type(e).__name__}: {e}"
+            rec["error"] = f"채점 실패(출력 형식 오류일 가능성): {type(e).__name__}: {e}"
             return rec
 
     rec["combined"] = round(s["combined"], 6)
-    rec["edge_jaccard"] = round(s["edge_jaccard"], 6)
-    rec["division_jaccard"] = round(s["division_jaccard"], 6)
-    if s["missing_datasets"]:
-        rec["missing_datasets"] = s["missing_datasets"]
+    rec["detail"] = {k: v for k, v in s.items() if k != "per_dataset"}
 
     best = (t.champion_score() or {}).get("combined")
     if best is None or s["combined"] > best:
@@ -227,22 +225,25 @@ def _seed_baseline(t: taskmod.Task, cfg: dict) -> dict:
     LLM 이 첫 제안을 낼 때 비교 대상이 있어야 '개선'이라는 말이 성립한다."""
     rec = {"iteration": 0, "ts": time.time(), "adopted": False, "combined": None,
            "hypothesis": "베이스라인(사람이 쓴 출발점)"}
-    data_dir = Path(cfg["data_dir"]) / "train"
-    code = (HERE / "baseline.py").read_text(encoding="utf-8")
+    input_dir = Path(cfg["data_dir"]) / "train"
+    baseline_rel = scorers.get(cfg.get("scorer", "cell_tracking"))["baseline"]
+    baseline_path = HERE / baseline_rel
+    code = baseline_path.read_text(encoding="utf-8")
     with tempfile.TemporaryDirectory() as tmp:
         out_csv = Path(tmp) / "submission.csv"
-        run = run_candidate(HERE / "baseline.py", data_dir, out_csv,
+        run = run_candidate(baseline_path, input_dir, out_csv,
                             float(cfg.get("candidate_timeout", 1800)))
         rec["seconds"] = run.get("seconds")
         if not run["ok"]:
             rec["error"] = run["error"]
             return rec
         try:
-            s = evaluate(out_csv, data_dir / "ground_truth.csv")
+            s = evaluate(out_csv, cfg)
         except Exception as e:                                  # noqa: BLE001
             rec["error"] = f"채점 실패: {type(e).__name__}: {e}"
             return rec
     rec["combined"] = round(s["combined"], 6)
+    rec["detail"] = {k: v for k, v in s.items() if k != "per_dataset"}
     t.champion_path.write_text(code, encoding="utf-8")
     t.champion_score_path.write_text(json.dumps(s, ensure_ascii=False, indent=2),
                                      encoding="utf-8")
@@ -258,8 +259,9 @@ def loop(slug: str, max_iterations: int = None):
     cfg = t.config()
     limit = cfg.get("max_iterations", 0) if max_iterations is None else max_iterations
 
+    spec = scorers.get(cfg.get("scorer", "cell_tracking"))
     data = taskmod.check_data(cfg)
-    if not data["ground_truth_exists"]:
+    if spec["needs_ground_truth"] and not data["ground_truth_exists"]:
         msg = (f"로컬 정답이 없다: {data['ground_truth']}\n"
                f"채점기 없이는 개선을 판정할 수 없으므로 루프를 시작하지 않는다.\n"
                f"학습용 데이터와 정답 CSV 를 {data['data_dir']}/train/ 에 두고 다시 실행하라.")
@@ -274,7 +276,8 @@ def loop(slug: str, max_iterations: int = None):
         t.set_state(status="blocked", reason=msg, pid=os.getpid())
         return 3
 
-    if not t.champion_path.exists() and (HERE / "baseline.py").exists():
+    _bl = HERE / scorers.get(cfg.get("scorer", "cell_tracking"))["baseline"]
+    if not t.champion_path.exists() and _bl.exists():
         seed = _seed_baseline(t, cfg)
         t.append_history(seed)
         print(f"[solver] 베이스라인 시딩: {seed.get('combined') or seed.get('error')}", flush=True)

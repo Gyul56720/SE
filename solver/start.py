@@ -33,6 +33,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import task as taskmod                                        # noqa: E402
+import scorers                                                # noqa: E402
 
 
 def _alive(pid: int) -> bool:
@@ -67,8 +68,18 @@ def cmd_start(spec: str, slug: str, config: dict) -> int:
         t.create(spec, config)
     (t.dir / "stop").unlink(missing_ok=True)
 
+    # 정의 기반 도메인(tensor_rank 등)은 solve 가 읽을 파라미터를 data/train/config.json 에 둔다.
+    cfg_now = t.config()
+    if cfg_now.get("scorer") == "tensor_rank":
+        seed_dir = Path(cfg_now["data_dir"]) / "train"
+        seed_dir.mkdir(parents=True, exist_ok=True)
+        (seed_dir / "config.json").write_text(
+            json.dumps({"n": int(cfg_now.get("n", 2))}, ensure_ascii=False), encoding="utf-8")
+
+    scorer = t.config().get("scorer", "cell_tracking")
+    needs_gt = scorers.get(scorer)["needs_ground_truth"]
     data = taskmod.check_data(t.config())
-    if not data["ground_truth_exists"]:
+    if needs_gt and not data["ground_truth_exists"]:
         print("루프를 시작하지 않았다 -- 로컬 정답이 없어 개선을 판정할 수 없다.\n")
         print(f"과제는 만들어 뒀다: {t.dir}")
         print("아래를 두고 같은 명령을 다시 실행하라:")
@@ -123,8 +134,12 @@ def cmd_status(slug: str) -> int:
         print(f"사유      : {st['reason']}")
     cs = t.champion_score()
     if cs:
-        print(f"챔피언    : combined={cs.get('combined'):.6f} "
-              f"edge={cs.get('edge_jaccard'):.6f} division={cs.get('division_jaccard'):.6f}")
+        extra = ""
+        if cs.get("rank") is not None:                 # tensor_rank 도메인
+            extra = f" rank={cs.get('rank')} (표준 {cs.get('baseline_rank')})"
+        elif cs.get("edge_jaccard") is not None:       # cell_tracking 도메인
+            extra = f" edge={cs.get('edge_jaccard'):.4f} division={cs.get('division_jaccard'):.4f}"
+        print(f"챔피언    : combined={cs.get('combined'):.6f}{extra}")
     if adopted:
         print("\n점수가 올라간 지점:")
         for h in adopted[-6:]:
@@ -147,7 +162,7 @@ def cmd_code(slug: str) -> int:
         return 1
     cs = t.champion_score()
     print(f"# 과제: {slug} | 로컬 점수 combined={cs.get('combined')} "
-          f"edge={cs.get('edge_jaccard')} division={cs.get('division_jaccard')}")
+          f"rank={cs.get('rank')} beats_standard={cs.get('beats_standard')}")
     print(f"# 경로: {t.champion_path}")
     print(t.champion_path.read_text(encoding="utf-8"))
     return 0
@@ -169,6 +184,9 @@ def main():
     ap.add_argument("--spec-file", help="과제 설명을 담은 파일")
     ap.add_argument("--slug", help="과제 식별자(생략하면 설명에서 만든다)")
     ap.add_argument("--data-dir", help="데이터 디렉토리(기본 solver/tasks/<slug>/data)")
+    ap.add_argument("--scorer", default="cell_tracking",
+                    help="심판 이름 (cell_tracking | tensor_rank)")
+    ap.add_argument("--n", type=int, help="tensor_rank 도메인의 행렬 크기 n")
     ap.add_argument("--candidate-timeout", type=float, default=1800,
                     help="후보 하나의 실행 시간 상한(초)")
     ap.add_argument("--max-iterations", type=int, default=0, help="0이면 멈출 때까지")
@@ -198,7 +216,10 @@ def main():
     if not spec or not spec.strip():
         ap.error("과제 설명이 필요하다 (인자, --spec-file, 또는 stdin)")
 
-    cfg = {"candidate_timeout": a.candidate_timeout, "max_iterations": a.max_iterations}
+    cfg = {"candidate_timeout": a.candidate_timeout, "max_iterations": a.max_iterations,
+           "scorer": a.scorer}
+    if a.n is not None:
+        cfg["n"] = a.n
     if a.data_dir:
         cfg["data_dir"] = str(Path(a.data_dir).resolve())
     return cmd_start(spec, a.slug, cfg)

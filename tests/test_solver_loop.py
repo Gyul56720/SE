@@ -162,7 +162,7 @@ def test_baseline_is_self_contained(failures: list):
         _check(failures, run["ok"], "복사된 위치에서 실행 성공", str(run.get("error"))[:200])
         if not run["ok"]:
             return
-        s = improve.evaluate(out, data / "ground_truth.csv")
+        s = improve.evaluate(out, {"scorer": "cell_tracking", "data_dir": str(data.parent)})
         ps = s["per_dataset"]["ds01"]
         _check(failures, ps["matched_nodes"] == ps["gt_nodes"],
                f"정답 노드를 전부 찾는다 ({ps['matched_nodes']}/{ps['gt_nodes']})", str(ps))
@@ -213,7 +213,7 @@ def test_loop_adopts_only_better(failures: list):
                "문법이 깨진 후보는 실행 전 반려", str(recs[2].get("error")))
         _check(failures, "시간 초과" in str(recs[3].get("error")),
                "멈추지 않는 후보는 타임아웃으로 끊긴다", str(recs[3].get("error")))
-        _check(failures, "제출 CSV" in str(recs[4].get("error")),
+        _check(failures, "출력 파일" in str(recs[4].get("error")),
                "CSV 를 안 만든 후보는 그렇게 기록된다", str(recs[4].get("error")))
 
         champ = t.champion_score()
