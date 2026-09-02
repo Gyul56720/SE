@@ -1,5 +1,6 @@
 import numpy as np
 import subprocess
+import sys
 
 def encode_w(w):
     if w == 0: return 0
@@ -7,29 +8,26 @@ def encode_w(w):
     if w == -1: return 2
     return 3
 
-# Corner Case: Maximum Overflow Test
-N = 4096
-x = np.full(N, 127, dtype=np.int16)
-w = np.full(N, 1, dtype=np.int8)
+print("=== Compiling SystemVerilog AXI4 Top & Testbench ===")
+compile_cmd = [
+    "iverilog", "-g2012", "-o", "axi_sim",
+    "npu_pe.sv", "npu_tile.sv", "npu_array_4096.sv", "npu_axi_top.sv", "npu_axi_testbench.sv"
+]
 
-y_gold = int(np.sum(x * w))
-print(f"Golden Reference (Max Overflow): {y_gold}")
+res_comp = subprocess.run(compile_cmd, capture_output=True, text=True)
+if res_comp.returncode != 0:
+    print("Compilation Error:\n", res_comp.stderr)
+    sys.exit(1)
 
-# Write Hex files for SystemVerilog $fscanf
-with open("array_act_hex.txt", "w") as f_act:
-    for val in x: f_act.write(f"{val & 0xFF:02x}\n")
+print("Compilation Successful! Running Simulation...")
+res_sim = subprocess.run(["vvp", "axi_sim"], capture_output=True, text=True)
+print(res_sim.stdout)
 
-with open("array_w_hex.txt", "w") as f_w:
-    for val in w: f_w.write(f"{encode_w(val):02b}\n")
-
-# RTL 컴파일 및 실행
-subprocess.run(["iverilog", "-g2012", "-o", "axi_sim", "npu_pe.sv", "npu_tile.sv", "npu_array_4096.sv", "npu_axi_top.sv", "npu_axi_testbench.sv"], check=True)
-res = subprocess.run(["vvp", "axi_sim"], capture_output=True, text=True)
-
-print("\n--- Simulation Output ---")
-print(res.stdout)
-
-if str(y_gold) in res.stdout:
-    print("AXI4 INTEGRATION SUCCESS: Bit-Exact Result Verified via SoC Interface.")
+if "ALL AXI4 RTL INTEGRATION & CORNER TESTS PASSED BIT-EXACT!" in res_sim.stdout:
+    print(">> SUCCESS: AXI4 Bus Protocol, Memory Mapping, and Corner Cases are Bit-Exact!")
+    sys.exit(0)
 else:
-    print("AXI4 INTEGRATION FAILED: Result Mismatch.")
+    print(">> FAILURE: Testbench did not pass cleanly.")
+    if res_sim.stderr:
+        print(res_sim.stderr)
+    sys.exit(1)
