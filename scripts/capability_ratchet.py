@@ -1,36 +1,29 @@
 """
-G010 -- 능력 래칫: 이미 도달 가능함이 증명된 기준을 후퇴시키는 커밋을 막는다.
+능력 래칫 -- 이미 도달 가능함이 증명된 기준을 후퇴시켰는지 검사한다.
 
-이 게이트가 잡는 것은 특정 값(예: b=2 m=7)이 아니라 추론 실패의 '유형'이다:
-에이전트가 어떤 변경을 "개선"이라 주장하면서, 정작 그 변경이 목표에 유리한지 측정하지 않아
-'이미 되던 것'을 못 되게 만드는 것(그럴듯한 퇴보). 이번 세션 실측: SE가 CP-ALS에 리지
-정규화를 넣고 "대폭 개선"이라 보고했으나, 실제로는 순수 ALS가 잔차 ~1e-13로 정확히 풀던
-b=2 m=7 조차 1.3e-4에서 정체해 verifier 를 통과하지 못하게 만들었다. 근거 없는 개선
-주장 -- G008(검증한다면 실제로 검산했음을 보여라), 무결성경고(저장했다면 원격에 있음을
-보여라)와 같은 계열의 규율을 "개선했다면 기존 능력을 후퇴시키지 않았음을 보여라"로 확장한다.
+원래 커밋 게이트(G010)였다. 개념은 그대로 두고 **자리만 옮겼다**: 이 검사는 b=2 에서
+seed 12개 x 2000 iter 의 CP-ALS 를 실제로 돌린다. 그걸 매 커밋 경로에서 하면 Discord 응답
+뒤 git_sync 가 GIT_MUTEX 를 쥔 채 수 초~수십 초를 쓰고, 그 사이 다른 스레드의 저장이 밀린다.
+탐색 결과의 후퇴는 커밋 단위로 확인해야 할 성질도 아니다 -- 루프가 밤새 도는 동안 재보면 된다.
 
-동작: benchmarks.json 의 각 기준을, 현재 searcher/verifier 로 '넉넉한 예산'으로 재현
-시도한다. 기준이 통과하면 OK. 통과 못 하면 후퇴로 보고 차단한다.
+그래서 이제 이 검사는 커밋을 막지 않고, scripts/check_improve.sh(서버 상태 점검)와 수동
+실행으로 돈다. 커밋 경로에는 심판 자체의 무결성을 보는 G009(싸다, ~0ms)만 남는다.
 
-확률적 알고리즘과의 모순 방지 (중요): CP-ALS 는 restart 운에 따라 결과가 흔들린다. 그래서
-이 게이트는 fail-closed 가 아니라 '관대'하게 설계한다 -- 넉넉한 seed/iter 예산으로 여러 번
-시도해서 '한 번이라도' 통과하면 OK 로 본다. 예산 안에서 한 번도 못 하면 그때만 후퇴로
-간주한다(진짜 능력 상실). 평가 자체가 불가능한 환경(numpy 없음, 파일 없음)에서는 조용히
-건너뛴다. 이 관대함은 G007 의 '애매하면 통과' 철학과 같다.
+무엇을 보는가: benchmarks.json 의 각 기준을 현재 searcher/verifier 로 넉넉한 예산으로
+재현 시도한다. 한 번이라도 통과하면 능력 유지(확률적 알고리즘이므로 관대하게 본다).
+예산 안에서 한 번도 못 하면 그때만 후퇴로 보고 exit 1.
 
-계층: 이 게이트는 G008/G009(심판 자체의 무결성) 위에 얹힌다 -- 심판이 정직하다는 전제에서
-'그 심판으로 잰 능력'이 후퇴했는지를 본다. 대상이 다르므로(verifier vs searcher) 겹치거나
-모순되지 않는다. G005(대량 재작성 분량)가 못 잡는 '소량이지만 능력을 깨는 변경'을 메운다.
+사용:
+    python3 scripts/capability_ratchet.py         # 통과 0 / 후퇴 1
 """
 from __future__ import annotations
 
 import importlib.util
 import json
+import sys
+from pathlib import Path
 
-RULE_ID = "G010"
-TITLE = "이미 도달 가능한 기준을 후퇴시키지 않는가 (능력 래칫)"
-ORIGIN = "2026-08-29 리지 정규화가 b=2 m=7 정확해 도달을 막은 '그럴듯한 퇴보'"
-EVIDENCE = ""
+REPO = Path(__file__).resolve().parent.parent
 
 _DIR = "mathmetics/matrix_exponent"
 # 관대한 예산: 여러 seed 로 재현 시도, '한 번이라도' 통과하면 능력 유지로 인정.
@@ -66,10 +59,10 @@ def _check_matmul_scheme(searcher, verifier, bench) -> str:
             f"정규화)을 되돌리거나 고쳐라.")
 
 
-def check(ctx) -> "list[str]":
-    reg_path = (ctx.repo / _DIR / "benchmarks.json").resolve()
-    searcher_path = (ctx.repo / _DIR / "searcher.py").resolve()
-    verifier_path = (ctx.repo / _DIR / "verifier.py").resolve()
+def run(repo) -> "list[str]":
+    reg_path = (repo / _DIR / "benchmarks.json").resolve()
+    searcher_path = (repo / _DIR / "searcher.py").resolve()
+    verifier_path = (repo / _DIR / "verifier.py").resolve()
     if not (reg_path.is_file() and searcher_path.is_file() and verifier_path.is_file()):
         return []  # 프레임워크가 없으면 할 일 없음.
 
@@ -105,3 +98,18 @@ def check(ctx) -> "list[str]":
                 violations.append(msg)
         # 다른 kind 는 미지원 -- 조용히 건너뛴다(새 유형은 여기에 추가).
     return violations
+
+
+def main() -> int:
+    violations = run(REPO)
+    if not violations:
+        print("[능력 래칫] 후퇴 없음 -- 등록된 기준을 모두 재현했다(또는 평가 불가 환경).")
+        return 0
+    print("[능력 래칫] 후퇴 감지")
+    for v in violations:
+        print(f"  - {v}")
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

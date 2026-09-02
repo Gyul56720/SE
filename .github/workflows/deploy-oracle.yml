@@ -14,6 +14,17 @@ on:
       - "main_public.py"
       - "agent_context.py"
       - "agent_memory.py"
+      - "public_agent_files.py"
+      - "secret_filter.py"
+      # 커밋 경로의 강제 장치. 이게 빠져 있어서 게이트를 새로 승격해도 서버는 옛 게이트
+      # 집합으로 계속 돌았다 -- searcher.py, bot_tools.py 와 같은 '코드가 서버에 도달하지
+      # 못하는' 경로이고, 하필 그 경로를 감시하는 장치 자신이 빠져 있었다. G013 이 이제
+      # 이 목록과 실제 실행 파일 집합이 어긋나면 커밋을 막는다.
+      - "gatekeeper.py"
+      - "self_challenge.py"
+      - "gates/**"
+      # 서버에서 도는 점검 도구. 능력 래칫이 커밋 게이트에서 여기로 옮겨왔다.
+      - "scripts/**"
       - "deploy/se-discord-bot.service"
       - "deploy/se-log-streamer.service"
       - "deploy/se-matrix-search.service"

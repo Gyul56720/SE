@@ -31,8 +31,11 @@ import gatekeeper  # noqa: E402
 INCIDENTS = [
     ("1a82685", "게스트 제한 11줄을 위해 discord_bot_server.py 190줄을 삭제한 자기 재작성",
      {"G003"}),
+    # 원래 G001(독스트링 자리) + G002(임포트 순환)를 기대했다. 2026-09-02 에 그 둘과
+    # G006(정의 전 이름 참조)을 G012(실제 임포트)로 통합했다 -- 셋 다 "임포트해보지 않고
+    # push해서 봇이 기동 단계에서 죽는다"는 하나의 실패를 AST 로 근사하던 것이었다.
     ("b32aa78", "게스트 가드를 def 다음 줄에 삽입 -> 독스트링 소실 + 순환 임포트",
-     {"G001", "G002"}),
+     {"G012"}),
     ("1ea4304", "run_bot_loop.sh가 저장소를 grep해 토큰을 찾아 로그로 출력",
      {"G004"}),
     ("c3b3b88", "공개 채널 run_shell이 비밀값을 마스킹 없이 그대로 반환(cat .env 한 줄로 유출)",
@@ -65,19 +68,10 @@ def _fired(report) -> "set[str]":
     return {r.rule_id for r in report.results if not r.passed}
 
 
-def _synthetic_requirements_incident() -> "tuple[str, set[str]]":
-    """2026-08-29 requirements 'X' 삽입 사고는 원격에 반영되지 않아 커밋 트리가 없다.
-    사고를 재현한 합성 트리를 만들어 G007이 발동하는지 본다."""
-    import shutil, tempfile
-    tmp = tempfile.mkdtemp()
-    archive = subprocess.run(["git", "archive", "HEAD"], cwd=REPO, capture_output=True, check=True)
-    subprocess.run(["tar", "-x", "-C", tmp], input=archive.stdout, check=True)
-    (Path(tmp) / "requirements.txt").write_text("requests>=2.31.0\nX\n", encoding="utf-8")
-    subprocess.run(["git", "init", "-q", tmp], check=True)
-    subprocess.run(["git", "-C", tmp, "add", "-A"], check=True, capture_output=True)
-    subprocess.run(["git", "-C", tmp, "-c", "user.email=t@t", "-c", "user.name=t",
-                    "commit", "-qm", "req incident"], check=True, capture_output=True)
-    return tmp, {"G007"}
+# _synthetic_requirements_incident 는 2026-09-02 에 제거했다. 그것이 증명하던 G007
+# (requirements.txt 자리표시자 검사)을 같이 지웠기 때문이다 -- 사고 1건이 그마저 원격에
+# 반영되지 않은 미수였고, 잡을 수 있는 것은 'X'/'TODO' 같은 명백한 쓰레기뿐이었다.
+# "실제로 설치되는가"는 네트워크가 필요해 커밋 게이트에 담을 수 없다.
 
 
 def main() -> int:
@@ -102,14 +96,6 @@ def main() -> int:
                 f"{commit}: {sorted(missing)} 가 사고 트리에서 발동하지 않았다 -- "
                 f"이 게이트는 해당 원인을 잡지 못한다"
             )
-
-    syn_tree, syn_expected = _synthetic_requirements_incident()
-    syn_fired = _fired(gatekeeper.run_gates(Path(syn_tree)))
-    syn_missing = syn_expected - syn_fired
-    print(f"[합성:requirements X 삽입] 기대 {sorted(syn_expected)} / 발동 {sorted(syn_fired)} "
-          f"-> {'RED 성립' if not syn_missing else 'RED 실패'}")
-    if syn_missing:
-        failures.append(f"합성 requirements 사고에서 {sorted(syn_missing)} 미발동")
 
     report = gatekeeper.run_gates(REPO)
     print(f"\n[HEAD] 현재 트리 -> {'GREEN 성립' if report.passed else 'GREEN 실패'}")

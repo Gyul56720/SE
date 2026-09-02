@@ -29,6 +29,11 @@ EVIDENCE = "public_agent_memory/20260828-202743_자기_코드_수정은_재작�
 CRITICAL_FILES = {
     "discord_bot_server.py", "main_public.py", "bot_tools.py", "agent_memory.py",
     "public_agent_files.py", "agent_context.py", "gatekeeper.py", "self_challenge.py",
+    # 2026-09-02 추가. 앞의 목록은 이 파일들이 생기기 전에 만들어졌고, 그동안 새로 생긴
+    # 안전장치들이 대량 삭제 보호를 못 받고 있었다 -- 목록이 낡으면 게이트도 낡는다.
+    "secret_filter.py",   # 비밀값 마스킹 + 공개 채널 자식 환경 정리 (G011 이 검사한다)
+    "quota_tracker.py",   # 키/모델 가용성 상태 -- 지워지면 폴백이 매번 처음부터 두드린다
+    "memory_hygiene.py",  # 기억 위생 절차
 }
 MAX_DELETED_LINES = 40
 

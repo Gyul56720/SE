@@ -51,3 +51,10 @@ echo
 echo "===== 3. 최근 improve 호출 로그 ====="
 journalctl -u se-matrix-search -n 400 --no-pager 2>/dev/null \
   | grep -o '{"improve".*}' | tail -5 || echo "(저널 접근 불가 -- sudo 필요할 수 있음)"
+
+echo
+echo "===== 4. 능력 래칫 (이미 되던 것이 안 되게 됐는가) ====="
+# 원래 커밋 게이트 G010 이었다. b=2 에서 seed 12 x 2000 iter 를 실제로 돌리는 검사라
+# 커밋 경로에 두면 git_sync 가 GIT_MUTEX 를 쥔 채 오래 머문다 -- 그래서 여기(점검 시점)로
+# 옮겼다. 통과 0 / 후퇴 1. numpy 가 없거나 프레임워크가 없으면 조용히 통과한다.
+python3 "${SE_DIR:-/home/ubuntu/SE}/scripts/capability_ratchet.py" || echo "  ^^ 후퇴 감지: searcher 변경을 되돌리거나 고쳐라"

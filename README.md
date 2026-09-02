@@ -22,8 +22,11 @@ Gemini + LangGraph ReAct 에이전트가 처리하고, 둘 다 `run_shell`로 �
 
 **안전장치(커밋 경로 위에 강제):**
 
-- `gatekeeper.py` + `gates/` — 커밋 직전 G001~G010을 돌리고 하나라도 걸리면 커밋하지 않는다.
-  산문 규칙은 읽히지 않으면 아무것도 막지 못하므로, 규칙을 실행 경로에 올린 것이 요점이다.
+- `gatekeeper.py` + `gates/` — 커밋 직전 게이트 9개(G003·G004·G005·G008·G009·G011~G014)를
+  돌리고 하나라도 걸리면 커밋하지 않는다. 산문 규칙은 읽히지 않으면 아무것도 막지 못하므로,
+  규칙을 실행 경로에 올린 것이 요점이다. 전체 ~0.6초.
+- `scripts/capability_ratchet.py` — 능력 래칫(옛 G010). CP-ALS를 실제로 돌리는 무거운
+  검사라 커밋 경로에서 빼서 `scripts/check_improve.sh`(점검 시점)로 옮겼다.
 - `self_challenge.py` — 진단을 검사 코드로 써서 RED(사고 커밋에서 실패) / GREEN(현재 통과)
   두 실행을 통과해야만 `gates/`로 승격한다. 증명되지 않은 진단은 게이트가 되지 못한다.
 - `tests/test_gates_on_incidents.py` — 실제 사고 커밋 트리에서 게이트가 정말 걸리는지 재증명.
