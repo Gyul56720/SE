@@ -140,18 +140,32 @@ module npu_axi_testbench;
 
         #50;
 
-        // Test Case 2: Max Negative Underflow (-128 * +1 * 4096 = -524,288)
-        for (int i = 0; i < 256; i++) begin
-            write_mem_128(i * 16, 128'h80808080808080808080808080808080);
+        // Test Case 2: Qwen2.5-Coder-7B Exact Dimensions (3584 active elements + 512 zero-padded)
+        // 3584 elements = 224 transfers of 128-bit (16 elements per transfer)
+        // 512 zero-padded elements = 32 transfers of zero.
+        // Expected value: 3584 * 127 * 1 = 455,168 (Which exceeds 16-bit signed max 32,767 by 13.9x)
+        for (int i = 0; i < 224; i++) begin
+            write_mem_128(i * 16, 128'h7F7F7F7F7F7F7F7F7F7F7F7F7F7F7F7F); // 3584 active
         end
-        $display("[Test 2] Loaded Min Vector (-128 * +1). Triggering NPU...");
+        for (int i = 224; i < 256; i++) begin
+            write_mem_128(i * 16, 128'h00000000000000000000000000000000); // 512 zero padding
+        end
+
+        for (int i = 0; i < 56; i++) begin
+            write_mem_128(32'h1000 + i * 16, 128'h55555555555555555555555555555555); // 3584 active weights (+1)
+        end
+        for (int i = 56; i < 64; i++) begin
+            write_mem_128(32'h1000 + i * 16, 128'h00000000000000000000000000000000); // 512 zero padding weights
+        end
+
+        $display("[Test 2] Loaded Qwen2.5-Coder-7B hidden_size=3584 Max Vector. Triggering NPU...");
         start_npu();
 
         @(posedge npu_done_irq);
         #1;
-        $display("[Test 2 Done] Output = %0d (Expected: -524288)", npu_result_out);
-        if (npu_result_out == -524288) begin
-            $display("[PASS] Test Case 2: Max Negative Underflow Verified.");
+        $display("[Test 2 Done] Output = %0d (Expected: 455168)", npu_result_out);
+        if (npu_result_out == 455168) begin
+            $display("[PASS] Test Case 2: Qwen2.5-Coder-7B hidden_size=3584 & 21-bit Accumulator S16 Overflow Immunity Verified!");
         end else begin
             $display("[FAIL] Test Case 2 Mismatch!");
             $fatal(1);
