@@ -51,6 +51,7 @@ import numpy as np
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+import activations  # noqa: E402
 import weights  # noqa: E402
 
 WORKER = HERE / "_worker.py"
@@ -103,21 +104,37 @@ def _child_env(tmp: Path) -> dict:
     return env
 
 
-def functional_error(W: np.ndarray, R: np.ndarray, n_probe: int = N_PROBE,
-                     seed: int = PROBE_SEED) -> float:
-    """P(x)=W@x 와 P'(x)=W'@x 의 상대 오차. 가중치 자체의 오차보다 이것이 본질이다 --
-    쓰이는 곳이 행렬곱이므로, 가중치가 조금 틀려도 출력이 보존되면 좋은 코덱이다."""
-    rng = np.random.default_rng(seed)
-    X = rng.standard_normal((W.shape[1], n_probe)).astype(np.float32)
-    Y, Y2 = W @ X, R @ X
+def _relative_error(W: np.ndarray, R: np.ndarray, X: np.ndarray) -> float:
+    Y = W @ X
     denom = float(np.linalg.norm(Y))
     if denom == 0:
         return 0.0
-    return float(np.linalg.norm(Y - Y2) / denom)
+    return float(np.linalg.norm(Y - R @ X) / denom)
+
+
+def isotropic_probes(n_in: int, n_probe: int = N_PROBE, seed: int = PROBE_SEED) -> np.ndarray:
+    """등방 가우시안 입력. 활성치 표본이 없을 때의 물러남 자리이자, 항상 함께 기록하는 대조군."""
+    return np.random.default_rng(seed).standard_normal((n_in, n_probe)).astype(np.float32)
+
+
+def functional_error(W: np.ndarray, R: np.ndarray, X: np.ndarray = None,
+                     n_probe: int = N_PROBE, seed: int = PROBE_SEED) -> float:
+    """P(x)=W@x 와 P'(x)=W'@x 의 상대 오차.
+
+    X 를 주면 그것으로, 안 주면 등방 가우시안으로 잰다. 이 선택이 지표의 성격을 통째로
+    바꾼다 -- X 가 등방이면 이 값은 `‖ΔW‖_F/‖W‖_F` 로 떨어져서(실측 비율 0.96) 사실상
+    가중치 오차가 된다. 즉 등방 X 로 재는 한 "함수 오차"라는 이름이 실제와 다르다.
+
+    실제 활성치는 강하게 비등방이다. 한 번도 들어오지 않는 x 방향은 안 지켜도 되므로,
+    비등방 X 로 재면 더 싼 코덱이 같은 품질로 통과할 수 있다. 그 차이가 얼마나 되는지가
+    지금 우리가 재려는 것이고, 그래서 두 값을 항상 나란히 남긴다."""
+    if X is None:
+        X = isotropic_probes(W.shape[1], n_probe, seed)
+    return _relative_error(W, R, X)
 
 
 def score_tensor(codec: Path, name: str, W: np.ndarray, timeout: float = NODE_TIMEOUT,
-                 src_bits: float = None) -> dict:
+                 src_bits: float = None, cache_dir=None, probes: np.ndarray = None) -> dict:
     """행렬 하나에 대해 코덱을 격리 실행하고 잰다.
 
     src_bits 는 압축률의 분모 -- 원본이 몇 비트로 배포되는가다. 생략하면 캐시의
@@ -176,11 +193,17 @@ def score_tensor(codec: Path, name: str, W: np.ndarray, timeout: float = NODE_TI
 
         bits = 8.0 * len(blob) / W.size
         sb = float(src_bits if src_bits is not None else weights.source_bits())
+
+        # 래칫이 쓰는 지표와, 항상 함께 남기는 등방 대조군.
+        X = probes if probes is not None else activations.load_probes(name, W.shape[1], cache_dir)
+        iso = functional_error(W, R)
         return {
             "name": name, "shape": list(W.shape), "n_weights": int(W.size),
             "bits_per_weight": bits,
             "compression_x": sb / bits,
-            "func_err": functional_error(W, R),
+            "func_err": iso if X is None else _relative_error(W, R, X),
+            "func_err_iso": iso,
+            "probe_source": "isotropic" if X is None else "activations",
             "weight_err": float(np.linalg.norm(W - R) / (np.linalg.norm(W) or 1.0)),
             "encode_s": enc_s, "decode_s": dec_s,
         }
@@ -204,21 +227,32 @@ def score_codec(codec: Path, split: str = "holdout", cache_dir=None,
     """
     tensors = weights.load(split, cache_dir)
     sb = float(weights.source_bits(cache_dir))
-    rows = [score_tensor(codec, name, W, timeout, sb) for name, W in tensors]
+    rows = [score_tensor(codec, name, W, timeout, sb, cache_dir) for name, W in tensors]
     total = sum(r["n_weights"] for r in rows)
+
+    # 지표를 섞으면 안 된다. 일부 텐서만 활성치가 있으면 합계가 두 지표의 잡탕이 되고,
+    # 그 위에 걸린 래칫은 무엇을 비교하는지 알 수 없는 것이 된다.
+    sources = {r["probe_source"] for r in rows}
+    if len(sources) > 1:
+        missing = [r["name"] for r in rows if r["probe_source"] == "isotropic"]
+        raise RuntimeError(
+            "일부 텐서에만 활성치가 있다 -- 지표가 섞인다. 없는 쪽: "
+            + ", ".join(missing[:5])
+            + "\n`python3 compression/activations.py synthetic` 또는 VM 에서 capture 를 돌려라.")
 
     def wmean(key: str) -> float:
         return sum(r[key] * r["n_weights"] for r in rows) / total
 
     mean = {"bits_per_weight": wmean("bits_per_weight"),
             "func_err": wmean("func_err"),
+            "func_err_iso": wmean("func_err_iso"),
             "weight_err": wmean("weight_err"),
             "encode_s": sum(r["encode_s"] for r in rows),
             "decode_s": sum(r["decode_s"] for r in rows),
             "n_weights": total}
     mean["compression_x"] = sb / mean["bits_per_weight"]
     return {"codec": str(codec), "split": split, "source_bits": sb,
-            "tensors": rows, "mean": mean}
+            "probe_source": sources.pop(), "tensors": rows, "mean": mean}
 
 
 def evaluate(codec: Path, split: str = "holdout", cache_dir=None,
@@ -249,6 +283,9 @@ def evaluate(codec: Path, split: str = "holdout", cache_dir=None,
         "codec": str(codec),
         "source": man["source"], "synthetic": man["synthetic"], "split": split,
         "source_bits": result["source_bits"],
+        "probe_source": result["probe_source"],
+        "activations": (activations.manifest(cache_dir) or {}).get("source", "없음"),
+        "activations_synthetic": (activations.manifest(cache_dir) or {}).get("synthetic"),
         "n_tensors": len(result["tensors"]),
         "mean": m, "baseline_int8": b, "tensors": result["tensors"],
         "beats_int8": verdict, "reason": why,
@@ -282,11 +319,18 @@ def main() -> int:
     print(f"데이터 {res['source']} / {res['split']} 셋 {res['n_tensors']}개, "
           f"파라미터 {m['n_weights']:,}개{warn}")
     print(f"압축배율 분모 = 원본 {sb:g} bits/weight (bf16 배포 기준)")
-    print(f"{'':14}{'bits/weight':>13}{'압축배율':>10}{'함수오차':>12}{'가중치오차':>12}")
+    if res["probe_source"] == "activations":
+        aw = "  ⚠ 합성 활성치" if res.get("activations_synthetic") else ""
+        print(f"왜곡 측정 입력 = 실제 활성치 표본 ({res['activations']}){aw}")
+    else:
+        print("왜곡 측정 입력 = 등방 가우시안 -- 사실상 가중치 오차를 재고 있다"
+              " (activations.py 를 돌리면 실제 방향으로 잰다)")
+    print(f"{'':14}{'bits/weight':>13}{'압축배율':>10}{'함수오차':>12}{'등방오차':>12}"
+          f"{'가중치오차':>12}")
     print(f"{'이 코덱':14}{m['bits_per_weight']:13.3f}{m['compression_x']:9.2f}x"
-          f"{m['func_err']:12.5f}{m['weight_err']:12.5f}")
+          f"{m['func_err']:12.5f}{m['func_err_iso']:12.5f}{m['weight_err']:12.5f}")
     print(f"{'int8 기준선':14}{b['bits_per_weight']:13.3f}{b['compression_x']:9.2f}x"
-          f"{b['func_err']:12.5f}{b['weight_err']:12.5f}")
+          f"{b['func_err']:12.5f}{b['func_err_iso']:12.5f}{b['weight_err']:12.5f}")
     print(f"encode {m['encode_s']*1000:.0f}ms / decode {m['decode_s']*1000:.0f}ms "
           f"(셋 전체 합계)")
     print(("통과: " if res["beats_int8"] else "미달: ") + res["reason"])

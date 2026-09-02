@@ -31,11 +31,15 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+
+import numpy as np
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "compression"))
 
+import activations  # noqa: E402
+import bounds  # noqa: E402
 import judge  # noqa: E402
 import weights  # noqa: E402
 
@@ -103,9 +107,14 @@ def test_honest_improvement_passes() -> None:
 def test_one_axis_win_is_not_enough() -> None:
     """한 축만 이기는 코덱은 어느 방향이든 통과하면 안 된다.
 
-    양쪽 방향을 다 본다. 압축력만 이기는 쪽(3진, int8_clip)과 복원력만 이기는 쪽(fp16).
-    한 방향만 시험하면 부등호를 뒤집은 심판을 못 잡는다."""
-    for name in ("ternary_b158.py", "int8_clip.py"):
+    양쪽 방향을 다 본다. 압축력만 이기는 쪽(3진)과 복원력만 이기는 쪽(fp16). 한 방향만
+    시험하면 부등호를 뒤집은 심판을 못 잡는다.
+
+    int8_clip 은 여기 넣지 않는다. 비트는 확실히 이기지만(8.070 < 8.138) 오차가 int8 과
+    5번째 자리까지 동점이라, 왜곡을 등방으로 재느냐 활성치로 재느냐에 따라 판정이 뒤집힌다
+    (등방에서는 기각, 활성치에서는 통과). 마진이 잡음인 코덱을 red 사례로 박아두면 지표를
+    손볼 때마다 테스트가 깨진다. 대신 그 사실 자체를 README 에 적어 둔다."""
+    for name in ("ternary_b158.py",):
         res = judge.evaluate(CODECS / name)
         check(not res["beats_int8"], f"{name}: 한 축만 이긴 코덱을 통과시켰다: {res['reason']}")
         check(res["mean"]["bits_per_weight"] < res["baseline_int8"]["bits_per_weight"],
@@ -240,20 +249,91 @@ def test_mean_is_parameter_weighted() -> None:
     check(abs(m["func_err"] - werr) < 1e-9, "함수오차도 가중 평균이어야 한다")
 
 
+def test_metric_follows_activations() -> None:
+    """왜곡을 재는 **방향**이 점수를 실제로 바꾸는가.
+
+    지금까지 심판은 X ~ N(0,I) 로 쟀는데, X 가 등방이면 그 값은 ‖ΔW‖_F/‖W‖_F 로 떨어진다
+    (실측 비율 0.96) -- 즉 "함수 오차"라는 이름과 달리 가중치 오차를 재고 있었다. 실제
+    활성치는 소수 채널이 수십 배 큰 비등방이고, 그러면 같은 코덱도 점수가 달라져야 한다.
+    이 검사가 깨지면 활성치 파일을 붙여도 심판이 그것을 안 보고 있다는 뜻이다."""
+    name, W = _one_tensor()
+    n_in = W.shape[1]
+    iso = judge.isotropic_probes(n_in)
+    hot = iso.copy()
+    idx = np.random.default_rng(0).choice(n_in, max(1, n_in // 32), replace=False)
+    hot[idx] *= 30.0
+
+    a = judge.score_tensor(CODECS / "int8.py", name, W, probes=iso)
+    b = judge.score_tensor(CODECS / "int8.py", name, W, probes=hot)
+    check(a["probe_source"] == "activations" and b["probe_source"] == "activations",
+          "명시적으로 준 활성치가 기록되지 않는다")
+    check(abs(a["func_err"] - a["func_err_iso"]) < 1e-9,
+          "등방 표본을 줬는데 등방 대조군과 값이 다르다")
+    rel = (b["func_err"] - a["func_err"]) / a["func_err"]
+    check(rel > 0.05,
+          f"outlier 채널을 넣었는데 점수가 거의 안 변한다({rel:+.1%}) -- 심판이 방향을 안 본다")
+    check(abs(b["func_err_iso"] - a["func_err_iso"]) < 1e-9,
+          "등방 대조군이 활성치에 따라 흔들린다 -- 대조군 구실을 못 한다")
+
+
+def test_metric_is_not_silently_mixed() -> None:
+    """일부 텐서에만 활성치가 있으면 합계가 두 지표의 잡탕이 된다. 조용히 넘어가면 안 된다."""
+    import shutil
+    import tempfile
+    src = Path(weights.CACHE_DIR)
+    tmp = Path(tempfile.mkdtemp(prefix="mixed_probe_"))
+    try:
+        shutil.copytree(src, tmp / "cache")
+        cache = tmp / "cache"
+        victims = sorted(cache.glob("*" + activations.ACT_SUFFIX))
+        check(len(victims) > 1, "활성치 파일이 없어 섞임을 시험할 수 없다")
+        victims[0].unlink()                      # 한 텐서만 활성치를 없앤다
+        try:
+            judge.score_codec(CODECS / "int8.py", "all", cache)
+            check(False, "지표가 섞였는데 그냥 점수를 냈다")
+        except RuntimeError as e:
+            check("섞인다" in str(e), f"섞임을 알리는 오류가 아니다: {e}")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_coding_gain_is_zero_for_isotropic() -> None:
+    """변환 부호화 이득 0.5·log2(AM/GM) 이 등방에서 0 이고 비등방에서 양수인가.
+
+    이 한 줄이 '등방 가정은 활성치 이득을 정의상 0 으로 만든다'는 주장의 실물이다.
+    하한을 얼마나 내릴 수 있는지가 전부 이 값에 달려 있다."""
+    check(abs(bounds.coding_gain(np.ones(256))) < 1e-9, "등방인데 이득이 0 이 아니다")
+
+    v = np.ones(256)
+    v[:8] = 30.0 ** 2
+    g = bounds.coding_gain(v)
+    check(g > 1.0, f"명백한 outlier 구조인데 이득이 작다: {g:.3f} bits")
+
+    # 단조성: outlier 가 셀수록 이득이 커진다
+    prev = -1.0
+    for mag in (2.0, 10.0, 30.0, 100.0):
+        w = np.ones(256)
+        w[:8] = mag ** 2
+        cur = bounds.coding_gain(w)
+        check(cur > prev, f"배율 {mag} 에서 이득이 안 늘었다")
+        prev = cur
+
+
 def main() -> int:
     for fn in (test_cheats_are_disqualified, test_bits_are_measured_not_claimed,
                test_honest_improvement_passes, test_one_axis_win_is_not_enough,
                test_injected_node_verifier, test_holdout_is_disjoint_from_design,
                test_split_is_stratified_by_kind, test_compression_denominator_is_source_dtype,
-               test_mean_is_parameter_weighted):
+               test_mean_is_parameter_weighted, test_metric_follows_activations,
+               test_metric_is_not_silently_mixed, test_coding_gain_is_zero_for_isotropic):
         fn()
     if FAILURES:
         print("실패:")
         for f in FAILURES:
             print("  -", f)
         return 1
-    print("압축 심판: 부정행위 5종 실격, 대조군 4종 판정, 셋 층화 분리, "
-          "bf16 분모, 파라미터 가중 평균 -- 통과")
+    print("압축 심판: 부정행위 5종 실격, 대조군 4종 판정, 셋 층화 분리, bf16 분모, "
+          "파라미터 가중 평균, 활성치 방향 -- 통과")
     return 0
 
 

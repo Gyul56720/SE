@@ -62,4 +62,5 @@ jobs:
       - name: 압축 심판 테스트 (부정행위 코덱을 실제로 실격시키는가)
         run: |
           python3 compression/weights.py synthetic
+          python3 compression/activations.py synthetic
           python3 tests/test_compression_judge.py
