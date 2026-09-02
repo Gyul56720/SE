@@ -25,6 +25,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import struct
 import sys
 from pathlib import Path
@@ -41,12 +42,33 @@ HF_URL = "https://huggingface.co/{repo}/resolve/main/{file}"
 
 # 가져올 행렬 종류. 성질이 다른 것들을 섞는다 -- attention 사영, MLP, 임베딩은
 # 분포가 서로 다르고, 한 종류만으로 채점하면 그 종류에만 좋은 코덱이 이긴다.
-WANT_PATTERNS = ["self_attn.q_proj.weight", "self_attn.o_proj.weight",
-                 "mlp.gate_proj.weight", "mlp.down_proj.weight"]
-MAX_TENSORS = 12
+#
+# 예전에는 q/o/gate/down 네 종류만 받았는데, 그러면 레이어의 69%, 모델 전체의 50% 밖에
+# 안 본다(Qwen2.5-0.5B 기준). v_proj 와 up_proj 를 넣어 레이어를 거의 다 덮는다.
+WANT_PATTERNS = ["self_attn.q_proj.weight", "self_attn.v_proj.weight",
+                 "self_attn.o_proj.weight", "mlp.gate_proj.weight",
+                 "mlp.up_proj.weight", "mlp.down_proj.weight"]
+
+# 임베딩은 따로 다룬다. Qwen2.5-0.5B 의 embed_tokens 는 151936x896 = 136M 원소로 모델
+# 전체 파라미터의 27.6% 다 -- 이걸 빼놓고 "모델을 압축했다"고 할 수 없다. 다만 통째로
+# 받으면 float32 로 545MB 고 채점도 느리다. 그래서 vocab 을 가로질러 여러 구간의 연속
+# 행 블록만 뽑는다. 앞부분만 자르면 안 되는 이유: 행 하나가 토큰 하나이고 토큰 id 는
+# 대체로 빈도순이라, 앞만 보면 흔한 토큰만 보게 된다. 거의 학습되지 않아 압축 여지가
+# 큰 희귀 토큰 쪽을 놓친다.
+EMBED_PATTERNS = ["embed_tokens.weight"]
+EMBED_BLOCKS = 4             # vocab 을 가로질러 몇 구간을 뽑을지
+EMBED_ROWS = 1024            # 구간당 행 수
+
+MAX_TENSORS = 16
 MAX_ELEMS = 4_000_000        # 텐서 하나 상한(행렬이 너무 크면 채점이 느려진다)
 
 _ST_DTYPES = {"F32": np.float32, "F16": np.float16, "BF16": None, "F64": np.float64}
+
+# 원본이 몇 비트로 배포되는가. 압축률의 **분모**다. 예전 코드는 32 로 박혀 있었는데,
+# 실제 모델은 bf16(16비트)으로 배포된다 -- 그래서 압축률이 전부 2배 부풀어 있었다.
+# fp16 코덱이 "2배 압축"으로 표시되던 것이 그 착시다(실제로는 1.0배, 압축이 아니다).
+_ST_BITS = {"F32": 32, "F16": 16, "BF16": 16, "F64": 64}
+DEFAULT_SOURCE_BITS = 16
 
 
 def _fetch(url: str, start: int, end: int) -> bytes:
@@ -80,20 +102,24 @@ def fetch(repo: str = DEFAULT_REPO, filename: str = DEFAULT_FILE,
     header = json.loads(_fetch(url, 8, 8 + header_len - 1).decode("utf-8"))
     data_start = 8 + header_len
 
-    picked, saved = [], []
+    picked, embeds, saved = [], [], []
     for name, meta in header.items():
         if name == "__metadata__":
             continue
-        if not any(p in name for p in WANT_PATTERNS):
-            continue
         shape = meta["shape"]
-        if len(shape) != 2 or int(np.prod(shape)) > MAX_ELEMS:
+        if len(shape) != 2:
             continue
-        picked.append((name, meta))
+        if any(q in name for q in EMBED_PATTERNS):
+            embeds.append((name, meta))
+        elif any(q in name for q in WANT_PATTERNS) and int(np.prod(shape)) <= MAX_ELEMS:
+            picked.append((name, meta))
     picked.sort(key=lambda kv: kv[0])
     picked = picked[:limit]
-    if not picked:
+    if not picked and not embeds:
         raise RuntimeError("헤더에서 조건에 맞는 2차원 행렬을 찾지 못했다.")
+
+    dtypes = {m["dtype"] for _, m in picked + embeds}
+    src_bits = max(_ST_BITS.get(d, DEFAULT_SOURCE_BITS) for d in dtypes)
 
     for name, meta in picked:
         s, e = meta["data_offsets"]
@@ -104,47 +130,130 @@ def fetch(repo: str = DEFAULT_REPO, filename: str = DEFAULT_FILE,
         saved.append({"name": name, "shape": list(arr.shape), "file": out.name})
         print(f"  {name} {tuple(arr.shape)} -> {out.name} ({arr.nbytes/1e6:.1f}MB)")
 
-    manifest = {"source": f"{repo}/{filename}", "synthetic": False, "tensors": saved}
+    # 임베딩: vocab 을 가로질러 연속 행 블록 몇 개만. 행렬이 행 우선(row-major)이라
+    # 행 구간 하나가 바이트 구간 하나로 떨어져서, 블록당 Range 요청 한 번이면 된다.
+    for name, meta in embeds:
+        rows, cols = meta["shape"]
+        itemsize = {"F32": 4, "F16": 2, "BF16": 2, "F64": 8}[meta["dtype"]]
+        base, _ = meta["data_offsets"]
+        nrows = min(EMBED_ROWS, max(1, rows // EMBED_BLOCKS))
+        for b in range(EMBED_BLOCKS):
+            r0 = (rows * b) // EMBED_BLOCKS
+            r1 = min(r0 + nrows, rows)
+            if r1 <= r0:
+                continue
+            s_off = base + r0 * cols * itemsize
+            e_off = base + r1 * cols * itemsize
+            raw = _fetch(url, data_start + s_off, data_start + e_off - 1)
+            arr = _to_f32(raw, meta["dtype"], [r1 - r0, cols])
+            slug = f"{name[:-len('.weight')]}.rows{r0}.weight"
+            out = cache_dir / (slug.replace("/", "_") + ".npy")
+            np.save(out, arr)
+            saved.append({"name": slug, "shape": list(arr.shape), "file": out.name})
+            print(f"  {slug} {tuple(arr.shape)} -> {out.name} ({arr.nbytes/1e6:.1f}MB)")
+
+    manifest = {"source": f"{repo}/{filename}", "synthetic": False,
+                "source_bits": src_bits, "tensors": saved}
     (cache_dir / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2),
                                              encoding="utf-8")
     return manifest
 
 
-def make_synthetic(cache_dir: Path = None, count: int = 8, seed: int = 0) -> dict:
+def make_synthetic(cache_dir: Path = None, layers: int = 3, seed: int = 0) -> dict:
     """네트워크가 없는 곳에서 배관을 시험하기 위한 가짜 가중치.
 
     실제 가중치가 아니다. 이걸로 낸 점수는 코덱의 성능이 아니라 파이프라인이 도는지의
-    확인일 뿐이다. manifest 에 synthetic=True 로 남고 verifier 가 결과에 그대로 싣는다."""
+    확인일 뿐이다. manifest 에 synthetic=True 로 남고 verifier 가 결과에 그대로 싣는다.
+
+    다만 **구조는 실제를 흉내 낸다**. 예전에는 256x256 정사각 8개를 냈는데, 그러면 배관
+    시험이 실제에서 터질 문제를 통과시킨다:
+      - 종류가 하나라 층화 분할이 아무 일도 안 한다
+      - 크기가 다 같아 파라미터 가중 평균이 산술 평균과 구별되지 않는다
+      - 256 이 2의 거듭제곱이라, 아다마르 회전이 실제 차원(896=2^7x7, 4864=2^8x19)에서
+        그대로 안 된다는 사실이 가려진다
+    그래서 홀수부를 실제와 같게 맞춘 작은 차원을 쓴다: 224 = 2^5 x 7 (실제 896 과 홀수부
+    7 이 같다), 304 = 2^4 x 19 (실제 4864 와 홀수부 19 가 같다).
+    """
     cache_dir = Path(cache_dir or CACHE_DIR)
     cache_dir.mkdir(parents=True, exist_ok=True)
     rng = np.random.default_rng(seed)
-    saved = []
-    for i in range(count):
-        rows, cols = 256, 256
+
+    def matrix(rows: int, cols: int) -> np.ndarray:
         # 채널별 스케일 차이 + **행마다** outlier. 처음에는 전체에서 무작위로 몇 개만
         # 키웠는데, 그러면 행별 max/std 가 3 정도에 그쳐 채널 단위 양자화에 아무 영향이
-        # 없었다(실측). 실제 LLM 가중치는 채널 안에 소수의 큰 값이 있고, 그것이 per-channel
-        # max-abs 스케일의 해상도를 잡아먹는 것이 알려진 현상이다. 그 성질을 흉내 낸다.
+        # 없었다(실측). 실제 LLM 가중치는 채널 안에 소수의 큰 값이 있고, 그것이
+        # per-channel max-abs 스케일의 해상도를 잡아먹는 것이 알려진 현상이다.
         scale = rng.lognormal(mean=0.0, sigma=0.6, size=(rows, 1)).astype(np.float32)
         W = (rng.standard_normal((rows, cols)).astype(np.float32) * scale) * 0.02
         for r in range(rows):
             k = int(rng.integers(1, 3))
-            cols_idx = rng.integers(0, cols, size=k)
-            W[r, cols_idx] *= rng.uniform(8.0, 20.0, size=k).astype(np.float32)
-        name = f"synthetic.layer{i}.weight"
-        out = cache_dir / (name + ".npy")
+            idx = rng.integers(0, cols, size=k)
+            W[r, idx] *= rng.uniform(8.0, 20.0, size=k).astype(np.float32)
+        return W
+
+    H, I, KV = 224, 304, 32          # hidden / intermediate / kv (GQA 로 작다)
+    saved = []
+
+    def emit(name: str, W: np.ndarray) -> None:
+        out = cache_dir / (name.replace("/", "_") + ".npy")
         np.save(out, W)
         saved.append({"name": name, "shape": list(W.shape), "file": out.name})
-    manifest = {"source": "synthetic", "synthetic": True, "tensors": saved}
+
+    for i in range(layers):
+        pre = f"synthetic.layers.{i}."
+        emit(pre + "self_attn.q_proj.weight", matrix(H, H))
+        emit(pre + "self_attn.v_proj.weight", matrix(KV, H))
+        emit(pre + "self_attn.o_proj.weight", matrix(H, H))
+        emit(pre + "mlp.gate_proj.weight", matrix(I, H))
+        emit(pre + "mlp.up_proj.weight", matrix(I, H))
+        emit(pre + "mlp.down_proj.weight", matrix(H, I))
+    for b in range(EMBED_BLOCKS):    # 임베딩 행 블록 흉내
+        emit(f"synthetic.embed_tokens.rows{b * 256}.weight", matrix(256, H))
+
+    # 합성이라도 분모는 실제와 같게 둔다. 실제 모델은 bf16 으로 배포된다.
+    manifest = {"source": "synthetic", "synthetic": True,
+                "source_bits": DEFAULT_SOURCE_BITS, "tensors": saved}
     (cache_dir / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2),
                                              encoding="utf-8")
     return manifest
 
 
-def _split(name: str) -> str:
-    """텐서 이름 해시로 설계셋/평가셋을 가른다. 이름만 보고 결정되므로 재현된다."""
-    h = int(hashlib.sha256(name.encode("utf-8")).hexdigest()[:8], 16)
-    return "holdout" if h % 3 == 0 else "design"
+def _kind(name: str) -> str:
+    """텐서를 '종류'로 묶는다. 층 번호와 행 구간 번호를 지워 같은 역할끼리 모은다.
+
+    model.layers.3.mlp.down_proj.weight -> mlp.down_proj
+    model.embed_tokens.rows512.weight   -> embed_tokens.rowsN
+    """
+    s = re.sub(r"^\w+\.layers\.\d+\.", "", name)
+    s = re.sub(r"^(model|synthetic)\.", "", s)
+    s = re.sub(r"\.weight$", "", s)
+    return re.sub(r"\d+", "N", s)
+
+
+def assign_splits(names) -> dict:
+    """종류별로 **층화**해서 design/holdout 을 가른다.
+
+    이름 해시로만 가르면(이전 방식) 한 종류가 통째로 한쪽에 몰릴 수 있다. down_proj 가
+    전부 design 에 들어가면 down_proj 에 과적합한 코덱을 holdout 이 못 잡는다 -- 본 적
+    없는 종류를 못 봤으니까. 종류 안에서 3개마다 1개를 holdout 으로 보내면, 그 종류가
+    2개 이상 있는 한 양쪽에 다 나타난다.
+
+    회전 코덱을 넣으면 이 구멍이 더 커진다. 회전 행렬은 차원마다 다르고, 차원은 종류를
+    따라가기 때문이다 -- 종류가 한쪽에 몰리면 그 차원의 회전을 holdout 이 검증하지 못한다.
+    """
+    by_kind: dict = {}
+    for n in names:
+        by_kind.setdefault(_kind(n), []).append(n)
+    out = {}
+    for group in by_kind.values():
+        for i, n in enumerate(sorted(group)):
+            out[n] = "holdout" if i % 3 == 1 else "design"
+    return out
+
+
+def source_bits(cache_dir: Path = None) -> int:
+    """원본이 몇 비트로 배포되는가 -- 압축률의 분모."""
+    return int(manifest(cache_dir).get("source_bits", DEFAULT_SOURCE_BITS))
 
 
 def load(split: str = "holdout", cache_dir: Path = None) -> "list[tuple[str, np.ndarray]]":
@@ -158,9 +267,10 @@ def load(split: str = "holdout", cache_dir: Path = None) -> "list[tuple[str, np.
             f"(배관 시험만 할 거면 `python3 compression/weights.py synthetic` -- "
             f"실제 가중치가 아니고 결과에 synthetic 으로 표시된다)")
     manifest = json.loads(man_path.read_text(encoding="utf-8"))
+    where = assign_splits([t["name"] for t in manifest["tensors"]])
     out = []
     for t in manifest["tensors"]:
-        if split != "all" and _split(t["name"]) != split:
+        if split != "all" and where[t["name"]] != split:
             continue
         out.append((t["name"], np.load(cache_dir / t["file"])))
     if not out:
@@ -192,9 +302,14 @@ def main() -> int:
     else:
         m = manifest(cache)
 
+    where = assign_splits([t["name"] for t in m["tensors"]])
+    total = sum(int(np.prod(t["shape"])) for t in m["tensors"])
     for t in m["tensors"]:
-        print(f"  [{_split(t['name']):7}] {t['name']} {tuple(t['shape'])}")
-    print(f"source={m['source']} synthetic={m['synthetic']} 총 {len(m['tensors'])}개")
+        print(f"  [{where[t['name']]:7}] {t['name']:52} {str(tuple(t['shape'])):14} "
+              f"{_kind(t['name'])}")
+    print(f"source={m['source']} synthetic={m['synthetic']} "
+          f"source_bits={m.get('source_bits', DEFAULT_SOURCE_BITS)} "
+          f"텐서 {len(m['tensors'])}개 / 파라미터 {total:,}개")
     return 0
 
 

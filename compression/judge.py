@@ -18,8 +18,14 @@
 두 축을 **동시에** 이겨야 한다:
   - 압축력: bits/weight 가 int8 기준선보다 작다
   - 복원력: 함수 오차가 int8 기준선보다 작다
-한쪽만 이기는 것은 쉽다. ternary_b158 은 압축력을 5배 이기고 복원력에서 38배 진다.
-fp16 은 복원력을 76배 이기고 압축력에서 2배 진다. 둘 다 이기는 것이 목표다.
+한쪽만 이기는 것은 쉽다. ternary_b158 은 압축력을 4.7배 이기고 복원력에서 31배 진다.
+fp16 은 복원력을 124배 이기고 압축력에서 2배 진다. 둘 다 이기는 것이 목표다.
+
+집계에서 두 가지를 지킨다:
+  - 압축배율의 분모는 **원본이 배포되는 비트폭**(bf16 = 16)이지 fp32(32) 가 아니다.
+  - 텐서별 산술 평균이 아니라 **파라미터 수 가중 평균**이다.
+둘 다 예전에 틀려 있었다. 분모가 32 라 배율이 전부 2배 부풀었고(int8 이 3.9배로 표시됐다),
+산술 평균이라 0.8M 짜리 q_proj 와 4.4M 짜리 gate_proj 가 같은 표를 가졌다.
 
 부정행위 차단(무엇을 막고 무엇을 못 막는지 분명히 적는다):
   막는다 - 전역 변수로 원본 넘기기(프로세스 분리), 원본 파일 재읽기(decode 전에 지운다),
@@ -110,8 +116,12 @@ def functional_error(W: np.ndarray, R: np.ndarray, n_probe: int = N_PROBE,
     return float(np.linalg.norm(Y - Y2) / denom)
 
 
-def score_tensor(codec: Path, name: str, W: np.ndarray, timeout: float = NODE_TIMEOUT) -> dict:
-    """행렬 하나에 대해 코덱을 격리 실행하고 잰다."""
+def score_tensor(codec: Path, name: str, W: np.ndarray, timeout: float = NODE_TIMEOUT,
+                 src_bits: float = None) -> dict:
+    """행렬 하나에 대해 코덱을 격리 실행하고 잰다.
+
+    src_bits 는 압축률의 분모 -- 원본이 몇 비트로 배포되는가다. 생략하면 캐시의
+    manifest 에서 읽는다. 실제 모델은 bf16(16) 이지 fp32(32) 가 아니다."""
     codec = Path(codec).resolve()
     tmp_root = Path(tempfile.mkdtemp(prefix="codec_judge_"))
     try:
@@ -165,10 +175,11 @@ def score_tensor(codec: Path, name: str, W: np.ndarray, timeout: float = NODE_TI
             raise CodecFailure("decode 결과에 NaN/Inf 가 있다")
 
         bits = 8.0 * len(blob) / W.size
+        sb = float(src_bits if src_bits is not None else weights.source_bits())
         return {
-            "name": name, "shape": list(W.shape),
+            "name": name, "shape": list(W.shape), "n_weights": int(W.size),
             "bits_per_weight": bits,
-            "compression_x": 32.0 / bits,
+            "compression_x": sb / bits,
             "func_err": functional_error(W, R),
             "weight_err": float(np.linalg.norm(W - R) / (np.linalg.norm(W) or 1.0)),
             "encode_s": enc_s, "decode_s": dec_s,
@@ -179,14 +190,35 @@ def score_tensor(codec: Path, name: str, W: np.ndarray, timeout: float = NODE_TI
 
 def score_codec(codec: Path, split: str = "holdout", cache_dir=None,
                 timeout: float = NODE_TIMEOUT) -> dict:
-    """코덱을 평가셋 전체로 채점한다."""
+    """코덱을 평가셋 전체로 채점한다.
+
+    집계는 텐서별 산술 평균이 아니라 **파라미터 수 가중 평균**이다. 산술 평균을 쓰면
+    작은 텐서와 큰 텐서가 같은 표를 갖는다 -- Qwen2.5-0.5B 한 레이어에서 MLP 가
+    87.7%, q+o 가 10.8%, GQA 라 k+v 는 1.5% 인데, 텐서별 평균은 이 셋을 동급으로 센다.
+    그러면 작은 텐서에만 좋은 코덱이 이긴다.
+
+    bits/weight 의 가중 평균은 정의상 (전체 blob 비트) / (전체 파라미터 수) 와 같다 --
+    즉 "이 코덱으로 모델을 담으면 몇 비트인가"라는 원래 묻고 싶던 값이 된다.
+
+    시간(encode_s/decode_s)만 평균이 아니라 합이다. 평균 내면 텐서를 늘릴수록 작아 보인다.
+    """
     tensors = weights.load(split, cache_dir)
-    rows = [score_tensor(codec, name, W, timeout) for name, W in tensors]
-    n = len(rows)
-    mean = {k: sum(r[k] for r in rows) / n
-            for k in ("bits_per_weight", "compression_x", "func_err", "weight_err",
-                      "encode_s", "decode_s")}
-    return {"codec": str(codec), "split": split, "tensors": rows, "mean": mean}
+    sb = float(weights.source_bits(cache_dir))
+    rows = [score_tensor(codec, name, W, timeout, sb) for name, W in tensors]
+    total = sum(r["n_weights"] for r in rows)
+
+    def wmean(key: str) -> float:
+        return sum(r[key] * r["n_weights"] for r in rows) / total
+
+    mean = {"bits_per_weight": wmean("bits_per_weight"),
+            "func_err": wmean("func_err"),
+            "weight_err": wmean("weight_err"),
+            "encode_s": sum(r["encode_s"] for r in rows),
+            "decode_s": sum(r["decode_s"] for r in rows),
+            "n_weights": total}
+    mean["compression_x"] = sb / mean["bits_per_weight"]
+    return {"codec": str(codec), "split": split, "source_bits": sb,
+            "tensors": rows, "mean": mean}
 
 
 def evaluate(codec: Path, split: str = "holdout", cache_dir=None,
@@ -216,6 +248,7 @@ def evaluate(codec: Path, split: str = "holdout", cache_dir=None,
     return {
         "codec": str(codec),
         "source": man["source"], "synthetic": man["synthetic"], "split": split,
+        "source_bits": result["source_bits"],
         "n_tensors": len(result["tensors"]),
         "mean": m, "baseline_int8": b, "tensors": result["tensors"],
         "beats_int8": verdict, "reason": why,
@@ -245,13 +278,17 @@ def main() -> int:
     m, b = res["mean"], res["baseline_int8"]
     warn = "  ⚠ 합성 데이터 -- 실제 가중치가 아니다" if res["synthetic"] else ""
     print(f"코덱 {res['codec']}")
-    print(f"데이터 {res['source']} / {res['split']} 셋 {res['n_tensors']}개{warn}")
+    sb = res.get("source_bits", 16)
+    print(f"데이터 {res['source']} / {res['split']} 셋 {res['n_tensors']}개, "
+          f"파라미터 {m['n_weights']:,}개{warn}")
+    print(f"압축배율 분모 = 원본 {sb:g} bits/weight (bf16 배포 기준)")
     print(f"{'':14}{'bits/weight':>13}{'압축배율':>10}{'함수오차':>12}{'가중치오차':>12}")
     print(f"{'이 코덱':14}{m['bits_per_weight']:13.3f}{m['compression_x']:9.2f}x"
           f"{m['func_err']:12.5f}{m['weight_err']:12.5f}")
     print(f"{'int8 기준선':14}{b['bits_per_weight']:13.3f}{b['compression_x']:9.2f}x"
           f"{b['func_err']:12.5f}{b['weight_err']:12.5f}")
-    print(f"encode {m['encode_s']*1000:.0f}ms / decode {m['decode_s']*1000:.0f}ms (텐서당 평균)")
+    print(f"encode {m['encode_s']*1000:.0f}ms / decode {m['decode_s']*1000:.0f}ms "
+          f"(셋 전체 합계)")
     print(("통과: " if res["beats_int8"] else "미달: ") + res["reason"])
     return 0 if res["beats_int8"] else 1
 
