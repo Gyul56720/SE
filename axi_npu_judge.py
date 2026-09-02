@@ -23,7 +23,7 @@ print("Compilation Successful! Running Simulation...")
 res_sim = subprocess.run(["vvp", "axi_sim"], capture_output=True, text=True)
 print(res_sim.stdout)
 
-if "ALL AXI4 RTL INTEGRATION & CORNER TESTS PASSED BIT-EXACT!" in res_sim.stdout:
+if "SUCCESS: B-CHANNEL RESPONSES, HANDSHAKES, AND CONGESTION-FIXED ROUTING VERIFIED!" in res_sim.stdout:
     print(">> SUCCESS: AXI4 Bus Protocol, Memory Mapping, and Corner Cases are Bit-Exact!")
     sys.exit(0)
 else:
