@@ -118,25 +118,21 @@ module npu_axi_testbench;
         $display("=========================================================");
 
         // Test Case 1: Max Positive Overflow (+127 * +1 * 4096 = +520,192)
-        // 4096 activations = 256 transfers of 128-bit (16 bytes = 0x7F each)
         for (int i = 0; i < 256; i++) begin
             write_mem_128(i * 16, 128'h7F7F7F7F7F7F7F7F7F7F7F7F7F7F7F7F);
         end
-
-        // 4096 weights (+1 encoded as 2'b01) = 64 transfers of 128-bit (each 64 weights of 2'b01 = 0x5555...5555)
         for (int i = 0; i < 64; i++) begin
-            write_mem_128(32'h1000 + i * 16, 128'h55555555555555555555555555555555);
+            write_mem_128(32'h1000 + i * 16, 128'h55555555555555555555555555555555); // 2'b01 (+1)
         end
 
         $display("[Test 1] Loaded Max Vector (+127 * +1). Triggering NPU...");
         start_npu();
 
-        // Wait for IRQ Done
         @(posedge npu_done_irq);
         #1;
         $display("[Test 1 Done] Output = %0d (Expected: 520192)", npu_result_out);
         if (npu_result_out == 520192) begin
-            $display("[PASS] Test Case 1: Max Positive Corner Case Verified.");
+            $display("[PASS] Test Case 1: Max Positive Overflow Verified.");
         end else begin
             $display("[FAIL] Test Case 1 Mismatch!");
             $fatal(1);
@@ -155,9 +151,28 @@ module npu_axi_testbench;
         #1;
         $display("[Test 2 Done] Output = %0d (Expected: -524288)", npu_result_out);
         if (npu_result_out == -524288) begin
-            $display("[PASS] Test Case 2: Max Negative Corner Case Verified.");
+            $display("[PASS] Test Case 2: Max Negative Underflow Verified.");
         end else begin
             $display("[FAIL] Test Case 2 Mismatch!");
+            $fatal(1);
+        end
+
+        #50;
+
+        // Test Case 3: Zero / Gating Corner Case (All zeros)
+        for (int i = 0; i < 64; i++) begin
+            write_mem_128(32'h1000 + i * 16, 128'h00000000000000000000000000000000); // 2'b00 (0)
+        end
+        $display("[Test 3] Loaded Zero Weight Vector (All 0). Triggering NPU...");
+        start_npu();
+
+        @(posedge npu_done_irq);
+        #1;
+        $display("[Test 3 Done] Output = %0d (Expected: 0)", npu_result_out);
+        if (npu_result_out == 0) begin
+            $display("[PASS] Test Case 3: Zero Gating Verified.");
+        end else begin
+            $display("[FAIL] Test Case 3 Mismatch!");
             $fatal(1);
         end
 

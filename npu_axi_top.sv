@@ -40,8 +40,8 @@ module npu_axi_top (
     logic signed [7:0] act_mem [4095:0];
     logic        [1:0] weight_mem [4095:0];
 
-    logic signed [32767:0] act_flat;
-    logic        [8191:0]  weight_flat;
+    logic signed [32767:0] act_flat_reg;
+    logic        [8191:0]  weight_flat_reg;
 
     // Control & Status Signals
     logic        reg_start;
@@ -101,16 +101,14 @@ module npu_axi_top (
         end else if (s_axi_mem_wvalid && s_axi_mem_awvalid) begin
             if (s_axi_mem_awaddr < 32'h1000) begin
                 // Activation Memory (Addr: 0x000 ~ 0xFFF)
-                // 16 Activations (128-bit) per transfer
                 for (int i = 0; i < 16; i++) begin
                     if ((s_axi_mem_awaddr + i) < 4096)
                         act_mem[s_axi_mem_awaddr + i] <= s_axi_mem_wdata[i*8 +: 8];
                 end
             end else if (s_axi_mem_awaddr >= 32'h1000 && s_axi_mem_awaddr < 32'h1400) begin
                 // Weight Memory (Addr: 0x1000 ~ 0x13FF)
-                // 64 2-bit Ternary weights (128-bit) per transfer
                 logic [31:0] w_base;
-                w_base = (s_axi_mem_awaddr - 32'h1000) * 4; // 16 bytes address step -> 64 entries
+                w_base = (s_axi_mem_awaddr - 32'h1000) * 4;
                 for (int i = 0; i < 64; i++) begin
                     if ((w_base + i) < 4096)
                         weight_mem[w_base + i] <= s_axi_mem_wdata[i*2 +: 2];
@@ -119,14 +117,19 @@ module npu_axi_top (
         end
     end
 
-    // Flatten memory array to core bus
-    genvar g;
-    generate
-        for (g = 0; g < 4096; g++) begin : gen_flat
-            assign act_flat[g*8 +: 8]    = act_mem[g];
-            assign weight_flat[g*2 +: 2] = weight_mem[g];
+    // Power Optimization / Operand Gating:
+    // Only latch memory into core operand registers when `reg_start` is triggered.
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            act_flat_reg    <= '0;
+            weight_flat_reg <= '0;
+        end else if (reg_start) begin
+            for (int j = 0; j < 4096; j++) begin
+                act_flat_reg[j*8 +: 8]    <= act_mem[j];
+                weight_flat_reg[j*2 +: 2] <= weight_mem[j];
+            end
         end
-    endgenerate
+    end
 
     // NPU Array 4096 Core Instance
     logic signed [20:0] core_out;
@@ -135,8 +138,8 @@ module npu_axi_top (
     npu_array_4096 core_inst (
         .clk(clk),
         .rst_n(rst_n),
-        .act_flat(act_flat),
-        .weight_flat(weight_flat),
+        .act_flat(act_flat_reg),
+        .weight_flat(weight_flat_reg),
         .valid_in(reg_start),
         .Y_rtl(core_out),
         .valid_out(core_valid_out)
