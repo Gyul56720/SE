@@ -42,3 +42,10 @@ npu/*_sim
 npu/array_results.txt
 npu/array_act.txt
 npu/array_w.txt
+
+# 압축 코덱 탐색의 런타임 상태. 가중치 캐시는 크고(실제 모델 가중치), 챔피언 포인터와
+# 대장은 서버가 계속 쓴다 -- 추적하면 배포의 git pull 이 매번 충돌한다(als_state.json 과
+# 같은 이유). 채택 기록은 champion_v<N>.py 커밋이 남긴다.
+compression/cache/
+compression/ledger.json
+compression/codecs/champion.py
