@@ -31,13 +31,25 @@ module npu_tile (
     logic signed [20:0] stage3 [1:0];
     logic signed [20:0] stage4;
 
-    always_comb begin
-        for (int k = 0; k < 8; k++)  stage1[k] = pe_acc[2*k] + pe_acc[2*k+1];
-        for (int k = 0; k < 4; k++)  stage2[k] = stage1[2*k] + stage1[2*k+1];
-        for (int k = 0; k < 2; k++)  stage3[k] = stage2[2*k] + stage2[2*k+1];
-        stage4 = stage3[0] + stage3[1];
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            for(int i=0; i<8; i++) stage1[i] <= 0;
+            for(int i=0; i<4; i++) stage2[i] <= 0;
+            for(int i=0; i<2; i++) stage3[i] <= 0;
+            stage4 <= 0;
+        end else begin
+            for (int k = 0; k < 8; k++)  stage1[k] <= pe_acc[2*k] + pe_acc[2*k+1];
+            for (int k = 0; k < 4; k++)  stage2[k] <= stage1[2*k] + stage1[2*k+1];
+            for (int k = 0; k < 2; k++)  stage3[k] <= stage2[2*k] + stage2[2*k+1];
+            stage4 <= stage3[0] + stage3[1];
+        end
     end
 
     assign tile_out  = stage4;
-    assign valid_out = pe_valid[0];
+    logic [3:0] tile_v_pipe;
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) tile_v_pipe <= 4'b0;
+        else tile_v_pipe <= {tile_v_pipe[2:0], pe_valid[0]};
+    end
+    assign valid_out = tile_v_pipe[3];
 endmodule

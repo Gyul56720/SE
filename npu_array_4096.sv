@@ -117,11 +117,11 @@ module npu_array_4096 #(
     logic signed [20:0] tree_lvl8;
 
     // 10-bit Shift Register for 100% Timing Alignment (1 cycle quadrant fanout + 1 cycle PE + 8 cycle tree)
-    logic [9:0] valid_pipe;
+    logic [13:0] valid_pipe;
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            valid_pipe <= 10'b0;
+            valid_pipe <= 14'b0;
             for (int k = 0; k < 128; k++) tree_lvl1[k] <= 21'sd0;
             for (int k = 0; k < 64;  k++) tree_lvl2[k] <= 21'sd0;
             for (int k = 0; k < 32;  k++) tree_lvl3[k] <= 21'sd0;
@@ -131,7 +131,7 @@ module npu_array_4096 #(
             for (int k = 0; k < 2;   k++) tree_lvl7[k] <= 21'sd0;
             tree_lvl8 <= 21'sd0;
         end else begin
-            valid_pipe <= {valid_pipe[8:0], tile_valid[0]};
+            valid_pipe <= {valid_pipe[12:0], tile_valid[0]};
 
             for (int k = 0; k < 128; k++) tree_lvl1[k] <= tile_sum[2*k] + tile_sum[2*k+1];
             for (int k = 0; k < 64;  k++) tree_lvl2[k] <= tree_lvl1[2*k] + tree_lvl1[2*k+1];
@@ -145,5 +145,5 @@ module npu_array_4096 #(
     end
 
     assign Y_rtl     = tree_lvl8;
-    assign valid_out = valid_pipe[9];
+    assign valid_out = valid_pipe[13];
 endmodule
