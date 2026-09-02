@@ -1,0 +1,16 @@
+{
+  "problem": "NPU 하드웨어의 가중치를 BitNet b1.58(3진) 방식으로 양자화하고, '이름/소속/주제 추출' 프롬프트에 대해 JSON 결과를 생성하라. 결과가 지정된 JSON 포맷과 일치하지 않거나 유사도가 낮으면, 양자화 임계값(gamma)을 조정하여 NPU 시뮬레이션을 다시 수행하고 성공할 때까지 반복하라.",
+  "final": "quantization_pipeline",
+  "nodes": [
+    {
+      "id": "quantization_pipeline",
+      "goal": "BitNet b1.58 quantization and iterative search for gamma threshold to yield valid Name/Affiliation/Subject JSON extraction",
+      "component": "components/quantization_pipeline.py",
+      "verifier": "components/quantization_pipeline_verify.py",
+      "deps": [],
+      "status": "verified",
+      "result_ref": "results/quantization_pipeline.json",
+      "attempts": []
+    }
+  ]
+}
