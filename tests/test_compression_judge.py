@@ -249,31 +249,48 @@ def test_mean_is_parameter_weighted() -> None:
     check(abs(m["func_err"] - werr) < 1e-9, "함수오차도 가중 평균이어야 한다")
 
 
-def test_metric_follows_activations() -> None:
-    """왜곡을 재는 **방향**이 점수를 실제로 바꾸는가.
+def test_metric_rewards_activation_awareness() -> None:
+    """활성치를 아는 코덱이 모르는 코덱을 **이길 수 있는 지표인가.**
 
-    지금까지 심판은 X ~ N(0,I) 로 쟀는데, X 가 등방이면 그 값은 ‖ΔW‖_F/‖W‖_F 로 떨어진다
-    (실측 비율 0.96) -- 즉 "함수 오차"라는 이름과 달리 가중치 오차를 재고 있었다. 실제
-    활성치는 소수 채널이 수십 배 큰 비등방이고, 그러면 같은 코덱도 점수가 달라져야 한다.
-    이 검사가 깨지면 활성치 파일을 붙여도 심판이 그것을 안 보고 있다는 뜻이다."""
+    처음에는 "같은 코덱의 점수가 X 를 바꾸면 변하는가"를 시험했는데, 그건 틀린 성질이었다.
+    실제 Qwen 가중치처럼 열마다 균일한 행렬에서는 ΔW 도 균일해서
+    ‖ΔW·X‖ 와 ‖W·X‖ 가 같이 커지고 **비율이 거의 안 변한다**(실측 0.9%). 앞서 23% 가
+    변했던 것은 내 합성 가중치에 행 내 outlier 가 과하게 들어 있었기 때문이다.
+
+    활성치의 값어치는 점수가 흔들리는 데 있지 않고 **비트를 재배분할 수 있다**는 데 있다.
+    그래서 시험할 것은 이것이다: 같은 비트에서 활성치를 아는 코덱(AWQ 식 채널 스케일링)이
+    모르는 코덱을 이기는가, 그리고 **등방 지표는 그 이득을 못 보는가**.
+
+    실측: 비등방 지표에서 1.81배 개선, 등방 지표에서는 0.83배 -- 등방 심판이라면 더 좋은
+    코덱을 기각한다. 이 검사가 깨지면 심판이 활성치 인지 코덱을 보상하지 못한다는 뜻이고,
+    그러면 자가개선 루프가 그 방향을 영영 못 찾는다."""
     name, W = _one_tensor()
     n_in = W.shape[1]
-    iso = judge.isotropic_probes(n_in)
-    hot = iso.copy()
-    idx = np.random.default_rng(0).choice(n_in, max(1, n_in // 32), replace=False)
-    hot[idx] *= 30.0
+    Xa = activations.load_probes(name, n_in)
+    check(Xa is not None, "활성치가 없다 -- activations.py 를 먼저 돌려라")
+    if Xa is None:
+        return
+    Xi = judge.isotropic_probes(n_in)
 
-    a = judge.score_tensor(CODECS / "int8.py", name, W, probes=iso)
-    b = judge.score_tensor(CODECS / "int8.py", name, W, probes=hot)
-    check(a["probe_source"] == "activations" and b["probe_source"] == "activations",
-          "명시적으로 준 활성치가 기록되지 않는다")
-    check(abs(a["func_err"] - a["func_err_iso"]) < 1e-9,
-          "등방 표본을 줬는데 등방 대조군과 값이 다르다")
-    rel = (b["func_err"] - a["func_err"]) / a["func_err"]
-    check(rel > 0.05,
-          f"outlier 채널을 넣었는데 점수가 거의 안 변한다({rel:+.1%}) -- 심판이 방향을 안 본다")
-    check(abs(b["func_err_iso"] - a["func_err_iso"]) < 1e-9,
-          "등방 대조군이 활성치에 따라 흔들린다 -- 대조군 구실을 못 한다")
+    def q(M):
+        sc = np.abs(M).max(1, keepdims=True) / 127.0
+        sc[sc == 0] = 1
+        return (np.round(M / sc).clip(-127, 127) * sc).astype(np.float32)
+
+    def rel(R, X):
+        Y = W @ X
+        return float(np.linalg.norm(Y - R @ X) / np.linalg.norm(Y))
+
+    plain = q(W)
+    s = np.maximum(np.sqrt((Xa ** 2).mean(1)) ** 0.25, 1e-12)
+    aware = (q(W * s) / s).astype(np.float32)      # 같은 8비트. 스케일은 활성치에서 유도
+
+    gain_a = rel(plain, Xa) / rel(aware, Xa)
+    gain_i = rel(plain, Xi) / rel(aware, Xi)
+    check(gain_a > 1.3,
+          f"활성치 지표가 활성치 인지 코덱을 보상하지 않는다: {gain_a:.2f}배")
+    check(gain_i < 1.05,
+          f"등방 지표가 이 이득을 본다면 활성치 파일이 등방이다: {gain_i:.2f}배")
 
 
 def test_metric_is_not_silently_mixed() -> None:
@@ -324,7 +341,7 @@ def main() -> int:
                test_honest_improvement_passes, test_one_axis_win_is_not_enough,
                test_injected_node_verifier, test_holdout_is_disjoint_from_design,
                test_split_is_stratified_by_kind, test_compression_denominator_is_source_dtype,
-               test_mean_is_parameter_weighted, test_metric_follows_activations,
+               test_mean_is_parameter_weighted, test_metric_rewards_activation_awareness,
                test_metric_is_not_silently_mixed, test_coding_gain_is_zero_for_isotropic):
         fn()
     if FAILURES:

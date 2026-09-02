@@ -179,16 +179,28 @@ def make_synthetic(cache_dir: Path = None, layers: int = 3, seed: int = 0) -> di
     rng = np.random.default_rng(seed)
 
     def matrix(rows: int, cols: int) -> np.ndarray:
-        # 채널별 스케일 차이 + **행마다** outlier. 처음에는 전체에서 무작위로 몇 개만
-        # 키웠는데, 그러면 행별 max/std 가 3 정도에 그쳐 채널 단위 양자화에 아무 영향이
-        # 없었다(실측). 실제 LLM 가중치는 채널 안에 소수의 큰 값이 있고, 그것이
-        # per-channel max-abs 스케일의 해상도를 잡아먹는 것이 알려진 현상이다.
+        """실제 Qwen2.5-0.5B 가중치의 양자화 난이도에 맞춘다.
+
+        보정 근거(VM 실측): 실제 가중치에서 per-row max-abs int8 의 상대 오차가 0.00918 이다.
+        같은 폭의 **순수 가우시안**이 0.00778 이므로, 실제 가중치는 가우시안보다 18% 어려운
+        정도에 불과하다 -- 회전 후 미분 엔트로피도 2.0461 로 가우시안 2.0471 과 0.001 bits
+        차이다. 즉 Qwen2.5-0.5B 의 가중치에는 극적인 행 내 outlier 가 **없다**.
+
+        예전 파라미터(행마다 1~2개를 8~20배)는 오차 0.0347, max/std 12.5 를 만들었다 --
+        실제(추정 max/std 약 4)보다 3.8배 어려운 데이터였다. 그 위에서 잰 압축 여지가 전부
+        부풀어 있었고, 합성에서 통과한 코덱이 실제에서 떨어졌다.
+
+        지금 값(0.4% x 3~4.5): 오차 0.0088, max/std 3.74 -- 실제의 0.96배.
+
+        주의: 이것은 **가중치** 이야기다. 활성치 outlier(LLM.int8() 이 보고한 현상)는 별개의
+        미지수이고 activations.py 가 따로 다룬다.
+        """
         scale = rng.lognormal(mean=0.0, sigma=0.6, size=(rows, 1)).astype(np.float32)
         W = (rng.standard_normal((rows, cols)).astype(np.float32) * scale) * 0.02
+        k = max(1, int(round(cols * 0.004)))
         for r in range(rows):
-            k = int(rng.integers(1, 3))
             idx = rng.integers(0, cols, size=k)
-            W[r, idx] *= rng.uniform(8.0, 20.0, size=k).astype(np.float32)
+            W[r, idx] *= rng.uniform(3.0, 4.5, size=k).astype(np.float32)
         return W
 
     H, I, KV = 224, 304, 32          # hidden / intermediate / kv (GQA 로 작다)
