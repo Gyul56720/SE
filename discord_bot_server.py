@@ -313,6 +313,13 @@ def _git_sync_locked() -> str | None:
 def run_admin_agent(prompt: str, thread_id: str) -> str:
     """관리 채널용 -- LangGraph ReAct 에이전트(Gemini, run_shell 전권)로 답한다."""
     print(f"[admin-agent] thread={thread_id} prompt={prompt[:120]!r}")
+    # 요청 맥락을 채운다. 예전에는 admin 경로만 이걸 빼먹어서 호출자 ID가 늘 "unknown"이었고
+    # (실측 2026-09-02), save_memory가 남기는 작성자도 전부 "unknown"이었다 -- 추적하려고
+    # 작성자를 남기는 설계가 admin 쪽에서만 성립하지 않았다.
+    agent_context.current_author.set(thread_id.removeprefix("admin-"))
+    # 채널 종류. run_shell이 이 값을 보고 공개 채널에서만 자식 환경의 비밀값을 지운다 --
+    # admin은 배포/탐색 스크립트가 실제로 그 키들을 필요로 하므로 그대로 둔다.
+    agent_context.current_channel.set("admin")
     # stop 명령이 이 스레드가 띄운 run_shell 서브프로세스를 죽이고 fallback 루프를 멈출 수
     # 있도록, 지금 실행 중인 OS 스레드를 discord thread_id에 등록해둔다.
     register_thread(thread_id)

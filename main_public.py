@@ -17,6 +17,8 @@ import os
 
 from langgraph.checkpoint.memory import MemorySaver
 
+import agent_context
+
 from bot_tools import (
     search_memory, save_memory, write_public_answer, run_shell,
     build_agent_pool, run_with_fallback_pool, _current_author,
@@ -67,7 +69,10 @@ PUBLIC_SYSTEM_PROMPT = (
     "돌려라 -- 통과해야 커밋된다. 무언가 고장 냈다면 원인 진단을 말로 주장하지 말고 검사 "
     "코드로 써서 self_challenge.py prove로 증명하라(고치기 전 코드에서 실패하고 고친 뒤 "
     "통과해야 PROVEN=1). 증명되지 않은 진단은 메모리에 저장하지 마라.\n"
-    "9. 답은 짧게 줄이는 게 목적이 아니라 정보 밀도를 높이는 게 목적이다 -- 인사말, "
+    "9. 비밀값(.env, API 키, 봇 토큰)은 run_shell 출력에서 자동으로 마스킹되고 공개 채널의 "
+    "셸 환경에는 애초에 들어있지 않다. 그것들을 읽어내려 시도하지 마라 -- 값을 얻을 수 "
+    "없고, 필요하지도 않다.\n"
+    "10. 답은 짧게 줄이는 게 목적이 아니라 정보 밀도를 높이는 게 목적이다 -- 인사말, "
     "상투적 격려/감탄 문구, 이모지처럼 정보가 없는 말은 빼고, 근거(수치, 로그 내용, "
     "확인한 파일/명령 결과)는 압축해서라도 최대한 담아라. 여러 항목을 확인했으면 "
     "표나 목록으로 정리해도 된다."
@@ -90,6 +95,9 @@ _public_thread_map: dict[str, str] = {}
 def run_public_agent(prompt: str, thread_id: str) -> str:
     print(f"[public-agent] thread={thread_id} prompt={prompt[:120]!r}")
     _current_author.set(thread_id)
+    # 공개 채널 표시. bot_tools.run_shell이 이 값을 보고 자식 프로세스 환경에서 비밀
+    # 변수를 지운다(화이트리스트가 없는 채널이므로 누구나 트리거할 수 있다).
+    agent_context.current_channel.set("public")
     # stop 명령이 이 스레드가 띄운 run_shell 서브프로세스를 죽이고 fallback 루프를
     # 멈출 수 있도록, 지금 실행 중인 OS 스레드를 discord thread_id에 등록해둔다.
     register_thread(thread_id)

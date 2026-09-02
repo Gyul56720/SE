@@ -25,6 +25,18 @@ current_author: contextvars.ContextVar[str] = contextvars.ContextVar("current_au
 # 예전 이름. bot_tools.py가 이 이름으로 재수출하고 있어서 외부 코드가 깨지지 않게 남겨둔다.
 _current_author = current_author
 
+# 이번 요청이 어느 채널에서 왔는가. "public"은 화이트리스트가 없는 채널이라 도구가 더
+# 좁은 권한으로 동작해야 한다 -- run_shell이 이 값을 보고 자식 프로세스 환경에서 비밀값을
+# 제거한다. 호출자 ID(current_author)로 판정하지 않는 이유: admin 경로는 그 값을 설정하지
+# 않아 항상 "unknown"이었다(실측 2026-09-02) -- 채널 구분을 거기에 얹으면 admin이 public으로
+# 오인된다. 그래서 채널을 별도의 명시적인 값으로 둔다.
+current_channel: contextvars.ContextVar[str] = contextvars.ContextVar("current_channel", default="unknown")
+
+
+def is_public_channel() -> bool:
+    """이번 요청이 화이트리스트 없는 공개 채널에서 왔는가."""
+    return current_channel.get() == "public"
+
 # 게스트 차단 목록. 원래 Discord ID가 5개 파일에 리터럴로 박혀 있었다 -- revert 커밋
 # 276ab13이 "Discord ID는 하드코딩하지 말고 환경변수로 뺄 것"이라고 명시했는데도 재적용 때
 # 다시 박혔다. 기본값으로 기존 ID를 남겨서 환경변수를 안 채워도 보안 정책이 조용히 풀리지

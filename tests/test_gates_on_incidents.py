@@ -35,7 +35,18 @@ INCIDENTS = [
      {"G001", "G002"}),
     ("1ea4304", "run_bot_loop.sh가 저장소를 grep해 토큰을 찾아 로그로 출력",
      {"G004"}),
+    ("c3b3b88", "공개 채널 run_shell이 비밀값을 마스킹 없이 그대로 반환(cat .env 한 줄로 유출)",
+     {"G011"}),
 ]
+
+
+def _commit_exists(commit: str) -> bool:
+    """이 클론에 해당 커밋이 있는가. shallow clone(예: CI의 fetch-depth 1)에서는 사고 커밋이
+    없어서 git archive가 exit 128로 죽고, 그러면 이 스위트가 스택트레이스로 중단돼 나머지
+    사고까지 검증하지 못했다(실측 2026-09-02). 없으면 SKIP으로 넘어가고 그 사실을 출력한다
+    -- 전체 이력이 필요하다는 뜻이지, 게이트가 실패했다는 뜻이 아니다."""
+    return subprocess.run(["git", "cat-file", "-e", f"{commit}^{{commit}}"],
+                          cwd=REPO, capture_output=True).returncode == 0
 
 
 def _materialize(commit: str, dest: Path) -> None:
@@ -72,7 +83,13 @@ def _synthetic_requirements_incident() -> "tuple[str, set[str]]":
 def main() -> int:
     failures: list[str] = []
 
+    skipped: list[str] = []
     for commit, what, expected in INCIDENTS:
+        if not _commit_exists(commit):
+            print(f"[{commit}] {what}\n    SKIP -- 이 클론에 커밋이 없다(shallow clone). "
+                  f"전체 이력으로 받아야 검증된다: git fetch --unshallow")
+            skipped.append(commit)
+            continue
         with tempfile.TemporaryDirectory() as tmp:
             dest = Path(tmp)
             _materialize(commit, dest)
@@ -104,7 +121,9 @@ def main() -> int:
         for f in failures:
             print(" -", f)
         return 1
-    print("\n모든 게이트가 red-green 증명을 통과했다.")
+    if skipped:
+        print(f"\n건너뛴 사고 {len(skipped)}건(커밋 없음): {', '.join(skipped)}")
+    print("\n검증한 범위에서 모든 게이트가 red-green 증명을 통과했다.")
     return 0
 
 

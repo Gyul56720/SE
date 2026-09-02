@@ -32,6 +32,7 @@ import agent_context
 import agent_memory
 import public_agent_files
 import quota_tracker
+from secret_filter import child_env, redact_secrets
 
 REPO_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -121,7 +122,7 @@ def run_shell(command: str) -> str:
     proc = subprocess.Popen(
         ["bash", "-lc", command], cwd=REPO_DIR,
         stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        text=True, errors="replace",
+        text=True, errors="replace", env=child_env(),
     )
     with _active_procs_lock:
         _active_procs[ident] = proc
@@ -132,8 +133,9 @@ def run_shell(command: str) -> str:
             proc.kill()
             stdout, stderr = proc.communicate()
             return "실행 시간 초과(180초) -- 명령을 더 작게 나눠서 재시도하라."
-        out = (stdout or "")[-4000:]
-        err = (stderr or "")[-2000:]
+        # 자르고 나서 마스킹한다 -- 자르기 전에 하면 긴 출력 전체를 훑느라 느려진다.
+        out = redact_secrets((stdout or "")[-4000:])
+        err = redact_secrets((stderr or "")[-2000:])
         if proc.returncode is not None and proc.returncode < 0:
             return f"[중단됨] stop 명령으로 강제 종료됨(signal={-proc.returncode}).\nSTDOUT:\n{out}\nSTDERR:\n{err}"
         return f"[exit={proc.returncode}]\nSTDOUT:\n{out}\nSTDERR:\n{err}"
@@ -158,7 +160,7 @@ def save_memory(topic: str, content: str) -> str:
     사용자가 새로운 사실을 알려주거나 내 답을 정정했을 때, 나중에 다시 알아야 할 내용이면
     호출하라. topic은 짧은 제목, content는 기억할 내용이다. 잡담이나 일회성 대화는 저장하지 마라.
     """
-    return agent_memory.save_memory(topic, content, author_id=_current_author.get())
+    return agent_memory.save_memory(topic, redact_secrets(content), author_id=_current_author.get())
 
 
 @tool
@@ -166,7 +168,7 @@ def write_public_answer(filename: str, content: str) -> str:
     """공개 채널 에이전트의 답변/결과물을 파일로 남긴다. Public_agent/ 폴더 아래에만
     저장되고 git에 커밋된다(push는 하지 않음, 관리자가 검토 후 push). filename은
     디렉터리 없이 파일명만 지정한다 (예: answer.py, result.md)."""
-    return public_agent_files.write_output(filename, content, author_id=_current_author.get())
+    return public_agent_files.write_output(filename, redact_secrets(content), author_id=_current_author.get())
 
 
 def extract_text(content) -> str:
