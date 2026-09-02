@@ -40,6 +40,7 @@ sys.path.insert(0, str(REPO / "compression"))
 
 import activations  # noqa: E402
 import bounds  # noqa: E402
+import rans  # noqa: E402
 import judge  # noqa: E402
 import weights  # noqa: E402
 
@@ -97,7 +98,7 @@ def test_honest_improvement_passes() -> None:
     아끼지만 오차가 int8 보다 근소하게 크다 -- 예전 합성 데이터에서 이겨 보였던 것은 5번째
     자리의 잡음이었고, 종류와 크기가 다양한 지금 데이터에서는 두 split 모두에서 오차 축에
     진다. 회전 코덱은 같은 비트에서 오차를 실제로 줄이므로 마진이 잡음이 아니다."""
-    res = judge.evaluate(CODECS / "hadamard_int.py")
+    res = judge.evaluate(CODECS / "hadamard_rans.py")
     check(res["beats_int8"], f"정직한 개선안을 통과시키지 못한다: {res['reason']}")
     base = res["baseline_int8"]
     check(res["mean"]["bits_per_weight"] < base["bits_per_weight"], "압축력 비교가 틀렸다")
@@ -152,7 +153,7 @@ def test_injected_node_verifier() -> None:
         nv = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(nv)
 
-        ok, msg = nv.check({"codec_code": (CODECS / "hadamard_int.py").read_text(encoding="utf-8")}, {})
+        ok, msg = nv.check({"codec_code": (CODECS / "hadamard_rans.py").read_text(encoding="utf-8")}, {})
         check(ok, f"챔피언을 이긴 코덱을 통과시키지 못한다: {msg}")
 
         ok, msg = nv.check({"codec_code": (CODECS / "ternary_b158.py").read_text(encoding="utf-8")}, {})
@@ -336,13 +337,67 @@ def test_coding_gain_is_zero_for_isotropic() -> None:
         prev = cur
 
 
+def test_rans_roundtrip_and_determinism() -> None:
+    """엔트로피 부호기가 **정확히** 복원하고 매번 같은 바이트를 내는가.
+
+    부호기가 한 심볼이라도 흘리면 코덱이 조용히 틀린 가중치를 낸다 -- 심판은 그것을
+    "오차가 큰 코덱"으로 볼 뿐 버그로 보지 않는다. 그리고 심판이 결정성을 검사하므로
+    같은 입력에 같은 blob 이 아니면 실격이다.
+
+    실제 텐서 모양을 그대로 시험한다. 레인 수를 심볼 수에서 유도하는데(레인마다 최종 상태
+    4바이트가 blob 에 실린다) 작은 텐서에서 그 고정 비용이 이득을 삼킬 수 있어서다."""
+    rng = np.random.default_rng(0)
+    shapes = [(32, 224), (224, 224), (128, 896), (896, 896)]
+    for rows, cols in shapes:
+        n = rows * cols
+        # 회전 후 코드의 모양: 가운데가 두꺼운 가우시안형
+        sym = np.clip(np.round(rng.standard_normal(n) * 32) + 128, 0, 255).astype(np.int64)
+        freq = rans.build_table(sym, 256)
+        check(int(freq.sum()) == rans.M, f"{rows}x{cols}: 빈도 합이 M 이 아니다")
+        check((freq[np.bincount(sym, minlength=256) > 0] > 0).all(),
+              f"{rows}x{cols}: 쓰인 심볼에 빈도 0 이 있다 -- 부호화 불가")
+        blob = rans.encode(sym, freq)
+        check(np.array_equal(rans.decode(blob, n, freq), sym),
+              f"{rows}x{cols}: 왕복이 깨진다")
+        check(rans.encode(sym, freq) == blob, f"{rows}x{cols}: 결정론적이지 않다")
+
+        p_ = np.bincount(sym, minlength=256) / n
+        p_ = p_[p_ > 0]
+        H = float(-(p_ * np.log2(p_)).sum())
+        over = 8 * len(blob) / n - H
+        check(over < 0.05, f"{rows}x{cols}: 엔트로피 초과가 크다 {over:.3f} bits")
+
+    # 극단: 심볼 하나만, 그리고 아주 희소
+    for sym in (np.zeros(50000, dtype=np.int64),
+                rng.choice([7, 200], 50000, p=[0.97, 0.03]).astype(np.int64)):
+        f = rans.build_table(sym, 256)
+        check(np.array_equal(rans.decode(rans.encode(sym, f), sym.size, f), sym),
+              "극단 분포에서 왕복이 깨진다")
+
+
+def test_entropy_coding_only_moves_bits() -> None:
+    """엔트로피 부호화는 **오차를 건드리면 안 된다.**
+
+    hadamard_rans 는 hadamard_int 와 같은 코드를 더 짧게 담을 뿐이라 복원 결과가 비트
+    단위로 같아야 한다. 오차가 달라지면 부호화 과정이 값을 바꾸고 있다는 뜻이다."""
+    a = judge.score_codec(CODECS / "hadamard_int.py", "holdout")["mean"]
+    b = judge.score_codec(CODECS / "hadamard_rans.py", "holdout")["mean"]
+    check(abs(a["func_err"] - b["func_err"]) < 1e-9,
+          f"엔트로피 부호화가 오차를 바꿨다: {a['func_err']:.8f} vs {b['func_err']:.8f}")
+    check(b["bits_per_weight"] < a["bits_per_weight"] - 0.3,
+          f"엔트로피 부호화가 비트를 충분히 못 줄였다: "
+          f"{a['bits_per_weight']:.3f} -> {b['bits_per_weight']:.3f}")
+
+
 def main() -> int:
     for fn in (test_cheats_are_disqualified, test_bits_are_measured_not_claimed,
                test_honest_improvement_passes, test_one_axis_win_is_not_enough,
                test_injected_node_verifier, test_holdout_is_disjoint_from_design,
                test_split_is_stratified_by_kind, test_compression_denominator_is_source_dtype,
                test_mean_is_parameter_weighted, test_metric_rewards_activation_awareness,
-               test_metric_is_not_silently_mixed, test_coding_gain_is_zero_for_isotropic):
+               test_metric_is_not_silently_mixed, test_coding_gain_is_zero_for_isotropic,
+               test_rans_roundtrip_and_determinism,
+               test_entropy_coding_only_moves_bits):
         fn()
     if FAILURES:
         print("실패:")
@@ -350,7 +405,7 @@ def main() -> int:
             print("  -", f)
         return 1
     print("압축 심판: 부정행위 5종 실격, 대조군 4종 판정, 셋 층화 분리, bf16 분모, "
-          "파라미터 가중 평균, 활성치 방향 -- 통과")
+          "파라미터 가중 평균, 활성치 방향, rANS 왕복 -- 통과")
     return 0
 
 
