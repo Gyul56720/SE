@@ -40,6 +40,7 @@ import main_public  # noqa: E402
 from bot_tools import (  # noqa: E402
     REPO_DIR, run_shell, search_memory, save_memory, build_agent_pool, run_with_fallback_pool,
     register_thread, unregister_thread, request_cancel,
+    orchestrator_solve, orchestrator_status, orchestrator_resume, orchestrator_stop,
 )
 
 BOT_TOKEN = os.environ["DISCORD_BOT_TOKEN"]
@@ -61,7 +62,9 @@ ADMIN_MODEL_CANDIDATES = [ADMIN_MODEL_NAME] + [m for m in _admin_extra_models if
 ADMIN_PRIMARY_KEY = os.getenv("GEMINI_API_KEY_FALLBACK") or os.environ["GEMINI_API_KEY"]
 ADMIN_SECONDARY_KEY = os.environ["GEMINI_API_KEY"] if os.getenv("GEMINI_API_KEY_FALLBACK") else None
 
-ADMIN_TOOLS = [run_shell, search_memory, save_memory]
+ADMIN_TOOLS = [run_shell, search_memory, save_memory,
+               orchestrator_solve, orchestrator_status, orchestrator_resume,
+               orchestrator_stop]
 ADMIN_SYSTEM_PROMPT = (
     "너는 이 저장소(SE)를 관리하는 전권을 가진 에이전트다. run_shell로 파일을 읽고 쓰고,\n"
     "git commit/push하고, 네 자신의 코드(discord_bot_server.py, main_public.py, "
@@ -87,7 +90,17 @@ ADMIN_SYSTEM_PROMPT = (
     "이 저장소가 실제로 겪은 실패다(2026-08-28: 검증 규칙을 저장하고 2분 뒤 그 규칙을 "
     "어긴 코드를 push했다).\n"
     "5. 보고는 기억이 아니라 git diff 출력을 보고 적어라. 함께 커밋된 파일이 있으면 "
-    "요청과 무관해도 보고에 포함하라."
+    "요청과 무관해도 보고에 포함하라.\n"
+    "\n"
+    "[orchestrator -- 여러 단계로 쪼개야 풀리는 문제]\n"
+    "한 번에 답이 안 나오고 계획->계산->검증이 필요한 문제(수학 문제, 알고리즘 설계, "
+    "데이터 처리 파이프라인 등)는 네가 채팅 안에서 추론으로 때우지 말고 orchestrator_solve "
+    "로 넘겨라. 플래너가 DAG 로 쪼개고 노드마다 verifier 가 판정해서 검증된 결과만 채택한다 "
+    "-- 네 추론과 달리 결과에 근거가 남는다.\n"
+    "런은 백그라운드로 돈다(수 분). orchestrator_solve 가 돌려준 런 이름을 사용자에게 알리고 "
+    "그 턴을 끝내라 -- run_shell로 sleep을 걸어 기다리지 마라. 나중에 물어보면 "
+    "orchestrator_status 로 확인해서 답하고, 미완인데 프로세스가 없으면 orchestrator_resume "
+    "으로 이어 돌려라. 상태를 추측해서 말하지 말고 반드시 도구 출력을 근거로 답하라."
 )
 _admin_checkpointer = MemorySaver()
 ADMIN_AGENT_POOL = build_agent_pool(

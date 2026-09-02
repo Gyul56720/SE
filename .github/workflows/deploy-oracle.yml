@@ -16,6 +16,14 @@ on:
       - "agent_memory.py"
       - "public_agent_files.py"
       - "secret_filter.py"
+      # 봇 도구가 서버에서 백그라운드로 띄우는 orchestrator 파이프라인. runs/ 는 일부러
+      # 뺐다 -- 런 산출물 커밋마다 재배포가 돌면 봇 재시작이 돌던 런을 죽인다.
+      - "orchestrator_tool.py"
+      - "orchestrator/solve.py"
+      - "orchestrator/planner.py"
+      - "orchestrator/orchestrator.py"
+      - "orchestrator/plan_schema.py"
+      - "orchestrator/llm_pool.py"
       # 커밋 경로의 강제 장치. 이게 빠져 있어서 게이트를 새로 승격해도 서버는 옛 게이트
       # 집합으로 계속 돌았다 -- searcher.py, bot_tools.py 와 같은 '코드가 서버에 도달하지
       # 못하는' 경로이고, 하필 그 경로를 감시하는 장치 자신이 빠져 있었다. G013 이 이제

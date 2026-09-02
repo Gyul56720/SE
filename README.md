@@ -13,6 +13,7 @@ Gemini + LangGraph ReAct 에이전트가 처리하고, 둘 다 `run_shell`로 �
 | `discord_bot_server.py` | 이벤트 라우팅, admin 에이전트, `git_sync`(게이트 → 커밋 → push → 원격 반영 확인) |
 | `main_public.py` | 공개 채널 에이전트 정의 |
 | `bot_tools.py` | 공유 도구(`run_shell`/`search_memory`/`save_memory`/`write_public_answer`) + (키×모델) 폴백 풀 |
+| `orchestrator_tool.py` | admin 채널 도구가 orchestrator 런을 백그라운드로 띄우고/보고/재개/중지 |
 | `quota_tracker.py` | 일일 소진·RPM 쿨다운·영구 dead·성공 후보 pin |
 | `agent_context.py` | 요청 단위 호출자 맥락과 게스트 차단 |
 | `agent_memory.py` | `public_agent_memory/` 장기 기억(쓰기 경로 강제 + 커밋) |
@@ -49,6 +50,20 @@ python3 memory_hygiene.py             # dry-run, --apply 로 실제 정리
 문제를 계획(plan.json) → 컴포넌트 코드 + 검증 코드로 쪼개서 실행하고, 실패하면 계획을
 고쳐 다시 시도한다. 실행 기록은 `orchestrator/runs/<이름>/`에 남는다.
 자세한 내용은 `orchestrator/README.md`.
+
+**Discord(admin 채널)에서 부를 수 있다** — `orchestrator_tool.py`가 다리다. 런은 수 분
+걸리므로 백그라운드(`setsid`)로 띄우고 런 이름/로그 경로를 즉시 돌려준다:
+
+| 도구 | 하는 일 |
+|---|---|
+| `orchestrator_solve(problem)` | 새 런을 띄운다. 살아 있는지 확인한 뒤에만 "시작했다"고 답한다 |
+| `orchestrator_status(run)` | 노드별 검증 상태·마지막 실패 사유·최종 결과·로그 끝부분 |
+| `orchestrator_resume(run)` | 죽었거나 미완인 런을 이어서(검증된 노드는 건너뛴다) |
+| `orchestrator_stop(run)` | 프로세스 그룹째 중지. 산출물은 남으므로 재개 가능 |
+
+런 이름 인자는 `orchestrator/runs/` 바로 아래로만 해석된다(G014가 탈출 카나리로 감시).
+자식은 새 세션에 들어가지만 systemd cgroup은 벗어나지 못한다 -- 재배포로 봇이 재시작되면
+돌던 런도 죽는다. 그때는 `orchestrator_resume`으로 이어서 돌린다.
 
 ## 3. 행렬곱 자가개선 루프 — `mathmetics/matrix_exponent/`
 

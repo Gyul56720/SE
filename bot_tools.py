@@ -30,6 +30,7 @@ from langgraph.prebuilt import create_react_agent
 
 import agent_context
 import agent_memory
+import orchestrator_tool
 import public_agent_files
 import quota_tracker
 from secret_filter import child_env, redact_secrets
@@ -169,6 +170,41 @@ def write_public_answer(filename: str, content: str) -> str:
     저장되고 git에 커밋된다(push는 하지 않음, 관리자가 검토 후 push). filename은
     디렉터리 없이 파일명만 지정한다 (예: answer.py, result.md)."""
     return public_agent_files.write_output(filename, redact_secrets(content), author_id=_current_author.get())
+
+
+@tool
+def orchestrator_solve(problem: str) -> str:
+    """문제 하나를 orchestrator 파이프라인(계획->실행->검증->수리 루프)으로 푼다.
+
+    여러 단계로 쪼개야 풀리는 문제, 코드를 짜서 계산해야 답이 나오는 문제에 쓴다. 플래너가
+    문제를 하위 노드 DAG 로 쪼개고 노드마다 solve/verify 코드를 만들며, verifier 를 통과한
+    결과만 채택한다. 실패하면 실패 사유를 되먹여 노드를 수리하거나 계획을 다시 세운다.
+
+    수 분 걸리므로 **백그라운드로 띄우고 즉시 반환한다**. 반환된 런 이름을 가지고
+    orchestrator_status 로 나중에 진행 상황을 확인하라 -- 여기서 기다리지 마라."""
+    return orchestrator_tool.start_run(problem, env=child_env())
+
+
+@tool
+def orchestrator_status(run: str = "") -> str:
+    """orchestrator 런의 진행 상황을 본다: 프로세스 생사, 노드별 검증 상태, 마지막 실패
+    사유, 최종 결과, 로그 끝부분. run 이 비면 가장 최근 런을 본다."""
+    return orchestrator_tool.run_status(run)
+
+
+@tool
+def orchestrator_resume(run: str) -> str:
+    """죽었거나 미완으로 끝난 orchestrator 런을 이어서 돌린다. 검증된 노드는 건너뛰고
+    실패한 노드부터 다시 시도한다. 봇이 재배포로 재시작되면 돌던 런도 같이 죽으므로,
+    orchestrator_status 가 '미완이고 프로세스도 없다'고 하면 이걸 쓴다."""
+    return orchestrator_tool.resume_run(run, env=child_env())
+
+
+@tool
+def orchestrator_stop(run: str = "") -> str:
+    """돌고 있는 orchestrator 런을 멈춘다(프로세스 그룹째). 산출물은 파일로 남으므로
+    orchestrator_resume 으로 이어서 돌릴 수 있다. run 이 비면 가장 최근 런을 멈춘다."""
+    return orchestrator_tool.stop_run(run)
 
 
 def extract_text(content) -> str:

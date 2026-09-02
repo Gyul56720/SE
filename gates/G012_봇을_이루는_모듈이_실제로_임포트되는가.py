@@ -43,6 +43,7 @@ EVIDENCE = "public_agent_memory/20260828-201605_고친_코드는_push_전에_임
 MODULES = [
     "agent_context", "secret_filter", "quota_tracker", "agent_memory",
     "public_agent_files", "memory_hygiene", "gatekeeper", "self_challenge",
+    "orchestrator_tool",
     "bot_tools", "main_public", "discord_bot_server", "log_streamer",
 ]
 

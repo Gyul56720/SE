@@ -33,6 +33,14 @@ python3 tests/test_planner_repair.py
 산출물은 `orchestrator/runs/<타임스탬프>/` 에 plan.json + components/*.py + results/*.json
 으로 남아 git 으로 복원 가능하다.
 
+## 사용 (Discord admin 채널)
+
+`../orchestrator_tool.py` 가 이 파이프라인을 봇 도구로 노출한다. `orchestrator_solve` 가 런을
+백그라운드(setsid)로 띄우고 런 이름/로그 경로를 즉시 돌려주며, 진행은 `orchestrator_status`,
+이어서 돌리기는 `orchestrator_resume`, 중지는 `orchestrator_stop` 이다. 런 이름 인자는
+`runs/` 바로 아래로만 해석되고(G014 가 카나리로 감시), 도구 출력은 비밀값이 마스킹된다.
+공개 채널에는 붙이지 않는다 -- 자식 환경에 키가 없어 계획 단계에서 실패한다.
+
 ## 되먹임 루프 (목적지향의 조건)
 
 계획→실행→검증까지만 이어지면 개루프다. 실측: `runs/20260829-224043` 은 최종 노드가

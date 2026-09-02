@@ -55,3 +55,6 @@ jobs:
 
       - name: 오케스트레이터 계획 수리 테스트
         run: python3 tests/test_planner_repair.py
+
+      - name: orchestrator 도구 테스트 (경로 탈출 + 백그라운드 런 실측)
+        run: python3 tests/test_orchestrator_tool.py

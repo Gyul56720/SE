@@ -45,6 +45,11 @@ REQUIRED: "list[tuple[str, str, str]]" = [
     ("public_agent_files.py", "_resolve_inside_output", "산출물 쓰기 경로 탈출 방지"),
     ("public_agent_files.py", "agent_context.is_blocked()", "write_output의 게스트 차단 가드"),
     ("agent_context.py", "BLOCKED_USER_IDS", "게스트 차단 목록"),
+    ("orchestrator_tool.py", "_resolve_run_dir",
+     "orchestrator 도구의 런 디렉토리 경로 탈출 방지 -- 없으면 status가 저장소 밖 파일을 "
+     "읽고 stop이 무관한 프로세스를 죽인다"),
+    ("orchestrator_tool.py", "agent_context.is_blocked()",
+     "orchestrator 런 시작/재개/중지의 게스트 차단 가드"),
     # 게이트 체계 자신을 지키는 항목. 이게 없으면 에이전트가 git_sync에서 게이트 호출
     # 한 줄만 지워도 G001~G006 전부가 조용히 무력화된다 -- 제약 자기소거의 정확한 재현이다.
     # 게이트가 자기 자신을 커밋 경로에 붙들어 두는 것이 이 체계의 유일한 고정점이다.

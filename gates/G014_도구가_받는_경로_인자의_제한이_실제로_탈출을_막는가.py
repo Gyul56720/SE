@@ -1,5 +1,5 @@
 """
-G014 -- 공개 채널 쓰기 도구의 경로 제한이 실제로 탈출을 막는가 (행동 검증).
+G014 -- 도구가 받는 경로 인자의 제한이 실제로 탈출을 막는가 (행동 검증).
 
 G003 은 `_resolve_inside_memory` / `_resolve_inside_output` 이라는 **문자열이 파일에 있는지**
 만 본다. 그래서 함수 껍데기만 남기고 속을 `return (MEMORY_DIR / filename)` 으로 비워도
@@ -11,8 +11,13 @@ G003 은 통과한다 -- 제약의 이름만 남고 제약은 사라지는 상�
 이어야 한다. 그래서 G011 이 마스킹을 카나리로 검증하듯, 여기서도 탈출 경로를 실제로 넣어
 ValueError 가 나는지 확인한다.
 
-검사 방법: 대상 저장소의 agent_memory / public_agent_files 를 임포트해서 아래 카나리를
-resolver 에 먹인다. 하나라도 통과(예외 없이 경로를 돌려줌)하면 위반이다.
+대상은 공개 채널 쓰기 도구만이 아니다. 도구 인자는 어느 채널에서든 LLM 이 만든 문자열이므로,
+경로를 인자로 받는 도구는 전부 같은 부류다 -- orchestrator_tool 의 런 디렉토리 인자도
+막히지 않으면 저장소 밖 파일을 읽고(status) 남의 프로세스를 죽이는(stop) 통로가 된다.
+그래서 이 게이트는 "쓰기 도구"가 아니라 "경로 인자를 받는 도구" 전부를 본다.
+
+검사 방법: 대상 저장소의 agent_memory / public_agent_files / orchestrator_tool 을 임포트해서
+아래 카나리를 resolver 에 먹인다. 하나라도 통과(예외 없이 경로를 돌려줌)하면 위반이다.
 서드파티가 필요 없는 모듈이라 어느 환경에서도 돈다.
 """
 from __future__ import annotations
@@ -21,7 +26,7 @@ import importlib.util
 import sys
 
 RULE_ID = "G014"
-TITLE = "공개 채널 쓰기 도구의 경로 제한이 실제로 탈출을 막는가"
+TITLE = "도구가 받는 경로 인자의 제한이 실제로 탈출을 막는가"
 ORIGIN = "2026-09-02 분석 (G003은 문자열 존재만 확인 -- 껍데기만 남아도 통과한다)"
 EVIDENCE = "public_agent_memory/20260828-202744_제약_자기소거_--_나를_막는_규칙을_내가_지우는_일.md"
 
@@ -29,6 +34,9 @@ EVIDENCE = "public_agent_memory/20260828-202744_제약_자기소거_--_나를_�
 _TARGETS = [
     ("agent_memory.py", "_resolve_inside_memory", "public_agent_memory/ 밖으로 쓰기"),
     ("public_agent_files.py", "_resolve_inside_output", "Public_agent/ 밖으로 쓰기"),
+    # 관리 채널 전용 도구지만 같은 부류다: run 인자가 막히지 않으면 orchestrator_status 가
+    # 저장소 밖 파일을 읽고 orchestrator_stop 이 무관한 프로세스를 죽인다.
+    ("orchestrator_tool.py", "_resolve_run_dir", "orchestrator/runs/ 밖의 경로를 읽기/죽이기"),
 ]
 
 # 폴더를 벗어나는 입력들. 어느 것도 통과해서는 안 된다.

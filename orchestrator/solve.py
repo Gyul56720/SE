@@ -141,8 +141,12 @@ def drive(run_dir: str, max_repair_rounds: int = 3, max_node_repairs: int = 2,
 
 
 def solve(problem: str, max_repair_rounds: int = 3, max_node_repairs: int = 2,
-          max_replans: int = 1, pool=None, node_timeout: float = None) -> dict:
-    run_dir = RUNS / time.strftime("%Y%m%d-%H%M%S")
+          max_replans: int = 1, pool=None, node_timeout: float = None,
+          run_dir: str = None) -> dict:
+    # run_dir 를 받는 이유: 호출자(Discord 도구 등)가 런을 백그라운드로 띄우고 **곧바로**
+    # 어디를 봐야 하는지 알아야 한다. 타임스탬프를 여기서만 정하면 호출자는 "가장 최근
+    # 디렉토리"를 추측할 수밖에 없고, 동시에 두 런이 뜨면 그 추측이 틀린다.
+    run_dir = Path(run_dir).resolve() if run_dir else RUNS / time.strftime("%Y%m%d-%H%M%S")
     run_dir.mkdir(parents=True, exist_ok=True)
     try:
         plan_res = planner.make_plan(problem, str(run_dir), pool=pool)
@@ -166,6 +170,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("problem", nargs="?", help="풀 문제 설명")
     parser.add_argument("--resume", metavar="RUN_DIR", help="기존 런 디렉토리를 이어서 실행")
+    parser.add_argument("--run-dir", metavar="RUN_DIR", default=None,
+                        help="새 런을 여기에 만든다(기본: runs/<타임스탬프>). 백그라운드로 "
+                             "띄우는 호출자가 런 위치를 미리 알아야 할 때 쓴다")
     parser.add_argument("--max-repair-rounds", type=int, default=3,
                         help="실행-수리 라운드 상한 (기본 3)")
     parser.add_argument("--max-node-repairs", type=int, default=2,
@@ -182,7 +189,7 @@ def main():
     if args.resume:
         result = drive(args.resume, **kw)
     elif args.problem:
-        result = solve(args.problem, **kw)
+        result = solve(args.problem, run_dir=args.run_dir, **kw)
     else:
         parser.error("문제 문자열 또는 --resume RUN_DIR 중 하나가 필요하다")
     print(json.dumps(result, ensure_ascii=False, indent=2))
