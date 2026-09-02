@@ -1,0 +1,2 @@
+[Wed Sep  2 04:49:54 UTC 2026] 시뮬레이션 시작: sentence_sim, real_sim, final_sim
+[Wed Sep  2 04:49:54 UTC 2026] 시뮬레이션 종료: sentence_sim(202174), real_sim(202341), final_sim(202780) (강제 종료)
