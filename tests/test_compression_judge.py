@@ -267,7 +267,7 @@ def test_metric_rewards_activation_awareness() -> None:
     그러면 자가개선 루프가 그 방향을 영영 못 찾는다."""
     name, W = _one_tensor()
     n_in = W.shape[1]
-    Xa = activations.load_probes(name, n_in)
+    Xa, _ = activations.load_probes(name, n_in)
     check(Xa is not None, "활성치가 없다 -- activations.py 를 먼저 돌려라")
     if Xa is None:
         return
@@ -389,6 +389,48 @@ def test_entropy_coding_only_moves_bits() -> None:
           f"{a['bits_per_weight']:.3f} -> {b['bits_per_weight']:.3f}")
 
 
+def test_stats_fallback_keeps_direction() -> None:
+    """전체 표본 없이 **채널별 RMS 만** 있어도 실제 방향으로 잴 수 있는가.
+
+    이것이 VM 의존을 끊는 조각이다. 전체 표본은 텐서당 918KB 라 스무 개면 20MB 지만,
+    채널별 RMS 는 전부 합쳐 24KB 라 저장소에 넣을 수 있다. 그러면 활성치를 뽑은 기계가
+    없는 곳(이 컨테이너, CI)에서도 등방으로 물러나지 않는다.
+
+    지키는 것 셋: 통계 경로가 실제로 쓰이는가, 출처가 'activations' 와 **구별되게**
+    표시되는가(채널 간 상관을 버린 근사라 섞이면 안 된다), 그리고 등방보다 나은가."""
+    import shutil
+    import tempfile
+    src = Path(weights.CACHE_DIR)
+    tmp = Path(tempfile.mkdtemp(prefix="stats_only_"))
+    try:
+        cache = tmp / "cache"
+        shutil.copytree(src, cache)
+        activations.export_stats(cache)
+        for f in cache.glob("*" + activations.ACT_SUFFIX):
+            f.unlink()                                # 전체 표본을 없앤다
+        (cache / activations.ACT_MANIFEST).unlink()
+
+        name, W = weights.load("holdout", cache)[0]
+        X, source = activations.load_probes(name, W.shape[1], cache)
+        check(source == "activation_stats", f"통계 경로가 안 쓰인다: {source}")
+        check(X is not None and X.shape[0] == W.shape[1], "통계에서 만든 표본 모양이 틀렸다")
+
+        # 같은 이름이면 같은 표본이어야 한다 -- 점수가 실행마다 흔들리면 래칫이 무너진다
+        X2, _ = activations.load_probes(name, W.shape[1], cache)
+        check(np.array_equal(X, X2), "통계에서 만든 표본이 실행마다 다르다")
+
+        # 등방이 아니어야 한다 (그러면 통계를 쓴 의미가 없다)
+        rms = np.sqrt((X ** 2).mean(1))
+        spread = float(rms.max() / max(rms.min(), 1e-12))
+        check(spread > 2.0, f"통계에서 만든 표본이 사실상 등방이다: 채널 크기비 {spread:.1f}")
+
+        res = judge.score_codec(CODECS / "int8.py", "holdout", cache)
+        check(res["probe_source"] == "activation_stats",
+              f"심판이 통계 출처를 표시하지 않는다: {res['probe_source']}")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def main() -> int:
     for fn in (test_cheats_are_disqualified, test_bits_are_measured_not_claimed,
                test_honest_improvement_passes, test_one_axis_win_is_not_enough,
@@ -397,7 +439,8 @@ def main() -> int:
                test_mean_is_parameter_weighted, test_metric_rewards_activation_awareness,
                test_metric_is_not_silently_mixed, test_coding_gain_is_zero_for_isotropic,
                test_rans_roundtrip_and_determinism,
-               test_entropy_coding_only_moves_bits):
+               test_entropy_coding_only_moves_bits,
+               test_stats_fallback_keeps_direction):
         fn()
     if FAILURES:
         print("실패:")

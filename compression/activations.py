@@ -34,6 +34,7 @@ down_proj 의 입력은 `SiLU(gate) ⊙ up` 이라 두 사영의 곱이고 꼬�
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -47,6 +48,7 @@ import weights  # noqa: E402
 N_PROBE = 256            # 활성치 표본 벡터 수. n_in 차원 공간을 어느 정도 덮어야 한다
 ACT_SUFFIX = ".act.npy"
 ACT_MANIFEST = "activations.json"
+STATS_FILE = "activation_stats.npz"
 
 # 배관 시험용 합성 활성치의 outlier 구조. 실제로 관측되는 모양을 흉내 낸다 --
 # 소수 채널만 크고, 그 채널이 어디인지는 텐서마다 다르다.
@@ -66,16 +68,78 @@ def manifest(cache_dir: Path = None) -> dict | None:
     return json.loads(p.read_text(encoding="utf-8"))
 
 
-def load_probes(name: str, n_in: int, cache_dir: Path = None):
-    """텐서 하나의 활성치 표본. 없으면 None 을 돌려주고 심판이 등방으로 물러난다."""
+def export_stats(cache_dir: Path = None, out: Path = None) -> Path:
+    """활성치 표본에서 **채널별 RMS 만** 뽑아 한 파일로 낸다.
+
+    이것이 VM 의존을 끊는 조각이다. 전체 표본은 텐서당 (n_in x 256) float32 = 896 폭에서
+    918KB 라 스무 개면 20MB 다. 채널별 RMS 는 텐서당 n_in 개 실수 = 3.5KB, 전부 합쳐
+    100KB 아래다 -- 저장소에 넣을 수 있다.
+
+    무엇을 잃는가: 채널 간 상관이 빠진다. 다만 변환 부호화 이득 0.5·log2(AM/GM) 도,
+    AWQ 식 채널 스케일링도 대각(채널별 크기)만 본다. 그 목적에는 손실이 없고, 심판의
+    함수 오차에는 근사다. 그래서 출처를 'activation_stats' 로 따로 표시한다 -- 전체
+    표본으로 잰 것과 섞이지 않게.
+    """
     cache_dir = Path(cache_dir or weights.CACHE_DIR)
-    p = cache_dir / _slug(name)
+    man = manifest(cache_dir)
+    if man is None:
+        raise RuntimeError("활성치가 없다. capture 나 synthetic 을 먼저 돌려라.")
+    out = Path(out or cache_dir / STATS_FILE)
+    data = {}
+    for t in man["tensors"]:
+        X = np.load(cache_dir / _slug(t["name"]))
+        data[t["name"]] = np.sqrt((X.astype(np.float64) ** 2).mean(1)).astype(np.float32)
+    data["__meta__"] = np.array(json.dumps(
+        {"source": man["source"], "synthetic": man["synthetic"],
+         "n_probe": man.get("n_probe", N_PROBE)}, ensure_ascii=False))
+    np.savez_compressed(out, **data)
+    return out
+
+
+def _stats(cache_dir: Path):
+    p = Path(cache_dir) / STATS_FILE
     if not p.is_file():
         return None
-    X = np.load(p)
-    if X.ndim != 2 or X.shape[0] != n_in:
-        raise ValueError(f"활성치 모양이 가중치와 안 맞는다: {name} {X.shape}, n_in={n_in}")
-    return np.ascontiguousarray(X, dtype=np.float32)
+    return np.load(p, allow_pickle=False)
+
+
+def stats_meta(cache_dir: Path = None) -> dict | None:
+    z = _stats(Path(cache_dir or weights.CACHE_DIR))
+    if z is None:
+        return None
+    return json.loads(str(z["__meta__"]))
+
+
+def load_probes(name: str, n_in: int, cache_dir: Path = None):
+    """텐서 하나의 활성치 표본과 그 출처.
+
+    세 단계로 물러난다:
+      1. 전체 표본 `.act.npy` 가 있으면 그것 ("activations")
+      2. 없고 채널별 RMS 만 있으면 그것으로 만들어 쓴다 ("activation_stats")
+      3. 둘 다 없으면 None -- 심판이 등방 가우시안으로 물러난다
+
+    2단계는 채널 간 상관을 버린 근사다. 그래도 등방보다 낫다 -- 활성치의 값어치는
+    "어느 채널이 큰가"에서 나오고 그건 대각에 다 들어 있다.
+    """
+    cache_dir = Path(cache_dir or weights.CACHE_DIR)
+    p = cache_dir / _slug(name)
+    if p.is_file():
+        X = np.load(p)
+        if X.ndim != 2 or X.shape[0] != n_in:
+            raise ValueError(f"활성치 모양이 가중치와 안 맞는다: {name} {X.shape}, n_in={n_in}")
+        return np.ascontiguousarray(X, dtype=np.float32), "activations"
+
+    z = _stats(cache_dir)
+    if z is not None and name in z:
+        rms = z[name].astype(np.float32)
+        if rms.size != n_in:
+            raise ValueError(f"활성치 통계 길이가 안 맞는다: {name} {rms.size} != {n_in}")
+        h = int(hashlib.sha256(name.encode("utf-8")).hexdigest()[:8], 16)
+        rng = np.random.default_rng(20260902 + h)     # 이름으로 고정 -- 점수가 흔들리면 안 된다
+        X = rng.standard_normal((n_in, N_PROBE)).astype(np.float32) * rms[:, None]
+        return X, "activation_stats"
+
+    return None, None
 
 
 def synthesize(cache_dir: Path = None, seed: int = 20260902, n_probe: int = N_PROBE) -> dict:
@@ -205,15 +269,26 @@ _DEFAULT_TEXTS = [
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="심판이 쓸 활성치 표본")
-    ap.add_argument("action", choices=["capture", "synthetic", "list"])
+    ap.add_argument("action", choices=["capture", "synthetic", "stats", "list"])
     ap.add_argument("--repo", default=weights.DEFAULT_REPO)
     ap.add_argument("--cache", default=None)
     ap.add_argument("--n-probe", type=int, default=N_PROBE)
     a = ap.parse_args()
     cache = Path(a.cache) if a.cache else weights.CACHE_DIR
 
+    if a.action == "stats":
+        out = export_stats(cache)
+        z = np.load(out, allow_pickle=False)
+        n = len([k for k in z.files if k != "__meta__"])
+        print(f"채널별 RMS 를 뽑았다 -> {out} ({out.stat().st_size/1024:.0f}KB, 텐서 {n}개)")
+        print(f"메타: {stats_meta(cache)}")
+        print("이 파일 하나면 다른 곳에서도 실제 활성치 방향으로 채점할 수 있다.")
+        return 0
+
     if a.action == "capture":
         m = capture(a.repo, cache, a.n_probe)
+        export_stats(cache)
+        print(f"채널별 RMS 도 함께 뽑았다 -> {cache / STATS_FILE}")
     elif a.action == "synthetic":
         m = synthesize(cache, n_probe=a.n_probe)
         print("합성 활성치를 만들었다 -- 실제 활성치가 아니다. 배관 시험용.")

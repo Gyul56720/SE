@@ -59,8 +59,12 @@ EMBED_PATTERNS = ["embed_tokens.weight"]
 EMBED_BLOCKS = 4             # vocab 을 가로질러 몇 구간을 뽑을지
 EMBED_ROWS = 1024            # 구간당 행 수
 
-MAX_TENSORS = 16
-MAX_ELEMS = 4_000_000        # 텐서 하나 상한(행렬이 너무 크면 채점이 느려진다)
+MAX_TENSORS = 18
+# 텐서 하나 상한. 4,000,000 이었는데 그 값이 **MLP 를 통째로 버렸다** --
+# Qwen2.5-0.5B 의 gate/up/down_proj 가 4864x896 = 4,358,144 로 8% 넘쳤다. MLP 는 레이어
+# 파라미터의 88.4% 다. 채점 대상이 attention 사영과 임베딩뿐이었다는 뜻이고, 파라미터 가중
+# 평균을 도입해 놓고 정작 가장 무거운 종류를 안 보고 있었다.
+MAX_ELEMS = 5_000_000
 
 _ST_DTYPES = {"F32": np.float32, "F16": np.float16, "BF16": None, "F64": np.float64}
 
@@ -90,6 +94,34 @@ def _to_f32(raw: bytes, dtype: str, shape: list) -> np.ndarray:
     return np.frombuffer(raw, dtype=np_dtype).reshape(shape).astype(np.float32)
 
 
+def _layer_index(name: str) -> int:
+    m = re.search(r"\.layers\.(\d+)\.", name)
+    return int(m.group(1)) if m else -1
+
+
+def _pick_spread(cands: list, limit: int) -> list:
+    """종류별로 층을 고르게 걸쳐 뽑는다.
+
+    이름 알파벳순으로 앞에서 자르면 layers.0, layers.1, layers.10, layers.11 ... 순이라
+    낮은 층에 몰리고 종류도 한쪽으로 쏠린다. 층 깊이에 따라 분포가 달라지는 것이 알려진
+    성질이므로(초반 층과 후반 층은 outlier 양상이 다르다) 종류마다 층을 고르게 걸친다."""
+    by_kind: dict = {}
+    for name, meta in cands:
+        by_kind.setdefault(_kind(name), []).append((name, meta))
+    kinds = sorted(by_kind)
+    per = max(1, limit // max(1, len(kinds)))
+    out = []
+    for k in kinds:
+        g = sorted(by_kind[k], key=lambda kv: (_layer_index(kv[0]), kv[0]))
+        if len(g) <= per:
+            out.extend(g)
+            continue
+        idx = sorted({round(i * (len(g) - 1) / (per - 1)) if per > 1 else 0
+                      for i in range(per)})
+        out.extend(g[i] for i in idx)
+    return sorted(out, key=lambda kv: kv[0])[:limit]
+
+
 def fetch(repo: str = DEFAULT_REPO, filename: str = DEFAULT_FILE,
           cache_dir: Path = None, limit: int = MAX_TENSORS) -> dict:
     """safetensors 헤더를 읽고 원하는 행렬만 Range 로 받아 .npy 로 캐시한다."""
@@ -113,8 +145,7 @@ def fetch(repo: str = DEFAULT_REPO, filename: str = DEFAULT_FILE,
             embeds.append((name, meta))
         elif any(q in name for q in WANT_PATTERNS) and int(np.prod(shape)) <= MAX_ELEMS:
             picked.append((name, meta))
-    picked.sort(key=lambda kv: kv[0])
-    picked = picked[:limit]
+    picked = _pick_spread(picked, limit)
     if not picked and not embeds:
         raise RuntimeError("헤더에서 조건에 맞는 2차원 행렬을 찾지 못했다.")
 

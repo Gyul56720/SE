@@ -17,6 +17,7 @@ JPEG 을 사람이 설계한 자리에 탐색을 놓되, 무엇이 더 나은가
 |---|---|
 | `weights.py` | safetensors Range 요청으로 실제 모델 가중치의 행렬 몇 개만 받아 캐시. 종류별 층화로 design/holdout 분리 |
 | `activations.py` | 레이어에 **실제로 들어오는 활성치** 표본. 심판이 왜곡을 재는 방향을 정한다 |
+| `cache/activation_stats.npz` | 채널별 RMS 만 담은 24KB 요약. 이것만 있으면 torch 없는 곳에서도 실제 방향으로 잰다 |
 | `bounds.py` | 이론적 한계와 그 한계가 선 가정을 분리해서 잰다. 코덱을 만들지 않는다 |
 | `judge.py` | **독립 심판.** 코덱을 별도 프로세스로 격리 실행해 실제 blob 길이와 `P(x)=P'(x)` 오차를 재고 int8 과 비교 |
 | `_worker.py` | encode/decode 를 각각 따로 돌리는 자식 프로세스 |
@@ -105,8 +106,9 @@ python3 compression/search.py --rounds 5
 python3 tests/test_compression_judge.py
 
 # 활성치 (왜곡을 어느 방향으로 잴 것인가)
-python3 compression/activations.py capture      # VM: 모델을 돌려 실제 활성치를 후킹
-python3 compression/activations.py synthetic    # 여기: 배관 시험용 (실제 활성치 아님)
+python3 compression/activations.py capture      # VM: 모델을 돌려 실제 활성치를 후킹 (torch 필요)
+python3 compression/activations.py stats        # 채널별 RMS 만 24KB 로 뽑는다 (저장소에 넣는다)
+python3 compression/activations.py synthetic    # 배관 시험용 (실제 활성치 아님)
 
 # 이론적 한계가 어디이고 어떤 가정에 매달려 있는가
 python3 compression/bounds.py
@@ -198,6 +200,23 @@ bits, 그리고 스칼라 양자화의 공간채움 손실 0.2546 bits(격자/VQ
   실어야 하는데, 32x224 텐서(7168 심볼)를 256 레인으로 하면 상태에만 1.14 bits/weight 를
   쓴다 -- 아끼는 0.57 의 두 배를 되뱉는다. 심볼 1600개당 레인 하나로 두어 0.02 bits 아래로
   내렸다.
+
+### 활성치를 어떻게 나르는가
+
+심판은 세 단계로 물러난다:
+
+| 있는 것 | 출처 표시 | 무엇을 보는가 |
+|---|---|---|
+| `*.act.npy` 전체 표본 | `activations` | 채널 간 상관까지 |
+| `activation_stats.npz` (24KB) | `activation_stats` | 채널별 크기만 (대각 근사) |
+| 아무것도 없음 | `isotropic` | **사실상 가중치 오차** |
+
+전체 표본은 텐서당 918KB 라 스무 개면 20MB 다. 채널별 RMS 는 전부 합쳐 **24KB** 라 저장소에
+들어간다. 그러면 torch 가 없는 곳(이 컨테이너, CI)에서도 등방으로 물러나지 않는다.
+
+잃는 것은 채널 간 상관이다. 다만 변환 부호화 이득 `0.5·log2(AM/GM)` 도, AWQ 식 채널
+스케일링도 **대각만 본다** -- 그 목적에는 손실이 없다. 심판의 함수 오차에는 근사이므로
+출처를 따로 표시해 전체 표본으로 잰 것과 섞이지 않게 한다.
 
 ### 활성치: 아직 미지수
 

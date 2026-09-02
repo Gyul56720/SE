@@ -195,7 +195,10 @@ def score_tensor(codec: Path, name: str, W: np.ndarray, timeout: float = NODE_TI
         sb = float(src_bits if src_bits is not None else weights.source_bits())
 
         # 래칫이 쓰는 지표와, 항상 함께 남기는 등방 대조군.
-        X = probes if probes is not None else activations.load_probes(name, W.shape[1], cache_dir)
+        if probes is not None:
+            X, psrc = probes, "activations"
+        else:
+            X, psrc = activations.load_probes(name, W.shape[1], cache_dir)
         iso = functional_error(W, R)
         return {
             "name": name, "shape": list(W.shape), "n_weights": int(W.size),
@@ -203,7 +206,7 @@ def score_tensor(codec: Path, name: str, W: np.ndarray, timeout: float = NODE_TI
             "compression_x": sb / bits,
             "func_err": iso if X is None else _relative_error(W, R, X),
             "func_err_iso": iso,
-            "probe_source": "isotropic" if X is None else "activations",
+            "probe_source": psrc or "isotropic",
             "weight_err": float(np.linalg.norm(W - R) / (np.linalg.norm(W) or 1.0)),
             "encode_s": enc_s, "decode_s": dec_s,
         }
@@ -284,8 +287,10 @@ def evaluate(codec: Path, split: str = "holdout", cache_dir=None,
         "source": man["source"], "synthetic": man["synthetic"], "split": split,
         "source_bits": result["source_bits"],
         "probe_source": result["probe_source"],
-        "activations": (activations.manifest(cache_dir) or {}).get("source", "없음"),
-        "activations_synthetic": (activations.manifest(cache_dir) or {}).get("synthetic"),
+        "activations": ((activations.manifest(cache_dir) or activations.stats_meta(cache_dir)
+                         or {}).get("source", "없음")),
+        "activations_synthetic": ((activations.manifest(cache_dir)
+                                   or activations.stats_meta(cache_dir) or {}).get("synthetic")),
         "n_tensors": len(result["tensors"]),
         "mean": m, "baseline_int8": b, "tensors": result["tensors"],
         "beats_int8": verdict, "reason": why,
@@ -319,9 +324,13 @@ def main() -> int:
     print(f"데이터 {res['source']} / {res['split']} 셋 {res['n_tensors']}개, "
           f"파라미터 {m['n_weights']:,}개{warn}")
     print(f"압축배율 분모 = 원본 {sb:g} bits/weight (bf16 배포 기준)")
-    if res["probe_source"] == "activations":
-        aw = "  ⚠ 합성 활성치" if res.get("activations_synthetic") else ""
-        print(f"왜곡 측정 입력 = 실제 활성치 표본 ({res['activations']}){aw}")
+    ps = res["probe_source"]
+    aw = "  ⚠ 합성 활성치" if res.get("activations_synthetic") else ""
+    if ps == "activations":
+        print(f"왜곡 측정 입력 = 활성치 표본 ({res['activations']}){aw}")
+    elif ps == "activation_stats":
+        print(f"왜곡 측정 입력 = 활성치 **채널별 RMS** ({res['activations']}){aw}"
+              " -- 채널 간 상관은 버린 근사다")
     else:
         print("왜곡 측정 입력 = 등방 가우시안 -- 사실상 가중치 오차를 재고 있다"
               " (activations.py 를 돌리면 실제 방향으로 잰다)")

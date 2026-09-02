@@ -120,7 +120,7 @@ def report(split: str = "holdout", cache_dir=None) -> dict:
     gb = ga = 0.0
     if act_man is not None:
         for name, W in T:
-            X = activations.load_probes(name, W.shape[1], cache_dir)
+            X, _ = activations.load_probes(name, W.shape[1], cache_dir)
             if X is None:
                 continue
             H = _rotation(W.shape[1])
