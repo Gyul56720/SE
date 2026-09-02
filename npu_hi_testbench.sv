@@ -3,7 +3,7 @@
 
 module npu_hi_testbench;
     logic clk, rst_n;
-    logic [127:0] crypto_key = 128'h0123456789ABCDEF0123456789ABCDEF;
+    logic [127:0] crypto_key = 128'h0; // 암호화 없이 명확한 연산 확인
 
     logic [31:0] csr_awaddr, csr_wdata, csr_araddr;
     logic csr_awvalid, csr_awready, csr_wvalid, csr_wready, csr_bvalid, csr_bready;
@@ -37,30 +37,34 @@ module npu_hi_testbench;
         csr_arvalid = 0; csr_rready = 0; mem_awvalid = 0; mem_wvalid = 0; mem_bready = 0;
         #20; rst_n = 1; #20;
 
-        $display("=== [Hardware Simulation] Injecting 'Hi' (ASCII 72, 105) Tensor Stream ===");
+        $display("=== [Debug] Injecting 'Hi' Tensor Stream ===");
 
-        // Load 'Hi' Activations: 72, 105
+        // 1. Load 'Hi' Activations: 72, 105
         @(posedge clk);
         mem_awaddr = 32'h0; 
         mem_wdata  = {112'd0, 8'd105, 8'd72};
         mem_awvalid = 1; mem_wvalid = 1; mem_bready = 1;
         wait(mem_bvalid); @(posedge clk); mem_awvalid = 0; mem_wvalid = 0;
 
-        // Load Weights
+        // 2. Load Weights (+1, i.e., 2'b01)
         @(posedge clk);
         mem_awaddr = 32'h1000;
-        mem_wdata  = 128'h55555555555555555555555555555555 ^ crypto_key;
+        mem_wdata  = 128'h55555555555555555555555555555555; 
         mem_awvalid = 1; mem_wvalid = 1; mem_bready = 1;
         wait(mem_bvalid); @(posedge clk); mem_awvalid = 0; mem_wvalid = 0;
 
-        // Trigger NPU
+        // 3. Settling Time (Allow memory write to propagate)
+        repeat(10) @(posedge clk);
+
+        // 4. Trigger NPU
         @(posedge clk);
         csr_awaddr = 32'h00; csr_wdata = 32'h01; csr_awvalid = 1; csr_wvalid = 1; csr_bready = 1;
         wait(csr_bvalid); @(posedge clk); csr_awvalid = 0; csr_wvalid = 0;
 
-        // Wait for Done
+        // 5. Wait for Done
         wait(npu_done);
-        $display("=== [Hardware Simulation] NPU Output Vector Dot Product = %0d ===", npu_result);
+        $display("=== [Result] Final Output Vector Dot Product = %0d ===", npu_result);
+        
         $finish;
     end
 endmodule
