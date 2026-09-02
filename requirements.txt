@@ -1,14 +1,17 @@
 requests>=2.31.0
 python-dotenv>=1.0.0
-arxiv>=2.1.0
-paper-qa
-pypdf>=4.0.0
-langchain>=0.3.0
+langchain-core>=0.3.0
 langchain-google-genai>=2.1.0
-langchain-groq>=0.2.0
 langgraph>=0.2.0
 discord.py>=2.4.0
 
 # 수학 스택(mathmetics/matrix_exponent/*)과 그 심판 verifier.py 가 쓴다.
-# 없으면 게이트 G009(자가 수정 심판 무결성)가 "심판이 깨졌다"로 커밋을 막는다.
+# 없으면 G009 는 정적 검사만 하고 행동 검증(틀린 스킴을 실제로 거부하는가)을 건너뛴다.
+# CI(.github/workflows/gates.yml)는 이 패키지들이 실제로 깔렸는지 먼저 확인한다 --
+# 안 그러면 게이트가 조용히 SKIP 되면서 CI 만 초록으로 뜬다.
 numpy>=1.24.0
+
+# 2026-09-02 제거: arxiv, paper-qa, pypdf, langchain-groq.
+# 옵시디언 논문 리서치 파이프라인(main.py/collector.py/sources/ 등)과 함께 지워졌고
+# 남은 코드 어디에서도 임포트하지 않는다. langchain 우산 패키지도 langchain-core 로
+# 좁혔다 -- 실제로 쓰는 것은 langchain_core.tools 뿐이다.

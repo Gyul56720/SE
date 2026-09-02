@@ -32,6 +32,11 @@ Gemini + LangGraph ReAct 에이전트가 처리하고, 둘 다 `run_shell`로 �
 - `tests/test_gates_on_incidents.py` — 실제 사고 커밋 트리에서 게이트가 정말 걸리는지 재증명.
   (전체 이력이 필요하다. shallow clone에서는 돌지 않는다.)
 
+게이트는 두 곳에서 강제된다: VM의 `git_sync()`(봇이 스스로 커밋할 때)와
+`.github/workflows/gates.yml`(누가 어디서 push하든). 후자는 전체 이력을 받아
+사고 회귀 증명까지 돌리고, 의존성이 실제로 깔렸는지 먼저 확인한다 -- 설치가 반쯤
+실패해 게이트가 조용히 SKIP 되면서 CI만 초록으로 뜨는 것을 막는다.
+
 ```bash
 python3 gatekeeper.py                 # 게이트 전체 실행 (통과 0 / 위반 1)
 python3 gatekeeper.py --list          # 등록된 게이트와 그 사고 이력

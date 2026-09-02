@@ -17,6 +17,7 @@ Public_agent/challenge.py는 EXPECTED_SHA256이라는 위조 불가능한 오라
 """
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import tempfile
@@ -97,6 +98,17 @@ def main() -> int:
                 f"이 게이트는 해당 원인을 잡지 못한다"
             )
 
+    if skipped:
+        print(f"\n건너뛴 사고 {len(skipped)}건(커밋 없음): {', '.join(skipped)}")
+        # CI 는 fetch-depth: 0 으로 전체 이력을 받는다. 그런데도 커밋이 없다면 체크아웃
+        # 설정이 바뀐 것이고, 그대로 두면 "아무 사고도 검증하지 않은 초록불"이 된다 --
+        # G008 이 코드에서 막는 vacuous verify 를 CI 가 저지르는 셈이다. 그래서 CI 에서는
+        # SKIP 자체를 실패로 친다.
+        if os.getenv("SE_REQUIRE_FULL_HISTORY") == "1":
+            failures.append(
+                f"SE_REQUIRE_FULL_HISTORY=1 인데 사고 {len(skipped)}건을 건너뛰었다 -- "
+                f"체크아웃이 얕다(fetch-depth: 0 확인). 검증하지 않고 통과할 뻔했다.")
+
     report = gatekeeper.run_gates(REPO)
     print(f"\n[HEAD] 현재 트리 -> {'GREEN 성립' if report.passed else 'GREEN 실패'}")
     if not report.passed:
@@ -107,8 +119,6 @@ def main() -> int:
         for f in failures:
             print(" -", f)
         return 1
-    if skipped:
-        print(f"\n건너뛴 사고 {len(skipped)}건(커밋 없음): {', '.join(skipped)}")
     print("\n검증한 범위에서 모든 게이트가 red-green 증명을 통과했다.")
     return 0
 

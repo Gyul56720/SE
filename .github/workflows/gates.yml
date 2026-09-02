@@ -1,0 +1,57 @@
+# 커밋 경로 강제 검사를 VM 밖으로 확장한다.
+#
+# 왜 필요한가: gatekeeper 는 지금까지 Oracle VM 의 discord_bot_server.git_sync() 한 곳에서만
+# 돌았다. 즉 봇이 스스로 커밋할 때만 검사를 받았고, 개발 세션·웹 UI·다른 머신에서 push 하면
+# 게이트 전부를 우회해 main 에 들어갔다. 그리고 main 에 들어간 코드는 deploy-oracle.yml 이
+# 그대로 서버에 밀어넣는다. 게이트를 아무리 세게 만들어도 게이트가 걸리지 않는 문이 열려
+# 있으면 그 문으로 들어온 코드가 서버까지 간다.
+#
+# 이 워크플로가 그 문을 닫는다. 실패를 병합 차단으로까지 만들려면 GitHub 저장소 설정에서
+# Branch protection > Require status checks 에 이 잡을 추가해야 한다(코드로는 못 한다).
+name: 게이트 (gatekeeper + 사고 회귀 증명)
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch: {}
+
+concurrency:
+  group: gates-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # 기본값(1)이면 사고 커밋 트리를 꺼낼 수 없어 회귀 증명이 전부 SKIP 된다.
+          # 아래 SE_REQUIRE_FULL_HISTORY=1 이 그 SKIP 을 실패로 만들어 이 설정을 강제한다.
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: 의존성 설치
+        run: pip install -r requirements.txt
+
+      - name: 의존성이 실제로 깔렸는지 확인
+        # 이 단계가 없으면 설치가 반쯤 실패해도 G012(실제 임포트)와 G009(심판 행동 검증)가
+        # "서드파티 없음"으로 조용히 SKIP 되고 CI 만 초록으로 뜬다. 검사하지 않은 초록불은
+        # 검사한 빨간불보다 나쁘다 -- G008 이 코드에서 막는 vacuous verify 를 CI 가 저지르는
+        # 꼴이다. 그래서 먼저 임포트해보고, 안 되면 여기서 멈춘다.
+        run: python3 -c "import langchain_core, langchain_google_genai, langgraph, discord, numpy, requests, dotenv"
+
+      - name: 게이트 전체 실행
+        run: python3 gatekeeper.py
+
+      - name: 사고 회귀 증명 (게이트가 실제 사고를 잡는가)
+        env:
+          SE_REQUIRE_FULL_HISTORY: "1"
+        run: python3 tests/test_gates_on_incidents.py
+
+      - name: 오케스트레이터 계획 수리 테스트
+        run: python3 tests/test_planner_repair.py
