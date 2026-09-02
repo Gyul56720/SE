@@ -23,3 +23,13 @@ mathmetics/matrix_exponent/als_state.json
 # 덮어써 '이미 실패한 전략' 기억이 사라진다. 채택 기록은 searcher.py 커밋이 남긴다.
 mathmetics/matrix_exponent/improve_ledger.json
 !logs/code_dialogue/
+*.bin
+*.sim
+*_sim
+array_act.txt
+array_w.txt
+tile_stimulus.txt
+all_stimulus.txt
+Qwen2.5-Coder-7B-partial.gguf
+*.npy
+*.bin

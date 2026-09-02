@@ -182,38 +182,73 @@ def repair_count(node: Node) -> int:
     return sum(1 for a in node.attempts if "repaired_by" in a)
 
 
-def make_plan(problem: str, run_dir: str, pool=None, pool_id="planner", feedback: str = "") -> dict:
+def _build_plan(problem: str, spec: dict) -> tuple:
+    """LLM 스펙 -> (Plan, [(경로, 내용)]). 파일은 아직 쓰지 않는다 -- 검증을 통과한 계획만
+    디스크에 남기기 위해서다(실패한 시도의 코드 조각이 런 디렉토리에 쌓이지 않게)."""
+    nodes, files = [], []
+    for nd in spec["nodes"]:
+        nid = nd["id"]
+        comp_rel, ver_rel = f"components/{nid}.py", f"components/{nid}_verify.py"
+        files.append((comp_rel, nd["component_code"]))
+        files.append((ver_rel, nd["verifier_code"]))
+        nodes.append(Node(id=nid, goal=nd.get("goal", ""), deps=nd.get("deps", []),
+                          component=comp_rel, verifier=ver_rel))
+    return Plan(problem=problem, nodes=nodes, final=spec["final"]), files
+
+
+def make_plan(problem: str, run_dir: str, pool=None, pool_id="planner", feedback: str = "",
+              attempts: int = 3) -> dict:
     """문제 -> run 디렉토리에 plan.json + components/*.py 를 생성한다. 요약 dict 반환.
     pool 을 주입하면 그걸 쓰고(테스트), 없으면 환경 키로 build_pool.
-    feedback 은 이전 계획이 왜 실패했는지(replan 시). 비어 있으면 최초 계획."""
+    feedback 은 이전 계획이 왜 실패했는지(replan 시). 비어 있으면 최초 계획.
+
+    계획 자체가 실패하면(JSON 파싱 불가, 필수 키 누락, 사이클·미정의 의존·final 부재) 그 사유를
+    프롬프트에 되먹여 attempts 회까지 다시 시도한다. 이것이 없으면 계획 단계는 되먹임이 없는
+    한 번뿐인 관문이 된다 -- 실행 실패는 수리로 이어지는데 계획 실패만 그대로 죽는다.
+    실측(2026-09-01 벤치 h3): 명세가 길어 노드 코드가 길어지자 LLM 이 구조가 깨진 DAG 를 냈고,
+    재시도 경로가 없어 런 전체가 planning_failed 로 끝났다. 문제는 풀 수 있는 것이었다.
+    출력 계약이 'JSON 문자열 안에 코드를 이스케이프해 넣는' 형태라 코드가 길수록 깨지기 쉽다 --
+    같은 이유로 repair_node 는 애초에 JSON 이 아니라 코드 한 덩어리를 받는다."""
     run_dir = Path(run_dir).resolve()
     (run_dir / "components").mkdir(parents=True, exist_ok=True)
 
     if pool is None:
         pool = llm_pool.build_pool()
-    prompt = PLANNER_SYSTEM + "\n\n[문제]\n" + problem
+    base = PLANNER_SYSTEM + "\n\n[문제]\n" + problem
     if feedback:
-        prompt += "\n\n[이전 시도의 실패 기록]\n" + feedback
-    text, label = llm_pool.call(pool, prompt, pool_id=pool_id)
-    spec = _parse_plan_json(text)
+        base += "\n\n[이전 시도의 실패 기록]\n" + feedback
 
-    nodes = []
-    for nd in spec["nodes"]:
-        nid = nd["id"]
-        comp_rel = f"components/{nid}.py"
-        ver_rel = f"components/{nid}_verify.py"
-        (run_dir / comp_rel).write_text(nd["component_code"], encoding="utf-8")
-        (run_dir / ver_rel).write_text(nd["verifier_code"], encoding="utf-8")
-        nodes.append(Node(id=nid, goal=nd.get("goal", ""), deps=nd.get("deps", []),
-                          component=comp_rel, verifier=ver_rel))
+    history, label = [], None
+    for i in range(1, max(1, attempts) + 1):
+        prompt = base
+        if history:
+            prompt += ("\n\n[직전 응답이 거부된 이유 -- 같은 실수를 반복하지 마라]\n"
+                       + "\n".join(f"- {h}" for h in history))
+        text, label = llm_pool.call(pool, prompt, pool_id=pool_id)
 
-    plan = Plan(problem=problem, nodes=nodes, final=spec["final"])
-    errs = plan.validate()
-    if errs:
-        return {"status": "invalid_plan", "errors": errs, "model": label}
-    plan.save(run_dir / "plan.json")
-    return {"status": "planned", "run_dir": str(run_dir), "nodes": [n.id for n in nodes],
-            "final": plan.final, "model": label}
+        try:
+            spec = _parse_plan_json(text)
+            plan, files = _build_plan(problem, spec)
+        except Exception as e:                                # noqa: BLE001
+            history.append(f"{i}번째 응답을 계획으로 읽을 수 없었다 ({type(e).__name__}: {e}). "
+                           f"설명·코드펜스 없이 지정된 JSON 하나만, 코드의 줄바꿈은 \\n 으로 "
+                           f"이스케이프해서 출력하라.")
+            continue
+
+        errs = plan.validate()
+        if errs:
+            history.append(f"{i}번째 계획의 구조 오류: {'; '.join(errs)}")
+            continue
+
+        for rel, content in files:                            # 검증 통과 -> 이제 쓴다
+            (run_dir / rel).write_text(content, encoding="utf-8")
+        plan.save(run_dir / "plan.json")
+        return {"status": "planned", "run_dir": str(run_dir), "nodes": [n.id for n in plan.nodes],
+                "final": plan.final, "model": label, "planning_attempts": i,
+                "planning_retries": history}
+
+    return {"status": "invalid_plan", "errors": history, "model": label,
+            "planning_attempts": max(1, attempts)}
 
 
 def repair_node(run_dir: str, node_id: str, pool=None, pool_id="planner") -> dict:
