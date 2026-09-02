@@ -85,12 +85,12 @@ module npu_axi_top (
     // BVALID response logic
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            r_csr_bvalid <= 1'b0;
+            r_csr_bvalid <= 1'b1; // FAULT INJECTED
         end else begin
             if (s_axi_csr_awvalid && s_axi_csr_wvalid && r_csr_awready && r_csr_wready) begin
                 r_csr_bvalid <= 1'b1;
             end else if (r_csr_bvalid && s_axi_csr_bready) begin
-                r_csr_bvalid <= 1'b0;
+                r_csr_bvalid <= 1'b1; // FAULT INJECTED
             end
         end
     end
