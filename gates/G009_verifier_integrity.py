@@ -57,6 +57,26 @@ def check(ctx) -> "list[str]":
 
     violations: list[str] = []
 
+    # numpy 가드는 _load 보다 반드시 위에 있어야 한다. verifier.py 는 최상위에서 numpy 를
+    # 임포트하므로, 아래에서 검사하면 numpy 없는 환경에서 _load 가 먼저 터져 "심판이 깨졌다"
+    # 로 모든 커밋이 차단된다(실측 2026-09-02: 이 저장소의 개발 컨테이너에서 재현). 그건
+    # 심판이 약화된 것이 아니라 실행 의존성이 없는 것이며, 이 게이트의 독스트링도 그때는
+    # 정적 검사만 하겠다고 적어두었다. G010 은 처음부터 이 순서로 되어 있다.
+    try:
+        import numpy  # noqa: F401
+        _has_numpy = True
+    except ImportError:
+        _has_numpy = False
+
+    if not _has_numpy:
+        # 실행 의존성이 없으면 모듈을 임포트하지 않고 소스만 본다 -- 필수 심볼과 판정 강도
+        # 상수는 텍스트로도 확인할 수 있다.
+        src = path.read_text(encoding="utf-8")
+        for sym in ("verify_scheme", "effective_omega", "MAX_ATOL", "MIN_TRIALS"):
+            if sym not in src:
+                violations.append(f"{_VERIFIER_REL}: 필수 심볼 '{sym}' 이(가) 없다 -- 심판 계약 위반.")
+        return violations
+
     try:
         mod = _load(path)
     except Exception as e:
@@ -87,12 +107,7 @@ def check(ctx) -> "list[str]":
     except (TypeError, ValueError):
         violations.append(f"{_VERIFIER_REL}: MIN_TRIALS 가 정수가 아니다.")
 
-    # 3) 행동 검증: 틀린 스킴을 실제로 거부하는가.
-    try:
-        import numpy  # noqa: F401
-    except ImportError:
-        return violations  # 실행 의존성 없으면 정적 검사까지만.
-
+    # 3) 행동 검증: 틀린 스킴을 실제로 거부하는가 (여기까지 왔으면 numpy 는 있다).
     for b in (2, 3):
         try:
             result = mod.verify_scheme(_canary(b))

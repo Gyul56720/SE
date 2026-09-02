@@ -33,3 +33,12 @@ all_stimulus.txt
 Qwen2.5-Coder-7B-partial.gguf
 *.npy
 *.bin
+
+# iverilog/vvp 시뮬레이션 산출물 (npu/ 에서 재생성 가능)
+check_syntax
+final_sim_exec
+final_sim_opt
+npu/*_sim
+npu/array_results.txt
+npu/array_act.txt
+npu/array_w.txt
