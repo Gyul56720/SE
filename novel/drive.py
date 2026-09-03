@@ -111,6 +111,10 @@ def _json(text: str) -> dict:
 
 # ---------------------------------------------------------------- 프롬프트
 
+def _fb_text(msg: str) -> str:
+    return f"\n\n[직전 시도가 기각된 이유 -- 같은 실수를 반복하지 마라]\n- {msg}"
+
+
 def _fb(violations) -> str:
     """관문 위반을 되먹임 문단으로. **이것이 수리의 전부다.**"""
     if not violations:
@@ -170,6 +174,160 @@ JSON 만 출력:
 {{"beat": "[장면 한 문장]", "participants": ["..."], "mode": "dialogue",
   "requires": [], "establishes": ["..."], "scale": 1,
   "world_ops": [], "relation_ops": []}}"""
+
+
+def subplot_prompt(novel, ep: int, spine_summary: str, feedback="") -> str:
+    """서브플롯 비트. **원패턴을 감추는 것이 목적이다.**
+
+    보고서: 위기-해결-보상의 반복이 노출되면 지루해진다. 조연들의 이야기를 사이사이 끼워
+    피로를 덜고, 나중에 그것이 메인의 해결에 사소하게 이바지하게 만든다.
+
+    척추 비트와 달리 **아무것도 establishes 하지 않는다** -- 인과에 얹히지 않으므로
+    지워도 사슬이 안 무너진다. 그게 서브플롯의 정의다."""
+    from . import arc
+    return f"""너는 웹소설 디렉터다. 메인 줄기 사이에 끼울 **서브플롯 한 회차**를 만든다.
+
+{arc.brief(ep)}
+[이 구간의 메인] {spine_summary}
+[인물] {', '.join(c.name for c in novel.characters)} (화자: {novel.pov_character})
+
+규칙:
+- 메인의 인과를 건드리지 마라. establishes 는 비워 둔다 -- 지워도 이야기가 무너지지 않아야 한다.
+- 조연의 이야기이거나 일상이다. 다만 **메인의 감정과 같은 온도**여야 한다.
+- 나중에 메인의 해결에 사소하게 이바지할 씨앗 하나를 심어라.
+{feedback}
+
+JSON 만 출력:
+{{"beat": "[장면 한 문장]", "participants": ["..."], "mode": "dialogue",
+  "scale": 1, "world_ops": []}}"""
+
+
+def build_episode(novel, spec: dict, llm=None, max_repairs=MAX_REPAIRS, log=None) -> list:
+    """결말 하나를 회차들로 편다. **척추는 역방향, 살은 서브플롯.**
+
+    spec 은 world_romance.OUTCOMES 의 한 항목이다(summary/requires/establishes/eps/scale).
+
+    1. 열린 조건 = 결말의 requires 중 앞선 에피소드가 못 갚은 것
+    2. 열린 조건 하나를 갚는 비트를 LLM 에게 받는다 -- **거꾸로** 쌓는다
+    3. 그 비트 자신의 requires 가 새로 열린다. 닫힐 때까지 반복
+    4. 뒤집어 시간순으로. 남는 회차 칸은 서브플롯으로 채운다
+    5. 마지막 회차에 클리프행어
+
+    establishes 문자열이 조건과 정확히 같지 않으면 되돌려보낸다 -- 한 글자만 달라도
+    V018 이 개연성 구멍으로 잡기 때문에, 여기서 막는 편이 싸다."""
+    from .episode import Beat, Outcome, Episode, to_scenes
+    llm = llm or default_llm
+    lo, hi = spec["eps"]
+    n_eps = hi - lo + 1
+
+    entry = set()
+    for sc in novel.scenes:
+        entry.update(sc.establishes or [])
+
+    open_conds = [c for c in spec["requires"]
+                  if c not in entry and not c.startswith("state:")]
+    spine, feedback = [], ""
+
+    while open_conds and len(spine) < n_eps:
+        got = None
+        for _ in range(max_repairs + 1):
+            b = _json(_llm_for(llm, "director")(
+                beat_prompt(novel, spec["summary"], open_conds, feedback)))
+            est = [e for e in (b.get("establishes") or []) if e in open_conds]
+            if est:
+                got = Beat(beat=b.get("beat", ""),
+                           participants=b.get("participants") or [novel.pov_character],
+                           mode=b.get("mode", "dialogue"),
+                           requires=list(b.get("requires") or []), establishes=est,
+                           world_ops=list(b.get("world_ops") or []),
+                           relation_ops=list(b.get("relation_ops") or []),
+                           scale=int(b.get("scale") or spec["scale"]))
+                feedback = ""
+                break
+            feedback = _fb_text(
+                f"establishes 가 열린 조건과 정확히 같지 않다. 받은 값: "
+                f"{b.get('establishes')!r} / 열린 조건: {open_conds}. "
+                f"**문자열을 그대로 복사하라** -- 한 글자만 달라도 개연성 구멍으로 잡힌다")
+        if got is None:
+            break
+        spine.append(got)
+        open_conds = [c for c in open_conds if c not in got.establishes]
+        for c in got.requires:
+            if (c not in entry and not c.startswith("state:")
+                    and c not in open_conds
+                    and not any(c in b.establishes for b in spine)):
+                open_conds.append(c)
+
+    spine.reverse()                                   # 거꾸로 쌓았으니 뒤집으면 시간순
+
+    # 남는 칸은 서브플롯. 척추 사이에 끼워 원패턴을 감춘다.
+    # **결말 자리를 한 칸 빼둔다.** 빼두지 않고 마지막에 잘라내면 결말이 통째로 날아간다
+    # (회귀 검사 test_novel_episode 가 잡았다 -- 척추 3 + 서브플롯 2 + 결말 1 을 5로
+    # 자르니 에피소드의 끝이 사라졌다).
+    body_slots = max(1, n_eps - 1)
+    overflow = max(0, len(spine) - body_slots)
+    if overflow:
+        # 척추가 회차 칸보다 길다. 잘라내면 인과가 끊기므로 잘라내지 않고 회차를 늘린다.
+        body_slots = len(spine)
+    beats, need = list(spine), body_slots - len(spine)
+    for k in range(max(0, need)):
+        b = _json(_llm_for(llm, "director")(
+            subplot_prompt(novel, lo + k, spec["summary"])))
+        filler = Beat(beat=b.get("beat", ""),
+                      participants=b.get("participants") or [novel.pov_character],
+                      mode=b.get("mode", "dialogue"), establishes=[],
+                      world_ops=list(b.get("world_ops") or []),
+                      scale=int(b.get("scale") or spec["scale"]))
+        pos = min(len(beats), (k + 1) * max(1, len(beats)) // (need + 1))
+        beats.insert(pos, filler)
+
+    # 결말은 마지막 회차다.
+    beats.append(Beat(beat="[결말] " + spec["summary"],
+                      participants=[novel.pov_character],
+                      requires=list(spec["requires"]),
+                      establishes=list(spec["establishes"]),
+                      world_ops=list(spec.get("world_ops") or []),
+                      relation_ops=list(spec.get("relation_ops") or []),
+                      scale=spec["scale"], cliffhanger="shock_line"))
+
+    ep = Episode(n=spec["seq"], outcome=Outcome(spec["summary"], spec["requires"]),
+                 beats=beats[:body_slots] + beats[-1:], episodes=(lo, hi))
+    scenes = to_scenes(ep, prefix=f"s{spec['seq']}e", start_ep=lo)
+    for i, sc in enumerate(scenes):          # 회차마다 끝을 표시한다
+        sc.is_episode_end = True
+        sc.episode = lo + i
+    if scenes:
+        scenes[-1].cliffhanger = scenes[-1].cliffhanger or "shock_line"
+    _record(log, {"event": "episode", "seq": spec["seq"], "eps": [lo, hi],
+                  "spine": len(spine), "subplot": max(0, need),
+                  "scenes": len(scenes), "unresolved": open_conds,
+                  "overflow": overflow})
+    if overflow:
+        print(f"[episode] 시퀀스 {spec['seq']}: 척추가 회차 칸보다 {overflow} 길다 -- "
+              f"회차를 늘려 인과를 지켰다({hi - lo + 1} -> {len(scenes)})",
+              file=__import__("sys").stderr, flush=True)
+    return scenes
+
+
+def drive_novel(novel, outcomes, path, llm=None, max_repairs=MAX_REPAIRS,
+                log=None, limit_episodes=None) -> dict:
+    """결말 목록을 순서대로 펴서 씬까지 채운다. 에피소드마다 저장한다."""
+    llm = llm or default_llm
+    log = log or (Path(path).with_suffix(".scenes.jsonl") if path else None)
+    done = []
+    for spec in outcomes[:limit_episodes] if limit_episodes else outcomes:
+        if any(s.id.startswith(f"s{spec['seq']}e") for s in novel.scenes):
+            continue                                   # 이미 편 에피소드는 건너뛴다
+        novel.scenes.extend(build_episode(novel, spec, llm, max_repairs, log))
+        if path:
+            novel.save(path)
+        r = drive(novel, path, llm=llm, max_repairs=max_repairs, log=log)
+        done.append({"seq": spec["seq"], **r})
+        if r["status"] != "done":
+            break
+    return {"episodes": done,
+            "verified": sum(1 for s in novel.scenes if s.status == "verified"),
+            "total": len(novel.scenes)}
 
 
 def _arc_brief(scene) -> str:
