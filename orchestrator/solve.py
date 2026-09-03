@@ -52,6 +52,7 @@ class _NoPool(RuntimeError):
     """쓸 수 있는 LLM 후보가 하나도 없다(키 미설정). 장애가 아니라 설정 문제라 따로 구분한다."""
 
 
+
 def _force_verifier(run_dir: Path, final_verifier: str) -> bool:
     """최종 노드의 verifier 를 주입 심판으로 **다시** 못박는다. 바뀌었으면 True.
 
@@ -107,9 +108,13 @@ def failure_reasons(run_dir) -> list:
     return out
 
 
-def drive(run_dir: str, max_repair_rounds: int = 3, max_node_repairs: int = 2,
-          max_replans: int = 1, pool=None, node_timeout: float = None,
+def drive(run_dir: str, max_repair_rounds: int = 300, max_node_repairs: int = 200,
+          max_replans: int = 100, pool=None, node_timeout: float = None,
           final_verifier: str = None) -> dict:
+
+def drive(run_dir: str, max_repair_rounds: int = 30000, max_node_repairs: int = 20000,
+          max_replans: int = 10000, pool=None, node_timeout: float = None) -> dict:
+
     """plan.json 이 있는 런을 목표 달성까지 몰아붙인다: 실행 -> 검증 -> 실패면 수리/재계획 -> 재실행.
 
     반환 dict 의 status 는 "solved" 이거나 "incomplete" 다. incomplete 면 왜 멈췄는지
@@ -207,8 +212,8 @@ def drive(run_dir: str, max_repair_rounds: int = 3, max_node_repairs: int = 2,
             "failures": failure_reasons(run_dir)}
 
 
-def solve(problem: str, max_repair_rounds: int = 3, max_node_repairs: int = 2,
-          max_replans: int = 1, pool=None, node_timeout: float = None,
+def solve(problem: str, max_repair_rounds: int = 30000, max_node_repairs: int = 20000,
+          max_replans: int = 10000, pool=None, node_timeout: float = None,
           run_dir: str = None) -> dict:
     # run_dir 를 받는 이유: 호출자(Discord 도구 등)가 런을 백그라운드로 띄우고 **곧바로**
     # 어디를 봐야 하는지 알아야 한다. 타임스탬프를 여기서만 정하면 호출자는 "가장 최근
@@ -240,12 +245,12 @@ def main():
     parser.add_argument("--run-dir", metavar="RUN_DIR", default=None,
                         help="새 런을 여기에 만든다(기본: runs/<타임스탬프>). 백그라운드로 "
                              "띄우는 호출자가 런 위치를 미리 알아야 할 때 쓴다")
-    parser.add_argument("--max-repair-rounds", type=int, default=3,
-                        help="실행-수리 라운드 상한 (기본 3)")
-    parser.add_argument("--max-node-repairs", type=int, default=2,
-                        help="노드 하나당 수리 시도 상한 (기본 2, 넘으면 재계획으로 승격)")
-    parser.add_argument("--max-replans", type=int, default=1,
-                        help="계획 전체 재수립 상한 (기본 1)")
+    parser.add_argument("--max-repair-rounds", type=int, default=300,
+                        help="실행-수리 라운드 상한 (기본 300)")
+    parser.add_argument("--max-node-repairs", type=int, default=200,
+                        help="노드 하나당 수리 시도 상한 (기본 200, 넘으면 재계획으로 승격)")
+    parser.add_argument("--max-replans", type=int, default=100,
+                        help="계획 전체 재수립 상한 (기본 100)")
     parser.add_argument("--node-timeout", type=float, default=None,
                         help=f"노드 하나당 실행 시간 예산(초). 0 이하면 무제한 "
                              f"(기본 {orchestrator.NODE_TIMEOUT:g})")

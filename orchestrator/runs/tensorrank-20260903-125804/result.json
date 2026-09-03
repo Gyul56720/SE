@@ -1,0 +1,73 @@
+{
+  "status": "incomplete",
+  "run_dir": "/home/ubuntu/SE/orchestrator/runs/tensorrank-20260903-125804",
+  "reason": "수리안이 모두 반려됐고 재계획 한도도 소진",
+  "rounds": 3,
+  "replans": 1,
+  "log": [
+    {
+      "round": 1,
+      "run_status": "incomplete",
+      "node_status": {
+        "search_decomposition": "verified",
+        "verify_and_finalize": "failed"
+      },
+      "action": "repair_rejected -> replan",
+      "repairs": [
+        {
+          "status": "repair_rejected",
+          "node": "verify_and_finalize",
+          "reason": "계산하지 않았다(골격/미완). 이 런은 답을 **계산해서** 내야 한다 -- 인자를 리터럴로 적거나 빈 배열을 반환하면 반려된다. 실질 호출이 하나도 없다",
+          "model": "key-29ca714b:gemini-3.1-flash-lite"
+        }
+      ],
+      "replan": {
+        "status": "planned",
+        "run_dir": "/home/ubuntu/SE/orchestrator/runs/tensorrank-20260903-125804",
+        "nodes": [
+          "generate_decomposition"
+        ],
+        "final": "generate_decomposition",
+        "model": "key-29ca714b:gemini-3.1-flash-lite",
+        "planning_attempts": 1,
+        "planning_retries": [],
+        "replanned": true,
+        "archived_as": "attempts/attempt1"
+      }
+    },
+    {
+      "reinjected_verifier": "verifiers/rank_check.py#check",
+      "after": "replan#1"
+    },
+    {
+      "round": 2,
+      "run_status": "incomplete",
+      "node_status": {
+        "generate_decomposition": "failed"
+      },
+      "action": "repair",
+      "repairs": [
+        {
+          "status": "repair_rejected",
+          "node": "generate_decomposition",
+          "reason": "계산하지 않았다(상수표(계산 없음)). 이 런은 답을 **계산해서** 내야 한다 -- 인자를 리터럴로 적거나 빈 배열을 반환하면 반려된다. 실질 호출이 하나도 없다",
+          "model": "key-29ca714b:gemini-3.1-flash-lite"
+        }
+      ]
+    }
+  ],
+  "failures": [
+    {
+      "plan": "attempt1",
+      "node": "verify_and_finalize",
+      "kind": "기각",
+      "message": "빠진 case: ['mm333']"
+    },
+    {
+      "plan": "현재",
+      "node": "generate_decomposition",
+      "kind": "기각",
+      "message": "[X ] mm333(M=23/22): 정확히 재구성하지 못한다: 706 칸이 틀렸다 (최대 오차 47). 항 크기 합이 텐서의 6.7 배다 -- 큰 항들이 서로 지우고 있다. 국소최소이거나 경계랭크로 새는 중이다"
+    }
+  ]
+}

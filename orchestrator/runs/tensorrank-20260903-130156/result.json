@@ -1,0 +1,94 @@
+{
+  "status": "incomplete",
+  "run_dir": "/home/ubuntu/SE/orchestrator/runs/tensorrank-20260903-130156",
+  "reason": "수리안이 모두 반려됐고 재계획 한도도 소진",
+  "rounds": 4,
+  "replans": 1,
+  "log": [
+    {
+      "round": 1,
+      "run_status": "incomplete",
+      "node_status": {
+        "solve_tensor_rank": "failed"
+      },
+      "action": "repair",
+      "repairs": [
+        {
+          "status": "repaired",
+          "node": "solve_tensor_rank",
+          "model": "key-29ca714b:gemini-3.1-flash-lite",
+          "repairs": 1
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "run_status": "incomplete",
+      "node_status": {
+        "solve_tensor_rank": "failed"
+      },
+      "action": "repair_rejected -> replan",
+      "repairs": [
+        {
+          "status": "repair_rejected",
+          "node": "solve_tensor_rank",
+          "reason": "계산하지 않았다(골격/미완). 이 런은 답을 **계산해서** 내야 한다 -- 인자를 리터럴로 적거나 빈 배열을 반환하면 반려된다. 실질 호출이 하나도 없다",
+          "model": "key-29ca714b:gemini-3.1-flash-lite"
+        }
+      ],
+      "replan": {
+        "status": "planned",
+        "run_dir": "/home/ubuntu/SE/orchestrator/runs/tensorrank-20260903-130156",
+        "nodes": [
+          "search_decomposition"
+        ],
+        "final": "search_decomposition",
+        "model": "key-29ca714b:gemini-3.1-flash-lite",
+        "planning_attempts": 1,
+        "planning_retries": [],
+        "replanned": true,
+        "archived_as": "attempts/attempt1"
+      }
+    },
+    {
+      "reinjected_verifier": "verifiers/rank_check.py#check",
+      "after": "replan#1"
+    },
+    {
+      "round": 3,
+      "run_status": "incomplete",
+      "node_status": {
+        "search_decomposition": "failed"
+      },
+      "action": "repair",
+      "repairs": [
+        {
+          "status": "repair_rejected",
+          "node": "search_decomposition",
+          "reason": "계산하지 않았다(골격/미완). 이 런은 답을 **계산해서** 내야 한다 -- 인자를 리터럴로 적거나 빈 배열을 반환하면 반려된다. 실질 호출이 하나도 없다",
+          "model": "key-29ca714b:gemini-3.1-flash-lite"
+        }
+      ]
+    }
+  ],
+  "failures": [
+    {
+      "plan": "attempt1",
+      "node": "solve_tensor_rank",
+      "kind": "기각",
+      "message": "[X ] mm333(M=None/22): 형식: u[0]: 길이가 3 다 -- 9 이어야 한다"
+    },
+    {
+      "plan": "attempt1",
+      "node": "solve_tensor_rank",
+      "kind": "기각",
+      "message": "[X ] mm333(M=22/22): 정확히 재구성하지 못한다: 30 칸이 틀렸다 (최대 오차 1)."
+    },
+    {
+      "plan": "현재",
+      "node": "search_decomposition",
+      "kind": "기각",
+      "message": "[X ] mm333(M=22/22): 정확히 재구성하지 못한다: 698 칸이 틀렸다 (최대 오차 50). 항 크기 합이 텐서의 6.5 배다 -- 큰 항들이 서로 지우고 있다. 국소최소이거나 경계랭크로 새는 중이다"
+    }
+  ]
+}

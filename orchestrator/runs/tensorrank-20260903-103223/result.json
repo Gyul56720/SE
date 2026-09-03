@@ -1,0 +1,84 @@
+{
+  "status": "incomplete",
+  "run_dir": "/home/ubuntu/SE/orchestrator/runs/tensorrank-20260903-103223",
+  "reason": "수리 라운드 한도 소진",
+  "replans": 1,
+  "log": [
+    {
+      "round": 1,
+      "run_status": "incomplete",
+      "node_status": {
+        "tensor_factorization": "failed"
+      },
+      "action": "repair",
+      "repairs": [
+        {
+          "status": "repaired",
+          "node": "tensor_factorization",
+          "model": "key-29ca714b:gemini-flash-lite-latest",
+          "repairs": 1
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "run_status": "incomplete",
+      "node_status": {
+        "tensor_factorization": "failed"
+      },
+      "action": "repair",
+      "repairs": [
+        {
+          "status": "repaired",
+          "node": "tensor_factorization",
+          "model": "key-29ca714b:gemini-flash-lite-latest",
+          "repairs": 2
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "run_status": "incomplete",
+      "node_status": {
+        "tensor_factorization": "failed"
+      },
+      "action": "replan",
+      "replan": {
+        "status": "planned",
+        "run_dir": "/home/ubuntu/SE/orchestrator/runs/tensorrank-20260903-103223",
+        "nodes": [
+          "exact_tensor_decomposition"
+        ],
+        "final": "exact_tensor_decomposition",
+        "model": "key-29ca714b:gemini-flash-lite-latest",
+        "planning_attempts": 1,
+        "planning_retries": [],
+        "replanned": true,
+        "archived_as": "attempts/attempt1"
+      }
+    },
+    {
+      "round": 4,
+      "run_status": "incomplete",
+      "node_status": {
+        "exact_tensor_decomposition": "failed"
+      },
+      "action": "repair",
+      "repairs": [
+        {
+          "status": "repaired",
+          "node": "exact_tensor_decomposition",
+          "model": "key-29ca714b:gemini-flash-lite-latest",
+          "repairs": 1
+        }
+      ]
+    },
+    {
+      "round": 5,
+      "run_status": "incomplete",
+      "node_status": {
+        "exact_tensor_decomposition": "failed"
+      }
+    }
+  ]
+}

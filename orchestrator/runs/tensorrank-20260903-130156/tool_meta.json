@@ -1,0 +1,9 @@
+{
+  "pid": 264690,
+  "log": "/home/ubuntu/SE/logs/orchestrator/tensorrank-20260903-130156.log",
+  "started_at": 1788446208.495556,
+  "cmd": [
+    "--resume",
+    "/home/ubuntu/SE/orchestrator/runs/tensorrank-20260903-130156"
+  ]
+}

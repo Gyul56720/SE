@@ -1,0 +1,88 @@
+{
+  "status": "incomplete",
+  "run_dir": "/home/ubuntu/SE/orchestrator/runs/tensorrank-20260903-112506",
+  "reason": "수리 라운드 한도 소진",
+  "replans": 1,
+  "log": [
+    {
+      "round": 1,
+      "run_status": "incomplete",
+      "node_status": {
+        "tensor_factorizer": "failed"
+      },
+      "action": "repair",
+      "repairs": [
+        {
+          "status": "repaired",
+          "node": "tensor_factorizer",
+          "model": "key-29ca714b:gemini-3.1-flash-lite",
+          "repairs": 1
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "run_status": "incomplete",
+      "node_status": {
+        "tensor_factorizer": "failed"
+      },
+      "action": "repair",
+      "repairs": [
+        {
+          "status": "repaired",
+          "node": "tensor_factorizer",
+          "model": "key-29ca714b:gemini-3.1-flash-lite",
+          "repairs": 2
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "run_status": "incomplete",
+      "node_status": {
+        "tensor_factorizer": "failed"
+      },
+      "action": "replan",
+      "replan": {
+        "status": "planned",
+        "run_dir": "/home/ubuntu/SE/orchestrator/runs/tensorrank-20260903-112506",
+        "nodes": [
+          "decompose_tensors"
+        ],
+        "final": "decompose_tensors",
+        "model": "key-29ca714b:gemini-3.1-flash-lite",
+        "planning_attempts": 1,
+        "planning_retries": [],
+        "replanned": true,
+        "archived_as": "attempts/attempt1"
+      }
+    },
+    {
+      "reinjected_verifier": "verifiers/rank_check.py#check",
+      "after": "replan#1"
+    },
+    {
+      "round": 4,
+      "run_status": "incomplete",
+      "node_status": {
+        "decompose_tensors": "failed"
+      },
+      "action": "repair",
+      "repairs": [
+        {
+          "status": "repaired",
+          "node": "decompose_tensors",
+          "model": "key-29ca714b:gemini-3.1-flash-lite",
+          "repairs": 1
+        }
+      ]
+    },
+    {
+      "round": 5,
+      "run_status": "incomplete",
+      "node_status": {
+        "decompose_tensors": "failed"
+      }
+    }
+  ]
+}
