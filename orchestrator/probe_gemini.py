@@ -77,11 +77,11 @@ def list_models(key: str):
     st, body, dt = _req(f"{BASE}/models?key={key}&pageSize=200", timeout=30.0)
     if st != 200:
         return st, body, dt, []
-    names = []
+    pairs = []
     for m in json.loads(body).get("models", []):
         if "generateContent" in (m.get("supportedGenerationMethods") or []):
-            names.append(m["name"].split("/", 1)[-1])
-    return st, body, dt, names
+            pairs.append((m["name"].split("/", 1)[-1], m.get("displayName") or ""))
+    return st, body, dt, pairs
 
 
 def generate(key: str, model: str, prompt: str, timeout=90.0):
@@ -126,7 +126,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Gemini API 층별 진단 (langchain 우회)")
     ap.add_argument("--full", action="store_true",
                     help="실제 문제 기술서(약 4.7KB)까지 태워 프롬프트 크기 영향을 본다")
-    ap.add_argument("--models", type=int, default=8, help="키당 시험할 모델 수")
+    ap.add_argument("--models", type=int, default=99,
+                    help="키당 시험할 모델 수 (기본: 허용 목록 전부)")
     ap.add_argument("--reset-quota", action="store_true",
                     help="오늘자 '소진 확정' 표시를 지운다. 429 를 분당/일일로 가르지 "
                          "않던 시절에 잘못 박힌 봉인을 푼다 (_dead 는 안 건드린다)")
@@ -153,8 +154,8 @@ def main() -> int:
     for name, k in keys:
         print("=" * 78)
         print(f"[2] {name} -- 모델 목록 (ListModels)")
-        st, body, dt, names = list_models(k)
-        print(f"    HTTP {st}  {dt:.2f}s  생성가능 모델 {len(names)}개")
+        st, body, dt, pairs = list_models(k)
+        print(f"    HTTP {st}  {dt:.2f}s  생성가능 모델 {len(pairs)}개")
         if st != 200:
             print(f"    {body[:300]}")
             # 처음 판은 200 이 아닌 것을 전부 "키가 거부됐다"로 뭉쳤다. 503 은 키 문제가
@@ -170,8 +171,20 @@ def main() -> int:
             else:
                 verdict.append(f"{name}: 모델 목록 조회 실패 (HTTP {st}) -- 위 본문을 봐라")
             continue
-        print(f"    {', '.join(names[:12])}{' ...' if len(names) > 12 else ''}")
-        ghosts = sorted({m for m in tried if m not in names})
+        ids = [i for i, _ in pairs]
+        print(f"    {', '.join(ids[:12])}{' ...' if len(ids) > 12 else ''}")
+
+        # **40개를 다 때리지 않는다.** 사람이 고른 허용 목록(models_allow.json)을 실제
+        # id 로 풀어서 그것만 시험한다. 목록을 전부 후보로 삼는 것 자체가 분당 한도를
+        # 긁는 행위이고, TTS/임베딩처럼 generateContent 가 안 되는 것도 섞인다.
+        import llm_pool
+        allow = llm_pool._allow_list()
+        names = llm_pool.resolve_models(k, lister=lambda _k: pairs) if allow else ids
+        disp = {i: d for i, d in pairs}
+        print(f"    허용 목록 {len(allow)}개 -> 이 키에서 풀린 id {len(names)}개")
+        for i in names:
+            print(f"        {i:34} <- {disp.get(i, '?')}")
+        ghosts = sorted({m for m in tried if m not in ids})
         if ghosts:
             print(f"    !! 풀이 때리는데 목록에 없는 이름: {ghosts}")
             verdict.append(f"{name}: 유령 모델 {len(ghosts)}개를 때리고 있다")

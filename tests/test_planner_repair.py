@@ -571,6 +571,61 @@ def test_llm_pool_splits_rpm_from_daily_quota(failures: list) -> None:
         llm_pool.quota_tracker = real
 
 
+def test_llm_pool_resolves_allowlist_not_guesses(failures: list) -> None:
+    """쓸 모델을 **사람이 고른 목록으로 못 박되, id 는 짐작하지 않는가.**
+
+    두 가지를 동시에 지켜야 한다.
+
+    ① 목록을 줄인다. ListModels 는 40개 넘게 준다. 전부 후보로 삼으면 계획 호출 한 번에
+       수십 개를 몇 초 안에 몰아 때려 **분당 한도를 스스로 긁는다** -- 오늘 장부에 잘못
+       박힌 소진 표시 8개가 그렇게 생겼다. TTS/임베딩처럼 generateContent 가 안 되는
+       것까지 섞여 400/404 도 만든다.
+
+    ② id 를 짐작하지 않는다. 'Gemini 3.6 Flash' 가 'gemini-3.6-flash' 일 것이라는 짐작은
+       짐작일 뿐이고, 틀리면 404 가 나는데 그 404 가 다시 '구글이 이상하다'로 읽힌다.
+       ListModels 가 id 와 displayName 을 같이 주므로 대조하면 짐작이 필요 없다.
+
+    그리고 접두사로 맞추면 안 된다 -- 'gemini35flash' 는 'gemini35flashlite' 의 접두사라,
+    Flash 를 고르려다 Flash Lite 를 집는다."""
+    print("\n[llm_pool] 허용 목록을 실제 id 로 푼다")
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "orchestrator"))
+    import llm_pool
+
+    def ok(cond, msg):
+        print(f"    {'OK  ' if cond else 'FAIL'} {msg}")
+        if not cond:
+            failures.append(msg)
+
+    LIVE = [("gemini-3.5-flash-lite", "Gemini 3.5 Flash Lite"),
+            ("gemini-3.5-flash", "Gemini 3.5 Flash"),
+            ("gemini-3.6-flash", "Gemini 3.6 Flash"),
+            ("gemma-4-26b-it", "Gemma 4 26B"),
+            ("gemini-2.5-flash-tts", "Gemini 2.5 Flash TTS"),
+            ("some-other-model", "Some Other Model")]
+    allow = ["Gemini 3.6 Flash", "Gemini 3.5 Flash", "Gemini 3.5 Flash Lite", "Gemma 4 26B",
+             "Gemini 9.9 Flash"]                      # 마지막 하나는 이 키에 없다
+
+    got = llm_pool.resolve_models("k", allow=allow, lister=lambda _k: LIVE)
+    ok(got == ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite",
+               "gemma-4-26b-it"],
+       f"허용 목록 순서대로 실제 id 만 나온다: {got}")
+    ok("gemini-2.5-flash-tts" not in got and "some-other-model" not in got,
+       "목록 밖 모델(TTS 등)은 들어오지 않는다")
+    ok(got[1] == "gemini-3.5-flash",
+       "'Gemini 3.5 Flash' 가 Flash Lite 를 집지 않는다 (접두사 비교 금지)")
+
+    # 조회가 실패해도 지난번에 풀린 것을 쓴다 -- 503 중에 풀이 비면 그것이 또 다른 고장이다.
+    def boom(_k):
+        raise RuntimeError("503 UNAVAILABLE")
+    cached = llm_pool.resolve_models("k", allow=allow, lister=boom)
+    ok(cached == got, f"조회 실패 시 캐시를 쓴다: {cached}")
+
+    ok(llm_pool._norm("Gemini 3.5 Flash") == llm_pool._norm("gemini-3.5-flash"),
+       "표시이름과 id 가 같은 자리로 정규화된다")
+    ok(llm_pool._norm("Gemini 3.5 Flash") != llm_pool._norm("Gemini 3.5 Flash Lite"),
+       "Flash 와 Flash Lite 는 다른 것으로 읽힌다")
+
+
 def main() -> int:
     failures: list[str] = []
     for t in (test_red_without_repair, test_green_repair_loop,
@@ -579,7 +634,8 @@ def main() -> int:
               test_planning_retries_on_broken_plan, test_llm_pool_reads_dotenv,
               test_llm_pool_waits_out_transient_outage,
               test_llm_pool_budgets_time_per_sweep,
-              test_llm_pool_splits_rpm_from_daily_quota):
+              test_llm_pool_splits_rpm_from_daily_quota,
+              test_llm_pool_resolves_allowlist_not_guesses):
         t(failures)
     if failures:
         print("\n=== 실패 ===")

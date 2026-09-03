@@ -49,3 +49,4 @@ npu/array_w.txt
 compression/cache/
 compression/ledger.json
 compression/codecs/champion.py
+orchestrator/.model_cache.json

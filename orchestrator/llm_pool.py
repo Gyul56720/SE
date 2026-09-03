@@ -24,6 +24,7 @@ langchain 없이도 임포트되도록 자체 정의한다(규칙이 바뀌면 b
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import sys
 import time
@@ -33,6 +34,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # quota_tracker
 import quota_tracker  # noqa: E402
 
 FALLBACK_MODELS = ["gemini-3.5-flash", "gemini-3.5-flash-lite"]
+ALLOW_PATH = Path(__file__).resolve().parent / "models_allow.json"
+MODEL_CACHE = Path(__file__).resolve().parent / ".model_cache.json"
 
 # 후보 하나에 얼마나 버틸 것인가. bot_tools 가 실측으로 얻은 값과 같은 규칙을 여기서도 갖는다
 # (langchain 없이도 임포트되게 값만 복제한다 -- 규칙이 바뀌면 bot_tools 와 함께 갱신).
@@ -117,12 +120,101 @@ def _default_factory(model: str, key: str):
         return ChatGoogleGenerativeAI(model=model, google_api_key=key)
 
 
-def _default_models(key: str):
+def _norm(name: str) -> str:
+    """표시이름과 id 를 같은 자리에 놓고 비교하기 위한 정규화. 영숫자만 남긴다.
+
+    'Gemini 3.5 Flash' -> 'gemini35flash',  'gemini-3.5-flash' -> 'gemini35flash'
+    **접두사 비교를 하지 않는다.** 'gemini35flash' 는 'gemini35flashlite' 의 접두사라,
+    접두사로 맞추면 Flash 를 고르려다 Flash Lite 를 집는다."""
+    return "".join(c for c in name.lower() if c.isalnum())
+
+
+def _allow_list() -> list:
+    """쓰기로 정한 모델의 표시이름. 파일이 없으면 빈 목록(=제한 없음)."""
+    if not ALLOW_PATH.is_file():
+        return []
     try:
-        from bot_tools import list_available_models
-        return list_available_models(key) or FALLBACK_MODELS
+        return list(json.loads(ALLOW_PATH.read_text(encoding="utf-8")).get("allow") or [])
     except Exception:
-        return FALLBACK_MODELS
+        return []
+
+
+def list_models_http(key: str, timeout: float = 30.0) -> list:
+    """ListModels 를 표준 라이브러리로 때린다. [(id, displayName)] 를 돌려준다.
+
+    langchain 을 거치지 않는다 -- 후보 목록을 얻는 일까지 그 스택에 얹으면, 목록 조회가
+    실패했을 때 그것이 키 문제인지 모델 문제인지 라이브러리 문제인지 알 수 없다."""
+    import urllib.request
+    url = (f"https://generativelanguage.googleapis.com/v1beta/models"
+           f"?key={key}&pageSize=200")
+    with urllib.request.urlopen(url, timeout=timeout) as r:
+        data = json.loads(r.read().decode("utf-8", "replace"))
+    out = []
+    for m in data.get("models", []):
+        if "generateContent" in (m.get("supportedGenerationMethods") or []):
+            out.append((m["name"].split("/", 1)[-1], m.get("displayName") or ""))
+    return out
+
+
+def _cache_rw(kid: str, value=None):
+    try:
+        data = json.loads(MODEL_CACHE.read_text(encoding="utf-8")) if MODEL_CACHE.is_file() else {}
+    except Exception:
+        data = {}
+    if value is None:
+        return data.get(kid) or []
+    data[kid] = value
+    try:
+        MODEL_CACHE.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+    except OSError:
+        pass
+    return value
+
+
+def resolve_models(key: str, allow=None, lister=None) -> list:
+    """허용 목록(표시이름)을 **실제 API id** 로 바꾼다. 목록 순서가 곧 우선순위다.
+
+    왜 대조하는가. id 를 손으로 적으면 유령 모델을 때리게 된다 -- 'Gemini 3.6 Flash' 가
+    'gemini-3.6-flash' 일 것이라는 짐작은 짐작일 뿐이고, 틀리면 404 가 나는데 그 404 가
+    다시 '구글이 이상하다'로 읽힌다. ListModels 가 id 와 displayName 을 같이 주므로
+    대조하면 짐작이 필요 없다.
+
+    왜 목록을 줄이는가. ListModels 는 40개 넘게 준다. 전부 후보로 삼으면 계획 호출 한
+    번에 수십 개를 몇 초 안에 몰아 때려 **분당 한도를 스스로 긁는다.** TTS/임베딩처럼
+    generateContent 가 안 되는 것도 섞인다.
+
+    조회에 실패하면 지난번에 풀린 id 를 캐시에서 쓴다. 503 이 나는 동안에도 후보가
+    유지돼야 한다 -- 목록을 못 얻었다고 풀이 비면 그것이 또 다른 고장이다."""
+    allow = _allow_list() if allow is None else allow
+    kid = _key_id(key)
+    try:
+        pairs = (lister or list_models_http)(key)
+    except Exception:
+        cached = _cache_rw(kid)
+        return cached or FALLBACK_MODELS
+    if not allow:
+        ids = [i for i, _ in pairs]
+        return _cache_rw(kid, ids) if ids else FALLBACK_MODELS
+
+    by_norm = {}
+    for mid, disp in pairs:
+        by_norm.setdefault(_norm(disp), mid)
+        by_norm.setdefault(_norm(mid), mid)
+    ids, missing = [], []
+    for want in allow:                       # 사람이 적은 순서 = 우선순위
+        hit = by_norm.get(_norm(want))
+        if hit and hit not in ids:
+            ids.append(hit)
+        elif not hit:
+            missing.append(want)
+    if missing:
+        print(f"[llm_pool] 허용 목록에 있지만 이 키에 없는 모델: {missing}",
+              file=sys.stderr, flush=True)
+    return _cache_rw(kid, ids) if ids else (_cache_rw(kid) or FALLBACK_MODELS)
+
+
+def _default_models(key: str):
+    return resolve_models(key) or FALLBACK_MODELS
 
 
 def _dotenv_candidates():
