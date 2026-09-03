@@ -228,9 +228,82 @@ def check_knowledge(scene, novel) -> list:
     return out
 
 
+def check_relations(scene, novel) -> list:
+    """V009 -- 관계 모순.
+
+    두 층으로 본다.
+      1. **원장 자체의 무모순** -- 배타성, 시작 없는 종료, 중복 시작. 결정적이라 hard 다.
+         도출 자체는 state.Novel.derive_relations 가 하고 여기서는 위반으로 옮기기만 한다.
+      2. **산문이 원장과 어긋나는가** -- 한국어 패턴이라 정밀도가 100% 가 아니므로 soft 다.
+
+    1층이 핵심이다. 관계 변화를 구조화된 op 로 선언하게 만들면, "어느 순간 C 가 A 와
+    사귄다" 는 산문을 읽지 않고도 잡힌다."""
+    idx = novel.scene_index(scene.id)
+    if idx < 0:
+        return []
+    # 도출은 state 가 한다 -- 관계 타임라인 구현이 둘이면 그 둘이 어긋날 수 있다.
+    rels, problems = novel.derive_relations(idx)
+    out = [Violation("V009", sev, f"씬 {sid}", msg) for sev, sid, msg in problems]
+
+    # --- 2층: 산문이 원장과 다른 짝을 연인으로 말하는가
+    if scene.prose:
+        from .state import EXCLUSIVE_KINDS
+        text = _strip_quotes(scene.prose)
+        active = {r.key(): r for r in rels
+                  if r.kind in EXCLUSIVE_KINDS and not r.until}
+        names = [c.name for c in novel.characters]
+        for i, x in enumerate(names):
+            for y in names[i + 1:]:
+                near = re.search(
+                    rf"{re.escape(x)}[^.!?\n]{{0,40}}{re.escape(y)}[^.!?\n]{{0,40}}"
+                    rf"(사귀|연인|애인|여자친구|남자친구)", text) or re.search(
+                    rf"{re.escape(y)}[^.!?\n]{{0,40}}{re.escape(x)}[^.!?\n]{{0,40}}"
+                    rf"(사귀|연인|애인|여자친구|남자친구)", text)
+                if not near:
+                    continue
+                if not any(set(k[1]) == {x, y} for k in active):
+                    p1 = novel.partner(x, upto_scene=scene.id)
+                    out.append(Violation(
+                        "V009", "soft", f"씬 {scene.id} 서술부",
+                        f"산문이 {x}·{y} 를 연인으로 말하는데 원장에 그 관계가 없다"
+                        + (f" ({x} 의 현재 상대는 {p1})" if p1 else "")))
+    return out
+
+
+def check_facts(scene, novel) -> list:
+    """V010 -- 설정 모순. 같은 키가 다른 값으로 재선언되는 것을 잡는다.
+
+    설정은 바뀔 수 있다(전학, 이직). 그래서 **변경 자체**를 막지 않고, 같은 씬 안에서
+    한 키가 두 값을 갖는 것과 원장에 없는 값이 산문에 나오는 것을 본다."""
+    out = []
+    idx = novel.scene_index(scene.id)
+    if idx < 0:
+        return out
+
+    seen = {}
+    for op in scene.fact_ops or []:
+        k, v = op.get("key"), op.get("value")
+        if k in seen and seen[k] != v:
+            out.append(Violation("V010", "hard", f"씬 {scene.id}",
+                                 f"'{k}' 가 한 씬 안에서 {seen[k]!r} 와 {v!r} 두 값을 갖는다"))
+        seen[k] = v
+
+    # 이전까지 확립된 값과 다른 값을 **이별 없이** 덮어쓰면 보고한다(변경은 허용하되 눈에 띄게).
+    established = {}
+    for i in range(idx):
+        for op in novel.scenes[i].fact_ops or []:
+            established[op.get("key")] = (op.get("value"), novel.scenes[i].id)
+    for k, v in seen.items():
+        if k in established and established[k][0] != v:
+            out.append(Violation("V010", "soft", f"씬 {scene.id}",
+                                 f"'{k}' 가 {established[k][1]} 의 {established[k][0]!r} 에서 "
+                                 f"{v!r} 로 바뀐다. 의도한 변화라면 그 계기가 서술에 있어야 한다"))
+    return out
+
+
 CHECKS = (check_turn_format, check_emotion_continuity, check_emotion_range,
           check_pov, check_direct_emotion, check_punctum,
-          check_pov_presence, check_knowledge)
+          check_pov_presence, check_knowledge, check_relations, check_facts)
 
 
 def check(scene, novel) -> list:
