@@ -32,7 +32,31 @@ from pathlib import Path
 
 GRAD_TOL = 1e-6          # 내적 잔차 허용치 (스케일로 정규화한 뒤)
 DIST_TOL = 1e-9          # 보고한 거리와 실제 ||d|| 의 차이
-PERTURB = 64             # 무작위 섭동 개수
+PERTURB = 64             # 무작위 섭동 개수 (격자 방향 밖을 훑는다)
+
+# 기하급수 직선탐색. **일차 조건만으로는 부족하다** -- 두 직선이 거의 평행하면 헤시안이
+# 거의 특이해서, 진짜 최소점에서 한참 떨어진 곳에서도 기울기가 미세하다.
+#
+# 실측으로 걸린 사례(near_par): 진짜 최소거리는 0 인데(두 직선이 실제로 만난다),
+# 최소점에서 444 떨어진 점의 <v2,d> 가 4.4e-10 이라 GRAD_TOL 을 가볍게 통과했다.
+# 더 심하게는 거리 5.0 인 점(최소점에서 5e6 떨어진 곳)도 통과했다.
+#
+# 무작위 섭동으로도 못 잡는다. 최소점이 좁은 골짜기를 따라 멀리 있으면 무작위 방향이
+# 그 골짜기에 떨어질 확률이 사실상 0 이다.
+#
+# 그래서 **방향을 정해 놓고 배율을 기하급수로 훑는다.** 이것은 푸는 방법을 알려주지
+# 않는다 -- 어느 방향으로 얼마나 가야 하는지는 여전히 후보가 알아내야 한다.
+PROBE_DIRS = ((1.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, -1.0))
+PROBE_MAGS = tuple(10.0 ** k for k in range(-9, 13))
+# 개선 임계. 부동소수 잡음보다 확실히 커야 한다 -- 1e-9 로 잡았더니 12번째 자리 차이로
+# 걸려서, 기각은 맞는데 이유가 잡음이었다. 그러면 맞는 답도 잡음으로 기각할 수 있다.
+# 그리고 **첫 히트에서 멈추지 않고 전체를 훑어 최선을 보고한다** -- 얼마나 빗나갔는지가
+# 보여야 실패 사유가 쓸모 있다.
+IMPROVE = 1e-6           # 이 **비율**만큼 작아지는 점이 있으면 최소점이 아니다
+# 상대 임계만으로는 **진짜 최소가 0 일 때 무너진다** -- 8.9e-16 에서 0 으로 가는 것을
+# "100% 개선"으로 읽어 맞는 답을 기각한다. near_par 처럼 두 직선이 실제로 만나는 경우가
+# 그렇다. 그래서 문제 규모에 묶은 절대 하한을 함께 둔다.
+ABS_REL = 1e-9           # 절대 하한 = ABS_REL x (문제의 좌표 규모)
 CASES = Path(__file__).resolve().parent / "cases.json"
 
 
@@ -109,15 +133,27 @@ def check(output, inputs):
             return False, (f"case {cid}: 최소점이 아니다 -- 잔차가 방향벡터와 직교하지 "
                            f"않는다 (<v1,d>={g1:.3e}, <v2,d>={g2:.3e}, 허용 {GRAD_TOL:.0e})")
 
-        # ③ 무작위 섭동. 주변에 더 낮은 점이 있으면 일차 조건이 수치적으로 속은 것이다.
+        # ③ 기하급수 직선탐색 + ④ 무작위 섭동. 전체를 훑어 **최선**을 찾는다.
+        best, best_at = actual, None
         step = max(1.0, abs(t), abs(s))
-        for _ in range(PERTURB):
-            for h in (1e-3, 1e-1, 1.0):
-                tt = t + rng.uniform(-h, h) * step
-                ss = s + rng.uniform(-h, h) * step
-                if _norm(_residual(case, tt, ss)) < actual * (1 - 1e-9) - 1e-12:
-                    return False, (f"case {cid}: 더 작은 값이 있다 -- "
-                                   f"(t,s)=({tt:.6g},{ss:.6g}) 에서 더 짧다")
+        probes = [(t + sg * dt * m, s + sg * ds * m)
+                  for dt, ds in PROBE_DIRS for m in PROBE_MAGS for sg in (1.0, -1.0)]
+        probes += [(t + rng.uniform(-h, h) * step, s + rng.uniform(-h, h) * step)
+                   for _ in range(PERTURB) for h in (1e-6, 1e-3, 1e-1, 1.0)]
+        for tt, ss in probes:
+            if not (math.isfinite(tt) and math.isfinite(ss)):
+                continue
+            v = _norm(_residual(case, tt, ss))
+            if v < best:
+                best, best_at = v, (tt, ss)
+        geo = max([abs(x) for v in (case["p1"], case["p2"], case["v1"], case["v2"])
+                   for x in v] + [1.0])
+        margin = max(IMPROVE * actual, ABS_REL * geo)
+        if best < actual - margin:
+            return False, (
+                f"case {cid}: 최소점이 아니다 -- (t,s)=({best_at[0]:.9g},{best_at[1]:.9g}) "
+                f"에서 거리가 {best:.9g} 다 (보고값 {actual:.9g}, "
+                f"{1 - best / actual:.1%} 더 짧다)")
         notes.append(f"{cid}:{actual:.6g}")
 
     return True, "모든 case 가 최소점이다 (거리 " + ", ".join(notes) + ")"
