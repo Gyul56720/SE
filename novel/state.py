@@ -25,6 +25,15 @@ from pathlib import Path
 AXES = ("joy", "melancholy", "isolation", "narrative_pull")
 BIPOLAR = ("narrative_pull",)
 
+# 검사기가 실제로 구현된 게이트 종류. 표에는 있는데 여기 없으면 "선언은 되지만 강제되지
+# 않는다" 는 뜻이고, derive_gates 가 그것을 soft 문제로 보고한다.
+IMPLEMENTED_GATES = ("absence", "absence_physical", "lift_absence", "not_before",
+                     "knowledge_grant", "knowledge_grant_covert", "stale_fact",
+                     "relation_start", "relation_end", "suspend_absence")
+# 어겨도 세계가 자기모순이 되지는 않는 것들. 최소한만 걸러야 재미가 산다.
+SOFT_GATES = ("stale_fact", "punctum_refresh", "motif_track", "object_track",
+              "retro_reinterpret", "convergence", "age_advance", "stage_move")
+
 # 한 인물이 동시에 하나만 가질 수 있는 관계. "A 와 B 가 사귀는데 어느 순간 C 가 A 와
 # 사귄다" 는 오류가 바로 이 배타성 위반이다 -- 관계를 상태로 들고 있지 않으면 못 잡는다.
 EXCLUSIVE_KINDS = ("연인", "약혼", "배우자")
@@ -142,6 +151,8 @@ class Novel:
     fact_log: list = field(default_factory=list)
     # 동적 게이트의 **캐시**. 진실은 씬의 world_ops 이고 derive_gates() 가 도출한다.
     dynamic_gates: list = field(default_factory=list)
+    # 공리 개정 예산. 무제한이면 제약이 없는 것과 같다.
+    revision_budget: int = 2
 
     # ---- 영속 ----
     @staticmethod
@@ -156,58 +167,70 @@ class Novel:
             facts=raw.get("facts", {}),
             relations=[Relation(**r) for r in raw.get("relations", [])],
             fact_log=[Fact(**f) for f in raw.get("fact_log", [])],
-            dynamic_gates=[DynamicGate(**g) for g in raw.get("dynamic_gates", [])])
+            dynamic_gates=[DynamicGate(**g) for g in raw.get("dynamic_gates", [])],
+            revision_budget=raw.get("revision_budget", 2))
 
     def derive_gates(self, upto_idx: int = None) -> tuple:
         """씬의 world_ops 에서 동적 게이트를 생성한다. 반환 (게이트 목록, 문제 목록).
 
-        **모델은 사건을 선언할 뿐 규칙을 쓰지 않는다.** Director 가 게이트를 직접 쓰게 하면
-        자기에게 관대한 규칙을 쓴다 -- orchestrator 의 repair_node 가 verifier 를 절대
-        건드리지 않는 것과 같은 이유다. 사건 종류마다 어떤 검사가 붙는지는 여기 고정돼 있다."""
-        end = len(self.scenes) - 1 if upto_idx is None else upto_idx
-        gates, problems, n = [], [], 0
-        names = {c.name for c in self.characters}
+        **디스패치는 verbs.VERBS 레지스트리에서 한다.** 처음엔 여기에 if/elif 로 사건 이름을
+        박아뒀는데, 카탈로그를 52개로 늘리자 die 가 게이트를 하나도 안 낳고 조용히 통과했다
+        -- 검증이 있는 척만 하는 상태였다. 표를 늘릴 때 여기가 따라오지 않으면 그 구멍은
+        보이지 않으므로, 출처를 하나로 묶고 **미구현은 시끄럽게** 만든다.
 
-        def emit(kind, params, sid, origin, severity="hard"):
-            nonlocal n
-            n += 1
-            gates.append(DynamicGate(rule=f"D{n:03d}", kind=kind, params=params,
-                                     from_scene=sid, origin=origin, severity=severity))
+        **모델은 동사를 선언할 뿐 규칙을 쓰지 않는다.** 어떤 게이트가 붙는지는 표가 정한다."""
+        from . import verbs as V
+        end = len(self.scenes) - 1 if upto_idx is None else upto_idx
+        gates, problems, n, spent = [], [], 0, 0
 
         for idx in range(max(0, end + 1)):
             sc = self.scenes[idx]
             for op in sc.world_ops or []:
-                ev = op.get("event")
-                if ev in ("death", "departure"):
-                    who = op.get("who")
-                    if who not in names:
-                        problems.append(("hard", sc.id, f"모르는 인물의 {ev}: {who!r}"))
-                        continue
-                    emit("absence", {"who": who, "event": ev}, sc.id,
-                         f"{sc.id}: {who} {ev}")
-                elif ev == "meeting":
-                    pair = list(op.get("pair", []))
-                    if len(pair) != 2 or any(x not in names for x in pair):
-                        problems.append(("hard", sc.id, f"잘못된 meeting 대상: {pair}"))
-                        continue
-                    emit("not_before", {"pair": pair}, sc.id,
-                         f"{sc.id}: {pair[0]}·{pair[1]} 첫 만남")
-                elif ev == "reveal":
-                    term, to = op.get("term"), list(op.get("to", []))
-                    if not term:
-                        problems.append(("hard", sc.id, "reveal 에 term 이 없다"))
-                        continue
-                    emit("knowledge_grant", {"term": term, "to": to}, sc.id,
-                         f"{sc.id}: '{term}' 공개")
-                elif ev == "fact_change":
-                    key, old = op.get("key"), op.get("old")
-                    if not key or old is None:
-                        problems.append(("hard", sc.id, "fact_change 에 key/old 가 없다"))
-                        continue
-                    emit("stale_fact", {"key": key, "old": old}, sc.id,
-                         f"{sc.id}: {key} 변경", severity="soft")
-                else:
-                    problems.append(("hard", sc.id, f"알 수 없는 world event: {ev!r}"))
+                bad = V.validate_op(op)
+                if bad:
+                    problems.append(("hard", sc.id, "; ".join(bad)))
+                    continue
+                verb = op["event"]
+                spec = V.VERBS[verb]
+
+                # 인물 인자는 실재해야 한다. 표를 믿되 값은 확인한다.
+                names = {c.name for c in self.characters}
+                for key in ("who", "target", "truth_who", "blamed_who", "center", "to",
+                            "from_whom", "against", "toward", "as_whom"):
+                    val = op.get(key)
+                    if isinstance(val, str) and key in spec["params"] and val not in names:
+                        problems.append(("hard", sc.id,
+                                         f"'{verb}' 의 {key}={val!r} 가 등장인물에 없다"))
+                for key in ("pair", "members", "witnesses", "who", "believed_by", "to"):
+                    val = op.get(key)
+                    if isinstance(val, list) and key in spec["params"]:
+                        miss = [x for x in val if x not in names]
+                        if miss:
+                            problems.append(("hard", sc.id,
+                                             f"'{verb}' 의 {key} 에 없는 인물: {miss}"))
+
+                if spec["budget"]:
+                    spent += 1
+
+                n += 1
+                gates.append(DynamicGate(
+                    rule=f"D{n:03d}", kind=spec["gate"],
+                    params={k: v for k, v in op.items() if k != "event"},
+                    from_scene=sc.id, origin=f"{sc.id}: {verb}",
+                    severity="soft" if spec["gate"] in SOFT_GATES else "hard"))
+
+                if spec["gate"] not in IMPLEMENTED_GATES:
+                    # 미구현을 침묵시키지 않는다. 표에만 있고 검사기가 없는 규칙은
+                    # 있는 척하는 규칙이라 그 자체가 위험하다.
+                    problems.append(("soft", sc.id,
+                                     f"'{verb}' 의 게이트 '{spec['gate']}' 는 아직 "
+                                     f"검사기가 없다 -- 선언은 기록되지만 강제되지 않는다"))
+
+        if spent > self.revision_budget:
+            problems.append(("hard", self.scenes[min(end, len(self.scenes) - 1)].id,
+                             f"공리 개정 예산 초과: {spent}회 사용, 한도 "
+                             f"{self.revision_budget}회. 무제한 개정은 제약이 없는 것과 "
+                             f"같아서 환각과 반전을 구분할 수 없게 만든다"))
         return gates, problems
 
     def granted_knowledge(self, upto_scene: str) -> dict:
