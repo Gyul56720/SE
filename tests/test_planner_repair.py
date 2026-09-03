@@ -350,12 +350,89 @@ def test_llm_pool_reads_dotenv(failures: list) -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def test_llm_pool_waits_out_transient_outage(failures: list) -> None:
+    """풀 한 바퀴가 통째로 503 이면 **기다렸다가 다시 도는가.**
+
+    실측으로 걸린 실패다(2026-09-03). 수요 급증에 Gemini 가 키와 모델을 가리지 않고 503
+    UNAVAILABLE 을 던져 후보 12개가 몇 초 만에 전부 탔고, 그대로 RuntimeError 로 죽었다.
+    남은 26개를 더 시도했어도 같은 벽이었다 -- **필요한 것은 다음 후보가 아니라 시간이다.**
+
+    그리고 그 반대도 지켜야 한다: 전부 쿼터 소진(429)이면 기다려도 안 풀린다(일일 한도는
+    날짜로 풀린다). 그때 백오프를 도는 것은 그냥 낭비다. 두 경우가 갈리는지 본다."""
+    print("\n[llm_pool] 일시장애에서 스윕 재시도")
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "orchestrator"))
+    import llm_pool
+
+    def ok(cond, msg):
+        print(f"    {'OK  ' if cond else 'FAIL'} {msg}")
+        if not cond:
+            failures.append(msg)
+
+    class Stub:                      # quota_tracker 를 건드리지 않는다
+        def is_dead(self, *_): return False
+        def remaining(self, *_): return 100
+        def get_pinned(self, *_): return None
+        def record_success(self, *_): pass
+        def set_pinned(self, *_): pass
+        def record_exhausted(self, *_): pass
+        def mark_dead(self, *_): pass
+
+    class Flaky:
+        """정해둔 횟수만큼 503 을 던지고 그 뒤에는 성공한다."""
+        def __init__(self, fails, err="503 UNAVAILABLE high demand"):
+            self.left, self.err = fails, err
+        def invoke(self, _prompt):
+            if self.left > 0:
+                self.left -= 1
+                raise RuntimeError(self.err)
+            return "돌아왔다"
+
+    waited: list = []
+    real_qt, llm_pool.quota_tracker = llm_pool.quota_tracker, Stub()
+    try:
+        # 후보 2개가 각각 첫 한 번은 503. 스윕 1 은 통째로 실패(2회 시도),
+        # 스윕 2 의 첫 후보에서 성공해야 한다 -- 기다림은 정확히 한 번.
+        pool = [("k:a", Flaky(1)), ("k:b", Flaky(1))]
+        text, label = llm_pool.call(pool, "p", verbose=False, sweeps=3,
+                                    sleep=waited.append)
+        ok(text == "돌아왔다", f"두 번째 스윕에서 성공한다 (얻은 것: {text!r})")
+        ok(len(waited) == 1, f"스윕 사이에 정확히 한 번 기다린다: {waited}")
+        ok(waited and waited[0] >= 1.0, f"기다린 시간이 0 이 아니다: {waited}")
+
+        # 쿼터 소진만 있으면 기다리지 않고 즉시 포기해야 한다.
+        waited.clear()
+        pool = [("k:a", Flaky(99, "429 RESOURCE_EXHAUSTED")),
+                ("k:b", Flaky(99, "429 RESOURCE_EXHAUSTED"))]
+        try:
+            llm_pool.call(pool, "p", verbose=False, sweeps=3, sleep=waited.append)
+            ok(False, "쿼터 소진인데 성공했다고 한다")
+        except RuntimeError as e:
+            ok("429" in str(e), f"마지막 오류를 사유에 남긴다: {str(e)[:60]}")
+        ok(not waited, f"쿼터 소진에서는 기다리지 않는다 (기다림: {waited})")
+
+        # 계속 503 이면 스윕을 다 쓰고 죽되, 업스트림 과부하라고 말해야 한다.
+        waited.clear()
+        pool = [("k:a", Flaky(99))]
+        try:
+            llm_pool.call(pool, "p", verbose=False, sweeps=3, sleep=waited.append)
+            ok(False, "계속 503 인데 성공했다고 한다")
+        except RuntimeError as e:
+            ok("업스트림 과부하" in str(e),
+               f"코드로 못 푸는 실패임을 밝힌다: {str(e)[-120:]}")
+        ok(len(waited) == 2, f"스윕 3회면 사이에 2번 기다린다: {waited}")
+        ok(waited == sorted(waited) and waited[1] > waited[0],
+           f"백오프가 늘어나야 한다: {waited}")
+    finally:
+        llm_pool.quota_tracker = real_qt
+
+
 def main() -> int:
     failures: list[str] = []
     for t in (test_red_without_repair, test_green_repair_loop,
               test_escalation_to_replan, test_bad_repair_rejected,
               test_time_budget_makes_slowness_repairable, test_budget_off_is_explicit,
-              test_planning_retries_on_broken_plan, test_llm_pool_reads_dotenv):
+              test_planning_retries_on_broken_plan, test_llm_pool_reads_dotenv,
+              test_llm_pool_waits_out_transient_outage):
         t(failures)
     if failures:
         print("\n=== 실패 ===")

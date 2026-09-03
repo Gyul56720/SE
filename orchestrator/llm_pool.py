@@ -24,6 +24,7 @@ from __future__ import annotations
 import hashlib
 import os
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # quota_tracker 임포트용
@@ -41,6 +42,19 @@ TIMEOUT = float(os.environ.get("GEMINI_TIMEOUT", "60"))
 # 풀은 (키 x 실사용 모델) 이라 모델 목록 조회 결과에 따라 수십~백 개가 될 수 있다. 전부 순회하면
 # 최악의 경우 시간 단위로 매달리므로, 시도 후보 수에 상한을 둔다(최악 대기 = 상한 x TIMEOUT).
 MAX_CANDIDATES = int(os.environ.get("GEMINI_MAX_CANDIDATES", "12"))
+# 후보를 더 빨리 넘기는 것으로는 안 풀리는 실패가 있다(실측): 수요 급증 때 Gemini 는 키와
+# 모델을 가리지 않고 503 UNAVAILABLE 을 던진다. 후보 12개가 몇 초 만에 전부 타고 끝났고,
+# 남은 26개를 더 시도했어도 같은 벽이었다. 이때 필요한 것은 **다음 후보가 아니라 시간**이다.
+#
+# 그래서 스윕(풀 한 바퀴)을 단위로 재시도한다. 한 바퀴가 전부 실패했는데 그중 일시장애가
+# 하나라도 있으면 기다렸다가 다시 돈다. 전부 쿼터 소진(429)이면 기다려도 안 풀리므로 즉시
+# 포기한다 -- 일일 한도는 시간이 아니라 날짜로 풀린다.
+SWEEPS = int(os.environ.get("GEMINI_SWEEPS", "4"))
+BACKOFF_BASE = float(os.environ.get("GEMINI_BACKOFF", "20"))
+BACKOFF_MAX = float(os.environ.get("GEMINI_BACKOFF_MAX", "120"))
+# 전체 벽시계 상한. 이것이 없으면 최악의 경우 스윕 x 후보 x TIMEOUT 으로 수십 분을 말없이
+# 매달린다 -- CLI 에서는 "답이 안 나온다"로만 보인다.
+DEADLINE = float(os.environ.get("GEMINI_DEADLINE", "900"))
 
 
 def _is_quota(e) -> bool:
@@ -52,6 +66,16 @@ def _is_permanent(e) -> bool:
     t = str(e)
     return any(m in t for m in ("PERMISSION_DENIED", "403", "FAILED_PRECONDITION",
                                 "NOT_FOUND", "404", "billing", "not supported", "not found"))
+
+
+def _is_transient(e) -> bool:
+    """기다리면 풀릴 수 있는 실패인가. 503/504/500/499 계열.
+
+    _is_permanent 보다 **나중에** 물어야 한다. 404/403 은 기다려도 안 풀린다."""
+    t = str(e)
+    return any(m in t for m in ("UNAVAILABLE", "503", "DEADLINE_EXCEEDED", "504",
+                                "INTERNAL", "500", "CANCELLED", "499",
+                                "overloaded", "high demand"))
 
 
 def _model_rank(model: str):
@@ -139,13 +163,9 @@ def _extract_text(resp) -> str:
     return str(content)
 
 
-def call(pool, prompt: str, pool_id: str = "orchestrator", max_candidates: int = None,
-         verbose: bool = True) -> tuple[str, str]:
-    """후보를 쿼터/장애 견디며 순회. (응답텍스트, 성공한 label) 반환. 전부 실패면 예외.
-
-    max_candidates 로 시도 수를 제한한다(기본 MAX_CANDIDATES). 상한이 없으면 죽은 키로 돌릴 때
-    수십 개 후보 x 타임아웃만큼 말없이 매달린다 -- CLI 에서는 "답이 안 나온다"로만 보인다.
-    verbose 면 실패한 후보를 stderr 에 한 줄씩 남긴다(어디서 막혔는지 보이게)."""
+def _ranked(pool, pool_id: str):
+    """후보를 쿼터 잔량 / 모델 등급 순으로 세운다. 스윕마다 다시 매긴다 -- 직전 스윕에서
+    죽은(404/403) 후보가 자동으로 빠지고, 소진된(429) 후보가 뒤로 밀린다."""
     live = [c for c in pool if not quota_tracker.is_dead(c[0])] or pool
 
     def sort_key(c):
@@ -158,32 +178,82 @@ def call(pool, prompt: str, pool_id: str = "orchestrator", max_candidates: int =
     pinned = quota_tracker.get_pinned(pool_id)
     if pinned:
         ranked = [c for c in ranked if c[0] == pinned] + [c for c in ranked if c[0] != pinned]
+    return ranked
 
+
+def call(pool, prompt: str, pool_id: str = "orchestrator", max_candidates: int = None,
+         verbose: bool = True, sweeps: int = None, sleep=time.sleep) -> tuple[str, str]:
+    """후보를 쿼터/장애 견디며 순회. (응답텍스트, 성공한 label) 반환. 전부 실패면 예외.
+
+    두 겹으로 버틴다.
+
+      후보 순회  한 스윕 안에서 (키 x 모델) 후보를 순서대로 시도한다. 429 는 소진 기록,
+                 404/403 은 영구 제외, 나머지는 그냥 다음 후보. max_candidates 로 시도
+                 수를 제한한다 -- 상한이 없으면 죽은 키로 돌릴 때 수십 개 x 타임아웃만큼
+                 말없이 매달린다.
+      스윕 재시도 **한 바퀴가 통째로 실패했을 때가 진짜 문제다.** 실측(2026-09-03):
+                 수요 급증에 Gemini 가 키와 모델을 가리지 않고 503 을 던져 후보 12개가 몇
+                 초 만에 전부 탔다. 이때 필요한 것은 다음 후보가 아니라 시간이다. 그래서
+                 실패 중 일시장애가 하나라도 있으면 지수 백오프로 기다렸다가 다시 돈다.
+                 전부 쿼터 소진이면 즉시 포기한다 -- 일일 한도는 날짜로 풀린다.
+
+    sleep 을 주입할 수 있다(시험에서 실제로 기다리지 않기 위해)."""
     limit = MAX_CANDIDATES if max_candidates is None else max_candidates
-    tried, skipped = 0, max(0, len(ranked) - limit)
-    last_error = None
-    for label, llm in ranked[:limit]:
-        tried += 1
-        try:
-            text = _extract_text(llm.invoke(prompt))
-            quota_tracker.record_success(label)
-            quota_tracker.set_pinned(pool_id, label)
-            return text, label
-        except Exception as e:
-            if _is_quota(e):
-                quota_tracker.record_exhausted(label)
-            elif _is_permanent(e):
-                quota_tracker.mark_dead(label, str(e)[:200])
-            # 일시 장애(503 등)는 기록 없이 다음 후보로.
-            if verbose:
-                print(f"[llm_pool] {label} 실패({tried}/{min(limit, len(ranked))}): "
-                      f"{str(e)[:120]}", file=sys.stderr, flush=True)
-            last_error = e
+    n_sweeps = SWEEPS if sweeps is None else sweeps
+    t0 = time.monotonic()
+    last_error, total_tried, ranked = None, 0, _ranked(pool, pool_id)
+
+    for sweep in range(1, max(1, n_sweeps) + 1):
+        if sweep > 1:
+            ranked = _ranked(pool, pool_id)
+        skipped = max(0, len(ranked) - limit)
+        tried = transient = 0
+        for label, llm in ranked[:limit]:
+            if time.monotonic() - t0 > DEADLINE:
+                if verbose:
+                    print(f"[llm_pool] 전체 상한 {DEADLINE:.0f}s 를 넘겨 중단한다",
+                          file=sys.stderr, flush=True)
+                break
+            tried += 1
+            total_tried += 1
+            try:
+                text = _extract_text(llm.invoke(prompt))
+                quota_tracker.record_success(label)
+                quota_tracker.set_pinned(pool_id, label)
+                return text, label
+            except Exception as e:
+                if _is_quota(e):
+                    quota_tracker.record_exhausted(label)
+                elif _is_permanent(e):
+                    quota_tracker.mark_dead(label, str(e)[:200])
+                elif _is_transient(e):
+                    transient += 1
+                if verbose:
+                    print(f"[llm_pool] {label} 실패(스윕 {sweep}, {tried}/"
+                          f"{min(limit, len(ranked))}): {str(e)[:120]}",
+                          file=sys.stderr, flush=True)
+                last_error = e
+        if not tried or not transient:
+            break                       # 빈 풀이거나, 기다려도 안 풀리는 실패만 남았다
+        if sweep >= max(1, n_sweeps):
+            break
+        wait = min(BACKOFF_MAX, BACKOFF_BASE * 2 ** (sweep - 1))
+        if time.monotonic() - t0 + wait > DEADLINE:
+            break
+        if verbose:
+            print(f"[llm_pool] 스윕 {sweep}/{n_sweeps}: 후보 {tried}개가 모두 실패했고 "
+                  f"그중 {transient}개가 일시장애다. 후보를 더 넘겨도 같은 벽이므로 "
+                  f"{wait:.0f}s 기다렸다가 다시 돈다", file=sys.stderr, flush=True)
+        sleep(wait)
+
     if last_error:
         raise RuntimeError(
-            f"후보 {tried}개를 모두 실패했다"
-            f"{f' (상한 {limit} 때문에 {skipped}개는 시도 안 함)' if skipped else ''}. "
-            f"마지막 오류: {type(last_error).__name__}: {last_error}") from last_error
+            f"후보 {total_tried}회 시도가 모두 실패했다"
+            f"{f' (상한 {limit} 때문에 {skipped}개는 시도 안 함)' if skipped else ''}"
+            f"{f', 스윕 {n_sweeps}회' if n_sweeps > 1 else ''}. "
+            f"마지막 오류: {type(last_error).__name__}: {last_error}\n"
+            f"  일시장애(503/504)가 계속되면 업스트림 과부하다 -- 코드로 못 푼다. "
+            f"GEMINI_SWEEPS / GEMINI_BACKOFF 를 늘리거나 나중에 다시 돌려라.") from last_error
     raise RuntimeError(
         "빈 후보 풀 -- GEMINI_API_KEY 를 찾지 못했다.\n"
         "  환경변수에도 없고 저장소 루트 .env 에도 없다.\n"
