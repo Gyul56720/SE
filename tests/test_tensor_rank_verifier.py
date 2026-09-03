@@ -277,6 +277,50 @@ def test_verifier_has_no_method() -> None:
     check(not longlists, f"심판에 인자행렬 표가 박혀 있다: {len(longlists)}개")
 
 
+def test_recheck_uses_the_run_budgets() -> None:
+    """run.py 의 재채점 안전망이 **런의 예산**을 보는가.
+
+    실측으로 걸린 거짓 경보다(2026-09-03). --budget mm222=8 --budget mm333=27 로 돌린
+    런이 정직하게 통과했는데(표에 세 case 다 OK), 재채점이 "심판이 지워졌다"는 경고를
+    띄웠다. 재채점이 verify.TARGET 을 그대로 둬서 **저장소 원본**(mm222<=7, mm333<=23)을
+    읽었기 때문이다. 예산을 풀어 돌린 런은 원본 기준으로는 당연히 초과다.
+
+    **거짓 경보는 경보를 죽인다.** 다음에 진짜로 재계획이 심판을 지웠을 때 아무도
+    안 믿는다. 안전망은 정확히 그 한 가지만 잡아야 한다."""
+    import importlib.util
+    import tempfile
+    sp = importlib.util.spec_from_file_location("_trrun", PROB / "run.py")
+    run = importlib.util.module_from_spec(sp)
+    sp.loader.exec_module(run)
+
+    spec = json.loads(json.dumps(SPEC))
+    for c in spec["cases"]:
+        if c["id"] == "mm222":
+            c["budget"] = 8
+        if c["id"] == "mm333":
+            c["budget"] = 27
+    final = {"cases": [dict(id="w_state", **w_rank3()),
+                       dict(id="mm222", **trivial(2, 2, 2)),
+                       dict(id="mm333", **trivial(3, 3, 3))]}
+    with tempfile.TemporaryDirectory() as td:
+        rd = Path(td)
+        (rd / "verifiers").mkdir()
+        (rd / "verifiers" / "target.json").write_text(
+            json.dumps(spec, ensure_ascii=False), encoding="utf-8")
+        ok, why = run._recheck(final, rd)
+        check(ok, f"런의 예산(8, 27)으로 재면 통과여야 한다: {why[:150]}")
+
+        # 런 target 이 없으면 원본 예산(7, 23)으로 재고, 그때는 초과가 맞다.
+        ok2, _ = run._recheck(final, rd / "nope")
+        check(not ok2, "원본 예산으로 재면 8>7, 27>23 이라 기각이 맞다")
+
+        # 안전망이 죽으면 안 된다 -- 진짜 이상한 답은 여전히 잡아야 한다.
+        ok3, _ = run._recheck({"cases": [{"id": "w_state", "rank": 1,
+                                          "u": [[1, 1]], "v": [[1, 1]], "w": [[1, 1]]}]}, rd)
+        check(not ok3, "빠진 case / 틀린 분해는 여전히 잡아야 한다")
+    print("    [안전망] 런 예산으로 재채점, 원본과 헷갈리지 않는다")
+
+
 def main() -> int:
     for fn in (test_accepts_known_good, test_trivial_is_exact_but_over_budget,
                test_interval_report_is_not_a_lie,
@@ -284,7 +328,7 @@ def main() -> int:
                test_rejects_border_rank_by_exactness, test_rejects_below_flattening_bound,
                test_rejects_rank_lie, test_check_reports_every_case,
                test_check_can_pass, test_verification_is_cheap,
-               test_verifier_has_no_method):
+               test_verifier_has_no_method, test_recheck_uses_the_run_budgets):
         fn()
     if FAILURES:
         print("실패:")

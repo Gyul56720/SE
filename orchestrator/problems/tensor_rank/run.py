@@ -195,14 +195,28 @@ def _table(spec: dict, final: dict) -> None:
             print(f"{'':9} {'':>4} {'':>5}  !! {d['alert']}")
 
 
-def _recheck(spec: dict, final: dict) -> bool:
+def _recheck(final: dict, run_dir: Path) -> tuple:
     """밖에서 만든 심판으로 최종 답을 **다시** 채점한다. drive 의 판정을 그대로 믿지 않는다.
 
     재계획이 주입 심판을 지우면 LLM 이 제 답에 스스로 합격을 준다. 그 상태에서도
-    drive 는 "solved" 를 돌려주므로, 마지막에 한 번 더 재는 것이 유일한 안전망이다."""
+    drive 는 "solved" 를 돌려주므로, 마지막에 한 번 더 재는 것이 유일한 안전망이다.
+
+    **런의 target.json 을 봐야 한다.** 처음 판은 verify.TARGET 을 그대로 뒀는데, 그것은
+    저장소의 원본(mm222<=7, mm333<=23)을 가리킨다. --budget 으로 예산을 풀어 돌린 런에서는
+    당연히 예산 초과로 기각되고, 그러면 멀쩡한 통과에 "심판이 지워졌다"는 경고가 붙는다
+    (실측 2026-09-03: mm222 M=8, mm333 M=27 이 전부 OK 인데 경고가 떴다).
+
+    **거짓 경보는 경보를 죽인다.** 다음에 진짜로 심판이 지워졌을 때 아무도 안 믿는다."""
     import verify
-    ok, why = verify.check(final, {})
-    return bool(ok)
+    run_target = run_dir / "verifiers" / "target.json"
+    old = verify.TARGET
+    try:
+        if run_target.is_file():
+            verify.TARGET = run_target
+        ok, why = verify.check(final, {})
+    finally:
+        verify.TARGET = old
+    return bool(ok), why
 
 
 def _verdict(spec: dict, final: dict) -> None:
@@ -302,8 +316,10 @@ def main() -> int:
     # **"solved" 를 그대로 믿지 않는다.** 우리 심판으로 다시 재서 한 case 라도 못 맞추면
     # 심판이 우리 것이 아니었다는 뜻이다. 실측(2026-09-03): 재계획 1회가 든 런이
     # "solved" 로 끝났는데 세 case 전부 "답 없음"이었다.
-    if res.get("status") == "solved" and not _recheck(spec, final):
-        print("\n!! solved 라는데 우리 심판으로 다시 재면 통과가 아니다.")
+    recheck_ok, recheck_why = ((True, "") if res.get("status") != "solved"
+                               else _recheck(final, run_dir))
+    if not recheck_ok:
+        print(f"\n!! solved 라는데 우리 심판으로 다시 재면 통과가 아니다.\n   {recheck_why[:300]}")
         print("   재계획이 주입 심판을 지웠을 때 나오는 모습이다. "
               "plan.json 의 최종 노드 verifier 를 확인하라:")
         print(f"   python3 -c \"import json;p=json.load(open('{run_dir}/plan.json'));"
