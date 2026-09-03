@@ -129,6 +129,11 @@ class Scene:
     world_ops: list = field(default_factory=list)
     # 회상 씬. 죽거나 떠난 인물도 등장할 수 있다.
     flashback: bool = False
+    # --- 거시 서사 (arc.py) ---
+    episode: int = 0                 # 몇 화인가. 0 이면 거시 검사를 건너뛴다
+    scale: int = 0                   # 이 씬이 다루는 사건 규모 1~5 (arc.SCALES)
+    cliffhanger: str = ""            # 회차 끝이면 5대 공식 중 하나 (arc.CLIFFHANGERS)
+    is_episode_end: bool = False     # 이 씬이 회차의 마지막인가
     prose: str = ""
     status: str = "pending"          # pending | gated | verified | failed
     violations: list = field(default_factory=list)

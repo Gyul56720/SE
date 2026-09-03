@@ -120,6 +120,15 @@ def _fb(violations) -> str:
             + "\n".join(lines))
 
 
+def _arc_brief(scene) -> str:
+    """현재 회차의 거시 브리프. **변동부에 놓는다** -- 회차마다 바뀌므로 캐시 프리픽스
+    앞에 두면 매번 캐시가 무효화된다."""
+    if not scene.episode:
+        return ""
+    from . import arc
+    return arc.brief(scene.episode) + "\n"
+
+
 def director_prompt(novel, scene, feedback="") -> str:
     prev = [s for s in novel.scenes if s.status == "verified"][-2:]
     return f"""너는 1인칭 회고 소설의 디렉터다. 다음 씬의 무대와 지시를 정한다.
@@ -136,6 +145,7 @@ def director_prompt(novel, scene, feedback="") -> str:
 세계 변경이 필요하면 아래 동사만 쓴다(없는 동사는 기각):
 {catalog_for_prompt()}
 {SPLIT}
+{_arc_brief(scene)}
 [직전까지] {chr(10).join(f'  {s.id}: {s.directives[0] if s.directives else ""}' for s in prev) or '  (시작)'}
 [이 씬의 씨앗] {scene.directives[0] if scene.directives else ''}
 [참여자] {scene.participants} / [모드] {scene.mode}
@@ -143,7 +153,12 @@ def director_prompt(novel, scene, feedback="") -> str:
 
 JSON 만 출력:
 {{"location": "...", "punctum": "...", "directives": ["...", "...", "..."],
-  "world_ops": [], "relation_ops": []}}"""
+  "world_ops": [], "relation_ops": [],
+  "scale": 1,
+  "cliffhanger": ""}}
+
+scale 은 이 씬이 다루는 사건 규모 1~5. cliffhanger 는 회차의 마지막 씬일 때만 채우고
+{sorted(__import__("novel.arc", fromlist=["x"]).CLIFFHANGERS)} 중 하나여야 한다."""
 
 
 def actor_prompt(novel, scene, name, feedback="") -> str:
@@ -220,6 +235,9 @@ def run_scene(novel, scene, llm, max_repairs=MAX_REPAIRS, log=None) -> dict:
             scene.directives = d.get("directives") or scene.directives
             scene.world_ops = (scene.world_ops or []) + (d.get("world_ops") or [])
             scene.relation_ops = (scene.relation_ops or []) + (d.get("relation_ops") or [])
+            scene.scale = int(d.get("scale") or scene.scale or 0)
+            if scene.is_episode_end:
+                scene.cliffhanger = d.get("cliffhanger") or scene.cliffhanger
 
         # --- 연기
         # **직전 시도의 산문을 반드시 지운다.** 안 지우면 아래 턴 단계 관문이 낡은 산문을

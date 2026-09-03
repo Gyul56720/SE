@@ -142,3 +142,85 @@ if fails:
     sys.exit(1)
 print("소설 기계 관문: 형식·급변·폭붕괴·시점·직접감정·푼크툼·화자부재·지식누출을 잡고, "
       "화자의 추측과 대사 속 감정어는 통과시킨다 -- 통과")
+
+
+# ===================================================================== 거시 서사
+print()
+print("[V013] 감정선이 시퀀스 궤도 위에 있는가 -- 200화에서 무너지는 것은 진도다")
+from novel import arc                                                # noqa: E402
+
+def arc_scene(ep, pull, scale=0, end=False, cliff="", sid=None):
+    s = scene_fixture(id=sid or f"e{ep}")
+    s.episode, s.scale, s.is_episode_end, s.cliffhanger = ep, scale, end, cliff
+    s.turns = [Turn("A", "", "", "말", E(joy=45, pull=pull)),
+               Turn("B", "", "", "말", E(joy=45, pull=pull))]
+    return s
+
+N2 = novel_fixture()
+N2.pov_character = "A"
+
+s = arc_scene(15, pull=70)                     # 시퀀스 1(-60~-10)인데 이미 끌림
+N2.scenes = [s]
+ok(has(gate.check(s, N2), "V013", "hard"),
+   "15화에 pull 70 -> 너무 빨리 가까워졌다고 기각")
+
+s = arc_scene(170, pull=-80)                   # 시퀀스 7(40~100)인데 아직 밀어냄
+N2.scenes = [s]
+ok(has(gate.check(s, N2), "V013", "hard"),
+   "170화에 pull -80 -> 진도가 멈췄다고 기각")
+
+s = arc_scene(15, pull=-30)                    # 정상
+N2.scenes = [s]
+ok(not has(gate.check(s, N2), "V013"), "궤도 위의 씬은 통과  ← 과잉 기각 방지")
+
+print("[V014] 꺾여야 하는 시퀀스에 꺾임이 있는가 -- 너무 순탄한 것이 이 장르의 실패")
+flat = [arc_scene(ep, pull=40, sid=f"f{ep}") for ep in (75, 90, 100)]
+N2.scenes = flat
+ok(has(gate.check(flat[-1], N2), "V014", "hard"),
+   "시퀀스 4(입덕 부정)가 pull 변동 0 이면 기각")
+dipped = [arc_scene(75, pull=50, sid="d1"), arc_scene(90, pull=-10, sid="d2"),
+          arc_scene(100, pull=45, sid="d3")]
+N2.scenes = dipped
+ok(not has(gate.check(dipped[-1], N2), "V014"), "실제로 꺾이면 통과")
+
+print("[V015] 사건 규모가 뒷걸음질하지 않는가")
+s = arc_scene(150, pull=20, scale=1)            # 시퀀스 6 은 규모 4~5
+N2.scenes = [s]
+ok(has(gate.check(s, N2), "V015", "hard"), "150화에 일상 규모 -> 기각")
+s = arc_scene(150, pull=20, scale=4)
+N2.scenes = [s]
+ok(not has(gate.check(s, N2), "V015"), "규모가 맞으면 통과")
+
+print("[V016] 독자-인물 정보 격차가 살아 있는가 -- 연독률의 핵심")
+eps = [arc_scene(ep, pull=-20, end=True, cliff="caught", sid=f"g{ep}")
+       for ep in (10, 15, 20)]
+N2.scenes = eps
+ok(has(gate.check(eps[-1], N2), "V016", "hard"),
+   "3회차 연속 아무도 아무것도 모르지 않으면 기각")
+eps[0].world_ops = [{"event": "misbelieve", "who": "B", "term": "그 밤",
+                     "believes": "다른 사람"}]
+N2.scenes = eps
+ok(not has(gate.check(eps[-1], N2), "V016", "hard"), "오해가 하나라도 살아 있으면 통과")
+
+print("[V017] 클리프행어는 선언으로 -- 텍스트에서 추론하지 않는다")
+s = arc_scene(20, pull=-20, end=True, cliff="눈이 마주쳤다")
+N2.scenes = [s]
+ok(has(gate.check(s, N2), "V017", "hard"), "5대 공식 밖의 값은 기각")
+s = arc_scene(20, pull=-20, end=True, cliff="")
+N2.scenes = [s]
+ok(has(gate.check(s, N2), "V017", "soft"),
+   "회차 끝에 없으면 soft  ← 매회 남발하면 양치기 소년이라 hard 로 막지 않는다")
+s = arc_scene(20, pull=-20, end=True, cliff="before_crisis")
+N2.scenes = [s]
+ok(not has(gate.check(s, N2), "V017"), "유효한 공식이면 통과")
+
+print("[거시] 회차 배분이 보고서와 맞는가")
+ok(sum(arc.episodes_in(x["n"]) for x in arc.SEQUENCES) == 200, "8시퀀스 합계 200화")
+ev = sum(x["events"][1] for x in arc.SEQUENCES)
+ok(15 <= ev <= 21, f"사건 상한 합계 {ev}개 (보고서 15~20)")
+
+print()
+if fails:
+    print(f"거시 관문: {len(fails)}개 실패 -- {fails}")
+    sys.exit(1)
+print("거시 관문: 진도·꺾임·규모·정보격차·클리프행어 -- 통과")

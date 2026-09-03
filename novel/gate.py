@@ -481,10 +481,165 @@ def check_public_fiction(scene, novel) -> list:
     return out
 
 
+def check_arc_emotion(scene, novel) -> list:
+    """V013 -- 감정선이 시퀀스 궤도 위에 있는가.
+
+    **200화에서 무너지는 것은 씬 하나가 아니라 진도다.** 100화가 됐는데 아직 혐오 단계면
+    용두사미이고, 40화에 벌써 결정적 선택이면 태울 연료가 없다. 씬 하나만 보면 안 보이고
+    회차 번호와 대조해야 보인다 -- 관계 원장이 누적을 봐서 모순을 잡은 것과 같은 수다.
+
+    밴드는 넉넉하게 잡고 **벗어난 폭**으로 등급을 가른다. 장르 규약이 취향이 아니라 구조인
+    지점만 hard 로 막고, 나머지는 보고한다."""
+    from . import arc
+    out = []
+    if not scene.episode or not scene.turns:
+        return out
+    try:
+        seq = arc.sequence_of(scene.episode)
+    except ValueError as e:
+        return [Violation("V013", "hard", f"씬 {scene.id}", str(e))]
+
+    lo, hi = seq["pull"]
+    pulls = [t.emotions.get("narrative_pull", 0) for t in scene.turns
+             if t.actor == novel.pov_character]
+    if not pulls:
+        return out
+    peak, trough = max(pulls), min(pulls)
+    slack = 25
+    if trough > hi + slack:
+        out.append(Violation("V013", "hard", f"씬 {scene.id} ({scene.episode}화)",
+                             f"시퀀스 {seq['n']} '{seq['name']}' 의 pull 범위는 {seq['pull']} "
+                             f"인데 최저가 {trough} 다. 너무 빨리 가까워졌다 -- 뒤에 태울 "
+                             f"연료가 남지 않는다"))
+    elif peak < lo - slack:
+        out.append(Violation("V013", "hard", f"씬 {scene.id} ({scene.episode}화)",
+                             f"시퀀스 {seq['n']} '{seq['name']}' 의 pull 범위는 {seq['pull']} "
+                             f"인데 최고가 {peak} 다. 진도가 멈췄다 -- {seq['stage']} 단계로 "
+                             f"올라와야 한다"))
+    elif not (lo <= peak <= hi) and not (lo <= trough <= hi):
+        out.append(Violation("V013", "soft", f"씬 {scene.id} ({scene.episode}화)",
+                             f"pull {trough}~{peak} 가 시퀀스 밴드 {seq['pull']} 밖이다"))
+    return out
+
+
+def check_arc_dip(scene, novel) -> list:
+    """V014 -- 꺾임이 있어야 하는 시퀀스에 꺾임이 있는가.
+
+    이 장르에서 가장 흔한 실패는 모순이 아니라 **너무 순탄한 것**이다. 시퀀스 4(입덕 부정)와
+    6(관계 단절 위기)은 감정선이 반드시 꺾여야 하는 자리인데, 씬 하나만 보면 그 씬이 순탄한
+    것이 문제인지 알 수 없다. 시퀀스 전체를 봐야 한다."""
+    from . import arc
+    if not scene.episode:
+        return []
+    seq = arc.sequence_of(scene.episode)
+    if not seq.get("dip") or scene.episode != seq["eps"][1]:
+        return []                          # 시퀀스 마지막 회차에서만 총평한다
+
+    lo, hi = seq["eps"]
+    pulls = [t.emotions.get("narrative_pull", 0)
+             for sc in novel.scenes if lo <= sc.episode <= hi
+             for t in sc.turns if t.actor == novel.pov_character]
+    if not pulls:
+        return []
+    if max(pulls) - min(pulls) < 30:
+        return [Violation("V014", "hard", f"시퀀스 {seq['n']} ({lo}~{hi}화)",
+                          f"'{seq['name']}' 는 감정선이 꺾여야 하는 시퀀스인데 pull 변동이 "
+                          f"{max(pulls) - min(pulls)} 뿐이다. 회피나 단절이 실제로 일어나야 "
+                          f"한다 -- 너무 순탄한 것이 이 장르의 가장 흔한 실패다")]
+    return []
+
+
+def check_arc_scale(scene, novel) -> list:
+    """V015 -- 사건 규모가 뒷걸음질하지 않는가.
+
+    작은 일상에서 시작해 점진적으로 커져야 한다(보고서). 처음부터 크면 50화 전에 동력을
+    잃는다. 단조 증가를 강제하지는 않는다 -- 숨 고르는 회차가 필요하다. 다만 **시퀀스 하한
+    아래로 내려가는 것**은 잡는다."""
+    from . import arc
+    if not scene.episode or not scene.scale:
+        return []
+    seq = arc.sequence_of(scene.episode)
+    lo, hi = seq["scale"]
+    if scene.scale < lo - 1:
+        return [Violation("V015", "hard", f"씬 {scene.id} ({scene.episode}화)",
+                          f"규모 {scene.scale}({arc.SCALES[scene.scale]}) 는 시퀀스 "
+                          f"{seq['n']} 의 하한 {lo}({arc.SCALES[lo]}) 보다 낮다. "
+                          f"뒤로 갈수록 커져야 한다")]
+    if scene.scale > hi:
+        return [Violation("V015", "soft", f"씬 {scene.id} ({scene.episode}화)",
+                          f"규모 {scene.scale} 가 시퀀스 상한 {hi} 를 넘는다. 너무 일찍 "
+                          f"크게 터뜨리면 뒤가 밋밋해진다")]
+    return []
+
+
+def check_information_gap(scene, novel) -> list:
+    """V016 -- 독자와 인물의 정보 격차가 살아 있는가.
+
+    보고서가 연독률의 핵심으로 꼽은 장치다. 독자는 아는데 인물은 모르는 상태가 서스펜스를
+    만든다. **이건 원장으로 정확히 셀 수 있다** -- misbelieve / conceal / fabricate /
+    blame_transfer 중 살아 있는 것이 하나도 없으면 격차가 0 이다.
+
+    씬 하나에서는 문제가 아니다. 여러 회차 연속으로 0 이면 그때가 문제다."""
+    from . import arc
+    if not scene.episode or not scene.is_episode_end:
+        return []
+    idx = novel.scene_index(scene.id)
+    gates, _ = novel.derive_gates(idx)
+    live = [g for g in gates
+            if g.kind in ("belief", "public_fiction", "knowledge_deny")
+            and novel.scene_index(g.from_scene) <= idx]
+    if live:
+        return []
+
+    # 격차가 0 인 회차가 몇 화째 연속인가
+    run = 0
+    for sc in reversed([s for s in novel.scenes
+                        if s.is_episode_end and 0 < s.episode <= scene.episode]):
+        i = novel.scene_index(sc.id)
+        gs, _ = novel.derive_gates(i)
+        if any(g.kind in ("belief", "public_fiction", "knowledge_deny")
+               and novel.scene_index(g.from_scene) <= i for g in gs):
+            break
+        run += 1
+    if run >= 3:
+        return [Violation("V016", "hard", f"{scene.episode}화",
+                          f"독자와 인물의 정보 격차가 {run}회차 연속 0 이다. 아무도 아무것도 "
+                          f"모르지 않으면 서스펜스가 없다 -- misbelieve/conceal/fabricate 중 "
+                          f"하나는 살아 있어야 한다")]
+    if run >= 2:
+        return [Violation("V016", "soft", f"{scene.episode}화",
+                          f"정보 격차가 {run}회차 연속 0 이다")]
+    return []
+
+
+def check_cliffhanger(scene, novel) -> list:
+    """V017 -- 회차 끝에 클리프행어가 선언됐는가.
+
+    **텍스트에서 추론하지 않는다.** "이 문단이 절벽 엔딩인가"를 기계가 판정하려 들면 그
+    추론 자체가 또 하나의 환각이 된다. Director 가 5대 공식 중 하나를 구조로 선언하게 하고,
+    여기서는 선언 여부와 값의 유효성만 본다 -- 세계 변경 동사와 같은 원칙이다."""
+    from . import arc
+    if not scene.episode or not scene.is_episode_end:
+        return []
+    seq = arc.sequence_of(scene.episode)
+    if scene.cliffhanger and scene.cliffhanger not in arc.CLIFFHANGERS:
+        return [Violation("V017", "hard", f"{scene.episode}화",
+                          f"알 수 없는 클리프행어 유형: {scene.cliffhanger!r}. "
+                          f"허용: {sorted(arc.CLIFFHANGERS)}")]
+    if seq.get("cliff") and not scene.cliffhanger:
+        return [Violation("V017", "soft", f"{scene.episode}화",
+                          f"회차 끝인데 클리프행어가 없다. 매 회차 기계적으로 남발하면 "
+                          f"양치기 소년이 되므로 강제하지는 않지만, 시퀀스 {seq['n']} 에서는 "
+                          f"연독률 방어가 필요하다")]
+    return []
+
+
 CHECKS = (check_turn_format, check_emotion_continuity, check_emotion_range,
           check_pov, check_direct_emotion, check_punctum,
           check_pov_presence, check_knowledge, check_relations, check_facts,
-          check_belief, check_public_fiction)
+          check_belief, check_public_fiction,
+          check_arc_emotion, check_arc_dip, check_arc_scale,
+          check_information_gap, check_cliffhanger)
 
 
 def check(scene, novel) -> list:
