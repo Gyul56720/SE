@@ -47,23 +47,32 @@ def _numeric_min(case, iters: int = 200) -> tuple:
     거리 5.0 을 최소라고 내놨고, 그때 심판이 그것을 통과시켜 초록이 떴다.
     **검증기와 그 검증이 같은 맹점을 공유한 것**이고, 그래서 둘 다 고쳤다.
 
-    좁은 골짜기(거의 평행한 두 직선)에서는 축 방향만으로 못 내려간다. 대각 방향을 넣는다."""
+    좁은 골짜기(거의 평행한 두 직선)에서는 축 방향만으로 못 내려간다. 대각 방향을 넣는다.
+
+    그리고 **호길이로 매개화한다** (u = t*|v1|, w = s*|v2|). t, s 를 그대로 훑으면 보폭
+    하나가 뜻하는 실제 이동 거리가 case 마다 1e8 배씩 달라진다 -- scale_gap 은 |v1|=2^27,
+    |v2|=2^-27 이라 t 의 보폭 1e-12 가 공간에서는 1.3e-4 이고, 그 오차로는 심판의 일차
+    조건(1e-6)을 못 넘는다. 호길이로 재면 보폭이 곧 이동 거리라 case 규모와 무관해진다."""
     DIRS = ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, -1), (1, -1), (-1, 1))
-    t = s = 0.0
+    n1 = verify._norm(case["v1"]) or 1.0
+    n2 = verify._norm(case["v2"]) or 1.0
+    g = lambda u, w: _f(case, u / n1, w / n2)      # noqa: E731  호길이 좌표에서 본 목적함수
+    u = w = 0.0
     step = 1e8                                    # 멀리 있는 최소점에 닿을 만큼 크게 시작
     for _ in range(iters):
         for _ in range(200):
-            best = _f(case, t, s)
+            best = g(u, w)
             moved = False
-            for dt, ds in DIRS:
-                v = _f(case, t + dt * step, s + ds * step)
+            for du, dw in DIRS:
+                v = g(u + du * step, w + dw * step)
                 if v < best - 1e-15:
-                    t, s, best, moved = t + dt * step, s + ds * step, v, True
+                    u, w, best, moved = u + du * step, w + dw * step, v, True
             if not moved:
                 break
         step *= 0.5
         if step < 1e-12:
             break
+    t, s = u / n1, w / n2
     return t, s, _f(case, t, s)
 
 
@@ -113,12 +122,16 @@ def test_accepts_any_minimizer_when_degenerate() -> None:
 
 
 def test_catches_near_miss() -> None:
-    """최소점에서 살짝 벗어난 답을 잡는가. 허용치가 헐거우면 심판이 헛돈다."""
+    """최소점에서 살짝 벗어난 답을 잡는가. 허용치가 헐거우면 심판이 헛돈다.
+
+    벗어나는 양도 **호길이로 준다**. t 를 그대로 eps 만큼 밀면 실제 이동 거리가 |v1| 배로
+    달라져서, scale_gap(|v1|=2^27) 에서는 eps=1e-12 가 공간에서 1.3e-4 가 된다 -- 잡음이
+    아니라 명백한 오답이다. 그것을 "잡음 수준"이라 부르면 검사가 뜻을 잃는다."""
     pairs = [_numeric_min(c) for c in CASES]
     for eps, must_fail in ((1e-12, False), (1e-2, True), (1.0, True)):
         off = []
         for c, (t, s, _) in zip(CASES, pairs):
-            tt = t + eps
+            tt = t + eps / (verify._norm(c["v1"]) or 1.0)
             off.append((tt, s, _f(c, tt, s)))
         ok, why = verify.check(_answer(off), {})
         if must_fail:
@@ -165,6 +178,48 @@ def test_catches_ill_conditioned_near_miss() -> None:
     check(abs(_f(np_case, -5.0e6, -5.0e6)) < 1e-9, "near_par 의 진짜 최소거리는 0 이다")
 
 
+def test_catches_rank_truncation() -> None:
+    """척도 차이로 특이값이 잘려나간 답을 잡는가 (scale_gap).
+
+    **near_par 를 더 심하게 만드는 길은 막혀 있다.** v2=[1,1e-9,0] 로 조건수를 2e9 로
+    올려봤지만 lstsq 의 오차가 정확히 t 의 1 ulp 였다 -- 최소점 |t|=5e9 에서 ulp 가
+    9.5e-7 이라, 그보다 잘 하라는 요구는 방법의 문제가 아니라 배정도 표현의 바닥이다.
+    그런 기각은 어떤 풀이도 못 넘고, 못 넘는 시험은 신호를 주지 못한다.
+
+    그래서 조건수를 **척도 불균형**으로 만든다. |v1|=2^27, |v2|=2^-27 이면 sigma =
+    (1.34e8, 7.45e-9), k(A) = 1.8e16 이다. numpy 의 rcond=None 기본값은
+    max(M,N)*eps = 6.7e-16 이라 잘라내는 문턱이 sigma_max*6.7e-16 = 8.9e-8 이고,
+    sigma_min = 7.45e-9 가 그 아래로 떨어져 **랭크가 1 로 잘린다**. 그러면 lstsq 는
+    두 번째 열을 없는 셈 치고 최소노름해 s=0 을 내놓는다 -- 거리 8.602, 진짜 최소는 5.
+
+    이 실패는 고칠 수 있다는 점이 near_par 와 다르다. 열을 정규화하고 풀면(전처리)
+    s=-939524096 이 정확히 나오고 거리도 정확히 5 다. 그래서 이 case 는 방법을 묻는다."""
+    sg = next(c for c in CASES if c["id"] == "scale_gap")
+    others = {c["id"]: _numeric_min(c)[:2] for c in CASES if c["id"] != "scale_gap"}
+
+    def judge_with(t, s):
+        rows = [{"id": c["id"],
+                 "t": (t if c["id"] == "scale_gap" else others[c["id"]][0]),
+                 "s": (s if c["id"] == "scale_gap" else others[c["id"]][1])}
+                for c in CASES]
+        for r in rows:
+            r["distance"] = _f(next(c for c in CASES if c["id"] == r["id"]),
+                               r["t"], r["s"])
+        return verify.check({"cases": rows}, {})
+
+    # numpy.linalg.lstsq(A, y, rcond=None) 이 실제로 내놓는 답 (실측값을 박아둔다 --
+    # 이 검사에 numpy 를 끌어들이지 않는다). 랭크가 잘려 s=0 이 된다.
+    ok, why = judge_with(3.0 / 2 ** 27, 0.0)
+    check(not ok, "특이값이 잘려 s=0 이 된 답을 통과시킨다 (거리 8.602, 진짜 최소 5)")
+    check("scale_gap" in why, f"기각 사유가 scale_gap 이어야 한다: {why[:80]}")
+
+    # 열을 정규화하고 풀면 나오는 정확한 답. 통과해야 한다.
+    ok, why = judge_with(3.0 / 2 ** 27, -7.0 * 2 ** 27)
+    check(ok, f"전처리한 정확한 답을 거부한다: {why[:120]}")
+    check(abs(_f(sg, 3.0 / 2 ** 27, -7.0 * 2 ** 27) - 5.0) < 1e-12,
+          "scale_gap 의 진짜 최소거리는 정확히 5 다")
+
+
 def test_verifier_does_not_contain_the_answer() -> None:
     """심판 파일이 풀이법을 담고 있지 않은가.
 
@@ -185,6 +240,7 @@ def main() -> int:
     for fn in (test_rejects_obvious_garbage, test_accepts_true_minimum,
                test_accepts_any_minimizer_when_degenerate, test_catches_near_miss,
                test_catches_ill_conditioned_near_miss,
+               test_catches_rank_truncation,
                test_verifier_does_not_contain_the_answer):
         fn()
     if FAILURES:
@@ -193,7 +249,7 @@ def main() -> int:
             print("  -", f)
         return 1
     print("직선거리 심판: 쓰레기 거부, 최소점 통과, 퇴화 허용, 근접오답 검출, "
-          "조건수 나쁜 경우 검출, 풀이 미포함 -- 통과")
+          "조건수 나쁜 경우 검출, 랭크 절단 검출, 풀이 미포함 -- 통과")
     return 0
 
 
