@@ -49,3 +49,10 @@ npu/array_w.txt
 compression/cache/
 compression/ledger.json
 compression/codecs/champion.py
+
+# 소설 런 산출물 -- 서버가 계속 쓴다. 추적하면 배포의 git pull 이 매번 충돌한다
+# (compression/ledger.json 과 같은 이유). 씬 상태는 run.json 에, 진행 기록은 .scenes.jsonl 에
+# 쌓이고 둘 다 재개용이지 소스가 아니다.
+novel/*.json
+novel/*.scenes.jsonl
+!novel/plan.json
