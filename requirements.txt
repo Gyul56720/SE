@@ -15,3 +15,7 @@ numpy>=1.24.0
 # 옵시디언 논문 리서치 파이프라인(main.py/collector.py/sources/ 등)과 함께 지워졌고
 # 남은 코드 어디에서도 임포트하지 않는다. langchain 우산 패키지도 langchain-core 로
 # 좁혔다 -- 실제로 쓰는 것은 langchain_core.tools 뿐이다.
+
+# novel/drive.py 의 anthropic_llm() 이 쓴다. author(director) 역할만 Claude 로
+# 돌리는 구성이라 없으면 그 경로에서만 실패한다(Gemini 경로는 무관).
+anthropic>=0.40.0

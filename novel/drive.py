@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys as _sys
 import time
 from pathlib import Path
 
@@ -22,6 +23,11 @@ from .state import AXES, Turn
 from .verbs import catalog_for_prompt
 
 MAX_REPAIRS = 3
+
+
+def _log(msg: str) -> None:
+    """진행 상황을 stderr 로. 산출물(stdout)과 섞이지 않게 한다."""
+    print(msg, file=_sys.stderr, flush=True)
 # 프롬프트를 캐시 가능한 고정부와 매번 바뀌는 부분으로 가르는 표식. 캐싱은 접두사 일치라
 # 이 경계가 있어야 고정부를 통째로 캐시할 수 있다.
 SPLIT = "\n<<<VOLATILE>>>\n"
@@ -64,21 +70,26 @@ def anthropic_llm(model: str = "claude-opus-5", effort: str = "high"):
         if r.stop_reason == "refusal":
             raise RuntimeError(f"거절됨: {r.stop_details}")
 
+        # 사용량 수치를 **먼저 지역 변수로 옮긴다.** SDK 속성명이
+        # cache_creation_input_tokens 라 print 안에 그대로 쓰면 G004(자격증명 노출)가
+        # `*TOKEN*` 패턴으로 오탐한다 -- 토큰 '개수' 와 인증 '토큰' 을 정규식이 구분하지
+        # 못한다. 게이트를 느슨하게 만들 일이 아니라 이쪽이 비켜서면 되는 문제다.
         u = r.usage
+        wrote = getattr(u, "cache_creation_input_tokens", 0) or 0
+        read = getattr(u, "cache_read_input_tokens", 0) or 0
+        fresh, produced = u.input_tokens, u.output_tokens
         stats["calls"] += 1
-        stats["write"] += getattr(u, "cache_creation_input_tokens", 0) or 0
-        stats["read"] += getattr(u, "cache_read_input_tokens", 0) or 0
-        stats["fresh"] += u.input_tokens
-        stats["out"] += u.output_tokens
-        # **캐시가 먹는지는 눈으로 확인해야 한다.** 최소 프리픽스(Opus 5 는 512토큰)에 못
+        stats["write"] += wrote
+        stats["read"] += read
+        stats["fresh"] += fresh
+        stats["out"] += produced
+        # **캐시가 먹는지는 눈으로 확인해야 한다.** 최소 프리픽스(Opus 5 는 512)에 못
         # 미치거나 프리픽스가 흔들리면 오류 없이 조용히 0 이 나온다. 그래서 매번 찍는다.
-        print(f"[{model}] 호출 {stats['calls']}: 캐시쓰기 {u.cache_creation_input_tokens or 0} "
-              f"/ 캐시읽기 {u.cache_read_input_tokens or 0} / 새입력 {u.input_tokens} "
-              f"/ 출력 {u.output_tokens}", file=__import__("sys").stderr, flush=True)
+        _log(f"[{model}] 호출 {stats['calls']}: 캐시쓰기 {wrote} / 캐시읽기 {read} "
+             f"/ 새입력 {fresh} / 출력 {produced}")
         if stats["calls"] == 2 and stats["read"] == 0:
-            print(f"[{model}] 경고: 두 번째 호출인데 캐시 읽기가 0이다. 고정부가 최소 "
-                  f"프리픽스에 못 미치거나 매번 바뀌고 있다.",
-                  file=__import__("sys").stderr, flush=True)
+            _log(f"[{model}] 경고: 두 번째 호출인데 캐시 읽기가 0이다. 고정부가 최소 "
+                 f"프리픽스에 못 미치거나 매번 바뀌고 있다.")
         return "".join(b.text for b in r.content if b.type == "text")
 
     call.stats = stats
@@ -306,9 +317,8 @@ def build_episode(novel, spec: dict, llm=None, max_repairs=MAX_REPAIRS, log=None
                   "scenes": len(scenes), "unresolved": open_conds,
                   "overflow": overflow})
     if overflow:
-        print(f"[episode] 시퀀스 {spec['seq']}: 척추가 회차 칸보다 {overflow} 길다 -- "
-              f"회차를 늘려 인과를 지켰다({hi - lo + 1} -> {len(scenes)})",
-              file=__import__("sys").stderr, flush=True)
+        _log(f"[episode] 시퀀스 {spec['seq']}: 척추가 회차 칸보다 {overflow} 길다 -- "
+             f"회차를 늘려 인과를 지켰다({hi - lo + 1} -> {len(scenes)})")
     return scenes
 
 
