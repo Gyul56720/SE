@@ -117,6 +117,45 @@ def test_trivial_is_exact_but_over_budget() -> None:
     print(f"    [분리] mm333 자명해 M=27: 재구성 정확, 예산에서 기각")
 
 
+def test_interval_report_is_not_a_lie() -> None:
+    """**예산 통과와 구간 진입을 섞어 말하지 않는가.**
+
+    실측으로 걸린 버그다. --budget mm333=27 로 돌린 런에서 심판이 M=27 을 통과시키며
+    "정확 · M=27 · 구간 [19,23] 안" 이라고 적었다. 27 은 23 위다. 통과 판정 자체는
+    맞았지만(예산 27 <= 27) 보고가 거짓이었고, 그러면 그 위에 쌓는 판단이 전부 틀어진다.
+
+    예산은 이번 런에 걸어둔 목표라 손잡이로 움직이고, 구간은 문헌이 아는 사실이라
+    안 움직인다. 세 자리를 따로 말해야 한다: 아래 / 안 / 위."""
+    spec = json.loads(json.dumps(SPEC))
+    case = next(c for c in spec["cases"] if c["id"] == "mm333")
+
+    case["budget"] = 27
+    r = verify.score_case(case, trivial(3, 3, 3))
+    check(r["ok"], f"예산 27 이면 27 항은 통과해야 한다: {r['reason']}")
+    check(r.get("interval") == "above",
+          f"M=27 은 구간 [19,23] **위**여야 한다: {r.get('interval')}")
+    check("위" in r["reason"] and "안" not in r["reason"],
+          f"27 을 두고 '구간 안'이라 적으면 안 된다: {r['reason']}")
+    print(f"    [구간] M=27 -> {r['reason']}")
+
+    # 구간 안에 실제로 들어온 경우와, 하한 아래로 내려온 경우도 말이 달라야 한다.
+    case["budget"] = 23
+    sub = trivial(3, 3, 3)
+    for M, want in ((23, "inside"), (19, "inside"), (18, "below")):
+        # 항 개수만 바꾼 가짜다. 정확성은 여기서 보는 것이 아니므로 표적도 같이 줄인다.
+        fake = {"id": "x", "shape": [1, 1, 1], "budget": 30,
+                "known": {"lower": 19, "upper": 23},
+                "entries": [[0, 0, 0, M]]}
+        one = {"rank": M, "u": [[1]] * M, "v": [[1]] * M, "w": [[1]] * M}
+        d = verify.score_case(fake, one)
+        check(d["ok"], f"M={M}: 정확한 분해인데 떨어진다 -- {d['reason']}")
+        check(d.get("interval") == want,
+              f"M={M} 은 '{want}' 여야 한다: {d.get('interval')}")
+        if want == "below":
+            check(d.get("alert"), f"M={M}: 하한 아래면 심판을 의심하라고 말해야 한다")
+    check(len(sub["u"]) == 27, "전제 확인: 자명해는 27 항이다")
+
+
 def test_rejects_wrong_reconstruction() -> None:
     """성분 하나만 어긋나도 잡는가. 허용치가 0 이므로 잡아야 한다."""
     bad = strassen7()
@@ -240,6 +279,7 @@ def test_verifier_has_no_method() -> None:
 
 def main() -> int:
     for fn in (test_accepts_known_good, test_trivial_is_exact_but_over_budget,
+               test_interval_report_is_not_a_lie,
                test_rejects_wrong_reconstruction, test_rejects_border_rank_by_lattice,
                test_rejects_border_rank_by_exactness, test_rejects_below_flattening_bound,
                test_rejects_rank_lie, test_check_reports_every_case,
@@ -252,7 +292,7 @@ def main() -> int:
             print("  -", f)
         return 1
     print("텐서 랭크 심판: 기지해 통과, 정확성/예산 분리, 경계랭크 2중 차단, "
-          "전개랭크 하한, 전수 보고, 검증 비대칭, 풀이 미포함 -- 통과")
+          "전개랭크 하한, 구간 보고 정직성, 전수 보고, 검증 비대칭, 풀이 미포함 -- 통과")
     return 0
 
 

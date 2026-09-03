@@ -238,13 +238,25 @@ def score_case(case, row) -> dict:
     d["ok"] = True
     known = case.get("known", {})
     lo, hi = known.get("lower"), known.get("upper")
-    if lo is not None and M < lo:
+    if lo is None:
+        d["reason"] = f"정확 · M={M} (기지 랭크 {known.get('rank', '?')})"
+        return d
+
+    # **예산 통과와 구간 진입은 다른 말이다.** 예산은 이번 런에 걸어둔 목표라 --budget 으로
+    # 느슨하게 풀 수 있고, 구간은 문헌이 아는 사실이라 안 움직인다. 처음 쓴 코드는 M >= lo
+    # 이기만 하면 "구간 안"이라 적었고, 그래서 예산 27 로 푼 런에서 M=27 을 두고 "구간
+    # [19,23] 안"이라고 **거짓을 보고했다**. 심판이 통과 여부를 맞게 내도 보고가 틀리면
+    # 그 위에 쌓는 판단이 전부 틀어진다.
+    d["interval"] = "below" if M < lo else ("inside" if M <= hi else "above")
+    if d["interval"] == "below":
         d["alert"] = (f"M={M} 이 문헌 하한 {lo} 아래다. 문헌이 틀렸을 확률보다 심판에 "
                       f"구멍이 있을 확률이 훨씬 크다 -- 먼저 심판을 의심하라")
-    elif lo is not None:
+        d["reason"] = f"정확 · M={M} · 구간 [{lo},{hi}] **아래**"
+    elif d["interval"] == "inside":
         d["reason"] = f"정확 · M={M} · 구간 [{lo},{hi}] 안"
     else:
-        d["reason"] = f"정확 · M={M} (기지 랭크 {known.get('rank', '?')})"
+        d["reason"] = (f"정확 · M={M} · 구간 [{lo},{hi}] **위** -- 예산은 넘겼지만 "
+                       f"문헌 상한 {hi} 는 아직 못 내렸다")
     return d
 
 

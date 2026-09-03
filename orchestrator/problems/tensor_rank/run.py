@@ -179,6 +179,33 @@ def _table(spec: dict, final: dict) -> None:
             print(f"{'':9} {'':>4} {'':>5}  !! {d['alert']}")
 
 
+def _verdict(spec: dict, final: dict) -> None:
+    """통과했을 때 **무엇을 통과한 것인지** 말한다.
+
+    예산 통과와 구간 진입은 다른 말이다. 예산은 --budget 으로 느슨하게 걸 수 있고,
+    구간은 문헌이 아는 사실이라 안 움직인다. 둘을 섞어 말하면 자명한 27 항을 두고
+    "미지의 구간에서 나온 결과"라고 부르게 된다 -- 실제로 한 번 그랬다."""
+    import verify
+    rows = {str(r.get("id")): r for r in (final or {}).get("cases", [])
+            if isinstance(r, dict)}
+    for c in spec["cases"]:
+        if "lower" not in c.get("known", {}) or c["id"] not in rows:
+            continue
+        d = verify.score_case(c, rows[c["id"]])
+        lo, hi = c["known"]["lower"], c["known"]["upper"]
+        M, where = d["rank"], d.get("interval")
+        if where == "inside":
+            print(f"\n{c['id']}: M={M} 이 [{lo},{hi}] 안이다. 내가 답을 몰랐던 "
+                  f"구간에서 나온 결과다.")
+        elif where == "below":
+            print(f"\n{c['id']}: M={M} 이 문헌 하한 {lo} 아래다. **먼저 심판을 "
+                  f"의심하라** -- 문헌이 틀렸을 확률보다 구멍이 있을 확률이 크다.")
+        else:
+            print(f"\n{c['id']}: M={M} 은 예산은 넘겼지만 [{lo},{hi}] **위**다. "
+                  f"상한 {hi} 를 아직 못 내렸다 -- --budget {c['id']}={M - 1} 로 "
+                  f"한 칸 내려서 다시 돌려라.")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="오케스트레이터에게 텐서 랭크 분해를 시킨다")
     ap.add_argument("--max-repair-rounds", type=int, default=4)
@@ -231,8 +258,7 @@ def main() -> int:
         print(f"\n이유: {res.get('reason')}")
         print(f"기록: {json.dumps(res.get('log', []), ensure_ascii=False)[:800]}")
     else:
-        print("\n심판이 통과시켰다. mm333 의 M 이 [19,23] 안이면 그것은 "
-              "내가 답을 몰랐던 구간에서 나온 결과다.")
+        _verdict(spec, res.get("final_result") or {})
     (run_dir / "result.json").write_text(
         json.dumps(res, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
     return 0 if res.get("status") == "solved" else 1
