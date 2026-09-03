@@ -510,6 +510,67 @@ def test_llm_pool_budgets_time_per_sweep(failures: list) -> None:
         llm_pool.DEADLINE = real_dl
 
 
+def test_llm_pool_splits_rpm_from_daily_quota(failures: list) -> None:
+    """429 를 **분당 한도와 일일 한도로 가르는가.**
+
+    실측으로 걸린 실패다(2026-09-03). 장부에 count=15000(=일일 한도)이 박힌 후보가 8개
+    있었는데, 사용자는 그날 LLM 을 부른 적이 없다고 했고 **그 말이 맞았다.** 하루치를 쓴
+    것이 아니라 1분치를 쓴 것을 우리가 하루치로 적은 것이다.
+
+    오케스트레이터는 후보 12~38개를 몇 초 안에 몰아 때린다. 분당 한도에 걸리기 딱 좋은
+    모양이다. 그런데 llm_pool 은 429 를 전부 record_exhausted 로 확정 기록해서, 60초면
+    풀릴 후보를 자정까지 봉인했다. quota_tracker 의 주석이 정확히 이 함정을 경고하고
+    있었고 bot_tools 는 이미 가르고 있었는데 orchestrator 쪽만 안 갈랐다."""
+    print("\n[llm_pool] 429 분당/일일 구분")
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "orchestrator"))
+    import llm_pool
+
+    def ok(cond, msg):
+        print(f"    {'OK  ' if cond else 'FAIL'} {msg}")
+        if not cond:
+            failures.append(msg)
+
+    RPM = ("429 RESOURCE_EXHAUSTED quota_metric: generate_content_free_tier_requests, "
+           "quota_id: GenerateRequestsPerMinutePerProjectPerModel")
+    RPD = "429 RESOURCE_EXHAUSTED quota_id: GenerateRequestsPerDayPerProjectPerModel"
+
+    ok(llm_pool._is_quota(Exception(RPM)) and llm_pool._is_rpm(Exception(RPM)),
+       "분당 한도를 분당으로 읽는다")
+    ok(llm_pool._is_quota(Exception(RPD)) and not llm_pool._is_rpm(Exception(RPD)),
+       "일일 한도를 일일로 읽는다")
+    ok(not llm_pool._is_rpm(Exception("503 UNAVAILABLE")), "503 은 쿼터가 아니다")
+
+    calls = {"rpm": [], "daily": []}
+
+    class Stub:
+        def is_dead(self, *_): return False
+        def remaining(self, *_): return 100
+        def get_pinned(self, *_): return None
+        def record_success(self, *_): pass
+        def set_pinned(self, *_): pass
+        def record_exhausted(self, label, *_): calls["daily"].append(label)
+        def record_rpm_cooldown(self, label, *_): calls["rpm"].append(label)
+        def mark_dead(self, *_): pass
+
+    class Boom:
+        def __init__(self, msg): self.msg = msg
+        def invoke(self, _p): raise RuntimeError(self.msg)
+
+    real, llm_pool.quota_tracker = llm_pool.quota_tracker, Stub()
+    try:
+        pool = [("k:rpm", Boom(RPM)), ("k:rpd", Boom(RPD))]
+        try:
+            llm_pool.call(pool, "p", verbose=False, sweeps=1, sleep=lambda _: None)
+        except RuntimeError:
+            pass
+        ok(calls["rpm"] == ["k:rpm"],
+           f"분당 한도는 60초 쿨다운으로만 적는다: {calls['rpm']}")
+        ok(calls["daily"] == ["k:rpd"],
+           f"일일 한도만 자정까지 봉인한다: {calls['daily']}")
+    finally:
+        llm_pool.quota_tracker = real
+
+
 def main() -> int:
     failures: list[str] = []
     for t in (test_red_without_repair, test_green_repair_loop,
@@ -517,7 +578,8 @@ def main() -> int:
               test_time_budget_makes_slowness_repairable, test_budget_off_is_explicit,
               test_planning_retries_on_broken_plan, test_llm_pool_reads_dotenv,
               test_llm_pool_waits_out_transient_outage,
-              test_llm_pool_budgets_time_per_sweep):
+              test_llm_pool_budgets_time_per_sweep,
+              test_llm_pool_splits_rpm_from_daily_quota):
         t(failures)
     if failures:
         print("\n=== 실패 ===")

@@ -111,6 +111,9 @@ def main() -> int:
     ap.add_argument("--full", action="store_true",
                     help="실제 문제 기술서(약 4.7KB)까지 태워 프롬프트 크기 영향을 본다")
     ap.add_argument("--models", type=int, default=4, help="키당 시험할 모델 수")
+    ap.add_argument("--reset-quota", action="store_true",
+                    help="오늘자 '소진 확정' 표시를 지운다. 429 를 분당/일일로 가르지 "
+                         "않던 시절에 잘못 박힌 봉인을 푼다 (_dead 는 안 건드린다)")
     a = ap.parse_args()
 
     keys = _keys()
@@ -147,11 +150,12 @@ def main() -> int:
             verdict.append(f"{name}: 유령 모델 {len(ghosts)}개를 때리고 있다")
 
         print(f"[3] {name} -- 짧은 프롬프트 ({len(TINY)}자)")
-        ok_short = []
+        ok_short, seen = [], []
         for m in names[:a.models]:
             st, msg, dt = generate(k, m, TINY, timeout=60.0)
             mark = "OK" if st == 200 else "X "
             print(f"    [{mark}] {m:38} HTTP {st:3}  {dt:6.2f}s  {msg}")
+            seen.append((st, msg))
             if st == 200:
                 ok_short.append(m)
 
@@ -165,23 +169,63 @@ def main() -> int:
                 if st != 200:
                     verdict.append(f"{name}/{m}: 짧은 것은 되는데 4.7KB 는 안 된다 "
                                    f"-- 구글 과부하가 아니라 우리 요청 문제다")
-        if not ok_short:
-            verdict.append(f"{name}: 짧은 프롬프트도 전부 실패 -- 구글 쪽 문제다")
+        if ok_short:
+            verdict.append(f"{name}: 짧은 프롬프트 {len(ok_short)}개 성공 -- API 는 살아 있다")
         else:
-            verdict.append(f"{name}: 짧은 프롬프트 {len(ok_short)}개 성공 "
-                           f"-- API 는 살아 있다")
+            # **"전부 실패"를 한 덩어리로 부르면 안 된다.** 429 와 503 은 할 일이 정반대다:
+            # 429 는 우리가 너무 빨리 때린 것이거나 한도를 쓴 것이고, 503 은 구글 용량이다.
+            # 처음 판 진단기가 둘을 뭉쳐 "구글 쪽 문제"라고 찍었는데, 그건 진단이 아니다.
+            hist = {}
+            for st, _ in seen:
+                hist[st] = hist.get(st, 0) + 1
+            joined = " ".join(m for _, m in seen)
+            shape = ", ".join(f"HTTP {st}x{n}" for st, n in sorted(hist.items()))
+            if set(hist) <= {429}:
+                if "PerMinute" in joined or "per minute" in joined.lower():
+                    verdict.append(f"{name}: 전부 429 **분당 한도**({shape}) -- 1분 뒤면 "
+                                   f"풀린다. 하루치를 쓴 것이 아니다")
+                else:
+                    verdict.append(f"{name}: 전부 429 **일일 한도**({shape}) -- 자정까지 "
+                                   f"안 풀린다. 다른 키가 필요하다")
+            elif set(hist) <= {503, 504, 500, 0}:
+                verdict.append(f"{name}: 전부 503/504({shape}) -- 짧은 프롬프트조차 안 된다. "
+                               f"구글 무료 티어 용량 문제이고 코드로 못 푼다")
+            elif set(hist) <= {400, 401, 403}:
+                verdict.append(f"{name}: 전부 인증 거부({shape}) -- 키가 죽었다")
+            elif 404 in hist:
+                verdict.append(f"{name}: 404 가 섞였다({shape}) -- 없는 모델을 때린다")
+            else:
+                verdict.append(f"{name}: 섞였다({shape}) -- 위 표를 직접 봐라")
 
     print("=" * 78)
     print("[5] 우리 장부(quota_tracker) 상태")
     try:
         import quota_tracker
+        lim = quota_tracker.DEFAULT_DAILY_LIMIT
         data = quota_tracker._load()
-        rows = [(lb, e) for lb, e in (data.get("models") or data).items()
-                if isinstance(e, dict)]
-        dead = [lb for lb, e in rows if e.get("dead")]
-        used = [(lb, e.get("count")) for lb, e in rows if e.get("count")]
-        print(f"    영구 제외(dead) {len(dead)}개: {dead[:6]}")
-        print(f"    오늘 사용 기록 {len(used)}개: {used[:8]}")
+        rows = [(lb, e) for lb, e in data.items()
+                if isinstance(e, dict) and "count" in e and not lb.startswith("_")]
+        today = [(lb, e) for lb, e in rows if e.get("date") == quota_tracker._today()]
+        sealed = [lb for lb, e in today if e.get("count", 0) >= lim]
+        counted = [(lb, e["count"]) for lb, e in today if 0 < e["count"] < lim]
+        dead = list((data.get("_dead") or {}))
+        print(f"    일일 한도 설정값 = {lim}")
+        print(f"    영구 제외(_dead) {len(dead)}개: {dead[:6]}")
+        print(f"    **오늘 소진 확정** {len(sealed)}개: {sealed[:8]}")
+        print(f"    오늘 실사용 카운트 {len(counted)}개: {counted[:8]}")
+        if sealed:
+            print(f"    -- count 가 정확히 {lim} 인 것은 세어서 도달한 게 아니라 "
+                  f"record_exhausted 가 박은 값이다.")
+            print(f"       429 를 분당/일일로 가르지 않던 시절의 기록이면 잘못된 봉인이다. "
+                  f"--reset-quota 로 지운다.")
+        if a.reset_quota:
+            for lb, e in today:
+                if e.get("count", 0) >= lim:
+                    e["count"] = 0
+                e.pop("cooling_until", None)
+            quota_tracker._save(data)
+            print(f"    >> 오늘자 소진 표시 {len(sealed)}개를 지웠다 "
+                  f"(_dead 는 건드리지 않았다)")
     except Exception as e:
         print(f"    장부를 못 읽었다: {type(e).__name__}: {e}")
 

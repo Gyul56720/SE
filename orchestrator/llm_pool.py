@@ -8,7 +8,9 @@
 
 해결: 모든 LLM 호출을 (키 x 모델) 후보 풀로 돌린다. 이 저장소가 Discord 에이전트용으로 이미
 쓰는 quota_tracker 를 그대로 재사용한다 --
-  - 429(쿼터 소진): record_exhausted 로 오늘자 소진 표시 후 다음 후보.
+  - 429(일일 한도): record_exhausted 로 오늘자 소진 표시 후 다음 후보.
+  - 429(분당 한도, "PerMinute"): record_rpm_cooldown 으로 60초만 밀어둔다. 이것을 일일
+    소진으로 적으면 1분이면 풀릴 후보를 자정까지 봉인한다.
   - 404/403(단종/유료전용): mark_dead 로 영구 제외(자정에도 안 풀림).
   - 503/500(일시 장애): 다음 후보(영구 제외 안 함).
   - 성공: record_success + 그 후보를 pin -> 다음 호출도 그걸 먼저.
@@ -66,6 +68,23 @@ def _is_permanent(e) -> bool:
     t = str(e)
     return any(m in t for m in ("PERMISSION_DENIED", "403", "FAILED_PRECONDITION",
                                 "NOT_FOUND", "404", "billing", "not supported", "not found"))
+
+
+def _is_rpm(e) -> bool:
+    """429 중에서 **1분이면 풀리는 분당 한도**인가. bot_tools.is_rpm_quota_error 와 같은 규칙이다
+    (규칙이 바뀌면 둘을 함께 갱신한다 -- llm_pool 은 langchain 없이도 임포트돼야 해서 복제한다).
+
+    Gemini 는 분당 한도와 일일 한도를 둘 다 429 로 준다. 분당 한도의 metric 이름은
+    GenerateRequestsPerMinutePerProjectPerModel 이라 "PerMinute" 가 들어간다.
+
+    **가르지 않으면 1분이면 풀릴 후보를 자정까지 봉인한다.** 실측(2026-09-03): 오케스트레이터는
+    후보 12~38개를 몇 초 안에 몰아 때리므로 분당 한도에 걸리기 딱 좋다. 그렇게 걸린 429 를
+    전부 record_exhausted 로 확정 기록해서, 장부에 count=15000(=일일 한도) 이 박힌 후보가
+    8개 생겼다. 사용자는 그날 LLM 을 부른 적이 없다고 했고 그 말이 맞았다 -- 하루치를 쓴 게
+    아니라 1분치를 쓴 것을 우리가 하루치로 적은 것이다. quota_tracker 의 주석이 정확히 이
+    함정을 경고하고 있었고 bot_tools 는 이미 가르고 있었는데, orchestrator 쪽만 안 갈랐다."""
+    t = str(e)
+    return _is_quota(e) and ("PerMinute" in t or "per minute" in t.lower())
 
 
 def _is_transient(e) -> bool:
@@ -253,7 +272,9 @@ def call(pool, prompt: str, pool_id: str = "orchestrator", max_candidates: int =
                 quota_tracker.set_pinned(pool_id, label)
                 return text, label
             except Exception as e:
-                if _is_quota(e):
+                if _is_rpm(e):
+                    quota_tracker.record_rpm_cooldown(label)
+                elif _is_quota(e):
                     quota_tracker.record_exhausted(label)
                 elif _is_permanent(e):
                     quota_tracker.mark_dead(label, str(e)[:200])
