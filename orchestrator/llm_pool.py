@@ -43,10 +43,21 @@ MODEL_CACHE = Path(__file__).resolve().parent / ".model_cache.json"
 # 로 30~50초를 먹고, timeout 이 없어 응답이 안 오는 요청은 영원히 매달린다. 후보 풀 자체가
 # 재시도 전략이므로 한 후보 안에서 오래 버틸 이유가 없다.
 MAX_RETRIES = int(os.environ.get("GEMINI_MAX_RETRIES", "2"))
-TIMEOUT = float(os.environ.get("GEMINI_TIMEOUT", "60"))
+# **60초는 우리가 만든 504였다** (실측 2026-09-03, probe_gemini). 텐서랭크 문제 기술서
+# 4692자를 태웠을 때:
+#     gemini-3.1-flash-lite   HTTP 200    5.45s
+#     gemini-3.5-flash        HTTP 200  145.55s   <- 60초 마감으로는 절대 못 받는다
+# 마감을 60초로 주면 구글은 그 마감이 지났을 때 504 DEADLINE_EXCEEDED 를 돌려준다.
+# 그러니까 로그를 뒤덮던 504 중 상당수는 구글 과부하가 아니라 **우리가 끊은 것**이고,
+# 그것을 일시장애로 세어 백오프까지 돌았다. 짧은 프롬프트는 1~3초에 오므로 이 함정은
+# 문제가 커진 뒤에야 드러난다.
+TIMEOUT = float(os.environ.get("GEMINI_TIMEOUT", "240"))
 # 풀은 (키 x 실사용 모델) 이라 모델 목록 조회 결과에 따라 수십~백 개가 될 수 있다. 전부 순회하면
 # 최악의 경우 시간 단위로 매달리므로, 시도 후보 수에 상한을 둔다(최악 대기 = 상한 x TIMEOUT).
 MAX_CANDIDATES = int(os.environ.get("GEMINI_MAX_CANDIDATES", "12"))
+# 후보 하나가 최대 TIMEOUT 을 먹으므로, 스윕 예산이 TIMEOUT 보다 작으면 스윕마다 한 개도
+# 제대로 못 태운다. 최소 두 개는 태울 수 있게 바닥을 깐다.
+MIN_SWEEP_BUDGET_FACTOR = 2
 # 후보를 더 빨리 넘기는 것으로는 안 풀리는 실패가 있다(실측): 수요 급증 때 Gemini 는 키와
 # 모델을 가리지 않고 503 UNAVAILABLE 을 던진다. 후보 12개가 몇 초 만에 전부 타고 끝났고,
 # 남은 26개를 더 시도했어도 같은 벽이었다. 이때 필요한 것은 **다음 후보가 아니라 시간**이다.
@@ -59,7 +70,7 @@ BACKOFF_BASE = float(os.environ.get("GEMINI_BACKOFF", "20"))
 BACKOFF_MAX = float(os.environ.get("GEMINI_BACKOFF_MAX", "120"))
 # 전체 벽시계 상한. 이것이 없으면 최악의 경우 스윕 x 후보 x TIMEOUT 으로 수십 분을 말없이
 # 매달린다 -- CLI 에서는 "답이 안 나온다"로만 보인다.
-DEADLINE = float(os.environ.get("GEMINI_DEADLINE", "900"))
+DEADLINE = float(os.environ.get("GEMINI_DEADLINE", "1800"))
 
 
 def _is_quota(e) -> bool:
@@ -290,11 +301,19 @@ def _ranked(pool, pool_id: str):
     죽은(404/403) 후보가 자동으로 빠지고, 소진된(429) 후보가 뒤로 밀린다."""
     live = [c for c in pool if not quota_tracker.is_dead(c[0])] or pool
 
+    # 허용 목록이 있으면 **사람이 적은 순서가 우선순위다.** 이름 규칙으로 등급을 매기던
+    # _model_rank 는 flash-lite 를 flash 뒤로 미는데, 실측에서는 정반대였다: 4692자
+    # 프롬프트를 flash-lite 는 5.45s 에, flash 는 145.55s 에 처리했다. 이름으로는 알 수
+    # 없는 것이라 사람이 정한 순서를 이긴다고 볼 근거가 없다.
+    order = {_norm(n): i for i, n in enumerate(_allow_list())}
+
     def sort_key(c):
         label = c[0]
         model = label.split(":", 1)[1] if ":" in label else label
         rem = quota_tracker.remaining(label)
-        return (rem <= 0, _model_rank(model), -rem)
+        rank = order.get(_norm(model), len(order) + _model_rank(model)[0]) if order \
+            else _model_rank(model)[0]
+        return (rem <= 0, rank, -rem)
 
     ranked = sorted(live, key=sort_key)
     pinned = quota_tracker.get_pinned(pool_id)
@@ -332,7 +351,8 @@ def call(pool, prompt: str, pool_id: str = "orchestrator", max_candidates: int =
     sleep 과 clock 을 주입할 수 있다(시험에서 실제로 기다리지 않기 위해)."""
     limit = MAX_CANDIDATES if max_candidates is None else max_candidates
     n_sweeps = max(1, SWEEPS if sweeps is None else sweeps)
-    per_sweep = DEADLINE / n_sweeps       # 스윕 하나가 먹을 수 있는 시간
+    # 스윕 하나가 먹을 수 있는 시간. TIMEOUT 이 커지면 나눗셈만으로는 한 후보도 못 태운다.
+    per_sweep = max(DEADLINE / n_sweeps, TIMEOUT * MIN_SWEEP_BUDGET_FACTOR)
     t0 = clock()
     last_error, total_tried, ranked, out_of_time = None, 0, _ranked(pool, pool_id), False
 

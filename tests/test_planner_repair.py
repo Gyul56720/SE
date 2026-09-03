@@ -484,6 +484,9 @@ def test_llm_pool_budgets_time_per_sweep(failures: list) -> None:
 
     real_qt, llm_pool.quota_tracker = llm_pool.quota_tracker, Stub()
     real_dl, llm_pool.DEADLINE = llm_pool.DEADLINE, 900.0
+    # 스윕 예산은 max(DEADLINE/스윕수, TIMEOUT x 2) 라 TIMEOUT 도 같이 고정해야 한다.
+    # 안 그러면 실제 TIMEOUT(240s) 이 바닥을 480s 로 밀어올려 이 계산이 달라진다.
+    real_to, llm_pool.TIMEOUT = llm_pool.TIMEOUT, COST
     try:
         pool = [(f"k:m{i}", Slow()) for i in range(12)]
         waited: list = []
@@ -508,6 +511,7 @@ def test_llm_pool_budgets_time_per_sweep(failures: list) -> None:
     finally:
         llm_pool.quota_tracker = real_qt
         llm_pool.DEADLINE = real_dl
+        llm_pool.TIMEOUT = real_to
 
 
 def test_llm_pool_splits_rpm_from_daily_quota(failures: list) -> None:
@@ -626,6 +630,61 @@ def test_llm_pool_resolves_allowlist_not_guesses(failures: list) -> None:
        "Flash 와 Flash Lite 는 다른 것으로 읽힌다")
 
 
+def test_llm_pool_timeout_fits_measured_latency(failures: list) -> None:
+    """긴 프롬프트가 실제로 걸리는 시간보다 마감이 넉넉한가.
+
+    **로그를 뒤덮던 504 중 상당수는 우리가 만든 것이었다.** 실측(probe_gemini,
+    2026-09-03), 텐서랭크 문제 기술서 4692자를 태웠을 때:
+
+        gemini-3.1-flash-lite   HTTP 200    5.45s
+        gemini-3.5-flash        HTTP 200  145.55s
+
+    그런데 TIMEOUT 이 60초였다. 마감을 60초로 주면 구글은 그 마감이 지난 시점에
+    504 DEADLINE_EXCEEDED 를 돌려준다. 우리는 그것을 일시장애로 세고 백오프까지
+    돌았다. 짧은 프롬프트는 1~3초에 오므로 이 함정은 문제가 커진 뒤에야 드러난다.
+
+    그리고 스윕 예산이 TIMEOUT 보다 작으면 스윕마다 한 후보도 제대로 못 태운다."""
+    print("\n[llm_pool] 마감이 실측 지연을 담는가")
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "orchestrator"))
+    import llm_pool
+
+    def ok(cond, msg):
+        print(f"    {'OK  ' if cond else 'FAIL'} {msg}")
+        if not cond:
+            failures.append(msg)
+
+    MEASURED = 145.55                      # gemini-3.5-flash, 4692자
+    ok(llm_pool.TIMEOUT > MEASURED,
+       f"마감 {llm_pool.TIMEOUT:.0f}s 가 실측 {MEASURED}s 보다 커야 한다")
+    ok(llm_pool.TIMEOUT >= MEASURED * 1.5,
+       f"여유가 1.5배는 있어야 한다 (지금 {llm_pool.TIMEOUT / MEASURED:.2f}배)")
+
+    per_sweep = max(llm_pool.DEADLINE / llm_pool.SWEEPS,
+                    llm_pool.TIMEOUT * llm_pool.MIN_SWEEP_BUDGET_FACTOR)
+    ok(per_sweep >= llm_pool.TIMEOUT * 2,
+       f"스윕 예산 {per_sweep:.0f}s 는 후보 두 개는 태울 수 있어야 한다 "
+       f"(TIMEOUT {llm_pool.TIMEOUT:.0f}s)")
+
+    # 허용 목록 순서가 이름 규칙(_model_rank)을 이기는가.
+    # flash-lite 가 flash 보다 26배 빨랐다 -- 이름으로는 알 수 없는 것이다.
+    class Stub:
+        def is_dead(self, *_): return False
+        def remaining(self, *_): return 100
+        def get_pinned(self, *_): return None
+
+    real, llm_pool.quota_tracker = llm_pool.quota_tracker, Stub()
+    try:
+        allow = llm_pool._allow_list()
+        if allow:
+            first, second = llm_pool._norm(allow[0]), llm_pool._norm(allow[1])
+            pool = [(f"k:{second}", "B"), (f"k:{first}", "A")]
+            ranked = [lb for lb, _ in llm_pool._ranked(pool, "t")]
+            ok(llm_pool._norm(ranked[0].split(":", 1)[1]) == first,
+               f"허용 목록 첫 줄이 먼저 온다: {ranked}")
+    finally:
+        llm_pool.quota_tracker = real
+
+
 def main() -> int:
     failures: list[str] = []
     for t in (test_red_without_repair, test_green_repair_loop,
@@ -635,7 +694,8 @@ def main() -> int:
               test_llm_pool_waits_out_transient_outage,
               test_llm_pool_budgets_time_per_sweep,
               test_llm_pool_splits_rpm_from_daily_quota,
-              test_llm_pool_resolves_allowlist_not_guesses):
+              test_llm_pool_resolves_allowlist_not_guesses,
+              test_llm_pool_timeout_fits_measured_latency):
         t(failures)
     if failures:
         print("\n=== 실패 ===")

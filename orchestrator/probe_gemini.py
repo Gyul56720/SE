@@ -106,7 +106,14 @@ def generate(key: str, model: str, prompt: str, timeout=90.0):
             return st, f"[{ver}] (응답 파싱 실패) {body[:110]}", dt
     try:
         err = json.loads(body).get("error", {})
-        return st, f"[{ver}] {err.get('status', '?')}: {str(err.get('message'))[:100]}", dt
+        msg = str(err.get("message"))
+        # quota_id 가 들어 있으면 분당/일일을 가르는 결정적 단서다. 잘라내면 안 된다.
+        for d in err.get("details") or []:
+            for k in ("quotaId", "quota_id", "quotaMetric", "quota_metric"):
+                if k in json.dumps(d):
+                    msg += " | " + json.dumps(d, ensure_ascii=False)[:150]
+                    break
+        return st, f"[{ver}] {err.get('status', '?')}: {msg[:190]}", dt
     except Exception:
         return st, f"[{ver}] {body[:120]}", dt
 
@@ -206,9 +213,15 @@ def main() -> int:
                 st, msg, dt = generate(k, m, big, timeout=180.0)
                 mark = "OK" if st == 200 else "X "
                 print(f"    [{mark}] {m:38} HTTP {st:3}  {dt:6.2f}s  {msg}")
-                if st != 200:
-                    verdict.append(f"{name}/{m}: 짧은 것은 되는데 4.7KB 는 안 된다 "
-                                   f"-- 구글 과부하가 아니라 우리 요청 문제다")
+                if st == 429:
+                    verdict.append(f"{name}/{m}: 4.7KB 에서 429 -- 크기 문제가 아니라 한도다")
+                elif st != 200:
+                    verdict.append(f"{name}/{m}: 짧은 것은 되는데 4.7KB 는 HTTP {st} "
+                                   f"-- 크기/시간이 문제다")
+                elif dt > 60:
+                    verdict.append(f"{name}/{m}: 4.7KB 에 **{dt:.0f}초** 걸린다. "
+                                   f"GEMINI_TIMEOUT 이 이보다 작으면 우리가 끊고 "
+                                   f"504 로 읽게 된다")
         gap = [m for (m, (st, _)) in zip(names[:a.models], seen) if st in (400, 404)]
         if gap:
             print(f"    !! 목록에는 있는데 호출은 400/404 인 모델 {len(gap)}개: {gap}")
