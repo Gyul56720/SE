@@ -182,7 +182,8 @@ def _ranked(pool, pool_id: str):
 
 
 def call(pool, prompt: str, pool_id: str = "orchestrator", max_candidates: int = None,
-         verbose: bool = True, sweeps: int = None, sleep=time.sleep) -> tuple[str, str]:
+         verbose: bool = True, sweeps: int = None, sleep=time.sleep,
+         clock=time.monotonic) -> tuple[str, str]:
     """후보를 쿼터/장애 견디며 순회. (응답텍스트, 성공한 label) 반환. 전부 실패면 예외.
 
     두 겹으로 버틴다.
@@ -197,22 +198,41 @@ def call(pool, prompt: str, pool_id: str = "orchestrator", max_candidates: int =
                  실패 중 일시장애가 하나라도 있으면 지수 백오프로 기다렸다가 다시 돈다.
                  전부 쿼터 소진이면 즉시 포기한다 -- 일일 한도는 날짜로 풀린다.
 
-    sleep 을 주입할 수 있다(시험에서 실제로 기다리지 않기 위해)."""
-    limit = MAX_CANDIDATES if max_candidates is None else max_candidates
-    n_sweeps = SWEEPS if sweeps is None else sweeps
-    t0 = time.monotonic()
-    last_error, total_tried, ranked = None, 0, _ranked(pool, pool_id)
+    **스윕마다 시간 예산을 나눠 준다.** 이것이 없으면 스윕 재시도가 무력해진다(실측,
+    2026-09-03 두 번째 런): 504 DEADLINE_EXCEEDED 는 후보 하나가 TIMEOUT(60s)을 통째로
+    먹으므로, 12후보 스윕 하나가 720s 를 삼켰다. 전체 상한 900s 는 스윕 2 중간에 끊겼고
+    스윕 3, 4 는 돌지도 못했다. 후보를 더 태우는 데 시간을 다 쓴 것이다.
 
-    for sweep in range(1, max(1, n_sweeps) + 1):
+    과부하 구간에서 값이 있는 것은 다음 후보가 아니라 기다림이므로, 한 스윕이
+    DEADLINE/스윕수 를 넘기면 남은 후보를 포기하고 백오프로 넘어간다. 그래야 상한
+    900s 가 "4번 시도를 15분에 걸쳐 펼친다"가 된다.
+
+    sleep 과 clock 을 주입할 수 있다(시험에서 실제로 기다리지 않기 위해)."""
+    limit = MAX_CANDIDATES if max_candidates is None else max_candidates
+    n_sweeps = max(1, SWEEPS if sweeps is None else sweeps)
+    per_sweep = DEADLINE / n_sweeps       # 스윕 하나가 먹을 수 있는 시간
+    t0 = clock()
+    last_error, total_tried, ranked, out_of_time = None, 0, _ranked(pool, pool_id), False
+
+    for sweep in range(1, n_sweeps + 1):
         if sweep > 1:
             ranked = _ranked(pool, pool_id)
         skipped = max(0, len(ranked) - limit)
         tried = transient = 0
+        sweep_t0 = clock()
         for label, llm in ranked[:limit]:
-            if time.monotonic() - t0 > DEADLINE:
+            if clock() - t0 > DEADLINE:
+                out_of_time = True
                 if verbose:
                     print(f"[llm_pool] 전체 상한 {DEADLINE:.0f}s 를 넘겨 중단한다",
                           file=sys.stderr, flush=True)
+                break
+            # 스윕 시간 예산. 504 처럼 후보 하나가 TIMEOUT 을 통째로 먹는 실패에서는
+            # 후보를 더 태우는 것보다 기다리는 편이 낫다.
+            if tried and clock() - sweep_t0 > per_sweep:
+                if verbose:
+                    print(f"[llm_pool] 스윕 {sweep} 시간 예산 {per_sweep:.0f}s 를 넘겼다 "
+                          f"-- 남은 후보 대신 백오프로 넘어간다", file=sys.stderr, flush=True)
                 break
             tried += 1
             total_tried += 1
@@ -233,12 +253,12 @@ def call(pool, prompt: str, pool_id: str = "orchestrator", max_candidates: int =
                           f"{min(limit, len(ranked))}): {str(e)[:120]}",
                           file=sys.stderr, flush=True)
                 last_error = e
-        if not tried or not transient:
+        if out_of_time or not tried or not transient:
             break                       # 빈 풀이거나, 기다려도 안 풀리는 실패만 남았다
-        if sweep >= max(1, n_sweeps):
+        if sweep >= n_sweeps:
             break
         wait = min(BACKOFF_MAX, BACKOFF_BASE * 2 ** (sweep - 1))
-        if time.monotonic() - t0 + wait > DEADLINE:
+        if clock() - t0 + wait > DEADLINE:
             break
         if verbose:
             print(f"[llm_pool] 스윕 {sweep}/{n_sweeps}: 후보 {tried}개가 모두 실패했고 "
@@ -253,6 +273,7 @@ def call(pool, prompt: str, pool_id: str = "orchestrator", max_candidates: int =
             f"{f', 스윕 {n_sweeps}회' if n_sweeps > 1 else ''}. "
             f"마지막 오류: {type(last_error).__name__}: {last_error}\n"
             f"  일시장애(503/504)가 계속되면 업스트림 과부하다 -- 코드로 못 푼다. "
+            f"{'전체 상한 %.0fs 를 다 썼다. GEMINI_DEADLINE 을 늘리거나 ' % DEADLINE if out_of_time else ''}"
             f"GEMINI_SWEEPS / GEMINI_BACKOFF 를 늘리거나 나중에 다시 돌려라.") from last_error
     raise RuntimeError(
         "빈 후보 풀 -- GEMINI_API_KEY 를 찾지 못했다.\n"

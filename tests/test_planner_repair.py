@@ -426,13 +426,81 @@ def test_llm_pool_waits_out_transient_outage(failures: list) -> None:
         llm_pool.quota_tracker = real_qt
 
 
+def test_llm_pool_budgets_time_per_sweep(failures: list) -> None:
+    """느린 실패(504)가 스윕 하나에 시간을 다 쓰지 못하게 막는가.
+
+    실측으로 걸린 실패다(2026-09-03, 두 번째 런). 504 DEADLINE_EXCEEDED 는 후보 하나가
+    TIMEOUT(60s)을 통째로 먹는다. 12후보 스윕 하나가 720s 를 삼켰고, 전체 상한 900s 가
+    스윕 2 중간에 끊겨 **스윕 3, 4 는 돌지도 못했다.** 백오프를 넣어놓고 백오프에 쓸
+    시간을 남기지 않은 것이다.
+
+    과부하 구간에서 값이 있는 것은 다음 후보가 아니라 기다림이다. 그러니 한 스윕이
+    DEADLINE/스윕수 를 넘기면 남은 후보를 버리고 백오프로 넘어가야 한다."""
+    print("\n[llm_pool] 스윕별 시간 예산")
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "orchestrator"))
+    import llm_pool
+
+    def ok(cond, msg):
+        print(f"    {'OK  ' if cond else 'FAIL'} {msg}")
+        if not cond:
+            failures.append(msg)
+
+    class Stub:
+        def is_dead(self, *_): return False
+        def remaining(self, *_): return 100
+        def get_pinned(self, *_): return None
+        def record_success(self, *_): pass
+        def set_pinned(self, *_): pass
+        def record_exhausted(self, *_): pass
+        def mark_dead(self, *_): pass
+
+    now = [0.0]                       # 가짜 시계. 실제로 기다리지 않는다
+    COST = 60.0                       # 504 하나가 먹는 시간
+
+    class Slow:
+        def invoke(self, _p):
+            now[0] += COST
+            raise RuntimeError("504 DEADLINE_EXCEEDED")
+
+    def fake_sleep(sec):
+        now[0] += sec
+
+    real_qt, llm_pool.quota_tracker = llm_pool.quota_tracker, Stub()
+    real_dl, llm_pool.DEADLINE = llm_pool.DEADLINE, 900.0
+    try:
+        pool = [(f"k:m{i}", Slow()) for i in range(12)]
+        waited: list = []
+
+        def sleep(sec):
+            waited.append(sec)
+            fake_sleep(sec)
+
+        try:
+            llm_pool.call(pool, "p", verbose=False, sweeps=4, sleep=sleep,
+                          clock=lambda: now[0])
+            ok(False, "전부 504 인데 성공했다고 한다")
+        except RuntimeError as e:
+            ok("504" in str(e), f"마지막 오류를 남긴다: {str(e)[:50]}")
+
+        # 스윕 예산 900/4 = 225s. 후보 하나가 60s 이므로 스윕당 4개까지 태우고 끊긴다.
+        ok(len(waited) == 3,
+           f"스윕 4회면 사이에 3번 기다려야 한다 (한 스윕이 다 먹으면 못 기다린다): {waited}")
+        ok(now[0] <= 900.0 + COST,
+           f"전체 상한 900s 를 크게 넘기지 않는다: {now[0]:.0f}s")
+        print(f"    [실측] 가짜 시계 {now[0]:.0f}s 동안 스윕 4회, 백오프 {waited}")
+    finally:
+        llm_pool.quota_tracker = real_qt
+        llm_pool.DEADLINE = real_dl
+
+
 def main() -> int:
     failures: list[str] = []
     for t in (test_red_without_repair, test_green_repair_loop,
               test_escalation_to_replan, test_bad_repair_rejected,
               test_time_budget_makes_slowness_repairable, test_budget_off_is_explicit,
               test_planning_retries_on_broken_plan, test_llm_pool_reads_dotenv,
-              test_llm_pool_waits_out_transient_outage):
+              test_llm_pool_waits_out_transient_outage,
+              test_llm_pool_budgets_time_per_sweep):
         t(failures)
     if failures:
         print("\n=== 실패 ===")
