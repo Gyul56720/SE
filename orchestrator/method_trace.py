@@ -26,6 +26,15 @@ import ast
 import json
 from pathlib import Path
 
+# 언어 기본 살림. 이것만으로는 방법을 말할 수 없으므로 지문에서 뺀다.
+TRIVIAL = {
+    "range", "len", "list", "dict", "tuple", "set", "sorted", "reversed", "enumerate",
+    "zip", "map", "filter", "sum", "abs", "max", "min", "round", "int", "float", "str",
+    "print", "append", "extend", "insert", "pop", "items", "keys", "values", "get",
+    "copy", "join", "split", "strip", "format", "update", "add", "isinstance", "any",
+    "all", "Fraction", "loads", "dumps", "read_text", "write_text", "open", "super",
+}
+
 # 서술용 표지. 여기 없는 것이 나오면 "미분류"로 남긴다 -- 그것이 흥미로운 쪽이다.
 MARKERS = {
     "선형대수/최소제곱": ("lstsq", "pinv", "solve", "svd", "eig", "eigh", "qr", "inv", "det"),
@@ -45,7 +54,7 @@ def fingerprint(src: str) -> dict:
 
     calls, imports, counts = set(), set(), {"for": 0, "while": 0, "comp": 0,
                                             "try": 0, "def": 0, "num": 0}
-    funcs = set()
+    funcs, assigned = set(), set()
     for n in ast.walk(tree):
         if isinstance(n, ast.Call):
             calls.add(_dotted(n.func))
@@ -65,12 +74,29 @@ def fingerprint(src: str) -> dict:
             funcs.add(n.name)
         elif isinstance(n, ast.Constant) and isinstance(n.value, (int, float)):
             counts["num"] += 1
+        elif isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store):
+            assigned.add(n.id)
     calls.discard("")
+
+    # **지역에서 만든 이름과 언어 기본 살림은 방법이 아니다.** 이것을 안 걷어내면
+    # 도우미 함수 이름이 바뀐 것만으로 "갈아타기"가 뜬다 -- 실측(2026-09-03)에서
+    # get_mm222/get_mm333/get_w_state 라는 지역 함수 세 개가 등장한 것을 방법이
+    # 통째로 바뀐 것으로 읽었다. 실제로는 상수표를 적어넣은 것이었다.
+    sig = {c for c in calls
+           if c.split(".")[-1] not in TRIVIAL
+           and c not in funcs and c.split(".")[0] not in (funcs | assigned)}
     recursive = sorted(f for f in funcs if f in calls)
     tags = sorted(k for k, pat in MARKERS.items()
-                  if any(p.lower() in c.lower() for c in calls for p in pat))
-    return {"calls": calls, "imports": imports, "counts": counts,
-            "recursive": recursive, "tags": tags or ["미분류"],
+                  if any(p.lower() in c.lower() for c in sig for p in pat))
+    if not tags:
+        # **"미분류"가 두 가지를 뭉치고 있었다.** 알려진 갈래 밖의 새 방법과, 아예
+        # 방법이 없는 것(상수표를 그대로 적어넣기)은 완전히 다른 사건이다. 후자는
+        # 탐색이 아니라 기억이고, 아무도 모르는 값(<3,3,3> 의 22)에는 쓸 수 없다.
+        dense = counts["num"] >= 30 and not counts["while"]
+        tags = ["상수표(계산 없음)"] if (not sig and dense) else \
+               ["골격/미완"] if not sig else ["미분류"]
+    return {"calls": calls, "sig": sig, "imports": imports, "counts": counts,
+            "recursive": recursive, "tags": tags,
             "lines": len([l for l in src.splitlines() if l.strip()])}
 
 
@@ -83,8 +109,11 @@ def _dotted(node) -> str:
 
 
 def distance(a: dict, b: dict) -> float:
-    """호출 이름 집합의 자카드 거리. 상수만 바뀌면 0, 방법이 갈리면 1 에 가깝다."""
-    x, y = a.get("calls") or set(), b.get("calls") or set()
+    """**실질 호출** 집합의 자카드 거리. 상수만 바뀌면 0, 방법이 갈리면 1 에 가깝다.
+
+    지역 함수 이름과 언어 기본 살림(range, len, append ...)은 빼고 잰다. 그것까지
+    세면 도우미 함수 이름만 바꿔도 거리가 1 이 나온다."""
+    x, y = a.get("sig") or set(), b.get("sig") or set()
     if not x and not y:
         return 0.0
     return 1.0 - len(x & y) / len(x | y)
@@ -111,6 +140,10 @@ def classify(prev: dict, fp: dict, d: float,
     갈아타기로 부른다. 갈래가 같은 채로 호출만 늘면 부분 교체다."""
     if d is None:
         return "첫 판"
+    # 양쪽 다 실질 호출이 없으면 거리가 0 으로 나온다 -- 잴 것이 없기 때문이지 같아서가
+    # 아니다. 골격에서 상수표로 간 것을 "다듬기"라 부르면 거짓말이다.
+    if not (prev.get("sig") or fp.get("sig")):
+        return "성격 변화" if set(prev["tags"]) != set(fp["tags"]) else "다듬기"
     if d >= jump_at or (d >= near and set(prev["tags"]) != set(fp["tags"])):
         return "**갈아타기**"
     return "다듬기" if d < tweak_at else "부분 교체"
@@ -124,9 +157,10 @@ def report(run_dir, **kw) -> dict:
         kind = classify(prev, fp, d, **kw)
         rows.append({"name": name, "path": str(path), "dist": d, "kind": kind,
                      "tags": fp["tags"], "lines": fp["lines"],
-                     "calls": sorted(fp["calls"]), "counts": fp.get("counts", {}),
-                     "new_calls": sorted(fp["calls"] - prev["calls"]) if prev else [],
-                     "gone_calls": sorted(prev["calls"] - fp["calls"]) if prev else []})
+                     "nums": fp.get("counts", {}).get("num", 0),
+                     "calls": sorted(fp["sig"]), "counts": fp.get("counts", {}),
+                     "new_calls": sorted(fp["sig"] - prev["sig"]) if prev else [],
+                     "gone_calls": sorted(prev["sig"] - fp["sig"]) if prev else []})
         prev = fp
     jumps = [r for r in rows if r["kind"] == "**갈아타기**"]
     return {"versions": rows, "n_jumps": len(jumps),
@@ -142,10 +176,11 @@ def main() -> int:
     if not res["versions"]:
         print("판본이 없다 -- 수리가 한 번도 돌지 않았거나 history/ 가 비었다")
         return 1
-    print(f"{'판본':22} {'거리':>6}  {'구분':12} {'줄':>4}  갈래")
+    print(f"{'판본':22} {'거리':>6}  {'구분':12} {'줄':>4} {'상수':>5}  갈래")
     for r in res["versions"]:
         d = "  -  " if r["dist"] is None else f"{r['dist']:.3f}"
-        print(f"{r['name']:22} {d:>6}  {r['kind']:12} {r['lines']:>4}  {', '.join(r['tags'])}")
+        print(f"{r['name']:22} {d:>6}  {r['kind']:12} {r['lines']:>4} {r['nums']:>5}  "
+              f"{', '.join(r['tags'])}")
         if r["new_calls"] or r["gone_calls"]:
             if r["new_calls"]:
                 print(f"{'':22} + {', '.join(r['new_calls'][:8])}")
@@ -155,7 +190,10 @@ def main() -> int:
             print(f"{'':22}   호출: {', '.join(r['calls'])}")
     print(f"\n갈아타기 {res['n_jumps']}회 · 등장한 갈래: {', '.join(res['families'])}")
     if "미분류" in res["families"]:
-        print("'미분류' 는 알려진 네 갈래 어디에도 안 걸린 판본이다 -- 그쪽이 흥미롭다")
+        print("'미분류' 는 실질 호출이 있는데 알려진 갈래에 안 걸린 것이다 -- 그쪽이 흥미롭다")
+    if "상수표(계산 없음)" in res["families"]:
+        print("'상수표(계산 없음)' 는 방법이 없는 것이다. 답을 적어넣은 것이지 찾은 것이 "
+              "아니므로, 아무도 모르는 값에는 쓸 수 없다 -- 탐색이 아니라 기억이다")
     return 0
 
 

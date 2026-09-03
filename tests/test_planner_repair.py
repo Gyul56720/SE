@@ -865,9 +865,31 @@ def test_method_trace_separates_tweak_from_jump(failures: list) -> None:
         ok("itertools.product" in rows[3]["new_calls"],
            f"새로 등장한 호출을 짚는다: {rows[3]['new_calls']}")
 
-    # 알려진 갈래 어디에도 안 걸리는 코드는 '미분류' 로 남아야 한다 -- 그쪽이 흥미롭다.
-    fp = mt.fingerprint("def solve(i):\n    t = {}\n    for k in range(9):\n        t[k] = k ^ 3\n    return t\n")
-    ok(fp["tags"] == ["미분류"], f"알려진 갈래 밖이면 미분류: {fp['tags']}")
+    # **'미분류'가 두 가지를 뭉치면 안 된다.** 알려진 갈래 밖의 새 방법과, 아예 방법이
+    # 없는 것(상수표를 적어넣기)은 완전히 다른 사건이다. 후자는 탐색이 아니라 기억이고,
+    # 아무도 모르는 값에는 쓸 수 없다.
+    #
+    # 실측으로 걸렸다(2026-09-03, tensorrank). 판본 추적이 "갈아타기 1회, 갈래 미분류"
+    # 라고 찍어서 새 방법이 나온 것처럼 보였는데, 실제로는 get_mm222/get_mm333/
+    # get_w_state 라는 **지역 함수 세 개를 정의하고 상수표를 적어넣은 것**이었다.
+    # 지역 이름을 방법으로 세는 바람에 이름이 바뀐 것만으로 거리가 1 이 나왔다.
+    HARD = ("def get_w(): return [[1,0],[0,1],[1,1]]\n"
+            "def get_mm(): return " + str([[1, 0, 0, 1]] * 20) + "\n"
+            "def solve(i):\n    return {'a': get_w(), 'b': get_mm()}\n")
+    fp = mt.fingerprint(HARD)
+    ok(fp["sig"] == set(), f"지역 함수는 실질 호출이 아니다: {fp['sig']}")
+    ok(fp["tags"] == ["상수표(계산 없음)"], f"상수표는 그렇게 불러야 한다: {fp['tags']}")
+
+    STUB = "def solve(inputs):\n    return {}\n"
+    ok(mt.fingerprint(STUB)["tags"] == ["골격/미완"],
+       "빈 골격은 상수표와 다르다")
+    ok(mt.classify(mt.fingerprint(STUB), fp,
+                   mt.distance(mt.fingerprint(STUB), fp)) == "성격 변화",
+       "골격 -> 상수표는 '다듬기'가 아니다 (양쪽 다 실질 호출이 없어 거리가 0 이다)")
+
+    # 실질 호출이 있으면서 알려진 갈래에 안 걸리는 것만 '미분류' 다.
+    fp2 = mt.fingerprint("import hashlib\ndef solve(i):\n    return hashlib.sha256(b'x')\n")
+    ok(fp2["tags"] == ["미분류"], f"실질 호출이 있고 갈래 밖이면 미분류: {fp2['tags']}")
 
 
 def main() -> int:
