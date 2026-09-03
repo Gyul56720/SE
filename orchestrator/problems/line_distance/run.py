@@ -111,7 +111,7 @@ def _inject(run_dir: Path, verifier_rel: str) -> dict:
 
 
 def _print_failures(res: dict, limit: int = 6) -> None:
-    """심판이 남긴 기각 사유를 그대로 보여준다. 잘라내면 되먹임의 재료가 사라진다.
+    """심판이 남긴 기각 사유를 그대로 보여준다. 잘라내면 피드백의 재료가 사라진다.
 
     node_status 의 "failed" 세 글자만 찍던 시절에는, 심판이 만든 진단이 파일 안에서
     사라졌다 -- 무엇이 틀렸는지 모르면 다음 수를 정할 수 없다."""
@@ -128,26 +128,26 @@ def _print_failures(res: dict, limit: int = 6) -> None:
 def _print_trace(run_dir: Path) -> None:
     """수리가 **같은 알고리즘을 다듬었는지, 다른 알고리즘으로 갈아탔는지** 찍는다.
 
-    되먹임이 국소 수선만 하는 기계라면 알려진 방법 밖으로 나갈 수 없다. 판본 사이에서
+    피드백이 국소 수선만 하는 기계라면 알려진 방법 밖으로 나갈 수 없다. 버전 사이에서
     호출하는 함수 집합 자체가 바뀌는지가 그 구별이고, 그것을 안 재면 "라운드 4" 라는
-    숫자만 남는다 -- 네 번 다듬은 것과 네 번 갈아탄 것이 같은 숫자로 보인다."""
+    숫자만 남는다 -- 네 번 미세조정한 것과 네 번 교체한 것이 같은 숫자로 보인다."""
     try:
         import method_trace
         res = method_trace.report(run_dir)
     except Exception as e:
-        print(f"\n(판본 추적 실패: {type(e).__name__}: {e})")
+        print(f"\n(버전 추적 실패: {type(e).__name__}: {e})")
         return
     if len(res["versions"]) < 2:
         return
-    print(f"\n수리 판본 추적 ({len(res['versions'])}판, 갈아타기 {res['n_jumps']}회):")
+    print(f"\n수리 버전 추적 ({len(res['versions'])}판, 알고리즘 교체 {res['n_jumps']}회):")
     for r in res["versions"]:
         d = "  -  " if r["dist"] is None else f"{r['dist']:.3f}"
         print(f"  {r['name']:24} 거리 {d:>6}  {r['kind']:12} {', '.join(r['tags'])}")
         if r["new_calls"]:
             print(f"  {'':24} + {', '.join(r['new_calls'][:6])}")
-    print(f"  등장한 갈래: {', '.join(res['families'])}")
-    if "미분류" in res["families"]:
-        print("  '미분류' 는 알려진 갈래 어디에도 안 걸린 판본이다 -- 그쪽이 흥미롭다")
+    print(f"  등장한 방식: {', '.join(res['families'])}")
+    if "알려진 방식 밖" in res["families"]:
+        print("  '알려진 방식 밖' 는 알려진 방식 어디에도 안 걸린 버전이다 -- 그쪽이 흥미롭다")
 
 
 def main() -> int:

@@ -10,10 +10,10 @@
   - 각 노드: component.solve(inputs) -> output 을 실행하고, verifier.check(output, inputs)
     로 검증한다. 통과해야 status=verified 로 확정하고 결과를 파일로 저장한다.
   - 각 노드에는 실행 시간 예산이 있다(ORCH_NODE_TIMEOUT, 기본 60초). 초과하면 끊고 그 사유를
-    attempts 에 남긴다 -- 그래야 플래너 되먹임이 "이 노드가 너무 느리다"를 받아 더 빠른
+    attempts 에 남긴다 -- 그래야 플래너 피드백이 "이 노드가 너무 느리다"를 받아 더 빠른
     알고리즘으로 다시 쓸 수 있다. 예산이 없으면 LLM 이 쓴 무한 루프/지수 시간 코드가 run_plan
     을 영원히 매달고, verifier 는 solve 가 '반환한 뒤에' 도는 심판이라 구제하지 못한다. 그때는
-    예외가 아니라 hang 이므로 attempts 에 아무것도 남지 않고 되먹임 루프 자체가 조용히 멈춘다.
+    예외가 아니라 hang 이므로 attempts 에 아무것도 남지 않고 피드백 루프 자체가 조용히 멈춘다.
   - 실패하면 status 는 pending/failed 로 두고 attempts 에 사유를 남긴다(같은 실패 반복 방지).
   - 매 노드 처리 후 plan.json 을 즉시 저장한다 -> 프로세스가 죽어도 재시작 시 verified 노드를
     건너뛰고 이어서 재개(복원). git 커밋까지 하면 VM 회수도 견딘다.

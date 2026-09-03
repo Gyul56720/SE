@@ -2,7 +2,7 @@
 
 왜 필요한가. 오케스트레이터 런은 한 시간 넘게 돌고 ssh 를 붙들고 있을 수 없다.
 setsid 로 띄워두면 죽지는 않지만, 그 사이 무슨 일이 있었는지는 나중에 로그를 열어야
-안다. 실시간으로 보이면 헛도는 런을 일찍 끊을 수 있다.
+안다. 실시간으로 보이면 전부 통과시키는 런을 일찍 끊을 수 있다.
 
 디스코드 봇 토큰(DISCORD_BOT_TOKEN)과 채널 id(DISCORD_CHANNEL_ID)를 그대로 쓴다 --
 새 웹훅을 만들지 않는다. urllib 로 REST 를 직접 때리므로 discord.py 도 필요 없고,
@@ -18,8 +18,8 @@ setsid 로 띄워두면 죽지는 않지만, 그 사이 무슨 일이 있었는�
     python3 tools/tail_to_discord.py LOG --dry-run
 
 **시끄러우면 안 된다.** 로그를 통째로 흘리면 채널이 죽고 다음부터 아무도 안 본다.
-그래서 기본은 무늬로 거르고, 분당 메시지 수에 상한을 둔다. 상한에 걸리면 버리지 않고
-"N줄 생략"으로 접어서 보낸다 -- 조용히 사라지면 그것이 또 다른 거짓 초록이다.
+그래서 기본은 패턴으로 거르고, 분당 메시지 수에 상한을 둔다. 상한에 걸리면 버리지 않고
+"N줄 생략"으로 접어서 보낸다 -- 조용히 사라지면 그것이 또 다른 거짓 통과다.
 """
 from __future__ import annotations
 
@@ -37,8 +37,8 @@ from pathlib import Path
 API = "https://discord.com/api/v10"
 
 # 기본 필터. 런에서 사람이 실제로 볼 줄만 남긴다.
-DEFAULT_GREP = (r"결과:|라운드|재계획|계획:|심판 주입|판본 추적|기각 사유|갈아타기|"
-                r"등장한 갈래|이 통과는|최종 코드|^\s*\[OK\]|^\s*\[X |^\s*!!|"
+DEFAULT_GREP = (r"결과:|라운드|재계획|계획:|심판 주입|버전 추적|기각 사유|알고리즘 교체|"
+                r"등장한 방식|이 통과는|최종 코드|^\s*\[OK\]|^\s*\[X |^\s*!!|"
                 r"^case |^\S+\s+\d+\s+\d+\s+(OK|X )|Traceback|Error|"
                 r"llm_pool\]|살아있다|스윕")
 
@@ -171,7 +171,7 @@ def main() -> int:
     ap.add_argument("log", help="따라갈 로그 파일")
     ap.add_argument("--channel", default=os.getenv("DISCORD_CHANNEL_ID"),
                     help="채널 id (기본: DISCORD_CHANNEL_ID)")
-    ap.add_argument("--grep", default=DEFAULT_GREP, help="이 무늬에 걸리는 줄만 보낸다")
+    ap.add_argument("--grep", default=DEFAULT_GREP, help="이 패턴에 걸리는 줄만 보낸다")
     ap.add_argument("--all", action="store_true", help="필터 없이 전부 (시끄럽다)")
     ap.add_argument("--from-start", action="store_true", help="파일 처음부터")
     ap.add_argument("--interval", type=float, default=5.0, help="모아 보내는 주기(초)")
@@ -219,7 +219,7 @@ def main() -> int:
                 if len(buf) < 60:
                     buf.append(line)
                 else:
-                    dropped += 1        # 버리지 않고 센다. 조용히 사라지면 거짓 초록이다
+                    dropped += 1        # 버리지 않고 센다. 조용히 사라지면 거짓 통과다
             continue
         if not buf or time.time() - last_flush < a.interval:
             continue

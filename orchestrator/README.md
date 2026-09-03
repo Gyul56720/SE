@@ -26,7 +26,7 @@ python3 orchestrator/solve.py --resume orchestrator/runs/<디렉토리>
 # 루프 한도 조절 (기본: 라운드 3, 노드당 수리 2, 재계획 1)
 python3 orchestrator/solve.py --resume <런> --max-repair-rounds 5 --max-node-repairs 3
 
-# 되먹임 루프 자체의 회귀 테스트 (LLM 없이 실측 런으로 red-green)
+# 피드백 루프 자체의 회귀 테스트 (LLM 없이 실측 런으로 red-green)
 python3 tests/test_planner_repair.py
 ```
 
@@ -41,7 +41,7 @@ python3 tests/test_planner_repair.py
 `runs/` 바로 아래로만 해석되고(G014 가 카나리로 감시), 도구 출력은 비밀값이 마스킹된다.
 공개 채널에는 붙이지 않는다 -- 자식 환경에 키가 없어 계획 단계에서 실패한다.
 
-## 되먹임 루프 (목적지향의 조건)
+## 피드백 루프 (목적지향의 조건)
 
 계획→실행→검증까지만 이어지면 개루프다. 실측: `runs/20260829-224043` 은 최종 노드가
 `solve: 7`(JSON 왕복으로 dict 키 7 이 "7" 이 된 KeyError) 로 죽었는데, 실패 사유가 attempts 에

@@ -146,11 +146,11 @@ mm333 의 budget 처럼 아무도 모르는 값에서는 어차피 외워서 낼
 
 알려진 값. <2,2,2> 의 최소 항 개수는 7 이고 증명되어 있다. <3,3,3> 은 19 이상 23 이하
    까지만 알려져 있다. 23 은 1976 년에 나왔고, 그 뒤 50 년 동안 손계산 · 수치최적화 ·
-   충족문제 풀이 · 강화학습 네 갈래가 각자 시도했지만 **아무도 22 를 찾지 못했다.**
+   충족문제 풀이 · 강화학습 네 방식가 각자 시도했지만 **아무도 22 를 찾지 못했다.**
    22 가 존재하는지도, 존재하지 않는지도 증명되지 않았다.
 
 그러므로. 이미 있는 방법을 그대로 쓰면 이미 있는 결과에 닿는다. 22 를 찾으려면 위 네
-   갈래 중 어느 것도 아닌 것이 필요하다. 무엇이 그것인지는 알려져 있지 않고, 이 문제
+   방식 중 어느 것도 아닌 것이 필요하다. 무엇이 그것인지는 알려져 있지 않고, 이 문제
    기술서도 알지 못한다. **방법은 네가 만들어야 한다.**
 
 [제약] numpy 와 표준 라이브러리만 쓴다. 외부 최적화 라이브러리(scipy, tensorly 등)는 없다.
@@ -273,7 +273,7 @@ def _verdict(spec: dict, final: dict) -> None:
 
 
 def _print_failures(res: dict, limit: int = 6) -> None:
-    """심판이 남긴 기각 사유를 그대로 보여준다. 잘라내면 되먹임의 재료가 사라진다.
+    """심판이 남긴 기각 사유를 그대로 보여준다. 잘라내면 피드백의 재료가 사라진다.
 
     node_status 의 "failed" 세 글자만 찍던 시절에는, 심판이 만든 진단이 파일 안에서
     사라졌다 -- 무엇이 틀렸는지 모르면 다음 수를 정할 수 없다."""
@@ -294,8 +294,8 @@ def _nature_of_pass(run_dir: Path) -> str:
     교과서라 외워서도 통과하지만, 22 는 아무도 모르므로 외울 수가 없다. 같은 "통과"라도
     앞의 것은 기억이고 뒤의 것만 탐색이다.
 
-    실측(2026-09-03, tensorrank mm333=24): 판본 다섯이 전부 상수표였고 갈아타기 0 회였다.
-    상수 개수만 0 -> 222 -> 75 -> 201 -> 306 으로 늘었다. 되먹임이 방법 공간에서 움직이지
+    실측(2026-09-03, tensorrank mm333=24): 버전 다섯이 전부 상수로 적은 것였고 알고리즘 교체 0 회였다.
+    상수 개수만 0 -> 222 -> 75 -> 201 -> 306 으로 늘었다. 피드백이 방법 공간에서 움직이지
     않고 숫자만 고쳐 쓰고 있었다."""
     try:
         import method_trace
@@ -305,43 +305,43 @@ def _nature_of_pass(run_dir: Path) -> str:
     if not rows:
         return ""
     tags = rows[-1]["tags"]
-    if "상수표(계산 없음)" in tags:
+    if "계산 없음(상수로 적음)" in tags:
         return ("이 통과는 **기억이지 탐색이 아니다** -- 최종 코드가 답을 상수로 적고 "
                 "있다. 아무도 모르는 값에는 이 방법이 통하지 않는다.")
-    if "할당만(계산 없음)" in tags:
+    if "계산 없음(빈 배열만)" in tags:
         return ("최종 코드가 **배열만 만들고 채우지 못했다** -- 방법이 아니다. "
-                "미분류(알려진 갈래 밖)와 헷갈리면 안 된다.")
-    if "골격/미완" in tags:
+                "미분류(알려진 방식 밖)와 헷갈리면 안 된다.")
+    if "미완성(내용 없음)" in tags:
         return "최종 코드에 실질 계산이 없다 -- 통과했다면 심판을 의심하라."
-    return f"최종 코드는 계산을 한다 (갈래: {', '.join(tags)})."
+    return f"최종 코드는 계산을 한다 (방식: {', '.join(tags)})."
 
 
 def _print_trace(run_dir: Path) -> None:
     """수리가 **같은 알고리즘을 다듬었는지, 다른 알고리즘으로 갈아탔는지** 찍는다.
 
-    되먹임이 국소 수선만 하는 기계라면 알려진 방법 밖으로 나갈 수 없다. 판본 사이에서
+    피드백이 국소 수선만 하는 기계라면 알려진 방법 밖으로 나갈 수 없다. 버전 사이에서
     호출하는 함수 집합 자체가 바뀌는지가 그 구별이고, 그것을 안 재면 "라운드 4" 라는
-    숫자만 남는다 -- 네 번 다듬은 것과 네 번 갈아탄 것이 같은 숫자로 보인다."""
+    숫자만 남는다 -- 네 번 미세조정한 것과 네 번 교체한 것이 같은 숫자로 보인다."""
     try:
         import method_trace
         res = method_trace.report(run_dir)
     except Exception as e:
-        print(f"\n(판본 추적 실패: {type(e).__name__}: {e})")
+        print(f"\n(버전 추적 실패: {type(e).__name__}: {e})")
         return
     if len(res["versions"]) < 2:
         return
-    print(f"\n수리 판본 추적 ({len(res['versions'])}판, 갈아타기 {res['n_jumps']}회):")
+    print(f"\n수리 버전 추적 ({len(res['versions'])}판, 알고리즘 교체 {res['n_jumps']}회):")
     for r in res["versions"]:
         d = "  -  " if r["dist"] is None else f"{r['dist']:.3f}"
         print(f"  {r['name']:24} 거리 {d:>6}  {r['kind']:12} {', '.join(r['tags'])}")
         if r["new_calls"]:
             print(f"  {'':24} + {', '.join(r['new_calls'][:6])}")
-    print(f"  등장한 갈래: {', '.join(res['families'])}")
+    print(f"  등장한 방식: {', '.join(res['families'])}")
     nature = _nature_of_pass(run_dir)
     if nature:
         print(f"  {nature}")
-    if "미분류" in res["families"]:
-        print("  '미분류' 는 알려진 갈래 어디에도 안 걸린 판본이다 -- 그쪽이 흥미롭다")
+    if "알려진 방식 밖" in res["families"]:
+        print("  '알려진 방식 밖' 는 알려진 방식 어디에도 안 걸린 버전이다 -- 그쪽이 흥미롭다")
 
 
 def main() -> int:
@@ -382,7 +382,7 @@ def main() -> int:
         # 시도가 이어받을 수 있어야, 매번 빈손에서 시작하지 않는다.
         (run_dir / "scratch").mkdir(exist_ok=True)
         # **계산을 강제하는 규칙.** 심판은 출력만 보므로 어떻게 얻었는지 묻지 않는다.
-        # 그래서 다섯 판 내리 상수표가 나왔다(실측). 수리안 채택 전에 이것도 본다.
+        # 그래서 다섯 판 내리 상수로 적은 코드가 나왔다(실측). 수리안 채택 전에 이것도 본다.
         (run_dir / "code_rule.json").write_text(
             json.dumps({"require_computation": True}, ensure_ascii=False),
             encoding="utf-8")
@@ -432,7 +432,7 @@ def main() -> int:
             tags = set(rows[-1]["tags"]) if rows else set()
         except Exception:
             tags = set()
-        blocked = tags & {"상수표(계산 없음)", "할당만(계산 없음)", "골격/미완"}
+        blocked = tags & {"계산 없음(상수로 적음)", "계산 없음(빈 배열만)", "미완성(내용 없음)"}
         if blocked:
             recheck_ok = False
             recheck_why = (f"심판은 통과시켰지만 최종 코드가 계산을 하지 않는다 "

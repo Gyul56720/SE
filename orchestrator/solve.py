@@ -84,7 +84,7 @@ def failure_reasons(run_dir) -> list:
     전부 파일 안에서 사라졌다.
 
     실측(2026-09-03, tensorrank --budget mm333=26): 수리 2회 + 재계획 1회를 돌고
-    incomplete 로 끝났는데, **무엇이 틀렸는지 화면에 한 글자도 없었다.** 되먹임 루프의
+    incomplete 로 끝났는데, **무엇이 틀렸는지 화면에 한 글자도 없었다.** 피드백 루프의
     재료가 곧 이 사유이므로, 사람이 못 보면 다음 수를 정할 수 없다."""
     run_dir = Path(run_dir)
     out = []

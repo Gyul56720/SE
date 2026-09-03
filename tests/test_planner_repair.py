@@ -1,5 +1,5 @@
 """
-플래너 되먹임 루프의 red-green 증명 -- "검증 실패가 계획으로 돌아가는가"를 실측 런으로 증명한다.
+플래너 피드백 루프의 red-green 증명 -- "검증 실패가 계획으로 돌아가는가"를 실측 런으로 증명한다.
 
 RED 의 근거는 합성이 아니라 실제 실패 런이다 -- orchestrator/runs/20260829-224043 을 그대로
 얼려 tests/fixtures/failed_crt_run/ 에 둔다: factor / sub_equations 는 verified 인데 최종 노드
@@ -18,9 +18,9 @@ crt_combine 이 `solve: 7`(KeyError) 로 죽어 있다. 결과가 JSON 으로 �
               verifier 파일은 어떤 경로로도 다시 쓰이지 않는다.
   5. 예산  -- 무한 루프를 도는 노드가 실제로 끊기고, 그 사유가 attempts 를 거쳐 수리 프롬프트에
               실려 더 빠른 코드로 교체된다. 예산이 없으면 hang 이라 attempts 에 아무것도 남지
-              않고 되먹임 루프 자체가 조용히 멈춘다 -- '느림'이 수리 대상이 되는지의 증명이다.
+              않고 피드백 루프 자체가 조용히 멈춘다 -- '느림'이 수리 대상이 되는지의 증명이다.
   6. 계획   -- 계획 자체가 깨졌을 때(파싱 불가·구조 오류)도 사유를 되먹여 다시 세운다. 이게
-              없으면 계획 단계만 되먹임 없는 한 번뿐인 관문으로 남는다(실측: 벤치 h3).
+              없으면 계획 단계만 피드백 없는 한 번뿐인 관문으로 남는다(실측: 벤치 h3).
               실패한 시도의 코드 조각이 런 디렉토리에 남지 않는지도 함께 본다.
 
 왜 살아있는 런이 아니라 얼린 사본인가: runs/20260829-224043 은 `solve.py --resume` 이 실제로
@@ -121,7 +121,7 @@ def _check(failures: list, cond: bool, label: str, detail: str = ""):
 
 
 def test_red_without_repair(failures: list):
-    """RED: 되먹임 없이 그냥 재실행하면 실측 런은 여전히 같은 예외로 미완이다."""
+    """RED: 피드백 없이 그냥 재실행하면 실측 런은 여전히 같은 예외로 미완이다."""
     print("[RED] 수리 없이 재실행 (max_repair_rounds=0)")
     with tempfile.TemporaryDirectory() as tmp:
         run = _fixture_copy(tmp)
@@ -138,7 +138,7 @@ def test_red_without_repair(failures: list):
 
 def test_green_repair_loop(failures: list):
     """GREEN: 실패 사유를 되먹여 수리하면 같은 런이 목표를 달성한다."""
-    print("[GREEN] 되먹임 수리 루프")
+    print("[GREEN] 피드백 수리 루프")
     with tempfile.TemporaryDirectory() as tmp:
         run = _fixture_copy(tmp)
         fake = FakeLLM(["```python\n" + FIXED_SOLVE + "```"])   # 코드펜스도 벗겨져야 한다
@@ -152,7 +152,7 @@ def test_green_repair_loop(failures: list):
                "최종 결과가 x^2=16 (mod 91) 의 해 4개다", str(sols))
         _check(failures, _node(run).status == "verified", "노드가 verified 로 확정된다")
 
-        # 되먹임의 내용물 -- 이게 없으면 수리는 그냥 재생성이다.
+        # 피드백의 내용물 -- 이게 없으면 수리는 그냥 재생성이다.
         p = fake.prompts[0] if fake.prompts else ""
         _check(failures, len(fake.prompts) == 1, "수리 호출은 한 번", str(len(fake.prompts)))
         _check(failures, "solve: 7" in p, "프롬프트에 실패 사유가 들어간다")
@@ -231,7 +231,7 @@ def _make_budget_run(tmp: str) -> Path:
 
 
 def test_time_budget_makes_slowness_repairable(failures: list):
-    """예산: 무한 루프가 유계 실패로 바뀌고, 그 사유가 되먹임을 타고 수리로 이어진다."""
+    """예산: 무한 루프가 유계 실패로 바뀌고, 그 사유가 피드백을 타고 수리로 이어진다."""
     print("[예산] 무한 루프 노드가 끊기고 수리된다")
     if not orchestrator.budget_enforceable():
         print("    SKIP 이 환경에서는 SIGALRM 을 걸 수 없다(POSIX 메인 스레드 아님)")
@@ -317,7 +317,7 @@ def test_llm_pool_reads_dotenv(failures: list) -> None:
     이미 있는 환경변수는 절대 덮지 않는다 -- systemd 로 들어온 값이 우선이어야 한다.
 
     탐색 자리를 갈아끼우고 잰다. 처음에는 cwd 만 옮기고 쟀는데, 그러면 **저장소 루트에
-    .env 가 없는 기계에서만 통과하는 시험**이 된다 -- 컨테이너에서는 초록이었고 VM
+    .env 가 없는 기계에서만 통과하는 시험**이 된다 -- 컨테이너에서는 통과했고 VM
     에서는 빨강이었다. VM 에는 진짜 .env 가 있어서 임시 .env 가 읽히지도 않았고,
     풀에는 진짜 키가 들어와 있었다. 시험이 기계를 타면 시험이 아니다."""
     import os
@@ -335,7 +335,7 @@ def test_llm_pool_reads_dotenv(failures: list) -> None:
 
     # **두 키를 다 치워야 한다.** build_pool 은 GEMINI_API_KEY 와 GEMINI_API_KEY_FALLBACK
     # 을 둘 다 읽는다. 처음에는 앞의 것만 치우고 쟀는데, VM 처럼 FALLBACK 이 환경에 있는
-    # 기계에서는 풀이 2개가 되어 떨어졌다 -- 컨테이너에는 FALLBACK 이 없어서 초록이었다.
+    # 기계에서는 풀이 2개가 되어 떨어졌다 -- 컨테이너에는 FALLBACK 이 없어서 통과했다.
     # **또 "내 기계에 없는 것"을 전제한 시험이었다.** 같은 병으로 두 번 걸렸다.
     KEYS = ("GEMINI_API_KEY", "GEMINI_API_KEY_FALLBACK")
     saved = {k: os.environ.pop(k, None) for k in KEYS}
@@ -761,7 +761,7 @@ def test_replan_does_not_erase_injected_verifier(failures: list) -> None:
 
 
 def test_failure_reasons_surface(failures: list) -> None:
-    """심판의 기각 사유가 **화면까지 올라오는가.** 되먹임의 재료가 그것이다.
+    """심판의 기각 사유가 **화면까지 올라오는가.** 피드백의 재료가 그것이다.
 
     실측(2026-09-03, tensorrank --budget mm333=26). 수리 2회 + 재계획 1회를 돌고
     incomplete 로 끝났는데 화면에는 node_status 의 "failed" 세 글자뿐이었다. 심판은
@@ -820,18 +820,18 @@ def test_failure_reasons_surface(failures: list) -> None:
 
 
 def test_method_trace_separates_tweak_from_jump(failures: list) -> None:
-    """수리가 **다듬은 것인지 갈아탄 것인지** 갈리는가.
+    """수리가 **미세조정한 것인지 교체한 것인지** 갈리는가.
 
-    왜 재는가. 되먹임 루프가 국소 수선만 하는 기계라면 -- 상수를 바꾸고 반복 횟수를
+    왜 재는가. 피드백 루프가 국소 수선만 하는 기계라면 -- 상수를 바꾸고 반복 횟수를
     늘리는 정도라면 -- 애초에 알려진 방법 밖으로 나갈 수 없다. 텐서랭크 22 처럼
-    "기존 네 갈래로는 아무도 못 한" 자리를 노린다면, 관측해야 할 것은 라운드 수가
-    아니라 **판본 사이에서 방법이 실제로 갈아타는가**다. 네 번 다듬은 것과 네 번
-    갈아탄 것이 "라운드 4" 라는 같은 숫자로 보이면 아무것도 관측하지 못한 것이다.
+    "기존 네 방식로는 아무도 못 한" 자리를 노린다면, 관측해야 할 것은 라운드 수가
+    아니라 **버전 사이에서 방법이 실제로 갈아타는가**다. 네 번 미세조정한 것과 네 번
+    교체한 것이 "라운드 4" 라는 같은 숫자로 보이면 아무것도 관측하지 못한 것이다.
 
     거리만으로 가르면 눈금이 거칠다 -- 호출이 두 개뿐인 프로그램에 하나가 붙으면
     자카드 거리가 0.5 인데 그것은 방법이 바뀐 게 아니라 보조 계산이 붙은 것이다.
-    그래서 갈래가 갈렸는지를 같이 본다."""
-    print("\n[관측] 다듬기 / 부분 교체 / 갈아타기")
+    그래서 방식가 갈렸는지를 같이 본다."""
+    print("\n[관측] 미세조정 / 부분 교체 / 알고리즘 교체")
     import method_trace as mt
     import tempfile
 
@@ -855,41 +855,41 @@ def test_method_trace_separates_tweak_from_jump(failures: list) -> None:
 
         rows = mt.report(rd)["versions"]
         kinds = [r["kind"] for r in rows]
-        ok(kinds == ["첫 판", "다듬기", "부분 교체", "**갈아타기**"],
-           f"네 판본이 각각 다르게 읽혀야 한다: {kinds}")
+        ok(kinds == ["첫 판", "미세조정", "부분 교체", "**알고리즘 교체**"],
+           f"네 버전이 각각 다르게 읽혀야 한다: {kinds}")
         ok(rows[1]["dist"] == 0.0, f"상수만 바뀌면 거리 0: {rows[1]['dist']}")
         ok(rows[3]["dist"] == 1.0, f"호출이 통째로 바뀌면 거리 1: {rows[3]['dist']}")
-        ok("선형대수/최소제곱" in rows[0]["tags"], f"갈래를 붙인다: {rows[0]['tags']}")
+        ok("선형대수/최소제곱" in rows[0]["tags"], f"방식를 붙인다: {rows[0]['tags']}")
         ok(set(rows[3]["tags"]) == {"무작위 탐색", "완전 열거"},
-           f"갈아탄 뒤 갈래도 바뀐다: {rows[3]['tags']}")
+           f"갈아탄 뒤 방식도 바뀐다: {rows[3]['tags']}")
         ok("itertools.product" in rows[3]["new_calls"],
            f"새로 등장한 호출을 짚는다: {rows[3]['new_calls']}")
 
-    # **'미분류'가 두 가지를 뭉치면 안 된다.** 알려진 갈래 밖의 새 방법과, 아예 방법이
-    # 없는 것(상수표를 적어넣기)은 완전히 다른 사건이다. 후자는 탐색이 아니라 기억이고,
+    # **'알려진 방식 밖'가 두 가지를 뭉치면 안 된다.** 알려진 방식 밖의 새 방법과, 아예 방법이
+    # 없는 것(상수로 적은 코드를 적어넣기)은 완전히 다른 사건이다. 후자는 탐색이 아니라 기억이고,
     # 아무도 모르는 값에는 쓸 수 없다.
     #
-    # 실측으로 걸렸다(2026-09-03, tensorrank). 판본 추적이 "갈아타기 1회, 갈래 미분류"
+    # 실측으로 걸렸다(2026-09-03, tensorrank). 버전 추적이 "알고리즘 교체 1회, 방식 미분류"
     # 라고 찍어서 새 방법이 나온 것처럼 보였는데, 실제로는 get_mm222/get_mm333/
-    # get_w_state 라는 **지역 함수 세 개를 정의하고 상수표를 적어넣은 것**이었다.
+    # get_w_state 라는 **지역 함수 세 개를 정의하고 상수로 적은 코드를 적어넣은 것**이었다.
     # 지역 이름을 방법으로 세는 바람에 이름이 바뀐 것만으로 거리가 1 이 나왔다.
     HARD = ("def get_w(): return [[1,0],[0,1],[1,1]]\n"
             "def get_mm(): return " + str([[1, 0, 0, 1]] * 20) + "\n"
             "def solve(i):\n    return {'a': get_w(), 'b': get_mm()}\n")
     fp = mt.fingerprint(HARD)
     ok(fp["sig"] == set(), f"지역 함수는 실질 호출이 아니다: {fp['sig']}")
-    ok(fp["tags"] == ["상수표(계산 없음)"], f"상수표는 그렇게 불러야 한다: {fp['tags']}")
+    ok(fp["tags"] == ["계산 없음(상수로 적음)"], f"상수로 적은 것는 그렇게 불러야 한다: {fp['tags']}")
 
     STUB = "def solve(inputs):\n    return {}\n"
-    ok(mt.fingerprint(STUB)["tags"] == ["골격/미완"],
-       "빈 골격은 상수표와 다르다")
+    ok(mt.fingerprint(STUB)["tags"] == ["미완성(내용 없음)"],
+       "빈 골격은 상수로 적은 것와 다르다")
     ok(mt.classify(mt.fingerprint(STUB), fp,
                    mt.distance(mt.fingerprint(STUB), fp)) == "성격 변화",
-       "골격 -> 상수표는 '다듬기'가 아니다 (양쪽 다 실질 호출이 없어 거리가 0 이다)")
+       "골격 -> 상수로 적은 것는 '미세조정'가 아니다 (양쪽 다 실질 호출이 없어 거리가 0 이다)")
 
-    # 실질 호출이 있으면서 알려진 갈래에 안 걸리는 것만 '미분류' 다.
+    # 실질 호출이 있으면서 알려진 방식에 안 걸리는 것만 '알려진 방식 밖' 다.
     fp2 = mt.fingerprint("import hashlib\ndef solve(i):\n    return hashlib.sha256(b'x')\n")
-    ok(fp2["tags"] == ["미분류"], f"실질 호출이 있고 갈래 밖이면 미분류: {fp2['tags']}")
+    ok(fp2["tags"] == ["알려진 방식 밖"], f"실질 호출이 있고 방식 밖이면 미분류: {fp2['tags']}")
 
 
 def main() -> int:
@@ -912,7 +912,7 @@ def main() -> int:
         for f in failures:
             print(" -", f)
         return 1
-    print("\n플래너 되먹임 루프가 실측 런에서 red-green 을 통과했다.")
+    print("\n플래너 피드백 루프가 실측 런에서 red-green 을 통과했다.")
     return 0
 
 

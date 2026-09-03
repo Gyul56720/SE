@@ -178,7 +178,7 @@ python3 orchestrator/solve.py --resume $RUN
 ```python
 # planner.make_plan(problem, run_dir, verifier_map={"node_id": "verifiers/x.py#check"})
 #   - 지정된 노드는 LLM 이 낸 verifier_code 를 무시하고 이 경로를 쓴다
-#   - 지정된 노드 id 가 계획에 없으면 계획을 거부하고 재시도(되먹임)
+#   - 지정된 노드 id 가 계획에 없으면 계획을 거부하고 재시도(피드백)
 ```
 
 이게 있으면 "이 문제는 이 심판으로 채점한다"를 호출 시점에 고정할 수 있다.
@@ -325,7 +325,7 @@ def _judge_is_alive(check, output, inputs) -> tuple[bool, str]:
 ```
 
 `run_plan` 에서 `verify(...)` 가 True 를 준 직후에 걸고, 실패하면 `attempts` 에 사유를 남기고
-`failed` 로 둔다. 그러면 되먹임 루프가 **심판이 헛돈다는 사실 자체**를 플래너에 되먹인다.
+`failed` 로 둔다. 그러면 피드백 루프가 **심판이 헛돈다는 사실 자체**를 플래너에 되먹인다.
 
 #### 무엇을 잡고 무엇을 못 잡는가 (실제로 돌려봤다)
 
