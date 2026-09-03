@@ -1,0 +1,146 @@
+{
+  "status": "incomplete",
+  "run_dir": "/home/ubuntu/SE/orchestrator/runs/tensorrank-20260903-115820",
+  "reason": "노드 수리 한도 소진 후 재계획 한도까지 소진",
+  "rounds": 7,
+  "replans": 1,
+  "log": [
+    {
+      "round": 1,
+      "run_status": "incomplete",
+      "node_status": {
+        "tensor_factorizer": "failed"
+      },
+      "action": "repair",
+      "repairs": [
+        {
+          "status": "repaired",
+          "node": "tensor_factorizer",
+          "model": "key-29ca714b:gemini-3.1-flash-lite",
+          "repairs": 1
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "run_status": "incomplete",
+      "node_status": {
+        "tensor_factorizer": "failed"
+      },
+      "action": "repair",
+      "repairs": [
+        {
+          "status": "repaired",
+          "node": "tensor_factorizer",
+          "model": "key-29ca714b:gemini-3.1-flash-lite",
+          "repairs": 2
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "run_status": "incomplete",
+      "node_status": {
+        "tensor_factorizer": "failed"
+      },
+      "action": "replan",
+      "replan": {
+        "status": "planned",
+        "run_dir": "/home/ubuntu/SE/orchestrator/runs/tensorrank-20260903-115820",
+        "nodes": [
+          "decompose_tensors"
+        ],
+        "final": "decompose_tensors",
+        "model": "key-29ca714b:gemini-3.1-flash-lite",
+        "planning_attempts": 3,
+        "planning_retries": [
+          "1번째 계획의 구조 오류: final 노드 'json.dumps(results)' 가 노드 목록에 없다.",
+          "2번째 계획의 구조 오류: final 노드 'json.dumps(solve({}))' 가 노드 목록에 없다."
+        ],
+        "replanned": true,
+        "archived_as": "attempts/attempt1"
+      }
+    },
+    {
+      "reinjected_verifier": "verifiers/rank_check.py#check",
+      "after": "replan#1"
+    },
+    {
+      "round": 4,
+      "run_status": "incomplete",
+      "node_status": {
+        "decompose_tensors": "failed"
+      },
+      "action": "repair",
+      "repairs": [
+        {
+          "status": "repaired",
+          "node": "decompose_tensors",
+          "model": "key-29ca714b:gemini-3.1-flash-lite",
+          "repairs": 1
+        }
+      ]
+    },
+    {
+      "round": 5,
+      "run_status": "incomplete",
+      "node_status": {
+        "decompose_tensors": "failed"
+      },
+      "action": "repair",
+      "repairs": [
+        {
+          "status": "repaired",
+          "node": "decompose_tensors",
+          "model": "key-29ca714b:gemini-3.1-flash-lite",
+          "repairs": 2
+        }
+      ]
+    },
+    {
+      "round": 6,
+      "run_status": "incomplete",
+      "node_status": {
+        "decompose_tensors": "failed"
+      }
+    }
+  ],
+  "failures": [
+    {
+      "plan": "attempt1",
+      "node": "tensor_factorizer",
+      "kind": "기각",
+      "message": "[OK] w_state(M=3/3): 정확 · M=3 (기지 랭크 3) | [X ] mm222(M=8/7): 정확한 분해지만 M=8 이 예산 7 을 넘는다 -- 구간 밖이다 | [OK] mm333(M=27/27): 정확 · M=27 · 구간 [19,23] **위** -- 예산은 넘겼지만 문헌 상한 23 는 아직 못 내렸다"
+    },
+    {
+      "plan": "attempt1",
+      "node": "tensor_factorizer",
+      "kind": "기각",
+      "message": "[X ] w_state(M=3/3): 정확히 재구성하지 못한다: 2 칸이 틀렸다 (최대 오차 1). | [X ] mm222(M=7/7): 정확히 재구성하지 못한다: 17 칸이 틀렸다 (최대 오차 2). | [X ] mm333(M=23/27): 정확히 재구성하지 못한다: 51 칸이 틀렸다 (최대 오차 1)."
+    },
+    {
+      "plan": "attempt1",
+      "node": "tensor_factorizer",
+      "kind": "기각",
+      "message": "[X ] w_state(M=3/3): 정확히 재구성하지 못한다: 2 칸이 틀렸다 (최대 오차 1). | [X ] mm222(M=7/7): 정확히 재구성하지 못한다: 17 칸이 틀렸다 (최대 오차 2). | [OK] mm333(M=27/27): 정확 · M=27 · 구간 [19,23] **위** -- 예산은 넘겼지만 문헌 상한 23 는 아직 못 내렸다"
+    },
+    {
+      "plan": "현재",
+      "node": "decompose_tensors",
+      "kind": "기각",
+      "message": "[OK] w_state(M=3/3): 정확 · M=3 (기지 랭크 3) | [X ] mm222(M=8/7): 정확한 분해지만 M=8 이 예산 7 을 넘는다 -- 구간 밖이다 | [OK] mm333(M=27/27): 정확 · M=27 · 구간 [19,23] **위** -- 예산은 넘겼지만 문헌 상한 23 는 아직 못 내렸다"
+    },
+    {
+      "plan": "현재",
+      "node": "decompose_tensors",
+      "kind": "기각",
+      "message": "[X ] w_state(M=3/3): 정확히 재구성하지 못한다: 3 칸이 틀렸다 (최대 오차 1). | [X ] mm222(M=7/7): 정확히 재구성하지 못한다: 21 칸이 틀렸다 (최대 오차 2). | [OK] mm333(M=27/27): 정확 · M=27 · 구간 [19,23] **위** -- 예산은 넘겼지만 문헌 상한 23 는 아직 못 내렸다"
+    },
+    {
+      "plan": "현재",
+      "node": "decompose_tensors",
+      "kind": "기각",
+      "message": "[X ] w_state(M=3/3): 정확히 재구성하지 못한다: 4 칸이 틀렸다 (최대 오차 1). | [X ] mm222(M=7/7): 정확히 재구성하지 못한다: 21 칸이 틀렸다 (최대 오차 2). | [OK] mm333(M=27/27): 정확 · M=27 · 구간 [19,23] **위** -- 예산은 넘겼지만 문헌 상한 23 는 아직 못 내렸다"
+    }
+  ]
+}

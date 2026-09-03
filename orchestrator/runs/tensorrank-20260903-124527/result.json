@@ -1,0 +1,145 @@
+{
+  "status": "incomplete",
+  "run_dir": "/home/ubuntu/SE/orchestrator/runs/tensorrank-20260903-124527",
+  "reason": "노드 수리 한도 소진 후 재계획 한도까지 소진",
+  "rounds": 7,
+  "replans": 1,
+  "log": [
+    {
+      "round": 1,
+      "run_status": "incomplete",
+      "node_status": {
+        "solve_mm333": "failed"
+      },
+      "action": "repair",
+      "repairs": [
+        {
+          "status": "repaired",
+          "node": "solve_mm333",
+          "model": "key-29ca714b:gemini-3.1-flash-lite",
+          "repairs": 1
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "run_status": "incomplete",
+      "node_status": {
+        "solve_mm333": "failed"
+      },
+      "action": "repair",
+      "repairs": [
+        {
+          "status": "repaired",
+          "node": "solve_mm333",
+          "model": "key-29ca714b:gemini-3.1-flash-lite",
+          "repairs": 2
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "run_status": "incomplete",
+      "node_status": {
+        "solve_mm333": "failed"
+      },
+      "action": "replan",
+      "replan": {
+        "status": "planned",
+        "run_dir": "/home/ubuntu/SE/orchestrator/runs/tensorrank-20260903-124527",
+        "nodes": [
+          "decompose_mm333"
+        ],
+        "final": "decompose_mm333",
+        "model": "key-29ca714b:gemini-3.1-flash-lite",
+        "planning_attempts": 2,
+        "planning_retries": [
+          "1번째 응답을 계획으로 읽을 수 없었다 (JSONDecodeError: Expecting ',' delimiter: line 1 column 1151 (char 1150)). 설명·코드펜스 없이 지정된 JSON 하나만, 코드의 줄바꿈은 \\n 으로 이스케이프해서 출력하라."
+        ],
+        "replanned": true,
+        "archived_as": "attempts/attempt1"
+      }
+    },
+    {
+      "reinjected_verifier": "verifiers/rank_check.py#check",
+      "after": "replan#1"
+    },
+    {
+      "round": 4,
+      "run_status": "incomplete",
+      "node_status": {
+        "decompose_mm333": "failed"
+      },
+      "action": "repair",
+      "repairs": [
+        {
+          "status": "repaired",
+          "node": "decompose_mm333",
+          "model": "key-29ca714b:gemini-3.1-flash-lite",
+          "repairs": 1
+        }
+      ]
+    },
+    {
+      "round": 5,
+      "run_status": "incomplete",
+      "node_status": {
+        "decompose_mm333": "failed"
+      },
+      "action": "repair",
+      "repairs": [
+        {
+          "status": "repaired",
+          "node": "decompose_mm333",
+          "model": "key-29ca714b:gemini-3.1-flash-lite",
+          "repairs": 2
+        }
+      ]
+    },
+    {
+      "round": 6,
+      "run_status": "incomplete",
+      "node_status": {
+        "decompose_mm333": "failed"
+      }
+    }
+  ],
+  "failures": [
+    {
+      "plan": "attempt1",
+      "node": "solve_mm333",
+      "kind": "기각",
+      "message": "출력에 'cases' 리스트가 없다"
+    },
+    {
+      "plan": "attempt1",
+      "node": "solve_mm333",
+      "kind": "기각",
+      "message": "[X ] mm333(M=23/22): 정확히 재구성하지 못한다: 27 칸이 틀렸다 (최대 오차 1)."
+    },
+    {
+      "plan": "attempt1",
+      "node": "solve_mm333",
+      "kind": "오류",
+      "message": "solve: list index out of range"
+    },
+    {
+      "plan": "현재",
+      "node": "decompose_mm333",
+      "kind": "기각",
+      "message": "[X ] mm333(M=23/22): 정확히 재구성하지 못한다: 27 칸이 틀렸다 (최대 오차 1)."
+    },
+    {
+      "plan": "현재",
+      "node": "decompose_mm333",
+      "kind": "기각",
+      "message": "[X ] mm333(M=23/22): 정확히 재구성하지 못한다: 27 칸이 틀렸다 (최대 오차 1)."
+    },
+    {
+      "plan": "현재",
+      "node": "decompose_mm333",
+      "kind": "기각",
+      "message": "[X ] mm333(M=23/22): 정확히 재구성하지 못한다: 27 칸이 틀렸다 (최대 오차 1)."
+    }
+  ]
+}

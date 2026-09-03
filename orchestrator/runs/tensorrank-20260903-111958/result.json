@@ -1,0 +1,72 @@
+{
+  "status": "solved",
+  "run_dir": "/home/ubuntu/SE/orchestrator/runs/tensorrank-20260903-111958",
+  "rounds": 4,
+  "replans": 1,
+  "final": "solve_tensor_decompositions",
+  "final_result": {
+    "cases": []
+  },
+  "log": [
+    {
+      "round": 1,
+      "run_status": "incomplete",
+      "node_status": {
+        "solve_tensor_rank": "failed"
+      },
+      "action": "repair",
+      "repairs": [
+        {
+          "status": "repaired",
+          "node": "solve_tensor_rank",
+          "model": "key-29ca714b:gemini-3.1-flash-lite",
+          "repairs": 1
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "run_status": "incomplete",
+      "node_status": {
+        "solve_tensor_rank": "failed"
+      },
+      "action": "repair",
+      "repairs": [
+        {
+          "status": "repaired",
+          "node": "solve_tensor_rank",
+          "model": "key-29ca714b:gemini-3.1-flash-lite",
+          "repairs": 2
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "run_status": "incomplete",
+      "node_status": {
+        "solve_tensor_rank": "failed"
+      },
+      "action": "replan",
+      "replan": {
+        "status": "planned",
+        "run_dir": "/home/ubuntu/SE/orchestrator/runs/tensorrank-20260903-111958",
+        "nodes": [
+          "solve_tensor_decompositions"
+        ],
+        "final": "solve_tensor_decompositions",
+        "model": "key-29ca714b:gemini-3.1-flash-lite",
+        "planning_attempts": 1,
+        "planning_retries": [],
+        "replanned": true,
+        "archived_as": "attempts/attempt1"
+      }
+    },
+    {
+      "round": 4,
+      "run_status": "solved",
+      "node_status": {
+        "solve_tensor_decompositions": "verified"
+      }
+    }
+  ]
+}
