@@ -24,6 +24,9 @@ from .state import AXES, Scene, Turn
 from .verbs import catalog_for_prompt
 
 MAX_REPAIRS = 3
+# 야간 러너가 에피소드마다 세운다. build_episode 가 이 시각을 넘기면 척추/서브플롯 생성을
+# 멈추고 지금까지 만든 것으로 마무리한다 -- 한 편이 밤을 다 먹는 것을 막는다.
+EPISODE_DEADLINE = None
 
 
 def _log(msg: str) -> None:
@@ -375,7 +378,10 @@ def build_episode(novel, spec: dict, llm=None, max_repairs=MAX_REPAIRS, log=None
                   if c not in entry and not c.startswith("state:")]
     spine, feedback = [], ""
 
-    while open_conds and len(spine) < n_eps:
+    def _out_of_time() -> bool:
+        return EPISODE_DEADLINE is not None and time.time() > EPISODE_DEADLINE
+
+    while open_conds and len(spine) < n_eps and not _out_of_time():
         got = None
         for _ in range(max_repairs + 1):
             b = _json(_llm_for(llm, "director")(
@@ -419,6 +425,9 @@ def build_episode(novel, spec: dict, llm=None, max_repairs=MAX_REPAIRS, log=None
         body_slots = len(spine)
     beats, need = list(spine), body_slots - len(spine)
     for k in range(max(0, need)):
+        if _out_of_time():
+            _log(f"[episode] 시퀀스 {spec['seq']}: 시간 상한에 걸려 서브플롯 {k}개에서 멈춘다")
+            break
         b = _json(_llm_for(llm, "director")(
             subplot_prompt(novel, lo + k, spec["summary"])))
         filler = Beat(beat=b.get("beat", ""),
@@ -454,6 +463,8 @@ def build_episode(novel, spec: dict, llm=None, max_repairs=MAX_REPAIRS, log=None
         main.id = f"ep{lo:03d}_{epno:03d}m"
         scenes.append(main)
         for k in range(arc.SCENES_PER_EPISODE - arc.MAIN_SCENES):
+            if _out_of_time():
+                break
             b = _json(_llm_for(llm, "director")(
                 subplot_prompt(novel, epno, spec["summary"])))
             sub = Scene(id=f"ep{lo:03d}_{epno:03d}s{k + 1}",

@@ -47,8 +47,9 @@ def fake_default(prompt):
 d = Director.__new__(Director)
 d.primary = Boom()
 d.fall_after, d.retry_after = 3, 1800.0
+d.max_retry_after = 7200.0
 d.streak, d.demoted_at = 0, None
-d.stats = {"primary": 0, "fallback": 0, "fail": 0}
+d.stats = {"primary": 0, "fallback": 0, "fail": 0, "probe": 0}
 orig = D.default_llm
 D.default_llm = fake_default
 try:
@@ -62,16 +63,56 @@ ok(calls["fallback"] == 5, f"그 뒤로는 전부 폴백 (얻은 값 {calls['fal
 ok(d.demoted_at is not None, "강등 시각이 기록된다")
 ok(d.stats["fail"] == 3, f"실패 횟수가 집계된다 ({d.stats})")
 
-print("[복귀] 시간이 지나면 위를 다시 두드리는가")
+print("[복귀] 재시도가 밤을 먹지 않는가 -- 탐침 한 번만")
+probes = {"n": 0}
+
+
+class Probe:
+    def __init__(self, fail=True):
+        self.fail = fail
+
+    def __call__(self, prompt):
+        probes["n"] += 1
+        if self.fail:
+            raise RuntimeError("탐침도 실패")
+        return '{"ok": true}'
+
+
+d.probe = Probe(fail=True)
 d.demoted_at = time.time() - 2000        # retry_after(1800) 를 넘긴 과거
+calls["primary"], before = 0, d.retry_after
+D.default_llm = fake_default
+try:
+    d("프롬프트")
+finally:
+    D.default_llm = orig
+ok(probes["n"] == 1, f"탐침을 딱 한 번만 쏜다 (얻은 값 {probes['n']})")
+ok(calls["primary"] == 0,
+   "**본 프롬프트로 재시도하지 않는다** -- 300초 타임아웃 3회가 사이클마다 반복되면 "
+   "7시간 중 3.5시간이 대기로 날아간다")
+ok(d.retry_after == before * 2, f"실패하면 간격이 두 배 ({before/60:.0f}분 -> {d.retry_after/60:.0f}분)")
+ok(d.demoted_at is not None, "강등이 유지된다")
+
+d.probe = Probe(fail=False)
+d.demoted_at = time.time() - d.retry_after - 10
 calls["primary"] = 0
 D.default_llm = fake_default
 try:
     d("프롬프트")
 finally:
     D.default_llm = orig
-ok(calls["primary"] == 1,
-   "강등 뒤에도 주기적으로 재시도한다 -- 구독 한도는 리셋될 수 있다")
+ok(d.demoted_at is None, "탐침이 성공하면 복귀한다 -- 자정 리셋을 쓸 수 있다")
+
+print("[상한] 간격이 무한히 늘지 않는가")
+d.retry_after, d.max_retry_after = 6000.0, 7200.0
+d.probe = Probe(fail=True)
+d.demoted_at = time.time() - 99999
+D.default_llm = fake_default
+try:
+    d("프롬프트")
+finally:
+    D.default_llm = orig
+ok(d.retry_after == 7200.0, f"상한에서 멈춘다 ({d.retry_after/60:.0f}분)")
 
 print("[생존] 에피소드가 터져도 다음으로 넘어가는가")
 work = Path(tempfile.mkdtemp())

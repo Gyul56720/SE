@@ -94,21 +94,50 @@ class Discord:
 
 
 class Director:
-    """claude -p 를 쓰되, 연속 실패하면 Gemini 로 내려가고 나중에 다시 올라온다.
+    """claude -p 를 쓰되, 실패하면 Gemini 로 내려가고 나중에 **싸게** 다시 올라온다.
 
-    한 번 실패했다고 영영 내려가면 자정 리셋을 못 쓰고, 매번 다시 시도하면 실패에 시간을
-    다 쓴다. 그래서 연속 실패 수로 내려가고 시간으로 올라온다."""
+    처음 설계는 30분마다 강등을 풀고 streak 를 0 으로 되돌렸다. 계산해보니 그게 밤을 먹는다:
+    풀린 뒤 다시 강등되려면 3번 실패해야 하고, 실패가 타임아웃이면 한 번에 300초다.
+    30분 주기 x 3회 x 300초 = **7시간 중 3.5시간이 타임아웃 대기로만 소모된다.**
 
-    def __init__(self, fall_after: int = 3, retry_after: float = 1800.0):
-        self.primary = D.claude_code_llm(timeout=300)
-        self.fall_after, self.retry_after = fall_after, retry_after
+    그래서 재시도를 **탐침 한 번**으로 바꿨다:
+      · 강등 중에는 짧은 타임아웃(probe_timeout)으로 딱 한 번만 두드린다
+      · 성공하면 복귀. 실패하면 그대로 강등 유지하고 **간격을 두 배로** 늘린다
+      · 낭비의 상한이 사이클당 probe_timeout 하나로 묶인다 (7시간에 수 분)
+
+    한 번 실패로 영영 내려가지도 않는다 -- 구독 한도는 자정을 넘겨 리셋될 수 있다."""
+
+    def __init__(self, fall_after: int = 3, retry_after: float = 1800.0,
+                 timeout: float = 300.0, probe_timeout: float = 45.0,
+                 max_retry_after: float = 7200.0):
+        self.primary = D.claude_code_llm(timeout=timeout)
+        self.probe = D.claude_code_llm(timeout=probe_timeout)
+        self.fall_after = fall_after
+        self.retry_after, self.max_retry_after = retry_after, max_retry_after
         self.streak, self.demoted_at = 0, None
-        self.stats = {"primary": 0, "fallback": 0, "fail": 0}
+        self.stats = {"primary": 0, "fallback": 0, "fail": 0, "probe": 0}
+
+    def _try_recover(self) -> bool:
+        """탐침 한 번. 성공하면 복귀, 실패하면 간격을 늘리고 강등 유지."""
+        self.stats["probe"] += 1
+        try:
+            self.probe('JSON 하나만 출력하라. 설명 금지. {"ok": true}')
+            D._log(f"[{_now()}] 디렉터 복귀 -- claude -p 가 다시 응답한다")
+            self.demoted_at, self.streak = None, 0
+            self.retry_after = min(self.retry_after, self.max_retry_after)
+            return True
+        except Exception as e:                                        # noqa: BLE001
+            self.retry_after = min(self.retry_after * 2, self.max_retry_after)
+            self.demoted_at = time.time()
+            D._log(f"[{_now()}] 탐침 실패 -- 강등 유지, 다음 시도 "
+                   f"{self.retry_after / 60:.0f}분 뒤 ({str(e).splitlines()[0][:90]})")
+            return False
 
     def __call__(self, prompt: str) -> str:
         if self.demoted_at and time.time() - self.demoted_at > self.retry_after:
-            D._log(f"[{_now()}] 디렉터: claude -p 를 다시 시도한다")
-            self.demoted_at, self.streak = None, 0
+            if not self._try_recover():
+                self.stats["fallback"] += 1
+                return D.default_llm(prompt)
         if self.demoted_at is None:
             try:
                 out = self.primary(prompt)
@@ -123,7 +152,7 @@ class Director:
                 if self.streak >= self.fall_after:
                     self.demoted_at = time.time()
                     D._log(f"[{_now()}] 디렉터를 Gemini 로 내린다 "
-                           f"({self.retry_after / 60:.0f}분 뒤 재시도)")
+                           f"({self.retry_after / 60:.0f}분 뒤 탐침)")
         self.stats["fallback"] += 1
         return D.default_llm(prompt)
 
@@ -139,6 +168,9 @@ def main() -> int:
                     help="진행 상황을 Discord 로 보낸다 (DISCORD_BOT_TOKEN + "
                          "DISCORD_CHANNEL_ID 또는 DISCORD_WEBHOOK_URL)")
     ap.add_argument("--no-discord", action="store_true")
+    ap.add_argument("--episode-minutes", type=float, default=75.0,
+                    help="에피소드 하나에 허용할 벽시계(분). 넘기면 그 편을 접고 다음으로 "
+                         "간다 -- 한 편이 밤을 다 먹지 않게")
     a = ap.parse_args()
 
     deadline = time.time() + a.hours * 3600
@@ -177,6 +209,11 @@ def main() -> int:
         lo, hi = spec["eps"]
         D._log(f"\n[{_now()}] === {lo}~{hi}화 조립 시작 ===")
         t0 = time.time()
+        # **한 편이 밤을 다 먹지 못하게 한다.** 디렉터 호출이 느리면(타임아웃 직전에서
+        # 겨우 성공하는 경우) 에피소드 하나가 다섯 시간을 먹을 수 있다 -- 척추 최악 40회 +
+        # 서브플롯 20회이므로. 남은 예산과 이 상한 중 작은 쪽으로 자른다.
+        ep_deadline = min(time.time() + a.episode_minutes * 60, deadline)
+        D.EPISODE_DEADLINE = ep_deadline
         try:
             novel.scenes.extend(D.build_episode(novel, spec, llm, a.max_repairs, log))
             novel.save(path)
