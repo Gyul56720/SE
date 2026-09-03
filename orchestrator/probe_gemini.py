@@ -30,7 +30,13 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent))
 
-BASE = "https://generativelanguage.googleapis.com/v1beta"
+ROOT = "https://generativelanguage.googleapis.com"
+BASE = f"{ROOT}/v1beta"
+# **404 를 "유령 모델"이라고 단정하면 안 된다.** 이 진단기는 v1beta 의 :generateContent 를
+# 때리는데, langchain-google-genai 는 다른 버전/엔드포인트를 쓸 수 있다. 그러면 여기서 404 인
+# 모델이 오케스트레이터에서는 멀쩡히 돌 수도 있고, 그 반대도 된다. 그래서 두 버전을 다
+# 시도하고 **어느 쪽에서 됐는지를 같이 찍는다.**
+VERSIONS = ("v1beta", "v1")
 TINY = "Reply with exactly: OK"
 
 
@@ -79,20 +85,30 @@ def list_models(key: str):
 
 
 def generate(key: str, model: str, prompt: str, timeout=90.0):
-    st, body, dt = _req(f"{BASE}/models/{model}:generateContent?key={key}",
-                        {"contents": [{"parts": [{"text": prompt}]}]}, timeout)
+    """두 API 버전을 차례로 때린다. 마지막 시도의 결과를 돌려주되, 하나라도 되면 그것을 쓴다."""
+    payload = {"contents": [{"parts": [{"text": prompt}]}]}
+    st = body = None
+    dt = 0.0
+    ver = ""
+    for v in VERSIONS:
+        ver = v
+        st, body, d = _req(f"{ROOT}/{v}/models/{model}:generateContent?key={key}",
+                           payload, timeout)
+        dt += d
+        if st != 404:                      # 404 만 다음 버전으로 넘어간다
+            break
     if st == 200:
         try:
             j = json.loads(body)
             txt = j["candidates"][0]["content"]["parts"][0]["text"]
-            return st, txt.strip()[:60], dt
+            return st, f"[{ver}] {txt.strip()[:52]}", dt
         except Exception:
-            return st, f"(응답 파싱 실패) {body[:120]}", dt
+            return st, f"[{ver}] (응답 파싱 실패) {body[:110]}", dt
     try:
         err = json.loads(body).get("error", {})
-        return st, f"{err.get('status', '?')}: {str(err.get('message'))[:110]}", dt
+        return st, f"[{ver}] {err.get('status', '?')}: {str(err.get('message'))[:100]}", dt
     except Exception:
-        return st, body[:130], dt
+        return st, f"[{ver}] {body[:120]}", dt
 
 
 def _problem_prompt() -> str:
@@ -110,7 +126,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Gemini API 층별 진단 (langchain 우회)")
     ap.add_argument("--full", action="store_true",
                     help="실제 문제 기술서(약 4.7KB)까지 태워 프롬프트 크기 영향을 본다")
-    ap.add_argument("--models", type=int, default=4, help="키당 시험할 모델 수")
+    ap.add_argument("--models", type=int, default=8, help="키당 시험할 모델 수")
     ap.add_argument("--reset-quota", action="store_true",
                     help="오늘자 '소진 확정' 표시를 지운다. 429 를 분당/일일로 가르지 "
                          "않던 시절에 잘못 박힌 봉인을 푼다 (_dead 는 안 건드린다)")
@@ -141,7 +157,18 @@ def main() -> int:
         print(f"    HTTP {st}  {dt:.2f}s  생성가능 모델 {len(names)}개")
         if st != 200:
             print(f"    {body[:300]}")
-            verdict.append(f"{name}: 키 자체가 거부됐다 (HTTP {st}) -- 키를 의심하라")
+            # 처음 판은 200 이 아닌 것을 전부 "키가 거부됐다"로 뭉쳤다. 503 은 키 문제가
+            # 아니다 -- [3] 에서 같은 실수를 고쳐놓고 [2] 는 그대로 뒀던 것이다.
+            if st in (400, 401, 403):
+                verdict.append(f"{name}: 모델 목록 조회가 인증에서 거부됐다 "
+                               f"(HTTP {st}) -- 키가 죽었다")
+            elif st == 429:
+                verdict.append(f"{name}: 모델 목록 조회조차 429 -- 한도를 썼다")
+            elif st in (503, 504, 500):
+                verdict.append(f"{name}: 모델 목록 조회가 HTTP {st} -- **키 문제가 아니다.** "
+                               f"구글이 목록조차 못 주고 있다. 순수 용량 문제다")
+            else:
+                verdict.append(f"{name}: 모델 목록 조회 실패 (HTTP {st}) -- 위 본문을 봐라")
             continue
         print(f"    {', '.join(names[:12])}{' ...' if len(names) > 12 else ''}")
         ghosts = sorted({m for m in tried if m not in names})
@@ -169,8 +196,14 @@ def main() -> int:
                 if st != 200:
                     verdict.append(f"{name}/{m}: 짧은 것은 되는데 4.7KB 는 안 된다 "
                                    f"-- 구글 과부하가 아니라 우리 요청 문제다")
+        gap = [m for (m, (st, _)) in zip(names[:a.models], seen) if st in (400, 404)]
+        if gap:
+            print(f"    !! 목록에는 있는데 호출은 400/404 인 모델 {len(gap)}개: {gap}")
+            print(f"       (이 진단기는 {'/'.join(VERSIONS)} 의 :generateContent 를 쓴다. "
+                  f"langchain 은 다른 경로를 쓸 수 있으니 이것만으로 유령이라 단정 못 한다)")
         if ok_short:
-            verdict.append(f"{name}: 짧은 프롬프트 {len(ok_short)}개 성공 -- API 는 살아 있다")
+            verdict.append(f"{name}: 짧은 프롬프트 {len(ok_short)}개 성공 -- API 는 살아 있다"
+                           + (f", 다만 {len(gap)}개는 목록에만 있고 호출은 안 된다" if gap else ""))
         else:
             # **"전부 실패"를 한 덩어리로 부르면 안 된다.** 429 와 503 은 할 일이 정반대다:
             # 429 는 우리가 너무 빨리 때린 것이거나 한도를 쓴 것이고, 503 은 구글 용량이다.
