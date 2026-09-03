@@ -142,8 +142,14 @@ def claude_code_llm(timeout: float = 300.0):
         except subprocess.TimeoutExpired:
             raise RuntimeError(f"claude -p 가 {timeout:g}초 안에 응답하지 않았다")
         if r.returncode != 0:
-            raise RuntimeError(f"claude -p 실패(구독 한도 소진 가능): "
-                               f"{(r.stderr or '')[-400:]}")
+            # stderr 가 비는 경우가 있다(CLI 가 stdout 으로 내거나 조용히 죽거나).
+            # 그때 "실패" 한 줄만 던지면 사람이 원인을 못 찾는다 -- 있는 것을 전부 보여준다.
+            detail = (r.stderr or "").strip() or (r.stdout or "").strip() or "(출력 없음)"
+            raise RuntimeError(
+                f"claude -p 가 exit {r.returncode} 로 끝났다: {detail[-500:]}\n"
+                f"  직접 확인:  claude -p '안녕' < /dev/null; echo \"exit=$?\"\n"
+                f"  로그인 상태: claude 를 대화형으로 한 번 띄워 인증을 확인하라\n"
+                f"  한도 소진이면 API 키 경로(anthropic_llm)나 Gemini 로 우회하라")
         out = (r.stdout or "").strip()
         if not out:
             raise RuntimeError("claude -p 가 빈 응답을 냈다")
