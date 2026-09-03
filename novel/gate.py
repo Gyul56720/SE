@@ -301,9 +301,150 @@ def check_facts(scene, novel) -> list:
     return out
 
 
+def _knowers(novel, term: str, upto_scene: str) -> set:
+    """해당 시점에 term 의 **진실**을 아는 인물 집합."""
+    out = set(novel.facts.get("secrets", {}).get(term, []))
+    for c in novel.characters:
+        if term in (c.knows or []):
+            out.add(c.name)
+    idx = novel.scene_index(upto_scene)
+    gates, _ = novel.derive_gates(idx)
+    for g in gates:
+        if novel.scene_index(g.from_scene) > idx:
+            continue
+        if g.kind in ("knowledge_grant", "knowledge_grant_covert") \
+                and g.params.get("term") == term:
+            out.update(g.params.get("to") or ([g.params["who"]]
+                                              if g.params.get("who") else []))
+        if g.kind == "knowledge_revoke" and g.params.get("term") == term:
+            out.discard(g.params.get("who"))
+    return out
+
+
+def check_belief(scene, novel) -> list:
+    """V011 -- 믿음과 사실의 분리. **이 관문의 절반은 막는 것이 아니라 허용하는 것이다.**
+
+    misbelieve 가 없으면 인물의 오해가 전부 환각으로 잡힌다. 세계가 모순된 것과 인물이
+    틀린 것은 완전히 다른데 텍스트만 보면 똑같이 생겼다. 그래서 여기서 보는 것은
+    '인물이 틀린 말을 했는가' 가 아니라 **'그 틀림이 선언된 것인가'** 다.
+
+    잡는 것 셋:
+      · 오해하는 인물이 진실을 입에 올린다 -- 그는 그것을 모른다
+      · 정정(reveal)된 뒤에도 같은 오해를 계속한다 -- 오해에도 수명이 있다
+      · 누명 구조에서 진실을 모르는 인물이 진범을 지목한다
+    """
+    out = []
+    idx = novel.scene_index(scene.id)
+    if idx < 0:
+        return out
+    gates, _ = novel.derive_gates(idx)
+    truths = novel.facts.get("truths", {})
+
+    active_belief = {}          # (인물, term) -> {"believes":..., "since": 씬}
+    for g in gates:
+        if g.kind != "belief" or novel.scene_index(g.from_scene) > idx:
+            continue
+        pr = g.params
+        if "who" in pr:                                   # misbelieve
+            active_belief[(pr["who"], pr.get("term"))] = {
+                "believes": pr.get("believes", ""), "since": g.from_scene}
+        elif "truth_who" in pr:                           # blame_transfer
+            term = pr.get("term")
+            for c in novel.characters:
+                if c.name not in _knowers(novel, term, scene.id):
+                    active_belief[(c.name, term)] = {
+                        "believes": f"{pr.get('blamed_who')} 가 했다",
+                        "since": g.from_scene, "hides": pr.get("truth_who")}
+
+    for i, t in enumerate(scene.turns):
+        text = f"{t.speech} {t.action}"
+        for (who, term), b in active_belief.items():
+            if who != t.actor or not term:
+                continue
+            # 1) 진실을 입에 올린다
+            truth = truths.get(term)
+            if truth and truth in text:
+                out.append(Violation("V011", "hard", f"턴 {i}({t.actor})",
+                                     f"'{term}' 의 진실({truth!r})을 말했지만 이 인물은 "
+                                     f"{b['since']} 부터 다르게 믿고 있다. 오해를 풀려면 "
+                                     f"먼저 reveal 이 있어야 한다"))
+            # 2) 누명: 진실을 모르는 인물이 진범을 지목한다
+            hides = b.get("hides")
+            if hides and hides in text and term in text:
+                out.append(Violation("V011", "hard", f"턴 {i}({t.actor})",
+                                     f"'{term}' 에 대해 {hides} 를 지목했지만 이 인물은 "
+                                     f"진실을 모른다"))
+            # 3) 정정된 뒤에도 계속되는 오해
+            if who in _knowers(novel, term, scene.id) and b["believes"] \
+                    and b["believes"] in text:
+                out.append(Violation("V011", "hard", f"턴 {i}({t.actor})",
+                                     f"이미 '{term}' 의 진실을 알게 된 뒤인데 예전 오해"
+                                     f"({b['believes']!r})를 그대로 말한다. 오해에도 수명이 "
+                                     f"있다 -- 계속하려면 그럴 이유가 서술에 있어야 한다"))
+    return out
+
+
+def check_public_fiction(scene, novel) -> list:
+    """V012 -- 공개된 허구. fabricate / assume_identity / expose 의 구조를 본다.
+
+    개츠비의 옥스퍼드가 이 구조다. 세계의 진실과 공개된 이야기가 갈라진 채 유지되고,
+    그 간극이 서사의 엔진이 된다. 기계가 볼 수 있는 것은 **간극이 선언대로 유지되는가** 다.
+
+    구조 검사(hard)는 결정적이고, 텍스트 검사(soft)는 한국어 패턴이라 보고만 한다."""
+    out = []
+    idx = novel.scene_index(scene.id)
+    if idx < 0:
+        return out
+    gates, _ = novel.derive_gates(idx)
+
+    fictions, exposed = {}, {}
+    for g in gates:
+        if novel.scene_index(g.from_scene) > idx:
+            continue
+        if g.kind == "public_fiction":
+            pr = g.params
+            story = pr.get("story") or pr.get("as_whom")
+            if not story:
+                continue
+            if story in fictions:
+                out.append(Violation("V012", "hard", f"씬 {g.from_scene}",
+                                     f"'{story}' 를 두 번 지어냈다. 이미 "
+                                     f"{fictions[story]['since']} 에 있다"))
+                continue
+            teller = pr.get("who")
+            believers = list(pr.get("believed_by") or [])
+            if teller and teller in believers:
+                out.append(Violation("V012", "hard", f"씬 {g.from_scene}",
+                                     f"{teller} 가 자기가 지어낸 이야기의 believed_by 에 "
+                                     f"들어 있다. 지어낸 사람은 그것을 믿지 않는다"))
+            fictions[story] = {"teller": teller, "believers": believers,
+                               "since": g.from_scene}
+        elif g.kind == "public_fiction_break":
+            story = g.params.get("story")
+            if story not in fictions:
+                out.append(Violation("V012", "hard", f"씬 {g.from_scene}",
+                                     f"지어낸 적 없는 이야기를 폭로했다: {story!r}"))
+                continue
+            exposed[story] = g.from_scene
+
+    # 텍스트: 아직 폭로되지 않았는데 믿는 사람이 이야기를 부정한다
+    if scene.prose or scene.turns:
+        blob = _strip_quotes(scene.prose) + " " + " ".join(
+            f"{t.speech} {t.action}" for t in scene.turns)
+        for story, f in fictions.items():
+            if story in exposed:
+                continue
+            if story in blob and re.search(r"(거짓|지어낸|사실이 아니|꾸며낸)", blob):
+                out.append(Violation("V012", "soft", f"씬 {scene.id}",
+                                     f"'{story}' 가 아직 폭로되지 않았는데 거짓이라는 "
+                                     f"말이 나온다. 폭로라면 expose 로 선언하라"))
+    return out
+
+
 CHECKS = (check_turn_format, check_emotion_continuity, check_emotion_range,
           check_pov, check_direct_emotion, check_punctum,
-          check_pov_presence, check_knowledge, check_relations, check_facts)
+          check_pov_presence, check_knowledge, check_relations, check_facts,
+          check_belief, check_public_fiction)
 
 
 def check(scene, novel) -> list:

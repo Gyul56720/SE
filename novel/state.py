@@ -29,7 +29,8 @@ BIPOLAR = ("narrative_pull",)
 # 않는다" 는 뜻이고, derive_gates 가 그것을 soft 문제로 보고한다.
 IMPLEMENTED_GATES = ("absence", "absence_physical", "lift_absence", "not_before",
                      "knowledge_grant", "knowledge_grant_covert", "stale_fact",
-                     "relation_start", "relation_end", "suspend_absence")
+                     "relation_start", "relation_end", "suspend_absence",
+                     "belief", "public_fiction", "public_fiction_break")
 # 어겨도 세계가 자기모순이 되지는 않는 것들. 최소한만 걸러야 재미가 산다.
 SOFT_GATES = ("stale_fact", "punctum_refresh", "motif_track", "object_track",
               "retro_reinterpret", "convergence", "age_advance", "stage_move")
