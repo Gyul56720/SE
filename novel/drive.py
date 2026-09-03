@@ -102,6 +102,55 @@ def anthropic_llm(model: str = "claude-opus-5", effort: str = "high",
     return call
 
 
+def claude_code_llm(timeout: float = 300.0):
+    """Claude Code CLI(`claude -p`)로 한 역할을 돌린다. **Console 크레딧이 아니라 구독으로
+    청구된다** -- Max 구독이 있으면 API 크레딧 없이 director 를 Claude 로 쓸 수 있다.
+
+    Public_agent/verify.py 가 이미 같은 수를 쓴다(생성자와 분리된 판단 주체로 claude -p 를
+    부른다). 여기서는 판단이 아니라 연출을 시킬 뿐 호출 형태는 같다.
+
+    fail-closed: 호출이 실패하면(토큰 소진·CLI 없음·타임아웃) 조용히 넘어가지 않고 예외를
+    올린다. drive 의 수리 루프가 그것을 위반으로 받아 재시도하거나 사실대로 실패한다 --
+    verify.py 가 "확인 안 된 것을 통과시키는 것보다 낫다" 고 적어둔 원칙과 같다.
+
+    API 경로와 다른 점:
+      · 프롬프트 캐싱을 제어할 수 없다. SPLIT 경계는 지우고 통짜로 보낸다
+      · 호출당 오버헤드가 크다(프로세스 기동). 씬 루프 전체를 이걸로 돌리지 말고
+        director 처럼 호출이 드문 역할에만 붙여라
+      · 동시 실행은 구독의 제한을 따른다"""
+    import subprocess
+    import tempfile
+    import uuid
+
+    # **저장소 밖에서 돌린다.** cwd 가 저장소면 CLAUDE.md 와 프로젝트 지시가 전부 실려
+    # 디렉터가 소설이 아니라 이 저장소 얘기를 하게 된다. 연출만 시킬 것이므로 빈 디렉토리에서.
+    workdir = tempfile.mkdtemp(prefix="novel-director-")
+
+    def call(prompt: str) -> str:
+        # session-id 는 정식 UUID 여야 한다 (Public_agent/verify.py 는 접두사를 붙여 쓰는데
+        # 최신 CLI 는 그것을 거부한다: "Invalid session ID").
+        sid = str(uuid.uuid4())
+        try:
+            r = subprocess.run(
+                # 권한 모드를 주지 않는다. 디렉터는 텍스트만 내놓으므로 도구가 필요 없고,
+                # bypassPermissions 는 root 로 돌면 CLI 가 거부한다.
+                ["claude", "-p", "--session-id", sid, _flatten(prompt)],
+                cwd=workdir, stdin=subprocess.DEVNULL,
+                capture_output=True, text=True, timeout=timeout)
+        except FileNotFoundError:
+            raise RuntimeError("claude CLI 를 찾지 못했다 -- Claude Code 가 설치돼 있는가")
+        except subprocess.TimeoutExpired:
+            raise RuntimeError(f"claude -p 가 {timeout:g}초 안에 응답하지 않았다")
+        if r.returncode != 0:
+            raise RuntimeError(f"claude -p 실패(구독 한도 소진 가능): "
+                               f"{(r.stderr or '')[-400:]}")
+        out = (r.stdout or "").strip()
+        if not out:
+            raise RuntimeError("claude -p 가 빈 응답을 냈다")
+        return out
+    return call
+
+
 def default_llm(prompt: str) -> str:
     import sys
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "orchestrator"))
