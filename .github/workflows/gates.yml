@@ -53,6 +53,9 @@ jobs:
           SE_REQUIRE_FULL_HISTORY: "1"
         run: python3 tests/test_gates_on_incidents.py
 
+      - name: G004 적용 범위 (파이썬 오탐 없음 · 셸에서는 그대로)
+        run: python3 tests/test_g004_scope.py
+
       - name: 오케스트레이터 계획 수리 테스트
         run: python3 tests/test_planner_repair.py
 

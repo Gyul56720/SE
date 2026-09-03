@@ -75,6 +75,29 @@ def _code_only(text: str, suffix: str) -> str:
     return "\n".join("" if i in blanked else line for i, line in enumerate(lines, 1))
 _SCAN_SUFFIXES = {".py", ".sh", ".yml", ".yaml", ".json", ".env", ".service", ".toml", ".cfg"}
 
+# _ECHO_SECRET(비밀값을 출력하는 코드)을 어디에 적용하는가. **셸/설정 파일에만** 본다.
+#
+# 이 검사는 이름에 TOKEN/SECRET/... 이 든 단어가 출력 구문에 보간되면 위반으로 잡는다.
+# 이름만 보고는 "자격증명"과 "그냥 그 단어가 든 이름"을 못 가른다. 그런데 파이썬 쪽에서는
+# token 이 LLM 단위를 뜻하는 표준 단어다 -- 실제로 걸린 것이 셋이었고 셋 다 자격증명이
+# 아니었다: cache_creation_input_tokens(캐시 통계), approx_tokens(크기 추정),
+# DISCORD_BOT_TOKEN(값이 아니라 라벨 문자열). 참 양성은 한 건도 없었다.
+#
+# 반면 이 게이트를 낳은 사고(1ea4304)는 run_bot_loop.sh 였다. 셸에는 토큰을 뜻하지 않는
+# TOKEN 이란 이름을 쓸 일이 없고, `echo "$TOKEN"` 이 곧 유출 경로다.
+#
+# 실측으로 확인하고 좁혔다(2026-09-03):
+#   _ECHO_SECRET 을 통째로 빼면      -> 1ea4304 에서 G004 가 발동하지 않는다 (RED 실패)
+#   셸/설정 파일에만 적용하면        -> 1ea4304 RED 성립 · 현재 트리 GREEN · 오탐 0
+# 즉 마찰만 사라지고 사고를 잡는 능력은 그대로다.
+#
+# 잃는 것: .py 가 자격증명을 print 하는 경우를 이 게이트는 더 이상 보지 않는다. 그 경로는
+# secret_filter.py(stdout 필터), G011(셸 도구 반환값 마스킹), 그리고 알림 경로에 대해서는
+# tests/test_overnight.py 의 "토큰이 로그에 새지 않는가" 회귀 검사가 덮는다.
+# _LIVE_SECRET(자격증명 문자열이 커밋되는 것)은 범위를 줄이지 않았다 -- .env 가 커밋되는
+# 것을 막는 쪽은 그대로 모든 파일을 본다.
+_ECHO_SUFFIXES = {".sh", ".yml", ".yaml", ".service"}
+
 
 def check(ctx) -> "list[str]":
     violations: list[str] = []
@@ -93,7 +116,8 @@ def check(ctx) -> "list[str]":
         if _HARVEST.search(text):
             violations.append(f"{rel}: 저장소를 grep해 자격증명을 수집하는 패턴 -- .env가 딸려 나온다")
 
-        for m in _ECHO_SECRET.finditer(text):
+        echo_hits = _ECHO_SECRET.finditer(text) if path.suffix in _ECHO_SUFFIXES else ()
+        for m in echo_hits:
             line_no = text[:m.start()].count("\n") + 1
             line = text.splitlines()[line_no - 1].strip()
             # 이름만 언급하는 안내 문구는 값을 노출하지 않는다.
