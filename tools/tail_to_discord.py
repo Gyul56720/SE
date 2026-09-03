@@ -45,6 +45,42 @@ DEFAULT_GREP = (r"결과:|라운드|재계획|계획:|심판 주입|판본 추�
 MAX_MSG = 1900          # 디스코드 2000자 제한에 여유
 _stop = False
 
+# 같은 로그를 두 프로세스가 중계하면 모든 줄이 두 번씩 간다. 조용히 두 배가 되므로
+# 채널만 보고는 알아채기 어렵다(실측 2026-09-03: 같은 파일에 중계기가 둘 떠 있었다).
+# 잠금 파일에 PID 를 적어두고, 살아 있는 프로세스가 잡고 있으면 시작하지 않는다.
+LOCK_DIR = Path(os.getenv("TMPDIR", "/tmp"))
+
+
+def _lock_path(log: Path, channel: str) -> Path:
+    import hashlib
+    key = hashlib.sha256(f"{log.resolve()}|{channel}".encode()).hexdigest()[:12]
+    return LOCK_DIR / f"tail_to_discord-{key}.lock"
+
+
+def _alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+        return True
+    except (ProcessLookupError, ValueError):
+        return False
+    except PermissionError:
+        return True          # 남의 프로세스지만 살아 있다
+
+
+def acquire(log: Path, channel: str, force: bool):
+    """이미 중계 중이면 None. 아니면 잠금 파일 경로를 돌려준다."""
+    lock = _lock_path(log, channel)
+    if lock.is_file():
+        try:
+            old_pid = int(lock.read_text(encoding="utf-8").strip())
+        except (ValueError, OSError):
+            old_pid = 0
+        if old_pid and old_pid != os.getpid() and _alive(old_pid):
+            if not force:
+                return None, old_pid
+    lock.write_text(str(os.getpid()), encoding="utf-8")
+    return lock, 0
+
 
 def _sigterm(*_):
     global _stop
@@ -142,6 +178,8 @@ def main() -> int:
     ap.add_argument("--max-per-min", type=int, default=8, help="분당 메시지 상한")
     ap.add_argument("--prefix", default="", help="첫 메시지 앞에 붙일 말")
     ap.add_argument("--dry-run", action="store_true", help="보내지 않고 화면에 찍는다")
+    ap.add_argument("--force", action="store_true",
+                    help="이미 같은 로그를 중계 중이어도 시작한다(중복 전송 주의)")
     a = ap.parse_args()
 
     token = os.getenv("DISCORD_BOT_TOKEN", "")
@@ -154,11 +192,21 @@ def main() -> int:
               file=sys.stderr)
         return 1
 
+    log_path = Path(a.log).expanduser()
+    lock, holder = acquire(log_path, str(a.channel), a.force)
+    if lock is None:
+        print(f"이미 PID {holder} 가 같은 로그를 같은 채널로 중계 중이다. "
+              f"두 개가 돌면 모든 줄이 두 번씩 간다.\n"
+              f"  확인:  ps -o pid,lstart,cmd -p {holder}\n"
+              f"  정리:  kill {holder}\n"
+              f"  무시하고 시작하려면 --force", file=sys.stderr)
+        return 1
+
     pat = None if a.all else re.compile(a.grep)
     signal.signal(signal.SIGTERM, _sigterm)
     signal.signal(signal.SIGINT, _sigterm)
 
-    path = Path(a.log).expanduser()
+    path = log_path
     if a.prefix:
         post(a.channel, token, a.prefix[:MAX_MSG], a.dry_run)
 
@@ -195,6 +243,11 @@ def main() -> int:
     if buf:
         for msg in chunks(buf):
             post(a.channel, token, msg, a.dry_run)
+    try:
+        if lock.is_file() and lock.read_text(encoding="utf-8").strip() == str(os.getpid()):
+            lock.unlink()
+    except OSError:
+        pass
     return 0
 
 
