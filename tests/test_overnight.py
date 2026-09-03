@@ -119,3 +119,53 @@ if fails:
     print(f"야간 러너: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)
 print("야간 러너: 폴백·복귀·에피소드 생존·요약·예산 -- 통과")
+
+
+# ==================================================== Discord 알림
+print()
+print("[Discord] 켜고 끄기")
+from novel.overnight import Discord                                   # noqa: E402
+import os                                                             # noqa: E402
+
+d0 = Discord(token="", channel_id="", webhook="")
+ok(not d0.on, "토큰도 웹훅도 없으면 꺼진다")
+ok(d0.send("무시됨") is False, "꺼진 상태에서 보내면 조용히 False")
+
+d1 = Discord(token="tok", channel_id="123", webhook="")
+ok(d1.on, "봇 토큰 + 채널이면 켜진다")
+d2 = Discord(token="", channel_id="", webhook="https://discord.com/api/webhooks/x/y")
+ok(d2.on, "웹훅만 있어도 켜진다")
+
+print("[Discord] 실패해도 런을 죽이지 않는가")
+d3 = Discord(token="bad-token-value", channel_id="000000000000000000", webhook="")
+sent = d3.send("이 호출은 실패해야 한다")
+ok(sent is False, "실패하면 False 를 돌려줄 뿐 예외를 올리지 않는다")
+ok(d3.failed == 1, f"실패가 집계된다 ({d3.failed})")
+
+print("[Discord] **토큰이 로그에 새지 않는가** -- 이 저장소의 G004 가 존재하는 이유")
+import io, contextlib                                                 # noqa: E402
+SECRET = "MTIzNDU2Nzg5-SUPER-SECRET-BOT-TOKEN-VALUE"
+buf = io.StringIO()
+d4 = Discord(token=SECRET, channel_id="000000000000000000", webhook="")
+with contextlib.redirect_stderr(buf):
+    d4.send("실패를 유도한다")
+leaked = buf.getvalue()
+ok(SECRET not in leaked, f"실패 로그에 토큰이 없다 (로그: {leaked.strip()[:70]})")
+ok("Discord 전송 실패" in leaked, "대신 에러 종류와 코드만 남는다")
+
+print("[Discord] 하트비트는 조용할 때만")
+d5 = Discord(token="t", channel_id="1", webhook="", heartbeat=10_000)
+d5.send = lambda text: (beats.append(text), True)[1]
+beats = []
+d5.last = time.time()
+d5.beat("살아있다")
+ok(not beats, "최근에 보냈으면 하트비트를 내지 않는다")
+d5.last = time.time() - 20_000
+d5.beat("살아있다")
+ok(len(beats) == 1, "오래 조용하면 한 번 낸다 -- 밤새 수백 개가 쌓이지 않게")
+
+print()
+if fails:
+    print(f"Discord 알림: {len(fails)}개 실패 -- {fails}")
+    sys.exit(1)
+print("Discord 알림: 켜기·실패 격리·토큰 비노출·하트비트 -- 통과")

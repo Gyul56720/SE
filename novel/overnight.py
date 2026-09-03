@@ -35,6 +35,64 @@ def _now() -> str:
     return time.strftime("%Y-%m-%d %H:%M:%S")
 
 
+class Discord:
+    """진행 상황을 Discord 로 보낸다. **봇 게이트웨이를 띄우지 않고 REST 로만** 쏜다.
+
+    discord.py 로 로그인하면 이 스크립트가 봇이 되어 버리고, 이미 도는 봇과 세션이 겹친다.
+    알림 하나 보내자고 그럴 이유가 없다 -- 채널 메시지 전송은 POST 한 방이면 된다.
+
+    씬마다 보내면 밤새 수백 개가 쌓인다. **에피소드 단위로만** 보내고, 오래 조용하면
+    하트비트를 한 번 낸다(살아 있는지 아침에 알 수 있게).
+
+    실패해도 런을 죽이지 않는다. 알림은 관측이지 목적이 아니다.
+    웹훅/토큰은 절대 로그에 찍지 않는다."""
+
+    API = "https://discord.com/api/v10/channels/{cid}/messages"
+
+    def __init__(self, token: str = None, channel_id: str = None,
+                 webhook: str = None, heartbeat: float = 2400.0):
+        import os
+        self.token = token or os.environ.get("DISCORD_BOT_TOKEN") or ""
+        self.channel = str(channel_id or os.environ.get("DISCORD_CHANNEL_ID") or "")
+        self.webhook = webhook or os.environ.get("DISCORD_WEBHOOK_URL") or ""
+        self.heartbeat = heartbeat
+        self.last = time.time()
+        self.on = bool(self.webhook or (self.token and self.channel))
+        self.sent, self.failed = 0, 0
+
+    def send(self, text: str) -> bool:
+        if not self.on or not text:
+            return False
+        import json as _json
+        import urllib.error
+        import urllib.request
+        body = _json.dumps({"content": text[:1900]}).encode()
+        if self.webhook:
+            url, headers = self.webhook, {"Content-Type": "application/json"}
+        else:
+            url = self.API.format(cid=self.channel)
+            headers = {"Content-Type": "application/json",
+                       "Authorization": f"Bot {self.token}"}
+        req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=20):
+                pass
+            self.sent += 1
+            self.last = time.time()
+            return True
+        except Exception as e:                                        # noqa: BLE001
+            # **에러 본문에 토큰이 실릴 수 있다.** 종류와 코드만 남긴다.
+            self.failed += 1
+            code = getattr(e, "code", "")
+            D._log(f"[{_now()}] Discord 전송 실패 ({type(e).__name__} {code})")
+            return False
+
+    def beat(self, text: str) -> None:
+        """오래 조용했으면 한 번 보낸다. 살아 있다는 신호."""
+        if self.on and time.time() - self.last > self.heartbeat:
+            self.send(text)
+
+
 class Director:
     """claude -p 를 쓰되, 연속 실패하면 Gemini 로 내려가고 나중에 다시 올라온다.
 
@@ -77,6 +135,10 @@ def main() -> int:
     ap.add_argument("--max-repairs", type=int, default=3)
     ap.add_argument("--gemini-director", action="store_true",
                     help="claude -p 를 쓰지 않고 처음부터 Gemini 로")
+    ap.add_argument("--discord", action="store_true",
+                    help="진행 상황을 Discord 로 보낸다 (DISCORD_BOT_TOKEN + "
+                         "DISCORD_CHANNEL_ID 또는 DISCORD_WEBHOOK_URL)")
+    ap.add_argument("--no-discord", action="store_true")
     a = ap.parse_args()
 
     deadline = time.time() + a.hours * 3600
@@ -88,7 +150,16 @@ def main() -> int:
     director = None if a.gemini_director else Director()
     llm = D.default_llm if a.gemini_director else {"director": director}
 
+    dc = Discord() if (a.discord and not a.no_discord) else Discord(token="", channel_id="",
+                                                                    webhook="")
+    if a.discord and not dc.on:
+        D._log(f"[{_now()}] Discord 알림을 켰지만 토큰/채널이 없다 -- 로그로만 남긴다")
+
     D._log(f"[{_now()}] 시작 -- 예산 {a.hours}시간, 목표 {len(OUTCOMES)}개 에피소드")
+    dc.send(f"🌙 **야간 소설 런 시작** ({_now()})\n"
+            f"예산 {a.hours}시간 · 목표 {len(OUTCOMES)}편 · "
+            f"디렉터 {'Gemini' if a.gemini_director else 'claude -p'}\n"
+            f"기존 씬 {len(novel.scenes)}개")
     D._log(f"[{_now()}] 기존 씬 {len(novel.scenes)}개 "
            f"(verified {sum(1 for s in novel.scenes if s.status == 'verified')})")
 
@@ -100,6 +171,8 @@ def main() -> int:
         tag = f"ep{spec['eps'][0]:03d}_"
         if any(s.id.startswith(tag) for s in novel.scenes):
             continue
+        dc.beat(f"⏳ 아직 도는 중 ({_now()}) · 씬 {len(novel.scenes)}개 · "
+                f"남은 예산 {(deadline - time.time()) / 3600:.1f}시간")
 
         lo, hi = spec["eps"]
         D._log(f"\n[{_now()}] === {lo}~{hi}화 조립 시작 ===")
@@ -114,12 +187,21 @@ def main() -> int:
                 {"eps": [lo, hi], **r, "seconds": round(time.time() - t0)})
             D._log(f"[{_now()}] {lo}~{hi}화 {r['status']} "
                    f"(verified {r['verified']}, {time.time() - t0:.0f}초)")
+            chars = sum(len(s.prose or "") for s in novel.scenes
+                        if lo <= s.episode <= hi)
+            mark = "✅" if r["status"] == "done" else "⚠️"
+            dc.send(f"{mark} **{lo}~{hi}화** {r['status']} · "
+                    f"verified {r['verified']} · {chars:,}자 · "
+                    f"{(time.time() - t0) / 60:.0f}분\n"
+                    f"남은 예산 {(deadline - time.time()) / 3600:.1f}시간")
         except Exception as e:                                        # noqa: BLE001
             failed.append({"eps": [lo, hi], "status": "error",
                            "error": f"{type(e).__name__}: {e}",
                            "seconds": round(time.time() - t0)})
             D._log(f"[{_now()}] {lo}~{hi}화 예외 -- 다음으로 넘어간다\n"
                    f"{traceback.format_exc()[-800:]}")
+            dc.send(f"❌ **{lo}~{hi}화 예외** -- 다음 편으로 넘어간다\n"
+                    f"```{type(e).__name__}: {str(e)[:300]}```")
             try:
                 novel.save(path)
             except Exception:                                         # noqa: BLE001
@@ -142,6 +224,15 @@ def main() -> int:
         D._log(f"  디렉터: claude -p {director.stats['primary']}회 / "
                f"Gemini 폴백 {director.stats['fallback']}회 / 실패 {director.stats['fail']}회")
     D._log(f"  요약: {report}")
+    dstat = (f"claude -p {director.stats['primary']} / Gemini {director.stats['fallback']} / "
+             f"실패 {director.stats['fail']}") if director else "Gemini 전용"
+    dc.send(f"🌅 **야간 런 종료** ({_now()})\n"
+            f"성공 {len(done)}편 · 실패 {len(failed)}편\n"
+            f"씬 {len(novel.scenes)}개 (verified {ver}) · **{chars:,}자**\n"
+            f"디렉터: {dstat}\n"
+            f"요약 파일: `{report}`")
+    if dc.on:
+        D._log(f"  Discord: 보냄 {dc.sent} / 실패 {dc.failed}")
     return 0
 
 
