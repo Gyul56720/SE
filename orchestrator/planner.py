@@ -284,12 +284,32 @@ def repair_node(run_dir: str, node_id: str, pool=None, pool_id="planner") -> dic
         plan.save(plan_path)
         return {"status": "repair_rejected", "node": node_id, "reason": defect, "model": label}
 
+    # **덮어쓰기 전에 이전 판을 남긴다.** 남기지 않으면 "수리가 같은 알고리즘을 다듬은
+    # 것인지, 아예 다른 알고리즘으로 갈아탄 것인지"를 나중에 잴 수 없다. 그 구별이
+    # 이 장치로 무엇을 관측하는가의 핵심이다 -- 되먹임이 국소 수선만 하는 기계라면
+    # 애초에 알려진 방법 밖으로 나갈 수 없다.
+    prev = _snapshot_code(run_dir, node)
     (run_dir / node.component).write_text(code, encoding="utf-8")
-    node.attempts.append({"ts": time.time(), "repaired_by": label})
+    node.attempts.append({"ts": time.time(), "repaired_by": label, "prev_code": prev})
     node.status = "pending"
     plan.save(plan_path)
     return {"status": "repaired", "node": node_id, "model": label,
             "repairs": repair_count(node)}
+
+
+def _snapshot_code(run_dir: Path, node) -> str:
+    """수리 전 코드를 history/<노드>/rNN.py 로 보존하고 그 상대경로를 돌려준다."""
+    src = run_dir / node.component
+    if not src.is_file():
+        return ""
+    d = run_dir / "history" / node.id
+    d.mkdir(parents=True, exist_ok=True)
+    n = 1
+    while (d / f"r{n:02d}.py").exists():
+        n += 1
+    dest = d / f"r{n:02d}.py"
+    dest.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+    return str(dest.relative_to(run_dir))
 
 
 def plan_feedback(plan: Plan) -> str:

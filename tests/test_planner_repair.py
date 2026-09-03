@@ -819,6 +819,57 @@ def test_failure_reasons_surface(failures: list) -> None:
            f"결과에 기각 사유가 실린다: {len(res.get('failures') or [])}건")
 
 
+def test_method_trace_separates_tweak_from_jump(failures: list) -> None:
+    """수리가 **다듬은 것인지 갈아탄 것인지** 갈리는가.
+
+    왜 재는가. 되먹임 루프가 국소 수선만 하는 기계라면 -- 상수를 바꾸고 반복 횟수를
+    늘리는 정도라면 -- 애초에 알려진 방법 밖으로 나갈 수 없다. 텐서랭크 22 처럼
+    "기존 네 갈래로는 아무도 못 한" 자리를 노린다면, 관측해야 할 것은 라운드 수가
+    아니라 **판본 사이에서 방법이 실제로 갈아타는가**다. 네 번 다듬은 것과 네 번
+    갈아탄 것이 "라운드 4" 라는 같은 숫자로 보이면 아무것도 관측하지 못한 것이다.
+
+    거리만으로 가르면 눈금이 거칠다 -- 호출이 두 개뿐인 프로그램에 하나가 붙으면
+    자카드 거리가 0.5 인데 그것은 방법이 바뀐 게 아니라 보조 계산이 붙은 것이다.
+    그래서 갈래가 갈렸는지를 같이 본다."""
+    print("\n[관측] 다듬기 / 부분 교체 / 갈아타기")
+    import method_trace as mt
+    import tempfile
+
+    def ok(cond, msg):
+        print(f"    {'OK  ' if cond else 'FAIL'} {msg}")
+        if not cond:
+            failures.append(msg)
+
+    LSTSQ = "import numpy as np\ndef solve(i):\n    b,*_=np.linalg.lstsq(A,y,rcond=None)\n    return b\n"
+    CONST = "import numpy as np\ndef solve(i):\n    b,*_=np.linalg.lstsq(A,y,rcond=1e-12)\n    return b\n"
+    PLUS  = "import numpy as np\ndef solve(i):\n    U,S,V=np.linalg.svd(A)\n    b,*_=np.linalg.lstsq(A,y,rcond=None)\n    return b\n"
+    OTHER = "import random, itertools\ndef solve(i):\n    for c in itertools.product(range(3),repeat=8):\n        if random.random()<0.5: pass\n    return c\n"
+
+    with tempfile.TemporaryDirectory() as td:
+        rd = Path(td)
+        (rd / "history" / "n").mkdir(parents=True)
+        (rd / "components").mkdir()
+        for i, src in enumerate((LSTSQ, CONST, PLUS), 1):
+            (rd / "history" / "n" / f"r{i:02d}.py").write_text(src, encoding="utf-8")
+        (rd / "components" / "n.py").write_text(OTHER, encoding="utf-8")
+
+        rows = mt.report(rd)["versions"]
+        kinds = [r["kind"] for r in rows]
+        ok(kinds == ["첫 판", "다듬기", "부분 교체", "**갈아타기**"],
+           f"네 판본이 각각 다르게 읽혀야 한다: {kinds}")
+        ok(rows[1]["dist"] == 0.0, f"상수만 바뀌면 거리 0: {rows[1]['dist']}")
+        ok(rows[3]["dist"] == 1.0, f"호출이 통째로 바뀌면 거리 1: {rows[3]['dist']}")
+        ok("선형대수/최소제곱" in rows[0]["tags"], f"갈래를 붙인다: {rows[0]['tags']}")
+        ok(set(rows[3]["tags"]) == {"무작위 탐색", "완전 열거"},
+           f"갈아탄 뒤 갈래도 바뀐다: {rows[3]['tags']}")
+        ok("itertools.product" in rows[3]["new_calls"],
+           f"새로 등장한 호출을 짚는다: {rows[3]['new_calls']}")
+
+    # 알려진 갈래 어디에도 안 걸리는 코드는 '미분류' 로 남아야 한다 -- 그쪽이 흥미롭다.
+    fp = mt.fingerprint("def solve(i):\n    t = {}\n    for k in range(9):\n        t[k] = k ^ 3\n    return t\n")
+    ok(fp["tags"] == ["미분류"], f"알려진 갈래 밖이면 미분류: {fp['tags']}")
+
+
 def main() -> int:
     failures: list[str] = []
     for t in (test_red_without_repair, test_green_repair_loop,
@@ -831,7 +882,8 @@ def main() -> int:
               test_llm_pool_resolves_allowlist_not_guesses,
               test_llm_pool_timeout_fits_measured_latency,
               test_replan_does_not_erase_injected_verifier,
-              test_failure_reasons_surface):
+              test_failure_reasons_surface,
+              test_method_trace_separates_tweak_from_jump):
         t(failures)
     if failures:
         print("\n=== 실패 ===")

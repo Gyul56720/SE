@@ -262,6 +262,31 @@ def _print_failures(res: dict, limit: int = 6) -> None:
             print(f"      {line}")
 
 
+def _print_trace(run_dir: Path) -> None:
+    """수리가 **같은 알고리즘을 다듬었는지, 다른 알고리즘으로 갈아탔는지** 찍는다.
+
+    되먹임이 국소 수선만 하는 기계라면 알려진 방법 밖으로 나갈 수 없다. 판본 사이에서
+    호출하는 함수 집합 자체가 바뀌는지가 그 구별이고, 그것을 안 재면 "라운드 4" 라는
+    숫자만 남는다 -- 네 번 다듬은 것과 네 번 갈아탄 것이 같은 숫자로 보인다."""
+    try:
+        import method_trace
+        res = method_trace.report(run_dir)
+    except Exception as e:
+        print(f"\n(판본 추적 실패: {type(e).__name__}: {e})")
+        return
+    if len(res["versions"]) < 2:
+        return
+    print(f"\n수리 판본 추적 ({len(res['versions'])}판, 갈아타기 {res['n_jumps']}회):")
+    for r in res["versions"]:
+        d = "  -  " if r["dist"] is None else f"{r['dist']:.3f}"
+        print(f"  {r['name']:24} 거리 {d:>6}  {r['kind']:12} {', '.join(r['tags'])}")
+        if r["new_calls"]:
+            print(f"  {'':24} + {', '.join(r['new_calls'][:6])}")
+    print(f"  등장한 갈래: {', '.join(res['families'])}")
+    if "미분류" in res["families"]:
+        print("  '미분류' 는 알려진 갈래 어디에도 안 걸린 판본이다 -- 그쪽이 흥미롭다")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="오케스트레이터에게 텐서 랭크 분해를 시킨다")
     ap.add_argument("--max-repair-rounds", type=int, default=4)
@@ -334,6 +359,7 @@ def main() -> int:
         _print_failures(res)
     else:
         _verdict(spec, res.get("final_result") or {})
+    _print_trace(run_dir)
     (run_dir / "result.json").write_text(
         json.dumps(res, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
     return 0 if res.get("status") == "solved" else 1
