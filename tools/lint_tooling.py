@@ -5,7 +5,7 @@
 환경변수를 그대로 뒀다. 둘 다 다음 실행에서 다시 걸렸다. 고친 뒤 grep 으로 같은
 모양을 찾았으면 그 자리에서 끝났을 일이다.
 
-규칙은 추상적인 좋은 습관이 아니라 **실제로 실제로 겪은 버그**이다. 각 규칙에 그것을 만든
+규칙은 추상적인 좋은 습관이 아니라 **실제로 겪은 버그**다. 각 규칙에 그것을 만든
 커밋이 붙어 있다. 규칙을 새로 만들면 검사도 같이 만든다 -- 검사 없는 규칙은 잊힌다.
 
 검사 종류는 셋뿐이다.
@@ -15,7 +15,7 @@
                  규칙이 아무것도 걸러내지 못하게 된다(실측: RPM-분리와 상태코드-분기가 그랬다)
     require_near when 이 나올 때마다 그 뒤 window 글자 안에 require 가 있어야 한다
 
-**주석도 패턴를 만족시킨다.** 패턴 검사의 어쩔 수 없는 한계다. 그래서 규칙마다
+**주석도 패턴을 만족시킨다.** 패턴 검사의 어쩔 수 없는 한계다. 그래서 규칙마다
 tests/test_tooling_rules.py 가 "그 버그를 되살리면 실제로 실패하는가"를 확인한다 --
 실패해야 할 때 실패하지 못하는 규칙은 소용이 없고, 실제로 처음 판에서 넷이 그랬다.
 
@@ -25,6 +25,7 @@ tests/test_planner_repair.py 와 tests/test_tensor_rank_verifier.py 에 들어 �
 from __future__ import annotations
 
 import argparse
+import ast
 import re
 import sys
 from pathlib import Path
@@ -106,6 +107,27 @@ RULES = [
         require=r"or _computation_defect\(run_dir, code\)",
     ),
     dict(
+        id="파이썬-건강", rule="⑤",
+        desc="저장소의 모든 .py 가 파싱되고, 최상위 정의가 겹치지 않고, 충돌 표식이 없어야 한다",
+        why="VM 쪽 병합이 깨진 채 커밋돼 solve.py 에 drive 정의가 두 개 들어갔다. 뒤엣것이 "
+            "final_verifier 인자가 없는 옛 판이었고, 파일 자체가 IndentationError 로 "
+            "실행 불가였다. 커밋 메시지에 '# Conflicts:' 가 남아 있었는데 아무도 안 봤다",
+        commit="병합-사고",
+        globs=["orchestrator/*.py"],
+        check="python_health",
+    ),
+    dict(
+        id="주입-기억", rule="⑦",
+        desc="주입 심판은 런 디렉토리에 적어둬야 한다. 호출자 메모리에만 두면 재개가 잃는다",
+        why="problems/tensor_rank/run.py 로 시작한 런을 나중에 solve.py --resume 으로 이어 "
+            "돌렸더니, 그 경로는 final_verifier 를 몰라 재주입을 안 했다. 재계획이 한 번 더 "
+            "돌면서 LLM 이 쓴 채점표가 최종 노드에 그대로 남았다(실측 tensorrank-130156)",
+        commit="주입-지속",
+        globs=["orchestrator/problems/*/run.py"],
+        when=r"_inject\(run_dir, rel\)",
+        require=r"orch_solve\.remember_verifier\(run_dir, rel\)",
+    ),
+    dict(
         id="미지-범주", rule="①",
         desc="분류기에는 미지 범주가 있어야 한다",
         why="태그가 안 걸리면 '알려진 방식 밖'이라 부르고 흥미롭다고 했는데, 실제로는 답을 "
@@ -113,7 +135,7 @@ RULES = [
         commit="6be1ed0",
         globs=["orchestrator/method_trace.py"],
         # OR 로 뒀더니 셋 중 하나만 남아도 통과했다. 세 범주가 **전부** 있어야 한다 --
-        # 새 방법(미분류) / 방법 없음(상수로 적은 것) / 아직 없음(골격)은 서로 다른 사건이다.
+        # 새 방법(알려진 방식 밖) / 방법 없음(상수로 적음) / 아직 없음(미완성)은 서로 다른 사건이다.
         when=r"^MARKERS\s*=",
         require=[r'"알려진 방식 밖"', r'"계산 없음\(상수로 적음\)"', r'"미완성\(내용 없음\)"',
                  r'"계산 없음\(빈 배열만\)"'],
@@ -136,7 +158,7 @@ RULES = [
         globs=["orchestrator/probe_gemini.py"],
         # OR 로 뒀더니 set(hist) 만 남아도 통과했다. [2] 의 상태코드 분기와
         # [3] 의 히스토그램 분기가 **둘 다** 있어야 한다 -- 하나를 고치고 다른 하나를
-        # 방치한 것이 실제로 실제로 겪은 버그이다.
+        # 방치한 것이 실제로 겪은 버그다.
         when=r"verdict\.append\(", require=[r"st in \(", r"set\(hist\)"],
     ),
     dict(
@@ -167,6 +189,33 @@ def _files(globs) -> list:
     for g in globs:
         out += sorted(REPO.glob(g))
     return [p for p in out if p.is_file()]
+
+
+def _check_python_health(path: Path) -> list:
+    """파싱되는가, 최상위 정의가 겹치지 않는가, 충돌 표식이 없는가.
+
+    **깨진 병합을 잡는다.** 실측(2026-09-03): VM 쪽에서 solve.py 를 고치다 병합이 깨진
+    채로 커밋했고, drive 정의가 두 개 들어갔다. 뒤엣것이 final_verifier 인자가 없는
+    옛 판이라 조용히 기능이 사라질 뻔했고, 실제로는 그보다 나빠서 파일이
+    IndentationError 로 실행조차 안 됐다. 커밋 메시지에 '# Conflicts:' 가 그대로
+    남아 있었는데 아무도 읽지 않았다."""
+    src = path.read_text(encoding="utf-8", errors="replace")
+    out = []
+    for marker in ("<<<<<<<", ">>>>>>>"):
+        if marker in src:
+            out.append(f"{path.name}: 병합 충돌 표식 {marker!r} 이 남아 있다")
+    try:
+        tree = ast.parse(src)
+    except SyntaxError as e:
+        return out + [f"{path.name}: 파싱 실패 -- {type(e).__name__}: {e}"]
+    seen = {}
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            if node.name in seen:
+                out.append(f"{path.name}:{node.lineno}: 최상위 정의 '{node.name}' 가 "
+                           f"{seen[node.name]}줄에도 있다 -- 뒤엣것이 앞엣것을 덮는다")
+            seen[node.name] = node.lineno
+    return out
 
 
 def _check_timeout(path: Path) -> list:
@@ -265,6 +314,13 @@ def auto_red(rule: dict, src: str) -> list:
     out = []
     if "forbid" in rule:
         return [(src + "\n\nnp.linalg.lstsq(A, b)\n", rule["forbid"], "금지 패턴 주입")]
+    if rule.get("check") == "python_health":
+        # 최상위 정의를 하나 복제해 겹치게 만든다
+        m = re.search(r"^def (\w+)\(", src, re.M)
+        if not m:
+            return []
+        return [(src + f"\n\ndef {m.group(1)}():\n    pass\n",
+                 "최상위 정의 중복", "정의를 복제")]
     if rule.get("check") == "timeout":
         return [(re.sub(r'(GEMINI_TIMEOUT",\s*")\d+(?:\.\d+)?(")', r"\g<1>60\g<2>", src),
                  "GEMINI_TIMEOUT", "마감을 60 으로")]
@@ -277,7 +333,7 @@ def auto_red(rule: dict, src: str) -> list:
             continue                       # 이 파일엔 그 패턴이 없다
         if rule.get("when") and not re.search(rule["when"], mutated, re.M):
             continue                       # when 까지 지워졌다 -- 무효한 변형
-        out.append((mutated, pat, "require 패턴를 전부 지움"))
+        out.append((mutated, pat, "require 패턴을 전부 지움"))
     return out
 
 
@@ -293,6 +349,9 @@ def run(rules=RULES) -> list:
             rel = path.relative_to(REPO)
             if r.get("check") == "timeout":
                 for msg in _check_timeout(path):
+                    bad.append((r, msg))
+            elif r.get("check") == "python_health":
+                for msg in _check_python_health(path):
                     bad.append((r, msg))
             elif "forbid" in r:
                 hits = sorted(set(re.findall(r["forbid"], src, re.I)))

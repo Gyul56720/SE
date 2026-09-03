@@ -75,6 +75,35 @@ def _force_verifier(run_dir: Path, final_verifier: str) -> bool:
     return changed
 
 
+INJECTED = "injected_verifier.json"
+
+
+def injected_verifier(run_dir: Path) -> str | None:
+    """런에 적혀 있는 주입 심판 경로. 호출자가 안 넘겨도 여기서 찾는다.
+
+    **주입 정보가 호출자 메모리에만 있으면 재개 경로에서 사라진다.** 실측
+    (2026-09-03, tensorrank-130156): problems/tensor_rank/run.py 로 시작한 런을
+    나중에 `solve.py --resume` 으로 이어 돌렸는데, 그 경로는 final_verifier 를 모르므로
+    재주입을 하지 않았다. 재계획이 한 번 더 돌면서 LLM 이 쓴 채점표
+    (components/search_decomposition_verify.py)가 최종 노드에 그대로 남았다.
+
+    그래서 주입을 런 디렉토리에 파일로 남긴다. 어느 경로로 재개해도 심판이 따라온다."""
+    path = Path(run_dir) / INJECTED
+    if not path.is_file():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8")).get("final_verifier") or None
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def remember_verifier(run_dir: Path, final_verifier: str) -> None:
+    """주입 심판을 런에 적어둔다. 재개하는 쪽이 무엇이든 이것을 읽는다."""
+    (Path(run_dir) / INJECTED).write_text(
+        json.dumps({"final_verifier": final_verifier}, ensure_ascii=False),
+        encoding="utf-8")
+
+
 def failure_reasons(run_dir) -> list:
     """심판이 남긴 기각 사유를 시간순으로 모은다. 재계획 전 시도(attempts/attemptN)도 포함한다.
 
@@ -111,10 +140,6 @@ def failure_reasons(run_dir) -> list:
 def drive(run_dir: str, max_repair_rounds: int = 300, max_node_repairs: int = 200,
           max_replans: int = 100, pool=None, node_timeout: float = None,
           final_verifier: str = None) -> dict:
-
-def drive(run_dir: str, max_repair_rounds: int = 30000, max_node_repairs: int = 20000,
-          max_replans: int = 10000, pool=None, node_timeout: float = None) -> dict:
-
     """plan.json 이 있는 런을 목표 달성까지 몰아붙인다: 실행 -> 검증 -> 실패면 수리/재계획 -> 재실행.
 
     반환 dict 의 status 는 "solved" 이거나 "incomplete" 다. incomplete 면 왜 멈췄는지
@@ -124,6 +149,13 @@ def drive(run_dir: str, max_repair_rounds: int = 30000, max_node_repairs: int = 
     log: list = []
     replans = 0
     reason = "수리 라운드 한도 소진"
+    # 호출자가 안 넘겼으면 런에 적힌 것을 쓴다. 재개 경로가 심판을 잃지 않게 하는 자리다.
+    if final_verifier is None:
+        final_verifier = injected_verifier(run_dir)
+        if final_verifier:
+            log.append({"verifier_from_run": final_verifier})
+    elif final_verifier:
+        remember_verifier(run_dir, final_verifier)
 
     def get_pool():
         nonlocal pool
@@ -212,8 +244,8 @@ def drive(run_dir: str, max_repair_rounds: int = 30000, max_node_repairs: int = 
             "failures": failure_reasons(run_dir)}
 
 
-def solve(problem: str, max_repair_rounds: int = 30000, max_node_repairs: int = 20000,
-          max_replans: int = 10000, pool=None, node_timeout: float = None,
+def solve(problem: str, max_repair_rounds: int = 300, max_node_repairs: int = 200,
+          max_replans: int = 100, pool=None, node_timeout: float = None,
           run_dir: str = None) -> dict:
     # run_dir 를 받는 이유: 호출자(Discord 도구 등)가 런을 백그라운드로 띄우고 **곧바로**
     # 어디를 봐야 하는지 알아야 한다. 타임스탬프를 여기서만 정하면 호출자는 "가장 최근

@@ -182,6 +182,9 @@ def main() -> int:
 
         assert _plant_verifier(run_dir) == rel
         info = _inject(run_dir, rel)
+        # **런에도 적어둔다.** 호출자 메모리에만 있으면 `solve.py --resume` 같은 다른
+        # 재개 경로가 심판을 잃는다(실측으로 그렇게 LLM 채점표가 되살아났다).
+        orch_solve.remember_verifier(run_dir, rel)
         print(f"계획: 노드 {info['n_nodes']}개, 최종 노드 '{info['final']}'")
         print(f"심판 주입: {info['replaced']} -> {info['with']}")
 
