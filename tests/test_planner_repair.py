@@ -305,12 +305,57 @@ def test_planning_retries_on_broken_plan(failures: list):
                "아무 파일도 쓰이지 않는다")
 
 
+
+def test_llm_pool_reads_dotenv(failures: list) -> None:
+    """CLI 로 돌 때도 .env 의 키를 찾는가.
+
+    실측으로 걸린 함정이다: 키는 .env 에 있고 Discord 봇은 systemd 의 EnvironmentFile 로
+    그것을 받는데, SSH 셸에서 `python3 ...` 로 직접 돌리면 .env 가 안 실려 후보 풀이 비고
+    "빈 후보 풀" 만 보인다. **키가 없는 것처럼 보이지만 실은 있다.**
+
+    서비스로 돌 때와 손으로 돌 때가 달라지는 것이 함정의 정체이므로 둘을 맞춘다.
+    이미 있는 환경변수는 절대 덮지 않는다 -- systemd 로 들어온 값이 우선이어야 한다."""
+    import os
+    import shutil
+    import tempfile
+
+    print("\n[.env] CLI 실행에서도 키를 찾는가")
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "orchestrator"))
+    import llm_pool
+
+    def ok(cond, msg):
+        print(f"    {'OK  ' if cond else 'FAIL'} {msg}")
+        if not cond:
+            failures.append(msg)
+
+    saved = os.environ.pop("GEMINI_API_KEY", None)
+    cwd = os.getcwd()
+    tmp = Path(tempfile.mkdtemp(prefix="dotenv_test_"))
+    try:
+        (tmp / ".env").write_text("GEMINI_API_KEY=from-dotenv-file\n", encoding="utf-8")
+        os.chdir(tmp)
+        pool = llm_pool.build_pool(models=["m"], llm_factory=lambda m, k: (m, k))
+        ok(len(pool) == 1 and pool[0][1][1] == "from-dotenv-file",
+           ".env 의 키로 후보 풀을 만든다")
+
+        os.environ["GEMINI_API_KEY"] = "from-environment"
+        pool = llm_pool.build_pool(models=["m"], llm_factory=lambda m, k: (m, k))
+        ok(bool(pool) and pool[0][1][1] == "from-environment",
+           ".env 가 이미 있는 환경변수를 덮지 않는다 (systemd 값 우선)")
+    finally:
+        os.chdir(cwd)
+        os.environ.pop("GEMINI_API_KEY", None)
+        if saved is not None:
+            os.environ["GEMINI_API_KEY"] = saved
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def main() -> int:
     failures: list[str] = []
     for t in (test_red_without_repair, test_green_repair_loop,
               test_escalation_to_replan, test_bad_repair_rejected,
               test_time_budget_makes_slowness_repairable, test_budget_off_is_explicit,
-              test_planning_retries_on_broken_plan):
+              test_planning_retries_on_broken_plan, test_llm_pool_reads_dotenv):
         t(failures)
     if failures:
         print("\n=== 실패 ===")

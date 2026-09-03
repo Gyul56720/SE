@@ -82,9 +82,41 @@ def _default_models(key: str):
         return FALLBACK_MODELS
 
 
+def _load_dotenv_once() -> None:
+    """저장소 루트의 .env 를 환경에 올린다. **이미 있는 환경변수는 덮지 않는다.**
+
+    왜 필요한가(실측): 키는 .env 에 있고, Discord 봇은 systemd 유닛의
+    `EnvironmentFile=/home/ubuntu/SE/.env` 로 그것을 받는다. 그런데 SSH 셸에서
+    `python3 ...` 로 직접 돌리면 .env 가 안 실려서 후보 풀이 비고,
+    "RuntimeError: 빈 후보 풀" 만 보인다 -- 키가 없는 것처럼 보이지만 실은 있다.
+
+    서비스로 돌 때와 손으로 돌 때가 달라지는 것이 함정의 정체이므로, 여기서 한 번
+    맞춰준다. override 하지 않으므로 systemd 로 이미 들어온 값이 우선이다."""
+    for cand in (Path(__file__).resolve().parent.parent / ".env", Path.cwd() / ".env"):
+        if not cand.is_file():
+            continue
+        try:
+            from dotenv import load_dotenv
+            load_dotenv(cand, override=False)
+        except ImportError:
+            # python-dotenv 가 없어도 돌아야 한다. 이 경로가 조용히 물러나면
+            # "키가 없는 것처럼 보이지만 실은 있다"는 함정이 그대로 남는다.
+            for line in cand.read_text(encoding="utf-8", errors="replace").splitlines():
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                k, v = k.strip(), v.strip().strip("'\"")
+                if k and k not in os.environ:          # 기존 환경변수를 덮지 않는다
+                    os.environ[k] = v
+        return
+
+
 def build_pool(keys=None, models=None, llm_factory=_default_factory, model_lister=_default_models):
     """(label, llm) 후보 목록. keys 기본 = 환경변수 두 키. models 기본 = 키별 실사용 모델 조회."""
     if keys is None:
+        if not os.environ.get("GEMINI_API_KEY"):
+            _load_dotenv_once()
         keys = [k for k in (os.environ.get("GEMINI_API_KEY"),
                             os.environ.get("GEMINI_API_KEY_FALLBACK")) if k]
     pool = []
@@ -152,4 +184,9 @@ def call(pool, prompt: str, pool_id: str = "orchestrator", max_candidates: int =
             f"후보 {tried}개를 모두 실패했다"
             f"{f' (상한 {limit} 때문에 {skipped}개는 시도 안 함)' if skipped else ''}. "
             f"마지막 오류: {type(last_error).__name__}: {last_error}") from last_error
-    raise RuntimeError("빈 후보 풀")
+    raise RuntimeError(
+        "빈 후보 풀 -- GEMINI_API_KEY 를 찾지 못했다.\n"
+        "  환경변수에도 없고 저장소 루트 .env 에도 없다.\n"
+        "  systemd 서비스는 EnvironmentFile 로 .env 를 받지만 SSH 셸은 그렇지 않다.\n"
+        "  확인:  grep -c GEMINI_API_KEY ~/SE/.env\n"
+        "  즉시:  set -a; source ~/SE/.env; set +a")
