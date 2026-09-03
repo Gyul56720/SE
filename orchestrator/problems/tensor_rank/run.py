@@ -78,6 +78,23 @@ M 이 아무리 작아도 0점이다.**
 행렬곱 텐서의 뜻: 색인을 a=(i,j), b=(j,k), c=(i,k) 로 펴면 M 항 분해가 곧 곱셈을 M 번만
 쓰는 행렬곱 알고리즘이다.
 
+[네가 쓸 수 있는 것 -- 방법이 아니라 판의 규칙이다]
+
+계산 시간. 네가 쓴 solve(inputs) 는 **최대 {budget:.0f} 초 동안 실행된다.** 그 안에서는
+   무엇을 얼마나 계산하든 상관없다. 초과하면 끊기고 그 사실이 실패 사유로 남는다.
+   답을 즉시 반환해야 한다는 제약은 없다.
+
+표적 읽기. 위 경로의 target.json 은 solve 안에서 열어 읽을 수 있다. 즉 **네 답이 맞는지
+   네가 직접 확인할 수 있다** -- 재구성해서 표적과 비교하면 된다. 심판이 쓰는 것과 같은
+   기준(유리수 정확 일치, 허용치 0)을 네 코드 안에서도 쓸 수 있다.
+
+이어서 하기. 아래 디렉토리는 **시도와 시도 사이에 지워지지 않는다.**
+
+    {scratch}
+
+   네 solve 는 여기에 무엇이든 읽고 쓸 수 있다. 한 번의 실행이 {budget:.0f} 초로 끊기더라도
+   다음 시도가 그 결과를 이어받을 수 있다는 뜻이다. 매번 빈손에서 시작할 필요가 없다.
+
 [출력] 최종 노드의 solve 는 다음을 반환하라.
 
     {{"cases": [
@@ -262,6 +279,32 @@ def _print_failures(res: dict, limit: int = 6) -> None:
             print(f"      {line}")
 
 
+def _nature_of_pass(run_dir: Path) -> str:
+    """통과가 **탐색인가 기억인가.** 최종 노드 코드의 성격을 한 줄로 말한다.
+
+    이것을 안 말하면 mm222=7 통과를 보고 mm333=22 를 기대하는 오류를 범한다. 7 은
+    교과서라 외워서도 통과하지만, 22 는 아무도 모르므로 외울 수가 없다. 같은 "통과"라도
+    앞의 것은 기억이고 뒤의 것만 탐색이다.
+
+    실측(2026-09-03, tensorrank mm333=24): 판본 다섯이 전부 상수표였고 갈아타기 0 회였다.
+    상수 개수만 0 -> 222 -> 75 -> 201 -> 306 으로 늘었다. 되먹임이 방법 공간에서 움직이지
+    않고 숫자만 고쳐 쓰고 있었다."""
+    try:
+        import method_trace
+        rows = method_trace.report(run_dir)["versions"]
+    except Exception:
+        return ""
+    if not rows:
+        return ""
+    tags = rows[-1]["tags"]
+    if "상수표(계산 없음)" in tags:
+        return ("이 통과는 **기억이지 탐색이 아니다** -- 최종 코드가 답을 상수로 적고 "
+                "있다. 아무도 모르는 값에는 이 방법이 통하지 않는다.")
+    if "골격/미완" in tags:
+        return "최종 코드에 실질 계산이 없다 -- 통과했다면 심판을 의심하라."
+    return f"최종 코드는 계산을 한다 (갈래: {', '.join(tags)})."
+
+
 def _print_trace(run_dir: Path) -> None:
     """수리가 **같은 알고리즘을 다듬었는지, 다른 알고리즘으로 갈아탔는지** 찍는다.
 
@@ -283,6 +326,9 @@ def _print_trace(run_dir: Path) -> None:
         if r["new_calls"]:
             print(f"  {'':24} + {', '.join(r['new_calls'][:6])}")
     print(f"  등장한 갈래: {', '.join(res['families'])}")
+    nature = _nature_of_pass(run_dir)
+    if nature:
+        print(f"  {nature}")
     if "미분류" in res["families"]:
         print("  '미분류' 는 알려진 갈래 어디에도 안 걸린 판본이다 -- 그쪽이 흥미롭다")
 
@@ -292,8 +338,12 @@ def main() -> int:
     ap.add_argument("--max-repair-rounds", type=int, default=4)
     ap.add_argument("--node-timeout", type=float, default=600.0)
     ap.add_argument("--budget", action="append", default=[],
-                    metavar="ID=N", help="예산을 바꾼다 (예: --budget mm333=26). "
-                                         "사다리로 27 -> 26 -> ... -> 23 내려갈 때 쓴다")
+                    metavar="ID=N", help="예산을 바꾼다 (예: --budget mm333=22). "
+                                         "사다리는 24 -> 23 -> 22 이고 22 가 최종이다")
+    ap.add_argument("--only", action="append", default=[], metavar="ID",
+                    help="이 case 만 돌린다 (예: --only mm333). 세 case 를 동시에 "
+                         "통과해야 하므로, 도달 가능한 rung 이 섞여 있으면 라운드가 "
+                         "거기서 소진된다 -- mm333=22 처럼 한 자리만 볼 때 쓴다")
     ap.add_argument("--run-dir", default=None, help="기존 런을 이어서 돌린다")
     a = ap.parse_args()
 
@@ -302,6 +352,12 @@ def main() -> int:
 
     spec = _apply_budgets(json.loads((HERE / "target.json").read_text(encoding="utf-8")),
                           a.budget)
+    if a.only:
+        keep = [c for c in spec["cases"] if c["id"] in a.only]
+        missing = sorted(set(a.only) - {c["id"] for c in keep})
+        if missing:
+            raise SystemExit(f"그런 case 가 없다: {missing}")
+        spec["cases"] = keep
 
     if a.run_dir:
         run_dir = Path(a.run_dir).resolve()
@@ -311,13 +367,20 @@ def main() -> int:
     else:
         run_dir = RUNS / time.strftime("tensorrank-%Y%m%d-%H%M%S")
         run_dir.mkdir(parents=True, exist_ok=True)
+        # **시도와 시도 사이에 살아남는 자리.** 한 번의 실행이 예산에서 끊겨도 다음
+        # 시도가 이어받을 수 있어야, 매번 빈손에서 시작하지 않는다.
+        (run_dir / "scratch").mkdir(exist_ok=True)
+        # 예산 값을 기술서에 **인자에서 그대로** 넣는다. 손으로 숫자를 적어두면
+        # --node-timeout 을 바꿨을 때 기술서와 실제가 조용히 어긋난다.
         problem = PROBLEM.format(
             target_path=run_dir / "verifiers" / "target.json",
+            budget=a.node_timeout, scratch=run_dir / "scratch",
             target_json=json.dumps(spec, ensure_ascii=False, indent=1))
         (run_dir / "problem.txt").write_text(problem, encoding="utf-8")
 
         print(f"런 디렉토리: {run_dir}")
-        print("예산: " + ", ".join(f"{c['id']}<={c['budget']}" for c in spec["cases"]))
+        print("예산: " + ", ".join(f"{c['id']}<={c['budget']}" for c in spec["cases"])
+              + f"  ·  노드 실행 {a.node_timeout:.0f}초  ·  scratch 유지")
         print("계획을 세운다 ...")
         plan_res = planner.make_plan(problem, str(run_dir))
         if plan_res.get("status") != "planned":

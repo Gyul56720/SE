@@ -80,6 +80,16 @@ RULES = [
         check="timeout",
     ),
     dict(
+        id="예산-일치", rule="③",
+        desc="기술서에 적는 실행 예산은 --node-timeout 인자에서 와야 한다",
+        why="손으로 적은 숫자는 조용히 어긋난다. 기술서가 '600초 쓸 수 있다'고 하는데 "
+            "실제 예산이 60초면, 풀던 코드가 끊기고 그 사실이 '틀렸다'로 읽힌다. "
+            "재보지 않은 상수를 박는 병(마감 60초 vs 실측 145초)과 같은 것이다",
+        commit="C-단계",
+        globs=["orchestrator/problems/*/run.py"],
+        when=r"\{budget:", require=r"budget=a\.node_timeout",
+    ),
+    dict(
         id="미지-범주", rule="①",
         desc="분류기에는 미지 범주가 있어야 한다",
         why="태그가 안 걸리면 '미분류'라 부르고 흥미롭다고 했는데 실은 상수표 "
