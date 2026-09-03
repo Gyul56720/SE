@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import re
+import os as _os
 import sys as _sys
 import time
 from pathlib import Path
@@ -42,7 +43,8 @@ def _llm_for(llm, role: str):
 
 # ---------------------------------------------------------------- LLM 어댑터
 
-def anthropic_llm(model: str = "claude-opus-5", effort: str = "high"):
+def anthropic_llm(model: str = "claude-opus-5", effort: str = "high",
+                  workspace_id: str = None):
     """역할 하나를 Claude 로 돌린다. author(director)에 쓰라고 만든 것이다.
 
     왜 director 만인가. 실측 프롬프트 기준 director 는 호출 6회 중 1회이고 출력이 300 토큰
@@ -53,7 +55,11 @@ def anthropic_llm(model: str = "claude-opus-5", effort: str = "high"):
     일치라 **바뀌는 것(씬 씨앗·되먹임)은 반드시 뒤에** 와야 한다. 프리픽스가 1바이트라도
     흔들리면 캐시가 통째로 무효화된다."""
     import anthropic
-    client = anthropic.Anthropic()
+    # identity-linked API key 는 어느 워크스페이스에서 도는 요청인지 헤더로 알려줘야 한다
+    # (400: anthropic-workspace-id is required...). 워크스페이스 전용 키는 필요 없다.
+    ws = workspace_id or _os.environ.get("ANTHROPIC_WORKSPACE_ID") or ""
+    headers = {"anthropic-workspace-id": ws} if ws else None
+    client = anthropic.Anthropic(default_headers=headers)
     stats = {"calls": 0, "write": 0, "read": 0, "fresh": 0, "out": 0}
 
     def call(prompt: str) -> str:
@@ -526,6 +532,12 @@ def narrator_prompt(novel, scene, feedback="") -> str:
 - **연출 지시를 그대로 실행하라.** 여는 사건으로 시작하고, 장치를 무심하게 놓고,
   화자의 시야 밖은 쓰지 마라 -- 화자가 놓친 것은 독자도 놓쳐야 한다.
 - 담담하고 건조하게. 신파로 흐르지 마라.
+- **문장 길이를 섞어라.** "-했다. -다." 만 이어지면 내용이 좋아도 읽히지 않는다:
+    · 짧은 문장(20자 안팎)으로 끊어친다. 명사로 끝내도 좋다.
+    · 만연체(60자 이상)를 회차마다 두어 번. 여러 절을 한 호흡에 잇는다.
+    · 같은 종결어미가 세 번 넘게 연속되지 않게 -- 도치·명사형·대시로 흩어라.
+    · **대시(—)** 로 숨을 끊거나 덧붙여라.
+    · 비유는 아껴 쓰되 있어야 한다(처럼·같이·듯·만큼). 화려하지 않게, 사물에 붙여서.
 - **분량: 공백 포함 {__import__("novel.arc", fromlist=["x"]).CHARS_PER_SCENE}자 안팎.**
   회차 하나가 5,000자이고 이 씬은 그중 한 조각이다. 짧게 끊지 마라 -- 대화 사이의 정적,
   손이 하는 일, 창밖, 냄새, 소리로 채워라.

@@ -287,3 +287,55 @@ if fails:
     print(f"개연성: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)
 print("개연성 사슬: 구멍 검출·오타 구분·원장 판정·역방향 조립 -- 통과")
+
+
+# ============================================================ 문장 리듬 (V020)
+print()
+print("[V020] 문장 리듬 -- 셀 수 있는 것만 잡는다")
+
+def prose_scene(text, sid="r1"):
+    s = scene_fixture(id=sid)
+    s.prose = text
+    return s
+
+MONO = ("나는 생각했다. 그는 말했다. 비가 시작했다. 나는 후회했다. "
+        "그가 대답했다. 나는 침묵했다.")
+N5 = novel_fixture(); N5.pov_character = "와타나베"
+s = prose_scene(MONO); N5.scenes = [s]
+vs = [v for v in gate.check(s, N5) if v.rule == "V020"]
+ok(any(v.severity == "hard" and "연속" in v.detail for v in vs),
+   "같은 종결('…했다')이 네 번 연속이면 hard")
+DA = ("나는 창밖을 보았다. 비가 내렸다. 그는 말이 없었다. 잔이 비었다. "
+      "나는 일어났다. 문이 닫혔다. 골목이 젖어 있었다.")
+sd = prose_scene(DA, "r5"); N5.scenes = [sd]
+vd = [v for v in gate.check(sd, N5) if v.rule == "V020"]
+ok(any(v.severity == "soft" and "다' 로 끝나는" in v.detail for v in vd),
+   "'-다' 일색은 soft -- 한국어 과거 서술은 원래 다로 끝난다")
+ok(any(v.severity == "hard" and "비슷하다" in v.detail for v in vs),
+   "문장 길이가 전부 비슷하면 hard")
+
+VARIED = ("빗소리. 나는 창밖을 오래 바라보다가, 잔에 남은 얼음이 저 혼자 무너지는 소리를 "
+          "듣고서야 고개를 돌렸다 — 그가 이미 자리를 뜬 뒤였다. "
+          "테이블에는 물 자국만 링처럼 남아 있었다. 나는 그것을 손끝으로 문질렀다. "
+          "지워지지 않았다. 지워질 리가 없었고, 나는 그 사실을 알면서도 한참을 문질렀는데, "
+          "그러는 동안 카페의 음악이 두 번 바뀌었고 바깥은 조금 더 어두워졌다.")
+s2 = prose_scene(VARIED, "r2"); N5.scenes = [s2]
+vs2 = [v for v in gate.check(s2, N5) if v.rule == "V020"]
+ok(not any(v.severity == "hard" for v in vs2),
+   f"짧은·긴 문장과 대시·비유가 섞이면 통과 ({[v.detail[:28] for v in vs2]})")
+
+print("[V020] 과잉 기각 방지")
+s3 = prose_scene("짧다. 하나. 둘.", "r3"); N5.scenes = [s3]
+ok(not [v for v in gate.check(s3, N5) if v.rule == "V020"],
+   "문장이 5개 미만이면 판정하지 않는다 -- 표본이 없다")
+DIALOG = ('"나는 늘 그랬어. 그랬다. 그랬다니까. 정말 그랬다." 그가 말했다. '
+          + VARIED)
+s4 = prose_scene(DIALOG, "r4"); N5.scenes = [s4]
+ok(not any(v.severity == "hard" for v in gate.check(s4, N5) if v.rule == "V020"),
+   "대사 안의 반복은 세지 않는다 -- 규칙은 서술에 거는 것이다")
+
+print()
+if fails:
+    print(f"문장 리듬: {len(fails)}개 실패 -- {fails}")
+    sys.exit(1)
+print("문장 리듬: 종결 반복·길이 분산·만연체·대시·비유, 그리고 과잉 기각 방지 -- 통과")

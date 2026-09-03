@@ -684,6 +684,92 @@ def check_causality(scene, novel) -> list:
     return out
 
 
+# 문장 리듬. "-했다. -다." 만 이어지면 내용이 좋아도 읽히지 않는다.
+RHYTHM_RUN = 4              # 같은 종결어미(끝 두 글자)가 이만큼 연속되면 단조
+RHYTHM_RUN_LOOSE = 6        # 끝 한 글자 기준. '-다' 일색을 본다
+RHYTHM_STDEV = 12.0         # 문장 길이 표준편차 하한 (전부 비슷하면 리듬이 없다)
+LONG_SENT = 60              # 만연체로 치는 길이
+SHORT_SENT = 22             # 끊어치는 문장
+_SIMILE = re.compile(r"(처럼|같이|같은|듯이|듯한|듯했|만큼|보다)")
+
+
+def _endings(text: str) -> list:
+    """문장별 종결어미(마지막 두 글자). 대사는 뺀다 -- 규칙은 서술에 거는 것이다."""
+    out = []
+    for sent in _sentences(_strip_quotes(text)):
+        body = re.sub(r"[^가-힣]", "", sent)
+        if len(body) >= 2:
+            out.append(body[-2:])
+    return out
+
+
+def check_rhythm(scene, novel) -> list:
+    """V020 -- 문장 리듬. 짧은·중간·긴 문장이 섞여야 하고 종결이 반복되면 안 된다.
+
+    **내용이 좋아도 리듬이 없으면 안 읽힌다.** 그리고 이것은 취향이 아니라 셀 수 있는
+    것이다: 종결어미가 몇 번 연속 같은지, 문장 길이의 표준편차가 얼마인지, 만연체와
+    대시와 비유가 있는지 -- 전부 LLM 없이 판정된다.
+
+    등급을 나눈 기준: 같은 종결이 네 번 연속되는 것은 누가 읽어도 단조롭다(hard).
+    비유가 없는 것은 그 씬의 선택일 수 있다(soft). 문체를 hard 로 조이면 관문이 작가가
+    된다 -- 그건 이 관문의 일이 아니다."""
+    if not scene.prose:
+        return []
+    out = []
+    narration = _strip_quotes(scene.prose)
+    sents = [s for s in _sentences(narration) if len(s) >= 4]
+    if len(sents) < 5:
+        return []
+
+    ends = _endings(scene.prose)
+    run, worst, cur = 1, 1, ends[0] if ends else ""
+    for a, b in zip(ends, ends[1:]):
+        run = run + 1 if a == b else 1
+        if run > worst:
+            worst, cur = run, b
+    if worst >= RHYTHM_RUN:
+        out.append(Violation("V020", "hard", f"씬 {scene.id}",
+                             f"'…{cur}' 로 끝나는 문장이 {worst}번 연속이다. 종결을 흩어라 "
+                             f"-- 명사로 끊거나, 대시로 잇거나, 도치하거나"))
+
+    # "-했다. -다." 일색. 한국어 과거 서술은 원래 '다' 로 끝나므로 마지막 두 글자로는
+    # 안 잡힌다(았다/었다/렸다가 다 다르게 세어진다). 마지막 한 글자로 따로 본다.
+    # 다만 '다' 종결 자체는 정상이라 hard 가 아니다 -- 관문이 작가가 되면 안 된다.
+    tails = [e[-1] for e in ends]
+    if tails:
+        run1, worst1 = 1, 1
+        for a, b in zip(tails, tails[1:]):
+            run1 = run1 + 1 if a == b else 1
+            worst1 = max(worst1, run1)
+        if worst1 >= RHYTHM_RUN_LOOSE:
+            out.append(Violation("V020", "soft", f"씬 {scene.id}",
+                                 f"'…{tails[0]}' 로 끝나는 문장이 {worst1}번 연속이다. "
+                                 f"명사 종결·도치·연결어미(-는데, -고)로 한 번씩 끊어라"))
+
+    lens = [len(s) for s in sents]
+    mean = sum(lens) / len(lens)
+    stdev = (sum((x - mean) ** 2 for x in lens) / len(lens)) ** 0.5
+    if stdev < RHYTHM_STDEV:
+        out.append(Violation("V020", "hard", f"씬 {scene.id}",
+                             f"문장 길이가 전부 비슷하다 (평균 {mean:.0f}자, 표준편차 "
+                             f"{stdev:.1f}). 짧게 끊는 문장과 만연체를 섞어라"))
+
+    if not any(x > LONG_SENT for x in lens):
+        out.append(Violation("V020", "soft", f"씬 {scene.id}",
+                             f"만연체가 하나도 없다 (최장 {max(lens)}자). 한 호흡에 여러 절을 "
+                             f"이어가는 문장이 리듬을 만든다"))
+    if not any(x < SHORT_SENT for x in lens):
+        out.append(Violation("V020", "soft", f"씬 {scene.id}",
+                             f"끊어치는 짧은 문장이 없다 (최단 {min(lens)}자)"))
+    if "—" not in scene.prose and "--" not in scene.prose:
+        out.append(Violation("V020", "soft", f"씬 {scene.id}",
+                             "대시가 없다. 문장 중간에서 숨을 끊거나 덧붙일 자리를 만든다"))
+    if not _SIMILE.search(narration):
+        out.append(Violation("V020", "soft", f"씬 {scene.id}",
+                             "비유·비교가 없다 (처럼·같이·듯·만큼)"))
+    return out
+
+
 def check_episode_length(scene, novel) -> list:
     """V019 -- 회차 분량. 웹소설 1회차는 공백 포함 5,000자다.
 
@@ -712,7 +798,7 @@ def check_episode_length(scene, novel) -> list:
     return []
 
 
-CHECKS = (check_episode_length, check_turn_format, check_emotion_continuity, check_emotion_range,
+CHECKS = (check_rhythm, check_episode_length, check_turn_format, check_emotion_continuity, check_emotion_range,
           check_pov, check_direct_emotion, check_punctum,
           check_pov_presence, check_knowledge, check_relations, check_facts,
           check_belief, check_public_fiction,
