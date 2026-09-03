@@ -144,13 +144,15 @@ ok(d3.failed == 1, f"실패가 집계된다 ({d3.failed})")
 
 print("[Discord] **토큰이 로그에 새지 않는가** -- 이 저장소의 G004 가 존재하는 이유")
 import io, contextlib                                                 # noqa: E402
-SECRET = "MTIzNDU2Nzg5-SUPER-SECRET-BOT-TOKEN-VALUE"
+# 자리표시자 표식(placeholder)을 넣어 G004 의 _LIVE_SECRET 오탐을 피한다. 진짜처럼
+# 생긴 문자열을 테스트에 박으면 자격증명 스캐너가 그것을 유출로 잡는다 -- 실제로 잡혔다.
+FAKE_CRED = "placeholder-not-a-real-bot-credential-0000"
 buf = io.StringIO()
-d4 = Discord(token=SECRET, channel_id="000000000000000000", webhook="")
+d4 = Discord(token=FAKE_CRED, channel_id="000000000000000000", webhook="")
 with contextlib.redirect_stderr(buf):
     d4.send("실패를 유도한다")
 leaked = buf.getvalue()
-ok(SECRET not in leaked, f"실패 로그에 토큰이 없다 (로그: {leaked.strip()[:70]})")
+ok(FAKE_CRED not in leaked, f"실패 로그에 토큰이 없다 (로그: {leaked.strip()[:70]})")
 ok("Discord 전송 실패" in leaked, "대신 에러 종류와 코드만 남는다")
 
 print("[Discord] 하트비트는 조용할 때만")
