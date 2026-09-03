@@ -120,6 +120,58 @@ def _fb(violations) -> str:
             + "\n".join(lines))
 
 
+def outcome_prompt(novel, ep_lo: int, ep_hi: int, feedback="") -> str:
+    """**에피소드의 결말을 먼저 받는다.** 씬을 순방향으로 뽑기 전에 도착점을 고정한다.
+
+    순방향으로 쓰면 이야기가 배회한다 -- 각 씬이 다음 씬을 낳지만 어디로 가는지는 아무도
+    모르고, 10화쯤 뒤에 "그래서 이게 왜 필요했지" 가 남는다. 결말을 먼저 정하면 모든 비트가
+    그 결말에 필요해서 존재하게 되고, requires/establishes 로 그 필요를 **선언**하게 하면
+    개연성이 기계 검사 대상이 된다(V018)."""
+    from . import arc
+    seq = arc.sequence_of(ep_lo)
+    return f"""너는 1인칭 회고 웹소설의 디렉터다. **에피소드의 결말을 먼저 정한다.**
+
+[구간] {ep_lo}~{ep_hi}화 · 시퀀스 {seq['n']} {seq['name']}
+[시퀀스 목표] {seq['goal']}
+[감정 단계] {seq['stage']} / narrative_pull 범위 {seq['pull']}
+[인물] {', '.join(c.name for c in novel.characters)}
+
+규칙:
+- 결말은 **상태의 변화**여야 한다. "둘이 대화한다" 가 아니라 "A 가 자리를 잃는다" 처럼.
+- requires 에는 그 결말이 성립하려면 이미 참이어야 하는 것을 적는다. 각 항목은 짧은
+  한국어 문장 하나. 나중에 다른 비트가 이 문자열을 그대로 establishes 에 적어 갚는다.
+- 원장으로 판정할 수 있는 것은 state: 접두사를 쓴다:
+    state:rel:연인:A,B / state:knows:A:비밀 / state:absent:D / state:not:rel:연인:A,B
+- 이 구간이 끝날 때 독자가 알고 인물은 모르는 것이 최소 하나 남아야 한다.
+{feedback}
+
+JSON 만 출력:
+{{"summary": "[결말 한 문장]",
+  "requires": ["...", "...", "..."],
+  "world_ops": [], "relation_ops": []}}"""
+
+
+def beat_prompt(novel, outcome_summary: str, open_conds: list, feedback="") -> str:
+    """열려 있는 요구 하나를 갚는 비트를 받는다. **거꾸로 쌓는다.**"""
+    return f"""너는 웹소설 디렉터다. 아래 결말로 가는 길에서 **아직 성립되지 않은 조건**
+하나를 성립시키는 장면을 만든다.
+
+[에피소드 결말] {outcome_summary}
+[아직 성립되지 않은 조건] {open_conds}
+
+규칙:
+- establishes 에는 위 조건 중 **정확히 같은 문자열**을 적어라. 한 글자라도 다르면 개연성
+  구멍으로 잡힌다.
+- requires 에는 이 장면이 성립하려면 그 전에 참이어야 하는 것을 적어라. 없으면 빈 배열.
+- 이 장면 하나로 조건이 성립해야 한다. 미루지 마라.
+{feedback}
+
+JSON 만 출력:
+{{"beat": "[장면 한 문장]", "participants": ["..."], "mode": "dialogue",
+  "requires": [], "establishes": ["..."], "scale": 1,
+  "world_ops": [], "relation_ops": []}}"""
+
+
 def _arc_brief(scene) -> str:
     """현재 회차의 거시 브리프. **변동부에 놓는다** -- 회차마다 바뀌므로 캐시 프리픽스
     앞에 두면 매번 캐시가 무효화된다."""

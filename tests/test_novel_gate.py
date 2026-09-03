@@ -224,3 +224,66 @@ if fails:
     print(f"거시 관문: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)
 print("거시 관문: 진도·꺾임·규모·정보격차·클리프행어 -- 통과")
+
+
+# ============================================================ 개연성 사슬 (V018)
+print()
+print("[V018] 플롯 구멍을 그래프 도달 가능성으로 잡는가")
+from novel.episode import Beat, Outcome, Episode, assemble_backward   # noqa: E402
+from novel import episode as EP                                       # noqa: E402
+
+def chain_scenes(specs):
+    out = []
+    for i, (req, est) in enumerate(specs, 1):
+        s = scene_fixture(id=f"c{i:02d}")
+        s.requires, s.establishes = list(req), list(est)
+        out.append(s)
+    return out
+
+N3 = novel_fixture(); N3.pov_character = "A"
+N3.scenes = chain_scenes([([], ["열쇠를 얻는다"]),
+                          (["열쇠를 얻는다"], ["문을 연다"]),
+                          (["문을 연다"], [])])
+ok(not any(v.rule == "V018" for s in N3.scenes for v in gate.check(s, N3)),
+   "요구가 앞에서 전부 성립되면 통과")
+
+N3.scenes = chain_scenes([([], ["문을 연다"]),
+                          (["열쇠를 얻는다"], [])])
+vs = [v for v in gate.check(N3.scenes[1], N3) if v.rule == "V018"]
+ok(vs and vs[0].severity == "hard", "성립시키는 씬이 없으면 hard 로 구멍을 짚는다")
+ok("개연성 구멍" in vs[0].detail, f"구멍이라고 말해준다: {vs[0].detail[:40]}...")
+
+N3.scenes = chain_scenes([([], ["열쇠를 얻는다"]),
+                          (["열쇠를  얻는다"], [])])          # 오타(공백 하나)
+vs = [v for v in gate.check(N3.scenes[1], N3) if v.rule == "V018"]
+ok(vs and vs[0].severity == "soft", "비슷한 것이 있으면 soft 로 낮추고 오타라고 짚는다")
+
+print("[V018] state: 조건은 원장에 대고 판정한다")
+N4 = novel_fixture(); N4.pov_character = "A"
+N4.scenes = chain_scenes([([], []), (["state:rel:연인:와타나베,미도리"], [])])
+N4.scenes[0].relation_ops = [{"op": "start", "kind": "연인",
+                              "members": ["와타나베", "미도리"]}]
+ok(not any(v.rule == "V018" for v in gate.check(N4.scenes[1], N4)),
+   "원장에 관계가 살아 있으면 통과")
+N4.scenes[0].relation_ops = []
+ok(any(v.rule == "V018" for v in gate.check(N4.scenes[1], N4)),
+   "원장이 만족하지 않으면 기각")
+
+print("[역방향] 결말에서 거꾸로 쌓으면 쓰이지 않는 비트는 안 들어온다")
+oc = Outcome("A 가 자리를 잃는다", requires=["비밀을 안다", "공개 자리가 있다"])
+lib = [Beat("통화를 듣는다", requires=["같은 공간"], establishes=["비밀을 안다"]),
+       Beat("같은 조가 된다", establishes=["같은 공간"]),
+       Beat("발표회 공지", establishes=["공개 자리가 있다"]),
+       Beat("아무도 안 쓰는 비트", establishes=["쓸모없음"])]
+chain, left = assemble_backward(oc, entry=set(), library=lib)
+ok(len(chain) == 3 and not left, f"4개 중 3개만 채택, 미충족 0 (얻은 값 {len(chain)}, {left})")
+ok(all("아무도" not in b.beat for b in chain), "존재 이유 없는 비트는 배제된다")
+ok(chain[0].beat == "같은 조가 된다", f"시간순으로 뒤집힌다 (첫 비트 {chain[0].beat!r})")
+ok(not EP.check_causality(Episode(n=1, outcome=oc, beats=chain)),
+   "조립된 사슬은 개연성 검사를 통과한다")
+
+print()
+if fails:
+    print(f"개연성: {len(fails)}개 실패 -- {fails}")
+    sys.exit(1)
+print("개연성 사슬: 구멍 검출·오타 구분·원장 판정·역방향 조립 -- 통과")

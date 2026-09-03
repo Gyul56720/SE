@@ -634,12 +634,62 @@ def check_cliffhanger(scene, novel) -> list:
     return []
 
 
+def check_causality(scene, novel) -> list:
+    """V018 -- 개연성 사슬. **플롯 구멍을 그래프 도달 가능성으로 잡는다.**
+
+    보고서: 에피소드는 결과를 먼저 정하고 인과를 역방향으로 조립한다. 그 조립이 실제로
+    성립하는지는 비트마다 requires/establishes 를 선언하게 하면 기계가 판정한다:
+
+        구멍 = 어떤 씬의 requires 가 앞선 어떤 establishes 로도, 원장으로도 충족되지 않는 것
+
+    사람이 읽고 "어색하다" 고 느끼는 것을 "48화의 요구 'A가 열쇠를 갖고 있다' 가 아무 데서도
+    성립되지 않는다" 로 짚는다. 200화에서 이것 없이 순방향으로 쓰면 뒤로 갈수록 앞을 기억하지
+    못해 구멍이 쌓인다.
+
+    맨 문자열은 오타가 곧 구멍이 된다. 그게 맞다 -- 조용히 통과하는 것보다 시끄럽게 틀리는
+    편이 낫다. 다만 비슷한 것이 있으면 오타로 짚어 soft 로 낮춘다."""
+    import difflib
+    from .episode import eval_state
+    out = []
+    idx = novel.scene_index(scene.id)
+    if idx < 0 or not scene.requires:
+        return out
+
+    have = set()
+    for i in range(idx):
+        have.update(novel.scenes[i].establishes or [])
+
+    for cond in scene.requires:
+        if cond.startswith("state:"):
+            try:
+                if eval_state(cond, novel, scene.id):
+                    continue
+                out.append(Violation("V018", "hard", f"씬 {scene.id}",
+                                     f"요구 {cond!r} 를 원장이 만족하지 않는다"))
+            except ValueError as e:
+                out.append(Violation("V018", "hard", f"씬 {scene.id}", str(e)))
+            continue
+        if cond in have:
+            continue
+        near = difflib.get_close_matches(cond, have, n=1, cutoff=0.75)
+        if near:
+            out.append(Violation("V018", "soft", f"씬 {scene.id}",
+                                 f"요구 {cond!r} 가 충족되지 않았지만 비슷한 것이 있다: "
+                                 f"{near[0]!r} -- 오타이면 맞춰라"))
+        else:
+            out.append(Violation("V018", "hard", f"씬 {scene.id}",
+                                 f"요구 {cond!r} 를 성립시키는 씬이 앞에 없다. "
+                                 f"**개연성 구멍이다** -- 이것을 세우는 씬을 먼저 놓거나 "
+                                 f"이 요구를 지워라"))
+    return out
+
+
 CHECKS = (check_turn_format, check_emotion_continuity, check_emotion_range,
           check_pov, check_direct_emotion, check_punctum,
           check_pov_presence, check_knowledge, check_relations, check_facts,
           check_belief, check_public_fiction,
           check_arc_emotion, check_arc_dip, check_arc_scale,
-          check_information_gap, check_cliffhanger)
+          check_information_gap, check_cliffhanger, check_causality)
 
 
 def check(scene, novel) -> list:

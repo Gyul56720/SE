@@ -134,6 +134,13 @@ class Scene:
     scale: int = 0                   # 이 씬이 다루는 사건 규모 1~5 (arc.SCALES)
     cliffhanger: str = ""            # 회차 끝이면 5대 공식 중 하나 (arc.CLIFFHANGERS)
     is_episode_end: bool = False     # 이 씬이 회차의 마지막인가
+    # --- 인과 배선 (episode.py 의 역방향 조립이 채운다) ---
+    # requires: 이 씬이 성립하려면 이미 참이어야 하는 것
+    # establishes: 이 씬이 참으로 만드는 것
+    # 개연성 구멍 = 어떤 requires 가 앞의 어떤 establishes 로도 충족되지 않는 것.
+    # 플롯 구멍이 그래프 도달 가능성 문제로 환원된다.
+    requires: list = field(default_factory=list)
+    establishes: list = field(default_factory=list)
     prose: str = ""
     status: str = "pending"          # pending | gated | verified | failed
     violations: list = field(default_factory=list)
