@@ -41,7 +41,10 @@ RULES = [
         globs=["orchestrator/*.py"],
         # OR 로 뒀더니 docstring 의 "bot_tools.is_rpm_quota_error" 가 규칙을
         # 만족시켜, _is_rpm 을 통째로 지워도 초록이었다. 이름이 아니라 **동작**을 건다.
-        when=r"record_exhausted\(", require=[r"_is_rpm\(e\)", r"record_rpm_cooldown\("],
+        # 이름만 적으면 **정의부**(def _is_rpm(e))가 규칙을 만족시켜, 호출을 지워도
+        # 초록이 된다. meta_defects 가 이것을 잡았다. 호출부의 모양까지 적는다.
+        when=r"record_exhausted\(",
+        require=[r"if _is_rpm\(e\)", r"record_rpm_cooldown\(label\)"],
     ),
     dict(
         id="심판-재주입", rule="④",
@@ -143,7 +146,9 @@ RULES = [
             "잴 대상이 남지 않았다. 없는 축은 리뷰에 안 보인다",
         commit="7ec0f6d",
         globs=["orchestrator/planner.py"],
-        when=r"run_dir / node\.component\)\.write_text", require=r"_snapshot_code\(",
+        # 여기도 정의부가 만족시키고 있었다. 호출부를 적는다.
+        when=r"run_dir / node\.component\)\.write_text",
+        require=r"prev = _snapshot_code\(run_dir, node\)",
     ),
     dict(
         id="심판-무해", rule="④",
@@ -171,6 +176,109 @@ def _check_timeout(path: Path) -> list:
         return [f"{path.name}: GEMINI_TIMEOUT 기본값을 못 찾았다"]
     v = float(m.group(1))
     return [] if v > 145.55 else [f"{path.name}: 기본 마감 {v}s <= 실측 145.55s"]
+
+
+def _def_headers(src: str) -> list:
+    """def / class 서명 줄만 모은다. 데코레이터와 여러 줄 서명도 포함한다."""
+    out, keep = [], 0
+    for line in src.splitlines():
+        t = line.strip()
+        if keep or t.startswith(("def ", "async def ", "class ")):
+            out.append(line)
+            keep = 0 if t.rstrip().endswith(":") else 1
+    return out
+
+
+def _top_level_or(pat: str) -> bool:
+    """정규식에 대괄호 밖 | 가 있는가. 있으면 대안 하나만 남아도 통과한다."""
+    depth = 0
+    i = 0
+    while i < len(pat):
+        c = pat[i]
+        if c == "\\":
+            i += 2
+            continue
+        if c == "[":
+            depth += 1
+        elif c == "]":
+            depth = max(0, depth - 1)
+        elif c == "|" and depth == 0:
+            return True
+        i += 1
+    return False
+
+
+def meta_defects(rules=RULES) -> list:
+    """**규칙 자체의 약점**을 잡는다. 유도 변형이 못 보는 두 가지다.
+
+    ① require 안의 OR. 대안 중 하나만 남아도 통과하므로 규칙이 이빨을 잃는다. 실측으로
+       처음 판의 네 실패 중 셋이 이것이었다 -- RPM-분리(_is_rpm 또는 is_rpm_quota_error,
+       뒤엣것이 docstring 에만 있었다), 상태코드-분기(st in ( 또는 set(hist)),
+       미지-범주(미분류 또는 상수표 또는 골격). 리스트로 나눠 적으면 전부 AND 가 된다.
+
+    ② 정의부가 규칙을 만족시키는 경우. require 무늬가 `def 이름(` 에도 걸리면, 호출을
+       통째로 지워도 정의가 남아 초록이다. 계산-강제가 그랬다. 호출부의 모양까지 적어야
+       한다(인자 이름을 포함시키는 식으로).
+
+    유도 변형은 같은 무늬로 지우므로 이 둘을 못 본다 -- 걸리는 자리가 전부 사라져서
+    어차피 빨개진다. 그래서 규칙의 **모양**을 직접 본다."""
+    bad = []
+    for r in rules:
+        need = r.get("require")
+        if not need:
+            continue
+        pats = need if isinstance(need, list) else [need]
+        for pat in pats:
+            if _top_level_or(pat):
+                bad.append((r, f"require {pat!r} 에 OR 가 있다 -- 대안 하나만 남아도 "
+                               f"통과한다. 리스트로 나눠 적으면 전부 있어야 통과한다"))
+            for path in _files(r["globs"]):
+                for head in _def_headers(path.read_text(encoding="utf-8", errors="replace")):
+                    if re.search(pat, head):
+                        bad.append((r, f"require {pat!r} 가 정의부에도 걸린다 "
+                                       f"({path.name}: {head.strip()[:60]}) -- 호출을 "
+                                       f"지워도 정의가 남아 초록이 된다"))
+                        break
+    return bad
+
+
+def auto_red(rule: dict, src: str) -> list:
+    """규칙에서 **변형을 유도한다.** 손으로 고른 변형 하나로는 이빨을 확인할 수 없다.
+
+    왜 필요한가. red-green 을 손으로 쓰면 "내가 고른 그 변형에 걸린다"만 증명된다.
+    변형을 약하게 고르면 규칙이 이빨 없어도 초록이고, 실제로 심판-무해가 그랬다 --
+    그때 나는 규칙이 아니라 변형을 고쳤다. 게다가 변형과 규칙을 같은 사람이 같은 때에
+    쓰므로 맹점을 공유한다. 규칙 ④(검사기는 대상과 다른 출처)가 red-green 자체에 걸린다.
+
+    그래서 변형을 규칙에서 뽑는다. require 무늬에 걸리는 **모든 자리**를 지우면 그
+    규칙은 반드시 빨개져야 한다. 안 빨개지면 그 무늬가 다른 무언가에 -- 주석이나
+    정의부에 -- 걸려 있다는 뜻이고, 그것이 이빨 없는 규칙의 정체다. 이 방식이었으면
+    RPM-분리(docstring)와 계산-강제(정의부)를 손으로 짚지 않고도 잡았다.
+
+    **이것이 증명하는 것은 생존성뿐이다.** 무늬가 통째로 사라졌을 때 규칙이 반응한다는
+    것까지다. 실측으로 걸린 두 약점 -- OR 조건과 정의부 매칭 -- 은 이 방식으로 못 잡는다.
+    같은 무늬로 지우니 걸리는 자리가 전부 사라져서 어차피 빨개지기 때문이다. 그 둘은
+    meta_defects 가 따로 잡는다.
+
+    (변형본, 지운 무늬, 안내) 목록을 돌려준다. when 까지 지워지면 그 변형은 무효이므로
+    걸러낸다 -- 규칙이 안 걸리는 이유가 이빨이 아니라 대상 소멸이기 때문이다."""
+    out = []
+    if "forbid" in rule:
+        return [(src + "\n\nnp.linalg.lstsq(A, b)\n", rule["forbid"], "금지 무늬 주입")]
+    if rule.get("check") == "timeout":
+        return [(re.sub(r'(GEMINI_TIMEOUT",\s*")\d+(?:\.\d+)?(")', r"\g<1>60\g<2>", src),
+                 "GEMINI_TIMEOUT", "마감을 60 으로")]
+    need = rule.get("require")
+    if not need:
+        return []
+    for pat in (need if isinstance(need, list) else [need]):
+        mutated = re.sub(pat, "", src)
+        if mutated == src:
+            continue                       # 이 파일엔 그 무늬가 없다
+        if rule.get("when") and not re.search(rule["when"], mutated, re.M):
+            continue                       # when 까지 지워졌다 -- 무효한 변형
+        out.append((mutated, pat, "require 무늬를 전부 지움"))
+    return out
 
 
 def run(rules=RULES) -> list:
@@ -217,7 +325,7 @@ def main() -> int:
             print(f"{'':17} 근거({r['commit']}): {r['why']}")
         return 0
 
-    bad = run()
+    bad = meta_defects() + run()
     if bad:
         print(f"규칙 위반 {len(bad)}건:")
         for r, msg in bad:

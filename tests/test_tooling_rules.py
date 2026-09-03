@@ -19,6 +19,11 @@
   판본-보존     _snapshot_code 를 지운다  -> 수리가 이전 판을 덮어쓰던 시절
   심판-무해     verify.py 에 lstsq 호출을 넣는다 -> 심판이 답을 담던 시절
 
+그런데 **손으로 쓴 변형만으로는 부족하다.** 그것은 "내가 고른 그 변형에 걸린다"만
+증명한다. 그래서 변형을 규칙에서 유도하는 검사를 하나 더 둔다 -- require 무늬에 걸리는
+모든 자리를 지우면 규칙은 반드시 빨개져야 한다. 안 빨개지면 그 무늬가 주석이나 정의부에
+걸려 있다는 뜻이다.
+
 첫 판에서 넷(RPM-분리 · 미지-범주 · 상태코드-분기 · 심판-무해)이 빨개지지 못했다.
 셋은 규칙이 OR 라서 하나만 남겨도 통과했고 하나는 되살리는 방법이 약했다. **이 검사가
 없었으면 이빨 없는 규칙 넷을 초록으로 착각했을 것이다** -- 헛도는 심판과 같은 병이다.
@@ -124,6 +129,66 @@ def test_every_rule_can_go_red() -> None:
                 print(f"    [빨강] {rid:12} {bad[0][1][:70]}")
 
 
+def test_every_rule_can_go_red_by_derivation(failures_unused=None) -> None:
+    """변형을 **규칙에서 유도해서** 빨개지는지 본다. 손으로 고른 변형보다 강하다.
+
+    손으로 쓴 red-green 은 "내가 고른 그 변형에 걸린다"만 증명한다. 변형을 약하게
+    고르면 규칙이 이빨 없어도 초록이고, 실제로 심판-무해가 그랬다 -- 그때 나는 규칙이
+    아니라 **변형을** 고쳤다. 그리고 변형과 규칙을 같은 사람이 같은 때에 쓰므로 맹점을
+    공유한다. **규칙 ④(검사기는 대상과 다른 출처)가 red-green 자체에 걸린다.**
+
+    유도된 변형이 증명하는 것은 **생존성**이다. require 무늬가 통째로 사라지면 규칙이
+    반응하는가. 안 하면 when 이 안 걸렸거나 규칙이 연결되지 않은 것이다.
+
+    **강도는 증명하지 못한다.** 실측으로 걸린 두 약점 -- OR 조건과 정의부 매칭 -- 은 이
+    방식으로 못 잡는다. 같은 무늬로 지우면 걸리는 자리가 전부 사라져서 어차피 빨개지기
+    때문이다. 그 둘은 test_rule_shapes_have_teeth 가 규칙의 모양을 직접 봐서 잡는다.
+
+    손으로 쓴 변형도 남겨 둔다. 유도가 못 만드는 모양(값 비교, 금지 무늬 주입)이 있고,
+    세 방식이 서로를 대신하지 못한다."""
+    real = lint.REPO
+    checked = 0
+    for rule in lint.RULES:
+        for path in lint._files(rule["globs"]):
+            src = path.read_text(encoding="utf-8")
+            for mutated, pat, note in lint.auto_red(rule, src):
+                with tempfile.TemporaryDirectory() as td:
+                    tmp = Path(td)
+                    _stage(tmp)
+                    (tmp / path.relative_to(REPO)).write_text(mutated, encoding="utf-8")
+                    lint.REPO = tmp
+                    try:
+                        bad = lint.run([rule])
+                    finally:
+                        lint.REPO = real
+                checked += 1
+                check(bool(bad),
+                      f"{rule['id']}: {path.name} 에서 {pat!r} 를 지웠는데 통과한다 "
+                      f"-- 그 무늬가 주석이나 정의부에 걸려 있다는 뜻이다")
+    check(checked >= len(lint.RULES),
+          f"유도 변형이 규칙 수보다 적다 ({checked} < {len(lint.RULES)}) -- "
+          f"require 가 없는 규칙이 검사에서 빠진다")
+    print(f"    [유도] 변형 {checked}개 -- 규칙에서 뽑아 전부 빨개짐")
+
+
+def test_rule_shapes_have_teeth() -> None:
+    """**규칙 자체가 이빨이 있는가.** 변형으로는 못 보는 두 약점을 모양에서 본다.
+
+    ① require 안의 OR -- 대안 하나만 남아도 통과한다. 처음 판의 네 실패 중 셋이
+       이것이었다(RPM-분리 · 상태코드-분기 · 미지-범주). 리스트로 나눠 적으면 AND 다.
+    ② 정의부가 만족시키는 경우 -- require 가 `def 이름(` 에도 걸리면 호출을 지워도
+       정의가 남아 초록이다. 계산-강제가 그랬다.
+
+    이 검사를 붙이자마자 **살아 있는 이빨 없는 규칙 둘을 더 잡았다**(RPM-분리의
+    _is_rpm\(e\), 판본-보존의 _snapshot_code\(). 둘 다 손으로 쓴 red-green 은
+    통과하고 있었다 -- 내 변형이 정의와 호출을 한꺼번에 바꿔서 우연히 빨개졌기
+    때문이다. 실제 회귀(호출만 지움)에는 반응하지 못했다."""
+    bad = lint.meta_defects()
+    check(not bad, "규칙 모양에 약점이 있다: " +
+          "; ".join(f"{r['id']}: {m[:80]}" for r, m in bad[:3]))
+    print(f"    [모양] 규칙 {len(lint.RULES)}개 -- OR 없음, 정의부에 안 걸림")
+
+
 def test_rules_carry_evidence() -> None:
     """규칙마다 근거 커밋과 실측 사유가 붙어 있는가.
 
@@ -140,7 +205,8 @@ def test_rules_carry_evidence() -> None:
 
 def main() -> int:
     for fn in (test_clean_repo_is_green, test_every_rule_can_go_red,
-               test_rules_carry_evidence):
+               test_every_rule_can_go_red_by_derivation,
+               test_rule_shapes_have_teeth, test_rules_carry_evidence):
         fn()
     if FAILURES:
         print("실패:")
