@@ -684,7 +684,35 @@ def check_causality(scene, novel) -> list:
     return out
 
 
-CHECKS = (check_turn_format, check_emotion_continuity, check_emotion_range,
+def check_episode_length(scene, novel) -> list:
+    """V019 -- 회차 분량. 웹소설 1회차는 공백 포함 5,000자다.
+
+    첫 실측에서 씬 하나가 1,200자였다. 그대로 200화를 채우면 100만 자가 아니라 24만 자다.
+    분량은 취향이 아니라 **플랫폼 규격**이라 hard 로 막는다 -- 다만 회차 전체가 모였을 때만
+    판정한다(씬 하나가 짧은 것은 정상이다).
+
+    되먹임에 몇 자가 모자란지 숫자로 준다. "더 길게" 는 고칠 수 있는 지시가 아니다."""
+    from . import arc
+    if not scene.episode or not scene.is_episode_end:
+        return []
+    same = [s for s in novel.scenes if s.episode == scene.episode]
+    if any(not s.prose for s in same):
+        return []                                  # 아직 다 안 찼다
+    total = sum(len(s.prose) for s in same)
+    target = arc.CHARS_PER_EPISODE
+    if total < target * 0.7:
+        return [Violation("V019", "hard", f"{scene.episode}화",
+                          f"회차 분량이 {total}자로 목표 {target}자의 "
+                          f"{total / target:.0%} 다. {target - total}자 모자란다 -- "
+                          f"서브플롯 씬에서 조연의 이야기·일상의 마찰을 더 풀어라 "
+                          f"(보고서: 서브플롯이 분량의 2/3를 채운다)")]
+    if total < target * 0.85:
+        return [Violation("V019", "soft", f"{scene.episode}화",
+                          f"회차 분량 {total}자 (목표 {target}자)")]
+    return []
+
+
+CHECKS = (check_episode_length, check_turn_format, check_emotion_continuity, check_emotion_range,
           check_pov, check_direct_emotion, check_punctum,
           check_pov_presence, check_knowledge, check_relations, check_facts,
           check_belief, check_public_fiction,

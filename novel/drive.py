@@ -19,7 +19,7 @@ import time
 from pathlib import Path
 
 from . import gate
-from .state import AXES, Turn
+from .state import AXES, Scene, Turn
 from .verbs import catalog_for_prompt
 
 MAX_REPAIRS = 3
@@ -306,12 +306,30 @@ def build_episode(novel, spec: dict, llm=None, max_repairs=MAX_REPAIRS, log=None
     # id 는 **회차 범위**로 만든다. 시퀀스 하나에 결말이 여러 개라(시퀀스 1 은 1~10 과
     # 11~20) 시퀀스 번호만 쓰면 id 가 충돌하고, 아래 건너뛰기 판정도 두 번째 결말을
     # 이미 편 것으로 오판한다.
-    scenes = to_scenes(ep, prefix=f"ep{lo:03d}_", start_ep=lo)
-    for i, sc in enumerate(scenes):          # 회차마다 끝을 표시한다
-        sc.is_episode_end = True
-        sc.episode = lo + i
-    if scenes:
-        scenes[-1].cliffhanger = scenes[-1].cliffhanger or "shock_line"
+    # 회차 하나 = 척추 1씬 + 서브플롯 2씬. 첫 실측에서 씬 하나가 1,200자였는데 회차는
+    # 5,000자라 씬=회차로 두면 분량이 1/4 로 난다. 보고서대로 **서브플롯이 2/3를 채운다.**
+    from . import arc
+    main_scenes = to_scenes(ep, prefix=f"ep{lo:03d}_", start_ep=lo)
+    scenes = []
+    for i, main in enumerate(main_scenes):
+        epno = lo + i
+        main.episode, main.is_episode_end, main.cliffhanger = epno, False, ""
+        main.id = f"ep{lo:03d}_{epno:03d}m"
+        scenes.append(main)
+        for k in range(arc.SCENES_PER_EPISODE - arc.MAIN_SCENES):
+            b = _json(_llm_for(llm, "director")(
+                subplot_prompt(novel, epno, spec["summary"])))
+            sub = Scene(id=f"ep{lo:03d}_{epno:03d}s{k + 1}",
+                        participants=b.get("participants") or [novel.pov_character],
+                        mode=b.get("mode", "dialogue"),
+                        directives=[b.get("beat", "")],
+                        world_ops=list(b.get("world_ops") or []),
+                        scale=int(b.get("scale") or spec["scale"]),
+                        episode=epno)
+            scenes.append(sub)
+        scenes[-1].is_episode_end = True                  # 회차의 끝은 마지막 씬이다
+        scenes[-1].cliffhanger = (main_scenes[i].cliffhanger
+                                  or ("shock_line" if i == len(main_scenes) - 1 else ""))
     _record(log, {"event": "episode", "seq": spec["seq"], "eps": [lo, hi],
                   "spine": len(spine), "subplot": max(0, need),
                   "scenes": len(scenes), "unresolved": open_conds,
@@ -427,6 +445,9 @@ def narrator_prompt(novel, scene, feedback="") -> str:
 - "슬펐다/외로웠다" 같은 직접 서술 금지. 대사 안에서는 허용된다.
 - punctum 을 대화의 공백에 끼워 넣어라.
 - 담담하고 건조하게. 신파로 흐르지 마라.
+- **분량: 공백 포함 {__import__("novel.arc", fromlist=["x"]).CHARS_PER_SCENE}자 안팎.**
+  회차 하나가 5,000자이고 이 씬은 그중 한 조각이다. 짧게 끊지 마라 -- 대화 사이의 정적,
+  손이 하는 일, 창밖, 냄새, 소리로 채워라.
 {'- 편지를 읽는 장면으로 감싸고, 편지 내용을 서술에 녹여라.' if scene.mode == 'letter' else ''}
 {feedback}
 

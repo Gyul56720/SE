@@ -17,6 +17,20 @@ from __future__ import annotations
 CHARS_PER_EPISODE = 5000
 TOTAL_EPISODES = 200
 
+# 회차 하나는 씬 하나가 아니다. 첫 실측에서 씬 하나가 1,200자였는데 회차는 5,000자다.
+# 보고서: **서브플롯이 분량의 2/3를 채운다.** 메인 사건만으로 5,000자를 채우면 위기-해결-
+# 보상의 원패턴이 노골적으로 드러나 지루해진다. 그래서 회차를 이렇게 쪼갠다:
+#
+#   척추(메인) 1씬  +  서브플롯 2씬  =  1 회차
+#   ~1,700자          ~3,300자          5,000자
+#
+# 서브플롯은 조연의 연애사·가족 에피소드·일상의 마찰이고, 나중에 메인의 해결에 사소하게
+# 이바지한다. 인과에 얹히지 않으므로(establishes 가 비어 있다) 지워도 사슬이 안 무너진다.
+SCENES_PER_EPISODE = 3
+MAIN_SCENES = 1                                   # 나머지는 서브플롯
+CHARS_PER_SCENE = CHARS_PER_EPISODE // SCENES_PER_EPISODE
+SUBPLOT_RATIO = (SCENES_PER_EPISODE - MAIN_SCENES) / SCENES_PER_EPISODE  # 2/3
+
 # 감정선 4단계. 보고서: 혐오 -> 작은 호의와 흔들림 -> 위기 속 공모와 후회 -> 결정적 선택.
 STAGES = ("혐오·대립", "호의·흔들림", "공모·후회", "결정적 선택", "해소")
 
