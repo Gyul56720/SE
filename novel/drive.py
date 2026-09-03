@@ -22,9 +22,46 @@ from .state import AXES, Turn
 from .verbs import catalog_for_prompt
 
 MAX_REPAIRS = 3
+# 프롬프트를 캐시 가능한 고정부와 매번 바뀌는 부분으로 가르는 표식. 캐싱은 접두사 일치라
+# 이 경계가 있어야 고정부를 통째로 캐시할 수 있다.
+SPLIT = "\n<<<VOLATILE>>>\n"
+
+
+def _llm_for(llm, role: str):
+    """llm 이 dict 면 역할별로 고른다. 호출자가 director 만 Claude 로 돌릴 수 있게."""
+    if isinstance(llm, dict):
+        return llm.get(role) or llm.get("default") or default_llm
+    return llm
 
 
 # ---------------------------------------------------------------- LLM 어댑터
+
+def anthropic_llm(model: str = "claude-opus-5", effort: str = "high"):
+    """역할 하나를 Claude 로 돌린다. author(director)에 쓰라고 만든 것이다.
+
+    왜 director 만인가. 실측 프롬프트 기준 director 는 호출 6회 중 1회이고 출력이 300 토큰
+    남짓이라 **전체 토큰의 일부**인데, 플롯의 재미는 전부 거기서 갈린다. 100만자 한 편에서
+    director 를 Haiku 대신 Opus 로 올리는 비용 차이가 몇 달러다 -- 아낄 자리가 아니다.
+
+    캐싱: 카탈로그·페르소나·규칙은 매 씬 동일하므로 system 으로 올려 캐시한다. 캐시는 접두사
+    일치라 **바뀌는 것(씬 씨앗·되먹임)은 반드시 뒤에** 와야 한다. 프리픽스가 1바이트라도
+    흔들리면 캐시가 통째로 무효화된다."""
+    import anthropic
+    client = anthropic.Anthropic()
+
+    def call(prompt: str) -> str:
+        stable, _, volatile = prompt.partition(SPLIT)
+        r = client.messages.create(
+            model=model, max_tokens=16000,
+            output_config={"effort": effort},
+            system=[{"type": "text", "text": stable,
+                     "cache_control": {"type": "ephemeral"}}],
+            messages=[{"role": "user", "content": volatile or prompt}])
+        if r.stop_reason == "refusal":
+            raise RuntimeError(f"거절됨: {r.stop_details}")
+        return "".join(b.text for b in r.content if b.type == "text")
+    return call
+
 
 def default_llm(prompt: str) -> str:
     import sys
@@ -33,7 +70,12 @@ def default_llm(prompt: str) -> str:
     pool = llm_pool.build_pool()
     if not pool:
         raise RuntimeError("LLM 후보 풀이 비었다 -- GEMINI_API_KEY 를 설정하라")
-    return llm_pool.call(pool, prompt, pool_id="novel")[0]
+    return llm_pool.call(pool, _flatten(prompt), pool_id="novel")[0]
+
+
+def _flatten(prompt: str) -> str:
+    """캐시 경계 표식을 지운다. 캐싱을 안 쓰는 경로(Gemini 등)는 통짜 프롬프트를 받는다."""
+    return prompt.replace(SPLIT, "\n")
 
 
 def _json(text: str) -> dict:
@@ -62,9 +104,6 @@ def director_prompt(novel, scene, feedback="") -> str:
 
 [화자] {novel.pov_character} (37세 시점의 회고. 결말을 이미 알고 있다)
 [인물] {chr(10).join(f'  {c.name}: {c.persona}' for c in novel.characters)}
-[직전까지] {chr(10).join(f'  {s.id}: {s.directives[0] if s.directives else ""}' for s in prev) or '  (시작)'}
-[이 씬의 씨앗] {scene.directives[0] if scene.directives else ''}
-[참여자] {scene.participants} / [모드] {scene.mode}
 [화자가 이미 아는 미래] {novel.narrator_foreknowledge}
 
 규칙:
@@ -74,6 +113,10 @@ def director_prompt(novel, scene, feedback="") -> str:
 
 세계 변경이 필요하면 아래 동사만 쓴다(없는 동사는 기각):
 {catalog_for_prompt()}
+{SPLIT}
+[직전까지] {chr(10).join(f'  {s.id}: {s.directives[0] if s.directives else ""}' for s in prev) or '  (시작)'}
+[이 씬의 씨앗] {scene.directives[0] if scene.directives else ''}
+[참여자] {scene.participants} / [모드] {scene.mode}
 {feedback}
 
 JSON 만 출력:
@@ -149,7 +192,7 @@ def run_scene(novel, scene, llm, max_repairs=MAX_REPAIRS, log=None) -> dict:
     for attempt in range(1, max_repairs + 2):
         # --- 기획 (이미 채워져 있으면 건너뛴다: 템플릿이 준 씬)
         if not scene.location:
-            d = _json(llm(director_prompt(novel, scene, feedback)))
+            d = _json(_llm_for(llm, "director")(director_prompt(novel, scene, feedback)))
             scene.location = d.get("location", "")
             scene.punctum = d.get("punctum", "")
             scene.directives = d.get("directives") or scene.directives
@@ -166,7 +209,7 @@ def run_scene(novel, scene, llm, max_repairs=MAX_REPAIRS, log=None) -> dict:
         rounds = 1 if scene.mode == "letter" else 2
         for _ in range(rounds):
             for name in speakers:
-                a = _json(llm(actor_prompt(novel, scene, name, feedback)))
+                a = _json(_llm_for(llm, "actor")(actor_prompt(novel, scene, name, feedback)))
                 scene.turns.append(Turn(
                     actor=name, inner_thought=a.get("inner_thought", ""),
                     action=a.get("action", ""), speech=a.get("speech", ""),
@@ -182,7 +225,8 @@ def run_scene(novel, scene, llm, max_repairs=MAX_REPAIRS, log=None) -> dict:
             continue
 
         # --- 서술
-        scene.prose = llm(narrator_prompt(novel, scene, feedback)).strip()
+        scene.prose = _llm_for(llm, "narrator")(
+            narrator_prompt(novel, scene, feedback)).strip()
 
         # --- 관문 2차 (산문 규칙)
         vs = gate.check(scene, novel)
@@ -207,7 +251,7 @@ def run_scene(novel, scene, llm, max_repairs=MAX_REPAIRS, log=None) -> dict:
 
 def drive(novel, path, llm=None, max_repairs=MAX_REPAIRS, log=None, limit=None) -> dict:
     """미완 씬들을 차례로 몰아붙인다. 씬마다 즉시 저장한다."""
-    llm = llm or default_llm
+    llm = llm or default_llm      # 콜러블 하나 또는 {역할: 콜러블} dict
     log = log or (Path(path).with_suffix(".scenes.jsonl") if path else None)
     _record(log, {"event": "start", "at": time.strftime("%Y-%m-%d %H:%M:%S"),
                   "title": novel.title, "scenes": len(novel.scenes)})

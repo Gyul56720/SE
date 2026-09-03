@@ -214,17 +214,56 @@ def check_pov_presence(scene, novel) -> list:
                       f"'{scene.mode}' 다. letter 또는 reported 로 세탁하라")]
 
 
+def _secret_spec(v):
+    """secrets 값의 두 형태를 하나로. ["B","D"] 또는 {"knows":[...], "aliases":[...]}"""
+    if isinstance(v, dict):
+        return list(v.get("knows") or []), list(v.get("aliases") or [])
+    return list(v or []), []
+
+
 def check_knowledge(scene, novel) -> list:
-    """V008 -- 지식 누출. 인물이 자기가 모르는 것을 말한다."""
+    """V008 -- 지식 누출. 인물이 자기가 모르는 것을 말하거나 **생각한다.**
+
+    처음엔 speech 와 action 만 봤다. 첫 실측 런에서 그 구멍이 그대로 드러났다 -- A 가 모르는
+    '교환학생 지원서' 를 inner_thought 에서 언급했고, Narrator 가 그것을 산문으로 옮겨
+    "지원서 얘기라도 꺼낼 참일 것이다" 가 나왔는데 관문은 통과시켰다.
+
+    **inner_thought 는 서술의 재료다. 거기서 새면 산문에서 샌다.** 산문 자체도 화자의 것이므로
+    화자가 모르는 것이 서술되면 같은 누출이다. 그래서 셋 다 본다.
+
+    별칭도 같은 런에서 필요해졌다. 비밀이 '교환학생 지원서' 인데 텍스트에는 '지원서' 로만 나오면
+    정확 일치로는 안 걸린다. 별칭은 작가가 명시적으로 등록하는 것이라 hard 로 둔다 -- 등록했다는
+    것 자체가 그 말이 이 비밀을 가리킨다는 선언이다."""
     out = []
-    secrets = novel.facts.get("secrets", {})       # {용어: [아는 인물...]}
-    for i, t in enumerate(scene.turns):
-        text = f"{t.speech} {t.action}"
-        for term, holders in secrets.items():
-            if term in text and t.actor not in holders:
-                out.append(Violation("V008", "hard", f"턴 {i}({t.actor})",
-                                     f"'{term}' 을 말했지만 이 인물은 그것을 모른다 "
-                                     f"(아는 인물: {holders})"))
+    for term, spec in (novel.facts.get("secrets", {}) or {}).items():
+        _, aliases = _secret_spec(spec)
+        knowers = _knowers(novel, term, scene.id)
+        needles = [n for n in [term] + aliases if n]
+
+        for i, t in enumerate(scene.turns):
+            if t.actor in knowers:
+                continue
+            for field, txt in (("speech", t.speech), ("action", t.action),
+                               ("inner_thought", t.inner_thought)):
+                hit = next((n for n in needles if n in (txt or "")), None)
+                if hit:
+                    verb = "생각했" if field == "inner_thought" else "말했"
+                    tail = ("속마음은 서술의 재료라 여기서 새면 산문에서 샌다. "
+                            if field == "inner_thought" else "")
+                    out.append(Violation(
+                        "V008", "hard", f"턴 {i}({t.actor}) {field}",
+                        f"'{hit}' 를 {verb}지만 이 인물은 '{term}' 를 모른다 "
+                        f"(아는 인물: {sorted(knowers)}). {tail}"
+                        f"알아야 한다면 먼저 reveal 이 있어야 한다"))
+
+        # 산문은 화자의 것이다. 화자가 모르는 것이 서술되면 같은 누출이다.
+        if scene.prose and novel.pov_character not in knowers:
+            hit = next((n for n in needles if n in scene.prose), None)
+            if hit:
+                out.append(Violation(
+                    "V008", "hard", f"씬 {scene.id} 서술부",
+                    f"산문이 '{hit}' 를 언급하지만 화자 {novel.pov_character} 는 "
+                    f"'{term}' 를 모른다 (아는 인물: {sorted(knowers)})"))
     return out
 
 
@@ -303,7 +342,8 @@ def check_facts(scene, novel) -> list:
 
 def _knowers(novel, term: str, upto_scene: str) -> set:
     """해당 시점에 term 의 **진실**을 아는 인물 집합."""
-    out = set(novel.facts.get("secrets", {}).get(term, []))
+    raw = (novel.facts.get("secrets", {}) or {}).get(term, [])
+    out = set(raw.get("knows", []) if isinstance(raw, dict) else raw)
     for c in novel.characters:
         if term in (c.knows or []):
             out.add(c.name)
