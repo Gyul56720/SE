@@ -48,6 +48,24 @@ def _is_quota(e) -> bool:
     return "RESOURCE_EXHAUSTED" in t or "429" in t
 
 
+def _is_rpm(e) -> bool:
+    """429 중에서도 **1분이면 풀리는** 분당 한도인가.
+
+    bot_tools.is_rpm_quota_error 와 같은 판정을 여기로 가져왔다. 봇 경로는 이미 구분하고
+    있었는데 이 풀은 아니어서, 모든 429 를 자정까지 소진으로 확정하고 있었다.
+    quota_tracker 가 그러지 말라고 적어둔 바로 그 실수다:
+
+        "둘을 합쳐 놓으면 ... 1분이면 풀릴 키를 하루 종일 봉인하게 된다"
+
+    야간 런에서 이게 치명적이다. 후보가 넷뿐인데 몇 초 안에 여러 번 호출하다 RPM 에 걸리면
+    멀쩡한 조합이 차례로 봉인되고, 몇 분 만에 풀이 비어 남은 밤이 통째로 날아간다.
+
+    판별 실패면 False -- 일일 소진을 분당으로 잘못 보면 1분마다 죽은 조합을 다시 두드린다.
+    모르는 것은 보수적으로 일일 소진 취급하는 쪽이 안전하다(bot_tools 와 같은 판단)."""
+    t = str(e)
+    return _is_quota(e) and ("PerMinute" in t or "per minute" in t.lower())
+
+
 def _is_permanent(e) -> bool:
     t = str(e)
     return any(m in t for m in ("PERMISSION_DENIED", "403", "FAILED_PRECONDITION",
@@ -170,7 +188,9 @@ def call(pool, prompt: str, pool_id: str = "orchestrator", max_candidates: int =
             quota_tracker.set_pinned(pool_id, label)
             return text, label
         except Exception as e:
-            if _is_quota(e):
+            if _is_rpm(e):
+                quota_tracker.record_rpm_cooldown(label)
+            elif _is_quota(e):
                 quota_tracker.record_exhausted(label)
             elif _is_permanent(e):
                 quota_tracker.mark_dead(label, str(e)[:200])
