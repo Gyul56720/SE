@@ -110,6 +110,21 @@ def _inject(run_dir: Path, verifier_rel: str) -> dict:
             "n_nodes": len(plan["nodes"])}
 
 
+def _print_failures(res: dict, limit: int = 6) -> None:
+    """심판이 남긴 기각 사유를 그대로 보여준다. 잘라내면 되먹임의 재료가 사라진다.
+
+    node_status 의 "failed" 세 글자만 찍던 시절에는, 심판이 만든 진단이 파일 안에서
+    사라졌다 -- 무엇이 틀렸는지 모르면 다음 수를 정할 수 없다."""
+    fails = res.get("failures") or []
+    if not fails:
+        return
+    print(f"\n심판이 남긴 기각 사유 (마지막 {min(limit, len(fails))}건 / 전체 {len(fails)}건):")
+    for f in fails[-limit:]:
+        print(f"  [{f['plan']}] {f['node']} -- {f['kind']}")
+        for line in str(f["message"]).split(" | "):
+            print(f"      {line}")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="오케스트레이터에게 직선거리 문제를 풀린다")
     ap.add_argument("--max-repair-rounds", type=int, default=3)
@@ -169,6 +184,7 @@ def main() -> int:
     else:
         print(f"이유: {res.get('reason')}")
         print(f"기록: {json.dumps(res.get('log', []), ensure_ascii=False)[:600]}")
+        _print_failures(res)
     (run_dir / "result.json").write_text(
         json.dumps(res, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
     return 0 if res.get("status") == "solved" else 1

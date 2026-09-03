@@ -74,6 +74,39 @@ def _force_verifier(run_dir: Path, final_verifier: str) -> bool:
     return changed
 
 
+def failure_reasons(run_dir) -> list:
+    """심판이 남긴 기각 사유를 시간순으로 모은다. 재계획 전 시도(attempts/attemptN)도 포함한다.
+
+    **사유는 이미 기록되고 있었는데 아무도 읽지 않았다.** orchestrator 는 노드가 떨어질
+    때마다 node.attempts 에 {"rejected": msg} 를 남긴다. 그런데 drive 는 node_status
+    ("failed") 만 돌려줬고, run.py 는 그것만 찍었다. 그래서 화면에는 "failed" 세 글자만
+    남고, 심판이 애써 만든 진단 -- 틀린 칸 수, 상쇄 질량, 격자 이탈, 예산 초과 -- 이
+    전부 파일 안에서 사라졌다.
+
+    실측(2026-09-03, tensorrank --budget mm333=26): 수리 2회 + 재계획 1회를 돌고
+    incomplete 로 끝났는데, **무엇이 틀렸는지 화면에 한 글자도 없었다.** 되먹임 루프의
+    재료가 곧 이 사유이므로, 사람이 못 보면 다음 수를 정할 수 없다."""
+    run_dir = Path(run_dir)
+    out = []
+    plans = sorted(run_dir.glob("attempts/attempt*/plan.json")) + [run_dir / "plan.json"]
+    for path in plans:
+        if not path.is_file():
+            continue
+        try:
+            plan = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        where = path.parent.name if path.parent != run_dir else "현재"
+        for node in plan.get("nodes", []):
+            for att in node.get("attempts", []):
+                msg = att.get("rejected") or att.get("error")
+                if msg:
+                    out.append({"plan": where, "node": node.get("id"),
+                                "kind": "기각" if att.get("rejected") else "오류",
+                                "message": str(msg)})
+    return out
+
+
 def drive(run_dir: str, max_repair_rounds: int = 3, max_node_repairs: int = 2,
           max_replans: int = 1, pool=None, node_timeout: float = None,
           final_verifier: str = None) -> dict:
@@ -116,7 +149,8 @@ def drive(run_dir: str, max_repair_rounds: int = 3, max_node_repairs: int = 2,
         if res.get("status") == "solved":
             return {"status": "solved", "run_dir": str(run_dir), "rounds": round_i,
                     "replans": replans, "final": res.get("final"),
-                    "final_result": res.get("final_result"), "log": log}
+                    "final_result": res.get("final_result"), "log": log,
+                    "failures": failure_reasons(run_dir)}
 
         if round_i > max_repair_rounds:
             break  # 마지막 라운드는 수리 결과를 확인만 하고 끝낸다.
@@ -169,7 +203,8 @@ def drive(run_dir: str, max_repair_rounds: int = 3, max_node_repairs: int = 2,
             break
 
     return {"status": "incomplete", "run_dir": str(run_dir), "reason": reason,
-            "replans": replans, "log": log}
+            "rounds": len(log), "replans": replans, "log": log,
+            "failures": failure_reasons(run_dir)}
 
 
 def solve(problem: str, max_repair_rounds: int = 3, max_node_repairs: int = 2,

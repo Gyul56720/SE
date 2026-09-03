@@ -760,6 +760,65 @@ def test_replan_does_not_erase_injected_verifier(failures: list) -> None:
            f"drive 가 시작 시점에 다시 꽂는다: {plan['nodes'][0]['verifier']}")
 
 
+def test_failure_reasons_surface(failures: list) -> None:
+    """심판의 기각 사유가 **화면까지 올라오는가.** 되먹임의 재료가 그것이다.
+
+    실측(2026-09-03, tensorrank --budget mm333=26). 수리 2회 + 재계획 1회를 돌고
+    incomplete 로 끝났는데 화면에는 node_status 의 "failed" 세 글자뿐이었다. 심판은
+    틀린 칸 수, 상쇄 질량(국소최소 신호), 격자 이탈, 예산 초과를 전부 만들어 두었고
+    orchestrator 도 node.attempts 에 성실히 적고 있었다 -- **아무도 읽지 않았을 뿐이다.**
+
+    무엇이 틀렸는지 모르면 다음 예산을 얼마로 걸지, 문제 기술서를 어떻게 고칠지
+    정할 수 없다. 그리고 재계획 전 시도(attempts/attemptN)까지 봐야 흐름이 보인다."""
+    print("\n[진단] 기각 사유가 결과까지 올라온다")
+    import solve as orch_solve
+    import tempfile
+
+    def ok(cond, msg):
+        print(f"    {'OK  ' if cond else 'FAIL'} {msg}")
+        if not cond:
+            failures.append(msg)
+
+    def plan_with(node_id, atts):
+        return {"problem": "p", "final": node_id,
+                "nodes": [{"id": node_id, "verifier": "v.py#check", "attempts": atts}]}
+
+    with tempfile.TemporaryDirectory() as td:
+        run = Path(td)
+        (run / "attempts" / "attempt1").mkdir(parents=True)
+        (run / "attempts" / "attempt1" / "plan.json").write_text(json.dumps(
+            plan_with("old_node", [{"rejected": "case mm333: 4 칸이 틀렸다"}])),
+            encoding="utf-8")
+        (run / "plan.json").write_text(json.dumps(
+            plan_with("new_node", [{"error": "solve: KeyError('u')"},
+                                   {"rejected": "case w_state: 격자 이탈 -- |성분| 최대 100"}])),
+            encoding="utf-8")
+
+        got = orch_solve.failure_reasons(run)
+        ok(len(got) == 3, f"세 건이 다 모인다 (재계획 전 것 포함): {len(got)}")
+        ok(got[0]["plan"] == "attempt1" and got[0]["node"] == "old_node",
+           f"재계획 전 시도가 먼저 온다: {got[0]}")
+        ok(got[-1]["kind"] == "기각" and "격자" in got[-1]["message"],
+           f"마지막이 최신 기각이다: {got[-1]}")
+        ok(any(g["kind"] == "오류" for g in got), "실행 오류도 사유로 잡는다")
+        ok(all(len(g["message"]) > 5 for g in got), "사유를 잘라내지 않는다")
+
+        # drive 가 incomplete 로 끝날 때 rounds 와 failures 를 같이 돌려주는가.
+        # rounds 가 None 으로 찍히던 것도 실측으로 걸렸다.
+        real = orch_solve.orchestrator.run_plan
+        orch_solve.orchestrator.run_plan = lambda *a, **kw: {
+            "status": "incomplete", "node_status": {"new_node": "failed"}}
+        try:
+            res = orch_solve.drive(str(run), max_repair_rounds=0, max_replans=0)
+        finally:
+            orch_solve.orchestrator.run_plan = real
+        ok(res["status"] == "incomplete", "incomplete 로 끝난다")
+        ok(isinstance(res.get("rounds"), int),
+           f"rounds 가 None 이 아니다: {res.get('rounds')!r}")
+        ok(len(res.get("failures") or []) == 3,
+           f"결과에 기각 사유가 실린다: {len(res.get('failures') or [])}건")
+
+
 def main() -> int:
     failures: list[str] = []
     for t in (test_red_without_repair, test_green_repair_loop,
@@ -771,7 +830,8 @@ def main() -> int:
               test_llm_pool_splits_rpm_from_daily_quota,
               test_llm_pool_resolves_allowlist_not_guesses,
               test_llm_pool_timeout_fits_measured_latency,
-              test_replan_does_not_erase_injected_verifier):
+              test_replan_does_not_erase_injected_verifier,
+              test_failure_reasons_surface):
         t(failures)
     if failures:
         print("\n=== 실패 ===")
