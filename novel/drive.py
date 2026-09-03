@@ -126,6 +126,15 @@ def claude_code_llm(timeout: float = 300.0):
     # 디렉터가 소설이 아니라 이 저장소 얘기를 하게 된다. 연출만 시킬 것이므로 빈 디렉토리에서.
     workdir = tempfile.mkdtemp(prefix="novel-director-")
 
+    # **API 키를 물려주지 않는다.** 이 어댑터의 존재 이유가 "구독으로 청구한다" 인데,
+    # 부모 셸에 ANTHROPIC_API_KEY 가 export 돼 있으면 CLI 가 로그인 프로필 대신 그 키로
+    # 인증한다(문서화된 대표적 함정: 키가 있으면 프로필은 아예 조회되지 않는다).
+    # 그러면 크레딧을 피하려고 만든 경로가 도로 크레딧으로 나가고, 그 키가 워크스페이스
+    # 헤더를 요구하면 같은 400 을 낸다 -- 실측으로 그렇게 났다.
+    # 빈 문자열도 자리를 차지하므로 **지운다.**
+    child_env = {k: v for k, v in _os.environ.items()
+                 if k not in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")}
+
     def call(prompt: str) -> str:
         # session-id 는 정식 UUID 여야 한다 (Public_agent/verify.py 는 접두사를 붙여 쓰는데
         # 최신 CLI 는 그것을 거부한다: "Invalid session ID").
@@ -135,7 +144,7 @@ def claude_code_llm(timeout: float = 300.0):
                 # 권한 모드를 주지 않는다. 디렉터는 텍스트만 내놓으므로 도구가 필요 없고,
                 # bypassPermissions 는 root 로 돌면 CLI 가 거부한다.
                 ["claude", "-p", "--session-id", sid, _flatten(prompt)],
-                cwd=workdir, stdin=subprocess.DEVNULL,
+                cwd=workdir, stdin=subprocess.DEVNULL, env=child_env,
                 capture_output=True, text=True, timeout=timeout)
         except FileNotFoundError:
             raise RuntimeError("claude CLI 를 찾지 못했다 -- Claude Code 가 설치돼 있는가")
@@ -149,6 +158,8 @@ def claude_code_llm(timeout: float = 300.0):
                 f"claude -p 가 exit {r.returncode} 로 끝났다: {detail[-500:]}\n"
                 f"  직접 확인:  claude -p '안녕' < /dev/null; echo \"exit=$?\"\n"
                 f"  로그인 상태: claude 를 대화형으로 한 번 띄워 인증을 확인하라\n"
+                f"  (이 어댑터는 ANTHROPIC_API_KEY 를 자식에게 넘기지 않는다 -- "
+                f"넘기면 구독이 아니라 그 키로 청구된다)\n"
                 f"  한도 소진이면 API 키 경로(anthropic_llm)나 Gemini 로 우회하라")
         out = (r.stdout or "").strip()
         if not out:
