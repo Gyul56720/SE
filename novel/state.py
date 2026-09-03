@@ -312,9 +312,29 @@ class Novel:
         rels, problems = [], []
         names = {c.name for c in self.characters}
 
+        # 관계 동사가 world_ops 로 선언될 수도 있다(start_romance / marry / end_romance
+        # / divorce / bind). 두 출처가 서로를 모르면 원장이 반쪽이 된다 -- 관계 타임라인의
+        # 출처를 하나로 모았던 것과 같은 병이라 여기서 합쳐서 읽는다.
+        WORLD_TO_REL = {"start_romance": ("start", "연인"), "end_romance": ("end", "연인"),
+                        "marry": ("start", "배우자"), "divorce": ("end", "배우자"),
+                        "unrequited": ("start", "짝사랑")}
+
+        def rel_ops_of(sc):
+            out = list(sc.relation_ops or [])
+            for w in sc.world_ops or []:
+                m = WORLD_TO_REL.get(w.get("event"))
+                if not m:
+                    continue
+                members = list(w.get("pair") or ([w.get("who"), w.get("toward")]
+                                                 if w.get("who") else []))
+                if len(members) == 2 and all(members):
+                    out.append({"op": m[0], "kind": w.get("kind") or m[1],
+                                "members": members})
+            return out
+
         for idx in range(max(0, end + 1)):
             sc = self.scenes[idx]
-            for op in sc.relation_ops or []:
+            for op in rel_ops_of(sc):
                 kind, members = op.get("kind", ""), list(op.get("members", []))
                 bad = [m for m in members if m not in names]
                 if bad:
