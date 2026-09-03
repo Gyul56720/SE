@@ -138,10 +138,12 @@ def test_interval_report_is_not_a_lie() -> None:
           f"27 을 두고 '구간 안'이라 적으면 안 된다: {r['reason']}")
     print(f"    [구간] M=27 -> {r['reason']}")
 
-    # 구간 안에 실제로 들어온 경우와, 하한 아래로 내려온 경우도 말이 달라야 한다.
+    # 네 자리를 전부 다르게 말해야 한다. **"구간 안"으로 뭉치면 안 된다** -- 상한을
+    # 재현한 것(1976년 결과)과 상한 아래로 내려간 것(새 결과)은 다른 사건이다.
     case["budget"] = 23
     sub = trivial(3, 3, 3)
-    for M, want in ((23, "inside"), (19, "inside"), (18, "below")):
+    for M, want in ((24, "above"), (23, "at_upper"), (22, "new"),
+                    (19, "new"), (18, "below")):
         # 항 개수만 바꾼 가짜다. 정확성은 여기서 보는 것이 아니므로 표적도 같이 줄인다.
         fake = {"id": "x", "shape": [1, 1, 1], "budget": 30,
                 "known": {"lower": 19, "upper": 23},
@@ -151,8 +153,12 @@ def test_interval_report_is_not_a_lie() -> None:
         check(d["ok"], f"M={M}: 정확한 분해인데 떨어진다 -- {d['reason']}")
         check(d.get("interval") == want,
               f"M={M} 은 '{want}' 여야 한다: {d.get('interval')}")
-        if want == "below":
-            check(d.get("alert"), f"M={M}: 하한 아래면 심판을 의심하라고 말해야 한다")
+        if want in ("below", "new"):
+            check(d.get("alert"),
+                  f"M={M}: 문헌보다 나은 값이면 심판을 의심하라고 말해야 한다")
+        if want == "at_upper":
+            check("재현" in d["reason"] and not d.get("alert"),
+                  f"M={M}: 상한 재현은 새 결과가 아니다: {d['reason']}")
     check(len(sub["u"]) == 27, "전제 확인: 자명해는 27 항이다")
 
 

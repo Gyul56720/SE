@@ -247,13 +247,24 @@ def score_case(case, row) -> dict:
     # 이기만 하면 "구간 안"이라 적었고, 그래서 예산 27 로 푼 런에서 M=27 을 두고 "구간
     # [19,23] 안"이라고 **거짓을 보고했다**. 심판이 통과 여부를 맞게 내도 보고가 틀리면
     # 그 위에 쌓는 판단이 전부 틀어진다.
-    d["interval"] = "below" if M < lo else ("inside" if M <= hi else "above")
+    # **"구간 안"으로 뭉치면 안 된다.** 상한을 재현한 것(=1976 년 결과)과 상한 아래로
+    # 내려간 것(=새 결과)은 완전히 다른 사건이다. M=23 과 M=22 가 같은 문장으로 나오면
+    # 무슨 일이 일어났는지 화면만 보고는 알 수 없다.
+    d["interval"] = ("below" if M < lo else "above" if M > hi
+                     else "at_upper" if M == hi else "new")
     if d["interval"] == "below":
         d["alert"] = (f"M={M} 이 문헌 하한 {lo} 아래다. 문헌이 틀렸을 확률보다 심판에 "
                       f"구멍이 있을 확률이 훨씬 크다 -- 먼저 심판을 의심하라")
         d["reason"] = f"정확 · M={M} · 구간 [{lo},{hi}] **아래**"
-    elif d["interval"] == "inside":
-        d["reason"] = f"정확 · M={M} · 구간 [{lo},{hi}] 안"
+    elif d["interval"] == "at_upper":
+        d["reason"] = (f"정확 · M={M} · 문헌 상한과 같다 -- 알려진 결과를 재현한 것이지 "
+                       f"내린 것이 아니다")
+    elif d["interval"] == "new":
+        d["alert"] = (f"M={M} 이 문헌 상한 {hi} **아래**다. 50 년 동안 아무도 못 한 것이므로 "
+                      f"먼저 심판을 의심하라 -- 재구성이 정말 한 칸도 안 틀렸는지, 성분이 "
+                      f"정말 격자 안인지, 심판이 정말 주입본인지 직접 다시 확인하라")
+        d["reason"] = (f"정확 · M={M} · 구간 [{lo},{hi}] 안이고 상한 {hi} 보다 작다 "
+                       f"-- 알려진 것보다 나은 값이다")
     else:
         d["reason"] = (f"정확 · M={M} · 구간 [{lo},{hi}] **위** -- 예산은 넘겼지만 "
                        f"문헌 상한 {hi} 는 아직 못 내렸다")
