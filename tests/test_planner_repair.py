@@ -333,7 +333,12 @@ def test_llm_pool_reads_dotenv(failures: list) -> None:
         if not cond:
             failures.append(msg)
 
-    saved = os.environ.pop("GEMINI_API_KEY", None)
+    # **두 키를 다 치워야 한다.** build_pool 은 GEMINI_API_KEY 와 GEMINI_API_KEY_FALLBACK
+    # 을 둘 다 읽는다. 처음에는 앞의 것만 치우고 쟀는데, VM 처럼 FALLBACK 이 환경에 있는
+    # 기계에서는 풀이 2개가 되어 떨어졌다 -- 컨테이너에는 FALLBACK 이 없어서 초록이었다.
+    # **또 "내 기계에 없는 것"을 전제한 시험이었다.** 같은 병으로 두 번 걸렸다.
+    KEYS = ("GEMINI_API_KEY", "GEMINI_API_KEY_FALLBACK")
+    saved = {k: os.environ.pop(k, None) for k in KEYS}
     tmp = Path(tempfile.mkdtemp(prefix="dotenv_test_"))
     real_cands = llm_pool._dotenv_candidates
     try:
@@ -348,6 +353,13 @@ def test_llm_pool_reads_dotenv(failures: list) -> None:
         ok(bool(pool) and pool[0][1][1] == "from-environment",
            ".env 가 이미 있는 환경변수를 덮지 않는다 (systemd 값 우선)")
 
+        # FALLBACK 도 후보가 되는가. VM 이 실제로 두 키를 쓰고 있으므로 이것도 재야 한다.
+        os.environ["GEMINI_API_KEY_FALLBACK"] = "second-key"
+        pool = llm_pool.build_pool(models=["m"], llm_factory=lambda m, k: (m, k))
+        ok(len(pool) == 2 and {c[1][1] for c in pool} == {"from-environment", "second-key"},
+           f"두 키가 모두 후보가 된다: {[c[1][1] for c in pool]}")
+        os.environ.pop("GEMINI_API_KEY_FALLBACK", None)
+
         # 여러 자리를 다 훑되 앞자리가 이긴다 -- 뒤에 있는 파일이 앞을 덮으면 안 된다.
         os.environ.pop("GEMINI_API_KEY", None)
         tmp2 = Path(tempfile.mkdtemp(prefix="dotenv_test2_"))
@@ -361,9 +373,10 @@ def test_llm_pool_reads_dotenv(failures: list) -> None:
             shutil.rmtree(tmp2, ignore_errors=True)
     finally:
         llm_pool._dotenv_candidates = real_cands
-        os.environ.pop("GEMINI_API_KEY", None)
-        if saved is not None:
-            os.environ["GEMINI_API_KEY"] = saved
+        for k, v in saved.items():
+            os.environ.pop(k, None)
+            if v is not None:
+                os.environ[k] = v
         shutil.rmtree(tmp, ignore_errors=True)
 
 
