@@ -292,7 +292,10 @@ def build_episode(novel, spec: dict, llm=None, max_repairs=MAX_REPAIRS, log=None
 
     ep = Episode(n=spec["seq"], outcome=Outcome(spec["summary"], spec["requires"]),
                  beats=beats[:body_slots] + beats[-1:], episodes=(lo, hi))
-    scenes = to_scenes(ep, prefix=f"s{spec['seq']}e", start_ep=lo)
+    # id 는 **회차 범위**로 만든다. 시퀀스 하나에 결말이 여러 개라(시퀀스 1 은 1~10 과
+    # 11~20) 시퀀스 번호만 쓰면 id 가 충돌하고, 아래 건너뛰기 판정도 두 번째 결말을
+    # 이미 편 것으로 오판한다.
+    scenes = to_scenes(ep, prefix=f"ep{lo:03d}_", start_ep=lo)
     for i, sc in enumerate(scenes):          # 회차마다 끝을 표시한다
         sc.is_episode_end = True
         sc.episode = lo + i
@@ -316,7 +319,8 @@ def drive_novel(novel, outcomes, path, llm=None, max_repairs=MAX_REPAIRS,
     log = log or (Path(path).with_suffix(".scenes.jsonl") if path else None)
     done = []
     for spec in outcomes[:limit_episodes] if limit_episodes else outcomes:
-        if any(s.id.startswith(f"s{spec['seq']}e") for s in novel.scenes):
+        tag = f"ep{spec['eps'][0]:03d}_"
+        if any(s.id.startswith(tag) for s in novel.scenes):
             continue                                   # 이미 편 에피소드는 건너뛴다
         novel.scenes.extend(build_episode(novel, spec, llm, max_repairs, log))
         if path:
