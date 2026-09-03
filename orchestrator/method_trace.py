@@ -35,6 +35,16 @@ TRIVIAL = {
     "all", "Fraction", "loads", "dumps", "read_text", "write_text", "open", "super",
 }
 
+# 배열을 만들거나 모양을 바꾸는 것뿐인 호출. **이것만 있으면 방법이 아니다.**
+# 실측(2026-09-03, tensorrank mm333=22): 판본이 np.zeros 하나만 부르는데 추적기가
+# "미분류 -- 알려진 갈래 밖" 이라고 찍었다. 실제로는 23x9 영행렬을 할당해 놓고 채우지
+# 못한 것이었다. 상수표를 걸러냈더니 이번에는 **빈 배열**이 같은 자리로 새어 들어왔다.
+ALLOC = {
+    "zeros", "ones", "empty", "full", "array", "asarray", "zeros_like", "ones_like",
+    "empty_like", "full_like", "arange", "linspace", "eye", "identity", "reshape",
+    "ravel", "flatten", "tolist", "astype", "deepcopy", "fromiter", "transpose", "T",
+}
+
 # 서술용 표지. 여기 없는 것이 나오면 "미분류"로 남긴다 -- 그것이 흥미로운 쪽이다.
 MARKERS = {
     "선형대수/최소제곱": ("lstsq", "pinv", "solve", "svd", "eig", "eigh", "qr", "inv", "det"),
@@ -93,8 +103,10 @@ def fingerprint(src: str) -> dict:
         # 방법이 없는 것(상수표를 그대로 적어넣기)은 완전히 다른 사건이다. 후자는
         # 탐색이 아니라 기억이고, 아무도 모르는 값(<3,3,3> 의 22)에는 쓸 수 없다.
         dense = counts["num"] >= 30 and not counts["while"]
+        alloc_only = bool(sig) and all(c.split(".")[-1] in ALLOC for c in sig)
         tags = ["상수표(계산 없음)"] if (not sig and dense) else \
-               ["골격/미완"] if not sig else ["미분류"]
+               ["골격/미완"] if not sig else \
+               ["할당만(계산 없음)"] if alloc_only else ["미분류"]
     return {"calls": calls, "sig": sig, "imports": imports, "counts": counts,
             "recursive": recursive, "tags": tags,
             "lines": len([l for l in src.splitlines() if l.strip()])}
@@ -191,6 +203,9 @@ def main() -> int:
     print(f"\n갈아타기 {res['n_jumps']}회 · 등장한 갈래: {', '.join(res['families'])}")
     if "미분류" in res["families"]:
         print("'미분류' 는 실질 호출이 있는데 알려진 갈래에 안 걸린 것이다 -- 그쪽이 흥미롭다")
+    if "할당만(계산 없음)" in res["families"]:
+        print("'할당만(계산 없음)' 도 방법이 없는 것이다. 배열을 만들어 놓고 채우지 "
+              "못한 것이므로 미분류로 세면 안 된다")
     if "상수표(계산 없음)" in res["families"]:
         print("'상수표(계산 없음)' 는 방법이 없는 것이다. 답을 적어넣은 것이지 찾은 것이 "
               "아니므로, 아무도 모르는 값에는 쓸 수 없다 -- 탐색이 아니라 기억이다")
