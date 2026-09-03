@@ -38,7 +38,10 @@ SPLIT = "\n<<<VOLATILE>>>\n"
 
 
 def _llm_for(llm, role: str):
-    """llm 이 dict 면 역할별로 고른다. 호출자가 director 만 Claude 로 돌릴 수 있게."""
+    """llm 이 dict 면 역할별로 고른다. 호출자가 director 만 Claude 로 돌릴 수 있게.
+
+    extractor 는 기본이 Gemini 다. 판단하지 않고 옮기기만 하므로 값싼 모델로 충분하고,
+    비싼 모델을 여기 쓰면 호출의 절반이 추출에 들어간다."""
     if isinstance(llm, dict):
         return llm.get(role) or llm.get("default") or default_llm
     return llm
@@ -273,52 +276,136 @@ JSON 만 출력:
 
 
 def beat_prompt(novel, spec: dict, open_conds: list, ep: int, feedback="") -> str:
-    """열린 요구 하나를 갚는 **한 회차 분량의 시나리오**를 받는다.
+    """한 회차 분량의 **시나리오**를 받는다. 입력은 XML, 출력은 Markdown.
 
-    한 줄짜리 beat 만 받으면 아래층(Actor·Narrator)이 나머지를 알아서 지어낸다. 그러면
-    디렉터가 있으나 마나다. 세팅·트리거·장치·카메라·서브텍스트·감정 좌표까지 받아서
-    그대로 아래로 흘린다."""
+    형식 세금(Format Tax): 출력 형식을 JSON/XML 로 강제하면 모델이 문장을 지으면서 동시에
+    문법 유효성을 지켜야 해서 주의력이 갈리고, 개방형 창작에서 품질이 떨어진다. 그래서
+    **창작은 Markdown 자유 형식으로 받는다.**
+
+    그런데 관문(V009 관계·V018 개연성·V013 진도)은 구조화된 데이터를 먹고 산다. 산문만
+    받으면 검증이 통째로 무너진다. 그래서 두 단계로 가른다:
+
+        디렉터(Opus)  XML 입력 -> Markdown 시나리오   창작. 형식 세금 면제
+        추출기(Gemini) Markdown -> JSON              데이터 추출. JSON 이 유리한 태스크
+
+    보고서 자신이 근거다 -- "JSON 의 정확도 우위는 **데이터 추출 태스크에 한정**된 이야기다."
+    창작에는 Markdown, 추출에는 JSON 을 쓰면 둘 다 자기 자리에서 쓰인다.
+
+    입력의 XML 태그는 맥락 구역을 갈라 환각과 맥락 이탈을 막는 쪽이라 유지한다."""
     from . import arc
     seq = arc.sequence_of(ep)
     prev = [s for s in novel.scenes if s.prose][-2:]
-    recap = "\n".join(f"  {s.episode}화: {s.directives[0] if s.directives else ''}"
-                       for s in prev) or "  (시작)"
-    return f"""너는 여성향 청춘 로맨스 웹소설의 디렉터다. 한 회차의 **시나리오**를 짠다.
-장면 요약이 아니라 연출 지시다 -- 무엇을 보여주고 무엇을 숨길지 네가 정한다.
+    recap = "\n".join(f"- {s.episode}화: {s.directives[0] if s.directives else ''}"
+                       for s in prev) or "- (시작)"
+    return f"""<System_Persona>
+당신은 대한민국 최고 수준의 웹소설 서사 디자이너다. 장기/에피소드/화별 3단 플롯에 능통하고,
+연독률 방어를 위해 도파민 메커니즘과 정보 격차, 5대 클리프행어 공식을 자유자재로 쓴다.
+</System_Persona>
 
+<Narrative_Doctrine>
+- 메인(로맨스) 33% · 서브(일상·가족) 67%. 서브플롯이 위기-해결-보상의 원패턴을 은폐한다.
+- 감정은 추상어로 쓰지 않는다. "슬프다" 가 아니라 "목이 메어 말이 나오지 않았다" 로.
+- 작은 사건에서 시작해 스케일을 키운다. 처음부터 크면 50화 전에 동력을 잃는다.
+- 남주는 윤리적 선을 넘지 않되 강한 동기를 갖는다. 여주는 구조받기만 하지 않는다.
+- 독자와 인물의 정보 격차가 연독률의 엔진이다.
+- 클리프행어 5공식: 위기 직전 / 충격 대사 후 / 예상 밖 인물 등장 / 위험 신호 직전 /
+  들키면 안 되는 순간에 들키기. 매회 남발하면 양치기 소년이 된다.
+</Narrative_Doctrine>
+
+<World>
 {_world_brief(novel)}
-
-[연출에서 반드시 정할 것]
-  staging  공간·시간·날씨·소리. 그리고 **그 공간이 화자에게 무엇인가**
-           (예: 연습실 3번방은 설윤이 알바 끝나고 유일하게 혼자일 수 있는 곳이다)
-  trigger  씬을 여는 최초의 물리적 사건. 누가 무엇을 하는가. 대사로 시작하지 마라
-  props    되돌아올 사물 하나. 처음엔 무심하게 놓인다. 나중에 이것이 의미를 갖는다
-  camera   화자가 무엇을 보고 **무엇을 놓치는가.** 1인칭에서 시야는 곧 정보 통제다 --
-           독자가 알고 화자는 모르는 상태를 여기서 만든다
-  subtext  두 인물이 각각 말하지 않는 것. 대사는 그 위를 미끄러진다
-  beat_arc 감정이 어디서 어디로. narrative_pull 시작값 -> 끝값
+</World>
 {SPLIT}
-[구간] {ep}화 · 시퀀스 {seq['n']} {seq['name']}
-[시퀀스 목표] {seq['goal']}
-[감정 단계] {seq['stage']} / pull 범위 {seq['pull']} / 사건 규모 {arc.SCALES[spec['scale']]}
-[이 에피소드의 결말] {spec['summary']}
-[직전 회차]
-{recap}
+<Position>
+{ep}화 / 200화 · 시퀀스 {seq['n']} {seq['name']}
+시퀀스 목표: {seq['goal']}
+감정 단계: {seq['stage']} · narrative_pull 범위 {seq['pull']}
+사건 규모: {arc.SCALES[spec['scale']]}
+</Position>
 
-[이 장면이 갚아야 할 요구] {open_conds}
-  establishes 에 위 문자열 중 하나를 **한 글자도 다르지 않게** 적어라.
+<Episode_Outcome>
+{spec['summary']}
+</Episode_Outcome>
+
+<Recent>
+{recap}
+</Recent>
+
+<Task_Objective>
+아래 조건 중 **하나**를 성립시키는 한 회차 분량의 장면을 설계하라.
+{open_conds}
+</Task_Objective>
 {feedback}
 
+<Output_Format_Instruction>
+**JSON 도 XML 도 쓰지 마라.** 추론과 창의성을 최대로 쓰기 위해 Markdown 산문만 쓴다.
+아래 제목을 그대로 두고 각 항목을 채워라.
+
+## 장면
+(한 문장 요약)
+
+## 성립시키는 조건
+(위 조건 목록에서 **한 글자도 다르지 않게** 하나를 그대로 옮겨 적는다)
+
+## 선행 조건
+(이 장면이 성립하려면 그 전에 참이어야 하는 것. 없으면 "없음")
+
+## 등장인물
+(이름을 쉼표로. 화자가 없으면 그 이유를 한 줄 덧붙인다)
+
+## 공간
+(시간·장소·날씨·소리. **그리고 그 공간이 화자에게 무엇인가**)
+
+## 여는 사건
+(장면을 여는 최초의 물리적 사건. 누가 무엇을 하는가. 대사로 시작하지 않는다)
+
+## 장치
+(되돌아올 사물 하나. 처음엔 무심하게 놓인다)
+
+## 화자의 시야
+(화자가 무엇을 보고 **무엇을 놓치는가**. 독자는 알고 화자는 모르는 것을 여기서 만든다)
+
+## 말하지 않는 것
+(두 인물이 각각 삼키는 말. 대사는 그 위를 미끄러진다)
+
+## 감정 이동
+(narrative_pull 시작값에서 끝값으로. 숫자로)
+</Output_Format_Instruction>"""
+
+
+def _est_rule(open_conds: list) -> str:
+    """추출기에게 establishes 를 어떻게 채울지 말해준다.
+
+    서브플롯은 인과에 얹히지 않으므로 열린 조건이 없다. 그때도 목록 지시를 그대로
+    보내면 "[] 중에서 하나를 고르라"는 자기모순이 되고, 모델은 빈 목록 대신 그럴듯한
+    문자열을 지어낸다 -- 그 한 줄이 서브플롯을 척추로 둔갑시켜 V018 을 흔든다."""
+    if not open_conds:
+        return ('establishes 는 **빈 목록 []** 으로 둔다. 이 장면은 인과 사슬에 얹히지 않는다 '
+                '-- 무엇이든 지어 넣으면 개연성 사슬이 오염된다.')
+    return (f'establishes 는 다음 목록 중 시나리오의 "성립시키는 조건" 과 일치하는 것 하나다:\n'
+            f'{open_conds}\n'
+            f'목록에 없는 문자열을 만들어 넣지 마라. 시나리오가 목록과 다르면 가장 가까운 것을 고른다.')
+
+
+def extract_prompt(scenario: str, open_conds: list, scale: int) -> str:
+    """Markdown 시나리오에서 구조화된 데이터를 뽑는다. **여기서는 JSON 이 맞다.**
+
+    창작이 아니라 데이터 추출이고, 추출은 JSON 이 유리한 태스크다. 이 호출은 값싼 모델로
+    보내도 된다 -- 판단하지 않고 옮기기만 하기 때문이다."""
+    return f"""아래 시나리오에서 구조화된 값만 뽑아라. **내용을 지어내지 마라.**
+시나리오에 없으면 빈 값으로 둔다.
+
+--- 시나리오 ---
+{scenario}
+--- 끝 ---
+
+{_est_rule(open_conds)}
+
 JSON 만 출력:
-{{"beat": "[한 문장 요약]",
-  "participants": ["..."], "mode": "dialogue",
-  "requires": [], "establishes": ["..."],
-  "scale": {spec['scale']},
-  "direction": {{
-    "staging": "...", "trigger": "...", "props": "...",
-    "camera": "...", "subtext": "...", "beat_arc": "pull -40 -> -15"
-  }},
-  "world_ops": [], "relation_ops": []}}"""
+{{"beat": "...", "participants": ["..."], "mode": "dialogue",
+  "requires": [], "establishes": ["..."], "scale": {scale},
+  "direction": {{"staging": "...", "trigger": "...", "props": "...",
+                "camera": "...", "subtext": "...", "beat_arc": "..."}}}}"""
 
 
 def subplot_prompt(novel, ep: int, spine_summary: str, feedback="") -> str:
@@ -339,17 +426,37 @@ def subplot_prompt(novel, ep: int, spine_summary: str, feedback="") -> str:
 [이 구간의 메인] {spine_summary}
 
 규칙:
-- 메인의 인과를 건드리지 마라. establishes 는 비운다.
+- 메인의 인과를 건드리지 마라. 이 장면은 아무것도 성립시키지 않는다.
 - 조연의 이야기이거나 화자의 일상이다. 다만 **메인과 같은 온도**여야 한다.
 - 나중에 메인의 해결에 사소하게 이바지할 씨앗 하나를 심어라.
-- 화자가 없는 씬이면 mode 를 "reported" 또는 "letter" 로 하라.
+- 화자가 없는 씬이면 그 사실을 "화자의 시야" 에 적어라.
 {feedback}
 
-JSON 만 출력:
-{{"beat": "[한 문장]", "participants": ["..."], "mode": "dialogue", "scale": 1,
-  "direction": {{"staging": "...", "trigger": "...", "props": "...",
-                "camera": "...", "subtext": "..."}},
-  "world_ops": []}}"""
+<Output_Format_Instruction>
+**JSON 도 XML 도 쓰지 마라.** 척추와 같은 이유다 -- 형식을 지키느라 주의력이 갈리면
+2/3를 채우는 이 씬들이 먼저 밋밋해진다. 아래 제목을 그대로 두고 Markdown 으로 쓴다.
+
+## 장면
+(한 문장 요약)
+
+## 등장인물
+(이름을 쉼표로)
+
+## 공간
+(시간·장소·소리. 그리고 그 공간이 화자에게 무엇인가)
+
+## 여는 사건
+(장면을 여는 최초의 물리적 사건. 대사로 시작하지 않는다)
+
+## 장치
+(되돌아올 사물 하나. 메인의 해결에 사소하게 이바지할 씨앗이면 더 좋다)
+
+## 화자의 시야
+(화자가 무엇을 보고 무엇을 놓치는가. 화자가 아예 없으면 그렇게 적는다)
+
+## 말하지 않는 것
+(인물들이 각각 삼키는 말)
+</Output_Format_Instruction>"""
 
 
 def build_episode(novel, spec: dict, llm=None, max_repairs=MAX_REPAIRS, log=None) -> list:
@@ -384,8 +491,13 @@ def build_episode(novel, spec: dict, llm=None, max_repairs=MAX_REPAIRS, log=None
     while open_conds and len(spine) < n_eps and not _out_of_time():
         got = None
         for _ in range(max_repairs + 1):
-            b = _json(_llm_for(llm, "director")(
-                beat_prompt(novel, spec, open_conds, lo, feedback)))
+            # 1단계: 창작 -- Markdown 자유 형식(형식 세금 면제)
+            scenario = _llm_for(llm, "director")(
+                beat_prompt(novel, spec, open_conds, lo, feedback))
+            # 2단계: 추출 -- JSON(데이터 추출은 JSON 이 유리하다). 값싼 모델로 보낸다.
+            b = _json(_llm_for(llm, "extractor")(
+                extract_prompt(scenario, open_conds, spec["scale"])))
+            b.setdefault("direction", {})["scenario"] = scenario
             est = [e for e in (b.get("establishes") or []) if e in open_conds]
             if est:
                 got = Beat(beat=b.get("beat", ""),
@@ -428,13 +540,19 @@ def build_episode(novel, spec: dict, llm=None, max_repairs=MAX_REPAIRS, log=None
         if _out_of_time():
             _log(f"[episode] 시퀀스 {spec['seq']}: 시간 상한에 걸려 서브플롯 {k}개에서 멈춘다")
             break
-        b = _json(_llm_for(llm, "director")(
-            subplot_prompt(novel, lo + k, spec["summary"])))
+        # 씬 단위 서브플롯과 **같은 2단계**를 탄다. 한쪽만 JSON 을 직접 받으면 같은
+        # 프롬프트가 두 계약을 갖게 되고, 그 불일치는 조용히 direction 을 비운다.
+        sub_md = _llm_for(llm, "director")(
+            subplot_prompt(novel, lo + k, spec["summary"]))
+        b = _json(_llm_for(llm, "extractor")(
+            extract_prompt(sub_md, [], spec["scale"])))
+        b.setdefault("direction", {})["scenario"] = sub_md
         filler = Beat(beat=b.get("beat", ""),
                       participants=b.get("participants") or [novel.pov_character],
                       mode=b.get("mode", "dialogue"), establishes=[],
                       world_ops=list(b.get("world_ops") or []),
-                      scale=int(b.get("scale") or spec["scale"]))
+                      scale=int(b.get("scale") or spec["scale"]),
+                      direction=dict(b.get("direction") or {}))
         pos = min(len(beats), (k + 1) * max(1, len(beats)) // (need + 1))
         beats.insert(pos, filler)
 
@@ -465,8 +583,11 @@ def build_episode(novel, spec: dict, llm=None, max_repairs=MAX_REPAIRS, log=None
         for k in range(arc.SCENES_PER_EPISODE - arc.MAIN_SCENES):
             if _out_of_time():
                 break
-            b = _json(_llm_for(llm, "director")(
-                subplot_prompt(novel, epno, spec["summary"])))
+            sub_md = _llm_for(llm, "director")(
+                subplot_prompt(novel, epno, spec["summary"]))
+            b = _json(_llm_for(llm, "extractor")(
+                extract_prompt(sub_md, [], spec["scale"])))
+            b.setdefault("direction", {})["scenario"] = sub_md
             sub = Scene(id=f"ep{lo:03d}_{epno:03d}s{k + 1}",
                         participants=b.get("participants") or [novel.pov_character],
                         mode=b.get("mode", "dialogue"),
@@ -515,6 +636,10 @@ def _direction(scene) -> str:
     d = scene.direction or {}
     if not d:
         return ""
+    # 디렉터가 쓴 Markdown 시나리오가 있으면 **그것을 그대로 넘긴다.** 요약해서 넘기면
+    # 연출의 결이 그 요약에서 사라진다 -- 디렉터를 좋은 모델로 쓰는 의미가 없어진다.
+    if d.get("scenario"):
+        return "[디렉터 시나리오]\n" + d["scenario"].strip() + "\n\n"
     order = [("staging", "공간"), ("trigger", "여는 사건"), ("props", "장치"),
              ("camera", "화자의 시야"), ("subtext", "말하지 않는 것"),
              ("beat_arc", "감정 이동")]

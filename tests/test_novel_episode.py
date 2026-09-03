@@ -49,28 +49,89 @@ SPINE = {
 }
 
 
+def _md(b: dict, cond: str) -> str:
+    """SPINE 항목을 **디렉터가 낼 법한 Markdown 시나리오**로 만든다.
+
+    디렉터는 이제 JSON 이 아니라 Markdown 을 낸다(형식 세금 면제). 가짜 LLM 도 같은
+    계약을 지켜야 한다 -- JSON 을 돌려주면 추출 단계를 건너뛴 채 통과해서, 실제로는
+    깨진 배선이 초록으로 보인다."""
+    d = b.get("direction") or {}
+    return (f"## 장면\n{b['beat']}\n\n"
+            f"## 성립시키는 조건\n{cond}\n\n"
+            f"## 선행 조건\n{', '.join(b.get('requires') or []) or '없음'}\n\n"
+            f"## 등장인물\n{', '.join(b.get('participants') or ['설윤'])}\n\n"
+            f"## 공간\n{d.get('staging', '연습동 3번방, 자정')}\n\n"
+            f"## 여는 사건\n{d.get('trigger', '문이 덜 닫혀 있다')}\n\n"
+            f"## 장치\n{d.get('props', '식은 자판기 커피')}\n\n"
+            f"## 화자의 시야\n{d.get('camera', '설윤은 손만 본다')}\n\n"
+            f"## 말하지 않는 것\n{d.get('subtext', '둘 다 삼킨다')}\n\n"
+            f"## 감정 이동\n{d.get('beat_arc', 'pull -50 -> -35')}")
+
+
+def _section(md: str, head: str) -> str:
+    """Markdown 에서 '## head' 아래 첫 줄. 추출기가 하는 일의 최소판이다."""
+    lines = md.splitlines()
+    for i, ln in enumerate(lines):
+        if ln.startswith("## ") and head in ln:
+            for nxt in lines[i + 1:]:
+                if nxt.strip():
+                    return nxt.strip()
+    return ""
+
+
 class Fake:
+    """두 단계 계약을 흉내낸다: 디렉터는 Markdown, 추출기는 JSON.
+
+    프롬프트를 표식으로 갈라 어느 단계인지 알아본다. 표식이 실제 프롬프트와 어긋나면
+    이 가짜가 조용히 엉뚱한 분기로 빠지므로, 아래 stages 로 각 단계가 실제로 불렸는지
+    센다 -- 안 세면 '한 단계도 안 탔는데 통과'가 가능하다."""
+
     def __init__(self, wrong_first=False):
         self.prompts, self.wrong_first, self.used_wrong = [], wrong_first, False
+        self.stages = {"director": 0, "extractor": 0, "subplot": 0}
 
     def __call__(self, prompt):
         self.prompts.append(prompt)
-        if "서브플롯 한 씬" in prompt:
-            return json.dumps({"beat": "정우가 오디션에서 떨어진다",
-                               "participants": ["설윤", "정우"], "scale": 1,
-                               "direction": {"staging": "복도 끝 게시판 앞",
-                                             "props": "떼어낸 압정 자국"},
-                               "world_ops": []}, ensure_ascii=False)
-        if "갚아야 할 요구" in prompt:
-            lo = prompt.index("[이 장면이 갚아야 할 요구]")
-            conds = prompt[lo:prompt.index("\n", lo)]
+        if "서브플롯 한 씬" in prompt:               # 서브플롯도 창작이다 -> Markdown
+            self.stages["subplot"] += 1
+            return ("## 장면\n정우가 오디션에서 떨어진다\n\n"
+                    "## 등장인물\n설윤, 정우\n\n"
+                    "## 공간\n복도 끝 게시판 앞\n\n"
+                    "## 여는 사건\n정우가 명단에서 눈을 뗀다\n\n"
+                    "## 장치\n떼어낸 압정 자국\n\n"
+                    "## 화자의 시야\n설윤은 정우의 등만 본다\n\n"
+                    "## 말하지 않는 것\n정우는 축하한다는 말을 삼킨다")
+
+        if "<Task_Objective>" in prompt:                    # 1단계: 창작 -> Markdown
+            self.stages["director"] += 1
+            conds = prompt.split("<Task_Objective>")[1].split("</Task_Objective>")[0]
             if self.wrong_first and not self.used_wrong:
                 self.used_wrong = True
-                return json.dumps({"beat": "엉뚱한 장면", "establishes": ["오타난 조건"],
-                                   "requires": []}, ensure_ascii=False)
+                return _md({"beat": "엉뚱한 장면", "participants": ["설윤"]}, "오타난 조건")
             for k, v in SPINE.items():
                 if k in conds:
-                    return json.dumps(v, ensure_ascii=False)
+                    return _md(v, k)
+            return _md({"beat": "빈 장면", "participants": ["설윤"]}, "")
+
+        if "--- 시나리오 ---" in prompt:                     # 2단계: 추출 -> JSON
+            self.stages["extractor"] += 1
+            sc = prompt.split("--- 시나리오 ---")[1].split("--- 끝 ---")[0]
+            cond = _section(sc, "성립시키는 조건")
+            v = SPINE.get(cond)
+            if v:
+                return json.dumps(dict(v, establishes=[cond]), ensure_ascii=False)
+            return json.dumps({"beat": _section(sc, "장면"),
+                               "participants": [x.strip() for x in
+                                                _section(sc, "등장인물").split(",") if x.strip()],
+                               "requires": [],
+                               "establishes": [cond] if cond else [],
+                               "direction": {"staging": _section(sc, "공간"),
+                                             "trigger": _section(sc, "여는 사건"),
+                                             "props": _section(sc, "장치"),
+                                             "camera": _section(sc, "화자의 시야"),
+                                             "subtext": _section(sc, "말하지 않는 것")}},
+                              ensure_ascii=False)
+
         if "산문만 출력한다" in prompt:
             return "조율되지 않은 현이 울렸다. 나는 창밖을 바라보았다."
         return json.dumps({"inner_thought": "", "action": "", "speech": "그렇구나",
@@ -92,6 +153,20 @@ per_end = {e: sum(1 for s in scenes if s.episode == e and s.is_episode_end) for 
 ok(all(v == 1 for v in per_end.values()),
    f"회차의 끝은 마지막 씬 하나뿐 ({per_end})  ← 전부 end 로 두면 V016/V017/V019 가 오작동")
 ok(scenes[-1].cliffhanger, f"마지막에 클리프행어 ({scenes[-1].cliffhanger!r})")
+
+print("[2단계] 창작(Markdown)과 추출(JSON)이 실제로 갈려 있는가")
+ok(f.stages["director"] and f.stages["extractor"],
+   f"두 단계가 모두 불린다 ({f.stages})")
+ok(f.stages["director"] + f.stages["subplot"] == f.stages["extractor"],
+   f"창작 한 번에 추출 한 번 ({f.stages})  ← 어긋나면 한쪽이 JSON 을 직접 받고 있다는 뜻이고,\n"
+   "         그 프롬프트는 형식 세금을 그대로 문다")
+dp = next(p for p in f.prompts if "<Task_Objective>" in p)
+ok("JSON 도 XML 도 쓰지 마라" in dp, "디렉터에게는 JSON 을 금지한다  ← 형식 세금 면제")
+ok("<System_Persona>" in dp and "<World>" in dp, "입력은 XML 로 구역이 갈려 있다")
+with_sc = [s for s in scenes if s.direction.get("scenario", "").startswith("## 장면")]
+ok(len(with_sc) == len(scenes) - 1,
+   f"결말을 뺀 모든 씬이 시나리오 원문을 싣는다 ({len(with_sc)}/{len(scenes) - 1})\n"
+   "         ← 아래층(배우/화자)이 실제로 받는 것이 이것이다. 서브플롯이 빠지면 2/3가 맨몸이다")
 
 print("[분량] 회차 = 척추 1 + 서브플롯 2 (보고서: 서브플롯이 2/3)")
 main = [s for s in scenes if s.id.endswith("m")]
