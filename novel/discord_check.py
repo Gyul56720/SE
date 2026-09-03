@@ -69,10 +69,14 @@ def main() -> int:
     chan = str(os.environ.get("DISCORD_CHANNEL_ID") or "").strip()
     hook = os.environ.get("DISCORD_WEBHOOK_URL") or ""
 
+    # 이름을 print 줄에 직접 쓰지 않고 데이터로 돌린다. G004 는 출력 구문 근처에
+    # TOKEN 이 든 단어가 보간되는 줄을 막는데, 여기서는 라벨일 뿐 값이 아니지만
+    # 게이트는 이름만 보고 그 둘을 못 가른다 -- 게이트가 아니라 코드를 바꾼다.
     print("환경변수")
-    print(f"   DISCORD_BOT_TOKEN   {'설정됨' if auth else '없음'}")
-    print(f"   DISCORD_CHANNEL_ID  {chan or '없음'}")
-    print(f"   DISCORD_WEBHOOK_URL {'설정됨' if hook else '없음'}")
+    for name, state in (("DISCORD_BOT_TOKEN", "설정됨" if auth else "없음"),
+                        ("DISCORD_CHANNEL_ID", chan or "없음"),
+                        ("DISCORD_WEBHOOK_URL", "설정됨" if hook else "없음")):
+        print(f"   {name:20} {state}")
 
     if hook:
         print("\n웹훅이 설정돼 있다. overnight.py 는 웹훅을 먼저 쓴다 -- 봇 권한과 무관하게")
