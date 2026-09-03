@@ -42,6 +42,7 @@ class Beat:
     relation_ops: list = field(default_factory=list)
     scale: int = 0
     cliffhanger: str = ""
+    direction: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -176,6 +177,7 @@ def to_scenes(episode: Episode, prefix="e", start_ep: int = 0):
             directives=[b.beat], world_ops=list(b.world_ops),
             relation_ops=list(b.relation_ops), scale=b.scale,
             requires=list(b.requires or []), establishes=list(b.establishes or []),
+            direction=dict(b.direction or {}),
             episode=start_ep + i if start_ep else 0,
             is_episode_end=last, cliffhanger=b.cliffhanger if last else ""))
     return out

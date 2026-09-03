@@ -37,7 +37,7 @@ def materialize():
     n = build()
     n.scenes = [
         Scene(id=f"ep{o['eps'][0]:03d}", location="연습동", punctum="조율되지 않은 현",
-              participants=["서리", "도경"], mode="dialogue", directives=[o["summary"]],
+              participants=["설윤", "공명"], mode="dialogue", directives=[o["summary"]],
               episode=o["eps"][1], scale=o["scale"], is_episode_end=True,
               cliffhanger="shock_line", world_ops=list(o.get("world_ops", [])),
               relation_ops=list(o.get("relation_ops", [])),
@@ -45,7 +45,7 @@ def materialize():
               turns=[Turn(who, "", "", "말",
                           {"joy": 45, "melancholy": 40, "isolation": 40,
                            "narrative_pull": PULL[o["seq"]][i % 2]})
-                     for who in ("서리", "도경")])
+                     for who in ("설윤", "공명")])
         for i, o in enumerate(OUTCOMES)]
     return n
 
@@ -73,8 +73,8 @@ hard = [v for s in n.scenes for v in gate.check(s, n) if v.severity == "hard"]
 ok(not hard, f"hard 위반 0 (얻은 값 {len(hard)}: {[str(v)[:60] for v in hard[:2]]})")
 
 print("[원장] 관계가 world_ops 로 선언돼도 원장에 들어가는가")
-ok(n.partner("서리", upto_scene="ep001") is None, "초반엔 연인 없음")
-ok(n.partner("서리", upto_scene="ep186") == "도경",
+ok(n.partner("설윤", upto_scene="ep001") is None, "초반엔 연인 없음")
+ok(n.partner("설윤", upto_scene="ep186") == "공명",
    "마지막 start_romance 가 원장에 반영된다  ← 시스템 버그였던 자리")
 
 print("[규모] 사건 규모가 시퀀스 하한 아래로 뒷걸음질하지 않는가")
@@ -95,13 +95,13 @@ ok(not gone, f"30화 이후 격차가 사라지는 지점 없음 ({gone})")
 
 print("[구원] 쌍방인가 -- 한쪽만이면 이 장르는 실패한다")
 txt = " ".join(o["summary"] for o in OUTCOMES)
-ok("도경이 재단을 등지고" in txt and "서리가 돌아와" in txt,
+ok("공명이 재단을 등지고" in txt and "설윤이 돌아와" in txt,
    "남주가 전부를 버리는 장면과 여주가 돌아와 무대에 서는 장면이 둘 다 있다")
-ok(build().character("서리").emotion_envelope.get("joy", 0) >= 30,
+ok(build().character("설윤").emotion_envelope.get("joy", 0) >= 30,
    "여주에게 감정 하한이 있다 -- 없으면 몇 씬 만에 무기력해져 '주도적 서사'가 무너진다")
 
 print("[선] 남주가 넘지 말아야 할 선")
-ok("무고한 사람을 해치지 않는다" in build().character("도경").persona,
+ok("무고한 사람을 해치지 않는다" in build().character("공명").persona,
    "페르소나에 명시돼 있다 (보고서: 범죄적 선을 넘으면 독자가 반발한다)")
 
 print()

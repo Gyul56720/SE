@@ -141,6 +141,15 @@ class Scene:
     # 플롯 구멍이 그래프 도달 가능성 문제로 환원된다.
     requires: list = field(default_factory=list)
     establishes: list = field(default_factory=list)
+    # --- 연출 지시 (Director 가 채우고 Actor·Narrator 가 읽는다) ---
+    # 한 줄짜리 beat 만 넘기면 아래층이 알아서 지어내고, 그러면 디렉터가 없는 것과 같다.
+    #   staging  공간·시간·날씨·소리. 그 공간이 이 인물에게 무엇인가
+    #   trigger  씬을 여는 최초의 물리적 사건. 누가 무엇을 하는가
+    #   props    되돌아올 사물. 처음엔 무심하게 놓인다
+    #   camera   화자가 무엇을 보고 **무엇을 놓치는가**. 1인칭에서 시야는 곧 정보 통제다
+    #   subtext  두 인물이 각각 말하지 않는 것
+    #   beat_arc 이 씬에서 감정이 어디서 어디로 (pull 시작 -> 끝)
+    direction: dict = field(default_factory=dict)
     prose: str = ""
     status: str = "pending"          # pending | gated | verified | failed
     violations: list = field(default_factory=list)

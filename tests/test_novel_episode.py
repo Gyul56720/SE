@@ -28,17 +28,23 @@ def ok(cond, label):
 
 
 SPEC = dict(seq=1, eps=(1, 5), scale=1,
-            summary="서리가 사람들 앞에서 도경을 감싸고 자기 자리를 잃는다",
+            summary="설윤이 사람들 앞에서 공명을 감싸고 자기 자리를 잃는다",
             requires=["비밀을 안다", "공개 자리가 있다"],
-            establishes=["서리가 자리를 잃었다"], world_ops=[])
+            establishes=["설윤이 자리를 잃었다"], world_ops=[])
 
 # 열린 조건을 하나씩 갚는 척추 비트 + 그 비트가 새로 여는 조건
 SPINE = {
-    "비밀을 안다": dict(beat="서리가 도경의 통화를 듣는다", participants=["서리"],
-                    requires=["같은 공간에 있다"], establishes=["비밀을 안다"], scale=2),
-    "공개 자리가 있다": dict(beat="발표회가 공지된다", participants=["서리", "주하"],
+    "비밀을 안다": dict(beat="설윤이 공명의 통화를 듣는다", participants=["설윤"],
+                    requires=["같은 공간에 있다"], establishes=["비밀을 안다"], scale=2,
+                    direction={"staging": "연습동 3번방, 자정",
+                               "trigger": "문이 덜 닫혀 있다",
+                               "props": "식은 자판기 커피",
+                               "camera": "설윤은 손만 본다. 표정은 못 본다",
+                               "subtext": "둘 다 왜 여기 있는지 말하지 않는다",
+                               "beat_arc": "pull -50 -> -35"}),
+    "공개 자리가 있다": dict(beat="발표회가 공지된다", participants=["설윤", "정우"],
                        requires=[], establishes=["공개 자리가 있다"], scale=1),
-    "같은 공간에 있다": dict(beat="둘이 같은 조로 묶인다", participants=["서리", "도경"],
+    "같은 공간에 있다": dict(beat="둘이 같은 조로 묶인다", participants=["설윤", "공명"],
                       requires=[], establishes=["같은 공간에 있다"], scale=1),
 }
 
@@ -49,12 +55,14 @@ class Fake:
 
     def __call__(self, prompt):
         self.prompts.append(prompt)
-        if "서브플롯 한 회차" in prompt:
-            return json.dumps({"beat": "주하가 오디션에서 떨어진다",
-                               "participants": ["서리", "주하"], "scale": 1,
+        if "서브플롯 한 씬" in prompt:
+            return json.dumps({"beat": "정우가 오디션에서 떨어진다",
+                               "participants": ["설윤", "정우"], "scale": 1,
+                               "direction": {"staging": "복도 끝 게시판 앞",
+                                             "props": "떼어낸 압정 자국"},
                                "world_ops": []}, ensure_ascii=False)
-        if "아직 성립되지 않은 조건" in prompt:
-            lo = prompt.index("[아직 성립되지 않은 조건]")
+        if "갚아야 할 요구" in prompt:
+            lo = prompt.index("[이 장면이 갚아야 할 요구]")
             conds = prompt[lo:prompt.index("\n", lo)]
             if self.wrong_first and not self.used_wrong:
                 self.used_wrong = True
@@ -97,13 +105,13 @@ spine = [s for s in scenes if s.establishes]
 order = [s.establishes[0] for s in spine]
 ok(order.index("같은 공간에 있다") < order.index("비밀을 안다"),
    f"'같은 공간' 이 '비밀을 안다' 보다 앞에 온다 ({order})")
-ok(order[-1] == "서리가 자리를 잃었다", "결말이 마지막")
+ok(order[-1] == "설윤이 자리를 잃었다", "결말이 마지막")
 
 print("[서브플롯] 남는 칸이 채워지고 인과에 얹히지 않는가")
 filler = [s for s in scenes if not s.establishes]
 ok(filler, f"서브플롯 {len(filler)}개가 끼어든다")
 ok(all(not s.requires for s in filler), "서브플롯은 아무것도 요구하지 않는다")
-ok(any("주하" in (s.directives[0] if s.directives else "") for s in filler),
+ok(any("정우" in (s.directives[0] if s.directives else "") for s in filler),
    "조연의 이야기다")
 
 print("[개연성] 나온 씬들이 V018 을 통과하는가")

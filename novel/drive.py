@@ -135,6 +135,37 @@ def _fb(violations) -> str:
             + "\n".join(lines))
 
 
+def _world_brief(novel) -> str:
+    """인물·비밀·장르 규약. **매 호출 동일하므로 캐시 고정부에 들어간다.**
+
+    지금까지 beat_prompt 는 결말 한 줄과 열린 조건만 넘겼다. 그러면 디렉터가 누가 누구인지,
+    누가 무엇을 모르는지, 이 장르가 무엇을 요구하는지 모르는 채로 장면을 짠다 -- 디렉터가
+    없는 것과 다르지 않다. 재미는 이 브리핑에서 나온다."""
+    who = "\n".join(
+        f"  {c.name} — {c.persona}\n      숨긴 것: {c.hidden_agenda}\n"
+        f"      아는 것: {c.knows}"
+        for c in novel.characters)
+    sec = "\n".join(
+        f"  {k} — 아는 인물 {v.get('knows') if isinstance(v, dict) else v}"
+        for k, v in (novel.facts.get("secrets") or {}).items())
+    return f"""[화자] {novel.pov_character} (1인칭 회고. 결말을 이미 안다)
+
+[인물]
+{who}
+
+[비밀 — 누가 무엇을 모르는가]
+{sec}
+  * 정보 격차가 연독률의 엔진이다. 아는 인물만 말할 수 있고, 모르는 인물이 말하면 기각된다.
+  * 화자가 모르는 것은 **속으로도** 생각할 수 없다.
+
+[이 장르의 규약]
+  · 감정을 직접 쓰지 마라. 사물·소리·날씨·손이 하는 일로 옮겨라.
+  · 말과 속마음 사이에 괴리를 둬라. 가까이 있어도 심리적 거리를 유지한다.
+  · 남주는 결코 용서받지 못할 선을 넘지 않는다. 집착의 동기는 상처다.
+  · 여주는 구조받기만 하지 않는다. 스스로 밀어낸다.
+  · 위기-해결-보상의 원패턴이 노출되면 지루하다. 서브플롯이 그것을 감춘다."""
+
+
 def outcome_prompt(novel, ep_lo: int, ep_hi: int, feedback="") -> str:
     """**에피소드의 결말을 먼저 받는다.** 씬을 순방향으로 뽑기 전에 도착점을 고정한다.
 
@@ -166,51 +197,84 @@ JSON 만 출력:
   "world_ops": [], "relation_ops": []}}"""
 
 
-def beat_prompt(novel, outcome_summary: str, open_conds: list, feedback="") -> str:
-    """열려 있는 요구 하나를 갚는 비트를 받는다. **거꾸로 쌓는다.**"""
-    return f"""너는 웹소설 디렉터다. 아래 결말로 가는 길에서 **아직 성립되지 않은 조건**
-하나를 성립시키는 장면을 만든다.
+def beat_prompt(novel, spec: dict, open_conds: list, ep: int, feedback="") -> str:
+    """열린 요구 하나를 갚는 **한 회차 분량의 시나리오**를 받는다.
 
-[에피소드 결말] {outcome_summary}
-[아직 성립되지 않은 조건] {open_conds}
+    한 줄짜리 beat 만 받으면 아래층(Actor·Narrator)이 나머지를 알아서 지어낸다. 그러면
+    디렉터가 있으나 마나다. 세팅·트리거·장치·카메라·서브텍스트·감정 좌표까지 받아서
+    그대로 아래로 흘린다."""
+    from . import arc
+    seq = arc.sequence_of(ep)
+    prev = [s for s in novel.scenes if s.prose][-2:]
+    recap = "\n".join(f"  {s.episode}화: {s.directives[0] if s.directives else ''}"
+                       for s in prev) or "  (시작)"
+    return f"""너는 여성향 청춘 로맨스 웹소설의 디렉터다. 한 회차의 **시나리오**를 짠다.
+장면 요약이 아니라 연출 지시다 -- 무엇을 보여주고 무엇을 숨길지 네가 정한다.
 
-규칙:
-- establishes 에는 위 조건 중 **정확히 같은 문자열**을 적어라. 한 글자라도 다르면 개연성
-  구멍으로 잡힌다.
-- requires 에는 이 장면이 성립하려면 그 전에 참이어야 하는 것을 적어라. 없으면 빈 배열.
-- 이 장면 하나로 조건이 성립해야 한다. 미루지 마라.
+{_world_brief(novel)}
+
+[연출에서 반드시 정할 것]
+  staging  공간·시간·날씨·소리. 그리고 **그 공간이 화자에게 무엇인가**
+           (예: 연습실 3번방은 설윤이 알바 끝나고 유일하게 혼자일 수 있는 곳이다)
+  trigger  씬을 여는 최초의 물리적 사건. 누가 무엇을 하는가. 대사로 시작하지 마라
+  props    되돌아올 사물 하나. 처음엔 무심하게 놓인다. 나중에 이것이 의미를 갖는다
+  camera   화자가 무엇을 보고 **무엇을 놓치는가.** 1인칭에서 시야는 곧 정보 통제다 --
+           독자가 알고 화자는 모르는 상태를 여기서 만든다
+  subtext  두 인물이 각각 말하지 않는 것. 대사는 그 위를 미끄러진다
+  beat_arc 감정이 어디서 어디로. narrative_pull 시작값 -> 끝값
+{SPLIT}
+[구간] {ep}화 · 시퀀스 {seq['n']} {seq['name']}
+[시퀀스 목표] {seq['goal']}
+[감정 단계] {seq['stage']} / pull 범위 {seq['pull']} / 사건 규모 {arc.SCALES[spec['scale']]}
+[이 에피소드의 결말] {spec['summary']}
+[직전 회차]
+{recap}
+
+[이 장면이 갚아야 할 요구] {open_conds}
+  establishes 에 위 문자열 중 하나를 **한 글자도 다르지 않게** 적어라.
 {feedback}
 
 JSON 만 출력:
-{{"beat": "[장면 한 문장]", "participants": ["..."], "mode": "dialogue",
-  "requires": [], "establishes": ["..."], "scale": 1,
+{{"beat": "[한 문장 요약]",
+  "participants": ["..."], "mode": "dialogue",
+  "requires": [], "establishes": ["..."],
+  "scale": {spec['scale']},
+  "direction": {{
+    "staging": "...", "trigger": "...", "props": "...",
+    "camera": "...", "subtext": "...", "beat_arc": "pull -40 -> -15"
+  }},
   "world_ops": [], "relation_ops": []}}"""
 
 
 def subplot_prompt(novel, ep: int, spine_summary: str, feedback="") -> str:
-    """서브플롯 비트. **원패턴을 감추는 것이 목적이다.**
+    """서브플롯 한 씬. **원패턴을 감추는 것이 목적이다.**
 
-    보고서: 위기-해결-보상의 반복이 노출되면 지루해진다. 조연들의 이야기를 사이사이 끼워
-    피로를 덜고, 나중에 그것이 메인의 해결에 사소하게 이바지하게 만든다.
-
-    척추 비트와 달리 **아무것도 establishes 하지 않는다** -- 인과에 얹히지 않으므로
-    지워도 사슬이 안 무너진다. 그게 서브플롯의 정의다."""
+    보고서: 위기-해결-보상의 반복이 노출되면 지루해진다. 조연의 이야기가 사이를 메우고,
+    나중에 메인의 해결에 사소하게 이바지한다. 척추와 달리 아무것도 establishes 하지
+    않으므로 지워도 사슬이 안 무너진다 -- 그게 서브플롯의 정의다."""
     from . import arc
-    return f"""너는 웹소설 디렉터다. 메인 줄기 사이에 끼울 **서브플롯 한 회차**를 만든다.
+    return f"""너는 여성향 청춘 로맨스 웹소설의 디렉터다. 메인 사이에 끼울 **서브플롯 한 씬**을
+연출한다. 분량의 2/3가 이런 씬이다 -- 여기가 헐거우면 회차가 밋밋해진다.
 
+{_world_brief(novel)}
+
+[연출에서 정할 것] staging / trigger / props / camera / subtext
+{SPLIT}
 {arc.brief(ep)}
 [이 구간의 메인] {spine_summary}
-[인물] {', '.join(c.name for c in novel.characters)} (화자: {novel.pov_character})
 
 규칙:
-- 메인의 인과를 건드리지 마라. establishes 는 비워 둔다 -- 지워도 이야기가 무너지지 않아야 한다.
-- 조연의 이야기이거나 일상이다. 다만 **메인의 감정과 같은 온도**여야 한다.
+- 메인의 인과를 건드리지 마라. establishes 는 비운다.
+- 조연의 이야기이거나 화자의 일상이다. 다만 **메인과 같은 온도**여야 한다.
 - 나중에 메인의 해결에 사소하게 이바지할 씨앗 하나를 심어라.
+- 화자가 없는 씬이면 mode 를 "reported" 또는 "letter" 로 하라.
 {feedback}
 
 JSON 만 출력:
-{{"beat": "[장면 한 문장]", "participants": ["..."], "mode": "dialogue",
-  "scale": 1, "world_ops": []}}"""
+{{"beat": "[한 문장]", "participants": ["..."], "mode": "dialogue", "scale": 1,
+  "direction": {{"staging": "...", "trigger": "...", "props": "...",
+                "camera": "...", "subtext": "..."}},
+  "world_ops": []}}"""
 
 
 def build_episode(novel, spec: dict, llm=None, max_repairs=MAX_REPAIRS, log=None) -> list:
@@ -243,7 +307,7 @@ def build_episode(novel, spec: dict, llm=None, max_repairs=MAX_REPAIRS, log=None
         got = None
         for _ in range(max_repairs + 1):
             b = _json(_llm_for(llm, "director")(
-                beat_prompt(novel, spec["summary"], open_conds, feedback)))
+                beat_prompt(novel, spec, open_conds, lo, feedback)))
             est = [e for e in (b.get("establishes") or []) if e in open_conds]
             if est:
                 got = Beat(beat=b.get("beat", ""),
@@ -252,7 +316,8 @@ def build_episode(novel, spec: dict, llm=None, max_repairs=MAX_REPAIRS, log=None
                            requires=list(b.get("requires") or []), establishes=est,
                            world_ops=list(b.get("world_ops") or []),
                            relation_ops=list(b.get("relation_ops") or []),
-                           scale=int(b.get("scale") or spec["scale"]))
+                           scale=int(b.get("scale") or spec["scale"]),
+                           direction=dict(b.get("direction") or {}))
                 feedback = ""
                 break
             feedback = _fb_text(
@@ -325,7 +390,7 @@ def build_episode(novel, spec: dict, llm=None, max_repairs=MAX_REPAIRS, log=None
                         directives=[b.get("beat", "")],
                         world_ops=list(b.get("world_ops") or []),
                         scale=int(b.get("scale") or spec["scale"]),
-                        episode=epno)
+                        direction=dict(b.get("direction") or {}), episode=epno)
             scenes.append(sub)
         scenes[-1].is_episode_end = True                  # 회차의 끝은 마지막 씬이다
         scenes[-1].cliffhanger = (main_scenes[i].cliffhanger
@@ -360,6 +425,18 @@ def drive_novel(novel, outcomes, path, llm=None, max_repairs=MAX_REPAIRS,
     return {"episodes": done,
             "verified": sum(1 for s in novel.scenes if s.status == "verified"),
             "total": len(novel.scenes)}
+
+
+def _direction(scene) -> str:
+    """Director 의 연출을 아래층이 읽을 형태로. **짜놓고 안 넘기면 없는 것과 같다.**"""
+    d = scene.direction or {}
+    if not d:
+        return ""
+    order = [("staging", "공간"), ("trigger", "여는 사건"), ("props", "장치"),
+             ("camera", "화자의 시야"), ("subtext", "말하지 않는 것"),
+             ("beat_arc", "감정 이동")]
+    lines = [f"  {ko}: {d[k]}" for k, ko in order if d.get(k)]
+    return "[연출 지시]\n" + "\n".join(lines) + "\n" if lines else ""
 
 
 def _arc_brief(scene) -> str:
@@ -413,12 +490,14 @@ def actor_prompt(novel, scene, name, feedback="") -> str:
 [네가 아는 것] {c.knows}
 [무대] {scene.location} / [감각] {scene.punctum}
 [지시] {scene.directives}
-[직전 대화]
+{_direction(scene)}[직전 대화]
 {log}
 
 규칙:
 - 속마음(inner_thought)과 실제 말(speech) 사이에 괴리를 둬라. 담담하게 말하고 속으로 복잡하라.
 - 네가 모르는 것은 말할 수 없다. 오해하고 있다면 오해한 채로 말하라.
+- 연출 지시의 '말하지 않는 것' 이 네 속마음이다. 입 밖으로는 그 위를 미끄러져라.
+- 장치가 있으면 손으로 만져라. 설명하지 말고 다루기만 하라.
 - 감정은 0~100, narrative_pull 만 -100~100. 한 턴에 35 이상 변하면 기각된다.
 {'- 편지 모드다. 대화가 아니라 긴 편지를 써라.' if scene.mode == 'letter' else ''}
 {feedback}
@@ -436,7 +515,7 @@ def narrator_prompt(novel, scene, feedback="") -> str:
 
 [화자] {novel.pov_character} — 반드시 "나는 ~했다" 시점
 [무대] {scene.location} / [감각] {scene.punctum}
-[로그]
+{_direction(scene)}[로그]
 {logs}
 
 규칙:
@@ -444,6 +523,8 @@ def narrator_prompt(novel, scene, feedback="") -> str:
   (예: "그녀의 눈동자 깊은 곳에서 무언가 무너져 내리는 기척이 느껴졌다").
 - "슬펐다/외로웠다" 같은 직접 서술 금지. 대사 안에서는 허용된다.
 - punctum 을 대화의 공백에 끼워 넣어라.
+- **연출 지시를 그대로 실행하라.** 여는 사건으로 시작하고, 장치를 무심하게 놓고,
+  화자의 시야 밖은 쓰지 마라 -- 화자가 놓친 것은 독자도 놓쳐야 한다.
 - 담담하고 건조하게. 신파로 흐르지 마라.
 - **분량: 공백 포함 {__import__("novel.arc", fromlist=["x"]).CHARS_PER_SCENE}자 안팎.**
   회차 하나가 5,000자이고 이 씬은 그중 한 조각이다. 짧게 끊지 마라 -- 대화 사이의 정적,
