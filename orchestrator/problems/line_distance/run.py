@@ -123,6 +123,7 @@ def main() -> int:
     cases_path = HERE / "cases.json"
     cases_json = cases_path.read_text(encoding="utf-8")
 
+    rel = "verifiers/line_check.py#check"
     if a.run_dir:
         run_dir = Path(a.run_dir).resolve()
         print(f"기존 런을 이어서 돈다: {run_dir}")
@@ -139,19 +140,27 @@ def main() -> int:
             print(f"계획 실패: {plan_res}")
             return 1
 
-        rel = _plant_verifier(run_dir)
+        assert _plant_verifier(run_dir) == rel
         info = _inject(run_dir, rel)
         print(f"계획: 노드 {info['n_nodes']}개, 최종 노드 '{info['final']}'")
         print(f"심판 주입: {info['replaced']} -> {info['with']}")
 
     print("실행/검증/수리 루프를 돈다 ...")
+    # 재계획이 plan.json 을 새로 쓰면서 주입 심판을 지운다. 경로를 넘겨 매번 다시 꽂는다.
     res = orch_solve.drive(str(run_dir), max_repair_rounds=a.max_repair_rounds,
-                           node_timeout=a.node_timeout)
+                           node_timeout=a.node_timeout, final_verifier=rel)
 
     print(f"\n결과: {res.get('status')}  (라운드 {res.get('rounds')}, "
           f"재계획 {res.get('replans')})")
     if res.get("status") == "solved":
         final = res.get("final_result") or {}
+        sys.path.insert(0, str(HERE))
+        import verify as _v
+        ok, why = _v.check(final, {})
+        if not ok:
+            print(f"\n!! solved 라는데 우리 심판으로 다시 재면 통과가 아니다: {why[:200]}")
+            print("   재계획이 주입 심판을 지웠을 때 나오는 모습이다.")
+            return 1
         print("\n오케스트레이터가 낸 답:")
         for row in final.get("cases", []):
             print(f"  {str(row.get('id')):11} t={float(row['t']):12.6f}  "

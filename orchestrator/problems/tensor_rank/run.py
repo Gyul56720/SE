@@ -179,6 +179,16 @@ def _table(spec: dict, final: dict) -> None:
             print(f"{'':9} {'':>4} {'':>5}  !! {d['alert']}")
 
 
+def _recheck(spec: dict, final: dict) -> bool:
+    """밖에서 만든 심판으로 최종 답을 **다시** 채점한다. drive 의 판정을 그대로 믿지 않는다.
+
+    재계획이 주입 심판을 지우면 LLM 이 제 답에 스스로 합격을 준다. 그 상태에서도
+    drive 는 "solved" 를 돌려주므로, 마지막에 한 번 더 재는 것이 유일한 안전망이다."""
+    import verify
+    ok, why = verify.check(final, {})
+    return bool(ok)
+
+
 def _verdict(spec: dict, final: dict) -> None:
     """통과했을 때 **무엇을 통과한 것인지** 말한다.
 
@@ -225,6 +235,7 @@ def main() -> int:
     if a.run_dir:
         run_dir = Path(a.run_dir).resolve()
         spec = json.loads((run_dir / "verifiers" / "target.json").read_text("utf-8"))
+        rel = "verifiers/rank_check.py#check"
         print(f"기존 런을 이어서 돈다: {run_dir}")
     else:
         run_dir = RUNS / time.strftime("tensorrank-%Y%m%d-%H%M%S")
@@ -248,12 +259,27 @@ def main() -> int:
         print(f"심판 주입: {info['replaced']} -> {info['with']}")
 
     print("실행/검증/수리 루프를 돈다 ...")
+    # **심판 경로를 drive 에 넘긴다.** 한 번 꽂아두는 것으로는 부족하다 -- 재계획이
+    # plan.json 을 통째로 새로 쓰면서 주입한 심판을 지우기 때문이다(실측으로 걸렸다).
     res = orch_solve.drive(str(run_dir), max_repair_rounds=a.max_repair_rounds,
-                           node_timeout=a.node_timeout)
+                           node_timeout=a.node_timeout, final_verifier=rel)
 
     print(f"\n결과: {res.get('status')}  (라운드 {res.get('rounds')}, "
           f"재계획 {res.get('replans')})")
-    _table(spec, res.get("final_result") or {})
+    final = res.get("final_result") or {}
+    _table(spec, final)
+    # **"solved" 를 그대로 믿지 않는다.** 우리 심판으로 다시 재서 한 case 라도 못 맞추면
+    # 심판이 우리 것이 아니었다는 뜻이다. 실측(2026-09-03): 재계획 1회가 든 런이
+    # "solved" 로 끝났는데 세 case 전부 "답 없음"이었다.
+    if res.get("status") == "solved" and not _recheck(spec, final):
+        print("\n!! solved 라는데 우리 심판으로 다시 재면 통과가 아니다.")
+        print("   재계획이 주입 심판을 지웠을 때 나오는 모습이다. "
+              "plan.json 의 최종 노드 verifier 를 확인하라:")
+        print(f"   python3 -c \"import json;p=json.load(open('{run_dir}/plan.json'));"
+              f"print([n.get('verifier') for n in p['nodes'] if n['id']==p['final']])\"")
+        (run_dir / "result.json").write_text(
+            json.dumps(res, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+        return 1
     if res.get("status") != "solved":
         print(f"\n이유: {res.get('reason')}")
         print(f"기록: {json.dumps(res.get('log', []), ensure_ascii=False)[:800]}")

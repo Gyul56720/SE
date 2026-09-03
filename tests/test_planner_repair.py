@@ -685,6 +685,68 @@ def test_llm_pool_timeout_fits_measured_latency(failures: list) -> None:
         llm_pool.quota_tracker = real
 
 
+def test_replan_does_not_erase_injected_verifier(failures: list) -> None:
+    """**재계획이 주입 심판을 지우지 못하게 막는가.** 이 세션에서 가장 큰 구멍이었다.
+
+    실측(2026-09-03, tensorrank --budget mm333=26). 라운드 4 / 재계획 1 로 "solved" 가
+    떴는데, 그 답을 밖에서 만든 심판으로 다시 재보니 세 case 전부 "답 없음"이었다.
+
+    원인. run.py 는 최초 계획의 최종 노드에 심판을 한 번 꽂는다. 그런데 planner.replan 은
+    make_plan 을 다시 불러 plan.json 을 **통째로 새로 쓴다.** 꽂아둔 심판이 사라지고
+    LLM 이 쓴 채점표가 그 자리에 들어앉는다. 그 다음부터는 LLM 이 제 답에 스스로 합격을
+    주고, drive 는 그것을 "solved" 로 돌려준다.
+
+    검증 비대칭이니 심판 분리니 하는 것이 전부 여기서 무너진다 -- 심판이 후보와 같은
+    곳에서 나온 순간 아무것도 재고 있지 않다. 그래서 주입은 한 번이 아니라 **계획이 새로
+    써질 때마다** 해야 한다."""
+    print("\n[안전] 재계획이 주입 심판을 지우지 못한다")
+    import solve as orch_solve
+
+    def ok(cond, msg):
+        print(f"    {'OK  ' if cond else 'FAIL'} {msg}")
+        if not cond:
+            failures.append(msg)
+
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        run = Path(td)
+        INJECT = "verifiers/outside.py#check"
+        # LLM 이 새로 쓴 계획: 최종 노드 심판이 제 것으로 바뀌어 있다.
+        (run / "plan.json").write_text(json.dumps({
+            "problem": "p", "final": "b",
+            "nodes": [{"id": "a", "verifier": "inline:whatever"},
+                      {"id": "b", "verifier": "components/llm_scoring.py#check"}]
+        }, ensure_ascii=False), encoding="utf-8")
+
+        changed = orch_solve._force_verifier(run, INJECT)
+        plan = json.loads((run / "plan.json").read_text(encoding="utf-8"))
+        final = next(n for n in plan["nodes"] if n["id"] == "b")
+        other = next(n for n in plan["nodes"] if n["id"] == "a")
+        ok(changed, "바뀌었음을 보고한다 (조용히 넘어가면 로그에 안 남는다)")
+        ok(final["verifier"] == INJECT,
+           f"최종 노드 심판이 주입본으로 되돌아온다: {final['verifier']}")
+        ok(other["verifier"] == "inline:whatever",
+           "최종 노드가 아닌 노드는 건드리지 않는다")
+        ok(not orch_solve._force_verifier(run, INJECT),
+           "이미 꽂혀 있으면 다시 쓰지 않는다 (멱등)")
+
+        # drive 가 시작 시점에도 다시 꽂는가 -- 이어서 돌리는 런(--run-dir)이 이 경로다.
+        (run / "plan.json").write_text(json.dumps({
+            "problem": "p", "final": "b",
+            "nodes": [{"id": "b", "verifier": "components/llm_scoring.py#check"}]
+        }, ensure_ascii=False), encoding="utf-8")
+        real = orch_solve.orchestrator.run_plan
+        orch_solve.orchestrator.run_plan = lambda *a, **kw: {"status": "invalid_plan"}
+        try:
+            orch_solve.drive(str(run), max_repair_rounds=0, max_replans=0,
+                             final_verifier=INJECT)
+        finally:
+            orch_solve.orchestrator.run_plan = real
+        plan = json.loads((run / "plan.json").read_text(encoding="utf-8"))
+        ok(plan["nodes"][0]["verifier"] == INJECT,
+           f"drive 가 시작 시점에 다시 꽂는다: {plan['nodes'][0]['verifier']}")
+
+
 def main() -> int:
     failures: list[str] = []
     for t in (test_red_without_repair, test_green_repair_loop,
@@ -695,7 +757,8 @@ def main() -> int:
               test_llm_pool_budgets_time_per_sweep,
               test_llm_pool_splits_rpm_from_daily_quota,
               test_llm_pool_resolves_allowlist_not_guesses,
-              test_llm_pool_timeout_fits_measured_latency):
+              test_llm_pool_timeout_fits_measured_latency,
+              test_replan_does_not_erase_injected_verifier):
         t(failures)
     if failures:
         print("\n=== 실패 ===")

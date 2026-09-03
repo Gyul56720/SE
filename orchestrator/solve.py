@@ -52,8 +52,31 @@ class _NoPool(RuntimeError):
     """쓸 수 있는 LLM 후보가 하나도 없다(키 미설정). 장애가 아니라 설정 문제라 따로 구분한다."""
 
 
+def _force_verifier(run_dir: Path, final_verifier: str) -> bool:
+    """최종 노드의 verifier 를 주입 심판으로 **다시** 못박는다. 바뀌었으면 True.
+
+    **재계획이 심판을 지운다.** planner.replan 은 make_plan 을 다시 불러 plan.json 을
+    통째로 새로 쓰므로, 밖에서 꽂아둔 심판이 사라지고 LLM 이 쓴 채점표가 그 자리에
+    들어앉는다. 실측(2026-09-03, tensorrank --budget mm333=26): 라운드 4 / 재계획 1 로
+    "solved" 가 떴는데, 그 답을 우리 심판으로 다시 재보니 세 case 전부 "답 없음"이었다.
+    **주입이 풀린 채로 LLM 이 제 답에 스스로 합격을 준 것이다.**
+
+    그래서 주입을 한 번 하는 것으로 끝내면 안 된다. 계획이 새로 써질 때마다 다시 꽂는다."""
+    path = run_dir / "plan.json"
+    plan = json.loads(path.read_text(encoding="utf-8"))
+    changed = False
+    for node in plan["nodes"]:
+        if node["id"] == plan["final"] and node.get("verifier") != final_verifier:
+            node["verifier"] = final_verifier
+            changed = True
+    if changed:
+        path.write_text(json.dumps(plan, ensure_ascii=False, indent=2), encoding="utf-8")
+    return changed
+
+
 def drive(run_dir: str, max_repair_rounds: int = 3, max_node_repairs: int = 2,
-          max_replans: int = 1, pool=None, node_timeout: float = None) -> dict:
+          max_replans: int = 1, pool=None, node_timeout: float = None,
+          final_verifier: str = None) -> dict:
     """plan.json 이 있는 런을 목표 달성까지 몰아붙인다: 실행 -> 검증 -> 실패면 수리/재계획 -> 재실행.
 
     반환 dict 의 status 는 "solved" 이거나 "incomplete" 다. incomplete 면 왜 멈췄는지
@@ -77,6 +100,13 @@ def drive(run_dir: str, max_repair_rounds: int = 3, max_node_repairs: int = 2,
             raise _NoPool("LLM 후보 풀이 비었다 -- GEMINI_API_KEY(또는 _FALLBACK) 를 설정하라")
         return fn(*a, pool=pool, **kw)
 
+    def reinject(where: str) -> None:
+        """계획이 새로 써진 직후마다 심판을 다시 꽂는다."""
+        if final_verifier and (run_dir / "plan.json").is_file():
+            if _force_verifier(run_dir, final_verifier):
+                log.append({"reinjected_verifier": final_verifier, "after": where})
+
+    reinject("start")
     for round_i in range(1, max_repair_rounds + 2):
         res = orchestrator.run_plan(str(run_dir), node_timeout=node_timeout)
         entry = {"round": round_i, "run_status": res.get("status"),
@@ -112,6 +142,7 @@ def drive(run_dir: str, max_repair_rounds: int = 3, max_node_repairs: int = 2,
                         entry["action"] = "repair_rejected -> replan"
                         entry["replan"] = ask(planner.replan, str(run_dir))
                         replans += 1
+                        reinject(f"replan#{replans}")
                     else:
                         reason = "수리안이 모두 반려됐고 재계획 한도도 소진"
                         break
@@ -119,6 +150,7 @@ def drive(run_dir: str, max_repair_rounds: int = 3, max_node_repairs: int = 2,
                 entry["action"] = "replan"
                 entry["replan"] = ask(planner.replan, str(run_dir))
                 replans += 1
+                reinject(f"replan#{replans}")
                 if entry["replan"].get("status") != "planned":
                     reason = "재계획이 유효한 DAG 를 내지 못했다"
                     break
