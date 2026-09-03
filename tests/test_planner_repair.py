@@ -314,7 +314,12 @@ def test_llm_pool_reads_dotenv(failures: list) -> None:
     "빈 후보 풀" 만 보인다. **키가 없는 것처럼 보이지만 실은 있다.**
 
     서비스로 돌 때와 손으로 돌 때가 달라지는 것이 함정의 정체이므로 둘을 맞춘다.
-    이미 있는 환경변수는 절대 덮지 않는다 -- systemd 로 들어온 값이 우선이어야 한다."""
+    이미 있는 환경변수는 절대 덮지 않는다 -- systemd 로 들어온 값이 우선이어야 한다.
+
+    탐색 자리를 갈아끼우고 잰다. 처음에는 cwd 만 옮기고 쟀는데, 그러면 **저장소 루트에
+    .env 가 없는 기계에서만 통과하는 시험**이 된다 -- 컨테이너에서는 초록이었고 VM
+    에서는 빨강이었다. VM 에는 진짜 .env 가 있어서 임시 .env 가 읽히지도 않았고,
+    풀에는 진짜 키가 들어와 있었다. 시험이 기계를 타면 시험이 아니다."""
     import os
     import shutil
     import tempfile
@@ -329,11 +334,11 @@ def test_llm_pool_reads_dotenv(failures: list) -> None:
             failures.append(msg)
 
     saved = os.environ.pop("GEMINI_API_KEY", None)
-    cwd = os.getcwd()
     tmp = Path(tempfile.mkdtemp(prefix="dotenv_test_"))
+    real_cands = llm_pool._dotenv_candidates
     try:
         (tmp / ".env").write_text("GEMINI_API_KEY=from-dotenv-file\n", encoding="utf-8")
-        os.chdir(tmp)
+        llm_pool._dotenv_candidates = lambda: [tmp / ".env"]
         pool = llm_pool.build_pool(models=["m"], llm_factory=lambda m, k: (m, k))
         ok(len(pool) == 1 and pool[0][1][1] == "from-dotenv-file",
            ".env 의 키로 후보 풀을 만든다")
@@ -342,8 +347,20 @@ def test_llm_pool_reads_dotenv(failures: list) -> None:
         pool = llm_pool.build_pool(models=["m"], llm_factory=lambda m, k: (m, k))
         ok(bool(pool) and pool[0][1][1] == "from-environment",
            ".env 가 이미 있는 환경변수를 덮지 않는다 (systemd 값 우선)")
+
+        # 여러 자리를 다 훑되 앞자리가 이긴다 -- 뒤에 있는 파일이 앞을 덮으면 안 된다.
+        os.environ.pop("GEMINI_API_KEY", None)
+        tmp2 = Path(tempfile.mkdtemp(prefix="dotenv_test2_"))
+        try:
+            (tmp2 / ".env").write_text("GEMINI_API_KEY=second-file\n", encoding="utf-8")
+            llm_pool._dotenv_candidates = lambda: [tmp / ".env", tmp2 / ".env"]
+            pool = llm_pool.build_pool(models=["m"], llm_factory=lambda m, k: (m, k))
+            ok(bool(pool) and pool[0][1][1] == "from-dotenv-file",
+               "앞자리 .env 가 이긴다 (뒤 파일이 덮지 않는다)")
+        finally:
+            shutil.rmtree(tmp2, ignore_errors=True)
     finally:
-        os.chdir(cwd)
+        llm_pool._dotenv_candidates = real_cands
         os.environ.pop("GEMINI_API_KEY", None)
         if saved is not None:
             os.environ["GEMINI_API_KEY"] = saved

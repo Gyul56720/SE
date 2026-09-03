@@ -106,7 +106,16 @@ def _default_models(key: str):
         return FALLBACK_MODELS
 
 
-def _load_dotenv_once() -> None:
+def _dotenv_candidates():
+    """.env 를 찾을 자리. 저장소 루트가 먼저다 -- 어디서 실행하든 같은 키를 쓰게 한다.
+
+    함수로 빼둔 이유는 시험 때문이다. 상수로 박아두면 "저장소 루트에 .env 가 없는
+    기계에서만 통과하는 시험"이 되고, 실제로 그랬다 -- 컨테이너에서는 초록인데 VM
+    에서는 빨강이었다. VM 에는 진짜 .env 가 있어서 임시 .env 가 읽히지도 않았다."""
+    return [Path(__file__).resolve().parent.parent / ".env", Path.cwd() / ".env"]
+
+
+def _load_dotenv() -> None:
     """저장소 루트의 .env 를 환경에 올린다. **이미 있는 환경변수는 덮지 않는다.**
 
     왜 필요한가(실측): 키는 .env 에 있고, Discord 봇은 systemd 유닛의
@@ -115,8 +124,11 @@ def _load_dotenv_once() -> None:
     "RuntimeError: 빈 후보 풀" 만 보인다 -- 키가 없는 것처럼 보이지만 실은 있다.
 
     서비스로 돌 때와 손으로 돌 때가 달라지는 것이 함정의 정체이므로, 여기서 한 번
-    맞춰준다. override 하지 않으므로 systemd 로 이미 들어온 값이 우선이다."""
-    for cand in (Path(__file__).resolve().parent.parent / ".env", Path.cwd() / ".env"):
+    맞춰준다. override 하지 않으므로 systemd 로 이미 들어온 값이 우선이다.
+
+    후보를 하나 찾고 멈추지 않고 전부 훑는다. 어차피 덮지 않으므로 앞자리가 이기고,
+    앞 파일에 없는 변수만 뒤에서 채워진다."""
+    for cand in _dotenv_candidates():
         if not cand.is_file():
             continue
         try:
@@ -133,14 +145,13 @@ def _load_dotenv_once() -> None:
                 k, v = k.strip(), v.strip().strip("'\"")
                 if k and k not in os.environ:          # 기존 환경변수를 덮지 않는다
                     os.environ[k] = v
-        return
 
 
 def build_pool(keys=None, models=None, llm_factory=_default_factory, model_lister=_default_models):
     """(label, llm) 후보 목록. keys 기본 = 환경변수 두 키. models 기본 = 키별 실사용 모델 조회."""
     if keys is None:
         if not os.environ.get("GEMINI_API_KEY"):
-            _load_dotenv_once()
+            _load_dotenv()
         keys = [k for k in (os.environ.get("GEMINI_API_KEY"),
                             os.environ.get("GEMINI_API_KEY_FALLBACK")) if k]
     pool = []
