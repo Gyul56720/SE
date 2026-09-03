@@ -48,18 +48,40 @@ def anthropic_llm(model: str = "claude-opus-5", effort: str = "high"):
     흔들리면 캐시가 통째로 무효화된다."""
     import anthropic
     client = anthropic.Anthropic()
+    stats = {"calls": 0, "write": 0, "read": 0, "fresh": 0, "out": 0}
 
     def call(prompt: str) -> str:
         stable, _, volatile = prompt.partition(SPLIT)
         r = client.messages.create(
             model=model, max_tokens=16000,
             output_config={"effort": effort},
+            # 고정부만 캐시한다. cache_control 은 이 블록까지를 캐시 접두사로 삼는다.
+            # TTL 기본값(5분)이 맞다 -- 씬 하나가 1분 남짓이라 다음 호출이 항상 5분 안에
+            # 시작하고, 읽기가 타이머를 공짜로 갱신해 무한히 따뜻하게 유지된다.
             system=[{"type": "text", "text": stable,
                      "cache_control": {"type": "ephemeral"}}],
             messages=[{"role": "user", "content": volatile or prompt}])
         if r.stop_reason == "refusal":
             raise RuntimeError(f"거절됨: {r.stop_details}")
+
+        u = r.usage
+        stats["calls"] += 1
+        stats["write"] += getattr(u, "cache_creation_input_tokens", 0) or 0
+        stats["read"] += getattr(u, "cache_read_input_tokens", 0) or 0
+        stats["fresh"] += u.input_tokens
+        stats["out"] += u.output_tokens
+        # **캐시가 먹는지는 눈으로 확인해야 한다.** 최소 프리픽스(Opus 5 는 512토큰)에 못
+        # 미치거나 프리픽스가 흔들리면 오류 없이 조용히 0 이 나온다. 그래서 매번 찍는다.
+        print(f"[{model}] 호출 {stats['calls']}: 캐시쓰기 {u.cache_creation_input_tokens or 0} "
+              f"/ 캐시읽기 {u.cache_read_input_tokens or 0} / 새입력 {u.input_tokens} "
+              f"/ 출력 {u.output_tokens}", file=__import__("sys").stderr, flush=True)
+        if stats["calls"] == 2 and stats["read"] == 0:
+            print(f"[{model}] 경고: 두 번째 호출인데 캐시 읽기가 0이다. 고정부가 최소 "
+                  f"프리픽스에 못 미치거나 매번 바뀌고 있다.",
+                  file=__import__("sys").stderr, flush=True)
         return "".join(b.text for b in r.content if b.type == "text")
+
+    call.stats = stats
     return call
 
 
