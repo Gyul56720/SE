@@ -95,6 +95,14 @@ M 이 아무리 작아도 0점이다.**
    네 solve 는 여기에 무엇이든 읽고 쓸 수 있다. 한 번의 실행이 {budget:.0f} 초로 끊기더라도
    다음 시도가 그 결과를 이어받을 수 있다는 뜻이다. 매번 빈손에서 시작할 필요가 없다.
 
+[답은 계산해서 내라 -- 판의 규칙이다]
+인자행렬을 **리터럴로 적어 반환하면 반려된다.** 빈 배열을 만들어 놓고 채우지 않은 것도
+같다. 네 코드는 실제로 무언가를 계산해야 한다. 어떤 계산인지는 묻지 않는다.
+
+이것은 방법을 지시하는 것이 아니라 제출물의 조건이다(외부 라이브러리 금지와 같은 층).
+mm333 의 budget 처럼 아무도 모르는 값에서는 어차피 외워서 낼 수 없으므로, 이 규칙이
+실제로 무는 자리는 알려진 답을 옮겨 적을 수 있는 case 뿐이다.
+
 [출력] 최종 노드의 solve 는 다음을 반환하라.
 
     {{"cases": [
@@ -373,6 +381,11 @@ def main() -> int:
         # **시도와 시도 사이에 살아남는 자리.** 한 번의 실행이 예산에서 끊겨도 다음
         # 시도가 이어받을 수 있어야, 매번 빈손에서 시작하지 않는다.
         (run_dir / "scratch").mkdir(exist_ok=True)
+        # **계산을 강제하는 규칙.** 심판은 출력만 보므로 어떻게 얻었는지 묻지 않는다.
+        # 그래서 다섯 판 내리 상수표가 나왔다(실측). 수리안 채택 전에 이것도 본다.
+        (run_dir / "code_rule.json").write_text(
+            json.dumps({"require_computation": True}, ensure_ascii=False),
+            encoding="utf-8")
         # 예산 값을 기술서에 **인자에서 그대로** 넣는다. 손으로 숫자를 적어두면
         # --node-timeout 을 바꿨을 때 기술서와 실제가 조용히 어긋난다.
         problem = PROBLEM.format(
@@ -410,6 +423,21 @@ def main() -> int:
     # "solved" 로 끝났는데 세 case 전부 "답 없음"이었다.
     recheck_ok, recheck_why = ((True, "") if res.get("status") != "solved"
                                else _recheck(final, run_dir))
+    # 심판이 통과시켜도 **계산 없이 얻은 것이면 통과로 세지 않는다.** 알려진 답을
+    # 옮겨 적은 것은 탐색의 결과가 아니고, 아무도 모르는 값으로 이어지지 않는다.
+    if recheck_ok and res.get("status") == "solved":
+        try:
+            import method_trace
+            rows = method_trace.report(run_dir)["versions"]
+            tags = set(rows[-1]["tags"]) if rows else set()
+        except Exception:
+            tags = set()
+        blocked = tags & {"상수표(계산 없음)", "할당만(계산 없음)", "골격/미완"}
+        if blocked:
+            recheck_ok = False
+            recheck_why = (f"심판은 통과시켰지만 최종 코드가 계산을 하지 않는다 "
+                           f"({', '.join(sorted(blocked))}). 답을 적어 넣은 것이지 "
+                           f"찾은 것이 아니다")
     if not recheck_ok:
         print(f"\n!! solved 라는데 우리 심판으로 다시 재면 통과가 아니다.\n   {recheck_why[:300]}")
         print("   재계획이 주입 심판을 지웠을 때 나오는 모습이다. "

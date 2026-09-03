@@ -141,6 +141,48 @@ def _code_defect(code: str, fn: str) -> str:
     return ""
 
 
+def _computation_defect(run_dir: Path, code: str) -> str:
+    """**답을 계산했는가, 적어 넣었는가.** 런이 code_rule.json 으로 요구할 때만 본다.
+
+    왜 필요한가(실측 2026-09-03). 오케스트레이터가 텐서 분해를 다섯 판 내리 상수표로
+    냈다. 인자행렬을 리터럴로 적고, 그것도 안 되면 영행렬을 할당해 놓고 채우지 못한 채
+    끝냈다. 갈아타기 0 회. 계산 시간 600 초와 이어쓰기 자리를 알려준 뒤에도 같았다.
+
+    그럴 만했다. 계약이 "인자행렬을 반환하라"이므로 표를 적어도 형식은 맞고, **계산을
+    강제하는 것이 아무것도 없었다.** 심판은 출력만 보므로 어떻게 얻었는지 묻지 않는다.
+
+    그래서 규칙을 하나 건다 -- 방법을 지시하는 것이 아니라 판의 규칙이다(외부
+    라이브러리 금지와 같은 층). 답은 계산해서 내야 한다. 상수표도, 빈 배열도 아니다.
+    mm333=22 처럼 아무도 모르는 값에서는 어차피 기억이 통하지 않으므로, 이 규칙이 무는
+    자리는 외워서 넘길 수 있는 rung 뿐이다.
+
+    무늬로 완전히 막을 수는 없다(뜻 없는 반복문을 끼워 넣으면 통과한다). 그래도 "표를
+    적으면 그대로 채택된다"와 "적으면 반려된다"는 다르고, 판본 추적이 실제로 무엇을
+    했는지 계속 찍는다."""
+    rule_path = run_dir / "code_rule.json"
+    if not rule_path.is_file():
+        return ""
+    try:
+        rule = json.loads(rule_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return ""
+    if not rule.get("require_computation"):
+        return ""
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import method_trace
+        tags = method_trace.fingerprint(code)["tags"]
+    except Exception:
+        return ""                      # 추적기가 없으면 막지 않는다. 조용히 통과가 낫다
+    blocked = {"상수표(계산 없음)", "할당만(계산 없음)", "골격/미완"}
+    hit = sorted(set(tags) & blocked)
+    if hit:
+        return (f"계산하지 않았다({', '.join(hit)}). 이 런은 답을 **계산해서** 내야 한다 "
+                f"-- 인자를 리터럴로 적거나 빈 배열을 반환하면 반려된다. "
+                f"실질 호출이 하나도 없다")
+    return ""
+
+
 def _format_attempts(node: Node, limit: int = 8) -> str:
     """노드의 실패/수리 이력을 프롬프트용으로 편다. 이걸 읽혀야 같은 실패를 반복하지 않는다."""
     rows = []
@@ -278,7 +320,7 @@ def repair_node(run_dir: str, node_id: str, pool=None, pool_id="planner") -> dic
     text, label = llm_pool.call(pool, prompt, pool_id=pool_id)
     code = _parse_code(text)
 
-    defect = _code_defect(code, "solve")
+    defect = _code_defect(code, "solve") or _computation_defect(run_dir, code)
     if defect:
         node.attempts.append({"ts": time.time(), "repair_rejected": defect, "model": label})
         plan.save(plan_path)

@@ -12,6 +12,7 @@
   키-쌍        _FALLBACK 을 지운다       -> 내 컨테이너에서만 초록이던 시절
   마감-실측     TIMEOUT 을 60 으로       -> 504 를 우리가 만들던 시절
   예산-일치     기술서 예산을 손으로 적는다 -> 기술서와 실제가 조용히 어긋나는 자리
+  계산-강제     계산 검사를 뗀다          -> 다섯 판 내리 상수표가 채택되던 시절
   미지-범주     미분류/상수표를 지운다     -> 하드코딩을 새 방법이라 부르던 시절
   구간-네자리   at_upper 를 지운다        -> 27 을 "구간 [19,23] 안"이라 하던 시절
   상태코드-분기 상태 분기를 지운다        -> 전부 "구글 쪽 문제"이던 시절
@@ -49,6 +50,8 @@ MUTATIONS = [
      'GEMINI_TIMEOUT", "240"', 'GEMINI_TIMEOUT", "60"'),
     ("예산-일치", "orchestrator/problems/tensor_rank/run.py",
      "budget=a.node_timeout", "budget=600.0"),
+    ("계산-강제", "orchestrator/planner.py",
+     'or _computation_defect(run_dir, code)', ""),
     ("미지-범주", "orchestrator/method_trace.py", "미분류", "unknown_kind"),
     ("구간-네자리", "orchestrator/problems/tensor_rank/verify.py",
      '"at_upper"', '"inside2"'),

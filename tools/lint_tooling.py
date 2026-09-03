@@ -90,6 +90,19 @@ RULES = [
         when=r"\{budget:", require=r"budget=a\.node_timeout",
     ),
     dict(
+        id="계산-강제", rule="④",
+        desc="계산을 요구하는 런은 수리안 채택 전에도 그것을 검사해야 한다",
+        why="심판은 출력만 보므로 어떻게 얻었는지 묻지 않는다. 그래서 오케스트레이터가 "
+            "다섯 판 내리 상수표를 냈고 갈아타기가 0 회였다. 최종 관문에서만 막으면 "
+            "라운드를 다 쓴 뒤에야 알게 되므로, 수리안 단계에서 되먹여야 한다",
+        commit="휴리스틱-제한",
+        globs=["orchestrator/planner.py"],
+        # 이름만 요구하면 **정의부**가 규칙을 만족시켜, 호출을 통째로 지워도 초록이었다.
+        # RPM-분리가 docstring 때문에 이빨을 잃은 것과 같은 병이다. 호출부를 정확히 건다.
+        when=r'_code_defect\(code, "solve"\)',
+        require=r"or _computation_defect\(run_dir, code\)",
+    ),
+    dict(
         id="미지-범주", rule="①",
         desc="분류기에는 미지 범주가 있어야 한다",
         why="태그가 안 걸리면 '미분류'라 부르고 흥미롭다고 했는데 실은 상수표 "
