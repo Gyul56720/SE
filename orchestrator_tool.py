@@ -272,10 +272,55 @@ def run_status(run: str = "") -> str:
             lines.append(f"=> 아직 미완이고 프로세스도 없다. orchestrator_resume('{run_dir.name}') "
                          f"으로 이어서 돌릴 수 있다.")
 
+    lines.extend(_rounds_tail(run_dir))
+
     tail = _log_tail(meta.get("log") or (LOG_DIR / f"{run_dir.name}.log"))
     if tail:
         lines.append(f"--- 로그 끝부분 ---\n{tail}")
     return redact_secrets("\n".join(lines))
+
+
+def _rounds_tail(run_dir: Path, keep: int = 6) -> "list[str]":
+    """rounds.jsonl 끝부분을 한 줄씩 요약한다.
+
+    plan.json 은 **지금** 상태만 보여준다 -- 노드가 지금 실패라는 것은 알려주지만 몇 번째
+    라운드인지, 수리가 몇 번 붙었는지, 재계획으로 승격했는지는 안 보인다. 한도가 30/20/10 이면
+    그 구분이 곧 "진전이 있는가"의 답이라 상태 보고에 같이 싣는다."""
+    path = run_dir / "rounds.jsonl"
+    if not path.is_file():
+        return []
+    recs = []
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line:
+                try:
+                    recs.append(json.loads(line))
+                except ValueError:
+                    pass          # 프로세스가 줄 중간에 죽으면 마지막 줄이 깨질 수 있다
+    except OSError:
+        return []
+    if not recs:
+        return []
+
+    n_rounds = sum(1 for r in recs if r.get("event") == "round")
+    out = [f"--- 라운드 기록 ({n_rounds}라운드, rounds.jsonl 끝 {min(keep, len(recs))}줄) ---"]
+    for r in recs[-keep:]:
+        ev = r.get("event")
+        if ev == "start":
+            lim = r.get("limits") or {}
+            out.append(f"  [시작 {r.get('at')}] 라운드 {lim.get('max_repair_rounds')} / "
+                       f"노드당 수리 {lim.get('max_node_repairs')} / 재계획 {lim.get('max_replans')}")
+        elif ev == "end":
+            out.append(f"  [끝 {r.get('at')}] {r.get('status')} "
+                       f"(라운드 {r.get('rounds')}, 재계획 {r.get('replans')})"
+                       + (f" -- {r.get('reason')}" if r.get("reason") else ""))
+        else:
+            failed = r.get("failed") or []
+            out.append(f"  [R{r.get('round')} {r.get('at')}] {r.get('run_status')} / "
+                       f"{r.get('action', '-')} / 실패 {failed or '-'} / "
+                       f"{r.get('seconds')}초")
+    return out
 
 
 def stop_run(run: str = "") -> str:

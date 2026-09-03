@@ -261,12 +261,66 @@ python3 orchestrator/solve.py "<문제>"
 # 노드 예산을 늘린다 (무거운 수치 계산)
 python3 orchestrator/solve.py "<문제>" --node-timeout 300
 
-# 수리를 더 끈질기게
-python3 orchestrator/solve.py --resume <런> --max-repair-rounds 5 --max-node-repairs 3
+# 덜 끈질기게 (짧게 보고 싶을 때 -- 기본이 이미 끈질기다)
+python3 orchestrator/solve.py --resume <런> --max-repair-rounds 3 --max-node-repairs 2
 
 # 예산 자체를 환경변수로
 ORCH_NODE_TIMEOUT=300 python3 orchestrator/solve.py "<문제>"
 ```
+
+#### 루프 한도와 시간
+
+| 손잡이 | 기본 | 뜻 |
+|---|---|---|
+| `--max-repair-rounds` | **30** | 실행-수리 라운드. run_plan 은 **+1 회** 돈다(마지막은 확인 전용) |
+| `--max-node-repairs` | **20** | 노드 하나당 수리 시도. 넘으면 재계획으로 승격 |
+| `--max-replans` | **10** | 계획 전체 재수립 |
+| `--node-timeout` | 60 (`ORCH_NODE_TIMEOUT`) | 노드 하나의 실행 예산. **solve 와 verify 에 각각** 건다 |
+
+한도는 **끈기**를 정하지 시간을 정하지 않는다. 전체 벽시계 상한은 없다 -- 시간 예산은 노드
+하나짜리(SIGALRM)뿐이고, `drive()` 에도 `run_plan()` 에도 루프를 끊는 타이머가 없다. 30/20/10
+에서 지배항은 노드 실행이 아니라 LLM 호출이다: `llm_pool.call` 한 번의 최악이
+`GEMINI_MAX_CANDIDATES(12) x GEMINI_TIMEOUT(60초) = 12분`, `make_plan` 은 그것을 3번까지
+(36분), 수리는 실패 노드마다 한 번씩이다. 최악은 시간 단위로 간다.
+
+그래서 상한은 밖에서 건다:
+
+```bash
+timeout -s INT 3h python3 orchestrator/solve.py "<문제>"        # 벽시계
+GEMINI_TIMEOUT=30 GEMINI_MAX_CANDIDATES=6 python3 ...           # LLM 대기 12분 -> 3분
+```
+
+`-s INT` 로 끊어도 산출물은 남는다. `plan.json` 은 노드마다 즉시 저장되므로 verified 노드는
+건너뛰고 `--resume` 으로 이어서 돌린다.
+
+#### 라운드 기록 (rounds.jsonl)
+
+라운드마다 런 디렉토리의 `rounds.jsonl` 에 JSON 한 줄이 append 된다. 반환값의 `log` 와 같은
+내용이지만 **돌고 있는 중에도** 보이고 런이 죽어도 남는다 -- 한도가 30/20/10 이면 런 하나가
+몇 시간짜리라, 끝나야만 어디까지 갔는지 아는 것은 관측이 아니다.
+
+```
+{"event":"start","at":"...","limits":{"max_repair_rounds":30,...}}
+{"event":"round","round":1,"run_status":"incomplete","failed":["c"],"action":"repair","seconds":8.4}
+{"event":"round","round":2,"run_status":"solved","action":"solved","seconds":1.2}
+{"event":"end","at":"...","status":"solved","rounds":2,"replans":0}
+```
+
+```bash
+tail -f orchestrator/runs/<런>/rounds.jsonl
+
+# 라운드별 한 줄 요약
+python3 -c "
+import json,sys
+for l in open(sys.argv[1]):
+    r=json.loads(l)
+    if r['event']=='round':
+        print(r['round'], r['run_status'], r.get('action'), r.get('failed'), r['seconds'])
+" orchestrator/runs/<런>/rounds.jsonl
+```
+
+`--resume` 은 같은 파일에 append 하고 라운드 번호는 1 부터 다시 센다. `start` 줄이 그 경계다.
+`orchestrator_status` 는 이 파일의 끝부분을 자동으로 같이 보여준다.
 
 #### 언제 무엇을 만지나
 

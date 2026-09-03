@@ -112,7 +112,9 @@ def _inject(run_dir: Path, verifier_rel: str) -> dict:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="오케스트레이터에게 직선거리 문제를 풀린다")
-    ap.add_argument("--max-repair-rounds", type=int, default=3)
+    ap.add_argument("--max-repair-rounds", type=int, default=30)
+    ap.add_argument("--max-node-repairs", type=int, default=20)
+    ap.add_argument("--max-replans", type=int, default=10)
     ap.add_argument("--node-timeout", type=float, default=120.0)
     ap.add_argument("--run-dir", default=None, help="기존 런을 이어서 돌린다")
     a = ap.parse_args()
@@ -144,8 +146,11 @@ def main() -> int:
         print(f"계획: 노드 {info['n_nodes']}개, 최종 노드 '{info['final']}'")
         print(f"심판 주입: {info['replaced']} -> {info['with']}")
 
-    print("실행/검증/수리 루프를 돈다 ...")
+    print(f"실행/검증/수리 루프를 돈다 (라운드 {a.max_repair_rounds} / 노드당 수리 "
+          f"{a.max_node_repairs} / 재계획 {a.max_replans} / 노드 예산 {a.node_timeout:g}초) ...")
+    print(f"라운드 기록: {run_dir / 'rounds.jsonl'}")
     res = orch_solve.drive(str(run_dir), max_repair_rounds=a.max_repair_rounds,
+                           max_node_repairs=a.max_node_repairs, max_replans=a.max_replans,
                            node_timeout=a.node_timeout)
 
     print(f"\n결과: {res.get('status')}  (라운드 {res.get('rounds')}, "
