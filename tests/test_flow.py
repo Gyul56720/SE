@@ -162,6 +162,21 @@ r = flow.step(bk, f)
 ok(r["status"] == "ok", f"두 번째 시도에서 채택 ({r['status']})")
 ok(f.tries == 2, f"한 번 기각하고 다시 썼다 ({f.tries}회)")
 print()
+print("[규모] **5만 자를 써도 프롬프트가 원장으로 차지 않게**")
+print("      ← 스쳐 간 사람이 쉰 명 쌓이면 그들의 카드가 꼬리와 확산 지시를 밀어낸다.")
+big = flow.blank()["ledger"]
+big["people"]["요우"] = {"나이": "42", "직업": "정비공", "말투": "짧게 끊는다", "_seen": 5}
+for i in range(40):
+    big["people"][f"행인{i}"] = {"직업": "행인", "_seen": 1}
+b = flow.brief(big)
+ok("나이 42 · 직업 정비공" in b, "주요 인물은 카드를 통째로 펼친다")
+ok("[스쳐 간 사람]" in b, "조연은 한 줄로 접는다")
+ok(b.count("\n") < 8, f"조연 마흔이 있어도 줄 수가 늘지 않는다 ({b.count(chr(10)) + 1}줄)")
+ok("행인39" in b, "접혀도 이름은 남는다  ← 확산의 연료로는 그대로 쓰인다")
+ok(flow.is_main(big["people"]["요우"]) and not flow.is_main(big["people"]["행인0"]),
+   "펼치는 잣대가 _merge 의 '주요 인물' 과 같다")
+
+print()
 print("[영속] **시작하자마자 한 번 저장한다**")
 print("      ← 첫 덩어리를 다 받고서야 파일이 생기면, 아직 쓰는 중인지 시작도 못 한 건지")
 print("        밖에서 구분할 수가 없다(실측: --read 가 FileNotFoundError 로 죽었다).")

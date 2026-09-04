@@ -166,20 +166,47 @@ def _merge(ledger: dict, delta: dict) -> list:
     return clashes
 
 
+def is_main(card) -> bool:
+    """주요 인물인가 -- 자주 나왔고(3회) 카드도 두툼하다(3칸). _merge 와 같은 잣대다."""
+    if not isinstance(card, dict):
+        return False
+    filled = sum(1 for k, v in card.items() if v and not k.startswith("_"))
+    return int(card.get("_seen", 0)) >= MAIN_AFTER and filled >= MAIN_FIELDS
+
+
 def brief(ledger: dict, limit: int = 40) -> str:
-    """원장을 프롬프트에 실을 형태로. **인물은 카드를 통째로** 펼친다 -- 대사가 인물마다
-    달라지려면 나이도 말투도 트라우마도 그 자리에 있어야 한다. 나머지 칸은 한 줄씩."""
+    """원장을 프롬프트에 실을 형태로.
+
+    **주요 인물만 카드를 통째로 펼친다.** 대사가 인물마다 달라지려면 나이도 말투도
+    트라우마도 그 자리에 있어야 하지만, 그건 계속 말하는 사람 이야기다. 5만 자를 쓰면
+    스쳐 간 사람이 쉰 명씩 쌓이는데(우체부, 옆자리 손님, 이름만 나온 삼촌) 그들의 카드까지
+    매 덩어리에 펼치면 프롬프트가 원장으로 가득 찬다 -- 그러면 정작 읽어야 할 꼬리와 확산
+    지시가 뒤로 밀리고, 호출 하나가 무거워져 RPM 도 빨리 마른다.
+
+    그래서 조연은 **한 줄로 접는다.** 접혀 있어도 이름은 남으니 확산의 연료로는 그대로
+    쓰인다. 그 사람이 다시 자주 나오기 시작하면 _seen 이 차면서 저절로 펼쳐진다.
+    """
     out = []
     people = list(ledger.get("people", {}).items())
     if people:
-        out.append("  [인물]")
-        for name, card in people:
-            if isinstance(card, dict):
+        main = [(n, c) for n, c in people if is_main(c)]
+        rest = [(n, c) for n, c in people if not is_main(c)]
+        if main:
+            out.append("  [인물]")
+            for name, card in main:
                 fields = " · ".join(f"{k} {v}" for k, v in card.items()
                                     if v and not k.startswith("_"))
                 out.append(f"    {name} — {fields}")
-            else:
-                out.append(f"    {name} — {card}")
+        if rest:
+            brief_rest = []
+            for name, card in rest[-limit:]:
+                if isinstance(card, dict):
+                    bit = next((f"{k} {v}" for k, v in card.items()
+                                if v and not k.startswith("_")), "")
+                else:
+                    bit = str(card)
+                brief_rest.append(f"{name}({bit})" if bit else name)
+            out.append("  [스쳐 간 사람] " + " · ".join(brief_rest))
     for bucket, label in (("places", "장소"), ("objects", "사물"), ("facts", "사실")):
         items = list(ledger.get(bucket, {}).items())[-limit:]
         if items:
@@ -421,7 +448,7 @@ def main() -> int:
     ap.add_argument("--read", default="")
     ap.add_argument("--chars", type=int, default=6000)
     ap.add_argument("--first", default=FIRST)
-    ap.add_argument("--hours", type=float, default=3.0)
+    ap.add_argument("--hours", type=float, default=12.0)
     a = ap.parse_args()
 
     if a.read:
