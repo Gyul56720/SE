@@ -1320,7 +1320,7 @@ def run_scene(novel, scene, llm, max_repairs=MAX_REPAIRS, log=None) -> dict:
 
 
 def drive(novel, path, llm=None, max_repairs=MAX_REPAIRS, log=None, limit=None,
-          skip_blocked: int = 0, upto_episode: int = 0) -> dict:
+          skip_blocked: int = 0, upto_episode: int = 0, rounds: int = 1) -> dict:
     """미완 씬들을 차례로 몰아붙인다. 씬마다 즉시 저장한다.
 
     skip_blocked -- 막힌 씬을 몇 개까지 넘어갈 것인가. 기본 0 은 예전 그대로 **첫 실패에서
@@ -1338,7 +1338,19 @@ def drive(novel, path, llm=None, max_repairs=MAX_REPAIRS, log=None, limit=None,
     upto_episode -- 여기까지의 회차만 채운다(0 이면 전부). 한 회차만 돌려보고 산문이 실제로
     나오는지 확인하는 데 쓴다. 씬 수(limit)가 아니라 **회차**로 자르는 이유: 회차의 끝
     씬에서만 도는 관문(V018 개연성의 회차 단위 판정)이 있어서, 씬 수로
-    자르면 회차가 중간에 끊겨 그 관문들이 판정할 대상 자체를 못 갖는다."""
+    자르면 회차가 중간에 끊겨 그 관문들이 판정할 대상 자체를 못 갖는다.
+
+    rounds -- 막힌 씬을 **몇 바퀴까지 다시 도는가**. 기본 1 은 예전 그대로 한 바퀴다.
+
+    왜 필요한가(2026-09-04 실측): 12씬 중 9씬이 통과하고 3씬이 막힌 채 런이 끝났다.
+    `attempted` 가 한 호출 안에서 같은 씬을 다시 잡지 않게 막는데(그게 없으면 무한
+    루프다), 그러면 막힌 씬은 **그 런 안에서 두 번 다시 기회를 얻지 못한다.** 남은 예산이
+    다섯 시간이어도 끝난다. 그런데 여기서 실패는 결정론적이지 않다 -- 디렉터·배우·화자를
+    새로 뽑으면 다음 바퀴에 통과하는 일이 흔하다(같은 프롬프트에 같은 답이 오는 것은
+    되먹임이 없을 때 이야기이고, 실패 사유는 되먹임으로 실린다).
+
+    그래서 한 바퀴가 끝나면 막힌 씬만 pending 으로 되돌리고 다시 돈다. attempts 이력은
+    지우지 않는다 -- 무엇이 몇 번 막았는지가 아침에 읽을 유일한 단서다."""
     llm = llm or default_llm      # 콜러블 하나 또는 {역할: 콜러블} dict
     log = log or (Path(path).with_suffix(".scenes.jsonl") if path else None)
     _record(log, {"event": "start", "at": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -1350,28 +1362,57 @@ def drive(novel, path, llm=None, max_repairs=MAX_REPAIRS, log=None, limit=None,
     # 것이 아니라 무한 루프가 된다(내 회귀 검사가 실측으로 잡았다: 같은 씬을 999번 넘게
     # "넘어간다" 고 찍었다). 밤에 걸었으면 씬 하나로 일곱 시간을 태웠다.
     attempted: set = set()
-    while True:
-        scene = next((sc for sc in novel.scenes
-                      if sc.status != "verified" and sc.id not in attempted
-                      and not (upto_episode and sc.episode > upto_episode)), None)
-        if scene is None or (limit and done + failed >= limit):
-            break
-        attempted.add(scene.id)
-        r = run_scene(novel, scene, llm, max_repairs, log)
-        _record(log, {"event": "scene", "id": scene.id, "at": time.strftime("%H:%M:%S"), **r})
-        if path:
-            novel.save(path)                              # 씬마다 즉시 저장
-        if r["status"] == "verified":
-            done += 1
-        else:
-            failed += 1
-            if failed > skip_blocked:
-                break                    # 한도를 넘으면 멈춘다 (기본값 0 = 첫 실패에서)
-            _log(f"[drive] {scene.id} 막힘 -- 넘어간다 ({failed}/{skip_blocked}) "
+
+    def _pass() -> int:
+        """막히지 않은 씬을 끝까지 민다. 반환은 이번 바퀴에 막힌 개수."""
+        nonlocal done
+        stuck_here = 0
+        while True:
+            scene = next((sc for sc in novel.scenes
+                          if sc.status != "verified" and sc.id not in attempted
+                          and not (upto_episode and sc.episode > upto_episode)), None)
+            if scene is None or (limit and done + stuck_here >= limit):
+                return stuck_here
+            attempted.add(scene.id)
+            r = run_scene(novel, scene, llm, max_repairs, log)
+            _record(log, {"event": "scene", "id": scene.id,
+                          "at": time.strftime("%H:%M:%S"), **r})
+            if path:
+                novel.save(path)                          # 씬마다 즉시 저장
+            if r["status"] == "verified":
+                done += 1
+                continue
+            stuck_here += 1
+            if stuck_here > skip_blocked:
+                return stuck_here        # 한도를 넘으면 멈춘다 (기본값 0 = 첫 실패에서)
+            _log(f"[drive] {scene.id} 막힘 -- 넘어간다 ({stuck_here}/{skip_blocked}) "
                  f"{(r.get('violations') or [''])[0][:80]}")
 
+    failed = _pass()
+    for rnd in range(2, max(1, rounds) + 1):
+        stuck = [sc for sc in novel.scenes if sc.status == "failed"
+                 and not (upto_episode and sc.episode > upto_episode)]
+        if not stuck:
+            break
+        if EPISODE_DEADLINE is not None and time.time() > EPISODE_DEADLINE:
+            _log(f"[drive] 시간 상한이라 {rnd}바퀴째는 돌지 않는다 (막힌 씬 {len(stuck)}개)")
+            break
+        _log(f"[drive] {rnd}바퀴째 -- 막힌 씬 {len(stuck)}개를 다시 돈다: "
+             f"{', '.join(sc.id for sc in stuck[:6])}")
+        for sc in stuck:
+            sc.status = "pending"        # attempts 이력은 남긴다 -- 아침의 유일한 단서다
+        attempted = set()
+        failed = _pass()
+
+    # **무엇이 막았는지 함께 돌려준다.** 예전에는 "blocked" 세 글자만 올라와서, 아침에
+    # 원고를 열기 전에는 어느 씬이 왜 막혔는지 알 수 없었다.
+    blocked = [{"id": sc.id, "episode": sc.episode,
+                "why": (sc.violations or [""])[0][:120]}
+               for sc in novel.scenes
+               if sc.status == "failed"
+               and not (upto_episode and sc.episode > upto_episode)]
     out = {"status": "done" if failed == 0 else ("partial" if done else "blocked"),
-           "verified": done, "failed": failed,
+           "verified": done, "failed": failed, "blocked": blocked,
            "remaining": sum(1 for s in novel.scenes
                             if s.status != "verified"
                             and not (upto_episode and s.episode > upto_episode))}

@@ -252,6 +252,11 @@ def main() -> int:
                     help="결말 블록을 몇 개까지 처리하고 멈출 것인가 (0 = 전부). "
                          "1 이면 1~10화만 끝내고 종료한다 -- 밤을 걸기 전에 한 블록으로 "
                          "실제로 산문이 나오는지 보는 데 쓴다")
+    ap.add_argument("--rounds", type=int, default=3,
+                    help="막힌 씬을 몇 바퀴까지 다시 도는가. 1 이면 예전 그대로 한 바퀴. "
+                         "실패는 결정론적이지 않다 -- 디렉터·배우·화자를 새로 뽑으면 "
+                         "다음 바퀴에 통과하는 일이 흔하다(실측: 12씬 중 3씬이 막힌 채 "
+                         "예산 다섯 시간을 남기고 런이 끝났다)")
     ap.add_argument("--skip-blocked", type=int, default=999,
                     help="관문에 막힌 씬을 몇 개까지 넘어갈 것인가. 야간 런은 넘어가는 "
                          "쪽이 맞다 -- 씬 하나 때문에 회차 전체가 서면 밤이 날아간다")
@@ -350,13 +355,16 @@ def main() -> int:
             # **막힌 씬 하나가 열다섯 화를 세우지 않게 한다.** 자는 동안에는 사람이
             # 풀어줄 수 없으므로 넘어가고 아침에 본다.
             r = D.drive(novel, str(path), llm=llm, max_repairs=a.max_repairs, log=log,
-                        skip_blocked=a.skip_blocked, upto_episode=a.upto_episode)
+                        skip_blocked=a.skip_blocked, upto_episode=a.upto_episode,
+                        rounds=a.rounds)
             # **여기가 요점: 실패해도 다음 에피소드로 간다.** 자는 동안 break 하면
             # 남은 시간이 통째로 낭비된다.
             (done if r["status"] == "done" else failed).append(
                 {"eps": [lo, hi], **r, "seconds": round(time.time() - t0)})
             D._log(f"[{_now()}] {lo}~{hi}화 {r['status']} "
                    f"(verified {r['verified']}, {time.time() - t0:.0f}초)")
+            for b in (r.get("blocked") or [])[:6]:
+                D._log(f"    막힘 {b['id']} ({b['episode']}화): {b['why']}")
             chars = sum(len(s.prose or "") for s in novel.scenes
                         if lo <= s.episode <= hi)
             mark = "✅" if r["status"] == "done" else "⚠️"
@@ -379,7 +387,10 @@ def main() -> int:
 
     ver = sum(1 for s in novel.scenes if s.status == "verified")
     chars = sum(len(s.prose or "") for s in novel.scenes)
+    stuck = [{"id": s.id, "episode": s.episode, "why": (s.violations or [""])[0][:160]}
+             for s in novel.scenes if s.status == "failed"]
     summary = {
+        "blocked_scenes": stuck,
         "finished_at": _now(), "hours_budget": a.hours,
         "episodes_done": done, "episodes_failed": failed,
         "scenes_total": len(novel.scenes), "scenes_verified": ver,
@@ -391,6 +402,10 @@ def main() -> int:
     D._log(f"\n[{_now()}] === 끝 ===")
     D._log(f"  에피소드 성공 {len(done)} / 실패 {len(failed)}")
     D._log(f"  씬 {len(novel.scenes)}개 중 verified {ver} / 총 {chars:,}자")
+    if stuck:
+        D._log(f"  막힌 씬 {len(stuck)}개 -- 같은 명령을 다시 돌리면 이어서 채운다:")
+        for b in stuck[:8]:
+            D._log(f"    {b['id']} ({b['episode']}화): {b['why']}")
     if director:
         D._log(f"  디렉터: claude -p {director.stats['primary']}회 / "
                f"Gemini 폴백 {director.stats['fallback']}회 / 실패 {director.stats['fail']}회")
