@@ -32,6 +32,8 @@ def world():
     return Novel(title="시험", pov_character="A",
                  characters=[Character("A", "화자"),
                              Character("B", "동기", emotion_envelope={"joy": 40})],
+                 # 화자가 모르는 비밀 하나. 산문이 이것을 언급하면 V008 이 hard 로 잡는다.
+                 facts={"secrets": {"B의 비밀번호": {"knows": ["B"], "aliases": []}}},
                  scenes=[Scene(id="s01", location="카페", punctum="그라인더 소리",
                                participants=["A", "B"], directives=["둘이 말하지 않는다"])])
 
@@ -42,7 +44,7 @@ GOOD_TURN = {"inner_thought": "무슨 말을 해야 할까", "action": "잔을 �
 GOOD_PROSE = "그라인더 소리가 멎었다. 나는 잔을 돌리며 창밖을 바라보았다."
 # 분량 보충(fill_prose)이 이어쓰기로 받는 것. 한 번에 목표를 넘겨 루프가 한 번에 끝난다.
 FILLER = "물을 올렸다. 레코드를 골랐다. 창밖은 아직 밝았다. " * 60
-BAD_PROSE = "B는 깊이 후회했다. 나는 슬펐다. 그리고 외로웠다. 무척 우울했다."
+BAD_PROSE = "B의 비밀번호가 적혀 있었다. 잔이 식어 있었다."   # V008 지식 누출
 
 
 class Fake:
@@ -77,9 +79,9 @@ ok(r["status"] == "verified", f"두 번째 시도에서 통과 ({r['status']})")
 ok(r["attempts"] == 2, f"시도 2회 (얻은 값 {r['attempts']})")
 retry = [p for p in f.prompts if "직전 시도가 기각된 이유" in p]
 ok(bool(retry), "재시도 프롬프트에 되먹임 문단이 들어간다")
-ok(any("V004" in p or "V005" in p for p in retry),
+ok(any("V008" in p for p in retry),
    "어느 규칙이 깨졌는지가 프롬프트에 실린다")
-ok(any("화자의 관찰" in p or "푼크툼" in p for p in retry),
+ok(any("reveal" in p or "모른다" in p for p in retry),
    "어떻게 고칠지도 실린다  ← (bool,str) 로는 못 하는 일")
 
 print("[한도] 계속 실패하면 사실대로 failed 를 낸다")

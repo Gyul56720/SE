@@ -75,15 +75,6 @@ bad = scene_fixture(turns=[Turn("미도리", "", "", "안녕", {"joy": 200, "mel
                                                           "narrative_pull": 0})])
 ok(has(gate.check(bad, N), "V001", "hard"), "감정 범위 밖 값을 잡는다")
 
-print("[V004] 시점 위반")
-bad = scene_fixture(prose="미도리는 아버지를 떠올리며 깊이 후회했다. 비가 내렸다.")
-ok(has(gate.check(bad, N), "V004", "hard"), "타인의 내면을 사실로 단정한 것을 잡는다")
-good = scene_fixture(prose="나는 미도리가 아버지를 떠올렸다고 생각했다. 비가 내렸다.")
-ok(not has(gate.check(good, N), "V004", "hard"),
-   "'나는 ~라고 생각했다'(화자의 추측)는 기각하지 않는다  ← 과잉 기각 방지")
-q = scene_fixture(prose='"나는 늘 외로웠다고 생각했어." 그녀가 말했다. 비가 내렸다.')
-ok(not has(gate.check(q, N), "V004", "hard"), "대사 안의 내면 서술은 검사하지 않는다")
-
 print("[V007] 화자 없는 씬 -- 원 설계의 구멍")
 bad = scene_fixture(participants=["나오코", "레이코"], mode="dialogue")
 ok(has(gate.check(bad, N), "V007", "hard"), "화자 부재 씬의 직접 서술을 기각한다")
@@ -101,17 +92,18 @@ ok(gate.verdict([gate.Violation("X", "soft", "w", "d")])[0], "soft 만이면 통
 ok(not gate.verdict([gate.Violation("X", "hard", "w", "d")])[0], "hard 가 있으면 기각")
 
 print("[신호] 위반이 수리에 쓸 만한 정보를 담는가")
-v = [x for x in gate.check(scene_fixture(prose="미도리는 깊이 후회했다."), N)
-     if x.rule == "V004"][0]
-ok("미도리" in v.detail and "관찰" in v.detail,
-   f"어느 인물의 무엇을 어떻게 고칠지 말해준다: {v.detail[:45]}...")
+v = [x for x in gate.check(
+    scene_fixture(turns=[Turn("미도리", "", "", "기즈키의 죽음 얘기 들었어", E(joy=55))]), N)
+     if x.rule == "V008"][0]
+ok("미도리" in str(v) and "reveal" in v.detail,
+   f"누가 무엇을 어떻게 고칠지 말해준다: {v.detail[:45]}...")
 
 print()
 if fails:
     print(f"소설 기계 관문: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)
-print("소설 기계 관문: 형식·시점·화자부재·지식누출을 잡고, "
-      "화자의 추측과 대사 속 내면 서술은 통과시킨다 -- 통과")
+print("소설 기계 관문: 형식·화자부재·지식누출을 잡고, "
+      "대사 안의 서술은 검사하지 않는다 -- 통과")
 
 
 # ===================================================================== 거시 배분

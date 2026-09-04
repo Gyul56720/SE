@@ -22,7 +22,8 @@ severity:
 관계·설정이 어긋나는가, 없는 것을 요구하는가, 화자가 보지 못한 것을 서술하는가, 시계가
 되감기는가. 이것들은 취향이 아니라 사실이라 기계가 판정할 자격이 있다.
 
-취향에 속하는 검사는 전부 뺐다 -- 감정 급변/폭(V002·V003), 직접 감정 서술(V005),
+취향에 속하는 검사는 전부 뺐다 -- 시점 위반(V004), 감정 급변/폭(V002·V003),
+직접 감정 서술(V005),
 푼크툼(V006), 시퀀스 궤도·꺾임·규모(V013~V015), 정보 격차(V016), 클리프행어(V017),
 회차 분량(V019), 문장 리듬(V020), 능동성(V022), 회차가 여는가(V025). 이유는 두 가지다:
 (1) 그것들은 "무엇이 좋은 소설인가" 에 대한 이 파일의 의견이었지 모순이 아니다.
@@ -42,14 +43,8 @@ import re
 from dataclasses import dataclass
 
 
-# 타인의 내면을 사실로 단정하는 술어. 1인칭 회고 화자는 이것을 쓸 수 없다.
-INTERIORITY = ("생각했다", "생각한다", "느꼈다", "느낀다", "깨달았다", "믿었다",
-               "기억했다", "바랐다", "후회했다", "결심했다", "확신했다", "알고 있었다",
-               "그리워했다", "두려워했다", "사랑했다")
-
 _SENT = re.compile(r"[^.!?…\n]+[.!?…]?")
 _QUOTED = re.compile(r"[\"“”][^\"“”]*[\"“”]|'[^']*'|「[^」]*」")
-_NARRATOR = re.compile(r"\b나(는|도|만|의|에게|를|와|랑)?\b|내(가|\s)")
 
 
 @dataclass
@@ -93,31 +88,6 @@ def check_turn_format(scene, novel) -> list:
             if not isinstance(v, int) or not (lo <= v <= 100):
                 out.append(Violation("V001", "hard", w,
                                      f"'{a}'={v!r} 가 범위 [{lo},100] 밖이거나 정수가 아니다"))
-    return out
-
-
-def check_pov(scene, novel) -> list:
-    """V004 -- 시점 위반. 1인칭 회고 화자는 타인의 내면을 사실로 서술할 수 없다.
-
-    '나는 그녀가 ~라고 생각했다' 는 화자의 추측이므로 허용된다. 문장에 화자 표지가 있으면
-    통과시키는 이유다 -- 이 구별을 못 하면 정당한 문장을 기각한다."""
-    out = []
-    if not scene.prose:
-        return out
-    others = [c.name for c in novel.characters if c.name != novel.pov_character]
-    for s in _sentences(_strip_quotes(scene.prose)):
-        if not any(v in s for v in INTERIORITY):
-            continue
-        if _NARRATOR.search(s):
-            continue                                  # 화자의 추측 -- 정당하다
-        hit = next((n for n in others if re.search(rf"{re.escape(n)}(은|는|이|가)", s)), None)
-        if hit:
-            out.append(Violation("V004", "hard", f"'{s[:40]}...'",
-                                 f"{hit} 의 내면을 사실로 단정했다. 화자의 관찰·추측으로 "
-                                 f"바꿔라 (예: '~한 기척이 느껴졌다')"))
-        elif re.search(r"(그녀|그)(은|는|이|가)", s):
-            out.append(Violation("V004", "soft", f"'{s[:40]}...'",
-                                 "대명사 주어의 내면 서술로 보인다. 화자 시점인지 확인하라"))
     return out
 
 
@@ -491,7 +461,7 @@ def check_pressure(scene, novel) -> list:
     return []
 
 
-CHECKS = (check_turn_format, check_pov, check_pov_presence,
+CHECKS = (check_turn_format, check_pov_presence,
           check_knowledge, check_relations, check_facts,
           check_belief, check_public_fiction,
           check_causality, check_pressure)

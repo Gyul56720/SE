@@ -122,7 +122,7 @@ print("[막힘] 막힌 씬 하나가 나머지 전부를 세우지 않는가")
 print("      ← 2026-09-04 시험 런: 111초 만에 blocked, verified 0, 뒤 29씬은 손도 못 댔다")
 from novel.state import Novel                                         # noqa: E402
 
-BAD_PROSE = "공명은 깊이 후회했다. 잔이 식어 있었다. 복도는 비어 있었다."
+BAD_PROSE = "형의 사고 이야기가 거기 있었다. 잔이 식어 있었다."  # 화자가 모르는 비밀
 GOOD_PROSE = "그라인더 소리가 멎었다. 나는 잔을 돌리며 창밖을 바라보았다."
 TURN = json.dumps({"inner_thought": "", "action": "", "speech": "그렇구나",
                    "emotions": {"joy": 45, "melancholy": 40, "isolation": 40,
@@ -144,7 +144,7 @@ def make(n_scenes=3):
 
 
 class ProseFake:
-    """첫 씬은 언제나 관문에 막히고(V004 시점 위반), 나머지는 깨끗하다."""
+    """첫 씬은 언제나 관문에 막히고(V008 지식 누출), 나머지는 깨끗하다."""
 
     def __call__(self, prompt):
         if "산문만 출력한다" in prompt:

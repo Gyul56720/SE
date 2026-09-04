@@ -58,7 +58,7 @@ def build(seed: dict = None) -> Novel:
     p = seed["people"]
     rule, cost, limit = (seed["impossible"]["rule"], seed["impossible"]["cost"],
                          seed["impossible"]["limit"])
-    law = f"{rule} (대가: {cost} · 한계: {limit})"
+    law = f"{rule} (효과: {cost} · 조건: {limit})"
 
     chars = []
     for i, (nm, person) in enumerate(zip(names, p)):
@@ -96,26 +96,32 @@ def build(seed: dict = None) -> Novel:
 
 
 def outcomes(seed: dict = None) -> list:
-    """한 블록 3화. steps 는 **누가 무엇을 하는가**로 쓴다 -- 행동이어야 화자가 움직인다."""
+    """한 블록 3화. steps 는 **누가 무엇을 하는가**로 쓴다 -- 행동이어야 화자가 움직인다.
+
+    사이다 페르소나의 결말은 **성취**다. 예전에는 "제 손으로 그 법을 쓰고 대가를 치른다"
+    였는데, 주인공이 대가를 치르는 구조는 이 장르에서 곧 고구마다. 되찾고, 편을 늘리고,
+    누군가 그것을 인정하는 것으로 닫는다."""
     seed = seed or load_seed()
     n = S.cast_names(seed)
     J = S.josa
     return [dict(
         seq=1, eps=(1, 3), scale=1,
-        # 마감은 **사건**에 건다. 시간 장치는 세계의 성질이라 마감 문장으로 쓰면
-        # 어떤 씨앗에서는 어색해진다("...도시 안에"). 장치는 페르소나와 진실에 있다.
-        deadline=f"{seed['event']} — 이 이틀 안에 그 정체를 알아내야 한다",
+        # 마감은 **사건**에 건다. 반칙은 세계의 성질이라 마감 문장으로 쓰면 어색해진다.
+        deadline=f"{seed['event']} — 이 판이 넘어가기 전에 뒤집어야 한다",
         deadline_hours=48,
-        stake=f"알아내지 못한 채 그 법을 쓰면 대가만 남는다: {seed['impossible']['cost']}",
-        steps=[f"{J(n[0], '이')} {seed['event']} — 그것을 그냥 넘기지 않기로 한다",
-               f"{J(n[1], '이')} 그것을 알면서 입을 다물었다는 것을 "
-               f"{J(n[0], '이')} 알아낸다"],
-        summary=f"{J(n[0], '이')} 처음으로 제 손으로 그 법을 쓴다 — "
-                f"{seed['impossible']['rule']}. 그리고 대가를 치른다: "
-                f"{seed['impossible']['cost']}",
+        # **걸린 것은 손해가 아니라 기회다.** 예전에는 "그 법을 쓰면 대가만 남는다" 였는데,
+        # 주인공이 대가를 치르는 구조는 사이다에서 곧 고구마다. 못 이기면 잃는 것으로 쓴다.
+        stake=f"놓치면 {J(n[1], '이')} 그 자리를 가져간다",
+        # 3화 법칙: 1화 곤경과 손실, 2화 관계 프레임 확정, 3화 규칙 마찰과 첫 승리.
+        steps=[f"{J(n[0], '이')} {seed['event']} — 그 자리에서 목적을 못박는다",
+               f"{J(n[0], '이')} 반칙으로 {n[1]}의 속셈을 먼저 읽고 "
+               f"{J(n[1], '을')} 자기 편으로 세운다"],
+        summary=f"{J(n[0], '이')} 반칙으로 판을 뒤집고 빼앗겼던 것을 되찾는다 — "
+                f"{seed['impossible']['rule']}. "
+                f"{J(n[2], '이')} 그것을 지켜보고 인정한다",
         requires=[],
-        establishes=["세계의 법을 직접 겪었다",
-                     f"{S.josa(n[0], '과')} {n[1]} 사이에 빚이 생겼다"],
+        establishes=["빼앗겼던 것을 되찾았다",
+                     f"{S.josa(n[0], '과')} {n[1]} 이 같은 편이 됐다"],
         world_ops=[{"event": "meet", "pair": [n[0], n[1]]},
                    {"event": "conceal", "term": f"{n[1]}의 상처",
                     "from_whom": [n[0]]}])]

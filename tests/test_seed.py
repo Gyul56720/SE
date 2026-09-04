@@ -34,10 +34,10 @@ space = (len(S.TIME) * len(S.IMPOSSIBLE) * len(S.EVENT) * len(S.MOTIF)
 ok(space > 100_000, f"인물 빼고도 {space:,}가지")
 ok(len(S.PEOPLE) >= 10, f"인물 축 {len(S.PEOPLE)}개 (셋을 뽑으므로 조합이 더 는다)")
 
-print("[규율] 불가능한 규칙에 대가와 한계가 **전부** 붙어 있는가")
+print("[규율] 반칙에 효과와 조건이 **전부** 붙어 있는가")
 print("      ← 무한한 마법은 긴장을 죽인다. 마술적 리얼리즘의 규율이 이것이다")
 bad = [r for r, cost, lim in S.IMPOSSIBLE if not cost or not lim]
-ok(not bad, f"대가·한계 없는 규칙 없음 ({bad})")
+ok(not bad, f"효과·조건 없는 반칙 없음 ({bad})")
 
 print("[검사] 최소한만 거르는가")
 rng = random.Random(1)
@@ -45,7 +45,7 @@ s = S.draw(rng)
 ok(not S.validate(s), f"정상 씨앗은 통과 ({S.validate(s)})")
 
 broken = dict(s, impossible={"rule": "무엇이든 된다", "cost": "", "limit": ""})
-ok(S.validate(broken), "대가 없는 규칙은 걸린다")
+ok(S.validate(broken), "효과 없는 반칙은 걸린다")
 
 same = dict(s, people=[s["people"][0]] * 3)
 ok(any("서로 다른 축" in v for v in S.validate(same)), "인물 셋이 같으면 걸린다")
@@ -53,23 +53,15 @@ ok(any("서로 다른 축" in v for v in S.validate(same)), "인물 셋이 같�
 ok(any("이미 쓴" in v for v in S.validate(s, used={s["id"]})),
    "이미 쓴 씨앗은 다시 안 뽑는다")
 
-print("[현실] 불가능은 **하나뿐**인가  ← 마술적 리얼리즘과 초현실을 가르는 자리")
-print("      ← 시간 축까지 불가능하면 세계가 통째로 꿈이 되고, 그러면 인물이 그것을")
-print("        당연하게 받아들이는 태도가 성립하지 않는다.")
-bad_time = [t for t, _ in S.TIME
-            if any(w in t for w in S.SUPERNATURAL)]
-ok(not bad_time, f"시간 축이 전부 현실이다 ({bad_time or '깨끗'})")
+print("[사이다] 반칙이 대가가 아니라 조건을 갖는가")
+print("      ← 주인공이 손해를 감수하는 순간 그것이 고구마다. 제약은 남기되 다치게 하지 않는다.")
+harm = [r for r, cost, limit in S.IMPOSSIBLE
+        if any(w in cost for w in ("잃는다", "못 쓴다", "영영", "두 번 살아야"))]
+ok(not harm, f"효과 칸에 손해가 없다 ({harm or '깨끗'})")
+ok(all(limit for _, _, limit in S.IMPOSSIBLE), "전부 발동 조건을 갖는다  ← 무제한이면 긴장이 없다")
 fake = dict(S.draw(random.Random(1)))
-fake["time"] = {"what": "해가 지지 않는 두 달", "note": "x"}
-ok(any("현실이 아니다" in e for e in S.validate(fake)),
-   "불가능한 시간 축이 들어오면 검사가 잡는다  ← 목록을 손으로 늘리는 자리는 언젠가 잘못 늘어난다")
-for _ in range(30):
-    sd = S.draw(random.Random())
-    if [e for e in S.validate(sd) if "현실이 아니다" in e]:
-        ok(False, f"뽑은 씨앗의 시간 축이 현실이 아니다: {sd['time']['what']}")
-        break
-else:
-    ok(True, "서른 번 뽑아도 전부 현실의 국면이다")
+fake["impossible"] = {"rule": "x", "cost": "y", "limit": ""}
+ok(any("조건" in e for e in S.validate(fake)), "조건이 없으면 검사가 잡는다")
 
 print("[재현] 같은 난수 씨앗이면 같은 조합인가  ← 마음에 든 것을 다시 찾을 수 있어야 한다")
 a = S.draw(random.Random(42))
@@ -85,7 +77,7 @@ ok(len(ids) == 20, f"20개 전부 고유 ({len(ids)})")
 
 print("[표시] 사람이 읽고 고를 수 있는가  ← LLM 호출 없이 판단하는 것이 요점이다")
 txt = S.render(S.draw(random.Random(5)), long=True)
-for key in ("시간", "규칙", "대가", "한계", "사건", "인물1", "장치", "목소리", "주제"):
+for key in ("시간", "규칙", "효과", "조건", "사건", "인물1", "장치", "목소리", "주제"):
     ok(key in txt, f"'{key}' 가 보인다")
 
 print()

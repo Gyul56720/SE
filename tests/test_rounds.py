@@ -38,14 +38,16 @@ TURN = json.dumps({"inner_thought": "", "action": "", "speech": "그렇구나",
                    "emotions": {"joy": 45, "melancholy": 40, "isolation": 40,
                                 "narrative_pull": 0}}, ensure_ascii=False)
 GOOD = "그라인더 소리가 멎었다. 나는 잔을 돌리며 창밖을 바라보았다."
-BAD = "공명은 깊이 후회했다. 잔이 식어 있었다."          # V004 시점 위반
+BAD = "공명의 비밀번호가 적혀 있었다. 잔이 식어 있었다."   # V008 지식 누출
 FILLER = "물을 올렸다. 레코드를 골랐다. 창밖은 아직 밝았다. " * 60
 MARK = "식은 자판기 커피"          # 이 씬을 프롬프트에서 알아보는 표식
 
 
 def world(n=3):
     nv = Novel(title="시험", pov_character="A",
-               characters=[Character("A", "화자"), Character("공명", "동기")])
+               characters=[Character("A", "화자"), Character("공명", "동기")],
+               # 화자가 모르는 비밀 하나. 산문이 이것을 언급하면 V008 이 hard 로 잡는다.
+               facts={"secrets": {"공명의 비밀번호": {"knows": ["공명"], "aliases": []}}})
     nv.scenes = [Scene(id=f"s{i}", episode=1, location="카페", punctum="소리",
                        participants=["A", "공명"], directives=["둘이 말하지 않는다"])
                  for i in range(n)]
@@ -81,7 +83,7 @@ ok(r["status"] == "partial" and r["failed"] == 1,
    f"한 바퀴로는 막힌 채 끝난다 ({r['status']}, failed {r['failed']})  ← 이것이 그 실측이다")
 ok(r["blocked"] and r["blocked"][0]["id"] == "s2",
    f"무엇이 막았는지 함께 돌려준다 ({r.get('blocked')})  ← 'blocked' 세 글자로는 아침에 알 수 없다")
-ok("V004" in r["blocked"][0]["why"], f"어느 관문인지까지 ({r['blocked'][0]['why'][:40]})")
+ok("V008" in r["blocked"][0]["why"], f"어느 관문인지까지 ({r['blocked'][0]['why'][:40]})")
 
 n2 = world(3)
 n2.scenes[2].punctum = MARK
