@@ -181,6 +181,10 @@ def main() -> int:
                     help="진행 상황을 Discord 로 보낸다 (DISCORD_BOT_TOKEN + "
                          "DISCORD_CHANNEL_ID 또는 DISCORD_WEBHOOK_URL)")
     ap.add_argument("--no-discord", action="store_true")
+    ap.add_argument("--blocks", type=int, default=0,
+                    help="결말 블록을 몇 개까지 처리하고 멈출 것인가 (0 = 전부). "
+                         "1 이면 1~10화만 끝내고 종료한다 -- 밤을 걸기 전에 한 블록으로 "
+                         "실제로 산문이 나오는지 보는 데 쓴다")
     ap.add_argument("--skip-blocked", type=int, default=999,
                     help="관문에 막힌 씬을 몇 개까지 넘어갈 것인가. 야간 런은 넘어가는 "
                          "쪽이 맞다 -- 씬 하나 때문에 회차 전체가 서면 밤이 날아간다")
@@ -212,7 +216,11 @@ def main() -> int:
            f"(verified {sum(1 for s in novel.scenes if s.status == 'verified')})")
 
     done, failed = [], []
+    worked = 0                      # 실제로 손댄 블록 수 (건너뛴 것은 세지 않는다)
     for spec in OUTCOMES:
+        if a.blocks and worked >= a.blocks:
+            D._log(f"[{_now()}] 블록 {a.blocks}개를 처리했다 -- 여기서 멈춘다")
+            break
         if time.time() > deadline:
             D._log(f"[{_now()}] 예산 소진 -- 여기서 멈춘다")
             break
@@ -229,6 +237,7 @@ def main() -> int:
                 f"남은 예산 {(deadline - time.time()) / 3600:.1f}시간")
 
         lo, hi = spec["eps"]
+        worked += 1
         D._log(f"\n[{_now()}] === {lo}~{hi}화 조립 시작 ===")
         t0 = time.time()
         # **한 편이 밤을 다 먹지 못하게 한다.** 디렉터 호출이 느리면(타임아웃 직전에서

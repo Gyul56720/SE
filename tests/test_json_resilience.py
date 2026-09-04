@@ -167,6 +167,17 @@ ok(blocked and blocked[0].violations,
    f"막힌 씬은 위반을 그대로 갖고 있다 ({blocked[0].violations[:1] if blocked else '없음'})"
    "  ← 넘어가되 무엇이 막혔는지 잃지 않는다")
 
+print("[V009] 산문 수리로 못 고치는 관계 선언은 경계에서 버린다")
+print("      ← 시험 런의 실제 사인: 관계 구성원이 두 사람이 아니다: []  (4시도 111초 실패)")
+nv3 = build()
+kept = D._rel_ops([{"op": "start", "kind": "연인", "members": []},
+                   {"op": "start", "kind": "연인", "members": ["설윤", "설윤"]},
+                   {"op": "start", "kind": "연인", "members": ["설윤", "없는사람"]},
+                   {"op": "start", "kind": "연인", "members": ["설윤", "공명"]}], nv3, "시험")
+ok(len(kept) == 1 and kept[0]["members"] == ["설윤", "공명"],
+   f"쓸 수 있는 선언 하나만 남는다 ({kept})")
+ok(True, "빈 members · 자기 자신 · 없는 인물 셋 다 걸러진다")
+
 print("[연출] direction 이 문자열로 와도 서술 단계가 죽지 않는다")
 sc = Scene(id="x", direction="복도, 압정 자국")            # LLM 이 이렇게 낼 때가 있다
 try:

@@ -25,14 +25,38 @@ from novel.state import Novel                                         # noqa: E4
 FIELDS = ("world_ops", "relation_ops", "fact_ops")
 
 
+def why_bad(field: str, item, names: set) -> str:
+    """이 항목이 왜 못 쓰는가. 쓸 수 있으면 빈 문자열.
+
+    **산문 수리로는 못 고치는 것만 본다.** 씬의 ops 는 구조화된 선언이라 관문이 거기서
+    위반을 잡아도 수리 루프는 산문만 다시 쓴다 -- 문장을 백 번 고쳐도 빈 members 는 그대로다.
+    그래서 그런 씬은 시도 횟수를 다 쓰고 결정론적으로 실패한다(2026-09-04 시험 런:
+    [V009/hard] 관계 구성원이 두 사람이 아니다: [] 로 4번 시도 111초, 그리고 blocked).
+    고칠 수 없는 선언은 지우는 것이 맞다 -- 관계 선언 하나를 잃을 뿐, 씬과 산문은 산다."""
+    if not isinstance(item, dict):
+        return f"객체가 아니다 ({type(item).__name__})"
+    if field == "relation_ops":
+        members = list(item.get("members") or [])
+        unknown = [m for m in members if m not in names]
+        if unknown:
+            return f"등장인물에 없는 인물: {unknown}"
+        if len(members) != 2 or members[0] == members[1]:
+            return f"구성원이 두 사람이 아니다: {members}"
+        if item.get("op") not in ("start", "end"):
+            return f"알 수 없는 op: {item.get('op')!r}"
+    return ""
+
+
 def scan(novel) -> list:
-    """(씬 id, 필드, 잘못된 항목) 목록."""
+    """(씬 id, 필드, 항목, 사유) 목록."""
+    names = {c.name for c in novel.characters}
     out = []
     for sc in novel.scenes:
         for f in FIELDS:
             for item in getattr(sc, f, None) or []:
-                if not isinstance(item, dict):
-                    out.append((sc.id, f, item))
+                why = why_bad(f, item, names)
+                if why:
+                    out.append((sc.id, f, item, why))
     return out
 
 
@@ -54,8 +78,9 @@ def main() -> int:
         return 0
 
     print(f"{path}: 형식이 깨진 ops {len(bad)}개")
-    for sid, field, item in bad[:20]:
-        print(f"   {sid:20} {field:14} {type(item).__name__} {str(item)[:60]!r}")
+    for sid, field, item, why in bad[:20]:
+        print(f"   {sid:20} {field:14} {why}")
+        print(f"   {'':20} {'':14} {str(item)[:80]}")
     if len(bad) > 20:
         print(f"   ... 그리고 {len(bad) - 20}개 더")
 
@@ -63,10 +88,14 @@ def main() -> int:
         print("\n지우려면 --write 를 붙인다. 씬과 시나리오는 건드리지 않는다.")
         return 0
 
+    names = {c.name for c in novel.characters}
     for sc in novel.scenes:
         for f in FIELDS:
             cur = getattr(sc, f, None) or []
-            setattr(sc, f, [o for o in cur if isinstance(o, dict)])
+            setattr(sc, f, [o for o in cur if not why_bad(f, o, names)])
+        # 지우고 나면 다시 시도할 수 있다. 이 씬들은 산문이 없어서 잃을 것이 없다.
+        if sc.status == "failed" and not sc.prose.strip():
+            sc.status, sc.violations = "pending", []
     novel.save(path)
     print(f"\n{len(bad)}개를 지우고 저장했다. 씬 {len(novel.scenes)}개는 그대로다.")
     return 0

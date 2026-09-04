@@ -222,6 +222,26 @@ def _ops(raw, label: str = "") -> list:
     return kept
 
 
+def _rel_ops(raw, novel, label: str = "") -> list:
+    """relation_ops 에서 **쓸 수 있는 선언만** 남긴다.
+
+    관계 선언은 members 가 서로 다른 두 등장인물이어야 한다. 아니면 V009 가 hard 로 잡는데,
+    수리 루프는 산문만 다시 쓰므로 **문장을 백 번 고쳐도 그 배열은 안 바뀐다** -- 그 씬은
+    시도 횟수를 다 쓰고 결정론적으로 실패하고, 그 뒤 씬들까지 세운다(2026-09-04 시험 런:
+    "관계 구성원이 두 사람이 아니다: []" 로 4번 시도 111초, verified 0).
+
+    고칠 수 없는 선언은 경계에서 버린다. 잃는 것은 관계 선언 하나이고, 사는 것은 그 회차다."""
+    names = {c.name for c in novel.characters}
+    kept = []
+    for o in _ops(raw, label):
+        m = list(o.get("members") or [])
+        if len(m) == 2 and m[0] != m[1] and all(x in names for x in m):
+            kept.append(o)
+        else:
+            _log(f"[ops] {label}: 쓸 수 없는 관계 선언을 버렸다 -- members={m}")
+    return kept
+
+
 def call_json(llm, prompt: str, tries: int = 3, label: str = "") -> dict:
     """LLM 에게 JSON 을 받아 파싱한다. **깨지면 에러 문구를 붙여 다시 묻는다.**
 
@@ -564,7 +584,7 @@ def build_episode(novel, spec: dict, llm=None, max_repairs=MAX_REPAIRS, log=None
                            mode=b.get("mode", "dialogue"),
                            requires=list(b.get("requires") or []), establishes=est,
                            world_ops=_ops(b.get("world_ops"), f"척추 {lo}~{hi}화"),
-                           relation_ops=_ops(b.get("relation_ops"), f"척추 {lo}~{hi}화"),
+                           relation_ops=_rel_ops(b.get("relation_ops"), novel, f"척추 {lo}~{hi}화"),
                            scale=int(b.get("scale") or spec["scale"]),
                            direction=dict(b.get("direction") or {}))
                 feedback = ""
