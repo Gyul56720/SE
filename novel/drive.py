@@ -443,26 +443,6 @@ def _world_brief(novel) -> str:
   · 위기-해결-보상의 원패턴이 노출되면 지루하다. 서브플롯이 그것을 감춘다."""
 
 
-def _stage_lines(novel, episode: int) -> str:
-    """이 회차가 이야기의 어디인가. **단편이면 기승전결, 연재면 8시퀀스.**
-
-    3화짜리에 200화용 시퀀스를 실으면 세 회차가 전부 "시퀀스 1 (1~20화)" 안에 갇힌다 --
-    같은 브리프를 세 번 받은 디렉터는 세 번 다 도입부를 쓴다. 단편에 기승전결이 없어지는
-    기계적 원인이 그것이었다."""
-    from . import arc
-    total = getattr(novel, "total_episodes", None) or arc.TOTAL_EPISODES
-    if total <= arc.SHORT_MAX:
-        a = arc.act_of(episode, total)
-        return (f"[구간] {episode}/{total}화 · **{a['name']}**\n"
-                f"[이 단계의 목표] {a['goal']}\n"
-                f"[주의] {a['note']}\n"
-                f"[형식] {total}화짜리 단편이다. 연재의 속도로 벌이면 끝내지 못한다")
-    seq = arc.sequence_of(episode)
-    return (f"[구간] {episode}/{total}화 · 시퀀스 {seq['n']} {seq['name']}\n"
-            f"[시퀀스 목표] {seq['goal']}\n"
-            f"[감정 단계] {seq['stage']} / narrative_pull 범위 {seq['pull']}")
-
-
 def outcome_prompt(novel, ep_lo: int, ep_hi: int, feedback="") -> str:
     """**에피소드의 결말을 먼저 받는다.** 씬을 순방향으로 뽑기 전에 도착점을 고정한다.
 
@@ -470,9 +450,13 @@ def outcome_prompt(novel, ep_lo: int, ep_hi: int, feedback="") -> str:
     모르고, 10화쯤 뒤에 "그래서 이게 왜 필요했지" 가 남는다. 결말을 먼저 정하면 모든 비트가
     그 결말에 필요해서 존재하게 되고, requires/establishes 로 그 필요를 **선언**하게 하면
     개연성이 기계 검사 대상이 된다(V018)."""
-    return f"""너는 1인칭 회고 소설의 디렉터다. **에피소드의 결말을 먼저 정한다.**
+    from . import arc
+    seq = arc.sequence_of(ep_lo)
+    return f"""너는 1인칭 회고 웹소설의 디렉터다. **에피소드의 결말을 먼저 정한다.**
 
-{_stage_lines(novel, ep_lo)}
+[구간] {ep_lo}~{ep_hi}화 · 시퀀스 {seq['n']} {seq['name']}
+[시퀀스 목표] {seq['goal']}
+[감정 단계] {seq['stage']} / narrative_pull 범위 {seq['pull']}
 [인물] {', '.join(c.name for c in novel.characters)}
 
 규칙:
@@ -508,6 +492,7 @@ def beat_prompt(novel, spec: dict, open_conds: list, ep: int, feedback="") -> st
 
     입력의 XML 태그는 맥락 구역을 갈라 환각과 맥락 이탈을 막는 쪽이라 유지한다."""
     from . import arc
+    seq = arc.sequence_of(ep)
     # 지금 남은 시간. 이미 만든 척추 비트가 있으면 그 최솟값에서 이어받는다 -- 시계는
     # 되감기지 않는다. 없으면 결말의 시계에서 시작한다.
     clock = clock_of(spec, novel)
@@ -541,7 +526,9 @@ def beat_prompt(novel, spec: dict, open_conds: list, ep: int, feedback="") -> st
 </World>
 {SPLIT}
 <Position>
-{_stage_lines(novel, ep)}
+{ep}화 / 200화 · 시퀀스 {seq['n']} {seq['name']}
+시퀀스 목표: {seq['goal']}
+감정 단계: {seq['stage']} · narrative_pull 범위 {seq['pull']}
 사건 규모: {arc.SCALES[spec['scale']]}
 </Position>
 
@@ -678,7 +665,7 @@ def subplot_prompt(novel, ep: int, spine_summary: str, feedback="", done=None) -
 
 [연출에서 정할 것] staging / trigger / props / camera / subtext
 {SPLIT}
-{arc.brief(ep, getattr(novel, "total_episodes", None))}
+{arc.brief(ep)}
 [이 구간의 메인] {spine_summary}
 
 [이번 씬의 초점 인물] {focus}
@@ -1046,14 +1033,13 @@ def _direction(scene) -> str:
     return "[연출 지시]\n" + "\n".join(lines) + "\n" if lines else ""
 
 
-def _arc_brief(novel, scene) -> str:
+def _arc_brief(scene) -> str:
     """현재 회차의 거시 브리프. **변동부에 놓는다** -- 회차마다 바뀌므로 캐시 프리픽스
     앞에 두면 매번 캐시가 무효화된다."""
     if not scene.episode:
         return ""
     from . import arc
-    return arc.brief(scene.episode,
-                     getattr(novel, "total_episodes", None)) + "\n"
+    return arc.brief(scene.episode) + "\n"
 
 
 def director_prompt(novel, scene, feedback="") -> str:
@@ -1073,7 +1059,7 @@ def director_prompt(novel, scene, feedback="") -> str:
 세계 변경이 필요하면 아래 동사만 쓴다(없는 동사는 기각):
 {catalog_for_prompt()}
 {SPLIT}
-{_arc_brief(novel, scene)}
+{_arc_brief(scene)}
 [직전까지] {chr(10).join(f'  {s.id}: {s.directives[0] if s.directives else ""}' for s in prev) or '  (시작)'}
 [이 씬의 씨앗] {scene.directives[0] if scene.directives else ''}
 [참여자] {scene.participants} / [모드] {scene.mode}

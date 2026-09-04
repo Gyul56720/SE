@@ -19,18 +19,9 @@
 실행:
     python3 novel/overnight.py --world probe --upto-episode 1 --hours 1
 """
-from .world_romance import build as _build_romance
+from .world_romance import build                                      # noqa: F401
 
 TITLE = "탐침"
-
-
-def build():
-    """로맨스 세계를 그대로 쓰되 **3화짜리로 선언한다.** 회차 범위가 (1,3)인데
-    total_episodes 가 200 이면 arc 가 200화용 8시퀀스 브리프를 실어, 세 회차가 전부
-    "시퀀스 1 (1~20화)" 안에 갇힌다 -- 탐침이 재려는 배선과 다른 것을 재게 된다."""
-    nv = _build_romance()
-    nv.total_episodes = 3
-    return nv
 
 # 회차 범위를 (1, 3)으로 잡은 이유: 단계 2개면 척추가 2개 서고 결말이 하나 붙어 비트가
 # 셋이다. 회차 칸이 그보다 적으면 build_episode 가 "척추가 회차 칸보다 길다" 며 회차를
