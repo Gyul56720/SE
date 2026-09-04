@@ -66,6 +66,28 @@ def render_scenario(novel, episodes: "list[int]") -> str:
     return "".join(out)
 
 
+def render_scenes(novel) -> str:
+    """회차 번호를 무시하고 **산문이 있는 씬을 전부** 이어 붙인다.
+
+    회차 배정 이전에 만들어진 원고가 있다(옛 세계, 씬 루프만 돌려본 기록). 그런 씬은
+    episode 가 0 이라 --ep 로는 영영 안 잡히는데, 산문은 멀쩡히 들어 있다 -- 읽을 수
+    있는 글을 회차 번호가 없다는 이유로 못 읽는 것은 도구의 문제다."""
+    out = []
+    for sc in sorted(novel.scenes, key=lambda x: x.id):
+        body = (sc.prose or "").strip()
+        if not body:
+            continue
+        head = f"{sc.id}"
+        if sc.episode:
+            head += f"  ({sc.episode}화)"
+        if sc.status != "verified":
+            head += f"  [{sc.status}]"
+        if sc.location:
+            head += f"  · {sc.location}"
+        out.append(f"\n\n{'=' * 60}\n{head}  ({len(body):,}자)\n{'=' * 60}\n{body}")
+    return "".join(out)
+
+
 def render(novel, episodes: "list[int]") -> str:
     out = []
     for ep in episodes:
@@ -103,6 +125,7 @@ def summarize(novel) -> str:
     def span(xs):
         return f"{xs[0]}~{xs[-1]}화 ({len(xs)}편)" if xs else "없음"
 
+    orphan = [s for s in novel.scenes if not s.episode and (s.prose or "").strip()]
     lines = [
         f"제목        {novel.title}",
         f"목표        200화 · 회차당 {arc.CHARS_PER_EPISODE:,}자 = {goal:,}자",
@@ -119,6 +142,12 @@ def summarize(novel) -> str:
     if written:
         avg = total / len(written)
         lines.append(f"회차 평균   {avg:,.0f}자 (목표 {arc.CHARS_PER_EPISODE:,})")
+    if orphan:
+        # 회차 번호가 없는 산문은 위 회차 통계에 안 잡힌다. 있다는 사실만이라도 알린다 --
+        # 안 그러면 "산문 있음 없음" 인데 "쓴 글자 1,186자" 라는 앞뒤 안 맞는 화면이 된다.
+        lines.append(f"회차 밖     씬 {len(orphan)}개에 "
+                     f"{sum(len(s.prose) for s in orphan):,}자 (회차 번호 없음) "
+                     f"-- 읽으려면 --scenes")
     return "\n".join(lines)
 
 
@@ -127,6 +156,9 @@ def main() -> int:
     ap.add_argument("--path", default=str(DEFAULT_PATH))
     ap.add_argument("--ep", help="3 또는 1-10")
     ap.add_argument("--all", action="store_true", help="산문이 있는 회차 전부")
+    ap.add_argument("--scenes", action="store_true",
+                    help="회차 번호를 무시하고 산문이 있는 씬을 전부 읽는다. "
+                         "회차 배정 전에 만든 원고(episode=0)는 --ep 로 안 잡힌다")
     ap.add_argument("--scenario", action="store_true",
                     help="산문 대신 디렉터 시나리오를 본다 (아직 집필 전인 회차용)")
     ap.add_argument("--out", help="파일로 저장 (없으면 화면)")
@@ -137,6 +169,18 @@ def main() -> int:
         print(f"{path} 가 없다. --path 로 원고 경로를 준다.")
         return 1
     novel = Novel.load(path)
+
+    if a.scenes:
+        text = render_scenes(novel)
+        if not text.strip():
+            print("산문이 있는 씬이 하나도 없다.")
+            return 1
+        if a.out:
+            Path(a.out).write_text(text.lstrip(), encoding="utf-8")
+            print(f"{a.out} 에 {len(text):,}자 저장했다.")
+        else:
+            print(text.lstrip())
+        return 0
 
     if not a.ep and not a.all:
         print(summarize(novel))
