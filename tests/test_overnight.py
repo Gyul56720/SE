@@ -163,14 +163,14 @@ import os as _os                                                      # noqa: E4
 _old = _os.environ.get("DISCORD_WEBHOOK_URL")
 _os.environ["DISCORD_WEBHOOK_URL"] = "복사한_URL"
 try:
-    dc = Discord()
+    dc = overnight.Discord()
     ok(not dc.on, "URL 이 아니면 알림을 끈다")
     ok(dc.send("x") is False, "보내려 해도 조용히 False -- 예외가 안 올라온다")
 except Exception as e:                                                # noqa: BLE001
     ok(False, f"예외가 올라왔다 ({type(e).__name__})  ← 알림이 런을 죽인다")
 _os.environ["DISCORD_WEBHOOK_URL"] = "https://example.invalid/hook"
 try:
-    ok(Discord().send("x") is False, "닿지 않는 URL 도 False 로 넘어간다")
+    ok(overnight.Discord().send("x") is False, "닿지 않는 URL 도 False 로 넘어간다")
 except Exception as e:                                                # noqa: BLE001
     ok(False, f"예외가 올라왔다 ({type(e).__name__})")
 if _old is None:
