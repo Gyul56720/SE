@@ -97,6 +97,32 @@ ok("이름과 연도와 상표를 대라" not in _midflat,
    "'연도를 대라' 와 '연도가 많다' 가 부딪히지 않는다  ← 지시가 서로 싸우면 안 된다")
 
 print()
+print("[자유] **감탄사와 깨진 문법을 벌하지 않는다**")
+print("      ← 자가 문법을 요구하면 대사가 다시 딱딱해진다. 여기는 풀어주는 자리다.")
+loose = "\n".join([
+    "끼얏호, 하고 누군가 외쳤다.",
+    '"어라랍쇼."', '"뭐야 그게."',
+    '"몰라. 아버지가 놀라면 늘 그러셨거든. 어라랍쇼, 어라랍쇼 하면서 뒷걸음질을 '
+    '치는데 그게 또 묘하게 위엄이 있었단 말이지."',
+    '"쓰읍."',
+    "그는 숨을 들이켰고, 항구 쪽에서 불어오는 바람에는 생선과 디젤과 눈 냄새가 "
+    "한꺼번에 섞여 있었다.",
+    '"푸하."', '"웃지 마."', '"안 웃었어. 웃은 건 저 사람이고."',
+])
+from novel import rhythm                                              # noqa: E402
+ok(rhythm.check(loose) == [], "리듬 자가 통과시킨다")
+ok(echo.check(loose, "") == [], "'어라랍쇼' 를 두 번 말해도 메아리가 아니다  ← 그건 성격이다")
+short, long = F.talk(loose)
+ok(short >= 4, f"짧은 감탄사가 대사 리듬을 살린다 (짧은 대사 {short}개)")
+_flat = " ".join(flow.write_prompt(flow.blank()).split())
+ok("감탄사를 지어내라" in " ".join(__import__("novel.style", fromlist=["x"]).narrator().split()),
+   "화자에게 없는 감탄사를 만들라고 한다")
+ok("말끝을 다듬으면 그게 딱딱함이다" in _flat, "문법을 놓으라고 한다")
+_mid2 = flow.blank(); _mid2["chunks"] = ["앞."]
+ok("입버릇·감탄사가 있으면 그것까지 적어라" in flow.extract_prompt("x"),
+   "카드에 입버릇을 적는다  ← 그 사람이 다음에도 같은 소리를 내야 한다")
+
+print()
 if fails:
     print(f"메아리: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)
