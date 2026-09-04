@@ -106,6 +106,29 @@ ok("conceal" in kinds or "misbelieve" in kinds or "fabricate" in kinds,
    f"1블록 world_ops 에 격차를 여는 동사가 있다 ({sorted(kinds)})\n"
    "         없으면 V016 이 3화부터 hard 를 낸다 -- 1화만 돌려서는 못 본다")
 
+print("[반복] 서브플롯이 같은 소재를 되풀이하지 않는가")
+print("      ← 실측 2026-09-04: 1·2·3화 서브플롯이 전부")
+print('        "핫팩을 많이 사는 남자 -> 연습실에서 손이 얼어붙는 사람" 이었다')
+ok(D._too_similar("핫팩을 많이 사는 상급생", ["핫팩을 많이 사는 남자"]),
+   "한 단어만 바꾼 반복을 잡는다")
+ok(D._too_similar("새벽 편의점에서 핫팩을 사는 남자",
+                  ["새벽 편의점에서 핫팩을 사는 손님"]),
+   "긴 문장에서 끝만 바꾼 것도 잡는다")
+ok(not D._too_similar("정우가 오디션 명단 앞에서 돌아선다",
+                      ["핫팩을 많이 사는 남자"]),
+   "다른 소재는 통과시킨다  ← 과잉 기각하면 서브플롯이 고갈된다")
+ok(not D._too_similar("짧다", ["핫팩을 많이 사는 남자"]),
+   "너무 짧은 문장은 판정하지 않는다")
+
+sub = D.subplot_prompt(W.build(), 2, "메인 요약",
+                       done=["핫팩을 많이 사는 남자", "연습실 대치"])
+ok("핫팩을 많이 사는 남자" in sub,
+   "프롬프트가 **이미 쓴 것**을 알려준다  ← 예전에는 이 자리가 없었다")
+ok("겹치지 마라" in sub, "겹치지 말라고 명시한다")
+p1 = D.subplot_prompt(W.build(), 1, "메인 요약")
+p2 = D.subplot_prompt(W.build(), 2, "메인 요약")
+ok(p1 != p2, "회차마다 프롬프트가 다르다 (초점 인물이 돈다)")
+
 print()
 if fails:
     print(f"탐침 세계: {len(fails)}개 실패 -- {fails}")

@@ -268,6 +268,30 @@ def _check_pressure(b: dict, novel, clock: float) -> list:
     return out
 
 
+SUBPLOT_SIMILAR = 0.55        # 이보다 닮으면 같은 소재로 본다
+
+
+def _too_similar(beat: str, done: list) -> str:
+    """이미 쓴 서브플롯과 너무 닮았는가. 닮은 것 하나를 돌려준다(아니면 빈 문자열).
+
+    프롬프트로 "겹치지 마라" 고만 하면 절반쯤 지켜진다. 기계가 재서 되돌려보내야 한다 --
+    이 저장소가 관문을 두는 이유와 같다. difflib 는 형태소를 모르지만, "핫팩을 많이 사는
+    남자" 와 "핫팩을 많이 사는 상급생" 처럼 **같은 문장을 조금 고친 것**은 확실히 잡는다.
+    실측에서 나온 반복이 정확히 그 모양이었다.
+
+    임계는 0.55 다. 낮추면 정당하게 이어지는 서브플롯(같은 조연의 연속된 이야기)까지
+    걸리고, 그건 과잉 기각이다."""
+    import difflib
+    a = re.sub(r"\s+", "", beat or "")
+    if len(a) < 6:
+        return ""
+    for prev in done or []:
+        b = re.sub(r"\s+", "", prev or "")
+        if difflib.SequenceMatcher(None, a, b).ratio() >= SUBPLOT_SIMILAR:
+            return prev
+    return ""
+
+
 def _people(raw, novel, label: str = "") -> list:
     """참가자 목록에서 **등장인물만** 남긴다.
 
@@ -597,13 +621,25 @@ JSON 만 출력:
 deadline_hours 는 **숫자**다. "9시간" 이 아니라 9 로 쓴다."""
 
 
-def subplot_prompt(novel, ep: int, spine_summary: str, feedback="") -> str:
+def subplot_prompt(novel, ep: int, spine_summary: str, feedback="", done=None) -> str:
     """서브플롯 한 씬. **원패턴을 감추는 것이 목적이다.**
 
     보고서: 위기-해결-보상의 반복이 노출되면 지루해진다. 조연의 이야기가 사이를 메우고,
     나중에 메인의 해결에 사소하게 이바지한다. 척추와 달리 아무것도 establishes 하지
-    않으므로 지워도 사슬이 안 무너진다 -- 그게 서브플롯의 정의다."""
+    않으므로 지워도 사슬이 안 무너진다 -- 그게 서브플롯의 정의다.
+
+    **done 이 이 함수의 핵심이다.** 예전에는 이미 쓴 서브플롯을 알려주지 않았다. 그래서
+    프롬프트가 회차마다 거의 같았고(세계 브리프 동일 · 같은 시퀀스면 arc.brief 도 거의
+    동일 · spine_summary 는 블록 내내 동일), 같은 입력을 여섯 번 받은 모델이 같은 답을
+    냈다. 실측(2026-09-04 탐침): 1·2·3화 서브플롯이 전부 "핫팩을 많이 사는 남자 ->
+    연습실에서 손이 얼어붙는 사람" 이었다. 모델 탓이 아니라 알려줄 자리가 없었던 것이다.
+
+    조연도 회차마다 돌린다. 공간을 나눠주지 않으면 모델은 가장 먼저 떠오르는 소재로
+    계속 돌아온다."""
     from . import arc
+    others = [c.name for c in novel.characters if c.name != novel.pov_character]
+    focus = others[(ep - 1) % len(others)] if others else ""
+    seen = "\n".join(f"- {b}" for b in (done or [])[-8:])
     return f"""너는 여성향 청춘 로맨스 웹소설의 디렉터다. 메인 사이에 끼울 **서브플롯 한 씬**을
 연출한다. 분량의 2/3가 이런 씬이다 -- 여기가 헐거우면 회차가 밋밋해진다.
 
@@ -613,6 +649,14 @@ def subplot_prompt(novel, ep: int, spine_summary: str, feedback="") -> str:
 {SPLIT}
 {arc.brief(ep)}
 [이 구간의 메인] {spine_summary}
+
+[이번 씬의 초점 인물] {focus}
+  이 인물을 중심에 두어라. 화자와의 관계나 이 인물 자신의 사정에서 출발한다.
+
+[이미 쓴 서브플롯 -- **겹치지 마라**]
+{seen or "- (아직 없다)"}
+  같은 소재·같은 장소·같은 구도를 반복하지 마라. 위 목록과 다른 축을 잡아라:
+  다른 공간(강의실·기숙사·지하철·병원·집), 다른 시간대, 다른 인물, 다른 종류의 마찰.
 
 규칙:
 - 메인의 인과를 건드리지 마라. 이 장면은 아무것도 성립시키지 않는다.
@@ -774,21 +818,37 @@ def build_episode(novel, spec: dict, llm=None, max_repairs=MAX_REPAIRS, log=None
         # 척추가 회차 칸보다 길다. 잘라내면 인과가 끊기므로 잘라내지 않고 회차를 늘린다.
         body_slots = len(spine)
     beats, need = list(spine), body_slots - len(spine)
+    # 이 블록에서 이미 쓴 서브플롯 요약. 프롬프트에 실어 겹침을 막고, 기계로도 잰다.
+    made: list = []
     for k in range(max(0, need)):
         if _out_of_time():
             _log(f"[episode] 시퀀스 {spec['seq']}: 시간 상한에 걸려 서브플롯 {k}개에서 멈춘다")
             break
         # 씬 단위 서브플롯과 **같은 2단계**를 탄다. 한쪽만 JSON 을 직접 받으면 같은
         # 프롬프트가 두 계약을 갖게 되고, 그 불일치는 조용히 direction 을 비운다.
-        sub_md = _llm_for(llm, "director")(
-            subplot_prompt(novel, lo + k, spec["summary"]))
-        try:
-            b = call_json(_llm_for(llm, "extractor"),
-                          extract_prompt(sub_md, [], spec["scale"]),
-                          label=f"서브플롯 추출 {lo + k}화")
-        except ValueError as e:
-            _log(f"[episode] 서브플롯 {lo + k}화 추출 실패 -- 이 칸만 접는다 ({e})")
+        b, sub_md, fb = None, "", ""
+        for _try in range(3):
+            sub_md = _llm_for(llm, "director")(
+                subplot_prompt(novel, lo + k, spec["summary"], fb, done=made))
+            try:
+                b = call_json(_llm_for(llm, "extractor"),
+                              extract_prompt(sub_md, [], spec["scale"]),
+                              label=f"서브플롯 추출 {lo + k}화")
+            except ValueError as e:
+                _log(f"[episode] 서브플롯 {lo + k}화 추출 실패 -- 이 칸만 접는다 ({e})")
+                b = None
+                break
+            same = _too_similar(b.get("beat", ""), made)
+            if not same:
+                break
+            _log(f"[중복] 서브플롯 {lo + k}화: '{b.get('beat','')[:34]}' 가 "
+                 f"'{same[:34]}' 와 겹친다 -- 다시 받는다")
+            fb = _fb_text(f"이미 쓴 '{same}' 와 너무 비슷하다. **다른 인물·다른 공간·"
+                          f"다른 종류의 마찰**로 완전히 새 소재를 잡아라")
+            b = None
+        if b is None:
             continue
+        made.append(b.get("beat", ""))
         b.setdefault("direction", {})["scenario"] = sub_md
         filler = Beat(beat=b.get("beat", ""),
                       participants=_people(b.get("participants"), novel,
@@ -845,15 +905,29 @@ def build_episode(novel, spec: dict, llm=None, max_repairs=MAX_REPAIRS, log=None
         for k in range(arc.SCENES_PER_EPISODE - arc.MAIN_SCENES):
             if _out_of_time():
                 break
-            sub_md = _llm_for(llm, "director")(
-                subplot_prompt(novel, epno, spec["summary"]))
-            try:
-                b = call_json(_llm_for(llm, "extractor"),
-                              extract_prompt(sub_md, [], spec["scale"]),
-                              label=f"서브플롯 추출 {epno}화")
-            except ValueError as e:
-                _log(f"[episode] {epno}화 서브플롯 씬 추출 실패 -- 건너뛴다 ({e})")
+            b, sub_md, fb = None, "", ""
+            for _try in range(3):
+                sub_md = _llm_for(llm, "director")(
+                    subplot_prompt(novel, epno, spec["summary"], fb, done=made))
+                try:
+                    b = call_json(_llm_for(llm, "extractor"),
+                                  extract_prompt(sub_md, [], spec["scale"]),
+                                  label=f"서브플롯 추출 {epno}화")
+                except ValueError as e:
+                    _log(f"[episode] {epno}화 서브플롯 씬 추출 실패 -- 건너뛴다 ({e})")
+                    b = None
+                    break
+                same = _too_similar(b.get("beat", ""), made)
+                if not same:
+                    break
+                _log(f"[중복] {epno}화 서브플롯 씬: '{b.get('beat','')[:34]}' 가 "
+                     f"'{same[:34]}' 와 겹친다 -- 다시 받는다")
+                fb = _fb_text(f"이미 쓴 '{same}' 와 너무 비슷하다. **다른 인물·다른 공간·"
+                              f"다른 종류의 마찰**로 완전히 새 소재를 잡아라")
+                b = None
+            if b is None:
                 continue
+            made.append(b.get("beat", ""))
             b.setdefault("direction", {})["scenario"] = sub_md
             sub = Scene(id=f"ep{lo:03d}_{epno:03d}s{k + 1}",
                         participants=_people(b.get("participants"), novel,
