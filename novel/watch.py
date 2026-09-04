@@ -114,13 +114,36 @@ def report(path: Path, logs: Path) -> str:
     return "\n".join(lines)
 
 
+def _ping(text: str) -> None:
+    """끝났다고 Discord 에 한 번 보낸다.
+
+    overnight 의 Discord 를 그대로 쓴다 -- 웹훅 우선, 없으면 봇 토큰. 실패해도 조용히
+    넘어간다: 알림이 안 갔다고 여기서 죽으면 마지막에 본 화면까지 잃는다."""
+    try:
+        from novel.overnight import Discord
+        dc = Discord()
+        if not dc.on:
+            print("(Discord 설정이 없어 보내지 않는다 -- DISCORD_WEBHOOK_URL 을 넣어라)")
+            return
+        print("(Discord 로 보냈다)" if dc.send(f"✅ **소설 런 종료**\n```\n{text}\n```")
+              else "(Discord 전송 실패 -- python3 novel/discord_check.py 로 확인하라)")
+    except Exception as e:                                            # noqa: BLE001
+        print(f"(알림 실패: {type(e).__name__})")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--path", default=str(DEFAULT_PATH))
     ap.add_argument("--logs", default=str(HERE.parent / "logs"))
     ap.add_argument("-f", "--follow", action="store_true")
     ap.add_argument("-i", "--interval", type=float, default=20)
+    ap.add_argument("--notify", action="store_true",
+                    help="런이 끝나면 Discord 로 결과를 보낸다. **이미 도는 런에도 쓸 수 "
+                         "있다** -- 알림을 붙이자고 재시작할 이유가 없다. "
+                         "DISCORD_WEBHOOK_URL 또는 BOT_TOKEN+CHANNEL_ID 가 필요하다")
     a = ap.parse_args()
+    if a.notify:
+        a.follow = True                  # 끝을 보려면 계속 봐야 한다
 
     path, logs = Path(a.path), Path(a.logs)
     while True:
@@ -129,6 +152,8 @@ def main() -> int:
             print("\033[2J\033[H" + time.strftime("%H:%M:%S") + "\n" + text, flush=True)
             if "프로세스 없음" in text.splitlines()[0]:
                 print("\n(끝났다)")
+                if a.notify:
+                    _ping(text)
                 return 0
             time.sleep(a.interval)
         else:
