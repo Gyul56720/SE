@@ -88,12 +88,25 @@ ok(flow.blank()["shocks"] == 0 and "since" in flow.blank(),
 print()
 print("[급발진] **인물이 스스로 저지르는 것** -- 사건과 다른 물건이다")
 print("      ← 사건은 밖에서 들이닥쳐 점층을 끊는다. 급발진은 흐름 안에서 한 번 튄다.")
-combo = len(SH.ACT) * len(SH.REACT)
-ok(combo > 300, f"행동 × 반응 조합 ({combo}가지)")
+combo = len(SH.ACT) * len(SH.REACT) * len(SH.CALM)
+ok(combo > 5000, f"저지름 × 반응 × 유유자적 조합 ({combo:,}가지)")
 ok(SH.impulse("a", 0) == SH.impulse("a", 0), "같은 씨앗·번호는 같은 급발진  ← 이어 쓰기 재현")
 dup = sum(SH.impulse("s", i)["act"] == SH.impulse("s", i + 1)["act"] for i in range(200))
 ok(dup == 0, f"연달아 같은 짓을 하지 않는다 ({dup}건)")
+ok("calm" in SH.impulse("a", 0), "저지른 뒤의 태연함까지 뽑는다")
+dupc = sum(SH.impulse("s", i)["calm"] == SH.impulse("s", i + 1)["calm"] for i in range(200))
+ok(dupc == 0, f"태연함도 연달아 같지 않다 ({dupc}건)")
+
 brief = SH.impulse_brief(SH.impulse("a", 0))
+ok("주인공의 성격이다" in brief,
+   "급발진은 사건이 아니라 사람이다  ← 뽑기로 굴리는 돌발이 아니라 기본값이다")
+ok("본인은 그게 급발진인 줄 모른다" in brief,
+   "본인만 모른다  ← 그 간극이 이 인물의 전부다")
+ok("저지름보다 그 뒤의 태연함이 이 인물이다" in brief, "유유자적이 정체다")
+ok("장례식에서도" in brief,
+   "분위기를 가리지 않는다  ← 웃기려고 넣는 것이 아니라 그런 사람이라서다")
+ok("없는 말을 태연히" in brief,
+   "지어낸 말이 급발진의 일부로 들어왔다  ← 변명하는 꼴이 딱 급발진 이후 유유자적이다")
 ok("문제를 풀지 않는다" in brief,
    "급발진도 문제를 풀지 않는다  ← 앞서 정한 편의주의 금지를 그대로 지킨다")
 ok("설명하지 마라" in brief, "왜 그랬는지 정리해 주지 않는다  ← 설명하면 재미가 죽는다")
@@ -114,11 +127,14 @@ print("      ← 매 덩어리마다 다 하려 들면 그게 버릇이 되고, 
 flat3 = " ".join(p3.split())
 ok("[잡소리]" in p3, "쓸데없는 말을 한 자리에 모았다")
 ok("하나쯤**만 골라라. 안 골라도 된다" in flat3, "하나쯤, 안 해도 된다")
-ok("없는 낱말을 만들고 변명을 단다" in flat3,
-   "지어낸 낱말이 그 자리로 들어갔다  ← 따로 요구하던 것을 개그 안으로 편입")
+ok("없는 낱말을 만들고 변명을 단다" not in flat3,
+   "지어낸 낱말은 [잡소리] 가 아니라 급발진 쪽에 있다  ← 그건 개그의 한 수가 아니라"
+   " 이 인물의 몸짓이다")
 ok("멍청한 소리를 아주 진지하게 한다" in flat3, "멍청하면서 진지한 수도 목록에 있다")
-ok("매번 하지는 마라" in " ".join(style.narrator().split()),
-   "화자에게도 매번 하지 말라고 한다  ← 두 자리가 어긋나면 안 된다")
+_sn = " ".join(style.narrator().split())
+ok("매번 하지는 마라" in _sn, "화자에게도 매번 하지 말라고 한다  ← 두 자리가 어긋나면 안 된다")
+ok("급발진이 이 사람의 기본값이다" in _sn, "화자가 주인공 성격으로 안다")
+ok("같은 몸짓" in _sn, "지어낸 말과 급발진을 한 벌로 묶는다")
 
 print()
 if fails:
