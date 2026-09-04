@@ -187,6 +187,31 @@ ok(flow.DRIFT == 0.5, f"기본 계수 0.5 ({flow.DRIFT})")
 ok(flow.blank()["drift"] == flow.DRIFT, "새 원고에 계수가 저장된다  ← 이어 써도 같게")
 
 
+print()
+print("[흔들림] **계수를 고정하면 매 덩어리가 똑같이 반쯤 시끄럽다**")
+print("      ← 균일한 0.5 는 균일한 1.0 만큼이나 단조롭다. 덩어리마다 다시 뽑는다.")
+for base in (0.5, 0.8, 0.3):
+    lv = [matter.level_at("s", i, base) for i in range(3000)]
+    avg = sum(lv) / len(lv)
+    ok(abs(avg - base) < 0.02, f"기준 {base}: 평균이 기준과 같다 ({avg:.3f})")
+    # 폭은 [2b-1, 2b] 를 0~1 로 자른 것이라 기준이 0.5 에서 멀어질수록 좁아진다
+    # (0.5 → 1.0 · 0.8 과 0.3 → 0.4). 그래도 절반 이상 흔들려야 구간이 생긴다.
+    width = max(lv) - min(lv)
+    ok(width >= 0.39, f"기준 {base}: 폭이 벌어진다 ({min(lv):.2f}~{max(lv):.2f})")
+lo5 = [matter.level_at("s", i, 0.5) for i in range(3000)]
+ok(min(lo5) < 0.1 and max(lo5) > 0.9,
+   "기준 0.5 는 아주 조용한 덩어리와 아주 요란한 덩어리를 둘 다 낸다")
+lo8 = [matter.level_at("s", i, 0.8) for i in range(3000)]
+ok(min(lo8) >= 0.55,
+   "기준을 높이면 아주 조용해지지는 않는다  ← 0~1 로 자른 구간이라 그렇다")
+ok(matter.level_at("s", 7, 0.5) == matter.level_at("s", 7, 0.5),
+   "같은 자리는 같은 세기  ← 이어 쓰기에도 재현된다")
+ok(len({round(matter.level_at("s", i, 0.5), 2) for i in range(20)}) > 12,
+   "이웃한 덩어리끼리 세기가 다르다")
+ok("이번 세기" in Path(flow.__file__).read_text(encoding="utf-8"),
+   "로그에 이번 덩어리의 세기가 찍힌다  ← 왜 조용한지 밖에서 보여야 한다")
+
+
 def _fires(level, n=200):
     bk = flow.blank()
     bk["drift"] = level
@@ -200,8 +225,9 @@ def _fires(level, n=200):
 
 full, less, half = _fires(1.0), _fires(0.8), _fires(0.5)
 ok(full == 200, f"계수 1.0 이면 매 덩어리 ({full}/200)")
-ok(150 < less < 190, f"계수 0.8 이면 다섯에 넷쯤 ({less}/200)")
-ok(80 < half < 120, f"계수 0.5 면 절반쯤 -- 지금의 기본값 ({half}/200)")
+ok(140 < less < 195, f"계수 0.8 이면 다섯에 넷쯤 ({less}/200)")
+ok(70 < half < 130, f"계수 0.5 면 절반쯤 -- 지금의 기본값 ({half}/200)")
+ok(half < less < full, "기준을 올리면 잦아진다  ← 흔들려도 기준은 지켜진다")
 
 bk4 = flow.blank(); bk4["drift"] = 0.5; bk4["chunks"] = ["x"] * 3
 off = flow.write_prompt(bk4)

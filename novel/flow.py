@@ -261,15 +261,21 @@ def brief(ledger: dict, limit: int = 40) -> str:
 
 # ---------------------------------------------------------------- 프롬프트
 
+def _level(book: dict) -> float:
+    """이 덩어리의 표류 세기. 원고의 계수를 중심으로 덩어리마다 흔들린다."""
+    return matter.level_at(book.get("seed_id") or book["first"],
+                           len(book["chunks"]),
+                           float(book.get("drift", DRIFT)))
+
+
 def _matter(book: dict) -> str:
     """**소재** -- 이번 덩어리에 섞을 재료. 확산·리듬이 '어떻게' 라면 이건 '무엇' 이다.
 
     이 축이 없을 때 모델은 늘 비슷한 것을 냈다 -- 술집, 부두, 낡은 차, 담배. 세계가
     넓어져도 재료가 안 넓어졌다.
     """
-    lv = float(book.get("drift", DRIFT))
     return matter.brief(matter.draw(book.get("seed_id") or book["first"],
-                                    len(book["chunks"]), lv))
+                                    len(book["chunks"]), _level(book)))
 
 
 def _impulse(book: dict) -> str:
@@ -281,9 +287,8 @@ def _impulse(book: dict) -> str:
     """
     seed = book.get("seed_id") or book["first"]
     n = len(book["chunks"])
-    lv = float(book.get("drift", DRIFT))
     # 계수만큼만 켠다. 꺼진 덩어리에서도 성격은 그대로다 -- 저지르지 않을 뿐이다.
-    if not matter.gate(seed, n, "impulse", lv):
+    if not matter.gate(seed, n, "impulse", _level(book)):
         return ("  * 이번 덩어리에는 급발진을 넣지 마라. 그렇다고 사람이 바뀌는 것은"
                 " 아니다 -- 저지르지 않을 뿐, 말투도 태도도 그대로다.")
     return SH.impulse_brief(SH.impulse(seed, n))
@@ -488,8 +493,10 @@ def step(book: dict, llm, log=None) -> dict:
     book.setdefault("shocks", 0)
     book.setdefault("since", 0)
     book["_shock"] = None
+    if book["chunks"]:
+        D._log(f"[flow] 이번 세기 {_level(book):.2f} (기준 {book.get('drift', DRIFT)})")
     if book["chunks"] and SH.due(book["since"], len(brief(book["ledger"])),
-                                 float(book.get("drift", DRIFT))):
+                                 _level(book)):
         book["_shock"] = SH.draw(book.get("seed_id") or book["first"], book["shocks"])
         D._log(f"[flow] 사건 {book['shocks'] + 1} -- {book['_shock']['who']} / "
                f"{book['_shock']['how']} / {book['_shock']['scale']}")

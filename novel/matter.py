@@ -73,6 +73,24 @@ HEAT = (
 )
 
 
+def level_at(seed: str, n: int, base: float) -> float:
+    """이 덩어리의 계수. **base 를 중심으로 흔들린다.**
+
+    계수를 고정하면 매 덩어리가 똑같이 반쯤 시끄럽다 -- 균일한 0.5 는 균일한 1.0 만큼이나
+    단조롭다. 사용자 평: "계수도 랜덤하게 바꿔줘라. 완전 랜덤하게."
+
+    그래서 덩어리마다 다시 뽑는다. 폭은 [2b-1, 2b] 를 0~1 로 자른 구간이라 **평균이 정확히
+    base 다** -- 세기의 기준은 그대로 두고 분포만 벌린다. base 0.5 면 0~1 전체를 쓰고,
+    0.8 이면 0.6~1.0 사이에서만 논다(낮게 잡아도 아주 조용해지지는 않는다는 뜻이다).
+
+    해시라서 이어 쓰기에도 같은 자리에서 같은 세기가 나온다.
+    """
+    lo, hi = max(0.0, 2 * base - 1), min(1.0, 2 * base)
+    h = hashlib.sha256(f"{seed}|{n}|level".encode()).digest()
+    u = int.from_bytes(h[:8], "big") / float(1 << 64)
+    return lo + (hi - lo) * u
+
+
 def gate(seed: str, n: int, axis: str, level: float) -> bool:
     """계수만큼만 켠다. 해시라서 이어 쓰기에도 같은 자리에서 켜지고 꺼진다."""
     if level >= 1.0:
