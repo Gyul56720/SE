@@ -45,6 +45,22 @@ python3 self_challenge.py prove --candidate <검사.py> --broken-commit <사고�
 python3 memory_hygiene.py             # dry-run, --apply 로 실제 정리
 ```
 
+## 2-1. 소설 오케스트레이션 — `novel/`
+
+씨앗(무작위 조합) -> 세계 -> 역방향 조립 -> 집필 -> **기계 관문 23개**. 다른 오케스트레이션과
+같은 원칙 위에 있다: 생성자와 심판을 분리하고 심판은 LLM 이 아니다. "재미있는가" 는 판정하지
+않고 **세계가 자기모순인가**만 본다 -- 그건 취향이 아니라 사실이라 기계가 볼 수 있다.
+
+```bash
+python3 novel/seed.py --n 10                          # 씨앗 뽑기 (LLM 안 씀)
+python3 novel/world_seeded.py --new                   # 세계로 펴기 (LLM 안 씀)
+python3 novel/overnight.py --world seeded --hours 2   # 집필
+python3 novel/read.py --path novel/seeded.json --ep 1-3
+```
+
+**설계·사용법·실패 이력 전부 [`novel/README.md`](novel/README.md) 에 있다.** 소설 작업을
+새로 시작하기 전에 그것부터 읽을 것 -- 밤을 날린 사고 일곱 개가 거기 적혀 있다.
+
 ## 2. 오케스트레이션 에이전트 — `orchestrator/`
 
 문제를 계획(plan.json) → 컴포넌트 코드 + 검증 코드로 쪼개서 실행하고, 실패하면 계획을
