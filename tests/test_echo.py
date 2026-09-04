@@ -123,6 +123,33 @@ ok("입버릇·감탄사가 있으면 그것까지 적어라" in flow.extract_pr
    "카드에 입버릇을 적는다  ← 그 사람이 다음에도 같은 소리를 내야 한다")
 
 print()
+print("[낱말] **없는 말을 지어내고 변명을 단다**")
+print("      ← 문법이 깨지는 건 변명이 필요 없다. 사전에 없는 낱말은 다르다 --")
+print("        그냥 던지면 오타로 읽히고, 뜻을 달면 그 순간 세계의 일부가 된다.")
+import novel.style as _st                                             # noqa: E402
+_n = " ".join(_st.narrator().split())
+ok("없는 낱말을 지어내라" in _n, "화자에게 낱말을 만들라고 한다")
+ok("변명은 **매번 다른 꼴로** 해라" in _n,
+   "변명의 꼴을 갈라 준다  ← 같은 방식이 세 번 나오면 그것도 버릇이다")
+for form in ("우리 동네 말입니다", "틀린 어원을 진지하게 댄다", "취했거나",
+             "두 번째로 쓰일 때 뜻이 저절로 드러나게"):
+    ok(form in _n, f"변명 꼴: {form[:18]}")
+ok("한둘이면 충분하다" in _n, "한 덩어리에 한둘까지  ← 그 이상은 글이 아니라 암호다")
+ok("끝까지 그 뜻이다" in _n, "한 번 준 뜻은 안 바뀐다")
+
+_led = flow.blank()["ledger"]
+ok("words" in _led, "원장에 낱말 칸이 있다")
+ok(not flow._merge(_led, {"words": {"꿉꿉하다": "눅눅한데 마음 쪽에 쓰는 말"}}),
+   "낱말은 기록만 한다")
+ok(not flow._merge(_led, {"words": {"꿉꿉하다": "아주 다른 뜻"}}),
+   "뜻이 달라져도 기각하지 않는다  ← 게이트는 최소로만 개입한다")
+ok("지어낸 말" in flow.brief(_led), "브리핑에 실려 다음 덩어리가 뜻을 지킨다")
+ok("지어낸 낱말은 words 에" in flow.extract_prompt("x"), "추출기가 낱말을 뽑는다")
+_mid3 = flow.blank(); _mid3["chunks"] = ["앞."]
+ok("없는 낱말을 만들고 변명을 달아라" in " ".join(flow.write_prompt(_mid3).split()),
+   "확산 지시에도 실린다")
+
+print()
 if fails:
     print(f"메아리: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)

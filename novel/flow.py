@@ -119,8 +119,11 @@ OPENING = """[이 첫 덩어리가 할 일]
 def blank(first: str = FIRST) -> dict:
     # shocks: 지금까지 터진 사건의 수. 뽑기가 여기 묶여 있어 이어 쓰기에도 순서가 이어진다.
     # since: 마지막 사건 이후 쓴 글자 수.
+    # words: 지어낸 낱말과 그 뜻. **기록만 하고 절대 기각하지 않는다** -- 다만 한 번 뜻을
+    # 준 말은 계속 같은 뜻으로 쓰여야 해서 원장에 남긴다.
     return {"first": first, "chunks": [], "shocks": 0, "since": 0, "ledger": {
-        "people": {}, "places": {}, "facts": {}, "time": [], "objects": {}}}
+        "people": {}, "places": {}, "facts": {}, "time": [], "objects": {},
+        "words": {}}}
 
 
 def _merge(ledger: dict, delta: dict) -> list:
@@ -176,7 +179,7 @@ def _merge(ledger: dict, delta: dict) -> list:
         ledger["people"][name] = card
 
     # ---- 나머지: **기록만 한다. 절대 기각하지 않는다.**
-    for bucket in ("places", "facts", "objects"):
+    for bucket in ("places", "facts", "objects", "words"):
         for k, raw in (delta.get(bucket) or {}).items():
             v = _clean(raw)
             if v is None:
@@ -230,7 +233,8 @@ def brief(ledger: dict, limit: int = 40) -> str:
                     bit = str(card)
                 brief_rest.append(f"{name}({bit})" if bit else name)
             out.append("  [스쳐 간 사람] " + " · ".join(brief_rest))
-    for bucket, label in (("places", "장소"), ("objects", "사물"), ("facts", "사실")):
+    for bucket, label in (("places", "장소"), ("objects", "사물"), ("facts", "사실"),
+                          ("words", "지어낸 말")):
         items = list(ledger.get(bucket, {}).items())[-limit:]
         if items:
             out.append(f"  {label}: " + " · ".join(f"{k}={v}" for k, v in items))
@@ -288,6 +292,10 @@ def _diffuse(book: dict) -> str:
     받아치고, 딴소리한다. 긴 것과 짧은 것이 번갈아야 대화가 리듬을 갖는다.
   * **이상한 대화를 해라.** 지금 상황과 상관없는 것을 궁금해하고, 엉뚱한 데서 정색하고,
     농담을 무표정하게 던진다. 용건만 오가는 대사가 제일 재미없다.
+  * **없는 낱말을 만들고 변명을 달아라.** 한 덩어리에 한둘. 뜻을 달아 주는 순간 그 말이
+    세계의 일부가 된다 -- 가상의 지명을 대며 방언이라 하든, 틀린 어원을 진지하게 대든,
+    취해서 그렇다고 하든, 아무도 설명 안 하고 두 번째 쓰임에서 뜻이 드러나게 두든.
+    변명의 꼴은 매번 달라야 한다. **[세계]의 '지어낸 말' 에 이미 있는 것은 뜻을 지켜라.**
   * **감탄사를 지어내고 문법을 놓아라.** "끼얏호", "어라랍쇼", "헐랭", "우와씨", "쓰읍",
     "푸하" -- 사전에 없어도 좋다. 그 사람이 낼 법한 소리면 그만이다. 문장을 끝까지
     맺지 않아도, 어순이 뒤집혀도, 조사가 빠져도 된다. **말끝을 다듬으면 그게 딱딱함이다.**
@@ -383,6 +391,8 @@ def extract_prompt(chunk: str) -> str:
 - 새로 나온 것이 없는 칸은 빈 객체로 둔다.
 - **인물은 카드로 적는다.** 글에 드러난 칸만 채워라. 안 나온 칸은 빼라 -- 지어내지 마라.
   쓸 수 있는 칸: {" · ".join(CARD)}
+- **지어낸 낱말은 words 에 뜻과 함께 적어라.** 사전에 없는 말이 나오고 거기 뜻이나 유래가
+  달렸으면 그것이다. 한 번 적힌 말은 다음 덩어리에서도 같은 뜻으로 쓰인다.
 - 말투 칸이 중요하다. 그 사람이 어떻게 말하는지 한 줄로 적어라
   (예: "존댓말인데 끝을 흐린다", "짧게 끊고 욕을 섞는다", "말이 길고 자꾸 되묻는다").
   **입버릇·감탄사가 있으면 그것까지 적어라** -- "놀라면 '어라랍쇼' 라고 한다",
@@ -393,6 +403,7 @@ JSON 만 출력:
                      "말투": "짧게 끊는다. 욕을 섞는다", "과거": "..."}}}},
   "places": {{"장소": "어떤 곳인가 한 줄"}},
   "objects": {{"사물": "무엇인가 한 줄"}},
+  "words": {{"꿉꿉하다": "눅눅한데 마음 쪽에 쓰는 말. 웅포 지방 말"}},
   "facts": {{"항목": "확정된 값"}},
   "time": ["시점 한 줄"]}}"""
 
