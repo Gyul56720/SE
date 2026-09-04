@@ -124,6 +124,66 @@ txt, lbl = llm_pool.call(pool5, "p", verbose=False)
 ok(lbl == "y2:m", f"그래도 시도해서 성공한다 ({lbl})  ← 카운터는 추정이라 틀릴 수 있다")
 ok(len(calls) >= 1, f"아무것도 시도하지 않고 실패하지는 않는다 ({calls})")
 
+print("[순서] RPM 에 강한 것부터 두드리는가")
+print("      ← 2026-09-04 VM 실측: pro/preview 를 먼저 두드리다 상한 12개를 429 로 다 쓰고")
+print("        flash 계열에 닿지도 못한 채 블록이 통째로 예외로 끝났다. 429 를 맞은 pro 는")
+print("        품질이 0 이다 -- 안 도는 모델은 좋은 모델이 아니다.")
+order = sorted(["gemini-pro-latest", "gemini-3.1-pro-preview",
+                "gemini-3.1-pro-preview-customtools", "gemini-flash-lite-latest",
+                "gemini-3.5-flash", "gemini-omni-flash-preview", "gemma-3"],
+               key=llm_pool._model_rank)
+ok(order[0].endswith("flash-lite-latest"), f"flash-lite 가 맨 앞 ({order[0]})")
+ok(order.index("gemini-3.5-flash") < order.index("gemini-pro-latest"),
+   "flash 가 pro 보다 앞")
+ok(order.index("gemini-3.1-pro-preview") > order.index("gemini-pro-latest"),
+   "preview 는 같은 계열 안에서 뒤")
+ok(order[-1].startswith("gemma"), f"gemma 가 맨 뒤 ({order[-1]})")
+ok(llm_pool._model_rank("gemini-x-customtools")[1] == 1, "customtools 변종도 뒤로 민다")
+
+print("[바퀴] 전부 RPM 이면 기다렸다 다시 도는가  ← 예전에는 거기서 블록을 잃었다")
+slept = []
+_real_sleep = llm_pool.time.sleep
+llm_pool.time.sleep = lambda s: slept.append(s)
+try:
+    calls = []
+
+    class Flaky:
+        """첫 바퀴는 RPM, 두 번째 바퀴에 성공한다."""
+
+        def __init__(self, label):
+            self.label = label
+
+        def invoke(self, prompt):
+            calls.append(self.label)
+            if len(calls) <= 2:
+                raise RuntimeError("429 RESOURCE_EXHAUSTED quotaId: GenerateRequestsPerMinute")
+            return "산문"
+
+    pool = [("r1:gemini-3.5-flash", Flaky("r1")), ("r2:gemini-3.5-flash", Flaky("r2"))]
+    text, label = llm_pool.call(pool, "프롬프트", pool_id="t_round", verbose=False)
+    ok(text == "산문", f"두 번째 바퀴에서 성공한다 ({label})")
+    ok(len(calls) >= 3, f"첫 바퀴 실패 뒤 다시 두드렸다 ({calls})")
+    ok(slept and slept[0] <= llm_pool.RPM_MAX_WAIT,
+       f"기다린 시간이 상한 안이다 ({slept})  ← 밤을 여기 태우지 않는다")
+finally:
+    llm_pool.time.sleep = _real_sleep
+
+print("[바퀴] 영구 실패는 기다리지 않는가  ← 기다려도 안 풀리는 것에 시간을 쓰지 않는다")
+slept2 = []
+llm_pool.time.sleep = lambda s: slept2.append(s)
+try:
+    class Dead:
+        def invoke(self, prompt):
+            raise RuntimeError("404 NOT_FOUND model is not found")
+
+    try:
+        llm_pool.call([("d1:gemini-3.5-flash", Dead())], "프롬프트", pool_id="t_dead", verbose=False)
+    except RuntimeError:
+        pass
+    ok(not slept2, f"안 기다리고 바로 포기한다 ({slept2})")
+finally:
+    llm_pool.time.sleep = _real_sleep
+
 print()
 if fails:
     print(f"llm_pool RPM: {len(fails)}개 실패 -- {fails}")

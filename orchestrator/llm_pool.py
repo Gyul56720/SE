@@ -24,6 +24,7 @@ from __future__ import annotations
 import hashlib
 import os
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # quota_tracker 임포트용
@@ -41,6 +42,13 @@ TIMEOUT = float(os.environ.get("GEMINI_TIMEOUT", "60"))
 # 풀은 (키 x 실사용 모델) 이라 모델 목록 조회 결과에 따라 수십~백 개가 될 수 있다. 전부 순회하면
 # 최악의 경우 시간 단위로 매달리므로, 시도 후보 수에 상한을 둔다(최악 대기 = 상한 x TIMEOUT).
 MAX_CANDIDATES = int(os.environ.get("GEMINI_MAX_CANDIDATES", "12"))
+
+# **RPM 은 기다리면 풀린다.** 후보를 전부 두드렸는데 실패 사유가 전부 분당 한도(429/RPM)나
+# 일시 장애(503)뿐이면, 그것은 "이 키로는 못 한다" 가 아니라 "지금은 못 한다" 다. 예전에는
+# 거기서 예외를 던졌고, 야간 런은 그 한 번으로 블록을 통째로 잃었다(실측: 1~3화와 4~5화가
+# 2분 간격으로 같은 이유로 죽었다). 쿨다운이 풀릴 때까지 기다렸다 다시 돈다.
+RPM_ROUNDS = int(os.environ.get("GEMINI_RPM_ROUNDS", "3"))       # 총 시도 바퀴 수
+RPM_MAX_WAIT = float(os.environ.get("GEMINI_RPM_MAX_WAIT", "75"))  # 한 바퀴 최대 대기(초)
 
 
 def _is_quota(e) -> bool:
@@ -73,9 +81,33 @@ def _is_permanent(e) -> bool:
 
 
 def _model_rank(model: str):
+    """후보 순서. **분당 한도(RPM)에 강한 것부터 간다.**
+
+    예전에는 pro 를 맨 앞에 뒀다(fam 0). 품질 순서였는데, 무료 티어에서 그 순서는 정확히
+    거꾸로다 -- pro 와 preview 계열은 RPM 이 가장 빡빡해서 몇 호출 만에 429 를 낸다.
+    2026-09-04 VM 실측 로그가 그것이다: 12개 후보를 순서대로 두드렸는데 pro-latest,
+    3.1-pro-preview, 3.1-pro-preview-customtools, omni-* 가 전부 429 [RPM/60초] 였고,
+    **상한 12개를 그것들로 다 써버려 flash 계열에 닿지도 못한 채** 블록이 통째로 예외로
+    끝났다. 429 를 맞은 pro 는 품질이 0 이다. 안 도는 모델은 좋은 모델이 아니다.
+
+    그래서 flash-lite -> flash -> pro -> gemma 순으로 뒤집는다. 그리고 preview 는 어느
+    계열이든 뒤로 민다(쿼터가 실험적이고 예고 없이 바뀐다). 품질이 중요한 자리(디렉터)는
+    이제 Claude 가 맡으므로, 이 풀은 **양이 많은 배우·화자·추출기**를 감당하는 것이
+    본업이다 -- 거기서는 도는 것이 곧 품질이다."""
     n = model.lower()
-    fam = 3 if "gemma" in n else 2 if "flash-lite" in n else 1 if "flash" in n else 0 if "pro" in n else 4
-    return (fam, 1 if "preview" in n else 0)
+    if "gemma" in n:
+        fam = 3
+    elif "flash-lite" in n:
+        fam = 0
+    elif "flash" in n:
+        fam = 1
+    elif "pro" in n:
+        fam = 2
+    else:
+        fam = 4
+    # preview/experimental 은 같은 계열 안에서 맨 뒤로. customtools 같은 변종도 여기 걸린다.
+    exp = 1 if any(w in n for w in ("preview", "exp", "customtools")) else 0
+    return (fam, exp)
 
 
 def _key_id(key: str) -> str:
@@ -172,54 +204,74 @@ def call(pool, prompt: str, pool_id: str = "orchestrator", max_candidates: int =
         rem = quota_tracker.remaining(label)
         return (rem <= 0, _model_rank(model), -rem)
 
-    # **잔량이 없는 후보는 아예 빼고 시도한다.** 예전에는 sort_key 로 뒤에 밀어두기만 해서
-    # 여전히 순회 대상이었다 -- 소진된 조합 하나마다 왕복 한 번과 429 대기를 물고, 상한
-    # (MAX_CANDIDATES)까지 그것으로 채우면 **멀쩡한 후보에 닿지도 못한다**(2026-09-04 실측:
-    # 12개 시도가 전부 429 였는데 그중 절반은 이미 소진된 걸 알고 있던 조합이었다).
-    #
-    # remaining() 은 일일 소진과 RPM 쿨다운을 모두 0 으로 돌려주므로, 이 한 줄이 둘 다
-    # 건너뛴다. 쿨다운은 60초 뒤 저절로 잔량이 돌아온다.
-    #
-    # 전부 0 이면 그때는 거르지 않는다 -- 추정이 틀렸을 수 있고(카운터는 휴리스틱이다),
-    # 아무것도 시도하지 않고 실패하는 것보다 한 번 두드려보는 편이 낫다.
-    fresh = [c for c in live if quota_tracker.remaining(c[0]) > 0]
-    if verbose and len(fresh) < len(live):
-        print(f"[llm_pool] 잔량 없는 후보 {len(live) - len(fresh)}개를 건너뛴다 "
-              f"(남은 후보 {len(fresh)}개)", file=sys.stderr, flush=True)
-    ranked = sorted(fresh or live, key=sort_key)
-    pinned = quota_tracker.get_pinned(pool_id)
-    if pinned:
-        ranked = [c for c in ranked if c[0] == pinned] + [c for c in ranked if c[0] != pinned]
-
     limit = MAX_CANDIDATES if max_candidates is None else max_candidates
-    tried, skipped = 0, max(0, len(ranked) - limit)
-    last_error = None
-    for label, llm in ranked[:limit]:
-        tried += 1
-        try:
-            text = _extract_text(llm.invoke(prompt))
-            quota_tracker.record_success(label)
-            quota_tracker.set_pinned(pool_id, label)
-            return text, label
-        except Exception as e:
-            # **어느 갈래로 판정했는지 로그에 남긴다.** 예전에는 str(e)[:120] 만 찍었는데,
-            # RPM 과 일일 소진을 가르는 quotaId 는 그 뒤에 나온다 -- 분류는 제대로 하면서도
-            # 사람이 로그로 확인할 방법이 없었다(2026-09-04 에 실제로 못 가렸다).
-            if _is_rpm(e):
-                quota_tracker.record_rpm_cooldown(label)
-                kind = "RPM/60초"
-            elif _is_quota(e):
-                quota_tracker.record_exhausted(label)
-                kind = "일일소진"
-            elif _is_permanent(e):
-                quota_tracker.mark_dead(label, str(e)[:200])
-                kind = "영구배제"
-            else:
-                kind = "일시장애"          # 503 등은 기록 없이 다음 후보로
-            if verbose:
-                print(f"[llm_pool] {label} 실패({tried}/{min(limit, len(ranked))}) "
-                      f"[{kind}]: {str(e)[:100]}", file=sys.stderr, flush=True)
-            last_error = e
+    last_error, tried, skipped = None, 0, 0
+
+    # **바퀴를 돈다.** 한 바퀴가 전부 RPM/일시장애로 끝났으면 그것은 "이 키로는 못 한다" 가
+    # 아니라 "지금은 못 한다" 다. 쿨다운이 풀릴 만큼 기다렸다 다시 돈다.
+    for rnd in range(1, max(1, RPM_ROUNDS) + 1):
+        # **잔량이 없는 후보는 아예 빼고 시도한다.** 예전에는 sort_key 로 뒤에 밀어두기만
+        # 해서 여전히 순회 대상이었다 -- 소진된 조합 하나마다 왕복 한 번과 429 대기를 물고,
+        # 상한(MAX_CANDIDATES)까지 그것으로 채우면 **멀쩡한 후보에 닿지도 못한다**.
+        #
+        # remaining() 은 일일 소진과 RPM 쿨다운을 모두 0 으로 돌려주므로 이 한 줄이 둘 다
+        # 건너뛴다. 바퀴를 다시 돌 때는 쿨다운이 풀려 잔량이 돌아와 있다.
+        #
+        # 전부 0 이면 그때는 거르지 않는다 -- 추정이 틀렸을 수 있고(카운터는 휴리스틱이다),
+        # 아무것도 시도하지 않고 실패하는 것보다 한 번 두드려보는 편이 낫다.
+        fresh = [c for c in live if quota_tracker.remaining(c[0]) > 0]
+        if verbose and len(fresh) < len(live):
+            print(f"[llm_pool] 잔량 없는 후보 {len(live) - len(fresh)}개를 건너뛴다 "
+                  f"(남은 후보 {len(fresh)}개)", file=sys.stderr, flush=True)
+        ranked = sorted(fresh or live, key=sort_key)
+        pinned = quota_tracker.get_pinned(pool_id)
+        if pinned:
+            ranked = ([c for c in ranked if c[0] == pinned]
+                      + [c for c in ranked if c[0] != pinned])
+        skipped = max(0, len(ranked) - limit)
+
+        only_transient = True          # 이 바퀴가 전부 "기다리면 풀리는" 실패였는가
+        for label, llm in ranked[:limit]:
+            tried += 1
+            try:
+                text = _extract_text(llm.invoke(prompt))
+                quota_tracker.record_success(label)
+                quota_tracker.set_pinned(pool_id, label)
+                return text, label
+            except Exception as e:
+                # **어느 갈래로 판정했는지 로그에 남긴다.** 예전에는 str(e)[:120] 만 찍었는데,
+                # RPM 과 일일 소진을 가르는 quotaId 는 그 뒤에 나온다 -- 분류는 제대로
+                # 하면서도 사람이 로그로 확인할 방법이 없었다.
+                if _is_rpm(e):
+                    quota_tracker.record_rpm_cooldown(label)
+                    kind = "RPM/60초"
+                elif _is_quota(e):
+                    quota_tracker.record_exhausted(label)
+                    kind = "일일소진"
+                    only_transient = False
+                elif _is_permanent(e):
+                    quota_tracker.mark_dead(label, str(e)[:200])
+                    kind = "영구배제"
+                    only_transient = False
+                else:
+                    kind = "일시장애"      # 503 등은 기록 없이 다음 후보로
+                if verbose:
+                    print(f"[llm_pool] {label} 실패({tried}/{min(limit, len(ranked))}"
+                          f"{f' · {rnd}바퀴' if rnd > 1 else ''}) "
+                          f"[{kind}]: {str(e)[:100]}", file=sys.stderr, flush=True)
+                last_error = e
+
+        if rnd >= max(1, RPM_ROUNDS) or not only_transient:
+            break
+        # 가장 빨리 풀리는 쿨다운까지만 기다린다. 하나라도 살아나면 다음 바퀴가 성공한다.
+        waits = [quota_tracker.rpm_cooldown_remaining(c[0]) for c in live]
+        waits = [w for w in waits if w > 0]
+        wait = min(min(waits) + 2, RPM_MAX_WAIT) if waits else 10.0
+        if verbose:
+            print(f"[llm_pool] 한 바퀴가 전부 RPM/일시장애다 -- {wait:.0f}초 기다렸다 "
+                  f"다시 돈다 ({rnd}/{RPM_ROUNDS}바퀴)", file=sys.stderr, flush=True)
+        time.sleep(wait)
+
     if last_error:
         raise RuntimeError(
             f"후보 {tried}개를 모두 실패했다"
