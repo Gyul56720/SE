@@ -690,8 +690,15 @@ def build_episode(novel, spec: dict, llm=None, max_repairs=MAX_REPAIRS, log=None
                 f"{b.get('establishes')!r} / 열린 조건: {open_conds}. "
                 f"**문자열을 그대로 복사하라** -- 한 글자만 달라도 개연성 구멍으로 잡힌다")
         if got is None:
+            _log(f"[조립] {lo}~{hi}화 척추 {len(spine)}개에서 멈춘다 -- "
+                 f"'{open_conds[0] if open_conds else ''}' 를 갚을 비트를 못 받았다")
             break
         spine.append(got)
+        # 조립은 20~40분이 걸리는데 예전에는 시작과 끝에만 줄이 남았다. 그 사이가
+        # 통째로 침묵이라 "도는 중" 과 "멈춤" 이 구별되지 않았다. 비트마다 남긴다.
+        _log(f"[조립] {lo}~{hi}화 척추 {len(spine)}개째: {got.beat[:44]} "
+             f"(움직인 사람 {got.driver or '?'} · 남은 시간 {got.deadline_hours} · "
+             f"열린 조건 {len(open_conds) - 1}개)")
         open_conds = [c for c in open_conds if c not in got.establishes]
         for c in got.requires:
             if (c not in entry and not c.startswith("state:")
@@ -735,6 +742,7 @@ def build_episode(novel, spec: dict, llm=None, max_repairs=MAX_REPAIRS, log=None
                       direction=dict(b.get("direction") or {}))
         pos = min(len(beats), (k + 1) * max(1, len(beats)) // (need + 1))
         beats.insert(pos, filler)
+        _log(f"[조립] {lo}~{hi}화 서브플롯 {k + 1}/{need}: {filler.beat[:44]}")
 
     # 결말은 마지막 회차다.
     beats.append(Beat(beat="[결말] " + spec["summary"],
@@ -781,6 +789,7 @@ def build_episode(novel, spec: dict, llm=None, max_repairs=MAX_REPAIRS, log=None
                         scale=int(b.get("scale") or spec["scale"]),
                         direction=dict(b.get("direction") or {}), episode=epno)
             scenes.append(sub)
+            _log(f"[조립] {epno}화 씬 {len(scenes)}개째 (서브플롯)")
         scenes[-1].is_episode_end = True                  # 회차의 끝은 마지막 씬이다
         scenes[-1].cliffhanger = (main_scenes[i].cliffhanger
                                   or ("shock_line" if i == len(main_scenes) - 1 else ""))
