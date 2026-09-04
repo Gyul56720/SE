@@ -50,6 +50,27 @@ MAX_CANDIDATES = int(os.environ.get("GEMINI_MAX_CANDIDATES", "12"))
 RPM_ROUNDS = int(os.environ.get("GEMINI_RPM_ROUNDS", "3"))       # 총 시도 바퀴 수
 RPM_MAX_WAIT = float(os.environ.get("GEMINI_RPM_MAX_WAIT", "75"))  # 한 바퀴 최대 대기(초)
 
+# **같은 후보를 연달아 때리지 않는다.** 이것이 "잔여량은 남았는데 429" 의 진짜 원인이었다.
+#
+# 무료 티어 RPM 은 (프로젝트, 모델) 당 분당 몇 회다. 그런데 이 파이프라인은 씬 하나에
+# 디렉터·추출기·배우 넷·화자를 몇 초 안에 연달아 부른다. 성공한 후보를 pin 해서 매번 그것을
+# 먼저 두드리면 **그 하나가 몇 초 만에 자기 RPM 을 다 쓴다.** pin 은 일일 소진을 피하려고
+# 만든 것인데 RPM 에는 정반대로 작동했다.
+#
+# 그래서 최근에 쓴 후보는 뒤로 민다. 키 2개 x 모델 N 개를 **번갈아** 쓰면 유효 RPM 이 그만큼
+# 곱해진다 -- 후보가 여덟이고 간격이 6초면 초당 하나씩 쏴도 아무도 자기 한도에 닿지 않는다.
+MIN_GAP = float(os.environ.get("GEMINI_MIN_GAP", "6"))   # 같은 후보를 다시 쓰기까지(초)
+
+# 이 프로세스가 각 후보를 마지막으로 부른 시각. 파일에 안 남긴다 -- RPM 은 60초짜리라
+# 프로세스 수명보다 짧고, 파일 잠금 비용을 매 호출마다 물 이유가 없다.
+_LAST_USED: dict = {}
+
+
+def _since_used(label: str) -> float:
+    """마지막으로 쓴 지 몇 초 지났나. 한 번도 안 썼으면 아주 큰 값."""
+    t = _LAST_USED.get(label)
+    return 1e9 if t is None else time.time() - t
+
 
 def _is_quota(e) -> bool:
     t = str(e)
@@ -202,7 +223,9 @@ def call(pool, prompt: str, pool_id: str = "orchestrator", max_candidates: int =
         label = c[0]
         model = label.split(":", 1)[1] if ":" in label else label
         rem = quota_tracker.remaining(label)
-        return (rem <= 0, _model_rank(model), -rem)
+        # **방금 쓴 후보는 뒤로.** 이것이 첫 번째 정렬 키다 -- 모델 등급보다 앞선다.
+        # 좋은 모델이라도 3초 전에 썼으면 지금 두드려봐야 429 만 받는다.
+        return (_since_used(label) < MIN_GAP, rem <= 0, _model_rank(model), -rem)
 
     limit = MAX_CANDIDATES if max_candidates is None else max_candidates
     last_error, tried, skipped = None, 0, 0
@@ -224,15 +247,29 @@ def call(pool, prompt: str, pool_id: str = "orchestrator", max_candidates: int =
             print(f"[llm_pool] 잔량 없는 후보 {len(live) - len(fresh)}개를 건너뛴다 "
                   f"(남은 후보 {len(fresh)}개)", file=sys.stderr, flush=True)
         ranked = sorted(fresh or live, key=sort_key)
+        # pin 은 **간격을 지킬 때만** 앞으로 당긴다. 방금 쓴 것을 또 앞에 두면 그 하나가
+        # 자기 RPM 을 다 쓰고, 나머지 후보는 놀면서 런이 죽는다.
         pinned = quota_tracker.get_pinned(pool_id)
-        if pinned:
+        if pinned and _since_used(pinned) >= MIN_GAP:
             ranked = ([c for c in ranked if c[0] == pinned]
                       + [c for c in ranked if c[0] != pinned])
         skipped = max(0, len(ranked) - limit)
 
+        # 후보 전부가 방금 쓴 것들이면 두드려봐야 429 다. 가장 오래된 것이 간격을 채울
+        # 만큼만 기다린다 -- 몇 초다. 이 몇 초가 바퀴 하나를 통째로 살린다.
+        if ranked:
+            oldest = max(_since_used(c[0]) for c in ranked[:limit])
+            if oldest < MIN_GAP:
+                nap = MIN_GAP - oldest
+                if verbose:
+                    print(f"[llm_pool] 후보가 전부 {oldest:.1f}초 전에 쓰였다 -- "
+                          f"{nap:.1f}초 쉰다 (RPM 회피)", file=sys.stderr, flush=True)
+                time.sleep(nap)
+
         only_transient = True          # 이 바퀴가 전부 "기다리면 풀리는" 실패였는가
         for label, llm in ranked[:limit]:
             tried += 1
+            _LAST_USED[label] = time.time()      # 성공이든 실패든 "썼다"
             try:
                 text = _extract_text(llm.invoke(prompt))
                 quota_tracker.record_success(label)

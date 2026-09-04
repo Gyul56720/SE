@@ -184,6 +184,42 @@ try:
 finally:
     llm_pool.time.sleep = _real_sleep
 
+print("[간격] 같은 후보를 연달아 때리지 않는가")
+print("      ← 실측: 잔여량이 남았는데도 429 가 계속 났다. pin 이 매번 같은 후보를 맨 앞에")
+print("        두는데, 씬 하나가 몇 초 안에 6번을 부르니 그 하나가 자기 RPM 을 다 썼다.")
+llm_pool._LAST_USED.clear()
+used = []
+
+
+class Fine:
+    def __init__(self, label):
+        self.label = label
+
+    def invoke(self, prompt):
+        used.append(self.label)
+        return "ok"
+
+
+pool = [(f"g{i}:gemini-3.5-flash", Fine(f"g{i}")) for i in (1, 2, 3)]
+for _ in range(3):
+    llm_pool.call(pool, "p", pool_id="t_gap", verbose=False)
+ok(len(set(used)) == 3, f"세 번 부르면 세 후보를 돌아가며 쓴다 ({used})")
+ok(used[0] != used[1], "연달아 같은 것을 쓰지 않는다  ← pin 이 있어도 간격이 우선이다")
+
+print("[간격] 전부 방금 쓴 것뿐이면 잠깐 쉬는가  ← 두드려봐야 429 다")
+naps = []
+_real = llm_pool.time.sleep
+llm_pool.time.sleep = lambda s: naps.append(s)
+try:
+    llm_pool._LAST_USED.clear()
+    one = [("solo:gemini-3.5-flash", Fine("solo"))]
+    llm_pool.call(one, "p", pool_id="t_solo", verbose=False)
+    llm_pool.call(one, "p", pool_id="t_solo", verbose=False)   # 곧바로 다시
+    ok(naps and 0 < naps[0] <= llm_pool.MIN_GAP,
+       f"간격만큼만 쉰다 ({[round(n, 1) for n in naps]})")
+finally:
+    llm_pool.time.sleep = _real
+
 print()
 if fails:
     print(f"llm_pool RPM: {len(fails)}개 실패 -- {fails}")
