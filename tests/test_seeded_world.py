@@ -28,10 +28,11 @@ def ok(cond, label):
 SEED = S.draw(random.Random(7))
 O = W.outcomes(SEED)
 
-print("[규격] 10화가 빈틈없이 덮이는가")
+print("[규격] 5화가 빈틈없이 덮이는가")
 eps = [e for o in O for e in range(o["eps"][0], o["eps"][1] + 1)]
-ok(eps == list(range(1, 11)), f"1~10화가 겹침도 빈틈도 없이 덮인다 ({O[0]['eps']} {O[1]['eps']} {O[2]['eps']})")
-ok([o["seq"] for o in O] == [1, 2, 3], "블록 번호가 순서대로다")
+ok(eps == list(range(1, 6)),
+   f"1~5화가 겹침도 빈틈도 없이 덮인다 ({[o['eps'] for o in O]})")
+ok([o["seq"] for o in O] == list(range(1, len(O) + 1)), "블록 번호가 순서대로다")
 
 print("[사슬] 뒤 블록의 requires 를 앞 블록이 갚는가  ← 안 갚으면 V018 이 구멍으로 잡는다")
 have: set = set()
@@ -39,7 +40,7 @@ for o in O:
     missing = [c for c in o["requires"] if c not in have]
     ok(not missing, f"블록 {o['seq']} 의 미충족 조건 {missing or '없음'}")
     have.update(o["establishes"])
-ok("판 전체를 가져갔다" in have, "마지막 블록이 최종 상태를 세운다")
+ok("판을 가져갔다" in have, "마지막 블록이 최종 상태를 세운다")
 
 print("[사이다] 결말이 성취인가  ← 대가를 치르는 결말은 이 장르에서 고구마다")
 for o in O:
@@ -85,4 +86,4 @@ print()
 if fails:
     print(f"씨앗 세계: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)
-print("씨앗 세계: 10화 덮기 · 인과 사슬 · 성취 결말 · 규모/시계 · 척추 고유성 -- 통과")
+print("씨앗 세계: 5화 덮기 · 인과 사슬 · 성취 결말 · 규모/시계 · 척추 고유성 -- 통과")

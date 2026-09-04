@@ -3,6 +3,12 @@
 이 저장소의 다른 오케스트레이션(`orchestrator/`, `mathgen/`, `compression/`)과 **같은 원칙**
 위에 서 있다: **생성자와 심판을 분리하고, 심판은 절대 LLM 이 아니다.**
 
+**겉은 가볍고 속은 무겁다.** 씨앗에 `depth` 축이 있다 -- 한 사상가의 명제를 셋으로 갈라
+`claim`(사람만 읽는다) · `test`(플롯이 그것을 시험하는 방식) · `cover`(겉으로 보여야 하는
+가벼운 재미)로 둔다. **프롬프트에는 test 와 cover 만 실린다.** 이름과 개념어는 절대 싣지
+않는다 -- 프롬프트에 그 말이 있으면 모델이 텍스트에 그 말을 쓰고, 그 순간 소설이 강의가
+된다. `tests/test_depth.py` 가 여섯 개 프롬프트 전부에서 누출이 없는지 본다.
+
 **씨앗도 사이다다.** 반칙(`IMPOSSIBLE`)의 셋째 칸은 **대가가 아니라 조건**이다 -- 쿨타임,
 범위, 발동 요건. 주인공이 손해를 감수하는 순간 그것이 고구마이고, 사이다에서 고구마는
 독자가 떠나는 이유다. 제약은 남기되(무제한이면 긴장이 없다) 주인공을 다치게 하지 않는다.
@@ -21,7 +27,7 @@
 찾다 죽었고, PATH 가 깨진 셸에서는 `pgrep` 이 `$PWD/pgrep` 으로 해석됐다(실측).
 
 ```bash
-/home/ubuntu/SE/scripts/run_novel_vm.sh --restart   # 새 씨앗 -> 1~10화 (Gemini, setsid)
+/home/ubuntu/SE/scripts/run_novel_vm.sh --restart --wipe   # 기록 삭제 + 새 씨앗 -> 1~5화
 /home/ubuntu/SE/scripts/novel_status.sh             # 살아있나 · 로그 · 자수 한 번에
 /home/ubuntu/SE/scripts/novel_status.sh -f          # 로그를 계속 따라간다
 /home/ubuntu/SE/scripts/novel_status.sh --read      # 지금까지 쓴 원고를 읽는다
@@ -34,7 +40,7 @@ python3 novel/seed.py --n 10                       # 씨앗 열 개 뽑아 읽�
 python3 novel/world_seeded.py --new                # 하나 뽑아 세계로 편다 (LLM 안 씀)
 python3 novel/overnight.py --world seeded --persona cider --hours 2  # 실제 집필
 python3 novel/watch.py --path novel/seeded.json -f   # 진행 보기
-python3 novel/read.py  --path novel/seeded.json --ep 1-10  # 읽기
+python3 novel/read.py  --path novel/seeded.json --ep 1-5  # 읽기
 python3 novel/profile.py --path novel/seeded.json    # 병목 재기
 ```
 
@@ -61,8 +67,8 @@ JSON 의 우위는 **추출 태스크에 한정**된 이야기라, 두 태스크
 
 | 파일 | 하는 일 |
 |---|---|
-| `seed.py` | 자유 씨앗. 축 7개 조합 + 최소 검사 + 조사 처리기. **반칙은 대가가 아니라 조건을 갖는다** |
-| `world_seeded.py` | 씨앗 -> `Novel` + 결말 블록 3개(3+3+4화 = 10화). **LLM 안 씀** |
+| `seed.py` | 자유 씨앗. 축 8개(탑·반칙·인물·사건·장치·목소리·주제·**심층**) + 최소 검사 + 조사 처리기 |
+| `world_seeded.py` | 씨앗 -> `Novel` + 결말 블록 2개(3+2화 = 5화 · 2만 5천 자). **LLM 안 씀** |
 | `world_romance.py` | 손으로 쓴 200화 세계(음대 로맨스). 15블록 + steps 45개 |
 | `world_probe.py` | 3화짜리 시험대. 디렉터 8회로 배선을 싸게 확인한다 |
 | `state.py` | `Novel`/`Scene`/`Character`. 관계·지식·설정 원장, 동적 게이트 도출, **시간선(`timeline`)** |

@@ -412,6 +412,19 @@ def _fb(violations) -> str:
             + "\n".join(lines))
 
 
+def _depth_brief(novel) -> str:
+    """이 소설이 시험하는 것 한 줄. **명제도 사상가 이름도 싣지 않는다** -- 프롬프트에
+    '칸트' 나 '정언명령' 이 들어가면 모델은 그 말을 텍스트에 쓴다. 시험(test)과 겉모습
+    (cover)만 준다. 사상은 선택으로 드러나야 하고, 선택은 장면이 만든다."""
+    d = getattr(novel, "depth", None) or {}
+    if not d.get("test"):
+        return ""
+    return (f"[이 이야기가 시험하는 것] {d['test']}\n"
+            f"[겉으로 보여야 하는 것] {d.get('cover', '가볍고 재미있게')}\n"
+            f"  ※ 이것을 대사로 옮기지 마라. 인물이 설명하면 소설이 강의가 된다.\n"
+            f"    선택과 그 대가로만 드러내라. 답은 주지 않는다.\n")
+
+
 def _world_brief(novel) -> str:
     """인물·비밀·장르 규약. **매 호출 동일하므로 캐시 고정부에 들어간다.**
 
@@ -523,6 +536,7 @@ def beat_prompt(novel, spec: dict, open_conds: list, ep: int, feedback="") -> st
 
 <World>
 {_world_brief(novel)}
+{_depth_brief(novel)}
 </World>
 {SPLIT}
 <Position>
@@ -662,6 +676,7 @@ def subplot_prompt(novel, ep: int, spine_summary: str, feedback="", done=None) -
 연출한다. 분량의 2/3가 이런 씬이다 -- 여기가 헐거우면 회차가 밋밋해진다.
 
 {_world_brief(novel)}
+{_depth_brief(novel)}
 
 [연출에서 정할 것] staging / trigger / props / camera / subtext
 {SPLIT}
@@ -1046,7 +1061,7 @@ def director_prompt(novel, scene, feedback="") -> str:
 
 {style.director()}
 
-{style.brief(scene.kind)}{style.episode_brief(scene.episode)}규칙:
+{_depth_brief(novel)}{style.brief(scene.kind)}{style.episode_brief(scene.episode)}규칙:
 - 감정을 직접 말하게 하지 마라. 사물·소리·날씨로 옮겨라.
 - punctum 은 한 씬을 여는 감각 하나다. 나중에 되돌아올 수 있는 것으로.
 
@@ -1174,7 +1189,7 @@ def narrator_prompt(novel, scene, feedback="") -> str:
 
 {style.narrator()}
 
-{style.brief(scene.kind)}{style.episode_brief(scene.episode)}{_direction(scene)}[로그]
+{_depth_brief(novel)}{style.brief(scene.kind)}{style.episode_brief(scene.episode)}{_direction(scene)}[로그]
 {logs}
 
 규칙:

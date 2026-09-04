@@ -7,10 +7,11 @@
 # 입출력 리다이렉트를 매번 손으로 쓰면 언젠가 하나를 빠뜨린다.
 #
 # 사용:
-#   scripts/run_novel_vm.sh                       # 새 씨앗 -> 1~10화 (회차 5,000자)
+#   scripts/run_novel_vm.sh                       # 새 씨앗 -> 1~5화 (회차 5,000자 = 2만 5천 자)
 #   scripts/run_novel_vm.sh --keep                # 지금 씨앗·원고 그대로 이어서 (되살릴 때 이것)
 #                                                 (--restart 만 주면 새 씨앗이라 옛 원고는 .bak 로 치워진다)
-#   scripts/run_novel_vm.sh --restart             # 돌던 런을 죽이고 다시 (원고는 남는다)
+#   scripts/run_novel_vm.sh --restart             # 돌던 런을 죽이고 다시 (옛 원고는 .bak 로)
+#   scripts/run_novel_vm.sh --restart --wipe      # 옛 기록을 .bak 도 없이 **삭제**하고 처음부터
 #   scripts/run_novel_vm.sh --persona hardboiled   # 문체를 갈아끼운다
 #   scripts/run_novel_vm.sh --episodes 5 --blocks 2
 #
@@ -36,14 +37,16 @@ cd "$SE" || exit 1
 
 NEW_SEED=1
 RESTART=0
+WIPE=0
 PERSONA=cider
-EPISODES=10
-BLOCKS=3     # 씨앗 세계는 3+3+4화 세 블록이다
-HOURS=10    # 10화 x 3씬 = 30씬. Gemini 로도 몇 시간이다
+EPISODES=5
+BLOCKS=2     # 씨앗 세계는 3+2화 두 블록이다 (5화 x 5,000자 = 2만 5천 자)
+HOURS=8     # 5화 x 3씬 = 15씬. 마무리 루프가 남은 예산을 쓴다
 for a in "$@"; do
   case "$a" in
     --keep) NEW_SEED=0 ;;
     --restart) RESTART=1 ;;
+    --wipe) WIPE=1 ;;
     --persona) shift_next=PERSONA ;;
     --episodes) shift_next=EPISODES ;;
     --blocks) shift_next=BLOCKS ;;
@@ -114,11 +117,18 @@ if [ "$NEW_SEED" = "1" ]; then
   # 정확히 그 상태를 만들었다).
   #
   # 지우지 않고 **옮긴다.** 몇 시간 쓴 원고를 스크립트가 조용히 지우면 안 된다.
-  if [ -f "$BOOK" ]; then
-    STAMP="$(date +%Y%m%d-%H%M%S)"
-    for f in "$BOOK" "${BOOK%.json}.scenes.jsonl" "${BOOK%.json}.overnight.json"; do
-      [ -f "$f" ] && mv "$f" "$f.$STAMP.bak" && echo "옛 원고를 치웠다: $f.$STAMP.bak"
-    done
+  if [ -f "$BOOK" ] || [ -f "$LOG" ]; then
+    if [ "$WIPE" = "1" ]; then
+      # 사람이 명시적으로 --wipe 를 줬을 때만 지운다. .bak 까지 전부.
+      rm -f "$BOOK" "${BOOK%.json}.scenes.jsonl" "${BOOK%.json}.overnight.json" \
+            "$BOOK".*.bak "${BOOK%.json}".*.bak "$LOG" "$LOG".*.bak
+      echo "이전 기록을 지웠다 (원고 · 씬 로그 · 요약 · .bak · 실행 로그)"
+    else
+      STAMP="$(date +%Y%m%d-%H%M%S)"
+      for f in "$BOOK" "${BOOK%.json}.scenes.jsonl" "${BOOK%.json}.overnight.json" "$LOG"; do
+        [ -f "$f" ] && mv "$f" "$f.$STAMP.bak" && echo "옛 기록을 치웠다: $f.$STAMP.bak"
+      done
+    fi
   fi
   python3 "$SE/novel/world_seeded.py" --new || exit 1
 fi
