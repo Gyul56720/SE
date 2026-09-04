@@ -177,6 +177,10 @@ def main() -> int:
     ap.add_argument("--max-repairs", type=int, default=3)
     ap.add_argument("--gemini-director", action="store_true",
                     help="claude -p 를 쓰지 않고 처음부터 Gemini 로")
+    ap.add_argument("--all-claude", action="store_true",
+                    help="배우·화자·추출기까지 전부 claude -p 로. Gemini 쿼터가 말랐을 때 "
+                         "쓴다 -- Max 구독으로 청구되므로 API 크레딧이 필요 없다. "
+                         "호출마다 프로세스를 띄우므로 느리다(한 회차 정도에 알맞다)")
     ap.add_argument("--discord", action="store_true",
                     help="진행 상황을 Discord 로 보낸다 (DISCORD_BOT_TOKEN + "
                          "DISCORD_CHANNEL_ID 또는 DISCORD_WEBHOOK_URL)")
@@ -203,7 +207,17 @@ def main() -> int:
 
     novel = Novel.load(path) if path.exists() else build()
     director = None if a.gemini_director else Director()
-    llm = D.default_llm if a.gemini_director else {"director": director}
+    if a.all_claude:
+        # **한 콜러블로 모든 역할을 덮는다.** _llm_for 는 역할이 없으면 "default" 로
+        # 물러서므로 director/actor/narrator/extractor 가 전부 이것을 쓴다.
+        # Director 래퍼(강등·탐침)는 쓰지 않는다 -- 내려갈 Gemini 가 없는 상황이라
+        # 강등이 곧 실패다. 실패하면 사실대로 실패하는 편이 낫다.
+        director = None
+        llm = {"default": D.claude_code_llm(timeout=300)}
+    elif a.gemini_director:
+        llm = D.default_llm
+    else:
+        llm = {"director": director}
 
     dc = Discord() if (a.discord and not a.no_discord) else Discord(token="", channel_id="",
                                                                     webhook="")
@@ -213,7 +227,7 @@ def main() -> int:
     D._log(f"[{_now()}] 시작 -- 예산 {a.hours}시간, 목표 {len(OUTCOMES)}개 에피소드")
     dc.send(f"🌙 **야간 소설 런 시작** ({_now()})\n"
             f"예산 {a.hours}시간 · 목표 {len(OUTCOMES)}편 · "
-            f"디렉터 {'Gemini' if a.gemini_director else 'claude -p'}\n"
+            f"디렉터 {'claude -p (전 역할)' if a.all_claude else ('Gemini' if a.gemini_director else 'claude -p')}\n"
             f"기존 씬 {len(novel.scenes)}개")
     D._log(f"[{_now()}] 기존 씬 {len(novel.scenes)}개 "
            f"(verified {sum(1 for s in novel.scenes if s.status == 'verified')})")
@@ -292,7 +306,8 @@ def main() -> int:
         "episodes_done": done, "episodes_failed": failed,
         "scenes_total": len(novel.scenes), "scenes_verified": ver,
         "chars_total": chars,
-        "director": director.stats if director else "gemini",
+        "director": (director.stats if director
+                     else ("claude -p (전 역할)" if a.all_claude else "gemini")),
     }
     report.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
     D._log(f"\n[{_now()}] === 끝 ===")
@@ -303,7 +318,8 @@ def main() -> int:
                f"Gemini 폴백 {director.stats['fallback']}회 / 실패 {director.stats['fail']}회")
     D._log(f"  요약: {report}")
     dstat = (f"claude -p {director.stats['primary']} / Gemini {director.stats['fallback']} / "
-             f"실패 {director.stats['fail']}") if director else "Gemini 전용"
+             f"실패 {director.stats['fail']}") if director else (
+                 "claude -p 전용 (전 역할)" if a.all_claude else "Gemini 전용")
     dc.send(f"🌅 **야간 런 종료** ({_now()})\n"
             f"성공 {len(done)}편 · 실패 {len(failed)}편\n"
             f"씬 {len(novel.scenes)}개 (verified {ver}) · **{chars:,}자**\n"
