@@ -73,6 +73,9 @@ class Discord:
         self.webhook = webhook or os.environ.get("DISCORD_WEBHOOK_URL") or ""
         self.heartbeat = heartbeat
         self.last = time.time()
+        if self.webhook and not self.webhook.startswith(("http://", "https://")):
+            D._log(f"[{_now()}] DISCORD_WEBHOOK_URL 이 URL 이 아니다 -- 무시한다")
+            self.webhook = ""
         self.on = bool(self.webhook or (self.token and self.channel))
         self.sent, self.failed = 0, 0
 
@@ -89,8 +92,12 @@ class Discord:
             url = self.API.format(cid=self.channel)
             headers = {"Content-Type": "application/json",
                        "Authorization": f"Bot {self.token}"}
-        req = urllib.request.Request(url, data=body, headers=headers, method="POST")
         try:
+            # **Request 생성도 try 안에 둔다.** 잘못된 URL 은 urlopen 이 아니라 여기서
+            # ValueError 를 낸다("unknown url type"). 밖에 두면 환경변수 오타 하나가
+            # 런을 죽인다 -- 알림 때문에 소설이 멈추는 것은 앞뒤가 바뀐 것이다.
+            req = urllib.request.Request(url, data=body, headers=headers,
+                                         method="POST")
             with urllib.request.urlopen(req, timeout=20):
                 pass
             self.sent += 1

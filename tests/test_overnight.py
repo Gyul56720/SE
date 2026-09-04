@@ -156,6 +156,28 @@ print("[예산] 벽시계를 넘기면 멈추는가")
 ok("--hours" in Path(REPO / "novel/overnight.py").read_text(encoding="utf-8"),
    "시간 예산 인자가 있다")
 
+print("[방어] 잘못된 웹훅 URL 이 런을 죽이지 않는가")
+print("      ← 실측: 예시 문구 '복사한_URL' 이 환경변수에 그대로 들어가")
+print("        urllib.request.Request 가 ValueError 를 냈고 그것이 위로 올라갔다")
+import os as _os                                                      # noqa: E402
+_old = _os.environ.get("DISCORD_WEBHOOK_URL")
+_os.environ["DISCORD_WEBHOOK_URL"] = "복사한_URL"
+try:
+    dc = Discord()
+    ok(not dc.on, "URL 이 아니면 알림을 끈다")
+    ok(dc.send("x") is False, "보내려 해도 조용히 False -- 예외가 안 올라온다")
+except Exception as e:                                                # noqa: BLE001
+    ok(False, f"예외가 올라왔다 ({type(e).__name__})  ← 알림이 런을 죽인다")
+_os.environ["DISCORD_WEBHOOK_URL"] = "https://example.invalid/hook"
+try:
+    ok(Discord().send("x") is False, "닿지 않는 URL 도 False 로 넘어간다")
+except Exception as e:                                                # noqa: BLE001
+    ok(False, f"예외가 올라왔다 ({type(e).__name__})")
+if _old is None:
+    _os.environ.pop("DISCORD_WEBHOOK_URL", None)
+else:
+    _os.environ["DISCORD_WEBHOOK_URL"] = _old
+
 print("[동시 실행] 두 벌이 같은 원고를 쓰지 못하게 막는가")
 print("      ← 2026-09-04 실측: 산문이 0자인데 end:done 이 찍히고 씬 수가 오락가락했다")
 import subprocess                                                     # noqa: E402
