@@ -1037,6 +1037,19 @@ def run_scene(novel, scene, llm, max_repairs=MAX_REPAIRS, log=None) -> dict:
     """한 씬을 관문 통과까지 몰아붙인다. 반환 {status, attempts, violations}."""
     t0 = time.time()
     feedback = ""
+    # **산문만 틀렸으면 턴은 다시 만들지 않는다.**
+    #
+    # 예전에는 시도마다 디렉터·배우·화자를 전부 다시 돌렸다. 산문 규칙(V005 직접 감정 ·
+    # V020 리듬 · V004 시점) 하나가 걸려도 배우 턴 넷을 새로 받았다 -- 턴은 통과했는데도.
+    # 실측(2026-09-04 탐침): 씬 하나가 24호출(6호출 x 4시도), 2.3분. 호출 자체는 5.8초라
+    # 빠른데 횟수가 문제였다.
+    #
+    # 단계별로 다시 만든다: 턴 단계에서 막히면 턴부터, 산문 단계에서 막히면 산문만.
+    # 그러면 6 + 1 + 1 + 1 = 9호출이 된다.
+    #
+    # 다만 산문만 두 번 연속 막히면 턴도 다시 만든다 -- 산문이 계속 같은 벽에 부딪히는
+    # 것은 턴이 그 벽을 만들고 있다는 뜻일 때가 있다(감정 값이 그렇다).
+    redo_turns, prose_only_run = True, 0
 
     for attempt in range(1, max_repairs + 2):
         # --- 기획 (이미 채워져 있으면 건너뛴다: 템플릿이 준 씬)
@@ -1064,21 +1077,25 @@ def run_scene(novel, scene, llm, max_repairs=MAX_REPAIRS, log=None) -> dict:
         # 그대로 검사해서, 턴이 멀쩡한데도 이전 산문의 위반으로 계속 기각된다 -- 서술
         # 단계까지 가지 못하니 수리가 영원히 안 된다(회귀 검사 test_novel_drive 가 잡았다).
         scene.prose = ""
-        scene.turns = []
         # **이미 저장된 씬에도 등장인물 아닌 이름이 있을 수 있다.** 경계(_people)는 앞으로
         # 들어올 것만 막는다. 여기서 한 번 더 거르지 않으면 actor_prompt 안의
         # novel.character(name) 이 KeyError 로 터지고 **회차 전체가 죽는다** -- 실측으로
         # 1~10화가 그렇게 산문 0자로 끝났다. 걸러도 잃는 것은 배경 인물의 대사뿐이고,
         # 그건 화자의 산문이 묘사하면 된다.
-        speakers = _people(scene.participants, novel, f"씬 {scene.id}")
-        rounds = 1 if scene.mode == "letter" else 2
-        for _ in range(rounds):
-            for name in speakers:
-                a = _json(_llm_for(llm, "actor")(actor_prompt(novel, scene, name, feedback)))
-                scene.turns.append(Turn(
-                    actor=name, inner_thought=a.get("inner_thought", ""),
-                    action=a.get("action", ""), speech=a.get("speech", ""),
-                    emotions={k: int(a.get("emotions", {}).get(k, 0)) for k in AXES}))
+        if redo_turns or not scene.turns:
+            scene.turns = []
+            speakers = _people(scene.participants, novel, f"씬 {scene.id}")
+            rounds = 1 if scene.mode == "letter" else 2
+            for _ in range(rounds):
+                for name in speakers:
+                    a = _json(_llm_for(llm, "actor")(
+                        actor_prompt(novel, scene, name, feedback)))
+                    scene.turns.append(Turn(
+                        actor=name, inner_thought=a.get("inner_thought", ""),
+                        action=a.get("action", ""), speech=a.get("speech", ""),
+                        emotions={k: int(a.get("emotions", {}).get(k, 0)) for k in AXES}))
+        else:
+            _log(f"[씬 {scene.id}] 산문만 다시 쓴다 (턴 {len(scene.turns)}개 재사용)")
 
         # --- 관문 1차 (로그 규칙)
         vs = gate.check(scene, novel)
@@ -1087,6 +1104,7 @@ def run_scene(novel, scene, llm, max_repairs=MAX_REPAIRS, log=None) -> dict:
             feedback = _fb(hard)
             scene.attempts.append({"attempt": attempt, "stage": "turns",
                                    "violations": [str(v) for v in hard]})
+            redo_turns, prose_only_run = True, 0
             continue
 
         # --- 서술
@@ -1100,6 +1118,12 @@ def run_scene(novel, scene, llm, max_repairs=MAX_REPAIRS, log=None) -> dict:
             feedback = _fb(hard)
             scene.attempts.append({"attempt": attempt, "stage": "prose",
                                    "violations": [str(v) for v in hard]})
+            # 턴은 1차를 통과했으므로 그대로 두고 산문만 다시 쓴다. 다만 두 번 연속
+            # 같은 벽이면 턴이 그 벽을 만들고 있을 수 있으니 턴부터 다시 만든다.
+            prose_only_run += 1
+            redo_turns = prose_only_run >= 2
+            if redo_turns:
+                prose_only_run = 0
             continue
 
         scene.status = "verified"

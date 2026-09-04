@@ -98,6 +98,48 @@ ok(not any("V003" in v for v in (r.get("violations") or [])),
    "V003 hard 가 나오지 않는다")
 print("      (연속 회차로 가라앉는 것은 여전히 잡는다 -- test_novel_gate 의 [V003 봉투])")
 
+print("[단계 수리] 산문만 틀리면 배우 턴을 다시 만들지 않는가")
+print("      ← 실측 2026-09-04: 씬 하나가 24호출(6 x 4시도) · 2.3분. 호출은 5.8초로")
+print("        빠른데 횟수가 문제였다. 산문 규칙 하나 때문에 배우 턴 넷을 새로 받았다.")
+
+
+class Counting:
+    """단계별 호출 수를 센다. 산문은 처음 두 번 관문에 걸리게 만든다."""
+
+    def __init__(self):
+        self.n = {"director": 0, "actor": 0, "narrator": 0}
+        self.prose_calls = 0
+
+    def __call__(self, prompt):
+        if "산문만 출력한다" in prompt:
+            self.n["narrator"] += 1
+            self.prose_calls += 1
+            return BAD_PROSE if self.prose_calls <= 2 else GOOD_PROSE
+        if "location" in prompt and "punctum" in prompt:
+            self.n["director"] += 1
+            return json.dumps({"location": "복도", "punctum": "빗소리",
+                               "directives": ["x"], "scale": 1}, ensure_ascii=False)
+        self.n["actor"] += 1
+        return json.dumps(GOOD_TURN, ensure_ascii=False)
+
+
+n = world(); c = Counting()
+r = D.run_scene(n, n.scenes[0], c, max_repairs=3)
+ok(r["status"] == "verified", f"결국 통과한다 ({r['status']})")
+ok(c.n["narrator"] == 3, f"화자는 세 번 불린다 ({c.n['narrator']})  ← 두 번 걸리고 세 번째 통과")
+# 시도 1: 턴 4 + 산문 1 (산문 걸림)
+# 시도 2: **턴 재사용** + 산문 1 (또 걸림 -- 두 번 연속이므로 다음엔 턴도 다시)
+# 시도 3: 턴 4 + 산문 1 (통과)
+ok(c.n["actor"] == 8,
+   f"배우 8회 ({c.n['actor']})  ← 시도 2에서 턴을 재사용했다. 예전 구조는 12회다")
+ok(c.n["director"] == 0,
+   f"디렉터는 안 불린다 ({c.n['director']})  ← 이 씬은 location 이 이미 차 있다")
+prose_only = [a for a in n.scenes[0].attempts if a.get("stage") == "prose"]
+ok(len(prose_only) == 2, f"산문 단계에서 두 번 막혔다 ({len(prose_only)})")
+ok(sum(c.n.values()) == 11,
+   f"총 11회 ({sum(c.n.values())})  ← 예전 구조는 15회(5x3)였다. 27% 절약\n"
+   "         실패가 산문에만 몰릴수록 절약이 커진다: 4시도면 24 -> 9회")
+
 print("[영속] 씬마다 저장하고, 재개하면 verified 를 건너뛴다")
 d = Path(tempfile.mkdtemp()); path = d / "novel.json"
 n = world()
