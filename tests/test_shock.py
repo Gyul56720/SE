@@ -67,6 +67,9 @@ ok("[확산]" not in p, "그 덩어리에는 확산 지시가 빠진다  ← 둘
 ok("문제를 풀어주지 않는다" in p,
    "사건이 문제를 풀지 않는다  ← 딱 맞춰 나타나 구해주는 것은 편의주의다")
 ok("환기해라" in p, "사건 뒤에 공간이 바뀌어 있게 한다")
+ok("한 방에 끝내지 마라" in p,
+   "사건은 터지고 나서가 더 길다  ← 뒷자락에서 다음 이야기가 나온다")
+ok("대사로 받아라" in p, "위트는 대사에서 나온다  ← 서술로 정리하면 시시해진다")
 
 bk["_shock"] = None
 ok("[확산]" in flow.write_prompt(bk), "사건이 아닌 덩어리에는 확산이 돌아온다")
@@ -98,7 +101,7 @@ dupc = sum(SH.impulse("s", i)["calm"] == SH.impulse("s", i + 1)["calm"] for i in
 ok(dupc == 0, f"태연함도 연달아 같지 않다 ({dupc}건)")
 
 brief = SH.impulse_brief(SH.impulse("a", 0))
-ok("주인공의 성격이다" in brief,
+ok("주인공이 저지른다" in brief and "본인은 그게 급발진인 줄 모른다" in brief,
    "급발진은 사건이 아니라 사람이다  ← 뽑기로 굴리는 돌발이 아니라 기본값이다")
 
 print()
@@ -113,21 +116,21 @@ ok(sum(v for k, v in who.items() if k != "주인공") > 200,
    "남이 저지르는 몫이 충분하다")
 other = SH.impulse_brief(SH.impulse("s", next(
     i for i in range(20) if SH.impulse("s", i)["who"] != "주인공")))
-ok("주인공이 아니라" in other, "남이 저지르는 판이 따로 있다")
-ok("주인공은 이번엔 당하는 쪽이다" in other,
+ok("이번엔" in other and "이 저지른다" in other, "남이 저지르는 판이 따로 있다")
+ok("주인공은 당하는 쪽이고" in other,
    "그때 주인공은 반응한다  ← 자기가 저지른 일은 몰라도 남이 저지른 일에는 반응한다")
 ok("본인은 그게 급발진인 줄 모른다" in brief,
    "본인만 모른다  ← 그 간극이 이 인물의 전부다")
-ok("저지름보다 그 뒤의 태연함이 그 사람이다" in brief, "유유자적이 정체다")
+ok("그 뒤의 태연함**이 그 사람이다" in brief, "유유자적이 정체다")
 ok("장례식에서도" in brief,
    "분위기를 가리지 않는다  ← 웃기려고 넣는 것이 아니라 그런 사람이라서다")
-ok("없는 말을 태연히" in brief,
+ok("같은 몸짓" in " ".join(style.narrator().split()),
    "지어낸 말이 급발진의 일부로 들어왔다  ← 변명하는 꼴이 딱 급발진 이후 유유자적이다")
-ok("문제를 풀지 않는다" in brief,
+ok("편의주의다" in brief,
    "급발진도 문제를 풀지 않는다  ← 앞서 정한 편의주의 금지를 그대로 지킨다")
 ok("설명하지 마라" in brief, "왜 그랬는지 정리해 주지 않는다  ← 설명하면 재미가 죽는다")
 ok("그 사람 카드에" in brief, "인물 카드에 맞게 비튼다  ← 같은 짓도 사람마다 다르다")
-ok("여기서 이야기가 굴러가야 한다" in brief,
+ok("저지른 일이 다음 일을 부른다" in brief,
    "저지른 일이 다음 일을 부른다  ← 저지르고 아무 일도 안 일어나면 그건 장식이다")
 
 bk3 = flow.blank()
@@ -202,7 +205,7 @@ BODY = ("지하철 바닥에 눕는다", "에스컬레이터를 거꾸로", "회
 for b in BODY:
     ok(any(b in a for a in SH.ACT), f"몸으로 하는 것: {b}")
 ok(len(SH.ACT) > 55, f"행동이 충분히 많다 ({len(SH.ACT)}개)")
-ok("몸으로 하는 것이 반씩이다" in SH.impulse_brief(SH.impulse("a", 0)),
+ok("그 동작이 실제로 일어나야 한다" in SH.impulse_brief(SH.impulse("a", 0)),
    "몸으로 하는 짓은 대사로 때우지 말라고 한다  ← 동작이 실제로 일어나야 한다")
 
 print()
@@ -280,7 +283,7 @@ lands = [SH.impulse("s", i)["land"] for i in range(300)]
 ok(0 < sum(bool(x) for x in lands) < 200, f"셋에 하나쯤 옮긴다 ({sum(bool(x) for x in lands)}/300)")
 ok(len({x for x in lands if x}) > 10, "가는 곳이 다양하다")
 lb = SH.impulse_brief(SH.impulse("s", lands.index(next(x for x in lands if x))))
-ok("사슬은" in lb and "한 칸만 나아가면 된다" in lb,
+ok("사슬의 모양" in lb and "한 칸만\n      나아가면 된다" in lb.replace("**",""),
    "사슬을 한 칸씩 나아가게 한다  ← 한 덩어리에 다 하라는 것이 아니다")
 ok("이름과 사정을 하나 줘라" in lb, "거기서 만난 사람이 다음 칸을 부른다")
 ok("경찰서로 끌려간다" not in lb and "소세지" not in lb and "철학" not in lb,
@@ -301,8 +304,22 @@ lits = [SH.impulse("s", i)["literal"] for i in range(400)]
 ok(0 < sum(bool(x) for x in lits) < 160,
    f"말이 실제가 되는 것은 넷에 하나쯤 ({sum(bool(x) for x in lits)}/400)")
 lb2 = SH.impulse_brief(SH.impulse("s", next(i for i in range(40) if SH.impulse("s", i)["literal"])))
-ok("놀라면 판타지가 되고, 안 놀라면 아이러니가 된다" in lb2,
+ok("놀라면 판타지가 되고, 안 놀라면 아이러니가 된다" in lb2.replace("\n      ", " "),
    "아무도 크게 안 놀란다  ← 놀라는 순간 아이러니가 판타지로 떨어진다")
+
+print()
+print("[값] **프롬프트를 캐시 경계로 가른다**")
+print("      ← 매 덩어리·매 재시도마다 통짜로 보내면 같은 문장을 수백 번 다시 산다.")
+from novel import drive as _D                                         # noqa: E402
+_pp = flow.write_prompt(dict(flow.blank(), chunks=["앞."] * 3))
+_st, _sep, _vo = _pp.partition(_D.SPLIT)
+ok(_sep, "경계가 있다")
+ok(_pp.count(_D.SPLIT) == 1, "경계는 하나뿐이다")
+ok(len(_st) > len(_vo), f"고정부가 더 크다 (고정 {len(_st):,} · 휘발 {len(_vo):,})")
+ok(all(k in _st for k in ("건조한 번역투", "규칙:", "리얼리즘")),
+   "매번 같은 것은 앞에  ← 문체·규칙은 원고 내내 안 변한다")
+ok(all(k in _vo for k in ("[세계", "끝부분", "급발진")),
+   "덩어리마다 바뀌는 것은 뒤에  ← 세계·꼬리·뽑기")
 
 print()
 if fails:
