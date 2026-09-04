@@ -245,6 +245,7 @@ def _check_pressure(b: dict, novel, clock: float) -> list:
     한 장면 당하는 것은 병이 아니다. 그 연속은 관문(V022)이 회차 단위로 본다."""
     names = {c.name for c in novel.characters}
     out = []
+    b["deadline_hours_raw"] = b.get("deadline_hours")
     driver = str(b.get("driver") or "").strip()
     if not driver or (driver not in names and driver != "사건"):
         out.append(f"'움직이는 사람' 이 비었거나 등장인물이 아니다({driver!r}). "
@@ -252,15 +253,18 @@ def _check_pressure(b: dict, novel, clock: float) -> list:
     elif driver == novel.pov_character and not str(b.get("cost") or "").strip():
         out.append(f"{driver} 가 스스로 움직였는데 '치른 대가' 가 비었다. "
                    f"무엇을 잃었는지 적어라 -- 공짜로 얻으면 긴장이 죽는다")
+    # 시계는 **산수지 창작이 아니다.** 틀렸다고 비트를 통째로 되돌려보내면 300초짜리
+    # 디렉터 호출 하나를 산수 하나 때문에 버리는 것이고, 네 번 틀리면 그 척추 비트가
+    # 아예 사라져 인과가 끊긴다. 여기서는 **고쳐서 쓴다** -- 모델이 못 고치는 것만
+    # 되돌려보내는 것이 이 함수의 원칙이다(driver 와 cost 는 의미라서 모델만 고칠 수 있다).
     try:
         hours = float(b.get("deadline_hours"))
     except (TypeError, ValueError):
-        out.append(f"'남은 시간' 이 숫자가 아니다({b.get('deadline_hours')!r}). "
-                   f"'9시간' 이 아니라 9 로 적어라")
-        return out
-    if hours >= clock:
-        out.append(f"'남은 시간' 이 {hours} 인데 장면 시작 시점이 {clock} 이다. "
-                   f"시계는 되감기지 않는다 -- {clock} 보다 작은 값이어야 한다")
+        hours = None
+    if hours is None or hours >= clock:
+        b["deadline_hours"] = fixed = max(0.5, round(clock - 1, 1))
+        _log(f"[압박] 남은 시간을 보정했다: {b.get('deadline_hours_raw', hours)!r} "
+             f"-> {fixed} (장면 시작 {clock})")
     return out
 
 
@@ -653,6 +657,11 @@ def build_episode(novel, spec: dict, llm=None, max_repairs=MAX_REPAIRS, log=None
             b.setdefault("direction", {})["scenario"] = scenario
             bad = _check_pressure(b, novel, clock_of(spec, novel))
             if bad:
+                # **조용히 기각하지 않는다.** 되먹임만 붙이고 넘어가면 밖에서는 아무 일도
+                # 안 일어난 것처럼 보인다 -- 비싼 디렉터 호출이 네 번씩 버려지는데
+                # 로그에는 한 줄도 안 남는다. 오늘 아침 밤을 날린 것도 같은 종류의
+                # 침묵이었다.
+                _log(f"[압박] {lo}~{hi}화 비트 기각: {'; '.join(bad)[:160]}")
                 # **여기서 잡아야 한다.** driver/cost/deadline_hours 는 산문이 아니라
                 # 선언이라, 씬 관문에서 hard 로 잡으면 수리 루프가 산문만 다시 써서
                 # 영원히 못 고친다(V009 가 정확히 그렇게 회차를 세웠다). 조립 단계에서

@@ -67,12 +67,22 @@ ok(not bad, "화자가 아닌 사람이 움직인 장면은 대가 없이도 통
 bad = D._check_pressure({"driver": "사건", "cost": "", "deadline_hours": 9}, n, clock)
 ok(not bad, "'사건' 도 유효한 driver 다")
 
-bad = D._check_pressure({"driver": "공명", "cost": "", "deadline_hours": "9시간"}, n, clock)
-ok(bad and "숫자가 아니다" in bad[0], f"남은 시간이 문자열이면 잡는다 ({bad})")
+print("[보정] 시계는 산수다 -- 되돌려보내지 않고 고쳐서 쓴다")
+print("      ← 300초짜리 디렉터 호출을 산수 하나 때문에 버리면 척추가 사라진다")
+b = {"driver": "공명", "cost": "", "deadline_hours": "9시간"}
+bad = D._check_pressure(b, n, clock)
+ok(not bad, f"문자열이어도 기각하지 않는다 ({bad})")
+ok(b["deadline_hours"] == round(clock - 1, 1),
+   f"장면 시작보다 작은 값으로 보정한다 ({b['deadline_hours']})")
 
-bad = D._check_pressure({"driver": "공명", "cost": "", "deadline_hours": 20}, n, clock)
-ok(bad and "되감기지 않는다" in bad[0],
-   f"시계가 늘면 잡는다 ({clock} -> 20)  ← 압박은 조여들어야 한다")
+b = {"driver": "공명", "cost": "", "deadline_hours": 20}
+bad = D._check_pressure(b, n, clock)
+ok(not bad, "되감긴 값도 기각하지 않는다")
+ok(b["deadline_hours"] < clock, f"줄어든 값으로 고친다 ({b['deadline_hours']} < {clock})")
+
+b = {"driver": "공명", "cost": "", "deadline_hours": 9}
+D._check_pressure(b, n, clock)
+ok(b["deadline_hours"] == 9, "멀쩡한 값은 건드리지 않는다")
 
 bad = D._check_pressure({"driver": POV, "cost": "정우에게 빚을 졌다",
                          "deadline_hours": 9}, n, clock)
