@@ -1358,8 +1358,172 @@ def run_scene(novel, scene, llm, max_repairs=MAX_REPAIRS, log=None) -> dict:
             "violations": [str(v) for v in hard], "seconds": round(time.time() - t0, 2)}
 
 
+# ---------------------------------------------------------------- 자유 집필
+#
+# README 의 "안 됨 / 다음" 에 적어둔 것이다: 배우 JSON 을 거치지 않고 화자가 회차를 통째로
+# 쓴 뒤 추출하는 경로.
+#
+# 왜 필요한가. 씬 단위 집필은 화자에게 "이 씬을 1,666자로 쓰라" 고 시킨다. 그건 분량
+# 할당량이고, 할당량은 곧 **희석 지시**다 -- 채우라고 하면 채운다. 회차를 통째로 주면
+# 화자가 어디를 늘리고 어디를 자를지 스스로 정한다. 점층과 전환(문장론 3·4번)도 씬 경계에
+# 잘리지 않는다.
+#
+# 그리고 싸다. 씬 3개 x (배우 4 + 화자 1 + 분량보충) ≈ 18호출이 **화자 1 + 보충 1~2**로
+# 준다. 배우 턴을 잃지만, 턴은 산문의 재료였지 산문이 아니다.
+#
+# 잃는 것: 턴 기반 관문(V001 형식·V008 의 턴 부분·V011 믿음)이 검사할 대상이 없어진다.
+# 산문 기반 관문(V007 화자 부재·V008 산문 누출·V018 개연성·V009/V010 선언)은 그대로 돈다.
+# 그 교환을 알고 쓰는 모드다 -- 그래서 기본값이 아니다.
+
+FREE_MARK = "### 씬 "
+
+
+def episode_prompt(novel, scenes, target: int, feedback="") -> str:
+    """회차 하나를 통째로 쓰는 프롬프트. 씬마다 표식을 달아 돌려받는다."""
+    from . import arc
+    ep = scenes[0].episode
+    # 디렉터가 고른 절단 공식이 있으면 그것을 그대로 준다. 없으면 다섯을 다 보여주고
+    # 고르게 한다 -- 지정하지 않으면 모델은 대개 해소로 닫는다.
+    picked = next((sc.cliffhanger for sc in scenes if sc.cliffhanger), "")
+    if picked and picked in arc.CLIFFHANGERS:
+        cliff = f"- 이 회차의 절단 공식: **{arc.CLIFFHANGERS[picked]}**\n"
+    else:
+        cliff = ("- 절단 공식 다섯 중 하나를 골라 써라:\n"
+                 + "".join(f"    · {v}\n" for v in arc.CLIFFHANGERS.values()))
+    blocks = []
+    for i, sc in enumerate(scenes, 1):
+        blocks.append(
+            f"{FREE_MARK}{i}\n"
+            f"[무대] {sc.location}\n[감각] {sc.punctum}\n"
+            f"[이 씬의 종류] {style.kinds().get(sc.kind, {}).get('label', sc.kind)}\n"
+            f"[참여자] {sc.participants} / [모드] {sc.mode}\n"
+            f"{_direction(sc)}")
+    return f"""{ep}화 전체를 쓴다. **씬 세 개를 한 호흡으로 이어서 쓴다.**
+
+[화자] {novel.pov_character} — 반드시 "나는 ~했다" 시점
+{f"[문장의 색] {novel.voice}" if getattr(novel, "voice", "") else ""}
+
+{style.narrator()}
+
+{_depth_brief(novel)}{style.episode_brief(ep)}[이 회차의 씬들]
+{chr(10).join(blocks)}
+
+규칙:
+- **{FREE_MARK}1 · {FREE_MARK}2 · {FREE_MARK}3 표식을 그대로 찍고** 그 아래에 각 씬을 써라.
+  표식 말고는 머리말도 번호도 붙이지 마라.
+- 씬 사이를 끊지 마라. 앞 씬의 마지막 문장이 다음 씬의 첫 문장으로 이어지게 하라.
+- **회차 전체가 공백 포함 {target}자 안팎**이다. 씬마다 균등할 필요는 없다 -- 길게 쓸 곳과
+  짧게 끊을 곳을 네가 정해라. 그것이 이 방식의 요점이다.
+- 다른 인물의 속마음을 사실로 쓰지 마라. 화자가 본 것과 들은 것으로만 옮겨라.
+- 연출 지시를 그대로 실행하라. 화자의 시야 밖은 쓰지 마라.
+- **마지막 씬의 끝이 이 회차의 절단면이다.** 해소하지 마라. 위 [엔딩] 규율대로,
+  가장 궁금해지는 순간에 짧은 한 줄로 끊어라. 마지막 문장 뒤에 설명을 붙이지 마라.
+{cliff}{feedback}
+
+산문만 출력한다. JSON 도 설명도 쓰지 마라."""
+
+
+def split_episode(text: str, n: int) -> list:
+    """표식으로 회차 산문을 씬별로 가른다. 표식이 없거나 모자라면 길이로 나눈다.
+
+    모델이 표식을 빠뜨리는 일은 반드시 생긴다. 그때 통째로 버리면 회차 하나가 날아가므로,
+    **길이로라도 나눠서 살린다** -- 경계가 조금 어긋나는 것이 원고가 없는 것보다 낫다."""
+    parts = []
+    if FREE_MARK in text:
+        chunks = text.split(FREE_MARK)
+        for ch in chunks[1:]:
+            body = ch.split("\n", 1)[1] if "\n" in ch else ""
+            if body.strip():
+                parts.append(body.strip())
+    if len(parts) == n:
+        return parts
+    _log(f"[자유] 표식이 {len(parts)}개다(필요 {n}개) -- 길이로 나눈다")
+    flat = text.replace(FREE_MARK, "").strip()
+    size = max(1, len(flat) // n)
+    return [flat[i * size:(i + 1) * size if i < n - 1 else None] for i in range(n)]
+
+
+def write_episode(novel, scenes, llm, log=None) -> dict:
+    """회차 하나를 통째로 쓰고 씬에 나눠 담는다. 반환 {status, chars, violations}."""
+    from . import arc
+    target = arc.CHARS_PER_EPISODE
+    t0 = time.time()
+    text = _llm_for(llm, "narrator")(episode_prompt(novel, scenes, target)).strip()
+    for sc, body in zip(scenes, split_episode(text, len(scenes))):
+        sc.prose = body
+
+    # 분량은 코드가 센다. 모자라면 **마지막 씬에 이어 쓴다** -- 회차의 끝을 늘리는 것이
+    # 중간을 부풀리는 것보다 낫다(중간을 늘리면 이미 이어놓은 흐름이 끊긴다).
+    have = sum(len(sc.prose or "") for sc in scenes)
+    if have < target * PROSE_MIN_RATIO:
+        fill_prose(novel, scenes[-1], llm,
+                   len(scenes[-1].prose or "") + (target - have), log)
+        have = sum(len(sc.prose or "") for sc in scenes)
+
+    vs = []
+    for sc in scenes:
+        vs.extend(gate.check(sc, novel))
+    hard = [v for v in vs if v.severity == "hard"]
+    for sc in scenes:
+        sc.status = "failed" if hard else "verified"
+        sc.violations = [str(v) for v in vs]
+    _log(f"[자유] {scenes[0].episode}화 {have:,}자 · "
+         f"{'기각' if hard else '통과'} · {time.time() - t0:.0f}초")
+    return {"status": "failed" if hard else "verified", "chars": have,
+            "violations": [str(v) for v in hard]}
+
+
+def drive_free(novel, path, llm, log, upto_episode: int, skip_blocked: int,
+               rounds: int) -> dict:
+    """자유 집필: **회차 단위로** 민다. 씬 단위 루프와 같은 계약을 돌려준다."""
+    _record(log, {"event": "start", "mode": "free",
+                  "at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                  "title": novel.title, "scenes": len(novel.scenes)})
+    done, failed = 0, 0
+    eps = sorted({sc.episode for sc in novel.scenes
+                  if sc.episode and not (upto_episode and sc.episode > upto_episode)})
+    for rnd in range(1, max(1, rounds) + 1):
+        todo = [e for e in eps
+                if any(sc.status != "verified" for sc in novel.scenes if sc.episode == e)]
+        if not todo:
+            break
+        if rnd > 1:
+            _log(f"[자유] {rnd}바퀴째 -- 미완 {len(todo)}화를 다시 쓴다")
+        gained = 0
+        for e in todo:
+            if EPISODE_DEADLINE is not None and time.time() > EPISODE_DEADLINE:
+                _log("[자유] 시간 상한 -- 여기서 멈춘다")
+                break
+            scenes = [sc for sc in novel.scenes if sc.episode == e]
+            r = write_episode(novel, scenes, llm, log)
+            _record(log, {"event": "episode", "ep": e,
+                          "at": time.strftime("%H:%M:%S"), **r})
+            if path:
+                novel.save(path)
+            if r["status"] == "verified":
+                done += 1
+                gained += 1
+            else:
+                failed += 1
+                if failed > skip_blocked:
+                    break
+        if gained == 0:
+            break
+    blocked = [{"id": sc.id, "episode": sc.episode,
+                "why": (sc.violations or [""])[0][:120]}
+               for sc in novel.scenes if sc.status == "failed"
+               and not (upto_episode and sc.episode > upto_episode)]
+    out = {"status": "done" if failed == 0 else ("partial" if done else "blocked"),
+           "verified": done, "failed": failed, "blocked": blocked,
+           "remaining": sum(1 for sc in novel.scenes if sc.status != "verified"
+                            and not (upto_episode and sc.episode > upto_episode))}
+    _record(log, {"event": "end", "at": time.strftime("%Y-%m-%d %H:%M:%S"), **out})
+    return out
+
+
 def drive(novel, path, llm=None, max_repairs=MAX_REPAIRS, log=None, limit=None,
-          skip_blocked: int = 0, upto_episode: int = 0, rounds: int = 1) -> dict:
+          skip_blocked: int = 0, upto_episode: int = 0, rounds: int = 1,
+          freewrite: bool = False) -> dict:
     """미완 씬들을 차례로 몰아붙인다. 씬마다 즉시 저장한다.
 
     skip_blocked -- 막힌 씬을 몇 개까지 넘어갈 것인가. 기본 0 은 예전 그대로 **첫 실패에서
@@ -1392,6 +1556,8 @@ def drive(novel, path, llm=None, max_repairs=MAX_REPAIRS, log=None, limit=None,
     지우지 않는다 -- 무엇이 몇 번 막았는지가 아침에 읽을 유일한 단서다."""
     llm = llm or default_llm      # 콜러블 하나 또는 {역할: 콜러블} dict
     log = log or (Path(path).with_suffix(".scenes.jsonl") if path else None)
+    if freewrite:
+        return drive_free(novel, path, llm, log, upto_episode, skip_blocked, rounds)
     _record(log, {"event": "start", "at": time.strftime("%Y-%m-%d %H:%M:%S"),
                   "title": novel.title, "scenes": len(novel.scenes)})
 

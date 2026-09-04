@@ -276,6 +276,11 @@ def main() -> int:
     ap.add_argument("--persona", default="cider",
                     help="문체 페르소나(novel/style.py). cider = 웹소설 사이다(기본), "
                          "hardboiled = 하드보일드 마술적 리얼리즘")
+    ap.add_argument("--freewrite", action="store_true",
+                    help="자유 집필 -- 배우 턴을 거치지 않고 화자가 **회차를 통째로** 쓴다. "
+                         "분량 할당량(씬당 1,666자)이 곧 희석 지시라, 회차를 주면 화자가 "
+                         "어디를 늘리고 자를지 스스로 정한다. 호출도 회차당 18 -> 2~3 으로 "
+                         "준다. 대신 턴 기반 관문(V001·V011)은 검사할 대상이 없어진다")
     ap.add_argument("--rounds", type=int, default=3,
                     help="막힌 씬을 몇 바퀴까지 다시 도는가. 1 이면 예전 그대로 한 바퀴. "
                          "실패는 결정론적이지 않다 -- 디렉터·배우·화자를 새로 뽑으면 "
@@ -393,7 +398,7 @@ def main() -> int:
             # 풀어줄 수 없으므로 넘어가고 아침에 본다.
             r = D.drive(novel, str(path), llm=llm, max_repairs=a.max_repairs, log=log,
                         skip_blocked=a.skip_blocked, upto_episode=a.upto_episode,
-                        rounds=a.rounds)
+                        rounds=a.rounds, freewrite=a.freewrite)
             # **여기가 요점: 실패해도 다음 에피소드로 간다.** 자는 동안 break 하면
             # 남은 시간이 통째로 낭비된다.
             (done if r["status"] == "done" else failed).append(
@@ -466,7 +471,7 @@ def main() -> int:
         try:
             r = D.drive(novel, str(path), llm=llm, max_repairs=a.max_repairs, log=log,
                         skip_blocked=a.skip_blocked, upto_episode=a.upto_episode,
-                        rounds=a.rounds)
+                        rounds=a.rounds, freewrite=a.freewrite)
         except Exception as e:                                        # noqa: BLE001
             D._log(f"[{_now()}] 마무리 {sweep}회차 예외 -- 멈춘다\n"
                    f"{traceback.format_exc()[-500:]}")

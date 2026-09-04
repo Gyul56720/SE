@@ -12,6 +12,7 @@
 #                                                 (--restart 만 주면 새 씨앗이라 옛 원고는 .bak 로 치워진다)
 #   scripts/run_novel_vm.sh --restart             # 돌던 런을 죽이고 다시 (옛 원고는 .bak 로)
 #   scripts/run_novel_vm.sh --restart --wipe      # 옛 기록을 .bak 도 없이 **삭제**하고 처음부터
+#   scripts/run_novel_vm.sh --episodes 2 --freewrite  # 1~2화만, 회차 통짜 집필(빠르다)
 #   scripts/run_novel_vm.sh --persona hardboiled   # 문체를 갈아끼운다
 #   scripts/run_novel_vm.sh --gemini-director     # 디렉터까지 Gemini 로 (구독 한도 소진 시)
 #   scripts/run_novel_vm.sh --episodes 5 --blocks 2
@@ -40,6 +41,7 @@ NEW_SEED=1
 RESTART=0
 WIPE=0
 PERSONA=cider
+FREE=""     # --freewrite 면 회차를 통째로 쓴다
 # **디렉터만 Claude 로 간다.** 주제·시나리오는 claude -p 가 짜고, 배우·화자·추출기는
 # Gemini 다. 디렉터는 호출 6회 중 1회이고 출력이 짧아 전체 토큰의 일부인데, 무엇을 쓸
 # 것인가는 전부 거기서 갈린다. 산문을 Claude 로 돌리는 것(--all-claude)은 CLAUDE.md 가
@@ -55,6 +57,7 @@ for a in "$@"; do
     --restart) RESTART=1 ;;
     --wipe) WIPE=1 ;;
     --persona) shift_next=PERSONA ;;
+    --freewrite) FREE="--freewrite" ;;
     --gemini-director) DIRECTOR_FLAG="--gemini-director" ;;
     --episodes) shift_next=EPISODES ;;
     --blocks) shift_next=BLOCKS ;;
@@ -142,7 +145,7 @@ if [ "$NEW_SEED" = "1" ]; then
 fi
 
 setsid nohup python3 "$SE/novel/overnight.py" \
-    --world seeded --persona "$PERSONA" $DIRECTOR_FLAG \
+    --world seeded --persona "$PERSONA" $DIRECTOR_FLAG $FREE \
     --blocks "$BLOCKS" --upto-episode "$EPISODES" \
     --hours "$HOURS" --episode-minutes 120 --no-discord \
     > "$LOG" 2>&1 < /dev/null &
