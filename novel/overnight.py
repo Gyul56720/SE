@@ -214,7 +214,13 @@ def main() -> int:
             D._log(f"[{_now()}] 예산 소진 -- 여기서 멈춘다")
             break
         tag = f"ep{spec['eps'][0]:03d}_"
-        if any(s.id.startswith(tag) for s in novel.scenes):
+        have = [s for s in novel.scenes if s.id.startswith(tag)]
+        # **조립된 것과 완성된 것은 다르다.** 예전에는 씬이 하나라도 있으면 블록 전체를
+        # 건너뛰었는데, 조립만 되고 산문 단계에서 죽은 블록이 바로 그 상태다 -- 다시
+        # 띄워도 영원히 건너뛰어져 한 글자도 안 채워진다(2026-09-03 밤샘 런의 1~10화가
+        # 정확히 그랬다: 30씬 전부 pending 인 채로 다음 실행에서도 건너뛰어질 참이었다).
+        # 다 끝난 블록만 건너뛰고, 조립만 된 블록은 **조립을 건너뛰고 산문부터** 채운다.
+        if have and all(s.status == "verified" for s in have):
             continue
         dc.beat(f"⏳ 아직 도는 중 ({_now()}) · 씬 {len(novel.scenes)}개 · "
                 f"남은 예산 {(deadline - time.time()) / 3600:.1f}시간")
@@ -228,8 +234,12 @@ def main() -> int:
         ep_deadline = min(time.time() + a.episode_minutes * 60, deadline)
         D.EPISODE_DEADLINE = ep_deadline
         try:
-            novel.scenes.extend(D.build_episode(novel, spec, llm, a.max_repairs, log))
-            novel.save(path)
+            if have:
+                D._log(f"[{_now()}] {lo}~{hi}화 는 이미 조립돼 있다 "
+                       f"({len(have)}씬) -- 산문부터 채운다")
+            else:
+                novel.scenes.extend(D.build_episode(novel, spec, llm, a.max_repairs, log))
+                novel.save(path)
             r = D.drive(novel, str(path), llm=llm, max_repairs=a.max_repairs, log=log)
             # **여기가 요점: 실패해도 다음 에피소드로 간다.** 자는 동안 break 하면
             # 남은 시간이 통째로 낭비된다.

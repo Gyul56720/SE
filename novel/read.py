@@ -34,6 +34,34 @@ def parse_range(text: str) -> "list[int]":
     return [int(text)]
 
 
+def render_scenario(novel, episodes: "list[int]") -> str:
+    """산문이 아직 없을 때 **디렉터가 쓴 시나리오**를 보여준다.
+
+    조립은 끝났는데 집필이 못 간 회차라도 빈손이 아니다. direction["scenario"] 에 디렉터가
+    쓴 Markdown 연출이 통째로 들어 있다 -- 공간·여는 사건·장치·화자의 시야·말하지 않는 것
+    까지. 그것이 무엇이 만들어졌는지 눈으로 확인할 수 있는 유일한 것이고, 산문이 그 위에
+    얹힐 재료다."""
+    out = []
+    for ep in episodes:
+        scenes = sorted((s for s in novel.scenes if s.episode == ep), key=lambda s: s.id)
+        if not scenes:
+            continue
+        out.append(f"\n\n{'=' * 60}\n{ep}화 시나리오 ({len(scenes)}씬)\n{'=' * 60}")
+        for sc in scenes:
+            d = sc.direction if isinstance(sc.direction, dict) else {}
+            head = f"\n\n[{sc.id}]" + ("  (척추)" if sc.establishes else "  (서브플롯)")
+            body = (d.get("scenario") or "").strip()
+            if not body:
+                # 시나리오 원문이 없으면 갖고 있는 조각이라도 보여준다
+                order = [("staging", "공간"), ("trigger", "여는 사건"), ("props", "장치"),
+                         ("camera", "화자의 시야"), ("subtext", "말하지 않는 것")]
+                bits = [f"  {ko}: {d[k]}" for k, ko in order if d.get(k)]
+                body = ((sc.directives[0] if sc.directives else "(비어 있다)")
+                        + ("\n" + "\n".join(bits) if bits else ""))
+            out.append(head + "\n" + body)
+    return "".join(out)
+
+
 def render(novel, episodes: "list[int]") -> str:
     out = []
     for ep in episodes:
@@ -95,6 +123,8 @@ def main() -> int:
     ap.add_argument("--path", default="novel/romance.json")
     ap.add_argument("--ep", help="3 또는 1-10")
     ap.add_argument("--all", action="store_true", help="산문이 있는 회차 전부")
+    ap.add_argument("--scenario", action="store_true",
+                    help="산문 대신 디렉터 시나리오를 본다 (아직 집필 전인 회차용)")
     ap.add_argument("--out", help="파일로 저장 (없으면 화면)")
     a = ap.parse_args()
 
@@ -109,11 +139,19 @@ def main() -> int:
         print("\n읽으려면:  python3 novel/read.py --ep 1-10")
         return 0
 
-    episodes = (sorted({s.episode for s in novel.scenes if s.episode and s.prose.strip()})
-                if a.all else parse_range(a.ep))
-    text = render(novel, episodes)
+    if a.scenario:
+        episodes = (sorted({s.episode for s in novel.scenes if s.episode})
+                    if a.all else parse_range(a.ep))
+        text = render_scenario(novel, episodes)
+    else:
+        episodes = (sorted({s.episode for s in novel.scenes
+                            if s.episode and s.prose.strip()})
+                    if a.all else parse_range(a.ep))
+        text = render(novel, episodes)
     if not text.strip():
         print(f"{a.ep or '전체'} 구간에 아직 산문이 없다. 조립만 된 상태다.")
+        print("디렉터가 쓴 시나리오는 남아 있다:  "
+              f"python3 novel/read.py --scenario --ep {a.ep or '1-10'}")
         return 1
     if a.out:
         Path(a.out).write_text(text.lstrip(), encoding="utf-8")
