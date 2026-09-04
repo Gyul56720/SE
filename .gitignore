@@ -56,3 +56,6 @@ compression/codecs/champion.py
 novel/*.json
 novel/*.scenes.jsonl
 !novel/plan.json
+
+# 자유 씨앗 원장 -- 무엇을 이미 썼는지 기록. 원고와 같은 이유로 추적하지 않는다.
+novel/seeds_used.json

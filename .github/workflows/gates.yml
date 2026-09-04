@@ -61,6 +61,7 @@ jobs:
           python3 tests/test_json_resilience.py
           python3 tests/test_agency.py
           python3 tests/test_probe_world.py
+          python3 tests/test_seed.py
           python3 tests/test_novel_episode.py
           python3 tests/test_novel_drive.py
           python3 tests/test_novel_gate.py
