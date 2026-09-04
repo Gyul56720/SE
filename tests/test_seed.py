@@ -29,10 +29,16 @@ def ok(cond, label):
 
 
 print("[공간] 조합이 반복을 걱정할 필요 없을 만큼 넓은가")
-space = (len(S.TIME) * len(S.IMPOSSIBLE) * len(S.EVENT) * len(S.MOTIF)
-         * len(S.VOICE) * len(S.THEME))
-ok(space > 100_000, f"인물 빼고도 {space:,}가지")
-ok(len(S.PEOPLE) >= 10, f"인물 축 {len(S.PEOPLE)}개 (셋을 뽑으므로 조합이 더 는다)")
+space = 0
+for w in S.WORLDS:
+    c = len(w["people"])
+    space += (len(w["times"]) * len(w["events"]) * len(w["motifs"])
+              * (c * (c - 1) * (c - 2) // 6)
+              * len(S.IMPOSSIBLE) * len(S.VOICE) * len(S.THEME) * len(S.DEPTH))
+ok(space > 1_000_000, f"조합이 {space:,}가지  ← 같은 씨앗이 두 번 나올 일이 없다")
+ok(all(len(w["people"]) >= 4 for w in S.WORLDS),
+   f"세계마다 인물 축이 {[len(w['people']) for w in S.WORLDS]}개 "
+   f"(셋을 뽑으므로 조합이 더 는다)")
 
 print("[규율] 반칙에 효과와 조건이 **전부** 붙어 있는가")
 print("      ← 무한한 마법은 긴장을 죽인다. 마술적 리얼리즘의 규율이 이것이다")

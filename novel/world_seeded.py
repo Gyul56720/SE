@@ -78,6 +78,7 @@ def build(seed: dict = None) -> Novel:
         revision_budget=2,
         seed_id=seed["id"],                # 원고와 세계가 어긋나면 여기서 드러난다
         depth=dict(seed.get("depth") or {}),   # 겉은 가볍고 속은 무겁게
+        world=dict(seed.get("world") or {}),   # 게임 설정집 -- 디렉터가 지어내지 않게
         voice=f"{seed['voice']['how']} -- {seed['voice']['note']}",
         narrator_foreknowledge=[
             f"이 이야기는 {seed['theme']}에 대한 것이다",

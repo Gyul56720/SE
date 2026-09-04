@@ -90,7 +90,9 @@ ok("교훈으로 닫지 마라" in prompts["화자"] and "답을 주지 마라" 
    "답을 주지 않는다  ← 물음이 닫히면 두 번 읽을 이유가 없다")
 
 print("[표층] 씨앗이 탑·영웅·희생 쪽인가")
-joined = " ".join(t for t, _ in S.TIME) + " ".join(S.EVENT)
+joined = " ".join(t for w in S.WORLDS for t, _ in w["times"]) \
+         + " ".join(e for w in S.WORLDS for e in w["events"]) \
+         + " ".join(w["order"] + w["cruelty"] for w in S.WORLDS)
 ok("탑" in joined, "탑이 있다")
 ok(any(w in joined for w in ("영웅", "구조", "희생")), "영웅·구조·희생이 있다")
 
