@@ -76,6 +76,7 @@ def build(seed: dict = None) -> Novel:
         title=f"{seed['motif']}",          # 제목은 디렉터가 다듬는다. 여기선 재료만
         pov_character=names[0],
         revision_budget=2,
+        total_episodes=3,                  # 단편이다. arc 가 8시퀀스 대신 기승전결을 준다
         voice=f"{seed['voice']['how']} -- {seed['voice']['note']}",
         narrator_foreknowledge=[
             f"이 이야기는 {seed['theme']}에 대한 것이다",

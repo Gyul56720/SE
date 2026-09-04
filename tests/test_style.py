@@ -126,6 +126,23 @@ ok('"슬프다/외롭다" 라고 서술되면 기각된다' not in d,
    "기각한다는 거짓말이 지워졌다  ← 관문은 더 이상 그것을 보지 않는다")
 
 print()
+print("[기승전결] 단편은 8시퀀스가 아니라 기승전결을 받는가")
+from novel import arc                                                 # noqa: E402
+short = build(); short.total_episodes = 3
+long_ = build(); long_.total_episodes = 200
+ok(arc.act_of(1, 3)["name"].startswith("기") and arc.act_of(3, 3)["name"].startswith("결"),
+   f"3화의 단계 {[arc.act_of(e, 3)['name'] for e in (1, 2, 3)]}  ← 마지막은 반드시 결이다")
+ok(arc.act_of(8, 8)["name"].startswith("결"), "총 회차가 몇이든 마지막은 결")
+sl = D._stage_lines(short, 2)
+ok("전(轉)" in sl and "단편" in sl, f"단편에는 기승전결이 실린다\n         {sl.splitlines()[0]}")
+ok("시퀀스" not in sl, "200화용 시퀀스 브리프가 실리지 않는다  ← 세 회차가 시퀀스 1에 갇혔었다")
+ll = D._stage_lines(long_, 15)
+ok("시퀀스" in ll and "narrative_pull" in ll, "연재는 그대로 8시퀀스를 받는다")
+ok("단편" not in ll, "연재에 단편 지시가 새지 않는다")
+ok("동아리" not in arc.SCALES[1] and "조별과제" not in arc.SCALES[1],
+   f"사건 규모 어휘가 장르 중립이다 ({arc.SCALES[1]})  ← 씨앗 세계에 로맨스 소재가 실렸었다")
+
+print()
 if fails:
     print(f"문체 규율: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)

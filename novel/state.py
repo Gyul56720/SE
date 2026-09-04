@@ -198,6 +198,10 @@ class Novel:
     scenes: list = field(default_factory=list)
     # 화자가 이미 알고 있는 미래. Narrator 가 가끔 흘려 회고의 아이러니를 만든다.
     narrator_foreknowledge: list = field(default_factory=list)
+    # 이 작품이 몇 화짜리인가. **단편과 연재는 다른 지도를 쓴다** -- 3화에 200화용
+    # 8시퀀스를 실으면 세 회차가 전부 시퀀스 1 안에 갇혀 기승전결이 없어진다.
+    # arc.brief 가 이 값을 보고 기승전결(단편)과 8시퀀스(연재)를 고른다.
+    total_episodes: int = 200
     # 문장의 색. 씨앗이 정하고 화자 프롬프트가 실행한다 -- 세계마다 문체가 달라야
     # 200화를 넘겨도 같은 목소리로 수렴하지 않는다.
     voice: str = ""
