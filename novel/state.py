@@ -134,6 +134,21 @@ class Scene:
     scale: int = 0                   # 이 씬이 다루는 사건 규모 1~5 (arc.SCALES)
     cliffhanger: str = ""            # 회차 끝이면 5대 공식 중 하나 (arc.CLIFFHANGERS)
     is_episode_end: bool = False     # 이 씬이 회차의 마지막인가
+    # --- 압박과 능동 (2026-09-04 피드백: "주인공이 수동적이고 시간 압박이 없다") ---
+    # 역방향 조립은 **무엇이 참이 되는가**(establishes)만 물었다. 누가 그것을 했는지 묻지
+    # 않았으므로 조건이 저절로 성립하고 화자는 구경했다. 그것이 수동성의 기계적 원인이다.
+    #
+    #   driver          이 씬의 사건을 일으킨 사람. 화자면 그 회차는 화자가 움직인 회차다
+    #   cost            driver 가 치른 대가. 공짜로 얻으면 긴장이 없다
+    #   deadline        무엇을 언제까지 (사람이 읽는 문장)
+    #   deadline_hours  그 시점까지 남은 시간. **기계가 읽는 숫자** -- 압박이 실제로
+    #                   조여드는지는 텍스트로는 판정할 수 없다
+    #   stake           못 지키면 잃는 것
+    driver: str = ""
+    cost: str = ""
+    deadline: str = ""
+    deadline_hours: float = 0.0
+    stake: str = ""
     # --- 인과 배선 (episode.py 의 역방향 조립이 채운다) ---
     # requires: 이 씬이 성립하려면 이미 참이어야 하는 것
     # establishes: 이 씬이 참으로 만드는 것

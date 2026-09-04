@@ -43,6 +43,12 @@ class Beat:
     scale: int = 0
     cliffhanger: str = ""
     direction: dict = field(default_factory=dict)
+    # 압박과 능동. Scene 의 같은 이름 필드에 그대로 옮겨진다(설명은 state.Scene 참고).
+    driver: str = ""
+    cost: str = ""
+    deadline: str = ""
+    deadline_hours: float = 0.0
+    stake: str = ""
 
 
 @dataclass
@@ -52,6 +58,10 @@ class Outcome:
     requires: list = field(default_factory=list)
     world_ops: list = field(default_factory=list)
     relation_ops: list = field(default_factory=list)
+    # 이 결말까지 걸린 시계. 척추 비트들은 이 시간 안에서 조여든다.
+    deadline: str = ""
+    deadline_hours: float = 0.0
+    stake: str = ""
 
 
 @dataclass
@@ -178,6 +188,8 @@ def to_scenes(episode: Episode, prefix="e", start_ep: int = 0):
             relation_ops=list(b.relation_ops), scale=b.scale,
             requires=list(b.requires or []), establishes=list(b.establishes or []),
             direction=dict(b.direction or {}),
+            driver=b.driver, cost=b.cost, deadline=b.deadline,
+            deadline_hours=b.deadline_hours, stake=b.stake,
             episode=start_ep + i if start_ep else 0,
             is_episode_end=last, cliffhanger=b.cliffhanger if last else ""))
     return out

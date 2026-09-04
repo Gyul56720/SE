@@ -59,6 +59,7 @@ jobs:
       - name: 소설 파이프라인 내구성 (깨진 JSON 이 밤을 날리지 않는가)
         run: |
           python3 tests/test_json_resilience.py
+          python3 tests/test_agency.py
           python3 tests/test_novel_episode.py
           python3 tests/test_novel_drive.py
           python3 tests/test_novel_gate.py

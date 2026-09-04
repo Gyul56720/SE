@@ -798,12 +798,107 @@ def check_episode_length(scene, novel) -> list:
     return []
 
 
+def check_agency(scene, novel) -> list:
+    """V022 -- 화자가 구경만 하는 회차가 이어지는가.
+
+    2026-09-04 피드백의 첫 항목: "주인공이 철저하게 수동적이다. 사건의 단서를 타인의 입을
+    통해 일방적으로 전달받는다." 그 지적이 맞았고, 원인은 문장이 아니라 조립이었다 --
+    역방향 조립은 **무엇이 참이 되는가**만 물었지 누가 그것을 했는지 묻지 않았다.
+
+    한 회차 당하는 것은 병이 아니다. 매 회차 화자가 판을 뒤집으면 그것대로 지치고, 당하는
+    회차도 서사에 필요하다. **연속으로 구경하는 것**이 병이다. 그래서 한 번은 soft,
+    직전 회차도 그랬으면 hard 다.
+
+    척추 씬이 없는 회차(서브플롯만 있는 회차)는 판정하지 않는다 -- 애초에 인과를 옮기는
+    회차가 아니므로 화자가 움직일 자리가 없다."""
+    if not scene.episode or not scene.is_episode_end:
+        return []
+
+    def passive(ep: int) -> "bool | None":
+        spine = [s for s in novel.scenes if s.episode == ep and s.establishes]
+        if not spine:
+            return None                       # 판정 대상이 아니다
+        return not any(s.driver == novel.pov_character for s in spine)
+
+    now = passive(scene.episode)
+    if not now:
+        return []
+    before = passive(scene.episode - 1) if scene.episode > 1 else None
+    drivers = sorted({s.driver for s in novel.scenes
+                      if s.episode == scene.episode and s.establishes and s.driver})
+    msg = (f"{scene.episode}화에서 {novel.pov_character} 는 아무것도 일으키지 않았다 "
+           f"(움직인 사람: {drivers or ['선언 없음']}). 화자가 스스로 판을 바꾸는 "
+           f"장면을 하나 넣어라 -- 무엇을 걸고 무엇을 잃는지까지")
+    if before:
+        return [Violation("V022", "hard", f"{scene.episode}화",
+                          msg + f". **{scene.episode - 1}화도 그랬다** -- "
+                                f"두 회차 연속으로 화자가 구경만 하면 독자는 떠난다")]
+    return [Violation("V022", "soft", f"{scene.episode}화", msg)]
+
+
+def check_pressure(scene, novel) -> list:
+    """V023 -- 시계가 조여드는가.
+
+    같은 마감을 공유하는 씬들 사이에서 남은 시간은 줄어들어야 한다. 늘어나면 압박이 아니라
+    상황일 뿐이다. 마감 문장이 바뀌면 새 시계이므로 늘어나도 된다 -- 그것까지 벌하면
+    구간이 넘어갈 때마다 걸린다(과잉 기각하는 심판은 맞는 답도 버린다).
+
+    **soft 다.** deadline_hours 는 산문이 아니라 선언이라, 여기서 hard 로 잡으면 수리
+    루프가 산문만 다시 쓰며 영원히 못 고친다. 진짜 강제는 조립 시점
+    (drive._check_pressure)에서 되먹임으로 한다. 이 관문은 그것이 새는지 보는 눈이다."""
+    if not scene.deadline_hours or not scene.deadline:
+        return []
+    idx = novel.scene_index(scene.id)
+    earlier = [s for s in novel.scenes[:idx]
+               if s.deadline == scene.deadline and s.deadline_hours]
+    if not earlier:
+        return []
+    least = min(s.deadline_hours for s in earlier)
+    if scene.deadline_hours >= least:
+        return [Violation("V023", "soft", f"씬 {scene.id}",
+                          f"남은 시간이 {scene.deadline_hours} 인데 앞 씬에서 이미 "
+                          f"{least} 였다. 시계가 되감겼다 -- 같은 마감 안에서는 줄어야 한다")]
+    return []
+
+
+def check_episode_opens(scene, novel) -> list:
+    """V025 -- 회차의 끝이 새 조건을 여는가.
+
+    피드백: "결말이 시적이고 순문학적인 여운을 주지만, 다음 장을 당장 펼쳐봐야 할 강렬한
+    궁금증을 유발하기에는 서사적 장력이 턱없이 부족하다." 클리프행어 표식(V016)만으로는
+    부족했다 -- 표식은 붙었는데 실제로 열린 것이 없으면 닫고 끝난 회차다.
+
+    회차의 마지막 척추 씬이 **아직 갚아지지 않은 requires 를 남기거나** 새 대가(cost)를
+    치렀는지 본다. 둘 다 없으면 그 회차는 해소로 끝난 것이다.
+
+    마지막 회차(결말)는 예외다 -- 거기서는 닫는 것이 맞다."""
+    if not scene.episode or not scene.is_episode_end:
+        return []
+    same = [s for s in novel.scenes if s.episode == scene.episode]
+    if not any(s.establishes for s in same):
+        return []                              # 서브플롯만 있는 회차는 판정하지 않는다
+    idx = novel.scene_index(scene.id)
+    settled = set()
+    for s in novel.scenes[:idx + 1]:
+        settled.update(s.establishes or [])
+    opened = [c for s in same for c in (s.requires or [])
+              if c not in settled and not c.startswith("state:")]
+    paid = [s.cost for s in same if s.cost and s.cost != "없음"]
+    if opened or paid:
+        return []
+    return [Violation("V025", "soft", f"{scene.episode}화",
+                      "회차가 아무것도 열지 않고 끝났다. 갚아야 할 조건도, 치른 대가도 "
+                      "없다 -- 다음 화를 펼칠 이유가 생기지 않는다. 마지막 장면에서 "
+                      "새 요구를 열거나 무언가를 잃게 하라")]
+
+
 CHECKS = (check_rhythm, check_episode_length, check_turn_format, check_emotion_continuity, check_emotion_range,
           check_pov, check_direct_emotion, check_punctum,
           check_pov_presence, check_knowledge, check_relations, check_facts,
           check_belief, check_public_fiction,
           check_arc_emotion, check_arc_dip, check_arc_scale,
-          check_information_gap, check_cliffhanger, check_causality)
+          check_information_gap, check_cliffhanger, check_causality,
+          check_agency, check_pressure, check_episode_opens)
 
 
 def check(scene, novel) -> list:

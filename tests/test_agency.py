@@ -1,0 +1,142 @@
+"""능동성과 압박 -- 2026-09-04 피드백의 첫 항목을 기계로 옮긴 것.
+
+피드백: "주인공이 철저하게 수동적이다. 사건의 단서를 타인의 입을 통해 일방적으로 전달받는다.
+상황을 타개하려는 의지나 구체적인 반작용(Action)을 보이지 않는다."
+
+그 지적이 맞았고 원인은 문장이 아니라 조립이었다. 역방향 조립은 **무엇이 참이 되는가**
+(establishes)만 물었지 **누가 그것을 했는지** 묻지 않았다. 그래서 조건이 저절로 성립하고
+화자는 구경했다.
+
+여기서 고정하는 것:
+  1. 조립 단계가 driver/cost/deadline_hours 없이는 비트를 받지 않는다
+     (이 셋은 산문이 아니라 선언이라, 씬 관문에서 잡으면 수리 루프가 못 고친다 -- V009 가
+      정확히 그렇게 회차를 세웠다)
+  2. 화자가 연속으로 구경만 하면 V022 가 hard 로 잡는다
+  3. 같은 마감 안에서 시계가 되감기면 V023 이 보고한다
+  4. 아무것도 열지 않고 끝난 회차를 V025 가 잡는다
+
+실행: python3 tests/test_agency.py
+"""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO))
+
+from novel import drive as D, gate                                    # noqa: E402
+from novel.state import Scene                                         # noqa: E402
+from novel.world_romance import build, OUTCOMES                       # noqa: E402
+
+fails = []
+
+
+def ok(cond, label):
+    print(f"    {'OK  ' if cond else '실패'} {label}")
+    if not cond:
+        fails.append(label)
+
+
+n = build()
+POV = n.pov_character
+
+print("[결말] 모든 결말 블록에 시계가 달려 있는가")
+ok(all(o.get("deadline") and o.get("deadline_hours") for o in OUTCOMES),
+   f"15개 결말 전부 마감·남은시간을 갖는다")
+ok(all(o.get("stake") for o in OUTCOMES), "못 지키면 잃는 것도 정해져 있다")
+first, last = OUTCOMES[0], OUTCOMES[-1]
+ok(last["deadline_hours"] < first["deadline_hours"],
+   f"후반이 더 촉박하다 ({first['deadline_hours']}h -> {last['deadline_hours']}h)")
+
+print("[조립] 선언이 없으면 비트를 받지 않는가  ← 산문 수리로는 못 고치는 자리다")
+clock = 14.0
+bad = D._check_pressure({"driver": "", "cost": "x", "deadline_hours": 9}, n, clock)
+ok(bad and "움직이는 사람" in bad[0], f"driver 가 비면 되돌려보낸다 ({bad})")
+
+bad = D._check_pressure({"driver": "없는사람", "cost": "x", "deadline_hours": 9}, n, clock)
+ok(bad and "등장인물이 아니다" in bad[0], "등장인물이 아닌 이름도 잡는다")
+
+bad = D._check_pressure({"driver": POV, "cost": "", "deadline_hours": 9}, n, clock)
+ok(bad and "치른 대가" in bad[0],
+   f"화자가 움직였는데 대가가 없으면 잡는다 ({bad})  ← 공짜로 얻으면 긴장이 죽는다")
+
+bad = D._check_pressure({"driver": "공명", "cost": "", "deadline_hours": 9}, n, clock)
+ok(not bad, "화자가 아닌 사람이 움직인 장면은 대가 없이도 통과  ← 과잉 기각 방지")
+
+bad = D._check_pressure({"driver": "사건", "cost": "", "deadline_hours": 9}, n, clock)
+ok(not bad, "'사건' 도 유효한 driver 다")
+
+bad = D._check_pressure({"driver": "공명", "cost": "", "deadline_hours": "9시간"}, n, clock)
+ok(bad and "숫자가 아니다" in bad[0], f"남은 시간이 문자열이면 잡는다 ({bad})")
+
+bad = D._check_pressure({"driver": "공명", "cost": "", "deadline_hours": 20}, n, clock)
+ok(bad and "되감기지 않는다" in bad[0],
+   f"시계가 늘면 잡는다 ({clock} -> 20)  ← 압박은 조여들어야 한다")
+
+bad = D._check_pressure({"driver": POV, "cost": "정우에게 빚을 졌다",
+                         "deadline_hours": 9}, n, clock)
+ok(not bad, "다 갖춘 비트는 통과한다")
+
+print("[V022] 화자가 연속으로 구경만 하면 잡는가")
+
+
+def ep(num, driver, end=True, est=True):
+    s = Scene(id=f"ep001_{num:03d}m", episode=num, is_episode_end=end, driver=driver)
+    s.establishes = ["무언가 성립"] if est else []
+    return s
+
+
+n2 = build()
+n2.scenes = [ep(1, POV)]
+ok(not [v for v in gate.check(n2.scenes[0], n2) if v.rule == "V022"],
+   "화자가 움직인 회차는 통과")
+
+n2.scenes = [ep(1, "공명")]
+v = [x for x in gate.check(n2.scenes[0], n2) if x.rule == "V022"]
+ok(v and v[0].severity == "soft", f"한 회차 당하는 것은 soft ({v[0].severity if v else '못잡음'})")
+
+n2.scenes = [ep(1, "공명", end=True), ep(2, "도영", end=True)]
+v = [x for x in gate.check(n2.scenes[1], n2) if x.rule == "V022"]
+ok(v and v[0].severity == "hard",
+   f"두 회차 연속이면 hard ({v[0].severity if v else '못잡음'})  ← 이게 그 병이다")
+ok(v and "1화도 그랬다" in v[0].detail, "직전 회차를 짚어준다")
+
+n2.scenes = [ep(1, "", est=False)]
+ok(not [x for x in gate.check(n2.scenes[0], n2) if x.rule == "V022"],
+   "척추 씬이 없는 회차는 판정하지 않는다  ← 움직일 자리가 없다")
+
+print("[V023] 시계가 되감기면 보고하는가")
+n3 = build()
+a = Scene(id="s1", episode=1, deadline="마감", deadline_hours=9)
+b = Scene(id="s2", episode=1, deadline="마감", deadline_hours=12)
+n3.scenes = [a, b]
+v = [x for x in gate.check(b, n3) if x.rule == "V023"]
+ok(v and v[0].severity == "soft", f"되감김을 잡는다 ({v})")
+ok(v and "되감겼다" in v[0].detail, "무엇이 문제인지 말해준다")
+b.deadline_hours = 6
+ok(not [x for x in gate.check(b, n3) if x.rule == "V023"], "줄어들면 통과")
+b.deadline, b.deadline_hours = "다른 마감", 100
+ok(not [x for x in gate.check(b, n3) if x.rule == "V023"],
+   "마감이 바뀌면 새 시계다 -- 늘어도 된다  ← 과잉 기각 방지")
+
+print("[V025] 아무것도 열지 않고 끝난 회차를 잡는가")
+n4 = build()
+closed = Scene(id="c1", episode=1, is_episode_end=True)
+closed.establishes, closed.requires = ["다 갚았다"], []
+n4.scenes = [closed]
+v = [x for x in gate.check(closed, n4) if x.rule == "V025"]
+ok(v, f"닫고 끝나면 잡는다 ({[str(x)[:50] for x in v]})")
+closed.cost = "손을 다쳤다"
+ok(not [x for x in gate.check(closed, n4) if x.rule == "V025"],
+   "대가를 치렀으면 통과 -- 잃은 것이 다음 화의 이유가 된다")
+closed.cost = ""
+closed.requires = ["아직 안 갚은 것"]
+ok(not [x for x in gate.check(closed, n4) if x.rule == "V025"],
+   "갚지 못한 요구를 남겼으면 통과")
+
+print()
+if fails:
+    print(f"능동성·압박: {len(fails)}개 실패 -- {fails}")
+    sys.exit(1)
+print("능동성·압박: 시계 · 조립 강제 · 연속 수동 · 되감김 · 닫힌 회차 -- 통과")

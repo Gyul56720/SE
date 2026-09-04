@@ -49,7 +49,7 @@ SPINE = {
 }
 
 
-def _md(b: dict, cond: str) -> str:
+def _md(b: dict, cond: str, clock: float = 9) -> str:
     """SPINE 항목을 **디렉터가 낼 법한 Markdown 시나리오**로 만든다.
 
     디렉터는 이제 JSON 이 아니라 Markdown 을 낸다(형식 세금 면제). 가짜 LLM 도 같은
@@ -65,7 +65,13 @@ def _md(b: dict, cond: str) -> str:
             f"## 장치\n{d.get('props', '식은 자판기 커피')}\n\n"
             f"## 화자의 시야\n{d.get('camera', '설윤은 손만 본다')}\n\n"
             f"## 말하지 않는 것\n{d.get('subtext', '둘 다 삼킨다')}\n\n"
-            f"## 감정 이동\n{d.get('beat_arc', 'pull -50 -> -35')}")
+            f"## 감정 이동\n{d.get('beat_arc', 'pull -50 -> -35')}\n\n"
+            # 새 계약(2026-09-04): 누가 움직였고 무엇을 잃었고 시계가 얼마나 남았는가.
+            # 조립 단계가 이 셋을 강제하므로 가짜도 지켜야 한다 -- 안 지키면 비트가
+            # 되돌려보내져 척추가 서지 않는다(실측으로 그렇게 깨졌다).
+            f"## 움직이는 사람\n{b.get('driver', '설윤')}\n\n"
+            f"## 치른 대가\n{b.get('cost', '정우에게 빚을 졌다')}\n\n"
+            f"## 남은 시간\n{clock}")
 
 
 def _section(md: str, head: str) -> str:
@@ -89,6 +95,7 @@ class Fake:
     def __init__(self, wrong_first=False):
         self.prompts, self.wrong_first, self.used_wrong = [], wrong_first, False
         self.stages = {"director": 0, "extractor": 0, "subplot": 0}
+        self.clock = 13.0          # 결말이 준 14 보다 작게 시작해서 계속 줄인다
 
     def __call__(self, prompt):
         self.prompts.append(prompt)
@@ -100,30 +107,39 @@ class Fake:
                     "## 여는 사건\n정우가 명단에서 눈을 뗀다\n\n"
                     "## 장치\n떼어낸 압정 자국\n\n"
                     "## 화자의 시야\n설윤은 정우의 등만 본다\n\n"
-                    "## 말하지 않는 것\n정우는 축하한다는 말을 삼킨다")
+                    "## 말하지 않는 것\n정우는 축하한다는 말을 삼킨다\n\n"
+                    "## 움직이는 사람\n정우\n\n"
+                    "## 치른 대가\n없음\n\n"
+                    "## 남은 시간\n8")
 
         if "<Task_Objective>" in prompt:                    # 1단계: 창작 -> Markdown
             self.stages["director"] += 1
             conds = prompt.split("<Task_Objective>")[1].split("</Task_Objective>")[0]
+            self.clock = max(0.5, self.clock - 1)
             if self.wrong_first and not self.used_wrong:
                 self.used_wrong = True
-                return _md({"beat": "엉뚱한 장면", "participants": ["설윤"]}, "오타난 조건")
+                return _md({"beat": "엉뚱한 장면", "participants": ["설윤"]},
+                           "오타난 조건", self.clock)
             for k, v in SPINE.items():
                 if k in conds:
-                    return _md(v, k)
-            return _md({"beat": "빈 장면", "participants": ["설윤"]}, "")
+                    return _md(v, k, self.clock)
+            return _md({"beat": "빈 장면", "participants": ["설윤"]}, "", self.clock)
 
         if "--- 시나리오 ---" in prompt:                     # 2단계: 추출 -> JSON
             self.stages["extractor"] += 1
             sc = prompt.split("--- 시나리오 ---")[1].split("--- 끝 ---")[0]
             cond = _section(sc, "성립시키는 조건")
             v = SPINE.get(cond)
+            extra = {"driver": _section(sc, "움직이는 사람"),
+                     "cost": _section(sc, "치른 대가"),
+                     "deadline_hours": float(_section(sc, "남은 시간") or 0)}
             if v:
-                return json.dumps(dict(v, establishes=[cond]), ensure_ascii=False)
+                return json.dumps(dict(v, establishes=[cond], **extra),
+                                  ensure_ascii=False)
             return json.dumps({"beat": _section(sc, "장면"),
                                "participants": [x.strip() for x in
                                                 _section(sc, "등장인물").split(",") if x.strip()],
-                               "requires": [],
+                               "requires": [], **extra,
                                "establishes": [cond] if cond else [],
                                "direction": {"staging": _section(sc, "공간"),
                                              "trigger": _section(sc, "여는 사건"),

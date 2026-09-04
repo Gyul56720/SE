@@ -222,6 +222,48 @@ def _ops(raw, label: str = "") -> list:
     return kept
 
 
+def clock_of(spec: dict, novel) -> float:
+    """지금 남은 시간. 같은 마감을 쓰는 씬들의 최솟값에서 이어받는다 -- 시계는 되감기지
+    않는다. 아직 아무것도 없으면 결말이 준 시계에서 시작한다."""
+    made = [sc.deadline_hours for sc in novel.scenes
+            if sc.deadline_hours and sc.deadline == spec.get("deadline")]
+    return min(made) if made else float(spec.get("deadline_hours") or 72)
+
+
+def _check_pressure(b: dict, novel, clock: float) -> list:
+    """압박과 능동이 선언됐는가. 위반 사유 목록(빈 목록이면 통과).
+
+    **최소한만 본다.** 과잉 기각하는 심판은 맞는 답도 버린다 -- 여기서 막히면 그 비트를
+    다시 받느라 호출이 두 배가 되므로, 정말 없으면 안 되는 것만 되돌려보낸다:
+
+      · driver 가 등장인물도 "사건" 도 아니면      -- 누가 움직였는지 모르는 장면이다
+      · driver 가 화자인데 cost 가 비었으면        -- 화자가 공짜로 이겼다
+      · deadline_hours 가 숫자가 아니거나 안 줄면  -- 시계가 조여들지 않는다
+
+    화자가 아닌 사람이 움직인 장면은 통과시킨다. 매 장면 화자가 움직이면 그것대로
+    지치고, 당하는 장면도 서사에 필요하다 -- 연속으로 당하기만 하는 것이 병이지
+    한 장면 당하는 것은 병이 아니다. 그 연속은 관문(V022)이 회차 단위로 본다."""
+    names = {c.name for c in novel.characters}
+    out = []
+    driver = str(b.get("driver") or "").strip()
+    if not driver or (driver not in names and driver != "사건"):
+        out.append(f"'움직이는 사람' 이 비었거나 등장인물이 아니다({driver!r}). "
+                   f"{sorted(names)} 중 하나이거나 '사건' 이어야 한다")
+    elif driver == novel.pov_character and not str(b.get("cost") or "").strip():
+        out.append(f"{driver} 가 스스로 움직였는데 '치른 대가' 가 비었다. "
+                   f"무엇을 잃었는지 적어라 -- 공짜로 얻으면 긴장이 죽는다")
+    try:
+        hours = float(b.get("deadline_hours"))
+    except (TypeError, ValueError):
+        out.append(f"'남은 시간' 이 숫자가 아니다({b.get('deadline_hours')!r}). "
+                   f"'9시간' 이 아니라 9 로 적어라")
+        return out
+    if hours >= clock:
+        out.append(f"'남은 시간' 이 {hours} 인데 장면 시작 시점이 {clock} 이다. "
+                   f"시계는 되감기지 않는다 -- {clock} 보다 작은 값이어야 한다")
+    return out
+
+
 def _rel_ops(raw, novel, label: str = "") -> list:
     """relation_ops 에서 **쓸 수 있는 선언만** 남긴다.
 
@@ -364,6 +406,9 @@ def beat_prompt(novel, spec: dict, open_conds: list, ep: int, feedback="") -> st
     입력의 XML 태그는 맥락 구역을 갈라 환각과 맥락 이탈을 막는 쪽이라 유지한다."""
     from . import arc
     seq = arc.sequence_of(ep)
+    # 지금 남은 시간. 이미 만든 척추 비트가 있으면 그 최솟값에서 이어받는다 -- 시계는
+    # 되감기지 않는다. 없으면 결말의 시계에서 시작한다.
+    clock = clock_of(spec, novel)
     prev = [s for s in novel.scenes if s.prose][-2:]
     recap = "\n".join(f"- {s.episode}화: {s.directives[0] if s.directives else ''}"
                        for s in prev) or "- (시작)"
@@ -378,6 +423,13 @@ def beat_prompt(novel, spec: dict, open_conds: list, ep: int, feedback="") -> st
 - 작은 사건에서 시작해 스케일을 키운다. 처음부터 크면 50화 전에 동력을 잃는다.
 - 남주는 윤리적 선을 넘지 않되 강한 동기를 갖는다. 여주는 구조받기만 하지 않는다.
 - 독자와 인물의 정보 격차가 연독률의 엔진이다.
+- **화자는 구경하지 않는다.** 조건은 저절로 성립하지 않는다 -- 누군가 무언가를 해서
+  성립한다. 화자가 스스로 움직여 판을 바꾸는 장면을 회차마다 최소 하나 만들어라.
+  화자가 당하기만 하는 회차가 이어지면 독자는 떠난다.
+- **공짜로 얻지 않는다.** 화자가 무언가를 얻으면 반드시 무언가를 잃는다. 빚, 자존심,
+  관계, 시간, 손. 대가 없는 승리는 긴장을 죽인다.
+- **시계는 조여든다.** 모든 장면은 마감까지 남은 시간 위에서 벌어진다. 시간이 줄지
+  않으면 압박이 없고, 압박이 없으면 사건이 아니라 상황일 뿐이다.
 - 클리프행어 5공식: 위기 직전 / 충격 대사 후 / 예상 밖 인물 등장 / 위험 신호 직전 /
   들키면 안 되는 순간에 들키기. 매회 남발하면 양치기 소년이 된다.
 </Narrative_Doctrine>
@@ -396,6 +448,13 @@ def beat_prompt(novel, spec: dict, open_conds: list, ep: int, feedback="") -> st
 <Episode_Outcome>
 {spec['summary']}
 </Episode_Outcome>
+
+<Clock>
+마감: {spec.get('deadline') or '(이 구간에는 명시된 마감이 없다 -- 하나 만들어라)'}
+못 지키면: {spec.get('stake') or '(잃을 것을 정하라)'}
+지금 남은 시간: {clock}시간
+이 장면이 끝날 때 남은 시간은 **{clock}보다 작아야 한다.**
+</Clock>
 
 <Recent>
 {recap}
@@ -440,6 +499,17 @@ def beat_prompt(novel, spec: dict, open_conds: list, ep: int, feedback="") -> st
 
 ## 감정 이동
 (narrative_pull 시작값에서 끝값으로. 숫자로)
+
+## 움직이는 사람
+(이 장면의 사건을 **일으킨** 사람의 이름 하나. 화자가 스스로 움직였으면 화자의 이름을,
+당했으면 상대의 이름을, 아무도 아니면 "사건")
+
+## 치른 대가
+(움직인 사람이 그 대가로 잃은 것. 구체적으로. 없으면 "없음" -- 다만 화자가 움직였는데
+잃은 것이 없으면 그 장면은 아직 덜 설계된 것이다)
+
+## 남은 시간
+(이 장면이 끝난 시점에서 마감까지 **몇 시간** 남았는지. 숫자만. 예: 9)
 </Output_Format_Instruction>"""
 
 
@@ -474,8 +544,12 @@ def extract_prompt(scenario: str, open_conds: list, scale: int) -> str:
 JSON 만 출력:
 {{"beat": "...", "participants": ["..."], "mode": "dialogue",
   "requires": [], "establishes": ["..."], "scale": {scale},
+  "driver": "움직이는 사람에 적힌 이름", "cost": "치른 대가",
+  "deadline_hours": 남은시간숫자,
   "direction": {{"staging": "...", "trigger": "...", "props": "...",
-                "camera": "...", "subtext": "...", "beat_arc": "..."}}}}"""
+                "camera": "...", "subtext": "...", "beat_arc": "..."}}}}
+
+deadline_hours 는 **숫자**다. "9시간" 이 아니라 9 로 쓴다."""
 
 
 def subplot_prompt(novel, ep: int, spine_summary: str, feedback="") -> str:
@@ -577,9 +651,22 @@ def build_episode(novel, spec: dict, llm=None, max_repairs=MAX_REPAIRS, log=None
                                     f"각 항목은 한두 문장이면 된다.")
                 continue
             b.setdefault("direction", {})["scenario"] = scenario
+            bad = _check_pressure(b, novel, clock_of(spec, novel))
+            if bad:
+                # **여기서 잡아야 한다.** driver/cost/deadline_hours 는 산문이 아니라
+                # 선언이라, 씬 관문에서 hard 로 잡으면 수리 루프가 산문만 다시 써서
+                # 영원히 못 고친다(V009 가 정확히 그렇게 회차를 세웠다). 조립 단계에서
+                # 되돌려보내는 것이 유일하게 고칠 수 있는 자리다.
+                feedback = _fb_text("; ".join(bad))
+                continue
             est = [e for e in (b.get("establishes") or []) if e in open_conds]
             if est:
-                got = Beat(beat=b.get("beat", ""),
+                got = Beat(driver=str(b.get("driver") or ""),
+                           cost=str(b.get("cost") or ""),
+                           deadline=spec.get("deadline", ""),
+                           deadline_hours=float(b.get("deadline_hours") or 0),
+                           stake=spec.get("stake", ""),
+                           beat=b.get("beat", ""),
                            participants=b.get("participants") or [novel.pov_character],
                            mode=b.get("mode", "dialogue"),
                            requires=list(b.get("requires") or []), establishes=est,
