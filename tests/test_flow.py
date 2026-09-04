@@ -120,6 +120,8 @@ CLEAN = ("\n".join([
     "요우는 창가에 앉아 있었다.",
     '"커피 드실래요?"',
     '"아뇨, 괜찮습니다. 방금 마셨거든요. 아니, 마신 것 같기도 하고."',
+    '"그게 말이죠, 1978년에 우리 아버지가 등대 무전기를 하나 주웠는데, 그때부터 이 '
+    '동네 사람들은 겨울에 배를 안 띄워요. 미신이죠 뭐. 아니, 미신이라기보다는."',
     "그는 대답 대신 창밖을 보았는데, 유리에 김이 서려 있어서 밖이라기보다는 밖의 소문 "
     "같은 것이 거기 비쳤다.",
 ] * 6))
@@ -135,7 +137,12 @@ class Fake:
         self.prompts.append(prompt)
         if "JSON 만 출력" in prompt and "새로 확정된 사실만" in prompt:
             wrong = self.tries == 1
-            return json.dumps({"people": {"요우": {"나이": "30" if wrong else "42"}}},
+            # 세계를 넓히는 것도 같이 돌려준다 -- 확산 자(diffusion.py)에 걸리면
+            # 리듬 때문에 다시 쓰게 되어 여기서 세는 횟수가 어긋난다.
+            return json.dumps({"people": {"요우": {"나이": "30" if wrong else "42"},
+                                          "한나": {"직업": "등대지기"}},
+                               "places": {"등대": "북쪽 곶"},
+                               "objects": {"무전기": "1978년 것"}},
                               ensure_ascii=False)
         self.tries += 1
         return CLEAN          # 리듬 자(rhythm.py)에 걸리지 않는 본문 -- 여기서 보는 건 모순이다

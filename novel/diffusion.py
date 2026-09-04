@@ -1,0 +1,134 @@
+"""**확산(diffusion)** -- 이야기의 농도를 재서 옅어지는 것을 막는다.
+
+2026-09-04 실측 평:
+
+    "이야기가 갈 수록 농도가 얕아져. 점층법으로 점점 점층되면서 이전의 발산된 형태를
+     계속 증폭시켜가면서 더 넓게 퍼뜨려야 하는데, 계속 상황 설명, 디테일도 부족해.
+     이전에 나왔던 소품들이 계속 점층되야해."
+
+**왜 옅어졌는지는 구조에 있었다.** 다음 덩어리에게 넘어가는 것은 꼬리 900자뿐이다. 세
+덩어리 앞에 나온 지포 라이터도, 양조장 뒤편의 개도, 그때 스쳐 간 우체부도 창 밖으로
+빠진다. 원장(ledger)에 적혀는 있었지만 프롬프트에서 그것의 쓰임은 **"여기 적힌 것과
+어긋나게 쓰지 마라"** -- 금지 목록이었다. 세계가 자산이 아니라 제약으로만 실려 있었으니
+모델은 매번 새 방에서 새로 시작했고, 그래서 뒤로 갈수록 얕아졌다.
+
+여기서는 원장을 뒤집어 **연료로 쓴다.** 두 가지를 센다:
+
+  · **새로 는 것**(new)  -- 이 덩어리가 세계에 더한 고유명·사물·사실의 수
+  · **되돌아온 것**(back) -- 앞에서 나왔다가 이 덩어리에서 다시 만져진 소품의 수
+
+확산은 이 둘이 **함께** 있을 때만 일어난다. 새것만 있으면 산만해지고(연결 없는 나열),
+되돌아온 것만 있으면 제자리를 돈다. 둘 다 바닥나면 그것이 "농도가 얕아졌다" 는 상태다.
+
+대사도 여기서 잰다. "대사도 스토리의 일부야. 스토리만 있으니깐 재미없잖아. 단문의
+대화도 있고 장문의 대화도 있어야해." -- 그래서 대사의 **길이 분포**를 본다.
+
+리듬(rhythm.py)과 같은 규율을 따른다. **재서 숫자를 돌려주되, 원고를 죽이지 않는다.**
+"게이트 크게 걸지마" 가 이 모듈의 첫 번째 제약이다 -- 확산은 기각으로 만들어지지 않는다.
+"""
+from __future__ import annotations
+
+import re
+
+_QUOTE = re.compile(r"[\"“'']")
+
+# 대사의 길이. 짧은 것과 긴 것이 **둘 다** 있어야 대화가 리듬을 갖는다.
+TALK_SHORT = 20
+TALK_LONG = 55
+
+LIMITS = {
+    "new":   3,     # 이 덩어리가 세계에 더해야 하는 최소한의 새 고유물
+    "back":  2,     # 앞에서 나온 소품 중 다시 만져야 하는 최소한의 수
+    "long":  1,     # 긴 대사(설명·변명·수다·헛소리)가 적어도 하나
+    "short": 2,     # 짧은 대사(끊고 받아치는 것)가 적어도 둘
+}
+
+# 원장에서 소품으로 세는 칸. 시간(time)은 이름이 아니라 서술이라 뺀다.
+BUCKETS = ("people", "places", "objects", "facts")
+
+
+def props(ledger: dict) -> list[str]:
+    """지금까지 세계에 놓인 것들의 이름."""
+    out = []
+    for b in BUCKETS:
+        out.extend(str(k) for k in (ledger.get(b) or {}))
+    return out
+
+
+def added(before: dict, after: dict) -> list[str]:
+    """이 덩어리가 새로 놓은 것들."""
+    old = set(props(before))
+    return [p for p in props(after) if p not in old]
+
+
+def touched(text: str, names: list[str]) -> list[str]:
+    """본문이 실제로 만진 이름들. 원장에 적혀 있는 것과 글에 나온 것은 다르다."""
+    return [n for n in dict.fromkeys(names) if len(n) >= 2 and n in text]
+
+
+def cold(ledger: dict, recent: str, keep: int = 12) -> list[str]:
+    """**식은 소품** -- 원장에는 있는데 최근 글에는 없는 것. 확산의 연료가 여기 있다."""
+    return [p for p in props(ledger) if len(p) >= 2 and p not in recent][-keep:]
+
+
+def talk(text: str) -> tuple[int, int]:
+    """대사줄을 짧은 것과 긴 것으로 나눠 센다."""
+    short = long = 0
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or not _QUOTE.match(line):
+            continue
+        if len(line) >= TALK_LONG:
+            long += 1
+        elif len(line) <= TALK_SHORT:
+            short += 1
+    return short, long
+
+
+def measure(text: str, before: dict, after: dict) -> dict:
+    short, long = talk(text)
+    return {"new": len(added(before, after)),
+            "back": len(touched(text, props(before))),
+            "short": short, "long": long}
+
+
+def check(text: str, before: dict, after: dict) -> list[str]:
+    """옅어진 자리만 사람 말로 돌려준다."""
+    m = measure(text, before, after)
+    old = props(before)
+    out = []
+
+    if m["new"] < LIMITS["new"]:
+        out.append(f"이 덩어리가 세계에 더한 것이 {m['new']}개뿐이다. "
+                   f"{LIMITS['new']}개는 넘겨라 -- 새 사람, 새 장소, 새 물건, 새 사실. "
+                   f"이름과 연도와 상표를 대라. 설명만 하지 말고 세계를 늘려라")
+
+    # 되돌아옴은 **되돌아올 것이 쌓인 뒤에만** 따진다. 첫 덩어리에 회수를 요구할 수는 없다.
+    if len(old) >= 4 and m["back"] < LIMITS["back"]:
+        fuel = cold(before, text)
+        out.append(f"앞에서 나온 것 중 이 덩어리가 다시 만진 것이 {m['back']}개뿐이다. "
+                   f"{LIMITS['back']}개는 다시 만져라 -- 그런데 **똑같이 쓰지 말고 한 단계 "
+                   f"키워라.** 그때 그냥 놓여 있던 물건이 이번엔 쓰이거나, 망가지거나, "
+                   f"다른 사람 손에 있거나, 그것 때문에 일이 생긴다"
+                   + (f". 식은 것들: {' · '.join(fuel[:8])}" if fuel else ""))
+
+    if m["long"] < LIMITS["long"]:
+        out.append(f"{TALK_LONG}자 넘는 긴 대사가 {m['long']}개다. 적어도 {LIMITS['long']}개는 "
+                   f"넣어라 -- 누가 한 번은 길게 떠들어야 한다. 변명이든 수다든 아무도 안 "
+                   f"물어본 내력이든. **대사로 이야기를 진행시켜라.** 상황 설명으로 넘기지 마라")
+
+    if m["short"] < LIMITS["short"]:
+        out.append(f"{TALK_SHORT}자 이하 짧은 대사가 {m['short']}개다. {LIMITS['short']}개는 "
+                   f"넘겨라 -- 끊고, 받아치고, 딴소리하는 짧은 말이 긴 대사 사이에 있어야 한다")
+    return out
+
+
+def score(text: str, before: dict, after: dict) -> float:
+    """옅은 정도. 낮을수록 짙다."""
+    m = measure(text, before, after)
+    s = max(0, LIMITS["new"] - m["new"]) * 0.2
+    if len(props(before)) >= 4:
+        s += max(0, LIMITS["back"] - m["back"]) * 0.2
+    s += max(0, LIMITS["long"] - m["long"]) * 0.15
+    s += max(0, LIMITS["short"] - m["short"]) * 0.1
+    return s

@@ -35,6 +35,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from novel import drive as D                                          # noqa: E402
+from novel import diffusion                                           # noqa: E402
 from novel import rhythm                                              # noqa: E402
 from novel import style                                               # noqa: E402
 
@@ -71,8 +72,13 @@ STRICT = ("나이", "키", "혈액형", "생일", "몸무게", "연도", "번호
 SIMILAR = 0.55        # 이만큼 닮았으면 같은 것을 더 자세히 말한 것으로 본다
 
 CHUNK = 1400
-MAX_REWRITE = 2          # 모순으로 기각됐을 때 다시 쓰는 횟수
-TAIL = 900               # 다음 덩어리에 넘기는 꼬리 길이
+# 다시 쓰는 횟수. 모순·리듬·농도가 이 예산을 함께 쓴다. 둘이던 것을 셋으로 올렸다 --
+# 재는 자가 늘었는데 예산이 그대로면 첫 지적만 고치고 끝난다.
+MAX_REWRITE = 3
+# 다음 덩어리에 넘기는 꼬리. 900자였는데, 그러면 세 덩어리 앞의 소품이 창 밖으로 빠지고
+# 점층이 매번 새로 시작한다(실측: "갈 수록 농도가 얕아져"). 식은 소품은 diffusion 이
+# 이름으로 따로 올려주지만, 꼬리 자체도 한 뼘 늘려 둔다.
+TAIL = 1200
 
 FIRST = ("그를 처음 만난 건, 크리스마스 이브의 아이슬란드, "
          "레이캬비크에서 차로 한 시간쯤 떨어진 작은 양조장에서였다.")
@@ -185,6 +191,41 @@ def brief(ledger: dict, limit: int = 40) -> str:
 
 # ---------------------------------------------------------------- 프롬프트
 
+def _diffuse(book: dict) -> str:
+    """**확산 지시** -- 뒤로 갈수록 옅어지는 것을 여기서 막는다.
+
+    다음 덩어리에게 넘어가는 것은 꼬리 900자뿐이라, 세 덩어리 앞의 소품은 창 밖으로
+    빠진다. 그래서 **식은 소품을 이름으로 짚어 다시 올려준다.** 원장을 제약이 아니라
+    재료로 쓰는 자리가 여기다.
+    """
+    fuel = diffusion.cold(book["ledger"], "".join(book["chunks"])[-TAIL:])
+    pick = ("  * 이번에 다시 만질 것 -- " + " · ".join(fuel[:8]) + "\n"
+            "    이 중 **둘 이상**을 다시 꺼내되, 똑같이 쓰지 마라. 한 단계 키운다:\n"
+            "      그냥 놓여 있던 것이 → 쓰이거나 · 망가지거나 · 없어지거나 ·\n"
+            "      다른 사람 손에 있거나 · 그것 때문에 일이 생긴다\n") if fuel else ""
+    return f"""[확산] **이야기는 뒤로 갈수록 짙어져야 한다 -- 옅어지면 실패다.**
+
+한 덩어리는 세계를 **넓히고(새것)** 동시에 **깊게 한다(앞엣것을 키운다).** 둘 중 하나만
+하면 산만해지거나 제자리를 돈다. 이건 재서 판정한다:
+
+  * 새로 놓는 것 **{diffusion.LIMITS['new']}개 이상** -- 새 사람, 새 장소, 새 물건, 새 사실.
+    이름과 연도와 상표를 대라. 상황 설명으로 분량을 채우지 마라.
+  * 앞에서 나온 것 **{diffusion.LIMITS['back']}개 이상**을 다시 만진다.
+{pick}
+[대사가 이야기다] **설명으로 넘기지 말고 말로 진행시켜라.**
+  * 긴 대사 **{diffusion.LIMITS['long']}개 이상**({diffusion.TALK_LONG}자 넘게) -- 누가 한 번은
+    길게 떠든다. 변명이든, 수다든, 아무도 안 물어본 집안 내력이든, 틀린 지식이든.
+    **소품의 유래는 서술이 아니라 이 자리에서 나온다.**
+  * 짧은 대사 **{diffusion.LIMITS['short']}개 이상**({diffusion.TALK_SHORT}자 이하) -- 끊고,
+    받아치고, 딴소리한다. 긴 것과 짧은 것이 번갈아야 대화가 리듬을 갖는다.
+  * **이상한 대화를 해라.** 지금 상황과 상관없는 것을 궁금해하고, 엉뚱한 데서 정색하고,
+    농담을 무표정하게 던진다. 용건만 오가는 대사가 제일 재미없다.
+
+[전환] **외현에서 내현으로.** 이 덩어리 어딘가에서 한 번은 넘어가라 -- 사물·풍경·행동을
+보다가 생각·기억·잃어버린 것으로. 그 자리에서만 넘어간다. 넘어가는 지점은 매번 달라야
+한다."""
+
+
 def write_prompt(book: dict, feedback: str = "") -> str:
     tail = "".join(book["chunks"])[-TAIL:]
     opening = not book["chunks"]
@@ -222,16 +263,17 @@ def write_prompt(book: dict, feedback: str = "") -> str:
 - 실패한 것은 실패한 채로 둬라. 잃은 것을 뒤에서 돌려주지 마라.
 - 몸은 회복이 느리고, 돈은 모자라고, 날씨는 사정을 봐주지 않는다.
 
-[세계 — 지금까지 확정된 것]
+[세계 — 지금까지 놓인 것들]
 {brief(book['ledger'])}
-  * 여기 적힌 것과 어긋나게 쓰지 마라. 나머지는 전부 자유다.
+  * 이건 금지 목록이 아니라 **연료다.** 여기 있는 것을 다시 꺼내 쓰는 것이 이 소설의
+    본체다. 어긋나게만 쓰지 마라 -- 나머지는 전부 자유다.
   * 여기 없는 것은 **새로 지어내도 된다.** 지어냈으면 자세히 지어내라 -- 이름, 연도,
     누가 지었는지, 왜 그렇게 불리는지.
   * 인물이 새로 나오면 **그 자리에서 사람을 만들어라.** 나이와 키, 성격, 가족, 과거,
     트라우마, 좋아하는 것, 취미, 전공, 직업, 말투, 버릇까지. 전부 한 번에 늘어놓지는 마라 --
     지금 필요한 두세 개만 문장에 녹이고, 나머지는 뒤에서 하나씩 드러낸다.
 
-{OPENING if opening else ''}
+{OPENING if opening else _diffuse(book)}
 
 {'[첫 문장 — 이것으로 시작하라]' if opening else '[지금까지의 끝부분]'}
 {book['first'] if opening else '...' + tail}
@@ -306,24 +348,25 @@ def step(book: dict, llm, log=None) -> dict:
         probe = json.loads(json.dumps(book["ledger"]))     # 시험용 사본
         clashes = _merge(probe, delta)
         if not clashes:
-            limp = rhythm.check(text)
+            limp = (rhythm.check(text)
+                    + diffusion.check(text, book["ledger"], probe))
+            mark = rhythm.score(text) + diffusion.score(text, book["ledger"], probe)
             if limp and attempt <= MAX_REWRITE:
-                mark = rhythm.score(text)
                 if best is None or mark < best[0]:
                     best = (mark, text, probe)
-                D._log(f"[flow] 리듬 {len(limp)}건 -- 다시 쓴다 ({attempt}/{MAX_REWRITE}): "
-                       f"{limp[0][:70]}")
-                feedback = ("\n[직전 시도의 리듬 — 재서 나온 숫자다. 이것만 고쳐라]\n"
+                D._log(f"[flow] 농도·리듬 {len(limp)}건 -- 다시 쓴다 "
+                       f"({attempt}/{MAX_REWRITE}): {limp[0][:70]}")
+                feedback = ("\n[직전 시도를 재서 나온 숫자다. 이것만 고쳐라]\n"
                             + "\n".join(f"  · {c}" for c in limp)
-                            + "\n  내용과 사건은 그대로 좋다. 문장 길이와 대사만 손봐라.\n")
+                            + "\n  사건은 그대로 좋다. **줄이지 말고 늘려라** -- 세계를 더 놓고,"
+                              " 앞엣것을 다시 꺼내고, 말을 더 시켜라.\n")
                 continue
             if limp:
-                mark = rhythm.score(text)
                 if best is not None and best[0] < mark:
                     text, probe = best[1], best[2]
-                    D._log("[flow] 리듬을 끝내 못 고쳤다 -- 그중 나은 것을 채택한다")
+                    D._log("[flow] 끝내 못 고쳤다 -- 그중 제일 짙은 것을 채택한다")
                 else:
-                    D._log("[flow] 리듬을 끝내 못 고쳤다 -- 그대로 채택한다")
+                    D._log("[flow] 끝내 못 고쳤다 -- 그대로 채택한다")
             book["ledger"] = probe
             book["chunks"].append(text)
             D._log(f"[flow] 덩어리 {len(book['chunks'])} · {len(text):,}자 · "
@@ -333,7 +376,8 @@ def step(book: dict, llm, log=None) -> dict:
                f"{clashes[0][:80]}")
         feedback = ("\n[직전 시도가 기각된 이유 — 앞에서 쓴 것과 어긋난다]\n"
                     + "\n".join(f"  · {c}" for c in clashes)
-                    + "\n  이것만 고쳐라. 나머지는 자유다.\n")
+                    + "\n  **이것만** 고쳐라. 나머지는 자유다 -- 몸을 사리지 말고,"
+                      " 사건도 대사도 소품도 앞서와 같은 밀도로 그대로 가라.\n")
     if best is not None:              # 모순은 못 풀었지만 리듬만 걸린 후보가 있다
         book["ledger"] = best[2]
         book["chunks"].append(best[1])
