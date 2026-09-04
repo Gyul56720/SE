@@ -146,8 +146,8 @@ ok(not flow._merge(_led, {"words": {"꿉꿉하다": "아주 다른 뜻"}}),
 ok("지어낸 말" in flow.brief(_led), "브리핑에 실려 다음 덩어리가 뜻을 지킨다")
 ok("지어낸 낱말은 words 에" in flow.extract_prompt("x"), "추출기가 낱말을 뽑는다")
 _mid3 = flow.blank(); _mid3["chunks"] = ["앞."]
-ok("없는 낱말을 만들고 변명을 달아라" in " ".join(flow.write_prompt(_mid3).split()),
-   "확산 지시에도 실린다")
+ok("없는 낱말을 만들고 변명을 단다" in " ".join(flow.write_prompt(_mid3).split()),
+   "[잡소리] 항목에 실린다  ← 매 덩어리의 칸이 아니라 개그 자리의 한 수다")
 
 print()
 if fails:
