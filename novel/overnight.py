@@ -422,6 +422,66 @@ def main() -> int:
             except Exception:                                         # noqa: BLE001
                 pass
 
+    # ------------------------------------------------------------ 마무리 루프
+    # **예산이 남아 있는데 미완인 씬이 있으면 계속 돈다.**
+    #
+    # 블록 루프는 블록을 한 번씩만 지나간다. 그래서 앞 블록에서 막힌 씬은 뒤 블록이 도는
+    # 동안 그대로 남고, 블록이 다 끝나면 예산이 몇 시간 남아도 런이 끝났다(실측: 12씬 중
+    # 3씬이 막힌 채 220초 만에 종료). drive(rounds=) 가 한 호출 안에서 세 바퀴를 돌지만
+    # 그것도 그 호출 안에서만이다.
+    #
+    # 여기서는 **남은 예산을 다 쓸 때까지** 다시 돈다. 한 바퀴에 아무것도 못 고치면
+    # 멈춘다 -- 진전 없이 같은 실패를 무한 반복하는 것은 예산을 태우는 것일 뿐이다.
+    sweep = 0
+    while time.time() < deadline:
+        # **조립조차 안 된 블록이 있으면 먼저 조립한다.** 블록 루프가 예산이나 예외로
+        # 건너뛴 블록은 씬이 하나도 없어서 아래 drive 가 채울 대상 자체를 못 갖는다 --
+        # 그러면 "미완 0씬" 으로 보이고 10화 중 6화만 쓴 채 끝난다.
+        for spec in (OUTCOMES[:a.blocks] if a.blocks else OUTCOMES):
+            tag = f"ep{spec['eps'][0]:03d}_"
+            if any(sc.id.startswith(tag) for sc in novel.scenes):
+                continue
+            if time.time() >= deadline:
+                break
+            D._log(f"[{_now()}] 마무리: {spec['eps'][0]}~{spec['eps'][1]}화 가 "
+                   f"조립조차 안 됐다 -- 지금 조립한다")
+            D.EPISODE_DEADLINE = deadline
+            try:
+                novel.scenes.extend(D.build_episode(novel, spec, llm, a.max_repairs, log))
+                novel.save(path)
+            except Exception:                                         # noqa: BLE001
+                D._log(f"[{_now()}] 마무리 조립 실패 -- 넘어간다\n"
+                       f"{traceback.format_exc()[-400:]}")
+
+        left = [sc for sc in novel.scenes
+                if sc.status != "verified"
+                and not (a.upto_episode and sc.episode > a.upto_episode)]
+        if not left:
+            break
+        sweep += 1
+        D.EPISODE_DEADLINE = deadline          # 마무리에서는 회차 상한을 걸지 않는다
+        D._log(f"\n[{_now()}] === 마무리 {sweep}회차 -- 미완 {len(left)}씬 "
+               f"(남은 예산 {(deadline - time.time()) / 3600:.1f}시간) ===")
+        before = sum(1 for sc in novel.scenes if sc.status == "verified")
+        try:
+            r = D.drive(novel, str(path), llm=llm, max_repairs=a.max_repairs, log=log,
+                        skip_blocked=a.skip_blocked, upto_episode=a.upto_episode,
+                        rounds=a.rounds)
+        except Exception as e:                                        # noqa: BLE001
+            D._log(f"[{_now()}] 마무리 {sweep}회차 예외 -- 멈춘다\n"
+                   f"{traceback.format_exc()[-500:]}")
+            break
+        gained = sum(1 for sc in novel.scenes if sc.status == "verified") - before
+        D._log(f"[{_now()}] 마무리 {sweep}회차: {r['status']} · 이번에 {gained}씬 채움")
+        try:
+            novel.save(path)
+        except Exception:                                             # noqa: BLE001
+            pass
+        if gained <= 0:
+            D._log(f"[{_now()}] 진전이 없다 -- 마무리를 멈춘다 "
+                   f"(같은 실패를 반복하는 것은 예산을 태우는 것일 뿐이다)")
+            break
+
     ver = sum(1 for s in novel.scenes if s.status == "verified")
     chars = sum(len(s.prose or "") for s in novel.scenes)
     stuck = [{"id": s.id, "episode": s.episode, "why": (s.violations or [""])[0][:160]}
