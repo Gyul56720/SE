@@ -220,9 +220,10 @@ def _refuse_if_running(path: Path) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser(description="야간 소설 러너")
     ap.add_argument("--hours", type=float, default=7.0)
-    ap.add_argument("--world", default="romance", choices=("romance", "probe"),
-                    help="probe 는 3화짜리 최소 세계다. 인물·비밀·관문은 같고 결말만 "
-                         "하나 -- 배선을 싸게(디렉터 8회) 확인할 때 쓴다")
+    ap.add_argument("--world", default="romance",
+                    choices=("romance", "probe", "seeded"),
+                    help="probe 는 3화짜리 최소 세계. seeded 는 novel/seed.py 가 "
+                         "뽑은 씨앗을 편 세계다(먼저 world_seeded.py --new)")
     ap.add_argument("--path", default="",
                     help="원고 경로. 비우면 세계마다 다른 기본값을 쓴다 -- "
                          "탐침과 본편이 같은 파일을 쓰면 서로를 덮어쓴다")
@@ -259,11 +260,17 @@ def main() -> int:
     if a.world == "probe":
         from novel import world_probe
         OUTCOMES, build = world_probe.OUTCOMES, world_probe.build
+    elif a.world == "seeded":
+        from novel import world_seeded
+        sd = world_seeded.load_seed()
+        OUTCOMES, build = world_seeded.outcomes(sd), (lambda: world_seeded.build(sd))
+        D._log(f"[{_now()}] 씨앗 {sd['id']} -- {world_seeded.S.title_hint(sd)}")
 
     deadline = time.time() + a.hours * 3600
     # 세계마다 다른 파일. 같은 파일을 쓰면 탐침 한 번이 본편 원고를 지운다.
-    path = Path(a.path or (HERE / ("probe.json" if a.world == "probe"
-                                   else "romance.json")))
+    path = Path(a.path or (HERE / {"probe": "probe.json",
+                                   "seeded": "seeded.json"}.get(a.world,
+                                                               "romance.json")))
     log = path.with_suffix(".scenes.jsonl")
     report = path.with_suffix(".overnight.json")
 

@@ -193,6 +193,9 @@ class Novel:
     scenes: list = field(default_factory=list)
     # 화자가 이미 알고 있는 미래. Narrator 가 가끔 흘려 회고의 아이러니를 만든다.
     narrator_foreknowledge: list = field(default_factory=list)
+    # 문장의 색. 씨앗이 정하고 화자 프롬프트가 실행한다 -- 세계마다 문체가 달라야
+    # 200화를 넘겨도 같은 목소리로 수렴하지 않는다.
+    voice: str = ""
     # 확립된 사실 원장. 모순 검사의 기준이 된다.
     facts: dict = field(default_factory=dict)
     # 관계 원장의 **캐시**. 진실은 씬의 relation_ops 이고 derive_relations() 가 도출한다.
@@ -215,6 +218,7 @@ class Novel:
             scenes=[Scene(**{**s, "turns": [Turn(**t) for t in s.get("turns", [])]})
                     for s in raw.get("scenes", [])],
             narrator_foreknowledge=raw.get("narrator_foreknowledge", []),
+            voice=raw.get("voice", ""),
             facts=raw.get("facts", {}),
             relations=[Relation(**r) for r in raw.get("relations", [])],
             fact_log=[Fact(**f) for f in raw.get("fact_log", [])],

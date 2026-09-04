@@ -1068,6 +1068,7 @@ def narrator_prompt(novel, scene, feedback="") -> str:
     return f"""수집된 로그를 1인칭 회고 산문으로 직조한다.
 
 [화자] {novel.pov_character} — 반드시 "나는 ~했다" 시점
+{f"[문장의 색] {novel.voice}" if getattr(novel, "voice", "") else ""}
 [무대] {scene.location} / [감각] {scene.punctum}
 {_direction(scene)}[로그]
 {logs}
