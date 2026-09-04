@@ -167,6 +167,21 @@ ok(blocked and blocked[0].violations,
    f"막힌 씬은 위반을 그대로 갖고 있다 ({blocked[0].violations[:1] if blocked else '없음'})"
    "  ← 넘어가되 무엇이 막혔는지 잃지 않는다")
 
+print("[한 회차] upto_episode 로 1화만 돌릴 수 있는가")
+
+
+class CleanFake:
+    def __call__(self, prompt):
+        return GOOD_PROSE if "산문만 출력한다" in prompt else TURN
+
+
+nv4 = make(3)                                   # 1화·2화·3화 각 1씬
+r4 = D.drive(nv4, None, llm=CleanFake(), max_repairs=1, upto_episode=1)
+ok(r4["verified"] == 1, f"1화만 채운다 ({r4})")
+ok(r4["remaining"] == 0, f"남은 것 계산도 그 범위 안에서 센다 ({r4['remaining']})")
+ok([s.status for s in nv4.scenes] == ["verified", "pending", "pending"],
+   f"2·3화는 손대지 않는다 ({[s.status for s in nv4.scenes]})")
+
 print("[V009] 산문 수리로 못 고치는 관계 선언은 경계에서 버린다")
 print("      ← 시험 런의 실제 사인: 관계 구성원이 두 사람이 아니다: []  (4시도 111초 실패)")
 nv3 = build()

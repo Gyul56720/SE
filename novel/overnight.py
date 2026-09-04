@@ -181,6 +181,9 @@ def main() -> int:
                     help="진행 상황을 Discord 로 보낸다 (DISCORD_BOT_TOKEN + "
                          "DISCORD_CHANNEL_ID 또는 DISCORD_WEBHOOK_URL)")
     ap.add_argument("--no-discord", action="store_true")
+    ap.add_argument("--upto-episode", type=int, default=0,
+                    help="여기까지의 회차만 산문을 채운다 (0 = 전부). 1 이면 1화만 -- "
+                         "산문이 실제로 나오는지 가장 빨리 확인하는 방법이다")
     ap.add_argument("--blocks", type=int, default=0,
                     help="결말 블록을 몇 개까지 처리하고 멈출 것인가 (0 = 전부). "
                          "1 이면 1~10화만 끝내고 종료한다 -- 밤을 걸기 전에 한 블록으로 "
@@ -255,7 +258,7 @@ def main() -> int:
             # **막힌 씬 하나가 열다섯 화를 세우지 않게 한다.** 자는 동안에는 사람이
             # 풀어줄 수 없으므로 넘어가고 아침에 본다.
             r = D.drive(novel, str(path), llm=llm, max_repairs=a.max_repairs, log=log,
-                        skip_blocked=a.skip_blocked)
+                        skip_blocked=a.skip_blocked, upto_episode=a.upto_episode)
             # **여기가 요점: 실패해도 다음 에피소드로 간다.** 자는 동안 break 하면
             # 남은 시간이 통째로 낭비된다.
             (done if r["status"] == "done" else failed).append(

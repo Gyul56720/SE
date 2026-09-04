@@ -922,7 +922,7 @@ def run_scene(novel, scene, llm, max_repairs=MAX_REPAIRS, log=None) -> dict:
 
 
 def drive(novel, path, llm=None, max_repairs=MAX_REPAIRS, log=None, limit=None,
-          skip_blocked: int = 0) -> dict:
+          skip_blocked: int = 0, upto_episode: int = 0) -> dict:
     """미완 씬들을 차례로 몰아붙인다. 씬마다 즉시 저장한다.
 
     skip_blocked -- 막힌 씬을 몇 개까지 넘어갈 것인가. 기본 0 은 예전 그대로 **첫 실패에서
@@ -935,7 +935,12 @@ def drive(novel, path, llm=None, max_repairs=MAX_REPAIRS, log=None, limit=None,
     다음 씬으로 간다. 구멍은 아침에 read.py 로 보이고 그 회차만 다시 돌리면 된다.
 
     넘어간 씬은 status="failed" 와 violations 를 그대로 갖고 있어 무엇이 막혔는지 잃지
-    않는다."""
+    않는다.
+
+    upto_episode -- 여기까지의 회차만 채운다(0 이면 전부). 한 회차만 돌려보고 산문이 실제로
+    나오는지 확인하는 데 쓴다. 씬 수(limit)가 아니라 **회차**로 자르는 이유: 회차의 끝
+    씬에서만 도는 관문(V016 클리프행어·V017 회차 마무리·V019 분량)이 있어서, 씬 수로
+    자르면 회차가 중간에 끊겨 그 관문들이 판정할 대상 자체를 못 갖는다."""
     llm = llm or default_llm      # 콜러블 하나 또는 {역할: 콜러블} dict
     log = log or (Path(path).with_suffix(".scenes.jsonl") if path else None)
     _record(log, {"event": "start", "at": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -949,7 +954,8 @@ def drive(novel, path, llm=None, max_repairs=MAX_REPAIRS, log=None, limit=None,
     attempted: set = set()
     while True:
         scene = next((sc for sc in novel.scenes
-                      if sc.status != "verified" and sc.id not in attempted), None)
+                      if sc.status != "verified" and sc.id not in attempted
+                      and not (upto_episode and sc.episode > upto_episode)), None)
         if scene is None or (limit and done + failed >= limit):
             break
         attempted.add(scene.id)
@@ -968,6 +974,8 @@ def drive(novel, path, llm=None, max_repairs=MAX_REPAIRS, log=None, limit=None,
 
     out = {"status": "done" if failed == 0 else ("partial" if done else "blocked"),
            "verified": done, "failed": failed,
-           "remaining": sum(1 for s in novel.scenes if s.status != "verified")}
+           "remaining": sum(1 for s in novel.scenes
+                            if s.status != "verified"
+                            and not (upto_episode and s.episode > upto_episode))}
     _record(log, {"event": "end", "at": time.strftime("%Y-%m-%d %H:%M:%S"), **out})
     return out
