@@ -27,7 +27,8 @@ BIPOLAR = ("narrative_pull",)
 
 # 검사기가 실제로 구현된 게이트 종류. 표에는 있는데 여기 없으면 "선언은 되지만 강제되지
 # 않는다" 는 뜻이고, derive_gates 가 그것을 soft 문제로 보고한다.
-IMPLEMENTED_GATES = ("absence", "absence_physical", "lift_absence", "not_before",
+IMPLEMENTED_GATES = ("timeline_branch",
+                     "absence", "absence_physical", "lift_absence", "not_before",
                      "knowledge_grant", "knowledge_grant_covert", "stale_fact",
                      "relation_start", "relation_end", "suspend_absence",
                      "belief", "public_fiction", "public_fiction_break")
@@ -134,6 +135,19 @@ class Scene:
     scale: int = 0                   # 이 씬이 다루는 사건 규모 1~5 (arc.SCALES)
     cliffhanger: str = ""            # 회차 끝이면 5대 공식 중 하나 (arc.CLIFFHANGERS)
     is_episode_end: bool = False     # 이 씬이 회차의 마지막인가
+    # --- 시간선 좌표 --------------------------------------------------------
+    # **모순을 없애는 방법은 좌표를 하나 더 주는 것이다.**
+    #
+    # misbelieve 가 그랬다. "설윤은 X 를 믿는데 사실은 Y" 는 진실과 믿음을 분리하기 전에는
+    # 모순이었다. 축을 갈랐더니 둘 다 참이 됐다.
+    #
+    # 시간 되감기도 같다. "설윤이 X 를 안다" 와 "설윤이 X 를 모른다" 가 모순인 것은 어느
+    # 시간선인지가 없기 때문이다. branch 를 주면 둘 다 참이다 -- 원장은 그 씬이 속한
+    # 시간선의 조상만 본다.
+    #
+    # branch 0 이 원래 시간선이다. rewind 가 일어나면 그 뒤 씬들이 branch 1 로 간다.
+    # 되감은 사람은 기억을 갖고 넘어온다(carry) -- 그것이 이 장치의 존재 이유다.
+    branch: int = 0
     # --- 압박과 능동 (2026-09-04 피드백: "주인공이 수동적이고 시간 압박이 없다") ---
     # 역방향 조립은 **무엇이 참이 되는가**(establishes)만 물었다. 누가 그것을 했는지 묻지
     # 않았으므로 조건이 저절로 성립하고 화자는 구경했다. 그것이 수동성의 기계적 원인이다.
@@ -207,6 +221,36 @@ class Novel:
             dynamic_gates=[DynamicGate(**g) for g in raw.get("dynamic_gates", [])],
             revision_budget=raw.get("revision_budget", 2))
 
+    def timeline(self, upto_idx: int = None) -> tuple:
+        """어느 씬이 **지금 시간선에 남아 있는가**, 그리고 누가 기억을 갖고 넘어왔는가.
+
+        반환 (살아 있는 씬 인덱스 집합, 기억을 나른 사람 -> 지워진 씬 인덱스 집합).
+
+        **이것이 시간 되감기의 모순을 없애는 자리다.** misbelieve 가 진실과 믿음을 갈라
+        "설윤은 X 를 믿는데 사실은 Y" 를 모순이 아니게 만든 것과 같은 수법이다. 여기서는
+        시간선을 좌표로 준다 -- 지워진 씬에서 일어난 일은 이 시간선에 없으므로, "그 관계가
+        시작됐다" 와 "그런 적 없다" 가 동시에 참일 수 있다.
+
+        carry 가 심장이다. 되감은 사람만 지워진 구간의 기억을 갖고 넘어오고, 그 비대칭이
+        정보 격차를 통째로 만든다 -- 그가 아는 것을 아무도 모르는 상태가 곧 서스펜스다.
+        """
+        end = len(self.scenes) - 1 if upto_idx is None else upto_idx
+        erased: set = set()
+        carried: dict = {}
+        for i in range(max(0, end + 1)):
+            for op in (self.scenes[i].world_ops or []):
+                if not isinstance(op, dict) or op.get("event") != "rewind":
+                    continue
+                back = self.scene_index(str(op.get("back_to") or ""))
+                if back < 0:
+                    back = i                      # 대상을 못 찾으면 이 씬만 지운다
+                span = set(range(back, i + 1))
+                erased |= span
+                for who in (op.get("carry") or []):
+                    carried.setdefault(who, set()).update(span)
+        live = {i for i in range(max(0, end + 1)) if i not in erased}
+        return live, carried
+
     def derive_gates(self, upto_idx: int = None) -> tuple:
         """씬의 world_ops 에서 동적 게이트를 생성한다. 반환 (게이트 목록, 문제 목록).
 
@@ -219,8 +263,14 @@ class Novel:
         from . import verbs as V
         end = len(self.scenes) - 1 if upto_idx is None else upto_idx
         gates, problems, n, spent = [], [], 0, 0
+        # 되감기로 지워진 씬의 사건은 **이 시간선에 없다.** 그것을 게이트로 만들면
+        # 일어나지 않은 일이 이후 씬을 계속 기각한다 -- 되감기가 서사 장치가 아니라
+        # 오류 발생기가 된다.
+        live, _ = self.timeline(end)
 
         for idx in range(max(0, end + 1)):
+            if idx not in live:
+                continue
             sc = self.scenes[idx]
             for op in sc.world_ops or []:
                 bad = V.validate_op(op)          # 객체가 아니면 위반으로 보고하고 넘어간다
@@ -363,7 +413,10 @@ class Novel:
                                 "members": members})
             return out
 
+        live, _ = self.timeline(end)
         for idx in range(max(0, end + 1)):
+            if idx not in live:
+                continue                      # 지워진 씬의 관계 변화는 없던 일이다
             sc = self.scenes[idx]
             for op in rel_ops_of(sc):
                 kind, members = op.get("kind", ""), list(op.get("members", []))

@@ -30,6 +30,21 @@ def V(layer, params, gate, en, budget=False, reversible=None, note=""):
 
 
 VERBS = {
+    # ---- 시간선 (마술적 리얼리즘) -------------------------------------------
+    # 되감기는 **좌표를 만드는 사건**이다. 이 뒤의 씬은 새 시간선에 놓이고, 원장은
+    # 시간선의 조상만 본다 -- 그래서 지워진 일과 남은 기억이 모순이 아니게 된다.
+    #
+    # carry 가 이 장치의 심장이다. 되감은 사람만 기억을 갖고 넘어오고, 그 비대칭이
+    # 정보 격차(V016)를 통째로 만든다. cost/limit 는 씨앗이 요구하는 규율이다 --
+    # 대가와 한계가 없는 되감기는 긴장을 죽인다.
+    "rewind": V("시간", ("who", "carry", "cost", "back_to"), "timeline_branch",
+                "rewind time back to scene `back_to`; scenes in between are "
+                "erased; only people in `carry` keep their memories; "
+                "the rewinder pays `cost`",
+                budget=True,
+                note="되감기. carry 에 적힌 인물만 기억을 갖고 넘어온다. "
+                     "budget=True -- 횟수가 한정돼야 긴장이 산다"),
+
     # ============================================================ 1 · 존재
     "introduce": V("existence", ("who",), "not_before_existence",
                    "character enters the story; may not be known in earlier scenes"),

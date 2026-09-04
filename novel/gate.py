@@ -398,6 +398,19 @@ def _knowers(novel, term: str, upto_scene: str) -> set:
             out.add(c.name)
     idx = novel.scene_index(upto_scene)
     gates, _ = novel.derive_gates(idx)
+    # **기억을 갖고 넘어온 사람은 지워진 구간의 것도 안다.** 그 비대칭이 이 장치의 요점이다
+    # -- 그가 아는 것을 아무도 모르는 상태가 곧 정보 격차이고, 그것을 지식 누출로 잡으면
+    # 되감기 서사가 통째로 성립하지 않는다.
+    live, carried = novel.timeline(idx)
+    for who, span in carried.items():
+        for j in span:
+            if j > idx:
+                continue
+            for op in (novel.scenes[j].world_ops or []):
+                if not isinstance(op, dict) or op.get("term") != term:
+                    continue
+                if op.get("event") in ("reveal", "overhear", "secret_pact"):
+                    out.add(who)
     for g in gates:
         if novel.scene_index(g.from_scene) > idx:
             continue
