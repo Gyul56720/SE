@@ -901,18 +901,38 @@ def run_scene(novel, scene, llm, max_repairs=MAX_REPAIRS, log=None) -> dict:
             "violations": [str(v) for v in hard], "seconds": round(time.time() - t0, 2)}
 
 
-def drive(novel, path, llm=None, max_repairs=MAX_REPAIRS, log=None, limit=None) -> dict:
-    """미완 씬들을 차례로 몰아붙인다. 씬마다 즉시 저장한다."""
+def drive(novel, path, llm=None, max_repairs=MAX_REPAIRS, log=None, limit=None,
+          skip_blocked: int = 0) -> dict:
+    """미완 씬들을 차례로 몰아붙인다. 씬마다 즉시 저장한다.
+
+    skip_blocked -- 막힌 씬을 몇 개까지 넘어갈 것인가. 기본 0 은 예전 그대로 **첫 실패에서
+    멈춘다**: 대화형으로 돌릴 때는 막힌 씬을 넘기면 구멍 난 원고가 조용히 쌓이므로 거기서
+    멈추고 사람이 보는 편이 낫다.
+
+    무인 야간 런은 반대다. 씬 하나가 관문에 막혔다고 그 뒤 29씬을 손도 못 대면 **열다섯
+    화가 통째로 선다** -- 2026-09-04 시험 런이 정확히 그랬다(111초 만에 blocked,
+    verified 0). 자는 동안 사람이 풀어줄 수 없으므로, 막힌 것은 failed 로 남겨 기록하고
+    다음 씬으로 간다. 구멍은 아침에 read.py 로 보이고 그 회차만 다시 돌리면 된다.
+
+    넘어간 씬은 status="failed" 와 violations 를 그대로 갖고 있어 무엇이 막혔는지 잃지
+    않는다."""
     llm = llm or default_llm      # 콜러블 하나 또는 {역할: 콜러블} dict
     log = log or (Path(path).with_suffix(".scenes.jsonl") if path else None)
     _record(log, {"event": "start", "at": time.strftime("%Y-%m-%d %H:%M:%S"),
                   "title": novel.title, "scenes": len(novel.scenes)})
 
     done, failed = 0, 0
+    # **이번 호출에서 이미 시도한 씬.** next_pending() 은 "verified 가 아닌 첫 씬" 을
+    # 돌려주므로, 막힌 씬을 넘어가려 해도 다음 회차에 같은 씬을 또 집어온다 -- 넘어가는
+    # 것이 아니라 무한 루프가 된다(내 회귀 검사가 실측으로 잡았다: 같은 씬을 999번 넘게
+    # "넘어간다" 고 찍었다). 밤에 걸었으면 씬 하나로 일곱 시간을 태웠다.
+    attempted: set = set()
     while True:
-        scene = novel.next_pending()
+        scene = next((sc for sc in novel.scenes
+                      if sc.status != "verified" and sc.id not in attempted), None)
         if scene is None or (limit and done + failed >= limit):
             break
+        attempted.add(scene.id)
         r = run_scene(novel, scene, llm, max_repairs, log)
         _record(log, {"event": "scene", "id": scene.id, "at": time.strftime("%H:%M:%S"), **r})
         if path:
@@ -921,9 +941,12 @@ def drive(novel, path, llm=None, max_repairs=MAX_REPAIRS, log=None, limit=None) 
             done += 1
         else:
             failed += 1
-            break                                         # 막힌 씬을 넘어가지 않는다
+            if failed > skip_blocked:
+                break                    # 한도를 넘으면 멈춘다 (기본값 0 = 첫 실패에서)
+            _log(f"[drive] {scene.id} 막힘 -- 넘어간다 ({failed}/{skip_blocked}) "
+                 f"{(r.get('violations') or [''])[0][:80]}")
 
-    out = {"status": "done" if failed == 0 else "blocked",
+    out = {"status": "done" if failed == 0 else ("partial" if done else "blocked"),
            "verified": done, "failed": failed,
            "remaining": sum(1 for s in novel.scenes if s.status != "verified")}
     _record(log, {"event": "end", "at": time.strftime("%Y-%m-%d %H:%M:%S"), **out})

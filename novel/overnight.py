@@ -181,6 +181,9 @@ def main() -> int:
                     help="진행 상황을 Discord 로 보낸다 (DISCORD_BOT_TOKEN + "
                          "DISCORD_CHANNEL_ID 또는 DISCORD_WEBHOOK_URL)")
     ap.add_argument("--no-discord", action="store_true")
+    ap.add_argument("--skip-blocked", type=int, default=999,
+                    help="관문에 막힌 씬을 몇 개까지 넘어갈 것인가. 야간 런은 넘어가는 "
+                         "쪽이 맞다 -- 씬 하나 때문에 회차 전체가 서면 밤이 날아간다")
     ap.add_argument("--episode-minutes", type=float, default=75.0,
                     help="에피소드 하나에 허용할 벽시계(분). 넘기면 그 편을 접고 다음으로 "
                          "간다 -- 한 편이 밤을 다 먹지 않게")
@@ -240,7 +243,10 @@ def main() -> int:
             else:
                 novel.scenes.extend(D.build_episode(novel, spec, llm, a.max_repairs, log))
                 novel.save(path)
-            r = D.drive(novel, str(path), llm=llm, max_repairs=a.max_repairs, log=log)
+            # **막힌 씬 하나가 열다섯 화를 세우지 않게 한다.** 자는 동안에는 사람이
+            # 풀어줄 수 없으므로 넘어가고 아침에 본다.
+            r = D.drive(novel, str(path), llm=llm, max_repairs=a.max_repairs, log=log,
+                        skip_blocked=a.skip_blocked)
             # **여기가 요점: 실패해도 다음 에피소드로 간다.** 자는 동안 break 하면
             # 남은 시간이 통째로 낭비된다.
             (done if r["status"] == "done" else failed).append(

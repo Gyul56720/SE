@@ -118,6 +118,55 @@ kept = D._ops(["문자열", {"event": "meet", "pair": ["설윤", "공명"]}], "�
 ok(len(kept) == 1 and kept[0]["event"] == "meet",
    f"경계에서 객체만 남긴다 ({kept})  ← 버린 것은 로그에 남는다")
 
+print("[막힘] 막힌 씬 하나가 나머지 전부를 세우지 않는가")
+print("      ← 2026-09-04 시험 런: 111초 만에 blocked, verified 0, 뒤 29씬은 손도 못 댔다")
+from novel.state import Novel                                         # noqa: E402
+
+BAD_PROSE = "설윤은 깊이 후회했다. 나는 슬펐다. 그리고 외로웠다. 무척 우울했다."
+GOOD_PROSE = "그라인더 소리가 멎었다. 나는 잔을 돌리며 창밖을 바라보았다."
+TURN = json.dumps({"inner_thought": "", "action": "", "speech": "그렇구나",
+                   "emotions": {"joy": 45, "melancholy": 40, "isolation": 40,
+                                "narrative_pull": 0}}, ensure_ascii=False)
+
+
+MARK = "표식복도"      # location 은 화자 프롬프트에 실린다. 씬 id 와 directives 는 아니다.
+
+
+def make(n_scenes=3):
+    nv = build()
+    nv.scenes = []
+    for i in range(n_scenes):
+        sc = Scene(id=f"ep001_{i:03d}m", episode=i + 1,
+                   participants=[nv.pov_character], directives=["무언가 일어난다"],
+                   location=MARK if i == 0 else "연습동 복도")
+        nv.scenes.append(sc)
+    return nv
+
+
+class ProseFake:
+    """첫 씬은 언제나 관문에 막히고(V005 추상어), 나머지는 깨끗하다."""
+
+    def __call__(self, prompt):
+        if "산문만 출력한다" in prompt:
+            return BAD_PROSE if MARK in prompt else GOOD_PROSE
+        return TURN
+
+
+nv = make(3)
+r = D.drive(nv, None, llm=ProseFake(), max_repairs=1, skip_blocked=0)
+ok(r["status"] == "blocked" and r["verified"] == 0,
+   f"기본값은 예전 그대로 첫 실패에서 멈춘다 ({r})  ← 대화형에서는 이게 맞다")
+
+nv2 = make(3)
+r2 = D.drive(nv2, None, llm=ProseFake(), max_repairs=1, skip_blocked=999)
+ok(r2["verified"] >= 1,
+   f"넘어가면 뒤 씬들이 채워진다 ({r2})  ← 이게 안 되면 밤이 또 날아간다")
+ok(r2["status"] == "partial", f"부분 성공을 'partial' 로 구분한다 ({r2['status']})")
+blocked = [s for s in nv2.scenes if s.status == "failed"]
+ok(blocked and blocked[0].violations,
+   f"막힌 씬은 위반을 그대로 갖고 있다 ({blocked[0].violations[:1] if blocked else '없음'})"
+   "  ← 넘어가되 무엇이 막혔는지 잃지 않는다")
+
 print("[연출] direction 이 문자열로 와도 서술 단계가 죽지 않는다")
 sc = Scene(id="x", direction="복도, 압정 자국")            # LLM 이 이렇게 낼 때가 있다
 try:
