@@ -30,42 +30,51 @@ def ok(cond, label):
         fails.append(label)
 
 
-print("[원장] 세계가 자라는가")
+print("[게이트] **최소로만 개입한다** -- 자유도가 이 모드의 전부다")
+print("      ← 실측: '은색 물건' 이 '1950년대 독일제 은색 지포' 로 자세해진 것을 기각했다.")
+print("        그건 같은 라이터고, 그런 기각이 원고를 못 나오게 한다.")
 led = flow.blank()["ledger"]
-ok(not flow._merge(led, {"people": {"요우": "양조장 주인"}}), "빈 자리를 채우는 것은 모순이 아니다")
-ok(led["people"]["요우"] == "양조장 주인", "원장에 남는다")
-ok(not flow._merge(led, {"people": {"요우": "양조장 주인"}}), "같은 값을 다시 써도 통과")
-ok(not flow._merge(led, {"places": {"양조장": "레이캬비크 외곽"}}), "다른 칸도 채워진다")
+ok(not flow._merge(led, {"objects": {"라이터": "은색 물건"}}), "사물은 기록만")
+ok(not flow._merge(led, {"objects": {"라이터": "1950년대 독일제 은색 지포"}}),
+   "자세해져도 통과")
+ok(led["objects"]["라이터"].startswith("1950"), "자세한 쪽을 남긴다")
+ok(not flow._merge(led, {"objects": {"라이터": "붉은 플라스틱"}}),
+   "**아예 달라져도 기각하지 않는다** ← 주변 사물은 게이트가 보지 않는다")
+ok(not flow._merge(led, {"places": {"양조장": "레이캬비크 외곽"}})
+   and not flow._merge(led, {"places": {"양조장": "아쿠레이리 근처"}}),
+   "장소도 기각하지 않는다")
+ok(not flow._merge(led, {"facts": {"날씨": "눈"}})
+   and not flow._merge(led, {"facts": {"날씨": "비"}}), "잡다한 사실도 기각하지 않는다")
 
-print("[원장] 어긋나는 것만 잡는가  ← 못 가리면 두 번째 덩어리부터 전부 기각된다")
-clash = flow._merge(led, {"people": {"요우": "우체국 직원"}})
-ok(clash, f"같은 키에 다른 값이면 잡는다 ({clash})")
-ok("앞에서는" in clash[0] and "양조장 주인" in clash[0], "무엇과 어긋나는지 말해준다")
-ok(led["people"]["요우"] == "양조장 주인", "기각된 값은 원장에 안 들어간다")
-ok(not flow._merge(led, {"people": {"시그": "이웃"}}), "새 인물은 그대로 통과")
-ok(not flow._merge(led, {"time": ["크리스마스 이브"]}) and led["time"], "시간은 쌓인다")
+print("[게이트] 스쳐 간 인물은 그냥 넘기는가")
+for i in range(4):
+    c = flow._merge(led, {"people": {"행인": {"나이": str(40 + i * 10)}}})
+    ok(not c, f"행인 {i + 1}회차 나이가 바뀌어도 통과")
+ok(led["people"]["행인"]["_seen"] == 4, "등장 횟수는 세어 둔다")
 
-print("[카드] 인물을 카드로 들고 다니는가  ← 대사가 인물마다 달라지려면 이게 있어야 한다")
-led2 = flow.blank()["ledger"]
-ok(not flow._merge(led2, {"people": {"요우": {"나이": "42", "직업": "정비공",
-                                            "말투": "짧게 끊는다"}}}),
-   "카드를 통째로 받는다")
-ok(led2["people"]["요우"]["말투"] == "짧게 끊는다", "필드가 남는다")
-ok(not flow._merge(led2, {"people": {"요우": {"취미": "낚시", "트라우마": "형의 사고"}}}),
-   "**새 필드는 모순이 아니다** ← 사람은 뒤에서 하나씩 드러난다")
-ok(led2["people"]["요우"]["나이"] == "42" and led2["people"]["요우"]["취미"] == "낚시",
-   "앞 필드는 남고 새 필드가 더해진다")
-c2 = flow._merge(led2, {"people": {"요우": {"나이": "30"}}})
-ok(c2 and "나이" in c2[0], f"같은 필드가 달라지면 잡는다 ({c2})")
-ok(led2["people"]["요우"]["나이"] == "42", "기각된 값은 안 들어간다")
-ok(not flow._merge(led2, {"people": {"시그": "이웃"}}), "한 줄짜리도 받는다  ← 옛 원장 호환")
-flow._merge(led2, {"people": {"시그": {"나이": "23"}}})
-ok(isinstance(led2["people"]["시그"], dict) and led2["people"]["시그"]["소개"] == "이웃",
-   "한 줄이 카드로 승격되고 소개 칸으로 옮겨간다")
+print("[게이트] 주요 인물의 핵심 칸만 잡는가")
+print("      ← 자주 나오고(3회) 카드도 두툼해야(3칸) 주요 인물이다. 둘 중 하나만 보면")
+print("        행인이 두 번 언급된 것으로 주요 인물이 되고 원고가 기각된다.")
+for f in ({"나이": "42", "취미": "낚시"}, {"말투": "짧게 끊는다"}, {"가족": "형이 있었다"}):
+    ok(not flow._merge(led, {"people": {"요우": f}}), f"요우 카드가 자란다 {list(f)}")
+ok(not flow._merge(led, {"people": {"요우": {"취미": "등산"}}}),
+   "취미가 바뀌어도 통과  ← 핵심 칸이 아니다")
+c = flow._merge(led, {"people": {"요우": {"나이": "30"}}})
+ok(c and "나이" in c[0], f"나이가 뒤집히면 잡는다 ({c})")
+ok(led["people"]["요우"]["나이"] == "42", "기각된 값은 안 들어간다")
+ok(not flow._merge(led, {"people": {"요우": {"나이": "42세"}}}),
+   "'42' 와 '42세' 는 같은 나이다  ← 표기 차이로 기각하지 않는다")
+flow._merge(led, {"people": {"요우": {"생사": "죽었다"}}})
+c2 = flow._merge(led, {"people": {"요우": {"생사": "살아 있다"}}})
+ok(c2, f"죽은 사람이 걸어 들어오면 잡는다 ({c2})")
+ok(not flow._merge(led, {"people": {"요우": {"성격": "말수 적고 손이 빠르다"}}}),
+   "성격이 자세해지는 것은 통과")
 
-b2 = flow.brief(led2)
-ok("[인물]" in b2 and "말투 짧게 끊는다" in b2, "브리핑에 카드가 펼쳐진다")
-ok("트라우마 형의 사고" in b2, "트라우마까지 실린다  ← 나중에 녹여낼 재료다")
+print("[원장] 카드가 브리핑에 펼쳐지는가")
+b2 = flow.brief(led)
+ok("[인물]" in b2 and "말투 짧게 끊는다" in b2, "카드가 펼쳐진다")
+ok("_seen" not in b2, "내부 표식은 감춘다")
+ok("가족 형이 있었다" in b2, "가족까지 실린다  ← 나중에 녹여낼 재료다")
 
 print("[원장] 쓰레기 값은 무시하는가")
 before = dict(led["facts"])
@@ -113,21 +122,28 @@ class Fake:
         self.prompts.append(prompt)
         if "JSON 만 출력" in prompt and "새로 확정된 사실만" in prompt:
             wrong = self.tries == 1
-            return json.dumps({"people": {"요우": "우체국 직원" if wrong else "양조장 주인"}},
+            return json.dumps({"people": {"요우": {"나이": "30" if wrong else "42"}}},
                               ensure_ascii=False)
         self.tries += 1
         return "산문 덩어리. " * 120
 
 
-bk = flow.blank()
-bk["ledger"]["people"]["요우"] = "양조장 주인"
+def main_char():
+    """주요 인물 하나가 이미 선 원장 -- 자주 나왔고(3회) 카드도 두툼하다(3칸)."""
+    bk = flow.blank()
+    bk["ledger"]["people"]["요우"] = {"나이": "42", "직업": "정비공",
+                                     "말투": "짧게 끊는다", "_seen": 3}
+    return bk
+
+
+bk = main_char()
 f = Fake()
 r = flow.step(bk, f)
 ok(r["status"] == "ok", f"두 번째 시도에서 채택 ({r['status']})")
 ok(f.tries == 2, f"한 번 기각하고 다시 썼다 ({f.tries}회)")
 retry = [q for q in f.prompts if "직전 시도가 기각된 이유" in q]
 ok(retry, "기각 사유가 다음 프롬프트에 실린다")
-ok(any("우체국" in q for q in retry), "무엇이 어긋났는지까지")
+ok(any("나이" in q for q in retry), "무엇이 어긋났는지까지")
 ok(any("나머지는 자유다" in q for q in retry), "그것만 고치라고 한다  ← 자유를 죽이지 않는다")
 ok(len(bk["chunks"]) == 1, "채택된 덩어리만 남는다")
 
@@ -156,12 +172,11 @@ print("[루프] 못 풀면 멈추는가  ← 같은 모순을 무한히 반복�
 class Stubborn:
     def __call__(self, prompt):
         if "새로 확정된 사실만" in prompt:
-            return json.dumps({"people": {"요우": "우체국 직원"}}, ensure_ascii=False)
+            return json.dumps({"people": {"요우": {"나이": "30"}}}, ensure_ascii=False)
         return "산문. " * 120
 
 
-bk3 = flow.blank()
-bk3["ledger"]["people"]["요우"] = "양조장 주인"
+bk3 = main_char()
 r3 = flow.step(bk3, Stubborn())
 ok(r3["status"] == "blocked", f"기각으로 끝난다 ({r3['status']})")
 ok(not bk3["chunks"], "원고에 안 들어간다")
