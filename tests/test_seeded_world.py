@@ -65,6 +65,18 @@ text = " ".join([o["summary"] for o in O] + steps + [o["stake"] for o in O])
 ok(all(nm in text for nm in names), f"세 인물이 모두 등장한다 ({names})")
 ok("이가" not in text and "을를" not in text, "조사가 겹쳐 붙지 않는다")
 
+print("[표식] 원고에 씨앗 id 가 박히는가  ← 원고와 세계가 어긋나는 것을 막는 유일한 표식")
+from novel import overnight as OV                                     # noqa: E402
+nv = W.build(SEED)
+ok(nv.seed_id == SEED["id"], f"build 가 씨앗 id 를 심는다 ({nv.seed_id})")
+refused = OV.refuse_seed_mismatch(nv, "다른씨앗", "seeded.json")
+ok(bool(refused), "씨앗이 다르면 시작을 거부한다")
+ok("치워라" in refused, "무엇을 하면 되는지 말해준다")
+ok(not OV.refuse_seed_mismatch(nv, SEED["id"], "seeded.json"), "같으면 통과한다")
+nv.seed_id = ""
+ok(not OV.refuse_seed_mismatch(nv, SEED["id"], "seeded.json"),
+   "표식 없는 옛 원고는 막지 않는다  ← 이전 원고를 이어받을 수 있어야 한다")
+
 print("[재현] 같은 씨앗이면 같은 세계")
 ok([o["summary"] for o in W.outcomes(SEED)] == [o["summary"] for o in O],
    "두 번 불러도 같다")

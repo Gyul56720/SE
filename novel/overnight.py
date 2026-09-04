@@ -224,6 +224,27 @@ def _refuse_if_running(path: Path) -> None:
     raise SystemExit(2)
 
 
+def refuse_seed_mismatch(novel, seed_id: str, path) -> str:
+    """이어받은 원고가 지금 씨앗의 것인가. 아니면 멈출 이유를 돌려준다(빈 문자열이면 정상).
+
+    실측 2026-09-04: `--restart` 는 돌던 런을 죽이고 **새 씨앗을 뽑는데**, overnight 은
+    seeded.json 이 있으면 그것을 이어받는다. 그래서 옛 인물이 든 원고 위에 새 세계의
+    결말이 얹혔다 -- 등장인물 목록에 없는 이름이 척추에 들어가고, V001 이 매 씬을
+    기각하며, 밤이 통째로 날아간다.
+
+    조용히 굴러가면 아침에야 안다. 여기서 멈추고 무엇을 하면 되는지 말해준다."""
+    if not seed_id or not getattr(novel, "seed_id", ""):
+        return ""                       # 옛 원고(표식 없음)는 막지 않는다
+    if novel.seed_id == seed_id:
+        return ""
+    return (f"원고와 씨앗이 다르다.\n"
+            f"  원고({path}) 의 씨앗: {novel.seed_id}\n"
+            f"  지금 씨앗           : {seed_id}\n"
+            f"  새 씨앗으로 새로 쓰려면 옛 원고를 치워라:\n"
+            f"    mv {path} {path}.$(date +%Y%m%d-%H%M%S).bak\n"
+            f"  옛 원고를 이어 쓰려면 그 씨앗을 되살려라(--keep 로 시작했어야 한다).")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="야간 소설 러너")
     ap.add_argument("--hours", type=float, default=7.0)
@@ -276,6 +297,7 @@ def main() -> int:
                                   # 물러서면 엉뚱한 문체로 몇 시간을 쓰고도 아무도 모른다
     D._log(f"[{_now()}] 페르소나: {a.persona} -- {style.P()['label']}")
 
+    sd = None
     global OUTCOMES, build
     if a.world == "probe":
         from novel import world_probe
@@ -297,6 +319,13 @@ def main() -> int:
     if not a.allow_concurrent:
         _refuse_if_running(path)
     novel = Novel.load(path) if path.exists() else build()
+    # **이어받은 원고가 지금 씨앗의 것인지 먼저 본다.** 아니면 여기서 멈춘다 --
+    # 섞인 채로 굴리면 밤이 통째로 날아가고 아침에야 안다.
+    if a.world == "seeded":
+        why = refuse_seed_mismatch(novel, (sd or {}).get("id", ""), path)
+        if why:
+            D._log(f"[{_now()}] 시작하지 않는다 -- {why}")
+            return 1
     director = None if a.gemini_director else Director()
     if a.all_claude:
         # **한 콜러블로 모든 역할을 덮는다.** _llm_for 는 역할이 없으면 "default" 로

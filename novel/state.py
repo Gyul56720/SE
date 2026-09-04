@@ -198,6 +198,11 @@ class Novel:
     scenes: list = field(default_factory=list)
     # 화자가 이미 알고 있는 미래. Narrator 가 가끔 흘려 회고의 아이러니를 만든다.
     narrator_foreknowledge: list = field(default_factory=list)
+    # 이 원고를 만든 씨앗의 id. **원고와 세계가 어긋나는 것을 막는 유일한 표식이다.**
+    # overnight 은 seeded.json 이 있으면 그것을 이어받는데, 그 사이 씨앗이 바뀌었으면
+    # 옛 인물이 든 원고에 새 세계의 결말을 붙이게 된다(실측: --restart 가 씨앗을 다시
+    # 뽑으면서 정확히 그 상태를 만들었다). id 를 들고 있으면 기계가 알아챈다.
+    seed_id: str = ""
     # 문장의 색. 씨앗이 정하고 화자 프롬프트가 실행한다 -- 세계마다 문체가 달라야
     # 200화를 넘겨도 같은 목소리로 수렴하지 않는다.
     voice: str = ""

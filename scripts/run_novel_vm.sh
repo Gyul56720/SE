@@ -8,7 +8,8 @@
 #
 # 사용:
 #   scripts/run_novel_vm.sh                       # 새 씨앗 -> 1~10화 (회차 5,000자)
-#   scripts/run_novel_vm.sh --keep                # 지금 씨앗 그대로 이어서
+#   scripts/run_novel_vm.sh --keep                # 지금 씨앗·원고 그대로 이어서 (되살릴 때 이것)
+#                                                 (--restart 만 주면 새 씨앗이라 옛 원고는 .bak 로 치워진다)
 #   scripts/run_novel_vm.sh --restart             # 돌던 런을 죽이고 다시 (원고는 남는다)
 #   scripts/run_novel_vm.sh --persona hardboiled   # 문체를 갈아끼운다
 #   scripts/run_novel_vm.sh --episodes 5 --blocks 2
@@ -107,6 +108,18 @@ fi
 
 mkdir -p "$SE/logs"
 if [ "$NEW_SEED" = "1" ]; then
+  # **새 씨앗을 뽑으면 옛 원고를 치운다.** overnight 은 seeded.json 이 있으면 그것을
+  # 이어받으므로, 치우지 않으면 옛 인물이 든 원고에 새 세계의 결말이 얹힌다 -- 등장인물
+  # 목록에 없는 이름이 척추에 들어가고 V001 이 매 씬을 기각한다(실측: --restart 가
+  # 정확히 그 상태를 만들었다).
+  #
+  # 지우지 않고 **옮긴다.** 몇 시간 쓴 원고를 스크립트가 조용히 지우면 안 된다.
+  if [ -f "$BOOK" ]; then
+    STAMP="$(date +%Y%m%d-%H%M%S)"
+    for f in "$BOOK" "${BOOK%.json}.scenes.jsonl" "${BOOK%.json}.overnight.json"; do
+      [ -f "$f" ] && mv "$f" "$f.$STAMP.bak" && echo "옛 원고를 치웠다: $f.$STAMP.bak"
+    done
+  fi
   python3 "$SE/novel/world_seeded.py" --new || exit 1
 fi
 
