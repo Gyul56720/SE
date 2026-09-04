@@ -86,10 +86,21 @@ CHUNK = 1400
 # 사건이 터지는 간격. 켜고 끄는 것은 해시라서 **이어 쓰기에도 같은 자리에서 같게** 나온다.
 # 확산과 리듬은 건드리지 않는다. 그건 부조리가 아니라 문장의 문제다.
 #
-# 0.8 로 시작했다가 0.5 로 내렸다. "첫 1/3 정도의 내용이 딱 재미있어" 가 근거다 -- 초반이
-# 좋았던 이유는 아직 쌓인 것이 없어서지 초반을 다르게 써서가 아니다. 그러니 그 밀도를
-# 끝까지 유지하려면 매 덩어리에 얹는 양을 줄여야 한다. 절반쯤 얹었을 때가 그 밀도다.
-DRIFT = 0.5
+# 0.8 → 0.5 로 내렸다가 **1.0 으로 되돌렸다.** 계수를 낮춰서 밀도를 잡으려 했는데, 정작
+# 밀도를 올린 것은 계수가 아니라 소재 축이었다(아래 MATTER). 급발진을 반으로 줄이니
+# 밀도는 그대로인 채 인물만 밋밋해졌다 -- 원인이 아닌 것을 조인 셈이다.
+#
+# 그래서 급발진·사건은 매 덩어리 · 2,000자로 되돌리고, 소재 축을 끈다. 사용자 평이
+# 가리킨 것이 그 배치였다: "매 덩어리 확산 + 급발진 1 / 2,000자마다 사건 -- 딱 이때가
+# 제일 좋다."
+DRIFT = 1.0
+
+# **소재 축의 비율. 0 이면 끈다.**
+#
+# 갈래(총격전·던전·에일리언)와 매체(편지·노래·라디오)를 매 덩어리에 얹었더니 확산과
+# 급발진 위에 셋이 더 쌓여 "너무 밀도가 높아졌다". 재료를 넓히려던 것이 재료를 들이붓는
+# 것이 됐다. 껐다 -- 필요하면 --matter 0.3 처럼 조금만 켠다.
+MATTER = 0.0
 
 MAX_REWRITE = 3
 # 다음 덩어리에 넘기는 꼬리. 900자였는데, 그러면 세 덩어리 앞의 소품이 창 밖으로 빠지고
@@ -137,6 +148,7 @@ def blank(first: str = FIRST) -> dict:
     # words: 지어낸 낱말과 그 뜻. **기록만 하고 절대 기각하지 않는다** -- 다만 한 번 뜻을
     # 준 말은 계속 같은 뜻으로 쓰여야 해서 원장에 남긴다.
     return {"first": first, "chunks": [], "shocks": 0, "since": 0, "drift": DRIFT,
+            "matter": MATTER,
             "ledger": {
         "people": {}, "places": {}, "facts": {}, "time": [], "objects": {},
         "words": {}}}
@@ -291,8 +303,12 @@ def _matter(book: dict) -> str:
     이 축이 없을 때 모델은 늘 비슷한 것을 냈다 -- 술집, 부두, 낡은 차, 담배. 세계가
     넓어져도 재료가 안 넓어졌다.
     """
-    return matter.brief(matter.draw(book.get("seed_id") or book["first"],
-                                    len(book["chunks"]), _level(book)))
+    seed = book.get("seed_id") or book["first"]
+    n = len(book["chunks"])
+    rate = float(book.get("matter", MATTER))
+    if not matter.gate(seed, n, "matter", rate):
+        return ""
+    return matter.brief(matter.draw(seed, n, _level(book)))
 
 
 def _impulse(book: dict) -> str:
@@ -364,9 +380,7 @@ def _diffuse(book: dict) -> str:
     맺지 않아도, 어순이 뒤집혀도, 조사가 빠져도 된다. **말끝을 다듬으면 그게 딱딱함이다.**
 
 {_impulse(book)}
-
 {_matter(book)}
-
 [잡소리] **쓸데없는 말이 이 소설의 재미다 -- 다만 늘 같은 수를 쓰지 마라.**
 아래는 **개그 자리에서만** 꺼내는 수다. 매 덩어리마다 전부 하려 들면 그게 버릇이 되고,
 버릇이 되는 순간 안 웃긴다. 이 덩어리에 어울리는 것 **하나쯤**만 골라라. 안 골라도 된다.
@@ -638,7 +652,9 @@ def main() -> int:
     ap.add_argument("--first", default=FIRST)
     ap.add_argument("--hours", type=float, default=12.0)
     ap.add_argument("--drift", type=float, default=DRIFT,
-                    help="표류 계수 0~1. 낮출수록 급발진·장르·사건이 줄어든다 (기본 0.8)")
+                    help="표류 계수 0~1. 낮출수록 급발진·사건이 줄어든다 (기본 1.0)")
+    ap.add_argument("--matter", type=float, default=MATTER,
+                    help="소재 축(갈래·매체)을 섞는 비율 0~1. 기본 0 -- 꺼져 있다")
     a = ap.parse_args()
 
     if a.read:
@@ -664,8 +680,10 @@ def main() -> int:
     # **--drift 는 이어 쓰기에도 먹는다.** 뒤로 갈수록 부조리가 심해지면 중간에 낮춰서
     # 이어 갈 수 있어야 한다 -- 그러자고 원고를 버리게 하면 안 된다.
     book["drift"] = max(0.0, min(1.0, a.drift))
+    book["matter"] = max(0.0, min(1.0, a.matter))
     D._log(f"[flow] 목표 {a.chars:,}자 · 지금 "
-           f"{sum(len(c) for c in book['chunks']):,}자 · 표류 계수 {book['drift']}")
+           f"{sum(len(c) for c in book['chunks']):,}자 · 표류 계수 {book['drift']}"
+           f" · 소재 {book['matter']}")
     r = run(book, D.default_llm, a.chars, path, time.time() + a.hours * 3600)
     D._log(f"[flow] 끝 -- 덩어리 {r['chunks']}개 · {r['chars']:,}자 · {path}")
     return 0

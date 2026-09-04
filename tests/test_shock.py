@@ -151,8 +151,16 @@ ok("섞되 갈아타지 마라" in mb,
    "소재가 장르를 바꾸지 않는다  ← 던전이 나온다고 던전물이 되지 않는다")
 ok("본문에 실물로" in mb, "편지는 통째로, 노래는 가사 두 줄로  ← '읽었다' 로 넘기지 않는다")
 ok("문제를 풀지 않는다" in mb, "지도가 나왔다고 길을 찾게 되지 않는다")
-ok("[소재]" in p3, "확산 덩어리에 실린다")
-ok("[소재]" not in flow.write_prompt(bk3), "사건 덩어리에는 안 실린다")
+_on = flow.blank(); _on["chunks"] = ["앞."]; _on["drift"] = 1.0; _on["matter"] = 1.0
+ok("[소재]" in flow.write_prompt(_on), "켜면 확산 덩어리에 실린다")
+_on["_shock"] = SH.draw("x", 0)
+ok("[소재]" not in flow.write_prompt(_on), "켜도 사건 덩어리에는 안 실린다")
+_off = flow.blank(); _off["chunks"] = ["앞."]
+ok("[소재]" not in flow.write_prompt(_off), "기본값에서는 안 실린다  ← 껐다")
+_half = flow.blank(); _half["matter"] = 0.4; _half["drift"] = 1.0
+hits = sum("[소재]" in flow.write_prompt(dict(_half, chunks=["x"] * i))
+           for i in range(1, 201))
+ok(50 < hits < 130, f"비율만큼만 섞인다 (0.4 → {hits}/200)  ← 조금만 켤 수 있다")
 
 print()
 print("[사건] **셋에 하나쯤은 주인공이 불러온다**")
@@ -181,9 +189,10 @@ ok("몸으로 하는 것이 반씩이다" in SH.impulse_brief(SH.impulse("a", 0)
 print()
 print("[계수] **부조리의 세기를 하나로 조인다**")
 print("      ← 축을 넷이나 겹쳐 놓으니 뒤로 갈수록 쌓였다. 계수로 셋을 함께 줄인다.")
-# 0.8 → 0.5. 초반이 좋았던 이유는 쌓인 것이 없어서다 -- 그 밀도를 끝까지 가려면
-# 매 덩어리에 얹는 양을 줄여야 한다.
-ok(flow.DRIFT == 0.5, f"기본 계수 0.5 ({flow.DRIFT})")
+# 0.8 → 0.5 로 내렸다가 1.0 으로 되돌렸다. 밀도를 올린 것은 계수가 아니라 소재 축이었다 --
+# 급발진을 반으로 줄이니 밀도는 그대로인 채 인물만 밋밋해졌다.
+ok(flow.DRIFT == 1.0, f"기본 계수 1.0 -- 급발진은 매 덩어리 ({flow.DRIFT})")
+ok(flow.MATTER == 0.0, f"소재 축은 꺼져 있다 ({flow.MATTER})  ← 밀도를 올린 것이 이것이다")
 ok(flow.blank()["drift"] == flow.DRIFT, "새 원고에 계수가 저장된다  ← 이어 써도 같게")
 
 

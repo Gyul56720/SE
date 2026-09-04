@@ -8,9 +8,9 @@
 #   drift.sh start  [글자수]        새 원고를 시작한다 (기본 8000)
 #   drift.sh go     [글자수]        하던 원고를 이어 쓴다 (기본 50000)  ← 가장 많이 쓴다
 #
-#   부조리를 조절한다 (기본 0.5. 높이면 급발진·장르·사건이 잦아진다):
-#     DRIFT=0.3 drift.sh go     # 더 잔잔하게
-#     DRIFT=0.8 drift.sh go     # 더 요란하게
+#   세기를 조절한다 (기본: 급발진 매 덩어리 · 사건 2,000자마다 · 소재 축은 꺼짐):
+#     DRIFT=0.5  drift.sh go    # 급발진·사건을 반으로
+#     MATTER=0.3 drift.sh go    # 갈래·매체를 조금만 섞는다 (기본 0 = 안 섞음)
 #   drift.sh status                 살아 있는지 · 어디까지 왔는지
 #   drift.sh read                   지금까지 쓴 원고를 읽는다
 #   drift.sh save  <파일>           원고를 파일로 뽑는다
@@ -20,7 +20,8 @@
 #   drift.sh world                  세계가 얼마나 자랐는지 (인물·장소·사물·사실·사건)
 #
 # 환경변수로 바꿀 수 있는 것:
-#   DRIFT    표류 계수 0~1     (기본 0.5 -- 낮출수록 부조리가 줄어든다)
+#   DRIFT    표류 계수 0~1     (기본 1.0 -- 낮추면 급발진·사건이 줄어든다)
+#   MATTER   소재 축 0~1       (기본 0.0 -- 켜면 갈래·매체가 섞인다)
 #   SE_DIR   저장소 위치        (기본 /home/ubuntu/SE)
 #   BOOK     원고 파일          (기본 $SE_DIR/novel/drift.json)
 #   FIRST    첫 문장 (start 에서만)
@@ -94,7 +95,7 @@ case "${1:-status}" in
       mv "$BOOK" "$BOOK.$(date +%Y%m%d-%H%M%S).bak"
       echo "쓰던 원고를 옮겨 두었다: $BOOK.*.bak"
     }
-    set -- --out "$BOOK" --chars "${2:-8000}" ${DRIFT:+--drift "$DRIFT"}
+    set -- --out "$BOOK" --chars "${2:-8000}" ${DRIFT:+--drift "$DRIFT"} ${MATTER:+--matter "$MATTER"}
     [ -n "${FIRST:-}" ] && set -- "$@" --first "$FIRST"
     launch "새 원고를" "$@"
     ;;
@@ -104,7 +105,7 @@ case "${1:-status}" in
     [ -f "$BOOK" ] || die "이어 쓸 원고가 없다: $BOOK   (새로 시작하려면: $0 start)"
     cp "$BOOK" "$BOOK.bak"
     launch "이어 쓰기를" --resume "$BOOK" --chars "${2:-50000}" --hours 12 \
-           ${DRIFT:+--drift "$DRIFT"}
+           ${DRIFT:+--drift "$DRIFT"} ${MATTER:+--matter "$MATTER"}
     ;;
 
   status)
@@ -117,7 +118,7 @@ b = json.load(open(sys.argv[1], encoding="utf-8"))
 n = sum(len(c) for c in b["chunks"])
 L = b.get("ledger", {})
 print(f"  원고  덩어리 {len(b['chunks'])}개 · {n:,}자 · 사건 {b.get('shocks', 0)}회 · "
-      f"표류 계수 {b.get('drift', '?')}")
+      f"표류 계수 {b.get('drift', '?')} · 소재 {b.get('matter', 0)}")
 print(f"  세계  인물 {len(L.get('people', {}))} · 장소 {len(L.get('places', {}))} · "
       f"사물 {len(L.get('objects', {}))} · 사실 {len(L.get('facts', {}))}")
 PY
