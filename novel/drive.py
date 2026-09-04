@@ -661,8 +661,13 @@ def build_episode(novel, spec: dict, llm=None, max_repairs=MAX_REPAIRS, log=None
 
     # **steps 가 척추의 씨앗이다.** requires 는 앞 블록이 이미 갚았으므로 여기서는 거의
     # 항상 비고, 그것만 쓰면 척추가 결말 하나로 끝난다(실측: 2블록부터 척추 1/서브플롯 29).
-    # steps 는 이 블록 안에서 세워야 할 단계라 항상 열려 있다. 둘을 합쳐 거꾸로 세운다.
-    open_conds = [c for c in (list(spec.get("steps") or []) + list(spec["requires"]))
+    #
+    # **steps 를 뒤집어 넣는다.** steps 는 사람이 시간순으로 쓴다("쓰기로 한다" 다음에
+    # "거절한다"). 그런데 이 루프는 거꾸로 쌓은 뒤 마지막에 spine.reverse() 로 뒤집는다.
+    # 시간순 그대로 넣으면 두 번 뒤집혀 인과가 거꾸로 선다 -- 탐침이 실측으로 잡았다:
+    # "공명이 거절한다" 가 "설윤이 이의서를 쓴다" 보다 앞에 왔다.
+    open_conds = [c for c in (list(reversed(spec.get("steps") or []))
+                              + list(spec["requires"]))
                   if c not in entry and not c.startswith("state:")]
     spine, feedback = [], ""
 
@@ -673,14 +678,17 @@ def build_episode(novel, spec: dict, llm=None, max_repairs=MAX_REPAIRS, log=None
         got = None
         for _ in range(max_repairs + 1):
             # 1단계: 창작 -- Markdown 자유 형식(형식 세금 면제)
+            # **한 번에 하나만 요구한다.** 목록을 통째로 주면 모델이 아무거나 골라
+            # 갚으므로 거꾸로 쌓는 순서가 무너진다. 다음에 갚을 것 하나만 준다.
+            target = open_conds[:1]
             scenario = _llm_for(llm, "director")(
-                beat_prompt(novel, spec, open_conds, lo, feedback))
+                beat_prompt(novel, spec, target, lo, feedback))
             # 2단계: 추출 -- JSON(데이터 추출은 JSON 이 유리하다). 값싼 모델로 보낸다.
             # **파싱 실패는 여기서 흡수한다.** 위로 던지면 이 결말 블록 열다섯 화가
             # 통째로 버려진다(2026-09-03 밤샘 런이 그렇게 0자로 끝났다).
             try:
                 b = call_json(_llm_for(llm, "extractor"),
-                              extract_prompt(scenario, open_conds, spec["scale"]),
+                              extract_prompt(scenario, target, spec["scale"]),
                               label=f"추출 {lo}~{hi}화")
             except ValueError as e:
                 feedback = _fb_text(f"추출기가 이 시나리오에서 JSON 을 못 뽑았다({e}). "
@@ -701,7 +709,7 @@ def build_episode(novel, spec: dict, llm=None, max_repairs=MAX_REPAIRS, log=None
                 # 되돌려보내는 것이 유일하게 고칠 수 있는 자리다.
                 feedback = _fb_text("; ".join(bad))
                 continue
-            est = [e for e in (b.get("establishes") or []) if e in open_conds]
+            est = [e for e in (b.get("establishes") or []) if e in target]
             if est:
                 got = Beat(driver=str(b.get("driver") or ""),
                            cost=str(b.get("cost") or ""),
@@ -721,7 +729,7 @@ def build_episode(novel, spec: dict, llm=None, max_repairs=MAX_REPAIRS, log=None
                 break
             feedback = _fb_text(
                 f"establishes 가 열린 조건과 정확히 같지 않다. 받은 값: "
-                f"{b.get('establishes')!r} / 열린 조건: {open_conds}. "
+                f"{b.get('establishes')!r} / 지금 갚아야 할 것: {target}. "
                 f"**문자열을 그대로 복사하라** -- 한 글자만 달라도 개연성 구멍으로 잡힌다")
         if got is None:
             _log(f"[조립] {lo}~{hi}화 척추 {len(spine)}개에서 멈춘다 -- "
@@ -780,7 +788,13 @@ def build_episode(novel, spec: dict, llm=None, max_repairs=MAX_REPAIRS, log=None
         _log(f"[조립] {lo}~{hi}화 서브플롯 {k + 1}/{need}: {filler.beat[:44]}")
 
     # 결말은 마지막 회차다.
-    beats.append(Beat(beat="[결말] " + spec["summary"],
+    # 결말도 누군가 일으킨다. 비워두면 V022 가 그 회차를 "화자가 구경만 했다" 로 읽는다
+    # -- 결말 회차가 수동으로 판정되면 그 판정 자체가 쓸모없어진다.
+    beats.append(Beat(driver=spec.get("driver") or novel.pov_character,
+                      cost=spec.get("cost", ""),
+                      deadline=spec.get("deadline", ""),
+                      stake=spec.get("stake", ""),
+                      beat="[결말] " + spec["summary"],
                       participants=[novel.pov_character],
                       requires=list(spec["requires"]),
                       establishes=list(spec["establishes"]),
@@ -788,8 +802,19 @@ def build_episode(novel, spec: dict, llm=None, max_repairs=MAX_REPAIRS, log=None
                       relation_ops=list(spec.get("relation_ops") or []),
                       scale=spec["scale"], cliffhanger="shock_line"))
 
+    # **시계는 마지막에 산수로 정한다.** 모델이 낸 숫자는 거꾸로 쌓는 동안 받은 것이라
+    # 뒤집고 나면 늘었다 줄었다 한다(탐침 실측: [12.0, 12.5, 0.0]). 디렉터에게 남은
+    # 시간을 물은 것은 **그 장면을 시간 압박 위에서 쓰게 하려는 것**이지 그 숫자를 쓰려는
+    # 것이 아니었다. 시간순이 확정된 지금 결말의 시계에서 0 까지 고르게 나눈다.
+    chain = beats[:body_slots] + beats[-1:]
+    total = float(spec.get("deadline_hours") or 72)
+    for i, b in enumerate(chain):
+        b.deadline = spec.get("deadline", "")
+        b.stake = spec.get("stake", "")
+        b.deadline_hours = round(total * (len(chain) - 1 - i) / max(1, len(chain) - 1), 1)
+
     ep = Episode(n=spec["seq"], outcome=Outcome(spec["summary"], spec["requires"]),
-                 beats=beats[:body_slots] + beats[-1:], episodes=(lo, hi))
+                 beats=chain, episodes=(lo, hi))
     # id 는 **회차 범위**로 만든다. 시퀀스 하나에 결말이 여러 개라(시퀀스 1 은 1~10 과
     # 11~20) 시퀀스 번호만 쓰면 id 가 충돌하고, 아래 건너뛰기 판정도 두 번째 결말을
     # 이미 편 것으로 오판한다.

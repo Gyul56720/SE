@@ -44,6 +44,9 @@ from novel.world_romance import build, OUTCOMES                       # noqa: E4
 KST = timezone(timedelta(hours=9))
 
 
+HERE = Path(__file__).resolve().parent
+
+
 def _now() -> str:
     return datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S KST")
 
@@ -217,7 +220,12 @@ def _refuse_if_running(path: Path) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser(description="야간 소설 러너")
     ap.add_argument("--hours", type=float, default=7.0)
-    ap.add_argument("--path", default="novel/romance.json")
+    ap.add_argument("--world", default="romance", choices=("romance", "probe"),
+                    help="probe 는 3화짜리 최소 세계다. 인물·비밀·관문은 같고 결말만 "
+                         "하나 -- 배선을 싸게(디렉터 8회) 확인할 때 쓴다")
+    ap.add_argument("--path", default="",
+                    help="원고 경로. 비우면 세계마다 다른 기본값을 쓴다 -- "
+                         "탐침과 본편이 같은 파일을 쓰면 서로를 덮어쓴다")
     ap.add_argument("--max-repairs", type=int, default=3)
     ap.add_argument("--gemini-director", action="store_true",
                     help="claude -p 를 쓰지 않고 처음부터 Gemini 로")
@@ -247,8 +255,15 @@ def main() -> int:
                          "다른 원고 파일(--path)을 쓸 때만 안전하다")
     a = ap.parse_args()
 
+    global OUTCOMES, build
+    if a.world == "probe":
+        from novel import world_probe
+        OUTCOMES, build = world_probe.OUTCOMES, world_probe.build
+
     deadline = time.time() + a.hours * 3600
-    path = Path(a.path)
+    # 세계마다 다른 파일. 같은 파일을 쓰면 탐침 한 번이 본편 원고를 지운다.
+    path = Path(a.path or (HERE / ("probe.json" if a.world == "probe"
+                                   else "romance.json")))
     log = path.with_suffix(".scenes.jsonl")
     report = path.with_suffix(".overnight.json")
 
