@@ -268,6 +268,36 @@ def _check_pressure(b: dict, novel, clock: float) -> list:
     return out
 
 
+def _people(raw, novel, label: str = "") -> list:
+    """참가자 목록에서 **등장인물만** 남긴다.
+
+    world_ops 가 문자열로 왔던 것과 같은 종류의 실패다. 디렉터가 "낯선 남자", "취객",
+    "스물세 개의 핫팩을 사는 남자" 같은 것을 등장인물 자리에 적으면 그대로 씬에 저장되고,
+    한참 뒤 배우 프롬프트를 만들 때 novel.character(name) 이 KeyError 로 터진다 --
+    **회차 전체가 거기서 죽는다**(실측 2026-09-04: drive() 가 이걸로 예외를 내고 1~10화가
+    산문 0자로 끝났다).
+
+    씬에 이름 없는 인물이 필요하면 그건 배우가 아니라 배경이다. 산문 안에서 묘사하면
+    되고, 대사를 주려면 등장인물로 등록해야 한다. 여기서 거르고 로그에 남긴다.
+
+    전부 걸러지면 화자를 넣는다 -- 참가자가 없는 씬은 배우 단계가 아무것도 못 한다."""
+    names = {c.name for c in novel.characters}
+    kept, dropped = [], []
+    for x in (raw or []):
+        nm = str(x).strip()
+        if nm in names:
+            if nm not in kept:
+                kept.append(nm)          # 중복은 조용히 지운다. 잘못이 아니다
+        elif nm:
+            dropped.append(nm)           # 이쪽만 보고한다 -- 디렉터가 만든 유령이다
+    if dropped:
+        _log(f"[인물] {label}: 등장인물이 아닌 이름을 뺐다 -- {dropped[:4]}")
+    if not kept:
+        kept = [novel.pov_character]
+        _log(f"[인물] {label}: 남은 참가자가 없어 화자({novel.pov_character})를 넣는다")
+    return kept
+
+
 def _rel_ops(raw, novel, label: str = "") -> list:
     """relation_ops 에서 **쓸 수 있는 선언만** 남긴다.
 
@@ -629,7 +659,10 @@ def build_episode(novel, spec: dict, llm=None, max_repairs=MAX_REPAIRS, log=None
     for sc in novel.scenes:
         entry.update(sc.establishes or [])
 
-    open_conds = [c for c in spec["requires"]
+    # **steps 가 척추의 씨앗이다.** requires 는 앞 블록이 이미 갚았으므로 여기서는 거의
+    # 항상 비고, 그것만 쓰면 척추가 결말 하나로 끝난다(실측: 2블록부터 척추 1/서브플롯 29).
+    # steps 는 이 블록 안에서 세워야 할 단계라 항상 열려 있다. 둘을 합쳐 거꾸로 세운다.
+    open_conds = [c for c in (list(spec.get("steps") or []) + list(spec["requires"]))
                   if c not in entry and not c.startswith("state:")]
     spine, feedback = [], ""
 
@@ -676,7 +709,8 @@ def build_episode(novel, spec: dict, llm=None, max_repairs=MAX_REPAIRS, log=None
                            deadline_hours=float(b.get("deadline_hours") or 0),
                            stake=spec.get("stake", ""),
                            beat=b.get("beat", ""),
-                           participants=b.get("participants") or [novel.pov_character],
+                           participants=_people(b.get("participants"), novel,
+                                                f"척추 {lo}~{hi}화"),
                            mode=b.get("mode", "dialogue"),
                            requires=list(b.get("requires") or []), establishes=est,
                            world_ops=_ops(b.get("world_ops"), f"척추 {lo}~{hi}화"),
@@ -735,7 +769,8 @@ def build_episode(novel, spec: dict, llm=None, max_repairs=MAX_REPAIRS, log=None
             continue
         b.setdefault("direction", {})["scenario"] = sub_md
         filler = Beat(beat=b.get("beat", ""),
-                      participants=b.get("participants") or [novel.pov_character],
+                      participants=_people(b.get("participants"), novel,
+                                           f"서브플롯 {lo + k}화"),
                       mode=b.get("mode", "dialogue"), establishes=[],
                       world_ops=_ops(b.get("world_ops"), f"서브플롯 {lo + k}화"),
                       scale=int(b.get("scale") or spec["scale"]),
@@ -782,7 +817,8 @@ def build_episode(novel, spec: dict, llm=None, max_repairs=MAX_REPAIRS, log=None
                 continue
             b.setdefault("direction", {})["scenario"] = sub_md
             sub = Scene(id=f"ep{lo:03d}_{epno:03d}s{k + 1}",
-                        participants=b.get("participants") or [novel.pov_character],
+                        participants=_people(b.get("participants"), novel,
+                                             f"서브플롯 {epno}화"),
                         mode=b.get("mode", "dialogue"),
                         directives=[b.get("beat", "")],
                         world_ops=_ops(b.get("world_ops"), f"서브플롯 {epno}화"),
@@ -982,7 +1018,12 @@ def run_scene(novel, scene, llm, max_repairs=MAX_REPAIRS, log=None) -> dict:
         # 단계까지 가지 못하니 수리가 영원히 안 된다(회귀 검사 test_novel_drive 가 잡았다).
         scene.prose = ""
         scene.turns = []
-        speakers = scene.participants or [novel.pov_character]
+        # **이미 저장된 씬에도 등장인물 아닌 이름이 있을 수 있다.** 경계(_people)는 앞으로
+        # 들어올 것만 막는다. 여기서 한 번 더 거르지 않으면 actor_prompt 안의
+        # novel.character(name) 이 KeyError 로 터지고 **회차 전체가 죽는다** -- 실측으로
+        # 1~10화가 그렇게 산문 0자로 끝났다. 걸러도 잃는 것은 배경 인물의 대사뿐이고,
+        # 그건 화자의 산문이 묘사하면 된다.
+        speakers = _people(scene.participants, novel, f"씬 {scene.id}")
         rounds = 1 if scene.mode == "letter" else 2
         for _ in range(rounds):
             for name in speakers:

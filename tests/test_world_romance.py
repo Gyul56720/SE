@@ -104,6 +104,26 @@ print("[선] 남주가 넘지 말아야 할 선")
 ok("무고한 사람을 해치지 않는다" in build().character("공명").persona,
    "페르소나에 명시돼 있다 (보고서: 범죄적 선을 넘으면 독자가 반발한다)")
 
+print("[척추] 모든 블록이 척추를 세울 씨앗을 갖는가")
+print("      ← steps 가 없으면 그 블록은 결말 하나 + 곁가지 스물아홉 화가 된다")
+thin = [(o["eps"], len(o.get("steps") or [])) for o in OUTCOMES
+        if len(o.get("steps") or []) < 2]
+ok(not thin,
+   f"모든 블록에 steps 가 2개 이상 (모자란 곳: {thin})\n"
+   "         실측 2026-09-04: 2블록부터 척추 1 / 서브플롯 29 였다 -- requires 는\n"
+   "         앞 블록이 이미 갚아서 열린 조건이 0이 된다")
+
+overlap = [(o["eps"], set(o.get("steps") or []) & set(o["requires"]))
+           for o in OUTCOMES if set(o.get("steps") or []) & set(o["requires"])]
+ok(not overlap,
+   f"steps 와 requires 가 겹치지 않는다 ({overlap})\n"
+   "         겹치면 앞 블록이 갚은 것을 또 세우게 된다")
+
+seeds = [c for o in OUTCOMES for c in (o.get("steps") or [])]
+ok(len(seeds) == len(set(seeds)),
+   f"단계 문구가 블록 간에 중복되지 않는다 ({len(seeds)}개 중 {len(set(seeds))}개 고유)\n"
+   "         겹치면 뒤 블록의 씨앗이 앞 블록의 establishes 로 갚아져 사라진다")
+
 print()
 if fails:
     print(f"로맨스 세계: {len(fails)}개 실패 -- {fails}")

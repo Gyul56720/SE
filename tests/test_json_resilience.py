@@ -182,6 +182,27 @@ ok(r4["remaining"] == 0, f"남은 것 계산도 그 범위 안에서 센다 ({r4
 ok([s.status for s in nv4.scenes] == ["verified", "pending", "pending"],
    f"2·3화는 손대지 않는다 ({[s.status for s in nv4.scenes]})")
 
+print("[인물] 등장인물 아닌 이름이 회차를 죽이지 않는가")
+print("      ← 실측: '낯선 남자'·'취객' 이 participants 에 들어가 actor_prompt 의")
+print("        novel.character() 가 KeyError 로 터졌고 1~10화가 산문 0자로 끝났다")
+nvp = build()
+kept = D._people(["설윤", "낯선 남자", "공명", "취객", "설윤"], nvp, "시험")
+ok(kept == ["설윤", "공명"], f"등장인물만 남기고 중복도 지운다 ({kept})")
+ok(D._people([], nvp, "시험") == [nvp.pov_character],
+   "전부 걸러지면 화자를 넣는다  ← 참가자 0명이면 배우 단계가 아무것도 못 한다")
+ok(D._people(["취객"], nvp, "시험") == [nvp.pov_character], "낯선 이름만 있어도 마찬가지")
+
+nv5 = build()
+sc5 = Scene(id="ghost", episode=1, participants=["취객", "낯선 남자"],
+            directives=["취객이 온다"])
+nv5.scenes = [sc5]
+try:
+    r5 = D.run_scene(nv5, sc5, CleanFake(), max_repairs=1)
+    ok(r5["status"] in ("verified", "failed"),
+       f"이미 저장된 씬에 낯선 이름이 있어도 죽지 않는다 ({r5['status']})")
+except KeyError as e:
+    ok(False, f"KeyError 로 죽었다 ({e})  ← 회차 전체가 여기서 멈춘다")
+
 print("[V009] 산문 수리로 못 고치는 관계 선언은 경계에서 버린다")
 print("      ← 시험 런의 실제 사인: 관계 구성원이 두 사람이 아니다: []  (4시도 111초 실패)")
 nv3 = build()
