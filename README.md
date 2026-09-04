@@ -61,6 +61,30 @@ python3 novel/read.py --path novel/seeded.json --ep 1-3
 **설계·사용법·실패 이력 전부 [`novel/README.md`](novel/README.md) 에 있다.** 소설 작업을
 새로 시작하기 전에 그것부터 읽을 것 -- 밤을 날린 사고 일곱 개가 거기 적혀 있다.
 
+### DRIFT — 자유 연속 집필 (조립하지 않는 쪽)
+
+위가 **조립**(결말을 정하고 거꾸로 비트를 쌓는다)이라면, DRIFT 는 **흐름**이다. 줄거리를
+먼저 짜지 않고 첫 문장 하나에서 끝까지 이어 쓴다. 조립이 인과는 튼튼한데 문장이 칸에
+갇힌다는 판단에서 나왔다.
+
+| | 부품 | 하는 일 |
+|---|---|---|
+| **D** | Diffusion 확산 | 세계를 넓히며 앞엣것을 다시 키운다 |
+| **R** | Rhythm 리듬 | 문장 길이와 대사 분포를 잰다 |
+| **I** | Intrusion 충격 | 2,000자마다 제3자가 들이닥쳐 점층을 끊는다 |
+| **F** | Freewriting 자유 | 씬도 회차도 없이 덩어리를 이어 붙인다 |
+| **T** | Truth 원장 | 앞에서 쓴 것과의 모순만 잡는다 (게이트는 최소) |
+
+```bash
+scripts/drift.sh start      # 새 원고
+scripts/drift.sh go 50000   # 이어서 5만 자
+scripts/drift.sh status     # 어디까지 왔나
+scripts/drift.sh read       # 읽는다
+```
+
+**사용법 전부 [`novel/DRIFT.md`](novel/DRIFT.md).** 에이전트 세션에서는 `/drift` 스킬로
+바로 부를 수 있다(`.claude/skills/drift/`).
+
 ## 2. 오케스트레이션 에이전트 — `orchestrator/`
 
 문제를 계획(plan.json) → 컴포넌트 코드 + 검증 코드로 쪼개서 실행하고, 실패하면 계획을
