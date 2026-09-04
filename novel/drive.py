@@ -298,7 +298,7 @@ def _people(raw, novel, label: str = "") -> list:
     return kept
 
 
-def _rel_ops(raw, novel, label: str = "") -> list:
+def _rel_ops(raw, novel, label: str = "") -> tuple:
     """relation_ops 에서 **쓸 수 있는 선언만** 남긴다.
 
     관계 선언은 members 가 서로 다른 두 등장인물이어야 한다. 아니면 V009 가 hard 로 잡는데,
@@ -306,16 +306,27 @@ def _rel_ops(raw, novel, label: str = "") -> list:
     시도 횟수를 다 쓰고 결정론적으로 실패하고, 그 뒤 씬들까지 세운다(2026-09-04 시험 런:
     "관계 구성원이 두 사람이 아니다: []" 로 4번 시도 111초, verified 0).
 
-    고칠 수 없는 선언은 경계에서 버린다. 잃는 것은 관계 선언 하나이고, 사는 것은 그 회차다."""
+    고칠 수 없는 선언은 경계에서 버린다. 잃는 것은 관계 선언 하나이고, 사는 것은 그 회차다.
+
+    반환은 (쓸 수 있는 관계 선언, world_ops 로 옮길 것) 이다."""
+    from . import verbs as V
     names = {c.name for c in novel.characters}
-    kept = []
+    kept, moved = [], []
     for o in _ops(raw, label):
         m = list(o.get("members") or [])
         if len(m) == 2 and m[0] != m[1] and all(x in names for x in m):
             kept.append(o)
+            continue
+        # **자리를 잘못 찾은 선언은 버리지 않고 옮긴다.** 모델이 world 동사를
+        # relation_ops 에 넣는 일이 잦다(실측: {"op": "meet", "pair": [...]}).
+        # 선언 자체는 진짜인데 버킷만 틀린 것이라, 버리면 세계 변화가 사라진다.
+        verb = o.get("event") or o.get("op")
+        if verb in V.VERBS:
+            moved.append({**o, "event": verb})
+            _log(f"[ops] {label}: '{verb}' 은 world 동사다 -- world_ops 로 옮긴다")
         else:
-            _log(f"[ops] {label}: 쓸 수 없는 관계 선언을 버렸다 -- members={m}")
-    return kept
+            _log(f"[ops] {label}: 쓸 수 없는 관계 선언을 버렸다 -- members={m} op={verb!r}")
+    return kept, moved
 
 
 def call_json(llm, prompt: str, tries: int = 3, label: str = "") -> dict:
@@ -711,6 +722,8 @@ def build_episode(novel, spec: dict, llm=None, max_repairs=MAX_REPAIRS, log=None
                 continue
             est = [e for e in (b.get("establishes") or []) if e in target]
             if est:
+                rel_ok, rel_moved = _rel_ops(b.get("relation_ops"), novel,
+                                             f"척추 {lo}~{hi}화")
                 got = Beat(driver=str(b.get("driver") or ""),
                            cost=str(b.get("cost") or ""),
                            deadline=spec.get("deadline", ""),
@@ -721,8 +734,9 @@ def build_episode(novel, spec: dict, llm=None, max_repairs=MAX_REPAIRS, log=None
                                                 f"척추 {lo}~{hi}화"),
                            mode=b.get("mode", "dialogue"),
                            requires=list(b.get("requires") or []), establishes=est,
-                           world_ops=_ops(b.get("world_ops"), f"척추 {lo}~{hi}화"),
-                           relation_ops=_rel_ops(b.get("relation_ops"), novel, f"척추 {lo}~{hi}화"),
+                           world_ops=_ops(b.get("world_ops"),
+                                          f"척추 {lo}~{hi}화") + rel_moved,
+                           relation_ops=rel_ok,
                            scale=int(b.get("scale") or spec["scale"]),
                            direction=dict(b.get("direction") or {}))
                 feedback = ""
@@ -1031,8 +1045,16 @@ def run_scene(novel, scene, llm, max_repairs=MAX_REPAIRS, log=None) -> dict:
             scene.location = d.get("location", "")
             scene.punctum = d.get("punctum", "")
             scene.directives = d.get("directives") or scene.directives
-            scene.world_ops = (scene.world_ops or []) + (d.get("world_ops") or [])
-            scene.relation_ops = (scene.relation_ops or []) + (d.get("relation_ops") or [])
+            # **여기가 새고 있었다.** 경계 검사(_ops/_rel_ops)는 조립 단계에만 걸려
+            # 있었고, 씬 기획 단계에서 배우·화자가 낸 ops 는 아무 검사 없이 붙었다.
+            # 그래서 'meet(설윤, 재현)' 같은 문자열과 world 동사가 relation_ops 에 그대로
+            # 들어갔고, V009 가 "구성원이 두 사람이 아니다: []" 로 매 시도마다 hard 를
+            # 냈다 -- 산문이 아니라 선언의 문제라 네 번 다시 써도 안 고쳐졌다(탐침 실측:
+            # V009 16회 = 4씬 x 4시도).
+            rel_ok, rel_moved = _rel_ops(d.get("relation_ops"), novel, f"씬 {scene.id}")
+            scene.world_ops = ((scene.world_ops or [])
+                               + _ops(d.get("world_ops"), f"씬 {scene.id}") + rel_moved)
+            scene.relation_ops = (scene.relation_ops or []) + rel_ok
             scene.scale = int(d.get("scale") or scene.scale or 0)
             if scene.is_episode_end:
                 scene.cliffhanger = d.get("cliffhanger") or scene.cliffhanger

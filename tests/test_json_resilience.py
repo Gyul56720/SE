@@ -206,13 +206,29 @@ except KeyError as e:
 print("[V009] 산문 수리로 못 고치는 관계 선언은 경계에서 버린다")
 print("      ← 시험 런의 실제 사인: 관계 구성원이 두 사람이 아니다: []  (4시도 111초 실패)")
 nv3 = build()
-kept = D._rel_ops([{"op": "start", "kind": "연인", "members": []},
-                   {"op": "start", "kind": "연인", "members": ["설윤", "설윤"]},
-                   {"op": "start", "kind": "연인", "members": ["설윤", "없는사람"]},
-                   {"op": "start", "kind": "연인", "members": ["설윤", "공명"]}], nv3, "시험")
+kept, moved = D._rel_ops([{"op": "start", "kind": "연인", "members": []},
+                          {"op": "start", "kind": "연인", "members": ["설윤", "설윤"]},
+                          {"op": "start", "kind": "연인", "members": ["설윤", "없는사람"]},
+                          {"op": "start", "kind": "연인", "members": ["설윤", "공명"]}],
+                         nv3, "시험")
 ok(len(kept) == 1 and kept[0]["members"] == ["설윤", "공명"],
    f"쓸 수 있는 선언 하나만 남는다 ({kept})")
 ok(True, "빈 members · 자기 자신 · 없는 인물 셋 다 걸러진다")
+
+print("[자리] world 동사가 relation_ops 에 오면 **버리지 않고 옮긴다**")
+print("      ← 실측: {'op': 'meet', 'pair': [...]} 가 relation_ops 에 들어와 V009 가")
+print("        '구성원이 두 사람이 아니다: []' 로 매 시도마다 hard 를 냈다 (16회)")
+kept2, moved2 = D._rel_ops([{"op": "meet", "pair": ["설윤", "공명"]},
+                            {"op": "start", "kind": "연인", "members": ["설윤", "공명"]}],
+                           nv3, "시험")
+ok(len(kept2) == 1, f"관계 선언은 남는다 ({kept2})")
+ok(len(moved2) == 1 and moved2[0]["event"] == "meet",
+   f"world 동사는 world_ops 로 옮겨진다 ({moved2})  ← 버리면 세계 변화가 사라진다")
+
+kept3, moved3 = D._rel_ops(["meet(설윤, 재현)", "misbelieve('공명', 'x', 'y')"],
+                           nv3, "시험")
+ok(not kept3 and not moved3,
+   f"함수 호출처럼 생긴 문자열은 버린다 ({kept3}, {moved3})  ← 파싱하면 더 틀린다")
 
 print("[연출] direction 이 문자열로 와도 서술 단계가 죽지 않는다")
 sc = Scene(id="x", direction="복도, 압정 자국")            # LLM 이 이렇게 낼 때가 있다
