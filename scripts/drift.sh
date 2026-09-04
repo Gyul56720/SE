@@ -8,8 +8,9 @@
 #   drift.sh start  [글자수]        새 원고를 시작한다 (기본 8000)
 #   drift.sh go     [글자수]        하던 원고를 이어 쓴다 (기본 50000)  ← 가장 많이 쓴다
 #
-#   부조리가 세다 싶으면 계수를 낮춘다 (기본 0.8. 낮출수록 급발진·장르·사건이 준다):
-#     DRIFT=0.5 drift.sh go
+#   부조리를 조절한다 (기본 0.5. 높이면 급발진·장르·사건이 잦아진다):
+#     DRIFT=0.3 drift.sh go     # 더 잔잔하게
+#     DRIFT=0.8 drift.sh go     # 더 요란하게
 #   drift.sh status                 살아 있는지 · 어디까지 왔는지
 #   drift.sh read                   지금까지 쓴 원고를 읽는다
 #   drift.sh save  <파일>           원고를 파일로 뽑는다
@@ -19,7 +20,7 @@
 #   drift.sh world                  세계가 얼마나 자랐는지 (인물·장소·사물·사실·사건)
 #
 # 환경변수로 바꿀 수 있는 것:
-#   DRIFT    표류 계수 0~1     (기본 0.8 -- 낮출수록 부조리가 줄어든다)
+#   DRIFT    표류 계수 0~1     (기본 0.5 -- 낮출수록 부조리가 줄어든다)
 #   SE_DIR   저장소 위치        (기본 /home/ubuntu/SE)
 #   BOOK     원고 파일          (기본 $SE_DIR/novel/drift.json)
 #   FIRST    첫 문장 (start 에서만)

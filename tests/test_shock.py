@@ -181,7 +181,9 @@ ok("몸으로 하는 것이 반씩이다" in SH.impulse_brief(SH.impulse("a", 0)
 print()
 print("[계수] **부조리의 세기를 하나로 조인다**")
 print("      ← 축을 넷이나 겹쳐 놓으니 뒤로 갈수록 쌓였다. 계수로 셋을 함께 줄인다.")
-ok(flow.DRIFT == 0.8, f"기본 계수 0.8 ({flow.DRIFT})")
+# 0.8 → 0.5. 초반이 좋았던 이유는 쌓인 것이 없어서다 -- 그 밀도를 끝까지 가려면
+# 매 덩어리에 얹는 양을 줄여야 한다.
+ok(flow.DRIFT == 0.5, f"기본 계수 0.5 ({flow.DRIFT})")
 ok(flow.blank()["drift"] == flow.DRIFT, "새 원고에 계수가 저장된다  ← 이어 써도 같게")
 
 
@@ -199,7 +201,7 @@ def _fires(level, n=200):
 full, less, half = _fires(1.0), _fires(0.8), _fires(0.5)
 ok(full == 200, f"계수 1.0 이면 매 덩어리 ({full}/200)")
 ok(150 < less < 190, f"계수 0.8 이면 다섯에 넷쯤 ({less}/200)")
-ok(half < less, f"계수 0.5 는 더 적다 ({half}/200)")
+ok(80 < half < 120, f"계수 0.5 면 절반쯤 -- 지금의 기본값 ({half}/200)")
 
 bk4 = flow.blank(); bk4["drift"] = 0.5; bk4["chunks"] = ["x"] * 3
 off = flow.write_prompt(bk4)
