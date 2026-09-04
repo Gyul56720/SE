@@ -37,6 +37,12 @@ from novel import style                                               # noqa: E4
 
 # 한 번에 받는 덩어리. 너무 크면 모델이 뒤로 갈수록 늘어지고, 너무 작으면 점층이 덩어리
 # 경계에 잘린다. 1,200~1,500자가 문장론(점층 -> 전환)이 한 바퀴 도는 크기다.
+# 인물 카드에 적는 것. **정하면 적어두고 다음부터 참조한다** -- 적어두지 않으면 모델은
+# 세 덩어리 뒤에 다른 사람으로 만든다. 대사가 인물마다 달라지는 것도 이 카드에서 나온다:
+# "거칠게" 는 한 인물의 특징이지 소설의 규칙이 아니다.
+CARD = ("나이", "키", "성격", "혈액형", "가족", "과거", "트라우마",
+        "좋아하는 것", "싫어하는 것", "취미", "전공", "직업", "말투", "버릇", "겉모습")
+
 CHUNK = 1400
 MAX_REWRITE = 2          # 모순으로 기각됐을 때 다시 쓰는 횟수
 TAIL = 900               # 다음 덩어리에 넘기는 꼬리 길이
@@ -64,18 +70,43 @@ def blank(first: str = FIRST) -> dict:
 def _merge(ledger: dict, delta: dict) -> list:
     """새로 확정된 것을 원장에 더한다. **부딪히는 것만** 돌려준다.
 
-    같은 키에 다른 값이 오는 것만 모순으로 본다. 값이 없던 자리를 채우는 것은 세계가
-    자라는 것이지 모순이 아니다 -- 그 구분을 못 하면 두 번째 덩어리부터 전부 기각된다."""
+    값은 두 꼴이다: 한 줄짜리 문자열, 또는 인물 카드처럼 필드가 여럿인 dict. dict 면
+    필드별로 본다 -- 나이는 그대로인데 취미가 새로 나오는 것은 세계가 자라는 것이지
+    모순이 아니다. 그 구분을 못 하면 두 번째 덩어리부터 전부 기각된다."""
     clashes = []
+
+    def _one(bucket, key, old_v, new_v, field=""):
+        where = f"{bucket}.{key}" + (f".{field}" if field else "")
+        if not isinstance(new_v, (str, int, float)) or not str(new_v).strip():
+            return None
+        if old_v and str(old_v).strip() and str(old_v).strip() != str(new_v).strip():
+            clashes.append(f"{where}: 앞에서는 '{old_v}' 였는데 지금 '{new_v}' 다")
+            return None
+        return str(new_v).strip()
+
     for bucket in ("people", "places", "facts", "objects"):
         for k, v in (delta.get(bucket) or {}).items():
-            if not isinstance(v, (str, int, float)) or not str(v).strip():
-                continue
-            old = ledger[bucket].get(k)
-            if old and str(old).strip() and str(old).strip() != str(v).strip():
-                clashes.append(f"{bucket}.{k}: 앞에서는 '{old}' 였는데 지금 '{v}' 다")
+            cur = ledger[bucket].get(k)
+            if isinstance(v, dict) and bucket == "people":
+                # **카드는 인물만이다.** 다른 칸에 dict 가 오면 추출기가 형식을 틀린
+                # 것이므로 버린다 -- 그것을 받아주면 원장에 구조가 두 가지가 생긴다.
+                card = dict(cur) if isinstance(cur, dict) else ({"소개": cur} if cur else {})
+                for f, fv in v.items():
+                    got = _one(bucket, k, card.get(f), fv, f)
+                    if got is not None:
+                        card[f] = got
+                if card:
+                    ledger[bucket][k] = card
             else:
-                ledger[bucket][k] = v
+                if isinstance(cur, dict):
+                    # 이미 카드인 자리에 한 줄이 왔다. 소개 칸으로 받는다.
+                    got = _one(bucket, k, cur.get("소개"), v, "소개")
+                    if got is not None:
+                        cur["소개"] = got
+                    continue
+                got = _one(bucket, k, cur, v)
+                if got is not None:
+                    ledger[bucket][k] = got
     for t in (delta.get("time") or []):
         if t and t not in ledger["time"]:
             ledger["time"].append(t)
@@ -83,10 +114,19 @@ def _merge(ledger: dict, delta: dict) -> list:
 
 
 def brief(ledger: dict, limit: int = 40) -> str:
-    """원장을 프롬프트에 실을 형태로. 길어지면 최근 것만 -- 앞부분은 어차피 안 바뀐다."""
+    """원장을 프롬프트에 실을 형태로. **인물은 카드를 통째로** 펼친다 -- 대사가 인물마다
+    달라지려면 나이도 말투도 트라우마도 그 자리에 있어야 한다. 나머지 칸은 한 줄씩."""
     out = []
-    for bucket, label in (("people", "인물"), ("places", "장소"),
-                          ("objects", "사물"), ("facts", "사실")):
+    people = list(ledger.get("people", {}).items())
+    if people:
+        out.append("  [인물]")
+        for name, card in people:
+            if isinstance(card, dict):
+                fields = " · ".join(f"{k} {v}" for k, v in card.items() if v)
+                out.append(f"    {name} — {fields}")
+            else:
+                out.append(f"    {name} — {card}")
+    for bucket, label in (("places", "장소"), ("objects", "사물"), ("facts", "사실")):
         items = list(ledger.get(bucket, {}).items())[-limit:]
         if items:
             out.append(f"  {label}: " + " · ".join(f"{k}={v}" for k, v in items))
@@ -108,8 +148,14 @@ def write_prompt(book: dict, feedback: str = "") -> str:
 쓰고, 농담은 무표정하게 던지고, 과장된 반응은 옆 사람이 한다. 비장해지려는 문장이 나오면
 그 다음 줄에서 김을 빼라.
 
-[대사] 거칠고 현실적으로. 다듬지 마라. 말을 끊고, 겹치고, 대답 대신 딴소리를 한다.
-어휘는 자유다 -- 상표든 욕이든 외국어든 그 사람이 쓸 법한 말을 그대로 쓴다.
+[대사] **인물에 맞게.** 소설 전체에 한 가지 말투를 씌우지 마라 -- 거친 것은 어떤 인물의
+특징이지 이 소설의 규칙이 아니다.
+- 아래 [세계]의 인물 카드에 **말투**가 적혀 있으면 그대로 쓴다. 마흔둘 정비공과 스물셋
+  대학원생과 예순의 어머니는 같은 문장을 쓰지 않는다.
+- 카드에 없는 인물이면 **지금 정하고, 그 다음부터 그대로 간다.** 나이·성격·직업·과거가
+  말투를 정한다. 정한 것은 추출기가 카드에 적어둔다.
+- 말을 끊고, 겹치고, 대답 대신 딴소리를 하는 것은 누구나 한다. 어휘는 자유다 -- 상표든
+  욕이든 외국어든 사투리든 **그 사람이 쓸 법한 말**을 그대로 쓴다.
 
 [어디로 가든] **미리 정하지 마라.** 살인이든 불륜이든 사랑이든 실종이든, 지금 쓰는
 문장이 다음을 부르는 대로 간다. 앞 덩어리와 크게 상관없는 곳으로 새도 좋다 -- 사람은
@@ -133,6 +179,9 @@ def write_prompt(book: dict, feedback: str = "") -> str:
   * 여기 적힌 것과 어긋나게 쓰지 마라. 나머지는 전부 자유다.
   * 여기 없는 것은 **새로 지어내도 된다.** 지어냈으면 자세히 지어내라 -- 이름, 연도,
     누가 지었는지, 왜 그렇게 불리는지.
+  * 인물이 새로 나오면 **그 자리에서 사람을 만들어라.** 나이와 키, 성격, 가족, 과거,
+    트라우마, 좋아하는 것, 취미, 전공, 직업, 말투, 버릇까지. 전부 한 번에 늘어놓지는 마라 --
+    지금 필요한 두세 개만 문장에 녹이고, 나머지는 뒤에서 하나씩 드러낸다.
 
 {OPENING if opening else ''}
 
@@ -158,11 +207,16 @@ def extract_prompt(chunk: str) -> str:
 
 규칙:
 - 확정된 것만. 추측·비유·인물의 생각은 넣지 마라.
-- 값은 짧은 한국어 명사구로. 한 항목에 한 줄.
+- 값은 짧은 한국어로. 한 항목에 한 줄.
 - 새로 나온 것이 없는 칸은 빈 객체로 둔다.
+- **인물은 카드로 적는다.** 글에 드러난 칸만 채워라. 안 나온 칸은 빼라 -- 지어내지 마라.
+  쓸 수 있는 칸: {" · ".join(CARD)}
+- 말투 칸이 중요하다. 그 사람이 어떻게 말하는지 한 줄로 적어라
+  (예: "존댓말인데 끝을 흐린다", "짧게 끊고 욕을 섞는다", "말이 길고 자꾸 되묻는다").
 
 JSON 만 출력:
-{{"people": {{"이름": "그가 누구인가 한 줄"}},
+{{"people": {{"이름": {{"나이": "42", "직업": "양조장 정비공",
+                     "말투": "짧게 끊는다. 욕을 섞는다", "과거": "..."}}}},
   "places": {{"장소": "어떤 곳인가 한 줄"}},
   "objects": {{"사물": "무엇인가 한 줄"}},
   "facts": {{"항목": "확정된 값"}},
@@ -232,6 +286,11 @@ def main() -> int:
     a = ap.parse_args()
 
     if a.read:
+        if not Path(a.read).exists():
+            print(f"원고가 아직 없다: {a.read}\n"
+                  f"  런이 첫 덩어리를 끝내야 처음 저장된다. 로그를 봐라:\n"
+                  f"  tail -30 logs/flow.log", file=sys.stderr)
+            return 1
         book = json.loads(Path(a.read).read_text(encoding="utf-8"))
         print(text_of(book))
         print(f"\n---\n덩어리 {len(book['chunks'])}개 · "
