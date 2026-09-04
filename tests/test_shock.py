@@ -137,6 +137,35 @@ ok("급발진이 이 사람의 기본값이다" in _sn, "화자가 주인공 성
 ok("같은 몸짓" in _sn, "지어낸 말과 급발진을 한 벌로 묶는다")
 
 print()
+print("[소재] **무엇이 나오는가도 뽑아서 준다**")
+print("      ← 확산·리듬은 '어떻게' 다. '무엇' 을 안 주면 모델은 늘 술집·부두·낡은 차를 낸다.")
+from novel import matter                                              # noqa: E402
+mcombo = len(matter.GENRE) * len(matter.MEDIUM) * len(matter.HEAT)
+ok(mcombo > 10000, f"갈래 × 매체 × 온도 ({mcombo:,}가지)")
+for axis in ("genre", "medium", "heat"):
+    d = sum(matter.draw("s", i)[axis] == matter.draw("s", i + 1)[axis] for i in range(200))
+    ok(d == 0, f"{axis}: 연달아 같은 재료가 아니다 ({d}건)")
+mb = matter.brief(matter.draw("a", 0))
+ok("섞되 갈아타지 마라" in mb,
+   "소재가 장르를 바꾸지 않는다  ← 던전이 나온다고 던전물이 되지 않는다")
+ok("본문에 실물로" in mb, "편지는 통째로, 노래는 가사 두 줄로  ← '읽었다' 로 넘기지 않는다")
+ok("문제를 풀지 않는다" in mb, "지도가 나왔다고 길을 찾게 되지 않는다")
+ok("[소재]" in p3, "확산 덩어리에 실린다")
+ok("[소재]" not in flow.write_prompt(bk3), "사건 덩어리에는 안 실린다")
+
+print()
+print("[사건] **셋에 하나쯤은 주인공이 불러온다**")
+print("      ← 급발진이 기본값인데 사건이 늘 밖에서만 오면 두 축이 따로 논다.")
+mine = [SH.draw("s", i)["mine"] for i in range(120)]
+ok(0 < sum(mine) < len(mine), f"밖에서 오는 것과 섞인다 ({sum(mine)}/120)")
+own = SH.brief(SH.draw("s", mine.index(True)))
+ok("주인공이 불러온다" in own, "급발진이 사건으로 번진다")
+ok("본인은 왜 이렇게 됐는지 모른다" in own, "그러고도 본인은 모른다")
+ok("제3자가 개입한다" in SH.brief(SH.draw("s", mine.index(False))), "나머지는 밖에서 온다")
+ok(any("시비를 건다" in a for a in SH.ACT), "길 가는 사람에게 시비도 목록에 있다")
+ok(any("추파" in a for a in SH.ACT), "추파도 목록에 있다")
+
+print()
 if fails:
     print(f"충격: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)

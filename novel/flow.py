@@ -37,6 +37,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from novel import drive as D                                          # noqa: E402
 from novel import echo                                                # noqa: E402
 from novel import diffusion                                           # noqa: E402
+from novel import matter                                              # noqa: E402
 from novel import shock as SH                                         # noqa: E402
 from novel import rhythm                                              # noqa: E402
 from novel import style                                               # noqa: E402
@@ -245,6 +246,16 @@ def brief(ledger: dict, limit: int = 40) -> str:
 
 # ---------------------------------------------------------------- 프롬프트
 
+def _matter(book: dict) -> str:
+    """**소재** -- 이번 덩어리에 섞을 재료. 확산·리듬이 '어떻게' 라면 이건 '무엇' 이다.
+
+    이 축이 없을 때 모델은 늘 비슷한 것을 냈다 -- 술집, 부두, 낡은 차, 담배. 세계가
+    넓어져도 재료가 안 넓어졌다.
+    """
+    return matter.brief(matter.draw(book.get("seed_id") or book["first"],
+                                    len(book["chunks"])))
+
+
 def _impulse(book: dict) -> str:
     """**급발진** -- 인물이 스스로 저지르는 것. 사건(shock)과 다른 물건이다.
 
@@ -308,6 +319,8 @@ def _diffuse(book: dict) -> str:
     맺지 않아도, 어순이 뒤집혀도, 조사가 빠져도 된다. **말끝을 다듬으면 그게 딱딱함이다.**
 
 {_impulse(book)}
+
+{_matter(book)}
 
 [잡소리] **쓸데없는 말이 이 소설의 재미다 -- 다만 늘 같은 수를 쓰지 마라.**
 아래는 **개그 자리에서만** 꺼내는 수다. 매 덩어리마다 전부 하려 들면 그게 버릇이 되고,
