@@ -190,12 +190,62 @@ def _flatten(prompt: str) -> str:
 
 
 def _json(text: str) -> dict:
-    """코드펜스와 앞뒤 잡소리를 벗기고 JSON 하나를 꺼낸다."""
+    """코드펜스와 앞뒤 잡소리를 벗기고 JSON **객체** 하나를 꺼낸다.
+
+    dict 인지 확인한다. 확인하지 않으면 문자열이나 배열이 그대로 위로 올라가서, 훨씬
+    뒤의 `b.get(...)` 에서 'str' object has no attribute 'get' 로 터진다 -- 원인에서
+    멀리 떨어진 곳에서 죽으면 로그만 보고는 무엇이 잘못됐는지 알 수 없다."""
     t = re.sub(r"^```(?:json)?|```$", "", text.strip(), flags=re.M).strip()
     i, j = t.find("{"), t.rfind("}")
     if i < 0 or j < 0:
         raise ValueError(f"JSON 을 찾지 못했다: {text[:120]!r}")
-    return json.loads(t[i:j + 1])
+    got = json.loads(t[i:j + 1])
+    if not isinstance(got, dict):
+        raise ValueError(f"JSON 객체가 아니라 {type(got).__name__} 이다: {t[i:j + 1][:120]!r}")
+    return got
+
+
+def _ops(raw, label: str = "") -> list:
+    """LLM 이 준 ops 목록에서 **객체만** 남긴다.
+
+    world_ops/relation_ops 는 기계가 읽는 선언이라 {"event": ...} 형태여야 하는데,
+    모델이 종종 문자열 목록으로 낸다(["설윤이 자리를 잃었다"]). 그대로 담으면 씬에
+    저장되고, 한참 뒤 novel.save() 안의 derive_gates 에서 터진다 -- 원인에서 멀리
+    떨어진 곳에서 죽으면 로그만 보고는 무엇이 잘못됐는지 알 수 없다. 경계에서 거른다.
+
+    버린 것은 반드시 로그에 남긴다. 조용히 버리면 세계관 변화가 사라진 줄도 모른다."""
+    kept = [o for o in (raw or []) if isinstance(o, dict)]
+    dropped = len(raw or []) - len(kept)
+    if dropped:
+        _log(f"[ops] {label}: 객체가 아닌 항목 {dropped}개를 버렸다 -- "
+             f"{[str(o)[:40] for o in (raw or []) if not isinstance(o, dict)]}")
+    return kept
+
+
+def call_json(llm, prompt: str, tries: int = 3, label: str = "") -> dict:
+    """LLM 에게 JSON 을 받아 파싱한다. **깨지면 에러 문구를 붙여 다시 묻는다.**
+
+    2026-09-03 밤샘 런이 여기서 통째로 날아갔다. 추출기가 낸 JSON 하나가 깨졌는데
+    (값 안의 큰따옴표를 안 escape 한 전형적인 실패) 재시도가 없어서 예외가 build_episode
+    를 뚫고 올라갔고, 그 블록 15화가 통째로 버려졌다. 일곱 시간에 0자였다.
+
+    모델은 **자기가 낸 JSON 의 파싱 오류를 알려주면 대체로 고친다.** 그러니 한 번의
+    파싱 실패로 열다섯 화를 버릴 이유가 없다. 실패 문구를 그대로 되먹여 다시 묻는다.
+
+    끝내 못 받으면 ValueError 를 올린다 -- 호출자가 그 비트 하나만 접을지, 전부를
+    포기할지 정한다. 여기서 조용히 {} 를 돌려주면 빈 씬이 조립돼 더 나쁘다."""
+    last = ""
+    for attempt in range(tries):
+        raw = llm(prompt if not last else prompt + _fb_text(
+            f"직전 출력이 JSON 으로 파싱되지 않았다: {last}. "
+            f"**JSON 만** 출력하고, 값 안의 큰따옴표는 홑따옴표로 바꾸거나 escape 하라. "
+            f"줄바꿈은 값 안에 넣지 마라."))
+        try:
+            return _json(raw)
+        except (ValueError, json.JSONDecodeError) as e:
+            last = f"{type(e).__name__}: {str(e)[:150]}"
+            _log(f"[json] {label or 'LLM'} 파싱 실패 {attempt + 1}/{tries} -- {last}")
+    raise ValueError(f"{label or 'LLM'}: {tries}번 시도했지만 JSON 을 못 받았다 ({last})")
 
 
 # ---------------------------------------------------------------- 프롬프트
@@ -495,8 +545,17 @@ def build_episode(novel, spec: dict, llm=None, max_repairs=MAX_REPAIRS, log=None
             scenario = _llm_for(llm, "director")(
                 beat_prompt(novel, spec, open_conds, lo, feedback))
             # 2단계: 추출 -- JSON(데이터 추출은 JSON 이 유리하다). 값싼 모델로 보낸다.
-            b = _json(_llm_for(llm, "extractor")(
-                extract_prompt(scenario, open_conds, spec["scale"])))
+            # **파싱 실패는 여기서 흡수한다.** 위로 던지면 이 결말 블록 열다섯 화가
+            # 통째로 버려진다(2026-09-03 밤샘 런이 그렇게 0자로 끝났다).
+            try:
+                b = call_json(_llm_for(llm, "extractor"),
+                              extract_prompt(scenario, open_conds, spec["scale"]),
+                              label=f"추출 {lo}~{hi}화")
+            except ValueError as e:
+                feedback = _fb_text(f"추출기가 이 시나리오에서 JSON 을 못 뽑았다({e}). "
+                                    f"항목 제목을 그대로 두고 더 짧고 단순하게 다시 써라. "
+                                    f"각 항목은 한두 문장이면 된다.")
+                continue
             b.setdefault("direction", {})["scenario"] = scenario
             est = [e for e in (b.get("establishes") or []) if e in open_conds]
             if est:
@@ -504,8 +563,8 @@ def build_episode(novel, spec: dict, llm=None, max_repairs=MAX_REPAIRS, log=None
                            participants=b.get("participants") or [novel.pov_character],
                            mode=b.get("mode", "dialogue"),
                            requires=list(b.get("requires") or []), establishes=est,
-                           world_ops=list(b.get("world_ops") or []),
-                           relation_ops=list(b.get("relation_ops") or []),
+                           world_ops=_ops(b.get("world_ops"), f"척추 {lo}~{hi}화"),
+                           relation_ops=_ops(b.get("relation_ops"), f"척추 {lo}~{hi}화"),
                            scale=int(b.get("scale") or spec["scale"]),
                            direction=dict(b.get("direction") or {}))
                 feedback = ""
@@ -544,13 +603,18 @@ def build_episode(novel, spec: dict, llm=None, max_repairs=MAX_REPAIRS, log=None
         # 프롬프트가 두 계약을 갖게 되고, 그 불일치는 조용히 direction 을 비운다.
         sub_md = _llm_for(llm, "director")(
             subplot_prompt(novel, lo + k, spec["summary"]))
-        b = _json(_llm_for(llm, "extractor")(
-            extract_prompt(sub_md, [], spec["scale"])))
+        try:
+            b = call_json(_llm_for(llm, "extractor"),
+                          extract_prompt(sub_md, [], spec["scale"]),
+                          label=f"서브플롯 추출 {lo + k}화")
+        except ValueError as e:
+            _log(f"[episode] 서브플롯 {lo + k}화 추출 실패 -- 이 칸만 접는다 ({e})")
+            continue
         b.setdefault("direction", {})["scenario"] = sub_md
         filler = Beat(beat=b.get("beat", ""),
                       participants=b.get("participants") or [novel.pov_character],
                       mode=b.get("mode", "dialogue"), establishes=[],
-                      world_ops=list(b.get("world_ops") or []),
+                      world_ops=_ops(b.get("world_ops"), f"서브플롯 {lo + k}화"),
                       scale=int(b.get("scale") or spec["scale"]),
                       direction=dict(b.get("direction") or {}))
         pos = min(len(beats), (k + 1) * max(1, len(beats)) // (need + 1))
@@ -585,14 +649,19 @@ def build_episode(novel, spec: dict, llm=None, max_repairs=MAX_REPAIRS, log=None
                 break
             sub_md = _llm_for(llm, "director")(
                 subplot_prompt(novel, epno, spec["summary"]))
-            b = _json(_llm_for(llm, "extractor")(
-                extract_prompt(sub_md, [], spec["scale"])))
+            try:
+                b = call_json(_llm_for(llm, "extractor"),
+                              extract_prompt(sub_md, [], spec["scale"]),
+                              label=f"서브플롯 추출 {epno}화")
+            except ValueError as e:
+                _log(f"[episode] {epno}화 서브플롯 씬 추출 실패 -- 건너뛴다 ({e})")
+                continue
             b.setdefault("direction", {})["scenario"] = sub_md
             sub = Scene(id=f"ep{lo:03d}_{epno:03d}s{k + 1}",
                         participants=b.get("participants") or [novel.pov_character],
                         mode=b.get("mode", "dialogue"),
                         directives=[b.get("beat", "")],
-                        world_ops=list(b.get("world_ops") or []),
+                        world_ops=_ops(b.get("world_ops"), f"서브플롯 {epno}화"),
                         scale=int(b.get("scale") or spec["scale"]),
                         direction=dict(b.get("direction") or {}), episode=epno)
             scenes.append(sub)
@@ -633,7 +702,10 @@ def drive_novel(novel, outcomes, path, llm=None, max_repairs=MAX_REPAIRS,
 
 def _direction(scene) -> str:
     """Director 의 연출을 아래층이 읽을 형태로. **짜놓고 안 넘기면 없는 것과 같다.**"""
-    d = scene.direction or {}
+    # LLM 이 direction 을 문자열로 낼 때가 있다. isinstance 로 막지 않으면 아래 d.get 이
+    # 'str' object has no attribute 'get' 로 터지는데, 그 자리는 원인(추출)에서 한참
+    # 떨어진 서술 단계라 로그만 보고는 무엇이 잘못됐는지 알 수 없다.
+    d = scene.direction if isinstance(scene.direction, dict) else {}
     if not d:
         return ""
     # 디렉터가 쓴 Markdown 시나리오가 있으면 **그것을 그대로 넘긴다.** 요약해서 넘기면

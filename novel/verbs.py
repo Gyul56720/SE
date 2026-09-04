@@ -209,7 +209,15 @@ def spec(verb: str) -> dict:
 
 
 def validate_op(op: dict) -> list:
-    """world_op 하나의 형식 검사. 위반 사유 목록(빈 목록이면 통과)."""
+    """world_op 하나의 형식 검사. 위반 사유 목록(빈 목록이면 통과).
+
+    **객체가 아닌 것이 들어와도 죽지 않는다.** LLM 이 world_ops 를 문자열 목록으로 낼
+    때가 있는데(["설윤이 자리를 잃었다"]), 예전에는 여기서 op.get 이
+    'str' object has no attribute 'get' 로 터졌다. 검증기가 잘못된 입력에 죽으면 그건
+    검증이 아니라 사고다 -- 2026-09-03 밤샘 런이 novel.save() 안에서 이렇게 죽어
+    결말 블록을 잃었다. 위반으로 **보고**하고 넘어간다."""
+    if not isinstance(op, dict):
+        return [f"world_op 이 객체가 아니다: {type(op).__name__} {str(op)[:60]!r}"]
     verb = op.get("event")
     if verb not in VERBS:
         return [f"unknown world verb: {verb!r}"]

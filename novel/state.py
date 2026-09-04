@@ -208,7 +208,7 @@ class Novel:
         for idx in range(max(0, end + 1)):
             sc = self.scenes[idx]
             for op in sc.world_ops or []:
-                bad = V.validate_op(op)
+                bad = V.validate_op(op)          # 객체가 아니면 위반으로 보고하고 넘어간다
                 if bad:
                     problems.append(("hard", sc.id, "; ".join(bad)))
                     continue
@@ -329,8 +329,15 @@ class Novel:
                         "unrequited": ("start", "짝사랑")}
 
         def rel_ops_of(sc):
-            out = list(sc.relation_ops or [])
+            # **객체가 아닌 항목은 여기서 걸러낸다.** LLM 이 ops 를 문자열 목록으로 낼 때가
+            # 있는데, 그러면 아래 w.get 이 'str' object has no attribute 'get' 로 터진다.
+            # 이 함수는 save() 안에서 불리므로 여기서 죽으면 **원고 저장이 통째로 실패한다**
+            # -- 2026-09-03 밤샘 런이 그렇게 결말 블록을 잃었다. 잘못된 항목은 관계를
+            # 만들지 못할 뿐이고, 그것이 위반이라는 사실은 derive_gates 가 따로 보고한다.
+            out = [o for o in (sc.relation_ops or []) if isinstance(o, dict)]
             for w in sc.world_ops or []:
+                if not isinstance(w, dict):
+                    continue
                 m = WORLD_TO_REL.get(w.get("event"))
                 if not m:
                     continue

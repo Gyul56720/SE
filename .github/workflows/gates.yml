@@ -56,6 +56,13 @@ jobs:
       - name: G004 적용 범위 (파이썬 오탐 없음 · 셸에서는 그대로)
         run: python3 tests/test_g004_scope.py
 
+      - name: 소설 파이프라인 내구성 (깨진 JSON 이 밤을 날리지 않는가)
+        run: |
+          python3 tests/test_json_resilience.py
+          python3 tests/test_novel_episode.py
+          python3 tests/test_novel_drive.py
+          python3 tests/test_novel_gate.py
+
       - name: 오케스트레이터 계획 수리 테스트
         run: python3 tests/test_planner_repair.py
 
