@@ -386,15 +386,23 @@ def step(book: dict, llm, log=None) -> dict:
     return {"status": "blocked", "chars": 0, "clashes": clashes}
 
 
+def _save(book: dict, path) -> None:
+    if path:
+        Path(path).write_text(json.dumps(book, ensure_ascii=False, indent=1),
+                              encoding="utf-8")
+
+
 def run(book: dict, llm, target: int, path=None, deadline=None) -> dict:
+    # **시작하자마자 한 번 쓴다.** 첫 덩어리를 다 받고서야 파일이 생기면, 아직 쓰는
+    # 중인지 시작도 못 한 건지 밖에서 구분할 방법이 없다(실측: --read 가
+    # FileNotFoundError 로 죽었는데 프로세스는 멀쩡히 첫 덩어리를 받고 있었다).
+    _save(book, path)
     while sum(len(c) for c in book["chunks"]) < target:
         if deadline and time.time() > deadline:
             D._log("[flow] 시간 상한 -- 여기서 멈춘다")
             break
         r = step(book, llm)
-        if path:
-            Path(path).write_text(json.dumps(book, ensure_ascii=False, indent=1),
-                                  encoding="utf-8")
+        _save(book, path)
         if r["status"] != "ok":
             D._log("[flow] 모순을 못 풀었다 -- 멈춘다")
             break
@@ -418,9 +426,14 @@ def main() -> int:
 
     if a.read:
         if not Path(a.read).exists():
-            print(f"원고가 아직 없다: {a.read}\n"
-                  f"  런이 첫 덩어리를 끝내야 처음 저장된다. 로그를 봐라:\n"
-                  f"  tail -30 logs/flow.log", file=sys.stderr)
+            print(f"그런 파일이 없다: {a.read}\n"
+                  f"  런은 **시작하자마자** 한 번 저장한다. 그러니 파일이 없다는 것은\n"
+                  f"  아직 쓰는 중이라는 뜻이 아니라 **런이 시작도 못 했다**는 뜻이다.\n"
+                  f"  살아 있는지, 왜 죽었는지 순서대로 봐라:\n"
+                  f"    /usr/bin/pgrep -af 'novel/flow.py'\n"
+                  f"    tail -40 logs/flow.log\n"
+                  f"  (--out 에 준 경로와 --read 에 준 경로가 같은지도 확인해라)",
+                  file=sys.stderr)
             return 1
         book = json.loads(Path(a.read).read_text(encoding="utf-8"))
         print(text_of(book))

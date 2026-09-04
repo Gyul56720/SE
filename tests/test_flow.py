@@ -161,6 +161,28 @@ f = Fake()
 r = flow.step(bk, f)
 ok(r["status"] == "ok", f"두 번째 시도에서 채택 ({r['status']})")
 ok(f.tries == 2, f"한 번 기각하고 다시 썼다 ({f.tries}회)")
+print()
+print("[영속] **시작하자마자 한 번 저장한다**")
+print("      ← 첫 덩어리를 다 받고서야 파일이 생기면, 아직 쓰는 중인지 시작도 못 한 건지")
+print("        밖에서 구분할 수가 없다(실측: --read 가 FileNotFoundError 로 죽었다).")
+
+
+class Dead:
+    def __call__(self, prompt):
+        raise RuntimeError("모델 호출 실패")
+
+
+import tempfile as _tf                                                # noqa: E402
+_p = Path(_tf.mkdtemp()) / "start.json"
+try:
+    flow.run(flow.blank(flow.FIRST), Dead(), 3000, str(_p))
+except Exception:
+    pass
+ok(_p.exists(), "첫 호출이 죽어도 파일은 남는다")
+if _p.exists():
+    ok(json.loads(_p.read_text(encoding="utf-8"))["chunks"] == [],
+       "빈 원고로라도 저장된다  ← 그래야 '없다' 가 '시작 못 했다' 를 뜻한다")
+
 retry = [q for q in f.prompts if "직전 시도가 기각된 이유" in q]
 ok(retry, "기각 사유가 다음 프롬프트에 실린다")
 ok(any("나이" in q for q in retry), "무엇이 어긋났는지까지")
