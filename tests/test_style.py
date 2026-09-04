@@ -53,37 +53,39 @@ share = {k: v / 300 for k, v in counts.items()}
 for k, spec in style.kinds().items():
     got, want = share.get(k, 0), spec["share"]
     ok(abs(got - want) <= 0.03, f"{k} {got:.0%} (목표 {want:.0%})")
-ok(style.pick_kind(style.spine_pool(), {"cider": 99}) == "status",
-   "사이다가 넘치면 상태창으로 간다")
+ok(style.pick_kind(style.spine_pool(), {"cider": 99}) == "pingpong",
+   "역전이 넘치면 대사 씬으로 간다")
 
 print("[배분] 재개해도 이어서 센다")
-ok(style.tally([scene("cider"), scene("cider"), scene("status")])
-   == {"cider": 2, "status": 1}, "이미 쓴 씬의 종류를 센다")
+ok(style.tally([scene("cider"), scene("cider"), scene("routine")])
+   == {"cider": 2, "routine": 1}, "이미 쓴 씬의 종류를 센다")
 ok(style.tally([Scene(id="x")]) == {},
    "종류가 없는 씬은 세지 않는다  ← 옛 원고를 이어받아도 죽지 않는다")
 got = {style.pick_kind(style.subplot_pool(), {"cider": 3, "praise": 1}) for _ in range(20)}
 ok(len(got) == 1, f"무작위가 아니라 결손 최대로 고른다 ({got})  ← 재현되지 않으면 못 잰다")
 
 print()
-print("[화자] 사이다 규율이 실려 있는가")
+print("[화자] 하루키 문장 + 사이다 템포가 함께 실려 있는가")
 p = D.narrator_prompt(N, scene("cider"))
-ok("15~20자" in p and "3줄 이하" in p, "Z-스캔 -- 문장 15~20자, 문단 3줄 이하")
-ok("어려운 한자어" in p and "장황한 수식어" in p, "시각적 장애물 제거")
-ok("50~70%" in p, "대사 비율 50~70%")
-ok("주저하지 않는다" in p and "고구마" in p, "지연 금지")
+ok("건조한 번역투 단문" in p and "만연체를 쓰지 마라" in p, "문장은 하루키 쪽 -- 건조한 단문")
+ok("마이너스 퇴고" in p, "마이너스 퇴고")
+ok("느낌표" in p, "느낌표 배제 -- 이긴 쪽은 조용하다")
+ok("주저하지 않는다" in p, "속도는 사이다 쪽 -- 지연 금지")
 ok("딜레마" in p and "흔들리지 않는다" in p, "갈등 거세")
-ok("상태" in p and "호감도" in p, "상태창을 블록으로 노출한다")
+ok("농담" in p and "과장된 반응은 전부 조연 몫" in p, "코믹은 조연에게 맡긴다")
+ok("3줄 이하" in p, "모바일 여백")
 
-print("[화자] 다른 페르소나가 새지 않는가  ← 둘 다 실으면 둘 다 반쯤 지켜진다")
-ok("마이너스 퇴고" not in p and "느낌표" not in p, "하드보일드 규율이 안 실린다")
-ok("불가능은 하나뿐" not in p, "마술적 리얼리즘 규율이 안 실린다")
+print("[화자] 상태창을 지웠는가  ← 문장을 UI 로 바꾸면 필력이 제일 먼저 죽는다")
+ok("호감도" not in p and "등급   D" not in p, "상태창 블록이 없다")
+ok("상태창·게이지를 쓰지 마라" in p, "쓰지 말라고 명시한다")
+ok("status" not in style.kinds(), f"상태창 씬 종류가 없다 ({sorted(style.kinds())})")
 
 print("[화자] 종류별 규율이 그 씬에만 실린다")
 ok("걸림돌을 그 자리에서" in D.narrator_prompt(N, scene("cider")), "사이다 씬")
-ok("세계를 수치로 읽는다" in D.narrator_prompt(N, scene("status")), "상태창 씬")
+ok("손이 하는 일" in D.narrator_prompt(N, scene("routine")), "행동 쉼표 씬")
 ok("거의 전부 대사다" in D.narrator_prompt(N, scene("pingpong")), "핑퐁 씬")
-ok("위업을 말로 굳힌다" in D.narrator_prompt(N, scene("praise")), "확인 씬")
-ok("세계를 수치로" not in D.narrator_prompt(N, scene("cider")),
+ok("방금 일을 되짚는다" in D.narrator_prompt(N, scene("praise")), "확인 씬")
+ok("국수를 삶고" not in D.narrator_prompt(N, scene("cider")),
    "다른 종류의 규율은 안 실린다  ← 넷을 다 실으면 어느 것도 안 지켜진다")
 ok(style.brief("없는종류") == "", "모르는 종류에는 규율을 지어내지 않는다")
 
@@ -98,16 +100,17 @@ print("[배우] 핑퐁과 조연 도구화")
 a = D.actor_prompt(N, scene("pingpong"), "공명")
 ok("한 번에 한두 문장" in a, "짧게 주고받는다")
 ok("대사로 증명" in a, "설정을 대사로 증명한다")
-ok("무비판적으로 수용" in a and "감탄" in a, "조연은 주인공을 빛낸다")
+ok("놀라고 감탄하는 것은 조연" in a, "조연은 주인공을 빛낸다")
 ok("반동은 분명해야" in a, "방해자는 애매하지 않다")
 
 print("[디렉터] 성취 전시와 정보 비대칭")
-d = D.director_prompt(N, scene("status"))
-ok("성취의 전시" in d and "정체하는 장면을 짜지 마라" in d, "매 화가 성취다")
+d = D.director_prompt(N, scene("pingpong"))
+ok("한 걸음이다" in d and "정체하는 장면을 짜지 마라" in d, "매 장면이 한 걸음이다")
 ok("다음 화로 미루지 마라" in d, "지연 금지")
 ok("선역이라도 반동" in d, "방해자는 즉각 반동으로 규정")
-ok("유리하게 작동" in d, "주인공 보정")
-ok("비대칭이 곧 권력" in d, "정보 통제")
+ok("대가를 치르게 하지 마라" in d, "대가 없음")
+ok("먼저 아는 것" in d and "상태창도 수치도 없다" in d,
+   "반칙은 앎으로만 드러난다  ← 수치로 드러내면 문장이 UI 가 된다")
 
 print()
 print("[교체] 페르소나를 갈아끼우면 통째로 바뀌는가")
@@ -115,8 +118,8 @@ ok(style.finale_kind() == "cider", "사이다의 결말은 가장 큰 성취다"
 style.use("hardboiled")
 try:
     hp = D.narrator_prompt(N, scene("routine"))
-    ok("마이너스 퇴고" in hp, "하드보일드 규율이 실린다")
-    ok("15~20자" not in hp and "고구마" not in hp, "사이다 규율이 새지 않는다")
+    ok("불가능은 하나뿐" in hp, "순수 하드보일드 규율이 실린다")
+    ok("주저하지 않는다" not in hp and "농담" not in hp, "사이다 템포가 새지 않는다")
     ok(style.spine_pool() == ("delivery", "routine"), f"풀도 바뀐다 ({style.spine_pool()})")
     ok(style.finale_kind() == "resolution", "결말 종류도 바뀐다")
     ok(style.episode_brief(1) == "", "3화 법칙은 사이다의 것이다 -- 여기엔 없다")
