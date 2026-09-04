@@ -182,6 +182,20 @@ ok(all(v == 1 for v in per_end.values()),
    f"회차의 끝은 마지막 씬 하나뿐 ({per_end})  ← 전부 end 로 두면 V016/V017/V019 가 오작동")
 ok(scenes[-1].cliffhanger, f"마지막에 클리프행어 ({scenes[-1].cliffhanger!r})")
 
+print("[종류] 씬마다 종류가 배정되는가 -- 분량 배분은 지시가 아니라 코드가 센다")
+from novel import style                                               # noqa: E402
+ok(all(s.kind for s in scenes), "빈 종류가 없다")
+mains = [s for s in scenes if s.id.endswith("m")]
+ok(mains[-1].kind == "resolution",
+   f"결말 씬은 해결 ({mains[-1].kind}) ← 카타르시스가 증발하는 자리다")
+ok(scenes[-1].kind == "routine",
+   f"그 뒤 꼬리는 일상 ({scenes[-1].kind}) ← 닫힌 일상으로의 회귀로 끝난다")
+spine_kinds = {s.kind for s in mains[:-1]}
+ok(spine_kinds <= set(style.SPINE_POOL),
+   f"척추는 배달/루틴만 ({spine_kinds}) ← 화자의 능동적 탐색을 금지한다")
+sub_kinds = {s.kind for s in scenes if not s.id.endswith("m")}
+ok(sub_kinds <= set(style.SUBPLOT_POOL), f"서브플롯은 루틴/조우만 ({sub_kinds})")
+
 print("[2단계] 창작(Markdown)과 추출(JSON)이 실제로 갈려 있는가")
 ok(f.stages["director"] and f.stages["extractor"],
    f"두 단계가 모두 불린다 ({f.stages})")

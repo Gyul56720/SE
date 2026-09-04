@@ -130,6 +130,11 @@ class Scene:
     world_ops: list = field(default_factory=list)
     # 회상 씬. 죽거나 떠난 인물도 등장할 수 있다.
     flashback: bool = False
+    # 씬의 종류(style.SCENE_KINDS). 분량 배분은 지시로는 지켜지지 않으므로 -- 실측:
+    # 서브플롯에 "겹치지 마라" 를 넣어도 절반쯤만 지켜졌다 -- 코드가 종류를 배정하고
+    # 그 종류의 규율만 프롬프트에 싣는다. 모델은 한 종류만 잘 쓰면 된다.
+    #   routine 50~60% · encounter 20~25% · delivery 15~20% · resolution 5% 미만
+    kind: str = ""
     # --- 거시 서사 (arc.py) ---
     episode: int = 0                 # 몇 화인가. 0 이면 거시 검사를 건너뛴다
     scale: int = 0                   # 이 씬이 다루는 사건 규모 1~5 (arc.SCALES)

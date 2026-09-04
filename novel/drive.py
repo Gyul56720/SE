@@ -20,6 +20,7 @@ import time
 from pathlib import Path
 
 from . import gate
+from . import style
 from .state import AXES, Scene, Turn
 from .verbs import catalog_for_prompt
 
@@ -897,11 +898,26 @@ def build_episode(novel, spec: dict, llm=None, max_repairs=MAX_REPAIRS, log=None
     # 5,000자라 씬=회차로 두면 분량이 1/4 로 난다. 보고서대로 **서브플롯이 2/3를 채운다.**
     from . import arc
     main_scenes = to_scenes(ep, prefix=f"ep{lo:03d}_", start_ep=lo)
+    # 씬 종류 배분(style). **지금까지 쓴 것을 이어서 센다** -- 블록마다 0 에서 시작하면
+    # 매 블록의 첫 씬이 같은 종류가 되고, 200화 전체의 비율은 목표에서 멀어진다.
+    kinds = style.tally(novel.scenes)
+
+    def _assign(sc, pool) -> None:
+        sc.kind = style.pick_kind(pool, kinds)
+        kinds[sc.kind] = kinds.get(sc.kind, 0) + 1
+
     scenes = []
     for i, main in enumerate(main_scenes):
         epno = lo + i
         main.episode, main.is_episode_end, main.cliffhanger = epno, False, ""
         main.id = f"ep{lo:03d}_{epno:03d}m"
+        # 척추는 배달(delivery)을 우선한다. 화자가 단서를 찾아 헤매는 능동적 탐색이 아니라
+        # 밖에서 온 편지·전화·꿈이 서사를 밀어야 한다(지시 9). 결말만 resolution 이다 --
+        # 거기서 갈등은 해명 없이 흩어지고 상실감만 남는다(지시 10).
+        _assign(main, style.SPINE_POOL)
+        if i == len(main_scenes) - 1:
+            main.kind = "resolution"
+            kinds["resolution"] = kinds.get("resolution", 0) + 1
         scenes.append(main)
         for k in range(arc.SCENES_PER_EPISODE - arc.MAIN_SCENES):
             if _out_of_time():
@@ -938,6 +954,13 @@ def build_episode(novel, spec: dict, llm=None, max_repairs=MAX_REPAIRS, log=None
                         world_ops=_ops(b.get("world_ops"), f"서브플롯 {epno}화"),
                         scale=int(b.get("scale") or spec["scale"]),
                         direction=dict(b.get("direction") or {}), episode=epno)
+            if i == len(main_scenes) - 1:
+                # 결말 회차의 꼬리는 **일상으로의 회귀**다. 해결 뒤에 기묘한 조우를 놓으면
+                # 다시 이야기가 열린다 -- 10번 지시는 닫힌 일상으로 돌아가라고 한다.
+                sub.kind = "routine"
+                kinds["routine"] = kinds.get("routine", 0) + 1
+            else:
+                _assign(sub, style.SUBPLOT_POOL)  # 숨구멍은 루틴과 기묘한 조우로 채운다
             scenes.append(sub)
             _log(f"[조립] {epno}화 씬 {len(scenes)}개째 (서브플롯)")
         scenes[-1].is_episode_end = True                  # 회차의 끝은 마지막 씬이다
@@ -1011,10 +1034,11 @@ def director_prompt(novel, scene, feedback="") -> str:
 [인물] {chr(10).join(f'  {c.name}: {c.persona}' for c in novel.characters)}
 [화자가 이미 아는 미래] {novel.narrator_foreknowledge}
 
-규칙:
+{style.DIRECTOR}
+
+{style.brief(scene.kind)}{style.frame_for(scene.episode)}규칙:
 - 감정을 직접 말하게 하지 마라. 사물·소리·날씨로 옮겨라.
 - punctum 은 한 씬을 여는 감각 하나다. 나중에 되돌아올 수 있는 것으로.
-- 인물이 "슬프다/외롭다" 라고 서술되면 기각된다.
 
 세계 변경이 필요하면 아래 동사만 쓴다(없는 동사는 기각):
 {catalog_for_prompt()}
@@ -1048,6 +1072,8 @@ def actor_prompt(novel, scene, name, feedback="") -> str:
 {_direction(scene)}[직전 대화]
 {log}
 
+{style.ACTOR}
+
 규칙:
 - 속마음(inner_thought)과 실제 말(speech) 사이에 괴리를 둬라. 담담하게 말하고 속으로 복잡하라.
 - 네가 모르는 것은 말할 수 없다. 오해하고 있다면 오해한 채로 말하라.
@@ -1071,26 +1097,19 @@ def narrator_prompt(novel, scene, feedback="") -> str:
 [화자] {novel.pov_character} — 반드시 "나는 ~했다" 시점
 {f"[문장의 색] {novel.voice}" if getattr(novel, "voice", "") else ""}
 [무대] {scene.location} / [감각] {scene.punctum}
-{_direction(scene)}[로그]
+
+{style.NARRATOR}
+
+{style.brief(scene.kind)}{style.frame_for(scene.episode)}{_direction(scene)}[로그]
 {logs}
 
 규칙:
-- 다른 인물의 속마음을 사실로 쓰지 마라. 화자의 관찰과 추측으로 옮겨라
-  (예: "그녀의 눈동자 깊은 곳에서 무언가 무너져 내리는 기척이 느껴졌다").
-- "슬펐다/외로웠다" 같은 직접 서술 금지. 대사 안에서는 허용된다.
-- punctum 을 대화의 공백에 끼워 넣어라.
+- 다른 인물의 속마음을 사실로 쓰지 마라. 화자가 본 것과 들은 것으로만 옮겨라.
 - **연출 지시를 그대로 실행하라.** 여는 사건으로 시작하고, 장치를 무심하게 놓고,
   화자의 시야 밖은 쓰지 마라 -- 화자가 놓친 것은 독자도 놓쳐야 한다.
-- 담담하고 건조하게. 신파로 흐르지 마라.
-- **문장 길이를 섞어라.** "-했다. -다." 만 이어지면 내용이 좋아도 읽히지 않는다:
-    · 짧은 문장(20자 안팎)으로 끊어친다. 명사로 끝내도 좋다.
-    · 만연체(60자 이상)를 회차마다 두어 번. 여러 절을 한 호흡에 잇는다.
-    · 같은 종결어미가 세 번 넘게 연속되지 않게 -- 도치·명사형·대시로 흩어라.
-    · **대시(—)** 로 숨을 끊거나 덧붙여라.
-    · 비유는 아껴 쓰되 있어야 한다(처럼·같이·듯·만큼). 화려하지 않게, 사물에 붙여서.
 - **분량: 공백 포함 {__import__("novel.arc", fromlist=["x"]).CHARS_PER_SCENE}자 안팎.**
-  회차 하나가 5,000자이고 이 씬은 그중 한 조각이다. 짧게 끊지 마라 -- 대화 사이의 정적,
-  손이 하는 일, 창밖, 냄새, 소리로 채워라.
+  회차 하나가 5,000자이고 이 씬은 그중 한 조각이다. **분량은 사건으로 채우지 마라.**
+  손이 하는 일, 끝없는 내적 독백, 창밖, 냄새, 소리, 그리고 실없는 딴 이야기로 채운다.
 {'- 편지를 읽는 장면으로 감싸고, 편지 내용을 서술에 녹여라.' if scene.mode == 'letter' else ''}
 {feedback}
 
