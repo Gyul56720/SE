@@ -100,9 +100,25 @@ ok(dupc == 0, f"태연함도 연달아 같지 않다 ({dupc}건)")
 brief = SH.impulse_brief(SH.impulse("a", 0))
 ok("주인공의 성격이다" in brief,
    "급발진은 사건이 아니라 사람이다  ← 뽑기로 굴리는 돌발이 아니라 기본값이다")
+
+print()
+print("[주체] **저지르는 것은 주인공만이 아니다**")
+print("      ← 주인공 전용이면 세계가 주인공만 살아 있고 나머지는 반응만 하는 배경이 된다.")
+from collections import Counter as _C                                 # noqa: E402
+who = _C(SH.impulse("s", i)["who"] for i in range(600))
+ok(len(who) == 3, f"주체가 셋으로 갈린다 ({dict(who)})")
+ok(who["주인공"] > max(v for k, v in who.items() if k != "주인공"),
+   "그래도 주인공이 제일 잦다  ← 이 사람의 기본값이라는 점은 변하지 않는다")
+ok(sum(v for k, v in who.items() if k != "주인공") > 200,
+   "남이 저지르는 몫이 충분하다")
+other = SH.impulse_brief(SH.impulse("s", next(
+    i for i in range(20) if SH.impulse("s", i)["who"] != "주인공")))
+ok("주인공이 아니라" in other, "남이 저지르는 판이 따로 있다")
+ok("주인공은 이번엔 당하는 쪽이다" in other,
+   "그때 주인공은 반응한다  ← 자기가 저지른 일은 몰라도 남이 저지른 일에는 반응한다")
 ok("본인은 그게 급발진인 줄 모른다" in brief,
    "본인만 모른다  ← 그 간극이 이 인물의 전부다")
-ok("저지름보다 그 뒤의 태연함이 이 인물이다" in brief, "유유자적이 정체다")
+ok("저지름보다 그 뒤의 태연함이 그 사람이다" in brief, "유유자적이 정체다")
 ok("장례식에서도" in brief,
    "분위기를 가리지 않는다  ← 웃기려고 넣는 것이 아니라 그런 사람이라서다")
 ok("없는 말을 태연히" in brief,
@@ -111,7 +127,8 @@ ok("문제를 풀지 않는다" in brief,
    "급발진도 문제를 풀지 않는다  ← 앞서 정한 편의주의 금지를 그대로 지킨다")
 ok("설명하지 마라" in brief, "왜 그랬는지 정리해 주지 않는다  ← 설명하면 재미가 죽는다")
 ok("그 사람 카드에" in brief, "인물 카드에 맞게 비튼다  ← 같은 짓도 사람마다 다르다")
-ok("하던 이야기를 이어 간다" in brief, "반응이 끝나면 확산으로 돌아간다")
+ok("여기서 이야기가 굴러가야 한다" in brief,
+   "저지른 일이 다음 일을 부른다  ← 저지르고 아무 일도 안 일어나면 그건 장식이다")
 
 bk3 = flow.blank()
 bk3["chunks"] = ["앞 덩어리."]
@@ -127,7 +144,8 @@ print("[잡소리] **개그는 칸이 아니라 자리다**")
 print("      ← 매 덩어리마다 다 하려 들면 그게 버릇이 되고, 버릇이 되면 안 웃긴다.")
 flat3 = " ".join(p3.split())
 ok("[잡소리]" in p3, "쓸데없는 말을 한 자리에 모았다")
-ok("하나쯤**만 골라라. 안 골라도 된다" in flat3, "하나쯤, 안 해도 된다")
+ok("적어도 하나는 넣어라" in flat3 and "하나는 반드시, 많아야 둘" in flat3,
+   "하나는 반드시, 많아야 둘  ← '안 골라도 된다' 로 풀었더니 대사가 밋밋해졌다")
 ok("없는 낱말을 만들고 변명을 단다" not in flat3,
    "지어낸 낱말은 [잡소리] 가 아니라 급발진 쪽에 있다  ← 그건 개그의 한 수가 아니라"
    " 이 인물의 몸짓이다")
@@ -253,6 +271,19 @@ lv_on = sum(bool(matter.draw("s", i, 0.8)["genre"]) for i in range(200))
 ok(150 < lv_on < 190, f"갈래도 같은 비율로 빠진다 ({lv_on}/200)")
 ok("장르를 섞지 마라" in matter.brief({"genre": "", "medium": "편지", "heat": "웃기게"}),
    "갈래가 빠진 덩어리는 그냥 일상이다  ← 매체와 온도는 그대로 들어간다")
+
+print()
+print("[연쇄] **저지르고 끝나면 장식이다 -- 판이 바뀌어야 이야기가 굴러간다**")
+print("      ← 셋에 하나쯤 판이 바뀐다. 매번 바뀌면 이야기가 정신없어진다.")
+lands = [SH.impulse("s", i)["land"] for i in range(300)]
+ok(0 < sum(bool(x) for x in lands) < 200, f"셋에 하나쯤 옮긴다 ({sum(bool(x) for x in lands)}/300)")
+ok(len({x for x in lands if x}) > 10, "가는 곳이 다양하다")
+lb = SH.impulse_brief(SH.impulse("s", lands.index(next(x for x in lands if x))))
+ok("사슬은" in lb and "한 칸만 나아가면 된다" in lb,
+   "사슬을 한 칸씩 나아가게 한다  ← 한 덩어리에 다 하라는 것이 아니다")
+ok("이름과 사정을 하나 줘라" in lb, "거기서 만난 사람이 다음 칸을 부른다")
+ok("경찰서로 끌려간다" not in lb and "소세지" not in lb and "철학" not in lb,
+   "구체적인 예시를 박아 두지 않는다  ← 예시를 하드코딩하면 내용이 다 그쪽으로 쏠린다")
 
 print()
 if fails:

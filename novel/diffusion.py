@@ -51,9 +51,14 @@ _YEAR = __import__("re").compile(r"\d{4}\s*년|\d{2}\s*년대")
 LIMITS = {
     "new":   3,     # 이 덩어리가 세계에 더해야 하는 최소한의 새 고유물
     "back":  2,     # 앞에서 나온 소품 중 다시 만져야 하는 최소한의 수
-    "long":  1,     # 긴 대사(설명·변명·수다·헛소리)가 적어도 하나
+    "long":  2,     # 긴 대사(설명·변명·수다·헛소리)가 적어도 둘
     "short": 2,     # 짧은 대사(끊고 받아치는 것)가 적어도 둘
+    "bulk":  0.45,  # **대사 글자 수의 이만큼은 긴 대사여야 한다**
 }
+
+# 왜 몫까지 재는가. 개수 하한만 두었더니 모델이 최소로 맞췄다 -- 긴 대사 딱 하나에
+# 짧은 대사 열 개. 그러면 자는 통과하는데 읽으면 대사가 죄다 짧다(실측 2026-09-05:
+# "대사가 왜 짧아졌지"). 개수는 하한을 지키는 데 쓰고, **비중은 몫으로 잡는다.**
 
 # 원장에서 소품으로 세는 칸. 시간(time)은 이름이 아니라 서술이라 뺀다.
 BUCKETS = ("people", "places", "objects", "facts")
@@ -111,16 +116,25 @@ def cold(ledger: dict, recent: str, now: int = 0, keep: int = 12) -> list[str]:
 
 def talk(text: str) -> tuple[int, int]:
     """대사줄을 짧은 것과 긴 것으로 나눠 센다."""
+    short, long, _ = _talk3(text)
+    return short, long
+
+
+def _talk3(text: str) -> tuple[int, int, float]:
+    """짧은 것 · 긴 것 · **긴 대사가 대사 글자 수에서 차지하는 몫**."""
     short = long = 0
+    long_chars = all_chars = 0
     for raw in text.splitlines():
         line = raw.strip()
         if not line or not _QUOTE.match(line):
             continue
+        all_chars += len(line)
         if len(line) >= TALK_LONG:
             long += 1
+            long_chars += len(line)
         elif len(line) <= TALK_SHORT:
             short += 1
-    return short, long
+    return short, long, (long_chars / all_chars if all_chars else 0.0)
 
 
 def overused(text: str, names: list[str]) -> list[tuple[str, int]]:
@@ -136,10 +150,10 @@ def labels(text: str) -> int:
 
 
 def measure(text: str, before: dict, after: dict) -> dict:
-    short, long = talk(text)
+    short, long, bulk = _talk3(text)
     return {"new": len(added(before, after)),
             "back": len(touched(text, props(before))),
-            "short": short, "long": long,
+            "short": short, "long": long, "bulk": bulk,
             "over": overused(text, props(before) + props(after)),
             "labels": labels(text)}
 
@@ -179,8 +193,14 @@ def check(text: str, before: dict, after: dict, now: int = 0) -> list[str]:
 
     if m["long"] < LIMITS["long"]:
         out.append(f"{TALK_LONG}자 넘는 긴 대사가 {m['long']}개다. 적어도 {LIMITS['long']}개는 "
-                   f"넣어라 -- 누가 한 번은 길게 떠들어야 한다. 변명이든 수다든 아무도 안 "
+                   f"넣어라 -- 누가 길게 떠들어야 한다. 변명이든 수다든 아무도 안 "
                    f"물어본 내력이든. **대사로 이야기를 진행시켜라.** 상황 설명으로 넘기지 마라")
+
+    if m["long"] and m["bulk"] < LIMITS["bulk"]:
+        out.append(f"대사 글자의 {m['bulk']:.0%}만 긴 대사다. {LIMITS['bulk']:.0%}는 넘겨라 -- "
+                   f"짧게 받아치는 말만 이어지면 핑퐁이 아니라 딸꾹질이다. **한 사람이 한 번은 "
+                   f"길게, 문장을 몇 개씩 이어서, 자기가 자기 말을 고쳐 가며 말해야 한다.** "
+                   f"긴 대사 안에서도 점층해라 -- 좁히거나, 키우거나, 뒤집어라")
 
     if m["short"] < LIMITS["short"]:
         out.append(f"{TALK_SHORT}자 이하 짧은 대사가 {m['short']}개다. {LIMITS['short']}개는 "
@@ -197,5 +217,6 @@ def score(text: str, before: dict, after: dict) -> float:
     s += sum(c - ECHO_MAX for _, c in m["over"]) * 0.05
     s += max(0, m["labels"] - LABEL_MAX) * 0.05
     s += max(0, LIMITS["long"] - m["long"]) * 0.15
+    s += max(0.0, LIMITS["bulk"] - m["bulk"]) * 0.3
     s += max(0, LIMITS["short"] - m["short"]) * 0.1
     return s
