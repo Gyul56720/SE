@@ -40,7 +40,8 @@
 | `drift.sh go [글자수]` | **하던 원고를 이어 쓴다.** 세계·인물·사건 번호가 전부 이어진다. 기본 50,000자 |
 | `drift.sh status` | 살아 있는지 · 덩어리 수 · 글자 수 · 사건 횟수 · 세계 크기 · 최근 로그 |
 | `drift.sh read` | 지금까지 쓴 원고를 화면에 |
-| `drift.sh save <파일>` | 원고를 파일로 |
+| `drift.sh save <파일>` | 원고를 파일로 (VM 안에) |
+| `drift.sh send [이름]` | **원고를 Discord 로 보낸다** — VM 밖으로 빼는 길 |
 | `drift.sh watch` | 로그를 실시간으로 따라간다 |
 | `drift.sh stop` | 멈춘다. **원고는 남는다** — `go` 로 이어 쓴다 |
 | `drift.sh world` | 세계가 어떻게 자랐나 (★ 는 주요 인물) |
@@ -165,6 +166,28 @@ FIRST="첫 문장."     # 첫 문장 (start 에서만)
 
 `drift.sh` 는 시작 전에 Gemini 키를 확인하고, 없으면 **사실대로 실패한다.** Claude 로
 대신 쓰지 않는다. 저장소 규칙이다(`CLAUDE.md`).
+
+---
+
+## 원고를 손에 넣기
+
+원고는 VM 안의 JSON 에만 있다. `read` 는 화면에 쏟아질 뿐 파일이 되지 않는다.
+
+```bash
+drift.sh send             # Discord 에 파일로 올린다 -- 폰이든 노트북이든 거기서 받는다
+drift.sh send 1화.txt     # 이름을 붙여서
+```
+
+자격증명은 이미 있는 것을 쓴다(`DISCORD_BOT_TOKEN` + `DISCORD_CHANNEL_ID`, 또는
+`DISCORD_WEBHOOK_URL`) — `overnight.py` 의 알림이 쓰는 것과 같다. 봇 게이트웨이는 띄우지
+않는다. 그러면 이미 도는 봇과 세션이 겹친다.
+
+SSH 를 쓸 수 있으면 **로컬 기계에서** 이렇게 당겨도 된다:
+
+```bash
+scp ubuntu@<VM주소>:/home/ubuntu/SE/novel/drift.json .
+ssh ubuntu@<VM주소> '/home/ubuntu/SE/scripts/drift.sh read' > 소설.txt
+```
 
 ---
 

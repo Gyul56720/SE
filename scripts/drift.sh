@@ -10,6 +10,7 @@
 #   drift.sh status                 살아 있는지 · 어디까지 왔는지
 #   drift.sh read                   지금까지 쓴 원고를 읽는다
 #   drift.sh save  <파일>           원고를 파일로 뽑는다
+#   drift.sh send  [이름]           **원고를 Discord 로 보낸다** -- VM 밖으로 빼는 길
 #   drift.sh watch                  로그를 계속 따라간다
 #   drift.sh stop                   런을 멈춘다 (원고는 남는다 -- go 로 이어 쓴다)
 #   drift.sh world                  세계가 얼마나 자랐는지 (인물·장소·사물·사실·사건)
@@ -43,6 +44,10 @@ PY
 # **파이썬 프로세스만 센다.** 그냥 `pgrep -af novel/flow.py` 로 하면 이 스크립트를
 # 실행하는 셸까지 잡힌다 -- 명령줄에 그 문자열이 들어 있기 때문이다(실측: 이 파일을
 # 쓰는 셸이 "돌고 있다" 로 세어졌다). 자기 PID 와 부모도 빼야 한다.
+# 키만 읽고 아무 말도 하지 않는다 -- Discord 자격증명은 Gemini 키와 별개라 여기서
+# Gemini 를 요구하면 안 된다(원고를 보내는 데 화자는 필요 없다).
+load_env_quiet() { [ -f "$SE/.env" ] && { set -a; . "$SE/.env"; set +a; }; return 0; }
+
 alive() {
   "$PGREP" -af "novel/flow\.py" 2>/dev/null \
     | grep -E "^[0-9]+ +([^ ]*/)?python3?(\.[0-9]+)? " \
@@ -117,6 +122,11 @@ PY
     ;;
 
   read)   exec python3 "$FLOW" --read "$BOOK" ;;
+
+  # VM 밖으로 빼는 길. 원고는 여기 JSON 안에만 있어서 --read 로는 화면에 쏟아질 뿐
+  # 손에 들어오지 않는다. Discord 에 올리면 폰이든 노트북이든 어디서나 받는다.
+  send)   load_env_quiet; exec python3 "$SE/novel/deliver.py" --book "$BOOK" \
+            ${2:+--name "$2"} ;;
   save)   [ $# -ge 2 ] || die "사용: $0 save <파일>"
           python3 "$FLOW" --read "$BOOK" > "$2" && echo "뽑았다: $2 ($(wc -m < "$2")자)" ;;
   watch)  exec tail -f "$LOG" ;;

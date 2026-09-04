@@ -39,7 +39,7 @@ sh, doc, skill = SH.read_text(), DOC.read_text(), SKILL.read_text()
 
 print()
 print("[일치] **문서에 적힌 명령이 스크립트에 실제로 있는가**")
-COMMANDS = ("start", "go", "status", "read", "save", "watch", "stop", "world")
+COMMANDS = ("start", "go", "status", "read", "save", "send", "watch", "stop", "world")
 for c in COMMANDS:
     ok(re.search(rf"^\s+{c}[\)|]", sh, re.M) is not None, f"drift.sh {c}")
     ok(f"drift.sh {c}" in doc or f"$D {c}" in doc, f"문서가 {c} 를 설명한다")
@@ -70,6 +70,20 @@ out = subprocess.run(["bash", str(SH), "status"],
 ok("돌고 있지 않다" in out.stdout,
    f"돌지 않을 때 돌지 않는다고 말한다  ← 자기 자신을 잡으면 start 가 거부된다")
 ok("원고가 아직 없다" in out.stdout, "원고가 없으면 없다고 말한다")
+
+print()
+print("[내보내기] **원고는 VM 안 JSON 에만 있다** -- 손에 들어오는 길이 있어야 한다")
+from novel import deliver                                             # noqa: E402
+ok(hasattr(deliver, "send_file"), "novel/deliver.py 가 파일로 올린다")
+okd, why = deliver.send_file("본문", "a.txt")
+ok(not okd and "자격증명" in why,
+   "자격증명이 없으면 사실대로 말한다  ← 조용히 성공한 척하면 사용자는 기다리기만 한다")
+body, ctype = deliver._multipart({"payload_json": "{}"}, "1화.txt", "본문".encode())
+ok(ctype.startswith("multipart/form-data") and "1화.txt".encode() in body,
+   "multipart 를 손으로 짠다  ← 이것 하나로 의존성을 늘리지 않는다")
+ok("토큰은 절대 찍지 않는다" in Path(deliver.__file__).read_text(encoding="utf-8"),
+   "실패해도 자격증명을 로그에 흘리지 않는다")
+ok("send" in sh and "deliver.py" in sh, "drift.sh send 가 그것을 부른다")
 
 print()
 print("[연결] 저장소 README 에서 찾아갈 수 있는가")
