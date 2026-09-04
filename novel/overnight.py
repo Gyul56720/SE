@@ -22,6 +22,7 @@ import json
 import sys
 import time
 import traceback
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -31,8 +32,20 @@ from novel.state import Novel                                         # noqa: E4
 from novel.world_romance import build, OUTCOMES                       # noqa: E402
 
 
+# 로그 시각은 **한국 시간(KST)** 으로 찍는다. 인스턴스가 UTC 라 time.strftime 이
+# 그대로 UTC 를 냈는데, 밤새 돌려놓고 아침에 읽는 로그가 9시간 어긋나 있으면 "언제
+# 멈췄나" 를 매번 암산해야 한다.
+#
+# ZoneInfo("Asia/Seoul") 대신 고정 +09:00 을 쓴다. 한국은 1988년 이후 서머타임이 없어
+# 고정 오프셋이 정확하고, tzdata 패키지가 없는 최소 이미지에서도 실패하지 않는다.
+#
+# 접미사 KST 를 붙인다. 이 로그 파일에는 이미 UTC 로 찍힌 줄이 남아 있어서, 표시가
+# 없으면 중간에 시각이 9시간 뛴 것처럼 보인다.
+KST = timezone(timedelta(hours=9))
+
+
 def _now() -> str:
-    return time.strftime("%Y-%m-%d %H:%M:%S")
+    return datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S KST")
 
 
 class Discord:
