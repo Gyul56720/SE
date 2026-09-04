@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# VM 에서 소설 런을 띄운다. Gemini 로 돌고, 셸이 닫혀도 살아남는다.
+# VM 에서 소설 런을 띄운다. **디렉터는 Claude, 산문은 Gemini.** 셸이 닫혀도 살아남는다.
 #
 # 왜 스크립트인가. 이 저장소의 CLAUDE.md 가 적어둔 실측이 있다 -- `command &` 로만 띄운
 # 백그라운드는 부모가 죽을 때 같이 정리되어, "완료되면 알려드리겠습니다" 라고 답한 뒤에
@@ -13,6 +13,7 @@
 #   scripts/run_novel_vm.sh --restart             # 돌던 런을 죽이고 다시 (옛 원고는 .bak 로)
 #   scripts/run_novel_vm.sh --restart --wipe      # 옛 기록을 .bak 도 없이 **삭제**하고 처음부터
 #   scripts/run_novel_vm.sh --persona hardboiled   # 문체를 갈아끼운다
+#   scripts/run_novel_vm.sh --gemini-director     # 디렉터까지 Gemini 로 (구독 한도 소진 시)
 #   scripts/run_novel_vm.sh --episodes 5 --blocks 2
 #
 # 확인:
@@ -39,6 +40,12 @@ NEW_SEED=1
 RESTART=0
 WIPE=0
 PERSONA=cider
+# **디렉터만 Claude 로 간다.** 주제·시나리오는 claude -p 가 짜고, 배우·화자·추출기는
+# Gemini 다. 디렉터는 호출 6회 중 1회이고 출력이 짧아 전체 토큰의 일부인데, 무엇을 쓸
+# 것인가는 전부 거기서 갈린다. 산문을 Claude 로 돌리는 것(--all-claude)은 CLAUDE.md 가
+# 금지한다 -- 그쪽이 토큰의 대부분이다.
+# --gemini-director 를 주면 디렉터까지 Gemini 로 내린다(구독 한도가 말랐을 때).
+DIRECTOR_FLAG=""
 EPISODES=5
 BLOCKS=2     # 씨앗 세계는 3+2화 두 블록이다 (5화 x 5,000자 = 2만 5천 자)
 HOURS=8     # 5화 x 3씬 = 15씬. 마무리 루프가 남은 예산을 쓴다
@@ -48,6 +55,7 @@ for a in "$@"; do
     --restart) RESTART=1 ;;
     --wipe) WIPE=1 ;;
     --persona) shift_next=PERSONA ;;
+    --gemini-director) DIRECTOR_FLAG="--gemini-director" ;;
     --episodes) shift_next=EPISODES ;;
     --blocks) shift_next=BLOCKS ;;
     --hours) shift_next=HOURS ;;
@@ -134,7 +142,7 @@ if [ "$NEW_SEED" = "1" ]; then
 fi
 
 setsid nohup python3 "$SE/novel/overnight.py" \
-    --world seeded --gemini-director --persona "$PERSONA" \
+    --world seeded --persona "$PERSONA" $DIRECTOR_FLAG \
     --blocks "$BLOCKS" --upto-episode "$EPISODES" \
     --hours "$HOURS" --episode-minutes 120 --no-discord \
     > "$LOG" 2>&1 < /dev/null &
