@@ -87,6 +87,43 @@ ok(lbl == "e4:m", "셋이 RPM 이어도 넷째로 성공")
 ok(all(not q.is_dead(x) for x in ("e1:m", "e2:m", "e3:m")),
    "**아무도 봉인되지 않는다** -- 1분 뒤 전부 돌아온다")
 
+print("[건너뛰기] 잔량 0 인 후보는 **시도조차 하지 않는가**")
+print("      ← 2026-09-04 실측: 12번 시도가 전부 429 였는데 절반은 이미 소진을 알던 조합")
+calls = []
+
+
+def counting(label, err=None):
+    c = cand(label, err)
+    inner = c[1]
+
+    class Counting:
+        def invoke(self, prompt):
+            calls.append(label)
+            return inner.invoke(prompt)
+    return (label, Counting())
+
+
+for lab in ("z1:m", "z2:m", "z3:m"):
+    q.record_rpm_cooldown(lab, seconds=-1)
+q.record_exhausted("z1:m")
+q.record_exhausted("z2:m")
+pool4 = [counting("z1:m", RPD), counting("z2:m", RPD), counting("z3:m")]
+txt, lbl = llm_pool.call(pool4, "p", verbose=False)
+ok(lbl == "z3:m", f"잔량 있는 후보로 성공 ({lbl})")
+ok(calls == ["z3:m"],
+   f"소진된 둘은 아예 호출되지 않는다 (실제 호출: {calls})  "
+   "← 이게 안 되면 상한이 죽은 후보로 채워져 멀쩡한 것에 닿지 못한다")
+
+print("[안전] 전부 잔량 0 이면 그때는 거르지 않는가")
+calls.clear()
+for lab in ("y1:m", "y2:m"):
+    q.record_rpm_cooldown(lab, seconds=-1)
+    q.record_exhausted(lab)
+pool5 = [counting("y1:m", RPD), counting("y2:m")]
+txt, lbl = llm_pool.call(pool5, "p", verbose=False)
+ok(lbl == "y2:m", f"그래도 시도해서 성공한다 ({lbl})  ← 카운터는 추정이라 틀릴 수 있다")
+ok(len(calls) >= 1, f"아무것도 시도하지 않고 실패하지는 않는다 ({calls})")
+
 print()
 if fails:
     print(f"llm_pool RPM: {len(fails)}개 실패 -- {fails}")

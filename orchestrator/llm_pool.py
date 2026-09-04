@@ -172,7 +172,21 @@ def call(pool, prompt: str, pool_id: str = "orchestrator", max_candidates: int =
         rem = quota_tracker.remaining(label)
         return (rem <= 0, _model_rank(model), -rem)
 
-    ranked = sorted(live, key=sort_key)
+    # **잔량이 없는 후보는 아예 빼고 시도한다.** 예전에는 sort_key 로 뒤에 밀어두기만 해서
+    # 여전히 순회 대상이었다 -- 소진된 조합 하나마다 왕복 한 번과 429 대기를 물고, 상한
+    # (MAX_CANDIDATES)까지 그것으로 채우면 **멀쩡한 후보에 닿지도 못한다**(2026-09-04 실측:
+    # 12개 시도가 전부 429 였는데 그중 절반은 이미 소진된 걸 알고 있던 조합이었다).
+    #
+    # remaining() 은 일일 소진과 RPM 쿨다운을 모두 0 으로 돌려주므로, 이 한 줄이 둘 다
+    # 건너뛴다. 쿨다운은 60초 뒤 저절로 잔량이 돌아온다.
+    #
+    # 전부 0 이면 그때는 거르지 않는다 -- 추정이 틀렸을 수 있고(카운터는 휴리스틱이다),
+    # 아무것도 시도하지 않고 실패하는 것보다 한 번 두드려보는 편이 낫다.
+    fresh = [c for c in live if quota_tracker.remaining(c[0]) > 0]
+    if verbose and len(fresh) < len(live):
+        print(f"[llm_pool] 잔량 없는 후보 {len(live) - len(fresh)}개를 건너뛴다 "
+              f"(남은 후보 {len(fresh)}개)", file=sys.stderr, flush=True)
+    ranked = sorted(fresh or live, key=sort_key)
     pinned = quota_tracker.get_pinned(pool_id)
     if pinned:
         ranked = [c for c in ranked if c[0] == pinned] + [c for c in ranked if c[0] != pinned]

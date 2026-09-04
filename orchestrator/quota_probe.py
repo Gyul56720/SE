@@ -56,8 +56,10 @@ def main() -> int:
     if not pool:
         print("   풀이 비었다 -- GEMINI_API_KEY 를 찾지 못했다")
         return 1
-    print(f"   후보 {len(pool)}개")
-    for label, _ in pool[:a.limit if not a.state else len(pool)]:
+    fresh = [c for c in pool if quota_tracker.remaining(c[0]) > 0
+             and not quota_tracker.is_dead(c[0])]
+    print(f"   후보 {len(pool)}개 · 잔량 있는 것 {len(fresh)}개")
+    for label, _ in (pool if a.state else fresh[:a.limit]):
         dead = quota_tracker.is_dead(label)
         cool = quota_tracker.rpm_cooldown_remaining(label)
         rem = quota_tracker.remaining(label)
@@ -69,9 +71,12 @@ def main() -> int:
         return 0
 
     print("\n" + "=" * 70)
-    print(f"실제 호출 (프롬프트 '1', 상위 {a.limit}개)")
+    print(f"실제 호출 (프롬프트 '1', **잔량 있는** 후보 중 {a.limit}개)")
+    if not fresh:
+        print("   잔량 있는 후보가 없다. 전부 소진 또는 쿨다운 중이다.")
+        return 1
     verdicts = {"성공": 0, "RPM": 0, "일일": 0, "영구": 0, "기타": 0}
-    for label, llm in pool[:a.limit]:
+    for label, llm in fresh[:a.limit]:
         print(f"\n   {label}")
         try:
             r = llm.invoke("1")
