@@ -36,6 +36,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from novel import drive as D                                          # noqa: E402
 from novel import diffusion                                           # noqa: E402
+from novel import shock as SH                                         # noqa: E402
 from novel import rhythm                                              # noqa: E402
 from novel import style                                               # noqa: E402
 
@@ -96,7 +97,9 @@ OPENING = """[이 첫 덩어리가 지나갈 자리]
 # ---------------------------------------------------------------- 원장
 
 def blank(first: str = FIRST) -> dict:
-    return {"first": first, "chunks": [], "ledger": {
+    # shocks: 지금까지 터진 사건의 수. 뽑기가 여기 묶여 있어 이어 쓰기에도 순서가 이어진다.
+    # since: 마지막 사건 이후 쓴 글자 수.
+    return {"first": first, "chunks": [], "shocks": 0, "since": 0, "ledger": {
         "people": {}, "places": {}, "facts": {}, "time": [], "objects": {}}}
 
 
@@ -218,6 +221,20 @@ def brief(ledger: dict, limit: int = 40) -> str:
 
 # ---------------------------------------------------------------- 프롬프트
 
+def _push(book: dict) -> str:
+    """이 덩어리가 할 일 -- **평소엔 확산, 사건 차례엔 사건.**
+
+    사건은 확산을 **한 덩어리만** 대신한다. 터지고 나면 다음 덩어리부터 다시 점층이다 --
+    다만 그때의 세계는 사건이 바꿔 놓은 세계라, 같은 자리에서 다시 쌓지 않는다.
+    """
+    if book.get("_shock"):
+        return SH.brief(book["_shock"]) + """
+
+  * 다음 덩어리부터는 **다시 점층이다.** 사건은 여기서 한 번 끊는 것이지 방향을 바꾸는
+    것이 아니다. 이 사건이 남긴 것에서 다시 쌓기 시작한다."""
+    return _diffuse(book)
+
+
 def _diffuse(book: dict) -> str:
     """**확산 지시** -- 뒤로 갈수록 옅어지는 것을 여기서 막는다.
 
@@ -300,7 +317,7 @@ def write_prompt(book: dict, feedback: str = "") -> str:
     트라우마, 좋아하는 것, 취미, 전공, 직업, 말투, 버릇까지. 전부 한 번에 늘어놓지는 마라 --
     지금 필요한 두세 개만 문장에 녹이고, 나머지는 뒤에서 하나씩 드러낸다.
 
-{OPENING if opening else _diffuse(book)}
+{OPENING if opening else _push(book)}
 
 {'[첫 문장 — 이것으로 시작하라]' if opening else '[지금까지의 끝부분]'}
 {book['first'] if opening else '...' + tail}
@@ -349,6 +366,16 @@ JSON 만 출력:
 
 # ---------------------------------------------------------------- 루프
 
+def _after(book: dict, text: str) -> None:
+    """덩어리를 채택한 뒤. 사건이 터졌으면 계수를 올리고 분량을 0 부터 다시 센다."""
+    if book.get("_shock"):
+        book["shocks"] = book.get("shocks", 0) + 1
+        book["since"] = 0
+    else:
+        book["since"] = book.get("since", 0) + len(text)
+    book["_shock"] = None
+
+
 def step(book: dict, llm, log=None) -> dict:
     """덩어리 하나.
 
@@ -359,6 +386,16 @@ def step(book: dict, llm, log=None) -> dict:
         끝내 안 고쳐지면 **그중 제일 나은 것을 채택한다.** 취향 때문에 원고를 버릴 수는
         없다 -- 자유도가 이 모드의 전부다.
     """
+    # **사건 차례인가.** 분량이 찼거나(약 2,000자), 원장이 부풀어 프롬프트가 무거워졌거나.
+    # 첫 덩어리는 건너뛴다 -- 시작하자마자 남이 문을 부수고 들어오면 세계가 서기 전이다.
+    book.setdefault("shocks", 0)
+    book.setdefault("since", 0)
+    book["_shock"] = None
+    if book["chunks"] and SH.due(book["since"], len(brief(book["ledger"]))):
+        book["_shock"] = SH.draw(book.get("seed_id") or book["first"], book["shocks"])
+        D._log(f"[flow] 사건 {book['shocks'] + 1} -- {book['_shock']['who']} / "
+               f"{book['_shock']['how']} / {book['_shock']['scale']}")
+
     feedback = ""
     best = None                                   # (점수, 본문, 원장) -- 리듬만 걸린 후보
     for attempt in range(1, MAX_REWRITE + 2):
@@ -375,9 +412,13 @@ def step(book: dict, llm, log=None) -> dict:
         probe = json.loads(json.dumps(book["ledger"]))     # 시험용 사본
         clashes = _merge(probe, delta)
         if not clashes:
-            limp = (rhythm.check(text)
-                    + diffusion.check(text, book["ledger"], probe))
-            mark = rhythm.score(text) + diffusion.score(text, book["ledger"], probe)
+            # 사건 덩어리는 확산으로 재지 않는다 -- 거기서는 넓히고 회수하라고 시키지
+            # 않았다. 리듬만 본다(대사와 길이는 사건이든 아니든 지켜야 한다).
+            limp = rhythm.check(text)
+            mark = rhythm.score(text)
+            if not book.get("_shock"):
+                limp += diffusion.check(text, book["ledger"], probe)
+                mark += diffusion.score(text, book["ledger"], probe)
             if limp and attempt <= MAX_REWRITE:
                 if best is None or mark < best[0]:
                     best = (mark, text, probe)
@@ -396,6 +437,7 @@ def step(book: dict, llm, log=None) -> dict:
                     D._log("[flow] 끝내 못 고쳤다 -- 그대로 채택한다")
             book["ledger"] = probe
             book["chunks"].append(text)
+            _after(book, text)
             D._log(f"[flow] 덩어리 {len(book['chunks'])} · {len(text):,}자 · "
                    f"누적 {sum(len(c) for c in book['chunks']):,}자")
             return {"status": "ok", "chars": len(text), "clashes": []}
@@ -408,6 +450,7 @@ def step(book: dict, llm, log=None) -> dict:
     if best is not None:              # 모순은 못 풀었지만 리듬만 걸린 후보가 있다
         book["ledger"] = best[2]
         book["chunks"].append(best[1])
+        _after(book, best[1])
         D._log("[flow] 마지막 시도가 모순이다 -- 앞서 통과한 후보를 채택한다")
         return {"status": "ok", "chars": len(best[1]), "clashes": []}
     return {"status": "blocked", "chars": 0, "clashes": clashes}
