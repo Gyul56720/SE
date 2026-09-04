@@ -16,8 +16,20 @@
 
 ## 30초 요약
 
+**VM 에서는 절대경로로 쓴다.** 상대경로는 어느 디렉토리에서 쳤느냐에 따라 조용히 다른 것을
+가리킨다 -- 홈에서 실행하니 `python3 novel/watch.py` 가 `/home/ubuntu/novel/watch.py` 를
+찾다 죽었고, PATH 가 깨진 셸에서는 `pgrep` 이 `$PWD/pgrep` 으로 해석됐다(실측).
+
 ```bash
-scripts/run_novel_vm.sh                            # VM: 새 씨앗 -> 1~10화 (Gemini, setsid)
+/home/ubuntu/SE/scripts/run_novel_vm.sh --restart   # 새 씨앗 -> 1~10화 (Gemini, setsid)
+/home/ubuntu/SE/scripts/novel_status.sh             # 살아있나 · 로그 · 자수 한 번에
+/home/ubuntu/SE/scripts/novel_status.sh -f          # 로그를 계속 따라간다
+/home/ubuntu/SE/scripts/novel_status.sh --read      # 지금까지 쓴 원고를 읽는다
+```
+
+로컬(저장소 안에서)에서 부분을 따로 돌릴 때:
+
+```bash
 python3 novel/seed.py --n 10                       # 씨앗 열 개 뽑아 읽는다 (LLM 안 씀)
 python3 novel/world_seeded.py --new                # 하나 뽑아 세계로 편다 (LLM 안 씀)
 python3 novel/overnight.py --world seeded --persona cider --hours 2  # 실제 집필
@@ -61,7 +73,8 @@ JSON 의 우위는 **추출 태스크에 한정**된 이야기라, 두 태스크
 | `episode.py` | 역방향 조립. `Beat`/`Outcome`/`Episode` |
 | `drive.py` | 씬 루프와 프롬프트 전부. 디렉터/배우/화자/추출기 |
 | `overnight.py` | 무인 러너. 예산·건너뛰기·동시 실행 차단 |
-| `scripts/run_novel_vm.sh` | VM 런처. setsid+nohup+disown 을 매번 손으로 쓰다 하나를 빠뜨리지 않게 |
+| `scripts/run_novel_vm.sh` | VM 런처. setsid+nohup+disown 을 매번 손으로 쓰다 하나를 빠뜨리지 않게. **경로 전부 절대경로** |
+| `scripts/novel_status.sh` | 프로세스·로그·자수를 한 번에. 어느 디렉토리에서 쳐도 된다 |
 | `read.py` `watch.py` `profile.py` `repair_ops.py` | 읽기 · 진행 보기 · 병목 측정 · 저장된 원고 수리 |
 
 검사: `tests/test_novel_*.py`, `test_style.py`, `test_agency.py`, `test_timeline.py`, `test_seed.py`,

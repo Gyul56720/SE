@@ -19,7 +19,19 @@
 #   python3 novel/watch.py --path novel/seeded.json -f
 #   python3 novel/read.py  --path novel/seeded.json --ep 1-3
 set -u
-cd "${SE_DIR:-/home/ubuntu/SE}" || exit 1
+
+# **경로는 전부 절대경로로 쓴다.** 상대경로는 사람이 어느 디렉토리에서 쳤느냐에 따라
+# 조용히 다른 것을 가리킨다 -- 실측: 홈에서 실행하니 `python3 novel/watch.py` 가
+# /home/ubuntu/novel/watch.py 를 찾다 죽었다.
+SE="${SE_DIR:-/home/ubuntu/SE}"
+LOG="$SE/logs/novel_seeded.log"
+BOOK="$SE/novel/seeded.json"
+# pgrep 도 절대경로로 부른다. PATH 가 깨진 셸에서 `pgrep` 이 "$SE/pgrep" 으로 해석돼
+# "No such file or directory" 가 났다(실측).
+PGREP=/usr/bin/pgrep
+[ -x "$PGREP" ] || PGREP="$(command -v pgrep 2>/dev/null || echo pgrep)"
+
+cd "$SE" || exit 1
 
 NEW_SEED=1
 RESTART=0
@@ -61,7 +73,7 @@ fi
 PATTERN="novel/overnight.py"
 
 running_pids() {
-  pgrep -f "$PATTERN" 2>/dev/null | grep -vx "$$" | grep -vx "$PPID"
+  "$PGREP" -f "$PATTERN" 2>/dev/null | grep -vx "$$" | grep -vx "$PPID"
 }
 
 PIDS="$(running_pids)"
@@ -81,7 +93,7 @@ if [ -n "$PIDS" ]; then
       sleep 2
     fi
     if [ -n "$(running_pids)" ]; then
-      echo "  아직 살아 있다. 손으로 확인해라: pgrep -af $PATTERN"
+      echo "  아직 살아 있다. 손으로 확인해라: $PGREP -af $PATTERN"
       exit 1
     fi
     echo "  멈췄다 (원고 novel/seeded.json 은 그대로 남아 있다)"
@@ -93,13 +105,12 @@ if [ -n "$PIDS" ]; then
   fi
 fi
 
-mkdir -p logs
+mkdir -p "$SE/logs"
 if [ "$NEW_SEED" = "1" ]; then
-  python3 -m novel.world_seeded --new || exit 1
+  python3 "$SE/novel/world_seeded.py" --new || exit 1
 fi
 
-LOG="logs/novel_seeded.log"
-setsid nohup python3 novel/overnight.py \
+setsid nohup python3 "$SE/novel/overnight.py" \
     --world seeded --gemini-director --persona "$PERSONA" \
     --blocks "$BLOCKS" --upto-episode "$EPISODES" \
     --hours "$HOURS" --episode-minutes 120 --no-discord \
@@ -109,8 +120,14 @@ disown
 sleep 5
 if [ -n "$(running_pids)" ]; then
   echo "시작됐다 -- $(running_pids | tr '\n' ' ')"
-  echo "로그: $(pwd)/$LOG"
-  echo "원고: $(pwd)/novel/seeded.json"
+  echo
+  echo "  진행 보기 :  tail -f $LOG"
+  echo "  회차별    :  python3 $SE/novel/watch.py --path $BOOK -f"
+  echo "  읽기      :  python3 $SE/novel/read.py --path $BOOK --ep 1-10"
+  echo "  살아있나  :  $PGREP -af novel/overnight.py"
+  echo "  멈추기    :  $SE/scripts/run_novel_vm.sh --restart   (또는 $PGREP -f novel/overnight.py 로 PID 확인 후 kill)"
+  echo
+  echo "  상태 한 번에:  $SE/scripts/novel_status.sh"
 else
   echo "띄우지 못했다. 로그를 봐라:"
   tail -20 "$LOG"
