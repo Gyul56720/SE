@@ -170,6 +170,50 @@ class Director:
         return D.default_llm(prompt)
 
 
+def _refuse_if_running(path: Path) -> None:
+    """이미 도는 런이 있으면 시작하지 않는다.
+
+    두 벌이 같은 romance.json 을 쓰면 **서로를 덮어쓴다.** 각자 메모리에 든 Novel 을
+    통째로 저장하므로, 나중에 저장한 쪽이 상대가 채운 산문을 통째로 지운다. 밖에서는
+    "산문이 0자인데 end:done 이 찍혔다" 처럼 앞뒤가 안 맞는 상태로만 보인다(실측
+    2026-09-04: 씬 수가 줄었다 늘었다 하고 조립이 --blocks 1 을 넘어 다음 블록까지 갔다).
+
+    CLAUDE.md 에 사람이 조심하라고 적어뒀지만, 조심으로 막을 일이 아니다 -- 재시작할
+    때마다 매번 확인해야 하고 한 번 놓치면 그동안 쓴 것이 사라진다. 여기서 막는다.
+
+    PID 파일이 아니라 pgrep 을 쓴다. PID 파일은 kill -9 나 재부팅 뒤에 남아서 멀쩡한
+    시작을 막는데, pgrep 은 실제로 도는 것만 본다."""
+    import os
+    import subprocess
+    me = os.getpid()
+    try:
+        r = subprocess.run(["pgrep", "-af", "overnight.py"],
+                           capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return                      # pgrep 이 없으면 막지 않는다. 검사가 실행을 막으면 안 된다
+    others = []
+    for line in r.stdout.splitlines():
+        pid, _, cmd = line.partition(" ")
+        if not pid.isdigit() or int(pid) in (me, os.getppid()):
+            continue
+        # 자기 이름을 품은 것들을 걸러낸다. pgrep -af 는 명령줄 전체를 훑으므로
+        # tests/test_overnight.py 도 "overnight.py" 로 잡힌다 -- 검사 스위트를 돌리는
+        # 것만으로 진짜 실행이 막힌다(실측). 감시기와 편집기도 마찬가지다.
+        if any(x in cmd for x in ("pgrep", "test_overnight", "watch.py",
+                                  "vim ", "nano ", "less ", "tail ")):
+            continue
+        others.append(line)
+    if not others:
+        return
+    D._log("이미 도는 런이 있다 -- 시작하지 않는다. 두 벌이 같은 원고를 쓰면 "
+           "나중에 저장한 쪽이 상대가 쓴 산문을 통째로 지운다.")
+    for line in others:
+        D._log(f"  {line}")
+    D._log("  정리:  kill <위 PID>   (pkill -f 는 자기 셸까지 죽인다)")
+    D._log("  그래도 띄우려면:  --allow-concurrent")
+    raise SystemExit(2)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="야간 소설 러너")
     ap.add_argument("--hours", type=float, default=7.0)
@@ -198,6 +242,9 @@ def main() -> int:
     ap.add_argument("--episode-minutes", type=float, default=75.0,
                     help="에피소드 하나에 허용할 벽시계(분). 넘기면 그 편을 접고 다음으로 "
                          "간다 -- 한 편이 밤을 다 먹지 않게")
+    ap.add_argument("--allow-concurrent", action="store_true",
+                    help="이미 도는 런이 있어도 시작한다. **원고가 서로 덮어써진다** -- "
+                         "다른 원고 파일(--path)을 쓸 때만 안전하다")
     a = ap.parse_args()
 
     deadline = time.time() + a.hours * 3600
@@ -205,6 +252,8 @@ def main() -> int:
     log = path.with_suffix(".scenes.jsonl")
     report = path.with_suffix(".overnight.json")
 
+    if not a.allow_concurrent:
+        _refuse_if_running(path)
     novel = Novel.load(path) if path.exists() else build()
     director = None if a.gemini_director else Director()
     if a.all_claude:

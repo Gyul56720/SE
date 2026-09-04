@@ -18,6 +18,7 @@ REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
 from novel import drive as D                                          # noqa: E402
+from novel import overnight                                           # noqa: E402
 from novel.overnight import Director                                  # noqa: E402
 
 fails = []
@@ -154,6 +155,52 @@ if rep.exists():
 print("[예산] 벽시계를 넘기면 멈추는가")
 ok("--hours" in Path(REPO / "novel/overnight.py").read_text(encoding="utf-8"),
    "시간 예산 인자가 있다")
+
+print("[동시 실행] 두 벌이 같은 원고를 쓰지 못하게 막는가")
+print("      ← 2026-09-04 실측: 산문이 0자인데 end:done 이 찍히고 씬 수가 오락가락했다")
+import subprocess                                                     # noqa: E402
+import types                                                          # noqa: E402
+
+real_run = subprocess.run
+
+
+def fake_pgrep(out):
+    def run(cmd, *a, **k):
+        if cmd and cmd[0] == "pgrep":
+            return types.SimpleNamespace(stdout=out, returncode=0)
+        return real_run(cmd, *a, **k)
+    return run
+
+
+subprocess.run = fake_pgrep("999999 python3 novel/overnight.py --hours 7\n")
+try:
+    overnight._refuse_if_running(Path("x.json"))
+    ok(False, "다른 런이 있으면 SystemExit 로 멈춘다")
+except SystemExit as e:
+    ok(e.code == 2, f"SystemExit(2) 로 멈춘다 (code={e.code})")
+
+subprocess.run = fake_pgrep("")
+try:
+    overnight._refuse_if_running(Path("x.json"))
+    ok(True, "혼자면 그냥 시작한다")
+except SystemExit:
+    ok(False, "혼자인데 막혔다")
+
+# 자기 자신과 watch.py 는 세지 않는다
+import os                                                             # noqa: E402
+subprocess.run = fake_pgrep(f"{os.getpid()} python3 novel/overnight.py\n"
+                            f"12345 python3 novel/watch.py -f\n"
+                            f"12346 python3 tests/test_overnight.py\n"
+                            f"12347 tail -f logs/ep1.log\n")
+try:
+    overnight._refuse_if_running(Path("x.json"))
+    ok(True, "자기 자신 · 감시기 · 검사 · tail 은 '다른 런' 이 아니다\n"
+             "         ← test_overnight.py 도 pgrep 에는 'overnight.py' 로 잡힌다.\n"
+             "           이걸 세면 검사를 돌리는 것만으로 진짜 실행이 막힌다")
+except SystemExit:
+    ok(False, "자기 이름을 품은 프로세스를 남으로 셌다")
+
+subprocess.run = real_run
 
 print()
 if fails:
