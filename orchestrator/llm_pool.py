@@ -188,16 +188,23 @@ def call(pool, prompt: str, pool_id: str = "orchestrator", max_candidates: int =
             quota_tracker.set_pinned(pool_id, label)
             return text, label
         except Exception as e:
+            # **어느 갈래로 판정했는지 로그에 남긴다.** 예전에는 str(e)[:120] 만 찍었는데,
+            # RPM 과 일일 소진을 가르는 quotaId 는 그 뒤에 나온다 -- 분류는 제대로 하면서도
+            # 사람이 로그로 확인할 방법이 없었다(2026-09-04 에 실제로 못 가렸다).
             if _is_rpm(e):
                 quota_tracker.record_rpm_cooldown(label)
+                kind = "RPM/60초"
             elif _is_quota(e):
                 quota_tracker.record_exhausted(label)
+                kind = "일일소진"
             elif _is_permanent(e):
                 quota_tracker.mark_dead(label, str(e)[:200])
-            # 일시 장애(503 등)는 기록 없이 다음 후보로.
+                kind = "영구배제"
+            else:
+                kind = "일시장애"          # 503 등은 기록 없이 다음 후보로
             if verbose:
-                print(f"[llm_pool] {label} 실패({tried}/{min(limit, len(ranked))}): "
-                      f"{str(e)[:120]}", file=sys.stderr, flush=True)
+                print(f"[llm_pool] {label} 실패({tried}/{min(limit, len(ranked))}) "
+                      f"[{kind}]: {str(e)[:100]}", file=sys.stderr, flush=True)
             last_error = e
     if last_error:
         raise RuntimeError(
