@@ -132,17 +132,66 @@ def check_emotion_range(scene, novel) -> list:
             out.append(Violation("V003", "soft", f"인물 {name}",
                                  f"씬 내내 감정이 거의 고정이다 (최대 변동 폭 {span}). "
                                  f"인물이 반응하지 않고 있다"))
+    # 봉투 하한은 **회차 단위**로 본다. 씬 단위 검사는 아래 _envelope 로 옮겼다.
+    out.extend(_envelope(scene, novel))
+    return out
+
+
+def _envelope(scene, novel) -> list:
+    """감정 봉투를 **회차 단위로** 본다. 씬 단위가 아니다.
+
+    봉투의 의도는 세계 파일에 적혀 있다: "여주는 꺾여도 다시 서야 한다. 이 하한이 없으면
+    몇 씬 만에 무기력한 인물이 되고, 그러면 주도적 여성 서사라는 전제가 무너진다."
+    그건 **아크의 성질이지 씬의 성질이 아니다.** 그런데 씬마다 검사하고 있었다.
+
+    새벽 한 시 편의점에서 장학금이 걸린 장면에 joy 30 을 요구하면 인물이 이상해진다.
+    실측(2026-09-04 탐침): V003 이 25회로 되돌려보내기 1위였고, 집필 시간의 100%가
+    수리에 버려졌으며 씬 넷이 전부 네 번 시도하고 전부 실패했다. 관문이 옳고 모델이
+    틀린 것이 아니라 **관문이 잘못된 자리에서 물었다.**
+
+    회차(3씬)를 한 단위로 본다. 그 안에서 한 번도 하한에 못 닿으면 처음은 soft,
+    직전 회차도 그랬으면 hard -- 한 회차 가라앉는 것은 서사이고, 계속 가라앉는 것이 병이다
+    (V022 와 같은 판단이다)."""
+    if not scene.episode or not scene.is_episode_end:
+        return []
+
+    def peaks(ep: int) -> dict:
+        """그 회차에서 인물별·축별 최고치. 산문이 안 채워진 회차는 None."""
+        same = [s for s in novel.scenes if s.episode == ep]
+        if not same or not any(s.turns for s in same):
+            return {}
+        got = {}
+        for sc in same:
+            for t in sc.turns:
+                for ax, v in (t.emotions or {}).items():
+                    cur = got.setdefault(t.actor, {})
+                    cur[ax] = max(cur.get(ax, 0), v)
+        return got
+
+    now = peaks(scene.episode)
+    if not now:
+        return []
+    before = peaks(scene.episode - 1) if scene.episode > 1 else {}
+    out = []
+    for name, axes in now.items():
         try:
-            env = novel.character(name).emotion_envelope
+            env = novel.character(name).emotion_envelope or {}
         except KeyError:
             continue
-        for a, floor in (env or {}).items():
-            peak = max(e.get(a, 0) for e in mine)
-            if peak < floor:
-                out.append(Violation(
-                    "V003", "hard", f"인물 {name}",
-                    f"'{a}' 가 씬 안에서 한 번도 {floor} 에 닿지 않았다 (최고 {peak}). "
-                    f"이 인물은 그 폭을 잃으면 다른 사람이 된다"))
+        for a, floor in env.items():
+            peak = axes.get(a, 0)
+            if peak >= floor:
+                continue
+            missed_before = (before.get(name, {}).get(a, floor) < floor
+                             if before.get(name) else False)
+            msg = (f"'{a}' 가 {scene.episode}화 내내 {floor} 에 닿지 않았다 "
+                   f"(최고 {peak}). 이 인물은 그 폭을 잃으면 다른 사람이 된다 -- "
+                   f"회차 안에 한 번은 숨통이 트이는 순간을 만들어라")
+            if missed_before:
+                out.append(Violation("V003", "hard", f"인물 {name}",
+                                     msg + f". **{scene.episode - 1}화도 그랬다**"))
+            else:
+                out.append(Violation("V003", "soft", f"인물 {name}", msg))
     return out
 
 

@@ -86,7 +86,41 @@ bad = scene_fixture(turns=[Turn("미도리", "", "", "a", E(joy=5)),
                            Turn("미도리", "", "", "b", E(joy=6)),
                            Turn("와타나베", "", "", "c", E())])
 vs = gate.check(bad, N)
-ok(has(vs, "V003", "hard"), "미도리의 joy 가 봉투 하한(40)에 못 닿으면 기각한다")
+ok(has(vs, "V003", "soft"), "씬 안에서 감정이 고정이면 보고한다 (폭 붕괴)")
+
+print("[V003 봉투] 하한은 **씬이 아니라 회차** 단위로 본다")
+print("      ← 씬마다 물으면 새벽 편의점 장면에 joy 40 을 요구하게 된다.")
+print("        실측 2026-09-04: V003 이 25회로 되돌려보내기 1위, 집필 시간 100%가 수리에")
+n3 = novel_fixture()
+n3.scenes = []
+for ep in (1, 2):
+    for k in range(2):
+        sc = scene_fixture(turns=[Turn("미도리", "", "", "a", E(joy=5)),
+                                  Turn("미도리", "", "", "b", E(joy=6))])
+        sc.id, sc.episode, sc.is_episode_end = f"e{ep}s{k}", ep, (k == 1)
+        n3.scenes.append(sc)
+
+end1 = n3.scenes[1]
+v1 = [v for v in gate.check(end1, n3) if v.rule == "V003" and "닿지 않았다" in v.detail]
+ok(v1 and v1[0].severity == "soft",
+   f"한 회차 가라앉는 것은 soft ({v1[0].severity if v1 else '못잡음'})  ← 서사다")
+
+end2 = n3.scenes[3]
+v2 = [v for v in gate.check(end2, n3) if v.rule == "V003" and "닿지 않았다" in v.detail]
+ok(v2 and v2[0].severity == "hard",
+   f"두 회차 연속이면 hard ({v2[0].severity if v2 else '못잡음'})  ← 이게 병이다")
+ok(v2 and "1화도 그랬다" in v2[0].detail, "직전 회차를 짚어준다")
+
+n4 = novel_fixture()
+n4.scenes = []
+for k in range(2):
+    sc = scene_fixture(turns=[Turn("미도리", "", "", "a", E(joy=5)),
+                              Turn("미도리", "", "", "b", E(joy=55))])
+    sc.id, sc.episode, sc.is_episode_end = f"g{k}", 1, (k == 1)
+    n4.scenes.append(sc)
+ok(not [v for v in gate.check(n4.scenes[1], n4)
+        if v.rule == "V003" and "닿지 않았다" in v.detail],
+   "회차 안에 한 번이라도 하한을 넘으면 통과  ← 씬마다 밝을 필요는 없다")
 ok(has(vs, "V003", "soft"), "감정이 고정된 인물을 soft 로 보고한다")
 
 single = scene_fixture(turns=[Turn("미도리", "", "", "안녕", E(joy=55))])

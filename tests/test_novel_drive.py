@@ -86,11 +86,17 @@ ok(n.scenes[0].status == "failed", "씬 상태가 failed")
 ok(len(n.scenes[0].attempts) >= 2, f"시도 이력이 남는다 ({len(n.scenes[0].attempts)}건)")
 ok("violations" in r and r["violations"], "무엇이 막았는지 반환에 남는다")
 
-print("[봉투] 인물이 균일한 우울로 수렴하면 잡힌다 -- 미도리 관문")
+print("[봉투] 어두운 씬 **하나**는 통과한다 -- 봉투는 회차 단위로 본다")
+print("      ← 씬마다 물었더니 V003 이 25회로 되돌려보내기 1위였고 집필 시간의 100%가")
+print("        수리에 버려졌다(2026-09-04 탐침). 새벽 편의점 장면에 joy 40 을 요구하면")
+print("        인물이 이상해진다 -- 봉투의 의도는 아크의 성질이지 씬의 성질이 아니었다.")
 n = world(); f = Fake([GOOD_PROSE] * 10, joy=5)
 r = D.run_scene(n, n.scenes[0], f, max_repairs=1)
-ok(r["status"] == "failed", "B 의 joy 가 봉투(40)에 못 닿아 기각된다")
-ok(any("V003" in v for v in r["violations"]), f"V003 으로 기각 ({r['violations'][:1]})")
+ok(r["status"] == "verified",
+   f"가라앉은 씬 하나로는 기각하지 않는다 ({r['status']})")
+ok(not any("V003" in v for v in (r.get("violations") or [])),
+   "V003 hard 가 나오지 않는다")
+print("      (연속 회차로 가라앉는 것은 여전히 잡는다 -- test_novel_gate 의 [V003 봉투])")
 
 print("[영속] 씬마다 저장하고, 재개하면 verified 를 건너뛴다")
 d = Path(tempfile.mkdtemp()); path = d / "novel.json"
