@@ -24,6 +24,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+# 원고의 기본 위치는 **이 스크립트 옆**이다. 상대경로로 두면 ~/SE 밖에서
+# 실행했을 때 "파일이 없다" 로 죽는다 -- 실제로 세 번 그랬다.
+DEFAULT_PATH = Path(__file__).resolve().parent / "romance.json"
+
 from novel.state import Novel                                         # noqa: E402
 
 
@@ -120,7 +124,7 @@ def summarize(novel) -> str:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--path", default="novel/romance.json")
+    ap.add_argument("--path", default=str(DEFAULT_PATH))
     ap.add_argument("--ep", help="3 또는 1-10")
     ap.add_argument("--all", action="store_true", help="산문이 있는 회차 전부")
     ap.add_argument("--scenario", action="store_true",
