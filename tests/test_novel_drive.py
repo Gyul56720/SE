@@ -40,6 +40,8 @@ GOOD_TURN = {"inner_thought": "무슨 말을 해야 할까", "action": "잔을 �
              "speech": "그렇구나", "emotions": {"joy": 45, "melancholy": 40,
                                               "isolation": 40, "narrative_pull": 0}}
 GOOD_PROSE = "그라인더 소리가 멎었다. 나는 잔을 돌리며 창밖을 바라보았다."
+# 분량 보충(fill_prose)이 이어쓰기로 받는 것. 한 번에 목표를 넘겨 루프가 한 번에 끝난다.
+FILLER = "물을 올렸다. 레코드를 골랐다. 창밖은 아직 밝았다. " * 60
 BAD_PROSE = "B는 깊이 후회했다. 나는 슬펐다. 그리고 외로웠다. 무척 우울했다."
 
 
@@ -52,6 +54,8 @@ class Fake:
 
     def __call__(self, prompt):
         self.prompts.append(prompt)
+        if "이어서 계속 써라" in prompt:          # 분량 보충 단계
+            return FILLER
         if "산문만 출력한다" in prompt:
             return self.prose_seq.pop(0) if self.prose_seq else GOOD_PROSE
         t = dict(GOOD_TURN)
@@ -107,10 +111,13 @@ class Counting:
     """단계별 호출 수를 센다. 산문은 처음 두 번 관문에 걸리게 만든다."""
 
     def __init__(self):
-        self.n = {"director": 0, "actor": 0, "narrator": 0}
+        self.n = {"director": 0, "actor": 0, "narrator": 0, "filler": 0}
         self.prose_calls = 0
 
     def __call__(self, prompt):
+        if "이어서 계속 써라" in prompt:
+            self.n["filler"] += 1                 # 분량 보충은 수리와 다른 단계다
+            return FILLER
         if "산문만 출력한다" in prompt:
             self.n["narrator"] += 1
             self.prose_calls += 1
@@ -136,8 +143,11 @@ ok(c.n["director"] == 0,
    f"디렉터는 안 불린다 ({c.n['director']})  ← 이 씬은 location 이 이미 차 있다")
 prose_only = [a for a in n.scenes[0].attempts if a.get("stage") == "prose"]
 ok(len(prose_only) == 2, f"산문 단계에서 두 번 막혔다 ({len(prose_only)})")
-ok(sum(c.n.values()) == 11,
-   f"총 11회 ({sum(c.n.values())})  ← 예전 구조는 15회(5x3)였다. 27% 절약\n"
+ok(c.n["filler"] == 1,
+   f"분량 보충은 한 번 ({c.n['filler']})  ← **관문을 통과한 뒤에만** 채운다. "
+   f"기각될 산문에 이어쓰기를 붙이면 그 호출이 통째로 버려진다")
+ok(sum(c.n.values()) - c.n["filler"] == 11,
+   f"수리 루프는 총 11회 ({sum(c.n.values()) - c.n['filler']})  ← 예전 구조는 15회(5x3)였다.\n"
    "         실패가 산문에만 몰릴수록 절약이 커진다: 4시도면 24 -> 9회")
 
 print("[영속] 씬마다 저장하고, 재개하면 verified 를 건너뛴다")

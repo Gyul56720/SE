@@ -1088,6 +1088,70 @@ JSON 만 출력:
   "emotions": {{"joy": 0, "melancholy": 0, "isolation": 0, "narrative_pull": 0}}}}"""
 
 
+# 분량은 취향이 아니라 규격이다. 관문에서 V019 를 뺀 것은 "몇 자여야 좋은가" 가 의견이라서가
+# 아니라 **씬 관문이 잡을 자리가 아니어서**였다 -- 회차가 다 찬 뒤에 hard 를 내면 수리 루프는
+# 이미 지나간 씬을 다시 쓰지 못한다. 그래서 여기, 씬을 쓰는 자리로 옮긴다.
+#
+# 실측(사용자 보고): 회차가 5,000자 목표인데 3,000자로 나왔다. 원인은 지시의 형태다 --
+# "5,000자 안팎" 은 모델이 지킬 수 있는 형태가 아니고, 실제로 지켜지지도 않았다. 코드가
+# 세고 모자란 만큼을 숫자로 돌려주는 것이 유일하게 작동하는 방법이다.
+PROSE_MIN_RATIO = 0.95        # 목표의 이만큼은 채워야 한다
+PROSE_EXTEND_TRIES = 4        # 이어쓰기 시도 상한. 넘으면 있는 만큼으로 간다
+
+
+def extend_prompt(novel, scene, short_by: int) -> str:
+    """모자란 만큼을 **이어서** 쓰게 한다. 다시 쓰라고 하면 또 짧게 나온다.
+
+    다시 쓰기(rewrite)를 시켜보면 모델은 같은 길이로 수렴한다 -- 이미 완결된 글을 받고
+    "더 길게" 를 들으면 같은 내용을 다르게 배열할 뿐이다. 이어쓰기는 끝 지점이 주어지므로
+    새로 쓸 것이 생긴다. 그리고 무엇으로 채울지도 말해준다 -- 사건을 더 넣으라고 하면
+    플롯이 부풀고, 그건 조립이 정한 인과를 씬이 멋대로 늘리는 것이다."""
+    tail = scene.prose[-600:]
+    return f"""아래는 네가 방금 쓴 장면의 끝부분이다. **이어서 계속 써라.**
+
+{style.NARRATOR}
+
+{style.brief(scene.kind)}[무대] {scene.location} / [감각] {scene.punctum}
+[지금까지 쓴 것의 끝]
+...{tail}
+
+규칙:
+- **{short_by}자 이상 더 써라.** 지금 분량이 목표에 그만큼 모자란다.
+- **새 사건을 만들지 마라.** 인과는 이미 정해져 있다. 여기서 늘릴 것은 사건이 아니다:
+  · 손이 하는 일을 순서대로 (물을 올리고, 레코드를 고르고, 셔츠를 다린다)
+  · 끝없는 내적 독백 -- 결론에 닿지 않아도 된다
+  · 메인과 무관한 딴 이야기 (옛 연인, 어젯밤의 꿈, 라디오에서 나오던 곡)
+  · 공간의 집요한 묘사 (소리·냄새·빛·먼지)
+- 위 끝부분과 자연스럽게 이어져야 한다. 요약하거나 되짚지 마라.
+- 문체는 그대로다. 건조한 단문, 느낌표 없음, 감정 직접 서술 없음.
+
+이어질 산문만 출력한다. 머리말도 표식도 쓰지 마라."""
+
+
+def fill_prose(novel, scene, llm, target: int, log=None) -> int:
+    """목표 분량까지 이어쓴다. 반환은 최종 길이. **코드가 센다.**"""
+    for _ in range(PROSE_EXTEND_TRIES):
+        have = len(scene.prose)
+        short_by = target - have
+        if have >= target * PROSE_MIN_RATIO:
+            return have
+        more = _llm_for(llm, "narrator")(
+            extend_prompt(novel, scene, short_by)).strip()
+        if more.lstrip().startswith(("{", "[")):
+            # 산문 자리에 JSON 이 왔다. 붙이면 원고에 중괄호가 박힌다 -- 조용히 섞이면
+            # 다음 사람이 읽을 때까지 아무도 모른다.
+            _log(f"[분량] 씬 {scene.id}: 이어쓰기가 JSON 으로 왔다 -- 버린다")
+            break
+        if len(more) < 40:
+            # 빈 응답이나 "알겠습니다" 한 줄. 더 두드려도 같은 것이 온다.
+            _log(f"[분량] 씬 {scene.id}: 이어쓰기가 {len(more)}자로 돌아왔다 -- 멈춘다")
+            break
+        scene.prose = scene.prose + "\n\n" + more
+        _log(f"[분량] 씬 {scene.id}: {have} -> {len(scene.prose)}자 "
+             f"(목표 {target})")
+    return len(scene.prose)
+
+
 def narrator_prompt(novel, scene, feedback="") -> str:
     logs = "\n".join(
         f"  [{t.actor}] 속:{t.inner_thought} / 행동:{t.action} / 말:{t.speech}"
@@ -1220,6 +1284,12 @@ def run_scene(novel, scene, llm, max_repairs=MAX_REPAIRS, log=None) -> dict:
             if redo_turns:
                 prose_only_run = 0
             continue
+
+        # --- 분량 (코드가 세고 모자란 만큼을 숫자로 돌려준다)
+        # **관문을 통과한 뒤에 채운다.** 기각될 산문에 이어쓰기를 붙이면 그 호출이 통째로
+        # 버려진다 -- 씬 하나가 24호출이던 시절과 같은 낭비다.
+        from . import arc as _arc
+        fill_prose(novel, scene, llm, _arc.CHARS_PER_SCENE, log)
 
         scene.status = "verified"
         scene.violations = [str(v) for v in vs]          # soft 는 기록만

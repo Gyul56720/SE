@@ -67,6 +67,7 @@ jobs:
           python3 tests/test_novel_drive.py
           python3 tests/test_novel_gate.py
           python3 tests/test_style.py
+          python3 tests/test_length.py
 
       - name: 오케스트레이터 계획 수리 테스트
         run: python3 tests/test_planner_repair.py
