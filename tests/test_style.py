@@ -81,6 +81,8 @@ ok("가차 없이 잘라낸다" in p, "마이너스 퇴고")
 ok("느낌표" in p, "느낌표 배제")
 ok("방관자" in p and "냉소적인 농담" in p, "하드보일드 거리두기와 허무주의 유머")
 ok("재즈" in p and "다림질" in p, "팝 컬처 고유명사와 일상 행위")
+ok("불가능은 하나뿐" in p and "설명하지 마라" in p,
+   "마술적 리얼리즘 -- 불가능은 하나, 설명은 없다")
 ok("쉼표처럼" in p, "행동 쉼표")
 ok("샌드위치에 관해 이야기했다" in p, "대화의 선택적 압축 -- 예시까지 준다")
 
@@ -92,10 +94,10 @@ ok('"무언가 무너져 내리는 기척" 도 쓰지 마라' in p,
 
 print("[화자] 종류별 규율이 그 씬에만 실린다")
 ok("일상 루틴" in D.narrator_prompt(N, scene("routine")), "루틴 씬에 루틴 규율")
-ok("기묘한 조우" in D.narrator_prompt(N, scene("encounter")), "조우 씬에 조우 규율")
+ok("불가능**" in D.narrator_prompt(N, scene("encounter")), "법이 작동하는 씬에 그 규율")
 ok("능동적 탐색을 금지" in D.narrator_prompt(N, scene("delivery")), "배달 씬에 배달 규율")
 ok("카타르시스는 증발" in D.narrator_prompt(N, scene("resolution")), "해결 씬에 해결 규율")
-ok("일상 루틴" not in D.narrator_prompt(N, scene("encounter")),
+ok("일상 루틴 —" not in D.narrator_prompt(N, scene("encounter")),
    "다른 종류의 규율은 안 실린다  ← 넷을 다 실으면 어느 것도 안 지켜진다")
 ok(style.brief("없는종류") == "", "모르는 종류에는 규율을 지어내지 않는다")
 
@@ -114,9 +116,12 @@ ok("느낌표" in a, "배우도 느낌표를 안 쓴다")
 
 print("[디렉터] 4 · 12 가 실려 있는가")
 d = D.director_prompt(N, scene("encounter"))
-ok("초현실" in d and "말하는 동물" in d, "단단한 일상 위의 초현실")
-ok("통로로" in d and "우물" in d, "일상적 공간의 웜홀화")
-ok("기묘한 조우" in d, "디렉터도 이 씬의 종류를 안다")
+ok("고유명사" in d and "다림질" in d, "두꺼운 현실을 먼저 깐다")
+ok("새 초현실을 지어내지 마라" in d and "말하는 동물도" in d,
+   "초현실은 금지다  ← 마술적 리얼리즘은 불가능이 하나뿐인 세계다")
+ok("집요하게 묘사" in d and "현실의 공간으로 남는다" in d,
+   "평범한 공간을 집요하게. 문이 열리지는 않는다")
+ok("불가능은" in d and "규칙 하나뿐" in d, "디렉터도 이 씬의 종류를 안다")
 ok('"슬프다/외롭다" 라고 서술되면 기각된다' not in d,
    "기각한다는 거짓말이 지워졌다  ← 관문은 더 이상 그것을 보지 않는다")
 

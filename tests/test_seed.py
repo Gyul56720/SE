@@ -53,6 +53,24 @@ ok(any("서로 다른 축" in v for v in S.validate(same)), "인물 셋이 같�
 ok(any("이미 쓴" in v for v in S.validate(s, used={s["id"]})),
    "이미 쓴 씨앗은 다시 안 뽑는다")
 
+print("[현실] 불가능은 **하나뿐**인가  ← 마술적 리얼리즘과 초현실을 가르는 자리")
+print("      ← 시간 축까지 불가능하면 세계가 통째로 꿈이 되고, 그러면 인물이 그것을")
+print("        당연하게 받아들이는 태도가 성립하지 않는다.")
+bad_time = [t for t, _ in S.TIME
+            if any(w in t for w in S.SUPERNATURAL)]
+ok(not bad_time, f"시간 축이 전부 현실이다 ({bad_time or '깨끗'})")
+fake = dict(S.draw(random.Random(1)))
+fake["time"] = {"what": "해가 지지 않는 두 달", "note": "x"}
+ok(any("현실이 아니다" in e for e in S.validate(fake)),
+   "불가능한 시간 축이 들어오면 검사가 잡는다  ← 목록을 손으로 늘리는 자리는 언젠가 잘못 늘어난다")
+for _ in range(30):
+    sd = S.draw(random.Random())
+    if [e for e in S.validate(sd) if "현실이 아니다" in e]:
+        ok(False, f"뽑은 씨앗의 시간 축이 현실이 아니다: {sd['time']['what']}")
+        break
+else:
+    ok(True, "서른 번 뽑아도 전부 현실의 국면이다")
+
 print("[재현] 같은 난수 씨앗이면 같은 조합인가  ← 마음에 든 것을 다시 찾을 수 있어야 한다")
 a = S.draw(random.Random(42))
 b = S.draw(random.Random(42))
