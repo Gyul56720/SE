@@ -17,12 +17,12 @@
 ## 30초 요약
 
 ```bash
-scripts/run_novel_vm.sh                            # VM: 새 씨앗 -> 1~3화 (Gemini, setsid)
+scripts/run_novel_vm.sh                            # VM: 새 씨앗 -> 1~10화 (Gemini, setsid)
 python3 novel/seed.py --n 10                       # 씨앗 열 개 뽑아 읽는다 (LLM 안 씀)
 python3 novel/world_seeded.py --new                # 하나 뽑아 세계로 편다 (LLM 안 씀)
 python3 novel/overnight.py --world seeded --persona cider --hours 2  # 실제 집필
 python3 novel/watch.py --path novel/seeded.json -f   # 진행 보기
-python3 novel/read.py  --path novel/seeded.json --ep 1-3   # 읽기
+python3 novel/read.py  --path novel/seeded.json --ep 1-10  # 읽기
 python3 novel/profile.py --path novel/seeded.json    # 병목 재기
 ```
 
@@ -50,7 +50,7 @@ JSON 의 우위는 **추출 태스크에 한정**된 이야기라, 두 태스크
 | 파일 | 하는 일 |
 |---|---|
 | `seed.py` | 자유 씨앗. 축 7개 조합 + 최소 검사 + 조사 처리기. **반칙은 대가가 아니라 조건을 갖는다** |
-| `world_seeded.py` | 씨앗 -> `Novel` + 결말 블록. **LLM 안 씀** |
+| `world_seeded.py` | 씨앗 -> `Novel` + 결말 블록 3개(3+3+4화 = 10화). **LLM 안 씀** |
 | `world_romance.py` | 손으로 쓴 200화 세계(음대 로맨스). 15블록 + steps 45개 |
 | `world_probe.py` | 3화짜리 시험대. 디렉터 8회로 배선을 싸게 확인한다 |
 | `state.py` | `Novel`/`Scene`/`Character`. 관계·지식·설정 원장, 동적 게이트 도출, **시간선(`timeline`)** |

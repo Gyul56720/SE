@@ -7,7 +7,7 @@
 # 입출력 리다이렉트를 매번 손으로 쓰면 언젠가 하나를 빠뜨린다.
 #
 # 사용:
-#   scripts/run_novel_vm.sh                       # 새 씨앗 -> 1~3화
+#   scripts/run_novel_vm.sh                       # 새 씨앗 -> 1~10화 (회차 5,000자)
 #   scripts/run_novel_vm.sh --keep                # 지금 씨앗 그대로 이어서
 #   scripts/run_novel_vm.sh --restart             # 돌던 런을 죽이고 다시 (원고는 남는다)
 #   scripts/run_novel_vm.sh --persona hardboiled   # 문체를 갈아끼운다
@@ -24,9 +24,9 @@ cd "${SE_DIR:-/home/ubuntu/SE}" || exit 1
 NEW_SEED=1
 RESTART=0
 PERSONA=cider
-EPISODES=3
-BLOCKS=1
-HOURS=6
+EPISODES=10
+BLOCKS=3     # 씨앗 세계는 3+3+4화 세 블록이다
+HOURS=10    # 10화 x 3씬 = 30씬. Gemini 로도 몇 시간이다
 for a in "$@"; do
   case "$a" in
     --keep) NEW_SEED=0 ;;
