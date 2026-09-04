@@ -152,7 +152,8 @@ ok("없는 낱말을 만들고 변명을 단다" not in flat3,
 ok("멍청한 소리를 아주 진지하게 한다" in flat3, "멍청하면서 진지한 수도 목록에 있다")
 _sn = " ".join(style.narrator().split())
 ok("매번 하지는 마라" in _sn, "화자에게도 매번 하지 말라고 한다  ← 두 자리가 어긋나면 안 된다")
-ok("급발진이 이 사람의 기본값이다" in _sn, "화자가 주인공 성격으로 안다")
+ok("더없이 솔직하다" in _sn and "급발진이 기본값이고" in _sn,
+   "화자가 주인공을 솔직한 사람으로 안다  ← 거짓말을 못 해서 저지르는 것이지 용감해서가 아니다")
 ok("같은 몸짓" in _sn, "지어낸 말과 급발진을 한 벌로 묶는다")
 
 print()
@@ -284,6 +285,24 @@ ok("사슬은" in lb and "한 칸만 나아가면 된다" in lb,
 ok("이름과 사정을 하나 줘라" in lb, "거기서 만난 사람이 다음 칸을 부른다")
 ok("경찰서로 끌려간다" not in lb and "소세지" not in lb and "철학" not in lb,
    "구체적인 예시를 박아 두지 않는다  ← 예시를 하드코딩하면 내용이 다 그쪽으로 쏠린다")
+
+print()
+print("[욕망] **급발진은 욕망이 새어 나온 것이다**")
+print("      ← 무엇을 원하는지가 정해지면 왜 하필 지금 저지르는지가 따라 나온다.")
+ok(len(SH.URGE) >= 15, f"욕망이 충분히 갈린다 ({len(SH.URGE)}개)")
+ok("urge" in SH.impulse("a", 0), "급발진에 욕망이 붙어 나온다")
+ub = SH.impulse_brief(SH.impulse("a", 0))
+ok("욕망이 먼저다" in ub, "욕망을 먼저 말한다")
+ok("채워지거나 어긋난다" in ub,
+   "그 자리에서 결판난다  ← 채워지면 카타르시스고 어긋나면 다음 급발진을 부른다")
+ok("합창단" in ub, "반응이 사람마다 갈린다  ← 다 같이 놀라면 그건 사람이 아니다")
+
+lits = [SH.impulse("s", i)["literal"] for i in range(400)]
+ok(0 < sum(bool(x) for x in lits) < 160,
+   f"말이 실제가 되는 것은 넷에 하나쯤 ({sum(bool(x) for x in lits)}/400)")
+lb2 = SH.impulse_brief(SH.impulse("s", next(i for i in range(40) if SH.impulse("s", i)["literal"])))
+ok("놀라면 판타지가 되고, 안 놀라면 아이러니가 된다" in lb2,
+   "아무도 크게 안 놀란다  ← 놀라는 순간 아이러니가 판타지로 떨어진다")
 
 print()
 if fails:
