@@ -927,13 +927,13 @@ def build_episode(novel, spec: dict, llm=None, max_repairs=MAX_REPAIRS, log=None
         epno = lo + i
         main.episode, main.is_episode_end, main.cliffhanger = epno, False, ""
         main.id = f"ep{lo:03d}_{epno:03d}m"
-        # 척추는 배달(delivery)을 우선한다. 화자가 단서를 찾아 헤매는 능동적 탐색이 아니라
-        # 밖에서 온 편지·전화·꿈이 서사를 밀어야 한다(지시 9). 결말만 resolution 이다 --
-        # 거기서 갈등은 해명 없이 흩어지고 상실감만 남는다(지시 10).
-        _assign(main, style.SPINE_POOL)
+        # 척추의 종류는 페르소나가 정한 풀에서 고른다. **블록의 결말 씬만 예외**로
+        # 페르소나가 지정한 종류를 쓴다 -- 사이다에서는 가장 큰 성취이고 하드보일드에서는
+        # 증발하는 해결이다. 그 자리는 배분이 아니라 형식이 정한다.
+        _assign(main, style.spine_pool())
         if i == len(main_scenes) - 1:
-            main.kind = "resolution"
-            kinds["resolution"] = kinds.get("resolution", 0) + 1
+            main.kind = style.finale_kind()
+            kinds[main.kind] = kinds.get(main.kind, 0) + 1
         scenes.append(main)
         for k in range(arc.SCENES_PER_EPISODE - arc.MAIN_SCENES):
             if _out_of_time():
@@ -970,13 +970,7 @@ def build_episode(novel, spec: dict, llm=None, max_repairs=MAX_REPAIRS, log=None
                         world_ops=_ops(b.get("world_ops"), f"서브플롯 {epno}화"),
                         scale=int(b.get("scale") or spec["scale"]),
                         direction=dict(b.get("direction") or {}), episode=epno)
-            if i == len(main_scenes) - 1:
-                # 결말 회차의 꼬리는 **일상으로의 회귀**다. 해결 뒤에 기묘한 조우를 놓으면
-                # 다시 이야기가 열린다 -- 10번 지시는 닫힌 일상으로 돌아가라고 한다.
-                sub.kind = "routine"
-                kinds["routine"] = kinds.get("routine", 0) + 1
-            else:
-                _assign(sub, style.SUBPLOT_POOL)  # 숨구멍은 루틴과 기묘한 조우로 채운다
+            _assign(sub, style.subplot_pool())      # 서브플롯은 페르소나가 정한 풀에서
             scenes.append(sub)
             _log(f"[조립] {epno}화 씬 {len(scenes)}개째 (서브플롯)")
         scenes[-1].is_episode_end = True                  # 회차의 끝은 마지막 씬이다
@@ -1050,9 +1044,9 @@ def director_prompt(novel, scene, feedback="") -> str:
 [인물] {chr(10).join(f'  {c.name}: {c.persona}' for c in novel.characters)}
 [화자가 이미 아는 미래] {novel.narrator_foreknowledge}
 
-{style.DIRECTOR}
+{style.director()}
 
-{style.brief(scene.kind)}{style.frame_for(scene.episode)}규칙:
+{style.brief(scene.kind)}{style.episode_brief(scene.episode)}규칙:
 - 감정을 직접 말하게 하지 마라. 사물·소리·날씨로 옮겨라.
 - punctum 은 한 씬을 여는 감각 하나다. 나중에 되돌아올 수 있는 것으로.
 
@@ -1088,7 +1082,7 @@ def actor_prompt(novel, scene, name, feedback="") -> str:
 {_direction(scene)}[직전 대화]
 {log}
 
-{style.ACTOR}
+{style.actor()}
 
 규칙:
 - 속마음(inner_thought)과 실제 말(speech) 사이에 괴리를 둬라. 담담하게 말하고 속으로 복잡하라.
@@ -1125,7 +1119,7 @@ def extend_prompt(novel, scene, short_by: int) -> str:
     tail = scene.prose[-600:]
     return f"""아래는 네가 방금 쓴 장면의 끝부분이다. **이어서 계속 써라.**
 
-{style.NARRATOR}
+{style.narrator()}
 
 {style.brief(scene.kind)}[무대] {scene.location} / [감각] {scene.punctum}
 [지금까지 쓴 것의 끝]
@@ -1178,9 +1172,9 @@ def narrator_prompt(novel, scene, feedback="") -> str:
 {f"[문장의 색] {novel.voice}" if getattr(novel, "voice", "") else ""}
 [무대] {scene.location} / [감각] {scene.punctum}
 
-{style.NARRATOR}
+{style.narrator()}
 
-{style.brief(scene.kind)}{style.frame_for(scene.episode)}{_direction(scene)}[로그]
+{style.brief(scene.kind)}{style.episode_brief(scene.episode)}{_direction(scene)}[로그]
 {logs}
 
 규칙:

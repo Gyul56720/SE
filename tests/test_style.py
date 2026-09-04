@@ -1,12 +1,13 @@
-"""문체 규율 -- 12개 지시가 실제로 프롬프트에 실리고 배분이 목표에 수렴하는가.
+"""문체 규율 -- 페르소나가 실제로 프롬프트에 실리고 배분이 목표에 수렴하는가.
 
-관문에서 취향 검사를 뺐으므로(2026-09-04) 문체를 지키는 것은 이제 기각이 아니라 규율이다.
+관문에서 취향 검사를 뺐으므로(2026-09-04) 문체를 지키는 것은 기각이 아니라 규율이다.
 규율은 **실려야** 존재한다 -- 이 저장소가 반복 실증한 것이 그것이다(읽히지 않는 산문 규칙은
-아무것도 막지 못한다). 그래서 여기서 고정하는 것은 두 가지다:
+아무것도 막지 못한다). 여기서 고정하는 것:
 
-  1. 각 층의 프롬프트가 자기 층의 지시를 실제로 담고 있는가 (그리고 **모순되는 옛 지시가
-     남아 있지 않은가** -- 1번 지시는 만연체 배제인데 옛 화자 프롬프트는 만연체를 요구했다)
-  2. 씬 종류 배분이 목표 비율(50~60 / 20~25 / 15~20 / <5)에 수렴하는가
+  1. 고른 페르소나의 규율이 층별로(화자/배우/디렉터) 실리는가
+  2. **다른 페르소나의 규율이 새지 않는가** -- 둘 다 실리면 모델은 둘 다 반쯤 지킨다
+  3. 씬 종류 배분이 그 페르소나의 목표 비율에 수렴하는가
+  4. 페르소나를 갈아끼우면 종류·풀·결말까지 통째로 바뀌는가
 
 실행: python3 tests/test_style.py
 """
@@ -34,99 +35,104 @@ N = build()
 POV = N.pov_character
 
 
-def scene(kind="routine", ep=1):
-    return Scene(id="s1", episode=ep, kind=kind, location="낡은 엘리베이터",
-                 punctum="식은 커피", participants=[POV, "공명"])
+def scene(kind, ep=1):
+    return Scene(id="s1", episode=ep, kind=kind, location="길드 접수처",
+                 punctum="깨진 유리", participants=[POV, "공명"])
 
+
+print("[기본] 기본 페르소나는 사이다다")
+ok(style.ACTIVE == "cider", f"ACTIVE={style.ACTIVE}")
+ok(sorted(style.PERSONAS) == ["cider", "hardboiled"], f"{sorted(style.PERSONAS)}")
 
 print("[배분] 씬 종류가 목표 비율에 수렴하는가")
 counts: dict = {}
 for i in range(300):
-    k = style.pick_kind(style.SUBPLOT_POOL if i % 3 else style.SPINE_POOL, counts)
-    counts[k] = counts.get(k, 0) + 1
-total = sum(counts.values())
-share = {k: v / total for k, v in counts.items()}
-ok(0.50 <= share.get("routine", 0) <= 0.60,
-   f"routine {share.get('routine', 0):.0%} (목표 50~60%)")
-ok(0.20 <= share.get("encounter", 0) <= 0.25,
-   f"encounter {share.get('encounter', 0):.0%} (목표 20~25%)")
-ok(0.15 <= share.get("delivery", 0) <= 0.20,
-   f"delivery {share.get('delivery', 0):.0%} (목표 15~20%)")
-
-ok(style.pick_kind(style.SPINE_POOL, {"routine": 9}) == "delivery",
-   "루틴이 목표를 넘으면 척추는 배달로 간다  ← 서사를 미는 것은 밖에서 온 것")
-ok(style.pick_kind(style.SPINE_POOL, {"delivery": 9}) == "routine",
-   "배달이 넘치면 루틴으로 돌아온다  ← 매회 편지가 오면 그것도 원패턴이다")
-ok(style.pick_kind(style.SUBPLOT_POOL, {"routine": 99}) == "encounter",
-   "루틴이 넘치면 기묘한 조우로 넘어간다")
+    counts_k = style.pick_kind(style.subplot_pool() if i % 3 else style.spine_pool(), counts)
+    counts[counts_k] = counts.get(counts_k, 0) + 1
+share = {k: v / 300 for k, v in counts.items()}
+for k, spec in style.kinds().items():
+    got, want = share.get(k, 0), spec["share"]
+    ok(abs(got - want) <= 0.03, f"{k} {got:.0%} (목표 {want:.0%})")
+ok(style.pick_kind(style.spine_pool(), {"cider": 99}) == "status",
+   "사이다가 넘치면 상태창으로 간다")
 
 print("[배분] 재개해도 이어서 센다")
-prev = [scene(k) for k in ("routine", "routine", "encounter")]
-ok(style.tally(prev) == {"routine": 2, "encounter": 1},
-   f"이미 쓴 씬의 종류를 센다 ({style.tally(prev)})")
+ok(style.tally([scene("cider"), scene("cider"), scene("status")])
+   == {"cider": 2, "status": 1}, "이미 쓴 씬의 종류를 센다")
 ok(style.tally([Scene(id="x")]) == {},
    "종류가 없는 씬은 세지 않는다  ← 옛 원고를 이어받아도 죽지 않는다")
-
-print("[결정성] 같은 입력에 같은 종류")
-got = {style.pick_kind(style.SUBPLOT_POOL, {"routine": 3, "encounter": 1})
-       for _ in range(20)}
-ok(len(got) == 1,
-   f"무작위가 아니라 결손 최대로 고른다 ({got})  ← 재현되지 않으면 배분을 잴 수 없다")
+got = {style.pick_kind(style.subplot_pool(), {"cider": 3, "praise": 1}) for _ in range(20)}
+ok(len(got) == 1, f"무작위가 아니라 결손 최대로 고른다 ({got})  ← 재현되지 않으면 못 잰다")
 
 print()
-print("[화자] 1·3·4·5·6 이 실려 있는가")
-p = D.narrator_prompt(N, scene("routine"))
-ok("단문" in p and "만연체를 쓰지 마라" in p, "건조한 번역투 단문을 요구한다")
-ok("가차 없이 잘라낸다" in p, "마이너스 퇴고")
-ok("느낌표" in p, "느낌표 배제")
-ok("방관자" in p and "냉소적인 농담" in p, "하드보일드 거리두기와 허무주의 유머")
-ok("재즈" in p and "다림질" in p, "팝 컬처 고유명사와 일상 행위")
-ok("불가능은 하나뿐" in p and "설명하지 마라" in p,
-   "마술적 리얼리즘 -- 불가능은 하나, 설명은 없다")
-ok("쉼표처럼" in p, "행동 쉼표")
-ok("샌드위치에 관해 이야기했다" in p, "대화의 선택적 압축 -- 예시까지 준다")
+print("[화자] 사이다 규율이 실려 있는가")
+p = D.narrator_prompt(N, scene("cider"))
+ok("15~20자" in p and "3줄 이하" in p, "Z-스캔 -- 문장 15~20자, 문단 3줄 이하")
+ok("어려운 한자어" in p and "장황한 수식어" in p, "시각적 장애물 제거")
+ok("50~70%" in p, "대사 비율 50~70%")
+ok("주저하지 않는다" in p and "고구마" in p, "지연 금지")
+ok("딜레마" in p and "흔들리지 않는다" in p, "갈등 거세")
+ok("상태" in p and "호감도" in p, "상태창을 블록으로 노출한다")
 
-print("[화자] 모순되는 옛 지시가 남아 있지 않은가  ← 둘 다 실으면 둘 다 반쯤 지켜진다")
-ok("만연체(60자 이상)를 회차마다" not in p, "만연체 요구가 지워졌다")
-ok("비유는 아껴 쓰되 있어야 한다" not in p, "비유 요구가 지워졌다")
-ok('"무언가 무너져 내리는 기척" 도 쓰지 마라' in p,
-   "옛 프롬프트가 모범으로 들던 표현을 이제 금지 예시로 든다")
+print("[화자] 다른 페르소나가 새지 않는가  ← 둘 다 실으면 둘 다 반쯤 지켜진다")
+ok("마이너스 퇴고" not in p and "느낌표" not in p, "하드보일드 규율이 안 실린다")
+ok("불가능은 하나뿐" not in p, "마술적 리얼리즘 규율이 안 실린다")
 
 print("[화자] 종류별 규율이 그 씬에만 실린다")
-ok("일상 루틴" in D.narrator_prompt(N, scene("routine")), "루틴 씬에 루틴 규율")
-ok("불가능**" in D.narrator_prompt(N, scene("encounter")), "법이 작동하는 씬에 그 규율")
-ok("능동적 탐색을 금지" in D.narrator_prompt(N, scene("delivery")), "배달 씬에 배달 규율")
-ok("카타르시스는 증발" in D.narrator_prompt(N, scene("resolution")), "해결 씬에 해결 규율")
-ok("일상 루틴 —" not in D.narrator_prompt(N, scene("encounter")),
+ok("걸림돌을 그 자리에서" in D.narrator_prompt(N, scene("cider")), "사이다 씬")
+ok("세계를 수치로 읽는다" in D.narrator_prompt(N, scene("status")), "상태창 씬")
+ok("거의 전부 대사다" in D.narrator_prompt(N, scene("pingpong")), "핑퐁 씬")
+ok("위업을 말로 굳힌다" in D.narrator_prompt(N, scene("praise")), "확인 씬")
+ok("세계를 수치로" not in D.narrator_prompt(N, scene("cider")),
    "다른 종류의 규율은 안 실린다  ← 넷을 다 실으면 어느 것도 안 지켜진다")
 ok(style.brief("없는종류") == "", "모르는 종류에는 규율을 지어내지 않는다")
 
-print("[액자] 11 은 주기로 준다  ← 매번 넣으면 액자가 본편이 된다")
-ok("일기장" in D.narrator_prompt(N, scene("routine", ep=style.FRAME_EVERY)),
-   f"{style.FRAME_EVERY}화마다 액자가 실린다")
-ok("일기장" not in D.narrator_prompt(N, scene("routine", ep=style.FRAME_EVERY + 1)),
-   "그 밖의 회차에는 안 실린다")
+print("[3화 법칙] 회차 구조가 1·2·3화에만 실린다")
+ok("곤경과 손실" in D.narrator_prompt(N, scene("cider", ep=1)), "1화 -- 곤경과 손실")
+ok("관계 프레임 확정" in D.narrator_prompt(N, scene("cider", ep=2)), "2화 -- 관계 프레임")
+ok("규칙 마찰" in D.narrator_prompt(N, scene("cider", ep=3)), "3화 -- 규칙 마찰")
+ok(style.episode_brief(4) == "", "4화부터는 없다  ← 남은 자들이 진짜 독자다")
 
 print()
-print("[배우] 2 · 3 이 실려 있는가")
-a = D.actor_prompt(N, scene("routine"), "공명")
-ok("콜 앤 리스폰스" in a and "메아리" in a, "재즈 스윙 핑퐁 대화")
-ok("단답형" in a, "단답형으로 끊는다")
-ok("느낌표" in a, "배우도 느낌표를 안 쓴다")
+print("[배우] 핑퐁과 조연 도구화")
+a = D.actor_prompt(N, scene("pingpong"), "공명")
+ok("한 번에 한두 문장" in a, "짧게 주고받는다")
+ok("대사로 증명" in a, "설정을 대사로 증명한다")
+ok("무비판적으로 수용" in a and "감탄" in a, "조연은 주인공을 빛낸다")
+ok("반동은 분명해야" in a, "방해자는 애매하지 않다")
 
-print("[디렉터] 4 · 12 가 실려 있는가")
-d = D.director_prompt(N, scene("encounter"))
-ok("고유명사" in d and "다림질" in d, "두꺼운 현실을 먼저 깐다")
-ok("새 초현실을 지어내지 마라" in d and "말하는 동물도" in d,
-   "초현실은 금지다  ← 마술적 리얼리즘은 불가능이 하나뿐인 세계다")
-ok("집요하게 묘사" in d and "현실의 공간으로 남는다" in d,
-   "평범한 공간을 집요하게. 문이 열리지는 않는다")
-ok("불가능은" in d and "규칙 하나뿐" in d, "디렉터도 이 씬의 종류를 안다")
-ok('"슬프다/외롭다" 라고 서술되면 기각된다' not in d,
-   "기각한다는 거짓말이 지워졌다  ← 관문은 더 이상 그것을 보지 않는다")
+print("[디렉터] 성취 전시와 정보 비대칭")
+d = D.director_prompt(N, scene("status"))
+ok("성취의 전시" in d and "정체하는 장면을 짜지 마라" in d, "매 화가 성취다")
+ok("다음 화로 미루지 마라" in d, "지연 금지")
+ok("선역이라도 반동" in d, "방해자는 즉각 반동으로 규정")
+ok("유리하게 작동" in d, "주인공 보정")
+ok("비대칭이 곧 권력" in d, "정보 통제")
+
+print()
+print("[교체] 페르소나를 갈아끼우면 통째로 바뀌는가")
+ok(style.finale_kind() == "cider", "사이다의 결말은 가장 큰 성취다")
+style.use("hardboiled")
+try:
+    hp = D.narrator_prompt(N, scene("routine"))
+    ok("마이너스 퇴고" in hp, "하드보일드 규율이 실린다")
+    ok("15~20자" not in hp and "고구마" not in hp, "사이다 규율이 새지 않는다")
+    ok(style.spine_pool() == ("delivery", "routine"), f"풀도 바뀐다 ({style.spine_pool()})")
+    ok(style.finale_kind() == "resolution", "결말 종류도 바뀐다")
+    ok(style.episode_brief(1) == "", "3화 법칙은 사이다의 것이다 -- 여기엔 없다")
+finally:
+    style.use("cider")
+ok(style.ACTIVE == "cider", "되돌아온다")
+
+bad = False
+try:
+    style.use("없는페르소나")
+except ValueError:
+    bad = True
+ok(bad, "모르는 이름은 사실대로 실패한다  ← 조용히 기본값으로 물러서면 아무도 모른다")
 
 print()
 if fails:
     print(f"문체 규율: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)
-print("문체 규율: 배분 수렴 · 층별 적재 · 종류별 격리 · 액자 주기 · 옛 지시 제거 -- 통과")
+print("문체 규율: 배분 수렴 · 층별 적재 · 종류 격리 · 3화 법칙 · 페르소나 교체 -- 통과")

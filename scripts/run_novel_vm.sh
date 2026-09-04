@@ -10,6 +10,7 @@
 #   scripts/run_novel_vm.sh                       # 새 씨앗 -> 1~3화
 #   scripts/run_novel_vm.sh --keep                # 지금 씨앗 그대로 이어서
 #   scripts/run_novel_vm.sh --restart             # 돌던 런을 죽이고 다시 (원고는 남는다)
+#   scripts/run_novel_vm.sh --persona hardboiled   # 문체를 갈아끼운다
 #   scripts/run_novel_vm.sh --episodes 5 --blocks 2
 #
 # 확인:
@@ -22,6 +23,7 @@ cd "${SE_DIR:-/home/ubuntu/SE}" || exit 1
 
 NEW_SEED=1
 RESTART=0
+PERSONA=cider
 EPISODES=3
 BLOCKS=1
 HOURS=6
@@ -29,6 +31,7 @@ for a in "$@"; do
   case "$a" in
     --keep) NEW_SEED=0 ;;
     --restart) RESTART=1 ;;
+    --persona) shift_next=PERSONA ;;
     --episodes) shift_next=EPISODES ;;
     --blocks) shift_next=BLOCKS ;;
     --hours) shift_next=HOURS ;;
@@ -97,7 +100,7 @@ fi
 
 LOG="logs/novel_seeded.log"
 setsid nohup python3 novel/overnight.py \
-    --world seeded --gemini-director \
+    --world seeded --gemini-director --persona "$PERSONA" \
     --blocks "$BLOCKS" --upto-episode "$EPISODES" \
     --hours "$HOURS" --episode-minutes 120 --no-discord \
     > "$LOG" 2>&1 < /dev/null &

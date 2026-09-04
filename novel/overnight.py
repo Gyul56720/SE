@@ -252,6 +252,9 @@ def main() -> int:
                     help="결말 블록을 몇 개까지 처리하고 멈출 것인가 (0 = 전부). "
                          "1 이면 1~10화만 끝내고 종료한다 -- 밤을 걸기 전에 한 블록으로 "
                          "실제로 산문이 나오는지 보는 데 쓴다")
+    ap.add_argument("--persona", default="cider",
+                    help="문체 페르소나(novel/style.py). cider = 웹소설 사이다(기본), "
+                         "hardboiled = 하드보일드 마술적 리얼리즘")
     ap.add_argument("--rounds", type=int, default=3,
                     help="막힌 씬을 몇 바퀴까지 다시 도는가. 1 이면 예전 그대로 한 바퀴. "
                          "실패는 결정론적이지 않다 -- 디렉터·배우·화자를 새로 뽑으면 "
@@ -267,6 +270,11 @@ def main() -> int:
                     help="이미 도는 런이 있어도 시작한다. **원고가 서로 덮어써진다** -- "
                          "다른 원고 파일(--path)을 쓸 때만 안전하다")
     a = ap.parse_args()
+
+    from novel import style
+    style.use(a.persona)          # 모르는 이름이면 여기서 죽는다 -- 조용히 기본값으로
+                                  # 물러서면 엉뚱한 문체로 몇 시간을 쓰고도 아무도 모른다
+    D._log(f"[{_now()}] 페르소나: {a.persona} -- {style.P()['label']}")
 
     global OUTCOMES, build
     if a.world == "probe":

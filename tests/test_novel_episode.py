@@ -186,15 +186,13 @@ print("[종류] 씬마다 종류가 배정되는가 -- 분량 배분은 지시�
 from novel import style                                               # noqa: E402
 ok(all(s.kind for s in scenes), "빈 종류가 없다")
 mains = [s for s in scenes if s.id.endswith("m")]
-ok(mains[-1].kind == "resolution",
-   f"결말 씬은 해결 ({mains[-1].kind}) ← 카타르시스가 증발하는 자리다")
-ok(scenes[-1].kind == "routine",
-   f"그 뒤 꼬리는 일상 ({scenes[-1].kind}) ← 닫힌 일상으로의 회귀로 끝난다")
+ok(mains[-1].kind == style.finale_kind(),
+   f"결말 씬은 페르소나가 정한 종류 ({mains[-1].kind}) ← 배분이 아니라 형식이 정하는 자리")
 spine_kinds = {s.kind for s in mains[:-1]}
-ok(spine_kinds <= set(style.SPINE_POOL),
-   f"척추는 배달/루틴만 ({spine_kinds}) ← 화자의 능동적 탐색을 금지한다")
+ok(spine_kinds <= set(style.spine_pool()),
+   f"척추는 척추 풀에서만 ({spine_kinds})")
 sub_kinds = {s.kind for s in scenes if not s.id.endswith("m")}
-ok(sub_kinds <= set(style.SUBPLOT_POOL), f"서브플롯은 루틴/조우만 ({sub_kinds})")
+ok(sub_kinds <= set(style.subplot_pool()), f"서브플롯은 서브플롯 풀에서만 ({sub_kinds})")
 
 print("[2단계] 창작(Markdown)과 추출(JSON)이 실제로 갈려 있는가")
 ok(f.stages["director"] and f.stages["extractor"],
