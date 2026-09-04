@@ -70,6 +70,7 @@ jobs:
           python3 tests/test_length.py
           python3 tests/test_freewrite.py
           python3 tests/test_flow.py
+          python3 tests/test_rhythm.py
           python3 tests/test_rounds.py
           python3 tests/test_seeded_world.py
 

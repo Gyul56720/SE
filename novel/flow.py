@@ -35,6 +35,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from novel import drive as D                                          # noqa: E402
+from novel import rhythm                                              # noqa: E402
 from novel import style                                               # noqa: E402
 
 # 한 번에 받는 덩어리. 너무 크면 모델이 뒤로 갈수록 늘어지고, 너무 작으면 점층이 덩어리
@@ -239,8 +240,15 @@ def write_prompt(book: dict, feedback: str = "") -> str:
 - 약 {CHUNK}자를 쓴다. 끊지 말고 이어라. 회차도 씬도 없다.
 - **줄거리를 미리 정하지 마라.** 지금 문장에서 다음 문장이 나오게 하라. 앞 문장을 좁히거나,
   키우거나, 뒤집어라(점층). 그러다 밖에서 안으로 들어가라(전환). 그 리듬을 매번 다르게.
-- **장문과 단문을 섞어라.** 짧은 '-다' 문장이 세 번 이어지면 그 다음은 반드시 길게 가거나,
-  대사를 넣거나, 문장을 끝내지 마라. 지금 이 규칙이 가장 자주 깨진다.
+- **길이를 섞어라 -- 이건 재서 판정한다.** 다 쓴 뒤 코드가 세어 보고, 넘으면 숫자를
+  돌려주며 다시 시킨다:
+    · 마흔 자 넘는 긴 문장이 **서술문의 15% 이상**. 짧은 문장 서넛에 하나씩은
+      쉼표로 이어 붙인 긴 문장이 와야 한다
+    · **짧은 '-다'** 로 끝나는 서술문이 62% 아래. 긴 '-다' 는 세지 않는다 --
+      단조로움의 정체는 종결어미가 아니라 길이다
+    · 짧은 '-다' 가 내리 **네 번**을 넘지 않는다. 셋째나 넷째에서 생각을 붙이거나,
+      대사를 넣거나, 문장을 끝내지 마라
+    · 대사가 전체 줄의 **10% 이상**. 사람을 만나게 하고 말을 시켜라
 - 사람 이름, 상표, 연도, 지명을 구체적으로 대라. 없는 것도 있는 것처럼 자세히.
 {feedback}
 
@@ -273,8 +281,17 @@ JSON 만 출력:
 # ---------------------------------------------------------------- 루프
 
 def step(book: dict, llm, log=None) -> dict:
-    """덩어리 하나. 모순이면 기각하고 다시 쓴다. 반환 {status, chars, clashes}."""
+    """덩어리 하나.
+
+    두 가지를 본다. **모순은 원고를 죽이고, 리듬은 죽이지 않는다.**
+
+      · 모순 -- 앞에서 쓴 것과 어긋나면 기각하고 다시 받는다. 끝내 못 풀면 멈춘다.
+      · 리듬 -- 짧은 '-다' 가 줄줄이거나 대사가 없으면 숫자를 돌려주고 다시 받되,
+        끝내 안 고쳐지면 **그중 제일 나은 것을 채택한다.** 취향 때문에 원고를 버릴 수는
+        없다 -- 자유도가 이 모드의 전부다.
+    """
     feedback = ""
+    best = None                                   # (점수, 본문, 원장) -- 리듬만 걸린 후보
     for attempt in range(1, MAX_REWRITE + 2):
         text = D._llm_for(llm, "narrator")(write_prompt(book, feedback)).strip()
         if len(text) < 200:
@@ -289,6 +306,24 @@ def step(book: dict, llm, log=None) -> dict:
         probe = json.loads(json.dumps(book["ledger"]))     # 시험용 사본
         clashes = _merge(probe, delta)
         if not clashes:
+            limp = rhythm.check(text)
+            if limp and attempt <= MAX_REWRITE:
+                mark = rhythm.score(text)
+                if best is None or mark < best[0]:
+                    best = (mark, text, probe)
+                D._log(f"[flow] 리듬 {len(limp)}건 -- 다시 쓴다 ({attempt}/{MAX_REWRITE}): "
+                       f"{limp[0][:70]}")
+                feedback = ("\n[직전 시도의 리듬 — 재서 나온 숫자다. 이것만 고쳐라]\n"
+                            + "\n".join(f"  · {c}" for c in limp)
+                            + "\n  내용과 사건은 그대로 좋다. 문장 길이와 대사만 손봐라.\n")
+                continue
+            if limp:
+                mark = rhythm.score(text)
+                if best is not None and best[0] < mark:
+                    text, probe = best[1], best[2]
+                    D._log("[flow] 리듬을 끝내 못 고쳤다 -- 그중 나은 것을 채택한다")
+                else:
+                    D._log("[flow] 리듬을 끝내 못 고쳤다 -- 그대로 채택한다")
             book["ledger"] = probe
             book["chunks"].append(text)
             D._log(f"[flow] 덩어리 {len(book['chunks'])} · {len(text):,}자 · "
@@ -299,6 +334,11 @@ def step(book: dict, llm, log=None) -> dict:
         feedback = ("\n[직전 시도가 기각된 이유 — 앞에서 쓴 것과 어긋난다]\n"
                     + "\n".join(f"  · {c}" for c in clashes)
                     + "\n  이것만 고쳐라. 나머지는 자유다.\n")
+    if best is not None:              # 모순은 못 풀었지만 리듬만 걸린 후보가 있다
+        book["ledger"] = best[2]
+        book["chunks"].append(best[1])
+        D._log("[flow] 마지막 시도가 모순이다 -- 앞서 통과한 후보를 채택한다")
+        return {"status": "ok", "chars": len(best[1]), "clashes": []}
     return {"status": "blocked", "chars": 0, "clashes": clashes}
 
 
