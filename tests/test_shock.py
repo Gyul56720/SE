@@ -115,6 +115,7 @@ ok("하던 이야기를 이어 간다" in brief, "반응이 끝나면 확산으�
 
 bk3 = flow.blank()
 bk3["chunks"] = ["앞 덩어리."]
+bk3["drift"] = 1.0          # 여기서 보는 것은 **내용**이다. 빈도는 아래에서 따로 본다.
 p3 = flow.write_prompt(bk3)
 ok("급발진 하나" in p3, "확산 덩어리에 급발진이 실린다  ← 확산을 대신하지 않고 그 안에 든다")
 bk3["_shock"] = SH.draw("x", 0)
@@ -164,6 +165,57 @@ ok("본인은 왜 이렇게 됐는지 모른다" in own, "그러고도 본인은
 ok("제3자가 개입한다" in SH.brief(SH.draw("s", mine.index(False))), "나머지는 밖에서 온다")
 ok(any("시비를 건다" in a for a in SH.ACT), "길 가는 사람에게 시비도 목록에 있다")
 ok(any("추파" in a for a in SH.ACT), "추파도 목록에 있다")
+
+print()
+print("[병맛] **언어적인 것과 행위적인 것이 둘 다 있어야 한다**")
+print("      ← 미스터 빈이 웃긴 건 대사 때문이 아니다. 처음엔 언어 쪽만 있었다.")
+BODY = ("지하철 바닥에 눕는다", "에스컬레이터를 거꾸로", "회전문을 한 바퀴 더",
+        "우산을 안 펴고", "문을 잡아 준다. 아무도 안 온다",
+        "지도를 거꾸로 들고", "남의 우산 속으로")
+for b in BODY:
+    ok(any(b in a for a in SH.ACT), f"몸으로 하는 것: {b}")
+ok(len(SH.ACT) > 55, f"행동이 충분히 많다 ({len(SH.ACT)}개)")
+ok("몸으로 하는 것이 반씩이다" in SH.impulse_brief(SH.impulse("a", 0)),
+   "몸으로 하는 짓은 대사로 때우지 말라고 한다  ← 동작이 실제로 일어나야 한다")
+
+print()
+print("[계수] **부조리의 세기를 하나로 조인다**")
+print("      ← 축을 넷이나 겹쳐 놓으니 뒤로 갈수록 쌓였다. 계수로 셋을 함께 줄인다.")
+ok(flow.DRIFT == 0.8, f"기본 계수 0.8 ({flow.DRIFT})")
+ok(flow.blank()["drift"] == flow.DRIFT, "새 원고에 계수가 저장된다  ← 이어 써도 같게")
+
+
+def _fires(level, n=200):
+    bk = flow.blank()
+    bk["drift"] = level
+    hit = 0
+    for i in range(1, n + 1):
+        bk["chunks"] = ["x"] * i
+        if "급발진 하나" in flow.write_prompt(bk):
+            hit += 1
+    return hit
+
+
+full, less, half = _fires(1.0), _fires(0.8), _fires(0.5)
+ok(full == 200, f"계수 1.0 이면 매 덩어리 ({full}/200)")
+ok(150 < less < 190, f"계수 0.8 이면 다섯에 넷쯤 ({less}/200)")
+ok(half < less, f"계수 0.5 는 더 적다 ({half}/200)")
+
+bk4 = flow.blank(); bk4["drift"] = 0.5; bk4["chunks"] = ["x"] * 3
+off = flow.write_prompt(bk4)
+if "급발진 하나" not in off:
+    ok("사람이 바뀌는 것은 아니다" in off,
+       "꺼진 덩어리에서도 성격은 그대로다  ← 저지르지 않을 뿐이다")
+
+ok(SH.due(2000, 0, 1.0) and not SH.due(2000, 0, 0.8),
+   "계수가 낮으면 사건 간격이 벌어진다 (0.8 이면 2,500자)")
+ok(SH.due(0, SH.PRESSURE, 0.5),
+   "원장이 부푼 것은 계수와 무관하다  ← 취향이 아니라 프롬프트가 무거워지는 한계다")
+
+lv_on = sum(bool(matter.draw("s", i, 0.8)["genre"]) for i in range(200))
+ok(150 < lv_on < 190, f"갈래도 같은 비율로 빠진다 ({lv_on}/200)")
+ok("장르를 섞지 마라" in matter.brief({"genre": "", "medium": "편지", "heat": "웃기게"}),
+   "갈래가 빠진 덩어리는 그냥 일상이다  ← 매체와 온도는 그대로 들어간다")
 
 print()
 if fails:

@@ -73,6 +73,19 @@ HEAT = (
 )
 
 
+def gate(seed: str, n: int, axis: str, level: float) -> bool:
+    """계수만큼만 켠다. 해시라서 이어 쓰기에도 같은 자리에서 켜지고 꺼진다."""
+    if level >= 1.0:
+        return True
+    if level <= 0.0:
+        return False
+    h = hashlib.sha256(f"{seed}|{n}|{axis}|gate".encode()).digest()
+    return (int.from_bytes(h[:8], "big") % 1000) < level * 1000
+
+
+_gate = gate
+
+
 def _pick(pool: tuple, seed: str, n: int, axis: str):
     """축마다 따로 해시하고, 직전과 같으면 민다 -- shock.py 와 같은 규칙이다."""
     prev = None
@@ -85,17 +98,25 @@ def _pick(pool: tuple, seed: str, n: int, axis: str):
     return pool[prev]
 
 
-def draw(seed: str, n: int) -> dict:
-    return {"genre": _pick(GENRE, seed, n, "genre"),
+def draw(seed: str, n: int, level: float = 1.0) -> dict:
+    """level 이 1보다 작으면 그 몫만큼 **갈래를 안 뽑는다.**
+
+    갈래가 이 축에서 제일 센 것이다 -- 좀비도 던전도 우주선도 여기서 온다. 계수를
+    낮춘다는 것은 그것들이 덜 나온다는 뜻이지, 매체나 온도까지 밋밋해진다는 뜻이 아니다.
+    편지와 노래와 소문은 계수와 상관없이 매번 들어간다.
+    """
+    genre = _pick(GENRE, seed, n, "genre") if _gate(seed, n, "genre", level) else ""
+    return {"genre": genre,
             "medium": _pick(MEDIUM, seed, n, "medium"),
             "heat": _pick(HEAT, seed, n, "heat")}
 
 
 def brief(m: dict) -> str:
+    genre = (f"  · 갈래 -- **{m['genre']}**\n" if m.get("genre") else
+             "  · 갈래 -- **없다.** 이번엔 장르를 섞지 마라. 지금 있는 그대로의 일상이다\n")
     return f"""[소재] **이번 덩어리에 섞을 재료.** 어울리든 말든 넣어라.
 
-  · 갈래 -- **{m['genre']}**
-  · 매체·소품 -- **{m['medium']}**
+{genre}  · 매체·소품 -- **{m['medium']}**
   · 온도 -- **{m['heat']}**
 
   * **섞되 갈아타지 마라.** 이 소재가 이야기의 새 장르가 되는 것이 아니라, 지금

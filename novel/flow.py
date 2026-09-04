@@ -77,6 +77,16 @@ SIMILAR = 0.55        # 이만큼 닮았으면 같은 것을 더 자세히 말�
 CHUNK = 1400
 # 다시 쓰는 횟수. 모순·리듬·농도가 이 예산을 함께 쓴다. 둘이던 것을 셋으로 올렸다 --
 # 재는 자가 늘었는데 예산이 그대로면 첫 지적만 고치고 끝난다.
+# **표류 계수** -- 부조리의 세기. 1.0 이면 축을 전부 매번 켠다.
+#
+# 축을 넷이나 겹쳐 놓으니(확산 · 급발진 · 소재 · 사건) 뒤로 갈수록 부조리가 쌓였다.
+# 사용자 평: "후반부로 갈 수록 조금 부조리가 심해져. drift 계수를 0.8로 해줘."
+#
+# 그래서 계수 하나로 셋을 함께 조인다 -- 급발진이 켜지는 비율, 소재의 갈래가 붙는 비율,
+# 사건이 터지는 간격. 켜고 끄는 것은 해시라서 **이어 쓰기에도 같은 자리에서 같게** 나온다.
+# 확산과 리듬은 건드리지 않는다. 그건 부조리가 아니라 문장의 문제다.
+DRIFT = 0.8
+
 MAX_REWRITE = 3
 # 다음 덩어리에 넘기는 꼬리. 900자였는데, 그러면 세 덩어리 앞의 소품이 창 밖으로 빠지고
 # 점층이 매번 새로 시작한다(실측: "갈 수록 농도가 얕아져"). 식은 소품은 diffusion 이
@@ -122,7 +132,8 @@ def blank(first: str = FIRST) -> dict:
     # since: 마지막 사건 이후 쓴 글자 수.
     # words: 지어낸 낱말과 그 뜻. **기록만 하고 절대 기각하지 않는다** -- 다만 한 번 뜻을
     # 준 말은 계속 같은 뜻으로 쓰여야 해서 원장에 남긴다.
-    return {"first": first, "chunks": [], "shocks": 0, "since": 0, "ledger": {
+    return {"first": first, "chunks": [], "shocks": 0, "since": 0, "drift": DRIFT,
+            "ledger": {
         "people": {}, "places": {}, "facts": {}, "time": [], "objects": {},
         "words": {}}}
 
@@ -252,8 +263,9 @@ def _matter(book: dict) -> str:
     이 축이 없을 때 모델은 늘 비슷한 것을 냈다 -- 술집, 부두, 낡은 차, 담배. 세계가
     넓어져도 재료가 안 넓어졌다.
     """
+    lv = float(book.get("drift", DRIFT))
     return matter.brief(matter.draw(book.get("seed_id") or book["first"],
-                                    len(book["chunks"])))
+                                    len(book["chunks"]), lv))
 
 
 def _impulse(book: dict) -> str:
@@ -263,8 +275,14 @@ def _impulse(book: dict) -> str:
     바뀌지 않고 분위기만 바뀌므로, 확산을 대신하지 않고 확산 안에 들어간다. 그래서 매
     덩어리에 하나씩 걸어도 된다. 뽑기는 덩어리 번호에 묶여 이어 쓰기에도 재현된다.
     """
-    p = SH.impulse(book.get("seed_id") or book["first"], len(book["chunks"]))
-    return SH.impulse_brief(p)
+    seed = book.get("seed_id") or book["first"]
+    n = len(book["chunks"])
+    lv = float(book.get("drift", DRIFT))
+    # 계수만큼만 켠다. 꺼진 덩어리에서도 성격은 그대로다 -- 저지르지 않을 뿐이다.
+    if not matter.gate(seed, n, "impulse", lv):
+        return ("  * 이번 덩어리에는 급발진을 넣지 마라. 그렇다고 사람이 바뀌는 것은"
+                " 아니다 -- 저지르지 않을 뿐, 말투도 태도도 그대로다.")
+    return SH.impulse_brief(SH.impulse(seed, n))
 
 
 def _push(book: dict) -> str:
@@ -466,7 +484,8 @@ def step(book: dict, llm, log=None) -> dict:
     book.setdefault("shocks", 0)
     book.setdefault("since", 0)
     book["_shock"] = None
-    if book["chunks"] and SH.due(book["since"], len(brief(book["ledger"]))):
+    if book["chunks"] and SH.due(book["since"], len(brief(book["ledger"])),
+                                 float(book.get("drift", DRIFT))):
         book["_shock"] = SH.draw(book.get("seed_id") or book["first"], book["shocks"])
         D._log(f"[flow] 사건 {book['shocks'] + 1} -- {book['_shock']['who']} / "
                f"{book['_shock']['how']} / {book['_shock']['scale']}")
@@ -587,6 +606,8 @@ def main() -> int:
     ap.add_argument("--chars", type=int, default=6000)
     ap.add_argument("--first", default=FIRST)
     ap.add_argument("--hours", type=float, default=12.0)
+    ap.add_argument("--drift", type=float, default=DRIFT,
+                    help="표류 계수 0~1. 낮출수록 급발진·장르·사건이 줄어든다 (기본 0.8)")
     a = ap.parse_args()
 
     if a.read:
@@ -609,8 +630,11 @@ def main() -> int:
     path = a.resume or a.out
     book = (json.loads(Path(path).read_text(encoding="utf-8"))
             if a.resume and Path(a.resume).exists() else blank(a.first))
+    # **--drift 는 이어 쓰기에도 먹는다.** 뒤로 갈수록 부조리가 심해지면 중간에 낮춰서
+    # 이어 갈 수 있어야 한다 -- 그러자고 원고를 버리게 하면 안 된다.
+    book["drift"] = max(0.0, min(1.0, a.drift))
     D._log(f"[flow] 목표 {a.chars:,}자 · 지금 "
-           f"{sum(len(c) for c in book['chunks']):,}자")
+           f"{sum(len(c) for c in book['chunks']):,}자 · 표류 계수 {book['drift']}")
     r = run(book, D.default_llm, a.chars, path, time.time() + a.hours * 3600)
     D._log(f"[flow] 끝 -- 덩어리 {r['chunks']}개 · {r['chars']:,}자 · {path}")
     return 0
