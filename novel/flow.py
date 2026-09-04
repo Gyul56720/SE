@@ -233,7 +233,23 @@ def is_main(card) -> bool:
     return int(card.get("_seen", 0)) >= MAIN_AFTER and filled >= MAIN_FIELDS
 
 
-def brief(ledger: dict, limit: int = 40) -> str:
+# 브리핑에 쓰는 창의 크기와 상한.
+#
+# **원장은 자라도 브리핑은 자라면 안 된다.** 원고가 길어질수록 인물·장소·사물·사실이
+# 쌓이고, 그것이 매 덩어리 프롬프트에 통째로 실리면서 뒤로 갈수록 농도가 올라갔다
+# (사용자 평: "뒤로 갈수록 조금 밀도가 높아져서 처음 1/2 지점 정도로 유지해주면 좋겠다").
+#
+# 그래서 브리핑을 **창(window)** 으로 만든다. 최근 열두 덩어리 안에 놓인 것만 싣고,
+# 주요 인물은 나이와 무관하게 늘 싣는다 -- 그 사람들의 카드가 대사를 갈라 놓는 근거라서
+# 빠지면 목소리가 무너진다. 그러고도 넘치면 글자 수로 자른다.
+#
+# 잘려 나간 것이 사라지는 것은 아니다. 원장에는 그대로 남아 모순 검사에 계속 쓰인다 --
+# 눈앞에서 치우는 것이지 잊는 것이 아니다.
+BRIEF_WINDOW = 12
+BRIEF_MAX = 1400
+
+
+def brief(ledger: dict, limit: int = 40, now: int = 0) -> str:
     """원장을 프롬프트에 실을 형태로.
 
     **주요 인물만 카드를 통째로 펼친다.** 대사가 인물마다 달라지려면 나이도 말투도
@@ -246,10 +262,19 @@ def brief(ledger: dict, limit: int = 40) -> str:
     쓰인다. 그 사람이 다시 자주 나오기 시작하면 _seen 이 차면서 저절로 펼쳐진다.
     """
     out = []
+    age = ledger.get("_age") or {}
+
+    def fresh(k):
+        born = age.get(k)
+        return born is None or now - born <= BRIEF_WINDOW
+
     people = list(ledger.get("people", {}).items())
     if people:
         main = [(n, c) for n, c in people if is_main(c)]
-        rest = [(n, c) for n, c in people if not is_main(c)]
+        # 조연도 창으로 자른다. **주요 인물만 나이를 안 본다** -- 그 카드가 대사를 갈라
+        # 놓는 근거라서 빠지면 목소리가 무너진다. 스쳐 간 사람은 이름만 남아 있으면
+        # 되는데, 그 이름이 쉰 개면 그것이 곧 밀도다.
+        rest = [(n, c) for n, c in people if not is_main(c) and fresh(n)]
         if main:
             out.append("  [인물]")
             for name, card in main:
@@ -268,12 +293,24 @@ def brief(ledger: dict, limit: int = 40) -> str:
             out.append("  [스쳐 간 사람] " + " · ".join(brief_rest))
     for bucket, label in (("places", "장소"), ("objects", "사물"), ("facts", "사실"),
                           ("words", "지어낸 말")):
-        items = list(ledger.get(bucket, {}).items())[-limit:]
+        items = [(k, v) for k, v in (ledger.get(bucket) or {}).items() if fresh(k)][-limit:]
         if items:
             out.append(f"  {label}: " + " · ".join(f"{k}={v}" for k, v in items))
     if ledger.get("time"):
         out.append("  시간: " + " → ".join(ledger["time"][-6:]))
-    return "\n".join(out) or "  (아직 비어 있다)"
+
+    text = "\n".join(out) or "  (아직 비어 있다)"
+    if len(text) > BRIEF_MAX:
+        # 넘치면 뒤에서부터 자른다. 주요 인물 줄이 앞에 있어서 그쪽이 먼저 살아남는다.
+        keep, used = [], 0
+        for line in out:
+            if used + len(line) > BRIEF_MAX:
+                keep.append("  (오래된 것은 접었다 -- 원장에는 그대로 있다)")
+                break
+            keep.append(line)
+            used += len(line) + 1
+        text = "\n".join(keep)
+    return text
 
 
 # 이어 쓰는 덩어리에만 붙는다. **원고가 첫 장면으로 되돌아간 실측** 때문에 생겼다 --
@@ -433,7 +470,7 @@ def write_prompt(book: dict, feedback: str = "") -> str:
 - 몸은 회복이 느리고, 돈은 모자라고, 날씨는 사정을 봐주지 않는다.
 
 [세계 — 지금까지 놓인 것들]
-{brief(book['ledger'])}
+{brief(book['ledger'], now=len(book['chunks']))}
   * 이건 금지 목록이 아니라 **연료다.** 여기 있는 것을 다시 꺼내 쓰는 것이 이 소설의
     본체다. 어긋나게만 쓰지 마라 -- 나머지는 전부 자유다.
   * 여기 없는 것은 **새로 지어내도 된다.** 지어냈으면 자세히 지어내라 -- 이름, 연도,
@@ -528,7 +565,8 @@ def step(book: dict, llm, log=None) -> dict:
     book["_shock"] = None
     if book["chunks"]:
         D._log(f"[flow] 이번 세기 {_level(book):.2f} (기준 {book.get('drift', DRIFT)})")
-    if book["chunks"] and SH.due(book["since"], len(brief(book["ledger"])),
+    if book["chunks"] and SH.due(book["since"],
+                                 len(brief(book["ledger"], now=len(book["chunks"]))),
                                  _level(book)):
         book["_shock"] = SH.draw(book.get("seed_id") or book["first"], book["shocks"])
         D._log(f"[flow] 사건 {book['shocks'] + 1} -- {book['_shock']['who']} / "

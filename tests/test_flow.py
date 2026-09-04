@@ -192,6 +192,31 @@ ok(flow.is_main(big["people"]["요우"]) and not flow.is_main(big["people"]["행
    "펼치는 잣대가 _merge 의 '주요 인물' 과 같다")
 
 print()
+print("[농도] **원장은 자라도 브리핑은 자라면 안 된다**")
+print("      ← 실측: '뒤로 갈수록 밀도가 높아져서 처음 1/2 지점 정도로 유지해주면 좋겠다'.")
+print("        인물·장소·사물·사실이 쌓이고 그게 매번 통째로 실리니 농도가 올라갔다.")
+grow = flow.blank()["ledger"]
+grow["people"]["요우"] = {"나이": "42", "직업": "정비공", "말투": "짧게 끊는다", "_seen": 9}
+sizes = {}
+for i in range(61):
+    flow._merge(grow, {"objects": {f"물건{i}": "어떤 것인가 한 줄"},
+                       "facts": {f"사실{i}": "확정된 값 한 줄"},
+                       "people": {f"행인{i}": {"직업": "행인"}}}, at=i)
+    sizes[i] = len(flow.brief(grow, now=i))
+ok(sizes[60] <= sizes[20] * 1.1,
+   f"스무 덩어리 뒤로는 안 자란다 ({sizes[20]}자 → {sizes[60]}자)")
+ok(sizes[60] < flow.BRIEF_MAX, f"상한 아래에 머문다 ({sizes[60]} < {flow.BRIEF_MAX})")
+ok("요우" in flow.brief(grow, now=60),
+   "주요 인물은 나이를 안 본다  ← 그 카드가 대사를 갈라 놓는 근거다")
+ok("행인3" not in flow.brief(grow, now=60),
+   "오래 전 스쳐 간 사람은 접힌다  ← 그 이름이 쉰 개면 그것이 곧 밀도다")
+ok("행인58" in flow.brief(grow, now=60), "최근에 스쳐 간 사람은 남는다")
+ok("물건59" in flow.brief(grow, now=60) and "물건2" not in flow.brief(grow, now=60),
+   "사물도 창으로 자른다")
+ok(len(grow["objects"]) == 61,
+   "접힌 것이 원장에서 사라지지는 않는다  ← 눈앞에서 치우는 것이지 잊는 것이 아니다")
+
+print()
 print("[영속] **시작하자마자 한 번 저장한다**")
 print("      ← 첫 덩어리를 다 받고서야 파일이 생기면, 아직 쓰는 중인지 시작도 못 한 건지")
 print("        밖에서 구분할 수가 없다(실측: --read 가 FileNotFoundError 로 죽었다).")
