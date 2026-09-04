@@ -17,7 +17,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from novel import flow, shock as SH                                   # noqa: E402
+from novel import flow, shock as SH, style                            # noqa: E402
 
 fails = []
 
@@ -84,6 +84,41 @@ ok(b2["shocks"] == 1 and b2["since"] == len("그 다음 덩어리"),
    "그 다음 덩어리는 다시 쌓기 시작한다")
 ok(flow.blank()["shocks"] == 0 and "since" in flow.blank(),
    "새 원고는 사건 0에서 시작한다")
+
+print()
+print("[급발진] **인물이 스스로 저지르는 것** -- 사건과 다른 물건이다")
+print("      ← 사건은 밖에서 들이닥쳐 점층을 끊는다. 급발진은 흐름 안에서 한 번 튄다.")
+combo = len(SH.ACT) * len(SH.REACT)
+ok(combo > 300, f"행동 × 반응 조합 ({combo}가지)")
+ok(SH.impulse("a", 0) == SH.impulse("a", 0), "같은 씨앗·번호는 같은 급발진  ← 이어 쓰기 재현")
+dup = sum(SH.impulse("s", i)["act"] == SH.impulse("s", i + 1)["act"] for i in range(200))
+ok(dup == 0, f"연달아 같은 짓을 하지 않는다 ({dup}건)")
+brief = SH.impulse_brief(SH.impulse("a", 0))
+ok("문제를 풀지 않는다" in brief,
+   "급발진도 문제를 풀지 않는다  ← 앞서 정한 편의주의 금지를 그대로 지킨다")
+ok("설명하지 마라" in brief, "왜 그랬는지 정리해 주지 않는다  ← 설명하면 재미가 죽는다")
+ok("그 사람 카드에" in brief, "인물 카드에 맞게 비튼다  ← 같은 짓도 사람마다 다르다")
+ok("하던 이야기를 이어 간다" in brief, "반응이 끝나면 확산으로 돌아간다")
+
+bk3 = flow.blank()
+bk3["chunks"] = ["앞 덩어리."]
+p3 = flow.write_prompt(bk3)
+ok("급발진 하나" in p3, "확산 덩어리에 급발진이 실린다  ← 확산을 대신하지 않고 그 안에 든다")
+bk3["_shock"] = SH.draw("x", 0)
+ok("급발진 하나" not in flow.write_prompt(bk3),
+   "사건 덩어리에는 안 실린다  ← 큰 것과 작은 것을 한꺼번에 시키지 않는다")
+
+print()
+print("[잡소리] **개그는 칸이 아니라 자리다**")
+print("      ← 매 덩어리마다 다 하려 들면 그게 버릇이 되고, 버릇이 되면 안 웃긴다.")
+flat3 = " ".join(p3.split())
+ok("[잡소리]" in p3, "쓸데없는 말을 한 자리에 모았다")
+ok("하나쯤**만 골라라. 안 골라도 된다" in flat3, "하나쯤, 안 해도 된다")
+ok("없는 낱말을 만들고 변명을 단다" in flat3,
+   "지어낸 낱말이 그 자리로 들어갔다  ← 따로 요구하던 것을 개그 안으로 편입")
+ok("멍청한 소리를 아주 진지하게 한다" in flat3, "멍청하면서 진지한 수도 목록에 있다")
+ok("매번 하지는 마라" in " ".join(style.narrator().split()),
+   "화자에게도 매번 하지 말라고 한다  ← 두 자리가 어긋나면 안 된다")
 
 print()
 if fails:
