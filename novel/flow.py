@@ -35,6 +35,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from novel import drive as D                                          # noqa: E402
+from novel import echo                                                # noqa: E402
 from novel import diffusion                                           # noqa: E402
 from novel import shock as SH                                         # noqa: E402
 from novel import rhythm                                              # noqa: E402
@@ -253,8 +254,12 @@ def _diffuse(book: dict) -> str:
 하면 산만해지거나 제자리를 돈다. 이건 재서 판정한다:
 
   * 새로 놓는 것 **{diffusion.LIMITS['new']}개 이상** -- 새 사람, 새 장소, 새 물건, 새 사실.
-    이름과 연도와 상표를 대라. 상황 설명으로 분량을 채우지 마라.
-  * 앞에서 나온 것 **{diffusion.LIMITS['back']}개 이상**을 다시 만진다.
+    이름을 붙이되 **연식·산지·상표를 접두사로 달지 마라**('1982년형 볼보', '1978년산
+    판화집' 처럼). 연도 표기는 이 덩어리에 {diffusion.LABEL_MAX}개까지다. 구체성은 명사를
+    꾸미는 데서 오지 않고 **그것이 무엇을 하는가**에서 온다. 상황 설명으로 분량을 채우지 마라.
+  * 앞에서 나온 것 **{diffusion.LIMITS['back']}개 이상**을 다시 만진다. 다만 **한 이름을
+    {diffusion.ECHO_MAX}번까지만 부른다** -- 회수는 다시 부르는 것이 아니라 다시 쓰는 것이다.
+    두 번째부터는 '그것', '그 차', '그 종이' 로 받아라.
 {pick}
 [대사가 이야기다] **설명으로 넘기지 말고 말로 진행시켜라.**
   * 긴 대사 **{diffusion.LIMITS['long']}개 이상**({diffusion.TALK_LONG}자 넘게) -- 누가 한 번은
@@ -335,7 +340,11 @@ def write_prompt(book: dict, feedback: str = "") -> str:
     · 짧은 '-다' 가 내리 **네 번**을 넘지 않는다. 셋째나 넷째에서 생각을 붙이거나,
       대사를 넣거나, 문장을 끝내지 마라
     · 대사가 전체 줄의 **10% 이상**. 사람을 만나게 하고 말을 시켜라
-- 사람 이름, 상표, 연도, 지명을 구체적으로 대라. 없는 것도 있는 것처럼 자세히.
+- **앞에 쓴 문장을 다시 적지 마라.** [지금까지의 끝부분]은 읽으라고 준 것이지 옮겨
+  적으라고 준 것이 아니다. 그 다음 문장부터 시작해라. 분량이 모자라면 앞 문단을
+  복사하지 말고 **새 일이 일어나게** 해라.
+- 사람과 장소의 이름을 구체적으로 대라. 없는 것도 있는 것처럼 자세히 -- 다만 그 자세함이
+  수식어가 아니라 **행동과 사정**으로 오게 해라.
 {feedback}
 
 산문만 출력한다. 제목도 머리말도 표식도 쓰지 마라."""
@@ -397,9 +406,19 @@ def step(book: dict, llm, log=None) -> dict:
                f"{book['_shock']['how']} / {book['_shock']['scale']}")
 
     feedback = ""
-    best = None                                   # (점수, 본문, 원장) -- 리듬만 걸린 후보
+    best = None
+    # 재시도가 메아리로만 소진되면 아래 반환문이 clashes 를 못 찾는다(실측:
+    # UnboundLocalError). 판정을 한 번도 못 했다는 뜻이므로 빈 목록에서 시작한다.
+    clashes: list[str] = []                                   # (점수, 본문, 원장) -- 리듬만 걸린 후보
     for attempt in range(1, MAX_REWRITE + 2):
         text = D._llm_for(llm, "narrator")(write_prompt(book, feedback)).strip()
+
+        # **꼬리를 옮겨 적은 앞부분은 도려낸다.** 판정할 것도 없다 -- 이미 원고에 있는
+        # 글자다. 호출을 한 번 더 쓰는 것보다 잘라내는 편이 싸고 확실하다.
+        text, dropped = echo.trim(text, "".join(book["chunks"]))
+        if dropped:
+            D._log(f"[flow] 앞 글을 옮겨 적은 {dropped:,}자를 도려냈다")
+
         if len(text) < 200:
             D._log(f"[flow] 덩어리가 {len(text)}자로 왔다 -- 다시 받는다")
             continue
@@ -414,7 +433,17 @@ def step(book: dict, llm, log=None) -> dict:
         if not clashes:
             # 사건 덩어리는 확산으로 재지 않는다 -- 거기서는 넓히고 회수하라고 시키지
             # 않았다. 리듬만 본다(대사와 길이는 사건이든 아니든 지켜야 한다).
-            limp = rhythm.check(text)
+            # **메아리는 모순과 같은 급이다** -- 취향이 아니라 결함이라 반드시 다시 받는다.
+            # 실측: 한 덩어리 2,024자 중 610자(30%)가 글자 하나 안 틀리고 반복이었다.
+            noise = echo.check(text, "".join(book["chunks"][:-1]))
+            if noise and attempt <= MAX_REWRITE:
+                D._log(f"[flow] 메아리 -- 다시 쓴다 ({attempt}/{MAX_REWRITE}): {noise[0][:60]}")
+                feedback = ("\n[직전 시도가 앞 문장을 그대로 다시 뱉었다]\n"
+                            + "\n".join(f"  · {c}" for c in noise)
+                            + "\n  같은 사건을 다시 쓰지 말고 **그 다음에 일어나는 일**을 써라.\n")
+                continue
+
+            limp = rhythm.check(text) + noise
             mark = rhythm.score(text)
             if not book.get("_shock"):
                 limp += diffusion.check(text, book["ledger"], probe)

@@ -73,6 +73,7 @@ jobs:
           python3 tests/test_rhythm.py
           python3 tests/test_diffusion.py
           python3 tests/test_shock.py
+          python3 tests/test_echo.py
           python3 tests/test_drift_trigger.py
           python3 tests/test_rounds.py
           python3 tests/test_seeded_world.py

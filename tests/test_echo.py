@@ -1,0 +1,103 @@
+"""메아리 -- **앞에 쓴 문장을 그대로 다시 뱉는 것.**
+
+실측(2026-09-04, flow3.json): 한 덩어리 2,024자 중 **610자(30%)가 글자 하나 안 틀리고
+반복**이었다. 대사 일곱 줄과 서술 일곱 줄이 통째로 두 번 나온다. 리듬 자도 확산 자도
+이것을 통과시켰다 -- 반복된 문장은 그 자체로는 리듬이 좋고 농도가 짙기 때문이다.
+
+취향이 아니라 결함이다. 모순과 같은 급으로 다룬다.
+
+실행: python3 tests/test_echo.py
+"""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from novel import diffusion as F, echo, flow                          # noqa: E402
+
+fails = []
+
+
+def ok(cond, label):
+    print(f"    {'OK  ' if cond else '실패'} {label}")
+    if not cond:
+        fails.append(label)
+
+
+ONCE = "\n".join([
+    "그는 창가에 앉아 눈보라를 바라보았다. 항구 쪽에서 불어오는 바람에 생선 냄새가 섞였다.",
+    '"커피 드실래요?"',
+    '"아뇨, 방금 마셨습니다. 아니, 마신 것 같기도 하고."',
+    "노인은 젖은 걸레를 내려놓고 구석의 나무 상자를 발로 툭 찼다.",
+])
+TWICE = ONCE + "\n" + ONCE
+
+print("[자] **글자 하나 안 틀리고 반복된 것을 센다**")
+rate, dup = echo.selfish(TWICE)
+ok(rate > 0.4, f"통째로 복사한 덩어리를 잡는다 ({rate:.0%})")
+ok(len(dup) >= 3, f"반복된 줄을 짚어 준다 ({len(dup)}줄)")
+ok(echo.selfish(ONCE)[0] == 0.0, "멀쩡한 덩어리는 0%")
+ok(echo.check(ONCE, "") == [], "멀쩡한 덩어리는 통과")
+ok(any("다시 적지 마라" in c for c in echo.check(TWICE, "")), "무엇을 하지 말라고 말한다")
+
+print()
+print("[관용] **말버릇까지 반복으로 세면 안 된다**")
+print("      ← '난 안 가' 를 두 번 말하는 것은 반복이 아니라 성격이다.")
+habit = ONCE + '\n"난 안 가."\n그는 또 말했다.\n"난 안 가."'
+ok(echo.check(habit, "") == [], f"짧은 되풀이는 넘어간다 ({echo.selfish(habit)[0]:.0%})")
+
+print()
+print("[꼬리] **옮겨 적은 앞부분은 판정하지 않고 도려낸다**")
+print("      ← 이미 원고에 있는 글자다. 호출을 한 번 더 쓰는 것보다 자르는 편이 싸다.")
+prev = "앞서 쓴 것들.\n" + ONCE
+kept, dropped = echo.trim(ONCE + "\n그러고 나서 문이 열렸다.\n낯선 남자가 서 있었다.\n"
+                          "그는 아무 말도 하지 않았다.", prev)
+ok(dropped > 0, f"꼬리를 옮겨 적은 만큼 도려낸다 ({dropped}자)")
+ok(kept.startswith("그러고 나서"), "본문은 그대로 남는다")
+ok(echo.trim("완전히 새로운 글이다.", prev) == ("완전히 새로운 글이다.", 0),
+   "새 글은 건드리지 않는다")
+
+print()
+print("[개입] **메아리는 원고를 죽인다** -- 리듬·농도와 달리 반드시 다시 받는다")
+src = Path(flow.__file__).read_text(encoding="utf-8")
+ok("메아리는 모순과 같은 급이다" in src, "모순과 같은 급으로 다룬다")
+ok("앞 글을 옮겨 적은" in src, "잘라낸 만큼 로그에 남긴다")
+# 프롬프트는 줄을 접어 쓰므로 낱말 사이 줄바꿈을 지우고 본다.
+_flat = " ".join(flow.write_prompt(flow.blank()).split())
+ok("앞에 쓴 문장을 다시 적지 마라" in _flat and "옮겨 적으라고 준 것이 아니다" in _flat,
+   "프롬프트가 꼬리의 쓰임을 못박는다  ← 모델은 그것을 이어 붙일 원고로 읽는다")
+
+print()
+print("[회수] **회수는 다시 부르는 것이 아니라 다시 쓰는 것이다**")
+print("      ← 실측: 한 덩어리에 '1982년형 볼보' 4회, '삼십 년 전' 4회, '주머니' 5회.")
+print("        그동안 볼보는 아무것도 하지 않는다 -- 헤드라이트를 깜빡이며 서 있다.")
+led = {"people": {"올라프손": {}}, "places": {"양조장": "x"},
+       "objects": {"볼보": "차"}, "facts": {}, "time": []}
+spam = "볼보가 섰다. 볼보의 문. 볼보의 불빛. 볼보의 연식. 올라프손. 올라프손. 올라프손."
+over = F.overused(spam, F.props(led))
+ok(dict(over).get("볼보") == 4, f"과다 호명을 센다 ({over})")
+ok(F.overused(ONCE, F.props(led)) == [], "정상 덩어리는 걸리지 않는다")
+ok(any("다시 부르는 것이 아니라" in c for c in F.check(spam, led, led)),
+   "이름을 또 적지 말고 그것이 무언가를 하게 하라고 말한다")
+
+print()
+print("[라벨] **구체성은 명사를 꾸미는 데서 오지 않는다**")
+labels = "1982년형 볼보와 1978년산 판화집과 1950년대 상자와 1984년의 밤과 1959년 모델."
+ok(F.labels(labels) == 5, f"연도 표기를 센다 ({F.labels(labels)})")
+ok(F.labels(ONCE) == 0, "연도가 없는 글은 0")
+ok(any("접두사를 붙이지 마라" in c for c in F.check(labels, led, led)), "라벨 붙이기를 짚는다")
+# 확산 지시는 첫 덩어리에는 실리지 않는다(세계가 서기 전이다). 이어 쓰는 상태로 본다.
+_mid = flow.blank(); _mid["chunks"] = ["앞 덩어리."]
+_midflat = " ".join(flow.write_prompt(_mid).split())
+ok(f"{F.LABEL_MAX}개까지다" in _midflat, "프롬프트가 같은 상한을 말한다")
+ok(f"{F.ECHO_MAX}번까지만 부른다" in _midflat, "한 이름을 몇 번까지 부를지도 말한다")
+ok("이름과 연도와 상표를 대라" not in _midflat,
+   "'연도를 대라' 와 '연도가 많다' 가 부딪히지 않는다  ← 지시가 서로 싸우면 안 된다")
+
+print()
+if fails:
+    print(f"메아리: {len(fails)}개 실패 -- {fails}")
+    sys.exit(1)
+print("메아리: 검출 · 관용 · 꼬리 절단 · 하드 개입 · 과다 호명 · 라벨 -- 통과")
