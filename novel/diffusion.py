@@ -78,9 +78,35 @@ def touched(text: str, names: list[str]) -> list[str]:
     return [n for n in dict.fromkeys(names) if len(n) >= 2 and n in text]
 
 
-def cold(ledger: dict, recent: str, keep: int = 12) -> list[str]:
-    """**식은 소품** -- 원장에는 있는데 최근 글에는 없는 것. 확산의 연료가 여기 있다."""
-    return [p for p in props(ledger) if len(p) >= 2 and p not in recent][-keep:]
+# 식은 소품으로 되올릴 수 있는 나이. 이보다 오래된 것은 연료로 쓰지 않는다.
+#
+# **처음엔 나이를 안 봤다. 그래서 원고가 첫 장면으로 되돌아갔다**(실측 2026-09-05: "새로
+# 쓴 글이 내가 처음에 제시해준 첫 문장으로 되돌아갔어"). 원인은 이렇다 -- 첫 문장에 나온
+# 것들(보잉 747, 함부르크 공항)은 한번 원장에 오르면 영원히 "최근 글에 없는 것" 이라서,
+# 매 덩어리마다 "이번에 다시 만질 것" 으로 다시 올라갔다. 회수하라고 시켰으니 모델은
+# 성실하게 공항으로 돌아갔다.
+#
+# 회수는 **가까운 과거**를 향해야 한다. 세 덩어리 전에 놓인 라이터를 다시 꺼내는 것은
+# 점층이지만, 마흔 덩어리 전의 공항으로 돌아가는 것은 역행이다.
+FUEL_AGE = 8
+
+
+def cold(ledger: dict, recent: str, now: int = 0, keep: int = 12) -> list[str]:
+    """**식은 소품** -- 최근 글에는 없지만 **아직 오래되지 않은** 것. 확산의 연료다.
+
+    나이를 모르는 원장(옛 원고)은 나이를 안 따진다 -- 그때는 이 문제가 없었던 것이 아니라
+    잴 수가 없는 것이라, 없는 것으로 치고 예전처럼 군다.
+    """
+    age = ledger.get("_age") or {}
+    out = []
+    for p in props(ledger):
+        if len(p) < 2 or p in recent:
+            continue
+        born = age.get(p)
+        if born is not None and now - born > FUEL_AGE:
+            continue                      # 너무 오래됐다 -- 여기로 돌아가면 역행이다
+        out.append(p)
+    return out[-keep:]
 
 
 def talk(text: str) -> tuple[int, int]:
@@ -118,7 +144,7 @@ def measure(text: str, before: dict, after: dict) -> dict:
             "labels": labels(text)}
 
 
-def check(text: str, before: dict, after: dict) -> list[str]:
+def check(text: str, before: dict, after: dict, now: int = 0) -> list[str]:
     """옅어진 자리만 사람 말로 돌려준다."""
     m = measure(text, before, after)
     old = props(before)
@@ -131,7 +157,7 @@ def check(text: str, before: dict, after: dict) -> list[str]:
 
     # 되돌아옴은 **되돌아올 것이 쌓인 뒤에만** 따진다. 첫 덩어리에 회수를 요구할 수는 없다.
     if len(old) >= 4 and m["back"] < LIMITS["back"]:
-        fuel = cold(before, text)
+        fuel = cold(before, text, now)
         out.append(f"앞에서 나온 것 중 이 덩어리가 다시 만진 것이 {m['back']}개뿐이다. "
                    f"{LIMITS['back']}개는 다시 만져라 -- 그런데 **똑같이 쓰지 말고 한 단계 "
                    f"키워라.** 그때 그냥 놓여 있던 물건이 이번엔 쓰이거나, 망가지거나, "

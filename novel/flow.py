@@ -142,7 +142,7 @@ def blank(first: str = FIRST) -> dict:
         "words": {}}}
 
 
-def _merge(ledger: dict, delta: dict) -> list:
+def _merge(ledger: dict, delta: dict, at: int = 0) -> list:
     """새로 확정된 것을 원장에 더한다. **기각할 것만** 돌려준다.
 
     기각 대상은 위 CORE 참고 -- 주요 인물의 핵심 칸뿐이다. 나머지는 값이 달라져도
@@ -202,6 +202,11 @@ def _merge(ledger: dict, delta: dict) -> list:
                 continue
             old_v = ledger[bucket].get(k)
             ledger[bucket][k] = v if not old_v or len(v) > len(str(old_v)) else old_v
+    # **언제 놓였는지 적어 둔다.** 회수는 가까운 과거를 향해야 한다 -- 나이를 모르면
+    # 첫 장면의 물건이 영원히 "식은 소품" 으로 남아 원고를 처음으로 되돌린다(실측).
+    age = ledger.setdefault("_age", {})
+    for name in diffusion.props(ledger):
+        age.setdefault(name, at)
     for t in (delta.get("time") or []):
         if t and t not in ledger["time"]:
             ledger["time"].append(t)
@@ -257,6 +262,18 @@ def brief(ledger: dict, limit: int = 40) -> str:
     if ledger.get("time"):
         out.append("  시간: " + " → ".join(ledger["time"][-6:]))
     return "\n".join(out) or "  (아직 비어 있다)"
+
+
+# 이어 쓰는 덩어리에만 붙는다. **원고가 첫 장면으로 되돌아간 실측** 때문에 생겼다 --
+# 확산이 "다시 만질 것" 으로 첫 문장의 공항과 비행기를 계속 올려 주니 모델이 성실하게
+# 거기로 돌아갔다. 나이(diffusion.FUEL_AGE)로 연료를 자르는 것이 근본 대응이고, 이건
+# 그 위에 얹는 못이다 -- 재료와 장소를 갈라 말해 준다.
+FORWARD = """
+  * **이 마지막 문장 다음 순간부터 써라.** 여기가 지금이다.
+  * **시간은 앞으로만 간다.** 앞 장면으로 돌아가지 마라. 특히 **첫 장면으로는 절대
+    돌아가지 마라** -- 그 공항, 그 비행기, 그 도착은 이미 지나갔다. 회상으로 들르는 것도
+    한 덩어리에 한 번을 넘기지 마라.
+  * 위 [세계] 에 적힌 것은 **다시 쓸 수 있는 재료**이지 다시 갈 장소가 아니다."""
 
 
 # ---------------------------------------------------------------- 프롬프트
@@ -315,7 +332,8 @@ def _diffuse(book: dict) -> str:
     빠진다. 그래서 **식은 소품을 이름으로 짚어 다시 올려준다.** 원장을 제약이 아니라
     재료로 쓰는 자리가 여기다.
     """
-    fuel = diffusion.cold(book["ledger"], "".join(book["chunks"])[-TAIL:])
+    fuel = diffusion.cold(book["ledger"], "".join(book["chunks"])[-TAIL:],
+                          now=len(book["chunks"]))
     pick = ("  * 이번에 다시 만질 것 -- " + " · ".join(fuel[:8]) + "\n"
             "    이 중 **둘 이상**을 다시 꺼내되, 똑같이 쓰지 마라. 한 단계 키운다:\n"
             "      그냥 놓여 있던 것이 → 쓰이거나 · 망가지거나 · 없어지거나 ·\n"
@@ -412,8 +430,9 @@ def write_prompt(book: dict, feedback: str = "") -> str:
 
 {OPENING if opening else _push(book)}
 
-{'[첫 문장 — 이것으로 시작하라]' if opening else '[지금까지의 끝부분]'}
+{'[첫 문장 — 이것으로 시작하라]' if opening else '[지금까지의 끝부분 — 여기서 이어 쓴다]'}
 {book['first'] if opening else '...' + tail}
+{'' if opening else FORWARD}
 
 규칙:
 - 약 {CHUNK}자를 쓴다. 끊지 말고 이어라. 회차도 씬도 없다.
@@ -525,7 +544,7 @@ def step(book: dict, llm, log=None) -> dict:
             D._log(f"[flow] 추출 실패({e}) -- 원장 갱신 없이 채택한다")
             delta = {}
         probe = json.loads(json.dumps(book["ledger"]))     # 시험용 사본
-        clashes = _merge(probe, delta)
+        clashes = _merge(probe, delta, at=len(book["chunks"]))
         if not clashes:
             # 사건 덩어리는 확산으로 재지 않는다 -- 거기서는 넓히고 회수하라고 시키지
             # 않았다. 리듬만 본다(대사와 길이는 사건이든 아니든 지켜야 한다).
@@ -542,7 +561,8 @@ def step(book: dict, llm, log=None) -> dict:
             limp = rhythm.check(text) + noise
             mark = rhythm.score(text)
             if not book.get("_shock"):
-                limp += diffusion.check(text, book["ledger"], probe)
+                limp += diffusion.check(text, book["ledger"], probe,
+                                        now=len(book["chunks"]))
                 mark += diffusion.score(text, book["ledger"], probe)
             if limp and attempt <= MAX_REWRITE:
                 if best is None or mark < best[0]:

@@ -97,6 +97,32 @@ ok(flow.MAX_REWRITE >= 3, "재는 자가 늘었으니 다시 쓰는 예산도 �
 ok(flow.TAIL >= 1200, "꼬리를 늘려 점층이 매번 새로 시작하지 않게 한다")
 
 print()
+print("[역행] **회수는 가까운 과거를 향해야 한다**")
+print("      ← 실측: 새로 쓴 글이 첫 문장으로 되돌아갔다. 첫 장면의 물건은 한번 원장에")
+print("        오르면 영원히 '최근 글에 없는 것' 이라, 매번 '다시 만질 것' 으로 올라갔다.")
+aged = flow.blank()["ledger"]
+flow._merge(aged, {"places": {"함부르크 공항": "비가 온다"},
+                   "objects": {"보잉 747": "큰 것"}}, at=0)
+flow._merge(aged, {"objects": {"지포 라이터": "은색"}}, at=9)
+ok("_age" in aged and aged["_age"]["함부르크 공항"] == 0, "언제 놓였는지 적어 둔다")
+ok("함부르크 공항" in F.cold(aged, "", 0), "갓 놓인 것은 연료다")
+old_fuel = F.cold(aged, "", 10)
+ok("함부르크 공항" not in old_fuel,
+   f"오래된 것은 연료에서 빠진다  ← 마흔 덩어리 전 공항으로 가는 것은 점층이 아니라 역행이다")
+ok("지포 라이터" in old_fuel, "가까운 과거는 그대로 연료다  ← 세 덩어리 전 라이터는 점층이다")
+ok(F.cold({"objects": {"오래된 것": "x"}}, "", 99) == ["오래된 것"],
+   "나이를 모르는 옛 원고는 나이를 안 따진다  ← 잴 수 없는 것을 있는 척하지 않는다")
+
+_go = flow.blank(); _go["chunks"] = ["…문을 닫았다."]
+_p = flow.write_prompt(_go)
+ok("이 마지막 문장 다음 순간부터 써라" in _p, "가장 최근 문장이 출발점이라고 말한다")
+ok("시간은 앞으로만 간다" in _p, "앞 장면으로 돌아가지 말라고 한다")
+ok("다시 쓸 수 있는 재료**이지 다시 갈 장소가 아니다" in _p,
+   "원장을 재료와 장소로 갈라 말한다  ← 회수를 '거기로 가라' 로 읽으면 역행한다")
+ok("시간은 앞으로만 간다" not in flow.write_prompt(flow.blank()),
+   "첫 덩어리에는 안 붙는다  ← 돌아갈 앞이 없다")
+
+print()
 if fails:
     print(f"확산: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)
