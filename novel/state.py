@@ -10,7 +10,7 @@
     "나오코(죽음의 인력) ↔ 미도리(삶의 추동)" 로 정확히 짚어놓고 §4 스키마에는 안 넣었다.
     joy/melancholy/isolation 세 축은 그 축을 표현하지 못한다.
   · Character 에 emotion_envelope 를 넣었다. **미도리가 지워지는 것을 막기 위한 것**이다
-    (gate.V003 참고).
+    (관문은 이 값을 더 이상 판정하지 않는다 -- 프롬프트의 인물 규율로만 쓴다).
   · Scene 에 pov_present / mode 를 넣었다. 1인칭 회고는 화자가 없는 씬을 서술할 수 없다.
   · narrator_foreknowledge -- 회고 프레임을 분위기가 아니라 상태로 만든다.
 """

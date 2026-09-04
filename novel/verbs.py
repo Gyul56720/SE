@@ -35,7 +35,7 @@ VERBS = {
     # 시간선의 조상만 본다 -- 그래서 지워진 일과 남은 기억이 모순이 아니게 된다.
     #
     # carry 가 이 장치의 심장이다. 되감은 사람만 기억을 갖고 넘어오고, 그 비대칭이
-    # 정보 격차(V016)를 통째로 만든다. cost/limit 는 씨앗이 요구하는 규율이다 --
+    # 정보 격차를 통째로 만든다. cost/limit 는 씨앗이 요구하는 규율이다 --
     # 대가와 한계가 없는 되감기는 긴장을 죽인다.
     "rewind": V("시간", ("who", "carry", "cost", "back_to"), "timeline_branch",
                 "rewind time back to scene `back_to`; scenes in between are "

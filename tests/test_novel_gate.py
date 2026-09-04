@@ -75,58 +75,6 @@ bad = scene_fixture(turns=[Turn("미도리", "", "", "안녕", {"joy": 200, "mel
                                                           "narrative_pull": 0})])
 ok(has(gate.check(bad, N), "V001", "hard"), "감정 범위 밖 값을 잡는다")
 
-print("[V002] 감정 급변")
-bad = scene_fixture(turns=[Turn("미도리", "", "", "a", E(joy=90)),
-                           Turn("와타나베", "", "", "b", E()),
-                           Turn("미도리", "", "", "c", E(joy=5))])
-ok(has(gate.check(bad, N), "V002", "hard"), "한 턴에 85 점프하는 것을 잡는다")
-
-print("[V003] 감정 폭 붕괴 -- 미도리를 지키는 관문")
-bad = scene_fixture(turns=[Turn("미도리", "", "", "a", E(joy=5)),
-                           Turn("미도리", "", "", "b", E(joy=6)),
-                           Turn("와타나베", "", "", "c", E())])
-vs = gate.check(bad, N)
-ok(has(vs, "V003", "soft"), "씬 안에서 감정이 고정이면 보고한다 (폭 붕괴)")
-
-print("[V003 봉투] 하한은 **씬이 아니라 회차** 단위로 본다")
-print("      ← 씬마다 물으면 새벽 편의점 장면에 joy 40 을 요구하게 된다.")
-print("        실측 2026-09-04: V003 이 25회로 되돌려보내기 1위, 집필 시간 100%가 수리에")
-n3 = novel_fixture()
-n3.scenes = []
-for ep in (1, 2):
-    for k in range(2):
-        sc = scene_fixture(turns=[Turn("미도리", "", "", "a", E(joy=5)),
-                                  Turn("미도리", "", "", "b", E(joy=6))])
-        sc.id, sc.episode, sc.is_episode_end = f"e{ep}s{k}", ep, (k == 1)
-        n3.scenes.append(sc)
-
-end1 = n3.scenes[1]
-v1 = [v for v in gate.check(end1, n3) if v.rule == "V003" and "닿지 않았다" in v.detail]
-ok(v1 and v1[0].severity == "soft",
-   f"한 회차 가라앉는 것은 soft ({v1[0].severity if v1 else '못잡음'})  ← 서사다")
-
-end2 = n3.scenes[3]
-v2 = [v for v in gate.check(end2, n3) if v.rule == "V003" and "닿지 않았다" in v.detail]
-ok(v2 and v2[0].severity == "hard",
-   f"두 회차 연속이면 hard ({v2[0].severity if v2 else '못잡음'})  ← 이게 병이다")
-ok(v2 and "1화도 그랬다" in v2[0].detail, "직전 회차를 짚어준다")
-
-n4 = novel_fixture()
-n4.scenes = []
-for k in range(2):
-    sc = scene_fixture(turns=[Turn("미도리", "", "", "a", E(joy=5)),
-                              Turn("미도리", "", "", "b", E(joy=55))])
-    sc.id, sc.episode, sc.is_episode_end = f"g{k}", 1, (k == 1)
-    n4.scenes.append(sc)
-ok(not [v for v in gate.check(n4.scenes[1], n4)
-        if v.rule == "V003" and "닿지 않았다" in v.detail],
-   "회차 안에 한 번이라도 하한을 넘으면 통과  ← 씬마다 밝을 필요는 없다")
-ok(has(vs, "V003", "soft"), "감정이 고정된 인물을 soft 로 보고한다")
-
-single = scene_fixture(turns=[Turn("미도리", "", "", "안녕", E(joy=55))])
-ok(not has(gate.check(single, N), "V003", "soft"),
-   "턴이 하나인 인물은 폭 붕괴로 보고하지 않는다  ← 과잉 기각 방지")
-
 print("[V004] 시점 위반")
 bad = scene_fixture(prose="미도리는 아버지를 떠올리며 깊이 후회했다. 비가 내렸다.")
 ok(has(gate.check(bad, N), "V004", "hard"), "타인의 내면을 사실로 단정한 것을 잡는다")
@@ -135,18 +83,6 @@ ok(not has(gate.check(good, N), "V004", "hard"),
    "'나는 ~라고 생각했다'(화자의 추측)는 기각하지 않는다  ← 과잉 기각 방지")
 q = scene_fixture(prose='"나는 늘 외로웠다고 생각했어." 그녀가 말했다. 비가 내렸다.')
 ok(not has(gate.check(q, N), "V004", "hard"), "대사 안의 내면 서술은 검사하지 않는다")
-
-print("[V005] 감정 직접 서술")
-bad = scene_fixture(prose="나는 슬펐다. 그리고 외로웠다. 무척 우울했다.")
-ok(has(gate.check(bad, N), "V005", "hard"), "직접 감정 서술이 여러 번이면 기각한다")
-one = scene_fixture(prose="나는 슬펐다. 빌 에반스의 피아노가 흘렀다.")
-ok(has(gate.check(one, N), "V005", "soft"), "한 번은 soft 로 통과시킨다  ← 과잉 기각 방지")
-spoken = scene_fixture(prose='"난 외로웠다." 그녀가 말했다. 빌 에반스의 피아노가 흘렀다.')
-ok(not has(gate.check(spoken, N), "V005"), "대사 안의 감정어는 허용한다")
-
-print("[V006] 푼크툼 유실")
-bad = scene_fixture(prose="나는 잔을 바라보았다. 아무 소리도 나지 않았다.")
-ok(has(gate.check(bad, N), "V006", "soft"), "Director 가 심은 푼크툼이 사라진 것을 보고한다")
 
 print("[V007] 화자 없는 씬 -- 원 설계의 구멍")
 bad = scene_fixture(participants=["나오코", "레이코"], mode="dialogue")
@@ -174,90 +110,23 @@ print()
 if fails:
     print(f"소설 기계 관문: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)
-print("소설 기계 관문: 형식·급변·폭붕괴·시점·직접감정·푼크툼·화자부재·지식누출을 잡고, "
-      "화자의 추측과 대사 속 감정어는 통과시킨다 -- 통과")
+print("소설 기계 관문: 형식·시점·화자부재·지식누출을 잡고, "
+      "화자의 추측과 대사 속 내면 서술은 통과시킨다 -- 통과")
 
 
-# ===================================================================== 거시 서사
+# ===================================================================== 거시 배분
 print()
-print("[V013] 감정선이 시퀀스 궤도 위에 있는가 -- 200화에서 무너지는 것은 진도다")
-from novel import arc                                                # noqa: E402
-
-def arc_scene(ep, pull, scale=0, end=False, cliff="", sid=None):
-    s = scene_fixture(id=sid or f"e{ep}")
-    s.episode, s.scale, s.is_episode_end, s.cliffhanger = ep, scale, end, cliff
-    s.turns = [Turn("A", "", "", "말", E(joy=45, pull=pull)),
-               Turn("B", "", "", "말", E(joy=45, pull=pull))]
-    return s
-
-N2 = novel_fixture()
-N2.pov_character = "A"
-
-s = arc_scene(15, pull=70)                     # 시퀀스 1(-60~-10)인데 이미 끌림
-N2.scenes = [s]
-ok(has(gate.check(s, N2), "V013", "hard"),
-   "15화에 pull 70 -> 너무 빨리 가까워졌다고 기각")
-
-s = arc_scene(170, pull=-80)                   # 시퀀스 7(40~100)인데 아직 밀어냄
-N2.scenes = [s]
-ok(has(gate.check(s, N2), "V013", "hard"),
-   "170화에 pull -80 -> 진도가 멈췄다고 기각")
-
-s = arc_scene(15, pull=-30)                    # 정상
-N2.scenes = [s]
-ok(not has(gate.check(s, N2), "V013"), "궤도 위의 씬은 통과  ← 과잉 기각 방지")
-
-print("[V014] 꺾여야 하는 시퀀스에 꺾임이 있는가 -- 너무 순탄한 것이 이 장르의 실패")
-flat = [arc_scene(ep, pull=40, sid=f"f{ep}") for ep in (75, 90, 100)]
-N2.scenes = flat
-ok(has(gate.check(flat[-1], N2), "V014", "hard"),
-   "시퀀스 4(입덕 부정)가 pull 변동 0 이면 기각")
-dipped = [arc_scene(75, pull=50, sid="d1"), arc_scene(90, pull=-10, sid="d2"),
-          arc_scene(100, pull=45, sid="d3")]
-N2.scenes = dipped
-ok(not has(gate.check(dipped[-1], N2), "V014"), "실제로 꺾이면 통과")
-
-print("[V015] 사건 규모가 뒷걸음질하지 않는가")
-s = arc_scene(150, pull=20, scale=1)            # 시퀀스 6 은 규모 4~5
-N2.scenes = [s]
-ok(has(gate.check(s, N2), "V015", "hard"), "150화에 일상 규모 -> 기각")
-s = arc_scene(150, pull=20, scale=4)
-N2.scenes = [s]
-ok(not has(gate.check(s, N2), "V015"), "규모가 맞으면 통과")
-
-print("[V016] 독자-인물 정보 격차가 살아 있는가 -- 연독률의 핵심")
-eps = [arc_scene(ep, pull=-20, end=True, cliff="caught", sid=f"g{ep}")
-       for ep in (10, 15, 20)]
-N2.scenes = eps
-ok(has(gate.check(eps[-1], N2), "V016", "hard"),
-   "3회차 연속 아무도 아무것도 모르지 않으면 기각")
-eps[0].world_ops = [{"event": "misbelieve", "who": "B", "term": "그 밤",
-                     "believes": "다른 사람"}]
-N2.scenes = eps
-ok(not has(gate.check(eps[-1], N2), "V016", "hard"), "오해가 하나라도 살아 있으면 통과")
-
-print("[V017] 클리프행어는 선언으로 -- 텍스트에서 추론하지 않는다")
-s = arc_scene(20, pull=-20, end=True, cliff="눈이 마주쳤다")
-N2.scenes = [s]
-ok(has(gate.check(s, N2), "V017", "hard"), "5대 공식 밖의 값은 기각")
-s = arc_scene(20, pull=-20, end=True, cliff="")
-N2.scenes = [s]
-ok(has(gate.check(s, N2), "V017", "soft"),
-   "회차 끝에 없으면 soft  ← 매회 남발하면 양치기 소년이라 hard 로 막지 않는다")
-s = arc_scene(20, pull=-20, end=True, cliff="before_crisis")
-N2.scenes = [s]
-ok(not has(gate.check(s, N2), "V017"), "유효한 공식이면 통과")
-
 print("[거시] 회차 배분이 보고서와 맞는가")
+from novel import arc                                                # noqa: E402
 ok(sum(arc.episodes_in(x["n"]) for x in arc.SEQUENCES) == 200, "8시퀀스 합계 200화")
 ev = sum(x["events"][1] for x in arc.SEQUENCES)
 ok(15 <= ev <= 21, f"사건 상한 합계 {ev}개 (보고서 15~20)")
 
 print()
 if fails:
-    print(f"거시 관문: {len(fails)}개 실패 -- {fails}")
+    print(f"거시 배분: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)
-print("거시 관문: 진도·꺾임·규모·정보격차·클리프행어 -- 통과")
+print("거시 배분: 시퀀스 회차 합계와 사건 상한 -- 통과")
 
 
 # ============================================================ 개연성 사슬 (V018)
@@ -323,53 +192,3 @@ if fails:
 print("개연성 사슬: 구멍 검출·오타 구분·원장 판정·역방향 조립 -- 통과")
 
 
-# ============================================================ 문장 리듬 (V020)
-print()
-print("[V020] 문장 리듬 -- 셀 수 있는 것만 잡는다")
-
-def prose_scene(text, sid="r1"):
-    s = scene_fixture(id=sid)
-    s.prose = text
-    return s
-
-MONO = ("나는 생각했다. 그는 말했다. 비가 시작했다. 나는 후회했다. "
-        "그가 대답했다. 나는 침묵했다.")
-N5 = novel_fixture(); N5.pov_character = "와타나베"
-s = prose_scene(MONO); N5.scenes = [s]
-vs = [v for v in gate.check(s, N5) if v.rule == "V020"]
-ok(any(v.severity == "hard" and "연속" in v.detail for v in vs),
-   "같은 종결('…했다')이 네 번 연속이면 hard")
-DA = ("나는 창밖을 보았다. 비가 내렸다. 그는 말이 없었다. 잔이 비었다. "
-      "나는 일어났다. 문이 닫혔다. 골목이 젖어 있었다.")
-sd = prose_scene(DA, "r5"); N5.scenes = [sd]
-vd = [v for v in gate.check(sd, N5) if v.rule == "V020"]
-ok(any(v.severity == "soft" and "다' 로 끝나는" in v.detail for v in vd),
-   "'-다' 일색은 soft -- 한국어 과거 서술은 원래 다로 끝난다")
-ok(any(v.severity == "hard" and "비슷하다" in v.detail for v in vs),
-   "문장 길이가 전부 비슷하면 hard")
-
-VARIED = ("빗소리. 나는 창밖을 오래 바라보다가, 잔에 남은 얼음이 저 혼자 무너지는 소리를 "
-          "듣고서야 고개를 돌렸다 — 그가 이미 자리를 뜬 뒤였다. "
-          "테이블에는 물 자국만 링처럼 남아 있었다. 나는 그것을 손끝으로 문질렀다. "
-          "지워지지 않았다. 지워질 리가 없었고, 나는 그 사실을 알면서도 한참을 문질렀는데, "
-          "그러는 동안 카페의 음악이 두 번 바뀌었고 바깥은 조금 더 어두워졌다.")
-s2 = prose_scene(VARIED, "r2"); N5.scenes = [s2]
-vs2 = [v for v in gate.check(s2, N5) if v.rule == "V020"]
-ok(not any(v.severity == "hard" for v in vs2),
-   f"짧은·긴 문장과 대시·비유가 섞이면 통과 ({[v.detail[:28] for v in vs2]})")
-
-print("[V020] 과잉 기각 방지")
-s3 = prose_scene("짧다. 하나. 둘.", "r3"); N5.scenes = [s3]
-ok(not [v for v in gate.check(s3, N5) if v.rule == "V020"],
-   "문장이 5개 미만이면 판정하지 않는다 -- 표본이 없다")
-DIALOG = ('"나는 늘 그랬어. 그랬다. 그랬다니까. 정말 그랬다." 그가 말했다. '
-          + VARIED)
-s4 = prose_scene(DIALOG, "r4"); N5.scenes = [s4]
-ok(not any(v.severity == "hard" for v in gate.check(s4, N5) if v.rule == "V020"),
-   "대사 안의 반복은 세지 않는다 -- 규칙은 서술에 거는 것이다")
-
-print()
-if fails:
-    print(f"문장 리듬: {len(fails)}개 실패 -- {fails}")
-    sys.exit(1)
-print("문장 리듬: 종결 반복·길이 분산·만연체·대시·비유, 그리고 과잉 기각 방지 -- 통과")

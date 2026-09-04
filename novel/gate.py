@@ -18,6 +18,20 @@ severity:
     hard -- 확실한 위반. 씬을 기각한다.
     soft -- 의심스럽다. 기록하고 수리 프롬프트에 실지만 기각하지는 않는다.
 
+관문은 **모순만** 본다 (2026-09-04 축소). 세계가 자기모순인가 -- 모르는 것을 말하는가,
+관계·설정이 어긋나는가, 없는 것을 요구하는가, 화자가 보지 못한 것을 서술하는가, 시계가
+되감기는가. 이것들은 취향이 아니라 사실이라 기계가 판정할 자격이 있다.
+
+취향에 속하는 검사는 전부 뺐다 -- 감정 급변/폭(V002·V003), 직접 감정 서술(V005),
+푼크툼(V006), 시퀀스 궤도·꺾임·규모(V013~V015), 정보 격차(V016), 클리프행어(V017),
+회차 분량(V019), 문장 리듬(V020), 능동성(V022), 회차가 여는가(V025). 이유는 두 가지다:
+(1) 그것들은 "무엇이 좋은 소설인가" 에 대한 이 파일의 의견이었지 모순이 아니다.
+(2) 실측에서 되돌려보내기 1·2위(V003 25회, V009 16회)가 산문 수리로 고칠 수 없는
+    선언 문제였고, 집필 시간의 100% 가 수리에 갔다. 관문이 작가가 되면 그 자리를
+    통과하려고 원고가 균질해진다. 재미는 씨앗과 디렉터 시나리오가 만든다.
+남은 규율(분량·리듬·푼크툼 등)은 프롬프트와 조립 단계의 강제로 남아 있다 -- 기각 권한만
+없앤 것이다.
+
 soft 를 따로 둔 이유가 있다. **과잉 기각하는 심판은 맞는 답도 버린다** -- 직선거리에서
 상대 임계만 쓰다가 진짜 최소가 0 일 때 정답을 기각한 것이 그 사례다. 한국어 패턴 검사는
 정밀도가 100% 가 아니므로, 애매한 것은 기각이 아니라 보고로 내린다.
@@ -27,19 +41,11 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-MAX_EMOTION_DELTA = 35          # 턴당 축 변화량 상한. 이보다 크면 인물이 갑자기 변한 것이다
-RANGE_COLLAPSE = 8              # 씬 전체 감정 폭이 이보다 좁으면 "회색 죽" 으로 수렴한 것
-DIRECT_EMOTION_SOFT = 1         # 이 횟수까지는 soft, 넘으면 hard
 
 # 타인의 내면을 사실로 단정하는 술어. 1인칭 회고 화자는 이것을 쓸 수 없다.
 INTERIORITY = ("생각했다", "생각한다", "느꼈다", "느낀다", "깨달았다", "믿었다",
                "기억했다", "바랐다", "후회했다", "결심했다", "확신했다", "알고 있었다",
                "그리워했다", "두려워했다", "사랑했다")
-
-# 감정을 직접 서술하는 말. 대사 안에서는 허용된다 -- 인물은 "외로워" 라고 말할 수 있다.
-# 금지되는 것은 **서술**이다.
-DIRECT_EMOTION = ("슬펐다", "슬프다", "외로웠다", "외롭다", "행복했다", "행복하다",
-                  "기뻤다", "우울했다", "절망했다", "괴로웠다", "비참했다", "쓸쓸했다")
 
 _SENT = re.compile(r"[^.!?…\n]+[.!?…]?")
 _QUOTED = re.compile(r"[\"“”][^\"“”]*[\"“”]|'[^']*'|「[^」]*」")
@@ -90,111 +96,6 @@ def check_turn_format(scene, novel) -> list:
     return out
 
 
-def check_emotion_continuity(scene, novel) -> list:
-    """V002 -- 턴당 감정 급변. 인물이 한 턴 만에 다른 사람이 되는 것을 막는다."""
-    out = []
-    from .state import AXES
-    last = {}
-    for i, t in enumerate(scene.turns):
-        prev = last.get(t.actor)
-        if prev:
-            for a in AXES:
-                if a in prev and a in t.emotions:
-                    d = abs(t.emotions[a] - prev[a])
-                    if d > MAX_EMOTION_DELTA:
-                        out.append(Violation(
-                            "V002", "hard", f"턴 {i}({t.actor})",
-                            f"'{a}' 가 한 턴에 {prev[a]} -> {t.emotions[a]} ({d} 변화, "
-                            f"상한 {MAX_EMOTION_DELTA}). 중간 단계를 거치게 하라"))
-        last[t.actor] = dict(t.emotions)
-    return out
-
-
-def check_emotion_range(scene, novel) -> list:
-    """V003 -- 감정 폭 붕괴. **이 관문이 미도리를 지키는 것이다.**
-
-    원 설계는 '지나치게 쾌활하면 롤백' 이라는 단측 압력만 걸었다. 밝은 쪽 이탈만 벌하고
-    어두운 쪽은 안 벌하면 수십 턴 뒤 전체가 균일한 우울로 수렴한다 -- 압축에서 3진 양자화로
-    굴러떨어진 것과 같은 퇴화다. 그리고 미도리는 진짜로 웃긴 인물이라, 밝음을 벌하는 관문은
-    소설의 절반을 삭제한다. 그래서 수준이 아니라 **폭**을 본다."""
-    out = []
-    from .state import AXES
-    if len(scene.turns) < 2:
-        return out
-
-    for name in {t.actor for t in scene.turns}:
-        mine = [t.emotions for t in scene.turns if t.actor == name]
-        # 턴이 하나뿐인 인물은 변동 폭이 0 일 수밖에 없다. 여기서 걸면 정상 씬을 흔든다 --
-        # 과잉 기각이 되는 자리라 최소 두 턴을 요구한다.
-        span = max((max(e.get(a, 0) for e in mine) - min(e.get(a, 0) for e in mine))
-                   for a in AXES) if len(mine) >= 2 else None
-        if span is not None and span < RANGE_COLLAPSE:
-            out.append(Violation("V003", "soft", f"인물 {name}",
-                                 f"씬 내내 감정이 거의 고정이다 (최대 변동 폭 {span}). "
-                                 f"인물이 반응하지 않고 있다"))
-    # 봉투 하한은 **회차 단위**로 본다. 씬 단위 검사는 아래 _envelope 로 옮겼다.
-    out.extend(_envelope(scene, novel))
-    return out
-
-
-def _envelope(scene, novel) -> list:
-    """감정 봉투를 **회차 단위로** 본다. 씬 단위가 아니다.
-
-    봉투의 의도는 세계 파일에 적혀 있다: "여주는 꺾여도 다시 서야 한다. 이 하한이 없으면
-    몇 씬 만에 무기력한 인물이 되고, 그러면 주도적 여성 서사라는 전제가 무너진다."
-    그건 **아크의 성질이지 씬의 성질이 아니다.** 그런데 씬마다 검사하고 있었다.
-
-    새벽 한 시 편의점에서 장학금이 걸린 장면에 joy 30 을 요구하면 인물이 이상해진다.
-    실측(2026-09-04 탐침): V003 이 25회로 되돌려보내기 1위였고, 집필 시간의 100%가
-    수리에 버려졌으며 씬 넷이 전부 네 번 시도하고 전부 실패했다. 관문이 옳고 모델이
-    틀린 것이 아니라 **관문이 잘못된 자리에서 물었다.**
-
-    회차(3씬)를 한 단위로 본다. 그 안에서 한 번도 하한에 못 닿으면 처음은 soft,
-    직전 회차도 그랬으면 hard -- 한 회차 가라앉는 것은 서사이고, 계속 가라앉는 것이 병이다
-    (V022 와 같은 판단이다)."""
-    if not scene.episode or not scene.is_episode_end:
-        return []
-
-    def peaks(ep: int) -> dict:
-        """그 회차에서 인물별·축별 최고치. 산문이 안 채워진 회차는 None."""
-        same = [s for s in novel.scenes if s.episode == ep]
-        if not same or not any(s.turns for s in same):
-            return {}
-        got = {}
-        for sc in same:
-            for t in sc.turns:
-                for ax, v in (t.emotions or {}).items():
-                    cur = got.setdefault(t.actor, {})
-                    cur[ax] = max(cur.get(ax, 0), v)
-        return got
-
-    now = peaks(scene.episode)
-    if not now:
-        return []
-    before = peaks(scene.episode - 1) if scene.episode > 1 else {}
-    out = []
-    for name, axes in now.items():
-        try:
-            env = novel.character(name).emotion_envelope or {}
-        except KeyError:
-            continue
-        for a, floor in env.items():
-            peak = axes.get(a, 0)
-            if peak >= floor:
-                continue
-            missed_before = (before.get(name, {}).get(a, floor) < floor
-                             if before.get(name) else False)
-            msg = (f"'{a}' 가 {scene.episode}화 내내 {floor} 에 닿지 않았다 "
-                   f"(최고 {peak}). 이 인물은 그 폭을 잃으면 다른 사람이 된다 -- "
-                   f"회차 안에 한 번은 숨통이 트이는 순간을 만들어라")
-            if missed_before:
-                out.append(Violation("V003", "hard", f"인물 {name}",
-                                     msg + f". **{scene.episode - 1}화도 그랬다**"))
-            else:
-                out.append(Violation("V003", "soft", f"인물 {name}", msg))
-    return out
-
-
 def check_pov(scene, novel) -> list:
     """V004 -- 시점 위반. 1인칭 회고 화자는 타인의 내면을 사실로 서술할 수 없다.
 
@@ -218,34 +119,6 @@ def check_pov(scene, novel) -> list:
             out.append(Violation("V004", "soft", f"'{s[:40]}...'",
                                  "대명사 주어의 내면 서술로 보인다. 화자 시점인지 확인하라"))
     return out
-
-
-def check_direct_emotion(scene, novel) -> list:
-    """V005 -- 감정 직접 서술. 푼크툼을 강제하는 관문이다.
-
-    대사는 검사하지 않는다. 인물은 '외로워' 라고 말할 수 있다 -- 금지되는 것은 서술이다.
-    한 번은 soft, 그 이상은 hard 로 둔다. 절대 0 을 요구하면 과잉 기각이 된다."""
-    if not scene.prose:
-        return []
-    narration = _strip_quotes(scene.prose)
-    hits = [w for w in DIRECT_EMOTION if w in narration]
-    if not hits:
-        return []
-    sev = "soft" if len(hits) <= DIRECT_EMOTION_SOFT else "hard"
-    return [Violation("V005", sev, "서술부",
-                      f"감정을 직접 서술했다: {hits}. 사물·소리·날씨로 치환하라 "
-                      f"(푼크툼: {scene.punctum!r})")]
-
-
-def check_punctum(scene, novel) -> list:
-    """V006 -- Director 가 심은 푼크툼이 산문에 실제로 나타났는가. 지시가 유실되는 것을 막는다."""
-    if not scene.prose or not scene.punctum:
-        return []
-    key = [w for w in re.split(r"[\s,·]+", scene.punctum) if len(w) >= 2]
-    if key and not any(k[:2] in scene.prose for k in key):
-        return [Violation("V006", "soft", "서술부",
-                          f"푼크툼 {scene.punctum!r} 의 흔적이 산문에 없다")]
-    return []
 
 
 def check_pov_presence(scene, novel) -> list:
@@ -543,159 +416,6 @@ def check_public_fiction(scene, novel) -> list:
     return out
 
 
-def check_arc_emotion(scene, novel) -> list:
-    """V013 -- 감정선이 시퀀스 궤도 위에 있는가.
-
-    **200화에서 무너지는 것은 씬 하나가 아니라 진도다.** 100화가 됐는데 아직 혐오 단계면
-    용두사미이고, 40화에 벌써 결정적 선택이면 태울 연료가 없다. 씬 하나만 보면 안 보이고
-    회차 번호와 대조해야 보인다 -- 관계 원장이 누적을 봐서 모순을 잡은 것과 같은 수다.
-
-    밴드는 넉넉하게 잡고 **벗어난 폭**으로 등급을 가른다. 장르 규약이 취향이 아니라 구조인
-    지점만 hard 로 막고, 나머지는 보고한다."""
-    from . import arc
-    out = []
-    if not scene.episode or not scene.turns:
-        return out
-    try:
-        seq = arc.sequence_of(scene.episode)
-    except ValueError as e:
-        return [Violation("V013", "hard", f"씬 {scene.id}", str(e))]
-
-    lo, hi = seq["pull"]
-    pulls = [t.emotions.get("narrative_pull", 0) for t in scene.turns
-             if t.actor == novel.pov_character]
-    if not pulls:
-        return out
-    peak, trough = max(pulls), min(pulls)
-    slack = 25
-    if trough > hi + slack:
-        out.append(Violation("V013", "hard", f"씬 {scene.id} ({scene.episode}화)",
-                             f"시퀀스 {seq['n']} '{seq['name']}' 의 pull 범위는 {seq['pull']} "
-                             f"인데 최저가 {trough} 다. 너무 빨리 가까워졌다 -- 뒤에 태울 "
-                             f"연료가 남지 않는다"))
-    elif peak < lo - slack:
-        out.append(Violation("V013", "hard", f"씬 {scene.id} ({scene.episode}화)",
-                             f"시퀀스 {seq['n']} '{seq['name']}' 의 pull 범위는 {seq['pull']} "
-                             f"인데 최고가 {peak} 다. 진도가 멈췄다 -- {seq['stage']} 단계로 "
-                             f"올라와야 한다"))
-    elif not (lo <= peak <= hi) and not (lo <= trough <= hi):
-        out.append(Violation("V013", "soft", f"씬 {scene.id} ({scene.episode}화)",
-                             f"pull {trough}~{peak} 가 시퀀스 밴드 {seq['pull']} 밖이다"))
-    return out
-
-
-def check_arc_dip(scene, novel) -> list:
-    """V014 -- 꺾임이 있어야 하는 시퀀스에 꺾임이 있는가.
-
-    이 장르에서 가장 흔한 실패는 모순이 아니라 **너무 순탄한 것**이다. 시퀀스 4(입덕 부정)와
-    6(관계 단절 위기)은 감정선이 반드시 꺾여야 하는 자리인데, 씬 하나만 보면 그 씬이 순탄한
-    것이 문제인지 알 수 없다. 시퀀스 전체를 봐야 한다."""
-    from . import arc
-    if not scene.episode:
-        return []
-    seq = arc.sequence_of(scene.episode)
-    if not seq.get("dip") or scene.episode != seq["eps"][1]:
-        return []                          # 시퀀스 마지막 회차에서만 총평한다
-
-    lo, hi = seq["eps"]
-    pulls = [t.emotions.get("narrative_pull", 0)
-             for sc in novel.scenes if lo <= sc.episode <= hi
-             for t in sc.turns if t.actor == novel.pov_character]
-    if not pulls:
-        return []
-    if max(pulls) - min(pulls) < 30:
-        return [Violation("V014", "hard", f"시퀀스 {seq['n']} ({lo}~{hi}화)",
-                          f"'{seq['name']}' 는 감정선이 꺾여야 하는 시퀀스인데 pull 변동이 "
-                          f"{max(pulls) - min(pulls)} 뿐이다. 회피나 단절이 실제로 일어나야 "
-                          f"한다 -- 너무 순탄한 것이 이 장르의 가장 흔한 실패다")]
-    return []
-
-
-def check_arc_scale(scene, novel) -> list:
-    """V015 -- 사건 규모가 뒷걸음질하지 않는가.
-
-    작은 일상에서 시작해 점진적으로 커져야 한다(보고서). 처음부터 크면 50화 전에 동력을
-    잃는다. 단조 증가를 강제하지는 않는다 -- 숨 고르는 회차가 필요하다. 다만 **시퀀스 하한
-    아래로 내려가는 것**은 잡는다."""
-    from . import arc
-    if not scene.episode or not scene.scale:
-        return []
-    seq = arc.sequence_of(scene.episode)
-    lo, hi = seq["scale"]
-    if scene.scale < lo - 1:
-        return [Violation("V015", "hard", f"씬 {scene.id} ({scene.episode}화)",
-                          f"규모 {scene.scale}({arc.SCALES[scene.scale]}) 는 시퀀스 "
-                          f"{seq['n']} 의 하한 {lo}({arc.SCALES[lo]}) 보다 낮다. "
-                          f"뒤로 갈수록 커져야 한다")]
-    if scene.scale > hi:
-        return [Violation("V015", "soft", f"씬 {scene.id} ({scene.episode}화)",
-                          f"규모 {scene.scale} 가 시퀀스 상한 {hi} 를 넘는다. 너무 일찍 "
-                          f"크게 터뜨리면 뒤가 밋밋해진다")]
-    return []
-
-
-def check_information_gap(scene, novel) -> list:
-    """V016 -- 독자와 인물의 정보 격차가 살아 있는가.
-
-    보고서가 연독률의 핵심으로 꼽은 장치다. 독자는 아는데 인물은 모르는 상태가 서스펜스를
-    만든다. **이건 원장으로 정확히 셀 수 있다** -- misbelieve / conceal / fabricate /
-    blame_transfer 중 살아 있는 것이 하나도 없으면 격차가 0 이다.
-
-    씬 하나에서는 문제가 아니다. 여러 회차 연속으로 0 이면 그때가 문제다."""
-    from . import arc
-    if not scene.episode or not scene.is_episode_end:
-        return []
-    idx = novel.scene_index(scene.id)
-    gates, _ = novel.derive_gates(idx)
-    live = [g for g in gates
-            if g.kind in ("belief", "public_fiction", "knowledge_deny")
-            and novel.scene_index(g.from_scene) <= idx]
-    if live:
-        return []
-
-    # 격차가 0 인 회차가 몇 화째 연속인가
-    run = 0
-    for sc in reversed([s for s in novel.scenes
-                        if s.is_episode_end and 0 < s.episode <= scene.episode]):
-        i = novel.scene_index(sc.id)
-        gs, _ = novel.derive_gates(i)
-        if any(g.kind in ("belief", "public_fiction", "knowledge_deny")
-               and novel.scene_index(g.from_scene) <= i for g in gs):
-            break
-        run += 1
-    if run >= 3:
-        return [Violation("V016", "hard", f"{scene.episode}화",
-                          f"독자와 인물의 정보 격차가 {run}회차 연속 0 이다. 아무도 아무것도 "
-                          f"모르지 않으면 서스펜스가 없다 -- misbelieve/conceal/fabricate 중 "
-                          f"하나는 살아 있어야 한다")]
-    if run >= 2:
-        return [Violation("V016", "soft", f"{scene.episode}화",
-                          f"정보 격차가 {run}회차 연속 0 이다")]
-    return []
-
-
-def check_cliffhanger(scene, novel) -> list:
-    """V017 -- 회차 끝에 클리프행어가 선언됐는가.
-
-    **텍스트에서 추론하지 않는다.** "이 문단이 절벽 엔딩인가"를 기계가 판정하려 들면 그
-    추론 자체가 또 하나의 환각이 된다. Director 가 5대 공식 중 하나를 구조로 선언하게 하고,
-    여기서는 선언 여부와 값의 유효성만 본다 -- 세계 변경 동사와 같은 원칙이다."""
-    from . import arc
-    if not scene.episode or not scene.is_episode_end:
-        return []
-    seq = arc.sequence_of(scene.episode)
-    if scene.cliffhanger and scene.cliffhanger not in arc.CLIFFHANGERS:
-        return [Violation("V017", "hard", f"{scene.episode}화",
-                          f"알 수 없는 클리프행어 유형: {scene.cliffhanger!r}. "
-                          f"허용: {sorted(arc.CLIFFHANGERS)}")]
-    if seq.get("cliff") and not scene.cliffhanger:
-        return [Violation("V017", "soft", f"{scene.episode}화",
-                          f"회차 끝인데 클리프행어가 없다. 매 회차 기계적으로 남발하면 "
-                          f"양치기 소년이 되므로 강제하지는 않지만, 시퀀스 {seq['n']} 에서는 "
-                          f"연독률 방어가 필요하다")]
-    return []
-
-
 def check_causality(scene, novel) -> list:
     """V018 -- 개연성 사슬. **플롯 구멍을 그래프 도달 가능성으로 잡는다.**
 
@@ -746,158 +466,6 @@ def check_causality(scene, novel) -> list:
     return out
 
 
-# 문장 리듬. "-했다. -다." 만 이어지면 내용이 좋아도 읽히지 않는다.
-RHYTHM_RUN = 4              # 같은 종결어미(끝 두 글자)가 이만큼 연속되면 단조
-RHYTHM_RUN_LOOSE = 6        # 끝 한 글자 기준. '-다' 일색을 본다
-RHYTHM_STDEV = 12.0         # 문장 길이 표준편차 하한 (전부 비슷하면 리듬이 없다)
-LONG_SENT = 60              # 만연체로 치는 길이
-SHORT_SENT = 22             # 끊어치는 문장
-_SIMILE = re.compile(r"(처럼|같이|같은|듯이|듯한|듯했|만큼|보다)")
-
-
-def _endings(text: str) -> list:
-    """문장별 종결어미(마지막 두 글자). 대사는 뺀다 -- 규칙은 서술에 거는 것이다."""
-    out = []
-    for sent in _sentences(_strip_quotes(text)):
-        body = re.sub(r"[^가-힣]", "", sent)
-        if len(body) >= 2:
-            out.append(body[-2:])
-    return out
-
-
-def check_rhythm(scene, novel) -> list:
-    """V020 -- 문장 리듬. 짧은·중간·긴 문장이 섞여야 하고 종결이 반복되면 안 된다.
-
-    **내용이 좋아도 리듬이 없으면 안 읽힌다.** 그리고 이것은 취향이 아니라 셀 수 있는
-    것이다: 종결어미가 몇 번 연속 같은지, 문장 길이의 표준편차가 얼마인지, 만연체와
-    대시와 비유가 있는지 -- 전부 LLM 없이 판정된다.
-
-    등급을 나눈 기준: 같은 종결이 네 번 연속되는 것은 누가 읽어도 단조롭다(hard).
-    비유가 없는 것은 그 씬의 선택일 수 있다(soft). 문체를 hard 로 조이면 관문이 작가가
-    된다 -- 그건 이 관문의 일이 아니다."""
-    if not scene.prose:
-        return []
-    out = []
-    narration = _strip_quotes(scene.prose)
-    sents = [s for s in _sentences(narration) if len(s) >= 4]
-    if len(sents) < 5:
-        return []
-
-    ends = _endings(scene.prose)
-    run, worst, cur = 1, 1, ends[0] if ends else ""
-    for a, b in zip(ends, ends[1:]):
-        run = run + 1 if a == b else 1
-        if run > worst:
-            worst, cur = run, b
-    if worst >= RHYTHM_RUN:
-        out.append(Violation("V020", "hard", f"씬 {scene.id}",
-                             f"'…{cur}' 로 끝나는 문장이 {worst}번 연속이다. 종결을 흩어라 "
-                             f"-- 명사로 끊거나, 대시로 잇거나, 도치하거나"))
-
-    # "-했다. -다." 일색. 한국어 과거 서술은 원래 '다' 로 끝나므로 마지막 두 글자로는
-    # 안 잡힌다(았다/었다/렸다가 다 다르게 세어진다). 마지막 한 글자로 따로 본다.
-    # 다만 '다' 종결 자체는 정상이라 hard 가 아니다 -- 관문이 작가가 되면 안 된다.
-    tails = [e[-1] for e in ends]
-    if tails:
-        run1, worst1 = 1, 1
-        for a, b in zip(tails, tails[1:]):
-            run1 = run1 + 1 if a == b else 1
-            worst1 = max(worst1, run1)
-        if worst1 >= RHYTHM_RUN_LOOSE:
-            out.append(Violation("V020", "soft", f"씬 {scene.id}",
-                                 f"'…{tails[0]}' 로 끝나는 문장이 {worst1}번 연속이다. "
-                                 f"명사 종결·도치·연결어미(-는데, -고)로 한 번씩 끊어라"))
-
-    lens = [len(s) for s in sents]
-    mean = sum(lens) / len(lens)
-    stdev = (sum((x - mean) ** 2 for x in lens) / len(lens)) ** 0.5
-    if stdev < RHYTHM_STDEV:
-        out.append(Violation("V020", "hard", f"씬 {scene.id}",
-                             f"문장 길이가 전부 비슷하다 (평균 {mean:.0f}자, 표준편차 "
-                             f"{stdev:.1f}). 짧게 끊는 문장과 만연체를 섞어라"))
-
-    if not any(x > LONG_SENT for x in lens):
-        out.append(Violation("V020", "soft", f"씬 {scene.id}",
-                             f"만연체가 하나도 없다 (최장 {max(lens)}자). 한 호흡에 여러 절을 "
-                             f"이어가는 문장이 리듬을 만든다"))
-    if not any(x < SHORT_SENT for x in lens):
-        out.append(Violation("V020", "soft", f"씬 {scene.id}",
-                             f"끊어치는 짧은 문장이 없다 (최단 {min(lens)}자)"))
-    if "—" not in scene.prose and "--" not in scene.prose:
-        out.append(Violation("V020", "soft", f"씬 {scene.id}",
-                             "대시가 없다. 문장 중간에서 숨을 끊거나 덧붙일 자리를 만든다"))
-    if not _SIMILE.search(narration):
-        out.append(Violation("V020", "soft", f"씬 {scene.id}",
-                             "비유·비교가 없다 (처럼·같이·듯·만큼)"))
-    return out
-
-
-def check_episode_length(scene, novel) -> list:
-    """V019 -- 회차 분량. 웹소설 1회차는 공백 포함 5,000자다.
-
-    첫 실측에서 씬 하나가 1,200자였다. 그대로 200화를 채우면 100만 자가 아니라 24만 자다.
-    분량은 취향이 아니라 **플랫폼 규격**이라 hard 로 막는다 -- 다만 회차 전체가 모였을 때만
-    판정한다(씬 하나가 짧은 것은 정상이다).
-
-    되먹임에 몇 자가 모자란지 숫자로 준다. "더 길게" 는 고칠 수 있는 지시가 아니다."""
-    from . import arc
-    if not scene.episode or not scene.is_episode_end:
-        return []
-    same = [s for s in novel.scenes if s.episode == scene.episode]
-    if any(not s.prose for s in same):
-        return []                                  # 아직 다 안 찼다
-    total = sum(len(s.prose) for s in same)
-    target = arc.CHARS_PER_EPISODE
-    if total < target * 0.7:
-        return [Violation("V019", "hard", f"{scene.episode}화",
-                          f"회차 분량이 {total}자로 목표 {target}자의 "
-                          f"{total / target:.0%} 다. {target - total}자 모자란다 -- "
-                          f"서브플롯 씬에서 조연의 이야기·일상의 마찰을 더 풀어라 "
-                          f"(보고서: 서브플롯이 분량의 2/3를 채운다)")]
-    if total < target * 0.85:
-        return [Violation("V019", "soft", f"{scene.episode}화",
-                          f"회차 분량 {total}자 (목표 {target}자)")]
-    return []
-
-
-def check_agency(scene, novel) -> list:
-    """V022 -- 화자가 구경만 하는 회차가 이어지는가.
-
-    2026-09-04 피드백의 첫 항목: "주인공이 철저하게 수동적이다. 사건의 단서를 타인의 입을
-    통해 일방적으로 전달받는다." 그 지적이 맞았고, 원인은 문장이 아니라 조립이었다 --
-    역방향 조립은 **무엇이 참이 되는가**만 물었지 누가 그것을 했는지 묻지 않았다.
-
-    한 회차 당하는 것은 병이 아니다. 매 회차 화자가 판을 뒤집으면 그것대로 지치고, 당하는
-    회차도 서사에 필요하다. **연속으로 구경하는 것**이 병이다. 그래서 한 번은 soft,
-    직전 회차도 그랬으면 hard 다.
-
-    척추 씬이 없는 회차(서브플롯만 있는 회차)는 판정하지 않는다 -- 애초에 인과를 옮기는
-    회차가 아니므로 화자가 움직일 자리가 없다."""
-    if not scene.episode or not scene.is_episode_end:
-        return []
-
-    def passive(ep: int) -> "bool | None":
-        spine = [s for s in novel.scenes if s.episode == ep and s.establishes]
-        if not spine:
-            return None                       # 판정 대상이 아니다
-        return not any(s.driver == novel.pov_character for s in spine)
-
-    now = passive(scene.episode)
-    if not now:
-        return []
-    before = passive(scene.episode - 1) if scene.episode > 1 else None
-    drivers = sorted({s.driver for s in novel.scenes
-                      if s.episode == scene.episode and s.establishes and s.driver})
-    msg = (f"{scene.episode}화에서 {novel.pov_character} 는 아무것도 일으키지 않았다 "
-           f"(움직인 사람: {drivers or ['선언 없음']}). 화자가 스스로 판을 바꾸는 "
-           f"장면을 하나 넣어라 -- 무엇을 걸고 무엇을 잃는지까지")
-    if before:
-        return [Violation("V022", "hard", f"{scene.episode}화",
-                          msg + f". **{scene.episode - 1}화도 그랬다** -- "
-                                f"두 회차 연속으로 화자가 구경만 하면 독자는 떠난다")]
-    return [Violation("V022", "soft", f"{scene.episode}화", msg)]
-
-
 def check_pressure(scene, novel) -> list:
     """V023 -- 시계가 조여드는가.
 
@@ -923,44 +491,10 @@ def check_pressure(scene, novel) -> list:
     return []
 
 
-def check_episode_opens(scene, novel) -> list:
-    """V025 -- 회차의 끝이 새 조건을 여는가.
-
-    피드백: "결말이 시적이고 순문학적인 여운을 주지만, 다음 장을 당장 펼쳐봐야 할 강렬한
-    궁금증을 유발하기에는 서사적 장력이 턱없이 부족하다." 클리프행어 표식(V016)만으로는
-    부족했다 -- 표식은 붙었는데 실제로 열린 것이 없으면 닫고 끝난 회차다.
-
-    회차의 마지막 척추 씬이 **아직 갚아지지 않은 requires 를 남기거나** 새 대가(cost)를
-    치렀는지 본다. 둘 다 없으면 그 회차는 해소로 끝난 것이다.
-
-    마지막 회차(결말)는 예외다 -- 거기서는 닫는 것이 맞다."""
-    if not scene.episode or not scene.is_episode_end:
-        return []
-    same = [s for s in novel.scenes if s.episode == scene.episode]
-    if not any(s.establishes for s in same):
-        return []                              # 서브플롯만 있는 회차는 판정하지 않는다
-    idx = novel.scene_index(scene.id)
-    settled = set()
-    for s in novel.scenes[:idx + 1]:
-        settled.update(s.establishes or [])
-    opened = [c for s in same for c in (s.requires or [])
-              if c not in settled and not c.startswith("state:")]
-    paid = [s.cost for s in same if s.cost and s.cost != "없음"]
-    if opened or paid:
-        return []
-    return [Violation("V025", "soft", f"{scene.episode}화",
-                      "회차가 아무것도 열지 않고 끝났다. 갚아야 할 조건도, 치른 대가도 "
-                      "없다 -- 다음 화를 펼칠 이유가 생기지 않는다. 마지막 장면에서 "
-                      "새 요구를 열거나 무언가를 잃게 하라")]
-
-
-CHECKS = (check_rhythm, check_episode_length, check_turn_format, check_emotion_continuity, check_emotion_range,
-          check_pov, check_direct_emotion, check_punctum,
-          check_pov_presence, check_knowledge, check_relations, check_facts,
+CHECKS = (check_turn_format, check_pov, check_pov_presence,
+          check_knowledge, check_relations, check_facts,
           check_belief, check_public_fiction,
-          check_arc_emotion, check_arc_dip, check_arc_scale,
-          check_information_gap, check_cliffhanger, check_causality,
-          check_agency, check_pressure, check_episode_opens)
+          check_causality, check_pressure)
 
 
 def check(scene, novel) -> list:

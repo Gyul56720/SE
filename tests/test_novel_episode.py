@@ -239,26 +239,8 @@ n3.scenes = D.build_episode(n3, SPEC, llm=Fake())
 r = D.drive(n3, None, llm=Fake(), max_repairs=2, limit=2)
 ok(r["verified"] >= 1, f"씬이 실제로 채워진다 ({r})")
 
-print("[V019] 회차 분량이 목표에 못 미치면 잡는가")
-n4 = build()
-n4.scenes = D.build_episode(n4, SPEC, llm=Fake())
-first = [s for s in n4.scenes if s.episode == 1]
-for s in first:
-    s.prose = "짧다." * 20                                   # 회차 합계 ~1,200자
-end = next(s for s in first if s.is_episode_end)
-vs = [v for v in gate.check(end, n4) if v.rule == "V019"]
-ok(vs and vs[0].severity == "hard", f"목표의 70% 미만이면 hard ({vs[0].detail[:50] if vs else '못잡음'})")
-ok(vs and "자 모자란다" in vs[0].detail, "몇 자 모자란지 숫자로 말해준다  ← '더 길게'는 지시가 아니다")
-for s in first:
-    s.prose = "가" * (arc.CHARS_PER_SCENE + 50)
-ok(not [v for v in gate.check(end, n4) if v.rule == "V019"],
-   "회차가 5,000자를 채우면 통과")
-first[0].prose = ""
-ok(not [v for v in gate.check(end, n4) if v.rule == "V019"],
-   "아직 안 채워진 회차는 판정하지 않는다  ← 과잉 기각 방지")
-
 print()
 if fails:
     print(f"에피소드 조립: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)
-print("에피소드 조립: 역방향 척추 · 서브플롯 · 회차 번호 · 클리프행어 · 개연성 · 수리 -- 통과")
+print("에피소드 조립: 역방향 척추 · 서브플롯 · 회차 번호 · 개연성 · 수리 -- 통과")

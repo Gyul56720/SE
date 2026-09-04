@@ -242,7 +242,8 @@ def _check_pressure(b: dict, novel, clock: float) -> list:
 
     화자가 아닌 사람이 움직인 장면은 통과시킨다. 매 장면 화자가 움직이면 그것대로
     지치고, 당하는 장면도 서사에 필요하다 -- 연속으로 당하기만 하는 것이 병이지
-    한 장면 당하는 것은 병이 아니다. 그 연속은 관문(V022)이 회차 단위로 본다."""
+    한 장면 당하는 것은 병이 아니다. 이제 관문은 이것을 보지 않는다 -- 조립 단계의
+    이 강제만 남았다."""
     names = {c.name for c in novel.characters}
     out = []
     b["deadline_hours_raw"] = b.get("deadline_hours")
@@ -463,7 +464,7 @@ def beat_prompt(novel, spec: dict, open_conds: list, ep: int, feedback="") -> st
     문법 유효성을 지켜야 해서 주의력이 갈리고, 개방형 창작에서 품질이 떨어진다. 그래서
     **창작은 Markdown 자유 형식으로 받는다.**
 
-    그런데 관문(V009 관계·V018 개연성·V013 진도)은 구조화된 데이터를 먹고 산다. 산문만
+    그런데 관문(V009 관계·V018 개연성)은 구조화된 데이터를 먹고 산다. 산문만
     받으면 검증이 통째로 무너진다. 그래서 두 단계로 가른다:
 
         디렉터(Opus)  XML 입력 -> Markdown 시나리오   창작. 형식 세금 면제
@@ -862,7 +863,7 @@ def build_episode(novel, spec: dict, llm=None, max_repairs=MAX_REPAIRS, log=None
         _log(f"[조립] {lo}~{hi}화 서브플롯 {k + 1}/{need}: {filler.beat[:44]}")
 
     # 결말은 마지막 회차다.
-    # 결말도 누군가 일으킨다. 비워두면 V022 가 그 회차를 "화자가 구경만 했다" 로 읽는다
+    # 결말도 누군가 일으킨다. 비워두면 화자가 구경만 한 회차가 된다
     # -- 결말 회차가 수동으로 판정되면 그 판정 자체가 쓸모없어진다.
     beats.append(Beat(driver=spec.get("driver") or novel.pov_character,
                       cost=spec.get("cost", ""),
@@ -1114,8 +1115,8 @@ def run_scene(novel, scene, llm, max_repairs=MAX_REPAIRS, log=None) -> dict:
     feedback = ""
     # **산문만 틀렸으면 턴은 다시 만들지 않는다.**
     #
-    # 예전에는 시도마다 디렉터·배우·화자를 전부 다시 돌렸다. 산문 규칙(V005 직접 감정 ·
-    # V020 리듬 · V004 시점) 하나가 걸려도 배우 턴 넷을 새로 받았다 -- 턴은 통과했는데도.
+    # 예전에는 시도마다 디렉터·배우·화자를 전부 다시 돌렸다. 산문 규칙(V004 시점 ·
+    # V007 화자 부재) 하나가 걸려도 배우 턴 넷을 새로 받았다 -- 턴은 통과했는데도.
     # 실측(2026-09-04 탐침): 씬 하나가 24호출(6호출 x 4시도), 2.3분. 호출 자체는 5.8초라
     # 빠른데 횟수가 문제였다.
     #
@@ -1231,7 +1232,7 @@ def drive(novel, path, llm=None, max_repairs=MAX_REPAIRS, log=None, limit=None,
 
     upto_episode -- 여기까지의 회차만 채운다(0 이면 전부). 한 회차만 돌려보고 산문이 실제로
     나오는지 확인하는 데 쓴다. 씬 수(limit)가 아니라 **회차**로 자르는 이유: 회차의 끝
-    씬에서만 도는 관문(V016 클리프행어·V017 회차 마무리·V019 분량)이 있어서, 씬 수로
+    씬에서만 도는 관문(V018 개연성의 회차 단위 판정)이 있어서, 씬 수로
     자르면 회차가 중간에 끊겨 그 관문들이 판정할 대상 자체를 못 갖는다."""
     llm = llm or default_llm      # 콜러블 하나 또는 {역할: 콜러블} dict
     log = log or (Path(path).with_suffix(".scenes.jsonl") if path else None)
