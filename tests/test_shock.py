@@ -333,7 +333,7 @@ _st, _sep, _vo = _pp.partition(_D.SPLIT)
 ok(_sep, "경계가 있다")
 ok(_pp.count(_D.SPLIT) == 1, "경계는 하나뿐이다")
 ok(len(_st) > len(_vo), f"고정부가 더 크다 (고정 {len(_st):,} · 휘발 {len(_vo):,})")
-ok(all(k in _st for k in ("건조한 번역투", "규칙:", "리얼리즘")),
+ok(all(k in _st for k in ("건조하게", "규칙:", "리얼리즘")),
    "매번 같은 것은 앞에  ← 문체·규칙은 원고 내내 안 변한다")
 ok(all(k in _vo for k in ("[세계", "끝부분", "급발진")),
    "덩어리마다 바뀌는 것은 뒤에  ← 세계·꼬리·뽑기")
