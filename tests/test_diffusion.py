@@ -181,15 +181,42 @@ def _say(n):
 
 
 _ok = "\n".join([_say(70 + i * 9) for i in range(8)] + [_say(10)] * 2)
-ok(not [c for c in F.check(_ok, {}, {}) if "넘는다" in c], "여덟 할이 길면 통과한다")
+ok(not [c for c in F.check(_ok, {}, {}, want=0.8) if "이 대목은" in c],
+   "목표가 여덟 할일 때 여덟 할이면 통과한다")
 _no = "\n".join([_say(70 + i * 9) for i in range(5)] + [_say(30)] * 5)
-ok([c for c in F.check(_no, {}, {}) if "넘는다" in c], "절반만 길면 잡는다")
-ok(F.LONG_SHARE == 0.80, f"기준은 여덟 할 ({F.LONG_SHARE})")
-ok(F.TSPREAD_MIN < 0.6,
-   "퍼짐 기준을 낮췄다  ← 여덟 할을 길게 쓰면 길이는 자연히 모인다, 그걸 벌하면 두 자가 싸운다")
+ok([c for c in F.check(_no, {}, {}, want=0.8) if "이 대목은" in c],
+   "목표가 여덟 할인데 절반이면 잡는다")
+ok(not [c for c in F.check(_no, {}, {}, want=0.5) if "이 대목은" in c],
+   "**같은 원고라도 이 대목의 목표가 절반이면 통과한다**  ← 목표가 덩어리마다 다르다")
+ok([c for c in F.check(_ok, {}, {}, want=0.25) if "이 대목은" in c],
+   "짧게 갈 대목에서 다 길면 그것도 잡는다  ← 매 대목을 길게 쓰면 그것도 한 가지 가락이다")
+ok(not F.check(_ok, {}, {}), "목표를 안 주면 이 자는 안 선다  ← 자와 프롬프트가 같이 움직인다")
+
+print()
+print("[동적] **목표치가 덩어리마다 다르다** -- 고정 하한은 그 자체가 주기가 된다")
+print("      ← 짧은 '-다' 에서 이미 겪었다: 하한을 두면 하한을 정확히, 규칙적으로 맞춘다.")
+_v = [F.long_share("씨앗", n) for n in range(80)]
+ok(len(set(round(x, 2) for x in _v)) > 20, f"값이 매번 다르다 ({len(set(round(x,2) for x in _v))}가지)")
+ok(F.LONG_LO <= min(_v) and max(_v) <= F.LONG_HI,
+   f"구간 안에 있다 ({min(_v):.2f}~{max(_v):.2f})")
+_mid = (F.LONG_LO + F.LONG_HI) / 2
+_run = _best = 1
+_prev = None
+for _x in _v:
+    _hi = _x > _mid
+    _run = _run + 1 if _hi == _prev else 1
+    _prev = _hi
+    _best = max(_best, _run)
+ok(_best <= F.LOOK + 1,
+   f"한쪽으로 쏠리지 않는다 (같은 쪽 최대 {_best}번 연속)  ← 낮은 값이 내리 나오면 그 대목이 통째로 짧아진다")
+ok(abs(sum(_v) / len(_v) - _mid) < 0.1,
+   f"평균은 가운데 근처다 ({sum(_v) / len(_v):.2f})  ← 뒤집되 분포를 깎지 않는다")
+ok(F.long_share("씨앗", 7) == F.long_share("씨앗", 7),
+   "같은 씨앗·같은 번호면 같은 값이다  ← 이어 쓰기에도 재현된다")
 
 src = Path(flow.__file__).read_text(encoding="utf-8")
-ok("기본은 길게 말하는 것" in src, "프롬프트도 같은 말을 한다")
+ok("_talklong(book)" in src, "프롬프트가 자와 **같은 숫자**를 본다  ← 따로 뽑으면 어긋난다")
+ok("덩어리마다 다르다" in src, "매번 다르다고 말해 준다")
 ok("종결어미를 매번 다르게" in src, "말끝을 다르게 끝내라고 한다")
 ok("정신 나간 소리를 해라" in src, "뻘소리를 시킨다")
 ok("묻지도 않은 것까지" in src, "정보를 섞으라고 한다")

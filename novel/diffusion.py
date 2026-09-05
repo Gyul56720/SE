@@ -28,6 +28,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 
@@ -43,8 +44,48 @@ TALK_HUGE = 120
 # **대사 줄의 이만큼은 긴 대사다.** 글자 몫(bulk)만 재면 아주 긴 것 하나로 몫을 채우고
 # 나머지를 전부 짧게 써도 통과한다 -- 그래서 대사가 문장처럼 짧아졌다. 이건 줄 수로 잰다.
 # 기본은 길게 말하는 것이고, 짧게 끊는 것은 앞말에 기대는 한 마디일 때뿐이다.
-LONG_SHARE = float(os.environ.get("DRIFT_TALK_LONG_SHARE", "0.80"))
+# **목표치를 고정하지 않는다.** 하한을 하나 박아 두면 모델은 그 하한을 정확히, 그리고
+# 매번 맞춘다 -- 그러면 그 자체가 주기가 된다(짧은 '-다' 에서 이미 겪었다). 덩어리마다
+# 목표를 다시 뽑는다: 어떤 대목은 여덟 할이 길고, 어떤 대목은 둘만 길다. 씨앗에 묶여
+# 있어 이어 쓰기에도 같은 값이 나온다.
+LONG_LO = float(os.environ.get("DRIFT_TALK_LONG_LO", "0.20"))
+LONG_HI = float(os.environ.get("DRIFT_TALK_LONG_HI", "0.85"))
+LONG_SLACK = float(os.environ.get("DRIFT_TALK_LONG_SLACK", "0.15"))
+LOOK = int(os.environ.get("DRIFT_TALK_LOOK", "2"))   # 앞 이만큼이 같은 쪽이면 뒤집는다
 TSPREAD_MIN = float(os.environ.get("DRIFT_TALK_SPREAD", "0.45"))
+
+
+def _raw_share(seed: str, n: int) -> float:
+    h = hashlib.sha256(f"{seed}|{n}|talklong".encode()).digest()
+    return LONG_LO + (LONG_HI - LONG_LO) * (int.from_bytes(h[:8], "big") % 10000) / 9999
+
+
+def long_share(seed: str, n: int) -> float:
+    """이 덩어리에서 **긴 대사가 차지할 몫**. 덩어리마다 다르다.
+
+    구간을 그대로 쓴다 -- 몇 개짜리 목록으로 끊어 두면 그 몇 개가 다시 주기가 된다.
+
+    다만 **한쪽에 쏠리는 것은 막는다.** 해시는 고르게 나오지만 고르다는 것은 짧게
+    보면 몰릴 수 있다는 뜻이기도 하다 -- 낮은 값이 내리 다섯 번 나오면 그 대목은
+    통째로 대사가 짧아진다. 앞 앞 몇 개를 보고 같은 쪽이 이어졌으면 반대쪽으로
+    접어 넣는다(값을 버리지 않고 구간 안에서 뒤집는다 -- 버리면 분포가 한쪽으로
+    깎인다)."""
+    mid = (LONG_LO + LONG_HI) / 2
+    # **확정된 값끼리 비교해야 한다.** 날값끼리만 보면 앞에서 이미 뒤집혀 옮겨 온 자리를
+    # 못 본다 -- _pick 이 같은 함정을 겪고 적어 둔 그대로다(실측: 그렇게 했더니 같은
+    # 쪽이 다섯 번 이어졌다). 조금 앞에서부터 차례로 확정해 온다.
+    start = max(0, n - LOOK * 4)
+    done: list[float] = []
+    for i in range(start, n + 1):
+        v = _raw_share(seed, i)
+        if len(done) >= LOOK:
+            side = [x > mid for x in done[-LOOK:]]
+            if all(side) and v > mid:            # 내리 높았다 -- 이번엔 낮은 쪽으로
+                v = LONG_LO + (LONG_HI - v)
+            elif not any(side) and v <= mid:     # 내리 낮았다 -- 이번엔 높은 쪽으로
+                v = LONG_HI - (v - LONG_LO)
+        done.append(min(LONG_HI, max(LONG_LO, v)))
+    return done[-1]
 TALK_MIN = 5             # 대사가 이만큼은 있어야 몫을 따진다
 
 # **회수는 반복이 아니다.** 회수를 "앞에서 나온 이름을 다시 쓰기" 로만 재면, 가장 싸게
@@ -301,7 +342,8 @@ def measure(text: str, before: dict, after: dict) -> dict:
             "labels": labels(text)}
 
 
-def check(text: str, before: dict, after: dict, now: int = 0) -> list[str]:
+def check(text: str, before: dict, after: dict, now: int = 0,
+          want: float | None = None) -> list[str]:
     """옅어진 자리만 사람 말로 돌려준다."""
     m = measure(text, before, after)
     old = props(before)
@@ -398,13 +440,16 @@ def check(text: str, before: dict, after: dict, now: int = 0) -> list[str]:
                    f"{LIMITS['srun']}번을 넘기지 마라 -- 짧게 받아치는 것은 **앞말에 기대는 "
                    f"한 마디**일 때뿐이고, 그것이 이어지면 주고받기가 아니라 딸꾹질이다")
     mix = m.get("mix")
-    if mix and sum(mix) >= TALK_MIN:
+    if mix and sum(mix) >= TALK_MIN and want is not None:
         share = mix[0] / sum(mix)
-        if share < LONG_SHARE:
-            out.append(f"대사 줄의 {share:.0%}만 {TALK_LONG}자를 넘는다. "
-                       f"{LONG_SHARE:.0%}는 넘겨라 -- **기본은 길게 말하는 것**이다. "
-                       f"할 말이 있으면 다 하고, 딴 얘기로 새고, 묻지 않은 것까지 말한다. "
-                       f"짧게 끊는 것은 앞사람 말을 받아칠 때만 가끔이다")
+        if share < want - LONG_SLACK:
+            out.append(f"대사 줄의 {share:.0%}만 {TALK_LONG}자를 넘는다. **이 대목은 "
+                       f"{want:.0%}**다 -- 할 말이 있으면 다 하고, 딴 얘기로 새고, 묻지 "
+                       f"않은 것까지 말한다. 짧게 끊는 것은 앞사람 말을 받아칠 때만이다")
+        elif share > want + LONG_SLACK and want <= 0.5:
+            out.append(f"대사 줄의 {share:.0%}가 {TALK_LONG}자를 넘는다. **이 대목은 "
+                       f"{want:.0%}**다 -- 여기서는 짧게 주고받아라. 매 대목을 길게 쓰면 "
+                       f"그것도 한 가지 가락이다")
     return out
 
 

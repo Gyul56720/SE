@@ -639,6 +639,13 @@ def _push(book: dict) -> str:
     return _diffuse(book)
 
 
+def _talklong(book: dict) -> float:
+    """이 덩어리에서 긴 대사가 차지할 몫. 자와 프롬프트가 **같은 숫자**를 봐야 한다 --
+    따로 뽑으면 시키는 것과 재는 것이 어긋난다."""
+    return diffusion.long_share(book.get("seed_id") or book.get("first", ""),
+                                len(book["chunks"]))
+
+
 def _diffuse(book: dict) -> str:
     """**확산 지시** -- 뒤로 갈수록 옅어지는 것을 여기서 막는다.
 
@@ -669,7 +676,9 @@ def _diffuse(book: dict) -> str:
   * 긴 대사 **{diffusion.LIMITS['long']}개 이상**({diffusion.TALK_LONG}자 넘게) -- 누가 한 번은
     길게 떠든다. 변명이든, 수다든, 아무도 안 물어본 집안 내력이든, 틀린 지식이든.
     **소품의 유래는 서술이 아니라 이 자리에서 나온다.**
-  * **대사 줄의 {diffusion.LONG_SHARE:.0%}는 {diffusion.TALK_LONG}자를 넘는다 -- 이건 재서 판정한다.**
+  * **이 대목은 대사 줄의 {_talklong(book):.0%}가 {diffusion.TALK_LONG}자를 넘는다 -- 이건 재서 판정한다.**
+    이 숫자는 **덩어리마다 다르다.** 어떤 대목은 여덟 할이 길고 어떤 대목은 둘만 길다 --
+    한 숫자로 매번 맞추면 그것도 한 가지 가락이다.
     **기본은 길게 말하는 것**이다. 할 말이 있으면 다 하고, 딴 얘기로 새고, 묻지 않은
     것까지 말한다. {diffusion.TALK_SHORT}자 이하로 짧게 끊는 것은 **앞사람 말에 기대는 한 마디**일
     때뿐이고, 내리 {diffusion.LIMITS['srun']}번을 넘으면 주고받기가 아니라 딸꾹질이다.
@@ -1084,7 +1093,7 @@ def step(book: dict, llm, log=None) -> dict:
     left = clashes + rhythm.check(text) + echo.check(text, "".join(book["chunks"]))
     if not book.get("_shock"):
         left += diffusion.check(text, book["ledger"], probe,
-                                now=len(book["chunks"]))
+                                now=len(book["chunks"]), want=_talklong(book))
     if left:
         _debt(book, len(book["chunks"]), left, path=book.get("_path"))
         D._log(f"[flow] 못 고친 {len(left)}건은 장부에 적어 둔다 (원고는 그대로 쓴다)")
