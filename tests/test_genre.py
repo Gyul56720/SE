@@ -192,3 +192,40 @@ if _bad:
     print(f"갈래: {len(_bad)}개 실패 -- {_bad}")
     raise SystemExit(1)
 print("갈래: 갈아끼우기 · 저울 · 사슬 · 격리 -- 통과")
+
+print()
+print("[변수] **고정 파라미터는 안 바뀌고, 서사 변수는 바뀐다**")
+print("      ← 도중에 시점이나 세계 법칙이 흔들리면 설정이 충돌한다. 원장이")
+print("        무모순성을 지키는 것과 같은 이유다.")
+_bk4 = flow.blank(flow.FIRST)
+ok(set(_bk4["fixed"]) == {"시점", "전제", "톤", "법칙"}, "고정 넷을 들고 있다")
+_fb = flow.fixed_brief(_bk4)
+ok("원고 내내 안 바뀐다" in _fb, "안 바뀐다고 못박는다")
+ok("만약 ~한다면" in _fb, "핵심 전제를 묻는다")
+ok("보여서" in _fb, "선언하지 말고 보여서 정하라고 한다")
+_bk4["fixed"]["시점"] = "1인칭 주인공"
+ok("**1인칭 주인공**" in flow.fixed_brief(_bk4), "정해진 것은 그대로 실린다")
+
+ok("표면 목표" in flow.CARD and "내면 결핍" in flow.CARD,
+   "인물 카드에 Want 와 Need 가 있다")
+_ex = flow.extract_prompt("아무 산문")
+ok("의식적으로 쫓는 것" in _ex and "본인이 모르는 채로 모자란 것" in _ex,
+   "추출기가 둘을 갈라 뽑는다")
+ok("둘은 어긋나 있어야 한다" in _ex, "어긋나야 옮겨 갈 데가 생긴다")
+ok("bonds" in _bk4["ledger"], "원장에 관계 지수 칸이 있다")
+ok("적대가 조력으로" in _ex, "관계가 바뀌는 것이 이야기라고 말한다")
+
+print()
+print("[세기] **갈등은 쌓이고, 쌓이면 조인다**")
+for _owed, _since, _word in ((1, 500, "느슨"), (6, 2000, "조여"), (11, 3800, "팽팽")):
+    _bk4["ledger"]["open"] = {f"o{i}": 1 for i in range(_owed)}
+    _bk4["since"] = _since
+    _bk4["chunks"] = ["x"]
+    _tb = flow.tension_brief(_bk4)
+    ok(_word in _tb, f"미결 {_owed} · {_since}자 → {_tb[:34]}")
+ok(flow.tension_brief(flow.blank(flow.FIRST)) == "", "첫 덩어리에는 세기를 안 말한다")
+
+_p9 = flow.write_prompt(dict(flow.blank(flow.FIRST), chunks=["x" * 300]))
+ok("속에 있는 것은 밖으로 나와야 한다" in _p9,
+   "내현이 외현으로 발현되게 한다  ← 속만 적으면 일기다")
+ok("[고정]" in _p9 and "[세기]" in _p9, "둘 다 프롬프트에 실린다")

@@ -54,7 +54,10 @@ from novel import style                                               # noqa: E4
 # 인물 카드에 적는 것. **정하면 적어두고 다음부터 참조한다** -- 적어두지 않으면 모델은
 # 세 덩어리 뒤에 다른 사람으로 만든다. 대사가 인물마다 달라지는 것도 이 카드에서 나온다:
 # "거칠게" 는 한 인물의 특징이지 소설의 규칙이 아니다.
+# "표면 목표" 와 "내면 결핍" 은 짝이다 -- 인물이 쫓는 것과 실제로 모자란 것.
+# 둘이 어긋나 있어야 사건을 겪으며 무게가 옮겨 갈 데가 생긴다. 본인은 앞의 것만 안다.
 CARD = ("나이", "키", "몸", "속", "관계", "성격", "혈액형", "가족", "과거", "트라우마",
+        "표면 목표", "내면 결핍",
         "좋아하는 것", "싫어하는 것", "취미", "전공", "직업", "말투", "버릇", "겉모습")
 
 # **게이트는 최소로 만든다.** 자유도가 이 모드의 전부다 -- 기각이 잦으면 그 자유가 죽는다.
@@ -195,12 +198,17 @@ def blank(first: str = FIRST) -> dict:
     # 여기만 미결이다. 증명이 흘러가는 느낌은 결론이 정해져서가 아니라 갚아야 할 것이
     # 쌓여 있어서 생긴다 -- 닫힌 사실만 적으면 매 덩어리가 자기 안에서 완결되고, 그러면
     # 표류가 아니라 나열이 된다.
+    # **고정 파라미터.** 원고가 시작될 때 정해지고 **바뀌지 않는다.** 서사 도중에
+    # 흔들면 설정이 충돌하고 개연성이 무너진다 -- 우리 원장이 무모순성을 지키는 것과
+    # 같은 이유다. 비어 있으면 첫 덩어리에서 정해져 그대로 굳는다.
     return {"first": first, "chunks": [], "shocks": 0, "since": 0, "drift": DRIFT,
             "genre": GENRE.DEFAULT,
+            "fixed": {"시점": "", "전제": "", "톤": "", "법칙": ""},
             "matter": MATTER, "trait": TRAIT, "bond": BOND, "bridge": BRIDGE, "exception": EXCEPTION, "doubt": DOUBT, "pov": POV,
             "ledger": {
         "people": {}, "places": {}, "facts": {}, "time": [], "objects": {},
-        "words": {}, "open": {}, "rules": {}, "macguffin": {}, "_folded": []}}
+        "words": {}, "open": {}, "rules": {}, "macguffin": {}, "bonds": {},
+        "_folded": []}}
 
 
 def _merge(ledger: dict, delta: dict, at: int = 0) -> list:
@@ -267,6 +275,12 @@ def _merge(ledger: dict, delta: dict, at: int = 0) -> list:
         ledger["people"][name] = card
 
     # ---- 나머지: **기록만 한다. 절대 기각하지 않는다.**
+    # 관계 지수는 **바뀌라고 있는 것**이다 -- 적대가 조력이 되고 동맹이 적이 되는 것이
+    # 이야기다. 그래서 늘 새 값으로 덮는다(다른 칸은 자세한 쪽을 남긴다).
+    for k, raw in (delta.get("bonds") or {}).items():
+        v = _clean(raw)
+        if v is not None:
+            ledger.setdefault("bonds", {})[k] = v
     for bucket in ("places", "facts", "objects", "words", "open", "rules",
                    "macguffin"):
         for k, raw in (delta.get(bucket) or {}).items():
@@ -733,6 +747,9 @@ def _diffuse(book: dict) -> str:
     무슨 말인지 모르게 되면 그건 실패다.
   * 말끝은 그 사람이 지금 어떤 상태인지를 드러내는 자리다. 매번 같은 어미로 끝내지 마라.
   * **묘사 한가운데로 대사가 뛰어들어도 된다.** 따옴표 없이, 쉼표 사이로.
+  * **속에 있는 것은 밖으로 나와야 한다.** 인물이 무엇을 참고 무엇을 원하는지는
+    생각으로 적지 말고 **행동과 물건과 말버릇으로** 드러내라 -- 손이 하는 짓, 사 온 것,
+    안 하는 말. 속만 적으면 일기이고, 밖으로 나와야 사건이 된다.
 
 {_impulse(book)}
 {_open(book)}
@@ -993,6 +1010,10 @@ def write_prompt(book: dict, feedback: str = "") -> str:
 
 {OPENING if opening else _push(book)}
 
+{fixed_brief(book)}
+
+{tension_brief(book)}
+
 {_genre(book)}
 
 {turned(book)}
@@ -1017,12 +1038,21 @@ def extract_prompt(chunk: str) -> str:
   쓸 수 있는 칸: {" · ".join(CARD)}
 - **관계 칸**에는 다른 인물과의 사이를 적어라 -- "요우의 옛 애인", "한나와 돈이 얽혔다".
   한 번 맺어진 관계는 저절로 풀리지 않는다.
+- **표면 목표**는 그 사람이 **의식적으로 쫓는 것**이다 -- 자리, 돈, 사람, 갚기, 빠져나가기.
+  **내면 결핍**은 본인이 모르는 채로 모자란 것이고, 둘은 어긋나 있어야 한다.
+  결핍은 **행동으로 적어라** -- 감정 이름이나 진단명은 쓰지 마라. 안 드러났으면 비워라.
+- **bonds 에는 인물 사이의 사이값을 적어라** -- {{"도영-한나": "빚 때문에 조심한다"}} 처럼
+  두 이름을 하이픈으로 잇고, 지금 어떤 사이인지 한 줄로. 사건을 겪으면 값이 바뀐다.
+  적대가 조력으로, 동맹이 적으로 바뀌는 것이 이야기다.
 - **몸 칸**에는 겉으로 드러나는 조건을 적어라 -- 안 들리는 귀, 안 크는 키, 떨리는 손.
 - **속 칸**에는 그 사람이 늘 지고 다니는 것을 적어라 -- 다만 **행동으로 적어라**
   ("칭찬을 받으면 화제를 돌린다"). 감정 이름이나 진단명은 쓰지 마라.
 - 한 번 적힌 것은 끝까지 그 사람의 것이다.
 - **macguffin 에는 "다들 그것 때문에 움직이는데 정체가 안 밝혀진 것" 을 적어라.** 하나면
   족하다. 이미 적혀 있으면 새로 적지 마라 -- 맥거핀이 둘이면 둘 다 안 궁금해진다.
+- **fixed 에는 원고 내내 안 바뀌는 넷을 적어라** -- 시점(누가 보고 말하는가) ·
+  전제("만약 ~한다면") · 톤(온도와 결) · 법칙(이 세계에서 되는 것과 안 되는 것).
+  **이미 적혀 있으면 건드리지 마라.** 글에서 확실히 읽히는 것만 채운다.
 - **rules 에는 이 세계의 통칙을 적어라** -- 늘 그렇다고 말해진 것("겨울엔 배를 안 띄운다").
   한 번 세워진 통칙은 예외가 나와도 지워지지 않는다. 예외는 통칙을 정교하게 만든다.
 - **folded 에는 그 통칙이 갈음한 낱낱의 사실 이름**을 적어라. 없으면 빈 목록.
@@ -1116,6 +1146,14 @@ def step(book: dict, llm, log=None) -> dict:
         except ValueError as e:
             D._log(f"[flow] 추출 실패({e}) -- 원장 갱신 없이 간다")
             delta = {}
+        # **고정 파라미터는 한 번만 채워진다.** 이미 값이 있으면 덮지 않는다 --
+        # 도중에 바뀌면 설정이 충돌한다. 빈 칸만 받는다.
+        for k, v in (delta.get("fixed") or {}).items():
+            if k in book.get("fixed", {}) and not book["fixed"][k]:
+                v = _clean(v)
+                if v:
+                    book["fixed"][k] = v
+                    D._log(f"[flow] 고정 {k} = {v[:40]}")
         probe = json.loads(json.dumps(book["ledger"]))
         return probe, _merge(probe, delta, at=len(book["chunks"]))
 
@@ -1194,6 +1232,55 @@ def _kind_of(msg: str) -> str:
         if key in msg:
             return name
     return msg[:12]
+
+
+def fixed_brief(book: dict) -> str:
+    """**고정 파라미터.** 원고가 시작될 때 정해지고 바뀌지 않는다.
+
+    서사 도중에 시점이나 세계 법칙이 흔들리면 설정이 충돌하고 개연성이 무너진다 --
+    원장이 무모순성을 지키는 것과 같은 이유다. 비어 있으면 첫 덩어리가 정하고,
+    추출기가 원고에서 읽어 채운 뒤로는 그대로 간다."""
+    f = book.get("fixed") or {}
+    done = {k: v for k, v in f.items() if v}
+    lines = ["[고정] **이것은 원고 내내 안 바뀐다. 바꾸지 마라.**"]
+    for key, why in (("시점", "누가 보고 말하는가. 인칭과 거리"),
+                     ("전제", "'만약 ~한다면' -- 이 이야기를 관통하는 물음"),
+                     ("톤", "온도와 결"),
+                     ("법칙", "이 세계에서 되는 것과 안 되는 것")):
+        got = done.get(key)
+        lines.append(f"  · {key} -- " + (f"**{got}**" if got
+                                         else f"아직 안 정해졌다. **이 덩어리에서 정하고"
+                                              f" 그대로 간다** ({why})"))
+    if len(done) < 4:
+        lines.append("  · 정한 것은 원고에 드러나게 써라 -- 선언하지 말고 **보여서** 정해라.")
+    return "\n".join(lines)
+
+
+def tension(book: dict) -> float:
+    """**갈등의 세기.** 사건을 겪을수록 오른다.
+
+    표류에는 클라이맥스가 없지만 **국소적인 상승**은 있어야 한다 -- 아무 일도 세지지
+    않으면 읽는 사람에게는 나열이다. 마지막 사건 이후 쌓인 분량과 아직 안 닫힌 것의
+    수를 같이 본다. 닫지 않은 것이 많을수록 판이 조여 있다는 뜻이다."""
+    owed = len(book["ledger"].get("open") or {})
+    since = book.get("since", 0)
+    return min(1.0, owed / 12 * 0.6 + min(since, 4000) / 4000 * 0.4)
+
+
+def tension_brief(book: dict) -> str:
+    t = tension(book)
+    if not book.get("chunks"):
+        return ""
+    if t < 0.35:
+        how = ("**아직 느슨하다.** 서두르지 마라 -- 사람과 자리를 더 놓고, 갚을 것을"
+               " 만들어 둬라. 지금 조이면 나중에 조일 것이 없다.")
+    elif t < 0.7:
+        how = ("**조여 가는 중이다.** 앞서 걸어 둔 것 하나가 이번에 값을 물어야 한다."
+               " 문장은 조금 빨라지고, 설명은 줄고, 사람은 덜 참는다.")
+    else:
+        how = ("**팽팽하다.** 문장을 짧게 끊고, 설명을 걷어내고, 한 자리에서 결판을 내라."
+               " 여기서 더 벌리지 마라 -- 벌리면 늘어진다. 하나는 반드시 닫아라.")
+    return f"[세기] 지금 {t:.0%}. {how}"
 
 
 def turned(book: dict) -> str:
