@@ -318,4 +318,28 @@ ok(llm_pool._retry_delay(RuntimeError("429 ... 'retryDelay': '45s'")) == 45.0,
    "429 에 실린 retryDelay 를 읽는다  ← 구글이 알려 준 값이 추측보다 정확하다")
 ok(llm_pool._retry_delay(RuntimeError("429")) == 0.0, "없으면 0 -- 그때만 추측한다")
 
+print()
+print("[지연] **이름으로 짐작하지 말고 재서 쓴다**")
+print("      ← 탐침 실측: 같은 'flash' 인데 flash-lite-latest 1.0초, 3.5-flash 12.7초.")
+print("        열세 배다. 이름 등급은 세대가 바뀌면 낡는데 걸린 시간은 안 낡는다.")
+llm_pool.MIN_GAP = 0
+llm_pool.FANOUT = 2
+
+
+def _laps(spec, n):
+    llm_pool._LAT.clear()
+    llm_pool._LAST_USED.clear()
+    llm_pool._LAST_KEY.clear()
+    pool = [(lb, _Slow(lb, False, d)) for lb, d in spec]
+    return [llm_pool.call(pool, "x", verbose=False)[1] for _ in range(n)]
+
+
+_picks = _laps([("kA:slow", 0.5), ("kB:fast", 0.02),
+                ("kC:mid", 0.2), ("kD:other", 0.35)], 7)
+ok(len(set(_picks[:3])) >= 2, f"처음엔 여러 후보를 재본다 ({_picks[:3]})")
+ok(_picks[-1] == "kB:fast", f"재본 뒤에는 제일 빠른 것으로 간다 ({_picks[-1]})")
+ok(llm_pool._lat("한 번도 안 재본 것") == 0.0,
+   "안 재본 것은 낙관한다  ← 중간값으로 두면 한 번 이긴 후보만 계속 쓰고 나머지는 영원히 안 재본다")
+ok(len(llm_pool._LAT) >= 3, f"몇 번이면 대부분 재진다 ({len(llm_pool._LAT)}개)")
+
 print("llm_pool RPM: 판정·쿨다운·복귀·일일소진 구분·야간 생존 -- 통과")

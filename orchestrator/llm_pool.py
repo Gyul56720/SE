@@ -80,6 +80,24 @@ _LAST_USED: dict = {}
 # 판단해 같은 키를 잇달아 두드린다 -- 그러면 간격을 지킨 셈인데도 429 가 온다
 # (실측 2026-09-05: 서로 다른 키가 연달아 RPM 으로 떨어졌다).
 _LAST_KEY: dict = {}
+# 후보별 응답 시간(성공했을 때). **이름으로 짐작하지 말고 재서 쓴다.**
+#
+# 실측 2026-09-05(탐침): 같은 "flash" 인데 gemini-flash-lite-latest 는 1.0초,
+# gemini-3.5-flash 는 12.7초였다. 열세 배다. 이름 기반 등급(_model_rank)은 세대가
+# 바뀔 때마다 낡는데, 걸린 시간은 안 낡는다.
+_LAT: dict = {}
+LAT_MEMORY = 0.7          # 새 측정을 이만큼 반영한다(나머지는 옛값)
+
+
+def _lat(label: str) -> float:
+    """이 후보의 응답 시간 추정.
+
+    **안 재본 것은 0으로 둔다 -- 낙관한다.** 중간값으로 두면 한 번 이긴 후보가 계속
+    앞에 서고 나머지는 영원히 안 재본 채로 남는다(실측: 0.4초짜리가 계속 뽑히는 동안
+    0.05초짜리는 한 번도 안 불렸다). 모르는 것을 먼저 재보는 편이 낫다 -- 어차피 묶음으로
+    던지니 느린 후보가 섞여도 손해가 없고, 몇 번이면 전부 재진다.
+    """
+    return _LAT.get(label, 0.0)
 
 
 def _retry_delay(e) -> float:
@@ -282,8 +300,10 @@ def call(pool, prompt: str, pool_id: str = "orchestrator", max_candidates: int =
         # **방금 쓴 후보는 뒤로.** 이것이 첫 번째 정렬 키다 -- 모델 등급보다 앞선다.
         # 좋은 모델이라도 3초 전에 썼으면 지금 두드려봐야 429 만 받는다.
         # 키 간격이 먼저다 -- 모델을 바꿔 봐야 같은 키면 같은 한도를 쓴다.
+        # 그 다음은 **재본 응답 시간**이다. 이름 등급은 재본 적 없는 후보의 기본값으로만
+        # 쓴다 -- 한 번이라도 재봤으면 그 숫자가 이름보다 정확하다.
         return (_since_key(label) < MIN_GAP, _since_used(label) < MIN_GAP,
-                rem <= 0, _model_rank(model), -rem)
+                rem <= 0, round(_lat(label), 1), _model_rank(model), -rem)
 
     limit = MAX_CANDIDATES if max_candidates is None else max_candidates
     last_error, tried, skipped = None, 0, 0
@@ -379,6 +399,9 @@ def call(pool, prompt: str, pool_id: str = "orchestrator", max_candidates: int =
                         continue
                     quota_tracker.record_success(label)
                     quota_tracker.set_pinned(pool_id, label)
+                    took = time.time() - now
+                    _LAT[label] = (LAT_MEMORY * took
+                                   + (1 - LAT_MEMORY) * _LAT.get(label, took))
                     won = (text, label)
                     break
             finally:
