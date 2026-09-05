@@ -52,10 +52,16 @@ ok(len({trait.draw("s", i)["outer"] for i in range(60)}) > 25,
 print()
 print("[섞임] **매번 다 붙이면 인물이 관계표가 된다**")
 b = flow.blank()
+# 관계와 설정은 **곁들이 한 자리**를 다른 축들과 나눠 쓴다. 각자 비율은 후보가 되는
+# 문턱이고, 한 덩어리에 실제로 실리는 곁들이는 하나뿐이다 -- 여럿이 겹치면 급발진이
+# 목소리 중 하나로 묻힌다(실측).
 rel = sum("[관계]" in flow.write_prompt(dict(b, chunks=["x"] * i)) for i in range(1, 101))
 bod = sum("[설정]" in flow.write_prompt(dict(b, chunks=["x"] * i)) for i in range(1, 101))
-ok(25 < rel < 55, f"관계는 절반 아래 ({rel}/100)")
-ok(20 < bod < 55, f"몸도 절반 아래 ({bod}/100)")
+ok(0 < rel < 45, f"관계가 곁들이로 돈다 ({rel}/100)")
+ok(0 < bod < 45, f"설정도 곁들이로 돈다 ({bod}/100)")
+ok(all(("[관계]" in flow.write_prompt(dict(b, chunks=["x"] * i)))
+       + ("[설정]" in flow.write_prompt(dict(b, chunks=["x"] * i))) <= 1
+       for i in range(1, 51)), "둘이 같은 덩어리에 겹치지 않는다")
 ok("관계" in flow.CARD and "몸" in flow.CARD, "카드에 관계·몸 칸이 있다")
 ok("관계 칸" in flow.extract_prompt("x") and "몸 칸" in flow.extract_prompt("x"),
    "추출기가 둘 다 적는다  ← 한 번 맺어진 관계는 저절로 풀리지 않는다")

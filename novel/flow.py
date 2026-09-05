@@ -532,6 +532,29 @@ def _bridge(book: dict) -> str:
     return bridge.brief(bridge.draw(book["ledger"], seed, n))
 
 
+# 곁들이 축. **한 덩어리에 하나만 실린다.**
+#
+# 전부 각자 비율로 켜지게 두었더니 절반 넘는 덩어리에 둘 이상이 겹쳤고(실측 100덩어리:
+# 2개 34회 · 3개 17회 · 5개 3회), 프롬프트가 18,000자를 넘었다. 그러면 급발진이 아홉
+# 목소리 중 하나가 된다 -- 계수는 1.0 이라 매번 켜져 있는데도 원고에는 안 나온다.
+# 사용자 평(2026-09-05): "주인공의 급발진이 적어."
+#
+# **덜 시키면 더 나온다.** 급발진과 확산은 매번 가고, 나머지는 이 중 하나만 곁들인다.
+SIDES = ("bond", "trait", "doubt", "bridge", "exception", "pov", "matter")
+
+
+def _side(book: dict) -> str:
+    """이번 덩어리의 곁들이 하나. 켜진 것들 중에서 하나만 고른다."""
+    makers = {"bond": _bond, "trait": _trait, "doubt": _doubt, "bridge": _bridge,
+              "exception": _exception, "pov": _pov, "matter": _matter}
+    ready = [(k, t) for k in SIDES for t in [makers[k](book)] if t]
+    if not ready:
+        return ""
+    seed = book.get("seed_id") or book["first"]
+    n = len(book["chunks"])
+    return ready[doubt._raw(ready, seed, n, "side")][1]
+
+
 def _open(book: dict) -> str:
     """**열린 것** -- 이 이야기가 아직 갚지 않은 것들.
 
@@ -638,16 +661,10 @@ def _diffuse(book: dict) -> str:
     매번 새 소리다. 문장을 끝까지 맺지 않아도, 어순이 뒤집혀도, 조사가 빠져도 된다.
     **말끝을 다듬으면 그게 딱딱함이다.**
 
-{_open(book)}
-{_bridge(book)}
-{_exception(book)}
-{_macguffin(book)}
-{_doubt(book)}
-{_pov(book)}
 {_impulse(book)}
-{_bond(book)}
-{_trait(book)}
-{_matter(book)}
+{_open(book)}
+{_macguffin(book)}
+{_side(book)}
 [잡소리] **쓸데없는 말이 이 소설의 재미다. 이 덩어리에 적어도 하나는 넣어라.**
 다만 **전부 하려 들지 마라.** 여섯을 다 채우면 그게 버릇이 되고, 버릇이 되는 순간
 안 웃긴다. **하나는 반드시, 많아야 둘.** 그리고 늘 같은 수를 쓰지 마라.

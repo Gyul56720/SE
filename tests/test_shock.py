@@ -101,6 +101,8 @@ dupc = sum(SH.impulse("s", i)["calm"] == SH.impulse("s", i + 1)["calm"] for i in
 ok(dupc == 0, f"태연함도 연달아 같지 않다 ({dupc}건)")
 
 brief = SH.impulse_brief(SH.impulse("a", 0))
+ok(brief.startswith("[급발진]"),
+   "제 이름을 단 항목으로 선다  ← 글머리표로 두면 대사 규칙의 하위 항목처럼 읽힌다")
 ok("주인공이 저지른다" in brief and "본인은 그게 급발진인 줄 모른다" in brief,
    "급발진은 사건이 아니라 사람이다  ← 뽑기로 굴리는 돌발이 아니라 기본값이다")
 
@@ -137,9 +139,9 @@ bk3 = flow.blank()
 bk3["chunks"] = ["앞 덩어리."]
 bk3["drift"] = 1.0          # 여기서 보는 것은 **내용**이다. 빈도는 아래에서 따로 본다.
 p3 = flow.write_prompt(bk3)
-ok("급발진 하나" in p3, "확산 덩어리에 급발진이 실린다  ← 확산을 대신하지 않고 그 안에 든다")
+ok("[급발진]" in p3, "확산 덩어리에 급발진이 실린다  ← 확산을 대신하지 않고 그 안에 든다")
 bk3["_shock"] = SH.draw("x", 0)
-ok("급발진 하나" not in flow.write_prompt(bk3),
+ok("[급발진]" not in flow.write_prompt(bk3),
    "사건 덩어리에는 안 실린다  ← 큰 것과 작은 것을 한꺼번에 시키지 않는다")
 
 print()
@@ -179,10 +181,15 @@ _on["_shock"] = SH.draw("x", 0)
 ok("[소재]" not in flow.write_prompt(_on), "켜도 사건 덩어리에는 안 실린다")
 _off = flow.blank(); _off["chunks"] = ["앞."]
 ok("[소재]" not in flow.write_prompt(_off), "기본값에서는 안 실린다  ← 껐다")
+# 소재는 이제 **곁들이 한 자리**를 다른 축들과 나눠 쓴다. 제 비율은 후보가 되는
+# 문턱이고, 실제로 실리는 것은 그중 하나뿐이다.
 _half = flow.blank(); _half["matter"] = 0.4; _half["drift"] = 1.0
 hits = sum("[소재]" in flow.write_prompt(dict(_half, chunks=["x"] * i))
            for i in range(1, 201))
-ok(50 < hits < 130, f"비율만큼만 섞인다 (0.4 → {hits}/200)  ← 조금만 켤 수 있다")
+ok(0 < hits < 130, f"비율은 후보가 되는 문턱이다 (0.4 → 실제 {hits}/200)")
+_off2 = flow.blank(); _off2["matter"] = 0.0
+ok(not any("[소재]" in flow.write_prompt(dict(_off2, chunks=["x"] * i))
+           for i in range(1, 51)), "0 이면 후보에도 안 든다")
 
 print()
 print("[사건] **셋에 하나쯤은 주인공이 불러온다**")
@@ -249,7 +256,7 @@ def _fires(level, n=200):
     hit = 0
     for i in range(1, n + 1):
         bk["chunks"] = ["x"] * i
-        if "급발진 하나" in flow.write_prompt(bk):
+        if "[급발진]" in flow.write_prompt(bk):
             hit += 1
     return hit
 
@@ -262,7 +269,7 @@ ok(half < less < full, "기준을 올리면 잦아진다  ← 흔들려도 기�
 
 bk4 = flow.blank(); bk4["drift"] = 0.5; bk4["chunks"] = ["x"] * 3
 off = flow.write_prompt(bk4)
-if "급발진 하나" not in off:
+if "[급발진]" not in off:
     ok("사람이 바뀌는 것은 아니다" in off,
        "꺼진 덩어리에서도 성격은 그대로다  ← 저지르지 않을 뿐이다")
 
@@ -345,7 +352,8 @@ ok("동정할 자리를 만들지 마라" in bb, "동정할 자리를 만들지 
 ok("끝까지 그 사람의 것이다" in bb, "한 번 정해진 것은 안 바뀐다")
 hits = sum("[설정]" in flow.write_prompt(dict(flow.blank(), chunks=["x"] * i))
            for i in range(1, 101))
-ok(20 < hits < 55, f"셋에 하나쯤만 붙는다 ({hits}/100)  ← 매번 넣으면 인물 소개서가 된다")
+# 설정도 곁들이 한 자리를 나눠 쓴다 -- 제 비율(0.35)은 후보가 되는 문턱이다.
+ok(0 < hits < 40, f"곁들이로 돈다 ({hits}/100)  ← 매번 넣으면 인물 소개서가 된다")
 ok("몸" in flow.CARD and "속" in flow.CARD, "카드에 몸 칸과 속 칸이 둘 다 있다")
 ok("속 칸" in flow.extract_prompt("x") and "감정 이름이나 진단명은 쓰지 마라"
    in flow.extract_prompt("x"),
@@ -368,6 +376,33 @@ ok("낯섦은 재료가 아니라 전개에서 나온다" in SH.brief(SH.draw("a
    "평범한 재료가 예상 밖 순서로 이어질 때 낯설어진다고 말한다")
 ok(any("말이 실제가 된다" in SH.impulse_brief(SH.impulse("s", i)) for i in range(20)),
    "마술적인 것은 [아이러니] 장치가 따로 맡는다  ← 사건과 자리를 나눠 둔다")
+
+print()
+print("[집중] **곁들이는 한 덩어리에 하나만**")
+print("      ← 각자 비율로 켜지게 두었더니 절반 넘는 덩어리에 둘 이상이 겹쳤고")
+print("        (100덩어리 중 2개 34회 · 3개 17회 · 5개 3회) 프롬프트가 18,000자를 넘었다.")
+print("        그러면 계수가 1.0 이라 매번 켜져 있어도 급발진이 아홉 목소리 중 하나가 된다.")
+_bk = flow.blank()
+for _i, (_b, _k) in enumerate([("places", "웅포"), ("objects", "소금 공장"),
+                               ("people", "도영"), ("facts", "실종"),
+                               ("objects", "무전기"), ("people", "재현"),
+                               ("places", "파출소")]):
+    flow._merge(_bk["ledger"], {_b: {_k: {"직업": "x"} if _b == "people" else "x"}}, at=_i)
+flow._merge(_bk["ledger"], {"rules": {"겨울 출항": "x"}, "open": {"왜 실종되나": "x"},
+                            "macguffin": {"소금 공장": "x"}}, at=1)
+_SIDES = ("[관계]", "[설정]", "[의심]", "[연결]", "[예외]", "[시점]", "[소재]")
+_counts = []
+_imp = 0
+for _i in range(1, 61):
+    _p = flow.write_prompt(dict(_bk, chunks=["x"] * _i))
+    _counts.append(sum(_o in _p for _o in _SIDES))
+    _imp += "[급발진]" in _p
+ok(max(_counts) <= 1, f"둘 이상 겹치지 않는다 (최대 {max(_counts)}개)")
+ok(sum(_counts) > 30, f"그래도 자주 곁들인다 ({sum(_counts)}/60)")
+ok(_imp == 60, f"급발진은 매 덩어리 실린다 ({_imp}/60)  ← 이건 곁들이가 아니라 본체다")
+_one = flow.write_prompt(dict(_bk, chunks=["x"] * 3))
+ok(_one.index("[급발진]") < _one.index("[열린 것]"),
+   "급발진이 앞자리에 선다  ← 뒤에 묻히면 안 지켜진다")
 
 print()
 if fails:
