@@ -62,6 +62,24 @@ _CLIMB = (
 # 앞 문장을 지시어로 받는 첫머리. "그" + 한두 글자 명사 + 조사.
 _ANAPHOR = __import__("re").compile(r"^(그것|그건|그게|그 [가-힣]{1,4}[은는이가도을를])")
 
+# **하한만 두면 하한을 정확히 맞춘다.** 그것도 규칙적으로.
+#
+# 실측 2026-09-05: "단문 3에 장문 1이 너무 반복적으로 나온다." 긴 문장 15% 이상을
+# 요구했더니 모델이 정확히 네 문장에 하나씩 길게 썼다 -- 자를 만족시키는 가장 싼 방법이
+# 주기가 된 것이다. 균일한 15%는 균일한 0%만큼이나 단조롭다.
+#
+# 처음엔 **퍼짐**(표준편차÷평균)으로 재려 했는데 자가 거꾸로 나왔다 -- 기준으로 삼은
+# 하루키 예문이 0.435 로 걸리고, 단문3+장문1 반복 패턴이 0.577 로 통과했다. 분산은
+# 들쭉날쭉함을 재지 주기를 못 잡는다.
+#
+# 잡아야 하는 것은 **주기**다. 긴 문장이 어디에 오는지 자리를 적어 간격을 보면, 규칙적인
+# 글은 그 간격이 다 같다(3, 3, 3, 3). 사람이 쓴 글은 안 그렇다(1, 4, 2, 6).
+BEAT_MIN = 3            # 긴 문장이 이만큼은 나와야 주기를 따질 수 있다
+# **거의 완벽하게 규칙적일 때만** 잡는다. 기준 문장(하루키)이 0.35 이고 단문3+장문1
+# 반복이 0.00 이다. 그 사이에서 낮게 잡아야 기준을 안 벌하면서 박자표만 걸린다 --
+# 자가 기준을 벌하면 자가 틀린 것이다.
+BEAT_MIN_VAR = 0.15
+
 LIMITS = {
     "da":   0.62,   # **짧은** '-다' 가 이보다 많으면 단조롭다 (하루키 예문은 14%)
     "run":  4,      # 짧은 '-다' 가 이만큼 내리 이어지면 끊어야 한다
@@ -86,6 +104,35 @@ def _lines(text: str) -> tuple[list[str], list[str]]:
             if s:
                 tell.append(s)
     return tell, talk
+
+
+def spread(nums) -> float:
+    """길이의 퍼짐(변동계수). 대사 쪽에서 쓴다 -- 거기서는 이것으로 충분하다."""
+    if len(nums) < 4:
+        return 1.0
+    mean = sum(nums) / len(nums)
+    if mean <= 0:
+        return 1.0
+    var = sum((x - mean) ** 2 for x in nums) / len(nums)
+    return (var ** 0.5) / mean
+
+
+def beat(text: str) -> tuple[int, float]:
+    """긴 문장이 **규칙적으로** 오는가. (긴 문장 수, 간격의 들쭉날쭉함) 을 돌려준다.
+
+    간격이 다 같으면 0에 가깝다 -- 그것이 박자표다. 사람이 쓴 글은 간격이 제멋대로라
+    이 값이 크다. 실측: 하루키 예문 0.63, 단문3+장문1 반복 0.00.
+    """
+    tell, _ = _lines(text)
+    at = [i for i, x in enumerate(tell) if len(x) >= LONG]
+    if len(at) < BEAT_MIN:
+        return len(at), 1.0
+    gaps = [b - a for a, b in zip(at, at[1:])]
+    mean = sum(gaps) / len(gaps)
+    if mean <= 0:
+        return len(at), 0.0
+    var = sum((g - mean) ** 2 for g in gaps) / len(gaps)
+    return len(at), (var ** 0.5) / mean
 
 
 def climb(text: str) -> int:
@@ -116,6 +163,7 @@ def measure(text: str) -> dict:
     total = len(tell) + len(talk)
     return {
         "climb": climb(text),
+        "beat": beat(text)[1],
         "da":   sum(da) / len(tell),
         "run":  best,
         "long": sum(len(s) >= LONG for s in tell) / len(tell),
@@ -147,6 +195,13 @@ def check(text: str) -> list[str]:
                    f"'아니,' '정확히 말하자면,' '그것도' '그 소리는' 으로 앞 문장을 받아라. "
                    f"그러다 끊고 다음으로 넘어가라")
 
+    if m["beat"] < BEAT_MIN_VAR:
+        out.append(f"긴 문장이 **규칙적인 자리**에 온다(들쭉날쭉함 {m['beat']:.2f}). "
+                   f"비율은 맞췄는데 **주기가 됐다** -- 짧은 것 셋에 긴 것 하나를 규칙적으로 "
+                   f"놓지 마라. 어떤 데서는 짧은 것이 다섯 번 이어지고, 어떤 데서는 긴 것이 "
+                   f"둘 연달아 오고, 어떤 데서는 한 줄이 통째로 문단이 된다. **고르면 그것은 "
+                   f"리듬이 아니라 박자표다.**")
+
     if m["long"] < LIMITS["long"]:
         out.append(f"{LONG}자 넘는 문장이 {m['long']:.0%}뿐이다. "
                    f"{LIMITS['long']:.0%}는 넘겨라 -- 짧은 문장 서넛에 하나씩은 쉼표로 이어 붙인 "
@@ -160,7 +215,8 @@ def check(text: str) -> list[str]:
 def score(text: str) -> float:
     """넘은 정도의 합. 낮을수록 좋다 -- 끝내 못 고쳤을 때 고르는 기준이다."""
     m = measure(text)
-    return (max(0, max(1, m["n"] // LIMITS["climb"]) - m["climb"]) * 0.12
+    return (max(0.0, BEAT_MIN_VAR - m["beat"]) * 0.5
+            + max(0, max(1, m["n"] // LIMITS["climb"]) - m["climb"]) * 0.12
             + max(0.0, m["da"] - LIMITS["da"])
             + max(0, m["run"] - LIMITS["run"]) * 0.05
             + max(0.0, LIMITS["long"] - m["long"])

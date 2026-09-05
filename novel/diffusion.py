@@ -35,6 +35,10 @@ _QUOTE = re.compile(r"[\"“'']")
 # 대사의 길이. 짧은 것과 긴 것이 **둘 다** 있어야 대화가 리듬을 갖는다.
 TALK_SHORT = 20
 TALK_LONG = 55
+# **진짜 긴 대사.** 55자는 두 문장이면 넘는다 -- 그걸로는 "누가 길게 떠들었다" 가 안 된다.
+# 실측 2026-09-05: "긴 대사가 없고 다들 너무 짧다." 한 덩어리에 이만한 것이 하나는 있어야
+# 한 사람이 자기 얘기에 빠져 있는 대목이 생긴다.
+TALK_HUGE = 120
 
 # **회수는 반복이 아니다.** 회수를 "앞에서 나온 이름을 다시 쓰기" 로만 재면, 가장 싸게
 # 만족시키는 길이 같은 이름을 또 적는 것이 된다. 실측(2026-09-04): 한 덩어리에
@@ -65,7 +69,8 @@ LIMITS = {
     "long":  2,     # 긴 대사(설명·변명·수다·헛소리)가 적어도 둘
     "short": 2,     # 짧은 대사(끊고 받아치는 것)가 적어도 둘
     "bulk":  0.45,  # **대사 글자 수의 이만큼은 긴 대사여야 한다**
-    "rally": 4,     # **한 번은 이만큼 주고받아야 한다** -- 대화가 이어진다는 것의 정의
+    "rally": 6,     # **한 번은 이만큼 주고받아야 한다** -- 대화가 이어진다는 것의 정의
+    "huge": 1,      # 아주 긴 대사(120자+)가 적어도 하나
     "grow":  1,     # **앞엣것에서 자라난 새 이름이 적어도 하나**
     "owed": 9,      # 열린 것이 이보다 많은데 하나도 안 닫으면 나열이 된다
 }
@@ -146,6 +151,14 @@ def talk(text: str) -> tuple[int, int]:
 def _talk3(text: str) -> tuple[int, int, float]:
     short, long, bulk, _ = _talk4(text)
     return short, long, bulk
+
+
+def talk_spread(text: str) -> float:
+    """대사 길이의 퍼짐. 다 비슷하면 주고받기가 아니라 낭독이다."""
+    from novel import rhythm
+    lens = [len(l.strip()) for l in text.splitlines()
+            if l.strip() and _QUOTE.match(l.strip())]
+    return rhythm.spread(lens)
 
 
 def _talk4(text: str) -> tuple[int, int, float, int]:
@@ -254,8 +267,11 @@ def tooled(text: str, names: list[str]) -> list[str]:
 
 def measure(text: str, before: dict, after: dict) -> dict:
     short, long, bulk, rally = _talk4(text)
+    huge = sum(1 for l in text.splitlines()
+               if l.strip() and _QUOTE.match(l.strip()) and len(l.strip()) >= TALK_HUGE)
     new_open, closed = opened(before, after)
-    return {"rally": rally, "grow": grown(before, after),
+    return {"rally": rally, "huge": huge, "tspread": talk_spread(text),
+            "grow": grown(before, after),
             "tool": tooled(text, props(before)),
             "opened": new_open, "closed": closed,
             "owed": len(after.get("open") or {}), "new": len(added(before, after)),
@@ -337,6 +353,17 @@ def check(text: str, before: dict, after: dict, now: int = 0) -> list[str]:
                    f"그건 대화가 아니라 인용이다. 한 사람이 물으면 다른 사람이 답하고, 그 답을 "
                    f"받아 또 묻고, 딴소리가 끼고, 그러다 원래 얘기로 돌아온다")
 
+    if m["long"] and m["huge"] < LIMITS["huge"]:
+        out.append(f"{TALK_HUGE}자 넘는 대사가 {m['huge']}개다. 하나는 있어야 한다 -- "
+                   f"**한 사람이 자기 얘기에 빠져서 길게 떠드는 대목.** 아무도 안 물어본 "
+                   f"내력이든, 변명이든, 틀린 지식이든. 그 안에서 스스로 말을 고치고, "
+                   f"딴 데로 샜다가, 돌아온다")
+
+    if m["long"] >= 2 and m["tspread"] < 0.6:
+        out.append(f"대사 길이가 다 비슷하다(퍼짐 {m['tspread']:.2f}). 두 마디짜리와 "
+                   f"열 줄짜리가 **같은 장면 안에** 있어야 한다 -- 다 고르면 주고받기가 "
+                   f"아니라 낭독이다")
+
     if m["short"] < LIMITS["short"]:
         out.append(f"{TALK_SHORT}자 이하 짧은 대사가 {m['short']}개다. {LIMITS['short']}개는 "
                    f"넘겨라 -- 끊고, 받아치고, 딴소리하는 짧은 말이 긴 대사 사이에 있어야 한다")
@@ -354,6 +381,7 @@ def score(text: str, before: dict, after: dict) -> float:
     s += max(0, LIMITS["long"] - m["long"]) * 0.15
     s += max(0.0, LIMITS["bulk"] - m["bulk"]) * 0.3
     s += max(0, LIMITS["rally"] - m["rally"]) * 0.08
+    s += max(0, LIMITS["huge"] - m["huge"]) * 0.2
     s += max(0, LIMITS["grow"] - len(m["grow"])) * 0.25
     if len(props(before)) >= 4 and m["back"] >= LIMITS["back"] and not m["tool"]:
         s += 0.15

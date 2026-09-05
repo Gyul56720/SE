@@ -101,6 +101,29 @@ ok("**점층**" in flow.write_prompt(dict(flow.blank(), chunks=["앞."])),
    "맨 끝 필수 목록에도 오른다  ← 묻히면 안 지켜진다")
 
 print()
+print("[박자] **하한만 두면 하한을 정확히, 규칙적으로 맞춘다**")
+print("      ← 실측 2026-09-05: '단문 3에 장문 1이 너무 반복적으로 나온다.'")
+print("        긴 문장 15% 이상을 요구했더니 정확히 네 문장에 하나씩 길게 썼다.")
+
+
+def _mk(lens):
+    return "\n".join("가" * n + "다." for n in lens)
+
+
+ok(rhythm.beat(REFERENCE)[1] > rhythm.BEAT_MIN_VAR,
+   f"기준 문장은 통과한다 (들쭉날쭉 {rhythm.beat(REFERENCE)[1]:.2f})")
+ok(rhythm.beat(_mk([20, 20, 20, 60] * 5))[1] < rhythm.BEAT_MIN_VAR,
+   "단문3+장문1 반복은 걸린다  ← 간격이 3, 3, 3, 3 이면 그건 박자표다")
+ok(rhythm.beat(_mk([18, 22, 19, 25, 70] * 4))[1] < rhythm.BEAT_MIN_VAR,
+   "단문4+장문1 반복도 걸린다  ← 주기의 길이는 상관없다")
+ok(rhythm.beat(_mk([12, 55, 90, 9, 18, 22, 7, 60, 15, 11, 25, 80]))[1]
+   > rhythm.BEAT_MIN_VAR, "제멋대로면 통과한다")
+ok(rhythm.beat("가다. 나다.")[0] < rhythm.BEAT_MIN,
+   "긴 문장이 몇 개 없으면 주기를 안 따진다  ← 셋으로는 규칙인지 우연인지 모른다")
+ok(any("규칙적인 자리" in c for c in rhythm.check(_mk([20, 20, 20, 60] * 5))),
+   "걸리면 무엇이 문제인지 말해 준다")
+
+print()
 if fails:
     print(f"리듬: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)

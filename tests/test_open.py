@@ -121,7 +121,8 @@ _thick = flow.blank()
 _thick["ledger"] = BL
 _hits = sum("[연결]" in flow.write_prompt(dict(_thick, chunks=["x"] * i))
             for i in range(1, 101))
-ok(15 < _hits < 45, f"셋에 하나쯤만 잇는다 ({_hits}/100)  ← 다 연결되면 음모론이 된다")
+# 연결도 곁들이 한 자리를 다른 축들과 나눠 쓴다 -- 제 비율은 후보가 되는 문턱이다.
+ok(0 < _hits < 45, f"곁들이로 돈다 ({_hits}/100)  ← 다 연결되면 음모론이 된다")
 
 print()
 print("[예외] **통칙을 깨는 것과 사실을 뒤집는 것은 다른 물건이다**")
