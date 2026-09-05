@@ -25,22 +25,42 @@ def main() -> int:
                     help="오늘자 소진 표시를 지운다 -- 추정이 틀렸다고 판단했을 때만")
     a = ap.parse_args()
 
+    # **후보 풀을 먼저 세운다.** 장부에는 **써 본 것만** 적힌다 -- 새 키를 넣어도 한 번도
+    # 안 불렸으면 줄 자체가 없어서, 키가 들어왔는지 여기서 확인할 수가 없었다(실측:
+    # "키 두 개밖에 안 찍혔다"). 풀을 세워 놓고 장부를 얹으면 안 쓴 것도 보인다.
+    pool_labels = []
+    try:
+        import sys as _sys
+        _sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "orchestrator"))
+        import llm_pool
+        llm_pool.ROSTER = ""                    # 명부에 걸러진 것도 다 보여 준다
+        pool_labels = [lb for lb, _ in llm_pool.build_pool()]
+    except Exception as e:                      # 키가 없으면 장부만 보여 준다
+        print(f"(후보 풀을 못 세웠다: {type(e).__name__} -- 장부에 있는 것만 보여 준다)")
+
     data = q._load()
     today = q._today()
     cool = data.get("_rpm_cooldown", {}) or {}
     dead = data.get("_dead", {}) or {}
     now = time.time()
 
+    labels = set(pool_labels) | {
+        k for k, v in data.items()
+        if not k.startswith("_") and isinstance(v, dict) and "count" in v}
     rows = []
-    for label, rec in sorted(data.items()):
-        if label.startswith("_") or not isinstance(rec, dict) or "count" not in rec:
-            continue
+    for label in sorted(labels):
+        rec = data.get(label) if isinstance(data.get(label), dict) else {}
         left = q.remaining(label)
         wait = max(0.0, float(cool.get(label, 0)) - now)
-        rows.append((label, rec.get("date", "?"), rec.get("count", 0), left, wait))
+        rows.append((label, rec.get("date", "-"), rec.get("count", 0), left, wait))
 
+    keys = sorted({label.split(":", 1)[0] for label in labels})
     print(f"오늘 {today} · 상한 추정 {q.DEFAULT_DAILY_LIMIT} "
           f"(GEMINI_DAILY_LIMIT 로 바꾼다)")
+    print(f"키 {len(keys)}개: {' · '.join(keys)}")
+    if pool_labels:
+        unused = [l for l in pool_labels if l not in data]
+        print(f"후보 {len(pool_labels)}개 (아직 안 써 본 것 {len(unused)}개도 아래 함께)")
     print("-" * 76)
     for label, date, count, left, wait in rows:
         mark = ("영구배제" if label in dead else
