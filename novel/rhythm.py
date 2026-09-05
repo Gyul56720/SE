@@ -23,6 +23,8 @@
 """
 from __future__ import annotations
 
+import hashlib
+import os
 import re
 
 # 문장 끝 '-다'. 닫는 따옴표나 괄호가 뒤에 붙어도 '-다' 로 센다.
@@ -80,6 +82,22 @@ BEAT_MIN = 3            # 긴 문장이 이만큼은 나와야 주기를 따질 
 # 자가 기준을 벌하면 자가 틀린 것이다.
 BEAT_MIN_VAR = 0.15
 
+# **긴 문장의 몫도 덩어리마다 흔든다.** 0.15 를 하한으로 두었더니 모델이 정확히 15%를,
+# 그것도 규칙적인 자리에 놓았다 -- 그것이 '단문 셋에 장문 하나' 의 정체였다.
+LONG_LO = float(os.environ.get("DRIFT_TELL_LONG_LO", "0.10"))
+LONG_HI = float(os.environ.get("DRIFT_TELL_LONG_HI", "0.40"))
+LONG_SLACK = float(os.environ.get("DRIFT_TELL_LONG_SLACK", "0.08"))
+LOOK = int(os.environ.get("DRIFT_TELL_LOOK", "2"))
+# 방향 탐색의 세기. 비례항은 흔들림을 잡고, 누적항은 정상 편차를 없앤다. 둘 다 크면
+# 진동한다 -- 목표가 위아래로 튀면 원고도 같이 튄다.
+P_GAIN = float(os.environ.get("DRIFT_P_GAIN", "0.6"))
+I_GAIN = float(os.environ.get("DRIFT_I_GAIN", "1.2"))
+
+# **몰리면 되민다.** 몫만 맞추면 앞쪽에 긴 것을 몰아 놓고 뒤를 전부 짧게 써도 통과한다.
+# 짧은 것이 이만큼 이어지면 긴 것으로 끊고, 긴 것이 이만큼 이어지면 짧은 것으로 끊는다.
+SHORT_RUN = int(os.environ.get("DRIFT_TELL_SHORT_RUN", "6"))
+LONG_RUN = int(os.environ.get("DRIFT_TELL_LONG_RUN", "3"))
+
 LIMITS = {
     "da":   0.62,   # **짧은** '-다' 가 이보다 많으면 단조롭다 (하루키 예문은 14%)
     "run":  4,      # 짧은 '-다' 가 이만큼 내리 이어지면 끊어야 한다
@@ -87,6 +105,80 @@ LIMITS = {
     "climb": 5,     # **서술문 이만큼마다 하나**는 앞 문장을 받아 올려야 한다
     "talk": 0.10,   # 대사가 이보다 적으면 '-다' 를 깰 수단이 하나 빠진 것이다
 }
+
+
+def wave(seed: str, n: int, lo: float, hi: float, look: int = 2) -> float:
+    """**덩어리마다 흔들리는 목표치.** 고정 하한은 그 자체가 주기가 된다 -- 하한을 두면
+    모델은 하한을 정확히, 그리고 매번 맞춘다(실측: 짧은 '-다' 62%, 긴 대사 여덟 할).
+
+    구간을 그대로 쓴다. 몇 개짜리 목록으로 끊어 두면 그 몇 개가 다시 주기가 된다.
+
+    **한쪽 쏠림은 막는다.** 해시는 고르지만 고르다는 것은 짧게 보면 몰릴 수 있다는
+    뜻이다 -- 낮은 값이 내리 나오면 그 대목이 통째로 한쪽으로 간다. 앞 look 개가 같은
+    쪽이면 반대쪽으로 **접어 넣는다**(값을 버리지 않고 구간 안에서 뒤집는다 -- 버리면
+    분포가 한쪽으로 깎인다).
+
+    비교는 **확정된 값끼리** 한다. 날값끼리만 보면 앞에서 이미 뒤집혀 옮겨 온 자리를
+    못 본다(실측: 그렇게 했더니 같은 쪽이 다섯 번 이어졌다)."""
+    mid = (lo + hi) / 2
+
+    def raw(i):
+        h = hashlib.sha256(f"{seed}|{i}|{lo}|{hi}".encode()).digest()
+        return lo + (hi - lo) * (int.from_bytes(h[:8], "big") % 10000) / 9999
+
+    done: list[float] = []
+    for i in range(max(0, n - look * 4), n + 1):
+        v = raw(i)
+        if len(done) >= look:
+            side = [x > mid for x in done[-look:]]
+            if all(side) and v > mid:
+                v = lo + (hi - v)
+            elif not any(side) and v <= mid:
+                v = hi - (v - lo)
+        done.append(min(hi, max(lo, v)))
+    return done[-1]
+
+
+def steer(seen: list, lo: float, hi: float, look: int = 3,
+          fallback: float = None) -> float:
+    """**방향 탐색.** 눈감고 흔드는 대신 **지난 덩어리에서 실제로 나온 값**을 보고 민다.
+
+    wave() 는 해시로 목표를 흔든다 -- 원고를 안 보므로, 시킨 것과 나온 것이 어긋나도
+    모른다. 목표를 여덟 할로 줬는데 넷 할이 나왔으면 다음 목표는 더 높아야 한다.
+    그것이 이어지는 것이고, 수렴하는 것이다.
+
+    미는 방향은 **모자란 쪽**이다. 최근 look 개의 평균이 구간의 가운데보다 낮으면
+    위쪽을 겨누고, 높으면 아래쪽을 겨눈다. 얼마나 미는가는 어긋난 만큼이다 --
+    조금 어긋났으면 조금만 민다(한 번에 되돌리면 그것이 다시 진동이 된다).
+
+    잰 것이 없으면 fallback(없으면 가운데)으로 시작한다 -- 첫 덩어리는 밀 방향이 없다.
+    """
+    mid = (lo + hi) / 2
+    if not seen:
+        return mid if fallback is None else fallback
+    recent = seen[-look:]
+    avg = sum(recent) / len(recent)
+    # 가운데에서 벗어난 만큼을 반대쪽으로 되돌린다. 계수 1.0 이면 대칭으로 튕겨
+    # 진동하므로 절반만 민다 -- 되돌리되 넘어가지는 않게.
+    # 비례항만 두면 **모자란 자리에서 멈춘다** -- 미는 힘과 안 따라오는 힘이 균형을
+    # 이루는 지점이 가운데가 아니기 때문이다(실측: 0.25 를 겨눴는데 0.22 에서 섰다).
+    # 그래서 **쌓인 어긋남**을 함께 민다. 계속 모자라면 목표가 계속 올라간다.
+    debt = sum(mid - x for x in seen[-look * 4:]) / max(1, len(seen[-look * 4:]))
+    want = mid + (mid - avg) * P_GAIN + debt * I_GAIN
+    return min(hi, max(lo, want))
+
+
+def aim(seed: str, n: int, seen: list, lo: float, hi: float,
+        look: int = 3, jitter: float = 0.25) -> float:
+    """**이번 덩어리의 목표.** 방향 탐색(steer)이 중심을 잡고, 흔들기(wave)가 폭을 준다.
+
+    둘 중 하나만으로는 모자란다. 흔들기만 하면 원고를 안 보므로 시킨 것과 나온 것이
+    어긋나도 모르고, 방향 탐색만 하면 값이 한 점으로 수렴해서 그 점이 다시 주기가 된다.
+    중심은 모자란 쪽으로 옮기고, 그 둘레에서 흔든다."""
+    base = steer(seen, lo, hi, look)
+    span = (hi - lo) * jitter
+    off = wave(f"{seed}|aim", n, -span, span, 2)
+    return min(hi, max(lo, base + off))
 
 
 def _lines(text: str) -> tuple[list[str], list[str]]:
@@ -148,6 +240,21 @@ def climb(text: str) -> int:
     return n
 
 
+def _clump(tell: list, want_long: bool) -> int:
+    """같은 길이의 문장이 내리 몇 개 이어졌는가. **몰림을 재는 자다.**
+
+    몫만 재면 앞쪽에 긴 것을 몰아 놓고 뒤를 전부 짧게 써도 통과한다 -- 몫은 맞는데
+    읽으면 두 덩어리다. 리듬은 몫이 아니라 배치다."""
+    run = best = 0
+    for x in tell:
+        if (len(x) >= LONG) == want_long:
+            run += 1
+            best = max(best, run)
+        else:
+            run = 0
+    return best
+
+
 def measure(text: str) -> dict:
     tell, talk = _lines(text)
     if not tell:
@@ -167,6 +274,8 @@ def measure(text: str) -> dict:
         "da":   sum(da) / len(tell),
         "run":  best,
         "long": sum(len(s) >= LONG for s in tell) / len(tell),
+        "srun": _clump(tell, False),        # 짧은 문장이 내리 이어진 최대
+        "lrun": _clump(tell, True),         # 긴 문장이 내리 이어진 최대
         "talk": len(talk) / total if total else 0.0,
         "n":    len(tell),
     }
@@ -210,7 +319,7 @@ def spots(text: str) -> dict:
     return out
 
 
-def check(text: str) -> list[str]:
+def check(text: str, want: float | None = None) -> list[str]:
     """넘은 것만 사람 말로 돌려준다. 빈 목록이면 리듬은 괜찮다."""
     m = measure(text)
     if m["n"] < 6:                       # 너무 짧으면 통계가 의미 없다
@@ -225,10 +334,12 @@ def check(text: str) -> list[str]:
         out.append(f"짧은 '-다' 문장이 내리 {m['run']}번 이어진 자리가 있다. "
                    f"{LIMITS['run']}번을 넘기지 마라 -- 세 번째나 네 번째에서 생각을 붙이거나, "
                    f"대사를 넣거나, 문장을 끝내지 마라")
-    want = max(1, m["n"] // LIMITS["climb"])
-    if m["climb"] < want:
+    # 이름을 want 로 두면 아래 긴 문장 목표(want 매개변수)를 덮어쓴다 -- 실측:
+    # 목표를 안 줬는데도 "이 대목은 100%다" 가 나왔다.
+    need = max(1, m["n"] // LIMITS["climb"])
+    if m["climb"] < need:
         out.append(f"앞 문장을 받아 올리는 문장이 {m['climb']}개다. 서술문 {m['n']}개면 "
-                   f"{want}개는 있어야 한다 -- **문장은 낱개로 서 있으면 안 된다.** 한 문장을 놓았으면 다음 "
+                   f"{need}개는 있어야 한다 -- **문장은 낱개로 서 있으면 안 된다.** 한 문장을 놓았으면 다음 "
                    f"문장이 그것을 **더 좁히거나, 더 키우거나, 뒤집어야** 한다. "
                    f"'아니,' '정확히 말하자면,' '그것도' '그 소리는' 으로 앞 문장을 받아라. "
                    f"그러다 끊고 다음으로 넘어가라")
@@ -240,10 +351,27 @@ def check(text: str) -> list[str]:
                    f"둘 연달아 오고, 어떤 데서는 한 줄이 통째로 문단이 된다. **고르면 그것은 "
                    f"리듬이 아니라 박자표다.**")
 
-    if m["long"] < LIMITS["long"]:
-        out.append(f"{LONG}자 넘는 문장이 {m['long']:.0%}뿐이다. "
-                   f"{LIMITS['long']:.0%}는 넘겨라 -- 짧은 문장 서넛에 하나씩은 쉼표로 이어 붙인 "
-                   f"긴 문장이 와야 한다. 단문만 이어지면 리듬이 아니라 목록이다")
+    if want is None:
+        if m["long"] < LIMITS["long"]:
+            out.append(f"{LONG}자 넘는 문장이 {m['long']:.0%}뿐이다. "
+                       f"{LIMITS['long']:.0%}는 넘겨라 -- 짧은 문장 서넛에 하나씩은 쉼표로 "
+                       f"이어 붙인 긴 문장이 와야 한다. 단문만 이어지면 리듬이 아니라 목록이다")
+    elif m["long"] < want - LONG_SLACK:
+        out.append(f"{LONG}자 넘는 문장이 {m['long']:.0%}뿐이다. **이 대목은 {want:.0%}**다 -- "
+                   f"쉼표로 이어 붙여 늘려라. 단문만 이어지면 리듬이 아니라 목록이다")
+    elif m["long"] > want + LONG_SLACK and want <= 0.25:
+        out.append(f"{LONG}자 넘는 문장이 {m['long']:.0%}다. **이 대목은 {want:.0%}**다 -- "
+                   f"여기서는 짧게 끊어 가라. 매 대목을 길게 쓰면 그것도 한 가지 가락이다")
+
+    # **몰림을 되민다.** 몫이 맞아도 앞뒤로 몰려 있으면 읽을 때는 두 덩어리다.
+    if m["srun"] > SHORT_RUN:
+        out.append(f"짧은 문장이 내리 {m['srun']}개 이어진 자리가 있다. "
+                   f"{SHORT_RUN}개를 넘기지 마라 -- 그 자리를 **긴 문장 하나로 끊어라.** "
+                   f"쉼표로 이어 붙여 딴 생각이든 눈에 들어온 것이든 붙이면 된다")
+    if m["lrun"] > LONG_RUN:
+        out.append(f"긴 문장이 내리 {m['lrun']}개 이어진 자리가 있다. "
+                   f"{LONG_RUN}개를 넘기지 마라 -- 그 자리를 **짧은 문장 하나로 끊어라.** "
+                   f"긴 것만 이어지면 숨 쉴 데가 없다")
     if m["talk"] < LIMITS["talk"]:
         out.append(f"대사가 전체 줄의 {m['talk']:.0%}뿐이다. "
                    f"{LIMITS['talk']:.0%}는 넘겨라 -- 사람을 만나게 하고 말을 시켜라")

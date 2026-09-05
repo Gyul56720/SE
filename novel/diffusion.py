@@ -55,37 +55,12 @@ LOOK = int(os.environ.get("DRIFT_TALK_LOOK", "2"))   # 앞 이만큼이 같은 �
 TSPREAD_MIN = float(os.environ.get("DRIFT_TALK_SPREAD", "0.45"))
 
 
-def _raw_share(seed: str, n: int) -> float:
-    h = hashlib.sha256(f"{seed}|{n}|talklong".encode()).digest()
-    return LONG_LO + (LONG_HI - LONG_LO) * (int.from_bytes(h[:8], "big") % 10000) / 9999
-
-
 def long_share(seed: str, n: int) -> float:
-    """이 덩어리에서 **긴 대사가 차지할 몫**. 덩어리마다 다르다.
-
-    구간을 그대로 쓴다 -- 몇 개짜리 목록으로 끊어 두면 그 몇 개가 다시 주기가 된다.
-
-    다만 **한쪽에 쏠리는 것은 막는다.** 해시는 고르게 나오지만 고르다는 것은 짧게
-    보면 몰릴 수 있다는 뜻이기도 하다 -- 낮은 값이 내리 다섯 번 나오면 그 대목은
-    통째로 대사가 짧아진다. 앞 앞 몇 개를 보고 같은 쪽이 이어졌으면 반대쪽으로
-    접어 넣는다(값을 버리지 않고 구간 안에서 뒤집는다 -- 버리면 분포가 한쪽으로
-    깎인다)."""
-    mid = (LONG_LO + LONG_HI) / 2
-    # **확정된 값끼리 비교해야 한다.** 날값끼리만 보면 앞에서 이미 뒤집혀 옮겨 온 자리를
-    # 못 본다 -- _pick 이 같은 함정을 겪고 적어 둔 그대로다(실측: 그렇게 했더니 같은
-    # 쪽이 다섯 번 이어졌다). 조금 앞에서부터 차례로 확정해 온다.
-    start = max(0, n - LOOK * 4)
-    done: list[float] = []
-    for i in range(start, n + 1):
-        v = _raw_share(seed, i)
-        if len(done) >= LOOK:
-            side = [x > mid for x in done[-LOOK:]]
-            if all(side) and v > mid:            # 내리 높았다 -- 이번엔 낮은 쪽으로
-                v = LONG_LO + (LONG_HI - v)
-            elif not any(side) and v <= mid:     # 내리 낮았다 -- 이번엔 높은 쪽으로
-                v = LONG_HI - (v - LONG_LO)
-        done.append(min(LONG_HI, max(LONG_LO, v)))
-    return done[-1]
+    """이 덩어리에서 **긴 대사가 차지할 몫**. 덩어리마다 다르다 -- 어떤 대목은 여덟 할이
+    길고 어떤 대목은 둘만 길다. 흔들리는 목표치의 셈은 rhythm.wave 한 벌을 같이 쓴다
+    (서술문 쪽에도 같은 장치가 필요해져서, 두 벌로 두지 않고 한 벌을 나눠 쓴다)."""
+    from novel import rhythm
+    return rhythm.wave(f"{seed}|talklong", n, LONG_LO, LONG_HI, LOOK)
 TALK_MIN = 5             # 대사가 이만큼은 있어야 몫을 따진다
 
 # **회수는 반복이 아니다.** 회수를 "앞에서 나온 이름을 다시 쓰기" 로만 재면, 가장 싸게

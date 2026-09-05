@@ -65,7 +65,17 @@ ok("모순은 원고 전체가 아니라 한두 문장에 있다" in src,
 print()
 print("[일치] **코드가 재는 기준과 모델에게 주는 기준이 같아야** 고칠 수가 있다")
 p = flow.write_prompt(flow.blank(flow.FIRST))
-ok(f"{int(rhythm.LIMITS['long'] * 100)}%" in p, "긴 문장 비율을 프롬프트가 같이 말한다")
+# 이제 이 숫자는 **덩어리마다 다르다** -- 고정 하한은 그 자체가 주기가 됐다.
+_bk = flow.blank(flow.FIRST)
+ok(f"{flow._telllong(_bk):.0%}" in p,
+   "이 대목의 긴 문장 몫을 프롬프트가 같이 말한다  ← 자와 프롬프트가 같은 숫자를 봐야 한다")
+ok("덩어리마다 다르다" in p, "고정값이 아니라고 말해 준다")
+_seen = [0.12] * 6
+ok(rhythm.aim("씨", 6, _seen, rhythm.LONG_LO, rhythm.LONG_HI) > sum(_seen) / len(_seen),
+   "계속 짧게 나오면 목표를 올린다  ← 방향 탐색: 모자란 쪽으로 민다")
+_seen = [0.38] * 6
+ok(rhythm.aim("씨", 6, _seen, rhythm.LONG_LO, rhythm.LONG_HI) < sum(_seen) / len(_seen),
+   "계속 길게 나오면 목표를 내린다")
 ok(f"{int(rhythm.LIMITS['da'] * 100)}%" in p, "짧은 '-다' 비율을 프롬프트가 같이 말한다")
 ok("네 번" in p, "연속 한도를 프롬프트가 같이 말한다")
 

@@ -45,6 +45,7 @@ from novel import trait                                               # noqa: E4
 from novel import matter                                              # noqa: E402
 from novel import shock as SH                                         # noqa: E402
 from novel import rhythm                                              # noqa: E402
+from novel import wording                                             # noqa: E402
 from novel import style                                               # noqa: E402
 
 # 한 번에 받는 덩어리. 너무 크면 모델이 뒤로 갈수록 늘어지고, 너무 작으면 점층이 덩어리
@@ -639,11 +640,27 @@ def _push(book: dict) -> str:
     return _diffuse(book)
 
 
+def _wording(book: dict) -> str:
+    """말맛 장부 -- 쓴 말끝은 세어 두고 안 쓴 쪽으로 민다. 비유와 글의 꼴은 뽑아서 흔든다."""
+    return wording.brief(book["chunks"],
+                         book.get("seed_id") or book.get("first", ""),
+                         len(book["chunks"]))
+
+
 def _talklong(book: dict) -> float:
     """이 덩어리에서 긴 대사가 차지할 몫. 자와 프롬프트가 **같은 숫자**를 봐야 한다 --
     따로 뽑으면 시키는 것과 재는 것이 어긋난다."""
-    return diffusion.long_share(book.get("seed_id") or book.get("first", ""),
-                                len(book["chunks"]))
+    return rhythm.aim(f"{book.get('seed_id') or book.get('first', '')}|talklong",
+                      len(book["chunks"]), book.get("seen_talk", []),
+                      diffusion.LONG_LO, diffusion.LONG_HI)
+
+
+def _telllong(book: dict) -> float:
+    """이 덩어리에서 긴 **서술문**이 차지할 몫. 지난 덩어리에서 실제로 나온 값을 보고
+    모자란 쪽으로 민다 -- 눈감고 흔들기만 하면 시킨 것과 나온 것이 어긋나도 모른다."""
+    return rhythm.aim(f"{book.get('seed_id') or book.get('first', '')}|telllong",
+                      len(book["chunks"]), book.get("seen_tell", []),
+                      rhythm.LONG_LO, rhythm.LONG_HI)
 
 
 def _diffuse(book: dict) -> str:
@@ -904,8 +921,11 @@ def write_prompt(book: dict, feedback: str = "") -> str:
   키우거나, 뒤집어라(점층). 그러다 밖에서 안으로 들어가라(전환). 그 리듬을 매번 다르게.
 - **길이를 섞어라 -- 이건 재서 판정한다.** 다 쓴 뒤 코드가 세어 보고, 넘으면 숫자를
   돌려주며 다시 시킨다:
-    · 마흔 자 넘는 긴 문장이 **서술문의 15% 이상**. 짧은 문장 서넛에 하나씩은
-      쉼표로 이어 붙인 긴 문장이 와야 한다
+    · **이 대목은 마흔다섯 자 넘는 긴 문장이 서술문의 {_telllong(book):.0%}다.** 이 숫자는
+      덩어리마다 다르다 -- 어떤 대목은 길게 흘러가고 어떤 대목은 짧게 끊어 간다
+    · **몰지 마라.** 짧은 문장이 내리 {rhythm.SHORT_RUN}개를 넘으면 그 자리를 긴 문장 하나로
+      끊고, 긴 문장이 내리 {rhythm.LONG_RUN}개를 넘으면 짧은 문장 하나로 끊어라. 몫이 맞아도
+      앞뒤로 몰려 있으면 읽을 때는 두 덩어리다 -- **리듬은 몫이 아니라 배치다**
     · **짧은 '-다'** 로 끝나는 서술문이 62% 아래. 긴 '-다' 는 세지 않는다 --
       단조로움의 정체는 종결어미가 아니라 길이다
     · 짧은 '-다' 가 내리 **네 번**을 넘지 않는다. 셋째나 넷째에서 생각을 붙이거나,
@@ -949,6 +969,8 @@ def write_prompt(book: dict, feedback: str = "") -> str:
 {'[첫 문장 — 이것으로 시작하라]' if opening else '[지금까지의 끝부분 — 여기서 이어 쓴다]'}
 {book['first'] if opening else '...' + tail}
 {'' if opening else FORWARD}
+
+{_wording(book)}
 
 {_must(book)}
 {feedback}
@@ -1090,7 +1112,8 @@ def step(book: dict, llm, log=None) -> dict:
     # 무엇이 안 되는지 볼 수 있다. 원고를 버리면 그것마저 안 남는다.
     # 사건 덩어리는 확산으로 재지 않는다 -- 거기서는 넓히고 회수하라고 시키지 않았으니
     # 그것으로 벌하지 않는다. 리듬만 본다(대사와 길이는 사건이든 아니든 지켜야 한다).
-    left = clashes + rhythm.check(text) + echo.check(text, "".join(book["chunks"]))
+    left = (clashes + rhythm.check(text, want=_telllong(book))
+            + echo.check(text, "".join(book["chunks"])))
     if not book.get("_shock"):
         left += diffusion.check(text, book["ledger"], probe,
                                 now=len(book["chunks"]), want=_talklong(book))
@@ -1098,10 +1121,25 @@ def step(book: dict, llm, log=None) -> dict:
         _debt(book, len(book["chunks"]), left, path=book.get("_path"))
         D._log(f"[flow] 못 고친 {len(left)}건은 장부에 적어 둔다 (원고는 그대로 쓴다)")
 
+    # **잰 값을 남긴다.** 다음 덩어리가 이것을 보고 방향을 잡는다 -- 남기지 않으면
+    # 매번 처음부터 눈감고 흔드는 것이다.
+    _remember(book, text)
     book["ledger"] = probe
     book["chunks"].append(text)
     _after(book, text)
     return {"status": "ok", "chars": len(text), "clashes": clashes}
+
+
+def _remember(book: dict, text: str) -> None:
+    """이 덩어리에서 실제로 나온 몫을 적어 둔다. 최근 것만 들고 있으면 된다."""
+    m = rhythm.measure(text)
+    book.setdefault("seen_tell", []).append(round(m.get("long", 0.0), 3))
+    mix = diffusion.measure(text, book["ledger"], book["ledger"]).get("mix")
+    if mix and sum(mix):
+        book.setdefault("seen_talk", []).append(round(mix[0] / sum(mix), 3))
+    for k in ("seen_tell", "seen_talk"):
+        if len(book.get(k, [])) > 24:
+            book[k] = book[k][-24:]
 
 
 def _debt(book: dict, at: int, left: list, path=None) -> None:
