@@ -655,6 +655,14 @@ def _talklong(book: dict) -> float:
                       diffusion.LONG_LO, diffusion.LONG_HI)
 
 
+def _dialogue(book: dict) -> float:
+    """이 덩어리에서 **대사가 차지할 몫.** 절반 언저리를 조준한다 -- 대사가 이야기를
+    밀고, 정보는 대사에 녹는다. 고정 하한을 두면 그 하한이 다시 주기가 된다."""
+    return rhythm.aim(f"{book.get('seed_id') or book.get('first', '')}|talkshare",
+                      len(book["chunks"]), book.get("seen_dlg", []),
+                      rhythm.TALK_LO, rhythm.TALK_HI)
+
+
 def _telllong(book: dict) -> float:
     """이 덩어리에서 긴 **서술문**이 차지할 몫. 지난 덩어리에서 실제로 나온 값을 보고
     모자란 쪽으로 민다 -- 눈감고 흔들기만 하면 시킨 것과 나온 것이 어긋나도 모른다."""
@@ -930,7 +938,9 @@ def write_prompt(book: dict, feedback: str = "") -> str:
       단조로움의 정체는 종결어미가 아니라 길이다
     · 짧은 '-다' 가 내리 **네 번**을 넘지 않는다. 셋째나 넷째에서 생각을 붙이거나,
       대사를 넣거나, 문장을 끝내지 마라
-    · 대사가 전체 줄의 **10% 이상**. 사람을 만나게 하고 말을 시켜라
+    · **이 대목은 대사가 전체 줄의 {_dialogue(book):.0%}다.** 대사가 이야기를 민다 --
+      설명하지 말고 **말하게 해라.** 내력도 사정도 숫자도 대사 안에 녹는다.
+      이 숫자도 덩어리마다 다르다
     · **길이를 고르게 맞추지 마라.** 짧은 것 셋에 긴 것 하나를 규칙적으로 놓으면 그건
       리듬이 아니라 박자표다 -- 어떤 데서는 짧은 것이 다섯 번 이어지고, 어떤 데서는
       긴 것이 둘 연달아 오고, 어떤 데서는 한 줄이 통째로 문단이 된다
@@ -1112,7 +1122,7 @@ def step(book: dict, llm, log=None) -> dict:
     # 무엇이 안 되는지 볼 수 있다. 원고를 버리면 그것마저 안 남는다.
     # 사건 덩어리는 확산으로 재지 않는다 -- 거기서는 넓히고 회수하라고 시키지 않았으니
     # 그것으로 벌하지 않는다. 리듬만 본다(대사와 길이는 사건이든 아니든 지켜야 한다).
-    left = (clashes + rhythm.check(text, want=_telllong(book))
+    left = (clashes + rhythm.check(text, want=_telllong(book), talk=_dialogue(book))
             + echo.check(text, "".join(book["chunks"])))
     if not book.get("_shock"):
         left += diffusion.check(text, book["ledger"], probe,
@@ -1134,10 +1144,11 @@ def _remember(book: dict, text: str) -> None:
     """이 덩어리에서 실제로 나온 몫을 적어 둔다. 최근 것만 들고 있으면 된다."""
     m = rhythm.measure(text)
     book.setdefault("seen_tell", []).append(round(m.get("long", 0.0), 3))
+    book.setdefault("seen_dlg", []).append(round(m.get("talk", 0.0), 3))
     mix = diffusion.measure(text, book["ledger"], book["ledger"]).get("mix")
     if mix and sum(mix):
         book.setdefault("seen_talk", []).append(round(mix[0] / sum(mix), 3))
-    for k in ("seen_tell", "seen_talk"):
+    for k in ("seen_tell", "seen_talk", "seen_dlg"):
         if len(book.get(k, [])) > 24:
             book[k] = book[k][-24:]
 

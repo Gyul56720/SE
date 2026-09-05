@@ -11,7 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from novel import flow, rhythm, wording as W                          # noqa: E402
+from novel import flow, rhythm, shock as SH, wording as W             # noqa: E402
 
 _bad = []
 
@@ -92,6 +92,47 @@ ok("한 덩어리에 전부 하지는 마라" in _sc, "한 번에 다 시키지�
 _ways = {SH.scatter("씨", i) for i in range(12)}
 ok(len(_ways) > 6, f"흩어지는 방향이 덩어리마다 다르다 ({len(_ways)}가지)")
 ok(all(len(set(w)) == len(w) for w in _ways), "한 사건 안에서 겹치지 않는다")
+
+print()
+print("[세계] **다양한 설정을 섞되 있을 법하게** -- 제도 · 매체 · 제한")
+_b2 = W.brief(["배가 들어왔다. " * 40], "씨", 3)
+ok("이번 대목의 제도" in _b2, "제도를 하나 준다  ← 사람을 움직이는 것은 마음이 아니라 절차다")
+ok("이번 대목의 매체" in _b2, "편지·영화·드라마·책 같은 장치를 준다")
+ok("이번 대목의 제한" in _b2, "제한을 준다")
+ok("우연이 문제를 풀지 못하게 하는 것이 이 자리다" in _b2,
+   "제한이 편의주의를 막는 장치라고 말한다")
+_w = {W.brief([], "씨", n).count("제도") for n in range(6)}
+_p = {tuple(SH._batch(W.SYSTEMS, "씨|이번 대목의 제도", n, "이번 대목의 제도", 1))
+      for n in range(12)}
+ok(len(_p) > 5, f"제도가 덩어리마다 다르다 ({len(_p)}가지)")
+ok("편입 시험" in " ".join(W.SYSTEMS), "편입 시험도 재료다")
+ok(any("편지" in x for x in W.MEDIA), "편지도 재료다")
+
+print()
+print("[감정] **초고의 감정은 단속하지 않는다** -- 잡을 것은 내용이 아니라 방향과 꼴이다")
+_hot = ["그는 슬펐다. 그는 불안했다. 그는 외로웠다."] * 4
+ok("감정" not in W.brief(_hot, "씨", 4),
+   "감정 얘기를 프롬프트에 안 싣는다  ← 초고에는 있어도 좋다")
+ok(W.feel_rate("그는 슬펐다. 그는 앉았다.") == 0.5, "재 두기는 한다")
+ok(W.feel_rate('"나는 슬퍼."') == 0.0,
+   "대사는 안 센다  ← 사람은 자기 기분을 말한다. 그건 대사가 할 일이다")
+
+print()
+print("[대사 몫] **대사가 원고의 절반이다** -- 0.10 은 바닥이었지 목표가 아니었다")
+_talky = "\n".join(['"이건 대사다. 길게 말한다, 정말로 길게 말이다."'] * 9
+                    + ["서술이다."] * 6)
+_share = rhythm.measure(_talky)["talk"]
+ok(not [c for c in rhythm.check(_talky, talk=_share) if "대사가 전체 줄의" in c],
+   f"나온 만큼을 목표로 주면 통과한다 ({_share:.0%})")
+ok([c for c in rhythm.check(_talky, talk=0.9) if "대사가 전체 줄의" in c],
+   "목표가 아홉 할이면 모자라다고 한다")
+ok([c for c in rhythm.check(_talky, talk=0.2) if "희곡이지 소설이 아니다" in c],
+   "서술이 있어야 할 대목에서 대사만 이어지면 그것도 잡는다")
+ok(0.35 <= (rhythm.TALK_LO + rhythm.TALK_HI) / 2 <= 0.65,
+   f"절반 언저리를 조준한다 ({rhythm.TALK_LO}~{rhythm.TALK_HI})")
+src2 = Path(flow.__file__).read_text(encoding="utf-8")
+ok("_dialogue(book)" in src2, "프롬프트가 자와 같은 숫자를 본다")
+ok("내력도 사정도 숫자도 대사 안에 녹는다" in src2, "정보를 대사에 녹이라고 한다")
 
 print()
 if _bad:

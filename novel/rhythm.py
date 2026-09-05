@@ -90,6 +90,12 @@ LONG_SLACK = float(os.environ.get("DRIFT_TELL_LONG_SLACK", "0.08"))
 LOOK = int(os.environ.get("DRIFT_TELL_LOOK", "2"))
 # 방향 탐색의 세기. 비례항은 흔들림을 잡고, 누적항은 정상 편차를 없앤다. 둘 다 크면
 # 진동한다 -- 목표가 위아래로 튀면 원고도 같이 튄다.
+# **대사가 원고의 절반이다.** 0.10 은 "대사가 아예 없지는 않게" 하는 바닥이었지 목표가
+# 아니었다. 대사가 이야기를 밀고, 정보는 대사에 녹는다. 고정 하한을 두지 않고 구간을
+# 조준한다 -- 어떤 대목은 거의 다 대사고, 어떤 대목은 서술이 더 많다.
+TALK_LO = float(os.environ.get("DRIFT_TALK_LO", "0.35"))
+TALK_HI = float(os.environ.get("DRIFT_TALK_HI", "0.65"))
+TALK_SLACK = float(os.environ.get("DRIFT_TALK_SLACK", "0.10"))
 P_GAIN = float(os.environ.get("DRIFT_P_GAIN", "0.6"))
 I_GAIN = float(os.environ.get("DRIFT_I_GAIN", "1.2"))
 
@@ -319,7 +325,8 @@ def spots(text: str) -> dict:
     return out
 
 
-def check(text: str, want: float | None = None) -> list[str]:
+def check(text: str, want: float | None = None,
+          talk: float | None = None) -> list[str]:
     """넘은 것만 사람 말로 돌려준다. 빈 목록이면 리듬은 괜찮다."""
     m = measure(text)
     if m["n"] < 6:                       # 너무 짧으면 통계가 의미 없다
@@ -372,9 +379,17 @@ def check(text: str, want: float | None = None) -> list[str]:
         out.append(f"긴 문장이 내리 {m['lrun']}개 이어진 자리가 있다. "
                    f"{LONG_RUN}개를 넘기지 마라 -- 그 자리를 **짧은 문장 하나로 끊어라.** "
                    f"긴 것만 이어지면 숨 쉴 데가 없다")
-    if m["talk"] < LIMITS["talk"]:
-        out.append(f"대사가 전체 줄의 {m['talk']:.0%}뿐이다. "
-                   f"{LIMITS['talk']:.0%}는 넘겨라 -- 사람을 만나게 하고 말을 시켜라")
+    if talk is None:
+        if m["talk"] < LIMITS["talk"]:
+            out.append(f"대사가 전체 줄의 {m['talk']:.0%}뿐이다. "
+                       f"{LIMITS['talk']:.0%}는 넘겨라 -- 사람을 만나게 하고 말을 시켜라")
+    elif m["talk"] < talk - TALK_SLACK:
+        out.append(f"대사가 전체 줄의 {m['talk']:.0%}뿐이다. **이 대목은 {talk:.0%}**다 -- "
+                   f"사람을 만나게 하고 말을 시켜라. 설명하지 말고 **말하게 해라**: "
+                   f"내력도 사정도 숫자도 대사 안에 녹는다")
+    elif m["talk"] > talk + TALK_SLACK:
+        out.append(f"대사가 전체 줄의 {m['talk']:.0%}다. **이 대목은 {talk:.0%}**다 -- "
+                   f"여기서는 서술이 더 있어야 한다. 대사만 이어지면 희곡이지 소설이 아니다")
     return out
 
 
