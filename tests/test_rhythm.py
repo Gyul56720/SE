@@ -121,8 +121,10 @@ ok(rhythm.holdclimb("\n".join(["같은 말. 같은 말."] * 3)) == 0,
 ok(rhythm.holdclimb("\n".join(f"{i}번 낱말{i} 낱말{i}." for i in range(40))
                     + "\n" + " ".join(f"낱말{i}" for i in range(40))) <= rhythm.HOLD_CAP,
    f"위로 열어 두지 않는다 (최대 {rhythm.HOLD_CAP})  ← 길기만 하면 저절로 통과한다")
-ok("심어 놓고 회수한다" in flow.write_prompt(flow.blank()),
-   "프롬프트가 심기와 회수를 시킨다  ← 재기만 하고 안 시키면 안 나온다")
+_hp = flow.write_prompt(flow.blank())
+ok("심어 놓고 회수한다" in _hp, "프롬프트가 심기와 회수를 시킨다  ← 재기만 하고 안 시키면 안 나온다")
+ok("매번 달라야 한다" in _hp and f"{rhythm.HOLD_GAP}문장" not in _hp,
+   "거리를 수로 못 박지 않는다  ← 적어 주면 원고가 정확히 그 수로 회수한다")
 ok(not any("받아 올리는" in c for c in rhythm.check(REFERENCE)),
    "기준 문장은 통과한다  ← 자가 기준을 벌하면 자가 틀린 것이다")
 ok(rhythm.score(FLAT) > rhythm.score(REFERENCE), "점수에도 실린다")
