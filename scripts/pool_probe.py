@@ -49,8 +49,13 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--parallel", action="store_true", help="동시에 던진다")
     ap.add_argument("--prompt", default=TINY)
+    ap.add_argument("--roster", default="",
+                    help="답한 후보만 이 파일에 적는다. 런은 GEMINI_ROSTER 로 이것만 쓴다")
     a = ap.parse_args()
 
+    # 명부를 만드는 중에는 명부를 읽지 않는다 -- 어제 것으로 오늘을 재게 된다.
+    if a.roster:
+        llm_pool.ROSTER = ""
     pool = llm_pool.build_pool()
     if not pool:
         print("후보가 없다 -- GEMINI_API_KEY 를 확인해라", file=sys.stderr)
@@ -81,6 +86,20 @@ def main() -> int:
     else:
         print("전부 실패했다. 갈래를 보고 무엇을 고칠지 정해라 -- "
               "RPM 이면 기다리면 되고, 일일소진이면 내일이고, 영구면 모델 이름이다.")
+    if a.roster:
+        # **답한 것만 적는다.** 전부 실패했으면 안 쓴다 -- 빈 명부는 런을 죽이고,
+        # 그때는 명부가 없는 편이(전 후보로 도는 편이) 낫다.
+        if live:
+            import json
+            Path(a.roster).parent.mkdir(parents=True, exist_ok=True)
+            Path(a.roster).write_text(json.dumps(
+                {"at": time.time(),
+                 "live": [{"label": r["label"], "sec": round(r["sec"], 2)}
+                          for r in sorted(live, key=lambda r: r["sec"])]},
+                ensure_ascii=False, indent=1), encoding="utf-8")
+            print(f"명부에 {len(live)}개를 적었다 -> {a.roster}")
+        else:
+            print("답한 후보가 없어 명부를 쓰지 않는다 -- 런은 전 후보로 돈다")
     return 0 if live else 1
 
 

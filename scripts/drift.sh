@@ -36,6 +36,9 @@ set -u
 SE="${SE_DIR:-/home/ubuntu/SE}"
 BOOK="${BOOK:-$SE/novel/drift.json}"
 LOG="$SE/logs/drift.log"
+# 명부 -- start 때 탐침 한 바퀴로 "지금 답하는 모델" 만 적어 두고 런 내내 그것만 쓴다.
+ROSTER="${GEMINI_ROSTER:-$SE/logs/roster.json}"
+export GEMINI_ROSTER="$ROSTER"
 FLOW="$SE/novel/flow.py"
 PGREP=/usr/bin/pgrep
 [ -x "$PGREP" ] || PGREP="$(command -v pgrep 2>/dev/null || echo pgrep)"
@@ -97,6 +100,12 @@ launch() {   # launch <설명> <인자...>
 case "${1:-status}" in
   start)
     refuse_double; load_env
+    # **시작할 때 한 번만 고른다.** 일일 잔량은 남았는데 분당 한도에 걸리는 모델이
+    # 후보에 섞여 있으면, 호출마다 그것을 두드려 429 를 받고서야 성한 것으로 넘어간다 --
+    # 그 왕복을 매번 다시 문다. 열 글자짜리 탐침 한 바퀴로 걸러 두면 런 내내 그만큼 아낀다.
+    echo "후보를 고른다 (탐침 한 바퀴)..."
+    rm -f "$ROSTER"
+    python3 "$SE/scripts/pool_probe.py" --parallel --roster "$ROSTER" | tail -4
     [ -f "$BOOK" ] && {
       mv "$BOOK" "$BOOK.$(date +%Y%m%d-%H%M%S).bak"
       echo "쓰던 원고를 옮겨 두었다: $BOOK.*.bak"

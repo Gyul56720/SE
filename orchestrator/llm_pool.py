@@ -39,6 +39,15 @@ FALLBACK_MODELS = ["gemini-3.5-flash", "gemini-3.5-flash-lite"]
 # 다음 시도를 늦추기만 하는 후보다(실측 로그: pro-latest / 3.1-pro-preview 가 매 바퀴 429).
 # 산문 품질은 화자 프롬프트가 정하지 모델 등급이 정하지 않는다. 되살리려면
 # GEMINI_ALLOW_PRO=1 을 준다.
+# **명부(roster).** 런을 시작할 때 탐침을 한 바퀴 돌려 "지금 답하는 것" 만 적어 두고,
+# 그 뒤로는 그 목록만 쓴다. 일일 잔량은 남았는데 분당 한도에 걸리는 모델이 후보에 섞여
+# 있으면, 매 호출마다 그것을 한 번씩 두드려 보고 429 를 받은 뒤에야 성한 것으로 넘어간다 --
+# 호출마다 그 왕복을 다시 무는 것이다. 시작할 때 한 번만 걸러내면 그 값을 런 내내 아낀다.
+# scripts/pool_probe.py --roster <경로> 가 이 파일을 쓴다.
+ROSTER = os.environ.get("GEMINI_ROSTER", "")
+# 명부는 **낡는다.** 소진은 자정에 풀리고 모델 목록도 바뀐다. 오래된 명부는 "어제 답한 것"
+# 이지 "지금 답하는 것" 이 아니므로, 지나면 무시하고 전 후보로 돈다.
+ROSTER_AGE = float(os.environ.get("GEMINI_ROSTER_AGE", "43200"))   # 12시간
 SKIP_MODEL = re.compile(os.environ.get("GEMINI_SKIP_MODEL", r"pro"), re.I)
 ALLOW_PRO = os.environ.get("GEMINI_ALLOW_PRO", "") not in ("", "0", "false")
 
@@ -94,6 +103,19 @@ _LAST_KEY: dict = {}
 # gemini-3.5-flash 는 12.7초였다. 열세 배다. 이름 기반 등급(_model_rank)은 세대가
 # 바뀔 때마다 낡는데, 걸린 시간은 안 낡는다.
 _LAT: dict = {}
+# **실패도 잰다.** 지연 시간에는 "이름으로 짐작하지 말고 재서 쓴다" 를 적용해 놓고, 실패에는
+# 안 썼다. 그래서 매 바퀴 429 만 뱉는 후보가 "최근에 안 썼으니까" 로 계속 앞자리에 돌아왔다
+# (실측: omni / preview 계열이 바퀴마다 같은 자리를 차지했다). 답을 준 적 있는 후보를
+# 앞에 둔다 -- 이름이 아니라 전적으로.
+_WIN: dict = {}
+_FAIL: dict = {}
+
+
+def _odds(label) -> float:
+    """이 후보가 최근에 답을 준 비율. 안 재본 것은 낙관한다(1.0) -- 중간값으로 두면
+    한 번 이긴 후보만 계속 쓰고 나머지는 영원히 안 재본다."""
+    w, f = _WIN.get(label, 0), _FAIL.get(label, 0)
+    return 1.0 if w + f == 0 else w / (w + f)
 LAT_MEMORY = 0.7          # 새 측정을 이만큼 반영한다(나머지는 옛값)
 
 
@@ -242,6 +264,20 @@ def _load_dotenv_once() -> None:
         return
 
 
+def _roster() -> set:
+    """명부에 적힌 라벨. 파일이 없거나 깨졌으면 빈 집합 -- 그때는 거르지 않는다."""
+    if not ROSTER:
+        return set()
+    try:
+        import json
+        d = json.loads(Path(ROSTER).read_text(encoding="utf-8"))
+        if time.time() - float(d.get("at", 0)) > ROSTER_AGE:
+            return set()
+        return {r["label"] for r in d.get("live", []) if r.get("label")}
+    except Exception:
+        return set()
+
+
 def build_pool(keys=None, models=None, llm_factory=_default_factory, model_lister=_default_models):
     """(label, llm) 후보 목록. keys 기본 = 환경변수 두 키. models 기본 = 키별 실사용 모델 조회."""
     if keys is None:
@@ -259,6 +295,11 @@ def build_pool(keys=None, models=None, llm_factory=_default_factory, model_liste
             if not ALLOW_PRO and SKIP_MODEL.search(m):
                 continue
             pool.append((f"key-{kid}:{m}", llm_factory(m, key)))
+    keep = _roster()
+    if keep:
+        named = [c for c in pool if c[0] in keep]
+        if named:                  # 명부에 아무도 안 남으면 무시한다 -- 낡은 명부일 수 있다
+            return named
     if not pool and keys:          # 전부 걸러졌으면 거르지 않는다 -- 빈 풀보다는 낫다
         for key in keys:
             kid = _key_id(key)
@@ -318,7 +359,8 @@ def call(pool, prompt: str, pool_id: str = "orchestrator", max_candidates: int =
         # 그 다음은 **재본 응답 시간**이다. 이름 등급은 재본 적 없는 후보의 기본값으로만
         # 쓴다 -- 한 번이라도 재봤으면 그 숫자가 이름보다 정확하다.
         return (_since_key(label) < MIN_GAP, _since_used(label) < MIN_GAP,
-                rem <= 0, round(_lat(label), 1), _model_rank(model), -rem)
+                rem <= 0, -round(_odds(label), 1), round(_lat(label), 1),
+                _model_rank(model), -rem)
 
     limit = MAX_CANDIDATES if max_candidates is None else max_candidates
     last_error, tried, skipped = None, 0, 0
@@ -427,11 +469,13 @@ def call(pool, prompt: str, pool_id: str = "orchestrator", max_candidates: int =
                     except Exception as e:
                         last_error = e
                         kind = _note_failure(label, e, verbose)
+                        _FAIL[label] = _FAIL.get(label, 0) + 1
                         if kind in ("일일소진", "영구배제"):
                             only_transient = False
                         continue
                     quota_tracker.record_success(label)
                     quota_tracker.set_pinned(pool_id, label)
+                    _WIN[label] = _WIN.get(label, 0) + 1
                     took = time.time() - now
                     _LAT[label] = (LAT_MEMORY * took
                                    + (1 - LAT_MEMORY) * _LAT.get(label, took))

@@ -425,3 +425,67 @@ ok(len(_p) == 1, "flash 만 남는다")
 _p = llm_pool.build_pool(keys=["k1"], models=["gemini-pro-latest"],
                          llm_factory=lambda m, k: object())
 ok(len(_p) == 1, "전부 pro 뿐이면 거르지 않는다  ← 빈 풀보다는 낫다")
+
+
+print()
+print("[전적] **실패도 재서 쓴다**")
+print("      ← 지연 시간에는 '이름으로 짐작하지 말고 재서 쓴다' 를 적용해 놓고 실패에는")
+print("        안 썼다. 그래서 매 바퀴 429 만 뱉는 후보가 '최근에 안 썼으니까' 로 계속")
+print("        앞자리에 돌아왔다(실측: omni / preview 계열).")
+
+llm_pool._WIN.clear()
+llm_pool._FAIL.clear()
+llm_pool.RPM_ROUNDS = 3
+_bad = {"kA:m0"}
+
+
+def _lap():
+    llm_pool._LAST_USED.clear()
+    llm_pool._LAST_KEY.clear()
+    _hit.clear()
+    pool = [(lb, _Watch(lb, lb in _bad, 0.02)) for lb in ("kA:m0", "kB:m0")]
+    llm_pool.call(pool, "x", verbose=False)
+    return _hit[0]
+
+
+_seq = [_lap() for _ in range(4)]
+ok(llm_pool._odds("한 번도 안 재본 것") == 1.0,
+   "안 재본 것은 낙관한다  ← 중간값이면 영원히 안 재진다")
+llm_pool._FAIL["kA:m0"] = 3          # 세 번 두드려 세 번 다 429 를 받았다
+ok(llm_pool._odds("kA:m0") == 0.0 < llm_pool._odds("kB:m0"),
+   f"429 만 주던 후보가 뒤로 밀린다 ({llm_pool._odds('kA:m0'):.2f} < "
+   f"{llm_pool._odds('kB:m0'):.2f})")
+ok(_seq[-1] == "kB:m0", f"몇 번 겪고 나면 성한 것부터 두드린다 ({_seq})")
+
+
+print()
+print("[명부] **시작할 때 한 번 고르고 런 내내 그것만 쓴다**")
+print("      ← 일일 잔량은 남았는데 분당 한도에 걸리는 모델이 후보에 섞여 있으면,")
+print("        호출마다 그것을 두드려 429 를 받고서야 성한 것으로 넘어간다.")
+
+import json as _json
+import tempfile as _tf
+
+_dir = _tf.mkdtemp()
+_rp = _dir + "/roster.json"
+
+
+def _pool_with(roster):
+    llm_pool.ROSTER = roster
+    return [lb for lb, _ in llm_pool.build_pool(
+        keys=["k1"], models=["gemini-3.5-flash", "gemini-3.5-flash-lite"],
+        llm_factory=lambda m, k: object())]
+
+
+_all = _pool_with("")
+open(_rp, "w").write(_json.dumps({"at": time.time(),
+                                  "live": [{"label": _all[0]}]}))
+ok(_pool_with(_rp) == [_all[0]], f"명부에 적힌 것만 쓴다 ({_pool_with(_rp)})")
+
+open(_rp, "w").write(_json.dumps({"at": time.time() - 99999,
+                                  "live": [{"label": _all[0]}]}))
+ok(_pool_with(_rp) == _all, "낡은 명부는 무시한다  ← 소진은 자정에 풀린다")
+
+open(_rp, "w").write(_json.dumps({"at": time.time(), "live": [{"label": "없는:후보"}]}))
+ok(_pool_with(_rp) == _all, "명부가 아무도 안 맞으면 무시한다  ← 빈 풀보다는 낫다")
+llm_pool.ROSTER = ""
