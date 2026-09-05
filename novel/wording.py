@@ -537,16 +537,19 @@ def brief(chunks, seed: str, n: int) -> str:
         "부딪쳐라",
         "보기만 하면 이 사람은 카메라다. 손을 대고 묻고 옮겨야 **세계가 그에게"
         " 반응한다** -- 그 반응이 다음 일이다."))
-    for pool, head, why in (
-            (SYSTEMS, "이번 대목의 제도",
-             "사람을 실제로 움직이는 것은 마음이 아니라 절차다. 날짜와 번호와 금액을 대라"),
-            (MEDIA, "이번 대목의 매체",
-             "누가 남긴 것이 지금 여기 있다. 남긴 사람은 여기 없어도 된다"),
-            (LIMITS_LIFE, "이번 대목의 제한",
-             "**우연이 문제를 풀지 못하게 하는 것이 이 자리다.** 못 하는 이유가 구체적이어야"
-             " 편의주의가 안 생긴다")):
-        pick = shock._batch(pool, f"{seed}|{head}", n, head, PUSH_WORLD)
-        lines.append(menu(pool, pick, head, why))
+    # **세계관 설정은 작법보다 덜 중요하다.** 제도와 매체는 재료일 뿐이라 한 자리에
+    # 묶는다 -- 두 목록을 따로 펼치면 작법 항목이 그만큼 뒤로 밀린다.
+    stuff = dict(SYSTEMS)
+    stuff.update(MEDIA)
+    lines.append(menu(stuff, (shock._batch(SYSTEMS, f"{seed}|sys", n, "sys", 1)
+                              + shock._batch(MEDIA, f"{seed}|med", n, "med", 1)),
+                      "이번 대목의 재료(제도·매체)",
+                      "사람을 실제로 움직이는 것은 마음이 아니라 절차이고, 누가 남긴 것이"
+                      " 지금 여기 있다."))
+    lines.append(menu(LIMITS_LIFE,
+                      shock._batch(LIMITS_LIFE, f"{seed}|lim", n, "lim", PUSH_WORLD),
+                      "이번 대목의 제한",
+                      "못 하는 이유는 구체적이어야 한다 -- 얼마가 모자라고 몇 시까지인지."))
     # **목록 전체를 보여 주고, 이번 것만 짚는다.** 뽑힌 둘만 보여 주면 모델이 아는
     # 것이 둘뿐이 된다 -- 점층 이음말을 넷만 보여 줬다가 원고가 그 넷으로 도배된 일이
     # 있었다. 반대로 전부를 똑같은 무게로 늘어놓으면 아무것도 안 고른다. 그래서
