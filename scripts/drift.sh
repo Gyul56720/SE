@@ -18,6 +18,7 @@
 #   drift.sh watch                  로그를 계속 따라간다
 #   drift.sh stop                   런을 멈춘다 (원고는 남는다 -- go 로 이어 쓴다)
 #   drift.sh world                  세계가 얼마나 자랐는지 (인물·장소·사물·사실·사건)
+#   drift.sh open                   아직 안 닫힌 것들 -- 이 이야기가 갚지 않은 빚
 #
 # 환경변수로 바꿀 수 있는 것:
 #   DRIFT    표류 계수 0~1     (기본 1.0 -- 낮추면 급발진·사건이 줄어든다)
@@ -145,7 +146,8 @@ n = sum(len(c) for c in b["chunks"])
 L = b.get("ledger", {})
 print(f"  원고  덩어리 {len(b['chunks'])}개 · {n:,}자 · 사건 {b.get('shocks', 0)}회 · "
       f"표류 {b.get('drift', '?')} · 소재 {b.get('matter', 0)} · "
-      f"몸 {b.get('body', '?')} · 관계 {b.get('bond', '?')}")
+      f"설정 {b.get('trait', b.get('body', '?'))} · 관계 {b.get('bond', '?')}")
+print(f"  열린 것 {len((L.get('open') or {}))}개  (drift.sh open 으로 본다)")
 print(f"  세계  인물 {len(L.get('people', {}))} · 장소 {len(L.get('places', {}))} · "
       f"사물 {len(L.get('objects', {}))} · 사실 {len(L.get('facts', {}))}")
 PY
@@ -172,6 +174,20 @@ PY
     # pkill -f 는 명령줄에 패턴이 들어 있으면 **자기 셸까지 죽인다**(실측). PID 로만 죽인다.
     for p in $pids; do kill "$p"; done
     sleep 2; echo "멈췄다. 원고는 남아 있다 -- 이어 쓰려면: $0 go"
+    ;;
+
+  open)
+    [ -f "$BOOK" ] || die "원고가 없다: $BOOK"
+    python3 - "$BOOK" <<'INNER'
+import json, sys
+L = json.load(open(sys.argv[1], encoding="utf-8")).get("ledger", {})
+o = L.get("open") or {}
+if not o:
+    print("  열린 것이 없다. (아직 안 나왔거나, 전부 닫혔다)")
+for k, v in o.items():
+    print(f"  · {k} -- {v}")
+print(f"\n  모두 {len(o)}개")
+INNER
     ;;
 
   world)

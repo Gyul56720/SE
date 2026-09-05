@@ -150,11 +150,15 @@ def blank(first: str = FIRST) -> dict:
     # since: 마지막 사건 이후 쓴 글자 수.
     # words: 지어낸 낱말과 그 뜻. **기록만 하고 절대 기각하지 않는다** -- 다만 한 번 뜻을
     # 준 말은 계속 같은 뜻으로 쓰여야 해서 원장에 남긴다.
+    # open: **던져지고 아직 안 닫힌 것.** 원장의 다른 칸이 전부 '확정된 사실' 인 데 비해
+    # 여기만 미결이다. 증명이 흘러가는 느낌은 결론이 정해져서가 아니라 갚아야 할 것이
+    # 쌓여 있어서 생긴다 -- 닫힌 사실만 적으면 매 덩어리가 자기 안에서 완결되고, 그러면
+    # 표류가 아니라 나열이 된다.
     return {"first": first, "chunks": [], "shocks": 0, "since": 0, "drift": DRIFT,
             "matter": MATTER, "trait": TRAIT, "bond": BOND,
             "ledger": {
         "people": {}, "places": {}, "facts": {}, "time": [], "objects": {},
-        "words": {}}}
+        "words": {}, "open": {}}}
 
 
 def _merge(ledger: dict, delta: dict, at: int = 0) -> list:
@@ -210,7 +214,7 @@ def _merge(ledger: dict, delta: dict, at: int = 0) -> list:
         ledger["people"][name] = card
 
     # ---- 나머지: **기록만 한다. 절대 기각하지 않는다.**
-    for bucket in ("places", "facts", "objects", "words"):
+    for bucket in ("places", "facts", "objects", "words", "open"):
         for k, raw in (delta.get(bucket) or {}).items():
             v = _clean(raw)
             if v is None:
@@ -222,6 +226,12 @@ def _merge(ledger: dict, delta: dict, at: int = 0) -> list:
     age = ledger.setdefault("_age", {})
     for name in diffusion.props(ledger):
         age.setdefault(name, at)
+    # **연 뒤에 닫는다.** 순서가 중요하다 -- 같은 덩어리에서 던졌다가 그 자리에서 답한
+    # 것은 미결이 아니라서, 닫힘이 열림보다 나중에 와야 그것이 안 남는다.
+    for k in (delta.get("closed") or []):
+        for name in list(ledger.get("open") or {}):
+            if k and (k in name or name in k):
+                ledger["open"].pop(name, None)
     for t in (delta.get("time") or []):
         if t and t not in ledger["time"]:
             ledger["time"].append(t)
@@ -249,6 +259,10 @@ def is_main(card) -> bool:
 # 잘려 나간 것이 사라지는 것은 아니다. 원장에는 그대로 남아 모순 검사에 계속 쓰인다 --
 # 눈앞에서 치우는 것이지 잊는 것이 아니다.
 BRIEF_WINDOW = 12
+# 프롬프트에 보여 줄 열린 것의 수. 너무 많으면 숙제 목록이 된다.
+OPEN_SHOW = 6
+# 이보다 많이 열려 있으면 "좀 닫아라" 고 말한다. 벌리기만 하면 산만해진다.
+OPEN_MAX = 9
 BRIEF_MAX = 1400
 
 
@@ -294,6 +308,8 @@ def brief(ledger: dict, limit: int = 40, now: int = 0) -> str:
                     bit = str(card)
                 brief_rest.append(f"{name}({bit})" if bit else name)
             out.append("  [스쳐 간 사람] " + " · ".join(brief_rest))
+    # 열린 것은 여기 안 싣는다 -- [열린 것] 블록이 따로 있고, 두 번 실으면 그만큼
+    # 프롬프트만 무거워진다.
     for bucket, label in (("places", "장소"), ("objects", "사물"), ("facts", "사실"),
                           ("words", "지어낸 말")):
         items = [(k, v) for k, v in (ledger.get(bucket) or {}).items() if fresh(k)][-limit:]
@@ -361,6 +377,8 @@ def _must(book: dict) -> str:
     lines.append("  3. **욕망 하나가 결판난다.** 채워지면 몸으로 쓰고, 어긋나면 다음 "
                  "욕망이 생긴다")
     lines.append("  4. 잡소리 하나. 새것 셋, 앞엣것 하나는 **더 구체적인 이름으로 키워서**")
+    if book["ledger"].get("open"):
+        lines.append("  5. **열린 것 하나를 건드린다.** 닫든 벌리든 바꾸든")
     return "\n".join(lines)
 
 
@@ -380,6 +398,30 @@ def _trait(book: dict) -> str:
     if not trait.gate(seed, n, rate):
         return ""
     return trait.brief(trait.draw(seed, n))
+
+
+def _open(book: dict) -> str:
+    """**열린 것** -- 이 이야기가 아직 갚지 않은 것들.
+
+    닫으라고 시키지 않는다. 시키는 순간 그것이 각본이 되고, 각본은 이 모드가 버린 것이다.
+    **하나를 건드리게만 한다** -- 닫아도 되고, 더 벌려도 되고, 다른 것으로 바꿔도 된다.
+    """
+    items = list((book["ledger"].get("open") or {}).items())
+    if not items:
+        return ""
+    show = " · ".join(f"**{k}**({v})" for k, v in items[-OPEN_SHOW:])
+    crowd = ("\n  * 열린 것이 {n}개다. 벌리기만 하면 산만해진다 -- 이번엔 **하나쯤 닫아라.** "
+             "답이 시원할 필요는 없다. 김빠지는 답도 답이다.").format(n=len(items)) \
+        if len(items) > OPEN_MAX else ""
+    return f"""[열린 것] **이 이야기가 아직 갚지 않은 것들.**
+
+  {show}
+
+  * 이 중 **하나를 건드려라.** 닫아도 되고, 더 벌려도 되고, 엉뚱한 답이 나와서 다른
+    것으로 바뀌어도 된다. **닫으라는 것이 아니다** -- 손을 대라는 것이다.
+  * 건드리는 방식은 자유다. 누가 그 얘기를 꺼내도 되고, 물건 하나가 답이 되어도 되고,
+    아무도 모르는 채로 독자만 알게 되어도 된다.
+  * **새로 여는 것도 좋다.** 다만 닫는 것 없이 열기만 하면 그건 나열이다.{crowd}"""
 
 
 def _matter(book: dict) -> str:
@@ -464,6 +506,7 @@ def _diffuse(book: dict) -> str:
     매번 새 소리다. 문장을 끝까지 맺지 않아도, 어순이 뒤집혀도, 조사가 빠져도 된다.
     **말끝을 다듬으면 그게 딱딱함이다.**
 
+{_open(book)}
 {_impulse(book)}
 {_bond(book)}
 {_trait(book)}
@@ -603,6 +646,10 @@ def extract_prompt(chunk: str) -> str:
 - **속 칸**에는 그 사람이 늘 지고 다니는 것을 적어라 -- 다만 **행동으로 적어라**
   ("칭찬을 받으면 화제를 돌린다"). 감정 이름이나 진단명은 쓰지 마라.
 - 한 번 적힌 것은 끝까지 그 사람의 것이다.
+- **open 에는 "던져지고 아직 안 닫힌 것" 을 적어라.** 확정된 사실이 아니라 미결이다 --
+  묻고 답 안 한 질문, 한 약속, 진 빚, 기다리는 사람, 설명 안 된 물건, 감춘 것.
+  글이 답을 준 것은 여기 적지 마라.
+- **closed 에는 앞에서 열려 있다가 이번 글에서 답이 나온 것**의 이름을 적어라. 없으면 빈 목록.
 - **지어낸 낱말은 words 에 뜻과 함께 적어라.** 사전에 없는 말이 나오고 거기 뜻이나 유래가
   달렸으면 그것이다. 한 번 적힌 말은 다음 덩어리에서도 같은 뜻으로 쓰인다.
 - 말투 칸이 중요하다. 그 사람이 어떻게 말하는지 한 줄로 적어라
@@ -616,6 +663,8 @@ JSON 만 출력:
   "places": {{"장소": "어떤 곳인가 한 줄"}},
   "objects": {{"사물": "무엇인가 한 줄"}},
   "words": {{"꿉꿉하다": "눅눅한데 마음 쪽에 쓰는 말. 웅포 지방 말"}},
+  "open": {{"요우가 기다리는 사람": "누구인지 아직 안 나왔다"}},
+  "closed": ["앞에서 열려 있다가 이번에 답이 나온 것"],
   "facts": {{"항목": "확정된 값"}},
   "time": ["시점 한 줄"]}}"""
 

@@ -56,6 +56,7 @@ LIMITS = {
     "bulk":  0.45,  # **대사 글자 수의 이만큼은 긴 대사여야 한다**
     "rally": 4,     # **한 번은 이만큼 주고받아야 한다** -- 대화가 이어진다는 것의 정의
     "grow":  1,     # **앞엣것에서 자라난 새 이름이 적어도 하나**
+    "owed": 9,      # 열린 것이 이보다 많은데 하나도 안 닫으면 나열이 된다
 }
 
 # 점층의 자국은 이름에 남는다. 사용자가 든 예: 웅포 → **웅포 소금 공장**. 앞에서 지어낸
@@ -189,9 +190,22 @@ def grown(before: dict, after: dict) -> list[str]:
     return out
 
 
+def opened(before: dict, after: dict) -> tuple[int, int]:
+    """이 덩어리가 **연 것과 닫은 것**. 증명은 미결을 만들고 또 갚으면서 나아간다.
+
+    벌리기만 하면 산만해지고, 닫기만 하면 이야기가 마른다. 그래서 둘 다 센다.
+    """
+    b = set((before.get("open") or {}))
+    a = set((after.get("open") or {}))
+    return len(a - b), len(b - a)
+
+
 def measure(text: str, before: dict, after: dict) -> dict:
     short, long, bulk, rally = _talk4(text)
-    return {"rally": rally, "grow": grown(before, after), "new": len(added(before, after)),
+    new_open, closed = opened(before, after)
+    return {"rally": rally, "grow": grown(before, after),
+            "opened": new_open, "closed": closed,
+            "owed": len(after.get("open") or {}), "new": len(added(before, after)),
             "back": len(touched(text, props(before))),
             "short": short, "long": long, "bulk": bulk,
             "over": overused(text, props(before) + props(after)),
@@ -250,6 +264,14 @@ def check(text: str, before: dict, after: dict, now: int = 0) -> list[str]:
                    "출처. 그렇게 자란 것에 다시 사정을 하나 붙여라"
                    + (f". 키울 만한 것: {' · '.join(seeds)}" if seeds else ""))
 
+    # **닫는 것 없이 열기만 하면 나열이다.** 다만 무르게 본다 -- 미결이 쌓여 있어도
+    # 되는 이야기가 있고, 닫는 자리는 사람이 정하는 것이다.
+    if m["owed"] > LIMITS["owed"] and not m["closed"]:
+        out.append(f"열린 것이 {m['owed']}개인데 이번에 닫은 것이 없다. "
+                   f"{LIMITS['owed']}개를 넘으면 그건 이야기가 아니라 목록이다 -- **하나는 "
+                   f"닫아라.** 시원한 답일 필요는 없다. 김빠지는 답도, 틀린 답도, 아무도 "
+                   f"확인 못 하는 답도 답이다")
+
     if m["rally"] < LIMITS["rally"]:
         out.append(f"제일 길게 주고받은 대화가 {m['rally']}턴이다. 한 번은 {LIMITS['rally']}턴을 "
                    f"넘겨라 -- **대사와 대사를 붙여 놓아라.** 서술 사이에 한 마디씩 흩어 놓으면 "
@@ -274,5 +296,7 @@ def score(text: str, before: dict, after: dict) -> float:
     s += max(0.0, LIMITS["bulk"] - m["bulk"]) * 0.3
     s += max(0, LIMITS["rally"] - m["rally"]) * 0.08
     s += max(0, LIMITS["grow"] - len(m["grow"])) * 0.25
+    if m["owed"] > LIMITS["owed"] and not m["closed"]:
+        s += 0.2
     s += max(0, LIMITS["short"] - m["short"]) * 0.1
     return s
