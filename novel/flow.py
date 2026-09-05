@@ -476,7 +476,8 @@ def _doubt(book: dict) -> str:
         return ""
     seed = book.get("seed_id") or book["first"]
     n = len(book["chunks"])
-    if not doubt.gate(seed, n, float(book.get("doubt", DOUBT))):
+    lv = float(book.get("doubt", DOUBT)) * GENRE.tune(book.get("genre", ""), "의심", 1.0)
+    if not doubt.gate(seed, n, lv):
         return ""
     return doubt.brief(doubt.draw(book["ledger"], seed, n))
 
@@ -625,7 +626,8 @@ def _impulse(book: dict) -> str:
     if not matter.gate(seed, n, "impulse", _level(book)):
         return ("  * 이번 덩어리에는 급발진을 넣지 마라. 그렇다고 사람이 바뀌는 것은"
                 " 아니다 -- 저지르지 않을 뿐, 말투도 태도도 그대로다.")
-    return SH.impulse_brief(SH.impulse(seed, n))
+    return SH.impulse_brief(SH.impulse(
+        seed, n, literal=bool(GENRE.tune(book.get("genre", ""), "초현실", 1))))
 
 
 def _push(book: dict) -> str:

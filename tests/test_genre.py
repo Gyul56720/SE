@@ -154,6 +154,40 @@ ok("축은 출발점이지 각본이 아니다" in _jb, "비틀어도 된다고 
 ok(genre.event("", "씨", 1) == {}, "갈래가 없으면 뒤틀림도 없다")
 
 print()
+print("[예시] **꾸러미에 구체적인 예를 박지 않는다**")
+print("      ← 실측: 화법 설명에 '179번 · 87회 · 42회 · 14회처럼' 이라고 적었더니")
+print("        원고가 그 수를 그대로 베껴 썼다('벽에 42회, 87회, 14회를 적는 남자').")
+print("        '정확히 말하자면' 과 똑같은 사고를 새 꾸러미에서 또 냈다.")
+import re as _re                                                      # noqa: E402
+for _gname, _pack in genre.PACKS.items():
+    _texts = []
+    for _key in ("머리", "관계", "사건", "화법"):
+        _v = _pack.get(_key)
+        if isinstance(_v, dict):
+            _texts += [f"{k} {v}" for k, v in _v.items()]
+        elif _v:
+            _texts.append(_v)
+    _nums = [t for t in _texts if _re.search(r"\d{2,}", t)]
+    ok(not _nums, f"{_gname}: 두 자리 이상 수가 안 박혀 있다 ({_nums[:1]})")
+    _quoted = [t for t in _texts if "'" in t and "처럼" in t]
+    ok(not _quoted, f"{_gname}: 따옴표 친 예문이 없다 ({_quoted[:1]})")
+
+print()
+print("[끄기] **갈래가 초현실을 끌 수 있다**")
+print("      ← 직장물로 돌렸는데 죽은 사람이 걸어 다니고 시간을 거스르는 서류가")
+print("        나오는 미스터리가 됐다. '말한 것이 실제가 된다' 장치 하나가 이야기를")
+print("        통째로 다른 데로 끌고 간다.")
+_lit = sum(bool(SH.impulse("씨", i)["literal"]) for i in range(40))
+_off = sum(bool(SH.impulse("씨", i, literal=False)["literal"]) for i in range(40))
+ok(_lit > 0, f"기본은 가끔 켜진다 ({_lit}/40)  ← 표류에서는 이게 맛이다")
+ok(_off == 0, f"끄면 안 나온다 ({_off}/40)")
+ok(genre.tune("job", "초현실", 1) == 0, "직장물은 꺼져 있다")
+ok(genre.tune("romance", "초현실", 1) == 1, "로맨스는 그대로다")
+ok(genre.tune("job", "의심", 1.0) < 1.0, "직장물은 사실을 흔드는 것도 줄인다")
+_src = (Path(__file__).resolve().parent.parent / "novel" / "flow.py").read_text(encoding="utf-8")
+ok('GENRE.tune(book.get("genre", ""), "초현실", 1)' in _src, "flow 가 그 저울을 본다")
+
+print()
 if _bad:
     print(f"갈래: {len(_bad)}개 실패 -- {_bad}")
     raise SystemExit(1)

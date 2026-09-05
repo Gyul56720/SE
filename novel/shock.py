@@ -360,7 +360,7 @@ LITERAL = (
 )
 
 
-def impulse(seed: str, n: int) -> dict:
+def impulse(seed: str, n: int, literal: bool = True) -> dict:
     return {"who": _pick(ACTOR, seed, n, "actor"),
             "act": _pick(ACT, seed, n, "act"),
             "react": _pick(REACT, seed, n, "react"),
@@ -370,8 +370,12 @@ def impulse(seed: str, n: int) -> dict:
             "swerve": _batch(SWERVE, seed, n, "swerve", SWERVE_K),
             "land": (_pick(LANDING, seed, n, "land")
                      if _raw(("가자", "말자", "말자"), seed, n, "move") == 0 else ""),
+            # **갈래가 끌 수 있다.** 말한 것이 실제가 되는 것은 초현실 장치라, 절차와
+            # 서류가 세계를 움직이는 갈래에서는 그 하나 때문에 이야기가 통째로 다른
+            # 데로 간다(실측: 직장물로 돌렸는데 죽은 사람이 걸어 다니는 이야기가 나왔다).
             "literal": (_pick(LITERAL, seed, n, "literal")
-                        if _raw(("쓴다", "만다", "만다", "만다"), seed, n, "lit") == 0
+                        if literal and _raw(("쓴다", "만다", "만다", "만다"),
+                                            seed, n, "lit") == 0
                         else "")}
 
 
