@@ -172,6 +172,44 @@ def measure(text: str) -> dict:
     }
 
 
+def spots(text: str) -> dict:
+    """**어느 문장이 걸렸는지** 돌려준다 -- 전체를 다시 쓰지 않고 그 문장만 고치려고.
+
+    check() 는 "64%가 짧은 '-다' 다" 라고 비율만 말한다. 그 말을 들은 모델은 원고를
+    통째로 다시 뱉는다 -- 1,400자를 새로 만들어 두 문장을 고치는 셈이다. 자리를 짚어
+    주면 그 문장만 받아 오면 된다.
+
+    돌려주는 것은 {갈래: [걸린 문장, ...]} 이다. 문장 자체를 준다(번호가 아니라) --
+    번호는 다시 쪼갤 때 어긋나지만 문장은 원문에서 그대로 찾을 수 있다."""
+    tell, _ = _lines(text)
+    short_da = [s for s in tell if _DA.search(s) and len(s) < LONG]
+    out = {}
+    m = measure(text)
+    if m["n"] < 6:
+        return out
+    if m["da"] > LIMITS["da"]:
+        # 넘긴 만큼만 고치면 된다 -- 전부 고치라고 하면 이번엔 반대로 넘어간다.
+        need = len(short_da) - int(LIMITS["da"] * m["n"])
+        out["da"] = sorted(short_da, key=len)[:max(1, need)]
+    if m["run"] > LIMITS["run"]:
+        run, run_at = [], []
+        for s in tell:
+            if _DA.search(s) and len(s) < LONG:
+                run.append(s)
+            else:
+                if len(run) > LIMITS["run"]:
+                    run_at += run[LIMITS["run"]:]
+                run = []
+        if len(run) > LIMITS["run"]:
+            run_at += run[LIMITS["run"]:]
+        if run_at:
+            out["run"] = run_at
+    if m["long"] < LIMITS["long"]:
+        need = int(LIMITS["long"] * m["n"]) - sum(len(s) >= LONG for s in tell)
+        out["long"] = sorted(short_da or tell, key=len, reverse=True)[:max(1, need)]
+    return out
+
+
 def check(text: str) -> list[str]:
     """넘은 것만 사람 말로 돌려준다. 빈 목록이면 리듬은 괜찮다."""
     m = measure(text)

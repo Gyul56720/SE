@@ -528,11 +528,14 @@ print("      ← gemma-4-26b 가 60초로는 모자라 504 DEADLINE_EXCEEDED 만
 print("        자기 차례를 쓰고 답은 안 주니 안 쓰느니만 못한 후보가 된다.")
 
 _secs = {}
+_out = {}
 
 
 class _FakeChat:
-    def __init__(self, model, google_api_key=None, max_retries=None, timeout=None):
+    def __init__(self, model, google_api_key=None, max_retries=None, timeout=None,
+                 max_output_tokens=None):
         _secs[model] = timeout
+        _out[model] = max_output_tokens
 
 
 import types as _types
@@ -546,3 +549,22 @@ ok(_secs["gemma-4-26b-a4b-it"] == llm_pool.SLOW_TIMEOUT,
    f"gemma 는 오래 기다린다 ({_secs['gemma-4-26b-a4b-it']:.0f}초)")
 ok(_secs["gemini-flash-lite-latest"] == llm_pool.TIMEOUT,
    f"flash 는 그대로다 ({_secs['gemini-flash-lite-latest']:.0f}초)  ← 느려질 이유가 없다")
+ok(all(v == llm_pool.MAX_OUT for v in _out.values()),
+   f"한 번에 받을 만큼 받는다 ({llm_pool.MAX_OUT}토큰)  ← 안 걸면 모델 기본값으로 돈다")
+
+
+print()
+print("[판정] **대기 시간이 이름보다 정직하다**")
+print("      ← 429 에 한도 이름이 안 실려 오면 전부 일일 소진으로 확정하고 있었다.")
+print("        실측: flash 계열 16개가 그렇게 봉인돼 후보가 22개에서 6개로 줄었다.")
+print("        하루치라면 30초 뒤에 다시 해보라고 할 리가 없다.")
+
+ok(llm_pool._is_rpm(RuntimeError("429 RESOURCE_EXHAUSTED 'retryDelay': '38s'")),
+   "38초만 기다리라는 429 는 분당 한도다")
+ok(llm_pool._is_rpm(RuntimeError("429 RESOURCE_EXHAUSTED PerMinute")),
+   "이름이 실려 오면 그대로 믿는다")
+ok(not llm_pool._is_rpm(
+       RuntimeError("429 PerDay 'retryDelay': '30000s'")),
+   "자정까지 기다리라는 것은 하루치다")
+ok(not llm_pool._is_rpm(RuntimeError("429 RESOURCE_EXHAUSTED")),
+   "단서가 하나도 없으면 하루치로 본다  ← 1분마다 죽은 조합을 두드리는 편이 더 나쁘다")

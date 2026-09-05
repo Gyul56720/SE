@@ -83,7 +83,11 @@ SIMILAR = 0.55
 # 죽은 사람은 못 돌아온다.
 _DEAD = re.compile(r"죽|사망|시신|시체|숨(을)?\s*거|고인|타계|없어졌다가 시신")        # 이만큼 닮았으면 같은 것을 더 자세히 말한 것으로 본다
 
-CHUNK = 1400
+# 한 번에 받는 분량. 모델의 한 번 출력 한도(8,192토큰 = 한글로 대략 8천 자)에 견주면
+# 1,400자는 8분의 1이었다. 호출 한 번의 값은 분량에 거의 안 비례하므로(프롬프트가
+# 18,000자인데 답이 1,400자였다), 작게 받는 것은 그 자체로 낭비다. 게이트는 분량과
+# 무관하게 비율로 재므로 크게 받아도 잣대는 그대로 선다.
+CHUNK = int(os.environ.get("DRIFT_CHUNK", "3200"))
 # 다시 쓰는 횟수. 모순·리듬·농도가 이 예산을 함께 쓴다. 둘이던 것을 셋으로 올렸다 --
 # 재는 자가 늘었는데 예산이 그대로면 첫 지적만 고치고 끝난다.
 # **표류 계수** -- 부조리의 세기. 1.0 이면 축을 전부 매번 켠다.
@@ -708,6 +712,54 @@ def _diffuse(book: dict) -> str:
 한다."""
 
 
+# 자리를 짚어 고칠 수 있는 갈래. 나머지(대사 비율·점층·박자·확산)는 새 재료가 있어야
+# 하므로 문장 교체로는 안 되고, 예전처럼 다시 쓴다.
+PATCHABLE = {
+    "da":   "이 문장들이 **짧은 '-다'** 로 끝난다. 끝을 바꿔라 -- 명사로 끝내거나,"
+            " 말줄임으로 두거나, '-까/-지/-군/-는 것' 으로 바꾸거나, 뒤에 생각을 붙여라.",
+    "run":  "짧은 '-다' 가 내리 이어진 자리다. 끝을 바꾸거나 앞 문장에 이어 붙여라.",
+    "long": "이 문장들이 너무 짧다. **쉼표로 이어 붙여** 마흔다섯 자를 넘겨라 --"
+            " 딴 생각이든, 눈에 들어온 것이든, 방금 한 말의 토를 달든.",
+}
+
+
+def patch_prompt(kind: str, lines: list) -> str:
+    """**걸린 문장만 고쳐 달라고 한다.** 원고를 통째로 다시 받지 않는다 -- 두 문장을
+    고치려고 1,400자를 새로 만드는 것이 지금까지의 방식이었다."""
+    numbered = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(lines))
+    return f"""아래는 어떤 소설에서 뽑아낸 문장들이다. {PATCHABLE[kind]}
+
+{numbered}
+
+규칙:
+- **뜻과 사건은 그대로 둔다.** 같은 일이 같은 순서로 일어나야 한다.
+- 사람·장소·물건의 이름을 바꾸지 마라. 새 사건을 만들지 마라.
+- 짧아지지 마라. 고친 문장이 원래보다 짧으면 안 고친 것만 못하다.
+- 번호를 그대로 붙여 **고친 문장만** 돌려줘라. 다른 말은 쓰지 마라.
+
+{{"1": "고친 문장", "2": "고친 문장"}} 꼴의 JSON 하나로만 답한다.
+"""
+
+
+def apply_patch(text: str, lines: list, fixed: dict) -> tuple:
+    """받아 온 문장을 원문에 끼워 넣는다. 못 찾거나 짧아졌으면 그 자리는 그냥 둔다 --
+    되받은 것을 검사 없이 넣으면 원고가 조용히 상한다."""
+    done = 0
+    for key, new in fixed.items():
+        try:
+            old = lines[int(str(key).strip()) - 1]
+        except (ValueError, IndexError, TypeError):
+            continue
+        new = str(new).strip()
+        if not new or new == old or len(new) < len(old) * 0.8:
+            continue
+        if text.count(old) != 1:          # 여러 군데면 어느 것인지 알 수 없다
+            continue
+        text = text.replace(old, new, 1)
+        done += 1
+    return text, done
+
+
 def write_prompt(book: dict, feedback: str = "") -> str:
     tail = "".join(book["chunks"])[-TAIL:]
     opening = not book["chunks"]
@@ -889,6 +941,7 @@ def step(book: dict, llm, log=None) -> dict:
     feedback = ""
     best = None
     stale = 0                 # 나아지지 않은 시도가 몇 번 이어졌는가
+    mend = True               # 문장 손질이 이 덩어리에서 통하는가
     # 재시도가 메아리로만 소진되면 아래 반환문이 clashes 를 못 찾는다(실측:
     # UnboundLocalError). 판정을 한 번도 못 했다는 뜻이므로 빈 목록에서 시작한다.
     clashes: list[str] = []                                   # (점수, 본문, 원장) -- 리듬만 걸린 후보
@@ -911,6 +964,28 @@ def step(book: dict, llm, log=None) -> dict:
         # **마지막 시도는 그냥 통과시킨다.** 여기서 되돌린 원고는 원장이 없어 채택
         # 후보가 못 된다 -- 끝까지 리듬으로 막으면 그 덩어리는 통째로 안 나온다.
         # 앞쪽 시도에서만 아껴 쓰고, 뒤는 평소대로 재고 채택한다.
+        # **자리를 짚을 수 있으면 그 문장만 고친다.** 전체를 다시 뱉게 하면 1,400자를
+        # 새로 만들어 두 문장을 고치는 셈이고, 새로 만든 원고는 또 다른 데서 걸린다.
+        # 한 시도에 한 갈래만 손질한다. 갈래마다 부르면 아끼려던 호출이 도로 늘어난다
+        # (실측: 갈래를 다 돌자 한 덩어리에 26회가 됐다 -- 고치기 전보다 많다).
+        # **한 번 해보고 안 되면 그만둔다.** 되받은 것을 못 쓰는 판(모델이 JSON 을
+        # 안 주거나 짧게만 돌려주는 판)에서 계속 부르면, 아끼려던 호출이 도로 는다.
+        spot = rhythm.spots(text) if mend else {}
+        kinds = [k for k in PATCHABLE if k in spot]
+        for kind in kinds[(attempt - 1) % len(kinds):][:1] if kinds else []:
+            try:
+                fixed = D.call_json(D._extractor(llm),
+                                    patch_prompt(kind, spot[kind]),
+                                    tries=1, label="flow 손질")
+            except ValueError:
+                mend = False
+                continue
+            text, done = apply_patch(text, spot[kind], fixed)
+            if done:
+                D._log(f"[flow] {kind} -- 문장 {done}개만 고쳤다 "
+                       f"(전체를 다시 쓰지 않는다)")
+            else:
+                mend = False
         pre = echo.check(text, "".join(book["chunks"][:-1])) + rhythm.check(text)
         if pre and attempt < MAX_REWRITE and stale < GIVE_BACK:
             one = pre[(attempt - 1) % len(pre)]

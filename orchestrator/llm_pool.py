@@ -94,6 +94,12 @@ FANOUT = int(os.environ.get("GEMINI_FANOUT", "3"))
 MIN_GAP = float(os.environ.get("GEMINI_MIN_GAP", "8"))   # 같은 통을 다시 쓰기까지(초)
 # 429 를 맞은 키는 이만큼 더 쉰다. 한도가 키에 걸리므로 형제 모델도 같이 쉬어야 한다.
 KEY_PENALTY = float(os.environ.get("GEMINI_KEY_PENALTY", "30"))
+# 이만큼 안에 다시 해보라는 429 는 분당 한도로 본다. 하루치라면 이렇게 짧게 부를 리 없다.
+RPM_HINT = float(os.environ.get("GEMINI_RPM_HINT", "180"))
+# **한 번에 받을 수 있는 만큼 받는다.** 여태 이것을 안 걸어서 모델 기본값으로 돌았고,
+# 한 덩어리를 1,400자로 받고 있었다 -- 호출 한 번의 8분의 1만 쓴 것이다. 같은 원고를
+# 쓰는 데 호출이 여덟 배 든다는 뜻이다. 호출 수가 병목이면 한 번에 크게 받는 것이 답이다.
+MAX_OUT = int(os.environ.get("GEMINI_MAX_OUTPUT", "8192"))
 
 # 이 프로세스가 각 후보를 마지막으로 부른 시각. 파일에 안 남긴다 -- RPM 은 60초짜리라
 # 프로세스 수명보다 짧고, 파일 잠금 비용을 매 호출마다 물 이유가 없다.
@@ -179,7 +185,16 @@ def _is_rpm(e) -> bool:
     판별 실패면 False -- 일일 소진을 분당으로 잘못 보면 1분마다 죽은 조합을 다시 두드린다.
     모르는 것은 보수적으로 일일 소진 취급하는 쪽이 안전하다(bot_tools 와 같은 판단)."""
     t = str(e)
-    return _is_quota(e) and ("PerMinute" in t or "per minute" in t.lower())
+    if not _is_quota(e):
+        return False
+    if "PerMinute" in t or "per minute" in t.lower():
+        return True
+    # **구글이 알려 준 대기 시간으로도 가른다.** 분당 한도에는 retryDelay 가 수십 초로
+    # 실려 온다 -- 하루치라면 자정까지 기다리라고 할 것을 30초만 기다리라고 할 리가 없다.
+    # 이름만 보다가, 이름이 안 실려 온 429 를 전부 일일 소진으로 확정하고 있었다(실측:
+    # flash 계열 16개가 그렇게 봉인돼 후보가 6개로 줄었다). 대기 시간은 이름보다 정직하다.
+    back = _retry_delay(e)
+    return 0 < back <= RPM_HINT
 
 
 def _is_permanent(e) -> bool:
@@ -228,7 +243,8 @@ def _default_factory(model: str, key: str):
     secs = SLOW_TIMEOUT if SLOW_MODEL.search(model) else TIMEOUT
     try:
         return ChatGoogleGenerativeAI(model=model, google_api_key=key,
-                                      max_retries=MAX_RETRIES, timeout=secs)
+                                      max_retries=MAX_RETRIES, timeout=secs,
+                                      max_output_tokens=MAX_OUT)
     except TypeError:
         return ChatGoogleGenerativeAI(model=model, google_api_key=key)
 
