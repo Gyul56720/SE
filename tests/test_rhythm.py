@@ -78,6 +78,29 @@ ok("말이 정보를 나르게 하지 마라" in n,
    "대사가 용건만 말하지 않게 한다  ← 딱딱함의 정체가 이것이다")
 
 print()
+print("[점층] **재지 않는 것은 안 지켜진다**")
+print("      ← 지금까지 style.py 의 프롬프트에만 적혀 있었다. 이 세션에서 확인된 것이")
+print("        하나 있다면 그것이다. 그래서 센다.")
+CLIMBED = "\n".join([
+    "비행기가 착륙하자 스피커에서 조용한 배경음악이 흘러나오기 시작했다.",
+    "그것은 어떤 오케스트라가 감미롭게 연주하는 옛 곡이었다.",
+    "그리고 그 멜로디는 언제나처럼 나를 어지럽혔다.",
+    "아니, 다른 때와는 비교가 되지 않을 정도로 격렬하게 머리 속을 뒤흔들었다.",
+    "나는 고개를 들어 상공에 떠 있는 어두운 구름을 오래 바라보았다.",
+])
+ok(rhythm.climb(CLIMBED) >= 3, f"기준 문장에서 점층을 잡아낸다 ({rhythm.climb(CLIMBED)}개)")
+ok(not any("받아 올리는" in c for c in rhythm.check(CLIMBED)), "점층한 글은 통과한다")
+ok(rhythm.climb(FLAT) == 0, "낱개로 선 문장들에서는 0이다")
+ok(any("받아 올리는" in c for c in rhythm.check(FLAT)), "모자라면 짚는다")
+ok(not any("받아 올리는" in c for c in rhythm.check(REFERENCE)),
+   "기준 문장은 통과한다  ← 자가 기준을 벌하면 자가 틀린 것이다")
+ok(rhythm.score(FLAT) > rhythm.score(REFERENCE), "점수에도 실린다")
+_p = flow.write_prompt(flow.blank())
+ok(f"{rhythm.LIMITS['climb']}개마다" in _p, "프롬프트가 같은 숫자를 말한다")
+ok("**점층**" in flow.write_prompt(dict(flow.blank(), chunks=["앞."])),
+   "맨 끝 필수 목록에도 오른다  ← 묻히면 안 지켜진다")
+
+print()
 if fails:
     print(f"리듬: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)

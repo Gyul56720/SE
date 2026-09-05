@@ -42,10 +42,31 @@ _QUOTE = re.compile(r"[\"“'']")
 # 둘째 문장이 마흔 몇 자다. 그 정도가 한 번씩 섞여야 리듬이 산다.
 LONG = 45
 
+# **점층** -- 앞 문장을 받아 한 단계 올리는 문장. 이것이 이 문체의 뼈다.
+#
+# 지금까지 프롬프트에만 적혀 있었다(style.py [점층]). 이 세션에서 확인된 것이 하나 있다면
+# **재지 않는 것은 안 지켜진다**는 것이다. 그래서 센다.
+#
+# 요구량은 **분량에 비례한다.** 짧은 글에 세 번을 요구하면 그건 자가 아니라 억지다.
+#
+# 완벽한 판정은 못 한다. 점층인지 아닌지는 뜻의 문제라 기계가 못 본다. 그러나 한국어에서
+# 앞 문장을 받아 올리는 문장은 **첫머리에 자국을 남긴다** -- 고쳐 말하거나("아니,",
+# "정확히 말하자면"), 더 얹거나("게다가", "그것도"), 앞 것을 지시어로 받거나("그것은",
+# "그 소리는"). 그 자국을 센다. 자국 없이 점층한 문장은 놓치지만, 그건 무른 자의 몫이다.
+_CLIMB = (
+    "아니", "아니,", "정확히", "그보다", "차라리", "오히려", "실은", "사실",
+    "게다가", "더구나", "심지어", "그것도", "그리고 그", "그래서 그", "거기다",
+    "그런데 그", "그래도", "다만", "물론", "적어도", "하필", "그중에서도",
+    "말하자면", "굳이 말하자면", "요컨대", "결국", "무엇보다",
+)
+# 앞 문장을 지시어로 받는 첫머리. "그" + 한두 글자 명사 + 조사.
+_ANAPHOR = __import__("re").compile(r"^(그것|그건|그게|그 [가-힣]{1,4}[은는이가도을를])")
+
 LIMITS = {
     "da":   0.62,   # **짧은** '-다' 가 이보다 많으면 단조롭다 (하루키 예문은 14%)
     "run":  4,      # 짧은 '-다' 가 이만큼 내리 이어지면 끊어야 한다
     "long": 0.15,   # 긴 문장이 이보다 적으면 목록처럼 읽힌다
+    "climb": 5,     # **서술문 이만큼마다 하나**는 앞 문장을 받아 올려야 한다
     "talk": 0.10,   # 대사가 이보다 적으면 '-다' 를 깰 수단이 하나 빠진 것이다
 }
 
@@ -67,6 +88,19 @@ def _lines(text: str) -> tuple[list[str], list[str]]:
     return tell, talk
 
 
+def climb(text: str) -> int:
+    """앞 문장을 받아 한 단계 올린 문장의 수."""
+    tell, _ = _lines(text)
+    n = 0
+    for i, sent in enumerate(tell):
+        if i == 0:
+            continue
+        head = sent.lstrip()
+        if _ANAPHOR.match(head) or any(head.startswith(m) for m in _CLIMB):
+            n += 1
+    return n
+
+
 def measure(text: str) -> dict:
     tell, talk = _lines(text)
     if not tell:
@@ -81,6 +115,7 @@ def measure(text: str) -> dict:
 
     total = len(tell) + len(talk)
     return {
+        "climb": climb(text),
         "da":   sum(da) / len(tell),
         "run":  best,
         "long": sum(len(s) >= LONG for s in tell) / len(tell),
@@ -104,6 +139,14 @@ def check(text: str) -> list[str]:
         out.append(f"짧은 '-다' 문장이 내리 {m['run']}번 이어진 자리가 있다. "
                    f"{LIMITS['run']}번을 넘기지 마라 -- 세 번째나 네 번째에서 생각을 붙이거나, "
                    f"대사를 넣거나, 문장을 끝내지 마라")
+    want = max(1, m["n"] // LIMITS["climb"])
+    if m["climb"] < want:
+        out.append(f"앞 문장을 받아 올리는 문장이 {m['climb']}개다. 서술문 {m['n']}개면 "
+                   f"{want}개는 있어야 한다 -- **문장은 낱개로 서 있으면 안 된다.** 한 문장을 놓았으면 다음 "
+                   f"문장이 그것을 **더 좁히거나, 더 키우거나, 뒤집어야** 한다. "
+                   f"'아니,' '정확히 말하자면,' '그것도' '그 소리는' 으로 앞 문장을 받아라. "
+                   f"그러다 끊고 다음으로 넘어가라")
+
     if m["long"] < LIMITS["long"]:
         out.append(f"{LONG}자 넘는 문장이 {m['long']:.0%}뿐이다. "
                    f"{LIMITS['long']:.0%}는 넘겨라 -- 짧은 문장 서넛에 하나씩은 쉼표로 이어 붙인 "
@@ -117,7 +160,8 @@ def check(text: str) -> list[str]:
 def score(text: str) -> float:
     """넘은 정도의 합. 낮을수록 좋다 -- 끝내 못 고쳤을 때 고르는 기준이다."""
     m = measure(text)
-    return (max(0.0, m["da"] - LIMITS["da"])
+    return (max(0, max(1, m["n"] // LIMITS["climb"]) - m["climb"]) * 0.12
+            + max(0.0, m["da"] - LIMITS["da"])
             + max(0, m["run"] - LIMITS["run"]) * 0.05
             + max(0.0, LIMITS["long"] - m["long"])
             + max(0.0, LIMITS["talk"] - m["talk"]))
