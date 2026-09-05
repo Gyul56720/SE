@@ -370,9 +370,58 @@ def _batch(spec):
 
 # 키 A 의 모델 다섯은 전부 막혔고, 성한 것은 키 B 하나뿐이다.
 _lab = _batch([("kA:m%d" % i, True) for i in range(5)] + [("kB:m0", False)])
-_first3 = _hit[:3]
-ok(len({llm_pool._key_of(x) for x in _first3}) == len(_first3),
-   f"첫 묶음이 서로 다른 키다 ({_first3})")
-ok("kB:m0" in _first3,
-   "성한 키가 첫 묶음에 든다  ← 키로 안 거르면 kA 다섯을 다 때린 뒤에야 닿는다")
+# 폭이 1 에서 시작하므로 첫 발은 하나, 막히면 둘, 또 막히면 셋이다.
+_second = _hit[1:3]
+ok(len({llm_pool._key_of(x) for x in _second}) == len(_second),
+   f"넓힌 묶음이 서로 다른 키다 ({_second})")
+ok("kB:m0" in _hit[:3],
+   "성한 키가 곧바로 닿는다  ← 키로 안 거르면 kA 다섯을 다 때린 뒤에야 닿는다")
 ok(_lab == "kB:m0", f"성공한다 ({_lab})")
+
+print()
+print("[폭] **처음엔 하나만 던진다 -- 막힐 때만 넓힌다**")
+print("      ← 동시 발사는 같은 프롬프트를 복제해 던지고 하나만 쓴다. 첫 후보가 성공할")
+print("        상황에서는 쿼터를 배로 태우고 나머지를 버리는 것이다.")
+
+_batch([("kA:m0", False), ("kB:m0", False)])
+ok(len(_hit) == 1, f"성공하면 한 발로 끝난다 ({_hit})")
+
+# 전부 막힌 풀. 같은 묶음에 든 것들은 거의 같은 순간에 시작하므로 시각으로 묶어 센다.
+_t = []
+
+
+class _Stamp(_Slow):
+    def invoke(self, prompt):
+        _t.append(time.time())
+        return super().invoke(prompt)
+
+
+llm_pool._LAST_USED.clear()
+llm_pool._LAST_KEY.clear()
+llm_pool.RPM_ROUNDS = 1
+try:
+    llm_pool.call([("k%d:m%d" % (i % 2, i), _Stamp("k%d:m%d" % (i % 2, i), True, 0.02))
+                   for i in range(6)], "x", verbose=False)
+except Exception:
+    pass
+_sizes, _cur = [], 1
+for a, b in zip(_t, _t[1:]):
+    if b - a < 0.01:
+        _cur += 1
+    else:
+        _sizes.append(_cur)
+        _cur = 1
+_sizes.append(_cur)
+ok(_sizes[0] == 1, f"첫 발은 하나다 ({_sizes})")
+ok(len(_sizes) > 1 and _sizes[1] > 1, f"막히면 넓어진다 ({_sizes})")
+
+print()
+print("[모델] **pro 계열은 후보에서 뺀다** -- 한도가 낮아 429 만 받아 오고 벌점만 올린다")
+_p = llm_pool.build_pool(keys=["k1"], models=["gemini-pro-latest", "gemini-3.5-flash",
+                                              "gemini-3.1-pro-preview"],
+                         llm_factory=lambda m, k: object())
+ok(not any("pro" in lb for lb, _ in _p), f"pro 가 없다 ({[lb for lb, _ in _p]})")
+ok(len(_p) == 1, "flash 만 남는다")
+_p = llm_pool.build_pool(keys=["k1"], models=["gemini-pro-latest"],
+                         llm_factory=lambda m, k: object())
+ok(len(_p) == 1, "전부 pro 뿐이면 거르지 않는다  ← 빈 풀보다는 낫다")

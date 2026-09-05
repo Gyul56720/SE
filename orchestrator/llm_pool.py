@@ -34,6 +34,14 @@ import quota_tracker  # noqa: E402
 
 FALLBACK_MODELS = ["gemini-3.5-flash", "gemini-3.5-flash-lite"]
 
+# **pro 계열은 후보에서 뺀다.** 무료 티어에서 pro 의 분당 한도는 flash 계열의 몇 분의 일이라,
+# 후보에 끼워 두면 거의 매번 429 만 받아 오면서 그 키의 벌점만 올린다 -- 답을 주지도 않고
+# 다음 시도를 늦추기만 하는 후보다(실측 로그: pro-latest / 3.1-pro-preview 가 매 바퀴 429).
+# 산문 품질은 화자 프롬프트가 정하지 모델 등급이 정하지 않는다. 되살리려면
+# GEMINI_ALLOW_PRO=1 을 준다.
+SKIP_MODEL = re.compile(os.environ.get("GEMINI_SKIP_MODEL", r"pro"), re.I)
+ALLOW_PRO = os.environ.get("GEMINI_ALLOW_PRO", "") not in ("", "0", "false")
+
 # 후보 하나에 얼마나 버틸 것인가. bot_tools 가 실측으로 얻은 값과 같은 규칙을 여기서도 갖는다
 # (langchain 없이도 임포트되게 값만 복제한다 -- 규칙이 바뀌면 bot_tools 와 함께 갱신).
 # langchain 기본값(max_retries=6, timeout 없음)을 그대로 쓰면 실패하는 후보 하나가 지수 backoff
@@ -248,7 +256,14 @@ def build_pool(keys=None, models=None, llm_factory=_default_factory, model_liste
         kid = _key_id(key)
         kmodels = models or model_lister(key)
         for m in kmodels:
+            if not ALLOW_PRO and SKIP_MODEL.search(m):
+                continue
             pool.append((f"key-{kid}:{m}", llm_factory(m, key)))
+    if not pool and keys:          # 전부 걸러졌으면 거르지 않는다 -- 빈 풀보다는 낫다
+        for key in keys:
+            kid = _key_id(key)
+            for m in (models or model_lister(key)):
+                pool.append((f"key-{kid}:{m}", llm_factory(m, key)))
     return pool
 
 
@@ -347,6 +362,12 @@ def call(pool, prompt: str, pool_id: str = "orchestrator", max_candidates: int =
 
         only_transient = True          # 이 바퀴가 전부 "기다리면 풀리는" 실패였는가
         queue = list(ranked[:limit])
+        # **처음엔 하나만 던진다.** 동시 발사는 같은 프롬프트를 복제해서 던지고 제일 빨리
+        # 온 것만 쓴다 -- 첫 후보가 어차피 성공할 상황에서는 쿼터를 배로 태우고 나머지는
+        # 버리는 것이다. 속도를 사려고 쿼터를 파는 셈인데, 쿼터가 병목이면 정확히 거꾸로
+        # 작동한다(실측: 키 둘의 모든 모델이 동시에 429). 그래서 폭은 1 에서 시작해
+        # **실패할 때만** 넓힌다. 잘 도는 런은 호출 한 번, 막힌 런만 여러 발이다.
+        width = 1
 
         # **묶음으로 동시에 던진다.** RPM 은 모델별로 따로 걸리므로 서로 다른 통에 던지는
         # 것은 서로의 한도를 안 깎는다. 직렬로 하나씩 두드리며 사이사이 기다리면 그 통들을
@@ -359,7 +380,7 @@ def call(pool, prompt: str, pool_id: str = "orchestrator", max_candidates: int =
             # 같이 벌점을 물고, 37 초를 자고, 다시 같은 짓을 했다(실측: 그렇게 10분).
             # 키로 거르면 묶음 하나가 서로 다른 프로젝트 셋을 쓴다.
             batch, seen_keys, held = [], set(), []
-            while queue and len(batch) < max(1, FANOUT):
+            while queue and len(batch) < max(1, min(width, FANOUT)):
                 cand = queue.pop(0)
                 k = _key_of(cand[0])
                 if k in seen_keys:
@@ -420,6 +441,7 @@ def call(pool, prompt: str, pool_id: str = "orchestrator", max_candidates: int =
                 pool_x.shutdown(wait=False, cancel_futures=True)
             if won:
                 return won
+            width = min(max(1, FANOUT), width + 1)   # 막혔다 -- 다음 묶음은 넓게
 
         if rnd >= max(1, RPM_ROUNDS) or not only_transient:
             break
