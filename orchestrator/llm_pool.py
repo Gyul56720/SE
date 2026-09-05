@@ -306,8 +306,18 @@ def build_pool(keys=None, models=None, llm_factory=_default_factory, model_liste
     if keys is None:
         if not os.environ.get("GEMINI_API_KEY"):
             _load_dotenv_once()
-        keys = [k for k in (os.environ.get("GEMINI_API_KEY"),
-                            os.environ.get("GEMINI_API_KEY_FALLBACK")) if k]
+        # **키는 몇 개든 받는다.** 한도는 프로젝트에 걸리므로 서로 다른 프로젝트의 키를
+        # 더하는 것이 유일하게 한도를 늘리는 길이다(같은 프로젝트에서 키만 여러 개
+        # 만들면 한도는 그대로다 -- 구글 문서 기준). FALLBACK2, FALLBACK3 ... 으로
+        # 이어 붙이면 자동으로 잡힌다.
+        names = ["GEMINI_API_KEY", "GEMINI_API_KEY_FALLBACK"]
+        names += [f"GEMINI_API_KEY_FALLBACK{i}" for i in range(2, 9)]
+        seen, keys = set(), []
+        for nm in names:
+            v = (os.environ.get(nm) or "").strip()
+            if v and v not in seen:          # 같은 키를 두 번 넣으면 한도가 는 것처럼
+                seen.add(v)                  # 보이지만 실제로는 같은 통을 두 번 쓴다
+                keys.append(v)
     pool = []
     for key in keys:
         if not key:

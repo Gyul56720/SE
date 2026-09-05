@@ -62,3 +62,6 @@ novel/seeds_used.json
 novel/seed_current.json
 novel/seeded.json
 novel/seeded.scenes.jsonl
+
+# 원고 옆에 쌓이는 못 고친 것들 -- 부산물이라 저장소에 안 넣는다
+*.debt.jsonl
