@@ -329,6 +329,33 @@ def _level(book: dict) -> float:
                            float(book.get("drift", DRIFT)))
 
 
+def _must(book: dict) -> str:
+    """**맨 끝의 필수 목록.** 모델이 마지막으로 읽는 자리다.
+
+    급발진이 안 나온다는 평(2026-09-05)의 원인은 지시가 없어서가 아니라 **묻혀서**였다.
+    프롬프트 한복판에 열 줄짜리 블록으로 있으면 앞뒤의 스무 항목에 섞여 흐려진다.
+    그래서 지금 이 덩어리에 반드시 있어야 하는 것만 세 줄로 다시 세운다.
+    """
+    if book.get("_shock"):
+        return ("[이 덩어리에 반드시]\n"
+                "  1. 위 사건이 실제로 터진다. 예고하지 말고 터뜨려라\n"
+                "  2. 사람마다 다르게 반응한다 -- 화내고, 웃고, 못 본 척하고, 품어 준다. "
+                "대사로 받아라\n"
+                "  3. 끝나고 공간이 바뀌어 있다")
+    has = "급발진 하나" in _impulse(book)
+    lines = ["[이 덩어리에 반드시]"]
+    if has:
+        lines.append("  1. **위 급발진이 실제로 일어난다.** 저지르고 → 사람마다 다르게 "
+                     "반응하고(한쪽은 품어 주고) → 저지른 쪽은 태연하다. 빠뜨리면 실패다")
+    else:
+        lines.append("  1. 급발진은 이번엔 없다. 그래도 인물의 말투와 태도는 그대로다")
+    lines.append("  2. **대사가 네 턴 넘게 이어지는 자리 하나.** 긴 대사 둘 이상")
+    lines.append("  3. **욕망 하나가 결판난다.** 채워지면 몸으로 쓰고, 어긋나면 다음 "
+                 "욕망이 생긴다")
+    lines.append("  4. 잡소리 하나. 새것 셋, 앞엣것 하나는 **더 구체적인 이름으로 키워서**")
+    return "\n".join(lines)
+
+
 def _matter(book: dict) -> str:
     """**소재** -- 이번 덩어리에 섞을 재료. 확산·리듬이 '어떻게' 라면 이건 '무엇' 이다.
 
@@ -407,9 +434,9 @@ def _diffuse(book: dict) -> str:
     받아치고, 딴소리한다. 긴 것과 짧은 것이 번갈아야 대화가 리듬을 갖는다.
   * **이상한 대화를 해라.** 지금 상황과 상관없는 것을 궁금해하고, 엉뚱한 데서 정색하고,
     농담을 무표정하게 던진다. 용건만 오가는 대사가 제일 재미없다.
-  * **감탄사를 지어내고 문법을 놓아라.** "끼얏호", "어라랍쇼", "헐랭", "우와씨", "쓰읍",
-    "푸하" -- 사전에 없어도 좋다. 그 사람이 낼 법한 소리면 그만이다. 문장을 끝까지
-    맺지 않아도, 어순이 뒤집혀도, 조사가 빠져도 된다. **말끝을 다듬으면 그게 딱딱함이다.**
+  * **감탄사를 새로 지어내고 문법을 놓아라.** 앞 덩어리에 쓴 감탄사를 또 쓰지 마라 --
+    매번 새 소리다. 문장을 끝까지 맺지 않아도, 어순이 뒤집혀도, 조사가 빠져도 된다.
+    **말끝을 다듬으면 그게 딱딱함이다.**
 
 {_impulse(book)}
 {_matter(book)}
@@ -515,6 +542,7 @@ def write_prompt(book: dict, feedback: str = "") -> str:
 {book['first'] if opening else '...' + tail}
 {'' if opening else FORWARD}
 
+{_must(book)}
 {feedback}
 산문만 출력한다. 제목도 머리말도 표식도 쓰지 마라."""
 
@@ -661,7 +689,8 @@ def step(book: dict, llm, log=None) -> dict:
         _after(book, best[1])
         D._log("[flow] 마지막 시도가 모순이다 -- 앞서 통과한 후보를 채택한다")
         return {"status": "ok", "chars": len(best[1]), "clashes": []}
-    return {"status": "blocked", "chars": 0, "clashes": clashes}
+    return {"status": "blocked", "chars": 0, "clashes": clashes,
+            "why": "모순: " + (clashes[0][:80] if clashes else "")}
 
 
 def _save(book: dict, path) -> None:
@@ -670,20 +699,49 @@ def _save(book: dict, path) -> None:
                               encoding="utf-8")
 
 
+# 연속으로 이만큼 실패하면 그때는 정말 멈춘다. 그 전까지는 기다렸다 다시 해 본다.
+GIVE_UP = 8
+BACKOFF = (20, 60, 120, 300, 600)      # 실패가 이어질 때 쉬는 시간(초)
+
+
 def run(book: dict, llm, target: int, path=None, deadline=None) -> dict:
-    # **시작하자마자 한 번 쓴다.** 첫 덩어리를 다 받고서야 파일이 생기면, 아직 쓰는
-    # 중인지 시작도 못 한 건지 밖에서 구분할 방법이 없다(실측: --read 가
-    # FileNotFoundError 로 죽었는데 프로세스는 멀쩡히 첫 덩어리를 받고 있었다).
+    """목표 글자 수까지 쓴다. **한 번 막혔다고 밤을 통째로 버리지 않는다.**
+
+    예전엔 덩어리 하나가 막히면(모순을 못 풀거나 호출이 터지면) 그 자리에서 런이 끝났다.
+    10만 자를 걸어 두고 잤는데 2,300자에서 서 있던 이유가 그것이다 -- 두 번째 덩어리
+    뒤에 한 번 막혔고, 남은 일곱 시간을 아무것도 안 했다.
+
+    막히는 이유는 대개 지나간다. 쿼터가 잠깐 마르거나, 망이 끊기거나, 모순 하나를 못
+    푸는 것은 **다음 시도에서 대개 풀린다.** 그러니 기다렸다 다시 한다. 연속으로 여덟 번
+    실패하면 그때는 정말 멈춘다 -- 그건 지나가는 문제가 아니다.
+    """
     _save(book, path)
+    miss = 0
     while sum(len(c) for c in book["chunks"]) < target:
         if deadline and time.time() > deadline:
             D._log("[flow] 시간 상한 -- 여기서 멈춘다")
             break
-        r = step(book, llm)
+        try:
+            r = step(book, llm)
+        except Exception as e:                       # 호출이 터져도 런은 안 죽는다
+            r = {"status": "error", "why": f"{type(e).__name__}: {e}"[:120]}
         _save(book, path)
-        if r["status"] != "ok":
-            D._log("[flow] 모순을 못 풀었다 -- 멈춘다")
+
+        if r["status"] == "ok":
+            miss = 0
+            continue
+
+        miss += 1
+        why = r.get("why") or "모순을 못 풀었다"
+        if miss >= GIVE_UP:
+            D._log(f"[flow] {miss}번 내리 실패 -- 멈춘다 ({why})")
             break
+        wait = BACKOFF[min(miss - 1, len(BACKOFF) - 1)]
+        D._log(f"[flow] 막혔다({why}) -- {wait}초 쉬었다 다시 한다 ({miss}/{GIVE_UP})")
+        if deadline and time.time() + wait > deadline:
+            D._log("[flow] 기다리면 시간 상한을 넘는다 -- 여기서 멈춘다")
+            break
+        time.sleep(wait)
     return {"chunks": len(book["chunks"]),
             "chars": sum(len(c) for c in book["chunks"])}
 
@@ -726,6 +784,21 @@ def main() -> int:
     path = a.resume or a.out
     book = (json.loads(Path(path).read_text(encoding="utf-8"))
             if a.resume and Path(a.resume).exists() else blank(a.first))
+
+    # **첫 문장이 다르면 다른 소설이다.** 원장에는 앞 소설의 인물·장소·사물이 그대로
+    # 남아 있어서, 그 위에 새 이야기를 얹으면 없던 사람이 걸어 들어오고 모순 검사도
+    # 엉뚱한 것을 잡는다(실측 2026-09-05: "json 은 이야기가 바뀌면 초기화 되어야 하는데
+    # 아직 이전 소설의 내역들이 그대로 남아있는 것 같아").
+    #
+    # 조용히 지우지는 않는다 -- 밤새 쓴 원고일 수 있다. 멈추고 무엇을 하라고 알려 준다.
+    if a.resume and book.get("first") and book["first"] != a.first:
+        print("첫 문장이 다르다 -- 이건 다른 소설이다. 이어 쓰지 않는다.\n"
+              f"  원고에 박힌 첫 문장: {book['first'][:40]}...\n"
+              f"  지금 주어진 첫 문장: {a.first[:40]}...\n"
+              "  새 이야기를 쓰려면 --out 으로 새로 시작해라(scripts/drift.sh start).\n"
+              "  이 원고를 이어 쓰려면 --first 를 빼거나 원고의 첫 문장을 그대로 줘라.",
+              file=sys.stderr)
+        return 2
     # **--drift 는 이어 쓰기에도 먹는다.** 뒤로 갈수록 부조리가 심해지면 중간에 낮춰서
     # 이어 갈 수 있어야 한다 -- 그러자고 원고를 버리게 하면 안 된다.
     book["drift"] = max(0.0, min(1.0, a.drift))

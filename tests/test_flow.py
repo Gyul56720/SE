@@ -231,6 +231,9 @@ class Dead:
         raise RuntimeError("모델 호출 실패")
 
 
+flow.BACKOFF = (0,)      # 런은 실패하면 쉬었다 다시 한다. 시험에서는 안 쉰다.
+
+
 import tempfile as _tf                                                # noqa: E402
 _p = Path(_tf.mkdtemp()) / "start.json"
 try:

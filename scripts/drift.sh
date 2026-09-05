@@ -98,6 +98,27 @@ case "${1:-status}" in
     set -- --out "$BOOK" --chars "${2:-8000}" ${DRIFT:+--drift "$DRIFT"} ${MATTER:+--matter "$MATTER"}
     [ -n "${FIRST:-}" ] && set -- "$@" --first "$FIRST"
     launch "새 원고를" "$@"
+    # **정말 새 원고인지 확인한다.** 앞 런이 살아 있으면 같은 파일에 계속 쓰므로 옛
+    # 인물·장소가 그대로 남는다(실측: "이야기가 바뀌었는데 이전 소설 내역이 남아 있다").
+    sleep 2
+    python3 - "$BOOK" <<'PY' || true
+import json, sys
+from pathlib import Path
+p = Path(sys.argv[1])
+if p.exists():
+    b = json.loads(p.read_text(encoding="utf-8"))
+    L = b.get("ledger", {})
+    n = sum(len(L.get(k) or {}) for k in ("people", "places", "objects", "facts"))
+    if n or b.get("chunks"):
+        print(f"  ⚠ 새 원고인데 세계가 비어 있지 않다 (항목 {n}개, 덩어리 "
+              f"{len(b.get('chunks', []))}개).
+"
+              "    앞 런이 같은 파일에 쓰고 있을 수 있다:
+"
+              "      /usr/bin/pgrep -af 'novel/flow.py'    ← 둘 이상이면 옛 PID 를 kill")
+    else:
+        print("  세계는 비어 있다 -- 처음부터 시작한다.")
+PY
     ;;
 
   go|resume)

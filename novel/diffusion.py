@@ -54,7 +54,18 @@ LIMITS = {
     "long":  2,     # 긴 대사(설명·변명·수다·헛소리)가 적어도 둘
     "short": 2,     # 짧은 대사(끊고 받아치는 것)가 적어도 둘
     "bulk":  0.45,  # **대사 글자 수의 이만큼은 긴 대사여야 한다**
+    "rally": 4,     # **한 번은 이만큼 주고받아야 한다** -- 대화가 이어진다는 것의 정의
+    "grow":  1,     # **앞엣것에서 자라난 새 이름이 적어도 하나**
 }
+
+# 점층의 자국은 이름에 남는다. 사용자가 든 예: 웅포 → **웅포 소금 공장**. 앞에서 지어낸
+# 이름이 다음 덩어리에서 더 구체적인 것으로 자란다 -- 그것이 세계가 깊어졌다는 증거다.
+# 회수(back)만 재면 "웅포에 다시 갔다" 로도 채워지는데, 그건 다시 부른 것이지 자란 것이
+# 아니다(실측 2026-09-05: "점층이 약하다. 전작이 웅포 → 웅포 소금 공장이었던 것에 비해").
+
+# 개수도 몫도 채웠는데 "대화가 길게 이어지지 않는다" 는 평이 나왔다(실측 2026-09-05).
+# 재보니 대사가 한 줄씩 흩어져 있었다 -- 서술 사이에 한 마디, 또 한참 뒤에 한 마디.
+# **대화는 대사의 양이 아니라 연달아 오가는 길이다.** 그래서 가장 긴 연속 구간을 센다.
 
 # 왜 몫까지 재는가. 개수 하한만 두었더니 모델이 최소로 맞췄다 -- 긴 대사 딱 하나에
 # 짧은 대사 열 개. 그러면 자는 통과하는데 읽으면 대사가 죄다 짧다(실측 2026-09-05:
@@ -121,20 +132,39 @@ def talk(text: str) -> tuple[int, int]:
 
 
 def _talk3(text: str) -> tuple[int, int, float]:
-    """짧은 것 · 긴 것 · **긴 대사가 대사 글자 수에서 차지하는 몫**."""
+    short, long, bulk, _ = _talk4(text)
+    return short, long, bulk
+
+
+def _talk4(text: str) -> tuple[int, int, float, int]:
+    """짧은 것 · 긴 것 · 긴 대사의 몫 · **가장 길게 주고받은 턴 수**.
+
+    마지막 것이 '대화가 이어진다' 는 말의 정의다. 대사 사이에 짧은 지문("그는 웃었다")이
+    한 줄 끼는 것은 대화를 끊지 않는다 -- 사람은 말하면서 움직이니까. 그러나 서술이
+    두 줄 이상 이어지면 대화는 거기서 끝난 것이다.
+    """
     short = long = 0
     long_chars = all_chars = 0
+    rally = best = gap = 0
     for raw in text.splitlines():
         line = raw.strip()
-        if not line or not _QUOTE.match(line):
+        if not line:
             continue
-        all_chars += len(line)
-        if len(line) >= TALK_LONG:
-            long += 1
-            long_chars += len(line)
-        elif len(line) <= TALK_SHORT:
-            short += 1
-    return short, long, (long_chars / all_chars if all_chars else 0.0)
+        if _QUOTE.match(line):
+            all_chars += len(line)
+            if len(line) >= TALK_LONG:
+                long += 1
+                long_chars += len(line)
+            elif len(line) <= TALK_SHORT:
+                short += 1
+            rally += 1
+            gap = 0
+            best = max(best, rally)
+        else:
+            gap += 1
+            if gap >= 2 or len(line) > 120:   # 서술이 길거나 두 줄 이어지면 대화가 끊긴다
+                rally = 0
+    return short, long, (long_chars / all_chars if all_chars else 0.0), best
 
 
 def overused(text: str, names: list[str]) -> list[tuple[str, int]]:
@@ -149,9 +179,19 @@ def labels(text: str) -> int:
     return len(_YEAR.findall(text))
 
 
+def grown(before: dict, after: dict) -> list[str]:
+    """**앞엣것에서 자라난 이름.** 옛 이름을 품은 새 이름이면 그것이 점층의 자국이다."""
+    old = [p for p in props(before) if len(p) >= 2]
+    out = []
+    for new in added(before, after):
+        if any(o in new and o != new for o in old):
+            out.append(new)
+    return out
+
+
 def measure(text: str, before: dict, after: dict) -> dict:
-    short, long, bulk = _talk3(text)
-    return {"new": len(added(before, after)),
+    short, long, bulk, rally = _talk4(text)
+    return {"rally": rally, "grow": grown(before, after), "new": len(added(before, after)),
             "back": len(touched(text, props(before))),
             "short": short, "long": long, "bulk": bulk,
             "over": overused(text, props(before) + props(after)),
@@ -202,6 +242,20 @@ def check(text: str, before: dict, after: dict, now: int = 0) -> list[str]:
                    f"길게, 문장을 몇 개씩 이어서, 자기가 자기 말을 고쳐 가며 말해야 한다.** "
                    f"긴 대사 안에서도 점층해라 -- 좁히거나, 키우거나, 뒤집어라")
 
+    if len(old) >= 3 and len(m["grow"]) < LIMITS["grow"]:
+        seeds = [p for p in cold(before, "", now)][-6:]
+        out.append("**앞에서 지어낸 이름 하나를 더 구체적인 것으로 키워라.** 그냥 다시 "
+                   "부르는 것은 회수지 점층이 아니다 -- 그 이름을 품은 새 이름이 나와야 한다. "
+                   "장소면 그 안의 건물이나 구역, 사람이면 그가 속한 것, 물건이면 그 부분이나 "
+                   "출처. 그렇게 자란 것에 다시 사정을 하나 붙여라"
+                   + (f". 키울 만한 것: {' · '.join(seeds)}" if seeds else ""))
+
+    if m["rally"] < LIMITS["rally"]:
+        out.append(f"제일 길게 주고받은 대화가 {m['rally']}턴이다. 한 번은 {LIMITS['rally']}턴을 "
+                   f"넘겨라 -- **대사와 대사를 붙여 놓아라.** 서술 사이에 한 마디씩 흩어 놓으면 "
+                   f"그건 대화가 아니라 인용이다. 한 사람이 물으면 다른 사람이 답하고, 그 답을 "
+                   f"받아 또 묻고, 딴소리가 끼고, 그러다 원래 얘기로 돌아온다")
+
     if m["short"] < LIMITS["short"]:
         out.append(f"{TALK_SHORT}자 이하 짧은 대사가 {m['short']}개다. {LIMITS['short']}개는 "
                    f"넘겨라 -- 끊고, 받아치고, 딴소리하는 짧은 말이 긴 대사 사이에 있어야 한다")
@@ -218,5 +272,7 @@ def score(text: str, before: dict, after: dict) -> float:
     s += max(0, m["labels"] - LABEL_MAX) * 0.05
     s += max(0, LIMITS["long"] - m["long"]) * 0.15
     s += max(0.0, LIMITS["bulk"] - m["bulk"]) * 0.3
+    s += max(0, LIMITS["rally"] - m["rally"]) * 0.08
+    s += max(0, LIMITS["grow"] - len(m["grow"])) * 0.25
     s += max(0, LIMITS["short"] - m["short"]) * 0.1
     return s
