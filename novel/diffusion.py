@@ -28,6 +28,7 @@
 """
 from __future__ import annotations
 
+import os
 import re
 
 _QUOTE = re.compile(r"[\"“'']")
@@ -39,6 +40,12 @@ TALK_LONG = 55
 # 실측 2026-09-05: "긴 대사가 없고 다들 너무 짧다." 한 덩어리에 이만한 것이 하나는 있어야
 # 한 사람이 자기 얘기에 빠져 있는 대목이 생긴다.
 TALK_HUGE = 120
+# **대사 줄의 이만큼은 긴 대사다.** 글자 몫(bulk)만 재면 아주 긴 것 하나로 몫을 채우고
+# 나머지를 전부 짧게 써도 통과한다 -- 그래서 대사가 문장처럼 짧아졌다. 이건 줄 수로 잰다.
+# 기본은 길게 말하는 것이고, 짧게 끊는 것은 앞말에 기대는 한 마디일 때뿐이다.
+LONG_SHARE = float(os.environ.get("DRIFT_TALK_LONG_SHARE", "0.80"))
+TSPREAD_MIN = float(os.environ.get("DRIFT_TALK_SPREAD", "0.45"))
+TALK_MIN = 5             # 대사가 이만큼은 있어야 몫을 따진다
 
 # **회수는 반복이 아니다.** 회수를 "앞에서 나온 이름을 다시 쓰기" 로만 재면, 가장 싸게
 # 만족시키는 길이 같은 이름을 또 적는 것이 된다. 실측(2026-09-04): 한 덩어리에
@@ -68,7 +75,9 @@ LIMITS = {
     "back":  2,     # 앞에서 나온 소품 중 다시 만져야 하는 최소한의 수
     "long":  2,     # 긴 대사(설명·변명·수다·헛소리)가 적어도 둘
     "short": 2,     # 짧은 대사(끊고 받아치는 것)가 적어도 둘
-    "bulk":  0.45,  # **대사 글자 수의 이만큼은 긴 대사여야 한다**
+    "bulk":  0.45,  # 대사 글자 수의 이만큼은 긴 대사여야 한다. **길이 몫(MIX)이 주된
+                    # 자이고 이것은 바닥이다** -- 둘을 다 높이면 서로 다른 말을 한다.
+    "srun":  2,     # 짧은 대사가 내리 이만큼까지. 넘으면 받아치는 게 아니라 딸꾹질이다
     "rally": 6,     # **한 번은 이만큼 주고받아야 한다** -- 대화가 이어진다는 것의 정의
     "huge": 1,      # 아주 긴 대사(120자+)가 적어도 하나
     "grow":  1,     # **앞엣것에서 자라난 새 이름이 적어도 하나**
@@ -149,7 +158,7 @@ def talk(text: str) -> tuple[int, int]:
 
 
 def _talk3(text: str) -> tuple[int, int, float]:
-    short, long, bulk, _ = _talk4(text)
+    short, long, bulk = _talk4(text)[:3]
     return short, long, bulk
 
 
@@ -161,16 +170,18 @@ def talk_spread(text: str) -> float:
     return rhythm.spread(lens)
 
 
-def _talk4(text: str) -> tuple[int, int, float, int]:
-    """짧은 것 · 긴 것 · 긴 대사의 몫 · **가장 길게 주고받은 턴 수**.
+def _talk4(text: str) -> tuple:
+    """짧은 것 · 긴 것 · 긴 대사의 몫 · **가장 길게 주고받은 턴 수** ·
+    짧은 대사가 내리 이어진 최대 · 짧은 대사의 몫.
 
     마지막 것이 '대화가 이어진다' 는 말의 정의다. 대사 사이에 짧은 지문("그는 웃었다")이
     한 줄 끼는 것은 대화를 끊지 않는다 -- 사람은 말하면서 움직이니까. 그러나 서술이
     두 줄 이상 이어지면 대화는 거기서 끝난 것이다.
     """
-    short = long = 0
+    short = long = mid = talks = 0
     long_chars = all_chars = 0
     rally = best = gap = 0
+    srun = sbest = 0
     for raw in text.splitlines():
         line = raw.strip()
         if not line:
@@ -180,8 +191,15 @@ def _talk4(text: str) -> tuple[int, int, float, int]:
             if len(line) >= TALK_LONG:
                 long += 1
                 long_chars += len(line)
+                srun = 0
             elif len(line) <= TALK_SHORT:
                 short += 1
+                srun += 1
+                sbest = max(sbest, srun)
+            else:
+                mid += 1
+                srun = 0
+            talks += 1
             rally += 1
             gap = 0
             best = max(best, rally)
@@ -189,7 +207,8 @@ def _talk4(text: str) -> tuple[int, int, float, int]:
             gap += 1
             if gap >= 2 or len(line) > 120:   # 서술이 길거나 두 줄 이어지면 대화가 끊긴다
                 rally = 0
-    return short, long, (long_chars / all_chars if all_chars else 0.0), best
+    return (short, long, (long_chars / all_chars if all_chars else 0.0), best,
+            sbest, (long, mid, short))
 
 
 def overused(text: str, names: list[str], ledger: dict | None = None
@@ -266,7 +285,7 @@ def tooled(text: str, names: list[str]) -> list[str]:
 
 
 def measure(text: str, before: dict, after: dict) -> dict:
-    short, long, bulk, rally = _talk4(text)
+    short, long, bulk, rally, srun, mix = _talk4(text)
     huge = sum(1 for l in text.splitlines()
                if l.strip() and _QUOTE.match(l.strip()) and len(l.strip()) >= TALK_HUGE)
     new_open, closed = opened(before, after)
@@ -277,6 +296,7 @@ def measure(text: str, before: dict, after: dict) -> dict:
             "owed": len(after.get("open") or {}), "new": len(added(before, after)),
             "back": len(touched(text, props(before))),
             "short": short, "long": long, "bulk": bulk,
+            "srun": srun, "mix": mix,
             "over": overused(text, props(before) + props(after), after),
             "labels": labels(text)}
 
@@ -359,7 +379,10 @@ def check(text: str, before: dict, after: dict, now: int = 0) -> list[str]:
                    f"내력이든, 변명이든, 틀린 지식이든. 그 안에서 스스로 말을 고치고, "
                    f"딴 데로 샜다가, 돌아온다")
 
-    if m["long"] >= 2 and m["tspread"] < 0.6:
+    # **0.6 이었는데 8할을 길게 쓰라는 자와 부딪쳤다.** 대사 줄의 여덟 할이 55자를
+    # 넘으면 길이는 자연히 모인다 -- 그 상태를 "다 비슷하다" 고 벌하면 두 자가 서로
+    # 다른 말을 하는 것이다. 이제 퍼짐은 **긴 것들끼리 얼마나 다른가**를 본다.
+    if m["long"] >= 2 and m["tspread"] < TSPREAD_MIN:
         out.append(f"대사 길이가 다 비슷하다(퍼짐 {m['tspread']:.2f}). 두 마디짜리와 "
                    f"열 줄짜리가 **같은 장면 안에** 있어야 한다 -- 다 고르면 주고받기가 "
                    f"아니라 낭독이다")
@@ -367,6 +390,21 @@ def check(text: str, before: dict, after: dict, now: int = 0) -> list[str]:
     if m["short"] < LIMITS["short"]:
         out.append(f"{TALK_SHORT}자 이하 짧은 대사가 {m['short']}개다. {LIMITS['short']}개는 "
                    f"넘겨라 -- 끊고, 받아치고, 딴소리하는 짧은 말이 긴 대사 사이에 있어야 한다")
+
+    # **짧은 것은 받아칠 때만이다.** 아래 둘이 "기본은 길게" 를 지키는 자다 -- bulk 만
+    # 두면 긴 대사 하나로 몫을 채우고 나머지를 전부 짧게 써도 통과한다.
+    if m["srun"] > LIMITS["srun"]:
+        out.append(f"짧은 대사가 내리 {m['srun']}번 이어진 자리가 있다. "
+                   f"{LIMITS['srun']}번을 넘기지 마라 -- 짧게 받아치는 것은 **앞말에 기대는 "
+                   f"한 마디**일 때뿐이고, 그것이 이어지면 주고받기가 아니라 딸꾹질이다")
+    mix = m.get("mix")
+    if mix and sum(mix) >= TALK_MIN:
+        share = mix[0] / sum(mix)
+        if share < LONG_SHARE:
+            out.append(f"대사 줄의 {share:.0%}만 {TALK_LONG}자를 넘는다. "
+                       f"{LONG_SHARE:.0%}는 넘겨라 -- **기본은 길게 말하는 것**이다. "
+                       f"할 말이 있으면 다 하고, 딴 얘기로 새고, 묻지 않은 것까지 말한다. "
+                       f"짧게 끊는 것은 앞사람 말을 받아칠 때만 가끔이다")
     return out
 
 
