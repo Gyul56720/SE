@@ -343,3 +343,36 @@ ok(llm_pool._lat("한 번도 안 재본 것") == 0.0,
 ok(len(llm_pool._LAT) >= 3, f"몇 번이면 대부분 재진다 ({len(llm_pool._LAT)}개)")
 
 print("llm_pool RPM: 판정·쿨다운·복귀·일일소진 구분·야간 생존 -- 통과")
+
+
+print()
+print("[묶음] **한 묶음은 서로 다른 키로 채운다**")
+print("      ← 실측 로그: 동시에 던진 셋이 전부 key-1d299f32 였다. 한도는 모델이 아니라")
+print("        키에 걸리므로 셋이 같이 429 를 받고, 같이 벌점을 물고, 37초를 자고, 또 같은")
+print("        짓을 했다. 그게 '10분째 진행 없음' 의 정체였다.")
+
+_hit = []
+
+
+class _Watch(_Slow):
+    def invoke(self, prompt):
+        _hit.append(self.label)
+        return super().invoke(prompt)
+
+
+def _batch(spec):
+    _hit.clear()
+    llm_pool._LAST_USED.clear()
+    llm_pool._LAST_KEY.clear()
+    pool = [(lb, _Watch(lb, f, 0.02)) for lb, f in spec]
+    return llm_pool.call(pool, "x", verbose=False)[1]
+
+
+# 키 A 의 모델 다섯은 전부 막혔고, 성한 것은 키 B 하나뿐이다.
+_lab = _batch([("kA:m%d" % i, True) for i in range(5)] + [("kB:m0", False)])
+_first3 = _hit[:3]
+ok(len({llm_pool._key_of(x) for x in _first3}) == len(_first3),
+   f"첫 묶음이 서로 다른 키다 ({_first3})")
+ok("kB:m0" in _first3,
+   "성한 키가 첫 묶음에 든다  ← 키로 안 거르면 kA 다섯을 다 때린 뒤에야 닿는다")
+ok(_lab == "kB:m0", f"성공한다 ({_lab})")

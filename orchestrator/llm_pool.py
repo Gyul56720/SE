@@ -353,25 +353,37 @@ def call(pool, prompt: str, pool_id: str = "orchestrator", max_candidates: int =
         # 놀리는 것이고, 그것이 후보 12개에 7분이 걸리던 이유였다.
         while queue:
             queue.sort(key=sort_key)
-            batch, seen_buckets = [], set()
+            # **한 묶음에 같은 키를 두 번 넣지 않는다.** 한도는 모델이 아니라 키
+            # (프로젝트)에 걸린다. 예전에는 키:모델 단위로만 걸러서, 동시에 던진 셋이
+            # 전부 같은 키인 일이 흔했다 -- 같은 통을 세 번 때리니 셋이 같이 429 를 받고,
+            # 같이 벌점을 물고, 37 초를 자고, 다시 같은 짓을 했다(실측: 그렇게 10분).
+            # 키로 거르면 묶음 하나가 서로 다른 프로젝트 셋을 쓴다.
+            batch, seen_keys, held = [], set(), []
             while queue and len(batch) < max(1, FANOUT):
                 cand = queue.pop(0)
-                bucket = cand[0]                 # 같은 키:모델을 한 묶음에 두 번 넣지 않는다
-                if bucket in seen_buckets:
+                k = _key_of(cand[0])
+                if k in seen_keys:
+                    held.append(cand)            # 이번 묶음엔 안 쓴다, 버리지도 않는다
                     continue
-                seen_buckets.add(bucket)
+                seen_keys.add(k)
                 batch.append(cand)
+            queue = held + queue
             if not batch:
                 break
 
             # 이 묶음에서 제일 빨리 준비되는 만큼만 **한 번** 쉰다. 후보마다 쉬지 않는다.
-            waits = [max(0.0, MIN_GAP - _since_key(lb)) for lb, _ in batch]
-            nap = min(waits)
+            # 제일 빨리 준비되는 만큼만 쉬고, 그때까지도 아직 안 풀린 것은 이번 묶음에서
+            # 뺀다. 안 그러면 벌점 먹은 키가 묶음에 얹혀 그대로 또 429 를 받는다.
+            nap = min(max(0.0, MIN_GAP - _since_key(lb)) for lb, _ in batch)
             if nap > 0:
                 if verbose:
                     print(f"[llm_pool] {nap:.1f}초 쉬고 {len(batch)}개를 동시에 던진다",
                           file=sys.stderr, flush=True)
                 time.sleep(nap)
+                ready = [c for c in batch if _since_key(c[0]) >= MIN_GAP]
+                if ready and len(ready) < len(batch):
+                    queue = [c for c in batch if c not in ready] + queue
+                    batch = ready
 
             now = time.time()
             for lb, _ in batch:
