@@ -322,6 +322,34 @@ ok(all(k in _vo for k in ("[세계", "끝부분", "급발진")),
    "덩어리마다 바뀌는 것은 뒤에  ← 세계·꼬리·뽑기")
 
 print()
+print("[몸] **인물마다 다른 몸이 다른 비유를 만든다**")
+print("      ← 나이·직업·말투만으로는 안 갈린다. 마흔둘 정비공과 마흔둘 교사가")
+print("        같은 눈으로 세상을 본다. 몸이 다르면 세계가 다르다.")
+from novel import body                                                # noqa: E402
+ok(len(body.FACT) >= 25, f"몸의 사실이 충분하다 ({len(body.FACT)}개)")
+dupb = sum(body.draw("s", i)["fact"] == body.draw("s", i + 1)["fact"] for i in range(200))
+ok(dupb == 0, f"연달아 같은 몸이 아니다 ({dupb}건)  ← 두 인물이 한 사람처럼 읽힌다")
+bb = body.brief(body.draw("a", 0))
+ok("불행으로 쓰지 마라" in bb,
+   "몸을 불행으로 쓰지 않는다  ← 병도 결함도 아니고 그냥 그런 몸이다")
+ok("동정할 자리를 만들지 마라" in bb, "동정할 자리를 만들지 않는다")
+ok("설명하지 마라" in bb and "진단명도 내력도" in bb, "진단명을 대지 않는다")
+ok("끝까지 그 몸이다" in bb, "한 번 정해진 몸은 안 바뀐다")
+hits = sum("[몸]" in flow.write_prompt(dict(flow.blank(), chunks=["x"] * i))
+           for i in range(1, 101))
+ok(20 < hits < 55, f"셋에 하나쯤만 붙는다 ({hits}/100)  ← 매번 넣으면 진료 기록이 된다")
+ok("몸" in flow.CARD and "몸 칸" in flow.extract_prompt("x"),
+   "카드에 몸 칸이 있고 추출기가 적는다")
+
+print()
+print("[낯섦] **제3자는 사람이 아니어도 된다**")
+odd = ("냄새", "빛", "물", "숫자 하나", "똑같이 생긴 사람", "멈춘 것 -- 시계든 심장이든 도시든")
+for o in odd:
+    ok(o in SH.WHO, f"개입자: {o}")
+for h in ("시간이 한 시간 비어 있다", "문이 하나 더 생겨 있다", "글자가 안 읽힌다"):
+    ok(h in SH.HOW, f"방식: {h}")
+
+print()
 if fails:
     print(f"충격: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)
