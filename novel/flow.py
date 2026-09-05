@@ -991,13 +991,13 @@ def write_prompt(book: dict, feedback: str = "") -> str:
     트라우마, 좋아하는 것, 취미, 전공, 직업, 말투, 버릇까지. 전부 한 번에 늘어놓지는 마라 --
     지금 필요한 두세 개만 문장에 녹이고, 나머지는 뒤에서 하나씩 드러낸다.
 
-{OPENING if opening else _push(book)}
-
 {'[첫 문장 — 이것으로 시작하라]' if opening else '[지금까지의 끝부분 — 여기서 이어 쓴다]'}
 {book['first'] if opening else '...' + tail}
 {'' if opening else FORWARD}
 
 {_wording(book)}
+
+{OPENING if opening else _push(book)}
 
 {_must(book)}
 {feedback}
