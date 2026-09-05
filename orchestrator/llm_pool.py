@@ -59,11 +59,29 @@ RPM_MAX_WAIT = float(os.environ.get("GEMINI_RPM_MAX_WAIT", "75"))  # 한 바퀴 
 #
 # 그래서 최근에 쓴 후보는 뒤로 민다. 키 2개 x 모델 N 개를 **번갈아** 쓰면 유효 RPM 이 그만큼
 # 곱해진다 -- 후보가 여덟이고 간격이 6초면 초당 하나씩 쏴도 아무도 자기 한도에 닿지 않는다.
-MIN_GAP = float(os.environ.get("GEMINI_MIN_GAP", "6"))   # 같은 후보를 다시 쓰기까지(초)
+MIN_GAP = float(os.environ.get("GEMINI_MIN_GAP", "8"))   # 같은 키를 다시 쓰기까지(초)
+# 429 를 맞은 키는 이만큼 더 쉰다. 한도가 키에 걸리므로 형제 모델도 같이 쉬어야 한다.
+KEY_PENALTY = float(os.environ.get("GEMINI_KEY_PENALTY", "30"))
 
 # 이 프로세스가 각 후보를 마지막으로 부른 시각. 파일에 안 남긴다 -- RPM 은 60초짜리라
 # 프로세스 수명보다 짧고, 파일 잠금 비용을 매 호출마다 물 이유가 없다.
 _LAST_USED: dict = {}
+# **키 단위로도 잰다.** 분당 한도는 키(프로젝트)에 걸리지 모델마다 따로 걸리지 않는다.
+# 그런데 후보는 `키:모델` 이라, 한 키에 모델이 넷이면 넷이 각자 "6초 지났으니 괜찮다" 고
+# 판단해 같은 키를 잇달아 두드린다 -- 그러면 간격을 지킨 셈인데도 429 가 온다
+# (실측 2026-09-05: 서로 다른 키가 연달아 RPM 으로 떨어졌다).
+_LAST_KEY: dict = {}
+
+
+def _key_of(label: str) -> str:
+    """`키:모델` 에서 키만. 한도가 걸리는 단위다."""
+    return label.split(":", 1)[0] if ":" in label else label
+
+
+def _since_key(label: str) -> float:
+    """이 **키**를 마지막으로 쓴 뒤 흐른 시간."""
+    t = _LAST_KEY.get(_key_of(label))
+    return 1e9 if t is None else time.time() - t
 
 
 def _since_used(label: str) -> float:
@@ -225,7 +243,9 @@ def call(pool, prompt: str, pool_id: str = "orchestrator", max_candidates: int =
         rem = quota_tracker.remaining(label)
         # **방금 쓴 후보는 뒤로.** 이것이 첫 번째 정렬 키다 -- 모델 등급보다 앞선다.
         # 좋은 모델이라도 3초 전에 썼으면 지금 두드려봐야 429 만 받는다.
-        return (_since_used(label) < MIN_GAP, rem <= 0, _model_rank(model), -rem)
+        # 키 간격이 먼저다 -- 모델을 바꿔 봐야 같은 키면 같은 한도를 쓴다.
+        return (_since_key(label) < MIN_GAP, _since_used(label) < MIN_GAP,
+                rem <= 0, _model_rank(model), -rem)
 
     limit = MAX_CANDIDATES if max_candidates is None else max_candidates
     last_error, tried, skipped = None, 0, 0
@@ -258,7 +278,8 @@ def call(pool, prompt: str, pool_id: str = "orchestrator", max_candidates: int =
         # 후보 전부가 방금 쓴 것들이면 두드려봐야 429 다. 가장 오래된 것이 간격을 채울
         # 만큼만 기다린다 -- 몇 초다. 이 몇 초가 바퀴 하나를 통째로 살린다.
         if ranked:
-            oldest = max(_since_used(c[0]) for c in ranked[:limit])
+            oldest = max(min(_since_used(c[0]), _since_key(c[0]))
+                         for c in ranked[:limit])
             if oldest < MIN_GAP:
                 nap = MIN_GAP - oldest
                 if verbose:
@@ -267,9 +288,22 @@ def call(pool, prompt: str, pool_id: str = "orchestrator", max_candidates: int =
                 time.sleep(nap)
 
         only_transient = True          # 이 바퀴가 전부 "기다리면 풀리는" 실패였는가
-        for label, llm in ranked[:limit]:
+        # **실패할 때마다 순서를 다시 잡는다.** 한 번 정해 놓고 끝까지 가면, 방금 429 를
+        # 받은 키의 형제 모델을 그대로 이어서 두드린다 -- 그 키는 지금 쉬어야 하는데도.
+        # 후보가 몇 개뿐이라 매번 다시 정렬해도 값이 안 든다.
+        queue = list(ranked[:limit])
+        while queue:
+            queue.sort(key=sort_key)
+            label, llm = queue.pop(0)
             tried += 1
-            _LAST_USED[label] = time.time()      # 성공이든 실패든 "썼다"
+            # **키 간격을 지킨다.** 후보를 골라도 그 키를 방금 썼으면 잠깐 기다린다 --
+            # 여기서 몇 초 쉬는 것이 429 를 맞고 한 번을 버리는 것보다 싸다.
+            gap = _since_key(label)
+            if gap < MIN_GAP:
+                time.sleep(MIN_GAP - gap)
+            now = time.time()
+            _LAST_USED[label] = now              # 성공이든 실패든 "썼다"
+            _LAST_KEY[_key_of(label)] = now
             try:
                 text = _extract_text(llm.invoke(prompt))
                 quota_tracker.record_success(label)
@@ -281,6 +315,9 @@ def call(pool, prompt: str, pool_id: str = "orchestrator", max_candidates: int =
                 # 하면서도 사람이 로그로 확인할 방법이 없었다.
                 if _is_rpm(e):
                     quota_tracker.record_rpm_cooldown(label)
+                    # **한도는 키에 걸린다.** 그 키의 다른 모델도 같이 쉬게 한다 --
+                    # 안 그러면 같은 키의 형제 모델을 곧바로 두드려 또 429 를 받는다.
+                    _LAST_KEY[_key_of(label)] = time.time() + KEY_PENALTY - MIN_GAP
                     kind = "RPM/60초"
                 elif _is_quota(e):
                     quota_tracker.record_exhausted(label)

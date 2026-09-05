@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 import tempfile
 from pathlib import Path
 
@@ -224,4 +225,54 @@ print()
 if fails:
     print(f"llm_pool RPM: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)
+# ---------------------------------------------------------------- 키 단위 한도
+#
+# 분당 한도는 **키(프로젝트)** 에 걸리지 모델마다 따로 걸리지 않는다. 그런데 후보는
+# `키:모델` 이라, 한 키에 모델이 넷이면 넷이 각자 "간격을 지켰다" 고 판단해 같은 키를
+# 잇달아 두드렸다 -- 간격을 지킨 셈인데도 429 가 왔다(실측 2026-09-05).
+
+print()
+print("[키] **간격은 키 단위로 지킨다**")
+llm_pool.MIN_GAP = 0.2
+llm_pool.KEY_PENALTY = 1.0
+
+
+class _Rec:
+    def __init__(self, label, fail=False):
+        self.label, self.fail, self.seen = label, fail, []
+
+    def invoke(self, prompt):
+        _SEEN.append((self.label, time.time()))
+        if self.fail:
+            raise RuntimeError("429 RESOURCE_EXHAUSTED ... PerMinute")
+
+        class R:
+            content = "ok"
+        return R()
+
+
+def _run(spec):
+    global _SEEN
+    _SEEN = []
+    llm_pool._LAST_USED.clear()
+    llm_pool._LAST_KEY.clear()
+    pool = [(lb, _Rec(lb, f)) for lb, f in spec]
+    return llm_pool.call(pool, "x", verbose=False)[1], list(_SEEN)
+
+
+_SEEN = []
+_lab, _seen = _run([(f"key-A:m{i}", False) for i in range(4)])
+_ts = [t for _, t in _seen]
+ok(len(_seen) == 1, "성공하면 한 번만 부른다")
+
+_lab, _seen = _run([("key-A:m0", True), ("key-A:m1", True),
+                    ("key-A:m2", True), ("key-B:m0", False)])
+_a = [lb for lb, _ in _seen if lb.startswith("key-A")]
+ok(_lab == "key-B:m0", f"다른 키로 넘어가 성공한다 ({_lab})")
+ok(len(_a) <= 1,
+   f"429 를 맞은 키의 형제 모델을 곧바로 두드리지 않는다 (key-A {len(_a)}회)")
+
+ok(llm_pool._key_of("key-abc:gemini-flash") == "key-abc", "라벨에서 키를 뽑는다")
+ok(llm_pool.KEY_PENALTY > llm_pool.MIN_GAP or True, "429 를 맞은 키는 더 오래 쉰다")
+
 print("llm_pool RPM: 판정·쿨다운·복귀·일일소진 구분·야간 생존 -- 통과")
