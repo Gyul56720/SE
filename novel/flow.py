@@ -726,6 +726,14 @@ PATCHABLE = {
 }
 
 
+def echo_lines(text: str, prior: str) -> list:
+    """앞 원고에 이미 있는 문장만 골라낸다."""
+    if not prior:
+        return []
+    tell, _ = rhythm._lines(text)
+    return [s for s in tell if len(s) >= 12 and s in prior]
+
+
 def clash_lines(text: str, clashes: list) -> list:
     """모순에 걸린 이름이 나오는 문장만 골라낸다. 원고를 통째로 버리지 않으려고."""
     names = set()
@@ -783,12 +791,21 @@ def mend_prompt(items: list) -> str:
 """
 
 
-def mend_items(text: str, clashes: list) -> list:
+def mend_items(text: str, clashes: list, prior: str = "") -> list:
     """이 덩어리에서 고칠 것을 **전부** 모은다 -- (문장, 무엇이 문제인가) 목록으로.
 
     한 문장이 두 갈래에 걸리면 앞엣것만 남긴다. 같은 문장을 두 번 보내면 모델이
     어느 쪽을 따를지 알 수 없고, 번호가 겹쳐 되받은 것을 못 끼운다."""
     items, seen = [], set()
+    # **메아리는 모순과 같은 급이다** -- 취향이 아니라 결함이다. 앞에 쓴 문장을 그대로
+    # 다시 뱉은 것은 새 글이 아니다(실측: 한 덩어리 2,024자 중 610자가 글자 하나 안
+    # 틀리고 반복이었다). 앞머리를 옮겨 적은 것은 echo.trim 이 도려내고, 그러고도
+    # 남은 반복은 여기서 그 문장만 새로 쓰게 한다.
+    for line in echo_lines(text, prior):
+        if line not in seen:
+            seen.add(line)
+            items.append((line, "앞에 이미 쓴 말이다 -- 같은 말 말고"
+                                " **그 다음에 일어나는 일**을 써라"))
     for line in clash_lines(text, clashes):
         if line not in seen:
             seen.add(line)
@@ -1030,7 +1047,7 @@ def step(book: dict, llm, log=None) -> dict:
     probe, clashes = _read(text)
 
     # **고칠 것을 한 번에 다 보낸다.** 모순도 리듬도 같은 한 장에 담는다.
-    items = mend_items(text, clashes)
+    items = mend_items(text, clashes, "".join(book["chunks"]))
     if items:
         D._log(f"[flow] 고칠 문장 {len(items)}개 -- 한 번에 고친다")
         try:
@@ -1050,7 +1067,7 @@ def step(book: dict, llm, log=None) -> dict:
     # 무엇이 안 되는지 볼 수 있다. 원고를 버리면 그것마저 안 남는다.
     # 사건 덩어리는 확산으로 재지 않는다 -- 거기서는 넓히고 회수하라고 시키지 않았으니
     # 그것으로 벌하지 않는다. 리듬만 본다(대사와 길이는 사건이든 아니든 지켜야 한다).
-    left = clashes + rhythm.check(text)
+    left = clashes + rhythm.check(text) + echo.check(text, "".join(book["chunks"]))
     if not book.get("_shock"):
         left += diffusion.check(text, book["ledger"], probe,
                                 now=len(book["chunks"]))
