@@ -21,6 +21,7 @@
 """
 from __future__ import annotations
 
+import os
 import re
 
 # 이만큼 이어지는 글자가 똑같으면 우연이 아니다. 한국어 한 문장이 대개 이보다 길다.
@@ -92,6 +93,33 @@ def selfish(text: str) -> tuple[float, list[str]]:
     return (repeated / total if total else 0.0), dup
 
 
+# **되풀이는 글자가 아니라 상황에서도 난다.** 낱말을 바꿔 쓰면 위의 자들은 다 통과하는데
+# 읽는 사람에게는 아까 그 장면이다. 짧은 조각으로 견주면 그것이 잡힌다 -- 40자는 통째로
+# 베낀 것을 잡는 자이고, 이쪽은 **바꿔 쓴 것**을 잡는 자다.
+SAMEY = int(os.environ.get("DRIFT_SAMEY", "12"))
+SAMEY_MAX = float(os.environ.get("DRIFT_SAMEY_MAX", "0.45"))
+
+
+def _bag(s: str) -> set:
+    """낱말 뭉치. 조사와 어미가 붙는 말이라 **앞 두세 글자**로 자른다 -- '공장에서' 와
+    '공장은' 을 같은 것으로 보려는 것이다."""
+    out = set()
+    for w in re.findall(r"[가-힣A-Za-z0-9]+", s):
+        if len(w) >= 2:
+            out.add(w[:3] if len(w) >= 4 else w)
+    return out
+
+
+def samey(text: str, prev: str) -> float:
+    """앞 글과 **얼마나 비슷한가.** 글자를 이어 붙여 견주지 않고 **낱말 뭉치**로 견준다 --
+    되풀이는 대개 순서를 바꿔 오기 때문이다. 이어 붙인 조각으로 보면 '항구에서 도영을
+    만나' 와 '도영을 항구에서 만나' 가 남남으로 나온다."""
+    a, b = _bag(text), _bag(prev)
+    if len(a) < 8 or not b:
+        return 0.0
+    return len(a & b) / len(a)
+
+
 def check(text: str, prev: str) -> list[str]:
     """잘라내기로 못 고치는 반복만 돌려준다."""
     out = []
@@ -100,6 +128,13 @@ def check(text: str, prev: str) -> list[str]:
         out.append(f"이 덩어리가 자기 문장을 그대로 복사했다 -- 전체의 {rate:.0%}. "
                    f"똑같이 적힌 줄이 {len(dup)}개다. 예: “{dup[0][:40]}…” "
                    f"**앞에 쓴 것을 다시 적지 마라.** 분량이 모자라면 새 일이 일어나게 해라")
+    # **선 채로 서 있는 지시 대신 재서 말한다.** "같은 장면을 또 쓰지 마라" 를 프롬프트에
+    # 박아 두면 매 덩어리가 그 말을 듣는다 -- 겹치지 않은 덩어리까지 그 말을 듣는다.
+    # 겹쳤을 때만, 얼마나 겹쳤는지와 함께 말한다.
+    same = samey(text, prev)
+    if same > SAMEY_MAX:
+        out.append(f"이 대목이 앞과 {same:.0%} 겹친다 -- 자리도 사람도 얘기도 아까 그것이다. "
+                   f"한 걸음 나가거나, 다른 데로 새거나, 조건 하나를 바꿔라")
     back = echoed(text, prev)
     if back > 0.25:
         out.append(f"앞 글에 이미 있던 문장이 이 덩어리의 {back:.0%}다. "
