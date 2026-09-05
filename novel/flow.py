@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import difflib
+import os
 import json
 import re
 import sys
@@ -133,6 +134,10 @@ MATTER = 0.0
 # 어려운 것이 아니라 **거의 불가능**하다. 다만 예산을 늘리는 것은 호출을 늘리는 것이라
 # 자를 무르게 하는 쪽이 먼저다(2026-09-05: 인물 이름 상한이 진짜 병목이었다).
 MAX_REWRITE = 5
+# 나아지지 않는 재시도를 몇 번까지 봐줄 것인가. 되먹임이 한 건씩 돌아가므로 한 번은
+# 봐준다(다음 항목에서 좋아질 수 있다). 두 번 연속 제자리면 그 덩어리는 더 시켜도
+# 안 되는 것이고, 그때부터는 쿼터만 태운다 -- 어차피 제일 나은 후보를 채택한다.
+GIVE_BACK = int(os.environ.get("DRIFT_GIVE_BACK", "2"))
 # 다음 덩어리에 넘기는 꼬리. 900자였는데, 그러면 세 덩어리 앞의 소품이 창 밖으로 빠지고
 # 점층이 매번 새로 시작한다(실측: "갈 수록 농도가 얕아져"). 식은 소품은 diffusion 이
 # 이름으로 따로 올려주지만, 꼬리 자체도 한 뼘 늘려 둔다.
@@ -883,6 +888,7 @@ def step(book: dict, llm, log=None) -> dict:
 
     feedback = ""
     best = None
+    stale = 0                 # 나아지지 않은 시도가 몇 번 이어졌는가
     # 재시도가 메아리로만 소진되면 아래 반환문이 clashes 를 못 찾는다(실측:
     # UnboundLocalError). 판정을 한 번도 못 했다는 뜻이므로 빈 목록에서 시작한다.
     clashes: list[str] = []                                   # (점수, 본문, 원장) -- 리듬만 걸린 후보
@@ -897,6 +903,23 @@ def step(book: dict, llm, log=None) -> dict:
 
         if len(text) < 200:
             D._log(f"[flow] 덩어리가 {len(text)}자로 왔다 -- 다시 받는다")
+            continue
+        # **버릴 원고에는 추출을 쓰지 않는다.** 메아리와 리듬은 원장이 없어도 잰다.
+        # 예전에는 추출을 먼저 돌리고 나서 리듬에서 걸러냈다 -- 걸러질 원고 하나마다
+        # 호출을 한 번씩 더 쓴 것이다. 재시도가 절반이면 호출의 4분의 1이 여기서 샜다.
+        #
+        # **마지막 시도는 그냥 통과시킨다.** 여기서 되돌린 원고는 원장이 없어 채택
+        # 후보가 못 된다 -- 끝까지 리듬으로 막으면 그 덩어리는 통째로 안 나온다.
+        # 앞쪽 시도에서만 아껴 쓰고, 뒤는 평소대로 재고 채택한다.
+        pre = echo.check(text, "".join(book["chunks"][:-1])) + rhythm.check(text)
+        if pre and attempt < MAX_REWRITE and stale < GIVE_BACK:
+            one = pre[(attempt - 1) % len(pre)]
+            D._log(f"[flow] 리듬 {len(pre)}건 -- 추출 전에 다시 쓴다 "
+                   f"({attempt}/{MAX_REWRITE}): {one[:70]}")
+            feedback = ("\n[직전 시도를 재서 나온 숫자다. **이것 하나만** 고쳐라 --"
+                        " 나머지는 건드리지 마라]\n"
+                        f"  · {one}\n"
+                        "  (분량은 줄이지 마라. 지우지 말고 고쳐 써라.)\n")
             continue
         try:
             delta = D.call_json(D._extractor(llm), extract_prompt(text),
@@ -925,17 +948,35 @@ def step(book: dict, llm, log=None) -> dict:
                 limp += diffusion.check(text, book["ledger"], probe,
                                         now=len(book["chunks"]))
                 mark += diffusion.score(text, book["ledger"], probe)
-            if limp and attempt <= MAX_REWRITE:
+            if limp and attempt <= MAX_REWRITE and stale < GIVE_BACK:
                 if best is None or mark < best[0]:
-                    best = (mark, text, probe)
+                    best, stale = (mark, text, probe), 0
+                else:
+                    # **나아지지 않으면 그만 시킨다.** 다시 쓰라고 할 때마다 호출을
+                    # 하나씩 쓰는데, 점수가 안 내려가는 재시도는 쿼터만 태우고 원고는
+                    # 그대로다(실측: 짧은 '-다' 가 64% -> 67% 로 오히려 올라갔다).
+                    # 어차피 제일 나은 후보를 채택하므로, 일찍 멈춰도 품질은 안 깎인다.
+                    # 한 번은 봐준다 -- 되먹임이 한 건씩 도는 중이라 다음 항목에서
+                    # 좋아질 수 있다.
+                    stale += 1
+                # **한 번에 하나만 시킨다.** 예전에는 "이것만 고쳐라" 라고 써 놓고 잰
+                # 것을 전부 붙여 보냈다. 한꺼번에 시키면 안 지켜진다 -- 실측 로그가
+                # 그것이다: 네 건을 주자 짧은 '-다' 가 64% 에서 67% 로 **올라갔다**.
+                # 시도마다 하나씩 돌려 가며 준다. 다섯 번이면 넷을 다 훑는다.
+                one = limp[(attempt - 1) % len(limp)]
                 D._log(f"[flow] 농도·리듬 {len(limp)}건 -- 다시 쓴다 "
-                       f"({attempt}/{MAX_REWRITE}): {limp[0][:70]}")
-                feedback = ("\n[직전 시도를 재서 나온 숫자다. 이것만 고쳐라]\n"
-                            + "\n".join(f"  · {c}" for c in limp)
-                            + "\n  사건은 그대로 좋다. **줄이지 말고 늘려라** -- 세계를 더 놓고,"
-                              " 앞엣것을 다시 꺼내고, 말을 더 시켜라.\n")
+                       f"({attempt}/{MAX_REWRITE}): {one[:70]}")
+                feedback = ("\n[직전 시도를 재서 나온 숫자다. **이것 하나만** 고쳐라 --"
+                            " 나머지는 건드리지 마라]\n"
+                            f"  · {one}\n"
+                            # 요구가 아니라 **제약**이다. 이것을 할 일로 적으면 두 가지를
+                            # 시키는 것이 되어 둘 다 안 된다. 분량을 깎아서 숫자를 맞추는
+                            # 길만 막아 두면 된다.
+                            "  (분량은 줄이지 마라. 지우지 말고 고쳐 써라.)\n")
                 continue
             if limp:
+                if stale >= GIVE_BACK:
+                    D._log(f"[flow] {stale}번 다시 써도 안 나아졌다 -- 그만 시킨다")
                 if best is not None and best[0] < mark:
                     text, probe = best[1], best[2]
                     D._log("[flow] 끝내 못 고쳤다 -- 그중 제일 짙은 것을 채택한다")

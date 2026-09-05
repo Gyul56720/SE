@@ -326,3 +326,53 @@ if fails:
     print(f"연속 집필: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)
 print("연속 집필: 원장 성장 · 모순 검출 · 첫 덩어리 흐름 · 되먹임 · 영속 · 한도 -- 통과")
+
+print("[되먹임] 한 번에 하나만 시키는가  ← 한꺼번에 시키면 안 지켜진다")
+print("        실측: 네 건을 한꺼번에 주자 짧은 '-다' 가 64% -> 67% 로 올라갔다")
+
+
+class Limp:
+    """게이트에 계속 걸리는 산문. 시도마다 받은 되먹임을 적어 둔다."""
+
+    def __init__(self):
+        self.seen = []
+
+    def __call__(self, prompt):
+        if "새로 확정된 사실만" in prompt:
+            return json.dumps({}, ensure_ascii=False)
+        if "재서 나온 숫자다" in prompt:
+            body = prompt.split("재서 나온 숫자다", 1)[1]
+            body = body.split("\n\n", 1)[0]
+            self.seen.append([l for l in body.splitlines() if l.strip().startswith("·")])
+        return "짧다. " * 80
+
+
+_lm = Limp()
+flow.step(main_char(), _lm)
+ok(_lm.seen, "되먹임이 실제로 갔다")
+ok(all(len(s) == 1 for s in _lm.seen),
+   f"매번 한 건만 준다 ({[len(s) for s in _lm.seen]})")
+ok(len({s[0] for s in _lm.seen}) > 1 or len(_lm.seen) < 2,
+   f"시도마다 다른 것을 준다 ({len({s[0] for s in _lm.seen})}가지)")
+
+print("[호출] 버릴 원고에 추출을 쓰지 않는가  ← 규칙은 그대로, 두드리는 횟수만 줄인다")
+
+
+class Count:
+    def __init__(self):
+        self.w = self.x = 0
+
+    def __call__(self, prompt):
+        if "새로 확정된 사실만" in prompt:
+            self.x += 1
+            return json.dumps({}, ensure_ascii=False)
+        self.w += 1
+        return "짧다. " * 80
+
+
+_c = Count()
+flow.step(main_char(), _c)
+ok(_c.x < _c.w, f"추출이 화자보다 적다 (화자 {_c.w} · 추출 {_c.x})")
+ok(_c.w + _c.x <= 8,
+   f"한 덩어리에 {_c.w + _c.x}회  ← 예전에는 12회였다 (화자 6 · 추출 6)")
+ok(_c.w >= 2, "그래도 다시 쓰기는 한다  ← 아껴서 원고를 안 내면 그건 절약이 아니다")
