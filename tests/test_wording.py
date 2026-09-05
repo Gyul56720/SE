@@ -184,6 +184,20 @@ ok(len(_fg) > 5, f"바깥 말도 덩어리마다 다르다 ({len(_fg)}가지)")
 ok(len(W.ODD) >= 12 and len(W.FOREIGN) >= 10, "뒤질 데가 넉넉하다")
 
 print()
+print("[차림표] **목록 전체를 보여 주고 이번 것만 짚는다**")
+print("      ← 뽑힌 둘만 보여 주면 모델이 아는 것이 둘뿐이 된다. 점층 이음말을 넷만")
+print("        보여 줬다가 원고가 그 넷으로 도배된 일이 있었다.")
+_b5 = W.brief(["x" * 60], "씨", 4)
+for _name, _pool in (("비유", W.FIGURES), ("꼴", W.FORMS), ("제도", W.SYSTEMS),
+                     ("매체", W.MEDIA), ("제한", W.LIMITS_LIFE), ("외현", W.OUTSIDE),
+                     ("개념", W.ODD), ("바깥 말", W.FOREIGN)):
+    _miss = [k for k in _pool if k not in _b5]
+    ok(not _miss, f"{_name}: {len(_pool)}개가 전부 실린다 (빠진 것 {_miss[:2]})")
+ok(_b5.count("목록 밖도 자유다") >= 6, "목록 밖도 자유라고 매번 말해 준다")
+ok("그 밖에 쓸 수 있는 것" in _b5, "안 뽑힌 것은 이름만 보여 준다  ← 설명까지 다 붙이면 프롬프트가 터진다")
+ok(len(_b5) < 4000, f"그래도 {len(_b5)}자에 담긴다  ← 이름은 짧고 설명은 뽑힌 것에만")
+
+print()
 if _bad:
     print(f"말맛: {len(_bad)}개 실패 -- {_bad}")
     raise SystemExit(1)

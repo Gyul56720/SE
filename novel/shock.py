@@ -477,6 +477,9 @@ def _batch(pool: tuple, seed: str, n: int, axis: str, k: int = 3) -> tuple:
     남을 배려하면서 남이 안 보이는 사람).
 
     축 이름에 번호를 붙여 따로 해시하고, 이미 뽑힌 것은 한 칸씩 밀어 겹치지 않게 한다."""
+    # dict 를 그대로 넘겨도 받는다 -- 목록에 이름과 설명을 같이 두게 되면서 호출부가
+    # dict 를 넘기기 시작했고, 그때마다 tuple() 을 붙이는 것은 잊기 좋은 일이다.
+    pool = tuple(pool)
     out = []
     for i in range(min(k, len(pool))):
         v = _pick(pool, seed, n, f"{axis}#{i}")
