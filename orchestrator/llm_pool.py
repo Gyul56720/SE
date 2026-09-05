@@ -58,6 +58,12 @@ ALLOW_PRO = os.environ.get("GEMINI_ALLOW_PRO", "") not in ("", "0", "false")
 # 재시도 전략이므로 한 후보 안에서 오래 버틸 이유가 없다.
 MAX_RETRIES = int(os.environ.get("GEMINI_MAX_RETRIES", "2"))
 TIMEOUT = float(os.environ.get("GEMINI_TIMEOUT", "60"))
+# **큰 모델은 더 기다린다.** gemma-4-26b 같은 것은 긴 프롬프트에 60초로는 모자라 504
+# DEADLINE_EXCEEDED 만 준다(실측). 그러면 자기 차례를 쓰고 답은 안 주므로, 안 쓰느니만
+# 못한 후보가 된다. 느린 것은 느린 만큼 기다려 주고, 그래도 안 되면 전적(_odds)이 알아서
+# 뒤로 민다 -- 이름으로 자르지 않는다.
+SLOW_MODEL = re.compile(os.environ.get("GEMINI_SLOW_MODEL", r"gemma|\d\d+b"), re.I)
+SLOW_TIMEOUT = float(os.environ.get("GEMINI_SLOW_TIMEOUT", "150"))
 # 풀은 (키 x 실사용 모델) 이라 모델 목록 조회 결과에 따라 수십~백 개가 될 수 있다. 전부 순회하면
 # 최악의 경우 시간 단위로 매달리므로, 시도 후보 수에 상한을 둔다(최악 대기 = 상한 x TIMEOUT).
 MAX_CANDIDATES = int(os.environ.get("GEMINI_MAX_CANDIDATES", "12"))
@@ -219,9 +225,10 @@ def _key_id(key: str) -> str:
 def _default_factory(model: str, key: str):
     """max_retries/timeout 을 모르는 langchain 버전에서도 뜨도록 TypeError 면 물러선다."""
     from langchain_google_genai import ChatGoogleGenerativeAI
+    secs = SLOW_TIMEOUT if SLOW_MODEL.search(model) else TIMEOUT
     try:
         return ChatGoogleGenerativeAI(model=model, google_api_key=key,
-                                      max_retries=MAX_RETRIES, timeout=TIMEOUT)
+                                      max_retries=MAX_RETRIES, timeout=secs)
     except TypeError:
         return ChatGoogleGenerativeAI(model=model, google_api_key=key)
 
@@ -384,7 +391,18 @@ def call(pool, prompt: str, pool_id: str = "orchestrator", max_candidates: int =
         # 아무것도 시도하지 않고 실패하는 것보다 한 번 두드려보는 편이 낫다.
         fresh = [c for c in live if quota_tracker.remaining(c[0]) > 0]
         if verbose and len(fresh) < len(live):
-            print(f"[llm_pool] 잔량 없는 후보 {len(live) - len(fresh)}개를 건너뛴다 "
+            # **둘을 갈라 찍는다.** 예전에는 둘 다 "잔량 없음" 이었다. 하나는 자정까지고
+            # 하나는 60초짜리인데 같은 말로 찍으니, 60초를 하루로 읽게 된다(실측: 일일
+            # 한도가 멀쩡한 것을 눈으로 보고도 로그만 보면 소진으로 읽혔다).
+            cool = sum(1 for c in live if c not in fresh
+                       and quota_tracker.is_rpm_cooling(c[0]))
+            gone = len(live) - len(fresh) - cool
+            what = []
+            if cool:
+                what.append(f"분당 한도로 쉬는 중 {cool}개(60초면 풀린다)")
+            if gone:
+                what.append(f"오늘 치 소진 {gone}개(자정에 풀린다)")
+            print(f"[llm_pool] {' · '.join(what)} -- 건너뛴다 "
                   f"(남은 후보 {len(fresh)}개)", file=sys.stderr, flush=True)
         ranked = sorted(fresh or live, key=sort_key)
         # pin 은 **간격을 지킬 때만** 앞으로 당긴다. 방금 쓴 것을 또 앞에 두면 그 하나가

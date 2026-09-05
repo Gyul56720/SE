@@ -520,3 +520,29 @@ llm_pool._LAST_KEY.clear()
 llm_pool.call([(lb, _Watch(lb, False, 0.02)) for lb, _ in _spec], "x", verbose=False)
 ok(_hit[0] == "kA:gemini-3.5-flash",
    f"선호를 안 주면 평소대로 flash 다 ({_hit})  ← 산문은 건드리지 않는다")
+
+
+print()
+print("[대기] **큰 모델은 더 기다린다**")
+print("      ← gemma-4-26b 가 60초로는 모자라 504 DEADLINE_EXCEEDED 만 줬다.")
+print("        자기 차례를 쓰고 답은 안 주니 안 쓰느니만 못한 후보가 된다.")
+
+_secs = {}
+
+
+class _FakeChat:
+    def __init__(self, model, google_api_key=None, max_retries=None, timeout=None):
+        _secs[model] = timeout
+
+
+import types as _types
+_fake = _types.ModuleType("langchain_google_genai")
+_fake.ChatGoogleGenerativeAI = _FakeChat
+sys.modules["langchain_google_genai"] = _fake
+
+for _m in ("gemma-4-26b-a4b-it", "gemini-flash-lite-latest", "gemini-3.5-flash"):
+    llm_pool._default_factory(_m, "k")
+ok(_secs["gemma-4-26b-a4b-it"] == llm_pool.SLOW_TIMEOUT,
+   f"gemma 는 오래 기다린다 ({_secs['gemma-4-26b-a4b-it']:.0f}초)")
+ok(_secs["gemini-flash-lite-latest"] == llm_pool.TIMEOUT,
+   f"flash 는 그대로다 ({_secs['gemini-flash-lite-latest']:.0f}초)  ← 느려질 이유가 없다")
