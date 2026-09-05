@@ -165,6 +165,25 @@ _g = {SH._batch(W.GAZE, "씨|gaze", i, "gaze", 1)[0] for i in range(14)}
 ok(len(_g) > 5, f"보는 방식이 여러 가지다 ({len(_g)}가지)")
 for _k in ("놓친다", "다시 확인한다", "글자부터 읽는다"):
     ok(_k in W.GAZE, f"사람이 실제로 하는 짓이 들어 있다: {_k}")
+
+print()
+print("[표본] **좋은 묘사를 우리 자가 튕기면 자가 틀린 것이다**")
+print("      ← 표본의 점층은 이음말도 수도 아니고 **동선**이다: 철문 → 자갈길 →")
+print("        현관 → 교실 → 책상 → 흑판. 그걸 못 세니 순수 묘사가 낙제했다.")
+_s2 = Path(__file__).resolve().parent / "sample_outside.txt"
+if _s2.exists():
+    _t2 = _s2.read_text(encoding="utf-8")
+    ok(rhythm.pathclimb(_t2) >= 3, f"동선을 센다 ({rhythm.pathclimb(_t2)}개)")
+    ok(not rhythm.check(_t2, want=0.5, talk=0.0),
+       f"묘사 표본이 통과한다 ({[c[:30] for c in rhythm.check(_t2, want=0.5, talk=0.0)]})")
+    _s3 = Path(__file__).resolve().parent / "sample_job.txt"
+    ok(not rhythm.check(_s3.read_text(encoding="utf-8"), want=0.35, talk=0.2),
+       "직장물 표본도 여전히 통과한다  ← 한쪽을 고치다 다른 쪽을 깨지 않는다")
+for _k in ("예상과 견준다", "없는 것을 적는다", "동선을 따라간다",
+           "못 읽는 것도 적는다", "행동으로 닫는다"):
+    ok(_k in W.GAZE, f"표본에서 뽑아낸 방식: {_k}")
+ok("둘러보기는 행동으로 닫는다" in " ".join(W.brief(["x" * 50], "씨", i) for i in range(6)),
+   "묘사를 몸으로 착지시킨다  ← 착지가 없으면 목록으로 읽힌다")
 _outs = {W._out_share("씨", i) for i in range(20)}
 ok(len(_outs) > 10, f"안팎의 몫이 덩어리마다 다르다 ({len(_outs)}가지)")
 ok(0.25 <= min(_outs) and max(_outs) <= 0.75, "구간 안이다  ← 한쪽만 남기지는 않는다")

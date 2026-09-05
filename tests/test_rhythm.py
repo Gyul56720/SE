@@ -102,6 +102,27 @@ ok(rhythm.climb(CLIMBED) >= 3, f"기준 문장에서 점층을 잡아낸다 ({rh
 ok(not any("받아 올리는" in c for c in rhythm.check(CLIMBED)), "점층한 글은 통과한다")
 ok(rhythm.climb(FLAT) == 0, "낱개로 선 문장들에서는 0이다")
 ok(any("받아 올리는" in c for c in rhythm.check(FLAT)), "모자라면 짚는다")
+
+print()
+print("[회수] **심어 놓고 나중에 원인으로 돌려 놓는 것도 점층이다**")
+print("      ← 사용자가 짚은 대목: 걸쳐 준 옷 한 벌이 여남은 문장 뒤에 땀으로 돌아온다.")
+print("        이음말도 수도 동선도 아니어서 자가 못 봤다.")
+HELD = "\n".join([
+    "어머니는 두툼한 스웨터를 입혀 주었다.",
+    "나는 혼자서 전철을 탔다.",
+    "출입문 앞에 붙어 서서 바깥을 보았다.",
+    "학교는 지도를 볼 것도 없이 찾을 수 있었다.",
+    "가파른 고갯길에 아이들이 줄지어 걸었다.",
+    "고갯길을 오르면서 스웨터 탓에 계속 땀을 흘렸다."])
+ok(rhythm.holdclimb(HELD) >= 1, f"던진 것이 뒤에서 돌아오면 센다 ({rhythm.holdclimb(HELD)}개)")
+ok(rhythm.holdclimb(FLAT) == 0, "대명사가 되풀이되는 것은 회수가 아니다")
+ok(rhythm.holdclimb("\n".join(["같은 말. 같은 말."] * 3)) == 0,
+   "바로 옆 문장의 되풀이도 회수가 아니다  ← 거리가 있어야 심은 것이 된다")
+ok(rhythm.holdclimb("\n".join(f"{i}번 낱말{i} 낱말{i}." for i in range(40))
+                    + "\n" + " ".join(f"낱말{i}" for i in range(40))) <= rhythm.HOLD_CAP,
+   f"위로 열어 두지 않는다 (최대 {rhythm.HOLD_CAP})  ← 길기만 하면 저절로 통과한다")
+ok("심어 놓고 회수한다" in flow.write_prompt(flow.blank()),
+   "프롬프트가 심기와 회수를 시킨다  ← 재기만 하고 안 시키면 안 나온다")
 ok(not any("받아 올리는" in c for c in rhythm.check(REFERENCE)),
    "기준 문장은 통과한다  ← 자가 기준을 벌하면 자가 틀린 것이다")
 ok(rhythm.score(FLAT) > rhythm.score(REFERENCE), "점수에도 실린다")

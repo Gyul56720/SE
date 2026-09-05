@@ -268,6 +268,74 @@ def numclimb(text: str) -> int:
     return hits
 
 
+# **눈이 옮겨 가는 자국.** 자리를 옮기거나 시선을 돌리면 한국어는 첫머리나 조사에
+# 자국을 남긴다. 묘사가 이어지는 대목의 점층은 이음말도 수도 아니고 **동선**이다 --
+# 철문에서 자갈길로, 현관으로, 교실로, 책상으로. 그것을 못 세면 순수 묘사 대목이
+# 통째로 낙제한다(실측: 좋은 묘사 표본이 서술문 16개에 점층 1개로 걸렸다).
+_PATH = re.compile(
+    r"(저쪽|맞은편|건너편|구석|정면|뒤편|옆에|위에는|아래에는|안쪽|바깥|들어서|나서자|"
+    r"돌아서|올라서|내려서|지나자|열자|가까이|멀리|그 너머|사이로)")
+
+
+def pathclimb(text: str) -> int:
+    """동선으로 이어 가는 문장 수. 앞 문장에서 자리를 옮긴 것만 센다."""
+    tell, _ = _lines(text)
+    hits, prev = 0, False
+    for s in tell:
+        now = bool(_PATH.search(s))
+        if now and not prev:
+            hits += 1
+        prev = now
+    return hits
+
+
+# **심어 놓고 회수하는 점층.** 이음말도 수도 동선도 아닌 네 번째 방식이 있다 --
+# 앞에서 아무렇지 않게 던져 둔 사물이 뒤에서 **원인이 되어** 돌아온다. 던질 때는 그냥
+# 사물이고, 돌아올 때는 사건이다. 그 사이의 거리가 점층이다(실측: 사용자가 짚은 대목은
+# 걸쳐 준 옷 한 벌이 여남은 문장 뒤에 땀으로 돌아오는 것 하나로 글 전체를 올린다).
+# **대명사는 회수가 아니다.** 주어가 되풀이되는 것은 그냥 같은 사람 이야기라는 뜻이다.
+_STOP = frozenset((
+    "그것", "이것", "저것", "사람", "생각", "자신", "우리", "그녀", "그들", "때문",
+    "동안", "하나", "이야기", "여기", "거기", "이제", "다시", "조금", "그때", "얼마",
+    "그는", "그가", "그를", "그의", "그에게", "나는", "내가", "나를", "나의", "나에게",
+    "너는", "네가", "너를", "우리는", "그녀는", "그녀가", "그들은", "자신의", "것이다"))
+_WORD = re.compile(r"[가-힣]{2,}")
+# 조사를 떼야 같은 것으로 센다 -- "스웨터를" 과 "스웨터" 는 같은 물건이다.
+_JOSA = re.compile(r"(으로서|으로써|에서는|에게서|이라고|라고는|으로|에서|에게|한테|"
+                   r"까지|부터|보다|처럼|마다|조차|밖에|이나|라도|이란|이라|만큼|"
+                   r"은|는|이|가|을|를|의|에|도|로|와|과|만|랑|야|여)$")
+
+
+def _stem(w: str) -> str:
+    cut = _JOSA.sub("", w)
+    return cut if len(cut) >= 2 else w
+HOLD_GAP = 4          # 이만큼 뒤에 돌아와야 회수다. 바로 다음 문장은 그냥 이어 쓴 것이다.
+HOLD_CAP = 3          # **위로 열어 두지 않는다.** 낱말 되풀이는 길기만 하면 저절로 늘어서,
+                      # 안 세면 긴 덩어리가 점층 없이도 자를 통과한다.
+
+
+def holdclimb(text: str) -> int:
+    """앞에서 던진 낱말이 한참 뒤에 다시 나오는 자리의 수 -- 심기와 회수."""
+    tell, _ = _lines(text)
+    last: dict[str, int] = {}
+    hits = 0
+    seen: set[str] = set()
+    for i, sent in enumerate(tell):
+        for raw in set(_WORD.findall(sent)):
+            w = _stem(raw)
+            if w in _STOP or len(w) < 2:
+                continue
+            # **틈이 있어야 심은 것이다.** 매 문장에 나오는 낱말은 그냥 이 대목의 소재고,
+            # 한참 잠잠하다가 돌아오는 낱말이 회수다.
+            if w in last and w not in seen and i - last[w] >= HOLD_GAP:
+                seen.add(w)
+                hits += 1
+                if hits >= HOLD_CAP:
+                    return hits
+            last[w] = i
+    return hits
+
+
 def climb(text: str) -> int:
     """앞 문장을 받아 한 단계 올린 문장의 수."""
     tell, _ = _lines(text)
@@ -310,7 +378,7 @@ def measure(text: str) -> dict:
 
     total = len(tell) + len(talk)
     return {
-        "climb": climb(text) + numclimb(text),
+        "climb": climb(text) + numclimb(text) + pathclimb(text) + holdclimb(text),
         "beat": beat(text)[1],
         "da":   sum(da) / len(tell),
         "run":  best,
