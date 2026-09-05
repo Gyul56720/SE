@@ -92,6 +92,82 @@ ok("drift.sh open" in sh, "drift.sh open 이 문서에 있다")
 ok("열린 것 {len(" in sh, "status 에도 개수가 뜬다")
 
 print()
+print("[연결] **따로 있던 둘을 잇는다 -- 세계는 넓어지기만 하는 것이 아니라 접힌다**")
+print("      ← 오일러가 한 것은 지수를 정교하게 만든 것이 아니라, 따로 자라던 셋이")
+print("        실은 한 식이라는 것을 보인 것이다.")
+from novel import bridge                                              # noqa: E402
+BL = flow.blank()["ledger"]
+for _i, (_b, _k) in enumerate([("places", "웅포"), ("objects", "지포 라이터"),
+                               ("people", "우체부"), ("places", "소금 공장"),
+                               ("facts", "형의 사고"), ("objects", "무전기"),
+                               ("people", "한나")]):
+    flow._merge(BL, {_b: {_k: {"직업": "x"} if _b == "people" else "x"}}, at=_i)
+_d = bridge.draw(BL, "s", 0)
+ok(_d["a"] and _d["b"] and _d["a"] != _d["b"], f"둘을 고른다 ({_d['a']} + {_d['b']})")
+_dup = sum(bridge.draw(BL, "s", i)["a"] == bridge.draw(BL, "s", i + 1)["a"]
+           for i in range(100))
+ok(_dup == 0, f"한쪽에 같은 것이 계속 서지 않는다 ({_dup}건)")
+_bb = bridge.brief(_d)
+ok("앞에 쓴 것을 뒤집지 마라" in _bb,
+   "이으면서 뒤집지 않는다  ← 보존적 확장. 뒤집으면 다리가 아니라 다른 이야기다")
+ok("이것으로 문제를 풀지 마라" in _bb,
+   "다리가 문제를 풀지 않는다  ← '알고 보니 열쇠를 갖고 있었다' 는 편의주의다")
+ok("이미 읽은 것을 다시 읽게 된다" in _bb, "새 정보가 아니라 앞의 재독이 목적이다")
+_thin = flow.blank()
+_thin["chunks"] = ["x"]
+ok("[연결]" not in flow.write_prompt(_thin),
+   "원장이 얇으면 안 잇는다  ← 셋으로 다리를 놓으면 그냥 우연이다")
+_thick = flow.blank()
+_thick["ledger"] = BL
+_hits = sum("[연결]" in flow.write_prompt(dict(_thick, chunks=["x"] * i))
+            for i in range(1, 101))
+ok(15 < _hits < 45, f"셋에 하나쯤만 잇는다 ({_hits}/100)  ← 다 연결되면 음모론이 된다")
+
+print()
+print("[예외] **통칙을 깨는 것과 사실을 뒤집는 것은 다른 물건이다**")
+_r = flow.blank()
+flow._merge(_r["ledger"], {"rules": {"겨울 출항": "겨울엔 배를 안 띄운다"}}, at=0)
+_ep = ""
+for _i in range(1, 12):
+    _r["chunks"] = ["x"] * _i
+    _p = flow.write_prompt(_r)
+    if "[예외]" in _p:
+        _ep = _p[_p.index("[예외]"):]
+        break
+ok(_ep, "통칙이 있으면 언젠가 예외가 걸린다")
+ok("규칙은 지워지지 않는다" in _ep, "규칙은 남는다  ← 예외가 규칙을 정교하게 만든다")
+ok("이건 모순이 아니다" in _ep,
+   "예외는 모순이 아니다  ← 나이나 생사가 바뀌는 것은 여전히 기각이다")
+ok("[예외]" not in flow.write_prompt(flow.blank()), "통칙이 없으면 안 실린다")
+
+print()
+print("[압축] **통칙 하나가 낱낱의 사실을 갈음한다 -- 정리는 공리를 지우지 않는다**")
+_c = flow.blank()["ledger"]
+for _i, _k in enumerate(["안 띄운 날1", "안 띄운 날2", "안 띄운 날3"]):
+    flow._merge(_c, {"facts": {_k: "그날도 안 띄웠다"}}, at=_i)
+_was = len(flow.brief(_c, now=3))
+flow._merge(_c, {"rules": {"겨울 출항": "겨울엔 배를 안 띄운다"},
+                 "folded": ["안 띄운 날1", "안 띄운 날2", "안 띄운 날3"]}, at=3)
+_now = flow.brief(_c, now=3)
+ok(len(_now) < _was, f"브리핑이 실제로 줄어든다 ({_was}자 → {len(_now)}자)")
+ok("[통칙]" in _now, "통칙이 대신 실린다")
+ok(len(_c["facts"]) == 3, "원장에는 그대로 남는다  ← 눈앞에서 치우는 것이지 지우는 것이 아니다")
+ok("folded" in flow.extract_prompt("x") and "rules" in flow.extract_prompt("x"),
+   "추출기가 통칙과 갈음을 뽑는다")
+
+print()
+print("[보조정리] **언급은 회수가 아니다. 쓰여야 회수다**")
+_names = ["지포 라이터", "웅포", "무전기"]
+ok(F.tooled("지포 라이터가 거기 있었다. 웅포는 조용했다.", _names) == [],
+   "다시 부르기만 한 것은 안 센다")
+ok(set(F.tooled("그는 지포 라이터로 실을 지졌다. 무전기를 들고 나갔다.", _names))
+   == {"지포 라이터", "무전기"}, "수단이 된 것을 센다")
+_bf = {"objects": {n: "x" for n in _names}, "facts": {"형의 사고": "x"}}
+_msg = F.check("지포 라이터가 있었다. 웅포도 무전기도 그대로였다. 형의 사고도.",
+               _bf, _bf)
+ok(any("쓰지는 않았다" in c for c in _msg), "만지기만 하고 안 썼으면 짚는다")
+
+print()
 if fails:
     print(f"미결: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)

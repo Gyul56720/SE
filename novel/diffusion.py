@@ -200,10 +200,36 @@ def opened(before: dict, after: dict) -> tuple[int, int]:
     return len(a - b), len(b - a)
 
 
+# 앞엣것이 **도구로 쓰인 자국**. 증명에서 보조정리는 언급되는 것이 아니라 쓰인다 --
+# 라이터가 다시 나오는 것과 라이터로 자물쇠를 지지는 것은 다르다.
+#
+# 한국어에서 그 자국은 조사에 남는다: "지포로 …", "그 종이를 써서 …". 완벽한 판정은
+# 아니지만(비유에도 '로' 가 붙는다) **재서 돌려주기만 하는 소프트한 자**라 그걸로 족하다.
+_MEANS = ("로 ", "으로 ", "를 써", "을 써", "를 들고", "을 들고", "로써", "를 가지고",
+          "을 가지고", "에 대고", "로 삼", "으로 삼")
+
+
+def tooled(text: str, names: list[str]) -> list[str]:
+    """앞에서 나온 것 중 이번에 **수단이 된** 것들."""
+    out = []
+    for n in dict.fromkeys(names):
+        if len(n) < 2:
+            continue
+        i = text.find(n)
+        while i >= 0:
+            after = text[i + len(n):i + len(n) + 6]
+            if any(after.startswith(m.strip()) or after.startswith(m) for m in _MEANS):
+                out.append(n)
+                break
+            i = text.find(n, i + 1)
+    return out
+
+
 def measure(text: str, before: dict, after: dict) -> dict:
     short, long, bulk, rally = _talk4(text)
     new_open, closed = opened(before, after)
     return {"rally": rally, "grow": grown(before, after),
+            "tool": tooled(text, props(before)),
             "opened": new_open, "closed": closed,
             "owed": len(after.get("open") or {}), "new": len(added(before, after)),
             "back": len(touched(text, props(before))),
@@ -272,6 +298,12 @@ def check(text: str, before: dict, after: dict, now: int = 0) -> list[str]:
                    f"닫아라.** 시원한 답일 필요는 없다. 김빠지는 답도, 틀린 답도, 아무도 "
                    f"확인 못 하는 답도 답이다")
 
+    # 회수는 셋인데 하나도 안 쓰였으면, 다시 부르기만 한 것이다.
+    if len(old) >= 4 and m["back"] >= LIMITS["back"] and not m["tool"]:
+        out.append("앞엣것을 다시 만지기는 했는데 **쓰지는 않았다.** 하나는 수단이 되게 "
+                   "해라 -- 그것으로 무엇을 하거나, 그것 때문에 무엇이 되거나, 그것을 "
+                   "주고 무엇을 받거나. 언급은 회수가 아니다")
+
     if m["rally"] < LIMITS["rally"]:
         out.append(f"제일 길게 주고받은 대화가 {m['rally']}턴이다. 한 번은 {LIMITS['rally']}턴을 "
                    f"넘겨라 -- **대사와 대사를 붙여 놓아라.** 서술 사이에 한 마디씩 흩어 놓으면 "
@@ -296,6 +328,8 @@ def score(text: str, before: dict, after: dict) -> float:
     s += max(0.0, LIMITS["bulk"] - m["bulk"]) * 0.3
     s += max(0, LIMITS["rally"] - m["rally"]) * 0.08
     s += max(0, LIMITS["grow"] - len(m["grow"])) * 0.25
+    if len(props(before)) >= 4 and m["back"] >= LIMITS["back"] and not m["tool"]:
+        s += 0.15
     if m["owed"] > LIMITS["owed"] and not m["closed"]:
         s += 0.2
     s += max(0, LIMITS["short"] - m["short"]) * 0.1

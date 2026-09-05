@@ -37,6 +37,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from novel import drive as D                                          # noqa: E402
 from novel import echo                                                # noqa: E402
 from novel import diffusion                                           # noqa: E402
+from novel import bridge                                              # noqa: E402
 from novel import bond                                                # noqa: E402
 from novel import trait                                               # noqa: E402
 from novel import matter                                              # noqa: E402
@@ -97,6 +98,14 @@ CHUNK = 1400
 # 제일 좋다."
 DRIFT = 1.0
 
+# 연결이 실리는 비율. 매번 이으면 세계가 음모론이 된다 -- 모든 것이 연결돼 있으면
+# 아무것도 연결돼 있지 않은 것과 같다.
+BRIDGE = 0.3
+# 통칙을 깨는 비율. 늘 깨면 통칙이 아니고, 안 깨면 배경이다.
+EXCEPTION = 0.3
+# 이을 것이 이만큼 쌓이기 전에는 안 잇는다. 셋으로 다리를 놓으면 그냥 우연이다.
+BRIDGE_AFTER = 6
+
 # 관계가 실리는 비율. 매번 새 관계를 붙이면 인물이 관계표가 된다.
 BOND = 0.4
 
@@ -155,10 +164,10 @@ def blank(first: str = FIRST) -> dict:
     # 쌓여 있어서 생긴다 -- 닫힌 사실만 적으면 매 덩어리가 자기 안에서 완결되고, 그러면
     # 표류가 아니라 나열이 된다.
     return {"first": first, "chunks": [], "shocks": 0, "since": 0, "drift": DRIFT,
-            "matter": MATTER, "trait": TRAIT, "bond": BOND,
+            "matter": MATTER, "trait": TRAIT, "bond": BOND, "bridge": BRIDGE, "exception": EXCEPTION,
             "ledger": {
         "people": {}, "places": {}, "facts": {}, "time": [], "objects": {},
-        "words": {}, "open": {}}}
+        "words": {}, "open": {}, "rules": {}, "_folded": []}}
 
 
 def _merge(ledger: dict, delta: dict, at: int = 0) -> list:
@@ -214,7 +223,7 @@ def _merge(ledger: dict, delta: dict, at: int = 0) -> list:
         ledger["people"][name] = card
 
     # ---- 나머지: **기록만 한다. 절대 기각하지 않는다.**
-    for bucket in ("places", "facts", "objects", "words", "open"):
+    for bucket in ("places", "facts", "objects", "words", "open", "rules"):
         for k, raw in (delta.get(bucket) or {}).items():
             v = _clean(raw)
             if v is None:
@@ -228,6 +237,14 @@ def _merge(ledger: dict, delta: dict, at: int = 0) -> list:
         age.setdefault(name, at)
     # **연 뒤에 닫는다.** 순서가 중요하다 -- 같은 덩어리에서 던졌다가 그 자리에서 답한
     # 것은 미결이 아니라서, 닫힘이 열림보다 나중에 와야 그것이 안 남는다.
+    # **압축.** 통칙 하나가 흩어진 사실 몇을 덮으면 그 사실들을 브리핑에서 접는다.
+    # 원장에서 지우지는 않는다 -- 정리가 공리를 지우지 않는 것과 같다. 다만 눈앞에서
+    # 치워야 프롬프트가 실제로 가벼워진다.
+    _folded = ledger.setdefault("_folded", [])
+    for k in (delta.get("folded") or []):
+        if k and k not in _folded:
+            _folded.append(k)
+
     for k in (delta.get("closed") or []):
         for name in list(ledger.get("open") or {}):
             if k and (k in name or name in k):
@@ -310,9 +327,14 @@ def brief(ledger: dict, limit: int = 40, now: int = 0) -> str:
             out.append("  [스쳐 간 사람] " + " · ".join(brief_rest))
     # 열린 것은 여기 안 싣는다 -- [열린 것] 블록이 따로 있고, 두 번 실으면 그만큼
     # 프롬프트만 무거워진다.
+    if ledger.get("rules"):
+        out.append("  [통칙] " + " · ".join(f"{k}: {v}"
+                                          for k, v in list(ledger["rules"].items())[-6:]))
+    folded = set(ledger.get("_folded") or [])
     for bucket, label in (("places", "장소"), ("objects", "사물"), ("facts", "사실"),
                           ("words", "지어낸 말")):
-        items = [(k, v) for k, v in (ledger.get(bucket) or {}).items() if fresh(k)][-limit:]
+        items = [(k, v) for k, v in (ledger.get(bucket) or {}).items()
+                 if fresh(k) and k not in folded][-limit:]
         if items:
             out.append(f"  {label}: " + " · ".join(f"{k}={v}" for k, v in items))
     if ledger.get("time"):
@@ -398,6 +420,47 @@ def _trait(book: dict) -> str:
     if not trait.gate(seed, n, rate):
         return ""
     return trait.brief(trait.draw(seed, n))
+
+
+def _exception(book: dict) -> str:
+    """**반례** -- 세워 둔 통칙을 한 번 깨서 세계를 정교하게 만든다.
+
+    수학은 반례로 명제를 좁힌다. 소설에서도 규칙에 예외가 나오는 순간 그 규칙이 진짜가
+    된다 -- 아무도 안 깨는 규칙은 규칙이 아니라 배경이다.
+
+    **사실의 모순과 다른 물건이다.** 마흔둘이던 사람이 서른이 되는 것은 기각이지만,
+    '겨울엔 배를 안 띄운다' 는 통칙을 누가 한 번 깨는 것은 환영이다. 앞의 것은 세계가
+    무너지는 일이고 뒤의 것은 세계가 두꺼워지는 일이다.
+    """
+    rules = list((book["ledger"].get("rules") or {}).items())
+    if not rules:
+        return ""
+    seed = book.get("seed_id") or book["first"]
+    n = len(book["chunks"])
+    if not bridge.gate(seed + "|exc", n, float(book.get("exception", EXCEPTION))):
+        return ""
+    name, text = rules[bridge._raw(rules, seed, n, "rule")]
+    return f"""[예외] **세워 둔 통칙 하나를 이번에 깨라.**
+
+  · 통칙 -- **{name}: {text}**
+
+  * 누가 그것을 어긴다. **규칙은 지워지지 않는다** -- 예외가 규칙을 정교하게 만든다.
+    "그런데 그 사람은" 이 붙는 순간 세계가 두꺼워진다.
+  * **왜 어겼는지 설명하지 마라.** 어기는 데는 이유가 있고, 그 이유는 본인 사정이다.
+  * 남들이 그것을 어떻게 보는지가 더 중요하다 -- 말리는 쪽, 모른 척하는 쪽, 따라 하는 쪽.
+  * **이건 모순이 아니다.** 통칙과 예외는 같이 참이다. 사실을 뒤집는 것과 헷갈리지 마라 --
+    한 사람의 나이나 생사가 바뀌는 것은 여전히 기각이다."""
+
+
+def _bridge(book: dict) -> str:
+    from novel import diffusion as _D
+    if len(_D.props(book["ledger"])) < BRIDGE_AFTER:
+        return ""
+    seed = book.get("seed_id") or book["first"]
+    n = len(book["chunks"])
+    if not bridge.gate(seed, n, float(book.get("bridge", BRIDGE))):
+        return ""
+    return bridge.brief(bridge.draw(book["ledger"], seed, n))
 
 
 def _open(book: dict) -> str:
@@ -507,6 +570,8 @@ def _diffuse(book: dict) -> str:
     **말끝을 다듬으면 그게 딱딱함이다.**
 
 {_open(book)}
+{_bridge(book)}
+{_exception(book)}
 {_impulse(book)}
 {_bond(book)}
 {_trait(book)}
@@ -646,6 +711,9 @@ def extract_prompt(chunk: str) -> str:
 - **속 칸**에는 그 사람이 늘 지고 다니는 것을 적어라 -- 다만 **행동으로 적어라**
   ("칭찬을 받으면 화제를 돌린다"). 감정 이름이나 진단명은 쓰지 마라.
 - 한 번 적힌 것은 끝까지 그 사람의 것이다.
+- **rules 에는 이 세계의 통칙을 적어라** -- 늘 그렇다고 말해진 것("겨울엔 배를 안 띄운다").
+  한 번 세워진 통칙은 예외가 나와도 지워지지 않는다. 예외는 통칙을 정교하게 만든다.
+- **folded 에는 그 통칙이 갈음한 낱낱의 사실 이름**을 적어라. 없으면 빈 목록.
 - **open 에는 "던져지고 아직 안 닫힌 것" 을 적어라.** 확정된 사실이 아니라 미결이다 --
   묻고 답 안 한 질문, 한 약속, 진 빚, 기다리는 사람, 설명 안 된 물건, 감춘 것.
   글이 답을 준 것은 여기 적지 마라.
@@ -664,6 +732,8 @@ JSON 만 출력:
   "objects": {{"사물": "무엇인가 한 줄"}},
   "words": {{"꿉꿉하다": "눅눅한데 마음 쪽에 쓰는 말. 웅포 지방 말"}},
   "open": {{"요우가 기다리는 사람": "누구인지 아직 안 나왔다"}},
+  "rules": {{"겨울 출항": "이 동네 사람들은 겨울에 배를 안 띄운다"}},
+  "folded": ["통칙 하나로 갈음된 낱낱의 사실 이름들"],
   "closed": ["앞에서 열려 있다가 이번에 답이 나온 것"],
   "facts": {{"항목": "확정된 값"}},
   "time": ["시점 한 줄"]}}"""
@@ -860,6 +930,10 @@ def main() -> int:
                     help="설정(외현·내현)이 붙는 비율 0~1")
     ap.add_argument("--bond", type=float, default=BOND,
                     help="관계가 실리는 비율 0~1")
+    ap.add_argument("--bridge", type=float, default=BRIDGE,
+                    help="따로 있던 둘을 잇는 비율 0~1")
+    ap.add_argument("--exception", type=float, default=EXCEPTION,
+                    help="세워 둔 통칙을 깨는 비율 0~1")
     a = ap.parse_args()
 
     if a.read:
@@ -909,14 +983,16 @@ def main() -> int:
     # 그래서 **매 런마다 인자(또는 기본값)로 덮어쓴다.** 원고를 이어 쓰되 설정은 지금
     # 것으로 간다. 옛 설정을 유지하고 싶으면 그 값을 인자로 주면 된다.
     for key, val in (("drift", a.drift), ("matter", a.matter),
-                     ("trait", a.trait), ("bond", a.bond)):
+                     ("trait", a.trait), ("bond", a.bond),
+                     ("bridge", a.bridge), ("exception", a.exception)):
         was = book.get(key)
         book[key] = max(0.0, min(1.0, val))
         if was is not None and was != book[key]:
             D._log(f"[flow] {key} {was} → {book[key]} (코드 기본값으로 맞춘다)")
     D._log(f"[flow] 목표 {a.chars:,}자 · 지금 "
            f"{sum(len(c) for c in book['chunks']):,}자 · 표류 계수 {book['drift']}"
-           f" · 소재 {book['matter']} · 설정 {book['trait']} · 관계 {book['bond']}")
+           f" · 소재 {book['matter']} · 설정 {book['trait']} · 관계 {book['bond']}"
+           f" · 연결 {book['bridge']}")
     r = run(book, D.default_llm, a.chars, path, time.time() + a.hours * 3600)
     D._log(f"[flow] 끝 -- 덩어리 {r['chunks']}개 · {r['chars']:,}자 · {path}")
     return 0
