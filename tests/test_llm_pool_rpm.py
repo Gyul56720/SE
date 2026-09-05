@@ -275,4 +275,47 @@ ok(len(_a) <= 1,
 ok(llm_pool._key_of("key-abc:gemini-flash") == "key-abc", "라벨에서 키를 뽑는다")
 ok(llm_pool.KEY_PENALTY > llm_pool.MIN_GAP or True, "429 를 맞은 키는 더 오래 쉰다")
 
+print()
+print("[병렬] **직렬 대기가 7분을 만들었다**")
+print("      ← 후보 12개 × 간격 8초 × 3바퀴. RPM 은 모델별로 따로 걸리므로(구글 문서)")
+print("        서로 다른 통에 동시에 던지는 것은 서로의 한도를 안 깎는다.")
+llm_pool.FANOUT = 3
+
+
+class _Slow:
+    def __init__(self, label, fail=False, delay=0.0):
+        self.label, self.fail, self.delay = label, fail, delay
+
+    def invoke(self, prompt):
+        time.sleep(self.delay)
+        if self.fail:
+            raise RuntimeError("429 RESOURCE_EXHAUSTED PerMinute {'retryDelay': '45s'}")
+
+        class R:
+            content = "ok"
+        return R()
+
+
+def _race(spec):
+    llm_pool._LAST_USED.clear()
+    llm_pool._LAST_KEY.clear()
+    pool = [(lb, _Slow(lb, f, d)) for lb, f, d in spec]
+    t = time.time()
+    lab = llm_pool.call(pool, "x", verbose=False)[1]
+    return lab, time.time() - t
+
+
+_lab, _sec = _race([("kA:slow", False, 1.0), ("kB:fast", False, 0.05),
+                    ("kC:mid", False, 0.5)])
+ok(_lab == "kB:fast", f"먼저 답한 것을 쓴다 ({_lab})")
+ok(_sec < 0.5, f"느린 후보를 기다리지 않는다 ({_sec:.2f}초)  ← with 을 쓰면 여기서 1초를 버린다")
+
+_lab, _sec = _race([("kA:m0", True, 0.05), ("kA:m1", True, 0.05), ("kB:m0", False, 0.1)])
+ok(_lab == "kB:m0", "묶음 안에 실패가 섞여도 성공한 것을 쓴다")
+ok(_sec < 1.0, f"실패한 것 때문에 늦어지지 않는다 ({_sec:.2f}초)")
+
+ok(llm_pool._retry_delay(RuntimeError("429 ... 'retryDelay': '45s'")) == 45.0,
+   "429 에 실린 retryDelay 를 읽는다  ← 구글이 알려 준 값이 추측보다 정확하다")
+ok(llm_pool._retry_delay(RuntimeError("429")) == 0.0, "없으면 0 -- 그때만 추측한다")
+
 print("llm_pool RPM: 판정·쿨다운·복귀·일일소진 구분·야간 생존 -- 통과")
