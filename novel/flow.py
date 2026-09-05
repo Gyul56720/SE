@@ -38,7 +38,7 @@ from novel import drive as D                                          # noqa: E4
 from novel import echo                                                # noqa: E402
 from novel import diffusion                                           # noqa: E402
 from novel import bond                                                # noqa: E402
-from novel import body                                                # noqa: E402
+from novel import trait                                               # noqa: E402
 from novel import matter                                              # noqa: E402
 from novel import shock as SH                                         # noqa: E402
 from novel import rhythm                                              # noqa: E402
@@ -49,7 +49,7 @@ from novel import style                                               # noqa: E4
 # 인물 카드에 적는 것. **정하면 적어두고 다음부터 참조한다** -- 적어두지 않으면 모델은
 # 세 덩어리 뒤에 다른 사람으로 만든다. 대사가 인물마다 달라지는 것도 이 카드에서 나온다:
 # "거칠게" 는 한 인물의 특징이지 소설의 규칙이 아니다.
-CARD = ("나이", "키", "몸", "관계", "성격", "혈액형", "가족", "과거", "트라우마",
+CARD = ("나이", "키", "몸", "속", "관계", "성격", "혈액형", "가족", "과거", "트라우마",
         "좋아하는 것", "싫어하는 것", "취미", "전공", "직업", "말투", "버릇", "겉모습")
 
 # **게이트는 최소로 만든다.** 자유도가 이 모드의 전부다 -- 기각이 잦으면 그 자유가 죽는다.
@@ -100,8 +100,8 @@ DRIFT = 1.0
 # 관계가 실리는 비율. 매번 새 관계를 붙이면 인물이 관계표가 된다.
 BOND = 0.4
 
-# 몸의 사실이 붙는 비율. 매 덩어리에 넣으면 소설이 진료 기록이 된다.
-BODY = 0.35
+# 설정(외현·내현)이 붙는 비율. 매 덩어리에 넣으면 소설이 인물 소개서가 된다.
+TRAIT = 0.35
 
 # **소재 축의 비율. 0 이면 끈다.**
 #
@@ -151,7 +151,7 @@ def blank(first: str = FIRST) -> dict:
     # words: 지어낸 낱말과 그 뜻. **기록만 하고 절대 기각하지 않는다** -- 다만 한 번 뜻을
     # 준 말은 계속 같은 뜻으로 쓰여야 해서 원장에 남긴다.
     return {"first": first, "chunks": [], "shocks": 0, "since": 0, "drift": DRIFT,
-            "matter": MATTER, "body": BODY, "bond": BOND,
+            "matter": MATTER, "trait": TRAIT, "bond": BOND,
             "ledger": {
         "people": {}, "places": {}, "facts": {}, "time": [], "objects": {},
         "words": {}}}
@@ -372,12 +372,14 @@ def _bond(book: dict) -> str:
     return bond.brief(bond.draw(seed, n))
 
 
-def _body(book: dict) -> str:
+def _trait(book: dict) -> str:
     seed = book.get("seed_id") or book["first"]
     n = len(book["chunks"])
-    if not body.gate(seed, n, float(book.get("body", BODY))):
+    # 옛 원고는 'body' 로 저장돼 있다 -- 이름이 바뀌었다고 설정을 잃게 하지 않는다.
+    rate = float(book.get("trait", book.get("body", TRAIT)))
+    if not trait.gate(seed, n, rate):
         return ""
-    return body.brief(body.draw(seed, n))
+    return trait.brief(trait.draw(seed, n))
 
 
 def _matter(book: dict) -> str:
@@ -464,7 +466,7 @@ def _diffuse(book: dict) -> str:
 
 {_impulse(book)}
 {_bond(book)}
-{_body(book)}
+{_trait(book)}
 {_matter(book)}
 [잡소리] **쓸데없는 말이 이 소설의 재미다. 이 덩어리에 적어도 하나는 넣어라.**
 다만 **전부 하려 들지 마라.** 여섯을 다 채우면 그게 버릇이 되고, 버릇이 되는 순간
@@ -591,8 +593,10 @@ def extract_prompt(chunk: str) -> str:
   쓸 수 있는 칸: {" · ".join(CARD)}
 - **관계 칸**에는 다른 인물과의 사이를 적어라 -- "요우의 옛 애인", "한나와 돈이 얽혔다".
   한 번 맺어진 관계는 저절로 풀리지 않는다.
-- **몸 칸**에는 생물학적 사실을 적어라 -- 안 들리는 귀, 안 크는 키, 못 맡는 냄새, 월경,
-  떨리는 손. 한 번 적힌 몸은 끝까지 그 몸이다.
+- **몸 칸**에는 겉으로 드러나는 조건을 적어라 -- 안 들리는 귀, 안 크는 키, 떨리는 손.
+- **속 칸**에는 그 사람이 늘 지고 다니는 것을 적어라 -- 다만 **행동으로 적어라**
+  ("칭찬을 받으면 화제를 돌린다"). 감정 이름이나 진단명은 쓰지 마라.
+- 한 번 적힌 것은 끝까지 그 사람의 것이다.
 - **지어낸 낱말은 words 에 뜻과 함께 적어라.** 사전에 없는 말이 나오고 거기 뜻이나 유래가
   달렸으면 그것이다. 한 번 적힌 말은 다음 덩어리에서도 같은 뜻으로 쓰인다.
 - 말투 칸이 중요하다. 그 사람이 어떻게 말하는지 한 줄로 적어라
@@ -797,8 +801,8 @@ def main() -> int:
                     help="표류 계수 0~1. 낮출수록 급발진·사건이 줄어든다 (기본 1.0)")
     ap.add_argument("--matter", type=float, default=MATTER,
                     help="소재 축(갈래·매체)을 섞는 비율 0~1. 기본 0 -- 꺼져 있다")
-    ap.add_argument("--body", type=float, default=BODY,
-                    help="몸의 사실이 붙는 비율 0~1")
+    ap.add_argument("--trait", type=float, default=TRAIT,
+                    help="설정(외현·내현)이 붙는 비율 0~1")
     ap.add_argument("--bond", type=float, default=BOND,
                     help="관계가 실리는 비율 0~1")
     a = ap.parse_args()
@@ -850,14 +854,14 @@ def main() -> int:
     # 그래서 **매 런마다 인자(또는 기본값)로 덮어쓴다.** 원고를 이어 쓰되 설정은 지금
     # 것으로 간다. 옛 설정을 유지하고 싶으면 그 값을 인자로 주면 된다.
     for key, val in (("drift", a.drift), ("matter", a.matter),
-                     ("body", a.body), ("bond", a.bond)):
+                     ("trait", a.trait), ("bond", a.bond)):
         was = book.get(key)
         book[key] = max(0.0, min(1.0, val))
         if was is not None and was != book[key]:
             D._log(f"[flow] {key} {was} → {book[key]} (코드 기본값으로 맞춘다)")
     D._log(f"[flow] 목표 {a.chars:,}자 · 지금 "
            f"{sum(len(c) for c in book['chunks']):,}자 · 표류 계수 {book['drift']}"
-           f" · 소재 {book['matter']} · 몸 {book['body']} · 관계 {book['bond']}")
+           f" · 소재 {book['matter']} · 설정 {book['trait']} · 관계 {book['bond']}")
     r = run(book, D.default_llm, a.chars, path, time.time() + a.hours * 3600)
     D._log(f"[flow] 끝 -- 덩어리 {r['chunks']}개 · {r['chars']:,}자 · {path}")
     return 0

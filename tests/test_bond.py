@@ -13,7 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from novel import body, bond, flow, style                             # noqa: E402
+from novel import bond, flow, style, trait                             # noqa: E402
 
 fails = []
 
@@ -45,15 +45,15 @@ ok("급발진이 나온다" in bb, "관계가 움직이는 자리가 사람이 �
 
 print()
 print("[몸] **종류가 많아야 사람이 안 겹친다**")
-ok(len(body.FACT) >= 55, f"몸의 사실 ({len(body.FACT)}가지 × 쓰는 법 {len(body.USE)})")
-ok(len({body.draw("s", i)["fact"] for i in range(60)}) > 25,
+ok(len(trait.OUTER) >= 55, f"몸의 사실 ({len(trait.OUTER)}가지 × 쓰는 법 {len(trait.OUTER_USE)})")
+ok(len({trait.draw("s", i)["outer"] for i in range(60)}) > 25,
    "예순 번 뽑으면 스물다섯 가지 넘게 나온다")
 
 print()
 print("[섞임] **매번 다 붙이면 인물이 관계표가 된다**")
 b = flow.blank()
 rel = sum("[관계]" in flow.write_prompt(dict(b, chunks=["x"] * i)) for i in range(1, 101))
-bod = sum("[몸]" in flow.write_prompt(dict(b, chunks=["x"] * i)) for i in range(1, 101))
+bod = sum("[설정]" in flow.write_prompt(dict(b, chunks=["x"] * i)) for i in range(1, 101))
 ok(25 < rel < 55, f"관계는 절반 아래 ({rel}/100)")
 ok(20 < bod < 55, f"몸도 절반 아래 ({bod}/100)")
 ok("관계" in flow.CARD and "몸" in flow.CARD, "카드에 관계·몸 칸이 있다")
@@ -85,7 +85,7 @@ _d = Path(_tf.mkdtemp()) / "old.json"
 _old = flow.blank()
 _old["chunks"] = ["옛 본문"]
 _old["drift"], _old["matter"] = 0.5, 0.9
-_old.pop("body", None)
+_old.pop("trait", None)
 _old.pop("bond", None)
 _d.write_text(_json.dumps(_old, ensure_ascii=False), encoding="utf-8")
 flow.BACKOFF = (0,)
@@ -99,7 +99,7 @@ _new = _json.loads(_d.read_text(encoding="utf-8"))
 ok(_new["drift"] == flow.DRIFT and _new["matter"] == flow.MATTER,
    f"옛 계수가 지금 기본값으로 맞춰진다 ({_old['drift']}→{_new['drift']}, "
    f"{_old['matter']}→{_new['matter']})")
-ok(_new["body"] == flow.BODY and _new["bond"] == flow.BOND,
+ok(_new["trait"] == flow.TRAIT and _new["bond"] == flow.BOND,
    "원고에 없던 새 축도 채워진다  ← 나중에 생긴 축이 옛 원고에서 빠지면 안 된다")
 ok(_new["chunks"] == ["옛 본문"], "원고는 그대로다  ← 설정만 갈아 끼운다")
 
