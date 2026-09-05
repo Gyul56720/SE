@@ -452,11 +452,20 @@ def feel_push(chunks) -> str:
             "것만 문제다.")
 
 
-def _out_share(seed: str, n: int) -> float:
+OUT_LO = float(os.environ.get("DRIFT_OUT_LO", "0.25"))
+OUT_HI = float(os.environ.get("DRIFT_OUT_HI", "0.75"))
+
+
+def _out_share(seed: str, n: int, span=None) -> float:
     """이번 덩어리에서 **밖(외현)이 차지할 몫.** 고정하지 않는다 -- 반반으로 박아 두면
-    매 덩어리가 반반이 되고, 그 자체가 한 가지 가락이다."""
+    매 덩어리가 반반이 되고, 그 자체가 한 가지 가락이다.
+
+    밖을 더 보여야 하는 갈래는 **구간을 통째로 위로 옮긴다.** 숫자를 하나 올리는 것이
+    아니라 흔들리는 범위 자체가 올라가는 것이라, 여전히 매 덩어리 다르면서 평균만
+    높아진다 -- 이것이 "소프트하게 올린다" 의 뜻이다."""
     from novel import rhythm
-    return rhythm.wave(f"{seed}|outshare", n, 0.25, 0.75, 2)
+    lo, hi = span or (OUT_LO, OUT_HI)
+    return rhythm.wave(f"{seed}|outshare", n, lo, hi, 2)
 
 
 def menu(pool, picked, head: str, tail: str) -> str:
@@ -525,7 +534,7 @@ def _on(name: str, n: int) -> bool:
 ROTATE = os.environ.get("DRIFT_MENU_ROTATE", "1") not in ("", "0", "false")
 
 
-def brief(chunks, seed: str, n: int) -> str:
+def brief(chunks, seed: str, n: int, out_span=None) -> str:
     """이번 덩어리에 밀어 넣을 것. 기울지 않았으면 짧아지고, 기울었으면 길어진다."""
     from novel import shock
     lines = []
@@ -546,7 +555,7 @@ def brief(chunks, seed: str, n: int) -> str:
     out_pick = shock._batch(OUTSIDE, f"{seed}|outside", n, "outside", PUSH_OUT)
     lines.append(menu(
         OUTSIDE, out_pick, "밖을 보여라(외현)",
-        f"**이번 대목은 밖이 {_out_share(seed, n):.0%}** -- 이 몫도 덩어리마다 다르다.\n"
+        f"**이번 대목은 밖이 {_out_share(seed, n, out_span):.0%}** -- 이 몫도 덩어리마다 다르다.\n"
         "      **이름과 번호를 대라.** 밖에 있는 것에는 전부 이름표가 붙어 있다."
         " '낡은 건물' 은 아무것도 아니고, 몇 년에 지어 몇 층이며 입구에 무슨 글자가"
         " 붙은 건물이라야 거기 서 있게 된다. 지어내되 **자릿수와 붙는 말이 그럴듯하게.**\n"

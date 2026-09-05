@@ -23,6 +23,8 @@
 #   drift.sh open                   아직 안 닫힌 것들 -- 이 이야기가 갚지 않은 빚
 #
 # 환경변수로 바꿀 수 있는 것:
+#   GENRE    갈래 꾸러미        (romance … / 비우면 안 씌운다)
+#                                예: GENRE=romance drift.sh start 100000
 #   DRIFT    표류 계수 0~1     (기본 1.0 -- 낮추면 급발진·사건이 줄어든다)
 #   MATTER   소재 축 0~1       (기본 0.0 -- 켜면 갈래·매체가 섞인다)
 #   BODY     몸의 사실 0~1     (기본 0.35)
@@ -112,7 +114,7 @@ case "${1:-status}" in
       mv "$BOOK" "$BOOK.$(date +%Y%m%d-%H%M%S).bak"
       echo "쓰던 원고를 옮겨 두었다: $BOOK.*.bak"
     }
-    set -- --out "$BOOK" --chars "${2:-8000}" ${DRIFT:+--drift "$DRIFT"} ${MATTER:+--matter "$MATTER"} \
+    set -- --out "$BOOK" --chars "${2:-8000}" ${GENRE:+--genre "$GENRE"} ${DRIFT:+--drift "$DRIFT"} ${MATTER:+--matter "$MATTER"} \
            ${BODY:+--body "$BODY"} ${BOND:+--bond "$BOND"}
     [ -n "${FIRST:-}" ] && set -- "$@" --first "$FIRST"
     launch "새 원고를" "$@"
@@ -142,6 +144,7 @@ INNER
     [ -f "$BOOK" ] || die "이어 쓸 원고가 없다: $BOOK   (새로 시작하려면: $0 start)"
     cp "$BOOK" "$BOOK.bak"
     launch "이어 쓰기를" --resume "$BOOK" --chars "${2:-50000}" --hours 12 \
+           ${GENRE:+--genre "$GENRE"} \
            ${DRIFT:+--drift "$DRIFT"} ${MATTER:+--matter "$MATTER"} \
            ${BODY:+--body "$BODY"} ${BOND:+--bond "$BOND"}
     ;;

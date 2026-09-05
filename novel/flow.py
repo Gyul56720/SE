@@ -46,6 +46,7 @@ from novel import matter                                              # noqa: E4
 from novel import shock as SH                                         # noqa: E402
 from novel import rhythm                                              # noqa: E402
 from novel import wording                                             # noqa: E402
+from novel import genre as GENRE                                      # noqa: E402
 from novel import style                                               # noqa: E402
 
 # 한 번에 받는 덩어리. 너무 크면 모델이 뒤로 갈수록 늘어지고, 너무 작으면 점층이 덩어리
@@ -195,6 +196,7 @@ def blank(first: str = FIRST) -> dict:
     # 쌓여 있어서 생긴다 -- 닫힌 사실만 적으면 매 덩어리가 자기 안에서 완결되고, 그러면
     # 표류가 아니라 나열이 된다.
     return {"first": first, "chunks": [], "shocks": 0, "since": 0, "drift": DRIFT,
+            "genre": GENRE.DEFAULT,
             "matter": MATTER, "trait": TRAIT, "bond": BOND, "bridge": BRIDGE, "exception": EXCEPTION, "doubt": DOUBT, "pov": POV,
             "ledger": {
         "people": {}, "places": {}, "facts": {}, "time": [], "objects": {},
@@ -644,7 +646,15 @@ def _wording(book: dict) -> str:
     """말맛 장부 -- 쓴 말끝은 세어 두고 안 쓴 쪽으로 민다. 비유와 글의 꼴은 뽑아서 흔든다."""
     return wording.brief(book["chunks"],
                          book.get("seed_id") or book.get("first", ""),
-                         len(book["chunks"]))
+                         len(book["chunks"]),
+                         out_span=GENRE.tune(book.get("genre", ""), "밖", None))
+
+
+def _genre(book: dict) -> str:
+    """갈래 몫. 갈래가 없으면 빈 줄 -- 지금까지의 틀 그대로 돈다."""
+    return GENRE.brief(book.get("genre", ""),
+                       book.get("seed_id") or book.get("first", ""),
+                       len(book["chunks"]))
 
 
 def _talklong(book: dict) -> float:
@@ -997,6 +1007,10 @@ def write_prompt(book: dict, feedback: str = "") -> str:
 
 {OPENING if opening else _push(book)}
 
+{_genre(book)}
+
+{turned(book)}
+
 {owed_brief(book)}
 
 {_must(book)}
@@ -1085,6 +1099,9 @@ def step(book: dict, llm, log=None) -> dict:
                                  len(brief(book["ledger"], now=len(book["chunks"]))),
                                  _level(book)):
         book["_shock"] = SH.draw(book.get("seed_id") or book["first"], book["shocks"])
+        sk = book["_shock"]
+        book["_last_shock"] = (f"{sk['who']} / {' / '.join(sk.get('hows') or [sk['how']])}"
+                               f" / {sk['scale']}")
         D._log(f"[flow] 사건 {book['shocks'] + 1} -- {book['_shock']['who']} / "
                f"{book['_shock']['how']} / {book['_shock']['scale']}")
 
@@ -1192,6 +1209,44 @@ def _kind_of(msg: str) -> str:
     return msg[:12]
 
 
+def turned(book: dict) -> str:
+    """**지난 덩어리에서 세계가 어떻게 달라졌는가.** 그 결과에서 이번 덩어리를 연다.
+
+    지금까지 이야기를 끄는 것은 대사였다. 사람들이 말로 사이를 좁히고 말로 사정을
+    설명하니, 읽으면 대화록이지 사건이 아니다. 원인은 구조에 있다 -- **덩어리와
+    덩어리를 잇는 것이 꼬리 1,200자뿐**이라, 모델은 앞 문장에 이어 붙이는 것만 한다.
+    앞 덩어리가 세계에 무엇을 **바꿔 놓았는지**는 아무도 안 알려 준다.
+
+    그래서 바뀐 것을 짚어 준다. 새로 놓인 사람·장소·물건과 직전 사건을 대고,
+    **이번 덩어리는 그 결과에서 시작하라**고 한다. 결과가 다음 원인이 되면 그것이
+    사슬이고, 사슬이 곧 줄거리다."""
+    if not book.get("chunks"):
+        return ""
+    now = len(book["chunks"])
+    fresh = []
+    for kind, label in (("people", "인물"), ("places", "장소"),
+                        ("objects", "사물"), ("facts", "사실")):
+        for name, rec in (book["ledger"].get(kind) or {}).items():
+            age = rec.get("_age") if isinstance(rec, dict) else None
+            if age is not None and now - age <= 1:
+                fresh.append(f"{name}({label})")
+    fresh = fresh[:6]
+    last = book.get("_last_shock") or ""
+    if not fresh and not last:
+        return ""
+    lines = ["[바뀐 것] **지난 덩어리가 세계에 남긴 것이다. 이번 덩어리는 그 결과에서 연다.**"]
+    if fresh:
+        lines.append("  · 새로 놓인 것 -- " + " · ".join(fresh))
+    if last:
+        lines.append(f"  · 직전에 벌어진 일 -- {last}")
+    lines.append("  · **그래서 무엇이 달라졌는가**를 먼저 쓰고 거기서 이어라. 사람이 옮겨"
+                 " 갔거나, 무엇이 없어졌거나, 누가 누구에게 빚을 졌거나, 사이가"
+                 " 바뀌었거나. **말로 정리하지 말고 그 결과를 겪게 해라.**")
+    lines.append("  · 그리고 이 덩어리도 세계를 **한 칸은 바꿔 놓고** 끝내라 -- 다음"
+                 " 덩어리가 그것을 이어받는다. 아무것도 안 바뀌면 이야기가 선 것이다.")
+    return "\n".join(lines)
+
+
 def owed_brief(book: dict) -> str:
     """**갚지 않은 빚 하나.** 장부에 거듭 오른 갈래를 다음 덩어리에 얹는다.
 
@@ -1292,6 +1347,8 @@ def main() -> int:
     ap.add_argument("--chars", type=int, default=6000)
     ap.add_argument("--first", default=FIRST)
     ap.add_argument("--hours", type=float, default=12.0)
+    ap.add_argument("--genre", default=GENRE.DEFAULT,
+                    help=f"갈래 꾸러미 ({' · '.join(GENRE.names())}). 비우면 안 씌운다")
     ap.add_argument("--drift", type=float, default=DRIFT,
                     help="표류 계수 0~1. 낮출수록 급발진·사건이 줄어든다 (기본 1.0)")
     ap.add_argument("--matter", type=float, default=MATTER,
@@ -1364,6 +1421,12 @@ def main() -> int:
         book[key] = max(0.0, min(1.0, val))
         if was is not None and was != book[key]:
             D._log(f"[flow] {key} {was} → {book[key]} (코드 기본값으로 맞춘다)")
+    # 갈래도 같은 규칙 -- 매 런마다 인자로 덮어쓴다. 없는 갈래면 여기서 죽는다:
+    # 조용히 기본값으로 물러서면 로맨스로 쓰는 줄 알고 밤새 다른 것을 쓴다.
+    GENRE.get(a.genre)
+    if book.get("genre") != a.genre:
+        D._log(f"[flow] 갈래 {book.get('genre') or '(없음)'} → {a.genre or '(없음)'}")
+    book["genre"] = a.genre
     D._log(f"[flow] 목표 {a.chars:,}자 · 지금 "
            f"{sum(len(c) for c in book['chunks']):,}자 · 표류 계수 {book['drift']}"
            f" · 소재 {book['matter']} · 설정 {book['trait']} · 관계 {book['bond']}"
