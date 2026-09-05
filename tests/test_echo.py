@@ -115,9 +115,12 @@ ok(echo.check(loose, "") == [], "'어라랍쇼' 를 두 번 말해도 메아리�
 short, long = F.talk(loose)
 ok(short >= 4, f"짧은 감탄사가 대사 리듬을 살린다 (짧은 대사 {short}개)")
 _flat = " ".join(flow.write_prompt(flow.blank()).split())
-ok("감탄사를 지어내라" in " ".join(__import__("novel.style", fromlist=["x"]).narrator().split()),
-   "화자에게 없는 감탄사를 만들라고 한다")
-ok("말끝을 다듬으면 그게 딱딱함이다" in _flat, "문법을 놓으라고 한다")
+_st = " ".join(__import__("novel.style", fromlist=["x"]).narrator().split())
+ok("감탄사는 그때 지어내라" in _st, "화자에게 없는 감탄사를 만들라고 한다")
+# **범위를 못박았다.** 문법을 놓는 것은 따옴표 안에서만이다 -- 서술문까지 번져서
+# 원고가 지저분해졌다(사용자 평: "문장이 너무 깔끔하지 못하다").
+ok("문법은 따옴표 안에서만 놓는다" in _st, "문법은 대사에서만 놓는다")
+ok("서술문은 반대다" in _st, "서술문은 반대라고 못박는다")
 _mid2 = flow.blank(); _mid2["chunks"] = ["앞."]
 ok("입버릇·감탄사가 있으면 그것까지 적어라" in flow.extract_prompt("x"),
    "카드에 입버릇을 적는다  ← 그 사람이 다음에도 같은 소리를 내야 한다")
