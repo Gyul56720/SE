@@ -88,6 +88,9 @@ _DEAD = re.compile(r"죽|사망|시신|시체|숨(을)?\s*거|고인|타계|없�
 # 18,000자인데 답이 1,400자였다), 작게 받는 것은 그 자체로 낭비다. 게이트는 분량과
 # 무관하게 비율로 재므로 크게 받아도 잣대는 그대로 선다.
 CHUNK = int(os.environ.get("DRIFT_CHUNK", "3200"))
+# 한 번에 고쳐 달라고 보낼 문장 수의 상한. 너무 많이 보내면 되받은 것이 성의 없어지고,
+# 프롬프트도 다시 커진다 -- 아끼려던 것이 도로 는다.
+MEND_MAX = int(os.environ.get("DRIFT_MEND_MAX", "12"))
 # 다시 쓰는 횟수. 모순·리듬·농도가 이 예산을 함께 쓴다. 둘이던 것을 셋으로 올렸다 --
 # 재는 자가 늘었는데 예산이 그대로면 첫 지적만 고치고 끝난다.
 # **표류 계수** -- 부조리의 세기. 1.0 이면 축을 전부 매번 켠다.
@@ -723,11 +726,50 @@ PATCHABLE = {
 }
 
 
-def patch_prompt(kind: str, lines: list) -> str:
-    """**걸린 문장만 고쳐 달라고 한다.** 원고를 통째로 다시 받지 않는다 -- 두 문장을
-    고치려고 1,400자를 새로 만드는 것이 지금까지의 방식이었다."""
+def clash_lines(text: str, clashes: list) -> list:
+    """모순에 걸린 이름이 나오는 문장만 골라낸다. 원고를 통째로 버리지 않으려고."""
+    names = set()
+    for c in clashes:
+        m = re.match(r"\s*([^:의]+)", c)
+        if m and m.group(1).strip():
+            names.add(m.group(1).strip())
+    tell, _ = rhythm._lines(text)
+    return [s for s in tell if any(n in s for n in names)][:8]
+
+
+def clash_prompt(clashes: list, lines: list) -> str:
+    """**어긋난 문장만 고쳐 달라고 한다.** 예전에는 여섯 번 다 못 넘기면 3,200자를
+    통째로 버리고 처음부터 다시 썼다 -- 밤새 돌 때 시간을 제일 많이 먹던 자리다.
+    모순은 원고 전체가 아니라 한두 문장에 있다."""
+    why = "\n".join(f"  · {c}" for c in clashes)
     numbered = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(lines))
-    return f"""아래는 어떤 소설에서 뽑아낸 문장들이다. {PATCHABLE[kind]}
+    return f"""아래 문장들이 이 소설에서 앞서 확정된 것과 어긋난다.
+
+[어긋난 것]
+{why}
+
+[문장]
+{numbered}
+
+규칙:
+- **앞에서 확정된 쪽이 맞다.** 그것에 맞게 이 문장들을 고쳐라.
+- 사건은 그대로 둔다. 같은 일이 같은 순서로 일어나야 한다.
+- 짧아지지 마라.
+- 번호를 그대로 붙여 **고친 문장만** 돌려줘라.
+
+{{"1": "고친 문장"}} 꼴의 JSON 하나로만 답한다.
+"""
+
+
+def mend_prompt(items: list) -> str:
+    """**걸린 데를 한 번에 전부 고쳐 달라고 한다.**
+
+    예전에는 갈래를 하나씩, 시도를 나눠 가며 보냈다 -- 결함이 넷이면 호출이 넷이다.
+    문장마다 무엇이 문제인지 적어 한 장에 담으면 호출 하나로 끝난다. 원고를 다시
+    받지도 않는다: 보내는 것은 걸린 문장뿐이고 받는 것은 고친 문장뿐이다."""
+    numbered = "\n".join(f"{i + 1}. [{why}] {s}" for i, (s, why) in enumerate(items))
+    return f"""아래는 어떤 소설에서 뽑아낸 문장들이다. 각 문장 앞 대괄호가 그 문장의
+문제다. **전부 고쳐라 -- 하나도 빼지 마라.**
 
 {numbered}
 
@@ -739,6 +781,25 @@ def patch_prompt(kind: str, lines: list) -> str:
 
 {{"1": "고친 문장", "2": "고친 문장"}} 꼴의 JSON 하나로만 답한다.
 """
+
+
+def mend_items(text: str, clashes: list) -> list:
+    """이 덩어리에서 고칠 것을 **전부** 모은다 -- (문장, 무엇이 문제인가) 목록으로.
+
+    한 문장이 두 갈래에 걸리면 앞엣것만 남긴다. 같은 문장을 두 번 보내면 모델이
+    어느 쪽을 따를지 알 수 없고, 번호가 겹쳐 되받은 것을 못 끼운다."""
+    items, seen = [], set()
+    for line in clash_lines(text, clashes):
+        if line not in seen:
+            seen.add(line)
+            items.append((line, "앞에서 확정된 것과 어긋난다 -- 앞엣것이 맞다"))
+    spot = rhythm.spots(text)
+    for kind, why in PATCHABLE.items():
+        for line in spot.get(kind, []):
+            if line not in seen:
+                seen.add(line)
+                items.append((line, why))
+    return items[:MEND_MAX]
 
 
 def apply_patch(text: str, lines: list, fixed: dict) -> tuple:
@@ -938,145 +999,81 @@ def step(book: dict, llm, log=None) -> dict:
         D._log(f"[flow] 사건 {book['shocks'] + 1} -- {book['_shock']['who']} / "
                f"{book['_shock']['how']} / {book['_shock']['scale']}")
 
-    feedback = ""
-    best = None
-    stale = 0                 # 나아지지 않은 시도가 몇 번 이어졌는가
-    mend = True               # 문장 손질이 이 덩어리에서 통하는가
-    # 재시도가 메아리로만 소진되면 아래 반환문이 clashes 를 못 찾는다(실측:
-    # UnboundLocalError). 판정을 한 번도 못 했다는 뜻이므로 빈 목록에서 시작한다.
-    clashes: list[str] = []                                   # (점수, 본문, 원장) -- 리듬만 걸린 후보
-    for attempt in range(1, MAX_REWRITE + 2):
-        text = D._llm_for(llm, "narrator")(write_prompt(book, feedback)).strip()
-
-        # **꼬리를 옮겨 적은 앞부분은 도려낸다.** 판정할 것도 없다 -- 이미 원고에 있는
-        # 글자다. 호출을 한 번 더 쓰는 것보다 잘라내는 편이 싸고 확실하다.
+    # **한 번 쓰고, 한 번 고치고, 반드시 채택한다.**
+    #
+    # 예전에는 걸릴 때마다 원고를 통째로 다시 받았다 -- 결함이 넷이면 호출이 넷이고,
+    # 새로 받은 원고는 또 다른 데서 걸렸다. 그리고 끝내 못 풀면 3,200자를 버렸다.
+    # 이제는 다르다: 크게 한 번 쓰고, 걸린 문장을 **전부 모아 한 번에** 고쳐 달라고
+    # 하고, 남은 것은 버리는 대신 장부에 적는다. 폐기는 없다.
+    for attempt in range(1, 3):        # 두 번째는 답이 통째로 망가졌을 때만이다
+        text = D._llm_for(llm, "narrator")(write_prompt(book)).strip()
         text, dropped = echo.trim(text, "".join(book["chunks"]))
         if dropped:
             D._log(f"[flow] 앞 글을 옮겨 적은 {dropped:,}자를 도려냈다")
+        if len(text) >= 200:
+            break
+        D._log(f"[flow] 덩어리가 {len(text)}자로 왔다 -- 다시 받는다")
+    if len(text) < 200:
+        return {"status": "blocked", "chars": 0, "clashes": [],
+                "why": f"덩어리가 {len(text)}자밖에 안 왔다"}
 
-        if len(text) < 200:
-            D._log(f"[flow] 덩어리가 {len(text)}자로 왔다 -- 다시 받는다")
-            continue
-        # **버릴 원고에는 추출을 쓰지 않는다.** 메아리와 리듬은 원장이 없어도 잰다.
-        # 예전에는 추출을 먼저 돌리고 나서 리듬에서 걸러냈다 -- 걸러질 원고 하나마다
-        # 호출을 한 번씩 더 쓴 것이다. 재시도가 절반이면 호출의 4분의 1이 여기서 샜다.
-        #
-        # **마지막 시도는 그냥 통과시킨다.** 여기서 되돌린 원고는 원장이 없어 채택
-        # 후보가 못 된다 -- 끝까지 리듬으로 막으면 그 덩어리는 통째로 안 나온다.
-        # 앞쪽 시도에서만 아껴 쓰고, 뒤는 평소대로 재고 채택한다.
-        # **자리를 짚을 수 있으면 그 문장만 고친다.** 전체를 다시 뱉게 하면 1,400자를
-        # 새로 만들어 두 문장을 고치는 셈이고, 새로 만든 원고는 또 다른 데서 걸린다.
-        # 한 시도에 한 갈래만 손질한다. 갈래마다 부르면 아끼려던 호출이 도로 늘어난다
-        # (실측: 갈래를 다 돌자 한 덩어리에 26회가 됐다 -- 고치기 전보다 많다).
-        # **한 번 해보고 안 되면 그만둔다.** 되받은 것을 못 쓰는 판(모델이 JSON 을
-        # 안 주거나 짧게만 돌려주는 판)에서 계속 부르면, 아끼려던 호출이 도로 는다.
-        spot = rhythm.spots(text) if mend else {}
-        kinds = [k for k in PATCHABLE if k in spot]
-        for kind in kinds[(attempt - 1) % len(kinds):][:1] if kinds else []:
-            try:
-                fixed = D.call_json(D._extractor(llm),
-                                    patch_prompt(kind, spot[kind]),
-                                    tries=1, label="flow 손질")
-            except ValueError:
-                mend = False
-                continue
-            text, done = apply_patch(text, spot[kind], fixed)
-            if done:
-                D._log(f"[flow] {kind} -- 문장 {done}개만 고쳤다 "
-                       f"(전체를 다시 쓰지 않는다)")
-            else:
-                mend = False
-        pre = echo.check(text, "".join(book["chunks"][:-1])) + rhythm.check(text)
-        if pre and attempt < MAX_REWRITE and stale < GIVE_BACK:
-            one = pre[(attempt - 1) % len(pre)]
-            D._log(f"[flow] 리듬 {len(pre)}건 -- 추출 전에 다시 쓴다 "
-                   f"({attempt}/{MAX_REWRITE}): {one[:70]}")
-            feedback = ("\n[직전 시도를 재서 나온 숫자다. **이것 하나만** 고쳐라 --"
-                        " 나머지는 건드리지 마라]\n"
-                        f"  · {one}\n"
-                        "  (분량은 줄이지 마라. 지우지 말고 고쳐 써라.)\n")
-            continue
+    def _read(t):
+        """원고 하나를 읽어 원장 사본과 어긋난 것을 돌려준다."""
         try:
-            delta = D.call_json(D._extractor(llm), extract_prompt(text),
-                                label="flow 추출")
+            delta = D.call_json(D._extractor(llm), extract_prompt(t), label="flow 추출")
         except ValueError as e:
-            D._log(f"[flow] 추출 실패({e}) -- 원장 갱신 없이 채택한다")
+            D._log(f"[flow] 추출 실패({e}) -- 원장 갱신 없이 간다")
             delta = {}
-        probe = json.loads(json.dumps(book["ledger"]))     # 시험용 사본
-        clashes = _merge(probe, delta, at=len(book["chunks"]))
-        if not clashes:
-            # 사건 덩어리는 확산으로 재지 않는다 -- 거기서는 넓히고 회수하라고 시키지
-            # 않았다. 리듬만 본다(대사와 길이는 사건이든 아니든 지켜야 한다).
-            # **메아리는 모순과 같은 급이다** -- 취향이 아니라 결함이라 반드시 다시 받는다.
-            # 실측: 한 덩어리 2,024자 중 610자(30%)가 글자 하나 안 틀리고 반복이었다.
-            noise = echo.check(text, "".join(book["chunks"][:-1]))
-            if noise and attempt <= MAX_REWRITE:
-                D._log(f"[flow] 메아리 -- 다시 쓴다 ({attempt}/{MAX_REWRITE}): {noise[0][:60]}")
-                feedback = ("\n[직전 시도가 앞 문장을 그대로 다시 뱉었다]\n"
-                            + "\n".join(f"  · {c}" for c in noise)
-                            + "\n  같은 사건을 다시 쓰지 말고 **그 다음에 일어나는 일**을 써라.\n")
-                continue
+        probe = json.loads(json.dumps(book["ledger"]))
+        return probe, _merge(probe, delta, at=len(book["chunks"]))
 
-            limp = rhythm.check(text) + noise
-            mark = rhythm.score(text)
-            if not book.get("_shock"):
-                limp += diffusion.check(text, book["ledger"], probe,
-                                        now=len(book["chunks"]))
-                mark += diffusion.score(text, book["ledger"], probe)
-            if limp and attempt <= MAX_REWRITE and stale < GIVE_BACK:
-                if best is None or mark < best[0]:
-                    best, stale = (mark, text, probe), 0
-                else:
-                    # **나아지지 않으면 그만 시킨다.** 다시 쓰라고 할 때마다 호출을
-                    # 하나씩 쓰는데, 점수가 안 내려가는 재시도는 쿼터만 태우고 원고는
-                    # 그대로다(실측: 짧은 '-다' 가 64% -> 67% 로 오히려 올라갔다).
-                    # 어차피 제일 나은 후보를 채택하므로, 일찍 멈춰도 품질은 안 깎인다.
-                    # 한 번은 봐준다 -- 되먹임이 한 건씩 도는 중이라 다음 항목에서
-                    # 좋아질 수 있다.
-                    stale += 1
-                # **한 번에 하나만 시킨다.** 예전에는 "이것만 고쳐라" 라고 써 놓고 잰
-                # 것을 전부 붙여 보냈다. 한꺼번에 시키면 안 지켜진다 -- 실측 로그가
-                # 그것이다: 네 건을 주자 짧은 '-다' 가 64% 에서 67% 로 **올라갔다**.
-                # 시도마다 하나씩 돌려 가며 준다. 다섯 번이면 넷을 다 훑는다.
-                one = limp[(attempt - 1) % len(limp)]
-                D._log(f"[flow] 농도·리듬 {len(limp)}건 -- 다시 쓴다 "
-                       f"({attempt}/{MAX_REWRITE}): {one[:70]}")
-                feedback = ("\n[직전 시도를 재서 나온 숫자다. **이것 하나만** 고쳐라 --"
-                            " 나머지는 건드리지 마라]\n"
-                            f"  · {one}\n"
-                            # 요구가 아니라 **제약**이다. 이것을 할 일로 적으면 두 가지를
-                            # 시키는 것이 되어 둘 다 안 된다. 분량을 깎아서 숫자를 맞추는
-                            # 길만 막아 두면 된다.
-                            "  (분량은 줄이지 마라. 지우지 말고 고쳐 써라.)\n")
-                continue
-            if limp:
-                if stale >= GIVE_BACK:
-                    D._log(f"[flow] {stale}번 다시 써도 안 나아졌다 -- 그만 시킨다")
-                if best is not None and best[0] < mark:
-                    text, probe = best[1], best[2]
-                    D._log("[flow] 끝내 못 고쳤다 -- 그중 제일 짙은 것을 채택한다")
-                else:
-                    D._log("[flow] 끝내 못 고쳤다 -- 그대로 채택한다")
-            book["ledger"] = probe
-            book["chunks"].append(text)
-            _after(book, text)
-            D._log(f"[flow] 덩어리 {len(book['chunks'])} · {len(text):,}자 · "
-                   f"누적 {sum(len(c) for c in book['chunks']):,}자")
-            return {"status": "ok", "chars": len(text), "clashes": []}
-        D._log(f"[flow] 모순 {len(clashes)}건 -- 다시 쓴다 ({attempt}/{MAX_REWRITE + 1}): "
-               f"{clashes[0][:80]}")
-        feedback = ("\n[직전 시도가 기각된 이유 — 앞에서 쓴 것과 어긋난다]\n"
-                    + "\n".join(f"  · {c}" for c in clashes)
-                    + "\n  **이것만** 고쳐라. 나머지는 자유다 -- 몸을 사리지 말고,"
-                      " 사건도 대사도 소품도 앞서와 같은 밀도로 그대로 가라.\n")
-    if best is not None:              # 모순은 못 풀었지만 리듬만 걸린 후보가 있다
-        book["ledger"] = best[2]
-        book["chunks"].append(best[1])
-        _after(book, best[1])
-        D._log("[flow] 마지막 시도가 모순이다 -- 앞서 통과한 후보를 채택한다")
-        return {"status": "ok", "chars": len(best[1]), "clashes": []}
-    return {"status": "blocked", "chars": 0, "clashes": clashes,
-            "why": "모순: " + (clashes[0][:80] if clashes else "")}
+    probe, clashes = _read(text)
+
+    # **고칠 것을 한 번에 다 보낸다.** 모순도 리듬도 같은 한 장에 담는다.
+    items = mend_items(text, clashes)
+    if items:
+        D._log(f"[flow] 고칠 문장 {len(items)}개 -- 한 번에 고친다")
+        try:
+            fixed = D.call_json(D._extractor(llm), mend_prompt(items),
+                                tries=1, label="flow 손질")
+        except ValueError:
+            fixed = {}
+        mended, done = apply_patch(text, [x for x, _ in items], fixed)
+        if done:
+            D._log(f"[flow] 문장 {done}/{len(items)}개를 고쳤다")
+            # 고쳤으면 원장을 다시 읽는다. 다시 읽어 더 나빠지면 안 고친 쪽을 쓴다.
+            probe2, clash2 = _read(mended)
+            if len(clash2) <= len(clashes):
+                text, probe, clashes = mended, probe2, clash2
+
+    # **남은 것은 버리지 않고 적는다.** 못 고친 곳을 원고와 함께 남겨 두면 나중에
+    # 무엇이 안 되는지 볼 수 있다. 원고를 버리면 그것마저 안 남는다.
+    # 사건 덩어리는 확산으로 재지 않는다 -- 거기서는 넓히고 회수하라고 시키지 않았으니
+    # 그것으로 벌하지 않는다. 리듬만 본다(대사와 길이는 사건이든 아니든 지켜야 한다).
+    left = clashes + rhythm.check(text)
+    if not book.get("_shock"):
+        left += diffusion.check(text, book["ledger"], probe,
+                                now=len(book["chunks"]))
+    if left:
+        _debt(book, len(book["chunks"]), left, path=book.get("_path"))
+        D._log(f"[flow] 못 고친 {len(left)}건은 장부에 적어 둔다 (원고는 그대로 쓴다)")
+
+    book["ledger"] = probe
+    book["chunks"].append(text)
+    _after(book, text)
+    return {"status": "ok", "chars": len(text), "clashes": clashes}
+
+
+def _debt(book: dict, at: int, left: list, path=None) -> None:
+    """못 고친 것을 원고 옆 파일에 한 줄씩 쌓는다(JSONL). 폐기 대신 기록이다."""
+    try:
+        base = Path(path) if path else Path("drift.json")
+        out = base.with_suffix(".debt.jsonl")
+        with out.open("a", encoding="utf-8") as f:
+            f.write(json.dumps({"덩어리": at, "때": time.strftime("%m-%d %H:%M"),
+                                "남은 것": left}, ensure_ascii=False) + "\n")
+    except Exception:
+        pass                    # 기록은 곁다리다 -- 여기서 원고를 죽이지 않는다
 
 
 def _save(book: dict, path) -> None:
@@ -1101,6 +1098,7 @@ def run(book: dict, llm, target: int, path=None, deadline=None) -> dict:
     푸는 것은 **다음 시도에서 대개 풀린다.** 그러니 기다렸다 다시 한다. 연속으로 여덟 번
     실패하면 그때는 정말 멈춘다 -- 그건 지나가는 문제가 아니다.
     """
+    book["_path"] = str(path) if path else None    # 못 고친 것을 원고 옆에 적으려고
     _save(book, path)
     miss = 0
     while sum(len(c) for c in book["chunks"]) < target:

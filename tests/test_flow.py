@@ -265,10 +265,13 @@ if _p.exists():
     ok(json.loads(_p.read_text(encoding="utf-8"))["chunks"] == [],
        "빈 원고로라도 저장된다  ← 그래야 '없다' 가 '시작 못 했다' 를 뜻한다")
 
-retry = [q for q in f.prompts if "직전 시도가 기각된 이유" in q]
-ok(retry, "기각 사유가 다음 프롬프트에 실린다")
-ok(any("나이" in q for q in retry), "무엇이 어긋났는지까지")
-ok(any("나머지는 자유다" in q for q in retry), "그것만 고치라고 한다  ← 자유를 죽이지 않는다")
+# 되먹임은 이제 원고 프롬프트가 아니라 **손질 프롬프트**로 간다 -- 원고를 다시 받지
+# 않고 걸린 문장만 주고받는다.
+retry = [q for q in f.prompts if "각 문장 앞 대괄호가 그 문장의" in q]
+ok(retry, "고칠 것이 손질 프롬프트로 간다  ← 원고를 다시 받지 않는다")
+ok(any("나이" in q or "어긋난다" in q for q in retry), "무엇이 어긋났는지까지")
+ok(all("전부 고쳐라" in q for q in retry),
+   "한 번에 전부 고치라고 한다  ← 하나씩 시키면 호출이 그만큼 는다")
 ok(len(bk["chunks"]) == 1, "채택된 덩어리만 남는다")
 
 print("[루프] 목표 자수까지 이어 쓰는가 · 파일로 남는가")
@@ -309,8 +312,9 @@ class Stubborn:
 
 bk3 = main_char()
 r3 = flow.step(bk3, Stubborn())
-ok(r3["status"] == "blocked", f"기각으로 끝난다 ({r3['status']})")
-ok(not bk3["chunks"], "원고에 안 들어간다")
+# **폐기는 없다.** 모순을 못 풀어도 원고는 쓰고, 못 고친 것은 장부에 적는다.
+ok(r3["status"] == "ok", f"버리지 않는다 ({r3['status']})")
+ok(bk3["chunks"], "원고에 들어간다  ← 예전에는 여기서 3,200자를 통째로 버렸다")
 
 print("[추출] 카드 칸을 뽑으라고 지시하는가")
 e = flow.extract_prompt("아무 산문")
@@ -327,44 +331,47 @@ if fails:
     sys.exit(1)
 print("연속 집필: 원장 성장 · 모순 검출 · 첫 덩어리 흐름 · 되먹임 · 영속 · 한도 -- 통과")
 
-print("[되먹임] 한 번에 하나만 시키는가  ← 한꺼번에 시키면 안 지켜진다")
-print("        실측: 네 건을 한꺼번에 주자 짧은 '-다' 가 64% -> 67% 로 올라갔다")
+print("[되먹임] 고칠 것을 한 번에 다 보내는가  ← 하나씩 시키면 호출이 그만큼 는다")
 
 
 class Limp:
-    """게이트에 계속 걸리는 산문. 시도마다 받은 되먹임을 적어 둔다."""
+    """게이트에 계속 걸리는 산문. 손질 프롬프트를 받아 적어 둔다."""
 
     def __init__(self):
-        self.seen = []
+        self.sent = []
 
     def __call__(self, prompt):
         if "새로 확정된 사실만" in prompt:
             return json.dumps({}, ensure_ascii=False)
-        if "재서 나온 숫자다" in prompt:
-            body = prompt.split("재서 나온 숫자다", 1)[1]
-            body = body.split("\n\n", 1)[0]
-            self.seen.append([l for l in body.splitlines() if l.strip().startswith("·")])
-        return "짧다. " * 80
+        if "각 문장 앞 대괄호가" in prompt:
+            self.sent.append(prompt)
+            return json.dumps({}, ensure_ascii=False)
+        # 서로 다른 문장이어야 한다 -- 같은 문장은 원문에서 어느 것인지 못 짚어
+        # 손질 목록에서 하나로 접힌다(그것도 옳은 동작이다).
+        return " ".join(f"{i}번 배가 들어왔다." for i in range(40))
 
 
 _lm = Limp()
 flow.step(main_char(), _lm)
-ok(_lm.seen, "되먹임이 실제로 갔다")
-ok(all(len(s) == 1 for s in _lm.seen),
-   f"매번 한 건만 준다 ({[len(s) for s in _lm.seen]})")
-ok(len({s[0] for s in _lm.seen}) > 1 or len(_lm.seen) < 2,
-   f"시도마다 다른 것을 준다 ({len({s[0] for s in _lm.seen})}가지)")
+ok(len(_lm.sent) == 1, f"손질은 한 번만 부른다 ({len(_lm.sent)}회)")
+ok(_lm.sent and _lm.sent[0].count("\n1. ") == 1, "번호를 붙여 한 장에 담는다")
+ok(_lm.sent and _lm.sent[0].count(". [") > 1,
+   "여러 문장을 한 번에 보낸다  ← 갈래마다 부르면 호출이 갈래 수만큼 는다")
+
 
 print("[호출] 버릴 원고에 추출을 쓰지 않는가  ← 규칙은 그대로, 두드리는 횟수만 줄인다")
 
 
 class Count:
     def __init__(self):
-        self.w = self.x = 0
+        self.w = self.x = self.m = 0
 
     def __call__(self, prompt):
         if "새로 확정된 사실만" in prompt:
             self.x += 1
+            return json.dumps({}, ensure_ascii=False)
+        if "각 문장 앞 대괄호가" in prompt:
+            self.m += 1
             return json.dumps({}, ensure_ascii=False)
         self.w += 1
         return "짧다. " * 80
@@ -372,19 +379,22 @@ class Count:
 
 _c = Count()
 flow.step(main_char(), _c)
-ok(_c.x < _c.w, f"추출이 화자보다 적다 (화자 {_c.w} · 추출 {_c.x})")
-ok(_c.w + _c.x <= 9,
-   f"한 덩어리에 {_c.w + _c.x}회  ← 예전에는 12회였다 (화자 6 · 추출 6). "
-   "이건 손질이 한 번도 안 먹히는 최악이고, 먹히면 더 적다")
-ok(_c.w >= 2, "그래도 다시 쓰기는 한다  ← 아껴서 원고를 안 내면 그건 절약이 아니다")
+
+ok(_c.w + _c.x + _c.m <= 4,
+   f"한 덩어리에 {_c.w + _c.x + _c.m}회  ← 예전에는 12회였다 (화자 6 · 추출 6)")
+ok(_c.w == 1, f"화자는 한 번만 부른다 ({_c.w}회)  ← 원고를 다시 받지 않는다")
+ok(_c.m <= 1, f"손질도 한 번만 부른다 ({_c.m}회)  ← 갈래를 나눠 부르지 않는다")
+
 
 print("[손질] 걸린 문장만 보내는가  ← input 토큰을 아끼는 자리다")
 _lines_in = ["짧다.", "또 짧다.", "역시 짧다."]
-_pp = flow.patch_prompt("da", _lines_in)
+_items = [(l, "짧다") for l in _lines_in]
+_pp = flow.mend_prompt(_items)
 ok(len(_pp) < 800, f"손질 프롬프트가 {len(_pp)}자  ← 원고 프롬프트는 18,000자다")
 for i, l in enumerate(_lines_in):
-    ok(f"{i + 1}. {l}" in _pp, f"{i + 1}번 문장이 실린다")
+    ok(f"{i + 1}. [짧다] {l}" in _pp, f"{i + 1}번 문장이 문제와 함께 실린다")
 ok("뜻과 사건은 그대로" in _pp, "뜻을 바꾸지 말라고 못박는다")
+ok("전부 고쳐라" in _pp, "한 번에 전부 고치라고 한다")
 
 _t = "가. 짧다. 나."
 ok(flow.apply_patch(_t, ["짧다."], {"1": "길게 늘여 쓴 문장이다, 정말로."})[1] == 1,
@@ -398,3 +408,37 @@ ok(flow.apply_patch("같다. 같다.", ["같다."], {"1": "아주 길게 고쳐 
 
 print("[분량] 한 번에 받을 만큼 받는가")
 ok(flow.CHUNK >= 3000, f"한 덩어리 {flow.CHUNK}자  ← 1,400자는 한 번 출력 한도의 1/8이었다")
+
+print("[구조] 모순도 버리기 전에 그 문장만 고쳐 보는가  ← 폐기는 마지막이다")
+_cl = ["요우의 나이: 앞에서는 '42' 였는데 지금 '30' 다"]
+_hit = flow.clash_lines("요우는 서른이다. 항구는 조용했다. 요우가 웃었다.", _cl)
+ok(_hit and all("요우" in h for h in _hit),
+   f"어긋난 이름이 든 문장만 고른다 ({_hit})")
+ok("항구는 조용했다." not in _hit, "상관없는 문장은 안 보낸다")
+_cp = flow.clash_prompt(_cl, _hit)
+ok(_cl[0] in _cp and "앞에서 확정된 쪽이 맞다" in _cp, "무엇이 어긋났는지 알려준다")
+ok(len(_cp) < 900, f"모순 손질 프롬프트가 {len(_cp)}자  ← 원고를 다시 쓰면 18,000자다")
+
+
+class Refuse:
+    """모순을 계속 뱉지만, 문장만 고쳐 달라면 고쳐 주는 배우."""
+
+    def __init__(self):
+        self.mended = False
+
+    def __call__(self, prompt):
+        if "앞에서 확정된 쪽이 맞다" in prompt:
+            self.mended = True
+            return json.dumps({"1": "요우는 마흔둘이고 오늘도 늦게 왔다, 늘 그렇듯."},
+                              ensure_ascii=False)
+        if "새로 확정된 사실만" in prompt:
+            if self.mended:
+                return json.dumps({"people": {"요우": {"나이": "42"}}}, ensure_ascii=False)
+            return json.dumps({"people": {"요우": {"나이": "30"}}}, ensure_ascii=False)
+        return "요우는 서른이다.\n" + "항구는 조용하고 사람들은 천천히 걸었다, 늘 그렇듯. " * 12
+
+
+_bk4 = main_char()
+_r4 = flow.step(_bk4, Refuse())
+ok(_r4["status"] == "ok", f"버리지 않고 살린다 ({_r4['status']})")
+ok(_bk4["chunks"], "원고에 들어간다  ← 3,200자를 통째로 버리던 자리다")
