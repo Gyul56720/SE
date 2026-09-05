@@ -36,6 +36,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from novel import drive as D                                          # noqa: E402
 from novel import echo                                                # noqa: E402
+from novel import doubt                                               # noqa: E402
 from novel import diffusion                                           # noqa: E402
 from novel import bridge                                              # noqa: E402
 from novel import bond                                                # noqa: E402
@@ -105,6 +106,11 @@ DRIFT = 1.0
 # 연결이 실리는 비율. 매번 이으면 세계가 음모론이 된다 -- 모든 것이 연결돼 있으면
 # 아무것도 연결돼 있지 않은 것과 같다.
 BRIDGE = 0.3
+# 세워 둔 것의 지반을 흔드는 비율. 늘 의심하면 아무것도 안 믿기고, 그러면 흔들 것도 없다.
+DOUBT = 0.3
+# 시점을 옮기는 비율. 자주 옮기면 독자가 누구도 안 따라간다.
+POV = 0.2
+
 # 통칙을 깨는 비율. 늘 깨면 통칙이 아니고, 안 깨면 배경이다.
 EXCEPTION = 0.3
 # 이을 것이 이만큼 쌓이기 전에는 안 잇는다. 셋으로 다리를 놓으면 그냥 우연이다.
@@ -173,7 +179,7 @@ def blank(first: str = FIRST) -> dict:
     # 쌓여 있어서 생긴다 -- 닫힌 사실만 적으면 매 덩어리가 자기 안에서 완결되고, 그러면
     # 표류가 아니라 나열이 된다.
     return {"first": first, "chunks": [], "shocks": 0, "since": 0, "drift": DRIFT,
-            "matter": MATTER, "trait": TRAIT, "bond": BOND, "bridge": BRIDGE, "exception": EXCEPTION,
+            "matter": MATTER, "trait": TRAIT, "bond": BOND, "bridge": BRIDGE, "exception": EXCEPTION, "doubt": DOUBT, "pov": POV,
             "ledger": {
         "people": {}, "places": {}, "facts": {}, "time": [], "objects": {},
         "words": {}, "open": {}, "rules": {}, "macguffin": {}, "_folded": []}}
@@ -443,6 +449,25 @@ def _trait(book: dict) -> str:
     return trait.brief(trait.draw(seed, n))
 
 
+def _doubt(book: dict) -> str:
+    from novel import diffusion as _D
+    if len(_D.props(book["ledger"])) < 4:
+        return ""
+    seed = book.get("seed_id") or book["first"]
+    n = len(book["chunks"])
+    if not doubt.gate(seed, n, float(book.get("doubt", DOUBT))):
+        return ""
+    return doubt.brief(doubt.draw(book["ledger"], seed, n))
+
+
+def _pov(book: dict) -> str:
+    seed = book.get("seed_id") or book["first"]
+    n = len(book["chunks"])
+    if n < 3 or not doubt.gate(seed, n, float(book.get("pov", POV)), "pov"):
+        return ""
+    return doubt.pov_brief(doubt._pick(doubt.POV, seed, n, "pov"))
+
+
 def _macguffin(book: dict) -> str:
     """**맥거핀** -- 모두가 쫓는데 정체는 끝내 안 밝혀지는 것.
 
@@ -615,6 +640,8 @@ def _diffuse(book: dict) -> str:
 {_bridge(book)}
 {_exception(book)}
 {_macguffin(book)}
+{_doubt(book)}
+{_pov(book)}
 {_impulse(book)}
 {_bond(book)}
 {_trait(book)}
@@ -980,6 +1007,10 @@ def main() -> int:
                     help="따로 있던 둘을 잇는 비율 0~1")
     ap.add_argument("--exception", type=float, default=EXCEPTION,
                     help="세워 둔 통칙을 깨는 비율 0~1")
+    ap.add_argument("--doubt", type=float, default=DOUBT,
+                    help="세워 둔 것의 지반을 흔드는 비율 0~1")
+    ap.add_argument("--pov", type=float, default=POV,
+                    help="시점을 옮기는 비율 0~1")
     a = ap.parse_args()
 
     if a.read:
@@ -1030,7 +1061,8 @@ def main() -> int:
     # 것으로 간다. 옛 설정을 유지하고 싶으면 그 값을 인자로 주면 된다.
     for key, val in (("drift", a.drift), ("matter", a.matter),
                      ("trait", a.trait), ("bond", a.bond),
-                     ("bridge", a.bridge), ("exception", a.exception)):
+                     ("bridge", a.bridge), ("exception", a.exception),
+                     ("doubt", a.doubt), ("pov", a.pov)):
         was = book.get(key)
         book[key] = max(0.0, min(1.0, val))
         if was is not None and was != book[key]:

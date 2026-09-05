@@ -200,6 +200,51 @@ ok("macguffin" in flow.extract_prompt("x") and "맥거핀이 둘이면" in flow.
    "추출기가 뽑되 하나만 둔다  ← 둘이면 둘 다 안 궁금해진다")
 
 print()
+print("[의심] **뒤집지 말고 흔들어라 -- 사실이 아니라 지반을 건드린다**")
+print("      ← 평행선 공리를 부정해도 무모순인 세계가 있다는 것이 밝혀지면서 기하학은")
+print("        하나가 아니게 됐다. 공리를 틀렸다고 한 것이 아니라 꼭 그래야 하는 것은")
+print("        아니라고 한 것이다. 소설에서 그대로 하면 게이트와 부딪히므로 자리를 가른다.")
+from novel import doubt                                               # noqa: E402
+_DL = flow.blank()["ledger"]
+for _i, (_b, _k) in enumerate([("places", "웅포"), ("objects", "소금 공장"),
+                               ("people", "도영"), ("facts", "실종 사건")]):
+    flow._merge(_DL, {_b: {_k: {"직업": "x"} if _b == "people" else "x"}}, at=_i)
+_db = doubt.brief(doubt.draw(_DL, "s", 0))
+ok("뒤집지 말고 흔들어라" in _db, "뒤집는 것과 흔드는 것을 가른다")
+ok("사실은 그대로 둔다" in _db,
+   "원장은 안 바뀐다  ← 사실을 뒤집는 것은 여전히 유일한 금지다")
+ok("의심은 답이 아니라 상태다" in _db,
+   "답을 주지 않는다  ← 답이 나오면 그건 의심이 아니라 반전이고, 반전은 한 번 쓰면 끝난다")
+ok(all(("바꾼다" not in w and "틀렸다" not in w) for w in doubt.WAY),
+   "흔드는 방식이 전부 지반 쪽이다  ← 사실을 건드리는 항목이 없다")
+_thin2 = flow.blank()
+_thin2["chunks"] = ["x"]
+ok("[의심]" not in flow.write_prompt(_thin2), "흔들 것이 없으면 안 실린다")
+
+print()
+print("[시점] **누가 주인공인가는 사실이 아니라 믿음이다**")
+_pb = doubt.pov_brief(doubt.POV[0])
+ok("선언하지 마라" in _pb,
+   "'사실 이 이야기의 주인공은' 을 안 쓴다  ← 분량과 시선이 옮겨가면 저절로 안다")
+ok("원장은 한 글자도 안 바뀐다" in _pb, "시점을 흔들어도 게이트에 안 걸린다")
+ok(any("자처하는 사람" in w for w in doubt.POV), "자기를 주인공으로 자처하는 사람이 목록에 있다")
+ok("앞사람은 계속 거기 있고" in _pb, "옮겨도 버리지 않는다")
+_pv = flow.blank()
+_pv["chunks"] = ["x"]
+ok("[시점]" not in flow.write_prompt(_pv), "초반에는 안 흔든다  ← 믿음이 서기 전에는 흔들 것이 없다")
+
+print()
+print("[정밀] **없는 것일수록 자세해야 진짜가 된다**")
+_sn2 = " ".join(style.narrator().split())
+ok("[정밀]" in style.narrator(), "정밀 항목이 있다")
+for _w in ("이름", "수", "절차"):
+    ok(f"**{_w}** --" in _sn2, f"셋 중 하나: {_w}")
+ok("어중간한 수가 세다" in _sn2, "어림수보다 어중간한 수  ← 열일곱 개")
+ok("라벨을 붙이는 것이 아니다" in _sn2,
+   "라벨 쌓기와 가른다  ← 앞서 '1982년형 볼보' 가 아홉 번 나왔던 실측과 부딪히면 안 된다")
+ok("그 흐릿함이 오히려 진짜처럼" in _sn2, "확실하지 않다고 써도 된다")
+
+print()
 if fails:
     print(f"미결: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)
