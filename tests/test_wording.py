@@ -42,7 +42,13 @@ ok(all(len(x) == W.PUSH_FIG for x in _f), "매번 정해진 개수를 뽑는다"
 ok(all(len(set(x)) == len(x) for x in _f), "한 덩어리 안에서 겹치지 않는다")
 ok(len(set(_f)) > 8, f"덩어리마다 다르다 ({len(set(_f))}가지)")
 ok(W.figures("씨", 3) == W.figures("씨", 3), "같은 씨앗·번호면 같다  ← 이어 쓰기에 재현된다")
-ok("번역체" in W.FORMS, "영어로 쓴 다음 옮긴 듯한 꼴도 재료다")
+ok("번역체" in W.FORMS, "옮긴 듯한 꼴도 재료다")
+# **어느 말인지 못 박지 않는다.** 영어라고 쓰면 원고에 영어만 나오고, 예를 박으면
+# 그 예가 뜬금없이 튀어나온다.
+import re as _re2                                                     # noqa: E402
+_lang = [k for k, v in W.FOREIGN.items()
+         if _re2.search(r"영어|일본어|중국어|라틴|프랑스|독일", k + v)]
+ok(not _lang, f"바깥 말 목록이 한 언어에 안 묶여 있다 ({_lang[:2]})")
 ok(len(set(tuple(W.forms("씨", n)) for n in range(20))) > 5, "꼴도 덩어리마다 다르다")
 
 print()

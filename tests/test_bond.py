@@ -41,7 +41,7 @@ ok("관계가 문제를 풀지 않는다" in bb,
    "사랑이 사건을 해결하면 편의주의다  ← 앞서 정한 금지를 그대로 지킨다")
 ok("되돌려 주지 마라" in bb,
    "틀어진 것은 틀어진 채로 간다  ← '실패한 것은 실패한 채로' 와 같은 규칙이다")
-ok("급발진이 나온다" in bb, "관계가 움직이는 자리가 사람이 제일 이상해지는 자리다")
+ok("사람이 제일 이상해진다" in bb, "관계가 움직이는 자리가 사람이 제일 이상해지는 자리다")
 
 print()
 print("[몸] **종류가 많아야 사람이 안 겹친다**")
@@ -58,7 +58,9 @@ b = flow.blank()
 rel = sum("[관계]" in flow.write_prompt(dict(b, chunks=["x"] * i)) for i in range(1, 101))
 bod = sum("[설정]" in flow.write_prompt(dict(b, chunks=["x"] * i)) for i in range(1, 101))
 ok(0 < rel < 45, f"관계가 곁들이로 돈다 ({rel}/100)")
-ok(0 < bod < 45, f"설정도 곁들이로 돈다 ({bod}/100)")
+# **설정 뽑기를 껐다.** 겉과 속을 미리 뽑아 주면 인물이 시작부터 완성돼 있어서
+# 사건을 겪어도 안 바뀐다. 인물은 원고가 만든다.
+ok(bod == 0, f"설정은 미리 안 뽑는다 ({bod}/100)  ← 인물은 백지에서 시작한다")
 ok(all(("[관계]" in flow.write_prompt(dict(b, chunks=["x"] * i)))
        + ("[설정]" in flow.write_prompt(dict(b, chunks=["x"] * i))) <= 1
        for i in range(1, 51)), "둘이 같은 덩어리에 겹치지 않는다")

@@ -151,8 +151,11 @@ ok(not flow._merge(_led, {"words": {"꿉꿉하다": "아주 다른 뜻"}}),
 ok("지어낸 말" in flow.brief(_led), "브리핑에 실려 다음 덩어리가 뜻을 지킨다")
 ok("지어낸 낱말은 words 에" in flow.extract_prompt("x"), "추출기가 낱말을 뽑는다")
 _mid3 = flow.blank(); _mid3["chunks"] = ["앞."]; _mid3["drift"] = 1.0
-ok("같은 몸짓" in " ".join(__import__("novel.style", fromlist=["x"]).narrator().split()),
-   "급발진의 일부로 실린다  ← 변명하는 꼴이 딱 급발진 이후 유유자적이라서다")
+# 급발진을 뺐으므로 그것과 묶어 두던 설명도 뺐다. 낱말 지어내기 자체는 인물 규정이
+# 아니라 작법이라 남는다.
+ok("없는 낱말을 지어내고 변명을 단다"
+   in " ".join(__import__("novel.style", fromlist=["x"]).narrator().split()),
+   "낱말 지어내기는 남는다  ← 인물 규정이 아니라 작법이다")
 
 print()
 if fails:
