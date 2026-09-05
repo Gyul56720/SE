@@ -489,3 +489,34 @@ ok(_pool_with(_rp) == _all, "낡은 명부는 무시한다  ← 소진은 자정
 open(_rp, "w").write(_json.dumps({"at": time.time(), "live": [{"label": "없는:후보"}]}))
 ok(_pool_with(_rp) == _all, "명부가 아무도 안 맞으면 무시한다  ← 빈 풀보다는 낫다")
 llm_pool.ROSTER = ""
+
+
+print()
+print("[선호] **추출은 gemma 로 돌린다 -- 비어 있는 통을 놀리지 않는다**")
+print("      ← gemma 는 계열이 달라 자기 분당 한도를 따로 갖는데, 품질 순위가 맨 뒤라")
+print("        다른 것이 전부 429 일 때만 닿았다(실측 사용량 1~2건).")
+
+_hit.clear()
+llm_pool._LAST_USED.clear()
+llm_pool._LAST_KEY.clear()
+llm_pool._WIN.clear()
+llm_pool._FAIL.clear()
+_spec = [("kA:gemini-3.5-flash", False), ("kA:gemma-3", False)]
+llm_pool.call([(lb, _Watch(lb, f, 0.02)) for lb, f in _spec], "x",
+              verbose=False, prefer=r"gemma")
+ok(_hit[0] == "kA:gemma-3", f"선호한 것을 먼저 두드린다 ({_hit})")
+
+_hit.clear()
+llm_pool._LAST_USED.clear()
+llm_pool._LAST_KEY.clear()
+llm_pool.call([(lb, _Watch(lb, "gemma" in lb, 0.02)) for lb, _ in _spec], "x",
+              verbose=False, prefer=r"gemma")
+ok("kA:gemini-3.5-flash" in _hit,
+   f"선호한 것이 막히면 평소 후보로 물러난다 ({_hit})  ← 거르면 호출이 통째로 죽는다")
+
+_hit.clear()
+llm_pool._LAST_USED.clear()
+llm_pool._LAST_KEY.clear()
+llm_pool.call([(lb, _Watch(lb, False, 0.02)) for lb, _ in _spec], "x", verbose=False)
+ok(_hit[0] == "kA:gemini-3.5-flash",
+   f"선호를 안 주면 평소대로 flash 다 ({_hit})  ← 산문은 건드리지 않는다")

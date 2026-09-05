@@ -899,7 +899,7 @@ def step(book: dict, llm, log=None) -> dict:
             D._log(f"[flow] 덩어리가 {len(text)}자로 왔다 -- 다시 받는다")
             continue
         try:
-            delta = D.call_json(D._llm_for(llm, "extractor"), extract_prompt(text),
+            delta = D.call_json(D._extractor(llm), extract_prompt(text),
                                 label="flow 추출")
         except ValueError as e:
             D._log(f"[flow] 추출 실패({e}) -- 원장 갱신 없이 채택한다")

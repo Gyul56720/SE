@@ -341,13 +341,17 @@ def _note_failure(label: str, e, verbose: bool) -> str:
 
 
 def call(pool, prompt: str, pool_id: str = "orchestrator", max_candidates: int = None,
-         verbose: bool = True) -> tuple[str, str]:
+         verbose: bool = True, prefer: str = "") -> tuple[str, str]:
     """후보를 쿼터/장애 견디며 순회. (응답텍스트, 성공한 label) 반환. 전부 실패면 예외.
 
     max_candidates 로 시도 수를 제한한다(기본 MAX_CANDIDATES). 상한이 없으면 죽은 키로 돌릴 때
     수십 개 후보 x 타임아웃만큼 말없이 매달린다 -- CLI 에서는 "답이 안 나온다"로만 보인다.
     verbose 면 실패한 후보를 stderr 에 한 줄씩 남긴다(어디서 막혔는지 보이게)."""
     live = [c for c in pool if not quota_tracker.is_dead(c[0])] or pool
+    # **prefer 는 앞으로 당기기만 한다, 걸러내지 않는다.** 걸러내면 그 계열이 전부 막혔을
+    # 때 호출이 통째로 죽는다. 여기서 원하는 것은 "먼저 두드려라" 이지 "이것만 써라" 가
+    # 아니다 -- 뒤에 평소 후보가 그대로 줄 서 있어야 한다.
+    _want = re.compile(prefer, re.I) if prefer else None
 
     def sort_key(c):
         label = c[0]
@@ -359,7 +363,8 @@ def call(pool, prompt: str, pool_id: str = "orchestrator", max_candidates: int =
         # 그 다음은 **재본 응답 시간**이다. 이름 등급은 재본 적 없는 후보의 기본값으로만
         # 쓴다 -- 한 번이라도 재봤으면 그 숫자가 이름보다 정확하다.
         return (_since_key(label) < MIN_GAP, _since_used(label) < MIN_GAP,
-                rem <= 0, -round(_odds(label), 1), round(_lat(label), 1),
+                rem <= 0, not _want.search(label) if _want else False,
+                -round(_odds(label), 1), round(_lat(label), 1),
                 _model_rank(model), -rem)
 
     limit = MAX_CANDIDATES if max_candidates is None else max_candidates
