@@ -75,7 +75,11 @@ MAIN_FIELDS = 3       # 그리고 카드에 이만큼 칸이 차야 주요 인�
 # 실측(2026-09-04 VM): "은색의 불규칙한 소리를 내는 물건" 이 "1950년대 초반 독일 잡화점에서
 # 판매된 은색 모델" 로 자세해진 것을 모순으로 기각했다. 그건 같은 라이터다.
 STRICT = ("나이", "키", "혈액형", "생일", "몸무게", "연도", "번호")
-SIMILAR = 0.55        # 이만큼 닮았으면 같은 것을 더 자세히 말한 것으로 본다
+SIMILAR = 0.55
+
+# 죽음을 가리키는 말. 이 칸만은 한 방향으로만 흐른다 -- 산 사람은 죽을 수 있고,
+# 죽은 사람은 못 돌아온다.
+_DEAD = re.compile(r"죽|사망|시신|시체|숨(을)?\s*거|고인|타계|없어졌다가 시신")        # 이만큼 닮았으면 같은 것을 더 자세히 말한 것으로 본다
 
 CHUNK = 1400
 # 다시 쓰는 횟수. 모순·리듬·농도가 이 예산을 함께 쓴다. 둘이던 것을 셋으로 올렸다 --
@@ -129,9 +133,14 @@ TAIL = 1200
 # 좌표(나이·장소·자세)를 놓고, 배경을 하나의 그림으로 묶고, 마지막에 밖에서 안으로
 # 넘어간다("아, 또 독일인가 하고 나는 생각했다"). style.py 의 [상황]/[전환] 이 말하는
 # 것을 한 문단이 다 하고 있어서, 이 자리에 두면 다음 덩어리가 그 리듬을 이어받는다.
-FIRST = ('"부자 놈들은 모두 엿이나 먹어라." '
-         "쥐는 카운터에 두 손을 짚은 채 나를 향해서 우울한 표정으로 그렇게 "
-         "소리를 질렀다.")
+FIRST = (
+    '"도대체 웅포가 어딘데 사람들이 이렇게 난리인 거야?"\n'
+    '"웅포 몰라요? 요즘 소금 공장으로 핫한데 거기! 사람들 하나둘씩 영문도 모르고 '
+    '실종된다고 하던데, 왜 그런지는 하등 모르겠고..."\n'
+    "재현은 그런 도영을 바라보며, 이 양반이 승진 욕심이 드디어 도졌구나 생각했다.\n"
+    '"왜? 한번 가 보게? 가서 콱 죽어 버리면 그것도 참 나쁘지 않겠네."\n'
+)
+
 
 # 첫 덩어리에만 실린다. **내용을 지정하지 않는다** -- 예전엔 여기에 "양조장의 내력을
 # 풀어라 / 크리스마스 이브다 / 오로라로 흘러라" 가 적혀 있었는데, 그건 그때 씨앗에 묶인
@@ -167,7 +176,7 @@ def blank(first: str = FIRST) -> dict:
             "matter": MATTER, "trait": TRAIT, "bond": BOND, "bridge": BRIDGE, "exception": EXCEPTION,
             "ledger": {
         "people": {}, "places": {}, "facts": {}, "time": [], "objects": {},
-        "words": {}, "open": {}, "rules": {}, "_folded": []}}
+        "words": {}, "open": {}, "rules": {}, "macguffin": {}, "_folded": []}}
 
 
 def _merge(ledger: dict, delta: dict, at: int = 0) -> list:
@@ -207,6 +216,17 @@ def _merge(ledger: dict, delta: dict, at: int = 0) -> list:
             if not old_v or old_v == fv:
                 card[f] = fv
                 continue
+            # **죽음은 모순이 아니라 사건이다.** 살아 있던 사람이 죽는 것은 이야기가
+            # 나아간 것이고, 죽은 사람이 걸어 들어오는 것만 세계가 무너진 것이다.
+            # 시간이 한 방향으로만 가므로 이 칸의 판정도 한 방향이다.
+            if "생사" in f or "생존" in f:
+                if _DEAD.search(old_v) and not _DEAD.search(fv):
+                    clashes.append(f"{name}: 죽었던 사람이 다시 살아 있다 "
+                                   f"('{old_v}' → '{fv}')")
+                else:
+                    card[f] = fv                      # 죽는 것은 그대로 받는다
+                continue
+
             gated = main and any(k in f for k in CORE)
             if not gated:
                 card[f] = fv if len(fv) > len(old_v) else old_v   # 자세한 쪽을 남긴다
@@ -223,7 +243,8 @@ def _merge(ledger: dict, delta: dict, at: int = 0) -> list:
         ledger["people"][name] = card
 
     # ---- 나머지: **기록만 한다. 절대 기각하지 않는다.**
-    for bucket in ("places", "facts", "objects", "words", "open", "rules"):
+    for bucket in ("places", "facts", "objects", "words", "open", "rules",
+                   "macguffin"):
         for k, raw in (delta.get(bucket) or {}).items():
             v = _clean(raw)
             if v is None:
@@ -422,6 +443,27 @@ def _trait(book: dict) -> str:
     return trait.brief(trait.draw(seed, n))
 
 
+def _macguffin(book: dict) -> str:
+    """**맥거핀** -- 모두가 쫓는데 정체는 끝내 안 밝혀지는 것.
+
+    미결(open)과 헷갈리기 쉬운데 반대다. 미결은 언젠가 손대라고 올려 주는 것이고,
+    맥거핀은 **손대지 말라고** 올려 주는 것이다. 그것이 무엇인지가 밝혀지는 순간
+    이야기의 동력이 꺼진다 -- 사람들이 그것을 쫓는 동안에만 살아 있다.
+    """
+    m = book["ledger"].get("macguffin") or {}
+    if not m:
+        return ""
+    name, why = list(m.items())[-1]
+    return f"""[맥거핀] **{name}** -- {why}
+
+  * **정체를 밝히지 마라.** 이번에도, 다음에도. 그것이 무엇인지 아무도 모르는 채로
+    사람들이 그것 때문에 움직인다.
+  * 사람마다 **다르게 알고 있다.** 누구는 물건이라 하고 누구는 사람이라 하고 누구는
+    그런 건 없다고 한다. 그 어긋남이 이야기를 민다.
+  * 가까이 갈수록 **다른 것이 나온다.** 답 대신 새 질문이 나오게 해라.
+  * 이것만은 [열린 것]에서 닫지 마라. 닫는 순간 동력이 꺼진다."""
+
+
 def _exception(book: dict) -> str:
     """**반례** -- 세워 둔 통칙을 한 번 깨서 세계를 정교하게 만든다.
 
@@ -572,6 +614,7 @@ def _diffuse(book: dict) -> str:
 {_open(book)}
 {_bridge(book)}
 {_exception(book)}
+{_macguffin(book)}
 {_impulse(book)}
 {_bond(book)}
 {_trait(book)}
@@ -711,6 +754,8 @@ def extract_prompt(chunk: str) -> str:
 - **속 칸**에는 그 사람이 늘 지고 다니는 것을 적어라 -- 다만 **행동으로 적어라**
   ("칭찬을 받으면 화제를 돌린다"). 감정 이름이나 진단명은 쓰지 마라.
 - 한 번 적힌 것은 끝까지 그 사람의 것이다.
+- **macguffin 에는 "다들 그것 때문에 움직이는데 정체가 안 밝혀진 것" 을 적어라.** 하나면
+  족하다. 이미 적혀 있으면 새로 적지 마라 -- 맥거핀이 둘이면 둘 다 안 궁금해진다.
 - **rules 에는 이 세계의 통칙을 적어라** -- 늘 그렇다고 말해진 것("겨울엔 배를 안 띄운다").
   한 번 세워진 통칙은 예외가 나와도 지워지지 않는다. 예외는 통칙을 정교하게 만든다.
 - **folded 에는 그 통칙이 갈음한 낱낱의 사실 이름**을 적어라. 없으면 빈 목록.
@@ -733,6 +778,7 @@ JSON 만 출력:
   "words": {{"꿉꿉하다": "눅눅한데 마음 쪽에 쓰는 말. 웅포 지방 말"}},
   "open": {{"요우가 기다리는 사람": "누구인지 아직 안 나왔다"}},
   "rules": {{"겨울 출항": "이 동네 사람들은 겨울에 배를 안 띄운다"}},
+  "macguffin": {{"소금 공장": "다들 그것 때문에 움직이는데 정체는 아무도 모른다"}},
   "folded": ["통칙 하나로 갈음된 낱낱의 사실 이름들"],
   "closed": ["앞에서 열려 있다가 이번에 답이 나온 것"],
   "facts": {{"항목": "확정된 값"}},

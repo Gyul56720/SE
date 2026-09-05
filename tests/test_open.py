@@ -17,7 +17,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from novel import diffusion as F, flow                                # noqa: E402
+from novel import diffusion as F, flow, style                         # noqa: E402
 
 fails = []
 
@@ -166,6 +166,38 @@ _bf = {"objects": {n: "x" for n in _names}, "facts": {"형의 사고": "x"}}
 _msg = F.check("지포 라이터가 있었다. 웅포도 무전기도 그대로였다. 형의 사고도.",
                _bf, _bf)
 ok(any("쓰지는 않았다" in c for c in _msg), "만지기만 하고 안 썼으면 짚는다")
+
+print()
+print("[죽음] **죽음은 모순이 아니라 사건이다**")
+print("      ← 살아 있던 사람이 죽는 것은 이야기가 나아간 것이고,")
+print("        죽은 사람이 걸어 들어오는 것만 세계가 무너진 것이다. 시간은 한 방향이다.")
+_L = flow.blank()["ledger"]
+_L["people"]["재현"] = {"나이": "42", "직업": "형사", "말투": "짧다",
+                       "생사": "살아 있다", "_seen": 5}
+ok(not flow._merge(_L, {"people": {"재현": {"생사": "죽었다"}}}, at=3),
+   "주요 인물이 죽는 것은 통과한다  ← 이걸 막으면 주인공을 못 죽인다")
+ok(_L["people"]["재현"]["생사"] == "죽었다", "원장이 죽음을 받아 적는다")
+ok(flow._merge(_L, {"people": {"재현": {"생사": "살아 있다"}}}, at=4),
+   "죽은 사람이 살아나는 것은 기각한다  ← 그것만은 되돌릴 수 없다")
+_n = " ".join(style.narrator().split())
+ok("주인공 같던 사람도 죽는다" in _n, "화자가 그것을 안다")
+ok("복선은 뒤에서 보이는 것이지 앞에서 놓는 것이 아니다" in _n, "죽음에 예고를 안 단다")
+ok("한 사람을 위해 돌아가는 세계는 세계가 아니라 무대다" in _n,
+   "남은 사람이 이어받는다  ← 그때 세계가 진짜라는 것이 증명된다")
+
+print()
+print("[맥거핀] **미결과 반대다 -- 손대지 말라고 올려 주는 것**")
+_m = flow.blank()
+_m["chunks"] = ["x"]
+ok("[맥거핀]" not in flow.write_prompt(_m), "없으면 안 실린다")
+flow._merge(_m["ledger"], {"macguffin": {"소금 공장": "정체는 아무도 모른다"}}, at=0)
+_mp = flow.write_prompt(_m)
+ok("[맥거핀]" in _mp, "있으면 실린다")
+ok("정체를 밝히지 마라" in _mp, "밝히지 말라고 한다  ← 밝혀지는 순간 동력이 꺼진다")
+ok("사람마다" in _mp and "다르게 알고 있다" in _mp, "사람마다 다르게 안다")
+ok("닫지 마라" in _mp, "열린 것에서 닫지 않는다  ← 미결과 반대로 취급한다")
+ok("macguffin" in flow.extract_prompt("x") and "맥거핀이 둘이면" in flow.extract_prompt("x"),
+   "추출기가 뽑되 하나만 둔다  ← 둘이면 둘 다 안 궁금해진다")
 
 print()
 if fails:
