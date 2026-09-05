@@ -169,6 +169,21 @@ ok([x for x in _E.check(_b, _a) if "겹친다" in x], "겹쳤을 때만 말한�
 ok(not [x for x in _E.check(_c, _a) if "겹친다" in x], "안 겹치면 아무 말도 안 한다")
 
 print()
+print("[낯선 개념] **어디서 온 것이든 끌어온다** -- 소설은 무엇이든 삼킨다")
+_b4 = W.brief(["x" * 60], "씨", 4)
+ok("끌어올 개념" in _b4, "남의 분야에서 끌어오게 한다")
+ok("바깥 말에서 끌어올 것" in _b4, "남의 말에서도 끌어오게 한다")
+ok("설정이 아니라 성격이 된다" in _b4,
+   "설명하지 말고 쓰게 한다  ← 인물이 자기 삶에 갖다 붙이는 순간 성격이 된다")
+ok("어색한 채로 두는 것이 요점이다" in _b4, "한국어답게 다듬지 말라고 한다")
+_o = {tuple(SH._batch(W.ODD, "씨|odd", i, "odd", W.PUSH_ODD)) for i in range(16)}
+ok(len(_o) > 8, f"덩어리마다 다른 분야를 뒤진다 ({len(_o)}가지)")
+ok(all(len(set(x)) == len(x) for x in _o), "한 덩어리 안에서 겹치지 않는다")
+_fg = {SH._batch(W.FOREIGN, "씨|foreign", i, "foreign", 1)[0] for i in range(16)}
+ok(len(_fg) > 5, f"바깥 말도 덩어리마다 다르다 ({len(_fg)}가지)")
+ok(len(W.ODD) >= 12 and len(W.FOREIGN) >= 10, "뒤질 데가 넉넉하다")
+
+print()
 if _bad:
     print(f"말맛: {len(_bad)}개 실패 -- {_bad}")
     raise SystemExit(1)
