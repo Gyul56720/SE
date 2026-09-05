@@ -189,7 +189,10 @@ PY
 
   quota)
     # "오늘 치 소진" 이 정말 하루치인지 눈으로 대조한다. 로그의 그 말은 추정이다.
-    load_env; python3 "$SE/scripts/quota_show.py" "${2:-}"
+    # `"${2:-}"` 로 넘기면 인자를 안 줬을 때 **빈 문자열이 인자 하나로** 간다
+    # (argparse 가 unrecognized arguments 로 죽는다). shift 로 있는 것만 넘긴다.
+    # 장부를 읽는 데 키는 필요 없다 -- load_env 를 부르면 키가 없을 때 죽는다.
+    shift || true; python3 "$SE/scripts/quota_show.py" "$@"
     ;;
 
   open)
