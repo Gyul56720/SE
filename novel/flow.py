@@ -552,6 +552,11 @@ def write_prompt(book: dict, feedback: str = "") -> str:
 - 사람과 장소의 이름을 구체적으로 대라. 없는 것도 있는 것처럼 자세히 -- 다만 그 자세함이
   수식어가 아니라 **행동과 사정**으로 오게 해라.
 {D.SPLIT}
+[표류가 먼저다] **아래 뽑기는 전부 출발점이지 각본이 아니다.**
+어울리지 않으면 비틀고, 더 나은 것이 떠오르면 버려라. 목록을 채우려고 쓰지 마라 --
+글이 가려는 데가 있으면 그리로 가라. **자유도가 이 소설의 첫 번째 규칙이다.**
+꺾이지 않는 것은 둘뿐이다: 앞에서 쓴 것과 어긋나지 않기, 우연이 문제를 풀지 않기.
+
 [세계 — 지금까지 놓인 것들]
 {brief(book['ledger'], now=len(book['chunks']))}
   * 이건 금지 목록이 아니라 **연료다.** 여기 있는 것을 다시 꺼내 쓰는 것이 이 소설의
@@ -792,6 +797,10 @@ def main() -> int:
                     help="표류 계수 0~1. 낮출수록 급발진·사건이 줄어든다 (기본 1.0)")
     ap.add_argument("--matter", type=float, default=MATTER,
                     help="소재 축(갈래·매체)을 섞는 비율 0~1. 기본 0 -- 꺼져 있다")
+    ap.add_argument("--body", type=float, default=BODY,
+                    help="몸의 사실이 붙는 비율 0~1")
+    ap.add_argument("--bond", type=float, default=BOND,
+                    help="관계가 실리는 비율 0~1")
     a = ap.parse_args()
 
     if a.read:
@@ -831,11 +840,24 @@ def main() -> int:
         return 2
     # **--drift 는 이어 쓰기에도 먹는다.** 뒤로 갈수록 부조리가 심해지면 중간에 낮춰서
     # 이어 갈 수 있어야 한다 -- 그러자고 원고를 버리게 하면 안 된다.
-    book["drift"] = max(0.0, min(1.0, a.drift))
-    book["matter"] = max(0.0, min(1.0, a.matter))
+    # **설정은 원고가 아니라 코드가 정한다.**
+    #
+    # 계수를 원고에 저장해 두면 이어 쓸 때 그것을 쓴다. 그러면 코드 기본값을 고쳐도
+    # 옛 원고는 옛 설정으로 계속 돈다 -- 밤새 고친 것이 하나도 안 걸린다(실측
+    # 2026-09-05: "설정 json 도 초기화 하던가 옮겨줘야 해"). 저장은 무엇으로 썼는지
+    # 남기려는 것이지 다음 런을 묶으려는 것이 아니다.
+    #
+    # 그래서 **매 런마다 인자(또는 기본값)로 덮어쓴다.** 원고를 이어 쓰되 설정은 지금
+    # 것으로 간다. 옛 설정을 유지하고 싶으면 그 값을 인자로 주면 된다.
+    for key, val in (("drift", a.drift), ("matter", a.matter),
+                     ("body", a.body), ("bond", a.bond)):
+        was = book.get(key)
+        book[key] = max(0.0, min(1.0, val))
+        if was is not None and was != book[key]:
+            D._log(f"[flow] {key} {was} → {book[key]} (코드 기본값으로 맞춘다)")
     D._log(f"[flow] 목표 {a.chars:,}자 · 지금 "
            f"{sum(len(c) for c in book['chunks']):,}자 · 표류 계수 {book['drift']}"
-           f" · 소재 {book['matter']}")
+           f" · 소재 {book['matter']} · 몸 {book['body']} · 관계 {book['bond']}")
     r = run(book, D.default_llm, a.chars, path, time.time() + a.hours * 3600)
     D._log(f"[flow] 끝 -- 덩어리 {r['chunks']}개 · {r['chars']:,}자 · {path}")
     return 0

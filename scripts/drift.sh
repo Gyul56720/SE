@@ -22,6 +22,11 @@
 # 환경변수로 바꿀 수 있는 것:
 #   DRIFT    표류 계수 0~1     (기본 1.0 -- 낮추면 급발진·사건이 줄어든다)
 #   MATTER   소재 축 0~1       (기본 0.0 -- 켜면 갈래·매체가 섞인다)
+#   BODY     몸의 사실 0~1     (기본 0.35)
+#   BOND     관계 0~1          (기본 0.4)
+#
+#   설정은 **원고가 아니라 코드가 정한다.** 이어 쓸 때마다 지금 기본값으로 맞춰지고,
+#   위 환경변수를 주면 그것이 이긴다. 옛 원고가 옛 설정으로 계속 도는 일은 없다.
 #   SE_DIR   저장소 위치        (기본 /home/ubuntu/SE)
 #   BOOK     원고 파일          (기본 $SE_DIR/novel/drift.json)
 #   FIRST    첫 문장 (start 에서만)
@@ -95,13 +100,14 @@ case "${1:-status}" in
       mv "$BOOK" "$BOOK.$(date +%Y%m%d-%H%M%S).bak"
       echo "쓰던 원고를 옮겨 두었다: $BOOK.*.bak"
     }
-    set -- --out "$BOOK" --chars "${2:-8000}" ${DRIFT:+--drift "$DRIFT"} ${MATTER:+--matter "$MATTER"}
+    set -- --out "$BOOK" --chars "${2:-8000}" ${DRIFT:+--drift "$DRIFT"} ${MATTER:+--matter "$MATTER"} \
+           ${BODY:+--body "$BODY"} ${BOND:+--bond "$BOND"}
     [ -n "${FIRST:-}" ] && set -- "$@" --first "$FIRST"
     launch "새 원고를" "$@"
     # **정말 새 원고인지 확인한다.** 앞 런이 살아 있으면 같은 파일에 계속 쓰므로 옛
     # 인물·장소가 그대로 남는다(실측: "이야기가 바뀌었는데 이전 소설 내역이 남아 있다").
     sleep 2
-    python3 - "$BOOK" <<'PY' || true
+    python3 - "$BOOK" <<'INNER' || true
 import json, sys
 from pathlib import Path
 p = Path(sys.argv[1])
@@ -110,15 +116,13 @@ if p.exists():
     L = b.get("ledger", {})
     n = sum(len(L.get(k) or {}) for k in ("people", "places", "objects", "facts"))
     if n or b.get("chunks"):
-        print(f"  ⚠ 새 원고인데 세계가 비어 있지 않다 (항목 {n}개, 덩어리 "
-              f"{len(b.get('chunks', []))}개).
-"
-              "    앞 런이 같은 파일에 쓰고 있을 수 있다:
-"
-              "      /usr/bin/pgrep -af 'novel/flow.py'    ← 둘 이상이면 옛 PID 를 kill")
+        print("  * 새 원고인데 세계가 비어 있지 않다"
+              f" (항목 {n}개, 덩어리 {len(b.get('chunks', []))}개).")
+        print("    앞 런이 같은 파일에 쓰고 있을 수 있다:")
+        print("      /usr/bin/pgrep -af 'novel/flow.py'   <- 둘 이상이면 옛 PID 를 kill")
     else:
         print("  세계는 비어 있다 -- 처음부터 시작한다.")
-PY
+INNER
     ;;
 
   go|resume)
@@ -126,7 +130,8 @@ PY
     [ -f "$BOOK" ] || die "이어 쓸 원고가 없다: $BOOK   (새로 시작하려면: $0 start)"
     cp "$BOOK" "$BOOK.bak"
     launch "이어 쓰기를" --resume "$BOOK" --chars "${2:-50000}" --hours 12 \
-           ${DRIFT:+--drift "$DRIFT"} ${MATTER:+--matter "$MATTER"}
+           ${DRIFT:+--drift "$DRIFT"} ${MATTER:+--matter "$MATTER"} \
+           ${BODY:+--body "$BODY"} ${BOND:+--bond "$BOND"}
     ;;
 
   status)
@@ -139,7 +144,8 @@ b = json.load(open(sys.argv[1], encoding="utf-8"))
 n = sum(len(c) for c in b["chunks"])
 L = b.get("ledger", {})
 print(f"  원고  덩어리 {len(b['chunks'])}개 · {n:,}자 · 사건 {b.get('shocks', 0)}회 · "
-      f"표류 계수 {b.get('drift', '?')} · 소재 {b.get('matter', 0)}")
+      f"표류 {b.get('drift', '?')} · 소재 {b.get('matter', 0)} · "
+      f"몸 {b.get('body', '?')} · 관계 {b.get('bond', '?')}")
 print(f"  세계  인물 {len(L.get('people', {}))} · 장소 {len(L.get('places', {}))} · "
       f"사물 {len(L.get('objects', {}))} · 사실 {len(L.get('facts', {}))}")
 PY

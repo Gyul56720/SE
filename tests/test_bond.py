@@ -77,6 +77,33 @@ ok("되받아치기" in n, "대사는 되받아치기다  ← 답이 질문에 �
 ok("박자표" in n, "같은 길이가 세 번 이어지면 리듬이 아니라 박자표다")
 
 print()
+print("[설정] **설정은 원고가 아니라 코드가 정한다**")
+print("      ← 계수를 원고에 저장해 두면 이어 쓸 때 그것을 쓴다. 그러면 코드를 고쳐도")
+print("        옛 원고는 옛 설정으로 계속 돈다 -- 밤새 고친 것이 하나도 안 걸린다.")
+import json as _json, sys as _sys, tempfile as _tf                    # noqa: E402
+_d = Path(_tf.mkdtemp()) / "old.json"
+_old = flow.blank()
+_old["chunks"] = ["옛 본문"]
+_old["drift"], _old["matter"] = 0.5, 0.9
+_old.pop("body", None)
+_old.pop("bond", None)
+_d.write_text(_json.dumps(_old, ensure_ascii=False), encoding="utf-8")
+flow.BACKOFF = (0,)
+_argv = _sys.argv
+_sys.argv = ["flow.py", "--resume", str(_d), "--chars", "1"]
+try:
+    flow.main()
+finally:
+    _sys.argv = _argv
+_new = _json.loads(_d.read_text(encoding="utf-8"))
+ok(_new["drift"] == flow.DRIFT and _new["matter"] == flow.MATTER,
+   f"옛 계수가 지금 기본값으로 맞춰진다 ({_old['drift']}→{_new['drift']}, "
+   f"{_old['matter']}→{_new['matter']})")
+ok(_new["body"] == flow.BODY and _new["bond"] == flow.BOND,
+   "원고에 없던 새 축도 채워진다  ← 나중에 생긴 축이 옛 원고에서 빠지면 안 된다")
+ok(_new["chunks"] == ["옛 본문"], "원고는 그대로다  ← 설정만 갈아 끼운다")
+
+print()
 if fails:
     print(f"관계·몸: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)
