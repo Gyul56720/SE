@@ -37,6 +37,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from novel import drive as D                                          # noqa: E402
 from novel import echo                                                # noqa: E402
 from novel import diffusion                                           # noqa: E402
+from novel import bond                                                # noqa: E402
 from novel import body                                                # noqa: E402
 from novel import matter                                              # noqa: E402
 from novel import shock as SH                                         # noqa: E402
@@ -48,7 +49,7 @@ from novel import style                                               # noqa: E4
 # 인물 카드에 적는 것. **정하면 적어두고 다음부터 참조한다** -- 적어두지 않으면 모델은
 # 세 덩어리 뒤에 다른 사람으로 만든다. 대사가 인물마다 달라지는 것도 이 카드에서 나온다:
 # "거칠게" 는 한 인물의 특징이지 소설의 규칙이 아니다.
-CARD = ("나이", "키", "몸", "성격", "혈액형", "가족", "과거", "트라우마",
+CARD = ("나이", "키", "몸", "관계", "성격", "혈액형", "가족", "과거", "트라우마",
         "좋아하는 것", "싫어하는 것", "취미", "전공", "직업", "말투", "버릇", "겉모습")
 
 # **게이트는 최소로 만든다.** 자유도가 이 모드의 전부다 -- 기각이 잦으면 그 자유가 죽는다.
@@ -95,6 +96,9 @@ CHUNK = 1400
 # 가리킨 것이 그 배치였다: "매 덩어리 확산 + 급발진 1 / 2,000자마다 사건 -- 딱 이때가
 # 제일 좋다."
 DRIFT = 1.0
+
+# 관계가 실리는 비율. 매번 새 관계를 붙이면 인물이 관계표가 된다.
+BOND = 0.4
 
 # 몸의 사실이 붙는 비율. 매 덩어리에 넣으면 소설이 진료 기록이 된다.
 BODY = 0.35
@@ -147,7 +151,7 @@ def blank(first: str = FIRST) -> dict:
     # words: 지어낸 낱말과 그 뜻. **기록만 하고 절대 기각하지 않는다** -- 다만 한 번 뜻을
     # 준 말은 계속 같은 뜻으로 쓰여야 해서 원장에 남긴다.
     return {"first": first, "chunks": [], "shocks": 0, "since": 0, "drift": DRIFT,
-            "matter": MATTER, "body": BODY,
+            "matter": MATTER, "body": BODY, "bond": BOND,
             "ledger": {
         "people": {}, "places": {}, "facts": {}, "time": [], "objects": {},
         "words": {}}}
@@ -360,6 +364,14 @@ def _must(book: dict) -> str:
     return "\n".join(lines)
 
 
+def _bond(book: dict) -> str:
+    seed = book.get("seed_id") or book["first"]
+    n = len(book["chunks"])
+    if not bond.gate(seed, n, float(book.get("bond", BOND))):
+        return ""
+    return bond.brief(bond.draw(seed, n))
+
+
 def _body(book: dict) -> str:
     seed = book.get("seed_id") or book["first"]
     n = len(book["chunks"])
@@ -451,6 +463,7 @@ def _diffuse(book: dict) -> str:
     **말끝을 다듬으면 그게 딱딱함이다.**
 
 {_impulse(book)}
+{_bond(book)}
 {_body(book)}
 {_matter(book)}
 [잡소리] **쓸데없는 말이 이 소설의 재미다. 이 덩어리에 적어도 하나는 넣어라.**
@@ -571,6 +584,8 @@ def extract_prompt(chunk: str) -> str:
 - 새로 나온 것이 없는 칸은 빈 객체로 둔다.
 - **인물은 카드로 적는다.** 글에 드러난 칸만 채워라. 안 나온 칸은 빼라 -- 지어내지 마라.
   쓸 수 있는 칸: {" · ".join(CARD)}
+- **관계 칸**에는 다른 인물과의 사이를 적어라 -- "요우의 옛 애인", "한나와 돈이 얽혔다".
+  한 번 맺어진 관계는 저절로 풀리지 않는다.
 - **몸 칸**에는 생물학적 사실을 적어라 -- 안 들리는 귀, 안 크는 키, 못 맡는 냄새, 월경,
   떨리는 손. 한 번 적힌 몸은 끝까지 그 몸이다.
 - **지어낸 낱말은 words 에 뜻과 함께 적어라.** 사전에 없는 말이 나오고 거기 뜻이나 유래가
