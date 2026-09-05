@@ -13,6 +13,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 
@@ -474,6 +475,56 @@ def menu(pool, picked, head: str, tail: str) -> str:
             f"\n      **목록 밖도 자유다.** {tail}")
 
 
+# **한 덩어리에 몇 개나 시킬 것인가.** 목록이 열둘인데 매번 다 시키면 스물아홉 가지를
+# 한꺼번에 시키는 셈이다 -- 한꺼번에 시키면 안 지켜진다. 그렇다고 켜고 끄기로 하면
+# **주기가 보인다**(하한이 주기가 됐던 그 일과 같다). 그래서 둘을 흔든다:
+#   · 몇 개를 실을지 -- 덩어리마다 다르다
+#   · 어느 것을 실을지 -- **오래 안 나온 것을 앞으로 당긴다.** 굶는 목록이 없게 하면서
+#     순서는 무작위로 남는다
+MENU_LO = int(os.environ.get("DRIFT_MENU_LO", "4"))
+MENU_HI = int(os.environ.get("DRIFT_MENU_HI", "8"))
+ROTATING = ("fig", "gaze", "inner", "touch", "stuff", "lim", "odd", "foreign", "form")
+
+
+def _jitter(name: str, n: int) -> float:
+    h = hashlib.sha256(f"{name}|{n}|menu".encode()).digest()
+    return (int.from_bytes(h[:4], "big") % 10000) / 10000
+
+
+def _how_many(n: int) -> int:
+    h = hashlib.sha256(f"{n}|howmany".encode()).digest()
+    return MENU_LO + int.from_bytes(h[:4], "big") % (MENU_HI - MENU_LO + 1)
+
+
+def _chosen(n: int) -> set:
+    """이번 덩어리에 실을 목록. **오래 안 나온 것이 앞선다.**
+
+    켜고 끄기(번갈아)로 하면 목록마다 자기 주기가 생겨 읽는 사람에게 보인다. 그래서
+    굶은 정도로 줄을 세우고 흔들기를 얹는다 -- 오래 안 나온 것은 반드시 나오고,
+    그중 순서는 매번 다르다."""
+    last = {k: -99 for k in ROTATING}
+    for i in range(max(0, n - len(ROTATING) * 2), n):
+        for k in _chosen_raw(i, last):
+            last[k] = i
+    return _chosen_raw(n, last)
+
+
+def _chosen_raw(n: int, last: dict) -> set:
+    k = _how_many(n)
+    rank = sorted(ROTATING, key=lambda x: (-(n - last.get(x, -99)) - _jitter(x, n) * 3, x))
+    return set(rank[:k])
+
+
+def _on(name: str, n: int) -> bool:
+    """이번 덩어리에 이 목록을 실을 것인가."""
+    if not ROTATE:
+        return True
+    return name in _chosen(n)
+
+
+ROTATE = os.environ.get("DRIFT_MENU_ROTATE", "1") not in ("", "0", "false")
+
+
 def brief(chunks, seed: str, n: int) -> str:
     """이번 덩어리에 밀어 넣을 것. 기울지 않았으면 짧아지고, 기울었으면 길어진다."""
     from novel import shock
@@ -487,7 +538,7 @@ def brief(chunks, seed: str, n: int) -> str:
     if over:
         lines.append(f"  · **이번엔 쉬어라** -- {' · '.join(over)}"
                      "\n      원고에서 이미 너무 많다. 같은 소리가 계속 나면 그게 단조로움이다.")
-    fig = figures(seed, n)
+    fig = figures(seed, n) if _on("fig", n) else []
     if fig:
         lines.append(menu(FIGURES, fig, "이번 대목의 비유",
                           "한 덩어리에 한둘이면 족하다. 매 문단에 넣으면 그것도 버릇이다."
@@ -501,16 +552,19 @@ def brief(chunks, seed: str, n: int) -> str:
         " 붙은 건물이라야 거기 서 있게 된다. 지어내되 **자릿수와 붙는 말이 그럴듯하게.**\n"
         "      **화자가 설명하는 것이 아니라 이 사람이 보는 것이다** -- 눈길이 안 닿은"
         " 것은 없는 것이나 같고, 본 것에는 그 사람의 짐작이 묻는다."))
-    lines.append(menu(
+    if _on("gaze", n):
+      lines.append(menu(
         GAZE, shock._batch(GAZE, f"{seed}|gaze", n, "gaze", PUSH_GAZE),
         "이번 대목의 보는 방식",
         "급할 때와 심심할 때의 눈이 같을 리 없다. 상황에 안 맞으면 다른 것으로 바꿔라."))
-    lines.append(menu(
+    if _on("inner", n):
+      lines.append(menu(
         INNER, shock._batch(INNER, f"{seed}|inner", n, "inner", PUSH_INNER),
         "안에서 새는 것(내현)",
         "**속엣말처럼 가볍게.** 고백조로 쓰면 신파가 되고 이름을 붙이면 진단서가 된다."
         " 사유는 해도 좋은데 결론은 내지 마라 -- 큰 낱말을 썼으면 다음 줄에서 김을 빼라."))
-    lines.append(menu(
+    if _on("touch", n):
+      lines.append(menu(
         TOUCH, shock._batch(TOUCH, f"{seed}|touch", n, "touch", PUSH_TOUCH),
         "부딪쳐라",
         "보기만 하면 이 사람은 카메라다. 손을 대고 묻고 옮겨야 **세계가 그에게"
@@ -519,12 +573,14 @@ def brief(chunks, seed: str, n: int) -> str:
     # 묶는다 -- 두 목록을 따로 펼치면 작법 항목이 그만큼 뒤로 밀린다.
     stuff = dict(SYSTEMS)
     stuff.update(MEDIA)
-    lines.append(menu(stuff, (shock._batch(SYSTEMS, f"{seed}|sys", n, "sys", 1)
+    if _on("stuff", n):
+      lines.append(menu(stuff, (shock._batch(SYSTEMS, f"{seed}|sys", n, "sys", 1)
                               + shock._batch(MEDIA, f"{seed}|med", n, "med", 1)),
                       "이번 대목의 재료(제도·매체)",
                       "사람을 실제로 움직이는 것은 마음이 아니라 절차이고, 누가 남긴 것이"
                       " 지금 여기 있다."))
-    lines.append(menu(LIMITS_LIFE,
+    if _on("lim", n):
+      lines.append(menu(LIMITS_LIFE,
                       shock._batch(LIMITS_LIFE, f"{seed}|lim", n, "lim", PUSH_WORLD),
                       "이번 대목의 제한",
                       "못 하는 이유는 구체적이어야 한다 -- 얼마가 모자라고 몇 시까지인지."))
@@ -532,16 +588,19 @@ def brief(chunks, seed: str, n: int) -> str:
     # 것이 둘뿐이 된다 -- 점층 이음말을 넷만 보여 줬다가 원고가 그 넷으로 도배된 일이
     # 있었다. 반대로 전부를 똑같은 무게로 늘어놓으면 아무것도 안 고른다. 그래서
     # **이름은 다 보여 주고 설명은 이번 것에만** 붙인다.
-    lines.append(menu(
+    if _on("odd", n):
+      lines.append(menu(
         ODD, shock._batch(ODD, f"{seed}|odd", n, "odd", PUSH_ODD),
         "끌어올 개념",
         "설명하지 말고 **쓰게 해라** -- 인물이 그 말을 자기 삶에 갖다 붙이는 순간"
         " 그것은 설정이 아니라 성격이 된다. 모르는 사람이 되묻는 것도 좋다."))
-    lines.append(menu(
+    if _on("foreign", n):
+      lines.append(menu(
         FOREIGN, shock._batch(FOREIGN, f"{seed}|foreign", n, "foreign", PUSH_FOREIGN),
         "바깥 말에서 끌어올 것",
         "한국어답게 다듬지 마라 -- **어색한 채로 두는 것이 요점이다.**"))
-    lines.append(menu(FORMS, forms(seed, n), "이번 대목에 섞을 꼴",
+    if _on("form", n):
+      lines.append(menu(FORMS, forms(seed, n), "이번 대목에 섞을 꼴",
                       "한 대목이면 된다. 원고 전체를 이걸로 쓰지 마라 --"
                       " 산문 한가운데 다른 꼴이 하나 끼는 것이 재미다."))
     if not lines:

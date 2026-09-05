@@ -997,6 +997,8 @@ def write_prompt(book: dict, feedback: str = "") -> str:
 
 {OPENING if opening else _push(book)}
 
+{owed_brief(book)}
+
 {_must(book)}
 {feedback}
 산문만 출력한다. 제목도 머리말도 표식도 쓰지 마라."""
@@ -1144,6 +1146,10 @@ def step(book: dict, llm, log=None) -> dict:
                                 now=len(book["chunks"]), want=_talklong(book))
     if left:
         _debt(book, len(book["chunks"]), left, path=book.get("_path"))
+        # **원고 안에도 남긴다.** 파일은 사람이 보는 것이고, 이것은 다음 덩어리가
+        # 읽는 것이다 -- 안 남기면 못 고친 것이 매번 처음부터 다시 못 고쳐진다.
+        book.setdefault("owed", []).extend(_kind_of(c) for c in left)
+        book["owed"] = book["owed"][-40:]
         D._log(f"[flow] 못 고친 {len(left)}건은 장부에 적어 둔다 (원고는 그대로 쓴다)")
 
     # **잰 값을 남긴다.** 다음 덩어리가 이것을 보고 방향을 잡는다 -- 남기지 않으면
@@ -1166,6 +1172,46 @@ def _remember(book: dict, text: str) -> None:
     for k in ("seen_tell", "seen_talk", "seen_dlg"):
         if len(book.get(k, [])) > 24:
             book[k] = book[k][-24:]
+
+
+# 자가 돌려준 문장에서 **갈래 이름**만 뽑는다. 문장을 통째로 쌓으면 세어도 뭉치지
+# 않는다 -- 숫자가 매번 달라서 같은 결함이 다른 문장으로 보인다.
+_KINDS = (
+    ("짧은 '-다'", "짧은 '-다'"), ("내리", "같은 길이가 몰린다"), ("받아 올리는", "점층"),
+    ("긴 문장이", "긴 문장"), ("대사가 전체", "대사 몫"), ("긴 대사", "긴 대사"),
+    ("주고받", "주고받기"), ("세계에 더한", "세계 확장"), ("되돌아온", "앞엣것 회수"),
+    ("규칙적인 자리", "박자표"), ("겹친다", "되풀이"), ("어긋난다", "모순"),
+    ("같은 이름을", "이름 반복"), ("식은", "식은 소품"),
+)
+
+
+def _kind_of(msg: str) -> str:
+    for key, name in _KINDS:
+        if key in msg:
+            return name
+    return msg[:12]
+
+
+def owed_brief(book: dict) -> str:
+    """**갚지 않은 빚 하나.** 장부에 거듭 오른 갈래를 다음 덩어리에 얹는다.
+
+    문장 손질로 고칠 수 있는 것은 세 갈래뿐인데 자는 열 갈래를 본다 -- 나머지 일곱은
+    매번 장부에 적히고 끝났다(대사 몫 · 주고받기 · 세계 확장 · 점층 …). 재기만 하고
+    고칠 길이 없으면 그 자는 장식이다.
+
+    그래서 **다음 덩어리에서 갚게 한다.** 호출은 안 는다: 프롬프트 한 줄이다.
+    한 건만 얹는다 -- 한꺼번에 시키면 안 지켜진다."""
+    owed = book.get("owed") or []
+    if len(owed) < 3:
+        return ""
+    tally: dict = {}
+    for k in owed[-12:]:
+        tally[k] = tally.get(k, 0) + 1
+    top, cnt = max(tally.items(), key=lambda kv: (kv[1], kv[0]))
+    if cnt < 2:
+        return ""
+    return (f"[갚을 것] **최근 덩어리들이 거듭 놓친 것 하나 -- {top}.** {cnt}번 걸렸다.\n"
+            "이번 덩어리에서는 **이것 하나만** 확실히 해라. 나머지는 늘 하던 대로.")
 
 
 def _debt(book: dict, at: int, left: list, path=None) -> None:
