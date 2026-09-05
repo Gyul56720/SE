@@ -324,6 +324,18 @@ def _extract_text(resp) -> str:
     return str(content)
 
 
+_QUOTA_ID = re.compile(r"['\"]?quota(?:Id|Metric)['\"]?\s*:\s*['\"]([^'\"]+)")
+
+
+def _quota_name(e) -> str:
+    """구글이 429 본문에 적어 보낸 **한도 이름**. 그것이 분당인지 하루치인지 여기 적혀 있다
+    (예: GenerateRequestsPerMinutePerProjectPerModel). 예전에는 'PerMinute' 포함 여부만
+    보고 이름은 버렸다 -- 그래서 '일일소진' 이 진짜 하루치인지, 이름을 못 알아본 분당
+    한도인지 구분할 수가 없었다. 추측을 로그에 남기면 그 추측을 사실로 읽게 된다."""
+    m = _QUOTA_ID.search(str(e))
+    return m.group(1) if m else ""
+
+
 def _note_failure(label: str, e, verbose: bool) -> str:
     """실패 하나를 갈래대로 기록하고 갈래 이름을 돌려준다."""
     if _is_rpm(e):
@@ -335,7 +347,11 @@ def _note_failure(label: str, e, verbose: bool) -> str:
         kind = "RPM/60초"
     elif _is_quota(e):
         quota_tracker.record_exhausted(label)
-        kind = "일일소진"
+        name = _quota_name(e)
+        # 이름이 아예 안 실려 온 429 는 하루치라고 단정할 근거가 없다. 그래도 소진으로
+        # 다루는 것은 보수적 선택이고(1분짜리로 잘못 보면 죽은 조합을 1분마다 다시
+        # 두드린다), 대신 **모른다는 것을 로그에 적는다**.
+        kind = f"일일소진/{name}" if name else "일일소진?(한도 이름 없음)"
     elif _is_permanent(e):
         quota_tracker.mark_dead(label, str(e)[:200])
         kind = "영구배제"
@@ -401,7 +417,13 @@ def call(pool, prompt: str, pool_id: str = "orchestrator", max_candidates: int =
             if cool:
                 what.append(f"분당 한도로 쉬는 중 {cool}개(60초면 풀린다)")
             if gone:
-                what.append(f"오늘 치 소진 {gone}개(자정에 풀린다)")
+                # **누가 소진됐는지 적는다.** 개수만 찍으면 "정말 하루치가 다 됐나" 를
+                # 확인할 방법이 없다 -- 콘솔에서 본 잔량과 대조하려면 이름이 있어야 한다.
+                who = [c[0].split(":", 1)[-1] for c in live
+                       if c not in fresh and not quota_tracker.is_rpm_cooling(c[0])]
+                tag = ", ".join(sorted(set(who))[:4])
+                what.append(f"오늘 치 소진 {gone}개(자정에 풀린다: {tag}"
+                            f"{' ...' if len(set(who)) > 4 else ''})")
             print(f"[llm_pool] {' · '.join(what)} -- 건너뛴다 "
                   f"(남은 후보 {len(fresh)}개)", file=sys.stderr, flush=True)
         ranked = sorted(fresh or live, key=sort_key)

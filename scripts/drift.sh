@@ -17,6 +17,8 @@
 #   drift.sh send  [이름]           **원고를 Discord 로 보낸다** -- VM 밖으로 빼는 길
 #   drift.sh watch                  로그를 계속 따라간다
 #   drift.sh stop                   런을 멈춘다 (원고는 남는다 -- go 로 이어 쓴다)
+#   drift.sh quota                  쿼터 장부 -- "소진" 이 정말 하루치인지 대조한다
+#                                   (--clear 로 오늘자 소진 표시만 지운다)
 #   drift.sh world                  세계가 얼마나 자랐는지 (인물·장소·사물·사실·사건)
 #   drift.sh open                   아직 안 닫힌 것들 -- 이 이야기가 갚지 않은 빚
 #
@@ -183,6 +185,11 @@ PY
     # pkill -f 는 명령줄에 패턴이 들어 있으면 **자기 셸까지 죽인다**(실측). PID 로만 죽인다.
     for p in $pids; do kill "$p"; done
     sleep 2; echo "멈췄다. 원고는 남아 있다 -- 이어 쓰려면: $0 go"
+    ;;
+
+  quota)
+    # "오늘 치 소진" 이 정말 하루치인지 눈으로 대조한다. 로그의 그 말은 추정이다.
+    load_env; python3 "$SE/scripts/quota_show.py" "${2:-}"
     ;;
 
   open)
