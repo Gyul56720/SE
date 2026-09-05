@@ -134,6 +134,27 @@ ok("시간은 앞으로만 간다" not in flow.write_prompt(flow.blank()),
    "첫 덩어리에는 안 붙는다  ← 돌아갈 앞이 없다")
 
 print()
+print("[호명] **사람은 부르라고 있는 이름이다**")
+print("      ← 상한 2회는 소품을 겨냥한 것이었는데 인물과 무대에도 걸렸다. 1,400자 안에서")
+print("        주인공을 두 번만 부르는 것은 한국어로 불가능하다. 실측 2026-09-05:")
+print("        '도영 5회 · 웅포 4회' 로 기각되어 매 덩어리가 재시도를 다 썼고,")
+print("        호출과 토큰이 네 배가 되어 429 를 불렀다.")
+_led = {"people": {"도영": {}, "재현": {}}, "places": {"웅포": "x"},
+        "objects": {"무전기": "x"}}
+_names = F.props(_led)
+_normal = ("도영이 웃었다. " * 5) + ("웅포 얘기였다. " * 4) + ("무전기가 울렸다. " * 4) + "가" * 1200
+ok(F.overused(_normal, _names, _led) == [],
+   "보통 밀도의 1,400자는 통과한다  ← 이게 안 되면 원고가 안 나온다")
+ok(F.overused(("도영이 웃었다. " * 12) + "가" * 1200, _names, _led),
+   "그래도 과하면 잡는다")
+ok(F.PEOPLE_ECHO > F.ECHO_MAX and F.PLACE_ECHO > F.ECHO_MAX,
+   "사람·장소는 소품보다 상한이 높다")
+_short = "도영. 도영. 도영. 도영. 도영. 도영. 도영."
+_long = _short + "가" * 3000
+ok(len(F.overused(_long, _names, _led)) <= len(F.overused(_short, _names, _led)),
+   "긴 덩어리는 상한이 늘어난다  ← 3,000자에 2회는 억지다")
+
+print()
 if fails:
     print(f"확산: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)

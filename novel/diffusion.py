@@ -40,7 +40,18 @@ TALK_LONG = 55
 # 만족시키는 길이 같은 이름을 또 적는 것이 된다. 실측(2026-09-04): 한 덩어리에
 # '1982년형 볼보' 4회, '삼십 년 전' 4회, '주머니' 5회. 그동안 볼보는 아무것도 하지
 # 않는다 -- 처음부터 끝까지 헤드라이트를 깜빡이며 서 있다.
-ECHO_MAX = 2
+ECHO_MAX = 3
+
+# **사람과 장소는 다르다.** 이 상한은 소품을 겨냥한 것이었다(한 덩어리에 '1982년형 볼보'
+# 4회). 그런데 인물 이름과 무대가 되는 장소에도 걸렸고, 1,400자 안에서 주인공을 두 번만
+# 부르는 것은 한국어로 불가능하다. 실측 2026-09-05: "도영 5회 · 웅포 4회" 로 기각되어
+# 매 덩어리가 재시도를 다 쓰고, 그만큼 호출과 토큰이 네 배가 되어 429 를 불렀다.
+#
+# 사람은 부르라고 있는 이름이다. 장소도 그 안에서 이야기가 도는 동안은 계속 불린다.
+# 그래서 상한을 따로 두고, **분량에 비례**시킨다 -- 3,000자짜리 덩어리에 2회는 억지다.
+PEOPLE_ECHO = 6
+PLACE_ECHO = 5
+ECHO_PER = 500          # 이만큼 글자마다 상한을 하나씩 더 준다
 
 # 연도·상표를 대라고 했더니 명사마다 접두사가 붙었다(실측: 한 덩어리에 연도 표기 9개 --
 # 1982년형 볼보 · 1978년산 판화집 · 덴마크산 보드카). **구체성은 명사를 꾸미는 것이
@@ -168,10 +179,26 @@ def _talk4(text: str) -> tuple[int, int, float, int]:
     return short, long, (long_chars / all_chars if all_chars else 0.0), best
 
 
-def overused(text: str, names: list[str]) -> list[tuple[str, int]]:
-    """한 덩어리에서 **너무 자주 불린 이름**. 회수가 반복으로 변질된 자리다."""
-    out = [(n, text.count(n)) for n in dict.fromkeys(names)
-           if len(n) >= 2 and text.count(n) > ECHO_MAX]
+def overused(text: str, names: list[str], ledger: dict | None = None
+             ) -> list[tuple[str, int]]:
+    """한 덩어리에서 **너무 자주 불린 이름**. 회수가 반복으로 변질된 자리다.
+
+    사람·장소·소품에 각각 다른 상한을 준다. 소품을 네 번 부르면 반복이지만 사람을 네 번
+    부르는 것은 그냥 대화다.
+    """
+    ledger = ledger or {}
+    people = set(ledger.get("people") or {})
+    places = set(ledger.get("places") or {})
+    bonus = max(0, len(text) // ECHO_PER - 1)
+    out = []
+    for n in dict.fromkeys(names):
+        if len(n) < 2:
+            continue
+        cap = (PEOPLE_ECHO if n in people else
+               PLACE_ECHO if n in places else ECHO_MAX) + bonus
+        c = text.count(n)
+        if c > cap:
+            out.append((n, c))
     return sorted(out, key=lambda kv: -kv[1])
 
 
@@ -234,7 +261,7 @@ def measure(text: str, before: dict, after: dict) -> dict:
             "owed": len(after.get("open") or {}), "new": len(added(before, after)),
             "back": len(touched(text, props(before))),
             "short": short, "long": long, "bulk": bulk,
-            "over": overused(text, props(before) + props(after)),
+            "over": overused(text, props(before) + props(after), after),
             "labels": labels(text)}
 
 
@@ -260,7 +287,7 @@ def check(text: str, before: dict, after: dict, now: int = 0) -> list[str]:
 
     if m["over"]:
         worst = " · ".join(f"{n} {c}회" for n, c in m["over"][:4])
-        out.append(f"같은 이름을 너무 자주 불렀다 -- {worst}. 하나에 {ECHO_MAX}회까지다. "
+        out.append(f"같은 이름을 너무 자주 불렀다 -- {worst}. "
                    f"**회수는 다시 부르는 것이 아니라 다시 쓰는 것이다.** 이름을 또 적는 대신 "
                    f"그것이 무언가를 하게 해라 -- 쓰이거나, 망가지거나, 손이 바뀌거나, "
                    f"그것 때문에 일이 생기거나. 두 번째부터는 '그것', '차', '그 종이' 로 받아라")
