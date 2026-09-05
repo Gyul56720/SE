@@ -157,9 +157,11 @@ nvw = world()
 pw = D.episode_prompt(nvw, nvw.scenes, arc.CHARS_PER_EPISODE)
 ok("절단 공식 다섯 중 하나" in pw and pw.count("·") >= 5,
    "공식이 없으면 다섯을 다 보여주고 고르게 한다")
-ok("[엔딩]" in pz and "엔딩 훅" in pz, "문체 규율의 엔딩 절이 함께 실린다")
+# [엔딩] 을 [끊기] 로 줄였다 -- 회차가 없는 모드에 "다음 화에서 답할 질문" 을
+# 시키고 있었다. 끊는 자리와 마지막 문장 규율만 남긴다.
+ok("[끊기]" in pz, "끊는 자리 규율이 함께 실린다")
 ok("마지막 문장은 짧게" in pz, "마지막 문장을 짧게 끊으라고 한다")
-ok("독자가 대신 느낄 자리를 비워둔다" in pz, "화자의 감정을 쓰지 말라고 한다")
+ok("읽는 사람이 대신 느낀다" in pz, "화자의 감정을 쓰지 말라고 한다")
 
 print("[분량] 회차 목표가 6,000자인가")
 ok(arc.CHARS_PER_EPISODE == 6000, f"{arc.CHARS_PER_EPISODE:,}자")
