@@ -83,6 +83,13 @@ ok("ps -p $!" not in _sh, "ps -p $! 로 확인하지 않는다  ← 거짓 음�
 ok("pkill" not in _sh, "pkill 을 안 쓴다  ← 제 셸까지 죽인다")
 ok("--stop" in _sh and "STOP" in _sh, "멈추는 길이 있다")
 ok("|| true" in _sh or "continue" in _sh, "한 단계가 실패해도 루프는 안 선다")
+ok("quota_show.py --brief" in _sh,
+   "한도를 먼저 묻는다  ← 다 소진된 채로 두드리면 429 만 쌓인다")
+ok("sleep 300" in _sh, "쓸 후보가 없으면 기다린다  ← 자정에 하루치가 풀린다")
+_q = (Path(__file__).resolve().parent.parent / "scripts" / "quota_show.py").read_text(
+    encoding="utf-8")
+ok("--brief" in _q and "return 0 if (alive or unseen) else 3" in _q,
+   "한도가 한 줄과 종료 코드로도 나온다  ← 밤새 도는 쪽은 표를 못 읽는다")
 
 print()
 if fails:

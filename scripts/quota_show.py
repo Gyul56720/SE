@@ -23,6 +23,10 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--clear", action="store_true",
                     help="오늘자 소진 표시를 지운다 -- 추정이 틀렸다고 판단했을 때만")
+    # **루프가 물어볼 수 있게 한다.** 밤새 도는 쪽은 표를 못 읽는다 -- 한 줄과
+    # 종료 코드가 필요하다. 쓸 것이 하나도 없는데 계속 두드리면 429 만 쌓인다.
+    ap.add_argument("--brief", action="store_true",
+                    help="한 줄로 요약하고, 쓸 후보가 없으면 3 으로 끝난다")
     a = ap.parse_args()
 
     # **후보 풀을 먼저 세운다.** 장부에는 **써 본 것만** 적힌다 -- 새 키를 넣어도 한 번도
@@ -55,6 +59,18 @@ def main() -> int:
         rows.append((label, rec.get("date", "-"), rec.get("count", 0), left, wait))
 
     keys = sorted({label.split(":", 1)[0] for label in labels})
+    # 지금 부를 수 있는 후보: 영구배제도 아니고, 오늘 치를 다 쓴 것도 아니고,
+    # 분당 쉼도 안 걸린 것.
+    alive = [lb for lb, d, _c, left, w in rows
+             if lb not in dead and w <= 0 and not (left <= 0 and d == today)]
+    unseen = [lb for lb in pool_labels if lb not in data and lb not in dead]
+    if a.brief:
+        print(f"쿼터: 키 {len(keys)}개 · 후보 {len(pool_labels) or len(rows)}개 · "
+              f"지금 쓸 수 있는 것 {len(alive) + len(unseen)}개 · "
+              f"소진 {sum(1 for _, d, _c, l, w in rows if l <= 0 and w <= 0 and d == today)}개 · "
+              f"분당쉼 {sum(1 for _, _, _c, _l, w in rows if w > 0)}개 · "
+              f"영구배제 {len(dead)}개")
+        return 0 if (alive or unseen) else 3
     print(f"오늘 {today} · 상한 추정 {q.DEFAULT_DAILY_LIMIT} "
           f"(GEMINI_DAILY_LIMIT 로 바꾼다)")
     print(f"키 {len(keys)}개: {' · '.join(keys)}")

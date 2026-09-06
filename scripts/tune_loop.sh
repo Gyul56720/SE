@@ -39,6 +39,7 @@ case "${1:-}" in
     echo "== 최근 로그"; tail -20 "$LOG" 2>/dev/null || echo "  아직 없다"
     echo "== 점수"; python3 novel/score.py "$BOOK" 2>/dev/null | tail -6
     echo "== 설정별 성적"; python3 novel/arms.py "$BOOK" 2>/dev/null | tail -10
+    echo "== 한도"; python3 scripts/quota_show.py --brief 2>/dev/null
     exit 0 ;;
   --bg)
     rm -f "$STOP"
@@ -59,6 +60,21 @@ rm -f "$STOP"
 say "루프 시작 -- 한 바퀴 ${CHARS}자 · 최대 ${ROUNDS}바퀴"
 
 for round in $(seq 1 "$ROUNDS"); do
+  [ -f "$STOP" ] && { say "멈추라는 표시가 있다. 선다."; break; }
+
+  # **쓸 것이 없으면 두드리지 않는다.** 다 소진된 채로 계속 부르면 429 만 쌓이고
+  # 로그가 그것으로 덮인다. 자정에 하루치가 풀리므로 기다리는 편이 싸다.
+  tries=0
+  until python3 scripts/quota_show.py --brief >> "$LOG" 2>&1; do
+    tries=$((tries + 1))
+    [ -f "$STOP" ] && break
+    if [ "$tries" -gt 48 ]; then
+      say "[$round] 네 시간을 기다려도 한도가 안 풀린다. 그래도 한 번 해 본다"
+      break
+    fi
+    say "[$round] 쓸 후보가 없다 -- 5분 쉰다 ($tries번째)"
+    sleep 300
+  done
   [ -f "$STOP" ] && { say "멈추라는 표시가 있다. 선다."; break; }
 
   say "[$round] 이어 쓴다"
