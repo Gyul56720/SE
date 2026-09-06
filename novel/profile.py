@@ -63,7 +63,9 @@ def measure(text: str) -> dict:
     lens = [len(s) for s in tell]
     m = rhythm.measure(text)
     short, long_, bulk, rally = diffusion._talk4(text)[:4]
-    paras = [p for p in text.split("\n\n") if p.strip()]
+    # **문단은 빈 줄이 아니라 줄바꿈으로 갈린다.** 빈 줄로 갈랐더니 표본 넷이 전부
+    # 토막 크기 그대로 나왔다(5,013 · 5,011 · 5,003자) -- 소설 원문에는 빈 줄이 없다.
+    paras = [p for p in text.split("\n") if p.strip()]
     ends = [len(rx.findall(text)) for rx in wording.ENDINGS.values()]
     return {
         "sent_len":  sum(lens) / len(lens),          # 문장 평균 길이
