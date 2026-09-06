@@ -1165,10 +1165,16 @@ def step(book: dict, llm, log=None) -> dict:
         mended, done = apply_patch(text, [x for x, _ in items], fixed)
         if done:
             D._log(f"[flow] 문장 {done}/{len(items)}개를 고쳤다")
-            # 고쳤으면 원장을 다시 읽는다. 다시 읽어 더 나빠지면 안 고친 쪽을 쓴다.
-            probe2, clash2 = _read(mended)
-            if len(clash2) <= len(clashes):
-                text, probe, clashes = mended, probe2, clash2
+            # **고친 것이 모순이었을 때만 다시 읽는다.** 다시 읽기는 추출 호출 한 번이라
+            # 덩어리마다 3회가 4회가 된다. 모순을 고쳤으면 정말 나아졌는지 확인해야
+            # 하지만(더 나빠지면 안 고친 쪽을 쓴다), 리듬이나 메아리만 손봤으면 확인할
+            # 모순이 애초에 없다 -- 낱말 몇 개 바뀐 것으로 원장을 다시 살 이유가 없다.
+            if clashes:
+                probe2, clash2 = _read(mended)
+                if len(clash2) <= len(clashes):
+                    text, probe, clashes = mended, probe2, clash2
+            else:
+                text = mended
 
     # **남은 것은 버리지 않고 적는다.** 못 고친 곳을 원고와 함께 남겨 두면 나중에
     # 무엇이 안 되는지 볼 수 있다. 원고를 버리면 그것마저 안 남는다.
