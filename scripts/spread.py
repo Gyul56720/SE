@@ -28,6 +28,9 @@ def main(argv=None) -> int:
     ap.add_argument("--axis", default="sent_len")
     ap.add_argument("--mode", default="", help="이 갈래의 줄만 재서 본다")
     ap.add_argument("--top", type=int, default=5)
+    ap.add_argument("--why", action="store_true",
+                    help="양쪽 끝 토막을 뜯어본다 -- 정말 긴 문장인가, 자가 문장 끝을 "
+                         "못 찾는 것인가")
     a = ap.parse_args(argv)
 
     only = {x.strip() for x in a.only.split(",") if x.strip()}
@@ -71,6 +74,28 @@ def main(argv=None) -> int:
     print(f"  높은 쪽 {a.top}개")
     for x, name, dl, ln in rows[-a.top:]:
         print(f"    {x:>9.3f}  {name:<22} 대사 몫 {dl:.0%} · {ln:,}자")
+
+    if a.why:
+        # **자를 의심한다.** 평균 82자는 한국어 산문에서 드물다. 그러면 둘 중
+        # 하나다: 정말 그렇게 쓰거나, 자가 문장 끝을 못 찾거나. 온점 수와 문장 수를
+        # 견주면 갈린다 -- 온점이 문장보다 훨씬 많으면 자가 못 끊고 있는 것이다.
+        import re as _re
+        print("\n  뜯어보기  (온점보다 문장이 적으면 자가 못 끊는 것이다)")
+        print(f"    {'파일':<22}{'문장':>6}{'온점':>6}{'물음':>5}{'말줄임':>7}"
+              f"{'줄':>6}{'줄길이':>8}{'못 끊은 온점':>12}")
+        for _x, name, _dl, _ln in rows[:3] + rows[-3:]:
+            f = next(p for w, p in PF.unit_files(a.root) if p.name == name)
+            t = corpus.load(f)
+            if a.mode:
+                t = MD.split(t).get(a.mode, "")
+            lines = [l for l in t.splitlines() if l.strip()]
+            sent = PF._sent(t)
+            dot = t.count(".")
+            # 온점 뒤에 닫는 따옴표나 괄호가 오면 지금 자는 못 끊는다(고정폭 뒤보기).
+            stuck = len(_re.findall(r'[.!?…][”’"\')\]]+\s', t))
+            print(f"    {name:<22}{len(sent):>6}{dot:>6}{t.count('?'):>5}"
+                  f"{t.count('…'):>7}{len(lines):>6}"
+                  f"{sum(len(l) for l in lines) / max(1, len(lines)):>8.0f}{stuck:>12}")
 
     half = n // 2
     d_lo = sum(r[2] for r in rows[:half]) / max(1, half)
