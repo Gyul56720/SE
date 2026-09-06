@@ -257,6 +257,16 @@ def _default_models(key: str):
         return FALLBACK_MODELS
 
 
+def _dotenv_paths() -> tuple:
+    """어디서 .env 를 찾는가. **순서가 곧 우선순위다** -- 앞엣것이 이긴다
+    (override=False 라 먼저 올라간 값이 남는다).
+
+    함수로 뺀 이유: 검사에서 한 자리만 보게 하려고. 저장소 루트에 진짜 .env 가 있는
+    기계에서는 그것이 먼저 올라가서, 임시 디렉토리의 .env 를 읽는지 볼 수가 없었다
+    -- 키를 제대로 넣은 사람만 검사가 깨졌다."""
+    return (Path(__file__).resolve().parent.parent / ".env", Path.cwd() / ".env")
+
+
 def _load_dotenv_once() -> None:
     """저장소 루트의 .env 를 환경에 올린다. **이미 있는 환경변수는 덮지 않는다.**
 
@@ -267,7 +277,7 @@ def _load_dotenv_once() -> None:
 
     서비스로 돌 때와 손으로 돌 때가 달라지는 것이 함정의 정체이므로, 여기서 한 번
     맞춰준다. override 하지 않으므로 systemd 로 이미 들어온 값이 우선이다."""
-    for cand in (Path(__file__).resolve().parent.parent / ".env", Path.cwd() / ".env"):
+    for cand in _dotenv_paths():
         if not cand.is_file():
             continue
         try:

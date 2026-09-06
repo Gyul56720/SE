@@ -342,6 +342,12 @@ def test_llm_pool_reads_dotenv(failures: list) -> None:
     try:
         (tmp / ".env").write_text("GEMINI_API_KEY=from-dotenv-file\n", encoding="utf-8")
         os.chdir(tmp)
+        # **여기서는 이 자리만 본다.** 저장소 루트에 진짜 .env 가 있는 기계(= 실제로
+        # 돌리는 사람의 기계)에서는 그것이 먼저 올라가 임시 .env 를 덮어 버려서,
+        # "cwd 의 .env 를 읽는가" 를 볼 수가 없었다. 우선순위 자체는 옳다(systemd 값이
+        # 먼저여야 한다) -- 그러니 로딩 로직이 아니라 검사를 좁힌다.
+        _paths = llm_pool._dotenv_paths
+        llm_pool._dotenv_paths = lambda: (Path.cwd() / ".env",)
         pool = llm_pool.build_pool(models=["m"], llm_factory=lambda m, k: (m, k))
         ok(len(pool) == 1 and pool[0][1][1] == "from-dotenv-file",
            ".env 의 키로 후보 풀을 만든다")
@@ -351,6 +357,7 @@ def test_llm_pool_reads_dotenv(failures: list) -> None:
         ok(bool(pool) and pool[0][1][1] == "from-environment",
            ".env 가 이미 있는 환경변수를 덮지 않는다 (systemd 값 우선)")
     finally:
+        llm_pool._dotenv_paths = _paths
         os.chdir(cwd)
         for k in [k for k in os.environ
                   if k.startswith(("GEMINI_API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEYS"))]:
