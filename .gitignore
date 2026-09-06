@@ -74,3 +74,7 @@ novel/seeded.scenes.jsonl
 # 표본 소설. 저작물이라 저장소에 넣지 않는다 -- VM 안에만 둔다.
 novel/corpus/
 novel/holdout/
+
+# 튜너 장부 -- 시도 기록과 챔피언. 런마다 쌓인다.
+novel/tune.jsonl
+novel/tune.best.json
