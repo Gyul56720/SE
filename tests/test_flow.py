@@ -328,6 +328,32 @@ ok("안 나온 칸은 빼라" in e and "지어내지 마라" in e,
 ok("말끝을 어떻게 맺는지" in e, "말투에서 무엇을 보라고 하는지 짚어 준다")
 ok("존댓말인데" not in e, "말투를 예문으로 박아 두지는 않는다")
 
+
+print("[되먹임] **한 번에 안 고쳐지면 프롬프트가 틀린 것이다**")
+print("      ← 손질은 덩어리마다 한 번뿐이다. 같은 지시를 한 번 더 보내면 같은 것이 온다.")
+print("        그러니 고칠 것은 원고가 아니라 지시다 -- 그것도 손질이 아니라 초고에서.")
+_g = "그는 문을 열고 밖을 보면서 담배를 물었는데 불이 붙지 않아서 다시 뒤졌다."
+_it, _kd = flow.mend_items("\n".join([_g] * 10), [], "", with_kinds=True)
+ok("glue" in list(_kd.values())[0], f"걸린 갈래를 같이 돌려준다 ({list(_kd.values())[0]})")
+_v = flow.verify_patch([(_it[0][0], "짧게 끊었다.")], _kd)
+ok(_v.get("glue", (0, 0))[1] == 1, "고친 문장을 자에 다시 대 본다  ← 호출은 안 쓴다")
+ok(_v.get("long", (0, 0))[1] == 0, "안 고쳐진 갈래는 실패로 센다  ← '끼워 넣었다' 는 '고쳤다' 가 아니다")
+
+_bk = flow.blank()
+flow._mend_learn(_bk, {"glue": (flow.MEND_TRIES, 1)})
+ok(_bk["mend"]["glue"] == [flow.MEND_TRIES, 1], "성공/시도가 원고에 쌓인다  ← 이어 쓸 때도 이어 배운다")
+ok(flow.mend_broken(_bk), "반절을 못 넘기면 '안 고쳐지는 갈래' 로 잡는다")
+_bk2 = flow.blank()
+flow._mend_learn(_bk2, {"glue": (2, 0)})
+ok(not flow.mend_broken(_bk2),
+   f"몇 번 안 해 보고 단정하지 않는다 ({flow.MEND_TRIES}번은 해 본다)")
+_bk["chunks"] = ["앞."]
+_ap = flow.write_prompt(_bk)
+ok("[초고에서 막을 것]" in _ap, "안 고쳐지는 갈래를 초고 단계로 옮긴다  ← 호출은 안 는다")
+ok("처음 쓸 때 아예 그렇게 쓰지 마라" in _ap, "되받아 고치지 말고 미리 막으라고 한다")
+ok("[초고에서 막을 것]" not in flow.write_prompt(dict(flow.blank(), chunks=["앞."])),
+   "안 걸린 갈래로는 아무 말도 안 한다  ← 늘 켜진 경고는 꺼진 것과 같다")
+
 print()
 if fails:
     print(f"연속 집필: {len(fails)}개 실패 -- {fails}")

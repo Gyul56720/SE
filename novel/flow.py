@@ -872,7 +872,7 @@ def mend_prompt(items: list) -> str:
 """
 
 
-def mend_items(text: str, clashes: list, prior: str = "") -> list:
+def mend_items(text: str, clashes: list, prior: str = "", with_kinds: bool = False):
     """이 덩어리에서 고칠 것을 **전부** 모은다 -- (문장, 무엇이 문제인가) 목록으로.
 
     한 문장이 두 갈래에 걸리면 **한 자리에 딱지를 겹쳐 붙인다.** 같은 문장을 두 번
@@ -881,33 +881,41 @@ def mend_items(text: str, clashes: list, prior: str = "") -> list:
     다 고친다는 규칙이 거기서 깨졌다. 순서는 그대로 두어 급한 것이 앞에 온다."""
     order: list = []
     flags: dict = {}
+    kinds: dict = {}
 
-    def add(line: str, why: str) -> None:
+    def add(line: str, why: str, kind: str = "") -> None:
         if line not in flags:
             flags[line] = []
+            kinds[line] = []
             order.append(line)
         if why not in flags[line]:
             flags[line].append(why)
+        if kind and kind not in kinds[line]:
+            kinds[line].append(kind)
 
     # **메아리는 모순과 같은 급이다** -- 취향이 아니라 결함이다. 앞에 쓴 문장을 그대로
     # 다시 뱉은 것은 새 글이 아니다(실측: 한 덩어리 2,024자 중 610자가 글자 하나 안
     # 틀리고 반복이었다). 앞머리를 옮겨 적은 것은 echo.trim 이 도려내고, 그러고도
     # 남은 반복은 여기서 그 문장만 새로 쓰게 한다.
     for line in echo_lines(text, prior):
-        add(line, "앞에 이미 쓴 말이다 -- 같은 말 말고 **그 다음에 일어나는 일**을 써라")
+        add(line, "앞에 이미 쓴 말이다 -- 같은 말 말고 **그 다음에 일어나는 일**을 써라",
+            "echo")
     for line in clash_lines(text, clashes):
-        add(line, "앞에서 확정된 것과 어긋난다 -- 앞엣것이 맞다")
+        add(line, "앞에서 확정된 것과 어긋난다 -- 앞엣것이 맞다", "clash")
     spot = rhythm.spots(text)
     for kind, why in PATCHABLE.items():
         for line in spot.get(kind, []):
-            add(line, why)
-    return [(line, " / ".join(flags[line])) for line in order][:MEND_MAX]
+            add(line, why, kind)
+    items = [(line, " / ".join(flags[line])) for line in order][:MEND_MAX]
+    if with_kinds:
+        return items, {line: kinds[line] for line, _ in items}
+    return items
 
 
 def apply_patch(text: str, lines: list, fixed: dict) -> tuple:
     """받아 온 문장을 원문에 끼워 넣는다. 못 찾거나 짧아졌으면 그 자리는 그냥 둔다 --
     되받은 것을 검사 없이 넣으면 원고가 조용히 상한다."""
-    done = 0
+    done, pairs = 0, []
     for key, new in fixed.items():
         try:
             old = lines[int(str(key).strip()) - 1]
@@ -920,7 +928,71 @@ def apply_patch(text: str, lines: list, fixed: dict) -> tuple:
             continue
         text = text.replace(old, new, 1)
         done += 1
-    return text, done
+        pairs.append((old, new))
+    return text, done, pairs
+
+
+def verify_patch(pairs: list, flags: dict) -> dict:
+    """**한 번의 손질이 정말 고쳤는가.** 되받은 문장을 자에 다시 대 본다 -- 호출은 안
+    쓴다(전부 정규식이다).
+
+    이걸 안 재면 "고쳤다" 는 말이 "끼워 넣었다" 는 뜻일 뿐이다. 어떤 갈래가 거듭 안
+    고쳐지면 그건 모델이 게으른 것이 아니라 **우리 지시가 틀린 것**이고, 지시가 틀렸으면
+    같은 지시를 한 번 더 보내 봐야 같은 것이 온다. 고칠 것은 프롬프트다."""
+    out: dict = {}
+    for old, new in pairs:
+        for kind in flags.get(old, ()):
+            ok = _better(kind, old, new)
+            if ok is None:
+                continue
+            t, f = out.get(kind, (0, 0))
+            out[kind] = (t + 1, f + int(ok))
+    return out
+
+
+def _better(kind: str, old: str, new: str):
+    """그 갈래로 보면 나아졌는가. 자로 못 보는 갈래는 None."""
+    if kind in ("da", "run"):
+        return not (rhythm._DA.search(new) and len(new) < rhythm.LONG)
+    if kind == "long":
+        return len(new) >= rhythm.LONG
+    if kind == "glue":
+        return len(rhythm._GLUE.findall(new)) < len(rhythm._GLUE.findall(old))
+    return None
+
+
+def _mend_learn(book: dict, got: dict) -> None:
+    """갈래별 성공/시도를 원고에 쌓는다. 원고에 남아야 이어 쓸 때도 이어 배운다."""
+    tally = book.setdefault("mend", {})
+    for kind, (t, f) in got.items():
+        was = tally.get(kind, [0, 0])
+        tally[kind] = [was[0] + t, was[1] + f]
+
+
+MEND_TRIES = int(os.environ.get("DRIFT_MEND_TRIES", "6"))
+MEND_OK = float(os.environ.get("DRIFT_MEND_OK", "0.5"))
+
+
+def mend_broken(book: dict) -> list:
+    """손질로 **안 고쳐지는** 갈래들. 충분히 시도해 보고도 반절을 못 넘긴 것."""
+    out = []
+    for kind, (t, f) in (book.get("mend") or {}).items():
+        if t >= MEND_TRIES and f / t < MEND_OK:
+            out.append((kind, t, f))
+    return sorted(out, key=lambda x: x[2] / x[1])
+
+
+def ahead_brief(book: dict) -> str:
+    """**고쳐지지 않는 것은 미리 막는다.** 손질은 한 번뿐이고, 한 번에 안 되면 그것은
+    고칠 수 없는 것이 아니라 **뒤늦게 시켰기 때문**인 경우가 많다. 되받아 고치는 데
+    거듭 실패한 갈래는 초고 단계에서 못박는다 -- 호출은 안 는다. 한 줄이다."""
+    broken = mend_broken(book)
+    if not broken:
+        return ""
+    kind, t, f = broken[0]
+    why = PATCHABLE.get(kind, "")
+    return (f"[초고에서 막을 것] **이 갈래는 나중에 못 고친다.** 여태 {t}번 고치려 했고 "
+            f"{f}번만 됐다. 그러니 처음 쓸 때 아예 그렇게 쓰지 마라 -- {why}")
 
 
 def write_prompt(book: dict, feedback: str = "") -> str:
@@ -1034,6 +1106,8 @@ def write_prompt(book: dict, feedback: str = "") -> str:
 {turned(book)}
 
 {owed_brief(book)}
+
+{ahead_brief(book)}
 
 {_must(book)}
 {feedback}
@@ -1180,7 +1254,7 @@ def step(book: dict, llm, log=None) -> dict:
     probe, clashes = _read(text)
 
     # **고칠 것을 한 번에 다 보낸다.** 모순도 리듬도 같은 한 장에 담는다.
-    items = mend_items(text, clashes, "".join(book["chunks"]))
+    items, kinds = mend_items(text, clashes, "".join(book["chunks"]), with_kinds=True)
     # 결함(모순 · 메아리)은 하나라도 고친다. 나머지는 MEND_MIN 개는 모여야 부른다.
     hard = bool(clashes) or bool(echo_lines(text, "".join(book["chunks"])))
     if items and not hard and len(items) < MEND_MIN:
@@ -1193,8 +1267,14 @@ def step(book: dict, llm, log=None) -> dict:
                                 tries=1, label="flow 손질")
         except ValueError:
             fixed = {}
-        mended, done = apply_patch(text, [x for x, _ in items], fixed)
+        mended, done, pairs = apply_patch(text, [x for x, _ in items], fixed)
         if done:
+            _mend_learn(book, verify_patch(pairs, kinds))
+            _b = mend_broken(book)
+            if _b:
+                D._log("[flow] 손질로 안 고쳐지는 갈래: "
+                       + " · ".join(f"{k} {f}/{t}" for k, t, f in _b)
+                       + " -- 초고에서 막는다")
             D._log(f"[flow] 문장 {done}/{len(items)}개를 고쳤다")
             # **고친 것이 모순이었을 때만 다시 읽는다.** 다시 읽기는 추출 호출 한 번이라
             # 덩어리마다 3회가 4회가 된다. 모순을 고쳤으면 정말 나아졌는지 확인해야
