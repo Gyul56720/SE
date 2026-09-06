@@ -76,6 +76,7 @@ jobs:
           python3 tests/test_genre.py
           python3 tests/test_corpus.py
           python3 tests/test_profile.py
+          python3 tests/test_score.py
           python3 tests/test_shock.py
           python3 tests/test_bond.py
           python3 tests/test_open.py
