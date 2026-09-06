@@ -7,6 +7,26 @@
 set -u
 SE="${SE_DIR:-/home/ubuntu/SE}"
 cd "$SE" || exit 1
+OUT="$SE/logs/preflight.log"
+mkdir -p "$SE/logs"
+
+# **3분 안에 안 끝난다.** 테스트 마흔 개를 다 돌리면 2~3분이 걸리는데, Discord 에서
+# 부르면 도구 타임아웃에 잘린다. 잘린 검사는 "준비 완료" 가 아니다 -- 잘린 지점
+# 뒤에 무엇이 있었는지 아무도 모른다. 그래서 백그라운드로 돌리는 길을 둔다.
+case "${1:-}" in
+  --bg)
+    setsid nohup "$0" --run > "$OUT" 2>&1 < /dev/null &
+    disown
+    sleep 2
+    echo "준비 검사를 백그라운드로 돌린다. 2~4분 걸린다."
+    echo "  결과: tail -40 $OUT"
+    echo "  끝났는지: grep -c '준비' $OUT"
+    exit 0 ;;
+  --quick)
+    SKIP_TESTS=1 ;;
+  *) ;;
+esac
+SKIP_TESTS="${SKIP_TESTS:-}"
 bad=0
 ok()   { printf '  OK   %s\n' "$*"; }
 no()   { printf '  실패 %s\n' "$*"; bad=$((bad + 1)); }
@@ -25,11 +45,13 @@ sys.exit(0 if any(os.getenv(k) for k in
 PY
 
 # 2. 한도 -- 지금 부를 수 있는 후보가 있나
-if python3 scripts/quota_show.py --brief; then
-  ok "쓸 수 있는 후보가 있다"
-else
-  warn "지금은 다 소진이다 -- 루프가 알아서 기다린다(자정에 풀린다)"
-fi
+python3 scripts/quota_show.py --brief
+case $? in
+  0) ok "쓸 수 있는 후보가 있다" ;;
+  3) warn "지금은 다 소진이다 -- 루프가 알아서 기다린다(자정에 풀린다)" ;;
+  # **기다린다고 풀릴 문제가 아닌 것**은 주의가 아니라 실패다.
+  *) no "부를 후보를 하나도 못 세웠다 -- 키나 설치를 고쳐야 한다" ;;
+esac
 
 # 3. 디스크 -- 원고와 로그가 쌓인다
 avail=$(df -Pk "$SE" | awk 'NR==2 {print $4}')
@@ -62,7 +84,9 @@ PY
 
 # 6. 테스트 -- 깨진 채로 밤새 돌리지 않는다
 # 설정이 다 있는 기계에서만 깨지는 검사가 없는지도 같이 본다 -- 다섯 번 겪었다.
-if SE_TEST_AS_CONFIGURED=1 scripts/tests.sh > /tmp/preflight_tests.log 2>&1; then
+if [ -n "$SKIP_TESTS" ]; then
+  warn "테스트는 건너뛰었다(--quick) -- 띄우기 전에 한 번은 전부 돌려라"
+elif SE_TEST_AS_CONFIGURED=1 scripts/tests.sh > /tmp/preflight_tests.log 2>&1; then
   pass=$(grep -c '^  OK' /tmp/preflight_tests.log)
   skip=$(grep -c '^  건너뜀' /tmp/preflight_tests.log)
   total=$((pass + skip))
