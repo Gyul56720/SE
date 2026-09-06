@@ -129,6 +129,13 @@ MEND_MIN = int(os.environ.get("DRIFT_MEND_MIN", "3"))
 LAYER = os.environ.get("DRIFT_LAYER", "text")
 # 직전 덩어리를 재서 어긋난 축만 싣는다. 끄면 예전처럼 상수 프롬프트다.
 DYNAMIC = os.environ.get("DRIFT_DYNAMIC", "1") not in ("0", "false", "")
+# **프롬프트를 무엇으로 짓는가.**
+#   "axes"   -- 재는 축에서 짓는다(compose.py). 손으로 쓴 문장론은 한 줄도 안 들어간다
+#   "legacy" -- 예전 것. 사람이 쓴 작법서 7,000자가 통째로 실린다
+# 기본이 axes 인 이유: 그 작법서가 표본과 어긋나 있었고, 어긋난 요구가 원고를 망치고
+# 있었다(늘어짐의 뿌리가 우리 지시였다). 재는 자가 없는 요구는 지켜졌는지 알 수 없고,
+# 알 수 없는 것은 고칠 수도 없다. legacy 는 견주려고 남긴다.
+PROMPT = os.environ.get("DRIFT_PROMPT", "axes")
 
 
 def _story() -> bool:
@@ -1127,6 +1134,18 @@ def _offbrief(book: dict) -> str:
 
 
 def write_prompt(book: dict, feedback: str = "") -> str:
+    if PROMPT == "axes":
+        from novel import compose
+        return compose.build(
+            book,
+            ledger=brief(book["ledger"], now=len(book["chunks"])),
+            asks="\n\n".join(x for x in (compose.offbrief(book), owed_brief(book),
+                                          ahead_brief(book), feedback) if x),
+            opening_head=_open_head(book))
+    return _legacy_prompt(book, feedback)
+
+
+def _legacy_prompt(book: dict, feedback: str = "") -> str:
     tail = "".join(book["chunks"])[-TAIL:]
     opening = not book["chunks"]
     return f"""{'이 문장으로 소설을 연다' if opening else '아래 글을 이어서 쓴다'}.

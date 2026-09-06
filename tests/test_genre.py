@@ -12,6 +12,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from novel import flow, genre, shock as SH, wording as W              # noqa: E402
 
+# **이 파일은 예전 프롬프트를 켜고 본다.** 기본은 axes 다(flow.PROMPT="axes") --
+# 프롬프트를 재는 축에서 짓고, 손으로 쓴 문장론은 한 줄도 안 넣는다.
+# 여기서 검사하는 것은 그 옛 작법서 블록의 내용이라 켜 놓고 본다.
+flow.PROMPT = "legacy"
+
+
 # **이 파일은 서사층까지 켜고 본다.** 기본값은 문면층만이다(flow.LAYER = "text") --
 # 재는 것 열넷이 전부 문면층인데 서사까지 시키면 지켜졌는지 알 수가 없어서다.
 # 여기서 검사하는 것은 그 서사층 블록의 **내용**이라 켜 놓고 본다.

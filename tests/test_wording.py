@@ -13,6 +13,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from novel import flow, rhythm, shock as SH, wording as W             # noqa: E402
 
+# **이 파일은 예전 프롬프트를 켜고 본다.** 기본은 axes 다(flow.PROMPT="axes") --
+# 프롬프트를 재는 축에서 짓고, 손으로 쓴 문장론은 한 줄도 안 넣는다.
+# 여기서 검사하는 것은 그 옛 작법서 블록의 내용이라 켜 놓고 본다.
+flow.PROMPT = "legacy"
+
+
 _bad = []
 
 

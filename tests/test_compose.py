@@ -1,0 +1,87 @@
+"""**프롬프트를 축에서 짓는다** -- 손으로 쓴 문장론은 한 줄도 안 들어간다.
+
+지금까지의 프롬프트는 사람이 쓴 작법서였다(7,000자 페르소나 + 규칙 블록). 표본을 재
+보니 그 요구가 표본과 어긋나 있었고, 어긋난 요구가 원고를 망기고 있었다 -- 늘어짐의
+뿌리가 우리 지시였다. 그래서 규칙 하나로 다시 짓는다:
+
+    **프롬프트에 들어가는 모든 줄은 재는 축에 매여 있어야 한다. 못 재는 것은 안 쓴다.**
+
+여기서 고정하는 것은 그 규칙이다.
+
+실행: python3 tests/test_compose.py
+"""
+from __future__ import annotations
+
+import re
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from novel import compose, flow, profile as PF, targets as TG         # noqa: E402
+
+fails = []
+
+
+def ok(cond, label):
+    print(f"    {'OK  ' if cond else '실패'} {label}")
+    if not cond:
+        fails.append(label)
+
+
+BK = flow.blank()
+BK["chunks"] = ["그는 갔다.\n" * 300]
+
+print("[규칙] **모든 줄이 재는 축에 매여 있다**")
+ok(set(compose.SAY) <= set(PF.AXES), "이름을 붙인 축은 전부 재는 축이다")
+ok(all(TG.band(k) for k in compose.SAY), "축마다 표본에서 온 폭이 있다")
+_p = flow.write_prompt(BK)
+for _gone in ("[문장]", "[상황]", "[점층]", "[리듬]", "[낱말]", "[정밀]", "[심층]",
+              "[아이러니]", "[스윙]", "[여백]", "[농담]", "[결]"):
+    ok(_gone not in _p, f"손으로 쓴 작법서 항목이 없다: {_gone}")
+ok("건조" not in _p and "하루키" not in _p, "문체를 말로 규정하지 않는다")
+
+print()
+print("[수] **목표는 표본에서 오고 덩어리마다 흔들린다**")
+_a1 = dict(compose.aims("씨", 1, list(compose.SAY)))
+_a2 = dict(compose.aims("씨", 2, list(compose.SAY)))
+ok(_a1 != _a2, "덩어리마다 다르다  ← 매번 같은 몫이면 그것이 단조로움이다")
+for _k, _v in _a1.items():
+    _lo, _hi = TG.band(_k)
+    ok(_lo <= _v <= _hi, f"{_k}: 표본 폭 안이다 ({_v:.2f} ∈ {_lo:.2f}~{_hi:.2f})")
+ok(compose.aims("씨", 3, list(compose.SAY)) == compose.aims("씨", 3, list(compose.SAY)),
+   "같은 씨앗·번호면 같다  ← 이어 써도 재현된다")
+
+print()
+print("[고르기] **다섯 개만 보여 준다** -- 열넷을 다 보여 주면 그것도 목록이다")
+_blk = compose.target_block("씨", 4)
+ok(_blk.count("  · ") == compose.SHOW, f"{compose.SHOW}개만 ({_blk.count('  · ')}개)")
+_seen = {tuple(re.findall(r"· ([^:]+):", compose.target_block("씨", n)))
+         for n in range(10)}
+ok(len(_seen) > 5, f"보여 주는 축도 덩어리마다 다르다 ({len(_seen)}가지)")
+
+print()
+print("[짜임] **뼈대만 있다**")
+ok("[분량]" in _p and "[세계" in _p and "끝부분" in _p, "분량 · 원장 · 꼬리")
+ok(len(_p) < 4000, f"짧다 ({len(_p):,}자)")
+_first = flow.write_prompt(flow.blank())
+ok("첫 문장" in _first or "여는 좌표" in _first, "첫 덩어리에는 여는 자리를 준다")
+ok(len(_first) < 1500, f"첫 덩어리는 더 짧다 ({len(_first):,}자)  ← 꼬리가 없다")
+
+print()
+print("[예문] **하나도 없다**")
+# **프롬프트에 예문이 있는지를 본다.** 코드의 축 이름이나 주석이 아니라, 실제로
+# 모델에게 나가는 글에 따옴표로 묶인 본보기 문장이 있는지다 -- 그것이 도배를 부른다.
+_body = _p.split("[지금까지의 끝부분", 1)[0]      # 꼬리는 원고지 예문이 아니다
+_quoted = re.findall(r'["“‘][가-힣][^"”’]{10,}["”’]', _body)
+ok(not _quoted, f"프롬프트에 본보기 문장이 없다 ({_quoted[:1]})")
+ok("처럼)" not in _body and "같이)" not in _body, "'~처럼' 으로 예를 달지 않는다")
+ok(not re.search(r"\d{4}년", _body), "프롬프트에 연도가 없다")
+ok(not re.search(r"[A-Za-z]{4,}", _body.replace("DRIFT", "")),
+   "영어 낱말이 안 섞인다  ← 축 이름은 사람 말로 옮겨서 준다")
+
+print()
+if fails:
+    print(f"짓기: {len(fails)}개 실패 -- {fails}")
+    sys.exit(1)
+print("짓기: 규칙 · 수 · 고르기 · 짜임 · 예문 없음 -- 통과")

@@ -74,21 +74,23 @@ ok(not _re.search(r"\d{2,}(?![}%])", _txt.replace("{", " {")),
 print()
 print("[프롬프트] **첫 덩어리는 다 주고, 그다음엔 어긋난 것만**")
 _first = flow.write_prompt(flow.blank())
-ok("길이를 섞어라 -- 이건 재서 판정한다" in _first,
-   "첫 덩어리에는 기준을 다 준다  ← 잴 것이 없다")
+ok("[이번 대목의 수]" in _first,
+   "첫 덩어리에는 목표 수를 준다  ← 잴 것이 없으니 수로 말해 준다")
+ok("[직전 덩어리에서 어긋난 것]" not in _first, "첫 덩어리에는 어긋난 것이 없다")
 _next = flow.write_prompt(dict(flow.blank(), chunks=[FLAT]))
-ok("길이를 섞어라 -- 이건 재서 판정한다" not in _next,
-   "이어 쓸 때는 그 상수 블록을 안 싣는다")
-ok("[직전 덩어리에서 어긋난 것]" in _next, "대신 어긋난 축만 싣는다")
-ok("재서 판정한다" in _next, "재서 본다는 것은 여전히 말해 준다")
+ok("[직전 덩어리에서 어긋난 것]" in _next, "이어 쓸 때는 어긋난 축이 실린다")
+ok(len(_next) < 4000, f"프롬프트가 짧다 ({len(_next):,}자 · 대부분이 꼬리다)")
 
-_was = flow.DYNAMIC
+_was = flow.PROMPT
 try:
-    flow.DYNAMIC = False
-    ok("길이를 섞어라 -- 이건 재서 판정한다" in flow.write_prompt(
-        dict(flow.blank(), chunks=[FLAT])), "끄면 예전 그대로다  ← 지운 것이 아니다")
+    flow.PROMPT = "legacy"
+    _old = flow.write_prompt(dict(flow.blank(), chunks=[FLAT]))
+    ok("길이를 섞어라 -- 이건 재서 판정한다" in _old or len(_old) > 10000,
+       f"예전 프롬프트도 남아 있다 ({len(_old):,}자)  ← 견주려고 남긴다")
+    ok(len(_next) < len(_old) / 3,
+       f"새 것이 3분의 1 아래다 ({len(_next):,} 대 {len(_old):,}자)")
 finally:
-    flow.DYNAMIC = _was
+    flow.PROMPT = _was
 
 print()
 if fails:
