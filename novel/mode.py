@@ -49,8 +49,11 @@ _INNER = re.compile(
 WATCH = {
     "묘사": ("sent_len", "sent_var", "long", "short", "outside", "scene",
              "para_len", "glue", "climb"),
+    # 이음 축(dialog · t2t · n2t · tag_rate · talk_run · rally)은 글 전체에서 재고,
+    # 줄의 성질(길이 · 물음 · 말끝 · 낱말)은 대사 줄만 모아서 잰다.
     "대사": ("dialog", "t2t", "n2t", "tag_rate", "talk_len2", "talk_run",
-             "rally", "q_rate", "ell_rate", "talk_len"),
+             "rally", "q_rate", "ell_rate", "talk_len",
+             "sent_len", "short", "end_var", "ttr", "comma", "josa_rate"),
     "전환": ("scene", "para_len", "short", "clock", "sent_len"),
     "내면": ("da_share", "end_var", "end_var2", "sent_len", "glue", "ttr"),
     "맺음": ("close_t", "short", "sent_len", "askrate"),
@@ -69,9 +72,11 @@ SAY = {
 # 갈래별로 따로 재면 안 되는 축. **이음은 갈래를 섞어야 나오는 수다** -- 대사 줄만
 # 모아 놓고 "지문 다음이 대사일 확률" 을 재면 언제나 0 이다. 이름·장면도 글 전체를
 # 봐야 하므로 여기 둔다.
+# **이음만 뺀다.** 줄 하나하나의 성질(대사 한 줄의 길이 · 묻는 대사의 몫)은 대사
+# 줄만 모아 놓고도 그대로 잴 수 있다. 처음에 그것까지 빼 놓았더니 대사 갈래가 보는
+# 축이 0개가 되어, 제일 특이한 갈래에 수가 하나도 안 붙었다.
 BLIND = ("dialog", "t2t", "n2t", "t2n", "tag_rate", "talk_run", "talk_max",
-         "talk_len", "talk_len2", "rally", "open_t", "close_t", "q_rate",
-         "ex_rate", "ell_rate", "names", "newname", "scene", "repeat")
+         "rally", "open_t", "close_t", "names", "newname", "scene", "repeat")
 
 # 갈래별 수를 두는 자리. 없으면 안 쓴다.
 NUMS = os.environ.get("DRIFT_MODE_TARGETS", str(
@@ -82,13 +87,10 @@ def split(text: str) -> dict:
     """글을 갈래별 글로 가른다. **한 자로 다 재니 폭이 벌어졌다** -- 대사 줄은 짧고
     묘사 줄은 길어서, 섞어 재면 문장 길이가 21~55자가 된다. 그 폭은 어느 갈래의
     것도 아니다."""
+    lines = [l for l in text.splitlines() if l.strip()]
     out = {a: [] for a in STATES}
-    prev = "묘사"
-    for l in text.splitlines():
-        if not l.strip():
-            continue
-        prev = of(l, prev)
-        out[prev].append(l)
+    for l, a in zip(lines, seq(text)):
+        out[a].append(l)
     return {a: "\n".join(v) for a, v in out.items() if v}
 
 
