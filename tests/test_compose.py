@@ -34,7 +34,15 @@ BK["chunks"] = ["그는 갔다.\n" * 300]
 
 print("[규칙] **모든 줄이 재는 축에 매여 있다**")
 ok(set(compose.SAY) <= set(PF.AXES), "이름을 붙인 축은 전부 재는 축이다")
-ok(all(TG.band(k) for k in compose.SAY), "축마다 표본에서 온 폭이 있다")
+# 폭이 아직 없는 축(표본을 다시 재야 나오는 것)은 **조용히 빠진다** -- 목표를
+# 지어내지 않는다. 이름만 있고 폭이 없으면 프롬프트에 안 실린다.
+_named = [k for k in compose.SAY if TG.band(k)]
+ok(len(_named) >= 12, f"폭이 있는 축이 프롬프트에 실린다 ({len(_named)}개)")
+ok(all(f"{compose.SAY[k]} =" in flow.write_prompt(flow.blank()) for k in _named),
+   "폭이 있는 축은 하나도 안 빠진다")
+ok(not any(f"{compose.SAY[k]} =" in flow.write_prompt(flow.blank())
+           for k in compose.SAY if not TG.band(k)),
+   "폭이 없는 축은 안 실린다  ← 목표를 지어내지 않는다")
 _p = flow.write_prompt(BK)
 for _gone in ("[문장]", "[상황]", "[점층]", "[리듬]", "[낱말]", "[정밀]", "[심층]",
               "[아이러니]", "[스윙]", "[여백]", "[농담]", "[결]"):
@@ -53,20 +61,22 @@ ok(compose.aims("씨", 3, list(compose.SAY)) == compose.aims("씨", 3, list(comp
    "같은 씨앗·번호면 같다  ← 이어 써도 재현된다")
 
 print()
-print("[고르기] **다섯 개만 보여 준다** -- 열넷을 다 보여 주면 그것도 목록이다")
+print("[고르기] **전부 보여 준다** -- 수정이 한 번뿐이니 처음이 자세해야 한다")
 _blk = compose.target_block("씨", 4)
-ok(_blk.count("  · ") == compose.SHOW, f"{compose.SHOW}개만 ({_blk.count('  · ')}개)")
-_seen = {tuple(re.findall(r"· ([^:]+):", compose.target_block("씨", n)))
+ok(compose.SHOW == 0, "기본은 **전부** 보여 준다  ← 수정이 한 번뿐이라 처음이 자세해야 한다")
+ok(_blk.count("  · ") == len(_named), f"폭이 있는 축을 다 준다 ({_blk.count('  · ')}개)")
+_vals = {tuple(re.findall(r"= \*\*([^*]+)\*\*", compose.target_block("씨", n)))
          for n in range(10)}
-ok(len(_seen) > 5, f"보여 주는 축도 덩어리마다 다르다 ({len(_seen)}가지)")
+ok(len(_vals) > 5, f"값은 덩어리마다 다르다 ({len(_vals)}가지)")
 
 print()
 print("[짜임] **뼈대만 있다**")
 ok("[분량]" in _p and "[세계" in _p and "끝부분" in _p, "분량 · 원장 · 꼬리")
-ok(len(_p) < 4000, f"짧다 ({len(_p):,}자)")
+ok(len(_p) < 5000, f"그래도 짧다 ({len(_p):,}자)  ← 예전은 13,417자였다")
 _first = flow.write_prompt(flow.blank())
 ok("첫 문장" in _first or "여는 좌표" in _first, "첫 덩어리에는 여는 자리를 준다")
-ok(len(_first) < 1500, f"첫 덩어리는 더 짧다 ({len(_first):,}자)  ← 꼬리가 없다")
+ok(800 < len(_first) < 3000,
+   f"첫 덩어리는 수와 설명으로 채운다 ({len(_first):,}자)  ← 꼬리가 없는 대신 자세히")
 
 print()
 print("[예문] **하나도 없다**")
@@ -80,8 +90,24 @@ ok(not re.search(r"\d{4}년", _body), "프롬프트에 연도가 없다")
 ok(not re.search(r"[A-Za-z]{4,}", _body.replace("DRIFT", "")),
    "영어 낱말이 안 섞인다  ← 축 이름은 사람 말로 옮겨서 준다")
 
+
+print()
+print("[초고] **처음이 자세해야 한다** -- 수정은 일괄 한 번뿐이다")
+print("      ← 걸린 문장들을 한 장에 담아 한 번에 고치고 끝낸다. 통째로 다시 쓰지")
+print("        않는다. 그러니 초고 프롬프트가 다 말해 줘야 한다.")
+_dr = flow.write_prompt(flow.blank())
+ok(_dr.count("  · ") >= 12, f"축을 다 준다 ({_dr.count('  · ')}개)")
+ok(_dr.count("\n      ") >= 12, "축마다 어떻게 맞추는지도 준다")
+from novel import dyn as _dyn                                         # noqa: E402
+ok(all("aim" in v for k, v in _dyn.load().items() if k in compose.SAY),
+   "그 설명은 코드가 아니라 데이터다(directives.json 의 aim)")
+ok("[이 대목에서 일어날 일]" in _dr, "무엇이 달라질지도 한 걸음 준다")
+_src = Path(flow.__file__).read_text(encoding="utf-8")
+ok("고칠 것을 **전부** 모은다" in _src, "수정은 걸린 것을 다 모아 한 번에 한다")
+ok("한꺼번에** 풀어" in _src or "한꺼번에" in _src, "한 문장에 겹친 딱지도 한 번에 푼다")
+
 print()
 if fails:
     print(f"짓기: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)
-print("짓기: 규칙 · 수 · 고르기 · 짜임 · 예문 없음 -- 통과")
+print("짓기: 규칙 · 수 · 고르기 · 짜임 · 예문 없음 · 초고 -- 통과")

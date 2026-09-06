@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import os
 
-from novel import dyn, profile as PF, targets as TG
+from novel import dyn, plot, profile as PF, targets as TG
 
 # 한 덩어리에 쓸 분량.
 CHARS = int(os.environ.get("DRIFT_CHUNK", "3200"))
@@ -48,9 +48,17 @@ SAY = {
     "rally":     "가장 길게 주고받은 턴 수",
     "para_len":  "문단 하나의 길이(자)",
     "outside":   "밖(이름·수·표기)이 적힌 문장의 몫",
+    # 서사층 대용. 의미를 안 읽고 이야기의 결을 재는 다섯.
+    "names":     "천 자당 여러 번 도는 이름의 수",
+    "newname":   "한 번 나오고 마는 이름의 몫",
+    "scene":     "천 자당 자리·때가 옮겨 가는 자국의 수",
+    "clock":     "시한·약속이 걸린 문장의 몫",
+    "askrate":   "묻는 줄의 몫",
 }
-# 몇 개를 목표로 보여 줄까. 다 보여 주면 그것도 열넷짜리 목록이다.
-SHOW = int(os.environ.get("DRIFT_SHOW_AXES", "5"))
+# **초고 프롬프트는 자세할수록 좋다.** 수정은 덩어리마다 한 번뿐이고 그것도 일괄
+# 수정이다 -- 걸린 문장들을 한 장에 담아 한 번에 고치고 끝낸다. 통째로 다시 쓰지
+# 않는다. 그러니 처음에 다 말해 줘야 한다. 0 이면 재는 축을 전부 싣는다.
+SHOW = int(os.environ.get("DRIFT_SHOW_AXES", "0"))
 
 
 def aims(seed: str, n: int, keys: list) -> list:
@@ -76,17 +84,22 @@ def _fmt(k: str, v: float) -> str:
 
 
 def target_block(seed: str, n: int) -> str:
-    """이번 덩어리가 맞출 수 -- 다섯 개만. 나머지는 자가 뒤에서 본다."""
+    """이번 덩어리가 맞출 수. **전부 준다** -- 수정이 한 번뿐이니 처음이 자세해야 한다."""
     keys = [k for k in PF.AXES if k in SAY]
-    # 덩어리마다 다른 다섯 개를 고른다. 늘 같은 것만 보여 주면 나머지는 잊힌다.
-    import hashlib
-    order = sorted(keys, key=lambda k: hashlib.sha1(
-        f"{seed}|pick|{n}|{k}".encode("utf-8")).hexdigest())
-    rows = [f"  · {SAY[k]}: **{_fmt(k, v)}**" for k, v in aims(seed, n, order[:SHOW])]
+    if SHOW:
+        import hashlib
+        keys = sorted(keys, key=lambda k: hashlib.sha1(
+            f"{seed}|pick|{n}|{k}".encode("utf-8")).hexdigest())[:SHOW]
+    how = dyn.load()
+    rows = []
+    for k, v in aims(seed, n, keys):
+        tip = (how.get(k) or {}).get("aim", "")
+        rows.append(f"  · {SAY[k]} = **{_fmt(k, v)}**" + (f"\n      {tip}" if tip else ""))
     if not rows:
         return ""
-    return ("[이번 대목의 수] 이 수에 맞춰 쓴다. **덩어리마다 다르다** -- 매번 같은\n"
-            "몫으로 쓰면 그것이 곧 단조로움이다.\n" + "\n".join(rows))
+    return ("[이번 대목의 수] **이 수에 맞춰 쓴다.** 덩어리마다 다르다 -- 매번 같은\n"
+            "몫으로 쓰면 그것이 곧 단조로움이다. 아래는 다 재서 판정한다.\n"
+            + "\n".join(rows))
 
 
 def build(book: dict, ledger: str = "", asks: str = "", opening_head: str = "",
@@ -113,6 +126,9 @@ def build(book: dict, ledger: str = "", asks: str = "", opening_head: str = "",
                      + "\n  * **이 마지막 문장 다음 순간부터 써라.** 여기가 지금이다."
                        "\n  * 위 글을 옮겨 적지 마라. 읽으라고 준 것이다."
                        "\n  * 시간은 앞으로만 간다.")
+    # **다음 한 걸음.** 개요는 없다 -- 무엇이 달라지는지 갈래만 정하고 내용은 원고가
+    # 정한다. 걸음도 재는 축에 매여 있다(names · scene · clock · askrate).
+    parts.append(plot.brief(seed, len(chunks), book.get("ledger")))
     if asks:
         parts.append(asks)
     return "\n\n".join(p for p in parts if p)

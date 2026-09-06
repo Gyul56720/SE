@@ -65,7 +65,8 @@ print("[데이터] **지시문은 코드가 아니다**")
 ok(dyn.PATH.exists(), f"파일로 있다 ({dyn.PATH.name})")
 _ax = dyn.load()
 ok(set(_ax) >= set(PF.AXES) - {"repeat"}, f"재는 축마다 지시문이 있다 ({len(_ax)}개)")
-ok(all(set(v) <= {"low", "high"} for v in _ax.values()), "모자랄 때와 넘칠 때를 따로 적는다")
+ok(all(set(v) <= {"low", "high", "aim"} for v in _ax.values()),
+   "모자랄 때 · 넘칠 때 · 초고용을 따로 적는다")
 _txt = " ".join(s for v in _ax.values() for s in v.values())
 import re as _re                                                      # noqa: E402
 ok(not _re.search(r"\d{2,}(?![}%])", _txt.replace("{", " {")),
