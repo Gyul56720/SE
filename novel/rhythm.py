@@ -27,6 +27,8 @@ import hashlib
 import os
 import re
 
+from novel import targets as TG
+
 # 문장 끝 '-다'. 닫는 따옴표나 괄호가 뒤에 붙어도 '-다' 로 센다.
 #
 # **'-다' 자체는 죄가 없다.** 기준으로 삼은 하루키 예문(style.py 의 [상황]/[점층])을 재보면
@@ -84,8 +86,12 @@ BEAT_MIN_VAR = 0.15
 
 # **긴 문장의 몫도 덩어리마다 흔든다.** 0.15 를 하한으로 두었더니 모델이 정확히 15%를,
 # 그것도 규칙적인 자리에 놓았다 -- 그것이 '단문 셋에 장문 하나' 의 정체였다.
-LONG_LO = float(os.environ.get("DRIFT_TELL_LONG_LO", "0.10"))
-LONG_HI = float(os.environ.get("DRIFT_TELL_LONG_HI", "0.40"))
+# **이제 이 수는 표본에서 온다**(targets.json). 우리가 지어낸 0.10~0.40 은 표본의
+# 0.00~0.49 와 자리가 달랐고, 그 어긋남이 -고 · -면서 늘어짐의 뿌리였다 -- 표본에
+# 없는 목표를 맞추려니 절을 이어 붙인 것이다. 환경변수를 주면 그것이 이긴다.
+_LONG_BAND = TG.band("long", (0.10, 0.40))
+LONG_LO = float(os.environ.get("DRIFT_TELL_LONG_LO", _LONG_BAND[0]))
+LONG_HI = float(os.environ.get("DRIFT_TELL_LONG_HI", _LONG_BAND[1]))
 LONG_SLACK = float(os.environ.get("DRIFT_TELL_LONG_SLACK", "0.08"))
 LOOK = int(os.environ.get("DRIFT_TELL_LOOK", "2"))
 # 방향 탐색의 세기. 비례항은 흔들림을 잡고, 누적항은 정상 편차를 없앤다. 둘 다 크면
@@ -93,8 +99,11 @@ LOOK = int(os.environ.get("DRIFT_TELL_LOOK", "2"))
 # **대사가 원고의 절반이다.** 0.10 은 "대사가 아예 없지는 않게" 하는 바닥이었지 목표가
 # 아니었다. 대사가 이야기를 밀고, 정보는 대사에 녹는다. 고정 하한을 두지 않고 구간을
 # 조준한다 -- 어떤 대목은 거의 다 대사고, 어떤 대목은 서술이 더 많다.
-TALK_LO = float(os.environ.get("DRIFT_TALK_LO", "0.35"))
-TALK_HI = float(os.environ.get("DRIFT_TALK_HI", "0.65"))
+# 표본의 대사 몫은 0.01~0.29 다. 우리가 두었던 0.35~0.65 는 표본 어디에도 없다 --
+# "대사가 원고의 절반" 은 웹소설 한 편을 보고 세운 짐작이었고, 네 편을 재니 아니었다.
+_TALK_BAND = TG.band("dialog", (0.35, 0.65))
+TALK_LO = float(os.environ.get("DRIFT_TALK_LO", _TALK_BAND[0]))
+TALK_HI = float(os.environ.get("DRIFT_TALK_HI", _TALK_BAND[1]))
 TALK_SLACK = float(os.environ.get("DRIFT_TALK_SLACK", "0.10"))
 P_GAIN = float(os.environ.get("DRIFT_P_GAIN", "0.6"))
 I_GAIN = float(os.environ.get("DRIFT_I_GAIN", "1.2"))
@@ -104,12 +113,16 @@ I_GAIN = float(os.environ.get("DRIFT_I_GAIN", "1.2"))
 SHORT_RUN = int(os.environ.get("DRIFT_TELL_SHORT_RUN", "6"))
 LONG_RUN = int(os.environ.get("DRIFT_TELL_LONG_RUN", "3"))
 
+# **표본의 하위 10% / 상위 10%.** 가운뎃값을 목표로 삼지 않는다 -- 그러면 모든
+# 덩어리가 가운뎃값이 되고, 표본 자체가 그렇지 않다. 여기 있는 것은 "표본에서 제일
+# 심한 것보다 심하면 짚는다" 는 뜻이다.
 LIMITS = {
-    "da":   0.62,   # **짧은** '-다' 가 이보다 많으면 단조롭다 (하루키 예문은 14%)
+    "da":   TG.band("da_share", (0.62, 0.62))[1],
     "run":  4,      # 짧은 '-다' 가 이만큼 내리 이어지면 끊어야 한다
-    "long": 0.15,   # 긴 문장이 이보다 적으면 목록처럼 읽힌다
-    "climb": 5,     # **서술문 이만큼마다 하나**는 앞 문장을 받아 올려야 한다
-    "talk": 0.10,   # 대사가 이보다 적으면 '-다' 를 깰 수단이 하나 빠진 것이다
+    "long": TG.band("long", (0.15, 0.15))[0],
+    # 서술문 몇 개마다 하나 -- 표본은 서술문당 0.09 였다(열한 개마다 하나).
+    "climb": max(1, round(1 / max(TG.mid("climb", 0.2), 0.01))),
+    "talk": TG.band("dialog", (0.10, 0.10))[0],
 }
 
 # **길게 쓰라는 말이 절을 잇는 것으로 풀린다.** 길이를 글자수로 재는데, 글자수를 늘리는
@@ -119,7 +132,7 @@ LIMITS = {
 # **위만 본다.** 하한을 두면 하한을 맞추고, 접속을 금지하면 문장이 다시 토막 난다.
 # 좋은 표본은 서술문 하나에 연결어미가 반 개쯤이었다(두 표본 다). 그 곱절을 넘으면 되민다.
 _GLUE = re.compile(r"[가-힣](고|며|면서|는데|은데|아서|어서|다가|지만|거나|든지|고서)\s")
-GLUE_MAX = float(os.environ.get("DRIFT_GLUE_MAX", "1.1"))
+GLUE_MAX = float(os.environ.get("DRIFT_GLUE_MAX", TG.band("glue", (1.1, 1.1))[1]))
 
 
 def glue(text: str) -> float:

@@ -137,8 +137,11 @@ ok([c for c in rhythm.check(_talky, talk=0.9) if "대사가 전체 줄의" in c]
    "목표가 아홉 할이면 모자라다고 한다")
 ok([c for c in rhythm.check(_talky, talk=0.2) if "희곡이지 소설이 아니다" in c],
    "서술이 있어야 할 대목에서 대사만 이어지면 그것도 잡는다")
-ok(0.35 <= (rhythm.TALK_LO + rhythm.TALK_HI) / 2 <= 0.65,
-   f"절반 언저리를 조준한다 ({rhythm.TALK_LO}~{rhythm.TALK_HI})")
+# **표본이 정한다.** '대사가 원고의 절반' 은 웹소설 한 편을 보고 세운 짐작이었고,
+# 네 편을 재니 0.01~0.29 였다(실측 2026-09-06 · 154토막).
+from novel import targets as _TG                                      # noqa: E402
+ok((rhythm.TALK_LO, rhythm.TALK_HI) == _TG.band("dialog"),
+   f"대사 몫을 표본에서 가져온다 ({rhythm.TALK_LO}~{rhythm.TALK_HI})")
 src2 = Path(flow.__file__).read_text(encoding="utf-8")
 ok("_dialogue(book)" in src2, "프롬프트가 자와 같은 숫자를 본다")
 ok("내력도 사정도 숫자도 대사 안에 녹는다" in src2, "정보를 대사에 녹이라고 한다")

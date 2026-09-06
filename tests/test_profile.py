@@ -87,6 +87,23 @@ src = (Path(P.__file__)).read_text(encoding="utf-8")
 ok("style" not in src.split("import")[1][:200], "프롬프트 쪽을 건드리지 않는다")
 
 print()
+print("[목표] **목표값이 표본에서 온다**")
+print("      ← 실측 2026-09-06: 우리가 요구하던 값이 거의 다 표본과 어긋났다.")
+print("        긴 문장 0.15 요구 <-> 표본 0.03 · 점층 0.20 <-> 0.09 · 대사 0.35~0.65 <-> 0.01~0.29")
+from novel import rhythm as R, targets as T                           # noqa: E402
+ok(T.source(), f"어디서 온 수인지 적혀 있다 ({T.source()})")
+ok(set(T.load()) >= set(P.AXES) - {"_n", "_chars"}, "재는 축마다 목표가 있다")
+ok((R.LONG_LO, R.LONG_HI) == T.band("long"), "긴 문장 구간을 표본에서 가져온다")
+ok((R.TALK_LO, R.TALK_HI) == T.band("dialog"), "대사 구간을 표본에서 가져온다")
+ok(R.GLUE_MAX == T.band("glue")[1], "절 잇기 상한을 표본에서 가져온다")
+ok(R.LIMITS["climb"] == max(1, round(1 / T.mid("climb"))),
+   f"점층 간격도 표본에서 (서술문 {R.LIMITS['climb']}개마다 하나)")
+ok(all(isinstance(v, dict) and set(v) == {"lo", "mid", "hi"} for v in T.load().values()),
+   "축마다 하한 · 가운뎃값 · 상한을 들고 있다")
+ok(all(isinstance(x, (int, float)) for v in T.load().values() for x in v.values()),
+   "목표는 전부 수다  ← 원문 조각이 섞이면 그것이 프롬프트로 샌다")
+
+print()
 if fails:
     print(f"프로필: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)
