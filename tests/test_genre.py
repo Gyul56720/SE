@@ -192,6 +192,26 @@ ok(len(_ye) >= 18, f"덩어리마다 다른 뒤틀림이 나온다 ({len(_ye)}/2
 ok(genre.tune("youth", "초현실", 1) == 0, "현실 바운더리 안이다")
 
 print()
+print("[여는 좌표] **첫 문장을 고정하면 그 문장의 세계가 원고를 끌고 간다**")
+print("      ← 지명 하나가 백 덩어리를 따라다녔다. 그렇다고 매번 같은 문장으로 열면")
+print("        매번 같은 데서 시작한다. 그래서 문장 대신 좌표를 뽑는다.")
+_o1, _o2 = genre.opening("youth", "가"), genre.opening("youth", "나")
+ok(_o1.startswith("[좌표]"), "좌표 표식으로 시작한다")
+ok("무대" in _o1 and "관계" in _o1, "무대와 관계를 뽑아 준다")
+ok(_o1 != _o2, "씨앗이 다르면 다른 자리에서 연다")
+ok(len({genre.opening("youth", str(i)) for i in range(20)}) >= 15,
+   "스무 번 돌리면 열다섯 자리 넘게 나온다")
+ok(genre.opening("", "가") == "", "갈래가 없으면 좌표도 없다")
+_ob = flow.blank(genre.opening("youth", "가")); _ob["genre"] = "youth"
+_op = flow.write_prompt(_ob)
+ok("첫 문장은 네가 지어라" in _op,
+   "좌표로 열면 문장을 주지 않는다  ← 사람이 지은 문장은 말씨까지 심는다")
+ok("[첫 문장 — 이것으로 시작하라]" not in _op, "머리표가 바뀐다")
+ok("좌표를 문장으로 옮겨 적지 마라" in _op, "좌표를 그대로 받아쓰지 못하게 한다")
+ok("[첫 문장 — 이것으로 시작하라]" in flow.write_prompt(flow.blank(flow.FIRST)),
+   "문장을 주면 예전 머리표 그대로다  ← 주는 길도 남는다")
+
+print()
 print("[끄기] **갈래가 초현실을 끌 수 있다**")
 print("      ← 직장물로 돌렸는데 죽은 사람이 걸어 다니고 시간을 거스르는 서류가")
 print("        나오는 미스터리가 됐다. '말한 것이 실제가 된다' 장치 하나가 이야기를")

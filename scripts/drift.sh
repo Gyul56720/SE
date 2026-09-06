@@ -34,7 +34,8 @@
 #   위 환경변수를 주면 그것이 이긴다. 옛 원고가 옛 설정으로 계속 도는 일은 없다.
 #   SE_DIR   저장소 위치        (기본 /home/ubuntu/SE)
 #   BOOK     원고 파일          (기본 $SE_DIR/novel/drift.json)
-#   FIRST    첫 문장 (start 에서만)
+#   FIRST    첫 문장 (start 에서만). **안 주고 GENRE 를 주면** 갈래 축에서
+#            여는 좌표를 무작위로 뽑고 첫 문장은 화자가 그 자리에서 짓는다
 set -u
 
 SE="${SE_DIR:-/home/ubuntu/SE}"
@@ -117,6 +118,9 @@ case "${1:-status}" in
     set -- --out "$BOOK" --chars "${2:-8000}" ${GENRE:+--genre "$GENRE"} ${DRIFT:+--drift "$DRIFT"} ${MATTER:+--matter "$MATTER"} \
            ${BODY:+--body "$BODY"} ${BOND:+--bond "$BOND"}
     [ -n "${FIRST:-}" ] && set -- "$@" --first "$FIRST"
+    # 첫 문장을 안 주면 갈래 축에서 여는 좌표를 뽑는다 -- 고정 문장을 쓰면 그 문장의
+    # 세계(지명 · 말씨)가 원고 전체를 끌고 간다.
+    [ -z "${FIRST:-}" ] && [ -n "${GENRE:-}" ] && set -- "$@" --first-seed
     launch "새 원고를" "$@"
     # **정말 새 원고인지 확인한다.** 앞 런이 살아 있으면 같은 파일에 계속 쓰므로 옛
     # 인물·장소가 그대로 남는다(실측: "이야기가 바뀌었는데 이전 소설 내역이 남아 있다").

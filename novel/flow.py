@@ -195,6 +195,16 @@ OPENING = """[이 첫 덩어리가 할 일]
 
 # ---------------------------------------------------------------- 원장
 
+def _open_head(book: dict) -> str:
+    """첫 덩어리의 머리표. **좌표로 열면 문장을 주지 않는다** -- 사람이 지은 첫 문장은
+    그 문장의 세계(지명 · 연도 · 말씨)를 원고 전체에 심는다. 좌표만 주면 어디서 여는지는
+    정해지고 무엇을 쓸지는 화자가 그 자리에서 정한다."""
+    if book.get("first", "").lstrip().startswith("[좌표]"):
+        return ("[여는 좌표 — **첫 문장은 네가 지어라.** 아래는 어디서 여는지일 뿐이다.\n"
+                " 좌표를 문장으로 옮겨 적지 마라 -- 그 자리에서 이미 벌어지고 있는 일로 열어라]")
+    return "[첫 문장 — 이것으로 시작하라]"
+
+
 def blank(first: str = FIRST) -> dict:
     # shocks: 지금까지 터진 사건의 수. 뽑기가 여기 묶여 있어 이어 쓰기에도 순서가 이어진다.
     # since: 마지막 사건 이후 쓴 글자 수.
@@ -1001,7 +1011,7 @@ def write_prompt(book: dict, feedback: str = "") -> str:
     트라우마, 좋아하는 것, 취미, 전공, 직업, 말투, 버릇까지. 전부 한 번에 늘어놓지는 마라 --
     지금 필요한 두세 개만 문장에 녹이고, 나머지는 뒤에서 하나씩 드러낸다.
 
-{'[첫 문장 — 이것으로 시작하라]' if opening else '[지금까지의 끝부분 — 여기서 이어 쓴다]'}
+{_open_head(book) if opening else '[지금까지의 끝부분 — 여기서 이어 쓴다]'}
 {book['first'] if opening else '...' + tail}
 {'' if opening else FORWARD}
 
@@ -1440,6 +1450,8 @@ def main() -> int:
     ap.add_argument("--read", default="")
     ap.add_argument("--chars", type=int, default=6000)
     ap.add_argument("--first", default=FIRST)
+    ap.add_argument("--first-seed", action="store_true",
+                    help="첫 문장을 주는 대신 갈래 축에서 여는 좌표를 무작위로 뽑는다")
     ap.add_argument("--hours", type=float, default=12.0)
     ap.add_argument("--genre", default=GENRE.DEFAULT,
                     help=f"갈래 꾸러미 ({' · '.join(GENRE.names())}). 비우면 안 씌운다")
@@ -1478,9 +1490,19 @@ def main() -> int:
               f"{sum(len(c) for c in book['chunks']):,}자", file=sys.stderr)
         return 0
 
+    # **여는 좌표.** 첫 문장을 안 주고 갈래 축에서 뽑는다. 씨앗은 시각이라 돌릴 때마다
+    # 다른 자리에서 열리고, 뽑힌 좌표는 원고에 그대로 박혀 이어 쓸 때도 같은 것이 쓰인다.
+    first = a.first
+    if getattr(a, "first_seed", False):
+        if not a.genre:
+            print("--first-seed 는 갈래가 있어야 한다 (--genre 를 줘라).", file=sys.stderr)
+            return 2
+        first = GENRE.opening(a.genre, str(time.time()))
+        print(f"[여는 좌표]\n{first}", file=sys.stderr)
+
     path = a.resume or a.out
     book = (json.loads(Path(path).read_text(encoding="utf-8"))
-            if a.resume and Path(a.resume).exists() else blank(a.first))
+            if a.resume and Path(a.resume).exists() else blank(first))
 
     # **첫 문장이 다르면 다른 소설이다.** 원장에는 앞 소설의 인물·장소·사물이 그대로
     # 남아 있어서, 그 위에 새 이야기를 얹으면 없던 사람이 걸어 들어오고 모순 검사도
@@ -1488,7 +1510,8 @@ def main() -> int:
     # 아직 이전 소설의 내역들이 그대로 남아있는 것 같아").
     #
     # 조용히 지우지는 않는다 -- 밤새 쓴 원고일 수 있다. 멈추고 무엇을 하라고 알려 준다.
-    if a.resume and book.get("first") and book["first"] != a.first:
+    if a.resume and book.get("first") and not getattr(a, "first_seed", False) \
+            and book["first"] != a.first:
         print("첫 문장이 다르다 -- 이건 다른 소설이다. 이어 쓰지 않는다.\n"
               f"  원고에 박힌 첫 문장: {book['first'][:40]}...\n"
               f"  지금 주어진 첫 문장: {a.first[:40]}...\n"
