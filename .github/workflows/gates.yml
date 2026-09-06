@@ -56,35 +56,14 @@ jobs:
       - name: G004 적용 범위 (파이썬 오탐 없음 · 셸에서는 그대로)
         run: python3 tests/test_g004_scope.py
 
-      - name: 소설 파이프라인 내구성 (깨진 JSON 이 밤을 날리지 않는가)
-        run: |
-          python3 tests/test_json_resilience.py
-          python3 tests/test_agency.py
-          python3 tests/test_probe_world.py
-          python3 tests/test_seed.py
-          python3 tests/test_timeline.py
-          python3 tests/test_novel_episode.py
-          python3 tests/test_novel_drive.py
-          python3 tests/test_novel_gate.py
-          python3 tests/test_style.py
-          python3 tests/test_length.py
-          python3 tests/test_freewrite.py
-          python3 tests/test_flow.py
-          python3 tests/test_rhythm.py
-          python3 tests/test_diffusion.py
-          python3 tests/test_wording.py
-          python3 tests/test_genre.py
-          python3 tests/test_corpus.py
-          python3 tests/test_profile.py
-          python3 tests/test_score.py
-          python3 tests/test_dyn.py
-          python3 tests/test_shock.py
-          python3 tests/test_bond.py
-          python3 tests/test_open.py
-          python3 tests/test_echo.py
-          python3 tests/test_drift_trigger.py
-          python3 tests/test_rounds.py
-          python3 tests/test_seeded_world.py
+      - name: 테스트 전부 (목록은 scripts/tests.sh 한 군데에만 있다)
+        # **로컬과 같은 것을 돌린다.** 전에는 여기에 파일 이름을 손으로 나열했고,
+        # 새 테스트를 만들면 넣는 것을 잊었다 -- 로컬은 초록인데 CI 만 빨갛거나,
+        # 더 나쁘게는 CI 만 초록인 일이 생긴다.
+        env:
+          # 의존성이 없어 건너뛰는 것을 CI 에서는 실패로 만든다.
+          SE_REQUIRE_DEPS: "1"
+        run: scripts/tests.sh
 
       - name: 오케스트레이터 계획 수리 테스트
         run: python3 tests/test_planner_repair.py
