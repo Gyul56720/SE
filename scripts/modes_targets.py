@@ -63,6 +63,14 @@ def main(argv=None) -> int:
             if len(piece) < MIN_PIECE:
                 continue
             vals = PF.measure(piece)
+            if m == "대사":
+                # 따옴표를 벗겨 다시 잰다. 다만 따옴표가 있어야 나오는 축은
+                # 벗기지 않은 것에서 가져온다.
+                bare = PF.measure(MD.unquote(piece))
+                if bare:
+                    for k, v in bare.items():
+                        if k not in MD.QUOTED:
+                            vals[k] = v
             if not vals:
                 continue
             for k in solo:

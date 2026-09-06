@@ -27,7 +27,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from novel import mode as MD                                          # noqa: E402
+from novel import mode as MD, profile as PF                          # noqa: E402
 
 fails = []
 
@@ -136,6 +136,19 @@ ok("talk_len2" not in str(ex.get("묘사", "")) and "대사" in ex,
    "대사 자리 수가 묘사 자리에 안 붙는다")
 ok("맺음" not in ex, "잰 적 없는 갈래에는 수가 안 붙는다(빈 줄을 지어내지 않는다)")
 ok(ex["묘사"] in txt and ex["대사"] in txt, "그 수가 프롬프트에 실린다")
+
+print("\n[대사에는 따옴표를 벗기고 잰다]")
+# rhythm 은 따옴표로 시작하는 줄을 문장에서 뺀다. 대사 줄만 모아 놓으면 잴 문장이
+# 거의 안 남아서, A 의 대사 갈래 sent_len 이 4~21자로 나왔다 -- 대사 길이가 아니라
+# 대사 사이에 낀 몇 줄의 길이였다.
+_talk = '"가자. 지금 당장 가야 한다."\n"왜?"\n"늦었으니까."\n' * 30
+_raw = PF.measure(_talk)
+_bare = PF.measure(MD.unquote(_talk))
+ok("sent_len" not in _raw, "따옴표를 안 벗기면 잴 문장이 없다  ← 여기가 그 잘못이었다")
+ok(_bare.get("sent_len", 0) > 0, f"벗기면 대사 문장이 잰다 ({_bare.get('sent_len', 0):.1f}자)")
+ok(MD.unquote('"가자."') == "가자.", "따옴표만 벗기고 글자는 안 건드린다")
+ok("talk_len2" in MD.QUOTED and "sent_len" not in MD.QUOTED,
+   "따옴표가 있어야 나오는 축은 벗기지 않은 것에서 가져온다")
 
 print("\n[이름이 겹치지 않는다]")
 from novel import state as WORLD                                      # noqa: E402

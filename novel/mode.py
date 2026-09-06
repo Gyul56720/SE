@@ -98,6 +98,22 @@ def split(text: str) -> dict:
     return {a: "\n".join(v) for a, v in out.items() if v}
 
 
+# 대사 줄만 모아 놓으면 **문장 자가 헛돈다.** rhythm 은 따옴표로 시작하는 줄을
+# 대사로 보고 문장에서 빼기 때문에, 대사 갈래에서는 잴 문장이 거의 안 남는다
+# (실측: A 의 대사 갈래 sent_len 이 4~21자, 짧은 문장 몫이 1.00 이었다 -- 그건 대사
+# 길이가 아니라 대사 사이에 낀 몇 줄의 길이였다). 그래서 따옴표를 벗겨 다시 잰다.
+_MARKS = re.compile(r'^\s*[\"“‘\'(\[]|[\"”’)\]]\s*$', re.M)
+
+
+def unquote(text: str) -> str:
+    """따옴표만 벗긴다. 안의 글자는 안 건드린다."""
+    return _MARKS.sub("", text)
+
+
+# 따옴표가 있어야 나오는 축. 벗긴 글로 재면 안 되는 것들이다.
+QUOTED = ("talk_len2", "talk_len", "q_rate", "ex_rate", "ell_rate", "quote")
+
+
 def nums(path: str = "") -> dict:
     """갈래별 폭. {갈래: {축: {lo, mid, hi}}}. 없으면 빈 것 -- 그러면 갈래 줄에
     수가 안 붙고 예전과 같아진다."""
