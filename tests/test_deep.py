@@ -91,6 +91,69 @@ ok(g["겹친 몫"] < 1.0 and any("장면꼴" in m for m in g["어긋난 것"]),
    f"어긋나면 무엇이 어긋났는지 댄다 ({g['겹친 몫']})")
 ok(deep.gap({}, one)["잰 칸"] == 0, "못 잰 칸은 안 센다  ← 빈 것을 통과로 세지 않는다")
 
+# **부를 수 없는 것을 예순일곱 번 불렀다.** drive._extractor 는 "주입한 것은 주입한
+# 대로 쓴다" 는 규칙 때문에 None 을 주면 None 을 돌려준다. 그것을 부르면 TypeError 가
+# 나는데, 갈래 이름만 찍고 넘어가는 바람에 같은 잘못이 예순일곱 줄로 흘러갔다.
+print("\n[배선 -- 부를 수 있는 것을 준다]")
+from novel import drive as D                                         # noqa: E402
+ok(D._extractor(None) is None,
+   "_extractor(None) 은 None 이다  ← 여기에 기대면 안 된다")
+ok(callable(D._extractor(D.default_llm)), "_extractor(default_llm) 은 부를 수 있다")
+
+import importlib.util, json as _json, tempfile as _tf               # noqa: E402
+_spec = importlib.util.spec_from_file_location(
+    "deep_learn", Path(__file__).resolve().parent.parent / "scripts" / "deep_learn.py")
+_dl = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_dl)
+
+_ANSWER = _json.dumps({"장면꼴": "장면", "속도": "장면", "거리": "어깨너머",
+                       "시간": "이어짐", "자리": "실내", "원인": "우연",
+                       "갈등축": "자신과", "갈등끝": "유예", "앎격차": "같음",
+                       "욕망": "유예", "닫는법": "여운", "원인거리": 0,
+                       "사슬깊이": 1, "갈등세기": 1, "거둔거리": 0, "새사실": 1,
+                       "인물수": 2, "새인물": 0, "무엇": "문이 잠겼다",
+                       "누구": "그", "심은것": ""}, ensure_ascii=False)
+
+with _tf.TemporaryDirectory() as t:
+    root = Path(t) / "corpus" / "A"
+    root.mkdir(parents=True)
+    for i in range(4):
+        # PF.MIN_UNIT(1,500자)보다 길어야 잰다. 짧으면 조용히 건너뛴다.
+        (root / f"{i:02d}.txt").write_text(
+            "그는 걸었다. 문이 닫혔다. 바람이 불었다.\n" * 120, encoding="utf-8")
+    out = Path(t) / "deep.json"
+    _calls = []
+
+    def _fake(prompt):
+        _calls.append(prompt)
+        return _ANSWER
+
+    def _dead(prompt):
+        _calls.append(prompt)
+        raise RuntimeError("키가 없다")
+
+    _was = D.extractor_llm
+    try:
+        D.extractor_llm = _fake
+        rc = _dl.main([str(Path(t) / "corpus"), "--only", "A", "--out", str(out)])
+        got = _json.loads(out.read_text(encoding="utf-8"))
+        ok(rc == 0 and len(got["recs"]) == 4,
+           f"부를 수 있는 것을 주면 다 뽑는다 (기록 {len(got['recs'])}개 · 호출 {len(_calls)}회)")
+        ok(len(_calls) == 4, "토막당 한 번만 묻는다  ← 칸이 스물둘이어도 호출은 하나다")
+
+        n0 = len(_calls)
+        _dl.main([str(Path(t) / "corpus"), "--only", "A", "--out", str(out)])
+        ok(len(_calls) == n0, "이미 뽑은 토막은 다시 안 묻는다  ← 이어 돌기")
+
+        out.unlink()
+        _calls.clear()
+        D.extractor_llm = _dead
+        _dl.main([str(Path(t) / "corpus"), "--only", "A", "--out", str(out)])
+        ok(len(_calls) == 3,
+           f"내리 세 번 실패하면 멈춘다 ({len(_calls)}회)  ← 예순일곱 번 태우지 않는다")
+    finally:
+        D.extractor_llm = _was
+
 print()
 if fails:
     print(f"의미층: {len(fails)}개 실패 -- {fails}")

@@ -27,7 +27,9 @@ def main(argv=None) -> int:
     a = ap.parse_args(argv)
 
     from novel import drive as D
-    call = D._extractor(None)
+    # **_extractor(None) 은 None 을 돌려준다** -- 주입한 것을 그대로 쓰는 규칙
+    # 때문이다. None 을 부르면 TypeError 가 나고, 우리는 그걸 예순일곱 번 되풀이했다.
+    call = D._extractor(D.default_llm)
 
     out = Path(a.out or deep.PATH)
     old = deep.load(out)
@@ -41,7 +43,7 @@ def main(argv=None) -> int:
         print(f"잰 것이 없다: {a.root}", file=sys.stderr)
         return 1
 
-    recs, fail = [], 0
+    recs, fail, run = [], 0, 0
     for i, (_w, f) in enumerate(files, 1):
         if f.name in done:                    # **다시 안 묻는다.** 이어 돌기.
             recs.append(done[f.name])
@@ -49,16 +51,25 @@ def main(argv=None) -> int:
         text = corpus.load(f)
         if len(text) < PF.MIN_UNIT:
             continue
+        got = None
         try:
             got = D.call_json(call, deep.ask(text), tries=1,
                               label=f"뜯기 {i}/{len(files)}")
         except Exception as e:
-            print(f"  {i}: 못 뽑았다 ({type(e).__name__})", file=sys.stderr)
-            fail += 1
-            continue
+            # **무엇이 잘못됐는지 댄다.** 갈래 이름만 찍으면 예순일곱 줄이 같은 말이
+            # 되고, 그 예순일곱 줄이 다 같은 한 가지 잘못이었다.
+            print(f"  {i}: 못 뽑았다 -- {type(e).__name__}: {e}", file=sys.stderr)
         if not isinstance(got, dict):
             fail += 1
+            run += 1
+            # **내리 세 번 실패하면 멈춘다.** 첫 번째가 설정 잘못이면 나머지 예순넷도
+            # 같은 잘못이다. 쿼터만 태우고 아무것도 안 남는다.
+            if run >= 3:
+                print(f"  내리 {run}번 실패했다 -- 멈춘다. 위 까닭을 먼저 고쳐라.",
+                      file=sys.stderr)
+                break
             continue
+        run = 0
         r = deep.clean(got)
         r["from"] = f.name
         r["n"] = len(recs)

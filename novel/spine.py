@@ -55,7 +55,8 @@ def ask(text: str) -> str:
 def build(root, llm=None, out=None) -> dict:
     """토막마다 비트 하나. **덩어리당 호출 한 번**이고 그것으로 끝이다."""
     from novel import drive as D
-    call = llm or D._extractor(None)
+    # _extractor(None) 은 None 을 돌려준다(주입한 것은 주입한 대로 쓰는 규칙).
+    call = llm or D._extractor(D.default_llm)
     beats = []
     files = PF.unit_files(root)
     for i, (work, f) in enumerate(files, 1):
