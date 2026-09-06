@@ -65,3 +65,7 @@ novel/seeded.scenes.jsonl
 
 # 원고 옆에 쌓이는 못 고친 것들 -- 부산물이라 저장소에 안 넣는다
 *.debt.jsonl
+
+# 표본 소설. 저작물이라 저장소에 넣지 않는다 -- VM 안에만 둔다.
+novel/corpus/
+novel/holdout/
