@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import os
 
-from novel import dyn, mode as MD, plot, profile as PF, spine, targets as TG
+from novel import deep, dyn, mode as MD, plot, profile as PF, spine, targets as TG
 
 # 한 덩어리에 쓸 분량.
 CHARS = int(os.environ.get("DRIFT_CHUNK", "3200"))
@@ -227,8 +227,10 @@ def build(book: dict, ledger: str = "", asks: str = "", opening_head: str = "",
                        "\n  * 시간은 앞으로만 간다.")
     # **다음 한 걸음.** 개요는 없다 -- 무엇이 달라지는지 갈래만 정하고 내용은 원고가
     # 정한다. 걸음도 재는 축에 매여 있다(names · scene · clock · askrate).
-    # **뼈대가 있으면 그 차례를 따라간다**(spine.json). 없으면 갈래만 뽑아 준다.
-    parts.append(spine.brief(len(chunks)) or
+    # **셋 중 있는 것을 쓴다.** 의미층 기록(deep.json)이 있으면 그것이 제일 자세하다
+    # -- 스물두 칸을 그 대목의 값 그대로 시킨다. 없으면 뼈대(spine.json)의 한 줄,
+    # 그것도 없으면 갈래만 뽑아 준다. 지어내서 시키지는 않는다.
+    parts.append(deep.brief(len(chunks)) or spine.brief(len(chunks)) or
                  plot.brief(seed, len(chunks), book.get("ledger")))
     if asks:
         parts.append(asks)
