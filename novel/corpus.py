@@ -20,6 +20,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -27,8 +28,12 @@ import unicodedata
 from dataclasses import dataclass, asdict
 from pathlib import Path
 
-# 목표 길이. 표식이 없을 때만 쓴다 -- 웹 연재 한 회가 대개 이 언저리다.
+# 목표 길이. 웹 연재 한 회가 대개 이 언저리다.
 TARGET = 5000
+# **표식으로 자른 뒤에도 이만큼을 넘으면 다시 자른다.** 장 하나가 십만 자인 단행본이
+# 있다(실측: 한 토막 310,835자). 그걸 한 덩이로 두면 그 작품의 프로필이 열두 점밖에
+# 안 되고, 화마다 다른 것을 재겠다는 말이 무의미해진다.
+MAX_CHARS = TARGET * 3
 # 이보다 짧은 토막은 앞엣것에 붙인다. 표식이 본문에 우연히 섞인 자리를 걸러 낸다.
 MIN_CHARS = 800
 
@@ -101,11 +106,48 @@ def _by_length(text: str, target: int) -> list:
         if not line.strip() and run >= target:
             breaks.append(i)
             run = 0
+    if breaks:
+        return breaks
+    # **빈 줄이 하나도 없는 원고가 있다**(실측: 한 장이 310,835자인데 통째로 붙어
+    # 있었다). 그때는 줄 경계에서라도 끊는다 -- 문장 한가운데만 아니면 된다.
+    run = 0
+    for i, line in enumerate(lines):
+        run += len(line) + 1
+        if run >= target and i + 1 < len(lines):
+            breaks.append(i)
+            run = 0
     return breaks
 
 
-def split(text: str, target: int = TARGET, min_chars: int = MIN_CHARS) -> list:
-    """토막 목록. 표식이 있으면 표식으로, 없으면 길이로."""
+def _subsplit(body: str, target: int) -> list:
+    """거대한 토막을 빈 줄에서 다시 자른다. 표식으로 자른 결과가 여전히 클 때 쓴다."""
+    lines = body.split("\n")
+    at = [0] + [i + 1 for i in _by_length(body, target)]
+    out = []
+    for n, start in enumerate(at):
+        end = at[n + 1] if n + 1 < len(at) else len(lines)
+        piece = "\n".join(lines[start:end])
+        if piece.strip():
+            out.append(piece)
+    if len(out) > 1:
+        return out
+    # **줄바꿈조차 없는 원고.** 통째로 한 줄인 파일이 있다. 마지막 수단으로 문장 끝에서
+    # 끊는다 -- 여기서도 못 끊으면 그냥 둔다(문장 한가운데를 자르느니 큰 채로 두는 편이
+    # 낫다. 자른 자리가 문장 안이면 그 뒤로 모든 자가 거짓말을 한다).
+    parts, cur = [], ""
+    for sent in re.split(r'(?<=[.!?…"\u201d])\s*', body):
+        cur += sent
+        if len(cur) >= target:
+            parts.append(cur)
+            cur = ""
+    if cur.strip():
+        parts.append(cur)
+    return parts if len(parts) > 1 else (out or [body])
+
+
+def split(text: str, target: int = TARGET, min_chars: int = MIN_CHARS,
+          max_chars: int = MAX_CHARS) -> list:
+    """토막 목록. 표식이 있으면 표식으로 자르고, **그러고도 큰 것은 길이로 다시** 자른다."""
     lines = text.split("\n")
     found = marks(text)
     # 표식이 본문 길이에 견주어 너무 적으면 못 쓴다 -- 한 덩이가 통째로 남는다.
@@ -133,10 +175,21 @@ def split(text: str, target: int = TARGET, min_chars: int = MIN_CHARS) -> list:
             part, chapter = part + 1 if units else part, 1
         elif kind == "장" and units:
             chapter += 1
-        episode += 1
-        order += 1
-        units.append(Unit(order=order, part=part, chapter=chapter, episode=episode,
-                          title=title, line=start + 1, body=body))
+        # **표식으로 잘랐어도 크면 다시 자른다.** 나뉜 조각은 같은 부 · 장에 남는다.
+        for piece in (_subsplit(body, target) if len(body) > max_chars else [body]):
+            episode += 1
+            order += 1
+            units.append(Unit(order=order, part=part, chapter=chapter, episode=episode,
+                              title=title if piece is body or piece.startswith(title) else "",
+                              line=start + 1, body=piece))
+    # **앞머리 부스러기는 뒤엣것에 붙인다.** 제목만 있는 첫 줄이 한 토막으로 남는다
+    # (실측: 59자 · 61자). 앞에 붙일 것이 없으니 뒤로 붙여야 한다.
+    while len(units) > 1 and len(units[0].body.strip()) < min_chars:
+        head = units.pop(0)
+        units[0].body = head.body + "\n" + units[0].body
+        units[0].title = units[0].title or head.body.strip()[:40]
+    for i, u in enumerate(units, 1):
+        u.order, u.episode = i, i
     return units
 
 
@@ -174,6 +227,8 @@ def main(argv=None) -> int:
     ap.add_argument("--write", action="store_true", help="실제로 쪼개 저장한다")
     ap.add_argument("--target", type=int, default=TARGET)
     ap.add_argument("--min", type=int, default=MIN_CHARS)
+    ap.add_argument("--max", type=int, default=MAX_CHARS,
+                    help="이보다 큰 토막은 길이로 다시 자른다")
     ap.add_argument("--rows", type=int, default=0,
                     help="찍을 토막 수. 0 이면 전부(기본)")
     a = ap.parse_args(argv)
@@ -183,8 +238,16 @@ def main(argv=None) -> int:
     if not files:
         print(f"txt 가 없다: {src}", file=sys.stderr)
         return 1
+    seen: dict = {}
     for f in files:
-        units = split(load(f), a.target, a.min)
+        text = load(f)
+        key = hashlib.sha1(text.encode("utf-8")).hexdigest()
+        if key in seen:
+            # **같은 작품이 두 번 들어오면 그 작품에 두 배 가중치를 주는 것과 같다.**
+            print(f"{f.name}: {seen[key]} 와 글자까지 같다 -- 건너뛴다")
+            continue
+        seen[key] = f.name
+        units = split(text, a.target, a.min, a.max)
         print(report(f, units, a.rows))
         if a.write:
             man = write(units, f.with_suffix(""))

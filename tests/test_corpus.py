@@ -90,6 +90,27 @@ ok((d / "out" / "01-01-001.txt").read_text(encoding="utf-8").count("본문이 �
    "떨군 파일에 본문이 그대로 있다")
 
 print()
+print("[2차 분할] **표식으로 잘랐어도 크면 다시 자른다**")
+print("      ← 실측: 장 하나가 310,835자인 단행본. 한 덩이로 두면 그 작품의 프로필이")
+print("        열두 점밖에 안 되고, 화마다 다른 것을 재겠다는 말이 무의미해진다.")
+huge = "제 1장 어떤 제목\n" + ("문장이 이어진다. " * 60 + "\n\n") * 300
+u = C.split(huge)
+ok(len(u) > 8, f"거대한 장이 여러 토막으로 갈린다 ({len(u)}개)")
+ok(max(len(x.body) for x in u) < C.MAX_CHARS, "어느 토막도 상한을 안 넘는다")
+ok(all(x.chapter == u[0].chapter for x in u), "나뉜 조각은 같은 장에 남는다")
+flat = "제 1장 제목\n" + "문장이 붙어 있다. " * 8000          # 빈 줄이 하나도 없다
+u = C.split(flat)
+ok(len(u) > 5, f"빈 줄이 없어도 자른다 ({len(u)}개)  ← 그런 원고가 실제로 있었다")
+
+print()
+print("[앞머리] **제목만 있는 첫 줄은 뒤엣것에 붙인다**")
+print("      ← 실측: 59자 · 61자짜리 토막. 앞에 붙일 것이 없으니 뒤로 붙여야 한다.")
+u = C.split("어떤 소설의 제목\n\n" + "\n".join(["1화", BODY, "2화", BODY]))
+ok(len(u) == 2, f"부스러기가 사라진다 ({len(u)}개)")
+ok("어떤 소설의 제목" in u[0].body, "붙이면서도 글자는 안 버린다")
+ok(u[0].stem.endswith("001"), f"번호가 1부터 다시 매겨진다 ({u[0].stem})")
+
+print()
 if fails:
     print(f"표본 자르기: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)
