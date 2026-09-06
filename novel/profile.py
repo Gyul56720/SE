@@ -33,7 +33,12 @@ from novel import diffusion, echo, grain, rhythm, voice, wording      # noqa: E4
 # **낱낱까지 잰다.** 한 작품을 흉내 낼 때 켠다 -- 문장 길이와 대사 몫이 맞아도 낱말과
 # 문법이 다르면 다른 글이다. 여러 작품의 평균에 대고 켜면 그 평균은 어느 작품의 것도
 # 아니라서, 낱낱까지 맞추라는 요구가 아무 데도 없는 글을 만든다.
-GRAIN = os.environ.get("DRIFT_GRAIN", "") not in ("", "0", "false")
+# **기본이 켜짐이다.** 끄고 도는 것이 더 위험하기 때문이다: targets.json 은 예순
+# 축을 들고 있는데 집필 쪽이 열아홉만 재면, 나머지 마흔한 축이 프롬프트에서 조용히
+# 빠진다(compose 는 재는 축만 싣는다). 조사도 목소리도 대사 이음도 통째로 사라지는데
+# 아무 데도 빨간불이 안 뜬다 -- 설정을 제대로 한 사람만 보는 실패, 그 반대다.
+# 끄려면 DRIFT_GRAIN=0.
+GRAIN = os.environ.get("DRIFT_GRAIN", "1") not in ("0", "false", "")
 
 # 이보다 짧은 토막은 안 잰다. 꼬리 조각에서 나온 비율은 통계가 아니라 잡음이다.
 MIN_UNIT = 1500
