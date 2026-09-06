@@ -76,6 +76,54 @@ def pos_share(text: str) -> dict:
     return {f"pos_{t}": got.get(t, 0) / tot for t in keep}
 
 
+# **줄과 줄 사이.** 문장 하나하나가 닮아도 **지문 뒤에 대사가 오는지, 대사가 몇 줄
+# 이어지는지, 대사에 지문이 붙는지**가 다르면 다른 글로 읽힌다. 그것이 이 작품의
+# 목소리다. 여기서는 줄의 갈래를 서술(n) 과 대사(t) 로 보고 그 이음을 센다.
+_QLINE = re.compile(r'^\s*[\"\u201c\u2018\'(\[]')
+_TAG = re.compile(r'[\"\u201d\u2019]\s*\S')     # 닫는 따옴표 뒤에 글자가 더 있다 = 지문이 붙었다
+
+
+def _kind(line: str) -> str:
+    return "t" if _QLINE.match(line.strip()) else "n"
+
+
+def flow_shape(text: str) -> dict:
+    """줄의 이음. 전이 확률과 대사 덩이의 길이."""
+    lines = [l for l in text.splitlines() if l.strip()]
+    if len(lines) < 4:
+        return {}
+    ks = [_kind(l) for l in lines]
+    pairs = list(zip(ks, ks[1:]))
+    def p(a, b):
+        tot = sum(1 for x, _y in pairs if x == a) or 1
+        return sum(1 for x, y in pairs if x == a and y == b) / tot
+    runs, cur = [], 0
+    for k in ks:
+        if k == "t":
+            cur += 1
+        elif cur:
+            runs.append(cur)
+            cur = 0
+    if cur:
+        runs.append(cur)
+    talk = [l for l, k in zip(lines, ks) if k == "t"]
+    tot_t = len(talk) or 1
+    return {
+        "n2t":      p("n", "t"),                       # 지문 다음에 대사가 올 확률
+        "t2t":      p("t", "t"),                       # 대사 다음에 또 대사
+        "t2n":      p("t", "n"),                       # 대사 다음에 지문
+        "talk_run": (sum(runs) / len(runs)) if runs else 0.0,   # 대사가 몇 줄씩 이어지나
+        "talk_max": max(runs) if runs else 0,
+        "tag_rate": sum(bool(_TAG.search(l)) for l in talk) / tot_t,  # 대사에 지문이 붙은 몫
+        "q_rate":   sum("?" in l for l in talk) / tot_t,
+        "ex_rate":  sum("!" in l for l in talk) / tot_t,
+        "ell_rate": sum(("…" in l or "..." in l) for l in talk) / tot_t,
+        "talk_len2": sum(len(l.strip()) for l in talk) / tot_t,     # 대사 한 줄의 길이
+        "open_t":   1.0 if ks[0] == "t" else 0.0,      # 이 토막이 대사로 여는가
+        "close_t":  1.0 if ks[-1] == "t" else 0.0,     # 대사로 닫는가
+    }
+
+
 def measure(text: str) -> dict:
     """낱낱의 지문. 전부 비율이라 길이에 안 휘둘린다."""
     words = _TOKEN.findall(text)
@@ -124,12 +172,18 @@ def measure(text: str) -> dict:
     for j in ("은", "는", "이", "가", "을", "를", "의", "에", "도", "만"):
         out[f"josa_{j}"] = josa.get(j, 0) / n
     out.update(pos_share(text))
+    out.update(flow_shape(text))
     return out
 
 
 def axes() -> list:
-    """이 자가 내는 축 이름. 분석기 유무에 따라 달라진다."""
-    return sorted(measure("가나다 라마바. 사아자 차카타.").keys())
+    """이 자가 내는 축 이름. 분석기 유무에 따라 달라진다.
+
+    **줄이 몇 개는 있어야 줄 사이를 잰다.** 짧은 표본으로 물으면 flow_shape 가 빈
+    것을 돌려주고, 그러면 이름 목록에서 대사 축이 통째로 빠진다."""
+    probe = "\n".join(["가나다 라마바 사아자 차카타 파하."] * 3
+                       + ['"어."', "타카파 차자아 사바마."] * 2)
+    return sorted(measure(probe).keys())
 
 
 def how() -> str:

@@ -69,6 +69,19 @@ SAY = {
     "hanja":     "한자의 몫",
     "latin":     "로마자의 몫",
     "digit":     "숫자의 몫",
+    # 줄과 줄 사이 -- 이 작품의 목소리는 여기서 갈린다.
+    "n2t":       "지문 다음 줄이 대사일 확률",
+    "t2t":       "대사 다음 줄이 또 대사일 확률",
+    "t2n":       "대사 다음 줄이 지문일 확률",
+    "talk_run":  "대사가 몇 줄씩 이어지나",
+    "talk_max":  "가장 길게 이어진 대사 줄 수",
+    "tag_rate":  "대사에 지문이 붙은 몫",
+    "q_rate":    "묻는 대사의 몫",
+    "ex_rate":   "느낌표가 붙은 대사의 몫",
+    "ell_rate":  "말줄임이 든 대사의 몫",
+    "talk_len2": "대사 한 줄의 길이(자)",
+    "open_t":    "대사로 여는가",
+    "close_t":   "대사로 닫는가",
 }
 # **초고 프롬프트는 자세할수록 좋다.** 수정은 덩어리마다 한 번뿐이고 그것도 일괄
 # 수정이다 -- 걸린 문장들을 한 장에 담아 한 번에 고치고 끝낸다. 통째로 다시 쓰지
@@ -93,8 +106,10 @@ def aims(seed: str, n: int, keys: list) -> list:
 def _fmt(k: str, v: float) -> str:
     if k in ("sent_len", "para_len", "rally"):
         return f"{v:.0f}"
-    if k in ("wordlen", "comma", "quote", "dash"):
+    if k in ("wordlen", "comma", "quote", "dash", "talk_run"):
         return f"{v:.2f}"
+    if k in ("talk_max", "talk_len2"):
+        return f"{v:.0f}"
     if k in ("glue", "climb"):
         return f"{v:.2f}"
     return f"{v:.0%}"
