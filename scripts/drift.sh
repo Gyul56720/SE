@@ -23,8 +23,8 @@
 #   drift.sh open                   아직 안 닫힌 것들 -- 이 이야기가 갚지 않은 빚
 #
 # 환경변수로 바꿀 수 있는 것:
-#   GENRE    갈래 꾸러미        (romance … / 비우면 안 씌운다)
-#                                예: GENRE=romance drift.sh start 100000
+#   GENRE    갈래 꾸러미        (romance · job · youth / 비우면 안 씌운다)
+#                                예: GENRE=youth drift.sh start 8000
 #   DRIFT    표류 계수 0~1     (기본 1.0 -- 낮추면 급발진·사건이 줄어든다)
 #   MATTER   소재 축 0~1       (기본 0.0 -- 켜면 갈래·매체가 섞인다)
 #   BODY     몸의 사실 0~1     (기본 0.35)

@@ -173,6 +173,25 @@ for _gname, _pack in genre.PACKS.items():
     ok(not _quoted, f"{_gname}: 따옴표 친 예문이 없다 ({_quoted[:1]})")
 
 print()
+print("[청춘] **판돈은 작고 무게는 크다**")
+ok("youth" in genre.names(), "청춘물 꾸러미가 있다")
+_y = genre.brief("youth", "씨", 4)
+ok("[청춘물]" in _y, "머리표가 붙는다")
+ok("시간이 정해져 있다" in _y, "끝이 정해진 기간이 압력이 된다고 말한다")
+ok("자기가 어떤 사람인지 아직 모른다" in _y,
+   "인물이 백지에서 시작한다  ← 겪는 중에 자기도 몰랐던 쪽으로 튄다")
+_yd = genre.tune("youth", "대사", None)
+ok(_yd and _yd[0] > genre.tune("job", "대사", (0, 0))[0],
+   f"직장물보다 말이 많다 (청춘 {_yd} 대 직장 {genre.tune('job', '대사', None)})")
+ok(_yd[1] <= 0.6, "그래도 위를 열어 두지 않는다  ← 대사로만 굴러가면 사건이 요약이 된다")
+ok(genre.tune("youth", "자", {}).get("rally", 0) >= 3,
+   "주고받기는 길게 간다  ← 이 나이대는 실제로 오래 떠든다")
+ok(genre.size("youth") > 5000, f"사건이 곱으로 뽑힌다 ({genre.size('youth'):,}가지)")
+_ye = {tuple(genre.event("youth", "씨", i).values()) for i in range(20)}
+ok(len(_ye) >= 18, f"덩어리마다 다른 뒤틀림이 나온다 ({len(_ye)}/20)")
+ok(genre.tune("youth", "초현실", 1) == 0, "현실 바운더리 안이다")
+
+print()
 print("[끄기] **갈래가 초현실을 끌 수 있다**")
 print("      ← 직장물로 돌렸는데 죽은 사람이 걸어 다니고 시간을 거스르는 서류가")
 print("        나오는 미스터리가 됐다. '말한 것이 실제가 된다' 장치 하나가 이야기를")
