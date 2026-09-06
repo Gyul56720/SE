@@ -75,7 +75,11 @@ def main() -> int:
             return 4
         alive = [lb for lb in alive if lb in pool_labels]
         unseen = [lb for lb in unseen if lb in pool_labels]
-        print(f"쿼터: 키 {len(keys)}개 · 후보 {len(pool_labels) or len(rows)}개 · "
+        # **헤더도 지금 있는 것으로 센다.** 장부에는 예전에 쓰던 키 · 바꾼 키 · 지운
+        # 키가 다 남아 있어서, 그 이름들까지 세면 키 세 개가 스물세 개로 보인다
+        # (실측). 그 수를 보고 사람은 .env 가 이상한가 의심하게 된다.
+        keys = sorted({lb.split(":", 1)[0] for lb in pool_labels})
+        print(f"쿼터: 키 {len(keys)}개 · 후보 {len(pool_labels)}개 · "
               f"지금 쓸 수 있는 것 {len(alive) + len(unseen)}개 · "
               f"소진 {sum(1 for _, d, _c, l, w in rows if l <= 0 and w <= 0 and d == today)}개 · "
               f"분당쉼 {sum(1 for _, _, _c, _l, w in rows if w > 0)}개 · "
@@ -83,7 +87,14 @@ def main() -> int:
         return 0 if (alive or unseen) else 3
     print(f"오늘 {today} · 상한 추정 {q.DEFAULT_DAILY_LIMIT} "
           f"(GEMINI_DAILY_LIMIT 로 바꾼다)")
-    print(f"키 {len(keys)}개: {' · '.join(keys)}")
+    now_keys = sorted({lb.split(":", 1)[0] for lb in pool_labels})
+    if now_keys:
+        print(f"지금 키 {len(now_keys)}개: {' · '.join(now_keys)}")
+    old_keys = [k for k in keys if k not in now_keys]
+    if old_keys:
+        # 장부에만 남은 이름들. 예전에 쓰다 바꾼 키다 -- 지금 있는 키와 섞어 세면
+        # 키가 몇 개인지 알 수가 없다.
+        print(f"장부에만 남은 옛 이름 {len(old_keys)}개(지금은 안 쓴다)")
     if pool_labels:
         unused = [l for l in pool_labels if l not in data]
         print(f"후보 {len(pool_labels)}개 (아직 안 써 본 것 {len(unused)}개도 아래 함께)")
