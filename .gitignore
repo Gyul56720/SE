@@ -78,3 +78,4 @@ novel/holdout/
 # 튜너 장부 -- 시도 기록과 챔피언. 런마다 쌓인다.
 novel/tune.jsonl
 novel/tune.best.json
+novel/arm.json

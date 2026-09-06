@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import re
 import sys
 from pathlib import Path
@@ -100,6 +101,21 @@ def _outside(text: str) -> float:
     return sum(bool(_MARK.search(s)) for s in tell) / len(tell)
 
 
+# **관측을 늘리는 두 번째 손잡이.** 토막을 겹쳐 가며 훑으면 같은 표본에서 더 많은
+# 점이 나온다. 이웃한 창은 서로 겹치니 완전히 독립은 아니지만, 우리가 쓰려는 것은
+# **폭(10~90%)** 이라 그 편향은 작고 폭 추정은 훨씬 안정된다.
+STRIDE = float(os.environ.get("DRIFT_PROFILE_STRIDE", "1.0"))
+
+
+def windows(text: str, size: int, stride: float) -> list:
+    """겹치는 창으로 자른다. stride=1.0 이면 안 겹친다."""
+    if stride >= 1.0 or len(text) <= size:
+        return [text[i:i + size] for i in range(0, len(text), size)] or [text]
+    step = max(1, int(size * stride))
+    out = [text[i:i + size] for i in range(0, max(1, len(text) - size + 1), step)]
+    return [w for w in out if len(w) >= MIN_UNIT]
+
+
 def unit_files(root) -> list:
     """corpus.py 가 떨군 토막들. 원본 txt 는 안 읽는다 -- 자른 것만 본다."""
     root = Path(root)
@@ -116,12 +132,14 @@ def profile(root) -> dict:
         text = f.read_text(encoding="utf-8")
         if len(text) < MIN_UNIT:
             continue
-        m = measure(text)
-        if not m:
-            continue
-        w = works.setdefault(work, {k: [] for k in AXES})
-        for k in AXES:
-            w[k].append(m[k])
+        for piece in (windows(text, len(text), 1.0) if STRIDE >= 1.0
+                      else windows(text, max(MIN_UNIT, len(text) // 2), STRIDE)):
+            m = measure(piece)
+            if not m:
+                continue
+            w = works.setdefault(work, {k: [] for k in AXES})
+            for k in AXES:
+                w[k].append(m[k])
     return works
 
 

@@ -48,6 +48,8 @@ from novel import rhythm                                              # noqa: E4
 from novel import wording                                             # noqa: E402
 from novel import genre as GENRE                                      # noqa: E402
 from novel import style                                               # noqa: E402
+from novel import profile as _prof                                    # noqa: E402
+from novel import targets as TG                                       # noqa: E402
 
 # 한 번에 받는 덩어리. 너무 크면 모델이 뒤로 갈수록 늘어지고, 너무 작으면 점층이 덩어리
 # 경계에 잘린다. 1,200~1,500자가 문장론(점층 -> 전환)이 한 바퀴 도는 크기다.
@@ -1118,7 +1120,10 @@ def _offbrief(book: dict) -> str:
     자체를 여기로 옮긴다(맞고 있는 축은 아예 안 싣게)."""
     if not DYNAMIC or not book["chunks"]:
         return ""
-    return dyn.brief(book["chunks"][-1], climb_words=_climb(book))
+    a = dyn.arm(book.get("seed_id") or book["first"], len(book["chunks"]))
+    book["_arm"] = a
+    return dyn.brief(book["chunks"][-1], limit=a["asks"],
+                     climb_words=_climb(book), slack=a["slack"])
 
 
 def write_prompt(book: dict, feedback: str = "") -> str:
@@ -1365,6 +1370,22 @@ def step(book: dict, llm, log=None) -> dict:
                     text, probe, clashes = mended, probe2, clash2
             else:
                 text = mended
+
+    # **배정된 설정과 그 결과를 함께 적는다.** 이것이 있어야 "어떤 설정이 실제로
+    # 값을 움직였나" 를 나중에 셀 수 있다. 호출은 안 는다 -- 전부 정규식이다.
+    if book.get("_arm") is not None:
+        from novel import score as _SC
+        _m = _prof.measure(text)
+        _gap = 0.0
+        if _m:
+            _ks = [k for k in _prof.AXES if TG.band(k)]
+            for _k in _ks:
+                _lo, _hi = TG.band(_k)
+                _gap += _SC._gap(_m[_k], _lo, _hi)
+            _gap /= max(1, len(_ks))
+        book.setdefault("arms", []).append(
+            {"n": len(book["chunks"]), "arm": book["_arm"], "gap": round(_gap, 4)})
+        book["_arm"] = None
 
     # **남은 것은 버리지 않고 적는다.** 못 고친 곳을 원고와 함께 남겨 두면 나중에
     # 무엇이 안 되는지 볼 수 있다. 원고를 버리면 그것마저 안 남는다.
