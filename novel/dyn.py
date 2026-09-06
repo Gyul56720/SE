@@ -30,6 +30,32 @@ MAX_ASKS = int(os.environ.get("DRIFT_MAX_ASKS", "4"))
 # 이만큼 벗어나야 말한다. 폭 안이면 아무 말도 안 한다.
 SLACK = float(os.environ.get("DRIFT_ASK_SLACK", "0.25"))
 
+# **설정 자체를 덩어리마다 흔든다.** 지시문을 한 번 고치고 런을 통째로 다시 돌리면
+# 한 사이클에 관측이 하나뿐이다 -- 그건 최적화가 아니라 생성이다. 대신 덩어리마다 다른
+# 설정(팔)을 배정하고, 그 덩어리가 어떻게 나왔는지를 팔과 함께 적는다. 서른 덩어리를
+# 쓰면 서른 개의 관측이 공짜로 생긴다. 호출은 하나도 안 는다.
+#
+# 흔드는 것: 몇 개나 싣는가 · 얼마나 벗어나야 말하는가 · 폭의 어디를 겨누는가.
+ARMS = [
+    {"asks": 2, "slack": 0.25, "aim": "mid"},
+    {"asks": 4, "slack": 0.25, "aim": "mid"},
+    {"asks": 6, "slack": 0.15, "aim": "mid"},
+    {"asks": 4, "slack": 0.50, "aim": "near"},
+    {"asks": 1, "slack": 0.25, "aim": "mid"},
+    {"asks": 4, "slack": 0.10, "aim": "near"},
+]
+
+
+def arm(seed: str, n: int) -> dict:
+    """이번 덩어리에 배정된 설정. 원고와 번호로 정해지니 이어 써도 재현된다."""
+    import hashlib
+    h = hashlib.sha1(f"{seed}|arm|{n}".encode("utf-8")).hexdigest()
+    a = dict(ARMS[int(h[:8], 16) % len(ARMS)])
+    a["id"] = ARMS.index(next(x for x in ARMS if x["asks"] == a["asks"]
+                              and x["slack"] == a["slack"] and x["aim"] == a["aim"]))
+    return a
+
+
 _CACHE: dict | None = None
 
 
@@ -43,7 +69,7 @@ def load() -> dict:
     return _CACHE
 
 
-def off(text: str) -> list:
+def off(text: str, slack: float | None = None) -> list:
     """(축, 어느 쪽으로, 거리, 우리 값). 먼 것부터."""
     m = PF.measure(text)
     if not m:
@@ -55,16 +81,17 @@ def off(text: str) -> list:
             continue
         lo, hi = band
         d = SC._gap(m[k], lo, hi)
-        if d > SLACK:
+        if d > (SLACK if slack is None else slack):
             out.append((k, "low" if m[k] < lo else "high", d, m[k]))
     return sorted(out, key=lambda x: -x[2])
 
 
-def asks(text: str, limit: int = MAX_ASKS, climb_words: str = "") -> list:
+def asks(text: str, limit: int = MAX_ASKS, climb_words: str = "",
+         slack: float | None = None) -> list:
     """이번 덩어리에 실을 지시문들. 어긋난 축이 없으면 빈 목록이다."""
     from novel import rhythm
     out = []
-    for kind, side, gap, got in off(text):
+    for kind, side, gap, got in off(text, slack):
         say = (load().get(kind) or {}).get(side, "")
         if not say:
             continue
@@ -78,9 +105,10 @@ def asks(text: str, limit: int = MAX_ASKS, climb_words: str = "") -> list:
     return out
 
 
-def brief(text: str, limit: int = MAX_ASKS, climb_words: str = "") -> str:
+def brief(text: str, limit: int = MAX_ASKS, climb_words: str = "",
+          slack: float | None = None) -> str:
     """프롬프트에 붙일 한 덩이. 다 맞고 있으면 **빈 줄**이다."""
-    items = asks(text, limit, climb_words)
+    items = asks(text, limit, climb_words, slack)
     if not items:
         return ""
     body = "\n".join(f"  {i + 1}. {s}" for i, s in enumerate(items))

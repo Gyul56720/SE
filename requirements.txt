@@ -10,6 +10,9 @@ discord.py>=2.4.0
 # CI(.github/workflows/gates.yml)는 이 패키지들이 실제로 깔렸는지 먼저 확인한다 --
 # 안 그러면 게이트가 조용히 SKIP 되면서 CI 만 초록으로 뜬다.
 numpy>=1.24.0
+# mathgen 의 심판이 이것으로만 푼다(mathgen/_worker.py · champion.py). 없으면
+# test_mathgen_judge 가 죽는데, 예전에는 CI 목록에 그 테스트가 없어서 안 보였다.
+sympy>=1.12
 
 # 2026-09-02 제거: arxiv, paper-qa, pypdf, langchain-groq.
 # 옵시디언 논문 리서치 파이프라인(main.py/collector.py/sources/ 등)과 함께 지워졌고

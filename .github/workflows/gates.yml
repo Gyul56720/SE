@@ -43,7 +43,7 @@ jobs:
         # "서드파티 없음"으로 조용히 SKIP 되고 CI 만 초록으로 뜬다. 검사하지 않은 초록불은
         # 검사한 빨간불보다 나쁘다 -- G008 이 코드에서 막는 vacuous verify 를 CI 가 저지르는
         # 꼴이다. 그래서 먼저 임포트해보고, 안 되면 여기서 멈춘다.
-        run: python3 -c "import langchain_core, langchain_google_genai, langgraph, discord, numpy, requests, dotenv"
+        run: python3 -c "import langchain_core, langchain_google_genai, langgraph, discord, numpy, sympy, requests, dotenv"
 
       - name: 게이트 전체 실행
         run: python3 gatekeeper.py
