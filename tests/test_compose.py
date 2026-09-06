@@ -33,15 +33,17 @@ BK = flow.blank()
 BK["chunks"] = ["그는 갔다.\n" * 300]
 
 print("[규칙] **모든 줄이 재는 축에 매여 있다**")
-ok(set(compose.SAY) <= set(PF.AXES), "이름을 붙인 축은 전부 재는 축이다")
+# 낱낱 축(grain)은 DRIFT_GRAIN 을 켤 때만 재진다. 이름은 미리 있어도 되지만,
+# **폭이 없으면 프롬프트에 안 실린다** -- 아래에서 그것을 확인한다.
+_all = set(PF.AXES) | set(__import__("novel.grain", fromlist=["x"]).axes())
+ok(set(compose.SAY) <= _all, "이름을 붙인 축은 전부 재는 축이다")
 # 폭이 아직 없는 축(표본을 다시 재야 나오는 것)은 **조용히 빠진다** -- 목표를
 # 지어내지 않는다. 이름만 있고 폭이 없으면 프롬프트에 안 실린다.
 _named = [k for k in compose.SAY if TG.band(k)]
 ok(len(_named) >= 12, f"폭이 있는 축이 프롬프트에 실린다 ({len(_named)}개)")
-ok(all(f"{compose.SAY[k]} =" in flow.write_prompt(flow.blank()) for k in _named),
-   "폭이 있는 축은 하나도 안 빠진다")
-ok(not any(f"{compose.SAY[k]} =" in flow.write_prompt(flow.blank())
-           for k in compose.SAY if not TG.band(k)),
+_first_p = flow.write_prompt(flow.blank())
+ok(all(compose.SAY[k] in _first_p for k in _named), "폭이 있는 축은 하나도 안 빠진다")
+ok(not any(compose.SAY[k] in _first_p for k in compose.SAY if not TG.band(k)),
    "폭이 없는 축은 안 실린다  ← 목표를 지어내지 않는다")
 _p = flow.write_prompt(BK)
 for _gone in ("[문장]", "[상황]", "[점층]", "[리듬]", "[낱말]", "[정밀]", "[심층]",
@@ -64,9 +66,11 @@ print()
 print("[고르기] **전부 보여 준다** -- 수정이 한 번뿐이니 처음이 자세해야 한다")
 _blk = compose.target_block("씨", 4)
 ok(compose.SHOW == 0, "기본은 **전부** 보여 준다  ← 수정이 한 번뿐이라 처음이 자세해야 한다")
-ok(_blk.count("  · ") == len(_named), f"폭이 있는 축을 다 준다 ({_blk.count('  · ')}개)")
-_vals = {tuple(re.findall(r"= \*\*([^*]+)\*\*", compose.target_block("씨", n)))
-         for n in range(10)}
+ok(all(compose.SAY[k] in _blk for k in _named),
+   f"폭이 있는 축의 값을 다 준다 ({len(_named)}개)")
+ok(_blk.count("  · ") <= compose.AIMS,
+   f"설명은 {compose.AIMS}개까지 -- 마흔 줄이면 프롬프트가 터지고, 다 강조하면 강조가 아니다")
+_vals = {compose.target_block("씨", n).split("\n")[2] for n in range(10)}
 ok(len(_vals) > 5, f"값은 덩어리마다 다르다 ({len(_vals)}가지)")
 
 print()
@@ -96,8 +100,9 @@ print("[초고] **처음이 자세해야 한다** -- 수정은 일괄 한 번뿐
 print("      ← 걸린 문장들을 한 장에 담아 한 번에 고치고 끝낸다. 통째로 다시 쓰지")
 print("        않는다. 그러니 초고 프롬프트가 다 말해 줘야 한다.")
 _dr = flow.write_prompt(flow.blank())
-ok(_dr.count("  · ") >= 12, f"축을 다 준다 ({_dr.count('  · ')}개)")
-ok(_dr.count("\n      ") >= 12, "축마다 어떻게 맞추는지도 준다")
+ok(all(compose.SAY[k] in _dr for k in _named), f"초고에 축 값을 다 준다 ({len(_named)}개)")
+ok(_dr.count("  · ") >= 4, "어떻게 맞추는지도 몇 개는 준다")
+ok(len(_dr) < 4000, f"그래도 안 터진다 ({len(_dr):,}자)")
 from novel import dyn as _dyn                                         # noqa: E402
 ok(all("aim" in v for k, v in _dyn.load().items() if k in compose.SAY),
    "그 설명은 코드가 아니라 데이터다(directives.json 의 aim)")

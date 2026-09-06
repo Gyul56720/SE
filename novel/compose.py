@@ -54,6 +54,21 @@ SAY = {
     "scene":     "천 자당 자리·때가 옮겨 가는 자국의 수",
     "clock":     "시한·약속이 걸린 문장의 몫",
     "askrate":   "묻는 줄의 몫",
+    # 낱낱(grain). 한 작품을 흉내 낼 때만 폭이 생기고, 폭이 없으면 안 실린다.
+    "ttr":       "쓴 낱말 가운데 서로 다른 것의 몫",
+    "hapax":     "딱 한 번만 쓴 낱말의 몫",
+    "wordlen":   "낱말 평균 글자 수",
+    "josa_rate": "조사가 붙은 어절의 몫",
+    "conn_rate": "연결어미가 붙은 어절의 몫",
+    "josa_var":  "조사가 고르게 흩어진 정도",
+    "conn_var":  "연결어미가 고르게 흩어진 정도",
+    "end_var2":  "종결어미가 고르게 흩어진 정도",
+    "comma":     "백 자당 쉼표 수",
+    "quote":     "백 자당 따옴표 수",
+    "dash":      "백 자당 줄표 수",
+    "hanja":     "한자의 몫",
+    "latin":     "로마자의 몫",
+    "digit":     "숫자의 몫",
 }
 # **초고 프롬프트는 자세할수록 좋다.** 수정은 덩어리마다 한 번뿐이고 그것도 일괄
 # 수정이다 -- 걸린 문장들을 한 장에 담아 한 번에 고치고 끝낸다. 통째로 다시 쓰지
@@ -78,28 +93,54 @@ def aims(seed: str, n: int, keys: list) -> list:
 def _fmt(k: str, v: float) -> str:
     if k in ("sent_len", "para_len", "rally"):
         return f"{v:.0f}"
+    if k in ("wordlen", "comma", "quote", "dash"):
+        return f"{v:.2f}"
     if k in ("glue", "climb"):
         return f"{v:.2f}"
     return f"{v:.0%}"
 
 
-def target_block(seed: str, n: int) -> str:
-    """이번 덩어리가 맞출 수. **전부 준다** -- 수정이 한 번뿐이니 처음이 자세해야 한다."""
-    keys = [k for k in PF.AXES if k in SAY]
+# 설명(aim)을 몇 줄까지 붙일까. 값은 전부 주되 설명까지 마흔 줄이면 프롬프트가 터진다.
+AIMS = int(os.environ.get("DRIFT_SHOW_AIMS", "8"))
+
+
+def target_block(seed: str, n: int, last: str = "") -> str:
+    """이번 덩어리가 맞출 수. **값은 전부, 설명은 몇 개만.**
+
+    수정이 덩어리마다 한 번뿐이라 초고가 자세해야 한다. 그렇다고 축 마흔 개에
+    설명을 다 붙이면 프롬프트가 터지고, 무엇보다 **다 강조하면 강조가 아니다.**
+    그래서 값은 빽빽하게 전부 주고, 어떻게 맞추는지는 **지금 어긋난 축부터** 몇 개만
+    붙인다. 직전 덩어리가 없으면(첫 덩어리) 굵은 축부터 붙인다."""
+    keys = [k for k in PF.AXES if k in SAY and TG.band(k)]
     if SHOW:
         import hashlib
         keys = sorted(keys, key=lambda k: hashlib.sha1(
             f"{seed}|pick|{n}|{k}".encode("utf-8")).hexdigest())[:SHOW]
-    how = dyn.load()
-    rows = []
-    for k, v in aims(seed, n, keys):
-        tip = (how.get(k) or {}).get("aim", "")
-        rows.append(f"  · {SAY[k]} = **{_fmt(k, v)}**" + (f"\n      {tip}" if tip else ""))
-    if not rows:
+    if not keys:
         return ""
-    return ("[이번 대목의 수] **이 수에 맞춰 쓴다.** 덩어리마다 다르다 -- 매번 같은\n"
-            "몫으로 쓰면 그것이 곧 단조로움이다. 아래는 다 재서 판정한다.\n"
-            + "\n".join(rows))
+    vals = dict(aims(seed, n, keys))
+
+    # 어느 축에 설명을 붙일까 -- 직전 덩어리에서 먼 것부터.
+    order = keys
+    if last:
+        far = [k for k, _side, _d, _v in dyn.off(last, slack=0.0) if k in vals]
+        order = far + [k for k in keys if k not in far]
+
+    dense = " · ".join(f"{SAY[k]} {_fmt(k, vals[k]).strip()}" for k in keys)
+    how = dyn.load()
+    tips = []
+    for k in order[:AIMS]:
+        t = (how.get(k) or {}).get("aim", "")
+        if t:
+            tips.append(f"  · **{SAY[k]} {_fmt(k, vals[k]).strip()}** -- {t}")
+    out = ["[이번 대목의 수] **이 수에 맞춰 쓴다.** 덩어리마다 다르다 -- 매번 같은",
+           "몫으로 쓰면 그것이 곧 단조로움이다. 아래는 다 재서 판정한다.",
+           "  " + dense]
+    if tips:
+        out.append("")
+        out.append("  이번에 특히 볼 것:")
+        out += tips
+    return "\n".join(out)
 
 
 def build(book: dict, ledger: str = "", asks: str = "", opening_head: str = "",
@@ -112,7 +153,7 @@ def build(book: dict, ledger: str = "", asks: str = "", opening_head: str = "",
     parts = [
         head or "한국어 소설을 쓴다. 산문만 출력한다 -- 제목도 머리말도 표식도 쓰지 마라.",
         f"[분량] 약 {CHARS}자. 끊지 말고 이어라. 회차도 씬도 없다.",
-        target_block(seed, len(chunks)),
+        target_block(seed, len(chunks), tail if not opening else ""),
     ]
     if ledger:
         parts.append("[세계 — 지금까지 확정된 것]\n" + ledger

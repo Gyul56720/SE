@@ -26,6 +26,11 @@ def main(argv=None) -> int:
     ap.add_argument("--out", default=str(TG.PATH))
     ap.add_argument("--only", default="",
                     help="쉼표로 나눈 작품 이름만 쓴다 -- 갈래가 다른 것을 섞지 않으려고")
+    # **한 작품을 겨눌 때는 폭을 좁힌다.** 10~90% 는 여러 작품을 아우르려고 넓힌
+    # 것이고, 그 안에 들기는 쉽다. 한 작품을 흉내 내는 것이 목적이면 25~75% 로
+    # 조인다 -- 통과하기 어려워야 자가 일을 한다.
+    ap.add_argument("--tight", action="store_true",
+                    help="폭을 25~75% 로 조인다(한 작품을 겨눌 때)")
     a = ap.parse_args(argv)
 
     only = [x.strip() for x in a.only.split(",") if x.strip()]
@@ -35,13 +40,29 @@ def main(argv=None) -> int:
         return 1
     dig = PF.digest(works)
     n = sum(dig["works"][w][PF.AXES[0]]["n"] for w in dig["works"])
-    axes = {k: {"lo": round(v["lo"], 4), "mid": round(v["mid"], 4),
-                "hi": round(v["hi"], 4)}
-            for k, v in dig["all"].items()}
+    if a.tight:
+        pool = {k: [] for k in PF.AXES}
+        for axmap in works.values():
+            for k in PF.AXES:
+                pool[k] += axmap.get(k, [])
+        axes = {}
+        for k, vs in pool.items():
+            if not vs:
+                continue
+            v = sorted(vs)
+            n = len(v)
+            axes[k] = {"lo": round(v[n // 4], 4), "mid": round(v[n // 2], 4),
+                       "hi": round(v[min(n - 1, n * 3 // 4)], 4)}
+    else:
+        axes = {k: {"lo": round(v["lo"], 4), "mid": round(v["mid"], 4),
+                    "hi": round(v["hi"], 4)}
+                for k, v in dig["all"].items()}
     out = {"_": "표본 소설에서 나온 수. 손으로 적지 마라 -- 이 스크립트가 쓴다.",
            "_source": f"{a.root} ({n}토막 · {len(dig['works'])}편"
                       + (f" · {'·'.join(sorted(dig['works']))}" if only else "")
-                      + (f" · 겹쳐 훑음 {PF.STRIDE}" if PF.STRIDE < 1.0 else "") + ")",
+                      + (f" · 겹쳐 훑음 {PF.STRIDE}" if PF.STRIDE < 1.0 else "")
+                      + (" · 좁힌 폭 25~75%" if a.tight else "")
+                      + (" · 낱낱까지" if PF.GRAIN else "") + ")",
            "axes": axes}
     Path(a.out).write_text(json.dumps(out, ensure_ascii=False, indent=1),
                            encoding="utf-8")

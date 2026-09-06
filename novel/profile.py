@@ -28,18 +28,24 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from novel import diffusion, echo, rhythm, wording                    # noqa: E402
+from novel import diffusion, echo, grain, rhythm, wording             # noqa: E402
+
+# **낱낱까지 잰다.** 한 작품을 흉내 낼 때 켠다 -- 문장 길이와 대사 몫이 맞아도 낱말과
+# 문법이 다르면 다른 글이다. 여러 작품의 평균에 대고 켜면 그 평균은 어느 작품의 것도
+# 아니라서, 낱낱까지 맞추라는 요구가 아무 데도 없는 글을 만든다.
+GRAIN = os.environ.get("DRIFT_GRAIN", "") not in ("", "0", "false")
 
 # 이보다 짧은 토막은 안 잰다. 꼬리 조각에서 나온 비율은 통계가 아니라 잡음이다.
 MIN_UNIT = 1500
 
 # **축.** 이름 -> (재는 함수, 무엇인가). 여기 있는 것이 곧 우리가 볼 수 있는 전부다.
 # 늘리는 것은 언제든 되지만, 늘린 축은 프롬프트가 아니라 **점수**에 먼저 들어간다.
-AXES = ("sent_len sent_var long short da_share end_var glue climb dialog talk_len "
-        "rally para_len repeat outside "
-        # **서사층 대용.** 의미를 안 읽고 이야기의 결을 재는 다섯. 정확하지는 않지만
-        # 작품끼리 견주는 데는 쓴다 -- 같은 자로 재기 때문이다.
-        "names newname scene clock askrate").split()
+_BASE = ("sent_len sent_var long short da_share end_var glue climb dialog talk_len "
+         "rally para_len repeat outside "
+         # **서사층 대용.** 의미를 안 읽고 이야기의 결만 잰다.
+         "names newname scene clock askrate").split()
+# 낱낱 축은 grain 이 낸다(품사 · 조사 · 어미 · 어휘 · 부호). GRAIN 을 끄면 안 붙는다.
+AXES = _BASE + (grain.axes() if GRAIN else [])
 
 
 def _sent(text: str) -> list:
@@ -71,7 +77,7 @@ def measure(text: str) -> dict:
     # 토막 크기 그대로 나왔다(5,013 · 5,011 · 5,003자) -- 소설 원문에는 빈 줄이 없다.
     paras = [p for p in text.split("\n") if p.strip()]
     ends = [len(rx.findall(text)) for rx in wording.ENDINGS.values()]
-    return {
+    out = {
         "sent_len":  sum(lens) / len(lens),          # 문장 평균 길이
         "sent_var":  rhythm.spread(lens),            # 길이의 들쭉날쭉함
         "long":      m["long"],                      # 긴 문장 몫
@@ -94,6 +100,9 @@ def measure(text: str) -> dict:
         "_n":        len(tell),
         "_chars":    len(text),
     }
+    if GRAIN:
+        out.update(grain.measure(text))
+    return out
 
 
 # **밖(외현)을 재는 대용.** 밖에서 온 것에는 이름표가 붙는다 -- 수 · 고유명사 표기 ·
