@@ -61,9 +61,21 @@ sys.exit(0 if len(p) > 300 and len(q) > 300 else 1)
 PY
 
 # 6. 테스트 -- 깨진 채로 밤새 돌리지 않는다
-# 설정이 다 있는 기계에서만 깨지는 검사가 없는지도 같이 본다 -- 네 번 겪었다.
+# 설정이 다 있는 기계에서만 깨지는 검사가 없는지도 같이 본다 -- 다섯 번 겪었다.
 if SE_TEST_AS_CONFIGURED=1 scripts/tests.sh > /tmp/preflight_tests.log 2>&1; then
-  ok "테스트 $(grep -c '^  OK' /tmp/preflight_tests.log)개 통과"
+  pass=$(grep -c '^  OK' /tmp/preflight_tests.log)
+  skip=$(grep -c '^  건너뜀' /tmp/preflight_tests.log)
+  total=$((pass + skip))
+  # **건너뛴 것을 통과로 읽지 않는다.** 전에는 OK 줄만 세서, 의존성이 없어 안 돈
+  # 검사가 화면에서 사라졌다(40개 중 39개만 찍혔다). 검사하지 않은 초록불은
+  # 검사한 빨간불보다 나쁘다 -- 이 저장소가 이미 배운 것이다.
+  if [ "$skip" -gt 0 ]; then
+    warn "테스트 ${total}개 중 ${pass}개 통과 · ${skip}개 **건너뜀**(의존성 없음):"
+    grep '^  건너뜀' /tmp/preflight_tests.log | sed 's/^/    /'
+    warn "  pip install -r requirements.txt 로 채워라 -- 안 돈 검사는 통과가 아니다"
+  else
+    ok "테스트 ${total}개 전부 통과"
+  fi
 else
   no "테스트가 깨져 있다 -- tail -30 /tmp/preflight_tests.log"
 fi
