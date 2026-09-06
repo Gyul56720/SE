@@ -79,3 +79,6 @@ novel/holdout/
 novel/tune.jsonl
 novel/tune.best.json
 novel/arm.json
+novel/spine.json
+novel/final.json
+novel/final.txt

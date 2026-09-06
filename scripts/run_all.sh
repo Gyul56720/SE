@@ -91,10 +91,19 @@ python3 novel/tuner.py log 2>&1 | tail -20 | tee -a "$LOG"
 
 [ -f "$STOP" ] && { say "여기서 선다(멈추라는 표시)"; exit 0; }
 
+# **뼈대가 있으면 그 차례를 따라 쓴다.** 없으면 갈래만 뽑아 쓴다.
+if [ -n "${SPINE_FROM:-}" ] && [ ! -f "$SE/novel/spine.json" ]; then
+  say "=== 뼈대를 뽑는다: $SPINE_FROM (토막당 호출 한 번)"
+  python3 novel/spine.py build "$SPINE_FROM" >> "$LOG" 2>&1 \
+    || say "뼈대 뽑기 실패 -- 갈래만 뽑아 쓴다"
+fi
+
 say "=== 배운 것으로 중편을 쓴다 (${FINAL_CHARS}자)"
 BOOK="$SE/novel/final.json" scripts/drift.sh start "$FINAL_CHARS" >> "$LOG" 2>&1
 while /usr/bin/pgrep -f "novel/flow.py" > /dev/null; do sleep 60; done
 python3 novel/flow.py --read "$SE/novel/final.json" > "$SE/novel/final.txt" 2>/dev/null
 say "중편: $SE/novel/final.txt ($(wc -m < "$SE/novel/final.txt" 2>/dev/null || echo 0)자)"
 python3 novel/score.py "$SE/novel/final.json" 2>&1 | tail -20 | tee -a "$LOG"
+[ -f "$SE/novel/spine.json" ] && python3 novel/spine.py cover novel/spine.json \
+  "$SE/novel/final.json" 2>&1 | tee -a "$LOG"
 say "=== 끝. scripts/drift.sh send 로 Discord 에 보낼 수 있다"
