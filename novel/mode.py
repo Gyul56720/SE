@@ -66,6 +66,43 @@ SAY = {
 }
 
 
+# 갈래별로 따로 재면 안 되는 축. **이음은 갈래를 섞어야 나오는 수다** -- 대사 줄만
+# 모아 놓고 "지문 다음이 대사일 확률" 을 재면 언제나 0 이다. 이름·장면도 글 전체를
+# 봐야 하므로 여기 둔다.
+BLIND = ("dialog", "t2t", "n2t", "t2n", "tag_rate", "talk_run", "talk_max",
+         "talk_len", "talk_len2", "rally", "open_t", "close_t", "q_rate",
+         "ex_rate", "ell_rate", "names", "newname", "scene", "repeat")
+
+# 갈래별 수를 두는 자리. 없으면 안 쓴다.
+NUMS = os.environ.get("DRIFT_MODE_TARGETS", str(
+    __import__("pathlib").Path(__file__).resolve().parent / "targets.modes.json"))
+
+
+def split(text: str) -> dict:
+    """글을 갈래별 글로 가른다. **한 자로 다 재니 폭이 벌어졌다** -- 대사 줄은 짧고
+    묘사 줄은 길어서, 섞어 재면 문장 길이가 21~55자가 된다. 그 폭은 어느 갈래의
+    것도 아니다."""
+    out = {a: [] for a in STATES}
+    prev = "묘사"
+    for l in text.splitlines():
+        if not l.strip():
+            continue
+        prev = of(l, prev)
+        out[prev].append(l)
+    return {a: "\n".join(v) for a, v in out.items() if v}
+
+
+def nums(path: str = "") -> dict:
+    """갈래별 폭. {갈래: {축: {lo, mid, hi}}}. 없으면 빈 것 -- 그러면 갈래 줄에
+    수가 안 붙고 예전과 같아진다."""
+    import json
+    try:
+        with open(path or NUMS, encoding="utf-8") as f:
+            return json.load(f).get("modes", {})
+    except (OSError, ValueError):
+        return {}
+
+
 def of(line: str, prev: str = "묘사") -> str:
     """줄 하나의 상태. **순서가 곧 우선순위다** -- 대사가 제일 세다."""
     s = line.strip()
@@ -171,7 +208,7 @@ def brief(model: dict, seed: str, n: int, lines: int = 24) -> str:
     return render(plan(model, seed, n, lines))
 
 
-def render(st: list) -> str:
+def render(st: list, extra: dict | None = None) -> str:
     """상태 열 하나를 프롬프트 한 덩이로. 열을 따로 받는 것은 부르는 쪽이 같은 열로
     **축까지 골라야** 하기 때문이다(state.watched)."""
     if not st:
@@ -182,7 +219,10 @@ def render(st: list) -> str:
     for a, _b in folded:
         if a not in seen:
             seen.append(a)
-    tips = [f"  · **{a}** -- {SAY[a]}" for a in seen]
+    tips = []
+    for a in seen:
+        n = (extra or {}).get(a, "")
+        tips.append(f"  · **{a}** -- {SAY[a]}" + (f"\n      {n}" if n else ""))
     return ("[이 대목의 흐름] 표본이 밟는 순서다. 그대로 밟되 줄 수는 언저리면 된다.\n"
             f"  {road}\n" + "\n".join(tips))
 

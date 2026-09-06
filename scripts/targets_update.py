@@ -57,16 +57,28 @@ def main(argv=None) -> int:
         axes = {k: {"lo": round(v["lo"], 4), "mid": round(v["mid"], 4),
                     "hi": round(v["hi"], 4)}
                 for k, v in dig["all"].items()}
+    # **폭이 0인 축은 빼 버린다.** lo 도 hi 도 mid 도 0 이면 그 축은 표본에서 한
+    # 번도 안 나타난 것이고(A 에서 talk_len · repeat 이 그랬다), 그런 축은 원고를
+    # 가르지 못하면서 설명 여덟 줄 가운데 하나를 차지한다. 게다가 원고가 어쩌다
+    # 0 을 넘기면 영영 어긋난 축으로 남아 매 덩어리 그 자리를 먹는다.
+    dead = [k for k, v in axes.items()
+            if v["lo"] == v["hi"] == v["mid"] == 0.0]
+    for k in dead:
+        del axes[k]
+
     out = {"_": "표본 소설에서 나온 수. 손으로 적지 마라 -- 이 스크립트가 쓴다.",
            "_source": f"{a.root} ({n}토막 · {len(dig['works'])}편"
                       + (f" · {'·'.join(sorted(dig['works']))}" if only else "")
                       + (f" · 겹쳐 훑음 {PF.STRIDE}" if PF.STRIDE < 1.0 else "")
                       + (" · 좁힌 폭 25~75%" if a.tight else "")
-                      + (" · 낱낱까지" if PF.GRAIN else "") + ")",
+                      + (" · 낱낱까지" if PF.GRAIN else " · **낱낱 축 없음**") + ")",
            "axes": axes}
     Path(a.out).write_text(json.dumps(out, ensure_ascii=False, indent=1),
                            encoding="utf-8")
     print(f"{a.out} 에 축 {len(axes)}개를 썼다 -- {out['_source']}")
+    if dead:
+        print(f"  뺀 축 {len(dead)}개(표본에서 늘 0이라 원고를 못 가른다): "
+              + " ".join(dead))
     for k, v in axes.items():
         print(f"  {k:<10} {v['lo']:>8.3f} ~ {v['hi']:<8.3f} (가운데 {v['mid']:.3f})")
     return 0

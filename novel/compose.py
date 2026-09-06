@@ -123,6 +123,31 @@ AIMS = int(os.environ.get("DRIFT_SHOW_AIMS", "8"))
 LINES = int(os.environ.get("DRIFT_STATE_LINES", "24"))
 
 
+# 갈래 하나에 수를 몇 개까지 붙일까. 갈래마다 여섯이면 다섯 갈래에 서른이다.
+MODE_NUMS = int(os.environ.get("DRIFT_MODE_NUMS", "6"))
+
+
+def mode_nums(seed: str, n: int, st: list) -> dict:
+    """갈래마다 **그 갈래에서 잰** 수. 섞어 잰 수 하나로는 대사 줄과 묘사 줄에 같은
+    문장 길이를 시키게 된다 -- A 에서 그 폭이 21.6~55.3자였다.
+
+    targets.modes.json 이 없으면 빈 것을 돌려주고, 그러면 갈래 줄에 수가 안 붙는다."""
+    from novel import rhythm
+    table = MD.nums()
+    out = {}
+    for m in set(st):
+        band = table.get(m) or {}
+        keys = [k for k in MD.WATCH.get(m, ()) if k in band and k in SAY]
+        if not keys:
+            continue
+        vs = []
+        for k in keys[:MODE_NUMS]:
+            v = rhythm.wave(f"{seed}|aim|{m}|{k}", n, band[k]["lo"], band[k]["hi"])
+            vs.append(f"{SAY[k]} {_fmt(k, v).strip()}")
+        out[m] = "(이 갈래에서: " + " · ".join(vs) + ")"
+    return out
+
+
 def target_block(seed: str, n: int, last: str = "", watch=()) -> str:
     """이번 덩어리가 맞출 수. **값은 전부, 설명은 몇 개만.**
 
@@ -185,7 +210,7 @@ def build(book: dict, ledger: str = "", asks: str = "", opening_head: str = "",
     parts = [
         head or "한국어 소설을 쓴다. 산문만 출력한다 -- 제목도 머리말도 표식도 쓰지 마라.",
         f"[분량] 약 {CHARS}자. 끊지 말고 이어라. 회차도 씬도 없다.",
-        MD.render(st),
+        MD.render(st, mode_nums(seed, len(chunks), st)),
         target_block(seed, len(chunks), tail if not opening else "", MD.watched(st)),
     ]
     if ledger:

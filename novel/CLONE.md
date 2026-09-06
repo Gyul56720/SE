@@ -144,12 +144,44 @@ A 가 좁은 낱말을 돌려쓰는 작품이면 `ttr` 이 낮고 `top50` 이 �
 | ④ | 피동 · 도치 · 관형절 겹수 | 분석기가 있어야 한다(VM 에만 kiwi 가 있다) |
 | ⑤ | 이름의 수명 · 동시에 살아 있는 이름 | 서사의 결 |
 
+## 갈래마다 다른 자를 댄다
+
+A 를 25~75%로 좁혀 재도 문장 길이가 **21.6 ~ 55.3자**로 나왔다. 두 배 반이다. 그
+폭 안에 들기는 아무 글이나 든다 -- 자가 일을 안 한다.
+
+폭이 벌어진 까닭은 폭이 넓어서가 아니라 **갈래를 섞어 재기 때문**이다. 대사 줄은
+짧고 묘사 줄은 길다. 한 통에 넣고 가운데를 내면 어느 갈래의 것도 아닌 수가 나온다
+(여러 작품을 섞으면 안 된다던 것과 똑같은 잘못을, 한 작품 안에서 저지르고 있었다).
+
+그래서 줄을 갈래로 가르고 갈래마다 따로 잰다(`scripts/modes_targets.py`). 프롬프트
+에서는 갈래 줄 밑에 그 갈래의 수가 붙는다.
+
+    · **묘사** -- 지금은 보이는 것을 쓴다…
+        (이 갈래에서: 문장 평균 길이 42자 · 긴 문장 31% · 이어 붙인 절 0.43)
+    · **대사** -- 지금은 말이다…
+        (이 갈래에서: 대사 한 줄의 길이 16자 · 묻는 대사의 몫 22%)
+
+이음 축(`n2t` · `t2t` · 대사 몫 · 이름 · 장면)은 여기서 빠진다 -- 갈래를 섞어야
+나오는 수다. 대사 줄만 모아 놓고 "지문 다음이 대사일 확률" 을 재면 언제나 0이다.
+
+## 못 가르는 자는 뺀다
+
+A 에서 `talk_len` 과 `repeat` 이 0.000 ~ 0.000 으로 나왔다. 폭이 0인 축은 원고를
+가르지 못하면서 설명 여덟 줄 가운데 한 자리를 먹고, 원고가 어쩌다 0을 넘기면
+**영영 어긋난 축**으로 남아 매 덩어리 그 자리를 차지한다. 이제 targets_update 가
+자동으로 뺀다.
+
 ## 돌리는 법
 
     git pull
-    python3 scripts/modes_update.py   novel/corpus --only A     # 흐름을 배운다(호출 0)
-    python3 scripts/targets_update.py novel/corpus --only A --tight   # 수를 배운다
+    DRIFT_GRAIN=1 python3 scripts/targets_update.py novel/corpus --only A --tight
+    DRIFT_GRAIN=1 python3 scripts/modes_targets.py  novel/corpus --only A
+    python3 scripts/modes_update.py  novel/corpus --only A     # 흐름 (호출 0회)
     DRIFT_GRAIN=1 python3 scripts/run_all.sh --bg
+
+**`DRIFT_GRAIN=1` 을 빼면 안 된다.** 빼면 축 열아홉 개만 잰다 -- 위 1~3장(낱말 ·
+조사 · 부호 · 어미)이 통째로 빠진다. 빠졌는지는 `targets.json` 의 `_source` 에
+"낱낱 축 없음" 이라고 찍힌다.
 
 `--only A` 와 `--tight` 를 빼면 안 된다. 여러 작품을 섞으면 흐름도 수도 평균으로
 뭉개지고, 폭이 넓으면 그 안에 들기가 너무 쉬워서 자가 일을 안 한다.

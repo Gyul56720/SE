@@ -105,6 +105,38 @@ ok("[이 대목의 흐름]" in on, "배웠으면 흐름이 프롬프트에 실�
 ok("[이 대목의 흐름]" not in off, "안 배웠으면 흐름 줄이 통째로 빠진다")
 ok("[이번 대목의 수]" in off, "그래도 수는 그대로 실린다 -- 예전과 같아진다")
 
+print("\n[갈래마다 다른 수]")
+ok(all(k not in MD.BLIND for k in ("sent_len", "para_len", "glue")),
+   "문장 축은 갈래별로 잰다")
+ok(all(k in MD.BLIND for k in ("n2t", "t2t", "dialog", "scene")),
+   "이음 축은 갈래별로 안 잰다 -- 대사 줄만 모으면 n2t 가 언제나 0이다")
+parts = MD.split(TEXT)
+ok(set(parts) <= set(MD.STATES) and sum(len(v) for v in parts.values()) > 0,
+   f"글을 갈래별 글로 가른다 ({' · '.join(f'{k} {len(v)}자' for k, v in parts.items())})")
+
+with tempfile.TemporaryDirectory() as d:
+    tm = Path(d) / "targets.modes.json"
+    tm.write_text(json.dumps({"modes": {
+        "묘사": {"sent_len": {"lo": 40.0, "mid": 42.0, "hi": 44.0}},
+        "대사": {"talk_len2": {"lo": 15.0, "mid": 16.0, "hi": 17.0}}}},
+        ensure_ascii=False), encoding="utf-8")
+    _was = MD.NUMS
+    try:
+        MD.NUMS = str(tm)
+        from novel import compose as CP
+        st = ["묘사", "묘사", "대사", "맺음"]
+        ex = CP.mode_nums("s1", 0, st)
+        txt = MD.render(st, ex)
+    finally:
+        MD.NUMS = _was
+lines = {l.strip(): l for l in txt.splitlines()}
+ok("묘사" in ex and "40" <= ex["묘사"].split()[-1][:2] <= "44",
+   f"묘사 자리에는 묘사에서 잰 문장 길이가 붙는다 -- {ex.get('묘사','')}")
+ok("talk_len2" not in str(ex.get("묘사", "")) and "대사" in ex,
+   "대사 자리 수가 묘사 자리에 안 붙는다")
+ok("맺음" not in ex, "잰 적 없는 갈래에는 수가 안 붙는다(빈 줄을 지어내지 않는다)")
+ok(ex["묘사"] in txt and ex["대사"] in txt, "그 수가 프롬프트에 실린다")
+
 print("\n[이름이 겹치지 않는다]")
 from novel import state as WORLD                                      # noqa: E402
 ok(hasattr(WORLD, "AXES") and hasattr(WORLD, "Novel"),
