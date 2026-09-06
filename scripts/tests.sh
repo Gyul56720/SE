@@ -25,6 +25,8 @@ if [ -n "${SE_TEST_AS_CONFIGURED:-}" ]; then
   export GEMINI_API_KEY_FALLBACK="${GEMINI_API_KEY_FALLBACK:-test-2}"
   export DISCORD_BOT_TOKEN="${DISCORD_BOT_TOKEN:-test-token}"
   export DISCORD_CHANNEL_ID="${DISCORD_CHANNEL_ID:-1}"
+  # 다섯 번째로 겪은 것: 키가 있으면 오케스트레이터가 일부러 터뜨린 노드를 LLM 으로
+  # 고쳐서 런이 성공해 버렸다. 흉내에도 진짜처럼 보이는 키를 넣는다.
   echo "  (설정이 다 있는 기계처럼 돌린다)"
 fi
 

@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import sys
 import time
@@ -155,6 +156,11 @@ def drive(run_dir: str, max_repair_rounds: int = 30, max_node_repairs: int = 20,
                 failed = [nid for nid, st in res.get("node_status", {}).items()
                           if st == "failed"]
 
+            # **수리를 끌 수 있어야 한다.** 검사에서는 "실패한 런을 실패로 보고하는가"
+            # 를 봐야 하는데, 키가 있으면 수리가 일부러 터뜨린 노드를 고쳐 버려서
+            # 그 자리를 볼 수가 없다(키를 제대로 넣은 사람만 검사가 깨진다).
+            if os.environ.get("SE_ORCH_NO_REPAIR"):
+                max_node_repairs = 0
             repairable = [nid for nid in failed
                           if planner.repair_count(plan.node(nid)) < max_node_repairs]
             entry["failed"] = failed
