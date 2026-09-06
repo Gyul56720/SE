@@ -154,16 +154,18 @@ def write(units: list, out_dir) -> dict:
     return man
 
 
-def report(path, units: list) -> str:
+def report(path, units: list, rows: int = 0) -> str:
+    """rows=0 이면 **전부** 찍는다. 잘린 모양을 보려고 돌리는 것인데 앞 몇 줄만
+    보여 주면 뒤쪽이 어떻게 잘렸는지 알 수가 없다."""
     n = len(units)
     sizes = sorted(len(u.body) for u in units)
-    mid = sizes[n // 2] if n else 0
-    head = (f"{Path(path).name}: {n}토막 · 가운뎃값 {mid:,}자 · "
+    head = (f"{Path(path).name}: {n}토막 · 가운뎃값 {sizes[n // 2]:,}자 · "
             f"{sizes[0]:,}~{sizes[-1]:,}자" if n else f"{Path(path).name}: 0토막")
-    rows = [f"  {u.stem}  {len(u.body):>6,}자  {u.title[:34]}" for u in units[:8]]
-    if n > 8:
-        rows.append(f"  … {n - 8}개 더")
-    return "\n".join([head] + rows)
+    show = units if rows <= 0 else units[:rows]
+    out = [f"  {u.stem}  {len(u.body):>6,}자  {u.title[:34]}" for u in show]
+    if len(show) < n:
+        out.append(f"  … {n - len(show)}개 더")
+    return "\n".join([head] + out)
 
 
 def main(argv=None) -> int:
@@ -172,6 +174,8 @@ def main(argv=None) -> int:
     ap.add_argument("--write", action="store_true", help="실제로 쪼개 저장한다")
     ap.add_argument("--target", type=int, default=TARGET)
     ap.add_argument("--min", type=int, default=MIN_CHARS)
+    ap.add_argument("--rows", type=int, default=0,
+                    help="찍을 토막 수. 0 이면 전부(기본)")
     a = ap.parse_args(argv)
 
     src = Path(a.path)
@@ -181,7 +185,7 @@ def main(argv=None) -> int:
         return 1
     for f in files:
         units = split(load(f), a.target, a.min)
-        print(report(f, units))
+        print(report(f, units, a.rows))
         if a.write:
             man = write(units, f.with_suffix(""))
             print(f"  -> {f.with_suffix('')}/ 에 {man['n']}개")
