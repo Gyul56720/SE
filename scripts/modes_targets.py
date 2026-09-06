@@ -22,8 +22,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from novel import corpus, mode as MD, profile as PF                   # noqa: E402
 
-# 갈래 글이 이보다 짧으면 안 잰다. 짧은 표본은 수가 아니라 잡음이다.
-MIN = 400
+# 갈래 글을 몇 조각으로 볼까. 토막 하나에서 갈래 글을 뽑으면 대사는 200자쯤이라
+# **다섯 조각도 못 모으고 통째로 빠진다**(실측: A 에서 대사 갈래가 아예 안 나왔다.
+# 제일 특이한 갈래가 빠진 것이다). 그래서 토막을 가로질러 갈래 글을 이어 붙인 다음
+# 조각으로 자른다. 토막 경계를 넘지만, 여기서 보는 것은 문장의 결이지 사건이 아니다.
+PIECES = 10
+MIN_STREAM = 800          # 이보다 짧은 갈래는 표본이라 부를 수 없다
+MIN_PIECE = 300
 
 
 def main(argv=None) -> int:
@@ -41,14 +46,23 @@ def main(argv=None) -> int:
         return 1
 
     solo = [k for k in PF.AXES if k not in MD.BLIND]
-    pool = {m: {k: [] for k in solo} for m in MD.STATES}
-    thin = 0
+    stream = {m: [] for m in MD.STATES}
     for _w, f in files:
         for m, sub in MD.split(corpus.load(f)).items():
-            if len(sub) < MIN:
-                thin += 1
+            stream[m].append(sub)
+
+    pool = {m: {k: [] for k in solo} for m in MD.STATES}
+    thin = []
+    for m in MD.STATES:
+        text = "\n".join(stream[m])
+        if len(text) < MIN_STREAM:
+            thin.append(f"{m} {len(text)}자")
+            continue
+        size = max(MIN_PIECE, min(PF.MIN_UNIT, len(text) // PIECES))
+        for piece in PF.windows(text, size, 1.0):
+            if len(piece) < MIN_PIECE:
                 continue
-            vals = PF.measure(sub)
+            vals = PF.measure(piece)
             if not vals:
                 continue
             for k in solo:
@@ -65,7 +79,8 @@ def main(argv=None) -> int:
             v = sorted(vs)
             n = len(v)
             lo, hi = v[int(n * q[0])], v[min(n - 1, int(n * q[1]))]
-            if lo == hi == 0.0:      # 늘 0 인 축은 원고를 못 가른다
+            # 폭이 없거나 0 에 붙은 축은 원고를 못 가른다(targets_update 와 같은 자)
+            if hi <= lo or (hi < 0.005 and v[n // 2] < 0.005):
                 continue
             axes[k] = {"lo": round(lo, 4), "mid": round(v[n // 2], 4),
                        "hi": round(hi, 4)}
@@ -81,12 +96,16 @@ def main(argv=None) -> int:
     print(f"{out}  <- {src}")
     for m, axes in modes.items():
         keep = [k for k in MD.WATCH.get(m, ()) if k in axes]
-        print(f"  {m}: 축 {len(axes)}개 (이 갈래가 보는 것 {len(keep)}개)")
+        print(f"  {m}: 축 {len(axes)}개 · 조각 {len(pool[m][solo[0]])}개 "
+              f"(이 갈래가 보는 것 {len(keep)}개)")
         for k in keep[:6]:
             v = axes[k]
             print(f"      {k:<10} {v['lo']:>8.3f} ~ {v['hi']:<8.3f} (가운데 {v['mid']:.3f})")
+    for m in MD.STATES:
+        if m not in modes and m not in [t.split()[0] for t in thin]:
+            print(f"  {m}: 조각이 모자라 못 쟀다")
     if thin:
-        print(f"  건너뛴 갈래 글 {thin}개 ({MIN}자 미만)")
+        print(f"  표본이 없는 갈래: {' · '.join(thin)}")
     return 0
 
 

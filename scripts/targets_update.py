@@ -57,12 +57,14 @@ def main(argv=None) -> int:
         axes = {k: {"lo": round(v["lo"], 4), "mid": round(v["mid"], 4),
                     "hi": round(v["hi"], 4)}
                 for k, v in dig["all"].items()}
-    # **폭이 0인 축은 빼 버린다.** lo 도 hi 도 mid 도 0 이면 그 축은 표본에서 한
-    # 번도 안 나타난 것이고(A 에서 talk_len · repeat 이 그랬다), 그런 축은 원고를
-    # 가르지 못하면서 설명 여덟 줄 가운데 하나를 차지한다. 게다가 원고가 어쩌다
-    # 0 을 넘기면 영영 어긋난 축으로 남아 매 덩어리 그 자리를 먹는다.
+    # **폭이 0이거나 0에 붙은 축은 뺀다.** lo 도 hi 도 mid 도 0 이면 표본에 한 번도
+    # 안 나타난 것이고(A: talk_len · repeat · close_t · open_t · dash · ex_rate ·
+    # ell_rate · hanja), 0.000~0.002 처럼 0 에 붙은 몫도 마찬가지다 -- "숫자의 몫
+    # 0.1%" 같은 요구는 맞출 수도 어길 수도 없다. 그런 축은 원고를 못 가르면서
+    # 설명 여덟 줄 가운데 한 자리를 먹고, 원고가 어쩌다 넘기면 영영 어긋난 축으로
+    # 남아 매 덩어리 그 자리를 차지한다.
     dead = [k for k, v in axes.items()
-            if v["lo"] == v["hi"] == v["mid"] == 0.0]
+            if v["hi"] <= v["lo"] or (v["hi"] < 0.005 and v["mid"] < 0.005)]
     for k in dead:
         del axes[k]
 
