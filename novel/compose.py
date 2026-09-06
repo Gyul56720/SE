@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import os
 
-from novel import dyn, plot, profile as PF, spine, targets as TG
+from novel import dyn, mode as MD, plot, profile as PF, spine, targets as TG
 
 # 한 덩어리에 쓸 분량.
 CHARS = int(os.environ.get("DRIFT_CHUNK", "3200"))
@@ -119,7 +119,11 @@ def _fmt(k: str, v: float) -> str:
 AIMS = int(os.environ.get("DRIFT_SHOW_AIMS", "8"))
 
 
-def target_block(seed: str, n: int, last: str = "") -> str:
+# 상태 열을 몇 줄로 그릴까. 한 덩어리가 대략 이만큼의 줄이 된다.
+LINES = int(os.environ.get("DRIFT_STATE_LINES", "24"))
+
+
+def target_block(seed: str, n: int, last: str = "", watch=()) -> str:
     """이번 덩어리가 맞출 수. **값은 전부, 설명은 몇 개만.**
 
     수정이 덩어리마다 한 번뿐이라 초고가 자세해야 한다. 그렇다고 축 마흔 개에
@@ -135,11 +139,21 @@ def target_block(seed: str, n: int, last: str = "") -> str:
         return ""
     vals = dict(aims(seed, n, keys))
 
-    # 어느 축에 설명을 붙일까 -- 직전 덩어리에서 먼 것부터.
-    order = keys
+    # 어느 축에 설명을 붙일까. **이번 대목이 보는 축부터**(watch), 그 안에서도
+    # 직전 덩어리가 어긋난 것부터. 대사를 쓰는 대목에 문단 길이를 설명해 봐야
+    # 지켜지지 않는다 -- 여덟 줄뿐인 자리를 지금 쓰는 것에 준다.
+    far = []
     if last:
         far = [k for k, _side, _d, _v in dyn.off(last, slack=0.0) if k in vals]
-        order = far + [k for k in keys if k not in far]
+    w = [k for k in watch if k in vals]
+    order = ([k for k in w if k in far] + [k for k in far if k not in w]
+             + [k for k in w if k not in far] + keys) if (far or w) else keys
+    seen, uniq = set(), []
+    for k in order:
+        if k not in seen:
+            seen.add(k)
+            uniq.append(k)
+    order = uniq
 
     dense = " · ".join(f"{SAY[k]} {_fmt(k, vals[k]).strip()}" for k in keys)
     how = dyn.load()
@@ -165,10 +179,14 @@ def build(book: dict, ledger: str = "", asks: str = "", opening_head: str = "",
     opening = not chunks
     tail = "".join(chunks)[-TAIL:]
     seed = book.get("seed_id") or book.get("first", "")
+    # **이번 대목이 밟을 상태 열.** 배운 적 없으면 빈 열이고, 그러면 흐름 줄도
+    # 축 고르기도 예전 그대로다 -- 없는 것을 지어내서 시키지는 않는다.
+    st = MD.plan(MD.load(), seed, len(chunks), LINES)
     parts = [
         head or "한국어 소설을 쓴다. 산문만 출력한다 -- 제목도 머리말도 표식도 쓰지 마라.",
         f"[분량] 약 {CHARS}자. 끊지 말고 이어라. 회차도 씬도 없다.",
-        target_block(seed, len(chunks), tail if not opening else ""),
+        MD.render(st),
+        target_block(seed, len(chunks), tail if not opening else "", MD.watched(st)),
     ]
     if ledger:
         parts.append("[세계 — 지금까지 확정된 것]\n" + ledger
