@@ -1,126 +1,196 @@
-"""시간이 어디로 갔는가. **로그와 기록만 읽는다** -- 도는 런을 건드리지 않는다.
+"""표본과 원고를 **같은 자로 재서 수 한 줄로 만든다.**
 
-"느리다" 는 고칠 수 있는 말이 아니다. 어느 단계가 몇 초를 먹었고 그중 몇 초가 수리에
-버려졌는지가 나와야 무엇을 고칠지 정해진다.
+여기가 이 개편의 바닥이다. 지금까지는 프롬프트를 고치고 나서 "나아진 것 같다" 를 눈으로
+판단했다 -- 이 저장소에서 되돌린 것들이 전부 그래서 생겼다. 재는 것이 있으면 고친 뒤
+가까워졌는지 멀어졌는지가 수로 나온다.
 
-읽는 곳 셋:
-  · <원고>.scenes.jsonl   씬마다 status/attempts/seconds. 집필 단계의 실측이다
-  · 원고 JSON             씬의 attempts 기록 -- 어느 관문이 몇 번 되돌려보냈는지
-  · 로그                  회차 조립 시작/끝 시각. 조립 시간은 여기서만 나온다
+**원문은 여기서 끝난다.** 표본 소설은 이 파일이 읽고, 밖으로 나가는 것은 수뿐이다.
+프롬프트에는 원문이 단 한 글자도 들어가지 않는다 -- 토큰도 토큰이지만, 원문 조각이
+프롬프트에 들어가면 원고가 그것으로 도배된다는 것을 이 저장소에서 다섯 번 겪었다.
+
+축은 novel/TAXONOMY.md 의 다섯 층에서 가져온다. 지금 재는 것은 문면층과 담화층 일부고,
+나머지는 빈칸으로 둔다 -- 없는 것을 있는 척하지 않는다.
 
 실행:
-    python3 novel/profile.py                                  # 본편
-    python3 novel/profile.py --path novel/probe.json          # 탐침
+    python3 novel/profile.py novel/corpus              # 작품마다 한 줄
+    python3 novel/profile.py novel/corpus --units      # 토막마다 한 줄
+    python3 novel/profile.py novel/corpus --json out.json
 """
 from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import sys
-from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-HERE = Path(__file__).resolve().parent
-TS = re.compile(r"\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})")
+from novel import diffusion, echo, rhythm, wording                    # noqa: E402
+
+# 이보다 짧은 토막은 안 잰다. 꼬리 조각에서 나온 비율은 통계가 아니라 잡음이다.
+MIN_UNIT = 1500
+
+# **축.** 이름 -> (재는 함수, 무엇인가). 여기 있는 것이 곧 우리가 볼 수 있는 전부다.
+# 늘리는 것은 언제든 되지만, 늘린 축은 프롬프트가 아니라 **점수**에 먼저 들어간다.
+AXES = "sent_len sent_var long short da_share end_var glue climb dialog talk_len " \
+       "rally para_len repeat outside".split()
 
 
-def rows(jsonl: Path) -> list:
+def _sent(text: str) -> list:
+    tell, _ = rhythm._lines(text)
+    return [s for s in tell if s.strip()]
+
+
+def _entropy(counts) -> float:
+    """고르게 흩어져 있으면 1, 하나로 몰려 있으면 0. 종결어미와 문장 성분에 쓴다."""
+    tot = sum(counts)
+    if tot <= 0:
+        return 0.0
+    ps = [c / tot for c in counts if c > 0]
+    if len(ps) < 2:
+        return 0.0
+    h = -sum(p * math.log(p) for p in ps)
+    return h / math.log(len(counts))
+
+
+def measure(text: str) -> dict:
+    """토막 하나의 프로필. **비율과 분포만** 담는다 -- 길이에 안 휘둘려야 견줄 수 있다."""
+    tell = _sent(text)
+    if not tell:
+        return {}
+    lens = [len(s) for s in tell]
+    m = rhythm.measure(text)
+    short, long_, bulk, rally = diffusion._talk4(text)[:4]
+    paras = [p for p in text.split("\n\n") if p.strip()]
+    ends = [len(rx.findall(text)) for rx in wording.ENDINGS.values()]
+    return {
+        "sent_len":  sum(lens) / len(lens),          # 문장 평균 길이
+        "sent_var":  rhythm.spread(lens),            # 길이의 들쭉날쭉함
+        "long":      m["long"],                      # 긴 문장 몫
+        "short":     sum(l < 20 for l in lens) / len(lens),
+        "da_share":  m["da"],                        # 짧은 '-다' 몫
+        "end_var":   _entropy(ends),                 # 종결어미가 고른가
+        "glue":      rhythm.glue(text),              # 문장당 이어 붙인 절
+        "climb":     m["climb"] / max(1, m["n"]),    # 서술문당 점층
+        "dialog":    m["talk"],                      # 대사 줄 몫
+        "talk_len":  bulk,                           # 긴 대사의 몫
+        "rally":     rally,                          # 가장 길게 주고받은 턴
+        "para_len":  sum(len(p) for p in paras) / len(paras) if paras else 0.0,
+        "repeat":    echo.selfish(text)[0],          # 제 안에서 되풀이한 몫
+        "outside":   _outside(text),                 # 밖을 적은 몫
+        "_n":        len(tell),
+        "_chars":    len(text),
+    }
+
+
+# **밖(외현)을 재는 대용.** 밖에서 온 것에는 이름표가 붙는다 -- 수 · 고유명사 표기 ·
+# 따옴표 안 든 표기 · 단위. 이것이 많은 문장을 밖을 본 문장으로 센다. 정확하지는 않지만
+# 작품끼리 견주는 데는 쓸 수 있다(같은 자로 재기 때문이다).
+_MARK = re.compile(r"(\d|[A-Za-z]{2,}|[%°㎡㎞㎏]|번지|호실|층|년생|시 \d|분|초)")
+
+
+def _outside(text: str) -> float:
+    tell = _sent(text)
+    if not tell:
+        return 0.0
+    return sum(bool(_MARK.search(s)) for s in tell) / len(tell)
+
+
+def unit_files(root) -> list:
+    """corpus.py 가 떨군 토막들. 원본 txt 는 안 읽는다 -- 자른 것만 본다."""
+    root = Path(root)
     out = []
-    try:
-        for line in jsonl.read_text(encoding="utf-8").splitlines():
-            try:
-                out.append(json.loads(line))
-            except ValueError:
-                pass
-    except OSError:
-        pass
+    for d in sorted(p for p in root.iterdir() if p.is_dir()):
+        out += [(d.name, f) for f in sorted(d.glob("*.txt"))]
     return out
 
 
-def hhmm(sec: float) -> str:
-    return f"{sec / 60:.1f}분" if sec >= 60 else f"{sec:.0f}초"
+def profile(root) -> dict:
+    """작품마다 {축: [토막별 값]}. 평균과 폭을 나중에 여기서 뽑는다."""
+    works: dict = {}
+    for work, f in unit_files(root):
+        text = f.read_text(encoding="utf-8")
+        if len(text) < MIN_UNIT:
+            continue
+        m = measure(text)
+        if not m:
+            continue
+        w = works.setdefault(work, {k: [] for k in AXES})
+        for k in AXES:
+            w[k].append(m[k])
+    return works
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--path", default=str(HERE / "romance.json"))
-    ap.add_argument("--log", default="", help="조립 시간을 잴 로그 (없으면 건너뛴다)")
-    a = ap.parse_args()
+def summary(vals: list) -> dict:
+    """가운뎃값과 폭. **평균이 아니라 가운뎃값**이다 -- 토막 하나가 튀어도 안 흔들린다."""
+    if not vals:
+        return {"mid": 0.0, "lo": 0.0, "hi": 0.0, "n": 0}
+    v = sorted(vals)
+    n = len(v)
+    return {"mid": v[n // 2], "lo": v[max(0, n // 10)], "hi": v[min(n - 1, n * 9 // 10)],
+            "n": n}
 
-    path = Path(a.path)
-    if not path.exists():
-        print(f"{path} 가 없다.")
+
+def digest(works: dict) -> dict:
+    """작품별 요약 + 전체 요약. 이것이 목표값의 원천이 된다."""
+    out = {"works": {}, "all": {}}
+    pool: dict = {k: [] for k in AXES}
+    for work, axes in works.items():
+        out["works"][work] = {k: summary(v) for k, v in axes.items()}
+        for k in AXES:
+            pool[k] += axes[k]
+    out["all"] = {k: summary(v) for k, v in pool.items()}
+    return out
+
+
+def _fmt(v: float) -> str:
+    """큰 수와 작은 수를 같은 폭에 담는다 -- 문단 길이만 천 단위라 칸이 깨졌다."""
+    return f"{v:>9,.0f}" if abs(v) >= 100 else f"{v:>9.2f}"
+
+
+def table(dig: dict, units: bool = False) -> str:
+    works = sorted(dig["works"])
+    head = f"{'축':<10}" + "".join(f"{w[:7]:>9}" for w in works) + f"{'전체':>11}"
+    rows = [head, "-" * len(head)]
+    for k in AXES:
+        line = f"{k:<10}"
+        for w in works:
+            line += _fmt(dig["works"][w][k]["mid"])
+        a = dig["all"][k]
+        line += f"  {_fmt(a['mid']).strip():>7} ({_fmt(a['lo']).strip()}~{_fmt(a['hi']).strip()})"
+        rows.append(line)
+    n = sum(dig["works"][w][AXES[0]]["n"] for w in works)
+    rows.append(f"\n토막 {n}개 · 작품 {len(works)}편")
+    return "\n".join(rows)
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description="표본을 재서 프로필을 낸다")
+    ap.add_argument("root", help="corpus.py --write 로 만든 폴더")
+    ap.add_argument("--json", default="", help="여기에 저장한다")
+    ap.add_argument("--units", action="store_true", help="토막마다 한 줄로 찍는다")
+    a = ap.parse_args(argv)
+
+    works = profile(a.root)
+    if not works:
+        print(f"잰 것이 없다: {a.root}\n"
+              f"  python3 novel/corpus.py {a.root} --write 를 먼저 돌려야 한다.",
+              file=sys.stderr)
         return 1
-
-    from novel.state import Novel
-    n = Novel.load(path)
-    ev = rows(path.with_suffix(".scenes.jsonl"))
-    scenes = [e for e in ev if e.get("event") == "scene"]
-
-    print("=" * 64)
-    print("집필 (씬 단위)")
-    if not scenes:
-        print("   기록이 없다 -- 아직 산문 단계에 못 갔다")
-    else:
-        total = sum(e.get("seconds", 0) for e in scenes)
-        okrows = [e for e in scenes if e.get("status") == "verified"]
-        bad = [e for e in scenes if e.get("status") != "verified"]
-        wasted = sum(e.get("seconds", 0) for e in bad)
-        print(f"   씬 {len(scenes)}개 · 합계 {hhmm(total)} · 평균 {hhmm(total/len(scenes))}")
-        if okrows:
-            once = [e for e in okrows if e.get("attempts", 1) == 1]
-            print(f"   통과 {len(okrows)}개 (한 번에 {len(once)}개) · "
-                  f"평균 {hhmm(sum(e.get('seconds',0) for e in okrows)/len(okrows))}")
-        if bad:
-            print(f"   막힘 {len(bad)}개 · {hhmm(wasted)} ({wasted/total:.0%}) 를 여기서 썼다")
-        att = Counter(e.get("attempts", 1) for e in scenes)
-        print(f"   시도 분포 {dict(sorted(att.items()))}  ← 1이 아니면 수리에 쓴 것이다")
-
-    print()
-    print("되돌려보낸 관문 (수리를 부른 것들)")
-    rules = Counter()
-    for s in n.scenes:
-        for at in (getattr(s, "attempts", None) or []):
-            for v in at.get("violations", []):
-                m = re.match(r"\[(V\d+)", str(v))
-                if m:
-                    rules[m.group(1)] += 1
-    if not rules:
-        print("   없다 -- 수리 없이 통과했다")
-    for rule, cnt in rules.most_common(8):
-        print(f"   {rule}  {cnt}회")
-
-    print()
-    print("조립 (회차 단위)")
-    log = Path(a.log) if a.log else None
-    if not log or not log.exists():
-        eps = [e for e in ev if e.get("event") == "episode"]
-        if eps:
-            for e in eps[-3:]:
-                print(f"   {e.get('eps')}  척추 {e.get('spine')} · "
-                      f"서브플롯 {e.get('subplot')} · 씬 {e.get('scenes')}")
-        print("   조립 시간은 로그에서만 나온다 -- --log 로 지정하라")
-    else:
-        text = log.read_text(encoding="utf-8", errors="replace").splitlines()
-        marks = [(m.group(1), ln) for ln in text
-                 for m in [TS.match(ln)] if m and ("조립 시작" in ln or "화 " in ln)]
-        for t, ln in marks[:8]:
-            print(f"   {t}  {ln[len(t)+3:][:60]}")
-
-    print()
-    print("분량")
-    chars = sum(len(s.prose or "") for s in n.scenes)
-    ver = sum(1 for s in n.scenes if s.status == "verified")
-    print(f"   씬 {len(n.scenes)} · verified {ver} · {chars:,}자")
-    if scenes and chars:
-        total = sum(e.get("seconds", 0) for e in scenes)
-        print(f"   속도 {chars / max(1, total) * 60:,.0f}자/분 "
-              f"-> 100만자에 {1_000_000 / max(1, chars / max(1, total)) / 3600:.0f}시간")
+    dig = digest(works)
+    if a.units:
+        for work, axes in sorted(works.items()):
+            for i in range(len(axes[AXES[0]])):
+                print(work, i + 1, " ".join(f"{k}={axes[k][i]:.2f}" for k in AXES))
+    print(table(dig))
+    if a.json:
+        Path(a.json).write_text(json.dumps(dig, ensure_ascii=False, indent=1),
+                                encoding="utf-8")
+        print(f"\n-> {a.json}")
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())
