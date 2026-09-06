@@ -35,7 +35,8 @@ BK["chunks"] = ["그는 갔다.\n" * 300]
 print("[규칙] **모든 줄이 재는 축에 매여 있다**")
 # 낱낱 축(grain)은 DRIFT_GRAIN 을 켤 때만 재진다. 이름은 미리 있어도 되지만,
 # **폭이 없으면 프롬프트에 안 실린다** -- 아래에서 그것을 확인한다.
-_all = set(PF.AXES) | set(__import__("novel.grain", fromlist=["x"]).axes())
+_all = (set(PF.AXES) | set(__import__("novel.grain", fromlist=["x"]).axes())
+        | set(__import__("novel.voice", fromlist=["x"]).axes()))
 ok(set(compose.SAY) <= _all, "이름을 붙인 축은 전부 재는 축이다")
 # 폭이 아직 없는 축(표본을 다시 재야 나오는 것)은 **조용히 빠진다** -- 목표를
 # 지어내지 않는다. 이름만 있고 폭이 없으면 프롬프트에 안 실린다.

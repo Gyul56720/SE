@@ -48,14 +48,18 @@ _INNER = re.compile(
 # 쓰는 중에 문단 길이를 말해 봐야 지켜지지 않는다.
 WATCH = {
     "묘사": ("sent_len", "sent_var", "long", "short", "outside", "scene",
-             "para_len", "glue", "climb"),
+             "para_len", "glue", "climb",
+             "simile", "sense_eye", "sense_ear", "sense_skin", "nosubj"),
     # 이음 축(dialog · t2t · n2t · tag_rate · talk_run · rally)은 글 전체에서 재고,
     # 줄의 성질(길이 · 물음 · 말끝 · 낱말)은 대사 줄만 모아서 잰다.
     "대사": ("dialog", "t2t", "n2t", "tag_rate", "talk_len2", "talk_run",
              "rally", "q_rate", "ell_rate", "talk_len",
-             "sent_len", "short", "end_var", "ttr", "comma", "josa_rate"),
-    "전환": ("scene", "para_len", "short", "clock", "sent_len"),
-    "내면": ("da_share", "end_var", "end_var2", "sent_len", "glue", "ttr"),
+             "sent_len", "short", "end_var", "ttr", "comma", "josa_rate",
+             "polite", "neg"),
+    "전환": ("scene", "para_len", "short", "clock", "sent_len",
+             "timeword", "conj_head"),
+    "내면": ("da_share", "end_var", "end_var2", "sent_len", "glue", "ttr",
+             "tense_now", "person_1", "neg", "nosubj"),
     "맺음": ("close_t", "short", "sent_len", "askrate"),
 }
 # 상태마다 무엇을 하라는 한 줄. **데이터로 빼지 않은 유일한 문장** -- 이건 축의 설명이
