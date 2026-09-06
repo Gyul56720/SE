@@ -38,7 +38,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from novel import drive as D                                          # noqa: E402
 from novel import echo                                                # noqa: E402
 from novel import doubt                                               # noqa: E402
-from novel import diffusion                                           # noqa: E402
+from novel import diffusion, dyn                                           # noqa: E402
 from novel import bridge                                              # noqa: E402
 from novel import bond                                                # noqa: E402
 from novel import trait                                               # noqa: E402
@@ -125,6 +125,8 @@ MEND_MIN = int(os.environ.get("DRIFT_MEND_MIN", "3"))
 # 재지 않는 것을 시키면 지켜졌는지 알 수가 없고, 무엇보다 한꺼번에 시키면 안 지켜진다.
 # 문면층을 먼저 완성하고, 그 뒤에 층을 하나씩 올린다. "all" 이면 예전 그대로다.
 LAYER = os.environ.get("DRIFT_LAYER", "text")
+# 직전 덩어리를 재서 어긋난 축만 싣는다. 끄면 예전처럼 상수 프롬프트다.
+DYNAMIC = os.environ.get("DRIFT_DYNAMIC", "1") not in ("0", "false", "")
 
 
 def _story() -> bool:
@@ -1064,6 +1066,61 @@ def _wander() -> str:
     return WANDER
 
 
+MEASURED = """- **길이를 섞어라 -- 이건 재서 판정한다.** 다 쓴 뒤 코드가 세어 보고, 넘으면 숫자를
+  돌려주며 다시 시킨다:
+    · **이 대목은 마흔다섯 자 넘는 긴 문장이 서술문의 {_telllong(book):.0%}다.** 이 숫자는
+      덩어리마다 다르다 -- 어떤 대목은 길게 흘러가고 어떤 대목은 짧게 끊어 간다
+    · **몰지도, 고르게 맞추지도 마라.** 짧은 문장이 내리 {rhythm.SHORT_RUN}개를 넘으면 그 자리를
+      긴 문장으로 끊고, 긴 문장이 내리 {rhythm.LONG_RUN}개를 넘으면 짧은 문장으로 끊어라.
+      그렇다고 짧은 것 셋에 긴 것 하나를 규칙적으로 놓으면 그건 리듬이 아니라 박자표다 --
+      어떤 데서는 다섯이 이어지고, 어떤 데서는 긴 것이 둘 연달아 온다.
+      **리듬은 몫이 아니라 배치다**
+    · **짧은 '-다'** 로 끝나는 서술문이 {rhythm.LIMITS['da']:.0%} 아래. 긴 '-다' 는 세지 않는다 --
+      단조로움의 정체는 종결어미가 아니라 길이다
+    · 짧은 '-다' 가 내리 **네 번**을 넘지 않는다. 셋째나 넷째에서 생각을 붙이거나,
+      대사를 넣거나, 문장을 끝내지 마라
+    · **이 대목은 대사가 전체 줄의 {_dialogue(book):.0%}다.** 대사가 이야기를 민다 --
+      설명하지 말고 **말하게 해라.** 내력도 사정도 숫자도 대사 안에 녹는다.
+      이 숫자도 덩어리마다 다르다
+    · **서술문 {rhythm.LIMITS["climb"]}개마다 하나는 앞 문장을 받아 올린다.** 문장은
+      낱개로 서 있으면 안 된다 -- 놓았으면 다음 문장이 더 좁히거나, 더 키우거나,
+      뒤집어야 한다. 이번 대목에서 써 볼 이음말: {_climb(book)}
+      **이것만 쓰라는 것이 아니다.** 매번 같은 말로 받으면 그 말이 버릇이 된다 --
+      목록에 없는 것으로 받아도 되고, 이음말 없이 받아도 된다"""
+
+
+def _measured(book: dict) -> str:
+    """**재서 판정하는 것들.** 첫 덩어리에는 이걸 다 싣는다 -- 잴 것이 없으니 기준을
+    미리 줘야 한다. 그러나 두 번째부터는 **직전 덩어리를 재서 어긋난 축만** 싣는다
+    (_offbrief). 맞고 있는 축까지 매번 다시 말하면 두 가지가 나빠진다: 토큰을 매번 다
+    태우고, 스무 항목이 늘 켜져 있어 어느 것도 강조가 아니게 된다."""
+    if DYNAMIC and book["chunks"]:
+        return ("- 길이와 말끝과 대사의 몫은 **재서 판정한다.** 이번에 고칠 것은 아래"
+                " [직전 덩어리에서 어긋난 것] 에 있다 -- 거기 없는 것은 지금대로 좋다.")
+    # f-문자열 안에 있던 블록이라 함수 호출이 그대로 들어 있다. 값을 먼저 계산해서
+    # 자리를 채운다 -- format 은 호출식을 못 푼다.
+    return (MEASURED
+            .replace("{CHUNK}", str(CHUNK))
+            .replace("{_telllong(book):.0%}", f"{_telllong(book):.0%}")
+            .replace("{_dialogue(book):.0%}", f"{_dialogue(book):.0%}")
+            .replace("{_climb(book)}", _climb(book))
+            .replace("{rhythm.SHORT_RUN}", str(rhythm.SHORT_RUN))
+            .replace("{rhythm.LONG_RUN}", str(rhythm.LONG_RUN))
+            .replace("{rhythm.LIMITS['da']:.0%}", f"{rhythm.LIMITS['da']:.0%}")
+            .replace('{rhythm.LIMITS["climb"]}', str(rhythm.LIMITS["climb"])))
+
+
+def _offbrief(book: dict) -> str:
+    """**직전 덩어리에서 어긋난 축만.** 맞고 있으면 한 글자도 안 싣는다.
+
+    첫 덩어리에는 잴 것이 없으니 빈 줄이다. 여기가 프롬프트를 상수에서 되먹임으로
+    바꾸는 자리다 -- 지금은 규칙 블록 위에 얹혀 있고, 다음 단계에서 그 규칙 블록
+    자체를 여기로 옮긴다(맞고 있는 축은 아예 안 싣게)."""
+    if not DYNAMIC or not book["chunks"]:
+        return ""
+    return dyn.brief(book["chunks"][-1], climb_words=_climb(book))
+
+
 def write_prompt(book: dict, feedback: str = "") -> str:
     tail = "".join(book["chunks"])[-TAIL:]
     opening = not book["chunks"]
@@ -1095,27 +1152,7 @@ def write_prompt(book: dict, feedback: str = "") -> str:
 규칙:
 - 약 {CHUNK}자를 쓴다. 끊지 말고 이어라. 회차도 씬도 없다.
 - **줄거리를 미리 정하지 마라.** 지금 문장에서 다음 문장이 나오게 하라.
-- **길이를 섞어라 -- 이건 재서 판정한다.** 다 쓴 뒤 코드가 세어 보고, 넘으면 숫자를
-  돌려주며 다시 시킨다:
-    · **이 대목은 마흔다섯 자 넘는 긴 문장이 서술문의 {_telllong(book):.0%}다.** 이 숫자는
-      덩어리마다 다르다 -- 어떤 대목은 길게 흘러가고 어떤 대목은 짧게 끊어 간다
-    · **몰지도, 고르게 맞추지도 마라.** 짧은 문장이 내리 {rhythm.SHORT_RUN}개를 넘으면 그 자리를
-      긴 문장으로 끊고, 긴 문장이 내리 {rhythm.LONG_RUN}개를 넘으면 짧은 문장으로 끊어라.
-      그렇다고 짧은 것 셋에 긴 것 하나를 규칙적으로 놓으면 그건 리듬이 아니라 박자표다 --
-      어떤 데서는 다섯이 이어지고, 어떤 데서는 긴 것이 둘 연달아 온다.
-      **리듬은 몫이 아니라 배치다**
-    · **짧은 '-다'** 로 끝나는 서술문이 {rhythm.LIMITS['da']:.0%} 아래. 긴 '-다' 는 세지 않는다 --
-      단조로움의 정체는 종결어미가 아니라 길이다
-    · 짧은 '-다' 가 내리 **네 번**을 넘지 않는다. 셋째나 넷째에서 생각을 붙이거나,
-      대사를 넣거나, 문장을 끝내지 마라
-    · **이 대목은 대사가 전체 줄의 {_dialogue(book):.0%}다.** 대사가 이야기를 민다 --
-      설명하지 말고 **말하게 해라.** 내력도 사정도 숫자도 대사 안에 녹는다.
-      이 숫자도 덩어리마다 다르다
-    · **서술문 {rhythm.LIMITS["climb"]}개마다 하나는 앞 문장을 받아 올린다.** 문장은
-      낱개로 서 있으면 안 된다 -- 놓았으면 다음 문장이 더 좁히거나, 더 키우거나,
-      뒤집어야 한다. 이번 대목에서 써 볼 이음말: {_climb(book)}
-      **이것만 쓰라는 것이 아니다.** 매번 같은 말로 받으면 그 말이 버릇이 된다 --
-      목록에 없는 것으로 받아도 되고, 이음말 없이 받아도 된다
+{_measured(book)}
 - **앞에 쓴 문장을 다시 적지 마라.** [지금까지의 끝부분]은 읽으라고 준 것이지 옮겨
   적으라고 준 것이 아니다. 그 다음 문장부터 시작해라. 분량이 모자라면 앞 문단을
   복사하지 말고 **새 일이 일어나게** 해라.
@@ -1146,6 +1183,8 @@ def write_prompt(book: dict, feedback: str = "") -> str:
 {owed_brief(book)}
 
 {ahead_brief(book)}
+
+{_offbrief(book)}
 
 {_must(book)}
 {feedback}
