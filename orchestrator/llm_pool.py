@@ -341,7 +341,17 @@ def build_pool(keys=None, models=None, llm_factory=_default_factory, model_liste
     keep = _roster()
     if keep:
         named = [c for c in pool if c[0] in keep]
-        if named:                  # 명부에 아무도 안 남으면 무시한다 -- 낡은 명부일 수 있다
+        # **명부가 키를 통째로 떨어뜨리면 그 키만 되살린다.** 명부는 런 시작 때 탐침
+        # 한 바퀴로 만든다. 그 순간 어느 키가 분당 한도에 걸렸으면 그 키의 조합이
+        # 하나도 안 적히고, 12시간 동안 그 키를 안 쓴다 -- 한도가 프로젝트(키)마다
+        # 걸리므로 그건 처리량의 1/3 을 그냥 버리는 것이다(실측: 키 셋 중 하나가
+        # 반나절 놀았다). 탐침 한 번의 실패로 키 하나를 반나절 죽이지 않는다.
+        if named:
+            all_keys = {c[0].split(":", 1)[0] for c in pool}
+            live_keys = {c[0].split(":", 1)[0] for c in named}
+            missing = all_keys - live_keys
+            if missing:
+                named += [c for c in pool if c[0].split(":", 1)[0] in missing]
             return named
     if not pool and keys:          # 전부 걸러졌으면 거르지 않는다 -- 빈 풀보다는 낫다
         for key in keys:

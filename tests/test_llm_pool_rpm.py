@@ -221,6 +221,33 @@ try:
 finally:
     llm_pool.time.sleep = _real
 
+
+print()
+print("[명부] **탐침 한 번의 실패로 키 하나를 반나절 죽이지 않는다**")
+print("      ← 실측: 명부는 런 시작 때 탐침으로 만든다. 그 순간 세 번째 키가 분당")
+print("        한도에 걸려 한 줄도 안 적혔고, 12시간 동안 그 키를 안 썼다.")
+print("        한도는 프로젝트(키)마다 걸리므로 그건 처리량 1/3 을 버리는 것이다.")
+import json as _json, tempfile as _tf, time as _tm                    # noqa: E402
+from pathlib import Path as _P                                        # noqa: E402
+_keys = ["kk1", "kk2", "kk3"]
+_kid = {k: llm_pool._key_id(k) for k in _keys}
+_r = _P(_tf.mkdtemp()) / "roster.json"
+_r.write_text(_json.dumps({"at": _tm.time(), "live": [
+    {"label": f"key-{_kid['kk1']}:m1"}, {"label": f"key-{_kid['kk2']}:m1"}]}),
+    encoding="utf-8")
+_was = llm_pool.ROSTER
+try:
+    llm_pool.ROSTER = str(_r)
+    _p = llm_pool.build_pool(keys=_keys, models=["m1", "m2"],
+                         llm_factory=lambda m, k: (m, k))
+    _got = {lb.split(":", 1)[0] for lb, _ in _p}
+    ok(f"key-{_kid['kk3']}" in _got,
+       f"명부에서 통째로 빠진 키가 되살아난다 (키 {len(_got)}개)")
+    ok(f"key-{_kid['kk1']}:m2" not in {lb for lb, _ in _p},
+       "명부에 있는 키는 명부대로 걸러진다  ← 죽은 조합을 다시 두드리지 않는다")
+finally:
+    llm_pool.ROSTER = _was
+
 print()
 if fails:
     print(f"llm_pool RPM: {len(fails)}개 실패 -- {fails}")
