@@ -328,7 +328,15 @@ def test_llm_pool_reads_dotenv(failures: list) -> None:
         if not cond:
             failures.append(msg)
 
-    saved = os.environ.pop("GEMINI_API_KEY", None)
+    # **키를 하나만 치우면 안 된다.** 이 검사는 "임시 .env 에 적힌 키 하나로 후보가
+    # 하나 선다" 를 본다. 그런데 실제로 돌리는 사람의 환경에는 FALLBACK · FALLBACK2 가
+    # 살아 있고(키 세 개로 돌린다), build_pool 은 그것들도 주워서 후보가 여럿이 된다.
+    # 키가 없는 데(CI · 개발 컨테이너)서는 통과하고 **키를 제대로 넣은 사람만** 실패를
+    # 본다 -- 그런 검사는 검사가 아니라 함정이다.
+    saved_env = {k: v for k, v in os.environ.items()
+                 if k.startswith(("GEMINI_API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEYS"))}
+    for k in saved_env:
+        os.environ.pop(k, None)
     cwd = os.getcwd()
     tmp = Path(tempfile.mkdtemp(prefix="dotenv_test_"))
     try:
@@ -344,9 +352,10 @@ def test_llm_pool_reads_dotenv(failures: list) -> None:
            ".env 가 이미 있는 환경변수를 덮지 않는다 (systemd 값 우선)")
     finally:
         os.chdir(cwd)
-        os.environ.pop("GEMINI_API_KEY", None)
-        if saved is not None:
-            os.environ["GEMINI_API_KEY"] = saved
+        for k in [k for k in os.environ
+                  if k.startswith(("GEMINI_API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEYS"))]:
+            os.environ.pop(k, None)
+        os.environ.update(saved_env)
         shutil.rmtree(tmp, ignore_errors=True)
 
 
