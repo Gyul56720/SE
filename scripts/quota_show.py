@@ -65,6 +65,16 @@ def main() -> int:
              if lb not in dead and w <= 0 and not (left <= 0 and d == today)]
     unseen = [lb for lb in pool_labels if lb not in data and lb not in dead]
     if a.brief:
+        # **게이트는 장부가 아니라 지금 부를 수 있는 후보로 판단한다.** 장부에는 어제
+        # 쓴 라벨이 남아 있고 remaining() 은 날짜가 다르면 한도 전액을 돌려주므로,
+        # 키가 하나도 없어도 "쓸 수 있는 것 25개" 가 나온다(실측). 그 말을 믿고 루프가
+        # 밤새 빈 바퀴를 돈다.
+        if not pool_labels:
+            print("쿼터: **후보를 하나도 못 세웠다** -- 키가 없거나 설치가 깨졌다. "
+                  "기다린다고 풀릴 문제가 아니다(.env 를 확인해라)")
+            return 4
+        alive = [lb for lb in alive if lb in pool_labels]
+        unseen = [lb for lb in unseen if lb in pool_labels]
         print(f"쿼터: 키 {len(keys)}개 · 후보 {len(pool_labels) or len(rows)}개 · "
               f"지금 쓸 수 있는 것 {len(alive) + len(unseen)}개 · "
               f"소진 {sum(1 for _, d, _c, l, w in rows if l <= 0 and w <= 0 and d == today)}개 · "

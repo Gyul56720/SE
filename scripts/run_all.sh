@@ -38,7 +38,7 @@ except Exception as e: print('  아직 없다')"
     exit 0 ;;
   --bg)
     rm -f "$STOP"
-    setsid nohup "$0" > "$LOG" 2>&1 < /dev/null &
+    setsid nohup "$0" >> "$LOG" 2>&1 < /dev/null &
     disown
     sleep 3
     if /usr/bin/pgrep -af "run_all.sh" | grep -qv -- "--bg"; then
@@ -68,6 +68,7 @@ while [ "$tries" -le "$RESTART" ]; do
   [ -f "$STOP" ] && { say "멈추라는 표시가 있다"; break; }
   if ! /usr/bin/pgrep -f "tune_loop.sh" | grep -qv "$$"; then
     tries=$((tries + 1))
+    [ "$tries" -gt "$RESTART" ] && { say "다시 띄우기 한도($RESTART)를 넘겼다. 선다"; break; }
     say "루프를 띄운다 ($tries/$RESTART)"
     scripts/tune_loop.sh --bg >> "$LOG" 2>&1
     sleep 30
@@ -99,10 +100,39 @@ if [ -n "${SPINE_FROM:-}" ] && [ ! -f "$SE/novel/spine.json" ]; then
 fi
 
 say "=== 배운 것으로 중편을 쓴다 (${FINAL_CHARS}자)"
-BOOK="$SE/novel/final.json" scripts/drift.sh start "$FINAL_CHARS" >> "$LOG" 2>&1
-while /usr/bin/pgrep -f "novel/flow.py" > /dev/null; do sleep 60; done
-python3 novel/flow.py --read "$SE/novel/final.json" > "$SE/novel/final.txt" 2>/dev/null
-say "중편: $SE/novel/final.txt ($(wc -m < "$SE/novel/final.txt" 2>/dev/null || echo 0)자)"
+# **먼저 남은 집필기를 정리한다.** drift.sh 는 flow.py 가 하나라도 살아 있으면
+# 시작을 거부한다(두 벌이 같은 원고를 쓰면 서로 덮어쓴다). 학습 루프가 남긴 것이
+# 있으면 여기서 끝날 때까지 기다린다 -- pkill 은 안 쓴다(제 셸까지 죽인다).
+left=0
+while /usr/bin/pgrep -f "novel/flow.py" > /dev/null; do
+  [ -f "$STOP" ] && { say "멈추라는 표시가 있다"; exit 0; }
+  left=$((left + 60)); sleep 60
+  if [ "$left" -gt 3600 ]; then
+    say "남은 집필기가 한 시간째 안 끝난다 -- PID 를 적어 두고 넘어간다"
+    /usr/bin/pgrep -af "novel/flow.py" >> "$LOG"
+    break
+  fi
+done
+if ! BOOK="$SE/novel/final.json" scripts/drift.sh start "$FINAL_CHARS" >> "$LOG" 2>&1; then
+  say "중편 집필을 못 띄웠다 -- 로그를 봐라. 여기서 선다"
+  exit 1
+fi
+# **우리가 띄운 것만 기다린다.** 남의 flow.py 를 붙잡고 열두 시간을 서 있지 않게.
+waited=0
+while /usr/bin/pgrep -f "novel/final.json" > /dev/null; do
+  [ -f "$STOP" ] && { say "멈추라는 표시가 있다 -- 쓰던 데까지 남는다"; break; }
+  sleep 60; waited=$((waited + 60))
+  if [ "$waited" -gt 43200 ]; then say "열두 시간이 지났다 -- 그만 기다린다"; break; fi
+done
+if python3 novel/flow.py --read "$SE/novel/final.json" > "$SE/novel/final.txt" 2>>"$LOG"; then
+  say "중편: $SE/novel/final.txt ($(wc -m < "$SE/novel/final.txt" 2>/dev/null || echo 0)자)"
+else
+  # **0자를 성공처럼 찍지 않는다.** 예전에는 원고가 없어도 조용히 빈 파일을 만들고
+  # "중편 ... (0자)" 를 찍었다.
+  rm -f "$SE/novel/final.txt"
+  say "중편이 안 나왔다 -- novel/final.json 이 없거나 비었다. 로그를 봐라"
+  exit 1
+fi
 python3 novel/score.py "$SE/novel/final.json" 2>&1 | tail -20 | tee -a "$LOG"
 [ -f "$SE/novel/spine.json" ] && python3 novel/spine.py cover novel/spine.json \
   "$SE/novel/final.json" 2>&1 | tee -a "$LOG"

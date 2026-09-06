@@ -90,7 +90,7 @@ refuse_double() {
 launch() {   # launch <설명> <인자...>
   local what="$1"; shift
   mkdir -p "$SE/logs"
-  setsid nohup python3 "$FLOW" "$@" > "$LOG" 2>&1 < /dev/null &
+  setsid nohup python3 "$FLOW" "$@" >> "$LOG" 2>&1 < /dev/null &
   disown
   sleep 4
   if alive >/dev/null; then

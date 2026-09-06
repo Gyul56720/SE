@@ -43,7 +43,7 @@ case "${1:-}" in
     exit 0 ;;
   --bg)
     rm -f "$STOP"
-    setsid nohup "$0" > "$LOG" 2>&1 < /dev/null &
+    setsid nohup "$0" >> "$LOG" 2>&1 < /dev/null &
     disown
     sleep 2
     if /usr/bin/pgrep -af "tune_loop.sh" | grep -qv -- "--bg"; then
@@ -65,7 +65,20 @@ for round in $(seq 1 "$ROUNDS"); do
   # **쓸 것이 없으면 두드리지 않는다.** 다 소진된 채로 계속 부르면 429 만 쌓이고
   # 로그가 그것으로 덮인다. 자정에 하루치가 풀리므로 기다리는 편이 싸다.
   tries=0
-  until python3 scripts/quota_show.py --brief >> "$LOG" 2>&1; do
+  while :; do
+    python3 scripts/quota_show.py --brief >> "$LOG" 2>&1
+    qcode=$?
+    # 0=쓸 것이 있다 · 3=오늘 치 소진(기다리면 풀린다) · 그 밖=고장이다.
+    # 고장을 소진으로 읽으면 밤새 5분씩 쉬며 아무것도 안 한다.
+    [ "$qcode" -eq 0 ] && break
+    if [ "$qcode" -eq 4 ]; then
+      say "[$round] 부를 후보가 하나도 없다 -- 기다린다고 풀릴 문제가 아니다. 선다"
+      touch "$STOP"; break
+    fi
+    if [ "$qcode" -ne 3 ]; then
+      say "[$round] 한도를 못 읽는다(코드 $qcode) -- 그냥 해 본다"
+      break
+    fi
     tries=$((tries + 1))
     [ -f "$STOP" ] && break
     if [ "$tries" -gt 48 ]; then
@@ -78,10 +91,26 @@ for round in $(seq 1 "$ROUNDS"); do
   [ -f "$STOP" ] && { say "멈추라는 표시가 있다. 선다."; break; }
 
   say "[$round] 이어 쓴다"
+  # **--chars 는 누적 목표다.** 증분으로 넘기면 2바퀴째부터 이미 목표를 넘겨서
+  # 한 글자도 안 쓰고, 그런데도 아래 점수·튜너는 그대로 돌아 claude -p 만 태운다
+  # (실측: 10바퀴에 산문 0회 · claude 10회 · 원고 8,200자 그대로).
   if [ -f "$BOOK" ]; then
-    scripts/drift.sh go "$CHARS" >> "$LOG" 2>&1
+    now=$(python3 -c "import json,sys
+try:
+    b=json.load(open(sys.argv[1]))
+    print(sum(len(c) for c in b.get('chunks') or []))
+except Exception:
+    print(0)" "$BOOK")
+    say "[$round] 지금 ${now}자 -> ${CHARS}자 더"
+    scripts/drift.sh go "$((now + CHARS))" >> "$LOG" 2>&1
   else
     scripts/drift.sh start "$CHARS" >> "$LOG" 2>&1
+  fi
+  started=$?
+  if [ "$started" -ne 0 ]; then
+    say "[$round] 집필을 못 띄웠다(코드 $started) -- 이번 바퀴는 넘긴다"
+    sleep 60
+    continue
   fi
   # drift.sh 는 백그라운드로 띄우고 바로 돌아온다. 끝날 때까지 기다린다.
   waited=0

@@ -91,6 +91,21 @@ def _call(prompt: str) -> str:
     return out.stdout.strip()
 
 
+def _clean(text: str) -> str:
+    """**되받은 것을 그대로 싣지 않는다.** 머리말 · 코드펜스 · 따옴표 · 여러 줄이
+    섞여 오면 그것이 통째로 프롬프트에 들어간다."""
+    t = (text or "").strip()
+    if "```" in t:
+        parts = t.split("```")
+        t = max(parts[1::2] or parts, key=len).strip()
+    lines = [l.strip() for l in t.splitlines() if l.strip()]
+    lines = [l for l in lines if not (len(l) < 30 and l.endswith(":"))]
+    t = " ".join(lines)
+    if len(t) > 1 and t[0] in "\"'\u201c\u2018" and t[-1] in "\"'\u201d\u2019":
+        t = t[1:-1].strip()
+    return t
+
+
 def read_directives() -> dict:
     return json.loads(dyn.PATH.read_text(encoding="utf-8"))
 
@@ -134,7 +149,7 @@ def attempt(path, dry: bool = False) -> int:
     if dry:
         print(p)
         return 0
-    new = _call(p)
+    new = _clean(_call(p))
     if not new or len(new) > MAX_LEN * 2:
         print(f"되받은 것이 쓸 수 없다({len(new)}자). 그대로 둔다.", file=sys.stderr)
         return 1
@@ -147,28 +162,52 @@ def attempt(path, dry: bool = False) -> int:
     return 0
 
 
+def _pending() -> dict | None:
+    """**아직 심판 안 한 고침 하나.** 이미 결론이 붙은 것은 다시 안 본다.
+
+    예전에는 마지막 '고침' 행을 매 바퀴 다시 집어 들었다. 그래서 한 바퀴 전에 채택한
+    지시문을 다음 바퀴가 (점수가 조금 올랐다는 이유로) 조용히 되돌리고, 챔피언 파일을
+    더 나쁜 점수로 덮었다. 시도마다 결론은 한 번뿐이다."""
+    tries, done = [], set()
+    for i, r in enumerate(rows()):
+        if r["무엇"] == "고침":
+            tries.append((i, r))
+        elif r.get("대상") is not None:
+            done.add(r["대상"])
+    for i, r in reversed(tries):
+        if i not in done:
+            return dict(r, _row=i)
+    return None
+
+
 def keep(path) -> int:
-    """다시 돌린 뒤 부른다. 나아졌으면 채택, 나빠졌으면 되돌린다."""
-    hist = [r for r in rows() if r["무엇"] == "고침"]
-    if not hist:
-        print("고친 기록이 없다.", file=sys.stderr)
-        return 1
-    last = hist[-1]
-    _, total, _s = worst(path)
-    was = last["점수(전)"]
-    if total <= was:
-        note({"때": time.strftime("%m-%d %H:%M"), "무엇": "채택", "축": last["축"],
-              "점수(전)": was, "점수(후)": total})
-        print(f"채택. 총점 {was:.3f} -> {total:.3f}")
-        BEST.write_text(json.dumps({"총점": total, "axes": read_directives()["axes"]},
-                                   ensure_ascii=False, indent=1), encoding="utf-8")
+    """다시 돌린 뒤 부른다. 나아졌으면 채택, 아니면 되돌린다."""
+    last = _pending()
+    if not last:
+        print("심판할 고침이 없다(이미 다 결론 났다).")
         return 0
+    _, total, s = worst(path)
+    if not s:
+        print("잴 것이 없다 -- 원고가 안 늘었다. 결론을 미룬다.", file=sys.stderr)
+        return 1
+    was = last["점수(전)"]
+    # **동점은 채택이 아니다.** 원고가 길어지면 한 덩어리로는 총점이 거의 안 움직인다.
+    # 동점을 채택으로 세면 튜너가 무엇이든 다 받아들이는 기계가 된다(실측: 열 바퀴에
+    # 채택 아홉 건, 점수는 한 번도 안 변했다).
+    better = total < was - 1e-6
     d = read_directives()
-    d["axes"][last["축"]][last["쪽"]] = last["전"]
-    write_directives(d)
-    note({"때": time.strftime("%m-%d %H:%M"), "무엇": "되돌림", "축": last["축"],
+    if not better:
+        d["axes"][last["축"]][last["쪽"]] = last["전"]
+        write_directives(d)
+    note({"때": time.strftime("%m-%d %H:%M"), "무엇": "채택" if better else "되돌림",
+          "축": last["축"], "대상": last["_row"],
           "점수(전)": was, "점수(후)": total})
-    print(f"되돌렸다. 총점 {was:.3f} -> {total:.3f} 로 나빠졌다.")
+    if better:
+        BEST.write_text(json.dumps({"총점": total, "axes": d["axes"]},
+                                   ensure_ascii=False, indent=1), encoding="utf-8")
+        print(f"채택. 총점 {was:.3f} -> {total:.3f}")
+    else:
+        print(f"되돌렸다. 총점 {was:.3f} -> {total:.3f} (나아지지 않았다)")
     return 0
 
 

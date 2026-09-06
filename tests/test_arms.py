@@ -96,3 +96,31 @@ if fails:
     print(f"팔: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)
 print("팔: 배정 · 적기 · 세기 · 굳히기 · 표 · 루프 -- 통과")
+
+print()
+print("[검증에서 나온 것] **밤을 날리던 자리들**")
+print("      ← 워크플로가 14개를 확인해 줬다. 그중 루프를 세우거나 데이터를 망치는 것.")
+ok("now + CHARS" in _sh,
+   "이어 쓸 때 목표를 증분으로 넘긴다  ← --chars 는 누적 목표라 2바퀴부터 0자였다")
+ok("$qcode" in _sh and "-ne 3" in _sh,
+   "한도 코드 3(소진)과 고장을 가른다  ← 고장을 소진으로 읽으면 밤새 쉬기만 한다")
+ok('-eq 4' in _sh, "부를 후보가 아예 없으면 기다리지 않고 선다")
+ok('>> "$LOG" 2>&1 < /dev/null' in _sh,
+   "로그를 덮어쓰지 않는다  ← 밤새 무슨 일이 있었는지 남아야 한다")
+_ra = (Path(__file__).resolve().parent.parent / "scripts" / "run_all.sh").read_text(
+    encoding="utf-8")
+ok("novel/final.json" in _ra and "pgrep -f \"novel/final.json\"" in _ra,
+   "최종 집필은 **우리가 띄운 것만** 기다린다  ← 남의 flow.py 를 열두 시간 붙잡았다")
+ok("waited" in _ra and "43200" in _ra, "기다리기에 상한이 있다")
+ok('if ! BOOK=' in _ra, "집필을 못 띄우면 거기서 선다  ← 0자짜리를 성공처럼 찍었다")
+ok("0자를 성공처럼 찍지 않는다" in _ra, "빈 결과를 성공으로 안 찍는다")
+
+from novel import tuner as _T                                         # noqa: E402
+ok("대상" in Path(_T.__file__).read_text(encoding="utf-8"),
+   "튜너가 이미 결론 난 시도를 다시 심판하지 않는다  ← 채택한 것을 되돌렸다")
+ok(_T._clean("고친 지시문:\n```\n끊어라.\n```") == "끊어라.",
+   "되받은 것에서 머리말과 코드펜스를 걷어낸다")
+ok(_T._clean('"따옴표"') == "따옴표", "따옴표도 걷어낸다")
+_src2 = Path(_T.__file__).read_text(encoding="utf-8")
+ok("동점은 채택이 아니다" in _src2,
+   "동점을 채택으로 세지 않는다  ← 원고가 길어지면 총점이 안 움직인다")
