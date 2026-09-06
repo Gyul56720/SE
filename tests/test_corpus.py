@@ -111,6 +111,18 @@ ok("어떤 소설의 제목" in u[0].body, "붙이면서도 글자는 안 버린
 ok(u[0].stem.endswith("001"), f"번호가 1부터 다시 매겨진다 ({u[0].stem})")
 
 print()
+print("[상한] **붙이기와 자르기가 서로를 되돌리면 안 된다**")
+print("      ← 실측: 27자짜리 조각이 앞엣것에 계속 붙어 한 토막이 64,851자가 됐다.")
+print("        2차 분할로 잘라 놓은 것을 붙이기가 도로 이어 붙인 것이다.")
+u = C.split("제 1장 제목\n" + "\n".join(["짧다."] * 4000))
+ok(max(len(x.body) for x in u) <= C.MAX_CHARS,
+   f"짧은 줄이 몇천 개여도 상한을 안 넘는다 (최대 {max(len(x.body) for x in u):,}자)")
+u = C.split("\n".join(["제 1장"] + ["문장. " * 40] * 3000))
+ok(max(len(x.body) for x in u) <= C.MAX_CHARS,
+   f"거대한 장도 상한 아래로 내려온다 (최대 {max(len(x.body) for x in u):,}자)")
+ok(all("\n" not in x.title for x in u), "제목에 줄바꿈이 안 남는다  ← 보고서가 깨진다")
+
+print()
 if fails:
     print(f"표본 자르기: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)

@@ -167,8 +167,10 @@ def split(text: str, target: int = TARGET, min_chars: int = MIN_CHARS,
         body = "\n".join(lines[start:end])
         if not body.strip():
             continue
-        # 너무 짧으면 앞엣것에 붙인다. 붙일 앞엣것이 없으면 그냥 둔다.
-        if units and len(body.strip()) < min_chars:
+        # 너무 짧으면 앞엣것에 붙인다. **다만 앞엣것이 이미 크면 안 붙인다** -- 실측:
+        # 27자짜리 조각이 계속 붙어 한 토막이 64,851자가 됐다. 붙이기에 상한이 없으면
+        # 2차 분할로 잘라 놓은 것을 이 자리가 도로 이어 붙인다.
+        if units and len(body.strip()) < min_chars and len(units[-1].body) < max_chars:
             units[-1].body += "\n" + body
             continue
         if kind == "부":
@@ -188,9 +190,20 @@ def split(text: str, target: int = TARGET, min_chars: int = MIN_CHARS,
         head = units.pop(0)
         units[0].body = head.body + "\n" + units[0].body
         units[0].title = units[0].title or head.body.strip()[:40]
-    for i, u in enumerate(units, 1):
+    # **마지막으로 한 번 더 훑는다.** 붙이기와 2차 분할이 서로를 되돌리는 일이 있어서,
+    # 다 끝난 뒤 크기를 다시 본다(실측: 79,277자짜리 토막이 남아 있었다).
+    final = []
+    for u in units:
+        if len(u.body) <= max_chars:
+            final.append(u)
+            continue
+        for piece in _subsplit(u.body, target):
+            final.append(Unit(order=0, part=u.part, chapter=u.chapter, episode=0,
+                              title=u.title, line=u.line, body=piece))
+    for i, u in enumerate(final, 1):
         u.order, u.episode = i, i
-    return units
+        u.title = " ".join(u.title.split())[:60]
+    return final
 
 
 def write(units: list, out_dir) -> dict:
