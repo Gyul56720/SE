@@ -134,6 +134,26 @@ ok("**점층**" in flow.write_prompt(dict(flow.blank(), chunks=["앞."])),
    "맨 끝 필수 목록에도 오른다  ← 묻히면 안 지켜진다")
 
 print()
+print("[늘어짐] **'길게 써라' 가 '절을 이어 붙여라' 로 풀린다**")
+print("      ← 길이를 글자수로 재니, 글자수를 늘리는 제일 싼 답이 '-고 · -면서 · -는데' 다.")
+print("        게다가 손질 지시가 짧은 문장마다 '쉼표로 이어 붙여 넘겨라' 라고 시켰다.")
+GLUED = "\n".join(["그는 문을 열고 밖을 보면서 담배를 물었는데 불이 붙지 않아서 "
+                   "다시 주머니를 뒤졌다."] * 10)
+ok(rhythm.glue(GLUED) > rhythm.GLUE_MAX, f"늘어진 글을 잡는다 ({rhythm.glue(GLUED):.1f}개)")
+for _f in ("tests/sample_outside.txt", "tests/sample_job.txt"):
+    _t = (Path(__file__).resolve().parent.parent / _f).read_text(encoding="utf-8")
+    ok(rhythm.glue(_t) <= rhythm.GLUE_MAX,
+       f"{_f.split('_')[-1][:-4]} 표본은 통과한다 ({rhythm.glue(_t):.1f}개)  ← 자가 기준을 벌하면 자가 틀렸다")
+ok(any("길이를 절로 벌지 마라" in c for c in rhythm.check(GLUED)), "무엇이 문제인지 말해 준다")
+ok("glue" in rhythm.spots(GLUED), "걸린 문장을 짚어 준다  ← 그 문장만 고치면 된다")
+ok(rhythm.check(REFERENCE) == [], "기준 문장은 여전히 통과한다")
+_pt = flow.write_prompt(flow.blank())
+ok("쉼표로 이어 붙여" not in _pt,
+   "'쉼표로 이어 붙여라' 를 뺐다  ← 늘어짐을 시키는 지시가 프롬프트에 있었다")
+ok("절을 잇대서 늘이지 마라" in flow.PATCHABLE["long"],
+   "짧은 문장을 늘릴 때도 절을 잇대지 말라고 한다")
+
+print()
 print("[박자] **하한만 두면 하한을 정확히, 규칙적으로 맞춘다**")
 print("      ← 실측 2026-09-05: '단문 3에 장문 1이 너무 반복적으로 나온다.'")
 print("        긴 문장 15% 이상을 요구했더니 정확히 네 문장에 하나씩 길게 썼다.")

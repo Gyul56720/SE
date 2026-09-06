@@ -112,6 +112,23 @@ LIMITS = {
     "talk": 0.10,   # 대사가 이보다 적으면 '-다' 를 깰 수단이 하나 빠진 것이다
 }
 
+# **길게 쓰라는 말이 절을 잇는 것으로 풀린다.** 길이를 글자수로 재는데, 글자수를 늘리는
+# 제일 싼 방법은 '-고 · -면서 · -는데' 로 절을 이어 붙이는 것이다. 그러면 마흔다섯 자는
+# 넘는데 문장이 두꺼워지지 않고 늘어지기만 한다. 낮은 등급 모델일수록 이 수를 쓴다.
+#
+# **위만 본다.** 하한을 두면 하한을 맞추고, 접속을 금지하면 문장이 다시 토막 난다.
+# 좋은 표본은 서술문 하나에 연결어미가 반 개쯤이었다(두 표본 다). 그 곱절을 넘으면 되민다.
+_GLUE = re.compile(r"[가-힣](고|며|면서|는데|은데|아서|어서|다가|지만|거나|든지|고서)\s")
+GLUE_MAX = float(os.environ.get("DRIFT_GLUE_MAX", "1.1"))
+
+
+def glue(text: str) -> float:
+    """서술문 하나에 붙은 연결어미의 평균 -- **절을 몇 개나 이어 붙였는가.**"""
+    tell, _ = _lines(text)
+    if not tell:
+        return 0.0
+    return sum(len(_GLUE.findall(s)) for s in tell) / len(tell)
+
 
 def wave(seed: str, n: int, lo: float, hi: float, look: int = 2) -> float:
     """**덩어리마다 흔들리는 목표치.** 고정 하한은 그 자체가 주기가 된다 -- 하한을 두면
@@ -428,6 +445,10 @@ def spots(text: str) -> dict:
     if m["long"] < LIMITS["long"]:
         need = int(LIMITS["long"] * m["n"]) - sum(len(s) >= LONG for s in tell)
         out["long"] = sorted(short_da or tell, key=len, reverse=True)[:max(1, need)]
+    # **절을 세 개 넘게 이어 붙인 문장.** 길이는 채웠는데 늘어진 자리다.
+    glued = [s for s in tell if len(_GLUE.findall(s)) >= 3]
+    if glued:
+        out["glue"] = glued
     return out
 
 
@@ -467,11 +488,13 @@ def check(text: str, want: float | None = None,
     if want is None:
         if m["long"] < LIMITS["long"]:
             out.append(f"{LONG}자 넘는 문장이 {m['long']:.0%}뿐이다. "
-                       f"{LIMITS['long']:.0%}는 넘겨라 -- 짧은 문장 서넛에 하나씩은 쉼표로 "
-                       f"이어 붙인 긴 문장이 와야 한다. 단문만 이어지면 리듬이 아니라 목록이다")
+                       f"{LIMITS['long']:.0%}는 넘겨라 -- 짧은 문장 서넛에 하나씩은 긴 "
+                       f"문장이 와야 한다. **절을 잇대서 늘이지는 마라** -- 하나를 오래 "
+                       f"보고 자세히 적으면 길어진다. 단문만 이어지면 리듬이 아니라 목록이다")
     elif m["long"] < want - LONG_SLACK:
         out.append(f"{LONG}자 넘는 문장이 {m['long']:.0%}뿐이다. **이 대목은 {want:.0%}**다 -- "
-                   f"쉼표로 이어 붙여 늘려라. 단문만 이어지면 리듬이 아니라 목록이다")
+                   f"하나를 오래 보고 자세히 적어서 늘려라. **절을 잇대는 것은 늘리는 "
+                   f"것이 아니다.** 단문만 이어지면 리듬이 아니라 목록이다")
     elif m["long"] > want + LONG_SLACK and want <= 0.25:
         out.append(f"{LONG}자 넘는 문장이 {m['long']:.0%}다. **이 대목은 {want:.0%}**다 -- "
                    f"여기서는 짧게 끊어 가라. 매 대목을 길게 쓰면 그것도 한 가지 가락이다")
@@ -480,7 +503,14 @@ def check(text: str, want: float | None = None,
     if m["srun"] > SHORT_RUN:
         out.append(f"짧은 문장이 내리 {m['srun']}개 이어진 자리가 있다. "
                    f"{SHORT_RUN}개를 넘기지 마라 -- 그 자리를 **긴 문장 하나로 끊어라.** "
-                   f"쉼표로 이어 붙여 딴 생각이든 눈에 들어온 것이든 붙이면 된다")
+                   f"다만 절을 잇대서 늘이지는 마라. 하나를 자세히 보고 자세히 적으면 "
+                   f"저절로 길어진다")
+    _g = glue(text)
+    if m["n"] >= 8 and _g > GLUE_MAX:
+        out.append(f"한 문장에 '-고 · -면서 · -는데' 로 이어 붙인 절이 평균 {_g:.1f}개다. "
+                   "**길이를 절로 벌지 마라** -- 길게 쓰라는 것은 절을 잇대라는 뜻이 "
+                   "아니라 한 절을 두껍게 하라는 뜻이다. 이을 자리를 끊고 그 자리에 "
+                   "무엇이 어떠했는지를 넣어라")
     if m["lrun"] > LONG_RUN:
         out.append(f"긴 문장이 내리 {m['lrun']}개 이어진 자리가 있다. "
                    f"{LONG_RUN}개를 넘기지 마라 -- 그 자리를 **짧은 문장 하나로 끊어라.** "
