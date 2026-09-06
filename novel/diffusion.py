@@ -349,7 +349,7 @@ def check(text: str, before: dict, after: dict, now: int = 0,
         out.append(f"같은 이름을 너무 자주 불렀다 -- {worst}. "
                    f"**회수는 다시 부르는 것이 아니라 다시 쓰는 것이다.** 이름을 또 적는 대신 "
                    f"그것이 무언가를 하게 해라 -- 쓰이거나, 망가지거나, 손이 바뀌거나, "
-                   f"그것 때문에 일이 생기거나. 두 번째부터는 '그것', '차', '그 종이' 로 받아라")
+                   f"그것 때문에 일이 생기거나. 두 번째부터는 지시어로 받아라")
 
     if m["labels"] > LABEL_MAX:
         out.append(f"연도·연식 표기가 {m['labels']}개다. {LABEL_MAX}개까지다 -- "
