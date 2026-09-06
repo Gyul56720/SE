@@ -96,6 +96,10 @@ CHUNK = int(os.environ.get("DRIFT_CHUNK", "3200"))
 # 한 번에 고쳐 달라고 보낼 문장 수의 상한. 너무 많이 보내면 되받은 것이 성의 없어지고,
 # 프롬프트도 다시 커진다 -- 아끼려던 것이 도로 는다.
 MEND_MAX = int(os.environ.get("DRIFT_MEND_MAX", "12"))
+# **한 문장 고치자고 호출 한 번을 쓰지 않는다.** 손질은 덩어리마다 호출 한 번이다.
+# 모순이나 메아리는 결함이니 하나라도 고치지만(아래에서 따로 본다), 리듬만 한둘
+# 걸린 것은 다음 덩어리의 [갚을 것] 으로 넘기는 편이 싸다 -- 어차피 거기서 되민다.
+MEND_MIN = int(os.environ.get("DRIFT_MEND_MIN", "3"))
 # 다시 쓰는 횟수. 모순·리듬·농도가 이 예산을 함께 쓴다. 둘이던 것을 셋으로 올렸다 --
 # 재는 자가 늘었는데 예산이 그대로면 첫 지적만 고치고 끝난다.
 # **표류 계수** -- 부조리의 세기. 1.0 이면 축을 전부 매번 켠다.
@@ -1155,6 +1159,11 @@ def step(book: dict, llm, log=None) -> dict:
 
     # **고칠 것을 한 번에 다 보낸다.** 모순도 리듬도 같은 한 장에 담는다.
     items = mend_items(text, clashes, "".join(book["chunks"]))
+    # 결함(모순 · 메아리)은 하나라도 고친다. 나머지는 MEND_MIN 개는 모여야 부른다.
+    hard = bool(clashes) or bool(echo_lines(text, "".join(book["chunks"])))
+    if items and not hard and len(items) < MEND_MIN:
+        D._log(f"[flow] 고칠 것이 {len(items)}개뿐이라 손질을 건너뛴다 -- 다음 덩어리에서 되민다")
+        items = []
     if items:
         D._log(f"[flow] 고칠 문장 {len(items)}개 -- 한 번에 고친다")
         try:
@@ -1345,9 +1354,14 @@ def owed_brief(book: dict) -> str:
 
 def _debt(book: dict, at: int, left: list, path=None) -> None:
     """못 고친 것을 원고 옆 파일에 한 줄씩 쌓는다(JSONL). 폐기 대신 기록이다."""
+    # **원고가 없으면 적지 않는다.** 예전에는 경로가 없을 때 현재 디렉토리의
+    # drift.json 을 가정해서, 가짜 모델로 도는 테스트가 저장소 뿌리에 장부를 쌓았다.
+    # 그 장부를 나중에 실측이라고 읽으면 없는 런을 분석하게 된다(실측: 140줄이 전부
+    # 테스트가 쓴 것이었다).
+    if not path:
+        return
     try:
-        base = Path(path) if path else Path("drift.json")
-        out = base.with_suffix(".debt.jsonl")
+        out = Path(path).with_suffix(".debt.jsonl")
         with out.open("a", encoding="utf-8") as f:
             f.write(json.dumps({"덩어리": at, "때": time.strftime("%m-%d %H:%M"),
                                 "남은 것": left}, ensure_ascii=False) + "\n")

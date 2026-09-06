@@ -388,6 +388,40 @@ ok(_c.x <= 1,
    f"추출도 한 번뿐이다 ({_c.x}회)  ← 모순이 없는데 고친 뒤 원장을 다시 사지 않는다")
 
 
+class Few:
+    """리듬만 한둘 걸리게 하는 가짜 화자 -- 결함(모순·메아리)은 없다."""
+
+    def __init__(self):
+        self.w = self.x = self.m = 0
+
+    def __call__(self, prompt):
+        if "새로 확정된 사실만" in prompt:
+            self.x += 1
+            return json.dumps({}, ensure_ascii=False)
+        if "각 문장 앞 대괄호가" in prompt:
+            self.m += 1
+            return json.dumps({}, ensure_ascii=False)
+        self.w += 1
+        return "짧다. " * 80
+
+
+print("[호출] 한 문장 고치자고 호출 한 번을 쓰는가")
+_f = Few()
+flow.step(main_char(), _f)
+ok(flow.MEND_MIN >= 2, f"손질 문턱이 있다 (MEND_MIN={flow.MEND_MIN})")
+_items = flow.mend_items("짧다. " * 80, [], "")
+ok(_f.m == (1 if len(_items) >= flow.MEND_MIN else 0),
+   f"걸린 것 {len(_items)}개 · 손질 {_f.m}회  ← 문턱 아래면 다음 덩어리로 넘긴다")
+ok(flow.mend_items("요우는 서른이 되었다. 그리고 문을 닫았다.",
+                   ["요우의 나이: 앞에서는 '42' 였는데 지금 '30' 다"], ""),
+   "모순은 하나여도 고친다  ← 결함은 문턱을 안 본다")
+
+_debt_before = Path("drift.debt.jsonl").exists()
+flow.step(main_char(), Few())
+ok(Path("drift.debt.jsonl").exists() == _debt_before,
+   "원고 경로가 없으면 장부를 안 쌓는다  ← 테스트가 실측 장부를 오염시키던 자리다")
+
+
 print("[손질] 걸린 문장만 보내는가  ← input 토큰을 아끼는 자리다")
 _lines_in = ["짧다.", "또 짧다.", "역시 짧다."]
 _items = [(l, "짧다") for l in _lines_in]
