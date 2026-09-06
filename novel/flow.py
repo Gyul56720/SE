@@ -841,7 +841,8 @@ def mend_prompt(items: list) -> str:
     받지도 않는다: 보내는 것은 걸린 문장뿐이고 받는 것은 고친 문장뿐이다."""
     numbered = "\n".join(f"{i + 1}. [{why}] {s}" for i, (s, why) in enumerate(items))
     return f"""아래는 어떤 소설에서 뽑아낸 문장들이다. 각 문장 앞 대괄호가 그 문장의
-문제다. **전부 고쳐라 -- 하나도 빼지 마라.**
+문제다. **전부 고쳐라 -- 하나도 빼지 마라.** 딱지가 ' / ' 로 여럿 붙은 문장은
+그 문제를 **한꺼번에** 푼 문장 하나로 돌려줘라.
 
 {numbered}
 
@@ -858,29 +859,33 @@ def mend_prompt(items: list) -> str:
 def mend_items(text: str, clashes: list, prior: str = "") -> list:
     """이 덩어리에서 고칠 것을 **전부** 모은다 -- (문장, 무엇이 문제인가) 목록으로.
 
-    한 문장이 두 갈래에 걸리면 앞엣것만 남긴다. 같은 문장을 두 번 보내면 모델이
-    어느 쪽을 따를지 알 수 없고, 번호가 겹쳐 되받은 것을 못 끼운다."""
-    items, seen = [], set()
+    한 문장이 두 갈래에 걸리면 **한 자리에 딱지를 겹쳐 붙인다.** 같은 문장을 두 번
+    보내면 모델이 어느 쪽을 따를지 알 수 없고 번호가 겹쳐 되받은 것을 못 끼우지만,
+    앞엣것만 남기고 뒤엣것을 버리면 그 결함은 이번 회에 아예 안 고쳐진다 -- 한 번에
+    다 고친다는 규칙이 거기서 깨졌다. 순서는 그대로 두어 급한 것이 앞에 온다."""
+    order: list = []
+    flags: dict = {}
+
+    def add(line: str, why: str) -> None:
+        if line not in flags:
+            flags[line] = []
+            order.append(line)
+        if why not in flags[line]:
+            flags[line].append(why)
+
     # **메아리는 모순과 같은 급이다** -- 취향이 아니라 결함이다. 앞에 쓴 문장을 그대로
     # 다시 뱉은 것은 새 글이 아니다(실측: 한 덩어리 2,024자 중 610자가 글자 하나 안
     # 틀리고 반복이었다). 앞머리를 옮겨 적은 것은 echo.trim 이 도려내고, 그러고도
     # 남은 반복은 여기서 그 문장만 새로 쓰게 한다.
     for line in echo_lines(text, prior):
-        if line not in seen:
-            seen.add(line)
-            items.append((line, "앞에 이미 쓴 말이다 -- 같은 말 말고"
-                                " **그 다음에 일어나는 일**을 써라"))
+        add(line, "앞에 이미 쓴 말이다 -- 같은 말 말고 **그 다음에 일어나는 일**을 써라")
     for line in clash_lines(text, clashes):
-        if line not in seen:
-            seen.add(line)
-            items.append((line, "앞에서 확정된 것과 어긋난다 -- 앞엣것이 맞다"))
+        add(line, "앞에서 확정된 것과 어긋난다 -- 앞엣것이 맞다")
     spot = rhythm.spots(text)
     for kind, why in PATCHABLE.items():
         for line in spot.get(kind, []):
-            if line not in seen:
-                seen.add(line)
-                items.append((line, why))
-    return items[:MEND_MAX]
+            add(line, why)
+    return [(line, " / ".join(flags[line])) for line in order][:MEND_MAX]
 
 
 def apply_patch(text: str, lines: list, fixed: dict) -> tuple:

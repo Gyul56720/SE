@@ -412,6 +412,16 @@ ok(flow.MEND_MIN >= 2, f"손질 문턱이 있다 (MEND_MIN={flow.MEND_MIN})")
 _items = flow.mend_items("짧다. " * 80, [], "")
 ok(_f.m == (1 if len(_items) >= flow.MEND_MIN else 0),
    f"걸린 것 {len(_items)}개 · 손질 {_f.m}회  ← 문턱 아래면 다음 덩어리로 넘긴다")
+_two = "요우는 서른이 되었다. 요우는 서른이 되었다. 그리고 문을 닫았다."
+_it = flow.mend_items(_two, ["요우의 나이: 앞에서는 '42' 였는데 지금 '30' 다"],
+                      "요우는 서른이 되었다.")
+ok(len({s for s, _ in _it}) == len(_it),
+   "같은 문장을 두 번 보내지 않는다  ← 번호가 겹치면 되받은 것을 못 끼운다")
+ok(any(" / " in why for _, why in _it),
+   f"두 갈래에 걸린 문장은 딱지를 겹쳐 붙인다  ← 뒤엣것을 버리면 이번 회에 안 고쳐진다")
+ok("한꺼번에" in flow.mend_prompt(_it),
+   "겹친 딱지를 한 문장으로 풀라고 말한다  ← 수정은 한 번이다")
+
 ok(flow.mend_items("요우는 서른이 되었다. 그리고 문을 닫았다.",
                    ["요우의 나이: 앞에서는 '42' 였는데 지금 '30' 다"], ""),
    "모순은 하나여도 고친다  ← 결함은 문턱을 안 본다")
