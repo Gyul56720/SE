@@ -123,6 +123,10 @@ _WIN: dict = {}
 _FAIL: dict = {}
 
 
+# 같은 알림을 되풀이 안 하려고 마지막에 한 말을 들고 있는다. {풀: (말, 언제)}
+_SAID: dict = {}
+
+
 def _odds(label) -> float:
     """이 후보가 최근에 답을 준 비율. 안 재본 것은 낙관한다(1.0) -- 중간값으로 두면
     한 번 이긴 후보만 계속 쓰고 나머지는 영원히 안 재본다."""
@@ -470,8 +474,15 @@ def call(pool, prompt: str, pool_id: str = "orchestrator", max_candidates: int =
                 tag = ", ".join(sorted(set(who))[:4])
                 what.append(f"오늘 치 소진 {gone}개(자정에 풀린다: {tag}"
                             f"{' ...' if len(set(who)) > 4 else ''})")
-            print(f"[llm_pool] {' · '.join(what)} -- 건너뛴다 "
-                  f"(남은 후보 {len(fresh)}개)", file=sys.stderr, flush=True)
+            # **같은 말을 되풀이하지 않는다.** 이 줄은 호출마다 찍히는데, 잔량은
+            # 자정까지 안 돌아온다 -- 한 화를 쓰는 동안 같은 문장이 수백 번 흘러
+            # 정작 봐야 할 줄을 덮는다. 내용이 달라지거나 5분이 지나야 다시 찍는다.
+            msg = (f"[llm_pool] {' · '.join(what)} -- 건너뛴다 "
+                   f"(남은 후보 {len(fresh)}개)")
+            was, when = _SAID.get(pool_id, ("", 0.0))
+            if msg != was or time.time() - when > 300:
+                _SAID[pool_id] = (msg, time.time())
+                print(msg, file=sys.stderr, flush=True)
         ranked = sorted(fresh or live, key=sort_key)
         # pin 은 **간격을 지킬 때만** 앞으로 당긴다. 방금 쓴 것을 또 앞에 두면 그 하나가
         # 자기 RPM 을 다 쓰고, 나머지 후보는 놀면서 런이 죽는다.
