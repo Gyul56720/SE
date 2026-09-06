@@ -160,7 +160,14 @@ print("[방어] 잘못된 웹훅 URL 이 런을 죽이지 않는가")
 print("      ← 실측: 예시 문구 '복사한_URL' 이 환경변수에 그대로 들어가")
 print("        urllib.request.Request 가 ValueError 를 냈고 그것이 위로 올라갔다")
 import os as _os                                                      # noqa: E402
-_old = _os.environ.get("DISCORD_WEBHOOK_URL")
+# **봇 설정까지 치우고 본다.** 봇이 실제로 도는 기계에는 DISCORD_BOT_TOKEN 과
+# CHANNEL_ID 가 살아 있고, Discord.on 은 웹훅 **또는** 토큰 경로로 켜진다. 웹훅만
+# 망가뜨려 놓고 "꺼져야 한다" 고 보면, 봇을 제대로 설정한 사람만 검사가 깨진다.
+# 제품 동작은 옳다 -- 웹훅 하나가 잘못됐다고 멀쩡한 봇 경로까지 끌 이유가 없다.
+_KEYS = ("DISCORD_WEBHOOK_URL", "DISCORD_BOT_TOKEN", "DISCORD_CHANNEL_ID")
+_saved = {k: _os.environ.get(k) for k in _KEYS}
+for _k in _KEYS:
+    _os.environ.pop(_k, None)
 _os.environ["DISCORD_WEBHOOK_URL"] = "복사한_URL"
 try:
     dc = overnight.Discord()
@@ -168,11 +175,22 @@ try:
     ok(dc.send("x") is False, "보내려 해도 조용히 False -- 예외가 안 올라온다")
 except Exception as e:                                                # noqa: BLE001
     ok(False, f"예외가 올라왔다 ({type(e).__name__})  ← 알림이 런을 죽인다")
+# **웹훅이 망가져도 봇 경로는 산다.** 이것이 진짜 계약이다.
+_os.environ["DISCORD_BOT_TOKEN"] = "t"
+_os.environ["DISCORD_CHANNEL_ID"] = "1"
+ok(overnight.Discord().on, "웹훅이 쓰레기여도 봇 경로가 있으면 켜진다")
+for _k in ("DISCORD_BOT_TOKEN", "DISCORD_CHANNEL_ID"):
+    _os.environ.pop(_k, None)
 _os.environ["DISCORD_WEBHOOK_URL"] = "https://example.invalid/hook"
 try:
     ok(overnight.Discord().send("x") is False, "닿지 않는 URL 도 False 로 넘어간다")
 except Exception as e:                                                # noqa: BLE001
     ok(False, f"예외가 올라왔다 ({type(e).__name__})")
+for _k, _v in _saved.items():
+    _os.environ.pop(_k, None)
+    if _v is not None:
+        _os.environ[_k] = _v
+_old = _saved["DISCORD_WEBHOOK_URL"]
 if _old is None:
     _os.environ.pop("DISCORD_WEBHOOK_URL", None)
 else:

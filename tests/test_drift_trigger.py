@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import sys
@@ -75,9 +76,20 @@ print()
 print("[내보내기] **원고는 VM 안 JSON 에만 있다** -- 손에 들어오는 길이 있어야 한다")
 from novel import deliver                                             # noqa: E402
 ok(hasattr(deliver, "send_file"), "novel/deliver.py 가 파일로 올린다")
-okd, why = deliver.send_file("본문", "a.txt")
-ok(not okd and "자격증명" in why,
-   "자격증명이 없으면 사실대로 말한다  ← 조용히 성공한 척하면 사용자는 기다리기만 한다")
+# **자격증명을 치우고 본다.** 봇이 실제로 설정된 기계(= 실제로 돌리는 사람의 기계)에서는
+# 이 줄이 진짜로 Discord 에 쏘려 든다 -- 검사가 깨지는 것보다 그쪽이 더 나쁘다.
+_DK = ("DISCORD_BOT_TOKEN", "DISCORD_CHANNEL_ID", "DISCORD_WEBHOOK_URL")
+_dsaved = {k: os.environ.get(k) for k in _DK}
+for _k in _DK:
+    os.environ.pop(_k, None)
+try:
+    okd, why = deliver.send_file("본문", "a.txt")
+    ok(not okd and "자격증명" in why,
+       "자격증명이 없으면 사실대로 말한다  ← 조용히 성공한 척하면 사용자는 기다리기만 한다")
+finally:
+    for _k, _v in _dsaved.items():
+        if _v is not None:
+            os.environ[_k] = _v
 body, ctype = deliver._multipart({"payload_json": "{}"}, "1화.txt", "본문".encode())
 ok(ctype.startswith("multipart/form-data") and "1화.txt".encode() in body,
    "multipart 를 손으로 짠다  ← 이것 하나로 의존성을 늘리지 않는다")

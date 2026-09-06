@@ -61,7 +61,8 @@ sys.exit(0 if len(p) > 300 and len(q) > 300 else 1)
 PY
 
 # 6. 테스트 -- 깨진 채로 밤새 돌리지 않는다
-if scripts/tests.sh > /tmp/preflight_tests.log 2>&1; then
+# 설정이 다 있는 기계에서만 깨지는 검사가 없는지도 같이 본다 -- 네 번 겪었다.
+if SE_TEST_AS_CONFIGURED=1 scripts/tests.sh > /tmp/preflight_tests.log 2>&1; then
   ok "테스트 $(grep -c '^  OK' /tmp/preflight_tests.log)개 통과"
 else
   no "테스트가 깨져 있다 -- tail -30 /tmp/preflight_tests.log"

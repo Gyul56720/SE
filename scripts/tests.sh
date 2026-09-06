@@ -16,6 +16,18 @@ cd "$(dirname "$0")/.."
 # 따로 다루는 것들 -- 앞선 단계에서 환경변수나 준비 데이터를 주고 돌린다.
 SKIP="test_gates_on_incidents.py test_g004_scope.py test_compression_judge.py"
 
+# **설정을 제대로 한 사람만 보는 실패**가 이 저장소에서 네 번 났다(키 세 개 · 루트 .env ·
+# 봇 토큰 · 웹훅). 검사가 환경을 안 치우고 들어가면 CI 와 개발 컨테이너에서는 통과하고
+# 실제로 돌리는 사람만 깨진 것을 본다 -- 그런 검사는 검사가 아니라 함정이다.
+# 그래서 여기서 한 번 더 흉내 내 본다: 설정이 다 있는 기계처럼 돌려도 초록이어야 한다.
+if [ -n "${SE_TEST_AS_CONFIGURED:-}" ]; then
+  export GEMINI_API_KEY="${GEMINI_API_KEY:-test-key}"
+  export GEMINI_API_KEY_FALLBACK="${GEMINI_API_KEY_FALLBACK:-test-2}"
+  export DISCORD_BOT_TOKEN="${DISCORD_BOT_TOKEN:-test-token}"
+  export DISCORD_CHANNEL_ID="${DISCORD_CHANNEL_ID:-1}"
+  echo "  (설정이 다 있는 기계처럼 돌린다)"
+fi
+
 want=""
 [ "${1:-}" = "-k" ] && want="${2:-}"
 

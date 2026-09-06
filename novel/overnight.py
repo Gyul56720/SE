@@ -68,9 +68,14 @@ class Discord:
     def __init__(self, token: str = None, channel_id: str = None,
                  webhook: str = None, heartbeat: float = 2400.0):
         import os
-        self.token = token or os.environ.get("DISCORD_BOT_TOKEN") or ""
-        self.channel = str(channel_id or os.environ.get("DISCORD_CHANNEL_ID") or "")
-        self.webhook = webhook or os.environ.get("DISCORD_WEBHOOK_URL") or ""
+        # **명시적으로 준 값이 이긴다 -- 빈 문자열도 값이다.** `token or 환경변수` 로
+        # 쓰면 token="" 을 넘긴 사람("끄고 싶다")의 뜻이 환경에 덮인다. 봇이 설정된
+        # 기계에서는 끌 방법이 없어지고, 그 자리를 검사하려던 테스트도 깨졌다.
+        def _pick(given, name):
+            return (os.environ.get(name) or "") if given is None else given
+        self.token = _pick(token, "DISCORD_BOT_TOKEN")
+        self.channel = str(_pick(channel_id, "DISCORD_CHANNEL_ID"))
+        self.webhook = _pick(webhook, "DISCORD_WEBHOOK_URL")
         self.heartbeat = heartbeat
         self.last = time.time()
         if self.webhook and not self.webhook.startswith(("http://", "https://")):
