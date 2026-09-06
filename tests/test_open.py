@@ -19,6 +19,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from novel import diffusion as F, flow, style                         # noqa: E402
 
+# **이 파일은 서사층까지 켜고 본다** -- 기본값은 문면층만이다(flow.LAYER = "text").
+# 여기서 검사하는 것은 서사층 블록의 내용이라 켜 놓고 본다.
+flow.LAYER = "all"
+
+
 fails = []
 
 

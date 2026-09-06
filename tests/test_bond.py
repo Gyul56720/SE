@@ -15,6 +15,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from novel import bond, flow, style, trait                             # noqa: E402
 
+# **이 파일은 서사층까지 켜고 본다.** 기본값은 문면층만이다(flow.LAYER = "text") --
+# 재는 것 열넷이 전부 문면층인데 서사까지 시키면 지켜졌는지 알 수가 없어서다.
+# 여기서 검사하는 것은 그 서사층 블록의 **내용**이라 켜 놓고 본다.
+flow.LAYER = "all"
+
+
 fails = []
 
 

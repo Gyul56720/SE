@@ -21,6 +21,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from novel import flow                                                # noqa: E402
 
+# **이 파일은 서사층까지 켜고 본다.** 기본값은 문면층만이다(flow.LAYER = "text") --
+# 재는 것 열넷이 전부 문면층인데 서사까지 시키면 지켜졌는지 알 수가 없어서다.
+# 여기서 검사하는 것은 그 서사층 블록의 **내용**이라 켜 놓고 본다.
+flow.LAYER = "all"
+
+
 fails = []
 
 
@@ -353,6 +359,36 @@ ok("[초고에서 막을 것]" in _ap, "안 고쳐지는 갈래를 초고 단계
 ok("처음 쓸 때 아예 그렇게 쓰지 마라" in _ap, "되받아 고치지 말고 미리 막으라고 한다")
 ok("[초고에서 막을 것]" not in flow.write_prompt(dict(flow.blank(), chunks=["앞."])),
    "안 걸린 갈래로는 아무 말도 안 한다  ← 늘 켜진 경고는 꺼진 것과 같다")
+
+
+print("[층] **문면층만 싣는다** -- 기본값")
+print("      ← 재는 것 열넷이 전부 문면층인데 프롬프트는 서사까지 요구하고 있었다.")
+print("        재지 않는 것을 시키면 지켜졌는지 알 수가 없고, 한꺼번에 시키면 안 지켜진다.")
+_was = flow.LAYER
+try:
+    flow.LAYER = "text"
+    _bk = flow.blank(); _bk["chunks"] = ["앞."] * 4; _bk["genre"] = "youth"
+    _tp = flow.write_prompt(_bk)
+    for _gone in ("[확산]", "[전개]", "[어디로 가든]", "[리얼리즘]", "[표류가 먼저다]",
+                  "[청춘물]", "[세기]"):
+        ok(_gone not in _tp, f"{_gone} 을 안 싣는다")
+    # 필수 목록은 남되 **문면 항목만** 남는다 -- 점층과 회수는 문장 층위의 일이다.
+    ok("[이 덩어리에 반드시]" in _tp and "심어 놓고 회수한다" in _tp,
+       "필수 목록의 문면 항목은 남는다  ← 점층과 회수는 문장의 일이다")
+    ok("욕망 하나가 결판난다" not in _tp and "인물이 이 덩어리를 지나며" not in _tp,
+       "필수 목록의 서사 항목은 빠진다")
+    for _keep in ("[문장]", "[리듬]", "[말맛]", "[대사]", "[점층]",
+                  "[세계 — 지금까지 놓인 것들]", "[고정]"):
+        ok(_keep in _tp, f"{_keep} 은 남는다")
+    ok("(아직 비어 있다)" in _tp or "인물" in _tp,
+       "원장 자체는 싣는다  ← 없으면 모순 검사가 죽는다")
+    flow.LAYER = "all"
+    _ap = flow.write_prompt(_bk)
+    ok(len(_tp) < len(_ap) - 2000,
+       f"프롬프트가 줄어든다 ({len(_ap):,} -> {len(_tp):,}자)")
+    ok("[확산]" in _ap, "층을 켜면 예전 그대로다  ← 지우는 것이 아니라 안 싣는 것이다")
+finally:
+    flow.LAYER = _was
 
 print()
 if fails:
