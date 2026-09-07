@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import os
 
-from novel import deep, dyn, mode as MD, plot, profile as PF, spine, targets as TG, voice
+from novel import deep, dyn, layout, mode as MD, plot, profile as PF, spine, targets as TG, voice
 
 # 한 덩어리에 쓸 분량.
 CHARS = int(os.environ.get("DRIFT_CHUNK", "3200"))
@@ -86,6 +86,8 @@ SAY = {
 # 목소리 축(voice). 문장도 사건도 아닌 것들 -- 시제 · 인칭 · 비유 · 감각 · 호칭.
 # **이름은 그 자가 들고 있다** -- 여기 옮겨 적으면 축을 더할 때마다 두 곳을 고쳐야 한다.
 SAY.update(voice.SAY)
+# 조판(layout). 지면이 어떻게 생겼는가 -- 읽는 사람이 문장보다 먼저 보는 것.
+SAY.update(layout.SAY)
 # **초고 프롬프트는 자세할수록 좋다.** 수정은 덩어리마다 한 번뿐이고 그것도 일괄
 # 수정이다 -- 걸린 문장들을 한 장에 담아 한 번에 고치고 끝낸다. 통째로 다시 쓰지
 # 않는다. 그러니 처음에 다 말해 줘야 한다. 0 이면 재는 축을 전부 싣는다.

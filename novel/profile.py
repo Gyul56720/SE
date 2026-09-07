@@ -28,7 +28,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from novel import diffusion, echo, grain, rhythm, voice, wording      # noqa: E402
+from novel import diffusion, echo, grain, layout, rhythm, voice, wording  # noqa: E402
 
 # **낱낱까지 잰다.** 한 작품을 흉내 낼 때 켠다 -- 문장 길이와 대사 몫이 맞아도 낱말과
 # 문법이 다르면 다른 글이다. 여러 작품의 평균에 대고 켜면 그 평균은 어느 작품의 것도
@@ -50,7 +50,7 @@ _BASE = ("sent_len sent_var long short da_share end_var glue climb dialog talk_l
          # **서사층 대용.** 의미를 안 읽고 이야기의 결만 잰다.
          "names newname scene clock askrate").split()
 # 낱낱 축은 grain 이 낸다(품사 · 조사 · 어미 · 어휘 · 부호). GRAIN 을 끄면 안 붙는다.
-AXES = _BASE + (grain.axes() + voice.axes() if GRAIN else [])
+AXES = _BASE + (grain.axes() + voice.axes() + layout.axes() if GRAIN else [])
 
 
 def _sent(text: str) -> list:
@@ -108,6 +108,7 @@ def measure(text: str) -> dict:
     if GRAIN:
         out.update(grain.measure(text))
         out.update(voice.measure(text))
+        out.update(layout.measure(text))
     return out
 
 
