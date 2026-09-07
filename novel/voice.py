@@ -54,6 +54,25 @@ SENSE = {
 _SENSE = {k: re.compile(v) for k, v in SENSE.items()}
 
 
+# 대사 안의 높임. **서술문의 높임(polite)과 다른 자리다** -- A 는 서술을 낮춤으로
+# 쓰면서 대사는 높임으로 쓴다(잔차: 어요·예요·지요·에요·아요 가 1,091 대 0이었다).
+# 대사 줄만 따로 봐야 잡힌다.
+# '요' 는 줄 끝에만 오는 게 아니다. `"그냥요." 하고 그가 말했다` 처럼 닫는 따옴표
+# 앞에서 끝나는 것이 대사에서는 더 흔하다 -- 그것을 놓치면 지문이 붙은 대사가 전부
+# 반말로 세어진다.
+_TALK_POLITE = re.compile(r"(요[.!?…]*[”’\"']|요[.!?…”\"']*\s*$|습니다|ㅂ니다|입니다|세요|십시오|셨|시죠|"
+                          r"어요|에요|예요|지요|아요|나요|가요|까요)")
+# 발화를 대는 말. A 는 대사마다 이것을 단다(잔차: 말했다 689 대 8).
+_SAY = re.compile(r"(말했다|말한다|물었다|묻는다|대답했다|되물었다|덧붙였다|중얼거렸|"
+                  r"속삭였|외쳤다|소리쳤|그랬다|했다고|라고 하|하고 말)")
+
+
+def _talk(text: str) -> list:
+    from novel import rhythm
+    _tell, talk = rhythm._lines(text)
+    return [t for t in talk if t.strip()]
+
+
 def _sent(text: str) -> list:
     from novel import rhythm
     tell, _talk = rhythm._lines(text)
@@ -90,6 +109,13 @@ def measure(text: str) -> dict:
     if first + third:
         out["person_1"] = first / (first + third)
 
+    # 대사 안의 높임. 대사가 없으면 안 낸다 -- 0 으로 채우면 "반말만 쓴다" 와
+    # "대사가 없다" 가 같아진다.
+    talk = _talk(text)
+    if talk:
+        out["talk_polite"] = sum(1 for t in talk if _TALK_POLITE.search(t)) / len(talk)
+    out["say_verb"] = len(_SAY.findall(text)) / n
+
     # 감각의 비. 다섯을 합해 1이 되게 나눈다 -- 사전 크기에 안 흔들리게.
     c = {k: len(rx.findall(text)) for k, rx in _SENSE.items()}
     tot = sum(c.values())
@@ -101,8 +127,9 @@ def measure(text: str) -> dict:
 
 def axes() -> list:
     """이 자가 내는 축 이름."""
-    return sorted(measure("그는 걸었다. 나는 보았다. 그리고 그날 하얀 빛이 "
-                          "눈처럼 쏟아졌다. 춥지 않았다.").keys())
+    return sorted(measure('그는 걸었다. 나는 보았다. 그리고 그날 하얀 빛이 '
+                          '눈처럼 쏟아졌다. 춥지 않았다.\n"그래요."\n'
+                          '"안 춥니?" 하고 그가 말했다.').keys())
 
 
 SAY = {
@@ -121,4 +148,6 @@ SAY = {
     "sense_nose": "감각 가운데 코의 몫",
     "sense_skin": "감각 가운데 살갗의 몫",
     "sense_tongue": "감각 가운데 입의 몫",
+    "talk_polite": "높임말로 하는 대사의 몫",
+    "say_verb": "문장 하나당 '말했다 · 물었다' 류로 발화를 대는 횟수",
 }

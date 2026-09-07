@@ -109,6 +109,7 @@ def measure(text: str) -> dict:
         out.update(grain.measure(text))
         out.update(voice.measure(text))
         out.update(layout.measure(text))
+        out.update(layout.measure(text))
     return out
 
 

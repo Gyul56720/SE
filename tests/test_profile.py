@@ -37,7 +37,11 @@ print("[측정] **좋은 글 두 편이 서로 다르게 나와야 한다**")
 print("      ← 다 같은 수가 나오면 그 자는 아무것도 못 가른다.")
 a, b = P.measure(JOB), P.measure(OUT)
 ok(a and b, "둘 다 재진다")
-diff = [k for k in P.AXES if abs(a[k] - b[k]) > 0.05 * max(1.0, abs(a[k]))]
+# 자국이 없어 못 잰 축(대사가 없으면 talk_polite, 시제 자국이 없으면 tense_now)은
+# 양쪽에 다 있을 때만 견준다 -- 없는 것을 0 으로 채우면 "안 쓴다" 와 "알 수 없다" 가
+# 같아진다.
+diff = [k for k in P.AXES if k in a and k in b
+        and abs(a[k] - b[k]) > 0.05 * max(1.0, abs(a[k]))]
 ok(len(diff) >= 5, f"두 표본이 여러 축에서 갈린다 ({len(diff)}축: {diff[:5]})")
 ok(b["dialog"] == 0 and a["dialog"] > 0, "대사 없는 글과 있는 글을 가른다")
 
