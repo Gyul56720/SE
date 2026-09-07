@@ -80,7 +80,7 @@ ok("[이번 대목의 수]" in _first,
 ok("[직전 덩어리에서 어긋난 것]" not in _first, "첫 덩어리에는 어긋난 것이 없다")
 _next = flow.write_prompt(dict(flow.blank(), chunks=[FLAT]))
 ok("[직전 덩어리에서 어긋난 것]" in _next, "이어 쓸 때는 어긋난 축이 실린다")
-ok(len(_next) < 4000, f"프롬프트가 짧다 ({len(_next):,}자 · 대부분이 꼬리다)")
+ok(len(_next) < 5600, f"프롬프트가 짧다 ({len(_next):,}자 · 대부분이 꼬리다)")
 
 _was = flow.PROMPT
 try:
@@ -88,8 +88,10 @@ try:
     _old = flow.write_prompt(dict(flow.blank(), chunks=[FLAT]))
     ok("길이를 섞어라 -- 이건 재서 판정한다" in _old or len(_old) > 10000,
        f"예전 프롬프트도 남아 있다 ({len(_old):,}자)  ← 견주려고 남긴다")
-    ok(len(_next) < len(_old) / 3,
-       f"새 것이 3분의 1 아래다 ({len(_next):,} 대 {len(_old):,}자)")
+    # 축이 마흔아홉으로 늘어난 뒤로는 3분의 1이 아니라 절반이 자리다. 그래도
+    # **예전 작법서의 절반 아래**여야 한다 -- 늘어난 것은 전부 재는 축이어야 한다.
+    ok(len(_next) < len(_old) / 2,
+       f"새 것이 절반 아래다 ({len(_next):,} 대 {len(_old):,}자)")
 finally:
     flow.PROMPT = _was
 

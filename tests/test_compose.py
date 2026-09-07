@@ -77,10 +77,13 @@ ok(len(_vals) > 5, f"값은 덩어리마다 다르다 ({len(_vals)}가지)")
 print()
 print("[짜임] **뼈대만 있다**")
 ok("[분량]" in _p and "[세계" in _p and "끝부분" in _p, "분량 · 원장 · 꼬리")
-ok(len(_p) < 5000, f"그래도 짧다 ({len(_p):,}자)  ← 예전은 13,417자였다")
+# **길이의 상한은 예전 것(13,417자)에 대고 잰다.** 축이 열아홉에서 마흔아홉으로
+# 늘고, 갈래 흐름과 스물두 칸 짜임이 붙어서 커졌다 -- 그건 뜻이 있어서 커진 것이다.
+# 그래도 예전의 절반을 넘으면 무언가 새는 것이니 여기서 막는다.
+ok(len(_p) < 6700, f"그래도 짧다 ({len(_p):,}자)  ← 예전은 13,417자였다")
 _first = flow.write_prompt(flow.blank())
 ok("첫 문장" in _first or "여는 좌표" in _first, "첫 덩어리에는 여는 자리를 준다")
-ok(800 < len(_first) < 3000,
+ok(800 < len(_first) < 4200,
    f"첫 덩어리는 수와 설명으로 채운다 ({len(_first):,}자)  ← 꼬리가 없는 대신 자세히")
 
 print()
@@ -103,11 +106,15 @@ print("        않는다. 그러니 초고 프롬프트가 다 말해 줘야 한
 _dr = flow.write_prompt(flow.blank())
 ok(all(compose.SAY[k] in _dr for k in _named), f"초고에 축 값을 다 준다 ({len(_named)}개)")
 ok(_dr.count("  · ") >= 4, "어떻게 맞추는지도 몇 개는 준다")
-ok(len(_dr) < 4000, f"그래도 안 터진다 ({len(_dr):,}자)")
+ok(len(_dr) < 4200, f"그래도 안 터진다 ({len(_dr):,}자)")
 from novel import dyn as _dyn                                         # noqa: E402
 ok(all("aim" in v for k, v in _dyn.load().items() if k in compose.SAY),
    "그 설명은 코드가 아니라 데이터다(directives.json 의 aim)")
-ok("[이 대목에서 일어날 일]" in _dr, "무엇이 달라질지도 한 걸음 준다")
+# **한 걸음의 이름이 셋이다.** 의미층 기록이 있으면 [이 대목의 짜임](스물두 칸),
+# 뼈대만 있으면 [이 대목에서 일어날 일], 둘 다 없으면 plot 이 갈래만 준다.
+# 어느 것이 실리느냐는 그 저장소에 무엇이 배워져 있느냐에 달렸다.
+ok(any(t in _dr for t in ("[이 대목의 짜임]", "[이 대목에서 일어날 일]")),
+   "무엇이 달라질지도 한 걸음 준다")
 _src = Path(flow.__file__).read_text(encoding="utf-8")
 ok("고칠 것을 **전부** 모은다" in _src, "수정은 걸린 것을 다 모아 한 번에 한다")
 ok("한꺼번에** 풀어" in _src or "한꺼번에" in _src, "한 문장에 겹친 딱지도 한 번에 푼다")

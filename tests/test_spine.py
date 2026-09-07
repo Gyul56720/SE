@@ -59,7 +59,8 @@ print()
 print("[없을 때] **뼈대가 없으면 갈래만 뽑아 준다**")
 ok(spine.brief(0, D / "없다.json") == "", "없으면 빈 줄")
 _p = flow.write_prompt(flow.blank())
-ok("[이 대목에서 일어날 일]" in _p, "그래도 한 걸음은 준다  ← plot 이 대신한다")
+ok(any(t in _p for t in ("[이 대목의 짜임]", "[이 대목에서 일어날 일]")),
+   "그래도 한 걸음은 준다  ← 의미층이나 plot 이 대신한다")
 
 print()
 print("[안 담는 것] **문장은 안 들어간다**")

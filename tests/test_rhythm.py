@@ -17,6 +17,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import os
+# **살아 있는 targets.json 을 안 읽는다.** 목표는 지금 겨누는 작품에 맞춰 좁혀지는데,
+# 그때마다 이 테스트가 깨지면 목표를 조일 수 없게 된다(실측: A 하나로 좁히자 표본
+# 넷이 폭을 벗어나 밤샘 루프가 preflight 에서 멈췄다). 여기서 고정하는 것은 관문의
+# 논리이지 어느 작품의 수가 아니다.
+os.environ["DRIFT_TARGETS"] = str(
+    __import__("pathlib").Path(__file__).resolve().parent / "fixtures" / "targets.broad.json")
+
+
 from novel import flow, rhythm, style                                 # noqa: E402
 
 # **이 파일은 예전 프롬프트를 켜고 본다.** 기본은 axes 다(flow.PROMPT="axes") --
