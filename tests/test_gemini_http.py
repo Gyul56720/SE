@@ -57,8 +57,9 @@ class _Fake:
     def __init__(self, *replies):
         self.replies, self.calls = list(replies), []
 
-    def post(self, url, params=None, json=None, timeout=None):
-        self.calls.append({"url": url, "params": params, "body": json, "timeout": timeout})
+    def post(self, url, params=None, headers=None, json=None, timeout=None):
+        self.calls.append({"url": url, "params": params, "headers": headers,
+                           "body": json, "timeout": timeout})
         r = self.replies.pop(0)
         if isinstance(r, Exception):
             raise r
@@ -87,7 +88,9 @@ ok(rep.content == "산문이다.", f"글자를 뽑는다 ({rep.content!r})")
 ok(hasattr(rep, "content"), "`.content` 로 읽는다  ← llm_pool._extract_text 가 그렇게 본다")
 ok(P._extract_text(rep) == "산문이다.", "풀의 껍질 벗기기가 그대로 먹는다")
 call = fake.calls[0]
-ok(call["params"] == {"key": "KEY"}, "키는 쿼리로 간다")
+ok(call["headers"] == {"x-goog-api-key": "KEY"}, "키는 **헤더로** 간다")
+ok("KEY" not in call["url"], f"키가 URL 에 없다 ({call['url']})")
+ok(not call["params"], "쿼리에도 없다  ← URL 은 예외 메시지에 통째로 실려 나온다")
 ok(call["timeout"] == 12, "시간 제한이 실린다  ← langchain 기본값에는 없어서 매달렸다")
 ok(call["body"]["generationConfig"]["maxOutputTokens"] == 99, "출력 상한이 실린다")
 ok(call["body"]["contents"][0]["parts"][0]["text"] == "프롬프트", "프롬프트가 실린다")
@@ -163,9 +166,26 @@ ok(died is not None and "DEADLINE" in str(died),
 
 print()
 print("[비밀] **키가 로그에 안 샌다**")
-c = G.Client("gemini-3.5-flash", "AIza-진짜키처럼-생긴-것")
-ok("AIza" not in repr(c), f"repr 에 안 나온다 ({c!r})")
-ok("AIza" not in str(c), "str 에도 안 나온다")
+print("      ← 실측 2026-09-07: 키를 `?key=...` 로 실었더니, 404 를 만난 도구가")
+print("        raise_for_status() 로 죽으면서 **URL 통째로** 화면에 찍었다. 그 키는")
+print("        폐기했다. 키가 URL 에 없으면 어떤 예외 문자열에도 들어갈 자리가 없다.")
+_K = "AIza-진짜키처럼-생긴-것"
+c = G.Client("gemini-3.5-flash", _K)
+ok(_K not in repr(c), f"repr 에 안 나온다 ({c!r})")
+ok(_K not in str(c), "str 에도 안 나온다")
+
+# **연결이 끊긴 길.** 여기가 진짜 새던 자리다 -- requests 의 연결 오류 메시지는
+# 요청 URL 을 담고, 그것이 GeminiError 본문으로 옮겨져 풀의 stderr 로 나간다.
+_boom = RuntimeError(
+    f"HTTPSConnectionPool: Max retries exceeded with url: "
+    f"/v1beta/models/m:generateContent?key={_K} (Caused by ConnectTimeoutError)")
+_c2 = G.Client("m", _K, attempts=1)
+try:
+    run(_c2, _boom, _boom)
+    _err = "(안 던졌다)"
+except Exception as e:
+    _err = str(e)
+ok(_K not in _err, f"연결 실패 예외에도 키가 없다 ({_err[:80]})")
 
 print()
 print("[되돌리기] **GEMINI_CLIENT=langchain 이면 예전 경로**")
