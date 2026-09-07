@@ -1137,7 +1137,8 @@ def _offbrief(book: dict) -> str:
     a = dyn.arm(book.get("seed_id") or book["first"], len(book["chunks"]))
     book["_arm"] = a
     return dyn.brief(book["chunks"][-1], limit=a["asks"],
-                     climb_words=_climb(book), slack=a["slack"])
+                     climb_words=_climb(book), slack=a["slack"],
+                     gname=book.get("genre", ""))
 
 
 def write_prompt(book: dict, feedback: str = "") -> str:
