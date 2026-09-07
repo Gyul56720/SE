@@ -275,6 +275,72 @@ def _clean(v):
     return str(v).strip() if isinstance(v, (str, int, float)) and str(v).strip() else None
 
 
+# 추출 JSON 의 최상위 칸. 이것 밖의 키는 원장에 안 넣는다.
+_BUCKETS = {"people": dict, "places": dict, "objects": dict, "words": dict,
+            "open": dict, "rules": dict, "macguffin": dict, "facts": dict,
+            "bonds": dict, "fixed": dict, "folded": list, "closed": list,
+            "time": list}
+
+# 추출 프롬프트의 **자리 이름**. 모델이 값 대신 이것을 그대로 베껴 낼 때가 있다.
+_PLACEHOLDER = {"사람 이름", "장소", "사물", "항목", "이름-이름", "Name-Name", "name-name",
+                "이 덩어리가 지어낸 낱말", "아직 답이 안 나온 것", "이 세계의 통칙",
+                "다들 그것 때문에 움직이는 것", "통칙 하나로 갈음된 낱낱의 사실 이름들",
+                "앞에서 열려 있다가 이번에 답이 나온 것", "시점 한 줄", "..."}
+
+# "가-나" 꼴 -- 관계(bonds) 칸의 키 모양이다.
+_PAIR = re.compile(r"^[^\s\-]{1,12}-[^\s\-]{1,12}$")
+
+
+def clean_delta(delta) -> dict:
+    """추출 JSON 을 **규격에 맞춰 거른다.** 모르는 키는 원장에 안 들어간다.
+
+    실측 2026-09-07 VM (gemma-4-31b-it): 객체를 쪼개서 낼 때 **속 사전까지** 따로 낸다.
+    `bonds` 의 속 `{"이름-이름": ...}` 이 최상위에 `"Name-Name"` 으로, 인물 관계가
+    `"백작-엘리나"` 로 최상위에 올라왔다. drive._json 은 객체를 합칠 뿐 무엇이 어느
+    칸인지 모르므로 여기서 거른다:
+
+      · 최상위 키가 규격 밖이면 -- "가-나" 꼴의 문자열 값은 bonds 로 옮기고, 나머지는
+        버린다(로그에 남긴다)
+      · 칸의 값이 꼴에 안 맞으면(사전 자리에 문자열 · 목록) 그 칸을 버린다 --
+        `_merge` 가 `.items()` 에서 죽어 **덩어리 하나를 통째로 잃는** 일이 그것이다
+      · 프롬프트의 자리 이름을 값처럼 베껴 낸 항목은 버린다
+    """
+    if not isinstance(delta, dict):
+        return {}
+    out: dict = {}
+    dropped: list = []
+    for k, v in delta.items():
+        want = _BUCKETS.get(k)
+        if want is None:
+            if isinstance(v, str) and _PAIR.match(k) and k not in _PLACEHOLDER:
+                out.setdefault("bonds", {})[k] = v          # 흘러나온 관계는 제자리로
+            else:
+                dropped.append(k)
+            continue
+        if not isinstance(v, want):
+            dropped.append(f"{k}({type(v).__name__})")
+            continue
+        if want is dict:
+            kept = {kk: vv for kk, vv in v.items()
+                    if str(kk).strip() and str(kk).strip() not in _PLACEHOLDER}
+            if len(kept) < len(v):
+                dropped.append(f"{k}:자리이름 {len(v) - len(kept)}개")
+            # people 의 각 칸은 사전이거나 문자열이다. 그 밖(목록 · 숫자)은 문자열로.
+            if k == "people":
+                kept = {kk: (vv if isinstance(vv, (dict, str)) else str(vv))
+                        for kk, vv in kept.items()}
+            if k in out and isinstance(out[k], dict):
+                out[k].update(kept)
+            else:
+                out[k] = kept
+        else:
+            out[k] = [str(x) for x in v if str(x).strip()
+                      and str(x).strip() not in _PLACEHOLDER]
+    if dropped:
+        D._log(f"[flow] 추출에서 규격 밖을 버렸다 -- {dropped[:6]}")
+    return out
+
+
 def _merge(ledger: dict, delta: dict, at: int = 0) -> list:
     """새로 확정된 것을 원장에 더한다. **기각할 것만** 돌려준다.
 
@@ -1362,7 +1428,7 @@ def step(book: dict, llm, log=None) -> dict:
     # 새로 받은 원고는 또 다른 데서 걸렸다. 그리고 끝내 못 풀면 3,200자를 버렸다.
     # 이제는 다르다: 크게 한 번 쓰고, 걸린 문장을 **전부 모아 한 번에** 고쳐 달라고
     # 하고, 남은 것은 버리는 대신 장부에 적는다. 폐기는 없다.
-    for attempt in range(1, 3):        # 두 번째는 답이 통째로 망가졌을 때만이다
+    for attempt in range(1, 4):        # 두 번째부터는 답이 통째로 망가졌을 때만이다
         text = D._llm_for(llm, "narrator")(write_prompt(book)).strip()
         text, dropped = echo.trim(text, "".join(book["chunks"]))
         if dropped:
@@ -1396,6 +1462,26 @@ def step(book: dict, llm, log=None) -> dict:
         else:
             D._log(f"[flow] {want:,}자로 왔다 -- 이어받기가 {len(more)}자라 그냥 간다")
 
+    # **원고를 받은 뒤의 일이 터져도 원고는 쓴다.** 추출 · 손질 · 자(rhythm ·
+    # diffusion) · 회수 기록은 전부 장부 일이다 -- 거기서 예외가 나면 예전엔 run() 이
+    # "error" 로 받고 방금 받은 3,200자를 버렸다. 실측 2026-09-07: 추출이 규격 밖으로
+    # 오면 _merge 가 `.items()` 에서 죽었고, 원고는 밤새 0자였다. 장부는 다음
+    # 덩어리에서 다시 채워지지만 원고는 다시 안 온다.
+    try:
+        return _adopt(book, llm, text)
+    except Exception as e:
+        import traceback
+        D._log(f"[flow] 장부 일이 터졌다({type(e).__name__}: {e}) -- 원고는 그대로 쓴다\n"
+               + traceback.format_exc()[-600:])
+        book["ledger"].setdefault("_age", {})
+        book["chunks"].append(text)
+        _after(book, text)
+        return {"status": "ok", "chars": len(text), "clashes": [],
+                "why": f"장부 없이 채택 ({type(e).__name__})"}
+
+
+def _adopt(book: dict, llm, text: str) -> dict:
+    """받은 원고를 읽고 · 고치고 · 재고 · 채택한다. step 의 뒷부분이다."""
     def _read(t):
         """원고 하나를 읽어 원장 사본과 어긋난 것을 돌려준다."""
         try:
@@ -1403,6 +1489,7 @@ def step(book: dict, llm, log=None) -> dict:
         except ValueError as e:
             D._log(f"[flow] 추출 실패({e}) -- 원장 갱신 없이 간다")
             delta = {}
+        delta = clean_delta(delta)
         # **고정 파라미터는 한 번만 채워진다.** 이미 값이 있으면 덮지 않는다 --
         # 도중에 바뀌면 설정이 충돌한다. 빈 칸만 받는다.
         for k, v in (delta.get("fixed") or {}).items():
@@ -1677,6 +1764,7 @@ def run(book: dict, llm, target: int, path=None, deadline=None) -> dict:
     실패하면 그때는 정말 멈춘다 -- 그건 지나가는 문제가 아니다.
     """
     book["_path"] = str(path) if path else None    # 못 고친 것을 원고 옆에 적으려고
+    book["_target"] = int(target)                   # 연재 마디가 이것으로 나뉜다(serial.py)
     _save(book, path)
     miss = 0
     while sum(len(c) for c in book["chunks"]) < target:
@@ -1686,6 +1774,8 @@ def run(book: dict, llm, target: int, path=None, deadline=None) -> dict:
         try:
             r = step(book, llm)
         except Exception as e:                       # 호출이 터져도 런은 안 죽는다
+            import traceback
+            D._log("[flow] step 이 터졌다:\n" + traceback.format_exc()[-800:])
             r = {"status": "error", "why": f"{type(e).__name__}: {e}"[:120]}
         _save(book, path)
 
@@ -1829,6 +1919,14 @@ def main() -> int:
            f"{sum(len(c) for c in book['chunks']):,}자 · 표류 계수 {book['drift']}"
            f" · 소재 {book['matter']} · 설정 {book['trait']} · 관계 {book['bond']}"
            f" · 연결 {book['bridge']}")
+    # **도착지는 이 프로세스가 세운다.** drift.sh 가 따로 serial.py plan 을 돌려 파일에
+    # 쓰면, 이 프로세스가 들고 있는 원고(도착지 없음)를 다음 _save 가 그 위에 덮는다 --
+    # 당김이 한 번도 프롬프트에 안 실린다. 호출 한 번이고, 실패해도 런은 간다.
+    if a.genre and not SR.planned(book):
+        try:
+            SR.plan(book, D.default_llm, a.genre)
+        except Exception as e:
+            D._log(f"[flow] 도착지를 못 세웠다({type(e).__name__}: {e}) -- 당김 없이 간다")
     r = run(book, D.default_llm, a.chars, path, time.time() + a.hours * 3600)
     D._log(f"[flow] 끝 -- 덩어리 {r['chunks']}개 · {r['chars']:,}자 · {path}")
     return 0
