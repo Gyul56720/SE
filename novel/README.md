@@ -158,6 +158,7 @@ JSON 의 우위는 **추출 태스크에 한정**된 이야기라, 두 태스크
 | `scripts/run_novel_vm.sh` | VM 런처. setsid+nohup+disown 을 매번 손으로 쓰다 하나를 빠뜨리지 않게. **경로 전부 절대경로** |
 | `scripts/novel_status.sh` | 프로세스·로그·자수를 한 번에. 어느 디렉토리에서 쳐도 된다 |
 | `voicegap.py` | **인물끼리 말이 얼마나 다른가.** 문자 3-gram 부트스트랩 거리(EVIDENCE.md 10절). 1.0 = 구별 안 됨. 밑돌면 겹치는 둘을 짚어 되먹인다 |
+| `payoff.py` | **갚는가.** 미결이 몇 덩어리째 열려 있나 · 회수율. 묵은 것의 이름을 짚어 되먹인다(EVIDENCE.md 5절) |
 | `read.py` `watch.py` `profile.py` `repair_ops.py` | 읽기 · 진행 보기 · 병목 측정 · 저장된 원고 수리 |
 
 검사: `tests/test_novel_*.py`, `test_style.py`, `test_agency.py`, `test_timeline.py`, `test_seed.py`,
