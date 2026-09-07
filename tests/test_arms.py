@@ -39,7 +39,20 @@ _bk = flow.blank()
 _bk["chunks"] = ["그는 갔다.\n" * 300]
 flow.write_prompt(_bk)
 ok(_bk.get("_arm"), f"프롬프트를 만들 때 팔이 정해진다 ({_bk.get('_arm')})")
-ok(_bk["_arm"]["asks"] <= 6, "싣는 수가 팔에서 온다")
+# **팔 표를 팔 표와 견주지 않는다.** 전에는 `_arm["asks"] <= 6` 이었는데 ARMS 의 asks 가
+# 전부 6 이하라 flow 가 팔을 완전히 무시해도 초록이었다(2026-09-08 가짜 green 사냥).
+# 프롬프트에 실제로 실린 지시문 수를 센다 -- 그리고 고정물이 한도보다 많은 축을
+# 어긋나게 하는지부터 확인한다. 그래야 한도가 문다(실측: 어긋난 축 9, 팔 6).
+import re as _re
+_a = _bk["_arm"]
+_full = dyn.asks(_bk["chunks"][-1], limit=99, climb_words=flow._climb(_bk),
+                 slack=_a["slack"], gname="")
+ok(len(_full) > _a["asks"],
+   f"고정물이 팔의 한도보다 많은 축을 어긋나게 한다 ({len(_full)} > {_a['asks']})")
+_p = flow.write_prompt(_bk)
+_blk = _p.split("[직전 덩어리에서 어긋난 것]", 1)[1] if "[직전 덩어리에서 어긋난 것]" in _p else ""
+_n = len(_re.findall(r"^\s+\d+\. ", _blk, _re.M))
+ok(_n == _a["asks"], f"프롬프트에 실린 지시문 수가 팔의 asks 와 같다 ({_n} == {_a['asks']})")
 
 print()
 print("[세기] **몇 번 안 보고 이겼다고 하지 않는다**")

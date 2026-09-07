@@ -153,9 +153,10 @@ _b = _io.StringIO()
 with _ctx.redirect_stdout(_b):
     _rc = SPR.card(led, _c["id"])
 _out = _b.getvalue()
-ok(_rc == 0 and "Exponent" in _out or _rc == 0, "카드가 칸을 펼친다")
-ok("--- 부모" in _out and "Brent" in _out or "--- 부모" in _out,
-   "부모도 같이 보여 준다 -- 견주려고 있는 것이다")
+# `A and B or A` 는 A 다 -- 2026-09-08 가짜 green 사냥에서 내가 넣은 것이 걸렸다.
+ok(_rc == 0 and "lim_{e->0}" in _out, "카드가 자식의 식을 펼친다")
+ok("--- 부모" in _out and "lam_r" in _out,
+   "부모의 식도 같이 보여 준다 -- 견주려고 있는 것이다")
 ok("계보:" in _out and "S1" in _out, "계보 사슬도 적는다")
 with _ctx.redirect_stdout(_io.StringIO()):
     ok(SPR.card(led, "S999") == 1, "없는 공간은 1 로 끝난다")
