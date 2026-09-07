@@ -1,0 +1,21 @@
+{
+ "_": "쟁점 도출 예시. 조문 번호는 tests/fixtures 의 가상 법령을 가리킨다 -- 실제 법령이 아니다.",
+ "domain": "민사",
+ "claim": "원고가 피고에게 대여금 1천만원의 반환을 구한다 (누가·무엇을·누구에게·무슨 근거로)",
+ "elements": [
+  {"id": "합의", "text": "소비대차 합의", "stage": "권리근거",
+   "statute": "가상시험법", "article": "7", "kind": "사실", "evidence": ["차용증", "증인 갑"]},
+  {"id": "교부", "text": "금전의 교부", "stage": "권리근거",
+   "statute": "가상시험법", "article": "7", "kind": "사실", "evidence": ["계좌이체 내역"]},
+  {"id": "변제", "text": "변제", "stage": "권리소멸",
+   "statute": "가상시험법", "article": "7의2", "kind": "사실", "evidence": ["영수증"]},
+  {"id": "시효", "text": "소멸시효 완성", "stage": "권리저지",
+   "statute": "가상시험법", "article": "12", "kind": "법률", "canon": "문언", "invoked": true}
+ ],
+ "positions": {
+  "합의": {"원고": true,  "피고": false},
+  "교부": {"원고": true,  "피고": true},
+  "변제": {"원고": false, "피고": true},
+  "시효": {"원고": false, "피고": true}
+ }
+}
