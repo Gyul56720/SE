@@ -1,0 +1,27 @@
+{
+ "first": "내가 너에게 처음 함부루크에 관한 이야기를 던졌을 때, 너는 있지도 않는 가상의 도시 \"웅포\"를 꺼내들었지. 나는 네 이름도 몰라 성도 몰라 나이도 몰라 너에 대해 아는 것이 아무것도 없지만, 봐바 이렇게 두 쉼표 사이에 대사를 넣을 수도 있다고, 꼭 기억해, 웅포는 존재해.\n",
+ "chunks": [],
+ "shocks": 0,
+ "since": 0,
+ "drift": 1.0,
+ "matter": 0.0,
+ "trait": 0.35,
+ "bond": 0.4,
+ "bridge": 0.3,
+ "exception": 0.3,
+ "doubt": 0.3,
+ "pov": 0.2,
+ "ledger": {
+  "people": {},
+  "places": {},
+  "facts": {},
+  "time": [],
+  "objects": {},
+  "words": {},
+  "open": {},
+  "rules": {},
+  "macguffin": {},
+  "_folded": []
+ },
+ "_path": "/home/ubuntu/SE/novel/drift.json"
+}

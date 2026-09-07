@@ -153,7 +153,8 @@ INNER
     refuse_double; load_env
     [ -f "$BOOK" ] || die "이어 쓸 원고가 없다: $BOOK   (새로 시작하려면: $0 start)"
     cp "$BOOK" "$BOOK.bak"
-    launch "이어 쓰기를" --resume "$BOOK" --chars "${2:-50000}" --hours 12 \
+    FIRST_MSG="$(python3 -c "import json; print(json.load(open('$BOOK')).get('first', ''))" 2>/dev/null || true)"
+    launch "이어 쓰기를" --resume "$BOOK" ${FIRST_MSG:+--first "$FIRST_MSG"} --chars "${2:-50000}" --hours 12 \
            ${GENRE:+--genre "$GENRE"} \
            ${DRIFT:+--drift "$DRIFT"} ${MATTER:+--matter "$MATTER"} \
            ${BODY:+--body "$BODY"} ${BOND:+--bond "$BOND"}

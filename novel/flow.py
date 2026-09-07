@@ -251,6 +251,10 @@ def blank(first: str = FIRST) -> dict:
         "_folded": []}}
 
 
+def _clean(v):
+    return str(v).strip() if isinstance(v, (str, int, float)) and str(v).strip() else None
+
+
 def _merge(ledger: dict, delta: dict, at: int = 0) -> list:
     """새로 확정된 것을 원장에 더한다. **기각할 것만** 돌려준다.
 
@@ -1716,7 +1720,7 @@ def main() -> int:
     #
     # 조용히 지우지는 않는다 -- 밤새 쓴 원고일 수 있다. 멈추고 무엇을 하라고 알려 준다.
     if a.resume and book.get("first") and not getattr(a, "first_seed", False) \
-            and book["first"] != a.first:
+            and book["first"].strip().replace("\r\n", "\n") != a.first.strip().replace("\r\n", "\n"):
         print("첫 문장이 다르다 -- 이건 다른 소설이다. 이어 쓰지 않는다.\n"
               f"  원고에 박힌 첫 문장: {book['first'][:40]}...\n"
               f"  지금 주어진 첫 문장: {a.first[:40]}...\n"
