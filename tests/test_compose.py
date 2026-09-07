@@ -44,8 +44,15 @@ _named = [k for k in compose.SAY if TG.band(k)]
 ok(len(_named) >= 12, f"폭이 있는 축이 프롬프트에 실린다 ({len(_named)}개)")
 _first_p = flow.write_prompt(flow.blank())
 ok(all(compose.SAY[k] in _first_p for k in _named), "폭이 있는 축은 하나도 안 빠진다")
-ok(not any(compose.SAY[k] in _first_p for k in compose.SAY if not TG.band(k)),
-   "폭이 없는 축은 안 실린다  ← 목표를 지어내지 않는다")
+# **폭은 두 군데서 온다.** 전체를 재서 나온 폭(targets.json)과 갈래별로 재서 나온
+# 폭(targets.modes.json)이다. 전체로는 늘 0이라 뺀 축이 한 갈래 안에서는 폭을
+# 가질 수 있다 -- A 의 `ell_rate` 가 그렇다(글 전체 0.000, 대사 줄만 모으면
+# 0.000~0.023). 그건 지어낸 것이 아니라 잰 것이므로 실려도 된다.
+from novel import mode as _MD                                        # noqa: E402
+_moded = {k for axes in _MD.nums().values() for k in axes}
+ok(not any(compose.SAY[k] in _first_p for k in compose.SAY
+           if not TG.band(k) and k not in _moded),
+   "어디에서도 안 잰 축은 안 실린다  ← 목표를 지어내지 않는다")
 _p = flow.write_prompt(BK)
 for _gone in ("[문장]", "[상황]", "[점층]", "[리듬]", "[낱말]", "[정밀]", "[심층]",
               "[아이러니]", "[스윙]", "[여백]", "[농담]", "[결]"):
