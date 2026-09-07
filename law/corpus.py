@@ -180,6 +180,32 @@ class Citation:
             if "의" in self.article else f"{head}제{self.article}조"
 
 
+# **단위가 틀리면 대조도 틀린다.**
+#
+# 실측: '4. 해석기법' 절이 통째로 한 문장이 됐다. 그 절은 `### 문언적 해석` 처럼
+# 소제목으로만 나뉘고 마침표가 거의 없어서, 마침표만 보는 자에게는 절 전체가 한 덩이다.
+# 그래서 `### 문언적 해석` 이 부른 조문과 `### 보충적 해석` 이 쓴 낱말("관련 학설과
+# 추가 규정을 적용해야")이 **한 주장인 것처럼** 견줘졌고, 어긋남 하나가 그렇게 났다.
+# 서로 다른 소제목 아래 있는 말은 서로 다른 주장이다.
+#
+# **여기 한 벌만 둔다.** gate.py 와 wording.py 가 각자 같은 것을 들고 있었다 --
+# 두 벌은 언젠가 갈라지고, 갈라지면 보고와 판정이 어긋난다.
+_BLOCK = re.compile(r"\n\s*\n|\n(?=[ \t]*#{1,6}\s)")
+_SENT = re.compile(r"(?<=[.!?])\s+")
+_SPACE = re.compile(r"\s+")
+
+
+def sentences(text: str) -> list:
+    """덩이(빈 줄 · 소제목)로 먼저 자르고, 그 안에서 마침표로 자른다."""
+    out = []
+    for block in _BLOCK.split(text):
+        block = _SPACE.sub(" ", block).strip()
+        if not block:
+            continue
+        out += [s.strip() for s in _SENT.split(block) if s.strip()]
+    return out
+
+
 def normalize_statute(name: str | None) -> str | None:
     if not name:
         return None

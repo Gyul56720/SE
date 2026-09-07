@@ -147,9 +147,9 @@ def parse(path: Path) -> Doc:
 
 
 def _sentences(text: str) -> list:
-    """문장으로 자른다. 조문 인용의 마침표에 걸리지 않게 '제N조.' 는 피한다."""
-    text = re.sub(r"\s+", " ", text)
-    return [s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if s.strip()]
+    """문장으로 자른다. **자는 corpus 에 한 벌만 둔다** -- 여기와 wording.py 가
+    각자 들고 있으면 언젠가 갈라지고, 갈라지면 보고와 판정이 어긋난다."""
+    return CP.sentences(text)
 
 
 def _resolve(cit, doc: Doc):
