@@ -39,6 +39,7 @@ from novel import drive as D                                          # noqa: E4
 from novel import echo                                                # noqa: E402
 from novel import doubt                                               # noqa: E402
 from novel import voicegap as VG                                      # noqa: E402
+from novel import payoff as PO                                        # noqa: E402
 from novel import diffusion, dyn                                           # noqa: E402
 from novel import bridge                                              # noqa: E402
 from novel import bond                                                # noqa: E402
@@ -1146,7 +1147,7 @@ def write_prompt(book: dict, feedback: str = "") -> str:
             ledger=brief(book["ledger"], now=len(book["chunks"])),
             asks="\n\n".join(x for x in (compose.offbrief(book), owed_brief(book),
                                           ahead_brief(book), VG.brief(book),
-                                          feedback) if x),
+                                          PO.brief(book), feedback) if x),
             opening_head=_open_head(book))
     return _legacy_prompt(book, feedback)
 
@@ -1211,6 +1212,8 @@ def _legacy_prompt(book: dict, feedback: str = "") -> str:
 {turned(book) if _story() else ''}
 
 {VG.brief(book)}
+
+{PO.brief(book)}
 
 {owed_brief(book)}
 
@@ -1435,6 +1438,10 @@ def step(book: dict, llm, log=None) -> dict:
     # **잰 값을 남긴다.** 다음 덩어리가 이것을 보고 방향을 잡는다 -- 남기지 않으면
     # 매번 처음부터 눈감고 흔드는 것이다.
     _remember(book, text)
+    # **무엇을 열고 무엇을 닫았나.** 원장을 갈아 끼우기 직전이 유일한 자리다 -- 뒤로
+    # 가면 before 가 사라진다. 여는 것보다 닫는 것이 느리면 빚이 쌓인다(EVIDENCE.md 5절).
+    PO.record(book, (book.get("ledger") or {}).get("open"), probe.get("open"),
+              len(book["chunks"]))
     book["ledger"] = probe
     book["chunks"].append(text)
     _after(book, text)
