@@ -181,7 +181,8 @@ def target_block(seed: str, n: int, last: str = "", watch=(), gname: str = "") -
     # 지켜지지 않는다 -- 여덟 줄뿐인 자리를 지금 쓰는 것에 준다.
     far = []
     if last:
-        far = [k for k, _side, _d, _v in dyn.off(last, slack=0.0) if k in vals]
+        far = [k for k, _side, _d, _v in dyn.off(last, slack=0.0, gname=gname)
+               if k in vals]
     w = [k for k in watch if k in vals]
     order = ([k for k in w if k in far] + [k for k in far if k not in w]
              + [k for k in w if k not in far] + keys) if (far or w) else keys
@@ -273,4 +274,5 @@ def offbrief(book: dict) -> str:
         return ""
     a = dyn.arm(book.get("seed_id") or book.get("first", ""), len(chunks))
     book["_arm"] = a
-    return dyn.brief(chunks[-1], limit=a["asks"], slack=a["slack"])
+    return dyn.brief(chunks[-1], limit=a["asks"], slack=a["slack"],
+                     gname=book.get("genre", ""))

@@ -405,3 +405,37 @@ try:
        "제 저울에 적어 둔 갈래는 그대로다  ← 뒤로 안 깨진다")
 finally:
     flow.PROMPT = _was
+
+
+print()
+print("[사각] **시키는 자와 재는 자가 다른 폭을 보면 그 차이가 통째로 사각이 된다**")
+print("      ← 실측 2026-09-07: 로판 대사를 30~55%로 시켜 놓고 dyn.off 는 표본 폭")
+print("        1~29%로 쟀다. 나온 원고가 10%였는데 그 폭 안이라 아무도 대사를")
+print("        늘리라고 하지 않았다. compose.aims·score.py 를 고치고 여기만 빠뜨렸다.")
+from novel import dyn as _D                                           # noqa: E402
+_thin = ("그는 천천히 걸었다.\n" * 90) + ('"네."\n' * 10)      # 대사 10%
+_no = [k for k, _s, _g, _v in _D.off(_thin)]
+_yes = [k for k, _s, _g, _v in _D.off(_thin, gname="ropan")]
+ok("dialog" not in _no, "갈래가 없으면 대사 10%가 표본 폭 안이라 안 걸린다  ← 여기가 사각이었다")
+ok("dialog" in _yes, "로판을 주면 걸린다")
+_asks = _D.asks(_thin, limit=1, gname="ropan")
+ok(_asks and "대사" in _asks[0],
+   "한도가 1이어도 갈래 축이 맨 앞이다  ← 갈래는 사람이 명시한 요구다")
+ok(not any("대사" in s for s in _D.asks(_thin, limit=1)),
+   "갈래가 없으면 지금까지대로다  ← 뒤로 안 깨진다")
+
+print("  [가운뎃값] 갈래가 들여온 축은 가운뎃값도 갈래에서 온다")
+print("      ← 표본에 없는 축(높임 대사)을 TG.mid 로 물으면 0 이 돌아오고, 지시문이")
+print("        '표본은 0%가 높임으로 간다' 가 된다. 로판에 정반대를 시키는 말이다.")
+_banmal = ("그는 걸었다.\n" * 70) + ('"야 됐고."\n' * 30)
+_pol = [s for s in _D.asks(_banmal, limit=8, gname="ropan") if "높임" in s]
+ok(_pol, "높임이 모자라면 지시문이 나온다")
+ok(_pol and "0%" not in _pol[0],
+   f"가운뎃값이 0 이 아니다 ({_pol[0][:44] if _pol else ''}…)  ← 표본에 없는 축이다")
+
+print("  [빈 지시문] 어긋났는데 할 말이 없으면 프롬프트가 조용하다")
+import json as _json                                                  # noqa: E402
+_dir = _json.loads((Path(__file__).resolve().parent.parent / "novel" / "directives.json")
+                   .read_text(encoding="utf-8"))["axes"]
+ok(_dir["talk_len"]["low"].strip(),
+   "긴 대사가 모자랄 때 할 말이 있다  ← 비어 있으면 목표만 주고 방법을 안 준다")

@@ -20,7 +20,7 @@ import json
 import os
 from pathlib import Path
 
-from novel import profile as PF, score as SC, targets as TG
+from novel import genre as GENRE, profile as PF, score as SC, targets as TG
 
 HERE = Path(__file__).resolve().parent
 PATH = Path(os.environ.get("DRIFT_DIRECTIVES", HERE / "directives.json"))
@@ -76,14 +76,20 @@ def load() -> dict:
     return _CACHE
 
 
-def off(text: str, slack: float | None = None) -> list:
-    """(축, 어느 쪽으로, 거리, 우리 값). 먼 것부터."""
+def off(text: str, slack: float | None = None, gname: str = "") -> list:
+    """(축, 어느 쪽으로, 거리, 우리 값). 먼 것부터.
+
+    **갈래가 옮긴 축은 갈래로 잰다.** 이것을 안 하면 손질 루프가 표본 폭으로 재고,
+    갈래가 옮겨 놓은 자리는 영영 안 고쳐진다 -- 실측 2026-09-07: 로판 대사 몫을
+    30~55%로 시켜 놓고 여기서는 표본 폭 1~29%로 쟀다. 나온 원고가 10%였는데 그 폭
+    안이라 **아무도 대사를 늘리라고 하지 않았다.** 시키는 자와 재는 자가 다른 폭을
+    보면 그 차이만큼이 통째로 사각이 된다(compose.aims · score.py 와 같은 이유)."""
     m = PF.measure(text)
     if not m:
         return []
     out = []
     for k in PF.AXES:
-        band = TG.band(k)
+        band = GENRE.band(gname, k) or TG.band(k)
         if not band or k not in m:
             continue
         lo, hi = band
@@ -94,17 +100,34 @@ def off(text: str, slack: float | None = None) -> list:
 
 
 def asks(text: str, limit: int = MAX_ASKS, climb_words: str = "",
-         slack: float | None = None) -> list:
+         slack: float | None = None, gname: str = "") -> list:
     """이번 덩어리에 실을 지시문들. 어긋난 축이 없으면 빈 목록이다."""
     from novel import rhythm
+    rows = off(text, slack, gname)
+    # **갈래가 옮긴 축은 한 자리를 보장한다.** 어긋난 축은 거리 순으로 실리는데 한도가
+    # 넷이라, 갈래 축이 다섯 번째면 영영 안 실린다 -- 실측 2026-09-07: 로판 대사가
+    # 10%인데 sent_var·end_var·short·da_share 넷에 밀려 잘렸고, 팔이 {2,4,6,4,1,4}로
+    # 돌아가니 여섯 덩어리에 한 번만 실렸다.
+    #
+    # 갈래를 준다는 것은 사람이 **이 갈래로 써라**고 명시한 것이다. 그 요구가 표본과의
+    # 일반적인 거리에 밀려서는 안 된다. 다만 다 앞세우지도 않는다 -- 제일 먼 갈래 축
+    # 하나만 앞으로 당긴다.
+    if gname and limit:
+        gx = [i for i, r in enumerate(rows) if GENRE.band(gname, r[0])]
+        if gx and gx[0] >= limit:
+            rows = [rows[gx[0]]] + [r for i, r in enumerate(rows) if i != gx[0]]
     out = []
-    for kind, side, gap, got in off(text, slack):
+    for kind, side, gap, got in rows:
         say = (load().get(kind) or {}).get(side, "")
         if not say:
             continue
-        band = TG.band(kind) or (0.0, 0.0)
-        out.append(say.format(got=got, lo=band[0], hi=band[1],
-                              mid=TG.mid(kind, 0.0),
+        # **갈래가 옮긴 축은 가운뎃값도 갈래에서 온다.** 표본에 없는 축(로판의 높임
+        # 대사 몫)을 TG.mid 로 물으면 0 이 돌아오고, 지시문이 "표본은 0%가 높임으로
+        # 간다" 가 된다 -- 로판에 정반대를 시키는 말이다(실측 2026-09-07).
+        band = GENRE.band(gname, kind) or TG.band(kind) or (0.0, 0.0)
+        mid = ((band[0] + band[1]) / 2 if GENRE.band(gname, kind)
+               else TG.mid(kind, 0.0))
+        out.append(say.format(got=got, lo=band[0], hi=band[1], mid=mid,
                               n_climb=rhythm.LIMITS["climb"],
                               climb_words=climb_words))
         if len(out) >= limit:
@@ -113,9 +136,9 @@ def asks(text: str, limit: int = MAX_ASKS, climb_words: str = "",
 
 
 def brief(text: str, limit: int = MAX_ASKS, climb_words: str = "",
-          slack: float | None = None) -> str:
+          slack: float | None = None, gname: str = "") -> str:
     """프롬프트에 붙일 한 덩이. 다 맞고 있으면 **빈 줄**이다."""
-    items = asks(text, limit, climb_words, slack)
+    items = asks(text, limit, climb_words, slack, gname)
     if not items:
         return ""
     body = "\n".join(f"  {i + 1}. {s}" for i, s in enumerate(items))
