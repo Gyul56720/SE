@@ -6,7 +6,6 @@ __pycache__/
 .claude/settings.local.json
 keyword_synthesis_log.jsonl
 inbox/discord_attachments/
-__pycache__/
 *.swp
 Public_agent/quota_state.json
 bot_execution.log
@@ -32,7 +31,6 @@ tile_stimulus.txt
 all_stimulus.txt
 Qwen2.5-Coder-7B-partial.gguf
 *.npy
-*.bin
 
 # iverilog/vvp 시뮬레이션 산출물 (npu/ 에서 재생성 가능)
 check_syntax
@@ -40,8 +38,6 @@ final_sim_exec
 final_sim_opt
 npu/*_sim
 npu/array_results.txt
-npu/array_act.txt
-npu/array_w.txt
 
 # 압축 코덱 탐색의 런타임 상태. 가중치 캐시는 크고(실제 모델 가중치), 챔피언 포인터와
 # 대장은 서버가 계속 쓴다 -- 추적하면 배포의 git pull 이 매번 충돌한다(als_state.json 과
@@ -114,3 +110,16 @@ law/tune.best.json
 # 낳은 공간 15개가 pull 한 번에 씨앗만 든 커밋본으로 되돌아갔다.
 # 씨앗(mathdrift/seed.json)은 코드다 -- 원장이 없으면 거기서 새로 세운다.
 mathdrift/ledger.json
+
+# 어려운 문제 생성기 탐색의 대장 -- evolve.py 가 없으면 만들고 계속 쓴다.
+# compression/ledger.json · mathdrift/ledger.json 과 같은 부류다(2026-09-08 대청소에서 발견:
+# 108바이트짜리 초기 상태가 추적되고 있었다).
+mathgen/ledger.json
+
+# IJP 도약 탐색의 런타임 상태 -- jump_searcher.py 가 STATE_PATH 로 계속 쓴다.
+# 결과 기록(jump_project_results.json)은 소스가 아니라 기록이라 남긴다.
+mathmetics/matrix_exponent/jump_state.json
+
+# npu/axi_fuzz_tester.py 가 "w" 로 만드는 생성물. RUNNING.md 가 "array_*.txt 는 재생성되므로
+# 커밋하지 않는다" 고 적어 뒀는데 _hex 꼴은 패턴에서 빠져 있었다.
+npu/array_*_hex.txt

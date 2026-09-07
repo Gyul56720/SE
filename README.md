@@ -1,7 +1,9 @@
 # SE — 자기수정 에이전트 저장소
 
 Discord로 지시를 받아 스스로 코드를 고치고, 고친 결과를 강제 게이트로 검사한 뒤에만
-커밋하는 에이전트 시스템. 2026-09-02 정리로 살아있는 세 시스템만 남겼다.
+커밋하는 에이전트 시스템. 한 원칙 위에 여러 오케스트레이션이 얹혀 있다 -- **생성자와 심판을
+분리하고 심판은 LLM 이 아니다.** 소설(`novel/`)·법(`law/`)·수식(`mathdrift/`)·문제 생성
+(`mathgen/`)·압축(`compression/`)·행렬곱(`mathmetics/matrix_exponent/`)이 전부 그 원칙의 변주다.
 
 ## 1. Discord 에이전트 (봇 본체)
 
@@ -85,6 +87,21 @@ scripts/drift.sh read       # 읽는다
 **사용법 전부 [`novel/DRIFT.md`](novel/DRIFT.md).** 에이전트 세션에서는 `/drift` 스킬로
 바로 부를 수 있다(`.claude/skills/drift/`).
 
+### MATHDRIFT — 수학적 지평을 소설처럼 (`mathdrift/`)
+
+DRIFT 를 수학으로 옮긴 것. 씨앗 식 하나(Brent 항등식)에서 연산자(경계화·표수 이동·매장·
+점근화·대칭성 강제 …)로 **식을 파생**한다. 오가는 것은 오로지 수학적 기호뿐이고, 발산에는
+게이트가 없다 -- 검증(①재현, Brent 항등식 검산)은 시켰을 때만 따로 돈다.
+
+```bash
+scripts/mathdrift.sh start 50     # 새 원장
+scripts/mathdrift.sh go 100       # 이어 넓힌다
+scripts/mathdrift.sh diff S10     # 연산자가 식에 무엇을 했나 (기호 단위, 호출 0회)
+```
+
+**설계와 세 번 데인 기록 전부 [`mathdrift/README.md`](mathdrift/README.md).** 에이전트
+세션에서는 `/mathdrift` 스킬로 부른다.
+
 ## 2-2. 법 학습자료 관문 — `law/`
 
 같은 원칙(생성자와 심판을 분리하고 심판은 LLM 이 아니다)을 법에 옮긴 것. 소설은 기계가
@@ -145,7 +162,8 @@ python3 law/tuner.py plan             # 제일 많이 걸린 규칙과 그 지�
 
 - `self_improve_loop.py` / `improve_agent.py` — 탐색 전략 자체를 고쳐가는 루프
 - `benchmarks.json` — 이미 도달한 기준. G010(능력 래칫)이 이 기준의 후퇴를 막는다
-- `jump_searcher*.py`, `run_jump_project.py` — IJP(도약 탐색) 계열 실험
+- `jump_searcher.py`, `run_jump_project.py` — IJP(도약 탐색) 계열 실험 (v3/v4 사본은
+  2026-09-08 정리에서 지웠다. 아무도 임포트하지 않았다 -- `git show` 로 되살릴 수 있다)
 - 심판 무결성은 G009, 검증 함수의 공허한 통과는 G008이 막는다
 - `scripts/check_improve.sh` — 서버에 배포된 코드와 루프 상태 점검
 
@@ -153,6 +171,8 @@ python3 law/tuner.py plan             # 제일 많이 걸린 규칙과 그 지�
 
 | 경로 | 왜 남겼나 |
 |---|---|
+| `mathgen/` | 어려운 적분 문제 생성기를 진화시키는 루프. 심판은 sympy 뿐 (`mathgen/README.md`) |
+| `compression/` | 가중치 압축 코덱 탐색. 부정행위 코덱을 실격시키는 심판 (`compression/README.md`) |
 | `npu/` | 1.58비트 삼진 NPU(SystemVerilog) 설계·검증 스위트. 2026-09-02 작업분 |
 | `public_agent_memory/` | 봇이 실제로 읽고 쓰는 장기 기억 |
 | `Public_agent/` | 공개 채널 산출물 폴더 + m=22/IJP 기록, 봇 사고 기록 |
