@@ -30,6 +30,13 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # quota_tracker 임포트용
+# **자기 폴더도 넣는다.** 아래에서 `from gemini_http import Client` 를 최상위 이름으로
+# 부르는데, 그것이 되는 것은 `orchestrator/` 가 경로에 있을 때뿐이다. quota_show.py 처럼
+# 그 폴더를 직접 넣고 부르는 쪽은 되고, `from orchestrator import llm_pool` 로 부르는
+# 쪽은 ModuleNotFoundError 로 죽었다 -- pool_probe.py 와 mathdrift/spread.py 가 그랬다
+# (실측 2026-09-07, VM: "풀을 못 세웠다: No module named 'gemini_http'").
+# 부르는 쪽마다 경로를 손보게 하지 않고 여기서 한 번 맞춘다.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 import quota_tracker  # noqa: E402
 
 FALLBACK_MODELS = ["gemini-3.5-flash", "gemini-3.5-flash-lite"]

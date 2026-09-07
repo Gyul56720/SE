@@ -663,6 +663,12 @@ ok(not llm_pool._is_rpm(RuntimeError("429 RESOURCE_EXHAUSTED")),
    "단서가 하나도 없으면 하루치로 본다  ← 1분마다 죽은 조합을 두드리는 편이 더 나쁘다")
 
 
+# **두 벌을 다 둔다. 같은 버그를 다른 각도에서 지킨다.**
+#   · 아래 첫 벌은 **프로세스를 갈라** 문을 하나씩만 연다 -- 진짜 호출자의 조건이다.
+#   · 둘째 벌은 **한 프로세스 안의 순서**를 지킨다 -- orchestrator/ 를 먼저 경로에
+#     넣어 두고 부르면 고치기 전 코드도 통과해 버린다(그쪽이 겪은 함정이다).
+# 둘 중 하나만 두면 나머지 하나가 놓치는 자리가 생긴다.
+
 print()
 print("[임포트] **검사가 진짜 호출자와 같은 문으로 들어와야 한다**")
 print("      ← 이 파일은 sys.path 에 뿌리와 orchestrator/ 를 **둘 다** 넣는다. 그래서")
@@ -690,6 +696,32 @@ for _what, _head in _DOORS:
        f"{_what} 로 들어와도 공장이 선다 "
        f"({(_p.stdout or _p.stderr).strip().splitlines()[-1][:90]})")
 
+
+# ── 어떻게 임포트해도 후보를 만들 수 있는가 ──────────────────────────
+#
+# `_default_factory` 는 `from gemini_http import Client` 를 **최상위 이름**으로 부른다.
+# 그것이 되는 것은 `orchestrator/` 가 sys.path 에 있을 때뿐이라, quota_show.py 처럼 그
+# 폴더를 직접 넣고 부르는 쪽은 되고 `from orchestrator import llm_pool` 로 부르는 쪽은
+# ModuleNotFoundError 로 죽었다(실측 2026-09-07, VM: "풀을 못 세웠다: No module named
+# 'gemini_http'"). pool_probe.py 와 mathdrift/spread.py 가 그 자리에서 멈췄다.
+# 두 임포트 길이 **같은 것을 돌려주는지** 여기서 고정한다.
+_HERE = str(Path(__file__).resolve().parent.parent)
+# **순서가 이 검사의 전부다.** `_default_factory` 안의 임포트는 부를 때 일어난다 --
+# `orchestrator/` 를 먼저 경로에 넣어 두고 나서 부르면 고치기 전 코드도 통과한다
+# (처음 이 검사를 그렇게 짰다가 사고 재현에 실패했다). 그래서 **패키지 길로만 임포트한
+# 채로 먼저 부른다.**
+_BOTH = (
+    f"import sys; sys.path.insert(0, {_HERE!r});"
+    " from orchestrator import llm_pool as A;"
+    " a = type(A._default_factory('gemini-3.5-flash','k')).__name__;"
+    f" sys.path.insert(0, {_HERE!r} + '/orchestrator'); import llm_pool as B;"
+    " b = type(B._default_factory('gemini-3.5-flash','k')).__name__;"
+    " print(a, b)"
+)
+_r = subprocess.run([sys.executable, "-c", _BOTH], capture_output=True, text=True)
+_got = (_r.stdout or "").split()
+ok(_r.returncode == 0 and len(_got) == 2 and _got[0] == _got[1],
+   f"두 임포트 길이 같은 후보를 만든다 ({(_r.stderr or _r.stdout).strip()[-60:] or ' '.join(_got)})")
 
 # **요약은 맨 끝에 있어야 한다.** 2026-09-07 까지 이 블록이 252줄에 있었다 -- 파일은
 # 611줄인데. 검사가 자라면서 자기 요약문을 넘어갔고, 그 뒤 336줄의 실패는 아무도
