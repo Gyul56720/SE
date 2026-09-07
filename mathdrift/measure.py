@@ -109,3 +109,23 @@ def spread(led: dict) -> dict:
         n += 1
         ok += 1 if m.get("확산") else 0
     return {"잰공간": n, "확산": ok, "몫": (ok / n) if n else 0.0}
+
+
+# 이름이 부모 이름을 그대로 품었나. **자가 뒤집혀 있는 것을 드러내는 자리다.**
+#
+# 실측 2026-09-07(60개): 부모 이름("멀티리니어 랭크 스펙트럼")에 연산자 어휘를 덧붙인
+# 무리가 부모몫 최상위를 차지했고(S9 0.529 · S8 0.471 · S34 0.370), 이름이 정말 바뀐
+# 것들("지수 대역 Exponent Cone", "오차 허용 지수 영역")이 바닥에 깔렸다. 뒤엣것이
+# Strassen 의 점근 스펙트럼과 경계 랭크 쪽이다 -- **진짜 이주일수록 이름이 바뀌고,
+# 이름이 바뀌면 낱말 겹침을 재는 자가 깎는다.**
+#
+# 그래서 이것은 판정이 아니라 **자를 의심하는 눈금**이다. 아무것도 기각하지 않는다.
+DECO_MIN = int(os.environ.get("MATHDRIFT_DECO_MIN", "2"))
+
+
+def decorated(child: dict, parent: dict | None) -> bool:
+    if not parent:
+        return False
+    cn = {t for t in _TOK.findall(child.get("이름") or "") if len(t) > 1 and t not in STOP}
+    pn = {t for t in _TOK.findall(parent.get("이름") or "") if len(t) > 1 and t not in STOP}
+    return bool(pn) and len(cn & pn) >= min(DECO_MIN, len(pn))

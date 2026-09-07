@@ -66,7 +66,11 @@ AXES = {
         "불포함": re.compile(r"초과|미만|전까지|(?<=[년월일시분초])\s*이전|그\s*이전"),
     }),
     "W004": ("법효과어", {
-        "적용": re.compile(r"적용한다|적용된다|적용하는"),
+        # **활용형을 빠뜨리면 조문에 있는 낱말을 없다고 본다.** 실측: 도시정비법 제134조가
+        # "…규정을 적용**할** 때에는 공무원으로 본다" 인데 '적용한다|적용된다|적용하는' 만
+        # 보다가 조문 쪽에서 '적용' 을 못 찾았고, 그래서 문서의 맞는 서술("공무원으로
+        # 의제되어 형법상 뇌물죄가 적용된다")이 어긋남으로 잡혔다.
+        "적용": re.compile(r"적용(?:한다|된다|되는|되어|하는|할|하여|하며|받는)"),
         "준용": re.compile(r"준용"),
         "간주": re.compile(r"(으로|로)\s*본다|간주"),
         "추정": re.compile(r"추정"),
@@ -236,6 +240,14 @@ _AUTHOR_DUTY = re.compile(
     r"\s*(?:하여야|해야)\s*(?:한다|합니다|하며|하고|할)")
 
 
+# **'오해' 를 옮긴 문장은 문서의 주장이 아니다.**
+# '5. 실무상 흔한 오해' 절은 틀린 명제를 일부러 적는 자리다. "제715조에 의해 금지되는데
+# 상계할 수 있다고 오해한다" 는 문장에서 '할 수 있다'(재량)는 문서가 그렇다고 말한 것이
+# 아니라 남의 잘못된 생각을 옮긴 것이다. 실측에서 서법 어긋남 세 건이 전부 이 꼴이었다.
+# 그 절은 어차피 soft 라 여기서 빼도 잃는 것이 적고, 소리만 줄어든다.
+_MISCONCEPTION = re.compile(r"오해|오인|착각|잘못\s*알|혼동")
+
+
 def _for_compare(sent: str) -> str:
     """조문과 견주기 전에 문장에서 **조문의 것이 아닌 꼴**을 지운다."""
     prev = None
@@ -300,7 +312,7 @@ def check(doc, corpus) -> list:
         sev = "hard" if name.startswith(("2.", "3.")) else "soft"
         for sent in _sentences(text):
             tg = _targets(sent, doc, corpus)
-            if not tg:
+            if not tg or _MISCONCEPTION.search(sent):
                 continue
             raws = ", ".join(r for r, _ in tg)
             joined = " ".join(b for _, b in tg)
@@ -334,30 +346,44 @@ def check(doc, corpus) -> list:
 
 
 def trace(doc, corpus) -> list:
-    """**낱말이 어디에 근거하는가.** 문장마다 (조문, 근거 있는 값, 근거 없는 값).
+    """**낱말이 어디에 근거하는가.** 문장마다 세 갈래로 갈라 돌려준다.
 
-    관문이 아니라 보고다. "글자 하나하나를 근거를 바탕으로" 가 실제로 어디까지 되고
-    어디부터 안 되는지를 눈으로 보게 하는 것이 목적이다.
+        맞음        조문에도 같은 값이 있다
+        어긋남      조문에 그 범주가 있는데 값이 다르다 -- 이것만 관문이 잡는다
+        견줄것없음  조문에 그 범주가 아예 없다 -- 위반이 아니라 대조 불가다
+
+    세 번째를 '근거 없음' 이라고 뭉뚱그렸던 것이 이 파일의 흠이었다(실측: 법이론서를
+    돌리니 '근거 없음' 18건 중 대부분이 이것이었고, 정작 관문은 hard 2건만 냈다).
+    관문은 조문에 그 범주가 없으면 판정하지 않는데 보고만 위반처럼 적은 것이다.
+    **판정이 셋인 시스템의 보고도 셋이어야 한다** -- 원장이 없는 인용을 '미검증' 으로
+    따로 세는 것과 같은 이유다.
     """
     rows = []
     for name, text in doc.sections.items():
         for sent in _sentences(text):
-            tg = _targets(sent, doc, corpus)
             cits = CP.find_citations(sent)
             if not cits:
                 continue
-            if not tg:
-                rows.append((name, sent, [c.raw for c in cits], [], [], True))
-                continue
-            joined = " ".join(b for _, b in tg)
-            mine, theirs = bucket(_for_compare(sent)), bucket(joined)
-            grounded, ungrounded = [], []
-            for rule, vals in mine.items():
-                axis = AXES[rule][0]
-                for v in sorted(vals):
-                    (grounded if v in theirs.get(rule, ()) else ungrounded)\
-                        .append(f"{axis}:{v}")
-            rows.append((name, sent, [r for r, _ in tg], grounded, ungrounded, False))
+            tg = _targets(sent, doc, corpus)
+            row = {"절": name, "문장": sent, "인용": [c.raw for c in cits],
+                   "맞음": [], "어긋남": [], "견줄것없음": [],
+                   "미검증": not tg, "오해": bool(_MISCONCEPTION.search(sent))}
+            if tg:
+                row["인용"] = [r for r, _ in tg]
+                joined = " ".join(b for _, b in tg)
+                mine, theirs = bucket(_for_compare(sent)), bucket(joined)
+                for rule, vals in mine.items():
+                    axis = AXES[rule][0]
+                    ref = theirs.get(rule)
+                    for v in sorted(vals):
+                        key = f"{axis}:{v}"
+                        if not ref:
+                            row["견줄것없음"].append(key)
+                        elif v in ref:
+                            row["맞음"].append(key)
+                        else:
+                            row["어긋남"].append(key)
+            rows.append(row)
     return rows
 
 
@@ -375,26 +401,45 @@ def main(argv=None):
     files = [f for f in files if not f.name.lower().startswith("readme")]
 
     hard = soft = 0
-    unver = 0
+    unver = good = bad = nocmp = miscon = 0
     for f in files:
         doc = parse(f)
         if a.trace:
-            for name, sent, raws, g, u, missing in trace(doc, corpus):
-                if missing:
+            for r in trace(doc, corpus):
+                if r["미검증"]:
                     unver += 1
                     continue
-                mark = "근거 없음: " + ", ".join(u) if u else "전부 근거 있음"
-                print(f"[{f.name} · {name}] {', '.join(raws)}  {mark}")
-                if u:
-                    print(f"    {sent[:90]}")
+                if r["오해"]:
+                    miscon += 1
+                    continue
+                mark = ("어긋남: " + ", ".join(r["어긋남"])) if r["어긋남"] else \
+                    ("맞음 " + ", ".join(r["맞음"]) if r["맞음"] else "견줄 값 없음")
+                if r["어긋남"]:
+                    bad += 1
+                elif r["맞음"]:
+                    good += 1
+                if r["견줄것없음"]:
+                    nocmp += 1
+                    mark += "  (조문에 없는 범주라 대조 못 함: " \
+                        + ", ".join(r["견줄것없음"]) + ")"
+                print(f"[{f.name} · {r['절']}] {', '.join(r['인용'])}  {mark}")
+                if r["어긋남"]:
+                    print(f"    {r['문장'][:90]}")
             continue
         for v in check(doc, corpus):
             print(f"  {v}")
             hard += v.severity == "hard"
             soft += v.severity == "soft"
     if a.trace:
+        print(f"\n문장 {good + bad}개를 조문과 견줬다 -- 맞음 {good} · **어긋남 {bad}**")
+        if nocmp:
+            print(f"조문에 그 범주가 없어 일부만 대조한 문장 {nocmp}개 "
+                  f"(위반이 아니라 대조 불가다)")
+        if miscon:
+            print(f"'오해' 를 옮긴 문장 {miscon}개는 대조하지 않았다 "
+                  f"(문서의 주장이 아니다)")
         if unver:
-            print(f"\n원장에 없어 대조 못 한 문장 {unver}개")
+            print(f"원장에 없어 대조 못 한 문장 {unver}개")
         return 0
     print(f"\n문언 대조: 문서 {len(files)}개 · hard {hard} · soft {soft}")
     if not corpus:

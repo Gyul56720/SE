@@ -129,6 +129,38 @@ with tempfile.TemporaryDirectory() as d:
     ok(not any(x["잰것"]["확산"] for x in SP.load(_f)["spaces"][1:]),
        "바닥을 올리면 호출 없이 판정이 다시 매겨진다")
 
+print("\n== 자가 뒤집혀 있는 것을 드러낸다 ==")
+# 실측 2026-09-07(60개): 부모 이름에 연산자 어휘를 덧붙인 무리가 부모몫 최상위를
+# 차지했고(S9 0.529 · S8 0.471), 이름이 정말 바뀐 것들("지수 대역 Exponent Cone")이
+# 바닥에 깔렸다. 뒤엣것이 Strassen 의 점근 스펙트럼 쪽이다.
+_pn = {"이름": "멀티리니어 랭크 스펙트럼", "점": "멀티리니어 랭크의 조합",
+       "표기": "세 랭크의 튜플", "되사상": "Brent 항등식", "크기": "이산", "왜": ""}
+_deco = {"이름": "점근적 멀티리니어 랭크 스펙트럼의 극한 공간", "점": "극한으로 간 점",
+         "표기": "수열", "되사상": "극한에서 Brent 항등식", "크기": "연속", "왜": ""}
+_real = {"이름": "지수 대역 (Exponent Cone)", "점": "극한으로 간 점",
+         "표기": "수열", "되사상": "극한에서 Brent 항등식", "크기": "연속", "왜": ""}
+ok(ME.decorated(_deco, _pn), "부모 이름을 그대로 품은 것을 장식으로 짚는다")
+ok(not ME.decorated(_real, _pn), "이름이 바뀐 것은 장식이 아니다")
+ok(not ME.decorated(_real, None), "씨앗은 장식이 아니다")
+ok(ME.measure(_deco, _pn)["몫"] > ME.measure(_real, _pn)["몫"],
+   "**장식이 진짜 이주보다 높은 점수를 받는다** -- 이것이 자가 뒤집혔다는 증거다")
+ok(not any(ME.decorated(x, _pn) for x in ({"이름": ""},)), "이름이 비면 장식이 아니다")
+
+print("\n== 카드 ==")
+led = seed_led()
+_c = SP.add(led, dict(_real), parent="S1", op="점근화")
+_c["잰것"] = ME.measure(_c, SP.get(led, "S1"))
+import io as _io, contextlib as _ctx
+_b = _io.StringIO()
+with _ctx.redirect_stdout(_b):
+    _rc = SPR.card(led, _c["id"])
+_out = _b.getvalue()
+ok(_rc == 0 and "지수 대역" in _out, "카드가 칸을 펼친다")
+ok("--- 부모" in _out and "텐서 랭크" in _out, "부모도 같이 보여 준다 -- 견주려고 있는 것이다")
+ok("계보:" in _out and "S1" in _out, "계보 사슬도 적는다")
+with _ctx.redirect_stdout(_io.StringIO()):
+    ok(SPR.card(led, "S999") == 1, "없는 공간은 1 로 끝난다")
+
 print("\n== 연산자 ==")
 ok(all(d >= 1 for _, _, d in OPS.OPS), "거리는 1 이상")
 ok(OPS.JUMP and OPS.NEAR, "급발진과 한 걸음이 둘 다 있다")

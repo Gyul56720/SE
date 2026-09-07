@@ -266,16 +266,19 @@ def remeasure(led: dict, path=None) -> int:
         was += 1 if old.get("확산") else 0
         now += 1 if new["확산"] else 0
         rows.append((rec["id"], rec.get("계보", {}).get("연산자", ""), new,
-                     old.get("확산"), rec.get("이름", "")))
+                     old.get("확산"), rec.get("이름", ""),
+                     ME.decorated(rec, parent)))
     SP.save(led, path)
 
     print(f"다시 잰 공간 {len(rows)}개 -- 확산 {was}개 → {now}개\n")
-    print(f"{'id':<5} {'연산자':<10} {'물려':>4} {'부모몫':>7} {'자식몫':>7} {'판정':<6} 이름")
-    for sid, op, m, oldok, name in sorted(rows, key=lambda r: -r[2]["몫"]):
+    print(f"{'id':<5} {'연산자':<10} {'물려':>4} {'부모몫':>7} {'장식':<4} {'판정':<6} 이름")
+    for sid, op, m, oldok, name, deco in sorted(rows, key=lambda r: -r[2]["몫"]):
         mark = "확산" if m["확산"] else "약함"
-        moved = "" if bool(oldok) == m["확산"] else ("  ← 바뀜")
         print(f"{sid:<5} {op:<10} {m['물려받음']:>4} {m['몫']:>7.3f} "
-              f"{m['자식몫']:>7.3f} {mark:<6} {name[:26]}{moved}")
+              f"{'장식' if deco else '  ':<4} {mark:<6} {name[:30]}")
+    _d = sum(1 for r in rows if r[5])
+    print(f"\n**이름이 부모 이름을 그대로 품은 것 {_d}/{len(rows)}개.** 이것이 높으면"
+          " 이주가 아니라 작명이다 -- 그리고 낱말 겹침을 재는 자는 그것을 최고점으로 준다.")
 
     vals = sorted(r[2]["몫"] for r in rows)
     if vals:
@@ -285,6 +288,32 @@ def remeasure(led: dict, path=None) -> int:
               f" / 3분위 {q(.75):.3f} / 최대 {vals[-1]:.3f}")
         print(f"지금 바닥값: 물려받음 >= {ME.KEEP_MIN} · 부모몫 >= {ME.KEEP_SHARE}")
         print("바닥값은 MATHDRIFT_KEEP_MIN / MATHDRIFT_KEEP_SHARE 로 바꿔 다시 재 본다.")
+    return 0
+
+
+def card(led: dict, sid: str) -> int:
+    """공간 하나를 칸째로 펼친다. **이름만 보고 판정하지 않으려고 있는 것이다.**
+
+    실측 2026-09-07(60개): 이름만 보면 부모 이름에 연산자 어휘를 덧붙인 것처럼 보이는
+    무리가 있었다. 그것이 정말 작명인지 이주인지는 `점`·`표기`·`되사상` 을 봐야 안다.
+    """
+    rec = SP.get(led, sid)
+    if rec is None:
+        print(f"{sid} 가 원장에 없다")
+        return 1
+    g = rec.get("계보") or {}
+    par = SP.get(led, g.get("부모"))
+    print(f"{rec['id']}  <- {g.get('부모')} / {g.get('연산자')} (거리 {g.get('거리')})"
+          f"  [{rec.get('등급')}]")
+    print(f"계보: {' -> '.join(SP.lineage(led, sid))}")
+    print(f"잰것: {ME.note(rec.get('잰것') or {})}\n")
+    for f in SP.FIELDS:
+        v = rec.get(f)
+        print(f"  {f:<6}: {v if v else '(비어 있음)'}")
+    if par:
+        print(f"\n--- 부모 {par['id']} ---")
+        for f in ("이름", "점", "표기", "되사상"):
+            print(f"  {f:<6}: {par.get(f) or '(비어 있음)'}")
     return 0
 
 
@@ -298,6 +327,7 @@ def main(argv=None) -> int:
     ap.add_argument("--remeasure", action="store_true",
                     help="원장을 새 자로 다시 잰다 (호출 0회)")
     ap.add_argument("--lineage", default="")
+    ap.add_argument("--card", default="", help="공간 하나를 칸째로 (예: --card S34)")
     ap.add_argument("--path", default="")
     a = ap.parse_args(argv)
 
@@ -305,6 +335,9 @@ def main(argv=None) -> int:
         return check()
 
     led = SP.load(a.path or None)
+
+    if a.card:
+        return card(led, a.card)
 
     if a.remeasure:
         return remeasure(led, a.path or None)
