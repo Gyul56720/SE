@@ -168,6 +168,42 @@ MATHDRIFT_KEEP_SHARE=0.15 python3 mathdrift/spread.py --remeasure
 두 번 다 거기서 장식이 시작됐다. **자식이 부모 이름을 못 보면 덧붙일 것도 없다** —
 검출기를 두느니 원인을 없애는 편이 낫다. 부를 것이 필요하면 `식` 을 잘라 쓴다.
 
+### 기호로 받자 겹침의 뜻이 뒤집혔다
+
+VM 20개(2026-09-07, 한국어를 뺀 뒤). 겹침 0.80 인데 이번에는 **좋은 신호**다:
+
+```
+S3   \lim_{N\to\infty}\inf\{ m \mid ... \}
+S10  \lim_{N\to\infty}\sup\{ m \mid ... \}    쌍대    부모몫 0.938   ← inf → sup
+S16  \hat{H}_*(...) \cong \hat{H}_*(Id)        완비화  부모몫 1.0     ← 모자 하나
+S12  S^{-1} H_*(...) \cong S^{-1} H_*(Id)      국소화  부모몫 1.0     ← S^{-1}
+S21  \sum_r \lambda_r \rho(U_r)... \equiv ...  이산화  부모몫 0.778   ← = → ≡
+```
+
+**연산자가 식에 제대로 작용한다.** 앞서 높은 겹침은 장식이었지만 지금은 **보존적 확장**이다 —
+식이 거의 그대로이고 구조 하나만 바뀌는 것이 맞는 모습이다. (S5 는 `Σ λ_r ρ(U_r)ρ(V_r)ρ(W_r)
+= ρ(Id)` — Cohn–Umans 를 기호로 쓴 것이고, S6 는 ω 의 정의 그대로다.)
+
+그래서 `--diff` 를 붙였다. 화면이 70자에서 잘려 무엇이 바뀌었는지 볼 수가 없었다:
+
+```
+S10  <- S3 / 쌍대
+  바뀐 것:  - \inf   + \sup
+  그대로 둔 토큰 24/25
+```
+
+**판정이 아니다.** 연산자가 식에 무엇을 했는지 기호 단위로 보여 줄 뿐이다.
+
+### LaTeX 이 JSON 을 깬다
+
+`\lambda` 는 JSON 파서에게 잘못된 이스케이프다 — 식을 기호로 받기 시작하자 **다섯 묶음 중
+하나를 통째로 잃었다(20%).** 모델에게 "역슬래시를 두 번 써라" 라고 시키지 않는다(프롬프트를
+사양서로 만드는 길이고 이미 데었다). **읽는 쪽에서 고친다.**
+
+함정 하나가 더 있다: `\t` `\b` `\f` `\n` `\r` 은 JSON 이스케이프이면서 **LaTeX 명령의
+머리**다. 그냥 고치면 `\to` 가 탭이 되고 `\big` 이 백스페이스가 된다. 그래서 **글자가
+뒤따르면 LaTeX 로 본다** — `\to` `\rho` `\frac` `\beta` `\nabla` 가 다 산다.
+
 ### 낱말 겹침 자는 판정에서 뗐다
 
 두 번 뒤집혔다. 2차(50개)에서:
@@ -227,6 +263,7 @@ python3 mathdrift/spread.py --show          # 원장 · 확산 몫 · 연산자 
 python3 mathdrift/spread.py --remeasure     # 새 자로 다시 잰다 (호출 0회)
 python3 mathdrift/spread.py --lineage S17   # 씨앗까지의 사슬
 python3 mathdrift/spread.py --card S34      # 공간 하나를 칸째로 (부모와 나란히)
+python3 mathdrift/spread.py --diff S10      # **연산자가 식에 무엇을 했나** (기호 단위)
 python3 mathdrift/spread.py --known         # 알려진 갈아타기 넷이 나왔나 (거르지 않는다)
 python3 tests/test_mathdrift.py             # 배선 검사 (LLM·네트워크 불필요)
 ```
@@ -254,7 +291,7 @@ python3 tests/test_mathdrift.py             # 배선 검사 (LLM·네트워크 �
 ## 지금 상태
 
 씨앗 하나(`S1` 텐서 랭크)뿐이다. **발산은 아직 0회** — `GEMINI_API_KEY` 가 있는 곳에서
-돌려야 한다. 배선은 가짜 모델로 확인했다(`tests/test_mathdrift.py`, 56개 항목 통과).
+돌려야 한다. 배선은 가짜 모델로 확인했다(`tests/test_mathdrift.py`, 66개 항목 통과).
 
 ## ①재현 — 이 식이 Strassen 을 품는가. **호출 0회, 그리고 나중에 따로**
 

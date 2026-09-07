@@ -160,6 +160,52 @@ ok("계보:" in _out and "S1" in _out, "계보 사슬도 적는다")
 with _ctx.redirect_stdout(_io.StringIO()):
     ok(SPR.card(led, "S999") == 1, "없는 공간은 1 로 끝난다")
 
+print("\n== LaTeX 이 JSON 을 깨는 것 ==")
+# 실측 2026-09-07: 식을 기호로 받기 시작하자 다섯 묶음 중 하나를 통째로 잃었다(20%).
+# `\lambda` 는 JSON 파서에게 "잘못된 이스케이프" 다. 모델에게 역슬래시를 두 번 쓰라고
+# 시키지 않는다 -- 그건 프롬프트를 사양서로 만드는 길이고 이미 한 번 데었다. 읽는 쪽에서 고친다.
+_tex = ('```json\n[{"연산자":"\uc30d\ub300","\uc2dd":"\\lim_{N \\to \\infty} \\sup \\left\\{ m \\right\\}"},'
+        ' {"연산자":"\ub9e4\uc7a5","\uc2dd":"\\sum_r \\lambda_r \\rho(U_r) \\frac{1}{n} \\beta \\nabla \\theta"}]\n```')
+_got = SPR.objects(_tex)
+ok(len(_got) == 2, f"LaTeX 묶음을 건진다 ({len(_got)}개)")
+ok(_got and "\\to" in _got[0]["식"] and "\\sup" in _got[0]["식"],
+   r"**`\to` 가 탭이 되지 않는다** -- \t \b \f \n \r 은 LaTeX 명령의 머리이기도 하다")
+ok(_got and all(c in _got[1]["식"] for c in (r"\rho", r"\frac", r"\beta", r"\nabla", r"\theta")),
+   r"\rho \frac \beta \nabla \theta 가 다 살아 있다")
+ok(SPR.objects('[{"a":"x\\ty","b":"\\u0041"}]') == [{"a": "x\ty", "b": "A"}],
+   "제대로 이스케이프된 JSON 은 안 건드린다  ← 평범한 파싱이 먼저 간다")
+
+print("\n== 연산자가 식에 무엇을 했나 ==")
+_led = seed_led()
+_e = r"\lim_{N \to \infty} \inf \left\{ m \in \mathbb{N} \mid R(n) \le m \right\}"
+_pa = SP.add(_led, {"식": _e, "점": "(U,V,W,lam)", "정의역": "F = R"}, parent="S1", op="완비화")
+_ch = SP.add(_led, {"식": _e.replace(r"\inf \left", r"\sup \left"), "점": "(U,V,W,lam)",
+                    "정의역": "F = R"}, parent=_pa["id"], op="쌍대")
+_same = SP.add(_led, {"식": _e, "점": "(U,V,W,lam)", "정의역": "F = R"},
+               parent=_pa["id"], op="이산화")
+import io as _io3, contextlib as _ctx3
+
+
+def _dtext(sid):
+    _b = _io3.StringIO()
+    with _ctx3.redirect_stdout(_b):
+        SPR.diff(_led, sid)
+    return _b.getvalue()
+
+
+_d1 = _dtext(_ch["id"])
+ok(r"- \inf" in _d1 and r"+ \sup" in _d1, r"바뀐 토큰만 짚는다 (\inf -> \sup)")
+import re as _re3
+_m3 = _re3.search(r"그대로 둔 토큰 (\d+)/(\d+)", _d1)
+ok(_m3 and int(_m3.group(1)) == int(_m3.group(2)) - 1,
+   f"그대로 둔 것을 센다 -- 한 토큰만 바뀌었다 ({_m3.group(0) if _m3 else '없음'})")
+ok("판정이 아니다" in _d1, "**판정이 아니라고 적혀 있다**")
+ok("바뀐 것이 없다" in _dtext(_same["id"]),
+   "식이 글자 그대로면 연산자가 아무 일도 안 한 것이라고 말한다")
+ok("씨앗이다" in _dtext("S1"), "씨앗은 견줄 부모가 없다")
+ok(SPR.tokens(r"\hat{H}_*(U \otimes V)")[:3] == [r"\hat", "{", "H"],
+   "낱말이 아니라 LaTeX 토큰으로 가른다")
+
 print("\n== 연산자 ==")
 ok(all(d >= 1 for _, _, d in OPS.OPS), "거리는 1 이상")
 ok(OPS.JUMP and OPS.NEAR, "급발진과 한 걸음이 둘 다 있다")

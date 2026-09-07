@@ -34,6 +34,7 @@ K 개를 받는다. 호출이 1/K 로 준다. 공짜로 얻는 것이 하나 더
 from __future__ import annotations
 
 import argparse
+import difflib
 import json
 import re
 import sys
@@ -120,6 +121,57 @@ def prompt(parent: dict, picks: list[tuple[str, str, int]]) -> str:
 JSON 배열:"""
 
 
+# JSON 문자열 안에서 `\` 뒤에 올 수 있는 것은 이것뿐이다. LaTeX 는 그 규약을 모른다 --
+# `\lambda` 는 JSON 파서에게 "잘못된 이스케이프" 다. 식을 기호로 받기 시작하자 이것이
+# 바로 물렸다(실측 2026-09-07: 다섯 묶음 중 하나를 통째로 잃었다 -- 20%).
+#
+# 모델에게 "역슬래시를 두 번 써라" 라고 시키지 않는다. 그건 프롬프트를 사양서로 만드는
+# 길이고 이미 한 번 데었다. **읽는 쪽에서 고친다.**
+_JSON_ESC = set('"\\/bfnrtu')
+
+
+def _fix_escapes(t: str) -> str:
+    r"""JSON 이 모르는 `\x` 를 `\\x` 로 바꾼다.
+
+    **글자가 뒤따르면 LaTeX 명령으로 본다.** `\t` `\b` `\f` `\n` `\r` 은 JSON 이스케이프
+    이면서 동시에 LaTeX 명령의 머리다 -- `\to` `\beta` `\frac` `\nabla` `\rho`. 그것을
+    구별 안 하면 `\to` 가 탭이 되고 `\big` 이 백스페이스가 된다(실측). LaTeX 명령은
+    `\` + 글자이므로 그것으로 가른다.
+
+    `\uXXXX` 는 뒤에 16진수 넷이 올 때만 유니코드로 본다 (`\upsilon` 은 LaTeX).
+    `\"` `\\` `\/` 는 글자가 아니라 헷갈릴 일이 없다.
+
+    **여기에는 진짜 애매함이 하나 남는다** -- 문자열 안의 진짜 줄바꿈 뒤에 글자가 오면
+    (`"...\nabc"`) LaTeX 로 오해한다. 이 함수는 **평범한 파싱이 실패한 뒤에만** 불리므로
+    피해 범위가 거기까지다. 이 도메인에서는 `\nabla` 쪽이 압도적으로 흔하다.
+    """
+    out, i, n = [], 0, len(t)
+    while i < n:
+        c = t[i]
+        if c != "\\" or i + 1 >= n:
+            out.append(c)
+            i += 1
+            continue
+        nxt = t[i + 1]
+        keep = nxt in _JSON_ESC
+        if keep and nxt.isalpha():
+            if nxt == "u":
+                hexpart = t[i + 2:i + 6]
+                keep = len(hexpart) == 4 and all(ch in "0123456789abcdefABCDEF"
+                                                 for ch in hexpart)
+            else:
+                # 글자가 뒤따르면 LaTeX 명령이다 (\to \beta \frac \nabla \rho ...)
+                keep = not (i + 2 < n and t[i + 2].isalpha())
+        if keep:
+            out.append(c)
+            out.append(nxt)
+            i += 2
+        else:
+            out.append("\\\\")
+            i += 1
+    return "".join(out)
+
+
 _INNER = re.compile(r"\{[^{}]*\}", re.S)
 
 
@@ -173,14 +225,17 @@ def objects(raw) -> list[dict]:
             t = parts[1]
             t = t[4:] if t.lstrip().startswith("json") else t
     # **통째로 먼저 읽는다.** 겹친 중괄호가 있으면 이 길로만 온전히 온다.
-    try:
-        d = json.loads(t)
+    # 실패하면 LaTeX 역슬래시를 고쳐 한 번 더 -- 식을 기호로 받으면 이것이 바로 물린다.
+    for cand in (t, _fix_escapes(t)):
+        try:
+            d = json.loads(cand)
+        except ValueError:
+            continue
         if isinstance(d, dict):
             return [d]
         if isinstance(d, list):
             return [x for x in d if isinstance(x, dict)]
-    except ValueError:
-        pass
+    t = _fix_escapes(t)
     i, j = t.find("["), t.rfind("]")
     if 0 <= i < j:
         try:
@@ -374,6 +429,60 @@ def remeasure(led: dict, path=None) -> int:
 # 낱말로 하고 있었으면 같은 잘못을 세 번째 되풀이하는 것이다. 식을 기호로 견주는 법이
 # 생기기 전까지는 아무것도 안 센다.
 
+# **식을 기호로 가른다.** 낱말이 아니라 LaTeX 토큰이다 -- `\lim` `\inf` `_` `{` `N` ...
+_TEX = re.compile(r"\\[a-zA-Z]+|\\.|[A-Za-z]+|\d+|\S")
+
+
+def tokens(expr: str) -> list[str]:
+    return _TEX.findall(expr or "")
+
+
+def diff(led: dict, sid: str) -> int:
+    """연산자가 식에 **무엇을 했나.** 호출 0회, 아무것도 안 거른다.
+
+    실측 2026-09-07(20개): 식을 기호로 받기 시작하자 자식이 부모 식을 거의 그대로
+    물려받고 한 자리만 바꾸는 꼴이 됐다 -- `\inf` -> `\sup`(쌍대), `H` -> `\hat{H}`(완비화),
+    앞에 `S^{-1}`(국소화), `=` -> `\equiv`(이산화). **그것이 보존적 확장이 맞는 모습**이라
+    겹침이 높은 것이 이번에는 좋은 신호다. 다만 화면이 70자에서 잘려 무엇이 바뀌었는지
+    볼 수가 없었다. 이 명령이 그 자리다.
+    """
+    rec = SP.get(led, sid)
+    if rec is None:
+        print(f"{sid} 가 원장에 없다")
+        return 1
+    g = rec.get("계보") or {}
+    par = SP.get(led, g.get("부모"))
+    if par is None:
+        print(f"{sid} 는 씨앗이다 -- 견줄 부모가 없다")
+        return 0
+
+    a, b = tokens(par.get("식")), tokens(rec.get("식"))
+    print(f"{sid}  <- {par['id']} / {g.get('연산자')} (거리 {g.get('거리')})\n")
+    print(f"  부모: {par.get('식')}")
+    print(f"  자식: {rec.get('식')}\n")
+
+    kept = 0
+    rows = []
+    for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(a=a, b=b).get_opcodes():
+        if tag == "equal":
+            kept += i2 - i1
+            continue
+        if tag in ("delete", "replace"):
+            rows.append(("-", " ".join(a[i1:i2])))
+        if tag in ("insert", "replace"):
+            rows.append(("+", " ".join(b[j1:j2])))
+    if not rows:
+        print("  **바뀐 것이 없다.** 식이 글자 그대로 같다 -- 연산자가 아무 일도 안 했다")
+    else:
+        print("  바뀐 것:")
+        for mark, txt in rows:
+            print(f"    {mark} {txt[:100]}")
+    big = max(len(a), len(b)) or 1
+    print(f"\n  그대로 둔 토큰 {kept}/{big}  (부모 {len(a)} 토큰, 자식 {len(b)} 토큰)")
+    print("\n  **판정이 아니다.** 연산자가 식에 무엇을 했는지 보여 줄 뿐이다.")
+    return 0
+
+
 def card(led: dict, sid: str) -> int:
     """공간 하나를 칸째로 펼친다. **이름만 보고 판정하지 않으려고 있는 것이다.**
 
@@ -411,6 +520,8 @@ def main(argv=None) -> int:
                     help="원장을 새 자로 다시 잰다 (호출 0회)")
     ap.add_argument("--lineage", default="")
     ap.add_argument("--card", default="", help="공간 하나를 칸째로 (예: --card S34)")
+    ap.add_argument("--diff", default="",
+                    help="연산자가 식에 무엇을 했나 (예: --diff S10). 호출 0회")
     ap.add_argument("--path", default="")
     a = ap.parse_args(argv)
 
@@ -418,6 +529,9 @@ def main(argv=None) -> int:
         return check()
 
     led = SP.load(a.path or None)
+
+    if a.diff:
+        return diff(led, a.diff)
 
     if a.card:
         return card(led, a.card)
