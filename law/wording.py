@@ -248,6 +248,58 @@ _AUTHOR_DUTY = re.compile(
 _MISCONCEPTION = re.compile(r"오해|오인|착각|잘못\s*알|혼동")
 
 
+# **접속은 같은 두 낱말 사이에서만 견딜 수 있다.**
+#
+# 실측이 이것을 못 박았다. 조문 원장을 채우고 법이론서를 돌리니 접속 어긋남이 여섯 건
+# 나왔는데 **여섯 건 전부 오탐**이었다. 문서가 자기 서술의 낱말 둘을 '및' 으로 묶었을 뿐인데
+# (`법정형 및 세부 구성요건`, `결원 및 손해 염려`, `임무 위배 및 법정형 기준`) 조문 어딘가에
+# '또는' 이 있다는 이유로 잡혔다. 집합 비교로는 그 접속사가 **어느 요건 둘을 묶는지**를
+# 못 짚기 때문이다.
+#
+# 그래서 비교의 단위를 바꾼다. 문서가 `X 및 Y` 라고 쓰면 조문에서 **바로 그 X 와 Y 가
+# 접속사로 묶인 자리**를 찾고, 그 자리의 접속사가 다를 때만 어긋남이다. 조문이 그 둘을
+# 안 묶고 있으면 견줄 것이 없다.
+_CONJ_PAIR = re.compile(r"([가-힣]{2,12})\s*(및|또는|이나|와|과)\s*([가-힣]{2,12})")
+_CONJ_KIND = {"및": "결합", "와": "결합", "과": "결합", "또는": "선택", "이나": "선택"}
+
+
+# 낱말 끝에 붙는 조사. 문서는 "등록 또는 신고를", 조문은 "등록 및 신고" 처럼 조사가
+# 달라 붙으므로, 붙은 채로 견주면 같은 낱말을 다른 낱말로 본다.
+_JOSA = ("를", "을", "이", "가", "은", "는", "의", "에", "도", "만", "로", "으로",
+         "와", "과", "께", "에게", "라", "이라")
+
+
+def _stems(t: str) -> list:
+    """낱말과 그 조사 뗀 꼴. 긴 조사부터 떼 본다."""
+    out = [t]
+    for j in sorted(_JOSA, key=len, reverse=True):
+        if t.endswith(j) and len(t) - len(j) >= 2:
+            out.append(t[:-len(j)])
+            break
+    return out
+
+
+def conj_mismatch(sent: str, article: str) -> list:
+    """(문서가 쓴 접속, 조문이 같은 두 낱말에 쓴 접속, X, Y) 목록."""
+    flat_art = _flat(article)
+    out = []
+    for m in _CONJ_PAIR.finditer(_for_compare(sent)):
+        x, conj, y = m.group(1), m.group(2), m.group(3)
+        found = None
+        for fx in _stems(_flat(x)):
+            for fy in _stems(_flat(y)):
+                if fx not in flat_art or fy not in flat_art:
+                    continue              # 조문이 안 쓰는 낱말이다 -- 견줄 것이 없다
+                found = found or re.search(
+                    re.escape(fx) + r"(및|또는|이나|와|과)" + re.escape(fy), flat_art)
+        if not found:
+            continue                      # 조문은 그 둘을 접속사로 묶지 않는다
+        mine, theirs = _CONJ_KIND[conj], _CONJ_KIND[found.group(1)]
+        if mine != theirs:
+            out.append((mine, theirs, _stems(x)[-1], _stems(y)[-1]))
+    return out
+
+
 def _for_compare(sent: str) -> str:
     """조문과 견주기 전에 문장에서 **조문의 것이 아닌 꼴**을 지운다."""
     prev = None
@@ -316,10 +368,24 @@ def check(doc, corpus) -> list:
                 continue
             raws = ", ".join(r for r, _ in tg)
             joined = " ".join(b for _, b in tg)
+            for mine_k, theirs_k, x, y in conj_mismatch(sent, joined):
+                out.append(Violation(
+                    "W002", "soft", f"{doc.path.name} · {name}",
+                    f"접속: 조문({raws})은 {x!r} 과 {y!r} 를 {theirs_k} 로 묶는데 "
+                    f"문서는 {mine_k} 로 묶었다"))
             mine, theirs = bucket(_for_compare(sent)), bucket(joined)
             for rule, vals in mine.items():
+                if rule == "W002":         # 위에서 짝으로 따로 본다
+                    continue
                 ref = theirs.get(rule)
                 if not ref:                       # 조문에 그 범주가 없다 -- 견줄 것이 없다
+                    continue
+                # **하나라도 맞게 썼으면 나머지는 일상 용법이다.**
+                # 실측: "제709조의 대리권 **추정** 규정을 **적용**하여 검토할 것" 이
+                # 법효과어 어긋남으로 잡혔다. 조문의 값('추정')을 문서가 이미 맞게 썼고
+                # '적용' 은 "규정을 적용하여" 라는 보통 동사였다. 문서가 그 범주에서
+                # 조문과 만나는 값을 하나도 안 썼을 때만 바꿔 쓴 것으로 본다.
+                if vals & ref:
                     continue
                 gone = vals - ref
                 if gone:
@@ -375,14 +441,21 @@ def trace(doc, corpus) -> list:
                 for rule, vals in mine.items():
                     axis = AXES[rule][0]
                     ref = theirs.get(rule)
+                    hit = bool(ref and (vals & ref))
                     for v in sorted(vals):
                         key = f"{axis}:{v}"
+                        if rule == "W002":
+                            continue       # 아래에서 짝으로 따로 본다
                         if not ref:
                             row["견줄것없음"].append(key)
                         elif v in ref:
                             row["맞음"].append(key)
+                        elif hit:
+                            row["견줄것없음"].append(key)   # 다른 값을 맞게 썼다
                         else:
                             row["어긋남"].append(key)
+                for mk, tk, x, y in conj_mismatch(sent, joined):
+                    row["어긋남"].append(f"접속:{x}·{y} 를 {tk} 아닌 {mk} 로")
             rows.append(row)
     return rows
 
