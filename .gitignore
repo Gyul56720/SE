@@ -94,3 +94,8 @@ novel/baseline_*.txt
 corpus_report.txt
 *_1-3화.txt
 orchestrator/.model_cache.json
+
+# **감성사전은 저장소에 안 들어간다.** KNU 한국어 감성사전(KnuSentiLex)은 라이선스
+# 표기가 없다 -- 남의 자료를 재배포하지 않는다. turn.py 가 경로에서 읽는다.
+#   git clone --depth 1 https://github.com/park1200656/KnuSentiLex novel/knu
+novel/knu/
