@@ -531,6 +531,8 @@ def check(doc, corpus) -> list:
                         f"문서는 {'/'.join(sorted(gone))} 로 적었다"))
             st, at = terms_in(sent), terms_in(joined)
             body = terms_in(_body_only(joined))     # 기각에는 본문을 요구한다
+            if _HEAD_TITLE.search(sent):            # 표제를 옮겨 적었으면 표제도 본다
+                body = at
             for a, b in PAIRS:
                 for used, other in ((a, b), (b, a)):
                     fu, fo = _flat(used), _flat(other)
@@ -585,6 +587,14 @@ def _term_rows(sent: str, article: str) -> list:
     """
     st = terms_in(sent)
     at, body = terms_in(article), terms_in(_body_only(article))
+    # **문서가 표제를 직접 옮겨 적었으면 표제도 대조 대상이다.**
+    # 실측: `형법 제30조(방조)는 "2인 이상이 공동하여 죄를 범한 때에는..."` -- 제30조의
+    # 표제는 (공동정범)이고 그 낱말은 본문에 없다. 표제를 통째로 뺐더니 표제를 **옮겨
+    # 적으면서 틀린** 이 자리가 그늘로 들어갔다.
+    # 그러나 "변론주의에 관하여는 제203조 원문에 명시되지 않음" 은 표제를 옮겨 적은
+    # 것이 아니라 딴 얘기를 한 것이다. 가르는 것은 `제N조(...)` 꼴 하나다.
+    if _HEAD_TITLE.search(sent):
+        body = at
     out = []
     for used in sorted(st):
         if used not in _PARTNERS:      # 짝이 없는 낱말은 이 관문의 관할이 아니다

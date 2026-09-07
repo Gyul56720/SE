@@ -201,6 +201,25 @@ def _rewrite(path: Path, old: str, new: str) -> Path:
     return None                               # 줄바꿈이 낀 문장은 건너뛴다
 
 
+def _diff(before: str, after: str) -> tuple:
+    """무엇을 무엇으로 바꿨나. **심은 것을 안 알려주는 재는 자는 진단에 못 쓴다.**
+
+    실측: 놓침 셋을 받았는데 문장만 100자로 잘려 나와, 바뀐 낱말이 그 뒤에 있는 둘은
+    무엇이 심겼는지 알 수가 없었다. 원인을 짚어야 할 자리에서 짐작을 하게 된다.
+
+    앞뒤로 같은 부분을 깎아 내면 남는 것이 바뀐 자리다 -- 돌연변이는 한 군데씩만
+    바꾸므로 이것으로 충분하다.
+    """
+    i = 0
+    while i < min(len(before), len(after)) and before[i] == after[i]:
+        i += 1
+    j = 0
+    while (j < min(len(before), len(after)) - i
+           and before[-1 - j] == after[-1 - j]):
+        j += 1
+    return (before[i:len(before) - j] or "?", after[i:len(after) - j] or "?")
+
+
 def run(target, corpus, want_miss: bool = False) -> dict:
     """문서마다 돌연변이를 심고 잡히는지 센다."""
     t = Path(target)
@@ -230,7 +249,8 @@ def run(target, corpus, want_miss: bool = False) -> dict:
                     if any(v.rule == rule for v in vs):
                         tally[name]["잡음"] += 1
                     elif want_miss:
-                        tally[name]["놓친것"].append((path.name, sec, bad[:100]))
+                        tally[name]["놓친것"].append(
+                            (path.name, sec, _diff(sent, bad), bad))
     return tally
 
 
@@ -271,8 +291,15 @@ def main(argv=None):
               f"(이 문서 묶음에 해당 자리가 없다 -- 관문 잘못이 아니다)")
     if a.miss:
         for name, _, _ in MUTATIONS:
-            for f, sec, sent in tally[name]["놓친것"][:5]:
-                print(f"\n[놓침 {name}] {f} · {sec}\n    {sent}")
+            for f, sec, (was, now), sent in tally[name]["놓친것"][:5]:
+                print(f"\n[놓침 {name}] {f} · {sec}")
+                print(f"    심은 것: {was!r} -> {now!r}")
+                # 바뀐 자리가 문장 뒤쪽이면 앞에서 100자를 잘라 봐야 안 보인다.
+                k = sent.find(now)
+                head = max(0, k - 40)
+                print("    " + ("..." if head else "")
+                      + sent[head:head + 140].strip()
+                      + ("..." if head + 140 < len(sent) else ""))
     return 1 if blind else 0
 
 
