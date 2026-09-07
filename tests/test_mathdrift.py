@@ -106,6 +106,52 @@ def boom(p):
 
 ok(SPR.one(led, boom, seed="t", n=0, log=lambda *a: None) is None, "호출이 터지면 건너뛴다")
 
+print("\n== 묶어 부르기 ==")
+CALLS2 = []
+
+
+def fake_batch(p):
+    CALLS2.append(p)
+    ops = [ln.split(":")[0].strip(" ·") for ln in p.splitlines() if ln.startswith("  · ")]
+    body = [{"연산자": o, "이름": f"{o} 공간", "점": "랭크 1 텐서의 합에 조건 하나",
+             "표기": "U V W 세 행렬과 새 매개변수", "되사상": "Brent 항등식으로 되돌린다",
+             "크기": "연속", "왜": "그럴듯하다"} for o in ops]
+    return "```json\n" + json.dumps(body, ensure_ascii=False) + "\n```"
+
+
+led = seed_led()
+got = SPR.step(led, fake_batch, seed="t", n=0, k=5, log=lambda *a: None)
+ok(len(got) == 5, f"호출 한 번에 다섯 개 ({len(got)}개)")
+ok(len(CALLS2) == 1, "호출은 한 번뿐")
+ok(len({g["계보"]["연산자"] for g in got}) == 5, "연산자가 다섯 다 다르다")
+ok(all(g["계보"]["부모"] == "S1" for g in got), "다섯 다 같은 부모에서 나왔다")
+ok(all(g["계보"]["연산자"] in g["이름"] for g in got), "연산자 이름으로 짝이 맞았다")
+
+print("\n== 묶음이 깨져도 건진다 ==")
+half = ('앞말 [{"연산자":"쌍대","이름":"A","되사상":"돌아간다"}, {깨짐, '
+        '{"연산자":"망각","이름":"B","되사상":"돌아간다"}]')
+ok(len(SPR.objects(half)) == 2, f"중괄호 덩어리를 낱낱이 건진다 ({len(SPR.objects(half))}개)")
+led = seed_led()
+got = SPR.step(led, lambda p: half, seed="t", n=0, k=5, log=lambda *a: None)
+ok(len(got) == 2, "다섯 중 둘만 와도 둘은 원장에 오른다")
+ok(all(g["계보"]["부모"] == "S1" for g in got), "건진 것도 계보가 온전하다")
+
+print("\n== 순서가 어긋나도 부모-연산자가 안 뒤틀린다 ==")
+led = seed_led()
+picks = SPR._pick_ops(led, "t", 0, 3)
+mixed = json.dumps([{"연산자": picks[2][0], "이름": "뒤엣것 먼저", "되사상": "돌아간다"},
+                    {"연산자": picks[0][0], "이름": "앞엣것 나중", "되사상": "돌아간다"}],
+                   ensure_ascii=False)
+got = SPR.step(led, lambda p: mixed, seed="t", n=0, k=3, log=lambda *a: None)
+ok([g["계보"]["연산자"] for g in got] == [picks[2][0], picks[0][0]],
+   "적어 온 연산자대로 붙는다 (순서로 밀어 넣지 않는다)")
+
+print("\n== 연산자 뽑기 ==")
+led = seed_led()
+pk = SPR._pick_ops(led, "t", 0, 8)
+ok(len(pk) == 8 and len({x[0] for x in pk}) == 8, "한 묶음 안에서 연산자가 안 겹친다")
+ok(len(SPR._pick_ops(led, "t", 0, 99)) == len(OPS.OPS), "목록보다 많이 달라면 있는 만큼만")
+
 print("\n== 저장/복원 ==")
 with tempfile.TemporaryDirectory() as d:
     f = Path(d) / "l.json"
