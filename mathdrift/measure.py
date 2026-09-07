@@ -36,12 +36,20 @@ STOP = {"이", "그", "것", "수", "의", "를", "은", "는", "에", "로", "�
         "하는", "있는", "되는", "공간", "점", "문제", "구조", "하나", "모든", "위", "안"}
 
 
+# 낱말로 세지 않는 칸.
+#   왜        사람에게 하는 설명이라 부모 얘기를 그대로 옮겨 적는다 -- 물려받음이 부푼다
+#   해독      코드다. def·for·range 가 겹치는 것은 인과가 아니다
+#   시금석점  수다. 셀 것이 낱말이 아니다
+# 남는 것은 `식`·`점`·`정의역`·`이름` 이고, 그중 **`식` 이 이 자를 지탱한다** --
+# 이름과 산문으로 재던 자가 뒤집혔던 이유가 그것이었다.
+SKIP_FIELDS = ("왜", "해독", "시금석점")
+
+
 def _toks(rec: dict) -> set[str]:
-    """내용 칸만 본다. **`왜` 칸은 빼고 센다** -- 거기는 사람에게 하는 설명이라
-    부모 얘기를 그대로 옮겨 적기 마련이고, 그러면 물려받음이 부풀려진다."""
+    """내용 칸만 본다."""
     buf = []
     for f in SP.FIELDS:
-        if f == "왜":
+        if f in SKIP_FIELDS:
             continue
         v = rec.get(f)
         buf.append(v if isinstance(v, str) else str(v or ""))
@@ -83,8 +91,17 @@ def measure(child: dict, parent: dict | None) -> dict:
     share = kept / len(p) if p else 0.0             # 부모의 얼마를 가져왔나
     cshare = kept / len(c) if c else 0.0            # 옛 자 (대조용)
     real = kept >= KEEP_MIN and share >= KEEP_SHARE
-    return {"새것": new, "물려받음": kept, "몫": round(share, 3),
-            "자식몫": round(cshare, 3), "확산": bool(new and real), "씨앗": False}
+    out = {"새것": new, "물려받음": kept, "몫": round(share, 3),
+           "자식몫": round(cshare, 3), "확산": bool(new and real), "씨앗": False}
+    # **수로도 잰다.** 낱말은 장식할 수 있어도 치수와 정의역은 못 한다. 판정에는 안
+    # 쓰고 적어만 둔다 -- 이 둘이 부모와 똑같으면 식이 정말 바뀌었는지 의심할 자리다.
+    try:
+        out["치수차"] = int(child.get("치수") or 0) - int(parent.get("치수") or 0)
+    except (TypeError, ValueError):
+        out["치수차"] = None
+    out["정의역바뀜"] = ((child.get("정의역") or "").strip()
+                    != (parent.get("정의역") or "").strip())
+    return out
 
 
 def note(m: dict) -> str:

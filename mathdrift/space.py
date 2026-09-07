@@ -49,11 +49,20 @@ PATH = Path(os.environ.get("MATHDRIFT_LEDGER",
 SEED = Path(__file__).resolve().parent / "seed.json"
 
 # 공간 하나가 갖는 칸. **전부 비어도 받는다.**
-FIELDS = ("이름", "점", "표기", "되사상", "크기", "왜")
+#
+# 처음에는 이름과 산문(`표기`·`되사상`·`크기`)으로 주고받았다. 그랬더니 모델이 부모
+# 이름에 연산자 어휘를 덧붙이는 데로 수렴했고(실측 85개), 낱말 겹침을 재는 자가 그것을
+# 최고점으로 줬다. 프롬프트도 자도 전부 낱말이었으니 표류가 어휘 공간에서 일어난 것이다.
+#
+# 그래서 오가는 것을 **식과 수와 코드**로 바꿨다. 표류하는 것은 이름이 아니라 `식` --
+# 제약식 자체다. 씨앗의 식은 Brent 항등식이고, 연산자는 그 식을 변형한다(경계화는 ε 을
+# 넣어 극한식으로, 표수 이동은 같은 식을 F_2 위에서, 대칭성 강제는 G-불변 해로 제한).
+# 이름은 장식할 수 있어도 **식과 수는 장식할 수 없다.**
+FIELDS = ("이름", "식", "점", "치수", "정의역", "해독", "시금석점", "왜")
 
-# `되사상` 만은 특별하다 -- 비면 이 공간의 후보를 원래 문제와 견줄 길이 없다.
-# 그래도 버리지 않는다. 다음 세대의 부모로는 쓸 수 있기 때문이다.
-NEEDED = "되사상"
+# `해독` 이 특별하다 -- 산문 되사상("요네다 매몰로 재해석")은 돌릴 것이 없어서 공허해도
+# 통과했다. 코드는 **돌려 보면 끝난다.** 그래도 버리지 않는다: 다음 세대의 부모로는 쓴다.
+NEEDED = "해독"
 
 GRADES = ("미검증", "검증불가", "생존", "사망")
 
@@ -96,12 +105,13 @@ def get(led: dict, sid: str) -> dict | None:
 
 
 def grade(rec: dict) -> str:
-    """등급은 내용을 판정하지 않는다. **칸이 찼는가만 본다.**
+    """등급은 내용을 판정하지 않는다. **판정에 필요한 것이 있는가만 본다.**
 
-    "이 공간이 쓸모있는가" 는 검증 단계(다음 커밋)의 물음이다. 여기서 그것을 흉내내면
-    발산이 죽는다.
+    "이 공간이 쓸모있는가" 는 `recall.py` 의 물음이다. 여기서 그것을 흉내내면 발산이 죽는다.
     """
-    if not (rec.get(NEEDED) or "").strip():
+    if not (rec.get("해독") or "").strip():
+        return "검증불가"
+    if not rec.get("시금석점"):
         return "검증불가"
     return "미검증"
 
@@ -117,7 +127,8 @@ def add(led: dict, rec: dict, parent: str, op: str, dist: int = 1) -> dict:
     led["seq"] += 1
     out = {"id": f"S{led['seq']}"}
     for f in FIELDS:
-        out[f] = (rec.get(f) or "").strip() if isinstance(rec.get(f), str) else rec.get(f, "")
+        v = rec.get(f)
+        out[f] = v.strip() if isinstance(v, str) else (v if v is not None else "")
     out["계보"] = {"부모": parent, "연산자": op, "거리": dist}
     out["등급"] = grade(out)
     out["잰것"] = {}
