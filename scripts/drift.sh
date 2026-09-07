@@ -19,6 +19,7 @@
 #   drift.sh stop                   런을 멈춘다 (원고는 남는다 -- go 로 이어 쓴다)
 #   drift.sh quota                  쿼터 장부 -- "소진" 이 정말 하루치인지 대조한다
 #                                   (--clear 로 오늘자 소진 표시만 지운다)
+#   drift.sh arc                    **어디로 가고 있는지** -- 끝과 빚, 지금 마디
 #   drift.sh world                  세계가 얼마나 자랐는지 (인물·장소·사물·사실·사건)
 #   drift.sh open                   아직 안 닫힌 것들 -- 이 이야기가 갚지 않은 빚
 #
@@ -26,6 +27,9 @@
 #   DRIFT_LAYER  프롬프트 층      (기본 text = 문면층만 · all = 서사·세계까지)
 #                                문면층만 쓸 때는 사건·급발진·확산이 안 실린다
 #                                (갈래는 층과 무관하게 실린다 -- 아래 GENRE)
+#   STYLE    문체 페르소나      (ropan · cider · hardboiled / 비우면 기본값 cider)
+#                                ropan 은 원작 4편 378만 자를 재서 나온 결이다.
+#                                예: STYLE=ropan GENRE=ropan drift.sh start 8000
 #   GENRE    갈래 꾸러미        (ropan · romance · job · youth / 비우면 안 씌운다)
 #                                예: GENRE=ropan drift.sh start 8000
 #                                축에서 짓는 기본 프롬프트에도 실린다 -- 갈래의 저울이
@@ -121,7 +125,7 @@ case "${1:-status}" in
       mv "$BOOK" "$BOOK.$(date +%Y%m%d-%H%M%S).bak"
       echo "쓰던 원고를 옮겨 두었다: $BOOK.*.bak"
     }
-    set -- --out "$BOOK" --chars "${2:-8000}" ${GENRE:+--genre "$GENRE"} ${DRIFT:+--drift "$DRIFT"} ${MATTER:+--matter "$MATTER"} \
+    set -- --out "$BOOK" --chars "${2:-8000}" ${STYLE:+--persona "$STYLE"} ${GENRE:+--genre "$GENRE"} ${DRIFT:+--drift "$DRIFT"} ${MATTER:+--matter "$MATTER"} \
            ${BODY:+--body "$BODY"} ${BOND:+--bond "$BOND"}
     [ -n "${FIRST:-}" ] && set -- "$@" --first "$FIRST"
     # 첫 문장을 안 주면 갈래 축에서 여는 좌표를 뽑는다 -- 고정 문장을 쓰면 그 문장의
@@ -147,6 +151,22 @@ if p.exists():
     else:
         print("  세계는 비어 있다 -- 처음부터 시작한다.")
 INNER
+    # **도착지를 여기서 세운다.** 호출 한 번이다(디렉터, 300토큰 남짓).
+    #
+    # 사람이 따로 쳐야 하는 단계로 두면 아무도 안 친다 -- 이 저장소가 여섯 번 겪은
+    # "코드가 실행에 도달하지 못하는" 자리를 일부러 하나 더 만드는 셈이다. 실패해도
+    # 런은 계속 간다: 도착지가 없으면 serial.brief() 가 조용히 빈 줄을 내고, 그건
+    # 예전 DRIFT 그대로다.
+    if [ -f "$BOOK" ]; then
+      echo "도착지를 세운다 (호출 한 번)..."
+      python3 "$SE/novel/serial.py" plan --book "$BOOK" ${GENRE:+--genre "$GENRE"} \
+        || echo "  * 도착지를 못 세웠다 -- 당김 없이 간다 ($0 arc 로 다시 시도할 수 있다)" >&2
+    fi
+    ;;
+
+  arc)
+    [ -f "$BOOK" ] || die "원고가 없다: $BOOK"
+    exec python3 "$SE/novel/serial.py" show --book "$BOOK"
     ;;
 
   go|resume)
@@ -155,6 +175,7 @@ INNER
     cp "$BOOK" "$BOOK.bak"
     FIRST_MSG="$(python3 -c "import json; print(json.load(open('$BOOK')).get('first', ''))" 2>/dev/null || true)"
     launch "이어 쓰기를" --resume "$BOOK" ${FIRST_MSG:+--first "$FIRST_MSG"} --chars "${2:-50000}" --hours 12 \
+           ${STYLE:+--persona "$STYLE"} \
            ${GENRE:+--genre "$GENRE"} \
            ${DRIFT:+--drift "$DRIFT"} ${MATTER:+--matter "$MATTER"} \
            ${BODY:+--body "$BODY"} ${BOND:+--bond "$BOND"}

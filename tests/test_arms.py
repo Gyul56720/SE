@@ -92,12 +92,6 @@ ok("--brief" in _q and "return 0 if (alive or unseen) else 3" in _q,
    "한도가 한 줄과 종료 코드로도 나온다  ← 밤새 도는 쪽은 표를 못 읽는다")
 
 print()
-if fails:
-    print(f"팔: {len(fails)}개 실패 -- {fails}")
-    sys.exit(1)
-print("팔: 배정 · 적기 · 세기 · 굳히기 · 표 · 루프 -- 통과")
-
-print()
 print("[검증에서 나온 것] **밤을 날리던 자리들**")
 print("      ← 워크플로가 14개를 확인해 줬다. 그중 루프를 세우거나 데이터를 망치는 것.")
 ok("now + CHARS" in _sh,
@@ -164,3 +158,13 @@ with _tf.TemporaryDirectory() as _t:
             _T.SC.score = _sc
     finally:
         _T.LOG = _was
+
+# **요약은 맨 끝에 있어야 한다.** 종료 블록 뒤에 붙인 검사는 실패해도 종료 코드를
+# 0 으로 남긴다 -- 스위트는 초록으로 보고, 화면의 '실패' 줄은 스크롤 위로 흘러간다.
+# 2026-09-07 에 이 저장소에서 일곱 번 나왔다. 그래서 G015 가 이제 커밋에서 막는다.
+
+print()
+if fails:
+    print(f"팔: {len(fails)}개 실패 -- {fails}")
+    sys.exit(1)
+print("팔: 배정 · 적기 · 세기 · 굳히기 · 표 · 루프 -- 통과")

@@ -42,7 +42,9 @@ def scene(kind, ep=1):
 
 print("[기본] 기본 페르소나는 사이다다")
 ok(style.ACTIVE == "cider", f"ACTIVE={style.ACTIVE}")
-ok(sorted(style.PERSONAS) == ["cider", "hardboiled"], f"{sorted(style.PERSONAS)}")
+# **명부를 못박아 둔다.** 페르소나가 조용히 늘면 기본값이 바뀌었는지 아무도 모른다.
+# 늘릴 때는 여기 한 줄을 같이 고친다 -- 그게 이 검사가 시키는 일이다.
+ok(sorted(style.PERSONAS) == ["cider", "hardboiled", "ropan"], f"{sorted(style.PERSONAS)}")
 
 print("[배분] 씬 종류가 목표 비율에 수렴하는가")
 counts: dict = {}
@@ -199,8 +201,45 @@ ok("꿉꿉" not in _n and "웅포" not in _n,
    "지어낸 말 예문을 뺐다  ← 그 예문이 원고를 옛 시골 쪽으로 끌고 갔다")
 ok("토박이말 쪽으로만 만들지 마라" in _n, "지어낸 낱말의 계열도 못박는다")
 
+
+
+print()
+print("[로판] **잰 것에서 나왔지 지어낸 것이 아니다**")
+print("      ← 원작 4편 · 378만 자를 profile.py 로 재서 나온 결이다(2026-09-07).")
+print("        원문은 저장소에 안 들어온다 -- DATA.md 대로 수로 바뀌고 끝났다.")
+
+ok("ropan" in style.PERSONAS, "명부에 있다")
+style.use("ropan")
+_n = style.narrator()
+
+# 잰 것이 실제로 실려야 한다. 수는 안 싣고 **결**로 싣는다.
+for _what, _mark in (("시제", "과거"), ("대사 줄", "혼자"), ("피동", "피동"),
+                     ("감각", "눈"), ("존대", "존대")):
+    ok(_mark in _n, f"{_what}가 실린다")
+
+# **수를 프롬프트에 싣지 않는다.** 자를 시키면 자를 만족시키러 간다(turn.py 와 같은 계약).
+for _num in ("0.4", "33자", "sent_len", "talk_len", "glue", "tense_now", "sense_eye"):
+    ok(_num not in _n, f"'{_num}' 이 프롬프트에 없다  ← 자를 시키지 않고 일을 시킨다")
+
+# **예문을 주지 않는다.** 주면 그 문장을 베껴 원고가 한 사람의 문체가 된다.
+ok("예문은 주지 않는다" in _n, "예문 금지가 명시돼 있다")
+
+# 작가마다 흩어진 축은 안 시킨다 -- 시키면 특정 작가 흉내가 된다.
+ok("rally" not in _n and "para_len" not in _n, "흩어진 축은 안 실린다")
+
+style.use("cider")          # 뒤 검사를 위해 되돌린다
+
+
+# **요약은 맨 끝에 있어야 한다.** 2026-09-07 까지 이 블록이 205줄에 있었다 -- 파일은
+# 233줄인데. 뒤에 붙인 검사는 종료 코드에 아무 영향을 못 줬다.
+#
+# **이 저장소에서 다섯 번째다** -- test_llm_pool_rpm.py(611줄 중 252) ·
+# test_flow.py(605줄 중 402) · test_genre.py(473줄 중 251) · 그리고 여기.
+# 다섯 번이면 개별 실수가 아니라 이 파일 꼴의 성질이다: 검사를 파일 끝에 덧붙이는
+# 습관과, 종료 블록이 본문 사이에 있는 구조가 만나면 반드시 이렇게 된다.
+# **게이트로 막아야 할 것이지 사람이 조심할 것이 아니다.**
 print()
 if fails:
     print(f"문체 규율: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)
-print("문체 규율: 배분 수렴 · 층별 적재 · 종류 격리 · 3화 법칙 · 페르소나 교체 -- 통과")
+print("문체 규율: 배분 수렴 · 층별 적재 · 종류 격리 · 3화 법칙 · 페르소나 교체 · 로판 -- 통과")

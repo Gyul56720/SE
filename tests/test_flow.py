@@ -626,6 +626,54 @@ ok(_s3.writes == 1, f"넉넉히 오면 안 부른다 ({_s3.writes}회)")
 # 그랬다. **검사하지 않은 초록불은 검사한 빨간불보다 나쁘다.**
 
 print()
+print("[문체] **고른 페르소나가 실제로 닿는가**")
+print("      ← 2026-09-07 까지 flow 는 style.use() 를 한 번도 안 불렀다. 표본에서 잰")
+print("        로판 페르소나를 만들어 두고도 DRIFT 에서 닿지 않았다 -- searcher.py ·")
+print("        bot_tools.py · gatekeeper.py · 배포 경로 · gemini_http 임포트에 이어")
+print("        여섯 번째 '코드가 실행에 도달하지 못하는' 자리다.")
+
+import subprocess as _sp                                              # noqa: E402
+import tempfile as _tmp                                               # noqa: E402
+
+_REPO = Path(__file__).resolve().parent.parent
+
+_d = Path(_tmp.mkdtemp()) / "b.json"
+_bk = flow.blank("첫 문장이다.")
+_bk["chunks"] = ["가" * 500]                       # 목표를 이미 넘겨 호출 없이 끝난다
+_d.write_text(json.dumps(_bk, ensure_ascii=False), encoding="utf-8")
+
+
+def _run_persona(name):
+    r = _sp.run([sys.executable, str(_REPO / "novel" / "flow.py"), "--resume", str(_d),
+                 "--chars", "10", "--first", "첫 문장이다.", "--persona", name],
+                capture_output=True, text=True, cwd=str(_REPO))
+    return r.returncode, r.stdout + r.stderr
+
+
+_rc, _out = _run_persona("ropan")
+ok(_rc == 0, f"로판으로 돌아간다 (exit={_rc})")
+ok("문체 ropan" in _out, "고른 문체가 로그에 찍힌다  ← 안 찍히면 뭘로 썼는지 모른다")
+
+# **모르는 이름은 사실대로 죽어야 한다.** 조용히 기본값으로 물러서면, 로판을 시켰는데
+# cider 로 8만 자를 쓰고도 아무도 모른다.
+_rc2, _out2 = _run_persona("없는이름")
+ok(_rc2 != 0, f"모르는 이름은 죽는다 (exit={_rc2})")
+ok("모르는 페르소나" in _out2, "왜 죽었는지 말한다")
+
+# 안 주면 건드리지 않는다 -- 기존 런의 기본값이 조용히 바뀌면 안 된다.
+_was = flow.style.ACTIVE
+ok(_was == "cider", f"기본값은 그대로다 ({_was})")
+
+# drift.sh 가 **두 자리 모두** 넘겨야 한다. start 에만 넣으면 이어 쓸 때 문체가 사라진다.
+_sh = (_REPO / "scripts" / "drift.sh").read_text(encoding="utf-8")
+ok(_sh.count('${STYLE:+--persona "$STYLE"}') == 2,
+   f"drift.sh 의 start 와 go 둘 다 넘긴다 ({_sh.count('--persona')}자리)")
+
+# **요약은 맨 끝에 있어야 한다.** 종료 블록 뒤에 붙인 검사는 실패해도 종료 코드를
+# 0 으로 남긴다 -- 스위트는 초록으로 보고, 화면의 '실패' 줄은 스크롤 위로 흘러간다.
+# 2026-09-07 에 이 저장소에서 일곱 번 나왔다. 그래서 G015 가 이제 커밋에서 막는다.
+
+print()
 if fails:
     print(f"연속 집필: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)
