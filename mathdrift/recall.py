@@ -56,7 +56,7 @@ def one(rec: dict, log=print) -> dict:
     out["시금석"] = f"strassen b={EN.B} m={EN.M}"
     rec["재현"] = out
     mark = out["판정"] + ("+하드코딩" if out.get("하드코딩") else "")
-    log(f"[재현] {rec['id']:<5} {mark:<12} {rec.get('이름','')[:30]}"
+    log(f"[재현] {rec['id']:<5} {mark:<12} {str(rec.get('식') or '')[:44]}"
         + (f"  -- {out.get('왜','')[:60]}" if out.get("왜") else ""))
     return out
 
@@ -78,7 +78,7 @@ def report(led: dict) -> int:
     for s in sorted(seen, key=lambda r: (r["재현"]["판정"], not r["재현"].get("하드코딩"))):
         r = s["재현"]
         mark = r["판정"] + ("+하드코딩" if r.get("하드코딩") else "")
-        print(f"  {s['id']:<5} {mark:<12} {(s.get('이름') or '')[:40]}")
+        print(f"  {s['id']:<5} {mark:<12} {str(s.get('식') or '')[:56]}")
     print("\n**강한 신호는 틀림 · 못돎 · 하드코딩이다** -- 그 식은 Strassen 을 품지 못한다.")
     print("재현은 다음 축으로 갈 자격일 뿐이지 그 식이 쓸모 있다는 뜻이 아니다.")
     print("**없음은 실패가 아니다** -- 코드 칸이 없어서 아직 안 본 것이다. 발산은 그것을 안 벌한다.")

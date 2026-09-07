@@ -244,9 +244,33 @@ def check_quantities(doc: Doc, corpus) -> list:
                 if corpus.has(statute, c.article):
                     covered = True
                     allowed |= corpus.quantities_of(statute, c.article)
+                    # **준용된 조문의 수량도 이 조문의 수량이다.** "제22조에 따라 3년
+                    # 이내" 에서 제22조가 "제12조를 준용한다" 뿐이면 3년은 제12조에
+                    # 있다. 여기를 안 따라가면 맞게 쓴 수량을 없는 수량이라고 기각한다.
+                    for _, borrowed in corpus.via(statute, c.article):
+                        allowed |= {q.key() for q in CP.quantities(borrowed)}
             if not covered:
                 continue
-            for q in CP.quantities(sent):
+            nums = CP.quantities(sent)
+            # **지어낸 사건의 수는 조문의 수가 아니다.**
+            #
+            # 실측: "청산인 갑은 3주 기간을 넘겨 **5주** 만에 등기하였다" 가 기각됐다.
+            # 그런데 문서는 완전히 옳다 -- 3주는 제94조대로 적었고 5주는 지어낸 사건의
+            # 사실이며, 바로 다음 문장이 "5주 만에 등기한 것은 법정 기간을 도과한
+            # 것이다" 라고 제대로 결론짓는다.
+            #
+            # 이건 그냥 오탐이 아니다. **조문의 수를 안 벗어나는 사례는 쓸모없는
+            # 사례**인데, 그것을 벌하면 다음 원고는 조문의 수만 되뇌는 사례를 쓴다.
+            # 유보 문장을 벌해서 환각을 권하게 되는 것과 같은 꼴이다.
+            #
+            # 그래서 **창작 라벨이 붙은 블록에서는**, 조문의 수를 하나라도 맞게 썼으면
+            # 나머지 수는 사실로 본다. W 계열이 "그 범주에서 하나라도 맞게 썼으면
+            # 나머지는 일상 용법이다" 로 정한 것과 같은 원리다. 맞게 쓴 수가 하나도
+            # 없으면 그대로 기각한다 -- "제94조는 5주간 내에 등기하여야 한다" 는
+            # 사례 안에 있어도 조문을 잘못 옮긴 것이다.
+            if CREATED_LABEL.search(text) and any(q.key() in allowed for q in nums):
+                continue
+            for q in nums:
                 if q.key() not in allowed:
                     out.append(Violation(
                         "L003", sev, f"{doc.path.name} · {name}",

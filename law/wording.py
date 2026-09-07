@@ -275,6 +275,26 @@ _APPLIES_TO_CASE = re.compile(
 # 상계할 수 있다고 오해한다" 는 문장에서 '할 수 있다'(재량)는 문서가 그렇다고 말한 것이
 # 아니라 남의 잘못된 생각을 옮긴 것이다. 실측에서 서법 어긋남 세 건이 전부 이 꼴이었다.
 # 그 절은 어차피 soft 라 여기서 빼도 잃는 것이 적고, 소리만 줄어든다.
+# **모른다고 밝힌 문장은 조문에 관한 주장이 아니다.**
+#
+# 실측: 민사소송법 제203조 편에서 이 문장이 W005 hard 로 기각됐다.
+#
+#     "변론주의에 관하여는 제203조 원문에 명시되지 않음, 학설/판례 확인 필요."
+#         용어:변론주의(조문은 처분권주의)
+#
+# 그런데 **문서는 옳다.** 바로 앞 문장에서 "이를 처분권주의라 합니다" 라고 제대로 적었고,
+# 이 문장은 변론주의가 그 조문에 **없다고 밝힌** 것이다. 조문의 낱말을 다른 낱말로 바꿔
+# 적은 것이 아니라, 조문에 없는 것을 없다고 말한 것이다.
+#
+# 이건 그냥 오탐이 아니라 **닫힌책 규율을 지킨 자리를 벌한 것**이다. 우리가 생성자에게
+# 시킨 바로 그 일("모르는 것은 지어내지 말고 모른다고 적어라")을 하면 관문이 기각한다.
+# 그러면 다음 원고는 유보를 안 쓰는 쪽으로 간다 -- **관문이 환각을 권하는 꼴**이다.
+# '오해' 절을 대조에서 뺀 것과 같은 이유이고, 그보다 이유가 더 무겁다.
+_RESERVED = re.compile(
+    r"명시되(지\s*않|어\s*있지\s*않)|규정되(지\s*않|어\s*있지\s*않)"
+    r"|나타나\s*있지\s*않|확인\s*필요|알\s*수\s*없")
+
+
 _MISCONCEPTION = re.compile(r"오해|오인|착각|잘못\s*알|혼동")
 
 
@@ -348,7 +368,29 @@ def _flat(t: str) -> str:
 # 긴 것부터 늘어놓는다 -- 정규식 선택지는 왼쪽부터 시도되므로 이것이 곧 최장일치다.
 _ALL_TERMS = sorted({t for p in PAIRS for t in p} | set(MASKS),
                     key=lambda t: -len(_flat(t)))
-_TERM_RE = re.compile("|".join(re.escape(_flat(t)) for t in _ALL_TERMS))
+
+
+def _shapes(term: str) -> str:
+    """한 용어가 조문에서 취하는 꼴들. **사이에 '의' 가 끼는 것을 받는다.**
+
+    실측: 형법 제355조②는 `재산상**의** 이익` 이라 쓰는데 사전은 `재산상 이익` 이다.
+    띄어쓰기만 지우니 `재산상의이익` 과 `재산상이익` 이 서로 다른 낱말이 됐고, 조문에
+    그 말이 버젓이 있는데 없다고 봤다. 그래서 배임죄 문서의 맞는 서술("재산상 이익을
+    취득하려 한 사안")이 **'재물' 을 '재산상 이익' 으로 바꿔 적었다** 며 기각됐다.
+
+    관형격 '의' 는 한국 법령문이 같은 말을 쓰는 두 가지 꼴이다. **낱말 경계에만 넣는다**
+    -- 아무 데나 넣으면 다른 낱말을 삼킨다.
+    """
+    return "의?".join(re.escape(_flat(w)) for w in term.split() if w)
+
+
+_TERM_RE = re.compile("|".join(_shapes(t) for t in _ALL_TERMS))
+# 찾은 꼴 -> 사전의 이름. `재산상의이익` 을 `재산상이익` 으로 되돌려야 집합 비교가 된다.
+_CANON = {}
+for _t in _ALL_TERMS:
+    _f = _flat(_t)
+    _CANON[_f] = _f
+    _CANON["의".join(_flat(w) for w in _t.split() if w)] = _f
 
 
 def terms_in(text: str) -> set:
@@ -358,7 +400,7 @@ def terms_in(text: str) -> set:
     멀쩡한 문장이 기각된다(실측으로 둘 다 확인했다). findall 은 겹치지 않게 훑으므로,
     긴 낱말이 먼저 소비되면 그 안의 짧은 용어는 잡히지 않는다.
     """
-    return set(_TERM_RE.findall(_flat(text)))
+    return {_CANON.get(m, m) for m in _TERM_RE.findall(_flat(text))}
 
 
 def bucket(text: str) -> dict:
@@ -377,12 +419,27 @@ def _sentences(text: str) -> list:
 
 
 def _targets(sent, doc, corpus):
-    """이 문장이 부른 조문들의 원문. 원장이 안 담은 법령은 빠진다(미검증)."""
-    out = []
+    """이 문장이 부른 조문들의 원문. 원장이 안 담은 법령은 빠진다(미검증).
+
+    **끌어다 쓰는 조문까지 한 홉 따라간다.** 민법 제724조는 청산인의 직무를 "제87조의
+    규정을 준용한다" 로만 정한다 -- 제724조 본문만 보면 청산인의 직무에 관한 서술은
+    영영 '견줄 값 없음' 이다. 준용된 조문은 여기서 그대로 사는 조문이므로 그 낱말이
+    곧 이 자리의 낱말이다(corpus.via 가 어디까지 따라가는지 적어 두었다).
+    """
+    out, seen = [], set()
     for c in CP.find_citations(sent):
-        body = corpus.text(c.statute or getattr(doc, "statute", None), c.article)
-        if body:
-            out.append((c.raw, body))
+        st = c.statute or getattr(doc, "statute", None)
+        body = corpus.text(st, c.article)
+        if not body or c.article in seen:
+            continue
+        seen.add(c.article)
+        out.append((c.raw, body))
+        for name, borrowed in corpus.via(st, c.article):
+            key = name.split("(")[-1].rstrip(")")
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append((f"{c.raw}→{name}", borrowed))
     return out
 
 
@@ -395,7 +452,7 @@ def check(doc, corpus) -> list:
         sev = "hard" if name.startswith(("2.", "3.")) else "soft"
         for sent in _sentences(text):
             tg = _targets(sent, doc, corpus)
-            if not tg or _MISCONCEPTION.search(sent):
+            if not tg or _MISCONCEPTION.search(sent) or _RESERVED.search(sent):
                 continue
             raws = ", ".join(r for r, _ in tg)
             joined = " ".join(b for _, b in tg)
@@ -442,6 +499,42 @@ def check(doc, corpus) -> list:
     return out
 
 
+_PARTNERS = {}
+for _a, _b in PAIRS:
+    _PARTNERS.setdefault(_flat(_a), []).append(_b)
+    _PARTNERS.setdefault(_flat(_b), []).append(_a)
+
+
+def _term_rows(sent: str, article: str) -> list:
+    """W005 를 세 갈래로. **check() 의 기각 조건을 그대로 옮긴다** -- 두 벌이 갈라지면
+    보고와 판정이 어긋난다.
+
+        맞음        문서가 쓴 낱말을 조문도 쓴다
+        어긋남      문서는 이쪽, 조문은 짝이 되는 저쪽만 쓴다 (= check 가 기각하는 자리)
+        견줄것없음  조문이 그 짝의 어느 쪽도 안 쓴다
+
+    **낱말 단위로 한 번씩만 적는다.** 짝 목록을 그대로 돌면 한 낱말이 여러 짝에 걸려
+    같은 줄이 두세 번 나오고, 한쪽 짝에서는 맞음인데 다른 짝에서는 견줄것없음이 되어
+    읽는 사람이 어느 쪽을 믿어야 할지 모르게 된다. 조문이 그 낱말을 쓰는지 아닌지는
+    짝과 무관하게 정해지므로, 낱말에서 출발해야 답이 하나가 된다.
+    """
+    st, at = terms_in(sent), terms_in(article)
+    out = []
+    for used in sorted(st):
+        if used not in _PARTNERS:      # 짝이 없는 낱말은 이 관문의 관할이 아니다
+            continue
+        if used in at:
+            out.append((f"용어:{used}", "맞음"))
+            continue
+        others = [o for o in _PARTNERS[used]
+                  if _flat(o) in at and _flat(o) not in st]
+        if others:
+            out.append((f"용어:{used}(조문은 {'·'.join(others)})", "어긋남"))
+        else:
+            out.append((f"용어:{used}", "견줄것없음"))
+    return out
+
+
 def trace(doc, corpus) -> list:
     """**낱말이 어디에 근거하는가.** 문장마다 세 갈래로 갈라 돌려준다.
 
@@ -464,8 +557,13 @@ def trace(doc, corpus) -> list:
             tg = _targets(sent, doc, corpus)
             row = {"절": name, "문장": sent, "인용": [c.raw for c in cits],
                    "맞음": [], "어긋남": [], "견줄것없음": [], "조문값": {},
-                   "미검증": not tg, "오해": bool(_MISCONCEPTION.search(sent))}
-            if tg:
+                   "미검증": not tg,
+                   "오해": bool(_MISCONCEPTION.search(sent)
+                               or _RESERVED.search(sent))}
+            # **대조하지 않기로 한 문장은 아예 안 견준다.** 전에는 '오해' 표만 달고
+            # 값은 그대로 채웠다 -- 보고가 세지 않을 뿐 줄 안에는 어긋남이 들어 있어서,
+            # 읽는 사람에게는 잡힌 것으로 보이고 수에는 없는 유령이 됐다.
+            if tg and not row["오해"]:
                 row["인용"] = [r for r, _ in tg]
                 joined = " ".join(b for _, b in tg)
                 mine, theirs = bucket(_for_compare(sent)), bucket(joined)
@@ -492,6 +590,13 @@ def trace(doc, corpus) -> list:
                             row["조문값"][axis] = sorted(ref)
                 for mk, tk, x, y in conj_mismatch(sent, joined):
                     row["어긋남"].append(f"접속:{x}·{y} 를 {tk} 아닌 {mk} 로")
+                # **W005 가 보고에 아예 없었다.** trace 는 AXES 만 돌아서, 용어 치환은
+                # check() 가 기각하는데 보고는 "볼 것이 없다" 고 적었다. 실측: 그렇게
+                # 센 '대조할 낱말을 아예 안 쓴 문장' 이 161개였는데, 그중 얼마가 실은
+                # W005 의 관할인지 알 수 없었다. **보고와 판정이 같은 것을 보아야 한다**
+                # -- 세 갈래 판정을 만들 때 이미 한 번 겪은 그 어긋남이다.
+                for key, kind in _term_rows(sent, joined):
+                    row[kind].append(key)
             rows.append(row)
     return rows
 
@@ -510,7 +615,7 @@ def main(argv=None):
     files = [f for f in files if not f.name.lower().startswith("readme")]
 
     hard = soft = 0
-    unver = good = bad = nocmp = miscon = 0
+    unver = good = bad = nocmp = miscon = mute = gap = hop2 = 0
     for f in files:
         doc = parse(f)
         if a.trace:
@@ -527,6 +632,18 @@ def main(argv=None):
                     bad += 1
                 elif r["맞음"]:
                     good += 1
+                elif r["견줄것없음"]:
+                    # **문서는 낱말을 썼는데 조문에 그 범주가 없다.** 원장을 넓히거나
+                    # 2홉을 늘리면 줄어드는 수 -- 여기가 자의 눈이 감긴 자리다.
+                    gap += 1
+                else:
+                    # **문서가 대조할 낱말을 아예 안 썼다.** 서법도 접속도 경계도
+                    # 법효과어도 없는 서술이라 견줄 것이 없다. 이건 자가 못 보는
+                    # 것이 아니라 **볼 것이 없는** 것이라, 줄인다고 나아지지 않는다.
+                    # 처음엔 이 둘을 한 수(168개)로 묶고 "줄여야 할 수" 라 적었는데,
+                    # 그러면 자가 나아져도 이 수는 안 줄어 사람을 헷갈리게 한다.
+                    mute += 1
+                hop2 += any("→" in c for c in r["인용"])
                 if r["견줄것없음"]:
                     nocmp += 1
                     mark += "  (조문에 없는 범주라 대조 못 함: " \
@@ -549,12 +666,21 @@ def main(argv=None):
             soft += v.severity == "soft"
     if a.trace:
         print(f"\n문장 {good + bad}개를 조문과 견줬다 -- 맞음 {good} · **어긋남 {bad}**")
+        if gap:
+            print(f"문서는 낱말을 썼는데 조문에 그 범주가 없던 문장 {gap}개 "
+                  f"<- **줄여야 할 수는 이것이다** (원장·2홉이 넓어지면 준다)")
         if nocmp:
             print(f"조문에 그 범주가 없어 일부만 대조한 문장 {nocmp}개 "
                   f"(위반이 아니라 대조 불가다)")
+        if mute:
+            print(f"문서가 대조할 낱말을 아예 안 쓴 문장 {mute}개 "
+                  f"(자가 못 보는 것이 아니라 볼 것이 없다 -- 축을 늘려야 준다)")
+        if hop2:
+            print(f"준용·전조를 따라가 조문을 더 끌어온 문장 {hop2}개 "
+                  f"(2홉이 실제로 일을 한 자리다)")
         if miscon:
-            print(f"'오해' 를 옮긴 문장 {miscon}개는 대조하지 않았다 "
-                  f"(문서의 주장이 아니다)")
+            print(f"'오해' 를 옮겼거나 모른다고 밝힌 문장 {miscon}개는 대조하지 "
+                  f"않았다 (조문에 관한 주장이 아니다)")
         if unver:
             print(f"원장에 없어 대조 못 한 문장 {unver}개")
         return 0

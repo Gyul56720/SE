@@ -278,9 +278,11 @@ def test_metric_rewards_activation_awareness() -> None:
         sc[sc == 0] = 1
         return (np.round(M / sc).clip(-127, 127) * sc).astype(np.float32)
 
+    # **심판의 지표로 잰다.** 전에는 여기서 지표를 다시 구현해서, judge._relative_error 를
+    # X 를 무시하도록 망가뜨려도 이 검사가 초록이었다(2026-09-08 가짜 green 사냥, 실측).
+    # 검사가 재는 것은 데이터의 성질이 아니라 **심판이 그 성질을 보는가** 다.
     def rel(R, X):
-        Y = W @ X
-        return float(np.linalg.norm(Y - R @ X) / np.linalg.norm(Y))
+        return judge._relative_error(W, R, X)
 
     plain = q(W)
     s = np.maximum(np.sqrt((Xa ** 2).mean(1)) ** 0.25, 1e-12)

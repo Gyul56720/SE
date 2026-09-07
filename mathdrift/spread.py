@@ -34,6 +34,7 @@ K 개를 받는다. 호출이 1/K 로 준다. 공짜로 얻는 것이 하나 더
 from __future__ import annotations
 
 import argparse
+import difflib
 import json
 import re
 import sys
@@ -70,7 +71,7 @@ def prompt(parent: dict, picks: list[tuple[str, str, int]]) -> str:
     검증은 `recall.py` 가 나중에 **따로** 한다 -- 생성기는 그것을 몰라야 한다.
     """
     body = "\n".join(f"    {f}: {parent.get(f) if parent.get(f) not in ('', None) else '(비어 있음)'}"
-                     for f in ("이름", "식", "점", "정의역"))
+                     for f in ("식", "점", "정의역"))
     lines = []
     for op, what, dist in picks:
         far = "  ← 먼 이주여도 좋다" if dist >= 2 else ""
@@ -88,14 +89,16 @@ def prompt(parent: dict, picks: list[tuple[str, str, int]]) -> str:
 
 연산자마다 새 식 하나씩, **JSON 배열 하나로만** 답해라. 원소는 {len(picks)}개다.
 
-  연산자 : 위 목록의 이름 그대로
-  이름   : 이 식을 한 마디로
-  식     : **바뀐 제약식 자체. 여기가 본체다.** 부모 식이 어떻게 달라졌는지가
-           여기 보여야 한다 -- 경계화면 극한이, 표수 이동이면 체가, 대칭성
-           강제면 불변 조건이
-  점     : 이 식의 해 하나는 무엇인가
-  정의역 : 무엇 위에서 푸는가 (실수 R · 격자 · 유한체 F_2 · ...)
-  왜     : 왜 이것이 그럴듯한가
+  연산자 : 위 목록의 이름 그대로 (짝을 맞추려는 칸이다)
+  식     : **오로지 수학적 기호만.** 한국어를 한 글자도 쓰지 마라.
+           부모 식을 놓고 이 연산자가 그것을 **기호로** 어떻게 바꾸는지 쓴다 --
+           lim 이 붙거나, 체가 바뀌거나, 첨자에 조건이 붙거나, = 이 <= 가 되거나,
+           합의 범위가 달라지거나, 새 변수가 들어오거나.
+           설명하고 싶은 것은 전부 `왜` 칸에 적는다. 여기는 식만 있는 칸이다
+  점     : 해가 무엇인지 **기호로** (예: (U,V,W,lam) in F^{{n^2 x m}} x ... x F^m)
+  정의역 : F = R · F = F_2 · F = {{-1,0,1}} · ... 처럼 **기호로**
+  왜     : 왜 이것이 그럴듯한가 (**여기만 한국어로 쓴다.** 사람이 읽는 칸이고
+           다음 세대에게는 전달되지 않는다)
 
 선택 칸. **적을 수 있으면 적고 아니면 비워라. 없다고 벌점 없다.**
 
@@ -110,8 +113,63 @@ def prompt(parent: dict, picks: list[tuple[str, str, int]]) -> str:
   · **모르는 칸은 비워라.** 지어내지 마라 -- 빈 칸은 벌점이 아니다
   · **부모 식을 부정하지 마라.** 부모의 해가 새 식 안에서도 해로 남아야 한다
   · **{len(picks)}개를 서로 다르게 써라.** 연산자가 다르므로 식도 달라야 한다
+  · **`식`·`점`·`정의역` 에 한국어가 있으면 그건 식이 아니라 설명이다.**
+    "같은 식을 F_2 위에서" (X)
+    `sum_r lam_r U[(i,k),r] V[(k',j),r] W[(i',j'),r] = d(k,k') d(j,j') d(i,i')  over F_2` (O)
+  · **부모에게 이름이 없다.** 붙일 이름도 없다 -- 식만 오간다
 
 JSON 배열:"""
+
+
+# JSON 문자열 안에서 `\` 뒤에 올 수 있는 것은 이것뿐이다. LaTeX 는 그 규약을 모른다 --
+# `\lambda` 는 JSON 파서에게 "잘못된 이스케이프" 다. 식을 기호로 받기 시작하자 이것이
+# 바로 물렸다(실측 2026-09-07: 다섯 묶음 중 하나를 통째로 잃었다 -- 20%).
+#
+# 모델에게 "역슬래시를 두 번 써라" 라고 시키지 않는다. 그건 프롬프트를 사양서로 만드는
+# 길이고 이미 한 번 데었다. **읽는 쪽에서 고친다.**
+_JSON_ESC = set('"\\/bfnrtu')
+
+
+def _fix_escapes(t: str) -> str:
+    r"""JSON 이 모르는 `\x` 를 `\\x` 로 바꾼다.
+
+    **글자가 뒤따르면 LaTeX 명령으로 본다.** `\t` `\b` `\f` `\n` `\r` 은 JSON 이스케이프
+    이면서 동시에 LaTeX 명령의 머리다 -- `\to` `\beta` `\frac` `\nabla` `\rho`. 그것을
+    구별 안 하면 `\to` 가 탭이 되고 `\big` 이 백스페이스가 된다(실측). LaTeX 명령은
+    `\` + 글자이므로 그것으로 가른다.
+
+    `\uXXXX` 는 뒤에 16진수 넷이 올 때만 유니코드로 본다 (`\upsilon` 은 LaTeX).
+    `\"` `\\` `\/` 는 글자가 아니라 헷갈릴 일이 없다.
+
+    **여기에는 진짜 애매함이 하나 남는다** -- 문자열 안의 진짜 줄바꿈 뒤에 글자가 오면
+    (`"...\nabc"`) LaTeX 로 오해한다. 이 함수는 **평범한 파싱이 실패한 뒤에만** 불리므로
+    피해 범위가 거기까지다. 이 도메인에서는 `\nabla` 쪽이 압도적으로 흔하다.
+    """
+    out, i, n = [], 0, len(t)
+    while i < n:
+        c = t[i]
+        if c != "\\" or i + 1 >= n:
+            out.append(c)
+            i += 1
+            continue
+        nxt = t[i + 1]
+        keep = nxt in _JSON_ESC
+        if keep and nxt.isalpha():
+            if nxt == "u":
+                hexpart = t[i + 2:i + 6]
+                keep = len(hexpart) == 4 and all(ch in "0123456789abcdefABCDEF"
+                                                 for ch in hexpart)
+            else:
+                # 글자가 뒤따르면 LaTeX 명령이다 (\to \beta \frac \nabla \rho ...)
+                keep = not (i + 2 < n and t[i + 2].isalpha())
+        if keep:
+            out.append(c)
+            out.append(nxt)
+            i += 2
+        else:
+            out.append("\\\\")
+            i += 1
+    return "".join(out)
 
 
 _INNER = re.compile(r"\{[^{}]*\}", re.S)
@@ -167,14 +225,17 @@ def objects(raw) -> list[dict]:
             t = parts[1]
             t = t[4:] if t.lstrip().startswith("json") else t
     # **통째로 먼저 읽는다.** 겹친 중괄호가 있으면 이 길로만 온전히 온다.
-    try:
-        d = json.loads(t)
+    # 실패하면 LaTeX 역슬래시를 고쳐 한 번 더 -- 식을 기호로 받으면 이것이 바로 물린다.
+    for cand in (t, _fix_escapes(t)):
+        try:
+            d = json.loads(cand)
+        except ValueError:
+            continue
         if isinstance(d, dict):
             return [d]
         if isinstance(d, list):
             return [x for x in d if isinstance(x, dict)]
-    except ValueError:
-        pass
+    t = _fix_escapes(t)
     i, j = t.find("["), t.rfind("]")
     if 0 <= i < j:
         try:
@@ -258,7 +319,7 @@ def step(led: dict, llm, seed: str, n: int, k: int = BATCH, log=print) -> list[d
         made["잰것"] = ME.measure(made, parent)
         out.append(made)
         log(f"[발산] {made['id']} <- {parent['id']} / {want} : "
-            f"{made.get('이름','')[:28]} -- {ME.note(made['잰것'])}")
+            f"{str(made.get('식') or '')[:46]} | {ME.note(made['잰것'])}")
     if len(out) < len(picks):
         log(f"[발산] {len(picks)}개 중 {len(out)}개만 왔다")
     return out
@@ -341,19 +402,16 @@ def remeasure(led: dict, path=None) -> int:
         was += 1 if old.get("확산") else 0
         now += 1 if new["확산"] else 0
         rows.append((rec["id"], rec.get("계보", {}).get("연산자", ""), new,
-                     old.get("확산"), rec.get("이름", ""),
-                     ME.decorated(rec, parent)))
+                     str(rec.get("식") or "")))
     SP.save(led, path)
 
-    print(f"다시 잰 공간 {len(rows)}개 -- 확산 {was}개 → {now}개\n")
-    print(f"{'id':<5} {'연산자':<10} {'물려':>4} {'부모몫':>7} {'장식':<4} {'판정':<6} 이름")
-    for sid, op, m, oldok, name, deco in sorted(rows, key=lambda r: -r[2]["몫"]):
-        mark = "확산" if m["확산"] else "약함"
-        print(f"{sid:<5} {op:<10} {m['물려받음']:>4} {m['몫']:>7.3f} "
-              f"{'장식' if deco else '  ':<4} {mark:<6} {name[:30]}")
-    _d = sum(1 for r in rows if r[5])
-    print(f"\n**이름이 부모 이름을 그대로 품은 것 {_d}/{len(rows)}개.** 이것이 높으면"
-          " 이주가 아니라 작명이다 -- 그리고 낱말 겹침을 재는 자는 그것을 최고점으로 준다.")
+    print(f"다시 잰 공간 {len(rows)}개 -- 겹침 많음 {was}개 → {now}개\n")
+    print(f"{'id':<5} {'연산자':<10} {'가져온말':>6} {'부모몫':>7}  식")
+    for sid, op, m, expr in sorted(rows, key=lambda r: -r[2]["몫"]):
+        print(f"{sid:<5} {op:<10} {m['물려받음']:>6} {m['몫']:>7.3f}  {expr[:60]}")
+    print("\n**이 수는 판정이 아니다.** 낱말 겹침으로 인과를 재던 자는 두 번 뒤집혔다 --"
+          " 부모 말을 그대로 달고\n수식어만 바꾼 것이 최고점(0.933)을 받고, 진짜 이주"
+          "(ε-근사 · 그로텐디크)가 0 으로 깔렸다.")
 
     vals = sorted(r[2]["몫"] for r in rows)
     if vals:
@@ -363,6 +421,65 @@ def remeasure(led: dict, path=None) -> int:
               f" / 3분위 {q(.75):.3f} / 최대 {vals[-1]:.3f}")
         print(f"지금 바닥값: 물려받음 >= {ME.KEEP_MIN} · 부모몫 >= {ME.KEEP_SHARE}")
         print("바닥값은 MATHDRIFT_KEEP_MIN / MATHDRIFT_KEEP_SHARE 로 바꿔 다시 재 본다.")
+    return 0
+
+
+# **`--known` 을 뗐다.** 알려진 갈아타기 넷을 찾아 주던 것인데, 찾는 방식이 한국어
+# 낱말 grep 이었다("군대수", "표수", "근사"...). 식으로 표류시키기로 해 놓고 판정도 찾기도
+# 낱말로 하고 있었으면 같은 잘못을 세 번째 되풀이하는 것이다. 식을 기호로 견주는 법이
+# 생기기 전까지는 아무것도 안 센다.
+
+# **식을 기호로 가른다.** 낱말이 아니라 LaTeX 토큰이다 -- `\lim` `\inf` `_` `{` `N` ...
+_TEX = re.compile(r"\\[a-zA-Z]+|\\.|[A-Za-z]+|\d+|\S")
+
+
+def tokens(expr: str) -> list[str]:
+    return _TEX.findall(expr or "")
+
+
+def diff(led: dict, sid: str) -> int:
+    """연산자가 식에 **무엇을 했나.** 호출 0회, 아무것도 안 거른다.
+
+    실측 2026-09-07(20개): 식을 기호로 받기 시작하자 자식이 부모 식을 거의 그대로
+    물려받고 한 자리만 바꾸는 꼴이 됐다 -- `\inf` -> `\sup`(쌍대), `H` -> `\hat{H}`(완비화),
+    앞에 `S^{-1}`(국소화), `=` -> `\equiv`(이산화). **그것이 보존적 확장이 맞는 모습**이라
+    겹침이 높은 것이 이번에는 좋은 신호다. 다만 화면이 70자에서 잘려 무엇이 바뀌었는지
+    볼 수가 없었다. 이 명령이 그 자리다.
+    """
+    rec = SP.get(led, sid)
+    if rec is None:
+        print(f"{sid} 가 원장에 없다")
+        return 1
+    g = rec.get("계보") or {}
+    par = SP.get(led, g.get("부모"))
+    if par is None:
+        print(f"{sid} 는 씨앗이다 -- 견줄 부모가 없다")
+        return 0
+
+    a, b = tokens(par.get("식")), tokens(rec.get("식"))
+    print(f"{sid}  <- {par['id']} / {g.get('연산자')} (거리 {g.get('거리')})\n")
+    print(f"  부모: {par.get('식')}")
+    print(f"  자식: {rec.get('식')}\n")
+
+    kept = 0
+    rows = []
+    for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(a=a, b=b).get_opcodes():
+        if tag == "equal":
+            kept += i2 - i1
+            continue
+        if tag in ("delete", "replace"):
+            rows.append(("-", " ".join(a[i1:i2])))
+        if tag in ("insert", "replace"):
+            rows.append(("+", " ".join(b[j1:j2])))
+    if not rows:
+        print("  **바뀐 것이 없다.** 식이 글자 그대로 같다 -- 연산자가 아무 일도 안 했다")
+    else:
+        print("  바뀐 것:")
+        for mark, txt in rows:
+            print(f"    {mark} {txt[:100]}")
+    big = max(len(a), len(b)) or 1
+    print(f"\n  그대로 둔 토큰 {kept}/{big}  (부모 {len(a)} 토큰, 자식 {len(b)} 토큰)")
+    print("\n  **판정이 아니다.** 연산자가 식에 무엇을 했는지 보여 줄 뿐이다.")
     return 0
 
 
@@ -387,7 +504,7 @@ def card(led: dict, sid: str) -> int:
         print(f"  {f:<6}: {v if v else '(비어 있음)'}")
     if par:
         print(f"\n--- 부모 {par['id']} ---")
-        for f in ("이름", "점", "표기", "되사상"):
+        for f in ("식", "점", "정의역"):
             print(f"  {f:<6}: {par.get(f) or '(비어 있음)'}")
     return 0
 
@@ -403,6 +520,8 @@ def main(argv=None) -> int:
                     help="원장을 새 자로 다시 잰다 (호출 0회)")
     ap.add_argument("--lineage", default="")
     ap.add_argument("--card", default="", help="공간 하나를 칸째로 (예: --card S34)")
+    ap.add_argument("--diff", default="",
+                    help="연산자가 식에 무엇을 했나 (예: --diff S10). 호출 0회")
     ap.add_argument("--path", default="")
     a = ap.parse_args(argv)
 
@@ -410,6 +529,9 @@ def main(argv=None) -> int:
         return check()
 
     led = SP.load(a.path or None)
+
+    if a.diff:
+        return diff(led, a.diff)
 
     if a.card:
         return card(led, a.card)
@@ -421,10 +543,10 @@ def main(argv=None) -> int:
         print(f"공간 {len(led['spaces'])}개")
         print(SP.brief(led))
         s = ME.spread(led)
-        print(f"\n확산 {s['확산']}/{s['잰공간']} (몫 {s['몫']:.2f})"
-              "  ← 낮으면 --remeasure 로 자부터 본다")
-        bad = sum(1 for x in led["spaces"] if x.get("등급") == "검증불가")
-        print(f"검증불가 {bad}개 (되사상이 빈 것 -- 기각은 아니다)")
+        print(f"\n낱말 겹침 {s['확산']}/{s['잰공간']} (몫 {s['몫']:.2f})"
+              "  ← 눈금이지 판정이 아니다")
+        okn = sum(1 for x in led["spaces"] if x.get("등급") == "검증가능")
+        print(f"검증가능 {okn}개 (코드 칸을 채운 것 -- 없다고 벌점은 없다)")
         print("연산자 씀: " + ", ".join(f"{k} {v}" for k, v in
                                      sorted(led["ops_used"].items(), key=lambda x: -x[1])))
         return 0
