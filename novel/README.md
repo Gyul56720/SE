@@ -4,6 +4,9 @@
 > 줄거리를 먼저 짜지 않고 첫 문장에서 이어 쓰는 **DRIFT** 는 [`DRIFT.md`](DRIFT.md) 에
 > 따로 있다 -- `scripts/drift.sh` 로 돌린다.
 
+> **무엇을 성공이라 부를 것인가**는 [`SUCCESS.md`](SUCCESS.md) 에 있다 -- 목적함수를
+> 안 정해두면 튜닝 루프가 밤새 표본이 정한 방향으로 돈다.
+
 
 이 저장소의 다른 오케스트레이션(`orchestrator/`, `mathgen/`, `compression/`)과 **같은 원칙**
 위에 서 있다: **생성자와 심판을 분리하고, 심판은 절대 LLM 이 아니다.**
