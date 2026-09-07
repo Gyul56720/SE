@@ -80,12 +80,23 @@ ok(EN.check("def decode(p):\n    while True:\n        pass\n", PT,
 
 print()
 print("[격리] **해독기가 심판에 손댈 수 없다** -- mathgen 이 생성기를 임포트 안 하는 것과 같다")
+# **틀린 답을 내면서 심판을 매수하려 든다.** 전에는 evil 이 그냥 틀린 수를 돌려줬는데,
+# 그러면 격리가 뚫려 있어도 "틀림" 이라 초록이었다 -- 격리를 재는 검사가 아니었다
+# (2026-09-08 가짜 green 사냥). 이제 심판을 "무조건 참" 으로 갈아치우려 시도한다:
+# 격리가 성하면 그 시도가 부모에 안 닿아 여전히 틀림이고, 뚫렸으면 재현이 된다.
 _evil = ("import sys\n"
+         "try:\n"
+         "    import verifier\n"
+         "    verifier.ExactArithVerifier.verify = lambda *a, **k: True\n"
+         "except Exception:\n"
+         "    pass\n"
          "def decode(p):\n"
-         "    sys.modules['verifier'] = None\n"
          "    return [[1]*7]*4, [[1]*7]*4, [[1]*7]*4, [1]*7\n")
 _e = EN.check(_evil, PT)
-ok(_e["판정"] in ("틀림", "못돎"), f"심판을 건드리려 해도 통과 못 한다 ({_e['판정']})")
+ok(_e["판정"] == "틀림",
+   f"**심판을 매수하려 해도 틀린 답은 틀림이다** ({_e['판정']}) ← 격리가 이것을 지킨다")
+ok("decoder" not in sys.modules and "_candidate" not in " ".join(sys.modules),
+   "부모가 해독기를 임포트조차 안 했다 (mathgen/_worker.py 와 같은 규율)")
 ok(EN.check(SEED["해독"], PT)["판정"] == "재현", "그 뒤에도 심판이 멀쩡하다")
 
 print()
