@@ -199,6 +199,13 @@ class Fake:
         return clean(self.tries)
 
 
+# **길이 되먹임은 여기서 끈다.** 아래 검사들이 재는 것은 모순·원장·되먹임 배선이지
+# 분량이 아니다. clean() 이 1,499자라 기본값(CHUNK*0.6 = 1,920자)에 걸려 이어받기가
+# 한 번 더 돌고, 그러면 호출 수를 세는 검사들이 어긋난다. 분량 되먹임 자체는 파일
+# 맨 아래 [분량] 절에서 기본값 그대로 잰다.
+flow.CHUNK_MIN = 0.0
+
+
 def main_char():
     """주요 인물 하나가 이미 선 원장 -- 자주 나왔고(3회) 카드도 두툼하다(3칸)."""
     bk = flow.blank()
@@ -396,12 +403,6 @@ try:
 finally:
     flow.LAYER = _was
 
-print()
-if fails:
-    print(f"연속 집필: {len(fails)}개 실패 -- {fails}")
-    sys.exit(1)
-print("연속 집필: 원장 성장 · 모순 검출 · 첫 덩어리 흐름 · 되먹임 · 영속 · 한도 -- 통과")
-
 print("[되먹임] 고칠 것을 한 번에 다 보내는가  ← 하나씩 시키면 호출이 그만큼 는다")
 
 
@@ -559,3 +560,73 @@ _bk4 = main_char()
 _r4 = flow.step(_bk4, Refuse())
 ok(_r4["status"] == "ok", f"버리지 않고 살린다 ({_r4['status']})")
 ok(_bk4["chunks"], "원고에 들어간다  ← 3,200자를 통째로 버리던 자리다")
+
+
+print()
+print("[분량] **짧게 온 덩어리는 한 번 이어 받는다**")
+print("      ← 실측 2026-09-07, 10만 자 원고 58덩어리: 3,200자를 시켰는데 평균 1,734자가")
+print("        왔다. 목표를 넘긴 것은 4개뿐, 하위 10%는 309자. 그런데 짧게 온 덩어리도")
+print("        집필·추출·손질 3호출을 똑같이 문다 -- 300자 받자고 3호출이다.")
+flow.CHUNK_MIN = 0.6          # 진짜 기본값으로 잰다
+
+
+class _Short:
+    """첫 집필은 짧게, 이어받기는 길게. 추출·손질은 빈 것을 준다."""
+
+    def __init__(self, first, second):
+        self.first, self.second, self.writes = first, second, 0
+
+    def __call__(self, prompt):
+        if "JSON 만 출력" in prompt and "새로 확정된 사실만" in prompt:
+            return json.dumps({}, ensure_ascii=False)
+        # **손질 프롬프트의 표지는 이 문장이다.** "고쳐" 같은 흔한 말로 가르면
+        # 집필 프롬프트까지 걸려서 원고 자리에 "{}" 가 돌아온다(그렇게 짰다가
+        # "덩어리가 2자로 왔다" 를 봤다). 위의 되먹임 검사가 쓰는 표지와 같은 것을 쓴다.
+        if "각 문장 앞 대괄호가 그 문장의" in prompt:
+            return json.dumps({}, ensure_ascii=False)
+        self.writes += 1
+        return self.first if self.writes == 1 else self.second
+
+
+# **되풀이하면 안 된다.** 같은 문장을 곱해 쓰면 echo.trim 이 도려내서, 길게 만든 것이
+# 짧게 도착한다(그렇게 짰다가 "1,679자로 왔다" 를 봤다). clean() 처럼 줄마다 다르게 쓴다.
+def _long(n: int) -> str:
+    return "".join(
+        f"{i}월의 등대는 오후 네 시부터 어두워졌고, 불빛이 {i}초마다 한 바퀴를 돌았다. "
+        if i % 3 else
+        f"아니, 돈다기보다는 {i}월이 통째로 실려 와 창을 훑고 지나가는 것에 가까웠다. "
+        for i in range(1, n))
+
+
+_A = _long(9)            # 짧다 -- 기본값(CHUNK*0.6 = 1,920자)에 못 미친다
+_B = _long(45)           # 넉넉하다
+
+_bk = main_char()
+_s = _Short(_A, _B)
+_r = flow.step(_bk, _s)
+ok(_s.writes == 2, f"짧으면 한 번 더 부른다 ({_s.writes}회)")
+ok(_r.get("chars", 0) > len(_A), f"이어받은 만큼 늘었다 ({_r.get('chars', 0):,}자)")
+
+# **한 번만이다.** 되풀이하면 계속 짧게 주는 모델에게 쿼터를 통째로 태운다.
+_bk2 = main_char()
+_s2 = _Short(_A, _A)                      # 이어받기도 짧게 온다
+flow.step(_bk2, _s2)
+ok(_s2.writes == 2, f"이어받기는 한 번뿐이다 ({_s2.writes}회)  ← 되풀이하면 쿼터를 태운다")
+
+# 길게 온 덩어리에는 값이 안 붙는다.
+_bk3 = main_char()
+_s3 = _Short(_B, _B)
+flow.step(_bk3, _s3)
+ok(_s3.writes == 1, f"넉넉히 오면 안 부른다 ({_s3.writes}회)")
+
+
+# **요약은 맨 끝에 있어야 한다.** 2026-09-07 까지 이 블록이 402줄에 있었다 -- 파일은
+# 605줄인데. 검사가 자라면서 자기 요약문을 넘어갔고, 그 뒤 200줄은 종료 코드에
+# 아무 영향을 못 줬다. test_llm_pool_rpm.py 에서 같은 것을 찾아 고쳤는데 여기도
+# 그랬다. **검사하지 않은 초록불은 검사한 빨간불보다 나쁘다.**
+
+print()
+if fails:
+    print(f"연속 집필: {len(fails)}개 실패 -- {fails}")
+    sys.exit(1)
+print("연속 집필: 원장 성장 · 모순 검출 · 첫 덩어리 흐름 · 되먹임 · 영속 · 한도 -- 통과")

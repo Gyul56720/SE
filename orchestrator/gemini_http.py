@@ -83,11 +83,26 @@ class Client:
         last = None
         for _ in range(self.attempts):
             try:
-                r = requests.post(url, params={"key": self.key}, json=body,
-                                  timeout=self.timeout)
+                # **키는 헤더로 보낸다. 절대 URL 에 싣지 않는다.**
+                # `?key=...` 로 보내면 그 키가 **URL 의 일부**가 되고, URL 은 예외
+                # 메시지에 그대로 실려 나온다 -- requests 의 연결 오류·시간 초과는
+                # 요청 URL 을 문자열에 담는다. 아래 except 가 그 문자열을
+                # GeminiError 본문으로 옮기고, 풀이 그것을 stderr 에 찍는다.
+                # 그러면 **키가 로그에 남는다**(실측 2026-09-07: 사용자가 붙여넣은
+                # 도구 출력에 키가 통째로 들어 있었다 -- 그 키는 폐기했다).
+                # 헤더로 보내면 어떤 예외 문자열에도 키가 들어갈 자리가 없다.
+                r = requests.post(url, headers={"x-goog-api-key": self.key},
+                                  json=body, timeout=self.timeout)
             except Exception as e:
                 # **연결이 안 된 것만 다시 해 본다.** 응답이 왔으면 그것은 풀이 판단한다.
-                last = GeminiError(504, "DEADLINE_EXCEEDED", f"{type(e).__name__}: {e}")
+                #
+                # 그리고 **그 예외 문자열을 그대로 옮기지 않는다.** 남의 예외가 무엇을
+                # 담고 있을지 우리가 정하지 못한다 -- requests 는 요청 URL 을 담고,
+                # 프록시나 재지정이 끼면 우리가 안 만든 URL 도 담긴다. 위에서 키를
+                # URL 에서 뺀 것이 첫 번째 벽이고, 이것이 두 번째 벽이다. 벽 하나는
+                # 언젠가 뚫린다.
+                last = GeminiError(504, "DEADLINE_EXCEEDED",
+                                   _hide(f"{type(e).__name__}: {e}", self.key))
                 continue
             if r.status_code >= 400:
                 try:
@@ -99,6 +114,12 @@ class Client:
                                   json.dumps(payload, ensure_ascii=False) or r.text)
             return Reply(_answer_of(r.json()))
         raise last
+
+
+def _hide(text: str, key: str) -> str:
+    """글에서 키를 지운다. **아는 것만 지운다** -- 키처럼 생긴 것을 짐작으로 지우면
+    진짜 오류 내용까지 지워 버린다."""
+    return text.replace(key, "<키 가림>") if key else text
 
 
 def _text_of(prompt) -> str:

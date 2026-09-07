@@ -36,7 +36,12 @@ import requests                                              # noqa: E402
 
 BASE = "https://generativelanguage.googleapis.com/v1beta"
 # 이 저장소가 실제로 쓰는 축. 여기 없는 모델도 표에는 나오지만 결론은 이것들로 낸다.
-_SKIP = ("embedding", "aqa", "imagen", "veo", "tts", "vision", "learnlm")
+# 소설이 안 쓰는 것들. 표가 37줄이 되면 정작 봐야 할 flash 계열이 안 보인다
+# (실측 2026-09-07: lyria(음악) · deep-research · robotics · transcribe · nano-banana 가
+#  같이 나왔다). **거르는 것은 표시일 뿐 한도 판단과 무관하다.**
+_SKIP = ("embedding", "aqa", "imagen", "veo", "tts", "vision", "learnlm",
+         "lyria", "deep-research", "robotics", "computer-use", "antigravity",
+         "transcribe", "banana", "image")
 
 
 def _keys() -> list:
@@ -79,7 +84,11 @@ def parse(data: dict) -> list:
             continue
         rows.append({"name": name,
                      "in": int(m.get("inputTokenLimit") or 0),
-                     "out": int(m.get("outputTokenLimit") or 0)})
+                     "out": int(m.get("outputTokenLimit") or 0),
+                     # **무엇을 지원하는지도 들고 온다.** 안 들고 왔더니 countTokens 를
+                     # 지원하지 않는 모델에 countTokens 를 걸어 404 를 받았다
+                     # (실측 2026-09-07 VM).
+                     "does": tuple(m.get("supportedGenerationMethods") or ())})
     return rows
 
 
@@ -93,11 +102,11 @@ def models(key: str, timeout: float = 20.0) -> list:
 
 def count(key: str, model: str, text: str, timeout: float = 20.0) -> int:
     """countTokens -- **짐작 대신 이것을 쓴다.** 생성 쿼터를 안 쓴다."""
-    r = requests.post(f"{BASE}/models/{model}:countTokens",
-                      params={"key": key},
+    r = requests.post(f"{BASE}/models/{model}:countTokens", headers=_hdr(key),
                       json={"contents": [{"parts": [{"text": text}]}]},
                       timeout=timeout)
-    r.raise_for_status()
+    if r.status_code >= 400:
+        _die(r, f"countTokens 실패 ({model})")
     return int(r.json().get("totalTokens") or 0)
 
 
@@ -140,10 +149,19 @@ def main() -> int:
     for m in sorted(rows, key=lambda r: -r["out"]):
         gap = ""
         if m["out"] > ours:
-            gap = f"  <- {m['out'] / ours:.0f}배를 버리고 있다"
+            # **"버리고 있다" 고 쓰지 않는다.** 그렇게 찍었더니 그렇게 읽혔는데,
+            # 틀린 읽기였다(실측 2026-09-07): 상한이 8,192여도 **닿지를 않는다**.
+            # 같은 날 10만 자 원고를 재보니 3,200자를 시켜 평균 1,734자가 왔다.
+            # 잘리고 있는 것이 아니라 모자라게 오는 것이다 -- 상한을 올려도 안 변한다.
+            # 여유일 뿐이라고 적는다.
+            gap = f"  <- {m['out'] / ours:.0f}배 여유 (지금은 안 닿는다)"
         print(f"{m['name']:38} {m['in']:>10,} {m['out']:>10,}   {ours:,}{gap}")
 
     best = max(rows, key=lambda r: r["out"])
+    # **잴 모델은 따로 고른다.** 출력 한도가 제일 큰 것이 countTokens 를 지원한다는
+    # 보장이 없다 -- 그렇게 골랐다가 404 를 받았다(실측 2026-09-07 VM).
+    countable = [m for m in rows if "countTokens" in m["does"]]
+    ruler = max(countable, key=lambda r: r["out"]) if countable else None
     print("-" * 82)
 
     txt = sample(a.book)
@@ -151,10 +169,14 @@ def main() -> int:
         print(f"원고가 없어 자/토큰은 못 쟀다 ({a.book}).")
         print("  -- 그 비를 모르면 덩어리 크기를 토큰으로 환산할 수 없다.")
         return 0
+    if ruler is None:
+        print("countTokens 를 지원하는 모델이 없다 -- 자/토큰은 못 잰다.")
+        print("  (그 비를 모르면 덩어리 크기를 토큰으로 환산할 수 없다)")
+        return 0
     try:
-        n = count(keys[0], best["name"], txt)
+        n = count(keys[0], ruler["name"], txt)
     except Exception as e:
-        print(f"countTokens 실패: {e}", file=sys.stderr)
+        print(f"{e}", file=sys.stderr)
         return 1
     if not n:
         print("countTokens 가 0 을 돌려줬다 -- 표본을 못 읽었다.", file=sys.stderr)
@@ -162,15 +184,20 @@ def main() -> int:
 
     per = len(txt) / n
     print(f"실제 원고 {len(txt):,}자 = {n:,}토큰   ->  1토큰당 {per:.2f}자")
-    print(f"  ({best['name']} 로 쟀다. 토크나이저는 모델 계열마다 다를 수 있다)")
+    print(f"  ({ruler['name']} 로 쟀다. 토크나이저는 모델 계열마다 다를 수 있다)")
     print()
     # **여기서 지어내지 않는다.** 잰 값으로만 환산한다.
     can = int(best["out"] * per)
     now = int(ours * per)
     from novel import flow
     print(f"한 호출로 받을 수 있는 글자   지금 설정 {now:,}자 / 모델 한도 {can:,}자")
-    print(f"실제로 받고 있는 덩어리       DRIFT_CHUNK = {flow.CHUNK:,}자"
-          f"  ({flow.CHUNK / can * 100:.1f}% 를 쓰고 있다)")
+    print(f"시킨 덩어리                   DRIFT_CHUNK = {flow.CHUNK:,}자"
+          f"  (모델 한도의 {flow.CHUNK / can * 100:.1f}%)")
+    print()
+    print("  **상한과 실제로 오는 양은 다르다.** 시킨 만큼 오는지는 원고를 재야 안다:")
+    print("    python3 -c \"import json,statistics as st;"
+          "c=[len(x) for x in json.load(open('novel/drift.json'))['chunks']];"
+          "print(len(c),'덩어리 · 평균',round(st.mean(c)))\"")
     return 0
 
 
