@@ -224,7 +224,12 @@ if real.is_dir():
         parsed += 1
         case_hits += len(G.check_case_citation(rd))
         struct_hits += len(G.check_structure(rd))
-    ok(parsed == 17, f"문서 17개를 읽는다 (얻은 값 {parsed})")
+    # **수를 못 박지 않는다.** 전에는 "문서 17개" 라 적었는데, 민사소송법 네 편이
+    # 들어오자 그 자리에서 깨졌다 -- 원고가 늘어난 것은 좋은 일인데 자가 그것을
+    # 실패로 셌다. 여기서 보려는 것은 "진짜 문서 위에서 관문이 돌았는가" 이지
+    # 문서가 몇 개인가가 아니다. 0 이면 이 절 전체가 헛돈 것이므로 그것만 막는다.
+    ok(parsed == len(files) and parsed >= 17,
+       f"법이론서 문서를 하나도 안 빠뜨리고 읽는다 (읽은 값 {parsed} · 파일 {len(files)})")
     ok(case_hits == 0,
        f"지어낸 판례 인용 0건 -- 조문 안에서만 말하는 규율이 지켜졌다 (얻은 값 {case_hits})")
     ok(struct_hits == 0, f"8절·front-matter 규약 위반 0건 (얻은 값 {struct_hits})")
