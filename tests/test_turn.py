@@ -63,12 +63,37 @@ ok(_m["ok"] is False and _m["why"] == "짧다", "짧으면 사실대로 거절�
 ok(_m["need"] > _m["chars"], f"얼마나 필요한지 말한다 ({_m['need']:,}자)")
 ok("짧다" in T.table(_m) and "필요하다" in T.table(_m), "표에도 이유가 나온다")
 ok(T.MIN_WINDOWS >= 8, f"창 최소 개수를 둔다 ({T.MIN_WINDOWS}개)")
+ok(T.MIN_CHARS == 50000, f"원고 바닥은 5만 자다 ({T.MIN_CHARS:,})  ← 사람이 정한 운영점")
+ok(_m["need"] >= T.MIN_CHARS, "창 계산보다 5만 자 바닥이 세면 그쪽이 이긴다")
+ok(T.measure("가" * 49000, win=2000, stride=500)["ok"] is False,
+   "창이 충분해도 5만 자 아래면 안 잰다  ← 바닥이 따로 있다")
+
+print()
+print("[밀도] **반전 수는 창 수에 휘둘린다 -- 만 자당으로 본다**")
+print("      ← 논문의 9.92 와 우리 21 을 나란히 두면 안 된다. 창·보폭이 다르면")
+print("        점의 개수가 달라지고 반전 수도 따라 달라진다. 보폭은 못 찾았다.")
+# **5만 자를 넘겨야 잰다** -- 바로 위에서 그 바닥을 검사했다.
+_long = ("좋다 기쁘다 웃었다 따뜻한 " * 40 + "싫다 슬프다 울었다 차가운 " * 40) * 50
+assert len(_long) > T.MIN_CHARS, f"시험 글이 바닥보다 짧다 ({len(_long):,})"
+_m2 = T.measure(_long, win=T.WIN, stride=T.STRIDE)
+ok(_m2["ok"] and "density" in _m2, "밀도를 같이 낸다")
+ok(abs(_m2["density"] - _m2["turns"] / (_m2["chars"] / 10000)) < 0.02,
+   f"밀도 = 반전 / (글자수/만) ({_m2['density']})")
+_tb2 = T.table(_m2)
+ok("만 자당" in _tb2 and "목표" in _tb2, "목표와 나란히 찍는다")
+ok("나란히 두지 마라" in _tb2, "논문 수와 직접 비교하지 말라고 못박는다")
+ok("엎은 원고" in _tb2, "바닥이 어디서 왔는지 밝힌다")
+ok(T.WIN == 10000 and T.STRIDE == 2500,
+   f"창 기본값은 실측으로 골랐다 ({T.WIN:,}/{T.STRIDE:,})  ← 두 원고에서 흔들림이 제일 고른 자리")
+ok(T.AIM > max(T.DROPPED),
+   f"목표({T.AIM})가 엎은 원고의 최대({max(T.DROPPED)})보다 높다"
+   "  ← 엎은 것에서 목표가 아니라 바닥을 뽑았다")
 
 print()
 print("[신뢰도] **자가 제 흔들림을 같이 낸다**")
 print("      ← 같은 글이면 어디서부터 자르든 같은 수가 나와야 한다. 안 그러면")
 print("        그 수를 믿을 이유가 없고, 숨기는 것보다 같이 내놓는 편이 정직하다.")
-_up = ("좋다 기쁘다 웃었다 따뜻한 " * 40 + "싫다 슬프다 울었다 차가운 " * 40) * 6
+_up = ("좋다 기쁘다 웃었다 따뜻한 " * 40 + "싫다 슬프다 울었다 차가운 " * 40) * 50
 _m = T.measure(_up, win=2000, stride=500)
 ok(_m["ok"], "충분히 길면 잰다")
 ok("spread" in _m and "counts" in _m, "흔들림과 시작점별 값을 같이 낸다")
@@ -77,32 +102,60 @@ _tb = T.table(_m)
 ok("흔들림" in _tb, "표에 흔들림이 나온다")
 ok(("믿을 만하다" in _tb) or ("믿지 마라" in _tb) or ("반쯤만" in _tb),
    "믿어도 되는지 말로 적어 준다")
-ok("우리 목표가 아니다" in _tb,
-   "논문 수를 목표로 오해하지 않게 못박는다  ← 영어 소설 5만 낱말에서 나온 수다")
+ok("나란히 두지 마라" in _tb,
+   "논문 수와 직접 견주지 말라고 못박는다  ← 창·보폭이 다르면 반전 수는 비교가 안 된다")
 
 print()
-print("[진단만] **프롬프트에 안 실린다**")
-_flow = (Path(__file__).resolve().parent.parent / "novel" / "flow.py").read_text(encoding="utf-8")
-ok("turn" not in _flow.replace("turned", "").replace("return", ""),
-   "flow 가 turn 을 안 부른다  ← 흔들리는 자로 되먹임을 걸면 그것이 원고로 간다")
-ok(not hasattr(T, "brief"), "brief() 가 없다  ← 되먹임을 낼 자리 자체를 안 만들었다")
+print("[되먹임] **자를 시키지 않고 일을 시킨다**")
+print("      ← '감성어를 더 넣어라' 라고 하면 모델은 사전을 맞추러 간다. 밝은 낱말과")
+print("        어두운 낱말을 번갈아 뿌리면 이 자는 속는다. 그건 이야기가 뒤집힌 것이")
+print("        아니라 낱말이 뒤집힌 것이다.")
+# **5만 자를 넘겨야 한다** -- 그 아래에서는 되먹임이 아예 안 나온다(바로 아래에서 검사).
+_flat = {"chunks": ["좋다 기쁘다 웃었다 따뜻한 " * 250] * 16, "ledger": {}}
+assert sum(len(c) for c in _flat["chunks"]) > T.MIN_CHARS
+_b = T.brief(_flat)
+ok("[국면]" in _b, "뒤집힘이 모자라면 되먹인다")
+for _w in ("정서가", "감성어", "반전", "극성", "사전"):
+    ok(_w not in _b, f"되먹임에 '{_w}' 가 안 나온다  ← 자를 시키면 자를 속인다")
+ok("사건이지 기분이 아니다" in _b, "기분 말고 사건으로 뒤집으라고 한다")
+ok("뒤집고 원래대로 돌아오면" in _b, "되돌아오면 안 뒤집힌 것이라고 못박는다")
+ok(T.brief({"chunks": [], "ledger": {}}) == "", "첫 덩어리에는 안 나온다")
+ok(T.brief({"chunks": ["x" * 3000], "ledger": {}}) == "",
+   "5만 자 아래면 안 나온다  ← 잴 수가 없다")
 
 print()
-print("[사전] **저장소에 안 들어간다** -- 라이선스 표기가 없다")
+print("[배선] **프롬프트에 실린다. 다만 짧으면 안 실린다**")
+from novel import flow                                                # noqa: E402
+_p = flow.write_prompt(dict(flow.blank(flow.FIRST), chunks=_flat["chunks"]))
+ok("[국면]" in _p, "뒤집힘이 모자라면 프롬프트에 실린다")
+ok(not any(w in _p for w in ("정서가", "감성어", "극성")),
+   "프롬프트 어디에도 자의 낱말이 안 샌다")
+_p2 = flow.write_prompt(dict(flow.blank(flow.FIRST), chunks=["x" * 300]))
+ok("[국면]" not in _p2, "짧으면 안 실린다  ← 지금까지의 프롬프트 그대로다")
+
+print()
+print("[사전] **저장소에 안 들어간다. 대신 받아 온다** -- 라이선스 표기가 없다")
 _src = (Path(__file__).resolve().parent.parent / "novel" / "turn.py").read_text(encoding="utf-8")
 ok("KnuSentiLex" in _src and "라이선스" in _src, "어디서 받는지와 왜 안 담는지 적혀 있다")
 _ig = (Path(__file__).resolve().parent.parent / ".gitignore").read_text(encoding="utf-8")
 ok("novel/knu/" in _ig, "무시 규칙에 있다")
+# **auto=False 로 물어야 한다.** auto 로 두면 실제로 받아 오려 들고, 여기는 망이
+# 되는 기계라 엉뚱한 경로에 클론이 성공한다(실측: 시험이 /없는 디렉토리를 만들었다).
+# 받아 오는 길과 못 받았을 때의 길은 따로 검사해야 한다.
 _saved, T._CACHE = T._CACHE, None
 _saved_path, T.LEX_PATH = T.LEX_PATH, Path("/없는/경로/SentiWord_Dict.txt")
 _died = ""
 try:
-    T.lexicon()
+    T.lexicon(auto=False)
 except T.MissingLexicon as e:
     _died = str(e)
 T._CACHE, T.LEX_PATH = _saved, _saved_path
 ok("git clone" in _died and "DRIFT_SENTI_LEX" in _died,
-   "사전이 없으면 사실대로 실패하고 받는 법을 알려 준다  ← 조용히 0 을 내면 안 된다")
+   "받아 오지 못하면 사실대로 실패하고 받는 법을 알려 준다  ← 조용히 0 을 내면 안 된다")
+ok(hasattr(T, "fetch") and callable(T.fetch),
+   "없으면 받아 오는 길이 있다  ← 손으로 한 줄 치게 하면 VM 에서 그 줄을 빼먹는다")
+ok("코드가 서버에 도달하지 못하는" in _src,
+   "왜 자동으로 받는지 적어 뒀다  ← 이 저장소가 네 번 데인 그 자리다")
 
 print()
 if fails:
