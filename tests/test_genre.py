@@ -379,6 +379,11 @@ try:
     ok("쓸 사람" in genre.PACKS["ropan"]["관계"]
        and "자리가 바뀐다" in genre.PACKS["ropan"]["사건"],
        "인적 재배치가 관계와 사건에 들어 있다  ← 회귀 후 가장 공들이는 것이 사람이다")
+    ok("발화는 접지 않는다" in genre.PACKS["ropan"]["화법"],
+       "발화를 간접화법으로 접지 말라고 한다(EVIDENCE.md 9절)"
+       "  ← 묵독에서 직접화법이 음성 선택 영역을 더 활성화한다")
+    ok("사건**과 다른 이야기다" in genre.PACKS["ropan"]["화법"]["발화는 접지 않는다"],
+       "사건을 대사로 알리지 말라는 것과 갈라 적는다  ← 안 가르면 대사를 줄이는 쪽으로 읽는다")
 
     print("  [저울] 갈래가 옮긴 축은 갈래가 이긴다")
     _ax = dict(CP.aims("씨", 3, ["dialog", "rally", "talk_polite"], "ropan"))
