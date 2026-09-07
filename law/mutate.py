@@ -40,6 +40,19 @@ from law import wording as WD                                         # noqa: E4
 # 심을 자리를 찾을 때는 조문 절·법리 절만 본다. 거기가 hard 판정 구역이다.
 HARD_SECTIONS = ("2.", "3.")
 
+# **반쪽짜리 돌연변이를 심지 않는다.**
+#
+# 실측(법이론서 17개, 186개 심어 152개 잡음)에서 놓친 34개를 뜯어보니 대부분이 심는
+# 방식의 문제였다. 한 문장에 같은 꼴이 여럿일 때 첫 번째만 바꾸면(`count=1`) 나머지가
+# 그대로 남는다:
+#
+#     원문   5년 이하의 징역 또는 1천500만원 이하의 벌금
+#     반쪽   5년 초과의 징역 또는 1천500만원 이하의 벌금   <- '포함' 이 아직 남았다
+#
+# 그러면 문서가 조문의 값을 여전히 말하고 있으므로 관문이 넘긴다(부분 일치 규칙). 그건
+# 관문이 눈이 없는 것이 아니라 **결함이 애매하게 심긴 것**이다. 문장 안의 같은 꼴은
+# 전부 바꾼다 -- 그래야 "이 문장은 조문과 어긋난다" 가 분명해진다.
+
 
 def _sentences(text):
     return WD._sentences(text)
@@ -57,9 +70,9 @@ def m_modality(sent, arts):
     for _, body in arts:
         kinds = WD.bucket(body).get("W001", set())
         if "재량" in kinds and re.search(r"할\s*수\s*있", sent):
-            return re.sub(r"할\s*수\s*있(다|습니다|으며)", "하여야 한다", sent, count=1)
+            return re.sub(r"할\s*수\s*있(다|습니다|으며)", "하여야 한다", sent)
         if "기속" in kinds and re.search(r"하여야\s*(한다|합니다)", sent):
-            return re.sub(r"하여야\s*(한다|합니다)", "할 수 있다", sent, count=1)
+            return re.sub(r"하여야\s*(한다|합니다)", "할 수 있다", sent)
     return None
 
 
@@ -68,9 +81,9 @@ def m_bound(sent, arts):
     for _, body in arts:
         kinds = WD.bucket(body).get("W003", set())
         if "포함" in kinds and re.search(r"이내|이하", sent):
-            return re.sub(r"이내|이하", "초과", sent, count=1)
+            return re.sub(r"이내|이하", "초과", sent)
         if "불포함" in kinds and re.search(r"초과|미만", sent):
-            return re.sub(r"초과|미만", "이내", sent, count=1)
+            return re.sub(r"초과|미만", "이내", sent)
     return None
 
 
@@ -79,9 +92,9 @@ def m_effect(sent, arts):
     for _, body in arts:
         kinds = WD.bucket(body).get("W004", set())
         if "준용" in kinds and "준용" in sent:
-            return sent.replace("준용", "적용", 1)
+            return sent.replace("준용", "적용")
         if "추정" in kinds and "추정" in sent:
-            return sent.replace("추정", "간주", 1)
+            return sent.replace("추정", "간주")
     return None
 
 
@@ -93,7 +106,7 @@ def m_term(sent, arts):
             for used, other in ((a, b), (b, a)):
                 if WD._flat(used) in seen and used in sent \
                         and WD._flat(other) not in seen:
-                    return sent.replace(used, other, 1)
+                    return sent.replace(used, other)
     return None
 
 
@@ -112,12 +125,26 @@ def m_conj(sent, arts):
     return None
 
 
-def m_citation(sent, arts):
-    """L001 -- 조문 번호를 원장에 없는 것으로 바꾼다. 환각 인용을 흉내 낸다."""
+def m_citation(sent, arts, doc=None, corpus=None):
+    """L001 -- 조문 번호를 **원장에 정말 없는** 것으로 바꾼다. 환각 인용을 흉내 낸다.
+
+    처음에는 무턱대고 +700 을 했다. 그러면 민법(제1192조까지)처럼 조문이 많은 법령에서는
+    바꾼 번호가 **실재해서** 환각이 아니게 된다 -- 실측에서 61개 중 22개를 그래서 놓쳤다.
+    원장에 없는 번호를 찾을 때까지 올린다.
+    """
     m = CP.CITATION.search(sent)
     if not m:
         return None
-    return sent[:m.start()] + f"제{int(m.group('jo')) + 700}조" + sent[m.end():]
+    statute = None
+    for c in CP.find_citations(sent):
+        statute = c.statute or (doc.statute if doc is not None else None)
+        break
+    n = int(m.group("jo"))
+    for step in (700, 1700, 3700, 7700, 9700):
+        cand = n + step
+        if corpus is None or not corpus.has(statute, str(cand)):
+            return sent[:m.start()] + f"제{cand}조" + sent[m.end():]
+    return None
 
 
 def m_quantity(sent, arts):
@@ -191,7 +218,8 @@ def run(target, corpus, want_miss: bool = False) -> dict:
                 if not arts or WD._MISCONCEPTION.search(sent):
                     continue
                 for name, make, rule in MUTATIONS:
-                    bad = make(sent, arts)
+                    bad = (make(sent, arts, doc, corpus)
+                           if make is m_citation else make(sent, arts))
                     if not bad or bad == sent:
                         continue
                     tmp = _rewrite(path, sent, bad)
