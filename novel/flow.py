@@ -1716,6 +1716,13 @@ def main() -> int:
     ap.add_argument("--first-seed", action="store_true",
                     help="첫 문장을 주는 대신 갈래 축에서 여는 좌표를 무작위로 뽑는다")
     ap.add_argument("--hours", type=float, default=12.0)
+    # **페르소나를 고를 수 있어야 한다.** 2026-09-07 까지 flow 는 style.use() 를 한 번도
+    # 안 불렀다 -- style.narrator() 가 늘 기본값(cider)을 돌려줬고, 표본에서 잰 로판
+    # 페르소나는 만들어 두고도 **DRIFT 에서 닿지 않았다.** 이 저장소가 거듭 겪은
+    # "코드가 실행에 도달하지 못하는" 자리다(searcher.py · bot_tools.py · gatekeeper.py ·
+    # novel/ 배포 경로 · gemini_http 임포트에 이어).
+    ap.add_argument("--persona", default=os.environ.get("DRIFT_STYLE", ""),
+                    help="문체 페르소나 (cider · hardboiled · ropan / 비우면 기본값)")
     ap.add_argument("--genre", default=GENRE.DEFAULT,
                     help=f"갈래 꾸러미 ({' · '.join(GENRE.names())}). 비우면 안 씌운다")
     ap.add_argument("--drift", type=float, default=DRIFT,
@@ -1803,6 +1810,11 @@ def main() -> int:
             D._log(f"[flow] {key} {was} → {book[key]} (코드 기본값으로 맞춘다)")
     # 갈래도 같은 규칙 -- 매 런마다 인자로 덮어쓴다. 없는 갈래면 여기서 죽는다:
     # 조용히 기본값으로 물러서면 로맨스로 쓰는 줄 알고 밤새 다른 것을 쓴다.
+    # **모르는 이름이면 여기서 죽는다.** 조용히 기본값으로 물러서면, 로판을 시켰는데
+    # cider 로 8만 자를 쓰고도 아무도 모른다(overnight.py 가 같은 계약을 쓴다).
+    if a.persona:
+        style.use(a.persona)
+        D._log(f"[flow] 문체 {a.persona} -- {style.P()['label']}")
     GENRE.get(a.genre)
     if book.get("genre") != a.genre:
         D._log(f"[flow] 갈래 {book.get('genre') or '(없음)'} → {a.genre or '(없음)'}")
