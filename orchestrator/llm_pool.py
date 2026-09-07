@@ -74,6 +74,17 @@ SLOW_TIMEOUT = float(os.environ.get("GEMINI_SLOW_TIMEOUT", "150"))
 # 풀은 (키 x 실사용 모델) 이라 모델 목록 조회 결과에 따라 수십~백 개가 될 수 있다. 전부 순회하면
 # 최악의 경우 시간 단위로 매달리므로, 시도 후보 수에 상한을 둔다(최악 대기 = 상한 x TIMEOUT).
 MAX_CANDIDATES = int(os.environ.get("GEMINI_MAX_CANDIDATES", "12"))
+# **500/503 을 거듭 내는 후보는 잠깐 뺀다.**
+#
+# 실측 2026-09-07 VM: gemma 계열이 500 INTERNAL 을 내기 시작했는데, '일시장애' 갈래는
+# 쿨다운도 벌점도 안 걸었다. 그래서 바퀴마다 같은 여섯(모델 2 x 키 3)을 다시 두드렸고,
+# 추출은 prefer="gemma" 라 그 여섯이 **매번 맨 앞**이었다. 후보 12개 x 간격 8초 =
+# 한 바퀴 40초, 3바퀴에 2분, call_json 이 3번 재시도하니 **추출 한 번에 6분**이다.
+# 멈춘 것처럼 보이지만 멈춘 것이 아니라 그만큼 느린 것이다.
+#
+# 한 번은 봐준다 -- 진짜 깜빡임일 수 있다. **잇달아 두 번이면 그 모델이 지금 아프다.**
+TRANSIENT_COOLDOWN = float(os.environ.get("GEMINI_SICK_COOLDOWN", "120"))
+TRANSIENT_TRIES = int(os.environ.get("GEMINI_SICK_TRIES", "2"))
 
 # **RPM 은 기다리면 풀린다.** 후보를 전부 두드렸는데 실패 사유가 전부 분당 한도(429/RPM)나
 # 일시 장애(503)뿐이면, 그것은 "이 키로는 못 한다" 가 아니라 "지금은 못 한다" 다. 예전에는
@@ -116,6 +127,10 @@ _LAST_USED: dict = {}
 # 판단해 같은 키를 잇달아 두드린다 -- 그러면 간격을 지킨 셈인데도 429 가 온다
 # (실측 2026-09-05: 서로 다른 키가 연달아 RPM 으로 떨어졌다).
 _LAST_KEY: dict = {}
+# 일시장애 장부. **파일에 안 남긴다** -- 500 은 쿼터 사실이 아니다. quota_state.json 에
+# 적으면 "분당 한도로 쉬는 중" 으로 읽히고, 그건 거짓말이다. 프로세스 안에서만 산다.
+_SICK: dict = {}        # 라벨 -> 잇달아 몇 번 일시장애였나
+_SICK_UNTIL: dict = {}  # 라벨 -> 이때까지 뺀다
 # 후보별 응답 시간(성공했을 때). **이름으로 짐작하지 말고 재서 쓴다.**
 #
 # 실측 2026-09-05(탐침): 같은 "flash" 인데 gemini-flash-lite-latest 는 1.0초,
@@ -447,7 +462,11 @@ def _note_failure(label: str, e, verbose: bool) -> str:
         quota_tracker.mark_dead(label, str(e)[:200])
         kind = "영구배제"
     else:
-        kind = "일시장애"
+        _SICK[label] = _SICK.get(label, 0) + 1
+        kind = f"일시장애{'' if _SICK[label] < 2 else f' x{_SICK[label]}'}"
+        if _SICK[label] >= TRANSIENT_TRIES:
+            _SICK_UNTIL[label] = time.time() + TRANSIENT_COOLDOWN
+            kind += f" -- {TRANSIENT_COOLDOWN:.0f}초 뺀다"
     if verbose:
         print(f"[llm_pool] {label} 실패 [{kind}]: {str(e)[:120]}",
               file=sys.stderr, flush=True)
@@ -496,15 +515,31 @@ def call(pool, prompt: str, pool_id: str = "orchestrator", max_candidates: int =
         #
         # 전부 0 이면 그때는 거르지 않는다 -- 추정이 틀렸을 수 있고(카운터는 휴리스틱이다),
         # 아무것도 시도하지 않고 실패하는 것보다 한 번 두드려보는 편이 낫다.
-        fresh = [c for c in live if quota_tracker.remaining(c[0]) > 0]
+        # **아픈 것도 같이 뺀다.** 잔량은 멀쩡한데 500 만 내는 후보가 있다.
+        # 전부 아프면 거르지 않는다 -- 아무것도 시도 안 하는 것보다 두드려 보는 편이 낫다
+        # (잔량 0 일 때와 같은 원칙이다).
+        _now = time.time()
+        fresh = [c for c in live
+                 if quota_tracker.remaining(c[0]) > 0
+                 and _SICK_UNTIL.get(c[0], 0.0) <= _now]
+        if not fresh:
+            fresh = [c for c in live if quota_tracker.remaining(c[0]) > 0]
         if verbose and len(fresh) < len(live):
             # **둘을 갈라 찍는다.** 예전에는 둘 다 "잔량 없음" 이었다. 하나는 자정까지고
             # 하나는 60초짜리인데 같은 말로 찍으니, 60초를 하루로 읽게 된다(실측: 일일
             # 한도가 멀쩡한 것을 눈으로 보고도 로그만 보면 소진으로 읽혔다).
             cool = sum(1 for c in live if c not in fresh
                        and quota_tracker.is_rpm_cooling(c[0]))
-            gone = len(live) - len(fresh) - cool
+            # **제 이름으로 센다.** 500 을 '분당 한도' 나 '오늘 치 소진' 에 섞어 찍으면
+            # 로그를 읽는 사람이 쿼터 문제로 오해한다 -- 그건 고칠 데가 다른 문제다.
+            sick = sum(1 for c in live if c not in fresh
+                       and not quota_tracker.is_rpm_cooling(c[0])
+                       and _SICK_UNTIL.get(c[0], 0.0) > _now)
+            gone = len(live) - len(fresh) - cool - sick
             what = []
+            if sick:
+                what.append(f"500/503 을 거듭 낸 {sick}개"
+                            f"({TRANSIENT_COOLDOWN:.0f}초 뒤 돌아온다)")
             if cool:
                 what.append(f"분당 한도로 쉬는 중 {cool}개(60초면 풀린다)")
             if gone:
@@ -636,6 +671,8 @@ def call(pool, prompt: str, pool_id: str = "orchestrator", max_candidates: int =
                             only_transient = False
                         continue
                     quota_tracker.record_success(label)
+                    _SICK.pop(label, None)
+                    _SICK_UNTIL.pop(label, None)
                     quota_tracker.set_pinned(pool_id, label)
                     _WIN[label] = _WIN.get(label, 0) + 1
                     took = time.time() - now
