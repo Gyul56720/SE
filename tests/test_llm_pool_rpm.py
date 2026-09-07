@@ -248,10 +248,6 @@ try:
 finally:
     llm_pool.ROSTER = _was
 
-print()
-if fails:
-    print(f"llm_pool RPM: {len(fails)}개 실패 -- {fails}")
-    sys.exit(1)
 # ---------------------------------------------------------------- 키 단위 한도
 #
 # 분당 한도는 **키(프로젝트)** 에 걸리지 모델마다 따로 걸리지 않는다. 그런데 후보는
@@ -310,10 +306,13 @@ llm_pool.FANOUT = 3
 
 
 class _Slow:
-    def __init__(self, label, fail=False, delay=0.0):
+    def __init__(self, label, fail=False, delay=0.0, seen=None):
         self.label, self.fail, self.delay = label, fail, delay
+        self.seen = seen
 
     def invoke(self, prompt):
+        if self.seen is not None:
+            self.seen.append(self.label)
         time.sleep(self.delay)
         if self.fail:
             raise RuntimeError("429 RESOURCE_EXHAUSTED PerMinute {'retryDelay': '45s'}")
@@ -323,19 +322,32 @@ class _Slow:
         return R()
 
 
+_called = []
+
+
 def _race(spec):
     llm_pool._LAST_USED.clear()
     llm_pool._LAST_KEY.clear()
-    pool = [(lb, _Slow(lb, f, d)) for lb, f, d in spec]
+    _called.clear()
+    pool = [(lb, _Slow(lb, f, d, _called)) for lb, f, d in spec]
     t = time.time()
     lab = llm_pool.call(pool, "x", verbose=False)[1]
     return lab, time.time() - t
 
 
-_lab, _sec = _race([("kA:slow", False, 1.0), ("kB:fast", False, 0.05),
-                    ("kC:mid", False, 0.5)])
-ok(_lab == "kB:fast", f"먼저 답한 것을 쓴다 ({_lab})")
-ok(_sec < 0.5, f"느린 후보를 기다리지 않는다 ({_sec:.2f}초)  ← with 을 쓰면 여기서 1초를 버린다")
+# **성한 풀에서는 한 발만 쏜다.** 이 검사는 2026-09-07 까지 "제일 빨리 답한 것을
+# 쓴다" 를 기대했는데, 그 동작은 **일부러 없앤 것**이다. 풀의 주석이 이유를 적어 뒀다:
+#
+#   "동시 발사는 같은 프롬프트를 복제해서 던지고 제일 빨리 온 것만 쓴다 -- 첫 후보가
+#    어차피 성공할 상황에서는 쿼터를 배로 태우고 나머지는 버리는 것이다. 속도를 사려고
+#    쿼터를 파는 셈인데, **쿼터가 병목이면 정확히 거꾸로 작동한다.**"
+#
+# 검사는 안 따라왔고, 실패해도 종료 코드에 안 잡혀서(요약 블록이 252줄에 있었다)
+# 아무도 몰랐다. 지금 계약을 잡는다: **잘 도는 런은 호출 한 번.**
+_lab, _sec = _race([("kA:slow", False, 0.05), ("kB:fast", False, 0.05),
+                    ("kC:mid", False, 0.05)])
+ok(len(_called) == 1, f"성한 풀에서는 한 발만 쏜다 ({_called})  ← 쿼터가 병목이다")
+ok(_lab == _called[0], f"쏜 그것이 답한다 ({_lab})")
 
 _lab, _sec = _race([("kA:m0", True, 0.05), ("kA:m1", True, 0.05), ("kB:m0", False, 0.1)])
 ok(_lab == "kB:m0", "묶음 안에 실패가 섞여도 성공한 것을 쓴다")
@@ -369,8 +381,9 @@ ok(llm_pool._lat("한 번도 안 재본 것") == 0.0,
    "안 재본 것은 낙관한다  ← 중간값으로 두면 한 번 이긴 후보만 계속 쓰고 나머지는 영원히 안 재본다")
 ok(len(llm_pool._LAT) >= 3, f"몇 번이면 대부분 재진다 ({len(llm_pool._LAT)}개)")
 
-print("llm_pool RPM: 판정·쿨다운·복귀·일일소진 구분·야간 생존 -- 통과")
-
+# (여기 있던 "-- 통과" 줄은 지웠다. 옮겨 온 종료 블록이 남기고 간 껍데기인데,
+#  fails 를 보지 않고 무조건 찍혔다 -- 아래에서 실패가 나도 화면 중간엔 통과라고
+#  적혀 있었다. **거짓 초록불은 없느니만 못하다**.)
 
 print()
 print("[묶음] **한 묶음은 서로 다른 키로 채운다**")
@@ -426,8 +439,13 @@ class _Stamp(_Slow):
 llm_pool._LAST_USED.clear()
 llm_pool._LAST_KEY.clear()
 llm_pool.RPM_ROUNDS = 1
+# **키를 여섯으로 준다.** 2026-09-07 까지 이 풀은 키 둘(i % 2)에 모델 여섯이었는데,
+# 그러면 넓힐 데가 없다 -- 한 묶음엔 키 하나뿐이고(위 검사), 429 를 맞은 키는 벌점이
+# 풀릴 때까지 못 쓴다. 그런데도 이 검사는 초록불이었다. **풀이 벌점 먹은 키를 묶음에
+# 얹어 주고 있었기 때문이다**(바로 아래 검사가 그 구멍을 지킨다). 넓히기가 실제로
+# 뜻을 갖는 상황은 **성한 통이 여럿일 때**이고, 그럴 때 넓히라는 것이 이 기능이다.
 try:
-    llm_pool.call([("k%d:m%d" % (i % 2, i), _Stamp("k%d:m%d" % (i % 2, i), True, 0.02))
+    llm_pool.call([("k%d:m0" % i, _Stamp("k%d:m0" % i, True, 0.02))
                    for i in range(6)], "x", verbose=False)
 except Exception:
     pass
@@ -441,6 +459,39 @@ for a, b in zip(_t, _t[1:]):
 _sizes.append(_cur)
 ok(_sizes[0] == 1, f"첫 발은 하나다 ({_sizes})")
 ok(len(_sizes) > 1 and _sizes[1] > 1, f"막히면 넓어진다 ({_sizes})")
+
+# **넓힌다고 벌점 먹은 키를 얹지는 않는다.** 이것이 위 검사를 거짓 초록불로 만들던
+# 구멍이다(실측 2026-09-07): 묶음의 대기 시간은 **제일 빨리 준비되는** 후보 값이라,
+# 성한 키가 하나라도 끼면 nap 이 0 이 되고 그러면 거르기를 통째로 건너뛰었다. 방금
+# 429 를 맞은 키의 형제 모델이 그 틈으로 따라 나가 확실한 429 를 한 번 더 받아 왔다.
+_gt = []
+
+
+class _Mark(_Slow):
+    def invoke(self, prompt):
+        _gt.append((self.label, time.time()))
+        time.sleep(self.delay)
+        # retryDelay 를 안 싣는다 -- 그러면 벌점은 KEY_PENALTY(이 검사에서 1초)다.
+        raise RuntimeError("429 RESOURCE_EXHAUSTED PerMinute")
+
+
+llm_pool._LAST_USED.clear()
+llm_pool._LAST_KEY.clear()
+llm_pool._WIN.clear()
+llm_pool._FAIL.clear()          # 앞 검사의 전적이 순서를 흔들지 않게
+try:
+    llm_pool.call([(lb, _Mark(lb, True, 0.02)) for lb in
+                   # **이 검사만 쓰는 이름이다.** 앞 검사들이 kA/kB 로 429 를 기록해
+                   # 뒀고, 그 기록은 quota_tracker 에 남아 후보를 통째로 걸러낸다
+                   # (실측: 넷 중 셋이 '잔량 없음' 으로 빠져 한 발만 나갔다).
+                   ("gA:m0", "gB:m0", "gA:m1", "gB:m1")], "x", verbose=False)
+except Exception:
+    pass
+_early = [lb for lb, t in _gt if t - _gt[0][1] < 0.5]     # 벌점 1초가 풀리기 전
+_ek = [llm_pool._key_of(lb) for lb in _early]
+ok(len(_early) >= 2, f"벌점 전에 두 통은 두드려 본다 ({_early})")
+ok(len(set(_ek)) == len(_ek),
+   f"벌점 중인 키는 넓힌 묶음에도 안 들어간다 ({_early})")
 
 print()
 print("[모델] **pro 계열은 후보에서 뺀다** -- 한도가 낮아 429 만 받아 오고 벌점만 올린다")
@@ -609,3 +660,14 @@ ok(not llm_pool._is_rpm(
    "자정까지 기다리라는 것은 하루치다")
 ok(not llm_pool._is_rpm(RuntimeError("429 RESOURCE_EXHAUSTED")),
    "단서가 하나도 없으면 하루치로 본다  ← 1분마다 죽은 조합을 두드리는 편이 더 나쁘다")
+
+
+# **요약은 맨 끝에 있어야 한다.** 2026-09-07 까지 이 블록이 252줄에 있었다 -- 파일은
+# 611줄인데. 검사가 자라면서 자기 요약문을 넘어갔고, 그 뒤 336줄의 실패는 아무도
+# 안 봤다(종료 코드가 0 이었다). 이 저장소가 제일 싫어하는 것 그대로다:
+# **검사하지 않은 초록불은 검사한 빨간불보다 나쁘다.**
+print()
+if fails:
+    print(f"llm_pool RPM: {len(fails)}개 실패 -- {fails}")
+    sys.exit(1)
+print("llm_pool RPM: 간격 · 순서 · 명부 · 키 한도 · 동시 발사 · 선호 · 대기 · 판정 -- 통과")
