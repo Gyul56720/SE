@@ -275,6 +275,26 @@ _APPLIES_TO_CASE = re.compile(
 # 상계할 수 있다고 오해한다" 는 문장에서 '할 수 있다'(재량)는 문서가 그렇다고 말한 것이
 # 아니라 남의 잘못된 생각을 옮긴 것이다. 실측에서 서법 어긋남 세 건이 전부 이 꼴이었다.
 # 그 절은 어차피 soft 라 여기서 빼도 잃는 것이 적고, 소리만 줄어든다.
+# **모른다고 밝힌 문장은 조문에 관한 주장이 아니다.**
+#
+# 실측: 민사소송법 제203조 편에서 이 문장이 W005 hard 로 기각됐다.
+#
+#     "변론주의에 관하여는 제203조 원문에 명시되지 않음, 학설/판례 확인 필요."
+#         용어:변론주의(조문은 처분권주의)
+#
+# 그런데 **문서는 옳다.** 바로 앞 문장에서 "이를 처분권주의라 합니다" 라고 제대로 적었고,
+# 이 문장은 변론주의가 그 조문에 **없다고 밝힌** 것이다. 조문의 낱말을 다른 낱말로 바꿔
+# 적은 것이 아니라, 조문에 없는 것을 없다고 말한 것이다.
+#
+# 이건 그냥 오탐이 아니라 **닫힌책 규율을 지킨 자리를 벌한 것**이다. 우리가 생성자에게
+# 시킨 바로 그 일("모르는 것은 지어내지 말고 모른다고 적어라")을 하면 관문이 기각한다.
+# 그러면 다음 원고는 유보를 안 쓰는 쪽으로 간다 -- **관문이 환각을 권하는 꼴**이다.
+# '오해' 절을 대조에서 뺀 것과 같은 이유이고, 그보다 이유가 더 무겁다.
+_RESERVED = re.compile(
+    r"명시되(지\s*않|어\s*있지\s*않)|규정되(지\s*않|어\s*있지\s*않)"
+    r"|나타나\s*있지\s*않|확인\s*필요|알\s*수\s*없")
+
+
 _MISCONCEPTION = re.compile(r"오해|오인|착각|잘못\s*알|혼동")
 
 
@@ -348,7 +368,29 @@ def _flat(t: str) -> str:
 # 긴 것부터 늘어놓는다 -- 정규식 선택지는 왼쪽부터 시도되므로 이것이 곧 최장일치다.
 _ALL_TERMS = sorted({t for p in PAIRS for t in p} | set(MASKS),
                     key=lambda t: -len(_flat(t)))
-_TERM_RE = re.compile("|".join(re.escape(_flat(t)) for t in _ALL_TERMS))
+
+
+def _shapes(term: str) -> str:
+    """한 용어가 조문에서 취하는 꼴들. **사이에 '의' 가 끼는 것을 받는다.**
+
+    실측: 형법 제355조②는 `재산상**의** 이익` 이라 쓰는데 사전은 `재산상 이익` 이다.
+    띄어쓰기만 지우니 `재산상의이익` 과 `재산상이익` 이 서로 다른 낱말이 됐고, 조문에
+    그 말이 버젓이 있는데 없다고 봤다. 그래서 배임죄 문서의 맞는 서술("재산상 이익을
+    취득하려 한 사안")이 **'재물' 을 '재산상 이익' 으로 바꿔 적었다** 며 기각됐다.
+
+    관형격 '의' 는 한국 법령문이 같은 말을 쓰는 두 가지 꼴이다. **낱말 경계에만 넣는다**
+    -- 아무 데나 넣으면 다른 낱말을 삼킨다.
+    """
+    return "의?".join(re.escape(_flat(w)) for w in term.split() if w)
+
+
+_TERM_RE = re.compile("|".join(_shapes(t) for t in _ALL_TERMS))
+# 찾은 꼴 -> 사전의 이름. `재산상의이익` 을 `재산상이익` 으로 되돌려야 집합 비교가 된다.
+_CANON = {}
+for _t in _ALL_TERMS:
+    _f = _flat(_t)
+    _CANON[_f] = _f
+    _CANON["의".join(_flat(w) for w in _t.split() if w)] = _f
 
 
 def terms_in(text: str) -> set:
@@ -358,7 +400,7 @@ def terms_in(text: str) -> set:
     멀쩡한 문장이 기각된다(실측으로 둘 다 확인했다). findall 은 겹치지 않게 훑으므로,
     긴 낱말이 먼저 소비되면 그 안의 짧은 용어는 잡히지 않는다.
     """
-    return set(_TERM_RE.findall(_flat(text)))
+    return {_CANON.get(m, m) for m in _TERM_RE.findall(_flat(text))}
 
 
 def bucket(text: str) -> dict:
@@ -410,7 +452,7 @@ def check(doc, corpus) -> list:
         sev = "hard" if name.startswith(("2.", "3.")) else "soft"
         for sent in _sentences(text):
             tg = _targets(sent, doc, corpus)
-            if not tg or _MISCONCEPTION.search(sent):
+            if not tg or _MISCONCEPTION.search(sent) or _RESERVED.search(sent):
                 continue
             raws = ", ".join(r for r, _ in tg)
             joined = " ".join(b for _, b in tg)
@@ -515,8 +557,13 @@ def trace(doc, corpus) -> list:
             tg = _targets(sent, doc, corpus)
             row = {"절": name, "문장": sent, "인용": [c.raw for c in cits],
                    "맞음": [], "어긋남": [], "견줄것없음": [], "조문값": {},
-                   "미검증": not tg, "오해": bool(_MISCONCEPTION.search(sent))}
-            if tg:
+                   "미검증": not tg,
+                   "오해": bool(_MISCONCEPTION.search(sent)
+                               or _RESERVED.search(sent))}
+            # **대조하지 않기로 한 문장은 아예 안 견준다.** 전에는 '오해' 표만 달고
+            # 값은 그대로 채웠다 -- 보고가 세지 않을 뿐 줄 안에는 어긋남이 들어 있어서,
+            # 읽는 사람에게는 잡힌 것으로 보이고 수에는 없는 유령이 됐다.
+            if tg and not row["오해"]:
                 row["인용"] = [r for r, _ in tg]
                 joined = " ".join(b for _, b in tg)
                 mine, theirs = bucket(_for_compare(sent)), bucket(joined)
@@ -632,8 +679,8 @@ def main(argv=None):
             print(f"준용·전조를 따라가 조문을 더 끌어온 문장 {hop2}개 "
                   f"(2홉이 실제로 일을 한 자리다)")
         if miscon:
-            print(f"'오해' 를 옮긴 문장 {miscon}개는 대조하지 않았다 "
-                  f"(문서의 주장이 아니다)")
+            print(f"'오해' 를 옮겼거나 모른다고 밝힌 문장 {miscon}개는 대조하지 "
+                  f"않았다 (조문에 관한 주장이 아니다)")
         if unver:
             print(f"원장에 없어 대조 못 한 문장 {unver}개")
         return 0
