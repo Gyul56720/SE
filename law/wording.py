@@ -36,6 +36,7 @@ from __future__ import annotations
 import argparse
 import re
 import sys
+import textwrap
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -437,7 +438,7 @@ def trace(doc, corpus) -> list:
                 continue
             tg = _targets(sent, doc, corpus)
             row = {"절": name, "문장": sent, "인용": [c.raw for c in cits],
-                   "맞음": [], "어긋남": [], "견줄것없음": [],
+                   "맞음": [], "어긋남": [], "견줄것없음": [], "조문값": {},
                    "미검증": not tg, "오해": bool(_MISCONCEPTION.search(sent))}
             if tg:
                 row["인용"] = [r for r, _ in tg]
@@ -459,6 +460,11 @@ def trace(doc, corpus) -> list:
                             row["견줄것없음"].append(key)   # 다른 값을 맞게 썼다
                         else:
                             row["어긋남"].append(key)
+                            # **조문이 대신 무엇이라 썼는지 같이 들고 나온다.**
+                            # 어긋남 한 줄만 보면 그 자리가 진짜 어긋난 것인지 자가
+                            # 헛짚은 것인지 가릴 수 없어, 원장을 손으로 다시 열어야
+                            # 했다. 판정의 반대편이 없는 보고는 반쪽이다.
+                            row["조문값"][axis] = sorted(ref)
                 for mk, tk, x, y in conj_mismatch(sent, joined):
                     row["어긋남"].append(f"접속:{x}·{y} 를 {tk} 아닌 {mk} 로")
             rows.append(row)
@@ -502,7 +508,15 @@ def main(argv=None):
                         + ", ".join(r["견줄것없음"]) + ")"
                 print(f"[{f.name} · {r['절']}] {', '.join(r['인용'])}  {mark}")
                 if r["어긋남"]:
-                    print(f"    {r['문장'][:90]}")
+                    for axis, ref in sorted(r["조문값"].items()):
+                        minev = [k.split(":", 1)[1] for k in r["어긋남"]
+                                 if k.startswith(axis + ":")]
+                        print(f"    {axis}: 문서는 '{'·'.join(minev)}' · "
+                              f"조문은 '{'·'.join(ref)}'")
+                    # **자르지 않는다.** 90자에서 끊으니 정작 어긋난 낱말이 잘려 나가
+                    # 무엇을 보고 잡았는지가 안 보였다(실측: 제724조 두 건).
+                    print(textwrap.fill(r["문장"], 96,
+                                        initial_indent="    ", subsequent_indent="    "))
             continue
         for v in check(doc, corpus):
             print(f"  {v}")
