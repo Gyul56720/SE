@@ -713,6 +713,52 @@ for _name, _fn, _why in messy.BROKEN:
        f"{_name:14} 는 파서가 죽되 원고는 산다 ({_r2['status']}, {_r2['chars']:,}자)")
 
 
+print()
+print("[규격 밖] **쪼개진 속 사전이 최상위로 올라와도 원장을 더럽히지 않는다**")
+print("      ← 실측 2026-09-07 VM: 합친 키가 ['Name-Name', '백작-엘리나', 'bonds', ...]")
+
+_raw = {"people": {"한나": {"직업": "등대지기"}, "사람 이름": {"나이": "숫자"}},
+        "Name-Name": "자리 이름을 베낀 것",
+        "백작-엘리나": "서로 경계한다",
+        "bonds": "문자열이 온 칸",
+        "closed": ["앞에서 열려 있다가 이번에 답이 나온 것", "등대의 불"],
+        "엉뚱한칸": {"a": 1}}
+_cd = flow.clean_delta(_raw)
+ok("Name-Name" not in _cd and "엉뚱한칸" not in _cd, "모르는 키는 안 들어간다")
+ok((_cd.get("bonds") or {}).get("백작-엘리나") == "서로 경계한다",
+   "흘러나온 관계는 bonds 로 돌아간다")
+ok("사람 이름" not in _cd["people"] and "한나" in _cd["people"], "자리 이름을 베낀 항목은 버린다")
+ok(_cd.get("closed") == ["등대의 불"], f"목록에서도 자리 이름을 버린다 ({_cd.get('closed')})")
+ok(flow.clean_delta("문자열") == {} and flow.clean_delta(None) == {}, "사전이 아니면 빈 것")
+
+# 그 규격 밖이 _merge 까지 갔으면 `.items()` 에서 죽었다 -- 죽지 않는다.
+_bk3 = main_char()
+_r3 = flow.step(_bk3, _Messy(lambda s: json.dumps(_raw, ensure_ascii=False)))
+ok(_r3["status"] == "ok" and _r3["chars"] > 200 and "한나" in _bk3["ledger"]["people"],
+   f"규격 밖이 섞여 와도 덩어리를 채택하고 원장도 찬다 ({_r3['status']})")
+ok("Name-Name" not in _bk3["ledger"] and "백작-엘리나" not in _bk3["ledger"],
+   "원장 최상위에 잡키가 없다")
+
+
+print()
+print("[장부 사고] **원고를 받은 뒤의 일이 터져도 원고는 쓴다**")
+print("      ← 장부는 다음 덩어리에서 다시 채워지지만 원고는 다시 안 온다.")
+
+
+class _Boom:
+    def __call__(self, prompt):
+        if "JSON 만 출력" in prompt and "새로 확정된 사실만" in prompt:
+            raise RuntimeError("추출기가 통째로 터졌다")
+        return _long(45)
+
+
+_bk4 = main_char()
+_n4 = len(_bk4["chunks"])
+_r4 = flow.step(_bk4, _Boom())
+ok(_r4["status"] == "ok" and len(_bk4["chunks"]) == _n4 + 1,
+   f"추출기가 예외를 던져도 덩어리는 붙는다 ({_r4['status']}, {_r4.get('why', '')})")
+
+
 # **요약은 맨 끝에 있어야 한다.** 종료 블록 뒤에 붙인 검사는 실패해도 종료 코드를
 # 0 으로 남긴다 -- 스위트는 초록으로 보고, 화면의 '실패' 줄은 스크롤 위로 흘러간다.
 # 2026-09-07 에 이 저장소에서 일곱 번 나왔다. 그래서 G015 가 이제 커밋에서 막는다.

@@ -27,6 +27,7 @@
 #   DRIFT_LAYER  프롬프트 층      (기본 text = 문면층만 · all = 서사·세계까지)
 #                                문면층만 쓸 때는 사건·급발진·확산이 안 실린다
 #                                (갈래는 층과 무관하게 실린다 -- 아래 GENRE)
+#   HOURS    시간 상한(시간)     (비우면 12). 예: HOURS=4 STYLE=ropan GENRE=ropan drift.sh start 50000
 #   STYLE    문체 페르소나      (ropan · cider · hardboiled / 비우면 기본값 cider)
 #                                ropan 은 원작 4편 378만 자를 재서 나온 결이다.
 #                                예: STYLE=ropan GENRE=ropan drift.sh start 8000
@@ -125,7 +126,7 @@ case "${1:-status}" in
       mv "$BOOK" "$BOOK.$(date +%Y%m%d-%H%M%S).bak"
       echo "쓰던 원고를 옮겨 두었다: $BOOK.*.bak"
     }
-    set -- --out "$BOOK" --chars "${2:-8000}" ${STYLE:+--persona "$STYLE"} ${GENRE:+--genre "$GENRE"} ${DRIFT:+--drift "$DRIFT"} ${MATTER:+--matter "$MATTER"} \
+    set -- --out "$BOOK" --chars "${2:-8000}" --hours "${HOURS:-12}" ${STYLE:+--persona "$STYLE"} ${GENRE:+--genre "$GENRE"} ${DRIFT:+--drift "$DRIFT"} ${MATTER:+--matter "$MATTER"} \
            ${BODY:+--body "$BODY"} ${BOND:+--bond "$BOND"}
     [ -n "${FIRST:-}" ] && set -- "$@" --first "$FIRST"
     # 첫 문장을 안 주면 갈래 축에서 여는 좌표를 뽑는다 -- 고정 문장을 쓰면 그 문장의
@@ -157,8 +158,10 @@ INNER
     # "코드가 실행에 도달하지 못하는" 자리를 일부러 하나 더 만드는 셈이다. 실패해도
     # 런은 계속 간다: 도착지가 없으면 serial.brief() 가 조용히 빈 줄을 내고, 그건
     # 예전 DRIFT 그대로다.
+    # flow.py 가 시작하면서 스스로 세운다(main). 여기는 그것이 실패했을 때의 두 번째
+    # 시도이고, 이미 있으면 serial.py 는 파일을 건드리지 않는다.
     if [ -f "$BOOK" ]; then
-      echo "도착지를 세운다 (호출 한 번)..."
+      echo "도착지를 확인한다..."
       python3 "$SE/novel/serial.py" plan --book "$BOOK" ${GENRE:+--genre "$GENRE"} \
         || echo "  * 도착지를 못 세웠다 -- 당김 없이 간다 ($0 arc 로 다시 시도할 수 있다)" >&2
     fi
@@ -174,7 +177,7 @@ INNER
     [ -f "$BOOK" ] || die "이어 쓸 원고가 없다: $BOOK   (새로 시작하려면: $0 start)"
     cp "$BOOK" "$BOOK.bak"
     FIRST_MSG="$(python3 -c "import json; print(json.load(open('$BOOK')).get('first', ''))" 2>/dev/null || true)"
-    launch "이어 쓰기를" --resume "$BOOK" ${FIRST_MSG:+--first "$FIRST_MSG"} --chars "${2:-50000}" --hours 12 \
+    launch "이어 쓰기를" --resume "$BOOK" ${FIRST_MSG:+--first "$FIRST_MSG"} --chars "${2:-50000}" --hours "${HOURS:-12}" \
            ${STYLE:+--persona "$STYLE"} \
            ${GENRE:+--genre "$GENRE"} \
            ${DRIFT:+--drift "$DRIFT"} ${MATTER:+--matter "$MATTER"} \

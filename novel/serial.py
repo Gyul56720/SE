@@ -146,10 +146,33 @@ def plan(book: dict, llm, gname: str = "", log=None) -> dict:
 
 # ---------------------------------------------------------------- 어디쯤인가
 
+def span(book: dict) -> int:
+    """한 마디의 길이. **목표 분량을 알면 거기에 맞춘다.**
+
+    빚 다섯에 마디 1만 자면 5만 자를 써야 마지막 빚을 지나고, 목표가 5만 자면 끝을
+    향하는 마디가 **없다** -- 원고가 목표에 닿아 멈추는데 결말은 안 왔다. 그래서
+    목표를 (빚 수 + 1) 로 나눈다: 빚마다 한 마디, 마지막 한 마디는 끝을 향한다.
+    목표를 모르면(검사 · 옛 원고) SPAN 그대로다."""
+    target = int(book.get("_target") or 0)
+    ds = arc(book).get("debts") or []
+    if target > 0 and ds:
+        return max(1500, target // (len(ds) + 1))
+    return SPAN
+
+
 def where(book: dict) -> int:
     """지금 몇 번째 마디인가. **분량으로 센다 -- 호출이 안 든다.**"""
     n = sum(len(c) for c in (book.get("chunks") or []))
-    return n // max(1, SPAN)
+    return n // max(1, span(book))
+
+
+def closing(book: dict) -> bool:
+    """**마지막 덩어리인가.** 목표까지 남은 분량이 덩어리 하나 남짓이면 이번에 닫는다."""
+    target = int(book.get("_target") or 0)
+    if target <= 0:
+        return False
+    n = sum(len(c) for c in (book.get("chunks") or []))
+    return done(book) and target - n <= 4000
 
 
 def current(book: dict) -> "dict | None":
@@ -186,6 +209,12 @@ def brief(book: dict) -> str:
     cur = current(book)
     if not cur:
         return ""
+    if closing(book):
+        return ("[어디로] **여기서 이야기를 닫는다.** 이것이 마지막 대목이다.\n"
+                f"  · 이 이야기가 닿을 자리: {a['end']}\n"
+                "  · 열려 있던 것에 답을 주고, 두 사람이 어디에 서 있는지 보이게 하고,"
+                " **마지막 문장으로 끝내라.** 다음 대목을 예고하지 마라.\n"
+                "  · 이 문장을 원고에 옮겨 적지 마라.")
     if done(book):
         return ("[어디로] **이제 끝을 향해 간다.**\n"
                 f"  · 이 이야기가 닿을 자리: {a['end']}\n"
@@ -213,7 +242,7 @@ def show(book: dict) -> str:
         rows.append(f"  {mark:4} {i + 1}. {d['무엇']}")
     tail = "\n  → 빚을 다 지났다. 끝을 향해 간다." if done(book) else ""
     return (f"끝: {a['end']}\n"
-            f"원고 {n:,}자 · 마디 {at + 1} (한 마디 {SPAN:,}자)\n"
+            f"원고 {n:,}자 · 마디 {at + 1} (한 마디 {span(book):,}자)\n"
             + "\n".join(rows) + tail)
 
 
@@ -234,6 +263,12 @@ def main() -> int:
         print(show(book))
         return 0
 
+    if planned(book):
+        # **안 쓴다.** 돌고 있는 런이 같은 파일을 쓰고 있을 수 있다 -- 읽은 것을 그대로
+        # 되쓰면 그 사이에 저장된 덩어리를 지운다.
+        print("도착지가 이미 있다 -- 그대로 간다")
+        print(show(book))
+        return 0
     plan(book, D.default_llm, a.genre)
     p.write_text(json.dumps(book, ensure_ascii=False, indent=1), encoding="utf-8")
     print()

@@ -153,6 +153,30 @@ ok("인물 이름을 정하지 마라" in _pp,
 
 
 print()
+print("[끝] **목표를 알면 마디가 거기에 맞고, 마지막 덩어리는 닫으라고 한다**")
+print("      ← 빚 다섯 x 1만 자 = 5만 자인데 목표가 5만 자면 끝을 향하는 마디가 없다.")
+_bt = book(0, ARC); _bt["_target"] = 20_000
+ok(SR.span(_bt) == 5_000, f"빚 셋 · 목표 2만 자면 한 마디 5,000자 ({SR.span(_bt):,})")
+ok(SR.span(book(0, ARC)) == SR.SPAN, "목표를 모르면 SPAN 그대로")
+_bt["chunks"] = ["가" * 15_000]
+ok(SR.done(_bt) and not SR.closing(_bt), "빚을 다 지나면 끝을 향하되 아직 안 닫는다")
+_bt["chunks"] = ["가" * 17_000]
+ok(SR.closing(_bt), "목표까지 덩어리 하나 남짓이면 닫는다")
+_bf = SR.brief(_bt)
+ok("여기서 이야기를 닫는다" in _bf and ARC["end"] in _bf and "마지막 문장으로 끝내라" in _bf,
+   "마지막 대목의 당김은 닫으라고 한다")
+ok("[어디로]" in flow.write_prompt(_bt), "그것이 프롬프트에 실린다")
+
+# flow.run 이 목표를 원고에 남긴다 -- 안 남기면 위 전부가 검사에서만 참이다.
+_fsrc = (REPO / "novel" / "flow.py").read_text(encoding="utf-8")
+ok('book["_target"] = int(target)' in _fsrc, "run() 이 _target 을 원고에 적는다")
+ok("SR.plan(book" in _fsrc, "flow.main 이 도착지를 스스로 세운다  ← 딴 프로세스가 파일에 쓰면 다음 저장이 덮는다")
+_ssrc2 = (REPO / "novel" / "serial.py").read_text(encoding="utf-8")
+ok("if planned(book):" in _ssrc2.split("def main", 1)[1],
+   "serial.py plan 은 이미 있으면 파일을 안 쓴다  ← 돌고 있는 런의 덩어리를 지운다")
+
+
+print()
 print("[띄우기] **drift.sh 가 도착지를 자동으로 세운다**")
 print("      ← 사람이 따로 쳐야 하는 단계로 두면 아무도 안 친다. 이 저장소가 여섯 번")
 print("        겪은 '코드가 실행에 도달하지 못하는' 자리를 일부러 하나 더 만드는 셈이다.")
