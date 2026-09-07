@@ -24,6 +24,8 @@ def main(argv=None) -> int:
     ap.add_argument("--only", default="")
     ap.add_argument("--out", default="")
     ap.add_argument("--limit", type=int, default=0, help="앞의 몇 토막만(시험용)")
+    ap.add_argument("--again", action="store_true",
+                    help="이미 뽑은 것도 다시 묻는다(칸을 더했을 때)")
     a = ap.parse_args(argv)
 
     from novel import drive as D
@@ -33,7 +35,7 @@ def main(argv=None) -> int:
 
     out = Path(a.out or deep.PATH)
     old = deep.load(out)
-    done = {r["from"]: r for r in (old.get("recs") or [])}
+    done = {} if a.again else {r["from"]: r for r in (old.get("recs") or [])}
 
     only = {x.strip() for x in a.only.split(",") if x.strip()}
     files = [(w, f) for w, f in PF.unit_files(a.root) if not only or w in only]
