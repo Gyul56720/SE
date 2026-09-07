@@ -44,7 +44,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from mathdrift import act as ACT
-from mathdrift import measure as ME                                   # noqa: E402
+from mathdrift import measure as ME
+from mathdrift import mono as MO                                   # noqa: E402
 from mathdrift import ops as OPS
 from mathdrift import prove as PRV                                      # noqa: E402
 from mathdrift import space as SP                                     # noqa: E402
@@ -440,12 +441,9 @@ def remeasure(led: dict, path=None) -> int:
 # 낱말로 하고 있었으면 같은 잘못을 세 번째 되풀이하는 것이다. 식을 기호로 견주는 법이
 # 생기기 전까지는 아무것도 안 센다.
 
-# **식을 기호로 가른다.** 낱말이 아니라 LaTeX 토큰이다 -- `\lim` `\inf` `_` `{` `N` ...
-_TEX = re.compile(r"\\[a-zA-Z]+|\\.|[A-Za-z]+|\d+|\S")
-
-
-def tokens(expr: str) -> list[str]:
-    return _TEX.findall(expr or "")
+# 자르개는 `act.py` 에 있다 -- spread · act · mono 가 같은 것을 세야 자국과 단조량이
+# 어긋나지 않는다. 여기 두면 mono 가 spread 를 임포트해야 하고 그건 순환이다.
+tokens = ACT.tokens
 
 
 def diff(led: dict, sid: str) -> int:
@@ -576,6 +574,8 @@ def main(argv=None) -> int:
                     help="원장을 새 자로 다시 잰다 (호출 0회)")
     ap.add_argument("--lineage", default="")
     ap.add_argument("--card", default="", help="공간 하나를 칸째로 (예: --card S34)")
+    ap.add_argument("--mono", nargs="?", const="", default=None,
+                    help="사슬이 어디로 가나 -- 단조량 (호출 0회). id 를 주면 하나만")
     ap.add_argument("--prove", nargs="?", const="", default=None,
                     help="유도가 이어지는가 (호출 0회). id 를 주면 하나만")
     ap.add_argument("--act", action="store_true",
@@ -589,6 +589,9 @@ def main(argv=None) -> int:
         return check()
 
     led = SP.load(a.path or None)
+
+    if a.mono is not None:
+        return MO.report(led, a.mono)
 
     if a.prove is not None:
         return PRV.report(led, a.prove)

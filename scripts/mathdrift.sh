@@ -11,6 +11,7 @@
 #   mathdrift.sh diff  <id>       **연산자가 식에 무엇을 했나** (기호 단위. 호출 0회)
 #   mathdrift.sh act              **연산자가 자국을 남겼나** -- 원장 전체를 기호로 (호출 0회)
 #   mathdrift.sh prove [id]       **유도가 이어지나** -- 걸음마다 참/거짓/미정 (호출 0회)
+#   mathdrift.sh mono  [id]       **사슬이 어디로 가나** -- 단조량의 궤적 (호출 0회)
 #   mathdrift.sh card  <id>       공간 하나를 칸째로, 부모와 나란히
 #   mathdrift.sh lineage <id>     씨앗까지의 사슬
 #   mathdrift.sh recall           ①재현 -- 코드 칸을 채운 것만, 호출 0회. **시키면 한다**
@@ -113,6 +114,7 @@ case "${1:-status}" in
   show)     python3 "$SPREAD" --show ;;
   act)      python3 "$SPREAD" --act ;;
   prove)    if [ -n "${2:-}" ]; then python3 "$SPREAD" --prove "$2"; else python3 "$SPREAD" --prove; fi ;;
+  mono)     if [ -n "${2:-}" ]; then python3 "$SPREAD" --mono "$2"; else python3 "$SPREAD" --mono; fi ;;
   diff)     [ -n "${2:-}" ] || die "어느 공간? 예: $0 diff S10"; python3 "$SPREAD" --diff "$2" ;;
   card)     [ -n "${2:-}" ] || die "어느 공간? 예: $0 card S10"; python3 "$SPREAD" --card "$2" ;;
   lineage)  [ -n "${2:-}" ] || die "어느 공간? 예: $0 lineage S10"; python3 "$SPREAD" --lineage "$2" ;;
@@ -127,5 +129,5 @@ case "${1:-status}" in
     P2="$(pids_of)"; [ -z "$P2" ] || { echo "아직 남아서 -9: $P2"; kill -9 $P2 2>/dev/null; }
     echo "멈췄다. 원장은 남아 있다: $LEDGER   (이어 넓히려면 $0 go)"
     ;;
-  *) sed -n '2,34p' "$0"; exit 1 ;;
+  *) sed -n '2,35p' "$0"; exit 1 ;;
 esac

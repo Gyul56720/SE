@@ -30,10 +30,16 @@ def ok(cond, what):
 
 
 def seed_led():
+    """**고정물도 기호로 쓴다.** 낱말로 쓰면 여기서부터 규약이 새고, 규약이 새면
+    자·카드·단조량이 전부 낱말을 보게 된다 -- 실측 2026-09-08: 씨앗을 기호로 바꾸자
+    카드 검사 하나가 곧바로 빨개졌다. 그 고정물이 진짜 씨앗과 딴 것을 담고 있었던 것이다."""
     led = SP.blank()
-    SP.add(led, {"점": "랭크 1 텐서의 합",
-                 "식": "U V W 세 행렬과 계수", "해독": "항등. Brent 항등식으로 검산",
-                 "정의역": "연속. 매개변수 594개", "왜": "씨앗"},
+    SP.add(led, {"식": (r"\sum_{r=1}^{m} \lambda_r \, U[(i,k),r] \, V[(k',j),r] \, "
+                       r"W[(i',j'),r] = \delta_{k,k'} \delta_{j,j'} \delta_{i,i'}"),
+                 "점": r"(U,V,W,\lambda) \in F^{n^2 \times m} \times F^m",
+                 "정의역": r"F = \mathbb{R}", "치수": 91,
+                 "해독": "def decode(p):\n    return p[:28], p[28:56], p[56:84], p[84:]\n",
+                 "왜": "씨앗"},
            parent="-", op="씨앗", dist=0)
     return led
 
@@ -165,7 +171,7 @@ with _ctx.redirect_stdout(_b):
 _out = _b.getvalue()
 # `A and B or A` 는 A 다 -- 2026-09-08 가짜 green 사냥에서 내가 넣은 것이 걸렸다.
 ok(_rc == 0 and "lim_{e->0}" in _out, "카드가 자식의 식을 펼친다")
-ok("--- 부모" in _out and "lam_r" in _out,
+ok("--- 부모" in _out and "lambda_r" in _out,
    "부모의 식도 같이 보여 준다 -- 견주려고 있는 것이다")
 ok("계보:" in _out and "S1" in _out, "계보 사슬도 적는다")
 with _ctx.redirect_stdout(_io.StringIO()):

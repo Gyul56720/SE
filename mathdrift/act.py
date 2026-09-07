@@ -24,6 +24,18 @@
 """
 from __future__ import annotations
 
+import re
+
+# **식을 기호로 가른다.** 낱말이 아니라 LaTeX 토큰이다 -- `\lim` `\inf` `_` `{` `N` ...
+# spread 와 mono 가 같은 자르개를 써야 자국과 단조량이 같은 것을 센다. spread 에 두면
+# mono 가 spread 를 임포트해야 하고 그건 순환이다.
+_TEX = re.compile(r"\\[a-zA-Z]+|\\.|[A-Za-z]+|\d+|\S")
+
+
+def tokens(expr: str) -> list:
+    return _TEX.findall(expr or "")
+
+
 # (더해져야 할 것, 빠져야 할 것). 하나라도 맞으면 자국이 있다고 본다.
 #
 # **판정이 아니라 눈금이다.** 자국이 없다고 기각하지 않는다 -- 목록에 없는 방식으로
