@@ -194,6 +194,30 @@ S10  <- S3 / 쌍대
 
 **판정이 아니다.** 연산자가 식에 무엇을 했는지 기호 단위로 보여 줄 뿐이다.
 
+### `act` — 연산자가 자국을 남겼는가
+
+낱말 겹침 자가 두 번 뒤집힌 뒤로 **아무것도 세지 않고** 있었다. 이유는 하나였다 —
+연산자가 무슨 일을 했는지를 **한국어로** 물었기 때문이다. 기호로 물으면 그 문제가 사라진다:
+
+| 연산자 | 자국 |
+|---|---|
+| 경계화 | `\lim` `\epsilon` `\overline` |
+| 완비화 | `\hat` `\widehat` `\varprojlim` |
+| 국소화 | `S^{-1}` `\mathfrak` |
+| 쌍대 | `+\sup` **와 함께** `-\inf` |
+| 표수 이동 | `\bmod` `\mathbb{F}` |
+| 탈범주화 | `\dim` `\chi` `\mathrm{rank}` |
+
+diff 의 **더한 쪽과 뺀 쪽을 둘 다** 본다 — 쌍대는 `\sup` 을 더하면서 `\inf` 를 뺀다.
+
+**망각은 자국을 정하지 않았다.** 구조를 지우는 것이라 자국이 "없어짐" 인데, 무엇이
+없어져야 하는지는 부모 식마다 다르다. 억지로 목록을 채우면 그 자가 또 뒤집힌다 —
+그런 것은 `없음` 이 아니라 **`미정`** 이다.
+
+그리고 이것도 **판정이 아니라 눈금이다.** 자국이 없다고 기각하지 않는다 — 목록에 없는
+방식으로 같은 일을 할 수 있고(경계화를 `\overline{R}` 로 쓰는 것처럼), 그것을 벌하면
+발산이 목록을 채우는 쪽으로 균질해진다. `novel/` 에서 이미 겪은 그것이다.
+
 ### LaTeX 이 JSON 을 깬다
 
 `\lambda` 는 JSON 파서에게 잘못된 이스케이프다 — 식을 기호로 받기 시작하자 **다섯 묶음 중
@@ -264,6 +288,7 @@ python3 mathdrift/spread.py --remeasure     # 새 자로 다시 잰다 (호출 0
 python3 mathdrift/spread.py --lineage S17   # 씨앗까지의 사슬
 python3 mathdrift/spread.py --card S34      # 공간 하나를 칸째로 (부모와 나란히)
 python3 mathdrift/spread.py --diff S10      # **연산자가 식에 무엇을 했나** (기호 단위)
+python3 mathdrift/spread.py --act          # **연산자가 자국을 남겼나** -- 원장 전체 (호출 0회)
 python3 mathdrift/spread.py --known         # 알려진 갈아타기 넷이 나왔나 (거르지 않는다)
 python3 tests/test_mathdrift.py             # 배선 검사 (LLM·네트워크 불필요)
 ```

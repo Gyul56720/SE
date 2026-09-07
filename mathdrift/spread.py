@@ -43,6 +43,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from mathdrift import act as ACT
 from mathdrift import measure as ME                                   # noqa: E402
 from mathdrift import ops as OPS                                      # noqa: E402
 from mathdrift import space as SP                                     # noqa: E402
@@ -461,16 +462,17 @@ def diff(led: dict, sid: str) -> int:
     print(f"  부모: {par.get('식')}")
     print(f"  자식: {rec.get('식')}\n")
 
-    kept = 0
-    rows = []
+    kept, rows, added, removed = 0, [], [], []
     for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(a=a, b=b).get_opcodes():
         if tag == "equal":
             kept += i2 - i1
             continue
         if tag in ("delete", "replace"):
             rows.append(("-", " ".join(a[i1:i2])))
+            removed += a[i1:i2]
         if tag in ("insert", "replace"):
             rows.append(("+", " ".join(b[j1:j2])))
+            added += b[j1:j2]
     if not rows:
         print("  **바뀐 것이 없다.** 식이 글자 그대로 같다 -- 연산자가 아무 일도 안 했다")
     else:
@@ -479,7 +481,51 @@ def diff(led: dict, sid: str) -> int:
             print(f"    {mark} {txt[:100]}")
     big = max(len(a), len(b)) or 1
     print(f"\n  그대로 둔 토큰 {kept}/{big}  (부모 {len(a)} 토큰, 자식 {len(b)} 토큰)")
+    print("  " + ACT.note(ACT.marks(added, removed, g.get("연산자", ""))))
     print("\n  **판정이 아니다.** 연산자가 식에 무엇을 했는지 보여 줄 뿐이다.")
+    return 0
+
+
+def act(led: dict) -> int:
+    """**연산자가 식에 자국을 남겼는가** -- 원장 전체를 기호로 훑는다. 호출 0회.
+
+    낱말 겹침 자가 두 번 뒤집힌 뒤로 아무것도 세지 않고 있었다. 이것이 그 자리를 대신한다 --
+    한국어가 아니라 LaTeX 토큰으로 묻기 때문에 부모 이름에 수식어를 덧붙이는 것으로는
+    자국이 생기지 않는다.
+    """
+    rows, out = [], []
+    for rec in led["spaces"]:
+        g = rec.get("계보") or {}
+        par = SP.get(led, g.get("부모"))
+        if par is None:
+            continue
+        a, b = tokens(par.get("식")), tokens(rec.get("식"))
+        added, removed = [], []
+        for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(a=a, b=b).get_opcodes():
+            if tag in ("delete", "replace"):
+                removed += a[i1:i2]
+            if tag in ("insert", "replace"):
+                added += b[j1:j2]
+        m = ACT.marks(added, removed, g.get("연산자", ""))
+        rows.append((g.get("연산자", ""), m))
+        out.append((rec["id"], g.get("연산자", ""), m, str(rec.get("식") or "")))
+
+    if not rows:
+        print("견줄 것이 없다 -- 씨앗뿐이다")
+        return 0
+    n_yes = sum(1 for _, m in rows if m["판정"] == "있음")
+    n_no = sum(1 for _, m in rows if m["판정"] == "없음")
+    n_un = sum(1 for _, m in rows if m["판정"] == "미정")
+    print(f"자국 있음 {n_yes} · 없음 {n_no} · 미정 {n_un}  (공간 {len(rows)}개)\n")
+    print(f"{'id':<5} {'연산자':<10} {'자국':<6} 무엇이 / 식")
+    for sid, op, m, expr in out:
+        mark = {"있음": "있음", "없음": "없음", "미정": "미정"}[m["판정"]]
+        what = " ".join(m["자국"])[:34] if m["자국"] else ""
+        print(f"{sid:<5} {op:<10} {mark:<6} {what:<36} {expr[:44]}")
+    print("\n연산자별 (자국 있음 / 판정한 것):")
+    print(ACT.tally(rows))
+    print("\n**판정이 아니라 눈금이다.** 자국이 없다고 기각하지 않는다 -- 목록에 없는 방식으로")
+    print("같은 일을 할 수 있고, 그것을 벌하면 발산이 목록을 채우는 쪽으로 균질해진다.")
     return 0
 
 
@@ -520,6 +566,8 @@ def main(argv=None) -> int:
                     help="원장을 새 자로 다시 잰다 (호출 0회)")
     ap.add_argument("--lineage", default="")
     ap.add_argument("--card", default="", help="공간 하나를 칸째로 (예: --card S34)")
+    ap.add_argument("--act", action="store_true",
+                    help="연산자가 식에 자국을 남겼나 (기호 단위, 호출 0회)")
     ap.add_argument("--diff", default="",
                     help="연산자가 식에 무엇을 했나 (예: --diff S10). 호출 0회")
     ap.add_argument("--path", default="")
@@ -529,6 +577,9 @@ def main(argv=None) -> int:
         return check()
 
     led = SP.load(a.path or None)
+
+    if a.act:
+        return act(led)
 
     if a.diff:
         return diff(led, a.diff)
