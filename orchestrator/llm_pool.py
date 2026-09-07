@@ -271,7 +271,24 @@ def _default_factory(model: str, key: str):
     """(모델, 키) 하나를 부를 것. 풀이 쓰는 것은 `.invoke(prompt)` 하나뿐이다."""
     if CLIENT == "langchain":
         return _langchain_factory(model, key)
-    from gemini_http import Client
+    # **두 길로 들어온다. 둘 다 서야 한다.**
+    #
+    #   · scripts/pool_probe.py  -- 뿌리를 sys.path 에 넣고 `from orchestrator import llm_pool`
+    #   · novel/drive.py         -- orchestrator/ 를 sys.path 에 넣고 `import llm_pool`
+    #
+    # 앞의 길에서는 `from gemini_http import ...` 가 없고(그 디렉토리가 sys.path 에
+    # 없다), 뒤의 길에서는 `from orchestrator.gemini_http import ...` 가 없다 --
+    # orchestrator/ 안에 orchestrator.py 가 있어서 `import orchestrator` 가 꾸러미가
+    # 아니라 그 **파일**을 집는다. 그래서 어느 한쪽으로 못 정한다.
+    #
+    # 실측 2026-09-07 VM: `from gemini_http import Client` 하나만 두었더니
+    # `drift.sh start` 가 첫 탐침에서 ModuleNotFoundError 로 죽었다. 검사는 통과했는데,
+    # 검사 파일이 sys.path 에 orchestrator/ 를 **손으로 넣어 두어서** 그랬다 --
+    # 검사가 진짜 호출자와 다른 문으로 들어오면 이런 것을 못 잡는다.
+    try:
+        from gemini_http import Client
+    except ImportError:
+        from orchestrator.gemini_http import Client
     secs = SLOW_TIMEOUT if SLOW_MODEL.search(model) else TIMEOUT
     return Client(model=model, key=key, timeout=secs,
                   max_output_tokens=MAX_OUT, attempts=MAX_RETRIES)

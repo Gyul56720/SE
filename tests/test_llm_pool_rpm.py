@@ -13,6 +13,7 @@ LLM·네트워크 없이 돈다. 실행: python3 tests/test_llm_pool_rpm.py
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 import time
 import tempfile
@@ -662,6 +663,40 @@ ok(not llm_pool._is_rpm(RuntimeError("429 RESOURCE_EXHAUSTED")),
    "단서가 하나도 없으면 하루치로 본다  ← 1분마다 죽은 조합을 두드리는 편이 더 나쁘다")
 
 
+# **두 벌을 다 둔다. 같은 버그를 다른 각도에서 지킨다.**
+#   · 아래 첫 벌은 **프로세스를 갈라** 문을 하나씩만 연다 -- 진짜 호출자의 조건이다.
+#   · 둘째 벌은 **한 프로세스 안의 순서**를 지킨다 -- orchestrator/ 를 먼저 경로에
+#     넣어 두고 부르면 고치기 전 코드도 통과해 버린다(그쪽이 겪은 함정이다).
+# 둘 중 하나만 두면 나머지 하나가 놓치는 자리가 생긴다.
+
+print()
+print("[임포트] **검사가 진짜 호출자와 같은 문으로 들어와야 한다**")
+print("      ← 이 파일은 sys.path 에 뿌리와 orchestrator/ 를 **둘 다** 넣는다. 그래서")
+print("        `from gemini_http import Client` 가 여기서는 통했다. 진짜 호출자는 둘 중")
+print("        하나만 넣는다 -- VM 에서 drift.sh start 가 첫 탐침에서 죽었다:")
+print("        ModuleNotFoundError: No module named 'gemini_http' (실측 2026-09-07).")
+print("        그러니 **별도 프로세스에서, 문을 하나씩만 열고** 재야 한다.")
+
+_DOORS = (
+    ("뿌리만 (scripts/pool_probe.py 방식)",
+     f"import sys; sys.path.insert(0, {str(REPO)!r})\n"
+     "from orchestrator import llm_pool\n"),
+    ("orchestrator/ 만 (novel/drive.py 방식)",
+     f"import sys; sys.path.insert(0, {str(REPO)!r})\n"
+     f"sys.path.insert(0, {str(REPO / 'orchestrator')!r})\n"
+     "import llm_pool\n"),
+)
+for _what, _head in _DOORS:
+    _p = subprocess.run(
+        [sys.executable, "-c", _head
+         + "c = llm_pool._default_factory('gemini-3.5-flash', 'k')\n"
+           "print(type(c).__module__, type(c).__name__)"],
+        capture_output=True, text=True, cwd=str(REPO / "tests"))
+    ok(_p.returncode == 0 and "gemini_http" in _p.stdout,
+       f"{_what} 로 들어와도 공장이 선다 "
+       f"({(_p.stdout or _p.stderr).strip().splitlines()[-1][:90]})")
+
+
 # ── 어떻게 임포트해도 후보를 만들 수 있는가 ──────────────────────────
 #
 # `_default_factory` 는 `from gemini_http import Client` 를 **최상위 이름**으로 부른다.
@@ -670,9 +705,6 @@ ok(not llm_pool._is_rpm(RuntimeError("429 RESOURCE_EXHAUSTED")),
 # ModuleNotFoundError 로 죽었다(실측 2026-09-07, VM: "풀을 못 세웠다: No module named
 # 'gemini_http'"). pool_probe.py 와 mathdrift/spread.py 가 그 자리에서 멈췄다.
 # 두 임포트 길이 **같은 것을 돌려주는지** 여기서 고정한다.
-import importlib
-import subprocess
-
 _HERE = str(Path(__file__).resolve().parent.parent)
 # **순서가 이 검사의 전부다.** `_default_factory` 안의 임포트는 부를 때 일어난다 --
 # `orchestrator/` 를 먼저 경로에 넣어 두고 나서 부르면 고치기 전 코드도 통과한다
