@@ -45,7 +45,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from mathdrift import act as ACT
 from mathdrift import measure as ME                                   # noqa: E402
-from mathdrift import ops as OPS                                      # noqa: E402
+from mathdrift import ops as OPS
+from mathdrift import prove as PRV                                      # noqa: E402
 from mathdrift import space as SP                                     # noqa: E402
 
 # **한 번에 받는 공간 수.** 크게 잡을수록 호출이 줄지만, 하나가 깨지면 그 묶음이 통째로
@@ -98,6 +99,14 @@ def prompt(parent: dict, picks: list[tuple[str, str, int]]) -> str:
            설명하고 싶은 것은 전부 `왜` 칸에 적는다. 여기는 식만 있는 칸이다
   점     : 해가 무엇인지 **기호로** (예: (U,V,W,lam) in F^{{n^2 x m}} x ... x F^m)
   정의역 : F = R · F = F_2 · F = {{-1,0,1}} · ... 처럼 **기호로**
+  유도   : **부모 식에서 이 식까지 가는 길. 주장하지 말고 보여라.**
+           한 걸음씩, 각 걸음은 수식 하나. **sympy 가 읽는 평문**으로 쓴다 (LaTeX 아님).
+           첫 걸음은 부모 식, 마지막 걸음은 이 공간의 식이다.
+           근거는 한 낱말: 항등 · 대입 · 미분 · 적분 · 극한 · 체 · 정의 · 가정
+           보기:
+             [{{"식": "Sum(lam*U*V*W, (r,1,m))", "근거": "부모"}},
+              {{"식": "lam*U*V*W*m", "근거": "항등"}},
+              {{"식": "Limit(lam*U*V*W*m + e, e, 0)", "근거": "극한"}}]
   왜     : 왜 이것이 그럴듯한가 (**여기만 한국어로 쓴다.** 사람이 읽는 칸이고
            다음 세대에게는 전달되지 않는다)
 
@@ -111,7 +120,8 @@ def prompt(parent: dict, picks: list[tuple[str, str, int]]) -> str:
 규칙 넷.
 
   · **엄밀할 필요 없다.** 정리도 증명도 아니다. **그럴듯한 식이면 된다**
-  · **모르는 칸은 비워라.** 지어내지 마라 -- 빈 칸은 벌점이 아니다
+  · **모르는 칸은 비워라.** 지어내지 마라 -- 빈 칸은 벌점이 아니다.
+    유도의 걸음이 특히 그렇다: **못 적겠으면 비워라. 빈 것이 틀린 걸음보다 낫다**
   · **부모 식을 부정하지 마라.** 부모의 해가 새 식 안에서도 해로 남아야 한다
   · **{len(picks)}개를 서로 다르게 써라.** 연산자가 다르므로 식도 달라야 한다
   · **`식`·`점`·`정의역` 에 한국어가 있으면 그건 식이 아니라 설명이다.**
@@ -566,6 +576,8 @@ def main(argv=None) -> int:
                     help="원장을 새 자로 다시 잰다 (호출 0회)")
     ap.add_argument("--lineage", default="")
     ap.add_argument("--card", default="", help="공간 하나를 칸째로 (예: --card S34)")
+    ap.add_argument("--prove", nargs="?", const="", default=None,
+                    help="유도가 이어지는가 (호출 0회). id 를 주면 하나만")
     ap.add_argument("--act", action="store_true",
                     help="연산자가 식에 자국을 남겼나 (기호 단위, 호출 0회)")
     ap.add_argument("--diff", default="",
@@ -577,6 +589,9 @@ def main(argv=None) -> int:
         return check()
 
     led = SP.load(a.path or None)
+
+    if a.prove is not None:
+        return PRV.report(led, a.prove)
 
     if a.act:
         return act(led)
