@@ -377,12 +377,27 @@ def _sentences(text: str) -> list:
 
 
 def _targets(sent, doc, corpus):
-    """이 문장이 부른 조문들의 원문. 원장이 안 담은 법령은 빠진다(미검증)."""
-    out = []
+    """이 문장이 부른 조문들의 원문. 원장이 안 담은 법령은 빠진다(미검증).
+
+    **끌어다 쓰는 조문까지 한 홉 따라간다.** 민법 제724조는 청산인의 직무를 "제87조의
+    규정을 준용한다" 로만 정한다 -- 제724조 본문만 보면 청산인의 직무에 관한 서술은
+    영영 '견줄 값 없음' 이다. 준용된 조문은 여기서 그대로 사는 조문이므로 그 낱말이
+    곧 이 자리의 낱말이다(corpus.via 가 어디까지 따라가는지 적어 두었다).
+    """
+    out, seen = [], set()
     for c in CP.find_citations(sent):
-        body = corpus.text(c.statute or getattr(doc, "statute", None), c.article)
-        if body:
-            out.append((c.raw, body))
+        st = c.statute or getattr(doc, "statute", None)
+        body = corpus.text(st, c.article)
+        if not body or c.article in seen:
+            continue
+        seen.add(c.article)
+        out.append((c.raw, body))
+        for name, borrowed in corpus.via(st, c.article):
+            key = name.split("(")[-1].rstrip(")")
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append((f"{c.raw}→{name}", borrowed))
     return out
 
 
