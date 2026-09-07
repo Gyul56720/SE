@@ -13,6 +13,7 @@ novel/wording.py 는 같은 뜻 다른 꼴을 세어 다양성을 밀지만, 법
 """
 from __future__ import annotations
 
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -183,6 +184,18 @@ print()
 print("[근거 표시] 세 갈래로 가른다 -- 맞음 / 어긋남 / 견줄 것 없음")
 
 
+def _시험문서():
+    """요약 줄을 보려면 CLI 를 실제로 돌려야 한다 -- 그 줄은 main() 에만 있다."""
+    body = ['---', 'title: "검사용"', 'domain: "00_검사"', 'tags: "[검사]"',
+            'key_principle: "검사"', 'source_statute: "가상시험법"', '---', '',
+            '## 2. 조문과 이론', '',
+            '제22조에 따라 청산은 해산일부터 3년 이내에 종결하여야 한다.', '',
+            '제3조는 이 법의 목적을 정한 조문이다.', '']
+    tmp = Path(tempfile.mkdtemp()) / "요약검사.md"
+    tmp.write_text("\n".join(body), encoding="utf-8")
+    return tmp
+
+
 def row(sentence, where="2. 조문과 이론"):
     rows = [r for r in WD.trace(doc(sentence, where), CORPUS) if r["인용"]]
     return rows[0] if rows else None
@@ -237,6 +250,20 @@ ok(r and not r["어긋남"], f"'이 규정이 적용되어' 도 같다 (얻은 �
 r = row("제22조는 청산에 관하여 제12조를 적용한다.")
 ok(r and r["어긋남"] == ["법효과어:적용"],
    f"능동으로 '제12조를 적용한다' 면 그대로 어긋남이다 (얻은 값 {r and r['어긋남']})")
+
+print()
+print("[보고에 그 수가 있는가] **줄이려는 수를 안 세면 나아졌는지 알 수 없다**")
+# 실측이 이것을 못 박았다. 2홉을 붙이고 법이론서를 다시 돌렸는데 요약 네 줄이 글자
+# 하나 안 틀리고 같았다. 나아진 것이 없어서가 아니라 **요약에 '견줄 값 없음' 수가
+# 아예 없어서**였다 -- 줄이려는 그 수를 세지 않고 있었던 것이다.
+_out = subprocess.run(
+    [sys.executable, str(ROOT / "law" / "wording.py"), str(_시험문서()),
+     "--trace", "--corpus", str(FIXTURE)],
+    capture_output=True, text=True).stdout
+ok("견줄 값이 하나도 없던 문장 1개" in _out,
+   f"견줄 값 없음 수가 요약에 있다 (얻은 값 {_out.strip().splitlines()[-2:]})")
+ok("준용·전조를 따라가 조문을 더 끌어온 문장 1개" in _out,
+   "2홉이 몇 문장에서 실제로 일했는지도 적는다")
 
 print()
 print("[2홉] **준용된 조문의 낱말이 곧 이 자리의 낱말이다**")

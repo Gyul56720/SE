@@ -525,7 +525,7 @@ def main(argv=None):
     files = [f for f in files if not f.name.lower().startswith("readme")]
 
     hard = soft = 0
-    unver = good = bad = nocmp = miscon = 0
+    unver = good = bad = nocmp = miscon = blank = hop2 = 0
     for f in files:
         doc = parse(f)
         if a.trace:
@@ -542,6 +542,13 @@ def main(argv=None):
                     bad += 1
                 elif r["맞음"]:
                     good += 1
+                else:
+                    # **줄이려는 그 수를 세지 않고 있었다.** 조문은 찾았는데 견줄 값이
+                    # 하나도 없던 문장 -- 이게 자가 눈을 감고 있는 크기다. 요약에 이
+                    # 수가 없어서, 2홉을 붙이고도 나아졌는지 나빠졌는지 알 수 없었다
+                    # (실측: 2홉 전후로 요약 네 줄이 글자 하나 안 틀리고 같았다).
+                    blank += 1
+                hop2 += any("→" in c for c in r["인용"])
                 if r["견줄것없음"]:
                     nocmp += 1
                     mark += "  (조문에 없는 범주라 대조 못 함: " \
@@ -564,6 +571,12 @@ def main(argv=None):
             soft += v.severity == "soft"
     if a.trace:
         print(f"\n문장 {good + bad}개를 조문과 견줬다 -- 맞음 {good} · **어긋남 {bad}**")
+        if blank:
+            print(f"조문은 찾았는데 견줄 값이 하나도 없던 문장 {blank}개 "
+                  f"<- **줄여야 할 수는 이것이다**")
+        if hop2:
+            print(f"준용·전조를 따라가 조문을 더 끌어온 문장 {hop2}개 "
+                  f"(2홉이 실제로 일을 한 자리다)")
         if nocmp:
             print(f"조문에 그 범주가 없어 일부만 대조한 문장 {nocmp}개 "
                   f"(위반이 아니라 대조 불가다)")
