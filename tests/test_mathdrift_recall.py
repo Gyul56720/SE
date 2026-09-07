@@ -37,13 +37,18 @@ def ok(cond, what):
 
 
 SEED = SP.load(SP.SEED)["spaces"][0]
-PT = SEED["시금석점"]
+# **시금석점은 만든다.** 실측 2026-09-07: 모델에게 91개짜리 수 리스트를 지어내라고
+# 했더니 20개 중 20개가 안 적었다. 지어낼 것이 아니라 계산할 것이었다 -- 부모의
+# Strassen 을 새 인코딩으로 옮기면 나온다.
+PT = EN.make_point(SEED["해독"] + "\n\n" + SEED["부호화"])["point"]
 
 print("[씨앗] **출발점이 성한가** -- 씨앗이 자기 ①재현을 통과해야 한다")
 _s = EN.check(SEED["해독"], PT)
 ok(_s["판정"] == "재현", f"씨앗이 Strassen 을 되돌린다 ({_s['판정']})")
 ok(not _s["하드코딩"], "씨앗의 해독기는 점을 실제로 쓴다")
-ok(_s["치수"] == SEED["치수"], f"적어 둔 치수와 시금석점 길이가 맞는다 ({_s['치수']})")
+ok(_s["치수"] == SEED["치수"], f"적어 둔 치수와 만든 점의 길이가 맞는다 ({_s['치수']})")
+_rt = EN.check(SEED["해독"], None, enc=SEED["부호화"])
+ok(_rt["판정"] == "재현", "**부호화 -> 해독 왕복이 맞는다** -- 점을 손으로 안 적어도 된다")
 
 print()
 print("[심판] **판정에 LLM 이 한 방울도 안 들어간다** -- Brent 항등식이 정한다")
@@ -69,7 +74,7 @@ ok(EN.check("def decode(p):\n    return 1 / 0\n", PT)["판정"] == "못돎", "�
 ok(EN.check("x = 1\n", PT)["판정"] == "못돎", "decode 가 없으면 못돎")
 ok(EN.check("def decode(p):\n    return 1, 2\n", PT)["판정"] == "못돎", "꼴이 틀리면 못돎")
 ok(EN.check("", PT)["판정"] == "없음", "해독기가 비면 없음")
-ok(EN.check(SEED["해독"], [])["판정"] == "없음", "시금석점이 비면 없음")
+ok(EN.check(SEED["해독"])["판정"] == "없음", "점도 부호화도 없으면 없음")
 ok(EN.check("def decode(p):\n    while True:\n        pass\n", PT,
             timeout=3)["판정"] == "못돎", "안 끝나면 시간 초과로 못돎")
 
@@ -90,7 +95,8 @@ _rec["id"] = "S1"
 _out = R.one(_rec, log=lambda *a: None)
 ok(_out["판정"] == "재현" and _rec["재현"]["판정"] == "재현", "판정이 원장에 적힌다")
 ok(_rec["재현"]["시금석"].startswith("strassen"), "어느 시금석으로 봤는지 남는다")
-ok(R.one({"id": "S9"}, log=lambda *a: None)["판정"] == "없음", "칸이 비면 없음으로 적힌다")
+ok(R.one({"id": "S9"}, log=lambda *a: None)["판정"] == "없음",
+   "칸이 비면 없음으로 적힌다  ← **실패가 아니라 '아직 안 봤다' 다**")
 
 print()
 if fails:

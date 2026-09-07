@@ -59,15 +59,19 @@ with tempfile.TemporaryDirectory() as d:
     _boot = SP.load(_f)
     ok(len(_boot["spaces"]) == 1 and _boot["spaces"][0]["id"] == "S1",
        "원장이 없으면 씨앗에서 새로 세운다  ← 빈 원장으로는 발산이 못 시작한다")
-    ok(_boot["spaces"][0].get("해독") and _boot["spaces"][0].get("시금석점"),
-       "씨앗이 해독기와 시금석점을 들고 있다 -- 그래야 재현이 호출 0회다")
+    ok(_boot["spaces"][0].get("해독") and _boot["spaces"][0].get("부호화"),
+       "씨앗이 해독기와 부호화기를 들고 있다 -- 시금석점은 거기서 만든다")
     _r = SP.add(_boot, {"이름": "낳은 것", "해독": "돌아간다"}, parent="S1", op="망각")
     SP.save(_boot, _f)
     ok(len(SP.load(_f)["spaces"]) == 2, "원장이 생긴 뒤에는 씨앗이 그것을 안 덮는다")
 
 print("\n== 발산은 죽이지 않는다 ==")
 r = SP.add(led, {"이름": "해독 없는 공간", "점": "무엇인가"}, parent="S1", op="망각")
-ok(r["등급"] == "검증불가", "해독이 비면 기각이 아니라 등급만 '검증불가'")
+ok(r["등급"] == "미검증",
+   "**코드 칸이 없는 것을 벌하지 않는다** -- 등급은 벌이 아니라 표다")
+_v = SP.add(led, {"이름": "코드 있는 공간", "해독": "def decode(p): pass",
+                  "부호화": "def encode(U,V,W,l): pass"}, parent="S1", op="쌍대")
+ok(_v["등급"] == "검증가능", "해독기와 부호화기가 있으면 '검증가능' 으로 표시한다")
 ok(SP.get(led, r["id"]) is not None, "그래도 원장에는 남는다 (다음 세대의 부모가 된다)")
 r2 = SP.add(led, {}, parent="S1", op="쌍대")
 ok(SP.get(led, r2["id"]) is not None, "칸이 전부 비어도 받는다")
@@ -189,8 +193,10 @@ ok(all(m["계보"]["부모"] for m in made if m), "모든 공간이 부모를 �
 ok(len(CALLS) == 6, "호출은 걸음당 한 번")
 ok("연산자" in CALLS[0] and "부모 식을 부정하지 마라" in CALLS[0],
    "프롬프트에 연산자와 인과 규칙이 실린다")
-ok("decode(p)" in CALLS[0] and "시금석점" in CALLS[0],
-   "**식·수·코드를 받는다** -- 이름과 산문으로 받던 것이 어휘 표류를 낳았다")
+ok("decode(p)" in CALLS[0] and "선택 칸" in CALLS[0],
+   "코드 칸은 **선택**이다 -- 없다고 벌점 없다")
+ok("검사한다" not in CALLS[0] and "하드코딩" not in CALLS[0],
+   "**심판 얘기가 프롬프트에 없다** -- 보여 주면 원고가 관문에 맞춰 균질해진다")
 last = made[-1]["id"]
 ok(SP.lineage(led, last)[0] == "S1", "계보가 씨앗까지 사슬로 이어진다")
 

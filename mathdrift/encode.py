@@ -45,15 +45,27 @@ B, M = 2, 7
 N = B * B
 
 
-def run(code: str, points: list[list], timeout: float = TIMEOUT) -> dict:
-    """해독기를 격리해서 돌린다. 돌아온 것은 수뿐이다."""
+# Strassen 스킴. **시금석점을 모델이 적을 필요가 없다** -- 이것을 새 인코딩으로 옮기면
+# 그 공간의 시금석점이 나온다. 실측 2026-09-07: 91개짜리 수 리스트를 지어내라고 했더니
+# 20개 중 20개가 점을 안 냈다.
+STRASSEN = (
+    [[1, 0, 1, 0, 1, -1, 0], [0, 0, 0, 0, 1, 0, 1],
+     [0, 1, 0, 0, 0, 1, 0], [1, 1, 0, 1, 0, 0, -1]],
+    [[1, 1, 0, -1, 0, 1, 0], [0, 0, 1, 0, 0, 1, 0],
+     [0, 0, 0, 1, 0, 0, 1], [1, 0, -1, 0, 1, 0, 1]],
+    [[1, 0, 0, 1, -1, 0, 1], [0, 0, 1, 0, 1, 0, 0],
+     [0, 1, 0, 1, 0, 0, 0], [1, -1, 1, 0, 0, 1, 0]],
+    [1] * 7,
+)
+
+
+def _spawn(code: str, args: list, timeout: float) -> dict:
     with tempfile.TemporaryDirectory() as d:
         f = Path(d) / "decoder.py"
         f.write_text(code, encoding="utf-8")
         try:
             p = subprocess.run(
-                [sys.executable, str(CHILD), "--code", str(f),
-                 "--points", json.dumps(points)],
+                [sys.executable, str(CHILD), "--code", str(f)] + args,
                 capture_output=True, text=True, timeout=timeout, cwd=d)
         except subprocess.TimeoutExpired:
             return {"status": f"{timeout}초 안에 안 끝났다"}
@@ -63,6 +75,16 @@ def run(code: str, points: list[list], timeout: float = TIMEOUT) -> dict:
         return json.loads(p.stdout.strip().splitlines()[-1])
     except (ValueError, IndexError):
         return {"status": "자식이 JSON 을 안 냈다", "why": (p.stdout or "")[-200:]}
+
+
+def run(code: str, points: list[list], timeout: float = TIMEOUT) -> dict:
+    """해독기를 격리해서 돌린다. 돌아온 것은 수뿐이다."""
+    return _spawn(code, ["--points", json.dumps(points)], timeout)
+
+
+def make_point(code: str, timeout: float = TIMEOUT) -> dict:
+    """`encode(U,V,W,lambda) -> p` 로 **시금석점을 만든다.** 모델이 안 적어도 된다."""
+    return _spawn(code, ["--scheme", json.dumps(STRASSEN)], timeout)
 
 
 def _mat(raw, rows, cols):
@@ -101,12 +123,24 @@ def _shake(p: list) -> list:
     return out
 
 
-def check(code: str, point: list, timeout: float = TIMEOUT) -> dict:
-    """세 가지를 한 번에 본다 -- 돌아가는가 · Strassen 이 나오는가 · 점을 쓰는가."""
+def check(code: str, point=None, enc: str = "", timeout: float = TIMEOUT) -> dict:
+    """네 가지를 한 번에 본다 -- 점을 만들 수 있는가 · 돌아가는가 · Strassen 이 나오는가 ·
+    점을 쓰는가.
+
+    점은 **받거나 만든다.** `부호화`(encode)가 있으면 Strassen 을 그 인코딩으로 옮겨
+    시금석점을 여기서 만든다 -- 모델이 91개짜리 수 리스트를 적을 필요가 없다.
+    """
     if not (code or "").strip():
         return {"판정": "없음", "왜": "해독기가 비어 있다"}
-    if not isinstance(point, list) or not point:
-        return {"판정": "없음", "왜": "점이 없다"}
+    made = False
+    if not (isinstance(point, list) and point):
+        if not (enc or "").strip():
+            return {"판정": "없음", "왜": "점도 부호화도 없다"}
+        got = make_point(code + "\n\n" + enc, timeout)
+        if got.get("status") != "ok" or not got.get("point"):
+            return {"판정": "못돎", "왜": "부호화: " + got.get("status", "")
+                                        + " " + got.get("why", "")}
+        point, made = got["point"], True
 
     got = run(code, [list(point), _shake(point)], timeout)
     if got.get("status") != "ok":
@@ -124,5 +158,7 @@ def check(code: str, point: list, timeout: float = TIMEOUT) -> dict:
     same = b.get("ok") and all(a.get(k) == b.get(k) for k in ("U", "V", "W", "lambda"))
     return {"판정": ("재현" if ok else "틀림"),
             "치수": len(point),
+            "점만듦": made,
+            "점": [str(x) for x in point] if made else None,
             "하드코딩": bool(same),
             "왜": ("점을 흔들어도 같은 것이 나왔다 -- 해독기가 입력을 안 쓴다" if same else "")}
