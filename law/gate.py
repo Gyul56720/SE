@@ -244,6 +244,11 @@ def check_quantities(doc: Doc, corpus) -> list:
                 if corpus.has(statute, c.article):
                     covered = True
                     allowed |= corpus.quantities_of(statute, c.article)
+                    # **준용된 조문의 수량도 이 조문의 수량이다.** "제22조에 따라 3년
+                    # 이내" 에서 제22조가 "제12조를 준용한다" 뿐이면 3년은 제12조에
+                    # 있다. 여기를 안 따라가면 맞게 쓴 수량을 없는 수량이라고 기각한다.
+                    for _, borrowed in corpus.via(statute, c.article):
+                        allowed |= {q.key() for q in CP.quantities(borrowed)}
             if not covered:
                 continue
             for q in CP.quantities(sent):

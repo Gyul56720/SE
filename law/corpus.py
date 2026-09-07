@@ -180,6 +180,11 @@ class Citation:
             if "의" in self.article else f"{head}제{self.article}조"
 
 
+# 가중·특별 구성요건이 본체를 부르는 꼴. "제355조의 죄를 범한 자는" 처럼
+# **그 조문의 구성요건이 여기서 그대로 산다.**
+_OF_THE_CRIME = re.compile(r"(제\s*\d+\s*조(?:\s*의\s*\d+)?|전조)\s*의\s*죄")
+
+
 # **단위가 틀리면 대조도 틀린다.**
 #
 # 실측: '4. 해석기법' 절이 통째로 한 문장이 됐다. 그 절은 `### 문언적 해석` 처럼
@@ -251,6 +256,59 @@ class Corpus:
     def statutes_with(self, article: str) -> list:
         """이 조문 번호를 가진 법령들. 법령명 없이 인용된 것을 되짚을 때 쓴다."""
         return [s for s, arts in self.articles.items() if article in arts]
+
+    def via(self, statute: str | None, article: str, limit: int = 6) -> list:
+        """**2홉.** 이 조문이 끌어다 쓰는 조문들 -- (이름, 원문) 목록.
+
+        조문은 자기 안에 다 적지 않는다. 민법 제724조는 청산인의 직무를 "제87조의
+        규정을 준용한다" 로만 정하고 실체는 제87조에 있다. 제724조 본문만 보는 자에게
+        청산인의 직무에 관한 서술은 **영영 '견줄 값 없음'** 이다 -- 대조를 안 하는
+        것이지 통과시키는 것이 아니지만, 안 보는 자리가 넓으면 어긋남 0 은 뜻이 없다.
+        KoBLEX(EMNLP 2025)가 한국법에서 이것이 실제 병목임을 226문항으로 보여준다
+        (1홉 55 · **2홉 125** · 3홉 46).
+
+        **한 홉만 간다.** 끌어온 조문이 또 끌어오는 것까지 따라가면 조문 하나로
+        법 전체가 딸려 오고, 그러면 무엇이든 조문 어딘가에 있으므로 어긋남이 영원히
+        안 난다. 넓히는 쪽이 곧 눈이 밝아지는 것은 아니다.
+
+        따라가는 꼴은 셋뿐이다. 닫힌 목록이라야 기계가 가른다.
+
+            준용        "제87조의 규정을 준용한다"   그 조문이 여기서 그대로 산다
+            전조        "전조의 죄를 범한 자는"      바로 앞 조문
+            제N조의 죄  "제355조의 죄를 범한 자는"   가중·특별 구성요건의 본체
+
+        '제N조에 따라 신고한다' 같은 단순 지시는 안 따라간다. 그건 그 조문의 내용이
+        여기서 사는 것이 아니라 절차를 가리키는 말이다.
+        """
+        body = self.text(statute, article)
+        if not body:
+            return []
+        st = normalize_statute(statute)
+        out, seen = [], {article}
+        for sent in sentences(body):
+            wants = []
+            if "준용" in sent:
+                wants += [c for c in find_citations(sent)]
+            wants += [c for c in find_citations(sent) if _OF_THE_CRIME.search(sent)]
+            if "전조" in sent:
+                prev = self._prev(st, article)
+                if prev:
+                    wants.append(Citation(f"전조(제{prev}조)", st, prev, None, None))
+            for c in wants:
+                a, s2 = c.article, normalize_statute(c.statute) or st
+                if a in seen or len(out) >= limit:
+                    continue
+                got = self.text(s2, a)
+                if got:
+                    seen.add(a)
+                    out.append((c.raw if c.raw.startswith("전조") else c.label(), got))
+        return out
+
+    def _prev(self, statute: str | None, article: str):
+        """원장에 적힌 차례에서 바로 앞 조문. 제N조의2 가 있으므로 N-1 이 아니다."""
+        arts = list(self.articles.get(normalize_statute(statute), {}))
+        i = arts.index(article) if article in arts else -1
+        return arts[i - 1] if i > 0 else None
 
     def quantities_of(self, statute: str | None, article: str) -> set:
         body = self.text(statute, article)
