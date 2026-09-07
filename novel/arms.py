@@ -25,8 +25,13 @@ from novel import dyn                                                 # noqa: E4
 
 HERE = Path(__file__).resolve().parent
 PICKED = Path(os.environ.get("DRIFT_ARM", HERE / "arm.json"))
-# 이만큼은 봐야 말한다. 서너 번으로 이겼다고 하면 그건 우연이다.
-MIN_SEEN = int(os.environ.get("DRIFT_ARM_MIN", "5"))
+# 이만큼은 봐야 말한다. 한두 번으로 이겼다고 하면 그건 우연이다.
+#
+# **다섯에서 셋으로 내린다.** 한 바퀴가 한 시간 반이라(실측: 01:24 · 02:55 · 04:27 ·
+# 05:27 · 06:29) 여섯 팔을 다섯 번씩 보려면 서른 바퀴 마흔 시간이다. 셋이면 열여덟
+# 바퀴 하루다. 관측이 적어 덜 미덥지만, 팔 사이의 평균 거리가 이미 0.148 대 0.726
+# 으로 벌어져 있어 셋으로도 갈린다. 더 미더운 것을 원하면 DRIFT_ARM_MIN=5.
+MIN_SEEN = int(os.environ.get("DRIFT_ARM_MIN", "3"))
 
 
 def rows(path) -> list:
