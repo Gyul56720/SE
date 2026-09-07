@@ -7,23 +7,46 @@
 #
 #   drift.sh start  [글자수]        새 원고를 시작한다 (기본 8000)
 #   drift.sh go     [글자수]        하던 원고를 이어 쓴다 (기본 50000)  ← 가장 많이 쓴다
+#
+#   세기를 조절한다 (기본: 급발진 매 덩어리 · 사건 2,000자마다 · 소재 축은 꺼짐):
+#     DRIFT=0.5  drift.sh go    # 급발진·사건을 반으로
+#     MATTER=0.3 drift.sh go    # 갈래·매체를 조금만 섞는다 (기본 0 = 안 섞음)
 #   drift.sh status                 살아 있는지 · 어디까지 왔는지
 #   drift.sh read                   지금까지 쓴 원고를 읽는다
 #   drift.sh save  <파일>           원고를 파일로 뽑는다
 #   drift.sh send  [이름]           **원고를 Discord 로 보낸다** -- VM 밖으로 빼는 길
 #   drift.sh watch                  로그를 계속 따라간다
 #   drift.sh stop                   런을 멈춘다 (원고는 남는다 -- go 로 이어 쓴다)
+#   drift.sh quota                  쿼터 장부 -- "소진" 이 정말 하루치인지 대조한다
+#                                   (--clear 로 오늘자 소진 표시만 지운다)
 #   drift.sh world                  세계가 얼마나 자랐는지 (인물·장소·사물·사실·사건)
+#   drift.sh open                   아직 안 닫힌 것들 -- 이 이야기가 갚지 않은 빚
 #
 # 환경변수로 바꿀 수 있는 것:
+#   DRIFT_LAYER  프롬프트 층      (기본 text = 문면층만 · all = 서사·세계까지)
+#                                문면층만 쓸 때는 사건·급발진·갈래·확산이 안 실린다
+#   GENRE    갈래 꾸러미        (romance · job · youth / 비우면 안 씌운다.
+#                                DRIFT_LAYER=all 일 때만 실린다)
+#                                예: GENRE=youth drift.sh start 8000
+#   DRIFT    표류 계수 0~1     (기본 1.0 -- 낮추면 급발진·사건이 줄어든다)
+#   MATTER   소재 축 0~1       (기본 0.0 -- 켜면 갈래·매체가 섞인다)
+#   BODY     몸의 사실 0~1     (기본 0.35)
+#   BOND     관계 0~1          (기본 0.4)
+#
+#   설정은 **원고가 아니라 코드가 정한다.** 이어 쓸 때마다 지금 기본값으로 맞춰지고,
+#   위 환경변수를 주면 그것이 이긴다. 옛 원고가 옛 설정으로 계속 도는 일은 없다.
 #   SE_DIR   저장소 위치        (기본 /home/ubuntu/SE)
 #   BOOK     원고 파일          (기본 $SE_DIR/novel/drift.json)
-#   FIRST    첫 문장 (start 에서만)
+#   FIRST    첫 문장 (start 에서만). **안 주고 GENRE 를 주면** 갈래 축에서
+#            여는 좌표를 무작위로 뽑고 첫 문장은 화자가 그 자리에서 짓는다
 set -u
 
 SE="${SE_DIR:-/home/ubuntu/SE}"
 BOOK="${BOOK:-$SE/novel/drift.json}"
 LOG="$SE/logs/drift.log"
+# 명부 -- start 때 탐침 한 바퀴로 "지금 답하는 모델" 만 적어 두고 런 내내 그것만 쓴다.
+ROSTER="${GEMINI_ROSTER:-$SE/logs/roster.json}"
+export GEMINI_ROSTER="$ROSTER"
 FLOW="$SE/novel/flow.py"
 PGREP=/usr/bin/pgrep
 [ -x "$PGREP" ] || PGREP="$(command -v pgrep 2>/dev/null || echo pgrep)"
@@ -67,7 +90,7 @@ refuse_double() {
 launch() {   # launch <설명> <인자...>
   local what="$1"; shift
   mkdir -p "$SE/logs"
-  setsid nohup python3 "$FLOW" "$@" > "$LOG" 2>&1 < /dev/null &
+  setsid nohup python3 "$FLOW" "$@" >> "$LOG" 2>&1 < /dev/null &
   disown
   sleep 4
   if alive >/dev/null; then
@@ -85,20 +108,52 @@ launch() {   # launch <설명> <인자...>
 case "${1:-status}" in
   start)
     refuse_double; load_env
+    # **시작할 때 한 번만 고른다.** 일일 잔량은 남았는데 분당 한도에 걸리는 모델이
+    # 후보에 섞여 있으면, 호출마다 그것을 두드려 429 를 받고서야 성한 것으로 넘어간다 --
+    # 그 왕복을 매번 다시 문다. 열 글자짜리 탐침 한 바퀴로 걸러 두면 런 내내 그만큼 아낀다.
+    echo "후보를 고른다 (탐침 한 바퀴)..."
+    rm -f "$ROSTER"
+    python3 "$SE/scripts/pool_probe.py" --parallel --roster "$ROSTER" | tail -4
     [ -f "$BOOK" ] && {
       mv "$BOOK" "$BOOK.$(date +%Y%m%d-%H%M%S).bak"
       echo "쓰던 원고를 옮겨 두었다: $BOOK.*.bak"
     }
-    set -- --out "$BOOK" --chars "${2:-8000}"
+    set -- --out "$BOOK" --chars "${2:-8000}" ${GENRE:+--genre "$GENRE"} ${DRIFT:+--drift "$DRIFT"} ${MATTER:+--matter "$MATTER"} \
+           ${BODY:+--body "$BODY"} ${BOND:+--bond "$BOND"}
     [ -n "${FIRST:-}" ] && set -- "$@" --first "$FIRST"
+    # 첫 문장을 안 주면 갈래 축에서 여는 좌표를 뽑는다 -- 고정 문장을 쓰면 그 문장의
+    # 세계(지명 · 말씨)가 원고 전체를 끌고 간다.
+    [ -z "${FIRST:-}" ] && [ -n "${GENRE:-}" ] && set -- "$@" --first-seed
     launch "새 원고를" "$@"
+    # **정말 새 원고인지 확인한다.** 앞 런이 살아 있으면 같은 파일에 계속 쓰므로 옛
+    # 인물·장소가 그대로 남는다(실측: "이야기가 바뀌었는데 이전 소설 내역이 남아 있다").
+    sleep 2
+    python3 - "$BOOK" <<'INNER' || true
+import json, sys
+from pathlib import Path
+p = Path(sys.argv[1])
+if p.exists():
+    b = json.loads(p.read_text(encoding="utf-8"))
+    L = b.get("ledger", {})
+    n = sum(len(L.get(k) or {}) for k in ("people", "places", "objects", "facts"))
+    if n or b.get("chunks"):
+        print("  * 새 원고인데 세계가 비어 있지 않다"
+              f" (항목 {n}개, 덩어리 {len(b.get('chunks', []))}개).")
+        print("    앞 런이 같은 파일에 쓰고 있을 수 있다:")
+        print("      /usr/bin/pgrep -af 'novel/flow.py'   <- 둘 이상이면 옛 PID 를 kill")
+    else:
+        print("  세계는 비어 있다 -- 처음부터 시작한다.")
+INNER
     ;;
 
   go|resume)
     refuse_double; load_env
     [ -f "$BOOK" ] || die "이어 쓸 원고가 없다: $BOOK   (새로 시작하려면: $0 start)"
     cp "$BOOK" "$BOOK.bak"
-    launch "이어 쓰기를" --resume "$BOOK" --chars "${2:-50000}" --hours 12
+    launch "이어 쓰기를" --resume "$BOOK" --chars "${2:-50000}" --hours 12 \
+           ${GENRE:+--genre "$GENRE"} \
+           ${DRIFT:+--drift "$DRIFT"} ${MATTER:+--matter "$MATTER"} \
+           ${BODY:+--body "$BODY"} ${BOND:+--bond "$BOND"}
     ;;
 
   status)
@@ -110,7 +165,10 @@ import json, sys
 b = json.load(open(sys.argv[1], encoding="utf-8"))
 n = sum(len(c) for c in b["chunks"])
 L = b.get("ledger", {})
-print(f"  원고  덩어리 {len(b['chunks'])}개 · {n:,}자 · 사건 {b.get('shocks', 0)}회")
+print(f"  원고  덩어리 {len(b['chunks'])}개 · {n:,}자 · 사건 {b.get('shocks', 0)}회 · "
+      f"표류 {b.get('drift', '?')} · 소재 {b.get('matter', 0)} · "
+      f"설정 {b.get('trait', b.get('body', '?'))} · 관계 {b.get('bond', '?')}")
+print(f"  열린 것 {len((L.get('open') or {}))}개  (drift.sh open 으로 본다)")
 print(f"  세계  인물 {len(L.get('people', {}))} · 장소 {len(L.get('places', {}))} · "
       f"사물 {len(L.get('objects', {}))} · 사실 {len(L.get('facts', {}))}")
 PY
@@ -137,6 +195,28 @@ PY
     # pkill -f 는 명령줄에 패턴이 들어 있으면 **자기 셸까지 죽인다**(실측). PID 로만 죽인다.
     for p in $pids; do kill "$p"; done
     sleep 2; echo "멈췄다. 원고는 남아 있다 -- 이어 쓰려면: $0 go"
+    ;;
+
+  quota)
+    # "오늘 치 소진" 이 정말 하루치인지 눈으로 대조한다. 로그의 그 말은 추정이다.
+    # `"${2:-}"` 로 넘기면 인자를 안 줬을 때 **빈 문자열이 인자 하나로** 간다
+    # (argparse 가 unrecognized arguments 로 죽는다). shift 로 있는 것만 넘긴다.
+    # 장부를 읽는 데 키는 필요 없다 -- load_env 를 부르면 키가 없을 때 죽는다.
+    shift || true; python3 "$SE/scripts/quota_show.py" "$@"
+    ;;
+
+  open)
+    [ -f "$BOOK" ] || die "원고가 없다: $BOOK"
+    python3 - "$BOOK" <<'INNER'
+import json, sys
+L = json.load(open(sys.argv[1], encoding="utf-8")).get("ledger", {})
+o = L.get("open") or {}
+if not o:
+    print("  열린 것이 없다. (아직 안 나왔거나, 전부 닫혔다)")
+for k, v in o.items():
+    print(f"  · {k} -- {v}")
+print(f"\n  모두 {len(o)}개")
+INNER
     ;;
 
   world)

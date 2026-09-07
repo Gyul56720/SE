@@ -21,6 +21,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from novel import flow                                                # noqa: E402
 
+# **이 파일은 예전 프롬프트를 켜고 본다.** 기본은 axes 다(flow.PROMPT="axes") --
+# 프롬프트를 재는 축에서 짓고, 손으로 쓴 문장론은 한 줄도 안 넣는다.
+# 여기서 검사하는 것은 그 옛 작법서 블록의 내용이라 켜 놓고 본다.
+flow.PROMPT = "legacy"
+
+
+# **이 파일은 서사층까지 켜고 본다.** 기본값은 문면층만이다(flow.LAYER = "text") --
+# 재는 것 열넷이 전부 문면층인데 서사까지 시키면 지켜졌는지 알 수가 없어서다.
+# 여기서 검사하는 것은 그 서사층 블록의 **내용**이라 켜 놓고 본다.
+flow.LAYER = "all"
+
+
 fails = []
 
 
@@ -86,13 +98,25 @@ print("[프롬프트] 첫 덩어리에 첫 문장과 흐름이 실리는가")
 book = flow.blank()
 p0 = flow.write_prompt(book)
 ok(flow.FIRST[:20] in p0, "첫 문장이 실린다")
-ok("양조장의 내력" in p0 and "오로라" in p0, "지나갈 자리를 준다  ← 줄거리가 아니라 방향이다")
+# 첫 덩어리 지시는 **무엇을 쓸지가 아니라 어떻게 열지만** 말해야 한다. 예전엔 여기에
+# "양조장의 내력 / 크리스마스 이브 / 오로라" 가 박혀 있었는데, 첫 문장을 갈아 끼우자
+# 그것이 남의 이야기를 시키는 각본이 됐다.
+ok("첫 문장이 놓은 좌표에서 출발해라" in p0, "첫 문장의 좌표에서 출발시킨다")
+ok("사람을 하나 만나게 해라" in p0, "손잡이를 만들게 한다  ← 세계는 사람에서 자란다")
+ok("양조장" not in p0 and "오로라" not in p0,
+   "특정 씨앗의 소재가 박혀 있지 않다  ← 첫 문장을 갈아 끼워도 지시가 남지 않는다")
 book2 = flow.blank()
 book2["chunks"] = ["이어지는 산문. " * 200]
 p1 = flow.write_prompt(book2)
-ok("오로라" not in p1, "이어쓰기에는 첫 덩어리 지시가 안 실린다")
+ok("첫 덩어리가 할 일" not in p1, "이어쓰기에는 첫 덩어리 지시가 안 실린다")
 ok("지금까지의 끝부분" in p1, "꼬리를 넘긴다")
-ok(len(p1) < len(p0) + 2000, "프롬프트가 무한정 커지지 않는다  ← 꼬리는 잘라서 넘긴다")
+# **원고가 길어져도 프롬프트가 그만큼 커지면 안 된다.** 첫 덩어리와 이어쓰기를 견주면
+# 급발진·잡소리처럼 이어쓰기에만 실리는 항목까지 세어져서, 재려는 것과 다른 것을 잰다.
+# 재야 할 것은 **꼬리가 늘 때 프롬프트가 늘어나는 몫**이다.
+big_book = flow.blank()
+big_book["chunks"] = ["가" * 50000]
+grew = len(flow.write_prompt(big_book)) - len(p1)
+ok(grew <= flow.TAIL, f"원고가 250배 늘어도 프롬프트는 꼬리만큼만 는다 ({grew:,}자)")
 
 print("[프롬프트] 문체와 규율이 실리는가")
 for key, label in (("가볍고 재미있게", "가벼운 온도"),
@@ -112,19 +136,43 @@ print()
 print("[루프] 모순이면 기각하고 다시 쓰는가")
 
 
-# 리듬 자에 걸리지 않는 본문. 길이를 섞고 대사를 넣었다 -- 이 시험이 보는 것은 모순이지
-# 리듬이 아니라서, 리듬 때문에 다시 쓰게 되면 횟수가 어긋난다.
-CLEAN = ("\n".join([
-    "그해 겨울의 레이캬비크는 오후 세 시부터 어두워졌고, 항구 쪽에서 불어오는 바람에는 "
-    "생선과 디젤과 눈 냄새가 한꺼번에 섞여 있었다.",
-    "요우는 창가에 앉아 있었다.",
-    '"커피 드실래요?"',
-    '"아뇨, 괜찮습니다. 방금 마셨거든요. 아니, 마신 것 같기도 하고."',
-    '"그게 말이죠, 1978년에 우리 아버지가 등대 무전기를 하나 주웠는데, 그때부터 이 '
-    '동네 사람들은 겨울에 배를 안 띄워요. 미신이죠 뭐. 아니, 미신이라기보다는."',
-    "그는 대답 대신 창밖을 보았는데, 유리에 김이 서려 있어서 밖이라기보다는 밖의 소문 "
-    "같은 것이 거기 비쳤다.",
-] * 6))
+# 리듬 자에도 메아리 자에도 걸리지 않는 본문. **시도마다 달라야 한다** -- 매번 같은 글을
+# 돌려주면 꼬리 절단(echo.trim)이 통째로 잘라내고, 그러면 여기서 세는 횟수가 어긋난다.
+# 그것도 자가 제대로 도는 것이지 픽스처가 옳은 것이 아니다. 이 시험이 보는 것은 모순이라,
+# 다른 자에 걸리지 않는 글을 넣어야 한다.
+def clean(tag: int) -> str:
+    """자에 걸리지 않는 본문. **여기서 보는 것은 모순이지 문체가 아니라서**, 리듬·확산·
+    메아리 자가 물면 재시도가 늘고 아래에서 세는 횟수가 어긋난다.
+
+    그래서 셋을 지킨다: 길이를 섞고(리듬), 점층을 넣고(리듬), **줄마다 다르게 쓴다**(메아리).
+    """
+    풍경 = [
+        f"{tag}년 {i}월의 항구는 오후 세 시부터 어두워졌고, 바람에는 생선과 디젤과 "
+        f"눈 냄새가 {i}할쯤 섞여 있었다."
+        if i % 3 else
+        f"아니, 냄새라기보다는 {tag}년 {i}월이 통째로 실려 온 것에 가까웠다."
+        for i in range(1, 13)
+    ]
+    대사 = [f'"{w} 드실래요?"' for w in ("커피", "차", "물", "맥주")]
+    대사 += [
+        # 아주 긴 대사 하나 -- 한 사람이 자기 얘기에 빠져 있는 대목이 없으면 자에 걸린다.
+        f'"그게 말입니다, {tag}년 겨울에 등이 꺼지고 나서 한 삼십 분쯤 아무것도 안 '
+        f'보였는데, 그때 물소리가 평소랑 달랐어요. 아니 물소리가 아니라 물이 없는 '
+        f'소리였나. 아무튼 나는 그 소리를 지금도 가끔 듣습니다. 우리 형이 그해 겨울에 '
+        f'배를 띄웠다가 안 돌아왔는데, 그때도 꼭 그 소리가 났었고요. 아무도 안 믿지만."',
+        f'"아뇨, 괜찮습니다. 방금 마셨거든요. 아니, 마신 것 같기도 하고 아닌 것 '
+        f'같기도 하고, {tag}년쯤부터는 그게 잘 구분이 안 갑니다."',
+        f'"구분이 안 가면 그냥 드시면 되잖아요. 나는 그런 걸로 고민해 본 적이 없는데, '
+        f'하긴 고민이라는 걸 잘 안 하는 편이라 그게 자랑은 아니겠습니다만."',
+    ]
+    # 이름을 여덟 번 부르면 diffusion.overused 가 잡는다 -- 회수는 다시 부르는 것이
+    # 아니라 다시 쓰는 것이라서다. 두 번째부터는 대명사로 받는다.
+    자리 = [
+        f"{'요우는' if i == 1 else '그는'} 창가 {tag}-{i}번 자리에 앉아, 유리에 서린 "
+        f"김 너머로 밖이라기보다는 밖의 소문 같은 것을 {i}분쯤 바라보았다."
+        for i in range(1, 9)
+    ]
+    return "\n".join(풍경 + 대사 + 자리)
 
 
 class Fake:
@@ -139,13 +187,16 @@ class Fake:
             wrong = self.tries == 1
             # 세계를 넓히는 것도 같이 돌려준다 -- 확산 자(diffusion.py)에 걸리면
             # 리듬 때문에 다시 쓰게 되어 여기서 세는 횟수가 어긋난다.
+            # **회차마다 다른 것을 내놓는다.** 같은 것을 돌려주면 두 번째부터 "새것 0개"
+            # 가 되어 확산 자에 걸리고, 그러면 여기서 세는 재시도 횟수가 어긋난다.
+            n = self.tries
             return json.dumps({"people": {"요우": {"나이": "30" if wrong else "42"},
-                                          "한나": {"직업": "등대지기"}},
-                               "places": {"등대": "북쪽 곶"},
-                               "objects": {"무전기": "1978년 것"}},
+                                          f"한나{n}": {"직업": "등대지기"}},
+                               "places": {f"등대{n}": "북쪽 곶"},
+                               "objects": {f"무전기{n}": "오래된 것"}},
                               ensure_ascii=False)
         self.tries += 1
-        return CLEAN          # 리듬 자(rhythm.py)에 걸리지 않는 본문 -- 여기서 보는 건 모순이다
+        return clean(self.tries)
 
 
 def main_char():
@@ -177,6 +228,31 @@ ok(flow.is_main(big["people"]["요우"]) and not flow.is_main(big["people"]["행
    "펼치는 잣대가 _merge 의 '주요 인물' 과 같다")
 
 print()
+print("[농도] **원장은 자라도 브리핑은 자라면 안 된다**")
+print("      ← 실측: '뒤로 갈수록 밀도가 높아져서 처음 1/2 지점 정도로 유지해주면 좋겠다'.")
+print("        인물·장소·사물·사실이 쌓이고 그게 매번 통째로 실리니 농도가 올라갔다.")
+grow = flow.blank()["ledger"]
+grow["people"]["요우"] = {"나이": "42", "직업": "정비공", "말투": "짧게 끊는다", "_seen": 9}
+sizes = {}
+for i in range(61):
+    flow._merge(grow, {"objects": {f"물건{i}": "어떤 것인가 한 줄"},
+                       "facts": {f"사실{i}": "확정된 값 한 줄"},
+                       "people": {f"행인{i}": {"직업": "행인"}}}, at=i)
+    sizes[i] = len(flow.brief(grow, now=i))
+ok(sizes[60] <= sizes[20] * 1.1,
+   f"스무 덩어리 뒤로는 안 자란다 ({sizes[20]}자 → {sizes[60]}자)")
+ok(sizes[60] < flow.BRIEF_MAX, f"상한 아래에 머문다 ({sizes[60]} < {flow.BRIEF_MAX})")
+ok("요우" in flow.brief(grow, now=60),
+   "주요 인물은 나이를 안 본다  ← 그 카드가 대사를 갈라 놓는 근거다")
+ok("행인3" not in flow.brief(grow, now=60),
+   "오래 전 스쳐 간 사람은 접힌다  ← 그 이름이 쉰 개면 그것이 곧 밀도다")
+ok("행인58" in flow.brief(grow, now=60), "최근에 스쳐 간 사람은 남는다")
+ok("물건59" in flow.brief(grow, now=60) and "물건2" not in flow.brief(grow, now=60),
+   "사물도 창으로 자른다")
+ok(len(grow["objects"]) == 61,
+   "접힌 것이 원장에서 사라지지는 않는다  ← 눈앞에서 치우는 것이지 잊는 것이 아니다")
+
+print()
 print("[영속] **시작하자마자 한 번 저장한다**")
 print("      ← 첫 덩어리를 다 받고서야 파일이 생기면, 아직 쓰는 중인지 시작도 못 한 건지")
 print("        밖에서 구분할 수가 없다(실측: --read 가 FileNotFoundError 로 죽었다).")
@@ -185,6 +261,9 @@ print("        밖에서 구분할 수가 없다(실측: --read 가 FileNotFound
 class Dead:
     def __call__(self, prompt):
         raise RuntimeError("모델 호출 실패")
+
+
+flow.BACKOFF = (0,)      # 런은 실패하면 쉬었다 다시 한다. 시험에서는 안 쉰다.
 
 
 import tempfile as _tf                                                # noqa: E402
@@ -198,10 +277,13 @@ if _p.exists():
     ok(json.loads(_p.read_text(encoding="utf-8"))["chunks"] == [],
        "빈 원고로라도 저장된다  ← 그래야 '없다' 가 '시작 못 했다' 를 뜻한다")
 
-retry = [q for q in f.prompts if "직전 시도가 기각된 이유" in q]
-ok(retry, "기각 사유가 다음 프롬프트에 실린다")
-ok(any("나이" in q for q in retry), "무엇이 어긋났는지까지")
-ok(any("나머지는 자유다" in q for q in retry), "그것만 고치라고 한다  ← 자유를 죽이지 않는다")
+# 되먹임은 이제 원고 프롬프트가 아니라 **손질 프롬프트**로 간다 -- 원고를 다시 받지
+# 않고 걸린 문장만 주고받는다.
+retry = [q for q in f.prompts if "각 문장 앞 대괄호가 그 문장의" in q]
+ok(retry, "고칠 것이 손질 프롬프트로 간다  ← 원고를 다시 받지 않는다")
+ok(any("나이" in q or "어긋난다" in q for q in retry), "무엇이 어긋났는지까지")
+ok(all("전부 고쳐라" in q for q in retry),
+   "한 번에 전부 고치라고 한다  ← 하나씩 시키면 호출이 그만큼 는다")
 ok(len(bk["chunks"]) == 1, "채택된 덩어리만 남는다")
 
 print("[루프] 목표 자수까지 이어 쓰는가 · 파일로 남는가")
@@ -209,10 +291,17 @@ d = Path(tempfile.mkdtemp()) / "flow.json"
 
 
 class Clean:
+    """목표 분량까지 도는지만 본다. **덩어리마다 다른 글**을 돌려줘야 한다 -- 같은 글을
+    되풀이하면 메아리 자가 옳게 기각해서, 여기서 재려는 것과 다른 것을 재게 된다."""
+
+    def __init__(self):
+        self.n = 0
+
     def __call__(self, prompt):
         if "새로 확정된 사실만" in prompt:
             return "{}"
-        return "이어지는 산문. " * 130
+        self.n += 1
+        return clean(1900 + self.n)
 
 
 bk2 = flow.blank()
@@ -221,7 +310,7 @@ ok(res["chars"] >= 3000, f"{res['chars']:,}자까지 쓴다 ({res['chunks']}덩�
 ok(d.exists(), "덩어리마다 저장한다")
 saved = json.loads(d.read_text(encoding="utf-8"))
 ok(len(saved["chunks"]) == res["chunks"], "저장된 것과 메모리가 같다")
-ok(flow.text_of(saved).count("이어지는") > 10, "이어 붙여 읽힌다")
+ok(flow.text_of(saved).count("항구는 오후 세 시부터") > 2, "이어 붙여 읽힌다")
 
 print("[루프] 못 풀면 멈추는가  ← 같은 모순을 무한히 반복하지 않는다")
 
@@ -235,8 +324,9 @@ class Stubborn:
 
 bk3 = main_char()
 r3 = flow.step(bk3, Stubborn())
-ok(r3["status"] == "blocked", f"기각으로 끝난다 ({r3['status']})")
-ok(not bk3["chunks"], "원고에 안 들어간다")
+# **폐기는 없다.** 모순을 못 풀어도 원고는 쓰고, 못 고친 것은 장부에 적는다.
+ok(r3["status"] == "ok", f"버리지 않는다 ({r3['status']})")
+ok(bk3["chunks"], "원고에 들어간다  ← 예전에는 여기서 3,200자를 통째로 버렸다")
 
 print("[추출] 카드 칸을 뽑으라고 지시하는가")
 e = flow.extract_prompt("아무 산문")
@@ -245,10 +335,227 @@ for f in ("나이", "키", "성격", "가족", "과거", "트라우마", "취미
     ok(f in e, f"{f} 칸")
 ok("안 나온 칸은 빼라" in e and "지어내지 마라" in e,
    "안 나온 칸은 비운다  ← 추출기가 지어내면 그것이 원장의 거짓이 된다")
-ok("끝을 흐린다" in e, "말투를 어떻게 적는지 예시로 준다")
+# **예시가 아니라 물어볼 것으로 준다.** 말투 예문을 박아 두면 원장이 그 말투로만
+# 채워지고, 원장이 다시 다음 덩어리의 프롬프트가 된다 -- 예문이 두 바퀴 도는 자리다.
+ok("말끝을 어떻게 맺는지" in e, "말투에서 무엇을 보라고 하는지 짚어 준다")
+ok("존댓말인데" not in e, "말투를 예문으로 박아 두지는 않는다")
+
+
+print("[되먹임] **한 번에 안 고쳐지면 프롬프트가 틀린 것이다**")
+print("      ← 손질은 덩어리마다 한 번뿐이다. 같은 지시를 한 번 더 보내면 같은 것이 온다.")
+print("        그러니 고칠 것은 원고가 아니라 지시다 -- 그것도 손질이 아니라 초고에서.")
+_g = "그는 문을 열고 밖을 보면서 담배를 물었는데 불이 붙지 않아서 다시 뒤졌다."
+_it, _kd = flow.mend_items("\n".join([_g] * 10), [], "", with_kinds=True)
+ok("glue" in list(_kd.values())[0], f"걸린 갈래를 같이 돌려준다 ({list(_kd.values())[0]})")
+_v = flow.verify_patch([(_it[0][0], "짧게 끊었다.")], _kd)
+ok(_v.get("glue", (0, 0))[1] == 1, "고친 문장을 자에 다시 대 본다  ← 호출은 안 쓴다")
+ok(_v.get("long", (0, 0))[1] == 0, "안 고쳐진 갈래는 실패로 센다  ← '끼워 넣었다' 는 '고쳤다' 가 아니다")
+
+_bk = flow.blank()
+flow._mend_learn(_bk, {"glue": (flow.MEND_TRIES, 1)})
+ok(_bk["mend"]["glue"] == [flow.MEND_TRIES, 1], "성공/시도가 원고에 쌓인다  ← 이어 쓸 때도 이어 배운다")
+ok(flow.mend_broken(_bk), "반절을 못 넘기면 '안 고쳐지는 갈래' 로 잡는다")
+_bk2 = flow.blank()
+flow._mend_learn(_bk2, {"glue": (2, 0)})
+ok(not flow.mend_broken(_bk2),
+   f"몇 번 안 해 보고 단정하지 않는다 ({flow.MEND_TRIES}번은 해 본다)")
+_bk["chunks"] = ["앞."]
+_ap = flow.write_prompt(_bk)
+ok("[초고에서 막을 것]" in _ap, "안 고쳐지는 갈래를 초고 단계로 옮긴다  ← 호출은 안 는다")
+ok("처음 쓸 때 아예 그렇게 쓰지 마라" in _ap, "되받아 고치지 말고 미리 막으라고 한다")
+ok("[초고에서 막을 것]" not in flow.write_prompt(dict(flow.blank(), chunks=["앞."])),
+   "안 걸린 갈래로는 아무 말도 안 한다  ← 늘 켜진 경고는 꺼진 것과 같다")
+
+
+print("[층] **문면층만 싣는다** -- 기본값")
+print("      ← 재는 것 열넷이 전부 문면층인데 프롬프트는 서사까지 요구하고 있었다.")
+print("        재지 않는 것을 시키면 지켜졌는지 알 수가 없고, 한꺼번에 시키면 안 지켜진다.")
+_was = flow.LAYER
+try:
+    flow.LAYER = "text"
+    _bk = flow.blank(); _bk["chunks"] = ["앞."] * 4; _bk["genre"] = "youth"
+    _tp = flow.write_prompt(_bk)
+    for _gone in ("[확산]", "[전개]", "[어디로 가든]", "[리얼리즘]", "[표류가 먼저다]",
+                  "[청춘물]", "[세기]"):
+        ok(_gone not in _tp, f"{_gone} 을 안 싣는다")
+    # 필수 목록은 남되 **문면 항목만** 남는다 -- 점층과 회수는 문장 층위의 일이다.
+    ok("[이 덩어리에 반드시]" in _tp and "심어 놓고 회수한다" in _tp,
+       "필수 목록의 문면 항목은 남는다  ← 점층과 회수는 문장의 일이다")
+    ok("욕망 하나가 결판난다" not in _tp and "인물이 이 덩어리를 지나며" not in _tp,
+       "필수 목록의 서사 항목은 빠진다")
+    for _keep in ("[문장]", "[리듬]", "[말맛]", "[대사]", "[점층]",
+                  "[세계 — 지금까지 놓인 것들]", "[고정]"):
+        ok(_keep in _tp, f"{_keep} 은 남는다")
+    ok("(아직 비어 있다)" in _tp or "인물" in _tp,
+       "원장 자체는 싣는다  ← 없으면 모순 검사가 죽는다")
+    flow.LAYER = "all"
+    _ap = flow.write_prompt(_bk)
+    ok(len(_tp) < len(_ap) - 2000,
+       f"프롬프트가 줄어든다 ({len(_ap):,} -> {len(_tp):,}자)")
+    ok("[확산]" in _ap, "층을 켜면 예전 그대로다  ← 지우는 것이 아니라 안 싣는 것이다")
+finally:
+    flow.LAYER = _was
 
 print()
 if fails:
     print(f"연속 집필: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)
 print("연속 집필: 원장 성장 · 모순 검출 · 첫 덩어리 흐름 · 되먹임 · 영속 · 한도 -- 통과")
+
+print("[되먹임] 고칠 것을 한 번에 다 보내는가  ← 하나씩 시키면 호출이 그만큼 는다")
+
+
+class Limp:
+    """게이트에 계속 걸리는 산문. 손질 프롬프트를 받아 적어 둔다."""
+
+    def __init__(self):
+        self.sent = []
+
+    def __call__(self, prompt):
+        if "새로 확정된 사실만" in prompt:
+            return json.dumps({}, ensure_ascii=False)
+        if "각 문장 앞 대괄호가" in prompt:
+            self.sent.append(prompt)
+            return json.dumps({}, ensure_ascii=False)
+        # 서로 다른 문장이어야 한다 -- 같은 문장은 원문에서 어느 것인지 못 짚어
+        # 손질 목록에서 하나로 접힌다(그것도 옳은 동작이다).
+        return " ".join(f"{i}번 배가 들어왔다." for i in range(40))
+
+
+_lm = Limp()
+flow.step(main_char(), _lm)
+ok(len(_lm.sent) == 1, f"손질은 한 번만 부른다 ({len(_lm.sent)}회)")
+ok(_lm.sent and _lm.sent[0].count("\n1. ") == 1, "번호를 붙여 한 장에 담는다")
+ok(_lm.sent and _lm.sent[0].count(". [") > 1,
+   "여러 문장을 한 번에 보낸다  ← 갈래마다 부르면 호출이 갈래 수만큼 는다")
+
+
+print("[호출] 버릴 원고에 추출을 쓰지 않는가  ← 규칙은 그대로, 두드리는 횟수만 줄인다")
+
+
+class Count:
+    def __init__(self):
+        self.w = self.x = self.m = 0
+
+    def __call__(self, prompt):
+        if "새로 확정된 사실만" in prompt:
+            self.x += 1
+            return json.dumps({}, ensure_ascii=False)
+        if "각 문장 앞 대괄호가" in prompt:
+            self.m += 1
+            return json.dumps({}, ensure_ascii=False)
+        self.w += 1
+        return "짧다. " * 80
+
+
+_c = Count()
+flow.step(main_char(), _c)
+
+ok(_c.w + _c.x + _c.m <= 4,
+   f"한 덩어리에 {_c.w + _c.x + _c.m}회  ← 예전에는 12회였다 (화자 6 · 추출 6)")
+ok(_c.w == 1, f"화자는 한 번만 부른다 ({_c.w}회)  ← 원고를 다시 받지 않는다")
+ok(_c.m <= 1, f"손질도 한 번만 부른다 ({_c.m}회)  ← 갈래를 나눠 부르지 않는다")
+ok(_c.x <= 1,
+   f"추출도 한 번뿐이다 ({_c.x}회)  ← 모순이 없는데 고친 뒤 원장을 다시 사지 않는다")
+
+
+class Few:
+    """리듬만 한둘 걸리게 하는 가짜 화자 -- 결함(모순·메아리)은 없다."""
+
+    def __init__(self):
+        self.w = self.x = self.m = 0
+
+    def __call__(self, prompt):
+        if "새로 확정된 사실만" in prompt:
+            self.x += 1
+            return json.dumps({}, ensure_ascii=False)
+        if "각 문장 앞 대괄호가" in prompt:
+            self.m += 1
+            return json.dumps({}, ensure_ascii=False)
+        self.w += 1
+        return "짧다. " * 80
+
+
+print("[호출] 한 문장 고치자고 호출 한 번을 쓰는가")
+_f = Few()
+flow.step(main_char(), _f)
+ok(flow.MEND_MIN >= 2, f"손질 문턱이 있다 (MEND_MIN={flow.MEND_MIN})")
+_items = flow.mend_items("짧다. " * 80, [], "")
+ok(_f.m == (1 if len(_items) >= flow.MEND_MIN else 0),
+   f"걸린 것 {len(_items)}개 · 손질 {_f.m}회  ← 문턱 아래면 다음 덩어리로 넘긴다")
+_two = "요우는 서른이 되었다. 요우는 서른이 되었다. 그리고 문을 닫았다."
+_it = flow.mend_items(_two, ["요우의 나이: 앞에서는 '42' 였는데 지금 '30' 다"],
+                      "요우는 서른이 되었다.")
+ok(len({s for s, _ in _it}) == len(_it),
+   "같은 문장을 두 번 보내지 않는다  ← 번호가 겹치면 되받은 것을 못 끼운다")
+ok(any(" / " in why for _, why in _it),
+   f"두 갈래에 걸린 문장은 딱지를 겹쳐 붙인다  ← 뒤엣것을 버리면 이번 회에 안 고쳐진다")
+ok("한꺼번에" in flow.mend_prompt(_it),
+   "겹친 딱지를 한 문장으로 풀라고 말한다  ← 수정은 한 번이다")
+
+ok(flow.mend_items("요우는 서른이 되었다. 그리고 문을 닫았다.",
+                   ["요우의 나이: 앞에서는 '42' 였는데 지금 '30' 다"], ""),
+   "모순은 하나여도 고친다  ← 결함은 문턱을 안 본다")
+
+_debt_before = Path("drift.debt.jsonl").exists()
+flow.step(main_char(), Few())
+ok(Path("drift.debt.jsonl").exists() == _debt_before,
+   "원고 경로가 없으면 장부를 안 쌓는다  ← 테스트가 실측 장부를 오염시키던 자리다")
+
+
+print("[손질] 걸린 문장만 보내는가  ← input 토큰을 아끼는 자리다")
+_lines_in = ["짧다.", "또 짧다.", "역시 짧다."]
+_items = [(l, "짧다") for l in _lines_in]
+_pp = flow.mend_prompt(_items)
+ok(len(_pp) < 800, f"손질 프롬프트가 {len(_pp)}자  ← 원고 프롬프트는 18,000자다")
+for i, l in enumerate(_lines_in):
+    ok(f"{i + 1}. [짧다] {l}" in _pp, f"{i + 1}번 문장이 문제와 함께 실린다")
+ok("뜻과 사건은 그대로" in _pp, "뜻을 바꾸지 말라고 못박는다")
+ok("전부 고쳐라" in _pp, "한 번에 전부 고치라고 한다")
+
+_t = "가. 짧다. 나."
+ok(flow.apply_patch(_t, ["짧다."], {"1": "길게 늘여 쓴 문장이다, 정말로."})[1] == 1,
+   "고쳐 온 문장이 끼워진다")
+ok(flow.apply_patch(_t, ["짧다."], {"1": "짧"})[1] == 0,
+   "짧아져서 오면 안 넣는다  ← 분량으로 지표를 맞추는 길")
+ok(flow.apply_patch(_t, ["짧다."], {"9": "아무거나"})[1] == 0,
+   "없는 번호는 무시한다")
+ok(flow.apply_patch("같다. 같다.", ["같다."], {"1": "아주 길게 고쳐 온 문장이다."})[1] == 0,
+   "여러 군데 있는 문장은 손대지 않는다  ← 어느 것인지 알 수 없다")
+
+print("[분량] 한 번에 받을 만큼 받는가")
+ok(flow.CHUNK >= 3000, f"한 덩어리 {flow.CHUNK}자  ← 1,400자는 한 번 출력 한도의 1/8이었다")
+
+print("[구조] 모순도 버리기 전에 그 문장만 고쳐 보는가  ← 폐기는 마지막이다")
+_cl = ["요우의 나이: 앞에서는 '42' 였는데 지금 '30' 다"]
+_hit = flow.clash_lines("요우는 서른이다. 항구는 조용했다. 요우가 웃었다.", _cl)
+ok(_hit and all("요우" in h for h in _hit),
+   f"어긋난 이름이 든 문장만 고른다 ({_hit})")
+ok("항구는 조용했다." not in _hit, "상관없는 문장은 안 보낸다")
+_cp = flow.clash_prompt(_cl, _hit)
+ok(_cl[0] in _cp and "앞에서 확정된 쪽이 맞다" in _cp, "무엇이 어긋났는지 알려준다")
+ok(len(_cp) < 900, f"모순 손질 프롬프트가 {len(_cp)}자  ← 원고를 다시 쓰면 18,000자다")
+
+
+class Refuse:
+    """모순을 계속 뱉지만, 문장만 고쳐 달라면 고쳐 주는 배우."""
+
+    def __init__(self):
+        self.mended = False
+
+    def __call__(self, prompt):
+        if "앞에서 확정된 쪽이 맞다" in prompt:
+            self.mended = True
+            return json.dumps({"1": "요우는 마흔둘이고 오늘도 늦게 왔다, 늘 그렇듯."},
+                              ensure_ascii=False)
+        if "새로 확정된 사실만" in prompt:
+            if self.mended:
+                return json.dumps({"people": {"요우": {"나이": "42"}}}, ensure_ascii=False)
+            return json.dumps({"people": {"요우": {"나이": "30"}}}, ensure_ascii=False)
+        return "요우는 서른이다.\n" + "항구는 조용하고 사람들은 천천히 걸었다, 늘 그렇듯. " * 12
+
+
+_bk4 = main_char()
+_r4 = flow.step(_bk4, Refuse())
+ok(_r4["status"] == "ok", f"버리지 않고 살린다 ({_r4['status']})")
+ok(_bk4["chunks"], "원고에 들어간다  ← 3,200자를 통째로 버리던 자리다")

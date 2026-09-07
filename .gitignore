@@ -56,9 +56,29 @@ compression/codecs/champion.py
 novel/*.json
 novel/*.scenes.jsonl
 !novel/plan.json
+# **이 둘은 코드다.** 원고가 아니라 설정이라 저장소에 있어야 한다 -- 없으면 부르는
+# 쪽이 기본값으로 물러서서, CI 에서는 표본에서 온 수가 아니라 옛 짐작이 살아난다
+# (실측: 게이트가 '대사 몫 0.35~0.65' 로 떨어져 나흘치 커밋이 전부 빨갛게 됐다).
+!novel/targets.json
+!novel/directives.json
 
 # 자유 씨앗 원장 -- 무엇을 이미 썼는지 기록. 원고와 같은 이유로 추적하지 않는다.
 novel/seeds_used.json
 novel/seed_current.json
 novel/seeded.json
 novel/seeded.scenes.jsonl
+
+# 원고 옆에 쌓이는 못 고친 것들 -- 부산물이라 저장소에 안 넣는다
+*.debt.jsonl
+
+# 표본 소설. 저작물이라 저장소에 넣지 않는다 -- VM 안에만 둔다.
+novel/corpus/
+novel/holdout/
+
+# 튜너 장부 -- 시도 기록과 챔피언. 런마다 쌓인다.
+novel/tune.jsonl
+novel/tune.best.json
+novel/arm.json
+novel/spine.json
+novel/final.json
+novel/final.txt

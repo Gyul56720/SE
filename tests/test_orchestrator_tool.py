@@ -119,7 +119,20 @@ def test_failed_run_is_reported_as_resumable() -> None:
         "def solve(inputs):\n    raise RuntimeError('일부러 터뜨림')\n",
         "def check(output, inputs):\n    return True, ''\n")
     try:
-        ot.resume_run(run_dir.name)
+        # **수리를 끄고 돌린다.** 키가 있는 기계에서는 planner.repair_node 가 일부러
+        # 터뜨린 노드를 LLM 으로 고쳐서 런이 성공해 버린다 -- 그러면 "실패한 런을
+        # 실패로 보고하는가" 를 볼 수가 없다. 키가 없는 데(CI · 개발 컨테이너)서는
+        # 수리가 알아서 실패하니 통과하고, **키를 제대로 넣은 사람만** 깨진다.
+        # 여기서 보려는 것은 보고이지 수리가 아니다.
+        # **고치는 길이 둘이다.** 수리만 끄면 재계획이 두 라운드 만에 스스로
+        # 풀어 버린다(실측). solve.py 가 둘 다 끄는지 여기서 못박는다.
+        _sv = (Path(__file__).resolve().parent.parent
+               / "orchestrator" / "solve.py").read_text(encoding="utf-8")
+        _gate = _sv.split('SE_ORCH_NO_REPAIR')[1][:200] if "SE_ORCH_NO_REPAIR" in _sv else ""
+        check("max_node_repairs = 0" in _gate and "max_replans = 0" in _gate,
+              "SE_ORCH_NO_REPAIR 가 수리와 재계획을 **둘 다** 꺼야 한다 "
+              "-- 하나만 끄면 다른 하나가 문제를 풀어 버린다")
+        ot.resume_run(run_dir.name, env={"SE_ORCH_NO_REPAIR": "1"})
         check(_wait_done(run_dir), "실패 런이 시간 안에 끝나지 않았다.")
         status = ot.run_status(run_dir.name)
         check("[실패] node" in status, f"실패한 노드를 실패로 보고하지 않는다:\n{status}")

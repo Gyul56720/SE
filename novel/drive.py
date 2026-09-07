@@ -186,6 +186,14 @@ def default_llm(prompt: str) -> str:
     셈이고, 3화면 300번이다. 후보 목록은 런 중에 바뀌지 않는다. 쿼터 소진·영구 제외·성공
     pin 같은 **상태는 quota_tracker 가 파일로 들고 있으므로** 풀을 재사용해도 그대로
     반영된다 -- 캐시해서 잃는 것이 없다."""
+    _ensure_pool()
+    mod, pool = _POOL
+    return mod.call(pool, _flatten(prompt), pool_id="novel")[0]
+
+
+def _ensure_pool() -> None:
+    """후보 풀을 한 번만 세운다. build_pool 은 키마다 모델 목록을 조회하므로(API 호출)
+    프롬프트마다 다시 하면 한 회차에 100번을 더 묻는다."""
     global _POOL
     if _POOL is None:
         import sys
@@ -197,8 +205,32 @@ def default_llm(prompt: str) -> str:
             raise RuntimeError("LLM 후보 풀이 비었다 -- GEMINI_API_KEY 를 설정하라")
         _log(f"[풀] 후보 {len(_POOL[1])}개: "
              f"{', '.join(l for l, _ in _POOL[1][:4])}...")
+
+
+def _extractor(llm):
+    """추출에 쓸 콜러블. **주입한 것은 주입한 대로 쓴다** -- 기본 풀로 돌 때만 gemma 로
+    돌린다. 안 그러면 가짜 LLM 을 넣은 테스트가 진짜 API 로 새어 나간다."""
+    if isinstance(llm, dict):
+        return _llm_for(llm, "extractor")
+    return extractor_llm if llm is default_llm else llm
+
+
+def extractor_llm(prompt: str) -> str:
+    """추출 전용 -- **gemma 를 먼저 쓴다.**
+
+    추출은 판단하지 않고 옮기기만 한다(원고에서 인물·장소·사물을 JSON 으로). 문장력이
+    필요 없는 자리인데 호출 수는 화자와 맞먹는다. 그런데 지금까지 이것도 flash 로 나갔다.
+
+    분당 한도는 모델별로 따로 걸린다. gemma 는 계열이 달라 자기 통을 따로 갖는데,
+    _model_rank 가 품질 순으로 맨 뒤에 두는 바람에 다른 것이 전부 429 일 때만 닿았다
+    (실측: 사용량 1~2건). **비어 있는 통을 놀리면서 찬 통 앞에 줄을 서 있던 것이다.**
+    추출을 그쪽으로 돌리면 flash 의 분당 한도가 통째로 산문에 남는다. 산문 품질은
+    건드리지 않는다 -- 화자는 그대로 flash 다.
+
+    gemma 가 없거나 전부 막히면 평소 풀로 물러난다(call 이 알아서 다음 후보로 간다)."""
+    _ensure_pool()
     mod, pool = _POOL
-    return mod.call(pool, _flatten(prompt), pool_id="novel")[0]
+    return mod.call(pool, _flatten(prompt), pool_id="novel", prefer=r"gemma")[0]
 
 
 def _flatten(prompt: str) -> str:

@@ -17,7 +17,27 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import os
+# **살아 있는 targets.json 을 안 읽는다.** 목표는 지금 겨누는 작품에 맞춰 좁혀지는데,
+# 그때마다 이 테스트가 깨지면 목표를 조일 수 없게 된다(실측: A 하나로 좁히자 표본
+# 넷이 폭을 벗어나 밤샘 루프가 preflight 에서 멈췄다). 여기서 고정하는 것은 관문의
+# 논리이지 어느 작품의 수가 아니다.
+os.environ["DRIFT_TARGETS"] = str(
+    __import__("pathlib").Path(__file__).resolve().parent / "fixtures" / "targets.broad.json")
+
+
 from novel import flow, rhythm, style                                 # noqa: E402
+
+# **이 파일은 예전 프롬프트를 켜고 본다.** 기본은 axes 다(flow.PROMPT="axes") --
+# 프롬프트를 재는 축에서 짓고, 손으로 쓴 문장론은 한 줄도 안 넣는다.
+# 여기서 검사하는 것은 그 옛 작법서 블록의 내용이라 켜 놓고 본다.
+flow.PROMPT = "legacy"
+
+
+# **이 파일은 서사층까지 켜고 본다** -- 기본값은 문면층만이다(flow.LAYER = "text").
+# 여기서 검사하는 것은 서사층 블록의 내용이라 켜 놓고 본다.
+flow.LAYER = "all"
+
 
 fails = []
 
@@ -57,15 +77,25 @@ ok(rhythm.check("그는 갔다.") == [], "너무 짧은 글은 재지 않는다 
 print()
 print("[개입] **리듬은 원고를 죽이지 않는다** -- 모순만 죽인다")
 src = Path(flow.__file__).read_text(encoding="utf-8")
-ok("제일 짙은 것을 채택한다" in src, "끝내 못 고치면 제일 짙은 후보를 쓴다")
-ok("그대로 채택한다" in src, "후보가 없으면 그대로라도 쓴다")
-ok("앞서 통과한 후보를 채택한다" in src,
-   "마지막 시도가 모순이면 앞의 후보로 되돌아간다  ← 리듬 재시도가 원고를 잃게 하면 안 된다")
+ok("폐기는 없다" in src, "끝내 못 고쳐도 원고는 쓴다")
+ok("원고는 그대로 쓴다" in src, "못 고친 것은 버리는 대신 장부에 적는다")
+ok("모순은 원고 전체가 아니라 한두 문장에 있다" in src,
+   "모순도 그 문장만 고쳐 살린다  ← 3,200자를 통째로 버리던 자리다")
 
 print()
 print("[일치] **코드가 재는 기준과 모델에게 주는 기준이 같아야** 고칠 수가 있다")
 p = flow.write_prompt(flow.blank(flow.FIRST))
-ok(f"{int(rhythm.LIMITS['long'] * 100)}%" in p, "긴 문장 비율을 프롬프트가 같이 말한다")
+# 이제 이 숫자는 **덩어리마다 다르다** -- 고정 하한은 그 자체가 주기가 됐다.
+_bk = flow.blank(flow.FIRST)
+ok(f"{flow._telllong(_bk):.0%}" in p,
+   "이 대목의 긴 문장 몫을 프롬프트가 같이 말한다  ← 자와 프롬프트가 같은 숫자를 봐야 한다")
+ok("덩어리마다 다르다" in p, "고정값이 아니라고 말해 준다")
+_seen = [0.12] * 6
+ok(rhythm.aim("씨", 6, _seen, rhythm.LONG_LO, rhythm.LONG_HI) > sum(_seen) / len(_seen),
+   "계속 짧게 나오면 목표를 올린다  ← 방향 탐색: 모자란 쪽으로 민다")
+_seen = [0.38] * 6
+ok(rhythm.aim("씨", 6, _seen, rhythm.LONG_LO, rhythm.LONG_HI) < sum(_seen) / len(_seen),
+   "계속 길게 나오면 목표를 내린다")
 ok(f"{int(rhythm.LIMITS['da'] * 100)}%" in p, "짧은 '-다' 비율을 프롬프트가 같이 말한다")
 ok("네 번" in p, "연속 한도를 프롬프트가 같이 말한다")
 
@@ -76,6 +106,114 @@ ok("만연체를 쓰지 마라" not in n, "'만연체 금지' 를 뺐다  ← �
 ok("길이를 섞" in n, "길이를 섞으라고 먼저 말한다")
 ok("말이 정보를 나르게 하지 마라" in n,
    "대사가 용건만 말하지 않게 한다  ← 딱딱함의 정체가 이것이다")
+
+print()
+print("[점층] **재지 않는 것은 안 지켜진다**")
+print("      ← 지금까지 style.py 의 프롬프트에만 적혀 있었다. 이 세션에서 확인된 것이")
+print("        하나 있다면 그것이다. 그래서 센다.")
+CLIMBED = "\n".join([
+    "비행기가 착륙하자 스피커에서 조용한 배경음악이 흘러나오기 시작했다.",
+    "그것은 어떤 오케스트라가 감미롭게 연주하는 옛 곡이었다.",
+    "그리고 그 멜로디는 언제나처럼 나를 어지럽혔다.",
+    "아니, 다른 때와는 비교가 되지 않을 정도로 격렬하게 머리 속을 뒤흔들었다.",
+    "나는 고개를 들어 상공에 떠 있는 어두운 구름을 오래 바라보았다.",
+])
+ok(rhythm.climb(CLIMBED) >= 3, f"기준 문장에서 점층을 잡아낸다 ({rhythm.climb(CLIMBED)}개)")
+ok(not any("받아 올리는" in c for c in rhythm.check(CLIMBED)), "점층한 글은 통과한다")
+ok(rhythm.climb(FLAT) == 0, "낱개로 선 문장들에서는 0이다")
+ok(any("받아 올리는" in c for c in rhythm.check(FLAT)), "모자라면 짚는다")
+
+print()
+print("[회수] **심어 놓고 나중에 원인으로 돌려 놓는 것도 점층이다**")
+print("      ← 사용자가 짚은 대목: 걸쳐 준 옷 한 벌이 여남은 문장 뒤에 땀으로 돌아온다.")
+print("        이음말도 수도 동선도 아니어서 자가 못 봤다.")
+HELD = "\n".join([
+    "어머니는 두툼한 스웨터를 입혀 주었다.",
+    "나는 혼자서 전철을 탔다.",
+    "출입문 앞에 붙어 서서 바깥을 보았다.",
+    "학교는 지도를 볼 것도 없이 찾을 수 있었다.",
+    "가파른 고갯길에 아이들이 줄지어 걸었다.",
+    "고갯길을 오르면서 스웨터 탓에 계속 땀을 흘렸다."])
+ok(rhythm.holdclimb(HELD) >= 1, f"던진 것이 뒤에서 돌아오면 센다 ({rhythm.holdclimb(HELD)}개)")
+ok(rhythm.holdclimb(FLAT) == 0, "대명사가 되풀이되는 것은 회수가 아니다")
+ok(rhythm.holdclimb("\n".join(["같은 말. 같은 말."] * 3)) == 0,
+   "바로 옆 문장의 되풀이도 회수가 아니다  ← 거리가 있어야 심은 것이 된다")
+ok(rhythm.holdclimb("\n".join(f"{i}번 낱말{i} 낱말{i}." for i in range(40))
+                    + "\n" + " ".join(f"낱말{i}" for i in range(40))) <= rhythm.HOLD_CAP,
+   f"위로 열어 두지 않는다 (최대 {rhythm.HOLD_CAP})  ← 길기만 하면 저절로 통과한다")
+_hp = flow.write_prompt(flow.blank())
+ok("심어 놓고 회수한다" in _hp, "프롬프트가 심기와 회수를 시킨다  ← 재기만 하고 안 시키면 안 나온다")
+ok("매번 달라야 한다" in _hp and f"{rhythm.HOLD_GAP}문장" not in _hp,
+   "거리를 수로 못 박지 않는다  ← 적어 주면 원고가 정확히 그 수로 회수한다")
+ok(not any("받아 올리는" in c for c in rhythm.check(REFERENCE)),
+   "기준 문장은 통과한다  ← 자가 기준을 벌하면 자가 틀린 것이다")
+ok(rhythm.score(FLAT) > rhythm.score(REFERENCE), "점수에도 실린다")
+_p = flow.write_prompt(flow.blank())
+ok(f"{rhythm.LIMITS['climb']}개마다" in _p, "프롬프트가 같은 숫자를 말한다")
+ok("**점층**" in flow.write_prompt(dict(flow.blank(), chunks=["앞."])),
+   "맨 끝 필수 목록에도 오른다  ← 묻히면 안 지켜진다")
+
+print()
+print("[늘어짐] **'길게 써라' 가 '절을 이어 붙여라' 로 풀린다**")
+print("      ← 길이를 글자수로 재니, 글자수를 늘리는 제일 싼 답이 '-고 · -면서 · -는데' 다.")
+print("        게다가 손질 지시가 짧은 문장마다 '쉼표로 이어 붙여 넘겨라' 라고 시켰다.")
+GLUED = "\n".join(["그는 문을 열고 밖을 보면서 담배를 물었는데 불이 붙지 않아서 "
+                   "다시 주머니를 뒤졌다."] * 10)
+ok(rhythm.glue(GLUED) > rhythm.GLUE_MAX, f"늘어진 글을 잡는다 ({rhythm.glue(GLUED):.1f}개)")
+for _f in ("tests/sample_outside.txt", "tests/sample_job.txt"):
+    _t = (Path(__file__).resolve().parent.parent / _f).read_text(encoding="utf-8")
+    ok(rhythm.glue(_t) <= rhythm.GLUE_MAX,
+       f"{_f.split('_')[-1][:-4]} 표본은 통과한다 ({rhythm.glue(_t):.1f}개)  ← 자가 기준을 벌하면 자가 틀렸다")
+ok(any("길이를 절로 벌지 마라" in c for c in rhythm.check(GLUED)), "무엇이 문제인지 말해 준다")
+ok("glue" in rhythm.spots(GLUED), "걸린 문장을 짚어 준다  ← 그 문장만 고치면 된다")
+ok(rhythm.check(REFERENCE) == [], "기준 문장은 여전히 통과한다")
+_pt = flow.write_prompt(flow.blank())
+ok("쉼표로 이어 붙여" not in _pt,
+   "'쉼표로 이어 붙여라' 를 뺐다  ← 늘어짐을 시키는 지시가 프롬프트에 있었다")
+ok("절을 잇대서 늘이지 마라" in flow.PATCHABLE["long"],
+   "짧은 문장을 늘릴 때도 절을 잇대지 말라고 한다")
+
+print()
+print("[박자] **하한만 두면 하한을 정확히, 규칙적으로 맞춘다**")
+print("      ← 실측 2026-09-05: '단문 3에 장문 1이 너무 반복적으로 나온다.'")
+print("        긴 문장 15% 이상을 요구했더니 정확히 네 문장에 하나씩 길게 썼다.")
+
+
+def _mk(lens):
+    return "\n".join("가" * n + "다." for n in lens)
+
+
+ok(rhythm.beat(REFERENCE)[1] > rhythm.BEAT_MIN_VAR,
+   f"기준 문장은 통과한다 (들쭉날쭉 {rhythm.beat(REFERENCE)[1]:.2f})")
+ok(rhythm.beat(_mk([20, 20, 20, 60] * 5))[1] < rhythm.BEAT_MIN_VAR,
+   "단문3+장문1 반복은 걸린다  ← 간격이 3, 3, 3, 3 이면 그건 박자표다")
+ok(rhythm.beat(_mk([18, 22, 19, 25, 70] * 4))[1] < rhythm.BEAT_MIN_VAR,
+   "단문4+장문1 반복도 걸린다  ← 주기의 길이는 상관없다")
+ok(rhythm.beat(_mk([12, 55, 90, 9, 18, 22, 7, 60, 15, 11, 25, 80]))[1]
+   > rhythm.BEAT_MIN_VAR, "제멋대로면 통과한다")
+ok(rhythm.beat("가다. 나다.")[0] < rhythm.BEAT_MIN,
+   "긴 문장이 몇 개 없으면 주기를 안 따진다  ← 셋으로는 규칙인지 우연인지 모른다")
+ok(any("규칙적인 자리" in c for c in rhythm.check(_mk([20, 20, 20, 60] * 5))),
+   "걸리면 무엇이 문제인지 말해 준다")
+
+# **자가 원문 서식에 흔들리면 목표값이 통째로 거짓이 된다.** 표본 A 의 07·12장은
+# 온점 뒤에 공백이 없어서, 공백만 보는 자로 재니 줄 하나가 통째로 한 문장이 되었다
+# -- 온점 131개에 문장 58개, 묘사 문장 평균 82자. 표본이 두 봉우리로 갈라져 보였고
+# 목표값 마흔일곱 개가 전부 그 위에서 나왔다.
+print("\n[문장 끝] **공백으로만 알 수 없다**")
+_t, _ = rhythm._lines("갔다.그는 왔다.")
+ok(len(_t) == 2, f"온점 뒤에 공백이 없어도 끊는다 ({_t})")
+_t, _ = rhythm._lines("갔다. 그는 왔다.")
+ok(len(_t) == 2, "공백이 있으면 당연히 끊는다")
+_t, _ = rhythm._lines('그는 "가자." 라고 했다. 나는 따라갔다.')
+ok(len(_t) == 2, f'닫는 따옴표가 끼어도 끊는다 ({_t})')
+_t, _ = rhythm._lines("3.5초였다.그리고 끝났다.")
+ok(len(_t) == 2 and _t[0] == "3.5초였다.", f"숫자의 온점은 안 끊는다 ({_t})")
+_t, _ = rhythm._lines("갔다…돌아왔다.")
+ok(len(_t) == 2, f"말줄임도 문장 끝이다 ({_t})")
+_stuck = "그는 걸었다.해는 졌다.바람이 불었다.문이 닫혔다."
+ok(len(rhythm._lines(_stuck)[0]) == 4,
+   "온점 넷이면 문장 넷이다  ← 여기가 틀리면 문장 평균 길이가 네 배로 나온다")
 
 print()
 if fails:

@@ -1,0 +1,125 @@
+"""쿼터 장부를 사람이 읽게 펼친다 -- "소진" 이 정말 하루치인지 눈으로 대조하려고.
+
+로그의 "오늘 치 소진 N개" 는 quota_tracker 의 **추정**이다. 추정은 429 를 맞은 순간
+count 를 상한으로 올려 박는 방식이라, 구글이 보낸 429 가 사실 분당 한도였는데 이름을
+못 알아본 경우에도 하루치로 남는다. 그 차이를 여기서 본다.
+
+    python3 scripts/quota_show.py          # 오늘자 장부
+    python3 scripts/quota_show.py --clear  # 오늘자 소진 표시만 지운다(죽은 모델은 남긴다)
+"""
+from __future__ import annotations
+
+import argparse
+import sys
+import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import quota_tracker as q                                             # noqa: E402
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--clear", action="store_true",
+                    help="오늘자 소진 표시를 지운다 -- 추정이 틀렸다고 판단했을 때만")
+    # **루프가 물어볼 수 있게 한다.** 밤새 도는 쪽은 표를 못 읽는다 -- 한 줄과
+    # 종료 코드가 필요하다. 쓸 것이 하나도 없는데 계속 두드리면 429 만 쌓인다.
+    ap.add_argument("--brief", action="store_true",
+                    help="한 줄로 요약하고, 쓸 후보가 없으면 3 으로 끝난다")
+    a = ap.parse_args()
+
+    # **후보 풀을 먼저 세운다.** 장부에는 **써 본 것만** 적힌다 -- 새 키를 넣어도 한 번도
+    # 안 불렸으면 줄 자체가 없어서, 키가 들어왔는지 여기서 확인할 수가 없었다(실측:
+    # "키 두 개밖에 안 찍혔다"). 풀을 세워 놓고 장부를 얹으면 안 쓴 것도 보인다.
+    pool_labels = []
+    try:
+        import sys as _sys
+        _sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "orchestrator"))
+        import llm_pool
+        llm_pool.ROSTER = ""                    # 명부에 걸러진 것도 다 보여 준다
+        pool_labels = [lb for lb, _ in llm_pool.build_pool()]
+    except Exception as e:                      # 키가 없으면 장부만 보여 준다
+        print(f"(후보 풀을 못 세웠다: {type(e).__name__} -- 장부에 있는 것만 보여 준다)")
+
+    data = q._load()
+    today = q._today()
+    cool = data.get("_rpm_cooldown", {}) or {}
+    dead = data.get("_dead", {}) or {}
+    now = time.time()
+
+    labels = set(pool_labels) | {
+        k for k, v in data.items()
+        if not k.startswith("_") and isinstance(v, dict) and "count" in v}
+    rows = []
+    for label in sorted(labels):
+        rec = data.get(label) if isinstance(data.get(label), dict) else {}
+        left = q.remaining(label)
+        wait = max(0.0, float(cool.get(label, 0)) - now)
+        rows.append((label, rec.get("date", "-"), rec.get("count", 0), left, wait))
+
+    keys = sorted({label.split(":", 1)[0] for label in labels})
+    # 지금 부를 수 있는 후보: 영구배제도 아니고, 오늘 치를 다 쓴 것도 아니고,
+    # 분당 쉼도 안 걸린 것.
+    alive = [lb for lb, d, _c, left, w in rows
+             if lb not in dead and w <= 0 and not (left <= 0 and d == today)]
+    unseen = [lb for lb in pool_labels if lb not in data and lb not in dead]
+    if a.brief:
+        # **게이트는 장부가 아니라 지금 부를 수 있는 후보로 판단한다.** 장부에는 어제
+        # 쓴 라벨이 남아 있고 remaining() 은 날짜가 다르면 한도 전액을 돌려주므로,
+        # 키가 하나도 없어도 "쓸 수 있는 것 25개" 가 나온다(실측). 그 말을 믿고 루프가
+        # 밤새 빈 바퀴를 돈다.
+        if not pool_labels:
+            print("쿼터: **후보를 하나도 못 세웠다** -- 키가 없거나 설치가 깨졌다. "
+                  "기다린다고 풀릴 문제가 아니다(.env 를 확인해라)")
+            return 4
+        alive = [lb for lb in alive if lb in pool_labels]
+        unseen = [lb for lb in unseen if lb in pool_labels]
+        # **헤더도 지금 있는 것으로 센다.** 장부에는 예전에 쓰던 키 · 바꾼 키 · 지운
+        # 키가 다 남아 있어서, 그 이름들까지 세면 키 세 개가 스물세 개로 보인다
+        # (실측). 그 수를 보고 사람은 .env 가 이상한가 의심하게 된다.
+        keys = sorted({lb.split(":", 1)[0] for lb in pool_labels})
+        print(f"쿼터: 키 {len(keys)}개 · 후보 {len(pool_labels)}개 · "
+              f"지금 쓸 수 있는 것 {len(alive) + len(unseen)}개 · "
+              f"소진 {sum(1 for _, d, _c, l, w in rows if l <= 0 and w <= 0 and d == today)}개 · "
+              f"분당쉼 {sum(1 for _, _, _c, _l, w in rows if w > 0)}개 · "
+              f"영구배제 {len(dead)}개")
+        return 0 if (alive or unseen) else 3
+    print(f"오늘 {today} · 상한 추정 {q.DEFAULT_DAILY_LIMIT} "
+          f"(GEMINI_DAILY_LIMIT 로 바꾼다)")
+    now_keys = sorted({lb.split(":", 1)[0] for lb in pool_labels})
+    if now_keys:
+        print(f"지금 키 {len(now_keys)}개: {' · '.join(now_keys)}")
+    old_keys = [k for k in keys if k not in now_keys]
+    if old_keys:
+        # 장부에만 남은 이름들. 예전에 쓰다 바꾼 키다 -- 지금 있는 키와 섞어 세면
+        # 키가 몇 개인지 알 수가 없다.
+        print(f"장부에만 남은 옛 이름 {len(old_keys)}개(지금은 안 쓴다)")
+    if pool_labels:
+        unused = [l for l in pool_labels if l not in data]
+        print(f"후보 {len(pool_labels)}개 (아직 안 써 본 것 {len(unused)}개도 아래 함께)")
+    print("-" * 76)
+    for label, date, count, left, wait in rows:
+        mark = ("영구배제" if label in dead else
+                f"분당쉼 {wait:.0f}s" if wait > 0 else
+                "소진" if left <= 0 and date == today else "")
+        print(f"  {label:46} {count:6}회  잔량 {left:6}  {mark}")
+    if not rows:
+        print("  (기록 없음 -- 아직 한 번도 안 불렀거나 장부를 지웠다)")
+    print("-" * 76)
+    print(f"영구배제 {len(dead)}개 · 분당쉼 {sum(1 for _, _, _, _, w in rows if w > 0)}개 "
+          f"· 소진 {sum(1 for _, d, _, l, w in rows if l <= 0 and w <= 0 and d == today)}개")
+
+    if a.clear:
+        for label, rec in list(data.items()):
+            if not label.startswith("_") and isinstance(rec, dict):
+                rec["count"] = 0
+        data["_rpm_cooldown"] = {}
+        q._save(data)
+        print("오늘자 소진·쿨다운 표시를 지웠다. 영구배제(_dead)는 남겼다 -- "
+              "그건 자정에도 안 풀리는 것이다.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

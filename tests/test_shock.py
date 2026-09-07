@@ -17,7 +17,18 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from novel import flow, shock as SH                                   # noqa: E402
+from novel import flow, shock as SH, style                            # noqa: E402
+
+# **이 파일은 예전 프롬프트를 켜고 본다.** 기본은 axes 다(flow.PROMPT="axes") --
+# 프롬프트를 재는 축에서 짓고, 손으로 쓴 문장론은 한 줄도 안 넣는다.
+# 여기서 검사하는 것은 그 옛 작법서 블록의 내용이라 켜 놓고 본다.
+flow.PROMPT = "legacy"
+
+
+# **이 파일은 서사층까지 켜고 본다** -- 기본값은 문면층만이다(flow.LAYER = "text").
+# 여기서 검사하는 것은 서사층 블록의 내용이라 켜 놓고 본다.
+flow.LAYER = "all"
+
 
 fails = []
 
@@ -67,6 +78,9 @@ ok("[확산]" not in p, "그 덩어리에는 확산 지시가 빠진다  ← 둘
 ok("문제를 풀어주지 않는다" in p,
    "사건이 문제를 풀지 않는다  ← 딱 맞춰 나타나 구해주는 것은 편의주의다")
 ok("환기해라" in p, "사건 뒤에 공간이 바뀌어 있게 한다")
+ok("한 방에 끝내지 마라" in p,
+   "사건은 터지고 나서가 더 길다  ← 뒷자락에서 다음 이야기가 나온다")
+ok("대사로 받아라" in p, "위트는 대사에서 나온다  ← 서술로 정리하면 시시해진다")
 
 bk["_shock"] = None
 ok("[확산]" in flow.write_prompt(bk), "사건이 아닌 덩어리에는 확산이 돌아온다")
@@ -84,6 +98,152 @@ ok(b2["shocks"] == 1 and b2["since"] == len("그 다음 덩어리"),
    "그 다음 덩어리는 다시 쌓기 시작한다")
 ok(flow.blank()["shocks"] == 0 and "since" in flow.blank(),
    "새 원고는 사건 0에서 시작한다")
+
+print()
+print("[소재] **무엇이 나오는가도 뽑아서 준다**")
+print("      ← 확산·리듬은 '어떻게' 다. '무엇' 을 안 주면 모델은 늘 술집·부두·낡은 차를 낸다.")
+from novel import matter                                              # noqa: E402
+mcombo = len(matter.GENRE) * len(matter.MEDIUM) * len(matter.HEAT)
+ok(mcombo > 10000, f"갈래 × 매체 × 온도 ({mcombo:,}가지)")
+for axis in ("genre", "medium", "heat"):
+    d = sum(matter.draw("s", i)[axis] == matter.draw("s", i + 1)[axis] for i in range(200))
+    ok(d == 0, f"{axis}: 연달아 같은 재료가 아니다 ({d}건)")
+mb = matter.brief(matter.draw("a", 0))
+ok("섞되 갈아타지 마라" in mb,
+   "소재가 장르를 바꾸지 않는다  ← 던전이 나온다고 던전물이 되지 않는다")
+ok("본문에 실물로" in mb, "편지는 통째로, 노래는 가사 두 줄로  ← '읽었다' 로 넘기지 않는다")
+ok("문제를 풀지 않는다" in mb, "지도가 나왔다고 길을 찾게 되지 않는다")
+_on = flow.blank(); _on["chunks"] = ["앞."]; _on["drift"] = 1.0; _on["matter"] = 1.0
+ok("[소재]" in flow.write_prompt(_on), "켜면 확산 덩어리에 실린다")
+_on["_shock"] = SH.draw("x", 0)
+ok("[소재]" not in flow.write_prompt(_on), "켜도 사건 덩어리에는 안 실린다")
+_off = flow.blank(); _off["chunks"] = ["앞."]
+ok("[소재]" not in flow.write_prompt(_off), "기본값에서는 안 실린다  ← 껐다")
+# 소재는 이제 **곁들이 한 자리**를 다른 축들과 나눠 쓴다. 제 비율은 후보가 되는
+# 문턱이고, 실제로 실리는 것은 그중 하나뿐이다.
+_half = flow.blank(); _half["matter"] = 0.4; _half["drift"] = 1.0
+hits = sum("[소재]" in flow.write_prompt(dict(_half, chunks=["x"] * i))
+           for i in range(1, 201))
+ok(0 < hits < 130, f"비율은 후보가 되는 문턱이다 (0.4 → 실제 {hits}/200)")
+_off2 = flow.blank(); _off2["matter"] = 0.0
+ok(not any("[소재]" in flow.write_prompt(dict(_off2, chunks=["x"] * i))
+           for i in range(1, 51)), "0 이면 후보에도 안 든다")
+
+print()
+print("[사건] **셋에 하나쯤은 주인공이 불러온다**")
+print("      ← 급발진이 기본값인데 사건이 늘 밖에서만 오면 두 축이 따로 논다.")
+mine = [SH.draw("s", i)["mine"] for i in range(120)]
+ok(0 < sum(mine) < len(mine), f"밖에서 오는 것과 섞인다 ({sum(mine)}/120)")
+own = SH.brief(SH.draw("s", mine.index(True)))
+ok("주인공이 불러온다" in own, "급발진이 사건으로 번진다")
+ok("본인은 왜 이렇게 됐는지 모른다" in own, "그러고도 본인은 모른다")
+ok("제3자가 개입한다" in SH.brief(SH.draw("s", mine.index(False))), "나머지는 밖에서 온다")
+ok(any("시비를 건다" in a for a in SH.ACT), "길 가는 사람에게 시비도 목록에 있다")
+ok(any("추파" in a for a in SH.ACT), "추파도 목록에 있다")
+
+print()
+print("[연쇄] **저지르고 끝나면 장식이다 -- 판이 바뀌어야 이야기가 굴러간다**")
+print("      ← 셋에 하나쯤 판이 바뀐다. 매번 바뀌면 이야기가 정신없어진다.")
+lands = [SH.impulse("s", i)["land"] for i in range(300)]
+ok(0 < sum(bool(x) for x in lands) < 200, f"셋에 하나쯤 옮긴다 ({sum(bool(x) for x in lands)}/300)")
+ok(len({x for x in lands if x}) > 10, "가는 곳이 다양하다")
+lb = SH.impulse_brief(SH.impulse("s", lands.index(next(x for x in lands if x))))
+ok("사슬의 모양" in lb and "한 칸만\n      나아가면 된다" in lb.replace("**",""),
+   "사슬을 한 칸씩 나아가게 한다  ← 한 덩어리에 다 하라는 것이 아니다")
+ok("이름과 사정을 하나 줘라" in lb, "거기서 만난 사람이 다음 칸을 부른다")
+ok("경찰서로 끌려간다" not in lb and "소세지" not in lb and "철학" not in lb,
+   "구체적인 예시를 박아 두지 않는다  ← 예시를 하드코딩하면 내용이 다 그쪽으로 쏠린다")
+
+print()
+print("[값] **프롬프트를 캐시 경계로 가른다**")
+print("      ← 매 덩어리·매 재시도마다 통짜로 보내면 같은 문장을 수백 번 다시 산다.")
+from novel import drive as _D                                         # noqa: E402
+_pp = flow.write_prompt(dict(flow.blank(), chunks=["앞."] * 3))
+_st, _sep, _vo = _pp.partition(_D.SPLIT)
+ok(_sep, "경계가 있다")
+ok(_pp.count(_D.SPLIT) == 1, "경계는 하나뿐이다")
+ok(len(_st) > len(_vo), f"고정부가 더 크다 (고정 {len(_st):,} · 휘발 {len(_vo):,})")
+ok(all(k in _st for k in ("건조하게", "규칙:", "리얼리즘")),
+   "매번 같은 것은 앞에  ← 문체·규칙은 원고 내내 안 변한다")
+ok(all(k in _vo for k in ("[세계", "끝부분", "[말맛]")),
+   "덩어리마다 바뀌는 것은 뒤에  ← 세계·꼬리·뽑기")
+
+print()
+print("[설정] **외현과 내현 -- 겉과 속을 한 벌로 붙인다**")
+print("      ← 몸은 이 장치의 한 사례일 뿐이다. 인물을 남과 다르게 만드는 조건이라면")
+print("        무엇이든 같은 자리에 들어간다. 겉만 있으면 인상이고, 속만 있으면 설명이다.")
+from novel import trait                                               # noqa: E402
+ok(len(trait.OUTER) >= 50, f"외현이 충분하다 ({len(trait.OUTER)}개)")
+ok(len(trait.INNER) >= 30, f"내현도 충분하다 ({len(trait.INNER)}개)")
+_t = trait.draw("a", 0)
+ok(all(k in _t for k in ("outer", "inner")),
+   "둘을 한 벌로 준다  ← 겉만 있으면 인상이고 속만 있으면 설명이다")
+dupb = sum(trait.draw("s", i)["outer"] == trait.draw("s", i + 1)["outer"]
+           for i in range(200))
+ok(dupb == 0, f"연달아 같은 몸이 아니다 ({dupb}건)  ← 두 인물이 한 사람처럼 읽힌다")
+bb = trait.brief(trait.draw("a", 0))
+ok("불행으로 쓰지 마라" in bb,
+   "조건을 불행으로 쓰지 않는다  ← 사연이 아니라 조건이다")
+ok("이름을 붙이는 순간 진단서가 되고" in bb,
+   "내현은 이름을 안 붙인다  ← 진단서는 인물이 아니다")
+ok("겉은 보이고, 속은 새어 나온다" in bb, "둘의 규율이 다르다")
+ok("출발점이다" in bb, "이것도 출발점이다  ← 표류가 먼저다")
+ok("동정할 자리를 만들지 마라" in bb, "동정할 자리를 만들지 않는다")
+ok("끝까지 그 사람의 것이다" in bb, "한 번 정해진 것은 안 바뀐다")
+hits = sum("[설정]" in flow.write_prompt(dict(flow.blank(), chunks=["x"] * i))
+           for i in range(1, 101))
+# **캐릭터 설정 뽑기를 껐다(TRAIT=0).** 겉과 속을 미리 뽑아 주면 인물이 시작부터
+# 완성돼 있고, 그러면 사건을 겪어도 안 바뀐다. 인물은 원고가 만든다.
+ok(hits == 0, f"설정을 미리 뽑지 않는다 ({hits}/100)  ← 인물은 백지에서 시작한다")
+ok(flow.TRAIT == 0, "설정 축이 꺼져 있다")
+ok("몸" in flow.CARD and "속" in flow.CARD, "카드에 몸 칸과 속 칸이 둘 다 있다")
+ok("속 칸" in flow.extract_prompt("x") and "감정 이름이나 진단명은 쓰지 마라"
+   in flow.extract_prompt("x"),
+   "추출기가 속을 **행동으로** 적는다  ← 감정 이름을 적으면 그게 진단서다")
+
+print()
+print("[낯섦] **낯섦은 재료가 아니라 전개에서 나온다**")
+print("      ← 한때 '시간이 한 시간 비어 있다', '문이 하나 더 생겨 있다' 를 넣었다가 뺐다.")
+print("        설명 안 되는 것으로 사건을 만들면 그게 편의주의고, 그건 첫 번째 금지다.")
+for w in ("옆자리에서 들려오는 남의 이야기", "잘못 온 우편물", "검사 결과", "해고 통보"):
+    ok(w in SH.WHO, f"개입자는 있을 법한 것: {w}")
+for h in ("옆자리 대화를 엿듣는다. 그 내용이 남 일이 아니다", "들킨다",
+          "돈이 모자란 것이 그 자리에서 드러난다"):
+    ok(h in SH.HOW, f"방식도 있을 법한 것: {h}")
+for gone in ("시간이 한 시간 비어 있다", "문이 하나 더 생겨 있다", "글자가 안 읽힌다"):
+    ok(gone not in SH.HOW, f"초자연은 뺐다: {gone}")
+for gone in ("냄새", "빛", "숫자 하나"):
+    ok(gone not in SH.WHO, f"초자연은 뺐다: {gone}")
+ok("낯섦은 재료가 아니라 전개에서 나온다" in SH.brief(SH.draw("a", 0)),
+   "평범한 재료가 예상 밖 순서로 이어질 때 낯설어진다고 말한다")
+ok(any("말이 실제가 된다" in SH.impulse_brief(SH.impulse("s", i)) for i in range(20)),
+   "마술적인 것은 [아이러니] 장치가 따로 맡는다  ← 사건과 자리를 나눠 둔다")
+
+print()
+print("[집중] **곁들이는 한 덩어리에 하나만**")
+print("      ← 각자 비율로 켜지게 두었더니 절반 넘는 덩어리에 둘 이상이 겹쳤고")
+print("        (100덩어리 중 2개 34회 · 3개 17회 · 5개 3회) 프롬프트가 18,000자를 넘었다.")
+print("        그러면 계수가 1.0 이라 매번 켜져 있어도 급발진이 아홉 목소리 중 하나가 된다.")
+_bk = flow.blank()
+for _i, (_b, _k) in enumerate([("places", "웅포"), ("objects", "소금 공장"),
+                               ("people", "도영"), ("facts", "실종"),
+                               ("objects", "무전기"), ("people", "재현"),
+                               ("places", "파출소")]):
+    flow._merge(_bk["ledger"], {_b: {_k: {"직업": "x"} if _b == "people" else "x"}}, at=_i)
+flow._merge(_bk["ledger"], {"rules": {"겨울 출항": "x"}, "open": {"왜 실종되나": "x"},
+                            "macguffin": {"소금 공장": "x"}}, at=1)
+_SIDES = ("[관계]", "[설정]", "[의심]", "[연결]", "[예외]", "[시점]", "[소재]")
+_counts = []
+_imp = 0
+for _i in range(1, 61):
+    _p = flow.write_prompt(dict(_bk, chunks=["x"] * _i))
+    _counts.append(sum(_o in _p for _o in _SIDES))
+    _imp += "[급발진]" in _p
+ok(max(_counts) <= 1, f"둘 이상 겹치지 않는다 (최대 {max(_counts)}개)")
+ok(sum(_counts) > 20, f"그래도 자주 곁들인다 ({sum(_counts)}/60)")
+# **급발진을 뺐다.** 인물을 미리 규정하는 축이라, 캐릭터를 백지에서 시작해 사건이
+# 만들게 하려면 이것부터 빠져야 한다. 잡소리(TMI · 회상 · 별명)도 같이 뺐다.
+ok(_imp == 0, f"급발진은 안 실린다 ({_imp}/60)  ← 인물은 사건이 만든다")
 
 print()
 if fails:

@@ -1,0 +1,358 @@
+"""말맛 장부 -- 쓴 것은 세어 두고 안 쓴 쪽으로 민다.
+
+하한을 더 두지 않는다. 하한을 두면 하한을 정확히 맞춘다는 것을 두 번 겪었다
+(짧은 '-다' 62%, 긴 대사 여덟 할). 이건 금지가 아니라 **복원력**이다 -- 한쪽으로
+기울면 반대쪽으로 미는 힘이고, 기울지 않았으면 아무 일도 하지 않는다.
+"""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import os
+# **살아 있는 targets.json 을 안 읽는다.** 목표는 지금 겨누는 작품에 맞춰 좁혀지는데,
+# 그때마다 이 테스트가 깨지면 목표를 조일 수 없게 된다(실측: A 하나로 좁히자 표본
+# 넷이 폭을 벗어나 밤샘 루프가 preflight 에서 멈췄다). 여기서 고정하는 것은 관문의
+# 논리이지 어느 작품의 수가 아니다.
+os.environ["DRIFT_TARGETS"] = str(
+    __import__("pathlib").Path(__file__).resolve().parent / "fixtures" / "targets.broad.json")
+
+
+from novel import flow, rhythm, shock as SH, wording as W             # noqa: E402
+
+# **이 파일은 예전 프롬프트를 켜고 본다.** 기본은 axes 다(flow.PROMPT="axes") --
+# 프롬프트를 재는 축에서 짓고, 손으로 쓴 문장론은 한 줄도 안 넣는다.
+# 여기서 검사하는 것은 그 옛 작법서 블록의 내용이라 켜 놓고 본다.
+flow.PROMPT = "legacy"
+
+
+_bad = []
+
+
+def ok(cond, label):
+    print(f"    {'OK  ' if cond else '실패'} {label}")
+    if not cond:
+        _bad.append(label)
+
+
+print("[말맛] **기울면 되민다** -- 하한을 하나 더 두는 것이 아니다")
+ok(W.brief([], "씨", 0).count("말끝") == 0,
+   "원고가 없으면 말끝을 안 민다  ← 밀 방향이 없다")
+
+_da = ["배가 들어왔다. " * 40]
+ok("-다" in W.hogs(_da), f"'-다' 만 쓰면 그것을 짚는다 ({W.hogs(_da)})")
+ok("-다" not in W.thin(_da), "많이 쓴 것을 '써 보라' 고 밀지는 않는다")
+ok(len(W.thin(_da)) == W.PUSH_END,
+   f"적게 쓴 것 {W.PUSH_END}개를 민다  ← 한꺼번에 다 시키면 안 지켜진다")
+
+_mixed = ["배가 들어왔다. 온다. 오겠다. 올까. 오는군. 올 것이다. 오지. 옴. 와라. " * 3]
+ok(not W.hogs(_mixed), f"고르게 썼으면 아무 말도 안 한다 ({W.hogs(_mixed)})")
+
+print()
+print("[비유·꼴] **세지 않고 뽑는다** -- 은유를 정규식으로 어떻게 찾겠는가")
+_f = [tuple(W.figures("씨", n)) for n in range(20)]
+ok(all(len(x) == W.PUSH_FIG for x in _f), "매번 정해진 개수를 뽑는다")
+ok(all(len(set(x)) == len(x) for x in _f), "한 덩어리 안에서 겹치지 않는다")
+ok(len(set(_f)) > 8, f"덩어리마다 다르다 ({len(set(_f))}가지)")
+ok(W.figures("씨", 3) == W.figures("씨", 3), "같은 씨앗·번호면 같다  ← 이어 쓰기에 재현된다")
+ok("번역체" in W.FORMS, "옮긴 듯한 꼴도 재료다")
+# **어느 말인지 못 박지 않는다.** 영어라고 쓰면 원고에 영어만 나오고, 예를 박으면
+# 그 예가 뜬금없이 튀어나온다.
+import re as _re2                                                     # noqa: E402
+_lang = [k for k, v in W.FOREIGN.items()
+         if _re2.search(r"영어|일본어|중국어|라틴|프랑스|독일", k + v)]
+ok(not _lang, f"바깥 말 목록이 한 언어에 안 묶여 있다 ({_lang[:2]})")
+ok(len(set(tuple(W.forms("씨", n)) for n in range(20))) > 5, "꼴도 덩어리마다 다르다")
+
+print()
+print("[리얼리즘] **자세하되 있을 법하게** -- 다채로움이 허구가 되면 안 된다")
+_b = W.brief(["배가 들어왔다. " * 40], "씨", 2)
+# "지어내되 있을 법하게" 는 [정밀] 과 외현 꼬리가 이미 말한다 -- 세 번째는 자리만 먹는다.
+ok("자릿수와 붙는 말이 그럴듯하게" in _b, "지어내되 있을 법한 꼴로")
+
+print()
+print("[문장] **몰리면 되민다** -- 몫이 맞아도 몰려 있으면 읽을 땐 두 덩어리다")
+_short = "\n".join(["짧다."] * 9)
+_long = "\n".join(["이것은 쉼표로 이어 붙여서 마흔다섯 자를 넘기게 만든 긴 문장인데, 정말로 그렇다."] * 7)
+ok([c for c in rhythm.check(_short) if "짧은 문장이 내리" in c],
+   "짧은 것이 몰리면 긴 문장으로 끊으라고 한다")
+ok([c for c in rhythm.check(_long) if "긴 문장이 내리" in c],
+   "긴 것이 몰리면 짧은 문장으로 끊으라고 한다")
+
+print()
+print("[흔들기] **목표치는 한 벌을 나눠 쓴다** -- 두 벌로 두면 한쪽만 고치게 된다")
+_v = [rhythm.wave("씨", n, 0.1, 0.4) for n in range(80)]
+ok(0.1 <= min(_v) and max(_v) <= 0.4, f"구간 안이다 ({min(_v):.2f}~{max(_v):.2f})")
+_mid = 0.25
+_run = _best = 1
+_prev = None
+for _x in _v:
+    _hi = _x > _mid
+    _run = _run + 1 if _hi == _prev else 1
+    _prev = _hi
+    _best = max(_best, _run)
+ok(_best <= 3, f"한쪽으로 안 쏠린다 (최대 {_best}번 연속)")
+ok(abs(sum(_v) / len(_v) - _mid) < 0.05, f"평균은 가운데다 ({sum(_v) / len(_v):.2f})")
+
+src = Path(flow.__file__).read_text(encoding="utf-8")
+ok("_wording(book)" in src, "프롬프트에 실린다")
+ok("리듬은 몫이 아니라 배치다" in src, "몰지 말라고 프롬프트에도 적혀 있다")
+
+print()
+print("[군집] **인물이 느는 것이 사건이 느는 것이다**")
+from novel import shock as SH                                         # noqa: E402
+_sc = SH.brief(SH.draw("씨", 1))
+ok("이 일로 사람들이 갈라진다" in _sc, "사건 뒤에 사람들이 갈라진다고 말한다")
+ok("새 사람이 하나씩 딸려 온다" in _sc, "갈라진 자리마다 사람이 는다")
+ok("군집처럼" in _sc, "붙고 갈라지고 사라지고 죽는다")
+ok("죽은 사람은 되살아나지 않는다" in _sc, "죽음만은 되돌릴 수 없다  ← 원장의 무모순성과 같은 말")
+ok("한 덩어리에 전부 하지는 마라" in _sc, "한 번에 다 시키지는 않는다")
+_ways = {SH.scatter("씨", i) for i in range(12)}
+ok(len(_ways) > 6, f"흩어지는 방향이 덩어리마다 다르다 ({len(_ways)}가지)")
+ok(all(len(set(w)) == len(w) for w in _ways), "한 사건 안에서 겹치지 않는다")
+
+print()
+print("[세계] **다양한 설정을 섞되 있을 법하게** -- 제도 · 매체 · 제한")
+_b2 = W.brief(["배가 들어왔다. " * 40], "씨", 3)
+# 제도와 매체를 한 자리로 묶었다 -- **세계관 설정은 작법보다 덜 중요하다.**
+# 두 목록을 따로 펼치면 작법 항목이 그만큼 뒤로 밀린다.
+# 목록은 이제 덩어리마다 골라 실리므로 **여러 덩어리를 걸쳐** 확인한다.
+_many = " ".join(W.brief(["x" * 60], "씨", i) for i in range(8))
+ok("이번 대목의 재료(제도·매체)" in _many, "제도와 매체를 한 자리에 묶는다")
+ok("이번 대목의 제한" in _many, "제한을 준다")
+# "우연이 문제를 풀지 않기" 는 [리얼리즘] 과 [표류가 먼저다] 가 이미 말한다.
+# 세 번째로 적으면 자리만 먹는다 -- 여기서는 **구체적이어야 한다**만 남긴다.
+ok("못 하는 이유는 구체적이어야 한다" in _many, "제한은 구체적이어야 한다고만 말한다")
+_w = {W.brief([], "씨", n).count("제도") for n in range(6)}
+_p = {tuple(SH._batch(W.SYSTEMS, "씨|이번 대목의 제도", n, "이번 대목의 제도", 1))
+      for n in range(12)}
+ok(len(_p) > 5, f"제도가 덩어리마다 다르다 ({len(_p)}가지)")
+ok("편입 시험" in " ".join(W.SYSTEMS), "편입 시험도 재료다")
+ok(any("편지" in x for x in W.MEDIA), "편지도 재료다")
+
+print()
+print("[감정] **초고의 감정은 단속하지 않는다** -- 잡을 것은 내용이 아니라 방향과 꼴이다")
+_hot = ["그는 슬펐다. 그는 불안했다. 그는 외로웠다."] * 4
+ok("감정" not in W.brief(_hot, "씨", 4),
+   "감정 얘기를 프롬프트에 안 싣는다  ← 초고에는 있어도 좋다")
+ok(W.feel_rate("그는 슬펐다. 그는 앉았다.") == 0.5, "재 두기는 한다")
+ok(W.feel_rate('"나는 슬퍼."') == 0.0,
+   "대사는 안 센다  ← 사람은 자기 기분을 말한다. 그건 대사가 할 일이다")
+
+print()
+print("[대사 몫] **대사가 원고의 절반이다** -- 0.10 은 바닥이었지 목표가 아니었다")
+_talky = "\n".join(['"이건 대사다. 길게 말한다, 정말로 길게 말이다."'] * 9
+                    + ["서술이다."] * 6)
+_share = rhythm.measure(_talky)["talk"]
+ok(not [c for c in rhythm.check(_talky, talk=_share) if "대사가 전체 줄의" in c],
+   f"나온 만큼을 목표로 주면 통과한다 ({_share:.0%})")
+ok([c for c in rhythm.check(_talky, talk=0.9) if "대사가 전체 줄의" in c],
+   "목표가 아홉 할이면 모자라다고 한다")
+ok([c for c in rhythm.check(_talky, talk=0.2) if "희곡이지 소설이 아니다" in c],
+   "서술이 있어야 할 대목에서 대사만 이어지면 그것도 잡는다")
+# **표본이 정한다.** '대사가 원고의 절반' 은 웹소설 한 편을 보고 세운 짐작이었고,
+# 네 편을 재니 0.01~0.29 였다(실측 2026-09-06 · 154토막).
+from novel import targets as _TG                                      # noqa: E402
+ok((rhythm.TALK_LO, rhythm.TALK_HI) == _TG.band("dialog"),
+   f"대사 몫을 표본에서 가져온다 ({rhythm.TALK_LO}~{rhythm.TALK_HI})")
+src2 = Path(flow.__file__).read_text(encoding="utf-8")
+ok("_dialogue(book)" in src2, "프롬프트가 자와 같은 숫자를 본다")
+ok("내력도 사정도 숫자도 대사 안에 녹는다" in src2, "정보를 대사에 녹이라고 한다")
+
+print()
+print("[외현] **밖을 보여라** -- 안으로만 파고들면 무슨 일이 어디서 나는지 안 보인다")
+_b3 = W.brief(["x" * 50], "씨", 2)
+ok("밖을 보여라(외현)" in _b3, "밖을 시키는 자리가 있다")
+ok(_b3.index("밖을 보여라") < _b3.index("이번 대목의 재료"),
+   "외현이 세계관 설정보다 앞에 선다  ← 작법이 먼저고, 뒤에 묻으면 안 지켜진다")
+ok("이름과 번호를 대라" in _b3, "'낡은 건물' 이 아니라 몇 층에 뭐라고 적힌 건물인지")
+ok("자릿수와 붙는 말이 그럴듯하게" in _b3,
+   "지어내되 있을 법한 꼴로  ← 예시를 박지 않고 '어떤 종류의 이름인지' 를 시킨다")
+_kinds = " ".join(W.OUTSIDE.values())
+for _k in ("업종", "도로명", "발행처", "노선 번호", "명찰", "조항"):
+    ok(_k in _kinds, f"어떤 이름표를 대야 하는지 말해 준다: {_k}")
+ok("이 사람이 보는 것이다" in _b3,
+   "**보는 사람이 있다** -- 화자의 설명이 아니라 주인공의 눈이다")
+ok("눈길이 안 닿은 것은 없는 것이나 같고" in _b3, "눈길이 안 간 것은 안 적힌다")
+ok("본 것에는 그 사람의 짐작이 묻는다" in _b3, "본 것에 그 사람이 묻어난다")
+ok("이번 대목의 보는 방식" in " ".join(W.brief(["x" * 50], "씨", i) for i in range(8)),
+   "어떻게 보는지도 덩어리마다 다르다")
+_g = {SH._batch(W.GAZE, "씨|gaze", i, "gaze", 1)[0] for i in range(14)}
+ok(len(_g) > 5, f"보는 방식이 여러 가지다 ({len(_g)}가지)")
+for _k in ("놓친다", "다시 확인한다", "글자부터 읽는다"):
+    ok(_k in W.GAZE, f"사람이 실제로 하는 짓이 들어 있다: {_k}")
+
+print()
+print("[표본] **좋은 묘사를 우리 자가 튕기면 자가 틀린 것이다**")
+print("      ← 표본의 점층은 이음말도 수도 아니고 **동선**이다: 철문 → 자갈길 →")
+print("        현관 → 교실 → 책상 → 흑판. 그걸 못 세니 순수 묘사가 낙제했다.")
+_s2 = Path(__file__).resolve().parent / "sample_outside.txt"
+if _s2.exists():
+    _t2 = _s2.read_text(encoding="utf-8")
+    ok(rhythm.pathclimb(_t2) >= 3, f"동선을 센다 ({rhythm.pathclimb(_t2)}개)")
+    ok(not rhythm.check(_t2, want=0.5, talk=0.0),
+       f"묘사 표본이 통과한다 ({[c[:30] for c in rhythm.check(_t2, want=0.5, talk=0.0)]})")
+    _s3 = Path(__file__).resolve().parent / "sample_job.txt"
+    ok(not rhythm.check(_s3.read_text(encoding="utf-8"), want=0.35, talk=0.2),
+       "직장물 표본도 여전히 통과한다  ← 한쪽을 고치다 다른 쪽을 깨지 않는다")
+for _k in ("예상과 견준다", "없는 것을 적는다", "동선을 따라간다",
+           "못 읽는 것도 적는다", "행동으로 닫는다"):
+    ok(_k in W.GAZE, f"표본에서 뽑아낸 방식: {_k}")
+ok("둘러보기는 행동으로 닫는다" in " ".join(W.brief(["x" * 50], "씨", i) for i in range(6)),
+   "묘사를 몸으로 착지시킨다  ← 착지가 없으면 목록으로 읽힌다")
+_outs = {W._out_share("씨", i) for i in range(20)}
+ok(len(_outs) > 10, f"안팎의 몫이 덩어리마다 다르다 ({len(_outs)}가지)")
+ok(0.25 <= min(_outs) and max(_outs) <= 0.75, "구간 안이다  ← 한쪽만 남기지는 않는다")
+
+print()
+print("[이음말] **예시를 박으면 원고가 그것으로 도배된다**")
+_bk = flow.blank(flow.FIRST)
+_c = {flow._climb(dict(_bk, chunks=["x"] * i)) for i in range(12)}
+ok(len(_c) > 8, f"이음말이 덩어리마다 다르다 ({len(_c)}가지)")
+# **점층이 모자란 덩어리에서만** 이음말을 준다. 맞고 있으면 안 싣는다 --
+# 늘 켜져 있는 지시는 꺼져 있는 것과 같다.
+_flat = "그는 갔다.\n" * 300
+_p = flow.write_prompt(dict(_bk, chunks=[_flat]))
+ok("이것만 쓰라는 것이 아니다" in _p or "이음말" in _p,
+   "점층이 모자라면 이음말을 뽑아 준다")
+ok("이것만 쓰라는 것이 아니다" in flow.write_prompt(_bk),
+   "첫 덩어리에는 기준을 다 준다  ← 잴 것이 없으니 미리 줘야 한다")
+ok("호칭과 말높임은 관계가 정한다" in _p,
+   "처음 만난 사람에게 '너' 라고 안 한다  ← 무례해서가 아니라 한국어가 그렇게 안 굴러간다")
+# **선 채로 서 있는 지시를 뺐다.** "같은 장면을 또 쓰지 마라" 를 프롬프트에 박아 두면
+# 겹치지 않은 덩어리까지 매번 그 말을 듣는다. 겹쳤을 때만, 얼마나 겹쳤는지와 함께 말한다.
+ok("같은 장면을 또 쓰지 마라" not in _p, "되풀이 금지를 프롬프트에 박아 두지 않는다")
+from novel import echo as _E                                          # noqa: E402
+_a = "항구에서 도영을 만나 소금 공장 얘기를 했다. 그는 웃었고 나는 담배를 물었다." * 3
+_b = "소금 공장 얘기를 하러 항구에서 도영을 다시 만났다. 나는 담배를 물었고 그는 웃었다." * 3
+_c = "시청 민원실에서 번호표를 뽑고 두 시간을 기다렸다. 반려 사유는 적혀 있지 않았다." * 3
+ok(_E.samey(_b, _a) > _E.SAMEY_MAX,
+   f"낱말만 바꾼 되풀이를 잡는다 ({_E.samey(_b, _a):.0%})  ← 글자로 견주면 남남으로 나온다")
+ok(_E.samey(_c, _a) < 0.2, f"다른 장면은 안 잡는다 ({_E.samey(_c, _a):.0%})")
+ok([x for x in _E.check(_b, _a) if "겹친다" in x], "겹쳤을 때만 말한다")
+ok(not [x for x in _E.check(_c, _a) if "겹친다" in x], "안 겹치면 아무 말도 안 한다")
+
+print()
+print("[낯선 개념] **어디서 온 것이든 끌어온다** -- 소설은 무엇이든 삼킨다")
+_b4 = W.brief(["x" * 60], "씨", 4)
+_many4 = " ".join(W.brief(["x" * 60], "씨", i) for i in range(8))
+ok("끌어올 개념" in _many4, "남의 분야에서 끌어오게 한다")
+ok("바깥 말에서 끌어올 것" in _many4, "남의 말에서도 끌어오게 한다")
+ok("설정이 아니라 성격이 된다" in _many4,
+   "설명하지 말고 쓰게 한다  ← 인물이 자기 삶에 갖다 붙이는 순간 성격이 된다")
+ok("어색한 채로 두는 것이 요점이다" in _many4, "한국어답게 다듬지 말라고 한다")
+_o = {tuple(SH._batch(W.ODD, "씨|odd", i, "odd", W.PUSH_ODD)) for i in range(16)}
+ok(len(_o) > 8, f"덩어리마다 다른 분야를 뒤진다 ({len(_o)}가지)")
+ok(all(len(set(x)) == len(x) for x in _o), "한 덩어리 안에서 겹치지 않는다")
+_fg = {SH._batch(W.FOREIGN, "씨|foreign", i, "foreign", 1)[0] for i in range(16)}
+ok(len(_fg) > 5, f"바깥 말도 덩어리마다 다르다 ({len(_fg)}가지)")
+ok(len(W.ODD) >= 12 and len(W.FOREIGN) >= 10, "뒤질 데가 넉넉하다")
+
+print()
+print("[차림표] **이번에 뽑힌 것만 보여 준다**")
+print("      ← 한때는 안 뽑힌 것의 이름까지 다 늘어놨다. 그러니 이 블록만 4,540자가")
+print("        되어 프롬프트의 5분의 1을 먹었다. 나열은 자리를 먹고, 도배는 자리")
+print("        때문이 아니라 개수 때문에 생긴다 -- 열두 목록이 매번 다르게 뽑히면")
+print("        스무 덩어리에 다 나온다.")
+_b5 = W.brief(["x" * 60], "씨", 4)
+ok("그 밖에 쓸 수 있는 것" not in _b5, "안 뽑힌 것은 나열하지 않는다")
+ok(_b5.count("목록 밖도 자유다") >= 6, "목록 밖도 자유라고 매번 말해 준다")
+ok(len(_b5) < 2800, f"{len(_b5)}자에 담긴다  ← 4,540자에서 줄였다")
+_seen = set()
+for _i in range(24):
+    for _k in W.OUTSIDE:
+        if _k in W.brief([], "씨", _i):
+            _seen.add(_k)
+ok(len(_seen) >= len(W.OUTSIDE) - 1,
+   f"스무 덩어리쯤이면 외현 목록이 거의 다 나온다 ({len(_seen)}/{len(W.OUTSIDE)})")
+
+print()
+print("[낯선 개념] **어디서 온 것이든 끌어온다** -- 소설은 무엇이든 삼킨다")
+_b4 = W.brief(["x" * 60], "씨", 4)
+_many4 = " ".join(W.brief(["x" * 60], "씨", i) for i in range(8))
+ok("끌어올 개념" in _many4, "남의 분야에서 끌어오게 한다")
+ok("바깥 말에서 끌어올 것" in _many4, "남의 말에서도 끌어오게 한다")
+ok("설정이 아니라 성격이 된다" in _many4,
+   "설명하지 말고 쓰게 한다  ← 인물이 자기 삶에 갖다 붙이는 순간 성격이 된다")
+ok("어색한 채로 두는 것이 요점이다" in _many4, "한국어답게 다듬지 말라고 한다")
+_o = {tuple(SH._batch(W.ODD, "씨|odd", i, "odd", W.PUSH_ODD)) for i in range(16)}
+ok(len(_o) > 8, f"덩어리마다 다른 분야를 뒤진다 ({len(_o)}가지)")
+ok(all(len(set(x)) == len(x) for x in _o), "한 덩어리 안에서 겹치지 않는다")
+_fg = {SH._batch(W.FOREIGN, "씨|foreign", i, "foreign", 1)[0] for i in range(16)}
+ok(len(_fg) > 5, f"바깥 말도 덩어리마다 다르다 ({len(_fg)}가지)")
+ok(len(W.ODD) >= 12 and len(W.FOREIGN) >= 10, "뒤질 데가 넉넉하다")
+
+print()
+
+print()
+print("[안팎] **밖만 적으면 관찰 일지, 안만 적으면 일기다**")
+_b6 = W.brief(["x" * 60], "씨", 4)
+_many6 = " ".join(W.brief(["x" * 60], "씨", i) for i in range(8))
+ok("안에서 새는 것(내현)" in _many6, "안쪽도 뽑는 자리가 있다")
+ok("고백조로 쓰면 신파가 되고" in _many6, "무겁게 가지 말라고 한다")
+ok("결론은 내지 마라" in _many6, "사유는 하되 결론은 안 낸다  ← 가볍고 위트 있게")
+ok("'트라우마' 라고 부르지 마라" in " ".join(W.INNER.values()),
+   "이름을 붙이면 진단서가 된다")
+for _k in ("쓸데없는 내력", "몸의 욕구", "짐승 쪽", "따뜻한 데", "생각을 굴린다"):
+    ok(_k in W.INNER, f"안쪽 재료: {_k}")
+ok("부딪쳐라" in _many6, "주변과 부딪치는 자리가 있다")
+ok("보기만 하면 이 사람은 카메라다" in _many6,
+   "보기만 해서는 안 된다  ← 손을 대야 세계가 반응한다")
+for _k in ("만진다", "묻는다", "망가뜨린다", "거절한다"):
+    ok(_k in W.TOUCH, f"부딪치는 방법: {_k}")
+
+print()
+print("[자리] **급발진이 묻히지 않는가** -- 묻히면 안 지켜진다")
+_bk2 = flow.blank(flow.FIRST)
+_bk2["chunks"] = ["배가 들어왔다. " * 40]
+_pp2 = flow.write_prompt(_bk2)
+if "[급발진]" in _pp2:
+    ok(_pp2.index("[급발진]") > _pp2.index("[말맛]"),
+       "급발진이 말맛 뒤에 온다  ← 앞에 두면 목록 백 개에 파묻힌다")
+    ok(_pp2.index("[급발진]") > len(_pp2) * 0.75,
+       f"프롬프트 뒤쪽에 선다 ({_pp2.index('[급발진]') / len(_pp2):.0%} 지점)")
+    ok("가식이 없다" in _pp2 and "반사회적이다" in _pp2,
+       "가식 없고 솔직하며 반사회적이라고 못박는다")
+
+print()
+print("[빚] **장부를 되먹인다** -- 재기만 하고 고칠 길이 없으면 그 자는 장식이다")
+print("      ← 자는 열 갈래를 보는데 문장 손질로 고칠 수 있는 것은 셋뿐이다.")
+print("        나머지 일곱은 매번 장부에 적히고 끝났다. 이제 다음 덩어리가 갚는다.")
+_bk3 = flow.blank(flow.FIRST)
+ok(flow.owed_brief(_bk3) == "", "빚이 없으면 아무 말도 안 한다")
+_bk3["owed"] = ["대사 몫", "점층", "대사 몫", "세계 확장", "대사 몫"]
+_ob = flow.owed_brief(_bk3)
+ok("대사 몫" in _ob, f"가장 자주 걸린 것을 짚는다 ({_ob.splitlines()[0][:40]})")
+ok("이것 하나만" in _ob, "한 건만 시킨다  ← 한꺼번에 시키면 안 지켜진다")
+ok(_ob.count("--") <= 2, "여러 건을 늘어놓지 않는다")
+_bk3["owed"] = ["대사 몫", "점층", "세계 확장"]
+ok(flow.owed_brief(_bk3) == "", "한 번씩만 걸린 것은 빚으로 안 친다  ← 거듭된 것만 갚는다")
+ok(flow._kind_of("대사가 전체 줄의 20%뿐이다. 이 대목은 54%다") == "대사 몫",
+   "갈래 이름으로 뭉친다  ← 문장을 통째로 쌓으면 숫자가 달라 안 뭉친다")
+ok(flow._kind_of("대사가 전체 줄의 31%뿐이다") == flow._kind_of("대사가 전체 줄의 12%뿐이다"),
+   "숫자가 달라도 같은 갈래다")
+
+print()
+print("[돌려싣기] **번갈아 하면 주기가 보인다** -- 오래 안 나온 것을 앞으로 당긴다")
+print("      ← 켜고 끄기로 하면 목록마다 자기 주기가 생겨 읽는 사람에게 보인다.")
+print("        하한이 주기가 됐던 그 일과 같다. 개수도 흔들고 순서도 흔든다.")
+_sizes = [len(W.brief(["x" * 60], "씨", i)) for i in range(8)]
+ok(max(_sizes) < 2400, f"한 덩어리 최대 {max(_sizes)}자  ← 다 실으면 2,600자였다")
+ok(len(set(_sizes)) > 3, f"덩어리마다 다르다 ({sorted(set(_sizes))[:4]}…)")
+_counts = {len(W._chosen(i)) for i in range(12)}
+ok(len(_counts) > 2, f"몇 개를 싣는지가 매번 다르다 ({sorted(_counts)})")
+for _k in W.ROTATING:
+    _on = [i for i in range(14) if W._on(_k, i)]
+    _gaps = {b - a for a, b in zip(_on, _on[1:])}
+    ok(len(_on) >= 5, f"{_k}: 열넷 중 {len(_on)}번  ← 굶지 않는다")
+    ok(len(_gaps) > 1, f"{_k}: 간격이 고르지 않다 {sorted(_gaps)}  ← 고르면 주기가 보인다")
+ok("밖을 보여라(외현)" in W.brief(["x" * 60], "씨", 5),
+   "외현은 늘 싣는다  ← 배경이 안 보인다는 것이 지금 제일 큰 문제다")
+
+print()
+if _bad:
+    print(f"말맛: {len(_bad)}개 실패 -- {_bad}")
+    raise SystemExit(1)
+print("말맛: 되밀기 · 비유 · 꼴 · 리얼리즘 · 몰림 -- 통과")
