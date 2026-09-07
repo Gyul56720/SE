@@ -50,6 +50,7 @@ from novel import shock as SH                                         # noqa: E4
 from novel import rhythm                                              # noqa: E402
 from novel import wording                                             # noqa: E402
 from novel import genre as GENRE                                      # noqa: E402
+from novel import serial as SR                                        # noqa: E402
 from novel import style                                               # noqa: E402
 from novel import profile as _prof                                    # noqa: E402
 from novel import targets as TG                                       # noqa: E402
@@ -1163,7 +1164,10 @@ def write_prompt(book: dict, feedback: str = "") -> str:
         return compose.build(
             book,
             ledger=brief(book["ledger"], now=len(book["chunks"])),
-            asks="\n\n".join(x for x in (compose.offbrief(book), owed_brief(book),
+            # **당김이 맨 앞이다.** 나머지 자들은 전부 뒤(쓴 것)를 보고, 이것만
+            # 앞(갈 곳)을 본다. 뒤에 두면 지시 상한에 밀려 사라진다.
+            asks="\n\n".join(x for x in (SR.brief(book),
+                                          compose.offbrief(book), owed_brief(book),
                                           ahead_brief(book), VG.brief(book),
                                           PO.brief(book), TU.brief(book),
                                           feedback) if x),
@@ -1196,6 +1200,8 @@ def _legacy_prompt(book: dict, feedback: str = "") -> str:
   불러야 할지 몰라 문장을 비켜 가는 것. 그 어색함이 관계를 보여 준다.
 - 말을 끊고, 겹치고, 대답 대신 딴소리를 하는 것은 누구나 한다. 어휘는 자유다 -- 상표든
   욕이든 외국어든 사투리든 **그 사람이 쓸 법한 말**을 그대로 쓴다.
+
+{SR.brief(book)}
 
 {_wander() if _story() else ""}
 
