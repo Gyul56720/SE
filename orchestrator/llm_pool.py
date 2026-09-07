@@ -241,8 +241,15 @@ def _key_id(key: str) -> str:
     return hashlib.sha256(key.encode()).hexdigest()[:8]
 
 
-def _default_factory(model: str, key: str):
-    """max_retries/timeout 을 모르는 langchain 버전에서도 뜨도록 TypeError 면 물러선다."""
+# **어느 클라이언트로 부를 것인가.** 기본은 직접 부르기(gemini_http) 다.
+# langchain 은 이 파일에서 세 줄만 쓰였고, 그마저 재시도 기본값을 꺼야 했다 --
+# 후보 풀 자체가 재시도 전략이라 한 후보 안에서 오래 버틸 이유가 없다.
+# 되돌리려면 GEMINI_CLIENT=langchain.
+CLIENT = os.environ.get("GEMINI_CLIENT", "direct").strip().lower()
+
+
+def _langchain_factory(model: str, key: str):
+    """예전 경로. max_retries/timeout 을 모르는 버전에서도 뜨도록 TypeError 면 물러선다."""
     from langchain_google_genai import ChatGoogleGenerativeAI
     secs = SLOW_TIMEOUT if SLOW_MODEL.search(model) else TIMEOUT
     try:
@@ -251,6 +258,16 @@ def _default_factory(model: str, key: str):
                                       max_output_tokens=MAX_OUT)
     except TypeError:
         return ChatGoogleGenerativeAI(model=model, google_api_key=key)
+
+
+def _default_factory(model: str, key: str):
+    """(모델, 키) 하나를 부를 것. 풀이 쓰는 것은 `.invoke(prompt)` 하나뿐이다."""
+    if CLIENT == "langchain":
+        return _langchain_factory(model, key)
+    from gemini_http import Client
+    secs = SLOW_TIMEOUT if SLOW_MODEL.search(model) else TIMEOUT
+    return Client(model=model, key=key, timeout=secs,
+                  max_output_tokens=MAX_OUT, attempts=MAX_RETRIES)
 
 
 def _default_models(key: str):
@@ -487,6 +504,16 @@ def call(pool, prompt: str, pool_id: str = "orchestrator", max_candidates: int =
         # pin 은 **간격을 지킬 때만** 앞으로 당긴다. 방금 쓴 것을 또 앞에 두면 그 하나가
         # 자기 RPM 을 다 쓰고, 나머지 후보는 놀면서 런이 죽는다.
         pinned = quota_tracker.get_pinned(pool_id)
+        # **선호가 있으면 핀이 그것을 못 이긴다.** pin 은 "지난번에 이게 됐다" 는
+        # 기억이고 prefer 는 "이번엔 이걸 써라" 는 지시다. 기억이 지시를 덮으면 안 된다.
+        #
+        # 실제로 덮고 있었다(실측 2026-09-07). 추출은 prefer="gemma" 로 보낸다 --
+        # gemma 는 계열이 달라 자기 분당 한도를 따로 갖고, 그래서 산문이 쓰는 flash
+        # 통을 안 건드린다. 그런데 pool_id 가 같으면 flash 에 걸린 핀이 앞으로 당겨져
+        # 추출까지 flash 로 갔다. 비어 있는 통을 놀리면서 붐비는 통을 더 쓴 것이다.
+        # 검사가 적어 둔 "gemma 실측 사용량 1~2건" 이 그 증상이다.
+        if pinned and _want and not _want.search(pinned):
+            pinned = ""
         if pinned and _since_used(pinned) >= MIN_GAP:
             ranked = ([c for c in ranked if c[0] == pinned]
                       + [c for c in ranked if c[0] != pinned])
@@ -545,10 +572,19 @@ def call(pool, prompt: str, pool_id: str = "orchestrator", max_candidates: int =
                     print(f"[llm_pool] {nap:.1f}초 쉬고 {len(batch)}개를 동시에 던진다",
                           file=sys.stderr, flush=True)
                 time.sleep(nap)
-                ready = [c for c in batch if _since_key(c[0]) >= MIN_GAP]
-                if ready and len(ready) < len(batch):
-                    queue = [c for c in batch if c not in ready] + queue
-                    batch = ready
+            # **거르기는 쉬든 안 쉬든 한다.** 2026-09-07 까지 이 세 줄이 `if nap > 0` 안에
+            # 있었다 -- 그런데 nap 은 묶음에서 **제일 빨리 준비되는** 후보의 값이다. 한
+            # 후보가 이미 준비돼 있으면 nap 은 0 이고, 그러면 거르기를 통째로 건너뛰어
+            # **방금 429 를 맞은 키가 그 묶음에 그대로 얹혀 나간다**.
+            #
+            # 실측: key-A 가 429 를 맞아 벌점을 물었는데, 다음 묶음이 [key-B(준비됨),
+            # key-A:형제모델] 로 짜였다. key-B 덕에 nap=0 이 되어 key-A 를 곧바로 다시
+            # 두드렸다 -- 확실히 429 가 될 왕복 하나를 태우고, 벌점을 한 번 더 늘린다.
+            # 쿼터가 병목일 때 정확히 하면 안 되는 짓이다.
+            ready = [c for c in batch if _since_key(c[0]) >= MIN_GAP]
+            if ready and len(ready) < len(batch):
+                queue = [c for c in batch if c not in ready] + queue
+                batch = ready
 
             now = time.time()
             for lb, _ in batch:

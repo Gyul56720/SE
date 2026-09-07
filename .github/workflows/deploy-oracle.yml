@@ -24,6 +24,11 @@ on:
       - "orchestrator/orchestrator.py"
       - "orchestrator/plan_schema.py"
       - "orchestrator/llm_pool.py"
+      # 풀이 기본으로 부르는 Gemini 클라이언트. llm_pool.py 가 임포트하지만 이 목록은
+      # **임포트를 따라가지 않는다** -- 파일 이름이 그대로 적혀 있어야 배포가 걸린다.
+      # 이걸 빠뜨리면 gemini_http.py 만 고친 커밋은 서버에 안 간다. 다섯 번째가 될
+      # 뻔했다(searcher.py · bot_tools.py · gatekeeper.py · novel/ 에 이어).
+      - "orchestrator/gemini_http.py"
       # 커밋 경로의 강제 장치. 이게 빠져 있어서 게이트를 새로 승격해도 서버는 옛 게이트
       # 집합으로 계속 돌았다 -- searcher.py, bot_tools.py 와 같은 '코드가 서버에 도달하지
       # 못하는' 경로이고, 하필 그 경로를 감시하는 장치 자신이 빠져 있었다. G013 이 이제
