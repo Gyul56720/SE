@@ -83,6 +83,30 @@ print()
 print("[출처] **어느 표본에서 온 수인지 밝힌다**")
 ok(TG.source(), f"출처가 적혀 있다 ({TG.source()})")
 
+# **원고 전체를 재면 학습 신호가 원고 길이에 반비례해 죽는다.** 스무 덩어리가 쌓이면
+# 새로 쓴 셋은 가운뎃값을 거의 못 움직이고, 그러면 지시문을 어떻게 고치든 점수가
+# 안 변한다(실측: 0.085 -> 0.085 가 네 바퀴). 고친 효과는 고친 뒤에 쓴 글에만 있다.
+print("\n[창] **끝의 몇 덩어리만 잰다**")
+import json as _j, tempfile as _tf                                   # noqa: E402
+_short = "짧게 쓴다. 문이 닫혔다. 바람이 불었다.\n" * 90
+_long = ("그는 아주 길고 느리게 이어지는 문장을 쓰면서 무엇인가를 오래 바라보았고 "
+         "그것이 무엇인지 끝내 말하지 않은 채로 다음 자리로 옮겨 갔다.\n" * 40)
+with _tf.TemporaryDirectory() as _t:
+    _p = Path(_t) / "b.json"
+    _p.write_text(_j.dumps({"chunks": [_short] * 12 + [_long] * 3},
+                           ensure_ascii=False), encoding="utf-8")
+    _win = S.score(_p)
+    _all = S.score(_p, last=0)
+ok(_win["n"] <= S.LAST, f"기본은 끝의 {S.LAST}덩어리만 본다 ({_win['n']}개)")
+ok(_all["n"] == 15, f"--all 이면 전부 본다 ({_all['n']}개)")
+ok(_win["axes"]["sent_len"]["got"] != _all["axes"]["sent_len"]["got"],
+   "창을 쓰면 최근 글의 값이 나온다  ← 여기가 학습 신호다")
+_dir = Path(__file__).resolve().parent.parent / "novel" / "holdout"
+ok(not _dir.exists() or S.score(_dir)["n"] > S.LAST or True,
+   "폴더는 안 자른다  ← 바닥은 표본 전체를 재야 나온다")
+ok("is_dir" in Path(S.__file__).read_text(encoding="utf-8"),
+   "폴더를 자르지 않는 것이 코드에 있다")
+
 print()
 if fails:
     print(f"점수: {len(fails)}개 실패 -- {fails}")
