@@ -288,6 +288,40 @@ ok(D._json("{}") == {}, "빈 객체를 받는다  ← '새로 확정된 것 없�
 ok(D._json("없습니다. {} 끝.") == {}, "잡소리에 싸인 빈 객체도 받는다")
 ok(D._json("{} {}") == {}, "쪼개진 빈 객체도 받는다")
 
+
+print()
+print("[목록] **꼴은 tests/messy.py 한 군데에만 둔다**")
+print("      ← 여기와 test_flow 가 각자 꼴을 들고 있으면, 새 꼴을 본 사람이 한쪽만")
+print("        고친다. 그러면 다른 쪽은 그 꼴을 영영 모른 채 초록불을 낸다.")
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import messy                                                          # noqa: E402
+
+_clean = json.dumps({"people": {"요우": {"나이": "42"}}, "places": {"등대": "북쪽 곶"}},
+                    ensure_ascii=False)
+
+for _name, _txt, _why in messy.every(_clean):
+    try:
+        _got = D._json(_txt)
+    except Exception as e:
+        _got = {}
+        _why = f"{type(e).__name__}: {str(e)[:40]}"
+    ok(_got.get("people") and _got.get("places"),
+       f"{_name:14} 를 살려낸다  ({_why[:44]})")
+
+# **살려내면 안 되는 것도 목록에 있다.** 무엇이 왔는지 모르는 채로 원장에 넣는 것보다
+# 사실대로 죽고 다시 묻는 편이 낫다 -- call_json 이 그 길이다.
+for _name, _txt, _why in messy.every_broken(_clean):
+    _died = False
+    try:
+        D._json(_txt)
+    except (ValueError, json.JSONDecodeError):
+        _died = True
+    ok(_died, f"{_name:14} 는 사실대로 죽는다  ({_why[:44]})")
+
+ok(messy.dirty("{}", 0) == messy.dirty("{}", 0) == messy.dirty("{}", len(messy.SHAPES)),
+   "dirty 는 무작위가 아니다  ← 실패하면 같은 꼴로 다시 실패해야 고칠 수 있다")
+
 print()
 if fails:
     print(f"JSON 내구성: {len(fails)}개 실패 -- {fails}")

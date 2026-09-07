@@ -669,6 +669,50 @@ _sh = (_REPO / "scripts" / "drift.sh").read_text(encoding="utf-8")
 ok(_sh.count('${STYLE:+--persona "$STYLE"}') == 2,
    f"drift.sh 의 start 와 go 둘 다 넘긴다 ({_sh.count('--persona')}자리)")
 
+print()
+print("[지저분] **진짜 모델처럼 답해도 원장이 차는가**")
+print("      ← 2026-09-07: 이 파일의 가짜 추출기가 **한 덩이로만** 답했다. 진짜 gemma 는")
+print("        객체를 쪼개서 낸다. 그래서 추출이 한 번도 성공 못 하는 채로 원고가")
+print("        0자였는데, 검사는 내내 초록이었다. **가짜가 얌전하면 검사는 얌전한")
+print("        세상만 확인한다.**")
+
+sys.path.insert(0, str(_REPO / "tests"))
+import messy                                                          # noqa: E402
+
+_DELTA = {"people": {"한나": {"직업": "등대지기"}},
+          "places": {"북쪽 곶": "등대가 선 자리"},
+          "objects": {"무전기": "오래된 것"}}
+
+
+class _Messy:
+    """추출기만 지저분하게 답한다. 집필과 손질은 평소대로."""
+
+    def __init__(self, shape):
+        self.shape = shape
+
+    def __call__(self, prompt):
+        if "JSON 만 출력" in prompt and "새로 확정된 사실만" in prompt:
+            return self.shape(json.dumps(_DELTA, ensure_ascii=False))
+        if "각 문장 앞 대괄호가 그 문장의" in prompt:
+            return json.dumps({}, ensure_ascii=False)
+        return _long(45)
+
+
+for _name, _fn, _why in messy.SHAPES:
+    _bk = main_char()
+    flow.step(_bk, _Messy(_fn))
+    _people = (_bk.get("ledger") or {}).get("people") or {}
+    ok("한나" in _people, f"{_name:14} 로 와도 원장이 찬다  ({_why[:40]})")
+
+# **죽는 것이 맞는 꼴은 원고를 안 죽인다.** 추출이 실패해도 flow 는 "원장 갱신 없이
+# 간다" 로 계속 가야 한다 -- 그것까지 막히면 모델의 오타 하나가 런을 끝낸다.
+for _name, _fn, _why in messy.BROKEN:
+    _bk2 = main_char()
+    _r2 = flow.step(_bk2, _Messy(_fn))
+    ok(_r2["status"] == "ok" and _r2["chars"] > 200,
+       f"{_name:14} 는 파서가 죽되 원고는 산다 ({_r2['status']}, {_r2['chars']:,}자)")
+
+
 # **요약은 맨 끝에 있어야 한다.** 종료 블록 뒤에 붙인 검사는 실패해도 종료 코드를
 # 0 으로 남긴다 -- 스위트는 초록으로 보고, 화면의 '실패' 줄은 스크롤 위로 흘러간다.
 # 2026-09-07 에 이 저장소에서 일곱 번 나왔다. 그래서 G015 가 이제 커밋에서 막는다.
