@@ -44,12 +44,50 @@ CLAUDE = os.environ.get("DRIFT_CLAUDE", "claude")
 MAX_LEN = int(os.environ.get("DRIFT_DIRECTIVE_MAX", "220"))
 
 
-def worst(path) -> tuple:
-    """제일 먼 축과 그 거리. 없으면 (None, 0)."""
+# 한 축을 내리 몇 번 되돌리면 그 축을 얼마 동안 건너뛴다. **여섯 시간에 한 축만
+# 두드린 적이 있다** -- nosubj 를 다섯 바퀴 연속으로 고쳐 보고 다섯 번 다 되돌렸다.
+# 제일 먼 축은 그동안 그대로였으니 다음 바퀴도 같은 축이 뽑혔다.
+GIVEUP = int(os.environ.get("DRIFT_TUNE_GIVEUP", "2"))    # 몇 번 되돌리면
+COOL = int(os.environ.get("DRIFT_TUNE_COOL", "6"))        # 몇 번의 시도 동안 쉬나
+
+
+def cooling() -> set:
+    """지금 건너뛸 축. 최근 시도에서 내리 되돌린 것들이다."""
+    fail: dict = {}
+    cleared: set = set()
+    seen = 0
+    for r in reversed(rows()):
+        if r["무엇"] not in ("채택", "되돌림"):
+            continue
+        seen += 1
+        if seen > COOL:
+            break
+        k = r.get("축")
+        if not k:
+            continue
+        # **새것부터 훑는다.** 채택이 나오면 그 축은 거기서 끊는다 -- 그보다 **오래된**
+        # 되돌림은 이미 극복된 것이라 세면 안 된다.
+        if k in cleared:
+            continue
+        if r["무엇"] == "채택":
+            cleared.add(k)
+            fail.pop(k, None)
+        else:
+            fail[k] = fail.get(k, 0) + 1
+    return {k for k, n in fail.items() if n >= GIVEUP}
+
+
+def worst(path, skip=None) -> tuple:
+    """제일 먼 축과 그 거리. 없으면 (None, 0).
+
+    **쉬는 축은 건너뛴다.** 그래야 다음으로 먼 축을 두드린다. 전부 쉬는 중이면
+    그때는 제일 먼 것을 그냥 쓴다 -- 아무것도 안 하는 것보다 낫다."""
     s = SC.score(path)
     if not s:
         return None, 0.0, {}
-    k, a = max(s["axes"].items(), key=lambda kv: kv[1]["gap"])
+    skip = cooling() if skip is None else skip
+    live = {k: v for k, v in s["axes"].items() if k not in skip}
+    k, a = max((live or s["axes"]).items(), key=lambda kv: kv[1]["gap"])
     return (k if a["gap"] > dyn.SLACK else None), s["total"], s
 
 
@@ -156,7 +194,10 @@ def attempt(path, dry: bool = False) -> int:
     d["axes"].setdefault(axis, {})[side] = new
     write_directives(d)
     note({"때": time.strftime("%m-%d %H:%M"), "무엇": "고침", "축": axis, "쪽": side,
-          "전": now, "후": new, "점수(전)": total})
+          "전": now, "후": new, "점수(전)": total,
+          # **그 축의 거리도 적는다.** 총점만 보면 축 하나의 개선이 나머지 예순아홉
+          # 축의 흔들림에 묻힌다(실측: 0.085 -> 0.085 가 네 바퀴 이어졌다).
+          "거리(전)": s["axes"][axis]["gap"]})
     print(f"[{axis}·{side}] 고쳐 넣었다. 총점 {total:.3f} 에서 출발한다.\n\n{new}\n\n"
           f"이제 다시 돌리고 `tuner.py keep` 로 견줘라.")
     return 0
@@ -191,23 +232,37 @@ def keep(path) -> int:
         print("잴 것이 없다 -- 원고가 안 늘었다. 결론을 미룬다.", file=sys.stderr)
         return 1
     was = last["점수(전)"]
-    # **동점은 채택이 아니다.** 원고가 길어지면 한 덩어리로는 총점이 거의 안 움직인다.
-    # 동점을 채택으로 세면 튜너가 무엇이든 다 받아들이는 기계가 된다(실측: 열 바퀴에
-    # 채택 아홉 건, 점수는 한 번도 안 변했다).
-    better = total < was - 1e-6
+    # **판정은 그 축의 거리로 한다.** 총점으로만 보면 축 하나를 고친 효과가 나머지
+    # 예순아홉 축의 흔들림에 묻혀 늘 동점이 되고, 동점은 되돌림이니 무엇을 써도
+    # 되돌아간다(실측: 0.085 -> 0.085 로 네 바퀴가 갔다).
+    #
+    # 총점은 **지킴목**으로만 쓴다 -- 한 축을 맞추자고 전체가 나빠지면 안 받는다.
+    # 옛 기록에는 거리가 없으니 그때는 예전처럼 총점으로 본다.
+    gap_was = last.get("거리(전)")
+    gap_now = (s["axes"].get(last["축"]) or {}).get("gap")
+    if gap_was is not None and gap_now is not None:
+        better = (gap_now < gap_was - 1e-6) and (total <= was + 0.02)
+    else:
+        better = total < was - 1e-6
     d = read_directives()
     if not better:
         d["axes"][last["축"]][last["쪽"]] = last["전"]
         write_directives(d)
     note({"때": time.strftime("%m-%d %H:%M"), "무엇": "채택" if better else "되돌림",
           "축": last["축"], "대상": last["_row"],
-          "점수(전)": was, "점수(후)": total})
+          "점수(전)": was, "점수(후)": total,
+          "거리(전)": gap_was, "거리(후)": gap_now})
     if better:
         BEST.write_text(json.dumps({"총점": total, "axes": d["axes"]},
                                    ensure_ascii=False, indent=1), encoding="utf-8")
-        print(f"채택. 총점 {was:.3f} -> {total:.3f}")
+        print(f"채택. {last['축']} 거리 {gap_was:.3f} -> {gap_now:.3f} "
+              f"· 총점 {was:.3f} -> {total:.3f}"
+              if gap_was is not None and gap_now is not None
+              else f"채택. 총점 {was:.3f} -> {total:.3f}")
     else:
-        print(f"되돌렸다. 총점 {was:.3f} -> {total:.3f} (나아지지 않았다)")
+        _g = (f"{last['축']} 거리 {gap_was:.3f} -> {gap_now:.3f} · "
+              if gap_was is not None and gap_now is not None else "")
+        print(f"되돌렸다. {_g}총점 {was:.3f} -> {total:.3f} (나아지지 않았다)")
     return 0
 
 

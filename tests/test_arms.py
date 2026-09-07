@@ -122,5 +122,39 @@ ok(_T._clean("고친 지시문:\n```\n끊어라.\n```") == "끊어라.",
    "되받은 것에서 머리말과 코드펜스를 걷어낸다")
 ok(_T._clean('"따옴표"') == "따옴표", "따옴표도 걷어낸다")
 _src2 = Path(_T.__file__).read_text(encoding="utf-8")
-ok("동점은 채택이 아니다" in _src2,
-   "동점을 채택으로 세지 않는다  ← 원고가 길어지면 총점이 안 움직인다")
+ok("총점은 **지킴목**" in _src2 or "지킴목" in _src2,
+   "총점은 지킴목으로만 쓴다  ← 축 하나의 개선이 예순아홉 축의 흔들림에 묻힌다")
+
+# **여섯 시간에 한 축만 두드렸다.** nosubj 를 다섯 바퀴 연속으로 고쳐 보고 다섯 번
+# 다 되돌렸다. 제일 먼 축은 그동안 그대로였으니 다음 바퀴도 같은 축이 뽑혔다.
+print("\n[한 축에 갇히지 않는다]")
+import json as _json, tempfile as _tf                                # noqa: E402
+with _tf.TemporaryDirectory() as _t:
+    _log = Path(_t) / "tune.jsonl"
+    _was = _T.LOG
+    try:
+        _T.LOG = _log
+        ok(_T.cooling() == set(), "장부가 비면 쉬는 축이 없다")
+        _log.write_text("\n".join(_json.dumps(r, ensure_ascii=False) for r in [
+            {"무엇": "되돌림", "축": "nosubj"},
+            {"무엇": "되돌림", "축": "nosubj"}]), encoding="utf-8")
+        ok(_T.cooling() == {"nosubj"},
+           f"내리 두 번 되돌린 축은 쉰다 ({_T.cooling()})")
+        _log.write_text(_log.read_text(encoding="utf-8") + "\n"
+                        + _json.dumps({"무엇": "채택", "축": "nosubj"}, ensure_ascii=False),
+                        encoding="utf-8")
+        ok(_T.cooling() == set(), "한 번이라도 먹히면 다시 본다")
+        # 쉬는 축을 빼면 다음으로 먼 축이 뽑힌다
+        _s = {"total": 0.5, "axes": {"a": {"gap": 0.9, "got": 0, "lo": 1, "hi": 2},
+                                     "b": {"gap": 0.4, "got": 0, "lo": 1, "hi": 2}}}
+        _sc = _T.SC.score
+        try:
+            _T.SC.score = lambda _p: _s
+            ok(_T.worst("x", skip=set())[0] == "a", "안 쉬면 제일 먼 축")
+            ok(_T.worst("x", skip={"a"})[0] == "b", "쉬는 축은 건너뛴다")
+            ok(_T.worst("x", skip={"a", "b"})[0] == "a",
+               "전부 쉬면 그냥 제일 먼 것을 쓴다  ← 아무것도 안 하는 것보다 낫다")
+        finally:
+            _T.SC.score = _sc
+    finally:
+        _T.LOG = _was
