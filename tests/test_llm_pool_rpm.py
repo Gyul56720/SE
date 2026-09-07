@@ -13,6 +13,7 @@ LLM·네트워크 없이 돈다. 실행: python3 tests/test_llm_pool_rpm.py
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 import time
 import tempfile
@@ -660,6 +661,34 @@ ok(not llm_pool._is_rpm(
    "자정까지 기다리라는 것은 하루치다")
 ok(not llm_pool._is_rpm(RuntimeError("429 RESOURCE_EXHAUSTED")),
    "단서가 하나도 없으면 하루치로 본다  ← 1분마다 죽은 조합을 두드리는 편이 더 나쁘다")
+
+
+print()
+print("[임포트] **검사가 진짜 호출자와 같은 문으로 들어와야 한다**")
+print("      ← 이 파일은 sys.path 에 뿌리와 orchestrator/ 를 **둘 다** 넣는다. 그래서")
+print("        `from gemini_http import Client` 가 여기서는 통했다. 진짜 호출자는 둘 중")
+print("        하나만 넣는다 -- VM 에서 drift.sh start 가 첫 탐침에서 죽었다:")
+print("        ModuleNotFoundError: No module named 'gemini_http' (실측 2026-09-07).")
+print("        그러니 **별도 프로세스에서, 문을 하나씩만 열고** 재야 한다.")
+
+_DOORS = (
+    ("뿌리만 (scripts/pool_probe.py 방식)",
+     f"import sys; sys.path.insert(0, {str(REPO)!r})\n"
+     "from orchestrator import llm_pool\n"),
+    ("orchestrator/ 만 (novel/drive.py 방식)",
+     f"import sys; sys.path.insert(0, {str(REPO)!r})\n"
+     f"sys.path.insert(0, {str(REPO / 'orchestrator')!r})\n"
+     "import llm_pool\n"),
+)
+for _what, _head in _DOORS:
+    _p = subprocess.run(
+        [sys.executable, "-c", _head
+         + "c = llm_pool._default_factory('gemini-3.5-flash', 'k')\n"
+           "print(type(c).__module__, type(c).__name__)"],
+        capture_output=True, text=True, cwd=str(REPO / "tests"))
+    ok(_p.returncode == 0 and "gemini_http" in _p.stdout,
+       f"{_what} 로 들어와도 공장이 선다 "
+       f"({(_p.stdout or _p.stderr).strip().splitlines()[-1][:90]})")
 
 
 # **요약은 맨 끝에 있어야 한다.** 2026-09-07 까지 이 블록이 252줄에 있었다 -- 파일은
