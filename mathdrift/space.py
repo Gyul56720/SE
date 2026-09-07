@@ -39,6 +39,15 @@ from pathlib import Path
 PATH = Path(os.environ.get("MATHDRIFT_LEDGER",
                            Path(__file__).resolve().parent / "ledger.json"))
 
+# **씨앗은 코드고 원장은 런타임 상태다.** 둘을 한 파일에 두었다가 사고를 냈다 --
+# 원장이 추적되고 있어서 VM 이 낳은 공간 15개가 `git pull` 한 번에 씨앗만 든 커밋본으로
+# 되돌아갔다(실측 2026-09-07). compression/ledger.json 과 novel/*.json 이 같은 이유로
+# 이미 .gitignore 에 있는데 그 규약을 안 따랐던 것이다.
+#
+# 이제 원장은 추적하지 않고, 없으면 여기서 새로 세운다. 씨앗을 고치는 것은 커밋이고,
+# 공간을 낳는 것은 런이다.
+SEED = Path(__file__).resolve().parent / "seed.json"
+
 # 공간 하나가 갖는 칸. **전부 비어도 받는다.**
 FIELDS = ("이름", "점", "표기", "되사상", "크기", "왜")
 
@@ -54,9 +63,16 @@ def blank() -> dict:
 
 
 def load(path=None) -> dict:
+    """원장을 읽는다. **없으면 씨앗에서 새로 세운다** -- 빈 원장은 발산이 못 시작한다."""
     p = Path(path or PATH)
     if not p.exists():
-        return blank()
+        try:
+            d = json.loads(SEED.read_text(encoding="utf-8"))
+        except (ValueError, OSError):
+            return blank()
+        for k, v in blank().items():
+            d.setdefault(k, v)
+        return d
     try:
         d = json.loads(p.read_text(encoding="utf-8"))
     except (ValueError, OSError):

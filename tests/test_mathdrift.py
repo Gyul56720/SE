@@ -47,6 +47,23 @@ except ValueError:
     ok(True, "원장에 없는 부모를 거절한다")
 ok(SP.get(led, "S1") is not None, "씨앗은 부모 '-' 로 올라간다")
 
+print("\n== 원장은 pull 로 안 날아간다 ==")
+# 실측 2026-09-07: 원장이 추적되고 있어서 VM 이 낳은 공간 15개가 git pull 한 번에
+# 씨앗만 든 커밋본으로 되돌아갔다. compression/ledger.json 과 novel/*.json 이 같은
+# 이유로 이미 .gitignore 에 있는데 그 규약을 안 따랐던 것이다.
+_gi = (Path(__file__).resolve().parent.parent / ".gitignore").read_text(encoding="utf-8")
+ok("mathdrift/ledger.json" in _gi, "원장은 .gitignore 에 있다 (런타임 상태다)")
+ok(SP.SEED.exists(), "씨앗은 파일로 저장소에 있다 (코드다)")
+with tempfile.TemporaryDirectory() as d:
+    _f = Path(d) / "없던원장.json"
+    _boot = SP.load(_f)
+    ok(len(_boot["spaces"]) == 1 and _boot["spaces"][0]["id"] == "S1",
+       "원장이 없으면 씨앗에서 새로 세운다  ← 빈 원장으로는 발산이 못 시작한다")
+    ok(_boot["spaces"][0].get("되사상"), "씨앗의 되사상이 비어 있지 않다")
+    _r = SP.add(_boot, {"이름": "낳은 것", "되사상": "돌아간다"}, parent="S1", op="망각")
+    SP.save(_boot, _f)
+    ok(len(SP.load(_f)["spaces"]) == 2, "원장이 생긴 뒤에는 씨앗이 그것을 안 덮는다")
+
 print("\n== 발산은 죽이지 않는다 ==")
 r = SP.add(led, {"이름": "되사상 없는 공간", "점": "무엇인가"}, parent="S1", op="망각")
 ok(r["등급"] == "검증불가", "되사상이 비면 기각이 아니라 등급만 '검증불가'")
@@ -204,7 +221,10 @@ with tempfile.TemporaryDirectory() as d:
     SP.save(led, f)
     back = SP.load(f)
     ok(len(back["spaces"]) == len(led["spaces"]), "원장이 그대로 돌아온다")
-    ok(SP.load(Path(d) / "없다.json")["spaces"] == [], "없는 파일은 빈 원장")
+    # **없는 파일은 빈 원장이 아니라 씨앗이다.** 원장을 추적에서 빼면서 계약이 바뀌었다 --
+    # 빈 원장으로는 발산이 못 시작하므로, 없으면 씨앗에서 세운다.
+    ok([x["id"] for x in SP.load(Path(d) / "없다.json")["spaces"]] == ["S1"],
+       "없는 파일은 씨앗에서 세운다")
 
 print()
 if FAIL:

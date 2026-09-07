@@ -108,3 +108,9 @@ law/corpus/*.txt
 # 법 튜너 장부/챔피언 -- 기계마다 다르다
 law/tune.jsonl
 law/tune.best.json
+
+# 공간 원장 -- 서버가 계속 쓴다. 추적하면 배포의 git pull 이 매번 충돌한다
+# (compression/ledger.json 과 같은 이유). 실측 2026-09-07: 추적한 채로 뒀더니 VM 이
+# 낳은 공간 15개가 pull 한 번에 씨앗만 든 커밋본으로 되돌아갔다.
+# 씨앗(mathdrift/seed.json)은 코드다 -- 원장이 없으면 거기서 새로 세운다.
+mathdrift/ledger.json
