@@ -66,6 +66,52 @@ ok(not ME.measure(other, p)["확산"], "아무 관계 없는 공간은 확산이
 ok(not ME.measure(dict(p), p)["확산"], "부모를 그대로 베낀 것은 확산이 아니다")
 ok(ME.measure(p, None)["씨앗"], "씨앗은 잴 것이 없다")
 
+print("\n== 몫의 분모는 부모다 ==")
+_par = {"이름": "텐서 랭크", "점": "행렬곱 텐서를 랭크 1 텐서 m 개의 합으로 쓴 분해",
+        "표기": "세 행렬 U V W 와 계수 lambda", "되사상": "항등 Brent 항등식으로 검산",
+        "크기": "연속 실수 매개변수 594 개", "왜": ""}
+_rich = {"이름": "자리스키 닫힘",
+         "점": "랭크 1 텐서 합의 극한이 이루는 대수다양체의 닫힘 위의 점",
+         "표기": "U V W 에 매개변수 하나를 더한 곡선",
+         "되사상": "극한에서 Brent 항등식을 만족", "크기": "연속 차원이 더 크다", "왜": ""}
+_lean = {"이름": "랭크 스펙트럼", "점": "분해 하나", "표기": "U V W",
+         "되사상": "항등", "크기": "연속", "왜": ""}
+_rm, _lm = ME.measure(_rich, _par), ME.measure(_lean, _par)
+ok(_rm["확산"] and _lm["확산"], "말수가 많든 적든 부모를 품었으면 확산")
+ok(_rm["몫"] >= _lm["몫"],
+   f"**새 낱말을 많이 쓴 자식이 벌받지 않는다** (부모몫 {_rm['몫']} >= {_lm['몫']})")
+ok(_rm["자식몫"] < _lm["자식몫"],
+   f"옛 자로는 거꾸로였다 (자식몫 {_rm['자식몫']} < {_lm['자식몫']})  ← 이것이 고친 이유")
+ok(not ME.measure(other, _par)["확산"], "무관한 공간은 새 자로도 확산이 아니다")
+
+print("\n== 다시 재기 (호출 0회) ==")
+led = seed_led()
+for _op, _nm in (("완비화", "자리스키 닫힘"), ("매장", "비가환 군대수")):
+    _r = SP.add(led, dict(_rich, 이름=_nm), parent="S1", op=_op)
+    _r["잰것"] = ME.measure(_r, SP.get(led, "S1"))
+_before = [x["잰것"]["확산"] for x in led["spaces"][1:]]
+with tempfile.TemporaryDirectory() as d:
+    _f = Path(d) / "l.json"
+    SP.save(led, _f)
+    import io, contextlib
+    _buf = io.StringIO()
+    with contextlib.redirect_stdout(_buf):
+        SPR.remeasure(SP.load(_f), _f)
+    ok("부모몫 분포" in _buf.getvalue(), "바닥값을 실측으로 정하라고 분포를 찍는다")
+    _back = SP.load(_f)
+    ok(all(x.get("계보", {}).get("부모") for x in _back["spaces"][1:]),
+       "다시 재도 계보는 그대로다")
+    ok([x["잰것"]["확산"] for x in _back["spaces"][1:]] == _before,
+       "자를 안 바꿨으면 판정도 그대로")
+    # 바닥을 올리면 판정이 바뀐다 -- 호출 없이
+    _old = ME.KEEP_SHARE
+    ME.KEEP_SHARE = 0.99
+    with contextlib.redirect_stdout(io.StringIO()):
+        SPR.remeasure(SP.load(_f), _f)
+    ME.KEEP_SHARE = _old
+    ok(not any(x["잰것"]["확산"] for x in SP.load(_f)["spaces"][1:]),
+       "바닥을 올리면 호출 없이 판정이 다시 매겨진다")
+
 print("\n== 연산자 ==")
 ok(all(d >= 1 for _, _, d in OPS.OPS), "거리는 1 이상")
 ok(OPS.JUMP and OPS.NEAR, "급발진과 한 걸음이 둘 다 있다")

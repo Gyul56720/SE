@@ -246,6 +246,48 @@ def check() -> int:
     return 0
 
 
+def remeasure(led: dict, path=None) -> int:
+    """**호출 0회.** 원장에 이미 있는 것을 새 자로 다시 잰다.
+
+    자를 고치면 지금까지 뽑은 것을 다시 뽑아야 하는 줄 알았는데, 잰 것은 원장에 다 있으므로
+    다시 계산하면 된다. 자가 틀린 채로 300개를 뽑으면 어느 것이 쓸 만한지 못 고른다 --
+    자를 먼저 맞추고 그 다음에 크게 돈다.
+
+    바닥값(KEEP_MIN · KEEP_SHARE)을 **실측으로 정하라고** 분포를 같이 찍는다.
+    """
+    rows, was, now = [], 0, 0
+    for rec in led["spaces"]:
+        old = rec.get("잰것") or {}
+        if old.get("씨앗"):
+            continue
+        parent = SP.get(led, (rec.get("계보") or {}).get("부모"))
+        new = ME.measure(rec, parent)
+        rec["잰것"] = new
+        was += 1 if old.get("확산") else 0
+        now += 1 if new["확산"] else 0
+        rows.append((rec["id"], rec.get("계보", {}).get("연산자", ""), new,
+                     old.get("확산"), rec.get("이름", "")))
+    SP.save(led, path)
+
+    print(f"다시 잰 공간 {len(rows)}개 -- 확산 {was}개 → {now}개\n")
+    print(f"{'id':<5} {'연산자':<10} {'물려':>4} {'부모몫':>7} {'자식몫':>7} {'판정':<6} 이름")
+    for sid, op, m, oldok, name in sorted(rows, key=lambda r: -r[2]["몫"]):
+        mark = "확산" if m["확산"] else "약함"
+        moved = "" if bool(oldok) == m["확산"] else ("  ← 바뀜")
+        print(f"{sid:<5} {op:<10} {m['물려받음']:>4} {m['몫']:>7.3f} "
+              f"{m['자식몫']:>7.3f} {mark:<6} {name[:26]}{moved}")
+
+    vals = sorted(r[2]["몫"] for r in rows)
+    if vals:
+        def q(f):
+            return vals[min(len(vals) - 1, int(len(vals) * f))]
+        print(f"\n부모몫 분포 -- 최소 {vals[0]:.3f} / 4분위 {q(.25):.3f} / 중앙 {q(.5):.3f}"
+              f" / 3분위 {q(.75):.3f} / 최대 {vals[-1]:.3f}")
+        print(f"지금 바닥값: 물려받음 >= {ME.KEEP_MIN} · 부모몫 >= {ME.KEEP_SHARE}")
+        print("바닥값은 MATHDRIFT_KEEP_MIN / MATHDRIFT_KEEP_SHARE 로 바꿔 다시 재 본다.")
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--n", type=int, default=20, help="이번에 낳을 공간 수(대략)")
@@ -253,6 +295,8 @@ def main(argv=None) -> int:
     ap.add_argument("--dry", action="store_true", help="호출 없이 프롬프트만 본다")
     ap.add_argument("--check", action="store_true", help="쓸 수 있는 후보를 본다(호출 0회)")
     ap.add_argument("--show", action="store_true")
+    ap.add_argument("--remeasure", action="store_true",
+                    help="원장을 새 자로 다시 잰다 (호출 0회)")
     ap.add_argument("--lineage", default="")
     ap.add_argument("--path", default="")
     a = ap.parse_args(argv)
@@ -262,11 +306,15 @@ def main(argv=None) -> int:
 
     led = SP.load(a.path or None)
 
+    if a.remeasure:
+        return remeasure(led, a.path or None)
+
     if a.show:
         print(f"공간 {len(led['spaces'])}개")
         print(SP.brief(led))
         s = ME.spread(led)
-        print(f"\n확산 {s['확산']}/{s['잰공간']} (몫 {s['몫']:.2f})")
+        print(f"\n확산 {s['확산']}/{s['잰공간']} (몫 {s['몫']:.2f})"
+              "  ← 낮으면 --remeasure 로 자부터 본다")
         bad = sum(1 for x in led["spaces"] if x.get("등급") == "검증불가")
         print(f"검증불가 {bad}개 (되사상이 빈 것 -- 기각은 아니다)")
         print("연산자 씀: " + ", ".join(f"{k} {v}" for k, v in

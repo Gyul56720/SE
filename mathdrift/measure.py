@@ -24,6 +24,7 @@
 """
 from __future__ import annotations
 
+import os
 import re
 
 from mathdrift import space as SP
@@ -48,23 +49,42 @@ def _toks(rec: dict) -> set[str]:
 
 
 # **한 낱말이 겹친 것은 물려받은 것이 아니다.** 실측: 아무 상관 없는 공간("날씨/기압")도
-# "연속" 하나가 겹쳐서 확산으로 셌다. 그래서 바닥을 둘 둔다 -- 겹친 낱말의 절대 수와,
-# 자식 어휘 중에서 그것이 차지하는 몫. 둘 다 넘어야 물려받았다고 본다.
-KEEP_MIN = 2
-KEEP_SHARE = 0.15
+# "연속" 하나가 겹쳐서 확산으로 셌다. 그래서 겹친 낱말의 절대 수에 바닥을 둔다.
+KEEP_MIN = int(os.environ.get("MATHDRIFT_KEEP_MIN", "2"))
+
+# **몫의 분모는 부모다.** 처음에는 자식 어휘로 나눴는데, 그러면 **새 낱말을 많이 쓴 자식이
+# 벌을 받는다** -- 그리고 새 낱말을 많이 쓰는 것이 바로 우리가 원하는 것이다.
+#
+# 실측(VM 첫 15개, 2026-09-07): 물려받음이 4로 같은데 새것이 21인 것은 몫 0.16 이고 새것이
+# 적은 것은 더 높게 나왔다. 그 자로 재니 "자리스키 닫힘"(경계 랭크의 이웃) 과 "비가환
+# 군대수"(Cohn-Umans) 가 **남의 공간** 으로 찍혔다 -- 알려진 갈아타기 넷 중 셋이 첫 15개
+# 안에 나왔는데 자가 그것을 못 알아본 것이다.
+#
+# 물어야 할 것은 "자식이 부모 말을 얼마나 썼나" 가 아니라 **"부모의 무엇을 가져왔나"** 다.
+# 분모를 부모 어휘로 바꾸면 새것을 많이 더한 것이 안 깎인다.
+#
+# 바닥값은 **실측으로 정할 것**이다. `spread.py --remeasure` 가 분포를 찍어 주므로, 그것을
+# 보고 여기를 고친다. 지금 값은 첫 15개를 보고 잡은 것이라 표본이 얇다.
+KEEP_SHARE = float(os.environ.get("MATHDRIFT_KEEP_SHARE", "0.10"))
 
 
 def measure(child: dict, parent: dict | None) -> dict:
-    """두 계수와, 둘이 함께 있는지."""
+    """두 계수와, 둘이 함께 있는지.
+
+    `몫` 은 **부모 어휘 중 물려받은 몫**이다. `자식몫` 도 같이 적어 둔다 -- 옛 자가
+    무엇을 보고 있었는지 대조할 수 있어야 바닥값을 고칠 때 근거가 남는다.
+    """
     c = _toks(child)
     if parent is None:                      # 씨앗은 부모가 없다 -- 잴 것이 없다
-        return {"새것": len(c), "물려받음": 0, "몫": 0.0, "확산": False, "씨앗": True}
+        return {"새것": len(c), "물려받음": 0, "몫": 0.0, "자식몫": 0.0,
+                "확산": False, "씨앗": True}
     p = _toks(parent)
     new, kept = len(c - p), len(c & p)
-    share = kept / len(c) if c else 0.0
+    share = kept / len(p) if p else 0.0             # 부모의 얼마를 가져왔나
+    cshare = kept / len(c) if c else 0.0            # 옛 자 (대조용)
     real = kept >= KEEP_MIN and share >= KEEP_SHARE
     return {"새것": new, "물려받음": kept, "몫": round(share, 3),
-            "확산": bool(new and real), "씨앗": False}
+            "자식몫": round(cshare, 3), "확산": bool(new and real), "씨앗": False}
 
 
 def note(m: dict) -> str:
@@ -74,8 +94,8 @@ def note(m: dict) -> str:
     if not m["확산"] and not m["새것"]:
         return "제자리 -- 이름만 바뀐 것일 수 있다"
     if not m["확산"]:
-        return (f"인과 약함 -- 부모와 겹치는 것이 {m['물려받음']}개"
-                f" (몫 {m['몫']}). 남의 공간일 수 있다")
+        return (f"인과 약함 -- 부모에서 가져온 것이 {m['물려받음']}개"
+                f" (부모의 {m['몫']}). 남의 공간일 수 있다")
     return f"확산 (새것 {m['새것']} / 물려받음 {m['물려받음']}, 몫 {m['몫']})"
 
 
