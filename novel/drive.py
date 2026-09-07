@@ -245,12 +245,58 @@ def _json(text: str) -> dict:
     뒤의 `b.get(...)` 에서 'str' object has no attribute 'get' 로 터진다 -- 원인에서
     멀리 떨어진 곳에서 죽으면 로그만 보고는 무엇이 잘못됐는지 알 수 없다."""
     t = re.sub(r"^```(?:json)?|```$", "", text.strip(), flags=re.M).strip()
-    i, j = t.find("{"), t.rfind("}")
-    if i < 0 or j < 0:
+    i = t.find("{")
+    if i < 0:
         raise ValueError(f"JSON 을 찾지 못했다: {text[:120]!r}")
-    got = json.loads(t[i:j + 1])
-    if not isinstance(got, dict):
-        raise ValueError(f"JSON 객체가 아니라 {type(got).__name__} 이다: {t[i:j + 1][:120]!r}")
+
+    # **객체를 차례로 읽어 합친다.** 예전에는 첫 `{` 부터 마지막 `}` 까지를 통째로
+    # 잘라 한 번에 파싱했는데, 모델이 객체를 **여러 개** 내면 그 사이의 것이 전부
+    # 딸려 들어가 "Extra data" 로 죽는다.
+    #
+    # 실측 2026-09-07 VM: 추출이 **한 번도 성공 못 했다**. 세 번 재시도가 세 번 다
+    # 같은 오류였고("Extra data: line 1 column 30"), 그래서 원장이 영영 비어 있었다.
+    # 원장이 비면 프롬프트에 세계가 없고, 세계가 없으면 모델이 이어 쓸 것이 없어서
+    # 앞 글을 옮겨 적는다 -- echo.trim 이 그것을 도려내면 덩어리가 46자로 남고, 그러면
+    # 기각되고 다시 받는다. 로그의 "덩어리가 46자로 왔다" 가 그 끝자락이었다.
+    #
+    # 왜 이제야 터졌나: 오늘 pin/prefer 를 고치면서 **추출이 처음으로 gemma 로 갔다**.
+    # gemma 는 `{"people": ...} {"places": ...}` 처럼 쪼개서 낸다. 그 전에는 flash 가
+    # 받았고 flash 는 한 덩이로 냈다.
+    #
+    # 합치는 것이 맞다 -- 추출 프롬프트는 키 여럿을 가진 객체 **하나**를 요구하고,
+    # 모델은 그 키들을 객체 여럿에 나눠 담았을 뿐이다. 합치면 뜻이 그대로 복원된다.
+    dec = json.JSONDecoder()
+    got, more, at = {}, 0, i
+    while at < len(t):
+        nxt = t.find("{", at)
+        if nxt < 0:
+            break
+        try:
+            obj, end = dec.raw_decode(t, nxt)
+        except json.JSONDecodeError:
+            if not got:                      # 첫 덩이부터 깨졌으면 사실대로 올린다
+                raise
+            break                            # 뒤가 잡소리면 앞까지만 쓴다
+        if isinstance(obj, dict):
+            more += 1
+            for k, v in obj.items():
+                # 같은 키가 둘 다 사전이면 한 겹 더 합친다 -- 모델이 people 을
+                # 두 번에 나눠 내는 일이 있다.
+                if isinstance(got.get(k), dict) and isinstance(v, dict):
+                    got[k].update(v)
+                else:
+                    got[k] = v
+        at = end
+    # **빈 객체는 유효한 답이다.** `got` 이 비었는지로 판정하면 안 된다 -- 추출은
+    # "새로 확정된 것이 없다" 를 `{}` 로 낸다. 그렇게 짰다가 검사가 잡았다
+    # (test_flow: "추출도 한 번뿐이다" 가 3회로 나왔다 -- 재시도 세 번이 전부
+    # 유효한 `{}` 를 거부한 것이었다). 셀 것은 **덩이를 읽었느냐**지 내용이 아니다.
+    if not more:
+        raise ValueError(f"JSON 객체를 찾지 못했다: {t[i:i + 120]!r}")
+    if more > 1:
+        # **조용히 넘어가지 않는다.** 모델이 규격을 안 지킨 것은 사실이고, 그것을
+        # 안 적으면 프롬프트를 고칠 근거가 사라진다.
+        _log(f"[json] 객체 {more}개로 와서 합쳤다 -- 키 {sorted(got)[:6]}")
     return got
 
 
