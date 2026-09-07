@@ -76,11 +76,32 @@ with tempfile.TemporaryDirectory() as t:
     b9 = deep.brief(9, path=p)
 ok("여파" in b and "늘임" in b and "생각속" in b, "그 대목의 값을 그대로 싣는다")
 ok("돌아가지 않기로 한다" in b, "달라지는 것 하나를 싣는다")
-ok("편지" in b and "놓기만 하고" in b, "심을 것을 시킨다")
+ok("놓기만 하고" not in b,
+   "그 대목이 심었다고 해서 심으라고 시키지 않는다  ← A 의 94%가 심었다고 나왔다")
+ok("편지" not in b, "심은 것의 이름은 안 준다  ← 그건 본보기가 된다")
 ok("7대목쯤 전" in b, "거둘 것을 시킨다")
 ok("네가 정한다" in b, "무엇으로 그렇게 되는지는 안 시킨다  ← 본보기를 박지 않는다")
 ok(b9 == b, "원고가 표본보다 길어지면 마지막 것을 쓴다")
 ok(len(b) < 900, f"한 덩이가 짧다 ({len(b)}자)")
+
+print("\n[복선 -- 거둔 자리에서 거꾸로 짚는다]")
+# "심은것" 칸은 못 쓴다. A 에서 94%가 무언가를 심었다고 나왔다 -- 열에 아홉이
+# 심는다면 작품의 결이 아니라 모델이 그 칸을 늘 채우는 것이다. 쓸 수 있는 것은
+# 거둔 쪽(6%)이고, 거기서 사거리만큼 거슬러 올라간 자리에만 놓으라고 시킨다.
+_rs = [deep.clean({"장면꼴": "장면", "거둔거리": 0}) for _ in range(20)]
+for _i, _r in enumerate(_rs):
+    _r["n"] = _i
+_rs[12]["거둔거리"] = 10
+ok(deep.plants(_rs) == {2}, f"거둔 자리에서 거리만큼 거슬러 올라간다 ({deep.plants(_rs)})")
+ok(deep.plants([deep.clean({"거둔거리": 0})]) == set(), "안 거두면 심을 자리도 없다")
+ok(deep.plants([dict(deep.clean({"거둔거리": 99}), n=3)]) == set(),
+   "글 앞으로 넘어가면 버린다")
+with tempfile.TemporaryDirectory() as t:
+    _p = Path(t) / "deep.json"
+    _p.write_text(json.dumps({"recs": _rs}, ensure_ascii=False), encoding="utf-8")
+    ok("놓는다" in deep.brief(2, path=_p), "심을 자리에만 놓으라고 시킨다")
+    ok("놓는다" not in deep.brief(3, path=_p), "다른 자리에는 아무 말도 안 한다")
+    ok("거둔다" in deep.brief(12, path=_p), "거둘 자리에는 거두라고 시킨다")
 
 print("\n[견주기 -- 같은 자로 우리 원고도 잰다]")
 mine = dict(one)

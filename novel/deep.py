@@ -161,6 +161,26 @@ def load(path=None) -> dict:
         return {}
 
 
+def plants(recs: list) -> set:
+    """복선을 **심을** 대목. 거둔 자리에서 거꾸로 짚는다.
+
+    "심은것" 칸은 못 쓴다 -- A 에서 94%가 무언가를 심었다고 나왔다. 열 대목에 아홉이
+    심는다면 그건 작품의 결이 아니라 **모델이 그 칸을 늘 채우는 것**이고, 그대로
+    시키면 원고의 모든 대목이 복선을 놓는다.
+
+    쓸 수 있는 것은 거둔 쪽이다. 거둔 몫은 6%이고 사거리 가운데가 10대목이다. 그러니
+    거둔 대목에서 그 거리만큼 거슬러 올라간 자리에만 "여기 놓아라" 를 시킨다. 그러면
+    심는 자리도 저절로 6%가 되고, 놓은 것은 반드시 나중에 쓰인다."""
+    out = set()
+    for i, r in enumerate(recs):
+        d = r.get("거둔거리")
+        if isinstance(d, int) and d > 0:
+            j = (r.get("n") if isinstance(r.get("n"), int) else i) - d
+            if j >= 0:
+                out.add(j)
+    return out
+
+
 def at(n: int, path=None) -> dict | None:
     """덩어리 n 이 따라갈 기록. 원고가 표본보다 길어지면 마지막 것을 쓴다."""
     recs = load(path).get("recs") or []
@@ -192,9 +212,12 @@ def brief(n: int, path=None) -> str:
     if r.get("무엇"):
         out.append(f"  · 달라지는 것 하나: {r['무엇']}"
                    + (f" ({r['누구']}에게)" if r.get("누구") else ""))
-    if r.get("심은것"):
-        out.append(f"  · 나중에 쓸 것을 하나 놓는다: {r['심은것']} "
-                   "-- 놓기만 하고 설명하지 마라")
+    # **심는 것은 거둘 자리가 있을 때만 시킨다.** 그 대목의 "심은것" 칸이 채워져
+    # 있다는 것은 아무 뜻도 아니다(94%가 채워져 있다).
+    recs = load(path).get("recs") or []
+    if n in plants(recs):
+        out.append("  · 나중에 거둘 것을 하나 놓는다 -- 놓기만 하고 설명하지 마라. "
+                   "무엇을 놓을지는 네가 정한다")
     if isinstance(r.get("거둔거리"), int) and r["거둔거리"] > 0:
         out.append(f"  · 앞({r['거둔거리']}대목쯤 전)에서 놓았던 것을 여기서 거둔다")
     out.append("  · **무엇으로 그렇게 되는지는 네가 정한다.** 위는 짜임이지 본보기가 아니다.")
