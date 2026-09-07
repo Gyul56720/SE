@@ -108,6 +108,37 @@ ok("is_dir" in Path(S.__file__).read_text(encoding="utf-8"),
    "폴더를 자르지 않는 것이 코드에 있다")
 
 print()
+print("[갈래] **시키는 자와 재는 자가 같은 폭을 봐야 한다**")
+print("      ← 갈래가 축을 옮겨 놓았는데 채점기가 표본으로 재면, 시킨 대로 쓴 원고가")
+print("        낙제로 나오고 밤샘 루프가 그것을 표본 쪽으로 되돌린다. 로판에 대사")
+print("        30~55%를 시켜 놓고 표본의 9%로 재면 튜너는 사교계를 침묵시키게 배운다.")
+from novel import genre as _G                                         # noqa: E402
+_talky = ("\n".join(['"영애께서 그리 말씀하시니 드릴 말씀이 없습니다."',
+                     '"경께서 먼저 물으셨지요."',
+                     '그는 잔을 내려놓았다. 정원 쪽에서 발소리가 들렸다.',
+                     '초대장은 아직 봉인된 채였고 아무도 먼저 집지 않았다.']) + "\n") * 40
+with tempfile.TemporaryDirectory() as _t:
+    _mk = lambda g: (Path(_t) / f"{g or 'none'}.json")
+    _out = {}
+    for _g in ("ropan", ""):
+        _f = _mk(_g)
+        _f.write_text(json.dumps({"genre": _g, "chunks": [_talky]},
+                                 ensure_ascii=False), encoding="utf-8")
+        _out[_g] = S.score(_f)
+    _r, _n = _out["ropan"], _out[""]
+    ok(_r.get("genre") == "ropan", "원고에서 갈래를 읽는다")
+    ok(_n.get("genre") == "", "갈래가 없으면 빈 값이다")
+    _lo, _hi = _G.band("ropan", "dialog")
+    ok(_r["axes"]["dialog"]["lo"] == _lo and _r["axes"]["dialog"]["hi"] == _hi,
+       f"로판 원고는 갈래 폭으로 잰다 ({_lo:.2f}~{_hi:.2f})")
+    ok(_r["axes"]["dialog"]["gap"] < _n["axes"]["dialog"]["gap"],
+       f"같은 원고인데 갈래를 알면 거리가 준다 "
+       f"({_n['axes']['dialog']['gap']:.2f} → {_r['axes']['dialog']['gap']:.2f})")
+    ok(_r["total"] < _n["total"],
+       f"총점도 준다 ({_n['total']:.2f} → {_r['total']:.2f})  ← 이것이 학습 신호다")
+    ok(S.genre_of(Path(_t)) == "", "폴더(홀드아웃)에는 갈래가 없다  ← 표본이지 우리 원고가 아니다")
+
+print()
 if fails:
     print(f"점수: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)

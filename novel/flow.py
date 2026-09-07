@@ -38,6 +38,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from novel import drive as D                                          # noqa: E402
 from novel import echo                                                # noqa: E402
 from novel import doubt                                               # noqa: E402
+from novel import voicegap as VG                                      # noqa: E402
 from novel import diffusion, dyn                                           # noqa: E402
 from novel import bridge                                              # noqa: E402
 from novel import bond                                                # noqa: E402
@@ -249,6 +250,10 @@ def blank(first: str = FIRST) -> dict:
         "people": {}, "places": {}, "facts": {}, "time": [], "objects": {},
         "words": {}, "open": {}, "rules": {}, "macguffin": {}, "bonds": {},
         "_folded": []}}
+
+
+def _clean(v):
+    return str(v).strip() if isinstance(v, (str, int, float)) and str(v).strip() else None
 
 
 def _merge(ledger: dict, delta: dict, at: int = 0) -> list:
@@ -1140,7 +1145,8 @@ def write_prompt(book: dict, feedback: str = "") -> str:
             book,
             ledger=brief(book["ledger"], now=len(book["chunks"])),
             asks="\n\n".join(x for x in (compose.offbrief(book), owed_brief(book),
-                                          ahead_brief(book), feedback) if x),
+                                          ahead_brief(book), VG.brief(book),
+                                          feedback) if x),
             opening_head=_open_head(book))
     return _legacy_prompt(book, feedback)
 
@@ -1203,6 +1209,8 @@ def _legacy_prompt(book: dict, feedback: str = "") -> str:
 {_genre(book) if _story() else ''}
 
 {turned(book) if _story() else ''}
+
+{VG.brief(book)}
 
 {owed_brief(book)}
 
@@ -1716,7 +1724,7 @@ def main() -> int:
     #
     # 조용히 지우지는 않는다 -- 밤새 쓴 원고일 수 있다. 멈추고 무엇을 하라고 알려 준다.
     if a.resume and book.get("first") and not getattr(a, "first_seed", False) \
-            and book["first"] != a.first:
+            and book["first"].strip().replace("\r\n", "\n") != a.first.strip().replace("\r\n", "\n"):
         print("첫 문장이 다르다 -- 이건 다른 소설이다. 이어 쓰지 않는다.\n"
               f"  원고에 박힌 첫 문장: {book['first'][:40]}...\n"
               f"  지금 주어진 첫 문장: {a.first[:40]}...\n"

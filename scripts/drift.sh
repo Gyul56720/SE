@@ -24,10 +24,13 @@
 #
 # 환경변수로 바꿀 수 있는 것:
 #   DRIFT_LAYER  프롬프트 층      (기본 text = 문면층만 · all = 서사·세계까지)
-#                                문면층만 쓸 때는 사건·급발진·갈래·확산이 안 실린다
-#   GENRE    갈래 꾸러미        (romance · job · youth / 비우면 안 씌운다.
-#                                DRIFT_LAYER=all 일 때만 실린다)
-#                                예: GENRE=youth drift.sh start 8000
+#                                문면층만 쓸 때는 사건·급발진·확산이 안 실린다
+#                                (갈래는 층과 무관하게 실린다 -- 아래 GENRE)
+#   GENRE    갈래 꾸러미        (ropan · romance · job · youth / 비우면 안 씌운다)
+#                                예: GENRE=ropan drift.sh start 8000
+#                                축에서 짓는 기본 프롬프트에도 실린다 -- 갈래의 저울이
+#                                대사 몫·높임·주고받기 목표를 옮기고, 화법과 부름이
+#                                따라 붙는다. DRIFT_LAYER=all 을 켜면 사건·확산까지 온다
 #   DRIFT    표류 계수 0~1     (기본 1.0 -- 낮추면 급발진·사건이 줄어든다)
 #   MATTER   소재 축 0~1       (기본 0.0 -- 켜면 갈래·매체가 섞인다)
 #   BODY     몸의 사실 0~1     (기본 0.35)
@@ -150,7 +153,8 @@ INNER
     refuse_double; load_env
     [ -f "$BOOK" ] || die "이어 쓸 원고가 없다: $BOOK   (새로 시작하려면: $0 start)"
     cp "$BOOK" "$BOOK.bak"
-    launch "이어 쓰기를" --resume "$BOOK" --chars "${2:-50000}" --hours 12 \
+    FIRST_MSG="$(python3 -c "import json; print(json.load(open('$BOOK')).get('first', ''))" 2>/dev/null || true)"
+    launch "이어 쓰기를" --resume "$BOOK" ${FIRST_MSG:+--first "$FIRST_MSG"} --chars "${2:-50000}" --hours 12 \
            ${GENRE:+--genre "$GENRE"} \
            ${DRIFT:+--drift "$DRIFT"} ${MATTER:+--matter "$MATTER"} \
            ${BODY:+--body "$BODY"} ${BOND:+--bond "$BOND"}

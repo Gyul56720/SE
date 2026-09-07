@@ -4,6 +4,12 @@
 > 줄거리를 먼저 짜지 않고 첫 문장에서 이어 쓰는 **DRIFT** 는 [`DRIFT.md`](DRIFT.md) 에
 > 따로 있다 -- `scripts/drift.sh` 로 돌린다.
 
+> **무엇을 성공이라 부를 것인가**는 [`SUCCESS.md`](SUCCESS.md) 에 있다 -- 목적함수를
+> 안 정해두면 튜닝 루프가 밤새 표본이 정한 방향으로 돈다.
+>
+> **무엇이 재미를 가르는가**는 [`EVIDENCE.md`](EVIDENCE.md) 에 문헌으로 있다 --
+> 짐작을 수로 적기 전에 여기부터 본다.
+
 
 이 저장소의 다른 오케스트레이션(`orchestrator/`, `mathgen/`, `compression/`)과 **같은 원칙**
 위에 서 있다: **생성자와 심판을 분리하고, 심판은 절대 LLM 이 아니다.**
@@ -151,6 +157,7 @@ JSON 의 우위는 **추출 태스크에 한정**된 이야기라, 두 태스크
 | `flow.py` | **연속 집필** -- 조립하지 않고 첫 문장에서 이어 쓴다. 관문은 모순 하나뿐 |
 | `scripts/run_novel_vm.sh` | VM 런처. setsid+nohup+disown 을 매번 손으로 쓰다 하나를 빠뜨리지 않게. **경로 전부 절대경로** |
 | `scripts/novel_status.sh` | 프로세스·로그·자수를 한 번에. 어느 디렉토리에서 쳐도 된다 |
+| `voicegap.py` | **인물끼리 말이 얼마나 다른가.** 문자 3-gram 부트스트랩 거리(EVIDENCE.md 10절). 1.0 = 구별 안 됨. 밑돌면 겹치는 둘을 짚어 되먹인다 |
 | `read.py` `watch.py` `profile.py` `repair_ops.py` | 읽기 · 진행 보기 · 병목 측정 · 저장된 원고 수리 |
 
 검사: `tests/test_novel_*.py`, `test_style.py`, `test_agency.py`, `test_timeline.py`, `test_seed.py`,

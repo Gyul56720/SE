@@ -29,7 +29,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from novel import profile as PF, targets as TG                        # noqa: E402
+from novel import genre as GENRE, profile as PF, targets as TG        # noqa: E402
 
 # 폭이 0 인 축(표본이 한 점으로 모인 것)에서 0 으로 나누지 않으려는 바닥값.
 FLOOR = 0.02
@@ -42,6 +42,22 @@ def _gap(v: float, lo: float, hi: float) -> float:
     if v > hi:
         return (v - hi) / span
     return 0.0
+
+
+def genre_of(path) -> str:
+    """**원고가 어느 갈래로 쓰였나.** 갈래가 축을 옮겨 놓았으면 그 축은 갈래로 재야
+    한다 -- 안 그러면 시킨 대로 쓴 원고가 낙제로 나오고, 밤샘 루프가 그것을 표본
+    쪽으로 되돌린다. 로판에 대사 몫 30~55%를 시켜 놓고 표본의 9%로 재면, 잘 쓴
+    회차일수록 점수가 나빠지고 튜너는 사교계를 침묵시키는 방향으로 배운다.
+
+    폴더(홀드아웃)는 표본이지 우리 원고가 아니라 갈래가 없다."""
+    p = Path(path)
+    if p.is_dir():
+        return ""
+    try:
+        return json.loads(p.read_text(encoding="utf-8")).get("genre", "") or ""
+    except Exception:
+        return ""
 
 
 def chunks_of(path) -> list:
@@ -84,10 +100,13 @@ def score(path, last: int | None = None) -> dict:
         for k in PF.AXES:
             if k in m:
                 per[k].append(m[k])
-    out = {"n": len(texts), "axes": {}, "total": 0.0}
+    gname = genre_of(path)
+    out = {"n": len(texts), "genre": gname, "axes": {}, "total": 0.0}
     tot = 0.0
     for k in PF.AXES:
-        band = TG.band(k)
+        # **갈래가 옮긴 축은 갈래로 잰다.** compose.aims 가 시킬 때 쓰는 것과 같은
+        # 폭이어야 한다 -- 시키는 자와 재는 자가 다른 폭을 보면 그 차이가 곧 잡음이다.
+        band = GENRE.band(gname, k) or TG.band(k)
         if not band or not per[k]:
             continue
         got = PF.summary(per[k])["mid"]
@@ -122,7 +141,10 @@ def main(argv=None) -> int:
                     help="원고 전체를 잰다(기본은 끝의 몇 덩어리만 -- 학습 신호용)")
     a = ap.parse_args(argv)
     s = score(a.path, last=0 if a.all else None)
-    print(f"표본: {TG.source()}\n")
+    _g = s.get("genre") or ""
+    print(f"표본: {TG.source()}"
+          + (f"\n갈래: {_g} -- 이 갈래가 옮긴 축은 표본이 아니라 갈래 폭으로 잰다"
+             if _g else "") + "\n")
     print(table(s))
     if a.json and s:
         Path(a.json).write_text(json.dumps(s, ensure_ascii=False, indent=1),

@@ -33,6 +33,15 @@ on:
       - "gates/**"
       # 서버에서 도는 점검 도구. 능력 래칫이 커밋 게이트에서 여기로 옮겨왔다.
       - "scripts/**"
+      # 소설 파이프라인. 봇이 서브프로세스로 띄우는 코드라 임포트 폐포에 안 잡히고,
+      # 그래서 G013 이 못 본다 -- searcher.py · bot_tools.py · gatekeeper.py 에 이어
+      # **네 번째** '코드가 서버에 도달하지 못하는' 경로다(실측 2026-09-07:
+      # GENRE=ropan 이 VM 에서 "모르는 갈래" 로 죽었다. 코드는 저장소에 있었다).
+      #
+      # **.py 만 건다.** targets.json · directives.json 은 VM 의 튜닝 루프가 밤새
+      # 고쳐 커밋하는 것들이라, 그것까지 걸면 학습 한 바퀴마다 봇이 재시작된다 --
+      # runs/ 를 일부러 뺀 것과 같은 이유다.
+      - "novel/**.py"
       - "deploy/se-discord-bot.service"
       - "deploy/se-log-streamer.service"
       - "deploy/se-matrix-search.service"
