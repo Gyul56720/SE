@@ -723,6 +723,61 @@ _got = (_r.stdout or "").split()
 ok(_r.returncode == 0 and len(_got) == 2 and _got[0] == _got[1],
    f"두 임포트 길이 같은 후보를 만든다 ({(_r.stderr or _r.stdout).strip()[-60:] or ' '.join(_got)})")
 
+print()
+print("[아픔] **500 을 거듭 내는 후보는 잠깐 뺀다**")
+print("      ← 실측 2026-09-07 VM: gemma 계열이 500 INTERNAL 을 내기 시작했는데")
+print("        '일시장애' 갈래는 쿨다운도 벌점도 안 걸었다. 바퀴마다 같은 여섯을 다시")
+print("        두드렸고, 추출은 prefer=\"gemma\" 라 그 여섯이 매번 맨 앞이었다.")
+print("        후보 12 x 간격 8초 = 한 바퀴 40초, 3바퀴 2분, call_json 3회 재시도로")
+print("        **추출 한 번에 6분**이다. 멈춘 게 아니라 그만큼 느린 것이다.")
+
+llm_pool._SICK.clear()
+llm_pool._SICK_UNTIL.clear()
+_e500 = RuntimeError('500 INTERNAL. {"error": {"code": 500, "status": "INTERNAL"}}')
+
+ok(not llm_pool._is_rpm(_e500) and not llm_pool._is_quota(_e500)
+   and not llm_pool._is_permanent(_e500), "500 은 쿼터도 영구도 아니다  ← 일시장애다")
+
+_k = llm_pool._note_failure("sickA:m0", _e500, False)
+ok("일시장애" in _k, f"첫 번은 일시장애로만 적는다 ({_k})")
+ok("sickA:m0" not in llm_pool._SICK_UNTIL,
+   "**한 번은 봐준다**  ← 진짜 깜빡임일 수 있다")
+
+_k2 = llm_pool._note_failure("sickA:m0", _e500, False)
+ok(llm_pool._SICK_UNTIL.get("sickA:m0", 0) > time.time(),
+   f"잇달아 두 번이면 뺀다 ({_k2})")
+ok("초 뺀다" in _k2, "왜 뺐는지 로그에 적는다")
+
+# **쿼터 장부에는 안 적는다.** 500 은 쿼터 사실이 아니다 -- 파일에 적으면
+# "분당 한도로 쉬는 중" 으로 읽히고 그건 거짓말이다.
+ok(not q.is_rpm_cooling("sickA:m0"),
+   "쿼터 장부는 안 건드린다  ← 500 을 '분당 한도' 로 읽히게 하면 안 된다")
+
+# 성공하면 의심을 푼다 -- 안 그러면 한 번 아팠던 후보가 영영 뒤로 밀린다
+_pool = [("sickA:m0", _Rec("sickA:m0", False))]
+llm_pool._LAST_USED.clear(); llm_pool._LAST_KEY.clear()
+llm_pool.call(_pool, "x", verbose=False)
+ok("sickA:m0" not in llm_pool._SICK_UNTIL and "sickA:m0" not in llm_pool._SICK,
+   "성공하면 장부에서 지운다  ← 한 번 아팠다고 영영 의심하지 않는다")
+
+# **전부 아파도 시도는 한다.** 아무것도 안 하는 것보다 두드려 보는 편이 낫다.
+llm_pool._SICK_UNTIL.update({"sickB:m0": time.time() + 999, "sickB:m1": time.time() + 999})
+_hit2 = []
+
+
+class _Note(_Rec):
+    def invoke(self, prompt):
+        _hit2.append(self.label)
+        return super().invoke(prompt)
+
+
+llm_pool._LAST_USED.clear(); llm_pool._LAST_KEY.clear()
+llm_pool.call([("sickB:m0", _Note("sickB:m0", False))], "x", verbose=False)
+ok(_hit2 == ["sickB:m0"],
+   f"전부 아프면 거르지 않는다 ({_hit2})  ← 잔량 0 일 때와 같은 원칙이다")
+llm_pool._SICK.clear(); llm_pool._SICK_UNTIL.clear()
+
+
 # **요약은 맨 끝에 있어야 한다.** 2026-09-07 까지 이 블록이 252줄에 있었다 -- 파일은
 # 611줄인데. 검사가 자라면서 자기 요약문을 넘어갔고, 그 뒤 336줄의 실패는 아무도
 # 안 봤다(종료 코드가 0 이었다). 이 저장소가 제일 싫어하는 것 그대로다:
