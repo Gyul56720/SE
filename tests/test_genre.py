@@ -248,12 +248,6 @@ _src = (Path(__file__).resolve().parent.parent / "novel" / "flow.py").read_text(
 ok('GENRE.tune(book.get("genre", ""), "초현실", 1)' in _src, "flow 가 그 저울을 본다")
 
 print()
-if _bad:
-    print(f"갈래: {len(_bad)}개 실패 -- {_bad}")
-    raise SystemExit(1)
-print("갈래: 갈아끼우기 · 저울 · 사슬 · 격리 -- 통과")
-
-print()
 print("[변수] **고정 파라미터는 안 바뀌고, 서사 변수는 바뀐다**")
 print("      ← 도중에 시점이나 세계 법칙이 흔들리면 설정이 충돌한다. 원장이")
 print("        무모순성을 지키는 것과 같은 이유다.")
@@ -439,3 +433,52 @@ _dir = _json.loads((Path(__file__).resolve().parent.parent / "novel" / "directiv
                    .read_text(encoding="utf-8"))["axes"]
 ok(_dir["talk_len"]["low"].strip(),
    "긴 대사가 모자랄 때 할 말이 있다  ← 비어 있으면 목표만 주고 방법을 안 준다")
+
+
+print()
+print("[이름결] **목록이 아니라 결이다**")
+print("      ← 실측 2026-09-05, 로맨스 원고 10만 자: 이름을 아무것도 안 시켰더니")
+print("        마석구 · 배달수 · 황두식 · 알리가 나왔다. 로판 원고가 공녀 · 대공으로")
+print("        나온 것은 이름이 통제돼서가 아니라 **부름이 이름을 가려 준 것**이다.")
+
+_rp = genre.PACKS["ropan"]
+ok(bool(_rp.get("이름결")), "ropan 에 이름결이 있다")
+
+# **인명 목록이면 안 된다.** 목록을 박으면 원고마다 같은 이름이 돌아온다 --
+# 사건축·부름은 골라 쓰고 버리는 카드지만 인명은 원고 전체를 따라다닌다.
+_names = _rp.get("이름결") or ()
+ok(all(len(x) > 20 for x in _names),
+   f"항목이 전부 문장이다 -- 이름 낱개가 아니다 (제일 짧은 것 {min(len(x) for x in _names)}자)")
+
+_b = genre.brief("ropan", "씨앗", 3)
+ok("이름을 지을 때" in _b, "프롬프트에 실린다")
+ok(_b.index("이름을 지을 때") < _b.index("부르는 말"),
+   "부름보다 먼저 온다  ← 이름이 정해져야 호칭이 그 위에 얹힌다")
+ok("이미 있는 이름은 그대로 쓴다" in _b,
+   "있는 사람 이름은 안 건드린다  ← 바꾸면 그게 모순이다")
+
+# 매 덩어리에 여섯 줄을 다 넣으면 인물 소개서가 된다.
+_seg = _b[_b.index("이름을 지을 때"):]
+_seg = _seg[:_seg.index("  · **")] if "  · **" in _seg else _seg   # 다음 항목 전까지
+_lines = [l for l in _seg.split("\n") if l.strip().startswith("- ")]
+ok(len(_lines) <= 3, f"한 번에 두어 줄만 싣는다 ({len(_lines)}줄)")
+
+# 갈래마다 다르게 뽑혀야 한다 -- 고정이면 원고마다 같은 두 줄이 온다.
+_a = genre.brief("ropan", "씨앗A", 3)
+_c = genre.brief("ropan", "씨앗B", 9)
+ok(_a != _c, "씨앗과 자리가 다르면 다른 줄이 온다")
+
+
+# **요약은 맨 끝에 있어야 한다.** 2026-09-07 까지 이 블록이 251줄에 있었다 -- 파일은
+# 473줄인데. 검사가 자라면서 자기 요약문을 넘어갔고, 그 뒤 220줄은 종료 코드에 아무
+# 영향을 못 줬다. 실패를 화면에 찍고도 스위트에는 통과로 보고했다.
+#
+# **이 저장소에서 네 번째다** -- test_llm_pool_rpm.py(611줄 중 252), test_flow.py
+# (605줄 중 402), 그리고 여기. 같은 실수가 네 번 나오면 그것은 실수가 아니라 이 파일
+# 꼴의 성질이다: 검사를 파일 끝에 덧붙이는 습관과, 종료 블록이 본문 사이에 섞여 있는
+# 구조가 만나면 반드시 이렇게 된다.
+print()
+if _bad:
+    print(f"갈래: {len(_bad)}개 실패 -- {_bad}")
+    raise SystemExit(1)
+print("갈래: 갈아끼우기 · 저울 · 사슬 · 격리 · 변수 · 이름결 -- 통과")
