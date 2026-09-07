@@ -40,6 +40,7 @@ from novel import echo                                                # noqa: E4
 from novel import doubt                                               # noqa: E402
 from novel import voicegap as VG                                      # noqa: E402
 from novel import payoff as PO                                        # noqa: E402
+from novel import turn as TU                                          # noqa: E402
 from novel import diffusion, dyn                                           # noqa: E402
 from novel import bridge                                              # noqa: E402
 from novel import bond                                                # noqa: E402
@@ -1147,7 +1148,8 @@ def write_prompt(book: dict, feedback: str = "") -> str:
             ledger=brief(book["ledger"], now=len(book["chunks"])),
             asks="\n\n".join(x for x in (compose.offbrief(book), owed_brief(book),
                                           ahead_brief(book), VG.brief(book),
-                                          PO.brief(book), feedback) if x),
+                                          PO.brief(book), TU.brief(book),
+                                          feedback) if x),
             opening_head=_open_head(book))
     return _legacy_prompt(book, feedback)
 
@@ -1214,6 +1216,8 @@ def _legacy_prompt(book: dict, feedback: str = "") -> str:
 {VG.brief(book)}
 
 {PO.brief(book)}
+
+{TU.brief(book)}
 
 {owed_brief(book)}
 
