@@ -25,7 +25,8 @@ from __future__ import annotations
 
 import os
 
-from novel import deep, dyn, layout, mode as MD, plot, profile as PF, spine, targets as TG, voice
+from novel import (deep, dyn, genre as GENRE, layout, mode as MD, plot,
+                   profile as PF, spine, targets as TG, voice)
 
 # 한 덩어리에 쓸 분량.
 CHARS = int(os.environ.get("DRIFT_CHUNK", "3200"))
@@ -96,13 +97,17 @@ SAY.update(layout.SAY)
 SHOW = int(os.environ.get("DRIFT_SHOW_AXES", "0"))
 
 
-def aims(seed: str, n: int, keys: list) -> list:
+def aims(seed: str, n: int, keys: list, gname: str = "") -> list:
     """이번 덩어리의 목표값. **폭 안에서 덩어리마다 흔든다** -- 가운뎃값을 목표로
-    삼으면 모든 덩어리가 가운뎃값이 되고, 표본 자체가 그렇지 않다."""
+    삼으면 모든 덩어리가 가운뎃값이 되고, 표본 자체가 그렇지 않다.
+
+    **갈래가 옮겨 놓은 축은 갈래가 이긴다.** 표본이 아직 그 갈래가 아닐 때 표본값을
+    그대로 쓰면 갈래가 죽는다 -- 로판을 쓰라고 해 놓고 대사 몫 9%를 시키면 사교계가
+    침묵한다. 옮긴 자리는 여전히 재는 축이라 지켜졌는지 다음 덩어리에서 확인된다."""
     from novel import rhythm
     out = []
     for k in keys:
-        band = TG.band(k)
+        band = GENRE.band(gname, k) or TG.band(k)
         if not band or k not in SAY:
             continue
         lo, hi = band
@@ -155,21 +160,21 @@ def mode_nums(seed: str, n: int, st: list) -> dict:
     return out
 
 
-def target_block(seed: str, n: int, last: str = "", watch=()) -> str:
+def target_block(seed: str, n: int, last: str = "", watch=(), gname: str = "") -> str:
     """이번 덩어리가 맞출 수. **값은 전부, 설명은 몇 개만.**
 
     수정이 덩어리마다 한 번뿐이라 초고가 자세해야 한다. 그렇다고 축 마흔 개에
     설명을 다 붙이면 프롬프트가 터지고, 무엇보다 **다 강조하면 강조가 아니다.**
     그래서 값은 빽빽하게 전부 주고, 어떻게 맞추는지는 **지금 어긋난 축부터** 몇 개만
     붙인다. 직전 덩어리가 없으면(첫 덩어리) 굵은 축부터 붙인다."""
-    keys = [k for k in PF.AXES if k in SAY and TG.band(k)]
+    keys = [k for k in PF.AXES if k in SAY and (GENRE.band(gname, k) or TG.band(k))]
     if SHOW:
         import hashlib
         keys = sorted(keys, key=lambda k: hashlib.sha1(
             f"{seed}|pick|{n}|{k}".encode("utf-8")).hexdigest())[:SHOW]
     if not keys:
         return ""
-    vals = dict(aims(seed, n, keys))
+    vals = dict(aims(seed, n, keys, gname))
 
     # 어느 축에 설명을 붙일까. **이번 대목이 보는 축부터**(watch), 그 안에서도
     # 직전 덩어리가 어긋난 것부터. 대사를 쓰는 대목에 문단 길이를 설명해 봐야
@@ -218,7 +223,8 @@ def build(book: dict, ledger: str = "", asks: str = "", opening_head: str = "",
         head or "한국어 소설을 쓴다. 산문만 출력한다 -- 제목도 머리말도 표식도 쓰지 마라.",
         f"[분량] 약 {CHARS}자. 끊지 말고 이어라. 회차도 씬도 없다.",
         MD.render(st, mode_nums(seed, len(chunks), st)),
-        target_block(seed, len(chunks), tail if not opening else "", MD.watched(st)),
+        target_block(seed, len(chunks), tail if not opening else "", MD.watched(st),
+                     book.get("genre", "")),
     ]
     if ledger:
         parts.append("[세계 — 지금까지 확정된 것]\n" + ledger
@@ -239,6 +245,22 @@ def build(book: dict, ledger: str = "", asks: str = "", opening_head: str = "",
     # 그것도 없으면 갈래만 뽑아 준다. 지어내서 시키지는 않는다.
     parts.append(deep.brief(len(chunks)) or spine.brief(len(chunks)) or
                  plot.brief(seed, len(chunks), book.get("ledger")))
+    # **갈래 -- 못 재는 것이 실리는 유일한 자리다.**
+    #
+    # 이 파일의 규칙은 "재는 축에 매인 것만 싣는다" 이고, 갈래의 저울은 그 규칙을
+    # 지킨다(위 target_block 이 축으로 옮겨 놓는다). 그런데 화법 · 부름 · 관계 ·
+    # 사건에는 자가 없다. 규칙대로면 안 실어야 한다.
+    #
+    # 그래도 싣는다. 갈래를 준다는 것은 사람이 **이 갈래로 써라**고 정한 것이고,
+    # 못 재는 것을 안 싣는 규율은 기본 프롬프트의 규율이지 사람이 명시한 요구를
+    # 버리라는 뜻이 아니다. 실제로 그 요구를 버리고 있었다 -- 여기가 갈래를 한 번도
+    # 안 불렀고, 그래서 GENRE=ropan 을 주고 돌려도 로판 대사 규율이 한 줄도 안
+    # 실렸다(사용자 평 2026-09-07: "대사가 너무 별로였다").
+    #
+    # **갈래를 안 주면 아무것도 안 바뀐다** -- brief() 가 빈 줄을 돌려준다. 지금까지의
+    # 프롬프트는 그대로다.
+    if book.get("genre"):
+        parts.append(GENRE.brief(book["genre"], seed, len(chunks)))
     if asks:
         parts.append(asks)
     return "\n\n".join(p for p in parts if p)

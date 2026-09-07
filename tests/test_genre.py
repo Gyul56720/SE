@@ -153,7 +153,7 @@ print()
 print("[가짓수] **목록이 아니라 곱으로 뽑는다** -- 열두 개짜리 목록은 백 덩어리면 바닥난다")
 print("      ← 그것이 과접합이다. 축을 갈라 곱하면 목록을 안 늘리고도 만 가지가 되고,")
 print("        축이 갈래의 것이라 갈래 밖으로 새지도 않는다.")
-for _g in ("job", "romance"):
+for _g in ("job", "romance", "ropan"):
     ok(genre.size(_g) > 5000, f"{_g}: 사건 {genre.size(_g):,}가지")
     _es = [tuple(genre.event(_g, "씨앗", i).values()) for i in range(200)]
     ok(len(set(_es)) > 180, f"{_g}: 200 덩어리에 {len(set(_es))}가지가 나온다")
@@ -289,3 +289,94 @@ _p9 = flow.write_prompt(dict(flow.blank(flow.FIRST), chunks=["x" * 300]))
 ok("속에 있는 것은 밖으로 나와야 한다" in _p9,
    "내현이 외현으로 발현되게 한다  ← 속만 적으면 일기다")
 ok("[고정]" in _p9 and "[세기]" in _p9, "둘 다 프롬프트에 실린다")
+
+print()
+print("[로판] **말이 무기고 예의가 갑옷이다**")
+print("      ← 사용자 평(2026-09-07): \"대사가 너무 별로였다.\" 이 갈래에서 대사는")
+print("        장식이 아니라 판이 뒤집히는 자리다. 그래서 화법을 두껍게 준다.")
+ok("ropan" in genre.names(), "로판 꾸러미가 있다")
+_r = genre.brief("ropan", "씨", 6)
+ok("[로맨스판타지]" in _r, "머리표가 붙는다")
+ok("판돈은 돈이 아니라 신분과 평판이다" in _r, "무엇이 걸려 있는지 말한다")
+ok("먼저 움직이는" in _r, "먼저 아는 것을 말이 아니라 행동으로 쓰게 한다")
+
+print("  [화법] 이 갈래의 대사 규율")
+for _k in ("정중할수록 세다", "에두른다", "부르는 말이 곧 선언", "듣는 사람이 둘이다",
+           "윗사람은 묻지 않는다", "말을 안 맺는다", "아는 것을 안 말한다",
+           "예법이 대답을 대신한다"):
+    ok(_k in genre.PACKS["ropan"]["화법"], f"화법: {_k}")
+_ways = {tuple(SH._batch(genre.PACKS["ropan"]["화법"], "씨|way", i, "way", 2))
+         for i in range(12)}
+ok(len(_ways) > 6, f"화법도 덩어리마다 다르다 ({len(_ways)}가지)  ← 한 대목에 하나둘만")
+
+print("  [부름] 호칭이 곧 관계 선언이다")
+ok("이 대목에서 부르는 말" in _r, "부르는 말을 뽑아 준다")
+ok("부르는 말이 곧 관계 선언이다" in _r, "왜 주는지 말한다")
+ok("이미 정해진 호칭이 있으면 그것을 쓰고" in _r,
+   "원장이 이긴다고 못박는다  ← 매번 새로 뽑으면 백작이 다음 덩어리에 공작이 된다")
+ok("이 대목에서 부르는 말" not in genre.brief("job", "씨", 6),
+   "호칭이 없는 갈래에는 안 실린다")
+_calls = {tuple(SH._batch(genre.PACKS["ropan"]["부름"], "씨|call", i, "call", 3))
+          for i in range(20)}
+ok(len(_calls) > 12, f"부름도 덩어리마다 다르다 ({len(_calls)}가지)")
+
+print("  [저울] 사교계는 말로 굴러간다")
+_rd = genre.tune("ropan", "대사", None)
+ok(_rd and _rd[0] >= 0.30, f"로판은 대사 몫이 높다 ({_rd})  ← 직장물 {genre.tune('job','대사',None)} 과 반대다")
+ok(genre.tune("ropan", "자", {}).get("rally", 0) >= 6,
+   "주고받기를 길게 요구한다  ← 사교계는 오가는 말이다")
+ok(genre.tune("ropan", "자", {}).get("huge", 0) >= 1,
+   "긴 대사 하나를 요구한다  ← 선언 · 훈계 · 폭로의 자리가 실제로 있다")
+ok(genre.tune("ropan", "초현실", 1) == 0,
+   "초현실은 끈다  ← 마법은 이 세계의 법칙이지 아이러니 장치가 아니다")
+
+print("  [격리] 갈래는 틀을 안 건드린다")
+_bkr = flow.blank(flow.FIRST)
+_bkr["genre"] = "ropan"
+_pr = flow.write_prompt(_bkr)
+for _sec in ("[문장]", "[리듬]", "[점층]", "[대사가 이야기다]", "[말맛]", "[확산]"):
+    ok((_sec in _p0) == (_sec in _pr), f"{_sec} 는 갈래와 무관하다")
+ok("[로맨스판타지]" in _pr, "갈래를 주면 실린다")
+
+
+print()
+print("[배선] **축에서 짓는 프롬프트에도 갈래가 실린다**")
+print("      ← 실측 2026-09-07: compose.py 가 genre 를 한 번도 안 불렀다. 기본값이")
+print("        PROMPT=axes 라, GENRE=ropan 을 주고 돌려도 로판 규율이 한 줄도 안")
+print("        실렸다. 저울도 죽어서 대사 몫은 표본값 9% 그대로였다.")
+from novel import compose as CP                                       # noqa: E402
+_was = flow.PROMPT
+flow.PROMPT = "axes"                       # **기본값으로 돌려놓고 본다**
+try:
+    _bx = flow.blank(flow.FIRST)
+    _bx["chunks"] = ["x" * 300]
+    _pa = flow.write_prompt(_bx)
+    _bg = dict(_bx, genre="ropan")
+    _pg = flow.write_prompt(_bg)
+
+    ok("[로맨스판타지]" in _pg, "갈래를 주면 axes 경로에도 실린다")
+    ok("이번 대목의 화법" in _pg, "화법이 실린다  ← 사용자 불만이 있던 자리")
+    ok("이 대목에서 부르는 말" in _pg, "부름이 실린다")
+    ok("[로맨스판타지]" not in _pa and "이번 대목의 화법" not in _pa,
+       "갈래를 안 주면 아무것도 안 바뀐다  ← 지금까지의 프롬프트 그대로다")
+
+    print("  [저울] 갈래가 옮긴 축은 갈래가 이긴다")
+    _ax = dict(CP.aims("씨", 3, ["dialog", "rally", "talk_polite"], "ropan"))
+    _bs = dict(CP.aims("씨", 3, ["dialog", "rally", "talk_polite"], ""))
+    _lo, _hi = genre.band("ropan", "dialog")
+    ok(_lo <= _ax["dialog"] <= _hi, f"로판 대사 목표가 갈래 폭 안이다 ({_ax['dialog']:.0%})")
+    ok(_ax["dialog"] > _bs.get("dialog", 0),
+       f"표본값보다 높다 ({_ax['dialog']:.0%} > {_bs.get('dialog', 0):.0%})"
+       "  ← 표본이 아직 로판이 아니다(SUCCESS.md 5절)")
+    ok("talk_polite" not in _bs and "talk_polite" in _ax,
+       "표본에 없던 축도 갈래가 들여온다  ← 높임은 이 갈래의 뼈대다")
+    ok(genre.band("", "dialog", (9, 9)) == (9, 9), "갈래가 없으면 표본이 산다")
+    ok(genre.band("job", "dialog") is None, "축을 안 옮긴 갈래는 아무것도 안 바꾼다")
+
+    print("  [한 군데에만 적는다] 대사는 축 dialog 의 옛 이름이다")
+    ok(genre.tune("ropan", "대사", None) == genre.band("ropan", "dialog"),
+       "옛 경로와 새 경로가 같은 수를 본다")
+    ok(genre.tune("job", "대사", None) == (0.12, 0.35),
+       "제 저울에 적어 둔 갈래는 그대로다  ← 뒤로 안 깨진다")
+finally:
+    flow.PROMPT = _was
