@@ -360,6 +360,26 @@ try:
     ok("[로맨스판타지]" not in _pa and "이번 대목의 화법" not in _pa,
        "갈래를 안 주면 아무것도 안 바뀐다  ← 지금까지의 프롬프트 그대로다")
 
+    print("  [세간] 물건이 신분을 말한다")
+    ok("이 대목에 놓인 것" in _pg, "이 대목에 놓일 것을 뽑아 준다")
+    ok("이름만 대지 마라" in _pg, "이름만 대지 못하게 한다")
+    ok("놓여 있기만 하면 배경이고" in _pg, "쓰이게 한다  ← 놓여만 있으면 배경이다")
+    ok("이 대목에 놓인 것" not in genre.brief("job", "씨", 6),
+       "세간이 없는 갈래에는 안 실린다")
+    _st = {tuple(SH._batch(genre.PACKS["ropan"]["세간"], "씨|stuff", i, "stuff", 3))
+           for i in range(20)}
+    ok(len(_st) > 14, f"세간도 덩어리마다 다르다 ({len(_st)}가지)  ← 셋만 뽑아 도배를 막는다")
+
+    print("  [근거] 지어낸 수는 안 싣는다")
+    print("        ← EVIDENCE.md: outside 밴드는 내가 방금 지어낸 수였다. 뺐다.")
+    ok(genre.band("ropan", "outside") is None,
+       "디테일 밀도에 짐작한 수를 안 박는다  ← 표본이 오면 표본이 정한다")
+    ok("권력 투쟁" in genre.PACKS["ropan"]["머리"],
+       "국내 로판 연구가 지목한 엔진을 싣는다(EVIDENCE.md 7절)")
+    ok("쓸 사람" in genre.PACKS["ropan"]["관계"]
+       and "자리가 바뀐다" in genre.PACKS["ropan"]["사건"],
+       "인적 재배치가 관계와 사건에 들어 있다  ← 회귀 후 가장 공들이는 것이 사람이다")
+
     print("  [저울] 갈래가 옮긴 축은 갈래가 이긴다")
     _ax = dict(CP.aims("씨", 3, ["dialog", "rally", "talk_polite"], "ropan"))
     _bs = dict(CP.aims("씨", 3, ["dialog", "rally", "talk_polite"], ""))
