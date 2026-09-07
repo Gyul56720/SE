@@ -241,8 +241,15 @@ def _key_id(key: str) -> str:
     return hashlib.sha256(key.encode()).hexdigest()[:8]
 
 
-def _default_factory(model: str, key: str):
-    """max_retries/timeout 을 모르는 langchain 버전에서도 뜨도록 TypeError 면 물러선다."""
+# **어느 클라이언트로 부를 것인가.** 기본은 직접 부르기(gemini_http) 다.
+# langchain 은 이 파일에서 세 줄만 쓰였고, 그마저 재시도 기본값을 꺼야 했다 --
+# 후보 풀 자체가 재시도 전략이라 한 후보 안에서 오래 버틸 이유가 없다.
+# 되돌리려면 GEMINI_CLIENT=langchain.
+CLIENT = os.environ.get("GEMINI_CLIENT", "direct").strip().lower()
+
+
+def _langchain_factory(model: str, key: str):
+    """예전 경로. max_retries/timeout 을 모르는 버전에서도 뜨도록 TypeError 면 물러선다."""
     from langchain_google_genai import ChatGoogleGenerativeAI
     secs = SLOW_TIMEOUT if SLOW_MODEL.search(model) else TIMEOUT
     try:
@@ -251,6 +258,16 @@ def _default_factory(model: str, key: str):
                                       max_output_tokens=MAX_OUT)
     except TypeError:
         return ChatGoogleGenerativeAI(model=model, google_api_key=key)
+
+
+def _default_factory(model: str, key: str):
+    """(모델, 키) 하나를 부를 것. 풀이 쓰는 것은 `.invoke(prompt)` 하나뿐이다."""
+    if CLIENT == "langchain":
+        return _langchain_factory(model, key)
+    from gemini_http import Client
+    secs = SLOW_TIMEOUT if SLOW_MODEL.search(model) else TIMEOUT
+    return Client(model=model, key=key, timeout=secs,
+                  max_output_tokens=MAX_OUT, attempts=MAX_RETRIES)
 
 
 def _default_models(key: str):

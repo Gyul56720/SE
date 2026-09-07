@@ -570,14 +570,28 @@ _fake = _types.ModuleType("langchain_google_genai")
 _fake.ChatGoogleGenerativeAI = _FakeChat
 sys.modules["langchain_google_genai"] = _fake
 
-for _m in ("gemma-4-26b-a4b-it", "gemini-flash-lite-latest", "gemini-3.5-flash"):
-    llm_pool._default_factory(_m, "k")
-ok(_secs["gemma-4-26b-a4b-it"] == llm_pool.SLOW_TIMEOUT,
-   f"gemma 는 오래 기다린다 ({_secs['gemma-4-26b-a4b-it']:.0f}초)")
-ok(_secs["gemini-flash-lite-latest"] == llm_pool.TIMEOUT,
-   f"flash 는 그대로다 ({_secs['gemini-flash-lite-latest']:.0f}초)  ← 느려질 이유가 없다")
-ok(all(v == llm_pool.MAX_OUT for v in _out.values()),
+# **계약은 그대로, 나르는 것만 바뀌었다.** 2026-09-07 에 소설 경로가 langchain 을
+# 걷어내고 gemini_http.Client 를 쓴다. 시간 제한과 출력 상한이 어디에 실리느냐만
+# 달라졌지 "큰 모델은 더 기다린다 · 한 번에 받을 만큼 받는다" 는 그대로다.
+# **두 길을 다 본다** -- langchain 은 GEMINI_CLIENT=langchain 으로 되돌아갈 길이라
+# 살아 있어야 한다.
+_direct = {m: llm_pool._default_factory(m, "k")
+           for m in ("gemma-4-26b-a4b-it", "gemini-flash-lite-latest", "gemini-3.5-flash")}
+ok(type(_direct["gemini-3.5-flash"]).__name__ == "Client",
+   "기본은 직접 부르기다  ← langchain 은 이 파일에서 세 줄만 쓰였다")
+ok(_direct["gemma-4-26b-a4b-it"].timeout == llm_pool.SLOW_TIMEOUT,
+   f"gemma 는 오래 기다린다 ({_direct['gemma-4-26b-a4b-it'].timeout:.0f}초)")
+ok(_direct["gemini-flash-lite-latest"].timeout == llm_pool.TIMEOUT,
+   f"flash 는 그대로다 ({_direct['gemini-flash-lite-latest'].timeout:.0f}초)  ← 느려질 이유가 없다")
+ok(all(c.max_output_tokens == llm_pool.MAX_OUT for c in _direct.values()),
    f"한 번에 받을 만큼 받는다 ({llm_pool.MAX_OUT}토큰)  ← 안 걸면 모델 기본값으로 돈다")
+
+for _m in ("gemma-4-26b-a4b-it", "gemini-flash-lite-latest", "gemini-3.5-flash"):
+    llm_pool._langchain_factory(_m, "k")
+ok(_secs["gemma-4-26b-a4b-it"] == llm_pool.SLOW_TIMEOUT,
+   f"되돌릴 길도 같은 계약이다 -- gemma {_secs['gemma-4-26b-a4b-it']:.0f}초")
+ok(all(v == llm_pool.MAX_OUT for v in _out.values()),
+   "되돌릴 길도 출력 상한을 건다")
 
 
 print()
