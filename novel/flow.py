@@ -251,6 +251,10 @@ def blank(first: str = FIRST) -> dict:
         "_folded": []}}
 
 
+def _clean(v):
+    return str(v).strip() if isinstance(v, (str, int, float)) and str(v).strip() else None
+
+
 def _merge(ledger: dict, delta: dict, at: int = 0) -> list:
     """새로 확정된 것을 원장에 더한다. **기각할 것만** 돌려준다.
 

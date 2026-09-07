@@ -82,3 +82,4 @@ novel/arm.json
 novel/spine.json
 novel/final.json
 novel/final.txt
+.venv*
