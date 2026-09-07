@@ -70,7 +70,7 @@ def prompt(parent: dict, picks: list[tuple[str, str, int]]) -> str:
     검증은 `recall.py` 가 나중에 **따로** 한다 -- 생성기는 그것을 몰라야 한다.
     """
     body = "\n".join(f"    {f}: {parent.get(f) if parent.get(f) not in ('', None) else '(비어 있음)'}"
-                     for f in ("이름", "식", "점", "정의역"))
+                     for f in ("식", "점", "정의역"))
     lines = []
     for op, what, dist in picks:
         far = "  ← 먼 이주여도 좋다" if dist >= 2 else ""
@@ -88,14 +88,16 @@ def prompt(parent: dict, picks: list[tuple[str, str, int]]) -> str:
 
 연산자마다 새 식 하나씩, **JSON 배열 하나로만** 답해라. 원소는 {len(picks)}개다.
 
-  연산자 : 위 목록의 이름 그대로
-  이름   : 이 식을 한 마디로
-  식     : **바뀐 제약식 자체. 여기가 본체다.** 부모 식이 어떻게 달라졌는지가
-           여기 보여야 한다 -- 경계화면 극한이, 표수 이동이면 체가, 대칭성
-           강제면 불변 조건이
-  점     : 이 식의 해 하나는 무엇인가
-  정의역 : 무엇 위에서 푸는가 (실수 R · 격자 · 유한체 F_2 · ...)
-  왜     : 왜 이것이 그럴듯한가
+  연산자 : 위 목록의 이름 그대로 (짝을 맞추려는 칸이다)
+  식     : **오로지 수학적 기호만.** 한국어를 한 글자도 쓰지 마라.
+           부모 식을 놓고 이 연산자가 그것을 **기호로** 어떻게 바꾸는지 쓴다 --
+           lim 이 붙거나, 체가 바뀌거나, 첨자에 조건이 붙거나, = 이 <= 가 되거나,
+           합의 범위가 달라지거나, 새 변수가 들어오거나.
+           설명하고 싶은 것은 전부 `왜` 칸에 적는다. 여기는 식만 있는 칸이다
+  점     : 해가 무엇인지 **기호로** (예: (U,V,W,lam) in F^{{n^2 x m}} x ... x F^m)
+  정의역 : F = R · F = F_2 · F = {{-1,0,1}} · ... 처럼 **기호로**
+  왜     : 왜 이것이 그럴듯한가 (**여기만 한국어로 쓴다.** 사람이 읽는 칸이고
+           다음 세대에게는 전달되지 않는다)
 
 선택 칸. **적을 수 있으면 적고 아니면 비워라. 없다고 벌점 없다.**
 
@@ -110,6 +112,10 @@ def prompt(parent: dict, picks: list[tuple[str, str, int]]) -> str:
   · **모르는 칸은 비워라.** 지어내지 마라 -- 빈 칸은 벌점이 아니다
   · **부모 식을 부정하지 마라.** 부모의 해가 새 식 안에서도 해로 남아야 한다
   · **{len(picks)}개를 서로 다르게 써라.** 연산자가 다르므로 식도 달라야 한다
+  · **`식`·`점`·`정의역` 에 한국어가 있으면 그건 식이 아니라 설명이다.**
+    "같은 식을 F_2 위에서" (X)
+    `sum_r lam_r U[(i,k),r] V[(k',j),r] W[(i',j'),r] = d(k,k') d(j,j') d(i,i')  over F_2` (O)
+  · **부모에게 이름이 없다.** 붙일 이름도 없다 -- 식만 오간다
 
 JSON 배열:"""
 
@@ -258,7 +264,7 @@ def step(led: dict, llm, seed: str, n: int, k: int = BATCH, log=print) -> list[d
         made["잰것"] = ME.measure(made, parent)
         out.append(made)
         log(f"[발산] {made['id']} <- {parent['id']} / {want} : "
-            f"{made.get('이름','')[:28]} -- {ME.note(made['잰것'])}")
+            f"{str(made.get('식') or '')[:46]} | {ME.note(made['잰것'])}")
     if len(out) < len(picks):
         log(f"[발산] {len(picks)}개 중 {len(out)}개만 왔다")
     return out
@@ -341,19 +347,16 @@ def remeasure(led: dict, path=None) -> int:
         was += 1 if old.get("확산") else 0
         now += 1 if new["확산"] else 0
         rows.append((rec["id"], rec.get("계보", {}).get("연산자", ""), new,
-                     old.get("확산"), rec.get("이름", ""),
-                     ME.decorated(rec, parent)))
+                     str(rec.get("식") or "")))
     SP.save(led, path)
 
-    print(f"다시 잰 공간 {len(rows)}개 -- 확산 {was}개 → {now}개\n")
-    print(f"{'id':<5} {'연산자':<10} {'물려':>4} {'부모몫':>7} {'장식':<4} {'판정':<6} 이름")
-    for sid, op, m, oldok, name, deco in sorted(rows, key=lambda r: -r[2]["몫"]):
-        mark = "확산" if m["확산"] else "약함"
-        print(f"{sid:<5} {op:<10} {m['물려받음']:>4} {m['몫']:>7.3f} "
-              f"{'장식' if deco else '  ':<4} {mark:<6} {name[:30]}")
-    _d = sum(1 for r in rows if r[5])
-    print(f"\n**이름이 부모 이름을 그대로 품은 것 {_d}/{len(rows)}개.** 이것이 높으면"
-          " 이주가 아니라 작명이다 -- 그리고 낱말 겹침을 재는 자는 그것을 최고점으로 준다.")
+    print(f"다시 잰 공간 {len(rows)}개 -- 겹침 많음 {was}개 → {now}개\n")
+    print(f"{'id':<5} {'연산자':<10} {'가져온말':>6} {'부모몫':>7}  식")
+    for sid, op, m, expr in sorted(rows, key=lambda r: -r[2]["몫"]):
+        print(f"{sid:<5} {op:<10} {m['물려받음']:>6} {m['몫']:>7.3f}  {expr[:60]}")
+    print("\n**이 수는 판정이 아니다.** 낱말 겹침으로 인과를 재던 자는 두 번 뒤집혔다 --"
+          " 부모 말을 그대로 달고\n수식어만 바꾼 것이 최고점(0.933)을 받고, 진짜 이주"
+          "(ε-근사 · 그로텐디크)가 0 으로 깔렸다.")
 
     vals = sorted(r[2]["몫"] for r in rows)
     if vals:
@@ -365,6 +368,11 @@ def remeasure(led: dict, path=None) -> int:
         print("바닥값은 MATHDRIFT_KEEP_MIN / MATHDRIFT_KEEP_SHARE 로 바꿔 다시 재 본다.")
     return 0
 
+
+# **`--known` 을 뗐다.** 알려진 갈아타기 넷을 찾아 주던 것인데, 찾는 방식이 한국어
+# 낱말 grep 이었다("군대수", "표수", "근사"...). 식으로 표류시키기로 해 놓고 판정도 찾기도
+# 낱말로 하고 있었으면 같은 잘못을 세 번째 되풀이하는 것이다. 식을 기호로 견주는 법이
+# 생기기 전까지는 아무것도 안 센다.
 
 def card(led: dict, sid: str) -> int:
     """공간 하나를 칸째로 펼친다. **이름만 보고 판정하지 않으려고 있는 것이다.**
@@ -387,7 +395,7 @@ def card(led: dict, sid: str) -> int:
         print(f"  {f:<6}: {v if v else '(비어 있음)'}")
     if par:
         print(f"\n--- 부모 {par['id']} ---")
-        for f in ("이름", "점", "표기", "되사상"):
+        for f in ("식", "점", "정의역"):
             print(f"  {f:<6}: {par.get(f) or '(비어 있음)'}")
     return 0
 
@@ -421,10 +429,10 @@ def main(argv=None) -> int:
         print(f"공간 {len(led['spaces'])}개")
         print(SP.brief(led))
         s = ME.spread(led)
-        print(f"\n확산 {s['확산']}/{s['잰공간']} (몫 {s['몫']:.2f})"
-              "  ← 낮으면 --remeasure 로 자부터 본다")
-        bad = sum(1 for x in led["spaces"] if x.get("등급") == "검증불가")
-        print(f"검증불가 {bad}개 (되사상이 빈 것 -- 기각은 아니다)")
+        print(f"\n낱말 겹침 {s['확산']}/{s['잰공간']} (몫 {s['몫']:.2f})"
+              "  ← 눈금이지 판정이 아니다")
+        okn = sum(1 for x in led["spaces"] if x.get("등급") == "검증가능")
+        print(f"검증가능 {okn}개 (코드 칸을 채운 것 -- 없다고 벌점은 없다)")
         print("연산자 씀: " + ", ".join(f"{k} {v}" for k, v in
                                      sorted(led["ops_used"].items(), key=lambda x: -x[1])))
         return 0

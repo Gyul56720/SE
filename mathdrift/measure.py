@@ -108,12 +108,14 @@ def note(m: dict) -> str:
     """숫자를 사람 말로. **판정이 아니라 관찰이다** -- 어느 쪽도 기각 사유가 아니다."""
     if m.get("씨앗"):
         return "씨앗"
+    # **판정처럼 쓰지 않는다.** 이 자는 두 번 뒤집혔다 -- 부모 말을 그대로 달고 수식어만
+    # 바꾼 것이 최고점을 받고(S27 0.933), 진짜 이주(ε-근사 · 그로텐디크)가 0 으로 깔렸다.
+    # 그래서 "남의 공간" 같은 말을 뗐다. 숫자는 남기되 뜻은 사람이 읽는다.
     if not m["확산"] and not m["새것"]:
-        return "제자리 -- 이름만 바뀐 것일 수 있다"
+        return f"겹침 많음 (부모의 {m['몫']}) -- 말이 그대로일 수 있다"
     if not m["확산"]:
-        return (f"인과 약함 -- 부모에서 가져온 것이 {m['물려받음']}개"
-                f" (부모의 {m['몫']}). 남의 공간일 수 있다")
-    return f"확산 (새것 {m['새것']} / 물려받음 {m['물려받음']}, 몫 {m['몫']})"
+        return f"겹침 적음 (가져온 말 {m['물려받음']}개, 부모의 {m['몫']})"
+    return f"겹침 (새것 {m['새것']} / 가져온 말 {m['물려받음']}, 부모의 {m['몫']})"
 
 
 def spread(led: dict) -> dict:
@@ -128,21 +130,6 @@ def spread(led: dict) -> dict:
     return {"잰공간": n, "확산": ok, "몫": (ok / n) if n else 0.0}
 
 
-# 이름이 부모 이름을 그대로 품었나. **자가 뒤집혀 있는 것을 드러내는 자리다.**
-#
-# 실측 2026-09-07(60개): 부모 이름("멀티리니어 랭크 스펙트럼")에 연산자 어휘를 덧붙인
-# 무리가 부모몫 최상위를 차지했고(S9 0.529 · S8 0.471 · S34 0.370), 이름이 정말 바뀐
-# 것들("지수 대역 Exponent Cone", "오차 허용 지수 영역")이 바닥에 깔렸다. 뒤엣것이
-# Strassen 의 점근 스펙트럼과 경계 랭크 쪽이다 -- **진짜 이주일수록 이름이 바뀌고,
-# 이름이 바뀌면 낱말 겹침을 재는 자가 깎는다.**
-#
-# 그래서 이것은 판정이 아니라 **자를 의심하는 눈금**이다. 아무것도 기각하지 않는다.
-DECO_MIN = int(os.environ.get("MATHDRIFT_DECO_MIN", "2"))
-
-
-def decorated(child: dict, parent: dict | None) -> bool:
-    if not parent:
-        return False
-    cn = {t for t in _TOK.findall(child.get("이름") or "") if len(t) > 1 and t not in STOP}
-    pn = {t for t in _TOK.findall(parent.get("이름") or "") if len(t) > 1 and t not in STOP}
-    return bool(pn) and len(cn & pn) >= min(DECO_MIN, len(pn))
+# **`decorated` 를 뗐다.** 자식 이름이 부모 이름을 품었나 보던 것인데, 이름 칸 자체를
+# 없앴다(space.FIELDS). 두 번 다 이름에서 장식이 시작됐고, 자식이 부모 이름을 못 보면
+# 덧붙일 것도 없다 -- 검출기를 두느니 원인을 없애는 편이 낫다.

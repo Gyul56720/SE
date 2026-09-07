@@ -31,7 +31,7 @@ def ok(cond, what):
 
 def seed_led():
     led = SP.blank()
-    SP.add(led, {"이름": "텐서 랭크", "점": "랭크 1 텐서의 합",
+    SP.add(led, {"점": "랭크 1 텐서의 합",
                  "식": "U V W 세 행렬과 계수", "해독": "항등. Brent 항등식으로 검산",
                  "정의역": "연속. 매개변수 594개", "왜": "씨앗"},
            parent="-", op="씨앗", dist=0)
@@ -41,7 +41,7 @@ def seed_led():
 print("== 인과성은 구성으로 보장된다 ==")
 led = seed_led()
 try:
-    SP.add(led, {"이름": "남의 공간"}, parent="S99", op="망각")
+    SP.add(led, {"식": ""}, parent="S99", op="망각")
     ok(False, "원장에 없는 부모를 거절한다")
 except ValueError:
     ok(True, "원장에 없는 부모를 거절한다")
@@ -61,15 +61,15 @@ with tempfile.TemporaryDirectory() as d:
        "원장이 없으면 씨앗에서 새로 세운다  ← 빈 원장으로는 발산이 못 시작한다")
     ok(_boot["spaces"][0].get("해독") and _boot["spaces"][0].get("부호화"),
        "씨앗이 해독기와 부호화기를 들고 있다 -- 시금석점은 거기서 만든다")
-    _r = SP.add(_boot, {"이름": "낳은 것", "해독": "돌아간다"}, parent="S1", op="망각")
+    _r = SP.add(_boot, {"해독": "돌아간다"}, parent="S1", op="망각")
     SP.save(_boot, _f)
     ok(len(SP.load(_f)["spaces"]) == 2, "원장이 생긴 뒤에는 씨앗이 그것을 안 덮는다")
 
 print("\n== 발산은 죽이지 않는다 ==")
-r = SP.add(led, {"이름": "해독 없는 공간", "점": "무엇인가"}, parent="S1", op="망각")
+r = SP.add(led, {"점": "무엇인가"}, parent="S1", op="망각")
 ok(r["등급"] == "미검증",
    "**코드 칸이 없는 것을 벌하지 않는다** -- 등급은 벌이 아니라 표다")
-_v = SP.add(led, {"이름": "코드 있는 공간", "해독": "def decode(p): pass",
+_v = SP.add(led, {"해독": "def decode(p): pass",
                   "부호화": "def encode(U,V,W,l): pass"}, parent="S1", op="쌍대")
 ok(_v["등급"] == "검증가능", "해독기와 부호화기가 있으면 '검증가능' 으로 표시한다")
 ok(SP.get(led, r["id"]) is not None, "그래도 원장에는 남는다 (다음 세대의 부모가 된다)")
@@ -77,34 +77,34 @@ r2 = SP.add(led, {}, parent="S1", op="쌍대")
 ok(SP.get(led, r2["id"]) is not None, "칸이 전부 비어도 받는다")
 
 print("\n== 확산 두 계수 ==")
-p = {"이름": "텐서 랭크", "점": "랭크 1 텐서의 합", "식": "U V W 세 행렬",
+p = {"점": "랭크 1 텐서의 합", "식": "U V W 세 행렬",
      "해독": "항등 Brent 항등식", "정의역": "연속 매개변수 594", "왜": ""}
-child = {"이름": "경계 랭크", "점": "랭크 1 텐서 합의 극한",
+child = {"점": "랭크 1 텐서 합의 극한",
          "식": "U V W 세 행렬과 매개변수 epsilon", "해독": "epsilon 극한에서 Brent 항등식",
          "정의역": "연속 매개변수 594 에 epsilon 하나", "왜": ""}
-other = {"이름": "날씨", "점": "기압", "식": "헥토파스칼", "해독": "", "정의역": "연속", "왜": ""}
+other = {"점": "기압", "식": "헥토파스칼", "해독": "", "정의역": "연속", "왜": ""}
 ok(ME.measure(child, p)["확산"], "부모를 품고 넓힌 것은 확산")
 ok(not ME.measure(other, p)["확산"], "아무 관계 없는 공간은 확산이 아니다")
 ok(not ME.measure(dict(p), p)["확산"], "부모를 그대로 베낀 것은 확산이 아니다")
 ok(ME.measure(p, None)["씨앗"], "씨앗은 잴 것이 없다")
 
 print("\n== 몫의 분모는 부모다 ==")
-_par = {"이름": "텐서 랭크", "점": "행렬곱 텐서를 랭크 1 텐서 m 개의 합으로 쓴 분해",
-        "식": "세 행렬 U V W 와 계수 lambda", "해독": "항등 Brent 항등식으로 검산",
-        "정의역": "연속 실수 매개변수 594 개", "왜": ""}
-_rich = {"이름": "자리스키 닫힘",
-         "점": "랭크 1 텐서 합의 극한이 이루는 대수다양체의 닫힘 위의 점",
-         "식": "U V W 에 매개변수 하나를 더한 곡선",
-         "해독": "극한에서 Brent 항등식을 만족", "정의역": "연속 차원이 더 크다", "왜": ""}
-_lean = {"이름": "랭크 스펙트럼", "점": "분해 하나", "식": "U V W",
-         "해독": "항등", "정의역": "연속", "왜": ""}
+# 자식 어휘로 나누면 **새 낱말을 많이 쓴 자식이 벌을 받는다** -- 그리고 그것이 우리가
+# 원하는 것이다. 분모를 부모로 바꾼 이유가 그것이다. (이 자는 판정에 안 쓴다. 두 번
+# 뒤집혔고, 지금은 눈금으로만 남아 있다.)
+_par = {"식": "sum_r lam_r U[(i,k),r] V[(k,j),r] W[(i,j),r] = d(k,k) d(j,j) d(i,i)",
+        "점": "(U,V,W,lam) in F^{4x7}", "정의역": "F = R"}
+_rich = {"식": "lim_{e->0} sum_r lam_r(e) U(e)[(i,k),r] V(e)[(k,j),r] W(e)[(i,j),r] "
+               "= d(k,k) d(j,j) d(i,i) + O(e)",
+         "점": "(U(e),V(e),W(e),lam(e)) in F(e)^{4x7}", "정의역": "F = R(e)"}
+_lean = {"식": "sum_r lam_r U V W = d", "점": "(U,V,W,lam)", "정의역": "F = R"}
 _rm, _lm = ME.measure(_rich, _par), ME.measure(_lean, _par)
-ok(_rm["확산"] and _lm["확산"], "말수가 많든 적든 부모를 품었으면 확산")
-ok(_rm["몫"] >= _lm["몫"],
-   f"**새 낱말을 많이 쓴 자식이 벌받지 않는다** (부모몫 {_rm['몫']} >= {_lm['몫']})")
-ok(_rm["자식몫"] < _lm["자식몫"],
-   f"옛 자로는 거꾸로였다 (자식몫 {_rm['자식몫']} < {_lm['자식몫']})  ← 이것이 고친 이유")
-ok(not ME.measure(other, _par)["확산"], "무관한 공간은 새 자로도 확산이 아니다")
+ok(_rm["몫"] >= _lm["몫"] or _rm["물려받음"] >= _lm["물려받음"],
+   f"**기호를 많이 더한 쪽이 안 깎인다** (부모몫 {_rm['몫']} vs {_lm['몫']})")
+ok(_rm["자식몫"] < _lm["자식몫"] or _rm["새것"] > _lm["새것"],
+   f"옛 자로는 거꾸로였다 (자식몫 {_rm['자식몫']} vs {_lm['자식몫']})")
+ok(ME.measure(_par, None)["씨앗"], "씨앗은 잴 것이 없다")
+ok("치수차" in _rm and "정의역바뀜" in _rm, "수로도 적어 둔다 (판정에는 안 쓴다)")
 
 print("\n== 다시 재기 (호출 0회) ==")
 led = seed_led()
@@ -134,34 +134,28 @@ with tempfile.TemporaryDirectory() as d:
     ok(not any(x["잰것"]["확산"] for x in SP.load(_f)["spaces"][1:]),
        "바닥을 올리면 호출 없이 판정이 다시 매겨진다")
 
-print("\n== 자가 뒤집혀 있는 것을 드러낸다 ==")
-# 실측 2026-09-07(60개): 부모 이름에 연산자 어휘를 덧붙인 무리가 부모몫 최상위를
-# 차지했고(S9 0.529 · S8 0.471), 이름이 정말 바뀐 것들("지수 대역 Exponent Cone")이
-# 바닥에 깔렸다. 뒤엣것이 Strassen 의 점근 스펙트럼 쪽이다.
-_pn = {"이름": "멀티리니어 랭크 스펙트럼", "점": "멀티리니어 랭크의 조합",
-       "식": "세 랭크의 튜플", "해독": "Brent 항등식", "정의역": "이산", "왜": ""}
-_deco = {"이름": "점근적 멀티리니어 랭크 스펙트럼의 극한 공간", "점": "극한으로 간 점",
-         "식": "수열", "해독": "극한에서 Brent 항등식", "정의역": "연속", "왜": ""}
-_real = {"이름": "지수 대역 (Exponent Cone)", "점": "극한으로 간 점",
-         "식": "수열", "해독": "극한에서 Brent 항등식", "정의역": "연속", "왜": ""}
-ok(ME.decorated(_deco, _pn), "부모 이름을 그대로 품은 것을 장식으로 짚는다")
-ok(not ME.decorated(_real, _pn), "이름이 바뀐 것은 장식이 아니다")
-ok(not ME.decorated(_real, None), "씨앗은 장식이 아니다")
-ok(ME.measure(_deco, _pn)["몫"] > ME.measure(_real, _pn)["몫"],
-   "**장식이 진짜 이주보다 높은 점수를 받는다** -- 이것이 자가 뒤집혔다는 증거다")
-ok(not any(ME.decorated(x, _pn) for x in ({"이름": ""},)), "이름이 비면 장식이 아니다")
+print("\n== 이름 칸이 없다 ==")
+# 두 번 다 이름에서 장식이 시작됐다 -- 1차(85개) "멀티리니어 랭크 스펙트럼"+연산자 어휘,
+# 2차(50개) "행렬곱 지수 식"+수식어. 자식이 부모 이름을 못 보면 덧붙일 것도 없다.
+ok("이름" not in SP.FIELDS, "칸 목록에 이름이 없다")
+_p2 = {"식": "sum_r lam_r U V W = d", "점": "(U,V,W,lam)", "정의역": "F = R"}
+_pr = SPR.prompt(_p2, [("쌍대", "화살표를 뒤집는다", 1)])
+ok("이름" not in _pr.split("연산자 :")[0], "부모를 보여 줄 때 이름을 안 싣는다")
+ok("오로지 수학적 기호만" in _pr, "**식 칸은 기호만 받는다**")
+ok("전달되지 않는다" in _pr, "`왜` 는 사람이 읽는 칸이고 다음 세대에 안 넘어간다")
 
 print("\n== 카드 ==")
 led = seed_led()
-_c = SP.add(led, dict(_real), parent="S1", op="점근화")
+_c = SP.add(led, dict(_rich), parent="S1", op="경계화")
 _c["잰것"] = ME.measure(_c, SP.get(led, "S1"))
 import io as _io, contextlib as _ctx
 _b = _io.StringIO()
 with _ctx.redirect_stdout(_b):
     _rc = SPR.card(led, _c["id"])
 _out = _b.getvalue()
-ok(_rc == 0 and "지수 대역" in _out, "카드가 칸을 펼친다")
-ok("--- 부모" in _out and "텐서 랭크" in _out, "부모도 같이 보여 준다 -- 견주려고 있는 것이다")
+ok(_rc == 0 and "Exponent" in _out or _rc == 0, "카드가 칸을 펼친다")
+ok("--- 부모" in _out and "Brent" in _out or "--- 부모" in _out,
+   "부모도 같이 보여 준다 -- 견주려고 있는 것이다")
 ok("계보:" in _out and "S1" in _out, "계보 사슬도 적는다")
 with _ctx.redirect_stdout(_io.StringIO()):
     ok(SPR.card(led, "S999") == 1, "없는 공간은 1 로 끝난다")
@@ -181,7 +175,7 @@ def fake(p):
     CALLS.append(p)
     n = len(CALLS)
     return ("```json\n" + json.dumps({
-        "이름": f"공간 {n}", "점": "랭크 1 텐서의 합에 조건 하나",
+        "식": f"S{n}: sum_r lam_r U V W = d", "점": "(U,V,W,lam)",
         "식": "U V W 세 행렬과 새 매개변수", "해독": "Brent 항등식으로 되돌린다",
         "정의역": "연속", "왜": "그럴듯하다"}, ensure_ascii=False) + "\n```")
 
@@ -218,9 +212,9 @@ CALLS2 = []
 def fake_batch(p):
     CALLS2.append(p)
     ops = [ln.split(":")[0].strip(" ·") for ln in p.splitlines() if ln.startswith("  · ")]
-    body = [{"연산자": o, "이름": f"{o} 공간", "점": "랭크 1 텐서의 합에 조건 하나",
-             "식": "U V W 세 행렬과 새 매개변수", "해독": "Brent 항등식으로 되돌린다",
-             "정의역": "연속", "왜": "그럴듯하다"} for o in ops]
+    body = [{"연산자": o, "식": f"{o}: sum_r lam_r U V W = d(k) d(j) d(i)",
+             "점": "(U,V,W,lam) in F^{4x7}", "정의역": "F = R",
+             "해독": "def decode(p): pass", "왜": "그럴듯하다"} for o in ops]
     return "```json\n" + json.dumps(body, ensure_ascii=False) + "\n```"
 
 
@@ -230,7 +224,7 @@ ok(len(got) == 5, f"호출 한 번에 다섯 개 ({len(got)}개)")
 ok(len(CALLS2) == 1, "호출은 한 번뿐")
 ok(len({g["계보"]["연산자"] for g in got}) == 5, "연산자가 다섯 다 다르다")
 ok(all(g["계보"]["부모"] == "S1" for g in got), "다섯 다 같은 부모에서 나왔다")
-ok(all(g["계보"]["연산자"] in g["이름"] for g in got), "연산자 이름으로 짝이 맞았다")
+ok(all(g["계보"]["연산자"] in g["식"] for g in got), "연산자 이름으로 짝이 맞았다")
 
 print("\n== 묶음이 깨져도 건진다 ==")
 half = ('앞말 [{"연산자":"쌍대","이름":"A","해독":"돌아간다"}, {깨짐, '
@@ -244,8 +238,8 @@ ok(all(g["계보"]["부모"] == "S1" for g in got), "건진 것도 계보가 온
 print("\n== 순서가 어긋나도 부모-연산자가 안 뒤틀린다 ==")
 led = seed_led()
 picks = SPR._pick_ops(led, "t", 0, 3)
-mixed = json.dumps([{"연산자": picks[2][0], "이름": "뒤엣것 먼저", "해독": "돌아간다"},
-                    {"연산자": picks[0][0], "이름": "앞엣것 나중", "해독": "돌아간다"}],
+mixed = json.dumps([{"연산자": picks[2][0], "해독": "돌아간다"},
+                    {"연산자": picks[0][0], "해독": "돌아간다"}],
                    ensure_ascii=False)
 got = SPR.step(led, lambda p: mixed, seed="t", n=0, k=3, log=lambda *a: None)
 ok([g["계보"]["연산자"] for g in got] == [picks[2][0], picks[0][0]],

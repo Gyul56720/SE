@@ -4,15 +4,14 @@
   "spaces": [
     {
       "id": "S1",
-      "이름": "Brent 항등식 (Strassen 1969)",
-      "식": "sum_{r=1..m} lambda_r * U[a,r] * V[b,r] * W[c,r] = delta(a,b,c),  a = i*n+l (A의 (i,l)), b = l*n+j (B의 (l,j)), c = i*n+j (C의 (i,j)), delta = 1 iff 두 첨자의 l,i,j 가 맞아떨어질 때",
-      "점": "이 식을 만족하는 (U, V, W, lambda) 하나. U,V,W 는 n^2 x m 실수 행렬",
+      "식": "sum_{r=1}^{m} lam_r * U[(i,k),r] * V[(k',j),r] * W[(i',j'),r] = d(k,k') * d(j,j') * d(i,i')   for all i,i',j,j',k,k' in [n];   U,V,W in F^{n^2 x m},  lam in F^m,  n=2, m=7",
+      "점": "(U, V, W, lam) in F^{n^2 x m} x F^{n^2 x m} x F^{n^2 x m} x F^m",
+      "정의역": "F = R",
       "치수": 91,
-      "정의역": "실수 R",
       "해독": "def decode(p):\n    \"\"\"점 = U(4x7) 편 것 + V(4x7) + W(4x7) + lambda(7). 치수 91.\"\"\"\n    N, M = 4, 7\n    def take(off):\n        return [[p[off + a * M + r] for r in range(M)] for a in range(N)]\n    U, V, W = take(0), take(N * M), take(2 * N * M)\n    lam = p[3 * N * M: 3 * N * M + M]\n    return U, V, W, lam\n",
       "부호화": "def encode(U, V, W, lam):\n    \"\"\"(U,V,W,lambda) -> 점. decode 의 역이다.\"\"\"\n    return ([x for r in U for x in r] + [x for r in V for x in r]\n            + [x for r in W for x in r] + list(lam))\n",
       "시금석점": "",
-      "왜": "행렬곱의 곱셈 횟수를 대수 방정식계로 바꾼 최초의 이주. 이 저장소의 mathmetics/matrix_exponent 가 서 있는 식이고, CP-ALS / 무작위 재시작 / 강화학습 / flip graph 로 여러 번 훑어 소진된 곳이다. 새 식은 이것을 부정하지 않고 품어야 한다 -- Strassen(m=7)을 자기 점으로 적을 수 있어야 한다.",
+      "왜": "행렬곱의 곱셈 횟수를 대수 방정식계로 옮긴 최초의 이주. mathmetics/matrix_exponent 가 서 있는 식이고, CP-ALS / 무작위 재시작 / 강화학습 / flip graph 로 여러 번 훑어 소진됐다. 새 식은 이것을 부정하지 않고 품어야 한다.",
       "계보": {
         "부모": "-",
         "연산자": "씨앗",
