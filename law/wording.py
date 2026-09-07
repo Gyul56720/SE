@@ -457,6 +457,42 @@ def check(doc, corpus) -> list:
     return out
 
 
+_PARTNERS = {}
+for _a, _b in PAIRS:
+    _PARTNERS.setdefault(_flat(_a), []).append(_b)
+    _PARTNERS.setdefault(_flat(_b), []).append(_a)
+
+
+def _term_rows(sent: str, article: str) -> list:
+    """W005 를 세 갈래로. **check() 의 기각 조건을 그대로 옮긴다** -- 두 벌이 갈라지면
+    보고와 판정이 어긋난다.
+
+        맞음        문서가 쓴 낱말을 조문도 쓴다
+        어긋남      문서는 이쪽, 조문은 짝이 되는 저쪽만 쓴다 (= check 가 기각하는 자리)
+        견줄것없음  조문이 그 짝의 어느 쪽도 안 쓴다
+
+    **낱말 단위로 한 번씩만 적는다.** 짝 목록을 그대로 돌면 한 낱말이 여러 짝에 걸려
+    같은 줄이 두세 번 나오고, 한쪽 짝에서는 맞음인데 다른 짝에서는 견줄것없음이 되어
+    읽는 사람이 어느 쪽을 믿어야 할지 모르게 된다. 조문이 그 낱말을 쓰는지 아닌지는
+    짝과 무관하게 정해지므로, 낱말에서 출발해야 답이 하나가 된다.
+    """
+    st, at = terms_in(sent), terms_in(article)
+    out = []
+    for used in sorted(st):
+        if used not in _PARTNERS:      # 짝이 없는 낱말은 이 관문의 관할이 아니다
+            continue
+        if used in at:
+            out.append((f"용어:{used}", "맞음"))
+            continue
+        others = [o for o in _PARTNERS[used]
+                  if _flat(o) in at and _flat(o) not in st]
+        if others:
+            out.append((f"용어:{used}(조문은 {'·'.join(others)})", "어긋남"))
+        else:
+            out.append((f"용어:{used}", "견줄것없음"))
+    return out
+
+
 def trace(doc, corpus) -> list:
     """**낱말이 어디에 근거하는가.** 문장마다 세 갈래로 갈라 돌려준다.
 
@@ -507,6 +543,13 @@ def trace(doc, corpus) -> list:
                             row["조문값"][axis] = sorted(ref)
                 for mk, tk, x, y in conj_mismatch(sent, joined):
                     row["어긋남"].append(f"접속:{x}·{y} 를 {tk} 아닌 {mk} 로")
+                # **W005 가 보고에 아예 없었다.** trace 는 AXES 만 돌아서, 용어 치환은
+                # check() 가 기각하는데 보고는 "볼 것이 없다" 고 적었다. 실측: 그렇게
+                # 센 '대조할 낱말을 아예 안 쓴 문장' 이 161개였는데, 그중 얼마가 실은
+                # W005 의 관할인지 알 수 없었다. **보고와 판정이 같은 것을 보아야 한다**
+                # -- 세 갈래 판정을 만들 때 이미 한 번 겪은 그 어긋남이다.
+                for key, kind in _term_rows(sent, joined):
+                    row[kind].append(key)
             rows.append(row)
     return rows
 
