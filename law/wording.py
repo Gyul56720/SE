@@ -309,6 +309,60 @@ _MISCONCEPTION = re.compile(r"오해|오인|착각|잘못\s*알|혼동")
 # 그래서 비교의 단위를 바꾼다. 문서가 `X 및 Y` 라고 쓰면 조문에서 **바로 그 X 와 Y 가
 # 접속사로 묶인 자리**를 찾고, 그 자리의 접속사가 다를 때만 어긋남이다. 조문이 그 둘을
 # 안 묶고 있으면 견줄 것이 없다.
+# **서법은 동사에 붙는다.** 문장 전체에 붙는 것이 아니다.
+#
+# 실측: 민사소송법 제288조 편의 이 문장이 어긋남으로 잡혔다.
+#
+#     문서  "취소하기 위하여 ... 착오로 말미암은 것임을 **증명하여야 한다**"   기속
+#     조문  "... 증명한 때에는 **취소할 수 있다**"                            재량
+#
+# 그런데 **같은 말이다.** 조문의 '재량' 은 *취소*에 붙고 문서의 '기속' 은 *증명*에 붙는다.
+# 조문이 "증명한 때에는 취소할 수 있다"(요건-효과)라고 쓴 것을 문서가 "취소하려면
+# 증명하여야 한다"(효과-요건)로 뒤집어 적었을 뿐이다. 논리적으로 같은 명제다.
+#
+# 문장을 값의 집합으로 보면 이것을 못 가른다 -- 조문 어딘가에 '재량' 이 있고 문서
+# 어딘가에 '기속' 이 있다는 것만 보이기 때문이다. W002 접속이 똑같은 이유로 집합 비교를
+# 버리고 짝 비교로 간 자리다(실측 6건이 전부 오탐이었다).
+#
+# 그래서 **같은 동사에 다른 서법이 붙었을 때만** 어긋남으로 센다. 조문이 그 동사를
+# 안 다루면 견줄 것이 없다.
+_MOOD_VERB = (
+    ("기속", re.compile(r"([가-힣]{1,8}?)(?:하여야|해야)\s*(?:한다|합니다|하며|하고|하는|할)")),
+    ("재량", re.compile(r"([가-힣]{1,8}?)할\s*수\s*있")),
+    ("금지", re.compile(r"([가-힣]{1,8}?)할\s*수\s*없")),
+    ("금지", re.compile(r"([가-힣]{1,8}?)하지\s*못한다")),
+    ("금지", re.compile(r"([가-힣]{1,8}?)하여서는\s*아니")),
+)
+
+
+def mood_verbs(text: str) -> dict:
+    """어느 동사가 어떤 서법을 달고 있는가. '증명하여야 한다' -> {'증명': {'기속'}}."""
+    out = {}
+    for mood, pat in _MOOD_VERB:
+        for m in pat.finditer(text):
+            v = m.group(1)
+            if v:
+                out.setdefault(v, set()).add(mood)
+    return out
+
+
+def mood_share(sent: str, article: str, mine: str) -> bool:
+    """문서가 `mine` 서법을 붙인 동사를, 조문은 **다른 서법**으로 다루는가.
+
+    참일 때만 어긋남이다. 조문이 그 동사를 아예 안 다루면 견줄 것이 없다 --
+    다른 동사의 서법을 끌어다 이 동사를 판정할 수는 없다.
+    """
+    dv, tv = mood_verbs(sent), mood_verbs(article)
+    for v, moods in dv.items():
+        if mine not in moods:
+            continue
+        for tw in _stems(v):
+            ref = tv.get(tw)
+            if ref and mine not in ref:
+                return True
+    return False
+
+
 _CONJ_PAIR = re.compile(r"([가-힣]{2,12})\s*(및|또는|이나|와|과)\s*([가-힣]{2,12})")
 _CONJ_KIND = {"및": "결합", "와": "결합", "과": "결합", "또는": "선택", "이나": "선택"}
 
@@ -476,6 +530,8 @@ def check(doc, corpus) -> list:
                 if vals & ref:
                     continue
                 gone = vals - ref
+                if rule == "W001":
+                    gone = {v for v in gone if mood_share(sent, joined, v)}
                 if gone:
                     axis = AXES[rule][0]
                     # **접속은 기각하지 않는다.** 인용을 잇는 '및' 을 지워도, 문장 단위
@@ -581,6 +637,10 @@ def trace(doc, corpus) -> list:
                             row["맞음"].append(key)
                         elif hit:
                             row["견줄것없음"].append(key)   # 다른 값을 맞게 썼다
+                        elif rule == "W001" and not mood_share(sent, joined, v):
+                            # 조문이 그 동사를 안 다룬다 -- 다른 동사의 서법으로
+                            # 이 동사를 판정할 수는 없다.
+                            row["견줄것없음"].append(key)
                         else:
                             row["어긋남"].append(key)
                             # **조문이 대신 무엇이라 썼는지 같이 들고 나온다.**
