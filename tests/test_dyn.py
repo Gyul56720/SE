@@ -95,6 +95,21 @@ try:
 finally:
     flow.PROMPT = _was
 
+# **팔은 돌아가며 뽑는다.** 해시로 뽑으니 몰렸다 -- 여덟 덩어리에서 팔 둘은 한 번도
+# 안 나왔다. 더 나쁜 것은 튜너가 지시문을 고쳐 가므로 나중에 뽑힌 팔이 더 나은
+# 지시문 덕을 본다는 것이다. 그 이득이 고르게 안 퍼지면 팔이 아니라 순서를 잰다.
+print("\n[팔] **고르게 뿌린다** -- 안 그러면 팔이 아니라 순서를 잰다")
+from collections import Counter as _C                                # noqa: E402
+_n = len(dyn.ARMS) * 3
+for _seed in ("책1", "책2"):
+    _c = _C(dyn.arm(_seed, i)["id"] for i in range(_n))
+    ok(set(_c) == set(range(len(dyn.ARMS))) and max(_c.values()) == min(_c.values()),
+       f"{_seed}: {_n}덩어리가 여섯 팔에 똑같이 간다 {dict(sorted(_c.items()))}")
+ok(dyn.arm("책1", 7) == dyn.arm("책1", 7), "같은 덩어리는 같은 팔  ← 이어 써도 재현된다")
+ok(dyn.arm("책1", 0)["id"] != dyn.arm("책2", 0)["id"]
+   or dyn.arm("책1", 1)["id"] != dyn.arm("책2", 1)["id"],
+   "원고마다 시작 자리가 다르다  ← 늘 0번부터면 그것도 결이 된다")
+
 print()
 if fails:
     print(f"동적 프롬프트: {len(fails)}개 실패 -- {fails}")

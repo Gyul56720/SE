@@ -47,10 +47,17 @@ ARMS = [
 
 
 def arm(seed: str, n: int) -> dict:
-    """이번 덩어리에 배정된 설정. 원고와 번호로 정해지니 이어 써도 재현된다."""
+    """이번 덩어리에 배정된 설정. 원고와 번호로 정해지니 이어 써도 재현된다.
+
+    **돌아가며 뽑는다. 해시로 뽑으면 몰린다** -- 여덟 덩어리에서 팔 둘은 한 번도
+    안 나오고 다른 팔이 두 번씩 나왔다(실측). 그것만으로도 나쁘지만 더 나쁜 것이
+    있다: 튜너가 지시문을 고쳐 가므로 **나중에 뽑힌 팔은 더 나은 지시문 덕을 본다.**
+    그 이득이 팔에 고르게 퍼지지 않으면 팔의 성적이 아니라 순서를 재게 된다.
+
+    시작 자리는 원고마다 다르게 둔다(해시) -- 늘 0번부터 시작하면 그것도 결이 된다."""
     import hashlib
-    h = hashlib.sha1(f"{seed}|arm|{n}".encode("utf-8")).hexdigest()
-    a = dict(ARMS[int(h[:8], 16) % len(ARMS)])
+    off = int(hashlib.sha1(f"{seed}|arm0".encode("utf-8")).hexdigest()[:8], 16)
+    a = dict(ARMS[(off + n) % len(ARMS)])
     a["id"] = ARMS.index(next(x for x in ARMS if x["asks"] == a["asks"]
                               and x["slack"] == a["slack"] and x["aim"] == a["aim"]))
     return a
