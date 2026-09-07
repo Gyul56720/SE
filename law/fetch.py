@@ -1,0 +1,302 @@
+"""조문 원장을 **받아서** 채운다 -- 지어내지 않는다.
+
+`law/corpus/README.md` 가 "LLM 이 기억으로 적어준 조문을 여기 넣지 마라" 고 적은 그 자리를
+사람 손 대신 API 로 채우는 파일이다. 원장은 심판이 대조하는 정답 자리라, 여기가 틀리면
+심판이 틀린 것을 기준으로 멀쩡한 문서를 기각하고 틀린 문서를 통과시킨다.
+
+출처는 법제처 **국가법령정보 공동활용**(open.law.go.kr) OPEN API 다. 인증키(OC)는 무료이고
+한 번만 발급받으면 된다: 로그인 -> 왼쪽 메뉴 'OPEN API 신청' -> 'API인증키관리' 에서
+현재 API인증키(OC) 를 복사해 `.env` 의 `LAW_API_OC` 에 넣는다.
+
+    python3 law/fetch.py 형법 민법            # 받아서 law/corpus/ 에 저장
+    python3 law/fetch.py 형법 --list          # 검색 결과만 본다 (무엇을 받을지 고르기)
+    python3 law/fetch.py 형법 --dry           # 받아서 요약만, 파일은 안 쓴다
+
+## 두 걸음으로 받는 이유
+
+법령명으로 곧바로 본문을 부르지 않고 **검색 -> 일련번호 -> 본문** 순으로 간다.
+'형법' 을 검색하면 군형법 · 형법 시행령 같은 것이 같이 나오기 때문이다. 이름이 정확히
+같은 것만 골라서 그 일련번호로 본문을 받는다. 자동으로 고른 것이 미덥지 않으면
+`--list` 로 먼저 보고 `--mst` 로 직접 지정한다.
+
+## 받은 것을 그대로 믿지 않는다
+
+- 조문 머리(`제N조`)가 하나도 없으면 **저장하지 않는다.** 로그인 페이지나 오류 XML 을
+  원장에 넣으면 심판이 그것을 정답으로 삼는다.
+- 저장한 뒤 `law/corpus.py` 로 다시 읽어 **조문 몇 개가 실제로 잡히는지** 보고한다.
+  받는 것과 파싱되는 것은 다른 일이다.
+- 파일 첫 줄에 법령명 · 시행일자 · 받은 날짜를 적는다. 조문은 개정되므로 **언제 받은
+  것인지 모르는 원장은 못 쓴다.** (`#` 로 시작하는 줄은 파서가 버린다.)
+
+## 인증키는 절대 찍지 않는다
+
+OC 는 자격증명이다. URL 에는 들어가지만 로그·오류 메시지에는 가려서만 나간다(G004 가
+막는 그 사고가 정확히 "토큰을 찾아 출력했다" 였다).
+"""
+from __future__ import annotations
+
+import argparse
+import os
+import re
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+import xml.etree.ElementTree as ET
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from law import corpus as CP                                          # noqa: E402
+
+SEARCH = "https://www.law.go.kr/DRF/lawSearch.do"
+SERVICE = "https://www.law.go.kr/DRF/lawService.do"
+
+TIMEOUT = int(os.environ.get("LAW_API_TIMEOUT", "30"))
+TRIES = int(os.environ.get("LAW_API_TRIES", "4"))
+
+# **호출 사이에 쉰다.** 신청 화면의 주의사항 1번이 이것이다 -- "짧은 시간 내 과도한
+# 호출이 발생할 경우 비정상적인 접근으로 간주되어 이용이 제한될 수 있습니다."
+# 법령 몇 개를 받을 때는 문제가 안 되지만 판례를 훑기 시작하면 곧바로 걸린다.
+# 제한을 당하면 원장이 못 차고, 원장이 안 차면 관문이 아무것도 못 본다.
+SLEEP = float(os.environ.get("LAW_API_SLEEP", "0.5"))
+_last = [0.0]
+
+# 조문 본문이 들어 있는 칸. 스키마가 조금 달라져도 견디게 **끝소리로** 고른다.
+TEXT_TAGS = ("조문내용", "항내용", "호내용", "목내용")
+# 조문단위 안에서 이 값이 '조문' 이 아니면 편·장·절 제목이다.
+KIND_TAG = "조문여부"
+
+_HEAD = re.compile(r"^\s*제\s*\d+\s*조", re.M)
+_WS = re.compile(r"[ \t]+")
+
+
+def mask(oc: str) -> str:
+    """인증키를 로그에 그대로 두지 않는다. 앞 두 글자만 남긴다."""
+    return (oc[:2] + "*" * max(0, len(oc) - 2)) if oc else "(없음)"
+
+
+def _url(base: str, oc: str, **params) -> str:
+    q = {"OC": oc, "type": "XML"}
+    q.update({k: v for k, v in params.items() if v not in (None, "")})
+    return base + "?" + urllib.parse.urlencode(q, encoding="utf-8")
+
+
+def _get(url: str, oc: str = "") -> str:
+    """받아온다. 네트워크 실패만 되풀이한다(2·4·8·16초).
+
+    실패 메시지에 URL 을 그대로 싣지 않는다 -- 거기에 인증키가 들어 있다.
+    """
+    last = None
+    for i in range(TRIES):
+        gap = SLEEP - (time.monotonic() - _last[0])
+        if gap > 0:
+            time.sleep(gap)
+        _last[0] = time.monotonic()
+        try:
+            with urllib.request.urlopen(url, timeout=TIMEOUT) as r:
+                return r.read().decode("utf-8", "replace")
+        except (urllib.error.URLError, OSError) as e:
+            last = e
+            if i < TRIES - 1:
+                time.sleep(2 ** (i + 1))
+    where = url.split("?")[0]
+    raise RuntimeError(f"{where} 에서 못 받았다 (OC {mask(oc)}): {last}")
+
+
+def _text(el) -> str:
+    return (el.text or "").strip()
+
+
+def _first(node, *names):
+    """끝소리가 맞는 첫 칸의 값. 스키마 이름이 조금 달라도 잡으려고 이렇게 한다."""
+    for el in node.iter():
+        tag = el.tag.split("}")[-1]
+        if any(tag.endswith(n) or n in tag for n in names) and _text(el):
+            return _text(el)
+    return ""
+
+
+def parse_search(xml: str) -> list:
+    """검색 결과 -> [{이름, 일련번호, 시행일자, 구분}]."""
+    try:
+        root = ET.fromstring(xml)
+    except ET.ParseError as e:
+        raise RuntimeError(f"검색 응답이 XML 이 아니다: {e}") from None
+    out = []
+    for law in root.iter():
+        tag = law.tag.split("}")[-1]
+        if tag not in ("law", "Law", "법령"):
+            continue
+        name = _first(law, "법령명한글", "법령명_한글", "법령명")
+        if not name:
+            continue
+        out.append({
+            "이름": _WS.sub(" ", name).strip(),
+            "일련번호": _first(law, "법령일련번호", "법령마스터번호", "MST"),
+            "ID": _first(law, "법령ID", "법령id"),
+            "시행일자": _first(law, "시행일자"),
+            "구분": _first(law, "법령구분명"),
+        })
+    return out
+
+
+def pick(rows: list, name: str):
+    """**이름이 정확히 같은 것만 고른다.** '형법' 검색에 군형법·형법 시행령이 같이 온다.
+
+    같은 이름이 여럿이면 시행일자가 늦은 것(=최신 시행)을 고른다.
+    """
+    same = [r for r in rows if r["이름"].replace(" ", "") == name.replace(" ", "")]
+    if not same:
+        return None
+    return sorted(same, key=lambda r: r.get("시행일자") or "", reverse=True)[0]
+
+
+def parse_law(xml: str) -> tuple:
+    """법령 본문 XML -> (메타, 조문 원문 텍스트).
+
+    조문내용 · 항내용 · 호내용을 문서 순서대로 잇는다. 스키마를 못 알아보면 **모든 칸의
+    글을 순서대로 잇는 것으로 물러선다** -- 그래도 `제N조` 가 없으면 위에서 저장을 막는다.
+    """
+    try:
+        root = ET.fromstring(xml)
+    except ET.ParseError as e:
+        raise RuntimeError(f"본문 응답이 XML 이 아니다: {e}") from None
+
+    meta = {
+        "이름": _first(root, "법령명한글", "법령명_한글", "법령명"),
+        "시행일자": _first(root, "시행일자"),
+        "공포일자": _first(root, "공포일자"),
+    }
+
+    lines, seen = [], set()
+
+    def push(s: str):
+        s = _WS.sub(" ", s).strip()
+        if not s or s in seen:
+            return
+        seen.add(s)
+        lines.append(s)
+
+    units = [el for el in root.iter() if el.tag.split("}")[-1].endswith("조문단위")]
+    if units:
+        for u in units:
+            kind = _first(u, KIND_TAG)
+            if kind and kind != "조문":          # 편·장·절 제목은 조문이 아니다
+                continue
+            for el in u.iter():
+                tag = el.tag.split("}")[-1]
+                if any(tag.endswith(t) for t in TEXT_TAGS):
+                    push(_text(el))
+    else:
+        for el in root.iter():                    # 스키마를 못 알아봤다 -- 다 이어 붙인다
+            push(_text(el))
+    return meta, "\n".join(lines)
+
+
+def header(meta: dict, name: str) -> str:
+    """파일 첫 줄. 파서가 버리는 자리이지만 **사람이 볼 때 제일 중요한 줄**이다."""
+    got = time.strftime("%Y-%m-%d")
+    eff = meta.get("시행일자") or "시행일자 미상"
+    return (f"# {meta.get('이름') or name} (시행 {eff}) "
+            f"· 법제처 국가법령정보 공동활용 OPEN API · 받은 날 {got}\n"
+            f"# 이 파일은 받은 것이다. 손으로 고치지 마라 -- 고치려면 다시 받아라.\n")
+
+
+def save(name: str, meta: dict, text: str, root: Path) -> Path:
+    root.mkdir(parents=True, exist_ok=True)
+    path = root / f"{meta.get('이름') or name}.txt"
+    path.write_text(header(meta, name) + "\n" + text.rstrip() + "\n", encoding="utf-8")
+    return path
+
+
+def pull(name: str, oc: str, root: Path, fetcher=None, mst: str = "",
+         dry: bool = False) -> dict:
+    """한 법령을 받아 저장한다. (검색 -> 고르기 -> 본문 -> 검사 -> 저장)"""
+    get = fetcher or _get
+    chosen = None
+    if not mst:
+        rows = parse_search(get(_url(SEARCH, oc, target="law", query=name,
+                                     display="50"), oc))
+        chosen = pick(rows, name)
+        if not chosen:
+            near = ", ".join(r["이름"] for r in rows[:5]) or "(결과 없음)"
+            raise RuntimeError(f"{name!r} 과 이름이 정확히 같은 법령이 없다. 가까운 것: {near}")
+        mst = chosen["일련번호"] or chosen["ID"]
+        if not mst:
+            raise RuntimeError(f"{name}: 검색 결과에 일련번호가 없다")
+
+    key = "MST" if (chosen or {}).get("일련번호") or mst.isdigit() else "ID"
+    meta, text = parse_law(get(_url(SERVICE, oc, target="law", **{key: mst}), oc))
+
+    heads = len(_HEAD.findall(text))
+    if heads == 0:
+        raise RuntimeError(
+            f"{name}: 받은 것에 조문 머리(제N조)가 하나도 없다 -- 원장에 넣지 않는다 "
+            f"(길이 {len(text)}자)")
+
+    out = {"이름": meta.get("이름") or name, "시행일자": meta.get("시행일자"),
+           "조문머리": heads, "글자": len(text), "MST": mst, "저장": None, "담긴조문": 0}
+    if dry:
+        return out
+
+    path = save(name, meta, text, root)
+    # **받는 것과 파싱되는 것은 다른 일이다.** 저장한 뒤 원장으로 다시 읽어 확인한다.
+    got = CP.load(root)
+    out["저장"] = str(path)
+    out["담긴조문"] = len(got.articles.get(CP.normalize_statute(out["이름"]), {}))
+    return out
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description="조문 원장을 법제처 API 로 채운다")
+    ap.add_argument("names", nargs="+", help="법령명 (예: 형법 민법)")
+    ap.add_argument("--oc", default=os.environ.get("LAW_API_OC", ""),
+                    help="인증키. 없으면 환경변수 LAW_API_OC")
+    ap.add_argument("--corpus", default=str(CP.CORPUS_DIR))
+    ap.add_argument("--mst", default="", help="일련번호를 직접 지정(법령 하나일 때)")
+    ap.add_argument("--list", action="store_true", help="검색 결과만 본다")
+    ap.add_argument("--dry", action="store_true", help="받되 파일은 안 쓴다")
+    a = ap.parse_args(argv)
+
+    if not a.oc:
+        print("인증키가 없다. open.law.go.kr 에서 OPEN API 를 신청하고 발급받은 "
+              "API인증키(OC)를 .env 의 LAW_API_OC 에 넣어라.", file=sys.stderr)
+        return 2
+    print(f"인증키 {mask(a.oc)} · 원장 {a.corpus}")
+
+    root = Path(a.corpus)
+    bad = 0
+    for name in a.names:
+        try:
+            if a.list:
+                rows = parse_search(_get(_url(SEARCH, a.oc, target="law", query=name,
+                                              display="50"), a.oc))
+                print(f"\n[{name}] 검색 {len(rows)}건")
+                for r in rows[:20]:
+                    star = " <-- 이름이 같다" if r["이름"].replace(" ", "") == \
+                        name.replace(" ", "") else ""
+                    print(f"  {r['이름']} · {r['구분']} · 시행 {r['시행일자']} "
+                          f"· 일련번호 {r['일련번호'] or r['ID']}{star}")
+                continue
+            r = pull(name, a.oc, root, mst=a.mst if len(a.names) == 1 else "",
+                     dry=a.dry)
+            where = r["저장"] or "(저장 안 함 -- dry)"
+            print(f"\n[{r['이름']}] 시행 {r['시행일자']} · 조문머리 {r['조문머리']}개 "
+                  f"· {r['글자']}자\n  {where}")
+            if r["저장"]:
+                print(f"  원장으로 다시 읽으니 조문 {r['담긴조문']}개가 잡힌다")
+                if r["담긴조문"] < r["조문머리"] * 0.9:
+                    print("  (받은 조문 머리 수보다 적게 잡혔다 -- 파싱을 확인할 것)")
+        except Exception as e:                      # noqa: BLE001  사람에게 보여줄 것
+            bad += 1
+            print(f"\n[{name}] 실패: {e}", file=sys.stderr)
+
+    if not a.list and not a.dry:
+        print("\n다음: python3 law/gate.py 법이론서   # 미검증이 얼마나 줄었는지 본다")
+    return 1 if bad else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -99,3 +99,12 @@ orchestrator/.model_cache.json
 # 표기가 없다 -- 남의 자료를 재배포하지 않는다. turn.py 가 경로에서 읽는다.
 #   git clone --depth 1 https://github.com/park1200656/KnuSentiLex novel/knu
 novel/knu/
+
+# 받아온 조문 원장. **저장소에 넣지 않는다** -- 조문은 개정되므로 커밋해 두면 낡은 조문이
+# 정답 자리에 남는다(law/corpus/README.md 가 적어둔 이유). 다시 받으면 되는 것이고,
+# 받는 법은 law/fetch.py 에 있다.
+law/corpus/*.txt
+
+# 법 튜너 장부/챔피언 -- 기계마다 다르다
+law/tune.jsonl
+law/tune.best.json
