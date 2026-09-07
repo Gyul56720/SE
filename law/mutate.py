@@ -242,6 +242,10 @@ def main(argv=None):
     ap.add_argument("--miss", action="store_true", help="놓친 것을 문장까지 보여준다")
     a = ap.parse_args(argv)
 
+    if not Path(a.target).exists():
+        print(f"그런 경로가 없다: {a.target}\n"
+              f"(옵션은 띄어 쓴다 -- `법이론서 --miss`)", file=sys.stderr)
+        return 2
     corpus = CP.load(a.corpus)
     if not corpus:
         print("원장이 비어 있다. law/fetch.py 로 조문을 먼저 받아라.", file=sys.stderr)
