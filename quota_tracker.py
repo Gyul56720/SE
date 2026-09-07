@@ -39,7 +39,17 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-STATE_PATH = Path(__file__).resolve().parent / "Public_agent" / "quota_state.json"
+# **장부의 자리.** 기본은 저장소 안이고, `QUOTA_STATE_PATH` 로 옮길 수 있다.
+#
+# 옮길 수 있어야 하는 이유는 검사다. tests/test_llm_pool_rpm.py 는 이미 임포트 전에
+# 그 환경변수를 임시 파일로 설정하고 있었는데 **읽는 쪽이 없었다** -- 그래서 검사가
+# 스스로 격리됐다고 믿으면서 봇의 진짜 장부에 썼다. 실측(2026-09-07): 장부에 검사가
+# 만든 가짜 label 이 26개 박혀 있었고(kA:gemma-3, key-A:m0 ...), 앞 실행이 남긴 RPM
+# 쿨다운과 소진 표시가 다음 실행의 후보 정렬을 바꿔 "선호한 것을 먼저 두드린다" 가
+# 세 번 중 두 번 실패했다. 검사가 자기 상태를 안 지우는 것이 아니라, 지울 수 없는
+# 곳에 쓰고 있었던 것이다.
+STATE_PATH = Path(os.environ.get("QUOTA_STATE_PATH")
+                  or Path(__file__).resolve().parent / "Public_agent" / "quota_state.json")
 
 # 로컬 카운터의 일일 한도 추정치. 이건 '실제 한도'가 아니라 후보 정렬용 휴리스틱일 뿐이다
 # (실제 소진은 429 를 맞아야 알 수 있다). 500 으로 박혀 있었는데 개인 인증 계정은 하루
