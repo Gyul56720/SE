@@ -93,11 +93,45 @@ def prompt(parent: dict, picks: list[tuple[str, str, int]]) -> str:
 JSON 배열:"""
 
 
-_OBJ = re.compile(r"\{[^{}]*\}", re.S)
+_INNER = re.compile(r"\{[^{}]*\}", re.S)
+
+
+def _balanced(t: str):
+    """중괄호를 세어 **덩어리를 통째로** 떠낸다.
+
+    처음에는 정규식 `\\{[^{{}}]*\\}` 로 떴는데, 그것은 **안쪽 중괄호가 없는 것만** 문다 --
+    `{"해독": {"U": ...}}` 같이 겹친 것이 오면 바깥이 아니라 안쪽 `{"U": ...}` 를 집어
+    온다. recall.py 의 답이 정확히 그 꼴이라, 멀쩡한 답을 "가능 칸이 없다" 며 거절로
+    셌다(실측). 세어서 뜨면 겹쳐도 바깥이 잡힌다.
+    """
+    out, depth, start, instr, esc = [], 0, -1, False, False
+    for i, ch in enumerate(t):
+        if instr:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                instr = False
+            continue
+        if ch == '"':
+            instr = True
+        elif ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0 and start >= 0:
+                out.append(t[start:i + 1])
+                start = -1
+            elif depth < 0:
+                depth = 0
+    return out
 
 
 def objects(raw) -> list[dict]:
-    """**하나가 깨져도 나머지는 건진다.** 배열로 못 읽으면 중괄호 덩어리를 낱낱이 읽는다 --
+    """**하나가 깨져도 나머지는 건진다.** 통째로 못 읽으면 덩어리를 낱낱이 읽는다 --
     묶어 부르는 것의 값이 한 글자 때문에 다섯을 잃는 데서 사라지면 안 된다."""
     if isinstance(raw, dict):
         return [raw]
@@ -111,6 +145,15 @@ def objects(raw) -> list[dict]:
         if len(parts) > 1:
             t = parts[1]
             t = t[4:] if t.lstrip().startswith("json") else t
+    # **통째로 먼저 읽는다.** 겹친 중괄호가 있으면 이 길로만 온전히 온다.
+    try:
+        d = json.loads(t)
+        if isinstance(d, dict):
+            return [d]
+        if isinstance(d, list):
+            return [x for x in d if isinstance(x, dict)]
+    except ValueError:
+        pass
     i, j = t.find("["), t.rfind("]")
     if 0 <= i < j:
         try:
@@ -119,8 +162,19 @@ def objects(raw) -> list[dict]:
                 return [x for x in d if isinstance(x, dict)]
         except ValueError:
             pass
-    out = []
-    for m in _OBJ.finditer(t):
+    # **두 번 훑는다.** 세어 뜨는 것은 겹친 중괄호에 강하지만, 바깥이 안 닫힌 채
+    # 깨져 오면 그 안의 멀쩡한 것까지 통째로 삼킨다(실측: 다섯 중 둘이 하나로 줄었다).
+    # 그래서 세어 뜬 것을 먼저 건지고, **남은 자리**에 안쪽 덩어리 훑기를 한 번 더 건다.
+    out, rest = [], t
+    for chunk in _balanced(t):
+        try:
+            d = json.loads(chunk)
+        except ValueError:
+            continue
+        if isinstance(d, dict):
+            out.append(d)
+            rest = rest.replace(chunk, " ", 1)
+    for m in _INNER.finditer(rest):
         try:
             d = json.loads(m.group(0))
         except ValueError:
