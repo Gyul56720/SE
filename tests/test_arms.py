@@ -114,6 +114,12 @@ ok("novel/final.json" in _ra and "pgrep -f \"novel/final.json\"" in _ra,
 ok("waited" in _ra and "43200" in _ra, "기다리기에 상한이 있다")
 ok('if ! BOOK=' in _ra, "집필을 못 띄우면 거기서 선다  ← 0자짜리를 성공처럼 찍었다")
 ok("0자를 성공처럼 찍지 않는다" in _ra, "빈 결과를 성공으로 안 찍는다")
+# **좁힌 목표를 조용히 덮지 않는다.** 루프를 띄울 때마다 표본 전체를 다시 재서,
+# 사람이 --only A --tight 로 한 작품에 맞춰 둔 목표(67토막·1편)가 네 작품
+# 평균(461토막·4편)으로 갈아엎혔다. 여섯 시간을 그 자로 배웠다.
+ok("1편" in _ra and "덮지 않는다" in _ra,
+   "이미 한 작품에 맞춘 목표가 있으면 안 덮는다")
+ok("ONLY" in _ra and "--only" in _ra, "겨눌 작품을 ONLY 로 준다")
 
 from novel import tuner as _T                                         # noqa: E402
 ok("대상" in Path(_T.__file__).read_text(encoding="utf-8"),

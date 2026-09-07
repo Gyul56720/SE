@@ -58,9 +58,28 @@ if ! scripts/preflight.sh >> "$LOG" 2>&1; then
   exit 1
 fi
 
-say "=== 표본을 재고 목표를 갱신한다 (LLM 호출 0회)"
-DRIFT_PROFILE_STRIDE="${STRIDE:-0.5}" python3 scripts/targets_update.py novel/corpus \
-  >> "$LOG" 2>&1 || say "목표 갱신 실패 -- 있던 목표로 간다"
+# **좁힌 목표를 조용히 덮지 않는다.** 여기서 아무 조건 없이 표본 전체를 다시 재고
+# 있었다. 그래서 사람이 `--only A --tight` 로 한 작품에 맞춰 둔 목표(67토막·1편)가
+# 루프를 띄울 때마다 네 작품 평균(461토막·4편)으로 갈아엎혔다. 그 평균은 어느 작품의
+# 것도 아니고, 폭이 넓어서 아무 글이나 그 안에 든다 -- 여섯 시간을 그 자로 배웠다.
+say "=== 목표"
+if [ -n "${ONLY:-}" ]; then
+  say "표본을 다시 잰다 -- 작품: ${ONLY} ${TIGHT:+· 좁힌 폭}"
+  DRIFT_PROFILE_STRIDE="${STRIDE:-0.5}" python3 scripts/targets_update.py novel/corpus \
+    --only "$ONLY" ${TIGHT:+--tight} >> "$LOG" 2>&1 || say "목표 갱신 실패 -- 있던 목표로 간다"
+elif python3 - <<'EOF' 2>/dev/null
+import json, sys
+src = json.load(open("novel/targets.json")).get("_source", "")
+sys.exit(0 if "1편" in src else 1)
+EOF
+then
+  say "이미 한 작품에 맞춘 목표가 있다 -- 그대로 쓴다(덮지 않는다)"
+  python3 -c "import json;print('   ', json.load(open('novel/targets.json'))['_source'])" >> "$LOG" 2>&1
+else
+  say "표본 전체를 다시 잰다 -- 한 작품을 겨누려면 ONLY=A TIGHT=1 로 띄워라"
+  DRIFT_PROFILE_STRIDE="${STRIDE:-0.5}" python3 scripts/targets_update.py novel/corpus \
+    >> "$LOG" 2>&1 || say "목표 갱신 실패 -- 있던 목표로 간다"
+fi
 
 say "=== 학습 루프 (감시자가 지켜본다)"
 tries=0
