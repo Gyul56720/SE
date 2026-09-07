@@ -275,26 +275,6 @@ _APPLIES_TO_CASE = re.compile(
 # 상계할 수 있다고 오해한다" 는 문장에서 '할 수 있다'(재량)는 문서가 그렇다고 말한 것이
 # 아니라 남의 잘못된 생각을 옮긴 것이다. 실측에서 서법 어긋남 세 건이 전부 이 꼴이었다.
 # 그 절은 어차피 soft 라 여기서 빼도 잃는 것이 적고, 소리만 줄어든다.
-# **모른다고 밝힌 문장은 조문에 관한 주장이 아니다.**
-#
-# 실측: 민사소송법 제203조 편에서 이 문장이 W005 hard 로 기각됐다.
-#
-#     "변론주의에 관하여는 제203조 원문에 명시되지 않음, 학설/판례 확인 필요."
-#         용어:변론주의(조문은 처분권주의)
-#
-# 그런데 **문서는 옳다.** 바로 앞 문장에서 "이를 처분권주의라 합니다" 라고 제대로 적었고,
-# 이 문장은 변론주의가 그 조문에 **없다고 밝힌** 것이다. 조문의 낱말을 다른 낱말로 바꿔
-# 적은 것이 아니라, 조문에 없는 것을 없다고 말한 것이다.
-#
-# 이건 그냥 오탐이 아니라 **닫힌책 규율을 지킨 자리를 벌한 것**이다. 우리가 생성자에게
-# 시킨 바로 그 일("모르는 것은 지어내지 말고 모른다고 적어라")을 하면 관문이 기각한다.
-# 그러면 다음 원고는 유보를 안 쓰는 쪽으로 간다 -- **관문이 환각을 권하는 꼴**이다.
-# '오해' 절을 대조에서 뺀 것과 같은 이유이고, 그보다 이유가 더 무겁다.
-_RESERVED = re.compile(
-    r"명시되(지\s*않|어\s*있지\s*않)|규정되(지\s*않|어\s*있지\s*않)"
-    r"|나타나\s*있지\s*않|확인\s*필요|알\s*수\s*없")
-
-
 _MISCONCEPTION = re.compile(r"오해|오인|착각|잘못\s*알|혼동")
 
 
@@ -326,12 +306,17 @@ _MISCONCEPTION = re.compile(r"오해|오인|착각|잘못\s*알|혼동")
 #
 # 그래서 **같은 동사에 다른 서법이 붙었을 때만** 어긋남으로 센다. 조문이 그 동사를
 # 안 다루면 견줄 것이 없다.
+# **어간과 어미 사이에 띄어쓰기가 들어간다.** 처음엔 붙어 있는 것만 받았다가
+# 돌연변이 하나를 놓쳤다(실측): 민법 제32조는 "이를 법인으로 **할 수 있다**" 이고
+# 문서는 "법인으로 **하여야 한다**" 로 뒤집혔는데, 어미 앞이 공백이라 동사를 하나도
+# 못 뜯었고 -- 양쪽 다 빈 손이니 짝이 없다며 그냥 넘어갔다. 좁히는 변경은 이렇게
+# **조용히** 눈을 감는다. 어미 앞의 공백을 받는다.
 _MOOD_VERB = (
-    ("기속", re.compile(r"([가-힣]{1,8}?)(?:하여야|해야)\s*(?:한다|합니다|하며|하고|하는|할)")),
-    ("재량", re.compile(r"([가-힣]{1,8}?)할\s*수\s*있")),
-    ("금지", re.compile(r"([가-힣]{1,8}?)할\s*수\s*없")),
-    ("금지", re.compile(r"([가-힣]{1,8}?)하지\s*못한다")),
-    ("금지", re.compile(r"([가-힣]{1,8}?)하여서는\s*아니")),
+    ("기속", re.compile(r"([가-힣]{1,8})\s*(?:하여야|해야)\s*(?:한다|합니다|하며|하고|하는|할)")),
+    ("재량", re.compile(r"([가-힣]{1,8})\s*할\s*수\s*있")),
+    ("금지", re.compile(r"([가-힣]{1,8})\s*할\s*수\s*없")),
+    ("금지", re.compile(r"([가-힣]{1,8})\s*하지\s*못한다")),
+    ("금지", re.compile(r"([가-힣]{1,8})\s*하여서는\s*아니")),
 )
 
 
@@ -506,7 +491,7 @@ def check(doc, corpus) -> list:
         sev = "hard" if name.startswith(("2.", "3.")) else "soft"
         for sent in _sentences(text):
             tg = _targets(sent, doc, corpus)
-            if not tg or _MISCONCEPTION.search(sent) or _RESERVED.search(sent):
+            if not tg or _MISCONCEPTION.search(sent):
                 continue
             raws = ", ".join(r for r, _ in tg)
             joined = " ".join(b for _, b in tg)
@@ -545,14 +530,38 @@ def check(doc, corpus) -> list:
                         f"{axis}: 조문({raws})은 {'/'.join(sorted(ref))} 인데 "
                         f"문서는 {'/'.join(sorted(gone))} 로 적었다"))
             st, at = terms_in(sent), terms_in(joined)
+            body = terms_in(_body_only(joined))     # 기각에는 본문을 요구한다
             for a, b in PAIRS:
                 for used, other in ((a, b), (b, a)):
                     fu, fo = _flat(used), _flat(other)
-                    if fu in st and fo in at and fu not in at and fo not in st:
+                    if fu in st and fo in body and fu not in at and fo not in st:
                         out.append(Violation(
                             "W005", sev, f"{doc.path.name} · {name}",
                             f"조문({raws})은 {other!r} 인데 문서는 {used!r} 로 바꿔 적었다"))
     return out
+
+
+# **표제는 규정이 아니다.**
+#
+# 실측: 민사소송법 제203조는 표제가 `(처분권주의)` 이고 본문은 "법원은 당사자가
+# 신청하지 아니한 사항에 대하여는 판결하지 못한다" 뿐이다. 그런데 문서가 '변론주의' 를
+# 쓰자 "조문은 '처분권주의' 인데 바꿔 적었다" 며 hard 로 기각했다 -- **그 낱말은 조문
+# 본문에 한 번도 안 나온다.** 표제어 하나로 문서의 다른 낱말을 기각한 것이다.
+#
+# 그렇다고 표제를 통째로 버릴 것도 아니다. 문서가 표제어를 쓴 것은 근거가 있는 일이다.
+# 그래서 **한쪽으로만 쓴다**:
+#
+#     맞음    표제까지 본다 -- 문서가 조문의 말을 썼다면 표제어도 조문의 말이다
+#     어긋남  본문만 본다   -- 기각하려면 규정 본문에 그 낱말이 있어야 한다
+#
+# 과잉 기각하는 심판은 맞는 답도 버린다(novel/gate.py 가 배운 것). 기각은 무겁고
+# 인정은 가벼우므로, 무거운 쪽에만 더 센 근거를 요구한다.
+_HEAD_TITLE = re.compile(r"제\s*\d+\s*조(?:\s*의\s*\d+)?\s*\([^)\n]*\)")
+
+
+def _body_only(article: str) -> str:
+    """조문에서 표제를 뺀 본문. 본문 안의 `제87조의 규정` 같은 참조는 괄호가 없어 안 지워진다."""
+    return _HEAD_TITLE.sub(" ", article)
 
 
 _PARTNERS = {}
@@ -574,16 +583,17 @@ def _term_rows(sent: str, article: str) -> list:
     읽는 사람이 어느 쪽을 믿어야 할지 모르게 된다. 조문이 그 낱말을 쓰는지 아닌지는
     짝과 무관하게 정해지므로, 낱말에서 출발해야 답이 하나가 된다.
     """
-    st, at = terms_in(sent), terms_in(article)
+    st = terms_in(sent)
+    at, body = terms_in(article), terms_in(_body_only(article))
     out = []
     for used in sorted(st):
         if used not in _PARTNERS:      # 짝이 없는 낱말은 이 관문의 관할이 아니다
             continue
-        if used in at:
+        if used in at:                 # 맞음에는 표제도 근거다
             out.append((f"용어:{used}", "맞음"))
             continue
-        others = [o for o in _PARTNERS[used]
-                  if _flat(o) in at and _flat(o) not in st]
+        others = [o for o in _PARTNERS[used]   # 기각에는 본문을 요구한다
+                  if _flat(o) in body and _flat(o) not in st]
         if others:
             out.append((f"용어:{used}(조문은 {'·'.join(others)})", "어긋남"))
         else:
@@ -614,8 +624,7 @@ def trace(doc, corpus) -> list:
             row = {"절": name, "문장": sent, "인용": [c.raw for c in cits],
                    "맞음": [], "어긋남": [], "견줄것없음": [], "조문값": {},
                    "미검증": not tg,
-                   "오해": bool(_MISCONCEPTION.search(sent)
-                               or _RESERVED.search(sent))}
+                   "오해": bool(_MISCONCEPTION.search(sent))}
             # **대조하지 않기로 한 문장은 아예 안 견준다.** 전에는 '오해' 표만 달고
             # 값은 그대로 채웠다 -- 보고가 세지 않을 뿐 줄 안에는 어긋남이 들어 있어서,
             # 읽는 사람에게는 잡힌 것으로 보이고 수에는 없는 유령이 됐다.
@@ -739,8 +748,8 @@ def main(argv=None):
             print(f"준용·전조를 따라가 조문을 더 끌어온 문장 {hop2}개 "
                   f"(2홉이 실제로 일을 한 자리다)")
         if miscon:
-            print(f"'오해' 를 옮겼거나 모른다고 밝힌 문장 {miscon}개는 대조하지 "
-                  f"않았다 (조문에 관한 주장이 아니다)")
+            print(f"'오해' 를 옮긴 문장 {miscon}개는 대조하지 않았다 "
+                  f"(문서의 주장이 아니다)")
         if unver:
             print(f"원장에 없어 대조 못 한 문장 {unver}개")
         return 0
