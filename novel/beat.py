@@ -45,7 +45,7 @@ STORY.md 2절. 플롯도 연출도 재미없었고 뿌리는 하나였다: 생�
 세워진 원고(검사 · 옛 DRIFT)는 카드 없이 예전대로 간다 -- 없는 것을 지어내서 시키지
 않는다.
 
-    EPISODE_SPAN=5000   한 회차의 분량. 잰 값이 아니라 웹소설 회차의 통상 길이다.
+    EPISODE_SPAN   한 회차의 분량. 기본값은 **덩어리 하나 x 비트 수**다 (아래 EP).
 """
 from __future__ import annotations
 
@@ -56,8 +56,23 @@ from novel import hooks as HK
 from novel import serial as SR
 from novel import space as SP
 
-EP = int(os.environ.get("EPISODE_SPAN", "5000"))
 BEATS = 3
+# 덩어리 길이. flow.CHUNK 와 같은 환경변수를 읽는다 -- 여기서 flow 를 임포트하면 돌게 된다.
+_CHUNK = int(os.environ.get("DRIFT_CHUNK", "3200"))
+
+# 한 회차의 분량. **비트 수 x 덩어리 하나**여야 한다.
+#
+# 실측 2026-09-09: 5,000자였다. 덩어리가 3,200자이니 회차 하나가 덩어리 1.56개인데 비트는
+# 셋이었고, beat_at 은 비트를 글자 수로 나눈다. 그래서 **비트 3 의 자리에서 시작하는
+# 덩어리가 없었다** -- 답이 갈리고 갈고리가 붙는 자리가 아홉 회차 내내 잘렸다. 회차마다
+# 질문을 던지고 방해를 놓고 답 직전에 끝났으니 4만 자가 통째로 도입부의 되풀이였다
+# (사용자: "덩어리 하나에 끝낼 이야기를 10개의 덩어리 동안 하고 있어").
+#
+# **고칠 것은 이 수 하나뿐이었다.** 앞서 한 번(PR #63) 이것을 고치면서 집필 프롬프트까지
+# 건드렸다가 필력을 깎았다 -- "이 덩어리 안에서 끝낸다" 가 점층을 3,200자마다 끊었고,
+# "앞 비트의 자리를 떠나라" 가 "이 마지막 문장 다음 순간부터 써라" 와 어긋나 덩어리마다
+# 장면을 새로 열게 했다. 그래서 되돌렸고(PR #69), 이번에는 수만 바꾼다.
+EP = int(os.environ.get("EPISODE_SPAN", str(_CHUNK * BEATS)))
 
 
 def ep_no(book: dict) -> int:
