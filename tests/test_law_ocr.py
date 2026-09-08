@@ -209,21 +209,44 @@ ok(OC.done_pages(Path("/없는/파일")) == set(), "없으면 빈 것으로 본�
 
 print()
 print("[견줌] **어느 쪽도 기준이 아니다 -- 갈리는 자리를 찾는 것이 쓸모다**")
-# 실측: 사람이 옮긴 것과 Gemini 가 옮긴 것을 대 보니 확인한 두 자리에서 전부 사람이
-# 틀렸고, 그중 하나는 `청구할 수 있다/없다` -- 한 글자가 답을 뒤집는 자리였다.
+# 실측: 사람이 옮긴 것과 Gemini 가 옮긴 것을 대 보니 **양쪽 다 틀린 데가 있었다.**
+# 문 2 ④ `청구할 수 있다/없다` 는 사람이 틀렸고(한 글자가 답을 뒤집는다),
+# 문 8 ㄱ `각/각각` 과 문 1 ㄹ `거치지 않고/않아` 는 OCR 이 틀렸다.
+#
+# 그리고 **자가 잘못돼 있었다.** 줄 단위로 대면 줄 접는 자리와 ○/O 표기까지 갈린 줄로
+# 세어진다 -- 실측 717 줄. 그 안에서 진짜 갈린 자리는 보이지 않는다. 과잉 기각하는
+# 심판은 맞는 답도 버린다. 그래서 아래 세 검사가 자를 붙든다.
 _a = Path(tempfile.mkdtemp()) / "a.txt"
 _b = Path(tempfile.mkdtemp()) / "b.txt"
-_a.write_text("# 머리말은 안 본다\n문 2.\n④ 방해배제를 청구할 수 있다.\n", encoding="utf-8")
-_b.write_text("문 2.\n④ 방해배제를 청구할 수 없다.\n", encoding="utf-8")
 import io                                                             # noqa: E402
 import contextlib                                                     # noqa: E402
-_buf = io.StringIO()
-with contextlib.redirect_stdout(_buf):
-    OC.compare(_a, _b)
-_찍힘 = _buf.getvalue()
-ok("있다" in _찍힘 and "없다" in _찍힘, "갈린 줄을 양쪽 다 찍는다")
-ok("문 2." not in _찍힘, "같은 줄은 안 찍는다 -- 볼 자리만 남긴다")
+
+
+def _견줌(A, B):
+    _a.write_text(A, encoding="utf-8")
+    _b.write_text(B, encoding="utf-8")
+    _buf = io.StringIO()
+    with contextlib.redirect_stdout(_buf):
+        OC.compare(_a, _b)
+    return _buf.getvalue()
+
+
+_찍힘 = _견줌("# 머리말은 안 본다\n문 2.\n혼동에 관한 설명 중 옳은 것은?\n④ 방해배제를 청구할 수 있다.\n",
+             "문 2.\n혼동에 관한 설명 중 옳은 것은?\n④ 방해배제를 청구할 수 없다.\n")
+ok("있다" in _찍힘 and "없다" in _찍힘, "갈린 칸을 양쪽 다 찍는다")
+ok("혼동에 관한" not in _찍힘, "같은 칸은 안 찍는다 -- 볼 자리만 남긴다")
 ok("머리말" not in _찍힘, "주석은 안 견준다")
+
+# RED: 줄을 다르게 접었을 뿐인 것을 갈렸다고 부르면, 진짜 갈린 자리가 묻힌다.
+_찍힘 = _견줌("문 5.\n등기에 관한 설명 중\n옳지 않은 것은?\n① ㄱ(○), ㄴ(×)\n",
+             "문 5.\n등기에 관한 설명 중 옳지 않은 것은?\n① ㄱ(O), ㄴ(X)\n")
+ok("갈림 0" in _찍힘,
+   f"줄 접는 자리와 ○/O·×/X 는 갈린 게 아니다 (얻은 값: {_찍힘.strip().splitlines()[-2:]})")
+
+# 한쪽에만 있는 문항은 '갈림' 이 아니라 '한쪽이 안 읽음' 이다 -- 섞으면 수가 거짓이 된다.
+_찍힘 = _견줌("문 5.\n등기에 관한 설명\n", "문 5.\n등기에 관한 설명\n문 6.\n소멸시효에 관한 설명\n")
+ok("갈림 0" in _찍힘 and "[6]" in _찍힘,
+   f"한쪽에만 있는 문항은 따로 센다 (얻은 값: {_찍힘.strip().splitlines()[-2:]})")
 
 print()
 if fails:
