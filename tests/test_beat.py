@@ -305,8 +305,73 @@ ok(BT.has(_bp), "뼈대가 성하면 카드는 산다")
 ok(not BT.plants(_bp) and not BT.codex(_bp),
    "베낀 심음 · 설정은 원장에 안 들어간다  ← 설명문이 이 세계의 사실이 되면 안 된다")
 
+# ---------------------------------------------------------------- 회차 길이 · 이어 쓰는 비트
+# **실측 2026-09-09, 사용자 원고**: 1화 7,244자 · 2화 11,502자(EP 9,600). 1화가 마지막
+# 비트를 일찍 다 써서 짧게 끝났고, 그 남은 2,356자가 통째로 2화에 얹혔다. 회차 번호를
+# **전체 분량 / EP** 로 세면 격자가 고정이라 그렇게 된다. 긴 회차는 같은 비트 셋을
+# 덩어리 넷에 늘여 쓰고, 그것이 "전개가 없다" 로 보인다.
+print("\n[회차 길이 -- 앞 회차가 짧게 끝나도 다음이 안 는다]")
+
+
+def _walk(sizes, payload=None):
+    """덩어리를 차례로 붙이며 (회차, 비트범위, 이어쓰기) 를 모은다. step() 과 같은 차례다."""
+    b, d = book(), Director(payload or CARD)
+    out = []
+    for size in sizes:
+        BT.ensure(b, d)
+        lo, hi = BT.beat_span(b)
+        t = BT.brief(b)
+        out.append((BT.ep_no(b), lo, hi, "이어서 쓴다" in t, BT._chars(b)))
+        b["chunks"].append("가" * size)
+    return out, b
+
+
+# 1화가 비트를 다 써서 일찍 끝나면 -- 2화는 제 분량(EP)을 온전히 받는다.
+_early = dict(json.loads(json.dumps(CARD)))
+_w, _wb = _walk([3200, 2400, 1644, 3200, 3200, 3200, 1902])
+_eps = {}
+for ep, _lo, _hi, _c, at in _w:
+    _eps.setdefault(ep, []).append(at)
+_len1 = _eps[1][-1] - _eps[1][0] if len(_eps.get(1, [])) > 1 else 0
+ok(len(_eps) >= 2, f"회차가 넘어간다 ({sorted(_eps)})")
+ok(_len1 <= BT.EP, f"둘째 회차가 EP 를 안 넘는다 ({_len1:,} <= {BT.EP:,}자)"
+   "  ← 앞 회차가 남긴 분량이 안 얹힌다")
+
+# beat_span 과 last_chunk 는 같은 자를 쓴다 -- 다르면 마지막 비트를 시키는 덩어리와
+# 갈고리를 터뜨리는 덩어리가 어긋난다.
+_mis = [(ep, lo, hi) for ep, lo, hi, _c, _a in _w]
+_b6, _d6 = book(), Director(CARD)
+_bad = []
+for _ in range(8):
+    BT.ensure(_b6, _d6)
+    _lo6, _hi6 = BT.beat_span(_b6)
+    if BT.last_chunk(_b6) != (_hi6 == len(_b6["card"]["비트"])):
+        _bad.append((_lo6, _hi6, BT.last_chunk(_b6)))
+    _b6["chunks"].append("가" * 3200)
+ok(not _bad, f"last_chunk 와 beat_span 이 같은 자로 잰다 (어긋남: {_bad[:2] or '없다'})")
+
+print("\n[같은 비트가 두 덩어리에 걸릴 때]")
+# 덩어리가 3,200자보다 짧게 나오면 회차가 덩어리 넷을 먹고 비트 하나가 두 번 걸린다.
+# 그때 앞 덩어리와 똑같은 지시가 가면 화자는 그 장면을 처음부터 다시 연다.
+_w2, _b7 = _walk([2400] * 8)
+_cont = [(i + 1, ep, lo, c) for i, (ep, lo, _h, c, _a) in enumerate(_w2)]
+_reps = [r for r in _cont if r[3]]
+ok(_reps, f"겹치는 자리에서 이어쓰기를 시킨다 ({[r[0] for r in _reps]}번 덩어리)")
+_first_of_beat = [r for r in _cont if not r[3]]
+ok(len(_first_of_beat) >= 6, f"처음 여는 비트에는 안 시킨다 ({len(_first_of_beat)}자리)")
+# 한 덩어리에서 두 번 불러도 같아야 한다 -- flow 가 brief 를 두 번 부른다.
+_b8, _d8 = book(), Director(CARD)
+BT.ensure(_b8, _d8); _b8["chunks"].append("가" * 2400)
+BT.ensure(_b8, _d8)
+ok(("이어서 쓴다" in BT.brief(_b8)) == ("이어서 쓴다" in BT.brief(_b8)),
+   "같은 덩어리에서 두 번 불러도 같다  ← flow 가 brief 를 두 번 부른다")
+# 회차가 넘어가면 자국도 새로 센다.
+ok(all(str(k).isdigit() for k in (_b7.get("card") or {}).get("_비트시작", {})),
+   "자국은 카드에 남는다 (JSON 으로 오간다)")
+
+
 print()
 if fails:
     print(f"회차 각본: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)
-print("회차 각본: 세우기 · 깨짐 · 비트 · 전환점 · 배선 -- 통과")
+print("회차 각본: 세우기 · 깨짐 · 비트 · 전환점 · 배선 · 회차 길이 · 이어 쓰기 -- 통과")
