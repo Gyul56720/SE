@@ -154,8 +154,14 @@ ok("작은 승리" in SP.names("쾌감"), "지는 회차에도 작은 것 하나
 
 print("  [각본 프롬프트] 전투 · 세계 · 쾌감 본보기와 규칙이 실린다")
 _pd = BT.card_prompt(book())
-for _blk in ("[전투 본보기", "[세계 본보기", "[쾌감 본보기", "[설정집]"):
+for _blk in ("[쾌감 본보기", "[전환 본보기", "[설정집]"):
     ok(_blk in _pd, f"{_blk} 가 있다")
+# 전투 · 세계는 싸움 · 설정의 **별칭**이라 같은 튜플이다. 머리표 둘로 두 번 보여 주던
+# 것을 접었다 -- 싸움은 [로맨스 · 싸움 · 체계] 안에서, 설정은 [설정 본보기] 에서 나온다.
+ok(SP.CATS["전투"] is SP.CATS["싸움"] and SP.CATS["세계"] is SP.CATS["설정"], "별칭은 같은 튜플이다")
+ok("[전투 본보기" not in _pd and "[세계 본보기" not in _pd, "같은 것을 두 번 안 보여 준다")
+ok(any(n in _pd for n in SP.names("싸움")) and any(n in _pd for n in SP.names("설정")),
+   "그래도 싸움 · 설정 본보기는 실린다")
 ok('"쾌감"' in _pd and '"쾌감자리"' in _pd and '"전투"' in _pd and '"설정"' in _pd, "쾌감 · 전투 · 설정을 요구한다")
 ok("회차마다 쾌감이 하나 있다" in _pd and "지는 단계에서도" in _pd, "지는 회차에도 쾌감 하나를 요구한다")
 ok("상태창 · 수치 · 게이지를 열지 마라" in _pd, "숫자 창을 막는다")
@@ -228,10 +234,18 @@ ok("안 보여 주는 것" in SP.names("연출"), "연출에 카메라워크가 
 ok("움직임의 버릇" in SP.names("인물"), "인물에 움직임의 버릇이 있다")
 _bf = book(); BT.ensure(_bf, Director([dict(BASE, 전투="호위가 부관과 붙는다 -- 격은 부관이 위")]))
 _wf = BT.brief(_bf)
-ok("액션은 이렇게 쓴다" in _wf, "싸움이 있으면 액션 규율이 실린다")
-ok(all(n in _wf for n in SP.names("액션")), "돌려 뽑지 않고 **전부** 싣는다  ← 뽑으면 정작 싸우는 회차에 안 걸린다")
+# **통째로 싣던 것을 되돌렸다.** 다섯을 매번 실었더니 이 블록이 2,800자로 부풀었고,
+# 그것이 이 저장소가 두 번 겪은 실패다(dyn.py: "한꺼번에 시키면 안 지켜진다").
+# 이제 머리 하나만 늘 두고 나머지는 돌려 뽑는다 -- 수위와 같은 계약이다.
+ok(SP.names("액션")[0] == "한 문장에 동작 하나" and SP.HEAD["액션"] == 1,
+   "제일 실행 가능한 규칙 하나가 머리다")
+ok(SP.head("액션").strip() in _wf, "싸움이 있으면 머리가 실린다")
+ok(sum(n in _wf for n in SP.names("액션")) < len(SP.CATS["액션"]),
+   "나머지는 돌려 뽑는다  ← 다 싣지 않는다")
 _bn = book(); BT.ensure(_bn, Director([dict(BASE, 전투="")]))
-ok("액션은 이렇게 쓴다" not in BT.brief(_bn), "싸움이 없으면 안 싣는다")
+_wn = BT.brief(_bn)
+ok(SP.head("액션").strip() not in _wn, "싸움이 없으면 액션을 안 싣는다  ← 안 쓸 규율을 지고 가지 않는다")
+ok(len(_wn) < len(_wf), f"싸움 없는 덩어리가 더 짧다 ({len(_wn)} < {len(_wf)})")
 
 print()
 print("[전환] **판이 흔들리는가 -- 회차마다 하나는 바뀐다**")
@@ -268,16 +282,72 @@ ok(SP.HEAD["수위"] == 2, "머리 둘은 뽑기에서 뺀다  ← 안 빼면 �
 _bh = book(); _bh["heat"] = 0.6
 BT.ensure(_bh, Director([BASE]))
 _wh = BT.brief(_bh)
-ok("**수위 (성인)**" in _wh, "켜면 실린다")
-ok("전부 어른이다" in _wh and "학생 · 미성년" in _wh, "어른만이 늘 실린다")
-ok("원하는지가 보인다" in _wh, "동의가 늘 실린다")
 _bh0 = book(); BT.ensure(_bh0, Director([BASE]))
-ok("**수위 (성인)**" not in BT.brief(_bh0), "안 켜면 한 줄도 안 실린다  ← 기본은 꺼짐")
+_wh0 = BT.brief(_bh0)
+# 조건 둘은 **켜고 끄지 않는다** -- 관능이 조건 없이 실리므로 조건도 조건 없이 실린다.
+ok("전부 어른이다" in _wh0 and "전부 어른이다" in _wh, "어른만은 켜든 안 켜든 실린다")
+ok("원하는지가 보인다" in _wh0, "동의도 늘 실린다")
+# 켜면 나머지 규율이 하나 더 붙는다. 머리표를 새로 열지 않는다 -- 몸과 살갗 안에 든다.
+ok(len(_wh) > len(_wh0), f"켜면 규율이 하나 더 붙는다 ({len(_wh0)} → {len(_wh)}자)")
+ok(_wh.count("· 몸과 살갗:") == 1, "머리표를 새로 열지 않는다  ← 같은 자리를 두 번 열지 않는다")
 ok(flow.blank("x")["heat"] == 0.0, "원고의 기본 수위는 0 이다")
 ok("--heat" in (REPO / "novel" / "flow.py").read_text(encoding="utf-8"), "인자로 켠다")
+
+print()
+print("[부상] **리얼리티 -- 부위 · 기전 · 그리고 낫지 않는다**")
+print("      ← 사용자: \"실제 해부학적 명칭과 외과적 병명이나 기전을 설정해줘. 누가 부상을")
+print("        당하거나 외과적 내과적 장애가 생긴다면 **영구히 지속**해.\"")
+ok(len(SP.CATS["부상"]) >= 12, f"부상 {len(SP.CATS['부상'])}개")
+ok(SP.names("부상")[:2] == ["부위를 댄다", "기전을 댄다"] and SP.HEAD["부상"] == 2,
+   "부위와 기전이 머리다  ← 리얼리티의 뿌리")
+for _n in ("시간이 걸린다", "죽음에는 이름이 있다", "낫는 데도 값이 있다", "못 하게 된 것",
+           "곪는다", "잘린 뒤", "몸은 썩는다"):
+    ok(_n in SP.names("부상"), f"부상: {_n}")
+# **부위 이름을 목록으로 박지 않는다.** 박으면 원고마다 같은 부위가 돌아온다(이름결과 같다).
+_parts = ("쇄골", "요골", "비장", "대퇴", "경동맥", "슬개골")
+ok(not [n for n, r, _ in SP.CATS["부상"] if any(x in n + r for x in _parts)],
+   "해부 낱말을 박아 두지 않았다  ← 무엇을 댈지는 화자가 정한다")
+_bi = book(); BT.ensure(_bi, Director([dict(BASE, 전투="호위가 부관과 붙는다")]))
+_wi = BT.brief(_bi)
+ok(SP.head("부상").strip() in _wi, "싸움이 있으면 부위 · 기전이 실린다")
+_bi0 = book(); BT.ensure(_bi0, Director([dict(BASE, 전투="")]))
+ok(SP.head("부상").strip() not in BT.brief(_bi0), "싸움이 없으면 안 싣는다")
+
+print("  [영구성은 프롬프트가 아니라 원장이 지킨다]")
+print("      ← 프롬프트 줄은 열 덩어리 뒤에 잊힌다. 원장은 매 덩어리 다시 실린다.")
+ok("wounds" in flow.blank("첫.")["ledger"], "원장에 wounds 칸이 있다")
+ok("wounds" in flow._BUCKETS, "추출이 그 칸을 받는다")
+_ex = flow.extract_prompt("아무 산문")
+ok("wounds 에는 몸에 벌어진 손상을 적어라" in _ex, "추출기가 손상을 뽑는다")
+ok("한 번 적힌 손상은 낫지 않는다" in _ex and "신경 · 절단 · 장기는 그래도 안 돌아온다" in _ex,
+   "낫지 않는다고 못박는다")
+ok("그래서 지금 못 하는 것" in _ex or "그래서 못 하는 것" in _ex, "기능 손실을 함께 적게 한다")
+_led = dict(flow.blank("첫.")["ledger"], wounds={"로일": "오른 팔꿈치 아래 절단 -- 검을 못 쥔다"})
+_wb = flow.brief(_led)
+ok("[몸에 남은 것 -- **낫지 않는다**]" in _wb and "검을 못 쥔다" in _wb,
+   "세계 블록에 매 덩어리 실린다  ← 여기가 영구성이 사는 자리")
+ok("몸에 남은 것" not in flow.brief(flow.blank("첫.")["ledger"]), "다친 사람이 없으면 조용하다")
+
+print()
+print("[개그] **중간 중간 -- 분위기 전환이지 코미디가 아니다**")
+print("      ← 사용자: \"중간 중간 개그 요소들도 필수야. 분위기 전환에 필요해.\"")
+ok(len(SP.CATS["개그"]) >= 12, f"개그 {len(SP.CATS['개그'])}개")
+for _n in ("낙차", "무표정", "곁의 사람이 한다", "삼단", "한참 뒤에 한 번 더", "자폭",
+           "짧게 끊는다", "웃긴 뒤 조인다"):
+    ok(_n in SP.names("개그"), f"개그: {_n}")
+ok(SP.names("개그")[-1] == "웃긴 뒤 조인다", "마지막이 계약이다  ← 풀었으면 다시 조인다")
+_g1, _g0 = book(), book()
+BT.ensure(_g1, Director([BASE])); BT.ensure(_g0, Director([BASE]))
+_g1["chunks"] = ["가" * 100] * 1          # 홀수 덩어리
+_g0["chunks"] = ["가" * 100] * 2          # 짝수 덩어리
+_w1, _w0 = BT.brief(_g1), BT.brief(_g0)
+ok(any(n in _w1 for n in SP.names("개그")), "한 덩어리 걸러 실린다")
+ok(not any(n in _w0 for n in SP.names("개그")), "매 덩어리는 아니다  ← 매번 웃기면 전환이 아니다")
+ok(abs(len(_w1) - len(_w0)) < 200,
+   f"대사 자리를 나눠 써서 길이가 안 는다 ({len(_w0)} 대 {len(_w1)}자)  ← 다이어트한 자리를 도로 안 늘린다")
 
 print()
 if fails:
     print(f"novel_space: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)
-print("novel_space: 스무 칸 · 각본 · 심고 거둔다 · 집필 · 도파민 · 액션 · 전환 · 수위 -- 통과")
+print("novel_space: 스물두 칸 · 각본 · 심고 거둔다 · 집필 · 도파민 · 액션 · 전환 · 수위 · 부상 · 개그 -- 통과")

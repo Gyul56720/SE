@@ -297,6 +297,7 @@ def card_prompt(book: dict) -> str:
 
 [로맨스 · 싸움 · 체계 본보기 -- 비트 하나에 하나씩 얹을 수 있다]
 {SP.render("로맨스", seed, n, 2)}
+{SP.render("싸움", seed, n, 1)}
 {SP.render("시스템", seed, n, 1)}
 
 [설정 본보기 -- 세계의 규칙을 하나 더 세우거나 쓸 때. 값은 네가 정하고 원장이 지킨다]
@@ -305,11 +306,7 @@ def card_prompt(book: dict) -> str:
 [인물 본보기 -- 새 사람을 세우거나 있는 사람을 쓸 때]
 {SP.render("인물", seed, n, 2)}
 
-[전투 본보기 -- 이 회차에 싸움이 있으면 이런 꼴이다]
-{SP.render("전투", seed, n, 1)}
 
-[세계 본보기 -- 설정을 세울 때 이런 꼴이다]
-{SP.render("세계", seed, n, 1)}
 
 [쾌감 본보기 -- 이 회차의 통쾌한 자리는 이런 꼴이다. 하나 고르거나 지어낸다]
 {SP.render("쾌감", seed, n, 3)}
@@ -588,7 +585,12 @@ def brief(book: dict) -> str:
     seed = str(book.get("seed_id") or book.get("first") or "")
     nn = len(book.get("chunks") or [])
     rows.append("  · 연출:\n" + SP.render("연출", seed, nn, 2).replace("    ", "      "))
-    rows.append("  · 대사:\n" + SP.render("대사", seed, nn, 2).replace("    ", "      "))
+    # **개그는 한 덩어리 걸러 하나.** 사용자: "중간 중간 개그 요소들도 필수야. 분위기
+    # 전환에 필요해." 매 덩어리에 웃기라고 하면 코미디가 되지 전환이 아니다. 대사 자리를
+    # 나눠 쓰므로 프롬프트는 안 길어진다 -- 방금 다이어트한 자리를 도로 늘리지 않는다.
+    gag = nn % 2 == 1
+    rows.append("  · 대사:\n" + SP.render("대사", seed, nn, 1 if gag else 2).replace("    ", "      ")
+                + ("\n" + SP.render("개그", seed, nn, 1).replace("    ", "      ") if gag else ""))
     # **쾌감 · 전투 · 설정 -- 도파민의 자리.** 사용자: "도파민 요소가 없다."
     if c.get("쾌감"):
         j = int(c.get("쾌감자리") or 0)
@@ -596,13 +598,25 @@ def brief(book: dict) -> str:
         done = "   ← 앞 비트에서 이미 벌어졌다. 되풀이하지 마라" if j and j < k else ""
         rows.append(f"  · **쾌감** ({where}벌어진다): {c['쾌감']} -- 벌어진 문장으로 쓴다."
                     " 설명하지 마라, 놀라고 감탄하는 것은 곁의 사람들이다. 당한 만큼보다 조금 더." + done)
+    # **싸움은 한 자리에만 쓴다.** 예전에는 카드의 전투와 갈래의 싸움 본보기가 머리표
+    # 둘로 갈려 실렸다. 같은 것을 두 번 말하면 프롬프트만 길어진다.
+    # **액션 규율은 싸움이 있는 덩어리에만.** 없는 덩어리에까지 실으면 대부분의 덩어리가
+    # 안 쓸 규율을 지고 간다. 그리고 통째로 싣지 않는다 -- 머리 하나(한 문장에 동작 하나)만
+    # 늘 두고 나머지는 돌려 뽑는다. 다섯을 매번 실었더니 이 블록이 2,800자로 부풀었고,
+    # 그것이 이 저장소가 두 번 겪은 실패다("한꺼번에 시키면 안 지켜진다" -- dyn.py).
     if c.get("전투"):
-        # **액션은 통째로 싣는다**(빌드업과 같은 계약). 돌려 뽑으면 정작 싸우는 회차에
-        # 안 걸린다 -- 알아보기 쉬운 액션은 다섯 규율이 다 있어야 선다.
-        rows.append(f"  · **싸움**: {c['전투']}\n"
-                    "      첫 합에서 격이 드러나고, 기술은 이름을 부르고, 결착은 한 방이다. 상처는 남는다.\n"
-                    "      액션은 이렇게 쓴다:\n" + SP.rules("액션").replace("    ", "      ")
-                    + "\n      전투 문법:\n" + SP.render("전투", seed, nn, 1).replace("    ", "      "))
+        rows.append("\n      ".join((
+            f"  · **싸움**: {c['전투']}",
+            "첫 합에서 격이 드러나고, 기술은 이름을 부르고, 결착은 한 방이다. 상처는 남는다.",
+            SP.head("액션").strip(),
+            SP.render("액션", seed, nn, 1, skip=SP.HEAD["액션"]).strip(),
+            SP.render("싸움", seed, nn, 1).strip(),
+            # **리얼리티는 여기서 온다.** 사용자: "실제 해부학적 명칭과 외과적 기전을."
+            # 머리 둘(부위 · 기전)은 조건이라 늘, 나머지는 돌려 뽑는다.
+            SP.head("부상").strip(),
+            SP.render("부상", seed, nn, 1, skip=SP.HEAD["부상"]).strip())))
+    else:
+        rows.append("  · 싸움이 있으면:\n      " + SP.render("싸움", seed, nn, 1).strip())
     s = c.get("설정") or {}
     if s.get("이름"):
         rows.append(f"  · **이 회차의 설정**: {s['이름']} -- {s.get('규칙', '')}. 이름으로 부르고"
@@ -611,17 +625,14 @@ def brief(book: dict) -> str:
     if cx:
         rows.append("  · 설정집 (이 이름 그대로 쓴다 · 다시 설명하지 마라): "
                     + " · ".join(f"{x['이름']}({x.get('규칙', '')})" for x in cx[-6:]))
-    # 사용자(2026-09-08 밤): "전투씬 더 자세히 · 묘사 더 생생하게 · 주변 반응 더 격하게 · 19세."
-    rows.append("  · 싸움이 있으면:\n" + SP.render("싸움", seed, nn, 1).replace("    ", "      "))
     # **몸을 시키면 조건도 같이 간다.** 관능이 조건 없이 실리므로 어른만 · 원하는지가
     # 보인다도 조건 없이 실린다 -- 둘은 본보기가 아니라 조건이고, 조건은 켜고 끄지 않는다.
-    rows.append("  · 몸과 살갗:\n" + SP.render("외모", seed, nn, 1).replace("    ", "      ")
-                + "\n" + SP.render("관능", seed, nn, 1).replace("    ", "      ")
-                + "\n" + SP.head("수위").replace("    ", "      "))
-    # 수위를 켠 원고는 나머지 규율까지 돌려 뽑는다(--heat / HEAT). 기본은 꺼짐이다.
+    # 수위를 켠 원고(--heat / HEAT)만 나머지 규율을 하나 더 받는다. 한 머리표 안에 둔다.
+    body = ["  · 몸과 살갗:", SP.render("외모", seed, nn, 1).strip(),
+            SP.render("관능", seed, nn, 1).strip(), SP.head("수위").strip()]
     if float(book.get("heat") or 0) > 0:
-        rows.append("  · **수위 (성인)**:\n"
-                    + SP.render("수위", seed, nn, 2, skip=SP.HEAD["수위"]).replace("    ", "      "))
+        body.append(SP.render("수위", seed, nn, 1, skip=SP.HEAD["수위"]).strip())
+    rows.append("\n      ".join(body))
     rows.append("  · 주변의 반응:\n" + SP.render("반응", seed, nn, 1).replace("    ", "      "))
     if c.get("거둠"):
         rows.append(f"  · **거둔다:** {c['거둠']} -- 앞 회차에 심어 둔 그 낱말 · 그 물건을 그대로 다시 쓴다."
