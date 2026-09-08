@@ -122,6 +122,18 @@ for _글, _뜻 in [("503 UNAVAILABLE. The model is overloaded", "과부하"),
     ok(OC._why(Exception(_글)) == _뜻, f"{_글[:26]!r} -> {_뜻}")
 
 print()
+print("[무엇에 막혔나] **가려서 보고해야 다음에 무엇을 할지 안다**")
+# 실측: 쿼터(429)만 넘기고 과부하(503)는 그 자리에서 터뜨렸다. 서른여섯 쪽짜리 일이
+# 한 번의 과부하로 통째로 죽었다. 둘은 다음에 할 일이 다르다 --
+# 쿼터는 **내일**, 과부하는 **조금 뒤**.
+for _글, _뜻 in [("503 UNAVAILABLE. The model is overloaded", "과부하"),
+               ("504 DEADLINE_EXCEEDED", "과부하"),
+               ("500 INTERNAL", "과부하"),
+               ("429 RESOURCE_EXHAUSTED", "쿼터에 막혔다"),
+               ("404 NOT_FOUND models/없는모델", "그런 모델이 없다")]:
+    ok(OC._why(Exception(_글)) == _뜻, f"{_글[:26]!r} -> {_뜻}")
+
+print()
 print("[이어하기] **쿼터에 막혀 멈춰도 다음 날 이어서 한다**")
 _o = Path(tempfile.mkdtemp()) / "본.txt"
 _o.write_text(OC.PAGE_MARK.format(n=1) + "\n문 1.\n"

@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import time
 import struct
 import sys
 import zlib
