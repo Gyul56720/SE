@@ -75,9 +75,18 @@ class Client:
     def __repr__(self) -> str:              # 로그에 키가 안 새게
         return f"<Gemini {self.model}>"
 
-    def invoke(self, prompt) -> Reply:
+    def invoke(self, prompt, images=None) -> Reply:
+        """`images` 는 (mime, bytes) 목록. 안 주면 지금까지와 똑같이 글만 보낸다.
+
+        **한 벌만 둔다.** 그림을 보내려고 클라이언트를 따로 만들면 키를 헤더로
+        보내는 규율(아래)도 재시도도 두 벌이 되고, 두 벌은 언젠가 갈라진다.
+        """
+        import base64
         import requests
-        body = {"contents": [{"parts": [{"text": _text_of(prompt)}]}],
+        parts = [{"inline_data": {"mime_type": m, "data": base64.b64encode(b).decode()}}
+                 for m, b in (images or [])]
+        parts.append({"text": _text_of(prompt)})
+        body = {"contents": [{"parts": parts}],
                 "generationConfig": {"maxOutputTokens": self.max_output_tokens}}
         if SAFETY:
             body["safetySettings"] = SAFETY
