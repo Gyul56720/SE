@@ -115,3 +115,29 @@ def tally(rows: list) -> str:
         mark = "미정" if d["미정"] == n else f"{d['있음']}/{d['있음'] + d['없음']}"
         out.append(f"  {op:<12} {mark:>7}  (본 것 {n})")
     return "\n".join(out)
+
+
+# ── 정의역 등급 ───────────────────────────────────────────────────────
+# **기호로만 가른다.** 한국어를 보면 이 자도 두 번 뒤집힌 그 자리로 돌아간다.
+# ℚ 는 셀 수 있지만 조밀하다 -- 탐색공간의 크기로는 이산 무한 쪽에 둔다(정직한 임의).
+# `\mathbb{Z}/p\mathbb{Z}` 는 몫이라 **유한**이다. 그런데 "Z/" 로만 찾으면 여기 안 걸린다
+# -- 사이에 `}` 가 끼어 있어서다. 그대로 두면 유한 몫환이 이산무한(2)으로 읽혔다(실측).
+# 슬래시가 붙은 것만 잡는다: `\mathbb{Z}_p` (p 진 정수)는 몫이 아니고 유한도 아니다.
+FINITE = (r"F_2", r"F_p", r"F_q", "GF", r"\mathbb{F}", "Z/", r"\mathbb{Z}/", r"\bmod",
+          r"\{-1,0,1\}", r"\{0,1\}", "char")
+DISCRETE = (r"\mathbb{Z}", r"\mathbb{N}", r"\mathbb{Q}", r"\Lambda", "lattice", "Z", "N")
+CONTINUOUS = (r"\mathbb{R}", r"\mathbb{C}", "R", "C", r"\overline", "cont")
+
+GRADE_NAME = {3: "연속", 2: "이산무한", 1: "유한", 0: "모름"}
+
+
+def domain_grade(text: str) -> int:
+    """3 연속 · 2 이산무한 · 1 유한 · 0 모름. **좁을수록 작다.**"""
+    t = text or ""
+    if any(k in t for k in FINITE):
+        return 1
+    if any(k in t for k in DISCRETE):
+        return 2
+    if any(k in t for k in CONTINUOUS):
+        return 3
+    return 0

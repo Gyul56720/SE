@@ -177,6 +177,120 @@ ok("계보:" in _out and "S1" in _out, "계보 사슬도 적는다")
 with _ctx.redirect_stdout(_io.StringIO()):
     ok(SPR.card(led, "S999") == 1, "없는 공간은 1 로 끝난다")
 
+print("\n== 얕은 공간은 연산자를 다 걸 때까지 부모로 다시 쓴다 ==")
+# 실측 2026-09-08: 공간 하나가 부모가 되는 것은 **딱 한 번**이라(라운드가 원장을 절대
+# 못 따라잡는다) 묶음이 5면 연산자 15개 중 5개만 걸렸다. 씨앗도 그랬고, 안 걸린 열에
+# 매장(Cohn-Umans) · 점근화(CW) · 표수 이동이 들어 있을 수 있었다.
+#
+# 깊이 편향은 재 보고 버렸다: 층별 라운드로빈은 깊이 26,000, 25% 깊은 층 섞기는 6,502 --
+# 둘 다 한 줄로 늘어진다. 그리고 부모가 되는 공간이 1/묶음인 것은 낭비가 아니라 천장이다.
+_dled = SP.blank()
+SP.add(_dled, {"식": "E0", "정의역": r"F = \mathbb{R}"}, parent="-", op="씨앗", dist=0)
+_need = -(-len(OPS.OPS) // SPR.BATCH)
+_seedops = []
+for _i in range(_need):
+    _par = SPR._parent(_dled, _i)
+    ok(_par["id"] == "S1", f"라운드 {_i} 도 씨앗이 부모다 (얻은 값 {_par['id']})")
+    _pk = SPR._pick_ops(_dled, "t", _i, SPR.BATCH, _par["id"])
+    _seedops += [o for o, _, _ in _pk]
+    for _o, _w, _d in _pk:
+        SP.add(_dled, {"식": f"E{_i}{_o}", "정의역": r"F = \mathbb{R}"},
+               parent=_par["id"], op=_o, dist=_d)
+ok(len(set(_seedops)) == len(OPS.OPS),
+   f"**씨앗에 연산자 {len(OPS.OPS)}개가 다 걸린다** ({len(set(_seedops))}개)  ← 전에는 {SPR.BATCH}개였다")
+ok(len(_seedops) == len(set(_seedops)), "바퀴를 돌아도 같은 연산자를 두 번 안 건다")
+ok(SPR._parent(_dled, _need)["id"] != "S1", "다 걸고 나면 다음 공간으로 넘어간다")
+_deep = SP.add(_dled, {"식": "깊다", "정의역": r"F = \mathbb{R}"}, parent="S2", op="매장")
+ok(SPR._depth(_dled, _deep["id"]) == 2, "깊이를 센다")
+
+print("\n== 정의역은 연산자가 정한다 ==")
+_fl = SP.blank()
+SP.add(_fl, {"식": "E", "정의역": r"F = \mathbb{R}"}, parent="-", op="씨앗", dist=0)
+_a1 = SP.add(_fl, {"식": "E", "정의역": r"F = \mathbb{R}"}, parent="S1", op="이산화")
+ok(_a1["정의역등급"] == 2 and _a1["정의역_적힘"] == 3,
+   "모델이 R 이라고 써도 이산화의 자식은 등급 2 다  ← 문법이지 판정이 아니다")
+_pr = SPR.prompt(SP.get(_fl, "S1"), [("이산화", "연속 매개변수를 유한 격자로", 1)])
+ok("정의역은 이미 정해져 있다" in _pr and r"\mathbb{Z}" in _pr,
+   "프롬프트가 그 정의역을 미리 말해 준다  ← 시키는 자와 재는 자가 같은 것을 봐야 한다")
+_pr2 = SPR.prompt(SP.get(_fl, "S1"), [("매장", "다른 대수 구조 안에 넣는다", 2)])
+ok("정의역은 이미 정해져 있다" not in _pr2,
+   "정의역을 안 정하는 연산자에는 그 말이 없다  ← 억지로 채우지 않는다")
+
+print("\n== 24시간을 견디나 (자리로 바로 간다) ==")
+# 실측 2026-09-08: `get` 이 훑기뿐이면 `add` 가 O(n) 이고 런 전체가 O(n^2) 이다.
+# 공간 13만 개(24시간 추정)를 쌓는 데만 2분이 넘어 갔다. 자리로 바로 가니 0.8초다.
+# 부모 고르기도 원장을 훑던 것을 앞머리 계산으로 바꿨다(3,000개에서 8.3ms 였다).
+#
+# **시간으로 재지 않는다.** 기계가 바쁘면 흔들리고, 흔들리는 자는 결국 꺼진다.
+# 훑었는지를 **세어서** 본다 -- 결정적이다.
+_perf = SP.blank()
+SP.add(_perf, {"식": "E0", "정의역": r"F = \mathbb{R}"}, parent="-", op="씨앗", dist=0)
+for _i in range(400):
+    SP.add(_perf, {"식": "E", "정의역": r"F = \mathbb{R}"},
+           parent=_perf["spaces"][len(_perf["spaces"]) // 5]["id"], op="매장")
+
+_scans = {"n": 0}
+_real_scan = SP._scan
+
+
+def _counting(led, sid):
+    _scans["n"] += 1
+    return _real_scan(led, sid)
+
+
+SP._scan = _counting
+try:
+    for _k in range(1, 401):
+        SP.get(_perf, f"S{_k}")
+    _hit = _scans["n"]
+    _scans["n"] = 0
+    SP.add(_perf, {"식": "E", "정의역": r"F = \mathbb{R}"}, parent="S7", op="매장")
+    _add_scans = _scans["n"]
+finally:
+    SP._scan = _real_scan
+
+# 부모 고르기는 **훑기가 아니라 공간을 하나씩 들여다보는 것**이 문제였다. 그러니
+# `_scan` 이 아니라 `SP.get` 호출을 센다 -- 걸어 다니면 공간마다 한 번씩 부른다.
+_gets = {"n": 0}
+_real_get = SP.get
+
+
+def _counting_get(led, sid):
+    _gets["n"] += 1
+    return _real_get(led, sid)
+
+
+SP.get = _counting_get
+try:
+    for _k in range(50):
+        SPR._parent(_perf, _k)
+    _par_scans = _gets["n"]
+finally:
+    SP.get = _real_get
+ok(_hit == 0, f"id 400개를 찾는 동안 원장을 **한 번도 안 훑는다** ({_hit}회)  ← 훑으면 O(n^2)")
+ok(_add_scans == 0, f"공간을 올릴 때도 안 훑는다 ({_add_scans}회)  ← add 가 부모를 확인한다")
+ok(_par_scans == 0,
+   f"부모 고르기가 공간을 하나씩 들여다보지 않는다 ({_par_scans}회)  ← 걸으면 라운드마다 O(n)")
+ok(SP.get(_perf, "S1")["id"] == "S1" and SP.get(_perf, "S401")["id"] == "S401",
+   "빠른 길이 맞는 것을 돌려준다")
+ok(SP.get(_perf, "없는id") is None, "없는 id 는 None -- 훑어도 못 찾는다")
+ok(SP.get(_perf, "S99999") is None, "자리를 벗어난 번호도 None")
+
+# **자리와 번호가 어긋난 원장.** 확인 없이 자리만 믿으면 여기서 남의 것을 돌려준다.
+_hand = SP.blank()
+_hand["spaces"] = [{"id": "S5", "식": "다섯"}, {"id": "S1", "식": "하나"},
+                   {"id": "X1", "식": "손으로 만든 것"}]
+ok((SP.get(_hand, "S1") or {}).get("식") == "하나",
+   "**자리가 어긋나면 훑어서 맞는 것을 찾는다** ← 자리만 믿으면 S5 를 돌려준다")
+ok((SP.get(_hand, "S5") or {}).get("식") == "다섯", "번호가 커도 맞게 찾는다")
+ok(SP.get(_hand, "X1") is not None, "id 가 S<번호> 가 아니어도 찾는다")
+
+_last = _perf["spaces"][-1]
+ok(isinstance(_last.get("깊이"), int),
+   "깊이는 만들 때 적어 둔다  ← 계보를 매번 걸으면 O(n x 깊이) 다")
+ok(_last["깊이"] == max(0, len(SP.lineage(_perf, _last["id"])) - 1),
+   "적어 둔 깊이가 계보로 센 것과 같다")
+
 print("\n== LaTeX 이 JSON 을 깨는 것 ==")
 # 실측 2026-09-07: 식을 기호로 받기 시작하자 다섯 묶음 중 하나를 통째로 잃었다(20%).
 # `\lambda` 는 JSON 파서에게 "잘못된 이스케이프" 다. 모델에게 역슬래시를 두 번 쓰라고

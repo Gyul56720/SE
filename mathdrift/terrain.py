@@ -75,7 +75,8 @@ def census(led: dict) -> dict:
     grades = {3: 0, 2: 0, 1: 0, 0: 0}
     dims = []
     for s in led.get("spaces", []):
-        grades[MO.domain_grade(str(s.get("정의역") or ""))] += 1
+        # 연산자가 정해 적어 둔 등급을 먼저 본다 -- 글자보다 그쪽이 사슬의 진짜 궤적이다
+        grades[s.get("정의역등급") or MO.domain_grade(str(s.get("정의역") or ""))] += 1
         d = MO._int(s.get("치수"))
         if d is not None:
             dims.append(d)

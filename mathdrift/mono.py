@@ -45,29 +45,11 @@ from mathdrift import act as ACT
 from mathdrift import space as SP
 
 # ── 정의역 등급 ───────────────────────────────────────────────────────
-# **기호로만 가른다.** 한국어를 보면 이 자도 두 번 뒤집힌 그 자리로 돌아간다.
-# ℚ 는 셀 수 있지만 조밀하다 -- 탐색공간의 크기로는 이산 무한 쪽에 둔다(정직한 임의).
-# `\mathbb{Z}/p\mathbb{Z}` 는 몫이라 **유한**이다. 그런데 "Z/" 로만 찾으면 여기 안 걸린다
-# -- 사이에 `}` 가 끼어 있어서다. 그대로 두면 유한 몫환이 이산무한(2)으로 읽혔다(실측).
-# 슬래시가 붙은 것만 잡는다: `\mathbb{Z}_p` (p 진 정수)는 몫이 아니고 유한도 아니다.
-FINITE = (r"F_2", r"F_p", r"F_q", "GF", r"\mathbb{F}", "Z/", r"\mathbb{Z}/", r"\bmod",
-          r"\{-1,0,1\}", r"\{0,1\}", "char")
-DISCRETE = (r"\mathbb{Z}", r"\mathbb{N}", r"\mathbb{Q}", r"\Lambda", "lattice", "Z", "N")
-CONTINUOUS = (r"\mathbb{R}", r"\mathbb{C}", "R", "C", r"\overline", "cont")
-
-GRADE_NAME = {3: "연속", 2: "이산무한", 1: "유한", 0: "모름"}
-
-
-def domain_grade(text: str) -> int:
-    """3 연속 · 2 이산무한 · 1 유한 · 0 모름. **좁을수록 작다.**"""
-    t = text or ""
-    if any(k in t for k in FINITE):
-        return 1
-    if any(k in t for k in DISCRETE):
-        return 2
-    if any(k in t for k in CONTINUOUS):
-        return 3
-    return 0
+# **`act.py` 로 옮겼다.** 기호를 읽는 층이 거기고, `space.add` 도 이것이 필요해졌다
+# (연산자가 정의역을 정하게 하면서). 여기 두면 space -> mono 가 되고 그것은 순환이다.
+FINITE, DISCRETE, CONTINUOUS = ACT.FINITE, ACT.DISCRETE, ACT.CONTINUOUS
+GRADE_NAME = ACT.GRADE_NAME
+domain_grade = ACT.domain_grade
 
 
 # 관계 기호 -- 하나가 하나의 제약이다. `\in` 은 뺀다: "m \in \mathbb{N}" 처럼 자료형을
@@ -114,8 +96,12 @@ def touchstone_m(got: dict) -> int | None:
 
 
 def quants(rec: dict) -> dict:
-    """이 공간의 넷. 모르면 None -- **모르는 것은 모른다고 한다.**"""
-    g = domain_grade(str(rec.get("정의역") or ""))
+    """이 공간의 넷. 모르면 None -- **모르는 것은 모른다고 한다.**
+
+    정의역 등급은 **원장에 적힌 것을 먼저 본다.** `space.add` 가 연산자에서 정해 적어
+    두기 때문이다(정할 수 있는 셋에 대해서만). 없으면 예전처럼 글자에서 읽는다 --
+    그 칸이 생기기 전에 만든 원장이 그렇다."""
+    g = rec.get("정의역등급") or domain_grade(str(rec.get("정의역") or ""))
     got = rec.get("재현") or {}
     return {
         "치수": _int(rec.get("치수")),
@@ -147,9 +133,15 @@ _ARROW = {"↑": 1, "↓": -1, "=": 0}
 
 
 def step(parent: dict, child: dict, op: str) -> dict:
-    """한 걸음에서 넷이 어떻게 움직였나, 그리고 선언과 맞는가."""
+    """한 걸음에서 넷이 어떻게 움직였나, 그리고 선언과 맞는가.
+
+    **연산자가 정한 칸에는 선언이 없다.** 정의역을 연산자가 정하면 그 등급은 어길 수가
+    없다 -- 선언과 견줄 일이 아니라 문법이다. `DIR` 의 정의역 줄은 아직 안 정하는
+    연산자를 위해 남아 있다."""
     a, b = quants(parent), quants(child)
-    want = DIR.get(op, {})
+    want = dict(DIR.get(op, {}))
+    if child.get("정의역_연산자가정함"):
+        want.pop("정의역등급", None)
     rows = {}
     for k in ("치수", "정의역등급", "제약수", "검산m"):
         x, y = a[k], b[k]

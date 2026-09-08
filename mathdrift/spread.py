@@ -36,6 +36,7 @@ from __future__ import annotations
 import argparse
 import difflib
 import json
+import os
 import re
 import sys
 import time
@@ -76,10 +77,17 @@ def prompt(parent: dict, picks: list[tuple[str, str, int]], terrain: str = "") -
     """
     body = "\n".join(f"    {f}: {parent.get(f) if parent.get(f) not in ('', None) else '(비어 있음)'}"
                      for f in ("식", "점", "정의역"))
+    # **정의역을 정하는 연산자는 그것을 같이 말해 준다.** 등급은 어차피 연산자에서
+    # 오므로(`space.add`), 안 말해 주면 모델이 딴 정의역 위에 식을 쓰고 그 걸음만
+    # 어긋난 채로 남는다. 시키는 자와 재는 자가 다른 것을 보면 그 차이가 통째로
+    # 사각이 된다 -- `novel/dyn.py` 가 갈래 축에서 겪은 그것과 같다.
+    pg = ACT.domain_grade(str(parent.get("정의역") or "")) or parent.get("정의역등급")
     lines = []
     for op, what, dist in picks:
         far = "  ← 먼 이주여도 좋다" if dist >= 2 else ""
-        lines.append(f"  · {op} : {what}{far}")
+        fix = OPS.domain_of(op, pg) if pg else None
+        note = f"  [정의역은 이미 정해져 있다: {fix[1]}]" if (fix and fix[1]) else ""
+        lines.append(f"  · {op} : {what}{far}{note}")
     ops_block = "\n".join(lines)
     # **지형은 실을 것이 있을 때만 실린다.** 늘 실으면 그것이 상수가 되어 묻힌다
     # (`novel/dyn.py` 가 어긋난 축만 싣는 것과 같은 배치다). 그리고 여기 흐르는 것은
@@ -105,6 +113,8 @@ def prompt(parent: dict, picks: list[tuple[str, str, int]], terrain: str = "") -
            설명하고 싶은 것은 전부 `왜` 칸에 적는다. 여기는 식만 있는 칸이다
   점     : 해가 무엇인지 **기호로** (예: (U,V,W,lam) in F^{{n^2 x m}} x ... x F^m)
   정의역 : F = R · F = F_2 · F = {{-1,0,1}} · ... 처럼 **기호로**
+           연산자 옆에 정의역이 적혀 있으면 **그것을 쓴다.** 그 연산자가 정의역을
+           정하는 것이라 고를 여지가 없다 -- 식을 그 위에서 써라
   유도   : **부모 식에서 이 식까지 가는 길. 주장하지 말고 보여라.**
            한 걸음씩, 각 걸음은 수식 하나. **sympy 가 읽는 평문**으로 쓴다 (LaTeX 아님).
            첫 걸음은 부모 식, 마지막 걸음은 이 공간의 식이다.
@@ -283,14 +293,34 @@ def objects(raw) -> list[dict]:
     return out
 
 
-def _pick_ops(led: dict, seed: str, n: int, k: int) -> list[tuple[str, str, int]]:
-    """연산자 k 개. 겹치지 않게 뽑고, 덜 써 본 것으로 채운다."""
+def _on(led: dict, parent_id: str) -> set:
+    """이 부모에 이미 걸린 연산자."""
+    return {(s.get("계보") or {}).get("연산자")
+            for s in led.get("spaces", ()) if (s.get("계보") or {}).get("부모") == parent_id}
+
+
+def _pick_ops(led: dict, seed: str, n: int, k: int, parent_id: str = "") -> list:
+    """연산자 k 개. 겹치지 않게 뽑고, **이 부모에 이미 걸린 것은 뒤로 미룬다.**
+
+    한 부모가 한 번만 부모가 되면 연산자 15개 중 k 개(기본 5개)만 걸린다 -- 씨앗도
+    그랬다(실측: 씨앗에 [1,2,4,8,14]번만 걸리고 열 개는 영영 안 걸린다). 얕은 공간을
+    여러 바퀴 돌리기로 했으므로(`_parent`), 두 번째 바퀴가 첫 바퀴와 같은 것을 뽑으면
+    바퀴를 늘린 뜻이 없다. **기각이 아니라 순서만 바꾼다** -- 다 걸렸으면 그냥 다시 건다.
+    """
+    used = _on(led, parent_id) if parent_id else set()
     got, i = [], 0
     while len(got) < k and i < k * 8:
         op, what, dist = OPS.draw(seed, n * k + i)
-        if op not in {g[0] for g in got}:
+        if op not in {g[0] for g in got} and op not in used:
             got.append((op, what, dist))
         i += 1
+    for op in OPS.rarest(led["ops_used"]):
+        if len(got) >= k:
+            break
+        if op not in {g[0] for g in got} and op not in used:
+            what, dist = OPS.BY_NAME[op]
+            got.append((op, what, dist))
+    # 이 부모에 열다섯이 다 걸렸으면 미룰 것이 없다 -- 그때는 평소대로 채운다.
     for op in OPS.rarest(led["ops_used"]):
         if len(got) >= k:
             break
@@ -300,13 +330,61 @@ def _pick_ops(led: dict, seed: str, n: int, k: int) -> list[tuple[str, str, int]
     return got[:k]
 
 
+# 깊이 이 이하는 **연산자를 다 걸 때까지** 부모로 다시 쓴다. 위쪽은 한 바퀴다.
+# 씨앗과 그 자식들이 이 파이프라인에서 제일 중요한 자리인데, 거기에 연산자 셋 중 하나만
+# 걸리는 것은 그냥 구멍이다. 실측: 깊이 0~1 을 다 채우는 데 26,000 라운드 중 48 회
+# (0.2%) 가 든다. 깊이는 그 대신 8 -> 6 으로 얕아진다 -- 도약은 1~3 걸음에 있었다.
+FULL_TO = int(os.environ.get("MATHDRIFT_FULL_TO", "1"))
+
+
+def _depth(led: dict, sid: str) -> int:
+    """만들 때 적어 둔 깊이. 없으면(옛 원장) 계보를 걸어 센다."""
+    rec = SP.get(led, sid) or {}
+    d = rec.get("깊이")
+    return d if isinstance(d, int) else max(0, len(SP.lineage(led, sid)) - 1)
+
+
+def _shallow(led: dict) -> int:
+    """깊이 <= FULL_TO 인 공간 수. **원장 순서가 너비 우선이라 그것들은 앞머리다.**
+
+    부모를 원장 순서대로 쓰므로 자식은 늘 부모 뒤에 붙고, 그래서 깊이가 원장 순서에서
+    비내림차순이다. 앞에서부터 깊이가 넘칠 때까지만 세면 된다 -- 원장 전체를 안 훑는다."""
+    n = 0
+    for sp in led.get("spaces", ()):
+        d = sp.get("깊이")
+        if not isinstance(d, int):
+            d = max(0, len(SP.lineage(led, sp["id"])) - 1)
+        if d > FULL_TO:
+            break
+        n += 1
+    return n
+
+
+def _parent(led: dict, i: int) -> dict:
+    """이번 라운드의 부모. **원장순 너비 우선이되, 얕은 것은 여러 바퀴 돈다.**
+
+    깊이 편향은 재 보고 버렸다(실측 2026-09-08): 층별 라운드로빈은 깊이 26,000,
+    25% 깊은 층 섞기는 깊이 6,502 -- 둘 다 한 줄로 늘어진 사슬이고 너비가 죽는다.
+    그리고 부모가 되는 공간이 20% 인 것은 낭비가 아니라 **천장**이다. 묶음이 k 면
+    라운드마다 부모 하나를 쓰고 k 개를 낳으므로 어떤 정책도 1/k 를 못 넘는다.
+
+    남은 진짜 구멍이 연산자 덮개였고, 그것을 여기서 메운다."""
+    spaces = led["spaces"]
+    need = max(1, -(-len(OPS.OPS) // max(1, BATCH)))       # 연산자를 다 걸려면 몇 바퀴
+    # **원장을 안 훑는다.** 얕은 것이 앞머리(`_shallow`)라 자리를 바로 계산할 수 있다.
+    # 훑으면 라운드마다 O(n) 이고 24시간 규모에서 그것만으로 런이 선다.
+    s = min(_shallow(led), len(spaces))
+    j = i // need if i < s * need else s + (i - s * need)
+    return spaces[j % len(spaces)]
+
+
 def step(led: dict, llm, seed: str, n: int, k: int = BATCH, log=print) -> list[dict]:
     """호출 한 번 = 공간 여러 개. **부모는 원장에서 고른다** -- 계보가 끊길 수가 없다."""
     if not led["spaces"]:
         log("[발산] 원장이 비어 있다 -- 씨앗 공간이 있어야 시작한다")
         return []
-    picks = _pick_ops(led, seed, n, k)
-    parent = led["spaces"][n % len(led["spaces"])]
+    parent = _parent(led, n)
+    picks = _pick_ops(led, seed, n, k, parent["id"])
 
     try:
         raw = llm(prompt(parent, picks, TR.brief(led, parent["id"])))
