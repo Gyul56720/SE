@@ -51,7 +51,7 @@ from novel import rhythm                                              # noqa: E4
 from novel import wording                                             # noqa: E402
 from novel import genre as GENRE                                      # noqa: E402
 from novel import serial as SR                                        # noqa: E402
-from novel import tension as TN                                       # noqa: E402
+from novel import beat as BT                                          # noqa: E402
 from novel import style                                               # noqa: E402
 from novel import profile as _prof                                    # noqa: E402
 from novel import targets as TG                                       # noqa: E402
@@ -269,10 +269,6 @@ def blank(first: str = FIRST) -> dict:
             "ledger": {
         "people": {}, "places": {}, "facts": {}, "time": [], "objects": {},
         "words": {}, "open": {}, "rules": {}, "macguffin": {}, "bonds": {},
-        # chain: **인과 사슬.** "앞의 무엇 → 이번의 무엇". 독자가 중요하다고 느끼는 사건은
-        # 인과로 이어진 사건이다(Trabasso & van den Broek 1985) -- tension.py 가 다음
-        # 덩어리에 이것을 되먹인다. 말로만 잇게 하면 다음 덩어리가 잊는다.
-        "chain": [],
         "_folded": []}}
 
 
@@ -284,14 +280,13 @@ def _clean(v):
 _BUCKETS = {"people": dict, "places": dict, "objects": dict, "words": dict,
             "open": dict, "rules": dict, "macguffin": dict, "facts": dict,
             "bonds": dict, "fixed": dict, "folded": list, "closed": list,
-            "time": list, "chain": list}
+            "time": list}
 
 # 추출 프롬프트의 **자리 이름**. 모델이 값 대신 이것을 그대로 베껴 낼 때가 있다.
 _PLACEHOLDER = {"사람 이름", "장소", "사물", "항목", "이름-이름", "Name-Name", "name-name",
                 "이 덩어리가 지어낸 낱말", "아직 답이 안 나온 것", "이 세계의 통칙",
                 "다들 그것 때문에 움직이는 것", "통칙 하나로 갈음된 낱낱의 사실 이름들",
-                "앞에서 열려 있다가 이번에 답이 나온 것", "시점 한 줄", "...",
-                "앞 덩어리의 무엇 → 이번 덩어리의 무엇"}
+                "앞에서 열려 있다가 이번에 답이 나온 것", "시점 한 줄", "..."}
 
 # "가-나" 꼴 -- 관계(bonds) 칸의 키 모양이다.
 _PAIR = re.compile(r"^[^\s\-]{1,12}-[^\s\-]{1,12}$")
@@ -447,13 +442,6 @@ def _merge(ledger: dict, delta: dict, at: int = 0) -> list:
     for t in (delta.get("time") or []):
         if t and t not in ledger["time"]:
             ledger["time"].append(t)
-    # 인과 사슬. 최근 것만 든다 -- 오래된 고리는 이미 원장의 사실이 됐다.
-    chain = ledger.setdefault("chain", [])
-    for c in (delta.get("chain") or []):
-        c = str(c).strip()
-        if c and c not in chain:
-            chain.append(c)
-    del chain[:-24]
     return clashes
 
 
@@ -1237,12 +1225,6 @@ def _offbrief(book: dict) -> str:
                      gname=book.get("genre", ""))
 
 
-def _stage(book: dict) -> str:
-    """성장 단계 이름. 도착지가 없으면 빈 것 -- tension.swing 이 그때는 아무 말 안 한다."""
-    st = SR.stage(book)
-    return st[0] if st else ""
-
-
 def write_prompt(book: dict, feedback: str = "") -> str:
     if PROMPT == "axes":
         from novel import compose
@@ -1251,7 +1233,11 @@ def write_prompt(book: dict, feedback: str = "") -> str:
             ledger=brief(book["ledger"], now=len(book["chunks"])),
             # **당김이 맨 앞이다.** 나머지 자들은 전부 뒤(쓴 것)를 보고, 이것만
             # 앞(갈 곳)을 본다. 뒤에 두면 지시 상한에 밀려 사라진다.
-            asks="\n\n".join(x for x in (SR.brief(book), TN.brief(book, _stage(book)),
+            # **회차 각본이 있으면 무작위 사건 대신 그것을 싣는다.** compose 가 plan 을
+            # 받으면 deep/spine/plot 의 사건축을 안 뽑는다 -- 인과 없는 사건의 나열이
+            # 거기서 나왔다(STORY.md 2절).
+            plan=BT.brief(book),
+            asks="\n\n".join(x for x in (SR.brief(book),
                                           compose.offbrief(book), owed_brief(book),
                                           ahead_brief(book), VG.brief(book),
                                           PO.brief(book), TU.brief(book),
@@ -1288,13 +1274,12 @@ def _legacy_prompt(book: dict, feedback: str = "") -> str:
 
 {SR.brief(book)}
 
-{TN.brief(book, _stage(book))}
+{BT.brief(book)}
 
 {_wander() if _story() else ""}
 
 규칙:
-- 약 {CHUNK}자를 쓴다. 끊지 말고 이어라. 회차도 씬도 없다.
-- **줄거리를 미리 정하지 마라.** 지금 문장에서 다음 문장이 나오게 하라.
+- 약 {CHUNK}자를 쓴다. 끊지 말고 이어라.
 {_measured(book)}
 - **앞에 쓴 문장을 다시 적지 마라.** [지금까지의 끝부분]은 읽으라고 준 것이지 옮겨
   적으라고 준 것이 아니다. 그 다음 문장부터 시작해라. 분량이 모자라면 앞 문단을
@@ -1399,7 +1384,6 @@ JSON 만 출력(아래 칸 이름은 그대로, **값은 이 덩어리에서 읽
   "folded": ["통칙 하나로 갈음된 낱낱의 사실 이름들"],
   "closed": ["앞에서 열려 있다가 이번에 답이 나온 것"],
   "facts": {{"항목": "확정된 값"}},
-  "chain": ["앞 덩어리의 무엇 → 이번 덩어리의 무엇"],
   "time": ["시점 한 줄"]}}"""
 
 
@@ -1432,9 +1416,17 @@ def step(book: dict, llm, log=None) -> dict:
     book["_shock"] = None
     if book["chunks"]:
         D._log(f"[flow] 이번 세기 {_level(book):.2f} (기준 {book.get('drift', DRIFT)})")
+    # **회차 각본.** 도착지가 있을 때만 -- 카드는 빚 위에 선다. 회차당 호출 한 번이고,
+    # 카드가 있으면 아래 무작위 사건(shock)은 안 뽑는다: 각본이 사건의 자리다.
+    #
+    # `_story()` 로 막지 않는다. DRIFT_LAYER 의 기본값은 text(문면층만)라서 사건도 확산도
+    # 꺼진 채 돌고 있었다 -- 실측 2026-09-08: 사용자의 런은 전부 기본값이었다. 각본은
+    # 문면층의 층이 아니라 그 위의 층이고, 도착지가 있다는 것이 곧 켜라는 뜻이다.
+    if SR.planned(book):
+        BT.ensure(book, llm)
     # 문면층만 쓸 때는 사건도 급발진도 안 뽑는다 -- 프롬프트에 안 실릴 것을 뽑아 두면
     # 원고에 안 나온 사건이 원장에만 남는다.
-    if _story() and book["chunks"] and SH.due(book["since"],
+    if _story() and book["chunks"] and not BT.has(book) and SH.due(book["since"],
                                  len(brief(book["ledger"], now=len(book["chunks"]))),
                                  _level(book)):
         book["_shock"] = SH.draw(book.get("seed_id") or book["first"], book["shocks"])

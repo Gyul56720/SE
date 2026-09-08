@@ -211,7 +211,7 @@ def target_block(seed: str, n: int, last: str = "", watch=(), gname: str = "") -
 
 
 def build(book: dict, ledger: str = "", asks: str = "", opening_head: str = "",
-          head: str = "") -> str:
+          head: str = "", plan: str = "") -> str:
     """프롬프트 한 벌. 조각은 부르는 쪽이 준다 -- 여기서 만드는 것은 **뼈대**다."""
     chunks = book.get("chunks") or []
     opening = not chunks
@@ -222,7 +222,7 @@ def build(book: dict, ledger: str = "", asks: str = "", opening_head: str = "",
     st = MD.plan(MD.load(), seed, len(chunks), LINES)
     parts = [
         head or "한국어 소설을 쓴다. 산문만 출력한다 -- 제목도 머리말도 표식도 쓰지 마라.",
-        f"[분량] 약 {CHARS}자. 끊지 말고 이어라. 회차도 씬도 없다.",
+        f"[분량] 약 {CHARS}자. 끊지 말고 이어라.",
         MD.render(st, mode_nums(seed, len(chunks), st)),
         target_block(seed, len(chunks), tail if not opening else "", MD.watched(st),
                      book.get("genre", "")),
@@ -244,7 +244,9 @@ def build(book: dict, ledger: str = "", asks: str = "", opening_head: str = "",
     # **셋 중 있는 것을 쓴다.** 의미층 기록(deep.json)이 있으면 그것이 제일 자세하다
     # -- 스물두 칸을 그 대목의 값 그대로 시킨다. 없으면 뼈대(spine.json)의 한 줄,
     # 그것도 없으면 갈래만 뽑아 준다. 지어내서 시키지는 않는다.
-    parts.append(deep.brief(len(chunks)) or spine.brief(len(chunks)) or
+    # **회차 각본이 오면 그것이 사건의 자리다.** 무작위 사건축은 안 뽑는다 --
+    # 인과 없는 사건의 나열이 거기서 나왔다(STORY.md 2절).
+    parts.append(plan or deep.brief(len(chunks)) or spine.brief(len(chunks)) or
                  plot.brief(seed, len(chunks), book.get("ledger")))
     # **갈래 -- 못 재는 것이 실리는 유일한 자리다.**
     #
