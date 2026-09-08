@@ -45,6 +45,7 @@ import os
 from novel import drive as D
 from novel import hooks as HK
 from novel import serial as SR
+from novel import space as SP
 
 EP = int(os.environ.get("EPISODE_SPAN", "5000"))
 BEATS = 3
@@ -93,6 +94,14 @@ def has(book: dict) -> bool:
     return bool(c and c.get("질문") and c.get("비트"))
 
 
+def _overlap(a: str, b: str) -> bool:
+    """두 문장이 두 글자 넘는 낱말을 하나라도 나누는가."""
+    import re
+    wa = {w for w in re.split(r"[\s·,.\"'“”]+", a) if len(w) >= 3}
+    wb = {w for w in re.split(r"[\s·,.\"'“”]+", b) if len(w) >= 3}
+    return bool(wa & wb)
+
+
 # **갈고리는 사건이다.** 사용자(2026-09-08): "질문 이딴 게 재미없다고. 구체적인 사건으로 --
 # 누가 죽든가 팔이 잘리든가 키스를 하든가 관계를 맺든가. 자극적이게 끝내라고." 그리고
 # "하드코딩하지 마. 이런 게 아주 많이 있어야 해. 표본 먼저 뽑던가."
@@ -126,6 +135,23 @@ def hook_ok(kind: str, text: str) -> str:
 
 # ---------------------------------------------------------------- 세우기
 
+def plants(book: dict) -> list:
+    """심어 두고 아직 안 거둔 것. (무엇, 심은 회차)"""
+    return [p for p in (book.get("plants") or []) if p.get("거둠") is None]
+
+
+def _plants_block(book: dict) -> str:
+    ps = plants(book)
+    if not ps:
+        return "[심어 둔 것] 아직 없다 -- 이번 회차에 하나 심어라."
+    now = ep_no(book)
+    rows = []
+    for p in ps:
+        age = now - int(p.get("ep", now))
+        rows.append(f"    · {p['무엇']}" + ("   ← 세 회차 넘게 묵었다. 거두거나 버려라" if age >= 3 else ""))
+    return "[심어 둔 것 -- 거둘 수 있는 것]\n" + "\n".join(rows)
+
+
 def card_prompt(book: dict) -> str:
     from novel import flow
     a = SR.arc(book)
@@ -135,7 +161,10 @@ def card_prompt(book: dict) -> str:
     prev = book.get("card") or {}
     tail = "".join(book.get("chunks") or [])[-600:]
     world = flow.brief(book["ledger"], now=len(book.get("chunks") or []))
+    seed = str(book.get("seed_id") or book.get("first") or "")
+    n = ep_no(book)
     return f"""이번 **회차**의 각본을 세운다. 약 {EP:,}자 분량이다. 산문을 쓰지 마라 -- JSON 만 낸다.
+게임 · 일본 라이트노벨 · 애니메이션의 전개 문법으로 짠다 -- 아래 [전개 본보기] 가 그것이다.
 
 [이 소설이 닿을 자리] {a.get('end', '')}
 {f"[처음의 주인공] {a['start']}" if a.get('start') else ''}
@@ -151,6 +180,14 @@ def card_prompt(book: dict) -> str:
 
 {f"[앞 회차] 원하던 것: {prev.get('질문', '')} / 답: {prev.get('답', '')} / 남긴 것: {prev.get('갈고리', '')}" if prev.get('질문') else ''}
 
+{_plants_block(book)}
+
+[전개 본보기 -- 이 회차의 비트는 이런 꼴로 짠다. 하나둘 고른다]
+{SP.render("전개", seed, n, 4)}
+
+[인물 본보기 -- 새 사람을 세우거나 있는 사람을 쓸 때]
+{SP.render("인물", seed, n, 2)}
+
 낸다:
 {{"질문": "주인공이 이번 회차에 원하는 것 한 문장. 손에 잡히는 것으로 -- 초대장 · 서명 · 한 사람의 입",
   "방해": "누가 무엇으로 막는가. 사람이어야 한다 -- 사정이나 운명이 아니라",
@@ -159,7 +196,12 @@ def card_prompt(book: dict) -> str:
           {{"무엇": "여기서 질문의 답이 갈린다", "꼴": "장면"}}],
   "답": "얻는다 | 잃는다 | 반만",
   "갈고리종류": "무엇이 벌어지는지 한 낱말 (아래 본보기 중 하나이거나, 네가 지은 것)",
-  "갈고리": "회차의 마지막 문단에서 **실제로 벌어지는 일** 한 문장. 평서문. 다음 회차가 여기서 시작한다"}}
+  "갈고리": "회차의 마지막 문단에서 **실제로 벌어지는 일** 한 문장. 평서문. 다음 회차가 여기서 시작한다",
+  "심음": "이번 회차에 지나가듯 심어 두는 것 한 문장 -- 나중에 거둘 소문 · 흔적 · 이명 · 물건. 이번 회차에서 설명하지 않는다",
+  "거둠": "[심어 둔 것] 중 이번 회차에 거두는 것을 **그 낱말 그대로**. 없으면 빈 문자열"}}
+
+규칙 -- 빌드업 (개연성은 여기서 온다):
+{SP.rules("빌드업")}
 
 규칙:
 - **갈고리는 사건이다. 질문 · 예감 · 대사 · 미소가 아니다.** "믿는 겁니까?" 같은 것은
@@ -212,13 +254,30 @@ def ensure(book: dict, llm) -> "dict | None":
         q = str(got.get("질문") or "").strip()
         if not q or not beats:
             raise ValueError(f"각본이 비었다: 질문={q!r} 비트={len(beats)}개")
+        sow = str(got.get("심음") or "").strip()
+        reap = str(got.get("거둠") or "").strip()
         book["card"] = {"ep": ep, "at": n, "질문": q,
                         "방해": str(got.get("방해") or "").strip(),
                         "비트": beats,
                         "답": str(got.get("답") or "").strip(),
                         "갈고리종류": str(got.get("갈고리종류") or "").strip(),
                         "갈고리": str(got.get("갈고리") or "").strip(),
+                        "심음": sow, "거둠": reap,
                         "전환점": turning_point(book)}
+        # **심고 거두는 원장.** 거둠은 심어 둔 것과 낱말이 겹쳐야 친다 -- 안 겹치면 거둔 것이
+        # 아니라 새로 꺼낸 것이고, 그것은 로그에 남긴다(뜬금없음의 기록).
+        ps = book.setdefault("plants", [])
+        if reap:
+            hit = next((p for p in ps if p.get("거둠") is None and
+                        (reap in p["무엇"] or p["무엇"] in reap or _overlap(reap, p["무엇"]))), None)
+            if hit:
+                hit["거둠"] = ep
+                D._log(f"[회차]   거둔다: {hit['무엇']} (회차 {int(hit['ep']) + 1}에 심은 것)")
+            else:
+                D._log(f"[회차]   거둔다고 했는데 심은 적이 없다: {reap} -- 새로 꺼낸 것이다")
+        if sow:
+            ps.append({"무엇": sow, "ep": ep, "거둠": None})
+            D._log(f"[회차]   심는다: {sow}")
         D._log(f"[회차] {ep + 1} -- 원하는 것: {q}")
         for i, b in enumerate(beats, 1):
             D._log(f"[회차]   비트 {i} ({b['꼴']}) {b['무엇']}")
@@ -260,6 +319,16 @@ def brief(book: dict) -> str:
         rows.append(f"  · 앞 비트는 이미 썼다. **{k}번 비트부터** 쓴다 -- 되풀이하지 마라.")
     rows.append("  · 장면 비트는 한 자리 · 한 때에서 벌어지고 대사가 민다. 요약 비트는 시간을"
                 " 접는다 -- 며칠이 한 문단이어도 된다. 세기는 비트마다 오른다.")
+    # **연출과 대사 -- 애니 · 라노벨의 꼴.** 사용자: "상황이 머릿속에 안 떠오른다."
+    seed = str(book.get("seed_id") or book.get("first") or "")
+    nn = len(book.get("chunks") or [])
+    rows.append("  · 연출:\n" + SP.render("연출", seed, nn, 2).replace("    ", "      "))
+    rows.append("  · 대사:\n" + SP.render("대사", seed, nn, 2).replace("    ", "      "))
+    if c.get("거둠"):
+        rows.append(f"  · **거둔다:** {c['거둠']} -- 앞 회차에 심어 둔 그 낱말 · 그 물건을 그대로 다시 쓴다."
+                    " 새 인물이 이 자리에서 나오면 기척 → 실루엣 → 한 마디 → 이명 → 판이 바뀐다.")
+    if c.get("심음"):
+        rows.append(f"  · **심는다:** {c['심음']} -- 지나가듯 한 문장. 설명하지 마라, 누구도 그것에 반응하지 마라.")
     if c.get("갈고리"):
         kind = c.get("갈고리종류") or ""
         rows.append(f"  · 마지막 비트를 쓰게 되면 회차의 마지막 문단에서 **{kind}**이 벌어진다:"
@@ -279,4 +348,9 @@ def show(book: dict) -> str:
     out += [f"  {i}. ({b['꼴']}) {b['무엇']}" for i, b in enumerate(c["비트"], 1)]
     out.append(f"  답: {c.get('답', '')} / 갈고리({c.get('갈고리종류', '')}): {c.get('갈고리', '')}"
                + (f" / 전환점: {c['전환점']}" if c.get("전환점") else ""))
+    if c.get("심음") or c.get("거둠"):
+        out.append(f"  심음: {c.get('심음', '')} / 거둠: {c.get('거둠', '')}")
+    ps = plants(book)
+    if ps:
+        out.append("  아직 안 거둔 것: " + " · ".join(p["무엇"] for p in ps))
     return "\n".join(out)
