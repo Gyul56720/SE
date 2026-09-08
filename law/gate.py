@@ -81,6 +81,16 @@ CREATED_LABEL = re.compile(
 # 필자가 만든 말에 강조를 준 것이지 조문을 옮긴 것이 아니었다.
 QUOTED = re.compile(r"[\"“”「『]([^\"“”「」『』\n]{8,})[\"“”」』]")
 
+# **따옴표 안이 다 조문은 아니다.** 사람이 한 말도 따옴표에 들어간다.
+# 실측: 사례 절의 `피고인이 공판기일에 "내용이 사실과 다르다"며 ...` 가 L002 hard 로
+# 기각됐다. 조문을 잘못 옮긴 게 아니라 **가상 사실관계 속 피고인의 진술**이다.
+#
+# 가르는 자리는 따옴표 바로 뒤다. 사람의 말에는 인용 조사(며·라고·면서)가 붙고,
+# 조문을 옮긴 데는 그 뒤에 '규정한다·정하고 있다·명시되어' 가 온다. 그래서 조사가
+# 붙었더라도 **규정 동사가 뒤따르면 그대로 검사한다** -- `"..."고 규정한다` 를
+# 놓치면 이 관문의 본체를 잃는다.
+SAID = re.compile(r"\s*(?:라)?(?:며|면서|고)(?!\s*(?:규정|정하|정한|명시|적혀|규율|되어))")
+
 # 법정형 표기. L006(자기모순)이 보는 자리.
 PENALTY = re.compile(
     r"(?P<num>\d[\d,]*(?:[억만천백십][\d,]*)*)\s*(?P<unit>년|개월|일|억원|만원|원)\s*"
@@ -210,8 +220,11 @@ def check_quotes(doc: Doc, corpus) -> list:
                     targets.append(re.sub(r"\s+", "", body))
             if not targets:
                 continue
-            for q in QUOTED.findall(sent):
+            for m in QUOTED.finditer(sent):
+                q = m.group(1)
                 if CP.CITATION.search(q):      # 조문 번호를 부른 것뿐이면 인용이 아니다
+                    continue
+                if SAID.match(sent, m.end()):  # 사람이 한 말이다 -- 조문을 옮긴 게 아니다
                     continue
                 flat = re.sub(r"\s+", "", q)
                 if not any(flat in t for t in targets):
