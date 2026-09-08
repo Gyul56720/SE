@@ -275,6 +275,16 @@ _APPLIES_TO_CASE = re.compile(
 # 상계할 수 있다고 오해한다" 는 문장에서 '할 수 있다'(재량)는 문서가 그렇다고 말한 것이
 # 아니라 남의 잘못된 생각을 옮긴 것이다. 실측에서 서법 어긋남 세 건이 전부 이 꼴이었다.
 # 그 절은 어차피 soft 라 여기서 빼도 잃는 것이 적고, 소리만 줄어든다.
+# **"그건 이 조문에 없다" 고 밝힌 문장.**
+#
+# 이것만으로 문장을 통째로 대조에서 빼 봤다가 돌연변이 셋이 그 그늘로 숨었다(실측).
+# 한 문장은 유보와 주장을 같이 담는다. 그래서 이제 **딱 한 자리에만** 쓴다 --
+# 기각의 근거가 조문 표제뿐일 때. 아래 _term_rows 에 그 이유가 적혀 있다.
+_RESERVED = re.compile(
+    r"명시되(지\s*않|어\s*있지\s*않)|규정되(지\s*않|어\s*있지\s*않)"
+    r"|나타나\s*있지\s*않|확인\s*필요|알\s*수\s*없")
+
+
 _MISCONCEPTION = re.compile(r"오해|오인|착각|잘못\s*알|혼동")
 
 
@@ -530,13 +540,14 @@ def check(doc, corpus) -> list:
                         f"{axis}: 조문({raws})은 {'/'.join(sorted(ref))} 인데 "
                         f"문서는 {'/'.join(sorted(gone))} 로 적었다"))
             st, at = terms_in(sent), terms_in(joined)
-            body = terms_in(_body_only(joined))     # 기각에는 본문을 요구한다
-            if _HEAD_TITLE.search(sent):            # 표제를 옮겨 적었으면 표제도 본다
-                body = at
+            body = terms_in(_body_only(joined))
+            유보 = bool(_RESERVED.search(sent))      # _term_rows 에 이유가 적혀 있다
             for a, b in PAIRS:
                 for used, other in ((a, b), (b, a)):
                     fu, fo = _flat(used), _flat(other)
-                    if fu in st and fo in body and fu not in at and fo not in st:
+                    if fo not in body and 유보:      # 표제만이 근거인데 없다고 밝혔다
+                        continue
+                    if fu in st and fo in at and fu not in at and fo not in st:
                         out.append(Violation(
                             "W005", sev, f"{doc.path.name} · {name}",
                             f"조문({raws})은 {other!r} 인데 문서는 {used!r} 로 바꿔 적었다"))
@@ -587,14 +598,17 @@ def _term_rows(sent: str, article: str) -> list:
     """
     st = terms_in(sent)
     at, body = terms_in(article), terms_in(_body_only(article))
-    # **문서가 표제를 직접 옮겨 적었으면 표제도 대조 대상이다.**
-    # 실측: `형법 제30조(방조)는 "2인 이상이 공동하여 죄를 범한 때에는..."` -- 제30조의
-    # 표제는 (공동정범)이고 그 낱말은 본문에 없다. 표제를 통째로 뺐더니 표제를 **옮겨
-    # 적으면서 틀린** 이 자리가 그늘로 들어갔다.
-    # 그러나 "변론주의에 관하여는 제203조 원문에 명시되지 않음" 은 표제를 옮겨 적은
-    # 것이 아니라 딴 얘기를 한 것이다. 가르는 것은 `제N조(...)` 꼴 하나다.
-    if _HEAD_TITLE.search(sent):
-        body = at
+    # **표제만이 근거일 때는 약하다.** 실측이 양쪽을 다 보여 줬다.
+    #
+    #   제203조(처분권주의) ... 문서: "변론주의에 관하여는 제203조 원문에 명시되지 않음"
+    #       -> 기각하면 안 된다. 문서는 그 낱말이 조문에 **없다고 밝힌** 것이다.
+    #   제133조(조합설립인가 등의 취소 ...) ... 문서: "조합설립인가 등의 **무효** 또는"
+    #       -> 기각해야 한다. 무효와 취소는 다른 것이고 문서는 그렇다고 단정했다.
+    #
+    # 둘 다 근거가 표제뿐이다. 가르는 것은 **문서가 없다고 밝혔는가** 하나다.
+    # (전에는 유보 문장을 통째로 대조에서 뺐다가 돌연변이 셋을 그늘에 숨겼다. 한 문장은
+    #  유보와 주장을 같이 담으므로, 유보는 이 약한 근거 한 자리에만 쓴다.)
+    유보 = bool(_RESERVED.search(sent))
     out = []
     for used in sorted(st):
         if used not in _PARTNERS:      # 짝이 없는 낱말은 이 관문의 관할이 아니다
@@ -602,9 +616,10 @@ def _term_rows(sent: str, article: str) -> list:
         if used in at:                 # 맞음에는 표제도 근거다
             out.append((f"용어:{used}", "맞음"))
             continue
-        others = [o for o in _PARTNERS[used]   # 기각에는 본문을 요구한다
-                  if _flat(o) in body and _flat(o) not in st]
-        if others:
+        others = [o for o in _PARTNERS[used]
+                  if _flat(o) in at and _flat(o) not in st]
+        약함 = others and all(_flat(o) not in body for o in others)
+        if others and not (약함 and 유보):
             out.append((f"용어:{used}(조문은 {'·'.join(others)})", "어긋남"))
         else:
             out.append((f"용어:{used}", "견줄것없음"))
