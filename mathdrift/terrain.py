@@ -75,7 +75,8 @@ def census(led: dict) -> dict:
     grades = {3: 0, 2: 0, 1: 0, 0: 0}
     dims = []
     for s in led.get("spaces", []):
-        grades[MO.domain_grade(str(s.get("정의역") or ""))] += 1
+        # 연산자가 정해 적어 둔 등급을 먼저 본다 -- 글자보다 그쪽이 사슬의 진짜 궤적이다
+        grades[s.get("정의역등급") or MO.domain_grade(str(s.get("정의역") or ""))] += 1
         d = MO._int(s.get("치수"))
         if d is not None:
             dims.append(d)
@@ -177,6 +178,54 @@ def stale(led: dict, near: float = 0.9) -> dict:
             "짝": pairs[:12]}
 
 
+# 앞머리를 몇 자까지 견주나. 로그가 40자쯤에서 잘려도 보이던 그 길이다.
+HEAD = int(os.environ.get("MATHDRIFT_HEAD", "36"))
+
+
+def by_depth(led: dict) -> list:
+    """깊이별로 **부모를 얼마나 그대로 물려받았나.** 호출 0회.
+
+    실측 2026-09-08, VM 51개 런(스키마 통로 이전 코드):
+
+        깊이 1  부모몫 0.270   <- 여기가 건강하다. 매장 -> phi 준동형, 점근화 -> omega
+        깊이 2  부모몫 0.770
+        깊이 3  부모몫 0.887   <- 서른 걸음 중 아홉이 부모 식과 앞 36자가 글자 그대로 같다
+
+    **오르는 것이 신호다.** 깊이가 쌓일수록 자식이 부모를 더 베낀다면, 연산자가 이름만
+    걸리고 식에는 아무 일도 안 한 것이다(S8 의 자식 넷이 국소화·상대화·이산화·쌍대인데
+    앞 36자가 다 같았다). 임계점은 깊이 8 이 아니라 **깊이 3 에 이미 와 있었다.**
+
+    그래서 24시간을 어디까지 파는 것이 뜻이 있는지는 이 표가 정한다 -- 부모몫이 1 에
+    붙는 깊이 아래로는 더 파도 같은 식이 늘 뿐이다.
+
+    **이것도 판정이 아니다.** 아무것도 안 거른다.
+    """
+    rows = {}
+    for sp in led.get("spaces", []):
+        d = sp.get("깊이")
+        if not isinstance(d, int) or d == 0:
+            continue
+        got = (sp.get("잰것") or {}).get("몫")
+        par = SP.get(led, (sp.get("계보") or {}).get("부모") or "")
+        pe = str((par or {}).get("식") or "")
+        e = str(sp.get("식") or "")
+        r = rows.setdefault(d, {"몫": [], "그대로": 0, "수": 0})
+        r["수"] += 1
+        if isinstance(got, (int, float)):
+            r["몫"].append(float(got))
+        # **앞머리가 글자 그대로 같은 것.** 낱말 겹침과 달리 이건 못 우긴다.
+        # 둘 다 36자가 있어야 "앞 36자가 같다" 가 뜻이 있다 -- 짧은 쪽이 36자가 안 되면
+        # 비교가 늘 거짓이 되어(자른 길이가 달라서) 세지 못한다.
+        if len(e) >= HEAD and len(pe) >= HEAD and e[:HEAD] == pe[:HEAD]:
+            r["그대로"] += 1
+    out = []
+    for d in sorted(rows):
+        r = rows[d]
+        out.append({"깊이": d, "수": r["수"], "그대로": r["그대로"],
+                    "부모몫": round(sum(r["몫"]) / len(r["몫"]), 3) if r["몫"] else None})
+    return out
+
+
 def show(led: dict, parent_id: str = "") -> int:
     ids = [parent_id] if parent_id else [s["id"] for s in led.get("spaces", [])]
     if not ids:
@@ -209,4 +258,13 @@ def show(led: dict, parent_id: str = "") -> int:
         for a, b in st["짝"][:6]:
             print(f"    {a} 는 {b} 와 거의 같다")
         print("**24시간 뒤에 이 몫이 크면 그 시간은 헛돈 것이다.** 기각하지 않는다 -- 재서 보여 준다.")
+        rows = by_depth(led)
+        if rows:
+            print(f"\n{'깊이':>4} {'공간':>5} {'부모몫':>7} {'앞머리 그대로':>12}")
+            for r in rows:
+                sh = f"{r['부모몫']:.3f}" if r["부모몫"] is not None else "-"
+                print(f"{r['깊이']:>4} {r['수']:>5} {sh:>7} {str(r['그대로']) + '개':>12}")
+            print("**부모몫이 깊이를 따라 오르면 연산자가 이름만 걸린 것이다.**")
+            print("실측 2026-09-08 (통로 이전, 51개): 깊이 1 에 0.270 · 2 에 0.770 · 3 에 0.887 --")
+            print("깊이 3 에서 서른 걸음 중 아홉이 부모 식과 앞 36자가 글자 그대로 같았다.")
     return 0

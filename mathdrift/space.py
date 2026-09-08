@@ -36,6 +36,9 @@ import json
 import os
 from pathlib import Path
 
+from mathdrift import act as ACT
+from mathdrift import ops as OPS
+
 PATH = Path(os.environ.get("MATHDRIFT_LEDGER",
                            Path(__file__).resolve().parent / "ledger.json"))
 
@@ -142,6 +145,22 @@ def save_step(led: dict, path=None, i: int = 0, last: bool = False) -> bool:
 
 
 def get(led: dict, sid: str) -> dict | None:
+    """id 로 공간을 찾는다. **자리로 바로 간다 -- 훑는 것은 못 찾았을 때뿐이다.**
+
+    `add` 가 부모를 확인하려고 이것을 부르므로, 훑기만 하면 `add` 가 O(n) 이고 런 전체가
+    O(n^2) 이 된다. 24시간이면 공간 13만 개라 그것만으로 런이 선다(실측: 공간을 13만 개
+    쌓는 데만 2분이 넘어 갔다). id 는 `S<번호>` 로 순서대로 붙으니 자리를 바로 안다 --
+    맞는지 확인하고 아니면 예전처럼 훑는다(사람이 손으로 만든 원장도 있다).
+    """
+    spaces = led.get("spaces") or []
+    if isinstance(sid, str) and sid[:1] == "S" and sid[1:].isdigit():
+        k = int(sid[1:]) - 1
+        if 0 <= k < len(spaces) and spaces[k].get("id") == sid:
+            return spaces[k]
+    return _scan(led, sid)
+
+
+def _scan(led: dict, sid: str) -> dict | None:
     for s in led["spaces"]:
         if s.get("id") == sid:
             return s
@@ -174,12 +193,41 @@ def add(led: dict, rec: dict, parent: str, op: str, dist: int = 1) -> dict:
     """
     if parent != "-" and get(led, parent) is None:
         raise ValueError(f"부모 {parent} 가 원장에 없다 -- 계보가 끊긴 공간은 안 받는다")
+    par = get(led, parent) if parent != "-" else None
     led["seq"] += 1
     out = {"id": f"S{led['seq']}"}
     for f in FIELDS:
         v = rec.get(f)
         out[f] = v.strip() if isinstance(v, str) else (v if v is not None else "")
+    # **깊이를 만들 때 적는다.** 부모 깊이 + 1 이라 O(1) 이다. 나중에 세려고 계보를
+    # 매번 걸으면 `get` 이 원장을 선형으로 훑으므로 O(n x 깊이) 가 되고, 24시간 규모에서
+    # 그것이 런을 통째로 세운다(실측: 공간 3,000 개에서 부모 고르기 한 번에 8.3ms).
     out["계보"] = {"부모": parent, "연산자": op, "거리": dist}
+    out["깊이"] = 0 if par is None else (par.get("깊이", 0) + 1)
+
+    # **정의역 등급은 연산자가 정한다 -- 정할 수 있는 셋에 대해서만.**
+    #
+    # `mono.DIR` 은 "이산화는 정의역을 낮춰야 한다" 는 선언이었다. 선언은 어길 수 있고,
+    # 어기면 `어긋남` 으로 적힐 뿐 아무것도 안 막는다. 여기서는 사슬의 정의역 궤적이
+    # **연산자 열로 결정된다** -- 모델의 변덕이 아니라. 부모 없는 공간을 못 받게 한 것과
+    # 같은 수다: 검사가 아니라 문법이다.
+    #
+    # 모델이 쓴 글자는 **안 지운다.** 등급만 연산자에서 오고, 글자에서 읽은 등급은
+    # `정의역_적힘` 으로 따로 적는다. 둘이 다르면 그 걸음이 연산자 이름과 다른 일을 한
+    # 것이고, 그것은 짚을 일이지 기각할 일이 아니다.
+    #
+    # **그리고 이것이 아직 페렐만의 단조량은 아니다.** 이산화 뒤에 완비화를 걸면 등급이
+    # 되올라간다(2 -> 3). 되돌아감을 정말 막으려면 그 조합을 막아야 하는데 그것은 게이트다.
+    # 여기서 얻는 것은 "궤적이 연산자 열로 결정된다" 까지다.
+    said = ACT.domain_grade(str(out.get("정의역") or ""))
+    out["정의역_적힘"] = said or None
+    fixed = None
+    if par is not None:
+        pg = par.get("정의역등급") or ACT.domain_grade(str(par.get("정의역") or ""))
+        if pg:
+            fixed = OPS.domain_of(op, pg)
+    out["정의역등급"] = fixed[0] if fixed else (said or None)
+    out["정의역_연산자가정함"] = bool(fixed)
     out["등급"] = grade(out)
     out["잰것"] = {}
     led["spaces"].append(out)

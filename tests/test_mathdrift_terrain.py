@@ -16,6 +16,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from mathdrift import measure as ME
 from mathdrift import space as SP
 from mathdrift import spread as SPR
 from mathdrift import terrain as TR
@@ -27,6 +28,15 @@ def ok(cond, what):
     print(("  통과  " if cond else "  실패  ") + what)
     if not cond:
         FAIL.append(what)
+
+
+def grab(fn, *a, **kw):
+    """화면을 받아 온다. **`ok` 를 이 안에서 부르지 않는다** -- 그러면 그 줄이 통째로
+    삼켜져서 실패해도 안 보인다(이 파일에서 한 번 그랬다)."""
+    b = io.StringIO()
+    with contextlib.redirect_stdout(b):
+        rc = fn(*a, **kw)
+    return rc, b.getvalue()
 
 
 def led_of(*rows):
@@ -140,6 +150,40 @@ ok("기각하지 않는다" in _out, "기각이 아니라고 화면에도 적어
 with contextlib.redirect_stdout(io.StringIO()):
     _rc404 = TR.show(_dup, "S999")
 ok(_rc404 == 1, "없는 부모는 1 로 끝난다")
+
+print("\n== 깊이별로 부모를 얼마나 베끼나 ==")
+# 실측 2026-09-08, VM 51개 런: 부모몫이 깊이 1 에 0.270 · 2 에 0.770 · 3 에 0.887 로
+# **올랐다.** 그리고 깊이 3 에서 S8 의 자식 넷(국소화·상대화·이산화·쌍대)이 부모 식과
+# 앞 36자가 글자 그대로 같았다 -- 연산자가 이름만 걸린 것이다.
+_E = r"Tr(\sum_{r=1}^{m} \lambda_r (U_r \otimes V_r \otimes W_r)) = n^2"
+_dep = SP.blank()
+SP.add(_dep, {"식": _E, "정의역": r"F = \mathbb{R}"}, parent="-", op="씨앗", dist=0)
+_p0 = SP.get(_dep, "S1")
+for _op in ("국소화", "상대화", "이산화"):
+    _c = SP.add(_dep, {"식": _E + f"  ({_op})", "정의역": r"F = \mathbb{R}"},
+                parent="S1", op=_op)
+    _c["잰것"] = ME.measure(_c, _p0)
+_far = SP.add(_dep, {"식": r"\omega = \inf \{ \tau : R_n(M) \le n^{\tau} \} 아주 다른 식",
+                     "정의역": r"F = \mathbb{R}"}, parent="S1", op="점근화")
+_far["잰것"] = ME.measure(_far, _p0)
+_rows = TR.by_depth(_dep)
+ok(len(_rows) == 1 and _rows[0]["깊이"] == 1, "깊이별로 묶는다")
+ok(_rows[0]["수"] == 4, f"그 깊이의 공간을 다 센다 ({_rows[0]['수']}개)")
+ok(_rows[0]["그대로"] == 3,
+   f"**앞머리가 글자 그대로 같은 것을 센다** ({_rows[0]['그대로']}개)  ← 낱말과 달리 못 우긴다")
+ok(_rows[0]["부모몫"] is not None and _rows[0]["부모몫"] > 0.5,
+   f"부모몫도 평균 낸다 ({_rows[0]['부모몫']})")
+# 짧은 식은 안 센다 -- 둘 다 36자가 있어야 "앞 36자가 같다" 가 뜻이 있다
+_short = SP.blank()
+SP.add(_short, {"식": "A = B", "정의역": r"F = \mathbb{R}"}, parent="-", op="씨앗", dist=0)
+SP.add(_short, {"식": "A = B", "정의역": r"F = \mathbb{R}"}, parent="S1", op="매장")
+ok(TR.by_depth(_short)[0]["그대로"] == 0,
+   "짧은 식은 안 센다  ← 자른 길이가 다르면 비교가 뜻이 없다")
+ok(TR.by_depth(SP.blank()) == [], "빈 원장은 빈 목록")
+_rc_d, _out_d = grab(TR.show, _dep)
+ok("앞머리 그대로" in _out_d and "깊이" in _out_d, "보고에 깊이별 표가 나온다")
+ok("연산자가 이름만 걸린 것이다" in _out_d,
+   "**오르면 무슨 뜻인지 화면에 적어 둔다** -- 판정은 아니다")
 
 print("\n== 24시간을 견디는 저장 ==")
 import tempfile
