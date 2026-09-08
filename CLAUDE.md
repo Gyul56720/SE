@@ -132,3 +132,55 @@ CI 가 뒤늦게 알려 주게 두고, 필요하면 `--전부` 로 여기서 다
 CI 워크플로 자체는 그대로 둔다(끄지 않았다). 뒤늦게 오는 신호는 공짜이므로 버릴
 이유가 없고, 다만 **그것을 기다리지 않을 뿐**이다. 워크플로까지 끄기를 원하면
 `.github/workflows/gates.yml` 의 `pull_request` 를 빼면 된다 -- 한 줄이다.
+
+
+# 남이 같이 쓰는 브랜치에서는 rebase 하지 마라 -- merge 해라
+
+**실측 2026-09-08:** `claude/light-novel-dopamine-elements-w6gtdg` 로 밀다가
+
+    ! [rejected] ... (non-fast-forward)
+    hint: the tip of your current branch is behind its remote counterpart
+
+**rebase 를 하고 나서도 계속 실패했다.** 그럴 수밖에 없다 -- rebase 는 내 커밋을 새로
+쓰는 것이라, 원격이 움직인 뒤에는 fast-forward 가 **영영 안 된다.**
+
+## 왜 원격이 움직이나
+
+이 저장소의 브랜치에는 **봇이 같이 쓴다.**
+
+    SE-agent: Discord 요청 처리 결과 자동 반영
+
+`w6gtdg` 브랜치에만 그런 커밋이 열 개가 넘고, 하나는 그 세션이 일하는 동안 들어왔다.
+그래서 내가 붙들고 있는 동안에도 원격 끝이 앞으로 간다.
+
+**이미 네 번 같은 일이 났고 네 번 다 merge 로 풀었다** -- `2c1bafa` · `847935d` ·
+`9a953a4` · `6f3f985`. 다섯 번째는 절차의 결손이다.
+
+## 규칙
+
+1. **`main` 이 아닌 브랜치에서는 `git merge origin/<그 브랜치>` 를 쓴다.** rebase 는
+   나 혼자 쓰는 브랜치에서만.
+2. **`git rebase origin/main` 을 아무 브랜치에나 걸지 마라.** 밑동이 바뀌어 갈라진다.
+3. **`--force` / `--force-with-lease` 를 쓰지 마라.** 봇 커밋과 다른 세션의 일이 통째로
+   사라진다. 밀리는 것은 고칠 수 있어도 지워진 것은 못 되돌린다.
+
+## 막혔을 때
+
+```bash
+B=$(git rev-parse --abbrev-ref HEAD)
+git fetch origin "$B"
+git log --oneline origin/"$B"..HEAD      # 내가 새로 만든 것만
+git merge origin/"$B"                    # rebase 가 아니다
+git push -u origin "$B"
+```
+
+이미 rebase 를 해서 같은 커밋이 두 벌 생겼으면, 원격을 진실로 삼고 내 것만 얹는다.
+
+```bash
+git branch backup/rebase-사고            # 지금 것을 남긴다. 지우지 않는다
+git fetch origin "$B"
+git log --oneline origin/"$B"..HEAD      # 이 목록이 '내 것'
+git reset --hard origin/"$B"
+git cherry-pick <위 목록, 오래된 것부터>
+git push -u origin "$B"
+```
