@@ -180,6 +180,9 @@ BRIDGE_AFTER = 6
 
 # 관계가 실리는 비율. 매번 새 관계를 붙이면 인물이 관계표가 된다.
 BOND = 0.4
+# **수위** -- 0 이면 안 씌운다(기본). 켜면 회차마다 성인 규율이 실린다(space.HEAT).
+# 조건 둘(어른만 · 원하는지가 보인다)은 켜져 있는 동안 늘 실리고 뽑기에서 안 빠진다.
+HEAT = float(os.environ.get("DRIFT_HEAT", "0"))
 
 # 설정(외현·내현)이 붙는 비율. 매 덩어리에 넣으면 소설이 인물 소개서가 된다.
 # **캐릭터를 미리 정하지 않는다.** 겉과 속을 뽑아 주면 인물이 시작부터 완성돼 있고,
@@ -266,6 +269,7 @@ def blank(first: str = FIRST) -> dict:
             "genre": GENRE.DEFAULT,
             "fixed": {"시점": "", "전제": "", "톤": "", "법칙": ""},
             "matter": MATTER, "trait": TRAIT, "bond": BOND, "bridge": BRIDGE, "exception": EXCEPTION, "doubt": DOUBT, "pov": POV,
+            "heat": HEAT,
             "ledger": {
         "people": {}, "places": {}, "facts": {}, "time": [], "objects": {},
         "words": {}, "open": {}, "rules": {}, "macguffin": {}, "bonds": {},
@@ -1423,6 +1427,10 @@ def step(book: dict, llm, log=None) -> dict:
     # 꺼진 채 돌고 있었다 -- 실측 2026-09-08: 사용자의 런은 전부 기본값이었다. 각본은
     # 문면층의 층이 아니라 그 위의 층이고, 도착지가 있다는 것이 곧 켜라는 뜻이다.
     if SR.planned(book):
+        # **빚이 떨어졌는데 목표가 멀면 더 세운다.** 안 하면 남은 분량 내내 당김이
+        # "끝을 향해 간다" 한 줄이고, 그것이 곧 전개 없음이다(serial.SPAN_EPS 주석).
+        if SR.needs_refill(book):
+            SR.refill(book, llm)
         BT.ensure(book, llm)
     # 문면층만 쓸 때는 사건도 급발진도 안 뽑는다 -- 프롬프트에 안 실릴 것을 뽑아 두면
     # 원고에 안 나온 사건이 원장에만 남는다.
@@ -1843,6 +1851,9 @@ def main() -> int:
                     help="설정(외현·내현)이 붙는 비율 0~1")
     ap.add_argument("--bond", type=float, default=BOND,
                     help="관계가 실리는 비율 0~1")
+    ap.add_argument("--heat", type=float, default=HEAT,
+                    help="수위 0~1. 기본 0(안 씌운다). 켜면 성인 규율이 회차마다 실린다 "
+                         "-- 등장인물은 전부 어른이어야 한다")
     ap.add_argument("--bridge", type=float, default=BRIDGE,
                     help="따로 있던 둘을 잇는 비율 0~1")
     ap.add_argument("--exception", type=float, default=EXCEPTION,
@@ -1913,7 +1924,7 @@ def main() -> int:
     for key, val in (("drift", a.drift), ("matter", a.matter),
                      ("trait", a.trait), ("bond", a.bond),
                      ("bridge", a.bridge), ("exception", a.exception),
-                     ("doubt", a.doubt), ("pov", a.pov)):
+                     ("doubt", a.doubt), ("pov", a.pov), ("heat", a.heat)):
         was = book.get(key)
         book[key] = max(0.0, min(1.0, val))
         if was is not None and was != book[key]:

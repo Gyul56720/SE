@@ -231,7 +231,47 @@ ok("줄기: 복수 + 가면" in SR.show(_bk), "show 에 줄기가 보인다")
 ok(SR.plan_prompt("ropan").count("[줄기 본보기") == 1, "씨앗 없이 불러도 산다  ← 옛 부름")
 
 print()
+print("[마디 상한] **목표에 비례시키면 긴 원고일수록 방향이 안 바뀐다**")
+print("      ← 실측 2026-09-08: 목표 20만 자 · 빚 다섯이면 한 마디가 33,333자 = 회차 6.7개.")
+print("        4만 자를 쓰는 동안 전환점이 한 번도 안 왔고 단계는 내내 '진다' 였다.")
+from novel import beat as _BT                                         # noqa: E402
+_big = book(0, ARC); _big["_target"] = 200_000
+_cap = SR.SPAN_EPS * _BT.EP
+ok(SR.span(_big) == _cap, f"목표가 커도 한 마디는 회차 {SR.SPAN_EPS}개다 ({SR.span(_big):,}자)")
+ok(200_000 // (len(ARC["debts"]) + 1) > SR.span(_big), "상한이 없었으면 훨씬 길었다")
+_small = book(0, ARC); _small["_target"] = 20_000
+ok(SR.span(_small) == 5_000, f"짧은 원고는 그대로다 ({SR.span(_small):,}자)  ← 뒤로 안 깨진다")
+_big["chunks"] = ["가" * 40_000]
+ok(SR.where(_big) > 1 and SR.stage(_big)[0] != "진다",
+   f"4만 자 지점에서 마디가 넘어가 있다 (마디 {SR.where(_big) + 1} · {SR.stage(_big)[0]})")
+
+print()
+print("[빚 보충] **마디에 상한을 두면 긴 원고는 빚이 먼저 떨어진다**")
+print("      ← 그대로 두면 남은 분량 내내 당김이 '끝을 향해 간다' 한 줄이고, 그것이 곧")
+print("        전개 없음이다.")
+_rf = book(0, ARC); _rf["_target"] = 200_000
+_rf["chunks"] = ["가" * (SR.span(_rf) * len(ARC["debts"]))]
+ok(SR.done(_rf) and SR.needs_refill(_rf), "빚을 다 지났고 목표가 멀면 보충할 때다")
+_had = len(_rf["arc"]["debts"])
+_fr = Fake({"빚": ["도시가 화자의 이름을 안다", "옛 주인이 무릎을 꿇는다",
+                   ARC["debts"][0]["무엇"]]})       # 셋째는 이미 지나온 것이다
+ok(SR.refill(_rf, _fr) and len(_rf["arc"]["debts"]) == _had + 2,
+   f"새 빚만 붙는다 ({_had} → {len(_rf['arc']['debts'])})  ← 이미 있는 것은 안 붙인다")
+ok(not SR.needs_refill(_rf), "붙이고 나면 다시 안 부른다")
+_near = book(0, ARC); _near["_target"] = 20_000
+_near["chunks"] = ["가" * 19_000]
+ok(not SR.needs_refill(_near), "끝이 코앞이면 안 보충한다  ← 닫을 자리는 남겨 둔다")
+ok(not SR.needs_refill(book(0)), "도착지가 없으면 보충도 없다")
+_rp = SR.refill_prompt(_rf)
+ok("이미 지나온 것과 겹치지 마라" in _rp and "판을 넓혀라" in _rp, "겹치지 말고 판을 넓히라고 한다")
+_cap_book = book(0, ARC); _cap_book["_target"] = 900_000
+_cap_book["arc"]["debts"] = [{"무엇": f"d{i}", "갚음": 0} for i in range(SR.MAX_DEBTS)]
+ok(not SR.needs_refill(_cap_book), f"빚은 {SR.MAX_DEBTS}개까지다  ← 무한정이면 도착지가 아니다")
+_fsrc2 = (REPO / "novel" / "flow.py").read_text(encoding="utf-8")
+ok("SR.needs_refill(book)" in _fsrc2 and "SR.refill(book, llm)" in _fsrc2, "flow.step 이 부른다")
+
+print()
 if fails:
     print(f"연재: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)
-print("연재: 세우기 · 마디 · 당김 · 배선 · 각본 금지 · 띄우기 · 줄기 -- 통과")
+print("연재: 세우기 · 마디 · 당김 · 배선 · 각본 금지 · 띄우기 · 줄기 · 상한 · 보충 -- 통과")

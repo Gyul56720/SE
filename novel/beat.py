@@ -216,6 +216,29 @@ def _parse_setting(v) -> "tuple | None":
     return name, rule
 
 
+# 회차가 끝났을 때 무엇이 달라지는가. 넷 중 하나다 -- 넷 다 그대로면 안 쓴 회차다.
+AXES = ("장소", "처지", "관계", "앎")
+
+
+def _parse_moved(v) -> "dict | None":
+    """"바뀜" 칸. {"축": ..., "무엇": ...} 또는 "축 -- 무엇" 한 줄. 축이 넷 밖이면 낱말로 찾는다."""
+    if isinstance(v, dict):
+        ax = str(v.get("축") or "").strip()
+        what = str(v.get("무엇") or "").strip()
+    else:
+        s = str(v or "").strip()
+        ax, what = "", s
+        for sep in (" -- ", " — ", ": ", " : "):
+            if sep in s:
+                ax, what = (x.strip() for x in s.split(sep, 1))
+                break
+    if not what:
+        return None
+    if ax not in AXES:
+        ax = next((a for a in AXES if a in ax or a in what), "")
+    return {"축": ax, "무엇": what}
+
+
 def joy_ok(text: str) -> str:
     """쾌감이 사건인가. 갈고리와 같은 계약 -- 벌어진 문장. 빈 것도 안 된다: 회차마다 하나다."""
     if not str(text or "").strip():
@@ -262,6 +285,7 @@ def card_prompt(book: dict) -> str:
 ...{tail}
 
 {f"[앞 회차] 원하던 것: {prev.get('질문', '')} / 답: {prev.get('답', '')} / 남긴 것: {prev.get('갈고리', '')}" if prev.get('질문') else ''}
+{f"[앞 회차에 바뀐 것] **{(prev.get('바뀜') or {}).get('축', '')}** 축이 바뀌었다 -- {(prev.get('바뀜') or {}).get('무엇', '')}. **이번엔 다른 축을 바꿔라.**" if (prev.get('바뀜') or {}).get('축') else ''}
 
 {_plants_block(book)}
 
@@ -290,6 +314,9 @@ def card_prompt(book: dict) -> str:
 [쾌감 본보기 -- 이 회차의 통쾌한 자리는 이런 꼴이다. 하나 고르거나 지어낸다]
 {SP.render("쾌감", seed, n, 3)}
 
+[전환 본보기 -- 회차와 회차 사이를 굴리는 꼴. 판이 흔들리는 자리가 여기서 나온다]
+{SP.render("전환", seed, n, 3)}
+
 낸다:
 {{"질문": "주인공이 이번 회차에 원하는 것 한 문장. 손에 잡히는 것으로 -- 초대장 · 서명 · 한 사람의 입",
   "방해": "누가 무엇으로 막는가. 사람이어야 한다 -- 사정이나 운명이 아니라",
@@ -297,6 +324,7 @@ def card_prompt(book: dict) -> str:
           {{"무엇": "...", "꼴": "장면"}},
           {{"무엇": "여기서 질문의 답이 갈린다", "꼴": "장면"}}],
   "답": "얻는다 | 잃는다 | 반만",
+  "바뀜": {{"축": "장소 | 처지 | 관계 | 앎  넷 중 하나", "무엇": "회차가 끝났을 때 무엇이 어떻게 달라져 있는가 한 문장"}},
   "쾌감": "이번 회차에서 독자가 통쾌한 자리 한 문장. **벌어진 문장**으로 -- 되갚음 · 인정 · 격 상승 · 무릎 · 압도 · 구원 · 전리품. 지는 회차면 작은 것 하나",
   "쾌감자리": "그것이 벌어지는 비트 번호 (1 · 2 · 3)",
   "전투": "이번 회차에 싸움이 있으면 한 문장 -- 누가 누구와 · 격은 어느 쪽이 위인가 · 무엇으로 결착 · 무엇이 남는가. 없으면 빈 문자열",
@@ -308,6 +336,15 @@ def card_prompt(book: dict) -> str:
 
 규칙 -- 빌드업 (개연성은 여기서 온다):
 {SP.rules("빌드업")}
+
+규칙 -- 판이 흔들리는가 (이것이 제일 중요하다):
+- **회차가 끝났을 때 장소 · 처지 · 관계 · 앎 중 하나는 반드시 달라져 있다.** 넷 다 그대로면
+  그 회차는 안 쓴 것과 같다. 그것을 "바뀜" 칸에 축과 함께 적어라.
+- **앞 회차와 다른 축을 바꿔라.** 세 회차 내리 같은 축이면 같은 장면을 세 번 쓴 것이다.
+- **한 회차에 큰 사건 하나.** 둘을 넣으면 둘 다 작아진다. 비트 셋은 그 하나로 가는 길이다.
+- **예상은 배신하고 기대는 배신하지 마라.** 독자가 예상한 길은 빗나가게 하되, 독자가 바라는
+  것은 준다. 바라는 것을 안 주는 것은 뒤통수가 아니라 그냥 배신이다.
+- **정리하고 쉬는 회차를 잇달아 두지 마라.** 문제를 풀면 그 자리에서 더 큰 것이 보인다.
 
 규칙 -- 쾌감 · 설정 · 전투:
 - **회차마다 쾌감이 하나 있다.** 지는 단계에서도 -- 큰 것을 잃는 회차에 작은 것 하나를 되갚는다
@@ -397,10 +434,12 @@ def ensure(book: dict, llm) -> "dict | None":
         reap = str(got.get("거둠") or "").strip()
         joy = str(got.get("쾌감") or "").strip()
         setting = _parse_setting(got.get("설정"))
+        moved = _parse_moved(got.get("바뀜"))
         book["card"] = {"ep": ep, "at": n, "질문": q,
                         "방해": str(got.get("방해") or "").strip(),
                         "비트": beats,
                         "답": str(got.get("답") or "").strip(),
+                        "바뀜": moved,
                         "쾌감": joy,
                         "쾌감자리": _joy_at(got, len(beats), SR.stage(book)) if joy else 0,
                         "전투": str(got.get("전투") or "").strip(),
@@ -435,6 +474,12 @@ def ensure(book: dict, llm) -> "dict | None":
         D._log(f"[회차] {ep + 1} -- 원하는 것: {q}")
         for i, b in enumerate(beats, 1):
             D._log(f"[회차]   비트 {i} ({b['꼴']}) {b['무엇']}")
+        if moved:
+            same = (card.get("바뀜") or {}).get("축") if isinstance(card, dict) else None
+            D._log(f"[회차]   바뀜({moved['축'] or '?'}): {moved['무엇']}"
+                   + ("   ← 앞 회차와 같은 축이다" if same and same == moved["축"] else ""))
+        else:
+            D._log("[회차]   바뀜이 비었다 -- 이 회차는 판이 안 흔들린다")
         if joy:
             D._log(f"[회차]   쾌감(비트 {book['card']['쾌감자리']}): {joy}")
         if book["card"]["전투"]:
@@ -451,12 +496,56 @@ def ensure(book: dict, llm) -> "dict | None":
 
 # ---------------------------------------------------------------- 프롬프트
 
-def beat_at(book: dict) -> int:
-    """지금 덩어리가 시작할 비트(1부터). 회차 안에서 얼마나 왔느냐로 정한다."""
+def _chunk() -> int:
+    """한 덩어리의 크기. flow 를 늦게 부른다 -- flow 가 이 파일을 먼저 임포트한다."""
+    try:
+        from novel import flow
+        return max(1, int(flow.CHUNK))
+    except Exception:
+        return 3200
+
+
+def beat_span(book: dict) -> tuple:
+    """이번 덩어리가 덮을 비트 범위 `(부터, 까지)`.
+
+    **회차당 덩어리 수로 나눈다.** 예전에는 회차 안에서 얼마나 왔느냐(글자 수)로 비트
+    하나를 골랐는데, 회차당 덩어리가 비트 수보다 적으면 **뒤쪽 비트가 영영 안 쓰인다.**
+
+    실측 2026-09-08: 덩어리 3,200자 · 회차 5,000자라 회차당 덩어리가 1.56개인데 비트는
+    셋이었다. 열 덩어리를 써도 비트 3 이 한 번도 안 나왔다 -- 비트 3 은 "여기서 답이
+    갈린다" 이고 갈고리 · 전환점 · 쾌감이 전부 거기 있다. 그래서 매 회차가 열고 밀다가
+    잘렸다. 사용자 평이 그것이다: "전개가 없다. 한 씬의 반복이다."
+
+    이제 한 덩어리가 비트 여럿을 덮을 수 있고, **회차의 마지막 덩어리는 반드시 마지막
+    비트까지** 간다. 회차가 답 없이 끝나는 일이 없어진다.
+
+    **회차 경계와 덩어리 경계는 안 맞는다.** 회차는 글자 수로 끊기고 덩어리는 모델이
+    돌려주는 단위라, 어떤 회차는 덩어리 둘을 받고 어떤 회차는 하나만 받는다. 그래서
+    시작(`lo`)은 **이 카드로 이미 몇 덩어리를 썼나**로 정하고, 끝(`hi`)은 **이 회차에
+    분량이 얼마나 남았나**로 정한다. 남은 것이 덩어리 하나보다 적으면 이번이 마지막이고,
+    그때는 무조건 마지막 비트까지 간다 -- 덩어리 하나짜리 회차는 그 하나가 셋을 다 덮는다.
+    """
     card = book.get("card") or {}
-    done = _chars(book) - int(card.get("at", 0))
-    k = int(done * BEATS / max(1, EP)) + 1
-    return max(1, min(len(card.get("비트") or []) or BEATS, k))
+    beats = len(card.get("비트") or []) or BEATS
+    total = _chars(book)
+    ch = _chunk()
+    done = max(0, total - int(card.get("at", total)))   # 이 카드로 이미 쓴 분량
+    left = EP - (total % max(1, EP))                    # 이 회차에 남은 분량
+    n = max(1, -(-EP // ch))                            # 회차에 들어갈 덩어리 수(올림)
+    i = done // ch                                      # 이 카드로 이미 쓴 덩어리 수
+    lo = min(beats, i * beats // n + 1)
+    hi = beats if left <= ch else max(lo, (i + 1) * beats // n)
+    return max(1, lo), min(beats, max(lo, hi))
+
+
+def beat_at(book: dict) -> int:
+    """지금 덩어리가 시작할 비트(1부터)."""
+    return beat_span(book)[0]
+
+
+def last_chunk(book: dict) -> bool:
+    """이번 덩어리로 이 회차가 닫히는가. 답과 갈고리는 여기서 터진다."""
+    return (EP - (_chars(book) % max(1, EP))) <= _chunk()
 
 
 def brief(book: dict) -> str:
@@ -464,23 +553,37 @@ def brief(book: dict) -> str:
     if not has(book):
         return ""
     c = book["card"]
-    k = beat_at(book)
+    k, upto = beat_span(book)
+    last = upto >= len(c["비트"])
     rows = [f"  · 주인공이 원하는 것: {c['질문']}"]
     if c.get("방해"):
         rows.append(f"  · 막는 것: {c['방해']}")
     rows.append("  · 비트:")
     for i, b in enumerate(c["비트"], 1):
-        mark = "→" if i == k else " "
+        mark = "→" if k <= i <= upto else " "
         tail = f"   ← 여기서 답이 갈린다: {c['답']}" if i == len(c["비트"]) and c.get("답") else ""
         rows.append(f"      {mark} {i}. ({b['꼴']}) {b['무엇']}{tail}")
     if k > 1:
         rows.append(f"  · 앞 비트는 이미 썼다. **{k}번 비트부터** 쓴다 -- 되풀이하지 마라."
                     " 앞 덩어리에서 벌어진 일(선언 · 박탈 · 사살)은 **다시 벌어지지 않는다.**")
-    if k >= len(c["비트"]):
+    # **한 덩어리가 비트 여럿을 덮는다.** 회차당 덩어리가 비트 수보다 적어서, 하나씩
+    # 쓰면 뒤쪽 비트가 영영 안 쓰인다(실측 2026-09-08 · PACE.md).
+    if upto > k:
+        rows.append(f"  · **이번 대목에서 비트 {k}부터 {upto}까지 전부 쓴다.** 하나만 쓰고 멈추지 마라"
+                    " -- 이 대목 안에서 비트가 넘어가고, 넘어간 자리가 보여야 한다.")
+    if last:
+        rows.append("  · **이번 대목이 이 회차의 끝이다.** 여기서 답이 갈리고 회차가 닫힌다."
+                    " 다음 대목으로 미루지 마라 -- 미루면 이 회차는 답 없이 끝난다.")
         # 마지막 비트를 이 덩어리에 맡겼다. 다음 덩어리는 다음 회차다(ensure 가 본다).
         c["_last_given"] = len(book.get("chunks") or [])
     rows.append("  · 장면 비트는 한 자리 · 한 때에서 벌어지고 대사가 민다. 요약 비트는 시간을"
                 " 접는다 -- 며칠이 한 문단이어도 된다. 세기는 비트마다 오른다.")
+    # **판이 흔들리는가.** 사용자: "한 씬의 반복이다. 판이 계속 흔들려야 한다."
+    ch = c.get("바뀜") or {}
+    if ch.get("무엇"):
+        rows.append(f"  · **이 회차가 끝나면 달라져 있는 것** ({ch.get('축', '')}): {ch['무엇']}"
+                    " -- 회차가 닫힐 때 이것이 실제로 달라져 있어야 한다. 말로 달라졌다고 하지 말고"
+                    " 달라진 자리를 보여라.")
     # **연출과 대사 -- 애니 · 라노벨의 꼴.** 사용자: "상황이 머릿속에 안 떠오른다."
     seed = str(book.get("seed_id") or book.get("first") or "")
     nn = len(book.get("chunks") or [])
@@ -494,9 +597,12 @@ def brief(book: dict) -> str:
         rows.append(f"  · **쾌감** ({where}벌어진다): {c['쾌감']} -- 벌어진 문장으로 쓴다."
                     " 설명하지 마라, 놀라고 감탄하는 것은 곁의 사람들이다. 당한 만큼보다 조금 더." + done)
     if c.get("전투"):
+        # **액션은 통째로 싣는다**(빌드업과 같은 계약). 돌려 뽑으면 정작 싸우는 회차에
+        # 안 걸린다 -- 알아보기 쉬운 액션은 다섯 규율이 다 있어야 선다.
         rows.append(f"  · **싸움**: {c['전투']}\n"
                     "      첫 합에서 격이 드러나고, 기술은 이름을 부르고, 결착은 한 방이다. 상처는 남는다.\n"
-                    "      전투 문법:\n" + SP.render("전투", seed, nn, 1).replace("    ", "      "))
+                    "      액션은 이렇게 쓴다:\n" + SP.rules("액션").replace("    ", "      ")
+                    + "\n      전투 문법:\n" + SP.render("전투", seed, nn, 1).replace("    ", "      "))
     s = c.get("설정") or {}
     if s.get("이름"):
         rows.append(f"  · **이 회차의 설정**: {s['이름']} -- {s.get('규칙', '')}. 이름으로 부르고"
@@ -507,8 +613,15 @@ def brief(book: dict) -> str:
                     + " · ".join(f"{x['이름']}({x.get('규칙', '')})" for x in cx[-6:]))
     # 사용자(2026-09-08 밤): "전투씬 더 자세히 · 묘사 더 생생하게 · 주변 반응 더 격하게 · 19세."
     rows.append("  · 싸움이 있으면:\n" + SP.render("싸움", seed, nn, 1).replace("    ", "      "))
+    # **몸을 시키면 조건도 같이 간다.** 관능이 조건 없이 실리므로 어른만 · 원하는지가
+    # 보인다도 조건 없이 실린다 -- 둘은 본보기가 아니라 조건이고, 조건은 켜고 끄지 않는다.
     rows.append("  · 몸과 살갗:\n" + SP.render("외모", seed, nn, 1).replace("    ", "      ")
-                + "\n" + SP.render("관능", seed, nn, 1).replace("    ", "      "))
+                + "\n" + SP.render("관능", seed, nn, 1).replace("    ", "      ")
+                + "\n" + SP.head("수위").replace("    ", "      "))
+    # 수위를 켠 원고는 나머지 규율까지 돌려 뽑는다(--heat / HEAT). 기본은 꺼짐이다.
+    if float(book.get("heat") or 0) > 0:
+        rows.append("  · **수위 (성인)**:\n"
+                    + SP.render("수위", seed, nn, 2, skip=SP.HEAD["수위"]).replace("    ", "      "))
     rows.append("  · 주변의 반응:\n" + SP.render("반응", seed, nn, 1).replace("    ", "      "))
     if c.get("거둠"):
         rows.append(f"  · **거둔다:** {c['거둠']} -- 앞 회차에 심어 둔 그 낱말 · 그 물건을 그대로 다시 쓴다."
@@ -517,7 +630,8 @@ def brief(book: dict) -> str:
         rows.append(f"  · **심는다:** {c['심음']} -- 지나가듯 한 문장. 설명하지 마라, 누구도 그것에 반응하지 마라.")
     if c.get("갈고리"):
         kind = c.get("갈고리종류") or ""
-        rows.append(f"  · 마지막 비트를 쓰게 되면 회차의 마지막 문단에서 **{kind}**이 벌어진다:"
+        when = ("**이 대목의 마지막 문단에서** " if last else "마지막 비트를 쓰게 되면 회차의 마지막 문단에서 ")
+        rows.append(f"  · {when}**{kind}**이 벌어진다:"
                     f" **{c['갈고리']}** -- 이것이 **벌어진 문장**에서 끊어라. 예고하지 마라,"
                     " 묻고 끝내지 마라, 미소나 한숨으로 정리하지 마라.")
     if c.get("전환점"):
@@ -534,6 +648,8 @@ def show(book: dict) -> str:
     out += [f"  {i}. ({b['꼴']}) {b['무엇']}" for i, b in enumerate(c["비트"], 1)]
     out.append(f"  답: {c.get('답', '')} / 갈고리({c.get('갈고리종류', '')}): {c.get('갈고리', '')}"
                + (f" / 전환점: {c['전환점']}" if c.get("전환점") else ""))
+    if c.get("바뀜"):
+        out.append(f"  바뀜({c['바뀜'].get('축', '')}): {c['바뀜'].get('무엇', '')}")
     if c.get("쾌감"):
         out.append(f"  쾌감(비트 {c.get('쾌감자리', '')}): {c['쾌감']}")
     if c.get("전투"):

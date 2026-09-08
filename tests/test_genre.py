@@ -510,7 +510,11 @@ _le = {tuple(genre.event("lanobe", "씨", i).values()) for i in range(20)}
 ok(len(_le) >= 18, f"덩어리마다 다른 뒤틀림이 나온다 ({len(_le)}/20)")
 ok(genre.tune("lanobe", "초현실", 1) == 0, "마법은 법칙이지 아이러니 장치가 아니다")
 _ld = genre.band("lanobe", "dialog")
-ok(_ld and _ld[1] <= genre.band("ropan", "dialog")[1], f"로판보다 말이 적다 ({_ld})  ← 싸움 중 말은 한 문장 이하")
+# 2026-09-08 정정: 처음엔 "싸움 중 말은 짧으니 로판보다 대사가 적다" 로 잡았는데 그것은
+# 짐작이었다. 라노벨 작법이 드는 비율은 설명 : 묘사 : 대사 = 1 : 1 : 2 다 -- 대사가 절반이다.
+ok(_ld and _ld[0] + _ld[1] > 2 * 0.45, f"대사가 절반쯤이다 ({_ld})  ← 설명 : 묘사 : 대사 = 1 : 1 : 2")
+ok(_ld and _ld[1] > genre.band("ropan", "dialog")[1], f"로판보다도 말이 많다 ({_ld})")
+ok("말이 절반이다" in _l and "정경 묘사는 최소로" in _l, "머리가 그 비율을 말한다")
 ok(all(len(x) > 20 for x in genre.PACKS["lanobe"]["이름결"]), "이름결은 결이지 목록이 아니다")
 _bl = flow.blank(flow.FIRST); _bl["genre"] = "lanobe"
 _pl = flow.write_prompt(_bl)

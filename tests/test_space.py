@@ -116,7 +116,10 @@ _br = book(100)
 _dr = Director([BASE, dict(BASE, 질문="다음 회차의 질문")])
 BT.ensure(_br, _dr)
 _br["chunks"].append("가" * (BT.EP * 4 // 5))          # 회차의 5분의 4 -- 마지막 비트 차례
-ok(BT.beat_at(_br) == 3, f"마지막 비트 차례다 ({BT.beat_at(_br)})")
+# 비트는 이제 하나가 아니라 **범위**로 맡긴다(PACE.md). 마지막 비트를 맡겼는지는
+# 범위의 끝으로 본다 -- 시작만 보면 (2, 3) 을 "아직 아니다" 로 잘못 읽는다.
+ok(BT.beat_span(_br)[1] == 3 and BT.last_chunk(_br),
+   f"마지막 비트를 맡겼다 ({BT.beat_span(_br)})")
 BT.brief(_br)                                           # 집필 프롬프트를 만들었다 = 마지막 비트를 맡겼다
 _br["chunks"].append("나" * 500)                        # 그 덩어리를 썼다. 분량은 아직 EP 미만
 ok(sum(len(c) for c in _br["chunks"]) < BT.EP * 2, "분량으로는 아직 같은 회차다")
@@ -205,11 +208,76 @@ _bw["chunks"].append("가" * (BT.EP * 4 // 5))
 ok("앞 비트에서 이미 벌어졌다" in BT.brief(_bw), "쾌감 비트를 지났으면 되풀이하지 말라고 한다")
 _bs = book(); BT.ensure(_bs, Director([dict(BASE, 쾌감자리="아홉")]))
 ok(_bs["card"]["쾌감자리"] == 2, "쾌감자리가 엉뚱하면 지는 단계는 가운데 비트")
-for _n in ("%", "번째", "회차 "):
-    ok(_n not in _wc, f"'{_n}' 이 집필 프롬프트에 없다  ← 자를 시키지 않는다")
+# **자를 시키지 않는다**(serial.py 의 계약). 다만 낱말로 맞추면 평범한 산문을 잡는다 --
+# "한 마디로 김을 뺀다" 의 마디, "두 번째 것이 온다" 의 번째가 그것이다. 그래서 낱말이
+# 아니라 **자의 꼴**을 본다: 수가 붙은 마디 · 회차 · 진도 · 분량.
+import re as _re_ruler                                                # noqa: E402
+for _pat in (r"\d+\s*번째\s*(마디|회차)", r"(마디|회차)\s*\d+", r"\d+\s*%",
+             r"\d{1,3},\d{3}\s*자"):
+    _hit = _re_ruler.search(_pat, _wc)
+    ok(not _hit, f"자가 안 실린다: /{_pat}/ ({_hit.group(0) if _hit else '없다'})")
+
+print()
+print("[액션] **전투와 갈라 둔다 -- 싸우는 덩어리에는 통째로 싣는다**")
+print("      ← 사용자: 액션씬 전투씬 더 자세히. 애니·만화와 소설 작법이 같은 것을 말한다:")
+print("        화려함보다 알아보기 쉬움이 먼저다.")
+ok(len(SP.CATS["액션"]) >= 5, f"액션 {len(SP.CATS['액션'])}개")
+for _n in ("다섯 박", "한 문장에 동작 하나", "알아보기가 먼저", "약동감", "1인칭은 속도를 못 낸다"):
+    ok(_n in SP.names("액션"), f"액션: {_n}")
+ok("안 보여 주는 것" in SP.names("연출"), "연출에 카메라워크가 있다  ← 다 보여 주면 아무것도 안 보인다")
+ok("움직임의 버릇" in SP.names("인물"), "인물에 움직임의 버릇이 있다")
+_bf = book(); BT.ensure(_bf, Director([dict(BASE, 전투="호위가 부관과 붙는다 -- 격은 부관이 위")]))
+_wf = BT.brief(_bf)
+ok("액션은 이렇게 쓴다" in _wf, "싸움이 있으면 액션 규율이 실린다")
+ok(all(n in _wf for n in SP.names("액션")), "돌려 뽑지 않고 **전부** 싣는다  ← 뽑으면 정작 싸우는 회차에 안 걸린다")
+_bn = book(); BT.ensure(_bn, Director([dict(BASE, 전투="")]))
+ok("액션은 이렇게 쓴다" not in BT.brief(_bn), "싸움이 없으면 안 싣는다")
+
+print()
+print("[전환] **판이 흔들리는가 -- 회차마다 하나는 바뀐다**")
+print("      ← 사용자: 스토리 진행이 너무 느리다. 4만 자 내외의 전개가 없다. 한 씬의")
+print("        반복이다. 판이 계속 흔들리며 뒤통수를 쳐야 한다.")
+ok(len(SP.CATS["전환"]) >= 10, f"전환 {len(SP.CATS['전환'])}개")
+for _n in ("예상은 배신, 기대는 배신 않기", "한 회차에 하나는 바뀐다", "기승전결", "서파급",
+           "뒤집기", "세 회차마다 산", "더 센 것 말고 더 싫은 것", "한 회차 한 사건"):
+    ok(_n in SP.names("전환"), f"전환: {_n}")
+_pp = BT.card_prompt(book())
+ok("[전환 본보기" in _pp, "각본에 전환 본보기가 실린다")
+ok('"바뀜"' in _pp and "장소 | 처지 | 관계 | 앎" in _pp, "바뀜을 넷 중 하나로 요구한다")
+ok("앞 회차와 다른 축을 바꿔라" in _pp, "같은 축을 두 번 바꾸지 못하게 한다")
+ok("예상은 배신하고 기대는 배신하지 마라" in _pp, "뒤통수의 규율이 실린다")
+ok("한 회차에 큰 사건 하나" in _pp, "한 회차 한 사건")
+_bm = book()
+_dm = Director([dict(BASE, 바뀜={"축": "처지", "무엇": "공녀가 명부에서 이름이 지워진다"}),
+                dict(BASE, 바뀜="관계 -- 집사가 편을 바꾼다")])
+BT.ensure(_bm, _dm)
+ok(_bm["card"]["바뀜"] == {"축": "처지", "무엇": "공녀가 명부에서 이름이 지워진다"}, "바뀜이 카드에 붙는다")
+ok("달라져 있는 것** (처지)" in BT.brief(_bm), "집필 프롬프트에 실린다")
+_bm["chunks"].append("나" * BT.EP)
+BT.ensure(_bm, _dm)
+ok("**처지** 축이 바뀌었다" in _dm.prompts[-1], "다음 각본이 앞 회차의 축을 본다")
+ok(_bm["card"]["바뀜"]["축"] == "관계", "한 줄 꼴(축 -- 무엇)도 받는다")
+ok("바뀜(처지)" in BT.show(_bm) or "바뀜(관계)" in BT.show(_bm), "show 가 보여 준다")
+
+print()
+print("[수위] **켠 원고에만. 어른만 · 원하는지가 보인다는 조건이라 늘 실린다**")
+ok(len(SP.CATS["수위"]) >= 10, f"수위 {len(SP.CATS['수위'])}개")
+ok(SP.names("수위")[0] == "어른만" and SP.names("수위")[1] == "원하는지가 보인다",
+   "머리 둘이 조건이다  ← 본보기가 아니라 조건이라 뽑기에서 안 빠진다")
+ok(SP.HEAD["수위"] == 2, "머리 둘은 뽑기에서 뺀다  ← 안 빼면 같은 줄이 두 번 실린다")
+_bh = book(); _bh["heat"] = 0.6
+BT.ensure(_bh, Director([BASE]))
+_wh = BT.brief(_bh)
+ok("**수위 (성인)**" in _wh, "켜면 실린다")
+ok("전부 어른이다" in _wh and "학생 · 미성년" in _wh, "어른만이 늘 실린다")
+ok("원하는지가 보인다" in _wh, "동의가 늘 실린다")
+_bh0 = book(); BT.ensure(_bh0, Director([BASE]))
+ok("**수위 (성인)**" not in BT.brief(_bh0), "안 켜면 한 줄도 안 실린다  ← 기본은 꺼짐")
+ok(flow.blank("x")["heat"] == 0.0, "원고의 기본 수위는 0 이다")
+ok("--heat" in (REPO / "novel" / "flow.py").read_text(encoding="utf-8"), "인자로 켠다")
 
 print()
 if fails:
     print(f"novel_space: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)
-print("novel_space: 아홉 칸 · 각본 프롬프트 · 심고 거둔다 · 집필 프롬프트 · 도파민 -- 통과")
+print("novel_space: 스무 칸 · 각본 · 심고 거둔다 · 집필 · 도파민 · 액션 · 전환 · 수위 -- 통과")
