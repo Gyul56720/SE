@@ -83,6 +83,50 @@ ok("import requests" not in (ROOT / "law" / "ocr.py").read_text(encoding="utf-8"
    "law/ocr.py 는 직접 HTTP 를 치지 않는다")
 
 print()
+print("[쿼터] **무료 티어는 키마다 따로 센다** -- 실측: 하루 20회에서 36쪽을 못 끝냈다")
+import os                                                             # noqa: E402
+_전 = dict(os.environ)
+try:
+    for k in list(os.environ):
+        if k.startswith("GEMINI_API_KEY"):
+            del os.environ[k]
+    ok(OC.keys() == [], "키가 없으면 빈 목록")
+    os.environ["GEMINI_API_KEY"] = "a"
+    os.environ["GEMINI_API_KEY_FALLBACK"] = "b"
+    os.environ["GEMINI_API_KEY_FALLBACK3"] = "a"          # 같은 키는 한 번만
+    ok([v for _, v in OC.keys()] == ["a", "b"],
+       f"예비 키까지 모으고 겹치는 것은 한 번만 (얻은 값 {[n for n, _ in OC.keys()]})")
+finally:
+    os.environ.clear()
+    os.environ.update(_전)
+
+print()
+print("[이어하기] **쿼터에 막혀 멈춰도 다음 날 이어서 한다**")
+_o = Path(tempfile.mkdtemp()) / "본.txt"
+_o.write_text(OC.PAGE_MARK.format(n=1) + "\n문 1.\n"
+              + OC.PAGE_MARK.format(n=2) + "\n문 2.\n", encoding="utf-8")
+ok(OC.done_pages(_o) == {1, 2}, f"이미 옮긴 쪽을 되짚는다 (얻은 값 {OC.done_pages(_o)})")
+ok(OC.done_pages(Path("/없는/파일")) == set(), "없으면 빈 것으로 본다")
+
+print()
+print("[견줌] **어느 쪽도 기준이 아니다 -- 갈리는 자리를 찾는 것이 쓸모다**")
+# 실측: 사람이 옮긴 것과 Gemini 가 옮긴 것을 대 보니 확인한 두 자리에서 전부 사람이
+# 틀렸고, 그중 하나는 `청구할 수 있다/없다` -- 한 글자가 답을 뒤집는 자리였다.
+_a = Path(tempfile.mkdtemp()) / "a.txt"
+_b = Path(tempfile.mkdtemp()) / "b.txt"
+_a.write_text("# 머리말은 안 본다\n문 2.\n④ 방해배제를 청구할 수 있다.\n", encoding="utf-8")
+_b.write_text("문 2.\n④ 방해배제를 청구할 수 없다.\n", encoding="utf-8")
+import io                                                             # noqa: E402
+import contextlib                                                     # noqa: E402
+_buf = io.StringIO()
+with contextlib.redirect_stdout(_buf):
+    OC.compare(_a, _b)
+_찍힘 = _buf.getvalue()
+ok("있다" in _찍힘 and "없다" in _찍힘, "갈린 줄을 양쪽 다 찍는다")
+ok("문 2." not in _찍힘, "같은 줄은 안 찍는다 -- 볼 자리만 남긴다")
+ok("머리말" not in _찍힘, "주석은 안 견준다")
+
+print()
 if fails:
     print(f"옮겨 적기: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)
