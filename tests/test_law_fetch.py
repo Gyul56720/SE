@@ -285,6 +285,63 @@ ok(not (_보관3 / "2020다1111.txt").exists(),
    "어긋난 건은 파일로 남지 않는다")
 
 print()
+print("[전부 훑기] **범위를 적어야 L004 가 기각으로 올라간다**")
+
+
+def _쪽(n, 총=5):
+    시작 = (n - 1) * 2 + 1
+    if 시작 > 총:
+        return f"<r><totalCnt>{총}</totalCnt></r>"
+    항 = "".join(
+        f"<prec><판례일련번호>{i}</판례일련번호><사건번호>2020다{i}</사건번호>"
+        f"<법원명>대법원</법원명><선고일자>2020010{i}</선고일자>"
+        f"<사건명>사건{i}</사건명></prec>"
+        for i in range(시작, min(시작 + 2, 총 + 1)))
+    return f"<r><totalCnt>{총}</totalCnt>{항}</r>"
+
+
+def _훑기가짜(u, oc=""):
+    if "lawService" in u:
+        i = u.split("ID=")[1].split("&")[0]
+        return (f"<r><판례일련번호>{i}</판례일련번호><사건번호>2020다{i}</사건번호>"
+                f"<법원명>대법원</법원명><선고일자>2020010{i}</선고일자>"
+                f"<사건명>사건{i}</사건명><판시사항>...</판시사항></r>")
+    return _쪽(int(u.split("page=")[1].split("&")[0]))
+
+
+ok(F.prec_total("<r><totalCnt>91234</totalCnt></r>") == 91234,
+   "총 건수를 읽는다 -- 며칠짜리인지 몇 분짜리인지가 이 수로 갈린다")
+
+_훑 = Path(tempfile.mkdtemp())
+_쪽들 = list(F.sweep_prec("전체", OC, _훑, fetcher=_훑기가짜, display="2"))
+ok(len(_쪽들) == 3 and len(CP.load_cases(_훑)) == 5,
+   f"쪽을 넘겨 가며 끝까지 훑는다 (얻은 값 쪽 {len(_쪽들)} · 원장 {len(CP.load_cases(_훑))}건)")
+ok(CP.load_case_scope(_훑).get("전부") is True,
+   f"끝까지 갔으면 범위를 적는다 (얻은 값 {CP.load_case_scope(_훑)})")
+
+# **중간에 끊긴 훑기는 '전부' 라고 적지 않는다.** 적으면 L004 가 아직 안 받은
+# 판례를 지어냈다고 기각한다 -- 과잉 기각하는 심판은 맞는 답도 버린다.
+_반 = Path(tempfile.mkdtemp())
+list(F.sweep_prec("전체", OC, _반, fetcher=_훑기가짜, display="2", pages=1))
+ok(not CP.load_case_scope(_반).get("전부"),
+   f"덜 훑었으면 범위를 안 적는다 (얻은 값 {CP.load_case_scope(_반)})")
+
+# 이어한다: 다시 부르면 이미 받은 쪽은 본문을 안 부른다.
+_본문호출 = [0]
+
+
+def _센다2(u, oc=""):
+    if "lawService" in u:
+        _본문호출[0] += 1
+    return _훑기가짜(u, oc)
+
+
+list(F.sweep_prec("전체", OC, _반, fetcher=_센다2, display="2"))
+ok(_본문호출[0] == 3,
+   f"이미 받은 2건은 본문을 다시 안 부른다 (얻은 값 {_본문호출[0]}회 · 남은 3건)")
+ok(CP.load_case_scope(_반).get("전부") is True, "이어서 끝까지 가면 그때 범위를 적는다")
+
+print()
 if fails:
     print(f"받기: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)

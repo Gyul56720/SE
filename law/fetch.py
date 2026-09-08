@@ -36,6 +36,7 @@ OC 는 자격증명이다. URL 에는 들어가지만 로그·오류 메시지�
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import sys
@@ -235,6 +236,19 @@ def parse_law(xml: str) -> tuple:
 PREC_TAGS = ("판시사항", "판결요지", "참조조문", "참조판례", "판례내용")
 
 
+def prec_total(xml: str) -> int:
+    """검색이 말한 **총 건수.** 전부 긁기 전에 규모부터 알아야 한다 -- 분당 한도가
+    있는 곳에서 며칠짜리 일인지 몇 분짜리 일인지는 이 수로 갈린다."""
+    try:
+        root = ET.fromstring(xml)
+    except ET.ParseError:
+        return 0
+    for el in root.iter():
+        if el.tag.split("}")[-1] in ("totalCnt", "총건수") and (el.text or "").strip().isdigit():
+            return int(el.text.strip())
+    return 0
+
+
 def parse_prec_search(xml: str) -> list:
     """판례 목록 XML -> [{사건번호, 사건명, 법원명, 선고일자, 일련번호, 사건종류명}]."""
     try:
@@ -295,8 +309,40 @@ def prec_header(meta: dict) -> str:
             f"# 이 파일은 받은 것이다. 손으로 고치지 마라 -- 고치려면 다시 받아라.\n")
 
 
+def sweep_prec(query: str, oc: str, root: Path, fetcher=None, display: str = "100",
+               start: int = 1, pages: int = 0, dry: bool = False):
+    """**목록을 쪽 단위로 훑는다.** 한 쪽 받고 그 쪽을 다 받은 뒤 다음 쪽으로.
+
+    쪽마다 곧바로 저장하는 것이 요점이다. 분당 한도에 걸려 중간에 끊겨도 받은 것은
+    원장에 남고, 다시 부르면 `pull_prec` 의 이어하기가 이미 있는 건을 건너뛴다.
+
+    끝까지 훑었으면 `_받은범위.json` 에 적는다. **그 기록이 있어야만** L004 가
+    "원장에 없다 = 지어냈다" 로 올라간다(`corpus.covers_cases()`). 없으면 미검증이다.
+    """
+    get = fetcher or _get
+    page, 받음, 총 = start, 0, 0
+    while True:
+        xml = get(_url(SEARCH, oc, target="prec", query=query,
+                       display=display, page=str(page)), oc)
+        총 = 총 or prec_total(xml)
+        rows = parse_prec_search(xml)
+        if not rows:
+            break
+        yield {"쪽": page, "총건수": 총, "목록": len(rows),
+               "받음": pull_prec("", oc, root, fetcher=get, dry=dry, rows=rows)}
+        받음 += len(rows)
+        page += 1
+        if (pages and page - start >= pages) or (총 and 받음 >= 총):
+            break
+    if not dry and 총 and 받음 >= 총:
+        (root / CP.SCOPE_FILE).write_text(
+            json.dumps({"전부": True, "검색어": query, "총건수": 총,
+                        "받은날": time.strftime("%Y-%m-%d")},
+                       ensure_ascii=False, indent=2), encoding="utf-8")
+
+
 def pull_prec(query: str, oc: str, root: Path, fetcher=None, sid: str = "",
-              dry: bool = False, display: str = "20") -> list:
+              dry: bool = False, display: str = "20", rows=None) -> list:
     """판례를 받아 저장한다. 검색어는 사건번호여도 되고 사건명이어도 된다.
 
     **사건번호가 안 실린 것은 저장하지 않는다.** 첫 줄이 원장의 색인이라, 사건번호가
@@ -305,7 +351,9 @@ def pull_prec(query: str, oc: str, root: Path, fetcher=None, sid: str = "",
     그것을 정답으로 삼는다.
     """
     get = fetcher or _get
-    if sid:
+    if rows is not None:
+        pass                                   # 훑기가 이미 받아 온 한 쪽이다
+    elif sid:
         rows = [{"일련번호": sid, "사건번호": "", "사건명": "", "법원명": "", "선고일자": ""}]
     else:
         rows = parse_prec_search(get(_url(SEARCH, oc, target="prec", query=query,
@@ -415,6 +463,11 @@ def main(argv=None):
                     help="법령이 아니라 판례를 받는다 (law/precedents/ 에 저장)")
     ap.add_argument("--건수", dest="display", default="20",
                     help="--판례 일 때 한 검색어에서 받을 건수 (기본 20)")
+    ap.add_argument("--전부", dest="sweep", action="store_true",
+                    help="목록을 쪽 단위로 끝까지 훑는다 (이어할 수 있다)")
+    ap.add_argument("--쪽", dest="page", type=int, default=1, help="--전부 시작 쪽")
+    ap.add_argument("--쪽수", dest="pages", type=int, default=0,
+                    help="--전부 에서 이번에 돌 쪽 수 (0 이면 끝까지)")
     ap.add_argument("--oc", default=os.environ.get("LAW_API_OC", ""),
                     help="인증키. 없으면 환경변수 LAW_API_OC")
     ap.add_argument("--corpus", default=str(CP.CORPUS_DIR))
@@ -439,12 +492,29 @@ def main(argv=None):
         for q in a.names:
             try:
                 if a.list:
-                    rows = parse_prec_search(_get(_url(SEARCH, a.oc, target="prec",
-                                                       query=q, display=a.display), a.oc))
-                    print(f"\n[{q}] 검색 {len(rows)}건")
+                    xml = _get(_url(SEARCH, a.oc, target="prec",
+                                    query=q, display=a.display), a.oc)
+                    rows, 총 = parse_prec_search(xml), prec_total(xml)
+                    분 = (총 * 2 / RPM) if 총 else 0
+                    print(f"\n[{q}] 총 {총 or '?'}건 · 이 쪽 {len(rows)}건")
+                    if 총:
+                        print(f"  전부 받으면 호출 약 {총 * 2}회 · 분당 {RPM} 이면 "
+                              f"**{분 / 60:.1f}시간**  (--쪽수 로 끊어 돌 수 있다)")
                     for r in rows[:20]:
                         print(f"  {r['사건번호']} · {r['법원명']} · {r['선고일자']}"
                               f" · {r['사건명'][:40]}")
+                    continue
+                if a.sweep:
+                    for 쪽 in sweep_prec(q, a.oc, croot, display=a.display,
+                                        start=a.page, pages=a.pages, dry=a.dry):
+                        새 = sum(1 for r in 쪽["받음"] if not r.get("이미") and not r.get("실패"))
+                        print(f"  {q} 쪽 {쪽['쪽']} · 목록 {쪽['목록']}건 · 새로 {새}건"
+                              f"  (총 {쪽['총건수'] or '?'})", flush=True)
+                    사건 = CP.load_cases(croot)
+                    print(f"[{q}] 훑기 끝 · 원장 {len(사건)}건"
+                          + (" · **전부 받았다고 적었다** (L004 가 기각으로 올라간다)"
+                             if CP.load_case_scope(croot).get("전부") else
+                             " · 아직 덜 받았다 (L004 는 미검증으로 남는다)"))
                     continue
                 got = pull_prec(q, a.oc, croot, dry=a.dry, display=a.display)
                 새로 = sum(1 for r in got if not r.get("이미") and not r.get("실패"))
