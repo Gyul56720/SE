@@ -104,11 +104,30 @@ print("[못 읽는 것] 오류를 삼키지 않는다")
 _빈 = Path("/tmp/claude-0/안HWP.bin")
 _빈.parent.mkdir(parents=True, exist_ok=True)
 _빈.write_bytes(b"not an ole file at all")
+# **건너뛰지 않고 세운다.** `olefile` 은 requirements.txt 에도 CI 에도 없는 선택
+# 의존이라, 없는 기계에서는 "OLE 가 아니다" 대신 "olefile 이 없다" 가 왔다 -- 즉 이
+# 줄은 **설정을 제대로 한 사람만 보는 실패**였다(실측 2026-09-08, 이 컨테이너).
+#
+# 건너뛰는 것으로 때우지 않는다. 조용한 건너뜀은 가짜 green 이고, 소리 내어 건너뛰어도
+# 그 기계에서는 아무것도 안 재는 것은 같다. 대신 `isOleFile` 만 있는 대역을 끼워
+# **판별 갈래를 어느 기계에서나 실제로 태운다.** 대역이 하는 일은 "OLE 가 아니다" 라고
+# 답하는 것 하나뿐이고, 판정은 여전히 law/hwp.py 가 한다.
+import importlib.util as _iu
+_없다 = "olefile" not in sys.modules and _iu.find_spec("olefile") is None
+if _없다:
+    import types
+    _대역 = types.ModuleType("olefile")
+    _대역.isOleFile = lambda _p: False          # 이 파일은 OLE 가 아니다 -- 사실이다
+    sys.modules["olefile"] = _대역
 try:
     H.뽑기(_빈)
     ok(False, "OLE 도 아닌 것을 읽었다")
 except H.못뽑음 as e:
-    ok("OLE" in str(e), f"OLE 가 아니면 그렇다고 한다 (얻은 값 {str(e)[:40]}…)")
+    ok("OLE" in str(e), f"OLE 가 아니면 그렇다고 한다 (얻은 값 {str(e)[:40]}…)"
+       + ("  ← olefile 대역으로 태웠다" if _없다 else ""))
+finally:
+    if _없다:
+        sys.modules.pop("olefile", None)
 
 print()
 print("[다듬기] **글자는 안 고친다**")
