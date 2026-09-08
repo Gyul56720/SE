@@ -306,7 +306,17 @@ class Corpus:
 
             준용        "제87조의 규정을 준용한다"   그 조문이 여기서 그대로 산다
             전조        "전조의 죄를 범한 자는"      바로 앞 조문
+            뒷조의 전조 (반대 방향)                  **뒷 조문이 나를 '전조' 라 부를 때**
             제N조의 죄  "제355조의 죄를 범한 자는"   가중·특별 구성요건의 본체
+
+        **'전조' 는 양방향이다.** 상법 제450조는 "전조제1항의 승인을 한 후 2년내에" 라고
+        쓴다 -- 제449조(재무제표 승인)와 제450조(책임해제)는 읽기에서 한 덩이다. 그런데
+        전조를 앞으로만 따라가면 제449조를 부른 글에서 '2년' 이 영영 안 보인다.
+        실측: 그래서 `law/mcq.py` 가 멀쩡한 지문(문 64 ③)을 "제449조에 없는 수량" 이라며
+        기각했다 -- 이 저장소가 답한 유일한 문항이었고, 그것이 거짓 양성이었다.
+
+        넓히는 것이지만 **닫혀 있다**: 뒷 조문이 스스로 `전조` 라고 적었을 때만 간다.
+        그렇게 적지 않은 뒷 조문은 안 따라간다. 그 선언이 곧 두 조가 한 덩이라는 표시다.
 
         '제N조에 따라 신고한다' 같은 단순 지시는 안 따라간다. 그건 그 조문의 내용이
         여기서 사는 것이 아니라 절차를 가리키는 말이다.
@@ -333,6 +343,13 @@ class Corpus:
                 if got:
                     seen.add(a)
                     out.append((c.raw if c.raw.startswith("전조") else c.label(), got))
+        # **전조는 양방향이다** -- 뒷 조문이 나를 '전조' 라 부르면 그 조문도 한 덩이다.
+        nxt = self._next(st, article)
+        if nxt and nxt not in seen and len(out) < limit:
+            뒤 = self.text(st, nxt) or ""
+            if "전조" in 뒤:
+                seen.add(nxt)
+                out.append((f"뒷조(제{nxt}조)가 전조라 부름", 뒤))
         return out
 
     def _prev(self, statute: str | None, article: str):
@@ -340,6 +357,12 @@ class Corpus:
         arts = list(self.articles.get(normalize_statute(statute), {}))
         i = arts.index(article) if article in arts else -1
         return arts[i - 1] if i > 0 else None
+
+    def _next(self, statute: str | None, article: str):
+        """원장 차례에서 바로 뒤 조문. `_prev` 의 짝 -- 전조는 양방향이라서 필요하다."""
+        arts = list(self.articles.get(normalize_statute(statute), {}))
+        i = arts.index(article) if article in arts else -1
+        return arts[i + 1] if 0 <= i < len(arts) - 1 else None
 
     def quantities_of(self, statute: str | None, article: str) -> set:
         body = self.text(statute, article)
