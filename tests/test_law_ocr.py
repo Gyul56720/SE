@@ -8,6 +8,8 @@
 """
 from __future__ import annotations
 
+import contextlib
+import io
 import struct
 import sys
 import zlib
@@ -83,24 +85,90 @@ ok("import requests" not in (ROOT / "law" / "ocr.py").read_text(encoding="utf-8"
    "law/ocr.py 는 직접 HTTP 를 치지 않는다")
 
 print()
-print("[한 벌] **novel 이 쓰는 후보 풀을 그대로 쓴다**")
-# 처음엔 여기에 키·모델을 도는 반복문을 따로 짰다. **그게 두 벌이었다.** llm_pool 은
-# (키·모델)별 잔량 추적, RPM 쿨다운, 500/503 을 거듭 내는 후보 격리, 실측 지연 기반
-# 순위, 바퀴 사이 대기를 이미 갖고 있다 -- 소설 파이프라인이 회차마다 100번씩 두드리며
-# 다듬은 층이다. 내 반복문은 그것을 전부 버리고 `for 모델: for 키:` 로 되돌린 것이었다.
-_src = (ROOT / "law" / "ocr.py").read_text(encoding="utf-8")
-ok("llm_pool.call(" in _src, "부르는 것은 llm_pool.call 이다")
-for 흔적 in ("for model in models", "GEMINI_API_KEY_FALLBACK", "time.sleep"):
-    ok(흔적 not in _src,
-       f"제 반복문의 흔적 {흔적!r} 이 없다 -- 있으면 두 벌로 갈라진다")
-ok("gemma" in _src, "gemma 는 뺀다 -- 그림을 못 본다")
+print("[한 벌] **부르는 경로를 재는 것이지, 낱말이 있나 보는 것이 아니다**")
+# 처음엔 `"for model in models" not in 소스` 처럼 낱말로 쟀다. 그건 **오늘 낸 그 사본이
+# 그 이름 그대로 되살아날 때만** 걸린다 -- `for m in ms:` 로 쓰면 그냥 통과한다. 게다가
+# 낱말로 재면 주석에 걸린다(바로 위 블록에서 `?key=` 로 실제로 겪었다).
+#
+# 그래서 **불러 보고 잰다.** 가짜 풀을 넣고 _ask 를 돌려서
+#   (1) llm_pool.call 로 가는가          -- 제 반복문이면 안 간다
+#   (2) 터졌을 때 **다시 안 부르는가**   -- 부르면 그게 두 번째 재시도 층이다
+#   (3) 풀을 한 번만 세우는가            -- 매번 세우면 모델 조회로 쿼터를 태운다
+# 이름을 바꿔도, 주석을 어떻게 달아도 이 셋은 그대로 잡힌다.
+sys.path.insert(0, str(ROOT / "orchestrator"))
+import llm_pool                                                       # noqa: E402
 
-# **그림은 줄 때만 넘긴다.** 안 그러면 `invoke(prompt)` 만 아는 가짜 LLM 이 터진다.
-_pool = (ROOT / "orchestrator" / "llm_pool.py").read_text(encoding="utf-8")
-ok("l.invoke(prompt, images=images) if images" in _pool,
-   "풀이 그림을 줄 때만 넘긴다 -- 기존 부르는 쪽과 가짜 LLM 이 그대로 돈다")
+_png = Path(tempfile.mkdtemp()) / "쪽.png"
+_png.write_bytes(b"\x89PNG\r\n\x1a\nfake-bytes")
 
 
+class _엿봄:
+    """부른 것을 적어 두는 가짜. **행동을 재려면 진짜 자리에 끼워야 한다.**"""
+
+    def __init__(self, 터뜨릴=None):
+        self.부름, self.세움, self.터뜨릴 = [], 0, 터뜨릴
+
+    def build_pool(self, *a, **k):
+        self.세움 += 1
+        return [("키:gemini-flash", object()), ("키:gemma-3", object())]
+
+    def call(self, pool, prompt, **k):
+        self.부름.append((pool, prompt, k))
+        if self.터뜨릴:
+            raise self.터뜨릴
+        return ("옮긴 글", "키:gemini-flash")
+
+
+def _끼우고(엿, fn):
+    """가짜를 진짜 자리에 끼우고 돌린 뒤 되돌린다."""
+    _b, _c, _p = llm_pool.build_pool, llm_pool.call, OC._POOL
+    llm_pool.build_pool, llm_pool.call, OC._POOL = 엿.build_pool, 엿.call, None
+    try:
+        with contextlib.redirect_stdout(io.StringIO()):
+            return fn()
+    finally:
+        llm_pool.build_pool, llm_pool.call, OC._POOL = _b, _c, _p
+
+
+_엿 = _엿봄()
+_답 = _끼우고(_엿, lambda: OC._ask([_png], prefer="flash"))
+ok(_답 == "옮긴 글", f"풀이 돌려준 글이 그대로 나온다 (얻은 값 {_답!r})")
+ok(len(_엿.부름) == 1, f"llm_pool.call 로 간다 -- 딱 한 번 (얻은 값 {len(_엿.부름)})")
+_pool, _prompt, _k = _엿.부름[0]
+ok(_k.get("images") == [("image/png", _png.read_bytes())],
+   "그림이 실려 간다 -- 풀이 그림을 받는 그 길로 간다")
+ok(_k.get("pool_id") == "ocr", f"제 이름표를 달고 간다 (얻은 값 {_k.get('pool_id')!r})")
+ok("지어내지 마십시오" in _prompt, "옮겨 적기 프롬프트가 그대로 간다")
+# **gemma 는 그림을 못 본다.** 후보에 남겨 두면 실패만 물고 온다.
+ok([l for l, _ in _pool] == ["키:gemini-flash"],
+   f"gemma 는 후보에서 빠진다 (얻은 값 {[l for l, _ in _pool]})")
+
+# **터졌을 때 다시 부르면 그게 두 번째 재시도 층이다.** 재시도는 풀이 이미 한다 --
+# 여기서 또 하면 같은 쿼터를 두 배로 태우고, 풀의 쿨다운 셈도 어긋난다.
+_엿2 = _엿봄(터뜨릴=RuntimeError("429 RESOURCE_EXHAUSTED"))
+try:
+    _끼우고(_엿2, lambda: OC._ask([_png]))
+    ok(False, "터지면 멈춘다")
+except SystemExit as e:
+    ok(len(_엿2.부름) == 1,
+       f"터져도 **다시 안 부른다** -- 재시도 층은 풀에 한 벌만 (얻은 값 {len(_엿2.부름)})")
+    ok("쿼터에 막혔다" in str(e) and "내일" in str(e),
+       f"무엇에 막혔는지와 다음에 할 일을 말하고 멈춘다 ({str(e)[:30]}...)")
+
+# **풀은 한 번만 세운다.** 매번 세우면 키마다 모델 목록을 조회해서 쿼터를 태운다.
+_엿3 = _엿봄()
+
+
+def _두번():
+    OC._ask([_png])
+    return OC._ask([_png])
+
+
+_끼우고(_엿3, _두번)
+ok(_엿3.세움 == 1 and len(_엿3.부름) == 2,
+   f"두 번 물어도 풀은 한 번만 세운다 (세움 {_엿3.세움} · 부름 {len(_엿3.부름)})")
+
+# 그림 없이 부르는 옛 길도 그대로여야 한다 -- 풀은 글에도 쓰인다.
 class _가짜:
     def invoke(self, prompt):            # 그림을 모르는 옛 꼴
         class R:
@@ -108,8 +176,6 @@ class _가짜:
         return R()
 
 
-sys.path.insert(0, str(ROOT / "orchestrator"))
-import llm_pool                                                       # noqa: E402
 ok(llm_pool.call([("가짜:모델", _가짜())], "물음", verbose=False)[0] == "됐다",
    "그림 없이 부르면 옛 꼴 LLM 도 그대로 돈다")
 
