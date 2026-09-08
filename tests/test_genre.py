@@ -485,6 +485,42 @@ _c = genre.brief("ropan", "씨앗B", 9)
 ok(_a != _c, "씨앗과 자리가 다르면 다른 줄이 온다")
 
 
+print()
+print("[라노벨] **엔진은 격이다 -- 직함 · 무기 · 기술의 외침**")
+print("      ← 사용자(2026-09-08 저녁): 액션씬 전투씬 스킬 직함 세계관 설정 더 자세히.")
+ok("lanobe" in genre.names(), "라이트노벨 꾸러미가 있다")
+_l = genre.brief("lanobe", "씨", 4)
+ok("[라이트노벨]" in _l, "머리표가 붙는다")
+ok("엔진은 격(格)이다" in _l and "싸움이 대화다" in _l, "무엇이 이야기를 끄는지 말한다")
+ok("처음에 진다" in _l and "작은 것 하나는 이긴다" in _l, "지다가 이기되, 지는 대목에도 작은 승리")
+ok("얼굴이 먼저 보이는 사람" in _l and "심어 둔 사람이 제 사정으로 온다" in _l,
+   "구해 주는 사람이 있고, 우연이 아니다  ← 히로인")
+ok("숫자 창은 없다" in _l, "상태창을 안 연다")
+for _k in ("스승", "라이벌", "원수", "구원자", "부하", "최상위자", "얕보는 자"):
+    ok(_k in genre.PACKS["lanobe"]["관계"], f"관계: {_k}")
+for _k in ("습격", "시합", "승급 시험", "복수 한 칸", "구원", "각성", "하극상", "인정"):
+    ok(_k in genre.PACKS["lanobe"]["사건"], f"사건: {_k}")
+for _k in ("기술은 외친다", "이름 대기", "해설은 조연이", "짧게 오간다", "직함으로 부른다", "발화는 접지 않는다"):
+    ok(_k in genre.PACKS["lanobe"]["화법"], f"화법: {_k}")
+ok(len(genre.PACKS["lanobe"]["부름"]) >= 24, f"직함이 많다 ({len(genre.PACKS['lanobe']['부름'])}개)  ← 부르는 말이 격의 이름")
+ok("이 대목에서 부르는 말" in _l and "이 대목에 놓인 것" in _l and "이름을 지을 때" in _l,
+   "부름 · 세간 · 이름결이 실린다")
+ok(genre.size("lanobe") > 5000, f"사건이 곱으로 뽑힌다 ({genre.size('lanobe'):,}가지)")
+_le = {tuple(genre.event("lanobe", "씨", i).values()) for i in range(20)}
+ok(len(_le) >= 18, f"덩어리마다 다른 뒤틀림이 나온다 ({len(_le)}/20)")
+ok(genre.tune("lanobe", "초현실", 1) == 0, "마법은 법칙이지 아이러니 장치가 아니다")
+_ld = genre.band("lanobe", "dialog")
+ok(_ld and _ld[1] <= genre.band("ropan", "dialog")[1], f"로판보다 말이 적다 ({_ld})  ← 싸움 중 말은 한 문장 이하")
+ok(all(len(x) > 20 for x in genre.PACKS["lanobe"]["이름결"]), "이름결은 결이지 목록이 아니다")
+_bl = flow.blank(flow.FIRST); _bl["genre"] = "lanobe"
+_pl = flow.write_prompt(_bl)
+for _sec in ("[문장]", "[리듬]", "[점층]", "[대사가 이야기다]", "[말맛]", "[확산]"):
+    ok((_sec in _p0) == (_sec in _pl), f"{_sec} 는 갈래와 무관하다")
+ok("[라이트노벨]" in _pl, "갈래를 주면 실린다")
+ok("lanobe" in (Path(__file__).resolve().parent.parent / "scripts" / "drift.sh").read_text(encoding="utf-8"),
+   "drift.sh 가 GENRE=lanobe 를 안내한다")
+
+
 # **요약은 맨 끝에 있어야 한다.** 2026-09-07 까지 이 블록이 251줄에 있었다 -- 파일은
 # 473줄인데. 검사가 자라면서 자기 요약문을 넘어갔고, 그 뒤 220줄은 종료 코드에 아무
 # 영향을 못 줬다. 실패를 화면에 찍고도 스위트에는 통과로 보고했다.

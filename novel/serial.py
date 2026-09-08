@@ -91,13 +91,19 @@ def planned(book: dict) -> bool:
 
 # ---------------------------------------------------------------- 세우기
 
-def plan_prompt(gname: str) -> str:
+def plan_prompt(gname: str, seed: str = "") -> str:
     """**디렉터에게 한 번만 묻는다.** 300토큰짜리 답 하나다.
 
     갈래 꾸러미의 머리와 관계 축을 얹는다 -- 지어내라고 하지 않고 **이 갈래의
     결말**을 내라고 한다. 인물 이름은 여기서 정하지 않는다: 아직 원고가 없어서
     누가 나올지 모르고, 이름은 `이름결` 이 첫 덩어리에서 정한다.
+
+    **줄기 본보기**(space.ARCS)를 넷 보여 준다. 사용자(2026-09-08): "복수극도 좋고,
+    거지가 왕궁 들어가서 권력 탈취하는 것도 좋고 -- 예시야, 하드코딩하지 마." 그래서
+    복수와 왕좌는 열여덟 꼴 중 둘이고, 씨앗마다 다른 넷이 보인다. 고르거나 섞거나
+    목록 밖을 지어도 된다 -- 지키는 것은 꼴(시작에서 못 하던 것을 끝에서 한다)이다.
     """
+    from novel import space as SP
     pack = GENRE.get(gname) if gname else {}
     head = (pack.get("머리") or "").strip()
     rel = ", ".join(list(pack.get("관계") or {})[:8])
@@ -107,25 +113,33 @@ def plan_prompt(gname: str) -> str:
 {head}
 {f'[이 갈래가 다루는 관계] {rel}' if rel else ''}
 
-세 가지를 JSON 으로 낸다.
+[줄기 본보기 -- 이 소설 전체의 꼴은 이런 것들이다. 하나를 고르거나 둘을 섞는다. 목록 밖을 지어도 된다]
+{SP.render("줄기", seed or "씨", 0, 4)}
 
-1. **끝** -- 이 소설이 끝나는 자리 한 문장. 사건이 아니라 **상태**로 적어라.
+네 가지를 JSON 으로 낸다.
+
+1. **줄기** -- 고른 꼴의 이름 한두 낱말. 본보기 중 하나이거나, 둘을 섞은 것이거나, 네가 지은 것.
+
+2. **끝** -- 이 소설이 끝나는 자리 한 문장. 사건이 아니라 **상태**로 적어라.
    ("두 사람이 결혼한다" 가 아니라 "그 계약이 더는 두 사람을 묶지 못한다")
+   **끝은 되찾고 · 편을 늘리고 · 누군가 그것을 인정하는 자리다.** 값을 치르고 물러나는
+   끝이 아니다 -- 시작에서 못 하던 것을 끝에서 하고, 그것을 남들이 본다.
 
-2. **시작** -- 주인공이 처음에 **못 하는 것 · 없는 것 · 당하는 것** 한 문장. 끝과 짝이
+3. **시작** -- 주인공이 처음에 **못 하는 것 · 없는 것 · 당하는 것** 한 문장. 끝과 짝이
    되어야 한다: 시작에서 못 하던 것을 끝에서 한다. 이것이 성장이다.
 
-3. **빚** -- 그 끝이 참이 되려면 **먼저 참이 되어야 하는 것** {DEBTS[0]}~{DEBTS[1]}개.
+4. **빚** -- 그 끝이 참이 되려면 **먼저 참이 되어야 하는 것** {DEBTS[0]}~{DEBTS[1]}개.
    - 각각 한 문장. **상태로 적어라.** 무슨 장면을 쓰라는 말이 아니다.
    - 순서대로 적어라 -- 앞엣것이 먼저 참이 되어야 뒤엣것이 가능하다.
    - **앞의 절반은 역경이다.** 주인공이 잃거나 당하거나 실패해야 참이 되는 것. 뒤의
      절반은 그 값으로 얻는 것. 처음부터 이기는 사람은 자라지 않는다.
+   - 뒤의 절반에는 **되갚는 것 · 오르는 것 · 곁에 서는 사람**이 하나씩 들어 있어야 한다.
    - **어떻게** 참이 되는지는 적지 마라. 그건 쓰면서 정한다.
 
 구체적으로 적어라. "권력을 얻는다" 가 아니라 무엇을 손에 쥐고 누가 그 앞에 무릎을 꿇는지다.
 인물 이름을 정하지 마라. 아직 아무도 없다.
 
-{{"끝": "...", "시작": "...", "빚": ["...", "...", "...", "..."]}}"""
+{{"줄기": "...", "끝": "...", "시작": "...", "빚": ["...", "...", "...", "..."]}}"""
 
 
 def plan(book: dict, llm, gname: str = "", log=None) -> dict:
@@ -133,18 +147,22 @@ def plan(book: dict, llm, gname: str = "", log=None) -> dict:
     if planned(book):
         D._log("[연재] 도착지가 이미 있다 -- 그대로 간다")
         return arc(book)
+    seed = str(book.get("seed_id") or book.get("first") or "")
     got = D.call_json(D._llm_for(llm, "director"),
-                      plan_prompt(gname), label="연재 도착지")
+                      plan_prompt(gname, seed), label="연재 도착지")
     end = str(got.get("끝") or "").strip()
     start = str(got.get("시작") or "").strip()
+    shape = str(got.get("줄기") or "").strip()
     debts = [str(x).strip() for x in (got.get("빚") or []) if str(x).strip()]
     if not end or not debts:
         raise ValueError(f"도착지를 못 받았다: 끝={end!r} 빚={len(debts)}개")
     # **넘치면 자르되 모자라면 안 채운다.** 채우려면 지어내야 한다.
     debts = debts[:DEBTS[1]]
-    book["arc"] = {"end": end, "start": start,
+    book["arc"] = {"end": end, "start": start, "shape": shape,
                    "debts": [{"무엇": d, "갚음": 0} for d in debts],
                    "made": gname}
+    if shape:
+        D._log(f"[연재] 줄기: {shape}")
     if start:
         D._log(f"[연재] 시작: {start}")
     D._log(f"[연재] 끝: {end}")
@@ -277,7 +295,8 @@ def show(book: dict) -> str:
                ("·" if i > at else "지남")
         rows.append(f"  {mark:4} {i + 1}. {d['무엇']}")
     tail = "\n  → 빚을 다 지났다. 끝을 향해 간다." if done(book) else ""
-    return ((f"시작: {a['start']}\n" if a.get("start") else "")
+    return ((f"줄기: {a['shape']}\n" if a.get("shape") else "")
+            + (f"시작: {a['start']}\n" if a.get("start") else "")
             + f"끝: {a['end']}\n"
             f"원고 {n:,}자 · 마디 {at + 1} (한 마디 {span(book):,}자)\n"
             + "\n".join(rows) + tail)

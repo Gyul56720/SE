@@ -212,7 +212,26 @@ ok("--genre" in _sh.split("serial.py\" plan")[1][:200],
 
 
 print()
+print("[줄기] **소설 전체의 꼴을 본보기로 보여 주고, 고른 것을 원고에 남긴다**")
+print("      ← 사용자(2026-09-08): 복수극도 좋고 거지가 왕궁 들어가서 권력 탈취하는 것도 좋고 --")
+print("        예시야, 하드코딩하지 마. 이런 문법들을 더 모으라고.")
+from novel import space as SP                                         # noqa: E402
+_pk = SR.plan_prompt("ropan", "씨앗")
+ok("[줄기 본보기" in _pk and '"줄기"' in _pk, "줄기 본보기를 싣고 줄기를 요구한다")
+ok(sum(1 for n in SP.names("줄기") if f"    {n}:" in _pk) == 4, "넷을 보여 준다")
+ok(SR.plan_prompt("ropan", "가") != SR.plan_prompt("ropan", "나"), "씨앗이 다르면 다른 넷이다")
+ok("목록 밖을 지어도 된다" in _pk, "목록 밖도 된다  ← 닫힌 목록이 아니다")
+ok("되찾고 · 편을 늘리고 · 누군가 그것을 인정하는 자리" in _pk, "끝은 사이다다  ← 값을 치르고 물러나는 끝이 아니다")
+ok("되갚는 것 · 오르는 것 · 곁에 서는 사람" in _pk, "뒤 절반의 빚에 도파민의 재료가 하나씩 든다")
+_bk, _fk = book(), Fake({"줄기": "복수 + 가면", "끝": "끝난다", "시작": "못 한다", "빚": ["a", "b", "c", "d"]})
+_bk["seed_id"] = "씨앗"
+SR.plan(_bk, _fk, "ropan")
+ok(_bk["arc"].get("shape") == "복수 + 가면", "줄기가 원고에 붙는다")
+ok("줄기: 복수 + 가면" in SR.show(_bk), "show 에 줄기가 보인다")
+ok(SR.plan_prompt("ropan").count("[줄기 본보기") == 1, "씨앗 없이 불러도 산다  ← 옛 부름")
+
+print()
 if fails:
     print(f"연재: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)
-print("연재: 세우기 · 마디 · 당김 · 배선 · 각본 금지 · 띄우기 -- 통과")
+print("연재: 세우기 · 마디 · 당김 · 배선 · 각본 금지 · 띄우기 · 줄기 -- 통과")
