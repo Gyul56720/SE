@@ -132,12 +132,30 @@ ok(all(v.severity == "soft" for v in G.check_quantities(d, CORPUS)),
    "사례 절의 지어낸 금액은 기각하지 않고 보고만 한다")
 
 print()
-print("[L004] 대조할 원장이 없는 판례 인용은 금지한다")
+print("[L004] **원장이 있으면 대조하고, 없으면 금지한다** -- 둘을 섞지 않는다")
 d = doc({"3. 핵심 법리": "대법원 2020다12345 판결은 이를 확인하였습니다.\n"})
 vs = G.check_case_citation(d)
-ok(any(v.rule == "L004" and v.severity == "hard" for v in vs), "사건번호 -> hard")
+ok(any(v.rule == "L004" and v.severity == "hard" for v in vs),
+   "판례 원장이 비어 있으면 사건번호 -> hard (대조할 수 없으니까)")
+ok(any("원장이 비어" in v.detail for v in vs),
+   f"왜 막았는지 적는다 -- 지어냈다는 뜻이 아니다 (얻은 값 {[v.detail[:30] for v in vs]})")
 d = doc({"3. 핵심 법리": "구체적 범위는 조문 원문에 명시되지 않음, 학설/판례 확인 필요합니다.\n"})
 ok(not G.check_case_citation(d), "'판례 확인 필요' 로 남긴 것은 막지 않는다")
+
+# RED: 원장을 채웠는데도 실재하는 판례를 계속 막으면, 원장을 채운 보람이 없다.
+_판례원장 = Path(tempfile.mkdtemp())
+(_판례원장 / "2018다287522.txt").write_text(
+    "# 2018다287522 · 대법원 · 20200521 · 건물인도\n# 받은 것\n\n[판시사항]\n...\n",
+    encoding="utf-8")
+_찬원장 = CP.Corpus()
+_찬원장.cases = CP.load_cases(_판례원장)
+d = doc({"3. 핵심 법리": "대법원 2018다287522 판결.\n"})
+ok(not [v for v in G.check_case_citation(d, _찬원장) if "2018다287522" in v.detail],
+   f"원장에 있는 사건번호는 통과한다 (얻은 값 {[v.detail for v in G.check_case_citation(d, _찬원장)]})")
+d = doc({"3. 핵심 법리": "2099다99999 참조.\n"})
+_vs = G.check_case_citation(d, _찬원장)
+ok(any("원장에 없는" in v.detail for v in _vs),
+   f"원장에 없는 사건번호는 기각한다 -- 지어낸 것으로 본다 (얻은 값 {[v.detail for v in _vs]})")
 
 print()
 print("[L006] 한 문서가 같은 조문에 다른 법정형을 달면 기각한다 -- 원장 없이도 돈다")

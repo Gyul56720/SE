@@ -195,6 +195,109 @@ def parse_law(xml: str) -> tuple:
     return meta, "\n".join(lines)
 
 
+# 판례 본문에서 글을 담고 있는 칸. 조문과 같은 이유로 **끝소리로** 고른다.
+PREC_TAGS = ("판시사항", "판결요지", "참조조문", "참조판례", "판례내용")
+
+
+def parse_prec_search(xml: str) -> list:
+    """판례 목록 XML -> [{사건번호, 사건명, 법원명, 선고일자, 일련번호, 사건종류명}]."""
+    try:
+        root = ET.fromstring(xml)
+    except ET.ParseError as e:
+        raise RuntimeError(f"판례 검색 응답이 XML 이 아니다: {e}") from None
+    out = []
+    for node in root.iter():
+        tag = node.tag.split("}")[-1]
+        if tag not in ("prec", "Prec", "판례"):
+            continue
+        no = _first(node, "사건번호")
+        if not no:
+            continue
+        out.append({
+            "사건번호": _WS.sub(" ", no).strip(),
+            "사건명": _first(node, "사건명"),
+            "법원명": _first(node, "법원명"),
+            "선고일자": _first(node, "선고일자"),
+            "일련번호": _first(node, "판례일련번호"),
+            "사건종류명": _first(node, "사건종류명"),
+        })
+    return out
+
+
+def parse_prec(xml: str) -> tuple:
+    """판례 본문 XML -> (메타, 원문 텍스트).
+
+    조문과 달리 **본문이 없어도 메타만으로 쓸모가 있다.** L004 가 먼저 묻는 것은
+    "이 사건번호가 실재하는가" 이고, 그건 사건번호·법원·선고일자로 답해진다.
+    """
+    try:
+        root = ET.fromstring(xml)
+    except ET.ParseError as e:
+        raise RuntimeError(f"판례 본문 응답이 XML 이 아니다: {e}") from None
+    meta = {
+        "사건번호": _WS.sub(" ", _first(root, "사건번호")).strip(),
+        "사건명": _first(root, "사건명"),
+        "법원명": _first(root, "법원명"),
+        "선고일자": _first(root, "선고일자"),
+        "일련번호": _first(root, "판례일련번호"),
+    }
+    parts = []
+    for el in root.iter():
+        tag = el.tag.split("}")[-1]
+        if any(tag.endswith(n) for n in PREC_TAGS) and _text(el):
+            parts.append(f"[{tag}]\n{_text(el)}")
+    return meta, "\n\n".join(parts)
+
+
+def prec_header(meta: dict) -> str:
+    """첫 줄이 곧 원장의 색인이다 -- `corpus.load_cases()` 가 이 줄만 읽는다."""
+    got = time.strftime("%Y-%m-%d")
+    return (f"# {meta.get('사건번호')} · {meta.get('법원명') or '법원 미상'}"
+            f" · {meta.get('선고일자') or '선고일자 미상'}"
+            f" · {meta.get('사건명') or '사건명 미상'}\n"
+            f"# 법제처 국가법령정보 공동활용 OPEN API · 받은 날 {got}\n"
+            f"# 이 파일은 받은 것이다. 손으로 고치지 마라 -- 고치려면 다시 받아라.\n")
+
+
+def pull_prec(query: str, oc: str, root: Path, fetcher=None, sid: str = "",
+              dry: bool = False, display: str = "20") -> list:
+    """판례를 받아 저장한다. 검색어는 사건번호여도 되고 사건명이어도 된다.
+
+    **사건번호가 안 실린 것은 저장하지 않는다.** 첫 줄이 원장의 색인이라, 사건번호가
+    없으면 그 파일은 원장에 안 잡히고 있으나 마나가 된다. 조문 쪽에서 `제N조` 가
+    하나도 없으면 저장을 막는 것과 같은 이유다 -- 원장에 쓰레기가 들어가면 심판이
+    그것을 정답으로 삼는다.
+    """
+    get = fetcher or _get
+    if sid:
+        rows = [{"일련번호": sid, "사건번호": "", "사건명": "", "법원명": "", "선고일자": ""}]
+    else:
+        rows = parse_prec_search(get(_url(SEARCH, oc, target="prec", query=query,
+                                          display=display), oc))
+    out = []
+    for r in rows:
+        ident = r.get("일련번호")
+        if not ident:
+            continue
+        meta, text = parse_prec(get(_url(SERVICE, oc, target="prec", ID=ident), oc))
+        meta = {k: (meta.get(k) or r.get(k) or "") for k in
+                ("사건번호", "사건명", "법원명", "선고일자", "일련번호")}
+        got = {"사건번호": meta["사건번호"], "법원명": meta["법원명"],
+               "선고일자": meta["선고일자"], "글자": len(text), "저장": None}
+        if not meta["사건번호"]:
+            got["실패"] = "사건번호가 없다 -- 원장에 넣지 않는다"
+            out.append(got)
+            continue
+        if not dry:
+            root.mkdir(parents=True, exist_ok=True)
+            path = root / f"{CP.normalize_case(meta['사건번호'])}.txt"
+            path.write_text(prec_header(meta) + "\n" + text.rstrip() + "\n",
+                            encoding="utf-8")
+            got["저장"] = str(path)
+        out.append(got)
+    return out
+
+
 def header(meta: dict, name: str) -> str:
     """파일 첫 줄. 파서가 버리는 자리이지만 **사람이 볼 때 제일 중요한 줄**이다."""
     got = time.strftime("%Y-%m-%d")
@@ -251,10 +354,15 @@ def pull(name: str, oc: str, root: Path, fetcher=None, mst: str = "",
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="조문 원장을 법제처 API 로 채운다")
-    ap.add_argument("names", nargs="+", help="법령명 (예: 형법 민법)")
+    ap.add_argument("names", nargs="+", help="법령명 (예: 형법 민법). --판례 면 검색어/사건번호")
+    ap.add_argument("--판례", dest="prec", action="store_true",
+                    help="법령이 아니라 판례를 받는다 (law/precedents/ 에 저장)")
+    ap.add_argument("--건수", dest="display", default="20",
+                    help="--판례 일 때 한 검색어에서 받을 건수 (기본 20)")
     ap.add_argument("--oc", default=os.environ.get("LAW_API_OC", ""),
                     help="인증키. 없으면 환경변수 LAW_API_OC")
     ap.add_argument("--corpus", default=str(CP.CORPUS_DIR))
+    ap.add_argument("--cases", default=str(CP.CASES_DIR), help="판례 원장 자리")
     ap.add_argument("--mst", default="", help="일련번호를 직접 지정(법령 하나일 때)")
     ap.add_argument("--list", action="store_true", help="검색 결과만 본다")
     ap.add_argument("--dry", action="store_true", help="받되 파일은 안 쓴다")
@@ -268,6 +376,37 @@ def main(argv=None):
 
     root = Path(a.corpus)
     bad = 0
+
+    if a.prec:
+        croot = Path(a.cases)
+        print(f"판례 원장 {croot}")
+        for q in a.names:
+            try:
+                if a.list:
+                    rows = parse_prec_search(_get(_url(SEARCH, a.oc, target="prec",
+                                                       query=q, display=a.display), a.oc))
+                    print(f"\n[{q}] 검색 {len(rows)}건")
+                    for r in rows[:20]:
+                        print(f"  {r['사건번호']} · {r['법원명']} · {r['선고일자']}"
+                              f" · {r['사건명'][:40]}")
+                    continue
+                got = pull_prec(q, a.oc, croot, dry=a.dry, display=a.display)
+                print(f"\n[{q}] {len(got)}건")
+                for r in got:
+                    if r.get("실패"):
+                        print(f"  (건너뜀) {r['실패']}")
+                        continue
+                    print(f"  {r['사건번호']} · {r['법원명']} · {r['선고일자']}"
+                          f" · {r['글자']}자  {r['저장'] or '(dry)'}")
+            except Exception as e:                  # noqa: BLE001  사람에게 보여줄 것
+                bad += 1
+                print(f"\n[{q}] 실패: {e}", file=sys.stderr)
+        if not a.list and not a.dry:
+            사건 = CP.load_cases(croot)
+            print(f"\n판례 원장으로 다시 읽으니 {len(사건)}건이 잡힌다")
+            print("다음: python3 law/gate.py 법이론서   # L004 가 금지에서 대조로 바뀐다")
+        return 1 if bad else 0
+
     for name in a.names:
         try:
             if a.list:
