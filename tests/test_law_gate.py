@@ -149,13 +149,13 @@ ok(all(v.severity == "soft" for v in G.check_quantities(d, CORPUS)),
 print()
 print("[L004] **원장이 있으면 대조하고, 없으면 금지한다** -- 둘을 섞지 않는다")
 d = doc({"3. 핵심 법리": "대법원 2020다12345 판결은 이를 확인하였습니다.\n"})
-vs = G.check_case_citation(d)
+vs, _ = G.check_case_citation(d)
 ok(any(v.rule == "L004" and v.severity == "hard" for v in vs),
    "판례 원장이 비어 있으면 사건번호 -> hard (대조할 수 없으니까)")
 ok(any("원장이 비어" in v.detail for v in vs),
    f"왜 막았는지 적는다 -- 지어냈다는 뜻이 아니다 (얻은 값 {[v.detail[:30] for v in vs]})")
 d = doc({"3. 핵심 법리": "구체적 범위는 조문 원문에 명시되지 않음, 학설/판례 확인 필요합니다.\n"})
-ok(not G.check_case_citation(d), "'판례 확인 필요' 로 남긴 것은 막지 않는다")
+ok(not G.check_case_citation(d)[0], "'판례 확인 필요' 로 남긴 것은 막지 않는다")
 
 # RED: 원장을 채웠는데도 실재하는 판례를 계속 막으면, 원장을 채운 보람이 없다.
 _판례원장 = Path(tempfile.mkdtemp())
@@ -165,12 +165,21 @@ _판례원장 = Path(tempfile.mkdtemp())
 _찬원장 = CP.Corpus()
 _찬원장.cases = CP.load_cases(_판례원장)
 d = doc({"3. 핵심 법리": "대법원 2018다287522 판결.\n"})
-ok(not [v for v in G.check_case_citation(d, _찬원장) if "2018다287522" in v.detail],
-   f"원장에 있는 사건번호는 통과한다 (얻은 값 {[v.detail for v in G.check_case_citation(d, _찬원장)]})")
+ok(not [v for v in G.check_case_citation(d, _찬원장)[0] if "2018다287522" in v.detail],
+   f"원장에 있는 사건번호는 통과한다 (얻은 값 {G.check_case_citation(d, _찬원장)[0]})")
 d = doc({"3. 핵심 법리": "2099다99999 참조.\n"})
-_vs = G.check_case_citation(d, _찬원장)
-ok(any("원장에 없는" in v.detail for v in _vs),
-   f"원장에 없는 사건번호는 기각한다 -- 지어낸 것으로 본다 (얻은 값 {[v.detail for v in _vs]})")
+
+# **덜 받은 원장에서 없는 것은 '지어냈다' 가 아니라 '아직 안 받았다' 다.**
+# 판례는 한두 번에 다 못 받아 원장이 일부만 찬 상태가 오래 간다. 그때 기각하면
+# 실재하는 판례를 지어냈다고 버린다 -- 과잉 기각하는 심판은 맞는 답도 버린다.
+_vs, _미검증 = G.check_case_citation(d, _찬원장)
+ok(not _vs and _미검증 == 1,
+   f"훑기를 안 끝냈으면 미검증으로 센다 (얻은 값 위반 {len(_vs)} · 미검증 {_미검증})")
+
+_찬원장.case_scope = {"전부": True}
+_vs, _미검증 = G.check_case_citation(d, _찬원장)
+ok(any("원장에 없는" in v.detail for v in _vs) and _미검증 == 0,
+   f"다 받았다고 적혀 있을 때만 기각한다 (얻은 값 {[v.detail for v in _vs]})")
 
 print()
 print("[L006] 한 문서가 같은 조문에 다른 법정형을 달면 기각한다 -- 원장 없이도 돈다")
@@ -255,7 +264,7 @@ if real.is_dir():
     for f in files:
         rd = G.parse(f)
         parsed += 1
-        case_hits += len(G.check_case_citation(rd))
+        case_hits += len(G.check_case_citation(rd)[0])
         struct_hits += len(G.check_structure(rd))
     # **수를 못 박지 않는다.** 전에는 "문서 17개" 라 적었는데, 민사소송법 네 편이
     # 들어오자 그 자리에서 깨졌다 -- 원고가 늘어난 것은 좋은 일인데 자가 그것을

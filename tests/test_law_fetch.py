@@ -215,6 +215,133 @@ ok(_결과 and _결과[0].get("실패"),
    f"조용히 건너뛰지 않고 왜 안 담았는지 적는다 (얻은 값 {_결과})")
 
 print()
+print("[분당 한도] **제한당하면 원장이 못 차고, 원장이 안 차면 심판이 아무것도 못 본다**")
+# 판례는 검색 1회 + 본문 N회를 몰아 부른다(`--건수 20` 이면 21회). 0.5초 간격은
+# 순간 간격만 묶을 뿐이라 분당 120회가 나간다. 그래서 세 가지를 못 박는다.
+
+# 1) 제한에 걸리면 **되풀이하지 않는다** -- 되풀이는 더 세게 두드리는 것이다.
+_불린횟수 = [0]
+
+
+def _제한(*a, **k):
+    _불린횟수[0] += 1
+    raise urllib.error.HTTPError(url, 429, "Too Many Requests", {}, None)
+
+
+urllib.request.urlopen = _제한
+try:
+    F._get(url, OC)
+    ok(False, "제한인데 예외가 안 났다")
+except F.Throttled as e:
+    ok(_불린횟수[0] == 1,
+       f"429 는 한 번만 부르고 멈춘다 (얻은 값 {_불린횟수[0]}회)")
+    ok(OC not in str(e), "제한 메시지에도 인증키가 없다")
+except Exception as e:                                                # noqa: BLE001
+    ok(False, f"Throttled 가 아니라 {type(e).__name__} 이 났다: {e}")
+
+# 2) 본문이 제한이라고 말해도 (HTTP 200 이어도) 멈춘다.
+class _응답:
+    def __init__(self, s): self._s = s
+    def read(self): return self._s.encode()
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+
+
+urllib.request.urlopen = lambda *a, **k: _응답(
+    "짧은 시간 내 과도한 호출이 발생하여 이용이 제한되었습니다")
+try:
+    F._get(url, OC)
+    ok(False, "본문이 제한이라 말했는데 그냥 돌려줬다")
+except F.Throttled:
+    ok(True, "응답 본문이 제한이라 말하면 200 이어도 멈춘다")
+
+# 3) **이어한다** -- 목록에 사건번호가 실려 오므로 원장에 있는 것은 본문을 안 부른다.
+_보관2 = Path(tempfile.mkdtemp())
+(_보관2 / "2018다287522.txt").write_text(
+    "# 2018다287522 · 대법원 · 20200521 · 건물인도\n# 받은 것\n\n[판시사항]\n...\n",
+    encoding="utf-8")
+_부름 = []
+
+
+def _센다(u, oc=""):
+    _부름.append("본문" if "lawService" in u else "검색")
+    return _본문 if "lawService" in u else _목록
+
+
+_받음2 = F.pull_prec("공유물", OC, _보관2, fetcher=_센다)
+ok(_부름.count("본문") == 1,
+   f"원장에 있는 것은 본문을 안 부른다 (얻은 값 본문 {_부름.count('본문')}회 · 목록 2건)")
+ok(any(r.get("이미") for r in _받음2), "이미 있던 것이라고 적는다")
+
+# 4) 목록과 본문이 다른 사건을 가리키면 담지 않는다 -- 조용한 오답이 된다.
+_엉뚱 = _본문.replace("<판례일련번호>123456</판례일련번호>", "<판례일련번호>999999</판례일련번호>")
+_보관3 = Path(tempfile.mkdtemp())
+_받음3 = F.pull_prec("공유물", OC, _보관3,
+                    fetcher=lambda u, oc="": (_엉뚱 if "lawService" in u else _목록))
+ok(any("본문은" in (r.get("실패") or "") for r in _받음3),
+   f"목록·본문의 사건번호가 어긋나면 원장에 안 넣고 말한다 "
+   f"(얻은 값 {[r.get('실패') for r in _받음3]})")
+ok(not (_보관3 / "2020다1111.txt").exists(),
+   "어긋난 건은 파일로 남지 않는다")
+
+print()
+print("[전부 훑기] **범위를 적어야 L004 가 기각으로 올라간다**")
+
+
+def _쪽(n, 총=5):
+    시작 = (n - 1) * 2 + 1
+    if 시작 > 총:
+        return f"<r><totalCnt>{총}</totalCnt></r>"
+    항 = "".join(
+        f"<prec><판례일련번호>{i}</판례일련번호><사건번호>2020다{i}</사건번호>"
+        f"<법원명>대법원</법원명><선고일자>2020010{i}</선고일자>"
+        f"<사건명>사건{i}</사건명></prec>"
+        for i in range(시작, min(시작 + 2, 총 + 1)))
+    return f"<r><totalCnt>{총}</totalCnt>{항}</r>"
+
+
+def _훑기가짜(u, oc=""):
+    if "lawService" in u:
+        i = u.split("ID=")[1].split("&")[0]
+        return (f"<r><판례일련번호>{i}</판례일련번호><사건번호>2020다{i}</사건번호>"
+                f"<법원명>대법원</법원명><선고일자>2020010{i}</선고일자>"
+                f"<사건명>사건{i}</사건명><판시사항>...</판시사항></r>")
+    return _쪽(int(u.split("page=")[1].split("&")[0]))
+
+
+ok(F.prec_total("<r><totalCnt>91234</totalCnt></r>") == 91234,
+   "총 건수를 읽는다 -- 며칠짜리인지 몇 분짜리인지가 이 수로 갈린다")
+
+_훑 = Path(tempfile.mkdtemp())
+_쪽들 = list(F.sweep_prec("전체", OC, _훑, fetcher=_훑기가짜, display="2"))
+ok(len(_쪽들) == 3 and len(CP.load_cases(_훑)) == 5,
+   f"쪽을 넘겨 가며 끝까지 훑는다 (얻은 값 쪽 {len(_쪽들)} · 원장 {len(CP.load_cases(_훑))}건)")
+ok(CP.load_case_scope(_훑).get("전부") is True,
+   f"끝까지 갔으면 범위를 적는다 (얻은 값 {CP.load_case_scope(_훑)})")
+
+# **중간에 끊긴 훑기는 '전부' 라고 적지 않는다.** 적으면 L004 가 아직 안 받은
+# 판례를 지어냈다고 기각한다 -- 과잉 기각하는 심판은 맞는 답도 버린다.
+_반 = Path(tempfile.mkdtemp())
+list(F.sweep_prec("전체", OC, _반, fetcher=_훑기가짜, display="2", pages=1))
+ok(not CP.load_case_scope(_반).get("전부"),
+   f"덜 훑었으면 범위를 안 적는다 (얻은 값 {CP.load_case_scope(_반)})")
+
+# 이어한다: 다시 부르면 이미 받은 쪽은 본문을 안 부른다.
+_본문호출 = [0]
+
+
+def _센다2(u, oc=""):
+    if "lawService" in u:
+        _본문호출[0] += 1
+    return _훑기가짜(u, oc)
+
+
+list(F.sweep_prec("전체", OC, _반, fetcher=_센다2, display="2"))
+ok(_본문호출[0] == 3,
+   f"이미 받은 2건은 본문을 다시 안 부른다 (얻은 값 {_본문호출[0]}회 · 남은 3건)")
+ok(CP.load_case_scope(_반).get("전부") is True, "이어서 끝까지 가면 그때 범위를 적는다")
+
+print()
 if fails:
     print(f"받기: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)
