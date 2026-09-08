@@ -45,10 +45,7 @@ STORY.md 2절. 플롯도 연출도 재미없었고 뿌리는 하나였다: 생�
 세워진 원고(검사 · 옛 DRIFT)는 카드 없이 예전대로 간다 -- 없는 것을 지어내서 시키지
 않는다.
 
-**비트 하나가 덩어리 하나다.** 회차는 비트 셋이 다 쓰인 뒤에 끝난다 -- 분량으로 앞질러
-넘기지 않는다(2026-09-09 실측: 그렇게 했더니 비트 3 이 아홉 회차 내내 잘렸다).
-
-    EPISODE_SPAN   한 회차의 분량. 기본값은 DRIFT_CHUNK x 비트 수다.
+    EPISODE_SPAN=5000   한 회차의 분량. 잰 값이 아니라 웹소설 회차의 통상 길이다.
 """
 from __future__ import annotations
 
@@ -59,25 +56,13 @@ from novel import hooks as HK
 from novel import serial as SR
 from novel import space as SP
 
+EP = int(os.environ.get("EPISODE_SPAN", "5000"))
 BEATS = 3
-# 덩어리 길이. flow.CHUNK 와 같은 환경변수를 읽는다 -- 여기서 flow 를 임포트하면 돌게 된다.
-CHUNK = int(os.environ.get("DRIFT_CHUNK", "3200"))
-
-# 한 회차의 분량. **비트 하나가 덩어리 하나다.**
-#
-# 실측 2026-09-09: 5,000자로 두었더니 회차가 덩어리 1.56개였고, 비트는 셋이었다. 비트를
-# 글자 수로 나눠 배정하니 **비트 3이 아홉 회차 내내 한 번도 안 쓰였다** -- 답이 갈리고
-# 갈고리가 오는 자리가 매번 잘렸다. 그래서 4만 자가 전부 도입부의 되풀이였다(사용자:
-# "덩어리 하나에 끝낼 이야기를 10개 덩어리 동안 하고 있어").
-#
-# 이제 비트와 덩어리를 1:1 로 맞춘다. 회차 = 비트 수 x 덩어리이고, 회차는 **마지막 비트를
-# 쓴 뒤에** 끝난다(아래 ensure). 분량은 표시일 뿐 배정 기준이 아니다.
-EP = int(os.environ.get("EPISODE_SPAN", str(CHUNK * BEATS)))
 
 
 def ep_no(book: dict) -> int:
-    """지금 회차 번호(0부터). 카드가 있으면 **카드의 번호**다 -- 회차는 마지막 비트를 쓴
-    뒤에 넘어가지 분량으로 넘어가지 않는다(아래 ensure)."""
+    """지금 회차 번호(0부터). 카드가 있으면 카드의 번호다 -- 회차는 분량으로도 넘어가고,
+    마지막 비트를 다 썼을 때도 넘어간다(아래 ensure). 분량만 보면 같은 회차를 두 번 쓴다."""
     if book.get("_ep") is not None:
         return int(book["_ep"])
     c = book.get("card")
@@ -332,12 +317,6 @@ def card_prompt(book: dict) -> str:
   사건을 더 잔혹하게 하지 말고 **판을 넓혀라** -- 방에서 연회장으로, 한 사람의 평판에서
   가문의 자리로, 가문에서 도시로 (RYU.md ④).
 {"- **첫 회차다.** 주인공이 무엇을 원하는지 한 문장으로 드러나야 한다 -- 살아남는 연재는 전부 1화에서 목적을 낸다(HIKI.md)." if ep_no(book) == 0 else ""}
-- **비트 하나가 덩어리 하나(약 {CHUNK:,}자)다.** 한 덩어리 안에서 시작하고 끝나는 크기로
-  적어라 -- 대화 한 판 · 싸움 하나 · 이동 하나. 크면 늘어지고, 그러면 다음 비트가 밀린다.
-- **비트마다 자리나 때가 바뀐다.** 셋 다 같은 자리에서 벌어지면 그것은 한 장면이지 회차가
-  아니다. 앞 회차의 마지막 자리에 그대로 머무는 비트도 쓰지 마라.
-- **마지막 비트에서 질문의 답이 난다.** 미루지 마라 -- 이 회차 안에서 얻거나 잃거나 반만
-  얻는다. 다음 회차로 넘기는 것은 답이 아니라 갈고리다.
 - 비트는 셋. 세기는 뒤로 갈수록 오른다. 꼴은 "장면"(한 자리 · 한 때 · 대사가 민다) 또는
   "요약"(시간을 접는다 -- 며칠이 한 문단). 요약은 하나 이하.
 - 답은 성장 단계를 따른다. 지는 단계면 "잃는다" 나 "반만". 이기는 단계에서도 값을 치른다.
@@ -349,24 +328,23 @@ def card_prompt(book: dict) -> str:
 def ensure(book: dict, llm) -> "dict | None":
     """회차가 바뀌었으면 카드를 새로 낸다. **회차당 호출 한 번.** 실패하면 카드 없이 간다."""
     n = _chars(book)
+    by_len = n // max(1, EP)
     card = book.get("card")
     nchunks = len(book.get("chunks") or [])
     if card:
-        # **회차는 마지막 비트를 쓴 뒤에 끝난다.** 분량으로 앞질러 넘기지 않는다 --
-        # 그렇게 했더니 비트 3(답이 갈리는 자리)이 아홉 회차 내내 잘렸다(위 EP 주석).
-        at_chunk = int(card.get("_at_chunk", 0))
-        beats = max(1, len(card.get("비트") or []))
+        # **회차가 끝나는 조건은 둘이다.** 분량이 찼거나, 마지막 비트를 이미 썼거나.
+        # 실측 2026-09-08 밤: 분량만 봤더니 갈고리(자격 박탈 선언)를 쓴 뒤에도 같은 카드가
+        # 남아 다음 덩어리가 **같은 장면을 다시 썼다** -- 사용자: "이거 똑같은 씬 이전에
+        # 나왔는데 또 반복된다."
         last_given = card.get("_last_given")
         done = last_given is not None and nchunks > int(last_given)
-        # 폭주 막이: 비트 수의 두 배를 쓰고도 마지막 비트에 못 닿으면 그냥 넘긴다.
-        stuck = nchunks - at_chunk >= beats * 2
-        if not done and not stuck:
+        if by_len <= int(card.get("ep", 0)) and not done:
             return card
-        ep = int(card.get("ep", 0)) + 1
-        D._log(f"[회차] {'막혔다 -- ' if stuck and not done else ''}"
-               f"덩어리 {nchunks - at_chunk}개로 회차 {ep} 을 닫는다")
+        ep = max(by_len, int(card.get("ep", 0)) + 1)
+        if done and by_len <= int(card.get("ep", 0)):
+            D._log(f"[회차] 마지막 비트를 썼다 -- 분량이 안 찼어도 다음 회차로 넘어간다")
     else:
-        ep = 0
+        ep = by_len
     book["_ep"] = ep
     try:
         prompt = card_prompt(book)
@@ -404,7 +382,7 @@ def ensure(book: dict, llm) -> "dict | None":
         reap = str(got.get("거둠") or "").strip()
         joy = str(got.get("쾌감") or "").strip()
         setting = _parse_setting(got.get("설정"))
-        book["card"] = {"ep": ep, "at": n, "_at_chunk": nchunks, "질문": q,
+        book["card"] = {"ep": ep, "at": n, "질문": q,
                         "방해": str(got.get("방해") or "").strip(),
                         "비트": beats,
                         "답": str(got.get("답") or "").strip(),
@@ -459,11 +437,10 @@ def ensure(book: dict, llm) -> "dict | None":
 # ---------------------------------------------------------------- 프롬프트
 
 def beat_at(book: dict) -> int:
-    """지금 덩어리가 쓸 비트(1부터). **덩어리 수로 센다 -- 비트 하나가 덩어리 하나다.**
-
-    글자 수로 나누던 것이 비트를 건너뛰었다(위 EP 주석). 덩어리를 세면 건너뛸 수가 없다."""
+    """지금 덩어리가 시작할 비트(1부터). 회차 안에서 얼마나 왔느냐로 정한다."""
     card = book.get("card") or {}
-    k = len(book.get("chunks") or []) - int(card.get("_at_chunk", 0)) + 1
+    done = _chars(book) - int(card.get("at", 0))
+    k = int(done * BEATS / max(1, EP)) + 1
     return max(1, min(len(card.get("비트") or []) or BEATS, k))
 
 
@@ -481,13 +458,9 @@ def brief(book: dict) -> str:
         mark = "→" if i == k else " "
         tail = f"   ← 여기서 답이 갈린다: {c['답']}" if i == len(c["비트"]) and c.get("답") else ""
         rows.append(f"      {mark} {i}. ({b['꼴']}) {b['무엇']}{tail}")
-    rows.append(f"  · **이 덩어리는 {k}번 비트다. 이 덩어리 안에서 그것을 끝낸다.**"
-                " 시작하고, 벌어지고, 끝난다 -- 다음 덩어리는 다음 비트로 간다."
-                " 분량이 모자라면 늘이지 말고 **다음 일**을 벌여라.")
     if k > 1:
-        rows.append(f"  · 앞 비트({k - 1}번)는 이미 썼다. **그 자리를 떠나라** -- 자리나 때가"
-                    " 바뀐다. 앞 덩어리에서 벌어진 일(선언 · 박탈 · 사살 · 부상)은"
-                    " **다시 벌어지지 않고, 다시 설명되지도 않는다.**")
+        rows.append(f"  · 앞 비트는 이미 썼다. **{k}번 비트부터** 쓴다 -- 되풀이하지 마라."
+                    " 앞 덩어리에서 벌어진 일(선언 · 박탈 · 사살)은 **다시 벌어지지 않는다.**")
     if k >= len(c["비트"]):
         # 마지막 비트를 이 덩어리에 맡겼다. 다음 덩어리는 다음 회차다(ensure 가 본다).
         c["_last_given"] = len(book.get("chunks") or [])

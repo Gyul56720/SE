@@ -90,10 +90,9 @@ ok(_d.calls == 1 and BT.has(_b), f"첫 부름에 카드가 선다 ({_d.calls}회
 ok(_b["card"]["질문"] == CARD["질문"] and len(_b["card"]["비트"]) == 3, "질문과 비트 셋이 실린다")
 BT.ensure(_b, _d)
 ok(_d.calls == 1, f"같은 회차에서 다시 부르지 않는다 ({_d.calls}회)")
-for _ in range(BT.BEATS):
-    BT.brief(_b); _b["chunks"].append("나" * 3000)
+_b["chunks"].append("나" * BT.EP)
 BT.ensure(_b, _d)
-ok(_d.calls == 2, f"비트를 다 쓰면 한 번 더 ({_d.calls}회)")
+ok(_d.calls == 2, f"회차가 바뀌면 한 번 더 ({_d.calls}회)")
 ok("로일의 왼팔이" in _d.prompts[-1], "앞 회차의 갈고리가 다음 각본의 입력이다  ← 인과가 구조로 들어간다")
 ok("공녀" in _d.prompts[-1] and "닿을 자리" in _d.prompts[-1], "세계와 도착지가 각본의 입력이다")
 
@@ -113,14 +112,12 @@ print()
 print("[비트] **회차 안에서 얼마나 왔느냐로 시작할 비트가 정해진다**")
 _b5 = book(100); BT.ensure(_b5, Director())
 ok(BT.beat_at(_b5) == 1, f"회차 첫머리는 비트 1 ({BT.beat_at(_b5)})")
-_b5["chunks"].append("다" * 3000)
-ok(BT.beat_at(_b5) == 2, f"덩어리 하나를 쓰면 비트 2 ({BT.beat_at(_b5)})")
-_b5["chunks"].append("다" * 3000)
-ok(BT.beat_at(_b5) == 3, f"둘을 쓰면 비트 3 ({BT.beat_at(_b5)})  ← 비트 하나가 덩어리 하나")
+_b5["chunks"].append("다" * (BT.EP * 2 // 5))
+ok(BT.beat_at(_b5) == 2, f"5분의 2 왔으면 비트 2 ({BT.beat_at(_b5)})")
+_b5["chunks"].append("다" * (BT.EP * 2 // 5))
+ok(BT.beat_at(_b5) == 3, f"5분의 4 왔으면 비트 3 ({BT.beat_at(_b5)})")
 _p = BT.brief(_b5)
-ok("이 덩어리는 3번 비트다" in _p and "→ 3." in _p, "몇 번 비트인지 표시한다")
-ok("이 덩어리 안에서 그것을 끝낸다" in _p, "이 덩어리에서 비트를 끝내라고 한다  ← 늘어지지 않게")
-ok("그 자리를 떠나라" in _p, "앞 비트의 자리를 떠나라고 한다  ← 한 장면의 되풀이를 막는다")
+ok("3번 비트부터" in _p and "→ 3." in _p, "몇 번 비트부터인지 표시한다")
 ok("(요약)" in _p and "(장면)" in _p, "장면 · 요약 꼴이 실린다")
 ok("시간을 접는다" in _p, "요약 비트는 시간을 접으라고 한다  ← TTCW 의 시간 조작")
 ok(CARD["갈고리"] in _p and "벌어진 문장" in _p and "**피**" in _p,
@@ -168,18 +165,15 @@ for _n in ("마디", "5,000", "%", "번째"):
 
 print()
 print("[전환점] **마디의 마지막 회차에만 온다 -- 다섯 중 하나**")
-# **마디가 회차보다 길어야 뜻이 있다.** 회차는 이제 덩어리 셋(약 9,600자)이라, 5만 자
-# 원고의 마디(8,333자)보다 길다 -- 그런 원고에서는 회차마다 마디가 끝난다.
-_bg = lambda n: book(n, target=200_000)
-_span = SR.span(_bg(0))                      # 200,000 / 6
-ok(BT.turning_point(_bg(100)) == "", "마디 첫머리에는 없다")
-ok(BT.turning_point(_bg(_span - 100)) == "기회", "첫 마디 끝은 기회")
-ok(BT.turning_point(_bg(_span * 2 - 100)) == "계획 변경", "둘째 마디 끝은 계획 변경")
-ok(BT.turning_point(_bg(_span * 4 - 100)) == "돌아올 수 없는 지점", "넷째 마디 끝은 돌아올 수 없는 지점")
-ok(BT.turning_point(_bg(_span * 5 - 100)) == "대좌절", "마지막 빚의 끝은 대좌절")
+_span = SR.span(book(0))                      # 50,000 / 6
+ok(BT.turning_point(book(100)) == "", "마디 첫머리에는 없다")
+ok(BT.turning_point(book(_span - 100)) == "기회", "첫 마디 끝은 기회")
+ok(BT.turning_point(book(_span * 2 - 100)) == "계획 변경", "둘째 마디 끝은 계획 변경")
+ok(BT.turning_point(book(_span * 4 - 100)) == "돌아올 수 없는 지점", "넷째 마디 끝은 돌아올 수 없는 지점")
+ok(BT.turning_point(book(_span * 5 - 100)) == "대좌절", "마지막 빚의 끝은 대좌절")
 ok(BT.turning_point(book(49_000)) == "절정", "닫는 덩어리는 절정")
 ok(BT.turning_point(book(100, arc=False)) == "", "도착지가 없으면 전환점도 없다")
-_b6 = _bg(_span - 100); BT.ensure(_b6, Director())
+_b6 = book(_span - 100); BT.ensure(_b6, Director())
 ok(_b6["card"]["전환점"] == "기회" and "**기회**" in BT.brief(_b6), "카드에 실리고 프롬프트에 실린다")
 
 print()
@@ -210,45 +204,6 @@ ok(_d8.calls == 0 and not BT.has(_b8), "도착지가 없으면 각본도 없다 
 _b9 = book(100); _b9["_path"] = None
 BT.ensure(_b9, Director())
 ok("회차 1" in BT.show(_b9) and CARD["질문"] in BT.show(_b9), "show 가 카드를 보여 준다")
-
-
-print()
-print("[진행] **회차마다 마지막 비트가 반드시 쓰인다**")
-print("      ← 실측 2026-09-09: 회차 5,000자 · 덩어리 3,200자 · 비트 셋이었고, 비트를 글자 수로")
-print("        나눠 배정했다. 그래서 **비트 3 이 아홉 회차 내내 한 번도 안 쓰였다** -- 답이")
-print("        갈리고 갈고리가 오는 자리가 매번 잘렸다. 4만 자가 통째로 도입부의 되풀이였다.")
-
-ok(BT.EP == BT.CHUNK * BT.BEATS, f"회차 = 덩어리 x 비트 수 ({BT.EP:,} = {BT.CHUNK:,} x {BT.BEATS})")
-
-_bp, _dp = book(100), Director()
-_seen, _eps = {}, []
-for _i in range(12):                       # 열두 덩어리 = 네 회차
-    BT.ensure(_bp, _dp)
-    _e, _k = _bp["card"]["ep"], BT.beat_at(_bp)
-    _seen.setdefault(_e, []).append(_k)
-    _eps.append((_e, _k))
-    BT.brief(_bp)                          # 집필 프롬프트를 받았다 = 그 비트를 맡겼다
-    _bp["chunks"].append("가" * BT.CHUNK)
-ok(all(sorted(v) == [1, 2, 3] for v in _seen.values()),
-   f"회차마다 비트 1 · 2 · 3 이 한 번씩 {_seen}")
-ok(len(_seen) == 4 and _dp.calls == 4, f"열두 덩어리에 회차 넷 · 디렉터 4회 ({len(_seen)}회차, {_dp.calls}회)")
-ok(_eps[:4] == [(0, 1), (0, 2), (0, 3), (1, 1)], f"덩어리마다 비트가 하나씩 나아간다 ({_eps[:4]})")
-
-# **분량으로 앞질러 넘기지 않는다.** 덩어리가 길어도 비트가 남았으면 같은 회차다.
-_bl, _dl = book(100), Director()
-BT.ensure(_bl, _dl)
-BT.brief(_bl); _bl["chunks"].append("가" * (BT.EP * 2))   # 회차 둘 몫을 한 덩어리에 썼다
-BT.ensure(_bl, _dl)
-ok(_dl.calls == 1 and BT.beat_at(_bl) == 2,
-   f"분량이 넘쳐도 비트 2 가 남아 있으면 같은 회차다 (디렉터 {_dl.calls}회, 비트 {BT.beat_at(_bl)})")
-
-# **폭주 막이.** 마지막 비트에 못 닿은 채 비트 수의 두 배를 쓰면 그냥 넘긴다.
-_bx, _dx = book(100), Director()
-BT.ensure(_bx, _dx)
-for _ in range(BT.BEATS * 2):
-    _bx["chunks"].append("가" * 100)       # brief 를 안 부른다 = 마지막 비트를 안 맡겼다
-BT.ensure(_bx, _dx)
-ok(_dx.calls == 2, f"막히면 비트 수의 두 배에서 넘어간다 ({_dx.calls}회)  ← 영영 안 끝나지 않는다")
 
 print()
 if fails:
