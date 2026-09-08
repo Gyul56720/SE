@@ -94,8 +94,21 @@ try:
     os.environ["GEMINI_API_KEY"] = "a"
     os.environ["GEMINI_API_KEY_FALLBACK"] = "b"
     os.environ["GEMINI_API_KEY_FALLBACK3"] = "a"          # 같은 키는 한 번만
-    ok([v for _, v in OC.keys()] == ["a", "b"],
+    os.environ["GEMINI_API_KEY_FALLBACK2"] = "c"
+    ok([v for _, v in OC.keys()] == ["a", "b", "c"],
        f"예비 키까지 모으고 겹치는 것은 한 번만 (얻은 값 {[n for n, _ in OC.keys()]})")
+    # **목록만 같으면 되는 줄 알았는데 읽는 자리가 달랐다.** llm_pool 은 키가 환경변수에
+    # 없으면 저장소 루트 .env 를 읽는다 -- systemd 는 EnvironmentFile 로 .env 를 받지만
+    # SSH 셸은 그렇지 않다. 사본은 그 일을 안 해서, 예비 키가 .env 에 멀쩡히 있는데도
+    # 첫 키가 쿼터에 막히자 거기서 멈췄다.
+    sys.path.insert(0, str(ROOT / "orchestrator"))
+    import llm_pool                                                   # noqa: E402
+    ok(OC.keys() == llm_pool.api_keys(),
+       "ocr 와 llm_pool 이 **같은 한 벌**을 쓴다 -- 사본이면 .env 읽기가 갈린다")
+    ok("_load_dotenv_once()" in
+       (ROOT / "orchestrator" / "llm_pool.py").read_text(encoding="utf-8")
+       .split("def api_keys()")[1].split("def build_pool")[0],
+       "그 한 벌이 .env 를 읽는다")
 finally:
     os.environ.clear()
     os.environ.update(_전)
