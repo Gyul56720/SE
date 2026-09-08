@@ -254,7 +254,7 @@ def 문제탓(why: str) -> list:
     return sorted(set(m.group(0) for m in _문제탓.finditer(why or "")))
 
 
-def 관문시야(qs: list) -> dict:
+def 관문시야(qs: list, corpus=None) -> dict:
     """**관문이 애초에 볼 수 있는 문항이 몇 개인가.**
 
     어긋남 0건은 두 가지 뜻이다 -- 다 맞았거나, **볼 것이 없었거나.** 둘을 섞으면
@@ -264,10 +264,25 @@ def 관문시야(qs: list) -> dict:
     실측(2026 제15회 민사법 선택형 70문): 70문 전부에 `판례에 의함` 이 붙어 있고,
     50문은 시험지 안에 조문 실마리가 하나도 없다. 조문 관문은 최대 20문에서만 일할
     수 있다. 나머지 50문의 `어긋남 0` 은 구조적으로 늘 0 이고, 재고 있지 않다.
+
+    **두 수를 갈라 적는다.** '조문 실마리' 는 시험지의 성질이라 원장을 채워도 안 움직인다
+    -- 상법 1,184조를 받고도 20/70 그대로였다(실측). 움직이는 것은 '원장에 닿음' 이다:
+    실마리가 있고 **그 조문이 원장에 실제로 있는** 문항. 원장을 채운 보람은 이 수에서만
+    보이므로, 앞의 수만 보고 "안 늘었다" 고 읽으면 잘못이다.
     """
     실마리 = [q.번호 for q in qs if _조문실마리.search(q.글())]
     판례 = [q.번호 for q in qs if _판례로.search(q.글())]
-    return {"조문실마리": 실마리, "판례로": 판례, "전체": len(qs)}
+    닿음 = None
+    if corpus is not None:
+        닿음 = []
+        for q in qs:
+            글 = q.글()
+            if not _조문실마리.search(글):
+                continue
+            st = CP.statute_of(글, corpus)
+            if st and any(corpus.has(st, c.article) for c in CP.find_citations(글)):
+                닿음.append(q.번호)
+    return {"조문실마리": 실마리, "판례로": 판례, "전체": len(qs), "원장에닿음": 닿음}
 
 
 def 읽기점검(qs: list) -> list:
@@ -343,15 +358,19 @@ def main(argv=None) -> int:
     if not a.target:
         ap.error("시험지 txt 를 주거나 --장부 를 주십시오")
 
+    corpus = CP.load(a.corpus)
     qs = parse(Path(a.target).read_text(encoding="utf-8"))
     print(f"문항 {len(qs)}개를 읽었다"
           + (f" (번호 {qs[0].번호}~{qs[-1].번호})" if qs else ""))
     for 말 in 읽기점검(qs):
         print("  " + 말)
-    시야 = 관문시야(qs)
+    시야 = 관문시야(qs, corpus)
     if 시야["전체"]:
+        닿 = 시야.get("원장에닿음")
         print(f"  관문이 볼 수 있는 문항 {len(시야['조문실마리'])}/{시야['전체']}"
-              f"  (시험지에 조문 실마리가 있는 문항)"
+              + (f" · 그중 **원장에 닿는 것 {len(닿)}개** (원장을 채우면 이 수가 움직인다)"
+                 if 닿 is not None else "")
+              + f"  (시험지에 조문 실마리가 있는 문항)"
               f"\n  `판례에 의함` 이 붙은 문항 {len(시야['판례로'])}개"
               f" -- 여기서 나온 **어긋남 0 은 맞았다는 뜻이 아니다.**")
     if a.show:
@@ -362,7 +381,6 @@ def main(argv=None) -> int:
         print("읽은 문항이 없다. --보기 로 원문 꼴을 먼저 확인하라.", file=sys.stderr)
         return 2
 
-    corpus = CP.load(a.corpus)
     rows = []
     LEDGER.parent.mkdir(parents=True, exist_ok=True)
     with LEDGER.open("w", encoding="utf-8") as f:

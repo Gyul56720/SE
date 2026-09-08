@@ -375,6 +375,31 @@ def _parse_articles(raw: str) -> dict:
     return out
 
 
+def statute_of(text: str, corpus) -> str | None:
+    """이 글이 어느 법령을 말하는가. **못 정하면 None -- 짐작하지 않는다.**
+
+    법이론서는 front-matter 에 법령을 선언하지만 시험지·판결문에는 그런 것이 없다.
+    그래서 글 안에서 찾는다: 「민법」처럼 이름이 적혀 있으면 그것이고, `제126조` 처럼
+    번호만 있으면 **원장에서 그 조를 가진 법령이 하나일 때만** 그것으로 본다.
+
+    둘 이상이면 None 이다. 민법 제12조와 형법 제12조는 다른 조문이고, 어느 쪽인지
+    모르는 채 하나를 골라 대조하면 **틀린 조문으로 멀쩡한 글을 기각**한다.
+    """
+    for m in STATUTE_NAME.finditer(text):
+        name = m.group(0)
+        if name not in NOT_A_STATUTE and corpus.covers(name):
+            return normalize_statute(name)
+    cands = None
+    for c in find_citations(text):
+        if c.statute:
+            continue
+        has = set(corpus.statutes_with(c.article))
+        cands = has if cands is None else (cands & has)
+    if cands and len(cands) == 1:
+        return next(iter(cands))
+    return None
+
+
 CASES_DIR = Path(__file__).resolve().parent / "precedents"
 
 _CASE_NORM = re.compile(r"\s+")

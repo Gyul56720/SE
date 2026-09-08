@@ -60,45 +60,11 @@ class _Doc:
         self.path = Path("지문.md")
 
 
-def statute_of(text: str, corpus) -> str | None:
-    """이 지문이 어느 법령을 말하는가. **못 정하면 None -- 짐작하지 않는다.**
-
-    법이론서는 front-matter 에 법령을 선언하지만 시험지에는 그런 것이 없다. 그래서
-    지문 안에서 찾는다: 「민법」처럼 이름이 적혀 있으면 그것이고, `제126조` 처럼
-    번호만 있으면 **원장에서 그 조를 가진 법령이 하나일 때만** 그것으로 본다.
-
-    둘 이상이면 None 이다. 민법 제12조와 형법 제12조는 다른 조문이고, 어느 쪽인지
-    모르는 채 하나를 골라 대조하면 **틀린 조문으로 멀쩡한 지문을 기각**한다.
-    """
-    for m in CP.STATUTE_NAME.finditer(text):
-        name = m.group(0)
-        if name not in CP.NOT_A_STATUTE and corpus.covers(name):
-            return CP.normalize_statute(name)
-    cands = None
-    for c in CP.find_citations(text):
-        if c.statute:
-            continue
-        has = set(corpus.statutes_with(c.article))
-        cands = has if cands is None else (cands & has)
-    if cands and len(cands) == 1:
-        return next(iter(cands))
-    return None
-
-
-# 지문 하나를 조문과 대 보는 관문만 고른다. 문서 단위 관문(L005 단정 · L007 구조 ·
-# L008 창작 라벨)은 여기서 부르지 않는다 -- 시험지는 법이론서가 아니라서 그 셋은
-# 언제나 걸리고, 그 걸림은 정답과 아무 상관이 없다.
-#
-# 실측: 시험지에 gate.py 를 통째로 겨눴더니 hard 13건이 났는데 **전부 L007 하나**였고
-# 실질 위반은 0건이었다. 그것을 보고 "정답을 확신할 수 없다" 고 읽으면 안 된다.
-_지문관문 = ("L001 인용실재", "L003 수량", "W001~W005 문언")
-
-
 def judge_one(text: str, corpus) -> dict:
     """지문 하나를 조문과 대조. 어느 법령인지 못 정하면 대조 0 이다."""
     from law import gate as GT
 
-    doc = _Doc(text, statute_of(text, corpus))
+    doc = _Doc(text, CP.statute_of(text, corpus))
     tg = WD._targets(text, doc, corpus)
     if not tg:
         return {"대조": 0, "어긋남": []}
