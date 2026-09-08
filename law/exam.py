@@ -215,6 +215,47 @@ def report(rows: list, key: dict) -> None:
               "\n내려가면, 그 지시문은 관문만 통과시키는 쪽으로 답안을 균질화한 것이다.")
 
 
+def 읽기점검(qs: list) -> list:
+    """**옮겨 적기가 조용히 반쯤 성공했는지**를 되짚는다. 부른 곳이 없으면 아무 말 없다.
+
+    OCR 이든 사람이든, 읽기는 통째로 실패하지 않고 **반쯤** 실패한다. 그 반쪽은
+    조용해서, 그대로 풀면 그 뒤의 정답률도 위반 수도 전부 거짓이 된다. 그래서 시험지
+    자체에서 알 수 있는 것만으로 되짚는다 -- 원본도 다른 읽기도 필요 없다.
+
+    실측: 선택지 겹침이 손옮김의 문 8 ④ 를 잡았다(③ 과 글자까지 똑같이 적혀 있었다).
+    실제 시험지에 똑같은 선택지 둘이 있을 리 없으니, 그건 읽기가 깨진 자리다.
+    이 점검이 있었다면 OCR 과 견주기 전에 혼자서도 잡았을 자리다.
+    """
+    말 = []
+    번호 = [q.번호 for q in qs]
+    빈 = [q.번호 for q in qs if not q.선택지]
+    if 빈:
+        말.append(f"**선택지를 못 읽은 문항 {len(빈)}개**: {빈[:12]}"
+                  f"\n  읽기가 깨진 자리다. 이대로 풀면 그 점수는 거짓이다.")
+    겹 = sorted({n for n in 번호 if 번호.count(n) > 1})
+    if 겹:
+        말.append(f"**번호가 두 번 나온 문항 {len(겹)}개**: {겹[:12]}"
+                  f"\n  한 문항이 쪽 경계에서 두 조각으로 갈린 자리일 수 있다.")
+    if 번호:
+        빠짐 = [n for n in range(min(번호), max(번호) + 1) if n not in 번호]
+        if 빠짐:
+            말.append(f"**번호가 빠진 자리 {len(빠짐)}개**: {빠짐[:12]}"
+                      f"\n  그 문항은 아예 안 읽혔다. 없는 문항은 틀린 문항으로도 안 세어진다.")
+    같 = []
+    for q in qs:
+        본 = {}
+        for i, t in enumerate(q.선택지):
+            k = re.sub(r"\s+", "", t)
+            if k and k in 본:
+                같.append((q.번호, 본[k] + 1, i + 1)); break
+            본[k] = i
+    if 같:
+        말.append(f"**선택지가 서로 같은 문항 {len(같)}개**: "
+                  + ", ".join(f"문 {n} {a}=={b}" for n, a, b in 같[:8])
+                  + "\n  실제 시험지에 똑같은 선택지 둘이 있을 리 없다. 한쪽을 잘못 읽었다.")
+    return 말
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="변호사시험으로 잰다 (밖의 자)")
     ap.add_argument("target", nargs="?", default="", help="OCR 한 시험지 txt")
@@ -237,10 +278,8 @@ def main(argv=None) -> int:
     qs = parse(Path(a.target).read_text(encoding="utf-8"))
     print(f"문항 {len(qs)}개를 읽었다"
           + (f" (번호 {qs[0].번호}~{qs[-1].번호})" if qs else ""))
-    빈 = [q.번호 for q in qs if not q.선택지]
-    if 빈:
-        print(f"  **선택지를 못 읽은 문항 {len(빈)}개**: {빈[:12]}"
-              f"\n  OCR 이 깨진 자리다. 이대로 풀면 그 점수는 거짓이다.")
+    for 말 in 읽기점검(qs):
+        print("  " + 말)
     if a.show:
         for q in qs[:2]:
             print("\n" + "-" * 60 + "\n" + q.글())

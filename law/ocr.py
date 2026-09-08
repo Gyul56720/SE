@@ -168,31 +168,74 @@ def done_pages(out: Path) -> set:
     return {int(m) for m in _MARK.findall(out.read_text(encoding="utf-8"))}
 
 
+_같은뜻 = str.maketrans({"O": "○", "o": "○", "X": "×", "x": "×", "ｘ": "×"})
+
+
+def _홈(s: str) -> str:
+    """줄바꿈·띄어쓰기와 ○/O·×/X 만 고른다. **글자가 다른 것만 남긴다.**"""
+    return re.sub(r"\s+", "", s).translate(_같은뜻)
+
+
+def _문항별(p: Path) -> dict:
+    from law import exam as EX
+    d = {}
+    for q in EX.parse(p.read_text(encoding="utf-8")):
+        if q.번호 in d:                     # 쪽 경계에서 두 조각으로 갈린 문항
+            o = d[q.번호]
+            o.물음 = (o.물음 + " " + q.물음).strip()
+            o.보기 += q.보기
+            o.선택지 += q.선택지
+        else:
+            d[q.번호] = q
+    return d
+
+
 def compare(a: Path, b: Path) -> int:
-    """두 읽기가 **갈리는 자리만** 찍는다.
+    """두 읽기가 **갈리는 자리만** 찍는다. 줄 단위가 아니라 **문항의 칸 단위**로.
 
-    처음엔 사람이 옮긴 것을 '기준' 이라 불렀는데 그 틀이 틀렸다. 실측: 확인한 두
-    자리에서 전부 사람 쪽이 틀렸고, 그중 하나는 `청구할 수 있다/없다` -- **한 글자가
-    답을 뒤집는 자리**였다. 어느 쪽도 기준이 아니다.
+    처음엔 사람이 옮긴 것을 '기준' 이라 불렀는데 그 틀이 틀렸다. 실측: 확인한 자리에서
+    양쪽 다 틀린 데가 있었다. 문 2 ④ `청구할 수 있다/없다` 는 사람이 틀렸고(한 글자가
+    답을 뒤집는다), 문 8 ㄱ `각/각각` 은 OCR 이 틀렸다. **어느 쪽도 기준이 아니다.**
 
-    쓸모는 하나다: **갈린 자리를 찾아 사람이 원본을 확대해 보는 것.** 같은 자리는
-    둘 다 그렇게 읽었다는 뜻이라 볼 필요가 적고, 갈린 자리는 반드시 봐야 한다.
+    처음 판은 줄 단위 diff 였는데 **자가 잘못돼 있었다.** 두 읽기는 줄을 다르게 접고
+    ○ 를 O 로 적기도 한다 -- 그건 갈린 게 아닌데 전부 갈린 줄로 세어졌다. 실측:
+    717 줄이 나왔고 그 안에서 진짜 갈린 자리는 보이지 않았다. **과잉 기각하는 심판은
+    맞는 답도 버린다.** 그래서 문항 번호로 짝을 짓고, 물음·보기·선택지 칸끼리
+    맞대고, 띄어쓰기와 ○/O 를 고른 뒤에 남는 것만 갈렸다고 부른다.
+
+    한쪽에만 있는 문항은 갈린 게 아니라 **한쪽이 안 읽은 것**이라 따로 센다. 한 칸이
+    다른 칸의 앞머리이기만 하면 **잘린 것**이라 또 따로 센다. 남는 것이 사람이
+    원본을 확대해 봐야 할 자리다.
     """
-    import difflib
+    A, B = _문항별(a), _문항별(b)
+    둘, A만, B만 = sorted(set(A) & set(B)), sorted(set(A) - set(B)), sorted(set(B) - set(A))
+    같음 = 잘림 = 0
+    갈림 = []
+    for n in 둘:
+        x, y = A[n], B[n]
+        yb = dict(y.보기)
+        칸 = [("물음", x.물음, y.물음)]
+        칸 += [(f"보기 {k}", s, yb.get(k, "")) for k, s in x.보기]
+        칸 += [(f"선택지 {i + 1}", s, y.선택지[i] if i < len(y.선택지) else "")
+               for i, s in enumerate(x.선택지)]
+        for 이름, s, u in 칸:
+            S, U = _홈(s), _홈(u)
+            if S == U:
+                같음 += 1
+            elif S and U and (S.startswith(U) or U.startswith(S)):
+                잘림 += 1
+            else:
+                갈림.append((n, 이름, s, u))
 
-    def 줄(p):
-        return [l.strip() for l in p.read_text(encoding="utf-8").splitlines()
-                if l.strip() and not l.lstrip().startswith("#")]
-
-    A, B = 줄(a), 줄(b)
-    n = 0
-    for line in difflib.unified_diff(A, B, a.name, b.name, lineterm="", n=0):
-        if line.startswith(("---", "+++", "@@")):
-            continue
-        n += 1
-        print(line[:200])
-    print(f"\n갈린 줄 {n}개 -- **여기만 원본을 확대해 보면 된다.**"
-          if n else "\n두 읽기가 같다.")
+    for n, 이름, s, u in 갈림:
+        print(f"\n문 {n} {이름}\n  {a.name}: {s[:180]}\n  {b.name}: {u[:180]}")
+    print(f"\n두 읽기에 다 있는 문항 {len(둘)}개 · 칸 같음 {같음} · 한쪽이 잘림 {잘림}"
+          f" · **갈림 {len(갈림)}**")
+    if A만:
+        print(f"{a.name} 에만 있는 문항 {len(A만)}개: {A만[:20]}")
+    if B만:
+        print(f"{b.name} 에만 있는 문항 {len(B만)}개: {B만[:20]}")
+    print("**갈린 자리만 원본을 확대해 보면 된다.**" if 갈림 else "**갈린 자리가 없다.**")
     return 0
 
 
