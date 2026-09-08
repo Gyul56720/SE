@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import time
 import struct
 import sys
 import zlib
@@ -109,15 +110,42 @@ def _ask(pngs: list, models: list) -> str:
     for model in models:
         for name, key in ks:
             c = gemini_http.Client(model, key, timeout=300.0, max_output_tokens=8192)
-            try:
-                return c.invoke(PROMPT, images=images).content
-            except Exception as e:                                # noqa: BLE001
-                last = f"{model} / {name}: {e}"
-                if "RESOURCE_EXHAUSTED" in str(e) or "429" in str(e):
-                    print(f"    ({name} 이 {model} 에서 쿼터에 막혔다 -- 다음 것으로)")
-                    continue
-                raise
-    raise SystemExit(f"쓸 수 있는 키·모델이 없다. 마지막: {last}")
+            for 참을때 in (0, 20, 60):
+                if 참을때:
+                    print(f"    ({참을때}초 쉬고 다시)")
+                    time.sleep(참을때)
+                try:
+                    return c.invoke(PROMPT, images=images).content
+                except Exception as e:                            # noqa: BLE001
+                    last = f"{model} / {name}: {e}"
+                    kind = _why(e)
+                    if kind == "과부하":
+                        # **일시적 과부하는 실패가 아니다.** 처음엔 여기서 그냥
+                        # 터뜨렸는데(503 을 안 봤다), 서른여섯 쪽짜리 일이 한 번의
+                        # 과부하로 통째로 죽었다. 기다렸다 다시 하는 것이 맞다.
+                        continue
+                    print(f"    ({name} 이 {model} 에서 {kind} -- 다음 것으로)")
+                    break
+            else:
+                print(f"    ({name} 이 {model} 에서 계속 과부하 -- 다음 것으로)")
+    raise SystemExit(
+        f"쓸 수 있는 키·모델이 없다. 마지막: {last}\n"
+        f"  쿼터면 내일 같은 명령을 다시 치면 남은 쪽부터 이어간다.\n"
+        f"  과부하(503)면 조금 뒤에 다시 치면 된다.")
+
+
+def _why(e) -> str:
+    """무엇에 막혔나. **가려서 보고해야 다음에 무엇을 할지 안다.**"""
+    t = str(e)
+    if "RESOURCE_EXHAUSTED" in t or "429" in t:
+        return "쿼터에 막혔다"
+    if "UNAVAILABLE" in t or "503" in t or "overloaded" in t.lower():
+        return "과부하"
+    if "500" in t or "INTERNAL" in t or "DEADLINE" in t or "504" in t:
+        return "과부하"
+    if "NOT_FOUND" in t or "404" in t:
+        return "그런 모델이 없다"
+    return "막혔다"
 
 
 def pages_of(spec: str, n: int) -> list:
@@ -185,7 +213,9 @@ def main(argv=None) -> int:
                     help="이미 옮긴 쪽도 다시")
     ap.add_argument("--견줌", dest="cmp", nargs=2, default=None,
                     help="두 읽기를 견줘 갈리는 줄만 찍는다")
-    ap.add_argument("--model", default="gemini-3.6-flash")
+    ap.add_argument("--model",
+                    default="gemini-3.6-flash,gemini-flash-latest,gemini-2.5-flash",
+                    help="쉼표로. 앞엣것이 막히면 뒤로 넘어간다")
     ap.add_argument("--scale", type=int, default=2)
     a = ap.parse_args(argv)
 
