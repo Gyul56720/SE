@@ -218,6 +218,11 @@ def report(rows: list, key: dict) -> None:
         print(f"  **답을 못 읽은 문항 {len(못읽음)}개**: {못읽음[:12]}"
               f"\n  틀린 게 아니라 **읽지 못한 것**이다. 정답률의 분모에서 뺐다."
               f"\n  이 수가 크면 답안이 아니라 파서를 먼저 의심하라.")
+    탓 = [r["번호"] for r in rows if r.get("문제탓") or 문제탓(r.get("근거", ""))]
+    if 탓:
+        print(f"  **문제 자체를 탓한 답안 {len(탓)}개**: {탓[:12]}"
+              f"\n  답이 아니라 시험지를 의심한 자리다. 관문이 볼 것이 없어도"
+              f"\n  이 답안은 신뢰할 수 없다 -- 사람이 봐야 한다.")
     print(f"  조문을 아예 안 부른 답안 {무근거}개"
           f"  <- 이건 관문이 볼 것이 없는 자리다")
     if key:
@@ -227,6 +232,26 @@ def report(rows: list, key: dict) -> None:
 
 _조문실마리 = re.compile(r"제\s*\d+\s*조|「[^」]+」")
 _판례로 = re.compile(r"판례에\s*의함")
+
+
+_문제탓 = re.compile(r"출제\s*오류|문제의?\s*오류|정답\s*시비|복수\s*정답|오류\s*정정")
+
+
+def 문제탓(why: str) -> list:
+    """**답안이 답이 아니라 시험지를 탓했는가.**
+
+    조문을 안 부른 답안은 관문이 볼 것이 없다. 그런데 그 자리에서도 텍스트만으로
+    잡히는 신호가 하나 있다 -- 답안이 스스로 "이 문제는 출제 오류" 라고 적는 것.
+
+    `④ 는 정답이 될 수 없다` 같은 말은 안 센다. 그건 `옳지 않은 것을 고르시오` 에서
+    지문을 지워 나가는 **정상적인 소거법**이다. 여기서 세는 것은 지문이 아니라
+    **문제를 탓하는 말**이다.
+
+    실측(2026 민사법 문 2): 답안이 "⑤번은 판례에 합치하므로 정답이 될 수 없다" 고
+    적고도 ⑤ 를 골랐다. 인용이 0 이라 관문은 어긋남 0 을 찍었다. 그 0 은 맞았다는
+    뜻이 아니라 볼 것이 없었다는 뜻이었고, 답안은 실은 스스로 무너져 있었다.
+    """
+    return sorted(set(m.group(0) for m in _문제탓.finditer(why or "")))
 
 
 def 관문시야(qs: list) -> dict:
@@ -343,7 +368,8 @@ def main(argv=None) -> int:
     with LEDGER.open("w", encoding="utf-8") as f:
         for q in (qs[:a.n] if a.n else qs):
             pick, why = read_reply(_pool_ask(prompt(q)))
-            row = {"번호": q.번호, "고름": pick, "근거": why, **judge(why, corpus)}
+            row = {"번호": q.번호, "고름": pick, "근거": why,
+                   "문제탓": 문제탓(why), **judge(why, corpus)}
             rows.append(row)
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
             mark = ("O" if key.get(q.번호) == pick else "X") if q.번호 in key else "?"
