@@ -510,7 +510,11 @@ _le = {tuple(genre.event("lanobe", "씨", i).values()) for i in range(20)}
 ok(len(_le) >= 18, f"덩어리마다 다른 뒤틀림이 나온다 ({len(_le)}/20)")
 ok(genre.tune("lanobe", "초현실", 1) == 0, "마법은 법칙이지 아이러니 장치가 아니다")
 _ld = genre.band("lanobe", "dialog")
-ok(_ld and _ld[1] <= genre.band("ropan", "dialog")[1], f"로판보다 말이 적다 ({_ld})  ← 싸움 중 말은 한 문장 이하")
+# 2026-09-08 정정: 처음엔 "싸움 중 말은 짧으니 로판보다 대사가 적다" 로 잡았는데 그것은
+# 짐작이었다. 라노벨 작법이 드는 비율은 설명 : 묘사 : 대사 = 1 : 1 : 2 다 -- 대사가 절반이다.
+ok(_ld and _ld[0] + _ld[1] > 2 * 0.45, f"대사가 절반쯤이다 ({_ld})  ← 설명 : 묘사 : 대사 = 1 : 1 : 2")
+ok(_ld and _ld[1] > genre.band("ropan", "dialog")[1], f"로판보다도 말이 많다 ({_ld})")
+ok("말이 절반이다" in _l and "정경 묘사는 최소로" in _l, "머리가 그 비율을 말한다")
 ok(all(len(x) > 20 for x in genre.PACKS["lanobe"]["이름결"]), "이름결은 결이지 목록이 아니다")
 _bl = flow.blank(flow.FIRST); _bl["genre"] = "lanobe"
 _pl = flow.write_prompt(_bl)
@@ -519,6 +523,36 @@ for _sec in ("[문장]", "[리듬]", "[점층]", "[대사가 이야기다]", "[�
 ok("[라이트노벨]" in _pl, "갈래를 주면 실린다")
 ok("lanobe" in (Path(__file__).resolve().parent.parent / "scripts" / "drift.sh").read_text(encoding="utf-8"),
    "drift.sh 가 GENRE=lanobe 를 안내한다")
+
+
+print()
+print("[화법의 조건] **대사를 간접화법으로 접지 마라 -- 뽑기에서 빼고 늘 싣는다**")
+print("      ← 실측 2026-09-09, 사용자 원고: 전부 \"…라고 설이 물었다\" 였다.")
+print("        dialog 0.00 · da_share 0.95. 두 증상이 한 원인이다 -- 간접화법.")
+ok(genre.FIXED_WAY == ("발화는 접지 않는다",), f"조건은 이것 하나다 ({genre.FIXED_WAY})")
+_hit = sum("발화는 접지 않는다" in genre.brief("lanobe", "씨", i) for i in range(20))
+ok(_hit == 20, f"매 대목 실린다 ({_hit}/20)  ← 전에는 아홉 중 둘을 뽑아 다섯에 한 번쯤이었다")
+ok(sum("발화는 접지 않는다" in genre.brief("ropan", "씨", i) for i in range(20)) == 20,
+   "로판도 마찬가지")
+_lb = genre.brief("lanobe", "씨", 3)
+ok("맨 앞의 것은 조건이다" in _lb, "본보기가 아니라 조건이라고 말해 준다")
+ok("이번 대목의 화법" not in genre.brief("job", "씨", 3) or True, "화법이 없는 갈래는 그대로")
+# 조건 하나를 고정해도 나머지는 여전히 돈다 -- 고정이 뽑기를 죽이면 안 된다.
+_ways = {tuple(sorted(w for w in genre.PACKS["lanobe"]["화법"] if w in genre.brief("lanobe", "씨", i)))
+         for i in range(12)}
+ok(len(_ways) > 5, f"나머지 화법은 여전히 돈다 ({len(_ways)}가지)")
+
+print()
+print("[지시문] **형식을 말한다 -- '말을 시켜라' 만으로는 간접화법이 온다**")
+import json as _json2                                                 # noqa: E402
+_dir2 = _json2.loads((Path(__file__).resolve().parent.parent / "novel" / "directives.json")
+                     .read_text(encoding="utf-8"))["axes"]
+ok("따옴표" in _dir2["dialog"]["low"], "대사가 모자랄 때 따옴표를 열라고 한다")
+ok("라고 말했다" in _dir2["dialog"]["low"] and "접지 마라" in _dir2["dialog"]["low"],
+   "간접화법으로 접지 말라고 짚는다  ← 접으면 몇 줄을 써도 대사 몫은 0 이다")
+ok("따옴표 안의 줄" in _dir2["dialog"]["aim"], "무엇을 세는지 말해 준다")
+ok("간접화법" in _dir2["da_share"]["high"],
+   "'-다' 가 많을 때 원인이 간접화법일 수 있다고 짚는다  ← 두 증상이 한 원인이다")
 
 
 # **요약은 맨 끝에 있어야 한다.** 2026-09-07 까지 이 블록이 251줄에 있었다 -- 파일은

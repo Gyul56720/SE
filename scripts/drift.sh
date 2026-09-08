@@ -23,6 +23,8 @@
 #   drift.sh world                  세계가 얼마나 자랐는지 (인물·장소·사물·사실·사건)
 #   drift.sh open                   아직 안 닫힌 것들 -- 이 이야기가 갚지 않은 빚
 #   drift.sh card                   지금 회차의 각본 -- 질문 · 비트 · 쾌감 · 전투 · 갈고리
+#   drift.sh 첫장 [파일...]         **첫 회차를 잰다** -- 실제 1화를 파일로 주면
+#                                   우리 첫 회차와 나란히 놓고 견준다
 #   drift.sh codex                  설정집 -- 각본이 세운 직함 · 등급 · 기술 · 법칙
 #
 # 환경변수로 바꿀 수 있는 것:
@@ -43,6 +45,10 @@
 #                                따라 붙는다. DRIFT_LAYER=all 을 켜면 사건·확산까지 온다
 #   DRIFT    표류 계수 0~1     (기본 1.0 -- 낮추면 급발진·사건이 줄어든다)
 #   MATTER   소재 축 0~1       (기본 0.0 -- 켜면 갈래·매체가 섞인다)
+#   HEAT     수위 0~1          (기본 0 = 안 씌운다). 켜면 성인 규율이 회차마다 실린다.
+#                                등장인물은 전부 어른이어야 한다 -- 조건 둘(어른만 ·
+#                                원하는지가 보인다)은 켜져 있는 동안 늘 실린다.
+#                                예: HEAT=0.6 GENRE=lanobe drift.sh start 200000
 #   BODY     몸의 사실 0~1     (기본 0.35)
 #   BOND     관계 0~1          (기본 0.4)
 #
@@ -132,7 +138,7 @@ case "${1:-status}" in
       echo "쓰던 원고를 옮겨 두었다: $BOOK.*.bak"
     }
     set -- --out "$BOOK" --chars "${2:-8000}" --hours "${HOURS:-12}" ${STYLE:+--persona "$STYLE"} ${GENRE:+--genre "$GENRE"} ${DRIFT:+--drift "$DRIFT"} ${MATTER:+--matter "$MATTER"} \
-           ${BODY:+--body "$BODY"} ${BOND:+--bond "$BOND"}
+           ${BODY:+--body "$BODY"} ${BOND:+--bond "$BOND"} ${HEAT:+--heat "$HEAT"}
     [ -n "${FIRST:-}" ] && set -- "$@" --first "$FIRST"
     # 첫 문장을 안 주면 갈래 축에서 여는 좌표를 뽑는다 -- 고정 문장을 쓰면 그 문장의
     # 세계(지명 · 말씨)가 원고 전체를 끌고 간다.
@@ -179,6 +185,28 @@ INNER
 
   # 회차 각본과 설정집. 원고를 읽지 않고도 "이번 회차에 쾌감이 있나 · 싸움이 있나 ·
   # 무엇을 세웠나" 를 본다. 재미의 재료가 실렸는지를 여기서 먼저 확인한다.
+  첫장|first)
+    shift || true
+    # **실제 1화를 여기 넣는다.** 사이트에서 못 긁어 오는 것은 사람이 파일로 준다.
+    # 인자가 없으면 우리 원고의 첫 회차를 뽑아서 잰다 -- 견줄 상대가 늘 한쪽은 있다.
+    if [ "$#" -gt 0 ]; then
+      PYTHONPATH="$SE" python3 -m novel.first "$@"
+    else
+      [ -f "$BOOK" ] || die "원고가 없다: $BOOK   (실제 1화 파일을 주려면: $0 첫장 <파일>)"
+      OUT="$(mktemp -t drift-1hwa-XXXXXX.txt)"
+      PYTHONPATH="$SE" python3 - "$BOOK" "$OUT" <<'PYFIRST'
+import json, sys
+from novel import beat as BT
+book = json.load(open(sys.argv[1], encoding="utf-8"))
+text = "".join(book.get("chunks") or [])[:BT.EP]
+open(sys.argv[2], "w", encoding="utf-8").write(text)
+print(f"우리 첫 회차 {len(text):,}자를 뽑았다", file=sys.stderr)
+PYFIRST
+      PYTHONPATH="$SE" python3 -m novel.first "$OUT"
+      rm -f "$OUT"
+    fi
+    ;;
+
   card|codex)
     [ -f "$BOOK" ] || die "원고가 없다: $BOOK"
     python3 - "$SE" "$BOOK" "$1" <<'PY'
@@ -199,7 +227,7 @@ PY
            ${STYLE:+--persona "$STYLE"} \
            ${GENRE:+--genre "$GENRE"} \
            ${DRIFT:+--drift "$DRIFT"} ${MATTER:+--matter "$MATTER"} \
-           ${BODY:+--body "$BODY"} ${BOND:+--bond "$BOND"}
+           ${BODY:+--body "$BODY"} ${BOND:+--bond "$BOND"} ${HEAT:+--heat "$HEAT"}
     ;;
 
   status)
