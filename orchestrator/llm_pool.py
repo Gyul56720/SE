@@ -371,23 +371,35 @@ def _roster() -> set:
         return set()
 
 
+def api_keys() -> list:
+    """`(이름, 키)` 목록. **여기 한 벌만 둔다.**
+
+    **키는 몇 개든 받는다.** 한도는 프로젝트에 걸리므로 서로 다른 프로젝트의 키를 더하는
+    것이 유일하게 한도를 늘리는 길이다(같은 프로젝트에서 키만 여러 개 만들면 한도는
+    그대로다 -- 구글 문서 기준). FALLBACK2, FALLBACK3 ... 으로 이어 붙이면 자동으로 잡힌다.
+
+    **`.env` 도 여기서 읽는다.** systemd 서비스는 EnvironmentFile 로 .env 를 받지만
+    SSH 셸은 그렇지 않다 -- 이 저장소가 한 번 데인 자리다. 이 함수를 안 거치고 os.environ
+    만 보는 코드는 SSH 에서 키가 하나도 없거나 첫 키만 있는 것처럼 본다(실측: law/ocr.py
+    가 그랬다. 예비 키 둘이 놀고 있는데 쿼터에 막혔다고 멈췄다).
+    """
+    if not os.environ.get("GEMINI_API_KEY"):
+        _load_dotenv_once()
+    names = ["GEMINI_API_KEY", "GEMINI_API_KEY_FALLBACK"]
+    names += [f"GEMINI_API_KEY_FALLBACK{i}" for i in range(2, 9)]
+    seen, out = set(), []
+    for nm in names:
+        v = (os.environ.get(nm) or "").strip()
+        if v and v not in seen:              # 같은 키를 두 번 넣으면 한도가 는 것처럼
+            seen.add(v)                      # 보이지만 실제로는 같은 통을 두 번 쓴다
+            out.append((nm, v))
+    return out
+
+
 def build_pool(keys=None, models=None, llm_factory=_default_factory, model_lister=_default_models):
     """(label, llm) 후보 목록. keys 기본 = 환경변수 두 키. models 기본 = 키별 실사용 모델 조회."""
     if keys is None:
-        if not os.environ.get("GEMINI_API_KEY"):
-            _load_dotenv_once()
-        # **키는 몇 개든 받는다.** 한도는 프로젝트에 걸리므로 서로 다른 프로젝트의 키를
-        # 더하는 것이 유일하게 한도를 늘리는 길이다(같은 프로젝트에서 키만 여러 개
-        # 만들면 한도는 그대로다 -- 구글 문서 기준). FALLBACK2, FALLBACK3 ... 으로
-        # 이어 붙이면 자동으로 잡힌다.
-        names = ["GEMINI_API_KEY", "GEMINI_API_KEY_FALLBACK"]
-        names += [f"GEMINI_API_KEY_FALLBACK{i}" for i in range(2, 9)]
-        seen, keys = set(), []
-        for nm in names:
-            v = (os.environ.get(nm) or "").strip()
-            if v and v not in seen:          # 같은 키를 두 번 넣으면 한도가 는 것처럼
-                seen.add(v)                  # 보이지만 실제로는 같은 통을 두 번 쓴다
-                keys.append(v)
+        keys = [v for _, v in api_keys()]
     pool = []
     for key in keys:
         if not key:

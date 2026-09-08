@@ -79,21 +79,18 @@ PROMPT = """아래 그림들은 대한민국 변호사시험 선택형 문제지
 
 
 def keys() -> list:
-    """`GEMINI_API_KEY` 와 그 예비들. **무료 티어는 키마다 따로 센다.**
+    """`GEMINI_API_KEY` 와 그 예비들. **목록은 llm_pool 에 한 벌만 있다.**
 
-    실측: 하루 20회에서 막혀 36쪽을 못 끝냈다. 키 하나만 보면 예비 키가 놀고 있어도
-    거기서 멈춘다 -- `orchestrator/llm_pool.py` 가 이미 같은 목록을 쓴다.
+    처음엔 여기에 이름 목록을 따로 적었는데 **그게 틀렸다.** llm_pool 은 키가 환경변수에
+    없으면 저장소 루트 `.env` 를 읽는데, 내 사본은 그 일을 안 했다 -- systemd 서비스는
+    EnvironmentFile 로 .env 를 받지만 **SSH 셸은 그렇지 않다.** 그래서 예비 키 둘이
+    `.env` 에 멀쩡히 있는데도 안 보였고, 첫 키가 쿼터에 막히자 거기서 멈췄다.
+
+    두 벌은 이렇게 갈라진다. 목록만 같으면 되는 줄 알았는데 **읽는 자리가 달랐다.**
     """
-    import os
-    names = ["GEMINI_API_KEY", "GEMINI_API_KEY_FALLBACK"]
-    names += [f"GEMINI_API_KEY_FALLBACK{i}" for i in range(2, 9)]
-    seen, out = set(), []
-    for n in names:
-        v = (os.environ.get(n) or "").strip()
-        if v and v not in seen:
-            seen.add(v)
-            out.append((n, v))
-    return out
+    sys.path.insert(0, str(ROOT / "orchestrator"))
+    import llm_pool
+    return llm_pool.api_keys()
 
 
 def _ask(pngs: list, models: list) -> str:
