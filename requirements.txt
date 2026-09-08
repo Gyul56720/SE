@@ -22,3 +22,9 @@ sympy>=1.12
 # novel/drive.py 의 anthropic_llm() 이 쓴다. author(director) 역할만 Claude 로
 # 돌리는 구성이라 없으면 그 경로에서만 실패한다(Gemini 경로는 무관).
 anthropic>=0.40.0
+
+# 2026-09-08 되돌림: law/ocr.py 가 시험지 PDF 에서 쪽 그림을 꺼낸다. 2026-09-02 에
+# 뺐던 것과는 쓰임이 다르다 -- 그때는 논문을 읽으려던 것이었고 지금은 **글자층이 없는
+# 스캔에서 그림만** 꺼낸다(글은 Gemini 비전이 읽는다). poppler 를 서버에 깔지 않으려고
+# PNG 는 순수 파이썬으로 만든다.
+pypdf>=5.0.0
