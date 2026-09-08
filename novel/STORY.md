@@ -122,3 +122,67 @@ Advances*) 는 4만 편에서 무대 → 진행 → 인지 긴장의 순서를 �
 - Toubia, O., Berger, J., & Eliashberg, J. (2021). How quantifying the shape of stories predicts their success. *PNAS*, 118(26).
 - Boyd, R. L., Blackburn, K. G., & Pennebaker, J. W. (2020). The narrative arc: Revealing core narrative structures through text analysis. *Science Advances*, 6(32).
 - 웹소설 유료화에 따른 플랫폼과 서사의 변화 양상 연구. KCI ART002308911.
+
+---
+
+# 2. 플롯이 문제인가, 연출이 문제인가 (2026-09-08, 두 번째 물음)
+
+사용자: "스토리랑 전개가 재미가 없어. 플롯이 재미가 없는 걸까? 연출을 못하는 걸까?"
+
+**둘 다다. 그런데 뿌리는 하나다.** 이 파이프라인의 생성 단위는 3,200자 **덩어리**이고,
+플롯도 연출도 그보다 **큰 단위(회차 · 장면)** 와 **작은 단위(비트)** 에 산다. 회차 층이
+없다. 플롯 문제와 연출 문제는 그 빈 층을 양쪽에서 본 것이다.
+
+## 실측 -- 지금 프롬프트
+
+    길이 6,226자 · 머리표 9개 · "마라/말라" 12개 · "해라" 5개
+    장면 · 회차 · 요약이라는 말: 3번 (전부 금지문 안에서)
+    "줄거리를 미리 정하지 마라. 지금 문장에서 다음 문장이 나오게 하라."  (flow.py:1297)
+
+## 플롯 쪽 -- 왜 재미없나
+
+| 근거 | 무엇을 밝혔나 | 여기서는 |
+|---|---|---|
+| Tian et al. 2024 (EMNLP) | 사람 이야기는 서스펜스 · 각성이 높고 중반 이후 더 벌어진다. LLM 이야기는 **대좌절과 절정을 못 세운다** -- 그래서 긴장이 없다. 담화 특징을 명시하면 40% 넘게 나아진다 | 전환점이 **하나도 지정되지 않는다.** 사건축은 무작위이고 성장 단계는 마디 단위 방향뿐이다 |
+| Papalampidi & Keller 2019 (TRIPOD) | 잘 짜인 이야기는 전환점 다섯 -- 기회 · 계획 변경 · 돌아올 수 없는 지점 · 대좌절 · 절정 -- 으로 여섯 단계가 나뉜다 | 빚(serial)은 **상태**다. 어느 빚이 대좌절이고 어느 것이 절정인지 없다 |
+| Zwaan et al. 1995 (사건 색인 모형) | 독자는 인물의 **의도**(목표)를 축으로 이야기를 따라간다 | 회차마다 주인공이 **지금 원하는 것 · 방해 · 결과 미정**이 없다. 도착지는 방향이지 욕망이 아니다 |
+| Yang et al. 2023 (DOC) · Mirowski et al. 2023 (Dramatron) | 계획 없는 장문 생성은 표류한다. 개요 → 장면 → 대사의 계층이 일관성을 만든다 | "줄거리를 미리 정하지 마라" 가 **원칙**이다. 문체를 위해 넣었고, 값은 플롯으로 치렀다 |
+
+## 연출 쪽 -- 왜 재미없나
+
+| 근거 | 무엇을 밝혔나 | 여기서는 |
+|---|---|---|
+| Chakrabarty et al. 2024 (TTCW, CHI) | 전문가 이야기는 **시간을 늘이고 줄인다**(장면 vs 요약). LLM 은 그 조작이 없다 -- 14개 검사에서 3~10배 덜 통과 | 모든 덩어리가 같은 꼴이다. 장면과 요약의 구분이 없고, 시간 압축을 시키지 않는다 |
+| Tian et al. 2024 | LLM 이야기의 각성 곡선은 **평평**하다 | "이 대목이 끝났을 때 세계가 달라져 있어야" + 덩어리마다 새 사건 = 늘 중간 세기. 쌓이지 않는다 |
+| Sternberg (설명의 배분) · Genette (순서 · 지속) | 연출은 **무엇을 언제 얼마나** 보여 주느냐다 | 화자는 꼬리 몇천 자만 본다. 긴장이 어디까지 쌓였는지 모르니 올릴 수도 없다 |
+| 잰 것만 남는다 (이 저장소의 실측) | 추출 · 손질 루프가 모순과 리듬만 잰다 | 파이프라인은 **재는 것**을 최적화한다. 문체가 좋아진 이유가 그것이고, 긴장이 안 좋아진 이유도 그것이다 |
+
+## 그래서 -- 회차 층을 넣는다
+
+**A. 회차 각본, 호출 한 번** (권한다)
+- 약 5,000자마다 디렉터(Claude)가 **회차 카드**를 낸다: 주인공이 이번 회차에 원하는 것 ·
+  방해 · 답은 회차 끝에(극적 질문), 비트 셋(각각 장면인지 요약인지, 세기가 앞보다
+  높은지), 이번 회차에 전환점이 오면 어느 것인지(다섯 중), 끝 갈고리.
+- 덩어리는 자유 이어 쓰기가 아니라 **비트를 쓴다.** 문체 규율은 그대로다.
+- 전환점 다섯을 빚 위에 얹는다: 첫 빚 = 기회, 중간 = 계획 변경 · 돌아올 수 없는 지점,
+  마지막 앞 = 대좌절, 끝 = 절정. serial.STAGES 가 이미 그 방향이다 -- 이름을 붙이고
+  회차 카드가 그것을 실행한다.
+- 값: 회차당 호출 +1 (약 6%). Tian 의 실측이 이 방향에서 40% 를 봤다.
+
+**B. 긴장 상태를 원장에** -- 추출이 "지금 무엇이 위협하고 얼마나 가까운가" 를 적고,
+tension.brief 가 앞 회차보다 **높게** 시킨다. A 없이는 약하다.
+
+**C. 연출 자** -- 비트마다 장면/요약을 지정하고 요약 비트에는 시간 압축을 허용한다.
+"줄거리를 미리 정하지 마라" 를 뺀다. A 와 같이 간다.
+
+**D. 재기** -- 회차마다 서스펜스를 언어모델로 잰다(Wilmot & Keller 2020 방식). 호출이
+들어서 나중이다.
+
+## 출처 (2절)
+
+- Tian, Y. et al. (2024). Are Large Language Models Capable of Generating Human-Level Narratives? *EMNLP 2024*. https://aclanthology.org/2024.emnlp-main.978/
+- Papalampidi, P., Keller, F., & Lapata, M. (2019). Movie Plot Analysis via Turning Point Identification. *EMNLP 2019*. https://aclanthology.org/D19-1180/
+- Chakrabarty, T. et al. (2024). Art or Artifice? Large Language Models and the False Promise of Creativity. *CHI 2024*. https://dl.acm.org/doi/10.1145/3613904.3642731
+- Mirowski, P. et al. (2023). Co-Writing Screenplays and Theatre Scripts with Language Models. *CHI 2023*. https://dl.acm.org/doi/full/10.1145/3544548.3581225
+- Yang, K. et al. (2023). DOC: Improving Long Story Coherence With Detailed Outline Control. *ACL 2023*.
+- Zwaan, R. A., Langston, M. C., & Graesser, A. C. (1995). The construction of situation models in narrative comprehension: An event-indexing model. *Psychological Science*, 6(5).
