@@ -486,7 +486,7 @@ def _note_failure(label: str, e, verbose: bool) -> str:
 
 
 def call(pool, prompt: str, pool_id: str = "orchestrator", max_candidates: int = None,
-         verbose: bool = True, prefer: str = "") -> tuple[str, str]:
+         verbose: bool = True, prefer: str = "", images=None) -> tuple[str, str]:
     """후보를 쿼터/장애 견디며 순회. (응답텍스트, 성공한 label) 반환. 전부 실패면 예외.
 
     max_candidates 로 시도 수를 제한한다(기본 MAX_CANDIDATES). 상한이 없으면 죽은 키로 돌릴 때
@@ -667,7 +667,14 @@ def call(pool, prompt: str, pool_id: str = "orchestrator", max_candidates: int =
             # 것을 쓰고도 제일 느린 후보를 끝까지 기다리게 된다(실측: 0.1초에 받아 놓고
             # 1.2초를 버렸다). 남은 것은 버리고 간다 -- 어차피 안 쓸 답이다.
             pool_x = cf.ThreadPoolExecutor(max_workers=len(batch))
-            futs = {pool_x.submit(lambda l=llm: _extract_text(l.invoke(prompt))): lb
+            # **그림은 줄 때만 넘긴다.** 안 그러면 `invoke(prompt)` 만 아는 가짜 LLM
+            # (검사가 넣는 것)이 인자 하나 더 받고 터진다. 여기 한 벌에 그림을 태워야
+            # 쿼터 추적·RPM 쿨다운·모델 순위를 그대로 쓴다 -- 부르는 쪽이 제 반복문을
+            # 따로 짜면 그 층을 통째로 버리는 것이다(실측: law/ocr.py 가 그랬다).
+            futs = {pool_x.submit(
+                        lambda l=llm: _extract_text(
+                            l.invoke(prompt, images=images) if images
+                            else l.invoke(prompt))): lb
                     for lb, llm in batch}
             won = None
             try:
