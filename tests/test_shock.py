@@ -30,6 +30,26 @@ flow.PROMPT = "legacy"
 flow.LAYER = "all"
 
 
+def _adopted(shock: bool):
+    """확산에 확실히 걸리는 원고를 **실제로 채택시키고** 장부에 적힌 갈래를 돌려준다.
+
+    호출은 없다 -- 추출기가 `{}` 를 돌려주면 원장은 그대로고 모순도 안 생긴다.
+    소스에서 주석을 찾는 대신 이렇게 잰다: 주석에만 있는 낱말은 **그 기능을 지워도
+    초록**이라 아무것도 재지 않는다(게이트 G016 이 그 자리를 잡는다)."""
+    import contextlib, io
+    bk = flow.blank("첫 문장이다.")
+    bk["chunks"] = ["앞 덩어리."]
+    if shock:
+        bk["_shock"] = True
+    _txt = ("그는 갔다. " * 40) + "\n" + ("비가 왔다. " * 40)
+    # `_log` 는 stderr 로 간다 -- 둘 다 막아야 검사 화면이 안 지저분해진다
+    with contextlib.redirect_stdout(io.StringIO()), \
+            contextlib.redirect_stderr(io.StringIO()):
+        flow._adopt(bk, lambda _p: "{}", _txt)
+    return bk, sorted(set(bk.get("owed", [])))
+
+
+
 fails = []
 
 
@@ -64,9 +84,18 @@ print()
 print("[개입] **사건은 확산을 한 덩어리만 대신한다**")
 src = Path(flow.__file__).read_text(encoding="utf-8")
 ok("다음 덩어리부터는 **다시 점층이다.**" in src, "사건 뒤에는 다시 점층이라고 못박는다")
-ok("사건 덩어리는 확산으로 재지 않는다" in src,
-   "사건 덩어리는 확산 자로 재지 않는다  ← 넓히라고 시키지 않았으니 그것으로 벌하지 않는다")
-ok("리듬만 본다" in src, "리듬은 사건이든 아니든 지킨다  ← 대사와 길이는 늘 지켜야 한다")
+
+_bk_n, _owed_n = _adopted(shock=False)
+_bk_s, _owed_s = _adopted(shock=True)
+ok("세계 확장" in _owed_n,
+   f"평소에는 확산 자로 잰다 (장부: {_owed_n})  ← 이것이 서야 아래가 뜻이 있다")
+ok("세계 확장" not in _owed_s,
+   f"**사건 덩어리는 확산 자로 재지 않는다** (장부: {_owed_s})"
+   "  ← 넓히라고 시키지 않았으니 그것으로 벌하지 않는다")
+ok("대사 몫" in _owed_s and "짧은 '-다'" in _owed_s,
+   "리듬은 사건이든 아니든 지킨다  ← 대사와 길이는 늘 지켜야 한다")
+ok(len(_bk_s["chunks"]) == 2,
+   "못 고친 것이 남아도 덩어리는 원고에 들어간다  ← 폐기는 없다")
 
 bk = flow.blank("첫 문장.")
 bk["chunks"] = ["x" * 2500]

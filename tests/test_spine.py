@@ -66,8 +66,8 @@ print()
 print("[안 담는 것] **문장은 안 들어간다**")
 _raw = SP.read_text(encoding="utf-8")
 ok('"문장"' not in _raw and "chunks" not in _raw, "뼈대에 원문이 없다")
-_src = Path(spine.__file__).read_text(encoding="utf-8")
-ok("저장소에 안 올린다" in _src, "뼈대는 저장소에 안 올린다고 적어 뒀다")
+# 여기 있던 `"저장소에 안 올린다" in spine.py` 를 뺐다 -- 그 문장은 **주석**에 있어서
+# 무시 규칙을 지워도 초록이었다(G016). 진짜 계약은 바로 아래 줄이 잰다.
 _gi = (Path(__file__).resolve().parent.parent / ".gitignore").read_text(encoding="utf-8")
 ok("novel/spine.json" in _gi, "실제로 무시 목록에 있다  ← 남의 작품에서 나온 것이다")
 

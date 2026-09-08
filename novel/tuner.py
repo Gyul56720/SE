@@ -221,6 +221,30 @@ def _pending() -> dict | None:
     return None
 
 
+
+# 총점이 나빠져도 봐 주는 폭. 예순아홉 축이 같이 흔들리므로 0 으로 두면 아무것도
+# 안 받는다. 넓히면 한 축을 맞추자고 전체를 망가뜨리는 것을 못 막는다.
+GUARD = 0.02
+
+
+def adopted(gap_was, gap_now, was: float, total: float) -> bool:
+    """이 시도를 받을 것인가. **판정은 그 축의 거리로 하고, 총점은 지킴목이다.**
+
+    총점으로만 보면 축 하나를 고친 효과가 나머지 예순아홉 축의 흔들림에 묻혀 늘
+    동점이 되고, 동점은 되돌림이니 무엇을 써도 되돌아간다(실측: 0.085 -> 0.085 로
+    네 바퀴가 갔다). 그렇다고 거리만 보면 한 축을 맞추자고 전체가 나빠져도 받는다 --
+    그래서 총점을 **지킴목**으로 건다: 그 축이 나아졌고, 그러면서 전체가 GUARD 보다
+    더 나빠지지 않았을 때만 받는다.
+
+    옛 기록에는 거리가 없다. 그때는 예전처럼 총점으로 본다.
+
+    (본문에서 따로 뺐다. 안에 박혀 있으면 잴 수가 없어서 검사가 주석을 읽고 있었다.)
+    """
+    if gap_was is None or gap_now is None:
+        return total < was - 1e-6
+    return (gap_now < gap_was - 1e-6) and (total <= was + GUARD)
+
+
 def keep(path) -> int:
     """다시 돌린 뒤 부른다. 나아졌으면 채택, 아니면 되돌린다."""
     last = _pending()
@@ -240,10 +264,7 @@ def keep(path) -> int:
     # 옛 기록에는 거리가 없으니 그때는 예전처럼 총점으로 본다.
     gap_was = last.get("거리(전)")
     gap_now = (s["axes"].get(last["축"]) or {}).get("gap")
-    if gap_was is not None and gap_now is not None:
-        better = (gap_now < gap_was - 1e-6) and (total <= was + 0.02)
-    else:
-        better = total < was - 1e-6
+    better = adopted(gap_was, gap_now, was, total)
     d = read_directives()
     if not better:
         d["axes"][last["축"]][last["쪽"]] = last["전"]
