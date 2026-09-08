@@ -203,6 +203,73 @@ def parse_search(xml: str) -> list:
     return out
 
 
+# 시행일별 판을 어느 이름으로 부르는지 **실측하지 않았다.** 그래서 후보를 차례로
+# 두드려 보고 **여러 판이 실제로 오는 것**을 쓴다. 기억으로 하나를 적어 두면, 그것이
+# 틀렸을 때 "판이 하나뿐" 이라는 거짓 결론이 조용히 남는다 -- 이 저장소가 오늘만
+# 두 번 앓은 병이다(ocr.py 의 키 이름, fetch.py 의 .env).
+HISTORY_TARGETS = ("eflaw", "law")
+
+
+def history(name: str, oc: str, fetcher=None, display: str = "100") -> tuple:
+    """이 법령의 **시행일별 판 목록**. (행, 어느 target 이 줬나).
+
+    판이 하나뿐이면 그 API 가 현행만 준다는 뜻이다 -- 그때는 행위시법을 못 한다고
+    **말해야 한다.** 조용히 최신으로 돌아가면 옛 사건을 새 법으로 재게 된다.
+    """
+    get = fetcher or _get
+    best, where = [], ""
+    for tgt in HISTORY_TARGETS:
+        try:
+            rows = parse_search(get(_url(SEARCH, oc, target=tgt, query=name,
+                                         display=display), oc))
+        except Exception:                       # noqa: BLE001  다음 후보를 두드린다
+            continue
+        같 = [r for r in rows if r["이름"].replace(" ", "") == name.replace(" ", "")]
+        판 = {_daykey(r.get("시행일자", "")) for r in 같} - {""}
+        if len(판) > len({_daykey(r.get("시행일자", "")) for r in best} - {""}):
+            best, where = 같, tgt
+        if len(판) > 1:
+            break
+    return best, where
+
+
+def pick_at(rows: list, name: str, when: str):
+    """**그날 시행 중이던 판.** 시행일자가 `when` **이하인 것 중 가장 늦은 것**.
+
+    행위시법이 이 함수의 존재 이유다. 법은 개정되고 재판은 행위 당시의 법으로 한다
+    (형법 제1조 제1항 "행위 시의 법률에 의한다"; 민사는 법률불소급 + 부칙 경과규정).
+    지금 원장은 `pick()` 이 늘 최신을 골라 **현행법만** 담는다. 2018년 확약을 2026년
+    민법으로 재는 셈이다.
+
+    판례 대조에서는 더 크게 어긋난다. 2015년 판결은 2015년 법을 적용한 것이라,
+    현행 조문과 대 보면 **옛 판결이 전부 틀린 것처럼** 나온다. 판례 원장을 채우기
+    전에 이것을 고쳐야 하는 이유다 -- 안 그러면 채우자마자 헛돈다.
+
+    **못 고르면 None 이다.** 그날보다 늦은 판밖에 없으면 그때 시행 중이던 법을 우리가
+    안 가진 것이고, 아무거나 골라 대조하면 틀린 법으로 멀쩡한 글을 기각한다.
+    """
+    key = _daykey(when)
+    same = [r for r in rows if r["이름"].replace(" ", "") == name.replace(" ", "")]
+    쓸것 = [r for r in same if r.get("시행일자") and _daykey(r["시행일자"]) <= key]
+    if not 쓸것:
+        return None
+    return sorted(쓸것, key=lambda r: _daykey(r["시행일자"]))[-1]
+
+
+def _daykey(s: str) -> str:
+    """`2019-02-15` · `20190215` · `2019. 2. 15.` 를 한 꼴(`20190215`)로.
+
+    **월·일이 한 자리인 꼴을 따로 다룬다.** 숫자만 뽑아 붙이면 `2019.2.15` 가
+    `2019215`(7자)가 되어 못 읽는 것으로 떨어진다 -- 판결문과 법령 공고가 늘 쓰는
+    꼴이 그것이다. 못 읽으면 빈 문자열이고, 빈 것은 비교에서 빠진다.
+    """
+    g = re.findall(r"\d+", s or "")
+    if len(g) >= 3 and len(g[0]) == 4:
+        return f"{g[0]}{int(g[1]):02d}{int(g[2]):02d}"
+    d = "".join(g)
+    return d[:8] if len(d) >= 8 else ""
+
+
 def pick(rows: list, name: str):
     """**이름이 정확히 같은 것만 고른다.** '형법' 검색에 군형법·형법 시행령이 같이 온다.
 
@@ -443,14 +510,31 @@ def save(name: str, meta: dict, text: str, root: Path) -> Path:
 
 
 def pull(name: str, oc: str, root: Path, fetcher=None, mst: str = "",
-         dry: bool = False) -> dict:
-    """한 법령을 받아 저장한다. (검색 -> 고르기 -> 본문 -> 검사 -> 저장)"""
+         dry: bool = False, when: str = "") -> dict:
+    """한 법령을 받아 저장한다. (검색 -> 고르기 -> 본문 -> 검사 -> 저장)
+
+    `when` 을 주면 **그날 시행 중이던 판**을 받는다(행위시법). 그 판이 없으면 최신으로
+    돌아가지 않고 **말하고 멈춘다** -- 조용히 새 법으로 옛일을 재는 것이 제일 나쁘다.
+    """
     get = fetcher or _get
     chosen = None
     if not mst:
-        rows = parse_search(get(_url(SEARCH, oc, target="law", query=name,
-                                     display="50"), oc))
-        chosen = pick(rows, name)
+        if when:
+            rows, where = history(name, oc, fetcher=get)
+            판수 = len({_daykey(r.get("시행일자", "")) for r in rows} - {""})
+            chosen = pick_at(rows, name, when)
+            if not chosen:
+                가진 = sorted({r.get("시행일자", "") for r in rows if r.get("시행일자")})
+                raise RuntimeError(
+                    f"{name}: {when} 에 시행 중이던 판을 못 찾았다 "
+                    f"(가진 판 {판수}개: {', '.join(가진[:6]) or '없음'}"
+                    + (f", target={where}" if where else "") + ")"
+                    + ("\n  판이 하나뿐이면 이 API 가 현행만 주는 것이다 -- "
+                       "그러면 행위시법을 못 한다." if 판수 <= 1 else ""))
+        else:
+            rows = parse_search(get(_url(SEARCH, oc, target="law", query=name,
+                                         display="50"), oc))
+            chosen = pick(rows, name)
         if not chosen:
             near = ", ".join(r["이름"] for r in rows[:5]) or "(결과 없음)"
             raise RuntimeError(f"{name!r} 과 이름이 정확히 같은 법령이 없다. 가까운 것: {near}")
@@ -480,6 +564,17 @@ def pull(name: str, oc: str, root: Path, fetcher=None, mst: str = "",
     return out
 
 
+def as_of_dir(root: Path, when: str) -> Path:
+    """시점 원장의 자리. `law/corpus/@2019-02-15/`.
+
+    현행 원장(`law/corpus/`)을 덮지 않는다. 그리고 모든 도구가 이미 `--corpus` 를
+    받으므로, 이 디렉터리를 그대로 넘기면 **손댈 곳 없이** 그 시점 법으로 돌아간다.
+
+        python3 law/gate.py 법이론서 --corpus law/corpus/@2019-02-15
+    """
+    return Path(root) / f"@{_daykey(when)[:4]}-{_daykey(when)[4:6]}-{_daykey(when)[6:8]}"
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="조문 원장을 법제처 API 로 채운다")
     ap.add_argument("names", nargs="+", help="법령명 (예: 형법 민법). --판례 면 검색어/사건번호")
@@ -496,6 +591,10 @@ def main(argv=None):
     ap.add_argument("--corpus", default=str(CP.CORPUS_DIR))
     ap.add_argument("--cases", default=str(CP.CASES_DIR), help="판례 원장 자리")
     ap.add_argument("--mst", default="", help="일련번호를 직접 지정(법령 하나일 때)")
+    ap.add_argument("--시행일", dest="when", default="",
+                    help="그날 시행 중이던 판을 받는다 (행위시법). 예: 2019-02-15")
+    ap.add_argument("--이력", dest="hist", action="store_true",
+                    help="이 법령에 어떤 시행일 판들이 있는지만 본다 (저장 안 함)")
     ap.add_argument("--list", action="store_true", help="검색 결과만 본다")
     ap.add_argument("--dry", action="store_true", help="받되 파일은 안 쓴다")
     a = ap.parse_args(argv)
@@ -509,6 +608,24 @@ def main(argv=None):
 
     root = Path(a.corpus)
     bad = 0
+
+    if a.hist:
+        for name in a.names:
+            rows, where = history(name, a.oc)
+            판 = sorted({r.get("시행일자", "") for r in rows if r.get("시행일자")})
+            print(f"\n[{name}] 시행일 판 {len(판)}개"
+                  + (f" (target={where})" if where else ""))
+            for r in rows[:30]:
+                print(f"  시행 {r.get('시행일자', '?')} · 일련번호 "
+                      f"{r.get('일련번호') or r.get('ID')}")
+            if len(판) <= 1:
+                print("  **판이 하나뿐이다** -- 이 API 가 현행만 준다는 뜻이고,"
+                      " 그러면 행위시법을 못 한다.")
+        return 0
+
+    if a.when:
+        root = as_of_dir(root, a.when)
+        print(f"시점 원장 {root}  (현행 원장은 안 건드린다)")
 
     if a.prec:
         croot = Path(a.cases)
@@ -583,7 +700,7 @@ def main(argv=None):
                           f"· 일련번호 {r['일련번호'] or r['ID']}{star}")
                 continue
             r = pull(name, a.oc, root, mst=a.mst if len(a.names) == 1 else "",
-                     dry=a.dry)
+                     dry=a.dry, when=a.when)
             where = r["저장"] or "(저장 안 함 -- dry)"
             print(f"\n[{r['이름']}] 시행 {r['시행일자']} · 조문머리 {r['조문머리']}개 "
                   f"· {r['글자']}자\n  {where}")
