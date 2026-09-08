@@ -52,7 +52,13 @@ BEATS = 3
 
 
 def ep_no(book: dict) -> int:
-    """지금 회차 번호(0부터)."""
+    """지금 회차 번호(0부터). 카드가 있으면 카드의 번호다 -- 회차는 분량으로도 넘어가고,
+    마지막 비트를 다 썼을 때도 넘어간다(아래 ensure). 분량만 보면 같은 회차를 두 번 쓴다."""
+    if book.get("_ep") is not None:
+        return int(book["_ep"])
+    c = book.get("card")
+    if c and c.get("ep") is not None:
+        return int(c["ep"])
     return sum(len(c) for c in (book.get("chunks") or [])) // max(1, EP)
 
 # 전환점 다섯(Papalampidi & Keller 2019). 빚 위에 얹는다 -- 마디의 마지막 회차에 온다.
@@ -183,7 +189,16 @@ def card_prompt(book: dict) -> str:
 {_plants_block(book)}
 
 [전개 본보기 -- 이 회차의 비트는 이런 꼴로 짠다. 하나둘 고른다]
-{SP.render("전개", seed, n, 4)}
+{SP.render("전개", seed, n, 3)}
+{SP.render("큰줄기", seed, n, 1)}
+
+[로맨스 · 싸움 · 체계 본보기 -- 비트 하나에 하나씩 얹을 수 있다]
+{SP.render("로맨스", seed, n, 2)}
+{SP.render("싸움", seed, n, 1)}
+{SP.render("시스템", seed, n, 1)}
+
+[설정 본보기 -- 세계의 규칙을 하나 더 세우거나 쓸 때. 값은 네가 정하고 원장이 지킨다]
+{SP.render("설정", seed, n, 1)}
 
 [인물 본보기 -- 새 사람을 세우거나 있는 사람을 쓸 때]
 {SP.render("인물", seed, n, 2)}
@@ -226,10 +241,24 @@ def card_prompt(book: dict) -> str:
 def ensure(book: dict, llm) -> "dict | None":
     """회차가 바뀌었으면 카드를 새로 낸다. **회차당 호출 한 번.** 실패하면 카드 없이 간다."""
     n = _chars(book)
-    ep = n // max(1, EP)
+    by_len = n // max(1, EP)
     card = book.get("card")
-    if card and card.get("ep") == ep:
-        return card
+    nchunks = len(book.get("chunks") or [])
+    if card:
+        # **회차가 끝나는 조건은 둘이다.** 분량이 찼거나, 마지막 비트를 이미 썼거나.
+        # 실측 2026-09-08 밤: 분량만 봤더니 갈고리(자격 박탈 선언)를 쓴 뒤에도 같은 카드가
+        # 남아 다음 덩어리가 **같은 장면을 다시 썼다** -- 사용자: "이거 똑같은 씬 이전에
+        # 나왔는데 또 반복된다."
+        last_given = card.get("_last_given")
+        done = last_given is not None and nchunks > int(last_given)
+        if by_len <= int(card.get("ep", 0)) and not done:
+            return card
+        ep = max(by_len, int(card.get("ep", 0)) + 1)
+        if done and by_len <= int(card.get("ep", 0)):
+            D._log(f"[회차] 마지막 비트를 썼다 -- 분량이 안 찼어도 다음 회차로 넘어간다")
+    else:
+        ep = by_len
+    book["_ep"] = ep
     try:
         prompt = card_prompt(book)
         got = D.call_json(D._llm_for(llm, "director"), prompt, label="회차 각본")
@@ -316,7 +345,11 @@ def brief(book: dict) -> str:
         tail = f"   ← 여기서 답이 갈린다: {c['답']}" if i == len(c["비트"]) and c.get("답") else ""
         rows.append(f"      {mark} {i}. ({b['꼴']}) {b['무엇']}{tail}")
     if k > 1:
-        rows.append(f"  · 앞 비트는 이미 썼다. **{k}번 비트부터** 쓴다 -- 되풀이하지 마라.")
+        rows.append(f"  · 앞 비트는 이미 썼다. **{k}번 비트부터** 쓴다 -- 되풀이하지 마라."
+                    " 앞 덩어리에서 벌어진 일(선언 · 박탈 · 사살)은 **다시 벌어지지 않는다.**")
+    if k >= len(c["비트"]):
+        # 마지막 비트를 이 덩어리에 맡겼다. 다음 덩어리는 다음 회차다(ensure 가 본다).
+        c["_last_given"] = len(book.get("chunks") or [])
     rows.append("  · 장면 비트는 한 자리 · 한 때에서 벌어지고 대사가 민다. 요약 비트는 시간을"
                 " 접는다 -- 며칠이 한 문단이어도 된다. 세기는 비트마다 오른다.")
     # **연출과 대사 -- 애니 · 라노벨의 꼴.** 사용자: "상황이 머릿속에 안 떠오른다."
@@ -324,6 +357,11 @@ def brief(book: dict) -> str:
     nn = len(book.get("chunks") or [])
     rows.append("  · 연출:\n" + SP.render("연출", seed, nn, 2).replace("    ", "      "))
     rows.append("  · 대사:\n" + SP.render("대사", seed, nn, 2).replace("    ", "      "))
+    # 사용자(2026-09-08 밤): "전투씬 더 자세히 · 묘사 더 생생하게 · 주변 반응 더 격하게 · 19세."
+    rows.append("  · 싸움이 있으면:\n" + SP.render("싸움", seed, nn, 1).replace("    ", "      "))
+    rows.append("  · 몸과 살갗:\n" + SP.render("외모", seed, nn, 1).replace("    ", "      ")
+                + "\n" + SP.render("관능", seed, nn, 1).replace("    ", "      "))
+    rows.append("  · 주변의 반응:\n" + SP.render("반응", seed, nn, 1).replace("    ", "      "))
     if c.get("거둠"):
         rows.append(f"  · **거둔다:** {c['거둠']} -- 앞 회차에 심어 둔 그 낱말 · 그 물건을 그대로 다시 쓴다."
                     " 새 인물이 이 자리에서 나오면 기척 → 실루엣 → 한 마디 → 이명 → 판이 바뀐다.")
