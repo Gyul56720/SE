@@ -10,10 +10,16 @@ alphapolis · 심지어 wikipedia 까지 나가는 길에서 거절됐다(실측
 
 그래서 지어내지 않는다. 대신 **자를 만든다.** 실제 1화를 손에 넣을 수 있는 쪽은
 사용자다 -- 파일로 떨궈 주면 이 모듈이 그것을 재고, 우리 원고의 첫 회차를 같은 자로
-재서 나란히 놓는다. 그 다음에 숫자를 보고 `targets.json` 을 고친다. 이 저장소의 규율
-그대로다: **잰 것만 프롬프트에 싣는다.**
+재서 나란히 놓는다. 이 저장소의 규율 그대로다: **잰 것만 프롬프트에 싣는다.**
 
     python3 -m novel.first 실제1화.txt 우리1화.txt
+    python3 -m novel.first --기록 웹소설1화 실제1화.txt   # 표본으로 남긴다
+
+**2026-09-09: 첫 표본이 왔다.** 사용자가 실제 웹소설 1화(9,204자)를 재서 보내 줬고,
+그 수가 `first_ref.json` 에 남아 `novel/genre.py` 의 lanobe 밴드 셋(sent_len ·
+da_share · names)이 되었다. 그전까지 그 축들은 밴드가 없거나 세 배 폭이라 아무 말도
+안 하고 있었다. 이제 `--기록` 없이 그냥 재면 그 표본이 **곁 칸으로 늘 선다** --
+견줄 상대가 없으면 숫자는 숫자일 뿐이다.
 
 ## 무엇을 재나
 
@@ -28,6 +34,7 @@ alphapolis · 심지어 wikipedia 까지 나가는 길에서 거절됐다(실측
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 from pathlib import Path
@@ -85,6 +92,57 @@ def measure(text: str, head: int = HEAD) -> dict:
     return out
 
 
+REF = Path(__file__).resolve().parent / "first_ref.json"
+
+
+def ref() -> list:
+    """**지금까지 잰 실제 1화들.** 없거나 깨졌으면 빈 목록 -- 여기서 터지면 자가 죽는다."""
+    try:
+        return json.loads(REF.read_text(encoding="utf-8")).get("표본") or []
+    except Exception:
+        return []
+
+
+def _median(vals: list):
+    vals = sorted(v for v in vals if isinstance(v, (int, float)))
+    if not vals:
+        return None
+    n = len(vals)
+    return vals[n // 2] if n % 2 else (vals[n // 2 - 1] + vals[n // 2]) / 2
+
+
+def ref_mid() -> dict:
+    """표본들의 **중앙값**. 평균이 아니라 중앙값인 이유는 표본이 적어서다 --
+    한 편이 튀면 평균은 통째로 끌려간다."""
+    got = ref()
+    if not got:
+        return {}
+    out = {}
+    for k, _, _ in _AXES:
+        m = _median([g.get(k) for g in got])
+        if m is not None:
+            out[k] = m
+    return out
+
+
+def record(name: str, m: dict, where: str = "") -> int:
+    """잰 것을 표본에 **더한다.** 같은 이름이 있으면 갈아 끼운다. 표본 수를 돌려준다."""
+    try:
+        doc = json.loads(REF.read_text(encoding="utf-8"))
+    except Exception:
+        doc = {"_": "실제 1화를 잰 것.", "표본": []}
+    row = {"이름": name, "언제": _today(), "출처": where or "drift.sh 첫장 --기록"}
+    row.update({k: round(v, 2) if isinstance(v, float) else v for k, v in m.items()})
+    doc["표본"] = [g for g in doc.get("표본") or [] if g.get("이름") != name] + [row]
+    REF.write_text(json.dumps(doc, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    return len(doc["표본"])
+
+
+def _today() -> str:
+    from datetime import date
+    return date.today().isoformat()
+
+
 _AXES = (("to_talk", "첫 대사까지", "{:,.0f}자"), ("first_len", "첫 문장", "{:.0f}자"),
          ("sent_len", "문장 길이", "{:.1f}자"), ("dialog", "대사 줄 몫", "{:.2f}"),
          ("short", "짧은 문장", "{:.2f}"), ("da_share", "-다 몫", "{:.2f}"),
@@ -109,6 +167,8 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="첫 회차를 잰다. 실제 1화와 우리 1화를 견준다.")
     ap.add_argument("files", nargs="+", help="첫 회차가 든 텍스트 파일들")
     ap.add_argument("--head", type=int, default=HEAD, help=f"앞머리로 볼 자수 (기본 {HEAD})")
+    ap.add_argument("--기록", dest="keep", default="",
+                    help="잰 것을 실제 1화 표본으로 남긴다 (이름을 준다). 갈래 밴드가 여기서 나온다")
     a = ap.parse_args(argv)
     rows = []
     for f in a.files:
@@ -121,7 +181,19 @@ def main(argv=None) -> int:
             print(f"빈 파일: {f}", file=sys.stderr)
             return 2
         rows.append((p.stem, m))
+        if a.keep:
+            n = record(a.keep if len(a.files) == 1 else f"{a.keep}-{p.stem}", m,
+                       where=f"drift.sh 첫장 --기록 ({p.name})")
+            print(f"표본에 남겼다: {REF.name} -- 이제 {n}편", file=sys.stderr)
+    # **잰 실제 1화가 있으면 늘 곁에 세운다.** 견줄 상대가 없으면 숫자는 숫자일 뿐이다.
+    got = ref()
+    if got and not a.keep:
+        rows.append((f"실제(n={len(got)})", ref_mid()))
     print(table(rows))
+    if got and not a.keep:
+        print(f"\n  '실제' 는 {REF.name} 에 쌓인 {len(got)}편의 중앙값이다"
+              f" ({' · '.join(g.get('이름', '?') for g in got[:4])})."
+              "\n  표본을 늘리려면: --기록 <이름>", file=sys.stderr)
     return 0
 
 

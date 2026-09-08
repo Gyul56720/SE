@@ -74,16 +74,59 @@ ok(all(lbl in _t for _, lbl, _ in first._AXES), "축이 줄로 선다")
 ok(len(_t.splitlines()) == len(first._AXES) + 2, "머리 · 금 · 축만큼의 줄")
 
 print("\n[명령줄]")
-tmp = Path(REPO / "tests" / "_first_tmp.txt")
+tmp = tmp2 = Path(REPO / "tests" / "_first_tmp.txt")
 tmp.write_text(KO, encoding="utf-8")
 try:
     ok(first.main([str(tmp)]) == 0, "파일을 주면 0")
     ok(first.main([str(tmp / "없다")]) == 2, "없는 파일이면 2  ← 조용히 통과하지 않는다")
 finally:
-    tmp.unlink(missing_ok=True)
+    pass
+
+print("\n[표본이 저장소에 남는가]")
+# **이 저장소가 두 번 앓은 병이다.** `novel/*.json` 이 통째로 무시 대상이라
+# targets.json 도 directives.json 도 저장소에서 사라진 적이 있고, 그때 CI 는 표본에서
+# 온 수가 아니라 옛 짐작으로 돌았다(.gitignore 의 그 자리 주석). first_ref.json 도
+# 여기 걸릴 뻔했다 -- 만들고 나서 `git status` 에 안 떴다(2026-09-09).
+import subprocess                                                    # noqa: E402
+_ig = subprocess.run(["git", "check-ignore", "-q", "novel/first_ref.json"],
+                     cwd=REPO, capture_output=True)
+ok(_ig.returncode != 0, "표본 파일이 .gitignore 에 안 먹힌다  ← 먹히면 조용히 사라진다")
+_tracked = subprocess.run(["git", "ls-files", "--error-unmatch", "novel/first_ref.json"],
+                          cwd=REPO, capture_output=True)
+ok(_tracked.returncode == 0 or first.REF.exists(),
+   "표본 파일이 나무에 있거나 적어도 여기 있다")
+
+print("\n[표본 -- 잰 것이 밴드가 된다]")
+# **표본은 저장소 파일에 쌓인다.** 검사가 그 파일을 건드리면 안 된다 -- 검사를 돌릴
+# 때마다 진짜 표본이 늘어나면 그 수는 잰 것이 아니라 검사의 부산물이다.
+_real = first.REF
+_got = first.ref()
+ok(isinstance(_got, list), f"표본을 읽는다 ({len(_got)}편)")
+ok(all("sent_len" in g or "dialog" in g for g in _got), "표본마다 잰 축이 들어 있다")
+_mid = first.ref_mid()
+ok(bool(_got) == bool(_mid), "표본이 있으면 중앙값이 나온다")
+
+first.REF = Path(REPO / "tests" / "_first_ref_tmp.json")
+try:
+    ok(first.ref() == [] and first.ref_mid() == {},
+       "없는 파일이면 빈 것  ← 여기서 터지면 자가 죽는다")
+    n1 = first.record("가", first.measure(KO))
+    n2 = first.record("나", first.measure(NOTALK))
+    ok((n1, n2) == (1, 2), f"표본이 쌓인다 ({n1} → {n2})")
+    ok(first.record("가", first.measure(NOTALK)) == 2, "같은 이름은 갈아 끼운다")
+    _m = first.ref_mid()
+    ok("sent_len" in _m or "dialog" in _m, f"중앙값이 나온다 ({sorted(_m)[:3]})")
+    ok(first.main([str(tmp2)]) == 0, "표본이 있어도 명령줄이 돈다")
+finally:
+    first.REF.unlink(missing_ok=True)
+    first.REF = _real
+ok(first.REF == _real and len(first.ref()) == len(_got),
+   "진짜 표본은 안 건드렸다  ← 검사가 표본을 늘리면 그것은 잰 것이 아니다")
+
 
 print()
 if fails:
     print(f"첫 쪽: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)
-print("첫 쪽: 첫 대사까지 · 첫 문장 · 앞머리 프로필 · 표 · 명령줄 -- 통과")
+tmp.unlink(missing_ok=True)
+print("첫 쪽: 첫 대사까지 · 첫 문장 · 앞머리 프로필 · 표 · 명령줄 · 표본 -- 통과")

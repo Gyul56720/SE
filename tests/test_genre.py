@@ -516,6 +516,47 @@ ok(_ld and _ld[0] + _ld[1] > 2 * 0.45, f"대사가 절반쯤이다 ({_ld})  ← 
 ok(_ld and _ld[1] > genre.band("ropan", "dialog")[1], f"로판보다도 말이 많다 ({_ld})")
 ok("말이 절반이다" in _l and "정경 묘사는 최소로" in _l, "머리가 그 비율을 말한다")
 ok(all(len(x) > 20 for x in genre.PACKS["lanobe"]["이름결"]), "이름결은 결이지 목록이 아니다")
+
+# ---------------------------------------------------------------- 표본이 이긴다
+# **실측 2026-09-09.** 사용자가 실제 웹소설 1화(9,204자)를 파일로 줬고, 앞 1,500자를
+# `novel.first` 로 쟀다. 그 전까지 lanobe 축은 셋(dialog · rally · talk_len)뿐이었고
+# 그 셋도 "잰 것이 아니라 갈래 가정" 이라고 적혀 있었다. 표본이 들어오면 표본이 이긴다.
+_REAL = {"sent_len": 47.6, "dialog": 0.36, "da_share": 0.62, "names": 6.7}
+_OURS = {"sent_len": 26.1, "dialog": 0.05, "da_share": 0.83, "names": 16.0}
+for _k, _v in _REAL.items():
+    _b = genre.band("lanobe", _k)
+    ok(_b and _b[0] <= _v <= _b[1], f"{_k}: 실제 1화({_v})가 밴드 안 ({_b})")
+    ok(_b and not (_b[0] <= _OURS[_k] <= _b[1]),
+       f"{_k}: 우리 값({_OURS[_k]})은 밴드 밖  ← 그래야 손질 루프가 말을 건다")
+
+# **폭이 넓으면 아무 말도 안 한다.** sent_len 표본 밴드는 19.76~59.34 라 26.1 도
+# 47.6 도 다 "안" 이었다 -- 아무도 늘리라고 안 했다. 그런데 축에서 프롬프트를 짓는
+# 경로는 가운뎃값 22.58 을 싣는다: 실제 1화의 절반이다. 폭을 좁히는 것이 고침이다.
+#
+# 여기서 읽는 것은 **살아 있는 targets.json 이 아니라 위에서 걸어 둔 fixture** 다
+# (파일 머리의 DRIFT_TARGETS). 그래서 보는 것은 어느 작품의 수가 아니라 꼴이다:
+# 넓은 폭은 둘 다 품고, 갈래가 그보다 좁게 덮는다.
+from novel import targets as _TG                                     # noqa: E402
+_ts = _TG.band("sent_len")
+ok(_ts and _ts[0] <= _OURS["sent_len"] <= _ts[1] and _ts[0] <= _REAL["sent_len"] <= _ts[1],
+   f"표본 밴드는 둘 다 품는다 ({_ts})  ← 그래서 무력했다")
+_ls = genre.band("lanobe", "sent_len")
+ok(_ls[1] - _ls[0] < (_ts[1] - _ts[0]) / 1.5,
+   f"갈래 밴드는 그보다 좁다 ({_ls[1] - _ls[0]:.1f} < {(_ts[1] - _ts[0]) / 1.5:.1f}자)")
+
+# **재는 축에는 지시문이 있어야 한다.** 밴드만 두면 compose 의 aim 만 실리고 손질
+# 루프는 조용하다 -- names 가 그랬다(aim 만 있고 high/low 가 없었다).
+import json as _json                                                 # noqa: E402
+_dir = _json.load(open(Path(__file__).resolve().parent.parent / "novel" / "directives.json",
+                       encoding="utf-8"))["axes"]
+for _k in genre.PACKS["lanobe"]["저울"]["축"]:
+    _d = _dir.get(_k) or {}
+    ok("high" in _d and "low" in _d, f"{_k}: 지시문 양쪽이 다 있다  ← 밴드만 두면 조용하다")
+
+# 지시문이 실제로 우리 값에 말을 거는가(꼴만 본다 -- 문구는 directives.json 것이다).
+_say = _dir["names"]["high"].format(got=_OURS["names"], lo=3.0, hi=10.0, mid=6.5,
+                                    n_climb=0, climb_words="")
+ok("16" in _say and "10" in _say, f"names 지시문이 우리 수를 댄다  ← {_say[:40]}...")
 _bl = flow.blank(flow.FIRST); _bl["genre"] = "lanobe"
 _pl = flow.write_prompt(_bl)
 for _sec in ("[문장]", "[리듬]", "[점층]", "[대사가 이야기다]", "[말맛]", "[확산]"):
@@ -567,4 +608,4 @@ print()
 if _bad:
     print(f"갈래: {len(_bad)}개 실패 -- {_bad}")
     raise SystemExit(1)
-print("갈래: 갈아끼우기 · 저울 · 사슬 · 격리 · 변수 · 이름결 -- 통과")
+print("갈래: 갈아끼우기 · 저울 · 사슬 · 격리 · 변수 · 이름결 · 표본 -- 통과")
