@@ -140,6 +140,8 @@ from novel import hooks as HK                                         # noqa: E4
 ok(len(HK.KINDS) >= 25, f"본보기가 많다 ({len(HK.KINDS)}개)  ← 표본 18 + 사용자 요구")
 ok(sum(1 for _, _, src in HK.KINDS if src.startswith("표본")) >= 15, "표본에서 온 것이 15개 넘는다")
 ok(sum(1 for _, _, src in HK.KINDS if src.startswith("일본")) >= 10, "일본 연재물 문법에서 온 것이 10개 넘는다 (HIKI.md)")
+ok(sum(1 for _, _, src in HK.KINDS if src.startswith("류")) >= 6, "코인로커 베이비스에서 온 것이 6개 넘는다 (RYU.md)")
+ok("판을 넓혀라" in BT.card_prompt(book(100)), "무대와 판돈이 앞 회차보다 커야 한다고 말한다  ← 류의 계단")
 ok("첫 회차다" in BT.card_prompt(book(100)) and "첫 회차다" not in BT.card_prompt(book(BT.EP + 100)),
    "첫 회차에만 주인공의 목적을 요구한다  ← 점프의 1화 규칙")
 _s0, _s1 = HK.sample("씨", 0), HK.sample("씨", 1)
