@@ -131,13 +131,18 @@ def prompt(q: Question) -> str:
       법리에 따른 것이면 그렇다고 적습니다.>"""
 
 
-_ANS = re.compile(r"답\s*[:：]?\s*([①②③④⑤]|[1-5])")
+# `답: ④` 만 받으면, 모델이 `답은 ④입니다` 라고 쓴 순간 그 답은 **못 읽음**이 된다.
+# 그리고 못 읽음은 틀림과 섞여 정답률 0/70 으로 찍힌다 -- 관문이 아니라 파서가 틀린
+# 것인데 답안이 틀린 것처럼 보인다. 실측: 쿼터를 다 쓰고 나서야 알았을 자리였다.
+# 그래서 조사(`답은`·`답이`)와 `번`을 받고, 번호만 홀로 선 줄도 받는다.
+_ANS = re.compile(r"정?답\s*[은는이가을를]?\s*[:：]?\s*([①②③④⑤]|[1-5])\s*번?")
+_ANS_ONLY = re.compile(r"^\s*\**\s*([①②③④⑤]|[1-5])\s*번?\s*\**\s*$", re.M)
 _WHY = re.compile(r"근거\s*[:：]?\s*(.+)", re.S)
 
 
 def read_reply(text: str) -> tuple:
     """(고른 번호, 근거). 못 읽으면 (0, 원문) -- **조용히 0점 처리하지 않는다.**"""
-    m = _ANS.search(text or "")
+    m = _ANS.search(text or "") or _ANS_ONLY.search(text or "")
     pick = _PICK_NO.get(m.group(1), 0) if m and m.group(1) in _PICK_NO else (
         int(m.group(1)) if m else 0)
     w = _WHY.search(text or "")
@@ -198,16 +203,21 @@ def report(rows: list, key: dict) -> None:
         print("푼 것이 없다.")
         return
     맞힘 = [r for r in rows if key and r["고름"] == key.get(r["번호"])]
+    못읽음 = [r["번호"] for r in rows if not r["고름"]]
     어긋 = sum(len(r["어긋남"]) for r in rows)
     무근거 = sum(1 for r in rows if not r["인용"])
     print(f"\n문항 {n}개")
     if key:
-        본 = [r for r in rows if r["번호"] in key]
+        본 = [r for r in rows if r["번호"] in key and r["고름"]]
         print(f"  정답률   {len(맞힘)}/{len(본)}  <- **밖의 자**")
     else:
         print("  정답률   정답표가 없어 못 적는다 (--답 으로 준다)")
     print(f"  어긋남   {어긋}건        <- **안의 자** (근거가 조문과 어긋난 자리)")
     print(f"  미검증   {sum(r['미검증'] for r in rows)}건  (원장에 없는 법령)")
+    if 못읽음:
+        print(f"  **답을 못 읽은 문항 {len(못읽음)}개**: {못읽음[:12]}"
+              f"\n  틀린 게 아니라 **읽지 못한 것**이다. 정답률의 분모에서 뺐다."
+              f"\n  이 수가 크면 답안이 아니라 파서를 먼저 의심하라.")
     print(f"  조문을 아예 안 부른 답안 {무근거}개"
           f"  <- 이건 관문이 볼 것이 없는 자리다")
     if key:
