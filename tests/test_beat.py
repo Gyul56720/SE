@@ -138,7 +138,10 @@ ok("예고" in BT.hook_ok("불", "곧 서재에 불이 붙을 것이었다"), "�
 ok("비었다" in BT.hook_ok("", "팔이 잘린다"), "종류가 비면 안 된다")
 from novel import hooks as HK                                         # noqa: E402
 ok(len(HK.KINDS) >= 25, f"본보기가 많다 ({len(HK.KINDS)}개)  ← 표본 18 + 사용자 요구")
-ok(sum(1 for _, _, src in HK.KINDS if src.startswith("표본")) >= 15, "표본에서 온 것이 절반 넘는다")
+ok(sum(1 for _, _, src in HK.KINDS if src.startswith("표본")) >= 15, "표본에서 온 것이 15개 넘는다")
+ok(sum(1 for _, _, src in HK.KINDS if src.startswith("일본")) >= 10, "일본 연재물 문법에서 온 것이 10개 넘는다 (HIKI.md)")
+ok("첫 회차다" in BT.card_prompt(book(100)) and "첫 회차다" not in BT.card_prompt(book(BT.EP + 100)),
+   "첫 회차에만 주인공의 목적을 요구한다  ← 점프의 1화 규칙")
 _s0, _s1 = HK.sample("씨", 0), HK.sample("씨", 1)
 ok(len(_s0) == 5 and _s0 != _s1 and HK.sample("씨", 0) == _s0, "회차마다 다섯 개씩 돌아가고, 같은 원고는 같다")
 ok(any(k in BT.card_prompt(book(100)) for k, _, _ in _s0), "각본 프롬프트에 본보기가 실린다")
