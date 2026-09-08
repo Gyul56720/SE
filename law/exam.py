@@ -79,8 +79,11 @@ class Question:
 
 def clean(text: str) -> list:
     """화면 껍데기를 걷어낸 줄 목록."""
+    # `#` 줄은 사람이 적은 머리말이거나 ocr.py 의 쪽 표시다. 문제 본문이 아니다 --
+    # 안 걷어내면 앞 보기에 이어 붙어 조문 인용이 엉뚱한 문장에 딸려 간다.
     return [l.rstrip() for l in text.splitlines()
-            if l.strip() and not _CHROME.match(l) and not _PAGE.match(l)]
+            if l.strip() and not l.lstrip().startswith("#")
+            and not _CHROME.match(l) and not _PAGE.match(l)]
 
 
 def parse(text: str) -> list:

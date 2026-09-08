@@ -27,6 +27,7 @@ poppler 없이 순수 파이썬으로 PNG 를 만든다 -- 서버에 깔 것을 
 from __future__ import annotations
 
 import argparse
+import re
 import struct
 import sys
 import zlib
@@ -62,7 +63,8 @@ def page_png(page, out: Path, scale: int = 2) -> Path:
     return out
 
 
-PROMPT = """이 그림은 대한민국 변호사시험 선택형 문제지의 한 쪽입니다.
+PROMPT = """아래 그림들은 대한민국 변호사시험 선택형 문제지의 **이어지는 쪽**입니다
+(한 장일 수도 있습니다). 준 차례대로 이어서 옮겨 적으십시오.
 **보이는 글자를 그대로 옮겨 적으십시오.**
 
   · 없는 글자를 지어내지 마십시오. 문장이 중간에 끊겨 있으면 끊긴 채로 두십시오.
@@ -76,15 +78,49 @@ PROMPT = """이 그림은 대한민국 변호사시험 선택형 문제지의 �
 옮긴 글만 출력하고 다른 말은 붙이지 마십시오."""
 
 
-def _ask(png: Path, model: str) -> str:
+def keys() -> list:
+    """`GEMINI_API_KEY` 와 그 예비들. **무료 티어는 키마다 따로 센다.**
+
+    실측: 하루 20회에서 막혀 36쪽을 못 끝냈다. 키 하나만 보면 예비 키가 놀고 있어도
+    거기서 멈춘다 -- `orchestrator/llm_pool.py` 가 이미 같은 목록을 쓴다.
+    """
+    import os
+    names = ["GEMINI_API_KEY", "GEMINI_API_KEY_FALLBACK"]
+    names += [f"GEMINI_API_KEY_FALLBACK{i}" for i in range(2, 9)]
+    seen, out = set(), []
+    for n in names:
+        v = (os.environ.get(n) or "").strip()
+        if v and v not in seen:
+            seen.add(v)
+            out.append((n, v))
+    return out
+
+
+def _ask(pngs: list, models: list) -> str:
+    """쪽 그림 여럿을 한 번에 보낸다. **호출 수가 곧 쿼터다.**
+
+    쿼터에 막히면 다음 키로, 키가 다 떨어지면 다음 모델로 넘어간다. 마지막까지
+    막히면 **거기서 멈춘다** -- 반쯤 옮긴 것을 성공으로 적으면 그 뒤가 전부 거짓이다.
+    """
     sys.path.insert(0, str(ROOT / "orchestrator"))
     import gemini_http
-    import os
-    key = os.environ.get("GEMINI_API_KEY")
-    if not key:
+    ks = keys()
+    if not ks:
         raise SystemExit("GEMINI_API_KEY 가 없다.")
-    c = gemini_http.Client(model, key, timeout=180.0, max_output_tokens=8192)
-    return c.invoke(PROMPT, images=[("image/png", png.read_bytes())]).content
+    images = [("image/png", p.read_bytes()) for p in pngs]
+    last = None
+    for model in models:
+        for name, key in ks:
+            c = gemini_http.Client(model, key, timeout=300.0, max_output_tokens=8192)
+            try:
+                return c.invoke(PROMPT, images=images).content
+            except Exception as e:                                # noqa: BLE001
+                last = f"{model} / {name}: {e}"
+                if "RESOURCE_EXHAUSTED" in str(e) or "429" in str(e):
+                    print(f"    ({name} 이 {model} 에서 쿼터에 막혔다 -- 다음 것으로)")
+                    continue
+                raise
+    raise SystemExit(f"쓸 수 있는 키·모델이 없다. 마지막: {last}")
 
 
 def pages_of(spec: str, n: int) -> list:
@@ -101,15 +137,65 @@ def pages_of(spec: str, n: int) -> list:
     return [p for p in out if 1 <= p <= n]
 
 
+PAGE_MARK = "# --- 쪽 {n} ---"
+_MARK = re.compile(r"^#\s*---\s*쪽\s*(\d+)\s*---\s*$", re.M)
+
+
+def done_pages(out: Path) -> set:
+    """이미 옮긴 쪽. **쿼터에 막혀 멈춰도 다음 날 이어서 한다.**"""
+    if not out.exists():
+        return set()
+    return {int(m) for m in _MARK.findall(out.read_text(encoding="utf-8"))}
+
+
+def compare(a: Path, b: Path) -> int:
+    """두 읽기가 **갈리는 자리만** 찍는다.
+
+    처음엔 사람이 옮긴 것을 '기준' 이라 불렀는데 그 틀이 틀렸다. 실측: 확인한 두
+    자리에서 전부 사람 쪽이 틀렸고, 그중 하나는 `청구할 수 있다/없다` -- **한 글자가
+    답을 뒤집는 자리**였다. 어느 쪽도 기준이 아니다.
+
+    쓸모는 하나다: **갈린 자리를 찾아 사람이 원본을 확대해 보는 것.** 같은 자리는
+    둘 다 그렇게 읽었다는 뜻이라 볼 필요가 적고, 갈린 자리는 반드시 봐야 한다.
+    """
+    import difflib
+
+    def 줄(p):
+        return [l.strip() for l in p.read_text(encoding="utf-8").splitlines()
+                if l.strip() and not l.lstrip().startswith("#")]
+
+    A, B = 줄(a), 줄(b)
+    n = 0
+    for line in difflib.unified_diff(A, B, a.name, b.name, lineterm="", n=0):
+        if line.startswith(("---", "+++", "@@")):
+            continue
+        n += 1
+        print(line[:200])
+    print(f"\n갈린 줄 {n}개 -- **여기만 원본을 확대해 보면 된다.**"
+          if n else "\n두 읽기가 같다.")
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="시험지 PDF 를 글로 옮긴다 (Gemini 비전)")
-    ap.add_argument("pdf")
+    ap.add_argument("pdf", nargs="?", default="")
     ap.add_argument("--out", default="")
     ap.add_argument("--쪽", dest="pages", default="")
     ap.add_argument("--그림만", dest="only", default="")
-    ap.add_argument("--model", default="gemini-flash-latest")
+    ap.add_argument("--묶음", dest="batch", type=int, default=3,
+                    help="한 번에 보낼 쪽 수. 호출 수가 곧 쿼터다 (기본 3)")
+    ap.add_argument("--다시", dest="again", action="store_true",
+                    help="이미 옮긴 쪽도 다시")
+    ap.add_argument("--견줌", dest="cmp", nargs=2, default=None,
+                    help="두 읽기를 견줘 갈리는 줄만 찍는다")
+    ap.add_argument("--model", default="gemini-flash-latest,gemini-2.5-flash")
     ap.add_argument("--scale", type=int, default=2)
     a = ap.parse_args(argv)
+
+    if a.cmp:
+        return compare(Path(a.cmp[0]), Path(a.cmp[1]))
+    if not a.pdf:
+        ap.error("시험지 PDF 를 주거나 --견줌 을 주십시오")
 
     try:
         from pypdf import PdfReader
@@ -117,26 +203,36 @@ def main(argv=None) -> int:
         raise SystemExit("pypdf 가 없다:  pip install pypdf")
     r = PdfReader(a.pdf)
     want = pages_of(a.pages, len(r.pages))
-    print(f"쪽 {len(r.pages)}개 중 {len(want)}개를 옮긴다")
+    out = Path(a.out) if a.out else None
+    이미 = set() if (a.again or not out) else done_pages(out)
+    남은 = [p for p in want if p not in 이미]
+    print(f"쪽 {len(r.pages)}개 중 {len(want)}개가 대상"
+          + (f", 이미 옮긴 {len(이미)}개는 건너뛴다" if 이미 else ""))
+    if not 남은:
+        print("옮길 것이 없다. --다시 로 다시 옮긴다.")
+        return 0
+    models = [m.strip() for m in a.model.split(",") if m.strip()]
+    묶음 = max(1, a.batch)
+    print(f"부를 횟수: {-(-len(남은) // 묶음)}회 ({묶음}쪽씩)")
 
     tmp = Path(a.only) if a.only else Path("/tmp/law_ocr")
     tmp.mkdir(parents=True, exist_ok=True)
-    out = Path(a.out) if a.out else None
     if out:
         out.parent.mkdir(parents=True, exist_ok=True)
-    fh = out.open("w", encoding="utf-8") if out else None
+    fh = out.open("a" if 이미 else "w", encoding="utf-8") if out else None
     try:
-        for i in want:
-            png = page_png(r.pages[i - 1], tmp / f"p{i:02d}.png", a.scale)
+        for i in range(0, len(남은), 묶음):
+            떼 = 남은[i:i + 묶음]
+            pngs = [page_png(r.pages[n - 1], tmp / f"p{n:02d}.png", a.scale) for n in 떼]
             if a.only:
-                print(f"  {png}")
+                print("  " + ", ".join(str(p) for p in pngs))
                 continue
-            text = _ask(png, a.model).strip()
-            # **못 읽은 자리를 세어 보여 준다.** 조용히 메워진 것보다 낫다.
+            text = _ask(pngs, models).strip()
             흐림 = text.count("[읽을 수 없음]")
-            print(f"  {i:>2}쪽  {len(text):>5}자"
+            print(f"  {떼[0]}~{떼[-1]}쪽  {len(text):>5}자"
                   + (f"  **못 읽은 자리 {흐림}군데**" if 흐림 else ""))
-            (fh.write(text + "\n\n") if fh else print(text))
+            블록 = "\n".join(PAGE_MARK.format(n=n) for n in 떼) + "\n" + text + "\n\n"
+            (fh.write(블록) or fh.flush()) if fh else print(text)
     finally:
         if fh:
             fh.close()
