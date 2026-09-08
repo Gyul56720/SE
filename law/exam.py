@@ -280,6 +280,19 @@ def main(argv=None) -> int:
     key = load_key(a.key) if a.key else {}
     if a.ledger:
         rows = [json.loads(l) for l in Path(a.ledger).read_text(encoding="utf-8").splitlines() if l.strip()]
+        # 못 읽었을 때 `근거` 에 답신 원문이 통째로 적혀 있다. 그래서 파서를 고친 뒤에는
+        # **다시 부르지 않고** 장부만 다시 읽어 고름을 되살릴 수 있다. 쿼터는 이미 썼고,
+        # 답신은 남아 있는데, 그것을 못 읽었다는 이유로 버리는 것은 아깝다.
+        되살림 = []
+        for r in rows:
+            if not r.get("고름"):
+                다시 = read_reply(r.get("근거", ""))[0]
+                if 다시:
+                    r["고름"] = 다시
+                    되살림.append(r["번호"])
+        if 되살림:
+            print(f"장부에 적힌 답신을 다시 읽어 {len(되살림)}개를 되살렸다: {되살림[:12]}"
+                  f"\n  (다시 부르지 않았다. 장부를 덮어쓰지도 않았다.)")
         report(rows, key)
         return 0
     if not a.target:

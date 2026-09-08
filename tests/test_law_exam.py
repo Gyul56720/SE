@@ -7,6 +7,7 @@ OCR 은 깨진다. 깨진 채로 조용히 반쯤 읽으면 그 뒤의 정답률
 """
 from __future__ import annotations
 
+import json
 import sys
 import tempfile
 from pathlib import Path
@@ -149,6 +150,25 @@ ok("정답률   6/6" in _찍힘,
    f"못 읽은 문항은 정답률의 분모에서 뺀다 (얻은 값: {[l for l in _찍힘.splitlines() if '정답률' in l]})")
 ok("답을 못 읽은 문항 4개" in _찍힘,
    f"몇 개를 못 읽었는지 따로 적는다 (얻은 값: {[l for l in _찍힘.splitlines() if '못 읽' in l]})")
+
+print()
+print("[장부] **쿼터는 이미 썼고 답신은 남아 있다** -- 파서를 고쳤으면 되살린다")
+_장부 = Path(tempfile.mkdtemp()) / "exam.jsonl"
+_장부.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in [
+    {"번호": 1, "고름": 4, "근거": "민법 제126조", "인용": 1, "미검증": 0, "어긋남": []},
+    {"번호": 2, "고름": 0, "근거": "답은 ③입니다. 민법 제109조", "인용": 1, "미검증": 0, "어긋남": []},
+    {"번호": 3, "고름": 0, "근거": "잘 모르겠습니다", "인용": 0, "미검증": 0, "어긋남": []},
+]), encoding="utf-8")
+_원본 = _장부.read_text(encoding="utf-8")
+_buf = _io.StringIO()
+with _cl.redirect_stdout(_buf):
+    EX.main(["--장부", str(_장부)])
+_찍힘 = _buf.getvalue()
+ok("1개를 되살렸다" in _찍힘 and "[2]" in _찍힘,
+   f"못 읽었던 답신을 다시 읽어 되살린다 (얻은 값: {[l for l in _찍힘.splitlines() if '되살' in l]})")
+ok("답을 못 읽은 문항 1개" in _찍힘,
+   "정말 못 읽은 것은 그대로 못 읽음으로 남는다")
+ok(_장부.read_text(encoding="utf-8") == _원본, "장부를 덮어쓰지 않는다 -- 원본 답신이 남아야 한다")
 
 print()
 print("[읽기점검] **조용히 반쯤 읽은 것**을 시험지 혼자서 되짚는다")
