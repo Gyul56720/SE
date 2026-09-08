@@ -78,6 +78,8 @@ class Element:
     kind: str = "사실"           # 사실 | 법률
     canon: str = ""              # kind 가 '법률' 일 때 쓴 해석기법
     evidence: list = field(default_factory=list)   # kind 가 '사실' 일 때 증거방법
+    defeats: str = ""            # 재항변: 이 요건이 서면 저 요건(id)이 무너진다
+    source: str = ""             # 어디서 왔나 -- '소장 2쪽' · '가능한 항변' (사람이 볼 것)
 
 
 @dataclass
@@ -121,12 +123,14 @@ def outcome(case: Case, assign: dict) -> str:
     결론을 못 바꾸는 상황이 자동으로 생기고, 뒤집기 검사가 그것을 '쟁점 아님' 으로 걸러낸다
     -- 순서 규칙을 따로 적을 필요가 없다.
     """
+    live = effective(case, assign)
+
     def vals(stage):
-        return [assign.get(e.id, False) for e in case.elements if e.stage == stage]
+        return [live[e.id] for e in case.elements if e.stage == stage and not e.defeats]
 
     def invoked_true(stage):
-        return [assign.get(e.id, False) and e.invoked
-                for e in case.elements if e.stage == stage]
+        return [live[e.id] and e.invoked
+                for e in case.elements if e.stage == stage and not e.defeats]
 
     if case.domain == "민사":
         if not all(vals("권리근거")):
@@ -154,6 +158,56 @@ def outcome(case: Case, assign: dict) -> str:
         return "합헌" if all(vals("정당화")) else "위헌"
 
     raise ValueError(f"모르는 갈래: {case.domain!r}")
+
+
+def effective(case: Case, assign: dict) -> dict:
+    """요건이 **서 있는가.** 인정되어도(True) 그것을 무너뜨리는 재항변이 서 있으면 없다.
+
+    Relationstechnik 의 사슬이다: 청구원인 <- 항변(Einrede) <- 재항변(Replik) <-
+    재재항변(Duplik). 예: 소멸시효 항변이 인정되어도 '채무 승인으로 중단' 재항변이
+    인정되면 시효는 없는 것이고, 그 재항변도 '그 승인은 승인이 아니다' 로 다시 무너질
+    수 있다. **받아치기가 한 번으로 끝나지 않는다.** 이 함수가 그 사슬을 따라간다.
+
+    순환(서로가 서로를 무너뜨림)은 요건표가 틀린 것이다 -- J 관문이 막을 일이고,
+    여기서는 끝없이 돌지 않도록 본 것을 기억한다.
+    """
+    by_target: dict = {}
+    for e in case.elements:
+        if e.defeats:
+            by_target.setdefault(e.defeats, []).append(e)
+    memo: dict = {}
+
+    def alive(eid, seen=()):
+        if eid in memo:
+            return memo[eid]
+        if eid in seen:
+            return False
+        if not assign.get(eid, False):
+            memo[eid] = False
+            return False
+        for d in by_target.get(eid, []):
+            if alive(d.id, seen + (eid,)):
+                memo[eid] = False
+                return False
+        memo[eid] = True
+        return True
+
+    return {e.id: alive(e.id) for e in case.elements}
+
+
+def burden_of(case: Case, e: Element) -> str:
+    """증명책임자. 단계에서 따라 나오되, **재항변은 그 상대의 반대편**이다.
+
+    법률요건분류설(METHOD 3-2): 각 당사자는 자기에게 유리한 법규의 요건사실을 증명한다.
+    시효 항변은 피고에게 유리하니 피고가, 그것을 무너뜨리는 중단 사유는 원고에게
+    유리하니 원고가 증명한다. 재재항변은 다시 뒤집힌다.
+    """
+    if e.defeats:
+        target = case.element(e.defeats)
+        if target is not None:
+            a, b = case.sides()
+            return b if burden_of(case, target) == a else a
+    return BURDEN.get((case.domain, e.stage), "?")
 
 
 def _assign(case: Case, prefer: list) -> dict:
@@ -249,7 +303,7 @@ def derive(case: Case) -> list:
             element=e.id,
             question=f"{e.text}이(가) 인정되는가",
             stage=e.stage,
-            burden=BURDEN.get((case.domain, e.stage), "?"),
+            burden=burden_of(case, e),
             positions={k: bool(v) for k, v in case.positions.get(e.id, {}).items()},
             kind=e.kind, statute=e.statute, article=e.article))
     return out
@@ -259,6 +313,91 @@ def moot(case: Case) -> list:
     """다투어지고는 있으나 결론을 못 바꾸는 요건. 방론이다 -- 보고는 한다."""
     cs = contested(case)
     return [e for e in cs if not flips_outcome(case, e, cs)]
+
+
+# ---------------------------------------------------------------- 유·불리
+
+def advantage(case: Case, cap: int = 14) -> dict:
+    """**더 유리한 쪽.** 취향이 아니라 증명책임에서 계산한다.
+
+    다투어지는 요건은 증거가 없으면(non liquet) 증명책임자가 진다(METHOD 3-2). 그러니
+    "아무것도 증명되지 않았을 때의 결론" 이 곧 출발선이고, 거기서 지는 쪽이 무엇을
+    증명해야 뒤집히는가가 곧 그 쪽의 부담이다. 그래서 세 가지를 낸다:
+
+        출발선   -- 다툼 있는 요건을 전부 '증명 안 됨' 으로 놓았을 때의 결론
+        부담     -- 쟁점마다 누가 증명해야 하는가
+        최소승리 -- 각 쪽이 이기려면 최소 어느 쟁점들을 이겨야 하는가
+
+    최소승리가 작은 쪽이 유리하다. 하나만 이기면 되는 쪽과 셋을 다 이겨야 하는 쪽은
+    같은 자리에 서 있지 않다.
+    """
+    claimant, respondent = case.sides()
+    base = _assign(case, [claimant, respondent])
+    issues = derive(case)
+    ids = [i.element for i in issues]
+    for i in ids:
+        base[i] = False                          # 증명 안 됨
+    start = outcome(case, base)
+    wins = {claimant: "인용", respondent: "기각"} if case.domain == "민사" else \
+           {claimant: "유죄", respondent: "무죄"} if case.domain == "형사" else \
+           {claimant: "위헌", respondent: "합헌"}
+
+    def minimal(side):
+        """이 쪽이 이기는 가장 작은 쟁점 조합들. 자기 부담인 쟁점을 이기는 것으로 센다."""
+        mine = [i for i in issues if i.burden == side]
+        if outcome(case, base) == wins[side]:
+            return [[]]
+        if len(mine) > cap:
+            return None
+        best = []
+        for r in range(1, len(mine) + 1):
+            for combo in itertools.combinations(mine, r):
+                a = dict(base)
+                for i in combo:
+                    a[i.element] = True
+                if outcome(case, a) == wins[side]:
+                    best.append([i.element for i in combo])
+            if best:
+                break
+        return best
+
+    def minimal_given(side, won: str):
+        """상대가 쟁점 `won` 을 이겼다고 치면 이 쪽은 최소 무엇을 이겨야 하는가.
+
+        출발선의 최소승리는 "아무것도 증명 안 됐을 때" 라서, 날짜만으로 거의 서는
+        항변(시효)도 '증명 안 됨' 으로 놓인다. 받아치기는 그 뒤에 있다 -- 상대가
+        가장 센 것을 세웠을 때 무엇으로 받는가. 그래서 상대 쟁점마다 한 번씩 센다.
+        """
+        mine = [i for i in issues if i.burden == side]
+        given = dict(base)
+        given[won] = True
+        if outcome(case, given) == wins[side]:
+            return [[]]
+        if len(mine) > cap:
+            return None
+        best = []
+        for r in range(1, len(mine) + 1):
+            for combo in itertools.combinations(mine, r):
+                a = dict(given)
+                for i in combo:
+                    a[i.element] = True
+                if outcome(case, a) == wins[side]:
+                    best.append([i.element for i in combo])
+            if best:
+                break
+        return best
+
+    받아치기 = {}
+    for side in (claimant, respondent):
+        other = respondent if side == claimant else claimant
+        받아치기[side] = {i.element: minimal_given(side, i.element)
+                       for i in issues if i.burden == other}
+
+    return {"출발선": start,
+            "출발선에서 이기는 쪽": next((s for s, w in wins.items() if w == start), "?"),
+            "부담": {i.element: i.burden for i in issues},
+            "최소승리": {claimant: minimal(claimant), respondent: minimal(respondent)},
+            "받아치기": 받아치기}
 
 
 # ---------------------------------------------------------------- 입출력
@@ -289,6 +428,25 @@ def report(case: Case) -> str:
         lines.append(f"\n다투나 결론을 못 바꾸는 것 {len(mt)}개 (방론)")
         for e in mt:
             lines.append(f"  - [{e.stage}] {e.text}")
+    adv = advantage(case)
+    lines.append(f"\n유·불리 (증명책임에서 계산)")
+    lines.append(f"  아무것도 증명 안 되면: {adv['출발선']} -> 유리한 쪽: **{adv['출발선에서 이기는 쪽']}**")
+
+    def 조합(sets):
+        if sets is None:
+            return "쟁점이 너무 많아 못 셌다"
+        if sets == [[]]:
+            return "아무것도 더 증명 안 해도 이긴다"
+        if not sets:
+            return "**받아칠 것이 없다** -- 이것을 무너뜨릴 재항변이 요건표에 없다"
+        return " 또는 ".join("+".join(s) for s in sets[:4])
+
+    for side, sets in adv["최소승리"].items():
+        lines.append(f"  {side}가 이기려면 최소: {조합(sets)}")
+    lines.append(f"\n받아치기 (상대가 그 쟁점을 세우면 최소 무엇으로 받는가 -- 요건 id 로)")
+    for side, table in adv["받아치기"].items():
+        for won, sets in table.items():
+            lines.append(f"  {side} <- 상대가 [{won}]: {조합(sets)}")
     return "\n".join(lines)
 
 
