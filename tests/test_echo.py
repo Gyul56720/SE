@@ -73,8 +73,19 @@ ok(echo.trim("완전히 새로운 글이다.", prev) == ("완전히 새로운 �
 
 print()
 print("[개입] **메아리는 원고를 죽인다** -- 리듬·농도와 달리 반드시 다시 받는다")
+# **소스에서 주석을 찾지 않는다.** 주석에만 있는 낱말은 기능을 지워도 초록이다(G016).
+# 같은 급이라는 것은 **손질 목록에 같이 실린다**는 뜻이다 -- 그것을 직접 잰다.
+_dup = "그는 문을 열고 오래 서 있었다."
+_prior = "앞 덩어리다. " + _dup
+_now = "새로 쓴 문장이다. " + _dup + " 그리고 다음 일이 일어났다."
+_items = dict(flow.mend_items(_now, ["요우의 나이가 어긋난다"], _prior))
+ok(_dup in _items, f"앞에 쓴 문장이 손질 목록에 오른다 (목록 {len(_items)}개)")
+ok("앞에 이미 쓴 말이다" in _items.get(_dup, ""),
+   f"모순과 같은 급으로 다룬다 -- 딱지가 붙는다 ({_items.get(_dup, '')[:30]!r})")
+_only_clash = dict(flow.mend_items(_now, ["요우의 나이가 어긋난다"], ""))
+ok(_dup not in _only_clash,
+   "앞 글이 없으면 안 오른다  ← 위가 메아리 때문에 오른 것이 맞다")
 src = Path(flow.__file__).read_text(encoding="utf-8")
-ok("메아리는 모순과 같은 급이다" in src, "모순과 같은 급으로 다룬다")
 ok("앞 글을 옮겨 적은" in src, "잘라낸 만큼 로그에 남긴다")
 # 프롬프트는 줄을 접어 쓰므로 낱말 사이 줄바꿈을 지우고 본다.
 _flat = " ".join(flow.write_prompt(flow.blank()).split())

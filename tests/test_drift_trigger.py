@@ -93,8 +93,36 @@ finally:
 body, ctype = deliver._multipart({"payload_json": "{}"}, "1화.txt", "본문".encode())
 ok(ctype.startswith("multipart/form-data") and "1화.txt".encode() in body,
    "multipart 를 손으로 짠다  ← 이것 하나로 의존성을 늘리지 않는다")
-ok("토큰은 절대 찍지 않는다" in Path(deliver.__file__).read_text(encoding="utf-8"),
-   "실패해도 자격증명을 로그에 흘리지 않는다")
+# **소스에서 그 문장을 찾지 않는다.** 주석에만 있는 낱말은 기능을 지워도 초록이다
+# (G016). 진짜로 터뜨려서 돌려주는 말에 자격증명이 있나 본다.
+_tok, _hook = "BOT-TOKEN-비밀값", "https://discord.com/api/webhooks/999/비밀조각"
+_env0 = {k: os.environ.get(k) for k in
+         ("DISCORD_BOT_TOKEN", "DISCORD_CHANNEL_ID", "DISCORD_WEBHOOK_URL")}
+os.environ["DISCORD_WEBHOOK_URL"] = _hook
+os.environ["DISCORD_BOT_TOKEN"] = _tok
+os.environ["DISCORD_CHANNEL_ID"] = "123"
+_real = deliver.urllib.request.urlopen
+
+
+def _blow(*a, **k):
+    # 예외 문구 자체에 토큰과 웹훅을 심는다 -- 그대로 옮겨 적으면 새는 것이다
+    raise OSError(f"연결 실패: {_hook} Authorization: Bot {_tok}")
+
+
+deliver.urllib.request.urlopen = _blow
+try:
+    _ok2, _why2 = deliver.send_file("본문", "1화.txt")
+finally:
+    deliver.urllib.request.urlopen = _real
+    for _k, _v in _env0.items():
+        if _v is None:
+            os.environ.pop(_k, None)
+        else:
+            os.environ[_k] = _v
+ok(_ok2 is False, "터지면 실패로 돌려준다  ← 조용히 성공했다고 하지 않는다")
+ok(_tok not in _why2 and _hook not in _why2,
+   f"실패해도 자격증명을 흘리지 않는다 (돌려준 말: {_why2!r})")
+ok(_why2 == "OSError", "예외의 **종류만** 옮긴다  ← 문구를 옮기면 그 안에 값이 딸려 온다")
 ok("send" in sh and "deliver.py" in sh, "drift.sh send 가 그것을 부른다")
 
 print()

@@ -136,7 +136,11 @@ ok("[국면]" not in _p2, "짧으면 안 실린다  ← 지금까지의 프롬�
 print()
 print("[사전] **저장소에 안 들어간다. 대신 받아 온다** -- 라이선스 표기가 없다")
 _src = (Path(__file__).resolve().parent.parent / "novel" / "turn.py").read_text(encoding="utf-8")
-ok("KnuSentiLex" in _src and "라이선스" in _src, "어디서 받는지와 왜 안 담는지 적혀 있다")
+# G016: 문서 계약 -- 여기서 재는 것은 **동작이 아니라 문서**다. 사전을 왜 저장소에
+# 안 담는지는 코드로 드러나지 않고(안 담는 것이니 코드가 없다) 적어 둔 것이 전부다.
+# 진짜 동작(무시 규칙 · 못 받았을 때의 실패)은 바로 아래 줄들이 잰다.
+ok("KnuSentiLex" in _src and "라이선스" in _src,
+   "어디서 받는지와 왜 안 담는지 **적혀 있다**  ← 문서 계약이다, 동작이 아니다")
 _ig = (Path(__file__).resolve().parent.parent / ".gitignore").read_text(encoding="utf-8")
 ok("novel/knu/" in _ig, "무시 규칙에 있다")
 # **auto=False 로 물어야 한다.** auto 로 두면 실제로 받아 오려 들고, 여기는 망이
@@ -154,8 +158,10 @@ ok("git clone" in _died and "DRIFT_SENTI_LEX" in _died,
    "받아 오지 못하면 사실대로 실패하고 받는 법을 알려 준다  ← 조용히 0 을 내면 안 된다")
 ok(hasattr(T, "fetch") and callable(T.fetch),
    "없으면 받아 오는 길이 있다  ← 손으로 한 줄 치게 하면 VM 에서 그 줄을 빼먹는다")
+# G016: 문서 계약 -- 받아 오는 **동작**은 바로 위 두 줄이 쟀다(못 받으면 사실대로
+# 실패하는가 · fetch 가 있는가). 여기서 재는 것은 그 까닭을 적어 뒀는가뿐이다.
 ok("코드가 서버에 도달하지 못하는" in _src,
-   "왜 자동으로 받는지 적어 뒀다  ← 이 저장소가 네 번 데인 그 자리다")
+   "왜 자동으로 받는지 **적어 뒀다**  ← 이 저장소가 네 번 데인 그 자리다")
 
 print()
 if fails:

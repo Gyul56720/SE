@@ -18,6 +18,22 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from novel import diffusion as F, flow                                # noqa: E402
 
+
+def _adopted():
+    """확산에 걸리는 원고를 **실제로 채택시키고** (원고, 장부 갈래)를 돌려준다. 호출 0회.
+
+    소스에서 주석을 찾는 대신 이렇게 잰다 -- 주석에만 있는 낱말은 **그 기능을 지워도
+    초록**이라 아무것도 재지 않는다(게이트 G016)."""
+    import contextlib, io
+    bk = flow.blank("첫 문장이다.")
+    bk["chunks"] = ["앞 덩어리."]
+    _txt = ("그는 갔다. " * 40) + "\n" + ("비가 왔다. " * 40)
+    with contextlib.redirect_stdout(io.StringIO()), \
+            contextlib.redirect_stderr(io.StringIO()):
+        flow._adopt(bk, lambda _p: "{}", _txt)
+    return bk, sorted(set(bk.get("owed", [])))
+
+
 # **이 파일은 예전 프롬프트를 켜고 본다.** 기본은 axes 다(flow.PROMPT="axes") --
 # 프롬프트를 재는 축에서 짓고, 손으로 쓴 문장론은 한 줄도 안 넣는다.
 # 여기서 검사하는 것은 그 옛 작법서 블록의 내용이라 켜 놓고 본다.
@@ -116,8 +132,11 @@ ok(f"{F.LIMITS['new']}개 이상" in p and f"{F.TALK_LONG}자" in p,
 
 print()
 print("[개입] **확산도 원고를 죽이지 않는다** -- '게이트 크게 걸지마'")
+# **소스에서 주석을 찾지 않는다.** 주석에만 있는 낱말은 기능을 지워도 초록이다(G016).
+_bk_k, _owed_k = _adopted()
+ok(len(_bk_k["chunks"]) == 2 and "세계 확장" in _owed_k,
+   f"확산에 걸렸는데도(장부 {_owed_k}) 덩어리는 원고에 들어갔다  ← 끝내 못 고쳐도 원고는 쓴다")
 src = Path(flow.__file__).read_text(encoding="utf-8")
-ok("폐기는 없다" in src, "끝내 못 고쳐도 원고는 쓴다")
 ok("짧아지지 마라" in src, "되먹임이 몸을 사리게 하지 않는다")
 ok("전부 고쳐라 -- 하나도 빼지 마라" in src,
    "고칠 것을 한 번에 다 보낸다  ← 하나씩 시키면 호출이 그만큼 는다")

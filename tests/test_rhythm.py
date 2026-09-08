@@ -28,6 +28,25 @@ os.environ["DRIFT_TARGETS"] = str(
 
 from novel import flow, rhythm, style                                 # noqa: E402
 
+
+def _adopted(shock: bool = False):
+    """확산에 확실히 걸리는 원고를 **실제로 채택시키고** (원고, 장부 갈래)를 돌려준다.
+
+    호출은 없다 -- 추출기가 `{}` 를 돌려주면 원장은 그대로고 모순도 안 생긴다.
+    소스에서 주석을 찾는 대신 이렇게 잰다: 주석에만 있는 낱말은 **그 기능을 지워도
+    초록**이라 아무것도 재지 않는다(게이트 G016 이 그 자리를 잡는다)."""
+    import contextlib, io
+    bk = flow.blank("첫 문장이다.")
+    bk["chunks"] = ["앞 덩어리."]
+    if shock:
+        bk["_shock"] = True
+    _txt = ("그는 갔다. " * 40) + "\n" + ("비가 왔다. " * 40)
+    with contextlib.redirect_stdout(io.StringIO()), \
+            contextlib.redirect_stderr(io.StringIO()):
+        flow._adopt(bk, lambda _p: "{}", _txt)
+    return bk, sorted(set(bk.get("owed", [])))
+
+
 # **이 파일은 예전 프롬프트를 켜고 본다.** 기본은 axes 다(flow.PROMPT="axes") --
 # 프롬프트를 재는 축에서 짓고, 손으로 쓴 문장론은 한 줄도 안 넣는다.
 # 여기서 검사하는 것은 그 옛 작법서 블록의 내용이라 켜 놓고 본다.
@@ -76,11 +95,19 @@ ok(rhythm.check("그는 갔다.") == [], "너무 짧은 글은 재지 않는다 
 
 print()
 print("[개입] **리듬은 원고를 죽이지 않는다** -- 모순만 죽인다")
-src = Path(flow.__file__).read_text(encoding="utf-8")
-ok("폐기는 없다" in src, "끝내 못 고쳐도 원고는 쓴다")
-ok("원고는 그대로 쓴다" in src, "못 고친 것은 버리는 대신 장부에 적는다")
-ok("모순은 원고 전체가 아니라 한두 문장에 있다" in src,
-   "모순도 그 문장만 고쳐 살린다  ← 3,200자를 통째로 버리던 자리다")
+# **소스에서 주석을 찾지 않는다.** 주석에만 있는 낱말은 기능을 지워도 초록이다(G016).
+_bk_k, _owed_k = _adopted()
+ok(len(_bk_k["chunks"]) == 2 and _owed_k,
+   f"못 고친 것이 {len(_owed_k)}갈래 남았는데도 덩어리는 원고에 들어갔다  ← 폐기는 없다")
+ok("대사 몫" in _owed_k and "짧은 '-다'" in _owed_k,
+   f"못 고친 것은 버리는 대신 장부에 적는다 ({_owed_k})")
+# **모순은 문장만 보낸다.** 3,200자를 통째로 다시 쓰던 자리다.
+_lines = ["요우는 마흔둘이다.", "요우는 서른이다."]
+_cp = flow.clash_prompt(["요우의 나이가 어긋난다"], _lines)
+ok(all(x in _cp for x in _lines), "어긋난 문장은 프롬프트에 실린다")
+ok("나머지 3200자" not in _cp and _cp.count("\n") < 40,
+   "모순도 그 문장만 고쳐 살린다  ← 원고 전체를 보내지 않는다")
+ok("고친 문장만" in _cp, "되받는 것도 고친 문장뿐이다")
 
 print()
 print("[일치] **코드가 재는 기준과 모델에게 주는 기준이 같아야** 고칠 수가 있다")
