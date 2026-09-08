@@ -165,15 +165,18 @@ for _n in ("마디", "5,000", "%", "번째"):
 
 print()
 print("[전환점] **마디의 마지막 회차에만 온다 -- 다섯 중 하나**")
-_span = SR.span(book(0))                      # 50,000 / 6
-ok(BT.turning_point(book(100)) == "", "마디 첫머리에는 없다")
-ok(BT.turning_point(book(_span - 100)) == "기회", "첫 마디 끝은 기회")
-ok(BT.turning_point(book(_span * 2 - 100)) == "계획 변경", "둘째 마디 끝은 계획 변경")
-ok(BT.turning_point(book(_span * 4 - 100)) == "돌아올 수 없는 지점", "넷째 마디 끝은 돌아올 수 없는 지점")
-ok(BT.turning_point(book(_span * 5 - 100)) == "대좌절", "마지막 빚의 끝은 대좌절")
+# **마디가 회차보다 길어야 뜻이 있다.** 회차는 덩어리 셋(약 9,600자)이라 5만 자 원고의
+# 마디(8,333자)보다 길다 -- 그런 원고에서는 회차마다 마디가 끝난다.
+_bg = lambda n: book(n, target=200_000)
+_span = SR.span(_bg(0))                       # 200,000 / 6
+ok(BT.turning_point(_bg(100)) == "", "마디 첫머리에는 없다")
+ok(BT.turning_point(_bg(_span - 100)) == "기회", "첫 마디 끝은 기회")
+ok(BT.turning_point(_bg(_span * 2 - 100)) == "계획 변경", "둘째 마디 끝은 계획 변경")
+ok(BT.turning_point(_bg(_span * 4 - 100)) == "돌아올 수 없는 지점", "넷째 마디 끝은 돌아올 수 없는 지점")
+ok(BT.turning_point(_bg(_span * 5 - 100)) == "대좌절", "마지막 빚의 끝은 대좌절")
 ok(BT.turning_point(book(49_000)) == "절정", "닫는 덩어리는 절정")
 ok(BT.turning_point(book(100, arc=False)) == "", "도착지가 없으면 전환점도 없다")
-_b6 = book(_span - 100); BT.ensure(_b6, Director())
+_b6 = _bg(_span - 100); BT.ensure(_b6, Director())
 ok(_b6["card"]["전환점"] == "기회" and "**기회**" in BT.brief(_b6), "카드에 실리고 프롬프트에 실린다")
 
 print()
@@ -204,6 +207,28 @@ ok(_d8.calls == 0 and not BT.has(_b8), "도착지가 없으면 각본도 없다 
 _b9 = book(100); _b9["_path"] = None
 BT.ensure(_b9, Director())
 ok("회차 1" in BT.show(_b9) and CARD["질문"] in BT.show(_b9), "show 가 카드를 보여 준다")
+
+print()
+print("[진행] **회차마다 마지막 비트가 반드시 쓰인다**")
+print("      ← 실측 2026-09-09: 회차 5,000자 · 덩어리 3,200자 · 비트 셋이었다. beat_at 이 비트를")
+print("        글자 수로 나누니 **비트 3 의 자리에서 시작하는 덩어리가 없었다** -- 답이 갈리는")
+print("        자리가 아홉 회차 내내 잘렸고, 4만 자가 통째로 도입부의 되풀이였다.")
+print("      ← 고칠 것은 EPISODE_SPAN 하나였다. 집필 프롬프트는 한 글자도 안 건드린다.")
+
+ok(BT.EP == BT._CHUNK * BT.BEATS, f"회차 = 덩어리 x 비트 수 ({BT.EP:,} = {BT._CHUNK:,} x {BT.BEATS})")
+
+_bp, _seen, _at, _ep = book(1), {}, 0, 0
+for _i in range(12):                          # 열두 덩어리
+    _by = sum(len(c) for c in _bp["chunks"]) // BT.EP
+    if _by > _ep:
+        _ep, _at = _by, sum(len(c) for c in _bp["chunks"])
+    _bp["card"] = {"ep": _ep, "at": _at, "비트": [1, 2, 3]}
+    _seen.setdefault(_ep, []).append(BT.beat_at(_bp))
+    _bp["chunks"].append("가" * BT._CHUNK)
+_full = {e: v for e, v in _seen.items() if len(v) == BT.BEATS}
+ok(_full and all(sorted(v) == [1, 2, 3] for v in _full.values()),
+   f"회차마다 비트 1 · 2 · 3 이 한 번씩 {_seen}")
+ok(len(_full) >= 3, f"열두 덩어리에 온전한 회차가 셋 이상 ({len(_full)})")
 
 print()
 if fails:
