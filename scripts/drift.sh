@@ -22,6 +22,8 @@
 #   drift.sh arc                    **어디로 가고 있는지** -- 끝과 빚, 지금 마디
 #   drift.sh world                  세계가 얼마나 자랐는지 (인물·장소·사물·사실·사건)
 #   drift.sh open                   아직 안 닫힌 것들 -- 이 이야기가 갚지 않은 빚
+#   drift.sh card                   지금 회차의 각본 -- 질문 · 비트 · 쾌감 · 전투 · 갈고리
+#   drift.sh codex                  설정집 -- 각본이 세운 직함 · 등급 · 기술 · 법칙
 #
 # 환경변수로 바꿀 수 있는 것:
 #   DRIFT_LAYER  프롬프트 층      (기본 text = 문면층만 · all = 서사·세계까지)
@@ -31,8 +33,11 @@
 #   STYLE    문체 페르소나      (ropan · cider · hardboiled / 비우면 기본값 cider)
 #                                ropan 은 원작 4편 378만 자를 재서 나온 결이다.
 #                                예: STYLE=ropan GENRE=ropan drift.sh start 8000
-#   GENRE    갈래 꾸러미        (ropan · romance · job · youth / 비우면 안 씌운다)
+#   GENRE    갈래 꾸러미        (ropan · lanobe · romance · job · youth / 비우면 안 씌운다)
 #                                예: GENRE=ropan drift.sh start 8000
+#                                lanobe 는 액션 · 전투 · 격(직함 · 등급 · 기술)의 라이트노벨.
+#                                예: HOURS=24 GENRE=lanobe drift.sh start 200000
+#                                (도파민 문법이 어디에 실리는지는 novel/DOPAMINE.md)
 #                                축에서 짓는 기본 프롬프트에도 실린다 -- 갈래의 저울이
 #                                대사 몫·높임·주고받기 목표를 옮기고, 화법과 부름이
 #                                따라 붙는다. DRIFT_LAYER=all 을 켜면 사건·확산까지 온다
@@ -170,6 +175,19 @@ INNER
   arc)
     [ -f "$BOOK" ] || die "원고가 없다: $BOOK"
     exec python3 "$SE/novel/serial.py" show --book "$BOOK"
+    ;;
+
+  # 회차 각본과 설정집. 원고를 읽지 않고도 "이번 회차에 쾌감이 있나 · 싸움이 있나 ·
+  # 무엇을 세웠나" 를 본다. 재미의 재료가 실렸는지를 여기서 먼저 확인한다.
+  card|codex)
+    [ -f "$BOOK" ] || die "원고가 없다: $BOOK"
+    python3 - "$SE" "$BOOK" "$1" <<'PY'
+import json, sys
+sys.path.insert(0, sys.argv[1])
+from novel import beat as BT
+book = json.load(open(sys.argv[2], encoding="utf-8"))
+print(BT.show(book) if sys.argv[3] == "card" else BT.show_codex(book))
+PY
     ;;
 
   go|resume)

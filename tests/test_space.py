@@ -50,7 +50,8 @@ class Director:
 
 BASE = {"질문": "공녀가 초대장을 받아낸다", "방해": "백작 부인이 명부에서 이름을 지운다",
         "비트": [{"무엇": "a", "꼴": "장면"}, {"무엇": "b", "꼴": "요약"}, {"무엇": "c", "꼴": "장면"}],
-        "답": "반만", "갈고리종류": "피", "갈고리": "로일의 팔이 문틀에 끼여 잘려 나간다"}
+        "답": "반만", "쾌감": "집사가 명부를 공녀 앞에 펼쳐 놓고 물러선다", "쾌감자리": 2,
+        "갈고리종류": "피", "갈고리": "로일의 팔이 문틀에 끼여 잘려 나간다"}
 
 
 print("[다섯 칸] **전개 · 연출 · 대사 · 인물 · 빌드업**")
@@ -102,7 +103,86 @@ _bk["chunks"].append("라" * 1000)
 ok(BT.brief(_bk) != _w, "덩어리마다 다른 본보기가 돈다")
 
 print()
+print("[도파민] **전투 · 세계 · 쾌감 · 줄기 -- 두 번째 요구**")
+print("      ← 사용자(2026-09-08 저녁): 액션씬 전투씬 스킬 직함 세계관 설정 더 자세히. 복수극도")
+print("        좋고 거지가 왕궁 들어가서 권력 탈취하는 것도 좋고(예시야 하드코딩하지마).")
+print("        중간에 주인공을 구해주는 잘생긴 히로인도 없고 도파민 요소가 없어.")
+for _c, _min in (("전투", 12), ("세계", 10), ("쾌감", 12), ("줄기", 14)):
+    ok(len(SP.CATS[_c]) >= _min, f"{_c} {len(SP.CATS[_c])}개")
+ok(len(SP.CATS["전개"]) >= 28 and len(SP.CATS["인물"]) >= 13, "전개 · 인물도 늘었다")
+ok("구원자" in SP.names("인물") and "구원 난입" in SP.names("전개") and "구원" in SP.names("쾌감"),
+   "구해 주는 사람이 인물 · 전개 · 쾌감에 있다  ← 히로인")
+ok("구원자도 심는다" in SP.names("빌드업"), "구원도 심어 둔 사람만 한다  ← 우연이 문제를 풀지 않는다")
+ok("복수" in SP.names("줄기") and "밑바닥에서 왕좌로" in SP.names("줄기"),
+   "복수와 왕좌는 줄기 목록의 둘이다  ← 하드코딩이 아니라 본보기")
+ok(len({tuple(x[0] for x in SP.draw("줄기", str(i), 0, 4)) for i in range(30)}) >= 20,
+   "씨앗마다 다른 줄기 넷이 보인다")
+ok(all("숫자" in r or "이름" in r for n, r, _ in SP.CATS["세계"] if n == "등급은 이름이다"),
+   "등급은 이름이지 숫자가 아니다  ← 상태창은 style.py 가 뺐다")
+ok(any("조건" in n for n, _, _ in SP.CATS["전투"]), "기술에는 값이 아니라 조건이 있다  ← 사이다에서 대가는 고구마")
+ok("작은 승리" in SP.names("쾌감"), "지는 회차에도 작은 것 하나  ← Ely 의 분산")
+
+print("  [각본 프롬프트] 전투 · 세계 · 쾌감 본보기와 규칙이 실린다")
+_pd = BT.card_prompt(book())
+for _blk in ("[전투 본보기", "[세계 본보기", "[쾌감 본보기", "[설정집]"):
+    ok(_blk in _pd, f"{_blk} 가 있다")
+ok('"쾌감"' in _pd and '"쾌감자리"' in _pd and '"전투"' in _pd and '"설정"' in _pd, "쾌감 · 전투 · 설정을 요구한다")
+ok("회차마다 쾌감이 하나 있다" in _pd and "지는 단계에서도" in _pd, "지는 회차에도 쾌감 하나를 요구한다")
+ok("상태창 · 수치 · 게이지를 열지 마라" in _pd, "숫자 창을 막는다")
+ok("쓰기 한 회차 앞에 세워라" in _pd, "설정은 쓰기 전에 세운다  ← 빌드업")
+ok("이번 회차에 하나 세워라" in _pd, "설정집이 비면 세우라고 한다")
+
+print("  [쾌감의 꼴] 갈고리와 같은 계약 -- 벌어진 문장. 빈 것은 되묻고, 두 번 틀리면 카드는 살린다")
+ok(BT.joy_ok("얕보던 단장이 화자 앞에 무릎을 꿇는다") == "", "무릎은 통과")
+ok("비었다" in BT.joy_ok(""), "빈 쾌감은 안 된다")
+ok("질문" in BT.joy_ok("그가 무릎을 꿇을까?"), "질문은 안 된다")
+ok("쾌감" in BT.joy_ok("\"이겼다.\"") and "갈고리" not in BT.joy_ok("\"이겼다.\""), "사유에 쾌감이라고 적힌다")
+_bj = book()
+_dj = Director([dict(BASE, 쾌감="", 전투="", 설정=""), dict(BASE, 쾌감="")])
+BT.ensure(_bj, _dj)
+ok(len(_dj.prompts) == 2 and "쾌감이 틀렸다" in _dj.prompts[-1], "빈 쾌감은 한 번 되묻는다")
+ok(BT.has(_bj) and _bj["card"]["쾌감"] == "", "두 번 다 비면 카드는 살리고 쾌감만 비운다")
+ok("**쾌감**" not in BT.brief(_bj), "쾌감이 없으면 집필 프롬프트도 조용하다")
+_bq = book()
+_dq = Director([dict(BASE, 갈고리="정말 잘렸을까?", 쾌감="그가 무릎을 꿇을까?"), BASE])
+BT.ensure(_bq, _dq)
+ok("갈고리가 틀렸다" in _dq.prompts[-1] and "쾌감이 틀렸다" in _dq.prompts[-1],
+   "둘 다 틀리면 한 되묻기에 둘 다 싣는다  ← 호출은 한 번만 는다")
+ok(_bq["card"]["쾌감"] == BASE["쾌감"], "고쳐 오면 받는다")
+
+print("  [설정집] 카드가 세운 설정이 원장에 남고, 다음 카드와 화자가 그 이름을 본다")
+_bc = book()
+_dc = Director([dict(BASE, 설정={"이름": "회색 서임", "규칙": "기사단장만 내리고 증인 셋이 있어야 선다"},
+                     전투="공녀의 호위가 단장의 부관과 붙는다 -- 격은 부관이 위, 촛대로 결착, 왼손에 상처가 남는다"),
+               dict(BASE, 설정="회색 서임 -- 다시 세운다"),
+               dict(BASE, 설정="붉은 패 -- 탑의 셋째 층 출입증. 피로 값을 치른다")])
+BT.ensure(_bc, _dc)
+ok(len(BT.codex(_bc)) == 1 and BT.codex(_bc)[0]["이름"] == "회색 서임", "설정이 설정집에 남는다")
+_wc = BT.brief(_bc)
+ok("**이 회차의 설정**: 회색 서임" in _wc and "상태창 · 수치를 열지 마라" in _wc, "집필 프롬프트가 이번 설정을 이름으로 시킨다")
+ok("**싸움**" in _wc and "촛대로 결착" in _wc and any(n in _wc for n in SP.names("전투")),
+   "싸움이 있으면 전투 문법이 실린다")
+ok("**쾌감** (비트 2에서" in _wc and "곁의 사람들이다" in _wc, "쾌감이 비트 번호와 함께 실린다")
+_bc["chunks"].append("마" * BT.EP)
+BT.ensure(_bc, _dc)
+ok(len(BT.codex(_bc)) == 1 and _bc["card"]["설정"] is None, "같은 이름을 다시 세우면 설정집의 것이 이긴다  ← 값이 둘이면 모순")
+ok("회색 서임: 기사단장만" in _dc.prompts[-1], "다음 각본 프롬프트에 설정집이 보인다")
+_bc["chunks"].append("바" * BT.EP)
+BT.ensure(_bc, _dc)
+ok([c["이름"] for c in BT.codex(_bc)] == ["회색 서임", "붉은 패"], "한 줄 꼴(이름 -- 규칙)도 받는다")
+ok("설정집 (이 이름 그대로 쓴다" in BT.brief(_bc) and "회색 서임" in BT.brief(_bc), "화자에게 설정집이 실린다")
+ok("설정집 2개" in BT.show(_bc) and "붉은 패" in BT.show_codex(_bc), "show · show_codex 가 보여 준다")
+ok("**싸움**" not in BT.brief(_bc), "싸움이 없는 회차에는 전투 문법을 안 싣는다")
+_bw = book(); BT.ensure(_bw, Director([dict(BASE, 쾌감자리=1)]))
+_bw["chunks"].append("가" * (BT.EP * 4 // 5))
+ok("앞 비트에서 이미 벌어졌다" in BT.brief(_bw), "쾌감 비트를 지났으면 되풀이하지 말라고 한다")
+_bs = book(); BT.ensure(_bs, Director([dict(BASE, 쾌감자리="아홉")]))
+ok(_bs["card"]["쾌감자리"] == 2, "쾌감자리가 엉뚱하면 지는 단계는 가운데 비트")
+for _n in ("%", "번째", "회차 "):
+    ok(_n not in _wc, f"'{_n}' 이 집필 프롬프트에 없다  ← 자를 시키지 않는다")
+
+print()
 if fails:
     print(f"novel_space: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)
-print("novel_space: 다섯 칸 · 각본 프롬프트 · 심고 거둔다 · 집필 프롬프트 -- 통과")
+print("novel_space: 아홉 칸 · 각본 프롬프트 · 심고 거둔다 · 집필 프롬프트 · 도파민 -- 통과")
