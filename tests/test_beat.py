@@ -38,7 +38,8 @@ CARD = {"질문": "공녀가 무도회 초대장을 제 손으로 받아낸다",
                 {"무엇": "사흘 동안 답장이 없다", "꼴": "요약"},
                 {"무엇": "무도회 전날 밤 초대장이 남의 이름으로 온다", "꼴": "장면"}],
         "답": "반만",
-        "갈고리": "초대장에 적힌 이름이 누구 것인지 아무도 말하지 않는다"}
+        "갈고리종류": "피",
+        "갈고리": "로일의 왼팔이 서재 문틀에 끼여 팔꿈치 아래가 잘려 나간다"}
 
 
 def book(chars=0, arc=True, target=50_000):
@@ -56,14 +57,17 @@ def book(chars=0, arc=True, target=50_000):
 class Director:
     """각본 자리에서 카드를 돌려준다. 부른 횟수를 센다. 나머지는 긴 산문."""
 
-    def __init__(self, payload=None, broken=False):
+    def __init__(self, payload=None, broken=False, queue=None):
         self.calls, self.prompts, self.n = 0, [], 0
         self.payload, self.broken = payload if payload is not None else CARD, broken
+        self.queue = list(queue or [])          # 차례로 낼 각본 -- 되묻기를 검사할 때
 
     def __call__(self, prompt):
         self.prompts.append(prompt)
         if "회차**의 각본" in prompt:
             self.calls += 1
+            if self.queue:
+                return json.dumps(self.queue.pop(0), ensure_ascii=False)
             return "그냥 산문이다." if self.broken else json.dumps(self.payload, ensure_ascii=False)
         if "JSON 만 출력" in prompt:
             return "{}"
@@ -87,7 +91,7 @@ ok(_d.calls == 1, f"같은 회차에서 다시 부르지 않는다 ({_d.calls}�
 _b["chunks"].append("나" * BT.EP)
 BT.ensure(_b, _d)
 ok(_d.calls == 2, f"회차가 바뀌면 한 번 더 ({_d.calls}회)")
-ok("초대장에 적힌 이름이" in _d.prompts[-1], "앞 회차의 갈고리가 다음 각본의 입력이다  ← 인과가 구조로 들어간다")
+ok("로일의 왼팔이" in _d.prompts[-1], "앞 회차의 갈고리가 다음 각본의 입력이다  ← 인과가 구조로 들어간다")
 ok("공녀" in _d.prompts[-1] and "닿을 자리" in _d.prompts[-1], "세계와 도착지가 각본의 입력이다")
 
 print()
@@ -98,7 +102,8 @@ ok(BT.brief(_b2) == "", "카드가 없으면 프롬프트도 조용하다")
 _b3 = book(100)
 ok(BT.ensure(_b3, Director({"질문": "", "비트": []})) is None, "빈 각본은 카드가 아니다")
 _b4 = book(100)
-BT.ensure(_b4, Director({"질문": "q", "비트": ["문자열 비트", {"무엇": "x", "꼴": "엉뚱"}]}))
+BT.ensure(_b4, Director({"질문": "q", "비트": ["문자열 비트", {"무엇": "x", "꼴": "엉뚱"}],
+                         "갈고리종류": "절단", "갈고리": "로일의 팔이 잘린다"}))
 ok([b["꼴"] for b in _b4["card"]["비트"]] == ["장면", "장면"], "문자열 비트와 모르는 꼴은 장면으로 받는다")
 
 print()
@@ -113,7 +118,40 @@ _p = BT.brief(_b5)
 ok("3번 비트부터" in _p and "→ 3." in _p, "몇 번 비트부터인지 표시한다")
 ok("(요약)" in _p and "(장면)" in _p, "장면 · 요약 꼴이 실린다")
 ok("시간을 접는다" in _p, "요약 비트는 시간을 접으라고 한다  ← TTCW 의 시간 조작")
-ok(CARD["갈고리"] in _p and "거기서 끊어라" in _p, "갈고리에서 끊으라고 한다")
+ok(CARD["갈고리"] in _p and "벌어진 문장" in _p and "**피**" in _p,
+   "갈고리가 벌어진 문장에서 끊으라고 한다 -- 종류까지")
+ok("묻고 끝내지 마라" in _p, "묻고 끝내지 말라고 한다")
+
+print()
+print("[갈고리] **사건이다 -- 질문 · 대사 · 목록 밖은 되묻고, 그래도 아니면 카드를 버린다**")
+print("      ← 사용자(2026-09-08): \"질문 이딴 게 재미없다고. 누가 죽든가 팔이 잘리든가")
+print("        키스를 하든가 관계를 맺든가. 자극적이게 끝내라고.\"")
+ok(BT.hook_ok("피", "로일의 팔이 잘려 나간다") == "", "몸에 벌어진 일은 통과")
+ok("질문" in BT.hook_ok("피", "이 모든 일이 숙부님이 계획한 대로 끝날 것이라고 믿는 겁니까?"),
+   "첫 런의 그 갈고리는 질문이라 안 된다")
+ok("질문" in BT.hook_ok("폭로", "그가 정말 돌아올까"), "물음표 없는 물음도 잡는다")
+ok("대사" in BT.hook_ok("배신", "\"나는 네 편이 아니다.\""), "대사는 안 된다")
+ok(BT.hook_ok("더 큰 것", "끝난 줄 알았던 골짜기에서 더 큰 것이 내려와 마르코를 통째로 삼킨다") == "",
+   "목록 밖 종류라도 꼴이 사건이면 통과  ← 닫힌 목록이 아니다")
+ok("조용히" in BT.hook_ok("미소", "소르미는 그 뒷모습을 보며 희미하게 미소 지었다"), "미소로 끝나면 안 된다")
+ok("예고" in BT.hook_ok("불", "곧 서재에 불이 붙을 것이었다"), "벌어지려는 문장은 안 된다")
+ok("비었다" in BT.hook_ok("", "팔이 잘린다"), "종류가 비면 안 된다")
+from novel import hooks as HK                                         # noqa: E402
+ok(len(HK.KINDS) >= 25, f"본보기가 많다 ({len(HK.KINDS)}개)  ← 표본 18 + 사용자 요구")
+ok(sum(1 for _, _, src in HK.KINDS if src.startswith("표본")) >= 15, "표본에서 온 것이 절반 넘는다")
+_s0, _s1 = HK.sample("씨", 0), HK.sample("씨", 1)
+ok(len(_s0) == 5 and _s0 != _s1 and HK.sample("씨", 0) == _s0, "회차마다 다섯 개씩 돌아가고, 같은 원고는 같다")
+ok(any(k in BT.card_prompt(book(100)) for k, _, _ in _s0), "각본 프롬프트에 본보기가 실린다")
+ok("지어내도 된다" in BT.card_prompt(book(100)), "목록 밖을 지어내도 된다고 말한다")
+_q = dict(CARD, 갈고리종류="피", 갈고리="정말 그가 숙부의 사람이었을까?")
+_bq, _dq = book(100), Director(queue=[_q, CARD])
+BT.ensure(_bq, _dq)
+ok(_dq.calls == 2 and BT.has(_bq) and _bq["card"]["갈고리"] == CARD["갈고리"],
+   f"질문이면 한 번 되묻고, 고쳐 오면 받는다 ({_dq.calls}회)")
+ok("갈고리가 틀렸다" in _dq.prompts[-1], "되물을 때 무엇이 틀렸는지 말한다")
+_bq2, _dq2 = book(100), Director(queue=[_q, _q])
+ok(BT.ensure(_bq2, _dq2) is None and _dq2.calls == 2, "두 번 다 질문이면 카드를 버린다")
+ok("질문 · 예감 · 대사 · 미소가 아니다" in BT.card_prompt(book(100)), "각본 프롬프트가 금지를 준다")
 ok("반만" in _p and "답이 갈린다" in _p, "답이 갈리는 자리를 표시한다")
 for _n in ("마디", "5,000", "%", "번째"):
     ok(_n not in _p, f"'{_n}' 이 없다  ← 자를 시키지 않는다")

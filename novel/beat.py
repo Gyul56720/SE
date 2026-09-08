@@ -43,10 +43,16 @@ from __future__ import annotations
 import os
 
 from novel import drive as D
+from novel import hooks as HK
 from novel import serial as SR
 
 EP = int(os.environ.get("EPISODE_SPAN", "5000"))
 BEATS = 3
+
+
+def ep_no(book: dict) -> int:
+    """지금 회차 번호(0부터)."""
+    return sum(len(c) for c in (book.get("chunks") or [])) // max(1, EP)
 
 # 전환점 다섯(Papalampidi & Keller 2019). 빚 위에 얹는다 -- 마디의 마지막 회차에 온다.
 TPS = {
@@ -87,6 +93,37 @@ def has(book: dict) -> bool:
     return bool(c and c.get("질문") and c.get("비트"))
 
 
+# **갈고리는 사건이다.** 사용자(2026-09-08): "질문 이딴 게 재미없다고. 구체적인 사건으로 --
+# 누가 죽든가 팔이 잘리든가 키스를 하든가 관계를 맺든가. 자극적이게 끝내라고." 그리고
+# "하드코딩하지 마. 이런 게 아주 많이 있어야 해. 표본 먼저 뽑던가."
+# 첫 런의 갈고리가 "...믿는 겁니까?" 였다. 질문 · 예감 · 대사 · 미소는 갈고리가 아니다.
+# 종류는 hooks.py 에 있다 -- 표본(631회차 중 120개를 읽어 분류)과 사용자 요구에서 온
+# **본보기**이지 닫힌 목록이 아니다. 회차마다 다섯 개씩 돌려 보여 주고, 목록 밖을 지어내도
+# 된다. 지키는 것은 **꼴**이다: 몸 · 자리 · 목숨에 되돌릴 수 없는 일이 **벌어진 문장.**
+_ASK = ("?", "？")
+# 조용한 끝의 꼴. 표본 120개 중 83개가 이렇게 끝났다 -- 미소 · 한숨 · 눈을 감음 · 바라봄.
+_QUIET = ("미소", "웃었다", "웃으며", "한숨", "눈을 감", "바라보았다", "바라보고", "잠들",
+          "생각했다", "느꼈다", "것 같았다", "듯했다", "돌아섰다", "걸음을 옮겼다")
+
+
+def hook_ok(kind: str, text: str) -> str:
+    """갈고리가 사건인가. **꼴만 본다** -- 종류는 안 본다. 문제가 있으면 이유를, 없으면 빈 것."""
+    t = text.strip()
+    if not kind.strip():
+        return "갈고리 종류가 비었다 -- 한 낱말로 무엇이 벌어지는지 이름을 붙여라"
+    if not t:
+        return "갈고리가 비었다"
+    if t.endswith(_ASK) or t.rstrip("\"'”’.。").endswith(("까", "냐", "니", "지", "걸까", "일까")):
+        return "갈고리가 질문이다 -- 질문은 사건이 아니다. 무엇이 벌어졌는지 평서문으로"
+    if t.startswith(("\"", "“", "'", "‘")):
+        return "갈고리가 대사다 -- 말은 사건이 아니다. 몸에 벌어지는 일로"
+    if any(q in t[-14:] for q in _QUIET):
+        return "갈고리가 조용히 끝난다 -- 미소 · 한숨 · 바라봄은 사건이 아니다. 몸 · 자리 · 목숨에 벌어진 일로"
+    if t.rstrip("\"'”’.。").endswith(("것이다", "것이었다", "터였다", "참이었다", "려 했다", "려고 했다")):
+        return "갈고리가 예고다 -- 벌어지려는 문장이 아니라 벌어진 문장으로"
+    return ""
+
+
 # ---------------------------------------------------------------- 세우기
 
 def card_prompt(book: dict) -> str:
@@ -121,9 +158,16 @@ def card_prompt(book: dict) -> str:
           {{"무엇": "...", "꼴": "장면"}},
           {{"무엇": "여기서 질문의 답이 갈린다", "꼴": "장면"}}],
   "답": "얻는다 | 잃는다 | 반만",
-  "갈고리": "회차 끝에 답이 안 난 채로 남는 것 한 문장. 다음 회차가 여기서 시작한다"}}
+  "갈고리종류": "무엇이 벌어지는지 한 낱말 (아래 본보기 중 하나이거나, 네가 지은 것)",
+  "갈고리": "회차의 마지막 문단에서 **실제로 벌어지는 일** 한 문장. 평서문. 다음 회차가 여기서 시작한다"}}
 
 규칙:
+- **갈고리는 사건이다. 질문 · 예감 · 대사 · 미소가 아니다.** "믿는 겁니까?" 같은 것은
+  갈고리가 아니다. 몸 · 자리 · 목숨에 **되돌릴 수 없는 일**이 회차의 마지막 문단에서
+  벌어진다. 이런 것들이다 (본보기다 -- 이 밖의 것을 지어내도 된다, 꼴만 같으면):
+{HK.render(str(book.get('seed_id') or book.get('first') or ''), ep_no(book))}
+  갈고리는 그 일이 **벌어진 문장**이다. 벌어지려는 문장이 아니다. 끝난 줄 알았는데 더 큰
+  것이 오는 것도 좋다 -- 그때는 그것이 곁의 누구를 어떻게 하는지까지.
 - 앞 회차의 '남긴 것' 에서 시작한다. 그것이 이번 회차의 첫 비트를 만든다.
 - 비트는 셋. 세기는 뒤로 갈수록 오른다. 꼴은 "장면"(한 자리 · 한 때 · 대사가 민다) 또는
   "요약"(시간을 접는다 -- 며칠이 한 문단). 요약은 하나 이하.
@@ -141,7 +185,19 @@ def ensure(book: dict, llm) -> "dict | None":
     if card and card.get("ep") == ep:
         return card
     try:
-        got = D.call_json(D._llm_for(llm, "director"), card_prompt(book), label="회차 각본")
+        prompt = card_prompt(book)
+        got = D.call_json(D._llm_for(llm, "director"), prompt, label="회차 각본")
+        # **갈고리가 사건이 아니면 한 번 되묻는다.** 그래도 아니면 카드를 버린다 --
+        # 질문으로 끝나는 회차를 열 번 쓰느니 각본 없이 가는 편이 낫다.
+        why = hook_ok(str(got.get("갈고리종류") or "").strip(), str(got.get("갈고리") or ""))
+        if why:
+            D._log(f"[회차] 갈고리를 되묻는다 -- {why}")
+            got = D.call_json(D._llm_for(llm, "director"),
+                              prompt + f"\n\n앞서 낸 각본의 갈고리가 틀렸다: {why}. 다시 낸다.",
+                              tries=2, label="회차 각본(되묻기)")
+            why = hook_ok(str(got.get("갈고리종류") or "").strip(), str(got.get("갈고리") or ""))
+            if why:
+                raise ValueError(why)
         beats = []
         for b in (got.get("비트") or [])[:BEATS]:
             if isinstance(b, dict) and str(b.get("무엇") or "").strip():
@@ -156,11 +212,13 @@ def ensure(book: dict, llm) -> "dict | None":
                         "방해": str(got.get("방해") or "").strip(),
                         "비트": beats,
                         "답": str(got.get("답") or "").strip(),
+                        "갈고리종류": str(got.get("갈고리종류") or "").strip(),
                         "갈고리": str(got.get("갈고리") or "").strip(),
                         "전환점": turning_point(book)}
         D._log(f"[회차] {ep + 1} -- 원하는 것: {q}")
         for i, b in enumerate(beats, 1):
             D._log(f"[회차]   비트 {i} ({b['꼴']}) {b['무엇']}")
+        D._log(f"[회차]   갈고리({book['card']['갈고리종류']}): {book['card']['갈고리']}")
         if book["card"]["전환점"]:
             D._log(f"[회차]   전환점: {book['card']['전환점']}")
         return book["card"]
@@ -199,8 +257,10 @@ def brief(book: dict) -> str:
     rows.append("  · 장면 비트는 한 자리 · 한 때에서 벌어지고 대사가 민다. 요약 비트는 시간을"
                 " 접는다 -- 며칠이 한 문단이어도 된다. 세기는 비트마다 오른다.")
     if c.get("갈고리"):
-        rows.append(f"  · 마지막 비트를 쓰게 되면 **{c['갈고리']}** 가 답이 안 난 채로 끝나게"
-                    " 하고 거기서 끊어라. 정리하지 마라.")
+        kind = c.get("갈고리종류") or ""
+        rows.append(f"  · 마지막 비트를 쓰게 되면 회차의 마지막 문단에서 **{kind}**이 벌어진다:"
+                    f" **{c['갈고리']}** -- 이것이 **벌어진 문장**에서 끊어라. 예고하지 마라,"
+                    " 묻고 끝내지 마라, 미소나 한숨으로 정리하지 마라.")
     if c.get("전환점"):
         rows.append(f"  · 이 회차의 마지막 비트는 **{c['전환점']}**이다 -- {TPS[c['전환점']]}")
     rows.append("  · 이 각본을 옮겨 적지 마라. 각본에 없는 것은 자유다 -- 다만 각본을 거스르지 마라.")
@@ -213,6 +273,6 @@ def show(book: dict) -> str:
     c = book["card"]
     out = [f"회차 {c['ep'] + 1} · 원하는 것: {c['질문']}", f"  막는 것: {c.get('방해', '')}"]
     out += [f"  {i}. ({b['꼴']}) {b['무엇']}" for i, b in enumerate(c["비트"], 1)]
-    out.append(f"  답: {c.get('답', '')} / 갈고리: {c.get('갈고리', '')}"
+    out.append(f"  답: {c.get('답', '')} / 갈고리({c.get('갈고리종류', '')}): {c.get('갈고리', '')}"
                + (f" / 전환점: {c['전환점']}" if c.get("전환점") else ""))
     return "\n".join(out)
