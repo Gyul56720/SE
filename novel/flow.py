@@ -1950,6 +1950,14 @@ def main() -> int:
     if a.persona:
         style.use(a.persona)
         D._log(f"[flow] 문체 {a.persona} -- {style.P()['label']}")
+        # **기본 경로에서는 페르소나가 프롬프트에 안 실린다.** compose(axes)는 재는
+        # 축에서만 프롬프트를 짓고 style.narrator() 를 부르지 않는다 -- 그것이 그쪽의
+        # 설계다(compose.py 머리말). 그래서 STYLE=ropan 을 주고 돌려도 문장론은 한 줄도
+        # 안 나간다. 조용히 아무 일도 안 하면 아무도 모른다 -- 이 저장소가 거듭 겪은
+        # "코드가 실행에 도달하지 못하는" 자리라, 사실대로 적는다.
+        if PROMPT == "axes":
+            D._log(f"[flow] * 다만 지금 프롬프트는 '{PROMPT}' 라 문장론은 안 실린다"
+                   " -- 페르소나를 쓰려면 DRIFT_PROMPT=legacy")
     GENRE.get(a.genre)
     if book.get("genre") != a.genre:
         D._log(f"[flow] 갈래 {book.get('genre') or '(없음)'} → {a.genre or '(없음)'}")
