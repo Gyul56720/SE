@@ -13,6 +13,7 @@
     J008  법률쟁점의 해석기법이 닫힌 목록에 있는가          hard / 증거방법 없음 soft
     J009  같은 요건에 쟁점을 두 번 세웠는가                 hard
     J010  사람/LLM 이 낸 쟁점표가 도출 결과와 같은가        hard
+    J011  재항변의 과녁이 실재하고 사슬이 돌지 않는가       hard
 
 J005 가 이 파일의 심장이다. "중요해 보이는가" 는 취향이지만 "답이 갈릴 때 결론이 갈리는가"
 는 계산이다. 미국 판례론의 holding 정의와 한국 민사소송법 제216조가 같은 자리를 짚는다
@@ -73,7 +74,10 @@ def check_burden(case, issues) -> list:
     """
     out = []
     for iss in issues:
-        want = IS.BURDEN.get((case.domain, iss.stage))
+        e = next((x for x in case.elements if x.id == iss.element), None)
+        # 재항변은 그 상대의 반대편이 증명한다 -- 단계표가 아니라 사슬이 정한다.
+        want = IS.burden_of(case, e) if e is not None else \
+            IS.BURDEN.get((case.domain, iss.stage))
         if want and iss.burden != want:
             out.append(Violation("J003", "hard", f"쟁점 {iss.element}",
                                  f"{iss.stage} 단계의 증명책임은 {want} 인데 "
@@ -127,6 +131,8 @@ def check_invocation(case, issues) -> list:
         if (case.domain, iss.stage) not in IS.INVOKED_ONLY:
             continue
         e = next((x for x in case.elements if x.id == iss.element), None)
+        if e is not None and e.defeats:
+            continue                     # 재항변은 항변이 아니다 -- 원용 표시는 항변에 붙는다
         if e is not None and not e.invoked:
             out.append(Violation("J006", "hard", f"쟁점 {iss.element}",
                                  f"{iss.stage} 는 원용해야 판단하는데 원용 표시가 없다"))
@@ -209,6 +215,33 @@ def check_derivation(case, issues) -> list:
     return out
 
 
+def check_chain(case, issues=None) -> list:
+    """J011 -- 재항변의 과녁이 실재하고, 사슬이 돌지 않는가.
+
+    `defeats` 가 없는 id 를 가리키면 그 재항변은 허공을 치는 것이고, A 가 B 를, B 가 A 를
+    무너뜨리면 결론이 정해지지 않는다. 둘 다 요건표가 틀린 것이다.
+    """
+    out = []
+    ids = {e.id for e in case.elements}
+    for e in case.elements:
+        if not e.defeats:
+            continue
+        if e.defeats not in ids:
+            out.append(Violation("J011", "hard", f"요건 {e.id}",
+                                 f"무너뜨린다는 요건 {e.defeats!r} 이 요건표에 없다"))
+            continue
+        seen, cur = {e.id}, e.defeats
+        while cur:
+            if cur in seen:
+                out.append(Violation("J011", "hard", f"요건 {e.id}",
+                                     "재항변 사슬이 돈다 -- 결론이 정해지지 않는다"))
+                break
+            seen.add(cur)
+            nxt = case.element(cur)
+            cur = nxt.defeats if nxt else ""
+    return out
+
+
 def check(case, issues=None, corpus=None) -> tuple:
     """(위반 목록, 검증된 요건 수, 미검증 요건 수).
 
@@ -220,7 +253,8 @@ def check(case, issues=None, corpus=None) -> tuple:
     issues = issues if given else IS.derive(case)
     out, checked, unverified = check_anchor(case, corpus)
     for fn in (check_stage, check_burden, check_opposition, check_outcome_relevance,
-               check_invocation, check_schluessig, check_method, check_duplicate):
+               check_invocation, check_schluessig, check_method, check_duplicate,
+               check_chain):
         out.extend(fn(case, issues))
     if given:
         out.extend(check_derivation(case, issues))

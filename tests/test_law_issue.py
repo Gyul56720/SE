@@ -193,7 +193,60 @@ ok(not hard, f"hard 0건 (얻은 값 {[str(v) for v in hard]})")
 ok("쟁점 3개" in IS.report(c), "보고서가 쟁점 수를 적는다")
 
 print()
+print("[재항변] **받아치기는 한 번으로 끝나지 않는다** -- Einrede <- Replik <- Duplik")
+_사슬 = IS.Case(domain="민사", claim="원고가 피고에게 대금을 구한다", elements=[
+    IS.Element("합의", "합의", "권리근거", "가상시험법", "7"),
+    IS.Element("시효", "소멸시효 완성", "권리저지", "가상시험법", "12", invoked=True),
+    IS.Element("승인", "채무 승인으로 중단", "권리저지", "가상시험법", "12", defeats="시효"),
+    IS.Element("승인아님", "그 말은 승인이 아니다", "권리저지", "가상시험법", "12", defeats="승인"),
+], positions={"합의": {"원고": True, "피고": True}, "시효": {"원고": False, "피고": True},
+              "승인": {"원고": True, "피고": False}, "승인아님": {"원고": False, "피고": True}})
+_a = {"합의": True, "시효": True, "승인": False, "승인아님": False}
+ok(IS.outcome(_사슬, _a) == "기각", "항변만 서면 기각")
+_a["승인"] = True
+ok(IS.outcome(_사슬, _a) == "인용", "재항변이 서면 항변이 무너져 인용")
+_a["승인아님"] = True
+ok(IS.outcome(_사슬, _a) == "기각", "재재항변이 서면 재항변이 무너져 다시 기각")
+ok(IS.burden_of(_사슬, _사슬.element("승인")) == "원고"
+   and IS.burden_of(_사슬, _사슬.element("승인아님")) == "피고",
+   "증명책임이 사슬을 따라 뒤집힌다 -- 항변은 피고, 재항변은 원고, 재재항변은 피고")
+_vs, _, _ = JG.check(_사슬, corpus=CORPUS)
+ok(not [v for v in _vs if v.rule in ("J003", "J006")],
+   f"J003·J006 이 재항변을 잘못 잡지 않는다 (얻은 값 {[str(v) for v in _vs if v.rule in ('J003', 'J006')]})")
+
+# J011: 허공을 치는 재항변과 도는 사슬은 요건표가 틀린 것이다.
+_허공 = IS.Case(domain="민사", claim="x", elements=[
+    IS.Element("합의", "합의", "권리근거", "가상시험법", "7"),
+    IS.Element("재", "재항변", "권리저지", "가상시험법", "12", defeats="없는요건")],
+    positions={"합의": {"원고": True, "피고": True}})
+ok(any(v.rule == "J011" for v in JG.check_chain(_허공)), "과녁이 없는 재항변을 잡는다 (J011)")
+_순환 = IS.Case(domain="민사", claim="x", elements=[
+    IS.Element("A", "A", "권리저지", "가상시험법", "12", defeats="B"),
+    IS.Element("B", "B", "권리저지", "가상시험법", "12", defeats="A")], positions={})
+ok(any("돈다" in v.detail for v in JG.check_chain(_순환)), "서로를 무너뜨리는 사슬을 잡는다 (J011)")
+ok(IS.outcome(_순환, {"A": True, "B": True}) in ("인용", "기각"),
+   "도는 사슬이어도 끝없이 돌지 않는다")
+
+print()
+print("[유·불리] **취향이 아니라 증명책임에서 계산한다**")
+_adv = IS.advantage(_사슬)
+ok(_adv["출발선"] == "인용" and _adv["출발선에서 이기는 쪽"] == "원고",
+   f"아무것도 증명 안 되면 항변의 증명책임자(피고)가 진다 (얻은 값 {_adv['출발선']})")
+ok(_adv["최소승리"]["피고"] == [["시효"]],
+   f"피고가 이기려면 최소 시효 하나 (얻은 값 {_adv['최소승리']['피고']})")
+ok(_adv["받아치기"]["원고"]["시효"] == [["승인"]],
+   f"피고가 시효를 세우면 원고는 승인으로 받는다 (얻은 값 {_adv['받아치기']['원고']['시효']})")
+ok(_adv["받아치기"]["피고"]["승인"] == [["시효", "승인아님"]],
+   f"원고가 승인을 세우면 피고는 시효+승인아님으로 받는다 (얻은 값 {_adv['받아치기']['피고']['승인']})")
+_막힘 = IS.Case(domain="민사", claim="x", elements=[
+    IS.Element("합의", "합의", "권리근거", "가상시험법", "7"),
+    IS.Element("무효", "무효", "권리장애", "가상시험법", "7")],
+    positions={"합의": {"원고": True, "피고": True}, "무효": {"원고": False, "피고": True}})
+ok(IS.advantage(_막힘)["받아치기"]["원고"]["무효"] == [],
+   "재항변이 없는 항변은 '받아칠 것이 없다' 로 나온다 -- 요건표를 더 세우라는 신호다")
+
+print()
 if fails:
     print(f"쟁점: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)
-print("쟁점 도출과 관문 J001~J010: 정거장 · 뒤집기 · 원용 · 순서 의존 -- RED/GREEN 통과")
+print("쟁점 도출과 관문 J001~J011: 정거장 · 뒤집기 · 원용 · 순서 의존 · 재항변 · 유불리 -- RED/GREEN 통과")
