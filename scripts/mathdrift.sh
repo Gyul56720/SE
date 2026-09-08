@@ -12,6 +12,7 @@
 #   mathdrift.sh act              **연산자가 자국을 남겼나** -- 원장 전체를 기호로 (호출 0회)
 #   mathdrift.sh prove [id]       **유도가 이어지나** -- 걸음마다 참/거짓/미정 (호출 0회)
 #   mathdrift.sh mono  [id]       **사슬이 어디로 가나** -- 단조량의 궤적 (호출 0회)
+#   mathdrift.sh terrain [id]    **스키마 통로에 무엇이 실리나** · 되풀이 몫 (호출 0회)
 #   mathdrift.sh card  <id>       공간 하나를 칸째로, 부모와 나란히
 #   mathdrift.sh lineage <id>     씨앗까지의 사슬
 #   mathdrift.sh recall           ①재현 -- 코드 칸을 채운 것만, 호출 0회. **시키면 한다**
@@ -115,6 +116,7 @@ case "${1:-status}" in
   act)      python3 "$SPREAD" --act ;;
   prove)    if [ -n "${2:-}" ]; then python3 "$SPREAD" --prove "$2"; else python3 "$SPREAD" --prove; fi ;;
   mono)     if [ -n "${2:-}" ]; then python3 "$SPREAD" --mono "$2"; else python3 "$SPREAD" --mono; fi ;;
+  terrain)  if [ -n "${2:-}" ]; then python3 "$SPREAD" --terrain "$2"; else python3 "$SPREAD" --terrain; fi ;;
   diff)     [ -n "${2:-}" ] || die "어느 공간? 예: $0 diff S10"; python3 "$SPREAD" --diff "$2" ;;
   card)     [ -n "${2:-}" ] || die "어느 공간? 예: $0 card S10"; python3 "$SPREAD" --card "$2" ;;
   lineage)  [ -n "${2:-}" ] || die "어느 공간? 예: $0 lineage S10"; python3 "$SPREAD" --lineage "$2" ;;

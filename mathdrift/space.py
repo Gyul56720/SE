@@ -105,10 +105,40 @@ def load(path=None) -> dict:
     return d
 
 
+# 원장이 이보다 커지면 걸음마다 안 쓴다. 통째로 다시 쓰는 비용이 O(n) 이라 걸음마다
+# 쓰면 런 전체가 O(n^2) 이 된다 -- 24시간 규모에서 이것이 런을 못 끝나게 한다.
+#
+# 실측 2026-09-08 (한 번 저장하는 데 드는 시간과 파일 크기):
+#     공간   100 →   0.2MB      3ms
+#     공간 1,000 →   1.9MB     36ms
+#     공간 5,000 →   9.6MB    187ms
+#     공간20,000 →  38.5MB  1,411ms      ← 묶음 주기가 3.3초인데 그중 1.4초가 저장
+# 24시간이면 묶음 26,000회 · 공간 13만 개다. 그 크기에서는 한 번 쓰는 데 몇 초씩
+# 걸려서 **호출보다 저장이 오래 걸린다.** 그래서 커지면 K 걸음에 한 번만 쓴다.
+BIG = int(os.environ.get("MATHDRIFT_SAVE_BIG", "500"))
+EVERY = int(os.environ.get("MATHDRIFT_SAVE_EVERY", "10"))
+
+
 def save(led: dict, path=None) -> None:
+    """**항상 쓴다.** 마디마다 부르는 쪽은 `save_step` 을 쓴다."""
     p = Path(path or PATH)
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(led, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp = p.with_suffix(p.suffix + ".tmp")
+    tmp.write_text(json.dumps(led, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(p)          # 쓰다 죽어도 원장이 반쪽으로 남지 않는다
+
+
+def save_step(led: dict, path=None, i: int = 0, last: bool = False) -> bool:
+    """걸음마다 부르는 자리. 작으면 늘 쓰고, 커지면 K 걸음에 한 번 쓴다.
+
+    **약속이 조금 약해진다.** 전에는 "걸음마다 저장되니 중간에 죽어도 다 남는다"
+    였는데, 이제 원장이 크면 최대 K 걸음(K x 묶음 크기)만큼 잃을 수 있다. 그 대신
+    24시간이 끝난다 -- 안 그러면 저장이 호출을 앞질러 런이 기어간다.
+    마지막 걸음과 신호를 받았을 때는 크기와 상관없이 쓴다."""
+    if last or len(led.get("spaces", ())) < BIG or i % max(1, EVERY) == 0:
+        save(led, path)
+        return True
+    return False
 
 
 def get(led: dict, sid: str) -> dict | None:

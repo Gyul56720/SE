@@ -46,6 +46,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from mathdrift import act as ACT
 from mathdrift import measure as ME
 from mathdrift import mono as MO                                   # noqa: E402
+from mathdrift import terrain as TR                                # noqa: E402
 from mathdrift import ops as OPS
 from mathdrift import prove as PRV                                      # noqa: E402
 from mathdrift import space as SP                                     # noqa: E402
@@ -56,7 +57,7 @@ from mathdrift import space as SP                                     # noqa: E4
 BATCH = 5
 
 
-def prompt(parent: dict, picks: list[tuple[str, str, int]]) -> str:
+def prompt(parent: dict, picks: list[tuple[str, str, int]], terrain: str = "") -> str:
     """**이름이 아니라 식이 표류한다. 그리고 여기서는 아무것도 안 막는다.**
 
     두 번 데었다.
@@ -80,12 +81,16 @@ def prompt(parent: dict, picks: list[tuple[str, str, int]]) -> str:
         far = "  ← 먼 이주여도 좋다" if dist >= 2 else ""
         lines.append(f"  · {op} : {what}{far}")
     ops_block = "\n".join(lines)
+    # **지형은 실을 것이 있을 때만 실린다.** 늘 실으면 그것이 상수가 되어 묻힌다
+    # (`novel/dyn.py` 가 어긋난 축만 싣는 것과 같은 배치다). 그리고 여기 흐르는 것은
+    # 판정이 아니라 사실이다 -- 점수를 실었다가 두 번 데었고, 그 규칙은 그대로다.
+    terrain_block = f"\n{terrain}\n" if terrain else ""
     return f"""너는 행렬곱 복잡도 문제의 **식**을 넓히는 중이다. 해를 찾는 것이 아니라
 **해를 찾을 수 있는 식**을 적는 것이 일이다.
 
 지금 있는 식(부모):
 {body}
-
+{terrain_block}
 이 **식**에 연산자를 하나씩 건다. {len(picks)}개다.
 
 {ops_block}
@@ -304,7 +309,7 @@ def step(led: dict, llm, seed: str, n: int, k: int = BATCH, log=print) -> list[d
     parent = led["spaces"][n % len(led["spaces"])]
 
     try:
-        raw = llm(prompt(parent, picks))
+        raw = llm(prompt(parent, picks, TR.brief(led, parent["id"])))
     except Exception as e:                                    # noqa: BLE001
         log(f"[발산] 호출 실패({type(e).__name__}: {str(e)[:70]}) -- 건너뛴다")
         return []
@@ -576,6 +581,8 @@ def main(argv=None) -> int:
     ap.add_argument("--card", default="", help="공간 하나를 칸째로 (예: --card S34)")
     ap.add_argument("--mono", nargs="?", const="", default=None,
                     help="사슬이 어디로 가나 -- 단조량 (호출 0회). id 를 주면 하나만")
+    ap.add_argument("--terrain", nargs="?", const="", default=None,
+                    help="스키마 통로에 무엇이 실리나 (호출 0회). id 를 주면 그 부모 자리")
     ap.add_argument("--prove", nargs="?", const="", default=None,
                     help="유도가 이어지는가 (호출 0회). id 를 주면 하나만")
     ap.add_argument("--act", action="store_true",
@@ -592,6 +599,9 @@ def main(argv=None) -> int:
 
     if a.mono is not None:
         return MO.report(led, a.mono)
+
+    if a.terrain is not None:
+        return TR.show(led, a.terrain)
 
     if a.prove is not None:
         return PRV.report(led, a.prove)
@@ -632,8 +642,9 @@ def main(argv=None) -> int:
     if a.dry:
         for i in range(min(rounds, 3)):
             picks = _pick_ops(led, "dry", i, a.batch)
+            par = led["spaces"][i % len(led["spaces"])]
             print("=" * 70)
-            print(prompt(led["spaces"][i % len(led["spaces"])], picks))
+            print(prompt(par, picks, TR.brief(led, par["id"])))
         return 0
 
     try:
@@ -642,11 +653,27 @@ def main(argv=None) -> int:
         print(f"못 돌린다: {e}")
         return 1
 
+    # **죽어도 원장은 쓴다.** 24시간짜리 런은 중간에 kill 되는 것이 정상이다 --
+    # 신호를 받으면 마지막으로 한 번 쓰고 나간다.
+    import signal
+
+    def _bye(signum, frame):                                  # noqa: ARG001
+        SP.save(led, a.path or None)
+        print(f"\n[발산] 신호를 받았다 -- 원장 {len(led['spaces'])}개를 쓰고 나간다")
+        raise SystemExit(0)
+
+    for _s in (signal.SIGTERM, signal.SIGINT):
+        try:
+            signal.signal(_s, _bye)
+        except (ValueError, OSError):
+            pass
+
     t0, made = time.time(), 0
     for i in range(rounds):
         made += len(step(led, llm, seed=str(len(led["spaces"])), n=i, k=a.batch))
-        SP.save(led, a.path or None)
-        print(f"[발산] {i + 1}/{rounds}회 · 공간 {made}개 · {time.time() - t0:.0f}초")
+        wrote = SP.save_step(led, a.path or None, i=i, last=(i == rounds - 1))
+        print(f"[발산] {i + 1}/{rounds}회 · 공간 {made}개 · {time.time() - t0:.0f}초"
+              + ("" if wrote else "  (원장은 다음 마디에 쓴다)"))
     print(f"\n호출 {rounds}회로 {made}개를 원장에 올렸다. 공간 {len(led['spaces'])}개.")
     return 0
 
