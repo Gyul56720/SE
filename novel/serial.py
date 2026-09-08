@@ -70,6 +70,21 @@ from novel import genre as GENRE                                      # noqa: E4
 # 그 정도가 한 사건이 서고 닫히는 크기다. 실측이 생기면 이 줄을 고친다.
 SPAN = int(os.environ.get("SERIAL_SPAN", "10000"))
 
+# **한 마디는 회차 몇 개인가.** 목표에 비례시키지 않는다.
+#
+# 실측 2026-09-08: `span = 목표 // (빚 + 1)` 이라 목표가 클수록 마디가 길어졌다. 목표
+# 20만 자에 빚 다섯이면 한 마디가 33,333자 = 회차 6.7개였고, 4만 자를 쓰는 동안 전환점이
+# **한 번도 안 왔으며** 성장 단계는 내내 "진다" 였다(진다 단계만 66,000자). 같은 원고를
+# 5만 자 목표로 잡았으면 그 지점에서 마디 5 · "이긴다" · 전환점 "대좌절" 이다.
+# 사용자 평이 그것이다: "4만 자 내외의 모든 글의 전개가 없다. 한 씬의 반복이다."
+#
+# 긴 원고는 마디가 길어질 것이 아니라 **빚이 많아져야** 한다. 그래서 상한을 두고,
+# 빚이 떨어지면 `refill` 이 더 뽑는다.
+SPAN_EPS = int(os.environ.get("SERIAL_SPAN_EPS", "3"))
+
+# 빚을 몇 개까지 늘릴 것인가. 무한정 늘리면 도착지가 도착지가 아니게 된다.
+MAX_DEBTS = int(os.environ.get("SERIAL_MAX_DEBTS", "12"))
+
 # 빚의 개수. 넷보다 적으면 도착지가 너무 가깝고, 여섯보다 많으면 한 마디에 하나씩
 # 배정해도 원고가 그만큼 길어져야 한다(여섯 x 1만 자 = 6만 자).
 DEBTS = (4, 6)
@@ -179,12 +194,24 @@ def span(book: dict) -> int:
     빚 다섯에 마디 1만 자면 5만 자를 써야 마지막 빚을 지나고, 목표가 5만 자면 끝을
     향하는 마디가 **없다** -- 원고가 목표에 닿아 멈추는데 결말은 안 왔다. 그래서
     목표를 (빚 수 + 1) 로 나눈다: 빚마다 한 마디, 마지막 한 마디는 끝을 향한다.
-    목표를 모르면(검사 · 옛 원고) SPAN 그대로다."""
+    목표를 모르면(검사 · 옛 원고) SPAN 그대로다.
+
+    **다만 상한이 있다**(SPAN_EPS 회차). 목표에만 비례시키면 긴 원고일수록 방향이 안
+    바뀐다 -- 위 SPAN_EPS 주석의 실측이 그것이다."""
     target = int(book.get("_target") or 0)
     ds = arc(book).get("debts") or []
     if target > 0 and ds:
-        return max(1500, target // (len(ds) + 1))
+        return max(1500, min(target // (len(ds) + 1), SPAN_EPS * _ep()))
     return SPAN
+
+
+def _ep() -> int:
+    """한 회차의 분량. beat 를 늦게 부른다 -- beat 가 이 파일을 먼저 임포트한다."""
+    try:
+        from novel import beat as BT
+        return max(1, int(BT.EP))
+    except Exception:
+        return 5000
 
 
 def where(book: dict) -> int:
@@ -217,6 +244,72 @@ def done(book: dict) -> bool:
     """마지막 빚까지 지나갔는가. 끝을 향해 갈 때다."""
     ds = arc(book).get("debts") or []
     return bool(ds) and where(book) >= len(ds)
+
+
+# ---------------------------------------------------------------- 빚 보충
+
+def needs_refill(book: dict) -> bool:
+    """빚을 다 지났는데 목표가 아직 먼가.
+
+    마디에 상한을 두고 나서 생긴 자리다. 상한이 없을 때는 빚이 목표까지 늘어났지만,
+    이제는 긴 원고에서 빚이 먼저 떨어진다. 그대로 두면 남은 분량 내내 `brief` 가
+    "끝을 향해 간다" 한 줄만 내고, 그것이 곧 **전개 없음**이다."""
+    target = int(book.get("_target") or 0)
+    ds = arc(book).get("debts") or []
+    if not ds or target <= 0 or len(ds) >= MAX_DEBTS:
+        return False
+    n = sum(len(c) for c in (book.get("chunks") or []))
+    # 끝을 향해 갈 자리는 남겨 둔다 -- 마디 둘 몫이 남았을 때만 보충한다.
+    return done(book) and (target - n) > 2 * span(book)
+
+
+def refill_prompt(book: dict) -> str:
+    a = arc(book)
+    had = "\n".join(f"  {i + 1}. {d['무엇']}" for i, d in enumerate(a.get("debts") or []))
+    tail = "".join(book.get("chunks") or [])[-800:]
+    return f"""이 소설은 아직 끝나지 않았는데 **세워 둔 단계를 전부 지났다.** 다음 단계를 더 세운다.
+줄거리는 정하지 않는다 -- 상태만 적는다.
+
+[이 소설이 닿을 자리] {a.get('end', '')}
+{f"[처음의 주인공] {a['start']}" if a.get('start') else ''}
+{f"[줄기] {a['shape']}" if a.get('shape') else ''}
+
+[이미 지나온 단계]
+{had}
+
+[지금까지의 끝부분]
+...{tail}
+
+3~4개를 낸다. 규칙:
+- 각각 한 문장. **상태로 적어라** -- 무슨 장면을 쓰라는 말이 아니다.
+- **이미 지나온 것과 겹치지 마라.** 같은 말을 다시 적으면 원고가 제자리를 돈다.
+- 순서대로 -- 앞엣것이 먼저 참이 되어야 뒤엣것이 가능하다.
+- **판을 넓혀라.** 지금까지가 한 사람과의 일이었으면 이제는 가문 · 도시 · 세력의 일이다.
+  같은 크기의 일을 다시 세우면 독자는 같은 이야기를 두 번 읽는다.
+- 마지막 것은 [닿을 자리] 바로 앞이어야 한다.
+
+{{"빚": ["...", "...", "..."]}}"""
+
+
+def refill(book: dict, llm) -> bool:
+    """빚을 더 뽑아 붙인다. **호출 한 번.** 실패하면 그냥 간다."""
+    try:
+        got = D.call_json(D._llm_for(llm, "director"), refill_prompt(book),
+                          label="연재 빚 보충")
+        have = {d["무엇"] for d in (arc(book).get("debts") or [])}
+        more = [str(x).strip() for x in (got.get("빚") or [])
+                if str(x).strip() and str(x).strip() not in have]
+        if not more:
+            D._log("[연재] 보충할 빚을 못 받았다 -- 그대로 간다")
+            return False
+        room = MAX_DEBTS - len(arc(book).get("debts") or [])
+        for d in more[:max(0, room)]:
+            book["arc"]["debts"].append({"무엇": d, "갚음": 0})
+            D._log(f"[연재]   빚을 더 세운다: {d}")
+        return True
+    except Exception as e:
+        D._log(f"[연재] 빚을 못 보충했다({type(e).__name__}: {str(e)[:80]}) -- 그대로 간다")
+        return False
 
 
 # ---------------------------------------------------------------- 프롬프트

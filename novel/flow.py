@@ -180,6 +180,9 @@ BRIDGE_AFTER = 6
 
 # 관계가 실리는 비율. 매번 새 관계를 붙이면 인물이 관계표가 된다.
 BOND = 0.4
+# **수위** -- 0 이면 안 씌운다(기본). 켜면 회차마다 성인 규율이 실린다(space.HEAT).
+# 조건 둘(어른만 · 원하는지가 보인다)은 켜져 있는 동안 늘 실리고 뽑기에서 안 빠진다.
+HEAT = float(os.environ.get("DRIFT_HEAT", "0"))
 
 # 설정(외현·내현)이 붙는 비율. 매 덩어리에 넣으면 소설이 인물 소개서가 된다.
 # **캐릭터를 미리 정하지 않는다.** 겉과 속을 뽑아 주면 인물이 시작부터 완성돼 있고,
@@ -266,9 +269,11 @@ def blank(first: str = FIRST) -> dict:
             "genre": GENRE.DEFAULT,
             "fixed": {"시점": "", "전제": "", "톤": "", "법칙": ""},
             "matter": MATTER, "trait": TRAIT, "bond": BOND, "bridge": BRIDGE, "exception": EXCEPTION, "doubt": DOUBT, "pov": POV,
+            "heat": HEAT,
             "ledger": {
         "people": {}, "places": {}, "facts": {}, "time": [], "objects": {},
         "words": {}, "open": {}, "rules": {}, "macguffin": {}, "bonds": {},
+        "wounds": {},
         "_folded": []}}
 
 
@@ -280,7 +285,7 @@ def _clean(v):
 _BUCKETS = {"people": dict, "places": dict, "objects": dict, "words": dict,
             "open": dict, "rules": dict, "macguffin": dict, "facts": dict,
             "bonds": dict, "fixed": dict, "folded": list, "closed": list,
-            "time": list}
+            "time": list, "wounds": dict}
 
 # 추출 프롬프트의 **자리 이름**. 모델이 값 대신 이것을 그대로 베껴 낼 때가 있다.
 _PLACEHOLDER = {"사람 이름", "장소", "사물", "항목", "이름-이름", "Name-Name", "name-name",
@@ -515,6 +520,13 @@ def brief(ledger: dict, limit: int = 40, now: int = 0) -> str:
                     bit = str(card)
                 brief_rest.append(f"{name}({bit})" if bit else name)
             out.append("  [스쳐 간 사람] " + " · ".join(brief_rest))
+    # **몸에 남은 것.** 사용자(2026-09-08): "누가 부상을 당하거나 외과적 내과적 장애가
+    # 생긴다면 영구히 지속해." 프롬프트 줄로 시키면 열 덩어리 뒤에 잊힌다 -- 원장에
+    # 적혀 매 덩어리 실려야 지켜진다. 나이가 지나도 안 접는다: 다친 것은 오래될수록
+    # 더 중요해지지 덜 중요해지지 않는다.
+    if ledger.get("wounds"):
+        out.append("  [몸에 남은 것 -- **낫지 않는다**] "
+                   + " · ".join(f"{k}: {v}" for k, v in ledger["wounds"].items()))
     # 열린 것은 여기 안 싣는다 -- [열린 것] 블록이 따로 있고, 두 번 실으면 그만큼
     # 프롬프트만 무거워진다.
     if ledger.get("rules"):
@@ -1348,6 +1360,11 @@ def extract_prompt(chunk: str) -> str:
 - **bonds 에는 인물 사이의 사이값을 적어라** -- {{"이름-이름": "지금 어떤 사이인가"}} 꼴로,
   두 이름을 하이픈으로 잇고, 지금 어떤 사이인지 한 줄로. 사건을 겪으면 값이 바뀐다.
   적대가 조력으로, 동맹이 적으로 바뀌는 것이 이야기다.
+- **wounds 에는 몸에 벌어진 손상을 적어라.** {{"이름": "어디가 어떻게 -- 그래서 못 하는 것"}}
+  꼴이다. 해부학적 부위와 기전(베임 · 찔림 · 둔상 · 골절 · 화상 · 출혈 · 감염 · 절단)을
+  대고, **그것 때문에 지금 못 하는 것**을 한 줄로 적어라. 죽었으면 무엇으로 죽었는지 적어라.
+  **한 번 적힌 손상은 낫지 않는다** -- 나으려면 그만한 시간과 처치가 글에 나와야 하고,
+  신경 · 절단 · 장기는 그래도 안 돌아온다. 나은 것은 흉터와 못 하게 된 것으로 남는다.
 - **몸 칸**에는 겉으로 드러나는 조건을 적어라 -- 안 들리는 귀, 안 크는 키, 떨리는 손.
 - **속 칸**에는 그 사람이 늘 지고 다니는 것을 적어라 -- 다만 **행동으로 적어라**
   -- 그 사람이 어떤 자리에서 무엇을 하는지로. 감정 이름이나 진단명은 쓰지 마라.
@@ -1378,6 +1395,7 @@ JSON 만 출력(아래 칸 이름은 그대로, **값은 이 덩어리에서 읽
   "places": {{"장소": "어떤 곳인가 한 줄"}},
   "objects": {{"사물": "무엇인가 한 줄"}},
   "words": {{"이 덩어리가 지어낸 낱말": "무슨 뜻이고 누가 쓰는 말인가"}},
+  "wounds": {{"다친 사람 이름": "어디가 어떻게 -- 그래서 못 하는 것"}},
   "open": {{"아직 답이 안 나온 것": "무엇이 안 나왔는가"}},
   "rules": {{"이 세계의 통칙": "무엇이 되고 무엇이 안 되는가"}},
   "macguffin": {{"다들 그것 때문에 움직이는 것": "정체는 아직 아무도 모른다"}},
@@ -1423,6 +1441,10 @@ def step(book: dict, llm, log=None) -> dict:
     # 꺼진 채 돌고 있었다 -- 실측 2026-09-08: 사용자의 런은 전부 기본값이었다. 각본은
     # 문면층의 층이 아니라 그 위의 층이고, 도착지가 있다는 것이 곧 켜라는 뜻이다.
     if SR.planned(book):
+        # **빚이 떨어졌는데 목표가 멀면 더 세운다.** 안 하면 남은 분량 내내 당김이
+        # "끝을 향해 간다" 한 줄이고, 그것이 곧 전개 없음이다(serial.SPAN_EPS 주석).
+        if SR.needs_refill(book):
+            SR.refill(book, llm)
         BT.ensure(book, llm)
     # 문면층만 쓸 때는 사건도 급발진도 안 뽑는다 -- 프롬프트에 안 실릴 것을 뽑아 두면
     # 원고에 안 나온 사건이 원장에만 남는다.
@@ -1843,6 +1865,9 @@ def main() -> int:
                     help="설정(외현·내현)이 붙는 비율 0~1")
     ap.add_argument("--bond", type=float, default=BOND,
                     help="관계가 실리는 비율 0~1")
+    ap.add_argument("--heat", type=float, default=HEAT,
+                    help="수위 0~1. 기본 0(안 씌운다). 켜면 성인 규율이 회차마다 실린다 "
+                         "-- 등장인물은 전부 어른이어야 한다")
     ap.add_argument("--bridge", type=float, default=BRIDGE,
                     help="따로 있던 둘을 잇는 비율 0~1")
     ap.add_argument("--exception", type=float, default=EXCEPTION,
@@ -1913,7 +1938,7 @@ def main() -> int:
     for key, val in (("drift", a.drift), ("matter", a.matter),
                      ("trait", a.trait), ("bond", a.bond),
                      ("bridge", a.bridge), ("exception", a.exception),
-                     ("doubt", a.doubt), ("pov", a.pov)):
+                     ("doubt", a.doubt), ("pov", a.pov), ("heat", a.heat)):
         was = book.get(key)
         book[key] = max(0.0, min(1.0, val))
         if was is not None and was != book[key]:
@@ -1925,6 +1950,14 @@ def main() -> int:
     if a.persona:
         style.use(a.persona)
         D._log(f"[flow] 문체 {a.persona} -- {style.P()['label']}")
+        # **기본 경로에서는 페르소나가 프롬프트에 안 실린다.** compose(axes)는 재는
+        # 축에서만 프롬프트를 짓고 style.narrator() 를 부르지 않는다 -- 그것이 그쪽의
+        # 설계다(compose.py 머리말). 그래서 STYLE=ropan 을 주고 돌려도 문장론은 한 줄도
+        # 안 나간다. 조용히 아무 일도 안 하면 아무도 모른다 -- 이 저장소가 거듭 겪은
+        # "코드가 실행에 도달하지 못하는" 자리라, 사실대로 적는다.
+        if PROMPT == "axes":
+            D._log(f"[flow] * 다만 지금 프롬프트는 '{PROMPT}' 라 문장론은 안 실린다"
+                   " -- 페르소나를 쓰려면 DRIFT_PROMPT=legacy")
     GENRE.get(a.genre)
     if book.get("genre") != a.genre:
         D._log(f"[flow] 갈래 {book.get('genre') or '(없음)'} → {a.genre or '(없음)'}")
