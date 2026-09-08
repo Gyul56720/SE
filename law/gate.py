@@ -81,6 +81,16 @@ CREATED_LABEL = re.compile(
 # 필자가 만든 말에 강조를 준 것이지 조문을 옮긴 것이 아니었다.
 QUOTED = re.compile(r"[\"“”「『]([^\"“”「」『』\n]{8,})[\"“”」』]")
 
+# **따옴표 안이 다 조문은 아니다.** 사람이 한 말도 따옴표에 들어간다.
+# 실측: 사례 절의 `피고인이 공판기일에 "내용이 사실과 다르다"며 ...` 가 L002 hard 로
+# 기각됐다. 조문을 잘못 옮긴 게 아니라 **가상 사실관계 속 피고인의 진술**이다.
+#
+# 가르는 자리는 따옴표 바로 뒤다. 사람의 말에는 인용 조사(며·라고·면서)가 붙고,
+# 조문을 옮긴 데는 그 뒤에 '규정한다·정하고 있다·명시되어' 가 온다. 그래서 조사가
+# 붙었더라도 **규정 동사가 뒤따르면 그대로 검사한다** -- `"..."고 규정한다` 를
+# 놓치면 이 관문의 본체를 잃는다.
+SAID = re.compile(r"\s*(?:라)?(?:며|면서|고)(?!\s*(?:규정|정하|정한|명시|적혀|규율|되어))")
+
 # 법정형 표기. L006(자기모순)이 보는 자리.
 PENALTY = re.compile(
     r"(?P<num>\d[\d,]*(?:[억만천백십][\d,]*)*)\s*(?P<unit>년|개월|일|억원|만원|원)\s*"
@@ -210,8 +220,11 @@ def check_quotes(doc: Doc, corpus) -> list:
                     targets.append(re.sub(r"\s+", "", body))
             if not targets:
                 continue
-            for q in QUOTED.findall(sent):
+            for m in QUOTED.finditer(sent):
+                q = m.group(1)
                 if CP.CITATION.search(q):      # 조문 번호를 부른 것뿐이면 인용이 아니다
+                    continue
+                if SAID.match(sent, m.end()):  # 사람이 한 말이다 -- 조문을 옮긴 게 아니다
                     continue
                 flat = re.sub(r"\s+", "", q)
                 if not any(flat in t for t in targets):
@@ -287,17 +300,24 @@ def check_case_citation(doc: Doc, corpus=None) -> list:
     법제처 OPEN API 가 판례 목록·본문을 준다(`law/fetch.py --판례`). 그래서 L001 이 조문에
     하는 일과 같은 모양으로 올린다:
 
-        원장이 비어 있다        -> 지금까지대로 **금지**(hard). 대조할 수 없으니까.
-        원장에 사건번호가 있다   -> **통과**. 아무 말도 안 한다.
-        원장에 없다             -> **기각**(hard). 지어낸 것으로 본다.
+        원장이 비어 있다              -> 지금까지대로 **금지**(hard). 대조할 수 없으니까.
+        원장에 사건번호가 있다         -> **통과**. 아무 말도 안 한다.
+        없는데 **다 받았다**          -> **기각**(hard). 지어낸 것으로 본다.
+        없는데 **덜 받았다**          -> **미검증**. 아직 안 본 것이다.
 
     원장이 비어 있는 것과 원장에 그 사건이 없는 것은 다르다. 앞은 대조를 못 한 것이고
     뒤는 대조해서 없던 것이다. **섞으면 원장을 채운 보람이 안 보인다.**
 
+    그리고 셋째 갈래가 있다. 판례는 조문과 달리 한두 번에 다 받을 수 없어서, 원장이
+    **일부만 찬 상태가 오래 간다.** 그때 "없으면 기각" 하면 아직 안 받았을 뿐인
+    실재하는 판례를 지어냈다고 기각한다 -- 과잉 기각하는 심판은 맞는 답도 버린다.
+    그래서 조문의 `covers()` 와 같은 자리를 판례에도 둔다: 훑기를 끝냈다고 적혀
+    있을 때만(`covers_cases()`) 없는 것을 기각한다.
+
     `대법원 ... 판결` 처럼 사건번호 없이 부르는 것은 원장이 있어도 대조할 자리가 없다.
     그건 그대로 막는다 -- 사건번호를 적으면 대조되고, 안 적으면 못 한다.
     """
-    out = []
+    out, 미검증 = [], 0
     사건 = getattr(corpus, "cases", None) or {}
     for name, text in doc.sections.items():
         for m in CASE_NO.finditer(text):
@@ -308,6 +328,8 @@ def check_case_citation(doc: Doc, corpus=None) -> list:
                                      f" (law/fetch.py --판례 로 원장을 채워라)"))
             elif corpus.case(no):
                 continue
+            elif not corpus.covers_cases():
+                미검증 += 1              # 아직 안 받은 것이다. 기각이 아니다.
             else:
                 out.append(Violation("L004", "hard", f"{doc.path.name} · {name}",
                                      f"판례 원장에 없는 사건번호: {no!r}"))
@@ -319,7 +341,7 @@ def check_case_citation(doc: Doc, corpus=None) -> list:
                 continue
             out.append(Violation("L004", "hard", f"{doc.path.name} · {name}",
                                  f"사건번호 없이 판례를 특정해 인용했다: {m.group(0)[:40]!r}"))
-    return out
+    return out, 미검증
 
 
 def check_ungrounded(doc: Doc, corpus=None) -> list:
@@ -418,12 +440,22 @@ CHECKS = (check_citations, check_quotes, check_quantities, check_case_citation,
 
 
 def check(doc: Doc, corpus) -> tuple:
-    """(위반 목록, 검증된 인용 수, 미검증 인용 수)."""
+    """(위반 목록, 검증된 인용 수, 미검증 인용 수).
+
+    **판례 미검증도 같은 칸에 싣는다.** 따로 두면 hard 도 soft 도 아닌 값이 되어
+    어느 셈에도 안 잡히고 조용히 사라진다 -- 그게 이 저장소가 제일 싫어하는 꼴이다.
+    """
     out, checked, unverified = check_citations(doc, corpus)
     for fn in CHECKS:
         if fn is check_citations:
             continue
-        out.extend(fn(doc, corpus))
+        got = fn(doc, corpus)
+        if fn is check_case_citation:
+            vs, 판례미검증 = got
+            out.extend(vs)
+            unverified += 판례미검증
+        else:
+            out.extend(got)
     return out, checked, unverified
 
 

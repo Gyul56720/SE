@@ -29,6 +29,7 @@
 """
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -54,11 +55,19 @@ ALIASES = {
 # **위반도 통과도 아닌 '미검증' 으로 조용히 샜다** -- 민법 제40조를 대조할 수 있었는데
 # 안 한 것이다. 검사하지 않은 초록불이 검사한 빨간불보다 나쁘다는 것이 이 저장소의 규율이다.
 #
-# '형법상' 처럼 조사·접미가 붙는 것은 그대로 받는다. 막는 것은 '인' 하나뿐이다 --
-# 법인(法人)이 법령명이 아닌 유일하게 잦은 꼴이라서.
+# '형법상' 처럼 조사·접미가 붙는 것은 받되, **낱말이 이어지는 것은 안 받는다.**
+# 처음엔 막는 것이 '인'(법인) 하나뿐이었다. 그러다 `관할지방법원판사` 에서
+# '관할지방법' 을, `지방법원판사` 에서 '지방법' 을 법령명으로 읽었다(실측: 그 두 자리의
+# 인용이 조용히 미검증으로 샜고, 돌연변이 `제201조 -> 제901조` 를 못 잡았다).
+#
+# '인' 을 하나씩 늘리는 것은 두더지잡기다. 방향을 뒤집는다 -- **'법' 다음에 한글이
+# 이어지면 안 받고, 조사·접미로 알려진 것만 예외로 둔다.** 이 방향이 안전한 것은
+# 틀리는 쪽이 다르기 때문이다: 법령명을 **못 알아보면** 선언 법령으로 되돌아가 그대로
+# 대조되지만, **잘못 알아보면** 원장에 없는 이름이 되어 조용히 미검증으로 샌다.
+_SUFFIX = "상은는이가을를의에와과도만로으제및등"
 STATUTE_NAME = re.compile(
     r"(?:[가-힣]{2,20}에\s*관한\s*법률|[가-힣]{1,12}법(?:률)?|[가-힣 ]{4,30}정비법)"
-    r"(?!인)"
+    rf"(?!(?![{_SUFFIX}])[가-힣])"
 )
 
 # 법으로 끝나지만 법령명이 아닌 말들. '민법' 을 받으려고 앞자리를 1자까지 열었더니
@@ -243,6 +252,7 @@ class Corpus:
     articles: dict = field(default_factory=dict)
     sources: dict = field(default_factory=dict)
     cases: dict = field(default_factory=dict)      # 사건번호 -> {법원, 선고일자, 사건명}
+    case_scope: dict = field(default_factory=dict)  # 판례를 어디까지 훑었는가
 
     def covers(self, statute: str | None) -> bool:
         """이 법령을 원장이 담고 있는가. 아니면 그 인용은 '미검증' 이다."""
@@ -253,6 +263,18 @@ class Corpus:
 
     def has(self, statute: str | None, article: str) -> bool:
         return self.text(statute, article) is not None
+
+    def covers_cases(self) -> bool:
+        """판례 원장이 **다 받았다고 기록돼 있는가.**
+
+        조문의 `covers()` 와 같은 자리다. 이것이 거짓이면 원장에 없는 사건번호는
+        '지어냈다' 가 아니라 **'아직 안 받았다'** 다. 둘을 섞으면 실재하는 판례를
+        기각하게 되고, 그게 이 저장소가 제일 경계하는 과잉 기각이다.
+
+        판례는 조문과 달리 '법령 단위' 로 다 받았는지를 말할 수 없어서, 받는 쪽이
+        훑기를 끝냈다고 적어 두는 것으로 대신한다(`law/fetch.py --판례 --전부`).
+        """
+        return bool(self.case_scope.get("전부"))
 
     def case(self, no: str) -> dict | None:
         """사건번호가 판례 원장에 있는가. 없으면 None -- **없다고 단정하지 않는다.**
@@ -368,6 +390,20 @@ _CASE_HEAD = re.compile(
     re.M)
 
 
+SCOPE_FILE = "_받은범위.json"
+
+
+def load_case_scope(root: Path | str = CASES_DIR) -> dict:
+    """판례를 어디까지 훑었는지 적어 둔 것. 없으면 '모른다' -- 빈 dict 다."""
+    f = Path(root) / SCOPE_FILE
+    if not f.is_file():
+        return {}
+    try:
+        return json.loads(f.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return {}
+
+
 def load_cases(root: Path | str = CASES_DIR) -> dict:
     """판례 원장을 읽는다. 비어 있으면 빈 dict -- 오류가 아니다.
 
@@ -414,6 +450,7 @@ def load(root: Path | str = CORPUS_DIR) -> Corpus:
         corpus.articles.setdefault(name, {}).update(arts)
         corpus.sources[name] = str(path)
     corpus.cases = load_cases()
+    corpus.case_scope = load_case_scope()
     return corpus
 
 

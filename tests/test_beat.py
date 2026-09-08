@@ -181,8 +181,14 @@ _bq2, _dq2 = book(100), Director(queue=[_q, _q])
 ok(BT.ensure(_bq2, _dq2) is None and _dq2.calls == 2, "두 번 다 질문이면 카드를 버린다")
 ok("질문 · 예감 · 대사 · 미소가 아니다" in BT.card_prompt(book(100)), "각본 프롬프트가 금지를 준다")
 ok("반만" in _p and "답이 갈린다" in _p, "답이 갈리는 자리를 표시한다")
-for _n in ("마디", "5,000", "%", "번째"):
-    ok(_n not in _p, f"'{_n}' 이 없다  ← 자를 시키지 않는다")
+# **자를 시키지 않는다**(serial.py 의 계약). 다만 낱말로 맞추면 평범한 산문을 잡는다 --
+# "한 마디로 김을 뺀다" 의 마디, "두 번째 것이 온다" 의 번째가 그것이다. 그래서 낱말이
+# 아니라 **자의 꼴**을 본다: 수가 붙은 마디 · 회차 · 진도 · 분량.
+import re as _re_ruler                                                # noqa: E402
+for _pat in (r"\d+\s*번째\s*(마디|회차)", r"(마디|회차)\s*\d+", r"\d+\s*%",
+             r"\d{1,3},\d{3}\s*자"):
+    _hit = _re_ruler.search(_pat, _p)
+    ok(not _hit, f"자가 안 실린다: /{_pat}/ ({_hit.group(0) if _hit else '없다'})")
 
 print()
 print("[전환점] **마디의 마지막 회차에만 온다 -- 다섯 중 하나**")

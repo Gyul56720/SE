@@ -111,6 +111,21 @@ d = doc({"2. 조문과 이론": "제7조가 정하는 '가상의 임무 위배'�
 ok(not G.check_quotes(d, CORPUS),
    "작은따옴표는 강조다 -- 한국어에서 '…' 를 조문 인용으로 보면 멀쩡한 문장이 기각된다")
 
+# **따옴표 안이 다 조문은 아니다.** 실측: 사례 절의
+# `피고인이 공판기일에 "내용이 사실과 다르다"며 ...` 가 hard 로 기각됐다.
+# 조문을 잘못 옮긴 게 아니라 가상 사실관계 속 피고인의 진술이다.
+d = doc({"6. 사례 적용 (학습용 창작 사례, 실제 판례 아님)":
+         '피고인이 공판기일에 "내용이 사실과 다르다"며 부인하는 경우, '
+         '제7조에 따라 증거능력이 없다.\n'})
+ok(not [v for v in G.check_quotes(d, CORPUS) if v.rule == "L002"],
+   f"인용 조사가 붙은 사람의 말은 조문 인용이 아니다 "
+   f"(얻은 값 {[v.detail[:40] for v in G.check_quotes(d, CORPUS)]})")
+# 그 반대편을 같이 못 박는다: 조사가 붙었어도 규정 동사가 뒤따르면 그대로 검사한다.
+d = doc({"2. 조문과 이론":
+         '제7조는 "조문에 없는 아주 이상한 문장이다"라고 규정한다.\n'})
+ok([v for v in G.check_quotes(d, CORPUS) if v.rule == "L002"],
+   '`"..."라고 규정한다` 는 그대로 잡는다 -- 이걸 놓치면 관문의 본체를 잃는다')
+
 print()
 print("[원장] 조 제목이 없는 조문도 잡는다 (헌법이 그렇게 생겼다)")
 ok(CORPUS.has("가상시험법", "40") and CORPUS.has("가상시험법", "41"),
@@ -134,13 +149,13 @@ ok(all(v.severity == "soft" for v in G.check_quantities(d, CORPUS)),
 print()
 print("[L004] **원장이 있으면 대조하고, 없으면 금지한다** -- 둘을 섞지 않는다")
 d = doc({"3. 핵심 법리": "대법원 2020다12345 판결은 이를 확인하였습니다.\n"})
-vs = G.check_case_citation(d)
+vs, _ = G.check_case_citation(d)
 ok(any(v.rule == "L004" and v.severity == "hard" for v in vs),
    "판례 원장이 비어 있으면 사건번호 -> hard (대조할 수 없으니까)")
 ok(any("원장이 비어" in v.detail for v in vs),
    f"왜 막았는지 적는다 -- 지어냈다는 뜻이 아니다 (얻은 값 {[v.detail[:30] for v in vs]})")
 d = doc({"3. 핵심 법리": "구체적 범위는 조문 원문에 명시되지 않음, 학설/판례 확인 필요합니다.\n"})
-ok(not G.check_case_citation(d), "'판례 확인 필요' 로 남긴 것은 막지 않는다")
+ok(not G.check_case_citation(d)[0], "'판례 확인 필요' 로 남긴 것은 막지 않는다")
 
 # RED: 원장을 채웠는데도 실재하는 판례를 계속 막으면, 원장을 채운 보람이 없다.
 _판례원장 = Path(tempfile.mkdtemp())
@@ -150,12 +165,21 @@ _판례원장 = Path(tempfile.mkdtemp())
 _찬원장 = CP.Corpus()
 _찬원장.cases = CP.load_cases(_판례원장)
 d = doc({"3. 핵심 법리": "대법원 2018다287522 판결.\n"})
-ok(not [v for v in G.check_case_citation(d, _찬원장) if "2018다287522" in v.detail],
-   f"원장에 있는 사건번호는 통과한다 (얻은 값 {[v.detail for v in G.check_case_citation(d, _찬원장)]})")
+ok(not [v for v in G.check_case_citation(d, _찬원장)[0] if "2018다287522" in v.detail],
+   f"원장에 있는 사건번호는 통과한다 (얻은 값 {G.check_case_citation(d, _찬원장)[0]})")
 d = doc({"3. 핵심 법리": "2099다99999 참조.\n"})
-_vs = G.check_case_citation(d, _찬원장)
-ok(any("원장에 없는" in v.detail for v in _vs),
-   f"원장에 없는 사건번호는 기각한다 -- 지어낸 것으로 본다 (얻은 값 {[v.detail for v in _vs]})")
+
+# **덜 받은 원장에서 없는 것은 '지어냈다' 가 아니라 '아직 안 받았다' 다.**
+# 판례는 한두 번에 다 못 받아 원장이 일부만 찬 상태가 오래 간다. 그때 기각하면
+# 실재하는 판례를 지어냈다고 버린다 -- 과잉 기각하는 심판은 맞는 답도 버린다.
+_vs, _미검증 = G.check_case_citation(d, _찬원장)
+ok(not _vs and _미검증 == 1,
+   f"훑기를 안 끝냈으면 미검증으로 센다 (얻은 값 위반 {len(_vs)} · 미검증 {_미검증})")
+
+_찬원장.case_scope = {"전부": True}
+_vs, _미검증 = G.check_case_citation(d, _찬원장)
+ok(any("원장에 없는" in v.detail for v in _vs) and _미검증 == 0,
+   f"다 받았다고 적혀 있을 때만 기각한다 (얻은 값 {[v.detail for v in _vs]})")
 
 print()
 print("[L006] 한 문서가 같은 조문에 다른 법정형을 달면 기각한다 -- 원장 없이도 돈다")
@@ -240,7 +264,7 @@ if real.is_dir():
     for f in files:
         rd = G.parse(f)
         parsed += 1
-        case_hits += len(G.check_case_citation(rd))
+        case_hits += len(G.check_case_citation(rd)[0])
         struct_hits += len(G.check_structure(rd))
     # **수를 못 박지 않는다.** 전에는 "문서 17개" 라 적었는데, 민사소송법 네 편이
     # 들어오자 그 자리에서 깨졌다 -- 원고가 늘어난 것은 좋은 일인데 자가 그것을
@@ -253,6 +277,20 @@ if real.is_dir():
     ok(struct_hits == 0, f"8절·front-matter 규약 위반 0건 (얻은 값 {struct_hits})")
 else:
     print("  건너뜀 법이론서/ 가 없다")
+
+print()
+print("[법령명] **잘못 알아보는 것이 못 알아보는 것보다 나쁘다**")
+# 실측: `관할지방법원판사` 에서 '관할지방법' 을, `지방법원판사` 에서 '지방법' 을
+# 법령명으로 읽었다. 원장에 없는 이름이라 그 인용이 조용히 미검증으로 샜고, 돌연변이
+# `제201조 -> 제901조` 를 못 잡았다. 못 알아보면 선언 법령으로 되돌아가 그대로
+# 대조되지만, 잘못 알아보면 대조 자체가 사라진다.
+for _글 in ("관할지방법원판사의 구속영장", "지방법원판사는 신속히", "법인의 대표자"):
+    ok(not CP.STATUTE_NAME.findall(_글),
+       f"{_글[:12]!r} 에서 법령명을 만들지 않는다 (얻은 값 {CP.STATUTE_NAME.findall(_글)})")
+for _글, _몇 in (("형법상 재물", "형법"), ("민법의 규정", "민법"),
+                ("형사소송법에 따라", "형사소송법"), ("상법상 상인", "상법")):
+    ok(_몇 in CP.STATUTE_NAME.findall(_글),
+       f"{_글!r} 에서는 {_몇!r} 를 그대로 읽는다 (얻은 값 {CP.STATUTE_NAME.findall(_글)})")
 
 print()
 if fails:

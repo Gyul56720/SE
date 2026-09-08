@@ -61,7 +61,13 @@ BEATS = 3
 
 
 def ep_no(book: dict) -> int:
-    """지금 회차 번호(0부터)."""
+    """지금 회차 번호(0부터). 카드가 있으면 카드의 번호다 -- 회차는 분량으로도 넘어가고,
+    마지막 비트를 다 썼을 때도 넘어간다(아래 ensure). 분량만 보면 같은 회차를 두 번 쓴다."""
+    if book.get("_ep") is not None:
+        return int(book["_ep"])
+    c = book.get("card")
+    if c and c.get("ep") is not None:
+        return int(c["ep"])
     return sum(len(c) for c in (book.get("chunks") or [])) // max(1, EP)
 
 # 전환점 다섯(Papalampidi & Keller 2019). 빚 위에 얹는다 -- 마디의 마지막 회차에 온다.
@@ -271,16 +277,24 @@ def card_prompt(book: dict) -> str:
 {_codex_block(book)}
 
 [전개 본보기 -- 이 회차의 비트는 이런 꼴로 짠다. 하나둘 고른다]
-{SP.render("전개", seed, n, 4)}
+{SP.render("전개", seed, n, 3)}
+{SP.render("큰줄기", seed, n, 1)}
+
+[로맨스 · 싸움 · 체계 본보기 -- 비트 하나에 하나씩 얹을 수 있다]
+{SP.render("로맨스", seed, n, 2)}
+{SP.render("시스템", seed, n, 1)}
+
+[설정 본보기 -- 세계의 규칙을 하나 더 세우거나 쓸 때. 값은 네가 정하고 원장이 지킨다]
+{SP.render("설정", seed, n, 1)}
 
 [인물 본보기 -- 새 사람을 세우거나 있는 사람을 쓸 때]
 {SP.render("인물", seed, n, 2)}
 
 [전투 본보기 -- 이 회차에 싸움이 있으면 이런 꼴이다]
-{SP.render("전투", seed, n, 2)}
+{SP.render("전투", seed, n, 1)}
 
 [세계 본보기 -- 설정을 세울 때 이런 꼴이다]
-{SP.render("세계", seed, n, 2)}
+{SP.render("세계", seed, n, 1)}
 
 [쾌감 본보기 -- 이 회차의 통쾌한 자리는 이런 꼴이다. 하나 고르거나 지어낸다]
 {SP.render("쾌감", seed, n, 3)}
@@ -351,10 +365,24 @@ def card_prompt(book: dict) -> str:
 def ensure(book: dict, llm) -> "dict | None":
     """회차가 바뀌었으면 카드를 새로 낸다. **회차당 호출 한 번.** 실패하면 카드 없이 간다."""
     n = _chars(book)
-    ep = n // max(1, EP)
+    by_len = n // max(1, EP)
     card = book.get("card")
-    if card and card.get("ep") == ep:
-        return card
+    nchunks = len(book.get("chunks") or [])
+    if card:
+        # **회차가 끝나는 조건은 둘이다.** 분량이 찼거나, 마지막 비트를 이미 썼거나.
+        # 실측 2026-09-08 밤: 분량만 봤더니 갈고리(자격 박탈 선언)를 쓴 뒤에도 같은 카드가
+        # 남아 다음 덩어리가 **같은 장면을 다시 썼다** -- 사용자: "이거 똑같은 씬 이전에
+        # 나왔는데 또 반복된다."
+        last_given = card.get("_last_given")
+        done = last_given is not None and nchunks > int(last_given)
+        if by_len <= int(card.get("ep", 0)) and not done:
+            return card
+        ep = max(by_len, int(card.get("ep", 0)) + 1)
+        if done and by_len <= int(card.get("ep", 0)):
+            D._log(f"[회차] 마지막 비트를 썼다 -- 분량이 안 찼어도 다음 회차로 넘어간다")
+    else:
+        ep = by_len
+    book["_ep"] = ep
     try:
         prompt = card_prompt(book)
         got = D.call_json(D._llm_for(llm, "director"), prompt, label="회차 각본")
@@ -521,15 +549,18 @@ def brief(book: dict) -> str:
         tail = f"   ← 여기서 답이 갈린다: {c['답']}" if i == len(c["비트"]) and c.get("답") else ""
         rows.append(f"      {mark} {i}. ({b['꼴']}) {b['무엇']}{tail}")
     if k > 1:
-        rows.append(f"  · 앞 비트는 이미 썼다. **{k}번 비트부터** 쓴다 -- 되풀이하지 마라.")
+        rows.append(f"  · 앞 비트는 이미 썼다. **{k}번 비트부터** 쓴다 -- 되풀이하지 마라."
+                    " 앞 덩어리에서 벌어진 일(선언 · 박탈 · 사살)은 **다시 벌어지지 않는다.**")
     # **한 덩어리가 비트 여럿을 덮는다.** 회차당 덩어리가 비트 수보다 적어서, 하나씩
-    # 쓰면 뒤쪽 비트가 영영 안 쓰인다(실측 2026-09-08).
+    # 쓰면 뒤쪽 비트가 영영 안 쓰인다(실측 2026-09-08 · PACE.md).
     if upto > k:
         rows.append(f"  · **이번 대목에서 비트 {k}부터 {upto}까지 전부 쓴다.** 하나만 쓰고 멈추지 마라"
                     " -- 이 대목 안에서 비트가 넘어가고, 넘어간 자리가 보여야 한다.")
     if last:
         rows.append("  · **이번 대목이 이 회차의 끝이다.** 여기서 답이 갈리고 회차가 닫힌다."
                     " 다음 대목으로 미루지 마라 -- 미루면 이 회차는 답 없이 끝난다.")
+        # 마지막 비트를 이 덩어리에 맡겼다. 다음 덩어리는 다음 회차다(ensure 가 본다).
+        c["_last_given"] = len(book.get("chunks") or [])
     rows.append("  · 장면 비트는 한 자리 · 한 때에서 벌어지고 대사가 민다. 요약 비트는 시간을"
                 " 접는다 -- 며칠이 한 문단이어도 된다. 세기는 비트마다 오른다.")
     # **판이 흔들리는가.** 사용자: "한 씬의 반복이다. 판이 계속 흔들려야 한다."
@@ -556,12 +587,7 @@ def brief(book: dict) -> str:
         rows.append(f"  · **싸움**: {c['전투']}\n"
                     "      첫 합에서 격이 드러나고, 기술은 이름을 부르고, 결착은 한 방이다. 상처는 남는다.\n"
                     "      액션은 이렇게 쓴다:\n" + SP.rules("액션").replace("    ", "      ")
-                    + "\n      전투 문법:\n" + SP.render("전투", seed, nn, 2).replace("    ", "      "))
-    # **수위.** `--heat` 를 켠 원고에만. 머리 둘(어른만 · 원하는지가 보인다)은 조건이라
-    # 늘 싣고, 나머지는 돌려 뽑는다.
-    if float(book.get("heat") or 0) > 0:
-        rows.append("  · **수위 (성인)**:\n" + SP.head("수위").replace("    ", "      ")
-                    + "\n" + SP.render("수위", seed, nn, 2, skip=SP.HEAD["수위"]).replace("    ", "      "))
+                    + "\n      전투 문법:\n" + SP.render("전투", seed, nn, 1).replace("    ", "      "))
     s = c.get("설정") or {}
     if s.get("이름"):
         rows.append(f"  · **이 회차의 설정**: {s['이름']} -- {s.get('규칙', '')}. 이름으로 부르고"
@@ -570,6 +596,18 @@ def brief(book: dict) -> str:
     if cx:
         rows.append("  · 설정집 (이 이름 그대로 쓴다 · 다시 설명하지 마라): "
                     + " · ".join(f"{x['이름']}({x.get('규칙', '')})" for x in cx[-6:]))
+    # 사용자(2026-09-08 밤): "전투씬 더 자세히 · 묘사 더 생생하게 · 주변 반응 더 격하게 · 19세."
+    rows.append("  · 싸움이 있으면:\n" + SP.render("싸움", seed, nn, 1).replace("    ", "      "))
+    # **몸을 시키면 조건도 같이 간다.** 관능이 조건 없이 실리므로 어른만 · 원하는지가
+    # 보인다도 조건 없이 실린다 -- 둘은 본보기가 아니라 조건이고, 조건은 켜고 끄지 않는다.
+    rows.append("  · 몸과 살갗:\n" + SP.render("외모", seed, nn, 1).replace("    ", "      ")
+                + "\n" + SP.render("관능", seed, nn, 1).replace("    ", "      ")
+                + "\n" + SP.head("수위").replace("    ", "      "))
+    # 수위를 켠 원고는 나머지 규율까지 돌려 뽑는다(--heat / HEAT). 기본은 꺼짐이다.
+    if float(book.get("heat") or 0) > 0:
+        rows.append("  · **수위 (성인)**:\n"
+                    + SP.render("수위", seed, nn, 2, skip=SP.HEAD["수위"]).replace("    ", "      "))
+    rows.append("  · 주변의 반응:\n" + SP.render("반응", seed, nn, 1).replace("    ", "      "))
     if c.get("거둠"):
         rows.append(f"  · **거둔다:** {c['거둠']} -- 앞 회차에 심어 둔 그 낱말 · 그 물건을 그대로 다시 쓴다."
                     " 새 인물이 이 자리에서 나오면 기척 → 실루엣 → 한 마디 → 이명 → 판이 바뀐다.")

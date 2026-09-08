@@ -55,8 +55,14 @@ BASE = {"질문": "공녀가 초대장을 받아낸다", "방해": "백작 부�
 
 
 print("[다섯 칸] **전개 · 연출 · 대사 · 인물 · 빌드업**")
-for _c, _min in (("전개", 15), ("연출", 6), ("대사", 8), ("인물", 6), ("빌드업", 5)):
+for _c, _min in (("전개", 25), ("큰줄기", 10), ("로맨스", 30), ("싸움", 15), ("시스템", 15),
+                 ("설정", 8), ("연출", 10), ("대사", 12), ("인물", 12), ("외모", 8), ("관능", 8),
+                 ("반응", 6), ("빌드업", 14)):
     ok(len(SP.CATS[_c]) >= _min, f"{_c} {len(SP.CATS[_c])}개")
+ok(SP.total() >= 180, f"전부 {SP.total()}개  ← 사용자: 최대한 많이")
+_bad = [(c, n, r) for c, items in SP.CATS.items() for n, r, _ in items
+        if any(v in n + r for v in ("은빛", "잿빛", "금빛 왕자"))]
+ok(not _bad, f"설정 값이 문법에 박혀 있지 않다 ({_bad[:2]})  ← 이명은 [색]+[직함] 꼴만")
 ok("난입" in SP.names("전개") and "지는 싸움" in SP.names("전개"), "난입과 負けイベント 가 있다  ← 은빛 기사")
 ok("이명" in SP.names("인물"), "二つ名 이 있다")
 ok("화면" in SP.names("연출") and "등장 5단계" in SP.names("연출"), "레이아웃과 등장 연출이 있다  ← 상황이 떠오르게")
@@ -98,6 +104,30 @@ print("[집필 프롬프트] **연출 · 대사 본보기가 덩어리마다 실
 _bk = book(); BT.ensure(_bk, Director([BASE]))
 _w = BT.brief(_bk)
 ok("· 연출:" in _w and "· 대사:" in _w, "연출과 대사 칸이 있다")
+ok("· 싸움이 있으면:" in _w and "· 몸과 살갗:" in _w and "· 주변의 반응:" in _w,
+   "싸움 · 외모/관능 · 반응 칸이 있다  ← 전투 자세히 · 생생하게 · 반응 격하게")
+_cp = BT.card_prompt(book())
+ok("[로맨스 · 싸움 · 체계 본보기" in _cp and "[설정 본보기" in _cp, "각본에 로맨스 · 싸움 · 체계 · 설정이 실린다")
+
+print()
+print("[같은 장면 반복] **마지막 비트를 썼으면 분량이 안 찼어도 다음 회차다**")
+print("      ← 실측: 갈고리를 쓴 뒤 같은 카드가 남아 다음 덩어리가 같은 장면을 다시 썼다.")
+_br = book(100)
+_dr = Director([BASE, dict(BASE, 질문="다음 회차의 질문")])
+BT.ensure(_br, _dr)
+_br["chunks"].append("가" * (BT.EP * 4 // 5))          # 회차의 5분의 4 -- 마지막 비트 차례
+# 비트는 이제 하나가 아니라 **범위**로 맡긴다(PACE.md). 마지막 비트를 맡겼는지는
+# 범위의 끝으로 본다 -- 시작만 보면 (2, 3) 을 "아직 아니다" 로 잘못 읽는다.
+ok(BT.beat_span(_br)[1] == 3 and BT.last_chunk(_br),
+   f"마지막 비트를 맡겼다 ({BT.beat_span(_br)})")
+BT.brief(_br)                                           # 집필 프롬프트를 만들었다 = 마지막 비트를 맡겼다
+_br["chunks"].append("나" * 500)                        # 그 덩어리를 썼다. 분량은 아직 EP 미만
+ok(sum(len(c) for c in _br["chunks"]) < BT.EP * 2, "분량으로는 아직 같은 회차다")
+BT.ensure(_br, _dr)
+ok(_br["card"]["질문"] == "다음 회차의 질문" and _br["card"]["ep"] == 1,
+   f"그래도 다음 회차 카드가 선다 (회차 {_br['card']['ep'] + 1})  ← 같은 장면을 두 번 안 쓴다")
+BT.ensure(_br, _dr)
+ok(_br["card"]["ep"] == 1 and BT.ep_no(_br) == 1, "새 카드는 다음 덩어리에서 그대로 유지된다")
 ok(any(n in _w for n in SP.names("연출")) and any(n in _w for n in SP.names("대사")), "본보기가 실제로 실린다")
 _bk["chunks"].append("라" * 1000)
 ok(BT.brief(_bk) != _w, "덩어리마다 다른 본보기가 돈다")
@@ -178,8 +208,14 @@ _bw["chunks"].append("가" * (BT.EP * 4 // 5))
 ok("앞 비트에서 이미 벌어졌다" in BT.brief(_bw), "쾌감 비트를 지났으면 되풀이하지 말라고 한다")
 _bs = book(); BT.ensure(_bs, Director([dict(BASE, 쾌감자리="아홉")]))
 ok(_bs["card"]["쾌감자리"] == 2, "쾌감자리가 엉뚱하면 지는 단계는 가운데 비트")
-for _n in ("%", "번째", "회차 "):
-    ok(_n not in _wc, f"'{_n}' 이 집필 프롬프트에 없다  ← 자를 시키지 않는다")
+# **자를 시키지 않는다**(serial.py 의 계약). 다만 낱말로 맞추면 평범한 산문을 잡는다 --
+# "한 마디로 김을 뺀다" 의 마디, "두 번째 것이 온다" 의 번째가 그것이다. 그래서 낱말이
+# 아니라 **자의 꼴**을 본다: 수가 붙은 마디 · 회차 · 진도 · 분량.
+import re as _re_ruler                                                # noqa: E402
+for _pat in (r"\d+\s*번째\s*(마디|회차)", r"(마디|회차)\s*\d+", r"\d+\s*%",
+             r"\d{1,3},\d{3}\s*자"):
+    _hit = _re_ruler.search(_pat, _wc)
+    ok(not _hit, f"자가 안 실린다: /{_pat}/ ({_hit.group(0) if _hit else '없다'})")
 
 print()
 print("[액션] **전투와 갈라 둔다 -- 싸우는 덩어리에는 통째로 싣는다**")
@@ -244,4 +280,4 @@ print()
 if fails:
     print(f"novel_space: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)
-print("novel_space: 열한 칸 · 각본 · 심고 거둔다 · 집필 · 도파민 · 액션 · 전환 · 수위 -- 통과")
+print("novel_space: 스무 칸 · 각본 · 심고 거둔다 · 집필 · 도파민 · 액션 · 전환 · 수위 -- 통과")
