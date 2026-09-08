@@ -123,3 +123,5 @@ mathmetics/matrix_exponent/jump_state.json
 # npu/axi_fuzz_tester.py 가 "w" 로 만드는 생성물. RUNNING.md 가 "array_*.txt 는 재생성되므로
 # 커밋하지 않는다" 고 적어 뒀는데 _hex 꼴은 패턴에서 빠져 있었다.
 npu/array_*_hex.txt
+
+law/exam.jsonl
