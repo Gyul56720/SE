@@ -109,15 +109,36 @@ BT.ensure(_b4, Director({"질문": "q", "비트": ["문자열 비트", {"무엇"
 ok([b["꼴"] for b in _b4["card"]["비트"]] == ["장면", "장면"], "문자열 비트와 모르는 꼴은 장면으로 받는다")
 
 print()
-print("[비트] **회차 안에서 얼마나 왔느냐로 시작할 비트가 정해진다**")
+print("[비트] **덩어리가 비트 범위를 덮고, 회차의 마지막 덩어리는 답까지 간다**")
+print("      ← 실측 2026-09-08: 덩어리 3,200자 · 회차 5,000자라 회차당 덩어리가 1.56개인데")
+print("        비트는 셋이었다. 비트 3(답이 갈리고 갈고리가 터지는 자리)이 **한 번도**")
+print("        안 쓰였다. 사용자 평: \"전개가 없다. 한 씬의 반복이다.\"")
 _b5 = book(100); BT.ensure(_b5, Director())
-ok(BT.beat_at(_b5) == 1, f"회차 첫머리는 비트 1 ({BT.beat_at(_b5)})")
-_b5["chunks"].append("다" * (BT.EP * 2 // 5))
-ok(BT.beat_at(_b5) == 2, f"5분의 2 왔으면 비트 2 ({BT.beat_at(_b5)})")
-_b5["chunks"].append("다" * (BT.EP * 2 // 5))
-ok(BT.beat_at(_b5) == 3, f"5분의 4 왔으면 비트 3 ({BT.beat_at(_b5)})")
+ok(BT.beat_span(_b5)[0] == 1, f"회차 첫머리는 비트 1부터 ({BT.beat_span(_b5)})")
+_ch = flow.CHUNK
+_b5["chunks"].append("다" * _ch)
+_lo, _hi = BT.beat_span(_b5)
+ok(_lo > 1, f"덩어리를 하나 쓰면 다음 비트로 넘어간다 ({_lo}~{_hi})")
+ok(_hi == 3 and BT.last_chunk(_b5), f"회차가 닫히는 덩어리는 마지막 비트까지 간다 ({_lo}~{_hi})")
 _p = BT.brief(_b5)
-ok("3번 비트부터" in _p and "→ 3." in _p, "몇 번 비트부터인지 표시한다")
+ok(f"{_lo}번 비트부터" in _p and f"→ {_hi}." in _p, "몇 번 비트부터 몇 번까지인지 표시한다")
+ok("이번 대목이 이 회차의 끝이다" in _p and "다음 대목으로 미루지 마라" in _p,
+   "회차를 닫는 덩어리라고 말해 준다")
+
+# **모든 회차가 답까지 간다.** 이것이 이 고침의 계약이다.
+_sim = book(0); BT.ensure(_sim, Director())
+_seen, _total = {}, 0
+for _i in range(14):
+    _ep = _total // BT.EP
+    _l, _h = BT.beat_span(_sim)
+    _seen.setdefault(_ep, set()).update(range(_l, _h + 1))
+    _sim["chunks"].append("가" * _ch); _total += _ch
+    if _total // BT.EP != _ep:
+        _sim["card"] = dict(_sim["card"], ep=_total // BT.EP, at=_total)
+_unfinished = max(_seen)                       # 마지막 회차는 아직 안 끝났다
+_missed = [e + 1 for e, s in _seen.items() if e != _unfinished and 3 not in s]
+ok(not _missed, f"끝난 회차는 전부 비트 3 까지 간다 (못 간 회차: {_missed or '없다'})")
+ok(all(1 in s for e, s in _seen.items() if e != _unfinished), "첫 비트도 빠지지 않는다")
 ok("(요약)" in _p and "(장면)" in _p, "장면 · 요약 꼴이 실린다")
 ok("시간을 접는다" in _p, "요약 비트는 시간을 접으라고 한다  ← TTCW 의 시간 조작")
 ok(CARD["갈고리"] in _p and "벌어진 문장" in _p and "**피**" in _p,

@@ -43,6 +43,10 @@
 #                                따라 붙는다. DRIFT_LAYER=all 을 켜면 사건·확산까지 온다
 #   DRIFT    표류 계수 0~1     (기본 1.0 -- 낮추면 급발진·사건이 줄어든다)
 #   MATTER   소재 축 0~1       (기본 0.0 -- 켜면 갈래·매체가 섞인다)
+#   HEAT     수위 0~1          (기본 0 = 안 씌운다). 켜면 성인 규율이 회차마다 실린다.
+#                                등장인물은 전부 어른이어야 한다 -- 조건 둘(어른만 ·
+#                                원하는지가 보인다)은 켜져 있는 동안 늘 실린다.
+#                                예: HEAT=0.6 GENRE=lanobe drift.sh start 200000
 #   BODY     몸의 사실 0~1     (기본 0.35)
 #   BOND     관계 0~1          (기본 0.4)
 #
@@ -132,7 +136,7 @@ case "${1:-status}" in
       echo "쓰던 원고를 옮겨 두었다: $BOOK.*.bak"
     }
     set -- --out "$BOOK" --chars "${2:-8000}" --hours "${HOURS:-12}" ${STYLE:+--persona "$STYLE"} ${GENRE:+--genre "$GENRE"} ${DRIFT:+--drift "$DRIFT"} ${MATTER:+--matter "$MATTER"} \
-           ${BODY:+--body "$BODY"} ${BOND:+--bond "$BOND"}
+           ${BODY:+--body "$BODY"} ${BOND:+--bond "$BOND"} ${HEAT:+--heat "$HEAT"}
     [ -n "${FIRST:-}" ] && set -- "$@" --first "$FIRST"
     # 첫 문장을 안 주면 갈래 축에서 여는 좌표를 뽑는다 -- 고정 문장을 쓰면 그 문장의
     # 세계(지명 · 말씨)가 원고 전체를 끌고 간다.
@@ -199,7 +203,7 @@ PY
            ${STYLE:+--persona "$STYLE"} \
            ${GENRE:+--genre "$GENRE"} \
            ${DRIFT:+--drift "$DRIFT"} ${MATTER:+--matter "$MATTER"} \
-           ${BODY:+--body "$BODY"} ${BOND:+--bond "$BOND"}
+           ${BODY:+--body "$BODY"} ${BOND:+--bond "$BOND"} ${HEAT:+--heat "$HEAT"}
     ;;
 
   status)
