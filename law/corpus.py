@@ -242,6 +242,7 @@ class Corpus:
     """법령명 -> {조문번호: 조문 원문}."""
     articles: dict = field(default_factory=dict)
     sources: dict = field(default_factory=dict)
+    cases: dict = field(default_factory=dict)      # 사건번호 -> {법원, 선고일자, 사건명}
 
     def covers(self, statute: str | None) -> bool:
         """이 법령을 원장이 담고 있는가. 아니면 그 인용은 '미검증' 이다."""
@@ -252,6 +253,14 @@ class Corpus:
 
     def has(self, statute: str | None, article: str) -> bool:
         return self.text(statute, article) is not None
+
+    def case(self, no: str) -> dict | None:
+        """사건번호가 판례 원장에 있는가. 없으면 None -- **없다고 단정하지 않는다.**
+
+        원장 자체가 비어 있는 것과 원장에 그 사건이 없는 것은 다르다. 앞은 미검증이고
+        뒤는 기각이다. 그 판단은 부르는 쪽(gate.py L004)이 한다.
+        """
+        return self.cases.get(normalize_case(no))
 
     def statutes_with(self, article: str) -> list:
         """이 조문 번호를 가진 법령들. 법령명 없이 인용된 것을 되짚을 때 쓴다."""
@@ -344,6 +353,47 @@ def _parse_articles(raw: str) -> dict:
     return out
 
 
+CASES_DIR = Path(__file__).resolve().parent / "precedents"
+
+_CASE_NORM = re.compile(r"\s+")
+
+
+def normalize_case(no: str) -> str:
+    """`2018 다 287522` · `2018다287522` 를 한 꼴로. 대법원은 띄어쓰기가 제각각이다."""
+    return _CASE_NORM.sub("", no or "")
+
+
+_CASE_HEAD = re.compile(
+    r"^#\s*(?P<no>\S+)\s*·\s*(?P<court>[^·\n]+?)\s*·\s*(?P<day>[\d.\- ]+?)\s*·\s*(?P<name>[^\n·]+)",
+    re.M)
+
+
+def load_cases(root: Path | str = CASES_DIR) -> dict:
+    """판례 원장을 읽는다. 비어 있으면 빈 dict -- 오류가 아니다.
+
+    파일 첫 줄이 `# 사건번호 · 법원 · 선고일자 · 사건명` 이다(fetch.py 가 그렇게 쓴다).
+    본문까지 읽지 않는 것은, L004 가 **사건이 실재하는지**만 보기 때문이다. 판시사항을
+    대조하는 것은 그 다음 층이고, 그건 낱말 대조로 될 일이 아니다.
+    """
+    root = Path(root)
+    out = {}
+    if not root.is_dir():
+        return out
+    for path in sorted(root.glob("*.txt")):
+        if path.name.lower().startswith("readme"):
+            continue
+        m = _CASE_HEAD.search(path.read_text(encoding="utf-8")[:500])
+        if not m:
+            continue
+        out[normalize_case(m.group("no"))] = {
+            "법원": m.group("court").strip(),
+            "선고일자": m.group("day").strip(),
+            "사건명": m.group("name").strip(),
+            "파일": str(path),
+        }
+    return out
+
+
 def load(root: Path | str = CORPUS_DIR) -> Corpus:
     """코퍼스 디렉터리를 읽는다. 비어 있으면 빈 원장을 돌려준다 -- 오류가 아니다.
 
@@ -363,6 +413,7 @@ def load(root: Path | str = CORPUS_DIR) -> Corpus:
         name = normalize_statute(path.stem)
         corpus.articles.setdefault(name, {}).update(arts)
         corpus.sources[name] = str(path)
+    corpus.cases = load_cases()
     return corpus
 
 

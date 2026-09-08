@@ -280,20 +280,45 @@ def check_quantities(doc: Doc, corpus) -> list:
 
 
 def check_case_citation(doc: Doc, corpus=None) -> list:
-    """L004 -- 판례 사건번호를 지어냈는가. 원장이 없으므로 인용 자체를 금지한다.
+    """L004 -- 판례 사건번호가 실재하는가. **원장이 있으면 대조하고, 없으면 금지한다.**
 
-    법률 LLM 의 1위 실패 모드가 없는 판례를 있는 것처럼 부르는 것이다. 대법원 판결문의
-    공개 원장이 없어서 대조할 수 없는 동안은, 통과시키는 것보다 못 쓰게 하는 쪽이 맞다.
-    '판례 확인 필요' 로 남기는 것은 막지 않는다 -- 그건 모른다고 밝힌 것이다.
+    법률 LLM 의 1위 실패 모드가 없는 판례를 있는 것처럼 부르는 것이다. 이 검사는 처음에
+    "대조할 공개 원장이 없다" 는 전제 위에서 **인용 자체를 금지**했다. 그 전제가 틀렸다 --
+    법제처 OPEN API 가 판례 목록·본문을 준다(`law/fetch.py --판례`). 그래서 L001 이 조문에
+    하는 일과 같은 모양으로 올린다:
+
+        원장이 비어 있다        -> 지금까지대로 **금지**(hard). 대조할 수 없으니까.
+        원장에 사건번호가 있다   -> **통과**. 아무 말도 안 한다.
+        원장에 없다             -> **기각**(hard). 지어낸 것으로 본다.
+
+    원장이 비어 있는 것과 원장에 그 사건이 없는 것은 다르다. 앞은 대조를 못 한 것이고
+    뒤는 대조해서 없던 것이다. **섞으면 원장을 채운 보람이 안 보인다.**
+
+    `대법원 ... 판결` 처럼 사건번호 없이 부르는 것은 원장이 있어도 대조할 자리가 없다.
+    그건 그대로 막는다 -- 사건번호를 적으면 대조되고, 안 적으면 못 한다.
     """
     out = []
+    사건 = getattr(corpus, "cases", None) or {}
     for name, text in doc.sections.items():
         for m in CASE_NO.finditer(text):
-            out.append(Violation("L004", "hard", f"{doc.path.name} · {name}",
-                                 f"대조할 수 없는 사건번호: {m.group(0)!r}"))
+            no = m.group(0)
+            if not 사건:
+                out.append(Violation("L004", "hard", f"{doc.path.name} · {name}",
+                                     f"판례 원장이 비어 있어 대조할 수 없는 사건번호: {no!r}"
+                                     f" (law/fetch.py --판례 로 원장을 채워라)"))
+            elif corpus.case(no):
+                continue
+            else:
+                out.append(Violation("L004", "hard", f"{doc.path.name} · {name}",
+                                     f"판례 원장에 없는 사건번호: {no!r}"))
         for m in CASE_WORD.finditer(text):
+            # `대법원 2018다287522 판결` 은 **올바른 인용의 표준 꼴**이다. 사건번호가
+            # 그 안에 있으면 위에서 이미 대조했으니 여기서 또 막으면 안 된다 --
+            # 그러면 원장을 채워도 실재하는 판례가 계속 기각되고, 채운 보람이 없다.
+            if CASE_NO.search(m.group(0)):
+                continue
             out.append(Violation("L004", "hard", f"{doc.path.name} · {name}",
-                                 f"판례를 특정해 인용했다: {m.group(0)[:40]!r}"))
+                                 f"사건번호 없이 판례를 특정해 인용했다: {m.group(0)[:40]!r}"))
     return out
 
 
