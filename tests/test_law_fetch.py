@@ -215,6 +215,76 @@ ok(_결과 and _결과[0].get("실패"),
    f"조용히 건너뛰지 않고 왜 안 담았는지 적는다 (얻은 값 {_결과})")
 
 print()
+print("[분당 한도] **제한당하면 원장이 못 차고, 원장이 안 차면 심판이 아무것도 못 본다**")
+# 판례는 검색 1회 + 본문 N회를 몰아 부른다(`--건수 20` 이면 21회). 0.5초 간격은
+# 순간 간격만 묶을 뿐이라 분당 120회가 나간다. 그래서 세 가지를 못 박는다.
+
+# 1) 제한에 걸리면 **되풀이하지 않는다** -- 되풀이는 더 세게 두드리는 것이다.
+_불린횟수 = [0]
+
+
+def _제한(*a, **k):
+    _불린횟수[0] += 1
+    raise urllib.error.HTTPError(url, 429, "Too Many Requests", {}, None)
+
+
+urllib.request.urlopen = _제한
+try:
+    F._get(url, OC)
+    ok(False, "제한인데 예외가 안 났다")
+except F.Throttled as e:
+    ok(_불린횟수[0] == 1,
+       f"429 는 한 번만 부르고 멈춘다 (얻은 값 {_불린횟수[0]}회)")
+    ok(OC not in str(e), "제한 메시지에도 인증키가 없다")
+except Exception as e:                                                # noqa: BLE001
+    ok(False, f"Throttled 가 아니라 {type(e).__name__} 이 났다: {e}")
+
+# 2) 본문이 제한이라고 말해도 (HTTP 200 이어도) 멈춘다.
+class _응답:
+    def __init__(self, s): self._s = s
+    def read(self): return self._s.encode()
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+
+
+urllib.request.urlopen = lambda *a, **k: _응답(
+    "짧은 시간 내 과도한 호출이 발생하여 이용이 제한되었습니다")
+try:
+    F._get(url, OC)
+    ok(False, "본문이 제한이라 말했는데 그냥 돌려줬다")
+except F.Throttled:
+    ok(True, "응답 본문이 제한이라 말하면 200 이어도 멈춘다")
+
+# 3) **이어한다** -- 목록에 사건번호가 실려 오므로 원장에 있는 것은 본문을 안 부른다.
+_보관2 = Path(tempfile.mkdtemp())
+(_보관2 / "2018다287522.txt").write_text(
+    "# 2018다287522 · 대법원 · 20200521 · 건물인도\n# 받은 것\n\n[판시사항]\n...\n",
+    encoding="utf-8")
+_부름 = []
+
+
+def _센다(u, oc=""):
+    _부름.append("본문" if "lawService" in u else "검색")
+    return _본문 if "lawService" in u else _목록
+
+
+_받음2 = F.pull_prec("공유물", OC, _보관2, fetcher=_센다)
+ok(_부름.count("본문") == 1,
+   f"원장에 있는 것은 본문을 안 부른다 (얻은 값 본문 {_부름.count('본문')}회 · 목록 2건)")
+ok(any(r.get("이미") for r in _받음2), "이미 있던 것이라고 적는다")
+
+# 4) 목록과 본문이 다른 사건을 가리키면 담지 않는다 -- 조용한 오답이 된다.
+_엉뚱 = _본문.replace("<판례일련번호>123456</판례일련번호>", "<판례일련번호>999999</판례일련번호>")
+_보관3 = Path(tempfile.mkdtemp())
+_받음3 = F.pull_prec("공유물", OC, _보관3,
+                    fetcher=lambda u, oc="": (_엉뚱 if "lawService" in u else _목록))
+ok(any("본문은" in (r.get("실패") or "") for r in _받음3),
+   f"목록·본문의 사건번호가 어긋나면 원장에 안 넣고 말한다 "
+   f"(얻은 값 {[r.get('실패') for r in _받음3]})")
+ok(not (_보관3 / "2020다1111.txt").exists(),
+   "어긋난 건은 파일로 남지 않는다")
+
+print()
 if fails:
     print(f"받기: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)

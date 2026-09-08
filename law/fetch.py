@@ -63,6 +63,36 @@ TRIES = int(os.environ.get("LAW_API_TRIES", "4"))
 SLEEP = float(os.environ.get("LAW_API_SLEEP", "0.5"))
 _last = [0.0]
 
+# **분당 한도가 따로 있다.** 0.5초 간격은 순간 간격만 묶을 뿐이라 그대로 두면 분당
+# 120회가 나간다. 판례는 검색 1회 + 본문 N회를 몰아 부르므로(`--건수 20` 이면 21회)
+# 몇 주제만 돌려도 곧바로 걸린다. 그래서 **구르는 1분 창**으로 센다.
+# 창이 안 찼으면 안 쉰다 -- 평소에는 SLEEP 만 걸리고, 찼을 때만 창이 빌 때까지 기다린다.
+RPM = int(os.environ.get("LAW_API_RPM", "20"))
+_window: list = []
+
+# 제한에 걸렸을 때 되풀이하면 **더 세게 두드리는 것**이다. 네트워크 실패는 되풀이하고
+# 제한은 즉시 멈춘다. 둘을 섞으면 1분이면 풀릴 것을 한참 동안 못 쓰게 만든다.
+# (실측한 응답 꼴이 아니다 -- 429·403 과 본문의 제한 문구로 보수적으로 본다.)
+_THROTTLE = re.compile(r"과도한\s*호출|비정상적인\s*접근|이용이\s*제한|요청\s*제한|too\s*many")
+
+
+class Throttled(RuntimeError):
+    """호출 제한에 걸렸다. 되풀이하지 않고 멈춘다."""
+
+
+def _wait_turn() -> None:
+    now = time.monotonic()
+    _window[:] = [t for t in _window if now - t < 60]
+    if len(_window) >= RPM:
+        time.sleep(max(0.0, 60 - (now - _window[0])) + 0.1)
+        now = time.monotonic()
+        _window[:] = [t for t in _window if now - t < 60]
+    gap = SLEEP - (now - _last[0])
+    if gap > 0:
+        time.sleep(gap)
+    _last[0] = time.monotonic()
+    _window.append(_last[0])
+
 # 조문 본문이 들어 있는 칸. 스키마가 조금 달라져도 견디게 **끝소리로** 고른다.
 TEXT_TAGS = ("조문내용", "항내용", "호내용", "목내용")
 # 조문단위 안에서 이 값이 '조문' 이 아니면 편·장·절 제목이다.
@@ -90,13 +120,19 @@ def _get(url: str, oc: str = "") -> str:
     """
     last = None
     for i in range(TRIES):
-        gap = SLEEP - (time.monotonic() - _last[0])
-        if gap > 0:
-            time.sleep(gap)
-        _last[0] = time.monotonic()
+        _wait_turn()
         try:
             with urllib.request.urlopen(url, timeout=TIMEOUT) as r:
-                return r.read().decode("utf-8", "replace")
+                body = r.read().decode("utf-8", "replace")
+            if _THROTTLE.search(body[:2000]):
+                raise Throttled("호출 제한에 걸렸다 (응답 본문이 그렇게 말한다)")
+            return body
+        except urllib.error.HTTPError as e:
+            if e.code in (429, 403):
+                raise Throttled(f"호출 제한에 걸렸다 (HTTP {e.code})") from None
+            last = e
+            if i < TRIES - 1:
+                time.sleep(2 ** (i + 1))
         except (urllib.error.URLError, OSError) as e:
             last = e
             if i < TRIES - 1:
@@ -274,12 +310,32 @@ def pull_prec(query: str, oc: str, root: Path, fetcher=None, sid: str = "",
     else:
         rows = parse_prec_search(get(_url(SEARCH, oc, target="prec", query=query,
                                           display=display), oc))
+    # **이어한다.** 목록에 사건번호가 이미 실려 오므로, 원장에 있는 것은 본문 호출을
+    # 아예 안 한다. 분당 한도가 있는 곳에서 이것이 제일 크게 아끼는 자리다 --
+    # 제한에 걸려 중간에 끊겨도 다시 부르면 안 받은 것부터 이어간다.
+    있는것 = CP.load_cases(root) if not sid else {}
     out = []
     for r in rows:
         ident = r.get("일련번호")
         if not ident:
             continue
+        이미 = CP.normalize_case(r.get("사건번호", ""))
+        if 이미 and 이미 in 있는것:
+            out.append({"사건번호": r["사건번호"], "법원명": r.get("법원명", ""),
+                        "선고일자": r.get("선고일자", ""), "글자": 0,
+                        "저장": 있는것[이미]["파일"], "이미": True})
+            continue
         meta, text = parse_prec(get(_url(SERVICE, oc, target="prec", ID=ident), oc))
+        # **목록과 본문이 다른 사건을 가리키면 저장하지 않는다.** 둘 중 하나를 골라
+        # 담으면 다른 사건의 판시사항이 그 사건번호로 원장에 앉는다 -- 심판이 대조하는
+        # 자리라 그건 조용한 오답이 된다. 어긋난 것은 담지 말고 사람에게 말한다.
+        본문no, 목록no = CP.normalize_case(meta.get("사건번호", "")), 이미
+        if 본문no and 목록no and 본문no != 목록no:
+            out.append({"사건번호": r.get("사건번호", ""), "법원명": r.get("법원명", ""),
+                        "선고일자": r.get("선고일자", ""), "글자": len(text), "저장": None,
+                        "실패": f"목록은 {r['사건번호']} 인데 본문은 {meta['사건번호']} 다"
+                                f" -- 어느 쪽이 맞는지 모르므로 원장에 넣지 않는다"})
+            continue
         meta = {k: (meta.get(k) or r.get(k) or "") for k in
                 ("사건번호", "사건명", "법원명", "선고일자", "일련번호")}
         got = {"사건번호": meta["사건번호"], "법원명": meta["법원명"],
@@ -391,13 +447,26 @@ def main(argv=None):
                               f" · {r['사건명'][:40]}")
                     continue
                 got = pull_prec(q, a.oc, croot, dry=a.dry, display=a.display)
-                print(f"\n[{q}] {len(got)}건")
+                새로 = sum(1 for r in got if not r.get("이미") and not r.get("실패"))
+                print(f"\n[{q}] {len(got)}건 (새로 받은 것 {새로})")
                 for r in got:
                     if r.get("실패"):
                         print(f"  (건너뜀) {r['실패']}")
                         continue
+                    if r.get("이미"):
+                        print(f"  {r['사건번호']} · 원장에 이미 있다 -- 안 불렀다")
+                        continue
                     print(f"  {r['사건번호']} · {r['법원명']} · {r['선고일자']}"
                           f" · {r['글자']}자  {r['저장'] or '(dry)'}")
+            except Throttled as e:
+                # **여기서 멈춘다.** 되풀이하면 더 세게 두드리는 것이다. 받은 것은
+                # 이미 저장돼 있으므로, 잠시 뒤 같은 명령을 다시 부르면 이어간다.
+                print(f"\n[{q}] {e}\n  받은 것은 원장에 남아 있다. "
+                      f"잠시 뒤 같은 명령을 다시 부르면 안 받은 것부터 이어간다.\n"
+                      f"  (분당 한도는 LAW_API_RPM 으로 낮출 수 있다 -- 지금 {RPM})",
+                      file=sys.stderr)
+                bad += 1
+                break
             except Exception as e:                  # noqa: BLE001  사람에게 보여줄 것
                 bad += 1
                 print(f"\n[{q}] 실패: {e}", file=sys.stderr)
