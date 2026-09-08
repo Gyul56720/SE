@@ -163,6 +163,58 @@ def hook_ok(kind: str, text: str) -> str:
     return ""
 
 
+# **모델이 값 대신 이 설명문을 그대로 베껴 낸다.** 실측 2026-09-08 VM 첫 회차:
+#
+#     [회차] 1 -- 원하는 것: 주인공이 이번 회차에 원하는 것 한 문장. 손에 잡히는 것으로 …
+#     [회차]   비트 1 (장면) 한 문장. 일이 하나 벌어진다
+#     [회차]   비트 2 (장면) ...
+#     [회차]   비트 3 (장면) 여기서 질문의 답이 갈린다
+#
+# 전부 아래 JSON 틀에 적어 둔 **칸 설명**이지 답이 아니다. 뒤쪽 칸(설정 · 바뀜 · 쾌감 ·
+# 전투 · 갈고리)은 제대로 채워 왔는데 앞쪽만 베꼈다. 추출기가 겪던 것과 같은 병이고
+# (`flow._PLACEHOLDER`), 카드에는 그 방어가 없었다.
+#
+# **값이 뼈대라서 이것이 제일 아프다** -- 질문과 비트 셋이 회차의 뼈대이고, 그것이
+# 설명문이면 화자는 "일이 하나 벌어진다" 를 비트로 받아 쓴다. 전개가 없어 보이던 자리다.
+#
+# 여기 적은 조각은 **아래 틀에 그대로 있는 문장의 앞머리**다. 틀을 고치면 여기도 고친다 --
+# tests/test_beat.py 가 둘이 어긋나지 않는지 본다.
+_ECHO = (
+    "주인공이 이번 회차에 원하는 것 한 문장. 손에 잡히는 것으로 -- 초대장 · 서명 · 한 사람의 입",
+    "누가 무엇으로 막는가. 사람이어야 한다 -- 사정이나 운명이 아니라",
+    "한 문장. 일이 하나 벌어진다",
+    "여기서 질문의 답이 갈린다",
+    "회차가 끝났을 때 무엇이 어떻게 달라져 있는가 한 문장",
+    "이번 회차에서 독자가 통쾌한 자리 한 문장. **벌어진 문장**으로 -- 되갚음 · 인정 · 격 상승 · 무릎 · 압도 · 구원 · 전리품. 지는 회차면 작은 것 하나",
+    "이번 회차에 싸움이 있으면 한 문장 -- 누가 누구와 · 격은 어느 쪽이 위인가 · 무엇으로 결착 · 무엇이 남는가. 없으면 빈 문자열",
+    "이번 회차에 세우는 세계 설정 하나 -- 직함 · 등급 · 기술 · 법칙 · 구역 · 절차의 **이름**",
+    "그것이 무엇을 되게 하고 무엇을 막는가 한 줄. 숫자가 아니라 이름과 조건",
+    "무엇이 벌어지는지 한 낱말 (아래 본보기 중 하나이거나, 네가 지은 것)",
+    "회차의 마지막 문단에서 **실제로 벌어지는 일** 한 문장. 평서문. 다음 회차가 여기서 시작한다",
+    "이번 회차에 지나가듯 심어 두는 것 한 문장 -- 나중에 거둘 소문 · 흔적 · 이명 · 물건. 이번 회차에서 설명하지 않는다",
+    "[심어 둔 것] 중 이번 회차에 거두는 것을 **그 낱말 그대로**. 없으면 빈 문자열",
+    "그것이 벌어지는 비트 번호 (1 · 2 · 3)",
+    "장소 | 처지 | 관계 | 앎  넷 중 하나",
+    "얻는다 | 잃는다 | 반만",
+)
+
+
+def echoed(v) -> bool:
+    """값이 아니라 **칸 설명을 베낀 것**인가. 빈 것도 여기서 걸러진다.
+
+    양방향으로 본다. 모델은 설명문을 통째로 베끼기도 하고 **꼬리만 잘라** 내기도 한다 --
+    실측: 심음 칸에 "나중에 거둘 소문 · 흔적 · 이명 · 물건" 이 왔는데, 이것은 설명문
+    "이번 회차에 지나가듯 심어 두는 것 한 문장 -- 나중에 거둘 소문 · 흔적 · 이명 · 물건…"
+    의 뒷토막이다. 앞머리만 맞춰 보면 이런 것이 통과한다.
+
+    잘린 조각은 **열 자 이상**일 때만 본다. 짧은 진짜 답이 설명문 안에 우연히 들어 있을
+    수 있어서다 -- 과잉 기각은 카드를 통째로 없앤다(이 저장소의 규율)."""
+    t = str(v or "").strip().strip('"“”')
+    if not t or t in ("...", "…", "-"):
+        return True
+    return any(t.startswith(e) or e in t or (len(t) >= 10 and t in e) for e in _ECHO)
+
+
 # ---------------------------------------------------------------- 세우기
 
 def plants(book: dict) -> list:
@@ -402,36 +454,69 @@ def ensure(book: dict, llm) -> "dict | None":
         # 질문으로 끝나는 회차를 열 번 쓰느니 각본 없이 가는 편이 낫다.
         # **쾌감도 같은 되묻기에 얹는다.** 다만 쾌감이 두 번 다 틀리면 카드는 살리고 쾌감만
         # 비운다 -- 쾌감은 더하는 것이지 카드의 뼈대가 아니다.
+        def _copied(g):
+            """**칸 설명을 그대로 베낀 자리**의 이름들. 뼈대(질문 · 비트)가 우선이다."""
+            def _copy1(v):
+                # **빈 것은 베낌이 아니다.** 심음은 없어도 되는 칸이라, 비었다고 되물으면
+                # 회차마다 호출이 하나씩 는다(실측: 카드마다 2회씩 불렀다).
+                return bool(str(v or "").strip()) and echoed(v)
+
+            bad = [k for k in ("질문", "비트", "심음") if
+                   (_copy1(g.get(k)) if k != "비트"
+                    else any(_copy1(b.get("무엇") if isinstance(b, dict) else b)
+                             for b in (g.get("비트") or [])))]
+            return bad
+
         why = hook_ok(str(got.get("갈고리종류") or "").strip(), str(got.get("갈고리") or ""))
         why_joy = joy_ok(str(got.get("쾌감") or ""))
-        if why or why_joy:
-            D._log(f"[회차] 되묻는다 -- {' / '.join(x for x in (why, why_joy) if x)}")
+        why_copy = _copied(got)
+        if why or why_joy or why_copy:
+            D._log(f"[회차] 되묻는다 -- {' / '.join(x for x in (why, why_joy, ('베낌: ' + ' · '.join(why_copy)) if why_copy else '') if x)}")
             asks = ". ".join(f"{k} 틀렸다: {v}" for k, v in (("갈고리가", why), ("쾌감이", why_joy)) if v)
+            if why_copy:
+                asks += (". **" + " · ".join(why_copy) + " 칸에 내가 적어 둔 설명문을 그대로 베껴 냈다.**"
+                         " 그 문장은 무엇을 적으라는 안내이지 답이 아니다 --"
+                         " 이 원고의 인물 · 자리 · 물건의 이름을 대서 다시 낸다")
             got = D.call_json(D._llm_for(llm, "director"),
-                              prompt + f"\n\n앞서 낸 각본의 {asks}. 다시 낸다.",
+                              prompt + f"\n\n앞서 낸 각본의 {asks.lstrip('. ')}. 다시 낸다.",
                               tries=2, label="회차 각본(되묻기)")
             why = hook_ok(str(got.get("갈고리종류") or "").strip(), str(got.get("갈고리") or ""))
             if why:
                 raise ValueError(why)
+            # **뼈대를 두 번 베껴 오면 카드를 버린다.** 설명문을 비트로 받아 쓰느니
+            # 각본 없이 가는 편이 낫다 -- 갈고리와 같은 계약이다.
+            why_copy = _copied(got)
+            if [k for k in why_copy if k in ("질문", "비트")]:
+                raise ValueError(f"칸 설명을 그대로 베껴 왔다: {' · '.join(why_copy)}")
+            if "심음" in why_copy:
+                got["심음"] = ""
             why_joy = joy_ok(str(got.get("쾌감") or ""))
             if why_joy:
                 D._log(f"[회차] 쾌감이 여전히 틀렸다({why_joy}) -- 이번 회차는 쾌감 없이 간다")
                 got["쾌감"] = ""
         beats = []
         for b in (got.get("비트") or [])[:BEATS]:
-            if isinstance(b, dict) and str(b.get("무엇") or "").strip():
+            if isinstance(b, dict) and not echoed(b.get("무엇")):
                 kind = "요약" if str(b.get("꼴") or "").strip() == "요약" else "장면"
                 beats.append({"무엇": str(b["무엇"]).strip(), "꼴": kind})
-            elif isinstance(b, str) and b.strip():
+            elif isinstance(b, str) and not echoed(b):
                 beats.append({"무엇": b.strip(), "꼴": "장면"})
         q = str(got.get("질문") or "").strip()
         if not q or not beats:
             raise ValueError(f"각본이 비었다: 질문={q!r} 비트={len(beats)}개")
-        sow = str(got.get("심음") or "").strip()
-        reap = str(got.get("거둠") or "").strip()
-        joy = str(got.get("쾌감") or "").strip()
-        setting = _parse_setting(got.get("설정"))
-        moved = _parse_moved(got.get("바뀜"))
+        # 나머지 칸도 베낀 것은 안 받는다 -- 설정집 · 심은 것은 **원장**이라, 설명문이
+        # 한 번 쌓이면 다음 회차부터 그것이 이 세계의 사실로 실린다.
+        sow = "" if echoed(got.get("심음")) else str(got.get("심음")).strip()
+        reap = "" if echoed(got.get("거둠")) else str(got.get("거둠")).strip()
+        joy = "" if echoed(got.get("쾌감")) else str(got.get("쾌감")).strip()
+        setting = None if echoed((got.get("설정") or {}).get("이름")
+                                 if isinstance(got.get("설정"), dict) else got.get("설정")) \
+            else _parse_setting(got.get("설정"))
+        moved = None if echoed((got.get("바뀜") or {}).get("무엇")
+                               if isinstance(got.get("바뀜"), dict) else got.get("바뀜")) \
+            else _parse_moved(got.get("바뀜"))
+        if echoed(got.get("전투")):
+            got["전투"] = ""
         book["card"] = {"ep": ep, "at": n, "질문": q,
                         "방해": str(got.get("방해") or "").strip(),
                         "비트": beats,

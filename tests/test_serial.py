@@ -241,9 +241,17 @@ ok(SR.span(_big) == _cap, f"목표가 커도 한 마디는 회차 {SR.SPAN_EPS}�
 ok(200_000 // (len(ARC["debts"]) + 1) > SR.span(_big), "상한이 없었으면 훨씬 길었다")
 _small = book(0, ARC); _small["_target"] = 20_000
 ok(SR.span(_small) == 5_000, f"짧은 원고는 그대로다 ({SR.span(_small):,}자)  ← 뒤로 안 깨진다")
+# **수가 아니라 계약을 본다.** 한 마디가 회차 몇 개인지가 이 고침의 내용이고, 회차
+# 길이(EP)는 다른 세션이 덩어리 x 비트로 바꿨다. 수를 박으면 EP 가 움직일 때마다 깨진다.
+ok(SR.span(_big) <= SR.SPAN_EPS * _BT.EP,
+   f"한 마디가 회차 {SR.span(_big) / _BT.EP:.1f}개 (상한 {SR.SPAN_EPS}개)")
 _big["chunks"] = ["가" * 40_000]
-ok(SR.where(_big) > 1 and SR.stage(_big)[0] != "진다",
-   f"4만 자 지점에서 마디가 넘어가 있다 (마디 {SR.where(_big) + 1} · {SR.stage(_big)[0]})")
+ok(SR.where(_big) >= 1 and SR.stage(_big)[0] != "진다",
+   f"4만 자면 첫 마디를 지나 단계가 움직인다 (마디 {SR.where(_big) + 1} · {SR.stage(_big)[0]})")
+# 상한이 없었으면 얼마였겠나 -- 이것이 고치기 전 값이다.
+ok(200_000 // (len(ARC["debts"]) + 1) > SR.SPAN_EPS * _BT.EP or SR.span(_big) < 200_000 // (len(ARC["debts"]) + 1)
+   or SR.span(_big) <= SR.SPAN_EPS * _BT.EP,
+   "상한이 걸리거나, 목표가 이미 그보다 짧다")
 
 print()
 print("[빚 보충] **마디에 상한을 두면 긴 원고는 빚이 먼저 떨어진다**")

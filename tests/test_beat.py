@@ -119,7 +119,12 @@ _ch = flow.CHUNK
 _b5["chunks"].append("다" * _ch)
 _lo, _hi = BT.beat_span(_b5)
 ok(_lo > 1, f"덩어리를 하나 쓰면 다음 비트로 넘어간다 ({_lo}~{_hi})")
-ok(_hi == 3 and BT.last_chunk(_b5), f"회차가 닫히는 덩어리는 마지막 비트까지 간다 ({_lo}~{_hi})")
+# 회차는 **덩어리 x 비트 수**다(EP). 회차를 닫는 덩어리까지 가서 본다 -- 몇 번째인지는
+# EP 와 CHUNK 가 정하므로 수를 박지 않고 last_chunk 로 찾는다.
+while not BT.last_chunk(_b5):
+    _b5["chunks"].append("다" * _ch)
+_lo, _hi = BT.beat_span(_b5)
+ok(_hi == 3, f"회차가 닫히는 덩어리는 마지막 비트까지 간다 ({_lo}~{_hi})")
 _p = BT.brief(_b5)
 ok(f"{_lo}번 비트부터" in _p and f"→ {_hi}." in _p, "몇 번 비트부터 몇 번까지인지 표시한다")
 ok("이번 대목이 이 회차의 끝이다" in _p and "다음 대목으로 미루지 마라" in _p,
@@ -256,6 +261,49 @@ _full = {e: v for e, v in _seen.items() if len(v) == BT.BEATS}
 ok(_full and all(sorted(v) == [1, 2, 3] for v in _full.values()),
    f"회차마다 비트 1 · 2 · 3 이 한 번씩 {_seen}")
 ok(len(_full) >= 3, f"열두 덩어리에 온전한 회차가 셋 이상 ({len(_full)})")
+
+print()
+print("[베낌] **디렉터가 칸 설명을 값 대신 그대로 베껴 낸다**")
+print("      ← 실측 2026-09-08 VM 첫 회차: 질문 · 비트 셋 · 심음이 전부 프롬프트 틀의")
+print("        설명문 그대로 왔다. 뼈대가 설명문이면 화자는 '일이 하나 벌어진다' 를")
+print("        비트로 받아 쓴다 -- 전개가 없어 보이던 자리다.")
+ok(BT.echoed("주인공이 이번 회차에 원하는 것 한 문장. 손에 잡히는 것으로 -- 초대장 · 서명 · 한 사람의 입"),
+   "통째로 베낀 것을 잡는다")
+ok(BT.echoed("나중에 거둘 소문 · 흔적 · 이명 · 물건"),
+   "**꼬리만 잘라 온 것**도 잡는다  ← 앞머리만 맞추면 이게 통과한다")
+ok(BT.echoed("...") and BT.echoed(""), "자리표와 빈 것도 베낌으로 본다")
+for _real in (CARD["질문"], CARD["갈고리"], "하위 낙인 -- 몸에 새겨진 낙인", "반만", "장면"):
+    ok(not BT.echoed(_real), f"진짜 답은 안 잡는다: {_real[:24]}")
+
+# **틀과 목록이 어긋나면 방어가 죽는다.** 틀을 고치고 여기를 안 고치면 조용히 통과한다.
+_tpl = BT.card_prompt(book(100))
+_missing = [e for e in BT._ECHO if e.replace("{{", "{").replace("}}", "}") not in _tpl]
+ok(not _missing, f"_ECHO 가 전부 틀에 실제로 있다 (없는 것: {[m[:24] for m in _missing]})")
+
+_copy = dict(CARD, 질문="주인공이 이번 회차에 원하는 것 한 문장. 손에 잡히는 것으로 -- 초대장 · 서명 · 한 사람의 입",
+             비트=[{"무엇": "한 문장. 일이 하나 벌어진다", "꼴": "장면"},
+                 {"무엇": "...", "꼴": "장면"},
+                 {"무엇": "여기서 질문의 답이 갈린다", "꼴": "장면"}],
+             심음="나중에 거둘 소문 · 흔적 · 이명 · 물건")
+_bc, _dc = book(100), Director(queue=[_copy, CARD])
+BT.ensure(_bc, _dc)
+ok(_dc.calls == 2, f"베끼면 되묻는다 ({_dc.calls}회)")
+ok("베껴 냈다" in _dc.prompts[-1] and "안내이지 답이 아니다" in _dc.prompts[-1],
+   "무엇을 베꼈는지 짚어 되먹인다")
+ok(_bc["card"]["질문"] == CARD["질문"], "고쳐 오면 받는다")
+
+_bc2, _dc2 = book(100), Director(queue=[_copy, _copy])
+ok(BT.ensure(_bc2, _dc2) is None and not BT.has(_bc2),
+   "두 번 다 베끼면 카드를 버린다  ← 설명문을 비트로 받아 쓰느니 각본 없이 간다")
+
+# 뼈대는 아니지만 원장에 쌓이는 칸 -- 설정집 · 심은 것에 설명문이 들어가면 그것이 세계가 된다.
+_part = dict(CARD, 심음="나중에 거둘 소문 · 흔적 · 이명 · 물건",
+             설정={"이름": "이번 회차에 세우는 세계 설정 하나 -- 직함 · 등급 · 기술 · 법칙 · 구역 · 절차의 **이름**",
+                  "규칙": "x"})
+_bp = book(100); BT.ensure(_bp, Director(queue=[_part, _part]))
+ok(BT.has(_bp), "뼈대가 성하면 카드는 산다")
+ok(not BT.plants(_bp) and not BT.codex(_bp),
+   "베낀 심음 · 설정은 원장에 안 들어간다  ← 설명문이 이 세계의 사실이 되면 안 된다")
 
 print()
 if fails:
