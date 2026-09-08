@@ -179,6 +179,31 @@ def _first(node, *names):
     return ""
 
 
+NAME_TAGS = ("법령명한글", "법령명_한글", "법령명")
+ROW_TAGS = ("law", "Law", "법령")
+
+
+def _rows_of(root) -> list:
+    """검색 결과에서 '한 법령' 에 해당하는 원소들.
+
+    **이름으로 먼저 찾고, 못 찾으면 꼴로 찾는다.** target 마다 원소 이름이 다를 수
+    있는데, 이름 목록이 틀리면 `parse_search` 가 0행을 주고 `history` 는 그것을
+    "판이 없다" 로 읽는다. 그러면 **"이 법은 판이 하나뿐" 이라는 거짓 결론이 조용히
+    남는다** -- 자를 먼저 의심하라. 그래서 이름이 안 맞으면 법령명을 **직속 자식으로**
+    가진 원소를 행으로 본다. 직속으로 한정하는 이유: `iter()` 로 훑으면 뿌리
+    <LawSearch> 자신도 법령명을 후손으로 가지므로 행이 하나 더 생긴다.
+    """
+    named = [el for el in root.iter() if el.tag.split("}")[-1] in ROW_TAGS]
+    if named:
+        return named
+    out = []
+    for el in root.iter():
+        kids = {c.tag.split("}")[-1] for c in el}
+        if any(n in kids for n in NAME_TAGS):
+            out.append(el)
+    return out
+
+
 def parse_search(xml: str) -> list:
     """검색 결과 -> [{이름, 일련번호, 시행일자, 구분}]."""
     try:
@@ -186,11 +211,8 @@ def parse_search(xml: str) -> list:
     except ET.ParseError as e:
         raise RuntimeError(f"검색 응답이 XML 이 아니다: {e}") from None
     out = []
-    for law in root.iter():
-        tag = law.tag.split("}")[-1]
-        if tag not in ("law", "Law", "법령"):
-            continue
-        name = _first(law, "법령명한글", "법령명_한글", "법령명")
+    for law in _rows_of(root):
+        name = _first(law, *NAME_TAGS)
         if not name:
             continue
         out.append({
@@ -593,6 +615,9 @@ def main(argv=None):
     ap.add_argument("--mst", default="", help="일련번호를 직접 지정(법령 하나일 때)")
     ap.add_argument("--시행일", dest="when", default="",
                     help="그날 시행 중이던 판을 받는다 (행위시법). 예: 2019-02-15")
+    ap.add_argument("--날것", dest="raw", action="store_true",
+                    help="--이력 과 함께. 후보 target 이 준 XML 의 원소 이름을 그대로 "
+                         "찍는다 -- 판이 하나뿐인 것인지 자가 못 읽은 것인지 가른다")
     ap.add_argument("--이력", dest="hist", action="store_true",
                     help="이 법령에 어떤 시행일 판들이 있는지만 본다 (저장 안 함)")
     ap.add_argument("--list", action="store_true", help="검색 결과만 본다")
@@ -608,6 +633,36 @@ def main(argv=None):
 
     root = Path(a.corpus)
     bad = 0
+
+    if a.hist and a.raw:
+        # **재고 나서 말한다.** "판이 하나뿐" 은 API 가 그런 것일 수도, 우리 자가
+        # 원소 이름을 못 알아본 것일 수도 있다. 둘은 화면이 똑같으니 날것을 본다.
+        for name in a.names:
+            for tgt in HISTORY_TARGETS:
+                try:
+                    xml = _get(_url(SEARCH, a.oc, target=tgt, query=name,
+                                    display="100"), a.oc)
+                except Exception as e:                       # noqa: BLE001
+                    print(f"\n[{name}] target={tgt} 조회 실패: {e}")
+                    continue
+                try:
+                    root_el = ET.fromstring(xml)
+                except ET.ParseError as e:
+                    print(f"\n[{name}] target={tgt} XML 아님: {e} · 앞 200자\n"
+                          f"  {xml[:200]!r}")
+                    continue
+                names = {}
+                for el in root_el.iter():
+                    names[el.tag.split("}")[-1]] = names.get(el.tag.split("}")[-1], 0) + 1
+                rows = parse_search(xml)
+                판 = sorted({r.get("시행일자", "") for r in rows if r.get("시행일자")})
+                print(f"\n[{name}] target={tgt} · 길이 {len(xml):,} · 우리가 읽은 행 "
+                      f"{len(rows)} · 시행일 {len(판)}종")
+                print("  원소:", ", ".join(f"{k}×{v}" for k, v in
+                                          sorted(names.items(), key=lambda x: -x[1])[:15]))
+                if 판:
+                    print("  시행일:", " ".join(판[:12]))
+        return 0
 
     if a.hist:
         for name in a.names:
