@@ -95,6 +95,13 @@ ok(call["timeout"] == 12, "시간 제한이 실린다  ← langchain 기본값�
 ok(call["body"]["generationConfig"]["maxOutputTokens"] == 99, "출력 상한이 실린다")
 ok(call["body"]["contents"][0]["parts"][0]["text"] == "프롬프트", "프롬프트가 실린다")
 ok("gemini-3.5-flash" in call["url"], "모델이 URL 에 실린다")
+# **안전 필터는 기본으로 푼다.** 성인 연재물을 쓰는 파이프라인이다 -- 기본 문턱은
+# 침소 · 폭력 장면에서 candidates 를 비운 200 을 주고, 풀은 그것을 일시장애로 센다.
+_ss = call["body"].get("safetySettings") or []
+ok(len(_ss) == 4 and all(x["threshold"] == "BLOCK_NONE" for x in _ss),
+   f"안전 필터 네 범주가 BLOCK_NONE 으로 실린다 ({len(_ss)}개)")
+ok(any(x["category"] == "HARM_CATEGORY_SEXUALLY_EXPLICIT" for x in _ss),
+   "성적 표현 범주가 들어 있다  ← 19세 연재물")
 
 print()
 print("[에러 문자열이 계약이다] **풀의 분류가 이것을 읽는다**")

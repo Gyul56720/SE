@@ -79,6 +79,8 @@ class Client:
         import requests
         body = {"contents": [{"parts": [{"text": _text_of(prompt)}]}],
                 "generationConfig": {"maxOutputTokens": self.max_output_tokens}}
+        if SAFETY:
+            body["safetySettings"] = SAFETY
         url = API.format(model=self.model)
         last = None
         for _ in range(self.attempts):
@@ -114,6 +116,21 @@ class Client:
                                   json.dumps(payload, ensure_ascii=False) or r.text)
             return Reply(_answer_of(r.json()))
         raise last
+
+
+# **안전 필터.** 기본값은 전부 푼다 -- 이 저장소의 소설 파이프라인은 성인 연재물을
+# 쓰고(사용자 요구 2026-09-08: "지금은 12세, 나는 19세 연재물"), Gemini 의 기본 문턱은
+# 침소 장면과 폭력 장면에서 candidates 를 비운 채 200 을 준다. 그러면 _answer_of 가
+# EMPTY/SAFETY 로 던지고, 풀은 그것을 일시장애로 세어 같은 프롬프트를 다른 키로 다시
+# 두드린다 -- 호출만 태우고 원고는 안 온다.
+#
+# `GEMINI_SAFETY=default` 로 두면 Google 기본값으로 돌아간다. 법학 등 다른 파이프라인은
+# 이 필터에 걸릴 글을 안 만드니 어느 쪽이든 같다. 계정 정책으로 막히는 범주는 이 설정과
+# 무관하게 막힌다.
+_SAFETY_OFF = [{"category": c, "threshold": "BLOCK_NONE"} for c in (
+    "HARM_CATEGORY_SEXUALLY_EXPLICIT", "HARM_CATEGORY_HARASSMENT",
+    "HARM_CATEGORY_HATE_SPEECH", "HARM_CATEGORY_DANGEROUS_CONTENT")]
+SAFETY = [] if os.environ.get("GEMINI_SAFETY", "off") == "default" else _SAFETY_OFF
 
 
 def _hide(text: str, key: str) -> str:

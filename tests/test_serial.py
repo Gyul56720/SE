@@ -153,6 +153,27 @@ ok("인물 이름을 정하지 마라" in _pp,
 
 
 print()
+print("[성장] **주인공은 지다가 이긴다 -- 마디가 어디냐로 정한다**")
+print("      ← 사용자 평(2026-09-08): 주인공이 성장하지 않는다. 역경을 만나고 힘들어가다")
+print("        성장해야 한다.")
+_ga = dict(ARC, start="공녀는 제 이름으로 초대장 한 장 못 보낸다",
+           debts=[{"무엇": f"빚{i}", "갚음": 0} for i in range(6)])
+_g0, _g1, _g2 = book(0, _ga), book(25_000, _ga), book(55_000, _ga)
+ok(SR.stage(_g0)[0] == "진다" and SR.stage(_g1)[0] == "버틴다" and SR.stage(_g2)[0] == "이긴다",
+   f"앞 · 중간 · 뒤 = {SR.stage(_g0)[0]} · {SR.stage(_g1)[0]} · {SR.stage(_g2)[0]}")
+ok(SR.stage(book(0)) is None, "도착지가 없으면 단계도 없다")
+_gb = SR.brief(_g0)
+ok("**진다.**" in _gb and "초대장 한 장" in _gb, "첫 마디는 지라고 하고 처음의 주인공을 싣는다")
+ok("초대장 한 장" not in SR.brief(_g2) and "못 하던 것을 한다" in SR.brief(_g2),
+   "뒤 마디는 처음을 되풀이하지 않고 이기라고 한다")
+_pp2 = SR.plan_prompt("ropan")
+ok('"시작"' in _pp2 and "역경" in _pp2, "디렉터에게 시작 상태와 역경을 요구한다")
+_b3, _f3 = book(), Fake({"끝": "끝난다", "시작": "아무것도 못 한다", "빚": ["a", "b", "c", "d"]})
+SR.plan(_b3, _f3, "ropan")
+ok(_b3["arc"].get("start") == "아무것도 못 한다", "시작이 원고에 붙는다")
+ok("시작:" in SR.show(_b3), "show 에 시작이 보인다")
+
+print()
 print("[끝] **목표를 알면 마디가 거기에 맞고, 마지막 덩어리는 닫으라고 한다**")
 print("      ← 빚 다섯 x 1만 자 = 5만 자인데 목표가 5만 자면 끝을 향하는 마디가 없다.")
 _bt = book(0, ARC); _bt["_target"] = 20_000

@@ -107,19 +107,25 @@ def plan_prompt(gname: str) -> str:
 {head}
 {f'[이 갈래가 다루는 관계] {rel}' if rel else ''}
 
-두 가지를 JSON 으로 낸다.
+세 가지를 JSON 으로 낸다.
 
 1. **끝** -- 이 소설이 끝나는 자리 한 문장. 사건이 아니라 **상태**로 적어라.
    ("두 사람이 결혼한다" 가 아니라 "그 계약이 더는 두 사람을 묶지 못한다")
 
-2. **빚** -- 그 끝이 참이 되려면 **먼저 참이 되어야 하는 것** {DEBTS[0]}~{DEBTS[1]}개.
+2. **시작** -- 주인공이 처음에 **못 하는 것 · 없는 것 · 당하는 것** 한 문장. 끝과 짝이
+   되어야 한다: 시작에서 못 하던 것을 끝에서 한다. 이것이 성장이다.
+
+3. **빚** -- 그 끝이 참이 되려면 **먼저 참이 되어야 하는 것** {DEBTS[0]}~{DEBTS[1]}개.
    - 각각 한 문장. **상태로 적어라.** 무슨 장면을 쓰라는 말이 아니다.
    - 순서대로 적어라 -- 앞엣것이 먼저 참이 되어야 뒤엣것이 가능하다.
+   - **앞의 절반은 역경이다.** 주인공이 잃거나 당하거나 실패해야 참이 되는 것. 뒤의
+     절반은 그 값으로 얻는 것. 처음부터 이기는 사람은 자라지 않는다.
    - **어떻게** 참이 되는지는 적지 마라. 그건 쓰면서 정한다.
 
+구체적으로 적어라. "권력을 얻는다" 가 아니라 무엇을 손에 쥐고 누가 그 앞에 무릎을 꿇는지다.
 인물 이름을 정하지 마라. 아직 아무도 없다.
 
-{{"끝": "...", "빚": ["...", "...", "...", "..."]}}"""
+{{"끝": "...", "시작": "...", "빚": ["...", "...", "...", "..."]}}"""
 
 
 def plan(book: dict, llm, gname: str = "", log=None) -> dict:
@@ -130,14 +136,17 @@ def plan(book: dict, llm, gname: str = "", log=None) -> dict:
     got = D.call_json(D._llm_for(llm, "director"),
                       plan_prompt(gname), label="연재 도착지")
     end = str(got.get("끝") or "").strip()
+    start = str(got.get("시작") or "").strip()
     debts = [str(x).strip() for x in (got.get("빚") or []) if str(x).strip()]
     if not end or not debts:
         raise ValueError(f"도착지를 못 받았다: 끝={end!r} 빚={len(debts)}개")
     # **넘치면 자르되 모자라면 안 채운다.** 채우려면 지어내야 한다.
     debts = debts[:DEBTS[1]]
-    book["arc"] = {"end": end,
+    book["arc"] = {"end": end, "start": start,
                    "debts": [{"무엇": d, "갚음": 0} for d in debts],
                    "made": gname}
+    if start:
+        D._log(f"[연재] 시작: {start}")
     D._log(f"[연재] 끝: {end}")
     for i, d in enumerate(debts, 1):
         D._log(f"[연재]   빚 {i}. {d}")
@@ -194,6 +203,28 @@ def done(book: dict) -> bool:
 
 # ---------------------------------------------------------------- 프롬프트
 
+# 성장 곡선. 마디가 어디쯤이냐로 **주인공이 지금 지는 중인지 이기는 중인지**를 정한다.
+# 사용자 요구(2026-09-08): "주인공이 성장하지 않는다 -- 역경을 만나고 힘들어가다가
+# 성장한다." 갚혔는지 판정을 안 하는 것(위)과 같은 이유로 이것도 **분량으로** 간다.
+STAGES = (
+    ("진다", "주인공은 이 대목에서 **진다.** 당하고, 잃고, 막힌다. 되받아치지 못한다 --"
+             " 아직 그럴 힘도 사람도 없다. 그 무력함을 감추지 말고 보여라."),
+    ("버틴다", "주인공은 이 대목에서 **값을 치른다.** 원하는 것을 얻으려면 무엇을 내놓아야"
+               " 하고, 내놓는다. 이기지는 못하지만 처음처럼 당하지도 않는다."),
+    ("이긴다", "주인공은 이 대목에서 **처음에 못 하던 것을 한다.** 앞에서 잃은 것 · 치른"
+               " 값 · 데려온 사람이 여기서 돌아온다. 쉽게 이기지 마라 -- 값을 치른 만큼만."),
+)
+
+
+def stage(book: dict) -> "tuple | None":
+    """지금 마디의 성장 단계. 빚 목록을 셋으로 나눠 앞 · 중간 · 뒤로 본다."""
+    ds = arc(book).get("debts") or []
+    if not ds:
+        return None
+    i = min(where(book), len(ds) - 1)
+    return STAGES[min(2, i * 3 // len(ds))]
+
+
 def brief(book: dict) -> str:
     """**프롬프트에 얹을 당김. 한 줄이다.**
 
@@ -220,10 +251,15 @@ def brief(book: dict) -> str:
                 f"  · 이 이야기가 닿을 자리: {a['end']}\n"
                 "  · 서두르지 마라. 다만 이 대목의 일이 그 자리에서 **멀어지지는**"
                 " 않게 해라.")
+    st = stage(book)
+    grow = f"  · {st[1]}\n" if st else ""
+    if a.get("start") and st and st[0] == "진다":
+        grow += f"  · 처음의 주인공: {a['start']}\n"
     return ("[어디로] **이 대목이 향하는 곳**\n"
             f"  · {cur['무엇']}\n"
             "  · 여기서 그것을 이루라는 말이 아니다. **한 걸음 가까워지면 된다** --"
             " 멀어지는 일이 벌어져도 좋다, 그것이 이 방향의 일이기만 하면.\n"
+            + grow +
             "  · 이 문장을 원고에 옮겨 적지 마라. 인물이 이것을 입 밖에 내지도 마라.")
 
 
@@ -241,7 +277,8 @@ def show(book: dict) -> str:
                ("·" if i > at else "지남")
         rows.append(f"  {mark:4} {i + 1}. {d['무엇']}")
     tail = "\n  → 빚을 다 지났다. 끝을 향해 간다." if done(book) else ""
-    return (f"끝: {a['end']}\n"
+    return ((f"시작: {a['start']}\n" if a.get("start") else "")
+            + f"끝: {a['end']}\n"
             f"원고 {n:,}자 · 마디 {at + 1} (한 마디 {span(book):,}자)\n"
             + "\n".join(rows) + tail)
 
