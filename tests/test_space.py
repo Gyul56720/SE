@@ -48,6 +48,14 @@ class Director:
         return "{}"
 
 
+def next_ep(b, d):
+    """회차를 하나 넘긴다. **비트를 다 써야 넘어간다** -- 분량으로는 안 넘어간다."""
+    for _ in range(BT.BEATS):
+        BT.brief(b)
+        b["chunks"].append("가" * 3000)
+    BT.ensure(b, d)
+
+
 BASE = {"질문": "공녀가 초대장을 받아낸다", "방해": "백작 부인이 명부에서 이름을 지운다",
         "비트": [{"무엇": "a", "꼴": "장면"}, {"무엇": "b", "꼴": "요약"}, {"무엇": "c", "꼴": "장면"}],
         "답": "반만", "쾌감": "집사가 명부를 공녀 앞에 펼쳐 놓고 물러선다", "쾌감자리": 2,
@@ -88,13 +96,11 @@ _d = Director([dict(BASE, 심음="회랑에 은빛 갑주의 기사가 다녀갔
 BT.ensure(_b, _d)
 ok(len(BT.plants(_b)) == 1 and "은빛 갑주" in BT.plants(_b)[0]["무엇"], "심은 것이 원장에 남는다")
 ok("**심는다:**" in BT.brief(_b) and "지나가듯" in BT.brief(_b), "집필 프롬프트가 지나가듯 심으라고 한다")
-_b["chunks"].append("나" * BT.EP)
-BT.ensure(_b, _d)
+next_ep(_b, _d)
 ok("은빛 갑주의 기사가 다녀갔다는 소문" in _d.prompts[-1], "다음 각본에 심어 둔 것이 보인다")
 ok(len(BT.plants(_b)) == 0 and _b["plants"][0]["거둠"] == 1, "그 낱말로 거두면 원장에서 닫힌다")
 ok("**거둔다:**" in BT.brief(_b) and "기척 → 실루엣" in BT.brief(_b), "거둘 때 등장 5단계를 시킨다")
-_b["chunks"].append("다" * BT.EP)
-BT.ensure(_b, _d)
+next_ep(_b, _d)
 ok(_b["card"]["거둠"] == "검은 백작의 인장" and not any(p.get("거둠") == 2 for p in _b["plants"]),
    "심은 적 없는 것을 거둔다고 하면 원장은 안 닫히고 로그에 남는다  ← 뜬금없음의 기록")
 ok("아직 안 거둔 것" not in BT.show(_b) and "심음:" in BT.show(_b), "show 가 심음 · 거둠을 보여 준다")
@@ -115,11 +121,13 @@ print("      ← 실측: 갈고리를 쓴 뒤 같은 카드가 남아 다음 덩
 _br = book(100)
 _dr = Director([BASE, dict(BASE, 질문="다음 회차의 질문")])
 BT.ensure(_br, _dr)
-_br["chunks"].append("가" * (BT.EP * 4 // 5))          # 회차의 5분의 4 -- 마지막 비트 차례
+for _ in range(BT.BEATS - 1):
+    BT.brief(_br); _br["chunks"].append("가" * 3000)     # 비트 1 · 2 를 썼다
 ok(BT.beat_at(_br) == 3, f"마지막 비트 차례다 ({BT.beat_at(_br)})")
 BT.brief(_br)                                           # 집필 프롬프트를 만들었다 = 마지막 비트를 맡겼다
 _br["chunks"].append("나" * 500)                        # 그 덩어리를 썼다. 분량은 아직 EP 미만
 ok(sum(len(c) for c in _br["chunks"]) < BT.EP * 2, "분량으로는 아직 같은 회차다")
+
 BT.ensure(_br, _dr)
 ok(_br["card"]["질문"] == "다음 회차의 질문" and _br["card"]["ep"] == 1,
    f"그래도 다음 회차 카드가 선다 (회차 {_br['card']['ep'] + 1})  ← 같은 장면을 두 번 안 쓴다")
@@ -190,12 +198,10 @@ ok("**이 회차의 설정**: 회색 서임" in _wc and "상태창 · 수치를 
 ok("**싸움**" in _wc and "촛대로 결착" in _wc and any(n in _wc for n in SP.names("전투")),
    "싸움이 있으면 전투 문법이 실린다")
 ok("**쾌감** (비트 2에서" in _wc and "곁의 사람들이다" in _wc, "쾌감이 비트 번호와 함께 실린다")
-_bc["chunks"].append("마" * BT.EP)
-BT.ensure(_bc, _dc)
+next_ep(_bc, _dc)
 ok(len(BT.codex(_bc)) == 1 and _bc["card"]["설정"] is None, "같은 이름을 다시 세우면 설정집의 것이 이긴다  ← 값이 둘이면 모순")
 ok("회색 서임: 기사단장만" in _dc.prompts[-1], "다음 각본 프롬프트에 설정집이 보인다")
-_bc["chunks"].append("바" * BT.EP)
-BT.ensure(_bc, _dc)
+next_ep(_bc, _dc)
 ok([c["이름"] for c in BT.codex(_bc)] == ["회색 서임", "붉은 패"], "한 줄 꼴(이름 -- 규칙)도 받는다")
 ok("설정집 (이 이름 그대로 쓴다" in BT.brief(_bc) and "회색 서임" in BT.brief(_bc), "화자에게 설정집이 실린다")
 ok("설정집 2개" in BT.show(_bc) and "붉은 패" in BT.show_codex(_bc), "show · show_codex 가 보여 준다")
