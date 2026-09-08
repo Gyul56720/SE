@@ -78,46 +78,68 @@ PROMPT = """아래 그림들은 대한민국 변호사시험 선택형 문제지
 옮긴 글만 출력하고 다른 말은 붙이지 마십시오."""
 
 
-def keys() -> list:
-    """`GEMINI_API_KEY` 와 그 예비들. **목록은 llm_pool 에 한 벌만 있다.**
+_POOL = None
 
-    처음엔 여기에 이름 목록을 따로 적었는데 **그게 틀렸다.** llm_pool 은 키가 환경변수에
-    없으면 저장소 루트 `.env` 를 읽는데, 내 사본은 그 일을 안 했다 -- systemd 서비스는
-    EnvironmentFile 로 .env 를 받지만 **SSH 셸은 그렇지 않다.** 그래서 예비 키 둘이
-    `.env` 에 멀쩡히 있는데도 안 보였고, 첫 키가 쿼터에 막히자 거기서 멈췄다.
 
-    두 벌은 이렇게 갈라진다. 목록만 같으면 되는 줄 알았는데 **읽는 자리가 달랐다.**
+def _pool():
+    """**`novel/` 이 쓰는 그 후보 풀을 그대로 쓴다.**
+
+    처음엔 여기에 키·모델을 도는 반복문을 따로 짰다. **그게 두 벌이었다.**
+    `orchestrator/llm_pool.py` 는 (키·모델)별 잔량 추적, RPM 쿨다운, 500/503 을 거듭
+    내는 후보 격리, 실측 지연 기반 순위, 바퀴 사이 대기를 이미 갖고 있다 -- 소설
+    파이프라인이 회차마다 100번씩 두드리며 다듬은 층이다. 내 반복문은 그것을 전부
+    버리고 `for 모델: for 키:` 로 되돌린 것이었다.
+
+    **gemma 는 뺀다.** 그림을 못 보므로 부르면 실패만 물고 온다. 이건 이 쓰임에만
+    맞는 거르개라 여기서 한다 -- 풀은 글에도 쓰이고 거기서는 gemma 가 제 몫을 한다.
+    """
+    global _POOL
+    if _POOL is None:
+        sys.path.insert(0, str(ROOT / "orchestrator"))
+        import llm_pool
+        pool = [c for c in llm_pool.build_pool() if "gemma" not in c[0].lower()]
+        if not pool:
+            raise SystemExit(
+                "그림을 볼 수 있는 후보가 없다 -- GEMINI_API_KEY 를 확인하라.")
+        _POOL = pool
+        print(f"후보 {len(pool)}개: "
+              + ", ".join(l for l, _ in pool[:4])
+              + (" ..." if len(pool) > 4 else ""))
+    return _POOL
+
+
+def _ask(pngs: list, prefer: str = "flash") -> str:
+    """쪽 그림 여럿을 한 번에 보낸다. **호출 수가 곧 쿼터다.**
+
+    재시도·키 돌려쓰기·쿨다운은 전부 풀이 한다. 여기서는 무엇에 막혀 끝났는지만
+    가려서 말한다 -- 다음에 무엇을 할지가 거기서 갈린다.
     """
     sys.path.insert(0, str(ROOT / "orchestrator"))
     import llm_pool
-    return llm_pool.api_keys()
-
-
-def _ask(pngs: list, models: list) -> str:
-    """쪽 그림 여럿을 한 번에 보낸다. **호출 수가 곧 쿼터다.**
-
-    쿼터에 막히면 다음 키로, 키가 다 떨어지면 다음 모델로 넘어간다. 마지막까지
-    막히면 **거기서 멈춘다** -- 반쯤 옮긴 것을 성공으로 적으면 그 뒤가 전부 거짓이다.
-    """
-    sys.path.insert(0, str(ROOT / "orchestrator"))
-    import gemini_http
-    ks = keys()
-    if not ks:
-        raise SystemExit("GEMINI_API_KEY 가 없다.")
     images = [("image/png", p.read_bytes()) for p in pngs]
-    last = None
-    for model in models:
-        for name, key in ks:
-            c = gemini_http.Client(model, key, timeout=300.0, max_output_tokens=8192)
-            try:
-                return c.invoke(PROMPT, images=images).content
-            except Exception as e:                                # noqa: BLE001
-                last = f"{model} / {name}: {e}"
-                if "RESOURCE_EXHAUSTED" in str(e) or "429" in str(e):
-                    print(f"    ({name} 이 {model} 에서 쿼터에 막혔다 -- 다음 것으로)")
-                    continue
-                raise
-    raise SystemExit(f"쓸 수 있는 키·모델이 없다. 마지막: {last}")
+    try:
+        text, label = llm_pool.call(_pool(), PROMPT, pool_id="ocr",
+                                    images=images, prefer=prefer)
+    except Exception as e:                                        # noqa: BLE001
+        raise SystemExit(
+            f"{_why(e)} -- 멈춘다.\n  마지막: {str(e)[:200]}\n"
+            f"  쿼터면 내일 같은 명령을 다시 치면 남은 쪽부터 이어간다.\n"
+            f"  과부하(503)면 조금 뒤에 다시 치면 된다.")
+    return text
+
+
+def _why(e) -> str:
+    """무엇에 막혔나. **가려서 보고해야 다음에 무엇을 할지 안다.**"""
+    t = str(e)
+    if "RESOURCE_EXHAUSTED" in t or "429" in t:
+        return "쿼터에 막혔다"
+    if "UNAVAILABLE" in t or "503" in t or "overloaded" in t.lower():
+        return "과부하"
+    if "500" in t or "INTERNAL" in t or "DEADLINE" in t or "504" in t:
+        return "과부하"
+    if "NOT_FOUND" in t or "404" in t:
+        return "그런 모델이 없다"
+    return "막혔다"
 
 
 def pages_of(spec: str, n: int) -> list:
@@ -185,7 +207,10 @@ def main(argv=None) -> int:
                     help="이미 옮긴 쪽도 다시")
     ap.add_argument("--견줌", dest="cmp", nargs=2, default=None,
                     help="두 읽기를 견줘 갈리는 줄만 찍는다")
-    ap.add_argument("--model", default="gemini-3.6-flash")
+    # **모델을 손으로 고르지 않는다.** 풀이 (키·모델)별 잔량과 실측 지연으로 고른다 --
+    # 하나를 못 박으면 그것이 막힐 때 갈 곳이 없다. 앞으로 당길 것만 말한다.
+    ap.add_argument("--선호", dest="prefer", default="flash",
+                    help="이 이름이 든 후보를 먼저 두드린다 (거르지는 않는다)")
     ap.add_argument("--scale", type=int, default=2)
     a = ap.parse_args(argv)
 
@@ -208,7 +233,6 @@ def main(argv=None) -> int:
     if not 남은:
         print("옮길 것이 없다. --다시 로 다시 옮긴다.")
         return 0
-    models = [m.strip() for m in a.model.split(",") if m.strip()]
     묶음 = max(1, a.batch)
     print(f"부를 횟수: {-(-len(남은) // 묶음)}회 ({묶음}쪽씩)")
 
@@ -224,7 +248,7 @@ def main(argv=None) -> int:
             if a.only:
                 print("  " + ", ".join(str(p) for p in pngs))
                 continue
-            text = _ask(pngs, models).strip()
+            text = _ask(pngs, a.prefer).strip()
             흐림 = text.count("[읽을 수 없음]")
             print(f"  {떼[0]}~{떼[-1]}쪽  {len(text):>5}자"
                   + (f"  **못 읽은 자리 {흐림}군데**" if 흐림 else ""))

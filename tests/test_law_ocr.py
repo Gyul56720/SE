@@ -83,35 +83,43 @@ ok("import requests" not in (ROOT / "law" / "ocr.py").read_text(encoding="utf-8"
    "law/ocr.py 는 직접 HTTP 를 치지 않는다")
 
 print()
-print("[쿼터] **무료 티어는 키마다 따로 센다** -- 실측: 하루 20회에서 36쪽을 못 끝냈다")
-import os                                                             # noqa: E402
-_전 = dict(os.environ)
-try:
-    for k in list(os.environ):
-        if k.startswith("GEMINI_API_KEY"):
-            del os.environ[k]
-    ok(OC.keys() == [], "키가 없으면 빈 목록")
-    os.environ["GEMINI_API_KEY"] = "a"
-    os.environ["GEMINI_API_KEY_FALLBACK"] = "b"
-    os.environ["GEMINI_API_KEY_FALLBACK3"] = "a"          # 같은 키는 한 번만
-    os.environ["GEMINI_API_KEY_FALLBACK2"] = "c"
-    ok([v for _, v in OC.keys()] == ["a", "b", "c"],
-       f"예비 키까지 모으고 겹치는 것은 한 번만 (얻은 값 {[n for n, _ in OC.keys()]})")
-    # **목록만 같으면 되는 줄 알았는데 읽는 자리가 달랐다.** llm_pool 은 키가 환경변수에
-    # 없으면 저장소 루트 .env 를 읽는다 -- systemd 는 EnvironmentFile 로 .env 를 받지만
-    # SSH 셸은 그렇지 않다. 사본은 그 일을 안 해서, 예비 키가 .env 에 멀쩡히 있는데도
-    # 첫 키가 쿼터에 막히자 거기서 멈췄다.
-    sys.path.insert(0, str(ROOT / "orchestrator"))
-    import llm_pool                                                   # noqa: E402
-    ok(OC.keys() == llm_pool.api_keys(),
-       "ocr 와 llm_pool 이 **같은 한 벌**을 쓴다 -- 사본이면 .env 읽기가 갈린다")
-    ok("_load_dotenv_once()" in
-       (ROOT / "orchestrator" / "llm_pool.py").read_text(encoding="utf-8")
-       .split("def api_keys()")[1].split("def build_pool")[0],
-       "그 한 벌이 .env 를 읽는다")
-finally:
-    os.environ.clear()
-    os.environ.update(_전)
+print("[한 벌] **novel 이 쓰는 후보 풀을 그대로 쓴다**")
+# 처음엔 여기에 키·모델을 도는 반복문을 따로 짰다. **그게 두 벌이었다.** llm_pool 은
+# (키·모델)별 잔량 추적, RPM 쿨다운, 500/503 을 거듭 내는 후보 격리, 실측 지연 기반
+# 순위, 바퀴 사이 대기를 이미 갖고 있다 -- 소설 파이프라인이 회차마다 100번씩 두드리며
+# 다듬은 층이다. 내 반복문은 그것을 전부 버리고 `for 모델: for 키:` 로 되돌린 것이었다.
+_src = (ROOT / "law" / "ocr.py").read_text(encoding="utf-8")
+ok("llm_pool.call(" in _src, "부르는 것은 llm_pool.call 이다")
+for 흔적 in ("for model in models", "GEMINI_API_KEY_FALLBACK", "time.sleep"):
+    ok(흔적 not in _src,
+       f"제 반복문의 흔적 {흔적!r} 이 없다 -- 있으면 두 벌로 갈라진다")
+ok("gemma" in _src, "gemma 는 뺀다 -- 그림을 못 본다")
+
+# **그림은 줄 때만 넘긴다.** 안 그러면 `invoke(prompt)` 만 아는 가짜 LLM 이 터진다.
+_pool = (ROOT / "orchestrator" / "llm_pool.py").read_text(encoding="utf-8")
+ok("l.invoke(prompt, images=images) if images" in _pool,
+   "풀이 그림을 줄 때만 넘긴다 -- 기존 부르는 쪽과 가짜 LLM 이 그대로 돈다")
+
+
+class _가짜:
+    def invoke(self, prompt):            # 그림을 모르는 옛 꼴
+        class R:
+            content = "됐다"
+        return R()
+
+
+sys.path.insert(0, str(ROOT / "orchestrator"))
+import llm_pool                                                       # noqa: E402
+ok(llm_pool.call([("가짜:모델", _가짜())], "물음", verbose=False)[0] == "됐다",
+   "그림 없이 부르면 옛 꼴 LLM 도 그대로 돈다")
+
+print()
+print("[무엇에 막혔나] **가려서 보고해야 다음에 무엇을 할지 안다**")
+for _글, _뜻 in [("503 UNAVAILABLE. The model is overloaded", "과부하"),
+               ("504 DEADLINE_EXCEEDED", "과부하"),
+               ("429 RESOURCE_EXHAUSTED", "쿼터에 막혔다"),
+               ("404 NOT_FOUND models/없는모델", "그런 모델이 없다")]:
+    ok(OC._why(Exception(_글)) == _뜻, f"{_글[:26]!r} -> {_뜻}")
 
 print()
 print("[이어하기] **쿼터에 막혀 멈춰도 다음 날 이어서 한다**")
