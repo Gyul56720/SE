@@ -188,7 +188,7 @@ def main(argv=None) -> int:
                     help="이미 옮긴 쪽도 다시")
     ap.add_argument("--견줌", dest="cmp", nargs=2, default=None,
                     help="두 읽기를 견줘 갈리는 줄만 찍는다")
-    ap.add_argument("--model", default="gemini-flash-latest,gemini-2.5-flash")
+    ap.add_argument("--model", default="gemini-3.6-flash")
     ap.add_argument("--scale", type=int, default=2)
     a = ap.parse_args(argv)
 
