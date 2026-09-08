@@ -675,6 +675,17 @@ def brief(book: dict) -> str:
     # **연출과 대사 -- 애니 · 라노벨의 꼴.** 사용자: "상황이 머릿속에 안 떠오른다."
     seed = str(book.get("seed_id") or book.get("first") or "")
     nn = len(book.get("chunks") or [])
+    # **첫 회차의 규율은 쓰는 쪽에도 가야 한다.** 지금까지 이것은 card_prompt(디렉터)
+    # 에만 실렸다 -- 산문을 쓰는 호출은 열넷 가운데 한 줄도 못 봤다(실측 2026-09-09:
+    # 첫 덩어리 brief 1,247자 안에 첫회차 항목 0개). 첫 쪽에서 접히면 뒤 회차는 없는
+    # 것과 같은데, 정작 첫 쪽을 쓰는 자리에 그 말이 안 갔다.
+    # 통째로 싣지 않는다 -- 열넷 가운데 **문장에 관한 다섯**만 가고, 그중 셋은 첫
+    # 덩어리에서만 간다("한꺼번에 시키면 안 지켜진다" -- dyn.py).
+    if ep_no(book) == 0:
+        first = SP.pick("첫회차", SP.WRITE_1ST).replace("    ", "      ") if nn == 0 else ""
+        rows.append(("  · **여기가 첫 쪽이다.** 여기서 접히면 뒤 회차는 아무도 안 읽는다:\n"
+                     + first + "\n") if first else "  · 아직 첫 회차다:\n")
+        rows[-1] += SP.pick("첫회차", SP.WRITE_EP).replace("    ", "      ")
     rows.append("  · 연출:\n" + SP.render("연출", seed, nn, 2).replace("    ", "      "))
     # **개그는 한 덩어리 걸러 하나.** 사용자: "중간 중간 개그 요소들도 필수야. 분위기
     # 전환에 필요해." 매 덩어리에 웃기라고 하면 코미디가 되지 전환이 아니다. 대사 자리를

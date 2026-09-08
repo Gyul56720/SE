@@ -23,6 +23,8 @@
 #   drift.sh world                  세계가 얼마나 자랐는지 (인물·장소·사물·사실·사건)
 #   drift.sh open                   아직 안 닫힌 것들 -- 이 이야기가 갚지 않은 빚
 #   drift.sh card                   지금 회차의 각본 -- 질문 · 비트 · 쾌감 · 전투 · 갈고리
+#   drift.sh 첫장 [파일...]         **첫 회차를 잰다** -- 실제 1화를 파일로 주면
+#                                   우리 첫 회차와 나란히 놓고 견준다
 #   drift.sh codex                  설정집 -- 각본이 세운 직함 · 등급 · 기술 · 법칙
 #
 # 환경변수로 바꿀 수 있는 것:
@@ -183,6 +185,28 @@ INNER
 
   # 회차 각본과 설정집. 원고를 읽지 않고도 "이번 회차에 쾌감이 있나 · 싸움이 있나 ·
   # 무엇을 세웠나" 를 본다. 재미의 재료가 실렸는지를 여기서 먼저 확인한다.
+  첫장|first)
+    shift || true
+    # **실제 1화를 여기 넣는다.** 사이트에서 못 긁어 오는 것은 사람이 파일로 준다.
+    # 인자가 없으면 우리 원고의 첫 회차를 뽑아서 잰다 -- 견줄 상대가 늘 한쪽은 있다.
+    if [ "$#" -gt 0 ]; then
+      PYTHONPATH="$SE" python3 -m novel.first "$@"
+    else
+      [ -f "$BOOK" ] || die "원고가 없다: $BOOK   (실제 1화 파일을 주려면: $0 첫장 <파일>)"
+      OUT="$(mktemp -t drift-1hwa-XXXXXX.txt)"
+      PYTHONPATH="$SE" python3 - "$BOOK" "$OUT" <<'PYFIRST'
+import json, sys
+from novel import beat as BT
+book = json.load(open(sys.argv[1], encoding="utf-8"))
+text = "".join(book.get("chunks") or [])[:BT.EP]
+open(sys.argv[2], "w", encoding="utf-8").write(text)
+print(f"우리 첫 회차 {len(text):,}자를 뽑았다", file=sys.stderr)
+PYFIRST
+      PYTHONPATH="$SE" python3 -m novel.first "$OUT"
+      rm -f "$OUT"
+    fi
+    ;;
+
   card|codex)
     [ -f "$BOOK" ] || die "원고가 없다: $BOOK"
     python3 - "$SE" "$BOOK" "$1" <<'PY'

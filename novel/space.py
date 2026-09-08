@@ -583,6 +583,17 @@ HEAD = {"부상": 2,          # 부위를 댄다 · 기전을 댄다 -- 리얼�
         "수위": 2,          # 어른만 · 원하는지가 보인다 -- 조건이라 늘 실린다
         "액션": 1}         # 한 문장에 동작 하나 -- 싸우는 자리에 늘 실린다
 
+# **첫 회차 규율 가운데 산문 쪽의 것.** 나머지는 각본(카드)에서만 쓴다.
+#
+# 왜 가르나: `첫회차` 열넷이 지금까지 **디렉터의 카드에만** 실렸다(beat.card_prompt).
+# 카드는 JSON 을 낸다 -- 무슨 일이 벌어지는가는 거기서 갈리지만 "첫 문장에서 이미
+# 굴러가고 있다" 나 "설명하지 마라" 는 **문장을 쓰는 쪽**에 가야 하는 말이다.
+# 실측 2026-09-09: 첫 덩어리의 beat.brief 1,247자 안에 첫회차 항목이 **하나도
+# 없었다.** 페르소나가 axes 경로에서 무동작이던 것과 같은 꼴이다 -- 적어 두고 안
+# 부친 규칙. 이름으로 고르므로 규칙의 출처는 여전히 OPENING 하나다.
+WRITE_1ST = ("이미 벌어지고 있다", "설명하지 않는다", "능력을 한 번 써 보인다")
+WRITE_EP = ("가볍게 연다", "이름은 조금만")
+
 
 def draw(cat: str, seed: str, n: int, k: int, skip: int = 0) -> list:
     """이번 회차(또는 덩어리)에 보여 줄 본보기 k개. 씨앗과 번호로 정해진다 -- 같은 원고는 같다.
@@ -610,6 +621,13 @@ def rules(cat: str, k: int = 0) -> str:
     """빌드업처럼 **규칙으로 실어야 하는** 칸. k 를 주면 앞 k 개만(핵심)."""
     items = CATS[cat][:k] if k else CATS[cat]
     return "\n".join(f"    {name}: {rule}" for name, rule, _ in items)
+
+
+def pick(cat: str, keep) -> str:
+    """이름으로 골라 싣는다. 한 칸을 여러 자리가 나눠 쓸 때 출처를 하나로 두려고."""
+    want = tuple(keep)
+    return "\n".join(f"    {name}: {rule}" for name, rule, _ in CATS[cat]
+                      if name in want)
 
 
 def names(cat: str) -> list:

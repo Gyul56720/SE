@@ -371,8 +371,43 @@ ok("가볍게 연다" not in _p3 and "[여는 꼴" not in _p3,
    "둘째 회차부터는 한 줄도 안 나간다  ← 계속 시키면 매 회차가 도입부가 된다")
 ok(len(_p3) < len(_p1), f"그래서 뒤 회차가 더 짧다 ({len(_p3):,} < {len(_p1):,}자)")
 
+# ---------------------------------------------------------------- 첫 회차가 쓰는 쪽에도 가는가
+# **적어 두고 안 부친 규칙.** 첫회차 열넷이 card_prompt(디렉터)에만 실려서, 정작 첫
+# 쪽을 쓰는 호출은 한 줄도 못 봤다(실측 2026-09-09: 첫 덩어리 brief 1,247자 안에 0개).
+# 페르소나가 axes 경로에서 무동작이던 것과 같은 꼴이라 여기서 붙들어 둔다.
+print("\n[첫 쪽 -- 규율이 쓰는 쪽에도 가는가]")
+_names1 = SP.names("첫회차")
+ok(all(n in _names1 for n in SP.WRITE_1ST + SP.WRITE_EP),
+   "산문 쪽 규칙은 전부 첫회차 안의 것  ← 출처를 둘로 두지 않는다")
+ok(not (set(SP.WRITE_1ST) & set(SP.WRITE_EP)), "첫 쪽 것과 첫 회차 것이 안 겹친다")
+ok(len(SP.WRITE_1ST) + len(SP.WRITE_EP) < len(_names1),
+   f"열넷을 다 보내지 않는다 ({len(SP.WRITE_1ST) + len(SP.WRITE_EP)}/{len(_names1)})"
+   "  ← 한꺼번에 시키면 안 지켜진다")
+_pk = SP.pick("첫회차", SP.WRITE_1ST)
+ok(len(_pk.splitlines()) == len(SP.WRITE_1ST), "pick 이 고른 만큼만 낸다")
+ok(all(n in _pk for n in SP.WRITE_1ST) and "짧게 끊는다" not in _pk, "pick 이 이름으로 고른다")
+
+
+def _brief(nchunks, ep):
+    b = book(100)
+    b["chunks"] = ["가" * 3200] * nchunks
+    b["card"] = dict(BASE, ep=ep, at=0)
+    return BT.brief(b)
+
+
+_f0, _f1, _f2 = _brief(0, 0), _brief(1, 0), _brief(4, 1)
+ok(all(n in _f0 for n in SP.WRITE_1ST), "첫 덩어리에 첫 쪽 규칙이 실린다")
+ok(all(n in _f0 for n in SP.WRITE_EP), "첫 덩어리에 첫 회차 규칙도 실린다")
+ok(not any(n in _f1 for n in SP.WRITE_1ST), "둘째 덩어리에는 첫 쪽 규칙이 안 간다")
+ok(all(n in _f1 for n in SP.WRITE_EP), "그래도 첫 회차인 동안은 회차 규칙이 남는다")
+ok("첫 쪽이다" not in _f2 and "아직 첫 회차다" not in _f2,
+   "둘째 회차부터는 블록이 통째로 빠진다")
+ok(len(_f0) - len(_f2) < 600,
+   f"첫 덩어리가 그만큼만 길어진다 (+{len(_f0) - len(_f2)}자)  ← 프롬프트는 예산이다")
+
+
 print()
 if fails:
     print(f"novel_space: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)
-print("novel_space: 스물네 칸 · 각본 · 집필 · 도파민 · 액션 · 전환 · 수위 · 부상 · 개그 · 첫 회차 -- 통과")
+print("novel_space: 스물네 칸 · 각본 · 집필 · 도파민 · 액션 · 전환 · 수위 · 부상 · 개그 · 첫 회차 · 첫 쪽 -- 통과")
