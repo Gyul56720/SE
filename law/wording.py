@@ -358,6 +358,40 @@ def mood_share(sent: str, article: str, mine: str) -> bool:
     return False
 
 
+def mood_verdict(sent: str, article: str, mine: str) -> str:
+    """서법은 **동사에 붙는다.** 그래서 조(條) 단위 집합 대조로는 판정할 수 없다.
+
+    실측(형사소송법 제70조): ① 구속할 수 **있다**(재량) ② 고려**하여야 한다**(기속)
+    ③ 구속할 수 **없다**(금지) -- 한 조 안에 서법 셋이 다 있다. 그러면 "문서가 쓴
+    서법이 조문에도 있는가" 는 언제나 참이 되고, 문서가 무엇을 쓰든 통과한다.
+    돌연변이 12개가 전부 이 자리에서 샜다: `고려하여야 한다` 를 `고려할 수 있다` 로
+    바꿔도 관문이 눈을 감았다.
+
+    그래서 W001 만은 집합이 아니라 **동사별로** 본다:
+
+        조문이 그 동사를 같은 서법으로 다룬다  -> 맞음
+        조문이 그 동사를 다른 서법으로 다룬다  -> 어긋남
+        조문이 그 동사를 아예 안 다룬다        -> 견줄것없음
+
+    마지막 갈래가 중요하다. 다른 동사의 서법을 끌어다 이 동사를 판정하면, 항이 여럿인
+    조문에서 멀쩡한 문장이 줄줄이 기각된다 -- 그게 이 완화 규칙이 원래 막으려던 것이다.
+    막을 것은 그대로 막되, 자리를 동사 단위로 옮긴다.
+    """
+    dv, tv = mood_verbs(sent), mood_verbs(article)
+    본것 = False
+    for v, moods in dv.items():
+        if mine not in moods:
+            continue
+        for tw in _stems(v):
+            ref = tv.get(tw)
+            if not ref:
+                continue
+            본것 = True
+            if mine not in ref:
+                return "어긋남"
+    return "맞음" if 본것 else "견줄것없음"
+
+
 _CONJ_PAIR = re.compile(r"([가-힣]{2,12})\s*(및|또는|이나|와|과)\s*([가-힣]{2,12})")
 _CONJ_KIND = {"및": "결합", "와": "결합", "과": "결합", "또는": "선택", "이나": "선택"}
 
@@ -522,11 +556,17 @@ def check(doc, corpus) -> list:
                 # 법효과어 어긋남으로 잡혔다. 조문의 값('추정')을 문서가 이미 맞게 썼고
                 # '적용' 은 "규정을 적용하여" 라는 보통 동사였다. 문서가 그 범주에서
                 # 조문과 만나는 값을 하나도 안 썼을 때만 바꿔 쓴 것으로 본다.
-                if vals & ref:
-                    continue
-                gone = vals - ref
                 if rule == "W001":
-                    gone = {v for v in gone if mood_share(sent, joined, v)}
+                    # **서법만은 집합 지름길을 안 탄다.** 항이 여럿인 조문은 한 조
+                    # 안에 기속·재량·금지가 다 있어, `vals & ref` 가 늘 참이 되고
+                    # 관문이 눈을 감는다(실측: 돌연변이 12개가 여기서 샜다).
+                    gone = {v for v in vals
+                            if mood_verdict(sent, joined, v) == "어긋남"}
+                else:
+                    # **하나라도 맞게 썼으면 나머지는 일상 용법이다.**
+                    if vals & ref:
+                        continue
+                    gone = vals - ref
                 if gone:
                     axis = AXES[rule][0]
                     # **접속은 기각하지 않는다.** 인용을 잇는 '및' 을 지워도, 문장 단위
@@ -667,14 +707,18 @@ def trace(doc, corpus) -> list:
                             continue       # 아래에서 짝으로 따로 본다
                         if not ref:
                             row["견줄것없음"].append(key)
+                        elif rule == "W001":
+                            # **보고와 판정이 같은 것을 보아야 한다.** check() 가
+                            # 동사 단위로 가르므로 여기도 같은 함수를 쓴다.
+                            판 = mood_verdict(sent, joined, v)
+                            row[판].append(key) if 판 != "어긋남" else None
+                            if 판 == "어긋남":
+                                row["어긋남"].append(key)
+                                row["조문값"][axis] = sorted(ref)
                         elif v in ref:
                             row["맞음"].append(key)
                         elif hit:
                             row["견줄것없음"].append(key)   # 다른 값을 맞게 썼다
-                        elif rule == "W001" and not mood_share(sent, joined, v):
-                            # 조문이 그 동사를 안 다룬다 -- 다른 동사의 서법으로
-                            # 이 동사를 판정할 수는 없다.
-                            row["견줄것없음"].append(key)
                         else:
                             row["어긋남"].append(key)
                             # **조문이 대신 무엇이라 썼는지 같이 들고 나온다.**
