@@ -185,8 +185,31 @@ class Citation:
 
     def label(self) -> str:
         head = f"{self.statute} " if self.statute else ""
-        return f"{head}제{self.article.replace('의', '조의')}조" \
-            if "의" in self.article else f"{head}제{self.article}조"
+        return head + 조이름(self.article)
+
+
+# **끼워 넣은 조문.** 제449조의2 는 제449조와 제450조 사이에 나중에 들어온 것이다.
+# 원장 차례로만 세면 제450조의 '전조' 가 제449조의2 를 가리키게 되는데, 그 글은
+# 끼워 넣기 전에 쓰였으므로 실은 제449조를 부른 것이다.
+_끼움 = re.compile(r"^(\d+)의\d+$")
+
+
+def 조이름(no: str) -> str:
+    """'52' -> '제52조' · '52의2' -> '제52조의2'.
+
+    **꼬리를 붙이는 자리가 다르다.** 제52조의2 는 '조' 가 가운데에 있어서,
+    번호 뒤에 '조' 를 붙이는 한 가지 규칙으로는 '제52의2조' 나 '제52조의2조' 가 된다.
+    """
+    if "의" in no:
+        n, _, m = no.partition("의")
+        return f"제{n}조의{m}"
+    return f"제{no}조"
+
+
+def 밑동(no: str) -> str:
+    """끼워 넣은 조문의 본체 번호. '449의2' -> '449' · '450' -> '450'."""
+    m = _끼움.match(no or "")
+    return m.group(1) if m else no
 
 
 # 가중·특별 구성요건이 본체를 부르는 꼴. "제355조의 죄를 범한 자는" 처럼
@@ -332,9 +355,8 @@ class Corpus:
                 wants += [c for c in find_citations(sent)]
             wants += [c for c in find_citations(sent) if _OF_THE_CRIME.search(sent)]
             if "전조" in sent:
-                prev = self._prev(st, article)
-                if prev:
-                    wants.append(Citation(f"전조(제{prev}조)", st, prev, None, None))
+                for prev in self._prevs(st, article):
+                    wants.append(Citation(f"전조({조이름(prev)})", st, prev, None, None))
             for c in wants:
                 a, s2 = c.article, normalize_statute(c.statute) or st
                 if a in seen or len(out) >= limit:
@@ -344,25 +366,51 @@ class Corpus:
                     seen.add(a)
                     out.append((c.raw if c.raw.startswith("전조") else c.label(), got))
         # **전조는 양방향이다** -- 뒷 조문이 나를 '전조' 라 부르면 그 조문도 한 덩이다.
-        nxt = self._next(st, article)
-        if nxt and nxt not in seen and len(out) < limit:
+        for nxt in self._nexts(st, article):
+            if nxt in seen or len(out) >= limit:
+                continue
             뒤 = self.text(st, nxt) or ""
             if "전조" in 뒤:
                 seen.add(nxt)
-                out.append((f"뒷조(제{nxt}조)가 전조라 부름", 뒤))
+                out.append((f"뒷조({조이름(nxt)})가 전조라 부름", 뒤))
         return out
 
-    def _prev(self, statute: str | None, article: str):
-        """원장에 적힌 차례에서 바로 앞 조문. 제N조의2 가 있으므로 N-1 이 아니다."""
-        arts = list(self.articles.get(normalize_statute(statute), {}))
-        i = arts.index(article) if article in arts else -1
-        return arts[i - 1] if i > 0 else None
+    def _prevs(self, statute: str | None, article: str) -> list:
+        """'전조' 가 가리킬 수 있는 앞 조문들. 제N조의2 가 있으므로 N-1 이 아니다.
 
-    def _next(self, statute: str | None, article: str):
-        """원장 차례에서 바로 뒤 조문. `_prev` 의 짝 -- 전조는 양방향이라서 필요하다."""
+        **하나가 아니라 목록이다.** 바로 앞이 끼워 넣은 조문(제N조의M)이면 그 글이
+        끼워 넣기 전에 쓰였을 수 있으므로 본체 제N조도 후보다. 실측(상법):
+        제450조의 '전조제1항' 은 사이에 낀 제449조의2 가 아니라 제449조를 부른다.
+        글만 봐서는 어느 쪽인지 못 가르므로 **둘 다 준다** -- 과잉 기각하는 심판은
+        맞는 답도 버린다.
+        """
         arts = list(self.articles.get(normalize_statute(statute), {}))
         i = arts.index(article) if article in arts else -1
-        return arts[i + 1] if 0 <= i < len(arts) - 1 else None
+        if i <= 0:
+            return []
+        out = [arts[i - 1]]
+        b = 밑동(arts[i - 1])
+        if b != arts[i - 1] and b in arts and b not in out:
+            out.append(b)
+        return out
+
+    def _nexts(self, statute: str | None, article: str) -> list:
+        """나를 '전조' 라 부를 수 있는 뒷 조문들. `_prevs` 의 짝.
+
+        **내 밑에 끼워 넣은 제N조의M 을 건너뛴다.** 제449조에서 한 칸만 가면
+        제449조의2 에서 멈추고, 정작 "전조제1항" 이라 쓴 제450조에 영영 못 닿는다.
+        건너뛰되 **닫아 둔다** -- 끼움을 지나 처음 만나는 조문 하나에서 멈춘다.
+        """
+        arts = list(self.articles.get(normalize_statute(statute), {}))
+        i = arts.index(article) if article in arts else -1
+        if i < 0:
+            return []
+        out = []
+        for a in arts[i + 1:]:
+            out.append(a)
+            if 밑동(a) != article:      # 내 밑에 끼워 넣은 것이 아니면 여기까지
+                break
+        return out
 
     def quantities_of(self, statute: str | None, article: str) -> set:
         body = self.text(statute, article)
