@@ -54,6 +54,8 @@ from law import corpus as CP                                          # noqa: E4
 SEARCH = "https://www.law.go.kr/DRF/lawSearch.do"
 SERVICE = "https://www.law.go.kr/DRF/lawService.do"
 
+ROOT = Path(__file__).resolve().parent.parent
+
 TIMEOUT = int(os.environ.get("LAW_API_TIMEOUT", "30"))
 TRIES = int(os.environ.get("LAW_API_TRIES", "4"))
 
@@ -101,6 +103,28 @@ KIND_TAG = "조문여부"
 
 _HEAD = re.compile(r"^\s*제\s*\d+\s*조", re.M)
 _WS = re.compile(r"[ \t]+")
+
+
+def oc_from_env() -> str:
+    """인증키. **`.env` 도 여기서 읽는다.**
+
+    실측(같은 병을 두 번 앓았다): `law/ocr.py` 가 이름 목록만 `llm_pool` 과 맞춰 놓고
+    `.env` 를 안 읽어서, 키가 `.env` 에 멀쩡히 있는데 "키가 없다" 고 답했다.
+    이 파일도 같았다 -- docstring 은 ".env 의 LAW_API_OC 에 넣어라" 라고 안내하면서
+    정작 `os.environ` 만 봤다. systemd 는 EnvironmentFile 로 받지만 SSH 셸은 안 받는다.
+
+    읽는 자리를 새로 만들지 않고 `llm_pool._load_dotenv_once()` 를 부른다.
+    **두 벌은 언젠가 갈라진다** -- 그 한 벌이 이미 있다.
+    """
+    if os.environ.get("LAW_API_OC"):
+        return os.environ["LAW_API_OC"]
+    try:
+        sys.path.insert(0, str(ROOT / "orchestrator"))
+        import llm_pool
+        llm_pool._load_dotenv_once()
+    except Exception:                            # noqa: BLE001  키 못 읽는 것이 죽을 일은 아니다
+        pass
+    return os.environ.get("LAW_API_OC", "")
 
 
 def mask(oc: str) -> str:
@@ -468,14 +492,14 @@ def main(argv=None):
     ap.add_argument("--쪽", dest="page", type=int, default=1, help="--전부 시작 쪽")
     ap.add_argument("--쪽수", dest="pages", type=int, default=0,
                     help="--전부 에서 이번에 돌 쪽 수 (0 이면 끝까지)")
-    ap.add_argument("--oc", default=os.environ.get("LAW_API_OC", ""),
-                    help="인증키. 없으면 환경변수 LAW_API_OC")
+    ap.add_argument("--oc", default="", help="인증키. 없으면 .env 의 LAW_API_OC")
     ap.add_argument("--corpus", default=str(CP.CORPUS_DIR))
     ap.add_argument("--cases", default=str(CP.CASES_DIR), help="판례 원장 자리")
     ap.add_argument("--mst", default="", help="일련번호를 직접 지정(법령 하나일 때)")
     ap.add_argument("--list", action="store_true", help="검색 결과만 본다")
     ap.add_argument("--dry", action="store_true", help="받되 파일은 안 쓴다")
     a = ap.parse_args(argv)
+    a.oc = a.oc or oc_from_env()
 
     if not a.oc:
         print("인증키가 없다. open.law.go.kr 에서 OPEN API 를 신청하고 발급받은 "

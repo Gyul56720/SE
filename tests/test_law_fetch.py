@@ -342,6 +342,33 @@ ok(_본문호출[0] == 3,
 ok(CP.load_case_scope(_반).get("전부") is True, "이어서 끝까지 가면 그때 범위를 적는다")
 
 print()
+print("[인증키] **`.env` 에 넣으라 해 놓고 `.env` 를 안 읽으면 안내가 거짓말이 된다**")
+# 실측(같은 병을 두 번): law/ocr.py 가 이름 목록만 llm_pool 과 맞추고 .env 를 안 읽어
+# "키가 없다" 고 답했다. 이 파일도 같았다 -- docstring 은 .env 를 가리키는데 코드는
+# os.environ 만 봤다. systemd 는 EnvironmentFile 로 받지만 SSH 셸은 안 받는다.
+import os                                                             # noqa: E402
+
+_옛OC = os.environ.pop("LAW_API_OC", None)
+_ROOT = Path(__file__).resolve().parent.parent
+_env = _ROOT / ".env"
+_있던env = _env.read_text(encoding="utf-8") if _env.is_file() else None
+try:
+    _env.write_text("LAW_API_OC=검사용키123\n", encoding="utf-8")
+    ok(F.oc_from_env() == "검사용키123",
+       f"`.env` 의 LAW_API_OC 를 읽는다 (얻은 값 {F.mask(F.oc_from_env())})")
+    os.environ["LAW_API_OC"] = "환경변수가우선"
+    ok(F.oc_from_env() == "환경변수가우선",
+       "이미 환경에 있으면 그것이 우선이다 -- systemd 로 들어온 값을 .env 가 덮지 않는다")
+finally:
+    os.environ.pop("LAW_API_OC", None)
+    if _있던env is None:
+        _env.unlink(missing_ok=True)
+    else:
+        _env.write_text(_있던env, encoding="utf-8")
+    if _옛OC is not None:
+        os.environ["LAW_API_OC"] = _옛OC
+
+print()
 if fails:
     print(f"받기: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)
