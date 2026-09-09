@@ -93,8 +93,14 @@ def main(argv=None) -> int:
 
     if a.채우기:
         from coin import news as NW
-        나라칸 = ["--나라", a.나라] if a.나라 else []
-        print(f"1) 뉴스 -- {a.나라 or '여러 나라'}")
+        import os as _os
+        나라 = a.나라 or _os.environ.get("COIN_COUNTRY", "").strip() or ""
+        나라칸 = ["--나라", 나라] if 나라 else []
+        if 나라 and "KR" not in [x.strip().upper() for x in 나라.split(",")]:
+            print(f"  ** 나라가 {나라} 로 걸려 있다 -- 한국·중국·일본·유럽 출처는 안 본다."
+                  "\n     여러 나라를 보려면 COIN_COUNTRY 를 비우거나 --나라 US,KR,CN,JP,EU **",
+                  file=sys.stderr)
+        print(f"1) 뉴스 -- {나라 or '여러 나라'}")
         NW.main(["--과거", "--부터", "2017-01-01"] + 나라칸)
         print("2) 뭉치기")
         NW.main(["--뭉치기"])
