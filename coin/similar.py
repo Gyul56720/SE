@@ -161,15 +161,76 @@ def 닮음(v1: dict, v2: dict, 무게=(0.5, 0.3, 0.2)) -> dict:
     return {"뉴스": 뉴, "시장": 시, "흐름": 흐, "합": 합}
 
 
+def 미리세기(계열, 사건들: list, 흐름원장: dict, 창일: int, 시간대,
+            자산: str, 원봉: list = None) -> dict:
+    """**모든 날의 벡터를 한 번에 세운다.**
+
+    처음에는 후보 날마다 `벡터()` 를 다시 불렀다. 그 안에서 `regime.변동` 이 전체
+    역사를 다시 돌아 O(n^2 x 창) 이 됐고, **3311일에서 사용자가 Ctrl-C 로 끊었다.**
+    지금은 한 번 굴려서 O(n log n) 이다.
+    """
+    from coin import chart as CH
+    날들 = 계열.날들
+    종가 = [계열.종가[d] for d in 날들]
+    봉 = 원봉 or [[d, 계열.종가[d], 계열.종가[d], 계열.종가[d], 계열.종가[d], 0.0]
+                 for d in 날들]
+    차트 = CH.전체(봉)
+    추, 변, 낙 = CH.추세전체(종가), CH.변동전체(종가), CH.낙폭전체(종가)
+
+    # 뉴스: 날마다 한 번만 모으고 창은 굴린다
+    날별 = {}
+    for e in 사건들:
+        if 자산 and e.get("자산") != 자산:
+            continue
+        d = 날짜(e.get("최초") or "", 시간대)
+        if not d:
+            continue
+        칸 = 날별.setdefault(d, {})
+        for 나라 in (e.get("나라들") or ["XX"]):
+            k = f"{e.get('유형')}|{나라}"
+            칸[k] = 칸.get(k, 0) + 1
+
+    # 흐름: 날마다 앞선 백분위
+    계 = (흐름원장 or {}).get("계열") or {}
+    흐름날 = {}
+    for 이름, 값들 in 계.items():
+        정 = sorted(값들)
+        p들 = CH.앞선백분위([값들[d] for d in 정])
+        for d, p in zip(정, p들):
+            if p == p:
+                흐름날.setdefault(d, {})[이름] = p
+
+    from datetime import datetime, timedelta, timezone
+    out = {}
+    for i, d in enumerate(날들):
+        t = datetime.strptime(d, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        뉴 = {}
+        for k in range(창일):
+            for key, n in (날별.get((t - timedelta(days=k)).strftime("%Y-%m-%d")) or {}).items():
+                뉴[key] = 뉴.get(key, 0) + n
+        시 = dict(차트[i])
+        for 이름, p들 in (("추세", 추), ("변동", 변), ("낙폭", 낙)):
+            if p들[i] == p들[i]:
+                시[이름] = p들[i]
+        out[d] = {"날": d, "창일": 창일, "시간대": 시간대,
+                  "뉴스": 뉴, "시장": 시, "흐름": 흐름날.get(d, {})}
+    return out
+
+
 def 찾기(계열, 사건들: list, 흐름원장: dict, 오늘: str = "", 창일: int = 3,
-        시간대: int = 9, 자산: str = "", 몇: int = 5, 걸음: int = 1,
-        무게=(0.5, 0.3, 0.2), 떨어뜨림: int = 30) -> dict:
+        시간대=None, 자산: str = "", 몇: int = 5, 걸음: int = 1,
+        무게=(0.5, 0.3, 0.2), 떨어뜨림: int = 30, 원봉: list = None) -> dict:
     """지금과 닮은 과거 날들. **가까운 날은 뺀다**(`떨어뜨림`) -- 어제와 오늘이
     닮은 것은 당연하고, 그것을 답이라고 내놓으면 아무 말도 안 한 것이다."""
+    from coin import clock as CK
+    시간대 = CK.시간대(시간대)          # **쓴 값을 적는다.** None 을 적으면 못 밝힌다
     오늘 = 오늘 or (계열.날들[-1] if len(계열) else "")
     if not 오늘:
         return {"왜": "가격 원장이 비었다", "닮은날": []}
-    지금 = 벡터(계열, 사건들, 흐름원장, 오늘, 창일, 시간대, 자산)
+    모두 = 미리세기(계열, 사건들, 흐름원장, 창일, 시간대, 자산, 원봉)
+    지금 = 모두.get(오늘)
+    if 지금 is None:
+        return {"왜": f"{오늘} 이 가격 원장에 없다", "닮은날": []}
     from datetime import datetime, timezone
     기준 = datetime.strptime(오늘, "%Y-%m-%d").replace(tzinfo=timezone.utc)
     본 = []
@@ -179,7 +240,9 @@ def 찾기(계열, 사건들: list, 흐름원장: dict, 오늘: str = "", 창일
         t = datetime.strptime(d, "%Y-%m-%d").replace(tzinfo=timezone.utc)
         if (기준 - t).days < 떨어뜨림:
             continue
-        v = 벡터(계열, 사건들, 흐름원장, d, 창일, 시간대, 자산)
+        v = 모두[d]
+        if not v["시장"]:
+            continue
         s = 닮음(지금, v, 무게)
         if s["합"] != s["합"]:
             continue
@@ -203,7 +266,7 @@ def 적기(r: dict) -> str:
     if r.get("왜"):
         return f"  {r['왜']}"
     지 = r["지금"]
-    줄들 = [f"오늘 {r['오늘']} (창 {r['창일']}일 · 시간대 UTC{r['시간대']:+d} · "
+    줄들 = [f"오늘 {r['오늘']} (창 {r['창일']}일 · 시간대 UTC{r['시간대']:+g} · "
             f"무게 뉴스{r['무게'][0]}/시장{r['무게'][1]}/흐름{r['무게'][2]})",
             f"  지금 상황: 뉴스 {sum((지.get('뉴스') or {}).values())}건 "
             + " · ".join(f"{k} {v*100:.0f}%자리" for k, v in (지.get("시장") or {}).items()),

@@ -190,6 +190,30 @@ ok("example.com" not in _몸통, "**보내는 자리에 가짜 연락처가 없�
 ok('os.environ.get("SEC_CONTACT"' in _몸통, "부를 때 환경변수를 읽는다")
 ok("@" not in _몸통.replace("SEC_CONTACT", ""), "몸통에 박힌 메일이 없다")
 
+# ---------------------------------------------------------------- 직접 부르기
+# **`python3 coin/price.py` 로 부르면 sys.path[0] 이 coin/ 이지 현재 폴더가 아니다.**
+# 그래서 `from coin import ...` 이 ModuleNotFoundError 로 죽는다. 실측 2026-09-09:
+# VM 에서 가격 받기가 여기서 멈췄고, 화면에는 "못 받았다: ModuleNotFoundError" 만
+# 남아서 망 문제인지 코드 문제인지 안 갈렸다.
+#
+# 모듈 안에서 임포트하는 자리(`받기` 안의 `from coin import clock`)는 부르기 전에는
+# 안 터지므로, **다른 폴더에서 실제로 돌려 봐야** 잡힌다.
+import subprocess as _sp                                              # noqa: E402
+import tempfile as _tf3                                              # noqa: E402
+
+_돌릴것 = sorted(p.name for p in (ROOT / "coin").glob("*.py")
+                if "__main__" in p.read_text(encoding="utf-8"))
+ok(len(_돌릴것) >= 10, f"직접 부를 수 있는 모듈 {len(_돌릴것)}개를 본다")
+with _tf3.TemporaryDirectory() as _d3:
+    _못 = []
+    for _n in _돌릴것:
+        _r = _sp.run([sys.executable, str(ROOT / "coin" / _n), "--도움없는인자"],
+                     capture_output=True, text=True, cwd=_d3, timeout=60)
+        _글 = (_r.stdout + _r.stderr)
+        if "No module named 'coin'" in _글:
+            _못.append(_n)
+    ok(not _못, f"**어느 폴더에서 불러도 임포트가 산다**" + (f" -- 죽는 것: {_못}" if _못 else ""))
+
 print()
 print(f"실패 {len(fails)}개" if fails else "전부 통과")
 raise SystemExit(1 if fails else 0)

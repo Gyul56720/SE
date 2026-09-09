@@ -21,6 +21,10 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+_ROOT = Path(__file__).resolve().parent.parent
+# `python3 coin/tag.py` 로 직접 부를 때. sys.path[0] 은 coin/ 이지 현재 폴더가 아니다.
+sys.path.insert(0, str(_ROOT))
+
 CORPUS = Path(__file__).resolve().parent / "corpus"
 길 = CORPUS / "measured.json"
 

@@ -40,6 +40,10 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+_ROOT = Path(__file__).resolve().parent.parent
+# `python3 coin/tag.py` 로 직접 부를 때. sys.path[0] 은 coin/ 이지 현재 폴더가 아니다.
+sys.path.insert(0, str(_ROOT))
+
 # 유형 -> 말 -> 낱말들.
 # 무게(events 가 쓰는 것)가 아니라 **가름**만 여기서 한다.
 사전 = {

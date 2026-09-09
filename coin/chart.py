@@ -126,6 +126,99 @@ def 재기(봉: list, 눈금: str = "1d", 끝: int = None) -> dict:
     return out
 
 
+def 앞선백분위(값들: list) -> list:
+    """각 자리에서 **그 자리까지의 자료만으로** 잰 백분위. 미리보기가 안 든다.
+
+    한 자리마다 전체를 다시 세면 O(n^2) 이라 3311일에서 못 쓴다(실측: 사용자가
+    Ctrl-C 로 끊었다). 정렬된 목록에 넣어 가며 자리를 찾으면 한 번에 끝난다.
+    """
+    import bisect
+    쌓 = []
+    out = []
+    for v in 값들:
+        if v is None or v != v:
+            out.append(float("nan"))
+            continue
+        bisect.insort(쌓, v)
+        out.append(bisect.bisect_right(쌓, v) / len(쌓))
+    return out
+
+
+def 전체(봉: list, 눈금: str = "1d") -> list:
+    """**모든 자리의 백분위를 한 번에.** `재기` 를 자리마다 부르면 O(n^2) 이 된다.
+
+    돌려주는 것은 자리마다의 dict 목록이고, `similar.py` 가 그것을 그대로 쓴다.
+    """
+    if len(봉) < 80:
+        return [{} for _ in 봉]
+    종가 = [r[4] for r in 봉]
+    잰것 = {
+        "이격20": 이격들(종가, 20), "이격60": 이격들(종가, 60),
+        "RSI": RSI들(종가, 14), "기울기": 기울기들(종가, 20),
+        "몸통": 몸통들(봉),
+        "변동폭": [((r[2] - r[3]) / r[4]) if r[4] else None for r in 봉],
+        "거래량": [float(r[5]) for r in 봉],
+    }
+    쌓 = {이름: 앞선백분위(계열) for 이름, 계열 in 잰것.items()}
+    out = []
+    for i in range(len(봉)):
+        d = {}
+        for 이름, p들 in 쌓.items():
+            p = p들[i]
+            if p == p:
+                d[f"{이름}@{눈금}"] = p
+        out.append(d)
+    return out
+
+
+def 추세전체(종가: list, 창: int = 60) -> list:
+    """`regime.추세` 를 자리마다 -- 한 번에. 앞선 백분위."""
+    r = [None] * len(종가)
+    for i in range(창, len(종가)):
+        a = 종가[i - 창]
+        r[i] = (종가[i] / a - 1.0) if a else None
+    return 앞선백분위(r)
+
+
+def 변동전체(종가: list, 창: int = 30) -> list:
+    """실현변동성을 자리마다. 하루 수익률의 제곱합을 굴려서 O(n) 으로."""
+    import math
+    수 = [None] + [(종가[i] / 종가[i - 1] - 1.0) if 종가[i - 1] else None
+                   for i in range(1, len(종가))]
+    합, 제곱합, 센것 = 0.0, 0.0, 0
+    out = [None] * len(종가)
+    for i in range(len(종가)):
+        v = 수[i]
+        if v is not None:
+            합 += v
+            제곱합 += v * v
+            센것 += 1
+        if i >= 창 and 수[i - 창] is not None:
+            합 -= 수[i - 창]
+            제곱합 -= 수[i - 창] ** 2
+            센것 -= 1
+        if 센것 > 2:
+            평 = 합 / 센것
+            out[i] = math.sqrt(max(0.0, 제곱합 / 센것 - 평 * 평))
+    return 앞선백분위(out)
+
+
+def 낙폭전체(종가: list, 창: int = 365) -> list:
+    """고점 대비 낙폭을 자리마다. 굴리는 최대값으로 O(n)."""
+    from collections import deque
+    큰 = deque()
+    out = [None] * len(종가)
+    for i, c in enumerate(종가):
+        while 큰 and 종가[큰[-1]] <= c:
+            큰.pop()
+        큰.append(i)
+        if 큰[0] <= i - 창:
+            큰.popleft()
+        고 = 종가[큰[0]]
+        out[i] = (c / 고 - 1.0) if 고 else None
+    return 앞선백분위(out)
+
+
 def 날것(봉: list) -> dict:
     """사람이 읽을 원값. 백분위 옆에 같이 적어야 '8% 자리' 가 얼마인지 안다."""
     if len(봉) < 80:
