@@ -100,8 +100,18 @@ def main(argv=None) -> int:
         NW.main(["--뭉치기"])
         print("3) 가격")
         자산들 = sorted({e["자산"] for e in 사건불러오기()}) or ["BTC"]
+        받은것 = []
         for x in 자산들:
-            PR.main(["--받기", x])
+            if PR.main(["--받기", x]) == 0:
+                받은것.append(x)
+        if not 받은것:
+            # **여기서 멈춘다.** 가격이 없으면 뒤의 모든 걸음이 뜻이 없고,
+            # 그냥 가면 "가격 원장이 없다" 만 남아 왜인지 안 보인다(실측).
+            print("\n**가격을 한 자산도 못 받았다 -- 여기서 멈춘다.**\n"
+                  "  바이낸스가 그 기계에서 막혔을 수 있다(클라우드 IP 를 나라 단위로\n"
+                  "  막는다). 코인베이스 곁길도 안 열렸다는 뜻이다. 확인:\n"
+                  "    python3 coin/price.py --받기 BTC", file=sys.stderr)
+            return 3
         print("4) 돈 흐름 (포지션 · 온체인 · 심리)")
         for x in 자산들:
             FL.저장(FL.받기(x))

@@ -98,15 +98,55 @@ def _http(url: str, timeout: float = 20.0):
         return json.loads(r.read().decode("utf-8"))
 
 
+COINBASE = "https://api.exchange.coinbase.com/products/{p}/candles"
+
+
+def _코인베이스(자산: str, 부터: str, 까지: str, 부르기=_http) -> list:
+    """**곁길.** 바이낸스가 막히는 데가 많다(클라우드 IP 를 나라 단위로 막는다).
+
+    코인베이스는 한 번에 300봉까지라 잘라 가며 받는다. 꼴이 다르다:
+    [[초, 저, 고, 시, 종, 양], ...] 이고 **최신이 먼저** 온다.
+    """
+    t0 = datetime.strptime(부터, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    t1 = (datetime.strptime(까지, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+          if 까지 else datetime.now(timezone.utc))
+    본, a = {}, t0
+    while a < t1:
+        b = min(a + timedelta(days=290), t1)
+        url = (COINBASE.format(p=f"{자산.upper()}-USD")
+               + f"?granularity=86400&start={a.strftime('%Y-%m-%d')}"
+               f"&end={b.strftime('%Y-%m-%d')}")
+        try:
+            묶음 = 부르기(url)
+        except Exception:                                             # noqa: BLE001
+            묶음 = []
+        for k in (묶음 or []):
+            if not isinstance(k, list) or len(k) < 6:
+                continue
+            날 = datetime.fromtimestamp(k[0], timezone.utc).strftime("%Y-%m-%d")
+            본[날] = [날, float(k[3]), float(k[2]), float(k[1]), float(k[4]), float(k[5])]
+        a = b
+    return [본[d] for d in sorted(본)]
+
+
 def 받기(자산: str, 부터: str = "2017-08-17", 까지: str = "", 부르기=_http) -> dict:
-    """바이낸스 일봉을 1000개씩 이어 받는다. `부르기` 를 갈아 끼우면 검사에서 쓴다."""
+    """바이낸스 일봉. 막히면 **코인베이스로 되돌린다** -- 한 곳이 막혔다고 안 끝낸다.
+
+    실측 2026-09-09 (VM): `--채우기` 가 "가격 원장이 없다: BTC" 로 끝났다. 바이낸스가
+    그 기계에서 안 열린 것인데, 곁길이 없어서 **파이프라인 전체가 죽었다.**
+    """
     sym = 심볼찾기(자산)
     t0 = int(datetime.strptime(부터, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp() * 1000)
     끝 = int((datetime.strptime(까지, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp() * 1000)
              if 까지 else time.time() * 1000)
     봉 = []
     while t0 < 끝:
-        묶음 = 부르기(f"{BINANCE}?symbol={sym}&interval=1d&startTime={t0}&limit=1000")
+        try:
+            묶음 = 부르기(f"{BINANCE}?symbol={sym}&interval=1d&startTime={t0}&limit=1000")
+        except Exception as e:                                        # noqa: BLE001
+            print(f"  바이낸스가 안 열린다({type(e).__name__}) -- 코인베이스로 간다",
+                  file=sys.stderr)
+            묶음 = []
         if not 묶음:
             break
         for k in 묶음:
@@ -115,12 +155,17 @@ def 받기(자산: str, 부터: str = "2017-08-17", 까지: str = "", 부르기=
         t0 = int(묶음[-1][0]) + 86_400_000
         if len(묶음) < 1000:
             break
+    if not 봉:
+        봉 = _코인베이스(자산, 부터, 까지, 부르기)
+        출처 = "coinbase"
+    else:
+        출처 = "binance"
     봉.sort(key=lambda r: r[0])
     본 = {}
     for r in 봉:                       # 같은 날이 두 번 오면 뒤엣것
         본[r[0]] = r
     봉 = [본[k] for k in sorted(본)]
-    return {"자산": 자산.upper(), "출처": "binance", "심볼": sym,
+    return {"자산": 자산.upper(), "출처": 출처, "심볼": sym,
             "받은때": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "봉": 봉}
 
@@ -254,7 +299,12 @@ def main(argv=None) -> int:
             return 3
         p = 저장(원장)
         c = 계열(원장)
-        print(f"{a.받기}: 봉 {len(c)}개 · {c.구간()[0]} ~ {c.구간()[1]} -> {p}")
+        if not len(c):
+            print(f"{a.받기}: **한 봉도 못 받았다** -- 바이낸스도 코인베이스도 "
+                  "안 열린다. 망을 보라", file=sys.stderr)
+            return 3
+        print(f"{a.받기}: 봉 {len(c)}개 · {c.구간()[0]} ~ {c.구간()[1]} "
+              f"· 출처 {원장['출처']} -> {p}")
         return 0
 
     if a.보기:

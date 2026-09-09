@@ -128,15 +128,32 @@ def _http(url: str, timeout: float = 25.0) -> bytes:
 # 요구한다고 스스로 적어 두었다 -- 안 주면 거절한다.
 #
 # 그래서 (1) 같은 집이면 조금 쉬고 (2) 그 집이 요구하는 머리를 준다.
+#
+# ## 연락처를 코드에 안 박는다 -- 두 가지 까닭
+#
+# 1. **SEC 는 실제 연락처를 요구한다.** 처음에 `contact@example.com` 을 박아 뒀는데
+#    그것은 정책 위반이고 차단 사유다. 가짜 연락처를 주는 것은 안 주는 것보다 나쁘다 --
+#    막히면서 이유도 안 남는다.
+# 2. **저장소는 공개다.** 진짜 메일을 박으면 그대로 올라가 스팸 봇이 긁는다.
+#
+# 그래서 `.env` 의 `SEC_CONTACT` 에서 읽고, **없으면 그 머리를 아예 안 보낸다.**
+# 없는 채로 도는 것은 되지만 sec.gov 가 403 을 줄 수 있고, 탐침이 그 까닭을 적어 준다.
 _마지막 = {}
 _집틈 = float(os.environ.get("COIN_HOST_GAP", "1.2"))
-_집머리 = {
-    "sec.gov": {"User-Agent": "SE-coin research contact@example.com",
-                "Accept-Encoding": "gzip, deflate"},
-    "www.sec.gov": {"User-Agent": "SE-coin research contact@example.com",
-                    "Accept-Encoding": "gzip, deflate"},
-    "efts.sec.gov": {"User-Agent": "SE-coin research contact@example.com"},
-}
+def _집머리표() -> dict:
+    """그 집이 요구하는 머리. **연락처가 없으면 빈 표** -- 가짜를 보내지 않는다.
+
+    환경변수를 **부를 때** 읽는다. 임포트할 때 한 번 읽으면 `.env` 를 나중에 채운
+    사람이 왜 안 먹는지 못 밝힌다(검사가 그것을 잡았다).
+    """
+    연락처 = os.environ.get("SEC_CONTACT", "").strip()
+    if not 연락처:
+        return {}
+    ua = f"SE-coin research {연락처}"
+    h = {"User-Agent": ua, "Accept-Encoding": "gzip, deflate"}
+    return {"sec.gov": h, "www.sec.gov": h, "efts.sec.gov": h}
+
+
 
 
 def _쉬기(url: str) -> str:
@@ -169,7 +186,7 @@ def _캐기(url: str, timeout: float = 25.0, 곁문수: int = 6):
     대개 모바일 쪽이다. 이 한 걸음이 **나라를 늘린 값어치의 절반**이다.
     """
     집 = _쉬기(url)
-    머리 = _집머리.get(집)
+    머리 = _집머리표().get(집)      # 환경변수가 런타임에 바뀔 수 있다
     if 머리:                                   # 그 집이 요구하는 머리가 있으면 그것부터
         try:
             return _직접(url, 머리, timeout), url
@@ -656,7 +673,12 @@ def main(argv=None) -> int:
         쪽수 = len([s for s in SRC.목록 if not 골 or s.나라 in 골])
         print(f"출처 {쪽수}곳" + (f" ({','.join(골)} 만)" if 골 else " (전부)")
               + "을 **하나씩** 두드린다 -- 한꺼번에 쏘면 버스트로 보여 "
-              "멀쩡한 곳이 '못함' 으로 찍힌다.\n", flush=True)
+              "멀쩡한 곳이 '못함' 으로 찍힌다.", flush=True)
+        if not os.environ.get("SEC_CONTACT", "").strip():
+            print("  **SEC_CONTACT 가 없다** -- sec.gov · EDGAR 가 403 을 줄 수 있다. "
+                  "SEC 는 연락처가 든 User-Agent 를 요구한다(.env 에 SEC_CONTACT=메일).",
+                  flush=True)
+        print("", flush=True)
 
         def 찍기(i, n, x):
             print(f"  [{i:>3}/{n}] {'OK  ' if x['산것'] else '못함'} {x['이름']:<14} "
