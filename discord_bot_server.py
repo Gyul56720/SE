@@ -47,6 +47,13 @@ from bot_tools import (  # noqa: E402
 BOT_TOKEN = os.environ["DISCORD_BOT_TOKEN"]
 # 관리자 채널(화이트리스트 있음, DISCORD_ALLOWED_USER_IDS): run_shell 전권 + git sync.
 ADMIN_CHANNEL_ID = int(os.getenv("DISCORD_CHANNEL_ID", "1542081266315427912"))
+# 이 서버(길드)에서 온 것만 받는다. **비우면 안 본다** -- 예전처럼 채널 id 로만 가린다.
+#
+# 채널 id 는 디스코드 전체에서 유일하므로 이것 없이도 남의 서버 글이 섞이지는 않는다.
+# 그런데 공개 채널에는 **사용자 화이트리스트가 없다**(main_public.py). 그러면 남은
+# 경계가 '그 채널인가' 하나뿐이고, 봇이 실수로 다른 서버에 초대되거나 채널 id 를
+# 잘못 넣으면 그 하나가 통째로 없어진다. 길드까지 보면 경계가 둘이 된다.
+GUILD_ID = int(os.getenv("DISCORD_GUILD_ID", "0") or 0)
 ADMIN_ALLOWED_USER_IDS = {int(x) for x in os.getenv("DISCORD_ALLOWED_USER_IDS", "").split(",") if x.strip()}
 ADMIN_MODEL_NAME = os.getenv("DISCORD_ADMIN_MODEL", "gemini-3.5-flash-lite")
 # GEMINI_MODEL_POOL을 명시하면 그 모델들만 쓴다(수동 제한용). 비워두면 build_agent_pool이
@@ -354,8 +361,15 @@ def run_admin_agent(prompt: str, thread_id: str) -> str:
 async def on_ready():
     print(
         f"[SE-agent] 로그인됨: {client.user} "
-        f"(관리 채널 {ADMIN_CHANNEL_ID}, 공개 채널 {main_public.PUBLIC_CHANNEL_ID} 감시 중)"
+        f"(관리 채널 {ADMIN_CHANNEL_ID}, 공개 채널 {main_public.PUBLIC_CHANNEL_ID} 감시 중"
+        + (f", 길드 {GUILD_ID} 만" if GUILD_ID else ", 길드 안 가림") + ")"
     )
+    # **켜질 때 확인한다.** 길드 id 를 잘못 넣으면 봇이 조용히 아무 말도 안 듣는데,
+    # 그것은 '봇이 죽었다' 와 화면에서 똑같이 보인다. 여기서 한 번 말해 주면 갈린다.
+    if GUILD_ID and not client.get_guild(GUILD_ID):
+        print(f"[SE-agent] **경고: 길드 {GUILD_ID} 에 이 봇이 없다.** "
+              f"들어가 있는 길드: {[g.id for g in client.guilds]} -- "
+              "DISCORD_GUILD_ID 를 고치거나 비워라. 이대로면 아무 말도 안 듣는다")
 
 
 ATTACHMENTS_DIR = os.path.join(REPO_DIR, "inbox", "discord_attachments")
@@ -514,6 +528,10 @@ async def _handle_public_message(message: discord.Message) -> None:
 @client.event
 async def on_message(message: discord.Message):
     if message.author.bot:
+        return
+    # **길드가 정해져 있으면 그 길드만.** DM(guild=None)도 여기서 걸린다 -- 공개
+    # 채널에는 사용자 화이트리스트가 없으므로, 경계는 많을수록 낫다.
+    if GUILD_ID and getattr(message.guild, "id", None) != GUILD_ID:
         return
     if message.channel.id == ADMIN_CHANNEL_ID:
         await _handle_admin_message(message)
