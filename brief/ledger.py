@@ -262,6 +262,34 @@ def fetch(src, **params) -> tuple:
                   줄=v["good"], 버린것=v["버린것"]), ""
 
 
+def 합치기(조각: list) -> Ledger:
+    """`[(이름, 원장, 칸)]` 을 id 로 맞춰 한 원장으로. **모든 쪽에 있는 id 만 남긴다.**
+
+    바깥이음(outer join)을 하면 빈 칸이 생기고, 빈 칸은 결국 버려지거나 채워진다 --
+    둘 다 조용히 원장을 바꾼다. 안이음(inner join)이면 **줄이 몇 개 남았는지가
+    화면에 보이고**, 그것이 곧 표본 수라 추론의 문턱을 정한다.
+
+    시장이 서로 다른 시간대에 닫는 것은 여기서 못 고친다 -- 같은 날짜로 맞출 뿐이다.
+    그 한계는 보고서가 적는다.
+    """
+    if not 조각:
+        return Ledger()
+    공통 = set.intersection(*[{r["id"] for r in L.줄} for _, L, _ in 조각])
+    줄 = []
+    for rid in sorted(공통):
+        row = {"id": rid}
+        for 이름, L, col in 조각:
+            v = (L.찾기(rid) or {}).get(col)
+            if isinstance(v, (int, float)):
+                row[이름] = v
+        if len(row) > 1:
+            줄.append(row)
+    최신 = max((L.받은날 for _, L, _ in 조각 if L.받은날), default="")
+    return Ledger(출처=" + ".join(n for n, _, _ in 조각), 받은날=최신,
+                  질의="; ".join(L.질의[:40] for _, L, _ in 조각), 줄=줄,
+                  버린것=sum(len(L.줄) for _, L, _ in 조각) - len(줄) * len(조각))
+
+
 def save(led: Ledger, path: Path) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(asdict(led), ensure_ascii=False, indent=1),
