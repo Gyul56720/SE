@@ -13,8 +13,9 @@ Discord 가 만든 문자열이라 자격증명이 실리지 않는다. 응답 �
 (프록시가 낀 환경에서 헤더가 되비쳐 나올 수 있다).
 
 실행:
-    python3 novel/discord_check.py            # 진단만
-    python3 novel/discord_check.py --send     # 테스트 메시지까지 실제로 쏜다
+    python3 novel/discord_check.py                    # 진단만
+    python3 novel/discord_check.py --id 1547...864    # 이 id 가 채널인가 길드인가
+    python3 novel/discord_check.py --send             # 테스트 메시지까지 실제로 쏜다
 """
 from __future__ import annotations
 
@@ -24,6 +25,22 @@ import os
 import sys
 import urllib.error
 import urllib.request
+from pathlib import Path
+
+# **.env 를 읽는다.** 안 읽었더니 "DISCORD_BOT_TOKEN 없음" 이 찍혔는데, 토큰이 없는
+# 것이 아니라 **이 도구가 못 본 것**이었다(실측 2026-09-09). 진단기가 잘못 진단하면
+# 없느니만 못하다 -- 사용자는 그 말을 믿고 엉뚱한 데(웹훅 새로 만들기)로 간다.
+# `discord_bot_server.py` 는 처음부터 load_dotenv() 를 부르고 있었는데 여기만 빠졌다.
+# dotenv 가 없는 데서도 죽지 않게 감싼다.
+try:
+    from dotenv import load_dotenv
+except ImportError:                                                   # noqa: BLE001
+    def load_dotenv(*_a, **_k):
+        return False
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import channels                                                       # noqa: E402
 
 API = "https://discord.com/api/v10"
 
@@ -42,7 +59,8 @@ FIX = {
 def call(method: str, path: str, auth: str, body: dict = None):
     """(HTTP 코드, Discord code, Discord message) 를 돌려준다. 값은 담지 않는다."""
     data = json.dumps(body).encode() if body else None
-    headers = {"Authorization": f"Bot {auth}"}
+    # UA 를 꼭 붙인다 -- 없으면 Cloudflare 가 403 을 낸다(channels.UA 주석 참고).
+    headers = {"Authorization": f"Bot {auth}", "User-Agent": channels.UA}
     if data:
         headers["Content-Type"] = "application/json"
     req = urllib.request.Request(API + path, data=data, headers=headers, method=method)
@@ -63,26 +81,44 @@ def call(method: str, path: str, auth: str, body: dict = None):
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--send", action="store_true", help="테스트 메시지를 실제로 보낸다")
+    ap.add_argument("--id", default="",
+                    help="이 id 가 채널인지 길드인지 갈라 본다 (DISCORD_CHANNEL_ID 대신)")
     a = ap.parse_args()
 
+    # **어디서 왔는지 갈라 둔다.** "없음" 이 '설정을 안 했다' 인지 '내가 못 봤다'
+    # 인지 구별되지 않으면 진단이 아니라 짐작이다.
+    셸것 = {k for k in ("DISCORD_BOT_TOKEN", "DISCORD_CHANNEL_ID",
+                        "DISCORD_WEBHOOK_URL") if os.environ.get(k)}
+    받음 = load_dotenv()
     auth = os.environ.get("DISCORD_BOT_TOKEN") or ""
-    chan = str(os.environ.get("DISCORD_CHANNEL_ID") or "").strip()
+    chan = str(a.id or os.environ.get("DISCORD_CHANNEL_ID") or "").strip()
     hook = os.environ.get("DISCORD_WEBHOOK_URL") or ""
 
     # 이름을 print 줄에 직접 쓰지 않고 데이터로 돌린다. G004 는 출력 구문 근처에
     # TOKEN 이 든 단어가 보간되는 줄을 막는데, 여기서는 라벨일 뿐 값이 아니지만
     # 게이트는 이름만 보고 그 둘을 못 가른다 -- 게이트가 아니라 코드를 바꾼다.
-    print("환경변수")
+    print(f"환경변수  (.env {'읽음' if 받음 else '못 읽음 -- 파일이 없거나 python-dotenv 가 없다'})")
     for name, state in (("DISCORD_BOT_TOKEN", "설정됨" if auth else "없음"),
                         ("DISCORD_CHANNEL_ID", chan or "없음"),
                         ("DISCORD_WEBHOOK_URL", "설정됨" if hook else "없음")):
-        print(f"   {name:20} {state}")
+        어디 = ""
+        if os.environ.get(name):
+            어디 = " (셸)" if name in 셸것 else " (.env)"
+        print(f"   {name:20} {state}{어디}")
+    if a.id:
+        print(f"   --id 로 준 것       {a.id}")
 
     if hook:
         print("\n웹훅이 설정돼 있다. overnight.py 는 웹훅을 먼저 쓴다 -- 봇 권한과 무관하게")
         print("동작하므로 403 이 났다면 웹훅 URL 이 지워졌거나 잘못된 것이다.")
     if not auth:
         print("\n봇 경로를 쓸 수 없다 (DISCORD_BOT_TOKEN 이 없다).")
+        if not 받음:
+            # **이 줄이 먼저다.** 없는 것과 못 본 것은 고칠 데가 다르다.
+            print("**다만 .env 를 못 읽었다** -- 토큰이 없는 것이 아니라 이 도구가")
+            print("못 본 것일 수 있다. 저장소 뿌리에서 돌리거나 이렇게 넣어 준다:")
+            print("    set -a; . /home/ubuntu/SE/.env; set +a")
+            print("그 다음에 다시 돌린다. 아래는 그래도 안 될 때의 길이다.")
         print("가장 빠른 해결: 채널 설정 -> 연동 -> 웹훅 -> 새 웹훅 -> URL 복사 후")
         print("    export DISCORD_WEBHOOK_URL='...'")
         print("웹훅은 봇을 서버에 초대할 필요도, 권한을 줄 필요도 없다.")
@@ -94,7 +130,19 @@ def main() -> int:
         print(f"   OK -- 봇 '{body.get('username')}' 로 인증된다")
     else:
         print(f"   실패 HTTP {status} code={code} -- {body.get('message')}")
-        print("   토큰 값이 틀렸거나 재발급됐다. Discord 개발자 포털에서 다시 확인한다.")
+        # **401 과 403 은 고칠 데가 다르다.** 그리고 디스코드 오류 코드가 안 실렸으면
+        # 애초에 **디스코드가 낸 답이 아니다** -- 그때 토큰을 의심하면 헛수고다
+        # (실측 2026-09-09: UA 가 없어 Cloudflare 가 403 을 냈는데 토큰 탓을 했다).
+        if code is None:
+            print("   **디스코드가 낸 오류가 아니다** (오류 코드가 안 실렸다).")
+            print("   중간에 낀 것이 막은 것이다 -- 프록시·방화벽·Cloudflare.")
+            print("   이 저장소는 User-Agent 를 붙여 보낸다(channels.UA). 그래도 403 이면")
+            print("   나가는 길이 막힌 환경이다: curl -sS -o /dev/null -w '%{http_code}\\n' \\")
+            print("       -H 'User-Agent: DiscordBot (se, 1.0)' https://discord.com/api/v10/gateway")
+        elif status == 401:
+            print("   토큰 값이 틀렸거나 재발급됐다. Discord 개발자 포털에서 다시 확인한다.")
+        elif status == 403:
+            print("   인증은 됐는데 막혔다. 토큰이 아니라 접근 쪽 문제다.")
         return 1
 
     if not chan:
@@ -103,6 +151,19 @@ def main() -> int:
 
     print(f"\n2. 그 채널이 보이는가  (GET /channels/{chan})")
     status, code, body = call("GET", f"/channels/{chan}", auth)
+    if status != 200:
+        # **길드 id 를 채널 자리에 넣는 실수가 흔하다.** 둘 다 같은 꼴의 수라 눈으로는
+        # 안 갈리고, 넣어도 오류가 안 난다 -- 그냥 영영 안 맞을 뿐이다. 그래서 여기서
+        # 길드로도 물어본다. 그 한 번이 "id 가 틀렸다" 와 "자리를 잘못 넣었다" 를 가른다.
+        g상태, _, g몸 = call("GET", f"/guilds/{chan}", auth)
+        if g상태 == 200:
+            print(f"   **채널이 아니라 길드(서버)다** -- '{g몸.get('name')}'")
+            print("   DISCORD_CHANNEL_ID / DISCORD_PUBLIC_CHANNEL_ID 자리에 넣으면")
+            print("   영영 안 맞는다 -- 오류도 안 나고 그냥 그 채널이 죽는다.")
+            print("   **이 값이 갈 자리는 DISCORD_GUILD_ID 다.**")
+            print("   채널 id 는 따로 받는다: 디스코드에서 **채널**을 우클릭 -> ID 복사")
+            print("   (개발자 모드가 켜져 있어야 보인다).")
+            return 1
     if status == 200:
         print(f"   OK -- '{body.get('name')}' (type={body.get('type')}, "
               f"guild={body.get('guild_id')})")

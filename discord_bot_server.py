@@ -384,9 +384,17 @@ async def on_ready():
               "이대로면 그 채널에서 아무 말도 안 듣는다")
 
     if GUILD_ID and not client.get_guild(GUILD_ID):
-        print(f"[SE-agent] **경고: 길드 {GUILD_ID} 에 이 봇이 없다.** "
-              f"들어가 있는 길드: {[g.id for g in client.guilds]} -- "
-              "DISCORD_GUILD_ID 를 고치거나 비워라. 이대로면 아무 말도 안 듣는다")
+        # **이건 봇이 통째로 안 듣는 자리다.** 채널 하나가 아니라 전부.
+        채널인가 = client.get_channel(GUILD_ID)
+        print(f"[SE-agent] ***** 봇이 아무 말도 안 듣는다 *****")
+        print(f"[SE-agent] DISCORD_GUILD_ID={GUILD_ID} 인데 그런 길드가 없다.")
+        if 채널인가:
+            print(f"[SE-agent] **이건 길드가 아니라 채널이다** "
+                  f"('{채널인가}') -- 길드 자리에 채널 id 를 넣으면 "
+                  "message.guild.id 와 절대 안 맞아 모든 메시지를 버린다.")
+        print(f"[SE-agent] 들어가 있는 길드: {[g.id for g in client.guilds]}")
+        print("[SE-agent] **DISCORD_GUILD_ID 를 비워라** -- 비면 검사를 아예 안 "
+              "하므로 예전과 똑같이 돈다. 틀린 값을 넣느니 비우는 것이 낫다.")
 
 
 ATTACHMENTS_DIR = os.path.join(REPO_DIR, "inbox", "discord_attachments")
