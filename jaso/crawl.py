@@ -45,6 +45,19 @@ tail -f ~/SE/logs/jaso_crawl.log
 그리고 **받은 것에서 질의를 넓힌다.** 받아 온 쪽의 제목에서 자주 나오는 낱말을 씨앗에
 붙여 다음 질의를 만든다 -- 한 바퀴 돌 때마다 물을 것이 늘어난다.
 
+## 탐침을 좁힌다 -- 목록을 박지 않고 **데이터에서**
+
+실측(23편): 논문 여섯 · 서점 · 지도 · 음악 · 라이선스가 섞였다. 넓게 파면 넓게
+섞인다. 그래서 세 자리에서 좁히되, **차단 목록을 코드에 박지 않는다** -- 목록은 늘
+모자라고, 모자란 목록은 그 밖을 영영 못 거른다.
+
+    걸름    받자마자 `sift` 로 재서 점수가 낮으면 **안 담는다**(`--걸름`, 기본 0)
+    집학습  같은 집에서 낮은 것이 잇달아 나오면 **그 집을 그만 판다**
+    넓히기  **점수가 높았던 쪽의 제목에서만** 다음 질의를 만든다
+
+셋 다 잰 값에서 나온다. `orchestrator/llm_pool.py` 가 죽은 후보를 전적으로 뒤로
+미는 자리와 같은 수다 -- 이름으로 자르지 않는다.
+
 ## 예의
 
 같은 쪽을 두 번 안 받고(주소·본문 해시), 요청 사이에 `--틈`(기본 3초)을 둔다.
@@ -70,6 +83,7 @@ sys.path.insert(0, str(ROOT))
 from jaso import keep as KP                                          # noqa: E402
 from jaso import ledger as LG                                        # noqa: E402
 from jaso import mine as MN                                          # noqa: E402
+from jaso import sift as SF                                          # noqa: E402
 
 _낱말 = re.compile(r"[0-9A-Za-z가-힣]{2,}")
 # 질의에 붙여 봐야 아무 데나 걸리는 말. **질의 목록이 아니라 걸러내는 목록이다.**
@@ -155,20 +169,30 @@ def 돌리기(a, 묻기=None) -> dict:
     할것, 한것 = list(씨앗들), set()
     # **주소 줄과 질의 줄을 따로 둔다.** 검색 창구가 막혀도 주소 줄은 돈다.
     주소줄 = [u for u in (a.씨앗주소 or []) if u.strip()]
-    보고 = {"담음": 0, "잼": 0, "건너뜀": 0, "못받음": 0, "질의": 0, "주소": 0, "왜": ""}
+    보고 = {"담음": 0, "잼": 0, "건너뜀": 0, "걸름": 0, "집건너뜀": 0,
+           "못받음": 0, "질의": 0, "주소": 0, "왜": ""}
+    나쁜집: dict = {}                          # 집마다 낮은 것이 몇 편 이어졌나
 
-    def 캐기(url: str, 씨앗집: bool) -> None:
-        """한 주소를 받아 담고, 씨앗집이면 안쪽 링크를 주소 줄에 붙인다."""
+    def 캐기(url: str, 씨앗집: bool) -> list:
+        """한 주소를 받아 담는다. **점수가 낮으면 안 담는다.** 제목 낱말을 돌려준다.
+
+        돌려주는 것이 빈 목록이면 '이 쪽에서 넓힐 것이 없다' 는 뜻이다 -- 점수가
+        낮았거나 못 받았거나. 그래야 나쁜 쪽에서 질의가 안 번진다.
+        """
         nonlocal 주소줄
+        집 = urllib.parse.urlsplit(url).netloc
+        if 나쁜집.get(집, 0) >= a.집참기:
+            보고["집건너뜀"] += 1
+            return []
         if url in 본주소:
             보고["건너뜀"] += 1
-            return
+            return []
         본주소.add(url)
         time.sleep(max(0.0, a.틈))
         응답들 = [y for y in DF.캐기(url, 곁문까지=False) if y.됐나]
         if not 응답들:
             보고["못받음"] += 1
-            return
+            return []
         뽑은것 = EX.뽑기(응답들[0].몸통, 응답들[0].꼴,
                       응답들[0].최종url or 응답들[0].url)
         if 씨앗집 and a.따라 > 0:
@@ -179,11 +203,21 @@ def 돌리기(a, 묻기=None) -> dict:
                      for y in 응답들).strip()
         if len(글) < a.최소:
             보고["건너뜀"] += 1
-            return
+            return []
+        # **받자마자 잰다.** 담고 나서 거르면 그 사이에 mine 이 오염된 값을 집계한다.
+        점 = SF.점수(SF.재기(글))
+        if 점 < a.걸름:
+            보고["걸름"] += 1
+            나쁜집[집] = 나쁜집.get(집, 0) + 1
+            if 나쁜집[집] == a.집참기:
+                print(f"    [{집}] 낮은 것이 {a.집참기}편 -- 이 집은 그만 판다",
+                      flush=True)
+            return []
+        나쁜집.pop(집, None)                    # 좋은 것이 나오면 셈을 되돌린다
         잰것 = MN.재기(글, url)
         if 잰것.본문해시 in 본해시:
             보고["건너뜀"] += 1
-            return
+            return []
         본해시.add(잰것.본문해시)
         if not LG.hard(MN.검사(잰것, 글)):
             MN.담기([잰것], a.잰곳)
@@ -193,7 +227,9 @@ def 돌리기(a, 묻기=None) -> dict:
             보고["왜"] = " · ".join(str(v) for v in LG.hard(vs))
             raise _멈춤()
         보고["담음"] += 1
-        print(f"    담음 {len(글):>6}자  {p.name}  <- {url[:52]}", flush=True)
+        print(f"    담음 {점:>7.1f}점 {len(글):>6}자  {p.name}  <- {url[:52]}",
+              flush=True)
+        return _낱말.findall(뽑은것.get("제목") or "")
 
     씨앗집들 = {urllib.parse.urlsplit(u).netloc for u in 주소줄}
     try:
@@ -224,13 +260,14 @@ def 돌리기(a, 묻기=None) -> dict:
         if not r.것들:
             for 이름, 말 in r.창구별.items():
                 print(f"    [{이름}] {말}", flush=True)
-        할것 += [x for x in 넓히기([x.제목 for x in r.것들], 질의)
-                if x not in 한것]
-
+        좋았던말 = []
         for x in r.것들:
             if time.time() >= 끝날때 or 그만파일.exists():
                 break
-            캐기(x.url, False)
+            좋았던말 += 캐기(x.url, False)
+        # **좋은 것이 나온 쪽의 말로만 넓힌다.** 다 쓸어 담으면 논문 쪽 낱말이
+        # 다음 질의가 되고, 그러면 탐침이 넓어지는 것이 아니라 엉뚱해진다.
+        할것 += [x for x in 넓히기([" ".join(좋았던말)], 질의) if x not in 한것]
 
         if a.모델 and len(할것) < 3 and time.time() < 끝날때:
             더 = [q for q in 모델질의(list(한것), 묻기) if q not in 한것]
@@ -262,6 +299,10 @@ def main(argv=None) -> int:
     ap.add_argument("--틈", dest="틈", type=float, default=3.0,
                     help="요청 사이 쉬는 초 -- 빨리 긁으면 그 쪽이 막는다")
     ap.add_argument("--최소", dest="최소", type=int, default=400)
+    ap.add_argument("--걸름", dest="걸름", type=float, default=0.0,
+                    help="sift 점수가 이보다 낮으면 안 담는다. 좁히려면 올려라")
+    ap.add_argument("--집참기", dest="집참기", type=int, default=3,
+                    help="한 집에서 낮은 것이 이만큼 이어지면 그 집을 그만 판다")
     ap.add_argument("--곳", default=str(KP.보기DIR))
     ap.add_argument("--잰곳", default=str(MN.잰것DIR))
     ap.add_argument("--문항곳", default="")
@@ -300,8 +341,11 @@ def main(argv=None) -> int:
     보고 = 돌리기(a)
     print(f"\n{'=' * 62}")
     print(f"{(time.time() - 시작) / 60:.1f}분 · 물음 {보고['질의']}개 · "
-          f"주소 {보고.get('주소', 0)}개 · 본문 {보고['담음']}편 · "
-          f"잰 것 {보고['잼']}편 · 건너뜀 {보고['건너뜀']} · 못받음 {보고['못받음']}")
+          f"주소 {보고.get('주소', 0)}개 · **본문 {보고['담음']}편** · "
+          f"잰 것 {보고['잼']}편")
+    print(f"  거른 것 {보고.get('걸름', 0)} (점수 < {a.걸름}) · "
+          f"집째 건너뜀 {보고.get('집건너뜀', 0)} · "
+          f"건너뜀 {보고['건너뜀']} · 못받음 {보고['못받음']}")
     print(f"멈춘 까닭: {보고['왜']}")
     if not 보고["담음"]:
         print("\n**한 편도 못 담았다.** 위의 까닭이 다음에 무엇을 할지 알려 준다 --\n"
