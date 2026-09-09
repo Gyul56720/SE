@@ -136,6 +136,37 @@ ok(_dup2 in _by and " / " in _by[_dup2],
 _src = Path(flow.__file__).read_text(encoding="utf-8")
 ok("한꺼번에** 풀어" in _src or "한꺼번에" in _src, "한 문장에 겹친 딱지도 한 번에 푼다")
 
+print("\n[정리] **쓸모없는 말을 걷어낸다**")
+# 사용자(2026-09-09): "그니깐 내가 쓸모없는 프롬포트 정리하라고 하는 거잖아."
+#
+# 재 보니 축 일흔하나 중 **서른아홉**의 설명이 제 이름표를 그대로 되풀이하고 있었다:
+#
+#     · **스무 자 안쪽 문장의 몫 42%** -- 스무 자 안쪽 문장의 몫. 끊을 자리에서 끊는다.
+#       └───────── 이름표 ─────────┘    └───────── 같은 말 ────────┘
+#
+# directives.json 은 안 고친다 -- 그 문장은 이름표가 안 붙는 자리(dyn 의 aim 목록)
+# 에서도 쓰여서 거기서는 그 앞머리가 필요하다. 자르는 것은 이 자리뿐이다.
+_lab = compose.SAY.get("short", "")
+ok(compose._tip("short", _lab + ". 끊을 자리에서 끊는다.") == "끊을 자리에서 끊는다.",
+   "제 이름표로 시작하면 잘라 낸다")
+ok(compose._tip("rally", "한 자리에서 " + compose.SAY["rally"] + ". 답이 꼭 맞을 필요는 없다.")
+   == "답이 꼭 맞을 필요는 없다.", "첫 문장 안에 이름표가 있어도 잘라 낸다")
+ok(compose._tip("short", "끊을 자리에서 끊는다.") == "끊을 자리에서 끊는다.",
+   "안 겹치면 그대로 둔다  ← 과잉으로 자르면 뜻이 사라진다")
+ok(compose._tip("short", "") == "" and compose._tip("없는축", "그냥 말") == "그냥 말",
+   "빈 것과 모르는 축에서 안 터진다")
+import json as _json                                                 # noqa: E402
+_d = _json.load(open(Path(__file__).resolve().parent.parent / "novel"
+                     / "directives.json", encoding="utf-8"))["axes"]
+_cut = sum(len(_d[k]["aim"]) - len(compose._tip(k, _d[k]["aim"]))
+           for k in compose.SAY if k in _d and "aim" in _d[k])
+ok(_cut > 400, f"통째로 {_cut:,}자를 걷어낸다")
+
+# **설명 자리를 여덟에서 넷으로.** 급한 축은 이제 프롬프트 **맨 앞**의
+# [직전 덩어리에서 어긋난 것] 이 말한다 -- 여기서 여덟을 더 굵게 쓰면 한 덩어리에
+# 굵은 글씨가 아흔 군데가 된다("다 강조하면 강조가 아니다" -- target_block 의 말).
+ok(compose.AIMS <= 4, f"설명은 넷까지 (지금 {compose.AIMS})")
+
 print()
 if fails:
     print(f"짓기: {len(fails)}개 실패 -- {fails}")

@@ -128,7 +128,11 @@ def _fmt(k: str, v: float) -> str:
 
 
 # 설명(aim)을 몇 줄까지 붙일까. 값은 전부 주되 설명까지 마흔 줄이면 프롬프트가 터진다.
-AIMS = int(os.environ.get("DRIFT_SHOW_AIMS", "8"))
+# 설명을 붙일 축의 수. **여덟이었다.** 맨 앞 [직전 덩어리에서 어긋난 것] 이 급한
+# 넷을 이미 말하고 있으므로(compose.build 의 `must`), 여기서 여덟을 더 굵게 쓰면
+# 한 덩어리에 굵은 글씨가 아흔 군데가 된다 -- "다 강조하면 강조가 아니다"(이 파일의
+# target_block 이 스스로 적어 둔 말이다). 값(dense)은 그대로 전부 간다.
+AIMS = int(os.environ.get("DRIFT_SHOW_AIMS", "4"))
 
 
 # 상태 열을 몇 줄로 그릴까. 한 덩어리가 대략 이만큼의 줄이 된다.
@@ -160,6 +164,32 @@ def mode_nums(seed: str, n: int, st: list) -> dict:
     return out
 
 
+def _tip(key: str, aim: str) -> str:
+    """설명에서 **제 이름표를 되풀이한 앞머리**를 잘라 낸다.
+
+    실측 2026-09-09: 축 일흔하나 중 **서른여덟**의 설명이 제 이름표로 시작한다.
+
+        · **스무 자 안쪽 문장의 몫 42%** -- 스무 자 안쪽 문장의 몫. 끊을 자리에서 끊는다.
+          └────────── 이름표 ──────────┘    └────────── 같은 말 ─────────┘
+
+    한 줄의 절반이 방금 한 말이다. 사용자: "쓸모없는 프롬포트 정리하라고 하는 거잖아."
+    directives.json 을 고치지 않는 이유는 그 파일이 **다른 자리(dyn.aim 목록)에서도
+    쓰이기 때문**이다 -- 거기서는 이름표 없이 혼자 나가므로 그 앞머리가 필요하다.
+    자르는 것은 이름표가 이미 붙은 이 자리뿐이다."""
+    lab = SAY.get(key, "")
+    t = (aim or "").strip()
+    if not lab or not t:
+        return t
+    # 앞머리를 그대로 되풀이한 경우
+    if t.startswith(lab):
+        return t[len(lab):].lstrip(" .·-—")
+    # 첫 문장 안에 이름표가 들어 있는 경우("한 자리에서 <이름표>. …")
+    head, dot, rest = t.partition(".")
+    if lab in head and rest.strip():
+        return rest.strip()
+    return t
+
+
 def target_block(seed: str, n: int, last: str = "", watch=(), gname: str = "") -> str:
     """이번 덩어리가 맞출 수. **값은 전부, 설명은 몇 개만.**
 
@@ -179,13 +209,27 @@ def target_block(seed: str, n: int, last: str = "", watch=(), gname: str = "") -
     # 어느 축에 설명을 붙일까. **이번 대목이 보는 축부터**(watch), 그 안에서도
     # 직전 덩어리가 어긋난 것부터. 대사를 쓰는 대목에 문단 길이를 설명해 봐야
     # 지켜지지 않는다 -- 여덟 줄뿐인 자리를 지금 쓰는 것에 준다.
-    far = []
+    # **맨 앞에서 이미 고치라고 한 축은 여기서 또 설명하지 않는다.**
+    #
+    # 예전에는 정반대였다 -- 어긋난 축부터 설명을 붙였다. 그때는 그것이 맞았다:
+    # 고치라는 말이 프롬프트 **끝**(97% 지점)에 있어서 여기가 유일한 자리였다.
+    # 이제 [직전 덩어리에서 어긋난 것] 이 맨 앞으로 왔으니, 같은 축을 여기서 또
+    # 말하면 **한 덩어리에 같은 소리를 두 번** 하는 것이다(실측 2026-09-09:
+    # dialog · sent_len · short · para_len 넷이 두 블록에 겹쳐 있었다).
+    #
+    # 그래서 여덟 줄뿐인 설명 자리를 **아직 아무도 안 말한 축**에 준다. 값(dense)은
+    # 그대로 전부 간다 -- 자르는 것은 설명이지 수가 아니다.
+    far, covered = [], set()
     if last:
-        far = [k for k, _side, _d, _v in dyn.off(last, slack=0.0, gname=gname)
-               if k in vals]
+        rows = dyn.off(last, slack=0.0, gname=gname)
+        far = [k for k, _side, _d, _v in rows if k in vals]
+        how0 = dyn.load()
+        covered = {k for k, side, _d, _v in rows[:dyn.MAX_ASKS]
+                   if (how0.get(k) or {}).get(side)}
     w = [k for k in watch if k in vals]
     order = ([k for k in w if k in far] + [k for k in far if k not in w]
              + [k for k in w if k not in far] + keys) if (far or w) else keys
+    order = [k for k in order if k not in covered] or order
     seen, uniq = set(), []
     for k in order:
         if k not in seen:
@@ -197,7 +241,7 @@ def target_block(seed: str, n: int, last: str = "", watch=(), gname: str = "") -
     how = dyn.load()
     tips = []
     for k in order[:AIMS]:
-        t = (how.get(k) or {}).get("aim", "")
+        t = _tip(k, (how.get(k) or {}).get("aim", ""))
         if t:
             tips.append(f"  · **{SAY[k]} {_fmt(k, vals[k]).strip()}** -- {t}")
     out = ["[이번 대목의 수] **이 수에 맞춰 쓴다.** 덩어리마다 다르다 -- 매번 같은",
@@ -211,7 +255,7 @@ def target_block(seed: str, n: int, last: str = "", watch=(), gname: str = "") -
 
 
 def build(book: dict, ledger: str = "", asks: str = "", opening_head: str = "",
-          head: str = "", plan: str = "") -> str:
+          head: str = "", plan: str = "", must: str = "") -> str:
     """프롬프트 한 벌. 조각은 부르는 쪽이 준다 -- 여기서 만드는 것은 **뼈대**다."""
     chunks = book.get("chunks") or []
     opening = not chunks
@@ -220,8 +264,17 @@ def build(book: dict, ledger: str = "", asks: str = "", opening_head: str = "",
     # **이번 대목이 밟을 상태 열.** 배운 적 없으면 빈 열이고, 그러면 흐름 줄도
     # 축 고르기도 예전 그대로다 -- 없는 것을 지어내서 시키지는 않는다.
     st = MD.plan(MD.load(), seed, len(chunks), LINES)
+    # **고칠 것을 맨 앞에 둔다.** 예전에는 이것이 `asks` 에 섞여 프롬프트의 **97%
+    # 지점**에 앉았다(실측 2026-09-09: 8,455자 중 8,238자 자리). 그 앞에 지시 줄이
+    # 여든 개 있었고, 그중 여든 개가 굵은 글씨였다 -- 전부가 제일 중요하다고 하면
+    # 아무것도 제일 중요하지 않다. 사용자가 시킨 것은 전부 실려 있었는데도 원고가
+    # 한 줄도 안 지켰다("예전에 지시했던 내용이 아예 적용이 안 되어있어").
+    #
+    # 여기 오는 것은 **잰 것**뿐이다 -- 직전 덩어리가 어느 축에서 얼마나 벗어났나.
+    # 취향이 아니라 측정이라, 지킬 것이 없으면 이 자리는 통째로 빈다.
     parts = [
         head or "한국어 소설을 쓴다. 산문만 출력한다 -- 제목도 머리말도 표식도 쓰지 마라.",
+        must,
         f"[분량] 약 {CHARS}자. 끊지 말고 이어라.",
         MD.render(st, mode_nums(seed, len(chunks), st)),
         target_block(seed, len(chunks), tail if not opening else "", MD.watched(st),

@@ -1254,8 +1254,11 @@ def write_prompt(book: dict, feedback: str = "") -> str:
             # 법칙이 **한 번도 화자에게 안 갔다**(실측 2026-09-09). --persona 가
             # 무동작이던 것, 첫회차 규율이 카드에만 실리던 것과 같은 자리다.
             # 시점이 안 고정되면 원고가 인칭 사이를 오간다.
+            # **잰 어긋남은 맨 앞으로.** asks 에 두면 프롬프트 끝(97% 지점)에
+            # 앉는다 -- 그 앞의 여든 개 지시에 묻힌다.
+            must=compose.offbrief(book),
             asks="\n\n".join(x for x in (SR.brief(book), fixed_brief(book),
-                                          compose.offbrief(book), owed_brief(book),
+                                          owed_brief(book),
                                           ahead_brief(book), VG.brief(book),
                                           PO.brief(book), TU.brief(book),
                                           feedback) if x),

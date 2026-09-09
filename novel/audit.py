@@ -85,6 +85,10 @@ def wiring(book: dict) -> list:
     add("고정 파라미터", _needle(flow.fixed_brief(book), p),
         "시점 · 전제 · 톤 · 법칙 · 이름 (flow.fixed_brief)")
     add("무대 낱말 금지", "우리끼리 쓰는 말" in p, "‘화자’ 를 이름으로 쓰지 마라")
+    _k = "[직전 덩어리에서 어긋난 것]"
+    add("고칠 것이 맨 앞", _k in p and p.index(_k) < len(p) * 0.15,
+        f"잰 어긋남은 프롬프트 머리에 (지금 {p.index(_k) / len(p):.0%} 지점)" if _k in p
+        else "잰 어긋남을 맨 앞에", "" if _k in p else "이번엔 어긋난 축이 없다")
     add("비트는 메모다", "적어 둔 메모다" in BT.brief(book), "카드 문장을 옮겨 적지 마라",
         "" if BT.has(book) else "카드가 없다")
     add("쾌감", "**쾌감**" in inside, "회차마다 통쾌한 자리 하나",
