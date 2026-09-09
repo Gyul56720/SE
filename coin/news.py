@@ -406,13 +406,34 @@ def 덮임(글들: list) -> dict:
 
 
 # ------------------------------------------------------------------ 탐침
-def 탐침(출처들=None) -> list:
-    """**어느 출처가 실제로 답하나.** 표의 `확인` 칸이 비어 있는 이유가 이것이다."""
+def 탐침(출처들=None, 알림=None) -> list:
+    """**어느 출처가 실제로 답하나.** 표의 `확인` 칸이 비어 있는 이유가 이것이다.
+
+    ## 여기는 일부러 순차다 -- `받기()` 와 다르다
+
+    `받기()` 는 병렬이다(`dig/README.md`: "하나씩 받으면 열 곳이 열 배 걸리고, 그러면
+    결국 한두 곳만 보게 된다"). 그런데 **탐침은 그 규율이 거꾸로 걸린다.**
+
+    백 곳에 한꺼번에 쏘면 그것이 버스트로 보여 막는 데가 생기고, 그러면 **멀쩡한
+    출처가 '못함' 으로 찍힌다.** 탐침이 재는 것은 속도가 아니라 "이 문이 열리는가"
+    이고, 거짓 음성은 그 답을 통째로 뒤집는다 -- 없는 빈틈을 있다고 하거나, 표에서
+    멀쩡한 줄을 지우게 만든다. 백 곳이 몇십 분 걸려도 한 번 제대로 재는 편이 낫다.
+
+    `알림` 을 주면 결과 하나가 날 때마다 부른다. **안 주면 다 끝날 때까지 화면이
+    죽어 있어서**, 도는 중인지 멈춘 것인지 사람이 못 가른다 -- 이 저장소가 백그라운드
+    작업에 대해 적어 둔 그 자리와 같다(프로세스가 살아 있는 것과 일을 하는 것은 다르다).
+    """
     out = []
-    for s in (출처들 if 출처들 is not None else SRC.목록):
+    쪽들 = 출처들 if 출처들 is not None else SRC.목록
+    for i, s in enumerate(쪽들, 1):
+        def 담기(r):
+            out.append(r)
+            if 알림:
+                알림(i, len(쪽들), r)
+            return r
         ok, 왜 = s.쓸수있나()
         if not ok:
-            out.append({"이름": s.이름, "나라": s.나라, "층": s.층, "산것": 0, "왜": 왜})
+            담기({"이름": s.이름, "나라": s.나라, "층": s.층, "산것": 0, "왜": 왜})
             continue
         try:
             if s.꼴 == "gdelt":
@@ -423,11 +444,11 @@ def 탐침(출처들=None) -> list:
             else:
                 raw, 최종 = _캐기(s.url, timeout=15.0, 곁문수=2)   # 탐침은 곁문 둘만
                 got = (_rss(raw, s) if s.꼴 == "rss" else []) or _html(raw, s, 최종)
-            out.append({"이름": s.이름, "나라": s.나라, "층": s.층, "산것": len(got),
-                        "왜": "" if got else "답은 왔는데 글이 0개"})
+            담기({"이름": s.이름, "나라": s.나라, "층": s.층, "산것": len(got),
+                  "왜": "" if got else "답은 왔는데 글이 0개"})
         except Exception as e:                                        # noqa: BLE001
-            out.append({"이름": s.이름, "나라": s.나라, "층": s.층, "산것": 0,
-                        "왜": f"{type(e).__name__}: {str(e)[:70]}"})
+            담기({"이름": s.이름, "나라": s.나라, "층": s.층, "산것": 0,
+                  "왜": f"{type(e).__name__}: {str(e)[:70]}"})
     return out
 
 
@@ -435,6 +456,8 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--탐침", action="store_true")
     ap.add_argument("--격자", action="store_true", help="나라 x 층 표. 빈 칸을 짚는다")
+    ap.add_argument("--기록", action="store_true",
+                    help="탐침 결과를 적어 둔다. --격자 의 '확인' 칸이 이것으로 찬다")
     ap.add_argument("--하루", action="store_true")
     ap.add_argument("--과거", action="store_true")
     ap.add_argument("--부터", default="")
@@ -465,11 +488,18 @@ def main(argv=None) -> int:
         return 0
 
     if a.탐침:
-        r = 탐침()
+        쪽수 = len(SRC.목록)
+        print(f"출처 {쪽수}곳을 **하나씩** 두드린다 -- 한꺼번에 쏘면 버스트로 보여 "
+              "멀쩡한 곳이 '못함' 으로 찍힌다. 오래 걸린다.\n", flush=True)
+
+        def 찍기(i, n, x):
+            print(f"  [{i:>3}/{n}] {'OK  ' if x['산것'] else '못함'} {x['이름']:<14} "
+                  f"{x['나라']:<3} {x.get('층',''):<6} {x['산것']:>4}건  {x['왜'][:60]}",
+                  flush=True)
+
+        r = 탐침(알림=찍기)
         산것 = [x for x in r if x["산것"]]
-        for x in r:
-            print(f"  {'OK  ' if x['산것'] else '못함'} {x['이름']:<14} {x['나라']:<3} "
-                  f"{x.get('층',''):<6} {x['산것']:>4}건  {x['왜']}")
+        print()
         print(f"\n{len(산것)}/{len(r)} 출처가 답했다. "
               f"나라: {sorted({x['나라'] for x in 산것})}")
         찬칸 = {(x["나라"], x.get("층", "")) for x in 산것}
@@ -477,6 +507,11 @@ def main(argv=None) -> int:
               if (나, 층) not in 찬칸 and ("XX", 층) not in 찬칸]
         print("**답한 것만 세면 빈 칸**: " + (", ".join(f"{a}/{b}" for a, b in 빈) or "없다")
               + "  <- 이것이 진짜 덮임이다")
+        if a.기록:
+            p = SRC.탐침기록(r)
+            print(f"적어 뒀다 -> {p}\n  이제 `--격자` 의 칸이 '확인된것/전체' 로 찬다")
+        else:
+            print("  (`--기록` 을 주면 적어 둬서 `--격자` 가 이 사실을 쓴다)")
         print("**여기(에이전트 컨테이너)에서는 프록시가 다 막는다 -- VM 에서 돌려라**")
         return 0 if 산것 else 3
 
@@ -522,4 +557,11 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    # `| head` 로 잘라 볼 때 파이프가 끊기면 파이썬이 역추적을 뱉는다. 사용자가
+    # 실제로 그렇게 부르는 명령이라(격자 · 탐침이 길다) 조용히 끝낸다.
+    try:
+        raise SystemExit(main())
+    except BrokenPipeError:
+        import os
+        os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+        raise SystemExit(0)
