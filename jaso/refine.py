@@ -192,13 +192,14 @@ def 고칠말(위반들, L, q, 글, 몇: int = 5) -> list:
     return out
 
 
-def 고침프롬프트(q, 항목, 생각, 글, 말들, 회사="", 직무="") -> str:
+def 고침프롬프트(q, 항목, 생각, 글, 말들, 회사="", 직무="",
+             문법: str = "기본") -> str:
     """**바탕은 첫 프롬프트 그대로다.** 재료를 안 빼고 고칠 말만 덧붙인다.
 
     재료를 빼고 "이것만 고쳐라" 라고 하면 모델이 나머지를 기억으로 다시 채운다 --
     그 순간 원장 밖이 들어온다.
     """
-    바탕 = WR.프롬프트(q, 항목, 생각, 회사, 직무)
+    바탕 = WR.프롬프트(q, 항목, 생각, 회사, 직무, 문법)
     붙임 = "\n".join(f"- {m}" for m in 말들)
     return (바탕 + f"""
 
@@ -217,10 +218,10 @@ def 고침프롬프트(q, 항목, 생각, 글, 말들, 회사="", 직무="") -> 
 # ---------------------------------------------------------------- 루프
 
 def 돌리기(q: IT.문항, L: LG.원장, 바퀴수: int = 4, 벌: int = 3, 회사="", 직무="",
-         쓴것=frozenset(), 묻기=None) -> dict:
+         쓴것=frozenset(), 묻기=None, 문법: str = "기본") -> dict:
     """관문이 짚은 자리를 사실로 되먹이며 돈다. **나빠지면 버린다.**"""
     항목, 생각 = WR.고르기(q, L, 쓴것)
-    첫 = WR.쓰기(q, L, 벌, 회사, 직무, 쓴것, 묻기)
+    첫 = WR.쓰기(q, L, 벌, 회사, 직무, 쓴것, 묻기, 문법)
     if not 첫["글있나"]:
         return {"문항": q, "바퀴들": [], "최선": None, "글있나": False,
                 "왜": 첫["왜"], "남은것": [], "물을것": []}
@@ -253,7 +254,7 @@ def 돌리기(q: IT.문항, L: LG.원장, 바퀴수: int = 4, 벌: int = 3, 회�
         말들 = 고칠말(최선위반, L, q, 최선글)
         if not 말들:
             break
-        프 = 고침프롬프트(q, 항목, 생각, 최선글, 말들, 회사, 직무)
+        프 = 고침프롬프트(q, 항목, 생각, 최선글, 말들, 회사, 직무, 문법)
         후보 = []
         for _ in range(max(1, 벌)):
             try:
@@ -288,6 +289,8 @@ def main(argv=None) -> int:
     ap.add_argument("--직무", default="")
     ap.add_argument("--바퀴", dest="바퀴", type=int, default=4)
     ap.add_argument("--벌", dest="벌", type=int, default=3)
+    ap.add_argument("--문법", dest="문법", default="기본",
+                    help="bench 가 고른 것을 쓴다")
     ap.add_argument("--궤적", action="store_true", help="바퀴마다 무엇이 줄었나")
     ap.add_argument("--낼곳", default="")
     a = ap.parse_args(argv)
@@ -304,7 +307,7 @@ def main(argv=None) -> int:
     조각, 쓴것, 남은게있나 = [], set(), False
     for i, 글 in enumerate(a.문항, 1):
         q = IT.쪼개기(글, str(i))
-        r = 돌리기(q, L, a.바퀴, a.벌, a.회사, a.직무, 쓴것)
+        r = 돌리기(q, L, a.바퀴, a.벌, a.회사, a.직무, 쓴것, 문법=a.문법)
         if not r["글있나"]:
             print(f"\n**문항 {i} 에서 한 벌도 글을 못 받았다: {r['왜']}**\n"
                   "  (GEMINI_API_KEY 가 있는 데서 돌려라 -- 빈 파일은 안 쓴다)",

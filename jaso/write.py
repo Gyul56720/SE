@@ -47,6 +47,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from jaso import corpus as CP                                        # noqa: E402
+from jaso import forms as FM                                         # noqa: E402
 from jaso import gate as GT                                          # noqa: E402
 from jaso import item as IT                                          # noqa: E402
 from jaso import ledger as LG                                        # noqa: E402
@@ -112,7 +113,7 @@ def _사실(h: LG.항목) -> str:
 
 
 def 프롬프트(q: IT.문항, 항목: list, 생각: list, 회사: str = "",
-           직무: str = "") -> str:
+           직무: str = "", 문법: str = "기본") -> str:
     """**관문 이야기가 한 줄도 없다.** 문항과 원장에서 꺼낸 사실뿐이다."""
     재료 = "\n\n".join(f"### 경험 {i}\n{_사실(h)}" for i, h in enumerate(항목, 1))
     말 = "\n".join(f"- ({g.갈래}) {g.말}" for g in 생각)
@@ -144,10 +145,7 @@ def 프롬프트(q: IT.문항, 항목: list, 생각: list, 회사: str = "",
 
 ## 어떻게 쓰나
 
-- 겪은 순서가 아니라 **무엇을 보고 무엇을 했고 무엇이 달라졌는지** 순서로 씁니다.
-- 위 경험에서만 나올 수 있는 것(고유한 이름·수·상황)을 문단마다 하나는 둡니다.
-- 저를 설명하는 형용사 대신 제가 한 일을 씁니다.
-- 누가 했는지 드러나게 씁니다.
+{FM.고르기(문법).조각()}
 
 ## 길이
 
@@ -166,9 +164,9 @@ def 벗기기(글: str) -> str:
 # ---------------------------------------------------------------- 여러 벌
 
 def 한벌(q: IT.문항, L: LG.원장, 회사="", 직무="", 쓴것=frozenset(),
-        묻기=None) -> tuple:
+        묻기=None, 문법: str = "기본") -> tuple:
     항목, 생각 = 고르기(q, L, 쓴것)
-    글 = 벗기기((묻기 or _풀에게)(프롬프트(q, 항목, 생각, 회사, 직무)))
+    글 = 벗기기((묻기 or _풀에게)(프롬프트(q, 항목, 생각, 회사, 직무, 문법)))
     return 글, [h.id for h in 항목]
 
 
@@ -182,12 +180,12 @@ def 재기(q: IT.문항, 본문: str, L: LG.원장, 회사="", 직무="") -> tup
 
 
 def 쓰기(q: IT.문항, L: LG.원장, 벌: int = 3, 회사="", 직무="",
-        쓴것=frozenset(), 묻기=None) -> dict:
+        쓴것=frozenset(), 묻기=None, 문법: str = "기본") -> dict:
     """n 벌 뽑고 **관문이 고른다.** 사람이 안 고른다."""
     것들 = []
     for _ in range(max(1, 벌)):
         try:
-            글, 쓴항목 = 한벌(q, L, 회사, 직무, 쓴것, 묻기)
+            글, 쓴항목 = 한벌(q, L, 회사, 직무, 쓴것, 묻기, 문법)
         except Exception as e:                    # 한 벌이 죽어도 나머지는 살린다
             것들.append({"글": "", "왜": f"{type(e).__name__}: {e}", "hard": 99,
                         "soft": 99, "위반": [], "항목": []})
@@ -219,6 +217,8 @@ def main(argv=None) -> int:
     ap.add_argument("--회사", default="")
     ap.add_argument("--직무", default="")
     ap.add_argument("--벌", dest="벌", type=int, default=3)
+    ap.add_argument("--문법", dest="문법", default="기본",
+                    help=f"{' · '.join(FM.문법들)} (bench 가 순위를 낸다)")
     ap.add_argument("--낼곳", default="")
     ap.add_argument("--프롬프트만", dest="dry", action="store_true",
                     help="부르지 않고 프롬프트만 찍는다 -- 무엇을 주는지 눈으로 본다")
@@ -246,13 +246,13 @@ def main(argv=None) -> int:
     if a.dry:
         for q in 문항들:
             항목, 생각 = 고르기(q, L)
-            print(프롬프트(q, 항목, 생각, a.회사, a.직무))
+            print(프롬프트(q, 항목, 생각, a.회사, a.직무, a.문법))
             print("=" * 70)
         return 0
 
     벌들, 쓴것, 조각 = [], set(), []
     for q in 문항들:
-        r = 쓰기(q, L, a.벌, a.회사, a.직무, 쓴것)
+        r = 쓰기(q, L, a.벌, a.회사, a.직무, 쓴것, 문법=a.문법)
         if not r["글있나"]:
             print(f"\n**문항 {q.번호 or '?'} 에서 한 벌도 글을 못 받았다: {r['왜']}**",
                   file=sys.stderr)
