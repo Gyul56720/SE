@@ -69,6 +69,13 @@ from dig import fetch as FT
 _주소꼴 = re.compile(r"https?://[^\s\"'<>\\)\]}]{6,300}")
 _안볼꼬리 = (".jpg", ".jpeg", ".png", ".gif", ".svg", ".webp", ".ico", ".css",
             ".js", ".woff", ".woff2", ".mp4", ".zip")
+# 두드리지 않은 검색 쪽의 살림 주소. `_집` 은 **두드린 문**만 빼므로 이것이 따로
+# 필요하다 -- bing 결과 안에 msn 이, ddg 안에 google 설정 쪽이 섞여 나온다.
+# (`dig/find.py` 가 갖고 있던 것을 여기로 옮겼다. 두 벌로 두면 한쪽만 늘어난다.)
+_살림 = re.compile(r"(duckduckgo|bing\.com|microsoft|msn\.com|mojeek|"
+                   r"startpage\.com|search\.brave|marginalia|"
+                   r"google\.[a-z.]+/(?:search|preferences|advanced|url)|"
+                   r"/settings|/preferences)", re.I)
 
 
 def 틀들() -> tuple:
@@ -188,7 +195,7 @@ def 거두기(응답들: list, 뽑은것들: list, 말: str, 몇: int = 40) -> l
                 continue
             if p.scheme not in ("http", "https") or not p.netloc:
                 continue
-            if _집(p.netloc) in 집:             # 검색 쪽 자기 집 -- 결과가 아니다
+            if _집(p.netloc) in 집 or _살림.search(u):   # 검색 쪽 살림 -- 결과가 아니다
                 continue
             if p.path.lower().endswith(_안볼꼬리):
                 continue
