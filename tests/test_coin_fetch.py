@@ -164,6 +164,32 @@ try:
 finally:
     LC.길 = _옛길
 
+# ---------------------------------------------------------------- SEC 연락처
+# **가짜 연락처를 주는 것은 안 주는 것보다 나쁘다** -- SEC 정책 위반이고, 막히면서
+# 이유도 안 남는다. 그리고 저장소가 공개라 진짜를 박으면 스팸 봇이 긁는다.
+import os as _os2                                                     # noqa: E402
+_옛2 = _os2.environ.get("SEC_CONTACT")
+try:
+    _os2.environ.pop("SEC_CONTACT", None)
+    ok(NW._집머리표() == {}, "**연락처가 없으면 그 머리를 아예 안 보낸다** (가짜 금지)")
+    _os2.environ["SEC_CONTACT"] = "aaa@bbb.com"
+    _표 = NW._집머리표()
+    ok("www.sec.gov" in _표 and "aaa@bbb.com" in _표["www.sec.gov"]["User-Agent"],
+       "연락처가 있으면 User-Agent 에 담는다")
+    ok("sec.gov" in _표 and "efts.sec.gov" in _표, "EDGAR 쪽도 같은 머리")
+finally:
+    if _옛2 is None:
+        _os2.environ.pop("SEC_CONTACT", None)
+    else:
+        _os2.environ["SEC_CONTACT"] = _옛2
+# **함수 몸통**만 본다 -- 왜 안 박는지 적은 주석에 그 말이 나오는 것은 괜찮다.
+# 검사가 이것을 처음에 통째로 grep 해서 자기 설명에 걸렸다.
+_소스 = (ROOT / "coin" / "news.py").read_text(encoding="utf-8")
+_몸통 = _소스.split("def _집머리표()")[1].split("\ndef ")[0]
+ok("example.com" not in _몸통, "**보내는 자리에 가짜 연락처가 없다**")
+ok('os.environ.get("SEC_CONTACT"' in _몸통, "부를 때 환경변수를 읽는다")
+ok("@" not in _몸통.replace("SEC_CONTACT", ""), "몸통에 박힌 메일이 없다")
+
 print()
 print(f"실패 {len(fails)}개" if fails else "전부 통과")
 raise SystemExit(1 if fails else 0)
