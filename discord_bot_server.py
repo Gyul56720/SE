@@ -34,6 +34,7 @@ load_dotenv()
 from langgraph.checkpoint.memory import MemorySaver  # noqa: E402
 
 import agent_context  # noqa: E402
+import channels  # noqa: E402
 import agent_memory
 import gitsync  # noqa: E402
 import gatekeeper  # noqa: E402
@@ -46,14 +47,17 @@ from bot_tools import (  # noqa: E402
 
 BOT_TOKEN = os.environ["DISCORD_BOT_TOKEN"]
 # 관리자 채널(화이트리스트 있음, DISCORD_ALLOWED_USER_IDS): run_shell 전권 + git sync.
-ADMIN_CHANNEL_ID = int(os.getenv("DISCORD_CHANNEL_ID", "1542081266315427912"))
+# **빈 값으로 죽지 않게** channels.수() 로 읽는다. `int(os.getenv(...))` 는 키가 있고
+# 값이 비면 `""` 를 그대로 넘겨 ValueError 를 내고, 그것이 모듈 읽는 중이라 봇이
+# 통째로 멎는다(실측 2026-09-09, systemd 가 5초마다 되살리기를 13번 되풀이했다).
+ADMIN_CHANNEL_ID = channels.수("DISCORD_CHANNEL_ID", 1542081266315427912)
 # 이 서버(길드)에서 온 것만 받는다. **비우면 안 본다** -- 예전처럼 채널 id 로만 가린다.
 #
 # 채널 id 는 디스코드 전체에서 유일하므로 이것 없이도 남의 서버 글이 섞이지는 않는다.
 # 그런데 공개 채널에는 **사용자 화이트리스트가 없다**(main_public.py). 그러면 남은
 # 경계가 '그 채널인가' 하나뿐이고, 봇이 실수로 다른 서버에 초대되거나 채널 id 를
 # 잘못 넣으면 그 하나가 통째로 없어진다. 길드까지 보면 경계가 둘이 된다.
-GUILD_ID = int(os.getenv("DISCORD_GUILD_ID", "0") or 0)
+GUILD_ID = channels.수("DISCORD_GUILD_ID", 0)
 ADMIN_ALLOWED_USER_IDS = {int(x) for x in os.getenv("DISCORD_ALLOWED_USER_IDS", "").split(",") if x.strip()}
 ADMIN_MODEL_NAME = os.getenv("DISCORD_ADMIN_MODEL", "gemini-3.5-flash-lite")
 # GEMINI_MODEL_POOL을 명시하면 그 모델들만 쓴다(수동 제한용). 비워두면 build_agent_pool이
@@ -371,6 +375,9 @@ async def on_ready():
     # 조용히 아무 말도 안 듣는데, 그것이 '봇이 죽었다' 와 화면에서 똑같이 보인다.
     # 길드 id 를 채널 자리에 넣는 것이 특히 흔하다 -- 둘 다 같은 꼴의 수라 눈으로는
     # 안 갈리고, 넣어도 아무 오류가 안 난다(그냥 영영 안 맞을 뿐이다).
+    if channels.이상한값:
+        print(f"[SE-agent] **경고: 수로 못 읽은 설정** {channels.이상한값} -- "
+              "기본값으로 돌아갔다. 딴 채널을 보고 있을 수 있다")
     if main_public.PUBLIC_CHANNEL_이상:
         print(f"[SE-agent] **경고: 채널 id 로 못 읽은 값** "
               f"{main_public.PUBLIC_CHANNEL_이상} -- 그 채널은 안 듣는다")

@@ -23,7 +23,11 @@ load_dotenv()
 import channels  # noqa: E402
 
 BOT_TOKEN = os.environ["DISCORD_BOT_TOKEN"]
-LOG_CHANNEL_ID = os.environ["DISCORD_LOG_CHANNEL_ID"]
+# 빈 값이면 "없는 것" 으로 친다 -- `os.environ[...]` 는 빈 문자열도 통과시켜서
+# 주소가 `/channels//messages` 가 되고 그때서야 404 로 터진다.
+LOG_CHANNEL_ID = channels.수("DISCORD_LOG_CHANNEL_ID", 0)
+if not LOG_CHANNEL_ID:
+    raise KeyError("DISCORD_LOG_CHANNEL_ID")
 UNIT = "se-discord-bot"
 
 API_BASE = "https://discord.com/api/v10"
