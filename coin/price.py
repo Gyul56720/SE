@@ -37,6 +37,10 @@ from email.utils import parsedate_to_datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+# **`python3 coin/price.py` 로 직접 부를 때를 위한 것.** 파이썬은 sys.path[0] 에
+# 스크립트가 든 폴더(coin/)를 넣지 현재 폴더를 안 넣는다. 그래서 `from coin import ...`
+# 이 ModuleNotFoundError 로 죽는다 -- 실측 2026-09-09, VM 에서 가격 받기가 여기서 멈췄다.
+sys.path.insert(0, str(ROOT))
 CORPUS = Path(__file__).resolve().parent / "corpus"
 BINANCE = "https://api.binance.com/api/v3/klines"
 안내 = "https://api.binance.com/api/v3/exchangeInfo"
