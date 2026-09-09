@@ -3,10 +3,12 @@
 
 화이트리스트가 없어 이 채널을 볼 수 있는 누구나 메시지를 보낼 수 있다. run_shell(임의 셸
 실행)을 admin과 동일하게 부여한다 -- 화이트리스트 없는 채널에 셸 실행 경로를 열어두는 위험을
-사용자가 명시적으로 인지하고 감수하겠다고 요청했다. write_public_answer로 Public_agent/
-폴더 밖으로 못 나가는 결과물 저장 도구도 함께 제공한다(public_agent_files.py가 경로를
-코드로 강제, git commit까지만 하고 push는 안 함). bot_tools.py의 공유 도구/복구 로직을
+사용자가 명시적으로 인지하고 감수하겠다고 요청했다. bot_tools.py의 공유 도구/복구 로직을
 그대로 쓴다.
+
+**파일로 남기는 도구(write_public_answer)는 빼 두었다**(2026-09-09). 그것이 답을 줄이는
+핑계가 되고 있었다 -- 화면에는 요약만 내고 "상세 내용은 파일로도 기록되었습니다"로 끝냈다.
+사용자가 보는 것은 화면뿐이다. 되살리려면 PUBLIC_TOOLS 에 다시 넣는다.
 
 discord_bot_server.py가 이 모듈에서 PUBLIC_CHANNEL_IDS와 run_public_agent()를 가져다 쓴다.
 공개 채널은 여럿일 수 있다(DISCORD_PUBLIC_CHANNEL_ID · ..._2 · ...).
@@ -22,7 +24,7 @@ import agent_context
 import channels
 
 from bot_tools import (
-    search_memory, save_memory, write_public_answer, run_shell,
+    search_memory, save_memory, run_shell,
     build_agent_pool, run_with_fallback_pool, _current_author,
     register_thread, unregister_thread,
 )
@@ -51,7 +53,14 @@ _extra_models = [m.strip() for m in os.getenv("GEMINI_MODEL_POOL", "").split(","
 PUBLIC_MODEL_CANDIDATES = [PUBLIC_MODEL_NAME] + [m for m in _extra_models if m != PUBLIC_MODEL_NAME] \
     if _extra_models else None
 
-PUBLIC_TOOLS = [search_memory, save_memory, write_public_answer, run_shell]
+# **`write_public_answer` 를 뺐다** (실측 2026-09-09, 사용자: "파일 기록하지 않기").
+# 규칙으로 "파일로 남기지 마라" 를 적을 수도 있었지만 이 저장소가 그 길에서 배운 것이
+# 있다 -- 프롬프트에 적힌 규칙은 어겨진다(규칙 4·5 를 어기고 "차단됐다" 고 한 그 일).
+# **도구가 없으면 못 쓴다.** 게다가 그 도구가 답을 줄이는 핑계가 되고 있었다:
+# 파일에 다 적었다며 화면에는 요약만 내고 "상세 내용은 파일로도 기록되었습니다" 로
+# 끝냈다. 사용자가 보는 것은 화면뿐인데.
+# 다시 켜려면 이 줄에 write_public_answer 를 넣고 규칙 8 을 되살리면 된다.
+PUBLIC_TOOLS = [search_memory, save_memory, run_shell]
 # admin과 동일한 "적극적으로 조사해서 근거 기반으로 답하라"는 태도로 통일했다 -- 예전엔
 # "간결하게/불필요한 수식어 금지" 규칙 때문에, 상태·속도·에러를 묻는 질문에도 조사 없이
 # "OK" 한마디로 끝내버리는 경우가 있었다(admin은 run_shell로 journalctl을 직접 뒤져서 표까지
@@ -78,9 +87,8 @@ PUBLIC_SYSTEM_PROMPT = (
     "5. **지어내지 마라.** 못 받았으면 그 자리를 비우고 못 받았다고 하라. 찾은 것마다 "
     "**어디서 왔는지 주소를 붙여라.**\n"
     "6. **출력을 네 말로 요약하지 마라. 그대로 붙여라.** 요약하면 값·리뷰·시간이 통째로 "
-    "빠지고, 그것이 사용자가 '정보가 없다'고 하는 그 답이다. Discord 한 메시지는 "
-    "2000자이니 네가 줄이지 말고 **여러 메시지로 나눠라.** 인사말·감탄·이모지는 빼고 "
-    "그 자리에 근거를 채워라.\n"
+    "빠지고, 그것이 사용자가 '정보가 없다'고 하는 그 답이다. **2000자를 넘겨도 다 "
+    "써라** -- 나누는 것은 코드가 한다. 인사말·감탄·이모지는 빼고 근거를 채워라.\n"
     "6-1. 문제 풀이·오답노트를 물으면 `study/`다. 문제는 **지어내지 말고** 사용자가 준 "
     "것이나 dig 로 긁은 것을 넣는다:\n"
     "      python3 study/run.py --넣기 문제.json / --낼것 / --답 <id> '<답>' --메모 '<풀이>'\n"
@@ -105,7 +113,7 @@ PUBLIC_SYSTEM_PROMPT = (
     "`coin/gate.py`, LLM 아님)이 원장에 없는 수를 기각한다. 사거나 팔라고도 하지 "
     "마라 -- 이것은 측정 보고이지 투자 권유가 아니다.\n"
     "8. 기억이 필요하면 search_memory, 사용자가 새로 알려 준 것은 save_memory(잡담은 "
-    "말고). 파일로 남길 것은 write_public_answer(Public_agent/ 아래만).\n"
+    "말고). **파일로 남기지 마라 -- 사용자는 화면만 본다.**\n"
     "9. 이 저장소 코드를 고쳤으면 push 전에 `python3 gatekeeper.py` 를 돌려라.\n"
     "10. 비밀값(.env·API 키·토큰)은 읽어내려 하지 마라 -- 공개 채널 셸에는 없다.\n"
 )
