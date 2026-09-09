@@ -382,7 +382,12 @@ async def on_ready():
         print(f"[SE-agent] **경고: 채널 id 로 못 읽은 값** "
               f"{main_public.PUBLIC_CHANNEL_이상} -- 그 채널은 안 듣는다")
     for cid in [ADMIN_CHANNEL_ID] + list(main_public.PUBLIC_CHANNEL_IDS):
-        ch = client.get_channel(cid)
+        ch = client.get_channel(cid) or client.get_partial_messageable(cid)
+        if getattr(ch, "guild", None) is None and not hasattr(ch, "name"):
+            # **DM 은 캐시에 없으면 get_channel 이 None 을 준다.** 그것을 '못 찾았다'
+            # 로 찍으면 멀쩡한 관리 채널에 거짓 경고가 난다(실측 2026-09-09).
+            # DM 은 길드가 없으므로 길드 필터와도 무관하다 -- 아무 말 안 한다.
+            continue
         if ch:
             # **보이는 것과 듣는 것은 다르다.** 길드 필터가 켜져 있는데 그 채널이
             # 다른 길드에 있으면, 봇은 채널을 멀쩡히 보면서 그 채널의 메시지를
@@ -573,9 +578,16 @@ async def _handle_public_message(message: discord.Message) -> None:
 async def on_message(message: discord.Message):
     if message.author.bot:
         return
-    # **길드가 정해져 있으면 그 길드만.** DM(guild=None)도 여기서 걸린다 -- 공개
-    # 채널에는 사용자 화이트리스트가 없으므로, 경계는 많을수록 낫다.
-    if GUILD_ID and getattr(message.guild, "id", None) != GUILD_ID:
+    # **길드가 정해져 있으면 그 길드만.** 다만 **DM 은 여기서 안 거른다.**
+    #
+    # 실측 2026-09-09: 관리 채널(1542081266315427912)이 서버 채널이 아니라 **DM**
+    # 이었다(`type=1, guild=None`). DM 은 `message.guild` 가 None 이라 이 검사에
+    # 절대 안 맞고, 그래서 길드를 켜는 순간 **관리 채널이 통째로 죽었다.**
+    # 길드 필터는 '남의 서버 글을 안 받겠다' 는 뜻이지 'DM 을 안 받겠다' 가 아니다.
+    #
+    # DM 을 통과시켜도 경계는 안 무너진다 -- 아래에서 채널 id 로 한 번 더 거르고,
+    # 관리 채널은 사용자 화이트리스트까지 있다.
+    if GUILD_ID and message.guild is not None and message.guild.id != GUILD_ID:
         return
     if message.channel.id == ADMIN_CHANNEL_ID:
         await _handle_admin_message(message)
