@@ -54,6 +54,13 @@ class 시도:
     걸린초: float = 0.0
     메모: str = ""                             # 학생이 쓴 풀이·왜 틀렸다고 보는지
     짚은것: str = ""                           # 나중에 붙이는 취약점 분석
+    # **오답인가 모름인가.** 둘은 고칠 데가 서로 다르다 -- 오답은 아는데 어긋난 것이라
+    # 그 어긋남을 짚으면 되고, 모름은 아예 없는 것이라 배워야 한다. 섞어서 "확률에
+    # 약하다" 로 뭉치면 둘 다 못 고친다. 빈 값은 **아직 안 물어본 것**이다.
+    갈래: str = ""                             # "오답" | "모름" | ""
+    # 그 갈래 안에서 **무엇인가.** 오답이면 어긋난 곳, 모름이면 모르는 유형.
+    # 이것이 취약점의 알맹이다 -- 태그(과목)가 아니라 이것을 센다.
+    사유: str = ""
 
 
 @dataclass
@@ -72,6 +79,15 @@ class 공책:
         푼 = self.푼것()
         return [q for q in self.문제.values()
                 if q.id not in 푼 and (not 태그 or 태그 in q.태그)]
+
+    def 안물어본것(self) -> list:
+        """틀렸는데 **오답인지 모름인지 아직 안 물어본** 시도. 여기가 다음에 할 일이다."""
+        return [a for a in self.시도 if a.맞았나 is False and not a.갈래]
+
+    def 사유없는것(self) -> list:
+        """갈래는 정해졌는데 **무엇인지** 안 적힌 것."""
+        return [a for a in self.시도
+                if a.맞았나 is False and a.갈래 and not a.사유]
 
     def 틀린것(self) -> list:
         """**틀린 시도만.** 아직 안 정해진 것(None)은 틀린 것이 아니다."""
@@ -175,5 +191,6 @@ def 읽기(자리: Path = None) -> 공책:
                 문제id=str(d["문제id"]), 낸답=str(d.get("낸답") or ""),
                 맞았나=None if 맞 is None else bool(맞),
                 언제=str(d.get("언제") or ""), 걸린초=float(d.get("걸린초") or 0),
-                메모=str(d.get("메모") or ""), 짚은것=str(d.get("짚은것") or "")))
+                메모=str(d.get("메모") or ""), 짚은것=str(d.get("짚은것") or ""),
+                갈래=str(d.get("갈래") or ""), 사유=str(d.get("사유") or "")))
     return n

@@ -8,7 +8,18 @@
     python3 study/run.py --오답노트
     python3 study/run.py --취약점
     python3 study/run.py --교안
-    python3 study/run.py --짚기 q12 '조건부확률에서 분모를 전체로 잡았다'
+    python3 study/run.py --갈래 q12 1 '조건부확률에서 분모를 전체로 잡는다'
+    python3 study/run.py --갈래 q13 2 '등비수열 합 공식을 모른다'
+    python3 study/run.py --사유프롬프트 / --사유붙이기 답.json
+    python3 study/run.py --태그프롬프트 / --태그붙이기 답.json / --흩어짐
+
+## 틀리면 **꼭 묻는다 -- 오답인가 모름인가**
+
+    1) 오답  풀긴 했는데 어긋났다 (아는데 틀린 것)  -> 그 어긋난 자리를 짚으면 된다
+    2) 모름  아예 못 풀었다 (없는 것)              -> 배워야 한다
+
+섞으면 "확률에 약하다" 한 덩어리가 되고 **둘 다 못 고친다.** 그리고 취약점은 태그가
+아니라 **사유**로 센다 -- 과목이 아니라 어긋난 자리여야 고칠 데가 정해진다.
 
     끝값 0 냈다 · 1 못 했다(무엇이 없는지 적는다) · 3 무엇을 할지 안 정해졌다
 
@@ -38,6 +49,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from study import note as NT                                   # noqa: E402
 from study import plan as PL                                   # noqa: E402
+from study import tag as TG                                    # noqa: E402
 from study import weak as WK                                   # noqa: E402
 
 
@@ -128,13 +140,67 @@ def 답하기(자리, qid: str, 답: str, 메모: str, 초: float) -> int:
         print(f"[{qid}] **틀렸다.**  낸 답: {답}   정답: {q.정답}")
         if q.해설:
             print(f"  해설: {q.해설}")
-        print(f"  왜 틀렸는지 짚어 두라: python3 study/run.py --짚기 {qid} '<무엇을 잘못 봤나>'")
+        print(_갈래물음(qid))
     else:
         # **억지로 참·거짓을 내지 않는다.** 우기면 그 우김 위에서 취약점이 돈다
         print(f"[{qid}] **채점을 못 했다.** 글자로 맞춰 볼 수 있는 답이 아니다.")
         print(f"  낸 답: {답}")
         print(f"  정답:  {q.정답}")
         print(f"  네가 정해라: python3 study/run.py --맞음 {qid}   또는   --틀림 {qid}")
+    return 0
+
+
+갈래번호 = {"1": "오답", "2": "모름"}
+
+
+def _갈래물음(qid: str) -> str:
+    """**오답인가 모름인가 -- 꼭 묻는다.**
+
+    사용자 지시(2026-09-09): "오답인지? 모르는 건지? 를 꼭 물어봐."
+
+    둘은 고칠 데가 서로 다르다. 오답은 아는데 어긋난 것이라 그 어긋난 자리를 짚으면
+    되고, 모름은 아예 없는 것이라 배워야 한다. 안 물어보고 섞으면 "확률에 약하다"
+    한 덩어리가 되고, 그러면 **둘 다 못 고친다.**
+    """
+    return ("\n  이건 어느 쪽인가? **1 또는 2**\n"
+            "    1) 오답 -- 풀긴 했는데 어긋났다 (아는데 틀린 것)\n"
+            "    2) 모름 -- 아예 못 풀었다 (없는 것)\n"
+            f"    python3 study/run.py --갈래 {qid} 1 '<무엇이 어긋났나>'\n"
+            f"    python3 study/run.py --갈래 {qid} 2 '<무슨 유형을 모르나>'\n"
+            "  사유를 지금 안 적어도 된다 -- 나중에 `--사유프롬프트` 로 모델이 붙인다.")
+
+
+def 갈래정하기(자리, qid: str, 번호: str, 사유: str) -> int:
+    n = NT.읽기(자리)
+    a = n.마지막(qid)
+    if not a:
+        print(f"**그 문제에 시도가 없다: {qid}** -- `--답` 부터.")
+        return 1
+    갈 = 갈래번호.get(str(번호).strip()) or (
+        str(번호).strip() if str(번호).strip() in ("오답", "모름") else "")
+    if not 갈:
+        print(f"**1 이나 2 로 골라라** (받은 것: {번호!r})")
+        print("    1) 오답 -- 풀긴 했는데 어긋났다      2) 모름 -- 아예 못 풀었다")
+        return 1
+    a.갈래 = 갈
+    묶임 = ""
+    if 사유.strip():
+        # **여기서도 묶는다.** `--사유붙이기` 에만 묶기를 걸어 뒀더니, 손으로 적은
+        # 사유가 매번 조금씩 달라 같은 오개념이 넷으로 갈라졌다(실측: `조건부확률에서
+        # 분모를...` · `조건부확률의 분모를...` · `분모를 전체로 잡는다 조건부확률에서`).
+        # 그러면 되풀이가 안 보이고, 되풀이를 보는 것이 이 자리의 전부다.
+        이미 = sorted({x.사유 for x in n.시도 if x.사유})
+        표 = TG.묶기(이미 + [사유.strip()])
+        a.사유 = 표.get(사유.strip(), 사유.strip())
+        if a.사유 != 사유.strip():
+            묶임 = 사유.strip()
+    NT.저장(n, 자리)
+    print(f"[{qid}] {갈}" + (f" · 사유: {a.사유}" if a.사유 else ""))
+    if 묶임:
+        print(f"  닮아서 이미 쓰던 이름으로 묶었다 (적은 것: {묶임})")
+    if not a.사유:
+        print(f"  사유가 비었다 -- `--사유프롬프트` 로 모델이 붙일 수 있다. "
+              f"**사유가 없으면 취약점 셈에 안 들어간다**")
     return 0
 
 
@@ -162,6 +228,91 @@ def 짚기(자리, qid: str, 말: str) -> int:
     return 0
 
 
+def 태그프롬프트(자리, 태그없는것만: bool, 몇: int) -> int:
+    n = NT.읽기(자리)
+    것들 = [q for q in n.문제.values() if not (태그없는것만 and q.태그)]
+    if not 것들:
+        print("태그를 붙일 문제가 없다. (`--전부` 를 주면 이미 붙은 것도 다시 낸다)")
+        return 1
+    이미 = sorted({t for q in n.문제.values() for t in (q.태그 or [])})
+    print(TG.프롬프트(것들[:max(1, 몇)], 이미))
+    return 0
+
+
+def 태그붙이기(자리, raw: str, 덮어쓰기: bool) -> int:
+    n = NT.읽기(자리)
+    표 = TG.읽기(raw)
+    if not 표:
+        print("**태그를 못 읽었다.** JSON 이 아니거나 비었다.")
+        print('  꼴: {"태그": {"q1": ["확률", "조건부"]}}')
+        return 1
+    r = TG.붙이기(n, 표, 덮어쓰기)
+    NT.저장(n, 자리)
+    print(f"태그를 {r['붙임']}문제에 붙였다"
+          + (f" · 이미 있어 건너뜀 {r['건너뜀']}" if r["건너뜀"] else "")
+          + (f" · 없는 id {len(r['없는id'])}" if r["없는id"] else ""))
+    if r["모은것"]:
+        # **합친 것을 말한다.** 조용히 합치면 화면의 태그가 모델이 쓴 것과 달라져
+        # 읽는 쪽이 어긋난 것을 못 알아챈다.
+        print("  같은 것으로 모았다 (안 모으면 표본이 갈라져 아무것도 못 가른다):")
+        for a, b in r["모은것"].items():
+            print(f"    {a} -> {b}")
+    if r["없는id"]:
+        print(f"  공책에 없는 id: {', '.join(r['없는id'][:8])}")
+    흩 = TG.흩어짐(n)
+    if 흩["흩어짐"]:
+        print(f"  **태그가 잘게 쪼개졌다**: 태그 {흩['태그수']}개에 채점된 문제 "
+              f"{흩['채점된문제']}개 (태그당 평균 {흩['태그당평균']:.1f}). "
+              f"이 태그 수로는 태그마다 {흩['태그당필요']}문제쯤은 있어야 가른다.")
+        if 흩["작은태그"]:
+            print(f"    문제가 모자란 태그: {', '.join(흩['작은태그'][:10])}")
+    if 흩["닮은쌍"]:
+        # **합치지는 않는다.** 뜻으로 합치면 짐작이고, 말 안 하면 사용자는 표본이
+        # 왜 안 모이는지 모른 채 늘 `못잼` 만 본다.
+        print("  합칠 만해 보이는 짝 (합치지는 않았다 -- 뜻으로 합치는 것은 짐작이다):")
+        for a, b, v in 흩["닮은쌍"][:8]:
+            print(f"    {v:.2f}  {a}  ~  {b}")
+        print("    합치려면 `--태그붙이기` 에 같은 이름으로 다시 주고 `--덮어쓰기`")
+    return 0
+
+
+def 사유프롬프트(자리, 몇: int) -> int:
+    n = NT.읽기(자리)
+    것들 = [(n.문제[a.문제id], a) for a in n.사유없는것() if a.문제id in n.문제]
+    if not 것들:
+        안물 = n.안물어본것()
+        if 안물:
+            print(f"**갈래부터 정해라** -- 오답인지 모름인지 안 물어본 것이 "
+                  f"{len(안물)}개 있다:")
+            for a in 안물[:8]:
+                print(f"    python3 study/run.py --갈래 {a.문제id} 1|2")
+            return 1
+        print("사유를 붙일 것이 없다.")
+        return 1
+    이미 = sorted({a.사유 for a in n.시도 if a.사유})
+    print(TG.사유프롬프트(것들[:max(1, 몇)], 이미))
+    return 0
+
+
+def 사유붙이기(자리, raw: str, 덮어쓰기: bool) -> int:
+    n = NT.읽기(자리)
+    표 = TG.사유읽기(raw)
+    if not 표:
+        print("**사유를 못 읽었다.** JSON 이 아니거나 비었다.")
+        print('  꼴: {"사유": {"q1": "조건부확률에서 분모를 전체로 잡는다"}}')
+        return 1
+    r = TG.사유붙이기(n, 표, 덮어쓰기)
+    NT.저장(n, 자리)
+    print(f"사유를 {r['붙임']}개에 붙였다"
+          + (f" · 이미 있어 건너뜀 {r['건너뜀']}" if r["건너뜀"] else "")
+          + (f" · 없는 id {len(r['없는id'])}" if r["없는id"] else ""))
+    if r["모은것"]:
+        print("  닮아서 한 이름으로 묶었다 (안 묶으면 되풀이가 안 보인다):")
+        for a, b in r["모은것"].items():
+            print(f"    {a}\n      -> {b}")
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="문제 -> 오답노트 -> 취약점 -> 교안")
     ap.add_argument("--공책", dest="자리", default="", help="공책 자리 (기본 study/공책)")
@@ -175,6 +326,23 @@ def main(argv=None) -> int:
     ap.add_argument("--맞음", dest="right", default="")
     ap.add_argument("--틀림", dest="wrong", default="")
     ap.add_argument("--짚기", dest="point", nargs=2, metavar=("문제id", "무엇"))
+    ap.add_argument("--갈래", dest="kind", nargs="+",
+                    metavar="문제id 1|2 [사유]",
+                    help="1=오답(아는데 어긋남) · 2=모름(아예 못 풂)")
+    ap.add_argument("--사유프롬프트", dest="whyask", action="store_true",
+                    help="틀린 것마다 무엇이 어긋났는지 모델에게 물을 것 (호출 0회)")
+    ap.add_argument("--사유붙이기", dest="whyput", default="",
+                    help="모델이 답한 사유 JSON (`-` 표준입력)")
+    ap.add_argument("--태그프롬프트", dest="tagask", action="store_true",
+                    help="태그를 붙일 때 모델에게 줄 것 (호출 0회)")
+    ap.add_argument("--태그붙이기", dest="tagput", default="",
+                    help="모델이 답한 태그 JSON (`-` 표준입력)")
+    ap.add_argument("--전부", dest="alltags", action="store_true",
+                    help="--태그프롬프트 에서 이미 태그가 붙은 것도 낸다")
+    ap.add_argument("--덮어쓰기", dest="overwrite", action="store_true",
+                    help="--태그붙이기 에서 이미 있는 태그를 덮는다")
+    ap.add_argument("--흩어짐", dest="spread", action="store_true",
+                    help="태그가 잘게 쪼개져 못 가르는 상태인지 본다")
     ap.add_argument("--오답노트", dest="wrongbook", action="store_true")
     ap.add_argument("--취약점", dest="weak", action="store_true")
     ap.add_argument("--교안", dest="lesson", action="store_true")
@@ -195,16 +363,47 @@ def main(argv=None) -> int:
         return 정하기(자리, a.wrong, False)
     if a.point:
         return 짚기(자리, a.point[0], a.point[1])
+    if a.kind:
+        return 갈래정하기(자리, a.kind[0], a.kind[1] if len(a.kind) > 1 else "",
+                        " ".join(a.kind[2:]))
+    if a.whyask:
+        return 사유프롬프트(자리, a.howmany if a.howmany > 1 else 40)
+    if a.whyput:
+        raw = (sys.stdin.read() if a.whyput == "-"
+               else Path(a.whyput).read_text(encoding="utf-8"))
+        return 사유붙이기(자리, raw, a.overwrite)
+    if a.tagask:
+        return 태그프롬프트(자리, not a.alltags, a.howmany if a.howmany > 1 else 60)
+    if a.tagput:
+        raw = (sys.stdin.read() if a.tagput == "-"
+               else Path(a.tagput).read_text(encoding="utf-8"))
+        return 태그붙이기(자리, raw, a.overwrite)
 
     n = NT.읽기(자리)
     if a.wrongbook:
         print(PL.오답노트(n, a.tag))
         return 0
     if a.weak:
+        # **구체적인 것을 먼저 낸다.** 과목 수준은 그 아래에 붙인다 --
+        # 사용자가 요구한 것은 "(특정 과목)에 취약" 이 아니라 어긋난 자리다.
+        print(PL.사유보고(n))
+        print()
         print(PL.취약점보고(n))
         return 0
     if a.lesson:
         print(PL.교안(n, a.title))
+        return 0
+    if a.spread:
+        흩 = TG.흩어짐(n)
+        print(f"태그 {흩['태그수']}개 (그중 잴 수 있는 것 {흩['잴수있는태그']}개) · "
+              f"채점된 문제 {흩['채점된문제']}개 · 태그당 평균 {흩['태그당평균']:.1f}")
+        print(f"  이 태그 수로 가르려면 태그마다 {흩['태그당필요']}문제쯤 필요하다")
+        if 흩["작은태그"]:
+            print(f"  문제가 모자란 태그: {', '.join(흩['작은태그'])}")
+        for a, b, v in 흩["닮은쌍"][:8]:
+            print(f"  합칠 만해 보임({v:.2f}): {a}  ~  {b}")
+        print("  **흩어졌다** -- 태그를 합치거나 문제를 더 풀어라"
+              if 흩["흩어짐"] else "  괜찮다")
         return 0
 
     전, 틀, p0 = WK.전체기저(n)
