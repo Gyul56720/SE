@@ -25,6 +25,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from brief import derive as DV
+from brief import infer as INFER
 
 TOL = 1e-6          # 다시 센 값과 이만큼까지는 같은 것으로 본다 (부동소수 오차)
 
@@ -144,8 +145,62 @@ def check_prose(text: str, facts) -> list:
     return vs
 
 
-def check(facts, led, src=None, prose: str = "") -> list:
-    return check_ledger(led, src) + check_facts(facts, led, src) + check_prose(prose, facts)
+AIM.update({
+    "I001": "표본이 모자란 명제를 이례라고 하지 않아야 한다",
+    "I002": "명제를 여러 개 세웠으면 그 수만큼 보정해야 한다",
+    "I003": "명제의 근거가 원장에 실재해야 한다",
+    "I004": "한 줄에 기대는 결론은 그렇다고 적어야 한다",
+})
+
+
+def check_claims(ms, led) -> list:
+    """추론 층의 관문 I001~I004.
+
+    수를 검사하는 관문(B00x)이 "이 값이 원장에서 왔는가" 를 보듯, 여기서는
+    **"이 판정이 이 원장으로 가능한가"** 를 본다. 값은 맞는데 판정이 원장 크기를
+    넘어서는 것 -- 그것이 시황이 늘 하는 일이고, 화면에서는 안 보인다.
+    """
+    vs = []
+    ids = {r.get("id") for r in led.줄}
+    m = len(ms)
+    for c in ms:
+        # I001 -- 못 잴 크기인데 이례라고 했는가
+        if c.판정 == "이례":
+            if c.n < INFER.MIN_N:
+                vs.append(Violation("I001", "hard", c.말[:40],
+                                    f"과거 표본이 {c.n}걸음뿐인데 이례라고 한다 "
+                                    f"(최소 {INFER.MIN_N})"))
+            elif min(1.0, m * INFER.최소p(c.n, c.이진)) >= INFER.ALPHA:
+                vs.append(Violation("I001", "hard", c.말[:40],
+                                    f"표본 {c.n}걸음 · 명제 {m}개로 도달 가능한 최소 p 는 "
+                                    f"{min(1.0, m * INFER.최소p(c.n)):.3f} 라 "
+                                    f"{INFER.ALPHA} 를 못 넘는다 -- 이례라고 할 수 없다"))
+        # I002 -- 보정을 했는가
+        if c.p is not None and c.p보정 is None:
+            vs.append(Violation("I002", "hard", c.말[:40],
+                                "단독 p 만 있고 보정 p 가 없다 -- 세운 개수만큼 "
+                                "조이지 않으면 그중 하나는 반드시 놀랍다"))
+        elif c.p is not None and c.p보정 is not None and c.p보정 + TOL < c.p:
+            vs.append(Violation("I002", "hard", c.말[:40],
+                                f"보정 p({c.p보정:.4f})가 단독 p({c.p:.4f})보다 작다 "
+                                "-- 보정은 조이는 것이지 푸는 것이 아니다"))
+        # I003 -- 근거가 실재하는가
+        for rid, col in c.근거[:200]:
+            if rid not in ids:
+                vs.append(Violation("I003", "hard", c.말[:40],
+                                    f"원장에 없는 줄을 가리킨다: {rid!r}"))
+                break
+        # I004 -- 한 줄에 기대는가 (soft)
+        if c.판정 == "이례" and "약한 결론" in (c.뒤집기 or ""):
+            vs.append(Violation("I004", "soft", c.말[:40],
+                                "과거 한 걸음만 빼도 판정이 바뀐다"))
+    return vs
+
+
+def check(facts, led, src=None, prose: str = "", claims=None) -> list:
+    return (check_ledger(led, src) + check_facts(facts, led, src)
+            + check_prose(prose, facts)
+            + (check_claims(claims, led) if claims else []))
 
 
 def hard(vs) -> list:

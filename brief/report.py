@@ -54,7 +54,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from brief import derive as DV                                     # noqa: E402
-from brief import gate as GT                                       # noqa: E402
+from brief import gate as GT
+from brief import infer as INF                                       # noqa: E402
 from brief import ledger as LG                                     # noqa: E402
 from brief import source as SRC                                    # noqa: E402
 
@@ -106,8 +107,51 @@ def build(src, led) -> list:
     return facts
 
 
-def render_generic(src, led, facts, vs) -> str:
-    """셈이 안 적힌 출처의 보고서 -- 칸마다 요약."""
+def render_infer(ms, vs) -> list:
+    """**따져 본 것** -- 나열 위에 얹히는 층. 명제 · 기준선 · 판정.
+
+    여기 없는 것이 요점이다: 원인도 전망도 없다. 있는 것은 "이 움직임이 이 원장의
+    기준선 아래서 놀라운가" 하나뿐이고, 대개 답은 **아니거나 모르겠다**이다.
+    """
+    if not ms:
+        return ["## 따져 본 것", "",
+                "  **명제를 하나도 못 세웠다.** 걸음이 모자란다 -- 추론에는 시계열이"
+                " 있어야 한다.", "",
+                "  오늘 값 몇 개로는 '평소와 다른가' 를 물을 수 없다. 견줄 평소가"
+                " 원장에 없기 때문이다.", ""]
+    s = INF.요약(ms)
+    out = ["## 따져 본 것", ""]
+    out.append(f"  명제 {s['세운수']}개 · 이례 {s['이례']} · 평범 {s['평범']} · "
+               f"**못잼 {s['못잼']}**   (Holm 보정, 문턱 {INF.ALPHA})")
+    out.append("")
+    for m in sorted(ms, key=lambda x: (x.판정 != "이례", x.p보정 if x.p보정 is not None else 1)):
+        표 = {"이례": "**이례**", "평범": "평범", "못잼": "**못잼**"}[m.판정]
+        out.append(f"  [{표}] {m.말}")
+        out.append(f"        기준선: {m.기준}")
+        if m.p is not None:
+            out.append(f"        p {m.p:.3f} -> 보정 {m.p보정:.3f}"
+                       + (f" · 분위 {m.분위:.0%}" if m.분위 is not None else "")
+                       + f" · 표본 {m.n}")
+        if m.판정 == "못잼":
+            out.append(f"        표본 {m.n}걸음 · 명제 {s['세운수']}개로 도달 가능한 최소 p 는 "
+                       f"{min(1.0, s['세운수'] * INF.최소p(m.n, m.이진)):.3f} "
+                       f"-- 문턱을 못 넘는다")
+        if m.뒤집기:
+            out.append(f"        뒤집기: {m.뒤집기}")
+        out.append("")
+    if s["필요표본"]:
+        out.append(f"  **이 원장 크기로는 어느 명제도 가를 수 없다.** 명제 "
+                   f"{s['세운수']}개를 이 문턱에서 가르려면 걸음이 최소 "
+                   f"{s['필요표본']}개는 있어야 한다.")
+        out.append("")
+    out.append("  이 층이 하는 말은 하나다 -- **이 움직임이 이 원장의 기준선 아래서")
+    out.append("  놀라운가.** 왜 그런지도, 앞으로 어떻게 될지도 여기서는 말하지 않는다.")
+    out.append("")
+    return out
+
+
+def render_generic(src, led, facts, vs, 추론절=()) -> str:
+    """셈이 안 적힌 출처의 보고서 -- 칸마다 요약 + 따져 본 것."""
     bad = GT.막힌것(vs, facts)
     cols = 수칸들(led)
     out = [f"# {src.이름} 보고 -- {src.설명}", ""]
@@ -153,6 +197,7 @@ def render_generic(src, led, facts, vs) -> str:
         out.append(f"  (줄이 {len(led)}개라 낱낱이 안 적는다. "
                    f"원장 파일에 다 있다)")
         out.append("")
+    out += 추론절
     out.append("## 관문")
     out.append("")
     out.append("  " + GT.report(vs).replace("\n", "\n  "))
@@ -165,7 +210,7 @@ def render_generic(src, led, facts, vs) -> str:
     return "\n".join(out)
 
 
-def render(src, led, facts, vs) -> str:
+def render(src, led, facts, vs, 추론절=()) -> str:
     """보고서. **hard 에 걸린 수는 여기서 빠진다.**"""
     bad = GT.막힌것(vs, facts)
     out = []
@@ -227,6 +272,7 @@ def render(src, led, facts, vs) -> str:
         out.append("")
 
     # ── 관문 ──────────────────────────────────────────────────────
+    out += 추론절
     out.append("## 관문")
     out.append("")
     out.append("  " + GT.report(vs).replace("\n", "\n  "))
@@ -237,6 +283,21 @@ def render(src, led, facts, vs) -> str:
     out.append("  · 앞으로 어떻게 되는가 -- 예측 모델이 아니다")
     out.append(f"  · 여기 없는 대상 -- 물은 것만 받았다 ({len(led)}개)")
     return "\n".join(out)
+
+
+def 내놓기(src, led) -> int:
+    """재고 · 따지고 · 검사하고 · 적는다. **세 층이 한 자리를 지난다.**
+
+    나열(칸마다)과 추론(따져 본 것)이 같은 관문을 지나야 한다 -- 한쪽만 검사받으면
+    검사 안 받은 쪽으로 주장이 몰린다.
+    """
+    facts = build(src, led)
+    claims = INF.따져보기(led)
+    vs = GT.check(facts, led, src, claims=claims)
+    절 = render_infer(claims, vs)
+    print(render(src, led, facts, vs, 절) if src.셈
+          else render_generic(src, led, facts, vs, 절))
+    return 1 if GT.hard(vs) else 0
 
 
 def probe(src) -> int:
@@ -305,7 +366,33 @@ def main(argv=None) -> int:
     ap.add_argument("--key", default="", help="줄을 가리킬 칸")
     ap.add_argument("--칸", dest="cols", default="", help="쉼표로. 비우면 도착한 것에서 읽는다")
     ap.add_argument("--수칸", dest="ncols", default="", help="쉼표로. 비우면 스스로 가린다")
+    ap.add_argument("--시계열", dest="series", default="",
+                    help="쉼표로. 일별 내력을 받아 날짜로 맞춘다 -- **추론은 이것이 있어야 한다**")
     a = ap.parse_args(argv)
+
+    # ── 시계열: 추론이 설 수 있는 유일한 자리 ──────────────────────
+    if a.series:
+        src = SRC.get("시계열")
+        조각, 못받은 = [], []
+        for 이름 in [x.strip() for x in a.series.split(",") if x.strip()]:
+            sym = SRC.심볼(src, [이름])[0]
+            one, err = LG.fetch(src, 심볼=sym)
+            (못받은.append(f"{이름}({sym}): {err}") if err
+             else 조각.append((이름, one, "Close")))
+        if not 조각:
+            print("**미검증** -- 하나도 못 받아 보고서를 낼 수 없다.")
+            for w in 못받은:
+                print(f"  {w}")
+            print("  받은 것이 없으므로 **수를 하나도 적지 않는다.**")
+            return 3
+        if 못받은:
+            print(f"(못 받은 것 {len(못받은)}개는 빼고 간다: "
+                  f"{', '.join(w.split(':')[0] for w in 못받은)})")
+        led = LG.합치기(조각)
+        if a.save:
+            LG.save(led, Path(a.save))
+            print(f"원장 저장: {a.save}  ({len(led)}줄)")
+        return 내놓기(src, led)
 
     # ── 즉석 출처 ─────────────────────────────────────────────────
     if a.url:
@@ -326,11 +413,7 @@ def main(argv=None) -> int:
         if a.save:
             LG.save(led, Path(a.save))
             print(f"원장 저장: {a.save}  ({len(led)}줄)")
-        facts = build(src, led)
-        vs = GT.check(facts, led, src)
-        print(render(src, led, facts, vs) if src.셈
-              else render_generic(src, led, facts, vs))
-        return 1 if GT.hard(vs) else 0
+        return 내놓기(src, led)
 
     if a.list_src or not a.출처:
         print("쓸 수 있는 출처:")
@@ -390,11 +473,7 @@ def main(argv=None) -> int:
         print("**--진단 이므로 보고서는 안 낸다.**")
         return 0
 
-    facts = build(src, led)
-    vs = GT.check(facts, led, src)
-    print(render(src, led, facts, vs) if src.셈
-          else render_generic(src, led, facts, vs))
-    return 1 if GT.hard(vs) else 0
+    return 내놓기(src, led)
 
 
 if __name__ == "__main__":
