@@ -540,6 +540,12 @@ async def _handle_public_message(message: discord.Message) -> None:
         return
 
     thread_id = str(message.author.id)
+    # **어느 채널에서 온 것인지 남긴다.** 공개 채널이 여럿이 된 뒤로 로그만 보고는
+    # 어느 채널의 요청인지 알 수가 없었다 -- 둘의 성능이 다를 때 견줄 것이 없다.
+    # thread_id 가 채널이 아니라 **사람**이라는 것도 여기 같이 보인다: 같은 사람이
+    # 두 채널에서 물으면 맥락이 이어지고, 다른 사람이 물으면 빈 맥락에서 시작한다.
+    print(f"[public] ch={message.channel.id} author={message.author.id} "
+          f"thread={thread_id}")
 
     if content.lower() == "stop":
         await _handle_stop(message, thread_id)
