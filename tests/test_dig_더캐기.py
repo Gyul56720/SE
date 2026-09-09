@@ -259,6 +259,76 @@ finally:
     FT.한번 = 진짜
 
 print()
+print("── 좋은 쪽을 굶기지 않는가 (깊이냐 너비냐) ─────────────────")
+# 실측 2026-09-09, 사용자: "depth 5 로 해도 깊이보단 너비가 넓어져".
+# 쪽마다 돌아가며 하나씩 집으면, 합격수기 마흔 개가 걸린 목록 쪽이나 링크
+# 여섯 개짜리 잡다한 쪽이나 **한 홉에 하나씩만** 가져간다. 깊이를 키워도
+# 사방으로 퍼지기만 하고 좋은 가지를 끝까지 못 판다.
+좋은쪽 = "<html><body>" + "".join(
+    f'<a href="/tuna-pass-review/story-{i}">합격수기 {i}: 편입 9관왕 그 비결</a>'
+    for i in range(40)) + "</body></html>"
+잡쪽 = "<html><body>" + "".join(
+    '<a href="/etc/PP-%d">공지</a>' % j for j in range(6)) + "</body></html>"
+
+앞선것 = [EX.뽑기(좋은쪽, "text/html", "https://ex.kr/review/")]
+앞선url = ["https://ex.kr/review/"]
+for p in range(19):
+    앞선것.append(EX.뽑기(잡쪽.replace("PP", str(p)), "text/html", f"https://ex.kr/n{p}"))
+    앞선url.append(f"https://ex.kr/n{p}")
+
+말 = ["합격수기", "편입"]
+쪽마다 = [RN.안쪽후보(x, u, 말) for x, u in zip(앞선것, 앞선url)]
+ok(all(isinstance(c, tuple) and len(c) == 2 for 줄 in 쪽마다 for c in 줄),
+   "**안쪽후보 는 값을 달아 준다** -- 값이 없으면 쪽을 가로질러 못 견준다")
+ok(len(쪽마다[0]) == 40, f"자르지 않는다 (좋은 쪽 후보 {len(쪽마다[0])}개)")
+
+몫 = 30
+돌아가며, 본 = [], set()
+for 칸 in range(몫):
+    for 줄 in 쪽마다:
+        if 칸 < len(줄) and 줄[칸][1] not in 본:
+            본.add(줄[칸][1])
+            돌아가며.append(줄[칸])
+돌아가며 = 돌아가며[:몫]
+옛수기 = sum(1 for _v, u in 돌아가며 if "tuna-pass-review" in u)
+
+# 실제 고르는 셈을 그대로 밟는다(캐기 안의 정책과 같은 식).
+바닥몫 = max(1, 몫 // 4)
+새것, 본2 = [], set()
+for 줄 in sorted([r for r in 쪽마다 if r], key=lambda r: -r[0][0])[:바닥몫]:
+    if 줄[0][1] not in 본2:
+        본2.add(줄[0][1])
+        새것.append(줄[0])
+for c in sorted((c for 줄 in 쪽마다 for c in 줄), key=lambda t: -t[0]):
+    if len(새것) >= 몫:
+        break
+    if c[1] not in 본2:
+        본2.add(c[1])
+        새것.append(c)
+새수기 = sum(1 for _v, u in 새것 if "tuna-pass-review" in u)
+
+print(f"       돌아가며 {옛수기}/{몫} · 값 순 {새수기}/{몫}")
+ok(옛수기 <= 3,
+   f"(그때 무엇을 잃었는지) 돌아가며 집으면 좋은 쪽이 {옛수기}개밖에 못 간다")
+ok(새수기 >= 20,
+   f"**값 순으로 고르면 좋은 가지를 끝까지 판다** ({새수기}/{몫})")
+ok(len({u for _v, u in 새것}) == len(새것), "겹치는 주소를 안 담는다")
+ok(len(새것) == 몫, f"예산을 다 쓴다 ({len(새것)}/{몫})")
+
+# 굶김 방지가 살아 있나 -- 좋은 쪽 하나가 통째로 먹으면 그것도 결함이다.
+온쪽 = {u.split("/")[3] if u.count("/") > 3 else u for _v, u in 새것}
+ok(len(온쪽) >= 2,
+   f"**한 쪽이 다 먹지는 않는다** (온 데 {len(온쪽)}갈래) -- 그 쪽이 함정이면 "
+   "예산을 통째로 버린다. 그래서 1/4 은 쪽마다 하나씩 떼어 둔다")
+
+# 그리고 이 정책이 실제로 `캐기` 안에 있는지 -- 검사만 밟고 코드는 안 밟으면 헛것이다.
+원본 = (ROOT / "dig" / "run.py").read_text(encoding="utf-8")
+ok("바닥몫" in 원본 and "안쪽후보(x, u, 찾을말)" in 원본,
+   "**캐기 가 이 정책을 실제로 쓴다** -- 검사에만 있으면 아무 데도 안 쓰인다")
+ok("for 칸 in range(몫)" not in 원본,
+   "돌아가며 집던 자리가 없어졌다")
+
+print()
 print("── 캔 것이 사용자에게 닿기까지 살아 있는가 ─────────────────")
 # `bot_tools` 는 langchain 없이는 임포트가 안 되므로 이 함수만 떼어 실제로 돌린다.
 나무 = ast.parse((ROOT / "bot_tools.py").read_text(encoding="utf-8"))
