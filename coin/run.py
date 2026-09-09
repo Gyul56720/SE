@@ -87,13 +87,15 @@ def main(argv=None) -> int:
     ap.add_argument("--재기", action="store_true")
     ap.add_argument("--채우기", action="store_true")
     ap.add_argument("--상황만", action="store_true", help="모델을 안 부르고 무엇이 잡혔는지만")
+    ap.add_argument("--나라", default=None, help="US · US,XX 처럼. 수집을 그 나라만")
     ap.add_argument("--원장", default="")
     a = ap.parse_args(argv)
 
     if a.채우기:
         from coin import news as NW
-        print("1) 뉴스 -- 여러 나라")
-        NW.main(["--과거", "--부터", "2017-01-01"])
+        나라칸 = ["--나라", a.나라] if a.나라 else []
+        print(f"1) 뉴스 -- {a.나라 or '여러 나라'}")
+        NW.main(["--과거", "--부터", "2017-01-01"] + 나라칸)
         print("2) 뭉치기")
         NW.main(["--뭉치기"])
         print("3) 가격")

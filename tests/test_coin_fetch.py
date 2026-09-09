@@ -114,6 +114,27 @@ ok(len(NW.GDELT_말) == 6 and all(len(v) >= 2 for v in NW.GDELT_말.values()),
 ok("" in NW.GDELT_말["gdelt-en"], "영어는 말을 안 거는 후보도 둔다")
 ok(all(k in NW.GDELT_질의 for k in NW.GDELT_말), "말마다 그 말로 묻는다")
 
+# ---------------------------------------------------------------- 나라 거르개
+import os as _os
+ok(len(SRC.쓸수있는것(나라="US")) < len(SRC.쓸수있는것()), "--나라 US 가 줄인다")
+ok(all(x.나라 == "US" for x in SRC.쓸수있는것(나라="US")), "**US 만 나온다**")
+ok({x.나라 for x in SRC.쓸수있는것(나라="US,XX")} <= {"US", "XX"}, "US,XX 는 둘만")
+ok(SRC.고르기("us") == ("US",), "소문자도 받는다")
+ok(SRC.고르기(None) == SRC.기본나라(), "안 주면 환경변수를 본다")
+_옛 = _os.environ.get("COIN_COUNTRY")
+_os.environ["COIN_COUNTRY"] = "US"
+try:
+    ok(SRC.기본나라() == ("US",), "**COIN_COUNTRY 를 읽는다** -- 셸에서 한 번 걸면 다 따라간다")
+    ok(all(x.나라 == "US" for x in SRC.쓸수있는것()), "환경변수만으로도 US 만 본다")
+finally:
+    if _옛 is None:
+        _os.environ.pop("COIN_COUNTRY", None)
+    else:
+        _os.environ["COIN_COUNTRY"] = _옛
+ok(len(SRC.쓸수있는것(나라="US")) >= 30, "US 출처가 서른 곳 넘는다")
+for 층 in ("규제", "거시", "사법", "거래소", "매체"):
+    ok(any(x.층 == 층 for x in SRC.쓸수있는것(나라="US")), f"US 에 {층} 층이 있다")
+
 print()
 print(f"실패 {len(fails)}개" if fails else "전부 통과")
 raise SystemExit(1 if fails else 0)

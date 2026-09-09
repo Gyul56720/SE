@@ -84,7 +84,7 @@ def _멈춰(*_):
     print("[멈춤 신호] 이 바퀴만 끝내고 멈춘다", flush=True)
 
 
-def 한바퀴(깊게: bool = False, 원장길=None, 출처=None) -> dict:
+def 한바퀴(깊게: bool = False, 원장길=None, 출처=None, 나라=None) -> dict:
     """한 바퀴. `깊게` 면 GDELT · 흐름까지.
 
     `출처` 를 주면 그것만 본다 -- **검사가 망을 안 타게 하는 자리다.** 곁문이 붙은
@@ -92,12 +92,12 @@ def 한바퀴(깊게: bool = False, 원장길=None, 출처=None) -> dict:
     검사를 돌리면 그 시간을 전부 기다린다. 검사는 망을 타면 안 된다.
     """
     잰때 = datetime.now(timezone.utc)
-    출처 = 출처 if 출처 is not None else [s for s in SRC.쓸수있는것()
+    출처 = 출처 if 출처 is not None else [s for s in SRC.쓸수있는것(나라=나라)
                                         if s.꼴 in ("rss", "html")]
     새 = NW.받기(출처)
     if 깊게:
         어제 = (잰때 - timedelta(days=1)).strftime("%Y-%m-%d")
-        무거운 = [s for s in SRC.쓸수있는것() if s.꼴 in ("gdelt", "json")]
+        무거운 = [s for s in SRC.쓸수있는것(나라=나라) if s.꼴 in ("gdelt", "json")]
         새 += NW.받기(무거운, 부터=어제, 까지=잰때.strftime("%Y-%m-%d"))
     원장 = NW.합치기(NW.불러오기(원장길), 새)
     NW.저장(원장, 원장길)
@@ -191,6 +191,7 @@ def main(argv=None) -> int:
     ap.add_argument("--찾기", action="store_true",
                     help="선언 안 한 출처를 찾아 빈틈 후보로 적는다 (표에 안 넣는다)")
     ap.add_argument("--흐름", action="store_true", help="깊은 바퀴에서 돈 흐름도")
+    ap.add_argument("--나라", default=None, help="US · US,XX 처럼")
     a = ap.parse_args(argv)
 
     signal.signal(signal.SIGTERM, _멈춰)
@@ -212,18 +213,19 @@ def main(argv=None) -> int:
         return 0
 
     if a.한바퀴:
-        print(줄(한바퀴(깊게=True)), flush=True)
+        print(줄(한바퀴(깊게=True, 나라=a.나라)), flush=True)
         return 0
 
     끝날때 = time.time() + a.시간 * 3600
     다음깊은, 바퀴 = 0.0, 0
     print(f"[시작] {a.시간}시간 · 얕은 {a.틈:.0f}초 · 깊은 {a.깊은틈:.0f}초 · "
-          f"출처 {len(SRC.쓸수있는것())}곳", flush=True)
+          f"출처 {len(SRC.쓸수있는것(나라=a.나라))}곳"
+          + (f" ({a.나라} 만)" if a.나라 else ""), flush=True)
     while time.time() < 끝날때 and not 멈춤["이제"]:
         바퀴 += 1
         깊게 = time.time() >= 다음깊은
         try:
-            r = 한바퀴(깊게)
+            r = 한바퀴(깊게, 나라=a.나라)
             print(줄(r), flush=True)
         except Exception as e:                                        # noqa: BLE001
             # **죽지 않는다.** 한 바퀴가 터져도 다음 바퀴로 간다
