@@ -23,6 +23,8 @@ from coin import loop as LP                                           # noqa: E4
 from coin import news as NW                                           # noqa: E402
 from coin import scenario as SC                                       # noqa: E402
 from coin import situation as ST                                      # noqa: E402
+from coin import source as SRC                                        # noqa: E402
+from coin import tag as TG                                            # noqa: E402
 from coin import watch as WT                                          # noqa: E402
 
 fails = []
@@ -33,6 +35,32 @@ def ok(cond, msg):
     if not cond:
         fails.append(msg)
 
+
+# ---------------------------------------------------------------- 덮임 격자
+# **빈틈은 개수로 안 보이고 격자로 보인다.** 매체를 스무 곳 붙여 놓고 규제 원문이
+# 하나도 없으면 그것이 빈틈인데, 목록만 보면 "아흔 곳이나 된다" 로 보인다.
+빈 = SRC.빈틈()
+ok(not 빈, f"(나라 x 층) 격자에 빈 칸이 없다" + (f" -- 빈 칸: {빈}" if 빈 else ""))
+for 나라 in SRC.나라들:
+    있 = [x for x in SRC.목록 if x.나라 == 나라]
+    ok(len(있) >= 6, f"{나라} 출처 {len(있)}곳")
+g = SRC.격자()
+for 나라 in SRC.나라들:
+    ok(bool(g.get((나라, "규제"))), f"{나라} 에 **규제 원문**이 있다 (기사만 보지 않는다)")
+ok(all(x.층 in SRC.층들 for x in SRC.목록), "모든 출처의 층이 표에 있는 것이다")
+ok(not SRC.확인된것(),
+   "**확인된 출처가 아직 0곳이다** -- 이 컨테이너는 프록시가 막는다. 그것이 사실이다")
+
+# 나라를 늘렸으면 그 말의 낱말도 늘어야 한다 -- 안 그러면 조용히 0건이 된다
+말들 = {x.말 for x in SRC.목록} - {"mul"}
+사전말 = {m for 유형 in TG.사전.values() for m in 유형}
+없는말 = 말들 - 사전말
+ok(not 없는말, f"출처의 말이 전부 사전에 있다" + (f" -- 없는 말: {없는말}" if 없는말 else ""))
+for 글, 참 in [("EZB erhöht den Leitzins", "금리거시"),
+               ("La BCE annonce une interdiction", "규제금지"),
+               ("SEC ruling on XRP", "소송제재"),
+               ("最高人民法院 가상화폐 판결", "소송제재")]:
+    ok(참 in TG.유형만(글), f"{글!r} -> {참}")
 
 # ---------------------------------------------------------------- 트리거
 for 글, 참 in [("비트코인 시장 분석해줘", True), ("암호화폐 어때", True),
@@ -134,9 +162,11 @@ ok("고래" in 부른것[0] and "지갑이 아니다" in 부른것[0],
    "거래량을 고래라고 부르지 말라는 것이 프롬프트에 있다")
 
 # ---------------------------------------------------------------- 모으기 한 바퀴
-r1 = WT.한바퀴()
-ok(isinstance(r1, dict) and "받은것" in r1,
-   f"모으기 한 바퀴가 망이 다 막혀도 안 죽는다 (받은 것 {r1['받은것']})")
+# **출처를 빈 목록으로 준다 -- 검사는 망을 타면 안 된다.** 곁문이 붙은 뒤로 한 바퀴가
+# 94곳 x (헤더벌 + 곁문) 이라, 망이 막힌 데서 돌리면 그 시간을 전부 기다린다.
+r1 = WT.한바퀴(출처=[])
+ok(isinstance(r1, dict) and "받은것" in r1 and r1["받은것"] == 0,
+   "모으기 한 바퀴가 출처 0곳에서도 안 죽는다 (검사는 망을 안 탄다)")
 ok(WT.줄(r1).startswith("["), "바퀴마다 로그 한 줄 -- **로그가 안 늘면 죽은 것이다**")
 
 print()
