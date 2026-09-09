@@ -159,8 +159,10 @@ def main() -> int:
         if g상태 == 200:
             print(f"   **채널이 아니라 길드(서버)다** -- '{g몸.get('name')}'")
             print("   DISCORD_CHANNEL_ID / DISCORD_PUBLIC_CHANNEL_ID 자리에 넣으면")
-            print("   영영 안 맞는다. 디스코드에서 **채널**을 우클릭 -> ID 복사 해서")
-            print("   그 값을 쓴다(개발자 모드가 켜져 있어야 보인다).")
+            print("   영영 안 맞는다 -- 오류도 안 나고 그냥 그 채널이 죽는다.")
+            print("   **이 값이 갈 자리는 DISCORD_GUILD_ID 다.**")
+            print("   채널 id 는 따로 받는다: 디스코드에서 **채널**을 우클릭 -> ID 복사")
+            print("   (개발자 모드가 켜져 있어야 보인다).")
             return 1
     if status == 200:
         print(f"   OK -- '{body.get('name')}' (type={body.get('type')}, "
