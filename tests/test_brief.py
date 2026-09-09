@@ -14,6 +14,7 @@ import io
 import json
 import sys
 import tempfile
+import urllib.error
 from dataclasses import replace
 from pathlib import Path
 
@@ -215,6 +216,66 @@ with tempfile.TemporaryDirectory() as d:
     ok("셈:" in out and "(종가-시가)/시가" in out, "**식을 같이 적는다**")
     ok("안 보는 것" in out and "원인" in out, "무엇을 안 보는지 매번 적는다")
     ok("위반 없음" in out, "관문 결과를 보고서 안에 적는다")
+
+print()
+print("── 실패했을 때 **어디를 볼지 화면에 있는가** ──────────────")
+class _HE(urllib.error.HTTPError):
+    def __init__(self, code):
+        super().__init__("u", code, "x", {}, io.BytesIO(b""))
+
+
+def _던지고(code):
+    본 = []
+
+    def g(u, timeout=30.0):
+        본.append(u)
+        raise _HE(code)
+    LG.get = g
+    return 본
+
+
+원래get = LG.get
+try:
+    본 = _던지고(404)
+    led, err = LG.fetch(주식, 심볼="^kospi,^ndq")
+    ok("%5Ekospi" in 본[0],
+       f"**`^` 가 퍼센트 인코딩된다** ({본[0].split('?')[1][:34]}) -- "
+       "RFC 3986 에서 query 에 못 쓰는 글자다. 안 하면 404 로 떨어지거나 조용히 잘린다")
+    ok("^kospi" not in 본[0], "날것 `^` 가 주소에 안 남는다")
+    ok("[주소:" in err and "stooq" in err,
+       "**실패 까닭에 주소가 실린다** -- 주소를 봐야 무엇이 틀렸는지 안다")
+    ok("경로" in err, "404 는 경로가 틀린 것이라고 짚어 준다")
+    ok(led.질의 == 본[0], "못 받은 원장에도 무엇을 물었는지는 남는다")
+
+    _던지고(403)
+    _, err = LG.fetch(주식, 심볼="^kospi")
+    ok("막혔다" in err and "egress" in err,
+       "403 은 막힌 것 -- 심볼을 바꿔도 안 고쳐진다고 갈라 말한다")
+
+    _던지고(500)
+    _, err = LG.fetch(주식, 심볼="^kospi")
+    ok("출처 쪽 장애" in err, "500 은 우리가 고칠 데가 아니라고 적는다")
+
+    _던지고(418)
+    _, err = LG.fetch(주식, 심볼="^kospi")
+    ok("[주소:" in err, "모르는 코드여도 주소는 실린다")
+
+    # HTTP 200 인데 심볼이 없을 때 -- Stooq 는 N/D 를 준다
+    LG.get = lambda u, timeout=30.0: ("Symbol,Date,Time,Open,High,Low,Close,Volume\n"
+                                      "^KOSPI,N/D,N/D,N/D,N/D,N/D,N/D,N/D\n")
+    _, err = LG.fetch(주식, 심볼="^kospi")
+    ok("심볼이 그 출처에 없을 때" in err,
+       "**200 인데 쓸 줄이 없으면 심볼 문제라고 짚는다** -- 404 와 고칠 데가 다르다")
+    ok("[주소:" in err, "그때도 주소가 실린다")
+
+    # --url 로 통째로 받은 주소는 **안 건드린다**
+    본 = _던지고(404)
+    LG.fetch(SRC.즉석("https://x/a?q=^raw&b=1"), 심볼="쓰이지않음")
+    ok(본[0] == "https://x/a?q=^raw&b=1",
+       "**완성된 주소는 손대지 않는다** -- 부르는 쪽이 채워 온 것이다")
+finally:
+    LG.get = 원래get
+
 
 print()
 if fails:
