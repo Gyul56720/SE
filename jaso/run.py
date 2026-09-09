@@ -235,7 +235,8 @@ def 한걸음(a) -> int:
     벌들, 쓴것, 조각 = [], set(), []
     for q in qs:
         try:
-            r = RF.돌리기(q, L, a.바퀴, a.벌, a.회사, a.직무, 쓴것)
+            r = RF.돌리기(q, L, a.바퀴, a.벌, a.회사, a.직무, 쓴것,
+                        문법=a.문법)
         except Exception as e:
             print(f"\n**못 썼다: {type(e).__name__}: {e}**", file=sys.stderr)
             print("  (GEMINI_API_KEY 가 있는 데서 돌려라 -- 이 컨테이너는 키가 없다)",
@@ -309,6 +310,8 @@ def main(argv=None) -> int:
     ap.add_argument("--벌", dest="벌", type=int, default=3)
     ap.add_argument("--바퀴", dest="바퀴", type=int, default=3,
                     help="정제 바퀴 (0 이면 첫 벌만 내고 안 돈다)")
+    ap.add_argument("--문법", dest="문법", default="기본",
+                    help="jaso/bench.py 가 고른 것을 쓴다")
     a = ap.parse_args(argv)
     return 한걸음(a)
 
