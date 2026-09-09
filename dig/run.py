@@ -110,7 +110,14 @@ def _안쪽(뽑은것: dict, 바탕url: str, 찾을말: list = None) -> list:
     # pdf 는 뺀다 -- 여기 뽑개가 글자로 못 푼다. 껍데기 바이트가 예산만 먹는다.
     안볼것 = (".jpg", ".jpeg", ".png", ".gif", ".svg", ".webp", ".css", ".js",
               ".ico", ".woff", ".woff2", ".mp4", ".zip", ".pdf")
-    for L in 뽑은것.get("링크") or []:
+    # **쪽이 스스로 알려 준 문을 먼저 본다.** `<link rel=alternate>` 은 피드고
+    # (글 본문이 통째로 온다), `rel=next` 는 다음 쪽이다. 사람이 눈으로 보는
+    # `<a>` 가 아니라 **기계에게 하는 말**이라 값이 높다. 읽어 놓고 안 가면
+    # 읽으나 마나다.
+    걸린것 = [{"href": v, "글": k[5:]}
+             for k, v in (뽑은것.get("머리표") or {}).items()
+             if k.startswith("link:") and isinstance(v, str)]
+    for L in 걸린것 + (뽑은것.get("링크") or []):
         h = (L.get("href") or "").strip()
         if not h or h.startswith(("#", "javascript:", "mailto:", "tel:", "data:")):
             continue
@@ -124,7 +131,9 @@ def _안쪽(뽑은것: dict, 바탕url: str, 찾을말: list = None) -> list:
         if u in 본것 or u == 바탕url:
             continue
         본것.add(u)
-        나온것.append((SC._값(L.get("글") or "", u, 낱말), len(u), u))
+        # 쪽이 걸어 둔 문에는 얹어 준다 -- 다만 canonical 은 대개 자기 자신이라 뺀다.
+        덤 = 30 if (L in 걸린것 and L.get("글") != "canonical") else 0
+        나온것.append((SC._값(L.get("글") or "", u, 낱말) + 덤, len(u), u))
     # 값이 같으면 짧은 주소부터 -- 대개 그 쪽이 목록이고 거기서 또 갈래가 난다.
     나온것.sort(key=lambda t: (-t[0], t[1]))
     return [(v, u) for v, _l, u in 나온것]

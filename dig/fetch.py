@@ -192,6 +192,61 @@ def 받기(url: str, 틈: float = 기본틈, 벌수: int = 0) -> 응답:
     return 마지막
 
 
+def 영상쪽인가(url: str) -> str:
+    """영상 쪽이면 그 id, 아니면 빈 글자. **꼴로만 본다.**"""
+    try:
+        p = urllib.parse.urlsplit(url)
+    except ValueError:
+        return ""
+    host, path = (p.netloc or "").lower(), p.path or ""
+    if "youtu.be" in host:
+        마디 = [s for s in path.split("/") if s]
+        return 마디[0] if 마디 else ""
+    if "youtube" not in host:
+        return ""
+    got = urllib.parse.parse_qs(p.query).get("v")
+    if got and got[0]:
+        return got[0]
+    for 앞 in ("/embed/", "/shorts/", "/live/", "/v/"):
+        if 앞 in path:
+            return path.split(앞, 1)[1].split("/")[0]
+    return ""
+
+
+def 영상곁문(url: str, p=None) -> list:
+    """**영상은 글이 본문 밖에 있다.** 자막과 재생목록을 따로 두드린다.
+
+    영상 쪽을 그냥 받으면 제목과 설명뿐이다 -- 정작 사람이 말한 내용은 **자막
+    트랙**에 있고, 재생목록의 항목들은 `ytInitialData` 안에 있다. 둘 다 앞문
+    HTML 에는 한 줄도 안 나온다. 그래서 곁문이 필요하다.
+
+    이것은 **어떤 물음에도 붙는다** -- 편입 수기든 강의든 리뷰든 회의록이든,
+    영상이 답을 들고 있는 물음은 갈래를 안 가린다. 그래서 `jaso/` 옆이 아니라
+    여기 있다.
+
+    자막은 **공개된 것만** 받는다. 로그인·유료벽을 뚫지 않는다는 선은 그대로다.
+    """
+    vid = 영상쪽인가(url)
+    나온것 = []
+    if vid:
+        # 어떤 자막이 있나(트랙 목록) -- 그 다음에 무엇을 받을지 이것이 알려 준다.
+        나온것.append(f"https://www.youtube.com/api/timedtext?type=list&v={vid}")
+        # 흔한 것 몇을 바로 두드린다. 어느 것이 있을지 미리 모르니 다 해 본다 --
+        # 없는 것은 빈 답 하나로 끝나고, 있으면 그 자리에서 글이 통째로 온다.
+        for lang in ("ko", "en"):
+            나온것.append(
+                f"https://www.youtube.com/api/timedtext?lang={lang}&v={vid}&fmt=json3")
+            나온것.append(f"https://www.youtube.com/api/timedtext?lang={lang}&v={vid}")
+        # 앞문이 shorts· youtu.be· embed 여도 제대로 된 쪽을 한 번 더 본다.
+        나온것.append(f"https://www.youtube.com/watch?v={vid}")
+    if p is not None and "list=" in (p.query or ""):
+        # 재생목록. 항목이 ytInitialData 안에 있어 뽑개가 편다.
+        목록 = urllib.parse.parse_qs(p.query).get("list")
+        if 목록:
+            나온것.append(f"https://www.youtube.com/playlist?list={목록[0]}")
+    return [u for u in 나온것 if u != url]
+
+
 def 곁문(url: str) -> list:
     """**같은 것을 주는 다른 문들.** 주인이 열어 둔 것만 -- 문을 부수지 않는다.
 
@@ -227,6 +282,22 @@ def 곁문(url: str) -> list:
                                     (q + "&" if q else "") + 붙일, "")))
     if not path.endswith(".json"):
         더(urllib.parse.urlunsplit((p.scheme, host, path.rstrip("/") + ".json", q, "")))
+    # oEmbed. **표준이다** -- 유튜브· 비메오· 사운드클라우드· 플리커· 틱톡이 다 문다.
+    # 제목· 지은이· 길이· 미리보기를 JSON 으로 그냥 준다. 어떤 물음이든 붙으므로
+    # 갈래를 안 가리고 두드린다(안 무는 쪽은 404 하나로 끝난다).
+    감싼 = urllib.parse.quote(url, safe="")
+    oe = "www.youtube.com" if "youtu.be" in host else host
+    더(f"{p.scheme}://{oe}/oembed?url={감싼}&format=json")
+    # 워드프레스가 쓰는 자리. 이 꼴을 쓰는 쪽이 웹의 큰 몫이다.
+    더(f"{p.scheme}://{host}/wp-json/oembed/1.0/embed?url={감싼}")
+    # **피드는 본문을 통째로 준다.** 목록 쪽을 열 번 파는 것보다 이 한 번이 낫다 --
+    # 글 여러 편의 본문· 날짜· 지은이가 한 판에 온다. 쪽마다 자리가 달라 다 해 본다.
+    밑 = path.rstrip("/")
+    for 꼬리 in ("/feed", "/feed/", "/rss", "/rss.xml", "/atom.xml", "/index.xml"):
+        더(urllib.parse.urlunsplit((p.scheme, host, 밑 + 꼬리, "", "")))
+    if 밑:
+        더(urllib.parse.urlunsplit((p.scheme, host, "/feed", "", "")))
+    나온것 += 영상곁문(url, p)
     # 공개 아카이브 -- 그 쪽이 죽었을 때
     더("https://web.archive.org/web/2/" + url)
     # http <-> https

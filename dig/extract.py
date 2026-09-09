@@ -51,8 +51,15 @@ from html.parser import HTMLParser
     "퍼센트": re.compile(r"[-+]?\d+(?:\.\d+)?\s?%"),
 }
 
+# 쪽이 자기 상태를 <script> 안에 통째로 박아 두는 이름들. **여기 진짜가 있을 때가
+# 많다** -- 눈에 보이는 HTML 은 껍데기고 목록· 값· 자막 주소는 이 덩어리 안에 있다.
+# 이름을 아는 만큼만 캘 수 있어서, 새 꼴을 만나면 여기 한 줄을 더한다.
 _묻힌json이름 = ("__NEXT_DATA__", "__NUXT__", "__INITIAL_STATE__", "__APOLLO_STATE__",
-                "__PRELOADED_STATE__", "INITIAL_DATA", "window.__data")
+                "__PRELOADED_STATE__", "INITIAL_DATA", "window.__data",
+                # 영상 쪽. 재생목록의 항목들과 자막 트랙 주소가 여기 들어 있다 --
+                # 본문 HTML 에는 한 줄도 없다(스크립트가 그려 넣는다).
+                "ytInitialData", "ytInitialPlayerResponse",
+                "__remixContext", "__STATE__", "__DATA__", "self.__next_f")
 
 
 class _판(HTMLParser):
@@ -94,6 +101,18 @@ class _판(HTMLParser):
             값 = a.get("content")
             if 키 and 값:
                 self.머리표.setdefault(키, 값)
+        elif tag == "link":
+            # **<link rel> 을 안 읽고 있었다.** 거기 다음에 두드릴 문이 적혀 있다 --
+            # 피드(rss· atom: 글 본문이 통째로 온다) · canonical(진짜 주소) ·
+            # oembed 끝점 · alternate(다른 언어· 모바일 쪽). 쪽이 **스스로 알려 주는**
+            # 곁문인데 meta 만 보느라 통째로 버렸다.
+            rel = " ".join(a.get("rel", "").split()).lower()
+            href = a.get("href")
+            if rel and href and rel not in ("stylesheet", "preload", "prefetch",
+                                            "dns-prefetch", "preconnect",
+                                            "icon", "shortcut icon", "apple-touch-icon",
+                                            "manifest", "modulepreload"):
+                self.머리표.setdefault(f"link:{rel}", href)
         elif tag == "table":
             self._표 = []
             self._이표머리 = False
