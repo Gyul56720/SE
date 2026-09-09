@@ -21,6 +21,20 @@ from __future__ import annotations
 
 import os
 
+# **디스코드는 User-Agent 를 요구한다.** 안 보내면 urllib 기본값(`Python-urllib/3.x`)
+# 이 나가고, 디스코드 앞의 Cloudflare 가 그것을 **403 으로 막는다** -- 본문이 JSON 이
+# 아니라 HTML 이라 디스코드 오류 코드도 안 실린다.
+#
+# 실측 2026-09-09: `novel/discord_check.py` 가 `GET /users/@me` 에 **403 을 받았는데
+# 디스코드 오류 코드가 안 실려 있었다**(`code=None`, 메시지 빈 값). 토큰이 틀리면
+# 디스코드는 `401 code=0 "401: Unauthorized"` 를 준다 -- 즉 **그 403 은 디스코드가
+# 낸 답이 아니었다.** 그런데 그 도구는 "토큰 값이 틀렸거나 재발급됐다" 고 답했다.
+#
+# 봇 자신(discord.py)은 제 UA 를 붙이므로 이 자리와 무관하다. 그래서 UA 없음이
+# 유력하지만 **여기서 확인한 것은 아니다** -- 붙이고 다시 돌려 봐야 안다.
+# 형식은 디스코드 문서가 정한 `DiscordBot ($url, $version)` 을 따른다.
+UA = "DiscordBot (https://github.com/gyul56720/se, 1.0)"
+
 공개채널변수 = "DISCORD_PUBLIC_CHANNEL_ID"
 최대 = 9                     # _2 ... _9 까지 본다. 그 이상이 필요하면 쉼표를 쓴다
 

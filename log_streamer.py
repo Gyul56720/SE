@@ -20,12 +20,14 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+import channels  # noqa: E402
+
 BOT_TOKEN = os.environ["DISCORD_BOT_TOKEN"]
 LOG_CHANNEL_ID = os.environ["DISCORD_LOG_CHANNEL_ID"]
 UNIT = "se-discord-bot"
 
 API_BASE = "https://discord.com/api/v10"
-HEADERS = {"Authorization": f"Bot {BOT_TOKEN}", "Content-Type": "application/json"}
+HEADERS = {"User-Agent": channels.UA, "Authorization": f"Bot {BOT_TOKEN}", "Content-Type": "application/json"}
 
 # claude -p가 오래 걸리는 동안 discord.gateway가 10~60초마다 같은 트레이스백을 반복
 # 출력하던 노이즈를 걸러낸다 (실측 확인됨, run_claude()가 executor로 옮겨간 뒤로는

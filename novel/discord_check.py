@@ -25,6 +25,7 @@ import os
 import sys
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 # **.env 를 읽는다.** 안 읽었더니 "DISCORD_BOT_TOKEN 없음" 이 찍혔는데, 토큰이 없는
 # 것이 아니라 **이 도구가 못 본 것**이었다(실측 2026-09-09). 진단기가 잘못 진단하면
@@ -36,6 +37,10 @@ try:
 except ImportError:                                                   # noqa: BLE001
     def load_dotenv(*_a, **_k):
         return False
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import channels                                                       # noqa: E402
 
 API = "https://discord.com/api/v10"
 
@@ -54,7 +59,8 @@ FIX = {
 def call(method: str, path: str, auth: str, body: dict = None):
     """(HTTP 코드, Discord code, Discord message) 를 돌려준다. 값은 담지 않는다."""
     data = json.dumps(body).encode() if body else None
-    headers = {"Authorization": f"Bot {auth}"}
+    # UA 를 꼭 붙인다 -- 없으면 Cloudflare 가 403 을 낸다(channels.UA 주석 참고).
+    headers = {"Authorization": f"Bot {auth}", "User-Agent": channels.UA}
     if data:
         headers["Content-Type"] = "application/json"
     req = urllib.request.Request(API + path, data=data, headers=headers, method=method)
@@ -124,7 +130,19 @@ def main() -> int:
         print(f"   OK -- 봇 '{body.get('username')}' 로 인증된다")
     else:
         print(f"   실패 HTTP {status} code={code} -- {body.get('message')}")
-        print("   토큰 값이 틀렸거나 재발급됐다. Discord 개발자 포털에서 다시 확인한다.")
+        # **401 과 403 은 고칠 데가 다르다.** 그리고 디스코드 오류 코드가 안 실렸으면
+        # 애초에 **디스코드가 낸 답이 아니다** -- 그때 토큰을 의심하면 헛수고다
+        # (실측 2026-09-09: UA 가 없어 Cloudflare 가 403 을 냈는데 토큰 탓을 했다).
+        if code is None:
+            print("   **디스코드가 낸 오류가 아니다** (오류 코드가 안 실렸다).")
+            print("   중간에 낀 것이 막은 것이다 -- 프록시·방화벽·Cloudflare.")
+            print("   이 저장소는 User-Agent 를 붙여 보낸다(channels.UA). 그래도 403 이면")
+            print("   나가는 길이 막힌 환경이다: curl -sS -o /dev/null -w '%{http_code}\\n' \\")
+            print("       -H 'User-Agent: DiscordBot (se, 1.0)' https://discord.com/api/v10/gateway")
+        elif status == 401:
+            print("   토큰 값이 틀렸거나 재발급됐다. Discord 개발자 포털에서 다시 확인한다.")
+        elif status == 403:
+            print("   인증은 됐는데 막혔다. 토큰이 아니라 접근 쪽 문제다.")
         return 1
 
     if not chan:
