@@ -96,6 +96,10 @@ python3 $J/jaso/refine.py --표 원장.json --문항 "<원문>" --바퀴 4 --궤
 결과물에 섞일 통로가 없어진다. 캔 형식은 `forms.py` 에 **손으로** 붙이고, 순위는
 `bench.py` 가 낸다 -- 캔 분포를 그대로 "합격 문법" 이라고 말하지 마라.
 
+**예시 본문은 `jaso/corpus/보기/` 에만 둔다** -- `keep.py` 의 K001 이 쓰기 전에
+`git check-ignore` 로 확인하고, 무시 규칙에 안 잡히면 **한 자도 안 쓴다.** 그 폴더를
+저장소에 올리지 마라. `Public_agent/` 에는 더더욱.
+
 **"긁어온 예시를 넣고 그렇게 만들어줘" 를 하자고 하면** -- 된다. 다만 `bench.py
 --예시글` 로 **후보로 넣고 재라.** 겹침 열이 같이 나온다(`echo.py`). 겹침이 높으면
 표현까지 따라온 것이고, **관문은 그것을 못 잡는다** -- 관문은 그 사람의 원장과
@@ -105,6 +109,10 @@ python3 $J/jaso/refine.py --표 원장.json --문항 "<원문>" --바퀴 4 --궤
 
 ```bash
 python3 $J/jaso/mine.py --질의 "합격 자소서 예시" --몇 12       # 형식만 캔다(망)
+# 오래 모을 때 -- **반드시 setsid/nohup/disown, 확인은 pgrep -af**
+setsid nohup python3 $J/jaso/crawl.py --분 60 > ~/SE/logs/jaso_crawl.log 2>&1 < /dev/null &
+disown; pgrep -af jaso/crawl.py        # `ps -p $!` 는 거짓 음성을 낸다
+python3 $J/jaso/keep.py --목록  ·  --내보내기  ·  --지우기
 python3 $J/jaso/mine.py --분포  ·  --문법후보
 python3 $J/jaso/forms.py                                       # 문법 후보
 python3 $J/jaso/bench.py --표 원장.json --문항 "<원문>" --벌 3 --맨
