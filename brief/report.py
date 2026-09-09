@@ -150,6 +150,76 @@ def render_infer(ms, vs) -> list:
     return out
 
 
+DISCORD = 1900          # Discord 한 메시지 2000자. 여유를 둔다
+
+
+def render_short(src, led, facts, ms, vs, 한도: int = DISCORD) -> str:
+    """**한 메시지에 들어가는 보고서.** 줄이되 규율은 안 줄인다.
+
+    실측 2026-09-09: 봇이 파이프라인을 돌려 놓고 결과를 **제 말로 요약**해서 보냈다.
+    그러면 표본 수 · 분위 · 뒤집기 · 도달 가능한 최소 p · 관할 밖이 통째로 빠지고,
+    읽는 사람은 `평범` 이 진짜 판정인지 `못잼` 을 옷 입힌 것인지 구별할 수 없다.
+
+    규칙만으로는 안 멈춘다 -- **진짜 원인은 전문이 2000자를 넘어 안 붙는 것**이다.
+    그래서 붙일 수 있는 꼴을 여기서 만든다. 요약을 모델에게 맡기지 않는다.
+
+    **줄이는 것과 빼는 것은 다르다.** 아래 다섯은 무슨 일이 있어도 남는다:
+
+        판정(이례/평범/못잼) · p 와 보정 p · 표본 수 · 관문 결과 · 안 보는 것
+
+    빠지는 것은 낱낱의 표와 산문뿐이고, 빠졌다는 것을 **화면에 적는다.**
+    """
+    나이 = led.나이()
+    머리 = [f"# {src.이름} · {len(led)}줄 · {led.받은날 or '?'}"
+            + (f" (나이 {나이}일)" if 나이 is not None else "")
+            + (f" · 버린 줄 {led.버린것}" if led.버린것 else "")]
+    if src.미확인:
+        머리.append("**[미확인 출처]** 도는 것을 아무도 안 봤다")
+    if GT.hard(vs):
+        머리.append("**관문 hard 위반 -- 아래 수는 믿지 마라**")
+
+    몸 = []
+    if ms:
+        s0 = INF.요약(ms)
+        몸.append(f"따짐 {s0['세운수']} → 이례 {s0['이례']} · 평범 {s0['평범']} · "
+                  f"**못잼 {s0['못잼']}** (Holm, 문턱 {INF.ALPHA})")
+        for m in sorted(ms, key=lambda x: (x.판정 != "이례",
+                                           x.p보정 if x.p보정 is not None else 1)):
+            줄 = [f"  [{m.판정}] {m.말}"]
+            if m.p is not None:
+                줄.append(f"      p {m.p:.3f}→{m.p보정:.3f}"
+                          + (f" · 분위 {m.분위:.0%}" if m.분위 is not None else "")
+                          + f" · 표본 {m.n}")
+            if m.판정 == "못잼":
+                줄.append(f"      이 크기로 도달 가능한 최소 p "
+                          f"{min(1.0, s0['세운수'] * INF.최소p(m.n, m.이진)):.3f} > 문턱")
+            몸.append("\n".join(줄))
+        if s0["필요표본"]:
+            몸.append(f"  **이 크기로는 어느 것도 못 가른다** (걸음 {s0['필요표본']}개는 "
+                      "있어야 한다)")
+    else:
+        몸.append("따짐 0 -- 걸음이 모자라 명제를 못 세웠다(추론에는 시계열이 필요하다)")
+
+    꼬리 = [GT.report(vs).splitlines()[0],
+            "안 보는 것: 원인 · 전망 · 칸의 뜻",
+            f"전문: python3 brief/report.py {src.이름} ..."]
+
+    # **줄일 때는 가운데(낱낱의 명제)부터 자른다.** 머리와 꼬리가 규율을 진다.
+    고정 = "\n".join(머리 + 꼬리)
+    남 = 한도 - len(고정) - 40
+    쓴것, 잘린 = [], 0
+    for x in 몸:
+        if 남 - len(x) - 1 < 0:
+            잘린 += 1
+            continue
+        쓴것.append(x)
+        남 -= len(x) + 1
+    if 잘린:
+        쓴것.append(f"  (…명제 {잘린}개는 길이 때문에 뺐다. **판정 수는 위에 다 있다** "
+                    f"-- 전문으로 보라)")
+    return "\n".join(머리 + 쓴것 + 꼬리)
+
+
 def render_generic(src, led, facts, vs, 추론절=()) -> str:
     """셈이 안 적힌 출처의 보고서 -- 칸마다 요약 + 따져 본 것."""
     bad = GT.막힌것(vs, facts)
@@ -285,7 +355,7 @@ def render(src, led, facts, vs, 추론절=()) -> str:
     return "\n".join(out)
 
 
-def 내놓기(src, led, 따질=()) -> int:
+def 내놓기(src, led, 따질=(), 짧게: bool = False) -> int:
     """재고 · 따지고 · 검사하고 · 적는다. **세 층이 한 자리를 지난다.**
 
     나열(칸마다)과 추론(따져 본 것)이 같은 관문을 지나야 한다 -- 한쪽만 검사받으면
@@ -297,6 +367,9 @@ def 내놓기(src, led, 따질=()) -> int:
     # 하나만 물으면 같은 원장에서 갈린다 -- 미리 정해 묻는 것이 훑는 것보다 강하다.
     claims = INF.따져보기(led, 따질 or None)
     vs = GT.check(facts, led, src, claims=claims)
+    if 짧게:
+        print(render_short(src, led, facts, claims, vs))
+        return 1 if GT.hard(vs) else 0
     절 = render_infer(claims, vs)
     print(render(src, led, facts, vs, 절) if src.셈
           else render_generic(src, led, facts, vs, 절))
@@ -369,6 +442,8 @@ def main(argv=None) -> int:
     ap.add_argument("--key", default="", help="줄을 가리킬 칸")
     ap.add_argument("--칸", dest="cols", default="", help="쉼표로. 비우면 도착한 것에서 읽는다")
     ap.add_argument("--수칸", dest="ncols", default="", help="쉼표로. 비우면 스스로 가린다")
+    ap.add_argument("--짧게", dest="short", action="store_true",
+                    help="한 메시지(1900자)에 들어가게 줄인다. **규율은 안 줄인다**")
     ap.add_argument("--따질", dest="ask_cols", default="",
                     help="추론에서 **이 칸만** 묻는다 (쉼표). 좁힐수록 가를 힘이 세진다")
     ap.add_argument("--시계열", dest="series", default="",
@@ -378,7 +453,7 @@ def main(argv=None) -> int:
 
     # ── 시계열: 추론이 설 수 있는 유일한 자리 ──────────────────────
     if a.series:
-        src = SRC.get("시계열")
+        src = SRC.get("야후")   # Stooq 시계열은 미확인(404)이라 뺐다
         조각, 못받은 = [], []
         for 이름 in [x.strip() for x in a.series.split(",") if x.strip()]:
             sym = SRC.심볼(src, [이름])[0]
@@ -398,7 +473,7 @@ def main(argv=None) -> int:
         if a.save:
             LG.save(led, Path(a.save))
             print(f"원장 저장: {a.save}  ({len(led)}줄)")
-        return 내놓기(src, led, 따질)
+        return 내놓기(src, led, 따질, a.short)
 
     # ── 즉석 출처 ─────────────────────────────────────────────────
     if a.url:
@@ -419,7 +494,7 @@ def main(argv=None) -> int:
         if a.save:
             LG.save(led, Path(a.save))
             print(f"원장 저장: {a.save}  ({len(led)}줄)")
-        return 내놓기(src, led, 따질)
+        return 내놓기(src, led, 따질, a.short)
 
     if a.list_src or not a.출처:
         미확인 = [s for s in SRC.SOURCES.values() if s.미확인]
@@ -492,7 +567,7 @@ def main(argv=None) -> int:
         print("**--진단 이므로 보고서는 안 낸다.**")
         return 0
 
-    return 내놓기(src, led, 따질)
+    return 내놓기(src, led, 따질, a.short)
 
 
 if __name__ == "__main__":
