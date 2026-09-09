@@ -52,7 +52,8 @@ def ok(cond, msg):
 def 터(d, **덮기):
     a = argparse.Namespace(
         분=1, 씨앗=["합격 자기소개서 예시"], 회사="", 직무="", 학과="",
-        몇=5, 틈=0.0, 최소=100, 곳=str(Path(d) / "보기"),
+        몇=5, 틈=0.0, 최소=100, 씨앗주소=[], 따라=20,
+        곳=str(Path(d) / "보기"),
         잰곳=str(Path(d) / "잰형식"), 문항곳=str(Path(d) / "문항"),
         그만="", 모델=False, 살펴만=False)
     for k, v in 덮기.items():
@@ -143,6 +144,59 @@ try:
 finally:
     DF.한번 = 진짜
 
+
+print("\n── 씨앗 주소 -- 그 집 안쪽으로 판다 ────────────────────")
+목록쪽 = ("<html><body>"
+        "<a href='/post/1'>합격 수기 1</a><a href='/post/2'>합격 수기 2</a>"
+        "<a href='https://남의집.com/x'>남의 집</a>"
+        "<a href='/img/a.png'>그림</a></body></html>")
+받은주소 = []
+
+
+def 가짜2(url, 헤더, 틈=20.0):
+    받은주소.append(url)
+    if any(w in url for w in ("duckduckgo", "bing", "mojeek")):
+        return DF.응답(url=url, 코드=403, 왜="HTTP 403 -- 막았다")   # 창구가 다 막힘
+    if url.rstrip("/").endswith("목록.com"):
+        return DF.응답(url=url, 최종url=url, 코드=200, 몸통=목록쪽, 꼴="text/html")
+    if "목록.com/post/" in url:
+        n = url.rsplit("/", 1)[-1]
+        return DF.응답(url=url, 최종url=url, 코드=200,
+                     몸통=f"<html><body><article>{본문} 제{n}편.</article></body></html>",
+                     꼴="text/html")
+    return DF.응답(url=url, 코드=404, 왜="HTTP 404")
+
+
+DF.한번 = 가짜2
+try:
+    with tempfile.TemporaryDirectory() as d:
+        곳 = KP.보기DIR / "_검사3"
+        잰곳 = MN.잰것DIR / "_검사3"
+        try:
+            보고 = CR.돌리기(터(d, 곳=str(곳), 잰곳=str(잰곳), 씨앗=[],
+                            씨앗주소=["https://목록.com"], 따라=20))
+            ok(보고["담음"] >= 2,
+               f"**목록 쪽에서 안쪽 글을 파고들어 {보고['담음']}편을 담았다** -- "
+               "검색 창구가 전부 403 인데도 돌았다")
+            ok(any("/post/1" in u for u in 받은주소), "안쪽 링크를 실제로 받았다")
+            ok(not any("남의집.com" in u for u in 받은주소),
+               "**남의 집까지 안 판다** -- dig 의 규율 그대로")
+            ok(not any(u.endswith(".png") for u in 받은주소), "그림은 안 받는다")
+        finally:
+            for x2 in (곳, 잰곳):
+                if Path(x2).exists():
+                    for f in Path(x2).glob("*"):
+                        f.unlink()
+                    Path(x2).rmdir()
+finally:
+    DF.한번 = 진짜
+
+print("\n── 검색 결과 쪽을 씨앗주소로 넣지 말라고 적었는가 ───────")
+글2 = CR.__doc__ or ""
+ok("같은 host 안으로만" in 글2 and "결과로는 영영 못 간다" in 글2,
+   "**`dig --따라` 는 같은 host 안으로만 판다**고 적혀 있다 -- 검색 결과 쪽에 걸면 "
+   "창구 자기 살림만 돈다")
+ok("dig/find.py" in 글2, "검색은 find 로 하라고 적혀 있다")
 
 print("\n── 시간이 되면 멈춘다 ─────────────────────────────────")
 DF.한번 = lambda url, 헤더, 틈=20.0: DF.응답(url=url, 왜="프록시가 끊었다")
