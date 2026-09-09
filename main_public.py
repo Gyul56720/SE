@@ -8,7 +8,8 @@
 코드로 강제, git commit까지만 하고 push는 안 함). bot_tools.py의 공유 도구/복구 로직을
 그대로 쓴다.
 
-discord_bot_server.py가 이 모듈에서 PUBLIC_CHANNEL_ID와 run_public_agent()를 가져다 쓴다.
+discord_bot_server.py가 이 모듈에서 PUBLIC_CHANNEL_IDS와 run_public_agent()를 가져다 쓴다.
+공개 채널은 여럿일 수 있다(DISCORD_PUBLIC_CHANNEL_ID · ..._2 · ...).
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ import os
 from langgraph.checkpoint.memory import MemorySaver
 
 import agent_context
+import channels
 
 from bot_tools import (
     search_memory, save_memory, write_public_answer, run_shell,
@@ -25,7 +27,16 @@ from bot_tools import (
     register_thread, unregister_thread,
 )
 
-PUBLIC_CHANNEL_ID = int(os.environ["DISCORD_PUBLIC_CHANNEL_ID"])
+# 공개 채널은 **여럿일 수 있다.** DISCORD_PUBLIC_CHANNEL_ID · ..._2 · ..._3 ...
+# (쉼표로 여러 개도 된다). 파싱은 `channels.py` 한 자리에서 한다 -- 이 모듈은
+# langgraph 를 임포트하므로 그것이 안 깔린 데서는 읽어 볼 수조차 없고, 그러면
+# 채널 설정을 잘못 읽는 결손이 검사에 안 걸린다.
+PUBLIC_CHANNEL_IDS, PUBLIC_CHANNEL_이상 = channels.공개채널()
+if not PUBLIC_CHANNEL_IDS:
+    # 예전과 같은 자리에서 같은 오류를 낸다 -- 첫째 변수가 없으면 못 뜬다.
+    raise KeyError("DISCORD_PUBLIC_CHANNEL_ID")
+# 예전 이름. 밖에서 이것을 쓰던 자리가 안 깨지게 남긴다(첫째 채널).
+PUBLIC_CHANNEL_ID = PUBLIC_CHANNEL_IDS[0]
 # DISCORD_PUBLIC_GEMINI_MODEL 은 예전 이름이다. 이름이 바뀐 뒤에도 .env 에는 옛 이름이
 # 남아 있어서(실측 2026-08-30) 거기 적은 값이 조용히 무시되고 있었다 -- 마침 기본값과 같은
 # 값이라 겉으로 드러나지 않았을 뿐, 바꿔 적었다면 아무 일도 일어나지 않았을 것이다.

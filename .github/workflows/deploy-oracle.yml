@@ -12,6 +12,7 @@ on:
       - "bot_tools.py"
       - "quota_tracker.py"
       - "main_public.py"
+      - "channels.py"
       - "agent_context.py"
       - "agent_memory.py"
       # push 가 막혔을 때 따라잡는 법. 둘 다 이것을 부른다 -- 여기만 고치고

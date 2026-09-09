@@ -361,11 +361,28 @@ def run_admin_agent(prompt: str, thread_id: str) -> str:
 async def on_ready():
     print(
         f"[SE-agent] 로그인됨: {client.user} "
-        f"(관리 채널 {ADMIN_CHANNEL_ID}, 공개 채널 {main_public.PUBLIC_CHANNEL_ID} 감시 중"
+        f"(관리 채널 {ADMIN_CHANNEL_ID}, 공개 채널 "
+        f"{', '.join(str(c) for c in main_public.PUBLIC_CHANNEL_IDS)} 감시 중"
         + (f", 길드 {GUILD_ID} 만" if GUILD_ID else ", 길드 안 가림") + ")"
     )
     # **켜질 때 확인한다.** 길드 id 를 잘못 넣으면 봇이 조용히 아무 말도 안 듣는데,
     # 그것은 '봇이 죽었다' 와 화면에서 똑같이 보인다. 여기서 한 번 말해 주면 갈린다.
+    # **켜질 때 채널을 하나씩 확인한다.** 채널 id 를 잘못 넣으면 봇이 그 채널에서
+    # 조용히 아무 말도 안 듣는데, 그것이 '봇이 죽었다' 와 화면에서 똑같이 보인다.
+    # 길드 id 를 채널 자리에 넣는 것이 특히 흔하다 -- 둘 다 같은 꼴의 수라 눈으로는
+    # 안 갈리고, 넣어도 아무 오류가 안 난다(그냥 영영 안 맞을 뿐이다).
+    if main_public.PUBLIC_CHANNEL_이상:
+        print(f"[SE-agent] **경고: 채널 id 로 못 읽은 값** "
+              f"{main_public.PUBLIC_CHANNEL_이상} -- 그 채널은 안 듣는다")
+    for cid in [ADMIN_CHANNEL_ID] + list(main_public.PUBLIC_CHANNEL_IDS):
+        if client.get_channel(cid):
+            continue
+        왜 = ("**이건 길드 id 다** -- 채널 자리에 넣으면 영영 안 맞는다"
+              if cid == GUILD_ID else
+              "봇이 그 채널을 못 본다 (id 가 틀렸거나 권한이 없다)")
+        print(f"[SE-agent] **경고: 채널 {cid} 를 못 찾았다.** {왜}. "
+              "이대로면 그 채널에서 아무 말도 안 듣는다")
+
     if GUILD_ID and not client.get_guild(GUILD_ID):
         print(f"[SE-agent] **경고: 길드 {GUILD_ID} 에 이 봇이 없다.** "
               f"들어가 있는 길드: {[g.id for g in client.guilds]} -- "
@@ -535,7 +552,7 @@ async def on_message(message: discord.Message):
         return
     if message.channel.id == ADMIN_CHANNEL_ID:
         await _handle_admin_message(message)
-    elif message.channel.id == main_public.PUBLIC_CHANNEL_ID:
+    elif message.channel.id in main_public.PUBLIC_CHANNEL_IDS:
         await _handle_public_message(message)
 
 
