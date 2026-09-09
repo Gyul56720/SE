@@ -49,7 +49,8 @@ cd "$tmp" || exit 1
 
 # **기본은 빠른 길이다.** 전체 검사는 6분 넘게 걸린다 -- 그것을 여기서 기다리면
 # CI 를 기다리던 것과 똑같아진다(없애려던 바로 그 기다림이다). 그래서 기본은
-# 이 저장소에서 내가 손대는 자리인 law · lol · brief · brain · reason 검사만 돌리고, 나머지는 CI 가 뒤늦게
+# 이 저장소에서 내가 손대는 자리인 law · lol · brief · brain · reason · jaso 검사만
+# 돌리고, 나머지는 CI 가 뒤늦게
 # 알려 주게 둔다. `--전부` 를 주면 CI 가 돌리는 것을 그대로 돌린다.
 if [ "${1:-}" = "--전부" ]; then
     bash scripts/tests.sh
@@ -61,7 +62,7 @@ bad=0
 # 돌려 보므로, 여기서 그것을 돌리면 서로를 부른다. 빗장(PRECHECK_RUNNING)이 깊이를
 # 막긴 하지만, 그러면 그 검사의 '실제로 돌려 보기' 대목이 **빈 검사가 된다** --
 # 통과했다는 말만 남고 아무것도 안 본 것이다. 그 검사는 따로 돌린다(CI 와 손으로).
-for f in tests/test_law_*.py tests/test_lol_*.py tests/test_brief*.py tests/test_dig.py tests/test_study.py tests/test_channels.py tests/test_discord_check.py tests/test_brain.py tests/test_reason.py tests/test_pr_merged.py; do
+for f in tests/test_law_*.py tests/test_lol_*.py tests/test_brief*.py tests/test_jaso_*.py tests/test_dig.py tests/test_study.py tests/test_channels.py tests/test_discord_check.py tests/test_brain.py tests/test_reason.py tests/test_pr_merged.py; do
     [ -e "$f" ] || continue
     if out=$(python3 "$f" 2>&1); then
         printf '  OK   %s\n' "$(basename "$f")"
