@@ -144,3 +144,12 @@ mathmetics/matrix_exponent/jump_state.json
 npu/array_*_hex.txt
 
 law/exam.jsonl
+
+# jaso -- **사람의 이력은 저장소에 안 담는다.**
+# `작업/` 에는 경험 원장 · 인터뷰 답 원문 · 자소서 · 작성 근거가 들어간다. 전부 그
+# 사람 것이고, 한 번 담기면 이력이 공개 저장소에 남는다. 되돌릴 수 없다.
+jaso/작업/
+# 받은 채용 공고문. 남의 것이고 받은 기계에만 있으면 된다(README 는 담는다).
+jaso/corpus/문항/*.json
+# 배운 작법도 받은 기계에만 (README 는 담는다).
+jaso/corpus/작법/*.json

@@ -121,8 +121,30 @@ def 수단위쌍(글: str) -> list:
     return [(_펴기(m.group(1)), m.group(2), 글) for m in _수단위.finditer(글 or "")]
 
 
+_배운것 = None
+
+
+def 배운상투(다시: bool = False) -> tuple:
+    """`jaso/corpus/작법/` 에서 배운 상투구. **없으면 빈 것이다 -- 예외가 아니다.**
+
+    씨앗(`상투구`)은 손으로 적은 것이고 이쪽은 공개 작성 가이드에서 배운 것이다.
+    `jaso/learn.py` 의 C001~C003 을 지난 것만 담기므로, 여기서 다시 거르지 않는다.
+    지연 임포트인 까닭은 `learn` 이 이 파일을 쓰기 때문이다.
+    """
+    global _배운것
+    if _배운것 is None or 다시:
+        try:
+            from jaso import learn as LN
+            _배운것 = tuple(LN.읽기().갈래("상투구"))
+        except Exception:                    # 원장이 없거나 깨졌어도 씨앗은 돈다
+            _배운것 = ()
+    return _배운것
+
+
 def 상투(글: str) -> list:
-    return sorted(set(_상투.findall(글 or "")))
+    """씨앗 사전 + **배운 사전.** 배운 것이 없으면 씨앗만으로 돈다."""
+    글 = 글 or ""
+    return sorted(set(_상투.findall(글)) | {w for w in 배운상투() if w in 글})
 
 
 def 주장문장들(글: str) -> list:
