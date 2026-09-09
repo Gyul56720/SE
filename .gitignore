@@ -153,3 +153,5 @@ jaso/작업/
 jaso/corpus/문항/*.json
 # 배운 작법도 받은 기계에만 (README 는 담는다).
 jaso/corpus/작법/*.json
+# 잰 형식(본문 없음). 받은 기계마다 다르게 쌓인다.
+jaso/corpus/잰형식/*.json

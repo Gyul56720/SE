@@ -44,6 +44,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from datetime import datetime
@@ -90,13 +91,42 @@ def 문항담기(터: Path, qs: list, 출처: str = "") -> None:
         ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def _글로(것: str) -> str:
+    """경로면 읽고 아니면 그대로. **길거나 줄이 여럿이면 경로가 아니다.**
+
+    실측: 붙여넣은 요강을 그대로 `Path(...).is_file()` 에 넣었더니
+    `OSError: File name too long` 으로 죽었다. 공개 채널에서 사람이 요강을 통째로
+    붙이는 것이 **정상 사용**인데, 그 정상 사용이 봇을 죽인다.
+    """
+    if "\n" not in 것 and len(것) < 200:
+        try:
+            p = Path(것)
+            if p.is_file():
+                return p.read_text(encoding="utf-8")
+        except OSError:
+            pass
+    return 것
+
+
 def 문항모으기(터: Path, a) -> tuple:
-    """이 건의 문항을 정한다. `(문항들, 못한까닭)`."""
+    """이 건의 문항을 정한다. `(문항들, 못한까닭)`.
+
+    **글의 갈래를 안 정한다.** 편입 요강이든 채용 공고든 문항만 적힌 쪽지든, 오는 것을
+    `corpus.문항뽑기` 에 그대로 넣는다 -- 거기는 '기술하시오' · `(700자)` 같은 **끝나는
+    자리**로 캐므로 어느 서식에서든 돈다. 갈래 목록을 두면 목록에 없는 서식이 오는
+    날 통째로 못 읽고, 그 목록은 늘 모자란다.
+    """
     qs = 문항읽기(터)
-    if qs and not (a.문항 or a.질의 or a.urls):
+    if qs and not (a.문항 or a.질의 or a.urls or a.글):
         return qs, ""
     새것 = [IT.쪼개기(x, str(i + 1)) for i, x in enumerate(a.문항)]
     출처 = "손으로"
+    if a.글:
+        붙인글 = _글로(a.글)
+        캔것 = CP.문항뽑기(붙인글, "붙여넣은 글")
+        새것 += [q.쪼갠것() for q in 캔것]
+        print(f"  붙여넣은 글 {len(붙인글)}자에서 문항 {len(캔것)}개를 캤다")
+        출처 = "붙여넣은 글"
     if a.질의 or a.urls:
         from jaso import fetch as JF
         보고 = JF.받기(a.질의, a.urls, a.회사, a.몇)
@@ -168,11 +198,31 @@ def 물음내기(터: Path, qs: list, L: LG.원장, 몇: int, 다시: str = "") 
     return 물을것
 
 
+def _사람터(사람: str, 이름: str) -> Path:
+    """**호출자마다 다른 폴더.** 공개 채널에서 원장이 섞이면 남의 이력을 보게 된다.
+
+    id 를 그대로 폴더 이름에 쓰지 않는다 -- 그러면 채널에서 누가 이 봇을 썼는지가
+    폴더 목록으로 남는다. 해시로 가른다.
+    """
+    h = hashlib.sha1(str(사람).encode("utf-8")).hexdigest()[:12]
+    return 작업DIR / f"ㅅ{h}" / (이름 or "기본")
+
+
 def 한걸음(a) -> int:
-    터 = Path(a.터) if a.터 else (작업DIR / a.이름)
+    터 = (Path(a.터) if a.터
+          else (_사람터(a.사람, a.이름) if a.사람 else 작업DIR / a.이름))
+    # **원장과 답은 공개 폴더로 못 나간다.** `Public_agent/` 는 커밋되는 곳이고,
+    # 거기에 경험 원장이 들어가면 그 사람의 이력이 저장소에 영영 남는다.
+    안되는곳 = (ROOT / "Public_agent").resolve()
+    if 안되는곳 == 터.resolve() or 안되는곳 in 터.resolve().parents:
+        print(f"**{안되는곳} 안에는 못 쓴다** -- 거기는 커밋되는 곳이고, 경험 원장과 "
+              "인터뷰 답이 담기면 그 사람의 이력이 저장소에 남는다", file=sys.stderr)
+        return 3
     # **다시 부르는 법을 그대로 찍어야 한다.** `--터` 로 부른 사람에게 `--이름 <폴더>`
     # 를 알려 주면 다른 폴더가 새로 파이고, 그 사람은 답을 적어 둔 데를 잃는다.
-    다시 = f"--터 {터}" if a.터 else f"--이름 {a.이름}"
+    다시 = (f"--터 {터}" if a.터 else
+          (f"--사람 {a.사람} --이름 {a.이름}" if a.사람
+           else f"--이름 {a.이름}"))
     터.mkdir(parents=True, exist_ok=True)
     원장길 = 터 / "원장.json"
 
@@ -294,6 +344,9 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(
         description="갈 수 있는 데까지 간다 -- 사람 차례에서 멈춘다")
     ap.add_argument("--이름", default="기본", help="작업 이름 (폴더 이름이 된다)")
+    ap.add_argument("--사람", default="",
+                    help="**공개 채널에서는 반드시 준다.** 호출자마다 폴더를 "
+                         "가른다 -- 안 가르면 남의 원장을 보게 된다")
     ap.add_argument("--터", default="", help="작업 폴더를 직접 정한다")
     ap.add_argument("--회사", default="")
     ap.add_argument("--직무", default="")
@@ -301,6 +354,8 @@ def main(argv=None) -> int:
     ap.add_argument("--url", dest="urls", nargs="+", default=[])
     ap.add_argument("--문항", dest="문항", action="append", default=[])
     ap.add_argument("--문항원장", action="store_true")
+    ap.add_argument("--글", dest="글", default="",
+                    help="요강·공고·문항 목록 아무 글이나 (파일 경로도 된다).\n갈래를 안 가린다 -- 문항으로 보이는 대목을 캔다")
     ap.add_argument("--곳", default=str(CP.문항DIR))
     ap.add_argument("--답글", dest="답글", default="", help="답을 바로 준다")
     ap.add_argument("--빼기", dest="빼기", action="append", default=[],
