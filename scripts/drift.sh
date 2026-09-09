@@ -23,6 +23,9 @@
 #   drift.sh world                  세계가 얼마나 자랐는지 (인물·장소·사물·사실·사건)
 #   drift.sh open                   아직 안 닫힌 것들 -- 이 이야기가 갚지 않은 빚
 #   drift.sh card                   지금 회차의 각본 -- 질문 · 비트 · 쾌감 · 전투 · 갈고리
+#   drift.sh 첫장 [파일...]         **첫 회차를 잰다** -- 실제 1화를 파일로 주면
+#                                   우리 첫 회차와 나란히 놓고 견준다
+#   drift.sh 첫장 --기록 <이름> <파일>  잰 것을 표본으로 남긴다 -- 갈래 밴드가 여기서 나온다
 #   drift.sh codex                  설정집 -- 각본이 세운 직함 · 등급 · 기술 · 법칙
 #
 # 환경변수로 바꿀 수 있는 것:
@@ -43,6 +46,10 @@
 #                                따라 붙는다. DRIFT_LAYER=all 을 켜면 사건·확산까지 온다
 #   DRIFT    표류 계수 0~1     (기본 1.0 -- 낮추면 급발진·사건이 줄어든다)
 #   MATTER   소재 축 0~1       (기본 0.0 -- 켜면 갈래·매체가 섞인다)
+#   HEAT     수위 0~1          (기본 0 = 안 씌운다). 켜면 성인 규율이 회차마다 실린다.
+#                                등장인물은 전부 어른이어야 한다 -- 조건 둘(어른만 ·
+#                                원하는지가 보인다)은 켜져 있는 동안 늘 실린다.
+#                                예: HEAT=0.6 GENRE=lanobe drift.sh start 200000
 #   BODY     몸의 사실 0~1     (기본 0.35)
 #   BOND     관계 0~1          (기본 0.4)
 #
@@ -93,6 +100,17 @@ alive() {
 pids_of() { alive | awk '{print $1}'; }
 
 # **살아 있으면 새로 띄우지 않는다.** 같은 파일에 둘이 쓰면 서로를 덮어쓴다.
+say_genre() {   # **갈래가 비면 크게 말한다.** 조용히 물러서면 아무도 모른다.
+  if [ -z "${GENRE:-}" ]; then
+    echo "  * GENRE 가 비었다 -- 갈래 꾸러미가 통째로 안 실린다:"
+    echo "      축 덮개(대사 몫 · 문장 길이 · '-다' 몫 · 이름 수) · 화법 조건 · 도착지 · 여는 좌표"
+    echo "    잰 폭은 표본(targets.json) 것으로 돌아간다. 라노벨로 쓰려면:"
+    echo "      GENRE=lanobe $0 $*"
+  else
+    echo "  갈래: $GENRE"
+  fi
+}
+
 refuse_double() {
   if alive >/dev/null; then
     echo "이미 돌고 있다:"; alive
@@ -132,11 +150,12 @@ case "${1:-status}" in
       echo "쓰던 원고를 옮겨 두었다: $BOOK.*.bak"
     }
     set -- --out "$BOOK" --chars "${2:-8000}" --hours "${HOURS:-12}" ${STYLE:+--persona "$STYLE"} ${GENRE:+--genre "$GENRE"} ${DRIFT:+--drift "$DRIFT"} ${MATTER:+--matter "$MATTER"} \
-           ${BODY:+--body "$BODY"} ${BOND:+--bond "$BOND"}
+           ${BODY:+--body "$BODY"} ${BOND:+--bond "$BOND"} ${HEAT:+--heat "$HEAT"}
     [ -n "${FIRST:-}" ] && set -- "$@" --first "$FIRST"
     # 첫 문장을 안 주면 갈래 축에서 여는 좌표를 뽑는다 -- 고정 문장을 쓰면 그 문장의
     # 세계(지명 · 말씨)가 원고 전체를 끌고 간다.
     [ -z "${FIRST:-}" ] && [ -n "${GENRE:-}" ] && set -- "$@" --first-seed
+    say_genre "start ${2:-8000}"
     launch "새 원고를" "$@"
     # **정말 새 원고인지 확인한다.** 앞 런이 살아 있으면 같은 파일에 계속 쓰므로 옛
     # 인물·장소가 그대로 남는다(실측: "이야기가 바뀌었는데 이전 소설 내역이 남아 있다").
@@ -179,6 +198,28 @@ INNER
 
   # 회차 각본과 설정집. 원고를 읽지 않고도 "이번 회차에 쾌감이 있나 · 싸움이 있나 ·
   # 무엇을 세웠나" 를 본다. 재미의 재료가 실렸는지를 여기서 먼저 확인한다.
+  첫장|first)
+    shift || true
+    # **실제 1화를 여기 넣는다.** 사이트에서 못 긁어 오는 것은 사람이 파일로 준다.
+    # 인자가 없으면 우리 원고의 첫 회차를 뽑아서 잰다 -- 견줄 상대가 늘 한쪽은 있다.
+    if [ "$#" -gt 0 ]; then
+      PYTHONPATH="$SE" python3 -m novel.first "$@"
+    else
+      [ -f "$BOOK" ] || die "원고가 없다: $BOOK   (실제 1화 파일을 주려면: $0 첫장 <파일>)"
+      OUT="$(mktemp -t drift-1hwa-XXXXXX.txt)"
+      PYTHONPATH="$SE" python3 - "$BOOK" "$OUT" <<'PYFIRST'
+import json, sys
+from novel import beat as BT
+book = json.load(open(sys.argv[1], encoding="utf-8"))
+text = "".join(book.get("chunks") or [])[:BT.EP]
+open(sys.argv[2], "w", encoding="utf-8").write(text)
+print(f"우리 첫 회차 {len(text):,}자를 뽑았다", file=sys.stderr)
+PYFIRST
+      PYTHONPATH="$SE" python3 -m novel.first "$OUT"
+      rm -f "$OUT"
+    fi
+    ;;
+
   card|codex)
     [ -f "$BOOK" ] || die "원고가 없다: $BOOK"
     python3 - "$SE" "$BOOK" "$1" <<'PY'
@@ -195,18 +236,19 @@ PY
     [ -f "$BOOK" ] || die "이어 쓸 원고가 없다: $BOOK   (새로 시작하려면: $0 start)"
     cp "$BOOK" "$BOOK.bak"
     FIRST_MSG="$(python3 -c "import json; print(json.load(open('$BOOK')).get('first', ''))" 2>/dev/null || true)"
+    say_genre "go ${2:-50000}"
     launch "이어 쓰기를" --resume "$BOOK" ${FIRST_MSG:+--first "$FIRST_MSG"} --chars "${2:-50000}" --hours "${HOURS:-12}" \
            ${STYLE:+--persona "$STYLE"} \
            ${GENRE:+--genre "$GENRE"} \
            ${DRIFT:+--drift "$DRIFT"} ${MATTER:+--matter "$MATTER"} \
-           ${BODY:+--body "$BODY"} ${BOND:+--bond "$BOND"}
+           ${BODY:+--body "$BODY"} ${BOND:+--bond "$BOND"} ${HEAT:+--heat "$HEAT"}
     ;;
 
   status)
     if alive >/dev/null; then echo "돌고 있다:"; alive; else echo "돌고 있지 않다."; fi
     echo
     if [ -f "$BOOK" ]; then
-      python3 - "$BOOK" <<'PY'
+      python3 - "$BOOK" "$SE" "$0" <<'PY'
 import json, sys
 b = json.load(open(sys.argv[1], encoding="utf-8"))
 n = sum(len(c) for c in b["chunks"])
@@ -217,6 +259,29 @@ print(f"  원고  덩어리 {len(b['chunks'])}개 · {n:,}자 · 사건 {b.get('
 print(f"  열린 것 {len((L.get('open') or {}))}개  (drift.sh open 으로 본다)")
 print(f"  세계  인물 {len(L.get('people', {}))} · 장소 {len(L.get('places', {}))} · "
       f"사물 {len(L.get('objects', {}))} · 사실 {len(L.get('facts', {}))}")
+
+# **무엇이 실제로 켜져 있나.** 원고는 갈래가 없어도 멀쩡히 나온다 -- 다만 이야기
+# 층이 통째로 안 돈다. 실측 2026-09-09: 갈래 없이 돌던 런에서 도착지도 카드도 없어
+# 회차 각본 0자였고, 사용자는 "성능이 저하되는 것 같다" 로만 알아챘다. 켜짐/꺼짐을
+# 여기서 한눈에 보인다 -- 짐작 대신 재서 답하려고.
+sys.path.insert(0, str(__import__("pathlib").Path(sys.argv[0]).resolve().parent))
+try:
+    sys.path.insert(0, sys.argv[2])
+    from novel import serial as SR, beat as BT, genre as GN
+    g = b.get("genre") or ""
+    arc_on, card_on = SR.planned(b), BT.has(b)
+    mark = lambda x: "켜짐" if x else "꺼짐"
+    print(f"  배선  갈래 {g or '(없음)'} · 도착지 {mark(arc_on)} · 회차 각본 {mark(card_on)}"
+          f" · 축 덮개 {len((GN.get(g).get('저울', {}) or {}).get('축', {})) if g else 0}개")
+    if not g:
+        print("        * 갈래가 없다 -- 이야기 층이 통째로 안 돈다:"
+              " 도착지 · 회차 각본(비트 · 쾌감 · 갈고리) · 설정집 · 축 덮개 · 화법 조건.")
+        print(f"          다시 열려면:  GENRE=lanobe {sys.argv[3]} start")
+    elif not arc_on:
+        print("        * 갈래는 있는데 도착지가 없다 -- 카드 층이 안 돈다."
+              " 로그에서 '도착지를 못 세웠다' 를 찾아봐라.")
+except Exception as e:
+    print(f"  배선  못 읽었다 ({type(e).__name__}: {e})")
 PY
     else
       echo "  원고가 아직 없다: $BOOK"

@@ -57,6 +57,11 @@ novel/*.scenes.jsonl
 # (실측: 게이트가 '대사 몫 0.35~0.65' 로 떨어져 나흘치 커밋이 전부 빨갛게 됐다).
 !novel/targets.json
 !novel/directives.json
+# 셋째. 실제 1화를 잰 표본이고, 여기서 갈래 밴드가 나온다(genre.py lanobe 저울.축).
+# 추적 안 하면 CI 와 새 기계는 표본이 없는 채로 돌고, 밴드의 근거가 저장소에서
+# 사라진다 -- 위 둘이 겪은 것과 같은 병이다. 실제로 여기 걸릴 뻔했다(2026-09-09:
+# git status 에 안 떠서 커밋에 안 담길 뻔).
+!novel/first_ref.json
 
 # 자유 씨앗 원장 -- 무엇을 이미 썼는지 기록. 원고와 같은 이유로 추적하지 않는다.
 novel/seeds_used.json
