@@ -82,6 +82,11 @@ def wiring(book: dict) -> list:
         "인물 · 장소 · 사물 · 사실")
     add("축 지시문", bool(re.search(r"문장이 (짧|길)다|따옴표를 열|대사 줄|이름이", p)),
         "어긋난 축을 고치라는 말 (dyn.asks)")
+    add("고정 파라미터", _needle(flow.fixed_brief(book), p),
+        "시점 · 전제 · 톤 · 법칙 · 이름 (flow.fixed_brief)")
+    add("무대 낱말 금지", "우리끼리 쓰는 말" in p, "‘화자’ 를 이름으로 쓰지 마라")
+    add("비트는 메모다", "적어 둔 메모다" in BT.brief(book), "카드 문장을 옮겨 적지 마라",
+        "" if BT.has(book) else "카드가 없다")
     add("쾌감", "**쾌감**" in inside, "회차마다 통쾌한 자리 하나",
         "" if card.get("쾌감") else "카드에 쾌감이 없다")
     add("싸움 · 액션", "**싸움**" in inside, "다섯 박 · 부위 · 기전",

@@ -56,6 +56,27 @@ ok(_first.get("첫 쪽 규율") == "켜짐", "첫 덩어리에서는 켜진다  
 _odd = states(audit.sample(genre="lanobe", heat=0.6, chunks=1))
 ok(_odd.get("개그") == "켜짐", "홀수 덩어리에서는 개그가 실린다")
 
+print("\n[고정] **기본 경로에도 실리는가**")
+# **다섯 번째 같은 병.** [고정] 블록(시점 · 전제 · 톤 · 법칙)은 `_legacy_prompt`
+# 안에만 있었고 기본 경로(axes)는 그것을 안 부른다 -- 시점이 한 번도 화자에게 안
+# 갔다(실측 2026-09-09). --persona · 첫회차 규율 · echo.check 와 같은 자리다.
+from novel import flow                                               # noqa: E402
+_b = audit.sample("lanobe", 0.6)
+_saved = flow.PROMPT
+try:
+    flow.PROMPT = "axes"
+    _p = flow.write_prompt(_b)
+    ok("[고정]" in _p, "기본 경로(axes)에 [고정] 이 실린다")
+    for _k in ("시점", "전제", "주인공의 이름", "우리끼리 쓰는 말"):
+        ok(_k in _p, f"  {_k}")
+    flow.PROMPT = "legacy"
+    ok("[고정]" in flow.write_prompt(_b), "옛 경로에도 그대로 있다")
+finally:
+    flow.PROMPT = _saved
+ok(states(_b).get("고정 파라미터") == "켜짐", "점검이 그것을 켜짐이라고 본다")
+ok(states(audit.sample("", 0.0)).get("고정 파라미터") == "켜짐",
+   "갈래가 없어도 [고정] 은 실린다  ← 시점은 갈래와 무관하다")
+
 print("\n[인자] **drift.sh 가 넘기는 것을 flow 가 받는가**")
 # 실측 2026-09-09: drift.sh 가 없는 인자 `--body` 를 넘기고 있었다. 그 손잡이를 쓰면
 # 런이 아예 안 뜬다 -- `unrecognized arguments: --body`.
@@ -99,4 +120,4 @@ print()
 if fails:
     print(f"점검: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)
-print("점검: 이빨 · 초록 · 늑대소년 · 인자 · 축 · 손 · 모듈 · 보고 -- 통과")
+print("점검: 이빨 · 초록 · 늑대소년 · 고정 · 인자 · 축 · 손 · 모듈 · 보고 -- 통과")

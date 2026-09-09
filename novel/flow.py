@@ -1249,7 +1249,12 @@ def write_prompt(book: dict, feedback: str = "") -> str:
             # 받으면 deep/spine/plot 의 사건축을 안 뽑는다 -- 인과 없는 사건의 나열이
             # 거기서 나왔다(STORY.md 2절).
             plan=BT.brief(book),
-            asks="\n\n".join(x for x in (SR.brief(book),
+            # **[고정] 은 여기서만 실린다.** 이 블록은 `_legacy_prompt` 안에만
+            # 있었고 기본 경로(axes)는 그것을 안 부른다 -- 그래서 시점 · 전제 · 톤 ·
+            # 법칙이 **한 번도 화자에게 안 갔다**(실측 2026-09-09). --persona 가
+            # 무동작이던 것, 첫회차 규율이 카드에만 실리던 것과 같은 자리다.
+            # 시점이 안 고정되면 원고가 인칭 사이를 오간다.
+            asks="\n\n".join(x for x in (SR.brief(book), fixed_brief(book),
                                           compose.offbrief(book), owed_brief(book),
                                           ahead_brief(book), VG.brief(book),
                                           PO.brief(book), TU.brief(book),
@@ -1685,6 +1690,16 @@ def fixed_brief(book: dict) -> str:
                                               f" 그대로 간다** ({why})"))
     if len(done) < 4:
         lines.append("  · 정한 것은 원고에 드러나게 써라 -- 선언하지 말고 **보여서** 정해라.")
+    # **'화자' 는 우리 쪽 낱말이다.** 프롬프트가 주인공을 그렇게 부르는데(집필
+    # 프롬프트에만 여섯 번), 원고에 그 말이 그대로 나왔다 -- 실측 2026-09-09,
+    # 사용자 원고 1,115자에 "화자" 일곱 번. 이름이 없으면 모델은 **우리가 부르는
+    # 말을 이름으로 쓴다.** 디렉터가 칸 설명을 값 대신 베끼던 것과 같은 병이고,
+    # 그때는 카드에서 잡았는데(beat.echoed) 원고 쪽에는 그 자가 없었다.
+    lines.append("  · 주인공의 이름 -- 아직 없으면 **이 덩어리에서 지어 부르고 그대로 간다.**"
+                 " 이름도 시점처럼 원고 내내 안 바뀐다.")
+    lines.append("  · **‘화자’ · ‘비트’ · ‘회차’ · ‘갈고리’ 는 우리끼리 쓰는 말이지"
+                 " 이 세계의 낱말이 아니다.** 원고에 그 낱말을 쓰지 마라 -- 사람은"
+                 " 이름이나 호칭(직함 · 별명 · 관계)으로 부른다.")
     return "\n".join(lines)
 
 
