@@ -93,7 +93,7 @@ def 비율(표: dict, 이름: str) -> float:
 def show(led: dict, seed: int = 1) -> int:
     진짜 = 셈(led, "진짜", seed)
     무작위 = 셈(led, "무작위", seed)
-    칸 = ["도약", "재작성", "딴 문제", "모름"]
+    칸 = ["도약", "재작성", "딴 문제", "퇴화", "모름"]
     print(f"{'':<10}" + "".join(f"{c:>10}" for c in 칸) + f"{'걸음':>8}")
     for 이름, 표 in (("진짜 짝", 진짜), ("무작위 짝", 무작위)):
         print(f"{이름:<10}" + "".join(f"{표.get(c, 0):>10}" for c in 칸)

@@ -8,6 +8,9 @@ r"""seek 배선 검사. **LLM 도 네트워크도 안 쓴다.**
 """
 from __future__ import annotations
 
+import io
+from contextlib import redirect_stdout
+
 import sys
 from pathlib import Path
 
@@ -144,6 +147,39 @@ ok(_r3["판정"] != "도약", f"**도약이라고 안 한다** (얻은 값 {_r3[
 
 print("\n== 씨앗은 견줄 부모가 없다 ==")
 ok(RE.step(_l, "P1").get("ok") is False, "씨앗에는 도약을 못 묻는다")
+
+print("\n== 퇴화 -- 넷째 칸 ==")
+# 실측 2026-09-09, 100개: 모름 50개 중 8개가 이것이었다. 답이 양쪽에 다 있고 두
+# 검사가 다 돌았는데 둘 다 아니라고 답한 것 -- 못 잰 것이 아니라 **다 잰 것**이다.
+# `모름` 과 한 칸에 섞여 있어서 "더 풀면 판정이 서겠지" 로 읽혔는데 풀 것이 없다.
+_부 = {"id": "A", "판정": "def judge(x):\n    return len(x) == 2 and sum(x) == 1\n",
+       "답": [1, 0]}
+_자 = {"id": "B", "판정": "def judge(x):\n    return len(x) == 2 and sum(x) == 9\n",
+       "옮김": "def embed(x):\n    return list(x)\n", "답": [1, 0],
+       "계보": {"부모": "A"}}
+_퇴 = RE.pair(_부, _자)
+ok(_퇴["보존"] is False and _퇴["확장"] is False, f"보존도 확장도 아니오 ({_퇴['보존']}·{_퇴['확장']})")
+ok(_퇴["판정"] == "퇴화",
+   f"**퇴화라고 부른다** (얻은 값 {_퇴['판정']})  <- 이것이 모름에 섞여 있던 8개다")
+
+_out = io.StringIO()
+_led퇴 = PR.blank()
+_led퇴["problems"] = [dict(_부, 물음="부모", 계보={"부모": "-", "연산자": "씨앗"}, 깊이=0),
+                     dict(_자, 물음="자식", 계보={"부모": "A", "연산자": "제약 더하기"}, 깊이=1)]
+with redirect_stdout(_out):
+    RE.show(_led퇴, "B")
+ok("좁아졌다" in _out.getvalue(),
+   "**좁아졌다고 말한다** -- 목표가 '퇴화가 아니라 도약' 이므로 이 칸을 안 세면 반쪽만 본다")
+ok("다 잰 것이지" in _out.getvalue(), "못 잰 것이 아니라고 못박는다")
+
+# 넷이 서로 안 겹친다
+_넷 = {}
+for 보, 확 in ((True, True), (True, False), (False, True), (False, False)):
+    _r = dict(보존=보, 확장=확)
+    _판 = ("도약" if (보 and 확) else "재작성" if 보 and 확 is False else
+           "딴 문제" if 확 and 보 is False else "퇴화" if 보 is False and 확 is False else "모름")
+    _넷[(보, 확)] = _판
+ok(len(set(_넷.values())) == 4, f"보존·확장 네 조합이 네 이름으로 갈린다 ({_넷})")
 
 print()
 if FAIL:
