@@ -58,6 +58,7 @@ from jaso import gate as GT                                          # noqa: E40
 from jaso import intake as IN                                        # noqa: E402
 from jaso import item as IT                                          # noqa: E402
 from jaso import ledger as LG                                        # noqa: E402
+from jaso import refine as RF                                        # noqa: E402
 from jaso import trace as TR                                         # noqa: E402
 from jaso import write as WR                                         # noqa: E402
 
@@ -234,7 +235,7 @@ def 한걸음(a) -> int:
     벌들, 쓴것, 조각 = [], set(), []
     for q in qs:
         try:
-            r = WR.쓰기(q, L, a.벌, a.회사, a.직무, 쓴것)
+            r = RF.돌리기(q, L, a.바퀴, a.벌, a.회사, a.직무, 쓴것)
         except Exception as e:
             print(f"\n**못 썼다: {type(e).__name__}: {e}**", file=sys.stderr)
             print("  (GEMINI_API_KEY 가 있는 데서 돌려라 -- 이 컨테이너는 키가 없다)",
@@ -250,11 +251,17 @@ def 한걸음(a) -> int:
             _적기(터, f"문항 {q.번호} 에서 한 벌도 못 받았다: {r['왜'][:60]}")
             return 3
         벌들.append(r)
-        쓴것 |= set(r["뽑힘"]["항목"])
+        쓴것 |= set(r["최선"]["항목"])
         조각.append(f"## {q.번호 + '. ' if q.번호 else ''}{q.원문}\n\n"
-                   f"{r['뽑힘']['글']}\n")
-        print(f"  [문항 {q.번호}] {r['벌']}벌 중 hard 0 인 것 {r['성한것']}벌 "
-              f"-> soft {r['뽑힘']['soft']}건인 것")
+                   f"{r['최선']['글']}\n")
+        print(f"  [문항 {q.번호}] {len(r['바퀴들'])}바퀴 -> {r['최선']['잰']}")
+        for b in r["바퀴들"]:
+            표 = "나아짐" if b.나아졌나 else ("버림 " if b.번호 else "첫벌 ")
+            print(f"      {b.번호}바퀴 {표}  {b.잰}")
+        if r["물을것"]:
+            print("      **루프가 못 고친 것이 있다 -- 재료 문제다.** 물을 것:")
+            for x in r["물을것"][:2]:
+                print(f"        · {x.말[:72]}")
 
     자소서 = 터 / "자소서.md"
     자소서.write_text(f"---\n회사: \"{a.회사}\"\n직무: \"{a.직무}\"\n---\n\n"
@@ -300,6 +307,8 @@ def main(argv=None) -> int:
     ap.add_argument("--몇", dest="몇", type=int, default=8, help="찾을 주소 수")
     ap.add_argument("--몇물음", dest="몇물음", type=int, default=8)
     ap.add_argument("--벌", dest="벌", type=int, default=3)
+    ap.add_argument("--바퀴", dest="바퀴", type=int, default=3,
+                    help="정제 바퀴 (0 이면 첫 벌만 내고 안 돈다)")
     a = ap.parse_args(argv)
     return 한걸음(a)
 
