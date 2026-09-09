@@ -151,6 +151,44 @@ with tempfile.TemporaryDirectory() as d:
     ok("한 벌도 글을 못 받았다" in out and "GEMINI_API_KEY" in out,
        "왜 못 갔는지 갈래로 말한다")
 
+print("\n── 아무 글에서 문항을 캔다 (갈래를 안 가린다) ──────────")
+요강 = """2027학년도 편입학 모집요강
+
+가. 모집단위 및 인원
+나. 전형요소별 배점
+다. 제출서류: 학업계획서 1부
+
+[학업계획서 문항]
+1. 본교 해당 학과에 지원하게 된 동기와 학업 계획을 기술하시오. (1,000자 이내)
+2. 편입 후 학업을 수행하기 위해 준비한 것과 그 과정에서 배운 점을 서술하시오. (800자)
+
+문의: 입학처"""
+with tempfile.TemporaryDirectory() as d3:
+    터3 = Path(d3) / "편입"
+    code, out = 돌리기(터3, "--글", 요강)
+    ok(code == RN.사람차례, f"요강을 그대로 줘도 돈다 (끝값 {code})")
+    ok("문항 2개" in out,
+       "**요강에서 문항 둘만 캤다** -- 모집단위·전형요소·제출서류·문의는 안 담긴다. "
+       "글의 갈래를 목록으로 두면 목록에 없는 서식이 오는 날 통째로 못 읽는다")
+    qs = RN.문항읽기(터3)
+    ok(qs and qs[0].상한 == 1000 and qs[1].상한 == 800,
+       f"글자 수까지 딸려 온다 ({[q.상한 for q in qs]})")
+    ok(any("학업 계획" in q.원문 for q in qs), "문항 원문이 그대로 남는다")
+
+print("\n── 공개 채널 -- 사람마다 원장을 가른다 ──────────────────")
+가 = RN._사람터("사람가", "일")
+나 = RN._사람터("사람나", "일")
+ok(가 != 나, "**호출자가 다르면 폴더가 다르다** -- 안 가르면 남의 이력을 보게 된다")
+ok(RN._사람터("사람가", "일") == 가, "같은 사람은 같은 폴더 (이어서 갈 수 있다)")
+ok("사람가" not in str(가),
+   "**id 가 폴더 이름에 안 드러난다** -- 드러나면 누가 이 봇을 썼는지가 목록으로 남는다")
+buf2, err2 = io.StringIO(), io.StringIO()
+with contextlib.redirect_stdout(buf2), contextlib.redirect_stderr(err2):
+    code = RN.main(["--터", str(ROOT / "Public_agent" / "x"), "--문항", 역량])
+ok(code == 3 and "커밋되는 곳" in err2.getvalue(),
+   "**`Public_agent/` 안에는 못 쓴다** -- 거기는 커밋되는 곳이고, 경험 원장과 "
+   "인터뷰 답이 담기면 그 사람의 이력이 저장소에 영영 남는다")
+
 print()
 print(f"실패 {len(fails)}건" if fails else "전부 통과")
 raise SystemExit(1 if fails else 0)
