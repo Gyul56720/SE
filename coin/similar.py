@@ -192,6 +192,15 @@ def 닮음(v1: dict, v2: dict, 무게=(0.5, 0.3, 0.2)) -> dict:
     return {"뉴스": 뉴, "시장": 시, "흐름": 흐, "합": 합}
 
 
+def _날만(d: str) -> str:
+    """`2020-06-19` 든 `2020-06-19T08:00:00+00:00` 든 앞 열 글자만.
+
+    시간봉이 일봉 원장에 섞여 들어오면(COIN_TZ 로 받았는데 눈금을 안 나눈 경우)
+    `strptime("%Y-%m-%d")` 이 통째로 터진다 -- 실측으로 봤다. 그래서 여기서 자른다.
+    """
+    return (d or "")[:10]
+
+
 def 미리세기(계열, 사건들: list, 흐름원장: dict, 창일: int, 시간대,
             자산: str, 원봉: list = None) -> dict:
     """**모든 날의 벡터를 한 번에 세운다.**
@@ -232,9 +241,12 @@ def 미리세기(계열, 사건들: list, 흐름원장: dict, 창일: int, 시�
                 흐름날.setdefault(d, {})[이름] = p
 
     from datetime import datetime, timedelta, timezone
+    # **날짜 -> 자리 한 번만.** strptime 을 자리마다 부르면 시간봉 크기에서 느리고,
+    # 시간꼴이 섞이면 터진다. 미리 정수 자리로 바꾼다.
+    자리 = {날들[i]: i for i in range(len(날들))}
     out = {}
     for i, d in enumerate(날들):
-        t = datetime.strptime(d, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        t = datetime.strptime(_날만(d), "%Y-%m-%d").replace(tzinfo=timezone.utc)
         뉴 = {}
         for k in range(창일):
             for key, n in (날별.get((t - timedelta(days=k)).strftime("%Y-%m-%d")) or {}).items():
@@ -258,6 +270,13 @@ def 찾기(계열, 사건들: list, 흐름원장: dict, 오늘: str = "", 창일
     오늘 = 오늘 or (계열.날들[-1] if len(계열) else "")
     if not 오늘:
         return {"왜": "가격 원장이 비었다", "닮은날": []}
+    # **시간봉이 일봉 원장에 섞여 들어왔나.** 3311일이 아니라 79000행이면 눈금을
+    # 안 나누고 받은 것이다. 조용히 느려지지 말고 말한다.
+    if len(계열) > 20000:
+        return {"왜": f"봉이 {len(계열)}개다 -- 일봉이 아니라 시간봉/분봉이 "
+                "일봉 원장에 섞여 들어왔다. COIN_TZ 로 받으면 눈금을 나눠야 한다 "
+                "(python3 coin/price.py --받기 BTC  # COIN_TZ 없이). 지금 원장을 "
+                "지우고 다시 받아라", "닮은날": []}
     모두 = 미리세기(계열, 사건들, 흐름원장, 창일, 시간대, 자산, 원봉)
     지금 = 모두.get(오늘)
     if 지금 is None:

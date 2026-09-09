@@ -227,6 +227,39 @@ ok(isinstance(r1, dict) and "받은것" in r1 and r1["받은것"] == 0,
    "모으기 한 바퀴가 출처 0곳에서도 안 죽는다 (검사는 망을 안 탄다)")
 ok(WT.줄(r1).startswith("["), "바퀴마다 로그 한 줄 -- **로그가 안 늘면 죽은 것이다**")
 
+# ---------------------------------------------------------------- 꼬리표 걸림률 · 오탐
+# 실측 2026-09-09 (VM): 4197글 -> 사건 125개. 절반 넘게 버려졌다. 헤드라인 표본으로
+# 재니 걸림률이 40% 였다 -- "100K 돌파" · "기관 채택" · "MicroStrategy 매입" 같은
+# 실제 시장 동인이 통째로 안 걸렸다. 사전을 넓히되 오탐도 같이 붙든다.
+암호헤드라인 = [
+    "Bitcoin surges past $100,000 as institutional demand grows",
+    "SEC approves spot bitcoin ETF applications from BlackRock",
+    "Crypto market rallies on Fed rate cut expectations",
+    "Ethereum completes major network upgrade",
+    "Coinbase reports record trading volume in Q3",
+    "Trump administration signals friendly crypto policy",
+    "Stablecoin regulation advances in US Congress",
+    "MicroStrategy adds to bitcoin holdings",
+    "Crypto exchange hacked, $50 million stolen",
+    "Bitcoin dips below $90,000 amid profit taking",
+    "XRP jumps 10% after court ruling",
+    "Whales move $500 million in bitcoin to exchanges",
+]
+걸림 = sum(1 for h in 암호헤드라인 if TG.유형만(h))
+ok(걸림 / len(암호헤드라인) >= 0.75,
+   f"**시장 동인 헤드라인의 75%+ 가 꼬리표를 받는다** ({걸림}/{len(암호헤드라인)})")
+
+# 비암호 금융 기사는 안 걸려야 한다 -- 약한 낱말은 암호 맥락이 있을 때만
+비암호 = ["Stock market hits record high", "Apple reports record volume",
+          "Gold surges past $3000 an ounce", "Fed cuts rates by 50bp",
+          "Tesla stock plunges below $200"]
+오탐 = [h for h in 비암호 if TG.유형만(h)]
+ok(not 오탐, f"**비암호 금융 기사는 안 걸린다** (오탐: {오탐})")
+ok(TG.유형만("Gold surges past $3000") == () and
+   "가격급변" in TG.유형만("Bitcoin surges past $100,000"),
+   "'surges past' 는 암호 맥락이 있을 때만 -- 금은 안 걸리고 비트코인은 걸린다")
+ok("가격급변" in TG.사전, "가격 급변 자체가 유형이다 (돌파·폭락은 사건이다)")
+
 print()
 print(f"실패 {len(fails)}개" if fails else "전부 통과")
 raise SystemExit(1 if fails else 0)
