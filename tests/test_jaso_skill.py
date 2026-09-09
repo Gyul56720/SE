@@ -23,6 +23,7 @@ from __future__ import annotations
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -85,6 +86,22 @@ for 말, 왜 in (("직접 지어내지 마라", "이 세션에서 자소서를 �
     ok(말 in 글, f"{말!r} -- {왜}")
 ok("끝값" in 글 and "사람 차례" in 글,
    "**끝값 2 가 사람 차례라는 것**이 적혀 있다 -- 대신 답하면 원장이 오염된다")
+ok("학교·회사·문항을 네가 정하지 마라" in 글,
+   "**배포판에서 지원처를 세션이 정하지 않는다** -- 그것을 아는 사람은 사용자뿐이다")
+
+print("\n── 스킬이 적은 끝값이 **실제 끝값과 같은가** ──────────")
+표 = "\n".join(l for l in 글.splitlines() if l.lstrip().startswith(("0  ", "1  ", "3  ")))
+ok("문항이 없다" not in 표,
+   "**끝값 3 자리에 '문항이 없다' 가 없다** -- 이제 그것은 2(사람 차례)다. "
+   "실측 교훈: 낡은 메모가 오래 남아 잘못된 데를 가리킨다")
+with tempfile.TemporaryDirectory() as d:
+    난것 = subprocess.run(
+        [sys.executable, str(ROOT / "jaso" / "run.py"), "--터", str(Path(d) / "빈손")],
+        capture_output=True, text=True, cwd=str(ROOT))
+    ok(난것.returncode == 2,
+       f"아무것도 안 주고 부르면 끝값 {난것.returncode} == 2 -- 스킬이 적은 대로다")
+    ok("어디에 내는 것입니까" in 난것.stdout,
+       "**되묻는 말이 화면에 나온다** -- 스킬은 이것을 그대로 전하라고 적고 있다")
 
 
 print("\n── 포트폴리오 -- 문항이 다른 자소서다 ───────────────────")
