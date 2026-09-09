@@ -44,7 +44,7 @@ print("[기본] 기본 페르소나는 사이다다")
 ok(style.ACTIVE == "cider", f"ACTIVE={style.ACTIVE}")
 # **명부를 못박아 둔다.** 페르소나가 조용히 늘면 기본값이 바뀌었는지 아무도 모른다.
 # 늘릴 때는 여기 한 줄을 같이 고친다 -- 그게 이 검사가 시키는 일이다.
-ok(sorted(style.PERSONAS) == ["cider", "hardboiled", "ropan"], f"{sorted(style.PERSONAS)}")
+ok(sorted(style.PERSONAS) == ["cider", "hardboiled", "manga", "ropan"], f"{sorted(style.PERSONAS)}")
 
 print("[배분] 씬 종류가 목표 비율에 수렴하는가")
 counts: dict = {}

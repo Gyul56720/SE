@@ -30,7 +30,8 @@
 #                                문면층만 쓸 때는 사건·급발진·확산이 안 실린다
 #                                (갈래는 층과 무관하게 실린다 -- 아래 GENRE)
 #   HOURS    시간 상한(시간)     (비우면 12). 예: HOURS=4 STYLE=ropan GENRE=ropan drift.sh start 50000
-#   STYLE    문체 페르소나      (ropan · cider · hardboiled / 비우면 기본값 cider)
+#   STYLE    문체 페르소나      (ropan · cider · hardboiled · manga / 비우면 기본값 cider)
+#                                manga = 만화 식 -- 컷으로 끊는 문단 · 대사가 미는 장면 (novel/MANGA.md)
 #                                ropan 은 원작 4편 378만 자를 재서 나온 결이다.
 #                                예: STYLE=ropan GENRE=ropan drift.sh start 8000
 #   GENRE    갈래 꾸러미        (ropan · lanobe · romance · job · youth / 비우면 안 씌운다)

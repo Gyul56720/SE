@@ -186,7 +186,16 @@ def 즉석(url: str, 꼴: str = "", 칸=(), 수칸=(), key: str = "", 경로: st
     그러면 거절된다 -- 짐작이 조용히 통과하는 길은 없다.
     """
     if not 꼴:
-        꼴 = "csv" if any(t in url.lower() for t in (".csv", "e=csv", "format=csv")) else "json"
+        u = url.lower()
+        if any(t in u for t in (".csv", "e=csv", "format=csv")):
+            꼴 = "csv"
+        elif any(t in u for t in (".xml", ".rss", ".atom", "/atom", "/rss",
+                                  "format=xml", "arxiv.org/api")):
+            꼴 = "xml"
+        else:
+            꼴 = "json"
+        # 주소만 보고는 못 가르는 것이 많다(arXiv 가 그랬다) -- 그래서 `parse` 가
+        # 빗나가면 **온 것으로 한 번 더 읽는다.** 짐작이 조용히 통과하지는 않는다.
     return Source(이름=이름, 설명=f"즉석 출처 ({url[:60]})", url=url, 꼴=꼴,
                   칸=tuple(칸), 수칸=tuple(수칸), key=key, 경로=경로,
                   셈=tuple(셈), 신선=신선,

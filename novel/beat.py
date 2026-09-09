@@ -55,6 +55,7 @@ from novel import drive as D
 from novel import hooks as HK
 from novel import serial as SR
 from novel import space as SP
+from novel import style as ST
 
 BEATS = 3
 # 덩어리 길이. flow.CHUNK 와 같은 환경변수를 읽는다 -- 여기서 flow 를 임포트하면 돌게 된다.
@@ -484,7 +485,12 @@ def brief(book: dict) -> str:
     # **연출과 대사 -- 애니 · 라노벨의 꼴.** 사용자: "상황이 머릿속에 안 떠오른다."
     seed = str(book.get("seed_id") or book.get("first") or "")
     nn = len(book.get("chunks") or [])
-    rows.append("  · 연출:\n" + SP.render("연출", seed, nn, 2).replace("    ", "      "))
+    # **만화 식은 연출이 아니라 컷이다.** 연출(STAGING)은 애니 레이아웃을 산문에 옮긴
+    # 것이고 컷(PANELS)은 만화가 종이에서 하던 일을 문단으로 옮긴 것이라, 두 칸이 서로를
+    # 대신하지 못한다. 페르소나가 만화 식이면 컷을 싣는다 (MANGA.md 11절).
+    _cat = "컷" if ST.ACTIVE == "manga" else "연출"
+    rows.append(f"  · {_cat}:\n"
+                + SP.render(_cat, seed, nn, 3 if _cat == "컷" else 2).replace("    ", "      "))
     rows.append("  · 대사:\n" + SP.render("대사", seed, nn, 2).replace("    ", "      "))
     # **쾌감 · 전투 · 설정 -- 도파민의 자리.** 사용자: "도파민 요소가 없다."
     if c.get("쾌감"):

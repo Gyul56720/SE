@@ -180,8 +180,50 @@ ok(not LG.inspect(SRC.즉석("https://x", 꼴="json"), LG.parse(s, 글자만))["
 ok(SRC.즉석("https://x/a.csv").꼴 == "csv", "url 에서 꼴을 짐작한다 (.csv)")
 ok(SRC.즉석("https://x/q?e=csv").꼴 == "csv", "e=csv 도")
 ok(SRC.즉석("https://x/api").꼴 == "json", "그 밖은 json")
-ok(LG.parse(SRC.즉석("https://x/api"), 표) == [],
-   "**짐작이 틀리면 빈 목록이다** -- 조용히 통과하는 길이 없다")
+ok(SRC.즉석("https://export.arxiv.org/api/query?x=1").꼴 == "xml", "arXiv 는 xml")
+ok(SRC.즉석("https://x/feed.rss").꼴 == "xml", ".rss 도 xml")
+
+print()
+print("── 짐작이 빗나가면 **온 것으로 고쳐 읽되 말한다** ────────")
+# 실측 2026-09-09: arXiv 가 200 으로 잘 답했는데 `--탐색` 이 "줄을 못 찾았다
+# (꼴=json)" 하고 바이트만 쏟았다. **온 것이 Atom XML 이라는 말을 안 했다.**
+# 예전에는 여기서 빈 목록을 냈다 -- 그러면 부르는 쪽이 "이 출처는 안 된다" 로 읽고,
+# 받아 올 수 있는 것을 관할 밖에 놓는 바로 그 자리로 되돌아간다.
+틀린짐작 = SRC.즉석("https://x/api")            # json 이라 짐작했는데 csv 가 온다
+ok(len(LG.parse(틀린짐작, 표)) == 3,
+   "**빗나간 짐작을 온 것으로 고쳐 읽는다** -- 관측이지 짐작이 아니다")
+ok(LG.읽은꼴(틀린짐작, 표) == "csv",
+   "**고쳐 읽었다는 것을 말할 수 있다** -- 조용히 통과하는 길은 여전히 없다")
+ok(LG.읽은꼴(SRC.즉석("https://x/a.csv"), 표) == "csv", "맞았으면 그대로")
+
+ATOM = ('<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<feed xmlns="http://www.w3.org/2005/Atom">\n'
+        ' <title>ArXiv Query</title>\n'
+        ' <entry><id>abs/1004.0525</id><title>border rank</title>'
+        '<author><name>Landsberg</name></author><author><name>Ottaviani</name></author>'
+        '<link href="http://arxiv.org/abs/1004.0525" rel="alternate"/></entry>\n'
+        ' <entry><id>abs/1112.6007</id><title>lower bounds</title>'
+        '<author><name>Landsberg</name></author>'
+        '<link href="http://arxiv.org/abs/1112.6007" rel="alternate"/></entry>\n'
+        '</feed>')
+줄, 어디 = LG._xml줄(ATOM)
+ok(len(줄) == 2, f"**되풀이되는 형제가 줄이다** ({len(줄)}줄)")
+ok(어디 == "feed/entry", f"어디서 찾았는지 말한다 ({어디})")
+ok("id" in 줄[0] and "{" not in str(줄[0].keys()),
+   "**이름공간을 뗀다** -- 안 떼면 칸 이름이 통째로 URL 이라 --key 로 못 가리킨다")
+ok(줄[0]["author"] == "Landsberg | Ottaviani",
+   "같은 이름이 여럿이면 이어 붙인다 -- **버리지 않는다**")
+ok("href=" in 줄[0]["link"], "글자가 없는 자식은 속성을 적는다")
+ok(LG.어떤꼴(ATOM) == "xml" and LG.어떤꼴('{"a":1}') == "json"
+   and LG.어떤꼴("<!DOCTYPE html><html>") == "html" and LG.어떤꼴("a,b\n1,2") == "csv",
+   "**온 것이 무엇인지 첫 글자로 말한다** -- 짐작이 아니라 관측이다")
+ok(LG.어떤꼴("") == "" and LG.어떤꼴("그냥 글") == "",
+   "모르겠으면 모르겠다고 한다 -- 아무거나 고르지 않는다")
+ok(len(LG._xml줄("<a><b>1</b></a>")[0]) == 0, "되풀이가 없으면 빈 목록")
+ok(LG._xml줄("깨진 <xml")[0] == [], "깨진 XML 로 안 죽는다")
+ok(LG.parse(SRC.즉석("https://x/q", 꼴="json"), "<!DOCTYPE html><html><body>x") == [],
+   "**HTML 을 csv 로 읽지 않는다** -- 한 줄짜리 쓰레기가 원장에 들어가면 심판이 "
+   "그것을 정답으로 삼는다")
 
 print()
 print("── 범용 셈: 칸이 수이기만 하면 센다 ────────────────────")
