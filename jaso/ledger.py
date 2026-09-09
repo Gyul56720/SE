@@ -128,8 +128,23 @@ class 위반:
 
 
 @dataclass
+class 생각:
+    """**사실이 아니라 사람의 말.** 지원동기 · 포부 · 성찰 · 가치.
+
+    이것을 원장에 안 두면 write 가 그 자리를 지어낸다 -- 그리고 지어낸 지원동기가
+    바로 P001(치환 가능)에 걸리는 그 문단이다. 대조할 바깥이 없으므로 **구성상
+    미검증**이고, 보고서가 그렇게 적는다.
+    """
+    id: str
+    갈래: str = ""            # 지원동기 · 포부 · 성찰 · 가치 · 그밖
+    말: str = ""
+    딸린항목: str = ""        # 어느 경험에 붙은 생각인가 (없어도 된다)
+
+
+@dataclass
 class 원장:
     항목들: list = field(default_factory=list)
+    생각들: list = field(default_factory=list)
 
     def __bool__(self) -> bool:
         return bool(self.항목들)
@@ -139,6 +154,9 @@ class 원장:
 
     def 찾기(self, id: str):
         return next((h for h in self.항목들 if h.id == id), None)
+
+    def 생각찾기(self, 갈래: str) -> list:
+        return [g for g in self.생각들 if g.갈래 == 갈래]
 
 
 # ---------------------------------------------------------------- 읽기
@@ -180,8 +198,15 @@ def 읽기(것) -> 원장:
             것 = json.loads(것)
         except (json.JSONDecodeError, TypeError):
             return 원장()
+    생각벌 = []
     if isinstance(것, dict):
-        것 = 것.get("항목") or 것.get("항목들") or [것]
+        for g in (것.get("생각") or 것.get("생각들") or []):
+            if isinstance(g, dict) and str(g.get("말") or "").strip():
+                생각벌.append(생각(id=str(g.get("id") or f"G{len(생각벌) + 1}"),
+                                 갈래=str(g.get("갈래") or "그밖"),
+                                 말=str(g["말"]).strip(),
+                                 딸린항목=str(g.get("딸린항목") or "")))
+        것 = 것.get("항목") or 것.get("항목들") or ([것] if 것.get("id") else [])
     if not isinstance(것, list):
         return 원장()
 
@@ -206,7 +231,7 @@ def 읽기(것) -> 원장:
             쓴것=[str(v) for v in (x.get("쓴것") or [])],
             같이=int(x.get("같이") or 0), 증빙=str(x.get("증빙") or ""),
             전념=bool(x.get("전념", True))))
-    return 원장(out)
+    return 원장(out, 생각벌)
 
 
 # ---------------------------------------------------------------- 검사
@@ -318,8 +343,10 @@ def 수앵커(h: 항목, 쓸수있는것만: bool = False) -> set:
         out |= 숫자들(m.어떻게)
     if h.같이:
         out.add(str(h.같이))
-    if h.개월:                          # "6개월간 ~ 개선했습니다" 도 원장에서 온 수다
-        out.add(str(h.개월))
+    # **개월은 여기 안 넣는다.** `값앵커` 에는 `6|개월` 로 들어가 있어 J002 가 본다.
+    # 그런데 여기(P001 이 세는 자리)에 맨 `6` 을 넣으면 글 속 아무 `6` 에나 걸려서,
+    # 기간만 적힌 항목이 '고유한 것이 박혀 있다' 로 보인다 -- 실측: 이름도 곳도 쓴
+    # 것도 없는 항목이 앵커 있음으로 나와 P001 물음이 안 나갔다.
     return out
 
 
