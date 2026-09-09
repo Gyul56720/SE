@@ -167,7 +167,13 @@ def main() -> int:
     if status == 200:
         print(f"   OK -- '{body.get('name')}' (type={body.get('type')}, "
               f"guild={body.get('guild_id')})")
-        if body.get("type") not in (0, 5, 10, 11, 12):
+        # 1=DM · 3=단체DM 도 **보낼 수 있는 곳**이다. 처음에 이 둘을 빼 놓아서
+        # 멀쩡한 DM 관리 채널에 "못 보낸다" 고 답했다(실측 2026-09-09).
+        if body.get("type") in (1, 3):
+            print("   이건 **DM 채널**이다 -- 서버 채널이 아니라 1:1 대화방.")
+            print("   보내는 데는 문제없지만 **길드가 없다**(guild=None). "
+                  "DISCORD_GUILD_ID 를 켜도 DM 은 그 검사를 안 거친다.")
+        elif body.get("type") not in (0, 5, 10, 11, 12):
             print("   ⚠ 텍스트 채널이 아니다. 메시지를 못 보낸다.")
     else:
         print(f"   실패 HTTP {status} code={code} -- {body.get('message')}")
