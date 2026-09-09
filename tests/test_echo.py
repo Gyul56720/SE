@@ -183,7 +183,43 @@ ok("없는 낱말을 지어내고 변명을 단다"
    "낱말 지어내기는 남는다  ← 인물 규정이 아니라 작법이다")
 
 print()
+print("[지우기] **잡고 나서 원고를 실제로 고치는가**")
+# 여기가 이 파일의 빈 자리였다. 자는 2026-09-04 부터 멀쩡히 재고 있었는데, 잡은 것을
+# flow 가 "장부에 적어 두고 원고는 그대로 쓴다" 로 흘려보냈다. 실측 2026-09-09:
+# 사용자가 보낸 1화에 다섯 줄 279자(17%)가 통째로 두 번 적혀 있었다.
+_kept, _cut = echo.dedup(TWICE)
+ok(_cut > 0, f"복사한 줄을 실제로 지운다 ({_cut}자)")
+ok(echo.selfish(_kept)[0] == 0.0, f"지운 뒤에는 되풀이가 0 ({echo.selfish(_kept)[0]:.2f})")
+ok(echo.check(_kept, "") == [], "지운 뒤에는 잡을 것이 없다")
+# 긴 줄은 한 번만 남고, 짧은 줄("커피 드실래요?" -- 정규화하면 열두 자 미만)은 그대로
+# 둘 다 남는다. 그것이 이 자의 계약이다: 복사를 지우되 대사의 되풀이는 안 건드린다.
+_long = [l for l in ONCE.splitlines() if len(echo._norm(l)) >= 12]
+ok(all(_kept.count(l) == 1 for l in _long),
+   f"긴 줄은 첫 번째만 남는다 ({len(_long)}줄)  ← 읽는 사람이 잃는 것이 없다")
+ok(len(_kept) < len(TWICE) and len(_kept) >= len(ONCE),
+   f"원본보다 짧고 한 벌보다는 길다 ({len(ONCE)} <= {len(_kept)} < {len(TWICE)}자)")
+for _l in ONCE.splitlines():
+    ok(_l in _kept, f"  줄이 살아 있다: {_l[:20]}…")
+
+# **문턱 아래는 손대지 않는다.** 후렴처럼 일부러 한 번 되풀이한 것까지 지우면 그것이
+# 과잉이다 -- 이 저장소의 "과잉 기각은 글을 없앤다".
+_many = ["이것은 서로 다른 %d번째 문장이고 길이가 열두 자를 넉넉히 넘는다." % i for i in range(20)]
+_low = "\n".join(_many + [_many[3]])
+ok(echo.selfish(_low)[0] < echo.TOLERANCE, f"낮은 되풀이 표본 ({echo.selfish(_low)[0]:.3f})")
+ok(echo.dedup(_low)[1] == 0, "문턱 아래면 한 글자도 안 지운다")
+
+# **짧은 줄은 안 본다.** 같은 대사를 두 번 하는 것은 복사가 아니라 성격이다.
+_short = '"난 안 가."\n그는 또 말했다.\n"난 안 가."\n' + TWICE
+ok(echo.dedup(_short)[0].count("난 안 가") == 2, "짧은 대사는 두 번 다 남는다")
+
+# 배선 -- flow 가 재기 전에 지운다. 뒤에서 지우면 프로필과 장부에 복사된 값이 남는다.
+_src = (Path(__file__).resolve().parent.parent / "novel" / "flow.py").read_text(encoding="utf-8")
+ok("echo.dedup(text)" in _src, "flow 가 덩어리마다 지운다")
+ok(_src.index("echo.dedup(text)") < _src.index("left = (clashes"),
+   "재기 전에 지운다  ← 뒤에서 지우면 없는 문제를 고치라고 시킨다")
+
+print()
 if fails:
     print(f"메아리: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)
-print("메아리: 검출 · 관용 · 꼬리 절단 · 하드 개입 · 과다 호명 · 라벨 -- 통과")
+print("메아리: 검출 · 관용 · 꼬리 절단 · 지우기 · 하드 개입 · 과다 호명 · 라벨 -- 통과")

@@ -68,6 +68,40 @@ def trim(text: str, prev: str) -> tuple[str, int]:
     return kept, dropped
 
 
+def dedup(text: str) -> tuple:
+    """**그대로 복사한 줄을 지운다.** (남은 글, 지운 글자수)
+
+    `check` 가 이것을 이미 잡고 있었다 -- 그런데 잡고 나서 하는 일이 "장부에 적어 두고
+    원고는 그대로 쓴다" 였다. 실측 2026-09-09, 사용자가 보낸 1화: 같은 대목 다섯 줄
+    279자(전체의 17%)가 통째로 두 번 적혀 있었다. 재는 자는 멀쩡했고 그 값이 원고를
+    고치지 못했을 뿐이다.
+
+    **이것은 기각이 아니다.** 이 저장소의 규율은 "과잉 기각은 글을 없앤다" 인데,
+    여기서 지우는 것은 **바로 그 글 안에 이미 한 번 있는 줄**이다. 읽는 사람이 잃는
+    것이 없다 -- 첫 번째는 남는다. 리듬 · 확산처럼 정도의 문제인 것들과 다르다.
+
+    조심하는 자리 둘:
+
+    · 되풀이가 `TOLERANCE` 아래면 **손대지 않는다.** 후렴처럼 일부러 한 번 되풀이한
+      것까지 지우면 그것이야말로 과잉이다.
+    · 짧은 줄은 안 본다(`_norm` 12자 미만). "가시죠." 가 두 번 나오는 것은 대사지
+      복사가 아니다. `selfish` 가 세는 자와 같은 자다.
+    """
+    rate, _ = selfish(text)
+    if rate <= TOLERANCE:
+        return text, 0
+    out, seen = [], set()
+    for line in text.splitlines():
+        n = _norm(line)
+        if len(n) >= 12:
+            if n in seen:
+                continue
+            seen.add(n)
+        out.append(line)
+    kept = re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip()
+    return kept, len(text) - len(kept)
+
+
 def echoed(text: str, prev: str) -> float:
     """앞 글에 이미 있던 글자의 비율."""
     a, b = _norm(text), _norm(prev)
