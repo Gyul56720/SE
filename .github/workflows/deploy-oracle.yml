@@ -51,6 +51,21 @@ on:
       # 고쳐 커밋하는 것들이라, 그것까지 걸면 학습 한 바퀴마다 봇이 재시작된다 --
       # runs/ 를 일부러 뺀 것과 같은 이유다.
       - "novel/**.py"
+      # 공개 채널 프롬프트가 **이름을 대고 시키는** 도구들. 봇은 이것을 임포트하지
+      # 않고 run_shell 로 띄우므로 G013 의 임포트 폐포에 안 잡힌다 -- searcher.py ·
+      # bot_tools.py · gatekeeper.py · novel/ · gemini_http.py 에 이어 **여섯 번째**
+      # '코드가 서버에 도달하지 못하는' 경로다(실측 2026-09-09: dig/ 가 이 목록에
+      # 한 줄도 없었다. 매 물음마다 도는 코드인데 dig 만 고친 커밋은 배포가 안 걸린다).
+      #
+      # 여기 .py 만 거는 것은 novel/ 과 같은 까닭이다 -- study/ 는 원장(json)을
+      # 봇이 직접 고쳐 커밋하므로, 그것까지 걸면 문제 하나 풀 때마다 봇이 재시작된다.
+      - "dig/**.py"
+      - "study/**.py"
+      - "coin/**.py"
+      - "brief/**.py"
+      - "lol/**.py"
+      - "reason/**.py"
+      - "brain/**.py"
       - "deploy/se-discord-bot.service"
       - "deploy/se-log-streamer.service"
       - "deploy/se-matrix-search.service"
