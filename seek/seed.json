@@ -1,17 +1,65 @@
 {
-  "seq": 1,
-  "problems": [
-    {
-      "id": "P1",
-      "물음": "5선 정렬망을 비교기 9개로 만들 수 있는가 (크기)",
-      "표본": "def sample(rng):\n    \"\"\"비교기 9개. 각각 (i, j), i < j.\"\"\"\n    out = []\n    for _ in range(9):\n        i = rng.randrange(5 - 1)\n        j = rng.randrange(i + 1, 5)\n        out.append([i, j])\n    return out",
-      "판정": "def judge(x):\n    \"\"\"**0/1 원리.** 0과 1로만 된 입력 2^5 개를 다 정렬하면 모든 입력을 정렬한다.\n    유한 소진이라 이 판정은 완전하다 -- 근사도 표본도 아니다.\"\"\"\n    if not isinstance(x, (list, tuple)) or len(x) != 9:\n        raise ValueError(\"비교기가 9개가 아니다\")\n    net = []\n    for c in x:\n        i, j = int(c[0]), int(c[1])\n        if not (0 <= i < j < 5):\n            raise ValueError(\"비교기 꼴이 아니다: %r\" % (c,))\n        net.append((i, j))\n    for bits in range(1 << 5):\n        v = [(bits >> t) & 1 for t in range(5)]\n        for i, j in net:\n            if v[i] > v[j]:\n                v[i], v[j] = v[j], v[i]\n        if any(v[t] > v[t + 1] for t in range(5 - 1)):\n            return False\n    return True",
-      "옮김": "",
-      "계보": {
-        "부모": "-",
-        "연산자": "씨앗"
-      },
-      "깊이": 0
-    }
-  ]
+ "seq": 5,
+ "problems": [
+  {
+   "id": "P1",
+   "물음": "5선 정렬망을 비교기 9개로 만들 수 있는가 (크기)",
+   "표본": "def sample(rng):\n    \"\"\"비교기 9개. 각각 (i, j), i < j.\"\"\"\n    out = []\n    for _ in range(9):\n        i = rng.randrange(5 - 1)\n        j = rng.randrange(i + 1, 5)\n        out.append([i, j])\n    return out",
+   "판정": "def judge(x):\n    \"\"\"**0/1 원리.** 0과 1로만 된 입력 2^5 개를 다 정렬하면 모든 입력을 정렬한다.\n    유한 소진이라 이 판정은 완전하다 -- 근사도 표본도 아니다.\"\"\"\n    if not isinstance(x, (list, tuple)) or len(x) != 9:\n        raise ValueError(\"비교기가 9개가 아니다\")\n    net = []\n    for c in x:\n        i, j = int(c[0]), int(c[1])\n        if not (0 <= i < j < 5):\n            raise ValueError(\"비교기 꼴이 아니다: %r\" % (c,))\n        net.append((i, j))\n    for bits in range(1 << 5):\n        v = [(bits >> t) & 1 for t in range(5)]\n        for i, j in net:\n            if v[i] > v[j]:\n                v[i], v[j] = v[j], v[i]\n        if any(v[t] > v[t + 1] for t in range(5 - 1)):\n            return False\n    return True",
+   "옮김": "",
+   "계보": {
+    "부모": "-",
+    "연산자": "씨앗"
+   },
+   "깊이": 0
+  },
+  {
+   "id": "P2",
+   "물음": "페테르센 그래프(정점 10 · 변 15)를 색 3가지로 칠할 수 있는가",
+   "표본": "def sample(rng):\n    \"\"\"정점 10개에 0·1·2 중 하나씩.\"\"\"\n    return [rng.randrange(3) for _ in range(10)]",
+   "판정": "def judge(x):\n    \"\"\"변 15개를 다 본다. **완전 판정** -- 그래프가 고정이라 표본이 아니다.\"\"\"\n    변 = [(0, 1), (1, 2), (2, 3), (3, 4), (4, 0),\n          (5, 7), (7, 9), (9, 6), (6, 8), (8, 5),\n          (0, 5), (1, 6), (2, 7), (3, 8), (4, 9)]\n    if not isinstance(x, (list, tuple)) or len(x) != 10:\n        raise ValueError(\"정점이 10개가 아니다\")\n    색 = [int(c) for c in x]\n    if any(not (0 <= c < 3) for c in 색):\n        raise ValueError(\"색이 0·1·2 가 아니다: %r\" % (색,))\n    return all(색[a] != 색[b] for a, b in 변)",
+   "옮김": "",
+   "계보": {
+    "부모": "-",
+    "연산자": "씨앗"
+   },
+   "깊이": 0
+  },
+  {
+   "id": "P3",
+   "물음": "3입력 다수결(MAJ3)을 AND · OR 게이트 4개로 만들 수 있는가",
+   "표본": "def sample(rng):\n    \"\"\"게이트 4개. 각각 [연산(0=AND,1=OR), 왼쪽, 오른쪽]. 마지막 게이트가 출력.\"\"\"\n    out = []\n    for t in range(4):\n        쓸수있는것 = 3 + t\n        out.append([rng.randrange(2),\n                    rng.randrange(쓸수있는것), rng.randrange(쓸수있는것)])\n    return out",
+   "판정": "def judge(x):\n    \"\"\"입력 8가지를 다 돌린다. **완전 판정.**\"\"\"\n    if not isinstance(x, (list, tuple)) or len(x) != 4:\n        raise ValueError(\"게이트가 4개가 아니다\")\n    회로 = []\n    for t, g in enumerate(x):\n        연산, a, b = int(g[0]), int(g[1]), int(g[2])\n        if 연산 not in (0, 1):\n            raise ValueError(\"연산이 AND(0)나 OR(1)이 아니다: %r\" % (연산,))\n        if not (0 <= a < 3 + t and 0 <= b < 3 + t):\n            raise ValueError(\"앞선 것만 참조할 수 있다: %r\" % (g,))\n        회로.append((연산, a, b))\n    for bits in range(1 << 3):\n        값 = [(bits >> t) & 1 for t in range(3)]\n        for 연산, a, b in 회로:\n            값.append(값[a] & 값[b] if 연산 == 0 else 값[a] | 값[b])\n        if 값[-1] != (1 if sum(값[:3]) >= 2 else 0):\n            return False\n    return True",
+   "옮김": "",
+   "계보": {
+    "부모": "-",
+    "연산자": "씨앗"
+   },
+   "깊이": 0
+  },
+  {
+   "id": "P4",
+   "물음": "원소 4개 위에 결합적이면서 항등원이 없는 이항연산이 있는가",
+   "표본": "def sample(rng):\n    \"\"\"4x4 곱셈표. 칸마다 0~3.\"\"\"\n    return [[rng.randrange(4) for _ in range(4)] for _ in range(4)]",
+   "판정": "def judge(x):\n    \"\"\"결합법칙 64개 + 항등원 없음 4개. **완전 판정.**\"\"\"\n    if not isinstance(x, (list, tuple)) or len(x) != 4:\n        raise ValueError(\"표가 4줄이 아니다\")\n    표 = []\n    for 줄 in x:\n        if not isinstance(줄, (list, tuple)) or len(줄) != 4:\n            raise ValueError(\"줄이 4칸이 아니다: %r\" % (줄,))\n        칸 = [int(v) for v in 줄]\n        if any(not (0 <= v < 4) for v in 칸):\n            raise ValueError(\"칸이 0~3 이 아니다: %r\" % (칸,))\n        표.append(칸)\n    for a in range(4):\n        for b in range(4):\n            for c in range(4):\n                if 표[표[a][b]][c] != 표[a][표[b][c]]:\n                    return False\n    for e in range(4):\n        if all(표[e][a] == a and 표[a][e] == a for a in range(4)):\n            return False                      # 항등원이 있으면 안 받는다\n    return True",
+   "옮김": "",
+   "계보": {
+    "부모": "-",
+    "연산자": "씨앗"
+   },
+   "깊이": 0
+  },
+  {
+   "id": "P5",
+   "물음": "고정된 수 20개에서 합이 정확히 1000이 되는 부분집합이 있는가",
+   "표본": "def sample(rng):\n    \"\"\"20비트 고르기.\"\"\"\n    return [rng.randrange(2) for _ in range(20)]",
+   "판정": "def judge(x):\n    \"\"\"더해 보면 끝이다. **완전 판정.**\"\"\"\n    수 = [92, 145, 27, 311, 68, 203, 154, 39, 276, 118,\n          87, 231, 165, 49, 298, 132, 76, 219, 103, 187]\n    if not isinstance(x, (list, tuple)) or len(x) != 20:\n        raise ValueError(\"고르기가 20칸이 아니다\")\n    고름 = [int(v) for v in x]\n    if any(v not in (0, 1) for v in 고름):\n        raise ValueError(\"0이나 1이 아니다: %r\" % (고름,))\n    return sum(n for n, v in zip(수, 고름) if v) == 1000",
+   "옮김": "",
+   "계보": {
+    "부모": "-",
+    "연산자": "씨앗"
+   },
+   "깊이": 0
+  }
+ ]
 }
