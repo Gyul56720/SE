@@ -632,6 +632,20 @@ _sh = (Path(__file__).resolve().parent.parent / "scripts" / "drift.sh").read_tex
 ok(_sh.count("say_genre ") >= 2, f"drift.sh 가 start 와 go 양쪽에서 알린다 ({_sh.count('say_genre ')}자리)")
 ok("GENRE 가 비었다" in _sh, "비었다는 것을 화면에 찍는다")
 
+# **런을 실제로 띄우는 것은 스킬이다.** drift.sh 를 고쳐도 스킬이 갈래 없는 명령을
+# 안내하면 사람은 계속 그것을 친다 -- 사용자의 런이 갈래 없이 돌던 뿌리가 여기였다
+# (스킬의 라우팅 표: "소설 써줘" → `$D start`, GENRE 는 한 번도 안 나왔다).
+_sk = (Path(__file__).resolve().parent.parent / ".claude" / "skills" / "drift"
+       / "SKILL.md").read_text(encoding="utf-8")
+ok("GENRE=lanobe" in _sk, "스킬이 갈래를 붙인 명령을 보여 준다")
+ok("GENRE=<갈래> $D start" in _sk, "라우팅 표의 '시작해' 가 갈래를 달고 있다")
+ok("GENRE=<갈래> $D go" in _sk, "이어 쓰기도  ← 안 주면 원고에 박힌 갈래가 벗겨진다")
+# 원고에 갈래가 박혀 있어도 매 런마다 인자가 이긴다(flow.main: book["genre"] = a.genre).
+_bk = flow.blank(flow.FIRST); _bk["genre"] = "lanobe"
+_bk["genre"] = ""                       # --genre 없이 이어 쓴 것과 같은 일
+ok(_bk["genre"] == "", "원고의 갈래는 인자가 덮는다  ← 그래서 go 에도 붙여야 한다")
+ok("무동작" in _sk, "'문장이 단조롭다' 가 페르소나로 안 보낸다  ← 기본 경로에서 안 실린다")
+
 print()
 if _bad:
     print(f"갈래: {len(_bad)}개 실패 -- {_bad}")
