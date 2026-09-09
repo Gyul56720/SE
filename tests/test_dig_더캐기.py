@@ -329,6 +329,52 @@ ok("for 칸 in range(몫)" not in 원본,
    "돌아가며 집던 자리가 없어졌다")
 
 print()
+print("── 쪽이 스스로 알려 준 문으로도 가는가 ─────────────────────")
+# 갈래를 안 가린다 -- 편입이든 맛집이든 논문이든, 쪽은 <link rel> 로 **기계에게**
+# 다음 문을 말해 준다. 피드는 글 본문이 통째로 오므로 목록을 열 번 파는 것보다 낫다.
+걸린쪽 = EX.뽑기('''<html><head>
+<link rel="alternate" type="application/rss+xml" href="/review/feed/">
+<link rel="canonical" href="https://t.kr/review/">
+<link rel="next" href="/review/page/2/">
+<link rel="stylesheet" href="/s.css"><link rel="icon" href="/f.ico">
+</head><body><a href="/login">로그인</a></body></html>''',
+                "text/html", "https://t.kr/review/")
+머 = 걸린쪽["머리표"]
+ok("link:alternate" in 머 and 머["link:alternate"] == "/review/feed/",
+   "**<link rel> 을 읽는다** -- meta 만 보던 때는 피드 주소를 통째로 버렸다")
+ok("link:next" in 머, "다음 쪽도 읽는다")
+ok(not any(k.startswith("link:stylesheet") or k.startswith("link:icon") for k in 머),
+   "**꾸미개는 안 담는다** -- css· 아이콘까지 담으면 팔 자리가 그것들로 찬다")
+
+후보 = RN.안쪽후보(걸린쪽, "https://t.kr/review/", ["합격수기", "편입"])
+주소 = [u for _v, u in 후보]
+ok(any("/review/feed/" in u for u in 주소),
+   "**읽은 문으로 실제로 간다** -- 읽어 놓고 안 가면 읽으나 마나다")
+ok(주소 and "/login" not in 주소[0],
+   f"걸린 문이 사람용 링크보다 앞에 선다 ({주소[0]})")
+ok(not any(u.endswith(".css") or u.endswith(".ico") for u in 주소), "꾸미개로 안 간다")
+
+print()
+print("── 영상은 글이 본문 밖에 있다 ─────────────────────────────")
+문 = FT.곁문("https://www.youtube.com/watch?v=XA3jvok7z4Q")
+ok(any("timedtext" in u and "type=list" in u for u in 문),
+   "**어떤 자막이 있는지 먼저 묻는다** -- 앞문 HTML 에는 말한 내용이 한 줄도 없다")
+ok(sum(1 for u in 문 if "timedtext" in u and "lang=" in u) >= 2,
+   "흔한 말 몇 가지를 바로 두드린다 (어느 것이 있을지 미리 모른다)")
+ok(any("oembed" in u for u in 문),
+   "**oEmbed 는 표준이다** -- 유튜브· 비메오· 사운드클라우드가 다 문다")
+ok(FT.영상쪽인가("https://youtu.be/ABC12345678") == "ABC12345678", "youtu.be 도 안다")
+ok(FT.영상쪽인가("https://www.youtube.com/shorts/XY9") == "XY9", "shorts 도 안다")
+ok(FT.영상쪽인가("https://tunatransfer.co.kr/review/") == "",
+   "**영상이 아니면 영상 문을 안 두드린다** -- 아니면 물음마다 헛문이 여섯 개 붙는다")
+ok(all("timedtext" not in u for u in FT.곁문("https://tunatransfer.co.kr/review/")),
+   "(그 확인) 보통 쪽에는 자막 문이 안 붙는다")
+ok(any("/feed" in u for u in FT.곁문("https://tunatransfer.co.kr/review/")),
+   "**피드는 어디서든 두드린다** -- 글 본문이 통째로 오는 문이라 갈래를 안 가린다")
+ok("ytInitialData" in EX._묻힌json이름,
+   "재생목록 항목이 든 덩어리 이름을 안다 -- 본문 HTML 에는 없다")
+
+print()
 print("── 캔 것이 사용자에게 닿기까지 살아 있는가 ─────────────────")
 # `bot_tools` 는 langchain 없이는 임포트가 안 되므로 이 함수만 떼어 실제로 돌린다.
 나무 = ast.parse((ROOT / "bot_tools.py").read_text(encoding="utf-8"))
