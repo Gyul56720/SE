@@ -278,6 +278,36 @@ finally:
 
 
 print()
+print("── **확인 안 된 출처는 확인 안 됐다고 말하는가** ──────────")
+ok(hasattr(주식, "확인"), "출처에 `확인` 칸이 있다 -- 언제 도는 것을 봤나")
+ok(all(isinstance(s.확인, str) for s in SRC.SOURCES.values()),
+   "모든 출처가 그 칸을 갖는다")
+ok(주식.미확인, "**Stooq 주식은 미확인이다** -- 실측 2026-09-09 VM 에서 404 였다")
+ok(SRC.즉석("https://x/a").미확인,
+   "**즉석 출처는 늘 미확인**이다 -- 방금 정한 주소라 도는 것을 본 사람이 없다")
+ok(not SRC.Source(이름="가", 설명="", url="{심볼}", 확인="2026-01-01 --탐색").미확인,
+   "확인 날짜를 적으면 미확인이 아니다")
+
+code, out = run(["--출처목록"])
+ok("[미확인]" in out, "**목록이 미확인을 표시한다** -- 표에 있다고 쓸 수 있는 게 아니다")
+ok("도는 것을 아무도 안 봤다" in out and "404" in out,
+   "몇 개가 왜 미확인인지 실측을 적는다")
+ok("--탐색" in out, "쓰기 전에 무엇부터 하라고 알려 준다")
+
+원래get = LG.get
+try:
+    LG.get = lambda u, timeout=30.0: (_ for _ in ()).throw(_HE(404))
+    code, out = run(["주식", "--것", "코스피"])
+    ok(code == 3, "미확인 출처가 실패하면 끝값 3")
+    ok("도는 것을 아무도 안 봤다" in out,
+       "**실패했을 때 '이 출처는 확인된 적 없다' 고 짚는다** -- "
+       "주소를 고치려 애쓰기 전에 알아야 할 것이다")
+    ok("--url" in out, "되는 주소를 붙이는 길을 같이 알려 준다")
+finally:
+    LG.get = 원래get
+
+
+print()
 if fails:
     print(f"보고: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)

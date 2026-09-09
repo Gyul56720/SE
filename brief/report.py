@@ -416,14 +416,22 @@ def main(argv=None) -> int:
         return 내놓기(src, led)
 
     if a.list_src or not a.출처:
-        print("쓸 수 있는 출처:")
+        미확인 = [s for s in SRC.SOURCES.values() if s.미확인]
+        print("등록된 출처:")
         for s in SRC.SOURCES.values():
             ok, why = s.쓸수있나()
-            print(f"  {s.이름:<6} {s.설명}")
-            print(f"         셈: {', '.join(s.셈)} · 신선도 {s.신선}일"
-                  + ("" if ok else f"  **{why}**"))
+            표 = "**[미확인]**" if s.미확인 else f"[확인 {s.확인}]"
+            print(f"  {s.이름:<6} {표} {s.설명}")
+            print(f"         셈: {', '.join(s.셈) or '(없음 -- 칸마다 요약)'} · "
+                  f"신선도 {s.신선}일" + ("" if ok else f"  **{why}**"))
             if s.별칭:
                 print(f"         부를 수 있는 이름: {', '.join(list(s.별칭)[:10])}")
+        if 미확인:
+            print()
+            print(f"  **미확인 {len(미확인)}개 -- 도는 것을 아무도 안 봤다.** 표에 있다는")
+            print("  것만으로 쓸 수 있어 보이지만 아니다(실측 2026-09-09: Stooq 세 줄이")
+            print("  전부 404 였다). 쓰기 전에 먼저:")
+            print(f"    python3 brief/report.py {미확인[0].이름} --것 <것> --탐색")
         print()
         print("  **표에 없어도 된다.** 처음 보는 API 는 그 자리에서 붙인다:")
         print("    python3 brief/report.py --탐색 --url '<주소>'   # 무엇이 오는지만")
@@ -459,6 +467,11 @@ def main(argv=None) -> int:
             print(f"**미검증** -- 받지 못해 보고서를 낼 수 없다.")
             print(f"  출처: {src.이름} ({src.설명})")
             print(f"  까닭: {err}")
+            if src.미확인:
+                print("  **이 출처는 도는 것을 아무도 안 봤다**(확인 칸이 비어 있다). "
+                      "주소가 틀렸을 수 있다 --")
+                print("  고치려 하기 전에 `--url` 로 다른 출처를 붙이는 편이 빠를 때가 많다:")
+                print("    python3 brief/report.py --탐색 --url '<되는 주소>'")
             print("  받은 것이 없으므로 **수를 하나도 적지 않는다.** "
                   "기억에서 채우면 그것은 보고가 아니라 창작이다.")
             return 3
