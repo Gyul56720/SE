@@ -67,6 +67,34 @@ ok(ids == [111] and 이상 == ["DISCORD_PUBLIC_CHANNEL_ID_2=채널이름"],
    f"**어느 변수가 이상한지까지 말한다** ({이상}) -- 그래야 고칠 데를 안다")
 
 print()
+print("── 수(): **빈 값으로 봇이 죽었다** (회귀) ────────────────")
+# 실측 2026-09-09: `.env` 의 DISCORD_CHANNEL_ID 를 비웠더니
+#   ValueError: invalid literal for int() with base 10: ''
+# 모듈 읽는 중이라 봇이 뜨자마자 죽고 systemd 가 5초마다 되살렸다(counter 13).
+ok(CH.수("X", 999, {"X": ""}) == 999,
+   "**빈 값은 기본으로 돌아간다** -- os.getenv 는 키가 있으면 빈 문자열을 그대로 준다")
+ok(CH.수("X", 999, {}) == 999, "없어도 기본")
+ok(CH.수("X", 999, {"X": "  "}) == 999, "공백만 있어도 기본")
+ok(CH.수("X", 999, {"X": "42"}) == 42, "제대로 된 수는 그대로")
+ok(CH.수("X", 999, {"X": "-1"}) == -1, "음수도")
+CH.이상한값.clear()
+ok(CH.수("X", 999, {"X": "채널이름"}) == 999, "수가 아니면 기본으로")
+ok(CH.이상한값 == ["X=채널이름"],
+   f"**수로 못 읽은 것을 남긴다** ({CH.이상한값}) -- 조용히 기본으로 가면 "
+   "왜 딴 채널을 보는지 아무도 모른다")
+CH.이상한값.clear()
+
+봇 = (ROOT / "discord_bot_server.py").read_text(encoding="utf-8")
+ok("int(os.getenv(\"DISCORD_CHANNEL_ID\"" not in 봇,
+   "**옛 꼴이 안 남아 있다** -- 그 한 줄이 봇을 통째로 멎게 했다")
+ok('channels.수("DISCORD_CHANNEL_ID"' in 봇, "관리 채널을 수() 로 읽는다")
+ok('channels.수("DISCORD_GUILD_ID"' in 봇, "길드도")
+ok("channels.이상한값" in 봇, "못 읽은 설정을 켜질 때 찍는다")
+streamer = (ROOT / "log_streamer.py").read_text(encoding="utf-8")
+ok("channels.수(\"DISCORD_LOG_CHANNEL_ID\"" in streamer,
+   "로그 중계 채널도 -- 빈 값이면 주소가 /channels//messages 가 된다")
+
+print()
 print("── 이름 목록 ───────────────────────────────────────────")
 이름 = CH.공개채널이름들()
 ok(이름[0] == "DISCORD_PUBLIC_CHANNEL_ID", "첫째는 예전 이름 그대로 -- 안 깨진다")

@@ -40,6 +40,42 @@ UA = "DiscordBot (https://github.com/gyul56720/se, 1.0)"
 최대 = 9                     # _2 ... _9 까지 본다. 그 이상이 필요하면 쉼표를 쓴다
 
 
+def 수(이름: str, 기본: int = 0, env=None) -> int:
+    """환경변수를 수로. **빈 값은 없는 것으로 친다.**
+
+    ## 이것 때문에 봇이 죽었다 (실측 2026-09-09)
+
+        ADMIN_CHANNEL_ID = int(os.getenv("DISCORD_CHANNEL_ID", "1542081266315427912"))
+        ValueError: invalid literal for int() with base 10: ''
+
+    `.env` 의 그 줄을 `DISCORD_CHANNEL_ID=` 로 비웠더니 터졌다. `os.getenv(이름, 기본)`
+    은 **키가 없을 때만** 기본을 쓴다 -- 키가 있고 값이 비면 `""` 를 그대로 준다.
+    설정 파일에서는 "지우기" 와 "비우기" 가 사람 눈에 같은 일이라, 이 둘이 갈리는 것을
+    아무도 예상하지 않는다.
+
+    그리고 죽은 자리가 나빴다. **모듈을 읽는 중**이라 서비스가 뜨자마자 죽고 systemd 가
+    5초마다 되살리기를 되풀이했다(restart counter 13). 봇이 통째로 멎는다.
+
+    빈 값을 기본으로 돌리는 것은 조용히 넘어가는 것이 아니다 -- 빈 칸은 **"안 정했다"**
+    는 뜻이고, 안 정했으면 기본을 쓰는 것이 맞다. 아무 수도 아닌 글자가 오면 그때는
+    기본을 쓰되 부르는 쪽이 알 수 있게 `이상한값` 에 남긴다.
+    """
+    env = os.environ if env is None else env
+    값 = str(env.get(이름) or "").strip()
+    if not 값:
+        return 기본
+    try:
+        return int(값)
+    except ValueError:
+        이상한값.append(f"{이름}={값[:40]}")
+        return 기본
+
+
+# `수()` 가 수로 못 읽은 것들. 부르는 쪽이 켜질 때 찍으라고 남긴다 --
+# 조용히 기본으로 돌아가면 왜 딴 채널을 보는지 아무도 모른다.
+이상한값: list = []
+
+
 def 쪼개기(값: str) -> tuple:
     """`"111, 222"` -> `([111, 222], [])`. 수가 아닌 것은 **버리지 않고 돌려준다.**"""
     ids, 이상 = [], []
