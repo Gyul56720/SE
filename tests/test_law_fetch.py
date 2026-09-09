@@ -475,6 +475,26 @@ ok(_난것2 and _난것2[0].get("이미"),
    f"색인 없이 부르면 스스로 만들어 이미 있는 것을 알아본다 (얻은 값 {_난것2})")
 
 print()
+print("[저장소에 안 넣는다] **범위 기록을 커밋하면 심판이 뒤집힌다**")
+# `_받은범위.json` 에 `전부: true` 가 있으면 `covers_cases()` 가 참이 되고 L004 가
+# "원장에 없는 판례 = 지어낸 것" 으로 **기각**을 올린다. 그런데 판례 본문은 커밋을
+# 안 하니 새로 받은 사람의 원장은 비어 있다. 그러면 **맞는 인용까지 전부 기각된다.**
+# 과잉 기각하는 심판은 맞는 답도 버린다.
+import subprocess                                                     # noqa: E402
+_뿌리 = Path(__file__).resolve().parent.parent
+for _막을것 in ("law/precedents/2020다1.txt",
+                "law/precedents/_받은범위.json",
+                "law/precedents/_훑던자리.json",
+                "law/corpus/민법.txt"):
+    _답 = subprocess.run(["git", "check-ignore", "-q", _막을것],
+                         cwd=str(_뿌리), capture_output=True)
+    ok(_답.returncode == 0, f"{_막을것} 은 저장소에 안 들어간다")
+# README 는 들어간다 -- 무엇을 어디서 받는지 적어 둔 자리다.
+_답 = subprocess.run(["git", "check-ignore", "-q", "law/precedents/README.md"],
+                     cwd=str(_뿌리), capture_output=True)
+ok(_답.returncode != 0, "README 는 그대로 추적한다")
+
+print()
 print("[행위시법] **그날 시행 중이던 판** -- 지금 법으로 옛일을 재지 않는다")
 # 형법 제1조 제1항 "행위 시의 법률에 의한다"; 민사는 법률불소급 + 부칙 경과규정.
 # 판례 대조에서 더 크게 어긋난다 -- 2015년 판결은 2015년 법을 적용한 것이라
