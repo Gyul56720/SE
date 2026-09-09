@@ -114,9 +114,16 @@ PUBLIC_AGENT_POOL = build_agent_pool(
 _public_thread_map: dict[str, str] = {}
 
 
-def run_public_agent(prompt: str, thread_id: str) -> str:
+def run_public_agent(prompt: str, thread_id: str, author_id: str = "") -> str:
+    """`thread_id` 는 **대화 상태**의 열쇠, `author_id` 는 **기억**의 열쇠다.
+
+    한때 둘이 같았다(둘 다 사람 id). 공개 채널이 여럿이 되면서 갈라야 했다 --
+    대화 상태는 방마다 따로여야 하고(다른 방의 문맥이 섞이면 안 된다), 기억은
+    사람마다 하나여야 한다(방을 옮겼다고 그 사람을 잊으면 안 된다).
+    안 가르고 thread_id 에 채널을 넣으면 **그 사람 기억이 방 수만큼 쪼개진다.**
+    """
     print(f"[public-agent] thread={thread_id} prompt={prompt[:120]!r}")
-    _current_author.set(thread_id)
+    _current_author.set(author_id or thread_id)
     # 공개 채널 표시. bot_tools.run_shell이 이 값을 보고 자식 프로세스 환경에서 비밀
     # 변수를 지운다(화이트리스트가 없는 채널이므로 누구나 트리거할 수 있다).
     agent_context.current_channel.set("public")
