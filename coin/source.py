@@ -126,15 +126,15 @@ GDELT = "https://api.gdeltproject.org/api/v2/doc/doc"
     # **EDGAR 가 이 목록에서 제일 값진 한 줄일 수 있다.** ETF 는 19b-4 와 S-1 이
     # 올라오는 순간이 사건이고, 기사는 그 뒤다. 기관 매입(8-K)도 여기서 먼저 보인다.
     Source("edgar-19b4", "US", "en",
-           "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&type=19b-4"
+           "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=19b-4"
            "&dateb=&owner=include&count=40&output=atom", "규제", "rss", 무게=1.6,
            설명="EDGAR 19b-4 -- **ETF 규칙변경 신청. 기사보다 먼저다**"),
     Source("edgar-s1", "US", "en",
-           "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&type=S-1"
+           "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=S-1"
            "&dateb=&owner=include&count=40&output=atom", "규제", "rss", 무게=1.4,
            설명="EDGAR S-1"),
     Source("edgar-8k", "US", "en",
-           "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&type=8-K"
+           "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=8-K"
            "&dateb=&owner=include&count=40&output=atom", "규제", "rss", 무게=1.2,
            설명="EDGAR 8-K -- 기관 매입 공시가 여기로 온다"),
     Source("sec-suspend", "US", "en",
@@ -145,14 +145,14 @@ GDELT = "https://api.gdeltproject.org/api/v2/doc/doc"
     Source("cftc-enf", "US", "en", "https://www.cftc.gov/RSS/RSSENF/rssenf.xml",
            "규제", "rss", 무게=1.5, 설명="CFTC 제재"),
     Source("ofac", "US", "en",
-           "https://ofac.treasury.gov/system/files/126/recent_actions.xml",
-           "규제", "rss", 무게=1.6,
+           "https://ofac.treasury.gov/recent-actions",
+           "규제", "html", 무게=1.6,
            설명="**OFAC 제재 -- 특정 코인·주소를 즉시 움직인다**(토네이도캐시)"),
-    Source("fincen", "US", "en", "https://www.fincen.gov/news/news-releases/feed",
+    Source("fincen", "US", "en", "https://www.fincen.gov/news-room/news-releases",
            "규제", "rss", 무게=1.3),
     Source("occ", "US", "en", "https://www.occ.gov/rss/occ_bulletins.xml",
            "규제", "rss", 무게=1.2, 설명="은행이 코인을 만질 수 있나"),
-    Source("fdic", "US", "en", "https://www.fdic.gov/news/press-releases/feed.xml",
+    Source("fdic", "US", "en", "https://www.fdic.gov/news/press-releases",
            "규제", "rss", 무게=1.2, 설명="은행 접근 -- 실버게이트·시그니처가 이 층이었다"),
     Source("whitehouse", "US", "en",
            "https://www.whitehouse.gov/presidential-actions/feed/", "규제", "rss",
@@ -203,7 +203,7 @@ GDELT = "https://api.gdeltproject.org/api/v2/doc/doc"
            무게=1.4, 설명="**현물 ETF 일별 유입/유출** -- 표를 dig 가 뽑는다"),
     Source("tether", "XX", "en", "https://tether.to/en/news/feed/", "발행사", "rss",
            무게=1.2, 설명="USDT 발행/소각"),
-    Source("circle", "US", "en", "https://www.circle.com/blog/rss.xml", "발행사", "rss",
+    Source("circle", "US", "en", "https://www.circle.com/blog", "발행사", "html",
            무게=1.2, 설명="USDC"),
 
     # ---- 매체 ----
@@ -221,8 +221,7 @@ GDELT = "https://api.gdeltproject.org/api/v2/doc/doc"
     Source("cnbc-fin", "US", "en",
            "https://search.cnbc.com/rs/search/combinedcms/view.xml"
            "?partnerId=wrss25&id=10000664", "매체", "rss", 무게=0.6),
-    Source("reuters-biz", "US", "en", "https://www.reutersagency.com/feed/"
-           "?best-topics=business-finance&post_type=best", "매체", "rss", 무게=0.6),
+    Source("reuters-biz", "US", "en", "https://www.reuters.com/markets/cryptocurrency/", "매체", "html", 무게=0.6),
 
     # ======================================================= 유럽 (EU + 영국)
     # **미국 다음으로 규칙이 실제로 바뀌는 자리다.** MiCA 가 전면 시행되면서 상장·
@@ -241,24 +240,24 @@ GDELT = "https://api.gdeltproject.org/api/v2/doc/doc"
            "규제", "rss", 무게=1.2),
     Source("fca", "EU", "en", "https://www.fca.org.uk/news/rss.xml", "규제", "rss",
            무게=1.5, 설명="**영국 FCA -- 등록·광고 규제. 영국은 EU 밖이지만 같은 층**"),
-    Source("bafin", "EU", "de", "https://www.bafin.de/SiteGlobals/Functions/RSSFeed/"
-           "DE/RSSNewsfeed/RSSNewsfeed_Meldungen.xml", "규제", "rss", 무게=1.2,
+    Source("bafin", "EU", "de", "https://www.bafin.de/DE/Aufsicht/FinTech/Kryptoverwahrgeschaeft/"
+           "kryptoverwahrgeschaeft_node.html", "규제", "html", 무게=1.2,
            설명="독일 BaFin"),
-    Source("amf-fr", "EU", "fr", "https://www.amf-france.org/fr/rss.xml", "규제", "rss",
+    Source("amf-fr", "EU", "fr", "https://www.amf-france.org/fr/actualites-publications/actualites", "규제", "html",
            무게=1.2, 설명="프랑스 AMF -- PSAN 등록"),
     Source("ecb", "EU", "en", "https://www.ecb.europa.eu/rss/press.html", "거시", "rss",
            무게=1.5, 설명="**ECB -- FOMC 다음으로 크게 움직인다**"),
     Source("boe", "EU", "en", "https://www.bankofengland.co.uk/rss/news", "거시", "rss",
            무게=1.3, 설명="영란은행"),
     Source("eurostat", "EU", "en",
-           "https://ec.europa.eu/eurostat/web/main/news/euro-indicators/rss", "거시",
+           "https://ec.europa.eu/eurostat/web/main/news/euro-indicators", "거시",
            "html", 무게=1.1, 설명="HICP 물가"),
     Source("curia", "EU", "en",
-           "https://curia.europa.eu/jcms/jcms/Jo2_16799/en/", "사법", "html", 무게=1.1,
+           "https://curia.europa.eu/jcms/jcms/Jo2_7052/en/", "사법", "html", 무게=1.1,
            설명="EU 사법재판소"),
-    Source("europol", "EU", "en", "https://www.europol.europa.eu/newsroom/rss.xml",
-           "사법", "rss", 무게=1.3, 설명="**유로폴 -- 압수·다크마켓 폐쇄가 여기서 난다**"),
-    Source("bitstamp", "EU", "en", "https://www.bitstamp.net/api/v2/", "거래소", "html",
+    Source("europol", "EU", "en", "https://www.europol.europa.eu/media-press/newsroom",
+           "사법", "html", 무게=1.3, 설명="**유로폴 -- 압수·다크마켓 폐쇄가 여기서 난다**"),
+    Source("bitstamp", "EU", "en", "https://www.bitstamp.net/newsroom/", "거래소", "html",
            무게=1.1),
     Source("kraken-status", "EU", "en", "https://status.kraken.com/history.rss",
            "거래소", "rss", 무게=1.1),
@@ -287,7 +286,7 @@ GDELT = "https://api.gdeltproject.org/api/v2/doc/doc"
            설명="**업비트 공지 -- 상장·유의종목. 원화 시장을 제일 크게 움직인다**"),
     Source("bithumb-notice", "KR", "ko",
            "https://feed.bithumb.com/notice", "거래소", "html", 무게=1.4),
-    Source("daxa", "KR", "ko", "https://www.daxa.or.kr/bbs/board.php?bo_table=notice",
+    Source("daxa", "KR", "ko", "https://www.daxa.or.kr/",
            "거래소", "html", 무게=1.3, 설명="DAXA 공동 유의종목 지정"),
     Source("spo-kr", "KR", "ko",
            "https://www.spo.go.kr/site/spo/ex/board/List.do?cbIdx=1204", "사법", "html",
@@ -301,25 +300,25 @@ GDELT = "https://api.gdeltproject.org/api/v2/doc/doc"
            무게=1.0),
     Source("tokenpost", "KR", "ko", "https://www.tokenpost.kr/rss", "매체", "rss",
            무게=1.0),
-    Source("decenter", "KR", "ko", "https://decenter.sedaily.com/RSS/S1N1.xml", "매체",
-           "rss", 무게=1.0),
+    Source("decenter", "KR", "ko", "https://decenter.sedaily.com/", "매체",
+           "html", 무게=1.0),
 
     # ======================================================= 중국 (+홍콩)
-    Source("pboc", "CN", "zh", "http://www.pbc.gov.cn/rss/rss_zcyj.xml", "규제", "rss",
+    Source("pboc", "CN", "zh", "http://www.pbc.gov.cn/goutongjiaoliu/113456/113469/index.html", "규제", "html",
            무게=1.5, 설명="중국인민은행 -- 2021 채굴 금지가 이 계열"),
     Source("csrc", "CN", "zh", "http://www.csrc.gov.cn/csrc/xwfb/index.shtml",
            "규제", "html", 무게=1.3, 설명="증감회"),
     Source("ndrc", "CN", "zh", "https://www.ndrc.gov.cn/xwdt/xwfb/", "규제", "html",
            무게=1.3, 설명="발개위 -- 채굴 정책이 여기서 나온다"),
-    Source("cac", "CN", "zh", "http://www.cac.gov.cn/xxfb/index.htm", "규제", "html",
+    Source("cac", "CN", "zh", "http://www.cac.gov.cn/xxfb/A0901index_1.htm", "규제", "html",
            무게=1.2, 설명="망신판"),
     # **홍콩이 지금 중국의 실제 정책 창구다.** 대륙이 막은 뒤 라이선스·현물 ETF가
     # 여기서 나왔는데, 중국 항목만 보면 통째로 놓친다.
-    Source("hk-sfc", "CN", "en", "https://apps.sfc.hk/edistributionWeb/api/news/rss"
-           "?lang=EN", "규제", "rss", 무게=1.5,
+    Source("hk-sfc", "CN", "en", "https://www.sfc.hk/en/News-and-announcements/Policy-statements-and-announcements",
+           "규제", "html", 무게=1.5,
            설명="**홍콩 SFC -- 대륙이 막은 뒤 정책은 여기서 나온다**"),
-    Source("hkma", "CN", "en", "https://www.hkma.gov.hk/eng/rss/press-releases.xml",
-           "규제", "rss", 무게=1.3),
+    Source("hkma", "CN", "en", "https://www.hkma.gov.hk/eng/news-and-media/press-releases/",
+           "규제", "html", 무게=1.3),
     # 격자가 짚어 준 빈칸: 중국 거시
     Source("stats-cn", "CN", "zh", "https://www.stats.gov.cn/sj/zxfb/", "거시", "html",
            무게=1.2, 설명="국가통계국 -- CPI · GDP"),
@@ -329,12 +328,12 @@ GDELT = "https://api.gdeltproject.org/api/v2/doc/doc"
            "html", 무게=1.2, 설명="최고인민법원 -- 가상화폐 판결"),
     Source("spp-cn", "CN", "zh", "https://www.spp.gov.cn/xwfbh/", "사법", "html",
            무게=1.1, 설명="최고인민검찰원"),
-    Source("jinse", "CN", "zh", "https://api.jinse.cn/noah/v2/rss", "매체", "rss",
+    Source("jinse", "CN", "zh", "https://www.jinse.cn/lives", "매체", "html",
            무게=1.1, 설명="金色财经"),
-    Source("8btc", "CN", "zh", "https://www.8btc.com/feed", "매체", "rss", 무게=1.1),
+    Source("8btc", "CN", "zh", "https://www.8btc.com/", "매체", "html", 무게=1.1),
     Source("panews", "CN", "zh", "https://www.panewslab.com/zh/rss", "매체", "rss",
            무게=1.1),
-    Source("odaily", "CN", "zh", "https://www.odaily.news/feed", "매체", "rss", 무게=1.1),
+    Source("odaily", "CN", "zh", "https://www.odaily.news/newsflash", "매체", "html", 무게=1.1),
     Source("blockbeats", "CN", "zh", "https://www.theblockbeats.info/newsflash",
            "매체", "html", 무게=1.2, 설명="律动 -- 속보가 빠르다"),
     Source("chaincatcher", "CN", "zh", "https://www.chaincatcher.com/news", "매체",
@@ -347,10 +346,10 @@ GDELT = "https://api.gdeltproject.org/api/v2/doc/doc"
            설명="吴说 -- 대륙 소식통"),
 
     # ======================================================= 일본
-    Source("fsa", "JP", "ja", "https://www.fsa.go.jp/fsaNewsList.xml", "규제", "rss",
+    Source("fsa", "JP", "ja", "https://www.fsa.go.jp/news/index.html", "규제", "html",
            무게=1.5, 설명="금융청 -- 코인체크 뒤 행정처분이 여기"),
     Source("kanto-zaimu", "JP", "ja",
-           "https://lfb.mof.go.jp/kantou/kinyu/index.htm", "규제", "html", 무게=1.2,
+           "https://lfb.mof.go.jp/kantou/kinyuu/index.html", "규제", "html", 무게=1.2,
            설명="관동재무국 -- 실제 행정처분이 나오는 자리"),
     Source("boj", "JP", "ja", "https://www.boj.or.jp/rss/whatsnew.xml", "거시", "rss",
            무게=1.4, 설명="일본은행 -- 엔 캐리가 풀릴 때 코인이 같이 빠진다"),

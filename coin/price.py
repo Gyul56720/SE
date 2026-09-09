@@ -33,6 +33,7 @@ import sys
 import time
 import urllib.request
 from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -195,20 +196,42 @@ class 계열:
 
 
 def _때(s: str):
+    """**RSS 날짜는 `%z` 로 안 읽힌다.**
+
+    실측 2026-09-09 (VM 탐침): 피드 스무 곳 남짓이 "답은 왔는데 글이 0개" 로 찍혔다.
+    막힌 것도 빈 것도 아니었다 -- 날짜를 못 읽어서 **줄마다 조용히 버리고 있었다.**
+
+        "Tue, 09 Sep 2026 12:00:00 GMT"   -> None    <- 버려졌다
+        "Tue, 09 Sep 2026 12:00:00 +0000" -> 됐다
+
+    `%z` 는 `+0000` 같은 숫자 오프셋만 받고 `GMT` · `EST` 같은 **이름**은 안 받는다.
+    그런데 RFC-822 를 쓰는 피드의 상당수가 이름을 쓴다. 그래서 통과한 곳(coindesk ·
+    theblock)과 0건인 곳(연준 · SEC 소송)이 갈렸던 것이고, **갈린 까닭이 내용이 아니라
+    날짜 표기였다.**
+
+    `email.utils.parsedate_to_datetime` 이 RFC-822 를 제대로 읽는다 -- 이름 시간대까지.
+    """
     if not s:
         return None
     s = s.strip().replace("Z", "+00:00")
+    t = None
     try:
         t = datetime.fromisoformat(s)
     except ValueError:
-        for f in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%a, %d %b %Y %H:%M:%S %z"):
+        for f in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%a, %d %b %Y %H:%M:%S %z",
+                  "%Y%m%dT%H%M%SZ", "%Y%m%d%H%M%S"):
             try:
                 t = datetime.strptime(s, f)
                 break
             except ValueError:
                 continue
         else:
-            return None
+            try:
+                t = parsedate_to_datetime(s.replace("+00:00", "GMT"))
+            except (TypeError, ValueError):
+                return None
+    if t is None:
+        return None
     return t.replace(tzinfo=timezone.utc) if t.tzinfo is None else t.astimezone(timezone.utc)
 
 
