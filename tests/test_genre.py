@@ -604,8 +604,36 @@ ok("간접화법" in _dir2["da_share"]["high"],
 # (605줄 중 402), 그리고 여기. 같은 실수가 네 번 나오면 그것은 실수가 아니라 이 파일
 # 꼴의 성질이다: 검사를 파일 끝에 덧붙이는 습관과, 종료 블록이 본문 사이에 섞여 있는
 # 구조가 만나면 반드시 이렇게 된다.
+# ---------------------------------------------------------------- 조용히 물러서지 않는다
+# **실측 2026-09-09.** 사용자가 새 원고를 열었는데 첫 문장이 예전 그대로였다 --
+# "이건 처음에 썼던 건데 왜 이게 다시 나오지? 첫 문장은 이제 안 쓰는데?"
+# GENRE 를 안 준 런이었다. drift.sh 는 `FIRST 가 비었고 GENRE 가 있을 때만`
+# --first-seed 를 붙이므로, 갈래가 비면 argparse 기본값인 flow.FIRST(코드에 박힌
+# 씨앗)로 연다. 그리고 **같은 한 가지 이유로 갈래 꾸러미가 통째로 꺼진다** --
+# 축 덮개도 화법 조건도 도착지도. 원고는 멀쩡히 나오므로 아무도 안 알아챈다.
+print("\n[갈래를 안 주면 -- 무엇이 꺼지는지 말해 준다]")
+_off = flow.genre_off()
+ok("갈래가 없다" in _off and "GENRE=lanobe" in _off, "무엇을 해야 하는지까지 말한다")
+for _w in ("대사", "문장 길이", "화법", "도착지", "여는 좌표", "targets.json"):
+    ok(_w in _off, f"  {_w} 를 짚는다")
+_axes = genre.PACKS["lanobe"]["저울"]["축"]
+ok(all(genre.band("", _k) is None for _k in _axes),
+   f"갈래가 없으면 덮개가 하나도 안 산다 ({len(_axes)}개)  ← 그래서 크게 말해야 한다")
+ok(genre.brief("", "씨", 0) == "", "갈래가 없으면 꾸러미가 한 줄도 안 실린다")
+ok(genre.opening("", "씨") == "", "여는 좌표도 안 나온다  ← 그래서 박힌 씨앗으로 열린다")
+
+_seed = flow.seed_off(flow.FIRST)
+ok("코드에 박힌" in _seed and "GENRE" in _seed, "박힌 씨앗으로 열면 그렇다고 말한다")
+ok(flow.FIRST.strip()[:12] in _seed, "어느 문장인지 보여 준다  ← 사람이 알아볼 수 있게")
+ok(flow.seed_off("내가 오늘 지어 준 첫 문장이다.") == "",
+   "사람이 준 첫 문장에는 아무 말도 안 한다  ← 늑대소년이 되면 아무도 안 읽는다")
+
+_sh = (Path(__file__).resolve().parent.parent / "scripts" / "drift.sh").read_text(encoding="utf-8")
+ok(_sh.count("say_genre ") >= 2, f"drift.sh 가 start 와 go 양쪽에서 알린다 ({_sh.count('say_genre ')}자리)")
+ok("GENRE 가 비었다" in _sh, "비었다는 것을 화면에 찍는다")
+
 print()
 if _bad:
     print(f"갈래: {len(_bad)}개 실패 -- {_bad}")
     raise SystemExit(1)
-print("갈래: 갈아끼우기 · 저울 · 사슬 · 격리 · 변수 · 이름결 · 표본 -- 통과")
+print("갈래: 갈아끼우기 · 저울 · 사슬 · 격리 · 변수 · 이름결 · 표본 · 없을 때 -- 통과")

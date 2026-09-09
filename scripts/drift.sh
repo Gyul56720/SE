@@ -100,6 +100,17 @@ alive() {
 pids_of() { alive | awk '{print $1}'; }
 
 # **살아 있으면 새로 띄우지 않는다.** 같은 파일에 둘이 쓰면 서로를 덮어쓴다.
+say_genre() {   # **갈래가 비면 크게 말한다.** 조용히 물러서면 아무도 모른다.
+  if [ -z "${GENRE:-}" ]; then
+    echo "  * GENRE 가 비었다 -- 갈래 꾸러미가 통째로 안 실린다:"
+    echo "      축 덮개(대사 몫 · 문장 길이 · '-다' 몫 · 이름 수) · 화법 조건 · 도착지 · 여는 좌표"
+    echo "    잰 폭은 표본(targets.json) 것으로 돌아간다. 라노벨로 쓰려면:"
+    echo "      GENRE=lanobe $0 $*"
+  else
+    echo "  갈래: $GENRE"
+  fi
+}
+
 refuse_double() {
   if alive >/dev/null; then
     echo "이미 돌고 있다:"; alive
@@ -144,6 +155,7 @@ case "${1:-status}" in
     # 첫 문장을 안 주면 갈래 축에서 여는 좌표를 뽑는다 -- 고정 문장을 쓰면 그 문장의
     # 세계(지명 · 말씨)가 원고 전체를 끌고 간다.
     [ -z "${FIRST:-}" ] && [ -n "${GENRE:-}" ] && set -- "$@" --first-seed
+    say_genre "start ${2:-8000}"
     launch "새 원고를" "$@"
     # **정말 새 원고인지 확인한다.** 앞 런이 살아 있으면 같은 파일에 계속 쓰므로 옛
     # 인물·장소가 그대로 남는다(실측: "이야기가 바뀌었는데 이전 소설 내역이 남아 있다").
@@ -224,6 +236,7 @@ PY
     [ -f "$BOOK" ] || die "이어 쓸 원고가 없다: $BOOK   (새로 시작하려면: $0 start)"
     cp "$BOOK" "$BOOK.bak"
     FIRST_MSG="$(python3 -c "import json; print(json.load(open('$BOOK')).get('first', ''))" 2>/dev/null || true)"
+    say_genre "go ${2:-50000}"
     launch "이어 쓰기를" --resume "$BOOK" ${FIRST_MSG:+--first "$FIRST_MSG"} --chars "${2:-50000}" --hours "${HOURS:-12}" \
            ${STYLE:+--persona "$STYLE"} \
            ${GENRE:+--genre "$GENRE"} \

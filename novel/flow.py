@@ -1838,6 +1838,35 @@ def text_of(book: dict) -> str:
     return "\n\n".join(book["chunks"])
 
 
+# **조용히 물러서는 자리 둘.** 이 저장소가 거듭 겪은 "코드가 실행에 도달하지 못하는"
+# 꼴이라, --persona 가 axes 경로에서 무동작인 것을 적어 두었듯 여기도 사실대로 적는다.
+#
+# 실측 2026-09-09: 사용자가 새 원고를 열었는데 첫 문장이 예전 그대로였다 -- "이건
+# 처음에 썼던 건데 왜 이게 다시 나오지? 첫 문장은 이제 안 쓰는데?" 갈래를 안 준
+# 런이었다. drift.sh 는 `FIRST 가 비었고 GENRE 가 있을 때만` --first-seed 를 붙인다.
+# 그래서 갈래가 비면 여는 좌표를 안 뽑고, argparse 기본값인 이 파일의 FIRST(함부루크 ·
+# 웅포)로 연다. **값이 코드에 박혀 있으니 새 원고마다 그 세계가 돌아온다.**
+#
+# 그리고 같은 한 가지 이유로 훨씬 큰 것이 같이 꺼진다 -- 아래 GENRE_OFF.
+
+def genre_off() -> str:
+    """갈래를 안 주면 **통째로** 안 실리는 것들. 이름을 대야 사람이 알아챈다."""
+    return ("갈래가 없다 -- 갈래 꾸러미가 통째로 안 실린다:"
+            " 축 덮개(대사 몫 · 문장 길이 · '-다' 몫 · 이름 수)도,"
+            " 화법 조건('발화는 접지 않는다')도, 도착지(serial.plan)도, 여는 좌표도 없다."
+            "  잰 폭은 표본(targets.json) 것으로 돌아간다."
+            "  라노벨로 쓰려면 GENRE=lanobe 로 시작해라.")
+
+
+def seed_off(first: str) -> str:
+    """첫 문장을 아무도 안 줬을 때. 빈 것이면 할 말이 없다."""
+    if first.strip() != FIRST.strip():
+        return ""
+    return (f'첫 문장을 안 줬다 -- 코드에 박힌 기본 씨앗으로 연다("{FIRST.strip()[:22]}…").'
+            "  새 원고마다 같은 세계가 돌아온다."
+            "  갈래 축에서 뽑으려면 GENRE 를 주고 시작해라 (GENRE=lanobe drift.sh start).")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="novel/flow.json")
@@ -1904,6 +1933,10 @@ def main() -> int:
             return 2
         first = GENRE.opening(a.genre, str(time.time()))
         print(f"[여는 좌표]\n{first}", file=sys.stderr)
+    elif not a.resume:
+        _say = seed_off(first)
+        if _say:
+            print(f"[flow] * {_say}", file=sys.stderr)
 
     path = a.resume or a.out
     book = (json.loads(Path(path).read_text(encoding="utf-8"))
@@ -1959,6 +1992,8 @@ def main() -> int:
             D._log(f"[flow] * 다만 지금 프롬프트는 '{PROMPT}' 라 문장론은 안 실린다"
                    " -- 페르소나를 쓰려면 DRIFT_PROMPT=legacy")
     GENRE.get(a.genre)
+    if not a.genre:
+        D._log(f"[flow] * {genre_off()}")
     if book.get("genre") != a.genre:
         D._log(f"[flow] 갈래 {book.get('genre') or '(없음)'} → {a.genre or '(없음)'}")
     book["genre"] = a.genre
