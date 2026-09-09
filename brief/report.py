@@ -391,8 +391,19 @@ def probe(src) -> int:
         print("  받은 것이 없으므로 무엇이 오는지도 말할 수 없다.")
         return 3
     rows = LG.parse(src, body)
+    # **온 것이 무엇인지 먼저 말한다.** 실측 2026-09-09: arXiv 가 200 으로 잘
+    # 답했는데 여기서 "줄을 못 찾았다 (꼴=json)" 하고 바이트만 쏟아 놓았다.
+    # 온 것이 Atom XML 이라는 말을 안 해서 사용자가 직접 알아내야 했다.
+    본꼴 = LG.어떤꼴(body)
     if not rows:
-        print(f"받기는 했는데 **줄을 못 찾았다** ({len(body)}바이트, 꼴={src.꼴}).")
+        print(f"받기는 했는데 **줄을 못 찾았다** ({len(body)}바이트).")
+        print(f"  네가 준 꼴: {src.꼴}   ·   **온 것: {본꼴 or '모르겠다'}**")
+        if 본꼴 == "html":
+            print("  **HTML 이 왔다** -- API 가 아니라 사람이 볼 쪽을 받은 것이다. "
+                  "주소에 `format=`·`.json`·`/api/` 가 필요할 때가 많다.")
+        elif 본꼴 and 본꼴 != src.꼴:
+            print(f"  **{본꼴} 로도 읽어 봤는데 줄이 없었다.** --경로 로 어느 원소가 "
+                  "줄인지 짚어 줘라.")
         print("  받은 것 앞머리:")
         print("    " + body[:300].replace("\n", "\n    "))
         print("  --꼴 이나 --경로 를 줘서 어디를 보라고 알려 줘라. "
@@ -400,7 +411,15 @@ def probe(src) -> int:
         return 3
     본 = LG.살펴보기(rows)
     v = LG.inspect(src, rows)
-    print(f"줄 {본['줄수']}개 · 칸 {len(본['칸'])}개  (꼴={src.꼴})")
+    쓴꼴 = LG.읽은꼴(src, body)
+    print(f"줄 {본['줄수']}개 · 칸 {len(본['칸'])}개  (꼴={쓴꼴})")
+    if 쓴꼴 != src.꼴:
+        print(f"  **네가 준 꼴은 {src.꼴} 인데 온 것은 {쓴꼴} 이었다** -- "
+              f"온 것으로 읽었다. 다음부터는 `--꼴 {쓴꼴}` 을 주면 된다.")
+        if 쓴꼴 == "xml":
+            줄, 어디 = LG._xml줄(body, src.경로)
+            if 어디:
+                print(f"  줄로 쓴 자리: `{어디}`")
     print()
     print(f"  칸        {', '.join(본['칸'][:14])}"
           + (" ..." if len(본["칸"]) > 14 else ""))
@@ -491,6 +510,11 @@ def main(argv=None) -> int:
             print("  받은 것이 없으므로 **수를 하나도 적지 않는다.** "
                   "url 이 틀렸으면 --탐색 으로 무엇이 오는지부터 보라.")
             return 3
+        # **고쳐 읽었으면 말한다.** 고쳐 읽는 것 자체는 관측이라 괜찮지만, 말을
+        # 안 하면 그때부터 짐작이 조용히 통과하는 길이 생긴다.
+        if led.고쳐읽음:
+            print(f"**꼴을 고쳐 읽었다: {src.꼴} -> {led.고쳐읽음}** "
+                  f"(온 것이 그랬다). 다음부터는 `--꼴 {led.고쳐읽음}` 을 주면 된다.")
         if a.save:
             LG.save(led, Path(a.save))
             print(f"원장 저장: {a.save}  ({len(led)}줄)")
