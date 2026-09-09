@@ -125,6 +125,25 @@ ok("unbound variable" not in _말 and "No such file or directory" not in _말,
    f"**대입이 명령어로 새지 않는다**\n{_말[:300]}")
 ok("끝났다" in _말, f"끝났다고 말한다\n{_말[-300:]}")
 
+print("\n== 머리에 지금 상태를 찍는다 ==")
+# 실측 2026-09-09: "아무것도 안 나온다" 는 말만 오갔고, 안 당겨받은 것인지 · 딴
+# 브랜치인지 · 죽은 것인지 **로그로 가릴 수가 없었다.** 로그만 받아도 알게 한다.
+_머리 = _말.split("[1/4]")[0]
+ok("곳" in _머리 and str(_여기) in _머리, f"어느 폴더인지 찍는다\n{_머리}")
+ok("갈래" in _머리 and "main" in _머리, "어느 브랜치인지 찍는다")
+ok("커밋" in _머리 and "밑동" in _머리, "**어느 커밋인지 찍는다** -- 안 당겨받았으면 여기서 보인다")
+ok("씨앗" in _머리 and "5 개" in _머리, "씨앗이 몇 개인지 찍는다")
+ok("main 이 아니다" not in _머리, "main 이면 경고를 안 붙인다")
+
+# main 이 아니면 경고한다 -- 보고서가 엉뚱한 갈래로 올라가는 것이 실제 위험이다
+subprocess.run(["git", "-C", str(_여기), "checkout", "-q", "-b", "곁가지"], check=True)
+_r5 = subprocess.run(["bash", "scripts/seek.sh", "1", "10"],
+                     capture_output=True, text=True, cwd=str(_여기), timeout=300)
+ok("main 이 아니다" in (_r5.stdout + _r5.stderr),
+   f"**main 이 아니면 그렇게 말한다** -- 보고서가 딴 갈래로 올라간다\n"
+   f"        {(_r5.stdout + _r5.stderr).split('[1/4]')[0][-200:]}")
+subprocess.run(["git", "-C", str(_여기), "checkout", "-q", "main"], check=True)
+
 print("\n== 돌고 나면 정말 커밋되어 있다 ==")
 _로그 = subprocess.run(["git", "-C", str(_여기), "log", "--oneline", "-1", "origin/main"],
                       capture_output=True, text=True).stdout.strip()
