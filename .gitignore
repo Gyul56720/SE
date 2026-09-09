@@ -105,6 +105,15 @@ law/corpus/*.txt
 law/tune.jsonl
 law/tune.best.json
 
+# 받아온 경기 원장. **저장소에 넣지 않는다** -- law/corpus/*.txt 와 같은 이유이고
+# 여기서는 더 급하다. 조문은 몇 달 그대로지만 레이팅은 **어제 경기 하나로 바뀐다.**
+# 커밋해 두면 낡은 승률이 정답 자리에 남는다. 받는 법은 lol/fetch.py 에 있다.
+lol/corpus/*.jsonl
+
+# 받아 둔 보고 원장. 같은 이유이고 여기서는 더 짧다 -- 신선도가 며칠짜리다
+# (brief/source.py 의 `신선`). 낡은 것을 커밋해 두면 관문 B003 이 매번 걸린다.
+brief/ledger/*.json
+
 # 공간 원장 -- 서버가 계속 쓴다. 추적하면 배포의 git pull 이 매번 충돌한다
 # (compression/ledger.json 과 같은 이유). 실측 2026-09-07: 추적한 채로 뒀더니 VM 이
 # 낳은 공간 15개가 pull 한 번에 씨앗만 든 커밋본으로 되돌아갔다.
