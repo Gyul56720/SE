@@ -76,7 +76,7 @@ def 돌리기(물음: str, 원장: dict, 부르기, 사건들: list = None, 계�
             답 = 부르기(p)
         except Exception as e:                                        # noqa: BLE001
             return 결말("", False, 후보, [], f"모델을 못 불렀다: {type(e).__name__}: {e}")
-        res = GT.검사(답, 원장, 계열들, 장세=장세, 흐름=흐름)
+        res = GT.검사(답, 원장, 계열들, 장세=장세, 흐름=흐름, 사건들=사건들)
         점 = GT.점수(res, 답)
         되먹임 = GT.되먹임(res)
         후보.append((점, 바퀴(i, 답, 점, len(res.hard), len(res.soft), res.인용, 되먹임), res))
