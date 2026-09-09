@@ -62,6 +62,64 @@ for 글, 참 in [("EZB erhöht den Leitzins", "금리거시"),
                ("最高人民法院 가상화폐 판결", "소송제재")]:
     ok(참 in TG.유형만(글), f"{글!r} -> {참}")
 
+# ---------------------------------------------------------------- 문서와 코드
+# **적어 놓고 안 만든 명령이 이 저장소의 병이다.** `source.py` 의 머리글에
+# `--탐침 --기록` 이라고 적어 놓고 그 옵션을 안 만들었었다 -- 사용자가 그대로 치면
+# usage 만 나온다. 그래서 문서에 적힌 news.py 옵션이 실제로 있는지 여기서 본다.
+import argparse as _ap
+import io as _io
+import contextlib as _ctx
+from coin import news as _NW
+
+_적힌것 = set(re.findall(r"coin/news\.py((?:\s+--[가-힣A-Za-z_]+)+)", SRC.__doc__ or ""))
+_적힌옵션 = {o for 묶 in _적힌것 for o in 묶.split() if o.startswith("--")}
+_있는옵션 = set()
+_p = _io.StringIO()
+with _ctx.redirect_stdout(_p):
+    try:
+        _NW.main(["--help"])
+    except SystemExit:
+        pass
+_도움 = _p.getvalue()
+for o in _적힌옵션:
+    ok(o in _도움, f"source.py 가 적어 둔 `news.py {o}` 가 실제로 있다")
+ok(bool(_적힌옵션), f"문서에서 옵션을 {len(_적힌옵션)}개 읽었다 (0개면 이 검사가 헛것이다)")
+
+# 탐침 기록 -> 확인된것 -> 격자
+import tempfile as _tf
+with _tf.TemporaryDirectory() as _d:
+    _p2 = Path(_d) / "probe.json"
+    SRC.탐침기록([{"이름": "sec-press", "산것": 12, "왜": ""},
+                 {"이름": "pboc", "산것": 0, "왜": "403"}], _p2)
+    본 = SRC.탐침본것(_p2)
+    ok(본.get("sec-press", {}).get("산것") == 12, "탐침 기록을 적고 다시 읽는다")
+    ok(본.get("pboc", {}).get("산것") == 0, "못 받은 것도 왜와 함께 남는다")
+ok(len(SRC.빈틈(확인된것만=True)) > 0,
+   "**아직 아무 출처도 확인 안 됐으므로 '확인된 것만' 빈틈은 비어 있지 않다** -- "
+   "선언된 덮임과 실제 덮임은 다른 물음이다")
+
+# ---------------------------------------------------------------- dig 에 기대는 자리
+# **밑줄 이름에 기대고 있다.** `search._집` 이 없어지면 출처 발굴이 런타임에 죽는데,
+# 그것을 검사가 아니라 사용자가 보게 된다. 그래서 여기서 붙든다 -- 이름이 바뀌면
+# 검사가 빨개진다.
+try:
+    from dig import search as DIGS
+except Exception:                                                     # noqa: BLE001
+    DIGS = None
+ok(DIGS is not None, "dig/search 를 임포트할 수 있다 (출처 발굴이 이것으로 돈다)")
+if DIGS is not None:
+    ok(callable(getattr(DIGS, "_집", None)),
+       "**search._집 이 아직 있다** -- 없어지면 coin 이 거친 벌충으로 물러선다")
+    ok(callable(getattr(DIGS, "찾기", None)), "search.찾기 가 있다")
+    ok(DIGS._집("html.duckduckgo.com") == DIGS._집("duckduckgo.com"),
+       "앞자리가 달라도 한집으로 본다")
+    ok(DIGS._집("www.naver.co.kr") == "naver.co.kr",
+       "**co.kr 이 co.kr 로 안 뭉개진다** -- 뭉개지면 한국 쪽이 통째로 한집이 된다")
+집내기 = WT.집자()
+ok(집내기("https://www.sec.gov/news/pressreleases.rss") == "sec.gov", "주소에서 집을 낸다")
+ok(WT._집벌충("html.duckduckgo.com") == "duckduckgo.com", "벌충도 앞자리는 접는다")
+ok(집내기("") == "", "빈 주소는 빈 집")
+
 # ---------------------------------------------------------------- 트리거
 for 글, 참 in [("비트코인 시장 분석해줘", True), ("암호화폐 어때", True),
                ("SOL -12.4% 왜 이래?", True), ("PEPE 어때", True),

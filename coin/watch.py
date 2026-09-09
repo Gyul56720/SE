@@ -52,6 +52,21 @@ except Exception:                                                     # noqa: BL
 
 # 나라마다 무엇으로 찾을 것인가. **말이 나라를 정한다** -- 중국어로 물으면 중국 쪽
 # 문에서 중국 쪽 주소가 나온다.
+#
+# ## `dig/search._집` 을 빌려 쓴다 -- 밑줄인데 왜
+#
+# 도메인을 견주려면 `html.duckduckgo.com` 과 `duckduckgo.com` 을 한집으로 봐야 하고,
+# 그것을 제대로 하려면 `naver.co.kr` 이 `co.kr` 로 뭉개지지 않게 꼬리를 알아야 한다
+# (`co` · `ne` · `or` · `go` · `ac`). `search.py` 가 그 표를 이미 갖고 있다.
+#
+# 여기에 다시 쓰면 두 벌이 되고, 두 벌은 **갈라진다** -- 그쪽이 꼬리를 하나 더 알게
+# 되어도 이쪽은 모른 채로 남는다. 그래서 빌려 쓴다.
+#
+# 다만 밑줄 이름은 **말없이 사라질 수 있다.** 그러면 이 걸음이 런타임에 죽는데, 그것을
+# 검사가 아니라 사용자가 보게 된다. 그래서 두 가지를 건다:
+#   1. 없으면 `_집벌충` 으로 물러선다 (꼬리표 없이 뒤 두 마디만 -- 거칠지만 안 죽는다)
+#   2. `tests/test_coin_loop.py` 가 `search._집` 이 있는지 붙든다.
+#      이름이 바뀌면 **검사가 빨개진다** -- 사용자가 아니라.
 찾을말 = {
     "US": "cryptocurrency regulation announcement",
     "EU": "MiCA crypto regulation announcement",
@@ -97,6 +112,26 @@ def 한바퀴(깊게: bool = False, 원장길=None, 출처=None) -> dict:
             "사건": len(사건), "나라": 나라, "앞선시각": 앞선, "깊게": 깊게}
 
 
+def _집벌충(host: str) -> str:
+    """`search._집` 이 없어질 때의 물러설 자리. **거칠다** -- 꼬리표를 안 본다."""
+    ps = [x for x in (host or "").lower().split(".") if x]
+    return ".".join(ps[-2:]) if len(ps) >= 2 else (host or "").lower()
+
+
+def 집자():
+    """주소 -> 집. `search._집` 이 있으면 그것, 없으면 벌충."""
+    쪽 = getattr(DIGS, "_집", None) if DIGS is not None else None
+    골 = 쪽 if callable(쪽) else _집벌충
+
+    def _(u: str) -> str:
+        try:
+            host = (u or "").split("//", 1)[-1].split("/", 1)[0].split("?", 1)[0]
+            return 골(host)
+        except Exception:                                             # noqa: BLE001
+            return ""
+    return _
+
+
 def 찾아보기(몇: int = 25) -> dict:
     """**선언 안 한 출처를 찾는다.** 표는 내가 적은 것뿐이라 내가 모르는 곳은 영영 없다.
 
@@ -111,12 +146,9 @@ def 찾아보기(몇: int = 25) -> dict:
     """
     if DIGS is None:
         return {"왜": "dig/search 가 없다", "후보": {}}
-    아는집 = set()
-    for x in SRC.목록:
-        try:
-            아는집.add(DIGS._집(x.url.split("//", 1)[-1].split("/", 1)[0]))
-        except Exception:                                             # noqa: BLE001
-            pass
+    집내기 = 집자()
+    아는집 = {집내기(x.url) for x in SRC.목록}
+    아는집.discard("")
     후보 = {}
     for 나라, 말 in 찾을말.items():
         try:
@@ -129,10 +161,7 @@ def 찾아보기(몇: int = 25) -> dict:
             u = x.get("url") if isinstance(x, dict) else str(x)
             if not u:
                 continue
-            try:
-                집 = DIGS._집(u.split("//", 1)[-1].split("/", 1)[0])
-            except Exception:                                         # noqa: BLE001
-                continue
+            집 = 집내기(u)
             if 집 and 집 not in 아는집:
                 본[집] = 본.get(집, 0) + 1
         후보[나라] = {"새집": sorted(본, key=lambda k: -본[k])[:12], "본것": len(거둔것)}

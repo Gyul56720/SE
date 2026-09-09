@@ -52,7 +52,7 @@ def ok(cond, msg):
 def 터(d, **덮기):
     a = argparse.Namespace(
         분=1, 씨앗=["합격 자기소개서 예시"], 회사="", 직무="", 학과="",
-        몇=5, 틈=0.0, 최소=100, 씨앗주소=[], 따라=20,
+        몇=5, 틈=0.0, 최소=100, 씨앗주소=[], 따라=20, 걸름=0.0, 집참기=3,
         곳=str(Path(d) / "보기"),
         잰곳=str(Path(d) / "잰형식"), 문항곳=str(Path(d) / "문항"),
         그만="", 모델=False, 살펴만=False)
@@ -144,6 +144,73 @@ try:
 finally:
     DF.한번 = 진짜
 
+
+print("\n── **탐침을 좁힌다** -- 받자마자 걸러 안 담는다 ────────")
+논문 = ("초록 본 연구는 편입학 전형의 효과를 분석하였다. Keywords: 편입, 전형. "
+       "참고문헌 목록은 다음과 같다. DOI:10.1234/abcd Vol. 12 No. 3 pp. 45-67 "
+       "한국교육학회 등재 논문이다. 저자명 홍길동. 본 연구는 게재되었다. " * 4)
+좋은글 = ("2025년 3월, 파이프라인이 밀리는 화면을 처음 봤습니다. 저는 스트리밍으로 "
+        "바꾸는 일을 맡았고 지연을 35분에서 4분으로 줄였습니다. 그때 저는 지표를 "
+        "의심하는 습관을 얻었습니다. 지원 동기도 거기서 나왔고, 직무에 필요한 역량을 "
+        "그 경험에서 배웠습니다. 입사 후에도 그렇게 일하겠습니다. " * 3)
+
+
+def 가짜3(url, 헤더, 틈=20.0):
+    if any(w in url for w in ("duckduckgo", "bing", "mojeek")):
+        return DF.응답(url=url, 최종url=url, 코드=200, 꼴="text/html", 몸통=(
+            "<html><body><a href='https://논문집.com/1'>논문 하나</a>"
+            "<a href='https://논문집.com/2'>논문 둘</a>"
+            "<a href='https://논문집.com/3'>논문 셋</a>"
+            "<a href='https://논문집.com/4'>논문 넷</a>"
+            "<a href='https://수기집.com/1'>합격 수기</a></body></html>"))
+    글 = 좋은글 if "수기집" in url else 논문
+    return DF.응답(url=url, 최종url=url, 코드=200, 꼴="text/html",
+                 몸통=f"<html><head><title>편입 자소서</title></head>"
+                      f"<body><article>{글}</article></body></html>")
+
+
+DF.한번 = 가짜3
+try:
+    with tempfile.TemporaryDirectory() as d:
+        곳, 잰곳 = KP.보기DIR / "_좁힘", MN.잰것DIR / "_좁힘"
+        try:
+            보고 = CR.돌리기(터(d, 곳=str(곳), 잰곳=str(잰곳), 몇=5, 걸름=0.0))
+            ok(보고["담음"] == 1,
+               f"**점수 낮은 것은 안 담는다** (담음 {보고['담음']}편 · "
+               f"거름 {보고['걸름']}편) -- 담고 나서 거르면 그 사이에 mine 이 "
+               "오염된 값을 집계한다")
+            ok(보고["걸름"] >= 3, f"논문은 걸렸다 ({보고['걸름']}편)")
+            ok(보고["집건너뜀"] >= 1,
+               f"**같은 집에서 낮은 것이 이어지면 그 집을 그만 판다** "
+               f"({보고['집건너뜀']}번 건너뜀) -- 차단 목록을 안 박고 전적으로 민다")
+            남 = KP.읽기(곳)
+            ok(len(남) == 1 and "수기집" in 남[0][1], f"남은 것은 수기뿐 ({남[0][1]})")
+        finally:
+            for x2 in (곳, 잰곳):
+                if Path(x2).exists():
+                    for f in Path(x2).glob("*"):
+                        f.unlink()
+                    Path(x2).rmdir()
+
+    with tempfile.TemporaryDirectory() as d:
+        곳, 잰곳 = KP.보기DIR / "_안좁힘", MN.잰것DIR / "_안좁힘"
+        try:
+            보고 = CR.돌리기(터(d, 곳=str(곳), 잰곳=str(잰곳), 몇=5,
+                            걸름=-9999.0, 집참기=99))
+            ok(보고["담음"] >= 2,
+               f"(대조군) 걸름을 내리면 다 담는다 ({보고['담음']}편) -- "
+               "**거르는 것은 옵션이지 몰래 하는 일이 아니다**")
+        finally:
+            for x2 in (곳, 잰곳):
+                if Path(x2).exists():
+                    for f in Path(x2).glob("*"):
+                        f.unlink()
+                    Path(x2).rmdir()
+finally:
+    DF.한번 = 진짜
+ok("차단 목록을 코드에 박지 않는다" in (CR.__doc__ or ""),
+   "**목록을 안 박는다**고 적혀 있다 -- 목록은 늘 모자라고, 모자란 목록은 그 밖을 "
+   "영영 못 거른다")
 
 print("\n── 씨앗 주소 -- 그 집 안쪽으로 판다 ────────────────────")
 목록쪽 = ("<html><body>"

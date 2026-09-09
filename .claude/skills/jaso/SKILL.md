@@ -100,6 +100,10 @@ python3 $J/jaso/refine.py --표 원장.json --문항 "<원문>" --바퀴 4 --궤
 판다 -- 창구 자기 살림만 돌고 결과로는 못 간다. 검색은 `dig/find.py`(= `crawl --씨앗`),
 목록 쪽 파기는 `crawl --씨앗주소` 다.
 
+**긁어 온 것을 바로 `mine` 에 넣지 마라.** 논문·서점·게시판 껍데기가 섞인다(실측 23편
+중 여섯이 논문이었다). `jaso/sift.py` 로 먼저 늘어놓고 **사람이 보고** 자른다 --
+그 자는 꼴로만 보므로 자동으로 지우지 않는다.
+
 **예시 본문은 `jaso/corpus/보기/` 에만 둔다** -- `keep.py` 의 K001 이 쓰기 전에
 `git check-ignore` 로 확인하고, 무시 규칙에 안 잡히면 **한 자도 안 쓴다.** 그 폴더를
 저장소에 올리지 마라. `Public_agent/` 에는 더더욱.
@@ -117,6 +121,7 @@ python3 $J/jaso/mine.py --질의 "합격 자소서 예시" --몇 12       # 형�
 setsid nohup python3 $J/jaso/crawl.py --분 60 > ~/SE/logs/jaso_crawl.log 2>&1 < /dev/null &
 disown; pgrep -af jaso/crawl.py        # `ps -p $!` 는 거짓 음성을 낸다
 python3 $J/jaso/crawl.py --분 60 --씨앗주소 '<목록 쪽>' --따라 30   # 그 집 안쪽으로
+python3 $J/jaso/sift.py                  # **거르고 나서 재라** -- 긁으면 아닌 것이 섞인다
 python3 $J/jaso/keep.py --목록  ·  --내보내기  ·  --지우기
 python3 $J/jaso/mine.py --분포  ·  --문법후보
 python3 $J/jaso/forms.py                                       # 문법 후보
