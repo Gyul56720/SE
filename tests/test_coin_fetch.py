@@ -239,7 +239,7 @@ finally:
 _불린 = []
 class _가짜출처:
     이름, 나라, 층, 꼴, 열쇠, 경로 = "가짜", "US", "매체", "gdelt", "", ""
-    url = NW.GDELT
+    url = SRC.GDELT
     def 쓸수있나(self): return True, ""
 _옛히2 = NW._http
 try:
