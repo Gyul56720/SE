@@ -195,11 +195,19 @@ def 쓰기(q: IT.문항, L: LG.원장, 벌: int = 3, 회사="", 직무="",
         h, s, vs = 재기(q, 글, L, 회사, 직무)
         것들.append({"글": 글, "hard": h, "soft": s, "위반": vs, "항목": 쓴항목,
                     "왜": ""})
-    성한것 = [x for x in 것들 if x["글"] and not x["hard"]]
-    뽑힘 = min(성한것 or [x for x in 것들 if x["글"]] or 것들,
-              key=lambda x: (x["hard"], x["soft"], -len(x["글"])))
-    return {"문항": q, "것들": 것들, "뽑힘": 뽑힘,
-            "성한것": len(성한것), "벌": len(것들)}
+    글있는것 = [x for x in 것들 if x["글"].strip()]
+    성한것 = [x for x in 글있는것 if not x["hard"]]
+    # **한 벌도 글을 못 받았으면 뽑지 않는다.**
+    #
+    # 실측: 키가 없는 데서 돌렸더니 모든 벌이 예외로 죽었는데, `min` 이 빈 글을 골라
+    # `0자` 짜리 자소서가 파일로 나왔다. 화면에는 "[씀] 자소서.md" 가 찍히고 관문은
+    # J005(0자)로 빨간불을 냈다 -- **없는 것보다 나쁘다.** 사람은 파일이 생긴 것을
+    # 먼저 보고, 빨간불은 글이 나쁜 탓이라고 읽는다. 실제로는 아무것도 안 나온 것이다.
+    뽑힘 = (min(성한것 or 글있는것, key=lambda x: (x["hard"], x["soft"], -len(x["글"])))
+           if 글있는것 else None)
+    return {"문항": q, "것들": 것들, "뽑힘": 뽑힘, "성한것": len(성한것),
+            "벌": len(것들), "글있나": bool(글있는것),
+            "왜": " · ".join(sorted({x["왜"] for x in 것들 if x["왜"]}))}
 
 
 def main(argv=None) -> int:
@@ -245,6 +253,12 @@ def main(argv=None) -> int:
     벌들, 쓴것, 조각 = [], set(), []
     for q in 문항들:
         r = 쓰기(q, L, a.벌, a.회사, a.직무, 쓴것)
+        if not r["글있나"]:
+            print(f"\n**문항 {q.번호 or '?'} 에서 한 벌도 글을 못 받았다: {r['왜']}**",
+                  file=sys.stderr)
+            print("  (GEMINI_API_KEY 가 있는 데서 돌려라 -- 빈 파일은 안 쓴다)",
+                  file=sys.stderr)
+            return 3
         벌들.append(r)
         쓴것 |= set(r["뽑힘"]["항목"])
         조각.append(f"## {q.번호 + '. ' if q.번호 else ''}{q.원문}\n\n"

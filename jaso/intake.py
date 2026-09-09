@@ -144,6 +144,23 @@ def 넣기(물음들: list, 답들: dict, L: LG.원장) -> tuple:
         if 칸 == "새항목":
             언제 = _언제(답)
             역할 = _역할(답)
+            # **언제도 역할도 못 읽으면 항목을 만들지 않는다.**
+            #
+            # 실측: "Python, BigQuery, Airflow" 가 번호가 밀려 이 자리로 들어왔고,
+            # 이름이 `Python` 이고 곳이 `BigQuery` 인 항목이 원장에 생겼다. 그 뒤로
+            # `ask.py` 는 **그 껍데기를 두고 매 바퀴 네 개씩 물었다** -- 역할은? 기간은?
+            # 무엇이 달라졌나? 증빙은? 사람은 있지도 않은 경험을 설명하게 된다.
+            #
+            # 원장이 거절하지 않는다는 규율은 **사실을 표시와 함께 남기는 것**이지
+            # 사실이 아닌 것을 만드는 것이 아니다. 답은 `답_NN.txt` 에 그대로 남으므로
+            # 잃지 않는다 -- 물음만 살아 있게 두고 다시 묻는다.
+            if not (언제 or 역할):
+                vs.append(위반("I002", "hard", q.get("id", "?"),
+                              f"{답[:30]!r} 에서 **기간도 역할도 못 읽었다** -- 경험이 "
+                              "아닌 답이 들어온 것으로 보고 항목을 안 만들었다. "
+                              "`무엇을, 어디서, 2025-03 ~ 2025-08, 참여` 꼴로 다시 "
+                              "적어 주십시오 (답은 그대로 남아 있다)"))
+                continue
             남은말 = [w for w in _쪼개기(답)
                      if not _연월.search(w) and not _연만.fullmatch(w.strip())
                      and w.strip() not in LG.역할들]
@@ -154,7 +171,7 @@ def 넣기(물음들: list, 답들: dict, L: LG.원장) -> tuple:
             새것.append(새)
             채운것.append(f"{q['id']} -> 새 항목 [{새['id']}] {새['이름']}")
             if not 역할:
-                vs.append(위반("I002", "hard", q.get("id", "?"),
+                vs.append(위반("I002", "soft", q.get("id", "?"),
                               f"역할을 못 읽었다 -- {' · '.join(LG.역할들)} 중 하나를 "
                               "적어 주십시오 (E002 가 다시 물을 것이다)"))
             continue
@@ -239,18 +256,26 @@ def 쓰기(L: LG.원장, path: Path) -> Path:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="답을 원장에 넣는다 (대조하면서)")
-    ap.add_argument("--물음", required=True, help="jaso/ask.py --json 이 낸 것")
-    ap.add_argument("--답", required=True, help="`1) …` 꼴로 적은 답 (`-` 면 표준입력)")
+    ap.add_argument("--물음", default="", help="jaso/ask.py --json 이 낸 것")
+    ap.add_argument("--답", default="", help="`1) …` 꼴로 적은 답 (`-` 면 표준입력)")
     ap.add_argument("--표", dest="표", default="", help="기존 경험 원장 (없으면 새로)")
+    ap.add_argument("--빼기", dest="빼기", action="append", default=[],
+                    help="이 id 의 항목을 원장에서 뺀다 (잘못 들어간 것 치우기)")
     ap.add_argument("--넣기", action="store_true",
                     help="정말 쓴다 (기본은 무엇이 채워지는지 보여만 준다)")
     a = ap.parse_args(argv)
 
-    물음들 = json.loads(Path(a.물음).read_text(encoding="utf-8")).get("물음", [])
-    글 = sys.stdin.read() if a.답 == "-" else Path(a.답).read_text(encoding="utf-8")
+    물음들 = (json.loads(Path(a.물음).read_text(encoding="utf-8")).get("물음", [])
+             if a.물음 else [])
+    글 = ("" if not a.답 else
+         (sys.stdin.read() if a.답 == "-" else Path(a.답).read_text(encoding="utf-8")))
     답들 = 답나누기(글)
     L = LG.읽기(a.표) if a.표 else LG.원장()
 
+    for i in a.빼기:
+        h = L.찾기(i)
+        L.항목들 = [x for x in L.항목들 if x.id != i]
+        print(f"  뺌    [{i}] {h.이름 if h else '(그런 항목이 없다)'}")
     L, vs, 채운것 = 넣기(물음들, 답들, L)
     print(f"물음 {len(물음들)}개 · 받은 답 {len(답들)}개")
     for 말 in 채운것:
