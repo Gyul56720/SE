@@ -171,6 +171,7 @@ python3 law/tuner.py plan             # 제일 많이 걸린 규칙과 그 지�
 
 | 경로 | 왜 남겼나 |
 |---|---|
+| `jaso/` | 자기소개서 관문 — 경험 원장 대조(J001~J008)와 치환 검사(P001~P006). 생성은 아직 없다 (`jaso/README.md` · `jaso/DESIGN.md`) |
 | `mathgen/` | 어려운 적분 문제 생성기를 진화시키는 루프. 심판은 sympy 뿐 (`mathgen/README.md`) |
 | `compression/` | 가중치 압축 코덱 탐색. 부정행위 코덱을 실격시키는 심판 (`compression/README.md`) |
 | `npu/` | 1.58비트 삼진 NPU(SystemVerilog) 설계·검증 스위트. 2026-09-02 작업분 |
