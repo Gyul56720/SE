@@ -135,6 +135,33 @@ def 등록(s: Source) -> Source:
 ))
 
 
+등록(Source(
+    이름="야후",
+    설명="지수·종목 **일별 내력** (Yahoo chart v8. 열쇠 없음, User-Agent 필요)",
+    url="https://query1.finance.yahoo.com/v8/finance/chart/{심볼}?range=1y&interval=1d",
+    꼴="json",
+    # **칸을 안 적는다.** 이 응답은 배열이 여러 깊이에 흩어져 있어 `find_rows` 가
+    # 길이로 묶는다(`_흩어진칸`). 그때 나오는 칸 이름을 여기 박아 두면, 야후가 칸을
+    # 하나 더 주는 날 스키마가 바뀐 것으로 오판한다 -- 도착한 것에서 읽게 둔다.
+    칸=(), 수칸=(),
+    key="timestamp",              # 줄이 날짜다. epoch 이라 10자리 동안은 정렬도 맞다
+    셈=(),                        # 줄이 날짜라 '일간등락' 은 안 쓴다 -- 추론이 받는다
+    별칭={
+        "코스피": "^KS11", "kospi": "^KS11",
+        "코스닥": "^KQ11", "kosdaq": "^KQ11",
+        "나스닥": "^IXIC", "nasdaq": "^IXIC",
+        "s&p": "^GSPC", "sp500": "^GSPC", "스앤피": "^GSPC",
+        "다우": "^DJI", "dow": "^DJI",
+        "닛케이": "^N225", "삼성전자": "005930.KS", "sk하이닉스": "000660.KS",
+    },
+    신선=5,
+    # **여기 적는 것은 실제로 본 것만이다.**
+    확인="2026-09-09 사용자 실측: v8 chart 엔드포인트 200 OK (User-Agent 필요). "
+         "v7 download 는 401. **심볼 별칭은 아직 안 본 것이다** -- 틀리면 응답이 "
+         "오류 꼴이라 inspect 가 거절한다",
+))
+
+
 def get(name: str) -> Source | None:
     """이름으로 출처를. **없으면 None 이다** -- 비슷한 것을 골라 주지 않는다."""
     return SOURCES.get(name)

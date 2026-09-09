@@ -285,14 +285,17 @@ def render(src, led, facts, vs, 추론절=()) -> str:
     return "\n".join(out)
 
 
-def 내놓기(src, led) -> int:
+def 내놓기(src, led, 따질=()) -> int:
     """재고 · 따지고 · 검사하고 · 적는다. **세 층이 한 자리를 지난다.**
 
     나열(칸마다)과 추론(따져 본 것)이 같은 관문을 지나야 한다 -- 한쪽만 검사받으면
     검사 안 받은 쪽으로 주장이 몰린다.
     """
     facts = build(src, led)
-    claims = INF.따져보기(led)
+    # **좁혀 물으면 가를 힘이 세진다.** 명제를 m 개 세우면 Holm 이 m 배로 조이므로,
+    # 칸 다섯을 다 물으면 명제가 16개가 되어 1년치로도 아무것도 못 가른다.
+    # 하나만 물으면 같은 원장에서 갈린다 -- 미리 정해 묻는 것이 훑는 것보다 강하다.
+    claims = INF.따져보기(led, 따질 or None)
     vs = GT.check(facts, led, src, claims=claims)
     절 = render_infer(claims, vs)
     print(render(src, led, facts, vs, 절) if src.셈
@@ -366,9 +369,12 @@ def main(argv=None) -> int:
     ap.add_argument("--key", default="", help="줄을 가리킬 칸")
     ap.add_argument("--칸", dest="cols", default="", help="쉼표로. 비우면 도착한 것에서 읽는다")
     ap.add_argument("--수칸", dest="ncols", default="", help="쉼표로. 비우면 스스로 가린다")
+    ap.add_argument("--따질", dest="ask_cols", default="",
+                    help="추론에서 **이 칸만** 묻는다 (쉼표). 좁힐수록 가를 힘이 세진다")
     ap.add_argument("--시계열", dest="series", default="",
                     help="쉼표로. 일별 내력을 받아 날짜로 맞춘다 -- **추론은 이것이 있어야 한다**")
     a = ap.parse_args(argv)
+    따질 = tuple(c.strip() for c in a.ask_cols.split(",") if c.strip())
 
     # ── 시계열: 추론이 설 수 있는 유일한 자리 ──────────────────────
     if a.series:
@@ -392,7 +398,7 @@ def main(argv=None) -> int:
         if a.save:
             LG.save(led, Path(a.save))
             print(f"원장 저장: {a.save}  ({len(led)}줄)")
-        return 내놓기(src, led)
+        return 내놓기(src, led, 따질)
 
     # ── 즉석 출처 ─────────────────────────────────────────────────
     if a.url:
@@ -413,7 +419,7 @@ def main(argv=None) -> int:
         if a.save:
             LG.save(led, Path(a.save))
             print(f"원장 저장: {a.save}  ({len(led)}줄)")
-        return 내놓기(src, led)
+        return 내놓기(src, led, 따질)
 
     if a.list_src or not a.출처:
         미확인 = [s for s in SRC.SOURCES.values() if s.미확인]
@@ -486,7 +492,7 @@ def main(argv=None) -> int:
         print("**--진단 이므로 보고서는 안 낸다.**")
         return 0
 
-    return 내놓기(src, led)
+    return 내놓기(src, led, 따질)
 
 
 if __name__ == "__main__":
