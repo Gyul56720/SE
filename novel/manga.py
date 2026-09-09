@@ -51,9 +51,30 @@ NARR_MAX = 200
 # 짧은 문단(여백 · 의성어 · 한 줄 반응)이 차지하는 몫.
 SOLO_MAX_LEN = 30
 SOLO_MIN = 0.08
+# 명사로 끝나는 지문 문장의 몫. 컷처럼 보이려고 동사를 지우면 소설이 아니라 콘티가 된다.
+NOUN_MAX = 0.10
 
 # 대사. 큰따옴표 · 겹낫표 · 홑낫표를 다 본다.
 _TALK = re.compile(r'"[^"\n]*"|“[^”\n]*”|「[^」\n]*」|『[^』\n]*』')
+
+# 지문이 동사로 맺는가. 한국어 서술은 `-다 / -까 / -요` 로 끝난다 -- 그 밖은 명사형이다.
+_ENDS_VERB = re.compile(r"[다까요네지군]\.$")
+_SENT = re.compile(r"(?<=\.)\s+")
+
+# **파이프라인이 인물을 부르는 말.** 프롬프트에서 화자를 그렇게 부르므로(drive.py) 모델이
+# 그대로 본문에 옮겨 적는 일이 난다. 실측 2026-09-09: 1,115자 첫 덩어리에 일곱 번 나왔다
+# ("화자의 걸음", "화자의 침묵", "화자의 모습"). 이야기 안에는 없는 낱말이다.
+LEAK = "화자"
+
+
+def _is_present(sent: str) -> bool:
+    """`~ㄴ다 / ~는다` 로 끝나는가. 각본의 말투다 -- 지문은 과거형이어야 한다.
+
+    받침 ㄴ 을 코드로 본다. 낱말을 나열하면 빠지는 것이 생긴다."""
+    m = re.search(r"([가-힣])다\.$", sent)
+    if not m:
+        return False
+    return (ord(m.group(1)) - 0xAC00) % 28 == 4
 
 
 def paragraphs(text: str) -> list:
@@ -67,9 +88,21 @@ def is_talk(p: str) -> bool:
     return bool(p) and inside * 2 > len(p)
 
 
+def narration(text: str) -> list:
+    """지문 문장. 대사를 걷어내고 문장으로 자른다.
+
+    **의성어는 뺀다.** "쿵." 은 명사로 끝나지만 만화 식이 시키는 것이지 흠이 아니다 --
+    안 빼면 잘 쓴 원고에 벌점을 준다(시험이 이 거짓 양성을 잡았다). 가르는 기준은
+    **낱말이 하나인가**다. 의성어와 외침은 한 낱말이고, "~하는 남자의 모습." 은 아니다."""
+    bare = _TALK.sub(" ", text or "")
+    out = [x.strip() for x in _SENT.split(bare) if x.strip().endswith(".")]
+    return [x for x in out if " " in x]
+
+
 def measure(text: str) -> dict:
     """센다. **판정하지 않는다.**"""
     ps = paragraphs(text)
+    ns = narration(text)
     n = len("".join(ps))
     talk_chars = sum(len(m.group()) for m in _TALK.finditer("\n".join(ps)))
     narr = [p for p in ps if not is_talk(p)]
@@ -83,6 +116,10 @@ def measure(text: str) -> dict:
         "지문최장": max((len(p) for p in narr), default=0),
         "긴지문": sum(1 for p in narr if len(p) > NARR_MAX),
         "짧은문단": (len(solo) / len(ps)) if ps else 0.0,
+        "지문문장": len(ns),
+        "명사형": (sum(1 for x in ns if not _ENDS_VERB.search(x)) / len(ns)) if ns else 0.0,
+        "현재형": sum(1 for x in ns if _is_present(x)),
+        "누출": len(re.findall(LEAK, text or "")),
     }
 
 
@@ -91,6 +128,13 @@ def fit(text: str) -> list:
 
     하드를 만들지 않는 이유는 위 문서에 있다(gate.py 의 V020 이 겪은 것)."""
     m, vs = measure(text), []
+    # **누출만 hard 다.** 이것은 문체가 아니라 사실이다 -- 파이프라인의 낱말이 본문에
+    # 그대로 나온 것이고, gate.py 가 누출을 하드로 잡는 것과 같은 종류다. 길이와 무관하게 본다.
+    if m["누출"]:
+        vs.append(Violation("M204", "hard", "누출",
+                            f"'{LEAK}' 가 본문에 {m['누출']}번 나온다"
+                            " -- 파이프라인이 인물을 부르는 말이지 이야기 안의 낱말이 아니다."
+                            " 이름이나 '나' 로 바꿔라"))
     if m["글자"] < 200:
         return vs                       # 너무 짧으면 비율이 뜻을 잃는다
     if m["대사비율"] < TALK_MIN:
@@ -101,6 +145,14 @@ def fit(text: str) -> list:
         vs.append(Violation("M202", "soft", "지문",
                             f"{NARR_MAX}자 넘는 지문 문단이 {m['긴지문']}개 (최장 {m['지문최장']}자)"
                             " -- 그림이 하던 일을 글이 설명하고 있다"))
+    if m["명사형"] > NOUN_MAX:
+        vs.append(Violation("M205", "soft", "지문",
+                            f"명사로 끝나는 지문 문장이 {m['명사형']:.1%}다 (최대 {NOUN_MAX:.0%})"
+                            " -- \"~하는 모습.\" 은 문장이 아니라 샷 리스트다. 끝을 동사로 맺어라"))
+    if m["현재형"]:
+        vs.append(Violation("M206", "soft", "시제",
+                            f"현재형(~ㄴ다)으로 끝나는 지문 문장이 {m['현재형']}개"
+                            " -- 각본의 말투다. 각본을 옮겨 적고 있는지 보라"))
     if m["짧은문단"] < SOLO_MIN:
         vs.append(Violation("M203", "soft", "여백",
                             f"짧은 문단이 {m['짧은문단']:.1%}다 ({SOLO_MIN:.0%} 이상)"
@@ -115,7 +167,10 @@ def report(text: str) -> str:
             f"  대사 비율   {m['대사비율']:>6.1%}  (목표 {TALK_MIN:.0%} 이상)"
             f"   · 대사 문단 {m['대사문단']}/{m['문단']}",
             f"  지문 평균   {m['지문평균']:>6.0f}자  (최장 {m['지문최장']}자 · {NARR_MAX}자 초과 {m['긴지문']}개)",
-            f"  짧은 문단   {m['짧은문단']:>6.1%}  (목표 {SOLO_MIN:.0%} 이상 · {SOLO_MAX_LEN}자 이하)"]
+            f"  짧은 문단   {m['짧은문단']:>6.1%}  (목표 {SOLO_MIN:.0%} 이상 · {SOLO_MAX_LEN}자 이하)",
+            f"  명사형 종결 {m['명사형']:>6.1%}  (최대 {NOUN_MAX:.0%} · 지문 문장 {m['지문문장']}개)",
+            f"  현재형 종결 {m['현재형']:>6}개  (0 이어야 한다 · 각본의 말투)",
+            f"  '{LEAK}' 누출 {m['누출']:>5}번  (0 이어야 한다)"]
     rows.append("")
     rows += [f"  {v}" for v in vs] or ["  만화 식으로 나왔다."]
     return "\n".join(rows)

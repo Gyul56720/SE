@@ -68,18 +68,42 @@ _long = "\n".join(['"짧은 말."', "가" * 400] * 3)
 ok("M202" in codes(MG.fit(_long)), f"{MG.NARR_MAX}자 넘는 지문 문단을 짚는다")
 ok(MG.fit("짧다.") == [], "200자 미만은 재지 않는다 -- 비율이 뜻을 잃는다")
 
-print("\n[기각하지 않는다] 관문이 작가가 되면 원고가 균질해진다")
-for _t in (COMIC, PROSE, _long):
-    ok(all(v.severity == "soft" for v in MG.fit(_t)), "전부 soft -- 하드가 하나도 없다")
-    break
+print("\n[문체는 기각하지 않는다] 관문이 작가가 되면 원고가 균질해진다")
 ok(not [v for _t in (COMIC, PROSE, _long) for v in MG.fit(_t) if v.severity != "soft"],
-   "어떤 글에도 하드를 내지 않는다")
+   "문체 눈금은 어떤 글에도 하드를 내지 않는다")
+
+print("\n[누출만 hard] 이것은 문체가 아니라 사실이다")
+# 실측 2026-09-09: 첫 덩어리 1,115자에 '화자' 가 일곱 번 나왔다.
+_leak = "\n".join(['결코 멈출 줄을 모르는 화자의 걸음이 이어졌다.', '"늦었군."'] * 20)
+ok("M204" in codes(MG.fit(_leak)), "'화자' 가 본문에 나오면 잡는다")
+ok([v for v in MG.fit(_leak) if v.rule == "M204"][0].severity == "hard",
+   "누출은 hard -- gate.py 가 누출을 하드로 잡는 것과 같은 종류")
+ok(MG.measure(_leak)["누출"] == 20, f"몇 번인지 센다 (센 것: {MG.measure(_leak)['누출']})")
+ok("M204" in codes(MG.fit("화자가 걸었다.")), "짧아도 누출은 본다 -- 길이와 무관하다")
+ok("M204" not in codes(MG.fit(COMIC)), "누출이 없으면 안 잡는다")
+
+print("\n[M205] 명사형 종결 -- 컷처럼 보이려고 동사를 지우면 콘티가 된다")
+_noun = "\n".join(["사방을 가득 채운 고요함.", "비웃음을 흘리며 철퇴를 겨누는 남자의 모습.",
+                  "젖은 흙이 감겨 오는 감촉."] * 12)
+ok("M205" in codes(MG.fit(_noun)), "명사로 끝나는 지문을 잡는다")
+ok(MG.measure(_noun)["명사형"] > 0.9, "명사형 비율을 센다")
+ok(MG.measure(COMIC)["명사형"] < MG.NOUN_MAX, "동사로 맺으면 안 잡힌다")
+
+print("\n[M206] 현재형 종결 -- 각본의 말투")
+ok(MG._is_present("연회장으로 향한다."), "~ㄴ다 를 현재형으로 본다")
+ok(MG._is_present("검집을 확인한다."), "~한다")
+ok(not MG._is_present("바닥으로 떨어졌다."), "과거형은 아니다")
+ok(not MG._is_present("단순하고도 잔인했다."), "'했다' 는 과거형")
+_now = "\n".join(["남자가 문을 부수고 들어간다.", "잔이 떨어졌다."] * 12)
+ok("M206" in codes(MG.fit(_now)), "현재형 지문이 있으면 잡는다")
+ok("M206" not in codes(MG.fit(COMIC)), "과거형만 있으면 안 잡는다")
 
 print("\n[보고] 사람이 읽는 꼴")
 _r = MG.report(PROSE)
 ok("대사 비율" in _r and "지문 평균" in _r and "짧은 문단" in _r, "세 눈금을 보여 준다")
 ok("M201" in _r, "짚은 것을 같이 보여 준다")
 ok("만화 식으로 나왔다" in MG.report(COMIC), "통과하면 통과했다고 말한다")
+ok("명사형 종결" in _r and "현재형 종결" in _r and "누출" in _r, "새 눈금 셋도 보여 준다")
 
 print("\n[페르소나] style.MANGA")
 ST.use("manga")
@@ -93,6 +117,12 @@ ok("대사가 민다" in ST.narrator(), "지문이 아니라 대사가 민다고
 ok("겸하기" in ST.narrator(), "겸하기가 실린다")
 ok("반전은 다음 대목의 첫 줄" in ST.narrator(), "넘김을 대목의 사이로 옮겨 시킨다")
 ok("상태창" in ST.narrator(), "상태창 금지를 이어받는다")
+# 실측 2026-09-09 첫 덩어리가 셋 다 어겼다 -- 그래서 [문장] 블록을 앞에 세웠다
+ok("과거로 쓴다" in ST.narrator(), "과거형으로 쓰라고 한다")
+ok("명사로 끝내지 마라" in ST.narrator(), "명사형 종결을 막는다  ← 컷이 콘티가 되던 자리")
+ok("'화자' 라는 말을 본문에 쓰지 마라" in ST.narrator(), "'화자' 누출을 막는다")
+ok("각본을 옮겨 적지 마라" in ST.narrator(), "각본을 베끼지 말라고 한다")
+ok("지문이 세 문단 이어지면" in ST.narrator(), "대사를 셀 수 있는 지시로 준다")
 ok("목적" in ST.episode_brief(1), "1화에 목적을 내라고 한다")
 ok(ST.episode_brief(9) == "", "없는 회차 지시는 빈 것")
 ST.use("ropan")
