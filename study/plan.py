@@ -59,47 +59,41 @@ def 오답노트(n: NT.공책, 태그: str = "") -> str:
 
 def 사유보고(n: NT.공책) -> str:
     """**구체적인 취약점.** 과목이 아니라 어긋난 자리."""
-    out = []
-    안물 = n.안물어본것()
     사없 = n.사유없는것()
-    for 갈래, 말 in (("오답", "아는데 어긋난 것"), ("모름", "아예 없는 것")):
-        것들 = WK.사유취약점(n, 갈래)
-        if not 것들:
-            continue
-        W = 것들[0].n
-        out.append(f"## {갈래} -- {말}  (틀린 것 {W}개 · 사유 {len(것들)}가지)")
+    것들 = WK.사유취약점(n)
+    if not 것들:
+        말 = ["# 취약점 (구체)", "", "아직 셀 것이 없다."]
+        if 사없:
+            말.append(f"틀린 것 {len(사없)}개에 **무엇이 어긋났는지가 안 적혔다** -- "
+                     "적히지 않으면 셈에 안 들어간다:")
+            말.append("  python3 study/run.py --사유프롬프트     # 모델에게 줄 것")
+            말.append("  python3 study/run.py --사유 <문제id> '<무엇이 어긋났나>'")
+        return "\n".join(말)
+
+    W = 것들[0].n
+    out = ["# 취약점 (구체) -- 과목이 아니라 **어긋난 자리**", "",
+           f"틀린 것 {W}개 · 사유 {len(것들)}가지", ""]
+    for w in 것들:
+        p = "-" if w.p보정 is None else f"{w.p보정:.3f}"
+        out.append(f"  [{w.판정}] {w.틀린}번 — {w.태그}")
+        out.append(f"       문제: {', '.join(w.문제들[:12])} · 보정 p={p}")
+    out.append("")
+    from study import tag as TG
+    닮 = TG.닮은쌍([w.태그 for w in 것들])
+    if 닮:
+        out.append("  **묶기엔 모자란데 닮은 것** -- 사람이 보고 같으면 "
+                   "같은 말로 다시 적어라(그러면 되풀이로 세어진다):")
+        for a, b, v in 닮[:6]:
+            out.append(f"    {v:.2f}  {a}\n          ~  {b}")
         out.append("")
-        for w in 것들:
-            p = "-" if w.p보정 is None else f"{w.p보정:.3f}"
-            out.append(f"  [{w.판정}] {w.틀린}번 — {w.태그}")
-            out.append(f"       문제: {', '.join(w.문제들[:12])} · 보정 p={p}")
-        out.append("")
-        from study import tag as TG
-        닮 = TG.닮은쌍([w.태그 for w in 것들])
-        if 닮:
-            out.append("  **묶기엔 모자란데 닮은 것** -- 사람이 보고 같으면 "
-                       "같은 말로 다시 적어라(그러면 되풀이로 세어진다):")
-            for a, b, v in 닮[:6]:
-                out.append(f"    {v:.2f}  {a}\n          ~  {b}")
-            out.append("")
-        out.append("  자: 틀린 것이 사유마다 **고르게 흩어졌다면** 한 사유에 "
-                   f"{W}/{len(것들)}번쯤이다. 그보다 잦으면 되풀이다. "
-                   "고르게 흩어졌다는 가정 위의 셈이다.")
-        out.append("")
-    if 안물:
-        out.append(f"## 아직 안 물어본 것 {len(안물)}개 -- **오답인가 모름인가**")
-        out.append("")
-        for a in 안물[:10]:
-            out.append(f"  python3 study/run.py --갈래 {a.문제id} 1|2")
-        out.append("")
+    out.append("  자: 틀린 것이 사유마다 **고르게 흩어졌다면** 한 사유에 "
+               f"{W}/{len(것들)}번쯤이다. 그보다 잦으면 되풀이다. "
+               "고르게 흩어졌다는 가정 위의 셈이다.")
     if 사없:
-        out.append(f"## 사유가 안 적힌 것 {len(사없)}개 -- 셈에 안 들어간다")
-        out.append("  python3 study/run.py --사유프롬프트")
         out.append("")
-    if not out:
-        return ("# 취약점 (구체)\n\n아직 셀 것이 없다. 틀린 문제에 "
-                "`--갈래 <id> 1|2` 로 오답/모름을 정하고 사유를 붙여라.")
-    return "# 취약점 (구체) -- 과목이 아니라 **어긋난 자리**\n\n" + "\n".join(out)
+        out.append(f"  사유가 안 적힌 것 {len(사없)}개는 **셈에 안 들어간다**: "
+                   "`--사유프롬프트` 또는 `--사유 <문제id> '<무엇이>'`")
+    return "\n".join(out)
 
 
 def 취약점보고(n: NT.공책) -> str:
@@ -143,8 +137,7 @@ def 교안(n: NT.공책, 제목: str = "") -> str:
            f"바탕: 채점된 문제 {전}개 · 전체 오답률 {p0:.0%} · "
            f"태그 {len(것들)}개", ""]
 
-    사약미리 = [w for w in (WK.사유취약점(n, "오답") + WK.사유취약점(n, "모름"))
-                if w.판정 == "약함"]
+    사약미리 = [w for w in WK.사유취약점(n) if w.판정 == "약함"]
     if not 약 and not 사약미리:
         out.append("## 아직 교안을 못 만든다")
         out.append("")
@@ -162,8 +155,7 @@ def 교안(n: NT.공책, 제목: str = "") -> str:
                             if 더 == 0 else "전체 오답률이 이대로면 못 가른다"))
         return "\n".join(out)
 
-    사약 = [w for w in (WK.사유취약점(n, "오답") + WK.사유취약점(n, "모름"))
-            if w.판정 == "약함"]
+    사약 = [w for w in WK.사유취약점(n) if w.판정 == "약함"]
     if 사약:
         # **이것이 사용자가 요구한 구체성이다.** 태그(과목)는 그 다음이다.
         out.append("## 되풀이되는 어긋남 -- **여기부터 고친다**")
@@ -177,8 +169,7 @@ def 교안(n: NT.공책, 제목: str = "") -> str:
                 if not q:
                     continue
                 out.append(f"    [{qid}] {q.말[:70]}")
-                out.append(f"          낸 답 {a.낸답 if a else '?'}  /  정답 {q.정답}"
-                           + (f"  ({a.갈래})" if a and a.갈래 else ""))
+                out.append(f"          낸 답 {a.낸답 if a else '?'}  /  정답 {q.정답}")
             out.append("  다시 풀 것: " + ", ".join(w.문제들))
             out.append("")
 
