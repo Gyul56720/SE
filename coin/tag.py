@@ -58,7 +58,7 @@ sys.path.insert(0, str(_ROOT))
     },
     "규제승인": {
         "en": ["approve", "approves", "approved", "approval", "greenlight", "green light",
-               "authorize", "authorized", "license", "licensed", "registration granted"],
+               "authorize", "authorized", "license", "licensed", "registration granted", "friendly crypto policy", "pro-crypto", "crypto-friendly", "signals friendly", "clarity act", "framework", "legalizes"],
         "zh": ["批准", "核准", "获批", "许可", "牌照"],
         "ja": ["承認", "認可", "登録完了", "免許"],
         "ko": ["승인", "인가", "허가", "라이선스"],
@@ -94,7 +94,7 @@ sys.path.insert(0, str(_ROOT))
         "fr": ["faillite", "insolvable", "retraits suspendus"],
     },
     "상장": {
-        "en": ["lists", "listing", "will list", "adds support for", "debuts on"],
+        "en": ["lists", "listing", "will list", "adds support for", "debuts on", "record trading volume", "record volume", "trading volume"],
         "zh": ["上线", "上币", "开放交易", "首发"],
         "ja": ["上場", "取扱開始", "取り扱い開始"],
         "ko": ["상장", "거래 지원", "원화 마켓"],
@@ -111,7 +111,7 @@ sys.path.insert(0, str(_ROOT))
     },
     "기관채택": {
         "en": ["buys bitcoin", "adds bitcoin", "treasury", "allocates to bitcoin",
-               "institutional adoption", "custody launch", "legal tender"],
+               "institutional adoption", "custody launch", "legal tender", "institutional demand", "institutional adoption", "adds to bitcoin", "adds bitcoin", "buys bitcoin", "corporate treasury", "microstrategy", "blackrock", "spot etf inflow", "record inflow", "adoption grows"],
         "zh": ["增持", "配置比特币", "机构采用", "法定货币"],
         "ja": ["購入を発表", "準備資産", "機関投資家", "法定通貨"],
         "ko": ["매입", "편입", "기관 채택", "법정화폐"],
@@ -128,15 +128,25 @@ sys.path.insert(0, str(_ROOT))
         "fr": ["taux directeur", "hausse des taux", "BCE", "inflation"],
     },
     "반감기업그레이드": {
-        "en": ["halving", "hard fork", "upgrade goes live", "mainnet launch", "merge"],
+        "en": ["halving", "hard fork", "upgrade goes live", "mainnet launch", "merge", "network upgrade", "completes upgrade", "mainnet", "dencun", "pectra", "network launch"],
         "zh": ["减半", "硬分叉", "主网上线", "升级"],
         "ja": ["半減期", "ハードフォーク", "メインネット"],
         "ko": ["반감기", "하드포크", "메인넷", "업그레이드"],
         "de": ["halving", "hard fork"],
         "fr": ["halving", "fork"],
     },
+    "가격급변": {
+        "en": ["surges past", "soars past", "rockets", "all-time high", "record high",
+               "hits new high", "breaks above", "plunges below", "crashes below",
+               "dips below", "tumbles", "sell-off", "selloff", "flash crash"],
+        "zh": ["突破", "创新高", "暴涨", "暴跌", "跳水", "闪崩"],
+        "ja": ["最高値", "急騰", "急落", "史上最高"],
+        "ko": ["돌파", "신고가", "폭등", "폭락", "급등", "급락"],
+        "de": ["Allzeithoch", "durchbricht", "stürzt ab"],
+        "fr": ["record historique", "franchit", "s'effondre"],
+    },
     "고래이동": {
-        "en": ["whale", "whales", "large transfer", "moved to exchange", "dormant wallet"],
+        "en": ["whale", "whales", "large transfer", "moved to exchange", "dormant wallet", "move", "moves", "moved", "transferred to exchange"],
         "zh": ["巨鲸", "大额转账", "转入交易所"],
         "ja": ["クジラ", "大口送金"],
         "ko": ["고래", "대량 이체", "거래소 입금"],
@@ -144,7 +154,7 @@ sys.path.insert(0, str(_ROOT))
         "fr": ["baleine", "transfert massif"],
     },
     "스테이블코인": {
-        "en": ["depeg", "depegged", "stablecoin", "loses peg", "redemption halt"],
+        "en": ["depeg", "depegged", "stablecoin", "loses peg", "redemption halt", "stablecoin regulation", "stablecoin bill", "genius act"],
         "zh": ["脱锚", "稳定币", "脱钩"],
         "ja": ["ペッグ", "ステーブルコイン", "デペッグ"],
         "ko": ["디페그", "스테이블코인", "페그"],
@@ -174,6 +184,32 @@ def 자산별명() -> dict:
 
 
 자산사전 = 자산별명()
+
+# **암호화폐 맥락이 있어야 걸리는 약한 낱말.**
+#
+# "record high" · "record volume" · "surges past" 같은 말은 주식·금·아무 시장에나
+# 나온다. 그대로 걸면 피드에 섞인 일반 금융 기사가 암호화폐 사건으로 둔갑한다
+# (실측: "Stock market hits record high" 가 가격급변으로 걸렸다).
+#
+# 그래서 이 낱말들은 **글에 암호화폐 말이 같이 있을 때만** 센다. 강한 낱말
+# (加密·bitcoin·SEC·halving)은 그 자체로 맥락이라 이 문을 안 거친다.
+_약한말 = {
+    "record high", "record volume", "record trading volume", "trading volume",
+    "surges past", "soars past", "rockets", "hits new high", "breaks above",
+    "all-time high", "plunges below", "dips below", "tumbles", "sell-off",
+    "selloff", "flash crash", "framework", "move", "moves", "moved",
+    "network upgrade", "completes upgrade", "mainnet", "adoption grows",
+    "corporate treasury", "clarity act", "record inflow",
+}
+_암호맥락 = ("crypto", "bitcoin", "btc", "ethereum", "eth", "token", "blockchain",
+            "coin", "digital asset", "web3", "defi", "加密", "比特", "暗号", "암호",
+            "코인", "가상자산", "kryptow", "crypto")
+
+
+def _맥락있나(글: str) -> bool:
+    낮 = (글 or "").lower()
+    return any(w in 낮 for w in _암호맥락)
+
 
 유형들 = tuple(사전.keys())
 자산들 = tuple(자산사전.keys())
@@ -205,15 +241,17 @@ def 재기(글: str, 말: str = "") -> list:
     소송을 걸었다" 는 실제로 둘이다. 사건 연구는 유형별로 따로 세므로 겹쳐도 된다.
     """
     낮 = (글 or "").lower()
+    맥락 = _맥락있나(글)
     out = []
     for 유형, 말별 in 사전.items():
         걸림 = []
         for m, 낱말들 in 말별.items():
-            if 말 and m != 말 and m != "en":
-                pass                       # 말을 줘도 en 은 늘 본다 (고유명사가 섞인다)
             for w in 낱말들:
-                if _재기(m, w.lower(), 낮):
-                    걸림.append((m, w))
+                if not _재기(m, w.lower(), 낮):
+                    continue
+                if w.lower() in _약한말 and not 맥락:
+                    continue               # **약한 낱말은 암호 맥락이 있을 때만**
+                걸림.append((m, w))
         if 걸림:
             out.append(Tag(유형, tuple(걸림)))
     return out
