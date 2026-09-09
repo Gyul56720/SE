@@ -62,6 +62,28 @@ for 글, 참 in [("EZB erhöht den Leitzins", "금리거시"),
                ("最高人民法院 가상화폐 판결", "소송제재")]:
     ok(참 in TG.유형만(글), f"{글!r} -> {참}")
 
+# ---------------------------------------------------------------- dig 에 기대는 자리
+# **밑줄 이름에 기대고 있다.** `search._집` 이 없어지면 출처 발굴이 런타임에 죽는데,
+# 그것을 검사가 아니라 사용자가 보게 된다. 그래서 여기서 붙든다 -- 이름이 바뀌면
+# 검사가 빨개진다.
+try:
+    from dig import search as DIGS
+except Exception:                                                     # noqa: BLE001
+    DIGS = None
+ok(DIGS is not None, "dig/search 를 임포트할 수 있다 (출처 발굴이 이것으로 돈다)")
+if DIGS is not None:
+    ok(callable(getattr(DIGS, "_집", None)),
+       "**search._집 이 아직 있다** -- 없어지면 coin 이 거친 벌충으로 물러선다")
+    ok(callable(getattr(DIGS, "찾기", None)), "search.찾기 가 있다")
+    ok(DIGS._집("html.duckduckgo.com") == DIGS._집("duckduckgo.com"),
+       "앞자리가 달라도 한집으로 본다")
+    ok(DIGS._집("www.naver.co.kr") == "naver.co.kr",
+       "**co.kr 이 co.kr 로 안 뭉개진다** -- 뭉개지면 한국 쪽이 통째로 한집이 된다")
+집내기 = WT.집자()
+ok(집내기("https://www.sec.gov/news/pressreleases.rss") == "sec.gov", "주소에서 집을 낸다")
+ok(WT._집벌충("html.duckduckgo.com") == "duckduckgo.com", "벌충도 앞자리는 접는다")
+ok(집내기("") == "", "빈 주소는 빈 집")
+
 # ---------------------------------------------------------------- 트리거
 for 글, 참 in [("비트코인 시장 분석해줘", True), ("암호화폐 어때", True),
                ("SOL -12.4% 왜 이래?", True), ("PEPE 어때", True),
