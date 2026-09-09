@@ -45,6 +45,22 @@ sys.path.insert(0, str(ROOT))
 from coin import news as NW                                           # noqa: E402
 from coin import source as SRC                                        # noqa: E402
 
+try:
+    from dig import search as DIGS                                    # noqa: E402
+except Exception:                                                     # noqa: BLE001
+    DIGS = None
+
+# 나라마다 무엇으로 찾을 것인가. **말이 나라를 정한다** -- 중국어로 물으면 중국 쪽
+# 문에서 중국 쪽 주소가 나온다.
+찾을말 = {
+    "US": "cryptocurrency regulation announcement",
+    "EU": "MiCA crypto regulation announcement",
+    "KR": "가상자산 규제 공지 거래소",
+    "CN": "加密货币 监管 公告",
+    "JP": "暗号資産 規制 発表",
+}
+
+CORPUS = Path(__file__).resolve().parent / "corpus"
 멈춤 = {"이제": False}
 
 
@@ -81,6 +97,53 @@ def 한바퀴(깊게: bool = False, 원장길=None, 출처=None) -> dict:
             "사건": len(사건), "나라": 나라, "앞선시각": 앞선, "깊게": 깊게}
 
 
+def 찾아보기(몇: int = 25) -> dict:
+    """**선언 안 한 출처를 찾는다.** 표는 내가 적은 것뿐이라 내가 모르는 곳은 영영 없다.
+
+    `dig/search.py` 가 검색 문들을 두드려 바깥 주소를 거둬 온다. 여기서는 그 주소의
+    **집(도메인)만** 보고, 표에 없는 것을 골라 `corpus/후보.json` 에 쌓는다.
+
+    **자동으로 표에 넣지 않는다.** 넣으면 아무 데서나 온 글이 사건 원장에 들어가고,
+    그러면 D0 를 정하는 시각을 아무도 검사 안 한 곳이 정하게 된다. 사람이 보고
+    `source.py` 에 줄을 더하는 것이 맞다 -- 표는 **선언**이어야 한다.
+
+    그러니까 이것은 출처가 아니라 **빈틈 후보 목록**이다.
+    """
+    if DIGS is None:
+        return {"왜": "dig/search 가 없다", "후보": {}}
+    아는집 = set()
+    for x in SRC.목록:
+        try:
+            아는집.add(DIGS._집(x.url.split("//", 1)[-1].split("/", 1)[0]))
+        except Exception:                                             # noqa: BLE001
+            pass
+    후보 = {}
+    for 나라, 말 in 찾을말.items():
+        try:
+            _, _, 거둔것 = DIGS.찾기(말, 몇=몇)
+        except Exception as e:                                        # noqa: BLE001
+            후보[나라] = {"왜": f"{type(e).__name__}: {str(e)[:60]}"}
+            continue
+        본 = {}
+        for x in 거둔것:
+            u = x.get("url") if isinstance(x, dict) else str(x)
+            if not u:
+                continue
+            try:
+                집 = DIGS._집(u.split("//", 1)[-1].split("/", 1)[0])
+            except Exception:                                         # noqa: BLE001
+                continue
+            if 집 and 집 not in 아는집:
+                본[집] = 본.get(집, 0) + 1
+        후보[나라] = {"새집": sorted(본, key=lambda k: -본[k])[:12], "본것": len(거둔것)}
+    길2 = CORPUS / "후보.json"
+    길2.parent.mkdir(parents=True, exist_ok=True)
+    길2.write_text(json.dumps(
+        {"찾은때": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+         "후보": 후보}, ensure_ascii=False, indent=1), encoding="utf-8")
+    return {"후보": 후보, "길": str(길2)}
+
+
 def 줄(r: dict) -> str:
     나라 = " ".join(f"{k}:{v}" for k, v in sorted(r["나라"].items())) or "-"
     return (f"[{datetime.now(timezone.utc).strftime('%H:%M:%S')}] "
@@ -96,11 +159,28 @@ def main(argv=None) -> int:
     ap.add_argument("--틈", type=float, default=300.0, help="얕은 바퀴 사이 (초)")
     ap.add_argument("--깊은틈", type=float, default=3600.0, help="깊은 바퀴 사이 (초)")
     ap.add_argument("--한바퀴", action="store_true")
+    ap.add_argument("--찾기", action="store_true",
+                    help="선언 안 한 출처를 찾아 빈틈 후보로 적는다 (표에 안 넣는다)")
     ap.add_argument("--흐름", action="store_true", help="깊은 바퀴에서 돈 흐름도")
     a = ap.parse_args(argv)
 
     signal.signal(signal.SIGTERM, _멈춰)
     signal.signal(signal.SIGINT, _멈춰)
+
+    if a.찾기:
+        got = 찾아보기()
+        if got.get("왜"):
+            print(got["왜"], file=sys.stderr)
+            return 3
+        for 나라, v in got["후보"].items():
+            if v.get("왜"):
+                print(f"  {나라}  못 찾음 -- {v['왜']}")
+                continue
+            print(f"  {나라}  거둔 주소 {v['본것']}개 · **표에 없는 집** "
+                  + (", ".join(v["새집"]) or "없다"))
+        print(f"\n-> {got['길']}\n**자동으로 표에 안 넣는다.** 사람이 보고 "
+              "coin/source.py 에 줄을 더해라 -- 표는 선언이어야 한다")
+        return 0
 
     if a.한바퀴:
         print(줄(한바퀴(깊게=True)), flush=True)

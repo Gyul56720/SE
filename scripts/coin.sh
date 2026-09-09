@@ -8,6 +8,8 @@
 #   scripts/coin.sh stop                           모으기 멈추기
 #   scripts/coin.sh status                         원장 · 채우기 상태
 #   scripts/coin.sh probe                          어느 출처가 답하나
+#   scripts/coin.sh grid                           나라 x 층 격자. 빈 칸을 짚는다
+#   scripts/coin.sh find                           선언 안 한 출처 찾기 (표엔 안 넣는다)
 #
 # **변수 이름을 한글로 쓰지 않는다** -- bash 는 식별자로 [A-Za-z_][A-Za-z0-9_]* 만
 # 받는다. `초=25` 는 대입이 아니라 명령어로 파싱되고 set -u 아래에서 죽는다
@@ -22,6 +24,8 @@ case "$cmd" in
   ask)   shift; exec python3 coin/run.py --물음 "$*" ;;
   look)  shift; exec python3 coin/run.py --물음 "$*" --상황만 ;;
   probe) exec python3 coin/news.py --탐침 ;;
+  grid)  exec python3 coin/news.py --격자 ;;
+  find)  exec python3 coin/watch.py --찾기 ;;
   fill)
     if pgrep -af "coin/run.py --채우기" >/dev/null 2>&1; then
       echo "이미 돌고 있다:"; pgrep -af "coin/run.py --채우기"; exit 0
