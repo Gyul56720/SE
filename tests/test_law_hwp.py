@@ -74,7 +74,18 @@ ok(len(_읽) == 1, f"크기가 안 맞으면 거기서 멈춘다 (얻은 값 {le
 
 print()
 print("[배포용] **131자짜리 껍데기를 시험지라 하지 않는다**")
-_기출 = sorted(Path("/root/.claude/uploads").rglob("*.hwp")) if Path("/root/.claude/uploads").is_dir() else []
+# **`is_dir()` 는 "못 읽음" 을 안 삼킨다.** pathlib 이 삼키는 errno 는 (2, 20, 9, 40)
+# 뿐이고 EACCES(13)는 그대로 터진다. 여기(에이전트 컨테이너)에서는 경로가 아예 없어서
+# False 가 나와 초록이었는데, CI 러너에서는 `/root` 가 **있는데 못 읽어서** 터졌다.
+# 실측 2026-09-09: 게이트 워크플로가 이것 하나로 계속 빨간불이었다(82개 중 1개 실패).
+# G019: 기계 경로 -- 일부러 만진다. 여기 올린 진짜 시험지가 있으면 그것으로 재고,
+# 없거나 못 읽으면 건너뛴다고 **말한다**. 아래 try 가 그 자리다.
+_올린곳 = Path("/root/.claude/uploads")
+try:
+    _기출 = sorted(_올린곳.rglob("*.hwp")) if _올린곳.is_dir() else []
+except OSError as e:
+    _기출 = []
+    print(f"  건너뜀 {_올린곳} 를 못 본다 ({type(e).__name__}) -- 여기는 그 기계가 아니다")
 if _기출:
     _한 = _기출[0]
     try:

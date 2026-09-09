@@ -14,6 +14,9 @@ on:
       - "main_public.py"
       - "agent_context.py"
       - "agent_memory.py"
+      # push 가 막혔을 때 따라잡는 법. 둘 다 이것을 부른다 -- 여기만 고치고
+      # 배포가 안 되면 봇은 계속 옛 방식(origin/main 에 rebase)으로 브랜치를 깨뜨린다.
+      - "gitsync.py"
       - "public_agent_files.py"
       - "secret_filter.py"
       # 봇 도구가 서버에서 백그라운드로 띄우는 orchestrator 파이프라인. runs/ 는 일부러
