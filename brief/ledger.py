@@ -16,6 +16,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import urllib.parse
 import urllib.request
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime
@@ -246,20 +247,59 @@ def fetch(src, **params) -> tuple:
     # 즉석 출처의 url 은 이미 완성돼 있고, 질의 안에 `{` 가 들어 있을 수도 있다
     # (JSON 을 실어 보내는 API). format 이 거기서 터지면 받아 보지도 못하고 죽으므로,
     # 채울 자리가 없으면 그대로 쓴다.
+    #
+    # **채워 넣는 값은 퍼센트 인코딩한다.** 실측 2026-09-09: 지수 심볼이 `^kospi` 인데
+    # `^` 는 RFC 3986 에서 query 에 그냥 못 쓰는 글자다(unsafe). 인코딩 없이 보내면
+    # 서버·프록시에 따라 404/400 으로 떨어지거나 **조용히 잘린다** -- 뒤쪽이 더 나쁘다.
+    # 딴 심볼의 값을 받아 놓고 이름만 우리 것으로 붙게 되기 때문이다.
+    #
+    # `--url` 로 통째로 받은 주소는 안 건드린다. 거기는 부르는 쪽이 완성해 온 것이다.
     try:
-        url = src.url.format(**params) if "{" in src.url else src.url
+        url = (src.url.format(**{k: urllib.parse.quote(str(v), safe=",")
+                                 for k, v in params.items()})
+               if "{" in src.url else src.url)
     except (KeyError, IndexError, ValueError):
         url = src.url
     try:
         body = get(url)
     except Exception as e:                                    # noqa: BLE001
-        return Ledger(출처=src.이름, 왜=[f"{type(e).__name__}: {str(e)[:120]}"]), \
-            f"못 받았다: {type(e).__name__}: {str(e)[:120]}"
+        return (Ledger(출처=src.이름, 질의=url, 왜=[_왜못받았나(e, url)]),
+                _왜못받았나(e, url))
     v = inspect(src, parse(src, body))
     if not v["통과"]:
-        return Ledger(출처=src.이름, 왜=v["왜"]), "; ".join(v["왜"]) or "검사 실패"
+        # **주소를 같이 남긴다.** 무엇이 틀렸는지는 주소를 봐야 안다 -- 심볼인지,
+        # 경로인지, 칸 이름인지. 까닭만 있고 주소가 없으면 고칠 데를 못 찾는다.
+        왜 = list(v["왜"])
+        if v.get("받은것") and not v.get("good"):
+            왜.append("받기는 했는데 쓸 줄이 없다 -- 심볼이 그 출처에 없을 때 "
+                      "`N/D` 같은 값이 온다(HTTP 는 200 이다)")
+        return (Ledger(출처=src.이름, 질의=url, 왜=왜),
+                "; ".join(왜) + f"  [주소: {url}]" if 왜 else f"검사 실패  [주소: {url}]")
     return Ledger(출처=src.이름, 받은날=date.today().isoformat(), 질의=url,
                   줄=v["good"], 버린것=v["버린것"]), ""
+
+
+def _왜못받았나(e, url: str) -> str:
+    """**갈래를 갈라 말한다.** 404 와 403 과 '안 닿음' 은 고칠 데가 서로 다르다.
+
+    실측 2026-09-09: 봇이 `HTTP 404` 만 보고 "데이터를 못 가져왔다" 로 끝냈다. 404 는
+    **주소가 틀렸다**는 뜻이라 심볼을 바꿔도 안 고쳐지는데, 그것이 화면에 없으면
+    사용자도 봇도 어디를 볼지 모른다.
+    """
+    코드 = getattr(e, "code", None)
+    말 = {
+        400: "400 -- 주소가 잘못 짜였다. 심볼에 인코딩 안 된 글자가 있을 수 있다",
+        403: "403 -- 막혔다. 이 기계의 나가는 길(egress) 정책이거나 출처가 거절한 것",
+        404: "404 -- **그 주소에 그런 것이 없다.** 심볼이 아니라 **경로**가 틀렸을 "
+             "때가 많다. 브라우저로 그 주소를 그대로 열어 보면 바로 안다",
+        429: "429 -- 너무 자주 불렀다. 좀 있다 다시",
+        500: "500 -- 출처 쪽 장애. 우리가 고칠 데가 아니다",
+        503: "503 -- 출처가 지금 못 준다. 좀 있다 다시",
+    }.get(코드)
+    if 말:
+        return f"못 받았다: {말}  [주소: {url}]"
+    return (f"못 받았다: {type(e).__name__}: {str(e)[:100]}"
+            f"  [주소: {url}]")
 
 
 def 합치기(조각: list) -> Ledger:
