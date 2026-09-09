@@ -20,6 +20,7 @@ os.environ["DRIFT_TARGETS"] = str(
 
 
 from novel import flow, genre, shock as SH, wording as W              # noqa: E402
+from novel import serial as SR_, beat as BT_                          # noqa: E402
 
 # **이 파일은 예전 프롬프트를 켜고 본다.** 기본은 axes 다(flow.PROMPT="axes") --
 # 프롬프트를 재는 축에서 짓고, 손으로 쓴 문장론은 한 줄도 안 넣는다.
@@ -645,6 +646,20 @@ _bk = flow.blank(flow.FIRST); _bk["genre"] = "lanobe"
 _bk["genre"] = ""                       # --genre 없이 이어 쓴 것과 같은 일
 ok(_bk["genre"] == "", "원고의 갈래는 인자가 덮는다  ← 그래서 go 에도 붙여야 한다")
 ok("무동작" in _sk, "'문장이 단조롭다' 가 페르소나로 안 보낸다  ← 기본 경로에서 안 실린다")
+
+# **갈래가 없으면 이야기 층이 통째로 안 돈다.** 밴드만 꺼지는 것이 아니다 --
+# 도착지(serial.plan)는 `if a.genre` 뒤에 있고, 회차 카드(beat.ensure)는
+# `if SR.planned(book)` 뒤에 있다. 그래서 갈래 하나가 비면 비트도 쾌감도 갈고리도
+# 설정집도 없이 옛 자유 이어쓰기로 돈다. 원고는 멀쩡히 나오므로 아무도 안 알아챈다.
+_nb = flow.blank(flow.FIRST); _nb["genre"] = ""
+ok(not SR_.planned(_nb) and not BT_.has(_nb), "갈래 없는 원고는 도착지도 카드도 없다")
+ok(BT_.brief(_nb) == "" and SR_.brief(_nb) == "",
+   "그래서 회차 각본도 당김도 0자다  ← '전개가 없다' 의 기전")
+_fl = (Path(__file__).resolve().parent.parent / "novel" / "flow.py").read_text(encoding="utf-8")
+ok("if a.genre and not SR.planned(book):" in _fl, "도착지는 갈래 뒤에 있다")
+ok("if SR.planned(book):" in _fl, "카드 층은 도착지 뒤에 있다")
+ok("배선" in _sh and "이야기 층이 통째로 안 돈다" in _sh,
+   "drift.sh status 가 켜짐/꺼짐을 보여 준다  ← 짐작 말고 재서 답하라고")
 
 print()
 if _bad:

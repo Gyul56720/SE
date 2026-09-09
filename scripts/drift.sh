@@ -248,7 +248,7 @@ PY
     if alive >/dev/null; then echo "돌고 있다:"; alive; else echo "돌고 있지 않다."; fi
     echo
     if [ -f "$BOOK" ]; then
-      python3 - "$BOOK" <<'PY'
+      python3 - "$BOOK" "$SE" "$0" <<'PY'
 import json, sys
 b = json.load(open(sys.argv[1], encoding="utf-8"))
 n = sum(len(c) for c in b["chunks"])
@@ -259,6 +259,29 @@ print(f"  원고  덩어리 {len(b['chunks'])}개 · {n:,}자 · 사건 {b.get('
 print(f"  열린 것 {len((L.get('open') or {}))}개  (drift.sh open 으로 본다)")
 print(f"  세계  인물 {len(L.get('people', {}))} · 장소 {len(L.get('places', {}))} · "
       f"사물 {len(L.get('objects', {}))} · 사실 {len(L.get('facts', {}))}")
+
+# **무엇이 실제로 켜져 있나.** 원고는 갈래가 없어도 멀쩡히 나온다 -- 다만 이야기
+# 층이 통째로 안 돈다. 실측 2026-09-09: 갈래 없이 돌던 런에서 도착지도 카드도 없어
+# 회차 각본 0자였고, 사용자는 "성능이 저하되는 것 같다" 로만 알아챘다. 켜짐/꺼짐을
+# 여기서 한눈에 보인다 -- 짐작 대신 재서 답하려고.
+sys.path.insert(0, str(__import__("pathlib").Path(sys.argv[0]).resolve().parent))
+try:
+    sys.path.insert(0, sys.argv[2])
+    from novel import serial as SR, beat as BT, genre as GN
+    g = b.get("genre") or ""
+    arc_on, card_on = SR.planned(b), BT.has(b)
+    mark = lambda x: "켜짐" if x else "꺼짐"
+    print(f"  배선  갈래 {g or '(없음)'} · 도착지 {mark(arc_on)} · 회차 각본 {mark(card_on)}"
+          f" · 축 덮개 {len((GN.get(g).get('저울', {}) or {}).get('축', {})) if g else 0}개")
+    if not g:
+        print("        * 갈래가 없다 -- 이야기 층이 통째로 안 돈다:"
+              " 도착지 · 회차 각본(비트 · 쾌감 · 갈고리) · 설정집 · 축 덮개 · 화법 조건.")
+        print(f"          다시 열려면:  GENRE=lanobe {sys.argv[3]} start")
+    elif not arc_on:
+        print("        * 갈래는 있는데 도착지가 없다 -- 카드 층이 안 돈다."
+              " 로그에서 '도착지를 못 세웠다' 를 찾아봐라.")
+except Exception as e:
+    print(f"  배선  못 읽었다 ({type(e).__name__}: {e})")
 PY
     else
       echo "  원고가 아직 없다: $BOOK"
