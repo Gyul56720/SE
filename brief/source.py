@@ -99,6 +99,21 @@ def 등록(s: Source) -> Source:
 ))
 
 
+등록(Source(
+    이름="시계열",
+    설명="지수·종목의 **일별 내력** (Stooq. 열쇠 없음) -- 추론은 이것이 있어야 한다",
+    url="https://stooq.com/q/d/l/?s={심볼}&i=d",
+    꼴="csv",
+    칸=("Date", "Open", "High", "Low", "Close"),
+    수칸=("Open", "High", "Low", "Close"),
+    key="Date",
+    별칭=SOURCES["주식"].별칭,          # 같은 이름으로 부른다 -- 두 벌을 두면 갈라진다
+    셈=(),                              # 줄이 날짜라 '일간등락' 은 여기서 안 쓴다
+    신선=5,
+    단위={},
+))
+
+
 def get(name: str) -> Source | None:
     """이름으로 출처를. **없으면 None 이다** -- 비슷한 것을 골라 주지 않는다."""
     return SOURCES.get(name)
