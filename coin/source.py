@@ -47,6 +47,7 @@ class Source:
     나라: str                      # US · CN · JP · KR · XX(다국적)
     말: str                        # en · zh · ja · ko · mul
     url: str
+    층: str = "매체"               # 규제 · 거시 · 사법 · 거래소 · 발행사 · 매체 · 집계
     꼴: str = "rss"                # rss · json · gdelt
     설명: str = ""
     열쇠: str = ""                 # 필요한 환경변수. 비면 필요 없다
@@ -69,60 +70,310 @@ class Source:
 # 한 번 물으면 250건까지만 준다. 그래서 `news.py` 가 시간을 잘라 가며 여러 번 묻는다.
 GDELT = "https://api.gdeltproject.org/api/v2/doc/doc"
 
+# ============================================================ 층
+# **빈틈은 개수로 안 보이고 격자로 보인다.** 매체를 스무 곳 붙여 놓고 규제 원문이
+# 하나도 없으면 그것이 빈틈인데, 목록만 보면 "서른 곳이나 된다" 로 보인다. 그래서
+# 출처마다 `층` 을 달고 `빈틈()` 이 (나라 x 층) 격자의 빈 칸을 짚는다.
+#
+#   규제    감독기관 원문. 사건의 **원문**이고 시각이 정확하다
+#   거시    중앙은행 · 통계. 암호화폐가 제일 크게 반응하는 예정된 사건
+#   사법    기소 · 소송 · 판결 · 압수. 규제와 다른 층인 까닭은 **시점이 다르기 때문**이다 --
+#           규제는 규칙이 바뀌는 순간이고 사법은 이미 있는 규칙이 사람에게 닿는 순간이다.
+#           둘을 한 칸에 넣으면 "기소 뒤 D+7" 과 "규칙 변경 뒤 D+7" 이 섞여 둘 다 흐려진다
+#   거래소  상장 · 폐지 · 유의 · 출금중단. **알트를 제일 크게 움직인다**
+#   발행사  스테이블코인 발행/소각 · 기관 보유
+#   매체    기사. 위의 것들을 **재보도**하므로 시각이 늦다
+#   집계    여러 곳을 모아 주는 곳
+#
+# 매체를 무게 0.6 으로 두는 까닭이 이것이다 -- 같은 사건에서 원문과 기사가 겹치면
+# `news.뭉치기` 는 **제일 이른 시각**을 쓰는데, 그것이 대개 원문이다.
+층들 = ("규제", "거시", "사법", "거래소", "발행사", "매체", "집계")
+나라들 = ("US", "EU", "KR", "CN", "JP")
+
 목록 = [
-    # ---- 과거를 캐는 것 (사건 연구의 밑감) ----
-    Source("gdelt-en", "US", "en", GDELT, "gdelt", 과거=True, 무게=0.6,
-           설명="GDELT 영어. 2017~ . 열쇠 없음"),
-    Source("gdelt-zh", "CN", "zh", GDELT, "gdelt", 과거=True, 무게=1.0,
-           설명="GDELT 중국어(sourcelang:chi). **중국 규제 원문이 여기로 들어온다**"),
-    Source("gdelt-ja", "JP", "ja", GDELT, "gdelt", 과거=True, 무게=1.0,
-           설명="GDELT 일본어(sourcelang:jpn). 거래소·금융청"),
-    Source("gdelt-ko", "KR", "ko", GDELT, "gdelt", 과거=True, 무게=1.0,
+    # ======================================================= 과거를 캐는 자리
+    # 사건 연구의 밑감. RSS 는 과거를 못 판다 -- 몇 년치를 여러 나라 말로 공짜로 주는
+    # 곳은 사실상 GDELT 하나다.
+    Source("gdelt-en", "US", "en", GDELT, "집계", "gdelt", 과거=True, 무게=0.6,
+           설명="GDELT 영어. 2017~"),
+    Source("gdelt-zh", "CN", "zh", GDELT, "집계", "gdelt", 과거=True, 무게=1.0,
+           설명="GDELT 중국어(sourcelang:chi)"),
+    Source("gdelt-ja", "JP", "ja", GDELT, "집계", "gdelt", 과거=True, 무게=1.0,
+           설명="GDELT 일본어(sourcelang:jpn)"),
+    Source("gdelt-ko", "KR", "ko", GDELT, "집계", "gdelt", 과거=True, 무게=1.0,
            설명="GDELT 한국어(sourcelang:kor)"),
+    Source("gdelt-de", "EU", "de", GDELT, "집계", "gdelt", 과거=True, 무게=1.0,
+           설명="GDELT 독일어(sourcelang:ger)"),
+    Source("gdelt-fr", "EU", "fr", GDELT, "집계", "gdelt", 과거=True, 무게=1.0,
+           설명="GDELT 프랑스어(sourcelang:fre)"),
 
-    # ---- 미국 · 영어 ----
+    # ======================================================= 미국 -- 제일 두껍게
+    # **여기가 제일 중요하다.** 2020년 이후 비트코인을 제일 크게 움직인 사건은
+    # 거의 다 미국 규제·거시였다(ETF 승인 · SEC 소송 · CPI · FOMC · 은행 접근).
+    # 그리고 미국은 **원문이 공개돼 있고 시각이 정확하다** -- 기사를 기다릴 이유가 없다.
+
+    # ---- 규제 (원문) ----
+    Source("sec-press", "US", "en", "https://www.sec.gov/news/pressreleases.rss",
+           "규제", "rss", 무게=1.5, 설명="SEC 보도자료"),
+    Source("sec-lit", "US", "en", "https://www.sec.gov/rss/litigation/litreleases.xml",
+           "규제", "rss", 무게=1.5, 설명="SEC 소송 릴리스 -- 제재의 원문"),
+    Source("sec-admin", "US", "en",
+           "https://www.sec.gov/rss/litigation/admin.xml", "규제", "rss", 무게=1.4,
+           설명="SEC 행정처분"),
+    # **EDGAR 가 이 목록에서 제일 값진 한 줄일 수 있다.** ETF 는 19b-4 와 S-1 이
+    # 올라오는 순간이 사건이고, 기사는 그 뒤다. 기관 매입(8-K)도 여기서 먼저 보인다.
+    Source("edgar-19b4", "US", "en",
+           "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&type=19b-4"
+           "&dateb=&owner=include&count=40&output=atom", "규제", "rss", 무게=1.6,
+           설명="EDGAR 19b-4 -- **ETF 규칙변경 신청. 기사보다 먼저다**"),
+    Source("edgar-s1", "US", "en",
+           "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&type=S-1"
+           "&dateb=&owner=include&count=40&output=atom", "규제", "rss", 무게=1.4,
+           설명="EDGAR S-1"),
+    Source("edgar-8k", "US", "en",
+           "https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&type=8-K"
+           "&dateb=&owner=include&count=40&output=atom", "규제", "rss", 무게=1.2,
+           설명="EDGAR 8-K -- 기관 매입 공시가 여기로 온다"),
+    Source("sec-suspend", "US", "en",
+           "https://www.sec.gov/litigation/suspensions.htm", "규제", "html", 무게=1.4,
+           설명="거래정지"),
+    Source("cftc", "US", "en", "https://www.cftc.gov/RSS/RSSGP/rssgp.xml",
+           "규제", "rss", 무게=1.5),
+    Source("cftc-enf", "US", "en", "https://www.cftc.gov/RSS/RSSENF/rssenf.xml",
+           "규제", "rss", 무게=1.5, 설명="CFTC 제재"),
+    Source("ofac", "US", "en",
+           "https://ofac.treasury.gov/system/files/126/recent_actions.xml",
+           "규제", "rss", 무게=1.6,
+           설명="**OFAC 제재 -- 특정 코인·주소를 즉시 움직인다**(토네이도캐시)"),
+    Source("fincen", "US", "en", "https://www.fincen.gov/news/news-releases/feed",
+           "규제", "rss", 무게=1.3),
+    Source("occ", "US", "en", "https://www.occ.gov/rss/occ_bulletins.xml",
+           "규제", "rss", 무게=1.2, 설명="은행이 코인을 만질 수 있나"),
+    Source("fdic", "US", "en", "https://www.fdic.gov/news/press-releases/feed.xml",
+           "규제", "rss", 무게=1.2, 설명="은행 접근 -- 실버게이트·시그니처가 이 층이었다"),
+    Source("whitehouse", "US", "en",
+           "https://www.whitehouse.gov/presidential-actions/feed/", "규제", "rss",
+           무게=1.4, 설명="디지털자산 행정명령"),
+
+    # ---- 사법 ----
+    Source("doj", "US", "en", "https://www.justice.gov/news/rss?type=press_release",
+           "사법", "rss", 무게=1.5, 설명="기소 -- CZ · SBF 가 이 층이었다"),
+    Source("doj-usao", "US", "en",
+           "https://www.justice.gov/usao-sdny/pressreleases/rss", "사법", "rss",
+           무게=1.4, 설명="**뉴욕 남부지검 -- 암호화폐 형사사건이 거의 다 여기서 난다**"),
+    # CourtListener 는 연방법원 문서를 무료 API 로 준다. 리플·SEC 같은 사건은
+    # **판결문이 올라오는 순간**이 사건이고 기사는 몇 시간 뒤다.
+    Source("courtlistener", "US", "en",
+           "https://www.courtlistener.com/api/rest/v4/search/"
+           "?q=cryptocurrency+OR+bitcoin&type=r&order_by=dateFiled+desc",
+           "사법", "json", 경로="results", 무게=1.5,
+           설명="연방법원 문서. 열쇠 없이도 제한적으로 된다"),
+
+    # ---- 거시 ----
+    Source("fed-monetary", "US", "en",
+           "https://www.federalreserve.gov/feeds/press_monetary.xml", "거시", "rss",
+           무게=1.6, 설명="FOMC -- 예정된 사건 중 제일 크게 움직인다"),
+    Source("fed-speeches", "US", "en",
+           "https://www.federalreserve.gov/feeds/speeches.xml", "거시", "rss", 무게=1.3),
+    Source("fed-all", "US", "en",
+           "https://www.federalreserve.gov/feeds/press_all.xml", "거시", "rss", 무게=1.2),
+    Source("bls", "US", "en", "https://www.bls.gov/feed/bls_latest.rss", "거시", "rss",
+           무게=1.6, 설명="**CPI · 고용 -- 발표 순간이 사건이다**"),
+    Source("treasury", "US", "en",
+           "https://home.treasury.gov/system/files/126/press_releases.xml",
+           "거시", "rss", 무게=1.3),
+
+    # ---- 거래소 · 발행사 ----
+    Source("coinbase-blog", "US", "en", "https://www.coinbase.com/blog/rss.xml",
+           "거래소", "rss", 무게=1.3, 설명="상장 발표"),
+    Source("coinbase-status", "US", "en", "https://status.coinbase.com/history.rss",
+           "거래소", "rss", 무게=1.1, 설명="장애 · 출금중단"),
+    Source("binance-ann", "XX", "en",
+           "https://www.binance.com/bapi/composite/v1/public/cms/article/list/query"
+           "?type=1&pageNo=1&pageSize=50", "거래소", "json",
+           경로="data", 무게=1.5,
+           설명="**바이낸스 공지 -- 상장/폐지가 알트를 20~50% 움직인다**"),
+    Source("okx-ann", "XX", "en",
+           "https://www.okx.com/help/section/announcements-latest-announcements",
+           "거래소", "html", 무게=1.2),
+    Source("farside-etf", "US", "en", "https://farside.co.uk/btc/", "발행사", "html",
+           무게=1.4, 설명="**현물 ETF 일별 유입/유출** -- 표를 dig 가 뽑는다"),
+    Source("tether", "XX", "en", "https://tether.to/en/news/feed/", "발행사", "rss",
+           무게=1.2, 설명="USDT 발행/소각"),
+    Source("circle", "US", "en", "https://www.circle.com/blog/rss.xml", "발행사", "rss",
+           무게=1.2, 설명="USDC"),
+
+    # ---- 매체 ----
     Source("coindesk", "US", "en", "https://www.coindesk.com/arc/outboundfeeds/rss/",
-           "rss", 무게=0.6),
-    Source("cointelegraph", "XX", "en", "https://cointelegraph.com/rss", "rss", 무게=0.6),
-    Source("decrypt", "US", "en", "https://decrypt.co/feed", "rss", 무게=0.6),
-    Source("theblock", "US", "en", "https://www.theblock.co/rss.xml", "rss", 무게=0.6),
-    # **원문이다.** 규제 사건은 기사보다 이쪽이 먼저고 시각이 정확하다.
-    Source("sec", "US", "en", "https://www.sec.gov/news/pressreleases.rss", "rss",
-           무게=1.4, 설명="SEC 보도자료 -- 규제 사건의 **원문**"),
-    Source("cftc", "US", "en", "https://www.cftc.gov/RSS/RSSGP/rssgp.xml", "rss", 무게=1.4),
-    Source("federalreserve", "US", "en",
-           "https://www.federalreserve.gov/feeds/press_monetary.xml", "rss", 무게=1.4,
-           설명="금리 -- 암호화폐가 제일 크게 반응하는 거시 사건"),
+           "매체", "rss", 무게=0.6),
+    Source("theblock", "US", "en", "https://www.theblock.co/rss.xml", "매체", "rss",
+           무게=0.6),
+    Source("decrypt", "US", "en", "https://decrypt.co/feed", "매체", "rss", 무게=0.6),
+    Source("blockworks", "US", "en", "https://blockworks.co/feed", "매체", "rss",
+           무게=0.6),
+    Source("cointelegraph", "XX", "en", "https://cointelegraph.com/rss", "매체", "rss",
+           무게=0.6),
+    Source("bitcoinmag", "US", "en", "https://bitcoinmagazine.com/feed", "매체", "rss",
+           무게=0.5),
+    Source("cnbc-fin", "US", "en",
+           "https://search.cnbc.com/rs/search/combinedcms/view.xml"
+           "?partnerId=wrss25&id=10000664", "매체", "rss", 무게=0.6),
+    Source("reuters-biz", "US", "en", "https://www.reutersagency.com/feed/"
+           "?best-topics=business-finance&post_type=best", "매체", "rss", 무게=0.6),
 
-    # ---- 중국 · 중국어 ----
-    # 대륙 매체는 밖에서 막히거나 느린 것이 많다. 그래서 **여럿 걸어 두고 탐침이
-    # 고르게** 한다. 하나가 죽어도 GDELT-zh 가 남는다.
-    Source("jinse", "CN", "zh", "https://api.jinse.cn/noah/v2/rss", "rss", 무게=1.2,
-           설명="金色财经"),
-    Source("8btc", "CN", "zh", "https://www.8btc.com/feed", "rss", 무게=1.2, 설명="巴比特"),
-    Source("panews", "CN", "zh", "https://www.panewslab.com/zh/rss", "rss", 무게=1.2),
-    Source("odaily", "CN", "zh", "https://www.odaily.news/feed", "rss", 무게=1.2),
-    Source("pboc", "CN", "zh", "http://www.pbc.gov.cn/rss/rss_zcyj.xml", "rss", 무게=1.5,
-           설명="중국인민은행 -- **규제 원문**. 2021 채굴 금지가 이 계열이었다"),
-    Source("wublock", "CN", "zh", "https://wublock123.com/feed", "rss", 무게=1.1),
-
-    # ---- 일본 · 일본어 ----
-    Source("coinpost", "JP", "ja", "https://coinpost.jp/?feed=rss2", "rss", 무게=1.2),
-    Source("neweconomy", "JP", "ja", "https://www.neweconomy.jp/feed", "rss", 무게=1.2,
-           설명="あたらしい経済"),
-    Source("fsa", "JP", "ja", "https://www.fsa.go.jp/fsaNewsList.xml", "rss", 무게=1.5,
-           설명="금융청 -- **규제 원문**. 코인체크 뒤의 행정처분이 여기"),
-
-    # ---- 한국 · 한국어 ----
-    Source("blockmedia", "KR", "ko", "https://www.blockmedia.co.kr/feed", "rss", 무게=1.1),
-    Source("decenter", "KR", "ko", "https://decenter.sedaily.com/RSS/S1N1.xml", "rss",
+    # ======================================================= 유럽 (EU + 영국)
+    # **미국 다음으로 규칙이 실제로 바뀌는 자리다.** MiCA 가 전면 시행되면서 상장·
+    # 스테이블코인·수탁의 문턱이 여기서 정해지고, 유럽 발행사가 그 문턱에 맞춰 코인을
+    # 빼거나 넣는다(USDT 상장폐지가 그랬다). ECB 는 FOMC 다음으로 크게 움직인다.
+    #
+    # 유럽 기관은 대부분 **영어로도 낸다** -- 그래서 말이 en 이다. 다만 매체는 독일어·
+    # 프랑스어라 `tag.py` 에 de·fr 낱말을 같이 넣었다. 안 넣으면 그 나라 글이
+    # 들어와도 꼬리표가 하나도 안 걸려 **조용히 0건이 된다.**
+    Source("esma", "EU", "en", "https://www.esma.europa.eu/rss.xml", "규제", "rss",
+           무게=1.5, 설명="**ESMA -- MiCA 의 집행 창구**"),
+    Source("eba", "EU", "en", "https://www.eba.europa.eu/rss.xml", "규제", "rss",
+           무게=1.3, 설명="EBA -- 스테이블코인(ART/EMT) 규칙"),
+    Source("eu-commission", "EU", "en",
+           "https://ec.europa.eu/commission/presscorner/api/rss?language=en",
+           "규제", "rss", 무게=1.2),
+    Source("fca", "EU", "en", "https://www.fca.org.uk/news/rss.xml", "규제", "rss",
+           무게=1.5, 설명="**영국 FCA -- 등록·광고 규제. 영국은 EU 밖이지만 같은 층**"),
+    Source("bafin", "EU", "de", "https://www.bafin.de/SiteGlobals/Functions/RSSFeed/"
+           "DE/RSSNewsfeed/RSSNewsfeed_Meldungen.xml", "규제", "rss", 무게=1.2,
+           설명="독일 BaFin"),
+    Source("amf-fr", "EU", "fr", "https://www.amf-france.org/fr/rss.xml", "규제", "rss",
+           무게=1.2, 설명="프랑스 AMF -- PSAN 등록"),
+    Source("ecb", "EU", "en", "https://www.ecb.europa.eu/rss/press.html", "거시", "rss",
+           무게=1.5, 설명="**ECB -- FOMC 다음으로 크게 움직인다**"),
+    Source("boe", "EU", "en", "https://www.bankofengland.co.uk/rss/news", "거시", "rss",
+           무게=1.3, 설명="영란은행"),
+    Source("eurostat", "EU", "en",
+           "https://ec.europa.eu/eurostat/web/main/news/euro-indicators/rss", "거시",
+           "html", 무게=1.1, 설명="HICP 물가"),
+    Source("curia", "EU", "en",
+           "https://curia.europa.eu/jcms/jcms/Jo2_16799/en/", "사법", "html", 무게=1.1,
+           설명="EU 사법재판소"),
+    Source("europol", "EU", "en", "https://www.europol.europa.eu/newsroom/rss.xml",
+           "사법", "rss", 무게=1.3, 설명="**유로폴 -- 압수·다크마켓 폐쇄가 여기서 난다**"),
+    Source("bitstamp", "EU", "en", "https://www.bitstamp.net/api/v2/", "거래소", "html",
            무게=1.1),
+    Source("kraken-status", "EU", "en", "https://status.kraken.com/history.rss",
+           "거래소", "rss", 무게=1.1),
+    Source("btc-echo", "EU", "de", "https://www.btc-echo.de/feed/", "매체", "rss",
+           무게=1.0, 설명="독일어 매체"),
+    Source("journalducoin", "EU", "fr", "https://journalducoin.com/feed/", "매체", "rss",
+           무게=1.0, 설명="프랑스어 매체"),
+    Source("beincrypto", "EU", "en", "https://beincrypto.com/feed/", "매체", "rss",
+           무게=0.7),
 
-    # ---- 집계 (열쇠가 있으면) ----
+    # ======================================================= 한국
+    Source("fsc", "KR", "ko", "https://www.fsc.go.kr/rss/no010101.xml", "규제", "rss",
+           무게=1.5, 설명="금융위원회 보도자료"),
+    Source("fss", "KR", "ko", "https://www.fss.or.kr/fss/bbs/B0000188/list.do?menuNo=200218",
+           "규제", "html", 무게=1.4, 설명="금융감독원"),
+    Source("bok", "KR", "ko", "https://www.bok.or.kr/portal/bbs/B0000338/list.do?menuNo=200761",
+           "거시", "html", 무게=1.3, 설명="한국은행 -- 기준금리"),
+    Source("moef", "KR", "ko", "https://www.moef.go.kr/com/bbs/rss.do?bbsId=MOSFBBS_000000000028",
+           "규제", "rss", 무게=1.2, 설명="기획재정부 -- 과세"),
+    # **업비트 공지는 원화 시장에서 제일 센 한 줄이다.** 상장은 급등, 유의종목 지정은
+    # 급락. 기사는 늘 그 뒤다.
+    Source("upbit-notice", "KR", "ko",
+           "https://api-manager.upbit.com/api/v1/announcements"
+           "?os=web&page=1&per_page=30&category=all", "거래소", "json",
+           경로="data", 무게=1.6,
+           설명="**업비트 공지 -- 상장·유의종목. 원화 시장을 제일 크게 움직인다**"),
+    Source("bithumb-notice", "KR", "ko",
+           "https://feed.bithumb.com/notice", "거래소", "html", 무게=1.4),
+    Source("daxa", "KR", "ko", "https://www.daxa.or.kr/bbs/board.php?bo_table=notice",
+           "거래소", "html", 무게=1.3, 설명="DAXA 공동 유의종목 지정"),
+    Source("spo-kr", "KR", "ko",
+           "https://www.spo.go.kr/site/spo/ex/board/List.do?cbIdx=1204", "사법", "html",
+           무게=1.3, 설명="대검찰청 -- 가상자산 수사·압수"),
+    Source("scourt-kr", "KR", "ko",
+           "https://www.scourt.go.kr/portal/news/NewsListAction.work?gubun=42",
+           "사법", "html", 무게=1.1, 설명="대법원 보도자료"),
+    Source("coindeskkr", "KR", "ko", "https://www.coindeskkorea.com/rss/allArticle.xml",
+           "매체", "rss", 무게=1.0),
+    Source("blockmedia", "KR", "ko", "https://www.blockmedia.co.kr/feed", "매체", "rss",
+           무게=1.0),
+    Source("tokenpost", "KR", "ko", "https://www.tokenpost.kr/rss", "매체", "rss",
+           무게=1.0),
+    Source("decenter", "KR", "ko", "https://decenter.sedaily.com/RSS/S1N1.xml", "매체",
+           "rss", 무게=1.0),
+
+    # ======================================================= 중국 (+홍콩)
+    Source("pboc", "CN", "zh", "http://www.pbc.gov.cn/rss/rss_zcyj.xml", "규제", "rss",
+           무게=1.5, 설명="중국인민은행 -- 2021 채굴 금지가 이 계열"),
+    Source("csrc", "CN", "zh", "http://www.csrc.gov.cn/csrc/xwfb/index.shtml",
+           "규제", "html", 무게=1.3, 설명="증감회"),
+    Source("ndrc", "CN", "zh", "https://www.ndrc.gov.cn/xwdt/xwfb/", "규제", "html",
+           무게=1.3, 설명="발개위 -- 채굴 정책이 여기서 나온다"),
+    Source("cac", "CN", "zh", "http://www.cac.gov.cn/xxfb/index.htm", "규제", "html",
+           무게=1.2, 설명="망신판"),
+    # **홍콩이 지금 중국의 실제 정책 창구다.** 대륙이 막은 뒤 라이선스·현물 ETF가
+    # 여기서 나왔는데, 중국 항목만 보면 통째로 놓친다.
+    Source("hk-sfc", "CN", "en", "https://apps.sfc.hk/edistributionWeb/api/news/rss"
+           "?lang=EN", "규제", "rss", 무게=1.5,
+           설명="**홍콩 SFC -- 대륙이 막은 뒤 정책은 여기서 나온다**"),
+    Source("hkma", "CN", "en", "https://www.hkma.gov.hk/eng/rss/press-releases.xml",
+           "규제", "rss", 무게=1.3),
+    # 격자가 짚어 준 빈칸: 중국 거시
+    Source("stats-cn", "CN", "zh", "https://www.stats.gov.cn/sj/zxfb/", "거시", "html",
+           무게=1.2, 설명="국가통계국 -- CPI · GDP"),
+    Source("mof-cn", "CN", "zh", "http://www.mof.gov.cn/zhengwuxinxi/caizhengxinwen/",
+           "거시", "html", 무게=1.1, 설명="재정부"),
+    Source("court-cn", "CN", "zh", "https://www.court.gov.cn/zixun.html", "사법",
+           "html", 무게=1.2, 설명="최고인민법원 -- 가상화폐 판결"),
+    Source("spp-cn", "CN", "zh", "https://www.spp.gov.cn/xwfbh/", "사법", "html",
+           무게=1.1, 설명="최고인민검찰원"),
+    Source("jinse", "CN", "zh", "https://api.jinse.cn/noah/v2/rss", "매체", "rss",
+           무게=1.1, 설명="金色财经"),
+    Source("8btc", "CN", "zh", "https://www.8btc.com/feed", "매체", "rss", 무게=1.1),
+    Source("panews", "CN", "zh", "https://www.panewslab.com/zh/rss", "매체", "rss",
+           무게=1.1),
+    Source("odaily", "CN", "zh", "https://www.odaily.news/feed", "매체", "rss", 무게=1.1),
+    Source("blockbeats", "CN", "zh", "https://www.theblockbeats.info/newsflash",
+           "매체", "html", 무게=1.2, 설명="律动 -- 속보가 빠르다"),
+    Source("chaincatcher", "CN", "zh", "https://www.chaincatcher.com/news", "매체",
+           "html", 무게=1.1),
+    Source("techflow", "CN", "zh", "https://www.techflowpost.com/newsletter/index.html",
+           "매체", "html", 무게=1.1, 설명="深潮"),
+    Source("cls", "CN", "zh", "https://www.cls.cn/telegraph", "매체", "html", 무게=1.2,
+           설명="财联社 전보 -- 규제 소식이 제일 빨리 뜨는 쪽"),
+    Source("wublock", "CN", "zh", "https://wublock123.com/feed", "매체", "rss", 무게=1.1,
+           설명="吴说 -- 대륙 소식통"),
+
+    # ======================================================= 일본
+    Source("fsa", "JP", "ja", "https://www.fsa.go.jp/fsaNewsList.xml", "규제", "rss",
+           무게=1.5, 설명="금융청 -- 코인체크 뒤 행정처분이 여기"),
+    Source("kanto-zaimu", "JP", "ja",
+           "https://lfb.mof.go.jp/kantou/kinyu/index.htm", "규제", "html", 무게=1.2,
+           설명="관동재무국 -- 실제 행정처분이 나오는 자리"),
+    Source("boj", "JP", "ja", "https://www.boj.or.jp/rss/whatsnew.xml", "거시", "rss",
+           무게=1.4, 설명="일본은행 -- 엔 캐리가 풀릴 때 코인이 같이 빠진다"),
+    Source("jvcea", "JP", "ja", "https://jvcea.or.jp/news/", "규제", "html", 무게=1.2,
+           설명="일본암호자산거래업협회"),
+    Source("bitflyer-ann", "JP", "ja", "https://bitflyer.com/ja-jp/news", "거래소",
+           "html", 무게=1.2),
+    Source("bitbank-ann", "JP", "ja", "https://bitbank.cc/news", "거래소", "html",
+           무게=1.1),
+    Source("npa-jp", "JP", "ja", "https://www.npa.go.jp/news/index.html", "사법",
+           "html", 무게=1.2, 설명="경찰청 -- 거래소 유출 수사"),
+    Source("courts-jp", "JP", "ja", "https://www.courts.go.jp/news/index.html", "사법",
+           "html", 무게=1.0),
+    Source("coinpost", "JP", "ja", "https://coinpost.jp/?feed=rss2", "매체", "rss",
+           무게=1.1),
+    Source("neweconomy", "JP", "ja", "https://www.neweconomy.jp/feed", "매체", "rss",
+           무게=1.1, 설명="あたらしい経済"),
+    Source("coindeskjp", "JP", "ja", "https://www.coindeskjapan.com/feed/", "매체",
+           "rss", 무게=1.0),
+    Source("bittimes", "JP", "ja", "https://bittimes.net/feed", "매체", "rss", 무게=1.0),
+
+    # ======================================================= 집계 (열쇠가 있으면)
     Source("cryptopanic", "XX", "mul",
            "https://cryptopanic.com/api/v1/posts/?auth_token={key}&public=true",
-           "json", 경로="results", 열쇠="CRYPTOPANIC_TOKEN", 무게=0.5,
-           설명="집계기. 원문이 아니라 **재보도**라 무게가 낮다"),
+           "집계", "json", 경로="results", 열쇠="CRYPTOPANIC_TOKEN", 무게=0.5,
+           설명="집계기 -- 원문이 아니라 재보도라 무게가 낮다"),
 ]
 
 표 = {s.이름: s for s in 목록}
@@ -148,6 +399,29 @@ def 쓸수있는것(과거만: bool = False) -> list:
         if ok:
             out.append(s)
     return out
+
+
+def 격자(확인된것만: bool = False) -> dict:
+    """(나라, 층) -> 출처 이름들. **빈틈을 보는 자리.**"""
+    out = {}
+    for s in 목록:
+        if 확인된것만 and not s.확인:
+            continue
+        나라 = s.나라 if s.나라 in 나라들 else "XX"
+        out.setdefault((나라, s.층), []).append(s.이름)
+    return out
+
+
+def 빈틈(확인된것만: bool = False) -> list:
+    """**어느 칸이 비었나.** 목록이 길어도 빈 칸이 있으면 그 층은 안 보는 것이다.
+
+    `집계` 와 `발행사` 는 나라에 안 매이므로 빼고 본다 -- 미국에 발행사가 있으면
+    USDT/USDC 는 어느 나라에서 물어도 보인다.
+    """
+    g = 격자(확인된것만)
+    핵심 = ("규제", "거시", "사법", "거래소", "매체")
+    return [(나라, 층) for 나라 in 나라들 for 층 in 핵심
+            if not g.get((나라, 층)) and not g.get(("XX", 층))]
 
 
 def 확인된것() -> list:

@@ -49,6 +49,8 @@ from pathlib import Path
         "zh": ["禁止", "取缔", "打击", "整治", "叫停", "严禁", "清退", "违法"],
         "ja": ["禁止", "規制強化", "取り締ま", "違法"],
         "ko": ["금지", "규제 강화", "단속", "불법", "제한"],
+        "de": ["verbot", "verboten", "untersagt", "razzia"],
+        "fr": ["interdiction", "interdit", "interdire"],
     },
     "규제승인": {
         "en": ["approve", "approves", "approved", "approval", "greenlight", "green light",
@@ -56,13 +58,18 @@ from pathlib import Path
         "zh": ["批准", "核准", "获批", "许可", "牌照"],
         "ja": ["承認", "認可", "登録完了", "免許"],
         "ko": ["승인", "인가", "허가", "라이선스"],
+        "de": ["genehmigt", "zulassung", "lizenz erteilt", "erlaubnis"],
+        "fr": ["autorisation", "agrément", "approuvé", "homologué"],
     },
     "소송제재": {
         "en": ["sues", "sued", "lawsuit", "charges", "charged", "indict", "indicted",
-               "enforcement action", "subpoena", "settlement", "fined", "penalty"],
-        "zh": ["起诉", "诉讼", "指控", "罚款", "处罚", "立案"],
-        "ja": ["提訴", "訴訟", "起訴", "行政処分", "業務改善命令", "課徴金"],
-        "ko": ["소송", "기소", "제재", "과징금", "행정처분", "고발"],
+               "enforcement action", "subpoena", "settlement", "fined", "penalty",
+               "ruling", "ruled", "verdict", "court order", "sentenced", "arrested"],
+        "zh": ["起诉", "诉讼", "指控", "罚款", "处罚", "立案", "判决", "宣判", "审理"],
+        "ja": ["提訴", "訴訟", "起訴", "行政処分", "業務改善命令", "課徴金", "判決", "逮捕", "捜査"],
+        "ko": ["소송", "기소", "제재", "과징금", "행정처분", "고발", "판결", "선고", "구속", "압수수색", "수사"],
+        "de": ["klage", "verklagt", "anklage", "bußgeld", "strafe"],
+        "fr": ["poursuite", "plainte", "amende", "sanction"],
     },
     "해킹유출": {
         "en": ["hack", "hacked", "hacker", "exploit", "exploited", "breach", "stolen",
@@ -70,6 +77,8 @@ from pathlib import Path
         "zh": ["黑客", "被盗", "攻击", "漏洞", "被黑"],
         "ja": ["ハッキング", "流出", "不正アクセス", "脆弱性", "盗まれ"],
         "ko": ["해킹", "유출", "탈취", "취약점", "도난"],
+        "de": ["hack", "gehackt", "gestohlen", "sicherheitslücke"],
+        "fr": ["piratage", "piraté", "vol de", "faille"],
     },
     "파산지급중단": {
         "en": ["bankruptcy", "insolvent", "insolvency", "halts withdrawals",
@@ -77,18 +86,24 @@ from pathlib import Path
         "zh": ["破产", "暂停提币", "暂停提现", "清算", "爆雷"],
         "ja": ["破綻", "破産", "出金停止", "民事再生"],
         "ko": ["파산", "출금 중단", "회생", "지급 중단"],
+        "de": ["insolvenz", "insolvent", "pleite", "auszahlungen gestoppt"],
+        "fr": ["faillite", "insolvable", "retraits suspendus"],
     },
     "상장": {
         "en": ["lists", "listing", "will list", "adds support for", "debuts on"],
         "zh": ["上线", "上币", "开放交易", "首发"],
         "ja": ["上場", "取扱開始", "取り扱い開始"],
         "ko": ["상장", "거래 지원", "원화 마켓"],
+        "de": ["listing", "gelistet", "handel startet"],
+        "fr": ["cotation", "listé", "mise en ligne"],
     },
     "ETF": {
         "en": ["etf", "exchange-traded fund", "spot etf", "s-1", "19b-4"],
         "zh": ["ETF", "现货ETF"],
         "ja": ["ETF", "現物ETF"],
         "ko": ["ETF", "현물 ETF"],
+        "de": ["ETF"],
+        "fr": ["ETF"],
     },
     "기관채택": {
         "en": ["buys bitcoin", "adds bitcoin", "treasury", "allocates to bitcoin",
@@ -96,6 +111,8 @@ from pathlib import Path
         "zh": ["增持", "配置比特币", "机构采用", "法定货币"],
         "ja": ["購入を発表", "準備資産", "機関投資家", "法定通貨"],
         "ko": ["매입", "편입", "기관 채택", "법정화폐"],
+        "de": ["kauft bitcoin", "bilanz", "institutionell"],
+        "fr": ["achète du bitcoin", "trésorerie", "institutionnel"],
     },
     "금리거시": {
         "en": ["fomc", "federal reserve", "rate hike", "rate cut", "cpi", "inflation data",
@@ -103,30 +120,40 @@ from pathlib import Path
         "zh": ["加息", "降息", "美联储", "通胀数据", "议息"],
         "ja": ["利上げ", "利下げ", "FRB", "日銀", "消費者物価"],
         "ko": ["금리 인상", "금리 인하", "연준", "물가", "FOMC"],
+        "de": ["leitzins", "zinserhöhung", "zinssenkung", "EZB", "inflation"],
+        "fr": ["taux directeur", "hausse des taux", "BCE", "inflation"],
     },
     "반감기업그레이드": {
         "en": ["halving", "hard fork", "upgrade goes live", "mainnet launch", "merge"],
         "zh": ["减半", "硬分叉", "主网上线", "升级"],
         "ja": ["半減期", "ハードフォーク", "メインネット"],
         "ko": ["반감기", "하드포크", "메인넷", "업그레이드"],
+        "de": ["halving", "hard fork"],
+        "fr": ["halving", "fork"],
     },
     "고래이동": {
         "en": ["whale", "whales", "large transfer", "moved to exchange", "dormant wallet"],
         "zh": ["巨鲸", "大额转账", "转入交易所"],
         "ja": ["クジラ", "大口送金"],
         "ko": ["고래", "대량 이체", "거래소 입금"],
+        "de": ["wal", "grosstransaktion"],
+        "fr": ["baleine", "transfert massif"],
     },
     "스테이블코인": {
         "en": ["depeg", "depegged", "stablecoin", "loses peg", "redemption halt"],
         "zh": ["脱锚", "稳定币", "脱钩"],
         "ja": ["ペッグ", "ステーブルコイン", "デペッグ"],
         "ko": ["디페그", "스테이블코인", "페그"],
+        "de": ["stablecoin", "kursbindung"],
+        "fr": ["stablecoin", "décrochage"],
     },
     "채굴": {
         "en": ["mining ban", "hashrate", "miners", "mining farm", "difficulty adjustment"],
         "zh": ["挖矿", "矿场", "算力", "矿工"],
         "ja": ["マイニング", "ハッシュレート", "採掘"],
         "ko": ["채굴", "해시레이트", "채굴장"],
+        "de": ["mining", "schürfen", "hashrate"],
+        "fr": ["minage", "mineurs", "hashrate"],
     },
 }
 
@@ -148,7 +175,7 @@ def 자산별명() -> dict:
 자산들 = tuple(자산사전.keys())
 
 # 낱말 경계를 봐야 하는 말. 나머지(zh·ja)는 부분 문자열이 맞다.
-_경계 = {"en"}
+_경계 = {"en", "de", "fr"}
 
 
 @dataclass

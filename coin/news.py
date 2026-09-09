@@ -59,9 +59,10 @@ from coin.price import _때                                            # noqa: E
 # 아닌 곳이 아직 많고, 기본 User-Agent 를 막는 곳도 많다. 나라를 늘려 놓고 받는 자리를
 # 안 고치면 **늘린 나라가 조용히 0건으로 들어온다.**
 try:
+    from dig import extract as DIGX                                   # noqa: E402
     from dig import fetch as DIG                                      # noqa: E402
 except Exception:                                                     # noqa: BLE001
-    DIG = None
+    DIG = DIGX = None
 
 CORPUS = Path(__file__).resolve().parent / "corpus"
 길 = CORPUS / "news.json"
@@ -80,6 +81,25 @@ def _http(url: str, timeout: float = 25.0) -> bytes:
     req = urllib.request.Request(url, headers={"User-Agent": "SE-coin/1.0"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return r.read()
+
+
+def _캐기(url: str, timeout: float = 25.0, 곁문수: int = 6):
+    """**앞문이 안 되면 곁문까지.** 모바일 · AMP · 그 쪽 JSON 끝점 · 아카이브 · http.
+
+    `dig/README.md` 가 적어 둔 그대로다 -- "한 번 해 보고 안 된다고 하지 않는다".
+    중국·일본 매체는 앞문 피드가 막히거나 옮겨 간 일이 흔하고, 그때 열려 있는 것이
+    대개 모바일 쪽이다. 이 한 걸음이 **나라를 늘린 값어치의 절반**이다.
+    """
+    if DIG is None:
+        return _http(url, timeout)
+    r = DIG.받기(url)
+    if r.됐나:
+        return r.몸통.encode("utf-8"), r.최종url or url
+    for u in DIG.곁문(url)[:곁문수]:
+        r2 = DIG.받기(u, 벌수=2)
+        if r2.됐나:
+            return r2.몸통.encode("utf-8"), r2.최종url or u
+    raise RuntimeError(r.왜 or f"HTTP {r.코드}")
 
 
 def _여럿(urls: list) -> dict:
@@ -122,6 +142,66 @@ def _rss(raw: bytes, s) -> list:
         if not 제목 or t is None:
             continue
         out.append(_글(제목, t, s, 고리))
+    return out
+
+
+def _html(raw: bytes, s, url: str = "") -> list:
+    """**피드가 없는 쪽에서 글을 뽑는다.** `dig/extract.py` 가 캔 것에서 고른다.
+
+    세 자리를 순서대로 본다 -- 뒤로 갈수록 시각을 못 믿는다:
+
+        jsonld   schema.org NewsArticle 의 headline + datePublished. **제일 믿을 만하다**
+        og       article:published_time + og:title
+        링크     제목만 있고 시각이 없다 -> **본때(우리가 본 시각)를 쓴다**
+
+    마지막이 위험해 보이지만 **안전한 쪽으로 틀린다.** 본때는 참 발행 시각의 상한이라
+    그것으로 D0 를 잡으면 D0 가 참보다 **늦거나 같다.** 미리보기는 D0 가 앞설 때
+    생기므로, 이 오차는 신호를 잃게 할 뿐 없는 신호를 만들지 않는다.
+
+    그래도 `뭉치기` 는 **'최초' 후보로는 안 쓴다** -- 여러 나라 중 제일 이른 시각을
+    고르는 자리에 믿을 수 없는 시각이 끼면 그 하나가 D0 를 통째로 끌고 간다.
+    """
+    if DIGX is None:
+        return []
+    got = DIGX.뽑기(raw.decode("utf-8", "replace"), "html", url)
+    out, 본 = [], set()
+
+    def 더(제목, 때, 출처칸, 고리=""):
+        제목 = (제목 or "").strip()
+        if not 제목 or len(제목) < 8 or 제목 in 본:
+            return
+        t = _때(때) if 때 else None
+        if t is None:
+            t, 출처칸 = datetime.now(timezone.utc), "본때"
+        본.add(제목)
+        g = _글(제목, t, s, 고리)
+        g["시각출처"] = 출처칸
+        out.append(g)
+
+    for x in (got.get("묻힌표원본") or []):
+        묶 = x if isinstance(x, list) else [x]
+        for d in 묶:
+            if not isinstance(d, dict):
+                continue
+            안 = d.get("@graph") if isinstance(d.get("@graph"), list) else [d]
+            for e in 안:
+                if not isinstance(e, dict):
+                    continue
+                꼴 = str(e.get("@type", ""))
+                if "Article" not in 꼴 and "NewsArticle" not in 꼴 and "BlogPosting" not in 꼴:
+                    continue
+                더(e.get("headline") or e.get("name"),
+                   e.get("datePublished") or e.get("dateCreated"),
+                   "jsonld", str(e.get("url") or url))
+    머 = got.get("머리표") or {}
+    더(머.get("og:title") or 머.get("title"),
+       머.get("article:published_time") or 머.get("datePublished"), "og", url)
+    if not out:                                    # 마지막 -- 제목만 있는 링크
+        for 고리 in (got.get("링크") or [])[:120]:
+            글자 = 고리.get("글") if isinstance(고리, dict) else ""
+            주소 = 고리.get("url") if isinstance(고리, dict) else ""
+            if 글자 and TG.재기(글자):            # **꼬리표가 걸리는 것만** 담는다
+                더(글자, "", "본때", 주소 or url)
     return out
 
 
@@ -184,7 +264,7 @@ def _글(제목: str, t: datetime, s, url: str) -> dict:
     본때 = datetime.now(timezone.utc)
     t = t.astimezone(timezone.utc)
     return {"제목": 제목.strip(), "시각": t.isoformat(timespec="seconds"),
-            "본때": 본때.isoformat(timespec="seconds"),
+            "본때": 본때.isoformat(timespec="seconds"), "시각출처": "feed",
             "앞선시각": t > 본때 + timedelta(minutes=5),
             "출처": s.이름, "나라": s.나라, "말": s.말, "무게": s.무게, "url": url,
             "유형": [x.유형 for x in ts],
@@ -194,20 +274,30 @@ def _글(제목: str, t: datetime, s, url: str) -> dict:
 
 def 받기(출처들=None, 부터: str = "", 까지: str = "", 과거: bool = False) -> list:
     출처들 = 출처들 if 출처들 is not None else SRC.쓸수있는것(과거만=과거)
-    rss = [s for s in 출처들 if s.꼴 == "rss"]
+    쪽 = [s for s in 출처들 if s.꼴 in ("rss", "html")]
     out = []
-    받은것 = _여럿([s.url for s in rss]) if rss else {}
-    for s in rss:
+    받은것 = _여럿([s.url for s in 쪽]) if 쪽 else {}
+    for s in 쪽:
         got = 받은것.get(s.url)
-        if isinstance(got, Exception) or got is None:
-            print(f"  못 받음 {s.이름:<14} {s.나라} {got}", file=sys.stderr)
-            continue
-        글 = _rss(got, s)
+        글 = []
+        if not isinstance(got, Exception) and got is not None:
+            글 = (_rss(got, s) if s.꼴 == "rss" else []) or _html(got, s, s.url)
         if not 글:
-            print(f"  빈손   {s.이름:<14} {s.나라} 답은 왔는데 글이 0개", file=sys.stderr)
+            # **앞문이 빈손이면 곁문을 두드린다.** 한 번 해 보고 안 된다고 하지 않는다
+            try:
+                raw, 최종 = _캐기(s.url)
+                글 = (_rss(raw, s) if s.꼴 == "rss" else []) or _html(raw, s, 최종)
+                if 글:
+                    print(f"  곁문   {s.이름:<14} {s.나라} {len(글)}건 <- {최종[:60]}",
+                          file=sys.stderr)
+            except Exception as e:                                    # noqa: BLE001
+                print(f"  못 받음 {s.이름:<14} {s.나라} {type(e).__name__}: "
+                      f"{str(e)[:60]}", file=sys.stderr)
+        if not 글:
+            print(f"  빈손   {s.이름:<14} {s.나라} 앞문도 곁문도 글이 0개", file=sys.stderr)
         out += 글
     for s in 출처들:
-        if s.꼴 == "rss":
+        if s.꼴 in ("rss", "html"):
             continue
         try:
             if s.꼴 == "gdelt":
@@ -283,10 +373,14 @@ def 뭉치기(글들: list, 창시간: float = 12.0) -> list:
             셈 = {}
             for g in m:
                 셈[g["나라"]] = 셈.get(g["나라"], 0) + 1
+            # **'최초' 후보는 믿을 만한 시각에서만 고른다.** 여러 나라 중 제일 이른
+            # 것을 고르는 자리라, 못 믿을 시각 하나가 D0 를 통째로 끌고 간다.
+            믿을것 = [g for g in m if g.get("시각출처", "feed") in ("feed", "jsonld")] or m
             # 기사가 제일 많은 나라. 같으면 **더 이른 쪽** (문자열은 음수화가 안 된다)
             주국 = sorted(셈, key=lambda k: (-셈[k], min(x["시각"] for x in m if x["나라"] == k)))[0]
-            최초 = min(x["시각"] for x in m)
-            주류 = min(x["시각"] for x in m if x["나라"] == 주국)
+            최초 = min(x["시각"] for x in 믿을것)
+            같은나라 = [x for x in 믿을것 if x["나라"] == 주국] or 믿을것
+            주류 = min(x["시각"] for x in 같은나라)
             사건.append({
                 "유형": 유형, "자산": 자산, "최초": 최초, "주류": 주류, "주국": 주국,
                 "나라들": sorted(셈), "나라수": len(셈), "글수": len(m),
@@ -318,7 +412,7 @@ def 탐침(출처들=None) -> list:
     for s in (출처들 if 출처들 is not None else SRC.목록):
         ok, 왜 = s.쓸수있나()
         if not ok:
-            out.append({"이름": s.이름, "나라": s.나라, "산것": 0, "왜": 왜})
+            out.append({"이름": s.이름, "나라": s.나라, "층": s.층, "산것": 0, "왜": 왜})
             continue
         try:
             if s.꼴 == "gdelt":
@@ -327,11 +421,12 @@ def 탐침(출처들=None) -> list:
             elif s.꼴 == "json":
                 got = _json(s)
             else:
-                got = _rss(_http(s.url, timeout=15.0), s)
-            out.append({"이름": s.이름, "나라": s.나라, "산것": len(got),
+                raw, 최종 = _캐기(s.url, timeout=15.0, 곁문수=2)   # 탐침은 곁문 둘만
+                got = (_rss(raw, s) if s.꼴 == "rss" else []) or _html(raw, s, 최종)
+            out.append({"이름": s.이름, "나라": s.나라, "층": s.층, "산것": len(got),
                         "왜": "" if got else "답은 왔는데 글이 0개"})
         except Exception as e:                                        # noqa: BLE001
-            out.append({"이름": s.이름, "나라": s.나라, "산것": 0,
+            out.append({"이름": s.이름, "나라": s.나라, "층": s.층, "산것": 0,
                         "왜": f"{type(e).__name__}: {str(e)[:70]}"})
     return out
 
@@ -339,6 +434,7 @@ def 탐침(출처들=None) -> list:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--탐침", action="store_true")
+    ap.add_argument("--격자", action="store_true", help="나라 x 층 표. 빈 칸을 짚는다")
     ap.add_argument("--하루", action="store_true")
     ap.add_argument("--과거", action="store_true")
     ap.add_argument("--부터", default="")
@@ -349,14 +445,38 @@ def main(argv=None) -> int:
     ap.add_argument("--원장", default="")
     a = ap.parse_args(argv)
 
+    if a.격자:
+        g = SRC.격자()
+        확 = SRC.격자(확인된것만=True)
+        print("     " + "".join(f"{층:^12}" for 층 in SRC.층들))
+        for 나라 in SRC.나라들 + ("XX",):
+            줄 = f"  {나라:<3}"
+            for 층 in SRC.층들:
+                n, c = len(g.get((나라, 층), [])), len(확.get((나라, 층), []))
+                줄 += f"{(f'{n}' if not c else f'{c}/{n}'):^12}"
+            print(줄)
+        빈 = SRC.빈틈()
+        print(f"\n출처 {len(SRC.목록)}곳 · 빈틈 " + (", ".join(f"{a}/{b}" for a, b in 빈)
+                                                  if 빈 else "**없다**"))
+        빈확 = SRC.빈틈(확인된것만=True)
+        print(f"**실제로 답하는 것만 세면 빈틈 {len(빈확)}칸** -- 탐침을 안 돌렸으면 전부다: "
+              + (", ".join(f"{a}/{b}" for a, b in 빈확[:8]) or "없다"))
+        print("  (칸의 수는 '확인된것/전체'. 확인은 --탐침 이 채운다)")
+        return 0
+
     if a.탐침:
         r = 탐침()
         산것 = [x for x in r if x["산것"]]
         for x in r:
             print(f"  {'OK  ' if x['산것'] else '못함'} {x['이름']:<14} {x['나라']:<3} "
-                  f"{x['산것']:>4}건  {x['왜']}")
+                  f"{x.get('층',''):<6} {x['산것']:>4}건  {x['왜']}")
         print(f"\n{len(산것)}/{len(r)} 출처가 답했다. "
               f"나라: {sorted({x['나라'] for x in 산것})}")
+        찬칸 = {(x["나라"], x.get("층", "")) for x in 산것}
+        빈 = [(나, 층) for 나 in SRC.나라들 for 층 in ("규제", "거시", "사법", "거래소", "매체")
+              if (나, 층) not in 찬칸 and ("XX", 층) not in 찬칸]
+        print("**답한 것만 세면 빈 칸**: " + (", ".join(f"{a}/{b}" for a, b in 빈) or "없다")
+              + "  <- 이것이 진짜 덮임이다")
         print("**여기(에이전트 컨테이너)에서는 프록시가 다 막는다 -- VM 에서 돌려라**")
         return 0 if 산것 else 3
 
