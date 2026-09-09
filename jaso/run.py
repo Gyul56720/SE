@@ -179,8 +179,18 @@ def 답받기(터: Path, 답글: str = "") -> tuple:
     return 글, str(p)
 
 
-def 물음내기(터: Path, qs: list, L: LG.원장, 몇: int, 다시: str = "") -> list:
+def 물음내기(터: Path, qs: list, L: LG.원장, 몇: int, 다시: str = "",
+           모델: bool = False) -> list:
     물을것 = AS.물을것(qs, L, 몇)
+    if 모델 and 물을것:
+        from jaso import write as WR
+        try:
+            물을것, n = AS.문구입히기(물을것,
+                                  WR._풀에게(AS.프롬프트(qs, 물을것)))
+            print(f"  (모델이 물음 {n}개의 문구를 이 문항의 말로 썼다)", flush=True)
+        except Exception as e:
+            print(f"  (모델을 못 불렀다 -- 씨앗 문구로 간다: {type(e).__name__})",
+                  flush=True)
     if not 물을것:                       # 물을 것이 없으면 빈 칸을 만들지 않는다
         (터 / "물음.json").write_text(
             json.dumps({"물음": [], "남은것": AS.남은것(qs, L)},
@@ -266,7 +276,7 @@ def 한걸음(a) -> int:
             print(f"  {v}")
 
     # 2) 아직 물을 것이 있으면 **여기서 멈춘다.** 기계가 메울 자리가 아니다.
-    물을것 = 물음내기(터, qs, L, a.몇물음, 다시)
+    물을것 = 물음내기(터, qs, L, a.몇물음, 다시, a.모델물음)
     if 물을것 or 막힌것:
         남 = AS.남은것(qs, L)
         print(f"\n원장: 항목 {남['항목']}개 · 물을 것 {len(물을것)}개\n")
@@ -358,6 +368,8 @@ def main(argv=None) -> int:
                     help="요강·공고·문항 목록 아무 글이나 (파일 경로도 된다).\n갈래를 안 가린다 -- 문항으로 보이는 대목을 캔다")
     ap.add_argument("--곳", default=str(CP.문항DIR))
     ap.add_argument("--답글", dest="답글", default="", help="답을 바로 준다")
+    ap.add_argument("--모델물음", action="store_true",
+                    help="물음 문구를 모델이 이 문항의 말로 쓴다")
     ap.add_argument("--빼기", dest="빼기", action="append", default=[],
                     help="잘못 들어간 항목 id 를 원장에서 뺀다")
     ap.add_argument("--몇", dest="몇", type=int, default=8, help="찾을 주소 수")

@@ -28,6 +28,20 @@
 생성자가 그 자리를 지어내고, 지어낸 지원동기가 바로 P001 에 걸리는 그 문단이다.
 받은 것은 `생각` 으로 원장에 담기고 **구성상 미검증**이라고 표시된다.
 
+## 문구는 모델이 쓴다 -- **무엇을 물을지는 아니다**
+
+    코드   무엇을 물을지 (칸 · 대상 · 왜 · 급함)   빈칸에서 도출. **안 바뀐다**
+    모델   그것을 이 문항의 말로 어떻게 말할지      JSON 으로. `--모델`
+
+`law/METHOD.md` 의 분업 그대로다 -- LLM 은 조문에서 요건을 뽑고 쟁점은 코드가
+도출한다. 여기서는 코드가 무엇을 물을지 정하고 모델은 그것을 옮긴다.
+
+**칸과 대상은 모델이 못 바꾼다.** 바꾸면 답이 엉뚱한 데로 들어가고, 그러면 원장이
+오염된다. 모델이 주는 것은 `말`과 `보기` 뿐이고, id 가 안 맞으면 **씨앗 문구로
+되돌린다** -- 모델이 죽거나 엉뚱한 것을 줘도 물음은 나간다.
+
+`--모델` 없이도 돈다. 씨앗 문구는 어느 문항에나 맞는 대신 그 문항의 말이 아니다.
+
 ## 안 묻는 것
 
 - **"당신의 강점은 무엇입니까"** 를 안 묻는다. 그것은 사실에서 나올 결론이지 재료가
@@ -43,8 +57,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -186,6 +201,88 @@ def 물을것(문항들: list, L: LG.원장, 몇: int = 8) -> list:
     return out[:몇] if 몇 else out
 
 
+# 칸이 **무엇을 알아내는 자리인지**. 문구가 아니라 뜻이다 -- 모델이 이것을 이
+# 문항의 말로 옮긴다. 관문 이름은 한 글자도 없다.
+칸뜻 = {
+    "새항목": "이 문항에 쓸 실제 경험 하나. 무엇을 · 어디서 · 언제부터 언제까지 · "
+             "무슨 역할로 했는지",
+    "역할": f"그 일에서 맡은 몫 ({' · '.join(LG.역할들)} 중 하나)",
+    "언제": "그 일의 기간 (YYYY-MM 부터 YYYY-MM 까지)",
+    "잰것": "그 일로 무엇이 달라졌는지. 잰 수가 있으면 그 수와 재는 법",
+    "어떻게": "그 수를 어떻게 쟀는지 (무엇을 · 얼마 동안 · 몇 건으로)",
+    "쓴것": "그 경험에서만 나올 수 있는 고유한 것 (쓴 도구 · 기관 이름 · 다룬 수)",
+    "증빙": "면접에서 물으면 보여 줄 수 있는 것",
+    "생각": "사실이 아니라 본인의 생각",
+}
+
+
+def 프롬프트(문항들: list, 물음들: list) -> str:
+    """**문구만 시킨다.** 무엇을 물을지는 이미 정해져 있다.
+
+    관문 이름이 한 글자도 없다 -- 실으면 모델이 관문을 통과하는 물음을 쓴다.
+    """
+    문 = "\n".join(f"- {q.원문}" for q in 문항들[:4]) or "(문항이 없습니다)"
+    할것 = "\n".join(
+        f'  {{"id": "{x.id}", "알아낼 것": "{칸뜻.get(x.칸.split(":")[0], x.칸)}"'
+        + (f', "갈래": "{x.칸.split(":")[1]}"' if ":" in x.칸 else "") + "}"
+        for x in 물음들)
+    return f"""아래 문항에 답할 사람에게 물어볼 말을 지어 주십시오.
+
+## 문항
+
+{문}
+
+## 물어야 할 것 (이 목록은 바꾸지 마십시오)
+
+{할것}
+
+## 어떻게
+
+- 목록의 `id` 마다 하나씩, **그 문항의 말로** 물으십시오. 위 문항이 편입이면 편입의
+  말로, 채용이면 그 직무의 말로.
+- **답하기 쉽게** 물으십시오 -- 무엇을 적어야 할지 한 번에 알 수 있게.
+- 짧게 쓴 **보기**를 하나씩 붙이십시오.
+- `id` 를 바꾸거나 빼거나 더하지 마십시오.
+
+## 꼴
+
+JSON 만 출력하십시오. 다른 말을 붙이지 마십시오.
+
+{{"물음": [{{"id": "Q1", "말": "…", "보기": "…"}}]}}"""
+
+
+_울타리 = re.compile(r"^\s*```(?:json)?\s*|\s*```\s*$")
+
+
+def 문구입히기(물음들: list, 답: str) -> tuple:
+    """모델이 준 말을 얹는다. **칸·대상·왜는 코드 것을 지킨다.** `(물음들, 붙은수)`
+
+    id 가 안 맞으면 그 물음은 씨앗 문구 그대로 둔다 -- 모델이 죽거나 엉뚱한 것을
+    줘도 물음은 나가야 한다.
+
+    **받은 것을 안 바꾼다.** 실측: 제자리에서 고쳤더니 부르는 쪽의 목록까지 같이
+    바뀌어, 되돌릴 씨앗 문구가 이미 없어져 있었다(검사가 잡았다). 되돌림이 있는
+    함수가 되돌릴 것을 지워 버리면 되돌림이 아니다.
+    """
+    물음들 = [replace(x) for x in 물음들]
+    try:
+        것 = json.loads(_울타리.sub("", (답 or "").strip()))
+        벌 = {str(x.get("id") or ""): x for x in (것.get("물음") or [])
+             if isinstance(x, dict)}
+    except (json.JSONDecodeError, AttributeError, TypeError):
+        return 물음들, 0
+    n = 0
+    for x in 물음들:
+        새 = 벌.get(x.id)
+        if not 새 or not str(새.get("말") or "").strip():
+            continue
+        x.말 = str(새["말"]).strip()          # **말과 보기만** 갈아 끼운다
+        if str(새.get("보기") or "").strip():
+            x.보기 = str(새["보기"]).strip()
+        n += 1
+    return 물음들, n
+
+
 def 남은것(문항들: list, L: LG.원장) -> dict:
     """지금 **무엇이 미검증인가**. 물음을 다 답하면 이 수가 준다."""
     막힌것 = len(LG.hard(LG.검사(L)))
@@ -206,6 +303,8 @@ def main(argv=None) -> int:
     ap.add_argument("--곳", default=str(CP.문항DIR))
     ap.add_argument("--몇", dest="몇", type=int, default=8)
     ap.add_argument("--json", dest="asjson", action="store_true")
+    ap.add_argument("--모델", action="store_true",
+                    help="물음 **문구**를 모델이 이 문항의 말로 쓴다 (칸은 안 바뀐다)")
     a = ap.parse_args(argv)
 
     문항들 = [IT.쪼개기(x, str(i + 1)) for i, x in enumerate(a.문항)]
@@ -214,6 +313,15 @@ def main(argv=None) -> int:
     L = LG.읽기(a.표) if a.표 else LG.원장()
 
     qs = 물을것(문항들, L, a.몇)
+    if a.모델 and qs:
+        from jaso import write as WR
+        try:
+            qs, n = 문구입히기(qs, WR._풀에게(프롬프트(문항들, qs)))
+            print(f"(모델이 물음 {n}/{len(qs)}개의 문구를 이 문항의 말로 썼다)",
+                  file=sys.stderr)
+        except Exception as e:
+            print(f"(모델을 못 불렀다 -- 씨앗 문구로 간다: {type(e).__name__})",
+                  file=sys.stderr)
     남 = 남은것(문항들, L)
     if a.asjson:
         print(json.dumps({"물음": [x.__dict__ for x in qs], "남은것": 남},
