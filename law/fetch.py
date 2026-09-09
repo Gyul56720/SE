@@ -481,6 +481,7 @@ def sweep_prec(query: str, oc: str, root: Path, fetcher=None, display: str = "10
     page = (앞선.get("마지막쪽", 0) + 1) if 앞선 else start
     받음, 총 = 앞선.get("받음", 0), 앞선.get("총건수", 0)
     처음쪽 = page
+    색인 = CP.load_cases(root) if not dry else {}    # 한 번만 만든다
     while True:
         xml = get(_url(SEARCH, oc, target="prec", query=query,
                        display=display, page=str(page), **(params or {})), oc)
@@ -489,7 +490,8 @@ def sweep_prec(query: str, oc: str, root: Path, fetcher=None, display: str = "10
         if not rows:
             break
         yield {"쪽": page, "총건수": 총, "목록": len(rows),
-               "받음": pull_prec("", oc, root, fetcher=get, dry=dry, rows=rows)}
+               "받음": pull_prec("", oc, root, fetcher=get, dry=dry, rows=rows,
+                                있는것=색인)}
         받음 += len(rows)
         if not dry:
             _자리적기(root, 키, page, 총, 받음)
@@ -516,7 +518,8 @@ def sweep_prec(query: str, oc: str, root: Path, fetcher=None, display: str = "10
 
 
 def pull_prec(query: str, oc: str, root: Path, fetcher=None, sid: str = "",
-              dry: bool = False, display: str = "20", rows=None) -> list:
+              dry: bool = False, display: str = "20", rows=None,
+              있는것=None) -> list:
     """판례를 받아 저장한다. 검색어는 사건번호여도 되고 사건명이어도 된다.
 
     **사건번호가 안 실린 것은 저장하지 않는다.** 첫 줄이 원장의 색인이라, 사건번호가
@@ -535,7 +538,13 @@ def pull_prec(query: str, oc: str, root: Path, fetcher=None, sid: str = "",
     # **이어한다.** 목록에 사건번호가 이미 실려 오므로, 원장에 있는 것은 본문 호출을
     # 아예 안 한다. 분당 한도가 있는 곳에서 이것이 제일 크게 아끼는 자리다 --
     # 제한에 걸려 중간에 끊겨도 다시 부르면 안 받은 것부터 이어간다.
-    있는것 = CP.load_cases(root) if not sid else {}
+    # **색인을 쪽마다 다시 만들지 않는다.** `load_cases` 는 원장의 파일을 전부 열어
+    # 첫 줄을 읽는다. 훑기가 쪽마다 이것을 부르면 열기 횟수가 제곱으로 는다 --
+    # 실측 예정치(민법 본문검색 16,624건 · 100건씩 167쪽): 약 140만 번. 무료 VM 의
+    # 느린 디스크에서는 이것이 API 기다리는 시간보다 커질 수 있다.
+    # 훑기가 색인을 한 번 만들어 넘겨주면 그 자리가 사라진다(아래에서 갱신한다).
+    if 있는것 is None:
+        있는것 = CP.load_cases(root) if not sid else {}
     out = []
     for r in rows:
         ident = r.get("일련번호")
@@ -572,6 +581,10 @@ def pull_prec(query: str, oc: str, root: Path, fetcher=None, sid: str = "",
             path.write_text(prec_header(meta) + "\n" + text.rstrip() + "\n",
                             encoding="utf-8")
             got["저장"] = str(path)
+            # 넘겨받은 색인을 그 자리에서 갱신한다. 다음 쪽이 이것을 그대로 쓴다.
+            있는것[CP.normalize_case(meta["사건번호"])] = {
+                "법원": meta["법원명"], "선고일자": meta["선고일자"],
+                "사건명": meta["사건명"], "파일": str(path)}
         out.append(got)
     return out
 
