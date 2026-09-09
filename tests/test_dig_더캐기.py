@@ -30,6 +30,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from dig import extract as EX                                  # noqa: E402
+from dig import fetch as FT                                    # noqa: E402
 from dig import run as RN                                      # noqa: E402
 from dig import search as SC                                   # noqa: E402
 
@@ -190,6 +191,72 @@ ok(len(set(이름들)) == len(이름들), "이름이 안 겹친다 -- 겹치면 
 ok(all("{q}" in 꼴 for _n, 꼴 in SC.틀들()), "틀마다 물음 자리가 있다")
 ok(len(SC.주소들("가 나", ["ddg-html"])) == 1, "--문 으로 하나만 고를 수 있다")
 ok("%EA%B0%80" in SC.주소들("가", ["ddg-html"])[0][1], "한글을 감싼다")
+
+print()
+print("── 층이 여럿이면 그만큼 파고드는가 ─────────────────────────")
+# 실측 2026-09-09, 사용자: "왜 dig 가 더 깊게 안 들어가지?" -- 합격수기 쪽을
+# 걸었는데 **제목만** 나왔다. 못 들어간 것이 아니라 **안 들어가게 짜여 있었다**:
+# 안쪽으로 파는 자리가 `if 따라 > 0:` 한 번이라 `--따라` 를 아무리 키워도
+# 깊이는 늘 1 이었다. 실제 쪽은 대개 세 층이다.
+집 = {
+    "https://ex.kr/hall": '<html><body><h1>명예의 전당</h1>'
+                          '<a href="/login">로그인</a>'
+                          '<a href="/univ/hanyang">한양대 편입 합격수기</a>'
+                          '<a href="/univ/sogang">서강대 편입 합격수기</a></body></html>',
+    "https://ex.kr/univ/hanyang": '<html><body>'
+                                  '<a href="/story/11">학점 2.8로 9관왕, 그 비결</a>'
+                                  '<a href="/story/12">학교병행 10관왕 달성</a></body></html>',
+    "https://ex.kr/univ/sogang": '<html><body>'
+                                 '<a href="/story/21">꼴찌의 반란</a></body></html>',
+    "https://ex.kr/story/11": '<html><body><p>본문이다. 나는 2학년 때 학점이 '
+                              '2.8이었다. 그해 겨울부터 하루 열두 시간을 …</p></body></html>',
+    "https://ex.kr/story/12": '<html><body><p>본문이다. 학교를 다니면서 …</p></body></html>',
+    "https://ex.kr/story/21": '<html><body><p>본문이다. 꼴찌였다 …</p></body></html>',
+}
+
+
+def _가짜받기(url, 헤더, 틈=20.0):
+    r = FT.응답(url=url, 최종url=url)
+    if url in 집:
+        r.몸통, r.꼴, r.코드 = 집[url], "text/html", 200
+    else:
+        r.코드, r.왜 = 404, "HTTP 404"
+    return r
+
+
+진짜 = FT.한번
+FT.한번 = _가짜받기
+try:
+    응답들, 뽑 = RN.캐기(["https://ex.kr/hall"], 앞문만=True, 따라=4,
+                       찾을말=["합격수기", "수기"], 깊이=1)
+    받은 = {r.url for r in 응답들 if r.몸통}
+    ok(any("/univ/" in u for u in 받은), "깊이 1 이면 한 층은 간다 (목록 -> 대학별)")
+    ok(not any("/story/" in u for u in 받은),
+       "**깊이 1 로는 수기 본문에 못 닿는다** -- 이것이 '제목만 나온다' 의 정체다")
+
+    응답들, 뽑 = RN.캐기(["https://ex.kr/hall"], 앞문만=True, 따라=4,
+                       찾을말=["합격수기", "수기"], 깊이=2)
+    받은 = {r.url for r in 응답들 if r.몸통}
+    ok(sum(1 for u in 받은 if "/story/" in u) >= 2,
+       f"**깊이 2 면 수기 본문까지 간다** ({sorted(u[-9:] for u in 받은 if '/story/' in u)})")
+    글 = " ".join(x.get("글") or "" for x in 뽑)
+    ok("학점이 2.8" in 글 and "꼴찌였다" in 글,
+       "**본문이 실제로 들어온다** -- 제목이 아니라 글이")
+
+    앞것 = [r.url for r in 응답들]
+    ok(len(앞것) == len(set(앞것)),
+       f"**같은 쪽을 두 번 안 받는다** ({len(앞것)}개) -- 홉마다 다시 훑으면 제자리를 돈다")
+
+    응답들, _ = RN.캐기(["https://ex.kr/hall"], 앞문만=True, 따라=40,
+                      깊이=5, 쪽상한=3)
+    ok(len(응답들) <= 6,
+       f"**쪽상한이 고삐가 된다** ({len(응답들)}쪽) -- 없으면 한 줄이 한 집을 통째로 긁는다")
+
+    응답들, _ = RN.캐기(["https://ex.kr/hall"], 앞문만=True, 따라=0, 깊이=3)
+    ok(len(응답들) == 1,
+       "**--따라 가 0 이면 깊이를 줘도 안 판다** -- 예전 쓰임이 안 깨진다")
+finally:
+    FT.한번 = 진짜
 
 print()
 print("── 캔 것이 사용자에게 닿기까지 살아 있는가 ─────────────────")
