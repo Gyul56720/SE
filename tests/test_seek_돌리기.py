@@ -16,6 +16,7 @@ LLM·네트워크 없이 돈다. 실행: python3 tests/test_seek_돌리기.py
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -72,28 +73,70 @@ ok("origin/main" not in 글, "origin/main 을 아무 브랜치에나 안 건다"
 ok("merge --abort" in 글, "충돌하면 되돌리고 사람에게 넘긴다")
 
 print("\n== 밀기를 되풀이한다 ==")
-ok("sleep" in 글 and "2 ** 번" in 글, "실패하면 2·4·8·16초로 물러나며 다시 민다")
+ok("sleep" in 글 and "2 ** TRY" in 글, "실패하면 2·4·8·16초로 물러나며 다시 민다")
 
 print("\n== 백그라운드로 띄우는 법을 적어 놨다 ==")
 ok("setsid nohup" in 글 and "disown" in 글, "setsid nohup ... disown 이 적혀 있다")
 ok("pgrep -af" in 글, "**pgrep -af 로 확인하라고 적는다** -- ps -p $! 는 거짓 음성을 낸다")
 ok("ps -p $!" in 글, "왜 그것이 아닌지도 적는다")
 
-print("\n== 훑기 -> 보고서가 실제로 이어진다 ==")
-# 씨앗만 있는 새 원장에서 짧게 돌려 본다. 밀기까지 가면 안 되므로 --초 를 아주 짧게
-_tmp = Path(tempfile.mkdtemp())
-_env = dict(os.environ, SEEK_LEDGER=str(_tmp / "led.json"))
-_r2 = subprocess.run([sys.executable, str(뿌리 / "seek" / "sweep.py"),
-                      "--초", "20", "--tries", "400000"],
-                     capture_output=True, text=True, env=_env, cwd=str(뿌리), timeout=600)
-ok(_r2.returncode == 0, f"훑기가 돈다 (종료 {_r2.returncode})")
-_r3 = subprocess.run([sys.executable, str(뿌리 / "seek" / "report.py")],
-                     capture_output=True, text=True, env=_env, cwd=str(뿌리))
-ok("답이 있는 것 5개" in _r3.stdout,
-   f"**훑고 나면 답이 찬다** -- 그러면 보고서에 경고가 안 붙는다\n"
-   f"        {_r3.stdout.splitlines()[2] if len(_r3.stdout.splitlines()) > 2 else ''}")
-ok("안 풀렸다" not in _r3.stdout.split("## 감사")[0],
-   "다 푼 원장에는 '안 풀렸다' 가 없다")
+print("\n== 셸 변수 이름이 ASCII 다 ==")
+# **실측 2026-09-09: 이 파일 전체가 안 돌았다.** bash 는 식별자로
+# [A-Za-z_][A-Za-z0-9_]* 만 받는다. `초=25` 는 대입이 아니라 **명령어**로 파싱되고,
+# `set -u` 아래에서 `$초` 는 unbound 라 첫 줄에서 죽는다.
+#
+# `bash -n` 은 이것을 안 잡는다 -- 문법으로는 그냥 "명령어 하나" 라서 멀쩡하다.
+# 그래서 아래 '진짜로 돌려 본다' 가 있다. 텍스트만 보던 것이 이 병의 원인이다.
+import re                                                     # noqa: E402
+_대입 = re.findall(r"^\s*([^\s=]+)=", 글, re.M)
+_한글 = [v for v in _대입 if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", v)]
+ok(not _한글, f"**대입되는 이름이 다 ASCII 다** ({_한글})  <- 한글이면 안 돈다")
+ok("변수 이름을 한글로 쓰지 마라" in 글, "왜인지 파일에 적어 놨다 -- 다음 사람이 또 쓴다")
+
+print("\n== 진짜로 돌려 본다 ==")
+# **여기가 이 검사의 요점이다.** 앞의 것들은 다 텍스트를 봤고, 텍스트는 이 파일이
+# 한 줄도 안 도는 동안에도 다 통과했다. 돌려 봐야 안다.
+# **저장소를 새로 짓는다.** 이 세션의 clone 은 shallow 라 그대로 복제하면
+# `shallow update not allowed` 로 밀기가 막힌다 -- 그러면 [4/4] 를 못 재본다.
+_일터 = Path(tempfile.mkdtemp())
+_먼곳 = _일터 / "remote.git"
+subprocess.run(["git", "init", "-q", "--bare", str(_먼곳)], check=True)
+_여기 = _일터 / "work"
+_여기.mkdir()
+for _칸 in ("seek", "scripts", "orchestrator"):
+    shutil.copytree(뿌리 / _칸, _여기 / _칸,
+                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+(_여기 / "seek" / "ledger.json").unlink(missing_ok=True)      # 씨앗부터 시작한다
+subprocess.run(["git", "init", "-q", "-b", "main", str(_여기)], check=True)
+for _k, _v in (("user.email", "t@t"), ("user.name", "t")):
+    subprocess.run(["git", "-C", str(_여기), "config", _k, _v], check=True)
+subprocess.run(["git", "-C", str(_여기), "add", "-A"], check=True)
+subprocess.run(["git", "-C", str(_여기), "commit", "-q", "-m", "밑동"], check=True)
+subprocess.run(["git", "-C", str(_여기), "remote", "add", "origin", str(_먼곳)], check=True)
+subprocess.run(["git", "-C", str(_여기), "push", "-q", "-u", "origin", "main"], check=True)
+
+_r4 = subprocess.run(["bash", "scripts/seek.sh", "25", "400000"],
+                     capture_output=True, text=True, cwd=str(_여기), timeout=900)
+_말 = _r4.stdout + _r4.stderr
+ok(_r4.returncode == 0, f"끝까지 돈다 (종료 {_r4.returncode})\n{_말[-500:]}")
+for _단 in ("[1/4]", "[2/4]", "[3/4]", "[4/4]"):
+    ok(_단 in _말, f"{_단} 를 지난다")
+ok("unbound variable" not in _말 and "No such file or directory" not in _말,
+   f"**대입이 명령어로 새지 않는다**\n{_말[:300]}")
+ok("끝났다" in _말, f"끝났다고 말한다\n{_말[-300:]}")
+
+print("\n== 돌고 나면 정말 커밋되어 있다 ==")
+_로그 = subprocess.run(["git", "-C", str(_여기), "log", "--oneline", "-1", "origin/main"],
+                      capture_output=True, text=True).stdout.strip()
+ok("seek 결과 -- 푼 것" in _로그, f"**원격에 커밋이 올라가 있다** ({_로그})")
+ok("/5" in _로그 or "/" in _로그.split("푼 것")[-1],
+   f"몇 개를 풀었는지 적힌다 ({_로그})")
+ok("?" not in _로그.split("푼 것")[-1],
+   f"셈이 실패하지 않았다 ({_로그})  <- '?' 면 파이썬 토막이 터진 것이다")
+_보 = subprocess.run(["git", "-C", str(_여기), "show", "origin/main:seek/report.md"],
+                     capture_output=True, text=True).stdout
+ok("답이 있는 것 5개" in _보, f"**올라간 보고서에 답이 차 있다**\n{_보[:160]}")
+ok("안 풀렸다" not in _보.split("## 감사")[0], "덜 푼 경고가 안 붙어 있다")
 
 print()
 if FAIL:
