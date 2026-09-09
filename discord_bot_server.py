@@ -382,7 +382,19 @@ async def on_ready():
         print(f"[SE-agent] **경고: 채널 id 로 못 읽은 값** "
               f"{main_public.PUBLIC_CHANNEL_이상} -- 그 채널은 안 듣는다")
     for cid in [ADMIN_CHANNEL_ID] + list(main_public.PUBLIC_CHANNEL_IDS):
-        if client.get_channel(cid):
+        ch = client.get_channel(cid)
+        if ch:
+            # **보이는 것과 듣는 것은 다르다.** 길드 필터가 켜져 있는데 그 채널이
+            # 다른 길드에 있으면, 봇은 채널을 멀쩡히 보면서 그 채널의 메시지를
+            # 전부 버린다 -- `on_message` 가 길드부터 보기 때문이다. 그러면 화면에는
+            # '감시 중' 이라고 찍히는데 실제로는 아무 말도 안 듣는다.
+            # 실측 2026-09-09: 8월에 만든 채널들과 9월에 만든 길드를 같이 켰다.
+            그길드 = getattr(getattr(ch, "guild", None), "id", None)
+            if GUILD_ID and 그길드 != GUILD_ID:
+                print(f"[SE-agent] **경고: 채널 {cid} 는 길드 {그길드} 에 있는데 "
+                      f"DISCORD_GUILD_ID 는 {GUILD_ID} 다.** 채널은 보이지만 "
+                      "**그 채널 메시지는 전부 버려진다.** 길드를 그 값으로 바꾸거나 "
+                      "DISCORD_GUILD_ID 를 비워라")
             continue
         왜 = ("**이건 길드 id 다** -- 채널 자리에 넣으면 영영 안 맞는다"
               if cid == GUILD_ID else
