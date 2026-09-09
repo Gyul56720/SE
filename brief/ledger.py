@@ -20,7 +20,7 @@ import os
 import urllib.parse
 import urllib.request
 from dataclasses import asdict, dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -75,6 +75,22 @@ def _num(v):
         return float(t)
     except ValueError:
         return None
+
+
+def _날짜로(v) -> str:
+    """epoch 초 -> `YYYY-MM-DD` (UTC). 못 읽으면 빈 문자열 -- 지어내지 않는다.
+
+    UTC 로 맞추는 이유: 일봉의 timestamp 는 장이 여는 시각이라 시장마다 다르다.
+    코스피 09:00 KST 는 00:00 UTC, 나스닥 09:30 EDT 는 13:30 UTC -- **UTC 날짜로는
+    같은 날**이다. 현지 시각으로 맞추면 어느 쪽 현지인지를 또 정해야 한다.
+    """
+    n = _num(v)
+    if n is None or not (0 < n < 4e10):        # 초 단위 epoch 이 아닌 것은 안 건드린다
+        return ""
+    try:
+        return datetime.fromtimestamp(n, tz=timezone.utc).date().isoformat()
+    except (OverflowError, OSError, ValueError):
+        return ""
 
 
 def _transpose(d: dict) -> list:
@@ -279,6 +295,8 @@ def inspect(src, rows: list) -> dict:
         # key 를 못 정했으면 **자리 번호로 가리킨다.** 없는 이름을 지어내지 않고,
         # 그래도 B002 가 되짚을 자리는 있어야 한다.
         rid = str(r.get(key) or "").strip() if key else f"행{i}"
+        if rid and getattr(src, "id꼴", "") == "날짜":
+            rid = _날짜로(rid) or rid
         if not rid:
             continue
         # **key 로 쓴 칸은 값으로 다시 싣지 않는다.** 그것은 줄의 **이름**이지

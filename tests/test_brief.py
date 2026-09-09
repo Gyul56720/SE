@@ -318,6 +318,47 @@ finally:
 
 
 print()
+print("── **--짧게: 한 메시지에 들어가되 규율은 안 줄인다** ──────")
+import datetime as _dt, random as _rnd
+_r = _rnd.Random(9); _n = 244; _lv = 2500.0
+_ts, _o, _h, _l, _c, _v = [], [], [], [], [], []
+_b = int(_dt.datetime(2025, 9, 9).timestamp())
+for _i in range(_n):
+    _op = _lv; _cl = _op * (1 + _r.gauss(0, 1.0) / 100)
+    _ts.append(_b + _i * 86400); _o.append(round(_op, 2)); _c.append(round(_cl, 2))
+    _h.append(round(max(_op, _cl) * 1.004, 2)); _l.append(round(min(_op, _cl) * 0.996, 2))
+    _v.append(_r.randint(3 * 10**5, 5 * 10**5)); _lv = _cl
+_몸 = json.dumps({"chart": {"result": [{"timestamp": _ts, "indicators": {"quote": [
+    {"open": _o, "high": _h, "low": _l, "close": _c, "volume": _v}]}}], "error": None}})
+원래get = LG.get
+try:
+    LG.get = lambda u, timeout=30.0: _몸
+    _, 짧 = run(["야후", "--것", "코스피", "--따질", "close", "--짧게"])
+    _, 전 = run(["야후", "--것", "코스피", "--따질", "close"])
+    ok(len(짧) < len(전), f"짧게가 더 짧다 ({len(짧)} < {len(전)}자)")
+    ok(len(짧) <= RP.DISCORD, f"**Discord 한도 안에 든다** ({len(짧)}자 <= {RP.DISCORD})")
+    for 것 in ("평범", "p ", "표본 242", "위반 없음", "안 보는 것", "전문:"):
+        ok(것 in 짧, f"**{것!r} 는 줄여도 남는다** -- 이것이 빠지면 판정을 못 읽는다")
+    ok("칸마다" not in 짧 and "줄마다" not in 짧, "표와 산문은 빠진다")
+
+    # 넓게 물으면 명제가 16개 -- 그래도 한도 안이어야 하고 판정 수는 남아야 한다
+    _, 넓 = run(["야후", "--것", "코스피", "--짧게"])
+    ok(len(넓) <= RP.DISCORD, f"**명제 16개여도 한도 안** ({len(넓)}자)")
+    ok("따짐 16" in 넓, "몇 개를 따졌는지는 무슨 일이 있어도 남는다")
+    ok("못잼 16" in 넓, "판정 수도 남는다")
+    ok("도달 가능한 최소 p" in 넓, "**왜 못잼인지**도 남는다")
+
+    # 잘렸으면 잘렸다고 적는다
+    _, 좁 = run(["야후", "--것", "코스피", "--짧게"])
+    if "…명제" in 좁:
+        ok("판정 수는 위에 다 있다" in 좁, "뺐으면 뺐다고 적고 어디를 보라고 알려 준다")
+    else:
+        ok(True, "이번엔 다 들어갔다 (자르기는 한도를 넘을 때만 돈다)")
+finally:
+    LG.get = 원래get
+
+
+print()
 if fails:
     print(f"보고: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)
