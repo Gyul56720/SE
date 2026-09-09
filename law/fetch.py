@@ -422,21 +422,68 @@ def prec_header(meta: dict) -> str:
             f"# 이 파일은 받은 것이다. 손으로 고치지 마라 -- 고치려면 다시 받아라.\n")
 
 
+PROGRESS_FILE = "_훑던자리.json"
+
+
+def _훑기키(query: str, params: dict | None) -> str:
+    """어느 훑기인지 가리키는 이름. 검색어가 같아도 **거르개가 다르면 다른 훑기다.**"""
+    꼬리 = "&".join(f"{k}={v}" for k, v in sorted((params or {}).items()))
+    return f"{query}|{꼬리}" if 꼬리 else query
+
+
+def 훑던자리(root: Path) -> dict:
+    """어디까지 훑었는가. 없으면 빈 것."""
+    p = Path(root) / PROGRESS_FILE
+    if not p.is_file():
+        return {}
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}                    # 못 읽으면 처음부터. **거짓 진행을 만들지 않는다**
+
+
+def _자리적기(root: Path, 키: str, 쪽: int, 총: int, 받음: int) -> None:
+    자리 = 훑던자리(root)
+    자리[키] = {"마지막쪽": 쪽, "총건수": 총, "받음": 받음,
+                "때": time.strftime("%Y-%m-%d %H:%M:%S")}
+    (Path(root) / PROGRESS_FILE).write_text(
+        json.dumps(자리, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
 def sweep_prec(query: str, oc: str, root: Path, fetcher=None, display: str = "100",
-               start: int = 1, pages: int = 0, dry: bool = False):
+               start: int = 1, pages: int = 0, dry: bool = False,
+               params: dict | None = None, 이어: bool = False):
     """**목록을 쪽 단위로 훑는다.** 한 쪽 받고 그 쪽을 다 받은 뒤 다음 쪽으로.
 
     쪽마다 곧바로 저장하는 것이 요점이다. 분당 한도에 걸려 중간에 끊겨도 받은 것은
     원장에 남고, 다시 부르면 `pull_prec` 의 이어하기가 이미 있는 건을 건너뛴다.
 
-    끝까지 훑었으면 `_받은범위.json` 에 적는다. **그 기록이 있어야만** L004 가
-    "원장에 없다 = 지어냈다" 로 올라간다(`corpus.covers_cases()`). 없으면 미검증이다.
+    ## 며칠짜리 훑기를 견디게 한다
+
+    민법 판례는 분당 20회로 며칠이 걸린다. 그 사이에 한 번도 안 끊길 리 없다.
+    그래서 **쪽마다 `_훑던자리.json` 에 적는다.** `이어=True` 면 거기서 이어간다.
+
+    이것이 없을 때 **조용한 버그가 있었다**: `--쪽 50` 으로 다시 시작하면 `받음` 이
+    0부터 세어져서 `받음 >= 총` 이 영영 참이 안 되고, 그러면 `_받은범위.json` 이
+    안 써진다. 훑기는 멀쩡히 끝나는데 **원장은 영원히 '아직 덜 받았다'** 로 남고
+    L004 가 기각으로 안 올라간다. 받아 놓고도 못 쓰는 꼴이다.
+
+    ## 거르개는 넘겨받기만 한다
+
+    `params` 는 API 에 **그대로 실어 보낸다.** 어느 인자가 '민법 판례' 를 골라 주는지
+    여기서 정하지 않는다 -- 기억으로 인자 이름을 적어 두면 그것이 틀렸을 때
+    "그런 판례가 없다" 는 거짓 결론이 조용히 남는다(`--이력` 에서 겪은 그 병).
+    후보를 실어 보내고 **총건수를 보고** 사람이 고른다.
     """
     get = fetcher or _get
-    page, 받음, 총 = start, 0, 0
+    키 = _훑기키(query, params)
+    앞선 = 훑던자리(root).get(키, {}) if 이어 else {}
+    page = (앞선.get("마지막쪽", 0) + 1) if 앞선 else start
+    받음, 총 = 앞선.get("받음", 0), 앞선.get("총건수", 0)
+    처음쪽 = page
     while True:
         xml = get(_url(SEARCH, oc, target="prec", query=query,
-                       display=display, page=str(page)), oc)
+                       display=display, page=str(page), **(params or {})), oc)
         총 = 총 or prec_total(xml)
         rows = parse_prec_search(xml)
         if not rows:
@@ -444,14 +491,28 @@ def sweep_prec(query: str, oc: str, root: Path, fetcher=None, display: str = "10
         yield {"쪽": page, "총건수": 총, "목록": len(rows),
                "받음": pull_prec("", oc, root, fetcher=get, dry=dry, rows=rows)}
         받음 += len(rows)
+        if not dry:
+            _자리적기(root, 키, page, 총, 받음)
         page += 1
-        if (pages and page - start >= pages) or (총 and 받음 >= 총):
+        if (pages and page - 처음쪽 >= pages) or (총 and 받음 >= 총):
             break
     if not dry and 총 and 받음 >= 총:
-        (root / CP.SCOPE_FILE).write_text(
-            json.dumps({"전부": True, "검색어": query, "총건수": 총,
-                        "받은날": time.strftime("%Y-%m-%d")},
-                       ensure_ascii=False, indent=2), encoding="utf-8")
+        # **여러 번 훑을 수 있다.** 민법을 한 검색어로 다 못 긁으므로 훑은 것을
+        # 쌓아 둔다. `전부` 는 지금까지 끝낸 훑기가 하나라도 있다는 뜻이다.
+        p = Path(root) / CP.SCOPE_FILE
+        옛 = {}
+        if p.is_file():
+            try:
+                옛 = json.loads(p.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                옛 = {}
+        훑은것 = [x for x in 옛.get("훑은것", []) if x.get("키") != 키]
+        훑은것.append({"키": 키, "검색어": query, "거르개": params or {},
+                       "총건수": 총, "받은날": time.strftime("%Y-%m-%d")})
+        p.write_text(json.dumps({"전부": True, "검색어": query, "총건수": 총,
+                                 "받은날": time.strftime("%Y-%m-%d"),
+                                 "훑은것": 훑은것},
+                                ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def pull_prec(query: str, oc: str, root: Path, fetcher=None, sid: str = "",
@@ -607,6 +668,12 @@ def main(argv=None):
     ap.add_argument("--전부", dest="sweep", action="store_true",
                     help="목록을 쪽 단위로 끝까지 훑는다 (이어할 수 있다)")
     ap.add_argument("--쪽", dest="page", type=int, default=1, help="--전부 시작 쪽")
+    ap.add_argument("--이어", dest="resume", action="store_true",
+                    help="`_훑던자리.json` 에 적힌 다음 쪽부터. 며칠짜리 훑기용")
+    ap.add_argument("--거르개", dest="filters", action="append", default=[],
+                    metavar="key=value",
+                    help="검색에 그대로 실어 보낼 인자(여러 번 줄 수 있다). "
+                         "어느 인자가 민법 판례를 골라 주는지 **재고 나서 고른다**")
     ap.add_argument("--쪽수", dest="pages", type=int, default=0,
                     help="--전부 에서 이번에 돌 쪽 수 (0 이면 끝까지)")
     ap.add_argument("--oc", default="", help="인증키. 없으면 .env 의 LAW_API_OC")
@@ -624,6 +691,13 @@ def main(argv=None):
     ap.add_argument("--dry", action="store_true", help="받되 파일은 안 쓴다")
     a = ap.parse_args(argv)
     a.oc = a.oc or oc_from_env()
+    거르개 = {}
+    for kv in a.filters:
+        if "=" not in kv:
+            print(f"--거르개 는 key=value 꼴이다 (받은 것 {kv!r})", file=sys.stderr)
+            return 2
+        k, _, v = kv.partition("=")
+        거르개[k.strip()] = v.strip()
 
     if not a.oc:
         print("인증키가 없다. open.law.go.kr 에서 OPEN API 를 신청하고 발급받은 "
@@ -688,21 +762,30 @@ def main(argv=None):
         for q in a.names:
             try:
                 if a.list:
-                    xml = _get(_url(SEARCH, a.oc, target="prec",
-                                    query=q, display=a.display), a.oc)
+                    xml = _get(_url(SEARCH, a.oc, target="prec", query=q,
+                                    display=a.display, **거르개), a.oc)
                     rows, 총 = parse_prec_search(xml), prec_total(xml)
                     분 = (총 * 2 / RPM) if 총 else 0
-                    print(f"\n[{q}] 총 {총 or '?'}건 · 이 쪽 {len(rows)}건")
+                    print(f"\n[{q}] 총 {총 or '?'}건 · 이 쪽 {len(rows)}건"
+                          + (f" · 거르개 {거르개}" if 거르개 else ""))
                     if 총:
+                        일 = 분 / 60 / 24
                         print(f"  전부 받으면 호출 약 {총 * 2}회 · 분당 {RPM} 이면 "
-                              f"**{분 / 60:.1f}시간**  (--쪽수 로 끊어 돌 수 있다)")
+                              f"**{분 / 60:.1f}시간**"
+                              + (f" (= {일:.1f}일)" if 일 >= 1 else "")
+                              + "  (--이어 로 끊어 돌 수 있다)")
                     for r in rows[:20]:
                         print(f"  {r['사건번호']} · {r['법원명']} · {r['선고일자']}"
                               f" · {r['사건명'][:40]}")
                     continue
                 if a.sweep:
+                    앞 = 훑던자리(croot).get(_훑기키(q, 거르개))
+                    if a.resume and 앞:
+                        print(f"  이어한다 -- {앞['마지막쪽']}쪽까지 받았다"
+                              f" ({앞['받음']}/{앞['총건수']}건, {앞['때']})")
                     for 쪽 in sweep_prec(q, a.oc, croot, display=a.display,
-                                        start=a.page, pages=a.pages, dry=a.dry):
+                                        start=a.page, pages=a.pages, dry=a.dry,
+                                        params=거르개, 이어=a.resume):
                         새 = sum(1 for r in 쪽["받음"] if not r.get("이미") and not r.get("실패"))
                         print(f"  {q} 쪽 {쪽['쪽']} · 목록 {쪽['목록']}건 · 새로 {새}건"
                               f"  (총 {쪽['총건수'] or '?'})", flush=True)
