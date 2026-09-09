@@ -51,8 +51,18 @@ def led_of(text=CSV, 받은날="2026-09-09"):
 
 print("── 출처 표는 스스로 앞뒤가 맞는가 ─────────────────────")
 for name, s in SRC.SOURCES.items():
-    ok(s.key in s.칸, f"{name}: key({s.key})가 칸 안에 있다")
-    ok(set(s.수칸) <= set(s.칸), f"{name}: 수칸이 전부 칸 안에 있다")
+    # **칸을 안 적는 출처가 있다.** 응답 꼴이 깊이별로 흩어져 있어 `find_rows` 가
+    # 묶어 주는 자리(Yahoo chart v8)에서는, 칸을 박아 두면 출처가 칸을 하나 더
+    # 주는 날 '스키마가 바뀌었다' 로 오판한다 -- 도착한 것에서 읽게 둔다.
+    # 그때 key 는 여기서 못 보지만 `inspect` 가 도착한 줄에서 본다(없으면 줄이
+    # 통째로 안 실려 시끄럽게 실패한다).
+    if s.칸:
+        ok(s.key in s.칸, f"{name}: key({s.key})가 칸 안에 있다")
+        ok(set(s.수칸) <= set(s.칸), f"{name}: 수칸이 전부 칸 안에 있다")
+    else:
+        ok(not s.수칸,
+           f"{name}: 칸을 안 적었으면 수칸도 안 적는다 -- 한쪽만 적으면 어긋난다")
+        ok(bool(s.key), f"{name}: 칸을 안 적어도 key 는 정한다 -- 되짚을 자리다")
     ok(all(c in DV.RULES for c in s.셈), f"{name}: 셈이 전부 derive.RULES 에 있다")
     ok("{심볼}" in s.url, f"{name}: url 에 채울 자리가 있다")
     need = {c for c in s.셈 for c in DV.RULES[c][0]}
