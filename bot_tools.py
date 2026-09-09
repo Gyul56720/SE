@@ -135,6 +135,11 @@ def run_shell(command: str) -> str:
             stdout, stderr = proc.communicate()
             return "실행 시간 초과(180초) -- 명령을 더 작게 나눠서 재시도하라."
         # 자르고 나서 마스킹한다 -- 자르기 전에 하면 긴 출력 전체를 훑느라 느려진다.
+        # **부른 것을 남긴다.** 남기지 않으면 "탐색했는데 못 찾았다" 와 "아예 안
+        # 했다" 가 로그에서 구별되지 않는다(실측 2026-09-09: 공개 채널 둘의 성능이
+        # 다른데 어느 쪽이 도구를 썼는지 알 길이 없었다). 값은 redact_secrets 로 가린다.
+        print(f"[run_shell] {_current_author.get()} :: "
+              f"{redact_secrets(command)[:160]!r}")
         out = redact_secrets((stdout or "")[-4000:])
         err = redact_secrets((stderr or "")[-2000:])
         if proc.returncode is not None and proc.returncode < 0:
