@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 # coin 파이프라인 러너.
 #
+# **한 나라만 보려면** COIN_COUNTRY 를 걸어 둔다 -- 아래 전부가 따라간다.
+#
+#     COIN_COUNTRY=US bash scripts/coin.sh probe
+#     export COIN_COUNTRY=US        # 이 셸에서 계속
+#
+# US 는 34곳(규제 14 · 거시 5 · 사법 3 · 거래소 2 · 발행사 2 · 매체 7 · 집계 1).
+# 바이낸스 · 테더 같은 나라에 안 매인 것까지 보려면 US,XX 다(38곳).
+#
 #   scripts/coin.sh ask "비트코인 시장 분석해줘"   물어본다
 #   scripts/coin.sh look "SOL -12% 왜 이래"        모델 없이 무엇이 잡혔나
 #   scripts/coin.sh fill                           원장 채우기 (백그라운드)

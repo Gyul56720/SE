@@ -392,10 +392,35 @@ def 나라별() -> dict:
     return out
 
 
-def 쓸수있는것(과거만: bool = False) -> list:
+# **어느 나라만 볼 것인가.** 환경변수로도 준다 -- 셸에서 한 번 걸어 두면 아래 모든
+# 명령이 따라간다. 비면 전부.
+#
+#     COIN_COUNTRY=US python3 coin/run.py --채우기
+#     python3 coin/news.py --탐침 --나라 US
+#
+# `XX` 는 나라에 안 매인 것이다(바이낸스 · 테더 · 코인텔레그래프 · GDELT 아님).
+# `--나라 US` 는 **US 만** 이고, 그것들까지 보려면 `--나라 US,XX` 다.
+def 기본나라() -> tuple:
+    v = os.environ.get("COIN_COUNTRY", "").strip()
+    return tuple(x.strip().upper() for x in v.split(",") if x.strip()) if v else ()
+
+
+def 고르기(나라=None) -> tuple:
+    """문자열('US,XX')이든 튜플이든 받아 튜플로. 안 주면 환경변수, 그것도 없으면 전부."""
+    if 나라 is None:
+        return 기본나라()
+    if isinstance(나라, str):
+        return tuple(x.strip().upper() for x in 나라.split(",") if x.strip())
+    return tuple(str(x).upper() for x in 나라)
+
+
+def 쓸수있는것(과거만: bool = False, 나라=None) -> list:
+    골 = 고르기(나라)
     out = []
     for s in 목록:
         if 과거만 and not s.과거:
+            continue
+        if 골 and s.나라 not in 골:
             continue
         ok, _ = s.쓸수있나()
         if ok:

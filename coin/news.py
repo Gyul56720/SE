@@ -366,8 +366,9 @@ def _글(제목: str, t: datetime, s, url: str) -> dict:
             "자산": list(TG.자산재기(제목))}
 
 
-def 받기(출처들=None, 부터: str = "", 까지: str = "", 과거: bool = False) -> list:
-    출처들 = 출처들 if 출처들 is not None else SRC.쓸수있는것(과거만=과거)
+def 받기(출처들=None, 부터: str = "", 까지: str = "", 과거: bool = False,
+        나라=None) -> list:
+    출처들 = 출처들 if 출처들 is not None else SRC.쓸수있는것(과거만=과거, 나라=나라)
     쪽 = [s for s in 출처들 if s.꼴 in ("rss", "html")]
     out = []
     받은것 = _여럿([s.url for s in 쪽]) if 쪽 else {}
@@ -500,7 +501,7 @@ def 덮임(글들: list) -> dict:
 
 
 # ------------------------------------------------------------------ 탐침
-def 탐침(출처들=None, 알림=None) -> list:
+def 탐침(출처들=None, 알림=None, 나라=None) -> list:
     """**어느 출처가 실제로 답하나.** 표의 `확인` 칸이 비어 있는 이유가 이것이다.
 
     ## 여기는 일부러 순차다 -- `받기()` 와 다르다
@@ -518,7 +519,9 @@ def 탐침(출처들=None, 알림=None) -> list:
     작업에 대해 적어 둔 그 자리와 같다(프로세스가 살아 있는 것과 일을 하는 것은 다르다).
     """
     out = []
-    쪽들 = 출처들 if 출처들 is not None else SRC.목록
+    골 = SRC.고르기(나라)
+    쪽들 = 출처들 if 출처들 is not None else [
+        s for s in SRC.목록 if not 골 or s.나라 in 골]
     for i, s in enumerate(쪽들, 1):
         def 담기(r):
             out.append(r)
@@ -560,6 +563,8 @@ def main(argv=None) -> int:
     ap.add_argument("--덮임", action="store_true")
     ap.add_argument("--창", type=float, default=12.0)
     ap.add_argument("--원장", default="")
+    ap.add_argument("--나라", default=None,
+                    help="US · US,XX 처럼. 안 주면 COIN_COUNTRY, 그것도 없으면 전부")
     a = ap.parse_args(argv)
 
     if a.격자:
@@ -582,16 +587,18 @@ def main(argv=None) -> int:
         return 0
 
     if a.탐침:
-        쪽수 = len(SRC.목록)
-        print(f"출처 {쪽수}곳을 **하나씩** 두드린다 -- 한꺼번에 쏘면 버스트로 보여 "
-              "멀쩡한 곳이 '못함' 으로 찍힌다. 오래 걸린다.\n", flush=True)
+        골 = SRC.고르기(a.나라)
+        쪽수 = len([s for s in SRC.목록 if not 골 or s.나라 in 골])
+        print(f"출처 {쪽수}곳" + (f" ({','.join(골)} 만)" if 골 else " (전부)")
+              + "을 **하나씩** 두드린다 -- 한꺼번에 쏘면 버스트로 보여 "
+              "멀쩡한 곳이 '못함' 으로 찍힌다.\n", flush=True)
 
         def 찍기(i, n, x):
             print(f"  [{i:>3}/{n}] {'OK  ' if x['산것'] else '못함'} {x['이름']:<14} "
                   f"{x['나라']:<3} {x.get('층',''):<6} {x['산것']:>4}건  {x['왜'][:60]}",
                   flush=True)
 
-        r = 탐침(알림=찍기)
+        r = 탐침(알림=찍기, 나라=a.나라)
         산것 = [x for x in r if x["산것"]]
         print()
         print(f"\n{len(산것)}/{len(r)} 출처가 답했다. "
@@ -612,7 +619,7 @@ def main(argv=None) -> int:
     if a.하루 or a.과거:
         부터 = a.부터 or ((datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
                         if a.하루 else "2017-01-01")
-        새 = 받기(부터=부터, 까지=a.까지, 과거=a.과거)
+        새 = 받기(부터=부터, 까지=a.까지, 과거=a.과거, 나라=a.나라)
         원장 = 합치기(불러오기(a.원장 or None), 새)
         p = 저장(원장, a.원장 or None)
         d = 덮임(원장["글"])
