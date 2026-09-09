@@ -58,6 +58,24 @@ class Source:
     경로: str = ""                 # json 일 때 글 목록이 있는 자리
     확인: str = ""                 # 언제 실제로 도는 것을 봤나. 비면 **본 적 없다**
     무게: float = 1.0              # 같은 사건이 겹칠 때 어느 시각을 믿나 (원문 우선)
+    # **주소는 썩는다 -- 그래서 찾을 거리를 같이 둔다.**
+    #
+    # 실측 2026-09-09: 손으로 적은 104개 중 열여덟이 404 였고, 고쳐서 다시 재니 또 몇이
+    # 죽었다. 주소를 손으로 적는 한 이 되돌이는 안 끝난다 -- 그 쪽이 개편하면 또 죽고,
+    # 죽은 줄 알려면 사람이 탐침을 봐야 한다.
+    #
+    # 그런데 **아무 주소나 받을 수도 없다.** 검색이 물어온 것을 그대로 쓰면 아무 데서
+    # 온 글이 사건 원장에 들어가고, 그러면 D0 를 정하는 시각을 아무도 검사 안 한 곳이
+    # 정하게 된다. 그래서 가른다:
+    #
+    #     집(도메인)  **선언한다.** sec.gov 가 아니면 SEC 출처가 아니다.
+    #                 도메인은 경로와 달리 잘 안 바뀌므로 손으로 적을 값어치가 있다
+    #     경로        **찾는다.** dig/search 로 찾고 두드려서 글이 나오는 것만 쓴다
+    #                 (`coin/locate.py`). 자주 바뀌므로 손으로 적을 값어치가 없다
+    #
+    # 둘 다 안 적으면 지금 `url` 에서 뽑아 쓴다 -- 백 곳에 손으로 또 적지 않는다.
+    찾는말: str = ""               # 무엇으로 찾나. 비면 이름·층·설명에서 짓는다
+    집: str = ""                   # 어느 도메인이어야 하나. 비면 url 에서 뽑는다
 
     def 쓸수있나(self) -> tuple:
         if self.열쇠 and not os.environ.get(self.열쇠):
@@ -127,7 +145,8 @@ GDELT = "https://api.gdeltproject.org/api/v2/doc/doc"
     # 올라오는 순간이 사건이고, 기사는 그 뒤다. 기관 매입(8-K)도 여기서 먼저 보인다.
     Source("edgar-19b4", "US", "en",
            "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=19b-4"
-           "&dateb=&owner=include&count=40&output=atom", "규제", "rss", 무게=1.6,
+           "&company=&dateb=&owner=include&count=100&action=getcurrent&output=atom",
+           "규제", "rss", 무게=1.6,
            설명="EDGAR 19b-4 -- **ETF 규칙변경 신청. 기사보다 먼저다**"),
     Source("edgar-s1", "US", "en",
            "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&type=S-1"
@@ -148,7 +167,7 @@ GDELT = "https://api.gdeltproject.org/api/v2/doc/doc"
            "https://ofac.treasury.gov/recent-actions",
            "규제", "html", 무게=1.6,
            설명="**OFAC 제재 -- 특정 코인·주소를 즉시 움직인다**(토네이도캐시)"),
-    Source("fincen", "US", "en", "https://www.fincen.gov/news-room/news-releases",
+    Source("fincen", "US", "en", "https://www.fincen.gov/news",
            "규제", "rss", 무게=1.3),
     Source("occ", "US", "en", "https://www.occ.gov/rss/occ_bulletins.xml",
            "규제", "rss", 무게=1.2, 설명="은행이 코인을 만질 수 있나"),
@@ -162,7 +181,7 @@ GDELT = "https://api.gdeltproject.org/api/v2/doc/doc"
     Source("doj", "US", "en", "https://www.justice.gov/news/rss?type=press_release",
            "사법", "rss", 무게=1.5, 설명="기소 -- CZ · SBF 가 이 층이었다"),
     Source("doj-usao", "US", "en",
-           "https://www.justice.gov/usao-sdny/pressreleases/rss", "사법", "rss",
+           "https://www.justice.gov/usao-sdny/news", "사법", "html",
            무게=1.4, 설명="**뉴욕 남부지검 -- 암호화폐 형사사건이 거의 다 여기서 난다**"),
     # CourtListener 는 연방법원 문서를 무료 API 로 준다. 리플·SEC 같은 사건은
     # **판결문이 올라오는 순간**이 사건이고 기사는 몇 시간 뒤다.
@@ -400,6 +419,27 @@ def 나라별() -> dict:
 #
 # `XX` 는 나라에 안 매인 것이다(바이낸스 · 테더 · 코인텔레그래프 · GDELT 아님).
 # `--나라 US` 는 **US 만** 이고, 그것들까지 보려면 `--나라 US,XX` 다.
+def 집뽑기(url: str) -> str:
+    return (url or "").split("//", 1)[-1].split("/", 1)[0].split("?", 1)[0].lower()
+
+
+def 집이름(s) -> str:
+    """이 출처가 어느 집이어야 하나. **여기를 못 넘으면 그 주소는 이 출처가 아니다.**"""
+    return (s.집 or 집뽑기(s.url)).lower()
+
+
+def 찾을말(s) -> str:
+    """무엇으로 찾을 것인가. 안 적었으면 이미 적힌 것에서 짓는다 -- 또 손으로 안 적는다."""
+    if s.찾는말:
+        return s.찾는말
+    집 = 집이름(s).replace("www.", "")
+    꼬리 = {"규제": "press releases", "거시": "press releases", "사법": "news",
+            "거래소": "announcements", "발행사": "news",
+            "매체": "news"}.get(s.층, "news")
+    말 = (s.설명 or "").split("--")[0].replace("*", "").strip()
+    return " ".join(x for x in (집, 말, 꼬리) if x)
+
+
 def 기본나라() -> tuple:
     v = os.environ.get("COIN_COUNTRY", "").strip()
     return tuple(x.strip().upper() for x in v.split(",") if x.strip()) if v else ()
