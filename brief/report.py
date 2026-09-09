@@ -1,12 +1,28 @@
 """**보고서.** 받아서 · 재고 · 검사하고 · 적는다. 못 받치면 **수를 안 적는다.**
 
-    python3 brief/report.py --출처                       # 무엇을 쓸 수 있나 (호출 0회)
+    python3 brief/report.py --출처목록                   # 무엇이 등록돼 있나 (호출 0회)
     python3 brief/report.py 주식 --것 코스피,나스닥,다우
-    python3 brief/report.py 주식 --것 코스피 --저장 brief/ledger/주식.json
     python3 brief/report.py 주식 --원장 brief/ledger/주식.json   # 받지 않고 그것으로
-    python3 brief/report.py 주식 --것 코스피 --진단      # 받되 **보고서는 안 낸다**
+
+    # **등록 안 된 것도 그 자리에서.** 티켓값이든 무엇이든
+    python3 brief/report.py --탐색 --url '<주소>'        # 무엇이 오는지만 (저장 안 함)
+    python3 brief/report.py --url '<주소>' --key 날짜
 
     끝값 0  보고서를 냈다     1  관문 hard 위반     3  미검증 -- 못 냈다
+
+## 표에 없어도 된다 -- 그런데 규율은 안 풀린다
+
+출처를 미리 등록해 두는 것 자체가 하드코딩이다. 내가 예상한 도메인만 되기 때문이다.
+그래서 `--url` 로 처음 보는 API 를 그 자리에서 붙인다. 그때 밖(사람이든 모델이든)이
+정하는 것은 **어디를 볼 것인가**뿐이고, 수는 여전히 아무도 못 만든다:
+
+    url 을 지어내면      fetch 가 실패한다        -> 미검증, 수 0개
+    스키마를 지어내면    도착한 것과 안 맞는다     -> inspect 가 거절한다
+    칸을 안 적으면       도착한 것에서 읽는다      -> 짐작이 아니라 관측이다
+    값을 지어내면        **B004 가 다시 세서 잡는다**
+
+`law/METHOD.md` 의 분업 그대로다 -- LLM 은 조문에서 요건을 뽑고(대조 가능한 일),
+쟁점은 코드가 도출한다. 여기서 **출처 제안이 그 '요건 뽑기' 자리**다.
 
 ## 왜 '나열' 이 아닌가
 
@@ -32,6 +48,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import unicodedata
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -42,13 +59,110 @@ from brief import ledger as LG                                     # noqa: E402
 from brief import source as SRC                                    # noqa: E402
 
 
-def build(src, led) -> list:
-    """원장 -> 수. 줄마다 원장 값과 셈한 값을 함께."""
-    facts = []
+def 폭(s: str) -> int:
+    """화면에서 차지하는 칸 수. 한글·한자·가나는 두 칸이다.
+
+    `len()` 으로 맞추면 한글 표가 통째로 어긋난다 -- 이 저장소의 출력은 대부분
+    한국어라 그냥 깨진 표가 된다. 읽으라고 내는 표가 안 읽히면 안 낸 것과 같다.
+    """
+    return sum(2 if unicodedata.east_asian_width(c) in ("W", "F") else 1 for c in s)
+
+
+def 채움(s: str, n: int, 오른쪽: bool = False) -> str:
+    """폭 `n` 에 맞춰 채운다. 넘치면 자른다 -- 자르는 편이 표가 밀리는 것보다 낫다."""
+    s = str(s)
+    while 폭(s) > n:
+        s = s[:-1]
+    pad = " " * max(0, n - 폭(s))
+    return (pad + s) if 오른쪽 else (s + pad)
+
+
+def 수칸들(led) -> list:
+    """원장에서 수인 칸. **id 는 뺀다** -- 그것은 가리키는 이름이지 재는 값이 아니다."""
+    cols, seen = [], set()
     for r in led.줄:
-        facts += DV.raw_facts(led, r["id"], ("Close",), src.단위)
-        facts += DV.row_facts(led, r["id"], src.셈, src.단위)
+        for k, v in r.items():
+            if k != "id" and isinstance(v, (int, float)) and k not in seen:
+                seen.add(k)
+                cols.append(k)
+    return cols
+
+
+def build(src, led) -> list:
+    """원장 -> 수.
+
+    **출처가 셈을 적어 뒀으면 그것을, 아니면 칸마다 요약을 낸다.** 뒤쪽이 처음 보는
+    출처에서 도는 길이다 -- 칸이 수이기만 하면 개수·최소·중앙·평균·최대·표준편차는
+    무엇에든 뜻이 있다. 티켓값이든 기온이든.
+    """
+    facts = []
+    if src.셈:
+        for r in led.줄:
+            facts += DV.raw_facts(led, r["id"], ("Close",), src.단위)
+            facts += DV.row_facts(led, r["id"], src.셈, src.단위)
+        return facts
+    for c in 수칸들(led):
+        facts += DV.col_facts(led, c, 단위=src.단위)
     return facts
+
+
+def render_generic(src, led, facts, vs) -> str:
+    """셈이 안 적힌 출처의 보고서 -- 칸마다 요약."""
+    bad = GT.막힌것(vs, facts)
+    cols = 수칸들(led)
+    out = [f"# {src.이름} 보고 -- {src.설명}", ""]
+    out.append(f"원장  받은날 {led.받은날 or '?'} · 줄 {len(led)}개"
+               + (f" · 버린 줄 {led.버린것}개" if led.버린것 else "")
+               + (f" · 나이 {led.나이()}일" if led.나이() is not None else ""))
+    out.append(f"질의  {led.질의[:110]}")
+    out.append("")
+    if GT.hard(vs):
+        out.append("**관문 hard 위반이 있어 아래에서 해당 수를 뺐다.**")
+        out.append("")
+    out.append("## 칸마다")
+    out.append("")
+    names = list(DV.기본요약)
+    cw = max([폭(c) for c in cols] + [4]) + 2
+    head = 채움("칸", cw) + "".join(채움(n, 13, True) for n in names)
+    out.append(head)
+    out.append("-" * 폭(head))
+    by = {f.이름: f for f in facts}
+    for c in cols:
+        cells = []
+        for n in names:
+            f = by.get(f"{c}.{n}")
+            cells.append(채움(f"{f.값:,.2f}" if f and f.이름 not in bad else "--", 13, True))
+        out.append(채움(c, cw) + "".join(cells))
+    out.append("")
+    out.append("  셈: " + " · ".join(f"{n} = {DV.ACROSS[n][1]}" for n in names))
+    out.append("  `--` 는 못 셌거나 관문에 걸린 자리다. 0 이 아니다.")
+    out.append("")
+    if len(led) <= 25:
+        out.append("## 줄마다")
+        out.append("")
+        iw = max([폭(str(r["id"])) for r in led.줄] + [4]) + 2
+        h = 채움("id", iw) + "".join(채움(c, 15, True) for c in cols)
+        out.append(h)
+        out.append("-" * 폭(h))
+        for r in led.줄:
+            out.append(채움(r["id"], iw) + "".join(
+                채움(f"{r.get(c):,.2f}" if isinstance(r.get(c), (int, float)) else "--",
+                     15, True) for c in cols))
+        out.append("")
+    else:
+        out.append(f"  (줄이 {len(led)}개라 낱낱이 안 적는다. "
+                   f"원장 파일에 다 있다)")
+        out.append("")
+    out.append("## 관문")
+    out.append("")
+    out.append("  " + GT.report(vs).replace("\n", "\n  "))
+    out.append("")
+    out.append("## 이 보고서가 안 보는 것")
+    out.append("")
+    out.append("  · **칸의 뜻** -- 이름이 무엇을 가리키는지는 출처가 정하지 여기서 모른다")
+    out.append("  · 왜 그런 값인가 -- 원인은 이 원장으로 판정되지 않는다")
+    out.append("  · 여기 없는 줄 -- 물은 것만 받았다")
+    return "\n".join(out)
 
 
 def render(src, led, facts, vs) -> str:
@@ -71,20 +185,22 @@ def render(src, led, facts, vs) -> str:
     out.append("## 잰 것")
     out.append("")
     names = list(src.셈)
-    head = f"{'대상':<12}{'종가':>12}" + "".join(f"{n:>12}" for n in names)
+    dw = max([폭(str(r["id"])) for r in led.줄] + [4]) + 2
+    head = 채움("대상", dw) + 채움("종가", 13, True) + "".join(채움(n, 13, True) for n in names)
     out.append(head)
-    out.append("-" * len(head))
+    out.append("-" * 폭(head))
     for r in led.줄:
         rid = r["id"]
         mine = {f.이름: f for f in facts
                 if (f.인자 and f.인자[0] == rid) or (f.근거 and f.근거[0][0] == rid)}
         cells = []
         close = mine.get("Close")
-        cells.append(f"{close.값:>12,.2f}" if close and "Close" not in bad else f"{'--':>12}")
+        cells.append(채움(f"{close.값:,.2f}" if close and "Close" not in bad else "--",
+                          13, True))
         for n in names:
             f = mine.get(n)
-            cells.append(f"{f.값:>12,.2f}" if f and n not in bad else f"{'--':>12}")
-        out.append(f"{rid:<12}" + "".join(cells))
+            cells.append(채움(f"{f.값:,.2f}" if f and n not in bad else "--", 13, True))
+        out.append(채움(rid, dw) + "".join(cells))
     out.append("")
     out.append("  셈: " + " · ".join(
         f"{n} = {DV.RULES[n][3]}" for n in names if n in DV.RULES))
@@ -123,6 +239,52 @@ def render(src, led, facts, vs) -> str:
     return "\n".join(out)
 
 
+def probe(src) -> int:
+    """**무엇이 오는지만 본다.** 저장도 보고도 안 한다 -- 원장을 더럽힐 수 없다.
+
+    처음 보는 출처를 붙일 때 첫 걸음이다. 스키마를 짐작해서 적어 넣고 틀리면 그
+    틀린 스키마가 원장에 박히는데, 여기서 한 번 보면 **적어 넣을 것이 관측이 된다.**
+    `lol/fetch.py --진단` · `mathdrift --check` 와 같은 자리다.
+    """
+    try:
+        body = LG.get(src.url)
+    except Exception as e:                                    # noqa: BLE001
+        print(f"**못 받았다** -- {type(e).__name__}: {str(e)[:150]}")
+        print(f"  url: {src.url[:110]}")
+        print("  받은 것이 없으므로 무엇이 오는지도 말할 수 없다.")
+        return 3
+    rows = LG.parse(src, body)
+    if not rows:
+        print(f"받기는 했는데 **줄을 못 찾았다** ({len(body)}바이트, 꼴={src.꼴}).")
+        print("  받은 것 앞머리:")
+        print("    " + body[:300].replace("\n", "\n    "))
+        print("  --꼴 이나 --경로 를 줘서 어디를 보라고 알려 줘라. "
+              "짐작으로 채우지 않는다.")
+        return 3
+    본 = LG.살펴보기(rows)
+    v = LG.inspect(src, rows)
+    print(f"줄 {본['줄수']}개 · 칸 {len(본['칸'])}개  (꼴={src.꼴})")
+    print()
+    print(f"  칸        {', '.join(본['칸'][:14])}"
+          + (" ..." if len(본["칸"]) > 14 else ""))
+    print(f"  **수인 칸** {', '.join(본['수칸']) or '(없다 -- 셀 것이 없다)'}")
+    print(f"  key 후보  {', '.join(본['key후보'][:6]) or '(없다 -- 자리번호로 가리킨다)'}")
+    print()
+    print("  첫 줄:")
+    for r in rows[:2]:
+        print(f"    {dict(list(r.items())[:8])}")
+    print()
+    if v["통과"]:
+        쓴 = v.get("쓴것", {})
+        print(f"  이대로 저장할 수 있다 (쓸 줄 {len(v['good'])}개 · "
+              f"버릴 줄 {v['버린것']}개 · key={쓴.get('key') or '자리번호'})")
+        print("  **--탐색 을 떼면** 받아서 재고 관문까지 돌린다.")
+    else:
+        print(f"  **이대로는 저장 안 된다**: {'; '.join(v['왜'])}")
+        print("  --key 나 --수칸 으로 무엇을 쓸지 정해 주면 된다.")
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="원장 -> 셈 -> 관문 -> 보고서")
     ap.add_argument("출처", nargs="?", default="")
@@ -134,7 +296,41 @@ def main(argv=None) -> int:
     ap.add_argument("--진단", dest="diag", action="store_true",
                     help="받되 보고서는 안 낸다 -- 무엇이 왔는지만 본다")
     ap.add_argument("--출처목록", dest="list_src", action="store_true")
+    # ── 즉석 출처. **등록 없이 그 자리에서** ───────────────────────────
+    ap.add_argument("--url", default="", help="처음 보는 API 를 그 자리에서 붙인다")
+    ap.add_argument("--탐색", dest="probe", action="store_true",
+                    help="url 을 받아 **무엇이 오는지만** 본다 (저장도 보고도 안 한다)")
+    ap.add_argument("--꼴", dest="fmt", default="", choices=["", "csv", "json"])
+    ap.add_argument("--경로", dest="path", default="", help="json 에서 줄이 있는 자리")
+    ap.add_argument("--key", default="", help="줄을 가리킬 칸")
+    ap.add_argument("--칸", dest="cols", default="", help="쉼표로. 비우면 도착한 것에서 읽는다")
+    ap.add_argument("--수칸", dest="ncols", default="", help="쉼표로. 비우면 스스로 가린다")
     a = ap.parse_args(argv)
+
+    # ── 즉석 출처 ─────────────────────────────────────────────────
+    if a.url:
+        src = SRC.즉석(a.url, 꼴=a.fmt, 경로=a.path, key=a.key,
+                       칸=[c for c in a.cols.split(",") if c.strip()],
+                       수칸=[c for c in a.ncols.split(",") if c.strip()],
+                       이름=a.출처 or "즉석")
+        if a.probe:
+            return probe(src)
+        led, err = LG.fetch(src)
+        if err:
+            print("**미검증** -- 받지 못해 보고서를 낼 수 없다.")
+            print(f"  url: {a.url[:110]}")
+            print(f"  까닭: {err}")
+            print("  받은 것이 없으므로 **수를 하나도 적지 않는다.** "
+                  "url 이 틀렸으면 --탐색 으로 무엇이 오는지부터 보라.")
+            return 3
+        if a.save:
+            LG.save(led, Path(a.save))
+            print(f"원장 저장: {a.save}  ({len(led)}줄)")
+        facts = build(src, led)
+        vs = GT.check(facts, led, src)
+        print(render(src, led, facts, vs) if src.셈
+              else render_generic(src, led, facts, vs))
+        return 1 if GT.hard(vs) else 0
 
     if a.list_src or not a.출처:
         print("쓸 수 있는 출처:")
@@ -146,8 +342,11 @@ def main(argv=None) -> int:
             if s.별칭:
                 print(f"         부를 수 있는 이름: {', '.join(list(s.별칭)[:10])}")
         print()
-        print("  출처를 늘리는 것은 brief/source.py 에 Source 하나를 등록하는 일이다.")
-        print("  가져오기·검사·셈·관문은 한 벌이라 새로 짜지 않는다.")
+        print("  **표에 없어도 된다.** 처음 보는 API 는 그 자리에서 붙인다:")
+        print("    python3 brief/report.py --탐색 --url '<주소>'   # 무엇이 오는지만")
+        print("    python3 brief/report.py --url '<주소>' --key <칸>")
+        print("  자주 쓸 것만 brief/source.py 에 등록해 별칭과 셈을 붙인다.")
+        print("  가져오기·검사·셈·관문은 어느 길로 오든 한 벌이다.")
         return 0 if a.list_src else 3
 
     src = SRC.get(a.출처)
@@ -193,7 +392,8 @@ def main(argv=None) -> int:
 
     facts = build(src, led)
     vs = GT.check(facts, led, src)
-    print(render(src, led, facts, vs))
+    print(render(src, led, facts, vs) if src.셈
+          else render_generic(src, led, facts, vs))
     return 1 if GT.hard(vs) else 0
 
 
