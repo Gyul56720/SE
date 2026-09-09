@@ -53,15 +53,21 @@ def _멈춰(*_):
     print("[멈춤 신호] 이 바퀴만 끝내고 멈춘다", flush=True)
 
 
-def 한바퀴(깊게: bool = False, 원장길=None) -> dict:
-    """RSS 한 바퀴. `깊게` 면 GDELT · 흐름까지."""
+def 한바퀴(깊게: bool = False, 원장길=None, 출처=None) -> dict:
+    """한 바퀴. `깊게` 면 GDELT · 흐름까지.
+
+    `출처` 를 주면 그것만 본다 -- **검사가 망을 안 타게 하는 자리다.** 곁문이 붙은
+    뒤로 한 바퀴가 아흔네 곳 x (헤더벌 + 곁문 여섯) 이 되어서, 망이 막힌 데서
+    검사를 돌리면 그 시간을 전부 기다린다. 검사는 망을 타면 안 된다.
+    """
     잰때 = datetime.now(timezone.utc)
-    출처 = [s for s in SRC.쓸수있는것() if s.꼴 == "rss"]
+    출처 = 출처 if 출처 is not None else [s for s in SRC.쓸수있는것()
+                                        if s.꼴 in ("rss", "html")]
     새 = NW.받기(출처)
     if 깊게:
         어제 = (잰때 - timedelta(days=1)).strftime("%Y-%m-%d")
-        새 += NW.받기([s for s in SRC.쓸수있는것() if s.꼴 in ("gdelt", "json")],
-                     부터=어제, 까지=잰때.strftime("%Y-%m-%d"))
+        무거운 = [s for s in SRC.쓸수있는것() if s.꼴 in ("gdelt", "json")]
+        새 += NW.받기(무거운, 부터=어제, 까지=잰때.strftime("%Y-%m-%d"))
     원장 = NW.합치기(NW.불러오기(원장길), 새)
     NW.저장(원장, 원장길)
     사건 = NW.뭉치기(원장["글"])
