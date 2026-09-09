@@ -369,6 +369,132 @@ finally:
         os.environ["LAW_API_OC"] = _옛OC
 
 print()
+print("[며칠짜리 훑기] **끊기는 것이 정상이다. 이어지는가가 문제다**")
+# 민법 판례는 분당 20회로 며칠이 걸린다. 그 사이에 한 번도 안 끊길 리 없다.
+_보관2 = Path(tempfile.mkdtemp())
+
+
+def _가짜목록(쪽: int, 총: int, 크기: int = 2) -> str:
+    시작 = (쪽 - 1) * 크기
+    if 시작 >= 총:
+        칸 = ""
+    else:
+        칸 = "".join(
+            f"<prec><판례일련번호>{i}</판례일련번호>"
+            f"<사건번호>2020다{1000 + i}</사건번호><법원명>대법원</법원명>"
+            f"<선고일자>2020.01.01</선고일자><사건명>사건{i}</사건명></prec>"
+            for i in range(시작, min(시작 + 크기, 총)))
+    return f'<?xml version="1.0"?><PrecSearch><totalCnt>{총}</totalCnt>{칸}</PrecSearch>'
+
+
+def _가짜본문(ident: str) -> str:
+    i = int(ident)
+    return ('<?xml version="1.0"?><PrecService>'
+            f'<사건번호>2020다{1000 + i}</사건번호><법원명>대법원</법원명>'
+            f'<선고일자>2020.01.01</선고일자><사건명>사건{i}</사건명>'
+            '<판시사항>판시사항이다.</판시사항>'
+            '<판결요지>판결요지다. 이것으로 본문이 있다고 본다.</판결요지>'
+            '</PrecService>')
+
+
+_부른것 = []
+
+
+def _훑기가짜(url: str, oc: str = "") -> str:
+    _부른것.append(url)
+    if "lawService" in url:
+        return _가짜본문(re.search(r"ID=(\d+)", url).group(1))
+    쪽 = int(re.search(r"page=(\d+)", url).group(1)) if "page=" in url else 1
+    return _가짜목록(쪽, 5)
+
+
+import re                                                             # noqa: E402
+# 두 쪽만 돌고 멈춘다 -- 한도에 걸려 끊긴 셈이다.
+_난것 = list(F.sweep_prec("민법", OC, _보관2, fetcher=_훑기가짜, display="2", pages=2))
+_자리 = F.훑던자리(_보관2)
+ok(len(_난것) == 2 and _자리.get("민법", {}).get("마지막쪽") == 2,
+   f"쪽마다 어디까지 갔는지 적는다 (얻은 값 {_자리})")
+ok(not CP.load_case_scope(_보관2).get("전부"),
+   "덜 받았으면 '전부' 라고 안 적는다")
+
+# **여기가 조용한 버그였다.** 이어할 때 받음을 0부터 세면 `받음 >= 총` 이 영영
+# 참이 안 되고, 훑기가 멀쩡히 끝나도 `_받은범위.json` 이 안 써진다. 그러면
+# 원장은 영원히 '아직 덜 받았다' 로 남고 L004 가 기각으로 안 올라간다 --
+# 다 받아 놓고도 못 쓰는 꼴이다.
+_이어난것 = list(F.sweep_prec("민법", OC, _보관2, fetcher=_훑기가짜, display="2",
+                              이어=True))
+ok(_이어난것 and _이어난것[0]["쪽"] == 3,
+   f"이어하면 다음 쪽부터 (얻은 값 {[x['쪽'] for x in _이어난것]})")
+ok(CP.load_case_scope(_보관2).get("전부"),
+   "이어서 끝까지 갔으면 **'전부' 라고 적는다** -- 이래야 L004 가 기각으로 올라간다")
+ok(len(CP.load_cases(_보관2)) == 5,
+   f"다섯 건이 원장에 있다 (얻은 값 {len(CP.load_cases(_보관2))})")
+_범위 = CP.load_case_scope(_보관2)
+ok(_범위.get("훑은것") and _범위["훑은것"][0]["키"] == "민법",
+   f"무엇을 훑었는지 쌓아 둔다 -- 민법은 한 검색어로 다 못 긁는다 (얻은 값 {_범위.get('훑은것')})")
+
+# 거르개는 **그대로 실어 보내기만 한다.** 어느 인자가 맞는지 여기서 정하지 않는다.
+_부른것.clear()
+list(F.sweep_prec("민법", OC, Path(tempfile.mkdtemp()), fetcher=_훑기가짜,
+                  display="2", pages=1, params={"search": "2", "org": "400201"}))
+ok(any("search=2" in u and "org=400201" in u for u in _부른것),
+   f"거르개를 그대로 실어 보낸다 (얻은 값 {[u.split('?')[1][:70] for u in _부른것[:1]]})")
+ok(F._훑기키("민법", {"search": "2"}) != F._훑기키("민법", None),
+   "검색어가 같아도 거르개가 다르면 다른 훑기다")
+
+# **색인을 쪽마다 다시 만들면 열기 횟수가 제곱으로 는다.** 민법 본문검색 16,624건을
+# 100건씩 167쪽으로 훑으면 약 140만 번이다. 훑기가 색인을 한 번 만들어 넘겨주는지
+# 본다 -- 파일 여는 것을 세어서.
+_센다 = {"n": 0}
+_진짜읽기 = Path.read_text
+
+
+def _세는읽기(self, *a, **k):
+    if self.suffix == ".txt":
+        _센다["n"] += 1
+    return _진짜읽기(self, *a, **k)
+
+
+_보관3 = Path(tempfile.mkdtemp())
+Path.read_text = _세는읽기
+try:
+    list(F.sweep_prec("민법", OC, _보관3, fetcher=_훑기가짜, display="1"))
+finally:
+    Path.read_text = _진짜읽기
+# 5건을 1건씩 5쪽. 쪽마다 색인을 다시 만들면 0+1+2+3+4 = 10번 읽는다.
+# 한 번만 만들면 0번이다(빈 원장에서 시작하므로).
+ok(_센다["n"] <= 2,
+   f"색인을 쪽마다 다시 안 만든다 (파일 읽기 {_센다['n']}회 · 쪽마다 만들면 10회)")
+ok(len(CP.load_cases(_보관3)) == 5,
+   f"그래도 다섯 건이 다 저장됐다 (얻은 값 {len(CP.load_cases(_보관3))})")
+# 색인을 안 넘기면 지금까지대로 스스로 만든다 -- 낱건 받기가 안 깨진다.
+_난것2 = F.pull_prec("", OC, _보관3, fetcher=_훑기가짜,
+                     rows=[{"일련번호": "0", "사건번호": "2020다1000",
+                            "법원명": "대법원", "선고일자": "2020.01.01", "사건명": "사건0"}])
+ok(_난것2 and _난것2[0].get("이미"),
+   f"색인 없이 부르면 스스로 만들어 이미 있는 것을 알아본다 (얻은 값 {_난것2})")
+
+print()
+print("[저장소에 안 넣는다] **범위 기록을 커밋하면 심판이 뒤집힌다**")
+# `_받은범위.json` 에 `전부: true` 가 있으면 `covers_cases()` 가 참이 되고 L004 가
+# "원장에 없는 판례 = 지어낸 것" 으로 **기각**을 올린다. 그런데 판례 본문은 커밋을
+# 안 하니 새로 받은 사람의 원장은 비어 있다. 그러면 **맞는 인용까지 전부 기각된다.**
+# 과잉 기각하는 심판은 맞는 답도 버린다.
+import subprocess                                                     # noqa: E402
+_뿌리 = Path(__file__).resolve().parent.parent
+for _막을것 in ("law/precedents/2020다1.txt",
+                "law/precedents/_받은범위.json",
+                "law/precedents/_훑던자리.json",
+                "law/corpus/민법.txt"):
+    _답 = subprocess.run(["git", "check-ignore", "-q", _막을것],
+                         cwd=str(_뿌리), capture_output=True)
+    ok(_답.returncode == 0, f"{_막을것} 은 저장소에 안 들어간다")
+# README 는 들어간다 -- 무엇을 어디서 받는지 적어 둔 자리다.
+_답 = subprocess.run(["git", "check-ignore", "-q", "law/precedents/README.md"],
+                     cwd=str(_뿌리), capture_output=True)
+ok(_답.returncode != 0, "README 는 그대로 추적한다")
+
+print()
 print("[행위시법] **그날 시행 중이던 판** -- 지금 법으로 옛일을 재지 않는다")
 # 형법 제1조 제1항 "행위 시의 법률에 의한다"; 민사는 법률불소급 + 부칙 경과규정.
 # 판례 대조에서 더 크게 어긋난다 -- 2015년 판결은 2015년 법을 적용한 것이라
