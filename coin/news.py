@@ -67,8 +67,35 @@ except Exception:                                                     # noqa: BL
 CORPUS = Path(__file__).resolve().parent / "corpus"
 길 = CORPUS / "news.json"
 사건길 = CORPUS / "events.json"
-GDELT_말 = {"gdelt-en": "eng", "gdelt-zh": "chi", "gdelt-ja": "jpn", "gdelt-ko": "kor"}
+# **말 표기를 짐작하지 않는다 -- 시도해서 되는 것을 쓴다.**
+#
+# 실측 2026-09-09 (VM 탐침): `sourcelang:ger` 는 169건을 줬는데 `eng` · `chi` · `jpn` ·
+# `kor` 은 전부 "답은 왔는데 글이 0개" 였다. 같은 코드 · 같은 API · 같은 질의인데
+# 말 코드만 달랐다. 즉 **내가 적은 표기가 틀린 것**이고, 어느 표기가 맞는지는 여기서
+# 알 수 없다(문서마다 다르게 적혀 있고 그 쪽이 바꾸기도 한다).
+#
+# 그래서 후보를 늘어놓고 **글이 오는 것을 쓴다.** 짐작이 아니라 관측이다.
+# `brief/source.py` 의 `--탐색` 이 "도착한 것에서 스키마를 읽어 준다" 는 것과 같은 자리다.
+GDELT_말 = {
+    "gdelt-en": ("eng", "english", ""),          # "" 는 **말을 안 거는 것** -- 영어가 다수다
+    "gdelt-zh": ("zho", "chi", "chinese"),
+    "gdelt-ja": ("jpn", "japanese"),
+    "gdelt-ko": ("kor", "korean"),
+    "gdelt-de": ("ger", "deu", "german"),
+    "gdelt-fr": ("fre", "fra", "french"),
+}
+# 말마다 그 말로 묻는다. 한 질의에 여섯 문자를 섞으면 그 쪽이 어떻게 자르는지 모른다.
+GDELT_질의 = {
+    "gdelt-en": "(bitcoin OR cryptocurrency OR crypto)",
+    "gdelt-zh": "(比特币 OR 加密货币 OR 虚拟货币)",
+    "gdelt-ja": "(ビットコイン OR 暗号資産 OR 仮想通貨)",
+    "gdelt-ko": "(비트코인 OR 암호화폐 OR 가상자산)",
+    "gdelt-de": "(Bitcoin OR Kryptowährung)",
+    "gdelt-fr": "(bitcoin OR cryptomonnaie)",
+}
 질의 = "(bitcoin OR cryptocurrency OR 加密货币 OR 比特币 OR 暗号資産 OR 암호화폐)"
+# 어느 후보가 먹혔는지 남긴다 -- 두 번째 부름부터는 그것부터 쓴다
+_먹힌말 = {}
 
 
 def _http(url: str, timeout: float = 25.0) -> bytes:
@@ -119,25 +146,41 @@ def _여럿(urls: list) -> dict:
 
 
 # ------------------------------------------------------------------ 받기
+def _벗기기(tag: str) -> str:
+    """`{http://purl.org/rss/1.0/}item` -> `item`. **네임스페이스를 안 본다.**
+
+    RSS 1.0(RDF)은 `item` 이 네임스페이스 안에 있어서 `iter("item")` 이 못 잡는다.
+    연준 · OCC 계열이 그 꼴이고, 그래서 멀쩡한 피드가 0건으로 찍혔다.
+    """
+    return tag.rsplit("}", 1)[-1] if "}" in tag else tag
+
+
+def _칸(it, *이름들) -> str:
+    """자식에서 이름으로 찾되 **네임스페이스는 무시한다.**"""
+    for 이름 in 이름들:
+        for c in it:
+            if _벗기기(c.tag).lower() == 이름.lower() and (c.text or "").strip():
+                return c.text.strip()
+    return ""
+
+
 def _rss(raw: bytes, s) -> list:
-    """RSS 2.0 과 Atom 을 둘 다 읽는다. 바깥 라이브러리를 안 쓴다."""
+    """RSS 2.0 · RSS 1.0(RDF) · Atom 을 다 읽는다. 바깥 라이브러리를 안 쓴다."""
     out = []
     try:
         뿌리 = ET.fromstring(raw)
     except ET.ParseError:
         return out
-    A = "{http://www.w3.org/2005/Atom}"
-    글들 = 뿌리.iter("item")
-    글들 = list(글들) or list(뿌리.iter(A + "entry"))
+    글들 = [e for e in 뿌리.iter() if _벗기기(e.tag) in ("item", "entry")]
     for it in 글들:
-        제목 = (it.findtext("title") or it.findtext(A + "title") or "").strip()
-        때 = (it.findtext("pubDate") or it.findtext("published")
-              or it.findtext(A + "published") or it.findtext(A + "updated")
-              or it.findtext("{http://purl.org/dc/elements/1.1/}date") or "").strip()
-        고리 = (it.findtext("link") or "").strip()
-        if not 고리:
-            e = it.find(A + "link")
-            고리 = (e.get("href") if e is not None else "") or ""
+        제목 = _칸(it, "title")
+        때 = _칸(it, "pubDate", "published", "updated", "date", "created")
+        고리 = _칸(it, "link", "guid", "id")
+        if not 고리 or not 고리.startswith("http"):
+            for c in it:
+                if _벗기기(c.tag) == "link" and c.get("href"):
+                    고리 = c.get("href")
+                    break
         t = _때(때)
         if not 제목 or t is None:
             continue
@@ -205,34 +248,84 @@ def _html(raw: bytes, s, url: str = "") -> list:
     return out
 
 
+def _gdelt한번(s, 말: str, a, b) -> list:
+    q = urllib.parse.urlencode({
+        "query": (GDELT_질의.get(s.이름, 질의) + (f" sourcelang:{말}" if 말 else "")),
+        "mode": "artlist", "format": "json", "maxrecords": "250", "sort": "datedesc",
+        "startdatetime": a.strftime("%Y%m%d%H%M%S"),
+        "enddatetime": b.strftime("%Y%m%d%H%M%S")})
+    try:
+        got = json.loads(_http(f"{s.url}?{q}").decode("utf-8", "replace"))
+    except Exception:                                                 # noqa: BLE001
+        return []
+    out = []
+    for r in (got.get("articles") or []):
+        t = _때(str(r.get("seendate", "")))
+        if t is None:
+            continue
+        out.append(_글(r.get("title", ""), t, s, r.get("url", "")))
+    return out
+
+
 def _gdelt(s, 부터: str, 까지: str, 최대쪽: int = 24) -> list:
-    """GDELT DOC 2.0. 한 번에 250건까지라 **시간을 잘라 가며** 여러 번 묻는다."""
-    말 = GDELT_말.get(s.이름, "eng")
+    """GDELT DOC 2.0. 한 번에 250건까지라 **시간을 잘라 가며** 여러 번 묻는다.
+
+    말 표기는 **후보를 시도해서 되는 것을 쓴다**(위 `GDELT_말` 의 까닭을 보라).
+    한 번 먹힌 표기는 `_먹힌말` 에 남아 다음부터 그것부터 쓴다 -- 매번 헛발질을
+    되풀이하면 시간을 그만큼 버린다.
+    """
     t0, t1 = _때(부터), _때(까지)
     if t0 is None or t1 is None:
         return []
+    후보 = GDELT_말.get(s.이름, ("eng", ""))
+    먹힌 = _먹힌말.get(s.이름)
+    if 먹힌 is not None:
+        후보 = (먹힌,)
     out, 칸 = [], max(timedelta(days=1), (t1 - t0) / max(1, 최대쪽))
-    a = t0
+    a, 쓸말 = t0, None
     while a < t1:
         b = min(a + 칸, t1)
-        q = urllib.parse.urlencode({
-            "query": f"{질의} sourcelang:{말}", "mode": "artlist", "format": "json",
-            "maxrecords": "250", "sort": "datedesc",
-            "startdatetime": a.strftime("%Y%m%d%H%M%S"),
-            "enddatetime": b.strftime("%Y%m%d%H%M%S")})
-        try:
-            got = json.loads(_http(f"{s.url}?{q}").decode("utf-8", "replace"))
-        except Exception:                                             # noqa: BLE001
-            got = {}
-        for r in (got.get("articles") or []):
-            t = _때(str(r.get("seendate", "")).replace("T", " ").replace("Z", ""))
-            if t is None:
-                t = _때(str(r.get("seendate", "")))
-            if t is None:
-                continue
-            out.append(_글(r.get("title", ""), t, s, r.get("url", "")))
+        if 쓸말 is None:                       # 첫 칸에서 후보를 가른다
+            for 말 in 후보:
+                got = _gdelt한번(s, 말, a, b)
+                if got:
+                    쓸말 = 말
+                    _먹힌말[s.이름] = 말
+                    out += got
+                    break
+            else:
+                쓸말 = 후보[0]                  # 다 빈손이면 첫 후보로 계속 가 본다
+        else:
+            out += _gdelt한번(s, 쓸말, a, b)
         a = b
     return out
+
+
+def _줄찾기(got, 경로: str = "") -> list:
+    """**꼴을 짐작하지 않고 찾는다.** 준 자리가 목록이 아니면 그 안에서 목록을 고른다.
+
+    실측: 바이낸스는 `data` 아래가 목록이 아니라 dict 이고 그 안에 `catalogs` 가 있다.
+    그대로 돌면 문자열 키를 dict 인 줄 알고 `.get` 을 불러 터진다
+    ("AttributeError: 'str' object has no attribute 'get'").
+    """
+    x = got
+    for 마디 in (경로 or "").split("."):
+        if 마디 and isinstance(x, dict):
+            x = x.get(마디, x)
+    for _ in range(4):
+        if isinstance(x, list):
+            return [r for r in x if isinstance(r, dict)]
+        if isinstance(x, dict):
+            목록 = [v for v in x.values() if isinstance(v, list) and v]
+            if not 목록:
+                x = next((v for v in x.values() if isinstance(v, dict)), None)
+                if x is None:
+                    return []
+                continue
+            x = max(목록, key=len)
+        else:
+            return []
+    return [r for r in x if isinstance(r, dict)] if isinstance(x, list) else []
 
 
 def _json(s) -> list:
@@ -242,13 +335,14 @@ def _json(s) -> list:
         got = json.loads(_http(url).decode("utf-8", "replace"))
     except Exception:                                                 # noqa: BLE001
         return []
-    줄 = got.get(s.경로) if s.경로 else got
     out = []
-    for r in (줄 or []):
-        t = _때(r.get("published_at") or r.get("created_at") or "")
-        if t is None:
+    for r in _줄찾기(got, s.경로):
+        t = _때(str(r.get("published_at") or r.get("created_at")
+                    or r.get("releaseDate") or r.get("dateFiled") or ""))
+        제목 = str(r.get("title") or r.get("caseName") or "")
+        if t is None or not 제목:
             continue
-        out.append(_글(r.get("title", ""), t, s, (r.get("url") or "")))
+        out.append(_글(제목, t, s, str(r.get("url") or r.get("link") or "")))
     return out
 
 
