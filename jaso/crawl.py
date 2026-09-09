@@ -19,6 +19,23 @@ tail -f ~/SE/logs/jaso_crawl.log
 멈추려면 `--그만` 이 가리키는 파일을 만든다(기본 `jaso/corpus/보기/.그만`).
 `pkill -f` 는 쓰지 마라 -- 명령줄에 그 패턴이 들어 있으면 자기 셸까지 죽는다.
 
+## 주소로 시작할 수도 있다 -- 그리고 그쪽이 대개 낫다
+
+    python3 jaso/crawl.py --분 60 --씨앗주소 'https://<목록 쪽>' --따라 30
+
+목록 쪽(커뮤니티 게시판 · 태그 쪽 · 블로그 목록)을 주면 **그 집 안쪽 글로 파고든다.**
+검색 창구를 거치지 않으므로 창구가 막혀도 돌고, 한 집에서 여러 편이 나온다.
+
+### `dig/run.py --url '<검색 결과 쪽>' --따라 5` 는 **안 된다**
+
+`dig` 의 `--따라` 는 **같은 host 안으로만** 판다(`dig/run.py` 의 `안쪽링크`:
+`p.netloc != 바탕.netloc` 이면 건너뛴다). 그래서 검색 결과 쪽에 걸면 검색 창구
+자기 살림 쪽만 돌고 **결과로는 영영 못 간다.**
+
+검색 결과에서 주소를 꺼내는 자리는 `dig/find.py` 다 -- 감싼 주소(`/l/?uddg=`)를 풀고
+창구 자기 집 주소를 걸러낸다. 그래서 여기서는 **질의는 `find` 로, 주소는 `--씨앗주소`
+로** 두 길을 따로 둔다.
+
 ## 질의를 하드코딩하지 않는다
 
 씨앗을 안 주면 **있는 것에서 뽑는다** -- 문항 원장의 흔한 낱말, 이미 받은 쪽의 제목,
@@ -110,24 +127,89 @@ def 모델질의(씨앗들: list, 묻기=None) -> list:
             for x in 답.splitlines() if x.strip()][:8]
 
 
+class _멈춤(Exception):
+    """더 못 가는 자리. K001 이거나 `.그만` 이다."""
+
+
 def 돌리기(a, 묻기=None) -> dict:
+    import urllib.parse
+
     from dig import extract as EX
     from dig import fetch as DF
     from dig import find as FD
+    from dig import run as DR
 
     끝날때 = time.time() + max(1, a.분) * 60
     그만파일 = Path(a.그만) if a.그만 else (Path(a.곳) / ".그만")
     씨앗들 = 씨앗뽑기(a)
-    if not 씨앗들:
-        return {"왜": "물을 것이 하나도 없다 -- `--씨앗` 을 주거나, 문항 원장을 "
-                     "먼저 채워라(`jaso/fetch.py`)", "담음": 0}
+    # **주소만 줘도 돈다.** 실측: 여기서 씨앗(질의)만 보고 일찍 돌아섰더니,
+    # `--씨앗주소` 로 목록 쪽을 준 런이 한 쪽도 안 받고 끝났다 -- 검색 창구가 막혔을
+    # 때 쓰라고 만든 길이 바로 그 상황에서 안 열린 것이다.
+    if not 씨앗들 and not (a.씨앗주소 or []):
+        return {"왜": "물을 것도 받을 주소도 없다 -- `--씨앗` 이나 `--씨앗주소` 를 "
+                     "주거나, 문항 원장을 먼저 채워라(`jaso/fetch.py`)",
+                "담음": 0, "잼": 0, "건너뜀": 0, "못받음": 0, "질의": 0, "주소": 0}
 
     본주소 = {출처 for _, 출처, _ in KP.읽기(a.곳)}
     본해시 = {x.본문해시 for x in MN.읽기(a.잰곳)}
     할것, 한것 = list(씨앗들), set()
-    보고 = {"담음": 0, "잼": 0, "건너뜀": 0, "못받음": 0, "질의": 0, "왜": ""}
+    # **주소 줄과 질의 줄을 따로 둔다.** 검색 창구가 막혀도 주소 줄은 돈다.
+    주소줄 = [u for u in (a.씨앗주소 or []) if u.strip()]
+    보고 = {"담음": 0, "잼": 0, "건너뜀": 0, "못받음": 0, "질의": 0, "주소": 0, "왜": ""}
 
-    while time.time() < 끝날때 and 할것:
+    def 캐기(url: str, 씨앗집: bool) -> None:
+        """한 주소를 받아 담고, 씨앗집이면 안쪽 링크를 주소 줄에 붙인다."""
+        nonlocal 주소줄
+        if url in 본주소:
+            보고["건너뜀"] += 1
+            return
+        본주소.add(url)
+        time.sleep(max(0.0, a.틈))
+        응답들 = [y for y in DF.캐기(url, 곁문까지=False) if y.됐나]
+        if not 응답들:
+            보고["못받음"] += 1
+            return
+        뽑은것 = EX.뽑기(응답들[0].몸통, 응답들[0].꼴,
+                      응답들[0].최종url or 응답들[0].url)
+        if 씨앗집 and a.따라 > 0:
+            새것 = [u for u in DR.안쪽링크(뽑은것, 응답들[0].최종url or url, a.따라)
+                   if u not in 본주소]
+            주소줄 += 새것[:a.따라]
+        글 = " ".join(str(EX.뽑기(y.몸통, y.꼴, y.url).get("글") or "")
+                     for y in 응답들).strip()
+        if len(글) < a.최소:
+            보고["건너뜀"] += 1
+            return
+        잰것 = MN.재기(글, url)
+        if 잰것.본문해시 in 본해시:
+            보고["건너뜀"] += 1
+            return
+        본해시.add(잰것.본문해시)
+        if not LG.hard(MN.검사(잰것, 글)):
+            MN.담기([잰것], a.잰곳)
+            보고["잼"] += 1
+        p, vs = KP.담기(글, url, a.곳)
+        if p is None:
+            보고["왜"] = " · ".join(str(v) for v in LG.hard(vs))
+            raise _멈춤()
+        보고["담음"] += 1
+        print(f"    담음 {len(글):>6}자  {p.name}  <- {url[:52]}", flush=True)
+
+    씨앗집들 = {urllib.parse.urlsplit(u).netloc for u in 주소줄}
+    try:
+      # **주소 줄을 먼저 비운다.** 검색 창구가 막혀 있어도 이쪽은 돌기 때문이다.
+      while time.time() < 끝날때 and 주소줄:
+        if 그만파일.exists():
+            보고["왜"] = f"{그만파일} 이 있어 멈췄다"
+            raise _멈춤()
+        u = 주소줄.pop(0)
+        보고["주소"] += 1
+        if 보고["주소"] % 10 == 1:
+            print(f"[{time.strftime('%H:%M:%S')}] 주소 {보고['주소']}번째 "
+                  f"(줄에 {len(주소줄)}개 남음) {u[:56]}", flush=True)
+        캐기(u, urllib.parse.urlsplit(u).netloc in 씨앗집들)
+
+      while time.time() < 끝날때 and 할것:
         if 그만파일.exists():
             보고["왜"] = f"{그만파일} 이 있어 멈췄다"
             break
@@ -148,43 +230,18 @@ def 돌리기(a, 묻기=None) -> dict:
         for x in r.것들:
             if time.time() >= 끝날때 or 그만파일.exists():
                 break
-            if x.url in 본주소:
-                보고["건너뜀"] += 1
-                continue
-            본주소.add(x.url)
-            time.sleep(max(0.0, a.틈))
-            응답들 = [y for y in DF.캐기(x.url, 곁문까지=False) if y.됐나]
-            if not 응답들:
-                보고["못받음"] += 1
-                continue
-            글 = " ".join(str(EX.뽑기(y.몸통, y.꼴, y.url).get("글") or "")
-                         for y in 응답들).strip()
-            if len(글) < a.최소:
-                보고["건너뜀"] += 1
-                continue
-            잰것 = MN.재기(글, x.url)
-            if 잰것.본문해시 in 본해시:          # 미러가 표본을 부풀린다
-                보고["건너뜀"] += 1
-                continue
-            본해시.add(잰것.본문해시)
-            if not LG.hard(MN.검사(잰것, 글)):
-                MN.담기([잰것], a.잰곳)
-                보고["잼"] += 1
-            p, vs = KP.담기(글, x.url, a.곳)
-            if p is None:
-                보고["왜"] = " · ".join(str(v) for v in LG.hard(vs))
-                return 보고                     # K001 이면 다음도 마찬가지다
-            보고["담음"] += 1
-            print(f"    담음 {len(글):>6}자  {p.name}  <- {x.url[:52]}", flush=True)
+            캐기(x.url, False)
 
         if a.모델 and len(할것) < 3 and time.time() < 끝날때:
             더 = [q for q in 모델질의(list(한것), 묻기) if q not in 한것]
             할것 += 더
             print(f"    모델이 질의 {len(더)}개를 더 냈다", flush=True)
+    except _멈춤:
+        pass
 
     if not 보고["왜"]:
         보고["왜"] = ("시간이 다 됐다" if time.time() >= 끝날때
-                    else "더 물을 것이 없다")
+                    else "더 물을 것도 받을 주소도 없다")
     return 보고
 
 
@@ -192,6 +249,12 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="오래 돌며 모은다 (dig)")
     ap.add_argument("--분", dest="분", type=int, default=60)
     ap.add_argument("--씨앗", dest="씨앗", action="append", default=[])
+    ap.add_argument("--씨앗주소", dest="씨앗주소", nargs="+", default=[],
+                    help="목록 쪽(게시판·태그·블로그 목록). 그 집 안쪽으로 판다.\n"
+                         "**검색 결과 쪽을 여기 넣지 마라** -- dig 의 안쪽 파기는 "
+                         "같은 host 안으로만 간다. 검색은 --씨앗 을 쓴다")
+    ap.add_argument("--따라", dest="따라", type=int, default=20,
+                    help="씨앗주소 한 쪽에서 안쪽 링크를 몇 개까지")
     ap.add_argument("--회사", default="")
     ap.add_argument("--직무", default="")
     ap.add_argument("--학과", default="")
@@ -212,6 +275,11 @@ def main(argv=None) -> int:
 
     if a.살펴만:
         씨 = 씨앗뽑기(a)
+        if a.씨앗주소:
+            print(f"씨앗 주소 {len(a.씨앗주소)}개 -- 그 집 안쪽으로 "
+                  f"{a.따라}개씩 판다")
+            for u in a.씨앗주소:
+                print(f"  · {u}")
         print(f"물을 것 {len(씨)}개 (씨앗)")
         for x in 씨:
             print(f"  · {x}")
@@ -232,8 +300,8 @@ def main(argv=None) -> int:
     보고 = 돌리기(a)
     print(f"\n{'=' * 62}")
     print(f"{(time.time() - 시작) / 60:.1f}분 · 물음 {보고['질의']}개 · "
-          f"본문 {보고['담음']}편 · 잰 것 {보고['잼']}편 · "
-          f"건너뜀 {보고['건너뜀']} · 못받음 {보고['못받음']}")
+          f"주소 {보고.get('주소', 0)}개 · 본문 {보고['담음']}편 · "
+          f"잰 것 {보고['잼']}편 · 건너뜀 {보고['건너뜀']} · 못받음 {보고['못받음']}")
     print(f"멈춘 까닭: {보고['왜']}")
     if not 보고["담음"]:
         print("\n**한 편도 못 담았다.** 위의 까닭이 다음에 무엇을 할지 알려 준다 --\n"
