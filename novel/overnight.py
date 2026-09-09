@@ -97,11 +97,11 @@ class Discord:
             # UA 없이 보내면 Cloudflare 가 403 을 낸다 -- channels.UA 주석 참고
             url = self.webhook
             headers = {"Content-Type": "application/json",
-                       "User-Agent": channels.UA,
                        "User-Agent": channels.UA}
         else:
             url = self.API.format(cid=self.channel)
             headers = {"Content-Type": "application/json",
+                       "User-Agent": channels.UA,
                        "Authorization": f"Bot {self.token}"}
         try:
             # **Request 생성도 try 안에 둔다.** 잘못된 URL 은 urlopen 이 아니라 여기서
