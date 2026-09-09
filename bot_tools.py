@@ -59,6 +59,17 @@ _cancel_events: dict[str, threading.Event] = {}
 _cancel_events_lock = threading.Lock()
 
 
+# **부른 셸을 그 실행 단위로 센다.** 이유: 모델이 "차단돼서 못 받았다" 고 답했는데
+# 실제로는 **셸을 한 번도 안 불렀던** 일이 있었다(실측 2026-09-09, 사용자 확인:
+# "안막혔어"). 규칙에는 '해 보기 전에 수단이 없다고 하지 마라' 가 이미 적혀 있었고
+# 그래도 어겼다 -- 그러면 규칙을 더 적을 것이 아니라 **말이 사실인지 코드가 재야 한다.**
+# OS 스레드로 센다: run_public_agent 와 run_shell 이 같은 실행기 스레드에서 돈다.
+_셸기록: dict[int, list] = {}
+_셸기록_lock = threading.Lock()
+# thread_id -> 그 실행에서 부른 것. 부르는 쪽(discord_bot_server)이 답과 견준다.
+마지막셸: dict[str, list] = {}
+
+
 def register_thread(thread_id: str) -> None:
     """run_admin_agent/run_public_agent 시작 시 호출 -- 지금 실행 중인 OS 스레드를
     discord thread_id와 묶고, 이전 취소 플래그를 지운다."""
@@ -66,9 +77,14 @@ def register_thread(thread_id: str) -> None:
         _thread_registry[thread_id] = threading.get_ident()
     with _cancel_events_lock:
         _cancel_events.setdefault(thread_id, threading.Event()).clear()
+    with _셸기록_lock:
+        _셸기록[threading.get_ident()] = []
 
 
 def unregister_thread(thread_id: str) -> None:
+    # **이 실행에서 부른 것을 thread_id 쪽으로 옮긴다.** 부르는 쪽이 답과 견준다.
+    with _셸기록_lock:
+        마지막셸[thread_id] = _셸기록.pop(threading.get_ident(), [])
     with _thread_registry_lock:
         _thread_registry.pop(thread_id, None)
 
@@ -140,6 +156,9 @@ def run_shell(command: str) -> str:
         # 다른데 어느 쪽이 도구를 썼는지 알 길이 없었다). 값은 redact_secrets 로 가린다.
         print(f"[run_shell] {_current_author.get()} :: "
               f"{redact_secrets(command)[:160]!r}")
+        with _셸기록_lock:
+            _셸기록.setdefault(threading.get_ident(), []).append(
+                (redact_secrets(command)[:160], proc.returncode == 0))
         out = redact_secrets((stdout or "")[-4000:])
         err = redact_secrets((stderr or "")[-2000:])
         if proc.returncode is not None and proc.returncode < 0:

@@ -39,6 +39,7 @@ import agent_memory
 import gitsync  # noqa: E402
 import gatekeeper  # noqa: E402
 import main_public  # noqa: E402
+import bot_tools  # noqa: E402
 from bot_tools import (  # noqa: E402
     REPO_DIR, run_shell, search_memory, save_memory, build_agent_pool, run_with_fallback_pool,
     register_thread, unregister_thread, request_cancel,
@@ -147,6 +148,40 @@ _active_prompts: dict[str, str] = {}
 # thread_id 별 자물쇠. 같은 대화에 두 실행이 겹치면 도구 호출과 그 답이 어긋나
 # 대화가 통째로 깨진다(INVALID_CHAT_HISTORY). 방마다 하나씩이라 서로 안 막는다.
 _thread_locks: dict[str, asyncio.Lock] = {}
+
+# **"못 받았다" 는 말이 사실인지 잰다.**
+#
+# 실측 2026-09-09: 공개 채널이 "외부 네트워크 차단 및 보안 정책(403 Forbidden 등)으로
+# 직접적인 데이터 수집이 제한되고 있습니다" 라고 답했다. 사용자가 같은 주소를 VM 에서
+# 직접 돌려 보고 **"안막혔어"** 라고 했다. 즉 **안 해 보고 막혔다고 한 것**이다.
+#
+# 프롬프트에는 이미 적혀 있었다 -- "해 보기 전에 '수단이 없다' 고 하지 마라",
+# "안 되면 실패한 명령과 오류를 그대로 대라"(규칙 4·5). **적혀 있는데 어겼다.**
+# 그러면 규칙을 더 적을 것이 아니라 **말이 사실인지 코드가 재야 한다** -- 이 저장소가
+# 봇의 자동 rebase 에서 배운 것과 같다(규칙은 사람에게 적혀 있었고 그 줄은 봇에게
+# 적혀 있었다).
+#
+# 잡는 것은 **거짓말이 아니라 어긋남**이다: 못 받았다고 하는데 부른 것이 없거나,
+# 부른 것이 다 성공했는데 못 받았다고 하는 것. 답을 지우지는 않는다 -- 옆에 적는다.
+못받았다말 = ("차단", "막혀", "막았", "403", "수집이 제한", "접근이 제한",
+             "긁어올 수 없", "가져올 수 없", "조회할 수 없", "제한되고 있",
+             "직접 접근이 불가", "실시간 데이터를 제공할 수 없")
+
+
+def _말과_한것이_맞나(reply: str, 부른것: list) -> str:
+    """답이 '못 받았다' 고 하는데 실제로 한 것과 어긋나면 그 말을 돌려준다."""
+    if not reply or not any(w in reply for w in 못받았다말):
+        return ""
+    if not 부른것:
+        return ("**[검사] 이 답은 '못 받았다' 고 하는데 이번 턴에 셸을 한 번도 "
+                "안 불렀다.** 막힌 것이 아니라 **안 해 본 것**이다. "
+                "`python3 dig/run.py --url '<주소>'` 를 실제로 돌리고, "
+                "그래도 안 되면 그 명령과 오류를 그대로 붙여라.")
+    실패 = [c for c, ok in 부른것 if not ok]
+    if not 실패:
+        return (f"**[검사] 이 답은 '못 받았다' 고 하는데 부른 {len(부른것)}개가 "
+                "전부 성공했다.** 무엇이 막혔는지 그 출력으로 보여라.")
+    return ""
 
 
 async def _handle_stop(message: discord.Message, thread_id: str) -> None:
@@ -577,6 +612,12 @@ async def _handle_public_message(message: discord.Message) -> None:
             async with message.channel.typing():
                 reply = await loop.run_in_executor(
                     None, main_public.run_public_agent, content, thread_id, author_id)
+            부른것 = bot_tools.마지막셸.get(thread_id) or []
+            어긋남 = _말과_한것이_맞나(reply, 부른것)
+            if 어긋남:
+                print(f"[public] ch={message.channel.id} **어긋남** "
+                      f"셸 {len(부른것)}회 -- {어긋남[:80]}")
+                reply = f"{reply}\n\n{어긋남}"
             # admin 경로와 같은 이유로 git 단계의 실패가 답변 전달을 막지 못하게 한다.
             sync_note, integrity_note = await _sync_and_note(loop, message, reply)
     except asyncio.CancelledError:
