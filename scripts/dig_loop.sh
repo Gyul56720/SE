@@ -35,6 +35,8 @@ DIG="${DIG_CMD:-python3 dig/run.py}"
 BATCH="${DIG_LOOP_BATCH:-4}"
 FOLLOW="${DIG_LOOP_FOLLOW:-8}"
 FOLLOW_STEP="${DIG_LOOP_FOLLOW_STEP:-6}"
+# **몇 홉까지.** 1 이면 목록에서 글로 한 걸음이 끝이라 제목만 쌓인다.
+DEPTH="${DIG_LOOP_DEPTH:-2}"
 
 if [ -z "$Q" ]; then
   echo "물음을 줘라."
@@ -62,7 +64,7 @@ DEADLINE=$((SECONDS + SECS))
 FIND="$(printf '%s' "$Q" | tr -s ' ' ',')"
 
 echo "# dig 루프 -- '$Q'" | tee "$OUT"
-echo "#   ${SECS}초 · 라운드마다 ${BATCH}주소 · --따라 ${FOLLOW}부터 +${FOLLOW_STEP}" | tee -a "$OUT"
+echo "#   ${SECS}초 · 라운드마다 ${BATCH}주소 · --따라 ${FOLLOW}부터 +${FOLLOW_STEP} · --깊이 ${DEPTH}" | tee -a "$OUT"
 echo "#   $OUT" | tee -a "$OUT"
 
 # ── 주소를 캔다. 안 판 것만 SEEDS 에 쌓는다 ────────────────────────
@@ -112,7 +114,8 @@ while [ "$SECONDS" -lt "$DEADLINE" ]; do
   echo "═══ 라운드 $ROUND · --따라 $FOLLOW · $(echo "$NEXT" | wc -l | tr -d ' ')주소 · ${LEFT}초 남음 ═══" >> "$OUT"
 
   # shellcheck disable=SC2086
-  timeout "$LEFT" $DIG --url $NEXT --따라 "$FOLLOW" --찾 "$FIND" >> "$OUT" 2>&1
+  timeout "$LEFT" $DIG --url $NEXT --따라 "$FOLLOW" --깊이 "$DEPTH" \
+    --찾 "$FIND" >> "$OUT" 2>&1
   printf '%s\n' "$NEXT" >> "$SEEN"
   FOLLOW=$((FOLLOW + FOLLOW_STEP))
 done

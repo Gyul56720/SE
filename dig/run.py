@@ -4,6 +4,7 @@
     python3 dig/run.py --url '<주소>' [<주소> ...]     # 앞문 + 곁문, 뽑은 것 전부
     python3 dig/run.py --url '<주소>' --앞문만          # 곁문 안 두드린다 (빠르다)
     python3 dig/run.py --url '<주소>' --따라 12         # 안쪽 링크까지 판다
+    python3 dig/run.py --url '<주소>' --따라 12 --깊이 3  # **층이 여럿이면 이것**
     python3 dig/run.py --url '<주소>' --json            # 통째로 JSON
     python3 dig/run.py --url '<주소>' --찾 가격,메뉴     # 그 말이 든 자리만 추려서도
 
@@ -17,6 +18,15 @@
 주소를 거두어 물음의 말로 매기고 -> 위 여섯을 앞문·곁문 다 캐고 -> 그 안쪽
 링크까지 열 개 더 판다. 예전에는 이것이 모델이 스스로 이어 붙여야 하는 네 번의
 호출이었고, 첫 번째에서 막히면 거기서 끝났다.
+
+## 층이 여럿이면 `--깊이` 를 준다
+
+    목록 쪽 -> 대학별 목록 -> 수기 한 편        <- 두 홉이다
+
+`--따라` 는 **한 홉에서 몇 개를 팔지**이고, `--깊이` 는 **몇 홉을 갈지**다. 둘은
+다른 손잡이다 -- `--따라` 를 아무리 키워도 깊이가 1 이면 첫 층에서 멈추고, 그러면
+**제목만 잔뜩 얻고 본문은 한 줄도 못 받는다.** 기본이 1 이므로 층이 있는 쪽을
+팔 때는 반드시 준다. `--쪽상한`(기본 300)이 고삐다.
 
 ## 여기 규율은 `brief/` 와 **반대**다
 
@@ -50,6 +60,13 @@ from dig import search as SC                                   # noqa: E402
 
 따라기본 = 0
 따라상한 = 40
+# **몇 홉까지 파고들 것인가.** 1 이면 예전과 같다(목록 -> 글 한 걸음).
+# 실제 쪽은 대개 두세 층이라 1 로는 이름만 얻고 본문에 못 닿는다.
+깊이기본 = 1
+깊이상한 = 5
+# 통틀어 이만큼 받으면 멈춘다. 깊이가 늘면 쪽수는 곱으로 커지므로 고삐가 필요하다 --
+# 없으면 `--깊이 3 --따라 40` 한 줄이 한 집을 통째로 긁는다.
+쪽상한기본 = 300
 
 
 def 안쪽링크(뽑은것: dict, 바탕url: str, 몇: int, 찾을말: list = None) -> list:
@@ -98,7 +115,7 @@ def 안쪽링크(뽑은것: dict, 바탕url: str, 몇: int, 찾을말: list = No
 
 
 def 캐기(urls: list, 앞문만: bool = False, 따라: int = 0, 틈: float = FT.기본틈,
-        찾을말: list = None) -> tuple:
+        찾을말: list = None, 깊이: int = 깊이기본, 쪽상한: int = 쪽상한기본) -> tuple:
     """(응답들, 뽑은것들). **하나가 터져도 나머지는 온다.**
 
     `찾을말` 은 거르는 데 안 쓴다 -- 안쪽으로 더 팔 때 **차례를 정하는 데만** 쓴다.
@@ -115,26 +132,42 @@ def 캐기(urls: list, 앞문만: bool = False, 따라: int = 0, 틈: float = FT
             응답들 += FT.캐기(u, 곁문까지=True, 틈=틈)
     뽑은것들 = [EX.뽑기(r.몸통, r.꼴, r.최종url or r.url) for r in 응답들 if r.몸통]
 
-    if 따라 > 0 and 뽑은것들:
+    # ── 안쪽으로 판다. **한 홉이 아니라 `깊이` 홉** ──────────────────
+    #
+    # 예전엔 이 자리가 `if 따라 > 0:` 한 번이었다. 그래서 `--따라` 를 아무리
+    # 키워도 **깊이는 늘 1** 이었다 -- 목록 쪽에서 글 쪽으로 한 걸음이 끝이다.
+    # 실제 쪽은 대개 두세 층이다(명예의 전당 -> 대학별 목록 -> 수기 한 편).
+    # 그러면 이름만 잔뜩 얻고 본문은 한 줄도 못 받는다. 사용자가 물은 그 자리다:
+    # "왜 dig 가 더 깊게 안 들어가지?" -- 못 들어간 것이 아니라 **안 들어가게
+    # 짜여 있었다.**
+    본주소 = {(r.최종url or r.url) for r in 응답들}
+    앞선것, 앞선url = 뽑은것들, [r.최종url or r.url for r in 응답들 if r.몸통]
+    for _홉 in range(max(0, 깊이) if 따라 > 0 else 0):
+        if len(응답들) >= 쪽상한:
+            break
         몫 = min(따라, 따라상한)
-        쪽마다 = [안쪽링크(x, u, 몫, 찾을말)
-                 for x, u in zip(뽑은것들, [r.최종url or r.url
-                                          for r in 응답들 if r.몸통])]
+        쪽마다 = [안쪽링크(x, u, 몫, 찾을말) for x, u in zip(앞선것, 앞선url)]
         # **쪽마다 돌아가며 뽑는다.** 그냥 이어 붙이면 첫 쪽이 예산을 다 먹는다 --
         # 곁문까지 치면 같은 집을 여러 번 받으므로 첫 쪽은 대개 앞문 하나이고,
         # 정작 다른 문이 준 다른 것은 한 줄도 못 따라간다.
-        더볼것, 본것 = [], set()
+        더볼것 = []
         for 칸 in range(몫):
             for 줄 in 쪽마다:
-                if 칸 < len(줄) and 줄[칸] not in 본것:
-                    본것.add(줄[칸])
+                if 칸 < len(줄) and 줄[칸] not in 본주소:
+                    본주소.add(줄[칸])
                     더볼것.append(줄[칸])
-        더볼것 = 더볼것[:몫]
-        if 더볼것:
-            더받음 = FT.여럿(더볼것, 틈=틈, 벌수=1)
-            응답들 += 더받음
-            뽑은것들 += [EX.뽑기(r.몸통, r.꼴, r.최종url or r.url)
-                        for r in 더받음 if r.몸통]
+        더볼것 = 더볼것[:max(0, 쪽상한 - len(응답들))][:몫]
+        if not 더볼것:
+            break
+        더받음 = FT.여럿(더볼것, 틈=틈, 벌수=1)
+        응답들 += 더받음
+        # **다음 홉은 이번에 받은 것에서만 판다.** 앞 홉까지 다시 훑으면 같은
+        # 링크를 되풀이해 고르고, 깊이를 늘려도 제자리를 돈다.
+        이번것 = [EX.뽑기(r.몸통, r.꼴, r.최종url or r.url) for r in 더받음 if r.몸통]
+        뽑은것들 += 이번것
+        앞선것 = 이번것
+        앞선url = [r.최종url or r.url for r in 더받음 if r.몸통]
+        본주소 |= {(r.최종url or r.url) for r in 더받음}
     return 응답들, 뽑은것들
 
 
@@ -244,7 +277,12 @@ def main(argv=None) -> int:
     ap.add_argument("--앞문만", dest="front", action="store_true",
                     help="곁문(m· amp· json· 아카이브)을 안 두드린다")
     ap.add_argument("--따라", dest="follow", type=int, default=따라기본,
-                    help=f"안쪽 링크를 몇 개까지 더 팔지 (최대 {따라상한})")
+                    help=f"한 홉에서 안쪽 링크를 몇 개나 팔지 (최대 {따라상한})")
+    ap.add_argument("--깊이", dest="depth", type=int, default=깊이기본,
+                    help=f"몇 홉까지 파고들지 (기본 {깊이기본}, 최대 {깊이상한}). "
+                         "목록->대학별->수기 처럼 층이 있으면 2 이상이 필요하다")
+    ap.add_argument("--쪽상한", dest="cap", type=int, default=쪽상한기본,
+                    help=f"통틀어 이만큼 받으면 멈춘다 (기본 {쪽상한기본})")
     ap.add_argument("--찾", dest="find", default="", help="그 말이 나온 자리를 따로 보여 준다")
     ap.add_argument("--틈", dest="timeout", type=float, default=FT.기본틈)
     ap.add_argument("--json", dest="asjson", action="store_true", help="통째로 JSON")
@@ -300,7 +338,8 @@ def main(argv=None) -> int:
         print("  python3 dig/run.py --찾기 '<물음>' --파 6 --따라 10   # 주소를 모를 때")
         return 3
 
-    응답들, 뽑은것들 = 캐기(urls, a.front, a.follow, a.timeout, 찾을말)
+    응답들, 뽑은것들 = 캐기(urls, a.front, a.follow, a.timeout, 찾을말,
+                          min(max(1, a.depth), 깊이상한), a.cap)
     if a.asjson:
         print(json.dumps({
             "받은곳": [{"url": r.url, "코드": r.코드, "꼴": r.꼴, "길이": len(r.몸통),
