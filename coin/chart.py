@@ -119,11 +119,30 @@ def 재기(봉: list, 눈금: str = "1d", 끝: int = None) -> dict:
     }
     out = {}
     for 이름, 계열 in 잰것.items():
+        if 죽은칸(계열):
+            continue
         지금 = 계열[-1] if 계열 else None
         p = _백분위(지금, 계열)
         if p == p:
             out[f"{이름}@{눈금}"] = p
     return out
+
+
+def 죽은칸(값들: list) -> bool:
+    """**늘 같은 값이면 지표가 아니다.**
+
+    실측 2026-09-09 (VM): `변동폭@1d 100% · 거래량@1d 100%` 가 찍혔다. 고·저·거래량이
+    없는 봉으로 잰 것이라 두 계열이 통째로 0 이었고, 0 만 든 계열의 앞선백분위는
+    **모든 자리에서 1.0** 이다. 지표가 아니라 허수인데 화면에는 "역대 최고" 로 보인다.
+
+    그리고 그런 칸은 닮음에서 **모든 날이 완벽히 일치**하므로 시장 닮음을 통째로
+    부풀린다(그날 0.94~0.96 이 다 비슷했던 까닭).
+    """
+    본 = [v for v in 값들 if v is not None and v == v]
+    if len(본) < 2:
+        return True
+    첫 = 본[0]
+    return all(abs(v - 첫) < 1e-12 for v in 본)
 
 
 def 앞선백분위(값들: list) -> list:
@@ -159,7 +178,9 @@ def 전체(봉: list, 눈금: str = "1d") -> list:
         "변동폭": [((r[2] - r[3]) / r[4]) if r[4] else None for r in 봉],
         "거래량": [float(r[5]) for r in 봉],
     }
-    쌓 = {이름: 앞선백분위(계열) for 이름, 계열 in 잰것.items()}
+    # **죽은 칸은 아예 안 낸다** -- 100% 로 찍히면서 닮음을 부풀린다
+    쌓 = {이름: 앞선백분위(계열) for 이름, 계열 in 잰것.items()
+          if not 죽은칸(계열)}
     out = []
     for i in range(len(봉)):
         d = {}
