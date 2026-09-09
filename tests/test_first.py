@@ -125,8 +125,8 @@ ok(first.REF == _real and len(first.ref()) == len(_got),
 
 
 print()
+tmp.unlink(missing_ok=True)
+print("첫 쪽: 첫 대사까지 · 첫 문장 · 앞머리 프로필 · 표 · 명령줄 · 표본 -- 통과")
 if fails:
     print(f"첫 쪽: {len(fails)}개 실패 -- {fails}")
     sys.exit(1)
-tmp.unlink(missing_ok=True)
-print("첫 쪽: 첫 대사까지 · 첫 문장 · 앞머리 프로필 · 표 · 명령줄 · 표본 -- 통과")
