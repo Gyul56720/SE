@@ -135,6 +135,35 @@ ok(len(SRC.쓸수있는것(나라="US")) >= 30, "US 출처가 서른 곳 넘는�
 for 층 in ("규제", "거시", "사법", "거래소", "매체"):
     ok(any(x.층 == 층 for x in SRC.쓸수있는것(나라="US")), f"US 에 {층} 층이 있다")
 
+# ---------------------------------------------------------------- 주소 찾기
+# **집은 선언이고 경로는 발견이다.** 손으로 적은 주소는 썩지만(104곳 중 18곳이 404였다)
+# 아무 주소나 받으면 아무 데서 온 글이 원장에 들어간다. 그래서 집으로 거른다.
+from coin import locate as LC                                         # noqa: E402
+import tempfile as _tf2                                               # noqa: E402
+
+_s = SRC.get("sec-press")
+ok(SRC.집이름(_s).endswith("sec.gov"), f"집을 url 에서 뽑는다: {SRC.집이름(_s)}")
+ok("sec.gov" in SRC.찾을말(_s), "찾을말을 이미 적힌 것에서 짓는다 -- 또 손으로 안 적는다")
+ok("*" not in SRC.찾을말(SRC.get("upbit-notice")), "찾을말에 마크업이 안 샌다")
+ok(all(SRC.찾을말(x) for x in SRC.목록), "모든 출처에 찾을말이 나온다")
+ok(all(SRC.집이름(x) for x in SRC.목록), "모든 출처에 집이 나온다")
+
+_밖 = SRC.집뽑기("https://evil.example.com/sec-press-releases")
+ok(_밖 != SRC.집이름(_s), "**다른 집이면 같은 집이 아니다** -- 이것이 첫째 자물쇠다")
+ok(SRC.집뽑기("https://www.sec.gov/news/x?a=1") == "www.sec.gov", "집을 경로·물음표 앞까지만")
+
+_옛길 = LC.길
+try:
+    with _tf2.TemporaryDirectory() as _d:
+        LC.길 = Path(_d) / "주소.json"
+        ok(LC.지금주소(_s) == _s.url, "찾아 둔 것이 없으면 선언된 주소")
+        LC.적기("sec-press", "https://www.sec.gov/찾은것", "찾아서 바꿨다", 12)
+        ok(LC.지금주소(_s) == "https://www.sec.gov/찾은것",
+           "**찾아 둔 주소가 있으면 그것을 쓴다**")
+        ok(LC.찾아둔것()["sec-press"]["건수"] == 12, "몇 건을 냈는지도 남는다 -- 되짚는 자리")
+finally:
+    LC.길 = _옛길
+
 print()
 print(f"실패 {len(fails)}개" if fails else "전부 통과")
 raise SystemExit(1 if fails else 0)

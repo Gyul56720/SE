@@ -36,7 +36,9 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import os
 import sys
+import time
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -84,7 +86,15 @@ GDELT_말 = {
     "gdelt-de": ("ger", "deu", "german"),
     "gdelt-fr": ("fre", "fra", "french"),
 }
-# 말마다 그 말로 묻는다. 한 질의에 여섯 문자를 섞으면 그 쪽이 어떻게 자르는지 모른다.
+# **질의도 후보다 -- 그리고 섞은 것이 먼저다.**
+#
+# 실측 2026-09-09, 두 번 쟀다:
+#     섞은 질의 + sourcelang:ger   -> 169건   (1차 탐침)
+#     독일어 질의 + ger/deu/german ->   0건   (2차 탐침. 내가 '고친' 뒤)
+#
+# 말마다 그 말로 묻는 편이 낫다고 여겨 바꿨는데 **되레 죽였다.** 어느 쪽이 나은지는
+# 짐작이 아니라 잰 것이 정한다 -- 그래서 관측된 것(섞은 질의)을 첫 후보로 두고
+# 말별 질의는 뒤에 둔다. 둘 다 후보이므로 다음 탐침이 다시 갈라 준다.
 GDELT_질의 = {
     "gdelt-en": "(bitcoin OR cryptocurrency OR crypto)",
     "gdelt-zh": "(比特币 OR 加密货币 OR 虚拟货币)",
@@ -110,6 +120,47 @@ def _http(url: str, timeout: float = 25.0) -> bytes:
         return r.read()
 
 
+# **같은 집을 잇달아 두드리면 막힌다.**
+#
+# 실측 2026-09-09: sec.gov 를 여섯 번 이어 두드렸는데 sec-press(첫 번째)는 25건을
+# 주고 sec-lit · sec-admin · edgar-19b4 는 403/빈손이었다. 주소가 틀린 것이 아니라
+# **그 집이 몰아치는 것을 막은 것**이다. 게다가 SEC 는 연락처가 든 User-Agent 를
+# 요구한다고 스스로 적어 두었다 -- 안 주면 거절한다.
+#
+# 그래서 (1) 같은 집이면 조금 쉬고 (2) 그 집이 요구하는 머리를 준다.
+_마지막 = {}
+_집틈 = float(os.environ.get("COIN_HOST_GAP", "1.2"))
+_집머리 = {
+    "sec.gov": {"User-Agent": "SE-coin research contact@example.com",
+                "Accept-Encoding": "gzip, deflate"},
+    "www.sec.gov": {"User-Agent": "SE-coin research contact@example.com",
+                    "Accept-Encoding": "gzip, deflate"},
+    "efts.sec.gov": {"User-Agent": "SE-coin research contact@example.com"},
+}
+
+
+def _쉬기(url: str) -> str:
+    집 = (url or "").split("//", 1)[-1].split("/", 1)[0]
+    앞 = _마지막.get(집)
+    if 앞 is not None:
+        남은 = _집틈 - (time.monotonic() - 앞)
+        if 남은 > 0:
+            time.sleep(남은)
+    _마지막[집] = time.monotonic()
+    return 집
+
+
+def _직접(url: str, 머리: dict, timeout: float = 20.0) -> bytes:
+    """그 집이 요구하는 머리로 직접 간다. `dig` 의 헤더벌로는 못 넘는 자리가 있다."""
+    req = urllib.request.Request(url, headers=머리)
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        raw = r.read()
+    if (r.headers.get("Content-Encoding") or "").lower() == "gzip":
+        import gzip
+        raw = gzip.decompress(raw)
+    return raw
+
+
 def _캐기(url: str, timeout: float = 25.0, 곁문수: int = 6):
     """**앞문이 안 되면 곁문까지.** 모바일 · AMP · 그 쪽 JSON 끝점 · 아카이브 · http.
 
@@ -117,6 +168,13 @@ def _캐기(url: str, timeout: float = 25.0, 곁문수: int = 6):
     중국·일본 매체는 앞문 피드가 막히거나 옮겨 간 일이 흔하고, 그때 열려 있는 것이
     대개 모바일 쪽이다. 이 한 걸음이 **나라를 늘린 값어치의 절반**이다.
     """
+    집 = _쉬기(url)
+    머리 = _집머리.get(집)
+    if 머리:                                   # 그 집이 요구하는 머리가 있으면 그것부터
+        try:
+            return _직접(url, 머리, timeout), url
+        except Exception:                                             # noqa: BLE001
+            pass
     if DIG is None:
         return _http(url, timeout)
     r = DIG.받기(url)
@@ -248,9 +306,9 @@ def _html(raw: bytes, s, url: str = "") -> list:
     return out
 
 
-def _gdelt한번(s, 말: str, a, b) -> list:
+def _gdelt한번(s, 말: str, a, b, 물음: str = "") -> list:
     q = urllib.parse.urlencode({
-        "query": (GDELT_질의.get(s.이름, 질의) + (f" sourcelang:{말}" if 말 else "")),
+        "query": ((물음 or 질의) + (f" sourcelang:{말}" if 말 else "")),
         "mode": "artlist", "format": "json", "maxrecords": "250", "sort": "datedesc",
         "startdatetime": a.strftime("%Y%m%d%H%M%S"),
         "enddatetime": b.strftime("%Y%m%d%H%M%S")})
@@ -277,26 +335,29 @@ def _gdelt(s, 부터: str, 까지: str, 최대쪽: int = 24) -> list:
     t0, t1 = _때(부터), _때(까지)
     if t0 is None or t1 is None:
         return []
-    후보 = GDELT_말.get(s.이름, ("eng", ""))
+    말후보 = GDELT_말.get(s.이름, ("eng", ""))
+    # **섞은 질의가 먼저다** -- 그것이 실제로 글을 낸 것이기 때문이다
+    물음후보 = (질의, GDELT_질의.get(s.이름, 질의))
+    후보 = [(m, q) for q in 물음후보 for m in 말후보]
     먹힌 = _먹힌말.get(s.이름)
     if 먹힌 is not None:
-        후보 = (먹힌,)
+        후보 = [먹힌]
     out, 칸 = [], max(timedelta(days=1), (t1 - t0) / max(1, 최대쪽))
     a, 쓸말 = t0, None
     while a < t1:
         b = min(a + 칸, t1)
         if 쓸말 is None:                       # 첫 칸에서 후보를 가른다
-            for 말 in 후보:
-                got = _gdelt한번(s, 말, a, b)
+            for 말, 물음 in 후보:
+                got = _gdelt한번(s, 말, a, b, 물음)
                 if got:
-                    쓸말 = 말
-                    _먹힌말[s.이름] = 말
+                    쓸말 = (말, 물음)
+                    _먹힌말[s.이름] = 쓸말
                     out += got
                     break
             else:
                 쓸말 = 후보[0]                  # 다 빈손이면 첫 후보로 계속 가 본다
         else:
-            out += _gdelt한번(s, 쓸말, a, b)
+            out += _gdelt한번(s, 쓸말[0], a, b, 쓸말[1])
         a = b
     return out
 
@@ -330,7 +391,7 @@ def _줄찾기(got, 경로: str = "") -> list:
 
 def _json(s) -> list:
     import os
-    url = s.url.replace("{key}", os.environ.get(s.열쇠, "") if s.열쇠 else "")
+    url = _주소(s).replace("{key}", os.environ.get(s.열쇠, "") if s.열쇠 else "")
     try:
         got = json.loads(_http(url).decode("utf-8", "replace"))
     except Exception:                                                 # noqa: BLE001
@@ -371,16 +432,18 @@ def 받기(출처들=None, 부터: str = "", 까지: str = "", 과거: bool = Fa
     출처들 = 출처들 if 출처들 is not None else SRC.쓸수있는것(과거만=과거, 나라=나라)
     쪽 = [s for s in 출처들 if s.꼴 in ("rss", "html")]
     out = []
-    받은것 = _여럿([s.url for s in 쪽]) if 쪽 else {}
+    # **찾아 둔 주소가 있으면 그것을 쓴다** -- 손으로 적은 것은 썩는다(locate.py)
+    주소 = {s.이름: _주소(s) for s in 쪽}
+    받은것 = _여럿([주소[s.이름] for s in 쪽]) if 쪽 else {}
     for s in 쪽:
-        got = 받은것.get(s.url)
+        got = 받은것.get(주소[s.이름])
         글 = []
         if not isinstance(got, Exception) and got is not None:
-            글 = (_rss(got, s) if s.꼴 == "rss" else []) or _html(got, s, s.url)
+            글 = (_rss(got, s) if s.꼴 == "rss" else []) or _html(got, s, 주소[s.이름])
         if not 글:
             # **앞문이 빈손이면 곁문을 두드린다.** 한 번 해 보고 안 된다고 하지 않는다
             try:
-                raw, 최종 = _캐기(s.url)
+                raw, 최종 = _캐기(주소[s.이름])
                 글 = (_rss(raw, s) if s.꼴 == "rss" else []) or _html(raw, s, 최종)
                 if 글:
                     print(f"  곁문   {s.이름:<14} {s.나라} {len(글)}건 <- {최종[:60]}",
@@ -539,7 +602,9 @@ def 탐침(출처들=None, 알림=None, 나라=None) -> list:
             elif s.꼴 == "json":
                 got = _json(s)
             else:
-                raw, 최종 = _캐기(s.url, timeout=15.0, 곁문수=2)   # 탐침은 곁문 둘만
+                # **받기와 같은 주소를 본다** -- 탐침이 옛 주소를 재고 받기가 찾은
+                # 주소를 쓰면, 탐침의 초록불이 실제로 도는 것을 안 가리킨다
+                raw, 최종 = _캐기(_주소(s), timeout=15.0, 곁문수=2)
                 got = (_rss(raw, s) if s.꼴 == "rss" else []) or _html(raw, s, 최종)
             담기({"이름": s.이름, "나라": s.나라, "층": s.층, "산것": len(got),
                   "왜": "" if got else "답은 왔는데 글이 0개"})
