@@ -373,9 +373,14 @@ def _gdelt(s, 부터: str, 까지: str, 최대쪽: int = None) -> list:
     if 먹힌 is not None:
         후보 = [먹힌]
     out, 칸 = [], max(timedelta(days=1), (t1 - t0) / max(1, 최대쪽))
-    a, 쓸말 = t0, None
+    a, 쓸말, 쪽번 = t0, None, 0
+    진행 = os.environ.get("COIN_QUIET", "") == ""
     while a < t1:
         b = min(a + 칸, t1)
+        쪽번 += 1
+        if 진행 and (쪽번 % 20 == 0 or 쪽번 == 1):
+            print(f"  {s.이름}: {쪽번}/{최대쪽}조각 · {a.strftime('%Y-%m')} "
+                  f"· 여기까지 {len(out)}건", file=sys.stderr, flush=True)
         if 쓸말 is None:                       # 첫 칸에서 후보를 가른다
             for 말, 물음 in 후보:
                 got = _gdelt한번(s, 말, a, b, 물음)
@@ -458,18 +463,21 @@ def _글(제목: str, t: datetime, s, url: str) -> dict:
 
 
 def 받기(출처들=None, 부터: str = "", 까지: str = "", 과거: bool = False,
-        나라=None) -> list:
+        나라=None, 부분저장=None) -> list:
     출처들 = 출처들 if 출처들 is not None else SRC.쓸수있는것(과거만=과거, 나라=나라)
     쪽 = [s for s in 출처들 if s.꼴 in ("rss", "html")]
     out = []
     # **찾아 둔 주소가 있으면 그것을 쓴다** -- 손으로 적은 것은 썩는다(locate.py)
     주소 = {s.이름: _주소(s) for s in 쪽}
     받은것 = _여럿([주소[s.이름] for s in 쪽]) if 쪽 else {}
+    진행 = os.environ.get("COIN_QUIET", "") == ""
     for s in 쪽:
         got = 받은것.get(주소[s.이름])
         글 = []
         if not isinstance(got, Exception) and got is not None:
             글 = (_rss(got, s) if s.꼴 == "rss" else []) or _html(got, s, 주소[s.이름])
+            if 글 and 진행:
+                print(f"  OK    {s.이름:<14} {s.나라} {len(글)}건", file=sys.stderr, flush=True)
         if not 글:
             # **앞문이 빈손이면 곁문을 두드린다.** 한 번 해 보고 안 된다고 하지 않는다
             try:
@@ -484,17 +492,25 @@ def 받기(출처들=None, 부터: str = "", 까지: str = "", 과거: bool = Fa
         if not 글:
             print(f"  빈손   {s.이름:<14} {s.나라} 앞문도 곁문도 글이 0개", file=sys.stderr)
         out += 글
-    for s in 출처들:
-        if s.꼴 in ("rss", "html"):
-            continue
+    무거운 = [s for s in 출처들 if s.꼴 not in ("rss", "html")]
+    for i, s in enumerate(무거운, 1):
         try:
             if s.꼴 == "gdelt":
-                out += _gdelt(s, 부터 or (datetime.now(timezone.utc) - timedelta(days=2)).strftime("%Y-%m-%d"),
-                              까지 or datetime.now(timezone.utc).strftime("%Y-%m-%d"))
+                새 = _gdelt(s, 부터 or (datetime.now(timezone.utc) - timedelta(days=2)).strftime("%Y-%m-%d"),
+                           까지 or datetime.now(timezone.utc).strftime("%Y-%m-%d"))
             else:
-                out += _json(s)
+                새 = _json(s)
+            out += 새
+            if 진행:
+                print(f"  [{i}/{len(무거운)}] {s.이름:<12} {len(새)}건 · 누적 {len(out)}",
+                      file=sys.stderr, flush=True)
+            # **틈틈이 저장한다.** 30분 도는 동안 한 번도 안 저장하면, 중간에 끊기면
+            # 통째로 날아가고 살았는지도 못 본다(실측: 사용자가 로그가 비었다고 했다).
+            if 부분저장 is not None:
+                부분저장(out)
         except Exception as e:                                        # noqa: BLE001
-            print(f"  못 받음 {s.이름:<14} {type(e).__name__}: {str(e)[:60]}", file=sys.stderr)
+            print(f"  못 받음 {s.이름:<14} {type(e).__name__}: {str(e)[:60]}",
+                  file=sys.stderr, flush=True)
     return out
 
 
@@ -725,7 +741,13 @@ def main(argv=None) -> int:
     if a.하루 or a.과거:
         부터 = a.부터 or ((datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
                         if a.하루 else "2017-01-01")
-        새 = 받기(부터=부터, 까지=a.까지, 과거=a.과거, 나라=a.나라)
+        # **부분 저장을 건다.** GDELT 470조각이 30분 넘게 도는데, 중간에 끊기면
+        # 통째로 날아가지 않게 출처마다 원장에 쌓는다.
+        def _부분(누적):
+            원 = 합치기(불러오기(a.원장 or None), 누적)
+            저장(원, a.원장 or None)
+        새 = 받기(부터=부터, 까지=a.까지, 과거=a.과거, 나라=a.나라,
+                 부분저장=_부분 if a.과거 else None)
         원장 = 합치기(불러오기(a.원장 or None), 새)
         p = 저장(원장, a.원장 or None)
         d = 덮임(원장["글"])
