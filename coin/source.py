@@ -38,7 +38,10 @@ VM 에서 한 번 돌려서 채워라:
 from __future__ import annotations
 
 import os
+import json
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
 
 
 @dataclass
@@ -403,9 +406,10 @@ def 쓸수있는것(과거만: bool = False) -> list:
 
 def 격자(확인된것만: bool = False) -> dict:
     """(나라, 층) -> 출처 이름들. **빈틈을 보는 자리.**"""
+    확 = {s.이름 for s in 확인된것()} if 확인된것만 else None
     out = {}
     for s in 목록:
-        if 확인된것만 and not s.확인:
+        if 확 is not None and s.이름 not in 확:
             continue
         나라 = s.나라 if s.나라 in 나라들 else "XX"
         out.setdefault((나라, s.층), []).append(s.이름)
@@ -424,6 +428,39 @@ def 빈틈(확인된것만: bool = False) -> list:
             if not g.get((나라, 층)) and not g.get(("XX", 층))]
 
 
+# 탐침이 적어 두는 자리. **`확인` 칸은 코드가 아니라 여기서 온다** -- 어느 문이
+# 열리는지는 기계마다 다르고(프록시 · 나라 · 시각), 코드에 박으면 남의 기계의
+# 어제 결과를 내 기계의 오늘 사실로 말하게 된다.
+탐침길 = Path(__file__).resolve().parent / "corpus/probe.json"
+
+
+def 탐침기록(재것: list, 경로=None) -> Path:
+    """`news.py --탐침 --기록` 이 부른다. 답한 것만 적는다."""
+    탐침길 = Path(경로) if 경로 else globals()["탐침길"]
+    본 = {}
+    if 탐침길.exists():
+        본 = json.loads(탐침길.read_text(encoding="utf-8")).get("본것", {})
+    때 = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    for x in 재것:
+        본[x["이름"]] = {"산것": x["산것"], "왜": x.get("왜", ""), "때": 때}
+    탐침길.parent.mkdir(parents=True, exist_ok=True)
+    탐침길.write_text(json.dumps({"본것": 본}, ensure_ascii=False, indent=1),
+                     encoding="utf-8")
+    return 탐침길
+
+
+def 탐침본것(경로=None) -> dict:
+    p = Path(경로) if 경로 else 탐침길
+    if not p.exists():
+        return {}
+    return json.loads(p.read_text(encoding="utf-8")).get("본것", {})
+
+
 def 확인된것() -> list:
-    """**실제로 도는 것을 본 출처만.** 비어 있으면 아직 아무도 안 봤다는 뜻이다."""
-    return [s for s in 목록 if s.확인]
+    """**실제로 도는 것을 본 출처만.** 비어 있으면 아직 아무도 안 봤다는 뜻이다.
+
+    표의 `확인` 칸이든 탐침 기록이든, **글이 실제로 온 것**만 센다.
+    """
+    본 = 탐침본것()
+    return [s for s in 목록
+            if s.확인 or (본.get(s.이름, {}).get("산것", 0) > 0)]
