@@ -19,6 +19,7 @@ import json
 import os
 import urllib.parse
 import urllib.request
+import xml.etree.ElementTree as ET
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -42,6 +43,10 @@ class Ledger:
     줄: list = field(default_factory=list)       # [{id, 칸...}]
     버린것: int = 0
     왜: list = field(default_factory=list)
+    # 적어 준 꼴이 빗나가 **온 것으로 고쳐 읽었으면** 그 꼴. 비면 적어 준 대로 읽었다.
+    # 고쳐 읽는 것은 관측이라 괜찮지만, 고쳐 읽었다는 말을 안 하면 그때부터 조용히
+    # 통과하는 길이 생긴다 -- 그래서 원장이 그것을 지고 다닌다.
+    고쳐읽음: str = ""
 
     def __len__(self) -> int:
         return len(self.줄)
@@ -211,13 +216,130 @@ def find_rows(data, _깊이: int = 0) -> tuple:
     return best, where
 
 
+def 어떤꼴(text: str) -> str:
+    """받은 것이 **무엇으로 보이는가.** 짐작이 아니라 첫 글자로만 본다.
+
+    실측 2026-09-09: arXiv 는 200 으로 잘 답했는데 `--탐색` 이 "줄을 못 찾았다
+    (꼴=json)" 하고 300바이트를 쏟아 놓았다. **온 것이 Atom XML 이라는 말을 안 했다.**
+    사용자가 그것을 직접 알아내야 했다. 받아 놓고 무엇이 왔는지 말 안 하는 것은
+    이 저장소가 수에서 막아 온 '미검증' 과 같은 자리다 -- 실패했다고만 하고 무엇을
+    보았는지는 안 남기는 것.
+    """
+    t = (text or "").lstrip()[:400]
+    if not t:
+        return ""
+    low = t.lower()
+    if low.startswith(("<!doctype html", "<html")):
+        return "html"
+    if t.startswith("<"):
+        return "xml"
+    if t.startswith(("{", "[")):
+        return "json"
+    첫줄 = t.splitlines()[0] if t.splitlines() else ""
+    if 첫줄.count(",") >= 1 or 첫줄.count("\t") >= 1 or 첫줄.count(";") >= 2:
+        return "csv"
+    return ""
+
+
+def _민이름(tag) -> str:
+    """`{http://www.w3.org/2005/Atom}entry` -> `entry`. 이름공간을 뗀다.
+
+    안 떼면 칸 이름이 통째로 URL 이 되어 `--key` 로 가리킬 수가 없다.
+    """
+    return tag.split("}", 1)[1] if isinstance(tag, str) and "}" in tag else tag
+
+
+def _xml한줄(e) -> dict:
+    """원소 하나 -> 줄. 속성과 자식의 글자를 칸으로 편다.
+
+    같은 이름이 여러 번 나오면(Atom 의 `author` · `link`) ` | ` 로 잇는다 --
+    **버리지 않는다.** 글자가 없는 자식은 속성을 대신 적는다(`link href=...`).
+    """
+    r = {_민이름(k): v for k, v in e.attrib.items()}
+    for ch in e:
+        키 = _민이름(ch.tag)
+        값 = (ch.text or "").strip()
+        if not 값:
+            값 = " ".join(f"{_민이름(k)}={v}" for k, v in ch.attrib.items())
+            if not 값:
+                손자 = [(ch2.text or "").strip() for ch2 in ch]
+                값 = " ".join(x for x in 손자 if x)
+        r[키] = f"{r[키]} | {값}" if 키 in r else 값
+    if not r:
+        글 = (e.text or "").strip()
+        return {_민이름(e.tag): 글} if 글 else {}
+    return r
+
+
+def _xml줄(text: str, 경로: str = "") -> tuple:
+    """XML/Atom -> (줄, 어디서 찾았나). **되풀이되는 형제 원소가 줄이다.**
+
+    `find_rows` 와 같은 규율이다 -- 뜻을 짐작하지 않고 **꼴로만** 고른다. 어느
+    부모 밑에서 같은 이름의 자식이 제일 많이 되풀이되는지를 본다. arXiv 면
+    `feed/entry`, RSS 면 `channel/item` 이 저절로 잡힌다. 미리 적어 둘 것이 없다.
+
+    `경로` 를 주면 그 이름의 원소만 줄로 쓴다(적어 준 사람을 믿는다).
+    """
+    try:
+        root = ET.fromstring(text)
+    except ET.ParseError:
+        return [], ""
+    if 경로:
+        찍은 = [e for e in root.iter() if _민이름(e.tag) == 경로.split(".")[-1]]
+        줄 = [x for x in (_xml한줄(e) for e in 찍은) if x]
+        return 줄, 경로
+    최다, best, 어디 = 1, [], ""
+    for parent in root.iter():
+        묶음: dict = {}
+        for ch in parent:
+            묶음.setdefault(_민이름(ch.tag), []).append(ch)
+        for tag, els in 묶음.items():
+            if len(els) > 최다:
+                최다, best, 어디 = len(els), els, f"{_민이름(parent.tag)}/{tag}"
+    줄 = [x for x in (_xml한줄(e) for e in best) if x]
+    return (줄, 어디) if 줄 else ([], "")
+
+
 def parse(src, text: str) -> list:
     """받은 몸통 -> 줄 목록. **꼴이 다르면 빈 목록이다.**
 
     `경로` 가 적혀 있으면 그리로만 간다(적어 준 사람을 믿는다). 비어 있으면
     `find_rows` 가 찾는다 -- 그래야 처음 보는 출처를 요청 시점에 붙일 수 있다.
+
+    ## 적어 준 꼴이 빗나가면 **온 것으로 한 번 더 읽는다**
+
+    `즉석()` 은 url 에서 꼴을 짐작하는데, 주소만 보고는 XML 을 주는 API 를 못
+    가른다(arXiv 가 그랬다). 짐작이 틀렸다고 빈 목록을 돌려주면 부르는 쪽은
+    "이 출처는 안 된다" 로 읽고, 그러면 **받아 올 수 있는 것을 관할 밖에 놓는
+    자리**로 되돌아간다. 온 것을 보고 읽는 것은 짐작이 아니라 관측이다 --
+    `살펴보기` 가 칸을 도착한 것에서 읽는 것과 같다. 그래도 규율은 안 풀린다:
+    잘못 읽으면 줄이 안 나오거나 `inspect` 가 거절한다.
     """
-    if src.꼴 == "json":
+    줄 = _한꼴(src, text, src.꼴)
+    if 줄:
+        return 줄
+    본 = 어떤꼴(text)
+    return _한꼴(src, text, 본) if 본 and 본 != src.꼴 else []
+
+
+def 읽은꼴(src, text: str) -> str:
+    """`parse` 가 **실제로 어느 꼴로 읽었는가.**
+
+    적어 준 꼴이 빗나가면 `parse` 가 온 것으로 다시 읽는데, 그것을 **화면에 적으라고**
+    있는 함수다. 고쳐 읽는 것 자체는 관측이라 괜찮지만, 고쳐 읽었다는 말을 안 하면
+    그때부터는 조용히 통과하는 길이 생긴다 -- 이 저장소가 안 두는 것.
+    """
+    if _한꼴(src, text, src.꼴):
+        return src.꼴
+    본 = 어떤꼴(text)
+    return 본 if (본 and 본 != src.꼴 and _한꼴(src, text, 본)) else src.꼴
+
+
+def _한꼴(src, text: str, 꼴: str) -> list:
+    if 꼴 == "xml":
+        줄, _ = _xml줄(text, src.경로)
+        return 줄
+    if 꼴 == "json":
         try:
             data = json.loads(text)
         except json.JSONDecodeError:
@@ -232,6 +354,10 @@ def parse(src, text: str) -> list:
             return rows
         rows, _ = find_rows(data)
         return rows
+    # **csv 가 아닌 것을 csv 로 읽지 않는다.** html 을 DictReader 에 넣으면 한 줄짜리
+    # 쓰레기 표가 나오는데, 그것이 원장에 들어가면 심판이 그것을 정답으로 삼는다.
+    if 꼴 not in ("csv", ""):
+        return []
     try:
         return [dict(r) for r in csv.DictReader(io.StringIO(text))]
     except csv.Error:
@@ -366,8 +492,10 @@ def fetch(src, **params) -> tuple:
                       "`N/D` 같은 값이 온다(HTTP 는 200 이다)")
         return (Ledger(출처=src.이름, 질의=url, 왜=왜),
                 "; ".join(왜) + f"  [주소: {url}]" if 왜 else f"검사 실패  [주소: {url}]")
+    쓴꼴 = 읽은꼴(src, body)
     return Ledger(출처=src.이름, 받은날=date.today().isoformat(), 질의=url,
-                  줄=v["good"], 버린것=v["버린것"]), ""
+                  줄=v["good"], 버린것=v["버린것"],
+                  고쳐읽음="" if 쓴꼴 == src.꼴 else 쓴꼴), ""
 
 
 def _왜못받았나(e, url: str) -> str:
