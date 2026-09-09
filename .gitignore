@@ -110,6 +110,12 @@ law/tune.best.json
 # 낳은 공간 15개가 pull 한 번에 씨앗만 든 커밋본으로 되돌아갔다.
 # 씨앗(mathdrift/seed.json)은 코드다 -- 원장이 없으면 거기서 새로 세운다.
 mathdrift/ledger.json
+
+# 문제 원장 -- 답이 여기 쌓인다. compression/ledger.json 과 같은 부류다.
+# 씨앗(seek/seed.json)만 코드다.
+seek/ledger.json
+seek/*.bak
+seek/.격리검사
 # `start` 가 남기는 이전 원장. 다른 브랜치에서 병합 충돌을 냈다(2026-09-08,
 # `1396780 Resolve merge conflict in mathdrift/ledger.json.bak`). novel/*.bak 은
 # 이미 막혀 있는데 여기만 빠져 있었다.
