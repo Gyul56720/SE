@@ -23,6 +23,25 @@ SECS=${1:-25}
 TRIES=${2:-400000}
 BR=$(git rev-parse --abbrev-ref HEAD)
 
+# **머리에 지금 상태를 찍는다.** 로그만 받아도 무엇이 어긋났는지 알 수 있어야 한다
+# (실측 2026-09-09: "아무것도 안 나온다" 는 말만 오갔고, 안 당겨받은 것인지 · 딴
+# 브랜치인지 · 죽은 것인지 로그로 가릴 수가 없었다).
+echo "=== seek.sh 시작"
+echo "    곳    $(pwd)"
+echo "    갈래  ${BR}"
+echo "    커밋  $(git log --oneline -1 2>&1 | head -1)"
+echo "    씨앗  $(python3 -c "
+import json,sys
+try:
+    print(len(json.load(open('seek/seed.json'))['problems']), '개')
+except Exception as e:
+    print('못 읽었다:', e)
+" 2>&1 | head -1)"
+if [ "$BR" != "main" ]; then
+    echo "    ** main 이 아니다 -- 보고서가 ${BR} 로 올라간다 **"
+fi
+echo
+
 echo "=== [1/4] 훑기 -- 한 문제당 최대 ${SECS}초 · ${TRIES}개 (호출 0회)"
 python3 seek/sweep.py --초 "$SECS" --tries "$TRIES" || {
     echo "훑기가 실패했다 -- 여기서 멈춘다. 보고서를 안 만든다"
