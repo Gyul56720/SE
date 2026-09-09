@@ -73,7 +73,23 @@ def check_facts(facts, led, src=None) -> list:
             if col not in r:
                 vs.append(Violation("B002", "hard", f.이름,
                                     f"{rid!r} 에 {col!r} 칸이 없다"))
-        # B004 -- **다시 센다.** 꼬리표가 아니라 값을 본다
+        # B004 -- **다시 센다.** 꼬리표가 아니라 값을 본다.
+        # 칸을 세로로 훑은 값(평균·중앙·최대…)도 같은 대접이다 -- 그 갈래가 빠져
+        # 있으면 '범용' 으로 낸 수만 검사를 안 받게 되고, 그러면 새 출처를 붙일수록
+        # 검사받지 않은 수가 는다.
+        if f.규칙 in DV.ACROSS and f.인자:
+            fn, _ = DV.ACROSS[f.규칙]
+            v = DV.값들(led, f.인자[0])
+            again = fn(v) if v else None
+            if again is None:
+                vs.append(Violation("B004", "hard", f.이름,
+                                    f"관문은 이 값을 못 센다(그 칸에 수가 없다) -- "
+                                    f"그런데 보고서에는 {f.값} 이 적혀 있다"))
+            elif abs(float(again) - f.값) > TOL:
+                vs.append(Violation("B004", "hard", f.이름,
+                                    f"다시 세니 {float(again):.6f} 인데 보고서는 "
+                                    f"{f.값:.6f} 다"))
+            continue
         if f.규칙 and f.규칙 in DV.RULES and f.인자:
             r = led.찾기(f.인자[0])
             if r is None:

@@ -96,6 +96,68 @@ def raw_facts(led, rid: str, cols: tuple, 단위: dict | None = None) -> list:
             for c in cols if isinstance(r.get(c), (int, float))]
 
 
+# ── 칸 하나를 세로로 훑는 값 ─────────────────────────────────────────
+# **여기가 '범용' 이 사는 자리다.** 위의 RULES 는 시가·종가를 아는 셈이라 주식에만
+# 쓰인다. 아래 것들은 **칸이 수이기만 하면** 무엇이든 센다 -- 티켓값이든 기온이든
+# 논문 편수든. 처음 보는 출처를 요청 시점에 붙일 수 있는 것은 이것 덕이다.
+
+
+def _중앙(v):
+    s = sorted(v)
+    n = len(s)
+    return s[n // 2] if n % 2 else (s[n // 2 - 1] + s[n // 2]) / 2
+
+
+def _표준편차(v):
+    if len(v) < 2:
+        return None                       # 하나짜리 표준편차는 없는 값이다
+    m = sum(v) / len(v)
+    return (sum((x - m) ** 2 for x in v) / (len(v) - 1)) ** 0.5
+
+
+ACROSS = {
+    "개수": (len, "몇 줄에 이 값이 있나"),
+    "최소": (min, "가장 작은 값"),
+    "중앙": (_중앙, "가운데 값"),
+    "평균": (lambda v: sum(v) / len(v), "산술평균"),
+    "최대": (max, "가장 큰 값"),
+    "합": (sum, "다 더한 것"),
+    "표준편차": (_표준편차, "표본표준편차"),
+}
+
+# 기본으로 낼 것. 합은 뺀다 -- 기온이나 값의 '합' 은 뜻이 없는 경우가 많고,
+# 뜻 없는 수를 화면에 올리면 읽는 사람이 뜻을 찾아내려 한다.
+기본요약 = ("개수", "최소", "중앙", "평균", "최대", "표준편차")
+
+
+def 값들(led, col: str) -> list:
+    """그 칸의 수들. **수가 아닌 줄은 조용히 빠진다** -- 0 으로 안 채운다."""
+    return [r[col] for r in led.줄 if isinstance(r.get(col), (int, float))]
+
+
+def col_facts(led, col: str, want=기본요약, 단위: dict | None = None) -> list:
+    """칸 하나에서 나오는 요약값들. 근거는 **그 칸을 가진 모든 줄**이다."""
+    v = 값들(led, col)
+    if not v:
+        return []
+    단위 = 단위 or {}
+    근거 = tuple((r["id"], col) for r in led.줄
+                if isinstance(r.get(col), (int, float)))
+    out = []
+    for name in want:
+        spec = ACROSS.get(name)
+        if not spec:
+            continue
+        fn, 식 = spec
+        got = fn(v)
+        if got is None:
+            continue
+        out.append(Fact(이름=f"{col}.{name}", 값=float(got),
+                        단위="" if name == "개수" else 단위.get(col, ""),
+                        근거=근거, 규칙=name, 인자=(col,), 셈=식))
+    return out
+
+
 # ── 여러 줄에 걸친 값 ────────────────────────────────────────────────
 def 순위(facts: list, 이름: str) -> list:
     """그 이름의 값들을 큰 것부터. (줄id, 값) 목록 -- **동점은 동점으로 둔다.**"""
