@@ -77,8 +77,10 @@ def 심볼찾기(자산: str, 짝=("USDT", "USD", "BUSD", "USDC")) -> str:
     return 후보[0] if 후보 else a + 짝[0]
 
 
-def 길(자산: str) -> Path:
-    return CORPUS / f"price_{자산}.json"
+def 길(자산: str, 간격: str = "") -> Path:
+    """눈금마다 따로 담는다 -- 분봉과 일봉을 한 파일에 섞으면 둘 다 못 쓴다."""
+    꼬리 = f"_{간격}" if 간격 and 간격 != "1d" else ""
+    return CORPUS / f"price_{자산}{꼬리}.json"
 
 
 # ------------------------------------------------------------------ 받기
@@ -129,56 +131,86 @@ def _코인베이스(자산: str, 부터: str, 까지: str, 부르기=_http) -> 
     return [본[d] for d in sorted(본)]
 
 
-def 받기(자산: str, 부터: str = "2017-08-17", 까지: str = "", 부르기=_http) -> dict:
+def 받기(자산: str, 부터: str = "2017-08-17", 까지: str = "", 부르기=_http,
+        시간대=None, 간격: str = "") -> dict:
     """바이낸스 일봉. 막히면 **코인베이스로 되돌린다** -- 한 곳이 막혔다고 안 끝낸다.
 
     실측 2026-09-09 (VM): `--채우기` 가 "가격 원장이 없다: BTC" 로 끝났다. 바이낸스가
     그 기계에서 안 열린 것인데, 곁길이 없어서 **파이프라인 전체가 죽었다.**
     """
+    from coin import clock as CK
+    tz = CK.시간대(시간대)
+    # **시간대가 걸리면 시간봉이다.** 거래소 일봉은 UTC 자정으로 잘려 있어서
+    # 아무리 만져도 한국(또는 뉴욕) 하루가 안 나온다 -- 다시 묶어야 한다.
+    # 받는 양이 24배라 기본은 UTC(0)다.
+    # 눈금을 밖에서 줄 수 있다 -- 1m(실시간) · 1h(지금 자리) · 1d(추세).
+    # 안 주면 시간대가 정한다: 시간대가 걸리면 시간봉으로 받아 다시 묶어야 하므로.
+    간격 = 간격 or ("1h" if abs(tz) > 1e-9 else "1d")
+    잘게 = 간격 != "1d"
+    한번 = 1000
     sym = 심볼찾기(자산)
     t0 = int(datetime.strptime(부터, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp() * 1000)
     끝 = int((datetime.strptime(까지, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp() * 1000)
              if 까지 else time.time() * 1000)
-    봉 = []
+    봉, 시간봉 = [], []
     while t0 < 끝:
         try:
-            묶음 = 부르기(f"{BINANCE}?symbol={sym}&interval=1d&startTime={t0}&limit=1000")
+            묶음 = 부르기(f"{BINANCE}?symbol={sym}&interval={간격}"
+                        f"&startTime={t0}&limit={한번}")
         except Exception as e:                                        # noqa: BLE001
             print(f"  바이낸스가 안 열린다({type(e).__name__}) -- 코인베이스로 간다",
                   file=sys.stderr)
             묶음 = []
         if not 묶음:
             break
-        for k in 묶음:
-            날 = datetime.fromtimestamp(k[0] / 1000, timezone.utc).strftime("%Y-%m-%d")
-            봉.append([날, float(k[1]), float(k[2]), float(k[3]), float(k[4]), float(k[5])])
-        t0 = int(묶음[-1][0]) + 86_400_000
-        if len(묶음) < 1000:
+        if 잘게:
+            시간봉 += 묶음
+        else:
+            for k in 묶음:
+                날 = datetime.fromtimestamp(k[0] / 1000, timezone.utc).strftime("%Y-%m-%d")
+                봉.append([날, float(k[1]), float(k[2]), float(k[3]),
+                          float(k[4]), float(k[5])])
+        t0 = int(묶음[-1][0]) + (3_600_000 if 잘게 else 86_400_000)
+        if len(묶음) < 한번:
             break
-    if not 봉:
+    if 시간봉:
+        # **여기가 시세 시간보정이다.** 1d 로 다시 묶을 때만. 분·시간봉을 그대로
+        # 쓰려는 것이면(눈금을 밖에서 준 것이면) 안 묶는다 -- 그 눈금이 목적이므로.
+        if 간격 in ("1h", "1m", "5m", "15m") and 시간대 is not None and 간격 != "1d":
+            봉 = [[datetime.fromtimestamp(k[0] / 1000, timezone.utc).isoformat(
+                timespec="seconds"), float(k[1]), float(k[2]), float(k[3]),
+                float(k[4]), float(k[5])] for k in 시간봉]
+        else:
+            봉 = CK.묶기(시간봉, tz)
+        출처 = "binance"
+    elif 봉:
+        출처 = "binance"
+    else:
         봉 = _코인베이스(자산, 부터, 까지, 부르기)
         출처 = "coinbase"
-    else:
-        출처 = "binance"
+        if 잘게 and 봉:
+            print("  코인베이스로 되돌렸다 -- 그쪽은 일봉이라 **시간보정이 안 걸렸다**",
+                  file=sys.stderr)
     봉.sort(key=lambda r: r[0])
     본 = {}
     for r in 봉:                       # 같은 날이 두 번 오면 뒤엣것
         본[r[0]] = r
     봉 = [본[k] for k in sorted(본)]
-    return {"자산": 자산.upper(), "출처": 출처, "심볼": sym,
+    return {"자산": 자산.upper(), "출처": 출처, "심볼": sym, "시간대": tz,
+            "간격": 간격,
             "받은때": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "봉": 봉}
 
 
 def 저장(원장: dict, 경로: Path = None) -> Path:
-    p = Path(경로) if 경로 else 길(원장["자산"])
+    p = Path(경로) if 경로 else 길(원장["자산"], 원장.get("간격", ""))
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(원장, ensure_ascii=False), encoding="utf-8")
     return p
 
 
-def 불러오기(자산: str = "BTC", 경로=None) -> dict:
-    p = Path(경로) if 경로 else 길(자산)
+def 불러오기(자산: str = "BTC", 경로=None, 간격: str = "") -> dict:
+    p = Path(경로) if 경로 else 길(자산, 간격)
     if not p.exists():
         return {}
     return json.loads(p.read_text(encoding="utf-8"))
@@ -285,6 +317,9 @@ def main(argv=None) -> int:
     ap.add_argument("--받기", default="")
     ap.add_argument("--부터", default="2017-08-17")
     ap.add_argument("--까지", default="")
+    ap.add_argument("--시간대", default=None,
+                    help="하루를 어디서 자르나. 9=한국 · -5=뉴욕. 걸면 시간봉으로 받는다")
+    ap.add_argument("--간격", default="", help="1m · 1h · 1d. 안 주면 시간대가 정한다")
     ap.add_argument("--보기", default="")
     ap.add_argument("--수익", default="")
     ap.add_argument("--날", default="")
@@ -293,7 +328,7 @@ def main(argv=None) -> int:
 
     if a.받기:
         try:
-            원장 = 받기(a.받기, a.부터, a.까지)
+            원장 = 받기(a.받기, a.부터, a.까지, 시간대=a.시간대, 간격=a.간격)
         except Exception as e:                                        # noqa: BLE001
             print(f"못 받았다: {type(e).__name__}: {e}", file=sys.stderr)
             return 3
@@ -304,7 +339,7 @@ def main(argv=None) -> int:
                   "안 열린다. 망을 보라", file=sys.stderr)
             return 3
         print(f"{a.받기}: 봉 {len(c)}개 · {c.구간()[0]} ~ {c.구간()[1]} "
-              f"· 출처 {원장['출처']} -> {p}")
+              f"· 출처 {원장['출처']} · 시간대 UTC{원장.get('시간대', 0):+g} -> {p}")
         return 0
 
     if a.보기:

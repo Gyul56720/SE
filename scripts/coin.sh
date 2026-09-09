@@ -18,6 +18,7 @@
 #   scripts/coin.sh probe                          어느 출처가 답하나
 #   scripts/coin.sh score                          예보 채점 (Brier · 기저율 대비 skill)
 #   scripts/coin.sh walk <유형> [지평]              걸어보기 -- 과거로 돌아가 채점
+#   scripts/coin.sh chart [자산] [간격]            차트 지표 (자기 역사의 백분위)
 #   scripts/coin.sh like [자산]                    **지금과 닮은 과거 날들** (새 중심)
 #   scripts/coin.sh grid                           나라 x 층 격자. 빈 칸을 짚는다
 #   scripts/coin.sh find                           선언 안 한 출처 찾기 (표엔 안 넣는다)
@@ -37,6 +38,7 @@ case "$cmd" in
   probe) exec python3 coin/news.py --탐침 ;;
   grid)  exec python3 coin/news.py --격자 ;;
   like)  shift; exec python3 coin/similar.py --자산 "${1:-BTC}" --창 1,3,7 ;;
+  chart) shift; exec python3 coin/chart.py --자산 "${1:-BTC}" --간격 "${2:-1d}" ;;
   score) exec python3 coin/forecast.py --채점 --보고 ;;
   walk)  shift; exec python3 coin/forecast.py --걸어보기 --유형 "${1:-}" --지평 "${2:-7}" ;;
   find)  exec python3 coin/watch.py --찾기 ;;

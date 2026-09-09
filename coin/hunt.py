@@ -88,9 +88,10 @@ def 큰움직임(계열, 지평: int, 몫: float = 0.10, 아래: bool = False) -
 
 def 앞선유형(사건들: list, 날들: list, 창일: int = 3) -> dict:
     """그 날들 **앞 창일 안에** 어느 유형이 있었나. 날마다 한 번씩만 센다."""
+    from coin import clock as CK
     묶 = {}
     for e in 사건들:
-        d = (e.get("최초") or "")[:10]
+        d = CK.날짜(e.get("최초") or "")      # **시간대가 날 이름을 정한다**
         if d:
             묶.setdefault(d, set()).add(e.get("유형"))
     셈 = {}

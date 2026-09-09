@@ -59,10 +59,10 @@ from coin.price import _때                                            # noqa: E
 지평기본 = (1, 3, 7, 14, 30)
 
 
-def 날짜(iso: str, 시간대: int = 9) -> str:
-    """UTC 시각 -> **그 시간대에서의 날짜.** 한국 기준이 기본(+9)."""
-    t = _때(iso)
-    return (t + timedelta(hours=시간대)).strftime("%Y-%m-%d") if t else ""
+def 날짜(iso: str, 시간대=None) -> str:
+    """UTC 시각 -> 그 시간대에서의 날짜. **셈은 `coin/clock.py` 한 군데에 있다.**"""
+    from coin import clock as CK
+    return CK.날짜(iso, 시간대)
 
 
 def 뉴스벡터(사건들: list, 끝날: str, 창일: int = 3, 시간대: int = 9,
@@ -84,8 +84,13 @@ def 뉴스벡터(사건들: list, 끝날: str, 창일: int = 3, 시간대: int =
     return v
 
 
-def 시장벡터(계열, 끝날: str) -> dict:
-    """가격 쪽 백분위. **그 날까지의 자료로만** 잰다 -- 미리보기를 막는다."""
+def 시장벡터(계열, 끝날: str, 원봉: list = None, 눈금: str = "1d") -> dict:
+    """가격 쪽 백분위. **그 날까지의 자료로만** 잰다 -- 미리보기를 막는다.
+
+    셋(추세·변동·낙폭)에 **차트 지표**(`chart.py`)를 더한다. 전부 백분위라 그냥
+    붙여도 자가 안 어긋난다. 차트를 예측기로 안 쓰고 **상황 서술자로** 쓰는 자리다.
+    """
+    from coin import chart as CH
     from coin import price as PR
     from coin import regime as RG
     봉 = [[d, 0, 0, 0, 계열.종가[d], 0] for d in 계열.날들 if d <= 끝날]
@@ -98,6 +103,9 @@ def 시장벡터(계열, 끝날: str) -> dict:
         p = x.get("백분위")
         if isinstance(p, float) and p == p:
             out[이름] = p
+    # 고저·거래량이 있는 원봉이 있으면 차트 지표까지. 없으면 종가만으로 되는 것만
+    쓸봉 = [r for r in (원봉 or 봉) if r[0] <= 끝날]
+    out.update(CH.재기(쓸봉, 눈금))
     return out
 
 
@@ -115,10 +123,10 @@ def 흐름벡터(흐름원장: dict, 끝날: str) -> dict:
 
 
 def 벡터(계열, 사건들: list, 흐름원장: dict, 끝날: str, 창일: int = 3,
-        시간대: int = 9, 자산: str = "") -> dict:
+        시간대=None, 자산: str = "", 원봉: list = None) -> dict:
     return {"날": 끝날, "창일": 창일, "시간대": 시간대,
             "뉴스": 뉴스벡터(사건들, 끝날, 창일, 시간대, 자산),
-            "시장": 시장벡터(계열, 끝날),
+            "시장": 시장벡터(계열, 끝날, 원봉),
             "흐름": 흐름벡터(흐름원장, 끝날)}
 
 
