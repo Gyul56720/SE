@@ -40,7 +40,7 @@ from seek import problem as PR                                # noqa: E402
 
 
 def step(led: dict, pid: str) -> dict:
-    """한 걸음(부모 -> 자식)이 도약인가."""
+    """한 걸음(계보에 적힌 부모 -> 자식)이 도약인가."""
     kid = PR.get(led, pid)
     if kid is None:
         return {"ok": False, "왜": f"{pid} 가 원장에 없다"}
@@ -48,7 +48,15 @@ def step(led: dict, pid: str) -> dict:
     par = PR.get(led, par_id) if par_id and par_id != "-" else None
     if par is None:
         return {"ok": False, "왜": f"{pid} 은 씨앗이다 -- 견줄 부모가 없다"}
+    return pair(par, kid)
 
+
+def pair(par: dict, kid: dict) -> dict:
+    """**부모를 밖에서 준다.** 계보를 안 본다.
+
+    이렇게 갈라 둔 이유는 대조군 때문이다 -- 계보를 무작위로 흔들어 같은 자를 대면
+    이 판정이 **연산자를 재는지 꼴 차이만 재는지** 가 보인다. `seek/control.py`.
+    """
     out = {"ok": True, "부모": par["id"], "자식": kid["id"],
            "보존": None, "확장": None, "왜": []}
 
