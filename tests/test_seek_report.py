@@ -94,6 +94,23 @@ try:
 finally:
     RP.나갈곳 = _was
 
+print("\n== 덜 푼 원장이면 머리에서 먼저 말한다 ==")
+# 실측 2026-09-09: 씨앗 다섯으로 낳기만 하고 풀지 않은 보고서가 왔다. 판정이 죽
+# 0% 였는데 그건 "연산자가 아무 일도 안 했다" 가 아니라 "잴 데가 없다" 였다.
+_안푼 = 원장()
+for _p in _안푼["problems"]:
+    _p.pop("답", None)
+_ㄱ = RP.build(_안푼, seed=1, n=60)
+ok("아직" in _ㄱ.split("## 감사")[0] and "안 풀렸다" in _ㄱ,
+   "**머리에서 먼저 말한다** -- 표를 다 읽고 나서 알면 늦다")
+ok("잴 데가 없다" in _ㄱ, "0%를 어떻게 읽지 말아야 하는지 적는다")
+ok("sweep" in _ㄱ.split("## 감사")[0], "무엇을 먼저 할지 알려 준다")
+_다푼 = 원장()
+for _p in _다푼["problems"]:
+    _p.setdefault("답", [1])
+ok("안 풀렸다" not in RP.build(_다푼, seed=1, n=60).split("## 감사")[0],
+   "**다 푼 원장에는 그 말이 없다** -- 늘 붙으면 아무도 안 읽는다")
+
 print("\n== 호출 0회다 ==")
 _src = (Path(__file__).resolve().parent.parent / "seek" / "report.py").read_text(encoding="utf-8")
 ok("llm_pool" not in _src and "GEMINI" not in _src, "보고서는 LLM 을 안 부른다")

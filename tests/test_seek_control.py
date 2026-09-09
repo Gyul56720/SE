@@ -151,6 +151,28 @@ ok(_결 == {0.0}, f"세상 A 는 어느 씨로도 무작위 도약이 0이다 ({
 _결B = [CT.비율(CT.셈(_B, "무작위", seed=s), "도약") for s in (1, 2, 3, 4, 5)]
 ok(all(v > 0 for v in _결B), f"세상 B 는 어느 씨로도 0이 아니다 ({_결B})")
 
+print("\n== 잰 것이 하나도 없으면 단정하지 않는다 ==")
+# 실측 2026-09-09: 씨앗 다섯으로 새 원장을 세우고 **낳기만 하고 풀지 않은 채로**
+# 돌렸더니 진짜 0.0% · 무작위 0.0% 가 나왔고, `0 >= 0 * 0.5` 가 참이라
+# "이 자는 계보를 안 본다" 고 단정했다. 걸음 35개가 전부 모름이었는데도.
+_안푼 = 세상(lambda 부, 내: 아무거나옮김(내))
+for _p in _안푼["problems"]:
+    _p.pop("답", None)
+_o = io.StringIO()
+with redirect_stdout(_o):
+    _rc = CT.show(_안푼, seed=1)
+_tt = _o.getvalue()
+ok(_rc == 2, f"다른 값을 준다 (얻은 값 {_rc})  <- 0 은 '통과' 로 읽힌다")
+ok("아직 아무것도 안 쟀다" in _tt, f"**아무것도 안 쟀다고 말한다**\n{_tt}")
+ok("계보를 안 본다" not in _tt and "계보를 본다" not in _tt,
+   "**어느 쪽으로도 단정하지 않는다** -- 0% 대 0% 는 '같다' 가 아니다")
+ok("sweep" in _tt, "무엇을 먼저 해야 하는지 알려 준다")
+# 한쪽이라도 재졌으면 평소대로 결론을 낸다
+_o2 = io.StringIO()
+with redirect_stdout(_o2):
+    CT.show(_A, seed=1)
+ok("계보를 본다" in _o2.getvalue(), "잰 것이 있으면 평소대로 말한다")
+
 print("\n== 호출 0회다 ==")
 _src = (Path(__file__).resolve().parent.parent / "seek" / "control.py").read_text(encoding="utf-8")
 ok("llm_pool" not in _src and "GEMINI" not in _src, "대조군은 LLM 을 안 부른다")

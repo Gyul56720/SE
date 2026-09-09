@@ -125,6 +125,17 @@ ok(_굵 and "못 읽는다" not in _굵[0], "잰 것이 0이면 그 말도 안 �
 print("\n== 깊이별로도 센다 ==")
 ok("깊이" in _t and "\n1 " in _t.replace("1  ", "1 "), "깊이 줄이 있다")
 
+print("\n== 잰 것이 하나도 없으면 0%를 성적으로 읽지 말라고 한다 ==")
+_안푼 = 원장()
+for _p in _안푼["problems"]:
+    _p.pop("답", None)
+_o안 = io.StringIO()
+with redirect_stdout(_o안):
+    TA.show(_안푼, seed=1)
+ok("잰 것이 하나도 없다" in _o안.getvalue(),
+   f"**0%가 죽 늘어설 때 그렇게 말한다**\n{_o안.getvalue()[-200:]}")
+ok("잰 것이 하나도 없다" not in _t, "잰 것이 있으면 그 말이 없다")
+
 print("\n== 호출 0회다 ==")
 _src = (Path(__file__).resolve().parent.parent / "seek" / "tally.py").read_text(encoding="utf-8")
 ok("llm_pool" not in _src and "GEMINI" not in _src, "tally 는 LLM 을 안 부른다")
