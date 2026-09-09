@@ -34,7 +34,8 @@ load_dotenv()
 from langgraph.checkpoint.memory import MemorySaver  # noqa: E402
 
 import agent_context  # noqa: E402
-import agent_memory  # noqa: E402
+import agent_memory
+import gitsync  # noqa: E402
 import gatekeeper  # noqa: E402
 import main_public  # noqa: E402
 from bot_tools import (  # noqa: E402
@@ -188,13 +189,16 @@ def git_sync() -> str | None:
     이 VM의 로컬 HEAD보다 앞서 있는 경우(non-fast-forward)가 실제로 발생한다. 그럴 때 단순
     `git push`는 거부되고 그대로 실패만 반환했는데, 그러면 이 VM에서 만든 변경이 origin에
     영영 반영이 안 되고(Obsidian이 못 받아봄) 조용히 로컬에만 쌓이게 된다. 그래서 push가
-    non-fast-forward로 거부되면 fetch + rebase 후 한 번 더 시도한다.
+    non-fast-forward로 거부되면 **지금 브랜치의 origin을 merge**하고 한 번 더 시도한다.
+    rebase가 아니고 origin/main도 아니다 -- `_reconcile()` 의 사고 기록을 볼 것.
 
     공개/관리 채널 에이전트의 save_memory나 run_shell도 같은 워킹트리에 커밋할 수 있으므로,
     스레드 간에도 통하는 agent_memory.GIT_MUTEX를 함께 잡아서 여러 경로가 동시에 git을
     만지지 않게 한다."""
     with agent_memory.GIT_MUTEX:
         return _git_sync_locked()
+
+
 
 
 def _verify_pushed() -> str:
@@ -310,17 +314,16 @@ def _git_sync_locked() -> str | None:
     if push.returncode == 0:
         return f"{report.summary()}\n{_verify_pushed()}"
 
-    subprocess.run(["git", "fetch", "origin"], cwd=REPO_DIR, capture_output=True, text=True)
-    rebase = subprocess.run(["git", "rebase", "origin/main"], cwd=REPO_DIR, capture_output=True, text=True)
-    if rebase.returncode != 0:
-        subprocess.run(["git", "rebase", "--abort"], cwd=REPO_DIR, capture_output=True, text=True)
-        return (f"[git push 실패] origin이 앞서 있어 자동 rebase를 시도했으나 충돌 발생 -- "
-                f"수동 확인 필요.\n{push.stderr.strip()}")
+    caught, why = gitsync.reconcile(
+        lambda a: subprocess.run(["git", *a], cwd=REPO_DIR, capture_output=True, text=True))
+    if not caught:
+        return (f"[git push 실패] origin이 앞서 있어 따라잡으려 했으나 안 됐다: {why}\n"
+                f"{push.stderr.strip()}")
 
     retry = subprocess.run(["git", "push"], cwd=REPO_DIR, capture_output=True, text=True)
     if retry.returncode != 0:
-        return f"[git push 실패] rebase 후에도 실패: {retry.stderr.strip()}"
-    return "(rebase 후 재시도) " + _verify_pushed()
+        return f"[git push 실패] {why} 뒤에도 실패: {retry.stderr.strip()}"
+    return f"({why} 뒤 재시도) " + _verify_pushed()
 
 
 def run_admin_agent(prompt: str, thread_id: str) -> str:

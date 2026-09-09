@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+import gitsync
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -61,8 +62,9 @@ def _git(args: list[str]) -> subprocess.CompletedProcess:
 
 
 def _commit_and_push(message: str) -> str:
-    """MEMORY_DIR 경로만 커밋해서 push. origin이 앞서 있으면 rebase 후 재시도한다
-    (git_sync()와 같은 이유 -- 이 VM 밖에서도 같은 repo에 push하므로 실제로 발생한다)."""
+    """MEMORY_DIR 경로만 커밋해서 push. origin이 앞서 있으면 **지금 브랜치의 origin을
+    merge**하고 재시도한다 (git_sync()와 같은 이유 -- 이 VM 밖에서도 같은 repo에
+    push하므로 실제로 발생한다). rebase도 origin/main도 아니다."""
     with GIT_MUTEX:
         _git(["add", "--", MEMORY_REL])
         staged = _git(["diff", "--cached", "--quiet", "--", MEMORY_REL])
@@ -74,15 +76,14 @@ def _commit_and_push(message: str) -> str:
         push = _git(["push"])
         if push.returncode == 0:
             return "저장 + git push 완료"
-        _git(["fetch", "origin"])
-        rebase = _git(["rebase", "origin/main"])
-        if rebase.returncode != 0:
-            _git(["rebase", "--abort"])
-            return "커밋은 됐지만 push 실패 (origin과 충돌, 수동 확인 필요)"
+        # **한 군데에만 둔다.** 전에 여기 복사본이 있었고 두 벌 다 틀렸다.
+        caught, why = gitsync.reconcile(_git)
+        if not caught:
+            return f"커밋은 됐지만 push 실패 ({why})"
         retry = _git(["push"])
         if retry.returncode != 0:
             return f"커밋은 됐지만 push 실패: {retry.stderr.strip()[:200]}"
-        return "저장 + git push 완료 (rebase 후 재시도)"
+        return f"저장 + git push 완료 ({why} 뒤 재시도)"
 
 
 def save_memory(topic: str, content: str, author_id: str = "unknown") -> str:
