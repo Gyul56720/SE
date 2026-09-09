@@ -26,6 +26,8 @@
 #   drift.sh 첫장 [파일...]         **첫 회차를 잰다** -- 실제 1화를 파일로 주면
 #                                   우리 첫 회차와 나란히 놓고 견준다
 #   drift.sh 첫장 --기록 <이름> <파일>  잰 것을 표본으로 남긴다 -- 갈래 밴드가 여기서 나온다
+#   drift.sh 점검                  **파이프라인 전체 점검** -- 적어 둔 것이 실제로
+#                                   프롬프트에 부쳐지는가 (배선 · 축 · 손 · 인자)
 #   drift.sh codex                  설정집 -- 각본이 세운 직함 · 등급 · 기술 · 법칙
 #
 # 환경변수로 바꿀 수 있는 것:
@@ -46,11 +48,18 @@
 #                                따라 붙는다. DRIFT_LAYER=all 을 켜면 사건·확산까지 온다
 #   DRIFT    표류 계수 0~1     (기본 1.0 -- 낮추면 급발진·사건이 줄어든다)
 #   MATTER   소재 축 0~1       (기본 0.0 -- 켜면 갈래·매체가 섞인다)
-#   HEAT     수위 0~1          (기본 0 = 안 씌운다). 켜면 성인 규율이 회차마다 실린다.
+#   HEAT     수위 (기본 0 = 안 씌운다). 켜면 성인 규율이 회차마다 실린다.
+#                                **값의 크기는 뜻이 없다** -- 코드는 `> 0` 로만 본다.
+#                                0.6 도 1.0 도 같다(실측 2026-09-09).
 #                                등장인물은 전부 어른이어야 한다 -- 조건 둘(어른만 ·
 #                                원하는지가 보인다)은 켜져 있는 동안 늘 실린다.
 #                                예: HEAT=0.6 GENRE=lanobe drift.sh start 200000
-#   BODY     몸의 사실 0~1     (기본 0.35)
+#   BODY     몸의 사실 0~1     (기본 0 = 안 씌운다). TRAIT 이라고 써도 된다 --
+#                                flow 쪽 이름은 --trait 이고 body 는 옛 이름이다.
+#                                **문서가 0.35 라고 적어 두었었는데 코드는 0 이었다**
+#                                (실측 2026-09-09). 게다가 drift.sh 가 없는 인자
+#                                `--body` 를 넘기고 있어서, 이 손잡이를 쓰면 런이
+#                                아예 안 떴다 -- `unrecognized arguments: --body`.
 #   BOND     관계 0~1          (기본 0.4)
 #
 #   설정은 **원고가 아니라 코드가 정한다.** 이어 쓸 때마다 지금 기본값으로 맞춰지고,
@@ -150,7 +159,7 @@ case "${1:-status}" in
       echo "쓰던 원고를 옮겨 두었다: $BOOK.*.bak"
     }
     set -- --out "$BOOK" --chars "${2:-8000}" --hours "${HOURS:-12}" ${STYLE:+--persona "$STYLE"} ${GENRE:+--genre "$GENRE"} ${DRIFT:+--drift "$DRIFT"} ${MATTER:+--matter "$MATTER"} \
-           ${BODY:+--body "$BODY"} ${BOND:+--bond "$BOND"} ${HEAT:+--heat "$HEAT"}
+           ${BODY:+--trait "$BODY"} ${TRAIT:+--trait "$TRAIT"} ${BOND:+--bond "$BOND"} ${HEAT:+--heat "$HEAT"}
     [ -n "${FIRST:-}" ] && set -- "$@" --first "$FIRST"
     # 첫 문장을 안 주면 갈래 축에서 여는 좌표를 뽑는다 -- 고정 문장을 쓰면 그 문장의
     # 세계(지명 · 말씨)가 원고 전체를 끌고 간다.
@@ -198,6 +207,17 @@ INNER
 
   # 회차 각본과 설정집. 원고를 읽지 않고도 "이번 회차에 쾌감이 있나 · 싸움이 있나 ·
   # 무엇을 세웠나" 를 본다. 재미의 재료가 실렸는지를 여기서 먼저 확인한다.
+  점검|audit)
+    # **적어 둔 것이 실제로 부쳐지는가.** 이 저장소가 같은 병을 네 번 앓았다 --
+    # --persona · 첫회차 규율 · echo.check · GENRE 빈 값. 넷 다 원고는 멀쩡히 나왔다.
+    if [ -f "$BOOK" ]; then
+      PYTHONPATH="$SE" python3 -m novel.audit --book "$BOOK"
+    else
+      echo "원고가 없다 -- 흉내 원고로 본다 ($BOOK)"
+      PYTHONPATH="$SE" python3 -m novel.audit ${GENRE:+--genre "$GENRE"} ${HEAT:+--heat "$HEAT"}
+    fi
+    ;;
+
   첫장|first)
     shift || true
     # **실제 1화를 여기 넣는다.** 사이트에서 못 긁어 오는 것은 사람이 파일로 준다.
@@ -241,7 +261,7 @@ PY
            ${STYLE:+--persona "$STYLE"} \
            ${GENRE:+--genre "$GENRE"} \
            ${DRIFT:+--drift "$DRIFT"} ${MATTER:+--matter "$MATTER"} \
-           ${BODY:+--body "$BODY"} ${BOND:+--bond "$BOND"} ${HEAT:+--heat "$HEAT"}
+           ${BODY:+--trait "$BODY"} ${TRAIT:+--trait "$TRAIT"} ${BOND:+--bond "$BOND"} ${HEAT:+--heat "$HEAT"}
     ;;
 
   status)
