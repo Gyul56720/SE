@@ -34,6 +34,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import channels  # noqa: E402
+
 API = "https://discord.com/api/v10/channels/{cid}/messages"
 LIMIT = 24 * 1024 * 1024          # Discord 첨부 상한보다 한 뼘 아래
 
@@ -73,7 +75,8 @@ def send_file(text: str, filename: str, note: str = "") -> tuple[bool, str]:
         body, ctype = _multipart({"payload_json": json.dumps({"content": head[:1900]})},
                                  name, part)
         url = webhook if webhook else API.format(cid=channel)
-        headers = {"Content-Type": ctype}
+        # UA 없이 보내면 Cloudflare 가 403 을 낸다 -- channels.UA 주석 참고
+        headers = {"Content-Type": ctype, "User-Agent": channels.UA}
         if not webhook:
             headers["Authorization"] = f"Bot {token}"
         try:

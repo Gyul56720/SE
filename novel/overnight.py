@@ -27,6 +27,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import channels  # noqa: E402
+
 from novel import drive as D                                          # noqa: E402
 from novel.state import Novel                                         # noqa: E402
 from novel.world_romance import build, OUTCOMES                       # noqa: E402
@@ -92,7 +94,11 @@ class Discord:
         import urllib.request
         body = _json.dumps({"content": text[:1900]}).encode()
         if self.webhook:
-            url, headers = self.webhook, {"Content-Type": "application/json"}
+            # UA 없이 보내면 Cloudflare 가 403 을 낸다 -- channels.UA 주석 참고
+            url = self.webhook
+            headers = {"Content-Type": "application/json",
+                       "User-Agent": channels.UA,
+                       "User-Agent": channels.UA}
         else:
             url = self.API.format(cid=self.channel)
             headers = {"Content-Type": "application/json",
