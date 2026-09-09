@@ -214,6 +214,42 @@ with _tf3.TemporaryDirectory() as _d3:
             _못.append(_n)
     ok(not _못, f"**어느 폴더에서 불러도 임포트가 산다**" + (f" -- 죽는 것: {_못}" if _못 else ""))
 
+# ---------------------------------------------------------------- 진행 · 부분저장
+# 실측 2026-09-09 (VM): `--과거` 를 30분 넘게 돌렸는데 로그가 비어 있었다. `--과거` 는
+# 다 받은 뒤에야 저장/출력하므로, 도는 동안 죽었는지 살았는지 볼 수 없었다.
+# CLAUDE.md 가 "프로세스가 살아 있는 것과 일을 하는 것은 다르다 -- 로그에 줄이 쌓이는지
+# 봐라" 라고 한 그 자리인데 안 지켰다.
+import contextlib as _ctx2, io as _io2                               # noqa: E402
+_s = SRC.get("gdelt-en")
+_옛히 = NW._http
+try:
+    NW._http = lambda url, timeout=25.0: (
+        b'{"articles":[{"title":"bitcoin","seendate":"20200101T120000Z","url":"x"}]}')
+    _buf = _io2.StringIO()
+    with _ctx2.redirect_stderr(_buf):
+        _got = NW._gdelt(_s, "2017-01-01", "2019-01-01")
+    _조각줄 = [l for l in _buf.getvalue().splitlines() if "조각" in l]
+    ok(len(_조각줄) >= 2, f"**GDELT 가 조각마다 진행을 찍는다** ({len(_조각줄)}줄) -- "
+       "로그가 안 늘면 죽은 것이라고 볼 수 있다")
+    ok(any("여기까지" in l for l in _조각줄), "몇 건 받았는지도 찍는다")
+finally:
+    NW._http = _옛히
+
+# 부분 저장이 실제로 불리는가
+_불린 = []
+class _가짜출처:
+    이름, 나라, 층, 꼴, 열쇠, 경로 = "가짜", "US", "매체", "gdelt", "", ""
+    url = NW.GDELT
+    def 쓸수있나(self): return True, ""
+_옛히2 = NW._http
+try:
+    NW._http = lambda url, timeout=25.0: b'{"articles":[]}'
+    NW.받기([_가짜출처()], 부터="2020-01-01", 까지="2020-02-01",
+            부분저장=lambda 누적: _불린.append(len(누적)))
+    ok(len(_불린) >= 1, "**부분저장이 출처마다 불린다** -- 중간에 끊겨도 안 날아간다")
+finally:
+    NW._http = _옛히2
+
 print()
 print(f"실패 {len(fails)}개" if fails else "전부 통과")
 raise SystemExit(1 if fails else 0)
