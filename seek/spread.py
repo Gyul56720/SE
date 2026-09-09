@@ -150,6 +150,11 @@ def _pick(led: dict, seed: str, n: int, k: int) -> list:
 def step(led: dict, llm, seed: str, n: int, k: int = BATCH, log=print) -> list:
     """호출 한 번 = 문제 여럿. **안 도는 판정기는 원장이 안 받는다.**"""
     ps = led.get("problems") or []
+    # **공허를 부모로 삼지 않는다.** 뽑은 것을 다 받는 판정기에서 파생시키면 자식도
+    # 같은 공허를 물려받는다(감사 100개에서 9개가 공허였다). 등급은 `sweep.py` 가
+    # 원장에 적어 둔다 -- 안 적혔으면 예전 것이므로 그냥 쓴다.
+    살아있는 = [p for p in ps if p.get("등급") != "공허"]
+    ps = 살아있는 or ps
     if not ps:
         log("[낳기] 원장이 비어 있다")
         return []
