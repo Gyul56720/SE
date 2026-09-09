@@ -1,0 +1,1906 @@
+{
+  "seq": 51,
+  "ops_used": {
+    "탈범주화": 5,
+    "완비화": 6,
+    "불변량 이동": 2,
+    "매장": 2,
+    "점근화": 2,
+    "범주화": 2,
+    "상대화": 3,
+    "대칭성 강제": 3,
+    "망각": 5,
+    "내부화": 3,
+    "이산화": 6,
+    "국소화": 3,
+    "쌍대": 3,
+    "표수 이동": 2,
+    "경계화": 3
+  },
+  "spaces": [
+    {
+      "id": "S1",
+      "식": "\\sum_{r=1}^{m} \\lambda_r \\, U[(i,k),r] \\, V[(k',j),r] \\, W[(i',j'),r] = \\delta_{k,k'} \\delta_{j,j'} \\delta_{i,i'} \\quad \\forall\\, i,i',j,j',k,k' \\in [n], \\quad U,V,W \\in F^{n^2 \\times m}, \\ \\lambda \\in F^m, \\ n=2, \\ m=7",
+      "점": "(U,V,W,\\lambda) \\in F^{n^2 \\times m} \\times F^{n^2 \\times m} \\times F^{n^2 \\times m} \\times F^m",
+      "정의역": "F = \\mathbb{R}",
+      "치수": 91,
+      "해독": "def decode(p):\n    \"\"\"점 = U(4x7) 편 것 + V(4x7) + W(4x7) + lambda(7). 치수 91.\"\"\"\n    N, M = 4, 7\n    def take(off):\n        return [[p[off + a * M + r] for r in range(M)] for a in range(N)]\n    U, V, W = take(0), take(N * M), take(2 * N * M)\n    lam = p[3 * N * M: 3 * N * M + M]\n    return U, V, W, lam\n",
+      "부호화": "def encode(U, V, W, lam):\n    \"\"\"(U,V,W,lambda) -> 점. decode 의 역이다.\"\"\"\n    return ([x for r in U for x in r] + [x for r in V for x in r]\n            + [x for r in W for x in r] + list(lam))\n",
+      "시금석점": "",
+      "왜": "행렬곱의 곱셈 횟수를 대수 방정식계로 옮긴 최초의 이주. mathmetics/matrix_exponent 가 서 있는 식이고, CP-ALS / 무작위 재시작 / 강화학습 / flip graph 로 여러 번 훑어 소진됐다. 새 식은 이것을 부정하지 않고 품어야 한다.",
+      "계보": {
+        "부모": "-",
+        "연산자": "씨앗",
+        "거리": 0
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 0,
+        "물려받음": 0,
+        "몫": 0.0,
+        "자식몫": 0.0,
+        "확산": false,
+        "씨앗": true
+      },
+      "유도": [
+        {
+          "식": "Sum(lam_r*U[a,r]*V[b,r]*W[c,r], (r, 1, m))",
+          "근거": "부모"
+        },
+        {
+          "식": "Sum(lam_r*U[a,r]*V[b,r]*W[c,r], (r, 1, m))",
+          "근거": "정의"
+        }
+      ]
+    },
+    {
+      "id": "S2",
+      "식": "Tr(\\sum_{r=1}^{m} \\lambda_r (U_r \\otimes V_r \\otimes W_r)) = n^3",
+      "점": "(U, V, W, \\lambda) \\in F^{n^2 \\times m \\times 3} \\times F^m",
+      "정의역": "F = \\mathbb{R}",
+      "유도": [
+        {
+          "식": "\\sum_{r=1}^{m} \\lambda_r U_{r} V_{r} W_{r} = \\delta_{k,k'} \\delta_{j,j'} \\delta_{i,i'}",
+          "근거": "부모"
+        },
+        {
+          "식": "Tr(\\sum_{r=1}^{m} \\lambda_r U_{r} \\otimes V_{r} \\otimes W_{r}) = \\sum_{i,j,k} \\delta_{i,i} \\delta_{j,j} \\delta_{k,k}",
+          "근거": "항등"
+        },
+        {
+          "식": "Tr(\\sum_{r=1}^{m} \\lambda_r U_{r} \\otimes V_{r} \\otimes W_{r}) = n^3",
+          "근거": "정의"
+        }
+      ],
+      "치수": "",
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "텐서의 복잡한 인덱스 관계를 대각합(trace)이라는 단일 스칼라 불변량으로 투영하여 구조를 단순화했습니다.",
+      "계보": {
+        "부모": "S1",
+        "연산자": "탈범주화",
+        "거리": 1
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 2,
+        "물려받음": 5,
+        "몫": 0.294,
+        "자식몫": 0.714,
+        "확산": true,
+        "씨앗": false,
+        "치수차": -91,
+        "정의역바뀜": false
+      }
+    },
+    {
+      "id": "S3",
+      "식": "\\lim_{S \\to \\infty} \\sum_{r=1}^{m} \\lambda_r (U \\otimes V \\otimes W)_r = \\sum_{i,j,k} e_{i,j,k} \\otimes e_{i,j,k}",
+      "점": "(U, V, W, \\lambda) \\in (F^{n^2 \\times m})^3 \\times F^m",
+      "정의역": "F = \\mathbb{R}",
+      "유도": [
+        {
+          "식": "\\sum \\lambda_r U_r V_r W_r = \\sum \\delta_{i,i'} \\delta_{j,j'} \\delta_{k,k'}",
+          "근거": "부모"
+        },
+        {
+          "식": "\\sum \\lambda_r (U \\otimes V \\otimes W)_r = \\sum_{i,j,k} e_{i,j,k} \\otimes e_{i,j,k}",
+          "근거": "대입"
+        }
+      ],
+      "치수": "",
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "행렬곱 텐서를 텐서 공간의 기저 원소들의 합으로 완비된 표현으로 확장했습니다.",
+      "계보": {
+        "부모": "S1",
+        "연산자": "완비화",
+        "거리": 1
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 4,
+        "물려받음": 5,
+        "몫": 0.294,
+        "자식몫": 0.556,
+        "확산": true,
+        "씨앗": false,
+        "치수차": -91,
+        "정의역바뀜": false
+      }
+    },
+    {
+      "id": "S4",
+      "식": "\\text{rank}_F(\\sum_{r=1}^{m} \\lambda_r U_r \\otimes V_r \\otimes W_r) = n^3",
+      "점": "(U, V, W, \\lambda) \\in (F^{n^2 \\times m})^3 \\times F^m",
+      "정의역": "F = \\mathbb{F}_2",
+      "유도": [
+        {
+          "식": "\\sum \\lambda_r U_r V_r W_r = I_{n^3}",
+          "근거": "부모"
+        },
+        {
+          "식": "\\text{rank}(\\sum \\lambda_r U_r V_r W_r) = \\text{rank}(I_{n^3})",
+          "근거": "항등"
+        }
+      ],
+      "치수": "",
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "행렬곱 연산 자체의 구체적인 성분 대신, 해당 텐서가 생성하는 공간의 차원(랭크)만을 불변량으로 취급합니다.",
+      "계보": {
+        "부모": "S1",
+        "연산자": "불변량 이동",
+        "거리": 1
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 3,
+        "물려받음": 5,
+        "몫": 0.294,
+        "자식몫": 0.625,
+        "확산": true,
+        "씨앗": false,
+        "치수차": -91,
+        "정의역바뀜": true
+      }
+    },
+    {
+      "id": "S5",
+      "식": "\\phi(\\sum_{r=1}^m \\lambda_r U_r V_r W_r) = \\sum_{r=1}^m \\lambda_r \\rho(U_r) \\rho(V_r) \\rho(W_r) \\in A",
+      "점": "(U, V, W, \\lambda) \\in (F^{n^2 \\times m})^3 \\times F^m",
+      "정의역": "F = \\mathbb{C}",
+      "유도": [
+        {
+          "식": "T = \\sum \\lambda_r U_r V_r W_r",
+          "근거": "부모"
+        },
+        {
+          "식": "\\phi(T) \\in A",
+          "근거": "매장"
+        }
+      ],
+      "치수": "",
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "행렬곱 텐서 구조를 더 큰 대수 구조인 군대수(Group Algebra) 또는 비가환 대수 내의 원소로 매장하여 대수적 연산 법칙을 따르게 합니다.",
+      "계보": {
+        "부모": "S1",
+        "연산자": "매장",
+        "거리": 2
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 2,
+        "물려받음": 5,
+        "몫": 0.294,
+        "자식몫": 0.714,
+        "확산": true,
+        "씨앗": false,
+        "치수차": -91,
+        "정의역바뀜": true
+      }
+    },
+    {
+      "id": "S6",
+      "식": "\\omega = \\inf \\{ \\tau \\in \\mathbb{R} : R_n(M) = O(n^\\tau) \\}",
+      "점": "(n, m) \\in \\mathbb{N} \\times \\mathbb{N}",
+      "정의역": "F = \\mathbb{R}",
+      "유도": [
+        {
+          "식": "m(n) \\le n^{\\omega + \\epsilon}",
+          "근거": "가정"
+        },
+        {
+          "식": "\\lim_{n \\to \\infty} \\frac{\\log m(n)}{\\log n} = \\omega",
+          "근거": "극한"
+        }
+      ],
+      "치수": "",
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "고정된 n=2, m=7의 사례에서 벗어나, n이 무한히 커질 때 연산 복잡도의 지수(exponent)만을 추적합니다.",
+      "계보": {
+        "부모": "S1",
+        "연산자": "점근화",
+        "거리": 2
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 3,
+        "물려받음": 3,
+        "몫": 0.176,
+        "자식몫": 0.5,
+        "확산": true,
+        "씨앗": false,
+        "치수차": -91,
+        "정의역바뀜": false
+      }
+    },
+    {
+      "id": "S7",
+      "식": "Funct(A \\to B, \\text{Tr}(\\sum_{r=1}^{m} \\lambda_r (U_r \\otimes V_r \\otimes W_r)) \\cong n^3)",
+      "점": "(U, V, W, \\lambda) \\in \\text{Hom}(\\mathcal{C}, \\mathcal{D})",
+      "정의역": "F = \\mathbb{C}",
+      "유도": [
+        {
+          "식": "Tr(sum_{r=1}^{m} lambda_r (U_r otimes V_r otimes W_r)) = n^3",
+          "근거": "부모"
+        },
+        {
+          "식": "Hom(A, B) = Tr(sum_{r=1}^{m} lambda_r (U_r otimes V_r otimes W_r))",
+          "근거": "정의"
+        }
+      ],
+      "치수": "",
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "행렬곱의 복잡도를 텐서 공간 사이의 사상(morphism)으로 격상시켜, 텐서 랭크 문제를 범주론적 동형 문제로 재해석합니다.",
+      "계보": {
+        "부모": "S2",
+        "연산자": "범주화",
+        "거리": 2
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 6,
+        "물려받음": 6,
+        "몫": 0.857,
+        "자식몫": 0.5,
+        "확산": true,
+        "씨앗": false,
+        "치수차": 0,
+        "정의역바뀜": true
+      }
+    },
+    {
+      "id": "S8",
+      "식": "Tr(\\sum_{r=1}^{m} \\lambda_r (U_r \\otimes V_r \\otimes W_r) | T) = n^3",
+      "점": "(U, V, W, \\lambda) \\in (F^{n^2 \\times m})^T \\times (F^m)^T",
+      "정의역": "F = \\mathbb{R}",
+      "유도": [
+        {
+          "식": "Tr(sum_{r=1}^{m} lambda_r (U_r otimes V_r otimes W_r)) = n^3",
+          "근거": "부모"
+        },
+        {
+          "식": "Tr(sum_{r=1}^{m} lambda_r (U_r otimes V_r otimes W_r)) / Tr(T) = n^3 / Tr(T)",
+          "근거": "대입"
+        }
+      ],
+      "치수": "",
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "특정 기준 텐서 T를 고정함으로써, 일반적인 곱셈이 아닌 특정 부분 구조 위에서의 상대적 복잡도를 측정합니다.",
+      "계보": {
+        "부모": "S2",
+        "연산자": "상대화",
+        "거리": 1
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 0,
+        "물려받음": 7,
+        "몫": 1.0,
+        "자식몫": 1.0,
+        "확산": false,
+        "씨앗": false,
+        "치수차": 0,
+        "정의역바뀜": false
+      }
+    },
+    {
+      "id": "S9",
+      "식": "Tr(\\sum_{r=1}^{m} \\lambda_r (g \\cdot U_r \\otimes g \\cdot V_r \\otimes g \\cdot W_r)) = n^3, \\forall g \\in G",
+      "점": "(U, V, W, \\lambda) \\in (F^{n^2 \\times m} \\times F^m)^G",
+      "정의역": "F = \\mathbb{R}",
+      "유도": [
+        {
+          "식": "Tr(sum_{r=1}^{m} lambda_r (U_r otimes V_r otimes W_r)) = n^3",
+          "근거": "부모"
+        },
+        {
+          "식": "Tr(sum_{r=1}^{m} lambda_r (U_r otimes V_r otimes W_r)) * 1_{G} = n^3",
+          "근거": "항등"
+        }
+      ],
+      "치수": "",
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "군 G의 작용에 대해 불변인 텐서만을 고려하여 탐색 공간을 줄이고 대칭적인 해를 유도합니다.",
+      "계보": {
+        "부모": "S2",
+        "연산자": "대칭성 강제",
+        "거리": 1
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 2,
+        "물려받음": 7,
+        "몫": 1.0,
+        "자식몫": 0.778,
+        "확산": true,
+        "씨앗": false,
+        "치수차": 0,
+        "정의역바뀜": false
+      }
+    },
+    {
+      "id": "S10",
+      "식": "\\chi(\\sum_{r=1}^{m} \\lambda_r U_r V_r W_r) = n^3",
+      "점": "(U, V, W, \\lambda) \\in \\mathbb{Z}",
+      "정의역": "F = \\mathbb{Z}",
+      "유도": [
+        {
+          "식": "Tr(sum_{r=1}^{m} lambda_r (U_r otimes V_r otimes W_r)) = n^3",
+          "근거": "부모"
+        },
+        {
+          "식": "Tr(sum_{r=1}^{m} lambda_r (U_r otimes V_r otimes W_r)) = chi(T)",
+          "근거": "대입"
+        }
+      ],
+      "치수": "",
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "텐서의 복잡한 구조를 오일러 표수(Euler characteristic)와 같은 단일 불변량으로 축소하여 다루기 쉽게 만듭니다.",
+      "계보": {
+        "부모": "S2",
+        "연산자": "탈범주화",
+        "거리": 1
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 1,
+        "물려받음": 4,
+        "몫": 0.571,
+        "자식몫": 0.8,
+        "확산": true,
+        "씨앗": false,
+        "치수차": 0,
+        "정의역바뀜": true
+      }
+    },
+    {
+      "id": "S11",
+      "식": "\\sum_{r=1}^{m} \\lambda_r (U_r \\cdot V_r \\cdot W_r) = n^3",
+      "점": "(U, V, W, \\lambda) \\in F^{n^2 \\times m \\times 3} \\times F^m",
+      "정의역": "F = \\mathbb{F}_q",
+      "유도": [
+        {
+          "식": "Tr(sum_{r=1}^{m} lambda_r (U_r otimes V_r otimes W_r)) = n^3",
+          "근거": "부모"
+        },
+        {
+          "식": "sum_{r=1}^{m} lambda_r (U_r * V_r * W_r) = n^3",
+          "근거": "체"
+        }
+      ],
+      "치수": "",
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "텐서 곱(tensor product)이라는 구조를 스칼라 곱으로 망각시켜 대수적 연산의 편의성을 얻습니다.",
+      "계보": {
+        "부모": "S2",
+        "연산자": "망각",
+        "거리": 1
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 1,
+        "물려받음": 5,
+        "몫": 0.714,
+        "자식몫": 0.833,
+        "확산": true,
+        "씨앗": false,
+        "치수차": 0,
+        "정의역바뀜": true
+      }
+    },
+    {
+      "id": "S12",
+      "식": "\\omega(n) = \\inf \\{ m \\in \\mathbb{N} \\mid \\exists (U, V, W, \\lambda), \\lim_{S \\to \\infty} \\sum_{r=1}^{m} \\lambda_r (U \\otimes V \\otimes W)_r = \\sum_{i,j,k} e_{i,j,k} \\otimes e_{i,j,k} \\}",
+      "점": "\\omega \\in \\mathbb{R}",
+      "정의역": "F = \\mathbb{R}",
+      "유도": [
+        {
+          "식": "\\lim_{S \\to \\infty} \\sum_{r=1}^{m} \\lambda_r (U \\otimes V \\otimes W)_r = \\sum e \\otimes e",
+          "근거": "부모"
+        },
+        {
+          "식": "\\omega(n) = \\inf \\{ m \\mid \\text{부모 성립} \\}",
+          "근거": "정의"
+        }
+      ],
+      "치수": "",
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "텐서 곱의 복잡도라는 거대한 구조를 최하위 차원의 단일 스칼라 불변량인 지수 욍메가로 강등시켜 축약한다.",
+      "계보": {
+        "부모": "S3",
+        "연산자": "탈범주화",
+        "거리": 1
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 4,
+        "물려받음": 8,
+        "몫": 0.889,
+        "자식몫": 0.667,
+        "확산": true,
+        "씨앗": false,
+        "치수차": 0,
+        "정의역바뀜": false
+      }
+    },
+    {
+      "id": "S13",
+      "식": "\\sum_{r=1}^{m} \\lambda_r \\phi(U_r) \\phi(V_r) \\phi(W_r) = \\phi\\left(\\sum e \\otimes e \\right)",
+      "점": "\\phi \\in \\text{Hom}(F^{n^2 \\times m}, \\mathbb{C}[G])",
+      "정의역": "F = \\mathbb{C}",
+      "유도": [
+        {
+          "식": "\\lim_{S \\to \\infty} \\sum_{r=1}^{m} \\lambda_r (U \\otimes V \\otimes W)_r = \\sum e \\otimes e",
+          "근거": "부모"
+        },
+        {
+          "식": "\\sum_{r=1}^{m} \\lambda_r \\phi(U \\otimes V \\otimes W)_r = \\phi\\left(\\sum e \\otimes e\\right)",
+          "근거": "대입"
+        }
+      ],
+      "치수": "",
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "선형공간 위의 텐서 방정식을 대수 구조인 군대수(Group Algebra)의 표현환 속으로 임베딩하여 대칭성을 활용한다.",
+      "계보": {
+        "부모": "S3",
+        "연산자": "매장",
+        "거리": 2
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 5,
+        "물려받음": 6,
+        "몫": 0.667,
+        "자식몫": 0.545,
+        "확산": true,
+        "씨앗": false,
+        "치수차": 0,
+        "정의역바뀜": true
+      }
+    },
+    {
+      "id": "S14",
+      "식": "\\lim_{S \\to \\infty} \\lim_{N \\to \\infty} \\sum_{r=1}^{m_S} \\lambda_r \\overline{(U \\otimes V \\otimes W)}_r^{(N)} = \\sum_{i,j,k} e_{i,j,k} \\otimes e_{i,j,k}",
+      "점": "(U, V, W, \\lambda) \\in \\overline{(F^{n^2 \\times m})^3 \\times F^m}",
+      "정의역": "F = \\mathbb{R}",
+      "유도": [
+        {
+          "식": "\\lim_{S \\to \\infty} \\sum_{r=1}^{m} \\lambda_r (U \\otimes V \\otimes W)_r = \\sum e \\otimes e",
+          "근거": "부모"
+        },
+        {
+          "식": "\\lim_{S \\to \\infty} \\lim_{N \\to \\infty} \\sum_{r=1}^{m_S} \\lambda_r \\overline{(U \\otimes V \\otimes W)}_r^{(N)} = \\sum e \\otimes e",
+          "근거": "극한"
+        }
+      ],
+      "치수": "",
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "유한한 텐서 근사식들의 공간을 코시 수열의 극한으로 완비화하여 위상수학적 공간의 닫힘 성질을 보장한다.",
+      "계보": {
+        "부모": "S3",
+        "연산자": "완비화",
+        "거리": 1
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 1,
+        "물려받음": 9,
+        "몫": 1.0,
+        "자식몫": 0.9,
+        "확산": true,
+        "씨앗": false,
+        "치수차": 0,
+        "정의역바뀜": false
+      }
+    },
+    {
+      "id": "S15",
+      "식": "\\omega = \\inf \\left\\{ \\tau \\in \\mathbb{R} \\mid \\lim_{n \\to \\infty} n^{-\\tau} m(n^\\tau) = 0 \\right\\}",
+      "점": "\\tau \\in \\mathbb{R}",
+      "정의역": "F = \\mathbb{R}",
+      "유도": [
+        {
+          "식": "\\lim_{S \\to \\infty} \\sum_{r=1}^{m} \\lambda_r (U \\otimes V \\otimes W)_r = \\sum e \\otimes e",
+          "근거": "부모"
+        },
+        {
+          "식": "\\omega = \\lim_{n \\to \\infty} \\frac{\\log m}{\\log n}",
+          "근거": "정의"
+        }
+      ],
+      "치수": "",
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "고정된 크기의 텐서 스킴을 떠나 행렬 크기 n이 무한대로 발산할 때의 지수적 증가율만을 추출하여 점근 복잡도를 정의한다.",
+      "계보": {
+        "부모": "S3",
+        "연산자": "점근화",
+        "거리": 2
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 6,
+        "물려받음": 5,
+        "몫": 0.556,
+        "자식몫": 0.455,
+        "확산": true,
+        "씨앗": false,
+        "치수차": 0,
+        "정의역바뀜": false
+      }
+    },
+    {
+      "id": "S16",
+      "식": "\\text{Hom}_{\\mathcal{C}}\\left(I, \\int^S \\bigotimes_{r=1}^{m} \\lambda_r (U \\otimes V \\otimes W)_r \\right) \\cong \\text{Hom}_{\\mathcal{C}}\\left(I, \\sum e \\otimes e \\right)",
+      "점": "(U, V, W, \\lambda) \\in \\text{Ob}(\\mathcal{C})",
+      "정의역": "F = \\text{Vect}_F",
+      "유도": [
+        {
+          "식": "\\lim_{S \\to \\infty} \\sum_{r=1}^{m} \\lambda_r (U \\otimes V \\otimes W)_r = \\sum e \\otimes e",
+          "근거": "부모"
+        },
+        {
+          "식": "\\text{Hom}(I, \\text{LHS}) = \\text{Hom}(I, \\text{RHS})",
+          "근거": "정의"
+        }
+      ],
+      "치수": "",
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "집합과 원소의 언어를 버리고 대칭 모노이드 범주(Symmetric Monoidal Category) 내부의 사상과 대상 간의 관계로 재해석한다.",
+      "계보": {
+        "부모": "S3",
+        "연산자": "내부화",
+        "거리": 2
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 10,
+        "물려받음": 4,
+        "몫": 0.444,
+        "자식몫": 0.286,
+        "확산": true,
+        "씨앗": false,
+        "치수차": 0,
+        "정의역바뀜": true
+      }
+    },
+    {
+      "id": "S17",
+      "식": "\\text{rank}_F(\\sum_{r=1}^{m} \\lambda_r U_r \\otimes V_r \\otimes W_r) \\le n^3 \\quad \\forall \\lambda_r \\in \\mathbb{F}_2 \\cap \\{0, 1\\}",
+      "점": "(U, V, W, \\lambda) \\in (F^{n^2 \\times m})^3 \\times (F_2)^m",
+      "정의역": "F = \\mathbb{F}_2",
+      "유도": [
+        {
+          "식": "\\text{rank}_F(\\sum_{r=1}^{m} \\lambda_r U_r \\otimes V_r \\otimes W_r) = n^3",
+          "근거": "부모"
+        },
+        {
+          "식": "\\text{rank}_F(\\sum_{r=1}^{m} \\lambda_r U_r \\otimes V_r \\otimes W_r) \\le n^3",
+          "근거": "항등"
+        },
+        {
+          "식": "\\text{rank}_F(\\sum_{r=1}^{m} \\lambda_r U_r \\otimes V_r \\otimes W_r) \\le n^3 \\quad \\lambda_r \\in \\{0, 1\\}",
+          "근거": "정의"
+        }
+      ],
+      "치수": "",
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "연속적이지 않고 유한한 체의 부분집합 위로 매개변수의 탐색 공간을 격자 형태로 제한한다.",
+      "계보": {
+        "부모": "S4",
+        "연산자": "이산화",
+        "거리": 1
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 4,
+        "물려받음": 8,
+        "몫": 1.0,
+        "자식몫": 0.667,
+        "확산": true,
+        "씨앗": false,
+        "치수차": 0,
+        "정의역바뀜": false
+      }
+    },
+    {
+      "id": "S18",
+      "식": "\\text{rank}_{F(t)}(\\sum_{r=1}^{m} \\lambda_r t^{w_r} U_r \\otimes V_r \\otimes W_r) = n^3",
+      "점": "(U, V, W, \\lambda, t) \\in (F[t]^{n^2 \\times m})^3 \\times F[t]^m \\times F[t]",
+      "정의역": "F = \\mathbb{F}_2(t)",
+      "유도": [
+        {
+          "식": "\\text{rank}_F(\\sum_{r=1}^{m} \\lambda_r U_r \\otimes V_r \\otimes W_r) = n^3",
+          "근거": "부모"
+        },
+        {
+          "식": "\\text{rank}_{F(t)}(\\sum_{r=1}^{m} \\lambda_r t^{w_r} U_r \\otimes V_r \\otimes W_r) = n^3",
+          "근거": "체"
+        }
+      ],
+      "치수": "",
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "기존 체 F 위에 새로운 변수 t를 깔아 확장된 유리함수체 위에서 구조를 다시 서술한다.",
+      "계보": {
+        "부모": "S4",
+        "연산자": "상대화",
+        "거리": 1
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 0,
+        "물려받음": 8,
+        "몫": 1.0,
+        "자식몫": 1.0,
+        "확산": false,
+        "씨앗": false,
+        "치수차": 0,
+        "정의역바뀜": true
+      }
+    },
+    {
+      "id": "S19",
+      "식": "\\lim_{k \\to \\infty} \\text{rank}_F(\\sum_{r=1}^{m_k} \\lambda_r^{(k)} U_r^{(k)} \\otimes V_r^{(k)} \\otimes W_r^{(k)}) = n^3",
+      "점": "((U^{(k)}, V^{(k)}, W^{(k)}, \\lambda^{(k)}))_{k=1}^\\infty \\in \\prod_{k=1}^\\infty ((F^{n^2 \\times m_k})^3 \\times F^{m_k})",
+      "정의역": "F = \\mathbb{F}_2",
+      "유도": [
+        {
+          "식": "\\text{rank}_F(\\sum_{r=1}^{m} \\lambda_r U_r \\otimes V_r \\otimes W_r) = n^3",
+          "근거": "부모"
+        },
+        {
+          "식": "\\lim_{k \\to \\infty} \\text{rank}_F(\\sum_{r=1}^{m_k} \\lambda_r^{(k)} U_r^{(k)} \\otimes V_r^{(k)} \\otimes W_r^{(k)}) = n^3",
+          "근거": "극한"
+        }
+      ],
+      "치수": "",
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "근사열과 극한을 도입하여 텐서 크기나 계수의 수렴 과정을 빠짐없이 채워 넣는다.",
+      "계보": {
+        "부모": "S4",
+        "연산자": "완비화",
+        "거리": 1
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 4,
+        "물려받음": 8,
+        "몫": 1.0,
+        "자식몫": 0.667,
+        "확산": true,
+        "씨앗": false,
+        "치수차": 0,
+        "정의역바뀜": false
+      }
+    },
+    {
+      "id": "S20",
+      "식": "\\text{rank}(\\sum_{r=1}^{m} U_r \\otimes V_r \\otimes W_r) = n^3",
+      "점": "(U, V, W) \\in (F^{n^2 \\times m})^3",
+      "정의역": "F = \\mathbb{F}_2",
+      "유도": [
+        {
+          "식": "\\text{rank}_F(\\sum_{r=1}^{m} \\lambda_r U_r \\otimes V_r \\otimes W_r) = n^3",
+          "근거": "부모"
+        },
+        {
+          "식": "\\text{rank}(\\sum_{r=1}^{m} U_r \\otimes V_r \\otimes W_r) = n^3",
+          "근거": "대입"
+        }
+      ],
+      "치수": "",
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "가중치 매개변수 \\lambda 구조를 지우고 순수한 텐서의 합 공간으로 단순화한다.",
+      "계보": {
+        "부모": "S4",
+        "연산자": "망각",
+        "거리": 1
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 0,
+        "물려받음": 7,
+        "몫": 0.875,
+        "자식몫": 1.0,
+        "확산": false,
+        "씨앗": false,
+        "치수차": 0,
+        "정의역바뀜": false
+      }
+    },
+    {
+      "id": "S21",
+      "식": "\\text{rank}_S^{-1}(\\sum_{r=1}^{m} \\lambda_r U_r \\otimes V_r \\otimes W_r) = n^3 \\quad S = F[x] \\setminus \\langle x \\rangle",
+      "점": "(U, V, W, \\lambda) \\in (F[x]_S^{n^2 \\times m})^3 \\times F[x]_S^m",
+      "정의역": "F = \\mathbb{F}_2(x)",
+      "유도": [
+        {
+          "식": "\\text{rank}_F(\\sum_{r=1}^{m} \\lambda_r U_r \\otimes V_r \\otimes W_r) = n^3",
+          "근거": "부모"
+        },
+        {
+          "식": "\\text{rank}_S^{-1}(\\sum_{r=1}^{m} \\lambda_r U_r \\otimes V_r \\otimes W_r) = n^3",
+          "근거": "정의"
+        }
+      ],
+      "치수": "",
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "특정 다항식 집합을 가역으로 만들어 국소 링 위에서의 성질만 집중적으로 관찰한다.",
+      "계보": {
+        "부모": "S4",
+        "연산자": "국소화",
+        "거리": 1
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 4,
+        "물려받음": 8,
+        "몫": 1.0,
+        "자식몫": 0.667,
+        "확산": true,
+        "씨앗": false,
+        "치수차": 0,
+        "정의역바뀜": true
+      }
+    },
+    {
+      "id": "S22",
+      "식": "\\phi(\\sum_{r=1}^m \\lambda_r U_r V_r W_r) = \\sum_{r=1}^m \\lambda_r \\rho(U_r) \\rho(V_r) \\rho(W_r) \\in A \\text{ over } \\mathbb{Z}/p\\mathbb{Z}",
+      "점": "(U, V, W, \\lambda) \\in ((\\mathbb{Z}/p\\mathbb{Z})^{n^2 \\times m})^3 \\times (\\mathbb{Z}/p\\mathbb{Z})^m",
+      "정의역": "F = \\mathbb{Z}/p\\mathbb{Z}",
+      "유도": [
+        {
+          "식": "\\phi(\\sum_{r=1}^m \\lambda_r U_r V_r W_r) = \\sum_{r=1}^m \\lambda_r \\rho(U_r) \\rho(V_r) \\rho(W_r) \\in A",
+          "근거": "부모"
+        },
+        {
+          "식": "\\phi(\\sum_{r=1}^m \\lambda_r U_r V_r W_r) = \\sum_{r=1}^m \\lambda_r \\rho(U_r) \\rho(V_r) \\rho(W_r) \\in A \\text{ over } \\mathbb{Z}/p\\mathbb{Z}",
+          "근거": "체"
+        }
+      ],
+      "치수": "",
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "연속적인 복소수 공간의 텐서 해를 유한체로 사영하여 알고리즘의 비트 복잡도나 모듈러 연산 상에서 유효한 구조를 보장한다.",
+      "계보": {
+        "부모": "S5",
+        "연산자": "이산화",
+        "거리": 1
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 2,
+        "물려받음": 7,
+        "몫": 1.0,
+        "자식몫": 0.778,
+        "확산": true,
+        "씨앗": false,
+        "치수차": 0,
+        "정의역바뀜": true
+      }
+    },
+    {
+      "id": "S23",
+      "식": "\\lim_{k \\to \\infty} \\phi(\\sum_{r=1}^m \\lambda_{r,k} U_{r,k} V_{r,k} W_{r,k}) = \\lim_{k \\to \\infty} \\sum_{r=1}^m \\lambda_{r,k} \\rho(U_{r,k}) \\rho(V_{r,k}) \\rho(W_{r,k}) \\in \\overline{A}",
+      "점": "(U, V, W, \\lambda) \\in ((\\mathbb{C}[[t]])^{n^2 \\times m})^3 \\times (\\mathbb{C}[[t]])^m",
+      "정의역": "F = \\mathbb{C}((t))",
+      "유도": [
+        {
+          "식": "\\phi(\\sum_{r=1}^m \\lambda_r U_r V_r W_r) = \\sum_{r=1}^m \\lambda_r \\rho(U_r) \\rho(V_r) \\rho(W_r) \\in A",
+          "근거": "부모"
+        },
+        {
+          "식": "\\lim_{k \\to \\infty} \\phi(\\sum_{r=1}^m \\lambda_{r,k} U_{r,k} V_{r,k} W_{r,k}) = \\lim_{k \\to \\infty} \\sum_{r=1}^m \\lambda_{r,k} \\rho(U_{r,k}) \\rho(V_{r,k}) \\rho(W_{r,k}) \\in \\overline{A}",
+          " 근거": "극한"
+        }
+      ],
+      "치수": "",
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "수열의 극한을 통해 근사적 텐서 분해를 점근적으로 정확한 해로 확장한다.",
+      "계보": {
+        "부모": "S5",
+        "연산자": "완비화",
+        "거리": 1
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 4,
+        "물려받음": 7,
+        "몫": 1.0,
+        "자식몫": 0.636,
+        "확산": true,
+        "씨앗": false,
+        "치수차": 0,
+        "정의역바뀜": true
+      }
+    },
+    {
+      "id": "S24",
+      "식": "S^{-1} \\phi(\\sum_{r=1}^m \\lambda_r U_r V_r W_r) = S^{-1} \\sum_{r=1}^m \\lambda_r \\rho(U_r) \\rho(V_r) \\rho(W_r) \\in S^{-1}A",
+      "점": "(U, V, W, \\lambda, s) \\in (F[S^{-1}]^{n^2 \\times m})^3 \\times F[S^{-1}]^m \\times S",
+      "정의역": "F = \\mathbb{C}(t)",
+      "유도": [
+        {
+          "식": "\\phi(\\sum_{r=1}^m \\lambda_r U_r V_r W_r) = \\sum_{r=1}^m \\lambda_r \\rho(U_r) \\rho(V_r) \\rho(W_r) \\in A",
+          "근거": "부모"
+        },
+        {
+          "식": "S^{-1} \\phi(\\sum_{r=1}^m \\lambda_r U_r V_r W_r) = S^{-1} \\sum_{r=1}^m \\lambda_r \\rho(U_r) \\rho(V_r) \\rho(W_r) \\in S^{-1}A",
+          "근거": "정의"
+        }
+      ],
+      "치수": "",
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "특정 다항식 사상을 가역으로 만들어 국소적인 링 구조에서 분해 가능성을 조사한다.",
+      "계보": {
+        "부모": "S5",
+        "연산자": "국소화",
+        "거리": 1
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 0,
+        "물려받음": 7,
+        "몫": 1.0,
+        "자식몫": 1.0,
+        "확산": false,
+        "씨앗": false,
+        "치수차": 0,
+        "정의역바뀜": true
+      }
+    },
+    {
+      "id": "S25",
+      "식": "\\phi^*(\\sum_{r=1}^m \\lambda_r U^*_r V^*_r W^*_r) = \\sum_{r=1}^m \\lambda_r \\rho^*(U^*_r) \\rho^*(V^*_r) \\rho^*(W^*_r) \\in A^*",
+      "점": "(U^*, V^*, W^*, \\lambda) \\in ((F^*)^{n^2 \\times m})^3 \\times F^m",
+      "정의역": "F = \\mathbb{C}",
+      "유도": [
+        {
+          "식": "\\phi(\\sum_{r=1}^m \\lambda_r U_r V_r W_r) = \\sum_{r=1}^m \\lambda_r \\rho(U_r) \\rho(V_r) \\rho(W_r) \\in A",
+          "근거": "부모"
+        },
+        {
+          "식": "\\phi^*(\\sum_{r=1}^m \\lambda_r U^*_r V^*_r W^*_r) = \\sum_{r=1}^m \\lambda_r \\rho^*(U^*_r) \\rho^*(V^*_r) \\rho^*(W^*_r) \\in A^*",
+          "근거": "항등"
+        }
+      ],
+      "치수": "",
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "벡터공간의 화살표를 뒤집어 쌍대 공간에서의 텐서 제약 조건을 동일하게 유도한다.",
+      "계보": {
+        "부모": "S5",
+        "연산자": "쌍대",
+        "거리": 1
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 0,
+        "물려받음": 7,
+        "몫": 1.0,
+        "자식몫": 1.0,
+        "확산": false,
+        "씨앗": false,
+        "치수차": 0,
+        "정의역바뀜": false
+      }
+    },
+    {
+      "id": "S26",
+      "식": "\\frac{1}{|G|} \\sum_{g \\in G} g \\cdot \\left( \\phi(\\sum_{r=1}^m \\lambda_r U_r V_r W_r) \\right) = \\frac{1}{|G|} \\sum_{g \\in G} g \\cdot \\left( \\sum_{r=1}^m \\lambda_r \\rho(U_r) \\rho(V_r) \\rho(W_r) \\right) \\in A^G",
+      "점": "(U, V, W, \\lambda) \\in (F^{n^2 \\times m})^3 \\times F^m \\text{ s.t. } g \\cdot (U,V,W) = (U,V,W)",
+      "정의역": "F = \\mathbb{C}",
+      "유도": [
+        {
+          "식": "\\phi(\\sum_{r=1}^m \\lambda_r U_r V_r W_r) = \\sum_{r=1}^m \\lambda_r \\rho(U_r) \\rho(V_r) \\rho(W_r) \\in A",
+          "근거": "부모"
+        },
+        {
+          "식": "\\frac{1}{|G|} \\sum_{g \\in G} g \\cdot \\left( \\phi(\\sum_{r=1}^m \\lambda_r U_r V_r W_r) \\right) = \\frac{1}{|G|} \\sum_{g \\in G} g \\cdot \\left( \\sum_{r=1}^m \\lambda_r \\rho(U_r) \\rho(V_r) \\rho(W_r) \\right) \\in A^G",
+          "근거": "대입"
+        }
+      ],
+      "치수": "",
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "군 작용에 대한 불변성을 강제하여 탐색 공간의 차원을 줄이고 대칭적인 텐서 해를 찾는다.",
+      "계보": {
+        "부모": "S5",
+        "연산자": "대칭성 강제",
+        "거리": 1
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 5,
+        "물려받음": 7,
+        "몫": 1.0,
+        "자식몫": 0.583,
+        "확산": true,
+        "씨앗": false,
+        "치수차": 0,
+        "정의역바뀜": false
+      }
+    },
+    {
+      "id": "S27",
+      "식": "\\omega = \\inf \\{ \\tau \\in \\mathbb{R} : R_n(M) = O(n^\\tau), \\, S_3 \\text{-invariant} \\}",
+      "점": "(n, m) \\in \\mathbb{N} \\times \\mathbb{N}",
+      "정의역": "F = \\mathbb{R}",
+      "유도": [],
+      "치수": "",
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "대칭 텐서는 계산 복잡도의 핵심 구조를 유지하면서도 탐색 공간을 극적으로 줄여준다.",
+      "계보": {
+        "부모": "S6",
+        "연산자": "대칭성 강제",
+        "거리": 1
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 2,
+        "물려받음": 6,
+        "몫": 1.0,
+        "자식몫": 0.75,
+        "확산": true,
+        "씨앗": false,
+        "치수차": 0,
+        "정의역바뀜": false
+      }
+    },
+    {
+      "id": "S28",
+      "식": "\\omega = \\inf \\{ \\tau \\in \\mathbb{R} : R_n(M_{\\mathbb{F}_q}) = O(n^\\tau) \\}",
+      "점": "(n, m) \\in \\mathbb{N} \\times \\mathbb{N}",
+      "정의역": "F = \\mathbb{F}_q",
+      "유도": [],
+      "치수": "",
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "유한체 위에서의 행렬곱은 유한군 표현론과 연결되어 새로운 대수적 구조를 드러낸다.",
+      "계보": {
+        "부모": "S6",
+        "연산자": "표수 이동",
+        "거리": 1
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 0,
+        "물려받음": 6,
+        "몫": 1.0,
+        "자식몫": 1.0,
+        "확산": false,
+        "씨앗": false,
+        "치수차": 0,
+        "정의역바뀜": true
+      }
+    },
+    {
+      "id": "S29",
+      "식": "\\omega = \\min \\left\\{ \\tau \\in \\frac{1}{N} \\mathbb{Z} : R_n(M) \\le C n^\\tau \\right\\}",
+      "점": "(n, m, N) \\in \\mathbb{N}^3",
+      "정의역": "F = \\mathbb{R}",
+      "유도": [],
+      "치수": "",
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "연속적인 지수를 유한한 격자로 제한하여 컴퓨터를 통한 검증과 탐색이 가능하게 만든다.",
+      "계보": {
+        "부모": "S6",
+        "연산자": "이산화",
+        "거리": 1
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 5,
+        "물려받음": 4,
+        "몫": 0.667,
+        "자식몫": 0.444,
+        "확산": true,
+        "씨앗": false,
+        "치수차": 0,
+        "정의역바뀜": false
+      }
+    },
+    {
+      "id": "S30",
+      "식": "\\omega = \\inf \\{ \\tau \\in \\mathbb{R} : \\text{Hom}(\\otimes^n V, \\otimes^n W) = O(n^\\tau) \\}",
+      "점": "(n, m) \\in \\mathbb{N} \\times \\mathbb{N}",
+      "정의역": "F = \\mathbb{R}",
+      "유도": [],
+      "치수": "",
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "텐서 공간을 범주론적 대상과 사상의 문제로 재해석하여 고차원 구조를 부여한다.",
+      "계보": {
+        "부모": "S6",
+        "연산자": "내부화",
+        "거리": 2
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 3,
+        "물려받음": 6,
+        "몫": 1.0,
+        "자식몫": 0.667,
+        "확산": true,
+        "씨앗": false,
+        "치수차": 0,
+        "정의역바뀜": false
+      }
+    },
+    {
+      "id": "S31",
+      "식": "\\omega = \\inf \\{ \\tau \\in \\mathbb{R} : |\\text{Supp}(R_n(M))| = O(n^\\tau) \\}",
+      "점": "n \\in \\mathbb{N}",
+      "정의역": "F = \\mathbb{R}",
+      "유도": [],
+      "치수": "",
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "대수적 구조를 잊고 순수한 크기와 지지의 관점만 남겨 점근적 거동에 집중한다.",
+      "계보": {
+        "부모": "S6",
+        "연산자": "망각",
+        "거리": 1
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 2,
+        "물려받음": 5,
+        "몫": 0.833,
+        "자식몫": 0.714,
+        "확산": true,
+        "씨앗": false,
+        "치수차": 0,
+        "정의역바뀜": false
+      }
+    },
+    {
+      "id": "S32",
+      "식": "Funct(A \\to B, \\text{Tr}(\\sum_{r=1}^{m} \\lambda_r (U_r \\otimes V_r \\otimes W_r)) \\cong n^3)",
+      "점": "(U, V, W, \\lambda) \\in \\text{Hom}(\\mathcal{C}, \\mathcal{D})",
+      "정의역": "F = \\mathbb{C}",
+      "유도": [
+        {
+          "식": "Funct(A \\to B, \\text{Tr}(\\sum_{r=1}^{m} \\lambda_r (U_r \\otimes V_r \\otimes W_r)) \\cong n^3)",
+          "근거": "부모"
+        }
+      ],
+      "치수": "",
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "텐서 곱의 직접적인 값 대신 그 유도 대수의 호몰로지적 불변량을 비교하여 랭크 하계를 우회적으로 유도한다.",
+      "계보": {
+        "부모": "S7",
+        "연산자": "불변량 이동",
+        "거리": 1
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 0,
+        "물려받음": 12,
+        "몫": 1.0,
+        "자식몫": 1.0,
+        "확산": false,
+        "씨앗": false,
+        "치수차": 0,
+        "정의역바뀜": false
+      }
+    },
+    {
+      "id": "S33",
+      "식": "Limit(Funct(A \\to B, \\text{Tr}(\\sum_{r=1}^{m} \\lambda_r (U_r \\otimes V_r \\otimes W_r)) - n^3 - \\epsilon), \\epsilon, 0) \\le 0",
+      "점": "(U, V, W, \\lambda, \\epsilon) \\in \\text{Hom}(\\mathcal{C}, \\mathcal{D}) \\times \\mathbb{R}",
+      "정의역": "F = \\mathbb{R}",
+      "유도": [
+        {
+          "식": "Funct(A \\to B, \\text{Tr}(\\sum_{r=1}^{m} \\lambda_r (U_r \\otimes V_r \\otimes W_r)) \\cong n^3)",
+          "근거": "부모"
+        },
+        {
+          "식": "Funct(A \\to B, \\text{Tr}(\\sum_{r=1}^{m} \\lambda_r (U_r \\otimes V_r \\otimes W_r)) - n^3 - \\epsilon)",
+          "근거": "대입"
+        },
+        {
+          "식": "Limit(Funct(A \\to B, \\text{Tr}(\\sum_{r=1}^{m} \\lambda_r (U_r \\otimes V_r \\otimes W_r)) - n^3 - \\epsilon), \\epsilon, 0) \\le 0",
+          "근거": "극한"
+        }
+      ],
+      "치수": "",
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "엄격한 동형 대신 엡실론 오차를 허용하는 극한 부등식으로바꾸어 연속적 최적화 기법을 쓸 수 있게 한다.",
+      "계보": {
+        "부모": "S7",
+        "연산자": "경계화",
+        "거리": 1
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 4,
+        "물려받음": 11,
+        "몫": 0.917,
+        "자식몫": 0.733,
+        "확산": true,
+        "씨앗": false,
+        "치수차": 0,
+        "정의역바뀜": true
+      }
+    },
+    {
+      "id": "S34",
+      "식": "Funct(A[G] \\to B[G], \\text{Tr}(\\sum_{r=1}^{m} \\lambda_r (U_r \\otimes V_r \\otimes W_r)) \\cong n^3)",
+      "점": "(U, V, W, \\lambda) \\in \\text{Hom}(\\mathcal{C}^G, \\mathcal{D}^G)",
+      "정의역": "F = \\mathbb{C}[G]",
+      "유도": [
+        {
+          "식": "Funct(A \\to B, \\text{Tr}(\\sum_{r=1}^{m} \\lambda_r (U_r \\otimes V_r \\otimes W_r)) \\cong n^3)",
+          "근거": "부모"
+        },
+        {
+          "식": "Funct(A[G] \\to B[G], \\text{Tr}(\\sum_{r=1}^{m} \\lambda_r (U_r \\otimes V_r \\otimes W_r)) \\cong n^3)",
+          "근거": "정의"
+        }
+      ],
+      "치수": "",
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "기본 범주를 군 작용을 갖는 equivariant 범주 내부로 옮겨서 대칭성을 강제하고 탐색 공간을 줄인다.",
+      "계보": {
+        "부모": "S7",
+        "연산자": "내부화",
+        "거리": 2
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 0,
+        "물려받음": 12,
+        "몫": 1.0,
+        "자식몫": 1.0,
+        "확산": false,
+        "씨앗": false,
+        "치수차": 0,
+        "정의역바뀜": true
+      }
+    },
+    {
+      "id": "S35",
+      "식": "\\text{dim}(\\sum_{r=1}^{m} \\lambda_r (U_r \\otimes V_r \\otimes W_r)) = n^3",
+      "점": "(U, V, W, \\lambda) \\in F^{n^2 \\times m} \\times F^{n^2 \\times m} \\times F^{n^2 \\times m} \\times F^m",
+      "정의역": "F = \\mathbb{C}",
+      "유도": [
+        {
+          "식": "Funct(A \\to B, \\text{Tr}(\\sum_{r=1}^{m} \\lambda_r (U_r \\otimes V_r \\otimes W_r)) \\cong n^3)",
+          "근거": "부모"
+        },
+        {
+          "식": "\\text{dim}(\\sum_{r=1}^{m} \\lambda_r (U_r \\otimes V_r \\otimes W_r)) = n^3",
+          "근거": "정의"
+        }
+      ],
+      "치수": "",
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "복잡한 범주적 동형 사상을 단순한 차원의 등식으로 내려서 전통적인 텐서 랭크 방정식으로 환원한다.",
+      "계보": {
+        "부모": "S7",
+        "연산자": "탈범주화",
+        "거리": 1
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 2,
+        "물려받음": 6,
+        "몫": 0.5,
+        "자식몫": 0.75,
+        "확산": true,
+        "씨앗": false,
+        "치수차": 0,
+        "정의역바뀜": false
+      }
+    },
+    {
+      "id": "S36",
+      "식": "Equiv(Cat(A), Cat(B), \\sum_{r=1}^{m} \\otimes_r (U_r \\otimes V_r \\otimes W_r) \\cong \\text{Vect}_{n^3})",
+      "점": "(U, V, W) \\in \\text{Fun}(\\mathcal{C}_1, \\mathcal{C}_2)",
+      "정의역": "F = \\text{Cat}",
+      "유도": [
+        {
+          "식": "Funct(A \\to B, \\text{Tr}(\\sum_{r=1}^{m} \\lambda_r (U_r \\otimes V_r \\otimes W_r)) \\cong n^3)",
+          "근거": "부모"
+        },
+        {
+          "식": "Equiv(Cat(A), Cat(B), \\sum_{r=1}^{m} \\otimes_r (U_r \\otimes V_r \\otimes W_r) \\cong \\text{Vect}_{n^3})",
+          "근거": "정의"
+        }
+      ],
+      "치수": "",
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "수를 나타내는 스칼라와 등식을 각각 범주와 동형 사상으로 끌어올려 더 고차원적인 구조적 제약을 발견한다.",
+      "계보": {
+        "부모": "S7",
+        "연산자": "범주화",
+        "거리": 2
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 4,
+        "물려받음": 6,
+        "몫": 0.5,
+        "자식몫": 0.6,
+        "확산": true,
+        "씨앗": false,
+        "치수차": 0,
+        "정의역바뀜": true
+      }
+    },
+    {
+      "id": "S37",
+      "식": "Tr(\\sum_{r=1}^{m} \\lambda_r (U_r^T \\otimes V_r^T \\otimes W_r^T) | T^T) = n^3",
+      "점": "(U^T, V^T, W^T, \\lambda) \\in (F^{n^2 \\times m})^T \\times (F^m)^T",
+      "정의역": "F = \\mathbb{R}",
+      "유도": [
+        {
+          "식": "Tr(\\sum_{r=1}^{m} \\lambda_r (U_r \\otimes V_r \\otimes W_r) | T) = n^3",
+          "근거": "부모"
+        },
+        {
+          "식": "Tr((\\sum_{r=1}^{m} \\lambda_r (U_r \\otimes V_r \\otimes W_r | T))^T) = n^3",
+          "근거": "항등"
+        },
+        {
+          "식": "Tr(\\sum_{r=1}^{m} \\lambda_r (U_r^T \\otimes V_r^T \\otimes W_r^T) | T^T) = n^3",
+          "근거": "대입"
+        }
+      ],
+      "치수": 3,
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "텐서의 곱셈 구조에서 각 성분의 전치(transpose)를 취해도 대칭성에 의해 같은 트레이스 조건을 만족하므로, 쌍대 공간에서의 동치 조건을 얻는다.",
+      "계보": {
+        "부모": "S8",
+        "연산자": "쌍대",
+        "거리": 1
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 0,
+        "물려받음": 7,
+        "몫": 1.0,
+        "자식몫": 1.0,
+        "확산": false,
+        "씨앗": false,
+        "치수차": 3,
+        "정의역바뀜": false
+      }
+    },
+    {
+      "id": "S38",
+      "식": "Tr(\\sum_{r=1}^{m} \\lambda_r (U_r \\otimes V_r \\otimes W_r) | T) \\cdot \\det(U_1 U_1^T) \\neq 0",
+      "점": "(U, V, W, \\lambda) \\in (F^{n^2 \\times m})^T \\times (F^m)^T",
+      "정의역": "F = \\mathbb{R}",
+      "유도": [
+        {
+          "식": "Tr(\\sum_{r=1}^{m} \\lambda_r (U_r \\otimes V_r \\otimes W_r) | T) = n^3",
+          "근거": "부모"
+        },
+        {
+          "식": "Tr(\\sum_{r=1}^{m} \\lambda_r (U_r \\otimes V_r \\otimes W_r) | T) \\cdot 1 = n^3",
+          "근거": "항등"
+        },
+        {
+          "식": "Tr(\\sum_{r=1}^{m} \\lambda_r (U_r \\otimes V_r \\otimes W_r) | T) \\cdot \\det(U_1 U_1^T) \\neq 0",
+          "근거": "가정"
+        }
+      ],
+      "치수": 3,
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "특정 행렬들의 가역성(역행렬의 존재)을 보장하기 위해 행렬식을 0이 아닌 조건으로 국소화하여 환의 범위를 다항식의 로컬라이제이션으로 확장한다.",
+      "계보": {
+        "부모": "S8",
+        "연산자": "국소화",
+        "거리": 1
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 3,
+        "물려받음": 7,
+        "몫": 1.0,
+        "자식몫": 0.7,
+        "확산": true,
+        "씨앗": false,
+        "치수차": 3,
+        "정의역바뀜": false
+      }
+    },
+    {
+      "id": "S39",
+      "식": "Tr(\\sum_{r=1}^{m} \\lambda_r (U_r \\otimes V_r \\otimes W_r) | T) = n^3 \\pmod{\\mathfrak{p}}",
+      "점": "(U, V, W, \\lambda \\pmod{\\mathfrak{p}}) \\in (F^{n^2 \\times m})^T \\times (F^m)^T",
+      "정의역": "F = \\mathbb{Z} / p\\mathbb{Z}",
+      "유도": [
+        {
+          "식": "Tr(\\sum_{r=1}^{m} \\lambda_r (U_r \\otimes V_r \\otimes W_r) | T) = n^3",
+          "근거": "부모"
+        },
+        {
+          "식": "Tr(\\sum_{r=1}^{m} \\lambda_r (U_r \\otimes V_r \\otimes W_r) | T) \\equiv n^3 \\pmod{\\mathfrak{p}}",
+          "근거": "체"
+        }
+      ],
+      "치수": 3,
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "기본 체나 정수환 위에서의 대상을 소아이디얼(또는 소거 공간) 위로 내려보내어 파이버(fiber) 상에서의 상대적인 복잡도를 측정한다.",
+      "계보": {
+        "부모": "S8",
+        "연산자": "상대화",
+        "거리": 1
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 2,
+        "물려받음": 7,
+        "몫": 1.0,
+        "자식몫": 0.778,
+        "확산": true,
+        "씨앗": false,
+        "치수차": 3,
+        "정의역바뀜": true
+      }
+    },
+    {
+      "id": "S40",
+      "식": "Tr(\\sum_{r=1}^{m} \\lambda_r (U_r \\otimes V_r \\otimes W_r) | T) = n^3 \\quad \\forall \\lambda_r \\in \\{-1, 0, 1\\}",
+      "점": "(U, V, W, \\lambda) \\in (F^{n^2 \\times m})^T \\times (\\{-1,0,1\\}^m)^T",
+      "정의역": "F = \\mathbb{Q}",
+      "유도": [
+        {
+          "식": "Tr(\\sum_{r=1}^{m} \\lambda_r (U_r \\otimes V_r \\otimes W_r) | T) = n^3",
+          "근거": "부모"
+        },
+        {
+          "식": "Tr(\\sum_{r=1}^{m} \\lambda_r (U_r \\otimes V_r \\otimes W_r) | T) = n^3 \\quad \\lambda_r \\in \\mathbb{R}",
+          "근거": "정의"
+        },
+        {
+          "식": "Tr(\\sum_{r=1}^{m} \\lambda_r (U_r \\otimes V_r \\otimes W_r) | T) = n^3 \\quad \\lambda_r \\in \\{-1, 0, 1\\}",
+          "근거": "대입"
+        }
+      ],
+      "치수": 3,
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "연속적인 매개변수 공간을 유한한 이산 격자(subset)로 제한하여 알고리즘적 탐색이나 정수 해법으로 변환한다.",
+      "계보": {
+        "부모": "S8",
+        "연산자": "이산화",
+        "거리": 1
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 2,
+        "물려받음": 7,
+        "몫": 1.0,
+        "자식몫": 0.778,
+        "확산": true,
+        "씨앗": false,
+        "치수차": 3,
+        "정의역바뀜": true
+      }
+    },
+    {
+      "id": "S41",
+      "식": "\\sum_{r=1}^{m} \\lambda_r \\, \\text{card}(U_r \\cap V_r \\cap W_r) = n^3",
+      "점": "(U, V, W, \\lambda) \\in (F^{n^2 \\times m})^T \\times (F^m)^T",
+      "정의역": "F = \\mathbb{R}",
+      "유도": [
+        {
+          "식": "Tr(\\sum_{r=1}^{m} \\lambda_r (U_r \\otimes V_r \\otimes W_r) | T) = n^3",
+          "근거": "부모"
+        },
+        {
+          "식": "\\sum_{r=1}^{m} \\lambda_r \\, \\text{Tr}(U_r \\otimes V_r \\otimes W_r) = n^3",
+          "근거": "정의"
+        },
+        {
+          "식": "\\sum_{r=1}^{m} \\lambda_r \\, \\text{card}(U_r \\cap V_r \\cap W_r) = n^3",
+          "근거": "항등"
+        }
+      ],
+      "치수": 3,
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "텐서곱과 선형사상의 위상적/대수적 구조를 잊어버리고 단순한 집합의 크기나 기수(cardinality) 관계만 남긴다.",
+      "계보": {
+        "부모": "S8",
+        "연산자": "망각",
+        "거리": 1
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 3,
+        "물려받음": 5,
+        "몫": 0.714,
+        "자식몫": 0.625,
+        "확산": true,
+        "씨앗": false,
+        "치수차": 3,
+        "정의역바뀜": false
+      }
+    },
+    {
+      "id": "S42",
+      "식": "Tr(\\sum_{r=1}^{m} \\lambda_r (g \\cdot U_r^T \\otimes g \\cdot V_r^T \\otimes g \\cdot W_r^T)) = n^3, \\forall g \\in G",
+      "점": "(U^T, V^T, W^T, \\lambda) \\in (F^{n^2 \\times m} \\times F^m)^G",
+      "정의역": "F = \\mathbb{R}",
+      "유도": [
+        {
+          "식": "Tr(\\sum_{r=1}^{m} \\lambda_r (g \\cdot U_r \\otimes g \\cdot V_r \\otimes g \\cdot W_r)) = n^3",
+          "근거": "부모"
+        },
+        {
+          "식": "Tr((\\sum_{r=1}^{m} \\lambda_r (g \\cdot U_r \\otimes g \\cdot V_r \\otimes g \\cdot W_r))^T) = n^3",
+          "근거": "항등"
+        },
+        {
+          "식": "Tr(\\sum_{r=1}^{m} \\lambda_r (g \\cdot U_r^T \\otimes g \\cdot V_r^T \\otimes g \\cdot W_r^T)) = n^3",
+          "근거": "정의"
+        }
+      ],
+      "치수": "",
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "행렬곱의 구조에서 전치 행렬에 대한 대칭성을 활용하여 해의 공간을 쌍대 공간으로 전이시킵니다.",
+      "계보": {
+        "부모": "S9",
+        "연산자": "쌍대",
+        "거리": 1
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 0,
+        "물려받음": 9,
+        "몫": 1.0,
+        "자식몫": 1.0,
+        "확산": false,
+        "씨앗": false,
+        "치수차": 0,
+        "정의역바뀜": false
+      }
+    },
+    {
+      "id": "S43",
+      "식": "Tr(\\sum_{r=1}^{m} \\lambda_r (g \\cdot U_r \\otimes g \\cdot V_r \\otimes g \\cdot W_r)) \\equiv n^3 \\pmod 2, \\forall g \\in G",
+      "점": "(U, V, W, \\lambda) \\in (\\mathbb{F}_2^{n^2 \\times m} \\times \\mathbb{F}_2^m)^G",
+      "정의역": "F = \\mathbb{F}_2",
+      "유도": [
+        {
+          "식": "Tr(\\sum_{r=1}^{m} \\lambda_r (g \\cdot U_r \\otimes g \\cdot V_r \\otimes g \\cdot W_r)) = n^3",
+          "근거": "부모"
+        },
+        {
+          "식": "Tr(\\sum_{r=1}^{m} \\lambda_r (g \\cdot U_r \\otimes g \\cdot V_r \\otimes g \\cdot W_r)) \\equiv n^3 \\pmod 2",
+          "근거": "체"
+        }
+      ],
+      "치수": "",
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "실수체에서의 행렬곱 복잡도 문제를 이진 연산으로 제한하여 비트 연산 기반의 최적화를 탐색하기 위함입니다.",
+      "계보": {
+        "부모": "S9",
+        "연산자": "표수 이동",
+        "거리": 1
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 2,
+        "물려받음": 9,
+        "몫": 1.0,
+        "자식몫": 0.818,
+        "확산": true,
+        "씨앗": false,
+        "치수차": 0,
+        "정의역바뀜": true
+      }
+    },
+    {
+      "id": "S44",
+      "식": "\\lim_{m \\to \\infty} \\sum_{r=1}^{m} \\lambda_r Tr(g \\cdot U_r \\otimes g \\cdot V_r \\otimes g \\cdot W_r) = n^3, \\forall g \\in G",
+      "점": "(U, V, W, \\lambda) \\in (L^2(\\mathbb{R}^{n^2 \\times m}) \\times L^2(\\mathbb{R}^m))^G",
+      "정의역": "F = \\mathbb{R}",
+      "유도": [
+        {
+          "식": "Tr(\\sum_{r=1}^{m} \\lambda_r (g \\cdot U_r \\otimes g \\cdot V_r \\otimes g \\cdot W_r)) = n^3",
+          "근거": "부모"
+        },
+        {
+          "식": "\\sum_{r=1}^{m} \\lambda_r Tr(g \\cdot U_r \\otimes g \\cdot V_r \\otimes g \\cdot W_r) = n^3",
+          "근거": "항등"
+        },
+        {
+          "식": "\\lim_{m \\to \\infty} \\sum_{r=1}^{m} \\lambda_r Tr(g \\cdot U_r \\otimes g \\cdot V_r \\otimes g \\cdot W_r) = n^3",
+          "근거": "극한"
+        }
+      ],
+      "치수": "",
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "유한한 차원에서의 행렬곱을 무한 차원의 텐서 공간으로 확장하여 해석학적인 근사치를 얻습니다.",
+      "계보": {
+        "부모": "S9",
+        "연산자": "완비화",
+        "거리": 1
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 3,
+        "물려받음": 9,
+        "몫": 1.0,
+        "자식몫": 0.75,
+        "확산": true,
+        "씨앗": false,
+        "치수차": 0,
+        "정의역바뀜": false
+      }
+    },
+    {
+      "id": "S45",
+      "식": "Tr(\\sum_{r=1}^{m} \\lambda_r (g \\cdot U_r \\otimes g \\cdot V_r \\otimes g \\cdot W_r)) = n^3, \\lambda_r \\in \\{ -1, 0, 1 \\}",
+      "점": "(U, V, W, \\lambda) \\in (\\mathbb{Z}^{n^2 \\times m} \\times \\{-1,0,1\\}^m)^G",
+      "정의역": "F = \\{-1, 0, 1\\}",
+      "유도": [
+        {
+          "식": "Tr(\\sum_{r=1}^{m} \\lambda_r (g \\cdot U_r \\otimes g \\cdot V_r \\otimes g \\cdot W_r)) = n^3",
+          "근거": "부모"
+        },
+        {
+          "식": "Tr(\\sum_{r=1}^{m} \\lambda_r (g \\cdot U_r \\otimes g \\cdot V_r \\otimes g \\cdot W_r)) = n^3, \\lambda_r \\in \\{-1,0,1\\}",
+          "근거": "정의"
+        }
+      ],
+      "치수": "",
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "연속적인 가중치를 이산적인 값으로 제한함으로써 알고리즘의 조합적 탐색 범위를 한정합니다.",
+      "계보": {
+        "부모": "S9",
+        "연산자": "이산화",
+        "거리": 1
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 0,
+        "물려받음": 8,
+        "몫": 0.889,
+        "자식몫": 1.0,
+        "확산": false,
+        "씨앗": false,
+        "치수차": 0,
+        "정의역바뀜": true
+      }
+    },
+    {
+      "id": "S46",
+      "식": "|Tr(\\sum_{r=1}^{m} \\lambda_r (g \\cdot U_r \\otimes g \\cdot V_r \\otimes g \\cdot W_r)) - n^3| < \\epsilon, \\forall g \\in G, \\epsilon \\to 0",
+      "점": "(U, V, W, \\lambda) \\in (F^{n^2 \\times m} \\times F^m)^G",
+      "정의역": "F = \\mathbb{R}",
+      "유도": [
+        {
+          "식": "Tr(\\sum_{r=1}^{m} \\lambda_r (g \\cdot U_r \\otimes g \\cdot V_r \\otimes g \\cdot W_r)) = n^3",
+          "근거": "부모"
+        },
+        {
+          "식": "Tr(\\sum_{r=1}^{m} \\lambda_r (g \\cdot U_r \\otimes g \\cdot V_r \\otimes g \\cdot W_r)) - n^3 = 0",
+          "근거": "항등"
+        },
+        {
+          "식": "|Tr(\\sum_{r=1}^{m} \\lambda_r (g \\cdot U_r \\otimes g \\cdot V_r \\otimes g \\cdot W_r)) - n^3| < \\epsilon",
+          "근거": "극한"
+        }
+      ],
+      "치수": "",
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "엄밀한 등식 대신 수치적 오차를 허용하는 근사 알고리즘을 설계할 때 유효합니다.",
+      "계보": {
+        "부모": "S9",
+        "연산자": "경계화",
+        "거리": 1
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 2,
+        "물려받음": 9,
+        "몫": 1.0,
+        "자식몫": 0.818,
+        "확산": true,
+        "씨앗": false,
+        "치수차": 0,
+        "정의역바뀜": false
+      }
+    },
+    {
+      "id": "S47",
+      "식": "\\chi(\\sum_{r=1}^{m} \\lambda_r U_r V_r W_r) = \\lim_{p \\to \\infty} n^3 \\cdot \\frac{p}{p+1}",
+      "점": "(U, V, W, \\lambda) \\in \\mathbb{R}^{3n^2 \\times m} \\times \\mathbb{R}^m",
+      "정의역": "F = \\mathbb{R}",
+      "유도": [
+        {
+          "식": "\\chi(\\sum \\lambda_r U_r V_r W_r) = n^3",
+          "근거": "부모"
+        },
+        {
+          "식": "\\chi(\\sum \\lambda_r U_r V_r W_r) = n^3 \\cdot 1",
+          "근거": "항등"
+        },
+        {
+          "식": "\\chi(\\sum \\lambda_r U_r V_r W_r) = \\lim_{p \\to \\infty} n^3 \\cdot \\frac{p}{p+1}",
+          "근거": "극한"
+        }
+      ],
+      "치수": "",
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "행렬곱의 복잡도를 연속적인 공간으로 확장하여 해석학적 도구를 사용할 수 있게 합니다.",
+      "계보": {
+        "부모": "S10",
+        "연산자": "완비화",
+        "거리": 1
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 7,
+        "물려받음": 5,
+        "몫": 1.0,
+        "자식몫": 0.417,
+        "확산": true,
+        "씨앗": false,
+        "치수차": 0,
+        "정의역바뀜": true
+      }
+    },
+    {
+      "id": "S48",
+      "식": "\\{ \\lambda_r U_r V_r W_r \\}_{r=1}^m \\sim n^3",
+      "점": "(U, V, W, \\lambda) \\in \\text{Set}^{3n^2 \\times m} \\times \\text{Set}^m",
+      "정의역": "F = \\text{Set}",
+      "유도": [
+        {
+          "식": "\\chi(\\sum \\lambda_r U_r V_r W_r) = n^3",
+          "근거": "부모"
+        },
+        {
+          "식": "\\text{supp}(\\sum \\lambda_r U_r V_r W_r) \\sim n^3",
+          "근거": "망각"
+        }
+      ],
+      "치수": "",
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "선형 구조를 제거하고 오직 원소의 집합적 존재성만을 고려하여 조합론적 측면을 분리합니다.",
+      "계보": {
+        "부모": "S10",
+        "연산자": "망각",
+        "거리": 1
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 5,
+        "물려받음": 2,
+        "몫": 0.4,
+        "자식몫": 0.286,
+        "확산": true,
+        "씨앗": false,
+        "치수차": 0,
+        "정의역바뀜": true
+      }
+    },
+    {
+      "id": "S49",
+      "식": "\\chi(\\sum_{r=1}^{m} \\lambda_r U_r V_r W_r) \\equiv n^3 \\pmod{2}",
+      "점": "(U, V, W, \\lambda) \\in \\mathbb{F}_2^{3n^2 \\times m} \\times \\mathbb{F}_2^m",
+      "정의역": "F = \\mathbb{F}_2",
+      "유도": [
+        {
+          "식": "\\chi(\\sum \\lambda_r U_r V_r W_r) = n^3",
+          "근거": "부모"
+        },
+        {
+          "식": "\\chi(\\sum \\lambda_r U_r V_r W_r) \\pmod 2 = n^3 \\pmod 2",
+          "근거": "체"
+        }
+      ],
+      "치수": "",
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "체의 특성을 제한하여 비트 단위의 연산이나 논리 회로 관점의 복잡도로 치환합니다.",
+      "계보": {
+        "부모": "S10",
+        "연산자": "이산화",
+        "거리": 1
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 4,
+        "물려받음": 5,
+        "몫": 1.0,
+        "자식몫": 0.556,
+        "확산": true,
+        "씨앗": false,
+        "치수차": 0,
+        "정의역바뀜": true
+      }
+    },
+    {
+      "id": "S50",
+      "식": "\\text{Tr}(\\sum_{r=1}^{m} \\lambda_r U_r V_r W_r) = n^3",
+      "점": "T \\in \\text{Scalar}",
+      "정의역": "F = \\mathbb{Z}",
+      "유도": [
+        {
+          "식": "\\chi(\\sum \\lambda_r U_r V_r W_r) = n^3",
+          "근거": "부모"
+        },
+        {
+          "식": "\\text{Tr}(\\sum \\lambda_r U_r V_r W_r) = n^3",
+          "근거": "정의"
+        }
+      ],
+      "치수": "",
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "행렬이라는 구조를 고유값의 합이라는 스칼라 불변량으로 축소하여 차원을 낮춥니다.",
+      "계보": {
+        "부모": "S10",
+        "연산자": "탈범주화",
+        "거리": 1
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 3,
+        "물려받음": 4,
+        "몫": 0.8,
+        "자식몫": 0.571,
+        "확산": true,
+        "씨앗": false,
+        "치수차": 0,
+        "정의역바뀜": false
+      }
+    },
+    {
+      "id": "S51",
+      "식": "|\\chi(\\sum_{r=1}^{m} \\lambda_r U_r V_r W_r) - n^3| < \\epsilon",
+      "점": "(U, V, W, \\lambda) \\in ([-1, 1] \\cap \\mathbb{Q})^{3n^2 \\times m} \\times \\mathbb{Q}^m",
+      "정의역": "F = \\mathbb{Q}",
+      "유도": [
+        {
+          "식": "\\chi(\\sum \\lambda_r U_r V_r W_r) = n^3",
+          "근거": "부모"
+        },
+        {
+          "식": "\\chi(\\sum \\lambda_r U_r V_r W_r) - n^3 = 0",
+          "근거": "항등"
+        },
+        {
+          "식": "\\lim_{\\epsilon \\to 0} |\\chi(\\sum \\lambda_r U_r V_r W_r) - n^3| < \\epsilon",
+          "근거": "극한"
+        }
+      ],
+      "치수": "",
+      "해독": "",
+      "부호화": "",
+      "시금석점": "",
+      "왜": "엄밀한 등식을 만족하는 해를 찾는 대신, 충분히 가까운 근사치를 허용하는 최적화 문제로 전환합니다.",
+      "계보": {
+        "부모": "S10",
+        "연산자": "경계화",
+        "거리": 1
+      },
+      "등급": "미검증",
+      "잰것": {
+        "새것": 4,
+        "물려받음": 5,
+        "몫": 1.0,
+        "자식몫": 0.556,
+        "확산": true,
+        "씨앗": false,
+        "치수차": 0,
+        "정의역바뀜": true
+      }
+    }
+  ]
+}

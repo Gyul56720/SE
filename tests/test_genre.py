@@ -510,8 +510,53 @@ _le = {tuple(genre.event("lanobe", "씨", i).values()) for i in range(20)}
 ok(len(_le) >= 18, f"덩어리마다 다른 뒤틀림이 나온다 ({len(_le)}/20)")
 ok(genre.tune("lanobe", "초현실", 1) == 0, "마법은 법칙이지 아이러니 장치가 아니다")
 _ld = genre.band("lanobe", "dialog")
-ok(_ld and _ld[1] <= genre.band("ropan", "dialog")[1], f"로판보다 말이 적다 ({_ld})  ← 싸움 중 말은 한 문장 이하")
+# 2026-09-08 정정: 처음엔 "싸움 중 말은 짧으니 로판보다 대사가 적다" 로 잡았는데 그것은
+# 짐작이었다. 라노벨 작법이 드는 비율은 설명 : 묘사 : 대사 = 1 : 1 : 2 다 -- 대사가 절반이다.
+ok(_ld and _ld[0] + _ld[1] > 2 * 0.45, f"대사가 절반쯤이다 ({_ld})  ← 설명 : 묘사 : 대사 = 1 : 1 : 2")
+ok(_ld and _ld[1] > genre.band("ropan", "dialog")[1], f"로판보다도 말이 많다 ({_ld})")
+ok("말이 절반이다" in _l and "정경 묘사는 최소로" in _l, "머리가 그 비율을 말한다")
 ok(all(len(x) > 20 for x in genre.PACKS["lanobe"]["이름결"]), "이름결은 결이지 목록이 아니다")
+
+# ---------------------------------------------------------------- 표본이 이긴다
+# **실측 2026-09-09.** 사용자가 실제 웹소설 1화(9,204자)를 파일로 줬고, 앞 1,500자를
+# `novel.first` 로 쟀다. 그 전까지 lanobe 축은 셋(dialog · rally · talk_len)뿐이었고
+# 그 셋도 "잰 것이 아니라 갈래 가정" 이라고 적혀 있었다. 표본이 들어오면 표본이 이긴다.
+_REAL = {"sent_len": 47.6, "dialog": 0.36, "da_share": 0.62, "names": 6.7}
+_OURS = {"sent_len": 26.1, "dialog": 0.05, "da_share": 0.83, "names": 16.0}
+for _k, _v in _REAL.items():
+    _b = genre.band("lanobe", _k)
+    ok(_b and _b[0] <= _v <= _b[1], f"{_k}: 실제 1화({_v})가 밴드 안 ({_b})")
+    ok(_b and not (_b[0] <= _OURS[_k] <= _b[1]),
+       f"{_k}: 우리 값({_OURS[_k]})은 밴드 밖  ← 그래야 손질 루프가 말을 건다")
+
+# **폭이 넓으면 아무 말도 안 한다.** sent_len 표본 밴드는 19.76~59.34 라 26.1 도
+# 47.6 도 다 "안" 이었다 -- 아무도 늘리라고 안 했다. 그런데 축에서 프롬프트를 짓는
+# 경로는 가운뎃값 22.58 을 싣는다: 실제 1화의 절반이다. 폭을 좁히는 것이 고침이다.
+#
+# 여기서 읽는 것은 **살아 있는 targets.json 이 아니라 위에서 걸어 둔 fixture** 다
+# (파일 머리의 DRIFT_TARGETS). 그래서 보는 것은 어느 작품의 수가 아니라 꼴이다:
+# 넓은 폭은 둘 다 품고, 갈래가 그보다 좁게 덮는다.
+from novel import targets as _TG                                     # noqa: E402
+_ts = _TG.band("sent_len")
+ok(_ts and _ts[0] <= _OURS["sent_len"] <= _ts[1] and _ts[0] <= _REAL["sent_len"] <= _ts[1],
+   f"표본 밴드는 둘 다 품는다 ({_ts})  ← 그래서 무력했다")
+_ls = genre.band("lanobe", "sent_len")
+ok(_ls[1] - _ls[0] < (_ts[1] - _ts[0]) / 1.5,
+   f"갈래 밴드는 그보다 좁다 ({_ls[1] - _ls[0]:.1f} < {(_ts[1] - _ts[0]) / 1.5:.1f}자)")
+
+# **재는 축에는 지시문이 있어야 한다.** 밴드만 두면 compose 의 aim 만 실리고 손질
+# 루프는 조용하다 -- names 가 그랬다(aim 만 있고 high/low 가 없었다).
+import json as _json                                                 # noqa: E402
+_dir = _json.load(open(Path(__file__).resolve().parent.parent / "novel" / "directives.json",
+                       encoding="utf-8"))["axes"]
+for _k in genre.PACKS["lanobe"]["저울"]["축"]:
+    _d = _dir.get(_k) or {}
+    ok("high" in _d and "low" in _d, f"{_k}: 지시문 양쪽이 다 있다  ← 밴드만 두면 조용하다")
+
+# 지시문이 실제로 우리 값에 말을 거는가(꼴만 본다 -- 문구는 directives.json 것이다).
+_say = _dir["names"]["high"].format(got=_OURS["names"], lo=3.0, hi=10.0, mid=6.5,
+                                    n_climb=0, climb_words="")
+ok("16" in _say and "10" in _say, f"names 지시문이 우리 수를 댄다  ← {_say[:40]}...")
 _bl = flow.blank(flow.FIRST); _bl["genre"] = "lanobe"
 _pl = flow.write_prompt(_bl)
 for _sec in ("[문장]", "[리듬]", "[점층]", "[대사가 이야기다]", "[말맛]", "[확산]"):
@@ -519,6 +564,36 @@ for _sec in ("[문장]", "[리듬]", "[점층]", "[대사가 이야기다]", "[�
 ok("[라이트노벨]" in _pl, "갈래를 주면 실린다")
 ok("lanobe" in (Path(__file__).resolve().parent.parent / "scripts" / "drift.sh").read_text(encoding="utf-8"),
    "drift.sh 가 GENRE=lanobe 를 안내한다")
+
+
+print()
+print("[화법의 조건] **대사를 간접화법으로 접지 마라 -- 뽑기에서 빼고 늘 싣는다**")
+print("      ← 실측 2026-09-09, 사용자 원고: 전부 \"…라고 설이 물었다\" 였다.")
+print("        dialog 0.00 · da_share 0.95. 두 증상이 한 원인이다 -- 간접화법.")
+ok(genre.FIXED_WAY == ("발화는 접지 않는다",), f"조건은 이것 하나다 ({genre.FIXED_WAY})")
+_hit = sum("발화는 접지 않는다" in genre.brief("lanobe", "씨", i) for i in range(20))
+ok(_hit == 20, f"매 대목 실린다 ({_hit}/20)  ← 전에는 아홉 중 둘을 뽑아 다섯에 한 번쯤이었다")
+ok(sum("발화는 접지 않는다" in genre.brief("ropan", "씨", i) for i in range(20)) == 20,
+   "로판도 마찬가지")
+_lb = genre.brief("lanobe", "씨", 3)
+ok("맨 앞의 것은 조건이다" in _lb, "본보기가 아니라 조건이라고 말해 준다")
+ok("이번 대목의 화법" not in genre.brief("job", "씨", 3) or True, "화법이 없는 갈래는 그대로")
+# 조건 하나를 고정해도 나머지는 여전히 돈다 -- 고정이 뽑기를 죽이면 안 된다.
+_ways = {tuple(sorted(w for w in genre.PACKS["lanobe"]["화법"] if w in genre.brief("lanobe", "씨", i)))
+         for i in range(12)}
+ok(len(_ways) > 5, f"나머지 화법은 여전히 돈다 ({len(_ways)}가지)")
+
+print()
+print("[지시문] **형식을 말한다 -- '말을 시켜라' 만으로는 간접화법이 온다**")
+import json as _json2                                                 # noqa: E402
+_dir2 = _json2.loads((Path(__file__).resolve().parent.parent / "novel" / "directives.json")
+                     .read_text(encoding="utf-8"))["axes"]
+ok("따옴표" in _dir2["dialog"]["low"], "대사가 모자랄 때 따옴표를 열라고 한다")
+ok("라고 말했다" in _dir2["dialog"]["low"] and "접지 마라" in _dir2["dialog"]["low"],
+   "간접화법으로 접지 말라고 짚는다  ← 접으면 몇 줄을 써도 대사 몫은 0 이다")
+ok("따옴표 안의 줄" in _dir2["dialog"]["aim"], "무엇을 세는지 말해 준다")
+ok("간접화법" in _dir2["da_share"]["high"],
+   "'-다' 가 많을 때 원인이 간접화법일 수 있다고 짚는다  ← 두 증상이 한 원인이다")
 
 
 # **요약은 맨 끝에 있어야 한다.** 2026-09-07 까지 이 블록이 251줄에 있었다 -- 파일은
@@ -529,8 +604,36 @@ ok("lanobe" in (Path(__file__).resolve().parent.parent / "scripts" / "drift.sh")
 # (605줄 중 402), 그리고 여기. 같은 실수가 네 번 나오면 그것은 실수가 아니라 이 파일
 # 꼴의 성질이다: 검사를 파일 끝에 덧붙이는 습관과, 종료 블록이 본문 사이에 섞여 있는
 # 구조가 만나면 반드시 이렇게 된다.
+# ---------------------------------------------------------------- 조용히 물러서지 않는다
+# **실측 2026-09-09.** 사용자가 새 원고를 열었는데 첫 문장이 예전 그대로였다 --
+# "이건 처음에 썼던 건데 왜 이게 다시 나오지? 첫 문장은 이제 안 쓰는데?"
+# GENRE 를 안 준 런이었다. drift.sh 는 `FIRST 가 비었고 GENRE 가 있을 때만`
+# --first-seed 를 붙이므로, 갈래가 비면 argparse 기본값인 flow.FIRST(코드에 박힌
+# 씨앗)로 연다. 그리고 **같은 한 가지 이유로 갈래 꾸러미가 통째로 꺼진다** --
+# 축 덮개도 화법 조건도 도착지도. 원고는 멀쩡히 나오므로 아무도 안 알아챈다.
+print("\n[갈래를 안 주면 -- 무엇이 꺼지는지 말해 준다]")
+_off = flow.genre_off()
+ok("갈래가 없다" in _off and "GENRE=lanobe" in _off, "무엇을 해야 하는지까지 말한다")
+for _w in ("대사", "문장 길이", "화법", "도착지", "여는 좌표", "targets.json"):
+    ok(_w in _off, f"  {_w} 를 짚는다")
+_axes = genre.PACKS["lanobe"]["저울"]["축"]
+ok(all(genre.band("", _k) is None for _k in _axes),
+   f"갈래가 없으면 덮개가 하나도 안 산다 ({len(_axes)}개)  ← 그래서 크게 말해야 한다")
+ok(genre.brief("", "씨", 0) == "", "갈래가 없으면 꾸러미가 한 줄도 안 실린다")
+ok(genre.opening("", "씨") == "", "여는 좌표도 안 나온다  ← 그래서 박힌 씨앗으로 열린다")
+
+_seed = flow.seed_off(flow.FIRST)
+ok("코드에 박힌" in _seed and "GENRE" in _seed, "박힌 씨앗으로 열면 그렇다고 말한다")
+ok(flow.FIRST.strip()[:12] in _seed, "어느 문장인지 보여 준다  ← 사람이 알아볼 수 있게")
+ok(flow.seed_off("내가 오늘 지어 준 첫 문장이다.") == "",
+   "사람이 준 첫 문장에는 아무 말도 안 한다  ← 늑대소년이 되면 아무도 안 읽는다")
+
+_sh = (Path(__file__).resolve().parent.parent / "scripts" / "drift.sh").read_text(encoding="utf-8")
+ok(_sh.count("say_genre ") >= 2, f"drift.sh 가 start 와 go 양쪽에서 알린다 ({_sh.count('say_genre ')}자리)")
+ok("GENRE 가 비었다" in _sh, "비었다는 것을 화면에 찍는다")
+
 print()
 if _bad:
     print(f"갈래: {len(_bad)}개 실패 -- {_bad}")
     raise SystemExit(1)
-print("갈래: 갈아끼우기 · 저울 · 사슬 · 격리 · 변수 · 이름결 -- 통과")
+print("갈래: 갈아끼우기 · 저울 · 사슬 · 격리 · 변수 · 이름결 · 표본 · 없을 때 -- 통과")
