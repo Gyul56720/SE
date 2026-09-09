@@ -144,6 +144,9 @@ _admin_thread_map: dict[str, str] = {}
 # 보고한다"는 뜻이다.
 _active_tasks: dict[str, asyncio.Task] = {}
 _active_prompts: dict[str, str] = {}
+# thread_id 별 자물쇠. 같은 대화에 두 실행이 겹치면 도구 호출과 그 답이 어긋나
+# 대화가 통째로 깨진다(INVALID_CHAT_HISTORY). 방마다 하나씩이라 서로 안 막는다.
+_thread_locks: dict[str, asyncio.Lock] = {}
 
 
 async def _handle_stop(message: discord.Message, thread_id: str) -> None:
@@ -539,7 +542,14 @@ async def _handle_public_message(message: discord.Message) -> None:
     if not content:
         return
 
-    thread_id = str(message.author.id)
+    # **방마다 다른 대화.** 한때 사람 id 하나였는데, 같은 사람이 두 채널에서 물으면
+    # **같은 LangGraph 스레드 위에서 두 실행이 겹쳤다**(실측 2026-09-09: 10:17:30 에
+    # 채널 2 요청이 dig 를 두 번 부른 뒤, 8초 만에 채널 1 요청이 같은 스레드로 들어와
+    # 채널 2 쪽이 잘렸다). 겹치면 도구 호출과 그 답이 어긋나서
+    # `Found AIMessages with tool_calls that do not have a corresponding ToolMessage`
+    # 가 난다 -- 10:05:19 에 실제로 났다.
+    thread_id = f"{message.channel.id}:{message.author.id}"
+    author_id = str(message.author.id)
     # **어느 채널에서 온 것인지 남긴다.** 공개 채널이 여럿이 된 뒤로 로그만 보고는
     # 어느 채널의 요청인지 알 수가 없었다 -- 둘의 성능이 다를 때 견줄 것이 없다.
     # thread_id 가 채널이 아니라 **사람**이라는 것도 여기 같이 보인다: 같은 사람이
@@ -552,14 +562,21 @@ async def _handle_public_message(message: discord.Message) -> None:
         return
 
     loop = asyncio.get_running_loop()
+    # **stop 이 줄 서 있는 것도 끊을 수 있게** 자물쇠보다 먼저 등록한다.
     _active_tasks[thread_id] = asyncio.current_task()
     _active_prompts[thread_id] = content
     reply = None
     sync_note = None
     integrity_note = None
     try:
-        async with message.channel.typing():
-            reply = await loop.run_in_executor(None, main_public.run_public_agent, content, thread_id)
+        # **한 대화에서 한 번에 하나만.** 같은 방에 두 물음이 잇달아 오면 예전에는
+        # 둘이 같은 스레드 위에서 동시에 돌았다(실측 10:13:32/10:13:35 -- 3초 사이에
+        # 두 번 들어와 답이 두 번 나갔다). 도구 호출과 답이 어긋나면 그 대화가
+        # 통째로 깨진다. 줄을 세운다 -- 늦어질 뿐 안 깨진다.
+        async with _thread_locks.setdefault(thread_id, asyncio.Lock()):
+            async with message.channel.typing():
+                reply = await loop.run_in_executor(
+                    None, main_public.run_public_agent, content, thread_id, author_id)
             # admin 경로와 같은 이유로 git 단계의 실패가 답변 전달을 막지 못하게 한다.
             sync_note, integrity_note = await _sync_and_note(loop, message, reply)
     except asyncio.CancelledError:
