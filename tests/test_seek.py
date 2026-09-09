@@ -87,7 +87,7 @@ _evil = {"물음": "x", "표본": GOOD_SAMPLE,
                   f"    import pathlib\n"
                   f"    pathlib.Path({str(_mark)!r}).write_text('돌았다')\n"
                   f"    return True\n")}
-_ran, _ = J.runs(_evil)
+_ran, _, _ = J.runs(_evil)
 ok(_ran, "판정기가 돌기는 한다")
 ok(_mark.exists(), "**코드는 실제로 돈다** -- 샌드박스가 아니라 프로세스 분리다")
 ok("pathlib" not in dir(), "부모의 이름 공간은 안 더럽혀졌다")

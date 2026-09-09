@@ -12,6 +12,7 @@ Phi 를 안 정해도 그럴듯하고, 정하는 것보다 싸다.
     python3 seek/spread.py --n 20 --점검     # 호출 없이 쓸 수 있는 후보와 잔량을 본다
     python3 seek/spread.py --n 20           # 낳는다
     python3 seek/spread.py --show
+    python3 seek/audit.py                   # 낳은 것이 진짜 문제인지 다시 잰다
 
 호출은 전부 `orchestrator/llm_pool.py` 로 나간다 -- 아래 '## 풀' 참고. 여기서 제
 반복문을 짜지 않는다.

@@ -55,7 +55,9 @@ def main() -> int:
             g = _env(p["표본"] + "\n" + p["판정"])
             sample, judge = _need(g, "sample"), _need(g, "judge")
             rng = random.Random(0)
-            got = [sample(rng) for _ in range(5)]
+            # **5개에서 32개로 늘렸다.** 이 수로 "다 받는다" 를 판정하기 때문이다.
+            # 5개가 다 통과하는 것은 우연일 수 있지만 32개는 아니다.
+            got = [sample(rng) for _ in range(32)]
             # **참/거짓을 돌려주는지까지 본다.** `def judge(x): pass` 는 안 터지고
             # None 을 돌려주는데, bool() 로 감싸면 False 가 되어 멀쩡해 보인다.
             # 비었는지만 보면 통과하고 돌려 보기만 해도 통과한다 -- 돌려준 것을 봐야 잡힌다.

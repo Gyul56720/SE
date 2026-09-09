@@ -86,9 +86,24 @@ def add(led: dict, rec: dict, parent: str, op: str, check=True) -> dict:
         raise NotAProblem("`옮김` 이 비었다 -- 부모의 답이 여기서도 답인지 볼 수가 없다")
     if check:
         from seek import judge as J
-        ok, why = J.runs(rec)
+        ok, why, 잰것 = J.runs(rec)
         if not ok:
             raise NotAProblem(f"판정기가 안 돈다: {why}")
+        # **도는 것만으로는 모자란다.** `def judge(x): return True` 는 멀쩡히 돌고
+        # 참/거짓도 제대로 돌려주는데 아무것도 안 거른다 -- 뽑은 것이 다 답이면
+        # 찾을 것이 없고, 그건 문제가 아니라 문제의 모양이다.
+        #
+        # 실측 2026-09-09: 이 줄이 없을 때 낳은 것이 21개 중 21개 다 받아들여졌다.
+        # 100% 는 프롬프트가 좋다는 뜻일 수도 있지만 **거르는 데가 없다는 뜻일 수도**
+        # 있고, 그 둘을 구분할 방법이 그때는 없었다.
+        #
+        # **반대쪽(하나도 안 받는다)은 안 막는다.** P1 이 그렇다 -- 무작위 정렬망
+        # 22,991개를 봐야 하나가 걸린다. 어려운 것과 틀린 것을 여기서 가를 수 없으므로
+        # 받아 두고 `seek/audit.py` 가 눈에 보이게 적는다.
+        if 잰것 and 잰것["본것"] and 잰것["받음"] == 잰것["본것"]:
+            raise NotAProblem(
+                f"판정기가 뽑은 것을 다 받는다 ({잰것['본것']}개 중 {잰것['받음']}개)"
+                " -- 아무것이나 답이면 찾을 것이 없다")
 
     led["seq"] += 1
     out = {"id": f"P{led['seq']}"}

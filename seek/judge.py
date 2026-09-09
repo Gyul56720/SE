@@ -36,13 +36,19 @@ def _run(op: str, payload: dict, seconds: float = 10.0) -> dict:
 
 
 def runs(rec: dict) -> tuple:
-    """(도나, 왜). **비었는지가 아니라 도는지를 본다.**
+    """(도나, 왜, 잰것). **비었는지가 아니라 도는지를 본다.**
 
-    `def judge(x): pass` 는 비어 있지 않지만 판정기가 아니다. 돌려 보면 안다."""
+    `def judge(x): pass` 는 비어 있지 않지만 판정기가 아니다. 돌려 보면 안다.
+
+    셋째 값으로 `{"받음": n, "본것": m}` 을 같이 준다 -- **도는 것과 거르는 것은
+    다른 물음이다.** `def judge(x): return True` 는 멀쩡히 돌지만 아무것도 안 거른다.
+    누가 그것으로 무엇을 할지는 부르는 쪽이 정한다.
+    """
     got = _run("runs", {"표본": rec.get("표본") or "", "판정": rec.get("판정") or ""})
     if not got.get("ok"):
-        return False, got.get("왜", "모름")
-    return True, f"표본 {got['본것']}개 중 {got['받음']}개를 받았다"
+        return False, got.get("왜", "모름"), {}
+    잰것 = {"받음": got["받음"], "본것": got["본것"]}
+    return True, f"표본 {got['본것']}개 중 {got['받음']}개를 받았다", 잰것
 
 
 def shake(rec: dict, n: int = 200, seed: int = 1) -> dict:
