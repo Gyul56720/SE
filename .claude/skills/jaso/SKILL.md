@@ -96,6 +96,10 @@ python3 $J/jaso/refine.py --표 원장.json --문항 "<원문>" --바퀴 4 --궤
 결과물에 섞일 통로가 없어진다. 캔 형식은 `forms.py` 에 **손으로** 붙이고, 순위는
 `bench.py` 가 낸다 -- 캔 분포를 그대로 "합격 문법" 이라고 말하지 마라.
 
+**검색 결과 쪽을 `dig/run.py --따라` 에 걸지 마라.** `--따라` 는 같은 host 안으로만
+판다 -- 창구 자기 살림만 돌고 결과로는 못 간다. 검색은 `dig/find.py`(= `crawl --씨앗`),
+목록 쪽 파기는 `crawl --씨앗주소` 다.
+
 **예시 본문은 `jaso/corpus/보기/` 에만 둔다** -- `keep.py` 의 K001 이 쓰기 전에
 `git check-ignore` 로 확인하고, 무시 규칙에 안 잡히면 **한 자도 안 쓴다.** 그 폴더를
 저장소에 올리지 마라. `Public_agent/` 에는 더더욱.
@@ -112,6 +116,7 @@ python3 $J/jaso/mine.py --질의 "합격 자소서 예시" --몇 12       # 형�
 # 오래 모을 때 -- **반드시 setsid/nohup/disown, 확인은 pgrep -af**
 setsid nohup python3 $J/jaso/crawl.py --분 60 > ~/SE/logs/jaso_crawl.log 2>&1 < /dev/null &
 disown; pgrep -af jaso/crawl.py        # `ps -p $!` 는 거짓 음성을 낸다
+python3 $J/jaso/crawl.py --분 60 --씨앗주소 '<목록 쪽>' --따라 30   # 그 집 안쪽으로
 python3 $J/jaso/keep.py --목록  ·  --내보내기  ·  --지우기
 python3 $J/jaso/mine.py --분포  ·  --문법후보
 python3 $J/jaso/forms.py                                       # 문법 후보
