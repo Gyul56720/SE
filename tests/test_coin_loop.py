@@ -22,7 +22,9 @@ from coin import event as EV                                          # noqa: E4
 from coin import loop as LP                                           # noqa: E402
 from coin import news as NW                                           # noqa: E402
 from coin import scenario as SC                                       # noqa: E402
+from coin import prompt as PM                                         # noqa: E402
 from coin import situation as ST                                      # noqa: E402
+from coin import similar as SM                                        # noqa: E402
 from coin import source as SRC                                        # noqa: E402
 from coin import tag as TG                                            # noqa: E402
 from coin import watch as WT                                          # noqa: E402
@@ -277,6 +279,35 @@ ok("ETH" in 자산들2, "자산이 걸린 것은 그 코인 그대로 (ETH)")
 ok("BTC" not in 자산들2, "자산 미상이 BTC 로 새지 않는다")
 from coin import price as PR2
 ok(PR2.심볼찾기("시장") == "BTCUSDT", "시장 계열은 가격을 BTC 로 대리한다 (지금은)")
+
+# ---------------------------------------------------------------- 추론: 질문 유형 라우팅
+# 사용자: "오늘 시장 어때 / 곧 오를 코인 / 리플 전망" 을 물으면 고급 추론으로 답하라.
+# 판단이 아니라 무엇을 모을지 정하는 라우터가 유형을 가른다.
+for q, 참유형, 참자산 in [
+    ("오늘 암호화폐 시장 어때?", "시장", []),
+    ("곧 오를 것 같은 코인 알려줘", "고르기", []),
+    ("리플은 어떨 것 같아? 전망은?", "종목", ["XRP"]),
+    ("비트코인 전망", "종목", ["BTC"])]:
+    s = ST.읽기(q, [])
+    ok(s["물음유형"] == 참유형, f"'{q[:16]}' -> 유형 {s['물음유형']} (기대 {참유형})")
+    ok(s["자산"] == 참자산, f"  자산 {s['자산']}")
+ok(ST.읽기("리플 전망은?", [])["전망"], "'전망' 을 읽는다")
+ok(not ST.읽기("리플 지금 얼마", [])["전망"], "'얼마' 는 전망이 아니다")
+
+# 프롬프트가 유형별로 다른 안내를 넣고 닮음을 싣는다
+import _coin_fixture as _FX2
+c2 = _FX2.계열(효과=0.0)
+사건2 = _FX2.사건(_FX2.사건날())
+_닮 = SM.찾기(c2, 사건2, {}, None, 3, 9, "BTC", 3, 1)
+for q, 물음유형, 표식 in [("오늘 시장 어때", "시장", "시장 전체"),
+                          ("곧 오를 코인", "고르기", "오를 코인"),
+                          ("리플 전망", "종목", "특정 코인")]:
+    p = PM.짓기(q, {"잰것": []}, 사건2, "", None, [], None, None, None, _닮, 물음유형)
+    ok(표식 in p, f"물음유형 '{물음유형}' 이 프롬프트에 '{표식}' 안내를 넣는다")
+ok("닮은 과거" in PM.짓기("x", {"잰것": []}, 사건2, "", None, [], None, None, None, _닮, "시장"),
+   "**닮은 과거가 프롬프트에 실린다** -- '미루어 보면' 의 근거")
+ok(not re.search(r"C0\d\d", PM.짓기("x", {"잰것": []}, 사건2, "", None, [], None, None, None, _닮, "고르기")),
+   "유형 안내에도 관문 이름이 안 샌다")
 
 print()
 print(f"실패 {len(fails)}개" if fails else "전부 통과")

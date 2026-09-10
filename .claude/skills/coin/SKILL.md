@@ -33,7 +33,9 @@ description: 암호화폐 시장을 원장 대조로 분석한다. 사용자가 
 ```bash
 C=/home/ubuntu/SE          # 이 세션이면 /home/user/SE
 
-python3 $C/coin/run.py --물음 "비트코인 시장 분석해줘"
+python3 $C/coin/run.py --물음 "오늘 암호화폐 시장 어때?"      # 시장 브리핑
+python3 $C/coin/run.py --물음 "곧 오를 코인 알려줘"          # 모든 코인 훑기 순위
+python3 $C/coin/run.py --물음 "리플 전망은?"                # 그 코인 닮은 과거·시나리오
 python3 $C/coin/run.py --물음 "SOL -12.4% 왜 이래?" --바퀴 3
 python3 $C/coin/run.py --물음 "..." --상황만      # 모델 없이 무엇이 잡혔는지만
 python3 $C/coin/run.py --채우기                   # 원장 채우기 (망 필요, 오래 걸림)

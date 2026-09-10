@@ -68,10 +68,12 @@ class 결말:
 
 def 돌리기(물음: str, 원장: dict, 부르기, 사건들: list = None, 계열들: dict = None,
           시나리오: list = None, 바퀴수: int = 4, 유형들=None,
-          장세: dict = None, 흐름: dict = None, 훑음: dict = None) -> 결말:
+          장세: dict = None, 흐름: dict = None, 훑음: dict = None,
+          닮음: dict = None, 물음유형: str = "시장") -> 결말:
     되먹임, 후보, 앞점수 = "", [], None
     for i in range(1, 바퀴수 + 1):
-        p = PM.짓기(물음, 원장, 사건들, 되먹임, 유형들, 시나리오, 장세, 흐름, 훑음)
+        p = PM.짓기(물음, 원장, 사건들, 되먹임, 유형들, 시나리오, 장세, 흐름, 훑음,
+                   닮음, 물음유형)
         try:
             답 = 부르기(p)
         except Exception as e:                                        # noqa: BLE001
