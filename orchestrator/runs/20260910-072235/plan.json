@@ -125,8 +125,8 @@
       "deps": [
         "analysis_1"
       ],
-      "status": "failed",
-      "result_ref": "",
+      "status": "verified",
+      "result_ref": "results/analysis_2.json",
       "attempts": [
         {
           "ts": 1789025122.2183597,
@@ -199,6 +199,50 @@
         {
           "ts": 1789025268.119967,
           "error": "verify: unmatched '}' (analysis_2_verify.py, line 2)"
+        },
+        {
+          "ts": 1789025271.4715672,
+          "repaired_by": "key-29ca714b:gemini-3.1-flash-lite-preview"
+        },
+        {
+          "ts": 1789025271.4729376,
+          "error": "verify: unmatched '}' (analysis_2_verify.py, line 2)"
+        },
+        {
+          "ts": 1789025273.956527,
+          "repaired_by": "key-1d299f32:gemini-3.1-flash-lite"
+        },
+        {
+          "ts": 1789025273.9578872,
+          "error": "verify: unmatched '}' (analysis_2_verify.py, line 2)"
+        },
+        {
+          "ts": 1789025276.8919582,
+          "repaired_by": "key-d87ae5f9:gemini-3.1-flash-lite-preview"
+        },
+        {
+          "ts": 1789025276.8932993,
+          "error": "verify: unmatched '}' (analysis_2_verify.py, line 2)"
+        },
+        {
+          "ts": 1789025283.4017448,
+          "repaired_by": "key-1d299f32:gemini-3.1-flash-lite-preview"
+        },
+        {
+          "ts": 1789025283.4031365,
+          "error": "verify: unmatched '}' (analysis_2_verify.py, line 2)"
+        },
+        {
+          "ts": 1789025420.469596,
+          "repaired_by": "key-29ca714b:gemini-3.5-flash"
+        },
+        {
+          "ts": 1789025420.4711068,
+          "error": "verify: unmatched '}' (analysis_2_verify.py, line 2)"
+        },
+        {
+          "ts": 1789025576.699833,
+          "repaired_by": "key-1d299f32:gemini-3.6-flash"
         }
       ]
     }

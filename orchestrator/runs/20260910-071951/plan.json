@@ -8,7 +8,7 @@
       "component": "components/analyze_law.py",
       "verifier": "components/analyze_law_verify.py",
       "deps": [],
-      "status": "pending",
+      "status": "failed",
       "result_ref": "",
       "attempts": [
         {
@@ -66,6 +66,18 @@
         {
           "ts": 1789025154.375268,
           "repaired_by": "key-1d299f32:gemini-3.6-flash"
+        },
+        {
+          "ts": 1789025316.262203,
+          "error": "solve: Pydantic models should inherit from BaseModel, BaseModel cannot be instantiated directly\n\nFor further information visit https://errors.pydantic.dev/2.13/u/base-model-instantiated"
+        },
+        {
+          "ts": 1789025349.2898245,
+          "repaired_by": "key-29ca714b:gemini-3-flash-preview"
+        },
+        {
+          "ts": 1789025391.702625,
+          "error": "verify: cannot unpack non-iterable bool object"
         }
       ]
     },
@@ -128,6 +140,24 @@
         },
         {
           "ts": 1789025091.2263515,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789025316.2451823,
+          "repair_rejected": "문법 오류: unterminated string literal (detected at line 27) (<unknown>, line 27)",
+          "model": "key-d87ae5f9:gemini-3-flash-preview"
+        },
+        {
+          "ts": 1789025316.274817,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789025391.70123,
+          "repair_rejected": "문법 오류: unterminated string literal (detected at line 4) (<unknown>, line 4)",
+          "model": "key-1d299f32:gemini-3-flash-preview"
+        },
+        {
+          "ts": 1789025391.7202485,
           "error": "verify: cannot unpack non-iterable bool object"
         }
       ]
