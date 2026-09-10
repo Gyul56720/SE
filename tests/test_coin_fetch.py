@@ -253,6 +253,25 @@ try:
 finally:
     NW._http = _옛히2
 
+# ---------------------------------------------------------------- 뉴스 저장: 제목만
+# 사용자 지적: json 에 뉴스 내용이 안 저장된다. 맞다 -- 제목만 저장한다(본문 아님).
+# 벡터에 필요한 것은 제목의 꼬리표(유형·자산)이지 본문이 아니고, 본문을 다 담으면
+# 원장이 수십 배가 된다. 되짚을 url 은 남는다. 이걸 검사가 고정한다(바뀌면 알게).
+_g = NW._글("SEC bans crypto exchanges", __import__("datetime").datetime(2020,1,1,
+      tzinfo=__import__("datetime").timezone.utc), SRC.get("sec-press"), "https://x/1")
+ok("제목" in _g and _g["제목"], "제목을 저장한다")
+ok("본문" not in _g and "내용" not in _g, "**본문은 저장 안 한다** (제목의 꼬리표만 필요)")
+ok(_g.get("url") == "https://x/1", "되짚을 url 은 남는다")
+ok("유형" in _g and "자산" in _g, "제목에서 뽑은 유형·자산은 남는다")
+
+# ---------------------------------------------------------------- 지금끌기: 안 죽는다
+# 질문 순간 현재 데이터를 새로 받는다. 망이 막혀도 배포에서 안 죽어야 한다.
+from coin import run as _RUN
+_r = _RUN.지금끌기(["BTC"])
+ok(isinstance(_r, dict) and "시각" in _r,
+   "**지금끌기가 망 막혀도 안 죽는다** -- 받은 것 목록을 돌려준다")
+ok(all(k in _r for k in ("가격", "뉴스", "흐름")), "무엇을 새로 받았는지 밝힌다")
+
 print()
 print(f"실패 {len(fails)}개" if fails else "전부 통과")
 raise SystemExit(1 if fails else 0)

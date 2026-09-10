@@ -46,6 +46,58 @@ def 사건불러오기(경로=None) -> list:
     return json.loads(p.read_text(encoding="utf-8")).get("사건", []) if p.exists() else []
 
 
+def 지금끌기(자산들: list, 창일: int = 1) -> dict:
+    """**질문 순간의 현재 데이터를 새로 받는다.** 저장된 마지막 값이 아니라 지금 것.
+
+    24시간 백그라운드(watch)가 원장을 채우지만, 질문이 그 사이에 오면 마지막 갱신과
+    지금 사이의 몇 시간이 빈다. 그 틈을 여기서 메운다 -- 최근 시세·뉴스·흐름을 받아
+    원장 끝에 붙인다. 망이 막히면 저장된 것으로 조용히 되돌린다(배포에서 안 죽게).
+
+    돌려주는 것은 무엇을 새로 받았나 -- 화면에 "지금 시각 기준" 을 밝히려고.
+    """
+    from datetime import datetime, timedelta, timezone
+    from coin import flow as FL
+    from coin import news as NW
+    from coin import price as PR
+    받은것 = {"시각": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+             "가격": [], "뉴스": 0, "흐름": []}
+    # 시세 -- 최근 7일만 이어 받아 붙인다 (빠르게)
+    부터 = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d")
+    for a in 자산들:
+        try:
+            새 = PR.받기(a, 부터=부터)
+            옛 = PR.불러오기(a)
+            본 = {r[0]: r for r in (옛.get("봉") or [])}
+            for r in 새.get("봉", []):
+                본[r[0]] = r
+            if 본:
+                새["봉"] = [본[d] for d in sorted(본)]
+                PR.저장(새)
+                받은것["가격"].append(a)
+        except Exception:                                             # noqa: BLE001
+            pass
+    # 최근 뉴스 -- RSS 한 바퀴 (하루치)
+    try:
+        새글 = NW.받기([s for s in __import__("coin.source", fromlist=["쓸수있는것"])
+                        .쓸수있는것() if s.꼴 == "rss"])
+        if 새글:
+            원장 = NW.합치기(NW.불러오기(), 새글)
+            NW.저장(원장)
+            NW.저장({"만든때": 받은것["시각"], "창시간": 12.0,
+                    "사건": NW.뭉치기(원장["글"])}, NW.사건길)
+            받은것["뉴스"] = len(새글)
+    except Exception:                                                 # noqa: BLE001
+        pass
+    # 흐름
+    for a in 자산들:
+        try:
+            FL.저장(FL.받기(a))
+            받은것["흐름"].append(a)
+        except Exception:                                             # noqa: BLE001
+            pass
+    return 받은것
+
+
 def 준비(물음: str, 원장: dict = None, 사건들: list = None, 지평들=(3, 7, 14)) -> dict:
     """원장 · 상황 · 시나리오까지. **모델을 안 부른다** -- 검사에서 이대로 쓴다."""
     원장 = 원장 if 원장 is not None else LG.불러오기()
@@ -103,6 +155,8 @@ def main(argv=None) -> int:
     ap.add_argument("--처리", action="store_true",
                     help="수집을 안 기다리고 지금까지 모인 것으로 뭉치기~사건연구만")
     ap.add_argument("--상황만", action="store_true", help="모델을 안 부르고 무엇이 잡혔는지만")
+    ap.add_argument("--지금끌기", action="store_true",
+                    help="질문 전에 현재 시세·뉴스·흐름을 새로 받는다 (망 필요)")
     ap.add_argument("--나라", default=None, help="US · US,XX 처럼. 수집을 그 나라만")
     ap.add_argument("--원장", default="")
     a = ap.parse_args(argv)
@@ -192,6 +246,12 @@ def main(argv=None) -> int:
         return 2
 
     지평들 = tuple(int(v) for v in a.지평.split(",") if v.strip())
+    if a.지금끌기:
+        상황0 = ST.읽기(a.물음, 사건불러오기())
+        자산0 = 상황0["자산"] or ["BTC"]
+        받 = 지금끌기(자산0)
+        print(f"지금 끌어옴 ({받['시각'][:16]}Z): 시세 {받['가격']} · "
+              f"뉴스 {받['뉴스']}건 · 흐름 {받['흐름']}")
     준 = 준비(a.물음, LG.불러오기(a.원장 or None), None, 지평들)
     상황 = 준["상황"]
     print(f"트리거: {', '.join(무엇)}")

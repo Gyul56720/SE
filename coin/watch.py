@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import signal
 import sys
 import time
@@ -216,6 +217,9 @@ def main(argv=None) -> int:
         print(줄(한바퀴(깊게=True, 나라=a.나라)), flush=True)
         return 0
 
+    _흐름자산 = [x.strip().upper() for x in
+                os.environ.get("COIN_WATCH_ASSETS", "BTC,ETH,XRP,SOL").split(",")
+                if x.strip()]
     끝날때 = time.time() + a.시간 * 3600
     다음깊은, 바퀴 = 0.0, 0
     print(f"[시작] {a.시간}시간 · 얕은 {a.틈:.0f}초 · 깊은 {a.깊은틈:.0f}초 · "
@@ -233,9 +237,28 @@ def main(argv=None) -> int:
         if 깊게:
             다음깊은 = time.time() + a.깊은틈
             if a.흐름:
+                # **가격도 갱신한다.** 안 그러면 질문할 때 similar 의 '오늘' 이 며칠 전
+                # 봉이라 '지금' 이 stale 이다. 최근 60일만 이어 받아 원장 끝에 붙인다.
+                try:
+                    from coin import price as PR
+                    from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+                    부터 = (_dt.now(_tz.utc) - _td(days=60)).strftime("%Y-%m-%d")
+                    for x in _흐름자산:
+                        새 = PR.받기(x, 부터=부터)
+                        옛 = PR.불러오기(x)
+                        본 = {r[0]: r for r in (옛.get("봉") or [])}
+                        for r in 새.get("봉", []):
+                            본[r[0]] = r
+                        새["봉"] = [본[d] for d in sorted(본)]
+                        PR.저장(새)
+                    print(f"  가격 갱신 {','.join(_흐름자산)} "
+                          f"(최근 봉 {PR.계열(PR.불러오기(_흐름자산[0])).구간()[1]})", flush=True)
+                except Exception as e:                                # noqa: BLE001
+                    print(f"  가격 못 받음: {type(e).__name__}: {str(e)[:80]}", flush=True)
                 try:
                     from coin import flow as FL
-                    FL.저장(FL.받기("BTC"))
+                    for x in _흐름자산:
+                        FL.저장(FL.받기(x))
                     print("  흐름 원장 갱신", flush=True)
                 except Exception as e:                                # noqa: BLE001
                     print(f"  흐름 못 받음: {type(e).__name__}: {str(e)[:80]}", flush=True)
