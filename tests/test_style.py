@@ -40,11 +40,19 @@ def scene(kind, ep=1):
                  punctum="깨진 유리", participants=[POV, "공명"])
 
 
-print("[기본] 기본 페르소나는 사이다다")
-ok(style.ACTIVE == "cider", f"ACTIVE={style.ACTIVE}")
+print("[기본] 기본 페르소나를 못박는다")
+# 2026-09-10 에 `cider` 에서 `manga` 로 바뀌었다(커밋 91091d9 "style: set active persona
+# to manga"). **바꾼 쪽이 이 줄을 같이 안 고쳐서 여기가 빨간불로 남아 있었다** -- 그리고
+# 아래 검사 마흔둘이 주변 기본값에 기대고 있던 탓에 한 줄이 마흔둘을 무너뜨렸다.
+ok(style.ACTIVE == "manga", f"ACTIVE={style.ACTIVE}")
 # **명부를 못박아 둔다.** 페르소나가 조용히 늘면 기본값이 바뀌었는지 아무도 모른다.
 # 늘릴 때는 여기 한 줄을 같이 고친다 -- 그게 이 검사가 시키는 일이다.
 ok(sorted(style.PERSONAS) == ["cider", "hardboiled", "manga", "ropan"], f"{sorted(style.PERSONAS)}")
+
+# **아래는 사이다를 재는 자리다. 주변 기본값에 기대지 말고 여기서 못박는다.**
+# 안 그러면 기본값이 바뀌는 날 이 파일이 통째로 무너지고, 무너진 이유가 사이다와 아무
+# 상관이 없어서 읽는 사람이 엉뚱한 데를 고치게 된다(실측: 위 한 줄에 42개가 딸려 갔다).
+style.use("cider")
 
 print("[배분] 씬 종류가 목표 비율에 수렴하는가")
 counts: dict = {}
