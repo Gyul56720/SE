@@ -30,6 +30,30 @@
         {
           "ts": 1789024810.0881877,
           "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789024811.5220733,
+          "repaired_by": "key-1d299f32:gemini-3.5-flash-lite"
+        },
+        {
+          "ts": 1789024815.4906287,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789024817.913118,
+          "repaired_by": "key-29ca714b:gemini-3.1-flash-lite-preview"
+        },
+        {
+          "ts": 1789024821.1155057,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789024824.0414333,
+          "repaired_by": "key-d87ae5f9:gemini-3.1-flash-lite-preview"
+        },
+        {
+          "ts": 1789024827.5649278,
+          "error": "verify: cannot unpack non-iterable bool object"
         }
       ]
     },
@@ -60,6 +84,30 @@
         },
         {
           "ts": 1789024810.089338,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789024815.4894166,
+          "repaired_by": "key-d87ae5f9:gemini-3.1-flash-lite"
+        },
+        {
+          "ts": 1789024815.4913683,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789024821.114306,
+          "repaired_by": "key-1d299f32:gemini-3.1-flash-lite"
+        },
+        {
+          "ts": 1789024821.116268,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789024827.5637662,
+          "repaired_by": "key-1d299f32:gemini-3.1-flash-lite-preview"
+        },
+        {
+          "ts": 1789024827.56572,
           "error": "verify: cannot unpack non-iterable bool object"
         }
       ]
