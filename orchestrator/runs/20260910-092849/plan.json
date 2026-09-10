@@ -1,0 +1,37 @@
+{
+  "problem": "제주도 3박 4일 여행 계획을 대중교통 및 해안도로 중심으로 극도로 상세하게 수립하십시오.\n1. [상세 경로]: 제주국제공항에서 성산까지 해안도로를 따라 이동 시, 경유하는 구체적인 버스 노선 번호, 정류장 이름, 환승 지점, 배차 간격, 예상 소요 시간을 10분 단위로 작성하십시오.\n2. [장소 디테일]: 제주지방법원 근처 숙소에서 매일 아침 출발하여 성산/우도/비자림 등 목적지까지 도달하는 버스편과 해안도로 도보/버스 병행 코스를 상세히 기술하십시오.\n3. [시간표]: 매일 오전 8시 출발 기준, 저녁 8시 숙소 복귀를 기준으로 시간대별(오전/오후/저녁) 활동 계획을 1시간 단위로 세밀하게 짜십시오.\n4. [맛집/관광]: '/dig'를 사용하여 각 지역별 평점 높은 식당과 해안도로 카페를 시간대별 일정에 반영하십시오.\n5. [데이터 근거]: '/dig'를 사용하여 실제 버스 노선 데이터(제주 버스 정보 시스템 기반)를 기반으로 신뢰성 있는 일정을 제안하십시오. (시스템 수정 금지)",
+  "final": "generate_itinerary",
+  "nodes": [
+    {
+      "id": "fetch_bus_data",
+      "goal": "제주 버스 정보 시스템으로부터 공항-성산 간 및 숙소-주요 관광지 간 노선 데이터 확보",
+      "component": "components/fetch_bus_data.py",
+      "verifier": "components/fetch_bus_data_verify.py",
+      "deps": [],
+      "status": "verified",
+      "result_ref": "results/fetch_bus_data.json",
+      "attempts": []
+    },
+    {
+      "id": "generate_itinerary",
+      "goal": "3박 4일 시간대별 상세 경로 및 맛집 정보를 포함한 일정표 생성",
+      "component": "components/generate_itinerary.py",
+      "verifier": "components/generate_itinerary_verify.py",
+      "deps": [
+        "fetch_bus_data"
+      ],
+      "status": "verified",
+      "result_ref": "results/generate_itinerary.json",
+      "attempts": [
+        {
+          "ts": 1789032532.4213817,
+          "rejected": "일정 부족"
+        },
+        {
+          "ts": 1789032534.0203266,
+          "repaired_by": "key-29ca714b:gemini-flash-lite-latest"
+        }
+      ]
+    }
+  ]
+}
