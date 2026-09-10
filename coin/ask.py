@@ -24,7 +24,7 @@ def 풀():
         raise RuntimeError(
             "GEMINI_API_KEY 가 없다. 이 파이프라인은 Gemini 로 돈다 -- "
             "키 없이 Claude 로 대신하지 않는다")
-    return LP.build_pool(keys)
+    return LP.build_pool([v for _, v in keys])
 
 
 def 부르기(프롬프트: str, pool=None, pool_id: str = "coin") -> str:
