@@ -1,0 +1,28 @@
+{
+  "problem": "/mathdrift/ledger.json 파일을 심층 분석하여 상세 보고서를 작성하십시오.\n\n- 분석 범위:\n    1. 성공 기록 분석: 최근 성공한 'Drift(도약)'들의 성공 패턴과 사용된 연산자(ops) 조합의 빈도.\n    2. 진화 단계 파악: 초기 기록부터 현재까지 에이전트의 연산 복잡도나 효율성이 어떻게 개선되어 왔는지 추적.\n    3. 한계점 식별: 최근 실패 기록이 집중되는 지점(임계점)을 파악하여, 현재 시스템이 겪고 있는 수학적/논리적 병목 구간 분석.\n- 요구사항: 데이터에 기반한 정량적 분석을 포함할 것. **절대 파일을 수정하지 말 것.**",
+  "final": "format_report",
+  "nodes": [
+    {
+      "id": "analyze_ledger",
+      "goal": "Load /mathdrift/ledger.json, analyze successful drifts, evolution timeline, and failure bottlenecks to generate a quantitative report.",
+      "component": "components/analyze_ledger.py",
+      "verifier": "components/analyze_ledger_verify.py",
+      "deps": [],
+      "status": "verified",
+      "result_ref": "results/analyze_ledger.json",
+      "attempts": []
+    },
+    {
+      "id": "format_report",
+      "goal": "Format the ledger analysis results into a comprehensive, structured text report satisfying all prompt requirements.",
+      "component": "components/format_report.py",
+      "verifier": "components/format_report_verify.py",
+      "deps": [
+        "analyze_ledger"
+      ],
+      "status": "verified",
+      "result_ref": "results/format_report.json",
+      "attempts": []
+    }
+  ]
+}
