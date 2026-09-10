@@ -58,6 +58,14 @@
         {
           "ts": 1789024973.7515042,
           "repaired_by": "key-29ca714b:gemini-3.5-flash"
+        },
+        {
+          "ts": 1789025091.2089176,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789025154.375268,
+          "repaired_by": "key-1d299f32:gemini-3.6-flash"
         }
       ]
     },
@@ -112,6 +120,14 @@
         },
         {
           "ts": 1789024827.56572,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789025091.2076876,
+          "repaired_by": "key-d87ae5f9:gemini-3.6-flash"
+        },
+        {
+          "ts": 1789025091.2263515,
           "error": "verify: cannot unpack non-iterable bool object"
         }
       ]

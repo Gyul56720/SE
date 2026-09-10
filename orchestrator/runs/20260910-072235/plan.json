@@ -8,8 +8,8 @@
       "component": "components/analysis_1.py",
       "verifier": "components/analysis_1_verify.py",
       "deps": [],
-      "status": "failed",
-      "result_ref": "",
+      "status": "verified",
+      "result_ref": "results/analysis_1.json",
       "attempts": [
         {
           "ts": 1789024959.9342673,
@@ -110,6 +110,10 @@
         {
           "ts": 1789025076.6184015,
           "error": "verify: unmatched '}' (analysis_1_verify.py, line 2)"
+        },
+        {
+          "ts": 1789025121.0954602,
+          "repaired_by": "key-d87ae5f9:gemini-3.6-flash"
         }
       ]
     },
@@ -121,9 +125,14 @@
       "deps": [
         "analysis_1"
       ],
-      "status": "pending",
+      "status": "failed",
       "result_ref": "",
-      "attempts": []
+      "attempts": [
+        {
+          "ts": 1789025122.2183597,
+          "error": "verify: unmatched '}' (analysis_2_verify.py, line 2)"
+        }
+      ]
     }
   ]
 }
