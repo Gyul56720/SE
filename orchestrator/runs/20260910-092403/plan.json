@@ -1,0 +1,28 @@
+{
+  "problem": "제주도 3박 4일 여행 계획을 수립하십시오.\n1. [일정]: 2026-09-13(일) 아침 서울 출발 ~ 2026-09-16(수) 저녁 서울 도착.\n2. [숙소]: 3박 모두 '제주지방법원' 근처로 고정.\n3. [이동]: 제주국제공항에서 성산까지 해안도로를 따라 대중교통(버스 등)을 이용한 상세 경로 계획.\n4. [요구사항]: '/dig' 도구를 사용하여 실제 대중교통 노선, 추천 관광지, 맛집 정보를 검색하고, 이를 바탕으로 자세한 시간대별 일정을 작성하십시오. 시스템 수정은 하지 마십시오.",
+  "final": "build_plan",
+  "nodes": [
+    {
+      "id": "search_info",
+      "goal": "제주지방법원 숙소, 제주공항-성산 해안도로 대중교통 경로, 추천 관광지/맛집 정보를 수집합니다.",
+      "component": "components/search_info.py",
+      "verifier": "components/search_info_verify.py",
+      "deps": [],
+      "status": "verified",
+      "result_ref": "results/search_info.json",
+      "attempts": []
+    },
+    {
+      "id": "build_plan",
+      "goal": "수집된 정보를 바탕으로 2026-09-13(일)부터 2026-09-16(수)까지 3박 4일 시간대별 상세 일정을 구성합니다.",
+      "component": "components/build_plan.py",
+      "verifier": "components/build_plan_verify.py",
+      "deps": [
+        "search_info"
+      ],
+      "status": "verified",
+      "result_ref": "results/build_plan.json",
+      "attempts": []
+    }
+  ]
+}

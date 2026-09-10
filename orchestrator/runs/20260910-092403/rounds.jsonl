@@ -1,0 +1,3 @@
+{"event": "start", "ts": 1789032249.2084267, "at": "2026-09-10 09:24:09", "limits": {"max_repair_rounds": 30, "max_node_repairs": 20, "max_replans": 10, "node_timeout": 60.0}}
+{"event": "round", "round": 1, "ts": 1789032249.2085092, "at": "2026-09-10 09:24:09", "run_status": "solved", "node_status": {"search_info": "verified", "build_plan": "verified"}, "action": "solved", "seconds": 0.003, "replans_after": 0}
+{"event": "end", "ts": 1789032249.2117348, "at": "2026-09-10 09:24:09", "status": "solved", "rounds": 1, "replans": 0, "reason": null}
