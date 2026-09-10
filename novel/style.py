@@ -586,7 +586,7 @@ MANGA = dict(
 
 
 PERSONAS = {"cider": CIDER, "hardboiled": HARDBOILED, "ropan": ROPAN, "manga": MANGA}
-ACTIVE = "cider"
+ACTIVE = "manga"
 
 
 def use(name: str) -> None:
