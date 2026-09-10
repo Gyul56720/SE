@@ -31,5 +31,100 @@
   "doge",
   "狗狗币",
   "도지"
+ ],
+ "PEPE": [
+  "pepe",
+  "페페"
+ ],
+ "SHIB": [
+  "shiba",
+  "shib",
+  "시바",
+  "시바이누"
+ ],
+ "TRX": [
+  "tron",
+  "트론",
+  "트론코인"
+ ],
+ "ADA": [
+  "cardano",
+  "ada",
+  "카르다노",
+  "에이다"
+ ],
+ "AVAX": [
+  "avalanche",
+  "avax",
+  "아발란체"
+ ],
+ "LINK": [
+  "chainlink",
+  "link",
+  "체인링크"
+ ],
+ "MATIC": [
+  "polygon",
+  "matic",
+  "폴리곤"
+ ],
+ "DOT": [
+  "polkadot",
+  "dot",
+  "폴카닷"
+ ],
+ "BNB": [
+  "binance coin",
+  "bnb",
+  "바이낸스코인"
+ ],
+ "USDT": [
+  "tether",
+  "usdt",
+  "테더"
+ ],
+ "USDC": [
+  "usdc",
+  "유에스디씨"
+ ],
+ "BONK": [
+  "bonk",
+  "봉크"
+ ],
+ "WIF": [
+  "dogwifhat",
+  "wif"
+ ],
+ "APT": [
+  "aptos",
+  "apt",
+  "앱토스"
+ ],
+ "SUI": [
+  "sui",
+  "수이"
+ ],
+ "ARB": [
+  "arbitrum",
+  "arb",
+  "아비트럼"
+ ],
+ "OP": [
+  "optimism",
+  "옵티미즘"
+ ],
+ "LTC": [
+  "litecoin",
+  "ltc",
+  "라이트코인"
+ ],
+ "BCH": [
+  "bitcoin cash",
+  "bch",
+  "비트코인캐시"
+ ],
+ "TON": [
+  "toncoin",
+  "톤코인"
  ]
 }
