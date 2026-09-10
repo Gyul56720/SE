@@ -72,6 +72,7 @@ sys.path.insert(0, str(ROOT))
 from jaso import ask as AS                                           # noqa: E402
 from jaso import corpus as CP                                        # noqa: E402
 from jaso import gate as GT                                          # noqa: E402
+from jaso import heed as HD                                          # noqa: E402
 from jaso import intake as IN                                        # noqa: E402
 from jaso import item as IT                                          # noqa: E402
 from jaso import ledger as LG                                        # noqa: E402
@@ -104,6 +105,21 @@ def 문항읽기(터: Path) -> list:
 def 문항담기(터: Path, qs: list, 출처: str = "") -> None:
     (터 / "문항.json").write_text(json.dumps(
         {"출처": 출처, "문항": [{"글": q.원문, "번호": q.번호} for q in qs]},
+        ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def 들은담기(터: Path, 말: str, 들은) -> None:
+    """들은 것을 폴더에 남긴다. **원장에는 안 넣는다.**
+
+    '경북대 에너지화학공학과 3학년' 은 그 사람이 말한 사실이지만, 항목이 원장에
+    들어가는 길은 `intake` 가 사람의 답에서 넣는 것 하나뿐이다 -- 그때 I001 이 답
+    원문과 대조한다. 여기서 넣으면 그 못이 뽑힌다. 남기는 것은 **무엇을 듣고 이렇게
+    움직였는지**의 근거이고, 틀리게 들었으면 사람이 화면에서 보고 고친다.
+    """
+    (터 / "들은것.json").write_text(json.dumps(
+        {"말": 말, "낼곳": 들은.낼곳, "단위": 들은.단위, "지금": 들은.지금,
+         "문항들": list(들은.문항들), "요구들": list(들은.요구들),
+         "들은데": dict(들은.들은데), "버린것": list(들은.버린것)},
         ensure_ascii=False, indent=2), encoding="utf-8")
 
 
@@ -197,7 +213,7 @@ def 문항모으기(터: Path, a) -> tuple:
     if qs and not (a.문항 or a.질의 or a.urls or a.글):
         return qs, ""
     새것 = [IT.쪼개기(x, str(i + 1)) for i, x in enumerate(a.문항)]
-    출처 = "손으로"
+    출처 = getattr(a, "출처힌트", "") or "손으로"
     if a.글:
         붙인글 = _글로(a.글)
         캔것 = CP.문항뽑기(붙인글, "붙여넣은 글")
@@ -317,11 +333,34 @@ def 한걸음(a) -> int:
     if 왜 and a.답글.strip():
         # **사용자가 준 것을 문항 재료로 본다.** 문항이 없는 판에서 온 답은
         # 물음에 대한 답이 아니라 "어디에 내는지" 에 대한 답이다.
-        보낼데 = 받은것꼴(a.답글)
-        for k, v in 보낼데.items():
-            setattr(a, {"urls": "urls", "글": "글", "질의": "질의"}[k], v)
+        말 = a.답글.strip()
         a.답글 = ""
-        qs, 왜 = 문항모으기(터, a)
+        보낼데 = 받은것꼴(말)
+        if "urls" in 보낼데:
+            a.urls = 보낼데["urls"]
+            qs, 왜 = 문항모으기(터, a)
+        else:
+            # ① **끝나는 자리부터.** '기술하시오' · `(700자)` 가 있으면 그것이 진짜
+            #    문항 원문이다. 망을 안 탄다.
+            a.글 = 말
+            qs, 왜 = 문항모으기(터, a)
+            if 왜 and HD.한마디인가(말):
+                # ② **부탁하는 말인가.** 찾으러 나가기 전에 먼저 듣는다 -- 실측:
+                #    "…지원동기 파트를 어떻게 작성해야할까?" 102자가 통째로
+                #    검색어가 되어 나갔다. 찾을 것이 이미 그 말 안에 있었다.
+                들은 = HD.듣기(말)
+                if 들은.문항들:
+                    a.문항, a.글 = list(들은.문항들), ""
+                    a.출처힌트 = "사용자가 한 말"
+                    a.회사 = a.회사 or 들은.낼곳
+                    a.직무 = a.직무 or 들은.단위
+                    들은담기(터, 말, 들은)
+                    print(f"  들은 것: {들은.한줄()}")
+                    qs, 왜 = 문항모으기(터, a)
+                elif "질의" in 보낼데:
+                    # ③ 이름뿐이다 -- 찾아본다
+                    a.질의, a.글 = 보낼데["질의"], ""
+                    qs, 왜 = 문항모으기(터, a)
     if 왜:
         # **끝값 3 이 아니다 -- 사람 차례다.** 배포판에서 여기 오는 것은 사용자가
         # "자소서 써 줘" 만 한 경우이고, 그때 개발자용 오류 문구를 내밀면 안 된다.
