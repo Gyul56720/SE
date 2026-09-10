@@ -40,6 +40,7 @@ import gitsync  # noqa: E402
 import gatekeeper  # noqa: E402
 import main_public  # noqa: E402
 import bot_tools  # noqa: E402
+from novel import discord_cmd  # noqa: E402
 from bot_tools import (  # noqa: E402
     REPO_DIR, run_shell, search_memory, save_memory, build_agent_pool, run_with_fallback_pool,
     register_thread, unregister_thread, request_cancel,
@@ -653,9 +654,33 @@ async def on_message(message: discord.Message):
     # 관리 채널은 사용자 화이트리스트까지 있다.
     if GUILD_ID and message.guild is not None and message.guild.id != GUILD_ID:
         return
-    if message.channel.id == ADMIN_CHANNEL_ID:
+    admin = message.channel.id == ADMIN_CHANNEL_ID
+    public = message.channel.id in main_public.PUBLIC_CHANNEL_IDS
+    if not (admin or public):
+        return
+
+    # **고정 명령이 먼저다 -- 그런데 `!소설` 로 시작하는 것만.**
+    #
+    # 배포판이란 남이 같은 말을 쳤을 때 같은 일이 나는 것이다. 에이전트는 그것을 보장하지
+    # 않는다 -- 매번 다르게 알아듣고, 때로는 저장소를 고친다(실측 2026-09-10 `4cd4473`:
+    # "라노벨 상황극" 요청이 `scripts/drift.sh` 를 20줄짜리 촌극으로 덮었다).
+    #
+    # **셸을 뺏는 것이 아니다.** `discord_cmd.run` 은 모르는 말에 `None` 을 돌려주고,
+    # 그러면 아래로 떨어져 예전 그대로 에이전트(run_shell 전권)가 받는다. VM 을 셸로
+    # 만져야 하는 일은 하나도 안 줄어든다 -- 한 갈래가 그 앞에 생겼을 뿐이다.
+    #
+    # 쓰는 명령(시작 · 이어 · 멈춤 · 보내기)은 **관리 채널의 화이트리스트 안에서만** 듣는다.
+    # 공개 채널은 누구나 치므로 읽는 것만 -- `멈춤` 하나로 밤새 도는 런이 죽는다.
+    may_write = admin and (not ADMIN_ALLOWED_USER_IDS
+                           or message.author.id in ADMIN_ALLOWED_USER_IDS)
+    reply = await asyncio.to_thread(discord_cmd.run, message.content, None, may_write)
+    if reply is not None:
+        await message.reply(reply[:2000])
+        return
+
+    if admin:
         await _handle_admin_message(message)
-    elif message.channel.id in main_public.PUBLIC_CHANNEL_IDS:
+    else:
         await _handle_public_message(message)
 
 
