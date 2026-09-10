@@ -1,0 +1,41 @@
+{
+  "problem": "양자화된 오픈소스 모델(Quantized Open-Source Models)의 성능을 하네스(Harness)와 에이전트(Agent) 아키텍처를 통해 최고 수준(Opus 급)으로 끌어올리기 위한 통합 연구 수집 및 마스터 플랜을 수립하십시오.\n\n1. [dig 연구 수집 전략]: '/dig' 도구(fetch, search, extract 등)를 활용하여 최신 오픈소스 모델 성능 향상 기법(예: Test-time compute, MCTS, Chain-of-Thought verification, Agentic RAG, Self-Correction loops, Quantization-aware alignment 등)과 관련된 최신 논문 및 기술 트렌드를 수집하는 탐색 전략을 설계하십시오.\n2. [아키텍처 분석]: 현재 SE 저장소의 구조(orchestrator의 계획-실행-검증 루프, gatekeeper의 안전장치, mathdrift/law 등의 모듈)가 위 기법들을 어떻게 수용할 수 있는지 분석하십시오.\n3. [마스터 플랜 수립]: 양자화된 소형/오픈소스 모델의 한계(추론 오류, 환각, 논리적 비약 등)를 하네스 레벨에서 극복하고 Opus 수준의 신뢰성을 달성하기 위한 단계별(Phase 1~3) 실행 계획을 작성하십시오.\n4. [요구사항]: 절대 시스템 코드를 수정하지 말고, 현재 저장소 구조에 기반한 정밀한 분석과 종합 보고서/계획을 산출하십시오.",
+  "final": "master_plan",
+  "nodes": [
+    {
+      "id": "dig_strategy",
+      "goal": "/dig 도구를 활용하여 최신 오픈소스 모델 성능 향상 기법(Test-time compute, MCTS, CoT verification, Agentic RAG 등)의 최신 논문 및 기술 트렌드 수집 탐색 전략 설계",
+      "component": "components/dig_strategy.py",
+      "verifier": "components/dig_strategy_verify.py",
+      "deps": [],
+      "status": "verified",
+      "result_ref": "results/dig_strategy.json",
+      "attempts": []
+    },
+    {
+      "id": "architecture_analysis",
+      "goal": "SE 저장소 구조(orchestrator, gatekeeper, mathdrift/law 모듈 등)가 최신 기법을 수용할 수 있는 통합 분석 수행",
+      "component": "components/architecture_analysis.py",
+      "verifier": "components/architecture_analysis_verify.py",
+      "deps": [
+        "dig_strategy"
+      ],
+      "status": "verified",
+      "result_ref": "results/architecture_analysis.json",
+      "attempts": []
+    },
+    {
+      "id": "master_plan",
+      "goal": "양자화된 소형/오픈소스 모델의 한계를 하네스 레벨에서 극복하고 Opus 수준의 신뢰성을 달성하기 위한 Phase 1~3 마스터 플랜 수립",
+      "component": "components/master_plan.py",
+      "verifier": "components/master_plan_verify.py",
+      "deps": [
+        "dig_strategy",
+        "architecture_analysis"
+      ],
+      "status": "verified",
+      "result_ref": "results/master_plan.json",
+      "attempts": []
+    }
+  ]
+}

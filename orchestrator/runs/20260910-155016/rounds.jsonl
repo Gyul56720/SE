@@ -1,0 +1,3 @@
+{"event": "start", "ts": 1789055424.521769, "at": "2026-09-10 15:50:24", "limits": {"max_repair_rounds": 30, "max_node_repairs": 20, "max_replans": 10, "node_timeout": 60.0}}
+{"event": "round", "round": 1, "ts": 1789055424.5218496, "at": "2026-09-10 15:50:24", "run_status": "solved", "node_status": {"dig_strategy": "verified", "architecture_analysis": "verified", "master_plan": "verified"}, "action": "solved", "seconds": 0.003, "replans_after": 0}
+{"event": "end", "ts": 1789055424.525033, "at": "2026-09-10 15:50:24", "status": "solved", "rounds": 1, "replans": 0, "reason": null}

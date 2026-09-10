@@ -1,0 +1,24 @@
+{
+  "strategy_json": {
+    "keywords": [
+      "Test-time compute",
+      "MCTS",
+      "Chain-of-Thought verification",
+      "Agentic RAG",
+      "Self-Correction loops",
+      "Quantization-aware alignment"
+    ],
+    "sources": [
+      "arXiv",
+      "HuggingFace Papers",
+      "GitHub Trending",
+      "AI Conferences (NeurIPS, ICLR)"
+    ],
+    "actions": [
+      "fetch latest pre-prints on test-time scaling and MCTS for LLMs",
+      "search repository patterns for agentic workflows",
+      "extract architectural integration points for quantized models"
+    ],
+    "schedule": "Continuous weekly ingestion and automated filtering"
+  }
+}
