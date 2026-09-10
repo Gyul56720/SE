@@ -23,6 +23,8 @@ import threading
 import uuid
 from typing import Optional
 
+import channels
+
 import requests
 from langchain_core.tools import tool
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -59,6 +61,50 @@ _cancel_events: dict[str, threading.Event] = {}
 _cancel_events_lock = threading.Lock()
 
 
+# **부른 셸을 그 실행 단위로 센다.** 이유: 모델이 "차단돼서 못 받았다" 고 답했는데
+# 실제로는 **셸을 한 번도 안 불렀던** 일이 있었다(실측 2026-09-09, 사용자 확인:
+# "안막혔어"). 규칙에는 '해 보기 전에 수단이 없다고 하지 마라' 가 이미 적혀 있었고
+# 그래도 어겼다 -- 그러면 규칙을 더 적을 것이 아니라 **말이 사실인지 코드가 재야 한다.**
+# OS 스레드로 센다: run_public_agent 와 run_shell 이 같은 실행기 스레드에서 돈다.
+_셸기록: dict[int, list] = {}
+_셸기록_lock = threading.Lock()
+# thread_id -> 그 실행에서 부른 것. 부르는 쪽(discord_bot_server)이 답과 견준다.
+마지막셸: dict[str, list] = {}
+
+
+# **앞과 뒤를 둘 다 남긴다.** 예전엔 뒤 4000 자만 남겼고(`stdout[-4000:]`), 그것이
+# `dig/` 를 통째로 헛되게 하고 있었다(실측 2026-09-09).
+#
+#   dig/run.py 문서: "**줄이지 않는다.** 길면 긴 대로 낸다 -- 줄이는 것은 부르는
+#   쪽 일이고, 여기서 줄이면 줄인 것을 아무도 못 되찾는다."
+#
+# 그 '부르는 쪽' 이 여기인데 여기서 말없이 줄이고 있었다. 게다가 하필 **제일 나쁜
+# 쪽**으로 줄였다 -- dig 는 캔 값· 묻힌표(메뉴· 값· 평점· 영업시간)를 **맨 앞에**
+# 찍고 본문 글을 맨 뒤에 찍는다. 중요한 것을 앞에 놓는 그 규칙이, 꼬리만 남기는
+# 이 자름과 만나 **중요한 것부터 버리는 규칙**이 됐다. 남는 4000 자는 대개 본문
+# 부스러기였고, 그것이 사용자가 "정보가 없다" 고 하는 그 답이다.
+#
+# 로그는 반대다 -- 까닭은 꼬리(마지막 예외· 마지막 줄)에 있다. 한쪽만 고를 수
+# 없으니 둘 다 남기고 가운데를 버린다. 얼마나 버렸는지도 적는다: 말없이 사라지면
+# 모델이 그것을 '없는 것' 으로 읽는다.
+# `channels.수` 로 읽는다 -- `int(os.getenv(...))` 는 값이 빈 칸일 때 터진다(그것으로
+# 봇이 한 번 죽었다). 여기서 터지면 임포트가 통째로 실패해 봇이 아예 안 뜬다.
+셸출력_앞 = channels.수("SHELL_OUT_HEAD", 24000)
+셸출력_뒤 = channels.수("SHELL_OUT_TAIL", 6000)
+
+
+def 자르기(s: str, 앞: int, 뒤: int) -> str:
+    s = s or ""
+    if len(s) <= 앞 + 뒤:
+        return s
+    버린 = len(s) - 앞 - 뒤
+    return (s[:앞]
+            + f"\n\n… [가운데 {버린:,}자 잘림 -- **없는 것이 아니라 안 보여 준 것**이다. "
+              f"좁혀서 다시 불러라: `--찾 <말>` · `--json | python3 -c '...'` · "
+              f"`grep -n <말>` · `head`/`tail`] …\n\n"
+            + s[-뒤:])
+
+
 def register_thread(thread_id: str) -> None:
     """run_admin_agent/run_public_agent 시작 시 호출 -- 지금 실행 중인 OS 스레드를
     discord thread_id와 묶고, 이전 취소 플래그를 지운다."""
@@ -66,9 +112,14 @@ def register_thread(thread_id: str) -> None:
         _thread_registry[thread_id] = threading.get_ident()
     with _cancel_events_lock:
         _cancel_events.setdefault(thread_id, threading.Event()).clear()
+    with _셸기록_lock:
+        _셸기록[threading.get_ident()] = []
 
 
 def unregister_thread(thread_id: str) -> None:
+    # **이 실행에서 부른 것을 thread_id 쪽으로 옮긴다.** 부르는 쪽이 답과 견준다.
+    with _셸기록_lock:
+        마지막셸[thread_id] = _셸기록.pop(threading.get_ident(), [])
     with _thread_registry_lock:
         _thread_registry.pop(thread_id, None)
 
@@ -135,8 +186,16 @@ def run_shell(command: str) -> str:
             stdout, stderr = proc.communicate()
             return "실행 시간 초과(180초) -- 명령을 더 작게 나눠서 재시도하라."
         # 자르고 나서 마스킹한다 -- 자르기 전에 하면 긴 출력 전체를 훑느라 느려진다.
-        out = redact_secrets((stdout or "")[-4000:])
-        err = redact_secrets((stderr or "")[-2000:])
+        # **부른 것을 남긴다.** 남기지 않으면 "탐색했는데 못 찾았다" 와 "아예 안
+        # 했다" 가 로그에서 구별되지 않는다(실측 2026-09-09: 공개 채널 둘의 성능이
+        # 다른데 어느 쪽이 도구를 썼는지 알 길이 없었다). 값은 redact_secrets 로 가린다.
+        print(f"[run_shell] {_current_author.get()} :: "
+              f"{redact_secrets(command)[:160]!r}")
+        with _셸기록_lock:
+            _셸기록.setdefault(threading.get_ident(), []).append(
+                (redact_secrets(command)[:160], proc.returncode == 0))
+        out = redact_secrets(자르기(stdout, 셸출력_앞, 셸출력_뒤))
+        err = redact_secrets(자르기(stderr, 1500, 2500))
         if proc.returncode is not None and proc.returncode < 0:
             return f"[중단됨] stop 명령으로 강제 종료됨(signal={-proc.returncode}).\nSTDOUT:\n{out}\nSTDERR:\n{err}"
         return f"[exit={proc.returncode}]\nSTDOUT:\n{out}\nSTDERR:\n{err}"

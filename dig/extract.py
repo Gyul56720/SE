@@ -51,8 +51,15 @@ from html.parser import HTMLParser
     "퍼센트": re.compile(r"[-+]?\d+(?:\.\d+)?\s?%"),
 }
 
+# 쪽이 자기 상태를 <script> 안에 통째로 박아 두는 이름들. **여기 진짜가 있을 때가
+# 많다** -- 눈에 보이는 HTML 은 껍데기고 목록· 값· 자막 주소는 이 덩어리 안에 있다.
+# 이름을 아는 만큼만 캘 수 있어서, 새 꼴을 만나면 여기 한 줄을 더한다.
 _묻힌json이름 = ("__NEXT_DATA__", "__NUXT__", "__INITIAL_STATE__", "__APOLLO_STATE__",
-                "__PRELOADED_STATE__", "INITIAL_DATA", "window.__data")
+                "__PRELOADED_STATE__", "INITIAL_DATA", "window.__data",
+                # 영상 쪽. 재생목록의 항목들과 자막 트랙 주소가 여기 들어 있다 --
+                # 본문 HTML 에는 한 줄도 없다(스크립트가 그려 넣는다).
+                "ytInitialData", "ytInitialPlayerResponse",
+                "__remixContext", "__STATE__", "__DATA__", "self.__next_f")
 
 
 class _판(HTMLParser):
@@ -66,6 +73,12 @@ class _판(HTMLParser):
         super().__init__(convert_charrefs=True)
         self.jsonld, self.묻힌json, self.머리표 = [], [], {}
         self.표, self.목록, self.링크, self.글, self.제목 = [], [], [], [], []
+        # 표마다 '첫 줄이 진짜 머리였나'. **첫 줄을 무조건 머리로 먹으면 안 된다** --
+        # <th> 없는 표(메뉴 · 값 목록이 흔히 그렇다)에서는 그 줄이 첫 메뉴다.
+        self.표머리: list = []
+        self._이표머리 = False
+        self._칸th = False
+        self._줄모두th = True
         self._script, self._스타일 = "", 0
         self._표: list = []
         self._줄: list = []
@@ -88,12 +101,27 @@ class _판(HTMLParser):
             값 = a.get("content")
             if 키 and 값:
                 self.머리표.setdefault(키, 값)
+        elif tag == "link":
+            # **<link rel> 을 안 읽고 있었다.** 거기 다음에 두드릴 문이 적혀 있다 --
+            # 피드(rss· atom: 글 본문이 통째로 온다) · canonical(진짜 주소) ·
+            # oembed 끝점 · alternate(다른 언어· 모바일 쪽). 쪽이 **스스로 알려 주는**
+            # 곁문인데 meta 만 보느라 통째로 버렸다.
+            rel = " ".join(a.get("rel", "").split()).lower()
+            href = a.get("href")
+            if rel and href and rel not in ("stylesheet", "preload", "prefetch",
+                                            "dns-prefetch", "preconnect",
+                                            "icon", "shortcut icon", "apple-touch-icon",
+                                            "manifest", "modulepreload"):
+                self.머리표.setdefault(f"link:{rel}", href)
         elif tag == "table":
             self._표 = []
+            self._이표머리 = False
         elif tag == "tr":
             self._줄 = []
+            self._줄모두th = True
         elif tag in ("td", "th"):
             self._칸 = ""
+            self._칸th = (tag == "th")
         elif tag in ("ul", "ol", "dl"):
             self._목록 = []
         elif tag in ("li", "dt", "dd"):
@@ -118,14 +146,20 @@ class _판(HTMLParser):
         elif tag in ("td", "th"):
             if self._칸 is not None:
                 self._줄.append(self._칸.strip())
+                # 한 칸이라도 td 면 머리줄이 아니다. 줄머리(<th>이름</th><td>값</td>)를
+                # 머리로 오해하면 그 표의 값이 통째로 열쇠 자리로 간다.
+                self._줄모두th = self._줄모두th and self._칸th
             self._칸 = None
         elif tag == "tr":
             if self._줄:
+                if not self._표:
+                    self._이표머리 = self._줄모두th
                 self._표.append(self._줄)
             self._줄 = []
         elif tag == "table":
             if self._표:
                 self.표.append(self._표)
+                self.표머리.append(self._이표머리)
             self._표 = []
         elif tag in ("li", "dt", "dd"):
             if self._항목 and self._항목.strip():
@@ -284,13 +318,24 @@ def 캔값(글: str) -> dict:
     return out
 
 
-def 표로(표: list) -> list:
-    """`[[칸,칸],[값,값]]` -> dict 목록. 첫 줄을 머리로 본다 -- **못 보면 자리번호로.**"""
+def 표로(표: list, 머리있음: bool = True) -> list:
+    """`[[칸,칸],[값,값]]` -> dict 목록. 머리가 있으면 첫 줄을 열쇠로, **없으면 자리번호로.**
+
+    `머리있음` 은 **문서가 그렇게 적었나**를 그대로 옮긴 것이다(`_판` 이 첫 줄이
+    전부 `<th>` 였는지 본다). 예전엔 이것을 안 보고 첫 줄을 늘 머리로 먹었는데,
+    `<th>` 없는 표에서는 그 줄이 **첫 값**이다 -- 메뉴판이 거의 그 꼴이라
+
+        <tr><td>육개장</td><td>9,000원</td></tr>
+        <tr><td>돼지갈비</td><td>15,000원</td></tr>
+
+    가 `{'육개장': '돼지갈비', '9,000원': '15,000원'}` 한 줄이 됐다. 첫 메뉴와 그 값이
+    열쇠 자리로 가면서 **두 줄이 한 줄로 뭉개졌다**(실측 2026-09-09).
+    """
     if not 표:
         return []
     머리 = 표[0]
     몸 = 표[1:]
-    if not 몸 or len({len(r) for r in 표}) > 2:
+    if not 머리있음 or not 몸 or len({len(r) for r in 표}) > 2:
         머리 = [f"칸{i+1}" for i in range(max(len(r) for r in 표))]
         몸 = 표
     return [{(머리[i] if i < len(머리) and 머리[i] else f"칸{i+1}"): v
@@ -326,7 +371,8 @@ def 뽑기(몸통: str, 꼴: str = "", url: str = "") -> dict:
             "묻힌표": [_평평(x) for x in p.jsonld],
             "묻힌표원본": p.jsonld,
             "묻힌json": [{"어디": x["어디"], "칸": _평평(x["값"])} for x in p.묻힌json],
-            "표": [표로(t2) for t2 in p.표],
+            "표": [표로(t2, p.표머리[i] if i < len(p.표머리) else True)
+                  for i, t2 in enumerate(p.표)],
             "목록": p.목록,
             "제목들": p.제목,
             "링크": p.링크,
@@ -352,7 +398,9 @@ def 뽑기(몸통: str, 꼴: str = "", url: str = "") -> dict:
             p.close()
         except Exception:                                      # noqa: BLE001
             pass
-        out.update({"갈래": "xml", "글": " ".join(p.글), "표": [표로(t2) for t2 in p.표],
+        out.update({"갈래": "xml", "글": " ".join(p.글),
+                    "표": [표로(t2, p.표머리[i] if i < len(p.표머리) else True)
+                          for i, t2 in enumerate(p.표)],
                     "목록": p.목록, "캔값": 캔값(몸통)})
         return out
     out.update({"갈래": "글", "글": 몸통, "캔값": 캔값(몸통)})
@@ -379,6 +427,12 @@ def 합치기(뽑은것들: list) -> dict:
             묶음["머리표"].setdefault(k, v)
         for 키 in ("묻힌표", "묻힌json", "표", "목록", "제목들"):
             묶음[키] += x.get(키) or []
+        # **JSON 으로 답한 쪽을 여기서 잃고 있었다.** `뽑기` 는 json 쪽을 {"갈래":
+        # "json", "칸": {...}} 로 내는데 위 목록에 `칸` 이 없어서, api 로 받은 것이
+        # 캔값 말고는 통째로 버려졌다(실측 2026-09-09). 하필 api 탐색이 이 도구의
+        # 요점인데 그 길만 비어 있었다. 묻힌json 과 같은 자리에 실어 같이 낸다.
+        if x.get("갈래") == "json" and x.get("칸"):
+            묶음["묻힌json"].append({"어디": x.get("url") or "json", "칸": x["칸"]})
         for L in x.get("링크") or []:
             h = L.get("href", "")
             if h and h not in 본링크:

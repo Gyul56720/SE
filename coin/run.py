@@ -1,0 +1,305 @@
+"""**한 명령.** 물음 하나를 받아 사람에게 돌려줄 것까지 간다.
+
+    python3 coin/run.py --물음 "비트코인 시장 분석해줘"
+    python3 coin/run.py --물음 "SOL -12.4% 왜 이래?" --바퀴 3
+    python3 coin/run.py --물음 "..." --재기        사건 연구를 다시 돌리고 나서
+    python3 coin/run.py --채우기                   원장을 채운다 (망 필요, 오래 걸림)
+
+끝값이 **다음에 무엇을 할지**다.
+
+    0  냈다
+    1  바퀴를 다 돌았는데 어긋난 자리가 남았다 -- **안 내보냈다**
+    2  트리거에 안 걸렸다 (암호화폐 물음이 아니다)
+    3  못 돌렸다 (원장이 비었다 · 키가 없다 · 망이 막혔다)
+
+## 왜 3 과 1 을 가르나
+
+3 은 **아직 못 재 본 것**이고 1 은 **재 봤는데 답이 원장과 어긋난 것**이다.
+다음에 할 일이 서로 다르다 -- 앞은 원장을 채우는 일이고 뒤는 답을 고치는 일이다.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+from coin import event as EV                                          # noqa: E402
+from coin import flow as FL                                           # noqa: E402
+from coin import news as NW                                           # noqa: E402
+from coin import ledger as LG                                         # noqa: E402
+from coin import loop as LP                                           # noqa: E402
+from coin import price as PR                                          # noqa: E402
+from coin import regime as RG                                         # noqa: E402
+from coin import scenario as SC                                       # noqa: E402
+from coin import screen as SN                                         # noqa: E402
+from coin import situation as ST                                      # noqa: E402
+
+사건길 = Path(__file__).resolve().parent / "corpus/events.json"
+
+
+def 사건불러오기(경로=None) -> list:
+    p = Path(경로) if 경로 else 사건길
+    return json.loads(p.read_text(encoding="utf-8")).get("사건", []) if p.exists() else []
+
+
+def 지금끌기(자산들: list, 창일: int = 1) -> dict:
+    """**질문 순간의 현재 데이터를 새로 받는다.** 저장된 마지막 값이 아니라 지금 것.
+
+    24시간 백그라운드(watch)가 원장을 채우지만, 질문이 그 사이에 오면 마지막 갱신과
+    지금 사이의 몇 시간이 빈다. 그 틈을 여기서 메운다 -- 최근 시세·뉴스·흐름을 받아
+    원장 끝에 붙인다. 망이 막히면 저장된 것으로 조용히 되돌린다(배포에서 안 죽게).
+
+    돌려주는 것은 무엇을 새로 받았나 -- 화면에 "지금 시각 기준" 을 밝히려고.
+    """
+    from datetime import datetime, timedelta, timezone
+    from coin import flow as FL
+    from coin import news as NW
+    from coin import price as PR
+    받은것 = {"시각": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+             "가격": [], "뉴스": 0, "흐름": []}
+    # 시세 -- 최근 7일만 이어 받아 붙인다 (빠르게)
+    부터 = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d")
+    for a in 자산들:
+        try:
+            새 = PR.받기(a, 부터=부터)
+            옛 = PR.불러오기(a)
+            본 = {r[0]: r for r in (옛.get("봉") or [])}
+            for r in 새.get("봉", []):
+                본[r[0]] = r
+            if 본:
+                새["봉"] = [본[d] for d in sorted(본)]
+                PR.저장(새)
+                받은것["가격"].append(a)
+        except Exception:                                             # noqa: BLE001
+            pass
+    # 최근 뉴스 -- RSS 한 바퀴 (하루치)
+    try:
+        새글 = NW.받기([s for s in __import__("coin.source", fromlist=["쓸수있는것"])
+                        .쓸수있는것() if s.꼴 == "rss"])
+        if 새글:
+            원장 = NW.합치기(NW.불러오기(), 새글)
+            NW.저장(원장)
+            NW.저장({"만든때": 받은것["시각"], "창시간": 12.0,
+                    "사건": NW.뭉치기(원장["글"])}, NW.사건길)
+            받은것["뉴스"] = len(새글)
+    except Exception:                                                 # noqa: BLE001
+        pass
+    # 흐름
+    for a in 자산들:
+        try:
+            FL.저장(FL.받기(a))
+            받은것["흐름"].append(a)
+        except Exception:                                             # noqa: BLE001
+            pass
+    return 받은것
+
+
+def 준비(물음: str, 원장: dict = None, 사건들: list = None, 지평들=(3, 7, 14)) -> dict:
+    """원장 · 상황 · 시나리오까지. **모델을 안 부른다** -- 검사에서 이대로 쓴다."""
+    원장 = 원장 if 원장 is not None else LG.불러오기()
+    사건들 = 사건들 if 사건들 is not None else 사건불러오기()
+    상황 = ST.읽기(물음, 사건들)
+    자산 = 상황["자산"] or sorted({r["자산"] for r in LG.쓸만한것(원장)}) or ["BTC"]
+    계열들 = {}
+    for a in 자산:
+        원 = PR.불러오기(a)
+        if 원:
+            계열들[a] = PR.계열(원)
+    유형들 = 상황["지금유형"] or None
+    뭉치 = []
+    for a in 자산:
+        c = 계열들.get(a)
+        if not c:
+            continue
+        for r in LG.찾기(원장, "", a):
+            if 유형들 and r["유형"] not in 유형들:
+                continue
+            if r["지평"] not in 지평들:
+                continue
+            m = SC.뽑기(c, r)
+            if m.get("시나리오"):
+                뭉치.append(m)
+    뭉치.sort(key=lambda m: -max((s["확률"] for s in m["시나리오"]), default=0))
+    장세 = {a: RG.장세(c, PR.불러오기(a)) for a, c in 계열들.items()}
+    흐름 = FL.상태()
+    훑음 = SN.훑기(원장, 계열들, 지평들[min(1, len(지평들) - 1)], 유형들, 흐름)
+
+    # **닮은 과거 -- 이 파이프라인의 새 중심.** "~를 바탕으로 미루어 보면 ~할 것 같다"
+    # 의 앞부분이 여기서 온다. 종목이 있으면 그 코인, 없으면 시장(BTC 대리)으로 본다.
+    from coin import similar as SM
+    닮음자산 = (상황["자산"][0] if 상황["자산"] else "시장")
+    닮음 = {}
+    c닮 = 계열들.get(닮음자산) or 계열들.get("BTC")
+    if c닮 and len(c닮) > 200:
+        try:
+            닮음 = SM.찾기(c닮, 사건들, 흐름, None, 3, None, 닮음자산, 5, 1)
+        except Exception:                                             # noqa: BLE001
+            닮음 = {}
+
+    return {"원장": 원장, "사건들": 사건들, "상황": 상황, "계열들": 계열들,
+            "유형들": 유형들, "시나리오": 뭉치, "장세": 장세, "흐름": 흐름,
+            "훑음": 훑음, "닮음": 닮음, "물음유형": 상황.get("물음유형", "시장")}
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--물음", default="")
+    ap.add_argument("--바퀴", type=int, default=4)
+    ap.add_argument("--지평", default="3,7,14")
+    ap.add_argument("--재기", action="store_true")
+    ap.add_argument("--채우기", action="store_true")
+    ap.add_argument("--처리", action="store_true",
+                    help="수집을 안 기다리고 지금까지 모인 것으로 뭉치기~사건연구만")
+    ap.add_argument("--상황만", action="store_true", help="모델을 안 부르고 무엇이 잡혔는지만")
+    ap.add_argument("--지금끌기", action="store_true",
+                    help="질문 전에 현재 시세·뉴스·흐름을 새로 받는다 (망 필요)")
+    ap.add_argument("--나라", default=None, help="US · US,XX 처럼. 수집을 그 나라만")
+    ap.add_argument("--원장", default="")
+    a = ap.parse_args(argv)
+
+    if a.처리:
+        # **수집을 안 기다리고, 지금까지 모인 것으로 처리만 돈다.**
+        # 수집이 백그라운드로 도는 동안 파이프라인 뒷단이 실제 데이터에서 서는지
+        # 보려고 둔다. 뉴스 수집(1단계)은 건너뛴다.
+        print(f"뭉치기 (지금까지 모인 뉴스로)")
+        NW.main(["--뭉치기"])
+        # **모든 코인.** 사건에 걸린 자산 전부. '시장' 은 BTC 로 대리한다.
+        자산들 = sorted({e["자산"] for e in 사건불러오기()}) or ["시장"]
+        받은것 = [x for x in 자산들 if PR.불러오기(x) or PR.main(["--받기", x]) == 0]
+        if not 받은것:
+            print("가격을 못 받았다 -- python3 coin/price.py --받기 BTC", file=sys.stderr)
+            return 3
+        print(f"흐름")
+        for x in 받은것:
+            try:
+                FL.저장(FL.받기(x))
+            except Exception as e:                                    # noqa: BLE001
+                print(f"  흐름 못 받음 {x}: {type(e).__name__}", file=sys.stderr)
+        print(f"사건 연구")
+        rc = EV.main(["--재기", "--자산", ",".join(받은것)])
+        s = LG.요약(LG.불러오기())
+        print(f"\n원장: 잰것 {s['잰수']} · 쓸만한 것 {s['쓸만한것']} · "
+              f"BH 통과 {s['살아남음']} · 미검증 {s['미검증']}")
+        return rc
+
+    if a.채우기:
+        import os as _os
+        나라 = a.나라 or _os.environ.get("COIN_COUNTRY", "").strip() or ""
+        나라칸 = ["--나라", 나라] if 나라 else []
+        if 나라 and "KR" not in [x.strip().upper() for x in 나라.split(",")]:
+            print(f"  ** 나라가 {나라} 로 걸려 있다 -- 한국·중국·일본·유럽 출처는 안 본다."
+                  "\n     여러 나라를 보려면 COIN_COUNTRY 를 비우거나 --나라 US,KR,CN,JP,EU **",
+                  file=sys.stderr)
+        print(f"1) 뉴스 -- {나라 or '여러 나라'}")
+        NW.main(["--과거", "--부터", "2017-01-01"] + 나라칸)
+        print("2) 뭉치기")
+        NW.main(["--뭉치기"])
+        print("3) 가격")
+        자산들 = sorted({e["자산"] for e in 사건불러오기()}) or ["BTC"]
+        받은것 = []
+        for x in 자산들:
+            if PR.main(["--받기", x]) == 0:
+                받은것.append(x)
+        if not 받은것:
+            # **여기서 멈춘다.** 가격이 없으면 뒤의 모든 걸음이 뜻이 없고,
+            # 그냥 가면 "가격 원장이 없다" 만 남아 왜인지 안 보인다(실측).
+            print("\n**가격을 한 자산도 못 받았다 -- 여기서 멈춘다.**\n"
+                  "  바이낸스가 그 기계에서 막혔을 수 있다(클라우드 IP 를 나라 단위로\n"
+                  "  막는다). 코인베이스 곁길도 안 열렸다는 뜻이다. 확인:\n"
+                  "    python3 coin/price.py --받기 BTC", file=sys.stderr)
+            return 3
+        print("4) 돈 흐름 (포지션 · 온체인 · 심리)")
+        for x in 자산들:
+            FL.저장(FL.받기(x))
+        흐름사건 = FL.사건화(자산=자산들[0])
+        if 흐름사건:
+            import json as _j
+            p = 사건길
+            옛 = _j.loads(p.read_text(encoding="utf-8")) if p.exists() else {"사건": []}
+            본 = {(e["유형"], e["자산"], e["최초"]) for e in 옛["사건"]}
+            옛["사건"] += [e for e in 흐름사건
+                          if (e["유형"], e["자산"], e["최초"]) not in 본]
+            옛["사건"].sort(key=lambda e: e["최초"])
+            p.write_text(_j.dumps(옛, ensure_ascii=False), encoding="utf-8")
+            print(f"   흐름 사건 {len(흐름사건)}개를 뉴스 사건과 **같은 원장에** 넣었다")
+        print("5) 사건 연구")
+        return EV.main(["--재기", "--자산", ",".join(
+            sorted({e["자산"] for e in 사건불러오기()}) or ["BTC"])])
+
+    if a.재기:
+        자산 = ",".join(sorted({e["자산"] for e in 사건불러오기()}) or ["BTC"])
+        rc = EV.main(["--재기", "--자산", 자산])
+        if rc or not a.물음:
+            return rc
+
+    if not a.물음:
+        ap.print_help()
+        return 0
+
+    걸림, 무엇 = ST.걸리나(a.물음)
+    if not 걸림:
+        print("암호화폐 물음이 아니다 -- 이 파이프라인이 맡지 않는다", file=sys.stderr)
+        return 2
+
+    지평들 = tuple(int(v) for v in a.지평.split(",") if v.strip())
+    if a.지금끌기:
+        상황0 = ST.읽기(a.물음, 사건불러오기())
+        자산0 = 상황0["자산"] or ["BTC"]
+        받 = 지금끌기(자산0)
+        print(f"지금 끌어옴 ({받['시각'][:16]}Z): 시세 {받['가격']} · "
+              f"뉴스 {받['뉴스']}건 · 흐름 {받['흐름']}")
+    준 = 준비(a.물음, LG.불러오기(a.원장 or None), None, 지평들)
+    상황 = 준["상황"]
+    print(f"트리거: {', '.join(무엇)}")
+    print(f"자산: {', '.join(상황['자산']) or '-'} · 등락률 {상황['등락률'] or '-'} "
+          f"· 지금 걸린 유형 {', '.join(상황['지금유형']) or '-'}")
+    s = LG.요약(준["원장"])
+    print(f"원장: 잰것 {s['잰수']} · 쓸만한 것 {s['쓸만한것']} · BH 통과 {s['살아남음']} "
+          f"· 미검증 {s['미검증']} · 시나리오 묶음 {len(준['시나리오'])}")
+
+    if not LG.쓸만한것(준["원장"]):
+        print("\n**쓸만한 잰것이 하나도 없다.** 원장부터 채워라:\n"
+              "  python3 coin/run.py --채우기", file=sys.stderr)
+        return 3
+
+    for g in 준["장세"].values():
+        print("\n" + RG.적기(g))
+    본흐름 = {k: v for k, v in 준["흐름"].items() if v.get("백분위") == v.get("백분위")}
+    if 본흐름:
+        print("\n  돈 흐름 (자기 역사의 자리 · **포지션과 지갑을 갈라 적는다**)")
+        for k, v in 본흐름.items():
+            print(f"    {k:<12} {v['날']} {v['값']:>14.6g}  {v['백분위']*100:5.1f}% 자리")
+    else:
+        print("\n  돈 흐름: **못 받았다** -- python3 coin/flow.py --받기")
+    print("\n" + SN.적기(준["훑음"], 전부=a.상황만))
+    if a.상황만:
+        for m in 준["시나리오"][:4]:
+            print("\n" + SC.적기(m))
+        return 0
+
+    from coin import ask as AS
+    try:
+        부르기 = AS.부르는것()
+    except Exception as e:                                            # noqa: BLE001
+        print(f"\n못 돌린다: {e}", file=sys.stderr)
+        return 3
+
+    끝 = LP.돌리기(a.물음, 준["원장"], 부르기, 준["사건들"], 준["계열들"],
+                  준["시나리오"], a.바퀴, 준["유형들"],
+                  준["장세"], 준["흐름"], 준["훑음"],
+                  준.get("닮음"), 준.get("물음유형", "시장"),
+                  준["상황"].get("못답"))
+    print("\n" + LP.적기(끝))
+    if not 끝.통과:
+        return 1
+    print("\n" + "=" * 60 + "\n")
+    print(끝.답)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

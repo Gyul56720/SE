@@ -40,6 +40,21 @@ from seek import reach as RE                                  # noqa: E402
 얼마나적나 = 5
 
 
+def 뿌리(led: dict, pid: str) -> str:
+    """이 문제가 어느 **씨앗**에서 왔나. 계보를 끝까지 거슬러 올라간다."""
+    cur, 본것 = pid, set()
+    while cur and cur != "-" and cur not in 본것:
+        본것.add(cur)
+        rec = PR.get(led, cur)
+        if rec is None:
+            break
+        par = (rec.get("계보") or {}).get("부모")
+        if not par or par == "-":
+            return cur
+        cur = par
+    return cur or pid
+
+
 def 걸음들(led: dict) -> list:
     """(연산자, 깊이, 판정, 왜) -- 계보가 있는 것만."""
     out = []
@@ -116,6 +131,35 @@ def show(led: dict, seed: int = 1) -> int:
     if 수상:
         print(f"  **무작위 짝도 비슷하게 내는 연산자: {', '.join(수상)}** -- 그 도약은"
               " 연산자의 공이 아니라 꼴 바꾸기의 그림자일 수 있다.")
+
+    # ── 갈래별 ────────────────────────────────────────────────────────
+    # **씨앗을 다섯으로 늘린 이유가 이 표다.** 도약이 한 갈래에만 몰리면 연산자 표가
+    # 그 대상에만 맞는 것이고, 여러 갈래에 퍼지면 연산자가 대상에 안 매인다는 뜻이다.
+    갈 = {}
+    for kid in led.get("problems") or []:
+        par_id = (kid.get("계보") or {}).get("부모")
+        if not par_id or par_id == "-":
+            continue
+        par = PR.get(led, par_id)
+        if par is None:
+            continue
+        뿌 = 뿌리(led, kid["id"])
+        r = 갈.setdefault(뿌, {c: 0 for c in 칸})
+        r[RE.pair(par, kid).get("판정", "모름")] += 1
+    if 갈:
+        print(f"\n{'갈래':<12}{'걸음':>5}" + "".join(f"{c:>8}" for c in 칸)
+              + f"{'도약률':>8}  씨앗")
+        for 뿌, r in sorted(갈.items(), key=lambda kv: int(kv[0][1:] or 0)):
+            n = sum(r.values())
+            잰것 = n - r["모름"]
+            씨 = PR.get(led, 뿌) or {}
+            print(f"{뿌:<12}{n:>5}" + "".join(f"{r[c]:>8}" for c in 칸)
+                  + f"{(r['도약'] / 잰것 if 잰것 else 0):>7.0%}"
+                  + f"  {str(씨.get('물음'))[:34]}")
+        낸갈래 = [k for k, r in 갈.items() if r["도약"]]
+        print(f"  **도약이 나온 갈래 {len(낸갈래)}/{len(갈)}개.**"
+              " 한 갈래에만 몰리면 연산자 표가 그 대상에만 맞는 것이고,\n"
+              "  여러 갈래에 퍼지면 연산자가 대상에 안 매인다는 뜻이다.")
 
     print(f"\n{'깊이':<12}{'걸음':>5}" + "".join(f"{c:>8}" for c in 칸))
     깊 = {}

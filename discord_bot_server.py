@@ -34,10 +34,13 @@ load_dotenv()
 from langgraph.checkpoint.memory import MemorySaver  # noqa: E402
 
 import agent_context  # noqa: E402
+import channels  # noqa: E402
 import agent_memory
 import gitsync  # noqa: E402
 import gatekeeper  # noqa: E402
 import main_public  # noqa: E402
+import bot_tools  # noqa: E402
+from novel import discord_cmd  # noqa: E402
 from bot_tools import (  # noqa: E402
     REPO_DIR, run_shell, search_memory, save_memory, build_agent_pool, run_with_fallback_pool,
     register_thread, unregister_thread, request_cancel,
@@ -46,14 +49,17 @@ from bot_tools import (  # noqa: E402
 
 BOT_TOKEN = os.environ["DISCORD_BOT_TOKEN"]
 # 관리자 채널(화이트리스트 있음, DISCORD_ALLOWED_USER_IDS): run_shell 전권 + git sync.
-ADMIN_CHANNEL_ID = int(os.getenv("DISCORD_CHANNEL_ID", "1542081266315427912"))
+# **빈 값으로 죽지 않게** channels.수() 로 읽는다. `int(os.getenv(...))` 는 키가 있고
+# 값이 비면 `""` 를 그대로 넘겨 ValueError 를 내고, 그것이 모듈 읽는 중이라 봇이
+# 통째로 멎는다(실측 2026-09-09, systemd 가 5초마다 되살리기를 13번 되풀이했다).
+ADMIN_CHANNEL_ID = channels.수("DISCORD_CHANNEL_ID", 1542081266315427912)
 # 이 서버(길드)에서 온 것만 받는다. **비우면 안 본다** -- 예전처럼 채널 id 로만 가린다.
 #
 # 채널 id 는 디스코드 전체에서 유일하므로 이것 없이도 남의 서버 글이 섞이지는 않는다.
 # 그런데 공개 채널에는 **사용자 화이트리스트가 없다**(main_public.py). 그러면 남은
 # 경계가 '그 채널인가' 하나뿐이고, 봇이 실수로 다른 서버에 초대되거나 채널 id 를
 # 잘못 넣으면 그 하나가 통째로 없어진다. 길드까지 보면 경계가 둘이 된다.
-GUILD_ID = int(os.getenv("DISCORD_GUILD_ID", "0") or 0)
+GUILD_ID = channels.수("DISCORD_GUILD_ID", 0)
 ADMIN_ALLOWED_USER_IDS = {int(x) for x in os.getenv("DISCORD_ALLOWED_USER_IDS", "").split(",") if x.strip()}
 ADMIN_MODEL_NAME = os.getenv("DISCORD_ADMIN_MODEL", "gemini-3.5-flash-lite")
 # GEMINI_MODEL_POOL을 명시하면 그 모델들만 쓴다(수동 제한용). 비워두면 build_agent_pool이
@@ -140,6 +146,43 @@ _admin_thread_map: dict[str, str] = {}
 # 보고한다"는 뜻이다.
 _active_tasks: dict[str, asyncio.Task] = {}
 _active_prompts: dict[str, str] = {}
+# thread_id 별 자물쇠. 같은 대화에 두 실행이 겹치면 도구 호출과 그 답이 어긋나
+# 대화가 통째로 깨진다(INVALID_CHAT_HISTORY). 방마다 하나씩이라 서로 안 막는다.
+_thread_locks: dict[str, asyncio.Lock] = {}
+
+# **"못 받았다" 는 말이 사실인지 잰다.**
+#
+# 실측 2026-09-09: 공개 채널이 "외부 네트워크 차단 및 보안 정책(403 Forbidden 등)으로
+# 직접적인 데이터 수집이 제한되고 있습니다" 라고 답했다. 사용자가 같은 주소를 VM 에서
+# 직접 돌려 보고 **"안막혔어"** 라고 했다. 즉 **안 해 보고 막혔다고 한 것**이다.
+#
+# 프롬프트에는 이미 적혀 있었다 -- "해 보기 전에 '수단이 없다' 고 하지 마라",
+# "안 되면 실패한 명령과 오류를 그대로 대라"(규칙 4·5). **적혀 있는데 어겼다.**
+# 그러면 규칙을 더 적을 것이 아니라 **말이 사실인지 코드가 재야 한다** -- 이 저장소가
+# 봇의 자동 rebase 에서 배운 것과 같다(규칙은 사람에게 적혀 있었고 그 줄은 봇에게
+# 적혀 있었다).
+#
+# 잡는 것은 **거짓말이 아니라 어긋남**이다: 못 받았다고 하는데 부른 것이 없거나,
+# 부른 것이 다 성공했는데 못 받았다고 하는 것. 답을 지우지는 않는다 -- 옆에 적는다.
+못받았다말 = ("차단", "막혀", "막았", "403", "수집이 제한", "접근이 제한",
+             "긁어올 수 없", "가져올 수 없", "조회할 수 없", "제한되고 있",
+             "직접 접근이 불가", "실시간 데이터를 제공할 수 없")
+
+
+def _말과_한것이_맞나(reply: str, 부른것: list) -> str:
+    """답이 '못 받았다' 고 하는데 실제로 한 것과 어긋나면 그 말을 돌려준다."""
+    if not reply or not any(w in reply for w in 못받았다말):
+        return ""
+    if not 부른것:
+        return ("**[검사] 이 답은 '못 받았다' 고 하는데 이번 턴에 셸을 한 번도 "
+                "안 불렀다.** 막힌 것이 아니라 **안 해 본 것**이다. "
+                "`python3 dig/run.py --url '<주소>'` 를 실제로 돌리고, "
+                "그래도 안 되면 그 명령과 오류를 그대로 붙여라.")
+    실패 = [c for c, ok in 부른것 if not ok]
+    if not 실패:
+        return (f"**[검사] 이 답은 '못 받았다' 고 하는데 부른 {len(부른것)}개가 "
+                "전부 성공했다.** 무엇이 막혔는지 그 출력으로 보여라.")
+    return ""
 
 
 async def _handle_stop(message: discord.Message, thread_id: str) -> None:
@@ -371,11 +414,31 @@ async def on_ready():
     # 조용히 아무 말도 안 듣는데, 그것이 '봇이 죽었다' 와 화면에서 똑같이 보인다.
     # 길드 id 를 채널 자리에 넣는 것이 특히 흔하다 -- 둘 다 같은 꼴의 수라 눈으로는
     # 안 갈리고, 넣어도 아무 오류가 안 난다(그냥 영영 안 맞을 뿐이다).
+    if channels.이상한값:
+        print(f"[SE-agent] **경고: 수로 못 읽은 설정** {channels.이상한값} -- "
+              "기본값으로 돌아갔다. 딴 채널을 보고 있을 수 있다")
     if main_public.PUBLIC_CHANNEL_이상:
         print(f"[SE-agent] **경고: 채널 id 로 못 읽은 값** "
               f"{main_public.PUBLIC_CHANNEL_이상} -- 그 채널은 안 듣는다")
     for cid in [ADMIN_CHANNEL_ID] + list(main_public.PUBLIC_CHANNEL_IDS):
-        if client.get_channel(cid):
+        ch = client.get_channel(cid) or client.get_partial_messageable(cid)
+        if getattr(ch, "guild", None) is None and not hasattr(ch, "name"):
+            # **DM 은 캐시에 없으면 get_channel 이 None 을 준다.** 그것을 '못 찾았다'
+            # 로 찍으면 멀쩡한 관리 채널에 거짓 경고가 난다(실측 2026-09-09).
+            # DM 은 길드가 없으므로 길드 필터와도 무관하다 -- 아무 말 안 한다.
+            continue
+        if ch:
+            # **보이는 것과 듣는 것은 다르다.** 길드 필터가 켜져 있는데 그 채널이
+            # 다른 길드에 있으면, 봇은 채널을 멀쩡히 보면서 그 채널의 메시지를
+            # 전부 버린다 -- `on_message` 가 길드부터 보기 때문이다. 그러면 화면에는
+            # '감시 중' 이라고 찍히는데 실제로는 아무 말도 안 듣는다.
+            # 실측 2026-09-09: 8월에 만든 채널들과 9월에 만든 길드를 같이 켰다.
+            그길드 = getattr(getattr(ch, "guild", None), "id", None)
+            if GUILD_ID and 그길드 != GUILD_ID:
+                print(f"[SE-agent] **경고: 채널 {cid} 는 길드 {그길드} 에 있는데 "
+                      f"DISCORD_GUILD_ID 는 {GUILD_ID} 다.** 채널은 보이지만 "
+                      "**그 채널 메시지는 전부 버려진다.** 길드를 그 값으로 바꾸거나 "
+                      "DISCORD_GUILD_ID 를 비워라")
             continue
         왜 = ("**이건 길드 id 다** -- 채널 자리에 넣으면 영영 안 맞는다"
               if cid == GUILD_ID else
@@ -515,21 +578,47 @@ async def _handle_public_message(message: discord.Message) -> None:
     if not content:
         return
 
-    thread_id = str(message.author.id)
+    # **방마다 다른 대화.** 한때 사람 id 하나였는데, 같은 사람이 두 채널에서 물으면
+    # **같은 LangGraph 스레드 위에서 두 실행이 겹쳤다**(실측 2026-09-09: 10:17:30 에
+    # 채널 2 요청이 dig 를 두 번 부른 뒤, 8초 만에 채널 1 요청이 같은 스레드로 들어와
+    # 채널 2 쪽이 잘렸다). 겹치면 도구 호출과 그 답이 어긋나서
+    # `Found AIMessages with tool_calls that do not have a corresponding ToolMessage`
+    # 가 난다 -- 10:05:19 에 실제로 났다.
+    thread_id = f"{message.channel.id}:{message.author.id}"
+    author_id = str(message.author.id)
+    # **어느 채널에서 온 것인지 남긴다.** 공개 채널이 여럿이 된 뒤로 로그만 보고는
+    # 어느 채널의 요청인지 알 수가 없었다 -- 둘의 성능이 다를 때 견줄 것이 없다.
+    # thread_id 가 채널이 아니라 **사람**이라는 것도 여기 같이 보인다: 같은 사람이
+    # 두 채널에서 물으면 맥락이 이어지고, 다른 사람이 물으면 빈 맥락에서 시작한다.
+    print(f"[public] ch={message.channel.id} author={message.author.id} "
+          f"thread={thread_id}")
 
     if content.lower() == "stop":
         await _handle_stop(message, thread_id)
         return
 
     loop = asyncio.get_running_loop()
+    # **stop 이 줄 서 있는 것도 끊을 수 있게** 자물쇠보다 먼저 등록한다.
     _active_tasks[thread_id] = asyncio.current_task()
     _active_prompts[thread_id] = content
     reply = None
     sync_note = None
     integrity_note = None
     try:
-        async with message.channel.typing():
-            reply = await loop.run_in_executor(None, main_public.run_public_agent, content, thread_id)
+        # **한 대화에서 한 번에 하나만.** 같은 방에 두 물음이 잇달아 오면 예전에는
+        # 둘이 같은 스레드 위에서 동시에 돌았다(실측 10:13:32/10:13:35 -- 3초 사이에
+        # 두 번 들어와 답이 두 번 나갔다). 도구 호출과 답이 어긋나면 그 대화가
+        # 통째로 깨진다. 줄을 세운다 -- 늦어질 뿐 안 깨진다.
+        async with _thread_locks.setdefault(thread_id, asyncio.Lock()):
+            async with message.channel.typing():
+                reply = await loop.run_in_executor(
+                    None, main_public.run_public_agent, content, thread_id, author_id)
+            부른것 = bot_tools.마지막셸.get(thread_id) or []
+            어긋남 = _말과_한것이_맞나(reply, 부른것)
+            if 어긋남:
+                print(f"[public] ch={message.channel.id} **어긋남** "
+                      f"셸 {len(부른것)}회 -- {어긋남[:80]}")
+                reply = f"{reply}\n\n{어긋남}"
             # admin 경로와 같은 이유로 git 단계의 실패가 답변 전달을 막지 못하게 한다.
             sync_note, integrity_note = await _sync_and_note(loop, message, reply)
     except asyncio.CancelledError:
@@ -554,13 +643,44 @@ async def _handle_public_message(message: discord.Message) -> None:
 async def on_message(message: discord.Message):
     if message.author.bot:
         return
-    # **길드가 정해져 있으면 그 길드만.** DM(guild=None)도 여기서 걸린다 -- 공개
-    # 채널에는 사용자 화이트리스트가 없으므로, 경계는 많을수록 낫다.
-    if GUILD_ID and getattr(message.guild, "id", None) != GUILD_ID:
+    # **길드가 정해져 있으면 그 길드만.** 다만 **DM 은 여기서 안 거른다.**
+    #
+    # 실측 2026-09-09: 관리 채널(1542081266315427912)이 서버 채널이 아니라 **DM**
+    # 이었다(`type=1, guild=None`). DM 은 `message.guild` 가 None 이라 이 검사에
+    # 절대 안 맞고, 그래서 길드를 켜는 순간 **관리 채널이 통째로 죽었다.**
+    # 길드 필터는 '남의 서버 글을 안 받겠다' 는 뜻이지 'DM 을 안 받겠다' 가 아니다.
+    #
+    # DM 을 통과시켜도 경계는 안 무너진다 -- 아래에서 채널 id 로 한 번 더 거르고,
+    # 관리 채널은 사용자 화이트리스트까지 있다.
+    if GUILD_ID and message.guild is not None and message.guild.id != GUILD_ID:
         return
-    if message.channel.id == ADMIN_CHANNEL_ID:
+    admin = message.channel.id == ADMIN_CHANNEL_ID
+    public = message.channel.id in main_public.PUBLIC_CHANNEL_IDS
+    if not (admin or public):
+        return
+
+    # **고정 명령이 먼저다 -- 그런데 `!소설` 로 시작하는 것만.**
+    #
+    # 배포판이란 남이 같은 말을 쳤을 때 같은 일이 나는 것이다. 에이전트는 그것을 보장하지
+    # 않는다 -- 매번 다르게 알아듣고, 때로는 저장소를 고친다(실측 2026-09-10 `4cd4473`:
+    # "라노벨 상황극" 요청이 `scripts/drift.sh` 를 20줄짜리 촌극으로 덮었다).
+    #
+    # **셸을 뺏는 것이 아니다.** `discord_cmd.run` 은 모르는 말에 `None` 을 돌려주고,
+    # 그러면 아래로 떨어져 예전 그대로 에이전트(run_shell 전권)가 받는다. VM 을 셸로
+    # 만져야 하는 일은 하나도 안 줄어든다 -- 한 갈래가 그 앞에 생겼을 뿐이다.
+    #
+    # 쓰는 명령(시작 · 이어 · 멈춤 · 보내기)은 **관리 채널의 화이트리스트 안에서만** 듣는다.
+    # 공개 채널은 누구나 치므로 읽는 것만 -- `멈춤` 하나로 밤새 도는 런이 죽는다.
+    may_write = admin and (not ADMIN_ALLOWED_USER_IDS
+                           or message.author.id in ADMIN_ALLOWED_USER_IDS)
+    reply = await asyncio.to_thread(discord_cmd.run, message.content, None, may_write)
+    if reply is not None:
+        await message.reply(reply[:2000])
+        return
+
+    if admin:
         await _handle_admin_message(message)
-    elif message.channel.id in main_public.PUBLIC_CHANNEL_IDS:
+    else:
         await _handle_public_message(message)
 
 
