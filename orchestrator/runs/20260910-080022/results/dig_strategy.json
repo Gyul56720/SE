@@ -1,0 +1,15 @@
+{
+  "strategy": {
+    "targets": [
+      "SupremeCourt_API_Dynamic_Update",
+      "Legislative_Bulletin_Realtime_Crawler"
+    ],
+    "method": "Dynamic retrieval for: hardcoded_precedents, static_subordinate_statutes",
+    "tool_chain": [
+      "extract.py",
+      "fetch.py",
+      "search.py"
+    ],
+    "execution_plan": "Map rigid_points to latest corpus.py vectors and fetch diffs via external API"
+  }
+}
