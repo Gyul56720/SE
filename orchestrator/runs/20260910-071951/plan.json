@@ -8,7 +8,7 @@
       "component": "components/analyze_law.py",
       "verifier": "components/analyze_law_verify.py",
       "deps": [],
-      "status": "failed",
+      "status": "pending",
       "result_ref": "",
       "attempts": [
         {
@@ -54,6 +54,10 @@
         {
           "ts": 1789024827.5649278,
           "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789024973.7515042,
+          "repaired_by": "key-29ca714b:gemini-3.5-flash"
         }
       ]
     },
