@@ -222,6 +222,7 @@ with _tf3.TemporaryDirectory() as _d3:
 import contextlib as _ctx2, io as _io2                               # noqa: E402
 _s = SRC.get("gdelt-en")
 _옛히 = NW._http
+_옛콰이엇 = _os.environ.pop("COIN_QUIET", None)   # 진행 출력을 검사하므로 잠깐 켠다
 try:
     NW._http = lambda url, timeout=25.0: (
         b'{"articles":[{"title":"bitcoin","seendate":"20200101T120000Z","url":"x"}]}')
@@ -234,6 +235,8 @@ try:
     ok(any("여기까지" in l for l in _조각줄), "몇 건 받았는지도 찍는다")
 finally:
     NW._http = _옛히
+    if _옛콰이엇 is not None:
+        _os.environ["COIN_QUIET"] = _옛콰이엇
 
 # 부분 저장이 실제로 불리는가
 _불린 = []

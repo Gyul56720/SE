@@ -67,9 +67,14 @@ def 심볼목록(다시: bool = False, 부르기=None) -> dict:
     return 표
 
 
+# **"시장" 은 지금 BTC 로 대리한다.** 자산이 안 걸린 뉴스(규제·거시)의 사건은 시장
+# 전체에 대한 것이고, 그 대리로 BTC 를 쓴다. 나중에 시총가중 지수를 만들면 여기만 바꾼다.
+시장대리 = "BTC"
+
+
 def 심볼찾기(자산: str, 짝=("USDT", "USD", "BUSD", "USDC")) -> str:
     """자산 이름 -> 거래 심볼. 목록이 없으면 관례(<자산>USDT)로 되돌린다."""
-    a = (자산 or "").upper()
+    a = (시장대리 if 자산 == "시장" else (자산 or "")).upper()
     try:
         표 = 심볼목록()
     except Exception:                                                 # noqa: BLE001
@@ -214,6 +219,8 @@ def 저장(원장: dict, 경로: Path = None) -> Path:
 
 
 def 불러오기(자산: str = "BTC", 경로=None, 간격: str = "") -> dict:
+    if 자산 == "시장":
+        자산 = 시장대리                    # 시장 계열은 BTC 원장으로 읽는다
     p = Path(경로) if 경로 else 길(자산, 간격)
     if not p.exists():
         return {}

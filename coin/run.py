@@ -29,6 +29,7 @@ sys.path.insert(0, str(ROOT))
 
 from coin import event as EV                                          # noqa: E402
 from coin import flow as FL                                           # noqa: E402
+from coin import news as NW                                           # noqa: E402
 from coin import ledger as LG                                         # noqa: E402
 from coin import loop as LP                                           # noqa: E402
 from coin import price as PR                                          # noqa: E402
@@ -86,13 +87,40 @@ def main(argv=None) -> int:
     ap.add_argument("--지평", default="3,7,14")
     ap.add_argument("--재기", action="store_true")
     ap.add_argument("--채우기", action="store_true")
+    ap.add_argument("--처리", action="store_true",
+                    help="수집을 안 기다리고 지금까지 모인 것으로 뭉치기~사건연구만")
     ap.add_argument("--상황만", action="store_true", help="모델을 안 부르고 무엇이 잡혔는지만")
     ap.add_argument("--나라", default=None, help="US · US,XX 처럼. 수집을 그 나라만")
     ap.add_argument("--원장", default="")
     a = ap.parse_args(argv)
 
+    if a.처리:
+        # **수집을 안 기다리고, 지금까지 모인 것으로 처리만 돈다.**
+        # 수집이 백그라운드로 도는 동안 파이프라인 뒷단이 실제 데이터에서 서는지
+        # 보려고 둔다. 뉴스 수집(1단계)은 건너뛴다.
+        print(f"뭉치기 (지금까지 모인 뉴스로)")
+        NW.main(["--뭉치기"])
+        # **모든 코인.** 사건에 걸린 자산 전부. '시장' 은 BTC 로 대리한다.
+        자산들 = sorted({e["자산"] for e in 사건불러오기()}) or ["시장"]
+        받은것 = [x for x in 자산들 if PR.불러오기(x) or PR.main(["--받기", x]) == 0]
+        if not 받은것:
+            print("가격을 못 받았다 -- python3 coin/price.py --받기 BTC", file=sys.stderr)
+            return 3
+        print(f"흐름")
+        for x in 받은것:
+            try:
+                FL.저장(FL.받기(x))
+            except Exception as e:                                    # noqa: BLE001
+                print(f"  흐름 못 받음 {x}: {type(e).__name__}", file=sys.stderr)
+        print(f"사건 연구")
+        rc = EV.main(["--재기", "--자산", ",".join(받은것)])
+        from coin import ledger as LG
+        s = LG.요약(LG.불러오기())
+        print(f"\n원장: 잰것 {s['잰수']} · 쓸만한 것 {s['쓸만한것']} · "
+              f"BH 통과 {s['살아남음']} · 미검증 {s['미검증']}")
+        return rc
+
     if a.채우기:
-        from coin import news as NW
         import os as _os
         나라 = a.나라 or _os.environ.get("COIN_COUNTRY", "").strip() or ""
         나라칸 = ["--나라", 나라] if 나라 else []
