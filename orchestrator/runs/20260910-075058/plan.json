@@ -1,0 +1,41 @@
+{
+  "problem": "분석 과제: SE 저장소의 핵심 시스템(/law, /mathdrift, /coin) 각각의 기술적 한계를 명확히 진단하고, 이를 상호보완적으로 해결할 수 있는 통합 프레임워크를 제안하십시오.\n\n1. 각 시스템별 한계 분석:\n   - /law: 법리 논리 구조의 경직성 및 외부 환경 변화에 대한 대응 속도 한계.\n   - /mathdrift: 수치적 근사와 실세계 복잡계 간의 데이터 수렴성(convergence) 한계.\n   - /coin: 뉴스/시장의 비정형적 노이즈에 대한 예측 모델의 과적합(overfitting) 가능성.\n\n2. RAG(Retrieval-Augmented Generation) 통합 단계 기술:\n   - 각 분석 단계에서 어떤 문맥(Context)을 RAG를 통해 검색하고 활용할지 구체적인 워크플로우를 로그 형태로 출력하십시오.\n\n3. 요구사항: 모든 분석은 현재의 저장소 아키텍처에 근거하여 기술하고, 절대 시스템을 수정하지 마십시오.",
+  "final": "integrated_framework_proposal",
+  "nodes": [
+    {
+      "id": "system_diagnostic",
+      "goal": "Analyze technical limitations of /law, /mathdrift, and /coin systems based on repository architecture.",
+      "component": "components/system_diagnostic.py",
+      "verifier": "components/system_diagnostic_verify.py",
+      "deps": [],
+      "status": "verified",
+      "result_ref": "results/system_diagnostic.json",
+      "attempts": []
+    },
+    {
+      "id": "rag_workflow_integration",
+      "goal": "Design RAG retrieval logic to resolve identified limitations.",
+      "component": "components/rag_workflow_integration.py",
+      "verifier": "components/rag_workflow_integration_verify.py",
+      "deps": [
+        "system_diagnostic"
+      ],
+      "status": "verified",
+      "result_ref": "results/rag_workflow_integration.json",
+      "attempts": []
+    },
+    {
+      "id": "integrated_framework_proposal",
+      "goal": "Synthesize diagnostics and RAG workflows into a unified architecture-safe framework.",
+      "component": "components/integrated_framework_proposal.py",
+      "verifier": "components/integrated_framework_proposal_verify.py",
+      "deps": [
+        "system_diagnostic",
+        "rag_workflow_integration"
+      ],
+      "status": "verified",
+      "result_ref": "results/integrated_framework_proposal.json",
+      "attempts": []
+    }
+  ]
+}

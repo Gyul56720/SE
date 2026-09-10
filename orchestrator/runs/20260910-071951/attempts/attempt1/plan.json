@@ -1,0 +1,427 @@
+{
+  "problem": "/law와 /mathdrift 두 시스템의 아키텍처와 상호작용을 심층 분석하십시오.\n- /law: corpus/ (원천) -> OCR/HWP (처리) -> logic/leet (추론) -> gate/tuner (규제 및 조정)로 이어지는 파이프라인을 분석하십시오.\n- /mathdrift: ops/act (연산) -> terrain (지식 전달) -> measure/prove (검증 및 도약)로 이어지는 자가 학습 루프를 분석하십시오.\n- 상호작용: /law의 구조화된 법리 데이터가 /mathdrift의 학습 공간(Space)을 어떻게 규정하는지 분석하십시오.\n- 요구사항: 리포트의 결론에서 두 시스템이 결합되었을 때의 '논리적 연산 시너지'를 기술하십시오. **절대 수정하지 마십시오.**",
+  "final": "synthesize_report",
+  "nodes": [
+    {
+      "id": "analyze_law",
+      "goal": "Analyze the /law pipeline: corpus/ -> OCR/HWP -> logic/leet -> gate/tuner.",
+      "component": "components/analyze_law.py",
+      "verifier": "components/analyze_law_verify.py",
+      "deps": [],
+      "status": "failed",
+      "result_ref": "",
+      "attempts": [
+        {
+          "ts": 1789024797.7374232,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789024799.365967,
+          "repaired_by": "key-29ca714b:gemini-flash-lite-latest"
+        },
+        {
+          "ts": 1789024800.426935,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789024802.293433,
+          "repaired_by": "key-d87ae5f9:gemini-flash-lite-latest"
+        },
+        {
+          "ts": 1789024810.0881877,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789024811.5220733,
+          "repaired_by": "key-1d299f32:gemini-3.5-flash-lite"
+        },
+        {
+          "ts": 1789024815.4906287,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789024817.913118,
+          "repaired_by": "key-29ca714b:gemini-3.1-flash-lite-preview"
+        },
+        {
+          "ts": 1789024821.1155057,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789024824.0414333,
+          "repaired_by": "key-d87ae5f9:gemini-3.1-flash-lite-preview"
+        },
+        {
+          "ts": 1789024827.5649278,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789024973.7515042,
+          "repaired_by": "key-29ca714b:gemini-3.5-flash"
+        },
+        {
+          "ts": 1789025091.2089176,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789025154.375268,
+          "repaired_by": "key-1d299f32:gemini-3.6-flash"
+        },
+        {
+          "ts": 1789025316.262203,
+          "error": "solve: Pydantic models should inherit from BaseModel, BaseModel cannot be instantiated directly\n\nFor further information visit https://errors.pydantic.dev/2.13/u/base-model-instantiated"
+        },
+        {
+          "ts": 1789025349.2898245,
+          "repaired_by": "key-29ca714b:gemini-3-flash-preview"
+        },
+        {
+          "ts": 1789025391.702625,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789025993.6385276,
+          "repaired_by": "key-29ca714b:gemini-flash-lite-latest"
+        },
+        {
+          "ts": 1789026129.9931571,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789026234.2829642,
+          "repair_rejected": "문법 오류: unexpected indent (<unknown>, line 1)",
+          "model": "key-1d299f32:gemma-4-31b-it"
+        },
+        {
+          "ts": 1789026535.6723661,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789026536.9460974,
+          "repaired_by": "key-29ca714b:gemini-flash-lite-latest"
+        },
+        {
+          "ts": 1789026543.697969,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789026544.9695268,
+          "repaired_by": "key-d87ae5f9:gemini-flash-lite-latest"
+        },
+        {
+          "ts": 1789026545.8217206,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789026551.902451,
+          "repaired_by": "key-1d299f32:gemini-flash-lite-latest"
+        },
+        {
+          "ts": 1789026552.9458098,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789026554.6925042,
+          "repaired_by": "key-29ca714b:gemini-3.1-flash-lite-preview"
+        },
+        {
+          "ts": 1789026559.4919136,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789026563.3865917,
+          "repaired_by": "key-d87ae5f9:gemini-3.1-flash-lite-preview"
+        },
+        {
+          "ts": 1789026564.2602942,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789026568.400181,
+          "repaired_by": "key-1d299f32:gemini-flash-lite-latest"
+        },
+        {
+          "ts": 1789026569.3471868,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789026575.1314642,
+          "repaired_by": "key-29ca714b:gemini-3.1-flash-lite-preview"
+        },
+        {
+          "ts": 1789026576.2570124,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789026578.5517461,
+          "repaired_by": "key-d87ae5f9:gemini-3.1-flash-lite-preview"
+        },
+        {
+          "ts": 1789026580.5394652,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789026586.327012,
+          "repaired_by": "key-1d299f32:gemini-3.1-flash-lite-preview"
+        },
+        {
+          "ts": 1789026587.4336567,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789026588.8704958,
+          "repaired_by": "key-29ca714b:gemini-flash-lite-latest"
+        },
+        {
+          "ts": 1789026592.1127002,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789026596.8811939,
+          "repaired_by": "key-d87ae5f9:gemini-3.1-flash-lite-preview"
+        },
+        {
+          "ts": 1789026598.1083393,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789026600.249574,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789026603.508288,
+          "error": "verify: cannot unpack non-iterable bool object"
+        }
+      ]
+    },
+    {
+      "id": "analyze_mathdrift",
+      "goal": "Analyze the /mathdrift self-learning loop: ops/act -> terrain -> measure/prove.",
+      "component": "components/analyze_mathdrift.py",
+      "verifier": "components/analyze_mathdrift_verify.py",
+      "deps": [],
+      "status": "failed",
+      "result_ref": "",
+      "attempts": [
+        {
+          "ts": 1789024797.7385378,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789024800.4252665,
+          "repaired_by": "key-1d299f32:gemini-flash-lite-latest"
+        },
+        {
+          "ts": 1789024800.4280136,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789024810.086432,
+          "repaired_by": "key-29ca714b:gemini-3.1-flash-lite"
+        },
+        {
+          "ts": 1789024810.089338,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789024815.4894166,
+          "repaired_by": "key-d87ae5f9:gemini-3.1-flash-lite"
+        },
+        {
+          "ts": 1789024815.4913683,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789024821.114306,
+          "repaired_by": "key-1d299f32:gemini-3.1-flash-lite"
+        },
+        {
+          "ts": 1789024821.116268,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789024827.5637662,
+          "repaired_by": "key-1d299f32:gemini-3.1-flash-lite-preview"
+        },
+        {
+          "ts": 1789024827.56572,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789025091.2076876,
+          "repaired_by": "key-d87ae5f9:gemini-3.6-flash"
+        },
+        {
+          "ts": 1789025091.2263515,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789025316.2451823,
+          "repair_rejected": "문법 오류: unterminated string literal (detected at line 27) (<unknown>, line 27)",
+          "model": "key-d87ae5f9:gemini-3-flash-preview"
+        },
+        {
+          "ts": 1789025316.274817,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789025391.70123,
+          "repair_rejected": "문법 오류: unterminated string literal (detected at line 4) (<unknown>, line 4)",
+          "model": "key-1d299f32:gemini-3-flash-preview"
+        },
+        {
+          "ts": 1789025391.7202485,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789026129.9917843,
+          "repair_rejected": "문법 오류: unexpected indent (<unknown>, line 1)",
+          "model": "key-d87ae5f9:gemma-4-31b-it"
+        },
+        {
+          "ts": 1789026130.0090735,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789026535.6713543,
+          "repaired_by": "key-1d299f32:gemini-flash-lite-latest"
+        },
+        {
+          "ts": 1789026535.6732109,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789026543.696594,
+          "repaired_by": "key-1d299f32:gemini-3.5-flash-lite"
+        },
+        {
+          "ts": 1789026543.6988204,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789026545.8204122,
+          "repaired_by": "key-29ca714b:gemini-flash-lite-latest"
+        },
+        {
+          "ts": 1789026545.8225877,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789026552.9444137,
+          "repaired_by": "key-d87ae5f9:gemini-flash-lite-latest"
+        },
+        {
+          "ts": 1789026552.9466622,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789026559.4904048,
+          "repaired_by": "key-1d299f32:gemini-3.5-flash-lite"
+        },
+        {
+          "ts": 1789026559.492845,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789026564.2589169,
+          "repaired_by": "key-29ca714b:gemini-flash-lite-latest"
+        },
+        {
+          "ts": 1789026564.2612772,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789026569.3456953,
+          "repaired_by": "key-d87ae5f9:gemini-flash-lite-latest"
+        },
+        {
+          "ts": 1789026569.3481226,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789026576.2555988,
+          "repaired_by": "key-1d299f32:gemini-3.5-flash-lite"
+        },
+        {
+          "ts": 1789026576.2579756,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789026580.5380673,
+          "repaired_by": "key-29ca714b:gemini-flash-lite-latest"
+        },
+        {
+          "ts": 1789026580.5404243,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789026587.4320128,
+          "repaired_by": "key-d87ae5f9:gemini-flash-lite-latest"
+        },
+        {
+          "ts": 1789026587.434815,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789026592.1112127,
+          "repaired_by": "key-1d299f32:gemini-3.5-flash-lite"
+        },
+        {
+          "ts": 1789026592.1137059,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789026598.1067648,
+          "repaired_by": "key-29ca714b:gemini-flash-lite-latest"
+        },
+        {
+          "ts": 1789026598.1093507,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789026600.2483249,
+          "repaired_by": "key-1d299f32:gemini-flash-lite-latest"
+        },
+        {
+          "ts": 1789026600.2506073,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789026603.5069046,
+          "repaired_by": "key-d87ae5f9:gemini-flash-lite-latest"
+        },
+        {
+          "ts": 1789026603.5093167,
+          "error": "verify: cannot unpack non-iterable bool object"
+        }
+      ]
+    },
+    {
+      "id": "analyze_interaction",
+      "goal": "Analyze how /law structured legal data constrains the /mathdrift learning space.",
+      "component": "components/analyze_interaction.py",
+      "verifier": "components/analyze_interaction_verify.py",
+      "deps": [
+        "analyze_law",
+        "analyze_mathdrift"
+      ],
+      "status": "pending",
+      "result_ref": "",
+      "attempts": []
+    },
+    {
+      "id": "synthesize_report",
+      "goal": "Synthesize the final report detailing the logical operational synergy of combining /law and /mathdrift.",
+      "component": "components/synthesize_report.py",
+      "verifier": "components/synthesize_report_verify.py",
+      "deps": [
+        "analyze_law",
+        "analyze_mathdrift",
+        "analyze_interaction"
+      ],
+      "status": "pending",
+      "result_ref": "",
+      "attempts": []
+    }
+  ]
+}

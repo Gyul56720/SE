@@ -1,0 +1,5 @@
+{
+  "framework_name": "Synchronous Contextual Adaptive Layer (SCAL)",
+  "mechanism": "Inject RAG context as metadata layer without modifying core system logic.",
+  "expected_impact": "Decoupling system logic from external environmental drift."
+}
