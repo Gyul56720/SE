@@ -1,0 +1,59 @@
+{
+  "problem": "MathDrift 최적화 시뮬레이션 수행:\n1. BTC와 XRP의 전체 수익률 데이터를 로드하십시오.\n2. alpha [-1.0, 1.0] 및 beta [-1.0, 1.0] 범위 내에서 MSE를 최소화하는 최적의 파라미터 조합을 정밀 탐색(Grid Search)하십시오.\n3. 각 자산별로 찾아낸 '최적의 연산자 모델'과 그때의 '최소 MSE'를 보고하십시오.\n4. 최적화된 모델을 적용하여 내일(2026-09-10)의 가격을 다시 예측하십시오.\n5. 모든 과정은 시스템 수정 없이 수행되어야 합니다.",
+  "final": "predict_price",
+  "nodes": [
+    {
+      "id": "load_data",
+      "goal": "BTC 및 XRP의 수익률 데이터 로드 및 전처리",
+      "component": "components/load_data.py",
+      "verifier": "components/load_data_verify.py",
+      "deps": [],
+      "status": "verified",
+      "result_ref": "results/load_data.json",
+      "attempts": []
+    },
+    {
+      "id": "grid_search",
+      "goal": "alpha, beta 그리드 탐색을 통한 최소 MSE 모델 도출",
+      "component": "components/grid_search.py",
+      "verifier": "components/grid_search_verify.py",
+      "deps": [
+        "load_data"
+      ],
+      "status": "verified",
+      "result_ref": "results/grid_search.json",
+      "attempts": [
+        {
+          "ts": 1789030743.4375217,
+          "error": "solve: the JSON object must be str, bytes or bytearray, not dict"
+        },
+        {
+          "ts": 1789030747.0527217,
+          "repaired_by": "key-29ca714b:gemini-3.1-flash-lite"
+        }
+      ]
+    },
+    {
+      "id": "predict_price",
+      "goal": "최적 모델을 이용한 2026-09-10 예측",
+      "component": "components/predict_price.py",
+      "verifier": "components/predict_price_verify.py",
+      "deps": [
+        "grid_search",
+        "load_data"
+      ],
+      "status": "verified",
+      "result_ref": "results/predict_price.json",
+      "attempts": [
+        {
+          "ts": 1789030747.071336,
+          "error": "solve: the JSON object must be str, bytes or bytearray, not dict"
+        },
+        {
+          "ts": 1789030748.11206,
+          "repaired_by": "key-1d299f32:gemini-flash-lite-latest"
+        }
+      ]
+    }
+  ]
+}
