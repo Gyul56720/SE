@@ -1,0 +1,10 @@
+{
+  "pid": 624872,
+  "log": "/home/ubuntu/SE/logs/orchestrator/20260910-083149.log",
+  "started_at": 1789029109.7195163,
+  "cmd": [
+    "Chaos-Drift Tracer 시뮬레이션 수행:\n1. coin/corpus/price_BTC.json을 읽어 최근 100개 데이터의 변화율을 추출하십시오.\n2. mathdrift/ops.py의 연산 로직을 참조하여, 이 데이터를 설명할 수 있는 최적의 수학적 모델(연산자 조합)을 시뮬레이션으로 찾으십시오.\n3. 해당 모델이 카오스 공간(변동성)을 얼마나 잘 추적하는지 점수화하고, 다음 도약(Drift)이 필요한 임계점인지를 판단하십시오.\n4. **수정은 절대 하지 말 것.** 모든 과정은 orchestrator 내부 계산으로만 수행하십시오.",
+    "--run-dir",
+    "/home/ubuntu/SE/orchestrator/runs/20260910-083149"
+  ]
+}

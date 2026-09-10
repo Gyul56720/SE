@@ -1,0 +1,50 @@
+{
+  "problem": "Chaos-Drift Tracer 시뮬레이션 수행:\n1. coin/corpus/price_BTC.json을 읽어 최근 100개 데이터의 변화율을 추출하십시오.\n2. mathdrift/ops.py의 연산 로직을 참조하여, 이 데이터를 설명할 수 있는 최적의 수학적 모델(연산자 조합)을 시뮬레이션으로 찾으십시오.\n3. 해당 모델이 카오스 공간(변동성)을 얼마나 잘 추적하는지 점수화하고, 다음 도약(Drift)이 필요한 임계점인지를 판단하십시오.\n4. **수정은 절대 하지 말 것.** 모든 과정은 orchestrator 내부 계산으로만 수행하십시오.",
+  "final": "evaluate_threshold",
+  "nodes": [
+    {
+      "id": "load_data",
+      "goal": "Read recent 100 BTC price data points and compute log returns",
+      "component": "components/load_data.py",
+      "verifier": "components/load_data_verify.py",
+      "deps": [],
+      "status": "verified",
+      "result_ref": "results/load_data.json",
+      "attempts": [
+        {
+          "ts": 1789029115.880463,
+          "error": "solve: unmatched ')' (load_data.py, line 22)"
+        },
+        {
+          "ts": 1789029119.5123158,
+          "repaired_by": "key-29ca714b:gemini-3.1-flash-lite"
+        }
+      ]
+    },
+    {
+      "id": "simulate_model",
+      "goal": "Simulate mathematical operator combinations to find optimal drift tracking model",
+      "component": "components/simulate_model.py",
+      "verifier": "components/simulate_model_verify.py",
+      "deps": [
+        "load_data"
+      ],
+      "status": "verified",
+      "result_ref": "results/simulate_model.json",
+      "attempts": []
+    },
+    {
+      "id": "evaluate_threshold",
+      "goal": "Score chaos space tracking and determine if next drift threshold is reached",
+      "component": "components/evaluate_threshold.py",
+      "verifier": "components/evaluate_threshold_verify.py",
+      "deps": [
+        "load_data",
+        "simulate_model"
+      ],
+      "status": "verified",
+      "result_ref": "results/evaluate_threshold.json",
+      "attempts": []
+    }
+  ]
+}

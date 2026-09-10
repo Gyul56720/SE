@@ -1,0 +1,8 @@
+{
+  "model_name": "AR_Sine_Hybrid",
+  "parameters": [
+    0.5,
+    0.2
+  ],
+  "goodness_score": -5.278567954678679e-06
+}
