@@ -1,0 +1,28 @@
+{
+  "problem": "'시작 만화 라노벨 8000'이라는 키워드로 관련 정보를 검색하거나 생성하는 작업. 사용자가 의도한 바(만화/라노벨 추천, 특정 데이터셋 생성, 혹은 관련 프로젝트)를 파악하고, 필요하다면 해당 주제로 8000자 분량의 콘텐츠를 작성하거나 조사한다. 우선 검색을 통해 해당 키워드의 맥락을 파악하라.",
+  "final": "content_generator",
+  "nodes": [
+    {
+      "id": "keyword_context_analysis",
+      "goal": "키워드 '시작 만화 라노벨 8000'의 맥락을 분석하고 의도 파악",
+      "component": "components/keyword_context_analysis.py",
+      "verifier": "components/keyword_context_analysis_verify.py",
+      "deps": [],
+      "status": "verified",
+      "result_ref": "results/keyword_context_analysis.json",
+      "attempts": []
+    },
+    {
+      "id": "content_generator",
+      "goal": "분석된 맥락을 바탕으로 8000자 분량의 만화/라노벨 가이드 콘텐츠 구조 및 초안 생성",
+      "component": "components/content_generator.py",
+      "verifier": "components/content_generator_verify.py",
+      "deps": [
+        "keyword_context_analysis"
+      ],
+      "status": "verified",
+      "result_ref": "results/content_generator.json",
+      "attempts": []
+    }
+  ]
+}
