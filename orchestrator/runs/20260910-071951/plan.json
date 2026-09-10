@@ -86,6 +86,11 @@
         {
           "ts": 1789026129.9931571,
           "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789026234.2829642,
+          "repair_rejected": "문법 오류: unexpected indent (<unknown>, line 1)",
+          "model": "key-1d299f32:gemma-4-31b-it"
         }
       ]
     },
