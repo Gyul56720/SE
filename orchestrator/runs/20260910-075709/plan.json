@@ -1,0 +1,16 @@
+{
+  "problem": "분석 과제: '/dig' 시스템의 현재 도구(extract, fetch, find, search 등)를 활용하여, 앞서 진단된 세 가지 한계점(law의 경직성, mathdrift의 수렴성, coin의 과적합)을 실질적으로 해결할 수 있는 방안을 분석하십시오.\n\n- 분석 기준:\n    1. 'dig' 각 파일이 제공하는 함수나 기능이 위 한계점들에 대한 데이터 원천(Context)으로 어떻게 기능하는지 기술할 것.\n    2. 만약 현재 'dig' 모듈에 위 한계를 돌파하기 위한 핵심 기능이 존재하지 않는다면, '없음'을 명시하고 어떤 추가 기능이 필요한지 기술할 것.\n- 절대 시스템을 수정하지 말고, 현재 구조에 근거하여 분석하십시오.",
+  "final": "dig_analysis",
+  "nodes": [
+    {
+      "id": "dig_analysis",
+      "goal": "'/dig' 시스템의 도구(extract, fetch, find, search 등)와 세 가지 한계점(law의 경직성, mathdrift의 수렴성, coin의 과적합) 간의 관계를 분석하고 결론 도출",
+      "component": "components/dig_analysis.py",
+      "verifier": "components/dig_analysis_verify.py",
+      "deps": [],
+      "status": "verified",
+      "result_ref": "results/dig_analysis.json",
+      "attempts": []
+    }
+  ]
+}
