@@ -127,7 +127,6 @@ def main(argv=None) -> int:
                 print(f"  흐름 못 받음 {x}: {type(e).__name__}", file=sys.stderr)
         print(f"사건 연구")
         rc = EV.main(["--재기", "--자산", ",".join(받은것)])
-        from coin import ledger as LG
         s = LG.요약(LG.불러오기())
         print(f"\n원장: 잰것 {s['잰수']} · 쓸만한 것 {s['쓸만한것']} · "
               f"BH 통과 {s['살아남음']} · 미검증 {s['미검증']}")
