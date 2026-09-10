@@ -78,6 +78,14 @@
         {
           "ts": 1789025391.702625,
           "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789025993.6385276,
+          "repaired_by": "key-29ca714b:gemini-flash-lite-latest"
+        },
+        {
+          "ts": 1789026129.9931571,
+          "error": "verify: cannot unpack non-iterable bool object"
         }
       ]
     },
@@ -158,6 +166,15 @@
         },
         {
           "ts": 1789025391.7202485,
+          "error": "verify: cannot unpack non-iterable bool object"
+        },
+        {
+          "ts": 1789026129.9917843,
+          "repair_rejected": "문법 오류: unexpected indent (<unknown>, line 1)",
+          "model": "key-d87ae5f9:gemma-4-31b-it"
+        },
+        {
+          "ts": 1789026130.0090735,
           "error": "verify: cannot unpack non-iterable bool object"
         }
       ]
