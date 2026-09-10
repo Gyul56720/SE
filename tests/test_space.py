@@ -18,6 +18,15 @@ sys.path.insert(0, str(REPO))
 from novel import space as SP                                         # noqa: E402
 from novel import beat as BT                                          # noqa: E402
 from novel import flow                                                # noqa: E402
+from novel import style as ST                                         # noqa: E402
+
+# **주변 기본값에 기대지 않는다.** 아래 검사는 집필 프롬프트에 **연출** 칸이 실리는지를
+# 본다. 그런데 `beat.brief` 는 페르소나가 만화 식이면 연출 대신 **컷**을 싣는다
+# (MANGA.md 11절). 그래서 `style.ACTIVE` 의 기본값이 바뀌는 날 이 파일이 무너지고,
+# 무너진 이유가 space 와 아무 상관이 없다 -- 실측 2026-09-10, 봇이 기본값을 manga 로
+# 바꾸자 여기 둘과 test_style 마흔둘이 한꺼번에 빨간불이 됐다. 만화 식 배선은
+# `tests/test_manga.py` 의 [배선] 이 따로 본다.
+ST.use("cider")
 
 fails = []
 
