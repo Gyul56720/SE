@@ -12,11 +12,12 @@
 from __future__ import annotations
 
 from audit import discord_cmd as 감사
+from eval import discord_cmd as 평가
 from graph import discord_cmd as 기억
 from novel import discord_cmd as 소설
 from sandbox import discord_cmd as 실험
 
-명령들 = (소설, 실험, 감사, 기억)
+명령들 = (소설, 실험, 감사, 기억, 평가)
 
 
 def run(text: str, runner=None, allow_write: bool = True) -> "str | None":
