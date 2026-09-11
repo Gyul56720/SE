@@ -93,13 +93,17 @@ print("\n== 배선 ==")
 import subprocess  # noqa: E402
 ok("arxiv" in H.출처들, "출처에 arxiv")
 p = subprocess.run(["python3", "dig/harvest.py", "--관심", "test topic here"], cwd=str(뿌리),
-                   capture_output=True, text=True, timeout=30)
+                   capture_output=True, text=True, timeout=90)
+# **--관심 은 등록만 하지 않는다 -- 그 자리에서 그 주제로 한 바퀴 수집한다**(실측: 등록만 하고
+# 끝내 뇌가 비었었다). 등록은 성공했으니 끝값 0, 보고는 받음/못돌림을 정직히 말한다.
 ok(p.returncode == 0 and ("더했다" in p.stdout or "이미 있다" in p.stdout), "--관심 CLI 가 돈다")
-# 청소: 방금 더한 실제 관심 줄을 되돌린다(저장소 원장 오염 방지)
-_i = 뿌리 / "dig" / "interests.jsonl"
-if _i.is_file():
-    줄들 = [x for x in _i.read_text(encoding="utf-8").splitlines() if "test topic here" not in x]
-    _i.write_text(("\n".join(줄들) + "\n") if 줄들 else "", encoding="utf-8")
+ok(("받음" in p.stdout) or ("못돌림" in p.stdout), f"**--관심 이 그 자리에서 수집까지 한다** (보고: {p.stdout[-80:]!r})")
+# 청소: 방금 더한 실제 관심 줄·수집 원장 줄을 되돌린다(저장소 원장 오염 방지)
+for _rel in ("dig/interests.jsonl", "dig/harvest_ledger.jsonl"):
+    _f = 뿌리 / _rel
+    if _f.is_file():
+        줄들 = [x for x in _f.read_text(encoding="utf-8").splitlines() if "test topic here" not in x]
+        _f.write_text(("\n".join(줄들) + "\n") if 줄들 else "", encoding="utf-8")
 _wf = (뿌리 / ".github" / "workflows" / "deploy-oracle.yml").read_text(encoding="utf-8")
 ok('"dig/**.py"' in _wf, "dig/harvest 가 배포 경로에")
 

@@ -168,6 +168,26 @@ def 턴기록(thread_id: str, messages) -> "list[str]":
           "진행하겠", "알려주시면", "알려 주시면", "요청해 주", "해 드리겠", "해드리겠")
 
 
+# 실측 2026-09-11: 봇이 논문·수집·코드화를 **소개만** 하고 떠넘겼다(도구 0회가 아니라, 값싼
+# 도구 몇 개만 부르고 정작 무거운 일은 안 했다 -- harvest --관심/eval/graph ask 뒤 떠넘김).
+# 그래서 '무거운 일(논문 읽기·코드화·수집 한 바퀴·연구·수리·위임)' 이 하나라도 돌았는지 따로 센다.
+무거운도구 = ("codify_paper", "repair", "delegate", "security_audit", "research", "run_experiment")
+무거운셸 = ("dig/paper", "codify/run", "codify.py", "harvest --논문", "harvest --틈",
+          "harvest.py --말", "research/run", "eval/tasks", "repair/run")
+
+
+def 무거운일(thread_id: str, 셸줄들=None) -> bool:
+    """이번 턴에 진짜 일(논문·코드화·수집·연구·수리)이 하나라도 돌았는가."""
+    names = 마지막도구.get(thread_id) or []
+    if any(n in 무거운도구 for n in names):
+        return True
+    for 줄 in (셸줄들 or []):
+        명령 = 줄[0] if isinstance(줄, (list, tuple)) else str(줄)
+        if any(s in 명령 for s in 무거운셸):
+            return True
+    return False
+
+
 def 떠넘김(reply: str) -> bool:
     """답이 '실행' 대신 '소개·제안·떠넘김' 으로 끝났는가. 도구 0회와 같이 나오면 말만 한 것이다."""
     return any(w in (reply or "") for w in 떠넘김말)
