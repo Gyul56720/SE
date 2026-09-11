@@ -266,7 +266,7 @@ def _말과_한것이_맞나(reply: str, 부른것: list) -> str:
     return ""
 
 
-async def _스스로고치기(channel, 명령: str, 증상: str) -> None:
+async def _스스로고치기(channel, 명령: str, 증상: str, 로그파일: str = "") -> None:
     """배경 일이 터졌을 때 **사람에게 트레이스백만 던지지 않는다** -- repair 로 고쳐 보고 결과를 말한다.
 
     사용자(2026-09-11): "문제가 생기면 능동적으로 해결해서 결과로 오류 메시지를 출력하지 않게 하라.
@@ -276,7 +276,21 @@ async def _스스로고치기(channel, 명령: str, 증상: str) -> None:
     try:
         await channel.send(f"⚠ 터졌다 -- 스스로 고쳐 본다: `{증상[:120]}`")
         from repair import run as _rp
-        r = await asyncio.to_thread(_rp.고치기, 명령, 증상)
+        # **로그 꼬리를 들려 보낸다.** 격리 판에서 재현이 안 되는 사고가 있다 -- 낡은 판이
+        # 배포돼 터진 경우가 그렇다(여기 트리는 최신이라 재현이 안 된다). 그때도 로그에
+        # 적힌 **줄번호**는 진실을 말하고, 진단은 그것으로 '도는 코드가 낡았다' 를 짚는다.
+        증거글 = ""
+        try:
+            if 로그파일:
+                with open(로그파일, "r", encoding="utf-8", errors="replace") as _f:
+                    증거글 = _f.read()[-8000:]
+        except OSError:
+            pass
+        r = await asyncio.to_thread(lambda: _rp.고치기(명령, 증상, 증거글=증거글))
+        진 = (r.get("진단") or {}).get("가설") or []
+        if 진:
+            await channel.send(("🔎 **증거부터 캤다**(모델 안 씀): " + 진[0]["무엇"][:300]
+                                + "\n  -> " + 진[0]["고칠거리"][:300])[:1900])
         if r.get("해결"):
             말 = (f"🔧 **스스로 고쳤다** ({r['바퀴']}바퀴) -- `{증상[:90]}`\n"
                   f"  다시 돌려 보라: `{명령[:120]}`")
@@ -312,7 +326,7 @@ async def _배경지켜보기(channel, 배경: dict, 간격: float = 20.0, 상�
                 if 터졌 and 배경.get("명령"):
                     # **오류를 그대로 내보내고 끝내지 않는다.** 재현 명령과 증상이 손에 있으니
                     # 스스로 고쳐 본다(repair: 실측 -> 제2의 뇌 -> 시도 -> 실측). 사람에겐 결과만.
-                    asyncio.create_task(_스스로고치기(channel, 배경["명령"], 증상))
+                    asyncio.create_task(_스스로고치기(channel, 배경["명령"], 증상, 배경.get("로그", "")))
                 # **결론이 담긴 메모는 저장소에만 있었다** -- 파일로 붙여 사람이 그 자리에서 읽게 한다.
                 for rel in 산출:
                     try:
