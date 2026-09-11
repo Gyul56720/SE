@@ -44,7 +44,7 @@ import dispatch  # noqa: E402
 import keys  # noqa: E402
 import relay  # noqa: E402
 from bot_tools import (  # noqa: E402
-    REPO_DIR, run_shell, run_experiment, read_file, edit_file, delegate, send_email, search_memory, save_memory,
+    REPO_DIR, run_shell, run_experiment, read_file, edit_file, delegate, send_email, repair, set_key, search_memory, save_memory,
     build_agent_pool, run_with_fallback_pool,
     register_thread, unregister_thread, request_cancel,
     orchestrator_solve, orchestrator_status, orchestrator_resume, orchestrator_stop,
@@ -79,7 +79,7 @@ ADMIN_MODEL_CANDIDATES = [ADMIN_MODEL_NAME] + [m for m in _admin_extra_models if
 ADMIN_PRIMARY_KEY = os.getenv("GEMINI_API_KEY_FALLBACK") or os.environ["GEMINI_API_KEY"]
 ADMIN_SECONDARY_KEY = os.environ["GEMINI_API_KEY"] if os.getenv("GEMINI_API_KEY_FALLBACK") else None
 
-ADMIN_TOOLS = [run_shell, run_experiment, read_file, edit_file, delegate, send_email, search_memory, save_memory,
+ADMIN_TOOLS = [run_shell, run_experiment, read_file, edit_file, delegate, send_email, repair, set_key, search_memory, save_memory,
                orchestrator_solve, orchestrator_status, orchestrator_resume,
                orchestrator_stop]
 ADMIN_SYSTEM_PROMPT = (
@@ -138,6 +138,14 @@ ADMIN_SYSTEM_PROMPT = (
     "  · 밖에서 참고 모으기·제2의 뇌 -> `python3 dig/harvest.py --틈` (자가 틀린 자리를 GitHub·HF "
     "에서 채운다) 또는 `--말 '<검색어>'`. 라이선스·문법은 코드가 거른다\n"
     "  · 메일 -> send_email 도구. SMTP 코드를 짜거나 사용법을 설명하지 마라\n"
+    "  · **오류·실패를 만나면 -> repair 도구**(재현 명령 + 오류 문구). 실측→제2의 뇌→시도→실측을 "
+    "코드가 돌리고 실패 이유를 기억에 남긴다. 네가 손으로 세 번 해 보거나 '정책 때문' 이라 하지 마라\n"
+    "\n"
+    "[사람에게 묻기 전에 -- 자가 해결 단계가 먼저다]\n"
+    "순서는 고정이다: (1) repair 도구(재현 명령 + 증상)로 실측→제2의 뇌(dig/harvest + search_memory)"
+    "→시도→실측을 돌린다 (2) 그래도 남으면 '해 본 것' 과 함께 **사람만 할 수 있는 한 가지**만 묻는다. "
+    "(1) 없이 (2) 로 가지 마라. 코드 자가 수정·자가 분석도 같다 -- 저장소를 고치기 전에 search_memory 와 "
+    "delegate 로 제2의 뇌와 저장소를 먼저 읽어라.\n"
     "\n"
     "[수단이 없을 때 -- 설명하고 멈추지 마라]\n"
     "실측 2026-09-11: 메일 부탁에 앱 비밀번호 발급 절차와 smtplib 코드를 설명하고 멈췄고, 다음엔 "
@@ -146,7 +154,9 @@ ADMIN_SYSTEM_PROMPT = (
     "접속 · 재시도). **사람만 할 수 있는 것**(계정 가입 · 2단계 인증 · 앱 비밀번호/토큰 발급 · "
     "결제)은 선택지를 나열하지 말고 **제일 짧은 길 하나를 골라 딱 그 값만** `!열쇠 이름=값` "
     "꼴로 청하라. 받았다고 하면 묻지 말고 바로 이어서 하라. 도구가 '무엇이 없다' 고 돌려주면 "
-    "그 말을 그대로 전하면 된다. **오류 문구(5.7.8 · 403 · refused …)를 받으면 '정책 때문' 이라 "
+    "그 말을 그대로 전하면 된다. **사용자가 채팅으로 값을 주면(비밀번호·토큰·주소) 되묻지 말고 "
+    "set_key 로 즉시 .env 에 적어라** -- 네 대화 기억은 재시작(배포)마다 사라지고 .env 만 남는다 "
+    "(실측 2026-09-11: 준 값을 잊고 다시 물었다). **오류 문구(5.7.8 · 403 · refused …)를 받으면 '정책 때문' 이라 "
     "보고하고 멈추지 마라** -- 진단 도구(`python3 mailer.py --진단`)를 돌리고, `python3 dig/harvest.py "
     "--말 '<오류 문구>'` 로 제2의 뇌에 원인을 모은 뒤 search_memory 로 읽고, 해 본 것과 남은 한 "
     "가지를 적어라.\n"
@@ -580,6 +590,13 @@ async def _handle_admin_message(message: discord.Message) -> None:
             reply = await loop.run_in_executor(None, run_admin_agent, content, thread_id, 중계판)
             if 중계판 is not None:
                 await 중계판.마무리()
+            # 사용자가 채팅으로 준 값을 에이전트가 set_key 로 적었으면 그 메시지는 채널에 남으면
+            # 안 된다 (실측 2026-09-11: 앱 비밀번호가 채널에 그대로 남았다).
+            if "set_key" in (relay.마지막도구.get(thread_id) or []):
+                try:
+                    await message.delete()
+                except Exception as e:                              # noqa: BLE001
+                    print(f"[keys] 값을 적은 메시지를 못 지움: {type(e).__name__}: {e}")
             # 답변은 이미 완성됐다. 이후 단계(git 동기화 등)에서 무슨 일이 나든 답변 전달을
             # 막아서는 안 된다 -- 예전엔 이 블록 전체가 하나의 try 였고 except가
             # CancelledError만 잡아서, git_sync가 던진 예외가 그대로 전파되며 전송 루프에

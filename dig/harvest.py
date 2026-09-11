@@ -312,6 +312,13 @@ def 틈찾기(repo=None) -> "list[dict]":
         t = 깃[pid]
         말 = " ".join(t.get("깃발") or []) or t["물음"][:60]
         out.append({"과제": pid, "갈래": t["과제갈래"], "말": 말})
+    # 고치기 루프가 못 푼 증상도 틈이다 -- 다음 바퀴에 참고가 있으면 풀릴 수 있다.
+    try:
+        from repair import run as RP
+        for 증상 in RP.미해결증상들(repo):
+            out.append({"과제": "고치기", "갈래": "수리", "말": RP._핵심(증상) or 증상[:60]})
+    except Exception:                                             # noqa: BLE001
+        pass
     return out
 
 
