@@ -35,6 +35,7 @@ import agent_memory
 import orchestrator_tool
 import public_agent_files
 import quota_tracker
+from sandbox import run as sandbox_run
 from secret_filter import child_env, redact_secrets
 
 REPO_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -202,6 +203,31 @@ def run_shell(command: str) -> str:
     finally:
         with _active_procs_lock:
             _active_procs.pop(ident, None)
+
+
+@tool
+def run_experiment(command: str, minutes: int = 3) -> str:
+    """실험·검증용 명령을 깨끗한 격리 판에서 돌린다: HEAD 를 임시 워크트리로 꺼내 그 안에서
+    실행하므로 저장소 작업 트리에 아무 흔적이 안 남고, 비밀 환경변수도 지운 채 돈다.
+    코드 실험, 테스트 실행, "고치면 어떻게 되나" 확인은 run_shell 이 아니라 이걸 쓰라 --
+    run_shell 은 진짜 저장소에서 돌아 실수가 그대로 남는다. command 는 bash -lc 로,
+    워크트리 루트에서 실행된다. minutes 는 벽시계 제한(1~10분)."""
+    if agent_context.is_blocked():
+        return "실패: 게스트는 run_experiment 를 사용할 수 없습니다."
+    분 = max(1, min(int(minutes), 10))
+    r = sandbox_run.실행(["bash", "-lc", command], 초=분 * 60, 메모리MB=4096)
+    print(f"[run_experiment] {_current_author.get()} :: "
+          f"{redact_secrets(command)[:160]!r} -> exit={r['끝값']}")
+    with _셸기록_lock:
+        _셸기록.setdefault(threading.get_ident(), []).append(
+            (redact_secrets(command)[:160], r["돌았나"] and r["끝값"] == 0))
+    if not r["돌았나"]:
+        return f"[격리 판을 못 깔았다] {r['메모']}\n{redact_secrets(r['stderr'])}"
+    out = redact_secrets(자르기(r["stdout"], 셸출력_앞, 셸출력_뒤))
+    err = redact_secrets(자르기(r["stderr"], 1500, 2500))
+    메모 = f" -- {r['메모']}" if r["메모"] else ""
+    return (f"[깨끗한 판 {r['판']} exit={r['끝값']}{메모} -- 작업 트리에는 아무 변화 없음]\n"
+            f"STDOUT:\n{out}\nSTDERR:\n{err}")
 
 
 @tool

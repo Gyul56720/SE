@@ -190,3 +190,7 @@ jaso/corpus/잰형식/*.json
 # 한 번 커밋되면 `git rm` 을 해도 히스토리에 남는다. `jaso/keep.py` 의 K001 이
 # 쓰기 전에 `git check-ignore` 로 이 줄을 확인하고, 없으면 한 자도 안 쓴다.
 jaso/corpus/보기/
+
+# sandbox 산출물 -- 실험은 일회용이다. 남길 것은 에이전트가 골라 저장소 자리로 옮겨
+# 커밋한다(그 커밋은 게이트를 탄다). 여기 두면 git_sync 의 add -A 가 휩쓸어 가지 않는다.
+sandbox/out/

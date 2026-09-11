@@ -125,13 +125,17 @@ for _v in C.VERBS:
 print("\n[배선] 봇이 실제로 이것을 부르는가 -- 그리고 **셸 길이 안 끊겼는가**")
 # 봇 자체는 임포트 못 한다(discord · langgraph · .env 가 있어야 한다). 그래서 원문을 본다 --
 # `tests/test_drift_trigger.py` 가 drift.sh 를 보는 것과 같은 방식이다.
+# 배선이 dispatch.py 로 옮겨갔다(고정 명령이 둘이 되면서). 그래서 두 단을 본다:
+# 봇 -> dispatch, dispatch -> 이 모듈. 어느 단이 끊겨도 !소설 이 통째로 죽는데,
+# 그것은 화면에서 '봇이 멍청해졌다' 로만 보인다.
 _bot = (REPO / "discord_bot_server.py").read_text(encoding="utf-8")
-ok("from novel import discord_cmd" in _bot, "봇이 이 모듈을 들여온다")
-ok("asyncio.to_thread(discord_cmd.run" in _bot,
+import dispatch                                                        # noqa: E402
+ok(C in getattr(dispatch, "명령들", ()), "봇이 이 모듈을 들여온다 (dispatch.명령들 안에)")
+ok("asyncio.to_thread(dispatch.run" in _bot,
    "on_message 가 **딴 실에서** 부른다  ← subprocess 가 게이트웨이를 막으면 봇이 통째로 멎는다")
 ok("may_write = admin and (not ADMIN_ALLOWED_USER_IDS" in _bot,
    "쓸 수 있는가를 관리 채널 + 화이트리스트로 정한다")
-ok("discord_cmd.run, message.content, None, may_write" in _bot,
+ok("dispatch.run, message.content, None, may_write" in _bot,
    "그 값을 그대로 넘긴다  ← 계산해 놓고 안 쓰면 아무 뜻이 없다")
 
 # **이것이 이 검사의 핵심이다.** 고정 명령을 앞에 세우면서 에이전트 길을 끊으면,
