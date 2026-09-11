@@ -41,6 +41,7 @@ import gatekeeper  # noqa: E402
 import main_public  # noqa: E402
 import bot_tools  # noqa: E402
 import dispatch  # noqa: E402
+import time  # noqa: E402
 import keys  # noqa: E402
 import relay  # noqa: E402
 from bot_tools import (  # noqa: E402
@@ -137,7 +138,10 @@ ADMIN_SYSTEM_PROMPT = (
     "과제 수 x 2 번 부른다 -- 배경으로)\n"
     "  · 밖에서 참고 모으기·제2의 뇌 -> `python3 dig/harvest.py --틈` (자가 틀린 자리를 GitHub·HF "
     "에서 채운다) 또는 `--말 '<검색어>'`. 라이선스·문법은 코드가 거른다\n"
-    "  · 메일 -> send_email 도구. SMTP 코드를 짜거나 사용법을 설명하지 마라\n"
+    "  · 메일 -> send_email 도구. SMTP 코드를 짜거나 사용법을 설명하지 마라. .env 의 값은 도구가 "
+    "별칭·꼴로 알아서 찾는다 -- '없다' 고 하기 전에 먼저 불러라. '내 메일' 은 to=\"me\"(USER_EMAIL), "
+    "'내 이름' 은 USER_NAME -- 없으면 한 번만 물어 set_key 로 적어라. **초안의 [자리표]는 네가 다 "
+    "채워서 보내라**(dig · search_memory · USER_NAME · 달력). 실존 인물 이름을 지어 서명하지 마라\n"
     "  · **오류·실패를 만나면 -> repair 도구**(재현 명령 + 오류 문구). 실측→제2의 뇌→시도→실측을 "
     "코드가 돌리고 실패 이유를 기억에 남긴다. 네가 손으로 세 번 해 보거나 '정책 때문' 이라 하지 마라\n"
     "\n"
@@ -145,7 +149,10 @@ ADMIN_SYSTEM_PROMPT = (
     "순서는 고정이다: (1) repair 도구(재현 명령 + 증상)로 실측→제2의 뇌(dig/harvest + search_memory)"
     "→시도→실측을 돌린다 (2) 그래도 남으면 '해 본 것' 과 함께 **사람만 할 수 있는 한 가지**만 묻는다. "
     "(1) 없이 (2) 로 가지 마라. 코드 자가 수정·자가 분석도 같다 -- 저장소를 고치기 전에 search_memory 와 "
-    "delegate 로 제2의 뇌와 저장소를 먼저 읽어라.\n"
+    "delegate 로 제2의 뇌와 저장소를 먼저 읽어라. **한 호흡으로 끝내라**: 중간에 멈춰 묻지 말고 네가 "
+    "할 수 있는 것을 전부 스스로 묻고 답하며 끝까지 한 뒤, 사람에게는 **최종 승인 하나**(승인 · "
+    "사람만 가진 값)만 내밀어라. 초안을 보여 주고 '보낼까요?' 로 끊지 마라 -- 다 채워서 보내고 "
+    "보냈다고 보고하라(되돌릴 수 없는 일이면 그때만 승인을 받아라).\n"
     "\n"
     "[수단이 없을 때 -- 설명하고 멈추지 마라]\n"
     "실측 2026-09-11: 메일 부탁에 앱 비밀번호 발급 절차와 smtplib 코드를 설명하고 멈췄고, 다음엔 "
@@ -240,6 +247,24 @@ def _말과_한것이_맞나(reply: str, 부른것: list) -> str:
         return (f"**[검사] 이 답은 '못 받았다' 고 하는데 부른 {len(부른것)}개가 "
                 "전부 성공했다.** 무엇이 막혔는지 그 출력으로 보여라.")
     return ""
+
+
+async def _배경지켜보기(channel, 배경: dict, 간격: float = 20.0, 상한초: float = 6 * 3600) -> None:
+    """pgrep 으로 지켜보다 끝나면 로그 끝을 붙여 알린다. 서버가 죽으면 이 감시도 죽는다 --
+    그때는 `상태` 명령이 남는다."""
+    시작 = time.monotonic()
+    while time.monotonic() - 시작 < 상한초:
+        await asyncio.sleep(간격)
+        if await asyncio.to_thread(relay.배경끝났나, 배경["무엇"]):
+            try:
+                await channel.send(relay.배경보고(배경)[:1900])
+            except Exception as e:                                  # noqa: BLE001
+                print(f"[배경] 끝 알림 실패: {type(e).__name__}: {e}")
+            return
+    try:
+        await channel.send(f"⏳ `{배경['무엇']}` 이 {상한초 / 3600:.0f}시간째 안 끝났다 -- 로그를 보라: {배경['로그']}")
+    except Exception:                                               # noqa: BLE001
+        pass
 
 
 async def _handle_stop(message: discord.Message, thread_id: str) -> None:
@@ -766,6 +791,9 @@ async def on_message(message: discord.Message):
     reply = await asyncio.to_thread(dispatch.run, message.content, None, may_write)
     if reply is not None:
         await message.reply(reply[:2000])
+        # 백그라운드로 띄운 일은 끝나면 알린다 (실측: 끝났는지 알 길이 없었다).
+        for 배경 in relay.배경꺼내기():
+            asyncio.create_task(_배경지켜보기(message.channel, 배경))
         # `!열쇠 이름=값` 은 값이 채널에 남는다 -- 지울 권한이 있으면 지운다. 못 지우면
         # 답이 이미 "이 메시지는 지워라" 고 말했다.
         if message.content.startswith(keys.PREFIX) and "=" in message.content:

@@ -162,6 +162,7 @@ _도구 = (뿌리 / "bot_tools.py").read_text(encoding="utf-8")
 _서버 = (뿌리 / "discord_bot_server.py").read_text(encoding="utf-8")
 ok("def repair(command: str, symptom: str)" in _도구 and "repair_run.고치기" in _도구, "repair 도구가 루프를 부른다")
 ok(_서버.count(" repair,") >= 2 and "repair 도구" in _서버, "ADMIN_TOOLS·임포트·프롬프트에 repair")
+ok("한 호흡으로 끝내라" in _서버 and "최종 승인 하나" in _서버, "**프롬프트: 한 호흡으로, 사람에게는 최종 승인 하나만** (사용자 규정)")
 ok("[사람에게 묻기 전에" in _서버 and "(1) 없이 (2) 로 가지 마라" in _서버,
    "**프롬프트: 사람에게 묻기 전에 자가 해결 단계가 먼저** (사용자 규정)")
 from router import call as R  # noqa: E402

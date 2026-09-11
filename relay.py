@@ -25,6 +25,7 @@ import asyncio
 import re
 import threading
 import time
+from pathlib import Path
 
 PREFIX = "!중계"
 상태 = {"켜짐": False}
@@ -163,6 +164,43 @@ def 실측필요(prompt: str, reply: str) -> bool:
     if any(w in (prompt or "") for w in 실측말):
         return True
     return len(re.findall(r"\d+(?:[.,]\d+)?%?", reply or "")) >= 3
+
+
+# ---------------------------------------------------------------- 배경 일: 끝나면 알린다
+# 실측 2026-09-11: `!평가 과제` · `!수집` · `!고치기` 가 백그라운드로 돌고 나서 끝났다고 아무도
+# 말하지 않았다 -- 사람은 돌고 있는지 끝났는지 알 길이 없었다. 띄운 쪽이 여기 등록하고,
+# 서버가 pgrep 으로 지켜보다 끝나면 채널에 로그 끝을 붙여 보낸다.
+배경들: list = []
+_배경_lock = threading.Lock()
+
+
+def 배경등록(무엇: str, 로그: str, 명령: str = "") -> dict:
+    e = {"무엇": 무엇, "로그": str(로그), "명령": 명령, "시작": time.monotonic()}
+    with _배경_lock:
+        배경들.append(e)
+    return e
+
+
+def 배경꺼내기() -> list:
+    with _배경_lock:
+        out, 배경들[:] = list(배경들), []
+    return out
+
+
+def 배경끝났나(무엇: str) -> bool:
+    import subprocess
+    p = subprocess.run(["pgrep", "-af", 무엇], capture_output=True, text=True)
+    return not [ln for ln in p.stdout.splitlines() if "pgrep" not in ln]
+
+
+def 배경보고(e: dict, 줄수: int = 8) -> str:
+    경과 = time.monotonic() - e["시작"]
+    try:
+        줄들 = Path(e["로그"]).read_text(encoding="utf-8", errors="replace").strip().splitlines()[-줄수:]
+    except OSError:
+        줄들 = ["(로그를 못 읽었다)"]
+    본 = "\n".join(x[:160] for x in 줄들) or "(로그가 비었다)"
+    return f"✅ 끝 `{e['무엇']}` ({경과 / 60:.1f}분)" + (f" -- {e['명령'][:80]}" if e.get("명령") else "") + f"\n```\n{본}\n```"
 
 
 def 등록(판: "중계판 | None") -> None:

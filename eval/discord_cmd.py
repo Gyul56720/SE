@@ -42,8 +42,10 @@ def _배경으로(argv: "list[str]", 로그파일: Path, 무엇: str) -> str:
     살아 = _돌고있나(무엇)
     if not 살아:
         return f"띄웠는데 pgrep 에 안 보인다 -- 시작했다고 말하지 않는다. 로그를 보라: {로그파일}"
+    import relay
+    relay.배경등록(무엇, str(로그파일), " ".join(argv))
     return (f"백그라운드로 시작했다 (pgrep 확인됨): {살아[:100]}\n"
-            f"로그: {로그파일} · 결과는 `{PREFIX} 상태` 로")
+            f"로그: {로그파일} · **끝나면 이 채널에 알린다**")
 
 
 def run(text: str, runner=None, allow_write: bool = True) -> "str | None":
