@@ -71,6 +71,8 @@ try:
     ok("smtplib" not in r["말"] and "가입" not in r["말"] and "또는" not in r["말"], "**코드·가입·선택지가 없다** -- 한 길")
     ok("데몬은 필요 없다" in r["말"], "인프라를 세우라고 하지 않는다")
     ok(mailer.보내기("주소아님", "x", "y", repo=repo)["말"].startswith("받는 주소 꼴"), "주소 꼴 검사")
+    r = mailer.보내기("dbsurd123@gamil.com", "x", "y", repo=repo)
+    ok(not r["보냈나"] and "gmail.com" in r["말"] and "오타" in r["말"], "**gamil.com 같은 흔한 오타는 보내지 않고 되묻는다** (실측)")
 
     print("\n== !열쇠: 적고, 값은 되비치지 않는다 ==")
     답 = keys.run("!열쇠 SMTP_USER=me@gmail.com", runner=lambda n, v: keys.적기(n, v, repo=repo), allow_write=True)
@@ -167,10 +169,14 @@ ok(dispatch.run("!열쇠 A_B=c", allow_write=False) is not None, "!열쇠 가 di
 _도구 = (뿌리 / "bot_tools.py").read_text(encoding="utf-8")
 _서버 = (뿌리 / "discord_bot_server.py").read_text(encoding="utf-8")
 ok("def send_email" in _도구 and "mailer.보내기" in _도구 and "relay.적기(f\"✉" in _도구, "send_email 도구가 mailer 를 부르고 중계한다")
-ok(_서버.count("delegate, send_email, search_memory") == 2, "ADMIN_TOOLS 와 임포트 둘 다에 send_email")
+ok(_서버.count(" send_email,") >= 2, "ADMIN_TOOLS 와 임포트 둘 다에 send_email")
 ok("[수단이 없을 때" in _서버 and "딱 그 값만" in _서버 and "선택지를 나열하지 말고" in _서버,
    "**프롬프트 규칙: 설명하고 멈추지 마라 · 선택지 말고 한 길 · 딱 그 값만**")
 ok("message.delete()" in _서버 and "keys.PREFIX" in _서버, "!열쇠 메시지는 지운다")
+ok("def set_key(name: str, value: str)" in _도구 and "keys.적기(name, value)" in _도구 and _서버.count(" set_key,") >= 2,
+   "**set_key 도구**: 채팅으로 준 값을 되묻지 않고 .env 에 (재시작하면 대화 기억은 사라진다)")
+ok("set_key 로 즉시" in _서버 and "재시작(배포)마다 사라지고" in _서버, "프롬프트가 그 규칙을 말한다")
+ok('"set_key" in (relay.마지막도구.get(thread_id)' in _서버, "set_key 로 적은 턴이면 사용자 메시지를 지운다 (값이 채널에 남았다)")
 _wf = (뿌리 / ".github" / "workflows" / "deploy-oracle.yml").read_text(encoding="utf-8")
 ok('"mailer.py"' in _wf and '"keys.py"' in _wf, "배포 경로에 mailer.py · keys.py")
 p = subprocess.run(["python3", "mailer.py", "--필요"], cwd=str(뿌리), capture_output=True, text=True,

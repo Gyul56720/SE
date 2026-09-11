@@ -42,6 +42,10 @@ from dig.harvest import env값  # noqa: E402
 필요이름들 = ("SMTP_USER", "SMTP_APP_PASSWORD")
 기본 = {"SMTP_HOST": "smtp.gmail.com", "SMTP_PORT": "465"}
 _주소꼴 = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+# 실측 2026-09-11: dbsurd123@gamil.com 으로 보내고 "SUCCESS" 라 보고했다. SMTP 가 받았다는 것과
+# 사람이 받는다는 것은 다르다 -- 흔한 오타는 보내기 전에 되묻는다.
+흔한오타 = {"gamil.com": "gmail.com", "gmial.com": "gmail.com", "gmai.com": "gmail.com", "gmail.co": "gmail.com",
+        "hotmial.com": "hotmail.com", "naver.co": "naver.com", "navr.com": "naver.com", "outlok.com": "outlook.com"}
 원장상대 = "logs/mail_ledger.jsonl"
 
 smtp열기 = None       # 검사 주입: (host, port, 초) -> login(u, p) · send_message(msg) · quit()
@@ -89,6 +93,11 @@ def 보내기(to: str, subject: str, body: str, repo=None, 초: int = 30) -> dic
         return {"보냈나": False, "필요한것": [], "말": f"받는 주소 꼴이 아니다: {to[:40]!r}"}
     if not (subject or "").strip():
         return {"보냈나": False, "필요한것": [], "말": "제목이 비었다"}
+    도메인 = to.rsplit("@", 1)[-1].lower()
+    if 도메인 in 흔한오타:
+        return {"보냈나": False, "필요한것": [],
+                "말": f"받는 주소의 도메인 `{도메인}` 은 흔한 오타다 -- `{흔한오타[도메인]}` 이 맞으면 그쪽으로 다시 불러라. "
+                     "SMTP 가 받아도 사람에겐 안 간다"}
     빠진 = 필요한것(repo)
     if 빠진:
         return {"보냈나": False, "필요한것": 빠진, "말": 묻는말(빠진)}

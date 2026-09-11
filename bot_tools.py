@@ -290,6 +290,41 @@ def edit_file(path: str, old: str, new: str) -> str:
 
 
 @tool
+def set_key(name: str, value: str) -> str:
+    """사용자가 **채팅으로** 준 값(비밀번호 · 토큰 · 주소)을 .env 에 적는다 -- 되묻지 말고 바로.
+    실측 2026-09-11: 사용자가 값을 줬는데 봇이 재시작(배포)되자 잊고 다시 물었다. 대화 기억은
+    재시작하면 사라진다 -- .env 에 적힌 것만 남는다. name 은 대문자·숫자·밑줄(예: SMTP_APP_PASSWORD).
+    값은 답에 되비치지 마라. 적고 나면 막혔던 일을 바로 이어서 하라."""
+    if agent_context.is_blocked():
+        return "실패: 게스트는 set_key 를 사용할 수 없습니다."
+    import keys
+    try:
+        말 = keys.적기(name, value)
+    except ValueError as e:
+        return f"거절: {e}"
+    relay.적기(f"🔑 {name} {말}")
+    return f"`{name}` 을 .env 에 {말} (값은 안 보여준다). 재시작해도 남는다. 이제 막혔던 일을 이어서 하라."
+
+
+@tool
+def repair(command: str, symptom: str) -> str:
+    """문제를 **스스로 푸는 루프**. command 는 재현 명령(끝값 0 이면 해결), symptom 은 오류 문구.
+    코드가 돈다: sandbox 실측 -> 제2의 뇌(dig/harvest + 색인)에서 원인 -> 수리기 제안(패치/명령)
+    -> 격리해서 시도 -> 실측 ... 최대 3바퀴. 해결이면 그렇다고, 아니면 해 본 것과 **사람만 할 수
+    있는 한 가지**를 돌려준다. 실패 이유는 public_agent_memory 에 남아 밤에 장기기억이 된다.
+    오류를 만나면 네가 손으로 세 번 시도하지 말고 이것을 불러라. 몇 분 걸릴 수 있다."""
+    if agent_context.is_blocked():
+        return "실패: 게스트는 repair 를 사용할 수 없습니다."
+    막힘 = toolgate.검사(command)
+    if 막힘:
+        return f"[도구 게이트 차단] {막힘}"
+    from repair import run as repair_run
+    r = repair_run.고치기(command, symptom)
+    relay.적기(f"🔧 repair {'해결' if r['해결'] else '못 풂'} (바퀴 {r['바퀴']}) -- {symptom[:50]}")
+    return repair_run.보고(r)
+
+
+@tool
 def send_email(to: str, subject: str, body: str) -> str:
     """메일을 보낸다 -- SMTP 접속은 여기가 한다. **네가 smtplib 코드를 짜거나 발급 절차를
     설명하지 마라.** 수단(보내는 주소·앱 비밀번호)이 없으면 이 도구가 "무엇이 없고 어떻게
