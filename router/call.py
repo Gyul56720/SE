@@ -53,6 +53,9 @@ sys.path.insert(0, str(REPO))
              "왜": "배우와 같다 -- 양이 많은 산문"},
     "추출기": {"바탕": "gemini", "prefer": "gemma",
              "왜": "gemma 는 계열이 달라 산문(flash)의 분당 한도를 안 깎는다"},
+    "탐색기": {"바탕": "gemini", "prefer": "lite|gemma",
+             "왜": "넓게 읽고 인용만 돌려주는 싼 일. 판정은 코드가 한다(delegate 의 대조) -- "
+                  "비싼 모델이 파일 수십 개를 직접 cat 하는 것이 낭비다"},
     "판정기": {"바탕": "코드",
              "왜": "판정은 모델이 아니라 코드가 한다 -- verify.대조 · gates · exit code"},
 }
@@ -79,14 +82,18 @@ def _클로드기본():
 
 
 _풀 = None
+_풀_lock = __import__("threading").Lock()
 
 
 def _지미니기본(prompt: str, prefer: str, pool_id: str):
-    """orchestrator/llm_pool 그대로. 풀은 한 번만 세운다(모델 목록 조회가 API 호출이다)."""
+    """orchestrator/llm_pool 그대로. 풀은 한 번만 세운다(모델 목록 조회가 API 호출이다).
+    delegate 가 여러 스레드에서 동시에 부르므로 첫 세움을 잠근다 -- 안 그러면 풀을 N벌
+    세우고 모델 목록 조회를 N번 한다."""
     global _풀
-    if _풀 is None:
-        from orchestrator import llm_pool
-        _풀 = (llm_pool, llm_pool.build_pool())
+    with _풀_lock:
+        if _풀 is None:
+            from orchestrator import llm_pool
+            _풀 = (llm_pool, llm_pool.build_pool())
     mod, pool = _풀
     return mod.call(pool, prompt, pool_id=f"router-{pool_id}", prefer=prefer)
 

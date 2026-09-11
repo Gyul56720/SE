@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 from audit import discord_cmd as 감사
+from delegate import discord_cmd as 위임
 from eval import discord_cmd as 평가
 from evolve import discord_cmd as 진화
 from graph import discord_cmd as 기억
@@ -21,7 +22,7 @@ from router import discord_cmd as 경로
 from sandbox import discord_cmd as 실험
 import relay as 중계
 
-명령들 = (소설, 실험, 감사, 기억, 평가, 경로, 목표, 진화, 중계)
+명령들 = (소설, 실험, 감사, 기억, 평가, 경로, 목표, 진화, 중계, 위임)
 
 
 def run(text: str, runner=None, allow_write: bool = True) -> "str | None":

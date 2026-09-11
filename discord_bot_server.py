@@ -43,7 +43,7 @@ import bot_tools  # noqa: E402
 import dispatch  # noqa: E402
 import relay  # noqa: E402
 from bot_tools import (  # noqa: E402
-    REPO_DIR, run_shell, run_experiment, read_file, edit_file, search_memory, save_memory,
+    REPO_DIR, run_shell, run_experiment, read_file, edit_file, delegate, search_memory, save_memory,
     build_agent_pool, run_with_fallback_pool,
     register_thread, unregister_thread, request_cancel,
     orchestrator_solve, orchestrator_status, orchestrator_resume, orchestrator_stop,
@@ -78,7 +78,7 @@ ADMIN_MODEL_CANDIDATES = [ADMIN_MODEL_NAME] + [m for m in _admin_extra_models if
 ADMIN_PRIMARY_KEY = os.getenv("GEMINI_API_KEY_FALLBACK") or os.environ["GEMINI_API_KEY"]
 ADMIN_SECONDARY_KEY = os.environ["GEMINI_API_KEY"] if os.getenv("GEMINI_API_KEY_FALLBACK") else None
 
-ADMIN_TOOLS = [run_shell, run_experiment, read_file, edit_file, search_memory, save_memory,
+ADMIN_TOOLS = [run_shell, run_experiment, read_file, edit_file, delegate, search_memory, save_memory,
                orchestrator_solve, orchestrator_status, orchestrator_resume,
                orchestrator_stop]
 ADMIN_SYSTEM_PROMPT = (
@@ -126,6 +126,8 @@ ADMIN_SYSTEM_PROMPT = (
     "사용자는 `!실험` 처럼 치지 않고 그냥 말로 부탁한다. 그때 **네가 아래를 골라 돌려라.**\n"
     "아래 것을 직접 짜지 마라 -- 이미 있고, 검사가 붙어 있고, 원장에 근거가 남는다.\n"
     "  · 실험·검증·'고치면 어떻게 되나' -> run_experiment 도구 (깨끗한 판, 저장소 안 다침)\n"
+    "  · 파일 여럿을 살펴야 하는 물음 -> delegate 도구 (싼 탐색기에 동시에 던지고 원문에 "
+    "실재하는 인용만 받는다). 네가 cat 으로 수십 개를 읽지 마라 -- 비싸고 느리다\n"
     "  · 바꾼 것이 성한가 -> `python3 audit/run.py` (바뀐 파일을 붙드는 검사만 골라 돌린다)\n"
     "  · 기억·전에 뭐라고 했나 -> search_memory 먼저. 간추리기는 `python3 graph/night.py`, "
     "깃발 조회는 `python3 graph/ask.py --말 '<말>'`, 요지문은 graph/digest.md\n"
