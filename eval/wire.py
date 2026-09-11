@@ -55,10 +55,12 @@ sys.path.insert(0, str(REPO))
      (0,), "게이트 전부가 통과하는가 (승격 경로의 바탕)"),
     ("기관:toolgate", ["python3", "toolgate.py", "rm -rf gates/"],
      (1,), "도구 게이트가 게이트 삭제를 **차단**하는가 (끝값 1 이 옳다)"),
+    ("기관:delegate", ["python3", "delegate/run.py", "--범위", "graph/*.py", "--쪼개기만"],
+     (0,), "위임의 쪼개기가 도는가 (호출 0회)"),
 ]
 
 # 고정 명령: 이것을 치면 에이전트로 안 떨어지고 봇이 받아야 한다.
-고정명령들 = ("!소설", "!실험", "!감사", "!기억", "!평가", "!경로", "!목표", "!진화", "!중계")
+고정명령들 = ("!소설", "!실험", "!감사", "!기억", "!평가", "!경로", "!목표", "!진화", "!중계", "!위임")
 
 원장들 = ("graph/ledger.jsonl", "graph/edges.jsonl", "eval/ledger.jsonl",
         "router/ledger.jsonl", "intent/ledger.jsonl")

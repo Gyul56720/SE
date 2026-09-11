@@ -290,6 +290,30 @@ def edit_file(path: str, old: str, new: str) -> str:
 
 
 @tool
+def delegate(question: str, scope: str) -> str:
+    """파일 여럿을 살펴야 하는 물음을 싼 탐색기에 **동시에** 던지고, 원문에 실재하는 인용만
+    받는다. scope 는 글롭(띄어쓰기로 여럿: "graph/*.py router/*.py"). 파일 수십 개를 네가
+    cat 으로 다 읽지 마라 -- 이걸로 던져서 파일:줄 인용을 받은 뒤, 필요한 자리만 read_file
+    로 봐라. 인용은 코드가 파일과 대조해서 지어낸 것은 버리고 퇴짜로 센다. 결과에 '퇴짜' 가
+    많으면 탐색기가 헛것을 봤다는 뜻이니 범위를 좁혀라."""
+    if agent_context.is_blocked():
+        return "실패: 게스트는 delegate 를 사용할 수 없습니다."
+    from delegate import run as delegate_run
+    범위들 = [g for g in (scope or "").split() if g and not g.startswith("/") and ".." not in g]
+    if not 범위들:
+        return "[위임 거절] scope 는 저장소 안 글롭이어야 한다 (예: 'graph/*.py')"
+    try:
+        r = delegate_run.위임(question, 범위들)
+    except Exception as e:                                        # noqa: BLE001
+        relay.적기(f"⇉ 위임 실패 -- {type(e).__name__}: {str(e)[:60]}")
+        return f"[위임 실패] {type(e).__name__}: {str(e)[:300]}"
+    relay.적기(f"⇉ 위임 {r['묶음']}묶음/{r['파일']}파일 동시 → 채택 {len(r['채택'])} · 퇴짜 {len(r['퇴짜'])} ({r['걸린초']}s)")
+    with _셸기록_lock:
+        _셸기록.setdefault(threading.get_ident(), []).append((f"delegate {scope}"[:160], bool(r["채택"])))
+    return redact_secrets(자르기(delegate_run.보고(r, question), 셸출력_앞, 셸출력_뒤))
+
+
+@tool
 def search_memory(query: str) -> str:
     """저장된 장기 기억에서 query와 관련된 내용을 찾는다.
 
