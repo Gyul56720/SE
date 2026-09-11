@@ -307,6 +307,21 @@ def set_key(name: str, value: str) -> str:
 
 
 @tool
+def security_audit(deep: bool = False) -> str:
+    """**이 호스트 자신**의 보안 상태를 읽기 전용으로 점검한다 -- 열린 포트 · 파일/키 권한 · SUID ·
+    세계 쓰기 · 위험 계정 · 방화벽. 판정은 코드가 규칙으로 낸다(네가 '안전해 보인다' 고 말하지 마라).
+    deep=True 면 dig 수집 + search_memory 대조까지. **남의 기계를 공격하거나 익스플로잇을 실행하지
+    않는다** -- 읽기뿐이다. 사용자 노트북을 점검하려면 그 노트북에서 이 봇을 돌려야 한다."""
+    if agent_context.is_blocked():
+        return "실패: 게스트는 security_audit 를 사용할 수 없습니다."
+    from secaudit import run as sec
+    r = sec.점검하기(뇌=bool(deep))
+    s = r["셈"]
+    relay.적기(f"🔒 점검 높음 {s['높음']} · 중간 {s['중간']} · 못잼 {s['못잼']}")
+    return sec.보고(r)
+
+
+@tool
 def repair(command: str, symptom: str) -> str:
     """문제를 **스스로 푸는 루프**. command 는 재현 명령(끝값 0 이면 해결), symptom 은 오류 문구.
     코드가 돈다: sandbox 실측 -> 제2의 뇌(dig/harvest + 색인)에서 원인 -> 수리기 제안(패치/명령)

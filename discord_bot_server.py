@@ -45,7 +45,7 @@ import time  # noqa: E402
 import keys  # noqa: E402
 import relay  # noqa: E402
 from bot_tools import (  # noqa: E402
-    REPO_DIR, run_shell, run_experiment, read_file, edit_file, delegate, send_email, repair, set_key, search_memory, save_memory,
+    REPO_DIR, run_shell, run_experiment, read_file, edit_file, delegate, send_email, repair, set_key, security_audit, search_memory, save_memory,
     build_agent_pool, run_with_fallback_pool,
     register_thread, unregister_thread, request_cancel,
     orchestrator_solve, orchestrator_status, orchestrator_resume, orchestrator_stop,
@@ -80,7 +80,7 @@ ADMIN_MODEL_CANDIDATES = [ADMIN_MODEL_NAME] + [m for m in _admin_extra_models if
 ADMIN_PRIMARY_KEY = os.getenv("GEMINI_API_KEY_FALLBACK") or os.environ["GEMINI_API_KEY"]
 ADMIN_SECONDARY_KEY = os.environ["GEMINI_API_KEY"] if os.getenv("GEMINI_API_KEY_FALLBACK") else None
 
-ADMIN_TOOLS = [run_shell, run_experiment, read_file, edit_file, delegate, send_email, repair, set_key, search_memory, save_memory,
+ADMIN_TOOLS = [run_shell, run_experiment, read_file, edit_file, delegate, send_email, repair, set_key, security_audit, search_memory, save_memory,
                orchestrator_solve, orchestrator_status, orchestrator_resume,
                orchestrator_stop]
 ADMIN_SYSTEM_PROMPT = (
@@ -144,6 +144,8 @@ ADMIN_SYSTEM_PROMPT = (
     "채워서 보내라**(dig · search_memory · USER_NAME · 달력). 실존 인물 이름을 지어 서명하지 마라\n"
     "  · **오류·실패를 만나면 -> repair 도구**(재현 명령 + 오류 문구). 실측→제2의 뇌→시도→실측을 "
     "코드가 돌리고 실패 이유를 기억에 남긴다. 네가 손으로 세 번 해 보거나 '정책 때문' 이라 하지 마라\n"
+    "  · 보안 점검·취약점 -> security_audit 도구(이 호스트 자신만 읽기 전용). 판정은 코드가 낸다 -- "
+    "네가 '안전해 보인다' 고 말하지 마라. 남의 기계를 공격하거나 익스플로잇을 실행하지 마라\n"
     "\n"
     "[사람에게 묻기 전에 -- 자가 해결 단계가 먼저다]\n"
     "순서는 고정이다: (1) repair 도구(재현 명령 + 증상)로 실측→제2의 뇌(dig/harvest + search_memory)"
