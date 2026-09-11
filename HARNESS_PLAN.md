@@ -139,7 +139,16 @@ thinking 토큰 자체는 쓴다 — 싼 초안 작성 도구로. 다만 **채�
 - 디스코드 `!평가` / `!평가 전부`(setsid 배경, pgrep 확인 뒤에만 "시작했다") /
   `!평가 상태`.
 
-### 4단계. `/router` — novel의 분업을 밖으로
+### 4단계. `/router` — novel의 분업을 밖으로 **(지어짐: router/)**
+
+지어진 것(2026-09-11): `router/call.py` 의 닫힌 역할표(디렉터=claude→gemini 강등,
+배우·화자=gemini 풀, 추출기=gemma 먼저, **판정기=모델 거절**) — 호출층은 한 줄도
+새로 안 짰다(Gemini 는 `orchestrator/llm_pool.call`, Claude 는
+`novel/drive.claude_code_llm`, 강등·탐침은 overnight.Director 의 수학). 호출마다
+비용 원장(ledger.jsonl)에 남고 `채택표시()` 가 채택 여부를 잇는다.
+`router/check.py` 가 심판(물러섬 태반 · 채택률 역전)이고 eval 의 `경로` 갈래로
+돈다. `!경로 / 요약 / 심판`. 남은 일: novel 이 이 표를 부르게 옮기고
+overnight.Director 사본을 지우는 것, thinking 예산 칸.
 
 - `router/roles.py`: 작업 등급표 — 디렉터급(무엇을 할 것인가, 호출 적고 토큰 작음) →
   Claude / 배우·추출기급(토큰 대부분) → Gemini / 판정 → **모델이 아니라 코드.**

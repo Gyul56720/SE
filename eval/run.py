@@ -44,6 +44,7 @@ REPO = Path(__file__).resolve().parent.parent
     {"이름": "게이트", "명령": ["python3", "gatekeeper.py"], "초": 300, "무게": "빠름"},
     {"이름": "답", "명령": ["python3", "eval/answers.py"], "초": 180, "무게": "빠름"},
     {"이름": "lol기준선", "명령": ["python3", "lol/score.py"], "초": 300, "무게": "빠름"},
+    {"이름": "경로", "명령": ["python3", "router/check.py"], "초": 60, "무게": "빠름"},
     {"이름": "검사전부", "명령": ["bash", "scripts/tests.sh"], "초": 1500, "무게": "느림"},
     {"이름": "래칫", "명령": ["python3", "scripts/capability_ratchet.py"],
      "초": 900, "무게": "느림"},
