@@ -117,6 +117,47 @@ finally:
     _불.write_text(_원, encoding="utf-8")
 ok(_불.read_text(encoding="utf-8") == _원 and not E.위험들(뿌리), "되돌렸고 다시 위험 없음")
 
+print("\n== 부르는 쪽을 고친다: `python3 pkg/x.py` -> `python3 -m pkg.x` ==")
+# **왜 부르는 쪽인가.** 실측 2026-09-11: 파일 안에 뿌리 넣는 줄을 적어 머지·배포했는데도
+# VM 이 같은 줄에서 또 죽었다 -- 서버가 든 판이 낡았으면 그 줄이 거기 없다. 고침이 코드
+# 안에 있으면 **그 코드가 도착해야만** 듣는다. `-m` 은 불리는 파일이 어떤 판이든 산다.
+ok(E.모듈꼴(["python3", "improve/run.py", "--부탁", "x"], 뿌리)
+   == (["python3", "-m", "improve.run", "--부탁", "x"], "improve.run"), "꾸러미 진입점을 모듈 꼴로")
+ok(E.모듈꼴(["python3", "gatekeeper.py"], 뿌리) == (["python3", "gatekeeper.py"], "gatekeeper.py"),
+   "**뿌리 파일은 안 바꾼다** -- 거기선 스크립트 디렉터리가 곧 뿌리다")
+ok(E.모듈꼴(["python3", "-m", "improve.run", "--틈만"], 뿌리)
+   == (["python3", "-m", "improve.run", "--틈만"], "improve.run"), "이미 모듈 꼴이면 그대로")
+ok(E.모듈꼴(["bash", "scripts/precheck.sh"], 뿌리) == (["bash", "scripts/precheck.sh"], "scripts/precheck.sh"),
+   "파이썬이 아니면 안 건드린다")
+ok(E.모듈꼴(["python3", "없는곳/없다.py"], 뿌리) == (["python3", "없는곳/없다.py"], "없는곳/없다.py"),
+   "없는 파일은 안 건드린다")
+
+_ed = (뿌리 / "eval" / "discord_cmd.py").read_text(encoding="utf-8")
+ok("entrypoints.모듈꼴" in _ed and "_돌고있나(찾을것)" in _ed,
+   "**배경 실행이 한 자리에서 모듈 꼴로 바꾼다** -- 모든 명령이 덮인다")
+
+print("\n  -- 실측: 뿌리 넣는 줄이 없는 낡은 판도 `-m` 이면 산다 --")
+_낡 = Path(tempfile.mkdtemp(prefix="test-낡-"))
+try:
+    (_낡 / "plan").mkdir(); (_낡 / "plan" / "__init__.py").write_text("", encoding="utf-8")
+    (_낡 / "plan" / "store.py").write_text("값 = 7\n", encoding="utf-8")
+    (_낡 / "improve").mkdir(); (_낡 / "improve" / "__init__.py").write_text("", encoding="utf-8")
+    # 고치기 전 판 그대로 -- sys.path 를 건드리는 줄이 **없다**
+    (_낡 / "improve" / "run.py").write_text(
+        'def 하기():\n    from plan import store\n    return store.값\n\n\n'
+        'if __name__ == "__main__":\n    print("값=", 하기())\n', encoding="utf-8")
+    밖2 = tempfile.mkdtemp(prefix="test-밖2-")
+    스 = subprocess.run([sys.executable, "improve/run.py"], cwd=str(_낡), capture_output=True, text=True, timeout=60)
+    ok("No module named 'plan'" in (스.stdout + 스.stderr),
+       "스크립트 꼴은 **낡은 판에서 죽는다**(사고의 재현)")
+    argv, _ = E.모듈꼴([sys.executable, "improve/run.py"], _낡)
+    모 = subprocess.run(argv, cwd=str(_낡), capture_output=True, text=True, timeout=60)
+    ok(모.returncode == 0 and "값= 7" in 모.stdout,
+       f"**같은 낡은 파일이 `-m` 으로는 산다** ({(모.stdout + 모.stderr).strip()[:60]})")
+    shutil.rmtree(밖2, ignore_errors=True)
+finally:
+    shutil.rmtree(_낡, ignore_errors=True)
+
 print("\n== CLI · 배선 ==")
 p = subprocess.run(["python3", "entrypoints.py", "--위험만"], cwd=str(뿌리), capture_output=True, text=True, timeout=180)
 ok(p.returncode == 0 and "위험 0개" in p.stdout, f"--위험만 은 위험이 없으면 끝값 0 ({p.stdout.strip()[-30:]})")

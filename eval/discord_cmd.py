@@ -31,15 +31,23 @@ def _돌고있나(무엇: str = "eval/run.py") -> str:
 
 
 def _배경으로(argv: "list[str]", 로그파일: Path, 무엇: str) -> str:
-    """새 세션으로 떼어 띄우고 pgrep 으로 살아 있는지 본 뒤에만 '시작했다' 고 말한다."""
-    살아 = _돌고있나(무엇)
+    """새 세션으로 떼어 띄우고 pgrep 으로 살아 있는지 본 뒤에만 '시작했다' 고 말한다.
+
+    **꾸러미 진입점은 `-m` 으로 띄운다.** `python3 improve/run.py` 는 sys.path[0] 이
+    `improve/` 라서, 그 파일이 함수 안에서 `from plan import …` 를 밟는 순간 죽는다.
+    파일 안에 뿌리를 넣는 줄을 적어도 **서버가 든 판이 낡았으면 그 줄이 거기 없다**
+    (실측 2026-09-11: 고쳐 머지·배포했는데 VM 이 같은 줄에서 또 죽었다). 부르는 쪽을
+    고치면 불리는 파일이 어떤 판이든 산다 -- 여기 한 줄이 모든 명령을 덮는다."""
+    import entrypoints
+    argv, 찾을것 = entrypoints.모듈꼴(argv, REPO)
+    살아 = _돌고있나(찾을것)
     if 살아:
         return f"이미 돌고 있다 -- 또 띄우면 같은 원장을 서로 덮는다.\n{살아[:120]}"
     로그파일.parent.mkdir(parents=True, exist_ok=True)
     with open(로그파일, "ab") as f:
         subprocess.Popen(argv, cwd=str(REPO), stdout=f, stderr=subprocess.STDOUT,
                          stdin=subprocess.DEVNULL, start_new_session=True)
-    살아 = _돌고있나(무엇)
+    살아 = _돌고있나(찾을것)
     if not 살아:
         return f"띄웠는데 pgrep 에 안 보인다 -- 시작했다고 말하지 않는다. 로그를 보라: {로그파일}"
     import relay

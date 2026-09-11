@@ -172,6 +172,51 @@ def 위험들(repo=None) -> "list[dict]":
     return out
 
 
+def 모듈꼴(argv: "list[str]", repo=None) -> "tuple[list[str], str]":
+    """`python3 pkg/x.py …` 를 `python3 -m pkg.x …` 로 바꾼다. (바꾼 argv, pgrep 으로 찾을 말)
+
+    **왜 부르는 쪽을 고치는가.** 파일 안에 뿌리를 넣는 줄을 적는 것은 그 파일 하나만
+    고친다. 그런데 실측 2026-09-11(VM): 고친 파일을 머지·배포했는데도 같은 자리에서
+    또 죽었다 -- 서버가 든 판이 낡았으면 그 줄이 거기 없기 때문이다. 고침이 코드 안에
+    있으면 **그 코드가 도착해야만** 듣는다.
+
+    `-m` 은 다르다. sys.path[0] 이 cwd(뿌리)가 되므로 **불리는 파일이 낡았든 말든**
+    `from plan import …` 가 산다. 부르는 쪽 한 줄이 모든 판을 덮는다.
+
+    뿌리에 있는 파일은 안 바꾼다 -- 거기선 스크립트 디렉터리가 곧 뿌리라 본디 안전하고,
+    `-m` 으로 바꾸면 되레 cwd 에 매이게 된다."""
+    if len(argv) < 2 or "python" not in Path(argv[0]).name:
+        return list(argv), (argv[1] if len(argv) > 1 else "")
+    대상 = argv[1]
+    if 대상 == "-m":                      # 이미 모듈 꼴이면 그대로 둔다
+        return list(argv), (argv[2] if len(argv) > 2 else "")
+    if not 대상.endswith(".py") or "/" not in 대상:
+        return list(argv), 대상
+    repo = Path(repo or REPO)
+    파일 = repo / 대상
+    if not 파일.is_file():
+        return list(argv), 대상
+    모듈 = 대상[:-3].replace("/", ".")
+    return [argv[0], "-m", 모듈] + list(argv[2:]), 모듈
+
+
+def 스크립트꼴호출(repo=None) -> "list[dict]":
+    """꾸러미 진입점을 **스크립트 꼴로** 부르는 자리 전부. 뿌리를 넣었든 안 넣었든 적는다.
+
+    `위험들()` 은 지금 당장 죽는 것만 짚는다. 이것은 **죽을 자리**를 짚는다 -- 파일이
+    낡은 판으로 배포되면 그 줄이 없을 수 있으므로."""
+    repo = Path(repo or REPO)
+    부름 = 부르는자리(repo)
+    out = []
+    for e in 진입점들(repo):
+        if not e["꾸러미"]:
+            continue
+        곳 = 부름["스크립트"].get(e["파일"], [])
+        if 곳:
+            out.append({"파일": e["파일"], "모듈": e["모듈"], "부른곳": 곳})
+    return out
+
+
 def 안밟은깃발(repo=None) -> "list[dict]":
     """선언은 됐는데 저장소 어디에서도 안 불리는 깃발 -- **아무도 안 밟아 본 갈래**다.
     빨간불로 치지는 않는다(사람이 손으로 치는 깃발이 많다). 자가개선이 볼 거리로 센다."""

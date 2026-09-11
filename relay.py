@@ -234,6 +234,22 @@ def 배경끝났나(무엇: str) -> bool:
     return not [ln for ln in p.stdout.splitlines() if "pgrep" not in ln]
 
 
+def 어느판(repo=None) -> str:
+    """지금 도는 코드가 **어느 커밋인가.** 짧게, 못 알면 빈 말.
+
+    왜: 실측 2026-09-11, 같은 오류가 두 번 왔을 때 '고침이 아직 안 왔나' 인지 '고침이
+    틀렸나' 인지 **로그만으로는 못 갈랐다.** 트레이스백의 줄번호를 옛 커밋과 맞춰 보고서야
+    알았다. 판을 한 줄 적어 두면 그 한 바퀴를 안 버린다."""
+    import subprocess
+    try:
+        p = subprocess.run(["git", "-C", str(repo or Path(__file__).resolve().parent),
+                            "rev-parse", "--short", "HEAD"],
+                           capture_output=True, text=True, timeout=10)
+        return p.stdout.strip() if p.returncode == 0 else ""
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
 def 배경보고(e: dict, 줄수: int = 8) -> str:
     경과 = time.monotonic() - e["시작"]
     try:
@@ -241,7 +257,9 @@ def 배경보고(e: dict, 줄수: int = 8) -> str:
     except OSError:
         줄들 = ["(로그를 못 읽었다)"]
     본 = "\n".join(x[:160] for x in 줄들) or "(로그가 비었다)"
-    return f"✅ 끝 `{e['무엇']}` ({경과 / 60:.1f}분)" + (f" -- {e['명령'][:80]}" if e.get("명령") else "") + f"\n```\n{본}\n```"
+    판 = 어느판()
+    return (f"✅ 끝 `{e['무엇']}` ({경과 / 60:.1f}분" + (f" · 판 {판}" if 판 else "") + ")"
+            + (f" -- {e['명령'][:80]}" if e.get("명령") else "") + f"\n```\n{본}\n```")
 
 
 산출물꼴 = re.compile(r"(public_agent_memory/[^\s`'\"]+\.md|codify/out/[^\s`'\"]+\.py|[\w./-]+/ledger\.jsonl)")
