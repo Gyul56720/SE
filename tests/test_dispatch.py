@@ -113,7 +113,9 @@ _적혀야 = {"sandbox": "run_experiment", "audit": "audit/run.py", "graph": "gr
          # secaudit 의 에이전트 진입점은 도구다(delegate 와 같다).
          "secaudit": "security_audit 도구",
          "codify": "codify/run.py",
-         "research": "research 도구"}
+         "research": "research 도구",
+         # 계획은 사람이 치는 명령이다 -- 에이전트에겐 '승인은 사람만' 이 적혀야 한다.
+         "plan": "!계획"}
 for _모듈 in dispatch.명령들:
     _꾸러미 = _모듈.__name__.split(".")[0]
     if _꾸러미 == "evolve":
