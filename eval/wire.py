@@ -53,6 +53,8 @@ sys.path.insert(0, str(REPO))
      (0,), "목표 원장을 읽는가"),
     ("기관:evolve", ["python3", "gatekeeper.py"],
      (0,), "게이트 전부가 통과하는가 (승격 경로의 바탕)"),
+    ("기관:toolgate", ["python3", "toolgate.py", "rm -rf gates/"],
+     (1,), "도구 게이트가 게이트 삭제를 **차단**하는가 (끝값 1 이 옳다)"),
 ]
 
 # 고정 명령: 이것을 치면 에이전트로 안 떨어지고 봇이 받아야 한다.

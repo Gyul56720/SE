@@ -33,10 +33,12 @@ from langgraph.prebuilt import create_react_agent
 
 import agent_context
 import agent_memory
+import filetools
 import orchestrator_tool
 import public_agent_files
 import quota_tracker
 import relay
+import toolgate
 from sandbox import run as sandbox_run
 from secret_filter import child_env, redact_secrets
 
@@ -169,6 +171,18 @@ def run_shell(command: str) -> str:
     if agent_context.is_blocked():
         return "실패: 게스트는 run_shell을 사용할 수 없습니다."
     ident = threading.get_ident()
+    # **돌기 전에** 본다. 커밋 게이트(G020)는 이미 지운 뒤에 잡는다 -- 그 사이 봇은 지워진
+    # 게이트 없이 돌고 사용자는 "지웠다" 는 답을 먼저 본다. 여기서 거절하면 그 창이 없다.
+    # 규칙은 닫힌 목록이고 각각 사고·CLAUDE.md 금지에 묶여 있다(toolgate.규칙들).
+    막힘 = toolgate.검사(command)
+    if 막힘:
+        print(f"[run_shell] {_current_author.get()} :: 차단 {redact_secrets(command)[:120]!r} {막힘}")
+        with _셸기록_lock:
+            _셸기록.setdefault(ident, []).append((redact_secrets(command)[:160], False))
+        relay.적기(f"⛔ 차단 {redact_secrets(command)[:90]}  -- {막힘[:60]}")
+        return (f"[도구 게이트 차단 -- 돌리지 않았다] {막힘}\n"
+                f"이 규칙은 이 저장소의 사고에서 왔다. 우회하지 말고 다른 길을 써라: "
+                f"게이트는 self_challenge prove, 원장은 >> 덧쓰기, 밀기는 merge 뒤 push.")
     # errors="replace" 가 없으면 명령 출력에 UTF-8 로 디코딩되지 않는 바이트가 하나만
     # 섞여도 communicate() 가 UnicodeDecodeError 로 터진다(실측: "'utf-8' codec can't
     # decode bytes in position 147-148: invalid continuation byte"). 도구가 예외로 죽으면
@@ -236,6 +250,43 @@ def run_experiment(command: str, minutes: int = 3) -> str:
     메모 = f" -- {r['메모']}" if r["메모"] else ""
     return (f"[깨끗한 판 {r['판']} exit={r['끝값']}{메모} -- 작업 트리에는 아무 변화 없음]\n"
             f"STDOUT:\n{out}\nSTDERR:\n{err}")
+
+
+@tool
+def read_file(path: str, start: int = 1, lines: int = 400) -> str:
+    """저장소 파일을 줄 번호를 붙여 읽는다. edit_file 의 old 를 정확히 짚으려면 실제 글자
+    (들여쓰기·줄바꿈 포함)를 봐야 하므로, 고치기 전에 반드시 이걸로 그 자리를 봐라.
+    path 는 저장소 기준 상대경로. start/lines 로 잘라 읽는다(한 번에 최대 400줄).
+    .env 는 못 읽는다(비밀값)."""
+    if agent_context.is_blocked():
+        return "실패: 게스트는 read_file 을 사용할 수 없습니다."
+    try:
+        out = filetools.읽기(path, start, lines)
+    except ValueError as e:
+        return f"[읽기 거절] {e}"
+    return redact_secrets(자르기(out, 셸출력_앞, 셸출력_뒤))
+
+
+@tool
+def edit_file(path: str, old: str, new: str) -> str:
+    """파일의 한 자리를 정확히 고친다: old 가 파일에 **정확히 한 번** 있을 때만 new 로 바꾼다.
+    0번이면 거절(read_file 로 실제 글자를 보고 그대로 대라), 2번 이상이면 거절(앞뒤를 더 붙여
+    하나로 좁혀라), 빈 old 는 거절(그건 전체 쓰기다).
+    **기존 파일을 고칠 때는 run_shell 의 sed/heredoc 대신 이걸 써라** -- 전체 덮어쓰기가
+    drift.sh(4cd4473)와 봇 자신(1a82685)을 부순 사고의 형태다. 게이트(gates/)·판정 원장·
+    .env·.git 은 이 도구로 못 만진다 -- 게이트는 self_challenge 승격으로만."""
+    if agent_context.is_blocked():
+        return "실패: 게스트는 edit_file 을 사용할 수 없습니다."
+    try:
+        말 = filetools.편집(path, old, new)
+    except ValueError as e:
+        relay.적기(f"✎ 거절 {path[:60]} -- {str(e)[:60]}")
+        return f"[편집 거절] {e}"
+    print(f"[edit_file] {_current_author.get()} :: {말}")
+    relay.적기(f"✎ {말}")
+    with _셸기록_lock:
+        _셸기록.setdefault(threading.get_ident(), []).append((f"edit_file {path}"[:160], True))
+    return 말
 
 
 @tool
