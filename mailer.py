@@ -40,6 +40,16 @@ sys.path.insert(0, str(REPO))
 from dig.harvest import env값  # noqa: E402
 
 필요이름들 = ("SMTP_USER", "SMTP_APP_PASSWORD")
+# 실측 2026-09-11: 봇이 값을 GMAIL_APP_PASSWORD 라는 제 이름으로 .env 에 적어 두고, 다음 턴에
+# SMTP_APP_PASSWORD 만 찾다가 "비어 있다" 며 또 물었다. 망각이 아니라 이름 불일치다. 그래서
+# 별칭을 다 보고, 그래도 없으면 **값의 꼴**(16자 영문 · 이메일 꼴)로 .env 를 뒤진다.
+별칭 = {"SMTP_USER": ("SMTP_USER", "GMAIL_USER", "GMAIL_ADDRESS", "GMAIL_EMAIL", "EMAIL_USER", "MAIL_USER",
+                     "SMTP_FROM", "SENDER_EMAIL"),
+      "SMTP_APP_PASSWORD": ("SMTP_APP_PASSWORD", "GMAIL_APP_PASSWORD", "SMTP_PASSWORD", "EMAIL_APP_PASSWORD",
+                            "APP_PASSWORD", "GMAIL_PASSWORD", "MAIL_PASSWORD", "SECRET_PASSWORD"),
+      "USER_EMAIL": ("USER_EMAIL", "MY_EMAIL", "OWNER_EMAIL"),
+      "USER_NAME": ("USER_NAME", "MY_NAME", "OWNER_NAME")}
+자리표 = re.compile(r"\[[^\[\]\n]{1,60}\]")        # [교수님 성함] · [Lab Name] -- 안 채운 자리
 기본 = {"SMTP_HOST": "smtp.gmail.com", "SMTP_PORT": "465"}
 _주소꼴 = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 # 실측 2026-09-11: dbsurd123@gamil.com 으로 보내고 "SUCCESS" 라 보고했다. SMTP 가 받았다는 것과
@@ -51,8 +61,64 @@ _주소꼴 = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 smtp열기 = None       # 검사 주입: (host, port, 초) -> login(u, p) · send_message(msg) · quit()
 
 
+def _env전부(repo=None) -> "dict[str, str]":
+    p = Path(repo or REPO) / ".env"
+    out: dict = {}
+    if p.is_file():
+        for line in p.read_text(encoding="utf-8", errors="replace").splitlines():
+            s = line.strip()
+            if s.startswith("export "):
+                s = s[7:].strip()
+            if s and not s.startswith("#") and "=" in s:
+                k, v = s.split("=", 1)
+                out[k.strip()] = v.strip().strip("'\"")
+    return out
+
+
+def _앱비밀번호꼴(v: str) -> bool:
+    v2 = (v or "").replace(" ", "").replace("-", "")
+    return len(v2) == 16 and v2.isalpha()
+
+
+def 값찾기(이름: str, repo=None) -> "tuple[str, str]":
+    """(값, 어디서). 표준 이름 -> 별칭 -> 값의 꼴 순. 못 찾으면 ('', '')."""
+    for n in 별칭.get(이름, (이름,)):
+        v = env값(n, repo)
+        if v:
+            return v, n
+    전부 = _env전부(repo)
+    if 이름 == "SMTP_APP_PASSWORD":
+        후보 = [(k, v) for k, v in 전부.items() if _앱비밀번호꼴(v)]
+        if len(후보) == 1:
+            return 후보[0][1], 후보[0][0] + "(꼴로 찾음)"
+    if 이름 in ("SMTP_USER", "USER_EMAIL"):
+        후보 = [(k, v) for k, v in 전부.items() if _주소꼴.match(v) and "gmail.com" in v.lower()]
+        if len(후보) == 1:
+            return 후보[0][1], 후보[0][0] + "(꼴로 찾음)"
+    return "", ""
+
+
+def 표준화(이름: str, repo=None) -> str:
+    """별칭·꼴로 찾은 값을 표준 이름으로 옮겨 적는다 -- 다음엔 바로 찾게. 옮겼으면 그 말."""
+    v, 어디 = 값찾기(이름, repo)
+    if v and 어디 and 어디 != 이름:
+        import keys
+        keys.적기(이름, v, repo=repo)
+        return f"{어디} 에서 찾아 {이름} 로 옮겨 적었다"
+    return ""
+
+
 def 필요한것(repo=None) -> "list[str]":
-    return [n for n in 필요이름들 if not env값(n, repo)]
+    return [n for n in 필요이름들 if not 값찾기(n, repo)[0]]
+
+
+def 내정보(repo=None) -> dict:
+    """'내 이름 · 내 메일'. 없으면 set_key 로 한 번 받으면 된다."""
+    return {"이름": 값찾기("USER_NAME", repo)[0], "주소": 값찾기("USER_EMAIL", repo)[0]}
+
+
+def 자리표들(글: str) -> "list[str]":
+    return list(dict.fromkeys(m.group(0) for m in 자리표.finditer(글 or "")))
 
 
 def 묻는말(빠진: "list[str]") -> str:
@@ -89,8 +155,23 @@ def _적기(repo, 줄: dict) -> None:
 def 보내기(to: str, subject: str, body: str, repo=None, 초: int = 30) -> dict:
     """{"보냈나", "필요한것", "말"}. 말은 사람에게 그대로 보여도 되는 글이다(값 없음)."""
     to = (to or "").strip()
+    if to.lower() in ("me", "나", "내 메일", "내메일", "본인", "self"):
+        내 = 내정보(repo)["주소"]
+        if not 내:
+            return {"보냈나": False, "필요한것": ["USER_EMAIL"],
+                    "말": "'내 메일' 이 어디인지 모른다 -- 한 번만 받으면 기억한다: set_key(USER_EMAIL, <주소>) "
+                         "또는 `!열쇠 USER_EMAIL=<주소>`"}
+        to = 내
     if not _주소꼴.match(to):
         return {"보냈나": False, "필요한것": [], "말": f"받는 주소 꼴이 아니다: {to[:40]!r}"}
+    빈자리 = 자리표들((subject or "") + "\n" + (body or ""))
+    if 빈자리:
+        내 = 내정보(repo)
+        힌트 = ("USER_NAME/USER_EMAIL 은 set_key 로 한 번 받아 기억하고, 기관·주제·날짜는 dig/search_memory 로 채워라. "
+              "실존 인물의 이름을 지어 서명하지 마라 -- 위원회·직함으로 서명하라.")
+        return {"보냈나": False, "필요한것": [],
+                "말": f"본문에 안 채운 자리표 {len(빈자리)}개가 있어 보내지 않았다: {', '.join(빈자리[:8])}. "
+                     + (f"(내 이름: {내['이름']}) " if 내["이름"] else "") + 힌트}
     if not (subject or "").strip():
         return {"보냈나": False, "필요한것": [], "말": "제목이 비었다"}
     도메인 = to.rsplit("@", 1)[-1].lower()
@@ -101,6 +182,7 @@ def 보내기(to: str, subject: str, body: str, repo=None, 초: int = 30) -> dic
     빠진 = 필요한것(repo)
     if 빠진:
         return {"보냈나": False, "필요한것": 빠진, "말": 묻는말(빠진)}
+    옮김 = [x for x in (표준화("SMTP_USER", repo), 표준화("SMTP_APP_PASSWORD", repo)) if x]
     user, pw = env값("SMTP_USER", repo), env값("SMTP_APP_PASSWORD", repo)
     host = env값("SMTP_HOST", repo) or 기본["SMTP_HOST"]
     try:
@@ -139,7 +221,8 @@ def 보내기(to: str, subject: str, body: str, repo=None, 초: int = 30) -> dic
         _적기(repo, dict(줄, 보냈나=False, 까닭=말[:120]))
         return {"보냈나": False, "필요한것": [], "말": 말}
     _적기(repo, dict(줄, 보냈나=True))
-    return {"보냈나": True, "필요한것": [], "말": f"보냈다 -> {to} ({host}:{port}, 제목 {subject.strip()[:40]!r})"}
+    return {"보냈나": True, "필요한것": [],
+            "말": f"보냈다 -> {to} ({host}:{port}, 제목 {subject.strip()[:40]!r})" + ("; " + "; ".join(옮김) if 옮김 else "")}
 
 
 # ---------------------------------------------------------------- 진단: 인증 실패를 스스로 좁힌다
@@ -161,6 +244,8 @@ def _뇌기본() -> "list[str]":
 def 진단(repo=None, 초: int = 20) -> dict:
     """{"됐다", "판정", "해본것", "다음", "필요한것", "참고"}. 판정은 코드가 한다."""
     해본, 참고 = [], []
+    표준화("SMTP_USER", repo)
+    표준화("SMTP_APP_PASSWORD", repo)
     user, pw = env값("SMTP_USER", repo), env값("SMTP_APP_PASSWORD", repo)
     if "@" not in user:
         return {"됐다": False, "판정": "SMTP_USER 가 전체 주소가 아니다", "해본것": 해본,
@@ -235,6 +320,9 @@ def main() -> int:
         return 0 if 진["됐다"] else 1
     if args.필요 or not args.to:
         빠진 = 필요한것()
+        for n in 필요이름들:
+            v, 어디 = 값찾기(n)
+            print(f"  {n}: {'있다 (' + 어디 + ')' if v else '없다'}")
         print("  다 있다 -- 보낼 수 있다" if not 빠진 else 묻는말(빠진))
         return 0 if not 빠진 else 3
     r = 보내기(args.to, args.subject, args.body)

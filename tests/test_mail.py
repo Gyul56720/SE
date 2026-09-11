@@ -74,6 +74,34 @@ try:
     r = mailer.보내기("dbsurd123@gamil.com", "x", "y", repo=repo)
     ok(not r["보냈나"] and "gmail.com" in r["말"] and "오타" in r["말"], "**gamil.com 같은 흔한 오타는 보내지 않고 되묻는다** (실측)")
 
+    print("\n== .env 의 별칭·꼴로 스스로 찾는다 (실측: GMAIL_APP_PASSWORD 로 적어 두고 '없다' 며 또 물었다) ==")
+    (repo / ".env").write_text("GMAIL_APP_PASSWORD=abcd efgh ijkl mnop\nMY_GMAIL=you@gmail.com\nOTHER=x\n", encoding="utf-8")
+    ok(mailer.필요한것(repo) == [], "**별칭(GMAIL_APP_PASSWORD)과 꼴(이메일 값)로 찾아 '없다' 고 하지 않는다**")
+    v, 어디 = mailer.값찾기("SMTP_APP_PASSWORD", repo)
+    ok(v == "abcd efgh ijkl mnop" and 어디 == "GMAIL_APP_PASSWORD", f"비밀번호는 별칭에서 ({어디})")
+    v, 어디 = mailer.값찾기("SMTP_USER", repo)
+    ok(v == "you@gmail.com" and "꼴로 찾음" in 어디, f"보내는 주소는 값의 꼴로 ({어디})")
+    ok("옮겨 적었다" in mailer.표준화("SMTP_APP_PASSWORD", repo) and "SMTP_APP_PASSWORD=abcd" in (repo / ".env").read_text(encoding="utf-8"),
+       "찾은 값을 표준 이름으로 옮겨 적는다 -- 다음엔 바로")
+    (repo / ".env").write_text("SECRET_PASSWORD=khkh gexu wpep wscp\nA=1\n", encoding="utf-8")
+    for n in ("SMTP_USER", "SMTP_APP_PASSWORD"):
+        os.environ.pop(n, None)
+    ok(mailer.값찾기("SMTP_APP_PASSWORD", repo)[0] == "khkh gexu wpep wscp", "이름이 엉뚱해도 16자 영문 꼴이면 앱 비밀번호로 본다")
+    ok(mailer.필요한것(repo) == ["SMTP_USER"], "주소는 없으니 그것만 묻는다")
+    (repo / ".env").unlink()
+
+    print("\n== 자리표가 남은 본문은 보내지 않는다 · '내 메일' ==")
+    os.environ["SMTP_USER"], os.environ["SMTP_APP_PASSWORD"] = "you@gmail.com", "abcdefghijklmnop"
+    r = mailer.보내기("a@b.co", "Invitation – [Lab Name]", "Dear [지원자 이름], ... Prof. [교수님 성함]", repo=repo)
+    ok(not r["보냈나"] and "자리표 3개" in r["말"] and "[교수님 성함]" in r["말"] and "실존 인물" in r["말"],
+       f"**[자리표]가 남으면 안 보내고 채우라고 한다** ({r['말'][:70]})")
+    r = mailer.보내기("me", "x", "y", repo=repo)
+    ok(not r["보냈나"] and r["필요한것"] == ["USER_EMAIL"] and "set_key(USER_EMAIL" in r["말"], "'내 메일' 을 모르면 그것만 한 번 묻는다")
+    os.environ["USER_EMAIL"] = "me@gmail.com"
+    ok(mailer.내정보(repo)["주소"] == "me@gmail.com", "USER_EMAIL 로 '내 메일' 을 안다")
+    for n in ("SMTP_USER", "SMTP_APP_PASSWORD", "USER_EMAIL"):
+        os.environ.pop(n, None)
+
     print("\n== !열쇠: 적고, 값은 되비치지 않는다 ==")
     답 = keys.run("!열쇠 SMTP_USER=me@gmail.com", runner=lambda n, v: keys.적기(n, v, repo=repo), allow_write=True)
     ok("SMTP_USER" in 답 and "me@gmail.com" not in 답 and "지워라" in 답, f"답에 이름만, 값 없음, 지우라는 말 ({답[:60]})")
@@ -159,7 +187,7 @@ try:
 finally:
     mailer.smtp열기 = None
     mailer.뇌찾기 = None
-    for n in ("SMTP_USER", "SMTP_APP_PASSWORD", "SMTP_HOST", "SMTP_PORT"):
+    for n in ("SMTP_USER", "SMTP_APP_PASSWORD", "SMTP_HOST", "SMTP_PORT", "USER_EMAIL", "USER_NAME"):
         os.environ.pop(n, None)
     shutil.rmtree(임시, ignore_errors=True)
 
@@ -176,6 +204,8 @@ ok("message.delete()" in _서버 and "keys.PREFIX" in _서버, "!열쇠 메시�
 ok("def set_key(name: str, value: str)" in _도구 and "keys.적기(name, value)" in _도구 and _서버.count(" set_key,") >= 2,
    "**set_key 도구**: 채팅으로 준 값을 되묻지 않고 .env 에 (재시작하면 대화 기억은 사라진다)")
 ok("set_key 로 즉시" in _서버 and "재시작(배포)마다 사라지고" in _서버, "프롬프트가 그 규칙을 말한다")
+ok("[자리표]는 네가 다" in _서버 and "실존 인물 이름을 지어 서명하지 마라" in _서버 and "별칭·꼴로 알아서" in _서버,
+   "프롬프트: 자리표는 채워서 · 실존 인물 서명 금지 · .env 는 도구가 찾는다")
 ok('"set_key" in (relay.마지막도구.get(thread_id)' in _서버, "set_key 로 적은 턴이면 사용자 메시지를 지운다 (값이 채널에 남았다)")
 _wf = (뿌리 / ".github" / "workflows" / "deploy-oracle.yml").read_text(encoding="utf-8")
 ok('"mailer.py"' in _wf and '"keys.py"' in _wf, "배포 경로에 mailer.py · keys.py")
