@@ -111,7 +111,8 @@ _적혀야 = {"sandbox": "run_experiment", "audit": "audit/run.py", "graph": "gr
          "keys": "!열쇠 이름=값",
          "repair": "repair 도구",
          # secaudit 의 에이전트 진입점은 도구다(delegate 와 같다).
-         "secaudit": "security_audit 도구"}
+         "secaudit": "security_audit 도구",
+         "codify": "codify/run.py"}
 for _모듈 in dispatch.명령들:
     _꾸러미 = _모듈.__name__.split(".")[0]
     if _꾸러미 == "evolve":

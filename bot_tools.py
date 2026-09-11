@@ -307,6 +307,21 @@ def set_key(name: str, value: str) -> str:
 
 
 @tool
+def codify_paper(arxiv_id: str) -> str:
+    """논문(arXiv)의 **수식·알고리즘을 실행 가능한 코드로** 바꾼다. dig/paper 로 논문을 읽을 글자로
+    내린 뒤 각 수식·알고리즘을 파이썬 함수로 짓고 **sandbox 에서 돌려** 검증한다(판정은 끝값이 한다 --
+    네가 '됐다' 고 말하지 마라). 검증 통과한 코드만 codify/out 에 저장되고 graph 에 색인된다.
+    수식 하나만 코드화하려면 `python3 codify/run.py --종류 수식 --원문 '<식>' --예시 '[...]'` 를 run_shell 로."""
+    if agent_context.is_blocked():
+        return "실패: 게스트는 codify_paper 를 사용할 수 없습니다."
+    from codify import run as _c
+    url = arxiv_id if "arxiv" in arxiv_id else f"https://arxiv.org/abs/{arxiv_id}"
+    r = _c.논문코드화(url)
+    relay.적기(f"⚙ 코드화 {r['논문']} -- 스펙 {r['스펙수']} · 성공 {r['성공']}")
+    return _c.보고(r)
+
+
+@tool
 def security_audit(deep: bool = False) -> str:
     """**이 호스트 자신**의 보안 상태를 읽기 전용으로 점검한다 -- 열린 포트 · 파일/키 권한 · SUID ·
     세계 쓰기 · 위험 계정 · 방화벽. 판정은 코드가 규칙으로 낸다(네가 '안전해 보인다' 고 말하지 마라).
