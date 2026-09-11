@@ -23,13 +23,14 @@ from novel import discord_cmd as 소설
 from repair import discord_cmd as 고치기
 from research import discord_cmd as 연구
 from plan import discord_cmd as 계획
+from improve import discord_cmd as 자가개선
 from secaudit import discord_cmd as 점검
 from router import discord_cmd as 경로
 from sandbox import discord_cmd as 실험
 import keys as 열쇠
 import relay as 중계
 
-명령들 = (소설, 실험, 감사, 기억, 평가, 경로, 목표, 진화, 중계, 위임, 수집, 열쇠, 고치기, 점검, 코드화, 연구, 계획)
+명령들 = (소설, 실험, 감사, 기억, 평가, 경로, 목표, 진화, 중계, 위임, 수집, 열쇠, 고치기, 점검, 코드화, 연구, 계획, 자가개선)
 
 
 def run(text: str, runner=None, allow_write: bool = True) -> "str | None":
@@ -68,6 +69,7 @@ def 도구로쳐도되나(text: str) -> "tuple[bool, str]":
 # 어느 명령인지는 이 표가 정한다. 못 고르면 None 과 **까닭**을 준다 -- 아무 명령이나 치지 않는다.
 # (승인·열쇠는 여기서도 안 고른다. 사람이 치는 것이다 -- 도구로쳐도되나 가 한 번 더 막는다.)
 import re as _re
+import re
 
 _아이디꼴 = _re.compile(r"\b(\d{4}\.\d{4,5})\b")
 
@@ -81,6 +83,8 @@ def _아이디(말: str) -> str:
 자연어표 = [
     ("승인", r"승인|approve|열쇠|토큰\s*(?:넣|등록|설정)|비밀번호",
      lambda 말: (None, "승인·열쇠는 **사람이 친다** -- `!목표 승인 <id>` · `!계획 승인` · `!열쇠 이름=값` 을 사람에게 청하라")),
+    ("자가개선", r"자가\s*개선|스스로\s*(?:개선|고쳐|나아)|self.?improve|개선\s*(?:제안|해\s*봐|할\s*(?:것|점))",
+     lambda 말: ("!자가개선 점검" if re.search(r"점검|깊이|전부|샅샅", 말) else "!자가개선", "")),
     ("코드화", r"코드화|코드로\s*(?:바꿔|만들|옮)|수식.*(?:구현|코드)|알고리즘.*코드|논문.*구현|\d{4}\.\d{4,5}[^\n]{0,10}(?:구현|코드)",
      lambda 말: ((f"!코드화 논문 {_아이디(말)}", "") if _아이디(말)
                 else (None, "arXiv id 가 없다 -- `!코드화 논문 <id>` 꼴이어야 한다. id 를 모르면 `!연구 <주제>` 로 먼저 찾아라"))),

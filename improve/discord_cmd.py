@@ -1,0 +1,54 @@
+"""`!자가개선` -- 스스로 틈을 찾아 제2의 뇌를 근거로 패치를 제안하고, 격리 판에서 시뮬레이션해
+red->green · 리허설 초록을 코드가 확인한 뒤 **사람의 동의**를 기다린다. 봇은 승인을 대신 못 친다.
+
+    !자가개선              탐색 -> 제안 -> 시뮬 -> 동의 대기  (관리 채널, 배경 -- 모델·sandbox 를 쓴다)
+    !자가개선 점검         인수 검사(점검)·배선까지 훑어 틈을 찾는다 (느리다, 배경)
+    !자가개선 틈           틈만 센다 (모델·sandbox 안 씀)
+    !자가개선 승인         동의 -> 실제 트리에 붙인다 (관리 채널, 사람만)
+    !자가개선 버림 · 상태
+"""
+from __future__ import annotations
+
+from pathlib import Path
+
+from eval.discord_cmd import _배경으로
+from improve import run as I
+
+PREFIX = "!자가개선"
+REPO = Path(__file__).resolve().parent.parent
+로그 = REPO / "logs" / "improve.log"
+
+HELP = f"""**자가개선 (improve)** -- 틈을 스스로 찾아(CI 빨강 · 못 푼 수리 · 검사 없는 핵심 모듈 · 점검 실패), 제2의 뇌를
+근거로 패치를 제안하고, **격리 판에서** red->green 과 리허설을 코드가 확인한 뒤 **사람의 동의**를 기다린다.
+`{PREFIX}` 탐색->제안->시뮬 (배경) · `{PREFIX} 점검` 인수 검사·배선까지 (느림) · `{PREFIX} 틈` 틈만
+`{PREFIX} 승인` 동의해 붙인다 (사람만) · `{PREFIX} 버림` · `{PREFIX} 상태`
+봇이 켜져 있으면 IMPROVE_SEC(기본 6h)마다 스스로 한 번씩 돌아 동의를 구한다."""
+
+
+def run(text: str, runner=None, allow_write: bool = True) -> "str | None":
+    text = (text or "").strip()
+    if not text.startswith(PREFIX):
+        return None
+    tail = text[len(PREFIX):]
+    if tail and not tail[0].isspace():
+        return None
+    말 = tail.strip()
+    if 말 == "상태":
+        return I.상태()
+    if 말 == "틈":
+        틈들 = I.틈모으기()
+        if not 틈들:
+            return "틈 없음 -- CI 초록 · 미해결 수리 없음 · 핵심 모듈 검사 다 있음 (`!자가개선 점검` 은 더 깊이 본다)"
+        return "\n".join(f"  [{g['종류']}] {g['무엇']}  <- {g['판정명령'][:60]}" for g in 틈들[:15]) + f"\n  틈 {len(틈들)}개"
+    if not 말:
+        pass
+    elif 말 not in ("점검", "승인", "버림"):
+        return f"모르는 하위 명령 `{말}`.\n\n{HELP}" if 말 != "도움" else HELP
+    if not allow_write:
+        return "자가개선은 관리 채널에서만 -- 모델·sandbox 를 돌리고, 승인은 사람의 것이다."
+    if 말 == "승인":
+        return I.승인(누가="관리채널")
+    if 말 == "버림":
+        return I.버림()
+    argv = ["python3", "improve/run.py"] + (["--점검", "--배선"] if 말 == "점검" else [])
+    return (runner or _배경으로)(argv, 로그, "improve/run.py")

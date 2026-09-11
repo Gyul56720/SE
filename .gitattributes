@@ -10,3 +10,4 @@ intent/ledger.jsonl merge=union
 graph/ledger.jsonl merge=union
 dig/interests.jsonl merge=union
 research/ledger.jsonl merge=union
+improve/ledger.jsonl merge=union
