@@ -1,0 +1,13 @@
+{
+ "id": "코드-역순낱말",
+ "과제갈래": "코드",
+ "깃발": [
+  "python",
+  "문자열"
+ ],
+ "물음": "문장을 받아 낱말 순서만 뒤집는 파이썬 함수 `reverse_words(s: str) -> str` 를 써라. 낱말 사이 공백은 하나로 정규화하고 앞뒤 공백은 없앤다.",
+ "판정": {
+  "꼴": "실행",
+  "검사": "import 답\nassert 답.reverse_words('a b  c') == 'c b a'\nassert 답.reverse_words('  hello world ') == 'world hello'\nassert 답.reverse_words('one') == 'one'\nassert 답.reverse_words('') == ''\nprint('ok')\n"
+ }
+}

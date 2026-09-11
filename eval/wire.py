@@ -55,6 +55,8 @@ sys.path.insert(0, str(REPO))
      (0,), "게이트 전부가 통과하는가 (승격 경로의 바탕)"),
     ("기관:toolgate", ["python3", "toolgate.py", "rm -rf gates/"],
      (1,), "도구 게이트가 게이트 삭제를 **차단**하는가 (끝값 1 이 옳다)"),
+    ("기관:eval과제", ["python3", "eval/tasks.py", "--목록"],
+     (0,), "절대 기준 과제가 읽히는가 (호출 0회)"),
     ("기관:delegate", ["python3", "delegate/run.py", "--범위", "graph/*.py", "--쪼개기만"],
      (0,), "위임의 쪼개기가 도는가 (호출 0회)"),
 ]
