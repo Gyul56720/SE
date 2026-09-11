@@ -156,9 +156,27 @@ def search_memory(query: str) -> str:
         return f"'{query}' 관련해서 저장된 기억이 없다."
 
     scored.sort(key=lambda item: (-item[0], item[1].name))
-    chunks = []
+    chunks = _graph_hits(query)
     for score, path, text in scored[:MAX_SEARCH_RESULTS]:
         snippet = text.split("---", 2)[-1].strip()[:MAX_SNIPPET_CHARS]
         chunks.append(f"[{path.name}]\n{snippet}")
     print(f"[agent-memory] search {query[:60]!r} -> {len(scored)} hit(s)")
     return "\n\n".join(chunks)
+
+
+def _graph_hits(query: str) -> "list[str]":
+    """깃발 색인(graph/)의 상위 몇 개를 먼저 보여준다 -- 밤일이 간추린 것은 노트
+    전문보다 깃발이 정확하다. 색인 조회가 실패해도 노트 검색은 그대로 돼야 하므로
+    실패는 로그로만 남긴다(조용히 삼키는 것이 아니라 답의 다른 절반은 살리는 것)."""
+    try:
+        from graph import ask as graph_ask
+        hits = graph_ask.찾기(query, 최대=3)
+    except Exception as e:
+        print(f"[agent-memory] graph 색인 조회 실패: {type(e).__name__}: {e}")
+        return []
+    if not hits:
+        return []
+    lines = ["[깃발 색인 -- 원문은 <출처> 파일에 그대로 있다]"]
+    for s, n in hits:
+        lines.append(graph_ask.한줄(s, n))
+    return ["\n".join(lines)]

@@ -70,6 +70,25 @@ ok(not 불림 and 답 is not None and "글자" in 답,
 답 = dispatch.run("!실험 검사", runner=가짜러너, allow_write=True)
 ok(not 불림 and 답 is not None, "<말> 없는 전체 검사도 거절된다(6분짜리)")
 
+print("\n== !감사 · !기억 -- 새 명령의 경계 ==")
+답 = dispatch.run("!감사", allow_write=False)
+ok(답 is not None and "관리 채널" in 답, "!감사 는 공개 채널에서 안 돌린다")
+감사불림 = []
+
+
+def 가짜감사(커밋=False):
+    감사불림.append(커밋)
+    return {"결과": [], "안덮임": [], "안봄": [], "변경": ["x.py"]}
+
+
+답 = dispatch.run("!감사 커밋", runner=가짜감사, allow_write=True)
+ok(감사불림 == [True], f"!감사 커밋 이 커밋 감사로 간다 ({감사불림})")
+답 = dispatch.run("!기억")
+ok(답 is not None and "깃발" in 답, "!기억 도움말이 나온다")
+답 = dispatch.run("!기억 밤", allow_write=False)
+ok(답 is not None and "관리 채널" in 답, "!기억 밤 은 공개 채널에서 안 돈다")
+ok(dispatch.run("!기억력이 좋다") is None, "붙여 쓴 `!기억력` 은 명령이 아니다")
+
 print("\n== 실험 모듈 단독으로도 규약을 지킨다 ==")
 ok(실험.run("엉뚱한 말") is None, "접두사가 다르면 None")
 ok(실험.PREFIX == "!실험", "PREFIX 가 있다 -- dispatch 규약")
