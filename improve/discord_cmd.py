@@ -15,6 +15,7 @@ from eval.discord_cmd import _배경으로
 from improve import run as I
 
 PREFIX = "!자가개선"
+별칭 = ("!자가개선", "!개선")      # 사용자가 실제로 친 것: "!개선 하고 말하면 되냐?" -- 둘 다 받는다
 REPO = Path(__file__).resolve().parent.parent
 로그 = REPO / "logs" / "improve.log"
 
@@ -27,9 +28,10 @@ HELP = f"""**자가개선 (improve)** -- 틈을 스스로 찾아(CI 빨강 · �
 
 def run(text: str, runner=None, allow_write: bool = True) -> "str | None":
     text = (text or "").strip()
-    if not text.startswith(PREFIX):
+    쓴것 = next((x for x in 별칭 if text.startswith(x)), None)
+    if 쓴것 is None:
         return None
-    tail = text[len(PREFIX):]
+    tail = text[len(쓴것):]
     if tail and not tail[0].isspace():
         return None
     말 = tail.strip()

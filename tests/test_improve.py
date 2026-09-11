@@ -139,6 +139,10 @@ print("\n== 배선 ==")
 import dispatch  # noqa: E402
 ok("동의" in (dispatch.run("!자가개선", allow_write=True) or "") or "자가개선" in (dispatch.run("!자가개선 도움", allow_write=True) or ""), "!자가개선 도움말")
 ok("관리 채널" in (dispatch.run("!자가개선 승인", allow_write=False) or ""), "공개 채널에서 승인 못 한다")
+ok(dispatch.run("!개선 상태", allow_write=True) == dispatch.run("!자가개선 상태", allow_write=True) is not None,
+   "**`!개선` 도 같은 명령이다**(사용자가 실제로 친 것)")
+ok(dispatch.run("!개선기 x") is None and dispatch.run("!자가개선기 x") is None, "붙여 쓴 꼴은 명령이 아니다")
+ok(dispatch.고르기("개선해줘")[0] == "!자가개선", "자연어 '개선해줘' 도 간다")
 ok(not dispatch.도구로쳐도되나("!자가개선 승인")[0], "**봇은 dispatch_command 로 승인을 못 친다**")
 ok(dispatch.고르기("스스로 개선할 점 찾아봐")[0] == "!자가개선" and dispatch.고르기("자가개선 점검")[0] == "!자가개선 점검", "자연어 -> !자가개선")
 불림 = []
