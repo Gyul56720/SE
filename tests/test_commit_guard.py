@@ -80,13 +80,49 @@ try:
 finally:
     G.게이트기 = G.감사기 = G.CI기 = None
 
+print("\n== 빠름(봇 답변 경로): 코드가 안 바뀌면 검사·CI 문을 건너뛴다 ==")
+import commit_guard as _G2
+샌 = {"감사": 0, "ci": 0}
+try:
+    G.게이트기 = 초록게이트
+    G.감사기 = lambda repo: (샌.__setitem__("감사", 샌["감사"] + 1) or 초록감사(repo))
+    G.CI기 = lambda repo: (샌.__setitem__("ci", 샌["ci"] + 1) or 초록CI(repo))
+    _원래py = _G2._바뀐py
+    _G2._바뀐py = lambda repo: []                       # 기억·원장만 바뀐 커밋
+    ok_, 보 = G.검사(뿌리, 빠름=True)
+    ok(ok_ and 샌 == {"감사": 0, "ci": 0} and "코드(.py) 변경 없음" in 보,
+       f"**.py 가 안 바뀌면 검사·CI 를 아예 안 부른다**(기억 커밋이 main 빨강에 인질이 안 된다) {샌}")
+    _G2._바뀐py = lambda repo: ["bot_tools.py"]         # 코드가 바뀐 커밋
+    ok_, 보 = G.검사(뿌리, 빠름=True)
+    ok(ok_ and 샌 == {"감사": 1, "ci": 1}, f"코드가 바뀌면 검사·CI 문을 지난다 {샌}")
+    _G2._바뀐py = lambda repo: None                     # git 을 못 봄
+    ok_, 보 = G.검사(뿌리, 빠름=True)
+    ok(ok_ and "git 을 못 봐" in 보 and 샌 == {"감사": 1, "ci": 1}, "git 을 못 보면 게이트만 -- 답변 경로를 막지 않는다")
+finally:
+    _G2._바뀐py = _원래py
+    G.게이트기 = G.감사기 = G.CI기 = None
+_src2 = (뿌리 / "commit_guard.py").read_text(encoding="utf-8")
+ok("_ci캐시 if 빠름 else _ci" in _src2, "**빠름 모드는 CI 를 캐시에서 읽는다 -- 답변 경로에서 망을 안 탄다**")
+import ci_watch as _cw
+import tempfile as _tf, json as _js, shutil as _sh
+_d = Path(_tf.mkdtemp(prefix="test-cg-cache-"))
+try:
+    ok(_cw.캐시보기(_d)["상태"] == "못잼", "캐시가 없으면 못잼(막지 않는다)")
+    (_d / "logs").mkdir()
+    (_d / _cw.상태상대).write_text(_js.dumps({"상태": "빨강", "sha": "abc", "실패": ["test_x.py"]}), encoding="utf-8")
+    c = _cw.캐시보기(_d)
+    ok(c["상태"] == "빨강" and c["실패"] == ["test_x.py"], "캐시에서 빨강·실패 검사를 읽는다(망 0회)")
+    ok(_cw.캐시보기(_d, 최대나이초=0)["상태"] == "못잼", "낡은 캐시는 못잼 -- 막지 않는다")
+finally:
+    _sh.rmtree(_d, ignore_errors=True)
+
 print("\n== 배선 ==")
 import subprocess  # noqa: E402
 p = subprocess.run(["python3", "commit_guard.py", "--배선"], cwd=str(뿌리), capture_output=True, text=True, timeout=60)
 ok(p.returncode == 0 and "임포트 됨" in p.stdout, "--배선 이 돈다(읽기 점검)")
 _서버 = (뿌리 / "discord_bot_server.py").read_text(encoding="utf-8")
 sync = _서버.split("def _git_sync_locked")[1].split("\ndef ")[0]
-ok("commit_guard.검사(Path(REPO_DIR))" in sync and "gatekeeper.run_gates" not in sync,
+ok("commit_guard.검사(Path(REPO_DIR), 빠름=True)" in sync and "gatekeeper.run_gates" not in sync,
    "**git_sync 가 게이트만 보지 않고 문지기(게이트·검사·CI)를 지난다**")
 ok("[검사 차단]" in _서버 and "빨강 위에 자가 수정을 쌓지 않는다" in _서버, "프롬프트가 막혔을 때 그 검사부터 고치라고 시킨다")
 _src = (뿌리 / "commit_guard.py").read_text(encoding="utf-8")

@@ -433,7 +433,7 @@ def _git_sync_locked() -> str | None:
     # 고친 뒤에도 남는 것만 막는다. 사용자(2026-09-11): '띄우는 게 아니라 자동으로 고쳐줘야지'.
     # 문은 셋이다(commit_guard): 게이트 -> 바뀐 파일의 검사 -> main CI. 실측 2026-09-11: 게이트만
     # 보고 커밋했더니 main 이 하루 넘게 빨강인 채 자가 커밋이 35번 넘게 쌓였다 -- CI 를 아무도 안 읽었다.
-    통과, 보고 = commit_guard.검사(Path(REPO_DIR))
+    통과, 보고 = commit_guard.검사(Path(REPO_DIR), 빠름=True)      # 답변 경로 -- 망 안 타고, 코드 변경 때만 검사
     print(f"[git_sync] 문지기\n{보고}")
     if not 통과:
         return 보고

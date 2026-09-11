@@ -46,10 +46,38 @@ def _ci(repo: Path) -> dict:
     return ci_watch.보기(repo)
 
 
-def 검사(repo=None, 게이트: bool = True, 감사: bool = True, ci: bool = True) -> "tuple[bool, str]":
+def _ci캐시(repo: Path) -> dict:
+    import ci_watch
+    return ci_watch.캐시보기(repo)
+
+
+def _바뀐py(repo: Path) -> "list[str] | None":
+    from audit import run as A
+    변경 = A.변경파일(repo, False)
+    return None if 변경 is None else [c for c in 변경 if c.endswith(".py")]
+
+
+def 검사(repo=None, 게이트: bool = True, 감사: bool = True, ci: bool = True,
+        빠름: bool = False) -> "tuple[bool, str]":
+    """빠름=True (봇의 답변 경로): **망을 안 타고**(CI 는 캐시) **.py 가 안 바뀌었으면 검사·CI 문을 건너뛴다.**
+
+    실측 2026-09-11(이 문을 붙이고 나서 든 의심): git_sync 는 관리 채널 답변 경로 안에서 돈다
+    (GIT_LOCK -> run_in_executor). 여기에 검사 전체와 GitHub 조회를 넣으면 **사람이 답을 몇 분 기다린다.**
+    그리고 기억·원장만 적는 커밋(봇이 가장 자주 하는 일)까지 main 빨강에 인질이 된다.
+    그래서 코드가 안 바뀐 커밋은 게이트만 지나고, 코드가 바뀐 커밋만 검사·CI 문을 지난다.
+    """
     repo = Path(repo or REPO)
     줄: list[str] = []
     통과 = True
+
+    if 빠름:
+        바뀐 = _바뀐py(repo)
+        if 바뀐 is None:
+            줄.append("  (경고) git 을 못 봐 무엇이 바뀌었는지 모른다 -- 게이트만 지난다")
+            감사 = ci = False
+        elif not 바뀐:
+            줄.append("  코드(.py) 변경 없음 -- 기억·원장 커밋이므로 게이트만 지난다")
+            감사 = ci = False
 
     if 게이트:
         try:
@@ -89,7 +117,7 @@ def 검사(repo=None, 게이트: bool = True, 감사: bool = True, ci: bool = Tr
 
     if ci:
         try:
-            c = (CI기 or _ci)(repo)
+            c = (CI기 or (_ci캐시 if 빠름 else _ci))(repo)
         except Exception as e:                        # noqa: BLE001
             c = {"상태": "못잼", "실패": [], "말": f"CI 를 못 읽었다: {type(e).__name__}"}
         if c["상태"] == "빨강":

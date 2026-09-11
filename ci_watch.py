@@ -135,6 +135,27 @@ def 바뀌었나(보기결과: dict, repo=None) -> bool:
     return True
 
 
+def 캐시보기(repo=None, 최대나이초: float = 4 * 3600) -> dict:
+    """**망을 안 타고** 지난번 감시가 적어 둔 결론을 읽는다 -- 봇의 답변 경로(git_sync)에서 쓴다.
+    파일이 없거나 오래됐으면 못잼: 모르는 것으로 막지 않는다(감시가 곧 채운다)."""
+    p = Path(repo or REPO) / 상태상대
+    if not p.is_file():
+        return {"상태": "못잼", "sha": "", "url": "", "번호": 0, "실패": [],
+                "말": "main CI 결론이 아직 없다(감시가 곧 채운다)"}
+    try:
+        j = json.loads(p.read_text(encoding="utf-8"))
+        나이 = time.time() - p.stat().st_mtime
+    except (ValueError, OSError):
+        return {"상태": "못잼", "sha": "", "url": "", "번호": 0, "실패": [], "말": "CI 상태 파일을 못 읽었다"}
+    if 나이 > 최대나이초:
+        return {"상태": "못잼", "sha": j.get("sha", ""), "url": "", "번호": 0, "실패": j.get("실패", []),
+                "말": f"main CI 결론이 낡았다({int(나이/60)}분 전) -- 막지 않는다"}
+    상태 = j.get("상태", "못잼")
+    실패 = j.get("실패", [])
+    return {"상태": 상태, "sha": j.get("sha", ""), "url": "", "번호": 0, "실패": 실패,
+            "말": (f"main CI {상태} ({j.get('sha', '')})" + (f" 실패 검사: {', '.join(실패)}" if 실패 else ""))}
+
+
 def main() -> int:
     r = 보기()
     print(r["말"])
