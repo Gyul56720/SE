@@ -1,0 +1,10 @@
+# 판정 원장은 append-only 라 두 작성자(봇·세션)가 각자 덧쓰면 늘 끝줄에서 충돌한다
+# (실측 2026-09-11: PR #158 이 eval/ledger.jsonl 에서 405 로 막혔다). union 은 양쪽 줄을
+# 다 살린다 -- 한 줄도 버리지 않는 것이 G020 의 규율이고, 이 원장에는 그것이 옳은 병합이다.
+# 로컬 merge(gitsync.reconcile · 세션)가 이것을 쓴다. 깃허브 서버의 PR 머지가 이 드라이버를
+# 따르는지는 확인하지 못했다 -- 거기서 충돌하면 여기서 merge 해 다시 민다.
+eval/ledger.jsonl merge=union
+router/ledger.jsonl merge=union
+graph/edges.jsonl merge=union
+intent/ledger.jsonl merge=union
+graph/ledger.jsonl merge=union
