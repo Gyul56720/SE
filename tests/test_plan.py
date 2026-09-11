@@ -115,7 +115,15 @@ ok("꺼짐" in (dispatch.run("!계획 상태", allow_write=False) or ""), "상�
 ok(dispatch.run("!계획기 x") is None, "붙여 쓴 `!계획기` 는 명령이 아니다")
 _도구 = (뿌리 / "bot_tools.py").read_text(encoding="utf-8")
 ok("filetools.편집(path, old, new, repo=_계획판())" in _도구, "**edit_file 이 계획판이면 그림자에 쓴다**")
-ok('cwd=str(_계획판() or REPO_DIR)' in _도구, "**run_shell 이 계획판이면 그림자에서 돈다**")
+# 한 줄을 글자 그대로 찾으면 **뜻이 그대로인 손질에도 빨개진다**(실측: cwd 를 변수로
+# 뽑았을 뿐인데 여기가 깨졌다). run_shell 의 몸을 잘라, 계획판이 곧 cwd 가 되는지를 본다.
+_몸 = _도구[_도구.index("def run_shell"):]
+_몸 = _몸[:_몸.index("\ndef ", 1)] if "\ndef " in _몸[1:] else _몸
+_판줄 = [l for l in _몸.splitlines() if "_계획판() or REPO_DIR" in l]
+ok(_판줄, f"run_shell 이 계획판을 판으로 삼는다 ({_판줄[:1]})")
+_이름 = _판줄[0].split("=")[0].strip() if _판줄 else ""
+ok(_이름 and (f"cwd=str({_이름})" in _몸 or "cwd=str(_계획판() or REPO_DIR)" in _몸),
+   "**run_shell 이 계획판이면 그림자에서 돈다** -- 그 판이 그대로 cwd 다")
 _서버 = (뿌리 / "discord_bot_server.py").read_text(encoding="utf-8")
 ok("!계획" in _서버 and "승인" in _서버, "프롬프트가 !계획 을 이름을 대고 '승인은 사람만' 을 적는다")
 ok("시험" in (dispatch.run("!계획", allow_write=True) or ""), "도움말이 `!계획 시험` 을 말한다")
