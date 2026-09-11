@@ -56,7 +56,7 @@ sys.path.insert(0, str(REPO))
 ]
 
 # 고정 명령: 이것을 치면 에이전트로 안 떨어지고 봇이 받아야 한다.
-고정명령들 = ("!소설", "!실험", "!감사", "!기억", "!평가", "!경로", "!목표", "!진화")
+고정명령들 = ("!소설", "!실험", "!감사", "!기억", "!평가", "!경로", "!목표", "!진화", "!중계")
 
 원장들 = ("graph/ledger.jsonl", "graph/edges.jsonl", "eval/ledger.jsonl",
         "router/ledger.jsonl", "intent/ledger.jsonl")

@@ -1,0 +1,133 @@
+"""relay(도구 중계)를 **진짜 asyncio 루프 위에서 실제로 돌려** 붙든다.
+
+붙드는 것: (1) 실행기 스레드에서 적기() 한 것이 루프의 편집기로 건너간다(스레드->루프
+다리), (2) 편집을 몰아서 한다 -- 적기 N번에 편집 N번이 아니다(레이트리밋 회피),
+(3) 상한을 넘으면 앞을 줄이고 뒤를 남긴다, (4) 판이 안 묶인 스레드의 적기는 아무 일도
+안 한다(중계는 부수 기능 -- 도구를 죽이면 안 된다), (5) 마무리가 '도구 호출 없음' 을
+말한다, (6) `!중계` 는 관리 채널만 켜고 끈다, (7) 봇 배선(도구 세 자리 · 서버의 판 생성과
+마무리 · `import time`) -- 봇은 여기서 임포트 못 하므로 원문을 본다.
+
+LLM·디스코드 없이 돈다. 실행: python3 tests/test_relay.py
+"""
+from __future__ import annotations
+
+import asyncio
+import sys
+import threading
+import time
+from pathlib import Path
+
+뿌리 = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(뿌리))
+
+import relay  # noqa: E402
+
+FAIL = []
+
+
+def ok(cond, what):
+    print(("  통과  " if cond else "  실패  ") + what)
+    if not cond:
+        FAIL.append(what)
+
+
+# 루프를 딴 스레드에서 돌린다 -- 봇에서 도구는 실행기 스레드, 편집은 이벤트 루프다.
+loop = asyncio.new_event_loop()
+루프스레드 = threading.Thread(target=loop.run_forever, daemon=True)
+루프스레드.start()
+
+편집기록: list = []
+
+
+async def 가짜편집(text: str) -> None:
+    편집기록.append(text)
+
+
+try:
+    print("== 스레드에서 적은 것이 루프의 편집기로 건너간다 ==")
+    판 = relay.중계판(가짜편집, loop, 최소간격=0.3, 상한=400)
+
+    def 도구스레드():
+        relay.등록(판)
+        try:
+            for i in range(6):
+                relay.적기(relay.줄(f"python3 일{i}.py", 0, 0.1 * i))
+                time.sleep(0.02)
+        finally:
+            relay.해제()
+
+    t = threading.Thread(target=도구스레드)
+    t.start()
+    t.join()
+    time.sleep(0.8)                                 # 몰아둔 편집이 돌 시간
+    ok(편집기록 and "일5.py" in 편집기록[-1], f"마지막 편집에 마지막 줄이 있다 ({len(편집기록)}회 편집)")
+    ok(len(편집기록) < 6, f"**적기 6번에 편집 {len(편집기록)}번 -- 몰아서 한다**")
+    ok("도구 6개" in 편집기록[-1], "머리에 도구 수가 적힌다")
+
+    print("\n== 상한을 넘으면 앞을 줄이고 뒤를 남긴다 ==")
+    for i in range(30):
+        판.적기(relay.줄("x" * 100 + f"_{i}", 0, 1.0))
+    time.sleep(0.6)
+    본 = 판.본문()
+    ok(len(본) <= 400 + 40 and "앞을 줄였다" in 본 and "_29" in 본,
+       f"상한 안에서 뒤가 남는다 ({len(본)}자)")
+
+    print("\n== 마무리 ==")
+    asyncio.run_coroutine_threadsafe(판.마무리(), loop).result(timeout=2)
+    ok(편집기록[-1].startswith("✅ 끝"), "마무리가 마지막 편집을 한다")
+    빈판 = relay.중계판(가짜편집, loop)
+    asyncio.run_coroutine_threadsafe(빈판.마무리(), loop).result(timeout=2)
+    ok("도구 호출 없음" in 편집기록[-1] and "의심" in 편집기록[-1],
+       "**도구 없이 끝나면 그렇다고 말한다** -- 실측 없는 답을 의심하게")
+
+    print("\n== 판이 안 묶인 스레드의 적기는 아무 일도 안 한다 ==")
+    앞 = len(편집기록)
+    relay.적기("이건 어디에도 안 간다")
+    time.sleep(0.4)
+    ok(len(편집기록) == 앞, "묶이지 않았으면 조용하다 (도구를 죽이지 않는다)")
+
+    print("\n== 편집이 죽어도 답은 산다 ==")
+
+    async def 죽는편집(text):
+        raise RuntimeError("메시지가 삭제됐다")
+
+    죽판 = relay.중계판(죽는편집, loop, 최소간격=0.0)
+    죽판.적기("x")
+    time.sleep(0.3)
+    asyncio.run_coroutine_threadsafe(죽판.마무리(), loop).result(timeout=2)
+    ok(True, "편집 실패가 예외로 안 올라온다")
+finally:
+    loop.call_soon_threadsafe(loop.stop)
+
+print("\n== !중계 명령 ==")
+relay.상태["켜짐"] = False
+ok(relay.run("!중계 켜기", None, False) is not None and "관리 채널" in relay.run("!중계 켜기", None, False),
+   "공개 채널은 못 켠다")
+ok(not relay.상태["켜짐"], "그래서 안 켜졌다")
+ok("켜짐" in relay.run("!중계 켜기", None, True) and relay.상태["켜짐"], "관리 채널은 켠다")
+ok("켜짐" in relay.run("!중계 상태", None, False), "상태는 공개도 본다")
+ok("꺼짐" in relay.run("!중계 끄기", None, True) and not relay.상태["켜짐"], "끈다")
+ok(relay.run("!중계방송 해줘", None, True) is None, "붙여 쓴 `!중계방송` 은 명령이 아니다")
+ok(relay.run("아무 말", None, True) is None, "모르는 말은 None")
+
+print("\n== 봇 배선 (원문으로 본다 -- 봇은 여기서 임포트 못 한다) ==")
+_도구 = (뿌리 / "bot_tools.py").read_text(encoding="utf-8")
+_서버 = (뿌리 / "discord_bot_server.py").read_text(encoding="utf-8")
+ok("import time" in _도구.split("def ", 1)[0], "**bot_tools 가 time 을 들인다** -- 없으면 첫 run_shell 에서 NameError 로 봇이 죽는다")
+_런셸 = _도구.split("def run_shell", 1)[-1].split("\n@tool", 1)[0]
+ok("relay.적기(relay.줄(" in _런셸, "run_shell 이 중계에 적는다")
+_실험 = _도구.split("def run_experiment", 1)[-1].split("\n@tool", 1)[0]
+ok("relay.적기(relay.줄(" in _실험, "run_experiment 이 중계에 적는다")
+ok("모델 전환" in _도구, "모델 전환도 중계에 적는다")
+ok('relay.상태["켜짐"]' in _서버 and "relay.중계판(" in _서버, "서버가 켜짐이면 판을 만든다")
+ok("run_admin_agent, content, thread_id, 중계판" in _서버, "판을 실행기 스레드로 넘긴다")
+ok("await 중계판.마무리()" in _서버, "답이 오면 마무리한다")
+ok("relay.등록(중계판)" in _서버 and "relay.해제()" in _서버, "실행기 스레드에서 묶고 푼다")
+import dispatch  # noqa: E402
+ok(relay in dispatch.명령들, "dispatch 에 걸려 있다")
+
+print()
+if FAIL:
+    print(f"실패 {len(FAIL)}개 -- {FAIL}")
+    raise SystemExit(1)
+print("relay: 스레드->루프 · 몰아서 편집 · 꼬리 유지 · 마무리 · 명령 경계 · 봇 배선 -- 통과")

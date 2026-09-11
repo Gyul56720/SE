@@ -54,6 +54,12 @@ sh(repo, "config", "user.name", "t")
     "sys.path.insert(0, str(Path(__file__).resolve().parent.parent))\n"
     "import 돈\n"
     "assert 돈.이율 == 0.05\nprint('기능 통과')\n", encoding="utf-8")
+# 임포트할 수 없는 파일(봇처럼)을 원문으로 읽는 검사 -- 이름이 따옴표 안에 적혀 있다
+(repo / "봇.py").write_text("import 없는꾸러미\nX = 1\n", encoding="utf-8")
+(repo / "tests" / "test_원문.py").write_text(
+    "from pathlib import Path\n"
+    "글 = (Path(__file__).resolve().parent.parent / '봇.py').read_text(encoding='utf-8')\n"
+    "assert 'X = 1' in 글, '배선이 끊겼다'\nprint('원문 통과')\n", encoding="utf-8")
 sh(repo, "add", "-A")
 sh(repo, "commit", "-q", "-m", "첫 커밋")
 
@@ -89,6 +95,16 @@ try:
        f"이름이 안 닮아도 import 돈 으로 찾았다 ({sorted(돌린)})")
     ok(돌린.get("tests/test_기능.py") not in (0, None), "그리고 깨진 것을 잡았다")
     (repo / "돈.py").write_text("이율 = 0.05\n", encoding="utf-8")
+
+    print("\n== 원문을 읽는 검사도 검사로 센다 ==")
+    (repo / "봇.py").write_text("import 없는꾸러미\nX = 2\n", encoding="utf-8")
+    r = 감사기.감사(repo=repo, 초=60)
+    돌린 = {t: rc for t, rc, _ in r["결과"]}
+    ok("tests/test_원문.py" in 돌린,
+       f"임포트 못 하는 파일도 이름을 따옴표로 적은 검사에 걸린다 ({sorted(돌린)})")
+    ok("봇.py" not in r["안덮임"], "그래서 '검사 없음' 으로 안 찍힌다")
+    ok(돌린.get("tests/test_원문.py") not in (0, None), "그리고 깨진 것(X=1 -> 2)을 잡았다")
+    (repo / "봇.py").write_text("import 없는꾸러미\nX = 1\n", encoding="utf-8")
 
     print("\n== 검사 없는 변경은 크게 말한다 ==")
     (repo / "고아.py").write_text("x = 1\n", encoding="utf-8")

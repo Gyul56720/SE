@@ -41,6 +41,7 @@ import gatekeeper  # noqa: E402
 import main_public  # noqa: E402
 import bot_tools  # noqa: E402
 import dispatch  # noqa: E402
+import relay  # noqa: E402
 from bot_tools import (  # noqa: E402
     REPO_DIR, run_shell, run_experiment, search_memory, save_memory,
     build_agent_pool, run_with_fallback_pool,
@@ -132,6 +133,8 @@ ADMIN_SYSTEM_PROMPT = (
     "  · 소설·이어쓰기 -> `scripts/drift.sh` (novel 파이프라인). **네가 산문을 지어내지 "
     "말고 그 스크립트도 덮지 마라** -- 실측 2026-09-10 `4cd4473`: '라노벨 상황극' 부탁 "
     "하나가 drift.sh 287줄을 20줄 촌극으로 덮어 열 곳 넘는 참조가 끊겼다\n"
+    "  · 진행 상황을 보고 싶다는 말 -> 네가 켜지 말고 `!중계 켜기` 를 치라고 안내하라 "
+    "(사람이 켜는 스위치다. 도구·끝값·걸린 초만 보이고 네 생각은 안 실린다)\n"
     "각 폴더의 README.md 가 무엇을 하는지 적고 있다 -- 모르면 먼저 읽어라. 그리고 "
     "**사용자가 `!` 로 시작하는 고정 명령을 쳤다면 그것은 너에게 오지 않는다**(봇이 먼저 "
     "받는다). 너에게 왔다면 고정 명령이 아닌 말이므로, 네가 위에서 골라 돌리면 된다."
@@ -396,9 +399,11 @@ def _git_sync_locked() -> str | None:
     return f"({why} 뒤 재시도) " + _verify_pushed()
 
 
-def run_admin_agent(prompt: str, thread_id: str) -> str:
-    """관리 채널용 -- LangGraph ReAct 에이전트(Gemini, run_shell 전권)로 답한다."""
+def run_admin_agent(prompt: str, thread_id: str, 중계판=None) -> str:
+    """관리 채널용 -- LangGraph ReAct 에이전트(Gemini, run_shell 전권)로 답한다.
+    중계판이 있으면 이 실행기 스레드에 묶어, 도구가 돌 때마다 진행 메시지가 갱신된다."""
     print(f"[admin-agent] thread={thread_id} prompt={prompt[:120]!r}")
+    relay.등록(중계판)
     # 요청 맥락을 채운다. 예전에는 admin 경로만 이걸 빼먹어서 호출자 ID가 늘 "unknown"이었고
     # (실측 2026-09-02), save_memory가 남기는 작성자도 전부 "unknown"이었다 -- 추적하려고
     # 작성자를 남기는 설계가 admin 쪽에서만 성립하지 않았다.
@@ -417,6 +422,7 @@ def run_admin_agent(prompt: str, thread_id: str) -> str:
         print(f"[admin-agent] thread={thread_id} error={e}")
         return f"(에이전트 오류) {e}"
     finally:
+        relay.해제()
         unregister_thread(thread_id)
 
 
@@ -525,9 +531,20 @@ async def _handle_admin_message(message: discord.Message) -> None:
     reply = None
     sync_note = None
     integrity_note = None
+    # 도구 중계: 켜져 있으면 진행 메시지 하나를 먼저 띄우고, 도구가 돌 때마다 그것을 갱신한다.
+    # 답이 오기 전까지 봇이 멈춘 듯 보이는 것을 없앤다 -- 보이는 것은 검사 가능한 것뿐이다.
+    중계판 = None
+    if relay.상태["켜짐"]:
+        try:
+            진행메시지 = await message.channel.send("⏳ 진행 중 · 도구 0개")
+            중계판 = relay.중계판(lambda t: 진행메시지.edit(content=t), loop)
+        except Exception as e:                                    # noqa: BLE001
+            print(f"[relay] 진행 메시지를 못 띄웠다: {type(e).__name__}: {e}")
     try:
         async with message.channel.typing():
-            reply = await loop.run_in_executor(None, run_admin_agent, content, thread_id)
+            reply = await loop.run_in_executor(None, run_admin_agent, content, thread_id, 중계판)
+            if 중계판 is not None:
+                await 중계판.마무리()
             # 답변은 이미 완성됐다. 이후 단계(git 동기화 등)에서 무슨 일이 나든 답변 전달을
             # 막아서는 안 된다 -- 예전엔 이 블록 전체가 하나의 try 였고 except가
             # CancelledError만 잡아서, git_sync가 던진 예외가 그대로 전파되며 전송 루프에

@@ -91,6 +91,15 @@ def 검사찾기(repo: Path, 바뀐py: "list[str]") -> "tuple[dict, list]":
             for t, text in 본문.items():
                 if 임포트.search(text):
                     찾은.add(str(t.relative_to(repo)))
+        # **원문을 읽는 검사도 검사다.** 봇 파일(discord_bot_server · bot_tools)은 discord ·
+        # langgraph · .env 가 있어야 임포트되므로 검사가 `read_text` 로 원문을 본다
+        # (test_discord_cmd · test_dispatch · test_relay 가 그렇다). 임포트만 보면 그
+        # 파일들이 매번 '검사 없음' 으로 찍힌다 -- 두 번 그렇게 찍힌 뒤 고쳤다. 파일
+        # 이름이 따옴표 안에 그대로 적힌 검사를 걸린 것으로 센다.
+        파일명 = re.compile(rf"[\"']{re.escape(Path(rel).name)}[\"']")
+        for t, text in 본문.items():
+            if 파일명.search(text):
+                찾은.add(str(t.relative_to(repo)))
         if 찾은:
             걸림[rel] = 찾은
         else:

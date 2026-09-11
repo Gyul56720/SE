@@ -20,6 +20,7 @@ import os
 import re
 import subprocess
 import threading
+import time
 import uuid
 from typing import Optional
 
@@ -35,6 +36,7 @@ import agent_memory
 import orchestrator_tool
 import public_agent_files
 import quota_tracker
+import relay
 from sandbox import run as sandbox_run
 from secret_filter import child_env, redact_secrets
 
@@ -172,6 +174,7 @@ def run_shell(command: str) -> str:
     # decode bytes in position 147-148: invalid continuation byte"). 도구가 예외로 죽으면
     # 그 턴 전체가 실패하므로, 깨진 바이트는 대체문자로 바꿔 넣고 계속 진행한다 -- 셸
     # 출력에는 로그·바이너리 조각·다른 인코딩 텍스트가 얼마든지 섞일 수 있다.
+    시작 = time.monotonic()
     proc = subprocess.Popen(
         ["bash", "-lc", command], cwd=REPO_DIR,
         stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -185,7 +188,10 @@ def run_shell(command: str) -> str:
         except subprocess.TimeoutExpired:
             proc.kill()
             stdout, stderr = proc.communicate()
+            relay.적기(relay.줄(redact_secrets(command), "시간초과", time.monotonic() - 시작))
             return "실행 시간 초과(180초) -- 명령을 더 작게 나눠서 재시도하라."
+        # 중계: 검사 가능한 것만 -- 무엇을 돌렸고 끝값이 얼마고 몇 초 걸렸나.
+        relay.적기(relay.줄(redact_secrets(command), proc.returncode, time.monotonic() - 시작))
         # 자르고 나서 마스킹한다 -- 자르기 전에 하면 긴 출력 전체를 훑느라 느려진다.
         # **부른 것을 남긴다.** 남기지 않으면 "탐색했는데 못 찾았다" 와 "아예 안
         # 했다" 가 로그에서 구별되지 않는다(실측 2026-09-09: 공개 채널 둘의 성능이
@@ -218,6 +224,8 @@ def run_experiment(command: str, minutes: int = 3) -> str:
     r = sandbox_run.실행(["bash", "-lc", command], 초=분 * 60, 메모리MB=4096)
     print(f"[run_experiment] {_current_author.get()} :: "
           f"{redact_secrets(command)[:160]!r} -> exit={r['끝값']}")
+    relay.적기(relay.줄(redact_secrets(command), r["끝값"] if r["돌았나"] else "판못깔음",
+                       r.get("걸린초", 0.0), 표지="🧪"))
     with _셸기록_lock:
         _셸기록.setdefault(threading.get_ident(), []).append(
             (redact_secrets(command)[:160], r["돌았나"] and r["끝값"] == 0))
@@ -696,6 +704,8 @@ def run_with_fallback_pool(candidates: "list[tuple[str, object]]", thread_map: d
             quota_tracker.set_pinned(pool_id, label)
             if i > 0:
                 print(f"{log_prefix} Model have changed {label}")
+                # 왜 느렸는지의 흔한 답이 이것이다 -- 앞 후보 i개가 막혀 갈아탔다.
+                relay.적기(f"↻ 모델 전환 → {label.split(':', 1)[-1]} (앞 {i}개 후보 막힘)")
             return reply
         except Exception as e:
             if not is_unavailable_error(e):

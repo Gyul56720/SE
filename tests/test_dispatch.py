@@ -102,7 +102,9 @@ _프롬프트 = _bot2.split("ADMIN_SYSTEM_PROMPT = (", 1)[-1].split("\n)", 1)[0]
 # 하고, 프롬프트에 안 적으면 이 검사가 빨간불을 낸다.
 _적혀야 = {"sandbox": "run_experiment", "audit": "audit/run.py", "graph": "graph/night.py",
          "eval": "eval/run.py", "router": "router/check.py", "intent": "intent/store.py",
-         "novel": "drift.sh"}
+         "novel": "drift.sh",
+         # 중계는 사람이 켜는 스위치다 -- 에이전트 진입점이 아니라 '안내' 가 적혀야 한다.
+         "relay": "!중계 켜기"}
 for _모듈 in dispatch.명령들:
     _꾸러미 = _모듈.__name__.split(".")[0]
     if _꾸러미 == "evolve":
