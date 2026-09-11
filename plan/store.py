@@ -19,11 +19,15 @@ import argparse
 import hashlib
 import json
 import subprocess
+import sys
 import tempfile
 import time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
+# 스크립트로 돌 때(`python3 plan/store.py --시험`) sys.path[0] 은 plan/ 이다 -- rehearsal 을 못 찾는다.
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
 상태상대 = "plan/state.json"
 리허설기 = None      # 검사 주입: (repo, 판, 초) -> dict(rehearsal.시험 의 꼴). None 이면 진짜 rehearsal
 

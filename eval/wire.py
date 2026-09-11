@@ -79,6 +79,9 @@ sys.path.insert(0, str(REPO))
      (0,), "계획판 상태를 읽는가 (리허설 여부까지 -- 쓰기 없음)"),
     ("기관:improve", ["python3", "improve/run.py", "--틈만"],
      (0,), "자가개선이 틈을 세는가 (모델·sandbox 안 씀 -- 읽기만)"),
+    # **얕은 점검이 깊은 길을 못 봤다**(실측: --틈만 은 plan 을 안 지나 ModuleNotFoundError 를 놓쳤다).
+    ("기관:improve임포트", ["python3", "improve/run.py", "--임포트"],
+     (0,), "자가개선의 깊은 임포트(plan·rehearsal)가 스크립트로도 서는가"),
     ("기관:delegate", ["python3", "delegate/run.py", "--범위", "graph/*.py", "--쪼개기만"],
      (0,), "위임의 쪼개기가 도는가 (호출 0회)"),
 ]

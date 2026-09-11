@@ -29,6 +29,9 @@
   · 봇이 임포트하는 핵심 모듈 중 검사가 없는 것(audit)   -> 판정: python3 tests/test_<모듈>.py (새로 짓는다)
   · 배선 읽기점검이 끊긴 기관(eval/wire, `--배선` 일 때)   -> 판정: 그 점검 명령
 
+**틈이 없으면 멈추지 않는다** -- 제2의 뇌가 모은 최신 것에서 이 저장소에 적용할 만한 것 하나를 골라
+그것을 부탁으로 삼아 같은 길(그림자 -> 레포 전체 시뮬 -> 동의)을 간다(성능개선).
+
 한 번에 **후보 하나만** 동의 대기로 남긴다(계획판이 하나뿐이다). 무한 loop 금지 -- 후보 3(최대 5).
 못 한 것은 원장과 메모에 그대로 남는다.
 
@@ -42,10 +45,17 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 import time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
+# **스크립트로 돌 때 sys.path[0] 은 이 파일의 디렉터리(improve/)다 -- 뿌리가 아니다.**
+# 실측 2026-09-11(VM): `python3 improve/run.py --부탁 ...` 가
+# `ModuleNotFoundError: No module named 'plan'` 로 죽었다. `--틈만` 은 plan 을 안 써서
+# 배선 읽기점검이 초록이었다 -- 얕은 점검이 깊은 길을 못 봤다. 뿌리를 먼저 넣는다.
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
 원장상대 = "improve/ledger.jsonl"
 메모곳 = "public_agent_memory"
 기본후보 = 3
@@ -479,6 +489,91 @@ def 부탁보고(r: dict) -> str:
     return "\n".join(줄)
 
 
+# ---------------------------------------------------------------- 틈이 없으면: 제2의 뇌로 성능 개선거리
+고르기기 = None    # 검사 주입: (prompt) -> str(JSON {"꼴":"부탁","부탁":...}). None 이면 router 수리기
+
+
+def 저장소요약(repo: Path, 몇: int = 14) -> str:
+    """이 저장소가 무엇으로 이루어졌는지 한 줄씩 -- 모델이 '어디에 적용할지' 를 고르는 바탕."""
+    줄 = []
+    for d in sorted(x for x in repo.iterdir() if x.is_dir() and (x / "__init__.py").is_file()):
+        if d.name in (".git", "venv", "tests", "gates"):
+            continue
+        머리 = ""
+        for 이름 in ("run.py", "store.py", "__init__.py"):
+            f = d / 이름
+            if f.is_file():
+                본 = f.read_text(encoding="utf-8", errors="replace").lstrip()
+                if 본.startswith('"""'):
+                    머리 = 본[3:].split("\n")[0][:90]
+                    break
+        줄.append(f"- {d.name}/: {머리}")
+    return "\n".join(줄[:몇])
+
+
+def 고르기프롬프트(요약: str, 근거: dict) -> str:
+    참 = "\n".join(f"- {x['출처']} #{x['해시']}: {x['요약']}" for x in 근거.get("참고", []))
+    return (
+        "너는 이 저장소(디스코드 하네스 에이전트)의 **성능 개선 제안자**다. 지금 고칠 빨간 검사(틈)가 없다.\n"
+        "그래서 **제2의 뇌가 모은 최신 것** 가운데 **이 저장소에 실제로 적용할 만한 것 하나**를 골라라.\n\n"
+        f"저장소 얼개:\n{요약}\n\n제2의 뇌가 모은 것:\n{참 or '(없음)'}\n\n"
+        "규칙:\n"
+        '- 답은 JSON 하나: {"꼴": "부탁", "부탁": "무엇을 어떻게 고칠지 한 문장(명령문)", '
+        '"왜": "무엇이 좋아지는가 한 줄", "근거": ["출처#해시", ...]}\n'
+        "- **모은 것에 근거가 있는 것만** 골라라. 근거가 없으면 {\"꼴\": \"없음\", \"왜\": \"...\"} 로 답하라.\n"
+        "- 좁게 -- 파일 한둘로 끝나는 것. 큰 개편은 고르지 마라(레포 전체 검사를 지나야 한다).\n"
+        "- 검사를 지우거나 게이트를 무르게 하는 것은 고르지 마라.\n"
+    )
+
+
+def 부탁고르기(repo=None) -> dict:
+    """{"됐나","부탁","왜","근거","확장","말"}. 제2의 뇌에서 '적용할 만한 것' 하나를 고른다."""
+    repo = Path(repo or REPO)
+    근거 = 근거모으기({"무엇": "agent harness performance latest methods",
+                   "왜": "틈이 없다 -- 최신 기술에서 적용거리를 찾는다", "종류": "성능"}, repo)
+    r = {"됐나": False, "부탁": "", "왜": "", "근거": [f"{x['출처']}#{x['해시']}" for x in 근거["참고"]],
+        "확장": 근거["확장"], "말": ""}
+    if not 근거["참고"]:
+        r["말"] = "제2의 뇌에 참고가 없다(넓혀 모아도) -- 수집이 먼저다(`!수집` · `!연구 <주제>`)"
+        return r
+    try:
+        답 = (고르기기 or _제안기본)(고르기프롬프트(저장소요약(repo), 근거))
+    except Exception as e:                             # noqa: BLE001
+        r["말"] = f"고르기를 못 불렀다: {type(e).__name__}: {str(e)[:100]}"
+        return r
+    m = re.search(r"\{.*\}", 답 or "", re.S)
+    try:
+        d = json.loads(m.group(0)) if m else {}
+    except ValueError:
+        d = {}
+    if d.get("꼴") != "부탁" or not str(d.get("부탁", "")).strip():
+        r["말"] = str(d.get("왜") or "적용할 만한 것을 못 골랐다")
+        return r
+    r.update(됐나=True, 부탁=str(d["부탁"]).strip()[:300], 왜=str(d.get("왜", ""))[:200])
+    if d.get("근거"):
+        r["근거"] = [str(x) for x in d["근거"]][:6]
+    return r
+
+
+def 성능개선(repo=None, 초: int = 180, 전부: bool = True, 전부초: int = 1800) -> dict:
+    """**틈이 없을 때 가는 길.** 제2의 뇌에서 적용거리를 골라 그것을 부탁으로 삼아 개선한다.
+
+    사용자(2026-09-11): "남은 틈이 없으면 성능 개선으로 넘어가 제2의 brain 써서 최신 기술로
+    우리가 적용 가능한 기술 탐색해서." 판정은 그대로 -- **레포 전체 회귀 없음 + 사람 동의**."""
+    repo = Path(repo or REPO)
+    고 = 부탁고르기(repo)
+    _적기(repo, {"꼴": "성능고르기", "됐나": 고["됐나"], "부탁": 고["부탁"][:200], "왜": 고["왜"],
+               "근거": 고["근거"], "확장": 고["확장"], "말": 고["말"][:200]})
+    if not 고["됐나"]:
+        return {"부탁": "", "판정": "고를것없음", "왜": "", "id": "", "diff": "", "말": 고["말"],
+                "근거": 고["근거"], "댄근거": [], "확장": 고["확장"], "파일들": [], "회귀": None}
+    r = 사용자개선(고["부탁"], repo, 초=초, 전부=전부, 전부초=전부초)
+    r["왜"] = r["왜"] or 고["왜"]
+    r["근거"] = r["근거"] or 고["근거"]
+    r["성능거리"] = True
+    return r
+
+
 # ---------------------------------------------------------------- ③ 시뮬레이션 + 성능 판정
 def _자기본(repo: Path, 판: Path) -> dict:
     """eval/run 을 판에서 돌려 후퇴(끝값 1)가 없는지 본다. 키가 없으면 못잼."""
@@ -564,7 +659,7 @@ def 자가개선(repo=None, 몇: int = 기본후보, 초: int = 120, 자: bool =
     from plan import store as P
     repo = Path(repo or REPO)
     몇 = max(1, min(int(몇), 최대후보))
-    결과 = {"돌았나": True, "틈수": 0, "해본": [], "동의대기": None, "메모": "", "남은것": ""}
+    결과 = {"돌았나": True, "틈수": 0, "해본": [], "동의대기": None, "메모": "", "남은것": "", "성능": False}
     if P.현재판(repo) is not None:
         결과.update(돌았나=False, 남은것="계획판이 이미 켜져 있다 -- 사람이 `!계획 승인/버림` 으로 먼저 끝내라(한 번에 하나)")
         return 결과
@@ -572,8 +667,19 @@ def 자가개선(repo=None, 몇: int = 기본후보, 초: int = 120, 자: bool =
     결과["틈수"] = len(틈들)
     _적기(repo, {"꼴": "탐색", "틈수": len(틈들), "틈": [f"[{g['종류']}] {g['무엇']}" for g in 틈들[:10]]})
     if not 틈들:
-        결과["남은것"] = "개선할 틈을 못 찾았다 -- CI 초록 · 미해결 수리 없음 · 핵심 모듈 검사 다 있음"
-        _적기(repo, {"꼴": "끝", "동의대기": None, "남은것": 결과["남은것"]})
+        # **멈추지 않는다** -- 틈이 없으면 제2의 뇌로 적용거리를 찾아 성능 개선으로 넘어간다.
+        결과["성능"] = True
+        p = 성능개선(repo, 초=초, 전부=전부, 전부초=전부초)
+        결과["해본"].append(p)
+        if p["판정"] == "동의대기":
+            결과["동의대기"] = p
+        else:
+            결과["남은것"] = ("고칠 틈은 없다. 제2의 뇌로 성능 개선거리를 찾았지만 "
+                          + {"고를것없음": "적용할 만한 것을 못 골랐다", "시뮬빨강": "레포 전체에서 새로 깨졌다"}
+                          .get(p["판정"], p["판정"]) + f" -- {p['말'][:160]}")
+        결과["메모"] = 기억쓰기(결과, repo)
+        _적기(repo, {"꼴": "끝", "동의대기": (결과["동의대기"] or {}).get("id"), "남은것": 결과["남은것"],
+                   "메모": 결과["메모"], "성능": True})
         return 결과
     for 틈 in 틈들[:몇]:
         r = 한후보(틈, repo, 초, 자, 전부=전부, 전부초=전부초)
@@ -639,6 +745,9 @@ def 기억쓰기(결과: dict, repo=None) -> str:
     p.parent.mkdir(parents=True, exist_ok=True)
     줄 = ["---", "topic: '자가개선 탐색'", "---", "", f"# 자가개선 탐색 ({결과['틈수']}개 틈)", ""]
     for r in 결과["해본"]:
+        if "틈" not in r:
+            줄.append(f"- [성능거리] {r.get('부탁', '')[:70]} -> **{r['판정']}**" + (f" · {r.get('왜', '')}" if r.get("왜") else ""))
+            continue
         g = r["틈"]
         줄.append(f"- [{g['종류']}] {g['무엇']} -> **{r['판정']}**" + (f" · {r['왜']}" if r["왜"] else "")
                  + (f" · 근거 {', '.join(r['댄근거'][:3])}" if r.get("댄근거") else "")
@@ -653,8 +762,13 @@ def 기억쓰기(결과: dict, repo=None) -> str:
 def 보고(결과: dict) -> str:
     if not 결과["돌았나"]:
         return "자가개선 못 돌림 -- " + 결과["남은것"]
-    줄 = [f"자가개선 -- 틈 {결과['틈수']}개 중 {len(결과['해본'])}개 시뮬레이션"]
+    줄 = [f"자가개선 -- 틈 {결과['틈수']}개 중 {len(결과['해본'])}개 시뮬레이션"
+         + (" · **틈이 없어 제2의 뇌로 성능 개선거리를 찾았다**" if 결과.get("성능") else "")]
     for r in 결과["해본"]:
+        if "틈" not in r:
+            줄.append(f"  {'✓' if r['판정'] == '동의대기' else '✗'} [성능거리] {r.get('부탁', '')[:70]}: {r['판정']}"
+                     + (f" -- {r['말'][:120]}" if r.get("말") else ""))
+            continue
         g = r["틈"]
         줄.append(f"  {'✓' if r['판정'] == '동의대기' else '✗'} [{g['종류']}] {g['무엇']}: {r['판정']}" + (f" -- {r['말'][:120]}" if r["말"] else ""))
     d = 결과["동의대기"]
@@ -677,7 +791,9 @@ def 보고(결과: dict) -> str:
 def main() -> int:
     ap = argparse.ArgumentParser(description="!자가개선 -- 탐색 -> 제안 -> 격리 시뮬 -> 동의 대기")
     ap.add_argument("--부탁", default="", help="사람이 말한 개선(!개선 <말>) -- 레포 전체 시뮬로 회귀를 본다")
+    ap.add_argument("--임포트", action="store_true", help="깊은 임포트만 확인(plan·rehearsal -- 읽기 점검)")
     ap.add_argument("--틈만", action="store_true")
+    ap.add_argument("--성능", action="store_true", help="틈과 무관하게 제2의 뇌로 적용거리를 찾는다")
     ap.add_argument("--승인", action="store_true")
     ap.add_argument("--버림", action="store_true")
     ap.add_argument("--상태", action="store_true")
@@ -690,8 +806,19 @@ def main() -> int:
     ap.add_argument("--저장소", default="")
     a = ap.parse_args()
     repo = Path(a.저장소) if a.저장소 else None
+    if a.임포트:
+        from plan import store as _P            # noqa: F401 -- 이 임포트가 사고의 자리였다
+        import rehearsal                        # noqa: F401
+        from graph import ask                   # noqa: F401
+        from sandbox import run as _SB          # noqa: F401
+        print("improve 배선: plan · rehearsal · graph · sandbox 임포트 됨")
+        return 0
     if a.부탁:
         r = 사용자개선(a.부탁, repo, 초=a.초, 전부=not a.좁게)
+        print(부탁보고(r))
+        return 0 if r["판정"] == "동의대기" else 1
+    if a.성능:
+        r = 성능개선(repo, 초=a.초, 전부=not a.좁게)
         print(부탁보고(r))
         return 0 if r["판정"] == "동의대기" else 1
     if a.틈만:

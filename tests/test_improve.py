@@ -153,6 +153,49 @@ try:
     ok(I.사용자개선("", d)["판정"] == "빈부탁", "빈 부탁은 안 받는다")
     P.리허설기 = 초록리허설
 
+    print("\n== 틈이 없으면 멈추지 않는다: 제2의 뇌로 성능 개선거리 ==")
+    I.틈모으기_ = lambda repo: []                      # 고칠 틈 없음
+    P.리허설기 = 리허설_회귀없음
+    본참 = {"프롬프트": ""}
+
+    def 고르기_가짜(prompt):
+        본참["프롬프트"] = prompt
+        return json.dumps({"꼴": "부탁", "부탁": "mod.f 가 1을 돌려주게 하라", "왜": "최신 방법 적용",
+                         "근거": ["arxiv:2501.9#aa"]}, ensure_ascii=False)
+    I.고르기기 = 고르기_가짜
+    I.넓히기_ = lambda 질의들, repo: None
+    from graph import ask as _ask
+    _원래찾기 = _ask.찾기
+    _ask.찾기 = lambda 물음, repo=None, 최대=5: [(9, {"출처": "dig/corpus/x.md", "해시": "aa", "요약": "새 방법 A"})]
+    I.제안기 = lambda prompt: json.dumps({"꼴": "패치", "왜": "적용", "근거": ["arxiv:2501.9#aa"],
+                                      "편집": [{"path": "mod.py", "old": "return 2", "new": "return 1"}]}, ensure_ascii=False)
+    try:
+        r = I.자가개선(d, 몇=3)
+        ok(r["성능"] and r["동의대기"] is not None and r["동의대기"]["판정"] == "동의대기",
+           f"**틈 0 -> 성능 개선거리로 넘어가 동의 대기** ({r.get('성능')}, {(r['동의대기'] or {}).get('판정')})")
+        ok(r["동의대기"].get("성능거리") and r["동의대기"]["부탁"] == "mod.f 가 1을 돌려주게 하라",
+           "제2의 뇌가 고른 것이 부탁이 된다")
+        ok("저장소 얼개" in 본참["프롬프트"] and "dig/corpus/x.md #aa" in 본참["프롬프트"],
+           "고르기 프롬프트에 저장소 얼개와 모은 참고가 들어간다")
+        ok("성능 개선거리" in I.보고(r), "보고가 성능 길로 갔다고 말한다")
+        꼴들2 = [x.get("꼴") for x in I.원장읽기(d)]
+        ok("성능고르기" in 꼴들2, "원장에 성능고르기가 남는다")
+        I.승인(d, 누가="검사"); git(d, "commit", "-qam", "성능 반영")
+
+        print("\n== 근거가 없으면 정직히 멈춘다 ==")
+        (d / "mod.py").write_text("def f():\n    return 2\n", encoding="utf-8"); git(d, "commit", "-qam", "again")
+        _ask.찾기 = lambda 물음, repo=None, 최대=5: []
+        r = I.자가개선(d, 몇=1)
+        ok(r["동의대기"] is None and "참고가 없다" in r["해본"][0]["말"],
+           f"**뇌가 비면 '수집이 먼저다' 라고 말한다** ({r['해본'][0]['판정']})")
+        _ask.찾기 = lambda 물음, repo=None, 최대=5: [(9, {"출처": "s", "해시": "b", "요약": "x"})]
+        I.고르기기 = lambda prompt: json.dumps({"꼴": "없음", "왜": "적용할 만한 것이 없다"}, ensure_ascii=False)
+        r = I.자가개선(d, 몇=1)
+        ok(r["해본"][0]["판정"] == "고를것없음", "고를 것이 없으면 그렇다고 한다")
+    finally:
+        _ask.찾기 = _원래찾기
+        I.고르기기 = None
+
     print("\n== 후보 상한 5 ==")
     I.틈모으기_ = lambda repo: [dict(틈, 무엇=f"t{i}") for i in range(8)]
     I.제안기 = lambda prompt: json.dumps({"꼴": "패치", "왜": "x", "편집": [{"path": "mod.py", "old": "return 2", "new": "return 3"}]})
@@ -160,7 +203,7 @@ try:
     ok(len(r["해본"]) == 5 and r["틈수"] == 8, f"**몇=99 줘도 후보 5개까지** ({len(r['해본'])})")
     ok("5개 후보" in r["남은것"], "다 실패하면 그렇다고 말한다")
 finally:
-    I.제안기 = I.틈모으기_ = I.넓히기_ = None
+    I.제안기 = I.틈모으기_ = I.넓히기_ = I.고르기기 = None
     I.모델막힘 = False
     Rs.분해기 = None
     P.리허설기 = None
@@ -183,6 +226,8 @@ ok(불림2 and 불림2[0][:3] == ["python3", "improve/run.py", "--부탁"] and �
    f"**`!개선 <말>` 이 그 말을 그대로 부탁으로 넘긴다** ({불림2})")
 _run = (뿌리 / "improve" / "run.py").read_text(encoding="utf-8")
 ok("def 사용자개선" in _run and "전부: bool = True" in _run, "부탁은 기본이 레포 전체 시뮬이다")
+ok("def 성능개선" in _run and "def 부탁고르기" in _run, "틈이 없을 때 가는 길이 있다")
+ok('if str(REPO) not in sys.path' in _run, "**스크립트로 돌 때 뿌리를 넣는다**(ModuleNotFoundError 사고)")
 ok(not dispatch.도구로쳐도되나("!자가개선 승인")[0], "**봇은 dispatch_command 로 승인을 못 친다**")
 ok(dispatch.고르기("스스로 개선할 점 찾아봐")[0] == "!자가개선" and dispatch.고르기("자가개선 점검")[0] == "!자가개선 점검", "자연어 -> !자가개선")
 불림 = []
