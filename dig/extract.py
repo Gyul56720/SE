@@ -73,6 +73,9 @@ class _판(HTMLParser):
         super().__init__(convert_charrefs=True)
         self.jsonld, self.묻힌json, self.머리표 = [], [], {}
         self.표, self.목록, self.링크, self.글, self.제목 = [], [], [], [], []
+        # 비언어: 수식(LaTeX 문자열) · 그림(캡션·출처 포인터). 픽셀은 안 담는다 -- 검증 못 한다.
+        self.수식, self.그림 = [], []
+        self._anno, self._figcap = False, None
         # 표마다 '첫 줄이 진짜 머리였나'. **첫 줄을 무조건 머리로 먹으면 안 된다** --
         # <th> 없는 표(메뉴 · 값 목록이 흔히 그렇다)에서는 그 줄이 첫 메뉴다.
         self.표머리: list = []
@@ -135,6 +138,18 @@ class _판(HTMLParser):
             # alt 에 정보가 있는 일이 흔하다(메뉴 사진의 이름·가격)
             if a.get("alt"):
                 self.글.append(a["alt"])
+            src = a.get("src") or a.get("data-src") or ""
+            if src or a.get("alt"):
+                self.그림.append({"꼴": "img", "src": src[:300], "캡션": (a.get("alt") or "")[:300]})
+        elif tag == "math":
+            # arXiv HTML 의 MathML 은 alttext 에 원본 LaTeX 를 담는다 -- 그것만 집는다(속 글자는 부스러기)
+            alt = a.get("alttext") or a.get("data-latex")
+            if alt:
+                self.수식.append(alt.strip())
+        elif tag == "annotation":
+            self._anno = "tex" in (a.get("encoding", "") or "").lower()
+        elif tag == "figcaption":
+            self._figcap = ""
 
     def handle_endtag(self, tag):
         if tag == "script":
@@ -178,6 +193,12 @@ class _판(HTMLParser):
             if self._h and self._h.strip():
                 self.제목.append(self._h.strip())
             self._h = None
+        elif tag == "annotation":
+            self._anno = False
+        elif tag == "figcaption":
+            if self._figcap and self._figcap.strip():
+                self.그림.append({"꼴": "figure", "src": "", "캡션": self._figcap.strip()[:400]})
+            self._figcap = None
 
     def handle_data(self, d):
         if self._script:
@@ -196,6 +217,10 @@ class _판(HTMLParser):
             self._a글 = getattr(self, "_a글", "") + " " + 글
         if self._h is not None:
             self._h += " " + 글
+        if self._anno:
+            self.수식.append(글)
+        if self._figcap is not None:
+            self._figcap += " " + 글
         self.글.append(글)
 
     # ── script 안 ─────────────────────────────────────────────────
@@ -376,6 +401,8 @@ def 뽑기(몸통: str, 꼴: str = "", url: str = "") -> dict:
             "목록": p.목록,
             "제목들": p.제목,
             "링크": p.링크,
+            "수식": list(dict.fromkeys(x for x in p.수식 if x.strip()))[:200],
+            "그림": p.그림[:100],
             "글": 글,
             # **머리표까지 넣고 캔다.** 좌표(`geo.position`)· 전화· 가격이 meta 에만
             # 있는 쪽이 흔하다 -- 눈에 보이는 글만 캐면 그것을 통째로 놓친다.
@@ -405,6 +432,24 @@ def 뽑기(몸통: str, 꼴: str = "", url: str = "") -> dict:
         return out
     out.update({"갈래": "글", "글": 몸통, "캔값": 캔값(몸통)})
     return out
+
+
+_수식환경 = re.compile(r"\\begin\{(equation\*?|align\*?|gather\*?|eqnarray\*?|multline\*?)\}(.+?)\\end\{\1\}", re.S)
+_수식구분 = re.compile(r"\$\$(.+?)\$\$|\\\[(.+?)\\\]|\\\((.+?)\\\)", re.S)
+
+
+def 수식뽑기(text: str) -> "list[str]":
+    """날 텍스트(TeX 소스·마크다운)에서 수식을 **원문 LaTeX 그대로** 뽑는다. 렌더링·해석 안 함.
+    equation/align 등 환경 + $$…$$ · \\[…\\] · \\(…\\). 검증 가능한 문자열이라 그대로 보관한다."""
+    out = []
+    for m in _수식환경.finditer(text or ""):
+        out.append(" ".join(m.group(2).split()))
+    for m in _수식구분.finditer(text or ""):
+        조각 = next((g for g in m.groups() if g), "")
+        조각 = " ".join(조각.split())
+        if 조각:
+            out.append(조각)
+    return list(dict.fromkeys(x for x in out if x))[:200]
 
 
 def 합치기(뽑은것들: list) -> dict:

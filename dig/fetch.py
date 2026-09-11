@@ -269,6 +269,14 @@ def 곁문(url: str) -> list:
 
     host, path = p.netloc, p.path or "/"
     q = p.query
+    # arXiv: /abs·/pdf 를 HTML(수식 MathML·표·figcaption 이 텍스트로 온다)·ar5iv·TeX 로.
+    # PDF 만 긁으면 수식이 글리프로 흩어져 못 살린다. (dig/paper.py 가 더 꼼꼼히 다룬다)
+    m = re.search(r"arxiv\.org/(?:abs|pdf|html|e-print)/([0-9]{4}\.[0-9]{4,5})(?:v[0-9]+)?", url, re.I)
+    if m:
+        aid = m.group(1)
+        더(f"https://arxiv.org/html/{aid}")
+        더(f"https://ar5iv.labs.arxiv.org/html/{aid}")
+        더(f"https://arxiv.org/abs/{aid}")
     # 모바일 쪽
     if not host.startswith("m."):
         더(urllib.parse.urlunsplit((p.scheme, "m." + host.replace("www.", ""),
