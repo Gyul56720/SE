@@ -2,7 +2,8 @@
 
     !계획 켜기 <요청>   그림자 워크트리를 꺼낸다. 이후 edit_file · run_shell 은 거기서 돈다 (관리 채널)
     !계획 보기          그림자의 diff = 계획 (공개 채널도 읽기는 된다)
-    !계획 승인          실제 트리에 git apply --index (관리 채널) -- 안 붙으면 코드가 거절
+    !계획 시험          격리 판에서 미리 돌려 본다 (관리 채널) -- 승인의 전제
+    !계획 승인          실제 트리에 git apply --index (관리 채널) -- 리허설이 초록일 때만
     !계획 버림          그림자를 버린다 (관리 채널)
     !계획 상태
 """
@@ -14,7 +15,8 @@ PREFIX = "!계획"
 
 HELP = f"""**계획 (plan)** -- 고치기 전에 diff 로 계획을 보이고, **사람이 승인해야** 실제 트리에 닿는다
 `{PREFIX} 켜기 <요청>` 그림자에서 고치기 시작 (관리 채널) · `{PREFIX} 보기` diff = 계획
-`{PREFIX} 승인` 실제 트리에 적용 (관리 채널, 판정은 git apply 끝값) · `{PREFIX} 버림` · `{PREFIX} 상태`"""
+`{PREFIX} 시험` **격리 판에서 미리 돌려 본다**(문법·게이트·검사) -- 승인의 전제
+`{PREFIX} 승인` 실제 트리에 적용 (관리 채널, 리허설 초록일 때만) · `{PREFIX} 버림` · `{PREFIX} 상태`"""
 
 
 def run(text: str, runner=None, allow_write: bool = True) -> "str | None":
@@ -39,6 +41,8 @@ def run(text: str, runner=None, allow_write: bool = True) -> "str | None":
         if len(words) < 2 or not words[1].strip():
             return f"`{PREFIX} 켜기 <요청>` -- 무엇을 고치려는지 한 줄을 적어라."
         return _판.켜기(words[1], 누가="관리채널")
+    if 머리 == "시험":
+        return _판.시험하기()[:1900]
     if 머리 == "승인":
         return _판.승인(누가="관리채널")
     if 머리 == "버림":

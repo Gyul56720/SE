@@ -5,7 +5,8 @@
 
     !계획 켜기 <요청>   HEAD 를 그림자 워크트리로 꺼낸다. 그 뒤 edit_file · run_shell 은 **그림자**에서 돈다
     !계획 보기          그림자의 git diff (이것이 '계획' 이다 -- 모델의 설명이 아니라 코드가 만든 차이)
-    !계획 승인          diff 를 실제 트리에 `git apply --index` -- 안 붙으면 코드가 거절한다(사람이 판정 안 함)
+    !계획 시험          **격리 판에서 미리 돌려 본다**(문법·게이트·바뀐 파일의 검사) -- 승인의 전제다
+    !계획 승인          diff 를 실제 트리에 `git apply --index` -- **리허설이 초록일 때만**. 안 붙으면 코드가 거절
     !계획 버림          그림자를 버린다. 실제 트리는 처음부터 안 건드렸다
 
 승인 주체가 사람인 것은 intent 와 같은 자리(관리 채널 화이트리스트, allow_write)가 지킨다.
@@ -15,6 +16,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import subprocess
 import tempfile
@@ -23,6 +25,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 상태상대 = "plan/state.json"
+리허설기 = None      # 검사 주입: (repo, 판, 초) -> dict(rehearsal.시험 의 꼴). None 이면 진짜 rehearsal
 
 
 def _git(repo: Path, *args: str, 입력: str = None):
@@ -94,7 +97,26 @@ def 보기(repo=None) -> str:
     return f"[{s['id']}] 요청: {s['요청'][:80]}\n{stat}{영}\n\n{d}"
 
 
-def 승인(repo=None, 누가: str = "cli") -> str:
+def _해시(판: Path) -> str:
+    return hashlib.sha256(_diff(판, 이진=True).encode("utf-8")).hexdigest()[:12]
+
+
+def 시험하기(repo=None, 초: int = 180) -> str:
+    """**승인 전에 격리 판에서 돌려 본다.** 결과를 지금 diff 의 해시와 함께 상태에 적는다."""
+    repo = Path(repo or REPO)
+    s = 읽기(repo)
+    if not s:
+        return "계획판이 꺼져 있다 -- `!계획 켜기 <요청>`"
+    판 = Path(s["판"])
+    import rehearsal
+    r = (리허설기 or (lambda repo, 판, 초: rehearsal.시험(repo, 판=판, 초=초)))(repo, 판, 초)
+    s["시험"] = {"해시": _해시(판), "통과": bool(r["통과"]), "때": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+               "걸린초": r["걸린초"]}
+    (repo / 상태상대).write_text(json.dumps(s, ensure_ascii=False, indent=1), encoding="utf-8")
+    return rehearsal.보고(r)  # 보고는 늘 진짜 꼴로 찍는다
+
+
+def 승인(repo=None, 누가: str = "cli", 건너뛰기: bool = False) -> str:
     """diff 를 실제 트리에 붙인다. 판정은 `git apply --index` 의 끝값 -- 사람도 모델도 아니다."""
     repo = Path(repo or REPO)
     s = 읽기(repo)
@@ -105,6 +127,20 @@ def 승인(repo=None, 누가: str = "cli") -> str:
     if not d.strip():
         _끄기(repo, s)
         return f"[{s['id']}] 바뀐 것이 없어 그대로 끈다"
+    # **돌려 보지 않은 코드는 실제 트리에 안 붙인다.** 사용자(2026-09-11): 샌드박스가 있는데
+    # 미리 돌려 보지 않고 붙이고 있었다. 리허설이 초록이어야 하고, 그 초록은 **지금 이 diff** 의 것이어야 한다.
+    시 = s.get("시험") or {}
+    지금해시 = _해시(판)
+    if not 건너뛰기:
+        if not 시:
+            return (f"[{s['id']}] **아직 안 돌려 봤다 -- 붙이지 않았다.** `!계획 시험` 으로 격리 판에서 "
+                    f"문법·게이트·검사를 먼저 돌려라(그것이 초록이어야 승인이 된다)")
+        if 시.get("해시") != 지금해시:
+            return (f"[{s['id']}] **시험한 뒤 코드가 또 바뀌었다 -- 붙이지 않았다.** `!계획 시험` 을 다시 돌려라 "
+                    f"(시험한 diff {시.get('해시', '?')} · 지금 {지금해시})")
+        if not 시.get("통과"):
+            return (f"[{s['id']}] **리허설이 빨강이었다 -- 붙이지 않았다.** 먼저 고치고 `!계획 시험` 을 다시 돌려라 "
+                    f"({시.get('때', '')})")
     r = _git(repo, "apply", "--index", "--whitespace=nowarn", "-", 입력=d)
     if r.returncode != 0:
         return (f"[{s['id']}] **적용 실패 -- 코드가 거절했다**: {r.stderr.strip()[:300]}\n"
@@ -112,7 +148,9 @@ def 승인(repo=None, 누가: str = "cli") -> str:
                 f"`!계획 보기` 로 확인하고 `!계획 버림` 하거나 실제 트리를 정리하라")
     파일수 = len([l for l in _git(판, "diff", "--name-only").stdout.splitlines() if l.strip()])
     _끄기(repo, s)
-    return f"[{s['id']}] 적용됨 -- {파일수}개 파일이 실제 트리(index)에 올랐다 (승인: {누가}). 커밋은 git_sync 가 한다"
+    시말 = "리허설 초록 뒤" if not 건너뛰기 else "**리허설 건너뜀**"
+    return (f"[{s['id']}] 적용됨 -- {파일수}개 파일이 실제 트리(index)에 올랐다 ({시말}, 승인: {누가}). "
+            f"커밋은 git_sync 가 한다")
 
 
 def 버림(repo=None) -> str:
@@ -138,7 +176,10 @@ def 상태(repo=None) -> str:
     s = 읽기(repo)
     if not s:
         return "계획판 꺼짐"
-    return f"계획판 켜짐 [{s['id']}] 요청: {s['요청'][:80]} (그림자 {Path(s['판']).name})"
+    시 = s.get("시험") or {}
+    시말 = ("시험 안 함" if not 시 else
+          ("초록" if 시.get("통과") else "빨강") + (" (그 뒤 또 바뀜)" if 시.get("해시") != _해시(Path(s["판"])) else ""))
+    return f"계획판 켜짐 [{s['id']}] 요청: {s['요청'][:80]} (그림자 {Path(s['판']).name}) · 리허설: {시말}"
 
 
 def main() -> int:
@@ -146,7 +187,9 @@ def main() -> int:
     ap.add_argument("--상태", action="store_true")
     ap.add_argument("--켜기", default="")
     ap.add_argument("--보기", action="store_true")
+    ap.add_argument("--시험", action="store_true")
     ap.add_argument("--승인", action="store_true")
+    ap.add_argument("--건너뛰기", action="store_true", help="리허설 없이 승인(사람이 명시할 때만)")
     ap.add_argument("--버림", action="store_true")
     ap.add_argument("--저장소", default="")
     a = ap.parse_args()
@@ -155,8 +198,10 @@ def main() -> int:
         print(켜기(a.켜기, repo))
     elif a.보기:
         print(보기(repo))
+    elif a.시험:
+        print(시험하기(repo))
     elif a.승인:
-        print(승인(repo))
+        print(승인(repo, 건너뛰기=a.건너뛰기))
     elif a.버림:
         print(버림(repo))
     else:
