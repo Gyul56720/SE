@@ -11,8 +11,13 @@
      (초록이면 틈이 아니다: '이미초록' 으로 넘어간다)
   ② 패치는 **그림자 계획판(plan)** 에만 닿는다. 거기서 판정 명령이 **초록으로 뒤집혀야** 한다
      (red -> green. self_challenge 가 게이트를 승격시킬 때 쓰는 그 증명이다)
-  ③ **리허설**(rehearsal: 문법·게이트·바뀐 파일이 거는 검사)이 초록이어야 한다 -- 개선이 다른
-     것을 깨뜨리지 않았다는 증명. (`--자` 를 주면 eval/run 까지 돌려 후퇴가 없는지 본다)
+  ③ **리허설**이 초록이어야 한다 -- 문법·게이트·바뀐 파일의 검사에 더해 **레포 전체**(171개)를
+     격리 판에서 돌려 HEAD 바탕과 견준다. **멀리서 새로 깨진 것이 하나라도 있으면 개선이 아니다**
+     (사용자: "코드 하나 바뀌면 전체가 영향을 받을 수도 있잖아"). `--좁게` 로 끌 수 있고, `--자` 는
+     eval/run 후퇴까지 본다.
+
+`!개선 <말>` 은 틈이 아니라 **사람이 말한 개선**이다 -- red->green 이 없으므로 판정은
+**레포 전체에 회귀가 없는 것**이다(사용자개선).
 
 셋 다 통과하면 **붙이지 않고 멈춘다** -- 동의 대기. 사람이 `!자가개선 승인` 을 치면 plan.승인
 (리허설 초록 + 같은 diff 일 때만 붙는 그 문)을 지나 실제 트리에 오르고 git_sync 가 커밋한다.
@@ -335,6 +340,145 @@ def 적용(제안: dict, 판: Path) -> "tuple[bool, str]":
     return True, " · ".join(한것)[:300]
 
 
+# ---------------------------------------------------------------- 사용자가 말한 개선 (!개선 <말>)
+def _관련파일찾기(말: str, repo: Path, 몇: int = 4) -> "list[str]":
+    """부탁의 낱말로 저장소 .py 를 점수 매겨 고른다. 이름 맞음 3점 · 본문 등장 1점(앞 400줄)."""
+    낱말 = [w.lower() for w in re.split(r"[^0-9A-Za-z가-힣_./]+", 말 or "") if len(w) >= 2][:12]
+    if not 낱말:
+        return []
+    점수: dict = {}
+    for f in repo.rglob("*.py"):
+        rel = str(f.relative_to(repo))
+        if any(x in rel.split("/") for x in (".git", "venv", "__pycache__", "tests", "inbox", "node_modules")):
+            continue
+        if not f.is_file() or f.stat().st_size > 400_000:
+            continue
+        s_ = 0
+        낮 = rel.lower()
+        for w in 낱말:
+            if w in 낮:
+                s_ += 3
+        try:
+            본 = "\n".join(f.read_text(encoding="utf-8", errors="replace").splitlines()[:400]).lower()
+        except OSError:
+            continue
+        for w in 낱말:
+            if w in 본:
+                s_ += 1
+        if s_:
+            점수[rel] = s_
+    return [k for k, _ in sorted(점수.items(), key=lambda kv: -kv[1])[:몇]]
+
+
+def 부탁프롬프트(말: str, repo: Path, 근거: dict, 파일들: "list[str]") -> str:
+    발췌 = []
+    for rel in 파일들:
+        try:
+            줄들 = (repo / rel).read_text(encoding="utf-8", errors="replace").splitlines()[:200]
+            발췌.append(f"### {rel} (앞 {len(줄들)}줄)\n" + "\n".join(줄들))
+        except OSError:
+            continue
+    근거줄 = ""
+    if 근거.get("참고"):
+        근거줄 = "\n\n제2의 뇌가 모은 참고(논문·코드 -- 여기서 방법을 고르고 \"근거\" 에 출처를 적어라):\n" + "\n".join(
+            f"- {x['출처']} #{x['해시']}: {x['요약']}" for x in 근거["참고"])
+        if 근거.get("확장"):
+            근거줄 += f"\n(참고가 모자라 {근거['확장']}바퀴 넓혀 모았다)"
+    return (
+        "너는 이 저장소(디스코드 하네스 에이전트)의 **개선자**다. 사람이 말한 개선을 **최소 패치**로 옮겨라.\n\n"
+        f"사람이 말한 개선: {말}\n\n"
+        + ("\n\n".join(발췌) if 발췌 else "(관련 파일을 못 골랐다 -- 새 파일로 지어도 된다)")
+        + 근거줄
+        + "\n\n규칙:\n"
+        "- 답은 JSON 하나: {\"꼴\": \"패치\", \"왜\": \"한 줄\", \"근거\": [\"출처#해시\", ...], "
+        "\"편집\": [{\"path\": \"...\", \"old\": \"정확히 한 번 있는 글\", \"new\": \"...\"}], "
+        "\"새파일\": [{\"path\": \"...\", \"내용\": \"전체\"}]}\n"
+        "- old 는 글자 그대로, 정확히 한 번만. 없거나 두 번이면 거절된다.\n"
+        "- **검사를 지우거나 assert 를 빼지 마라.** 새 기능이면 tests/test_<이름>.py 를 새파일로 같이 지어라.\n"
+        "- gates/ · .env · 판정 원장(*.jsonl) 은 못 만진다.\n"
+        "- 레포 전체 검사가 돌아간다 -- **다른 데를 깨뜨리면 거절된다.** 좁게 고쳐라.\n"
+        "- 못 하겠으면 {\"꼴\": \"사람\", \"사람이_할_것\": \"...\"}.\n"
+    )
+
+
+def 사용자개선(말: str, repo=None, 초: int = 180, 전부: bool = True, 전부초: int = 1800) -> dict:
+    """`!개선 <말>` -- 사람이 말한 개선. red->green 이 없으므로 **레포 전체에 회귀가 없는 것**이 판정이다.
+
+    사용자(2026-09-11): "난 내 에이전트가 내가 한 말의 개선을 하길 바란다. red-green 개선이 아니라
+    하네스 에이전트 성능 자체의 개선이야."
+    """
+    from plan import store as P
+    repo = Path(repo or REPO)
+    말 = (말 or "").strip()
+    r = {"부탁": 말, "판정": "", "왜": "", "id": "", "diff": "", "말": "", "근거": [], "댄근거": [],
+        "확장": 0, "파일들": [], "회귀": None}
+    if not 말:
+        r.update(판정="빈부탁", 말="무엇을 개선할지 한 줄로 적어라 -- `!개선 <말>`")
+        return r
+    if P.현재판(repo) is not None:
+        r.update(판정="판열림", 말="계획판이 이미 켜져 있다 -- `!계획 승인/버림` 으로 먼저 끝내라(한 번에 하나)")
+        return r
+    _적기(repo, {"꼴": "부탁", "말": 말[:300]})
+
+    근거 = 근거모으기({"무엇": 말, "왜": "사람이 말한 개선", "종류": "부탁"}, repo)
+    r["근거"] = [f"{x['출처']}#{x['해시']}" for x in 근거["참고"]]
+    r["확장"] = 근거["확장"]
+    r["파일들"] = _관련파일찾기(말, repo)
+    try:
+        답 = (제안기 or _제안기본)(부탁프롬프트(말, repo, 근거, r["파일들"]))
+    except Exception as e:                             # noqa: BLE001
+        r.update(판정="제안없음", 말=f"제안기를 못 불렀다: {type(e).__name__}: {str(e)[:100]}")
+        return r
+    제안 = 해석(답)
+    if not 제안 or 제안.get("꼴") != "패치":
+        r.update(판정="제안없음", 말=(제안 or {}).get("사람이_할_것") or "패치 꼴의 답이 아니다")
+        return r
+    r["왜"] = str(제안.get("왜", ""))[:200]
+    r["댄근거"] = [str(x) for x in (제안.get("근거") or [])][:6]
+
+    P.켜기(f"자가개선: [부탁] {말[:80]}", repo=repo, 누가="개선")
+    판 = P.현재판(repo)
+    if 판 is None:
+        r.update(판정="판못깜", 말="그림자를 못 꺼냈다")
+        return r
+    ok, 적용말 = 적용(제안, 판)
+    if not ok:
+        P.버림(repo)
+        r.update(판정="적용실패", 말=적용말)
+        return r
+
+    시험보고 = P.시험하기(repo, 초=초, 전부=전부, 전부초=전부초)
+    st = P.읽기(repo) or {}
+    시 = st.get("시험") or {}
+    r["회귀"] = 시.get("회귀")
+    if not 시.get("통과"):
+        P.버림(repo)
+        r.update(판정="시뮬빨강", 말=시험보고[-600:])
+        return r
+    r.update(판정="동의대기", id=st.get("id", ""), diff=P.보기(repo)[:1500],
+             말=("레포 전체 시뮬 초록(회귀 없음) -- **사람의 동의를 기다린다** (`!개선 승인`)"))
+    _적기(repo, {"꼴": "부탁끝", "말": 말[:200], "판정": r["판정"], "id": r["id"], "근거": r["근거"],
+               "댄근거": r["댄근거"], "확장": r["확장"], "회귀": r["회귀"]})
+    return r
+
+
+def 부탁보고(r: dict) -> str:
+    줄 = [f"개선 부탁: {r['부탁'][:90]}", f"  판정: **{r['판정']}**" + (f" -- {r['왜']}" if r["왜"] else "")]
+    if r["파일들"]:
+        줄.append("  고른 파일: " + ", ".join(r["파일들"]))
+    줄.append("  근거(제2의 뇌): " + (", ".join(r["댄근거"][:4]) if r["댄근거"] else "없음")
+             + (f" · 탐색 {r['확장']}바퀴 넓힘" if r["확장"] else ""))
+    회 = r.get("회귀") or {}
+    if 회:
+        줄.append(f"  레포 전체 회귀: 새로 깨짐 {회.get('새로깨짐') or '없음'} · 고쳐짐 {회.get('고쳐짐') or '없음'}")
+    if r["말"]:
+        줄.append("  " + r["말"][:400].replace("\n", "\n  "))
+    if r["판정"] == "동의대기":
+        줄.append("  붙이려면 `!개선 승인` · 아니면 `!개선 버림`")
+        줄.append("  diff:\n" + "\n".join("    " + x for x in r["diff"].splitlines()[:25]))
+    return "\n".join(줄)
+
+
 # ---------------------------------------------------------------- ③ 시뮬레이션 + 성능 판정
 def _자기본(repo: Path, 판: Path) -> dict:
     """eval/run 을 판에서 돌려 후퇴(끝값 1)가 없는지 본다. 키가 없으면 못잼."""
@@ -347,11 +491,12 @@ def _자기본(repo: Path, 판: Path) -> dict:
             "말": {0: "자(eval) 후퇴 없음", 1: "**자(eval) 후퇴** -- 개선이 아니다", 3: "자를 못 댔다(모델 키 없음) -- 못잼"}.get(끝, f"끝값 {끝}")}
 
 
-def 한후보(틈: dict, repo=None, 초: int = 120, 자: bool = False) -> dict:
+def 한후보(틈: dict, repo=None, 초: int = 120, 자: bool = False,
+        전부: bool = True, 전부초: int = 1800) -> dict:
     """틈 하나: 빨강 확인 -> 제안 -> 그림자에 적용 -> 초록 확인 -> 리허설 -> (자) -> 동의 대기 또는 버림."""
     from plan import store as P
     repo = Path(repo or REPO)
-    r = {"틈": 틈, "판정": "", "왜": "", "id": "", "diff": "", "말": "", "근거": [], "댄근거": [], "확장": 0}
+    r = {"틈": 틈, "판정": "", "왜": "", "id": "", "diff": "", "말": "", "근거": [], "댄근거": [], "확장": 0, "회귀": None}
 
     전끝, 전꼬리 = 판정(틈["판정명령"], repo, 초)
     if 전끝 == 0:
@@ -393,8 +538,9 @@ def 한후보(틈: dict, repo=None, 초: int = 120, 자: bool = False) -> dict:
         r.update(판정="빨강그대로", 말=f"패치를 붙여도 판정 명령이 빨강이다(끝값 {후끝}): {후꼬리[-200:]}")
         return r
 
-    시험보고 = P.시험하기(repo, 초=초)
+    시험보고 = P.시험하기(repo, 초=초, 전부=전부, 전부초=전부초)
     s = P.읽기(repo) or {}
+    r["회귀"] = (s.get("시험") or {}).get("회귀")
     if not (s.get("시험") or {}).get("통과"):
         P.버림(repo)
         r.update(판정="리허설빨강", 말=시험보고[-400:])
@@ -413,7 +559,8 @@ def 한후보(틈: dict, repo=None, 초: int = 120, 자: bool = False) -> dict:
     return r
 
 
-def 자가개선(repo=None, 몇: int = 기본후보, 초: int = 120, 자: bool = False, 배선: bool = False, 점검: bool = False) -> dict:
+def 자가개선(repo=None, 몇: int = 기본후보, 초: int = 120, 자: bool = False, 배선: bool = False,
+          점검: bool = False, 전부: bool = True, 전부초: int = 1800) -> dict:
     from plan import store as P
     repo = Path(repo or REPO)
     몇 = max(1, min(int(몇), 최대후보))
@@ -429,7 +576,7 @@ def 자가개선(repo=None, 몇: int = 기본후보, 초: int = 120, 자: bool =
         _적기(repo, {"꼴": "끝", "동의대기": None, "남은것": 결과["남은것"]})
         return 결과
     for 틈 in 틈들[:몇]:
-        r = 한후보(틈, repo, 초, 자)
+        r = 한후보(틈, repo, 초, 자, 전부=전부, 전부초=전부초)
         결과["해본"].append(r)
         _적기(repo, {"꼴": "후보", "종류": 틈["종류"], "무엇": 틈["무엇"], "판정": r["판정"], "왜": r["왜"], "id": r["id"],
                    "근거": r.get("근거", []), "댄근거": r.get("댄근거", []), "확장": r.get("확장", 0), "말": r["말"][:300]})
@@ -513,6 +660,9 @@ def 보고(결과: dict) -> str:
     d = 결과["동의대기"]
     if d:
         줄.append(f"\n**동의를 기다린다** [{d['id']}] 왜: {d['왜']}")
+        회 = d.get("회귀") or {}
+        if 회:
+            줄.append(f"  레포 전체 회귀: 새로 깨짐 {회.get('새로깨짐') or '없음'} · 고쳐짐 {회.get('고쳐짐') or '없음'}")
         줄.append("  근거(제2의 뇌): " + (", ".join(d["댄근거"][:4]) if d.get("댄근거") else "없음 -- 참고 없이 낸 제안이다(정직히)")
                  + (f" · 탐색 범위를 {d['확장']}바퀴 넓혔다" if d.get("확장") else ""))
         줄.append("  붙이려면 `!자가개선 승인` · 아니면 `!자가개선 버림` (봇은 대신 승인하지 못한다)")
@@ -526,6 +676,7 @@ def 보고(결과: dict) -> str:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="!자가개선 -- 탐색 -> 제안 -> 격리 시뮬 -> 동의 대기")
+    ap.add_argument("--부탁", default="", help="사람이 말한 개선(!개선 <말>) -- 레포 전체 시뮬로 회귀를 본다")
     ap.add_argument("--틈만", action="store_true")
     ap.add_argument("--승인", action="store_true")
     ap.add_argument("--버림", action="store_true")
@@ -533,11 +684,16 @@ def main() -> int:
     ap.add_argument("--몇", type=int, default=기본후보)
     ap.add_argument("--초", type=int, default=120)
     ap.add_argument("--자", action="store_true", help="eval/run 까지 돌려 후퇴 없음을 본다(모델 키 필요)")
+    ap.add_argument("--좁게", action="store_true", help="레포 전체 시뮬을 건너뛴다(바뀐 파일의 검사만 -- 빠르지만 멀리서 깨진 것을 못 본다)")
     ap.add_argument("--배선", action="store_true", help="wire 읽기점검 끊김도 틈으로(느리다)")
     ap.add_argument("--점검", action="store_true", help="인수 검사(eval/acceptance) 실패 장면도 틈으로(느리다)")
     ap.add_argument("--저장소", default="")
     a = ap.parse_args()
     repo = Path(a.저장소) if a.저장소 else None
+    if a.부탁:
+        r = 사용자개선(a.부탁, repo, 초=a.초, 전부=not a.좁게)
+        print(부탁보고(r))
+        return 0 if r["판정"] == "동의대기" else 1
     if a.틈만:
         틈들 = 틈모으기(repo, a.배선, a.점검)
         for g in 틈들:
@@ -550,7 +706,7 @@ def main() -> int:
         print(버림(repo)); return 0
     if a.상태:
         print(상태(repo)); return 0
-    r = 자가개선(repo, 몇=a.몇, 초=a.초, 자=a.자, 배선=a.배선, 점검=a.점검)
+    r = 자가개선(repo, 몇=a.몇, 초=a.초, 자=a.자, 배선=a.배선, 점검=a.점검, 전부=not a.좁게)
     print(보고(r))
     return 0 if r["돌았나"] else 3
 

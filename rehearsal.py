@@ -24,6 +24,8 @@
 from __future__ import annotations
 
 import argparse
+import json
+import re
 import subprocess
 import sys
 import time
@@ -51,8 +53,13 @@ def _돌리기(argv: "list[str]", 판: Path, 초: int) -> dict:
     return SB.실행(argv, repo=판, 지금트리=True, 초=초, 메모리MB=4096)
 
 
-def 시험(repo=None, 판=None, 초: int = 180, 검사상한: int = 10) -> dict:
-    """격리 판에서 문법·게이트·검사를 돌린다. 실제 트리는 안 건드린다."""
+def 시험(repo=None, 판=None, 초: int = 180, 검사상한: int = 10,
+        전부: bool = False, 전부초: int = 1800) -> dict:
+    """격리 판에서 문법·게이트·검사를 돌린다. 실제 트리는 안 건드린다.
+
+    전부=True 면 **레포 전체**(scripts/tests.sh, 171개)를 판에서 돌리고 HEAD 바탕과 견주어 **회귀**를
+    찾는다 -- 사용자(2026-09-11): "코드 하나 바뀌면 전체가 영향을 받을 수도 있잖아. 레포 전체를
+    시뮬레이션해." 바뀐 파일이 거는 검사만 보면 **멀리서 깨진 것**을 못 본다."""
     repo = Path(repo or REPO)
     if 판 is None:
         try:
@@ -127,8 +134,87 @@ def 시험(repo=None, 판=None, 초: int = 180, 검사상한: int = 10) -> dict:
         if r["끝값"] != 0:
             결과["통과"] = False
 
+    # 4. 레포 전체 -- 멀리서 깨진 것을 찾는다(회귀)
+    if 전부:
+        바 = 바탕(repo, 초=전부초)
+        뒤 = 전체검사(판, 초=전부초)
+        if not (바["돌았나"] and 뒤["돌았나"]):
+            결과["못잼"].append("레포 전체: " + (바.get("메모") or 뒤.get("메모") or "판을 못 깜"))
+            결과["통과"] = False
+        else:
+            회 = 회귀(바, 뒤)
+            결과["회귀"] = 회
+            결과["전체"] = {"바탕실패": len(바["실패"]), "뒤실패": len(뒤["실패"]),
+                         "센것": len(뒤["통과"]) + len(뒤["실패"]), "바탕캐시": bool(바.get("캐시"))}
+            꼬 = (f"바탕 빨강 {len(바['실패'])} -> 뒤 빨강 {len(뒤['실패'])}"
+                 + (f" · **새로 깨짐** {회['새로깨짐']}" if 회["새로깨짐"] else " · 새로 깨진 것 없음")
+                 + (f" · 고쳐짐 {회['고쳐짐']}" if 회["고쳐짐"] else ""))
+            결과["걸음"].append(("레포 전체(회귀)", 1 if 회["새로깨짐"] else 0, 꼬))
+            if 회["새로깨짐"]:
+                결과["통과"] = False
+
     결과["걸린초"] = round(time.monotonic() - 시작, 1)
     return 결과
+
+
+# ---------------------------------------------------------------- 레포 전체 시뮬레이션 (회귀 찾기)
+바탕상대 = "logs/rehearsal_baseline.json"
+
+
+def _검사줄뽑기(본: str) -> dict:
+    """scripts/tests.sh 의 출력을 가른다. {"통과":[...], "실패":[...], "건너뜀":[...]}"""
+    r = {"통과": [], "실패": [], "건너뜀": []}
+    for line in (본 or "").splitlines():
+        m = re.match(r"\s*(OK|실패|건너뜀)\s+(\S+\.py)", line)
+        if m:
+            r["통과" if m.group(1) == "OK" else m.group(1)].append(m.group(2))
+    return {k: sorted(set(v)) for k, v in r.items()}
+
+
+def 전체검사(판, 초: int = 1800, 지금트리: bool = True) -> dict:
+    """그 판의 **검사 전부**를 격리 판에서 돌린다(scripts/tests.sh -- 목록이 한 군데에만 있다)."""
+    from sandbox import run as SB
+    r = SB.실행(["bash", "scripts/tests.sh"], repo=Path(판), 지금트리=지금트리, 초=초, 메모리MB=4096)
+    if not r["돌았나"]:
+        return {"돌았나": False, "통과": [], "실패": [], "건너뜀": [], "메모": r.get("메모", "판을 못 깜")}
+    out = _검사줄뽑기((r["stdout"] or "") + (r["stderr"] or ""))
+    out.update(돌았나=True, 끝값=int(r["끝값"]), 메모="")
+    return out
+
+
+def _헤드(repo: Path) -> str:
+    r = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True, timeout=30)
+    return (r.stdout or "").strip()[:12]
+
+
+def 바탕(repo=None, 초: int = 1800, 다시: bool = False) -> dict:
+    """**고치기 전의 레포 전체 상태.** HEAD 별로 캐시한다 -- 같은 HEAD 에서 여러 번 개선해도 한 번만 돈다.
+
+    깨끗한 HEAD 판(지금트리=False)에서 잰다: 작업 트리의 미커밋 변경이 섞이면 '원래 빨강' 과
+    '내가 깨뜨림' 이 갈리지 않는다."""
+    repo = Path(repo or REPO)
+    sha = _헤드(repo)
+    p = repo / 바탕상대
+    if not 다시 and p.is_file():
+        try:
+            j = json.loads(p.read_text(encoding="utf-8"))
+            if j.get("sha") == sha and j.get("돌았나"):
+                j["캐시"] = True
+                return j
+        except (ValueError, OSError):
+            pass
+    r = 전체검사(repo, 초=초, 지금트리=False)
+    r.update(sha=sha, 캐시=False)
+    if r["돌았나"]:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(json.dumps(r, ensure_ascii=False), encoding="utf-8")
+    return r
+
+
+def 회귀(바탕결과: dict, 뒤결과: dict) -> dict:
+    """{"새로깨짐","고쳐짐","그대로빨강"}. **새로깨짐이 있으면 개선이 아니다** -- 멀리서 깨뜨린 것이다."""
+    전, 후 = set(바탕결과.get("실패", [])), set(뒤결과.get("실패", []))
+    return {"새로깨짐": sorted(후 - 전), "고쳐짐": sorted(전 - 후), "그대로빨강": sorted(전 & 후)}
 
 
 def 보고(r: dict) -> str:
@@ -157,9 +243,15 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="고치기 전에 격리 판에서 돌려 본다")
     ap.add_argument("--판", default="", help="리허설할 워크트리(비우면 계획판, 그것도 없으면 작업 트리)")
     ap.add_argument("--초", type=int, default=180)
+    ap.add_argument("--전부", action="store_true", help="레포 전체를 돌려 회귀를 찾는다(느리다)")
+    ap.add_argument("--바탕다시", action="store_true", help="HEAD 바탕을 다시 잰다")
     ap.add_argument("--저장소", default="")
     a = ap.parse_args()
-    r = 시험(Path(a.저장소) if a.저장소 else None, 판=(a.판 or None), 초=a.초)
+    if a.바탕다시:
+        바 = 바탕(Path(a.저장소) if a.저장소 else None, 다시=True)
+        print(f"바탕: {바.get('sha')} · 빨강 {len(바.get('실패', []))}개 {바.get('실패', [])[:8]}")
+        return 0
+    r = 시험(Path(a.저장소) if a.저장소 else None, 판=(a.판 or None), 초=a.초, 전부=a.전부)
     print(보고(r))
     if r["못잼"] and not r["걸음"]:
         return 3

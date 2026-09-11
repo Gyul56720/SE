@@ -126,7 +126,7 @@ def _s3():
         assert (d / "a.txt").read_text() == "hello\n", "실제 트리가 승인 전에 바뀌었다"
         assert "+bye" in P.보기(d), "diff 가 계획으로 보여야 한다"
         assert "아직 안 돌려 봤다" in P.승인(d), "돌려 보지 않은 diff 는 승인이 거절해야 한다"
-        P.리허설기 = lambda repo, 판, 초: {"판": str(판), "그림자": True, "바뀐것": [], "걸음": [], "통과": True, "못잼": [], "걸린초": 0.0}
+        P.리허설기 = lambda repo, 판, 초, 전부=False, 전부초=1800: {"판": str(판), "그림자": True, "바뀐것": [], "걸음": [], "통과": True, "못잼": [], "걸린초": 0.0}
         P.시험하기(d)
         assert "적용됨" in P.승인(d) and (d / "a.txt").read_text() == "bye\n", "리허설 초록 뒤에는 붙어야 한다"
         _git(d, "commit", "-qm", "ok")

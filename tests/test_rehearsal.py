@@ -81,6 +81,40 @@ try:
     ok((판 / "mod.py").read_text(encoding="utf-8") == 앞, "리허설이 판의 파일을 안 건드린다(사본에서 돈다)")
     ok(원본 != 앞, "(참고) 이 검사는 실제로 코드를 바꿔 가며 쟀다")
 
+    print("\n== 레포 전체 시뮬: **멀리서 깨진 것**을 잡는다 (좁은 시험은 못 본다) ==")
+    # mod 를 other 가 쓰고, test_other 는 other 만 임포트한다 -> 바뀐 파일(mod.py)이 거는 검사는
+    # test_mod 뿐이라 좁은 시험은 test_other 가 깨진 것을 못 본다. 전체 시뮬은 본다.
+    (판 / "other.py").write_text("import mod\n\n\ndef g():\n    return mod.f() + 10\n", encoding="utf-8")
+    (판 / "tests" / "test_other.py").write_text(
+        'import sys; sys.path.insert(0, ".")\nimport other\nassert other.g() == 11, "g 는 11"\nprint("test_other 통과")\n',
+        encoding="utf-8")
+    (판 / "scripts").mkdir(exist_ok=True)
+    (판 / "scripts" / "tests.sh").write_text(
+        '#!/usr/bin/env bash\nset -u\ncd "$(dirname "$0")/.."\nfail=0\n'
+        'for f in tests/test_*.py; do\n  b="$(basename "$f")"\n  if out="$(python3 "$f" 2>&1)"; then\n'
+        '    printf "  OK   %-34s\\n" "$b"\n  else\n    fail=$((fail+1)); printf "  실패 %-34s\\n" "$b"\n  fi\ndone\n'
+        'echo; [ $fail -gt 0 ] && { echo "테스트 중 $fail개 실패"; exit 1; }; echo "전부 통과"\n', encoding="utf-8")
+    (판 / "mod.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+    git(판, "add", "-A"); git(판, "commit", "-qm", "other")
+
+    바 = R.바탕(판, 초=300, 다시=True)
+    ok(바["돌았나"] and 바["실패"] == [] and set(바["통과"]) == {"test_mod.py", "test_other.py"},
+       f"바탕: HEAD 는 전부 초록 ({바.get('통과')}, 빨강 {바.get('실패')})")
+    ok(R.바탕(판, 초=300)["캐시"] is True, "같은 HEAD 면 바탕을 다시 안 잰다(캐시)")
+
+    (판 / "mod.py").write_text("def f():\n    return 1\n\n\ndef 쓸모없음():\n    return 0\n", encoding="utf-8")
+    r = R.시험(판, 판=판, 초=60, 전부=True, 전부초=300)
+    ok(r["통과"] and r["회귀"]["새로깨짐"] == [], "곁다리만 더한 변경은 전체 초록")
+
+    (판 / "mod.py").write_text("def f():\n    return 1\n\n\ndef g():\n    return 999\n", encoding="utf-8")
+    (판 / "other.py").write_text("import mod\n\n\ndef g():\n    return mod.g()\n", encoding="utf-8")
+    좁 = R.시험(판, 판=판, 초=60)                       # 좁은 시험: mod.py·other.py 가 거는 검사만
+    전 = R.시험(판, 판=판, 초=60, 전부=True, 전부초=300)
+    ok(not 전["통과"] and 전["회귀"]["새로깨짐"] == ["test_other.py"],
+       f"**전체 시뮬이 멀리서 깨진 test_other 를 잡는다** ({전['회귀']['새로깨짐']})")
+    ok("새로 깨짐" in R.보고(전), "보고가 무엇이 새로 깨졌는지 말한다")
+    ok(전["전체"]["센것"] == 2 and 전["전체"]["바탕캐시"], "전체 몇 개를 셌는지·바탕은 캐시였는지 남긴다")
+
     print("\n== 못 돌린 것은 통과가 아니다 ==")
     r = R.시험(판, 판=판 / "없는곳", 초=10)
     ok(not r["통과"] or r["못잼"], "판이 없으면 초록이라고 하지 않는다")
@@ -101,6 +135,11 @@ ok(dispatch.고르기("계획 시험해봐")[0] == "!계획 시험" or dispatch.
    f"자연어가 시험으로 간다 ({dispatch.고르기('바꾸기 전에 돌려 봐')[0]})")
 _wf = (뿌리 / ".github" / "workflows" / "deploy-oracle.yml").read_text(encoding="utf-8")
 ok('"rehearsal.py"' in _wf, "rehearsal 이 배포 경로에")
+_st2 = (뿌리 / "plan" / "store.py").read_text(encoding="utf-8")
+ok("전부: bool = False" in _st2 and "전부=전부" in _st2, "plan.시험하기 가 전부 모드를 넘긴다")
+_cmd2 = (뿌리 / "plan" / "discord_cmd.py").read_text(encoding="utf-8")
+ok('("전부", "전체", "레포")' in _cmd2, "`!계획 시험 전부` 가 레포 전체를 돌린다")
+ok("rehearsal_baseline" in (뿌리 / "rehearsal.py").read_text(encoding="utf-8"), "바탕은 HEAD 별로 캐시된다")
 p = subprocess.run(["python3", "rehearsal.py", "--판", str(뿌리 / "없는판"), "--초", "5"],
                    cwd=str(뿌리), capture_output=True, text=True, timeout=60)
 ok(p.returncode in (0, 1, 3), f"CLI 가 돈다 (끝값 {p.returncode})")
