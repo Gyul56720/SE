@@ -53,3 +53,21 @@ def check(ctx) -> "list[str]":
                                "문자열 앞에 `r` 을 붙여라 (독스트링도 된다). "
                                "3.15 에서 SyntaxError 가 된다")
     return bad
+
+
+def fix(ctx) -> "list[str]":
+    """위반 파일의 문자열을 escapes.고치기 로 고친다(코드 판정). 고친 파일 상대경로를 돌려준다."""
+    import sys as _sys
+    _sys.path.insert(0, str(ctx.repo))
+    import escapes
+    done = []
+    for f in ctx.python_files():
+        try:
+            src = f.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        새, n = escapes.고치기(src)
+        if n:
+            f.write_text(새, encoding="utf-8")
+            done.append(f"{ctx.rel(f)} ({n}개 리터럴)")
+    return done
