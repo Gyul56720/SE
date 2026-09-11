@@ -89,6 +89,34 @@ ok(답 is not None and "깃발" in 답, "!기억 도움말이 나온다")
 ok(답 is not None and "관리 채널" in 답, "!기억 밤 은 공개 채널에서 안 돈다")
 ok(dispatch.run("!기억력이 좋다") is None, "붙여 쓴 `!기억력` 은 명령이 아니다")
 
+print("\n== 기관마다 에이전트 프롬프트에 이름이 적혀 있다 ==")
+# **왜 이 검사가 있나.** 디스코드에서 사용자는 `!실험` 처럼 치지 않고 **말로 부탁한다.**
+# 그러면 dispatch 가 None 을 돌려주고 에이전트가 받는데, 에이전트가 아는 것은
+# ADMIN_SYSTEM_PROMPT 뿐이다 -- 거기 안 적힌 기관은 **자연어로는 영영 안 닿는다.**
+# 실측: 여섯 기관을 머지한 직후가 정확히 그 상태였다(공개 채널 프롬프트는 dig/run.py 를
+# 이름을 대고 시키는데, 관리 채널 프롬프트는 새 기관을 한 줄도 몰랐다). 고정 명령만
+# 있으면 '배포판' 은 되지만 사람이 쓰는 길은 안 열린다.
+_bot2 = (뿌리 / "discord_bot_server.py").read_text(encoding="utf-8")
+_프롬프트 = _bot2.split("ADMIN_SYSTEM_PROMPT = (", 1)[-1].split("\n)", 1)[0]
+# 기관 꾸러미 -> 프롬프트에 반드시 있어야 하는 말(진입점). 새 기관을 더하면 여기도 늘어야
+# 하고, 프롬프트에 안 적으면 이 검사가 빨간불을 낸다.
+_적혀야 = {"sandbox": "run_experiment", "audit": "audit/run.py", "graph": "graph/night.py",
+         "eval": "eval/run.py", "router": "router/check.py", "intent": "intent/store.py",
+         "novel": "drift.sh"}
+for _모듈 in dispatch.명령들:
+    _꾸러미 = _모듈.__name__.split(".")[0]
+    if _꾸러미 == "evolve":
+        # 진화는 제 진입점이 self_challenge 다 -- 그 이름으로 본다.
+        ok("self_challenge" in _프롬프트, "evolve: 프롬프트가 self_challenge 를 가리킨다")
+        continue
+    _말 = _적혀야.get(_꾸러미)
+    ok(_말 is not None, f"{_꾸러미}: _적혀야 표에 올라 있다  <- 새 기관이면 여기부터 적어라")
+    if _말:
+        ok(_말 in _프롬프트,
+           f"{_꾸러미}: 프롬프트가 `{_말}` 를 이름을 대고 시킨다  <- 없으면 자연어로 안 닿는다")
+ok("승인 없는 목표는 집히지 않는다" in _프롬프트,
+   "**승인 경계를 프롬프트에도 적는다** -- 에이전트가 스스로 승인하지 않게")
+
 print("\n== 실험 모듈 단독으로도 규약을 지킨다 ==")
 ok(실험.run("엉뚱한 말") is None, "접두사가 다르면 None")
 ok(실험.PREFIX == "!실험", "PREFIX 가 있다 -- dispatch 규약")
