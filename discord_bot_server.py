@@ -38,6 +38,8 @@ import channels  # noqa: E402
 import agent_memory
 import gitsync  # noqa: E402
 import gatekeeper  # noqa: E402
+import commit_guard  # noqa: E402
+import ci_watch  # noqa: E402
 import main_public  # noqa: E402
 import bot_tools  # noqa: E402
 import dispatch  # noqa: E402
@@ -151,6 +153,7 @@ ADMIN_SYSTEM_PROMPT = (
     "  · 보안 점검·취약점 -> security_audit 도구(이 호스트 자신만 읽기 전용). 판정은 코드가 낸다 -- "
     "네가 '안전해 보인다' 고 말하지 마라. 남의 기계를 공격하거나 익스플로잇을 실행하지 마라\n"
     "  · **목표·주제를 주며 '논문을 완성해 달라'·'해결해 달라' -> research 도구**(목표 한 줄). 목표를 그대로 검색하지 말고(너무 구체적이면 0건이다) research 가 일반 방법론 질의로 풀어 넓게 모으고, 막히면 다시 추상화해 되풀이하고, 코드화로 검증하고, 과정->결과를 메모로 남긴다. harvest --관심/eval/graph ask 몇 번 부르고 '필요하면 말씀해 주세요' 로 떠넘기지 마라 -- research 한 번에 끝까지 하고 결과를 붙여라\n"
+    "  · 커밋이 **[검사 차단]·[CI 차단]** 으로 막히면 그 검사부터 고쳐라 -- `python3 tests/<검사>.py` 로 재현하고 repair 도구(재현 명령 + 오류)로 돌려라. 빨강 위에 자가 수정을 쌓지 않는다. 문체 규칙처럼 사람의 결정이 필요한 검사면 무엇을 정해야 하는지 한 줄로 사람에게 말하라\n"
     "  · **저장소를 고치는 요청은 `!계획`** -- 사람이 `!계획 켜기 <요청>` 을 치면 edit_file · run_shell 은 그림자 워크트리에서 돌고, `!계획 보기` 의 diff 가 계획이다. `!계획 승인` 은 사람만 친다 -- 네가 승인하거나 그림자 밖에서 몰래 고치지 마라\n"
     "  · 커밋을 PR 로 내야 하면 **create_pr 도구**(제목·본문). 밀기와 PR 열기만 한다 -- **머지는 사람이 GitHub 에서 누른다.** main 에서는 안 열리니 갈래를 먼저 만들어라. 지어낸 해시·번호로 '열었다' 고 하지 말고 도구가 준 URL 만 말하라\n"
     "\n"
@@ -427,12 +430,12 @@ def _git_sync_locked() -> str | None:
     # 없었다. 게이트를 통과 못 하면 커밋하지 않고 위반 목록을 그대로 돌려준다.
     # 위반은 띄우기 전에 **먼저 고친다**(fix 가 있는 게이트만: G017 이스케이프 · G013 배포 경로).
     # 고친 뒤에도 남는 것만 막는다. 사용자(2026-09-11): '띄우는 게 아니라 자동으로 고쳐줘야지'.
-    report = gatekeeper.run_gates(Path(REPO_DIR), 고치기=True)
-    for x in getattr(report, "고친것", []):
-        print(f"[git_sync] {x}")
-    if not report.passed:
-        print(f"[git_sync] 게이트 차단 -- 커밋하지 않음\n{report.summary()}")
-        return report.summary()
+    # 문은 셋이다(commit_guard): 게이트 -> 바뀐 파일의 검사 -> main CI. 실측 2026-09-11: 게이트만
+    # 보고 커밋했더니 main 이 하루 넘게 빨강인 채 자가 커밋이 35번 넘게 쌓였다 -- CI 를 아무도 안 읽었다.
+    통과, 보고 = commit_guard.검사(Path(REPO_DIR))
+    print(f"[git_sync] 문지기\n{보고}")
+    if not 통과:
+        return 보고
 
     # check=True 로 두면 실패가 CalledProcessError 로 튀어나와 호출자의 답변 전송까지
     # 무너뜨린다. 게다가 이제 이 저장소에는 git 작성자가 둘이다 -- 이 봇과, 별도
@@ -518,6 +521,25 @@ def run_admin_agent(prompt: str, thread_id: str, 중계판=None) -> str:
         unregister_thread(thread_id)
 
 
+async def _ci지켜보기(간격초: float = None) -> None:
+    """main CI 의 마지막 결론을 주기적으로 읽어, **상태가 바뀔 때만** 관리 채널에 알린다.
+    실측 2026-09-11: main 이 60회 연속 초록 0 인데 아무도 몰랐다 -- 뒤늦은 신호는 읽어야 신호다."""
+    간격 = float(간격초 or os.getenv("CI_WATCH_SEC", "7200") or 7200)
+    while True:
+        try:
+            r = await asyncio.to_thread(ci_watch.보기, None)
+            if await asyncio.to_thread(ci_watch.바뀌었나, r, None):
+                ch = client.get_channel(ADMIN_CHANNEL_ID)
+                if ch is not None:
+                    await ch.send(("🔴 " if r["상태"] == "빨강" else "🟢 " if r["상태"] == "초록" else "⚪ ")
+                                  + r["말"][:1800]
+                                  + ("\n자가 수정 커밋은 초록이 될 때까지 막힌다(commit_guard)." if r["상태"] == "빨강" else ""))
+                print(f"[ci_watch] {r['상태']} {r['sha']} 실패 {r['실패']}")
+        except Exception as e:                        # noqa: BLE001 -- 감시가 죽으면 신호가 사라진다
+            print(f"[ci_watch] 못 읽음: {e!r}")
+        await asyncio.sleep(간격)
+
+
 @client.event
 async def on_ready():
     print(
@@ -579,6 +601,9 @@ async def on_ready():
 
 
 ATTACHMENTS_DIR = os.path.join(REPO_DIR, "inbox", "discord_attachments")
+
+
+    asyncio.create_task(_ci지켜보기())      # CI 빨강을 봇이 읽는다(2h)
 
 
 async def _save_attachments(message: discord.Message) -> list[str]:
