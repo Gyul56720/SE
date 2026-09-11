@@ -51,6 +51,17 @@ def 짓기(repo=None) -> str:
         f"> 거기서 다시 지어진다. 지은 때: {time.strftime('%Y-%m-%d %H:%M UTC', time.gmtime())}",
         "",
     ]
+    # 승인된 목표를 맨 위에 얹는다 -- 무엇을 할 것인가가 원장(intent)에 있고, 이 문서는
+    # 그것을 읽히게 할 뿐이다. 승인 없는 제안은 여기 안 올라온다(집기와 같은 경계).
+    try:
+        from intent import store as intent_store
+        골들 = intent_store.집기(repo)
+    except Exception:
+        골들 = []
+    if 골들:
+        lines += ["## 승인된 목표 -- 지금 집을 수 있는 일 (승인 없는 제안은 안 올라온다)", ""]
+        lines += [f"- {intent_store.한줄(g)}" for g in 골들[:5]] + [""]
+
     if not nodes:
         lines.append("(아직 간추린 기억이 없다 -- `python3 graph/night.py`)")
         return "\n".join(lines) + "\n"
