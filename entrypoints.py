@@ -200,6 +200,33 @@ def 모듈꼴(argv: "list[str]", repo=None) -> "tuple[list[str], str]":
     return [argv[0], "-m", 모듈] + list(argv[2:]), 모듈
 
 
+_셸꼴 = re.compile(r"(?<![\w./-])(python3?)\s+(\./)?([A-Za-z_][\w.-]*(?:/[\w.-]+)+\.py)(?=\s|$)")
+
+
+def 셸명령_모듈꼴(명령: str, repo=None) -> "tuple[str, list[str]]":
+    """셸 명령 안의 `python3 pkg/x.py` 를 `python3 -m pkg.x` 로. (바꾼 명령, 바꾼 것들)
+
+    에이전트가 셸에 직접 치는 길도 같은 병을 앓는다 -- 봇 프롬프트가 이름을 대고 시키는
+    명령이 열넷이다. 여기서 한 번 바꾸면 그것들이 다 덮인다.
+
+    **조심해서 바꾼다.** 그 파일이 실제로 있고, 그 디렉터리가 `__init__.py` 를 가진
+    꾸러미일 때만. 뿌리 파일(`python3 gatekeeper.py`)은 안 건드린다."""
+    repo = Path(repo or REPO)
+    바꾼 = []
+
+    def _바꾸기(m):
+        파이썬, 점, 길 = m.group(1), m.group(2), m.group(3)
+        대상 = repo / 길
+        꾸 = repo / 길.split("/")[0]
+        if not 대상.is_file() or not (꾸 / "__init__.py").is_file():
+            return m.group(0)
+        모듈 = 길[:-3].replace("/", ".")
+        바꾼.append(f"{길} -> -m {모듈}")
+        return f"{파이썬} -m {모듈}"
+
+    return _셸꼴.sub(_바꾸기, 명령 or ""), 바꾼
+
+
 def 스크립트꼴호출(repo=None) -> "list[dict]":
     """꾸러미 진입점을 **스크립트 꼴로** 부르는 자리 전부. 뿌리를 넣었든 안 넣었든 적는다.
 

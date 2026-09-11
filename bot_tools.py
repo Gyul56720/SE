@@ -218,9 +218,20 @@ def run_shell(command: str) -> str:
     # decode bytes in position 147-148: invalid continuation byte"). 도구가 예외로 죽으면
     # 그 턴 전체가 실패하므로, 깨진 바이트는 대체문자로 바꿔 넣고 계속 진행한다 -- 셸
     # 출력에는 로그·바이너리 조각·다른 인코딩 텍스트가 얼마든지 섞일 수 있다.
+    # **꾸러미 진입점은 `-m` 으로 돌린다.** `python3 dig/run.py` 는 sys.path[0] 이 dig/ 라서,
+    # 그 파일이 함수 안에서 남의 꾸러미를 임포트하는 갈래를 밟는 순간 ModuleNotFoundError 다.
+    # 봇 프롬프트가 이름을 대고 시키는 명령만 열넷이 그 꼴이었다. 파일 안에 뿌리를 넣는 줄을
+    # 적는 것으로는 **낡은 판이 배포돼 있으면** 안 듣는다(실측 2026-09-11: 고쳐 배포했는데
+    # VM 이 같은 줄에서 또 죽었다). 부르는 쪽인 여기서 바꾸면 어떤 판이든 산다.
+    # 게이트(toolgate)는 **사람이 친 원문**으로 이미 봤다 -- 바꾼 것이 규칙을 비켜 가지 않는다.
+    _판 = _계획판() or REPO_DIR
+    import entrypoints
+    command, _바뀜 = entrypoints.셸명령_모듈꼴(command, _판)
+    if _바뀜:
+        print(f"[run_shell] 모듈 꼴로: {'; '.join(_바뀜[:3])}")
     시작 = time.monotonic()
     proc = subprocess.Popen(
-        ["bash", "-lc", command], cwd=str(_계획판() or REPO_DIR),      # 계획판이면 그림자
+        ["bash", "-lc", command], cwd=str(_판),                        # 계획판이면 그림자
         stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         text=True, errors="replace", env=child_env(),
     )

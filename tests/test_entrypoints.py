@@ -158,6 +158,25 @@ try:
 finally:
     shutil.rmtree(_낡, ignore_errors=True)
 
+print("\n== 셸 명령도 같은 자리에서 바꾼다 (에이전트가 직접 치는 길) ==")
+# 봇 프롬프트가 이름을 대고 시키는 꾸러미 진입점만 열넷이다. run_shell 한 자리가 덮는다.
+ok(E.셸명령_모듈꼴("python3 improve/run.py --부탁 x", 뿌리)[0] == "python3 -m improve.run --부탁 x",
+   "꾸러미 진입점을 모듈 꼴로")
+ok(E.셸명령_모듈꼴("python3 ./eval/run.py --전부 | tail -5", 뿌리)[0] == "python3 -m eval.run --전부 | tail -5",
+   "`./` 도 잡고, 뒤에 붙은 파이프는 그대로 둔다")
+ok(E.셸명령_모듈꼴("python3 gatekeeper.py", 뿌리) == ("python3 gatekeeper.py", []),
+   "**뿌리 파일은 안 건드린다**")
+ok(E.셸명령_모듈꼴("python3 tests/test_relay.py", 뿌리)[1] == [],
+   "**꾸러미가 아닌 디렉터리(tests/)는 안 건드린다** -- `__init__.py` 가 없다")
+ok(E.셸명령_모듈꼴("python3 -m improve.run --틈만", 뿌리)[1] == [], "이미 모듈 꼴이면 그대로")
+ok(E.셸명령_모듈꼴("bash scripts/precheck.sh", 뿌리)[1] == [], "파이썬이 아니면 안 건드린다")
+ok(E.셸명령_모듈꼴("python3 없는곳/없다.py", 뿌리)[1] == [], "없는 파일은 안 건드린다")
+_bt = (뿌리 / "bot_tools.py").read_text(encoding="utf-8")
+ok("entrypoints.셸명령_모듈꼴" in _bt, "run_shell 이 그것을 거친다")
+_seg = _bt[_bt.index("def run_shell"):]
+ok(_seg.index("toolgate.검사(command)") < _seg.index("셸명령_모듈꼴"),
+   "**게이트는 사람이 친 원문을 먼저 본다** -- 바꾼 것이 규칙을 비켜 가지 않는다")
+
 print("\n== CLI · 배선 ==")
 p = subprocess.run(["python3", "entrypoints.py", "--위험만"], cwd=str(뿌리), capture_output=True, text=True, timeout=180)
 ok(p.returncode == 0 and "위험 0개" in p.stdout, f"--위험만 은 위험이 없으면 끝값 0 ({p.stdout.strip()[-30:]})")
