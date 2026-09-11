@@ -28,6 +28,8 @@
   · 수리 loop 가 못 푼 증상(repair 원장, 재현 명령 있는 것) -> 판정: 그 재현 명령
   · 봇이 임포트하는 핵심 모듈 중 검사가 없는 것(audit)   -> 판정: python3 tests/test_<모듈>.py (새로 짓는다)
   · 배선 읽기점검이 끊긴 기관(eval/wire, `--배선` 일 때)   -> 판정: 그 점검 명령
+  · **진입점 위험**(entrypoints: 늦은 임포트를 밟으면 죽는 갈래) -> 판정: `entrypoints.py --위험만`
+    -- 목록이 아니라 ast 로 세어 찾으므로 **새 모듈이 생겨도 저절로 덮인다**
 
 **틈이 없으면 멈추지 않는다** -- 제2의 뇌가 모은 최신 것에서 이 저장소에 적용할 만한 것 하나를 골라
 그것을 부탁으로 삼아 같은 길(그림자 -> 레포 전체 시뮬 -> 동의)을 간다(성능개선).
@@ -65,10 +67,35 @@ if str(REPO) not in sys.path:
 틈모으기_ = None   # 검사 주입: (repo) -> list[dict]. None 이면 진짜 틈모으기
 자기 = None        # 검사 주입: (repo, 판) -> dict {"돌았나","후퇴","말"}. None 이면 eval/run 을 판에서
 
-# 봇이 임포트하는 핵심 모듈 -- 검사가 없으면 그것이 틈이다(impact.진입점표 와 같은 눈)
-핵심모듈 = ["discord_bot_server.py", "bot_tools.py", "dispatch.py", "relay.py", "gatekeeper.py",
-        "commit_guard.py", "ci_watch.py", "impact.py", "rehearsal.py", "escapes.py", "keys.py",
-        "mailer.py", "github_write.py", "compact.py", "toolgate.py", "filetools.py"]
+def 핵심모듈들(repo=None) -> "list[str]":
+    """**봇이 실제로 임포트하는 것**을 세어 찾는다 -- 손으로 적은 목록이 아니다.
+
+    사용자(2026-09-11): "가능한 모든 것을 일반해로 바꿔." 전에는 파일 이름 16개를 여기 적어 뒀다.
+    그러면 새 모듈이 봇에 붙어도 누가 여기 또 적어야 한다. 그래서 impact 의 임포트 그래프로
+    `discord_bot_server` 가 (전이적으로) 끌어오는 저장소 모듈을 세고, 그 가운데 뿌리의 .py 만 고른다."""
+    repo = Path(repo or REPO)
+    try:
+        import impact
+        앞, _뒤 = impact.임포트그래프(repo)
+    except Exception:                                  # noqa: BLE001
+        return []
+    본, 층 = {"discord_bot_server"}, ["discord_bot_server"]
+    for _ in range(4):                                 # 전이적으로 -- 너무 멀리는 안 간다
+        다음 = []
+        for m in 층:
+            for x in 앞.get(m, ()):
+                if x not in 본:
+                    본.add(x)
+                    다음.append(x)
+        if not 다음:
+            break
+        층 = 다음
+    out = []
+    for m in sorted(본):
+        rel = m.replace(".", "/") + ".py"
+        if "/" not in rel and (repo / rel).is_file():   # 뿌리의 모듈만 -- 꾸러미는 제 검사가 따로 있다
+            out.append(rel)
+    return out
 
 
 # ---------------------------------------------------------------- 원장 · 도움
@@ -136,7 +163,7 @@ def 틈모으기(repo=None, 배선: bool = False, 점검: bool = False) -> "list
     # 3. 검사 없는 핵심 모듈
     try:
         from audit import run as A
-        있는 = [m for m in 핵심모듈 if (repo / m).is_file()]
+        있는 = 핵심모듈들(repo)
         _, 안덮임 = A.검사찾기(repo, 있는)
         for rel in 안덮임:
             stem = Path(rel).stem
@@ -144,7 +171,15 @@ def 틈모으기(repo=None, 배선: bool = False, 점검: bool = False) -> "list
     except Exception:                                  # noqa: BLE001
         pass
 
-    # 4. 점검(인수 검사) 에서 실패한 장면 -- 사용자: "점검을 통해 부족한 점도 찾는다". 느리다(2~3분) -- 부를 때만
+    # 4. 진입점 위험 -- 늦은 임포트를 밟으면 죽는 갈래(코드가 세어 찾는다, 목록 없음)
+    try:
+        import entrypoints
+        for e in entrypoints.위험들(repo):
+            더하기("진입점위험", e["파일"], "python3 entrypoints.py --위험만", e["왜"][:140])
+    except Exception:                                  # noqa: BLE001
+        pass
+
+    # 5. 점검(인수 검사) 에서 실패한 장면 -- 사용자: "점검을 통해 부족한 점도 찾는다". 느리다(2~3분) -- 부를 때만
     if 점검:
         try:
             from sandbox import run as SB
@@ -157,7 +192,7 @@ def 틈모으기(repo=None, 배선: bool = False, 점검: bool = False) -> "list
         except Exception:                              # noqa: BLE001
             pass
 
-    # 5. 끊긴 배선(느리다 -- 부를 때만)
+    # 6. 끊긴 배선(느리다 -- 부를 때만)
     if 배선:
         try:
             from eval import wire
