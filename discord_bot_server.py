@@ -41,9 +41,10 @@ import gatekeeper  # noqa: E402
 import main_public  # noqa: E402
 import bot_tools  # noqa: E402
 import dispatch  # noqa: E402
+import keys  # noqa: E402
 import relay  # noqa: E402
 from bot_tools import (  # noqa: E402
-    REPO_DIR, run_shell, run_experiment, read_file, edit_file, delegate, search_memory, save_memory,
+    REPO_DIR, run_shell, run_experiment, read_file, edit_file, delegate, send_email, search_memory, save_memory,
     build_agent_pool, run_with_fallback_pool,
     register_thread, unregister_thread, request_cancel,
     orchestrator_solve, orchestrator_status, orchestrator_resume, orchestrator_stop,
@@ -78,7 +79,7 @@ ADMIN_MODEL_CANDIDATES = [ADMIN_MODEL_NAME] + [m for m in _admin_extra_models if
 ADMIN_PRIMARY_KEY = os.getenv("GEMINI_API_KEY_FALLBACK") or os.environ["GEMINI_API_KEY"]
 ADMIN_SECONDARY_KEY = os.environ["GEMINI_API_KEY"] if os.getenv("GEMINI_API_KEY_FALLBACK") else None
 
-ADMIN_TOOLS = [run_shell, run_experiment, read_file, edit_file, delegate, search_memory, save_memory,
+ADMIN_TOOLS = [run_shell, run_experiment, read_file, edit_file, delegate, send_email, search_memory, save_memory,
                orchestrator_solve, orchestrator_status, orchestrator_resume,
                orchestrator_stop]
 ADMIN_SYSTEM_PROMPT = (
@@ -136,6 +137,19 @@ ADMIN_SYSTEM_PROMPT = (
     "과제 수 x 2 번 부른다 -- 배경으로)\n"
     "  · 밖에서 참고 모으기·제2의 뇌 -> `python3 dig/harvest.py --틈` (자가 틀린 자리를 GitHub·HF "
     "에서 채운다) 또는 `--말 '<검색어>'`. 라이선스·문법은 코드가 거른다\n"
+    "  · 메일 -> send_email 도구. SMTP 코드를 짜거나 사용법을 설명하지 마라\n"
+    "\n"
+    "[수단이 없을 때 -- 설명하고 멈추지 마라]\n"
+    "실측 2026-09-11: 메일 부탁에 앱 비밀번호 발급 절차와 smtplib 코드를 설명하고 멈췄고, 다음엔 "
+    "'인프라가 없다' 고 멈췄고, 다음엔 '무료 SMTP 가입하거나 앱 비밀번호를 주면' 하고 선택지를 "
+    "나열했다. 셋 다 틀렸다. 규칙: **네가 얻을 수 있는 것은 네가 얻어라**(pip · 설정 파일 · "
+    "접속 · 재시도). **사람만 할 수 있는 것**(계정 가입 · 2단계 인증 · 앱 비밀번호/토큰 발급 · "
+    "결제)은 선택지를 나열하지 말고 **제일 짧은 길 하나를 골라 딱 그 값만** `!열쇠 이름=값` "
+    "꼴로 청하라. 받았다고 하면 묻지 말고 바로 이어서 하라. 도구가 '무엇이 없다' 고 돌려주면 "
+    "그 말을 그대로 전하면 된다. **오류 문구(5.7.8 · 403 · refused …)를 받으면 '정책 때문' 이라 "
+    "보고하고 멈추지 마라** -- 진단 도구(`python3 mailer.py --진단`)를 돌리고, `python3 dig/harvest.py "
+    "--말 '<오류 문구>'` 로 제2의 뇌에 원인을 모은 뒤 search_memory 로 읽고, 해 본 것과 남은 한 "
+    "가지를 적어라.\n"
     "  · 어느 모델로 나가나·비용 -> `python3 router/call.py --요약` · `python3 router/check.py`\n"
     "  · 할 일·목표 -> `python3 intent/store.py --목록` / `--다음`. **새 목표는 제안까지만 "
     "하고 승인은 사람에게 받아라** -- 승인 없는 목표는 집히지 않는다(그것이 설계다)\n"
@@ -735,6 +749,13 @@ async def on_message(message: discord.Message):
     reply = await asyncio.to_thread(dispatch.run, message.content, None, may_write)
     if reply is not None:
         await message.reply(reply[:2000])
+        # `!열쇠 이름=값` 은 값이 채널에 남는다 -- 지울 권한이 있으면 지운다. 못 지우면
+        # 답이 이미 "이 메시지는 지워라" 고 말했다.
+        if message.content.startswith(keys.PREFIX) and "=" in message.content:
+            try:
+                await message.delete()
+            except Exception as e:                                  # noqa: BLE001
+                print(f"[keys] 메시지 못 지움: {type(e).__name__}: {e}")
         return
 
     if admin:

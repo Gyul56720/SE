@@ -143,7 +143,8 @@ ok("거절" in (dispatch.run("!위임 ../x :: 해시", allow_write=True) or ""),
 ok(dispatch.run("!위임장 써줘") is None, "붙여 쓴 `!위임장` 은 명령이 아니다")
 _도구 = (뿌리 / "bot_tools.py").read_text(encoding="utf-8")
 _서버 = (뿌리 / "discord_bot_server.py").read_text(encoding="utf-8")
-ok("def delegate" in _도구 and "delegate, search_memory" in _서버, "delegate 도구가 정의되고 ADMIN_TOOLS 에 있다")
+_도구줄 = next((ln for ln in _서버.splitlines() if ln.startswith("ADMIN_TOOLS = [")), "")
+ok("def delegate" in _도구 and " delegate," in _도구줄, "delegate 도구가 정의되고 ADMIN_TOOLS 에 있다")
 ok("탐색기" in R.역할들 and R.역할들["탐색기"]["바탕"] == "gemini", "router 역할표에 탐색기가 있다")
 
 print()

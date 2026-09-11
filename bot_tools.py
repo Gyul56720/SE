@@ -290,6 +290,20 @@ def edit_file(path: str, old: str, new: str) -> str:
 
 
 @tool
+def send_email(to: str, subject: str, body: str) -> str:
+    """메일을 보낸다 -- SMTP 접속은 여기가 한다. **네가 smtplib 코드를 짜거나 발급 절차를
+    설명하지 마라.** 수단(보내는 주소·앱 비밀번호)이 없으면 이 도구가 "무엇이 없고 어떻게
+    주는지" 를 돌려준다 -- 그 말을 사용자에게 **그대로** 전하라(선택지를 나열하지 말고).
+    사용자가 `!열쇠 이름=값` 으로 줬다고 하면 같은 인자로 다시 불러라 -- 바로 나간다."""
+    if agent_context.is_blocked():
+        return "실패: 게스트는 send_email 을 사용할 수 없습니다."
+    import mailer
+    r = mailer.보내기(to, subject, body)
+    relay.적기(f"✉ {to[:40]} {'보냄' if r['보냈나'] else '못 보냄'} -- {r['말'].splitlines()[0][:60]}")
+    return r["말"]
+
+
+@tool
 def delegate(question: str, scope: str) -> str:
     """파일 여럿을 살펴야 하는 물음을 싼 탐색기에 **동시에** 던지고, 원문에 실재하는 인용만
     받는다. scope 는 글롭(띄어쓰기로 여럿: "graph/*.py router/*.py"). 파일 수십 개를 네가

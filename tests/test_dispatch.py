@@ -106,7 +106,9 @@ _적혀야 = {"sandbox": "run_experiment", "audit": "audit/run.py", "graph": "gr
          # 중계는 사람이 켜는 스위치다 -- 에이전트 진입점이 아니라 '안내' 가 적혀야 한다.
          "relay": "!중계 켜기",
          "delegate": "delegate 도구",
-         "dig": "dig/harvest.py"}
+         "dig": "dig/harvest.py",
+         # 열쇠는 사람이 치는 명령이다 -- 에이전트에겐 '이 꼴로 청하라' 가 적혀야 한다.
+         "keys": "!열쇠 이름=값"}
 for _모듈 in dispatch.명령들:
     _꾸러미 = _모듈.__name__.split(".")[0]
     if _꾸러미 == "evolve":
