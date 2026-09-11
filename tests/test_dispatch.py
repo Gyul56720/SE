@@ -1,0 +1,81 @@
+"""dispatch.py -- 고정 명령의 배선을 붙든다.
+
+붙드는 것: (1) 모르는 말은 None 이라 에이전트 길을 뺏지 않는다, (2) !소설 이 예전
+그대로 들린다(배선을 옮기다 떨어뜨리면 배포판 명령이 통째로 죽는데, 그것은 화면에서
+'봇이 멍청해졌다' 로만 보인다), (3) !실험 은 공개 채널에서 읽기만 되고 관리 채널에서
+argv 배열로 격리 러너를 부른다 -- 셸 문자열이 없다.
+
+LLM·네트워크·실제 실행 없이 돈다(runner 주입). 실행: python3 tests/test_dispatch.py
+"""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+뿌리 = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(뿌리))
+
+import dispatch  # noqa: E402
+from sandbox import discord_cmd as 실험 # noqa: E402
+
+FAIL = []
+
+
+def ok(cond, what):
+    print(("  통과  " if cond else "  실패  ") + what)
+    if not cond:
+        FAIL.append(what)
+
+
+불림 = []
+
+
+def 가짜러너(argv, 초=0, **_):
+    불림.append((list(argv), 초))
+    return 0, "가짜 결과"
+
+
+print("== 모르는 말은 에이전트로 ==")
+ok(dispatch.run("아무 말이나") is None, "일반 문장은 None -- 에이전트 길을 안 뺏는다")
+ok(dispatch.run("") is None, "빈 말도 None")
+ok(dispatch.run("!모르는명령 하나") is None, "모르는 !접두사도 None")
+ok(dispatch.run("!실험실은 어디에 있나") is None,
+   "붙여 쓴 것은 남의 말이다 -- `!실험실` 은 명령이 아니다")
+
+print("\n== !소설 이 예전 그대로 들린다 ==")
+답 = dispatch.run("!소설")
+ok(답 is not None and "소설" in 답, f"도움말이 나온다 ({(답 or '')[:40]!r})")
+
+print("\n== !실험 -- 도움말과 경계 ==")
+답 = dispatch.run("!실험")
+ok(답 is not None and "깨끗한 판" in 답, "도움말이 나온다")
+답 = dispatch.run("!실험 이상한말")
+ok(답 is not None and "모르는 말" in 답, "모르는 하위 명령은 도움말로")
+답 = dispatch.run("!실험 검사 dig", allow_write=False)
+ok(답 is not None and "관리 채널" in 답 and not 불림,
+   "공개 채널에서는 안 돌린다 -- 러너가 안 불렸다")
+
+print("\n== !실험 검사/게이트 -- argv 배열만, 셸 문자열 없음 ==")
+답 = dispatch.run("!실험 검사 dig", runner=가짜러너, allow_write=True)
+ok(len(불림) == 1 and 불림[0][0] == ["bash", "scripts/tests.sh", "-k", "dig"],
+   f"검사가 argv 배열로 넘어간다 ({불림})")
+ok(답 is not None and "가짜 결과" in 답, "러너의 결과가 답이 된다")
+불림.clear()
+답 = dispatch.run("!실험 게이트", runner=가짜러너, allow_write=True)
+ok(불림 and 불림[0][0] == ["python3", "gatekeeper.py"], f"게이트도 argv 배열 ({불림})")
+불림.clear()
+답 = dispatch.run("!실험 검사 dig; rm -rf /", runner=가짜러너, allow_write=True)
+ok(not 불림 and 답 is not None and "글자" in 답,
+   "**글자꼴 밖의 <말>은 러너에 닿기 전에 거절된다**")
+답 = dispatch.run("!실험 검사", runner=가짜러너, allow_write=True)
+ok(not 불림 and 답 is not None, "<말> 없는 전체 검사도 거절된다(6분짜리)")
+
+print("\n== 실험 모듈 단독으로도 규약을 지킨다 ==")
+ok(실험.run("엉뚱한 말") is None, "접두사가 다르면 None")
+ok(실험.PREFIX == "!실험", "PREFIX 가 있다 -- dispatch 규약")
+
+print()
+if FAIL:
+    print(f"실패 {len(FAIL)}개 -- {FAIL}")
+    raise SystemExit(1)
+print("dispatch: 모르는 말 통과 · !소설 유지 · !실험 경계와 argv 배선 -- 통과")
