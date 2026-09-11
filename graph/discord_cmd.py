@@ -7,13 +7,17 @@
 from __future__ import annotations
 
 from graph import ask as _ask
+from graph import digest as _digest
+from graph import link as _link
 from graph import night as _night
 
 PREFIX = "!기억"
 
 HELP = f"""**기억 (graph)** -- 간추린 색인에서 깃발로 찾는다. 원본은 git 에 그대로 있다
 `{PREFIX} <말...>` 깃발·요약에서 찾는다 (예: `{PREFIX} 코인 실측`)
-`{PREFIX} 밤` 쌓인 노트·보고서를 간추려 색인에 넣는다 (관리 채널만)"""
+`{PREFIX} 요지` 검증된 기억의 요지문(digest.md) 머리를 본다
+`{PREFIX} 밤` 간추리고 판정하고 요지문을 다시 짓는다 (관리 채널만)
+`{PREFIX} 판정 <말>` 첫 번째로 걸린 기억을 다섯 꼴로 판정한다 (관리 채널만)"""
 
 
 def run(text: str, runner=None, allow_write: bool = True) -> "str | None":
@@ -26,15 +30,40 @@ def run(text: str, runner=None, allow_write: bool = True) -> "str | None":
     words = tail.split()
     if not words:
         return HELP
+    if words[0] == "요지":
+        p = _ask.REPO / _digest.요지상대
+        if not p.is_file():
+            return f"요지문이 아직 없다 -- `{PREFIX} 밤` 이 지어 준다."
+        return p.read_text(encoding="utf-8", errors="replace")[:1900]
     if words[0] == "밤":
         if not allow_write:
             return "밤일(간추리기)은 관리 채널에서만 돌린다. 찾기는 여기서도 된다: " \
                    f"`{PREFIX} <말>`"
         r = _night.간추리기()
-        lines = [f"간추림 {len(r['적음'])}개 · 이미 있음 {r['그대로']}개 · 거절 {len(r['거절'])}개"]
-        lines += [f"+ {rel}" for rel in r["적음"][:10]]
+        새간선 = 0
+        for n in _ask.최신들():
+            적힘, _ = _link.기록(n)
+            새간선 += len(적힘)
+        _digest.쓰기()
+        lines = [f"간추림 {len(r['적음'])}개 · 이미 있음 {r['그대로']}개 · "
+                 f"거절 {len(r['거절'])}개 · 새 간선 {새간선}개 · 요지문 다시 지음"]
+        lines += [f"+ {rel}" for rel in r["적음"][:8]]
         lines += [f"! {why}" for why in r["거절"][:5]]
         return "\n".join(lines)
+    if words[0] == "판정":
+        if not allow_write:
+            return "판정은 간선을 적으므로 관리 채널에서만 돌린다."
+        물음 = " ".join(words[1:])
+        hits = _ask.찾기(물음)
+        if not hits:
+            return f"`{물음}` 깃발에 걸린 것이 없다 -- 판정할 노드가 없다."
+        node = hits[0][1]
+        적힘, 건너뜀 = _link.기록(node)
+        lines = [f"`{node['출처']}` 판정:"]
+        판 = _link.최근판정(node["출처"])
+        lines += [f"{k}: {v['판정']} -- {v.get('근거', '')[:80]}" for k, v in sorted(판.items())]
+        lines.append(_link.관할밖_연역)
+        return "\n".join(lines)[:1900]
     물음 = " ".join(words)
     hits = _ask.찾기(물음)
     if not hits:

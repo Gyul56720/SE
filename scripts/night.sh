@@ -19,8 +19,16 @@ if ! python3 graph/night.py; then
     exit 1
 fi
 
-if git diff --quiet -- graph/ledger.jsonl && \
-   [ -z "$(git ls-files --others --exclude-standard -- graph/ledger.jsonl)" ]; then
+echo "=== [1.5/4] 다섯 꼴 판정 (graph/link.py --전부) ==="
+if ! python3 graph/link.py --전부; then
+    echo "판정에 어긋남이 있다 -- 지우지 않고 그대로 커밋해 남긴다 (어긋남은 보는 것이다)"
+fi
+
+echo "=== [1.7/4] 요지문 다시 짓기 (graph/digest.py) ==="
+python3 graph/digest.py || echo "요지문을 못 지었다 -- 색인·간선은 그대로 커밋한다"
+
+if git diff --quiet -- graph/ledger.jsonl graph/edges.jsonl graph/digest.md && \
+   [ -z "$(git ls-files --others --exclude-standard -- graph/ledger.jsonl graph/edges.jsonl graph/digest.md)" ]; then
     echo "색인에 새로 적힌 것이 없다 -- 여기서 끝"
     exit 0
 fi
@@ -32,8 +40,8 @@ if ! python3 gatekeeper.py; then
 fi
 
 echo "=== [3/4] 커밋 ==="
-git add -- graph/ledger.jsonl
-if ! git commit -m "night: 기억 간추리기 -- 깃발 색인 갱신"; then
+git add -- graph/ledger.jsonl graph/edges.jsonl graph/digest.md
+if ! git commit -m "night: 기억 간추리기 -- 색인·간선·요지문 갱신"; then
     echo "커밋할 것이 없거나 실패했다"
     exit 1
 fi

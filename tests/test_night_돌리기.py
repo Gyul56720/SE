@@ -58,7 +58,8 @@ try:
 
     # night.sh 가 기대는 것만 옮겨 심는다: graph 모듈(표준 라이브러리만) + 스크립트.
     (work / "graph").mkdir()
-    for f in ("__init__.py", "store.py", "ask.py", "night.py"):
+    for f in ("__init__.py", "store.py", "ask.py", "night.py",
+              "verify.py", "link.py", "digest.py"):
         shutil.copy2(뿌리 / "graph" / f, work / "graph" / f)
     (work / "scripts").mkdir()
     shutil.copy2(뿌리 / "scripts" / "night.sh", work / "scripts" / "night.sh")
@@ -79,6 +80,11 @@ try:
     보인 = sh(work, "show", "origin/main:graph/ledger.jsonl")
     ok(보인.returncode == 0 and "촉매" in 보인.stdout,
        "**원격에 색인 커밋이 실제로 올라갔다**")
+    간선 = sh(work, "show", "origin/main:graph/edges.jsonl")
+    ok(간선.returncode == 0 and "재계산" in 간선.stdout, "다섯 꼴 간선도 같이 올라갔다")
+    요지 = sh(work, "show", "origin/main:graph/digest.md")
+    ok(요지.returncode == 0 and "손으로 고치지 마라" in 요지.stdout,
+       "요지문(읽힐 텍스트)도 같이 올라갔다")
 
     print("\n== 새것이 없으면 커밋하지 않는다 ==")
     전 = sh(work, "rev-parse", "origin/main").stdout.strip()

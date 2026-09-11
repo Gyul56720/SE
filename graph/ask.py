@@ -87,8 +87,12 @@ def main() -> int:
     if not hits:
         print("깃발에 걸린 것이 없다. `python3 graph/night.py` 로 간추린 것이 있는지부터 보라.")
         return 3
+    from graph import link  # 순환을 피해 여기서 들인다 (link 가 ask 를 쓴다)
     for s, n in hits:
         print(f"{s:>3}  {한줄(s, n)}")
+        판 = link.최근판정(n["출처"])
+        if 판:
+            print("     판정: " + " · ".join(f"{k}={v['판정']}" for k, v in sorted(판.items())))
         if args.원문:
             경고, 글 = 원문(n)
             if 경고:

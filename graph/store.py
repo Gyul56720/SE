@@ -76,13 +76,17 @@ def 깃발정리(깃발들) -> "list[str]":
     out: list[str] = []
     for f in 깃발들 or []:
         f = str(f).strip().lower()
-        if f and 깃발꼴.fullmatch(f) and f not in out:
+        # 글자·숫자가 하나는 있어야 한다 -- 실측: 본문 잦은 낱말에서 "---" 가 깃발로
+        # 새어 들어왔다(구분선이 낱말 꼴에 걸린다). 문장부호만인 깃발로는 아무도 못 찾는다.
+        if f and 깃발꼴.fullmatch(f) and re.search(r"[0-9a-z가-힣]", f) and f not in out:
             out.append(f)
     return out[:깃발상한]
 
 
-def 적기(요약: str, 깃발들, 출처: str, repo=None) -> str:
-    """노드 한 줄을 원장에 붙인다. '적었다' 또는 '이미 있다'. 성하지 않으면 ValueError."""
+def 적기(요약: str, 깃발들, 출처: str, repo=None, 지은이: str = "코드") -> str:
+    """노드 한 줄을 원장에 붙인다. '적었다' 또는 '이미 있다'. 성하지 않으면 ValueError.
+    지은이: 요약을 누가 지었나 -- "코드"(발췌) 또는 "모델(대조통과)"(제안이 verify 를
+    통과한 것). 검증 안 된 모델 요약은 이 원장에 들어오는 길이 없다."""
     repo = Path(repo or REPO)
     요약 = " ".join((요약 or "").split())[:요약상한]
     if not 요약:
@@ -99,7 +103,7 @@ def 적기(요약: str, 깃발들, 출처: str, repo=None) -> str:
         return "이미 있다"
     node = {"때": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "깃발": 깃발, "요약": 요약, "출처": 출처, "해시": h,
-            "글자수": src.stat().st_size}
+            "글자수": src.stat().st_size, "지은이": 지은이}
     path = _원장(repo)
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "a", encoding="utf-8") as f:
