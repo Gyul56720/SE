@@ -62,6 +62,19 @@ try:
     보 = P.보기(repo)
     ok("-hello" in 보 and "+bye" in 보 and "new.txt" in 보, "보기 = 코드가 만든 diff(새 파일 포함)")
 
+    print("\n== 리허설이 승인의 전제다 ==")
+    ok("아직 안 돌려 봤다" in P.승인(repo, 누가="검사"), "**돌려 보지 않은 diff 는 승인이 거절한다**")
+    P.리허설기 = lambda repo, 판, 초: {"판": str(판), "그림자": True, "바뀐것": ["a.txt"], "걸음": [("문법", 1, "깨짐")],
+                                  "통과": False, "못잼": [], "걸린초": 0.1}
+    P.시험하기(repo)
+    ok("리허설이 빨강" in P.승인(repo, 누가="검사"), "**리허설이 빨강이면 거절한다**")
+    P.리허설기 = lambda repo, 판, 초: {"판": str(판), "그림자": True, "바뀐것": [], "걸음": [], "통과": True, "못잼": [], "걸린초": 0.0}
+    P.시험하기(repo)
+    filetools.편집("a.txt", "bye", "bye2", repo=판)                # 시험한 뒤 또 고쳤다
+    ok("또 바뀌었다" in P.승인(repo, 누가="검사"), "**시험한 diff 와 지금 diff 가 다르면 거절한다**")
+    filetools.편집("a.txt", "bye2", "bye", repo=판)                # 되돌리고 다시 시험
+    P.시험하기(repo)
+
     print("\n== 승인: git apply --index ==")
     말 = P.승인(repo, 누가="검사")
     ok("적용됨" in 말 and (repo / "a.txt").read_text() == "bye\n" and (repo / "new.txt").is_file(),
@@ -75,6 +88,7 @@ try:
     P.켜기("다시", repo=repo)
     판 = P.현재판(repo)
     filetools.편집("a.txt", "bye", "ciao", repo=판)
+    P.시험하기(repo)
     (repo / "a.txt").write_text("hola\n", encoding="utf-8")          # 실제 트리가 같은 자리를 먼저 바꿨다
     말 = P.승인(repo)
     ok("적용 실패" in 말 and (repo / "a.txt").read_text() == "hola\n" and P.현재판(repo) is not None,
@@ -82,7 +96,12 @@ try:
     말 = P.버림(repo)
     ok("버렸다" in 말 and P.현재판(repo) is None and (repo / "a.txt").read_text() == "hola\n", "버림은 실제 트리를 안 건드린다")
     ok("바뀐 것이 없어" in (P.켜기("빈", repo=repo) and P.승인(repo)), "바뀐 것 없이 승인하면 그대로 끈다")
+    git(repo, "checkout", "--", "a.txt")                          # 실제 트리를 HEAD 로 되돌린다(앞 갈래가 hola 를 남겼다)
+    P.켜기("건너뛰기", repo=repo)                                  # 그림자는 HEAD("bye")에서 선다
+    filetools.편집("a.txt", "bye", "ciao", repo=P.현재판(repo))
+    ok("건너뜀" in P.승인(repo, 건너뛰기=True), "사람이 명시하면 리허설을 건너뛸 수 있다(그렇다고 적힌다)")
 finally:
+    P.리허설기 = None
     s = P.읽기(repo)
     if s:
         P._끄기(repo, s)
@@ -99,6 +118,10 @@ ok("filetools.편집(path, old, new, repo=_계획판())" in _도구, "**edit_fil
 ok('cwd=str(_계획판() or REPO_DIR)' in _도구, "**run_shell 이 계획판이면 그림자에서 돈다**")
 _서버 = (뿌리 / "discord_bot_server.py").read_text(encoding="utf-8")
 ok("!계획" in _서버 and "승인" in _서버, "프롬프트가 !계획 을 이름을 대고 '승인은 사람만' 을 적는다")
+ok("시험" in (dispatch.run("!계획", allow_write=True) or ""), "도움말이 `!계획 시험` 을 말한다")
+_st = (뿌리 / "plan" / "store.py").read_text(encoding="utf-8")
+ok("아직 안 돌려 봤다" in _st and "리허설이 빨강" in _st and "또 바뀌었다" in _st,
+   "**승인은 리허설 초록 + 같은 diff 일 때만** (코드가 지킨다)")
 _wf = (뿌리 / ".github" / "workflows" / "deploy-oracle.yml").read_text(encoding="utf-8")
 ok('"plan/**.py"' in _wf, "plan 이 배포 경로에")
 ok("plan/state.json" in (뿌리 / ".gitignore").read_text(encoding="utf-8"), "상태 파일은 gitignore")
