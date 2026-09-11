@@ -1,0 +1,16 @@
+{
+ "id": "코드-변화점",
+ "과제갈래": "코드",
+ "깃발": [
+  "변화점",
+  "CUSUM",
+  "시계열",
+  "계측"
+ ],
+ "물음": "평균이 **한 번** 바뀌는 시계열 `xs`(길이 200~400, 잡음은 정규)에서 새 평균이 시작되는 인덱스를 추정하는 `change_point(xs) -> int` 를 써라. 표준 라이브러리만 쓴다. 바뀜의 크기는 잡음 표준편차의 1.2배 정도이고, 바뀐 자리는 양 끝에서 60 이상 떨어져 있다.",
+ "판정": {
+  "꼴": "실행",
+  "검사": "import 답, random\nrnd = random.Random(11)\nhit = 0\nfor i in range(8):\n    n = rnd.randint(200, 400); cp = rnd.randint(60, n - 60)\n    mu0, sd = rnd.uniform(-1, 1), rnd.uniform(0.5, 2.0)\n    mu1 = mu0 + rnd.choice([-1, 1]) * 1.2 * sd\n    xs = [rnd.gauss(mu0 if t < cp else mu1, sd) for t in range(n)]\n    est = 답.change_point(list(xs))\n    assert isinstance(est, int), type(est)\n    if abs(est - cp) <= 12:\n        hit += 1\nassert hit >= 7, f\"8개 중 {hit}개만 +-12 안\"\nprint('ok')\n"
+ },
+ "본보기": "import math\ndef change_point(xs):\n    n = len(xs)\n    pre = [0.0]\n    for x in xs:\n        pre.append(pre[-1] + x)\n    best, arg = -1.0, 1\n    for k in range(1, n):\n        m1, m2 = pre[k] / k, (pre[n] - pre[k]) / (n - k)\n        s = abs(m1 - m2) * math.sqrt(k * (n - k) / n)\n        if s > best:\n            best, arg = s, k\n    return arg\n"
+}

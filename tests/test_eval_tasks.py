@@ -114,6 +114,9 @@ try:
     ok(없["틀린과제"] == ["지식-게이트", "지식-말"], f"틀린 과제 id 가 남는다 ({없['틀린과제']})")
     보 = T.보고(r)
     ok("지식 +2" in 보 and "참고의 이득: 전체 +2" in 보, "보고에 갈래별 이득이 찍힌다")
+    ok(sorted(없["천장"]) == ["추론", "코드"] and 있["천장"] == [],
+       f"**천장: 참고 없이 만점인 갈래를 코드가 표시한다** ({없['천장']})")
+    ok("천장(눈금 없음): " in 보 and "더 어려운 과제" in 보, "보고가 천장을 말한다")
 
     print("\n== 원장: 준 참고가 줄에 남는다 ==")
     원장 = T.원장읽기(repo)
@@ -153,14 +156,19 @@ finally:
 
 print("\n== 진짜 과제 12개와 배선 ==")
 진짜, 거른 = T.과제읽기()
-ok(len(진짜) >= 12 and not 거른, f"eval/tasks/ 과제 {len(진짜)}개 · 거름 {거른}")
+ok(len(진짜) >= 20 and not 거른, f"eval/tasks/ 과제 {len(진짜)}개 · 거름 {거른}")
 ok({t["과제갈래"] for t in 진짜} == set(T.갈래이름들), "세 갈래가 다 있다")
 for t in 진짜:
     if t["판정"]["꼴"] == "실행":
         판, 꼬리 = T.판정하기(t, "```python\n```")
         ok(판 == "틀림" and "ok" not in 꼬리, f"{t['id']}: 빈 답은 틀림 (검사가 헐겁지 않다)")
+        if "본보기" in t:
+            판, 꼬리 = T.판정하기(t, "```python\n" + t["본보기"] + "\n```")
+            ok(판 == "맞음", f"{t['id']}: **본보기가 통과한다** (자가 넘을 수 있는 눈금이다) {꼬리[-80:]!r}")
+ok(sum(1 for t in 진짜 if t["과제갈래"] == "추론") >= 8 and sum(1 for t in 진짜 if t["과제갈래"] == "코드") >= 8,
+   "추론·코드에 눈금 과제가 더해졌다 (각 8개 이상)")
 p = subprocess.run(["python3", "eval/tasks.py", "--목록"], cwd=str(뿌리), capture_output=True, text=True)
-ok(p.returncode == 0 and "과제 12개" in p.stdout, "--목록 은 호출 없이 0")
+ok(p.returncode == 0 and "과제 20개" in p.stdout, "--목록 은 호출 없이 0")
 from eval import run as 러너  # noqa: E402
 ok(any(g["이름"] == "과제" and g["무게"] == "느림" for g in 러너.갈래들), "eval/run 갈래에 '과제'(느림)가 있다")
 from router import call as R  # noqa: E402

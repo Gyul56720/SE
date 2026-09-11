@@ -1,0 +1,16 @@
+{
+ "id": "코드-사건뒤상승률",
+ "과제갈래": "코드",
+ "깃발": [
+  "뉴스",
+  "시세",
+  "사건",
+  "기준선"
+ ],
+ "물음": "일간 수익률 `returns`(길이 n 리스트)와 사건이 난 날 인덱스 `events`(iterable), 창 길이 `k` 를 받아 `lift(returns, events, k)` 를 써라. 사건 t 의 창은 t+1..t+k 이고 그 창의 수익률 합이 0 보다 크면 '올랐다'. 창이 n 을 넘는 사건(t+k > n-1)은 제외한다. 기준선은 창이 완전한 모든 날 t(0 <= t <= n-k-1)에 같은 규칙을 적용해 오른 비율이다. 반환 `(사건뒤_오른비율, 기준선, 사건뒤_오른비율/기준선)`. 유효한 사건이 없으면 첫째와 셋째는 None, 기준선이 0 이면 셋째는 None. 같은 인덱스가 events 에 두 번 있으면 한 번으로 센다.",
+ "판정": {
+  "꼴": "실행",
+  "검사": "import 답, random\ndef ref(returns, events, k):\n    n = len(returns)\n    def up(t):\n        return sum(returns[t+1:t+1+k]) > 0\n    days = [t for t in range(n) if t + k <= n - 1]\n    base = (sum(1 for t in days if up(t)) / len(days)) if days else 0.0\n    ev = sorted({t for t in events if 0 <= t and t + k <= n - 1})\n    if not ev:\n        return (None, base, None)\n    hit = sum(1 for t in ev if up(t)) / len(ev)\n    return (hit, base, (hit / base) if base > 0 else None)\ndef close(a, b):\n    if a is None or b is None:\n        return a is b\n    return abs(a - b) < 1e-9\nr = [0.01, -0.02, 0.03, 0.01, -0.05, 0.02, 0.02, -0.01]\n# 손으로: k=2, 완전한 날 t=0..5. 창합: t0: -0.02+0.03>0 ✓, t1: 0.04 ✓, t2: -0.04 ✗, t3: -0.03 ✗, t4: 0.04 ✓, t5: 0.01 ✓ -> 기준선 4/6\ngot = 답.lift(r, [1, 3, 7], 2)\nassert close(got[0], 0.5) and close(got[1], 4/6) and close(got[2], 0.75), got   # 사건 7 은 창이 넘어 제외\ngot = 답.lift(r, [9], 2)\nassert got[0] is None and close(got[1], 4/6) and got[2] is None, got\ngot = 답.lift(r, [1, 1, 3], 2)\nassert close(got[0], 0.5), got                                                  # 중복은 한 번\nrnd = random.Random(7)\nfor _ in range(30):\n    n = rnd.randint(5, 60); k = rnd.randint(1, 5)\n    rs = [rnd.gauss(0, 0.02) for _ in range(n)]\n    ev = [rnd.randint(-2, n + 2) for _ in range(rnd.randint(0, 6))]\n    a, b = 답.lift(rs, ev, k), ref(rs, ev, k)\n    assert all(close(x, y) for x, y in zip(a, b)), (n, k, ev, a, b)\nprint('ok')\n"
+ },
+ "본보기": "def lift(returns, events, k):\n    n = len(returns)\n    def up(t):\n        return sum(returns[t + 1:t + 1 + k]) > 0\n    days = [t for t in range(n) if t + k <= n - 1]\n    base = (sum(1 for t in days if up(t)) / len(days)) if days else 0.0\n    ev = sorted({t for t in events if 0 <= t and t + k <= n - 1})\n    if not ev:\n        return (None, base, None)\n    hit = sum(1 for t in ev if up(t)) / len(ev)\n    return (hit, base, (hit / base) if base > 0 else None)\n"
+}

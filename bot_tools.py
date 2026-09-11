@@ -821,6 +821,7 @@ def invoke_with_recovery(agent, thread_map: dict, base_thread_id: str, prompt: s
     config = {"configurable": {"thread_id": thread_id}}
     try:
         result = agent.invoke({"messages": [("user", prompt)]}, config=config)
+        relay.턴기록(base_thread_id, result["messages"])
         return extract_text(result["messages"][-1].content).strip()
     except Exception as e:
         if is_unavailable_error(e):
@@ -830,6 +831,7 @@ def invoke_with_recovery(agent, thread_map: dict, base_thread_id: str, prompt: s
         thread_map[base_thread_id] = new_thread_id
         config = {"configurable": {"thread_id": new_thread_id}}
         result = agent.invoke({"messages": [("user", prompt)]}, config=config)
+        relay.턴기록(base_thread_id, result["messages"])
         reply = extract_text(result["messages"][-1].content).strip()
         return "(이전 대화 기록이 손상되어 대화를 초기화했다)\n\n" + reply
 

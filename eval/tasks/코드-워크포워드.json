@@ -1,0 +1,15 @@
+{
+ "id": "코드-워크포워드",
+ "과제갈래": "코드",
+ "깃발": [
+  "시계열",
+  "교차검증",
+  "out-of-sample"
+ ],
+ "물음": "시계열 out-of-sample 검증용 걷기 분할 `walk_forward(n, train, test, step)` 를 써라. 인덱스는 0..n-1. 첫 fold 는 train=[0,train), test=[train, train+test). 다음 fold 는 시작을 step 만큼 뒤로 옮기고 train 창 길이는 고정이다(rolling). test 창의 끝이 n 을 넘는 fold 부터는 버린다. 반환은 `[(train_start, train_end, test_start, test_end), ...]` (end 는 배타). 인자 중 하나라도 1 미만이면 ValueError. train+test > n 이면 빈 리스트.",
+ "판정": {
+  "꼴": "실행",
+  "검사": "import 답\nwf = 답.walk_forward\nassert wf(10, 4, 2, 2) == [(0,4,4,6),(2,6,6,8),(4,8,8,10)], wf(10,4,2,2)\nassert wf(10, 4, 2, 3) == [(0,4,4,6),(3,7,7,9)], wf(10,4,2,3)\nassert wf(5, 4, 2, 1) == [], wf(5,4,2,1)\nassert wf(6, 4, 2, 1) == [(0,4,4,6)], wf(6,4,2,1)\nassert wf(100, 30, 10, 10) == [(i, i+30, i+30, i+40) for i in range(0, 61, 10)]\nfor f in wf(1000, 250, 20, 7):\n    assert f[1] == f[2] and f[3] <= 1000 and f[1] - f[0] == 250 and f[3] - f[2] == 20\ntry:\n    wf(10, 0, 2, 1); raise SystemExit(\"ValueError 가 안 났다\")\nexcept ValueError:\n    pass\nprint('ok')\n"
+ },
+ "본보기": "def walk_forward(n, train, test, step):\n    if min(n, train, test, step) < 1:\n        raise ValueError(\"인자는 1 이상\")\n    out = []\n    s = 0\n    while s + train + test <= n:\n        out.append((s, s + train, s + train, s + train + test))\n        s += step\n    return out\n"
+}
