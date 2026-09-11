@@ -45,7 +45,7 @@ import time  # noqa: E402
 import keys  # noqa: E402
 import relay  # noqa: E402
 from bot_tools import (  # noqa: E402
-    REPO_DIR, run_shell, run_experiment, read_file, edit_file, delegate, send_email, repair, set_key, security_audit, codify_paper, search_memory, save_memory,
+    REPO_DIR, run_shell, run_experiment, read_file, edit_file, delegate, send_email, repair, set_key, security_audit, codify_paper, research, search_memory, save_memory,
     build_agent_pool, run_with_fallback_pool,
     register_thread, unregister_thread, request_cancel,
     orchestrator_solve, orchestrator_status, orchestrator_resume, orchestrator_stop,
@@ -80,7 +80,7 @@ ADMIN_MODEL_CANDIDATES = [ADMIN_MODEL_NAME] + [m for m in _admin_extra_models if
 ADMIN_PRIMARY_KEY = os.getenv("GEMINI_API_KEY_FALLBACK") or os.environ["GEMINI_API_KEY"]
 ADMIN_SECONDARY_KEY = os.environ["GEMINI_API_KEY"] if os.getenv("GEMINI_API_KEY_FALLBACK") else None
 
-ADMIN_TOOLS = [run_shell, run_experiment, read_file, edit_file, delegate, send_email, repair, set_key, security_audit, codify_paper, search_memory, save_memory,
+ADMIN_TOOLS = [run_shell, run_experiment, read_file, edit_file, delegate, send_email, repair, set_key, security_audit, codify_paper, research, search_memory, save_memory,
                orchestrator_solve, orchestrator_status, orchestrator_resume,
                orchestrator_stop]
 ADMIN_SYSTEM_PROMPT = (
@@ -150,6 +150,7 @@ ADMIN_SYSTEM_PROMPT = (
     "코드가 돌리고 실패 이유를 기억에 남긴다. 네가 손으로 세 번 해 보거나 '정책 때문' 이라 하지 마라\n"
     "  · 보안 점검·취약점 -> security_audit 도구(이 호스트 자신만 읽기 전용). 판정은 코드가 낸다 -- "
     "네가 '안전해 보인다' 고 말하지 마라. 남의 기계를 공격하거나 익스플로잇을 실행하지 마라\n"
+    "  · **목표·주제를 주며 '논문을 완성해 달라'·'해결해 달라' -> research 도구**(목표 한 줄). 목표를 그대로 검색하지 말고(너무 구체적이면 0건이다) research 가 일반 방법론 질의로 풀어 넓게 모으고, 막히면 다시 추상화해 되풀이하고, 코드화로 검증하고, 과정->결과를 메모로 남긴다. harvest --관심/eval/graph ask 몇 번 부르고 '필요하면 말씀해 주세요' 로 떠넘기지 마라 -- research 한 번에 끝까지 하고 결과를 붙여라\n"
     "\n"
     "[사람에게 묻기 전에 -- 자가 해결 단계가 먼저다]\n"
     "순서는 고정이다: (1) repair 도구(재현 명령 + 증상)로 실측→제2의 뇌(dig/harvest + search_memory)"
@@ -485,12 +486,21 @@ def run_admin_agent(prompt: str, thread_id: str, 중계판=None) -> str:
         # 물음에 에이전트가 도구를 한 번도 안 부르고 지식으로 답했다. 규칙을 더 적지 않고
         # 코드가 센 도구 수(relay.마지막도구)로 판정해 실측을 요구한다. 그래도 0 이면 답에
         # 그렇다고 적는다 -- 답을 지우지는 않는다.
-        if not relay.마지막도구.get(thread_id) and relay.실측필요(prompt, reply):
-            print(f"[admin-agent] thread={thread_id} 도구 0회 -- 실측 요구 되묻기")
-            relay.적기("↺ 도구 0회 -- 실측을 요구하고 한 번 되묻는다")
+        # 되묻는 조건 두 가지: (1) 도구 0회인데 실측이 필요하거나, (2) 떠넘김 문구로 끝났는데
+        # **무거운 일(논문·코드화·수집·연구·수리)** 은 하나도 안 돌았다 -- 값싼 도구 몇 개만
+        # 부르고 소개만 한 답(실측 2026-09-11: harvest --관심/eval/graph ask 뒤 "필요하면 말씀").
+        def _더필요():
+            도구들 = relay.마지막도구.get(thread_id)
+            무거웠나 = relay.무거운일(thread_id, bot_tools.이번셸())
+            if not 도구들 and relay.실측필요(prompt, reply):
+                return True
+            return relay.떠넘김(reply) and not 무거웠나
+        if _더필요():
+            print(f"[admin-agent] thread={thread_id} 실행이 비었다(떠넘김/도구0) -- 되묻기")
+            relay.적기("↺ 실행이 비었다(떠넘김/도구0) -- 한 호흡에 실행하라고 한 번 되묻는다")
             reply = run_with_fallback_pool(ADMIN_AGENT_POOL, _admin_thread_map, thread_id,
                                            relay.되묻는말, "[admin-agent]")
-            if not relay.마지막도구.get(thread_id):
+            if _더필요():
                 reply = f"{reply}\n\n{relay.도구없음표}"
         print(f"[admin-agent] thread={thread_id} reply={reply[:200]!r}")
         return reply

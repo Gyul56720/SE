@@ -299,6 +299,17 @@ def 관심더하기(주제: str, repo=None) -> str:
     return "더했다"
 
 
+def 관심수집(주제: str, repo=None, 몇: int = 3, 상한: int = 6) -> "tuple[str, dict]":
+    """관심을 등록하고 **그 자리에서** 그 주제로 한 바퀴 수집한다 -- 등록만 하고 끝내지 않는다.
+
+    실측 2026-09-11: `--관심` 이 줄만 쌓고 0 을 돌려줘, 뇌 안에 그 분야 데이터가 없었다
+    (graph/ask 가 비었다). 사람이 방향을 주면 그 자리에서 모은다. 막히면 보고가 정직히 말한다.
+    """
+    added = 관심더하기(주제, repo)
+    결과 = 한바퀴([주제], repo=repo, 몇=몇, 상한=상한, 출처=("arxiv", "github", "hf"))
+    return added, 결과
+
+
 def 검증(항목: dict) -> "tuple[bool, str]":
     """(저장해도 되나, 까닭). 판정은 코드가 한다."""
     if not (항목.get("내용") or "").strip():
@@ -497,8 +508,10 @@ def main() -> int:
     args = ap.parse_args()
 
     if args.관심:
-        print(관심더하기(args.관심), "--", args.관심)
-        return 0
+        added, 결과 = 관심수집(args.관심, 몇=min(args.몇, 3), 상한=min(args.상한, 6))
+        print(added, "--", args.관심)
+        print(보고(결과))
+        return 0          # 관심 등록은 성공했다 -- 수집이 막혀도 보고가 그렇다고 말한다
     틈들 = 틈찾기() if (args.틈 or args.틈만) else []
     if args.틈만:
         for g in 틈들:

@@ -110,6 +110,13 @@ def 자르기(s: str, 앞: int, 뒤: int) -> str:
             + s[-뒤:])
 
 
+def 이번셸() -> list:
+    """지금 OS 스레드가 **이번 턴에** 돌린 셸·실험·편집·위임 줄 -- (명령, 성공) 튜플.
+    unregister_thread 로 마지막셸에 옮겨지기 전, 되묻기 판정 때 살아 있어야 한다."""
+    with _셸기록_lock:
+        return list(_셸기록.get(threading.get_ident(), []))
+
+
 def register_thread(thread_id: str) -> None:
     """run_admin_agent/run_public_agent 시작 시 호출 -- 지금 실행 중인 OS 스레드를
     discord thread_id와 묶고, 이전 취소 플래그를 지운다."""
@@ -319,6 +326,22 @@ def codify_paper(arxiv_id: str) -> str:
     r = _c.논문코드화(url)
     relay.적기(f"⚙ 코드화 {r['논문']} -- 스펙 {r['스펙수']} · 성공 {r['성공']}")
     return _c.보고(r)
+
+
+@tool
+def research(goal: str) -> str:
+    """목표 하나를 **한 호흡에** 연구한다 -- 소개만 하고 떠넘기지 마라. 목표를 그대로 검색하지 않고
+    (너무 구체적이면 논문이 0건이다) **일반 방법론 질의 여럿**으로 풀어 제2의 뇌(dig/harvest)로
+    arXiv·GitHub·HF 를 넓게 모으고, 막히면 그 막힘을 다시 추상화해 더 넓게 모으기를 되풀이한다
+    (3~5 바퀴). 모은 방법론은 codify 로 코드화해 sandbox 에서 검증하고, 과정->결과를 압축해
+    public_agent_memory 에 결론으로 남긴다. 판정은 코드가 한다(수집 색인 수·코드화 끝값). 도메인 무관 --
+    목표가 구체적 작업이든 학술 질문이든 같다. 몇 분 걸릴 수 있다. 결과(색인·코드 파일·결론·메모)를 답에 붙여라."""
+    if agent_context.is_blocked():
+        return "실패: 게스트는 research 를 사용할 수 없습니다."
+    from research import run as _r
+    r = _r.연구(goal)
+    relay.적기(f"🔭 연구 {'충분' if r['충분'] else '부분'} {r['바퀴수']}바퀴 -- {goal[:50]}")
+    return _r.보고(r)
 
 
 @tool
