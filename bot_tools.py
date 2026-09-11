@@ -39,6 +39,7 @@ import public_agent_files
 import quota_tracker
 import relay
 import toolgate
+import compact
 from sandbox import run as sandbox_run
 from secret_filter import child_env, redact_secrets
 
@@ -108,6 +109,28 @@ def 자르기(s: str, 앞: int, 뒤: int) -> str:
               f"좁혀서 다시 불러라: `--찾 <말>` · `--json | python3 -c '...'` · "
               f"`grep -n <말>` · `head`/`tail`] …\n\n"
             + s[-뒤:])
+
+
+def _계획판():
+    """계획판(!계획 켜기)이 켜져 있으면 그림자 워크트리 -- edit_file · run_shell 이 거기서 돈다."""
+    try:
+        from plan import store as _plan
+        return _plan.현재판()
+    except Exception:                                  # noqa: BLE001
+        return None
+
+
+def _간추림(base_thread_id: str, thread_map: dict, messages) -> None:
+    """대화가 상한을 넘으면 코드가 간추려 메모로 남기고 실을 새로 잇는다(격차표 '맥락 관리')."""
+    if not compact.간추릴때(messages):
+        return
+    try:
+        메모, _ = compact.간추리기(base_thread_id, messages)
+    except Exception as e:                             # noqa: BLE001
+        print(f"[compact] thread={base_thread_id} 간추리기 실패: {e!r}")
+        return
+    thread_map[base_thread_id] = f"{base_thread_id}-{uuid.uuid4().hex[:8]}"
+    relay.적기(f"🗜 대화 {len(messages)}줄 간추려 {메모} -- 새 실로 잇는다")
 
 
 def 이번셸() -> list:
@@ -197,7 +220,7 @@ def run_shell(command: str) -> str:
     # 출력에는 로그·바이너리 조각·다른 인코딩 텍스트가 얼마든지 섞일 수 있다.
     시작 = time.monotonic()
     proc = subprocess.Popen(
-        ["bash", "-lc", command], cwd=REPO_DIR,
+        ["bash", "-lc", command], cwd=str(_계획판() or REPO_DIR),      # 계획판이면 그림자
         stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         text=True, errors="replace", env=child_env(),
     )
@@ -285,7 +308,7 @@ def edit_file(path: str, old: str, new: str) -> str:
     if agent_context.is_blocked():
         return "실패: 게스트는 edit_file 을 사용할 수 없습니다."
     try:
-        말 = filetools.편집(path, old, new)
+        말 = filetools.편집(path, old, new, repo=_계획판())      # 계획판이 켜져 있으면 그림자에
     except ValueError as e:
         relay.적기(f"✎ 거절 {path[:60]} -- {str(e)[:60]}")
         return f"[편집 거절] {e}"
@@ -342,6 +365,20 @@ def research(goal: str) -> str:
     r = _r.연구(goal)
     relay.적기(f"🔭 연구 {'충분' if r['충분'] else '부분'} {r['바퀴수']}바퀴 -- {goal[:50]}")
     return _r.보고(r)
+
+
+@tool
+def create_pr(title: str, body: str = "") -> str:
+    """지금 갈래를 origin 에 밀고 **PR 을 연다. 머지는 하지 않는다 -- 사람이 GitHub 에서 누른다.**
+    main 에서는 거절(갈래를 먼저 만들어라). 밀기는 gitsync 규칙(merge 로 따라잡기, --force 없음).
+    GITHUB_TOKEN 이 없으면 그렇다고 돌려준다 -- `!열쇠 GITHUB_TOKEN=<값>` 꼴로 딱 그 값만 청하라.
+    '커밋했다·PR 열었다' 는 이 도구가 돌려준 URL 로만 말하라 -- 해시나 번호를 지어내지 마라."""
+    if agent_context.is_blocked():
+        return "실패: 게스트는 create_pr 을 사용할 수 없습니다."
+    import github_write as _gw
+    r = _gw.pr만들기(title, body)
+    relay.적기(f"⇧ PR {'#' + str(r['번호']) + ' ' + r['url'] if r['됐나'] else '못 엶 -- ' + r['왜'][:60]}")
+    return _gw.보고(r)
 
 
 @tool
@@ -922,11 +959,13 @@ def invoke_with_recovery(agent, thread_map: dict, base_thread_id: str, prompt: s
     재시도하면 API 쪽 자체 backoff(길게는 수십 초)를 두 번 기다리게 돼서 응답만 느려진다
     (실측 확인됨, 2026-08-28). 그래서 쿼터 에러는 재시도 없이 바로 올려서, 호출자가(예:
     다른 API 키로) 곧장 넘어갈 수 있게 한다."""
+    prompt = compact.씨앗꺼내기(base_thread_id) + prompt      # 간추린 뒤 첫 말에 깃발 한 줄
     thread_id = thread_map.get(base_thread_id, base_thread_id)
     config = {"configurable": {"thread_id": thread_id}}
     try:
         result = agent.invoke({"messages": [("user", prompt)]}, config=config)
         relay.턴기록(base_thread_id, result["messages"])
+        _간추림(base_thread_id, thread_map, result["messages"])
         return extract_text(result["messages"][-1].content).strip()
     except Exception as e:
         if is_unavailable_error(e):
@@ -937,6 +976,7 @@ def invoke_with_recovery(agent, thread_map: dict, base_thread_id: str, prompt: s
         config = {"configurable": {"thread_id": new_thread_id}}
         result = agent.invoke({"messages": [("user", prompt)]}, config=config)
         relay.턴기록(base_thread_id, result["messages"])
+        _간추림(base_thread_id, thread_map, result["messages"])
         reply = extract_text(result["messages"][-1].content).strip()
         return "(이전 대화 기록이 손상되어 대화를 초기화했다)\n\n" + reply
 

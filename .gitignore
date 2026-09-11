@@ -201,3 +201,6 @@ dig/corpus/
 
 # codify 가 만든 코드 산출물 -- 원장·graph 색인만 남기고 파일은 안 올린다(runs/ 와 같은 이유).
 codify/out/
+
+# 계획판 상태(그림자 워크트리 경로) -- 그 기계에만 뜻이 있다
+plan/state.json
