@@ -153,6 +153,7 @@ ADMIN_SYSTEM_PROMPT = (
     "  · 보안 점검·취약점 -> security_audit 도구(이 호스트 자신만 읽기 전용). 판정은 코드가 낸다 -- "
     "네가 '안전해 보인다' 고 말하지 마라. 남의 기계를 공격하거나 익스플로잇을 실행하지 마라\n"
     "  · **목표·주제를 주며 '논문을 완성해 달라'·'해결해 달라' -> research 도구**(목표 한 줄). 목표를 그대로 검색하지 말고(너무 구체적이면 0건이다) research 가 일반 방법론 질의로 풀어 넓게 모으고, 막히면 다시 추상화해 되풀이하고, 코드화로 검증하고, 과정->결과를 메모로 남긴다. harvest --관심/eval/graph ask 몇 번 부르고 '필요하면 말씀해 주세요' 로 떠넘기지 마라 -- research 한 번에 끝까지 하고 결과를 붙여라\n"
+    "  · **시스템을 개선하라는 부탁은 `!자가개선`** (dispatch_command). 틈을 스스로 찾고 제2의 뇌를 근거로 패치를 지어 격리 판에서 red->green·리허설을 코드가 확인한 뒤 동의를 기다린다. `!자가개선 승인` 은 사람만 친다\n"
     "  · **저장소 코드를 고칠 때는 `!계획 켜기` -> 고치기 -> `!계획 시험` -> (사람)`!계획 승인` 이 순서다.** `!계획 시험` 은 그림자를 격리 판에 복사해 문법·게이트·그 파일이 거는 검사를 미리 돌린다 -- **돌려 보지 않은 코드는 승인이 거절한다**(코드가 막는다). 빨강이면 고치고 다시 시험하라\n"
     "  · **코드를 고치기 전에 `python3 impact.py --파일 <고칠 파일>` 을 돌려라** -- 그 코드를 누가 부르고 어느 입구(관리 채널 답변 경로 · 커밋 경로 · 게이트 · 24h 루프)에 닿는지 코드가 센다. 답변 경로에 망 호출이나 검사 실행을 넣지 마라(사람이 그만큼 기다린다). 커밋 경로를 막으면 봇이 아무것도 저장 못 한다. '모든 경우의 수' 를 머리로 세지 말고 이 표를 읽어라\n"
     "  · **사람의 부탁은 dispatch_command 도구로 실행한다.** 사람 말을 그대로 넘겨라 -- 어느 고정 명령인지는 저장소의 표가 고른다(수집·연구·코드화·평가·검사·감사·점검·기억·경로·계획). **명령 목록을 나열하거나 '무엇을 원하시나요' 로 끝내지 마라**(실측 2026-09-11: 목록만 보여 주고 끝냈다). 못 골랐다고 돌아오면 그때 research·codify_paper·repair·security_audit 를 직접 불러라. `!목표 승인`·`!계획 승인`·`!열쇠` 만 사람이 친다\n"
@@ -524,6 +525,27 @@ def run_admin_agent(prompt: str, thread_id: str, 중계판=None) -> str:
         unregister_thread(thread_id)
 
 
+async def _자가개선지켜보기(간격초: float = None) -> None:
+    """IMPROVE_SEC(기본 6h)마다 자가개선을 한 바퀴 돌려, 동의 대기 후보가 새로 생기면 관리 채널에 묻는다.
+    사용자(2026-09-11): "24시간 모니터링하면서 계속 업데이트한다" -- 단, 붙이는 것은 사람의 동의 뒤다."""
+    간격 = float(간격초 or os.getenv("IMPROVE_SEC", "21600") or 21600)
+    await asyncio.sleep(min(간격, 600))                  # 켜지자마자 돌지 않는다 -- 배포 직후는 조용히
+    지난 = None
+    while True:
+        try:
+            from improve import run as _im
+            r = await asyncio.to_thread(_im.자가개선, None, 3, 120, False, False, True)
+            d = r.get("동의대기")
+            ch = client.get_channel(ADMIN_CHANNEL_ID)
+            if d and d.get("id") != 지난 and ch is not None:
+                지난 = d["id"]
+                await ch.send(("🛠 **자가개선 후보가 동의를 기다린다** [" + d["id"] + "]\n" + _im.보고(r))[:1900])
+            print(f"[improve] 틈 {r.get('틈수')} · 동의대기 {(d or {}).get('id')} · {r.get('남은것', '')[:80]}")
+        except Exception as e:                        # noqa: BLE001
+            print(f"[improve] 못 돌림: {e!r}")
+        await asyncio.sleep(간격)
+
+
 async def _ci지켜보기(간격초: float = None) -> None:
     """main CI 의 마지막 결론을 주기적으로 읽어, **상태가 바뀔 때만** 관리 채널에 알린다.
     실측 2026-09-11: main 이 60회 연속 초록 0 인데 아무도 몰랐다 -- 뒤늦은 신호는 읽어야 신호다."""
@@ -603,6 +625,7 @@ async def on_ready():
               "하므로 예전과 똑같이 돈다. 틀린 값을 넣느니 비우는 것이 낫다.")
 
     asyncio.create_task(_ci지켜보기())      # CI 빨강을 봇이 읽는다(2h)
+    asyncio.create_task(_자가개선지켜보기())  # 6h 마다 스스로 개선 후보를 찾아 동의를 구한다
 
 ATTACHMENTS_DIR = os.path.join(REPO_DIR, "inbox", "discord_attachments")
 

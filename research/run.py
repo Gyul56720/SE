@@ -87,7 +87,11 @@ def _기계일반화(목표: str) -> "list[str]":
     return out[:5]
 
 
-def 분해(목표: str, 막힌것: str = "") -> "list[str]":
+def 분해(목표: str, 막힌것: str = "", 모델: bool = True) -> "list[str]":
+    """모델=False 면 모델을 안 부르고 기계 일반화만 한다 -- 풀이 죽어 있을 때 20초씩 기다리지 않으려고
+    (실측 2026-09-11: 키 없는 판에서 llm_pool 이 3바퀴×10초를 기다린 뒤에야 물러섰다)."""
+    if not 모델:
+        return _기계일반화(목표)
     try:
         답 = (분해기 or _분해기본)(목표, 막힌것)
     except Exception:                                 # noqa: BLE001 -- 모델 못 부르면 기계 일반화
