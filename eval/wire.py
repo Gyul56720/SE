@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -162,6 +163,45 @@ def 읽기(repo=None) -> "list[dict]":
     return out
 
 
+# 읽기점검 목록 자체는 손으로 적는다 -- 어떤 깃발을 어떤 끝값으로 기대하는지는 코드가
+# 지어낼 수 없다. **그러나 목록이 빠졌다는 사실은 셀 수 있다.** 그것이 이 저장소가 앓은
+# 병이었다: `improve/run.py` 는 읽기점검에 있었지만 `--틈만` 만 밟아서, plan 을 쓰는 깊은
+# 길이 죽어 있는 줄 몰랐다. 새 진입점이 아예 목록에 없으면 그조차 없다.
+# 봇이 이름을 대고 부르는 파일들. 여기에 적힌 진입점이 곧 **사용자가 밟을 수 있는 길**이다.
+_봇의입 = ("discord_bot_server.py", "dispatch.py", "bot_tools.py", "main_public.py")
+
+
+def 봇이부르는진입점(repo=None) -> "list[dict]":
+    """봇이 **이름을 대고 부르는** 꾸러미 진입점. 목록이 아니라 봇의 소스에서 센다."""
+    repo = Path(repo or REPO)
+    try:
+        import entrypoints as E
+    except ImportError:
+        return []
+    글 = ""
+    for f in _봇의입:
+        p = repo / f
+        if p.is_file():
+            글 += p.read_text(encoding="utf-8", errors="replace")
+    return [e for e in E.진입점들(repo) if e["꾸러미"] and (e["파일"] in 글 or e["모듈"] in 글)]
+
+
+def 안걸린진입점(repo=None) -> "list[dict]":
+    """봇이 부르는데 **읽기점검이 한 번도 안 밟는** 진입점.
+
+    사용자가 밟을 수 있는 길인데 아무도 안 밟아 본 것이므로, 거기서 깨지면 사용자가
+    오류 메시지를 본다 -- 이 저장소가 실제로 앓은 병이다(`improve/run.py` 는 목록에
+    있었지만 `--틈만` 만 밟아서, plan 을 쓰는 깊은 길이 죽은 줄 몰랐다).
+
+    빨간불로 치지 않는다. 다만 **조용히 빠지지는 않게** 적는다 -- 목록에 적는 것을
+    잊었다는 사실은 목록이 아니라 셈으로 드러나야 한다.
+    (첫 판은 꾸러미를 안 가려 113개를 적었다. **늘 우는 경보는 아무도 안 듣는다.**)"""
+    밟은 = " ".join(" ".join(argv) for _, argv, _, _ in 읽기점검)
+    return [{"파일": e["파일"], "깃발": e["깃발"][:6]}
+            for e in 봇이부르는진입점(repo)
+            if e["파일"] not in 밟은 and e["모듈"] not in 밟은]
+
+
 def 명령점검(repo=None) -> dict:
     """고정 명령이 전부 들리는가 + 자연어는 에이전트로 떨어지는가."""
     try:
@@ -239,6 +279,13 @@ def main() -> int:
             print("\n".join(f"       {x}" for x in r["꼬리"].splitlines()))
         끊김 += r["판정"] == "끊김"
         못 += r["판정"] == "못돌림"
+
+    안걸림 = 안걸린진입점()
+    if 안걸림:
+        print(f"\n== 봇이 부르는데 읽기점검이 안 밟는 진입점 {len(안걸림)}개 (빨간불은 아니다) ==")
+        for x in 안걸림:
+            print(f"  못돌림 {x['파일']:<28} {' '.join(x['깃발']) or '(깃발 없음)'}")
+        못 += len(안걸림)
 
     print("\n== 명령의 길 ==")
     c = 명령점검()

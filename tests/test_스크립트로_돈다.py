@@ -100,16 +100,24 @@ ok(_불.read_text(encoding="utf-8") == _원 and not E.위험들(뿌리), "되돌
 
 print("\n== 실측: **세어 찾은** 꾸러미 진입점을 다른 cwd 에서 돌려 임포트를 지난다 ==")
 밖 = tempfile.mkdtemp(prefix="test-밖-")
-꾸진 = [e for e in 진 if e["꾸러미"] and e["늦은임포트"]][:8]
+# **깃발을 선언한 것만 민다.** argparse 가 없는 진입점은 `--help` 를 그냥 인자로
+# 삼키고 제 일을 끝까지 한다 -- 실측: `eval/acceptance.py --help` 가 인수 검사 전부를
+# 돌리다 120초를 넘겼다. 그것은 임포트 점검이 아니라 그냥 느린 검사다.
+꾸진 = [e for e in 진 if e["꾸러미"] and e["늦은임포트"] and e["깃발"]][:8]
 ok(꾸진, f"살펴볼 꾸러미 진입점 {len(꾸진)}개: {', '.join(e['파일'] for e in 꾸진[:5])}")
-샌 = []
+샌, 못 = [], []
 for e in 꾸진:
-    p = subprocess.run([sys.executable, str(뿌리 / e["파일"]), "--help"],
-                       cwd=밖, capture_output=True, text=True, timeout=120)
+    try:
+        p = subprocess.run([sys.executable, str(뿌리 / e["파일"]), "--help"],
+                           cwd=밖, capture_output=True, text=True, timeout=60)
+    except subprocess.TimeoutExpired:
+        못.append(e["파일"])          # 못 잰 것은 통과로 치지 않되, 임포트 사고와 갈라 적는다
+        continue
     본 = (p.stdout or "") + (p.stderr or "")
     if "ModuleNotFoundError" in 본 or "No module named" in 본:
         샌.append(f"{e['파일']}: {본.strip().splitlines()[-1][:70]}")
 ok(not 샌, f"다른 cwd 에서 전부 임포트를 지난다 -- 샌 것: {샌}")
+ok(not 못, f"**--help 가 안 끝난 것은 못 잰 것이다**(초록이 아니다): {못}")
 
 print("\n== 깊은 길: improve 의 부탁 경로가 plan 을 실제로 임포트한다 ==")
 p = subprocess.run([sys.executable, str(뿌리 / "improve" / "run.py"), "--부탁", "x", "--좁게", "--저장소", str(뿌리)],

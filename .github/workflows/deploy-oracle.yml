@@ -91,6 +91,11 @@ on:
       - "impact.py"
       # 리허설 -- plan 이 승인 전에 부른다(격리 판에서 미리 돌려 본다).
       - "rehearsal.py"
+      # 진입점을 세어 찾는다(배선 읽기점검·자가개선 틈). improve 가 임포트한다.
+      - "entrypoints.py"
+      # 빠른 검사를 재서 고른다. scripts/precheck.sh 가 부른다.
+      - "testtimes.py"
+      - "testtimes.json"
       # 자가개선(!자가개선) -- 봇이 6h 마다 돌고 동의를 구한다. 봇이 지연 임포트한다.
       - "improve/**.py"
       # 서버에서 도는 점검 도구. 능력 래칫이 커밋 게이트에서 여기로 옮겨왔다.
