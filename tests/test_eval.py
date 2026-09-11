@@ -94,6 +94,20 @@ ok(어긋수 == 0, f"questions.jsonl {len(행들)}행 전부 통과 (어긋남 {
 if 어긋수:
     print("\n".join(lines))
 
+print("\n== 배선 점검은 '안 잰 것' 을 '끊긴 것' 으로 뭉개지 않는다 ==")
+# **이 검사는 실측된 내 실수에서 나왔다.** wire.py 를 처음 돌렸을 때 이 컨테이너에
+# langchain 이 없어 bot_tools 임포트가 exit 1 을 냈고, 첫 판의 가르기가 그것을
+# '끊김' 으로 찍었다 -- VM 에는 깔려 있으므로 배선이 끊긴 것이 아니라 **여기서 못 잰
+# 것**이다. 반대로 진짜 끊김(예: 빠진 함수로 인한 AttributeError)은 끊김이어야 한다.
+from eval import wire  # noqa: E402
+ok(wire.가르기(0, (0,)) == "이어짐", "기대한 끝값이면 이어짐")
+ok(wire.가르기(3, (0,)) == "못돌림", "끝값 3 은 못돌림")
+ok(wire.가르기(1, (0,), "ModuleNotFoundError: No module named 'langchain_core'") == "못돌림",
+   "**의존성 없음은 못돌림이다** -- 끊김으로 뭉개면 거짓 빨간불이 된다")
+ok(wire.가르기(1, (0,), "AttributeError: module has no attribute '부르기'") == "끊김",
+   "진짜 고장은 끊김이다 -- 못돌림으로 뭉개면 거짓 초록이 된다")
+ok("배선" in [g["이름"] for g in 러너.갈래들], "배선이 eval 갈래로 등록돼 있다")
+
 print("\n== !평가 배선 ==")
 import dispatch  # noqa: E402
 답 = dispatch.run("!평가", allow_write=False)
