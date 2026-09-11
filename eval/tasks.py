@@ -273,6 +273,10 @@ def 묶음요약(줄들: "list[dict]", 참고: str, repo=None) -> dict:
             g["못돌림"] += 1
     맞음 = sum(1 for r in 줄들 if r["판정"] == "맞음")
     못 = sum(1 for r in 줄들 if r["판정"] == "못돌림")
+    # **천장**: 참고 없이 만점인 갈래는 이득도 후퇴도 못 잰다 -- 눈금이 없다. 실측
+    # 2026-09-11 첫 바퀴: 추론 4/4 · 코드 4/4 라 지식만 움직였다. 더 어려운 과제를 넣어라.
+    천장 = ([g for g, v in 갈래별.items() if 참고 == "없음" and v["전체"] and v["맞음"] == v["전체"]]
+          if 참고 == "없음" else [])
     앞 = 마지막묶음(참고, repo)
     흐름 = ""
     if 앞 and 앞.get("전체") and 못 == 0 and 앞.get("못돌림", 0) == 0:
@@ -283,7 +287,8 @@ def 묶음요약(줄들: "list[dict]", 참고: str, repo=None) -> dict:
     return {"때": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "꼴": "과제묶음",
             "참고": 참고, "맞음": 맞음, "전체": len(줄들), "못돌림": 못,
             "갈래별": 갈래별, "HEAD": _head(Path(repo or REPO)),
-            "틀린과제": [r["과제"] for r in 줄들 if r["판정"] == "틀림"], "흐름": 흐름}
+            "틀린과제": [r["과제"] for r in 줄들 if r["판정"] == "틀림"], "흐름": 흐름,
+            "천장": 천장}
 
 
 def 돌리기(참고조건: "list[str]", repo=None, 갈래: str = "", 과제id: str = "",
@@ -338,6 +343,9 @@ def 보고(결과: dict) -> str:
                  + (f" (못돌림 {m['못돌림']})" if m["못돌림"] else "") + f"  [{갈래}]{흐름}")
         if m["틀린과제"]:
             줄.append(f"       틀림: {', '.join(m['틀린과제'][:8])}")
+        if m.get("천장"):
+            줄.append(f"       천장(눈금 없음): {', '.join(m['천장'])} -- 참고 없이 만점이라 "
+                     "이득·후퇴를 못 잰다. 더 어려운 과제를 넣어라")
     if 결과.get("이득") is not None:
         d = 결과["이득"]
         갈래 = " · ".join(f"{g} {d[g]:+d}" for g in 갈래이름들 if g in d)

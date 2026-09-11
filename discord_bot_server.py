@@ -424,6 +424,17 @@ def run_admin_agent(prompt: str, thread_id: str, 중계판=None) -> str:
     register_thread(thread_id)
     try:
         reply = run_with_fallback_pool(ADMIN_AGENT_POOL, _admin_thread_map, thread_id, prompt, "[admin-agent]")
+        # **도구 0회 답은 한 번 되묻는다.** 실측 2026-09-11: chainlink 시세·뉴스 분석 같은
+        # 물음에 에이전트가 도구를 한 번도 안 부르고 지식으로 답했다. 규칙을 더 적지 않고
+        # 코드가 센 도구 수(relay.마지막도구)로 판정해 실측을 요구한다. 그래도 0 이면 답에
+        # 그렇다고 적는다 -- 답을 지우지는 않는다.
+        if not relay.마지막도구.get(thread_id) and relay.실측필요(prompt, reply):
+            print(f"[admin-agent] thread={thread_id} 도구 0회 -- 실측 요구 되묻기")
+            relay.적기("↺ 도구 0회 -- 실측을 요구하고 한 번 되묻는다")
+            reply = run_with_fallback_pool(ADMIN_AGENT_POOL, _admin_thread_map, thread_id,
+                                           relay.되묻는말, "[admin-agent]")
+            if not relay.마지막도구.get(thread_id):
+                reply = f"{reply}\n\n{relay.도구없음표}"
         print(f"[admin-agent] thread={thread_id} reply={reply[:200]!r}")
         return reply
     except Exception as e:

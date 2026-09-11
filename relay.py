@@ -22,6 +22,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import threading
 import time
 
@@ -47,6 +48,7 @@ class 중계판:
         self._최소간격 = 최소간격
         self._상한 = 상한
         self.줄들: list = []
+        self.도구수 = 0                # 도구 줄만 센다 -- 모델 전환·되묻기 줄은 도구가 아니다
         self.시작 = time.monotonic()
         self.편집횟수 = 0
         self._lock = threading.Lock()
@@ -57,6 +59,8 @@ class 중계판:
     def 적기(self, 줄: str) -> None:
         with self._lock:
             self.줄들.append(줄)
+            if 줄[:1] in 도구표지:
+                self.도구수 += 1
             if self._예약됨:
                 return                 # 이미 편집이 잡혀 있다 -- 그때 최신 줄들을 읽는다
             self._예약됨 = True
@@ -70,7 +74,7 @@ class 중계판:
         with self._lock:
             줄들 = list(self.줄들)
         경과 = time.monotonic() - self.시작
-        머리줄 = f"{머리} · 도구 {len(줄들)}개 · {경과:.0f}초"
+        머리줄 = f"{머리} · 도구 {self.도구수}개 · {경과:.0f}초"
         본 = "\n".join(줄들)
         # **뒤를 남긴다** -- 방금 한 일이 끝에 있다. 잘랐으면 잘랐다고 적는다.
         여유 = self._상한 - len(머리줄) - 20
@@ -99,8 +103,63 @@ class 중계판:
 
     async def 마무리(self) -> None:
         self.끝났다 = True
-        머리 = "✅ 끝" if self.줄들 else "✅ 끝 (도구 호출 없음 -- 답이 실측 없이 나왔다면 의심하라)"
+        머리 = "✅ 끝" if self.도구수 else "✅ 끝 (도구 호출 없음 -- 답이 실측 없이 나왔다면 의심하라)"
         await self._편집한번(self.본문(머리))
+
+
+# 도구 줄의 첫 글자. 여기 있는 줄만 '도구 N개' 로 센다.
+도구표지 = ("$", "🧪", "✎", "⇉", "🔧", "⛔")
+# 스스로 중계 줄을 적는 도구. 그 밖의 도구(search_memory · read_file · orchestrator_*)는
+# 코드가 결과 메시지에서 세어 🔧 줄로 적는다 -- 실측 2026-09-11: 사용자가 "도구 호출이
+# 계속 0" 이라 했는데, 이 네 개만 세고 있어서 셌든 안 셌든 0 으로 보였다.
+스스로적는도구 = ("run_shell", "run_experiment", "edit_file", "delegate")
+# thread_id -> 이번 턴에 모델이 부른 도구 이름들 (invoke 결과의 tool_calls 에서 코드가 센 것)
+마지막도구: dict[str, list] = {}
+
+
+def 도구호출들(messages) -> "list[str]":
+    """agent.invoke 결과의 messages 에서 **마지막 사람 말 뒤에** 모델이 부른 도구 이름들.
+    langchain 메시지를 오리 타이핑으로 본다: type == "human" · AIMessage.tool_calls."""
+    턴 = []
+    for m in reversed(list(messages or [])):
+        if getattr(m, "type", "") == "human":
+            break
+        턴.append(m)
+    out = []
+    for m in reversed(턴):
+        for tc in (getattr(m, "tool_calls", None) or []):
+            name = tc.get("name") if isinstance(tc, dict) else getattr(tc, "name", "")
+            if name:
+                out.append(str(name))
+    return out
+
+
+def 턴기록(thread_id: str, messages) -> "list[str]":
+    """한 턴의 도구 호출을 세어 남기고, 스스로 줄을 안 적는 도구는 🔧 줄로 중계한다."""
+    이름들 = 도구호출들(messages)
+    마지막도구[thread_id] = 이름들
+    for n in 이름들:
+        if n not in 스스로적는도구:
+            적기(f"🔧 {n}")
+    return 이름들
+
+
+# 실측이 있어야 할 물음의 낌새. 넓게 잡아도 손해는 되묻기 한 번뿐이다.
+실측말 = ("시세", "가격", "뉴스", "분석", "만들어", "짜줘", "짜 줘", "돌려", "확인", "검증", "계측",
+        "현재", "상태", "파일", "코드", "실행", "테스트", "조회", "찾아", "찾고", "수집", "예측")
+되묻는말 = ("[하네스 검사] 앞의 답은 도구를 한 번도 안 불렀다(코드가 셌다). 시세·수치·뉴스·"
+          "파일 내용·현재 상태는 도구로 실측해서 다시 답하라 -- run_shell 로 저장소의 "
+          "기관(coin/ · dig/ · eval/ …)을 돌리고 그 출력을 근거로 적어라. 실측이 정말 필요 "
+          "없는 물음이면 첫 줄에 '실측 불필요:' 와 까닭을 적고 같은 답을 하라.")
+도구없음표 = ("**[검사] 이 답은 되물었는데도 도구 호출 0회로 나왔다** -- 실측 없는 답이다. "
+          "숫자·상태를 근거로 쓰기 전에 의심하라.")
+
+
+def 실측필요(prompt: str, reply: str) -> bool:
+    """도구 0회인 답을 되물을 것인가 -- 물음에 실측 낌새가 있거나 답에 수가 셋 이상이면."""
+    if any(w in (prompt or "") for w in 실측말):
+        return True
+    return len(re.findall(r"\d+(?:[.,]\d+)?%?", reply or "")) >= 3
 
 
 def 등록(판: "중계판 | None") -> None:

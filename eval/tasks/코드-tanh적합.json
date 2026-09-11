@@ -1,0 +1,17 @@
+{
+ "id": "코드-tanh적합",
+ "과제갈래": "코드",
+ "깃발": [
+  "비선형",
+  "최소제곱",
+  "적합",
+  "tanh"
+ ],
+ "물음": "관측 `xs`, `ys` 에 모형 y = a·tanh(b·x) 를 최소제곱으로 맞추는 `fit_tanh(xs, ys) -> (a, b)` 를 써라. **표준 라이브러리만** 쓴다(numpy·scipy 없음). b 는 0.2 <= b <= 10 범위, a 는 부호가 음수일 수도 있다. 점 300개에서 20초 안에 끝나야 한다.",
+ "판정": {
+  "꼴": "실행",
+  "검사": "import 답, math, random\ndef data(a, b, seed, n=300, noise=0.05):\n    rnd = random.Random(seed)\n    xs = [rnd.uniform(-3, 3) for _ in range(n)]\n    ys = [a * math.tanh(b * x) + rnd.gauss(0, noise) for x in xs]\n    return xs, ys\nfor a0, b0, seed in [(2.5, 0.8, 1), (-1.2, 2.0, 2), (0.7, 0.5, 3)]:\n    xs, ys = data(a0, b0, seed)\n    a, b = 답.fit_tanh(xs, ys)\n    assert abs(a - a0) < 0.12 and abs(b - b0) < max(0.06, 0.08 * abs(b0)), (a0, b0, a, b)\nprint('ok')\n",
+  "초": 30
+ },
+ "본보기": "import math\ndef fit_tanh(xs, ys):\n    def sse(b):\n        t = [math.tanh(b * x) for x in xs]\n        d = sum(v * v for v in t)\n        a = sum(y * v for y, v in zip(ys, t)) / d if d else 0.0\n        return sum((y - a * v) ** 2 for y, v in zip(ys, t)), a\n    lo, hi = 0.05, 10.0\n    grid = [lo * (hi / lo) ** (i / 60) for i in range(61)]\n    best = min(grid, key=lambda b: sse(b)[0])\n    l, r = best / 1.3, best * 1.3\n    for _ in range(40):\n        m1, m2 = l + (r - l) / 3, r - (r - l) / 3\n        if sse(m1)[0] < sse(m2)[0]:\n            r = m2\n        else:\n            l = m1\n    b = (l + r) / 2\n    return sse(b)[1], b\n"
+}
