@@ -47,7 +47,7 @@ import time  # noqa: E402
 import keys  # noqa: E402
 import relay  # noqa: E402
 from bot_tools import (  # noqa: E402
-    REPO_DIR, run_shell, run_experiment, read_file, edit_file, delegate, send_email, repair, set_key, security_audit, codify_paper, research, create_pr, search_memory, save_memory,
+    REPO_DIR, run_shell, run_experiment, read_file, edit_file, delegate, send_email, repair, set_key, security_audit, codify_paper, research, create_pr, dispatch_command, search_memory, save_memory,
     build_agent_pool, run_with_fallback_pool,
     register_thread, unregister_thread, request_cancel,
     orchestrator_solve, orchestrator_status, orchestrator_resume, orchestrator_stop,
@@ -82,7 +82,7 @@ ADMIN_MODEL_CANDIDATES = [ADMIN_MODEL_NAME] + [m for m in _admin_extra_models if
 ADMIN_PRIMARY_KEY = os.getenv("GEMINI_API_KEY_FALLBACK") or os.environ["GEMINI_API_KEY"]
 ADMIN_SECONDARY_KEY = os.environ["GEMINI_API_KEY"] if os.getenv("GEMINI_API_KEY_FALLBACK") else None
 
-ADMIN_TOOLS = [run_shell, run_experiment, read_file, edit_file, delegate, send_email, repair, set_key, security_audit, codify_paper, research, create_pr, search_memory, save_memory,
+ADMIN_TOOLS = [run_shell, run_experiment, read_file, edit_file, delegate, send_email, repair, set_key, security_audit, codify_paper, research, create_pr, dispatch_command, search_memory, save_memory,
                orchestrator_solve, orchestrator_status, orchestrator_resume,
                orchestrator_stop]
 ADMIN_SYSTEM_PROMPT = (
@@ -153,6 +153,7 @@ ADMIN_SYSTEM_PROMPT = (
     "  · 보안 점검·취약점 -> security_audit 도구(이 호스트 자신만 읽기 전용). 판정은 코드가 낸다 -- "
     "네가 '안전해 보인다' 고 말하지 마라. 남의 기계를 공격하거나 익스플로잇을 실행하지 마라\n"
     "  · **목표·주제를 주며 '논문을 완성해 달라'·'해결해 달라' -> research 도구**(목표 한 줄). 목표를 그대로 검색하지 말고(너무 구체적이면 0건이다) research 가 일반 방법론 질의로 풀어 넓게 모으고, 막히면 다시 추상화해 되풀이하고, 코드화로 검증하고, 과정->결과를 메모로 남긴다. harvest --관심/eval/graph ask 몇 번 부르고 '필요하면 말씀해 주세요' 로 떠넘기지 마라 -- research 한 번에 끝까지 하고 결과를 붙여라\n"
+    "  · **고정 명령(`!…`)은 네가 친다 -- dispatch_command 도구.** 사람이 자연어로 부탁하면 알맞은 명령을 골라 실행하고 결과를 붙여라. 명령 목록을 보여 주고 '골라 달라' 고 하지 마라(실측 2026-09-11: 목록만 보여 주고 끝냈다). `!목표 승인`·`!계획 승인`·`!열쇠` 만 사람이 친다\n"
     "  · 커밋이 **[검사 차단]·[CI 차단]** 으로 막히면 그 검사부터 고쳐라 -- `python3 tests/<검사>.py` 로 재현하고 repair 도구(재현 명령 + 오류)로 돌려라. 빨강 위에 자가 수정을 쌓지 않는다. 문체 규칙처럼 사람의 결정이 필요한 검사면 무엇을 정해야 하는지 한 줄로 사람에게 말하라\n"
     "  · **저장소를 고치는 요청은 `!계획`** -- 사람이 `!계획 켜기 <요청>` 을 치면 edit_file · run_shell 은 그림자 워크트리에서 돌고, `!계획 보기` 의 diff 가 계획이다. `!계획 승인` 은 사람만 친다 -- 네가 승인하거나 그림자 밖에서 몰래 고치지 마라\n"
     "  · 커밋을 PR 로 내야 하면 **create_pr 도구**(제목·본문). 밀기와 PR 열기만 한다 -- **머지는 사람이 GitHub 에서 누른다.** main 에서는 안 열리니 갈래를 먼저 만들어라. 지어낸 해시·번호로 '열었다' 고 하지 말고 도구가 준 URL 만 말하라\n"
@@ -599,11 +600,9 @@ async def on_ready():
         print("[SE-agent] **DISCORD_GUILD_ID 를 비워라** -- 비면 검사를 아예 안 "
               "하므로 예전과 똑같이 돈다. 틀린 값을 넣느니 비우는 것이 낫다.")
 
+    asyncio.create_task(_ci지켜보기())      # CI 빨강을 봇이 읽는다(2h)
 
 ATTACHMENTS_DIR = os.path.join(REPO_DIR, "inbox", "discord_attachments")
-
-
-    asyncio.create_task(_ci지켜보기())      # CI 빨강을 봇이 읽는다(2h)
 
 
 async def _save_attachments(message: discord.Message) -> list[str]:

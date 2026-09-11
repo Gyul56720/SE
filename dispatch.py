@@ -39,3 +39,21 @@ def run(text: str, runner=None, allow_write: bool = True) -> "str | None":
         if reply is not None:
             return reply
     return None
+
+
+# 사람이 치는 것과 봇이 치는 것의 경계. 실측 2026-09-11: 봇이 자연어 부탁에 고정 명령 **목록을
+# 보여 주고** 끝냈다 -- 목록이 아니라 알맞은 명령을 제가 쳐야 한다. 단 승인 주체는 사람이다:
+# `!목표 승인` `!계획 승인` 과 비밀값을 받는 `!열쇠` 는 봇이 대신 치지 못한다.
+사람만 = ("승인",)
+
+
+def 도구로쳐도되나(text: str) -> "tuple[bool, str]":
+    t = (text or "").strip()
+    if not t.startswith("!"):
+        return False, "고정 명령은 `!` 로 시작한다"
+    머리 = t.split(maxsplit=2)
+    if 머리[0] == "!열쇠":
+        return False, "!열쇠 는 사람이 친다 -- 비밀값을 봇이 대신 넣지 않는다"
+    if len(머리) > 1 and 머리[1] in 사람만:
+        return False, f"`{머리[0]} {머리[1]}` 은 사람만 친다 -- 승인 주체는 사람이다(관리 채널 화이트리스트)"
+    return True, ""
