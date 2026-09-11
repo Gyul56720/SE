@@ -48,6 +48,9 @@ on:
       # 도구 호출 시점 게이트와 정확 편집. bot_tools 가 임포트한다.
       - "toolgate.py"
       - "filetools.py"
+      # 메일(send_email 도구)과 열쇠(!열쇠). 봇이 임포트한다.
+      - "mailer.py"
+      - "keys.py"
       - "sandbox/**.py"
       # 변경 감사(!감사)와 깃발 색인(!기억 · search_memory 가 얹어 보여줌). 둘 다
       # 봇이 dispatch 로 임포트한다. graph/ledger.jsonl 은 일부러 뺐다 -- 밤일이

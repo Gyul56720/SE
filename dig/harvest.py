@@ -61,8 +61,9 @@ from graph import night, store  # noqa: E402
 
 
 # ---------------------------------------------------------------- 환경
-def _env(이름: str, repo=None) -> str:
-    """환경 변수, 없으면 .env 의 그 줄. dotenv 없이 -- 값에 `=` 가 있어도 첫 것만 가른다."""
+def env값(이름: str, repo=None) -> str:
+    """환경 변수, 없으면 .env 의 그 줄. dotenv 없이 -- 값에 `=` 가 있어도 첫 것만 가른다.
+    mailer 도 이것을 쓴다(두 벌 금지)."""
     v = os.environ.get(이름, "")
     if v:
         return v
@@ -74,6 +75,9 @@ def _env(이름: str, repo=None) -> str:
         if line.startswith(이름 + "="):
             return line.split("=", 1)[1].strip().strip("'\"")
     return ""
+
+
+_env = env값          # 옛 이름
 
 
 def 하루상한() -> int:
@@ -123,7 +127,7 @@ class 한도:
 def _깃허브헤더(repo=None) -> dict:
     h = {"Accept": "application/vnd.github+json", "User-Agent": "SE-harvest",
          "X-GitHub-Api-Version": "2022-11-28"}
-    tok = _env("GITHUB_TOKEN", repo)
+    tok = env값("GITHUB_TOKEN", repo)
     if tok:
         h["Authorization"] = f"Bearer {tok}"
     return h
@@ -131,7 +135,7 @@ def _깃허브헤더(repo=None) -> dict:
 
 def _허깅헤더(repo=None) -> dict:
     h = {"User-Agent": "SE-harvest"}
-    tok = _env("HF_TOKEN", repo)
+    tok = env값("HF_TOKEN", repo)
     if tok:
         h["Authorization"] = f"Bearer {tok}"
     return h
