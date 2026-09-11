@@ -95,6 +95,9 @@ on:
       - "deploy/se-discord-bot.service"
       - "deploy/se-log-streamer.service"
       - "deploy/se-matrix-search.service"
+      # 제2의 뇌 24시간 루프 (dig/harvest 를 두 시간마다). timer 라 봇을 재시작하지 않는다.
+      - "deploy/se-harvest.service"
+      - "deploy/se-harvest.timer"
       - "mathmetics/matrix_exponent/self_improve_loop.py"
       - "mathmetics/matrix_exponent/improve_agent.py"
       # 탐색 서비스가 실제로 실행하는 코드들. 빠져 있어서 searcher.py 를 통째로 갈아엎어도
@@ -138,6 +141,7 @@ jobs:
             sudo cp deploy/se-discord-bot.service /etc/systemd/system/
             sudo cp deploy/se-log-streamer.service /etc/systemd/system/
             sudo cp deploy/se-matrix-search.service /etc/systemd/system/
+            sudo cp deploy/se-harvest.service deploy/se-harvest.timer /etc/systemd/system/
             sudo systemctl daemon-reload
             sudo systemctl restart se-discord-bot
             sudo systemctl enable --now se-log-streamer
@@ -147,3 +151,5 @@ jobs:
             sudo systemctl enable --now se-matrix-search
             sudo systemctl restart se-matrix-search
             sudo systemctl status se-matrix-search --no-pager
+            sudo systemctl enable --now se-harvest.timer
+            sudo systemctl list-timers se-harvest.timer --no-pager

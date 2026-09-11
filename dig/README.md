@@ -75,3 +75,31 @@ python3 tests/test_dig.py
 길을 검사하고, 뽑는 길은 진짜 쪽 꼴로 검사한다. **검사가 붙드는 것이 `brief` 와
 반대다** -- 거기서는 '못 믿을 것이 안 들어가는가', 여기서는 **'있는 것이 빠지지
 않는가'**.
+
+
+## 수집기 (`harvest.py`) -- 제2의 뇌 2단계: 자가 틀린 자리를 밖에서 채운다
+
+`run.py` 가 "이 주소에 무엇이 있나" 라면 `harvest.py` 는 "**자(eval/tasks)가 틀렸다고 한
+자리**를 GitHub·Hugging Face 에서 찾아 검증·색인" 이다. 아무 데나 긁지 않는다 -- 눈금이
+없는 데를 채워 봐야 값을 하는지 알 길이 없다.
+
+```
+eval/ledger (참고를 줘도 틀린 과제) --깃발--> 검색어 --> GitHub 저장소·코드 / HF 데이터셋·모델
+   --> README·파일 raw --> 코드가 검증(라이선스 허용 목록 · .py 는 compile) --> dig/corpus/*.md (gitignore)
+   --> graph/store.적기(요약=발췌, 깃발=코드가 뽑음, 지은이=코드) --> 다음 `eval/tasks.py --참고 둘다` 가 잰다
+```
+
+- 토큰: `.env` 의 `GITHUB_TOKEN` · `HF_TOKEN`. 없으면 GitHub 은 시간당 60회 안에서, 코드 검색은 건너뛴다.
+- 막힘(403/429 · `X-RateLimit-Remaining: 0`)이면 그 출처는 그 바퀴에서 멈추고 **그렇다고 말한다**. 첫 요청부터 다 막히면 못돌림(3).
+- 원장 `dig/harvest_ledger.jsonl`: 때·종류·url·해시·라이선스·검색어·판정(색인/거절)·까닭. 같은 url+해시는 다시 안 받는다. 하루 상한 `HARVEST_DAILY_CAP`(기본 200).
+- 요약은 모델이 짓지 않는다(발췌) -- 대조할 주장이 없다. 모델 요약이 필요해지면 `graph/verify.대조` 를 거친 것만 들어온다(graph 의 규칙 그대로).
+
+```bash
+python3 dig/harvest.py --틈만                     # 검색어만 (호출 0회)
+python3 dig/harvest.py --틈                       # 자의 틈으로 한 바퀴
+python3 dig/harvest.py --말 'cusum change point'  # 사람이 준 말로
+```
+
+디스코드: `!수집 틈` · `!수집 <검색어>` · `!수집 틈으로` (백그라운드, pgrep 확인) · `!수집 상태`.
+24시간 루프: `deploy/se-harvest.timer` 가 두 시간마다 `scripts/harvest.sh` 를 돌린다(봇 재시작 없음).
+값을 하는지는 사람이 `!평가 과제` 로 잰다 -- 모델 호출 40회가 넘어 자동으로 안 돌린다.

@@ -1,0 +1,11 @@
+[Unit]
+Description=SE harvest 를 두 시간마다 (제2의 뇌 24시간 루프)
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=2h
+RandomizedDelaySec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
