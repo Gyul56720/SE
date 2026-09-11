@@ -41,6 +41,7 @@ import gatekeeper  # noqa: E402
 import main_public  # noqa: E402
 import bot_tools  # noqa: E402
 import dispatch  # noqa: E402
+import time  # noqa: E402
 import keys  # noqa: E402
 import relay  # noqa: E402
 from bot_tools import (  # noqa: E402
@@ -246,6 +247,24 @@ def _말과_한것이_맞나(reply: str, 부른것: list) -> str:
         return (f"**[검사] 이 답은 '못 받았다' 고 하는데 부른 {len(부른것)}개가 "
                 "전부 성공했다.** 무엇이 막혔는지 그 출력으로 보여라.")
     return ""
+
+
+async def _배경지켜보기(channel, 배경: dict, 간격: float = 20.0, 상한초: float = 6 * 3600) -> None:
+    """pgrep 으로 지켜보다 끝나면 로그 끝을 붙여 알린다. 서버가 죽으면 이 감시도 죽는다 --
+    그때는 `상태` 명령이 남는다."""
+    시작 = time.monotonic()
+    while time.monotonic() - 시작 < 상한초:
+        await asyncio.sleep(간격)
+        if await asyncio.to_thread(relay.배경끝났나, 배경["무엇"]):
+            try:
+                await channel.send(relay.배경보고(배경)[:1900])
+            except Exception as e:                                  # noqa: BLE001
+                print(f"[배경] 끝 알림 실패: {type(e).__name__}: {e}")
+            return
+    try:
+        await channel.send(f"⏳ `{배경['무엇']}` 이 {상한초 / 3600:.0f}시간째 안 끝났다 -- 로그를 보라: {배경['로그']}")
+    except Exception:                                               # noqa: BLE001
+        pass
 
 
 async def _handle_stop(message: discord.Message, thread_id: str) -> None:
@@ -772,6 +791,9 @@ async def on_message(message: discord.Message):
     reply = await asyncio.to_thread(dispatch.run, message.content, None, may_write)
     if reply is not None:
         await message.reply(reply[:2000])
+        # 백그라운드로 띄운 일은 끝나면 알린다 (실측: 끝났는지 알 길이 없었다).
+        for 배경 in relay.배경꺼내기():
+            asyncio.create_task(_배경지켜보기(message.channel, 배경))
         # `!열쇠 이름=값` 은 값이 채널에 남는다 -- 지울 권한이 있으면 지운다. 못 지우면
         # 답이 이미 "이 메시지는 지워라" 고 말했다.
         if message.content.startswith(keys.PREFIX) and "=" in message.content:

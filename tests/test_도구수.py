@@ -116,6 +116,25 @@ ok("도구를 한 번도 안 불렀다" in relay.되묻는말 and "실측 불필
 ok("실측 불필요가 아니다" in relay.되묻는말 and "dig/harvest.py" in relay.되묻는말 and "--진단" in relay.되묻는말,
    "**오류·실패는 실측 불필요가 아니다** -- 진단 도구와 제2의 뇌로 (실측: 5.7.8 에 '정책 때문' 이라 하고 멈췄다)")
 
+print("\n== 배경 일: 끝나면 알린다 ==")
+import subprocess, tempfile, os
+로그 = Path(tempfile.mkdtemp(prefix="test-bg-")) / "x.log"
+로그.write_text("줄1\n줄2\n끝 exit 0\n", encoding="utf-8")
+relay.배경꺼내기()
+e = relay.배경등록("sleep 0.2", str(로그), "python3 x.py --y")
+ok(relay.배경꺼내기() == [e] and relay.배경꺼내기() == [], "띄운 일이 등록되고 한 번만 꺼내진다")
+p = subprocess.Popen(["sleep", "0.4"])
+ok(not relay.배경끝났나("sleep 0.4"), "도는 동안은 안 끝났다")
+p.wait()
+ok(relay.배경끝났나("sleep 0.4"), "끝나면 끝났다 (pgrep)")
+보 = relay.배경보고(e)
+ok(보.startswith("✅ 끝 `sleep 0.2`") and "끝 exit 0" in 보 and "python3 x.py" in 보, f"보고에 무엇·명령·로그 끝 ({보[:40]!r})")
+os.remove(로그)
+from eval import discord_cmd as EC  # noqa: E402
+불림 = []
+답 = EC.run("!평가 전부", runner=None, allow_write=True) if False else None
+ok("relay.배경등록(" in (뿌리 / "eval" / "discord_cmd.py").read_text(encoding="utf-8"), "띄우는 쪽(_배경으로)이 등록한다")
+
 print("\n== 배선 (봇은 여기서 임포트 못 하므로 원문) ==")
 _도구 = (뿌리 / "bot_tools.py").read_text(encoding="utf-8")
 _서버 = (뿌리 / "discord_bot_server.py").read_text(encoding="utf-8")
@@ -125,6 +144,8 @@ ok("relay.마지막도구.get(thread_id)" in _서버 and "relay.되묻는말" in
    "run_admin_agent 가 도구 0회 답을 되묻고, 그래도 0 이면 답에 적는다")
 ok(_서버.index("relay.실측필요(prompt, reply)") < _서버.index("reply={reply[:200]!r}"),
    "되묻기가 답을 돌려주기 전에 있다")
+ok("async def _배경지켜보기" in _서버 and "relay.배경꺼내기()" in _서버 and "relay.배경끝났나" in _서버
+   and "relay.배경보고(배경)" in _서버, "**서버가 배경 일을 지켜보다 끝나면 채널에 알린다**")
 
 print()
 if FAIL:
