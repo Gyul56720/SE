@@ -122,7 +122,7 @@ ok("실측 불필요가 아니다" in relay.되묻는말 and "dig/harvest.py" in
    "**오류·실패는 실측 불필요가 아니다** -- 진단 도구와 제2의 뇌로 (실측: 5.7.8 에 '정책 때문' 이라 하고 멈췄다)")
 
 print("\n== 배경 일: 끝나면 알린다 ==")
-import subprocess, tempfile, os
+import subprocess, tempfile, os, shutil
 로그 = Path(tempfile.mkdtemp(prefix="test-bg-")) / "x.log"
 로그.write_text("줄1\n줄2\n끝 exit 0\n", encoding="utf-8")
 relay.배경꺼내기()
@@ -132,6 +132,22 @@ p = subprocess.Popen(["sleep", "0.4"])
 ok(not relay.배경끝났나("sleep 0.4"), "도는 동안은 안 끝났다")
 p.wait()
 ok(relay.배경끝났나("sleep 0.4"), "끝나면 끝났다 (pgrep)")
+print("\n== 끝나면 산출물(메모)을 파일로 붙일 수 있게 경로를 찾는다 ==")
+_뿌 = Path(tempfile.mkdtemp(prefix="test-산출-"))
+(_뿌 / "public_agent_memory").mkdir()
+(_뿌 / "public_agent_memory" / "20260911T1_연구_x.md").write_text("# 결론\n", encoding="utf-8")
+(_뿌 / "codify" / "out").mkdir(parents=True)
+(_뿌 / "codify" / "out" / "f.py").write_text("x=1\n", encoding="utf-8")
+_로그2 = _뿌 / "r.log"
+_로그2.write_text("  메모: public_agent_memory/20260911T1_연구_x.md\n  코드 codify/out/f.py\n"
+                 "  원장 research/ledger.jsonl\n  없는것 public_agent_memory/없다.md\n", encoding="utf-8")
+_e2 = {"무엇": "x", "로그": str(_로그2), "명령": "", "시작": 0.0}
+_산 = relay.산출물찾기(_e2, _뿌)
+ok(_산 == ["public_agent_memory/20260911T1_연구_x.md", "codify/out/f.py"],
+   f"**메모·코드만 (원장·없는 파일 제외)** ({_산})")
+ok(relay.산출물찾기({"무엇": "x", "로그": "/없는/로그", "시작": 0.0}, _뿌) == [], "로그를 못 읽어도 안 죽는다")
+shutil.rmtree(_뿌, ignore_errors=True)
+
 보 = relay.배경보고(e)
 ok(보.startswith("✅ 끝 `sleep 0.2`") and "끝 exit 0" in 보 and "python3 x.py" in 보, f"보고에 무엇·명령·로그 끝 ({보[:40]!r})")
 os.remove(로그)
@@ -151,6 +167,8 @@ ok(_서버.index("relay.실측필요(prompt, reply)") < _서버.index("reply={re
    "되묻기가 답을 돌려주기 전에 있다")
 ok("async def _배경지켜보기" in _서버 and "relay.배경꺼내기()" in _서버 and "relay.배경끝났나" in _서버
    and "relay.배경보고(배경)" in _서버, "**서버가 배경 일을 지켜보다 끝나면 채널에 알린다**")
+ok("relay.산출물찾기" in _서버 and "discord.File" in _서버,
+   "**끝나면 메모·코드를 파일로 붙여 보낸다** (실측: 결론이 저장소에만 있어 사람이 못 봤다)")
 
 print()
 if FAIL:

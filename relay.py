@@ -244,6 +244,34 @@ def 배경보고(e: dict, 줄수: int = 8) -> str:
     return f"✅ 끝 `{e['무엇']}` ({경과 / 60:.1f}분)" + (f" -- {e['명령'][:80]}" if e.get("명령") else "") + f"\n```\n{본}\n```"
 
 
+산출물꼴 = re.compile(r"(public_agent_memory/[^\s`'\"]+\.md|codify/out/[^\s`'\"]+\.py|[\w./-]+/ledger\.jsonl)")
+
+
+def 산출물찾기(e: dict, 뿌리=None, 최대: int = 4, 바이트상한: int = 7_000_000) -> "list[str]":
+    """배경 일의 로그에서 **사람이 읽을 산출물**(메모 .md · 코드화 .py) 경로를 뽑는다.
+
+    실측 2026-09-11: `!연구` 가 끝나고 로그 끝만 보냈더니 사용자가 "내가 문서를 볼 수 있게
+    discord 에 출력해 달라" 고 했다 -- 결론이 담긴 메모는 저장소에만 있었다. 여기서 경로를
+    찾아 서버가 파일로 붙여 보낸다. 원장(.jsonl)은 사람이 읽을 것이 아니라 뺀다."""
+    뿌리 = Path(뿌리 or Path(__file__).resolve().parent)
+    try:
+        본 = Path(e["로그"]).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    out = []
+    for m in 산출물꼴.finditer(본):
+        rel = m.group(1)
+        if rel.endswith(".jsonl") or rel in out:
+            continue
+        p = 뿌리 / rel
+        try:
+            if p.is_file() and p.stat().st_size <= 바이트상한:
+                out.append(rel)
+        except OSError:
+            continue
+    return out[-최대:]
+
+
 def 등록(판: "중계판 | None") -> None:
     """지금 OS 스레드에 판을 묶는다. run_admin_agent 가 실행기 스레드에서 부른다."""
     with _판들_lock:

@@ -273,7 +273,15 @@ async def _배경지켜보기(channel, 배경: dict, 간격: float = 20.0, 상�
         await asyncio.sleep(간격)
         if await asyncio.to_thread(relay.배경끝났나, 배경["무엇"]):
             try:
-                await channel.send(relay.배경보고(배경)[:1900])
+                산출 = await asyncio.to_thread(relay.산출물찾기, 배경, REPO_DIR)
+                꼬리 = ("\n📄 산출물: " + ", ".join(산출) if 산출 else "")
+                await channel.send((relay.배경보고(배경) + 꼬리)[:1900])
+                # **결론이 담긴 메모는 저장소에만 있었다** -- 파일로 붙여 사람이 그 자리에서 읽게 한다.
+                for rel in 산출:
+                    try:
+                        await channel.send(file=discord.File(os.path.join(REPO_DIR, rel), filename=os.path.basename(rel)))
+                    except Exception as e2:                         # noqa: BLE001 -- 하나가 커도 나머지는 보낸다
+                        print(f"[배경] 산출물 {rel} 못 붙임: {type(e2).__name__}: {e2}")
             except Exception as e:                                  # noqa: BLE001
                 print(f"[배경] 끝 알림 실패: {type(e).__name__}: {e}")
             return
