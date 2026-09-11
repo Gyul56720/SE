@@ -247,6 +247,38 @@ def 배경보고(e: dict, 줄수: int = 8) -> str:
 산출물꼴 = re.compile(r"(public_agent_memory/[^\s`'\"]+\.md|codify/out/[^\s`'\"]+\.py|[\w./-]+/ledger\.jsonl)")
 
 
+# 실측 2026-09-11: `!개선` 이 ModuleNotFoundError 로 죽었고 **그 트레이스백이 그대로 사용자에게
+# 갔다.** 사용자: "문제가 생기면 능동적으로 해결해서 결과로 오류 메시지를 출력하지 않게 하라."
+# 그래서 오류를 **내보내기 전에** 코드가 알아본다 -- 어느 명령의 어느 버그인지는 안 적는다(일반해).
+_터짐꼴 = (
+    re.compile(r"^(?P<e>\w*(?:Error|Exception)): (?P<m>.+)$", re.M),          # 파이썬 예외 마지막 줄
+    re.compile(r"^\s*(?P<e>Traceback) \(most recent call last\):", re.M),
+    re.compile(r"(?P<e>command not found|No such file or directory|Permission denied)", re.M),
+)
+
+
+def 터졌나(e: dict, 줄수: int = 60) -> "tuple[bool, str]":
+    """배경 일의 로그 끝에 **터진 자국**이 있는가. (터졌나, 증상 한 줄).
+
+    증상은 repair 에 그대로 넘길 수 있는 글이어야 한다 -- 사람이 읽는 말이 아니라 **재현의 실마리**다."""
+    try:
+        줄들 = Path(e["로그"]).read_text(encoding="utf-8", errors="replace").splitlines()[-줄수:]
+    except OSError:
+        return False, ""
+    본 = "\n".join(줄들)
+    마지막예외 = None
+    for m in _터짐꼴[0].finditer(본):
+        마지막예외 = f"{m.group('e')}: {m.group('m')}".strip()
+    if 마지막예외:
+        return True, 마지막예외[:300]
+    for 꼴 in _터짐꼴[1:]:
+        m = 꼴.search(본)
+        if m:
+            꼬리 = [x for x in 줄들 if x.strip()][-1:] or [m.group("e")]
+            return True, 꼬리[0].strip()[:300]
+    return False, ""
+
+
 def 산출물찾기(e: dict, 뿌리=None, 최대: int = 4, 바이트상한: int = 7_000_000) -> "list[str]":
     """배경 일의 로그에서 **사람이 읽을 산출물**(메모 .md · 코드화 .py) 경로를 뽑는다.
 

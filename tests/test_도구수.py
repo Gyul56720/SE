@@ -148,6 +148,19 @@ ok(_산 == ["public_agent_memory/20260911T1_연구_x.md", "codify/out/f.py"],
 ok(relay.산출물찾기({"무엇": "x", "로그": "/없는/로그", "시작": 0.0}, _뿌) == [], "로그를 못 읽어도 안 죽는다")
 shutil.rmtree(_뿌, ignore_errors=True)
 
+print("\n== 터졌으면 사람에게 트레이스백만 던지지 않는다 (스스로 고친다) ==")
+_로3 = Path(tempfile.mkdtemp(prefix="test-터짐-")) / "t.log"
+_로3.write_text("시작\nTraceback (most recent call last):\n  File \"a.py\", line 1\n"
+                "ModuleNotFoundError: No module named 'plan'\n", encoding="utf-8")
+_터, _증 = relay.터졌나({"로그": str(_로3)})
+ok(_터 and _증 == "ModuleNotFoundError: No module named 'plan'", f"파이썬 예외를 증상 한 줄로 ({_증})")
+_로3.write_text("bash: python4: command not found\n", encoding="utf-8")
+ok(relay.터졌나({"로그": str(_로3)})[0], "셸 오류도 잡는다")
+_로3.write_text("  받음 3 · 색인 2\n끝 exit 0\n", encoding="utf-8")
+ok(relay.터졌나({"로그": str(_로3)}) == (False, ""), "멀쩡한 로그는 안 잡는다(거짓 경보 없음)")
+ok(relay.터졌나({"로그": "/없는/로그"}) == (False, ""), "로그를 못 읽어도 안 죽는다")
+os.remove(_로3)
+
 보 = relay.배경보고(e)
 ok(보.startswith("✅ 끝 `sleep 0.2`") and "끝 exit 0" in 보 and "python3 x.py" in 보, f"보고에 무엇·명령·로그 끝 ({보[:40]!r})")
 os.remove(로그)
@@ -169,6 +182,11 @@ ok("async def _배경지켜보기" in _서버 and "relay.배경꺼내기()" in _
    and "relay.배경보고(배경)" in _서버, "**서버가 배경 일을 지켜보다 끝나면 채널에 알린다**")
 ok("relay.산출물찾기" in _서버 and "discord.File" in _서버,
    "**끝나면 메모·코드를 파일로 붙여 보낸다** (실측: 결론이 저장소에만 있어 사람이 못 봤다)")
+ok("relay.터졌나" in _서버 and "async def _스스로고치기" in _서버 and "_rp.고치기" in _서버,
+   "**배경 일이 터지면 트레이스백만 던지지 않고 repair 로 스스로 고쳐 본다**")
+_고 = _서버.split("async def _스스로고치기")[1].split("async def")[0]
+ok("제2의 뇌" in _고 and "입력오류" in _고 and "남은것" in _고,
+   "제2의 뇌를 쓰고, 이용자 측 과실이면 그렇다고 하고, 못 고치면 남은 것을 말한다")
 
 print()
 if FAIL:

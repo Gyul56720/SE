@@ -79,6 +79,12 @@ sys.path.insert(0, str(REPO))
      (0,), "계획판 상태를 읽는가 (리허설 여부까지 -- 쓰기 없음)"),
     ("기관:improve", ["python3", "improve/run.py", "--틈만"],
      (0,), "자가개선이 틈을 세는가 (모델·sandbox 안 씀 -- 읽기만)"),
+    # **얕은 점검이 깊은 길을 못 봤다**(실측: --틈만 은 plan 을 안 지나 ModuleNotFoundError 를 놓쳤다).
+    # 진입점·깃발을 **세어 찾는다**(목록을 손으로 안 적는다). 끝값 1 이면 위험이 있다.
+    ("기관:진입점", ["python3", "entrypoints.py", "--위험만"],
+     (0,), "진입점에 늦은 임포트 위험이 없는가 (코드가 세어 찾는다)"),
+    ("기관:improve임포트", ["python3", "improve/run.py", "--임포트"],
+     (0,), "자가개선의 깊은 임포트(plan·rehearsal)가 스크립트로도 서는가"),
     ("기관:delegate", ["python3", "delegate/run.py", "--범위", "graph/*.py", "--쪼개기만"],
      (0,), "위임의 쪼개기가 도는가 (호출 0회)"),
 ]
