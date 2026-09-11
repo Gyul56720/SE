@@ -126,6 +126,17 @@ ok("relay.등록(중계판)" in _서버 and "relay.해제()" in _서버, "실행
 import dispatch  # noqa: E402
 ok(relay in dispatch.명령들, "dispatch 에 걸려 있다")
 
+print("\n== 배경 보고가 **어느 판인지** 말한다 ==")
+# 실측 2026-09-11: 같은 오류가 두 번 왔을 때 '고침이 아직 안 왔나' 인지 '고침이 틀렸나'
+# 인지 로그만으로 못 갈랐다. 트레이스백 줄번호를 옛 커밋과 맞춰 보고서야 알았다.
+_판 = relay.어느판()
+ok(_판 and len(_판) >= 7 and " " not in _판, f"지금 도는 판의 커밋을 안다 ({_판!r})")
+ok(relay.어느판("/tmp") == "", "저장소가 아니면 빈 말 -- 지어내지 않는다")
+import time as _t
+_보 = relay.배경보고({"무엇": "improve.run", "로그": "/tmp/없는로그", "시작": _t.monotonic() - 9,
+                    "명령": "python3 -m improve.run"})
+ok(f"판 {_판}" in _보.splitlines()[0], f"끝났다는 줄에 판이 적힌다 ({_보.splitlines()[0][:70]})")
+
 print()
 if FAIL:
     print(f"실패 {len(FAIL)}개 -- {FAIL}")

@@ -393,7 +393,71 @@ def api_keys() -> list:
         if v and v not in seen:              # 같은 키를 두 번 넣으면 한도가 는 것처럼
             seen.add(v)                      # 보이지만 실제로는 같은 통을 두 번 쓴다
             out.append((nm, v))
+    # **이름을 못 맞혔다고 '키가 없다' 고 하지 않는다.** 실측 2026-09-11: 키는 .env 에
+    # 있었는데 위 아홉 이름 중 하나가 아니어서 풀이 비었고, 에이전트는 사람에게
+    # "주어진 정보가 틀렸다(이용자 측) -- 키를 발급받아 넣어라" 고 답했다. **있는 것을
+    # 없다고 하고 그 탓을 사람에게 돌린 것이다.** 이름이 아니라 **값의 꼴**로 찾는다.
+    for nm, v in _키꼴로찾기():
+        if v not in seen:
+            seen.add(v)
+            out.append((nm, v))
     return out
+
+
+# 구글 AI 스튜디오 키의 꼴. 이름이 무엇이든 값이 이렇게 생겼으면 키다.
+_키꼴 = re.compile(r"^AIza[0-9A-Za-z_\-]{30,45}$")
+
+
+def _키꼴로찾기() -> list:
+    """환경변수와 .env 를 통틀어 **값이 키처럼 생긴 것**을 모은다. `(이름, 키)`.
+
+    이름 목록에 기대지 않으므로 `GOOGLE_API_KEY` 든 `MY_GEMINI` 든 잡힌다. 값의 꼴이
+    또렷해서(`AIza` + 35자) 엉뚱한 것을 키로 오인할 일은 거의 없다."""
+    out = []
+    for k, v in os.environ.items():
+        v = (v or "").strip()
+        if _키꼴.fullmatch(v):
+            out.append((k, v))
+    for env in _dotenv_paths():
+        try:
+            글 = Path(env).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for line in 글.splitlines():
+            s_ = line.strip()
+            if s_.startswith("export "):
+                s_ = s_[7:].strip()
+            if not s_ or s_.startswith("#") or "=" not in s_:
+                continue
+            k, v = s_.split("=", 1)
+            v = v.strip().strip("'\"")
+            if _키꼴.fullmatch(v):
+                out.append((k.strip(), v))
+    seen, uniq = set(), []
+    for k, v in out:
+        if v not in seen:
+            seen.add(v)
+            uniq.append((k, v))
+    return uniq
+
+
+def 키찾은꼴(repo=None) -> str:
+    """왜 풀이 비었는지 **사람이 고칠 수 있게** 말한다. 값은 절대 안 비친다."""
+    ks = api_keys()
+    if ks:
+        return f"키 {len(ks)}개: {', '.join(n for n, _ in ks)}"
+    본 = []
+    for env in _dotenv_paths():
+        try:
+            글 = Path(env).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        본 += [ln.strip().split("=", 1)[0].replace("export ", "").strip()
+               for ln in 글.splitlines() if "=" in ln and not ln.strip().startswith("#")]
+    if 본:
+        return ("키를 못 찾았다. .env 에 이름은 있다: " + ", ".join(본[:12])
+                + "\n  값이 `AIza…` 꼴인 줄이 하나도 없다 -- 이름이 아니라 **값**을 확인하라")
+    return "키를 못 찾았다. .env 도 환경변수도 비었다"
 
 
 def build_pool(keys=None, models=None, llm_factory=_default_factory, model_lister=_default_models):
@@ -721,9 +785,13 @@ def call(pool, prompt: str, pool_id: str = "orchestrator", max_candidates: int =
             f"후보 {tried}개를 모두 실패했다"
             f"{f' (상한 {limit} 때문에 {skipped}개는 시도 안 함)' if skipped else ''}. "
             f"마지막 오류: {type(last_error).__name__}: {last_error}") from last_error
+    # **없다고 말하기 전에 무엇을 봤는지 말한다.** 실측 2026-09-11: 키는 .env 에 있었는데
+    # 이름이 아홉 개 중 하나가 아니어서 "키가 없다" 고 했고, 에이전트는 그것을 사람 탓으로
+    # 돌렸다("주어진 정보가 틀렸다(이용자 측) -- 발급받아 넣어라"). 이제는 값의 꼴로도
+    # 찾고, 그래도 없으면 **.env 에 어떤 이름들이 있는지**까지 적어 준다(값은 안 비친다).
     raise RuntimeError(
-        "빈 후보 풀 -- GEMINI_API_KEY 를 찾지 못했다.\n"
-        "  환경변수에도 없고 저장소 루트 .env 에도 없다.\n"
+        "빈 후보 풀 -- 쓸 수 있는 제미나이 키를 못 찾았다.\n"
+        f"  {키찾은꼴()}\n"
+        "  이름은 아무것이나 된다 -- 값이 `AIza…` 꼴이면 환경변수든 .env 든 잡는다.\n"
         "  systemd 서비스는 EnvironmentFile 로 .env 를 받지만 SSH 셸은 그렇지 않다.\n"
-        "  확인:  grep -c GEMINI_API_KEY ~/SE/.env\n"
         "  즉시:  set -a; source ~/SE/.env; set +a")
