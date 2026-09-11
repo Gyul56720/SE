@@ -1,0 +1,150 @@
+# 하네스 확장 계획 — 여섯 기관, 그리고 이미 있는 것
+
+제안: `/dig`(감각) · `/graph`(장기 기억) · `/sandbox`(실험실) · `/eval`(면역계) ·
+`/router`(자율 신경) · `/intent`+`/evolve`(자아·진화). 철학: 답하기 전에 내부에서
+가설을 세우고 반박하는 자가 교정 루프.
+
+**계획의 첫 문장은 이것이다: 여섯 중 넷은 이미 이 저장소에 있다.** 없는 것을 새로
+짓기 전에 있는 것에 이름을 붙이고, 빈 곳만 짓는다. 두 벌을 지으면 두 벌은 언젠가
+갈라진다(`brain/README.md`가 판정기를 두 벌 안 두는 이유 그대로).
+
+## 1. 지금의 오케스트레이션 (파악한 것)
+
+```
+Discord 메시지
+ ├─ on_message: 길드·채널 필터 (discord_bot_server.py)
+ ├─ 고정 명령 먼저: !소설 → novel/discord_cmd.run (모르는 말은 None → 아래로)
+ ├─ admin  : LangGraph ReAct (Gemini 풀) + run_shell 전권 + search/save_memory
+ │           + orchestrator_solve/status/resume/stop
+ └─ public : main_public.run_public_agent (child_env로 비밀값 제거)
+      ↓ 답이 나온 뒤
+ ├─ _말과_한것이_맞나: "못 받았다" 주장 vs 실제 부른 셸 대조
+ ├─ git_sync: gatekeeper(gates/ 전부) → commit → push → reconcile(merge) → _verify_pushed
+ └─ _integrity_note: "저장했다" 주장 vs 원격 실제 상태 대조
+```
+
+받치는 층:
+
+- **orchestrator/** — 문제→DAG(플래너)→노드별 실행→verifier 채택→실패 되먹임
+  (repair_node → replan → 포기). `solve.drive()`가 폐루프를 만든다.
+- **quota_tracker + run_with_fallback_pool + llm_pool** — (키×모델) 순회, 429
+  RPD/RPM 구분, 404/403 영구 dead, 성공 pin, 품질 순위.
+- **gatekeeper + gates/** — 커밋 경로 위의 강제 게이트. 읽지 않아도 작동한다.
+- **self_challenge.py** — 진단을 RED(사고 커밋에서 실패)/GREEN(고친 뒤 통과)으로
+  증명해야만 gates/로 승격. 증명 안 된 진단은 노트로도 안 남긴다.
+- **capability_ratchet** — 도달 증명된 기준의 후퇴를 잰다.
+- **brain/ + reason/** — 물음을 다섯 검사 꼴(대조·재계산·기준선·연역·뒤집기)로
+  보내고, 관할 밖은 관할 밖이라 말한다.
+- **agent_memory + 원장(*.json/JSONL)** — md 노트(+git push)와 도메인별 원장.
+
+## 2. 제안 ↔ 현존 대응표
+
+| 제안 기관 | 이미 있는 것 | 실제로 빈 곳 |
+|---|---|---|
+| `/dig` | **dig/ 통째로** (헤더벌·곁문·전부 뽑기) | 고정 명령이 없다(에이전트 재량으로만 불림) · 수집물이 원장으로 안 남는다 |
+| `/graph` | agent_memory 노트 · 도메인 원장 · brain의 다섯 꼴 | **구조가 없다.** 검색이 토큰 겹침 세기뿐 — 관계·시효·출처 연결이 없다 |
+| `/sandbox` | orchestrator components+verifier · precheck.sh의 HEAD 워크트리 · child_env | **run_shell이 맨 저장소에서 돈다.** drift.sh가 촌극으로 덮인 사고(4cd4473)가 그 대가였다 |
+| `/eval` | gatekeeper·self_challenge·ratchet·scripts/tests.sh·도메인 bench(law·lol·brief) | 흩어져 있다 · **에이전트의 답 자체**를 재는 회귀 벤치가 없다 |
+| `/router` | quota_tracker 일체 · 소설의 디렉터(Claude)/배우(Gemini) 분업 | 역할 라우팅이 novel에만 박혀 있다 · 비용 회계가 쿼터 추정뿐 |
+| `/intent`+`/evolve` | admin 자기수정 절차(게이트→red-green→승격) · self_improve_loop · ratchet | **자율 목표가 없다**(모든 일이 메시지로 시작) · 진화 루프가 mathmetics에 갇혀 있다 |
+
+## 3. 철학과의 정합 — 한 군데를 고쳐서 받는다
+
+제안된 "숨은 토큰 블록에서 스스로 반박"은 이 저장소의 제1규율과 부딪히는 자리가 하나
+있다: **검사하지 않은 초록불이 검사한 빨간불보다 나쁘다.** 모델의 자기 비판은 모델의
+자기 확신과 같은 재료다 — "차단돼서 못 받았다"(셸 0회), "커밋했다 해시 539e168"(원격에
+없음)이 전부 내면에서 확신된 채 나온 말이었다.
+
+그래서 자가 교정 루프를 **토큰 안이 아니라 구조 밖에** 둔다. 이미 그 꼴이 있다:
+
+| 제안 철학 | 이 저장소의 자리 |
+|---|---|
+| 문제 분해 | planner의 DAG |
+| 초안 작성 및 비판 | 노드 실행 + **verifier** (비판을 모델이 아니라 exit code가 한다) |
+| 대안 탐색 | repair_node → replan (실패 사유를 되먹인다) |
+| 정합성 검증 후 답 | verified 노드만 채택, 미완이면 incomplete라고 말한다 |
+
+thinking 토큰 자체는 쓴다 — 싼 초안 작성 도구로. 다만 **채택은 언제나 코드 판정을
+지나서만** 이루어진다. `/router`가 작업 등급별 thinking 예산을 배정한다(아래 5단계).
+
+## 4. 짓는 순서 — 의존이 앞, 위험이 뒤
+
+### 0단계. 명령의 길 통일 (싸다, 먼저)
+
+`!소설`의 배선(discord_cmd: argv만, 화이트리스트만, 모르면 None→에이전트)을 일반화한
+디스패처를 둔다. 기관마다 `!파다` `!기억` `!실험` `!재기` 꼴 고정 명령 + 에이전트용
+@tool 한 벌. 배포판이란 같은 말에 같은 일이 나는 것이고, 그것은 에이전트가 아니라
+고정 명령만 보장한다.
+
+### 1단계. `/sandbox` — 다른 것들이 그 위에서 돌므로 첫째
+
+- precheck.sh가 이미 하는 수법(HEAD를 임시 워크트리로)을 모듈로 뺀다:
+  `sandbox/run.py --cmd <argv...>` → 임시 워크트리 + timeout + ulimit + (신뢰 안 되는
+  코드는) 망 차단 + child_env. **산출물만** 지정 경로로 돌려받는다.
+- orchestrator components 실행과 self_challenge의 RED/GREEN 트리를 이 위로 옮긴다
+  (둘 다 이미 임시 디렉터리를 손으로 짓고 있다 — 한 군데로).
+- run_shell은 그대로 둔다(사용자가 전권을 명시 요청했다). 다만 **실험은 sandbox로
+  가라**를 프롬프트가 아니라 도구로 만든다: `run_experiment` 도구가 sandbox를 탄다.
+- 검사: 임시 저장소를 지어 실제로 돌린다(test_seek_돌리기 패턴). 탈출 시도는 G014의
+  카나리 수법으로 게이트화.
+
+### 2단계. `/graph` — 원장 위에, 새 DB 없이
+
+- 노드 = (주장, 출처, 시각), 간선 = brain의 다섯 꼴 중 하나(대조·재계산·기준선·연역·
+  뒤집기) + `무너뜨림`(reason). **간선 종류를 새로 발명하지 않는다** — 이미 닫힌
+  다섯이 있고, 검사기 자체가 열리면 검사기를 검사할 것이 없어진다.
+- 저장은 append-only JSONL, git이 버전이다. `graph/store.py`(쓰기: 출처 없는 간선
+  거절 — S005를 hard로) · `graph/ask.py`(읽기: 관련 부분그래프를 프롬프트 크기로).
+- search_memory가 이것을 먼저 보고, 없으면 지금처럼 md 노트로 물러선다.
+- dig 수집물이 여기 물린다: `!파다`가 받은 것의 (URL, 해시, 시각)을 노드로 남겨
+  "이 값이 어디서 왔나"가 영구히 답 가능해진다.
+
+### 3단계. `/eval` — 흩어진 면역계를 한 러너로
+
+- `eval/run.py`: gates(커밋 게이트, 이미 있음) · 도메인 bench(law/lol/brief, 이미
+  있음) · ratchet(이미 있음) + **새로 짓는 것 하나** — 에이전트 답 회귀: (물음, 기대
+  판정) 쌍의 원장을 두고 가짜 LLM/실 LLM 두 모드로 잰다.
+- 결과는 `eval/ledger.jsonl`에 쌓아 ratchet이 후퇴를 잰다. 밤 루프는 CLAUDE.md의
+  setsid 패턴으로(dig_loop.sh 꼴).
+- **빨간불은 그대로 말한다** — 로그를 보고 적는다, 기억으로 적지 않는다(CLAUDE.md).
+
+### 4단계. `/router` — novel의 분업을 밖으로
+
+- `router/roles.py`: 작업 등급표 — 디렉터급(무엇을 할 것인가, 호출 적고 토큰 작음) →
+  Claude / 배우·추출기급(토큰 대부분) → Gemini / 판정 → **모델이 아니라 코드.**
+  `run_novel_vm.sh`의 강등·복귀(3연속 실패→Gemini, 탐침으로 복귀)를 일반 규칙으로.
+- quota_tracker에 비용 원장을 붙인다: 호출마다 (역할, 모델, 토큰, **채택 여부**).
+  eval이 "비싼 모델이 실제로 더 채택되는가"를 재고, 아니면 역할표를 내린다.
+- thinking 예산도 여기서 배정한다(디렉터급만 크게). `--all-claude` 금지는 그대로다.
+
+### 5단계. `/dig` 명령화 — 언제든, 싸게
+
+dig 자체는 완성돼 있다. 할 일은 0단계의 `!파다` 배선과 2단계의 원장 연결뿐이다.
+
+### 6단계. `/intent` + `/evolve` — 가장 위험하므로 맨 뒤
+
+- `/intent`: 목표 원장(goal ledger). **에이전트가 스스로 목표를 만들 수는 있어도
+  실행은 사람이 승인한 목표만** — 승인 표시가 원장에 남고, 밤 루프는 승인된 목표만
+  집는다. 공개 채널은 읽기만(READONLY 규율 그대로).
+- `/evolve`: 새 경로를 만들지 않는다. **이미 있는 유일한 승격 경로가 진화 경로다**:
+  sandbox에서 RED/GREEN 증명(self_challenge) → gates 승격 → ratchet이 후퇴 감시.
+  자기 개조 커밋은 반드시 이 길만 탄다.
+- 상한은 게이트가 진다: verifier·gates를 evolve가 고치지 못하게(G009가 이미 심판
+  무결성을 본다 — 범위를 gates/ 전체와 eval 원장으로 넓힌다). 채점표를 고쳐 실패를
+  없애는 순간 전부 무너진다(orchestrator의 "verifier는 절대 다시 쓰지 않는다").
+
+## 5. 하지 않는 것
+
+- **판정기 두 벌** — graph·eval은 기존 판정기(brain 다섯 꼴, 도메인 bench)를 부르지
+  다시 만들지 않는다.
+- **내면 독백을 증거로 쓰는 것** — thinking은 초안, 채택은 exit code.
+- **Fable5를 산문·배우 자리에 쓰는 것** — 디렉터급만. 비용 규율은 CLAUDE.md 그대로.
+- **rebase / --force / CI 기다리기 / 머지 안 된 PR의 명령** — 전부 기존 규칙 유지.
+- **셸 스크립트에 한글 변수명** — 파이썬만 한글 이름을 쓴다.
+
+## 6. 단계마다 통과 조건
+
+각 단계는 (1) 임시 저장소를 지어 끝까지 돌리는 테스트(tests/), (2) 필요한 게이트는
+self_challenge 증명을 거쳐서만 추가, (3) `bash scripts/precheck.sh` 통과 후 push —
+이 세 개를 다 만족해야 다음 단계로 간다. 계획이 노트로 남는 것이 이 저장소가 겪은
+실패이므로, 각 단계의 완료 판정도 말이 아니라 그 단계의 테스트가 한다.
