@@ -58,14 +58,25 @@ ok("PRECHECK_RUNNING" in _글, "되돌이 방지 빗장이 있다")
 
 print()
 print("[돌려 보기] 실제로 돌고 판정을 낸다")
+# 돌릴 것을 **재서 고르게** 되면서 검사 수가 54개에서 상한 아래 전부로 늘었다.
+# 그래도 총 시간은 예전과 비슷하다(느린 것이 빠지므로). 넉넉히 준다 -- 여기서 시간을
+# 짜면 **스크립트가 멀쩡한데 검사가 빨개진다.**
 _돌 = subprocess.run(["bash", str(SH)], capture_output=True, text=True, cwd=str(ROOT),
-                    timeout=180)
+                    timeout=900)
 _출 = _돌.stdout + _돌.stderr
 ok("깨끗한 판에서 검사" in _출, "어느 판을 검사하는지 찍는다")
 ok("command not found" not in _출 and "bad substitution" not in _출,
    f"스크립트 자신이 깨진 자국을 안 남긴다 (얻은 값 "
    f"{[l for l in _출.splitlines() if 'command not found' in l or 'bad substitution' in l][:2]})")
 ok("검사" in _출, "검사 결과를 그대로 물려준다")
+
+# **돌릴 검사를 손으로 안 적는다.** 예전에는 파일 이름 54개가 스크립트에 늘어서 있었고,
+# 새 검사를 만들 때마다 사람이 거기 또 적어야 했다 -- 안 적으면 밀기 전에 안 돌았다.
+ok("testtimes.py --고르기" in _글, "재서 고른 목록을 쓴다(testtimes)")
+ok(not re.findall(r"tests/test_[^\s\"']+\.py",
+                  "\n".join(l for l in _글.splitlines() if not l.lstrip().startswith("#"))),
+   "**돌아가는 줄에 검사 이름을 한 줄도 안 적는다**")
+ok("merge-base" in _글, "빨간 것은 갈림점에서 다시 돌려 내 탓인지 가른다")
 
 # 빗장이 서 있으면 아무것도 안 하고 빠진다 -- 그래야 안쪽에서 안 내려간다.
 import os                                                             # noqa: E402
