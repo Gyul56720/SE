@@ -45,7 +45,7 @@ import time  # noqa: E402
 import keys  # noqa: E402
 import relay  # noqa: E402
 from bot_tools import (  # noqa: E402
-    REPO_DIR, run_shell, run_experiment, read_file, edit_file, delegate, send_email, repair, set_key, security_audit, search_memory, save_memory,
+    REPO_DIR, run_shell, run_experiment, read_file, edit_file, delegate, send_email, repair, set_key, security_audit, codify_paper, search_memory, save_memory,
     build_agent_pool, run_with_fallback_pool,
     register_thread, unregister_thread, request_cancel,
     orchestrator_solve, orchestrator_status, orchestrator_resume, orchestrator_stop,
@@ -80,7 +80,7 @@ ADMIN_MODEL_CANDIDATES = [ADMIN_MODEL_NAME] + [m for m in _admin_extra_models if
 ADMIN_PRIMARY_KEY = os.getenv("GEMINI_API_KEY_FALLBACK") or os.environ["GEMINI_API_KEY"]
 ADMIN_SECONDARY_KEY = os.environ["GEMINI_API_KEY"] if os.getenv("GEMINI_API_KEY_FALLBACK") else None
 
-ADMIN_TOOLS = [run_shell, run_experiment, read_file, edit_file, delegate, send_email, repair, set_key, security_audit, search_memory, save_memory,
+ADMIN_TOOLS = [run_shell, run_experiment, read_file, edit_file, delegate, send_email, repair, set_key, security_audit, codify_paper, search_memory, save_memory,
                orchestrator_solve, orchestrator_status, orchestrator_resume,
                orchestrator_stop]
 ADMIN_SYSTEM_PROMPT = (
@@ -136,8 +136,12 @@ ADMIN_SYSTEM_PROMPT = (
     "  · 뭐가 깨졌나·상태 점검 -> `python3 eval/run.py` (빠른 갈래. 전부는 몇 분 걸린다). "
     "'참고(기억)를 주면 더 맞히나'·과제 성적 -> `python3 eval/tasks.py --참고 둘다` (모델을 "
     "과제 수 x 2 번 부른다 -- 배경으로)\n"
-    "  · 밖에서 참고 모으기·제2의 뇌 -> `python3 dig/harvest.py --틈` (자가 틀린 자리를 GitHub·HF "
-    "에서 채운다) 또는 `--말 '<검색어>'`. 라이선스·문법은 코드가 거른다\n"
+    "  · 밖에서 참고 모으기·제2의 뇌 -> `python3 dig/harvest.py --틈` (자가 틀린 자리 + 관심 분야를 "
+    "GitHub·HF·arXiv 에서 채운다. 최신 논문은 `--논문`, 관심 분야 더하기는 `--관심 '<주제>'`). "
+    "라이선스·문법은 코드가 거른다\n"
+    "  · 논문 한 편을 읽을 글자로(수식·알고리즘·그림 캡션) -> `python3 dig/paper.py --url <arxiv>`\n"
+    "  · 논문의 수식·알고리즘을 **코드로** -> `python3 codify/run.py --논문 <arxiv id>` 또는 codify 도구. "
+    "판정은 sandbox 끝값이 한다 -- 네가 '됐다' 고 말하지 마라\n"
     "  · 메일 -> send_email 도구. SMTP 코드를 짜거나 사용법을 설명하지 마라. .env 의 값은 도구가 "
     "별칭·꼴로 알아서 찾는다 -- '없다' 고 하기 전에 먼저 불러라. '내 메일' 은 to=\"me\"(USER_EMAIL), "
     "'내 이름' 은 USER_NAME -- 없으면 한 번만 물어 set_key 로 적어라. **초안의 [자리표]는 네가 다 "

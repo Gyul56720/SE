@@ -198,3 +198,6 @@ sandbox/out/
 # 밖에서 받아온 참고(dig/harvest). law/corpus 와 같은 이유 -- 다시 받으면 되는 것이고,
 # 24시간 루프가 저장소를 부풀리면 안 된다. 색인(graph/ledger)과 수집 원장만 남긴다.
 dig/corpus/
+
+# codify 가 만든 코드 산출물 -- 원장·graph 색인만 남기고 파일은 안 올린다(runs/ 와 같은 이유).
+codify/out/

@@ -51,8 +51,9 @@ from graph import night, store  # noqa: E402
 말뭉치상대 = "dig/corpus"
 원장상대 = "dig/harvest_ledger.jsonl"
 파일글자 = 12000
-출처들 = ("github", "hf")
-허용라이선스 = {"mit", "apache-2.0", "bsd-2-clause", "bsd-3-clause", "0bsd", "isc", "cc0-1.0",
+출처들 = ("github", "hf", "arxiv")
+관심상대 = "dig/interests.jsonl"
+허용라이선스 = {"mit", "arxiv", "apache-2.0", "bsd-2-clause", "bsd-3-clause", "0bsd", "isc", "cc0-1.0",
            "cc-by-4.0", "cc-by-sa-4.0", "cc-by-3.0", "mpl-2.0", "unlicense", "zlib",
            "openrail", "creativeml-openrail-m", "bsl-1.0", "artistic-2.0", "wtfpl"}
 막힘코드 = (401, 403, 429)
@@ -223,6 +224,81 @@ def 허깅찾기(말: str, 몇: int, 한: 한도, repo=None) -> "list[dict]":
 
 
 # ---------------------------------------------------------------- 검증 · 저장 · 색인
+arxiv검색 = None     # 검사 주입: (말, 몇) -> list[{"id","제목","url"}]. None 이면 arXiv API(최신순)
+
+
+def _arxiv검색기본(말: str, 몇: int) -> "list[dict]":
+    """arXiv API 를 **최신순**(submittedDate desc)으로. 최신 아이디어·고급 논문부터."""
+    import urllib.parse
+    q = urllib.parse.quote(f"all:{말}")
+    url = ("http://export.arxiv.org/api/query?search_query=" + q
+           + f"&sortBy=submittedDate&sortOrder=descending&max_results={몇}")
+    r = _받기(url, {"User-Agent": "SE-harvest"})
+    if not r.몸통:
+        return []
+    out = []
+    for m in re.finditer(r"<entry>(.*?)</entry>", r.몸통, re.S):
+        블록 = m.group(1)
+        i = re.search(r"<id>\s*(.*?)\s*</id>", 블록)
+        t = re.search(r"<title>\s*(.*?)\s*</title>", 블록, re.S)
+        if i:
+            out.append({"id": i.group(1).strip(),
+                        "제목": " ".join((t.group(1) if t else "").split()),
+                        "url": i.group(1).strip()})
+    return out
+
+
+def arxiv찾기(말: str, 몇: int, 한: "한도", repo=None) -> "list[dict]":
+    """arXiv 최신 논문을 찾아 dig/paper 로 읽을 수 있는 글자로 내린다. 비언어(수식·알고리즘) 포함."""
+    if not 한.되나("arxiv"):
+        return []
+    from dig import paper
+    후보 = (arxiv검색 or _arxiv검색기본)(말, 몇)
+    out = []
+    for c in 후보:
+        논 = paper.논문받기(c["url"])
+        out.append({"종류": "arxiv-paper", "url": c["url"],
+                    "이름": (논.get("제목") or c.get("제목") or c["url"])[:120],
+                    "라이선스": "arxiv", "내용": paper.요지(논),
+                    "수식수": len(논.get("수식", [])), "알고리즘수": len(논.get("알고리즘", [])),
+                    "왜못": "; ".join(논.get("못읽음", [])[:2])})
+    return out
+
+
+def 관심읽기(repo=None) -> "list[str]":
+    """사용자가 준 분야·주제 -- 어느 도메인이든. 한 줄 한 주제."""
+    p = Path(repo or REPO) / 관심상대
+    if not p.is_file():
+        return []
+    out = []
+    for line in p.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            d = json.loads(line)
+            주 = d.get("주제") if isinstance(d, dict) else d
+        except ValueError:
+            주 = line
+        if 주 and str(주).strip():
+            out.append(str(주).strip())
+    return list(dict.fromkeys(out))
+
+
+def 관심더하기(주제: str, repo=None) -> str:
+    주제 = (주제 or "").strip()
+    if not 주제:
+        return "빈 주제"
+    if 주제 in 관심읽기(repo):
+        return "이미 있다"
+    p = Path(repo or REPO) / 관심상대
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with open(p, "a", encoding="utf-8") as f:
+        f.write(json.dumps({"주제": 주제, "때": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())},
+                           ensure_ascii=False) + "\n")
+    return "더했다"
+
+
 def 검증(항목: dict) -> "tuple[bool, str]":
     """(저장해도 되나, 까닭). 판정은 코드가 한다."""
     if not (항목.get("내용") or "").strip():
@@ -312,6 +388,9 @@ def 틈찾기(repo=None) -> "list[dict]":
         t = 깃[pid]
         말 = " ".join(t.get("깃발") or []) or t["물음"][:60]
         out.append({"과제": pid, "갈래": t["과제갈래"], "말": 말})
+    # 사용자가 준 관심 분야(어느 도메인이든)도 검색어다 -- 사람이 방향을 주고, 뇌가 약점을 메운다.
+    for 주제 in 관심읽기(repo):
+        out.append({"과제": "관심", "갈래": "관심", "말": 주제})
     # 고치기 루프가 못 푼 증상도 틈이다 -- 다음 바퀴에 참고가 있으면 풀릴 수 있다.
     try:
         from repair import run as RP
@@ -346,6 +425,8 @@ def 한바퀴(말들: "list[str]", repo=None, 몇: int = 5, 상한: int = 20,
             항목들 += 깃허브찾기(말, 몇, 한, repo)
         if "hf" in 출처 and 한.되나("hf"):
             항목들 += 허깅찾기(말, 몇, 한, repo)
+        if "arxiv" in 출처 and 한.되나("arxiv"):
+            항목들 += arxiv찾기(말, 몇, 한, repo)
         결과["받음"] += len(항목들)
         for it in 항목들:
             if 남은 <= 0:
@@ -407,12 +488,17 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="밖에서 참고를 끌어와 검증·색인한다")
     ap.add_argument("--말", nargs="*", default=[], help="검색어 (여럿)")
     ap.add_argument("--틈", action="store_true", help="자(eval/tasks)가 틀린 과제의 깃발도 검색어로")
+    ap.add_argument("--논문", action="store_true", help="arXiv 최신 논문만 (출처 arxiv)")
+    ap.add_argument("--관심", default="", help="관심 분야 한 줄을 더한다(어느 도메인이든)")
     ap.add_argument("--틈만", action="store_true", help="검색어만 보이고 안 받는다")
     ap.add_argument("--몇", type=int, default=5, help="출처·검색어마다 몇 개")
     ap.add_argument("--상한", type=int, default=20, help="이 바퀴에서 색인할 최대 수")
     ap.add_argument("--출처", default="github,hf")
     args = ap.parse_args()
 
+    if args.관심:
+        print(관심더하기(args.관심), "--", args.관심)
+        return 0
     틈들 = 틈찾기() if (args.틈 or args.틈만) else []
     if args.틈만:
         for g in 틈들:
@@ -420,7 +506,7 @@ def main() -> int:
         print(f"  틈 {len(틈들)}개" + ("" if 틈들 else " -- 자가 틀린 것이 없거나 아직 안 쟀다"))
         return 0 if 틈들 else 3
     말들 = list(args.말) + [g["말"] for g in 틈들]
-    출처 = tuple(x.strip() for x in args.출처.split(",") if x.strip() in 출처들)
+    출처 = ("arxiv",) if args.논문 else tuple(x.strip() for x in args.출처.split(",") if x.strip() in 출처들)
     결과 = 한바퀴(말들, 몇=args.몇, 상한=args.상한, 출처=출처)
     print(보고(결과))
     return 0 if 결과["돌았나"] else 3

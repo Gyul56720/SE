@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 from audit import discord_cmd as 감사
+from codify import discord_cmd as 코드화
 from delegate import discord_cmd as 위임
 from dig import discord_cmd as 수집
 from eval import discord_cmd as 평가
@@ -26,7 +27,7 @@ from sandbox import discord_cmd as 실험
 import keys as 열쇠
 import relay as 중계
 
-명령들 = (소설, 실험, 감사, 기억, 평가, 경로, 목표, 진화, 중계, 위임, 수집, 열쇠, 고치기, 점검)
+명령들 = (소설, 실험, 감사, 기억, 평가, 경로, 목표, 진화, 중계, 위임, 수집, 열쇠, 고치기, 점검, 코드화)
 
 
 def run(text: str, runner=None, allow_write: bool = True) -> "str | None":
