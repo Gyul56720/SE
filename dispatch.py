@@ -19,8 +19,9 @@ from intent import discord_cmd as 목표
 from novel import discord_cmd as 소설
 from router import discord_cmd as 경로
 from sandbox import discord_cmd as 실험
+import relay as 중계
 
-명령들 = (소설, 실험, 감사, 기억, 평가, 경로, 목표, 진화)
+명령들 = (소설, 실험, 감사, 기억, 평가, 경로, 목표, 진화, 중계)
 
 
 def run(text: str, runner=None, allow_write: bool = True) -> "str | None":
