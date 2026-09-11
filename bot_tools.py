@@ -382,6 +382,40 @@ def create_pr(title: str, body: str = "") -> str:
 
 
 @tool
+def dispatch_command(command: str) -> str:
+    """사람의 부탁을 **실제 실행으로 옮긴다.** command 에 사람의 말을 그대로 넘겨도 되고(`"RIS 최신 논문 좀 모아줘"`),
+    고정 명령(`!연구 …`)을 직접 줘도 된다 -- 어느 명령인지는 저장소의 표(dispatch.고르기)가 고른다. 명령 목록을
+    보여 주거나 '무엇을 원하시나요' 로 끝내지 마라. 못 고르면 까닭을 돌려주니 그때 도구를 직접 불러라. 예: 수집·틈 → `!수집 틈으로`, 논문 코드화 →
+    `!코드화 논문 <id>`, 연구 → `!연구 <목표>`, 검사 → `!실험 게이트`/`!평가 과제`, 기억 간추리기 → `!기억 밤`,
+    변경 검사 → `!감사`, 경로 비용 → `!경로 요약`, 고치기 → `!고치기 <명령> :: <증상>`, 계획 → `!계획 켜기 <요청>`.
+    **`!목표 승인`·`!계획 승인`·`!열쇠` 는 사람만 친다** -- 이 도구가 거절한다. 배경으로 도는 명령은 '시작' 만
+    돌려주고 끝나면 봇이 채널에 알린다."""
+    if agent_context.is_blocked():
+        return "실패: 게스트는 dispatch_command 를 사용할 수 없습니다."
+    import dispatch as _d
+    # **자연어도 받는다.** 사람의 부탁을 그대로 넘겨도 되고(어느 명령인지는 dispatch.고르기 표가
+    # 고른다), `!…` 를 직접 줘도 된다. 못 고르면 까닭을 돌려준다 -- 아무 명령이나 치지 않는다.
+    골라진, 까닭 = _d.고르기(command)
+    if 골라진 is None:
+        relay.적기(f"⛔ 명령 못 고름 {command[:40]}")
+        return f"[명령 못 고름] {까닭}"
+    if 골라진 != (command or "").strip():
+        relay.적기(f"⌘ 자연어 -> {골라진[:70]}")
+    돼, 왜 = _d.도구로쳐도되나(골라진)
+    if not 돼:
+        relay.적기(f"⛔ 명령 거절 {골라진[:40]} -- {왜[:40]}")
+        return f"[거절] {왜}"
+    command = 골라진
+    답 = _d.run(command.strip(), allow_write=True)
+    if 답 is None:
+        return f"[모르는 명령] {command[:60]!r} -- 고정 명령이 아니다. `!` 뒤의 이름을 확인하라"
+    relay.적기(f"⌘ {command[:80]}")
+    with _셸기록_lock:
+        _셸기록.setdefault(threading.get_ident(), []).append((f"dispatch {command}"[:160], True))
+    return 답
+
+
+@tool
 def security_audit(deep: bool = False) -> str:
     """**이 호스트 자신**의 보안 상태를 읽기 전용으로 점검한다 -- 열린 포트 · 파일/키 권한 · SUID ·
     세계 쓰기 · 위험 계정 · 방화벽. 판정은 코드가 규칙으로 낸다(네가 '안전해 보인다' 고 말하지 마라).

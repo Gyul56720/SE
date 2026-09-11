@@ -177,7 +177,8 @@ def 턴기록(thread_id: str, messages) -> "list[str]":
 # 그래서 '무거운 일(논문 읽기·코드화·수집 한 바퀴·연구·수리·위임)' 이 하나라도 돌았는지 따로 센다.
 무거운도구 = ("codify_paper", "repair", "delegate", "security_audit", "research", "run_experiment")
 무거운셸 = ("dig/paper", "codify/run", "codify.py", "harvest --논문", "harvest --틈",
-          "harvest.py --말", "research/run", "eval/tasks", "repair/run")
+          "harvest.py --말", "research/run", "eval/tasks", "repair/run",
+          "dispatch !수집", "dispatch !연구", "dispatch !코드화", "dispatch !고치기", "dispatch !평가", "dispatch !점검")
 
 
 def 무거운일(thread_id: str, 셸줄들=None) -> bool:
