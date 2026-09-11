@@ -122,7 +122,7 @@ finally:
 print("\n== 배선 ==")
 _서버 = (뿌리 / "discord_bot_server.py").read_text(encoding="utf-8")
 _guard = (뿌리 / "commit_guard.py").read_text(encoding="utf-8")
-ok("commit_guard.검사(Path(REPO_DIR))" in _서버 and "run_gates(repo, 고치기=True)" in _guard,
+ok("commit_guard.검사(Path(REPO_DIR), 빠름=True)" in _서버 and "run_gates(repo, 고치기=True)" in _guard,
    "**봇의 git_sync 가 문지기(commit_guard)를 지나고, 문지기가 먼저 고치고 재검사한다**")
 _gk = (뿌리 / "gatekeeper.py").read_text(encoding="utf-8")
 ok('"--고치기" in sys.argv' in _gk, "CLI `python3 gatekeeper.py --고치기`")
