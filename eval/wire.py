@@ -73,6 +73,8 @@ sys.path.insert(0, str(REPO))
      (0,), "계획판 상태를 읽는가 (켜짐/꺼짐 -- 쓰기 없음)"),
     ("기관:commit_guard", ["python3", "commit_guard.py", "--배선"],
      (0,), "커밋 문지기(게이트·검사·CI)가 임포트되는가 (--배선 -- 망·쓰기 없음)"),
+    ("기관:impact", ["python3", "impact.py", "--파일", "relay.py"],
+     (0,), "영향 분석이 도는가 (누가 부르는가·어느 입구에 닿는가 -- 읽기만)"),
     ("기관:delegate", ["python3", "delegate/run.py", "--범위", "graph/*.py", "--쪼개기만"],
      (0,), "위임의 쪼개기가 도는가 (호출 0회)"),
 ]

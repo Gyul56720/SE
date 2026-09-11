@@ -87,6 +87,8 @@ on:
       # 커밋 문지기(게이트·검사·CI) · CI 읽기 -- git_sync 와 on_ready 가 임포트한다.
       - "commit_guard.py"
       - "ci_watch.py"
+      # 영향 분석 -- commit_guard 와 plan 이 임포트한다.
+      - "impact.py"
       # 서버에서 도는 점검 도구. 능력 래칫이 커밋 게이트에서 여기로 옮겨왔다.
       - "scripts/**"
       # 소설 파이프라인. 봇이 서브프로세스로 띄우는 코드라 임포트 폐포에 안 잡히고,

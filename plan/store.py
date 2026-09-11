@@ -83,7 +83,15 @@ def 보기(repo=None) -> str:
     d = _diff(판)
     if not d.strip():
         return f"[{s['id']}] 아직 바뀐 것이 없다 (요청: {s['요청'][:80]})"
-    return f"[{s['id']}] 요청: {s['요청'][:80]}\n{stat}\n\n{d}"
+    영 = ""
+    try:
+        import impact
+        r = impact.영향(판, 커밋=False)
+        if r["파일"]:
+            영 = "\n\n" + impact.보고(r)          # 계획은 diff 만이 아니다 -- 무엇에 딸려 움직이는지까지
+    except Exception:                              # noqa: BLE001 -- 보고용
+        영 = ""
+    return f"[{s['id']}] 요청: {s['요청'][:80]}\n{stat}{영}\n\n{d}"
 
 
 def 승인(repo=None, 누가: str = "cli") -> str:
