@@ -51,6 +51,9 @@ REPO = Path(__file__).resolve().parent.parent
     {"이름": "검사전부", "명령": ["bash", "scripts/tests.sh"], "초": 1500, "무게": "느림"},
     {"이름": "래칫", "명령": ["python3", "scripts/capability_ratchet.py"],
      "초": 900, "무게": "느림"},
+    # 절대 기준 과제 -- 모델을 과제 수 x 2 번 부른다(참고 없음·있음). 키가 없으면 3.
+    {"이름": "과제", "명령": ["python3", "eval/tasks.py", "--참고", "둘다"],
+     "초": 1500, "무게": "느림"},
 ]
 
 

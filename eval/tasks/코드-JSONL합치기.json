@@ -1,0 +1,14 @@
+{
+ "id": "코드-JSONL합치기",
+ "과제갈래": "코드",
+ "깃발": [
+  "python",
+  "jsonl",
+  "원장"
+ ],
+ "물음": "JSONL 문자열 둘을 받아 줄 단위로 합치되 **한 줄도 버리지 않고**, 같은 줄(글자 그대로 같은 것)은 한 번만 남기며, 각 줄의 JSON 에 `때` 키가 있으면 그 값으로 안정 정렬하는 함수 `merge_jsonl(a: str, b: str) -> str` 을 써라. 깨진 JSON 줄은 정렬 키를 '' 로 보고 그대로 둔다.",
+ "판정": {
+  "꼴": "실행",
+  "검사": "import 답, json\na = '{\"때\": \"2\", \"x\": 1}\\n{\"때\": \"1\", \"x\": 0}\\n'\nb = '{\"때\": \"1\", \"x\": 0}\\n{\"때\": \"3\", \"x\": 2}\\n깨짐\\n'\nout = 답.merge_jsonl(a, b).strip().splitlines()\nassert len(out) == 4, out\nassert out[0] == '깨짐' or out[-1] == '깨짐' or '깨짐' in out\nkeyed = [json.loads(x)['때'] for x in out if x != '깨짐']\nassert keyed == sorted(keyed), keyed\nassert sum(1 for x in out if '\"x\": 0' in x or '\"x\":0' in x) == 1\nprint('ok')\n"
+ }
+}

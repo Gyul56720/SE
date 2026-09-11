@@ -1,0 +1,13 @@
+{
+ "id": "코드-LRU캐시",
+ "과제갈래": "코드",
+ "깃발": [
+  "python",
+  "자료구조"
+ ],
+ "물음": "용량 n 의 LRU 캐시 클래스 `LRU(n)` 을 써라. `get(key)` 는 없으면 -1, `put(key, value)` 는 용량이 차면 가장 오래 안 쓴 것을 내보낸다. get 도 '썼다' 로 친다.",
+ "판정": {
+  "꼴": "실행",
+  "검사": "import 답\nc = 답.LRU(2)\nc.put(1, 1); c.put(2, 2)\nassert c.get(1) == 1\nc.put(3, 3)\nassert c.get(2) == -1\nassert c.get(3) == 3\nc.put(4, 4)\nassert c.get(1) == -1\nassert c.get(3) == 3 and c.get(4) == 4\nprint('ok')\n"
+ }
+}

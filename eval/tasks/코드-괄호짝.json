@@ -1,0 +1,13 @@
+{
+ "id": "코드-괄호짝",
+ "과제갈래": "코드",
+ "깃발": [
+  "python",
+  "스택"
+ ],
+ "물음": "`()[]{}` 세 종류 괄호로 된 문자열이 올바르게 짝지어졌는지 판정하는 함수 `balanced(s: str) -> bool` 을 써라.",
+ "판정": {
+  "꼴": "실행",
+  "검사": "import 답\nassert 답.balanced('([]{})')\nassert not 답.balanced('([)]')\nassert not 답.balanced('((')\nassert 답.balanced('')\nassert not 답.balanced(')')\nprint('ok')\n"
+ }
+}
