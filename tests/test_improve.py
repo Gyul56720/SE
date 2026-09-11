@@ -44,8 +44,9 @@ def git(repo, *a):
 
 os.environ.update({"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@x", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@x"})
 d = Path(tempfile.mkdtemp(prefix="test-improve-"))
-초록리허설 = lambda repo, 판, 초: {"판": str(판), "그림자": True, "바뀐것": ["mod.py"], "걸음": [("문법", 0, ""), ("게이트", 0, "")],  # noqa: E731
-                             "통과": True, "못잼": [], "걸린초": 0.1}
+초록리허설 = lambda repo, 판, 초, 전부=False, 전부초=1800: {  # noqa: E731
+    "판": str(판), "그림자": True, "바뀐것": ["mod.py"], "걸음": [("문법", 0, ""), ("게이트", 0, "")],
+    "통과": True, "못잼": [], "걸린초": 0.1}
 틈 = {"종류": "CI실패검사", "무엇": "test_mod.py", "판정명령": "python3 tests/test_mod.py", "왜": "main CI 가 빨강이다"}
 고치는패치 = json.dumps({"꼴": "패치", "왜": "f 가 2를 돌려 검사가 깨진다 -> 1", "근거": ["dig/corpus/x.md#abc"],
                     "편집": [{"path": "mod.py", "old": "return 2", "new": "return 1"}]}, ensure_ascii=False)
@@ -114,9 +115,42 @@ try:
 
     print("\n== 리허설 빨강이면 붙이지 않는다 ==")
     I.제안기 = lambda prompt: 고치는패치
-    P.리허설기 = lambda repo, 판, 초: {"판": str(판), "그림자": True, "바뀐것": ["mod.py"], "걸음": [("게이트", 1, "G0 위반")], "통과": False, "못잼": [], "걸린초": 0.1}
+    P.리허설기 = lambda repo, 판, 초, 전부=False, 전부초=1800: {"판": str(판), "그림자": True, "바뀐것": ["mod.py"], "걸음": [("게이트", 1, "G0 위반")], "통과": False, "못잼": [], "걸린초": 0.1}
     r = I.자가개선(d, 몇=1)
     ok(r["해본"][0]["판정"] == "리허설빨강" and P.현재판(d) is None, "**red->green 이어도 리허설이 빨강이면 버린다**")
+    P.리허설기 = 초록리허설
+
+    print("\n== `!개선 <말>`: 사람이 말한 개선 -- red->green 이 아니라 **레포 전체 회귀 없음**이 판정 ==")
+    I.틈모으기_ = lambda repo: [틈]
+    본판 = {"전부": None}
+
+    def 리허설_회귀없음(repo, 판, 초, 전부=False, 전부초=1800):
+        본판["전부"] = 전부
+        return {"판": str(판), "그림자": True, "바뀐것": ["mod.py"], "걸음": [("레포 전체(회귀)", 0, "새로 깨진 것 없음")],
+                "통과": True, "못잼": [], "걸린초": 1.0, "회귀": {"새로깨짐": [], "고쳐짐": [], "그대로빨강": []}}
+    P.리허설기 = 리허설_회귀없음
+    I.제안기 = lambda prompt: json.dumps({"꼴": "패치", "왜": "부탁대로 고침", "근거": ["arxiv#1"],
+                                      "편집": [{"path": "mod.py", "old": "return 2", "new": "return 1"}]}, ensure_ascii=False)
+    r = I.사용자개선("f 가 1을 돌려주게 해줘", d, 초=30)
+    ok(r["판정"] == "동의대기" and 본판["전부"] is True,
+       f"**부탁은 레포 전체 시뮬을 거쳐 동의 대기** (판정 {r['판정']}, 전부={본판['전부']})")
+    ok(r["회귀"] == {"새로깨짐": [], "고쳐짐": [], "그대로빨강": []} and "회귀 없음" in I.부탁보고(r), "회귀 결과가 보고에 남는다")
+    ok(r["댄근거"] == ["arxiv#1"] and (d / "mod.py").read_text(encoding="utf-8") == "def f():\n    return 2\n",
+       "근거를 대고, 실제 트리는 그대로")
+    ok("판열림" == I.사용자개선("또", d)["판정"], "동의 대기 중엔 또 안 받는다")
+    ok("적용됨" in I.승인(d, 누가="검사"), "`!개선 승인` 으로 붙는다")
+    git(d, "commit", "-qam", "부탁 반영")
+
+    print("\n== 멀리서 깨뜨리면 거절한다 ==")
+    (d / "mod.py").write_text("def f():\n    return 2\n", encoding="utf-8"); git(d, "commit", "-qam", "again")
+    P.리허설기 = lambda repo, 판, 초, 전부=False, 전부초=1800: {
+        "판": str(판), "그림자": True, "바뀐것": ["mod.py"], "걸음": [("레포 전체(회귀)", 1, "새로 깨짐 ['test_far.py']")],
+        "통과": False, "못잼": [], "걸린초": 1.0, "회귀": {"새로깨짐": ["test_far.py"], "고쳐짐": [], "그대로빨강": []}}
+    r = I.사용자개선("뭔가 고쳐줘", d, 초=30)
+    ok(r["판정"] == "시뮬빨강" and P.현재판(d) is None,
+       f"**레포 전체에서 새로 깨지면 붙이지 않는다** ({r['판정']})")
+    ok(r["회귀"]["새로깨짐"] == ["test_far.py"] and "test_far.py" in I.부탁보고(r), "무엇이 깨졌는지 사람에게 말한다")
+    ok(I.사용자개선("", d)["판정"] == "빈부탁", "빈 부탁은 안 받는다")
     P.리허설기 = 초록리허설
 
     print("\n== 후보 상한 5 ==")
@@ -143,6 +177,12 @@ ok(dispatch.run("!개선 상태", allow_write=True) == dispatch.run("!자가개�
    "**`!개선` 도 같은 명령이다**(사용자가 실제로 친 것)")
 ok(dispatch.run("!개선기 x") is None and dispatch.run("!자가개선기 x") is None, "붙여 쓴 꼴은 명령이 아니다")
 ok(dispatch.고르기("개선해줘")[0] == "!자가개선", "자연어 '개선해줘' 도 간다")
+불림2 = []
+dispatch.run("!개선 답변을 더 빠르게 해줘", runner=lambda argv, 로그, 무엇: (불림2.append(argv) or "시작"), allow_write=True)
+ok(불림2 and 불림2[0][:3] == ["python3", "improve/run.py", "--부탁"] and 불림2[0][3] == "답변을 더 빠르게 해줘",
+   f"**`!개선 <말>` 이 그 말을 그대로 부탁으로 넘긴다** ({불림2})")
+_run = (뿌리 / "improve" / "run.py").read_text(encoding="utf-8")
+ok("def 사용자개선" in _run and "전부: bool = True" in _run, "부탁은 기본이 레포 전체 시뮬이다")
 ok(not dispatch.도구로쳐도되나("!자가개선 승인")[0], "**봇은 dispatch_command 로 승인을 못 친다**")
 ok(dispatch.고르기("스스로 개선할 점 찾아봐")[0] == "!자가개선" and dispatch.고르기("자가개선 점검")[0] == "!자가개선 점검", "자연어 -> !자가개선")
 불림 = []

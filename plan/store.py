@@ -101,7 +101,7 @@ def _해시(판: Path) -> str:
     return hashlib.sha256(_diff(판, 이진=True).encode("utf-8")).hexdigest()[:12]
 
 
-def 시험하기(repo=None, 초: int = 180) -> str:
+def 시험하기(repo=None, 초: int = 180, 전부: bool = False, 전부초: int = 1800) -> str:
     """**승인 전에 격리 판에서 돌려 본다.** 결과를 지금 diff 의 해시와 함께 상태에 적는다."""
     repo = Path(repo or REPO)
     s = 읽기(repo)
@@ -109,9 +109,11 @@ def 시험하기(repo=None, 초: int = 180) -> str:
         return "계획판이 꺼져 있다 -- `!계획 켜기 <요청>`"
     판 = Path(s["판"])
     import rehearsal
-    r = (리허설기 or (lambda repo, 판, 초: rehearsal.시험(repo, 판=판, 초=초)))(repo, 판, 초)
+    _리허설 = 리허설기 or (lambda repo, 판, 초, 전부=False, 전부초=1800:
+                        rehearsal.시험(repo, 판=판, 초=초, 전부=전부, 전부초=전부초))
+    r = _리허설(repo, 판, 초, 전부=전부, 전부초=전부초)      # 주입된 가짜도 전부 모드를 본다
     s["시험"] = {"해시": _해시(판), "통과": bool(r["통과"]), "때": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-               "걸린초": r["걸린초"]}
+               "걸린초": r["걸린초"], "전부": bool(전부), "회귀": r.get("회귀")}
     (repo / 상태상대).write_text(json.dumps(s, ensure_ascii=False, indent=1), encoding="utf-8")
     return rehearsal.보고(r)  # 보고는 늘 진짜 꼴로 찍는다
 
@@ -188,6 +190,7 @@ def main() -> int:
     ap.add_argument("--켜기", default="")
     ap.add_argument("--보기", action="store_true")
     ap.add_argument("--시험", action="store_true")
+    ap.add_argument("--전부", action="store_true", help="레포 전체 시뮬(회귀)까지")
     ap.add_argument("--승인", action="store_true")
     ap.add_argument("--건너뛰기", action="store_true", help="리허설 없이 승인(사람이 명시할 때만)")
     ap.add_argument("--버림", action="store_true")
@@ -199,7 +202,7 @@ def main() -> int:
     elif a.보기:
         print(보기(repo))
     elif a.시험:
-        print(시험하기(repo))
+        print(시험하기(repo, 전부=a.전부))
     elif a.승인:
         print(승인(repo, 건너뛰기=a.건너뛰기))
     elif a.버림:
