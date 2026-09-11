@@ -47,15 +47,24 @@ def git(repo, *a):
 d = Path(tempfile.mkdtemp(prefix="test-tt-"))
 try:
     (d / "tests").mkdir()
-    for 이름 in ("test_a.py", "test_b.py", "test_c.py", "test_precheck.py"):
+    for 이름 in ("test_a.py", "test_b.py", "test_c.py"):
         (d / "tests" / 이름).write_text("print('ok')\n", encoding="utf-8")
+    # 이 검사는 **precheck 를 실제로 돌린다** -- 이름 때문이 아니라 그 때문에 빠져야 한다.
+    (d / "tests" / "test_precheck.py").write_text(
+        'subprocess.run(["bash", "scripts/precheck.sh"])\n', encoding="utf-8")
 
     print("== 안 재 본 것은 돌린다 (새 검사가 저절로 들어온다) ==")
     돌릴, 건너 = T.고르기(d, 상한=25)
     ok(돌릴 == ["tests/test_a.py", "tests/test_b.py", "tests/test_c.py"],
        f"원장이 비면 전부 돌린다 ({돌릴})")
     ok("tests/test_precheck.py" not in 돌릴,
-       "**자기 검사만 뺀다** -- precheck 안에서 돌리면 그 검사의 '실제로 돌려 보기' 가 빈 검사가 된다")
+       "**되돌이만 뺀다** -- precheck 안에서 돌리면 그 검사의 '실제로 돌려 보기' 가 빈 검사가 된다")
+    (d / "tests" / "test_또되돌이.py").write_text(
+        'subprocess.run(["bash", "scripts/precheck.sh"])\n', encoding="utf-8")
+    ok("tests/test_또되돌이.py" not in T.고르기(d, 상한=25)[0],
+       "**이름이 아니라 무엇을 하는지 읽어서 가른다** -- precheck 를 돌리는 검사를 하나 더 만들어도 안 샌다")
+    ok(T.되돌이인가(d / "tests" / "test_a.py") is False, "안 돌리는 검사는 그대로 든다")
+    (d / "tests" / "test_또되돌이.py").unlink()
 
     print("\n== 상한을 넘은 것만 빠지고, 몇 개가 왜 빠지는지 말한다 ==")
     T.적기("tests/test_b.py", 91.5, d)

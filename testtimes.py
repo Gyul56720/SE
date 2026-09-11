@@ -33,10 +33,25 @@ REPO = Path(__file__).resolve().parent
 원장상대 = "logs/test_times.json"   # 이 기계에서 잰 것. gitignore -- 기계마다 다르다
 씨앗상대 = "testtimes.json"        # **커밋된 씨앗.** 처음 온 기계도 맨손으로 시작하지 않는다
 기본상한 = 25.0
-# **빼는 것은 여기 하나뿐이고 까닭이 있다.** precheck 의 자기 검사는 precheck 를 실제로 돌려
-# 보므로, 빠른 검사 안에서 돌리면 서로를 부른다. 빗장이 깊이를 막긴 하지만 그러면 그 검사의
-# '실제로 돌려 보기' 대목이 **빈 검사**가 된다 -- 통과했다는 말만 남고 아무것도 안 본 것이다.
-제자신 = {"test_precheck.py"}
+# **빼는 것은 한 갈래뿐이고, 그것도 이름으로 적지 않는다.**
+#
+# precheck 를 **실제로 돌려 보는** 검사는 빠른 검사 안에서 돌리면 서로를 부른다.
+# 빗장(PRECHECK_RUNNING)이 깊이를 막긴 하지만, 그러면 그 검사의 '실제로 돌려 보기'
+# 대목이 **빈 검사**가 된다 -- 통과했다는 말만 남고 아무것도 안 본 것이다.
+#
+# 처음엔 `{"test_precheck.py"}` 라고 적었다. 그러자 precheck 를 돌리는 검사를 하나 더
+# 만든 순간(`test_testtimes.py`) 그것이 빨개졌다 -- **이름을 적는 방식이 곧바로 틀렸다.**
+# 그래서 이름이 아니라 **그 검사가 무엇을 하는지 읽어서** 가른다.
+_되돌이표 = ("precheck.sh",)
+
+
+def 되돌이인가(파일: Path) -> bool:
+    """이 검사가 precheck 를 실제로 돌리는가 -- 그러면 빠른 검사 안에서 빼야 한다."""
+    try:
+        본 = 파일.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    return any(표 in 본 for 표 in _되돌이표)
 
 
 def _읽기(p: Path) -> dict:
@@ -91,7 +106,7 @@ def 고르기(repo=None, 상한: float = 기본상한, 다시: bool = False, 원
     돌릴, 건너 = [], []
     for rel in 검사들(repo):
         이름 = Path(rel).name
-        if 이름 in 제자신:
+        if 되돌이인가(repo / rel):
             continue
         t = 잰것.get(이름)
         if not 다시 and t is not None and t > 상한:
