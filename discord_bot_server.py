@@ -425,7 +425,11 @@ def _git_sync_locked() -> str | None:
     # 요점이다. 2026-08-28에 에이전트는 "push 전에 임포트부터 시켜봐라"를 저장하고 2분 뒤
     # 임포트 불가 코드를 push했다. 진단은 저장소의 마크다운에 있었을 뿐 커밋 경로 위에
     # 없었다. 게이트를 통과 못 하면 커밋하지 않고 위반 목록을 그대로 돌려준다.
-    report = gatekeeper.run_gates(Path(REPO_DIR))
+    # 위반은 띄우기 전에 **먼저 고친다**(fix 가 있는 게이트만: G017 이스케이프 · G013 배포 경로).
+    # 고친 뒤에도 남는 것만 막는다. 사용자(2026-09-11): '띄우는 게 아니라 자동으로 고쳐줘야지'.
+    report = gatekeeper.run_gates(Path(REPO_DIR), 고치기=True)
+    for x in getattr(report, "고친것", []):
+        print(f"[git_sync] {x}")
     if not report.passed:
         print(f"[git_sync] 게이트 차단 -- 커밋하지 않음\n{report.summary()}")
         return report.summary()

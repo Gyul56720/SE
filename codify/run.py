@@ -177,7 +177,12 @@ def 코드화(스펙: dict, repo=None, 바퀴: int = 기본바퀴) -> dict:
         p.parent.mkdir(parents=True, exist_ok=True)
         머리 = (f"# codify: {스펙.get('이름', '')}\n# 출처: {스펙.get('출처', '')}\n"
               f"# 검증: {'예시 입출력 통과' if not 약한검증 else '약한 검증(예시 없음)'}\n\n")
-        p.write_text(머리 + 결과["코드"], encoding="utf-8")
+        import escapes
+        코드, n = escapes.고치기(결과["코드"])      # 모델이 쓴 `\\int` 같은 잘못된 이스케이프는 여기서 고친다(G017)
+        결과["코드"] = 코드
+        if n:
+            결과["이스케이프고침"] = n
+        p.write_text(머리 + 코드, encoding="utf-8")
         결과["파일"] = f"{산출상대}/{이름}.py"
         _색인(결과["파일"], 스펙, 약한검증, repo)
     elif not 결과["남은것"]:

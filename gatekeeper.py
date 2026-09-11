@@ -43,9 +43,24 @@ class GateContext:
         except ValueError:
             return str(path)
 
+    def ignored_files(self) -> "set[Path]":
+        """git 이 .gitignore 로 거르는 파일. 커밋에 안 들어가므로 게이트도 안 본다 -- 실측
+        2026-09-11: codify/out/(gitignore) 의 생성 코드가 G017 에 걸려 커밋이 막혔다."""
+        if getattr(self, "_ignored", None) is None:
+            try:
+                res = subprocess.run(["git", "ls-files", "-z", "--others", "--ignored", "--exclude-standard"],
+                                     cwd=self.repo, capture_output=True, text=True, timeout=60)
+                self._ignored = {(self.repo / x).resolve() for x in res.stdout.split("\0") if x}
+            except (OSError, subprocess.SubprocessError):
+                self._ignored = set()
+        return self._ignored
+
     def python_files(self) -> "list[Path]":
         out = []
+        무시 = self.ignored_files()
         for path in self.repo.rglob("*.py"):
+            if path.resolve() in 무시:
+                continue
             # rglob은 "public_agent.py"처럼 .py로 끝나는 '디렉터리'도 물어온다 (이 저장소에
             # 실제로 하나 있다) -- is_file()로 걸러야 게이트가 IsADirectoryError로 죽지 않는다.
             if not path.is_file():
@@ -121,19 +136,33 @@ def load_gates() -> list:
     return modules
 
 
-def run_gates(repo: Path | None = None) -> GateReport:
+def run_gates(repo: Path | None = None, 고치기: bool = False) -> GateReport:
     """모든 게이트를 돌린다. 게이트 하나가 예외로 죽어도 나머지를 계속 돌리되, 그 게이트는
-    실패로 친다 -- fail-closed. 검사가 고장 났을 때 조용히 통과시키는 것이 가장 나쁘다."""
+    실패로 친다 -- fail-closed. 검사가 고장 났을 때 조용히 통과시키는 것이 가장 나쁘다.
+
+    고치기=True 면 **위반한 게이트에 fix(ctx) 가 있으면 먼저 고치고 다시 검사한다** --
+    사용자(2026-09-11): "게이트 위반은 띄우는 게 아니라 자동으로 고쳐줘야지". 고친 것은
+    보고에 '고침' 줄로 남고, 고친 뒤에도 남는 위반만 막는다. fix 가 없는 게이트는 그대로 막는다."""
     ctx = GateContext(repo)
     results = []
+    고친것: list[str] = []
     for mod in load_gates():
         rule_id = getattr(mod, "RULE_ID", mod.__name__)
         title = getattr(mod, "TITLE", "")
         try:
-            results.append(GateResult(rule_id, title, list(mod.check(ctx))))
+            violations = list(mod.check(ctx))
+            if violations and 고치기 and hasattr(mod, "fix"):
+                했다 = list(mod.fix(ctx))
+                if 했다:
+                    고친것 += [f"{rule_id} 고침: {x}" for x in 했다]
+                    ctx = GateContext(repo)          # 고친 뒤 새 눈으로 다시 본다
+                    violations = list(mod.check(ctx))
+            results.append(GateResult(rule_id, title, violations))
         except Exception as e:
             results.append(GateResult(rule_id, title, error=f"{type(e).__name__}: {e}"))
-    return GateReport(results)
+    report = GateReport(results)
+    report.고친것 = 고친것
+    return report
 
 
 def main() -> int:
@@ -142,7 +171,9 @@ def main() -> int:
             print(f"{mod.RULE_ID}  {mod.TITLE}")
             print(f"        사고: {mod.ORIGIN}" + (f" / 근거: {mod.EVIDENCE}" if mod.EVIDENCE else ""))
         return 0
-    report = run_gates()
+    report = run_gates(고치기="--고치기" in sys.argv)
+    for x in getattr(report, "고친것", []):
+        print("  " + x)
     print(report.summary())
     return 0 if report.passed else 1
 

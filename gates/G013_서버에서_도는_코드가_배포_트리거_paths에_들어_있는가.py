@@ -95,14 +95,12 @@ def _import_closure(repo, entries: "list[str]") -> "set[str]":
     return seen
 
 
-def check(ctx) -> "list[str]":
+def _빠진것(ctx) -> "list[tuple[str, bool]]":
+    """paths 에 없는 (rel, 디렉터리인가). check 와 fix 가 같은 눈으로 본다."""
     repo = ctx.repo
     patterns = _workflow_paths(repo)
-    if patterns is None:
-        return []  # 이 저장소에 배포 워크플로가 없으면 할 일 없음.
     if not patterns:
-        return [f"{_WORKFLOW_REL}: paths: 목록을 읽지 못했다 -- 배포 트리거를 확인할 수 없다."]
-
+        return []
     services = sorted(p for p in (repo / "deploy").glob("*.service")) if (repo / "deploy").is_dir() else []
     entries: list[str] = []
     required: list[str] = [_WORKFLOW_REL]
@@ -114,17 +112,54 @@ def check(ctx) -> "list[str]":
                 entries.append(rel)
     required += sorted(_import_closure(repo, entries))
     required += _ENFORCEMENT
-
-    violations = []
+    out = []
     for rel in dict.fromkeys(required):
         if rel.endswith("/**"):
-            # 디렉터리 요구는 그 디렉터리를 덮는 패턴이 있는지로 본다.
             if not any(p.startswith(rel[:-3]) for p in patterns):
-                violations.append(
-                    f"{_WORKFLOW_REL}: '{rel}' 가 paths 에 없다 -- 이 디렉터리만 고친 커밋은 "
-                    f"배포되지 않아 서버가 옛 코드를 들고 돈다.")
-            continue
-        if not _covered(rel, patterns):
+                out.append((rel, True))
+        elif not _covered(rel, patterns):
+            out.append((rel, False))
+    return out
+
+
+def fix(ctx) -> "list[str]":
+    """빠진 경로를 paths 목록 끝(마지막 `- "..."` 줄 뒤)에 같은 들여쓰기로 붙인다."""
+    빠진 = _빠진것(ctx)
+    if not 빠진:
+        return []
+    wf = ctx.repo / _WORKFLOW_REL
+    lines = wf.read_text(encoding="utf-8").splitlines(keepends=True)
+    마지막 = None
+    for i, ln in enumerate(lines):
+        if ln.lstrip().startswith('- "') and ln.rstrip().endswith('"'):
+            마지막 = i
+    if 마지막 is None:
+        return []
+    들여 = lines[마지막][: len(lines[마지막]) - len(lines[마지막].lstrip())]
+    새줄 = []
+    for rel, 디렉 in 빠진:
+        pat = rel[:-3] + "**.py" if 디렉 else rel
+        새줄.append(f'{들여}# G013 자동 추가 -- 서버가 실행/임포트하는 파일\n{들여}- "{pat}"\n')
+    lines[마지막 + 1:마지막 + 1] = 새줄
+    wf.write_text("".join(lines), encoding="utf-8")
+    return [rel for rel, _ in 빠진]
+
+
+def check(ctx) -> "list[str]":
+    repo = ctx.repo
+    patterns = _workflow_paths(repo)
+    if patterns is None:
+        return []  # 이 저장소에 배포 워크플로가 없으면 할 일 없음.
+    if not patterns:
+        return [f"{_WORKFLOW_REL}: paths: 목록을 읽지 못했다 -- 배포 트리거를 확인할 수 없다."]
+
+    violations = []
+    for rel, 디렉 in _빠진것(ctx):
+        if 디렉:
+            violations.append(
+                f"{_WORKFLOW_REL}: '{rel}' 가 paths 에 없다 -- 이 디렉터리만 고친 커밋은 "
+                f"배포되지 않아 서버가 옛 코드를 들고 돈다.")
+        else:
             violations.append(
                 f"{_WORKFLOW_REL}: '{rel}' 가 paths 에 없다 -- 서버가 실행하는 파일인데 "
                 f"이 파일만 고치면 배포가 트리거되지 않는다.")
