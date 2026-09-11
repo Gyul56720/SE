@@ -1,0 +1,11 @@
+[Unit]
+Description=SE harvest -- 자가 틀린 자리를 GitHub/HF 에서 채우는 한 바퀴 (timer 가 부른다)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/SE
+EnvironmentFile=/home/ubuntu/SE/.env
+ExecStart=/usr/bin/bash /home/ubuntu/SE/scripts/harvest.sh

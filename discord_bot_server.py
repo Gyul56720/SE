@@ -134,6 +134,8 @@ ADMIN_SYSTEM_PROMPT = (
     "  · 뭐가 깨졌나·상태 점검 -> `python3 eval/run.py` (빠른 갈래. 전부는 몇 분 걸린다). "
     "'참고(기억)를 주면 더 맞히나'·과제 성적 -> `python3 eval/tasks.py --참고 둘다` (모델을 "
     "과제 수 x 2 번 부른다 -- 배경으로)\n"
+    "  · 밖에서 참고 모으기·제2의 뇌 -> `python3 dig/harvest.py --틈` (자가 틀린 자리를 GitHub·HF "
+    "에서 채운다) 또는 `--말 '<검색어>'`. 라이선스·문법은 코드가 거른다\n"
     "  · 어느 모델로 나가나·비용 -> `python3 router/call.py --요약` · `python3 router/check.py`\n"
     "  · 할 일·목표 -> `python3 intent/store.py --목록` / `--다음`. **새 목표는 제안까지만 "
     "하고 승인은 사람에게 받아라** -- 승인 없는 목표는 집히지 않는다(그것이 설계다)\n"

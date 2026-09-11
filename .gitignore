@@ -194,3 +194,7 @@ jaso/corpus/보기/
 # sandbox 산출물 -- 실험은 일회용이다. 남길 것은 에이전트가 골라 저장소 자리로 옮겨
 # 커밋한다(그 커밋은 게이트를 탄다). 여기 두면 git_sync 의 add -A 가 휩쓸어 가지 않는다.
 sandbox/out/
+
+# 밖에서 받아온 참고(dig/harvest). law/corpus 와 같은 이유 -- 다시 받으면 되는 것이고,
+# 24시간 루프가 저장소를 부풀리면 안 된다. 색인(graph/ledger)과 수집 원장만 남긴다.
+dig/corpus/
