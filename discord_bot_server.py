@@ -43,7 +43,7 @@ import bot_tools  # noqa: E402
 import dispatch  # noqa: E402
 import relay  # noqa: E402
 from bot_tools import (  # noqa: E402
-    REPO_DIR, run_shell, run_experiment, search_memory, save_memory,
+    REPO_DIR, run_shell, run_experiment, read_file, edit_file, search_memory, save_memory,
     build_agent_pool, run_with_fallback_pool,
     register_thread, unregister_thread, request_cancel,
     orchestrator_solve, orchestrator_status, orchestrator_resume, orchestrator_stop,
@@ -78,7 +78,7 @@ ADMIN_MODEL_CANDIDATES = [ADMIN_MODEL_NAME] + [m for m in _admin_extra_models if
 ADMIN_PRIMARY_KEY = os.getenv("GEMINI_API_KEY_FALLBACK") or os.environ["GEMINI_API_KEY"]
 ADMIN_SECONDARY_KEY = os.environ["GEMINI_API_KEY"] if os.getenv("GEMINI_API_KEY_FALLBACK") else None
 
-ADMIN_TOOLS = [run_shell, run_experiment, search_memory, save_memory,
+ADMIN_TOOLS = [run_shell, run_experiment, read_file, edit_file, search_memory, save_memory,
                orchestrator_solve, orchestrator_status, orchestrator_resume,
                orchestrator_stop]
 ADMIN_SYSTEM_PROMPT = (
@@ -92,8 +92,12 @@ ADMIN_SYSTEM_PROMPT = (
     "무엇을 했는지 간결하게 보고하라.\n"
     "\n"
     "[자기 수정 절차 -- 반드시 이 순서로]\n"
-    "1. 기존 파일은 전체를 다시 쓰지 마라. 바꿀 줄만 고쳐라. 고친 뒤 git diff --stat의 "
+    "1. 기존 파일은 전체를 다시 쓰지 마라. **read_file 로 그 자리를 본 뒤 edit_file 로 "
+    "바꿀 줄만 고쳐라** -- old 가 정확히 한 번일 때만 바뀐다. run_shell 의 sed -i · heredoc "
+    "덮어쓰기는 쓰지 마라(그 형태가 4cd4473 · 1a82685 사고다). 고친 뒤 git diff --stat의 "
     "삭제 줄 수가 요청 크기와 맞는지 확인하라.\n"
+    "1-1. run_shell 은 돌기 전에 도구 게이트를 지난다(toolgate). 게이트 삭제·판정 원장 "
+    "덮어쓰기·통째 삭제·--force·rebase·pkill -f 는 거절된다 -- 우회하지 말고 다른 길을 써라.\n"
     "2. push 전에 `python3 gatekeeper.py`를 돌려라. 통과(exit 0)해야 커밋된다. "
     "py_compile은 문법만 잡는다 -- 게이트는 임포트 순환, 독스트링 소실, 안전장치 삭제, "
     "자격증명 노출, 대량 삭제를 잡는다.\n"
