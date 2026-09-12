@@ -196,11 +196,40 @@ def _본문AST(src: str) -> str:
     return ast.dump(나무)
 
 
-def _판변경(판: Path) -> "tuple[list[str], list[str], list[str]]":
-    """판에서 HEAD 대비 바뀐 파일. (검사파일, 코드파일, 지운파일) -- 모두 저장소 상대경로, .py 만."""
+def _판변경(판: Path, 기준: str = "HEAD") -> "tuple[list[str], list[str], list[str]]":
+    """판에서 **기준 커밋** 대비 바뀐 파일. (검사파일, 코드파일, 지운파일) -- 모두 저장소 상대경로, .py 만.
+
+    기준이 HEAD 면 `git status` 그대로(작업 디렉터리의 변경). 기준이 다른 커밋이면 -- 조사 모드처럼 두뇌가
+    바퀴마다 커밋해 HEAD 가 움직인 자리 -- `git diff 기준`(그 커밋 대 작업 디렉터리)에 추적 안 된 파일을 더한다."""
+    검사, 코드, 지움 = [], [], []
+    본것: set = set()
+
+    def 넣기(rel: str, 지웠나: bool) -> None:
+        if rel in 본것 or not rel.endswith(".py"):
+            return
+        본것.add(rel)
+        if 지웠나:
+            지움.append(rel)
+        elif rel.startswith("tests/") and Path(rel).name.startswith("test_"):
+            검사.append(rel)
+        else:
+            코드.append(rel)
+
+    if 기준 != "HEAD":
+        r = subprocess.run(["git", "-C", str(판), "diff", "--name-status", "-z", 기준],
+                           capture_output=True, text=True)
+        항목 = [x for x in r.stdout.split("\0") if x]
+        i = 0
+        while i < len(항목):
+            상태 = 항목[i]; i += 1
+            if i >= len(항목):
+                break
+            rel = 항목[i]; i += 1
+            if 상태[:1] in "RC" and i < len(항목):      # R/C 는 옛 이름 · 새 이름 둘
+                rel = 항목[i]; i += 1
+            넣기(rel, 상태[:1] == "D")
     r = subprocess.run(["git", "-C", str(판), "status", "--porcelain", "-z", "--untracked-files=all"],
                        capture_output=True, text=True)
-    검사, 코드, 지움 = [], [], []
     항목 = [x for x in r.stdout.split("\0") if x]
     i = 0
     while i < len(항목):
@@ -208,19 +237,14 @@ def _판변경(판: Path) -> "tuple[list[str], list[str], list[str]]":
         코드글, rel = 줄[:2], 줄[3:]
         if "R" in 코드글 or "C" in 코드글:
             i += 1
-        if not rel.endswith(".py"):
+        if 기준 != "HEAD" and 코드글 != "??":          # 기준이 따로 있으면 status 는 추적 안 된 파일만 보탠다
             continue
-        if "D" in 코드글:
-            지움.append(rel)
-        elif rel.startswith("tests/") and Path(rel).name.startswith("test_"):
-            검사.append(rel)
-        else:
-            코드.append(rel)
+        넣기(rel, "D" in 코드글)
     return 검사, 코드, 지움
 
 
-def _HEAD글(판: Path, rel: str) -> "str | None":
-    r = subprocess.run(["git", "-C", str(판), "show", f"HEAD:{rel}"], capture_output=True, text=True)
+def _HEAD글(판: Path, rel: str, 기준: str = "HEAD") -> "str | None":
+    r = subprocess.run(["git", "-C", str(판), "show", f"{기준}:{rel}"], capture_output=True, text=True)
     return r.stdout if r.returncode == 0 else None
 
 
@@ -281,7 +305,7 @@ def _절제한글(src: str, 이름: str) -> "str | None":
 절제상한 = 8          # 기능 하나마다 검사를 다 돌린다 -- 비싸다. 많으면 앞 것만
 
 
-def _절제단위(판: Path, 코드: "list[str]") -> "list[tuple[str, str | None]]":
+def _절제단위(판: Path, 코드: "list[str]", 기준: str = "HEAD") -> "list[tuple[str, str | None]]":
     """뺄 단위 목록 [(파일, 함수이름|None)]. None 은 파일 전체(함수가 하나도 없는 새 파일).
     바뀐 파일의 함수 중 **지문이 HEAD 와 다른 것**만 -- 새 함수, 몸통·서명이 바뀐 함수. 새 파일은 함수마다."""
     단위: list = []
@@ -289,7 +313,7 @@ def _절제단위(판: Path, 코드: "list[str]") -> "list[tuple[str, str | None
         if not (판 / rel).is_file():
             continue
         후 = (판 / rel).read_text(encoding="utf-8", errors="replace")
-        전 = _HEAD글(판, rel)
+        전 = _HEAD글(판, rel, 기준)
         전자리 = _함수자리(전) if 전 is not None else {}
         후자리 = _함수자리(후)
         if 전 is None and not 후자리:
@@ -301,7 +325,7 @@ def _절제단위(판: Path, 코드: "list[str]") -> "list[tuple[str, str | None
     return 단위
 
 
-def 절제검사(repo=None, 판=None, 초: int = 300, 상한: int = None) -> dict:
+def 절제검사(repo=None, 판=None, 초: int = 300, 상한: int = None, 기준: str = "HEAD") -> dict:
     """**기능을 빼면 검사가 무너지나.** {성립, 말, 잰것:[{이름, 무너짐, 어디}], 안잡힌것, 못잼}.
 
     사용자(2026-09-12): "기능의 존재를 주장하지 말고, 그 기능을 제거했을 때 검사가 무너지고 다시 넣었을
@@ -318,17 +342,19 @@ def 절제검사(repo=None, 판=None, 초: int = 300, 상한: int = None) -> dic
     재는 검사는 **패치의 검사 파일**뿐이다(공허검사와 같은 기준) -- 이 저장소는 행동 변경마다 그 변경을 재는
     검사를 패치에 담게 하므로, 저장소의 다른 검사가 우연히 잡아 주는 것은 안 친다.
     비싸므로 `절제상한` 개까지만 재고, 다 합쳐 `초*3` 을 넘기면 남은 것은 못잼으로 적는다.
+    `기준` 은 '기능 없는 판' 의 커밋 -- 보통 HEAD, 조사 모드에서는 조사 시작 커밋(두뇌가 바퀴마다 커밋해도
+    시작 커밋 대비 바뀐 것 전부가 한 패치다).
     """
     import os, shutil, tempfile, time
     repo = Path(repo or REPO)
     판 = Path(판) if 판 else repo
     상한 = 절제상한 if 상한 is None else 상한
-    검사, 코드, 지움 = _판변경(판)
+    검사, 코드, 지움 = _판변경(판, 기준)
     out = {"성립": True, "말": "", "잰것": [], "안잡힌것": [], "못잼": []}
     if not 검사:
         out["말"] = "패치에 검사가 없다 -- 공허검사가 먼저 막는다"
         return out
-    단위 = _절제단위(판, 코드)
+    단위 = _절제단위(판, 코드, 기준)
     if not 단위:
         out["말"] = "뺄 수 있는 단위가 없다(검사만 바뀌었거나, 함수 밖 상수·주석만 바뀌었다)"
         return out
@@ -342,7 +368,7 @@ def 절제검사(repo=None, 판=None, 초: int = 300, 상한: int = None) -> dic
             break
         tmp = Path(tempfile.mkdtemp(prefix="se-절제-"))
         try:
-            r = subprocess.run(["git", "-C", str(repo), "worktree", "add", "--detach", str(tmp), "HEAD"],
+            r = subprocess.run(["git", "-C", str(repo), "worktree", "add", "--detach", str(tmp), 기준],
                                capture_output=True, text=True)
             if r.returncode != 0:
                 out["못잼"].append(f"{이름말} -- 판을 못 꺼냈다")
