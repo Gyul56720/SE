@@ -56,6 +56,28 @@ def _두뇌기본(prompt: str, thread_id: str) -> str:
     return B.run_admin_agent(prompt, thread_id)
 
 
+_claude세션: "set[str]" = set()
+claude실행기 = None   # 검사 주입: (argv, cwd, 초) -> (끝값, 출력)
+
+
+def _두뇌claude(prompt: str, thread_id: str, repo=None) -> str:
+    """`claude -p` 한 턴. 봇의 두뇌(Gemini)를 못 쓰는 기계에서, 또는 사람이 고를 때.
+
+    같은 조사는 같은 세션이다 -- 첫 턴은 `--session-id`, 그 뒤는 `--resume` 으로 기억을 잇는다
+    (discord_bot_server.run_claude 와 같은 꼴). 권한은 bypass -- 도구 게이트는 저장소 쪽
+    (toolgate · gatekeeper · commit_guard)이 지킨다."""
+    import uuid as _u
+    repo = Path(repo or REPO)
+    sid = str(_u.uuid5(_u.NAMESPACE_URL, f"investigate-{thread_id}"))
+    잇기 = ["--resume", sid] if sid in _claude세션 else ["--session-id", sid]
+    argv = ["claude", "-p", *잇기, "--permission-mode", "bypassPermissions", prompt]
+    rc, out = (claude실행기 or (lambda a, c, t: _돌리기(a, c, t)))(argv, repo, 1800)
+    if rc != 0 and not out.strip():
+        raise RuntimeError(f"claude -p 끝값 {rc}")
+    _claude세션.add(sid)
+    return out
+
+
 def _돌리기(argv: "list[str]", repo: Path, 초: int) -> "tuple[int, str]":
     try:
         p = subprocess.run(argv, cwd=str(repo), capture_output=True, text=True, errors="replace", timeout=초)
@@ -268,7 +290,12 @@ def main() -> int:
     ap.add_argument("--바퀴", type=int, default=기본최대바퀴)
     ap.add_argument("--저장소", default="")
     ap.add_argument("--배선", action="store_true", help="두뇌 없이 배선만 확인한다(끝값 0)")
+    ap.add_argument("--두뇌", choices=["봇", "claude"], default="봇",
+                    help="봇 = 관리 에이전트(Gemini, 기본) · claude = `claude -p` (토큰이 있을 때)")
     a = ap.parse_args()
+    global 두뇌
+    if a.두뇌 == "claude" and 두뇌 is None:
+        두뇌 = _두뇌claude
     if a.배선:
         import diagnose  # noqa: F401
         from repair import run as R  # noqa: F401

@@ -136,6 +136,24 @@ finally:
     I.두뇌, I.판정기, I.진단기 = _원
     shutil.rmtree(판, ignore_errors=True)
 
+print("\n== claude 두뇌: 같은 조사는 같은 세션 ==")
+_잡 = []
+I.claude실행기 = lambda argv, cwd, 초: (_잡.append(argv) or (0, "한 턴"))
+try:
+    I._claude세션.clear()
+    I._두뇌claude("첫 프롬프트", "x1"); I._두뇌claude("둘째 프롬프트", "x1")
+    ok(_잡[0][2] == "--session-id" and _잡[1][2] == "--resume" and _잡[0][3] == _잡[1][3],
+       f"첫 턴 --session-id, 둘째 --resume, 같은 id ({_잡[0][2]} -> {_잡[1][2]})")
+    ok("--permission-mode" in _잡[0] and _잡[0][-1] == "첫 프롬프트", "권한 bypass · 프롬프트는 맨 끝")
+    I.claude실행기 = lambda argv, cwd, 초: (1, "")
+    try:
+        I._두뇌claude("p", "x2"); ok(False, "끝값 1 에 출력 없으면 올려야 한다")
+    except RuntimeError:
+        ok(True, "끝값 1 에 출력 없으면 RuntimeError -- 조사는 못돌림으로 적는다")
+finally:
+    I.claude실행기 = None; I._claude세션.clear()
+ok('"--두뇌", choices=["봇", "claude"]' in (뿌리 / "investigate" / "run.py").read_text(encoding="utf-8"), "`--두뇌 claude` 깃발")
+
 print("\n== 배선 ==")
 import dispatch  # noqa: E402
 from investigate import discord_cmd as C  # noqa: E402
