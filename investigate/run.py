@@ -51,6 +51,7 @@ if str(REPO) not in sys.path:
 진단기 = None   # 검사 주입: (글, repo) -> dict.  None 이면 diagnose.진단
 머지기 = None   # 검사 주입: (repo, 아이디, 부탁) -> dict.  None 이면 _머지기본 (github_write 로 PR 을 찾아 판단·머지)
 절제검사기 = None  # 검사 주입: (repo, 시작커밋) -> dict{성립, 말, 잰것, 안잡힌것, 못잼}.  None 이면 _절제기본
+열쇠검사기 = None  # 검사 주입: (repo, 시작커밋) -> dict{성립, 말, 죽은읽기, 있는열쇠}.  None 이면 _열쇠기본
 
 
 # ------------------------------------------------------------------ 두뇌·판정 기본
@@ -285,6 +286,12 @@ def _절제기본(repo: Path, 시작커밋: str) -> dict:
     지나간다. 여기서는 기능마다 뺀다(빼면 빨강 · 넣으면 초록)."""
     import rehearsal
     return rehearsal.절제검사(repo, repo, 기준=시작커밋)
+
+
+def _열쇠기본(repo: Path, 시작커밋: str) -> dict:
+    """읽는 열쇠가 그 원장에 실제로 있나 -- rehearsal.열쇠대조. LLM 0회 · subprocess 0회."""
+    import rehearsal
+    return rehearsal.열쇠대조(repo, repo, 기준=시작커밋)
 
 
 def _명령기록(thread_id: str) -> "dict | None":
@@ -736,6 +743,15 @@ def 조사(증상: str, 재현명령: str = "", 증거글: str = "", 시한초: 
                 if not 절.get("성립", True):
                     판정 = [{"이름": "절제검사", "끝값": 1, "꼬리": "[절제 안 잡힘] " + 절["말"]}] + [p for p in 판정 if p["이름"] != "재현"]
                     h["빨강"] = ["절제검사"]
+                    continue
+                열 = (열쇠검사기 or _열쇠기본)(repo, 시작커밋)
+                _적기(repo, {"때": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "조사": 아이디,
+                            "단계": "열쇠성립" if 열.get("성립", True) else "열쇠죽음", "바퀴": n, "말": 열.get("말", "")[:200],
+                            "죽은읽기": [f"{y['파일']}:{y['줄']} {y['열쇠']}" for y in 열.get("죽은읽기", [])][:6]})
+                말하기(f"[조사 {아이디}] 열쇠 {'성립' if 열.get('성립', True) else '죽은 읽기'}: {열.get('말', '')[:80]}")
+                if not 열.get("성립", True):
+                    판정 = [{"이름": "열쇠대조", "끝값": 1, "꼬리": "[열쇠 죽음] " + 열["말"]}] + [p for p in 판정 if p["이름"] != "재현"]
+                    h["빨강"] = ["열쇠대조"]
                     continue
             결과["해결"] = True
             break
