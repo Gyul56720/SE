@@ -108,8 +108,10 @@ try:
     r2 = M.사냥(판, 파일들=["부름.py"], 시한초=120, 말하기=lambda s: None)
     ok(r2["살아남음"] >= 1 and r2["살아남은것"][0]["파일"] == "부름.py",
        f"**부르기만 하는 검사에서는 변형이 살아남는다** ({r2['살아남음']}개)")
-    ok(r2["살아남은것"][0]["함수"] == "곱하기" and "return None" in r2["살아남은것"][0]["변형"],
-       f"어느 함수의 어떤 변형이 살았는지 적는다 ({r2['살아남은것'][0]['변형']})")
+    # 순서는 π0 의 씨앗으로 섞인다 -- 어느 변형이 먼저 오는지에 기대지 않는다(그러면 씨앗을 바꾸면 빨개진다)
+    ok(all(x["함수"] == "곱하기" for x in r2["살아남은것"])
+       and any("return" in x["변형"] for x in r2["살아남은것"]),
+       f"어느 함수의 어떤 변형이 살았는지 적는다 ({[x['변형'][:28] for x in r2['살아남은것']][:3]})")
     원 = M.원장읽기(판)
     ok(any(x.get("classification") == M.거짓초록 and x.get("target", "").startswith("부름.py") for x in 원),
        "원장에 FALSE_GREEN 줄이 남는다(분류 이름으로)")
@@ -256,6 +258,20 @@ try:
     ok(all(x.get("baseline_rerun_status") == "PASS" for x in 원 if x.get("outcome") == M.잡힘),
        "**Killed 는 되돌림 재실행이 PASS 인 것만이다** (Cause(FAIL)=m)")
 
+    print("\n== D_t: π 가 배울 재료가 원장에 다 있나 (사용자 2026-09-12) ==")
+    # R(m) = αFG(m) + βFR(m) + γΔJ(m) - λCost(m) -- 마지막 항을 쓰려면 **변형마다 cost** 가 있어야 한다.
+    # 24시간 데이터는 한 번만 모인다: 그때 안 적으면 그 항을 영영 못 쓴다.
+    원3 = [x for x in M.원장읽기(판) if x.get("operator")]
+    ok(원3 and all(isinstance((x.get("cost") or {}).get("초"), (int, float)) for x in 원3),
+       f"변형 줄마다 cost(초)가 있다 ({len(원3)}줄)")
+    빠진 = [k for k in ("operator", "target", "outcome", "classification", "cost")
+          if not all(k in x for x in 원3)]
+    ok(not 빠진, f"D_t 의 칸(m · file · FG/FR · cost)이 다 있다 (빠진 것 {빠진})")
+    표 = M.연산자표(판)
+    ok("연산자" in 표 and "초/개" in 표 and "return_none" in 표,
+       f"**연산자표가 무엇을 얼마에 찾았나를 낸다** -- π 의 재료 ({표.splitlines()[0][:40]!r})")
+    ok("**연산자별**" in M.둘다보고(판), "둘다보고에 연산자표가 붙는다")
+
     print("\n== Obs(T, P): 검사가 결과를 관찰하나 (측정으로 정의한다) ==")
     됐나, 말 = M.관찰됐나(판, "계산.py:더하기")
     ok(됐나 and "잡혔다" in 말, f"값을 단언하는 검사 -> 관찰한다 ({말})")
@@ -294,6 +310,11 @@ try:
     ok(any(x.get("꼴") == "거짓빨강" and x.get("classification") == M.환경의존 for x in 원2),
        "원장에 분류와 까닭이 남는다")
     ok("거짓 빨강" in M.FR보고(판) and "환경의존" in M.FR보고(판), "FR보고가 원장을 읽는다")
+    fr줄 = [x for x in M.원장읽기(판) if x.get("꼴") == "거짓빨강"]
+    ok(fr줄 and all(isinstance((x.get("cost") or {}).get("초"), (int, float)) for x in fr줄),
+       f"FR 줄마다 cost(초)가 있다 -- R(m) 의 λCost 항 ({len(fr줄)}줄)")
+    ok(any(x.get("꼴") == "FR사냥시작" and (x.get("정책") or {}).get("seed") == 0 for x in M.원장읽기(판)),
+       "**원장이 π0 를 적는다** -- seed 까지(그래야 π0 vs π1 차이가 씨앗 탓이 아니라고 말할 수 있다)")
     ok(git(판, "worktree", "list").stdout.strip().count("\n") == 0, "FR 사냥 워크트리가 안 남는다")
 
     print("\n== 둘 다 한 번에: 거짓 빨강 -> 거짓 초록 (순서가 뜻을 만든다) ==")
