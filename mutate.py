@@ -753,8 +753,9 @@ def 거짓빨강사냥(repo=None, 검사들: "list[str]" = None, 시한초: int 
                 out[상태오염] += 1
                 것 = {"검사": t, "분류": 상태오염, "까닭": 까닭, "꼬리": 둘글[-300:]}
                 out["찾은것"].append(것)
-                적기(repo, {"꼴": "거짓빨강", "검사": t, "classification": 상태오염,
-                          "failure_cause": 까닭, "첫번째": "PASS", "두번째": "FAIL", "traceback": 둘글[-400:]})
+                적기(repo, {"꼴": "거짓빨강", "검사": t, "test": t, "classification": 상태오염,
+                          "baseline_pass": True, "repeat_fail": True, "worktree_pass": None,
+                          "cause": 까닭, "failure_cause": 까닭, "traceback": 둘글[-400:]})
                 말(f"[거짓빨강] **{상태오염}** {t} -- 두 번째에 빨강 ({까닭})")
                 continue
             작업빨강 = None
@@ -765,13 +766,16 @@ def 거짓빨강사냥(repo=None, 검사들: "list[str]" = None, 시한초: int 
                 out[환경의존] += 1
                 것 = {"검사": t, "분류": 환경의존, "까닭": 까닭, "꼬리": 첫글[-300:]}
                 out["찾은것"].append(것)
-                적기(repo, {"꼴": "거짓빨강", "검사": t, "classification": 환경의존,
-                          "failure_cause": 까닭, "깨끗한판": "FAIL", "작업트리": "PASS", "traceback": 첫글[-400:]})
+                적기(repo, {"꼴": "거짓빨강", "검사": t, "test": t, "classification": 환경의존,
+                          "baseline_pass": False, "repeat_fail": True, "worktree_pass": True,
+                          "cause": 까닭, "failure_cause": 까닭, "traceback": 첫글[-400:]})
                 말(f"[거짓빨강] **{환경의존}** {t} -- 깨끗한 판에서만 빨강 ({까닭})")
             else:
                 out[원래빨강] += 1
-                적기(repo, {"꼴": "거짓빨강", "검사": t, "classification": 원래빨강,
-                          "failure_cause": 까닭, "traceback": 첫글[-400:]})
+                적기(repo, {"꼴": "거짓빨강", "검사": t, "test": t, "classification": 원래빨강,
+                          "baseline_pass": False, "repeat_fail": bool(둘빨강),
+                          "worktree_pass": (False if 작업빨강 else None),
+                          "cause": 까닭, "failure_cause": 까닭, "traceback": 첫글[-400:]})
                 말(f"[거짓빨강] {원래빨강} {t} -- 둘 다 빨강이다. 거짓이 아니다 ({까닭})")
     finally:
         subprocess.run(["git", "-C", str(repo), "worktree", "remove", "--force", str(판)],
@@ -779,6 +783,19 @@ def 거짓빨강사냥(repo=None, 검사들: "list[str]" = None, 시한초: int 
         shutil.rmtree(판, ignore_errors=True)
     적기(repo, {"꼴": "FR사냥끝", **{k: v for k, v in out.items() if k != "찾은것"}})
     return out
+
+
+def 못믿을검사들(repo=None) -> "list[str]":
+    """**FR 이력이 있는 검사.** ReliableTest = RG0 ∧ ¬FR이력 -- RG0 통과는 신뢰성이 아니다.
+
+    사용자(2026-09-12): "RG0 PASS 와 검사 신뢰성을 혼동하지 마라." 상태오염 검사는 **첫 실행이
+    초록이므로 RG0 를 지난다.** 그래도 바탕으로 쓸 수 없다 -- 그 초록이 두 번째에 무너지기 때문이다.
+    그래서 신뢰성은 원장의 FR 이력으로 판단한다(이 함수), RG0 로 판단하지 않는다."""
+    것 = {}
+    for x in 원장읽기(repo):
+        if x.get("꼴") == "거짓빨강" and x.get("classification") in (상태오염, 환경의존):
+            것[str(x.get("test") or x.get("검사"))] = x.get("classification")
+    return sorted(것)
 
 
 def FR보고(repo=None) -> str:

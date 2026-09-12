@@ -303,22 +303,41 @@ try:
     ok(set(둘["못믿을검사"]) >= {"tests/test_오염.py", "tests/test_환경.py"},
        f"**바탕으로 쓸 수 없는 검사를 먼저 알려 준다** ({둘['못믿을검사']})")
     ok(any(x.get("꼴") == "둘다끝" for x in M.원장읽기(판)), "원장에 둘다끝이 남는다")
-    # 사용자(2026-09-12): "Baseline RG -> Mutation Validity -> FR Attribution -> FG/Equivalent".
-    # FR 을 먼저 돌린 **값을 쓴다** -- 못 믿을 검사를 바탕에서 빼야 RG0 가 서고, 그 파일을 잴 수 있다.
-    r오염 = M.사냥(판, 파일들=["쓰는것없음.py"], 시한초=60, 말하기=lambda s: None)
+    # 사용자(2026-09-12): "현재 테스트는 `뺄검사=[x] => x 제외` 만 보인다. 그것은 옵션이 동작한다는 말이고
+    # **FR 이 찾은 것이 실제로 빠진다**는 말이 아니다." 맞는 지적이라 끝까지 잇는다:
+    #   FR(x)  =>  x ∈ 못믿을검사  =>  FG 가 x 를 바탕으로 쓰지 않는다
+    # 그리고 ReliableTest = RG0 ∧ ¬FR이력 -- **RG0 통과는 신뢰성이 아니다**(상태오염은 첫 실행이 초록이다).
     (판 / "붙은것.py").write_text("def g(a):\n    return a + 1\n", encoding="utf-8")
-    (판 / "tests" / "test_붙은것.py").write_text(
-        'import sys; sys.path.insert(0, ".")\nimport 붙은것\nimport os\n'
-        'assert 붙은것.g(1) == 2\nopen("찌꺼기.txt", "w").write("x")\n'
-        'assert not os.path.exists("또찌꺼기.txt")\nopen("또찌꺼기.txt", "w").write("x")\nprint("한 번만")\n',
-        encoding="utf-8")
-    git(판, "add", "-A"); git(판, "commit", "-qm", "붙은것 + 제 상태를 남기는 검사")
-    안뺐을때 = M.사냥(판, 파일들=["붙은것.py"], 시한초=120, 말하기=lambda s: None)
-    뺐을때 = M.사냥(판, 파일들=["붙은것.py"], 시한초=120, 말하기=lambda s: None,
-                뺄검사=["tests/test_붙은것.py"])
-    ok(안뺐을때["잰변형"] >= 1, f"못 믿을 검사라도 RG0 한 번은 지난다(첫 실행은 초록) ({안뺐을때['잰변형']})")
-    ok(뺐을때["못잼"] >= 1 and 뺐을때["잰변형"] == 0,
-       f"**뺄검사로 빼면 그 검사를 바탕으로 쓰지 않는다** (잰변형 {뺐을때['잰변형']} · 못잼 {뺐을때['못잼']})")
+    (판 / "tests" / "test_붙은것.py").write_text(              # 제 상태를 남긴다 -> 두 번째에 빨강
+        'import os, sys\nsys.path.insert(0, ".")\nimport 붙은것\n'
+        'assert 붙은것.g(1) == 2\n'
+        'assert not os.path.exists("찌꺼기.txt"), "두 번째 실행이다"\n'
+        'open("찌꺼기.txt", "w").write("x")\nprint("한 번만 초록")\n', encoding="utf-8")
+    git(판, "add", "-A"); git(판, "commit", "-qm", "상태를 남기는 검사 + 그것만이 재는 코드")
+    깨 = Path(tempfile.mkdtemp(prefix="RG0-"))
+    git(판, "worktree", "add", "-q", "--detach", str(깨), "HEAD")
+    try:
+        ok(M._돌려보기(깨, ["tests/test_붙은것.py"])[0] is False,
+           "**RG0 는 통과한다** -- 첫 실행은 초록이다(그래서 RG0 만으로는 신뢰성을 판단할 수 없다)")
+    finally:
+        git(판, "worktree", "remove", "--force", str(깨))
+    fr2 = M.거짓빨강사냥(판, 검사들=["tests/test_붙은것.py"], 시한초=120, 말하기=lambda s: None)
+    ok(fr2[M.상태오염] == 1, f"**FR 사냥이 상태오염으로 잡는다** ({fr2[M.상태오염]})")
+    ok("tests/test_붙은것.py" in M.못믿을검사들(판),
+       f"**FR(x) => x ∈ 못믿을검사** -- 원장의 FR 이력으로 읽는다 ({M.못믿을검사들(판)})")
+    행 = [x for x in M.원장읽기(판) if x.get("test") == "tests/test_붙은것.py"][-1]
+    빠진칸 = [k for k in ("test", "baseline_pass", "repeat_fail", "cause", "classification") if k not in 행]
+    ok(not 빠진칸, f"원장 줄에 사양의 칸이 다 있다 (빠진 것 {빠진칸})")
+    ok(행["baseline_pass"] is True and 행["repeat_fail"] is True,
+       f"그 줄이 'RG0 는 지났고 두 번째에 무너졌다' 를 적는다 ({행['baseline_pass']} · {행['repeat_fail']})")
+    둘2 = M.둘다사냥(판, 시한초=300, 파일들=["붙은것.py"], 말하기=lambda s: None)
+    ok("tests/test_붙은것.py" in 둘2["못믿을검사"], f"둘다사냥이 FR 결과를 그대로 들고 간다 ({둘2['못믿을검사']})")
+    ok(둘2["FG"]["잰변형"] == 0 and 둘2["FG"]["못잼"] >= 1,
+       f"**FG 가 그 검사를 바탕으로 쓰지 않는다 -- 변형을 하나도 안 재고 못잼으로 적는다** "
+       f"(잰변형 {둘2['FG']['잰변형']} · 못잼 {둘2['FG']['못잼']})")
+    홀로 = M.사냥(판, 파일들=["붙은것.py"], 시한초=120, 말하기=lambda s: None)
+    ok(홀로["잰변형"] >= 1,
+       f"**FR 을 먼저 안 돌리면 그 검사를 바탕으로 써 버린다** -- 그래서 순서가 판정을 바꾼다 ({홀로['잰변형']}개 쟀다)")
 
     print("\n== 배선 ==")
     _서버 = (뿌리 / "discord_bot_server.py").read_text(encoding="utf-8")
