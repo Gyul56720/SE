@@ -258,6 +258,29 @@ try:
     finally:
         git(_절, "worktree", "remove", "--force", str(w))
     ok(git(_절, "worktree", "list").stdout.strip().count("\n") == 0, "기준 커밋 절제 뒤에도 워크트리가 안 남는다")
+
+    print("\n  -- 실측(PR #218): 존재만 단언하는 검사는 절제에 안 걸린다. 패치의 데이터 파일을 절제 판이 져야 보인다 --")
+    # 봇이 1바퀴 6.8분에 '해결' 을 선언하고 스스로 머지했다. 목표 검사가 함수를 부르지 않고
+    # `os.path.exists("plan/할일.jsonl")` 만 보았는데, 절제 판이 .py 만 옮겨 그 파일이 없어 빨개졌다 --
+    # 함수를 빼서 빨개진 것이 아닌데 "걸린다" 로 읽혔다(거짓 초록).
+    w2 = 절판(**{"plan/할일.py": "def 할일(args=None):\n    return 0\n",
+                "plan/할일.jsonl": "",
+                "tests/test_b.py": 'import os\nassert os.path.exists("plan/할일.py")\nassert os.path.exists("plan/할일.jsonl")\n'})
+    try:
+        r = R.절제검사(_절, w2)
+        ok(not r["성립"] and r["안잡힌것"] == ["plan/할일.py:할일"],
+           f"**존재만 보는 검사는 절제에 안 걸린다 -- 막는다** (안잡힌것 {r['안잡힌것']})")
+    finally:
+        git(_절, "worktree", "remove", "--force", str(w2))
+    w3 = 절판(**{"plan/할일.py": "def 할일(args=None):\n    return 7\n",
+                "plan/할일.jsonl": "",
+                "tests/test_b.py": 'import sys; sys.path.insert(0, ".")\nimport importlib\nm = importlib.import_module("plan.할일")\nassert m.할일() == 7\n'})
+    try:
+        r = R.절제검사(_절, w3)
+        ok(r["성립"] and [x["이름"] for x in r["잰것"]] == ["plan/할일.py:할일"],
+           f"**부르고 결과를 단언하는 검사는 절제에 걸린다 -- 지나간다** ({r['잰것']})")
+    finally:
+        git(_절, "worktree", "remove", "--force", str(w3))
 finally:
     shutil.rmtree(_절, ignore_errors=True)
 
@@ -409,8 +432,60 @@ try:
 finally:
     shutil.rmtree(_이, ignore_errors=True)
 
+print("\n== 순환 검사: 검사가 제 실행이 고친 원장을 보고 초록이 되나 ==")
+# 실측 2026-09-12 PR #214("[조사 f867ea29] scripts/ledgerstat.py 열쇠 집계 기능 수정"): 조사가 '해결' 로 스스로
+# 머지했는데 고쳤다는 파일이 머지에 없었다. 코드 변경은 목표 검사 하나뿐이고 그것이
+# `for e in 원장: if '귀속' in e: return`(통과) 로 바뀌어 있었다 -- `귀속` 은 조사 루프가 바퀴마다 그 원장에
+# 적는 필드다. 같은 PR 이 그 원장에 6줄을 더했다. **검사가 제 부산물을 증언했다.**
+_순 = Path(tempfile.mkdtemp(prefix="순환-"))
+try:
+    git(_순, "init", "-q"); git(_순, "config", "user.email", "t@t"); git(_순, "config", "user.name", "t")
+    (_순 / "tests").mkdir(); (_순 / "ldg").mkdir()
+    (_순 / "mod.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+    (_순 / "ldg" / "ledger.jsonl").write_text('{"꼴": "가", "때": "t1"}\n', encoding="utf-8")
+    git(_순, "add", "-A"); git(_순, "commit", "-qm", "init")
+
+    def 순재기(**files):
+        w = Path(tempfile.mkdtemp(prefix="판-"))
+        git(_순, "worktree", "add", "-q", "--detach", str(w), "HEAD")
+        for rel, 본 in files.items():
+            (w / rel).parent.mkdir(parents=True, exist_ok=True); (w / rel).write_text(본, encoding="utf-8")
+        try:
+            return R.순환검사(_순, w)
+        finally:
+            git(_순, "worktree", "remove", "--force", str(w))
+
+    원장읽는검사 = ('import json, os\n'
+                'def test_x():\n'
+                '    p = "ldg/ledger.jsonl"\n'
+                '    with open(p) as f:\n'
+                '        행들 = [json.loads(x) for x in f.readlines()]\n'
+                '    for e in 행들:\n'
+                '        if "귀속" in e:\n'
+                '            return\n'
+                '    raise AssertionError("없다")\n'
+                'test_x()\n')
+    r1 = 순재기(**{"tests/test_a.py": 원장읽는검사,
+                 "ldg/ledger.jsonl": '{"꼴": "가", "때": "t1"}\n{"꼴": "나", "귀속": 0}\n'})
+    ok(not r1["성립"] and r1["찾은것"] == [{"검사": "tests/test_a.py", "읽은것": "ldg/ledger.jsonl", "줄": 4}]
+       and "제 실행이 고친 원장" in r1["말"],
+       f"**패치가 고친 원장을 패치의 검사가 읽으면 순환** -- PR #214 의 자리 ({r1['찾은것']})")
+    r2 = 순재기(**{"tests/test_a.py": 원장읽는검사})
+    ok(r2["성립"] and "볼 것 없다" in r2["말"], "원장을 안 고쳤으면 검사가 읽어도 순환이 아니다(읽기만 한다)")
+    r3 = 순재기(**{"mod.py": "def f():\n    return 2\n", "ldg/ledger.jsonl": '{"꼴": "가", "때": "t1"}\n{"꼴": "다"}\n',
+                 "tests/test_a.py": "import mod\nassert mod.f() == 2\n"})
+    ok(r3["성립"] and "읽지 않는다" in r3["말"], "원장을 고쳤어도 검사가 코드를 단언하면 순환이 아니다")
+    r4 = 순재기(**{"ldg/새표본.jsonl": '{"x": 1}\n',
+                 "tests/test_a.py": 'import json\n행 = json.loads(open("ldg/새표본.jsonl").read())\nassert 행["x"] == 1\n'})
+    ok(r4["성립"], "패치가 **새로** 더한 표본은 기준에 없으므로 순환이 아니다(정당한 붙임)")
+    r5 = 순재기(**{"ldg/ledger.jsonl": '{"꼴": "가", "때": "t1"}\n{"꼴": "라"}\n',
+                 "tests/test_a.py": '보고 = {"원장": "ldg/ledger.jsonl", "줄": 2}\nassert 보고["줄"] == 2\n'})
+    ok(r5["성립"], "**문자열로 언급만 한 경로는 안 센다** -- 지금 저장소 검사들이 그렇게 들고 있다(거짓 양성 없음)")
+finally:
+    shutil.rmtree(_순, ignore_errors=True)
+
 print()
 if FAIL:
     print(f"실패 {len(FAIL)}개 -- {FAIL}")
     raise SystemExit(1)
-print("rehearsal: 문법 · 뜻 · 초록 · 안 건드림 · 못잼 · 승인 전제 · 배선 · 공허 검사 · 절제 검사 · 열쇠 대조 · 미정의 이름 -- 통과")
+print("rehearsal: 문법 · 뜻 · 초록 · 안 건드림 · 못잼 · 승인 전제 · 배선 · 공허 검사 · 절제 검사 · 열쇠 대조 · 미정의 이름 · 순환 검사 -- 통과")

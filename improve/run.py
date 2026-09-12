@@ -403,6 +403,7 @@ def 적용(제안: dict, 판: Path) -> "tuple[bool, str]":
 절제검사기 = None       # 검사 주입: (repo, 판) -> dict{성립, 말, ...}. None 이면 rehearsal.절제검사
 열쇠검사기 = None       # 검사 주입: (repo, 판) -> dict{성립, 말, ...}. None 이면 rehearsal.열쇠대조
 이름검사기 = None       # 검사 주입: (repo, 판) -> dict{성립, 말, ...}. None 이면 rehearsal.미정의이름
+순환검사기 = None       # 검사 주입: (repo, 판) -> dict{성립, 말, ...}. None 이면 rehearsal.순환검사
 
 
 def _초록의뜻(repo: Path, 시험보고: str) -> "str | None":
@@ -445,6 +446,13 @@ def _초록의뜻(repo: Path, 시험보고: str) -> "str | None":
         _적기(repo, {"꼴": "미정의", "말": 이["말"][:240],
                     "찾은것": [f"{x['파일']}:{x['줄']} {x['이름']}" for x in 이.get("찾은것", [])][:6]})
         return "[미정의 이름 -- 없는 이름을 부른다] " + 이["말"]
+    # **제 부산물을 보고 초록이 되나.** 실측 2026-09-12 PR #214: 조사가 제 원장에 적은 `귀속` 을 제 검사가 읽어
+    # '해결' 이 됐다 -- 고쳤다는 파일은 머지에 없었다.
+    순 = (순환검사기 or rehearsal.순환검사)(repo, 판)
+    if not 순.get("성립", True):
+        _적기(repo, {"꼴": "순환", "말": 순["말"][:240],
+                    "찾은것": [f"{x['검사']}:{x['줄']} {x['읽은것']}" for x in 순.get("찾은것", [])][:6]})
+        return "[순환 -- 검사가 제 실행이 고친 원장을 읽는다] " + 순["말"]
     return None
 
 
