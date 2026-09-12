@@ -338,9 +338,29 @@ async def _스스로고치기(channel, 명령: str, 증상: str, 로그파일: s
 
 
 async def _배경지켜보기(channel, 배경: dict, 간격: float = 20.0, 상한초: float = 6 * 3600) -> None:
-    """pgrep 으로 지켜보다 끝나면 로그 끝을 붙여 알린다. 서버가 죽으면 이 감시도 죽는다 --
-    그때는 `상태` 명령이 남는다."""
+    """pgrep 으로 지켜보다 끝나면 로그 끝을 붙여 알린다.
+
+    **재시작을 살아 넘긴다.** 붙을 때 맡김 파일에 적고(relay.배경맡김), 알리거나 포기할 때 지운다
+    (relay.배경놓음). 봇이 다시 뜨면 on_ready 가 맡긴 것을 읽어 감시를 다시 붙인다 -- 그 사이에
+    일이 끝났으면 첫 확인에서 바로 알린다. 실측 2026-09-12: 16:08 에 띄운 일을 16:22 배포가
+    재시작하면서 감시만 죽어 아무도 끝을 알리지 않았다."""
     시작 = time.monotonic()
+    맡김 = ""
+    try:
+        맡김 = await asyncio.to_thread(relay.배경맡김, 배경, getattr(channel, "id", 0))
+    except Exception as e0:                                        # noqa: BLE001 -- 맡김이 안 돼도 감시는 돈다
+        print(f"[배경] 맡김 실패: {type(e0).__name__}: {e0}")
+    try:
+        await _배경지켜보기_속(channel, 배경, 간격, 상한초, 시작)
+    finally:
+        if 맡김:
+            try:
+                await asyncio.to_thread(relay.배경놓음, 맡김)
+            except Exception:                                      # noqa: BLE001
+                pass
+
+
+async def _배경지켜보기_속(channel, 배경: dict, 간격: float, 상한초: float, 시작: float) -> None:
     while time.monotonic() - 시작 < 상한초:
         await asyncio.sleep(간격)
         if await asyncio.to_thread(relay.배경끝났나, 배경):        # 찾을말(pgrep 이름)로 본다
@@ -737,6 +757,35 @@ async def on_ready():
 
     asyncio.create_task(_ci지켜보기())      # CI 빨강을 봇이 읽는다(2h)
     asyncio.create_task(_자가개선지켜보기())  # 6h 마다 스스로 개선 후보를 찾아 동의를 구한다
+    asyncio.create_task(_맡긴배경다시())      # 재시작 전에 지켜보던 배경 일을 다시 맡는다
+
+_다시맡은것: set = set()
+
+
+async def _맡긴배경다시() -> None:
+    """재시작 전에 지켜보던 배경 일에 감시를 다시 붙인다. 그 사이 끝났으면 첫 확인에서 알린다.
+
+    on_ready 는 재연결마다 불릴 수 있으므로 아이디로 두 번 붙는 것을 막는다 -- 두 번 붙으면 두 번 알린다."""
+    try:
+        맡긴 = await asyncio.to_thread(relay.배경맡긴것)
+    except Exception as e:                                         # noqa: BLE001
+        print(f"[배경] 맡긴 것을 못 읽었다: {type(e).__name__}: {e}")
+        return
+    for x in 맡긴:
+        아이디 = x["아이디"]
+        if 아이디 in _다시맡은것:
+            continue
+        ch = client.get_channel(x["채널id"])
+        if ch is None:
+            try:
+                ch = await client.fetch_channel(x["채널id"])
+            except Exception:                                      # noqa: BLE001 -- 채널이 사라졌으면 놓는다
+                await asyncio.to_thread(relay.배경놓음, 아이디)
+                continue
+        _다시맡은것.add(아이디)
+        print(f"[배경] 다시 맡는다: {x['배경'].get('무엇')} (채널 {x['채널id']})")
+        asyncio.create_task(_배경지켜보기(ch, x["배경"], 간격=5.0))
+
 
 ATTACHMENTS_DIR = os.path.join(REPO_DIR, "inbox", "discord_attachments")
 
