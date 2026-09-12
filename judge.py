@@ -41,8 +41,23 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent
 
-# 칸마다 무게. **드러내 둔다** -- 숨은 무게는 고칠 수도 의심할 수도 없다.
+# ------------------------------------------------------------------ J 의 네 파라미터
+# 사용자(2026-09-12): latency/accuracy/memory 같은 특정 잣대에 묶지 말고 일반형으로 둔다.
+#
+#   J : (P, X, Θ, R) -> Y
+#
+#     P  평가 대상 프로그램(여기서는 저장소 나무)
+#     X  입력·데이터·작업 조건      (어느 파일을 보나, 원장을 어디서 읽나)
+#     Θ  평가 기준·목표·가중치      (어느 칸을 보나, 무게, 방향)
+#     R  실행·측정 프로토콜          (무엇으로 재나, 시한)
+#
+# **평가에 영향을 주는 외부 조건을 전부 파라미터로 끌어낸다.** 같은 프로그램이라도 X·Θ·R 이 바뀌면
+# Y 가 달라지므로, 코드 안에 박아 두면 같은 수를 다른 뜻으로 읽게 된다(그것이 조용한 거짓 초록이다).
+# 그래서 J 는 Y 와 함께 (X, Θ, R) 을 되돌려주고, 원장에 적을 때도 같이 적는다 -- 재현 가능해야 한다.
 무게 = {"관찰파일수": 10.0, "거짓초록수": -3.0, "미정의수": -5.0, "검사없는파일수": -1.0}
+기본Θ = {"무게": dict(무게), "방향": "최대"}        # 목표: Y 를 크게
+기본X = {"파일들": None, "원장저장소": None}        # None = 저장소 전체 · 제 원장
+기본R = {"측정자": "잣대", "초": 0}                # 원장과 정적 사실만 읽는다(검사를 돌리지 않는다)
 
 
 def _코드파일들(repo: Path) -> "list[str]":
@@ -51,7 +66,7 @@ def _코드파일들(repo: Path) -> "list[str]":
     return [x for x in r.stdout.split("\0") if x and not x.startswith("tests/")]
 
 
-def 잣대(repo=None, 원장저장소=None) -> dict:
+def 잣대(repo=None, 원장저장소=None, 파일들: "list[str]" = None) -> dict:
     """J 의 칸들. **여기서 검사를 돌리지 않는다** -- 이미 난 판정(mutate 원장)과 정적 사실만 읽는다.
 
     `원장저장소` 를 따로 주면 변형 원장은 그쪽에서 읽는다(후보 판을 재면서 원장은 본 저장소의 것을
@@ -67,7 +82,7 @@ def 잣대(repo=None, 원장저장소=None) -> dict:
                            and (repo / str(x.get("target", "")).split(":")[0]).is_file()])
     except Exception:                                  # noqa: BLE001 -- 원장이 없으면 0 이다
         pass
-    코드들 = _코드파일들(repo)
+    코드들 = list(파일들) if 파일들 is not None else _코드파일들(repo)
     칸["코드파일수"] = len(코드들)
     칸["검사파일수"] = len(list((repo / "tests").glob("test_*.py"))) if (repo / "tests").is_dir() else 0
     try:
@@ -87,11 +102,85 @@ def 잣대(repo=None, 원장저장소=None) -> dict:
     return 칸
 
 
-def J(repo=None, 원장저장소=None) -> "tuple[float, dict]":
-    """(점수, 칸). 점수는 칸의 가중합 -- 칸을 같이 돌려주므로 **어디서 왔는지 볼 수 있다.**"""
-    칸 = 잣대(repo, 원장저장소)
-    점수 = sum(무게[k] * 칸.get(k, 0) for k in 무게)
-    return 점수, 칸
+def J(P=None, X: dict = None, Θ: dict = None, R: dict = None) -> dict:
+    """J(P; X, Θ, R) -> {Y, 칸, X, Θ, R}. **Y 하나만 주지 않는다** -- 무엇을 어떻게 재서 나온 수인지
+    같이 준다. 그래야 다른 때·다른 조건의 Y 와 견줄 수 있는지 판단할 수 있다.
+
+    R["측정자"] 에 함수를 주면 그것으로 칸을 잰다(기본은 이 파일의 `잣대`). 검사에서 가짜 측정자를
+    끼워 J 의 논리만 따로 붙들 수 있다."""
+    X = {**기본X, **(X or {})}
+    Θ = {**기본Θ, **(Θ or {})}
+    R = {**기본R, **(R or {})}
+    재는자 = R.get("측정자")
+    if callable(재는자):
+        칸 = 재는자(P, X.get("원장저장소"))            # R -- 측정 프로토콜을 갈아끼운다(검사에서 쓴다)
+    else:
+        칸 = 잣대(P, X.get("원장저장소"), X.get("파일들"))
+    w = Θ.get("무게") or 무게
+    Y = sum(w.get(k, 0.0) * 칸.get(k, 0) for k in w)
+    if Θ.get("방향") == "최소":
+        Y = -Y
+    return {"Y": Y, "칸": 칸, "X": X, "Θ": {"무게": dict(w), "방향": Θ.get("방향")}, "R": dict(R)}
+
+
+def ΔJ(P, P2, X: dict = None, Θ: dict = None, R: dict = None) -> dict:
+    """Δ_J(P, P'; X, Θ, R) = J(P') - J(P). **같은 (X, Θ, R) 로 둘을 재야 뜻이 있다.**"""
+    a, b = J(P, X, Θ, R), J(P2, X, Θ, R)
+    바뀐 = {k: (a["칸"].get(k, 0), b["칸"].get(k, 0)) for k in (Θ or 기본Θ).get("무게", 무게)
+          if a["칸"].get(k, 0) != b["칸"].get(k, 0)}
+    return {"Δ": b["Y"] - a["Y"], "전": a["Y"], "후": b["Y"], "칸변화": 바뀐,
+            "나아졌나": b["Y"] > a["Y"], "X": a["X"], "Θ": a["Θ"], "R": a["R"]}
+
+
+def 구별하나(Pa, Pb, X: dict = None, Θ: dict = None, R: dict = None) -> "tuple[bool, str]":
+    """Obs_J -- **다른 두 프로그램을 J 가 구별하나.**  Pa ≁ Pb  =>  J(Pa) ≠ J(Pb).
+
+    구별하지 못하는 J 는 `ledgerstat` 의 여섯 칸이 늘 0 이던 것과 같다 -- 수는 나오는데 아무것도
+    말하지 않는다. 그런 J 위에 세운 argmax 는 **아무 방향으로도** 최적화하지 않는다."""
+    a, b = J(Pa, X, Θ, R), J(Pb, X, Θ, R)
+    if a["Y"] != b["Y"]:
+        return True, f"구별한다 (J {a['Y']:.1f} vs {b['Y']:.1f})"
+    return False, f"**구별하지 못한다** (둘 다 J {a['Y']:.1f} · 칸도 {'같다' if a['칸'] == b['칸'] else '다른데 합이 같다'})"
+
+
+def 타당한가(쌍들: "list[tuple]", X: dict = None, Θ: dict = None, R: dict = None) -> dict:
+    """Valid(J) -- **다르다고 알려진 쌍들을 J 가 다 구별하나.** 하나라도 못 구별하면 J 는 타당하지 않다.
+
+    쌍 = (Pa, Pb, 이름). 이 함수가 J 에 대한 red-green 이다: J 를 속이는 쌍을 넣어 깨뜨려 본다."""
+    결과 = []
+    for 쌍 in 쌍들 or []:
+        Pa, Pb = 쌍[0], 쌍[1]
+        이름 = 쌍[2] if len(쌍) > 2 else f"{Pa} vs {Pb}"
+        됨, 말 = 구별하나(Pa, Pb, X, Θ, R)
+        결과.append({"이름": 이름, "구별": 됨, "말": 말})
+    못한것 = [x for x in 결과 if not x["구별"]]
+    return {"타당한가": (bool(결과) and not 못한것), "못한것": 못한것, "결과": 결과,
+            "말": (f"쌍 {len(결과)}개를 다 구별한다" if 결과 and not 못한것
+                  else (f"**{len(못한것)}개를 못 구별한다**: " + ", ".join(x["이름"] for x in 못한것[:4])
+                        if 못한것 else "견줄 쌍이 없다 -- 타당성을 주장할 수 없다"))}
+
+
+def 개선인가(P, P2, V=None, 쌍들: "list[tuple]" = None,
+          X: dict = None, Θ: dict = None, R: dict = None) -> dict:
+    """Improve(P, P') = V(P') ∧ Valid(J) ∧ J(P') ≻ J(P). **세 항이 다 서야 개선이다.**
+
+    V 는 주입받는다(여기서 검증하지 않는다 -- rehearsal·mutate 의 몫이다).
+    `쌍들` 을 주면 Valid(J) 를 그 자리에서 확인한다. 안 주면 Valid 는 못잼이고, **개선을 주장하지 않는다.**"""
+    V통과, V말 = (V(P2) if callable(V) else (True, "V 를 주지 않았다"))
+    타당 = 타당한가(쌍들, X, Θ, R) if 쌍들 else {"타당한가": False, "말": "Valid(J) 를 안 쟀다"}
+    델타 = ΔJ(P, P2, X, Θ, R)
+    됨 = bool(V통과) and bool(타당["타당한가"]) and bool(델타["나아졌나"])
+    막힌 = []
+    if not V통과:
+        막힌.append(f"V(P')=FAIL: {V말}")
+    if not 타당["타당한가"]:
+        막힌.append(f"Valid(J) 안 섬: {타당['말']}")
+    if not 델타["나아졌나"]:
+        막힌.append(f"ΔJ = {델타['Δ']:+.1f} (나아지지 않았다)")
+    return {"개선인가": 됨, "V": V통과, "Valid(J)": 타당["타당한가"], "ΔJ": 델타["Δ"],
+            "칸변화": 델타["칸변화"], "막힌것": 막힌,
+            "말": ("개선이다 -- V 통과 · J 타당 · ΔJ " + f"{델타['Δ']:+.1f}") if 됨
+                 else ("개선이 아니다 -- " + " · ".join(막힌))}
 
 
 def 더나은가(이전칸: dict, 지금칸: dict) -> "tuple[bool, str]":
@@ -131,7 +220,8 @@ def 고르기(후보들: "list[dict]", V=None, J자=None) -> dict:
 
 
 def 보고(repo=None) -> str:
-    점수, 칸 = J(repo)
+    _r = J(repo)
+    점수, 칸 = _r["Y"], _r["칸"]
     줄 = [f"**J(P) = {점수:.1f}**  (무게: " + ", ".join(f"{k}×{v:+g}" for k, v in 무게.items()) + ")"]
     for k in ("관찰파일수", "거짓초록수", "미정의수", "검사없는파일수"):
         줄.append(f"  {k:12} {칸.get(k, 0):>6}   기여 {무게[k] * 칸.get(k, 0):+.1f}")
