@@ -224,6 +224,176 @@ def _HEAD글(판: Path, rel: str) -> "str | None":
     return r.stdout if r.returncode == 0 else None
 
 
+def _함수자리(src: str) -> dict:
+    """뺄 수 있는 함수 자리. {이름: {시작, 끝, 열, 들여, 지문}} -- 위에서부터. 클래스 안은 `클래스.이름`.
+
+    시작·끝 = 몸통의 첫 줄·마지막 줄(1부터). 열 = 몸통이 서명과 **같은 줄**에 있으면(`def f(): return 1`,
+    여러 줄 서명의 끝 줄에 붙은 것도) 그 줄에서 몸통이 시작하는 열, 아니면 None. 들여 = 몸통이 들여쓰일 칸.
+    지문 = 독스트링을 뺀 AST 덤프 -- 주석·독스트링만 바뀐 함수는 지문이 같아 절제 단위가 안 된다.
+    함수 안의 함수는 따로 안 센다(부모와 같이 빠진다)."""
+    import ast, copy
+    try:
+        나무 = ast.parse(src)
+    except SyntaxError:
+        return {}
+    줄들 = src.splitlines()
+    out: dict = {}
+
+    def 담기(노드, 앞=""):
+        if not 노드.body:
+            return
+        첫 = 노드.body[0]
+        같은줄 = bool(줄들[첫.lineno - 1][:첫.col_offset].strip())     # 서명 끝과 몸통이 한 줄
+        복 = copy.deepcopy(노드)
+        if (isinstance(복.body[0], ast.Expr) and isinstance(getattr(복.body[0], "value", None), ast.Constant)
+                and isinstance(복.body[0].value.value, str)):
+            del 복.body[0]
+        out[f"{앞}{노드.name}"] = {"시작": 첫.lineno, "끝": 노드.end_lineno,
+                                  "열": 첫.col_offset if 같은줄 else None,
+                                  "들여": 노드.col_offset + 4 if 같은줄 else 첫.col_offset,
+                                  "지문": ast.dump(복)}
+
+    for 노드 in 나무.body:
+        if isinstance(노드, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            담기(노드)
+        elif isinstance(노드, ast.ClassDef):
+            for 안 in 노드.body:
+                if isinstance(안, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    담기(안, f"{노드.name}.")
+    return out
+
+
+def _절제한글(src: str, 이름: str) -> "str | None":
+    """그 함수의 **몸통만** `raise NotImplementedError` 로 바꾼 글. 못 찾으면 None.
+    서명·데코레이터·기본값은 그대로 둔다 -- 임포트와 호출 자리는 살아 있고 **동작만 사라진다**."""
+    자리 = _함수자리(src).get(이름)
+    if not 자리:
+        return None
+    줄들 = src.splitlines(keepends=True)
+    시작, 끝 = 자리["시작"], 자리["끝"]
+    빼기 = " " * 자리["들여"] + 'raise NotImplementedError("절제")\n'
+    if 자리["열"] is not None:                       # `def f(): return 1` -- 서명만 남기고 줄을 끊는다
+        머리 = 줄들[시작 - 1][:자리["열"]].rstrip() + "\n"
+        return "".join(줄들[:시작 - 1]) + 머리 + 빼기 + "".join(줄들[끝:])
+    return "".join(줄들[:시작 - 1]) + 빼기 + "".join(줄들[끝:])
+
+
+절제상한 = 8          # 기능 하나마다 검사를 다 돌린다 -- 비싸다. 많으면 앞 것만
+
+
+def _절제단위(판: Path, 코드: "list[str]") -> "list[tuple[str, str | None]]":
+    """뺄 단위 목록 [(파일, 함수이름|None)]. None 은 파일 전체(함수가 하나도 없는 새 파일).
+    바뀐 파일의 함수 중 **지문이 HEAD 와 다른 것**만 -- 새 함수, 몸통·서명이 바뀐 함수. 새 파일은 함수마다."""
+    단위: list = []
+    for rel in 코드:
+        if not (판 / rel).is_file():
+            continue
+        후 = (판 / rel).read_text(encoding="utf-8", errors="replace")
+        전 = _HEAD글(판, rel)
+        전자리 = _함수자리(전) if 전 is not None else {}
+        후자리 = _함수자리(후)
+        if 전 is None and not 후자리:
+            단위.append((rel, None))                   # 상수뿐인 새 파일 -- 통째로 빼 본다
+            continue
+        for 이름, 자리 in 후자리.items():
+            if 이름 not in 전자리 or 전자리[이름]["지문"] != 자리["지문"]:
+                단위.append((rel, 이름))
+    return 단위
+
+
+def 절제검사(repo=None, 판=None, 초: int = 300, 상한: int = None) -> dict:
+    """**기능을 빼면 검사가 무너지나.** {성립, 말, 잰것:[{이름, 무너짐, 어디}], 안잡힌것, 못잼}.
+
+    사용자(2026-09-12): "기능의 존재를 주장하지 말고, 그 기능을 제거했을 때 검사가 무너지고 다시 넣었을
+    때 복구되는지를 볼 수 있도록 해라."
+
+    공허검사(아래)는 **패치 전체**를 빼고 본다 -- 그 한 덩어리가 검사에 걸리는지만 안다. 그래서 함수 셋을
+    더했는데 그중 하나만 검사에 걸려도 통째로는 초록이다. 나머지 둘은 지워도 아무도 모른다.
+    여기서는 **하나씩** 뺀다: 바뀐 함수마다 몸통을 NotImplementedError 로 바꾸고(서명은 그대로 두므로
+    임포트는 살아 있다) 패치의 검사를 돌린다. 빨개져야 한다. 초록이면 그 함수는 아무 검사도 안 본다.
+
+    '다시 넣으면 복구' 의 반쪽은 이미 있다 -- 절제 안 한 판이 초록이라는 사실(`시험`)이 그것이다.
+    그래서 한 쌍이 완성된다: **빼면 빨강(여기) · 넣으면 초록(리허설)**.
+
+    재는 검사는 **패치의 검사 파일**뿐이다(공허검사와 같은 기준) -- 이 저장소는 행동 변경마다 그 변경을 재는
+    검사를 패치에 담게 하므로, 저장소의 다른 검사가 우연히 잡아 주는 것은 안 친다.
+    비싸므로 `절제상한` 개까지만 재고, 다 합쳐 `초*3` 을 넘기면 남은 것은 못잼으로 적는다.
+    """
+    import os, shutil, tempfile, time
+    repo = Path(repo or REPO)
+    판 = Path(판) if 판 else repo
+    상한 = 절제상한 if 상한 is None else 상한
+    검사, 코드, 지움 = _판변경(판)
+    out = {"성립": True, "말": "", "잰것": [], "안잡힌것": [], "못잼": []}
+    if not 검사:
+        out["말"] = "패치에 검사가 없다 -- 공허검사가 먼저 막는다"
+        return out
+    단위 = _절제단위(판, 코드)
+    if not 단위:
+        out["말"] = "뺄 수 있는 단위가 없다(검사만 바뀌었거나, 함수 밖 상수·주석만 바뀌었다)"
+        return out
+    넘침 = max(0, len(단위) - 상한)
+    단위 = 단위[:상한]
+    시작때 = time.monotonic()
+    for i, (rel, 이름) in enumerate(단위):
+        이름말 = f"{rel}:{이름}" if 이름 else f"{rel}(파일 전체)"
+        if time.monotonic() - 시작때 > 초 * 3:
+            out["못잼"].extend(f"{r}:{n or '파일'} -- 시간 상한" for r, n in 단위[i:])
+            break
+        tmp = Path(tempfile.mkdtemp(prefix="se-절제-"))
+        try:
+            r = subprocess.run(["git", "-C", str(repo), "worktree", "add", "--detach", str(tmp), "HEAD"],
+                               capture_output=True, text=True)
+            if r.returncode != 0:
+                out["못잼"].append(f"{이름말} -- 판을 못 꺼냈다")
+                continue
+            for x in 검사 + 코드:                      # 후보를 그대로 옮기고 지운 것은 지운다
+                src = 판 / x
+                if src.is_file():
+                    (tmp / x).parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy(src, tmp / x)
+            for x in 지움:
+                (tmp / x).unlink(missing_ok=True)
+            if 이름 is None:
+                (tmp / rel).unlink(missing_ok=True)
+            else:
+                새글 = _절제한글((tmp / rel).read_text(encoding="utf-8", errors="replace"), 이름)
+                if 새글 is None:
+                    out["못잼"].append(f"{이름말} -- 그 자리를 못 찾았다")
+                    continue
+                (tmp / rel).write_text(새글, encoding="utf-8")
+            env = {**os.environ, "PYTHONPATH": str(tmp)}
+            무너짐, 어디 = False, ""
+            for t in 검사:
+                if not (tmp / t).is_file():
+                    continue
+                try:
+                    rc = subprocess.run(["python3", t], cwd=str(tmp), env=env, capture_output=True,
+                                        text=True, timeout=초).returncode
+                except subprocess.TimeoutExpired:
+                    rc = 124
+                if rc != 0:
+                    무너짐, 어디 = True, t
+                    break
+            out["잰것"].append({"이름": 이름말, "무너짐": 무너짐, "어디": 어디})
+            if not 무너짐:
+                out["안잡힌것"].append(이름말)
+        finally:
+            subprocess.run(["git", "-C", str(repo), "worktree", "remove", "--force", str(tmp)],
+                           capture_output=True, text=True)
+            shutil.rmtree(tmp, ignore_errors=True)
+    if out["안잡힌것"]:
+        out["성립"] = False
+        out["말"] = (f"**절제해도 검사가 안 무너진다**: {', '.join(out['안잡힌것'][:4])}. 그 기능을 빼도 패치의 검사"
+                     f"({', '.join(검사[:3])})가 초록이다 -- 그 기능은 아무 검사도 안 본다. 그것을 실제로 부르고 "
+                     f"결과를 단언하는 검사를 더해라(기능의 존재를 글로 주장하는 것이 아니라).")
+    else:
+        out["말"] = (f"절제 {len(out['잰것'])}개 다 무너졌다(빼면 빨강 · 넣으면 초록) -- 검사가 기능마다 걸린다"
+                     + (f" · 상한으로 {넘침}개는 안 쟀다" if 넘침 else "")
+                     + (f" · 못 잰 것 {len(out['못잼'])}개" if out["못잼"] else ""))
+    return out
+
+
 def 공허검사(repo=None, 판=None, 초: int = 300) -> dict:
     """패치의 초록이 **뜻이 있나**. {공허: bool, 말, 검사들, 코드들, 빨간검사}.
 
