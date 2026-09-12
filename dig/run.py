@@ -317,6 +317,8 @@ def main(argv=None) -> int:
                     help="--찾기 로 캔 주소 중 위에서 몇 개를 이어서 팔지")
     ap.add_argument("--문", dest="doors", default="",
                     help="--찾기 에서 쓸 문만 고른다 (쉼표. 이름은 --문목록)")
+    ap.add_argument("--망", dest="netcheck", action="store_true",
+                    help="이 기계에서 바깥이 되나 -- 문마다 코드·까닭. 끝값 0 되면 된다")
     ap.add_argument("--문목록", dest="list_doors", action="store_true",
                     help="두드릴 문 이름을 낸다")
     ap.add_argument("--앞문만", dest="front", action="store_true",
@@ -337,6 +339,11 @@ def main(argv=None) -> int:
         for 이름, 꼴 in SC.틀들():
             print(f"  {이름:<12} {꼴}")
         return 0
+
+    if a.netcheck:
+        r = SC.망점검(틈=min(a.timeout, 10.0))
+        print(SC.망보고(r))
+        return 0 if r["됐나"] else 1
 
     찾을말 = [w.strip() for w in a.find.split(",") if w.strip()]
     urls = list(a.urls)

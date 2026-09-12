@@ -21,7 +21,8 @@ HELP = f"""**수집 (harvest)** -- 자가 틀린 자리를 GitHub·Hugging Face 
 `{PREFIX} 틈` 자(eval/tasks)가 참고를 줘도 틀린 과제 -> 검색어 (호출 0회)
 `{PREFIX} <검색어>` 그 말로 한 바퀴 (백그라운드, 관리 채널만)
 `{PREFIX} 틈으로` 틈의 검색어 전부로 한 바퀴 (백그라운드, 관리 채널만)
-`{PREFIX} 상태` 원장 요약 · 백그라운드 생사"""
+`{PREFIX} 상태` 원장 요약 · 백그라운드 생사
+`{PREFIX} 망` **이 기계에서 바깥이 되나** -- 문마다 코드·까닭 (망을 쓴다, 그 자리에서 답한다)"""
 
 
 def run(text: str, runner=None, allow_write: bool = True) -> "str | None":
@@ -54,6 +55,11 @@ def run(text: str, runner=None, allow_write: bool = True) -> "str | None":
 
     if not 말:
         return HELP
+    if 말 == "망":
+        # 망이 되는지는 **재면 알 수 있다.** 재는 길이 없으면 두뇌가 원인을 지어낸다
+        # (실측 2026-09-12: "시스템 내부의 인코딩 제한" · "구글이 차단" -- 둘 다 사실이 아니었다).
+        from dig import search as SC
+        return SC.망보고(SC.망점검(틈=8.0))[:1900]
     if not allow_write:
         return "수집은 관리 채널에서만 -- 망을 쓰고 원장에 적는다."
     if 말 == "틈으로":

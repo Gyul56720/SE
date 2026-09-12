@@ -147,9 +147,49 @@ def _왜(e, url: str) -> str:
     return f"{type(e).__name__}: {str(e)[:80]}"
 
 
+def 주소정규화(url: str) -> str:
+    """날 비아스키(한글 등)가 든 주소를 urllib 이 받을 꼴로. 이미 퍼센트 인코딩된 것은 건드리지 않는다.
+
+    왜: `urllib.request` 는 주소가 아스키여야 한다. 한글이 그대로 들어 있으면
+    `UnicodeEncodeError: 'ascii' codec can't encode characters` 로 죽는다. 실측 2026-09-12:
+    봇이 `--url 'https://search.naver.com/...?query=한글'` 로 캐다 이 오류를 만났고, 보고에는
+    **"시스템 내부의 인코딩 제한으로 한글 검색어가 거부된다"** 고 적혔다. 제한이 아니라 빠진
+    한 줄이었다 -- dig/search.py 의 질의는 quote 를 지나는데 `--url` 과 따라가는 안쪽 링크는
+    안 지났다. 잘못된 진단은 고칠 자리를 가린다.
+
+    집(netloc)은 IDNA 로, 경로·질의·조각은 퍼센트 인코딩으로. `%` 가 이미 있는 자리는
+    safe 에 넣어 두 번 인코딩되지 않게 한다."""
+    u = (url or "").strip()
+    if u.isascii() and " " not in u:
+        return u                               # 멀쩡한 주소는 손대지 않는다(22개 검색 틀을 건드리지 않으려고)
+    p = urllib.parse.urlsplit(u)
+    try:
+        host = p.hostname.encode("idna").decode("ascii") if p.hostname and not p.hostname.isascii() else (p.hostname or "")
+    except (UnicodeError, AttributeError):
+        host = p.hostname or ""
+    netloc = host
+    if p.port:
+        netloc = f"{netloc}:{p.port}"
+    if p.username:
+        사용자 = urllib.parse.quote(p.username, safe="%")
+        if p.password:
+            사용자 += ":" + urllib.parse.quote(p.password, safe="%")
+        netloc = f"{사용자}@{netloc}"
+    return urllib.parse.urlunsplit((
+        p.scheme,
+        netloc,
+        urllib.parse.quote(p.path, safe="/%:@!$&'()*+,;=~"),
+        urllib.parse.quote(p.query, safe="/%:@!$&'()*+,;=~?"),
+        urllib.parse.quote(p.fragment, safe="/%:@!$&'()*+,;=~?"),
+    ))
+
+
 def 한번(url: str, 헤더: dict, 틈: float = 기본틈) -> 응답:
     시작 = time.time()
-    req = urllib.request.Request(url, headers=헤더)
+    # **정규화는 urlopen 직전 한 자리에서만.** 돌려주는 응답의 url 은 부른 쪽이 준 그대로 둔다 --
+    # 실측 2026-09-12: 받기() 에서 미리 바꿨더니 한글 집이 punycode 로 바뀌어, 집 이름으로 갈래를
+    # 정하던 곳(tests/test_jaso_crawl 의 가짜 문)이 깨졌다. precheck 가 그것을 잡았다.
+    req = urllib.request.Request(주소정규화(url), headers=헤더)
     try:
         with urllib.request.urlopen(req, timeout=틈) as r:     # noqa: S310
             raw = _풀기(r.read(), r.headers.get("Content-Encoding", "") or "")
