@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import shutil
 import sys
+import urllib.parse
 import tempfile
 from pathlib import Path
 
@@ -170,27 +171,52 @@ print("\n== 문 원장: 잰 것이 지식이 된다 -- 결과 0 이었던 집을
 _원장집 = Path(tempfile.mkdtemp(prefix="문원장-"))
 _원여럿3 = FT.여럿
 try:
-    def _구글만빈다(urls, 동시=8, 틈=0, 벌수=0):
-        return [FT.응답(url=u, 코드=200, 꼴="text/html",
-                      몸통=("<html>consent</html>" if "google" in u
-                          else '<a href="https://example.org/a">첫</a><a href="https://example.net/b">둘</a>')) for u in urls]
-    FT.여럿 = _구글만빈다
-    구글문 = [("insta-g", "https://www.google.com/search?q=site:instagram.com+{q}"), ("mojeek", "https://www.mojeek.com/search?q={q}")]
-    ok(SC.틀검사(구글문, repo=_원장집) == [], "잰 적이 없으면 꼴 검사만 -- 아직 모른다")
+    def _한집만거절(urls, 동시=8, 틈=0, 벌수=0):
+        out = []
+        for u in urls:
+            if "deny.example" in u:                # 403 -- 200 을 한 번도 안 준다
+                out.append(FT.응답(url=u, 코드=403, 몸통="", 왜="HTTP 403 -- 막았다"))
+            else:
+                out.append(FT.응답(url=u, 코드=200, 꼴="text/html",
+                                 몸통='<a href="https://example.org/a">첫</a><a href="https://example.net/b">둘</a>'))
+        return out
+    FT.여럿 = _한집만거절
+    막문 = [("거절-g", "https://deny.example/search?q={q}"), ("mojeek", "https://www.mojeek.com/search?q={q}")]
+    ok(SC.틀검사(막문, repo=_원장집) == [], "잰 적이 없으면 꼴 검사만 -- 아직 모른다")
     _원틀 = SC.틀
-    SC.틀 = tuple(구글문)
+    SC.틀 = tuple(막문)
     try:
-        r = SC.망점검(틈=1, repo=_원장집)                                  # 두드려 본다 -- 이 한 번이 원장이 된다
+        for _ in range(2):                         # 두 번 재야 집으로 인정한다(한 번 403 은 사고일 수 있다)
+            r = SC.망점검(틈=1, repo=_원장집)
     finally:
         SC.틀 = _원틀
-    ok((_원장집 / "dig" / "door_ledger.jsonl").is_file() and len(SC.문원장읽기(_원장집)) == 2, "망점검이 문마다 원장에 적는다")
+    ok((_원장집 / "dig" / "door_ledger.jsonl").is_file() and len(SC.문원장읽기(_원장집)) == 4, "망점검이 문마다 원장에 적는다")
     지 = SC.문지식(_원장집)
-    ok(지.get("google.com", {}).get("빈") == 1 and 지.get("mojeek.com", {}).get("있음") == 1, f"집마다 빈/있음을 센다 ({지})")
-    ok(list(SC.막힌집들(_원장집)) == ["google.com"], f"한 번도 결과를 준 적 없는 집만 막힌 집이다 ({list(SC.막힌집들(_원장집))})")
-    탈 = SC.틀검사(구글문, repo=_원장집)
-    ok(len(탈) == 1 and 탈[0].startswith("insta-g") and "전에 재 보니 결과 0" in 탈[0],
-       f"**구글 집을 문으로 넣으면 이제 코드가 잡는다** -- 세상 지식이 누적된 측정이 됐다 ({탈[0][:60]})")
-    ok(SC.틀검사([("x-g", "https://google.co.kr/search?q={q}")], repo=_원장집) == [], "다른 집(google.co.kr)은 아직 안 쟀으니 안 잡는다 -- 지어내지 않는다")
+    ok(지.get("deny.example", {}).get("이백") == 0 and 지.get("mojeek.com", {}).get("있음") == 2,
+       f"집마다 200 받은 수와 결과 있음을 센다 ({지})")
+    ok(list(SC.막힌집들(_원장집)) == ["deny.example"], f"200 을 한 번도 못 받은 집만 막힌 집이다 ({list(SC.막힌집들(_원장집))})")
+    탈 = SC.틀검사(막문, repo=_원장집)
+    ok(len(탈) == 1 and 탈[0].startswith("거절-g") and "한 번도 200 을 못 받았다" in 탈[0],
+       f"**거절하는 집을 문으로 넣으면 코드가 잡는다** -- 세상 지식이 누적된 측정이 됐다 ({탈[0][:60]})")
+    ok(SC.틀검사([("x-g", "https://deny2.example/search?q={q}")], repo=_원장집) == [], "다른 집은 아직 안 쟀으니 안 잡는다 -- 지어내지 않는다")
+    # **제 문을 거절하면 안 된다.** 실측 2026-09-12(VM): 첫 판은 '결과 0' 을 막힌 집으로 쳐서 저장소의 제 문
+    # 일곱 개(bing · wiki-ko · wiki-en · wikidata · openlibrary · startpage · mojeek)를 전부 찍었고 이 검사가
+    # 빨개졌다. 까닭은 계수기였다 -- 답이 제 집 안에 있는 문은 '바깥으로 나가는 주소' 가 0 이다.
+    _원장집2 = Path(tempfile.mkdtemp(prefix="문원장2-"))
+    try:
+        (_원장집2 / "dig").mkdir()
+        import json as _js, time as _tm
+        때 = _tm.strftime("%Y-%m-%dT%H:%M:%SZ", _tm.gmtime())
+        with open(_원장집2 / "dig" / "door_ledger.jsonl", "w", encoding="utf-8") as f:
+            for 이름, 꼴 in SC.틀:                  # 모든 제 문이 200 인데 결과 0 이었다고 적어 둔다
+                집 = SC._집(urllib.parse.urlsplit(꼴.replace("{q}", "q")).netloc)
+                for _ in range(3):
+                    f.write(_js.dumps({"때": 때, "이름": 이름, "집": 집, "코드": 200, "결과": 0, "왜": "", "말": "t"},
+                                      ensure_ascii=False) + "\n")
+        ok(SC.막힌집들(_원장집2) == {}, "200 을 받았으면 결과가 0 이어도 막힌 집이 아니다")
+        ok(SC.틀검사(repo=_원장집2) == [], "**저장소의 제 문을 거절하지 않는다** -- 잘못된 검사는 없느니만 못하다")
+    finally:
+        shutil.rmtree(_원장집2, ignore_errors=True)
 finally:
     FT.여럿 = _원여럿3
     shutil.rmtree(_원장집, ignore_errors=True)
