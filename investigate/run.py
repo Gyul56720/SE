@@ -39,11 +39,13 @@ REPO = Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-기본시한초 = 3600
-기본최대바퀴 = 40
-되풀이한도 = 3          # 판정·diff 가 이만큼 연속 같으면 멈춘다
+기본시한초 = 6 * 3600   # 사용자(2026-09-12): "6시간이 걸려도 좋으니 스스로 해결해보라고"
+기본최대바퀴 = 400
+되풀이한도 = 6          # 판정·diff 가 이만큼 연속 같으면 멈춘다 -- 그 전에 제2의 뇌를 두 번 쓴다
+제2의뇌때 = (2, 4)      # 되풀이가 이만큼 쌓이면 **코드가** dig·graph 로 찾아 다음 바퀴에 들려 보낸다
 
 두뇌 = None     # 검사 주입: (prompt, thread_id) -> str.  None 이면 봇의 run_admin_agent
+모으기 = None   # 검사 주입: (증상) -> list[str].  None 이면 repair._모으기기본 (dig/harvest + graph/ask)
 판정기 = None   # 검사 주입: (repo, 재현명령) -> list[dict{"이름","끝값","꼬리"}]
 진단기 = None   # 검사 주입: (글, repo) -> dict.  None 이면 diagnose.진단
 
@@ -139,8 +141,21 @@ def _diff지문(repo: Path) -> str:
 
 
 # ------------------------------------------------------------------ 프롬프트
+def _제2의뇌(증상: str, 꼬리: str) -> "list[str]":
+    """막혔을 때 **코드가** 제2의 뇌를 연다. 두뇌에게 '찾아보라' 고 권하는 것이 아니라 찾아서 들려 준다.
+
+    사용자(2026-09-12): "모르면 제2의 뇌나 dig 로 검색해서 정보 찾고 코드 고치고 문제 있으면 또
+    수정하고." repair 의 모으기(dig/harvest 한 바퀴 + graph 조회)를 그대로 쓴다 -- 두 벌 아님."""
+    try:
+        from repair import run as R
+        물음 = (증상 + " " + (꼬리.splitlines()[-1] if 꼬리 else ""))[:300]
+        return list((모으기 or R._모으기기본)(물음))[:6]
+    except Exception as e:                                          # noqa: BLE001
+        return [f"(제2의 뇌를 못 열었다: {type(e).__name__})"]
+
+
 def 프롬프트(증상: str, 진: dict, 판정: "list[dict]", 해본: "list[dict]", 바퀴: int, 남은초: float,
-          되풀이: int, 재현명령: str) -> str:
+          되풀이: int, 재현명령: str, 참고: "list[str] | None" = None) -> str:
     빨강 = [p for p in 판정 if p["끝값"] != 0]
     줄 = [f"[조사 바퀴 {바퀴} · 남은 시간 {int(남은초 // 60)}분] **끝까지 판다. 판정은 끝값이 한다.**",
          f"증상: {증상}",
@@ -164,6 +179,11 @@ def 프롬프트(증상: str, 진: dict, 판정: "list[dict]", 해본: "list[dic
         줄.append("지난 바퀴에 해 본 것 (같은 것을 되풀이하지 마라):")
         for h in 해본[-4:]:
             줄.append(f"  바퀴 {h['바퀴']}: {h['요약'][:160]}  -> 빨강 {h['빨강']}")
+    if 참고:
+        줄.append("")
+        줄.append("제2의 뇌가 찾아 온 것 (막혀서 코드가 dig·graph 로 찾았다 -- 읽고 갈래를 바꿔라):")
+        for x in 참고[:6]:
+            줄.append(f"  · {str(x)[:240]}")
     if 되풀이 >= 2:
         줄.append("")
         줄.append("**두 바퀴째 아무것도 안 바뀌었다.** 같은 갈래는 막혔다. 다른 가설로 가라: "
@@ -246,6 +266,8 @@ def 조사(증상: str, 재현명령: str = "", 증거글: str = "", 시한초: 
         return 결과
 
     되풀이 = 0
+    참고: list = []
+    뇌연횟수 = 0
     for n in range(1, max(1, 최대바퀴) + 1):
         남은초 = 시한초 - (time.monotonic() - 시작)
         if 남은초 <= 0:
@@ -254,7 +276,14 @@ def 조사(증상: str, 재현명령: str = "", 증거글: str = "", 시한초: 
         결과["바퀴"] = n
         마지막꼬리 = "\n".join(p["꼬리"] for p in 판정 if p["끝값"])
         진 = (진단기 or _진단기본)((증거글 or "") + "\n" + 마지막꼬리 + "\n" + 증상, repo)
-        p = 프롬프트(증상, 진, 판정, 해본, n, 남은초, 되풀이, 재현명령)
+        if 되풀이 in 제2의뇌때 and 뇌연횟수 < len(제2의뇌때):
+            # **막히면 사람이 아니라 제2의 뇌다.** 같은 실패가 쌓이면 코드가 찾아서 들려 보낸다.
+            참고 = _제2의뇌(증상, 마지막꼬리)
+            뇌연횟수 += 1
+            _적기(repo, {"때": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "조사": 아이디, "단계": "제2의뇌",
+                        "바퀴": n, "되풀이": 되풀이, "참고수": len(참고), "참고": [str(x)[:160] for x in 참고[:3]]})
+            말하기(f"[조사 {아이디}] 막혔다(되풀이 {되풀이}) -- 제2의 뇌를 열었다: 참고 {len(참고)}개")
+        p = 프롬프트(증상, 진, 판정, 해본, n, 남은초, 되풀이, 재현명령, 참고)
         말하기(f"[조사 {아이디}] 바퀴 {n} · 빨강 {[x['이름'] for x in 판정 if x['끝값']]} · 가설 {len(진.get('가설', []))}")
         try:
             답 = (두뇌 or _두뇌기본)(p, thread_id)
@@ -278,7 +307,9 @@ def 조사(증상: str, 재현명령: str = "", 증거글: str = "", 시한초: 
             break
         if 되풀이 >= 되풀이한도:
             결과["남은것"] = (f"{되풀이한도}바퀴 연속 아무것도 안 바뀌었다 (판정 {빨강}, diff 그대로). "
-                          f"코드로는 더 못 간다 -- 마지막 꼬리: {마지막꼬리.splitlines()[-1][:160] if 마지막꼬리 else '(없음)'}")
+                          f"제2의 뇌를 {뇌연횟수}번 열었는데도 갈래가 안 바뀐다 -- 마지막 꼬리: "
+                          f"{마지막꼬리.splitlines()[-1][:160] if 마지막꼬리 else '(없음)'}. "
+                          f"이어 돌리려면 `!조사 {증상[:60]}`")
             break
     else:
         결과["남은것"] = f"{최대바퀴}바퀴를 다 썼다. 마지막 빨강: {[p['이름'] for p in 판정 if p['끝값']]}"
@@ -326,7 +357,7 @@ def main() -> int:
     ap.add_argument("--증상", default="", help="오류 문구 또는 문제 한 줄")
     ap.add_argument("--명령", default="", help="재현 명령 (끝값 0 이면 그 판정은 초록)")
     ap.add_argument("--증거", default="", help="트레이스백이 든 로그 파일")
-    ap.add_argument("--시한", type=int, default=기본시한초)
+    ap.add_argument("--시한", type=int, default=기본시한초, help="기본 6시간 -- 사람에게 넘기는 것은 최후다")
     ap.add_argument("--바퀴", type=int, default=기본최대바퀴)
     ap.add_argument("--저장소", default="")
     ap.add_argument("--목표", action="store_true", help="새 기능: 부탁을 검사로 못박고 그 검사가 지날 때까지")
