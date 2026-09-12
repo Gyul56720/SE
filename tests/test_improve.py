@@ -177,6 +177,27 @@ try:
     I.버림(d)
 
     호출.clear()
+
+    def _고약_잡답(prompt):            # 첫 답 없는 글 -> 되물으니 잡담 -> 또 되물으니 맞는 패치
+        호출.append(prompt)
+        if len(호출) == 1:
+            return json.dumps({"꼴": "패치", "왜": "틀림", "편집": [{"path": "mod.py", "old": "def 없는함수():\n    return 0\n", "new": "x\n"}]})
+        if len(호출) == 2:
+            return "네, 알겠습니다. 다시 살펴보겠습니다."
+        return json.dumps({"꼴": "패치", "왜": "맞음", "편집": [{"path": "mod.py", "old": "    return 2\n", "new": "    return 1\n"}]})
+    I.제안기 = _고약_잡답
+    r = I.사용자개선("f 가 1", d, 초=30)
+    ok(r["판정"] == "동의대기" and r.get("적용시도") == 2 and len(호출) == 3,
+       f"**잡답도 예산 안에서 다시 청한다** (판정 {r['판정']} · 시도 {r.get('적용시도')} · 호출 {len(호출)})")
+    ok("어디에도 없다" in 호출[1] and "새파일" in 호출[1] and "def f():" in 호출[1],
+       "**없는 글이면 파일 전체를 주고 '새파일로 지어라' 고 말한다**")
+    ok("[답이 JSON 꼴이 아니었다]" in 호출[2], "잡답 뒤에는 JSON 만 달라고 못박는다")
+    되묻기줄 = [x for x in I.원장읽기(d) if x.get("꼴") == "되묻기"]
+    ok(len(되묻기줄) >= 2 and 되묻기줄[-2]["패치꼴"] is False and "알겠습니다" in 되묻기줄[-2]["답머리"] and 되묻기줄[-1]["패치꼴"] is True,
+       "**모델이 무엇이라 답했는지 원장에 남는다** -- 다음엔 추측 없이 본다")
+    I.버림(d)
+
+    호출.clear()
     I.제안기 = lambda prompt: (호출.append(prompt) or json.dumps({"꼴": "패치", "왜": "x", "편집": [{"path": "mod.py", "old": "    return 99\n", "new": "x\n"}]}))
     r = I.사용자개선("f 가 1", d, 초=30)
     ok(r["판정"] == "적용실패" and r.get("적용시도") == 3 and "3번" in r["말"] and P.현재판(d) is None,
