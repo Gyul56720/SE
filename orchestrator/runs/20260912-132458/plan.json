@@ -1,0 +1,39 @@
+{
+  "problem": "동덕여자대학교 재학생 또는 졸업생 중 '최가은'이라는 이름을 가진 인물을 공개된 학술 데이터베이스, 논문 레포지토리, 대학 학보사 아카이브, 혹은 공개된 대학 관련 공공 웹사이트에서 찾아내어 신원을 특정한다. 검색 실패 시, 실패 사유를 구체적으로 문서화하고 추가 가능한 데이터 소스를 검색하여 확장 탐색한다.",
+  "final": "verification_and_report",
+  "nodes": [
+    {
+      "id": "search_academic_archives",
+      "goal": "공개 학술 데이터베이스 및 논문 레포지토리에서 '최가은' 및 '동덕여자대학교' 키워드 매칭 검색",
+      "component": "components/search_academic_archives.py",
+      "verifier": "components/search_academic_archives_verify.py",
+      "deps": [],
+      "status": "verified",
+      "result_ref": "results/search_academic_archives.json",
+      "attempts": []
+    },
+    {
+      "id": "search_university_archives",
+      "goal": "동덕여자대학교 학보사 아카이브 및 공공 웹사이트 검색",
+      "component": "components/search_university_archives.py",
+      "verifier": "components/search_university_archives_verify.py",
+      "deps": [],
+      "status": "verified",
+      "result_ref": "results/search_university_archives.json",
+      "attempts": []
+    },
+    {
+      "id": "verification_and_report",
+      "goal": "검색 결과들을 통합하고 신원 특정 또는 실패 사유 문서화",
+      "component": "components/verification_and_report.py",
+      "verifier": "components/verification_and_report_verify.py",
+      "deps": [
+        "search_academic_archives",
+        "search_university_archives"
+      ],
+      "status": "verified",
+      "result_ref": "results/verification_and_report.json",
+      "attempts": []
+    }
+  ]
+}
