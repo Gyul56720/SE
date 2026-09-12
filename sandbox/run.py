@@ -198,8 +198,14 @@ def 실행(argv: "list[str]", *, 지금트리: bool = False, 초: int = 180,
                     "돌았나": False,
                     "메모": "판을 못 깔았다 -- 모르는 것은 안 된 것으로 다룬다"}
         시작 = time.monotonic()
+        # **판의 뿌리를 PYTHONPATH 에 둔다.** 실측 2026-09-12(VM): `!개선` 이 지은 tests/test_x.py 가
+        # `from utils.x import …` 를 하다 ModuleNotFoundError 로 레포 전체 시뮬을 빨갛게 했다. 저장소
+        # 검사들은 제 손으로 뿌리를 sys.path 에 넣지만 모델이 지은 검사는 안 그럴 수 있다 -- 기능이
+        # 다 됐는데 그 한 줄로 빨강이면 판정이 거짓말이다. 실행기가 뿌리를 놓아 주면 함정이 사라진다.
+        env = _환경(키포함)
+        env["PYTHONPATH"] = str(tmp) + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
         proc = subprocess.Popen(
-            list(argv), cwd=str(tmp), env=_환경(키포함),
+            list(argv), cwd=str(tmp), env=env,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, errors="replace", preexec_fn=_고삐(초, 메모리MB))
         try:

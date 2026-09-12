@@ -118,6 +118,14 @@ finally:
     shutil.rmtree(임시, ignore_errors=True)
 
 print()
+# 실측 2026-09-12(VM): 모델이 지은 tests/test_x.py 가 `from utils.x import …` 로 죽어 레포 전체 시뮬이
+# 빨갰다. 실행기가 판의 뿌리를 PYTHONPATH 에 놓아 주면 그 함정이 없다 -- 세 실행기 모두.
+_sb = (Path(__file__).resolve().parent.parent / "sandbox" / "run.py").read_text(encoding="utf-8")
+_ts = (Path(__file__).resolve().parent.parent / "scripts" / "tests.sh").read_text(encoding="utf-8")
+_pc = (Path(__file__).resolve().parent.parent / "scripts" / "precheck.sh").read_text(encoding="utf-8")
+ok('env["PYTHONPATH"] = str(tmp)' in _sb, "sandbox 가 판의 뿌리를 PYTHONPATH 에 둔다")
+ok('export PYTHONPATH="$PWD' in _ts and 'export PYTHONPATH="$PWD' in _pc, "tests.sh · precheck.sh 도 뿌리를 둔다")
+
 if FAIL:
     print(f"실패 {len(FAIL)}개 -- {FAIL}")
     raise SystemExit(1)
