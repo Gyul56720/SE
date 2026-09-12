@@ -16,6 +16,12 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+# **이 검사는 cider 작법서의 규율을 붙든다.** 2026-09-10 에 기본 페르소나가 manga 로 바뀌었고
+# (사용자 결정 2026-09-12: "만화체 기준으로 삼는다"), 만화 식 작법서에는 이 항목들이 없다.
+# 기본값을 되돌리지 않고 **이 검사가 보는 페르소나를 못박는다** -- cider 는 PERSONAS 에 그대로
+# 있고, 그 작법서의 규율이 무너지지 않는지는 여전히 봐야 한다.
+import novel.style as _페르소나  # noqa: E402
+_페르소나.use("cider")
 
 from novel import dyn, flow, profile as PF, targets as TG              # noqa: E402
 
