@@ -102,10 +102,10 @@ def _루트인가() -> bool:
         return False
 
 
-def _돌리기(argv: "list[str]", repo: Path, 초: int) -> "tuple[int, str]":
+def _돌리기(argv: "list[str]", repo: Path, 초: int, env: "dict | None" = None) -> "tuple[int, str]":
     try:
         p = subprocess.run(argv, cwd=str(repo), capture_output=True, text=True, errors="replace", timeout=초,
-                           stdin=subprocess.DEVNULL)      # claude -p 가 stdin 을 3초 기다린다
+                           stdin=subprocess.DEVNULL, env=env)      # claude -p 가 stdin 을 3초 기다린다
         return p.returncode, ((p.stdout or "") + (p.stderr or "")).strip()
     except subprocess.TimeoutExpired:
         return 124, f"시간 초과 ({초}초)"
@@ -120,9 +120,14 @@ def _판정기본(repo: Path, 재현명령: str = "") -> "list[dict]":
         표.append(("재현", ["bash", "-lc", 재현명령], 600))
     표.append(("게이트", ["python3", "gatekeeper.py"], 900))
     표.append(("감사", ["python3", "audit/run.py", "--커밋"], 1200))
+    import os
+    # 재현 명령(특히 목표 모드가 지은 tests/test_목표_*.py)이 뿌리 모듈을 임포트할 수 있게 뿌리를
+    # PYTHONPATH 에 둔다. 저장소 검사들은 제 손으로 뿌리를 넣지만, 두뇌가 방금 지은 검사는 안 그럴 수
+    # 있다 -- 그 한 줄 때문에 기능이 다 됐는데 빨강이 되면 판정이 거짓말이다.
+    env = {**os.environ, "PYTHONPATH": str(repo) + (os.pathsep + os.environ["PYTHONPATH"] if os.environ.get("PYTHONPATH") else "")}
     out = []
     for 이름, argv, 초 in 표:
-        rc, 꼬리 = _돌리기(argv, repo, 초)
+        rc, 꼬리 = _돌리기(argv, repo, 초, env=env)
         out.append({"이름": 이름, "끝값": rc, "꼬리": "\n".join(꼬리.splitlines()[-8:])})
     return out
 
@@ -207,10 +212,20 @@ def 원장읽기(repo=None, 아이디: str = "") -> "list[dict]":
 
 # ------------------------------------------------------------------ 루프
 def 조사(증상: str, 재현명령: str = "", 증거글: str = "", 시한초: int = 기본시한초,
-       최대바퀴: int = 기본최대바퀴, repo=None, 아이디: str = "", 진행=None) -> dict:
-    """될 때까지. 끝은 코드가 정한다. 되풀이는 센다. 시한은 지킨다."""
+       최대바퀴: int = 기본최대바퀴, repo=None, 아이디: str = "", 진행=None, 목표: bool = False) -> dict:
+    """될 때까지. 끝은 코드가 정한다. 되풀이는 센다. 시한은 지킨다.
+
+    `목표=True` 는 **새 기능**이다 -- 재현할 빨강이 없다. 그러면 첫 일은 그 부탁을 검사 파일
+    `tests/test_목표_<id>.py` 로 못박는 것이고, 그 검사가 재현 명령이 된다: 파일이 없으면 빨강,
+    있는데 안 지나면 빨강, 지나면 끝. 사용자(2026-09-12): "프롬프트 의존도를 최소화" -- 부탁의
+    성패를 모델의 말이 아니라 **검사의 끝값**으로 판정하는 길이다."""
     repo = Path(repo or REPO)
     아이디 = 아이디 or uuid.uuid4().hex[:8]
+    if 목표 and not 재현명령:
+        재현명령 = f"python3 tests/test_목표_{아이디}.py"
+        증상 = (f"[목표] {증상}\n첫 일: 이 부탁을 `tests/test_목표_{아이디}.py` 로 못박아라 -- 부탁이 이뤄졌을 때만 "
+              f"끝값 0 인 검사(기능이 없으면 ImportError/AssertionError). 그다음 그 검사가 지나게 기능을 지어라 "
+              f"(새 모듈 · 필요하면 requirements.txt 한 줄). 검사를 지우거나 비우면 판정이 무의미해진다 -- 그러지 마라.")
     시작 = time.monotonic()
     해본: list[dict] = []
     결과 = {"조사": 아이디, "해결": False, "돌았나": True, "바퀴": 0, "해본것": 해본,
@@ -314,6 +329,7 @@ def main() -> int:
     ap.add_argument("--시한", type=int, default=기본시한초)
     ap.add_argument("--바퀴", type=int, default=기본최대바퀴)
     ap.add_argument("--저장소", default="")
+    ap.add_argument("--목표", action="store_true", help="새 기능: 부탁을 검사로 못박고 그 검사가 지날 때까지")
     ap.add_argument("--배선", action="store_true", help="두뇌 없이 배선만 확인한다(끝값 0)")
     ap.add_argument("--두뇌", choices=["봇", "claude"], default="봇",
                     help="봇 = 관리 에이전트(Gemini, 기본) · claude = `claude -p` (토큰이 있을 때)")
@@ -335,7 +351,7 @@ def main() -> int:
             증거 = Path(a.증거).read_text(encoding="utf-8", errors="replace")[-8000:]
         except OSError as e:
             print(f"증거 파일을 못 읽었다: {e}")
-    r = 조사(a.증상, a.명령, 증거, a.시한, a.바퀴, a.저장소 or None)
+    r = 조사(a.증상, a.명령, 증거, a.시한, a.바퀴, a.저장소 or None, 목표=a.목표)
     print(보고(r))
     if not r["돌았나"]:
         return 3

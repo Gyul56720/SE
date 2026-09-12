@@ -200,8 +200,17 @@ try:
     호출.clear()
     I.제안기 = lambda prompt: (호출.append(prompt) or json.dumps({"꼴": "패치", "왜": "x", "편집": [{"path": "mod.py", "old": "    return 99\n", "new": "x\n"}]}))
     r = I.사용자개선("f 가 1", d, 초=30)
-    ok(r["판정"] == "적용실패" and r.get("적용시도") == 3 and "3번" in r["말"] and P.현재판(d) is None,
-       f"끝까지 안 맞으면 **몇 번 청했는지** 말하고 판을 닫는다 ({r['말'][:60]})")
+    ok(r["판정"] == "조사로" and r.get("적용시도") == 3 and "3번" in r["말"] and P.현재판(d) is None,
+       f"끝까지 안 맞으면 **몇 번 청했는지** 말하고 판을 닫고 **긴 호흡으로 넘긴다** ({r['말'][:60]})")
+
+    print("\n== '사람' 이라 물러나면 코드가 사람 몫인지 가른다 (프롬프트로 설득하지 않는다) ==")
+    I.제안기 = lambda prompt: json.dumps({"꼴": "사람", "사람이_할_것": "무거운 라이브러리가 필요하고 정책이 걱정돼 사람이 정해야 합니다"}, ensure_ascii=False)
+    r = I.사용자개선("md 를 pdf 로", d, 초=30)
+    ok(r["판정"] == "조사로" and "사람 몫이 아니다" in r["말"], f"**걱정·무게는 사람 몫이 아니다 -> 조사로** ({r['판정']})")
+    I.제안기 = lambda prompt: json.dumps({"꼴": "사람", "사람이_할_것": "GEMINI_API_KEY 를 !열쇠 로 넣어 주세요"}, ensure_ascii=False)
+    r = I.사용자개선("키가 필요한 일", d, 초=30)
+    ok(r["판정"] == "제안없음" and "열쇠" in r["말"], f"**열쇠·승인은 사람 몫 -> 그대로 사람에게** ({r['판정']})")
+    ok(I.사람몫인가("계정을 만들어 주세요") and not I.사람몫인가("라이브러리가 무겁습니다"), "가르는 규칙")
     ok((d / "mod.py").read_text(encoding="utf-8") == "def f():\n    return 2\n", "실제 트리는 한 번도 안 건드렸다")
 
     print("\n== 해석: 펜스·말·뒤따르는 중괄호에도 JSON 을 뽑는다 ==")
@@ -302,6 +311,13 @@ ok(불림2 and 불림2[0][:3] == ["python3", "improve/run.py", "--부탁"] and �
    f"**`!개선 <말>` 이 그 말을 그대로 부탁으로 넘긴다** ({불림2})")
 _run = (뿌리 / "improve" / "run.py").read_text(encoding="utf-8")
 ok("def 사용자개선" in _run and "전부: bool = True" in _run, "부탁은 기본이 레포 전체 시뮬이다")
+# 실측 2026-09-12(VM): pdf 변환 부탁에 모델이 "무거운 라이브러리·정책" 을 이유로 '사람' 이라며 물러났다.
+# 규칙이 '좁게' 만 말하고 새 기능의 길을 안 열어 줬기 때문이다.
+_pp = I.부탁프롬프트("md 를 pdf 로", 뿌리, {"참고": [], "확장": 0}, [])
+ok("새 모듈" in _pp and "requirements.txt 한 줄" in _pp, "새 기능의 길(새 모듈·검사·의존성 한 줄)은 사실로 한 줄만 적는다")
+ok("하지 마라" not in _pp.split("사람만 가진 값")[-1][:200], "**설득 문구는 없다** -- 회피는 코드(사람몫인가)가 가른다")
+_bot3 = (뿌리 / "discord_bot_server.py").read_text(encoding="utf-8")
+ok('"판정: **조사로**" in _출' in _bot3 and '"--목표"' in _bot3, "**봇이 '조사로' 를 보면 목표 모드 조사를 코드로 띄운다**")
 ok("def 성능개선" in _run and "def 부탁고르기" in _run, "틈이 없을 때 가는 길이 있다")
 ok('if str(REPO) not in sys.path' in _run, "**스크립트로 돌 때 뿌리를 넣는다**(ModuleNotFoundError 사고)")
 ok(not dispatch.도구로쳐도되나("!자가개선 승인")[0], "**봇은 dispatch_command 로 승인을 못 친다**")
