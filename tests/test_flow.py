@@ -381,7 +381,12 @@ print("[층] **문면층만 싣는다** -- 기본값")
 print("      ← 재는 것 열넷이 전부 문면층인데 프롬프트는 서사까지 요구하고 있었다.")
 print("        재지 않는 것을 시키면 지켜졌는지 알 수가 없고, 한꺼번에 시키면 안 지켜진다.")
 _was = flow.LAYER
+# 아래 '남는 항목' 목록([리듬]·[점층]…)은 **cider 작법서의 항목**이다. 기본 페르소나는 manga 이고
+# (사용자 결정 2026-09-12: "만화체 기준"), 만화 식 작법서에는 그 항목이 없다. 층 가르기가
+# 옳게 도는지는 그 항목을 가진 작법서로 봐야 하므로 이 블록만 cider 에 못박고 되돌린다.
+_was_persona = flow.style.ACTIVE
 try:
+    flow.style.use("cider")
     flow.LAYER = "text"
     _bk = flow.blank(); _bk["chunks"] = ["앞."] * 4; _bk["genre"] = "youth"
     _tp = flow.write_prompt(_bk)
@@ -405,6 +410,7 @@ try:
     ok("[확산]" in _ap, "층을 켜면 예전 그대로다  ← 지우는 것이 아니라 안 싣는 것이다")
 finally:
     flow.LAYER = _was
+    flow.style.use(_was_persona)
 
 print("[되먹임] 고칠 것을 한 번에 다 보내는가  ← 하나씩 시키면 호출이 그만큼 는다")
 
@@ -664,8 +670,9 @@ ok(_rc2 != 0, f"모르는 이름은 죽는다 (exit={_rc2})")
 ok("모르는 페르소나" in _out2, "왜 죽었는지 말한다")
 
 # 안 주면 건드리지 않는다 -- 기존 런의 기본값이 조용히 바뀌면 안 된다.
+# 기본값은 manga 다 (2026-09-10 에 바꿨고, 사용자 결정 2026-09-12: "만화체 기준으로 삼는다").
 _was = flow.style.ACTIVE
-ok(_was == "cider", f"기본값은 그대로다 ({_was})")
+ok(_was == "manga", f"기본값은 그대로다 ({_was})")
 
 # drift.sh 가 **두 자리 모두** 넘겨야 한다. start 에만 넣으면 이어 쓸 때 문체가 사라진다.
 _sh = (_REPO / "scripts" / "drift.sh").read_text(encoding="utf-8")
