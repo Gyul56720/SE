@@ -46,6 +46,7 @@ fi
 
 echo "깨끗한 판에서 검사: $(git -C "$root" rev-parse --short HEAD)"
 cd "$tmp" || exit 1
+export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"   # 뿌리를 놓아 준다 (scripts/tests.sh 와 같다)
 
 # **기본은 빠른 길이다.** 전체 검사는 6분 넘게 걸린다 -- 그것을 여기서 기다리면
 # CI 를 기다리던 것과 똑같아진다(없애려던 바로 그 기다림이다). 그래서 상한보다

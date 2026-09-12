@@ -12,6 +12,8 @@
 #   scripts/tests.sh -k rhythm  이름에 rhythm 이 든 것만
 set -u
 cd "$(dirname "$0")/.."
+# 뿌리를 PYTHONPATH 에 둔다 -- 모델이 지은 검사가 뿌리 모듈을 임포트해도 산다 (sandbox/run.py 와 같은 까닭)
+export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
 
 # 따로 다루는 것들 -- 앞선 단계에서 환경변수나 준비 데이터를 주고 돌린다.
 SKIP="test_gates_on_incidents.py test_g004_scope.py test_compression_judge.py"
