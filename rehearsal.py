@@ -420,6 +420,277 @@ def 절제검사(repo=None, 판=None, 초: int = 300, 상한: int = None, 기준
     return out
 
 
+# ------------------------------------------------------------------ 열쇠대조: 없는 열쇠를 읽고 있나
+# 실측 2026-09-12: 봇이 `scripts/ledgerstat.py` 를 지어 "검증 완료 · OK" 라고 답했다. 검사는 정말 초록이었고
+# 도구도 실제로 돌았다. 그런데 표의 여덟 칸 중 여섯이 **구조적으로 항상 0** 이었다 -- `repair/ledger.jsonl`
+# 에 없는 열쇠(귀속·맞춘수·틀린수·막음·명령수)를 읽고 있었다. 검사는 그 열쇠들을 다 넣은 **가짜 행 한 줄**을
+# 지어서 합을 단언했으니 초록이었다. 공허검사·절제검사는 "검사가 코드를 부르나" 를 보므로 여기를 못 본다 --
+# 빠진 축은 **검사의 입력이 실제 입력과 같은 모양인가** 다. 작은 모델은 원장의 스키마를 모르고, 모르는 것을
+# 안다고 할 수도 없다. 그래서 코드가 잰다: 읽는 열쇠 vs 그 파일에 실제로 있는 열쇠.
+자료꼴 = (".jsonl", ".json")
+_자료꼴정규식 = None
+
+
+def _속노드들(노드):
+    """그 조각의 노드들 -- **안에 든 다른 함수·람다는 뺀다.** 조각 하나가 한 이름 공간이다.
+
+    실측 2026-09-12: 모듈 전체에서 이름을 모았더니 `diagnose.py` 의 240줄 `d = json.loads(line)`(원장 행)과
+    312줄 `d["증거"]`(진단 결과 dict, 다른 함수)를 같은 것으로 보아 거짓 양성이 났다. `eval/tasks.py` 도
+    과제 json 의 `t` 를 다른 함수가 읽는 원장과 맞췄다. **거짓 양성을 내는 검사는 없느니만 못하다.**"""
+    import ast
+    남 = list(ast.iter_child_nodes(노드))
+    while 남:
+        x = 남.pop()
+        yield x
+        if isinstance(x, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            continue
+        남.extend(ast.iter_child_nodes(x))
+
+
+def _조각들(src: str) -> "tuple[object, list]":
+    """(나무, [(조각 이름, 노드들, 함수노드|None)]). 모듈 몸통 하나 + 함수마다 하나."""
+    import ast
+    try:
+        나무 = ast.parse(src)
+    except SyntaxError:
+        return None, []
+    out = [("(모듈)", list(_속노드들(나무)), None)]
+    for 노드 in ast.walk(나무):
+        if isinstance(노드, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            out.append((노드.name, list(_속노드들(노드)), 노드))
+    return 나무, out
+
+
+def _이름에든자료(판: Path, 노드들) -> "dict[str, str]":
+    """`x = "a/b.jsonl"` · `x = Path("a/b.jsonl")` 로 묶인 이름 -> 그 파일."""
+    import ast
+    out: dict = {}
+    for 노드 in 노드들:
+        if not isinstance(노드, ast.Assign) or len(노드.targets) != 1 or not isinstance(노드.targets[0], ast.Name):
+            continue
+        값 = 노드.value
+        if isinstance(값, ast.Call) and 값.args:
+            값 = 값.args[0]
+        if isinstance(값, ast.Constant) and isinstance(값.value, str):
+            for f in _자료파일들(판, [값]):
+                out[노드.targets[0].id] = f
+    return out
+
+
+def _부른자료(판: Path, 나무, 함수: str) -> "list[str]":
+    """모듈 안에서 그 함수를 부르는 자리가 넘기는 자료 파일. 경로가 `main()` 에 있고 읽기가 다른 함수에
+    있는 꼴(실측: scripts/ledgerstat.py) 을 한 홉 따라간다 -- 리터럴과 그 조각에서 리터럴로 묶인 이름까지만.
+    부르는 자리가 계산된 경로를 넘기면(디렉터리를 훑는 꼴) 아무것도 안 돌려준다 -- 짝을 모르면 재지 않는다."""
+    import ast
+    out, 본것 = [], set()
+    for 조각, 노드들, _ in _조각들_노드(나무):
+        이름표 = None
+        for 노드 in 노드들:
+            if not (isinstance(노드, ast.Call) and isinstance(노드.func, ast.Name) and 노드.func.id == 함수):
+                continue
+            if 이름표 is None:
+                이름표 = _이름에든자료(판, 노드들)
+            for 인자 in list(노드.args) + [k.value for k in 노드.keywords]:
+                if isinstance(인자, ast.Call) and 인자.args:
+                    인자 = 인자.args[0]
+                찾음 = None
+                if isinstance(인자, ast.Constant) and isinstance(인자.value, str):
+                    찾음 = (_자료파일들(판, [인자]) or [None])[0]
+                elif isinstance(인자, ast.Name):
+                    찾음 = 이름표.get(인자.id)
+                if 찾음 and 찾음 not in 본것:
+                    본것.add(찾음); out.append(찾음)
+    return out
+
+
+def _조각들_노드(나무) -> "list[tuple[str, list, object]]":
+    """이미 파싱된 나무에서 조각들만 -- _조각들 과 같은 꼴."""
+    import ast
+    out = [("(모듈)", list(_속노드들(나무)), None)]
+    for 노드 in ast.walk(나무):
+        if isinstance(노드, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            out.append((노드.name, list(_속노드들(노드)), 노드))
+    return out
+
+
+def _자료파일들(판: Path, 노드들) -> "list[str]":
+    """그 조각이 **문자열로** 가리키는, 저장소에 실제로 있는 자료 파일들(.jsonl/.json)."""
+    import ast, re
+    global _자료꼴정규식
+    if _자료꼴정규식 is None:
+        _자료꼴정규식 = re.compile(r"^[\w./가-힣_-]+\.(?:jsonl|json)$")
+    out, 본것 = [], set()
+    for 노드 in 노드들:
+        if isinstance(노드, ast.Constant) and isinstance(노드.value, str):
+            글 = 노드.value.strip()
+            if 글 in 본것 or not _자료꼴정규식.match(글):
+                continue
+            본것.add(글)
+            if (판 / 글).is_file():
+                out.append(글)
+    return out
+
+
+def _행이름들(노드들) -> "set[str]":
+    """`json.loads(...)` 로 만든 **행**을 담는 이름들. 세 꼴만 본다 --
+    `r = json.loads(x)` · `행들 = [json.loads(x) for x in f]` 뒤의 `for r in 행들` · `for r in [json.loads(x) …]`.
+    이렇게 좁히면 같은 조각의 설정 dict(`cfg.get("model")`)를 원장 열쇠로 잘못 세지 않는다."""
+    import ast
+
+    def json읽기냐(노드) -> bool:
+        return (isinstance(노드, ast.Call) and isinstance(노드.func, ast.Attribute)
+                and 노드.func.attr in ("loads", "load")
+                and isinstance(노드.func.value, ast.Name) and 노드.func.value.id == "json")
+
+    def 속에json(노드) -> bool:
+        return isinstance(노드, (ast.ListComp, ast.GeneratorExp, ast.SetComp)) and json읽기냐(노드.elt)
+
+    행, 행목록 = set(), set()
+    # **한 바퀴로는 모자란다** -- 노드 순서가 소스 순서가 아니라(가지치기 스택) `for r in 담` 을 `담 = json.load(…)`
+    # 보다 먼저 볼 수 있다. 더 붙을 것이 없을 때까지 돈다.
+    for _ in range(5):
+        전크기 = (len(행), len(행목록))
+        for 노드 in 노드들:
+            if isinstance(노드, (ast.Assign, ast.AnnAssign)):
+                값 = 노드.value
+                대상 = 노드.targets if isinstance(노드, ast.Assign) else [노드.target]
+                for t in 대상:
+                    if not isinstance(t, ast.Name):
+                        continue
+                    if json읽기냐(값):
+                        행.add(t.id)
+                    elif 속에json(값):
+                        행목록.add(t.id)
+            elif isinstance(노드, (ast.For, ast.AsyncFor)) and isinstance(노드.target, ast.Name):
+                잇 = 노드.iter
+                # 행 목록을 돌면 그 알맹이가 행이다. `담 = json.load(f)` 처럼 행인지 목록인지 모를 것도 돌면 행으로 본다
+                # (dict 를 돌면 열쇠 문자열이 나오는데, 문자열에는 .get 이 없어 아무 열쇠도 안 모인다 -- 해롭지 않다).
+                if json읽기냐(잇) or 속에json(잇) or (isinstance(잇, ast.Name) and (잇.id in 행목록 or 잇.id in 행)):
+                    행.add(노드.target.id)
+        if (len(행), len(행목록)) == 전크기:
+            break
+    return 행
+
+
+def _읽는열쇠(노드들) -> "dict[str, int]":
+    """행에서 읽는 리터럴 열쇠 -> 첫 줄번호. `r.get("k")` · `r["k"]` · `"k" in r`."""
+    import ast
+    행 = _행이름들(노드들)
+    if not 행:
+        return {}
+    out: dict = {}
+
+    def 적기(k, 줄):
+        if isinstance(k, str) and k and k not in out:
+            out[k] = 줄
+
+    for 노드 in 노드들:
+        if (isinstance(노드, ast.Call) and isinstance(노드.func, ast.Attribute) and 노드.func.attr == "get"
+                and isinstance(노드.func.value, ast.Name) and 노드.func.value.id in 행 and 노드.args
+                and isinstance(노드.args[0], ast.Constant)):
+            적기(노드.args[0].value, 노드.lineno)
+        elif (isinstance(노드, ast.Subscript) and isinstance(노드.value, ast.Name) and 노드.value.id in 행
+                and isinstance(노드.slice, ast.Constant)):
+            적기(노드.slice.value, 노드.lineno)
+        elif (isinstance(노드, ast.Compare) and isinstance(노드.left, ast.Constant)
+                and any(isinstance(o, (ast.In, ast.NotIn)) for o in 노드.ops)
+                and any(isinstance(c, ast.Name) and c.id in 행 for c in 노드.comparators)):
+            적기(노드.left.value, 노드.lineno)
+    return out
+
+
+def _파일열쇠(경로: Path, 줄수: int = 3000) -> "tuple[dict, int]":
+    """그 파일 행들의 top-level 열쇠 -> 몇 줄에 있나, 그리고 읽은 행 수."""
+    import collections, json
+    셈: collections.Counter = collections.Counter()
+    행수 = 0
+    try:
+        if 경로.suffix == ".json":
+            담 = json.loads(경로.read_text(encoding="utf-8", errors="replace"))
+            행들 = 담 if isinstance(담, list) else [담]
+        else:
+            행들 = []
+            with 경로.open(encoding="utf-8", errors="replace") as f:
+                for 줄 in f:
+                    if not 줄.strip():
+                        continue
+                    try:
+                        행들.append(json.loads(줄))
+                    except ValueError:
+                        continue
+                    if len(행들) >= 줄수:
+                        break
+    except (OSError, ValueError):
+        return {}, 0
+    for r in 행들[:줄수]:
+        if isinstance(r, dict):
+            행수 += 1
+            셈.update(r.keys())
+    return dict(셈), 행수
+
+
+def 열쇠대조(repo=None, 판=None, 기준: str = "HEAD", 줄수: int = 3000) -> dict:
+    """**없는 열쇠를 읽고 있나.** {성립, 말, 죽은읽기:[{파일, 조각, 열쇠, 줄, 원장}], 본것, 있는열쇠, 못잼}.
+
+    패치의 코드 파일마다, **조각(함수)마다**: `json.loads` 로 만든 행에서 읽는 리터럴 열쇠를 모으고, 같은 조각이
+    문자열로 가리키는 실제 자료 파일(.jsonl/.json)의 행들이 가진 열쇠와 맞춘다. **한 줄에도 없는 열쇠**는 죽은
+    읽기다 -- `.get()` 은 조용히 None 을 주므로 터지지도 않고, 합은 0 이 되어 "아무 일도 없었다" 처럼 보인다.
+
+    공허검사·절제검사가 "검사가 코드를 부르나" 를 보는 데 비해 여기는 **코드가 실제 데이터를 보나** 를 본다.
+    조각 단위로 좁히는 까닭은 _속노드들 의 독스트링에 있다(거짓 양성 둘을 실측했다).
+    LLM 호출 0회 · subprocess 0회 (AST 와 파일 읽기뿐). 검사 파일은 제 표본을 지어 쓰므로 안 본다."""
+    repo = Path(repo or REPO)
+    판 = Path(판) if 판 else repo
+    검사, 코드, 지움 = _판변경(판, 기준)
+    out = {"성립": True, "말": "", "죽은읽기": [], "본것": [], "있는열쇠": [], "못잼": []}
+    for rel in 코드:
+        낱 = 판 / rel
+        if not 낱.is_file():
+            continue
+        나무, 조각들 = _조각들(낱.read_text(encoding="utf-8", errors="replace"))
+        for 조각, 노드들, 함수 in 조각들:
+            열쇠들 = _읽는열쇠(노드들)
+            if not 열쇠들:
+                continue
+            자료들 = _자료파일들(판, 노드들)
+            if not 자료들 and 함수 is not None:
+                자료들 = _부른자료(판, 나무, 조각)          # 경로는 부른 쪽에 있다 -- 한 홉 따라간다
+            if not 자료들:
+                continue
+            있는것: dict = {}
+            쓴것, 행수 = [], 0
+            for 자료 in 자료들:
+                셈, n = _파일열쇠(판 / 자료, 줄수)
+                if n == 0:
+                    out["못잼"].append(f"{rel}:{조각} -> {자료} (행이 없다)")
+                    continue
+                쓴것.append(f"{자료}({n}줄)")
+                행수 += n
+                for k, 몇 in 셈.items():
+                    있는것[k] = 있는것.get(k, 0) + 몇
+            if 행수 == 0:
+                continue
+            out["본것"].append(f"{rel}:{조각} <- {', '.join(쓴것)}")
+            죽 = [(k, 줄) for k, 줄 in 열쇠들.items() if k not in 있는것]
+            if 죽:
+                out["죽은읽기"].extend({"파일": rel, "조각": 조각, "열쇠": k, "줄": 줄, "원장": ", ".join(쓴것)}
+                                   for k, 줄 in 죽)
+                흔한 = sorted(있는것.items(), key=lambda x: -x[1])[:8]
+                out["있는열쇠"] = [f"{k}({몇})" for k, 몇 in 흔한]
+    if out["죽은읽기"]:
+        보임 = ", ".join(f"{x['파일']}:{x['줄']} `{x['열쇠']}`" for x in out["죽은읽기"][:5])
+        out["성립"] = False
+        out["말"] = (f"**없는 열쇠를 읽는다**: {보임}. 그 열쇠는 {out['죽은읽기'][0]['원장']} 의 어느 행에도 없다 -- "
+                     f".get() 은 조용히 None 을 주므로 터지지 않고 합이 0 이 되어 '아무 일도 없었다' 처럼 보인다. "
+                     f"실제로 있는 열쇠: {', '.join(out['있는열쇠'])}. 그것으로 다시 써라(검사 표본도 지어낸 행이 "
+                     f"아니라 실제 원장의 앞 몇 줄로).")
+    elif out["본것"]:
+        out["말"] = f"읽는 열쇠가 다 원장에 있다 -- {', '.join(out['본것'][:3])}"
+    else:
+        out["말"] = "원장을 읽는 코드가 패치에 없다 -- 볼 것 없다"
+    return out
+
+
 def 공허검사(repo=None, 판=None, 초: int = 300) -> dict:
     """패치의 초록이 **뜻이 있나**. {공허: bool, 말, 검사들, 코드들, 빨간검사}.
 

@@ -261,8 +261,112 @@ try:
 finally:
     shutil.rmtree(_절, ignore_errors=True)
 
+print("\n== 열쇠 대조: 원장에 없는 열쇠를 읽고 있나 (LLM 0회 · subprocess 0회) ==")
+# 실측 2026-09-12: 봇이 지은 scripts/ledgerstat.py 가 repair/ledger.jsonl 에 없는 열쇠 다섯(귀속·맞춘수·
+# 틀린수·막음·명령수)을 읽어 여덟 칸 중 여섯이 **구조적으로 항상 0** 이었다. 검사는 그 열쇠를 다 넣은 가짜 행을
+# 지어 합을 단언했으니 초록이었다 -- 공허·절제가 보는 "검사가 코드를 부르나" 로는 안 잡히는 축이다.
+_열 = Path(tempfile.mkdtemp(prefix="열쇠-"))
+try:
+    git(_열, "init", "-q"); git(_열, "config", "user.email", "t@t"); git(_열, "config", "user.name", "t")
+    (_열 / "ldg").mkdir(); (_열 / "tests").mkdir()
+    (_열 / "ldg" / "ledger.jsonl").write_text(
+        '{"꼴": "조사", "때": "t1", "바퀴": 1, "해결": true}\n'
+        '{"꼴": "조사", "때": "t2", "바퀴": 2}\n'
+        '{"꼴": "끝", "때": "t3"}\n', encoding="utf-8")
+    (_열 / "ldg" / "빈.jsonl").write_text("", encoding="utf-8")
+    (_열 / "ldg" / "목록.json").write_text('[{"id": "a", "점수": 1}, {"id": "b"}]', encoding="utf-8")
+    git(_열, "add", "-A"); git(_열, "commit", "-qm", "init")
+
+    def 열판(**files):
+        w = Path(tempfile.mkdtemp(prefix="판-"))
+        git(_열, "worktree", "add", "-q", "--detach", str(w), "HEAD")
+        for rel, 본 in files.items():
+            (w / rel).parent.mkdir(parents=True, exist_ok=True); (w / rel).write_text(본, encoding="utf-8")
+        return w
+
+    def 열재기(**files):
+        w = 열판(**files)
+        try:
+            return R.열쇠대조(_열, w)
+        finally:
+            git(_열, "worktree", "remove", "--force", str(w))
+
+    한조각 = ('import json\n'
+            'def 세기():\n'
+            '    n = 0\n'
+            '    for 줄 in open("ldg/ledger.jsonl"):\n'
+            '        r = json.loads(줄)\n'
+            '        n += r.get("%s", 0)\n'
+            '    return n\n')
+    r1 = 열재기(**{"a.py": 한조각 % "바퀴"})
+    ok(r1["성립"] and "다 원장에 있다" in r1["말"] and r1["본것"] == ["a.py:세기 <- ldg/ledger.jsonl(3줄)"],
+       f"있는 열쇠만 읽으면 성립 ({r1['말'][:40]})")
+    r2 = 열재기(**{"a.py": 한조각 % "맞춘수"})
+    ok(not r2["성립"] and [x["열쇠"] for x in r2["죽은읽기"]] == ["맞춘수"] and "꼴(3)" in r2["말"],
+       f"**한 줄에도 없는 열쇠는 죽은 읽기** -- 실제로 있는 열쇠를 세어 같이 알려 준다 ({[x['열쇠'] for x in r2['죽은읽기']]})")
+    r3 = 열재기(**{"a.py": 한조각 % "해결"})
+    ok(r3["성립"], "일부 행에만 있는 열쇠(해결: 3줄 중 1줄)는 죽은 읽기가 아니다")
+    r4 = 열재기(**{"a.py": 'import json\n'
+                          'from pathlib import Path\n'
+                          'def 세기(경로):\n'
+                          '    for 줄 in open(경로):\n'
+                          '        r = json.loads(줄)\n'
+                          '        print(r.get("막음", 0), r["꼴"])\n'
+                          'def main():\n'
+                          '    p = Path("ldg/ledger.jsonl")\n'
+                          '    세기(p)\n'})
+    ok(not r4["성립"] and [x["열쇠"] for x in r4["죽은읽기"]] == ["막음"],
+       f"**경로가 부른 쪽에 있어도 한 홉 따라간다** -- ledgerstat 의 꼴 (main 의 Path -> 세기) ({r4['죽은읽기']})")
+    r5 = 열재기(**{"a.py": 'import json\n'
+                          'def 원장():\n'
+                          '    for 줄 in open("ldg/ledger.jsonl"):\n'
+                          '        d = json.loads(줄)\n'
+                          '        print(d.get("바퀴"))\n'
+                          'def 딴것(d):\n'
+                          '    return d["증거"] + d["고칠거리"]\n'})
+    ok(r5["성립"], "**다른 함수의 같은 이름(d)을 원장 행으로 오인하지 않는다** -- diagnose.py 에서 난 거짓 양성")
+    r6 = 열재기(**{"a.py": 'import json\n'
+                          'import os\n'
+                          'def 훑기(뿌리):\n'
+                          '    for 이름 in os.listdir(뿌리):\n'
+                          '        t = json.loads(open(이름).read())\n'
+                          '        print(t.get("id"), t["물음"])\n'
+                          'def 원장():\n'
+                          '    for 줄 in open("ldg/ledger.jsonl"):\n'
+                          '        r = json.loads(줄)\n'
+                          '        print(r["꼴"])\n'})
+    ok(r6["성립"], "**부른 쪽이 계산된 경로를 넘기면 짝을 모르므로 재지 않는다** -- eval/tasks.py 에서 난 거짓 양성")
+    r7 = 열재기(**{"a.py": 'import json\n'
+                          'def 세기(cfg):\n'
+                          '    for 줄 in open("ldg/ledger.jsonl"):\n'
+                          '        r = json.loads(줄)\n'
+                          '        print(r["꼴"], cfg.get("model"), cfg["키없음"])\n'})
+    ok(r7["성립"], "같은 조각의 설정 dict(cfg)는 원장 열쇠로 안 센다 -- json.loads 로 만든 이름만 본다")
+    r8 = 열재기(**{"a.py": 한조각.replace("ldg/ledger.jsonl", "ldg/빈.jsonl") % "바퀴"})
+    ok(r8["성립"] and r8["못잼"] == ["a.py:세기 -> ldg/빈.jsonl (행이 없다)"], "행이 없는 원장은 못 잰다고 적는다(막지 않는다)")
+    r9 = 열재기(**{"a.py": 'import json\n'
+                          'def 세기():\n'
+                          '    담 = json.load(open("ldg/목록.json"))\n'
+                          '    for r in 담:\n'
+                          '        print(r.get("점수"), r.get("없는것"))\n'})
+    ok(not r9["성립"] and [x["열쇠"] for x in r9["죽은읽기"]] == ["없는것"],
+       f".json 목록 꼴 -- json.load 를 돌면 알맹이가 행이다 ({[x['열쇠'] for x in r9['죽은읽기']]})")
+    r9b = 열재기(**{"a.py": 'import json\n'
+                           'def 세기():\n'
+                           '    행들 = [json.loads(x) for x in open("ldg/ledger.jsonl") if x.strip()]\n'
+                           '    for r in 행들:\n'
+                           '        print(r.get("없는것"))\n'})
+    ok(not r9b["성립"] and [x["열쇠"] for x in r9b["죽은읽기"]] == ["없는것"],
+       f"내포 표현식으로 만든 행 목록도 센다 ({[x['열쇠'] for x in r9b['죽은읽기']]})")
+    r10 = 열재기(**{"tests/test_a.py": 한조각 % "맞춘수"})
+    ok(r10["성립"] and "볼 것 없다" in r10["말"], "검사 파일은 제 표본을 지어 쓰므로 안 본다")
+    r11 = 열재기(**{"a.py": 'def 아무것(x):\n    return x + 1\n'})
+    ok(r11["성립"] and "볼 것 없다" in r11["말"], "원장을 읽는 코드가 없으면 볼 것 없다")
+finally:
+    shutil.rmtree(_열, ignore_errors=True)
+
 print()
 if FAIL:
     print(f"실패 {len(FAIL)}개 -- {FAIL}")
     raise SystemExit(1)
-print("rehearsal: 문법 · 뜻 · 초록 · 안 건드림 · 못잼 · 승인 전제 · 배선 · 공허 검사 · 절제 검사 -- 통과")
+print("rehearsal: 문법 · 뜻 · 초록 · 안 건드림 · 못잼 · 승인 전제 · 배선 · 공허 검사 · 절제 검사 · 열쇠 대조 -- 통과")
