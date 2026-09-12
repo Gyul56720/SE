@@ -318,7 +318,7 @@ def main(argv=None) -> int:
     ap.add_argument("--문", dest="doors", default="",
                     help="--찾기 에서 쓸 문만 고른다 (쉼표. 이름은 --문목록)")
     ap.add_argument("--망", dest="netcheck", action="store_true",
-                    help="이 기계에서 바깥이 되나 -- 문마다 코드·까닭. 끝값 0 되면 된다")
+                    help="이 기계에서 바깥이 되나 -- 문마다 코드·까닭·**쓸 만한 결과 수**. `--문` 으로 골라서도. 끝값 0 되면 된다")
     ap.add_argument("--문목록", dest="list_doors", action="store_true",
                     help="두드릴 문 이름을 낸다")
     ap.add_argument("--앞문만", dest="front", action="store_true",
@@ -341,9 +341,13 @@ def main(argv=None) -> int:
         return 0
 
     if a.netcheck:
-        r = SC.망점검(틈=min(a.timeout, 10.0))
+        탈 = SC.틀검사()
+        for 줄 in 탈:
+            print(f"  [문 꼴] {줄}")
+        문 = [x.strip() for x in a.doors.split(",") if x.strip()]
+        r = SC.망점검(틈=min(a.timeout, 10.0), 고른것=문)
         print(SC.망보고(r))
-        return 0 if r["됐나"] else 1
+        return 0 if (r["됐나"] and not 탈) else 1
 
     찾을말 = [w.strip() for w in a.find.split(",") if w.strip()]
     urls = list(a.urls)
