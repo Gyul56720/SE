@@ -126,6 +126,30 @@ try:
     ok("저장소가 캔 증거" in 받은[0] and "도는 코드가 낡았다" in 받은[0] and "확인: git log -1" in 받은[0],
        "**바퀴마다 diagnose 가 앞에 선다** -- 가설·고칠거리·확인 명령")
 
+    print("\n== 목표 모드: 새 기능은 검사로 못박고 그 검사가 지날 때까지 ==")
+    I.판정기 = None                      # 진짜 판정기 -- 재현 명령이 진짜로 돈다
+    (판 / "gatekeeper.py").write_text("import sys\nsys.exit(0)\n", encoding="utf-8")
+    (판 / "audit").mkdir(exist_ok=True); (판 / "audit" / "run.py").write_text("import sys\nsys.exit(0)\n", encoding="utf-8")
+    (판 / "tests").mkdir(exist_ok=True)
+    받은.clear()
+
+    def 두뇌_목표(p, t):
+        받은.append(p)
+        n = sum(1 for x in 받은 if x.startswith("[조사 바퀴"))
+        if n == 1:                        # 첫 바퀴: 검사만 짓는다 (기능이 없으니 빨강)
+            (판 / "tests" / "test_목표_g1.py").write_text("import pdfout\nassert pdfout.만들기('x') == 'ok'\n", encoding="utf-8")
+            return "검사를 지었다"
+        if n == 2:                        # 둘째: 기능을 짓는다
+            (판 / "pdfout.py").write_text("def 만들기(md):\n    return 'ok'\n", encoding="utf-8")
+            return "기능을 지었다"
+        return "…"
+    I.두뇌 = 두뇌_목표
+    r = I.조사("md 를 pdf 로 제공", repo=판, 시한초=120, 최대바퀴=4, 아이디="g1", 목표=True)
+    ok(r["해결"] and r["바퀴"] == 2, f"**검사가 없을 땐 빨강, 지어서 지나면 초록** (바퀴 {r['바퀴']})")
+    ok("tests/test_목표_g1.py" in 받은[0] and "못박아라" in 받은[0], "첫 일이 검사로 못박기라고 말한다")
+    ok("재현 명령: `python3 tests/test_목표_g1.py`" in 받은[0], "그 검사가 재현 명령이 된다 -- 판정은 끝값")
+    I.판정기 = 판정_파일로
+
     print("\n== 원장·메모 ==")
     줄들 = I.원장읽기(판, "t3")
     ok([d["단계"] for d in 줄들] == ["시작", "바퀴", "바퀴", "바퀴", "끝"], f"조사 한 건이 시작·바퀴·끝으로 적힌다 ({[d['단계'] for d in 줄들]})")
@@ -181,6 +205,8 @@ ok(dispatch.run("!조사기 x", None, True) is None, "붙여 쓴 것은 명령�
 C.run("!조사 증상 하나 :: python3 tests/test_x.py", runner=lambda argv, 로그, 무엇: (잡힌.update(argv=argv, 무엇=무엇) or "띄웠다"), allow_write=True)
 ok(잡힌.get("argv") == ["python3", "investigate/run.py", "--증상", "증상 하나", "--명령", "python3 tests/test_x.py"],
    f"`::` 로 재현 명령을 가른다 ({잡힌.get('argv')})")
+C.run("!조사 목표 md 를 pdf 로", runner=lambda argv, 로그, 무엇: (잡힌.update(argv=argv) or "띄웠다"), allow_write=True)
+ok(잡힌.get("argv") == ["python3", "investigate/run.py", "--증상", "md 를 pdf 로", "--목표"], f"`!조사 목표 <부탁>` ({잡힌.get('argv')})")
 ok(dispatch.고르기("이 오류 시간이 걸려도 끝까지 고쳐 줘")[0].startswith("!조사"), "자연어 '끝까지·시간이 걸려도' 는 조사로")
 ok(dispatch.고르기("될 때까지 파헤쳐 봐")[0].startswith("!조사"), "'될 때까지·파헤쳐' 도 조사로")
 _bot = (뿌리 / "discord_bot_server.py").read_text(encoding="utf-8")

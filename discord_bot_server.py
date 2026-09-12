@@ -349,6 +349,19 @@ async def _배경지켜보기(channel, 배경: dict, 간격: float = 20.0, 상�
                 꼬리 = ("\n📄 산출물: " + ", ".join(산출) if 산출 else "")
                 터졌, 증상 = await asyncio.to_thread(relay.터졌나, 배경)
                 await channel.send((relay.배경보고(배경) + 꼬리)[:1900])
+                # **`!개선` 이 '조사로' 로 끝나면 코드가 긴 호흡을 띄운다.** 모델이 사람 몫이 아닌 이유로
+                # 물러났거나 패치를 못 붙인 경우다(improve 가 코드로 가른다). 프롬프트로 설득하지 않는다.
+                _출 = await asyncio.to_thread(relay.배경로그, 배경)
+                if "판정: **조사로**" in _출:
+                    _m = re.search(r"^개선 부탁: (.+)$", _출, re.M)
+                    if _m:
+                        from investigate import discord_cmd as _iv2
+                        띄움 = await asyncio.to_thread(_iv2._배경으로,
+                                                     ["python3", "investigate/run.py", "--증상", _m.group(1).strip()[:300], "--목표"],
+                                                     _iv2.로그, "investigate/run.py")
+                        await channel.send(("🕵️ **부탁을 긴 호흡(목표 모드)으로 넘긴다** -- 검사로 못박고 지날 때까지\n" + 띄움)[:1900])
+                        for 배경2 in relay.배경꺼내기():
+                            asyncio.create_task(_배경지켜보기(channel, 배경2))
                 if 터졌 and 배경.get("명령"):
                     # **오류를 그대로 내보내고 끝내지 않는다.** 재현 명령과 증상이 손에 있으니
                     # 스스로 고쳐 본다(repair: 실측 -> 제2의 뇌 -> 시도 -> 실측). 사람에겐 결과만.
