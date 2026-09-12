@@ -343,7 +343,7 @@ async def _배경지켜보기(channel, 배경: dict, 간격: float = 20.0, 상�
     시작 = time.monotonic()
     while time.monotonic() - 시작 < 상한초:
         await asyncio.sleep(간격)
-        if await asyncio.to_thread(relay.배경끝났나, 배경["무엇"]):
+        if await asyncio.to_thread(relay.배경끝났나, 배경):        # 찾을말(pgrep 이름)로 본다
             try:
                 산출 = await asyncio.to_thread(relay.산출물찾기, 배경, REPO_DIR)
                 꼬리 = ("\n📄 산출물: " + ", ".join(산출) if 산출 else "")
