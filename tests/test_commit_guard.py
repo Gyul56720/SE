@@ -131,8 +131,56 @@ ok("run_gates(repo, 고치기=True)" in _src and "A.감사(repo, 커밋=False" i
 _wf = (뿌리 / ".github" / "workflows" / "deploy-oracle.yml").read_text(encoding="utf-8")
 ok('"commit_guard.py"' in _wf, "commit_guard 가 배포 경로에")
 
+print("\n== 2차 메타검증 문: Commit = Green ∧ (FR∪FG)^c (판정은 mutate 가 하고 여기서는 막을지만 정한다) ==")
+# 사용자(2026-09-12): "Red/Green 은 1차 전이, FR/FG 는 그 판정이 옳았나를 보는 2차 메타층."
+_원메타 = G.메타기
+try:
+    G.메타기 = lambda repo, 바뀐: {"commit": True, "있나": True, "FG": 0, "FR": 0, "INVALID": 0, "말": "FG·FR 없음"}
+    통, 보 = G.검사(뿌리, 게이트=False, 감사=False, ci=False, 메타=True)
+    ok(통 and "메타검증 통과" in 보, f"FG·FR 이 없으면 지나간다 ({통})")
+    G.메타기 = lambda repo, 바뀐: {"commit": False, "있나": True, "FG": 2, "FR": 0, "INVALID": 0,
+                              "말": "FALSE_GREEN 2개 -- 그 초록은 못 믿는다"}
+    통2, 보2 = G.검사(뿌리, 게이트=False, 감사=False, ci=False, 메타=True)
+    ok(not 통2 and "[메타 차단]" in 보2 and "FALSE_GREEN" in 보2,
+       "**FG 가 있으면 1차가 초록이어도 커밋을 막는다**")
+    G.메타기 = lambda repo, 바뀐: {"commit": False, "있나": True, "FG": 0, "FR": 1, "INVALID": 0,
+                              "말": "FALSE_RED 1개 -- 변형과 무관한 실패를 잡힌 것으로 셀 수 없다"}
+    통3, 보3 = G.검사(뿌리, 게이트=False, 감사=False, ci=False, 메타=True)
+    ok(not 통3 and "[메타 차단]" in 보3, "**FR 이 있어도 막는다** -- 그 빨강으로는 아무것도 증명되지 않았다")
+    G.메타기 = lambda repo, 바뀐: {"commit": True, "있나": False, "말": "사냥 기록이 없다"}
+    통4, 보4 = G.검사(뿌리, 게이트=False, 감사=False, ci=False, 메타=True)
+    ok(통4 and "(경고)" in 보4, "사냥을 한 적이 없으면 경고만 -- 모르는 것은 빨강도 아니다(막지 않는다)")
+    def _터지는(repo, 바뀐):
+        raise RuntimeError("원장 깨짐")
+    G.메타기 = _터지는
+    통5, 보5 = G.검사(뿌리, 게이트=False, 감사=False, ci=False, 메타=True)
+    ok(통5 and "메타검증을 못 읽었다" in 보5, "문이 고장 나면 알리고 막지 않는다(이 문은 보강이다)")
+    통6, 보6 = G.검사(뿌리, 게이트=False, 감사=False, ci=False, 메타=False)
+    ok("메타" not in 보6, "메타=False 면 이 문을 아예 안 지난다(빠름 경로와 같다)")
+finally:
+    G.메타기 = _원메타
+
+print("\n== 상태기계와 지시함수 (사용자 수식 그대로) ==")
+ok(G.상태(도구호출됨=False, 기본검증통과=True) == "R", "도구를 안 불렀으면 R -- 기본 검증이 지났어도 그렇다")
+ok(G.상태(도구호출됨=True, 기본검증통과=False) == "R", "기본 검증이 빨갛면 R")
+ok(G.상태(도구호출됨=True, 기본검증통과=True) == "G", "도구를 부르고 기본 검증이 지나면 G")
+ok(G.전이("R", 1) == "G" and G.전이("R", 0) == "R", "R --[V(P)=1]--> G")
+ok(G.전이("G", 0) == "R", "V=0 이면 G 에서도 R 로 되돌아간다")
+ok(G.승인(1, True, 0, 0)["Commit"] == 1, "V=1 ∧ T=PASS ∧ FG=∅ ∧ FR=∅ -> Commit=1")
+ok(G.승인(1, True, 1, 0)["Commit"] == 0 and "FG=∅" in G.승인(1, True, 1, 0)["깨진것"], "FG 가 있으면 Commit=0")
+ok(G.승인(1, True, 0, 1)["Commit"] == 0 and "FR=∅" in G.승인(1, True, 0, 1)["깨진것"], "FR 이 있으면 Commit=0")
+ok(G.승인(0, True, 0, 0)["Commit"] == 0, "V=0 이면 Commit=0")
+ok(G.승인(1, False, 0, 0)["Commit"] == 0, "T(P)=FAIL 이면 Commit=0")
+ok(G.여섯조건({k: (G.참, "") for k in G.여섯항})["commit"] is True, "여섯 항이 다 참이면 허용")
+ok(G.여섯조건({**{k: (G.참, "") for k in G.여섯항}, "NoFalseRed": (G.거짓, "FR 1개")})["commit"] is False,
+   "한 항이라도 거짓이면 막는다 (논리곱)")
+_못 = G.여섯조건({**{k: (G.참, "") for k in G.여섯항}, "SemanticObservation": (G.못잼, "안 쟀다")})
+ok(_못["commit"] is True and _못["못잰항"] == ["SemanticObservation"],
+   "**못잼은 막지 않고 적는다** -- 재지 않은 것을 빨강이라 하는 것도 거짓 빨강이다")
+ok("[?]" in _못["표"] and "[O]" in _못["표"], "표가 항마다 O/X/? 를 적는다")
+
 print()
 if FAIL:
     print(f"실패 {len(FAIL)}개 -- {FAIL}")
     raise SystemExit(1)
-print("commit_guard: 통과 · 검사 빨강 · fail-closed · CI 빨강/못잼 · 게이트 · 죽어도 닫힘 · 배선 -- 통과")
+print("commit_guard: 통과 · 검사 빨강 · fail-closed · CI · 게이트 · 2차 메타검증 · 상태기계·지시함수 · 죽어도 닫힘 · 배선 -- 통과")

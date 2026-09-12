@@ -385,26 +385,45 @@ def 절제검사(repo=None, 판=None, 초: int = 300, 상한: int = None, 기준
                 else:
                     (tmp / x).unlink(missing_ok=True)      # 패치가 지운 것은 절제 판에서도 없다
             if 이름 is None:
-                (tmp / rel).unlink(missing_ok=True)
-            else:
-                새글 = _절제한글((tmp / rel).read_text(encoding="utf-8", errors="replace"), 이름)
-                if 새글 is None:
+                (tmp / rel).unlink(missing_ok=True)        # 파일 전체가 단위다 -- 아래 I1 은 건너뛴다
+            # **절제도 변형이다.** 그러므로 변형 판정의 두 불변식을 똑같이 지킨다(mutate.py 의 논증과 같다):
+            #   I1  절제 **전에** 이 판에서 검사가 초록이어야 한다 -- 아니면 그 빨강은 절제 탓이 아니다
+            #   I4  절제로 빨개졌으면 **되돌려 다시 돌려** 초록이 되는지 본다 -- 아니면 귀속할 수 없다
+            # 실측 2026-09-12 PR #218: .py 만 옮겨 데이터 파일이 없어 빨개진 것을 "기능이 걸린다" 로 읽었다.
+            # 그것이 거짓 Red 이고, 거짓 Red 는 거짓 Green 을 낳는다.
+            env = {**os.environ, "PYTHONPATH": str(tmp), "PYTHONDONTWRITEBYTECODE": "1"}
+
+            def _검사돌리기() -> "tuple[bool, str]":
+                for t in 검사:
+                    if not (tmp / t).is_file():
+                        continue
+                    try:
+                        rc = subprocess.run(["python3", "-B", t], cwd=str(tmp), env=env,
+                                            capture_output=True, text=True, timeout=초).returncode
+                    except subprocess.TimeoutExpired:
+                        rc = 124
+                    if rc != 0:
+                        return True, t
+                return False, ""
+
+            절제안한글 = (tmp / rel).read_text(encoding="utf-8", errors="replace") if 이름 else None
+            if 이름 is not None:
+                먼저빨강, 먼저어디 = _검사돌리기()
+                if 먼저빨강:
+                    out["못잼"].append(f"{이름말} -- INVALID_BASELINE: 절제 전에 이미 빨강({먼저어디})")
+                    continue
+                새글2 = _절제한글(절제안한글, 이름)
+                if 새글2 is None:
                     out["못잼"].append(f"{이름말} -- 그 자리를 못 찾았다")
                     continue
-                (tmp / rel).write_text(새글, encoding="utf-8")
-            env = {**os.environ, "PYTHONPATH": str(tmp)}
-            무너짐, 어디 = False, ""
-            for t in 검사:
-                if not (tmp / t).is_file():
+                (tmp / rel).write_text(새글2, encoding="utf-8")
+            무너짐, 어디 = _검사돌리기()
+            if 무너짐 and 이름 is not None:
+                (tmp / rel).write_text(절제안한글, encoding="utf-8")       # I4 -- 되돌려 다시
+                또빨강, 또어디 = _검사돌리기()
+                if 또빨강:
+                    out["못잼"].append(f"{이름말} -- FALSE_RED: 절제를 빼도 빨갛다({또어디}). 절제 탓이 아니다")
                     continue
-                try:
-                    rc = subprocess.run(["python3", t], cwd=str(tmp), env=env, capture_output=True,
-                                        text=True, timeout=초).returncode
-                except subprocess.TimeoutExpired:
-                    rc = 124
-                if rc != 0:
-                    무너짐, 어디 = True, t
-                    break
             out["잰것"].append({"이름": 이름말, "무너짐": 무너짐, "어디": 어디})
             if not 무너짐:
                 out["안잡힌것"].append(이름말)
