@@ -264,12 +264,75 @@ try:
     됐나3, 말3 = M.관찰됐나(판, "없는.py:없는함수")
     ok(not 됐나3 and "재 본 적이 없다" in 말3, "재 본 적이 없으면 관찰됐다고 하지 않는다")
 
+    print("\n== 거짓 빨강 사냥: 빨강이 거짓인 검사를 찾는다 ==")
+    # 사용자(2026-09-12): "왜 거짓 빨강은 조사 안 해?"  맞는 지적이었다 -- FG 에는 사냥이 있는데 FR 에는 없었다.
+    # 표본이 이미 있었다: CI 의 test_law_hwp(권한) · 이 컨테이너의 test_compression_judge(캐시) · Case D.
+    (판 / "tests" / "test_멀쩡.py").write_text('print("늘 초록")\n', encoding="utf-8")
+    (판 / "tests" / "test_진짜빨강.py").write_text('raise AssertionError("늘 빨강")\n', encoding="utf-8")
+    (판 / "쓰는것.txt").write_text("있다", encoding="utf-8")
+    (판 / "tests" / "test_오염.py").write_text(
+        'import os\nassert open("쓰는것.txt").read() == "있다"\nos.remove("쓰는것.txt")\nprint("한 번만")\n',
+        encoding="utf-8")
+    git(판, "add", "-A"); git(판, "commit", "-qm", "FR 표본들")
+    (판 / "안추적.txt").write_text("작업 트리에만 있다", encoding="utf-8")      # 커밋하지 않는다
+    (판 / "tests" / "test_환경.py").write_text(
+        'assert open("안추적.txt").read().startswith("작업")\nprint("작업 트리에서만 초록")\n', encoding="utf-8")
+    git(판, "add", "tests/test_환경.py"); git(판, "commit", "-qm", "환경 의존 검사")
+    fr = M.거짓빨강사냥(판, 검사들=["tests/test_멀쩡.py", "tests/test_진짜빨강.py",
+                              "tests/test_오염.py", "tests/test_환경.py"],
+                   시한초=240, 말하기=lambda s: None)
+    ok(fr["잰것"] == 4, f"넷을 쟀다 ({fr['잰것']})")
+    ok(fr[M.멀쩡] == 1, f"늘 초록인 검사는 멀쩡 ({fr[M.멀쩡]})")
+    ok(fr[M.상태오염] == 1 and any(x["검사"] == "tests/test_오염.py" and x["분류"] == M.상태오염
+                               for x in fr["찾은것"]),
+       f"**두 번째에 빨강 -> 상태오염** (제 상태를 지운다) ({fr[M.상태오염]})")
+    ok(fr[M.환경의존] == 1 and any(x["검사"] == "tests/test_환경.py" and x["분류"] == M.환경의존
+                               for x in fr["찾은것"]),
+       f"**깨끗한 판에서만 빨강 -> 환경의존** (추적 안 되는 파일에 매였다) ({fr[M.환경의존]})")
+    ok(fr[M.원래빨강] == 1, f"둘 다 빨강이면 진짜 빨강 -- 거짓이 아니다 ({fr[M.원래빨강]})")
+    원2 = M.원장읽기(판)
+    ok(any(x.get("꼴") == "거짓빨강" and x.get("classification") == M.환경의존 for x in 원2),
+       "원장에 분류와 까닭이 남는다")
+    ok("거짓 빨강" in M.FR보고(판) and "환경의존" in M.FR보고(판), "FR보고가 원장을 읽는다")
+    ok(git(판, "worktree", "list").stdout.strip().count("\n") == 0, "FR 사냥 워크트리가 안 남는다")
+
+    print("\n== 둘 다 한 번에: 거짓 빨강 -> 거짓 초록 (순서가 뜻을 만든다) ==")
+    둘 = M.둘다사냥(판, 시한초=300, 파일들=["계산.py"], 말하기=lambda s: None)
+    ok("FR" in 둘 and "FG" in 둘, "둘을 같이 돌려 둘을 돌려준다")
+    ok(둘["FR"]["잰것"] >= 4 and 둘["FG"]["잰변형"] >= 1, f"FR {둘['FR']['잰것']}개 · FG 변형 {둘['FG']['잰변형']}개")
+    ok(set(둘["못믿을검사"]) >= {"tests/test_오염.py", "tests/test_환경.py"},
+       f"**바탕으로 쓸 수 없는 검사를 먼저 알려 준다** ({둘['못믿을검사']})")
+    ok(any(x.get("꼴") == "둘다끝" for x in M.원장읽기(판)), "원장에 둘다끝이 남는다")
+    # 사용자(2026-09-12): "Baseline RG -> Mutation Validity -> FR Attribution -> FG/Equivalent".
+    # FR 을 먼저 돌린 **값을 쓴다** -- 못 믿을 검사를 바탕에서 빼야 RG0 가 서고, 그 파일을 잴 수 있다.
+    r오염 = M.사냥(판, 파일들=["쓰는것없음.py"], 시한초=60, 말하기=lambda s: None)
+    (판 / "붙은것.py").write_text("def g(a):\n    return a + 1\n", encoding="utf-8")
+    (판 / "tests" / "test_붙은것.py").write_text(
+        'import sys; sys.path.insert(0, ".")\nimport 붙은것\nimport os\n'
+        'assert 붙은것.g(1) == 2\nopen("찌꺼기.txt", "w").write("x")\n'
+        'assert not os.path.exists("또찌꺼기.txt")\nopen("또찌꺼기.txt", "w").write("x")\nprint("한 번만")\n',
+        encoding="utf-8")
+    git(판, "add", "-A"); git(판, "commit", "-qm", "붙은것 + 제 상태를 남기는 검사")
+    안뺐을때 = M.사냥(판, 파일들=["붙은것.py"], 시한초=120, 말하기=lambda s: None)
+    뺐을때 = M.사냥(판, 파일들=["붙은것.py"], 시한초=120, 말하기=lambda s: None,
+                뺄검사=["tests/test_붙은것.py"])
+    ok(안뺐을때["잰변형"] >= 1, f"못 믿을 검사라도 RG0 한 번은 지난다(첫 실행은 초록) ({안뺐을때['잰변형']})")
+    ok(뺐을때["못잼"] >= 1 and 뺐을때["잰변형"] == 0,
+       f"**뺄검사로 빼면 그 검사를 바탕으로 쓰지 않는다** (잰변형 {뺐을때['잰변형']} · 못잼 {뺐을때['못잼']})")
+
     print("\n== 배선 ==")
     _서버 = (뿌리 / "discord_bot_server.py").read_text(encoding="utf-8")
     ok("mutate" in (뿌리 / "dispatch.py").read_text(encoding="utf-8")
        or "거짓초록" in (뿌리 / "dispatch.py").read_text(encoding="utf-8"), "dispatch 가 거짓초록 명령을 안다")
     ok("mutate.py" in (뿌리 / ".github/workflows/deploy-oracle.yml").read_text(encoding="utf-8"),
        "배포가 mutate.py 를 서버에 올린다")
+    from falsegreen import discord_cmd as _FC
+    보기 = lambda argv, 로그, 무엇: " ".join(argv[1:])
+    ok("--둘다" in _FC.run("!거짓초록 24", runner=보기) and "86400" in _FC.run("!거짓초록 24", runner=보기),
+       "**`!거짓초록 24` 는 둘 다 돌린다** (거짓 빨강 -> 거짓 초록)")
+    ok("--거짓빨강" in _FC.run("!거짓초록 빨강만", runner=보기), "`빨강만` 은 FR 만")
+    ok("--둘다" not in _FC.run("!거짓초록 초록만", runner=보기), "`초록만` 은 FG 만")
+    ok(_FC.run("!거짓초록 보고") is not None, "`보고` 는 둘 다 요약한다(즉시)")
 finally:
     shutil.rmtree(판, ignore_errors=True)
 
@@ -277,4 +340,4 @@ print()
 if FAIL:
     print(f"실패 {len(FAIL)}개 -- {FAIL}")
     raise SystemExit(1)
-print("mutate: 조용한 변형 · 본다/안 본다 · 절제와의 차이 · 비등가·덮임·동등 · Case A~D · 2차 메타검증 · 못잼 · 시한 · 원장 · 배선 -- 통과")
+print("mutate: 조용한 변형 · 본다/안 본다 · 절제와의 차이 · 비등가·덮임·동등 · Case A~D · 2차 메타검증 · 거짓빨강 사냥(상태오염·환경의존·진짜빨강) · 둘다 · 못잼 · 시한 · 원장 · 배선 -- 통과")
