@@ -48,6 +48,7 @@ import argparse
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -502,33 +503,143 @@ def 사람몫인가(말: str) -> bool:
 
 
 # ---------------------------------------------------------------- 사용자가 말한 개선 (!개선 <말>)
+def 저장소파이썬(repo: Path) -> "list[str]":
+    """이 저장소의 파이썬 파일. **git 이 추적하는 것만** -- 목록을 손으로 적지 않는다.
+
+    실측 2026-09-12(VM): `!개선 수집망 url에 인스타그램, x, meta 추가해줘` 가 고른 파일이
+    `.venv-torch/lib/python3.12/site-packages/torch/_meta_registrations.py` 였다. 건너뛸 곳을
+    `("venv", "__pycache__", ...)` 로 손으로 적어 두었는데 `.venv-torch` 는 그 중 어느 이름도
+    아니었다. **남의 코드가 발췌로 들어가니 모델이 패치를 못 냈다**(판정: 제안없음).
+
+    git 에게 물으면 목록이 필요 없다. .gitignore 에 걸린 것(`.venv*`)은 추적 대상이 아니고,
+    앞으로 생길 `.venv-무엇` · `node_modules` · 캐시도 자동으로 빠진다. 저장소의 코드란
+    **커밋된 나무**다 -- 이 저장소가 precheck 에서 이미 쓰는 기준과 같다."""
+    try:
+        r = subprocess.run(["git", "-C", str(repo), "ls-files", "-z", "*.py"],
+                           capture_output=True, text=True, timeout=60)
+        if r.returncode == 0:
+            return [x for x in r.stdout.split("\0") if x]
+    except (OSError, subprocess.SubprocessError):
+        pass
+    # git 이 없는 곳(임시 판 등): 그때만 눈에 보이는 이름으로 걸러 훑는다
+    return [str(f.relative_to(repo)) for f in repo.rglob("*.py")
+            if f.is_file() and not any(x.startswith(".") or x in ("__pycache__", "node_modules")
+                                       for x in f.relative_to(repo).parts[:-1])]
+
+
+def _낱말뽑기(말: str, 몇: int = 14) -> "list[str]":
+    """부탁에서 찾을 낱말. **한글 조사가 붙은 라틴 토막을 따로 떼어 낸다.**
+
+    실측 2026-09-12(VM): `수집망 url에 인스타그램, x, meta 추가해줘` 를 쪼개면 `url에` 가 한 낱말이
+    되어 `url` 을 가진 파일이 **하나도 안 맞았다**(`dig/search.py` 가 그래서 빠졌다). 이 저장소의
+    부탁은 늘 이렇게 섞인다 -- `md가` · `pdf로` · `url에`. 조사를 떼면 그 말들이 다시 맞는다.
+    한글 복합어(`수집망` -> `수집`)는 여기서 쪼개지 않는다 -- 그 연결은 `_부탁의모듈` 이 맡는다."""
+    out: list[str] = []
+    for w in re.split(r"[^0-9A-Za-z가-힣_./]+", 말 or ""):
+        w = w.lower()
+        if len(w) >= 2:
+            out.append(w)
+        for 토막 in re.findall(r"[0-9a-z_./]{2,}", w):     # `url에` -> `url`
+            if 토막 != w:
+                out.append(토막)
+    본 = []
+    for w in out:                                        # 차례를 지키며 중복만 없앤다
+        if w not in 본:
+            본.append(w)
+    return 본[:몇]
+
+
+def _부탁의모듈(말: str) -> "list[str]":
+    """부탁에 든 말이 **고정 명령의 이름**이면 그 명령이 사는 꾸러미를 돌려준다.
+
+    실측 2026-09-12(VM): `!개선 수집망 url에 인스타그램, x, meta 추가해줘` 가 고른 파일이
+    `brief/ledger.py` · `compression/*` 였다 -- 글자 맞춤만으로는 "수집망" 이 `!수집`(dig/) 인 것을
+    모른다. 그 연결은 이미 `dispatch.명령들` 에 있다(`!수집` -> dig.discord_cmd). 목록을 새로
+    적지 않고 그것에 묻는다 -- 명령이 늘면 이 자리도 같이 늘어난다."""
+    낮 = (말 or "").lower()
+    꾸러미 = []
+    try:
+        import dispatch
+    except Exception:                                      # noqa: BLE001
+        return []
+    for m in getattr(dispatch, "명령들", ()):
+        이름 = str(getattr(m, "PREFIX", "")).lstrip("!").strip()
+        if len(이름) >= 2 and 이름.lower() in 낮:
+            뿌리 = (getattr(m, "__name__", "") or "").split(".")[0]
+            if 뿌리 and 뿌리 not in 꾸러미:
+                꾸러미.append(뿌리)
+    return 꾸러미
+
+
 def _관련파일찾기(말: str, repo: Path, 몇: int = 4) -> "list[str]":
-    """부탁의 낱말로 저장소 .py 를 점수 매겨 고른다. 이름 맞음 3점 · 본문 등장 1점(앞 400줄)."""
-    낱말 = [w.lower() for w in re.split(r"[^0-9A-Za-z가-힣_./]+", 말 or "") if len(w) >= 2][:12]
+    """부탁의 낱말로 저장소 .py 를 점수 매겨 고른다. 이름 맞음 3점 · 본문 등장 1점(앞 400줄).
+
+    보는 것은 **git 이 추적하는 파일뿐**이다(저장소파이썬) -- 남의 코드를 발췌로 주면 못 고친다."""
+    낱말 = _낱말뽑기(말)
     if not 낱말:
         return []
+    꾸러미 = _부탁의모듈(말)               # "수집망" -> dig/ (dispatch 가 아는 연결)
     점수: dict = {}
-    for f in repo.rglob("*.py"):
-        rel = str(f.relative_to(repo))
-        if any(x in rel.split("/") for x in (".git", "venv", "__pycache__", "tests", "inbox", "node_modules")):
+    for rel in 저장소파이썬(repo):
+        if any(x in rel.split("/") for x in ("tests", "inbox", "__pycache__")):
             continue
+        f = repo / rel
         if not f.is_file() or f.stat().st_size > 400_000:
             continue
-        s_ = 0
+        if rel.endswith("__init__.py") and f.stat().st_size < 400:
+            continue                       # 빈 꾸러미 표지 -- 발췌로 줄 것이 없다
+        s_, 맞음 = 0, False
         낮 = rel.lower()
+        if 꾸러미 and rel.split("/")[0] in 꾸러미:
+            s_ += 6                        # 그 명령이 사는 꾸러미 -- 글자 맞춤보다 세게 본다
         for w in 낱말:
             if w in 낮:
                 s_ += 3
+                맞음 = True
         try:
             본 = "\n".join(f.read_text(encoding="utf-8", errors="replace").splitlines()[:400]).lower()
         except OSError:
             continue
         for w in 낱말:
-            if w in 본:
-                s_ += 1
-        if s_:
+            n = 본.count(w)
+            if n:
+                s_ += min(n, 3)            # 몇 번 나오나도 본다 -- 그 말을 '다루는' 파일이 위로 온다
+                맞음 = True
+        if s_ and 맞음:                    # 꾸러미 보너스만으로는 안 된다 -- 부탁의 말이 실제로 있어야
             점수[rel] = s_
-    return [k for k, _ in sorted(점수.items(), key=lambda kv: -kv[1])[:몇]]
+    # 부탁이 어느 명령을 가리키면 **그 꾸러미 안에서 고른다** -- 남의 꾸러미가 점수로 끼어들지 않게.
+    def _차례(kv):
+        rel, 점 = kv
+        return (0 if (꾸러미 and rel.split("/")[0] in 꾸러미) else 1, -점, rel)
+    return [k for k, _ in sorted(점수.items(), key=_차례)[:몇]]
+
+
+
+def 제안받기(원프롬프트: str, 횟수: int = 2) -> "tuple[dict | None, int, str]":
+    """패치(또는 사람) 꼴의 답을 받는다. 꼴이 아니면 **무엇이 왔는지 보여 주며 다시 청한다.**
+    (제안, 시도수, 마지막 답머리).
+
+    실측 2026-09-12(VM): `!개선 수집망 url에 …` 이 첫 답이 패치 꼴이 아니어서 **그 자리에서 끝났다**
+    (판정: 제안없음). 적용 실패와 시뮬 빨강은 이미 되풀이하는데 이 자리만 한 번에 포기했다.
+    사용자: "최대한 스스로 해결해야 한다." 그래서 여기도 되풀이로 바꾼다."""
+    답 = ""
+    for k in range(1, max(1, 횟수) + 1):
+        프 = 원프롬프트 if k == 1 else (
+            원프롬프트 + f"\n\n[꼴이 아니다 {k - 1}/{횟수}] 네 앞 답은 이렇게 시작했다: {답.strip()[:200]!r}\n"
+            "설명·인사·펜스 없이 **JSON 하나만** 답하라. 꼴은 둘 중 하나다:\n"
+            '  {"꼴": "패치", "왜": "...", "근거": [], "편집": [{"path": "...", "old": "...", "new": "..."}], '
+            '"새파일": [{"path": "...", "본문": "..."}]}\n'
+            '  {"꼴": "사람", "사람이_할_것": "..."}   <- 사람만 가진 값(열쇠·승인·계정)이 필요할 때만')
+        try:
+            답 = (제안기 or _제안기본)(프) or ""
+        except Exception as e:                             # noqa: BLE001
+            return None, k, f"제안기를 못 불렀다: {type(e).__name__}: {str(e)[:100]}"
+        제안 = 해석(답)
+        if 제안:
+            return 제안, k, 답[:200]
+        if _원장repo is not None:
+            _적기(_원장repo, {"꼴": "되묻기", "왜": "패치 꼴이 아니다", "시도": k, "답머리": 답.strip()[:160]})
+    return None, 횟수, 답[:200]
 
 
 def 부탁프롬프트(말: str, repo: Path, 근거: dict, 파일들: "list[str]") -> str:
@@ -574,7 +685,7 @@ def 사용자개선(말: str, repo=None, 초: int = 180, 전부: bool = True, �
     repo = Path(repo or REPO)
     말 = (말 or "").strip()
     r = {"부탁": 말, "판정": "", "왜": "", "id": "", "diff": "", "말": "", "근거": [], "댄근거": [],
-        "확장": 0, "파일들": [], "회귀": None}
+        "확장": 0, "파일들": [], "회귀": None, "제안시도": 0}
     if not 말:
         r.update(판정="빈부탁", 말="무엇을 개선할지 한 줄로 적어라 -- `!개선 <말>`")
         return r
@@ -591,12 +702,18 @@ def 사용자개선(말: str, repo=None, 초: int = 180, 전부: bool = True, �
     r["확장"] = 근거["확장"]
     r["파일들"] = _관련파일찾기(말, repo)
     원프롬프트 = 부탁프롬프트(말, repo, 근거, r["파일들"])
-    try:
-        답 = (제안기 or _제안기본)(원프롬프트)
-    except Exception as e:                             # noqa: BLE001
-        r.update(판정="제안없음", 말=f"제안기를 못 불렀다: {type(e).__name__}: {str(e)[:100]}")
+    global _원장repo
+    _원장repo = repo
+    제안, r["제안시도"], 답머리 = 제안받기(원프롬프트)
+    if 제안 is None:
+        if 답머리.startswith("제안기를 못 불렀다"):
+            r.update(판정="제안없음", 말=답머리)
+            return r
+        # 두 번 청해도 꼴이 아니다 -- 여기서 끝내지 않고 긴 호흡으로 넘긴다(코드가 정한 길).
+        r.update(판정="조사로", 말=f"두 번 청해도 패치 꼴의 답이 아니다(마지막 답머리: {답머리[:120]!r}) "
+                               "-- 긴 호흡(조사)으로 넘긴다")
+        _적기(repo, {"꼴": "조사로", "말": 말[:200], "이유": f"패치 꼴 아님 · 답머리 {답머리[:120]}"})
         return r
-    제안 = 해석(답)
     if 제안 and 제안.get("꼴") == "사람" and not 사람몫인가(제안.get("사람이_할_것", "")):
         # **회피는 받지 않는다.** 사람 몫이 아닌 이유로 물러났으면 긴 호흡(조사)으로 넘긴다 --
         # 거기서는 두뇌가 도구를 들고 새 모듈·검사·의존성을 직접 짓고 끝값으로 판정받는다.
@@ -604,8 +721,8 @@ def 사용자개선(말: str, repo=None, 초: int = 180, 전부: bool = True, �
                                "-- 긴 호흡(조사)으로 넘긴다")
         _적기(repo, {"꼴": "조사로", "말": 말[:200], "이유": str(제안.get("사람이_할_것", ""))[:200]})
         return r
-    if not 제안 or 제안.get("꼴") != "패치":
-        r.update(판정="제안없음", 말=(제안 or {}).get("사람이_할_것") or "패치 꼴의 답이 아니다")
+    if 제안.get("꼴") != "패치":
+        r.update(판정="제안없음", 말=제안.get("사람이_할_것") or "패치 꼴의 답이 아니다")
         return r
     r["왜"] = str(제안.get("왜", ""))[:200]
     r["댄근거"] = [str(x) for x in (제안.get("근거") or [])][:6]
@@ -615,8 +732,6 @@ def 사용자개선(말: str, repo=None, 초: int = 180, 전부: bool = True, �
             P.버림(repo)
         P.켜기(f"자가개선: [부탁] {말[:80]}", repo=repo, 누가="개선")
         return P.현재판(repo)
-    global _원장repo
-    _원장repo = repo
     ok, 적용말, 제안, r["적용시도"] = 적용되풀이(제안, 원프롬프트, _판새로)
     r["왜"] = str(제안.get("왜", ""))[:200]
     if not ok:
