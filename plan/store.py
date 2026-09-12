@@ -57,6 +57,26 @@ def 현재판(repo=None) -> "Path | None":
     return Path(s["판"]) if s else None
 
 
+def 프로세스표(pid: int) -> "tuple[str, int] | tuple[None, None]":
+    """/proc/<pid>/stat 에서 (상태글자, 태어난시각). 못 읽으면 (None, None).
+
+    상태글자: R 돌는 중 · S 자는 중 · D 대기 · **Z 좀비(이미 끝났는데 부모가 안 거둬 갔다)** · T 멈춤.
+    태어난시각: 부팅 뒤 몇 틱에 태어났나(22번 칸). pid 와 함께 쓰면 **pid 돌려쓰기**를 가를 수 있다 --
+    같은 pid 라도 태어난시각이 다르면 남이다.
+
+    프로세스 이름에 괄호가 들 수 있어 마지막 `)` 뒤부터 센다."""
+    try:
+        본 = Path(f"/proc/{int(pid)}/stat").read_text(encoding="utf-8", errors="replace")
+        칸 = 본[본.rindex(")") + 1:].split()
+        return 칸[0], int(칸[19])                            # 3번 칸 state · 22번 칸 starttime
+    except (OSError, ValueError, IndexError):
+        return None, None
+
+
+def 태어난시각(pid: int) -> "int | None":
+    return 프로세스표(pid)[1]
+
+
 def 켜기(요청: str, repo=None, 누가: str = "cli") -> str:
     repo = Path(repo or REPO)
     s = 읽기(repo)
@@ -69,8 +89,11 @@ def 켜기(요청: str, repo=None, 누가: str = "cli") -> str:
     아이디 = time.strftime("%Y%m%d%H%M%S", time.gmtime())
     # pid: 켠 프로세스. improve.판정리 가 "살아 있는 실행의 판인가" 를 이것으로 가른다(실측 2026-09-12:
     # 시험 중인 판을 나란히 돈 자가개선이 '시험 안 한 판' 이라며 치웠다 -- 산 것과 죽은 것을 갈라야 한다).
+    # **태어난시각을 함께 적는다.** pid 만으로는 모자라다 -- 오래 도는 기계에서 pid 는 돌려 쓰인다. 그러면
+    # 죽은 실행의 판을 '남이 쓰는 중' 으로 읽어 영영 안 치운다(거짓 양성은 멈춤이다).
     s = {"id": 아이디, "판": str(tmp), "요청": (요청 or "").strip()[:300], "누가": 누가,
-         "때": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "pid": os.getpid()}
+         "때": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+         "pid": os.getpid(), "태어난시각": 태어난시각(os.getpid())}
     p = repo / 상태상대
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(s, ensure_ascii=False, indent=1), encoding="utf-8")

@@ -177,19 +177,23 @@ try:
        f"치우기 전에 그 판의 diff 를 logs/ 에 남긴다 -- 사람 손일 수도 있다 ({(줄 or [{}])[-1].get('diff')})")
     I.버림(d)
     # 실측 2026-09-12(VM): PDF 부탁이 시험 중일 때 자가개선이 나란히 돌아 그 판을 '시험 안 한 판' 이라며 치웠다.
-    # 켠 프로세스가 살아 있으면 남의 일이 도는 중이다 -- 치우지 않고 판열림으로 기다린다.
+    # 켠 프로세스가 살아 있으면 남의 일이 도는 중이다 -- **치우지 않는다.** 기다리고, 한도를 넘기면 말한다.
     import subprocess as _sp
     산것 = _sp.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    _틈0, _한도0 = I._기다림틈, I.기다림초
+    I._기다림틈, I.기다림초 = 0.2, 0.5                  # 기다림 자체는 아래 대목에서 따로 붙든다
     try:
         P.켜기("나란히 도는 실행의 판", repo=d, 누가="개선")
-        상태 = d / P.상태상대; 상 = json.loads(상태.read_text(encoding="utf-8")); 상["pid"] = 산것.pid
+        상태 = d / P.상태상대; 상 = json.loads(상태.read_text(encoding="utf-8"))
+        상["pid"], 상["태어난시각"] = 산것.pid, P.태어난시각(산것.pid)
         상태.write_text(json.dumps(상, ensure_ascii=False), encoding="utf-8")
         r = I.사용자개선("f 가 1", d, 초=30)
-        ok(r["판정"] == "판열림" and "다른 실행이 쓰는 중" in r["말"] and P.현재판(d) is not None,
-           f"**켠 프로세스가 살아 있으면 치우지 않는다** (판정 {r['판정']})")
-        ok("다른 실행이 쓰는 중" in I.자가개선(d)["남은것"], "자가개선도 같은 판단을 한다")
+        ok(r["판정"] == "판열림" and "넘게 쓰고 있다" in r["말"] and P.현재판(d) is not None,
+           f"**켠 프로세스가 살아 있으면 치우지 않는다** (판정 {r['판정']} · {r['말'][:40]})")
+        ok("넘게 쓰고 있다" in I.자가개선(d)["남은것"], "자가개선도 같은 판단을 한다")
     finally:
         산것.kill(); 산것.wait()
+        I._기다림틈, I.기다림초 = _틈0, _한도0
     r = I.사용자개선("f 가 1", d, 초=30)
     ok(r["판정"] == "동의대기" and any(x.get("꼴") == "판정리" for x in I.원장읽기(d)[-3:]),
        f"그 프로세스가 죽으면 찌꺼기다 -- 치우고 이어 간다 (판정 {r['판정']})")
@@ -198,6 +202,66 @@ try:
     import shutil as _sh; _sh.rmtree(P.현재판(d), ignore_errors=True)                       # 디렉터리가 사라진 판
     r = I.사용자개선("f 가 1", d, 초=30)
     ok(r["판정"] == "동의대기", f"디렉터리가 사라진 판도 막지 않는다 (판정 {r['판정']})")
+
+    print("\n== 산 실행이 판을 쥐고 있으면 **기다렸다 이어 간다** (사람에게 안 넘긴다) ==")
+    # 실측 2026-09-12(VM): "계획판을 다른 실행이 쓰는 중이다 … 그 실행이 끝나면 다시 부탁하라" 가
+    # 사용자에게 갔다. 이 일 자체가 배경이므로 기다릴 수 있다.
+    import subprocess as _sp3
+    I.버림(d)
+    짧은일 = _sp3.Popen([sys.executable, "-c", "import time; time.sleep(3)"])
+    P.켜기("나란히 도는 실행", repo=d, 누가="개선")
+    상태p = d / P.상태상대
+    상 = json.loads(상태p.read_text(encoding="utf-8"))
+    상["pid"], 상["태어난시각"] = 짧은일.pid, P.태어난시각(짧은일.pid)
+    상태p.write_text(json.dumps(상, ensure_ascii=False), encoding="utf-8")
+    _틈전, I._기다림틈 = I._기다림틈, 0.4
+    try:
+        막힘, 말2 = I.판정리(d)
+        # 기다린 뒤 판이 남아 있으면 찌꺼기로 치우고, 비었으면 그대로 이어 간다 -- 어느 쪽이든 **막지 않는다**.
+        ok(not 막힘 and ("이어 간다" in 말2 or "치웠다" in 말2), f"**기다렸다 이어 간다** ({말2[:70]})")
+        꼴들2 = [x.get("꼴") for x in I.원장읽기(d)]
+        ok("기다림" in 꼴들2 and "기다림끝" in 꼴들2, f"기다린 것이 원장에 남는다 ({꼴들2[-4:]})")
+    finally:
+        짧은일.kill(); 짧은일.wait()
+        I._기다림틈 = _틈전
+
+    print("\n== 한도를 넘기면 그때만 사람에게 말한다 ==")
+    긴일 = _sp3.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    try:
+        P.켜기("오래 쥔 실행", repo=d, 누가="자가개선")
+        상 = json.loads(상태p.read_text(encoding="utf-8"))
+        상["pid"], 상["태어난시각"] = 긴일.pid, P.태어난시각(긴일.pid)
+        상태p.write_text(json.dumps(상, ensure_ascii=False), encoding="utf-8")
+        _틈전, _한도전 = I._기다림틈, I.기다림초
+        I._기다림틈, I.기다림초 = 0.2, 0.5
+        try:
+            막힘, 말3 = I.판정리(d)
+            ok(막힘 and "넘게 쓰고 있다" in 말3, f"한도를 넘기면 막는다 ({말3[:60]})")
+        finally:
+            I._기다림틈, I.기다림초 = _틈전, _한도전
+    finally:
+        긴일.kill(); 긴일.wait()
+    I.버림(d)
+
+    print("\n== pid 돌려쓰기: 같은 pid 라도 태어난시각이 다르면 남이다 ==")
+    # pid 만 보면 죽은 실행의 판을 '남이 쓰는 중' 으로 읽어 **영영 안 치운다** -- 거짓 양성은 멈춤이다.
+    ok(I._살아있나(os.getppid()) is True, "부모는 살아 있다(pid 만 볼 때)")
+    ok(I._살아있나(os.getppid(), 태어난시각=999999) is False,
+       "**태어난시각이 다르면 죽은 것으로 본다** -- pid 돌려쓰기에 안 속는다")
+    ok(I._살아있나(os.getppid(), 태어난시각=P.태어난시각(os.getppid())) is True, "태어난시각이 맞으면 살아 있다")
+    ok(I._살아있나(os.getpid()) is False, "나 자신은 막지 않는다")
+    ok(P.태어난시각(os.getpid()) is not None and P.태어난시각(2 ** 30) is None, "태어난시각: 있는 pid 만 숫자")
+    좀비 = _sp3.Popen([sys.executable, "-c", "pass"])       # 끝났는데 안 거둬 간 것 -- os.kill(pid,0) 은 된다
+    try:
+        import time as _t3
+        for _ in range(50):
+            if P.프로세스표(좀비.pid)[0] == "Z":
+                break
+            _t3.sleep(0.1)
+        ok(P.프로세스표(좀비.pid)[0] == "Z" and I._살아있나(좀비.pid) is False,
+           f"**좀비는 죽은 것으로 본다** -- 아니면 끝난 실행을 한도까지 기다린다 (상태 {P.프로세스표(좀비.pid)[0]})")
+    finally:
+        좀비.wait()
     I.버림(d)
 
     호출.clear()
