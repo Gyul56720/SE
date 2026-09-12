@@ -19,6 +19,7 @@ API 쿼터를 나누려고 admin은 GEMINI_API_KEY_FALLBACK을, public은 GEMINI
 from __future__ import annotations
 
 import asyncio
+import re
 import os
 import subprocess
 import uuid
@@ -269,7 +270,7 @@ def _말과_한것이_맞나(reply: str, 부른것: list) -> str:
     return ""
 
 
-async def _스스로고치기(channel, 명령: str, 증상: str, 로그파일: str = "") -> None:
+async def _스스로고치기(channel, 명령: str, 증상: str, 로그파일: str = "", 증거글: str = "") -> None:
     """배경 일이 터졌을 때 **사람에게 트레이스백만 던지지 않는다** -- repair 로 고쳐 보고 결과를 말한다.
 
     사용자(2026-09-11): "문제가 생기면 능동적으로 해결해서 결과로 오류 메시지를 출력하지 않게 하라.
@@ -282,13 +283,9 @@ async def _스스로고치기(channel, 명령: str, 증상: str, 로그파일: s
         # **로그 꼬리를 들려 보낸다.** 격리 판에서 재현이 안 되는 사고가 있다 -- 낡은 판이
         # 배포돼 터진 경우가 그렇다(여기 트리는 최신이라 재현이 안 된다). 그때도 로그에
         # 적힌 **줄번호**는 진실을 말하고, 진단은 그것으로 '도는 코드가 낡았다' 를 짚는다.
-        증거글 = ""
-        try:
-            if 로그파일:
-                with open(로그파일, "r", encoding="utf-8", errors="replace") as _f:
-                    증거글 = _f.read()[-8000:]
-        except OSError:
-            pass
+        # 증거글은 **이 실행이 쓴 출력**이다(relay.배경로그). 로그 파일 전체를 읽으면 덧쓰기로
+        # 남은 옛 트레이스백까지 진단에 들어간다 -- 실측 2026-09-12: 옛 줄번호로 "낡았다" 고 했다.
+        증거글 = (증거글 or "")[-8000:]
         r = await asyncio.to_thread(lambda: _rp.고치기(명령, 증상, 증거글=증거글))
         진 = (r.get("진단") or {}).get("가설") or []
         if 진:
@@ -309,11 +306,25 @@ async def _스스로고치기(channel, 명령: str, 증상: str, 로그파일: s
         # **세 바퀴로 안 풀리면 긴 호흡으로 넘긴다.** 사용자(2026-09-12): "50분~1시간이 걸리더라도
         # 문제를 해결했으면 좋겠어." repair 는 짧은 루프다. 조사는 판정(게이트·감사)이 초록이 될
         # 때까지 두뇌를 바퀴마다 다시 불러 끝까지 판다 -- 배경으로, 끝나면 이 채널에 알린다.
-        if not r.get("해결") and not r.get("입력오류") and not r.get("진단이_뒤집음"):
+        # **끝까지 간다.** 진단이 "코드가 아니라 도달" 이라 했으면 그 확인을 여기서 실제로 한다 --
+        # 사용자(2026-09-12): "여기서 끝나네 끝까지 못 고쳐주고?" 확인이 '고칠 코드가 없다' 로
+        # 끝나면 그것이 끝이다. 그 밖의 못 푼 것은 긴 호흡(조사)으로 넘긴다.
+        첫가설 = (진[0] if 진 else {})
+        if not r.get("해결") and 첫가설.get("탐침") == "판이낡았나":
+            import diagnose as _dg
+            _m = re.search(r"`([0-9a-f]{7,12})`", 첫가설.get("무엇", ""))
+            if _m:
+                d = await asyncio.to_thread(_dg.도달확인, _m.group(1), REPO_DIR)
+                await channel.send(("🧭 **도달 확인**: " + d["말"][:600] + "\n  -> " + d.get("고칠거리", "")[:300])[:1900])
+                return
+        if not r.get("해결") and not r.get("입력오류"):
             from investigate import discord_cmd as _iv
             argv = ["python3", "investigate/run.py", "--증상", 증상[:300], "--명령", 명령[:300]]
-            if 로그파일:
-                argv += ["--증거", 로그파일]
+            if 증거글:
+                _증거파일 = os.path.join(REPO_DIR, "logs", "증거_조사.log")
+                with open(_증거파일, "w", encoding="utf-8") as _f:
+                    _f.write(증거글)
+                argv += ["--증거", _증거파일]
             띄움 = await asyncio.to_thread(_iv._배경으로, argv, _iv.로그, "investigate/run.py")
             await channel.send(("🕵️ **긴 호흡으로 넘긴다** (최대 한 시간, 판정이 초록이 될 때까지)\n" + 띄움)[:1900])
             for 배경 in relay.배경꺼내기():
@@ -341,7 +352,9 @@ async def _배경지켜보기(channel, 배경: dict, 간격: float = 20.0, 상�
                 if 터졌 and 배경.get("명령"):
                     # **오류를 그대로 내보내고 끝내지 않는다.** 재현 명령과 증상이 손에 있으니
                     # 스스로 고쳐 본다(repair: 실측 -> 제2의 뇌 -> 시도 -> 실측). 사람에겐 결과만.
-                    asyncio.create_task(_스스로고치기(channel, 배경["명령"], 증상, 배경.get("로그", "")))
+                    # 증거는 **이 실행이 쓴 출력만** -- 덧쓰기 로그의 옛 트레이스백을 넘기지 않는다.
+                    증거글 = await asyncio.to_thread(relay.배경로그, 배경)
+                    asyncio.create_task(_스스로고치기(channel, 배경["명령"], 증상, 배경.get("로그", ""), 증거글))
                 # **결론이 담긴 메모는 저장소에만 있었다** -- 파일로 붙여 사람이 그 자리에서 읽게 한다.
                 for rel in 산출:
                     try:

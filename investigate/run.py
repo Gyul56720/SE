@@ -56,9 +56,56 @@ def _두뇌기본(prompt: str, thread_id: str) -> str:
     return B.run_admin_agent(prompt, thread_id)
 
 
+_claude세션: "set[str]" = set()
+claude실행기 = None   # 검사 주입: (argv, cwd, 초) -> (끝값, 출력)
+
+
+def _두뇌claude(prompt: str, thread_id: str, repo=None) -> str:
+    """`claude -p` 한 턴. 봇의 두뇌(Gemini)를 못 쓰는 기계에서, 또는 사람이 고를 때.
+
+    같은 조사는 같은 세션이다 -- 첫 턴은 `--session-id`, 그 뒤는 `--resume` 으로 기억을 잇는다
+    (discord_bot_server.run_claude 와 같은 꼴). 권한은 bypass -- 도구 게이트는 저장소 쪽
+    (toolgate · gatekeeper · commit_guard)이 지킨다."""
+    import uuid as _u
+    repo = Path(repo or REPO)
+    sid = str(_u.uuid5(_u.NAMESPACE_URL, f"investigate-{thread_id}"))
+    잇기 = ["--resume", sid] if sid in _claude세션 else ["--session-id", sid]
+    # **root 에서는 권한 우회를 못 쓴다.** 실측 2026-09-12: 첫 실제 조사가 세 바퀴 내내
+    # "--dangerously-skip-permissions cannot be used with root/sudo privileges" 만 받았다.
+    # 그때는 허용 도구를 이름으로 준다(탐침으로 확인: Bash 가 돈다). VM 은 systemd-run
+    # --uid=ubuntu 로 띄우므로(run_claude) root 가 아니고 우회가 된다. 기계 이름이 아니라
+    # **누구로 도는가**로 가른다.
+    if _루트인가():
+        # 한 문자열로 준다. `--allowedTools <tools...>` 는 가변 인자라 뒤에 오는 것을 전부
+        # 도구 이름으로 삼킨다 -- 실측 2026-09-12: 프롬프트가 도구 이름으로 먹혀
+        # "Input must be provided" 로 죽었다(탐침은 프롬프트를 앞에 둬서 통과했었다).
+        권한 = ["--permission-mode", "acceptEdits",
+              "--allowedTools", "Bash,Edit,Write,Read,Glob,Grep,MultiEdit"]
+    else:
+        권한 = ["--permission-mode", "bypassPermissions"]
+    # **프롬프트가 깃발보다 앞이다.** 가변 인자 깃발 뒤에 두면 삼켜진다.
+    argv = ["claude", "-p", prompt, *잇기, *권한]
+    rc, out = (claude실행기 or (lambda a, c, t: _돌리기(a, c, t)))(argv, repo, 1800)
+    # **끝값이 0 이 아니면 그 출력은 답이 아니라 오류다.** 실측: 오류 문구를 답으로 넘겨서
+    # 루프가 그것을 세 바퀴 '두뇌의 말' 로 적었다. 올려서 못돌림으로 적히게 한다.
+    if rc != 0:
+        raise RuntimeError(f"claude -p 끝값 {rc}: {out.strip()[-200:] or '(출력 없음)'}")
+    _claude세션.add(sid)
+    return out
+
+
+def _루트인가() -> bool:
+    import os
+    try:
+        return os.geteuid() == 0
+    except AttributeError:      # 윈도우
+        return False
+
+
 def _돌리기(argv: "list[str]", repo: Path, 초: int) -> "tuple[int, str]":
     try:
-        p = subprocess.run(argv, cwd=str(repo), capture_output=True, text=True, errors="replace", timeout=초)
+        p = subprocess.run(argv, cwd=str(repo), capture_output=True, text=True, errors="replace", timeout=초,
+                           stdin=subprocess.DEVNULL)      # claude -p 가 stdin 을 3초 기다린다
         return p.returncode, ((p.stdout or "") + (p.stderr or "")).strip()
     except subprocess.TimeoutExpired:
         return 124, f"시간 초과 ({초}초)"
@@ -268,7 +315,12 @@ def main() -> int:
     ap.add_argument("--바퀴", type=int, default=기본최대바퀴)
     ap.add_argument("--저장소", default="")
     ap.add_argument("--배선", action="store_true", help="두뇌 없이 배선만 확인한다(끝값 0)")
+    ap.add_argument("--두뇌", choices=["봇", "claude"], default="봇",
+                    help="봇 = 관리 에이전트(Gemini, 기본) · claude = `claude -p` (토큰이 있을 때)")
     a = ap.parse_args()
+    global 두뇌
+    if a.두뇌 == "claude" and 두뇌 is None:
+        두뇌 = _두뇌claude
     if a.배선:
         import diagnose  # noqa: F401
         from repair import run as R  # noqa: F401

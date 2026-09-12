@@ -136,6 +136,40 @@ finally:
     I.두뇌, I.판정기, I.진단기 = _원
     shutil.rmtree(판, ignore_errors=True)
 
+print("\n== claude 두뇌: 같은 조사는 같은 세션 ==")
+_잡 = []
+I.claude실행기 = lambda argv, cwd, 초: (_잡.append(argv) or (0, "한 턴"))
+try:
+    I._claude세션.clear()
+    I._두뇌claude("첫 프롬프트", "x1"); I._두뇌claude("둘째 프롬프트", "x1")
+    ok(_잡[0][3] == "--session-id" and _잡[1][3] == "--resume" and _잡[0][4] == _잡[1][4],
+       f"첫 턴 --session-id, 둘째 --resume, 같은 id ({_잡[0][3]} -> {_잡[1][3]})")
+    # 실측 2026-09-12: 프롬프트를 맨 끝에 두었더니 `--allowedTools <tools...>` 가 삼켰다.
+    ok(_잡[0][2] == "첫 프롬프트" and "--permission-mode" in _잡[0], "**프롬프트는 깃발보다 앞** · 권한 깃발이 있다")
+    # 실측 2026-09-12: 첫 실제 조사에서 claude -p 가 끝값 1 과 함께 오류 문구를 냈는데,
+    # 출력이 있다는 이유로 그것을 '두뇌의 답' 으로 넘겨 세 바퀴를 태웠다.
+    I.claude실행기 = lambda argv, cwd, 초: (1, "--dangerously-skip-permissions cannot be used with root")
+    try:
+        I._두뇌claude("p", "x2"); ok(False, "끝값 1 이면 출력이 있어도 올려야 한다")
+    except RuntimeError as e:
+        ok("cannot be used with root" in str(e), "**끝값 1 이면 출력이 있어도 RuntimeError** -- 오류 문구를 답으로 넘기지 않는다")
+    _원루트 = I._루트인가
+    I.claude실행기 = lambda argv, cwd, 초: (_잡.append(argv) or (0, "ok"))
+    _잡.clear()
+    I._루트인가 = lambda: True
+    I._두뇌claude("p", "x3")
+    _i = _잡[0].index("--allowedTools")
+    ok("bypassPermissions" not in _잡[0] and "Bash" in _잡[0][_i + 1] and "," in _잡[0][_i + 1]
+       and _잡[0][-1] == _잡[0][_i + 1],
+       "**root 면 우회 대신 허용 도구 목록 -- 한 문자열로, 맨 끝에** (가변 인자가 뒤를 삼킨다)")
+    I._루트인가 = lambda: False
+    I._두뇌claude("p", "x4")
+    ok("bypassPermissions" in _잡[1] and "--allowedTools" not in _잡[1], "root 가 아니면 우회")
+    I._루트인가 = _원루트
+finally:
+    I.claude실행기 = None; I._claude세션.clear()
+ok('"--두뇌", choices=["봇", "claude"]' in (뿌리 / "investigate" / "run.py").read_text(encoding="utf-8"), "`--두뇌 claude` 깃발")
+
 print("\n== 배선 ==")
 import dispatch  # noqa: E402
 from investigate import discord_cmd as C  # noqa: E402
@@ -153,7 +187,7 @@ _bot = (뿌리 / "discord_bot_server.py").read_text(encoding="utf-8")
 ok('"investigate/run.py", "--증상"' in _bot and "긴 호흡으로 넘긴다" in _bot,
    "**repair 세 바퀴로 안 풀리면 봇이 조사를 배경으로 띄운다**")
 _넘김 = _bot[_bot.index('"investigate/run.py", "--증상"'):][:600]
-ok('"--증거", 로그파일' in _넘김, "봇이 로그 꼬리를 증거로 넘긴다")
+ok('"--증거", _증거파일' in _넘김, "봇이 **이 실행의 출력**을 증거 파일로 넘긴다")
 ok("!조사 <증상> :: <재현 명령>" in _bot, "프롬프트가 이름을 대고 시킨다")
 _wf = (뿌리 / ".github" / "workflows" / "deploy-oracle.yml").read_text(encoding="utf-8")
 ok('"investigate/**.py"' in _wf, "배포 경로에")
