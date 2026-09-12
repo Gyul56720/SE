@@ -73,6 +73,17 @@ REPO = Path(__file__).resolve().parent
 파이썬 = ["python3", "-B"]
 맑은환경 = {"PYTHONDONTWRITEBYTECODE": "1"}
 한함수검사수 = 3           # 한 함수마다 이만큼의 검사까지 돌린다(가장 가까운 것부터)
+# ------------------------------------------------------------------ π0 -- 공정한 정책(똑똑한 정책이 아니다)
+# 사용자(2026-09-12): "첫 π 는 '똑똑한 π' 가 아니라 '공정한 π' 여야 한다. 그래야 나중에 π 가 바뀌었을 때
+# ASTRA 가 실제로 더 똑똑해졌다고 주장할 수 있다."
+#
+#   π0 : P(m) = 1/|M0| · P(f) = 1/|F| · P(t) = 1/|T_usable| · seed = s0
+#
+# 내 순회는 **전수(exhaustive)** 다 -- 모든 파일·함수·연산자를 돈다. 그것은 균등 추출보다 강하지만
+# (분산 0) **시한에 잘리면 순서가 곧 편향**이 된다: git 순서로 앞쪽 파일만 재고 끝난다.
+# 그래서 씨앗으로 섞는다. 전수로 끝나면 결과가 같고, 시한에 잘리면 **치우치지 않은 표본**이 된다.
+# 씨앗을 고정하는 까닭은 π0 -> π1 비교에서 차이가 씨앗 탓이 아니게 하기 위함이다.
+기본씨앗 = 0
 
 
 def _원장(repo: Path) -> Path:
@@ -534,10 +545,11 @@ def _한변형(판: Path, repo: Path, rel: str, 이름: str, 연산자: str, 설
         줄 = int(설명.split("줄")[0])
     except ValueError:
         줄 = 0
+    들어온때 = time.monotonic()
     행 = {"mutation_id": f"{rel}::{이름}::{연산자}::{줄}", "target": f"{rel}:{이름}", "operator": 연산자,
          "mutation": 설명, "line": 줄, "baseline_status": "PASS", "mutant_status": "",
          "delta": [], "environment_preserved": None, "single_mutation": None,
-         "failure_cause": "", "classification": "", "tests": 검사들[:3]}
+         "failure_cause": "", "classification": "", "tests": 검사들[:3], "cost": None}
 
     # ---- 사양의 판정 순서(2026-09-12). PASS/FAIL 을 보기 **전에** Invalid·Equivalent 를 걸러낸다. ----
     #   Δ(P,Pm) ≠ {m}            -> Invalid
@@ -549,6 +561,9 @@ def _한변형(판: Path, repo: Path, rel: str, 이름: str, 연산자: str, 설
     #   T(Pm) = FAIL, Cause ≠ m  -> FalseRed
     def 맺기(결과: str, 분류: str, 까닭: str = "") -> dict:
         행["outcome"], 행["classification"] = 결과, 분류
+        # **cost 를 적는다** -- 사용자(2026-09-12)의 보상식 R(m) = αFG + βFR + γΔJ - λCost(m) 의 마지막 항이다.
+        # 24시간 데이터는 한 번만 모이므로, 그때 안 적으면 그 항을 영영 못 쓴다.
+        행["cost"] = {"초": round(time.monotonic() - 들어온때, 2)}
         if 까닭:
             행["failure_cause"] = 까닭
         적기(repo, 행)
@@ -587,8 +602,11 @@ def _한변형(판: Path, repo: Path, rel: str, 이름: str, 연산자: str, 설
         또빨강, 또어디, _또출력 = _돌려보기(판, 검사들)
         행["baseline_rerun_status"] = "FAIL" if 또빨강 else "PASS"
         if 또빨강:
+            # RG1 이 무너졌다. 까닭은 둘 중 하나다 -- 바탕이 불안정하거나(앞 실행이 상태를 남겼다),
+            # 환경이 변형과 무관하게 깨졌다. 어느 쪽이든 **잡힌 것으로 세지 않는다.**
+            행["why"] = "baseline_unstable" if 또어디 == 어디 else "env_changed"
             return 맺기(거짓빨강결과, 거짓빨강,
-                      f"{까닭} -- **변형을 빼도 같은 실패가 난다**(Cause(FAIL) ≠ m): {또어디}")
+                      f"{까닭} -- **변형을 빼도 같은 실패가 난다**(Cause(FAIL) ≠ m · {행['why']}): {또어디}")
         return 맺기(잡힘, 유효빨강, f"{까닭} -- 변형을 빼면 초록이다(Cause(FAIL) = m)")
     except OSError as e:
         return 맺기(못쓸, 바탕터짐, f"{type(e).__name__}: {str(e)[:120]}")
@@ -597,19 +615,26 @@ def _한변형(판: Path, repo: Path, rel: str, 이름: str, 연산자: str, 설
 
 
 def 사냥(repo=None, 파일들: "list[str]" = None, 시한초: int = 기본시한초, 말하기=None,
-       함수상한: int = 0) -> dict:
+       함수상한: int = 0, 뺄검사: "list[str]" = None, 씨앗: int = 기본씨앗) -> dict:
     """**조용히 틀려도 초록인 자리**를 시한까지 찾는다. {잰변형, 살아남음, 죽음, 못잼, 살아남은것}.
 
     파일마다: 바꿀 함수를 고르고, 그 파일을 재는 검사를 고르고, **깨끗한 HEAD 판**에 변형을 얹어
     검사를 돌린다. 빨개지면 그 변형은 죽었다(검사가 본다). 초록이면 **살아남았다 -- 거짓 초록이다.**
-    변형을 얹기 전에 그 검사들이 원래 초록인지 먼저 본다 -- 원래 빨간 검사는 아무것도 증명하지 못한다."""
+    변형을 얹기 전에 그 검사들이 원래 초록인지 먼저 본다(RG0) -- 원래 빨간 검사는 아무것도 증명하지 못한다.
+
+    `뺄검사` 는 **거짓빨강사냥이 먼저 걸러낸 못 믿을 검사**다(상태오염·환경의존). 그것을 바탕으로 쓰면
+    RG0 가 무너져 그 파일을 통째로 못 재게 되므로, 미리 뺀다 -- 사용자(2026-09-12)가 말한
+    `Baseline RG -> Mutation Validity -> FR Attribution -> FG/Equivalent` 순서의 실제 효과가 이것이다."""
     repo = Path(repo or REPO)
     말 = 말하기 or (lambda s: print(s, flush=True))
     시작 = time.monotonic()
+    import random
+    주사위 = random.Random(씨앗)
     if 파일들 is None:
         r = subprocess.run(["git", "-C", str(repo), "-c", "core.quotepath=off", "ls-files", "-z", "*.py"],
                            capture_output=True, text=True)
-        파일들 = [x for x in r.stdout.split("\0") if x and not x.startswith("tests/")]
+        파일들 = sorted(x for x in r.stdout.split("\0") if x and not x.startswith("tests/"))
+        주사위.shuffle(파일들)                      # π0 -- 시한에 잘려도 표본이 치우치지 않게
     out = {"잰변형": 0, "살아남음": 0, "죽음": 0, "못잼": 0, "덮이지않음": 0, "동등제외": 0,
            "살아남은것": [], "덮이지않은것": [], "파일수": 0}
     판 = Path(tempfile.mkdtemp(prefix="se-변형-"))
@@ -620,7 +645,9 @@ def 사냥(repo=None, 파일들: "list[str]" = None, 시한초: int = 기본시�
         말(f"[변형] HEAD 판을 못 꺼냈다: {깔림.stderr.strip()[:120]}")
         return out
     try:
-        적기(repo, {"꼴": "사냥시작", "파일수": len(파일들), "시한초": 시한초})
+        적기(repo, {"꼴": "사냥시작", "파일수": len(파일들), "시한초": 시한초,
+                  "정책": {"이름": "pi0", "연산자": "uniform(전수)", "파일": "uniform(전수, 섞음)",
+                         "seed": 씨앗, "뺀검사수": len(뺄검사 or ())}})
         for rel in 파일들:
             if time.monotonic() - 시작 > 시한초:
                 말(f"[변형] 시한 {시한초}초 -- 멈춘다")
@@ -631,7 +658,7 @@ def 사냥(repo=None, 파일들: "list[str]" = None, 시한초: int = 기본시�
             이름들 = list(_자리(원글))
             if not 이름들:
                 continue
-            검사들 = _검사고르기(repo, rel)
+            검사들 = [x for x in _검사고르기(repo, rel) if x not in set(뺄검사 or ())]
             if not 검사들:
                 out["못잼"] += 1
                 적기(repo, {"꼴": "검사없음", "파일": rel, "함수수": len(이름들)})
@@ -647,12 +674,15 @@ def 사냥(repo=None, 파일들: "list[str]" = None, 시한초: int = 기본시�
             out["파일수"] += 1
             덮임 = 덮인줄(판, rel, 검사들)                 # 파일마다 한 번 -- 변형마다 다시 재지 않는다
             적기(repo, {"꼴": "덮임", "파일": rel, "덮인줄수": len(덮임), "검사": 검사들[:3]})
+            주사위.shuffle(이름들)                  # 함수 순서도 씨앗으로 -- 같은 까닭
             if 함수상한:
                 이름들 = 이름들[:함수상한]
             for 이름 in 이름들:
                 if time.monotonic() - 시작 > 시한초:
                     break
-                for 연산자, 설명, 새글, 자취 in 변형들(원글, 이름):
+                변형목록 = 변형들(원글, 이름)
+                주사위.shuffle(변형목록)            # 연산자도 균등하게 -- 상한·시한에 앞쪽만 쓰이지 않게
+                for 연산자, 설명, 새글, 자취 in 변형목록:
                     if time.monotonic() - 시작 > 시한초:
                         break
                     행 = _한변형(판, repo, rel, 이름, 연산자, 설명, 원글, 새글, 검사들, 덮임, 자취)
@@ -681,6 +711,161 @@ def 사냥(repo=None, 파일들: "list[str]" = None, 시한초: int = 기본시�
         shutil.rmtree(판, ignore_errors=True)
     적기(repo, {"꼴": "사냥끝", **{k: v for k, v in out.items() if k != "살아남은것"}})
     return out
+
+
+# ------------------------------------------------------------------ 거짓 빨강 사냥: 빨강이 거짓인가
+# 사용자(2026-09-12): "왜 거짓 빨강은 조사 안 해?"  맞는 지적이었다 -- 거짓 초록에는 저장소를 훑는
+# 사냥이 있는데, 거짓 빨강은 변형 하나 단위로 **막기만** 하고 찾아다니지 않았다.
+#
+# 빨강이 거짓인 꼴을 셋으로 가른다. 전부 실행으로 가린다(예외 이름으로 짐작하지 않는다).
+#
+#   상태오염   깨끗한 판에서 한 번은 초록인데 **두 번째에 빨강**    -> 제 상태를 지우거나 덧쓴다
+#   환경의존   깨끗한 판에서는 빨강인데 **작업 트리에서는 초록**   -> 추적 안 되는 파일·캐시에 매여 있다
+#   원래빨강   둘 다 빨강                                        -> 거짓이 아니다. 진짜 빨강(고쳐야 한다)
+#
+# 표본이 이미 눈앞에 있었다: CI 의 `test_law_hwp`(권한 -- 환경의존) · 이 컨테이너의
+# `test_compression_judge`(활성화 캐시 없음 -- 환경의존) · Case D 표본(두 번 돌리면 빨강 -- 상태오염).
+# 순서 의존(혼자면 초록인데 묶어 돌리면 빨강)은 **안 잰다** -- 전체 묶음을 여러 벌 돌려야 해서 비싸다.
+멀쩡 = "Clean"
+상태오염 = "StatePollution"
+환경의존 = "EnvDependent"
+원래빨강 = "TrueRed"
+
+
+def 거짓빨강사냥(repo=None, 검사들: "list[str]" = None, 시한초: int = 기본시한초,
+            말하기=None, 작업트리도: bool = True, 씨앗: int = 기본씨앗) -> dict:
+    """**빨강이 거짓인 검사를 찾는다.** {잰것, 상태오염, 환경의존, 원래빨강, 멀쩡, 못잼, 찾은것}.
+
+    깨끗한 HEAD 판에서 검사마다 **두 번** 돌린다(같은 판, 사이에 되돌림 없이). 그리고 빨강이면
+    작업 트리에서도 한 번 돌려 견준다. 판정은 전부 끝값이다.
+
+    이 사냥이 왜 필요한가: 거짓 빨강은 **거짓 초록을 낳는다.** 오늘 실측 -- 절제검사가 데이터 파일을
+    안 옮겨 빨개진 것을 "검사가 기능을 본다" 로 읽어 PR #218 을 통과시켰다. 그리고 `ci_watch` 가
+    취소를 빨강으로 세어 **모든 자가 커밋을 막았다.** 막힌 것은 아무것도 못 고친다."""
+    repo = Path(repo or REPO)
+    말 = 말하기 or (lambda s: print(s, flush=True))
+    시작 = time.monotonic()
+    if 검사들 is None:
+        import random
+        검사들 = sorted(f"tests/{x.name}" for x in (repo / "tests").glob("test_*.py"))
+        random.Random(씨앗).shuffle(검사들)          # π0 -- 시한에 잘려도 치우치지 않게
+    out = {"잰것": 0, 멀쩡: 0, 상태오염: 0, 환경의존: 0, 원래빨강: 0, "못잼": 0, "찾은것": []}
+    판 = Path(tempfile.mkdtemp(prefix="se-FR-"))
+    r = subprocess.run(["git", "-C", str(repo), "worktree", "add", "--detach", str(판), "HEAD"],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        out["못잼"] += 1
+        말(f"[거짓빨강] HEAD 판을 못 꺼냈다: {r.stderr.strip()[:120]}")
+        return out
+    적기(repo, {"꼴": "FR사냥시작", "검사수": len(검사들), "시한초": 시한초,
+              "정책": {"이름": "pi0", "검사": "uniform(전수, 섞음)", "seed": 씨앗}})
+    try:
+        for t in 검사들:
+            if time.monotonic() - 시작 > 시한초:
+                out["못잼"] += len(검사들) - out["잰것"]
+                말(f"[거짓빨강] 시한 {시한초}초 -- 멈춘다 (못 잰 것 {len(검사들) - out['잰것']}개)")
+                break
+            if not (판 / t).is_file():
+                continue
+            검사때 = time.monotonic()
+            깨끗하게(판)
+            첫빨강, _어디1, 첫글 = _돌려보기(판, [t])
+            둘빨강, _어디2, 둘글 = _돌려보기(판, [t])          # 되돌리지 않는다 -- 제 상태가 남았나 본다
+            out["잰것"] += 1
+            if not 첫빨강 and not 둘빨강:
+                out[멀쩡] += 1
+                # **멀쩡도 적는다** -- 이것이 없으면 한 번 FR 로 찍힌 검사가 고쳐져도 영영 제외된다.
+                # 복구도 측정으로 한다(U_t = (U_{t-1} \ Clean_t) ∪ FR_t).
+                적기(repo, {"꼴": "거짓빨강", "검사": t, "test": t, "classification": 멀쩡,
+                          "cost": {"초": round(time.monotonic() - 검사때, 2)},
+                          "baseline_pass": True, "repeat_fail": False, "worktree_pass": None,
+                          "cause": "", "failure_cause": ""})
+                continue
+            if not 첫빨강 and 둘빨강:
+                _외부, 까닭 = 실패원인(둘글)
+                out[상태오염] += 1
+                것 = {"검사": t, "분류": 상태오염, "까닭": 까닭, "꼬리": 둘글[-300:]}
+                out["찾은것"].append(것)
+                적기(repo, {"꼴": "거짓빨강", "검사": t, "test": t, "classification": 상태오염,
+                          "cost": {"초": round(time.monotonic() - 검사때, 2)},
+                          "baseline_pass": True, "repeat_fail": True, "worktree_pass": None,
+                          "cause": 까닭, "failure_cause": 까닭, "traceback": 둘글[-400:]})
+                말(f"[거짓빨강] **{상태오염}** {t} -- 두 번째에 빨강 ({까닭})")
+                continue
+            작업빨강 = None
+            if 작업트리도:
+                작업빨강, _어디3, _작업글 = _돌려보기(repo, [t])
+            _외부, 까닭 = 실패원인(첫글)
+            if 작업빨강 is False:
+                out[환경의존] += 1
+                것 = {"검사": t, "분류": 환경의존, "까닭": 까닭, "꼬리": 첫글[-300:]}
+                out["찾은것"].append(것)
+                적기(repo, {"꼴": "거짓빨강", "검사": t, "test": t, "classification": 환경의존,
+                          "cost": {"초": round(time.monotonic() - 검사때, 2)},
+                          "baseline_pass": False, "repeat_fail": True, "worktree_pass": True,
+                          "cause": 까닭, "failure_cause": 까닭, "traceback": 첫글[-400:]})
+                말(f"[거짓빨강] **{환경의존}** {t} -- 깨끗한 판에서만 빨강 ({까닭})")
+            else:
+                out[원래빨강] += 1
+                적기(repo, {"꼴": "거짓빨강", "검사": t, "test": t, "classification": 원래빨강,
+                          "cost": {"초": round(time.monotonic() - 검사때, 2)},
+                          "baseline_pass": False, "repeat_fail": bool(둘빨강),
+                          "worktree_pass": (False if 작업빨강 else None),
+                          "cause": 까닭, "failure_cause": 까닭, "traceback": 첫글[-400:]})
+                말(f"[거짓빨강] {원래빨강} {t} -- 둘 다 빨강이다. 거짓이 아니다 ({까닭})")
+    finally:
+        subprocess.run(["git", "-C", str(repo), "worktree", "remove", "--force", str(판)],
+                       capture_output=True, text=True)
+        shutil.rmtree(판, ignore_errors=True)
+    적기(repo, {"꼴": "FR사냥끝", **{k: v for k, v in out.items() if k != "찾은것"}})
+    return out
+
+
+def 못믿을검사들(repo=None) -> "list[str]":
+    r"""**FR 이력이 있는 검사.** ReliableTest = RG0 ∧ ¬FR이력 -- RG0 통과는 신뢰성이 아니다.
+
+    사용자(2026-09-12): "RG0 PASS 와 검사 신뢰성을 혼동하지 마라." 상태오염 검사는 **첫 실행이
+    초록이므로 RG0 를 지난다.** 그래도 바탕으로 쓸 수 없다 -- 그 초록이 두 번째에 무너진다. 그래서
+    신뢰성은 원장의 FR 이력으로 판단한다(이 함수), RG0 로 판단하지 않는다.
+
+    **마지막 관측이 이긴다.** 누적이지만 단조(monotone)는 아니다:
+
+        U_t = (U_{t-1} \ Clean_t) ∪ FR_t
+
+    순수 누적이면 고친 검사가 **영영** 제외되고, 그 파일을 다시는 못 잰다. 나중 사냥이 그 검사를
+    `멀쩡` 으로 관측하면 빠져나온다 -- 복구도 측정으로 한다. 진짜빨강은 여기 안 넣는다(거짓이 아니다).
+    RG0 가 알아서 막는다."""
+    마지막: dict = {}
+    for x in 원장읽기(repo):
+        if x.get("꼴") == "거짓빨강":
+            이름 = str(x.get("test") or x.get("검사") or "")
+            if 이름:
+                마지막[이름] = x.get("classification")
+    return sorted(k for k, v in 마지막.items() if v in (상태오염, 환경의존))
+
+
+def FR보고(repo=None) -> str:
+    행들 = [x for x in 원장읽기(repo) if x.get("꼴") in ("거짓빨강", "FR사냥끝")]
+    끝 = [x for x in 행들 if x.get("꼴") == "FR사냥끝"]
+    것 = [x for x in 행들 if x.get("꼴") == "거짓빨강"]
+    줄 = [f"**거짓 빨강 사냥** -- 원장 {len(것)}줄 · 사냥 {len(끝)}번"]
+    if 끝:
+        마 = 끝[-1]
+        줄.append(f"마지막: 검사 {마.get('잰것', 0)}개 · 멀쩡 {마.get(멀쩡, 0)} · "
+                  f"**상태오염 {마.get(상태오염, 0)}** · **환경의존 {마.get(환경의존, 0)}** · "
+                  f"진짜빨강 {마.get(원래빨강, 0)} · 못잼 {마.get('못잼', 0)}")
+    거짓 = [x for x in 것 if x.get("classification") in (상태오염, 환경의존)]
+    if 거짓:
+        줄.append(f"\n**거짓 빨강 {len(거짓)}개** (그 빨강은 검사 대상의 잘못이 아니다):")
+        for x in 거짓[-12:]:
+            줄.append(f"  [{x.get('classification')}] {x.get('검사')} -- {str(x.get('failure_cause'))[:60]}")
+    진짜 = [x for x in 것 if x.get("classification") == 원래빨강]
+    if 진짜:
+        줄.append(f"\n진짜 빨강 {len(진짜)}개 (고쳐야 한다): "
+                  + ", ".join(str(x.get("검사")) for x in 진짜[-8:]))
+    if not 것:
+        줄.append("아직 안 돌렸다 -- `python3 mutate.py --거짓빨강` 또는 `!거짓빨강`")
+    return "\n".join(줄)
 
 
 # ------------------------------------------------------------------ 2차 메타검증: 그 판정이 거짓인가
@@ -754,6 +939,66 @@ def 파일별거짓초록(repo=None, 파일들: "list[str]" = None) -> "list[dic
     return [x for x in 것 if str(x.get("target", "")).split(":")[0] in 고른]
 
 
+def 둘다사냥(repo=None, 시한초: int = 기본시한초, 파일들: "list[str]" = None,
+         말하기=None, FR몫: float = 0.25, 씨앗: int = 기본씨앗) -> dict:
+    """**거짓 빨강을 먼저, 거짓 초록을 그다음.** {FR, FG, 말}
+
+    순서가 중요하다 -- 환경 때문에 빨간 검사는 FG 사냥의 **바탕을 무효로 만든다**(T(P)=PASS 가 깨지면
+    변형 결과로 아무것도 판정할 수 없다: INVALID_BASELINE). 그러므로 어느 검사를 바탕으로 쓸 수 없는지
+    먼저 알아야 초록 사냥이 뜻을 가진다. 시한을 FR몫(기본 1/4)만큼 앞에 주고 나머지를 FG 에 준다."""
+    repo = Path(repo or REPO)
+    말 = 말하기 or (lambda s: print(s, flush=True))
+    FR시한 = max(60, int(시한초 * FR몫))
+    말(f"[사냥] 1/2 거짓 빨강 -- 시한 {FR시한}초")
+    fr = 거짓빨강사냥(repo, 시한초=FR시한, 말하기=말하기, 씨앗=씨앗)
+    # **이번 것과 원장의 누적을 합친다** -- U_t = (U_{t-1} \ Clean_t) ∪ FR_t.
+    # 이번 호출 것만 쓰면 구멍이 난다: FR 에 시한의 일부만 주므로 **다 못 훑으면 못 닿은 검사가
+    # 조용히 신뢰받는다**(검사 186개 · FR 시한 1/4). 누적이면 지난 사냥이 찍어 둔 것이 계속 빠진다.
+    이번것 = [x["검사"] for x in fr["찾은것"] if x["분류"] in (상태오염, 환경의존)]
+    못믿을검사 = sorted(set(이번것) | set(못믿을검사들(repo)))
+    if 못믿을검사:
+        말(f"[사냥] 바탕으로 쓸 수 없는 검사 {len(못믿을검사)}개"
+          f"(이번에 찾은 것 {len(이번것)}개 + 원장 누적): {', '.join(못믿을검사[:4])}")
+    FG시한 = max(60, 시한초 - FR시한)
+    말(f"[사냥] 2/2 거짓 초록 -- 시한 {FG시한}초"
+      + (f" · 바탕에서 뺀 검사 {len(못믿을검사)}개" if 못믿을검사 else ""))
+    fg = 사냥(repo, 파일들=파일들, 시한초=FG시한, 말하기=말하기, 뺄검사=못믿을검사, 씨앗=씨앗)
+    적기(repo, {"꼴": "둘다끝", "FR": {k: v for k, v in fr.items() if k != "찾은것"},
+              "FG": {k: v for k, v in fg.items() if k not in ("살아남은것", "덮이지않은것")},
+              "못믿을검사": 못믿을검사[:12]})
+    return {"FR": fr, "FG": fg, "못믿을검사": 못믿을검사, "이번에찾은것": 이번것,
+            "말": (f"거짓빨강 {fr[상태오염] + fr[환경의존]}개(상태오염 {fr[상태오염]} · 환경의존 {fr[환경의존]}) · "
+                  f"거짓초록 {fg.get(거짓초록, 0)}개 · 잡힘 {fg.get(유효빨강, 0)} · "
+                  f"동등 {fg.get(동등변형, 0)} · 못쓸 {fg.get(못쓸변형, 0)}")}
+
+
+def 연산자표(repo=None) -> str:
+    """**연산자마다 무엇을 얼마에 찾았나.** π 의 보상식 R(m) = αFG + βFR + γΔJ - λCost 의 재료를
+    그대로 읽게 한다(여기서 보상을 계산하지는 않는다 -- 그것은 π 의 몫이다)."""
+    셈: dict = {}
+    for x in 원장읽기(repo):
+        m = x.get("operator")
+        if not m:
+            continue
+        c = 셈.setdefault(m, {"잰것": 0, 잡힘: 0, 살아남음: 0, 동등: 0, 거짓빨강결과: 0, 못쓸: 0, "초": 0.0})
+        c["잰것"] += 1
+        결 = x.get("outcome")
+        if 결 in c:
+            c[결] += 1
+        c["초"] += float(((x.get("cost") or {}).get("초") or 0))
+    if not 셈:
+        return "연산자 기록이 없다 -- `!거짓초록` 을 한 번 돌려라"
+    줄 = [f"{'연산자':14} {'잰것':>5} {'FG':>4} {'Killed':>7} {'동등':>5} {'FR':>4} {'못쓸':>5} {'초/개':>7}"]
+    for m, c in sorted(셈.items(), key=lambda kv: -kv[1][살아남음]):
+        줄.append(f"{m:14} {c['잰것']:>5} {c[살아남음]:>4} {c[잡힘]:>7} {c[동등]:>5} "
+                  f"{c[거짓빨강결과]:>4} {c[못쓸]:>5} {(c['초'] / max(1, c['잰것'])):>7.1f}")
+    return "\n".join(줄)
+
+
+def 둘다보고(repo=None) -> str:
+    return FR보고(repo) + "\n\n" + 보고(repo) + "\n\n**연산자별** (π 의 재료)\n" + 연산자표(repo)
+
+
 def 보고(repo=None, 몇: int = 20) -> str:
     """원장에서 사람이 읽는 표. 사냥하지 않는다."""
     행들 = 원장읽기(repo)
@@ -803,11 +1048,28 @@ def main(argv=None) -> int:
     ap.add_argument("--파일", action="append", default=None, help="이 파일만 (여러 번)")
     ap.add_argument("--함수상한", type=int, default=0, help="파일마다 함수 이만큼만 (0=전부)")
     ap.add_argument("--보고", action="store_true", help="원장 요약만 찍는다")
+    ap.add_argument("--거짓빨강", action="store_true", help="빨강이 거짓인 검사를 찾는다(변형 안 함)")
+    ap.add_argument("--FR보고", action="store_true", help="거짓 빨강 원장 요약")
+    ap.add_argument("--둘다", action="store_true", help="거짓 빨강 -> 거짓 초록 (한 번에)")
+    ap.add_argument("--씨앗", type=int, default=기본씨앗, help=f"π0 의 고정 씨앗 (기본 {기본씨앗})")
     a = ap.parse_args(argv)
+    if a.FR보고:
+        print(FR보고())
+        return 0
+    if a.둘다:
+        r = 둘다사냥(시한초=a.시한, 파일들=a.파일, 씨앗=a.씨앗)
+        print()
+        print(둘다보고())
+        return 1 if (r["FR"][상태오염] or r["FR"][환경의존] or r["FG"].get(거짓초록, 0)) else 0
+    if a.거짓빨강:
+        r = 거짓빨강사냥(시한초=a.시한, 검사들=a.파일, 씨앗=a.씨앗)
+        print()
+        print(FR보고())
+        return 1 if (r[상태오염] or r[환경의존]) else 0
     if a.보고:
         print(보고())
         return 0
-    r = 사냥(파일들=a.파일, 시한초=a.시한, 함수상한=a.함수상한)
+    r = 사냥(파일들=a.파일, 시한초=a.시한, 함수상한=a.함수상한, 씨앗=a.씨앗)
     print()
     print(보고())
     return 1 if r["살아남음"] else 0
