@@ -52,7 +52,7 @@ def _배경으로(argv: "list[str]", 로그파일: Path, 무엇: str) -> str:
     if not 살아:
         return f"띄웠는데 pgrep 에 안 보인다 -- 시작했다고 말하지 않는다. 로그를 보라: {로그파일}"
     import relay
-    relay.배경등록(무엇, str(로그파일), " ".join(argv), 시작바이트)
+    relay.배경등록(무엇, str(로그파일), " ".join(argv), 시작바이트, 찾을말=찾을것)
     return (f"백그라운드로 시작했다 (pgrep 확인됨): {살아[:100]}\n"
             f"로그: {로그파일} · **끝나면 이 채널에 알린다**")
 

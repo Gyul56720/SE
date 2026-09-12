@@ -158,8 +158,23 @@ relay.배경꺼내기()
 ok(_e2["시작바이트"] == 0 and relay.터졌나(_e2)[0] is True,
    "**안 주면 0 -- 전부 본다.** 등록 시점에 재면 자식이 이미 쓴 줄이 잘린다(띄운 뒤 등록하므로)")
 import shutil as _sh; _sh.rmtree(_d, ignore_errors=True)
+# 실측 2026-09-12(VM): `-m improve.run` 으로 바꾸자 pgrep 이 "improve/run.py" 를 못 찾아 20초 만에 '끝'.
+_e3 = relay.배경등록("improve/run.py", _log if False else "/tmp/x.log", "python3 -m improve.run", 0, 찾을말="improve.run")
+relay.배경꺼내기()
+ok(_e3["찾을말"] == "improve.run" and _e3["무엇"] == "improve/run.py", "보이는 이름과 pgrep 으로 찾는 이름을 가른다")
+import subprocess as _sp
+_pr = _sp.Popen([sys.executable, "-c", "import time; time.sleep(8)  # improve.run 흉내"], stdout=_sp.DEVNULL)
+try:
+    ok(relay.배경끝났나({"무엇": "improve/run.py", "찾을말": "improve.run 흉내"}) is False,
+       "**찾을말로 살아 있는지 본다** -- 보이는 이름으로 보면 살아 있는 일을 죽었다고 한다")
+    ok(relay.배경끝났나("improve/run.py") is True, "(견줌) 보이는 이름으로는 못 찾는다 -- 그것이 사고였다")
+finally:
+    _pr.kill(); _pr.wait()
+_bot4 = (뿌리 / "discord_bot_server.py").read_text(encoding="utf-8")
+ok("relay.배경끝났나, 배경)" in _bot4, "봇이 등록 사전(찾을말)으로 본다")
 _ed = (뿌리 / "eval" / "discord_cmd.py").read_text(encoding="utf-8")
-ok("시작바이트 = 로그파일.stat().st_size" in _ed and ", 시작바이트)" in _ed, "띄우는 쪽이 열기 전 크기를 재서 넘긴다")
+ok("찾을말=찾을것" in _ed, "띄우는 쪽이 모듈 꼴 이름을 찾을말로 넘긴다")
+ok("시작바이트 = 로그파일.stat().st_size" in _ed and ", 시작바이트, " in _ed, "띄우는 쪽이 열기 전 크기를 재서 넘긴다")
 _bot2 = (뿌리 / "discord_bot_server.py").read_text(encoding="utf-8")
 ok("relay.배경로그, 배경" in _bot2, "봇이 증거로 **이 실행의 출력**을 넘긴다")
 

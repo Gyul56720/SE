@@ -215,7 +215,7 @@ def 실측필요(prompt: str, reply: str) -> bool:
 _배경_lock = threading.Lock()
 
 
-def 배경등록(무엇: str, 로그: str, 명령: str = "", 시작바이트: "int | None" = None) -> dict:
+def 배경등록(무엇: str, 로그: str, 명령: str = "", 시작바이트: "int | None" = None, 찾을말: str = "") -> dict:
     """`시작바이트` 는 **이 실행이 쓰기 시작한 자리**다. 로그는 덧쓰기(append)라 앞에 옛 실행이
     남아 있다 -- 실측 2026-09-12: 새 실행은 멀쩡히 끝났는데 옛 트레이스백을 읽고 "터졌다" 고
     했고, 진단은 그 옛 줄번호로 "도는 코드가 낡았다" 고 했다. 전부 옛 글이었다.
@@ -224,7 +224,11 @@ def 배경등록(무엇: str, 로그: str, 명령: str = "", 시작바이트: "i
     **띄우는 쪽**(`_배경으로`)이 파일을 열기 전에 재서 넘긴다."""
     if 시작바이트 is None:
         시작바이트 = 0
-    e = {"무엇": 무엇, "로그": str(로그), "명령": 명령, "시작": time.monotonic(), "시작바이트": int(시작바이트)}
+    # `찾을말` 은 pgrep 으로 찾을 이름이다. 실측 2026-09-12(VM): 실행을 `python3 -m improve.run` 으로
+    # 바꾸자 명령줄에 "improve/run.py" 가 없어져 첫 확인(20초)에 '끝났다' 고 보고 빈 로그를 읽었다
+    # ("(로그가 비었다)" · 0.3분). 보이는 이름과 찾는 이름을 가른다.
+    e = {"무엇": 무엇, "로그": str(로그), "명령": 명령, "시작": time.monotonic(), "시작바이트": int(시작바이트),
+         "찾을말": 찾을말 or 무엇}
     with _배경_lock:
         배경들.append(e)
     return e
@@ -246,8 +250,11 @@ def 배경꺼내기() -> list:
     return out
 
 
-def 배경끝났나(무엇: str) -> bool:
+def 배경끝났나(무엇) -> bool:
+    """`무엇` 은 등록 사전이거나 pgrep 으로 찾을 말. 사전이면 **찾을말**로 찾는다(보이는 이름이 아니다)."""
     import subprocess
+    if isinstance(무엇, dict):
+        무엇 = 무엇.get("찾을말") or 무엇.get("무엇", "")
     p = subprocess.run(["pgrep", "-af", 무엇], capture_output=True, text=True)
     return not [ln for ln in p.stdout.splitlines() if "pgrep" not in ln]
 
