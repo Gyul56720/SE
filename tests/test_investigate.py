@@ -145,11 +145,24 @@ try:
     ok(_잡[0][2] == "--session-id" and _잡[1][2] == "--resume" and _잡[0][3] == _잡[1][3],
        f"첫 턴 --session-id, 둘째 --resume, 같은 id ({_잡[0][2]} -> {_잡[1][2]})")
     ok("--permission-mode" in _잡[0] and _잡[0][-1] == "첫 프롬프트", "권한 bypass · 프롬프트는 맨 끝")
-    I.claude실행기 = lambda argv, cwd, 초: (1, "")
+    # 실측 2026-09-12: 첫 실제 조사에서 claude -p 가 끝값 1 과 함께 오류 문구를 냈는데,
+    # 출력이 있다는 이유로 그것을 '두뇌의 답' 으로 넘겨 세 바퀴를 태웠다.
+    I.claude실행기 = lambda argv, cwd, 초: (1, "--dangerously-skip-permissions cannot be used with root")
     try:
-        I._두뇌claude("p", "x2"); ok(False, "끝값 1 에 출력 없으면 올려야 한다")
-    except RuntimeError:
-        ok(True, "끝값 1 에 출력 없으면 RuntimeError -- 조사는 못돌림으로 적는다")
+        I._두뇌claude("p", "x2"); ok(False, "끝값 1 이면 출력이 있어도 올려야 한다")
+    except RuntimeError as e:
+        ok("cannot be used with root" in str(e), "**끝값 1 이면 출력이 있어도 RuntimeError** -- 오류 문구를 답으로 넘기지 않는다")
+    _원루트 = I._루트인가
+    I.claude실행기 = lambda argv, cwd, 초: (_잡.append(argv) or (0, "ok"))
+    _잡.clear()
+    I._루트인가 = lambda: True
+    I._두뇌claude("p", "x3")
+    ok("bypassPermissions" not in _잡[0] and "--allowedTools" in _잡[0] and "Bash" in _잡[0],
+       "**root 면 우회 대신 허용 도구 목록** (root 에선 우회가 거절된다)")
+    I._루트인가 = lambda: False
+    I._두뇌claude("p", "x4")
+    ok("bypassPermissions" in _잡[1] and "--allowedTools" not in _잡[1], "root 가 아니면 우회")
+    I._루트인가 = _원루트
 finally:
     I.claude실행기 = None; I._claude세션.clear()
 ok('"--두뇌", choices=["봇", "claude"]' in (뿌리 / "investigate" / "run.py").read_text(encoding="utf-8"), "`--두뇌 claude` 깃발")

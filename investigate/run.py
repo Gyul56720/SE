@@ -70,12 +70,32 @@ def _두뇌claude(prompt: str, thread_id: str, repo=None) -> str:
     repo = Path(repo or REPO)
     sid = str(_u.uuid5(_u.NAMESPACE_URL, f"investigate-{thread_id}"))
     잇기 = ["--resume", sid] if sid in _claude세션 else ["--session-id", sid]
-    argv = ["claude", "-p", *잇기, "--permission-mode", "bypassPermissions", prompt]
+    # **root 에서는 권한 우회를 못 쓴다.** 실측 2026-09-12: 첫 실제 조사가 세 바퀴 내내
+    # "--dangerously-skip-permissions cannot be used with root/sudo privileges" 만 받았다.
+    # 그때는 허용 도구를 이름으로 준다(탐침으로 확인: Bash 가 돈다). VM 은 systemd-run
+    # --uid=ubuntu 로 띄우므로(run_claude) root 가 아니고 우회가 된다. 기계 이름이 아니라
+    # **누구로 도는가**로 가른다.
+    if _루트인가():
+        권한 = ["--permission-mode", "acceptEdits", "--allowedTools",
+              "Bash", "Edit", "Write", "Read", "Glob", "Grep", "MultiEdit"]
+    else:
+        권한 = ["--permission-mode", "bypassPermissions"]
+    argv = ["claude", "-p", *잇기, *권한, prompt]
     rc, out = (claude실행기 or (lambda a, c, t: _돌리기(a, c, t)))(argv, repo, 1800)
-    if rc != 0 and not out.strip():
-        raise RuntimeError(f"claude -p 끝값 {rc}")
+    # **끝값이 0 이 아니면 그 출력은 답이 아니라 오류다.** 실측: 오류 문구를 답으로 넘겨서
+    # 루프가 그것을 세 바퀴 '두뇌의 말' 로 적었다. 올려서 못돌림으로 적히게 한다.
+    if rc != 0:
+        raise RuntimeError(f"claude -p 끝값 {rc}: {out.strip()[-200:] or '(출력 없음)'}")
     _claude세션.add(sid)
     return out
+
+
+def _루트인가() -> bool:
+    import os
+    try:
+        return os.geteuid() == 0
+    except AttributeError:      # 윈도우
+        return False
 
 
 def _돌리기(argv: "list[str]", repo: Path, 초: int) -> "tuple[int, str]":
