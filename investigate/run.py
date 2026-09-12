@@ -186,8 +186,14 @@ def 목표검사유효한가(repo: Path, 시작커밋: str, 검사상대: str) -
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def _명령기록(thread_id: str) -> "dict | None":
+    """이 조사가 지금까지 돌린 명령과 막힌 중복 -- run_shell 이 shellmemo 에 적는다. 안 켜졌으면 None."""
+    import shellmemo
+    return shellmemo.보기(thread_id)
+
+
 def 프롬프트(증상: str, 진: dict, 판정: "list[dict]", 해본: "list[dict]", 바퀴: int, 남은초: float,
-          되풀이: int, 재현명령: str, 참고: "list[str] | None" = None) -> str:
+          되풀이: int, 재현명령: str, 참고: "list[str] | None" = None, 명령기록: "dict | None" = None) -> str:
     빨강 = [p for p in 판정 if p["끝값"] != 0]
     줄 = [f"[조사 바퀴 {바퀴} · 남은 시간 {int(남은초 // 60)}분] **끝까지 판다. 판정은 끝값이 한다.**",
          f"증상: {증상}",
@@ -211,6 +217,12 @@ def 프롬프트(증상: str, 진: dict, 판정: "list[dict]", 해본: "list[dic
         줄.append("지난 바퀴에 해 본 것 (같은 것을 되풀이하지 마라):")
         for h in 해본[-4:]:
             줄.append(f"  바퀴 {h['바퀴']}: {h['요약'][:160]}  -> 빨강 {h['빨강']}")
+    if 명령기록 and 명령기록.get("돌린것"):
+        줄.append("")
+        줄.append(f"이 조사에서 이미 돌린 명령 (마지막 12개 · 끝값). **같은 나무에 같은 명령은 코드가 막는다**"
+                  + (f" -- 지금까지 {len(명령기록['막음'])}번 막았다" if 명령기록.get("막음") else "") + ":")
+        for 명, rc in 명령기록["돌린것"][-12:]:
+            줄.append(f"  · [{rc}] {명[:110]}")
     if 참고:
         줄.append("")
         줄.append("제2의 뇌가 찾아 온 것 (막혀서 코드가 dig·graph 로 찾았다 -- 읽고 갈래를 바꿔라):")
@@ -373,6 +385,8 @@ def 조사(증상: str, 재현명령: str = "", 증거글: str = "", 시한초: 
           "남은것": "", "메모": "", "걸린초": 0.0, "마무리": ""}
     말하기 = 진행 or (lambda s: print(s, flush=True))
     thread_id = f"investigate-{아이디}"
+    import shellmemo
+    shellmemo.켜기(thread_id)                # 같은 나무에 같은 명령은 돌리지 않는다 -- 두뇌의 기억이 아니라 코드
 
     def 판정하기():
         return (판정기 or _판정기본)(repo, 재현명령)
@@ -404,7 +418,7 @@ def 조사(증상: str, 재현명령: str = "", 증거글: str = "", 시한초: 
             _적기(repo, {"때": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "조사": 아이디, "단계": "제2의뇌",
                         "바퀴": n, "되풀이": 되풀이, "참고수": len(참고), "참고": [str(x)[:160] for x in 참고[:3]]})
             말하기(f"[조사 {아이디}] 막혔다(되풀이 {되풀이}) -- 제2의 뇌를 열었다: 참고 {len(참고)}개")
-        p = 프롬프트(증상, 진, 판정, 해본, n, 남은초, 되풀이, 재현명령, 참고)
+        p = 프롬프트(증상, 진, 판정, 해본, n, 남은초, 되풀이, 재현명령, 참고, _명령기록(thread_id))
         말하기(f"[조사 {아이디}] 바퀴 {n} · 빨강 {[x['이름'] for x in 판정 if x['끝값']]} · 가설 {len(진.get('가설', []))}")
         try:
             답 = (두뇌 or _두뇌기본)(p, thread_id)
@@ -417,12 +431,16 @@ def 조사(증상: str, 재현명령: str = "", 증거글: str = "", 시한초: 
         같다 = (새지문 == 지문) and (빨강 == [x for x in (해본[-1]["빨강"] if 해본 else 빨강)])
         되풀이 = 되풀이 + 1 if 같다 else 0
         지문 = 새지문
+        기록 = _명령기록(thread_id) or {}
+        막음수 = len(기록.get("막음", []))
         h = {"바퀴": n, "요약": (답 or "").strip().replace("\n", " ")[:300], "빨강": 빨강,
-             "diff": 새지문, "되풀이": 되풀이, "가설": [x["탐침"] for x in 진.get("가설", [])]}
+             "diff": 새지문, "되풀이": 되풀이, "가설": [x["탐침"] for x in 진.get("가설", [])],
+             "막음": 막음수, "명령수": len(기록.get("돌린것", []))}
         해본.append(h)
         _적기(repo, {"때": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "조사": 아이디, "단계": "바퀴",
-                    "바퀴": n, "빨강": 빨강, "되풀이": 되풀이, "요약": h["요약"][:200], "가설": h["가설"]})
-        말하기(f"[조사 {아이디}] 바퀴 {n} 끝 · 빨강 {빨강} · 되풀이 {되풀이}")
+                    "바퀴": n, "빨강": 빨강, "되풀이": 되풀이, "요약": h["요약"][:200], "가설": h["가설"],
+                    "막음": 막음수, "명령수": h["명령수"]})
+        말하기(f"[조사 {아이디}] 바퀴 {n} 끝 · 빨강 {빨강} · 되풀이 {되풀이}" + (f" · 중복 막음 {막음수}" if 막음수 else ""))
         if not 빨강:
             if 검사상대 and 시작커밋:
                 유효, 유효말 = 목표검사유효한가(repo, 시작커밋, 검사상대)
@@ -467,6 +485,8 @@ def 조사(증상: str, 재현명령: str = "", 증거글: str = "", 시한초: 
     _적기(repo, {"때": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "조사": 아이디, "단계": "끝",
                 "해결": 결과["해결"], "바퀴": 결과["바퀴"], "남은것": 결과["남은것"][:200], "메모": 결과["메모"]})
     결과["걸린초"] = round(time.monotonic() - 시작, 1)
+    import shellmemo
+    shellmemo.끄기(thread_id)
     return 결과
 
 

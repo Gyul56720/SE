@@ -47,6 +47,8 @@ on:
       - "relay.py"
       # 도구 호출 시점 게이트와 정확 편집. bot_tools 가 임포트한다.
       - "toolgate.py"
+      # 같은 나무에 같은 명령을 막는다 -- run_shell 이 부른다 (2026-09-12)
+      - "shellmemo.py"
       - "filetools.py"
       # 메일(send_email 도구)과 열쇠(!열쇠). 봇이 임포트한다.
       - "mailer.py"
