@@ -95,6 +95,9 @@ on:
       - "entrypoints.py"
       # 증상에서 증거를 캔다(모델 안 씀). repair 가 모델보다 먼저 부른다.
       - "diagnose.py"
+      # 메모(.md)를 PDF 로 -- 배경 산출물을 보낼 때 봇이 부른다.
+      - "discord_pdf.py"
+      - "requirements.txt"
       # 빠른 검사를 재서 고른다. scripts/precheck.sh 가 부른다.
       - "testtimes.py"
       - "testtimes.json"
@@ -173,6 +176,8 @@ jobs:
             git fetch origin main
             git branch -f "deploy-backup-$(date +%Y%m%d-%H%M%S)" HEAD || true
             git reset --hard origin/main
+            # 한글 PDF 글꼴 (discord_pdf). 없어도 배포는 막지 않는다 -- PDF 안에 없다고 적힌다.
+            sudo apt-get install -y -qq fonts-nanum >/dev/null 2>&1 || true
             pip3 install --break-system-packages -r requirements.txt discord.py
             sudo cp deploy/se-discord-bot.service /etc/systemd/system/
             sudo cp deploy/se-log-streamer.service /etc/systemd/system/
