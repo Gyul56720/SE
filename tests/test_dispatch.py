@@ -117,7 +117,9 @@ _적혀야 = {"sandbox": "run_experiment", "audit": "audit/run.py", "graph": "gr
          # 계획은 사람이 치는 명령이다 -- 에이전트에겐 '승인은 사람만' 이 적혀야 한다.
          "plan": "!계획",
          # 자가개선도 사람이 치는 명령이다 -- 승인은 사람만.
-         "improve": "!자가개선"}
+         "improve": "!자가개선",
+         # 조사는 긴 호흡 루프 -- 에이전트가 dispatch_command 로 친다. 머지는 사람.
+         "investigate": "!조사 <증상> :: <재현 명령>"}
 for _모듈 in dispatch.명령들:
     _꾸러미 = _모듈.__name__.split(".")[0]
     if _꾸러미 == "evolve":

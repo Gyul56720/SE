@@ -77,6 +77,8 @@ sys.path.insert(0, str(REPO))
     ("기관:diagnose", ["python3", "-m", "diagnose", "--글",
                       '  File "improve/run.py", line 410, in 사용자개선\nModuleNotFoundError: No module named \'plan\''],
      (0, 1), "증상에서 증거를 캐는가 (모델 없음 -- 0 가설 있음 · 1 없음)"),
+    ("기관:investigate", ["python3", "-m", "investigate.run", "--배선"],
+     (0,), "긴 호흡 루프가 diagnose·repair 원장·판정에 배선돼 있는가 (두뇌 안 부름)"),
     ("기관:impact", ["python3", "impact.py", "--파일", "relay.py"],
      (0,), "영향 분석이 도는가 (누가 부르는가·어느 입구에 닿는가 -- 읽기만)"),
     ("기관:plan", ["python3", "plan/store.py", "--상태"],
