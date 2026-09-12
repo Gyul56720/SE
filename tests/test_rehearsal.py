@@ -258,6 +258,29 @@ try:
     finally:
         git(_절, "worktree", "remove", "--force", str(w))
     ok(git(_절, "worktree", "list").stdout.strip().count("\n") == 0, "기준 커밋 절제 뒤에도 워크트리가 안 남는다")
+
+    print("\n  -- 실측(PR #218): 존재만 단언하는 검사는 절제에 안 걸린다. 패치의 데이터 파일을 절제 판이 져야 보인다 --")
+    # 봇이 1바퀴 6.8분에 '해결' 을 선언하고 스스로 머지했다. 목표 검사가 함수를 부르지 않고
+    # `os.path.exists("plan/할일.jsonl")` 만 보았는데, 절제 판이 .py 만 옮겨 그 파일이 없어 빨개졌다 --
+    # 함수를 빼서 빨개진 것이 아닌데 "걸린다" 로 읽혔다(거짓 초록).
+    w2 = 절판(**{"plan/할일.py": "def 할일(args=None):\n    return 0\n",
+                "plan/할일.jsonl": "",
+                "tests/test_b.py": 'import os\nassert os.path.exists("plan/할일.py")\nassert os.path.exists("plan/할일.jsonl")\n'})
+    try:
+        r = R.절제검사(_절, w2)
+        ok(not r["성립"] and r["안잡힌것"] == ["plan/할일.py:할일"],
+           f"**존재만 보는 검사는 절제에 안 걸린다 -- 막는다** (안잡힌것 {r['안잡힌것']})")
+    finally:
+        git(_절, "worktree", "remove", "--force", str(w2))
+    w3 = 절판(**{"plan/할일.py": "def 할일(args=None):\n    return 7\n",
+                "plan/할일.jsonl": "",
+                "tests/test_b.py": 'import sys; sys.path.insert(0, ".")\nimport importlib\nm = importlib.import_module("plan.할일")\nassert m.할일() == 7\n'})
+    try:
+        r = R.절제검사(_절, w3)
+        ok(r["성립"] and [x["이름"] for x in r["잰것"]] == ["plan/할일.py:할일"],
+           f"**부르고 결과를 단언하는 검사는 절제에 걸린다 -- 지나간다** ({r['잰것']})")
+    finally:
+        git(_절, "worktree", "remove", "--force", str(w3))
 finally:
     shutil.rmtree(_절, ignore_errors=True)
 

@@ -373,13 +373,17 @@ def 절제검사(repo=None, 판=None, 초: int = 300, 상한: int = None, 기준
             if r.returncode != 0:
                 out["못잼"].append(f"{이름말} -- 판을 못 꺼냈다")
                 continue
-            for x in 검사 + 코드:                      # 후보를 그대로 옮기고 지운 것은 지운다
+            # **패치 전체**를 옮긴다 -- .py 만 옮기면 패치가 같이 만든 데이터 파일이 절제 판에 없어서, 그것의
+            # 존재를 보는 검사가 절제와 무관하게 빨개진다. 실측 2026-09-12 PR #218: 목표 검사가
+            # `os.path.exists("plan/할일.jsonl")` 를 단언했고 그 파일이 안 옮겨져 빨개졌다 -- 함수를 빼서 빨개진
+            # 것이 아닌데 "기능이 검사에 걸린다" 로 읽혀 **거짓 초록**으로 통과했다. 빠지는 것은 함수 하나뿐이어야 한다.
+            for x in _판변경모두(판, 기준):
                 src = 판 / x
                 if src.is_file():
                     (tmp / x).parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy(src, tmp / x)
-            for x in 지움:
-                (tmp / x).unlink(missing_ok=True)
+                else:
+                    (tmp / x).unlink(missing_ok=True)      # 패치가 지운 것은 절제 판에서도 없다
             if 이름 is None:
                 (tmp / rel).unlink(missing_ok=True)
             else:
