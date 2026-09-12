@@ -137,6 +137,31 @@ _보 = relay.배경보고({"무엇": "improve.run", "로그": "/tmp/없는로그
                     "명령": "python3 -m improve.run"})
 ok(f"판 {_판}" in _보.splitlines()[0], f"끝났다는 줄에 판이 적힌다 ({_보.splitlines()[0][:70]})")
 
+print("\n== 배경 로그는 **이 실행이 쓴 부분만** 읽는다 (덧쓰기의 옛 트레이스백을 안 본다) ==")
+# 실측 2026-09-12: 새 실행은 멀쩡히 끝났는데 옛 트레이스백을 읽고 "터졌다" 고 했고, 진단은
+# 그 옛 줄번호로 "도는 코드가 낡았다" 고 했다. 전부 옛 글이었다.
+import tempfile as _tf, os as _os
+_d = _tf.mkdtemp(prefix="test-bg-")
+_log = _os.path.join(_d, "x.log")
+with open(_log, "w", encoding="utf-8") as _f:
+    _f.write('Traceback (most recent call last):\n  File "improve/run.py", line 410, in 사용자개선\n'
+             "ModuleNotFoundError: No module named 'plan'\n")
+_e = relay.배경등록("x", _log, "python3 x")            # 시작바이트를 안 주면 지금 크기 = 옛 글 뒤
+relay.배경꺼내기()
+with open(_log, "a", encoding="utf-8") as _f:
+    _f.write("개선 부탁: 핸드폰\n  판정: **판열림**\n")
+ok(relay.배경로그(_e).startswith("개선 부탁"), "배경로그 는 이 실행이 쓴 부분만 돌려준다")
+ok(relay.터졌나(_e) == (False, ""), "**옛 트레이스백으로 '터졌다' 고 하지 않는다**")
+ok("ModuleNotFoundError" not in relay.배경보고(_e) and "판열림" in relay.배경보고(_e), "끝 보고도 이 실행의 줄만")
+_e2 = relay.배경등록("y", _log, "python3 y", 시작바이트=0)
+relay.배경꺼내기()
+ok(relay.터졌나(_e2)[0] is True, "시작바이트 0 이면 예전처럼 전부 본다 (옛 글이 이 실행 것일 때)")
+import shutil as _sh; _sh.rmtree(_d, ignore_errors=True)
+_ed = (뿌리 / "eval" / "discord_cmd.py").read_text(encoding="utf-8")
+ok("시작바이트 = 로그파일.stat().st_size" in _ed and ", 시작바이트)" in _ed, "띄우는 쪽이 열기 전 크기를 재서 넘긴다")
+_bot2 = (뿌리 / "discord_bot_server.py").read_text(encoding="utf-8")
+ok("relay.배경로그, 배경" in _bot2, "봇이 증거로 **이 실행의 출력**을 넘긴다")
+
 print()
 if FAIL:
     print(f"실패 {len(FAIL)}개 -- {FAIL}")

@@ -132,11 +132,43 @@ def 판이낡았나(자리: dict, repo=None, 몇=60) -> dict:
                            f"`{짧}` ({제목[:40]}) 의 줄번호와 맞는다."
                            + (" 그 커밋은 HEAD 의 조상이다 -- 고침이 그 뒤에 있다."
                               if rc3 == 0 else " 그 커밋은 HEAD 계보에 없다.")),
-                    "고칠거리": ("코드를 또 고치지 마라. **고침이 도착하지 않은 것이다.** "
-                                "머지됐는지(scripts/pr_merged.sh) · 배포가 돌았는지 보라."),
+                    "고칠거리": (("코드를 또 고치지 마라. 둘 중 하나다: **고침이 아직 안 닿았거나**(머지·배포를 "
+                                 "보라), **이 트레이스백이 옛 실행의 것**이다(로그가 덧쓰기면 옛 줄이 남는다 -- "
+                                 "이 실행이 쓴 출력만 다시 보라). `python3 -m diagnose --도달 <커밋>` 이 가른다.")
+                                if rc3 == 0 else
+                                "코드를 또 고치지 마라. **고침이 도착하지 않은 것이다.** 머지됐는지 · 배포가 돌았는지 보라."),
                     "판정명령": f"git log -1 --format=%h -- {파일}"}
     return {"이름": "판이낡았나", "판정": "모름",
             "말": f"{파일}:{줄} 의 `{함수}` 가 최근 {몇}개 판 어디와도 안 맞는다 (판이 아주 낡았거나 남의 트리다)"}
+
+
+def 도달확인(커밋: str, repo=None) -> dict:
+    """트레이스백이 가리키는 판(`커밋`)과 **지금 도는 판**·origin/main 을 견준다.
+
+    지금 HEAD 가 그 판의 후손이면 그 트레이스백은 지금 코드에서 날 수 없다 -- 옛 실행의
+    글이다(또는 프로세스가 배포 전에 떠 있던 것). HEAD 가 origin/main 뒤면 배포가 안 닿았다."""
+    repo = Path(repo or REPO)
+    rc, head = _git(repo, "rev-parse", "--short", "HEAD")
+    head = head.strip()
+    rc1, _ = _git(repo, "merge-base", "--is-ancestor", 커밋, "HEAD")
+    후손 = rc1 == 0
+    _git(repo, "fetch", "-q", "origin", "main", 초=60)
+    rc2, 뒤 = _git(repo, "rev-list", "--count", "HEAD..origin/main")
+    뒤 = int(뒤.strip() or 0) if rc2 == 0 else -1
+    if 후손 and 뒤 == 0:
+        return {"이름": "도달확인", "판정": "그렇다", "말":
+                f"**지금 판 {head} 는 origin/main 과 같고 `{커밋}` 의 후손이다.** 그 트레이스백은 지금 "
+                "코드에서 날 수 없다 -- 옛 실행의 글이거나, 배포 전에 떠 있던 프로세스의 것이다.",
+                "고칠거리": "고칠 코드가 없다. 이 실행이 쓴 출력만 보라(덧쓰기 로그의 옛 줄을 읽지 마라)."}
+    if 후손 and 뒤 > 0:
+        return {"이름": "도달확인", "판정": "그렇다", "말":
+                f"지금 판 {head} 는 `{커밋}` 의 후손이지만 **origin/main 보다 {뒤}커밋 뒤다** -- 배포가 안 닿았다.",
+                "고칠거리": "배포(또는 git pull)가 돌아야 한다. 코드를 고칠 일이 아니다."}
+    if not 후손:
+        return {"이름": "도달확인", "판정": "그렇다", "말":
+                f"지금 판 {head} 는 `{커밋}` 의 후손이 아니다 -- 다른 갈래거나 되돌려진 판이다.",
+                "고칠거리": "어느 갈래가 배포됐는지 보라."}
+    return {"이름": "도달확인", "판정": "모름", "말": f"origin/main 을 못 읽었다 (판 {head})"}
 
 
 def 머지했나(파일: str, repo=None) -> dict:
@@ -300,7 +332,12 @@ def main() -> int:
     ap.add_argument("--파일", default="", help="그 글이 든 파일(로그)")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--저장소", default="")
+    ap.add_argument("--도달", default="", help="트레이스백이 가리키는 판 -- 지금 판과 견준다")
     a = ap.parse_args()
+    if a.도달:
+        d = 도달확인(a.도달, Path(a.저장소) if a.저장소 else None)
+        print(f"{d['말']}\n  -> {d.get('고칠거리', '')}")
+        return 0 if d["판정"] == "그렇다" else 1
     글 = a.글
     if a.파일:
         try:

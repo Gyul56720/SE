@@ -215,11 +215,30 @@ def 실측필요(prompt: str, reply: str) -> bool:
 _배경_lock = threading.Lock()
 
 
-def 배경등록(무엇: str, 로그: str, 명령: str = "") -> dict:
-    e = {"무엇": 무엇, "로그": str(로그), "명령": 명령, "시작": time.monotonic()}
+def 배경등록(무엇: str, 로그: str, 명령: str = "", 시작바이트: "int | None" = None) -> dict:
+    """`시작바이트` 는 **이 실행이 쓰기 시작한 자리**다. 로그는 덧쓰기(append)라 앞에 옛 실행이
+    남아 있다 -- 실측 2026-09-12: 새 실행은 멀쩡히 끝났는데 옛 트레이스백을 읽고 "터졌다" 고
+    했고, 진단은 그 옛 줄번호로 "도는 코드가 낡았다" 고 했다. 전부 옛 글이었다.
+    안 주면 지금 크기를 잰다(띄운 직후라면 거의 같다)."""
+    if 시작바이트 is None:
+        try:
+            시작바이트 = Path(로그).stat().st_size
+        except OSError:
+            시작바이트 = 0
+    e = {"무엇": 무엇, "로그": str(로그), "명령": 명령, "시작": time.monotonic(), "시작바이트": int(시작바이트)}
     with _배경_lock:
         배경들.append(e)
     return e
+
+
+def 배경로그(e: dict) -> str:
+    """이 실행이 쓴 부분만. 옛 실행의 글은 안 본다."""
+    try:
+        with open(e["로그"], "rb") as f:
+            f.seek(int(e.get("시작바이트", 0) or 0))
+            return f.read().decode("utf-8", errors="replace")
+    except OSError:
+        return ""
 
 
 def 배경꺼내기() -> list:
@@ -252,10 +271,7 @@ def 어느판(repo=None) -> str:
 
 def 배경보고(e: dict, 줄수: int = 8) -> str:
     경과 = time.monotonic() - e["시작"]
-    try:
-        줄들 = Path(e["로그"]).read_text(encoding="utf-8", errors="replace").strip().splitlines()[-줄수:]
-    except OSError:
-        줄들 = ["(로그를 못 읽었다)"]
+    줄들 = 배경로그(e).strip().splitlines()[-줄수:]
     본 = "\n".join(x[:160] for x in 줄들) or "(로그가 비었다)"
     판 = 어느판()
     return (f"✅ 끝 `{e['무엇']}` ({경과 / 60:.1f}분" + (f" · 판 {판}" if 판 else "") + ")"
@@ -279,9 +295,8 @@ def 터졌나(e: dict, 줄수: int = 60) -> "tuple[bool, str]":
     """배경 일의 로그 끝에 **터진 자국**이 있는가. (터졌나, 증상 한 줄).
 
     증상은 repair 에 그대로 넘길 수 있는 글이어야 한다 -- 사람이 읽는 말이 아니라 **재현의 실마리**다."""
-    try:
-        줄들 = Path(e["로그"]).read_text(encoding="utf-8", errors="replace").splitlines()[-줄수:]
-    except OSError:
+    줄들 = 배경로그(e).splitlines()[-줄수:]       # **이 실행이 쓴 부분만** -- 옛 트레이스백은 안 센다
+    if not 줄들:
         return False, ""
     본 = "\n".join(줄들)
     마지막예외 = None
@@ -305,7 +320,7 @@ def 산출물찾기(e: dict, 뿌리=None, 최대: int = 4, 바이트상한: int 
     찾아 서버가 파일로 붙여 보낸다. 원장(.jsonl)은 사람이 읽을 것이 아니라 뺀다."""
     뿌리 = Path(뿌리 or Path(__file__).resolve().parent)
     try:
-        본 = Path(e["로그"]).read_text(encoding="utf-8", errors="replace")
+        본 = 배경로그(e)
     except OSError:
         return []
     out = []
