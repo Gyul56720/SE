@@ -102,11 +102,13 @@ def models(key: str, timeout: float = 20.0) -> list:
 
 def count(key: str, model: str, text: str, timeout: float = 20.0) -> int:
     """countTokens -- **짐작 대신 이것을 쓴다.** 생성 쿼터를 안 쓴다."""
-    r = requests.post(f"{BASE}/models/{model}:countTokens", headers=_hdr(key),
+    # 열쇠는 models() 와 같게 **params** 로 보낸다. 전에는 여기 없는 이름(_hdr · _die)을 불러
+    # 이 함수가 불리는 순간 NameError 였다(실측 2026-09-12, rehearsal.미정의이름 이 찾았다).
+    r = requests.post(f"{BASE}/models/{model}:countTokens", params={"key": key},
                       json={"contents": [{"parts": [{"text": text}]}]},
                       timeout=timeout)
     if r.status_code >= 400:
-        _die(r, f"countTokens 실패 ({model})")
+        raise RuntimeError(f"countTokens 실패 ({model}): {r.status_code} {r.text[:200]}")
     return int(r.json().get("totalTokens") or 0)
 
 

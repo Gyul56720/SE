@@ -402,6 +402,7 @@ def 적용(제안: dict, 판: Path) -> "tuple[bool, str]":
 공허검사기 = None       # 검사 주입: (repo, 판) -> dict{공허, 말, ...}. None 이면 rehearsal.공허검사
 절제검사기 = None       # 검사 주입: (repo, 판) -> dict{성립, 말, ...}. None 이면 rehearsal.절제검사
 열쇠검사기 = None       # 검사 주입: (repo, 판) -> dict{성립, 말, ...}. None 이면 rehearsal.열쇠대조
+이름검사기 = None       # 검사 주입: (repo, 판) -> dict{성립, 말, ...}. None 이면 rehearsal.미정의이름
 
 
 def _초록의뜻(repo: Path, 시험보고: str) -> "str | None":
@@ -437,6 +438,13 @@ def _초록의뜻(repo: Path, 시험보고: str) -> "str | None":
                     "죽은읽기": [f"{x['파일']}:{x['줄']} {x['열쇠']}" for x in 열.get("죽은읽기", [])][:6],
                     "있는열쇠": 열.get("있는열쇠", [])[:8]})
         return "[열쇠 대조 -- 원장에 없는 열쇠를 읽는다] " + 열["말"]
+    # **없는 이름을 부르나.** 초록이어도 안 불린 함수 안에 NameError 가 숨는다 -- 실측 2026-09-12: git_sync 가
+    # 밀기 성공 경로에서만 터졌고, 같은 결이 저장소에 다섯 군데 있었다.
+    이 = (이름검사기 or rehearsal.미정의이름)(repo, 판)
+    if not 이.get("성립", True):
+        _적기(repo, {"꼴": "미정의", "말": 이["말"][:240],
+                    "찾은것": [f"{x['파일']}:{x['줄']} {x['이름']}" for x in 이.get("찾은것", [])][:6]})
+        return "[미정의 이름 -- 없는 이름을 부른다] " + 이["말"]
     return None
 
 

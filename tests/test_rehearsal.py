@@ -365,8 +365,52 @@ try:
 finally:
     shutil.rmtree(_열, ignore_errors=True)
 
+print("\n== 미정의 이름: 함수 안에서 없는 이름을 부르나 (symtable -- 파이썬 자신의 스코프 해석) ==")
+# 실측 2026-09-12: discord_bot_server._git_sync_locked 가 `report.summary()` 를 불렀는데 그 이름이 없었다.
+# **밀기가 성공한 경로에서만** 터지므로 사용자는 커밋·푸시가 다 된 뒤 "[git 동기화 실패] NameError" 를 보았다.
+# 같은 결이 저장소에 다섯 군데 있었다(coin/news._주소 · gemini_limits._hdr·_die · test 의 ast). 전부 이것이 찾았다.
+_이 = Path(tempfile.mkdtemp(prefix="이름-"))
+try:
+    git(_이, "init", "-q"); git(_이, "config", "user.email", "t@t"); git(_이, "config", "user.name", "t")
+    (_이 / "tests").mkdir(); (_이 / "mod.py").write_text("X = 1\n", encoding="utf-8")
+    git(_이, "add", "-A"); git(_이, "commit", "-qm", "init")
+
+    def 이재기(**files):
+        w = Path(tempfile.mkdtemp(prefix="판-"))
+        git(_이, "worktree", "add", "-q", "--detach", str(w), "HEAD")
+        for rel, 본 in files.items():
+            (w / rel).parent.mkdir(parents=True, exist_ok=True); (w / rel).write_text(본, encoding="utf-8")
+        try:
+            return R.미정의이름(_이, w)
+        finally:
+            git(_이, "worktree", "remove", "--force", str(w))
+
+    r1 = 이재기(**{"a.py": "def 밀기():\n    보고 = 1\n    return f'{report}{보고}'\n"})
+    ok(not r1["성립"] and [(x["조각"], x["이름"]) for x in r1["찾은것"]] == [("밀기", "report")] and "NameError" in r1["말"],
+       f"**없는 이름을 부르면 잡는다** -- git_sync 의 자리 ({r1['찾은것']})")
+    r2 = 이재기(**{"a.py": "def 쓰기():\n    return 뒤에정의(1)\n\n\ndef 뒤에정의(x):\n    return x\n"})
+    ok(r2["성립"], "뒤에 정의된 모듈 이름은 미정의가 아니다(파이썬은 부를 때 푼다)")
+    r3 = 이재기(**{"a.py": "def 겉():\n    속값 = 1\n    def 안():\n        return 속값\n    return 안()\n"})
+    ok(r3["성립"], "감싼 함수의 이름을 읽는 클로저는 미정의가 아니다")
+    r4 = 이재기(**{"a.py": "def f(xs):\n    return [y * 2 for y in xs]\n"})
+    ok(r4["성립"], "내포 표현식의 변수는 미정의가 아니다")
+    r5 = 이재기(**{"a.py": "class C:\n    def m(self):\n        return super().m()\n"})
+    ok(r5["성립"], "super() 가 암묵으로 쓰는 __class__ 는 미정의가 아니다(거짓 양성 하나를 봐준다)")
+    r6 = 이재기(**{"a.py": "def f(p):\n    import os\n    return os.path.join(p, 'x')\n"})
+    ok(r6["성립"], "함수 안 임포트도 정의다")
+    r7 = 이재기(**{"a.py": "총 = 0\n\n\ndef 더하기():\n    global 총\n    총 += 1\n    return 총\n"})
+    ok(r7["성립"], "global 로 선언한 모듈 이름은 미정의가 아니다")
+    r8 = 이재기(**{"a.py": "from os import *\n\n\ndef f():\n    return getcwd()\n"})
+    ok(r8["성립"] and r8["못잼"] == ["a.py (import * 가 있어 무엇이 들어왔는지 모른다)"], "`import *` 가 있으면 재지 않는다고 적는다")
+    r9 = 이재기(**{"tests/test_a.py": "def 재기():\n    나무 = ast.parse('x')\n    return 나무\n"})
+    ok(not r9["성립"] and r9["찾은것"][0]["이름"] == "ast", "**검사 파일도 본다** -- 거기 NameError 면 검사가 아예 안 돈다")
+    r10 = 이재기(**{"a.py": "def f(xs):\n    return sorted(len(x) for x in xs)\n"})
+    ok(r10["성립"] and r10["본것"] == ["a.py"], "빌트인은 미정의가 아니다")
+finally:
+    shutil.rmtree(_이, ignore_errors=True)
+
 print()
 if FAIL:
     print(f"실패 {len(FAIL)}개 -- {FAIL}")
     raise SystemExit(1)
-print("rehearsal: 문법 · 뜻 · 초록 · 안 건드림 · 못잼 · 승인 전제 · 배선 · 공허 검사 · 절제 검사 · 열쇠 대조 -- 통과")
+print("rehearsal: 문법 · 뜻 · 초록 · 안 건드림 · 못잼 · 승인 전제 · 배선 · 공허 검사 · 절제 검사 · 열쇠 대조 · 미정의 이름 -- 통과")

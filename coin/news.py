@@ -424,6 +424,14 @@ def _줄찾기(got, 경로: str = "") -> list:
     return [r for r in x if isinstance(r, dict)] if isinstance(x, list) else []
 
 
+def _주소(s) -> str:
+    """그 출처의 **지금** 주소. locate 가 찾아 둔 것이 있으면 그것, 없으면 표에 적힌 것.
+    여기 없는 이름을 세 군데서 부르고 있었다(실측 2026-09-12, rehearsal.미정의이름 이 찾았다) --
+    `coin/locate.지금주소` 가 바로 그 일을 한다. locate 는 news 를 함수 안에서 들이므로 순환이 안 된다."""
+    from coin import locate as LC
+    return LC.지금주소(s)
+
+
 def _json(s) -> list:
     import os
     url = _주소(s).replace("{key}", os.environ.get(s.열쇠, "") if s.열쇠 else "")
