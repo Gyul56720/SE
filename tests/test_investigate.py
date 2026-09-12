@@ -39,7 +39,7 @@ def ok(cond, what):
 os.environ.update({"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@x",
                    "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@x"})
 판 = Path(tempfile.mkdtemp(prefix="test-iv-"))
-_원 = (I.두뇌, I.판정기, I.진단기)
+_원 = (I.두뇌, I.판정기, I.진단기, I.모으기)
 try:
     subprocess.run(["git", "-C", str(판), "init", "-q"], check=False)
     (판 / "repair").mkdir(); (판 / "public_agent_memory").mkdir()
@@ -93,15 +93,23 @@ try:
     r = I.조사("증상 B", repo=판, 시한초=60, 최대바퀴=5, 아이디="t2")
     ok(not r["해결"], "**두뇌의 말은 판정이 아니다**")
 
-    print("\n== 아무것도 안 바뀌면: 둘째에 '갈래 바꿔라', 셋째에 멈춘다 ==")
+    print("\n== 아무것도 안 바뀌면: 갈래 바꿔라 -> **코드가 제2의 뇌를 연다**(두 번) -> 그래도면 멈춘다 ==")
+    # 사용자(2026-09-12): "사람 몫으로 넘기는 건 최종이라고. 모르면 제2의 뇌나 dig 로 검색해서 정보 찾고
+    # 코드 고치고 문제 있으면 또 수정하고 해서 6시간이 걸려도 좋으니깐 스스로 해결해보라고."
     받은.clear()
+    뇌물음 = []
+    I.모으기 = lambda 물음: (뇌물음.append(물음) or ["arxiv: 비슷한 사고의 고침 <https://x/1>", "graph: 지난 메모 <m#1>"])
     I.두뇌 = lambda p, t: (받은.append(p) or "같은 걸 또 해 봤다")
-    r = I.조사("증상 C", repo=판, 시한초=60, 최대바퀴=10, 아이디="t3")
-    ok(r["바퀴"] == I.되풀이한도 and "연속 아무것도 안 바뀌었다" in r["남은것"],
-       f"되풀이 {I.되풀이한도}바퀴면 멈춘다 (바퀴 {r['바퀴']})")
-    ok(any("갈래는 막혔다" in p for p in 받은), "**멈추기 전에 갈래를 바꾸라고 한 번 말한다**")
-    ok("다른 가설로 가라" in [p for p in 받은 if "갈래는 막혔다" in p][0]
-       and "diagnose" in [p for p in 받은 if "갈래는 막혔다" in p][0], "무엇으로 바꿀지 도구 이름을 댄다")
+    r = I.조사("증상 C", repo=판, 시한초=60, 최대바퀴=20, 아이디="t3")
+    ok(r["바퀴"] == I.되풀이한도 and "연속 아무것도 안 바뀌었다" in r["남은것"] and I.되풀이한도 >= 6,
+       f"되풀이 {I.되풀이한도}바퀴면 멈춘다 -- 셋이 아니다 (바퀴 {r['바퀴']})")
+    ok(len(뇌물음) == 2 and "증상 C" in 뇌물음[0], f"**막히면 코드가 제2의 뇌를 두 번 연다** (물음 {len(뇌물음)}개)")
+    ok(any("제2의 뇌가 찾아 온 것" in p and "https://x/1" in p for p in 받은), "찾은 것을 다음 바퀴 프롬프트에 들려 보낸다")
+    ok("제2의 뇌를 2번 열었는데도" in r["남은것"] and "!조사" in r["남은것"], "멈출 때 무엇을 다 해 봤는지와 이어 돌리는 길을 적는다")
+    ok(any("갈래는 막혔다" in p for p in 받은), "갈래를 바꾸라고도 말한다")
+    ok(any(d.get("단계") == "제2의뇌" for d in I.원장읽기(판, "t3")), "원장에 제2의 뇌를 연 바퀴가 남는다")
+    I.모으기 = None
+    ok(I.기본시한초 == 6 * 3600, "**기본 시한은 여섯 시간** -- 사람에게 넘기는 것은 최후다")
 
     print("\n== 시한을 지킨다 ==")
     호출 = []
@@ -152,12 +160,14 @@ try:
 
     print("\n== 원장·메모 ==")
     줄들 = I.원장읽기(판, "t3")
-    ok([d["단계"] for d in 줄들] == ["시작", "바퀴", "바퀴", "바퀴", "끝"], f"조사 한 건이 시작·바퀴·끝으로 적힌다 ({[d['단계'] for d in 줄들]})")
+    _단 = [d["단계"] for d in 줄들]
+    ok(_단[0] == "시작" and _단[-1] == "끝" and _단.count("바퀴") == I.되풀이한도 and _단.count("제2의뇌") == 2,
+       f"조사 한 건이 시작·바퀴·제2의뇌·끝으로 적힌다 ({_단})")
     ok(all(d["꼴"] == "조사" for d in 줄들), "repair 원장을 그대로 쓴다(두 벌 아님)")
     메모 = list((판 / "public_agent_memory").glob("*_고치기_*.md"))
     ok(메모 and any("조사 t3" in m.read_text(encoding="utf-8") for m in 메모), "메모가 남는다 -- 밤에 간추려 장기기억이 된다")
 finally:
-    I.두뇌, I.판정기, I.진단기 = _원
+    I.두뇌, I.판정기, I.진단기, I.모으기 = _원
     shutil.rmtree(판, ignore_errors=True)
 
 print("\n== claude 두뇌: 같은 조사는 같은 세션 ==")
