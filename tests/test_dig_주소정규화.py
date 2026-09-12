@@ -135,6 +135,36 @@ try:
 finally:
     FT.여럿 = _원여럿
 
+print("\n== 문 목록 꼴 검사 · 문마다 쓸 만한 결과 수 ==")
+# 실측 2026-09-12(VM): `!개선 수집망 url에 인스타그램, x, meta 추가해줘` 가 문 셋을
+# `https://www.google.com/search?q=site:...` 로 넣었다. **꼴은 멀쩡해서 시뮬이 초록이었다.**
+# 그 문이 답을 주는지는 두드려야 안다 -- 그래서 결과 수를 센다(HTTP 200 이어도 0 이면 닫힌 문이다).
+ok(SC.틀검사() == [], f"지금 문 목록은 성립한다 ({SC.틀검사()})")
+_탈 = SC.틀검사([("a", "https://x/?q={q}"), ("a", "https://y/?q={q}"),
+               ("b", "ftp://z/{q}"), ("c", "https://w/?q=1")])
+ok(len(_탈) == 3 and any("겹친다" in x for x in _탈) and any("http(s)" in x for x in _탈)
+   and any("{q}` 가 없다" in x for x in _탈), f"이름 겹침·꼴 아님·물음자리 없음을 잡는다 ({len(_탈)}개)")
+
+_원여럿2 = FT.여럿
+try:
+    def _한문만준다(urls, 동시=8, 틈=0, 벌수=0):
+        return [FT.응답(url=u, 코드=200, 꼴="text/html",
+                      몸통=('<a href="https://example.org/a">첫</a><a href="https://example.net/b">둘</a>'
+                          if "mojeek" in u else "<html>결과 없음</html>")) for u in urls]
+    FT.여럿 = _한문만준다
+    r = SC.망점검(틈=1, 고른것=["mojeek", "brave"])
+    센 = {d["이름"]: d["결과"] for d in r["문들"]}
+    ok(센 == {"mojeek": 2, "brave": 0},
+       f"**200 이어도 결과가 0 이면 그 문은 닫힌 것** -- 문마다 따로 센다 ({센})")
+    ok("결과   2" in SC.망보고(r), "보고에 문마다 결과 수가 적힌다")
+    ok(len(r["문들"]) == 2, f"`고른것` 으로 새 문만 두드린다 ({len(r['문들'])}개)")
+    ok("그런 이름의 문이 없다" in SC.망점검(틈=1, 고른것=["없는문"])["진단"], "없는 이름은 그렇다고 말한다")
+finally:
+    FT.여럿 = _원여럿2
+
+_cmd2 = (뿌리 / "dig" / "discord_cmd.py").read_text(encoding="utf-8")
+ok('말.startswith("망 ")' in _cmd2, "`!수집 망 <문이름>` 으로 봇도 새 문만 두드린다")
+
 # dig 에는 구글 문이 없다 -- 보고가 "구글이 차단했다" 고 말할 근거가 애초에 없다
 ok(not any("google" in 꼴 for _이름, 꼴 in SC.틀들()), "**dig 에 구글 문은 없다** -- 구글 차단은 지어낸 원인이었다")
 _cmd = (뿌리 / "dig" / "discord_cmd.py").read_text(encoding="utf-8")
