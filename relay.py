@@ -24,6 +24,8 @@ from __future__ import annotations
 import asyncio
 import re
 import threading
+import json
+import os
 import time
 from pathlib import Path
 
@@ -120,19 +122,39 @@ class 중계판:
 
 def 도구호출들(messages) -> "list[str]":
     """agent.invoke 결과의 messages 에서 **마지막 사람 말 뒤에** 모델이 부른 도구 이름들.
-    langchain 메시지를 오리 타이핑으로 본다: type == "human" · AIMessage.tool_calls."""
+    langchain 메시지를 오리 타이핑으로 본다: type == "human" · AIMessage.tool_calls.
+
+    **도구가 돌았다는 증거가 세 군데에 있다** -- AIMessage.tool_calls · additional_kwargs 의
+    tool_calls(제공자에 따라 여기에만 실려 온다) · 그리고 ToolMessage(type == "tool") 자체.
+    한 군데만 읽으면 돌았는데도 0 이 나오고, 0 은 답에 "실측 없는 답이다" 딱지를 붙인다 --
+    **잘못 세는 계수기는 없는 잘못을 씌운다.** 그래서 셋을 다 보되, 같은 호출을 두 번 세지
+    않게 이름마다 많은 쪽만 남긴다(부른 기록과 돌아온 기록이 둘 다 있으면 한 번)."""
+    import collections
     턴 = []
     for m in reversed(list(messages or [])):
         if getattr(m, "type", "") == "human":
             break
         턴.append(m)
-    out = []
-    for m in reversed(턴):
-        for tc in (getattr(m, "tool_calls", None) or []):
-            name = tc.get("name") if isinstance(tc, dict) else getattr(tc, "name", "")
+    턴.reverse()
+    부른것, 돌아온것 = [], []
+    for m in 턴:
+        calls = list(getattr(m, "tool_calls", None) or [])
+        더 = getattr(m, "additional_kwargs", None)
+        if isinstance(더, dict):
+            calls += list(더.get("tool_calls") or [])
+        for tc in calls:
+            if isinstance(tc, dict):
+                name = tc.get("name") or (tc.get("function") or {}).get("name", "")
+            else:
+                name = getattr(tc, "name", "")
             if name:
-                out.append(str(name))
-    return out
+                부른것.append(str(name))
+        if getattr(m, "type", "") == "tool":
+            돌아온것.append(str(getattr(m, "name", "") or "(이름없음)"))
+    셈 = collections.Counter(부른것)
+    for 이름, 몇 in collections.Counter(돌아온것).items():
+        부른것.extend([이름] * max(0, 몇 - 셈.get(이름, 0)))
+    return 부른것
 
 
 def 턴기록(thread_id: str, messages) -> "list[str]":
@@ -228,7 +250,9 @@ def 배경등록(무엇: str, 로그: str, 명령: str = "", 시작바이트: "i
     # 바꾸자 명령줄에 "improve/run.py" 가 없어져 첫 확인(20초)에 '끝났다' 고 보고 빈 로그를 읽었다
     # ("(로그가 비었다)" · 0.3분). 보이는 이름과 찾는 이름을 가른다.
     e = {"무엇": 무엇, "로그": str(로그), "명령": 명령, "시작": time.monotonic(), "시작바이트": int(시작바이트),
-         "찾을말": 찾을말 or 무엇}
+         "찾을말": 찾을말 or 무엇,
+         # 아이디·벽시계: 봇이 재시작돼도 감시를 다시 붙일 수 있게 맡김 파일의 열쇠가 된다(배경맡김 참고).
+         "아이디": f"{무엇}-{int(time.time())}-{os.getpid()}", "시작벽시계": time.time()}
     with _배경_lock:
         배경들.append(e)
     return e
@@ -247,6 +271,76 @@ def 배경로그(e: dict) -> str:
 def 배경꺼내기() -> list:
     with _배경_lock:
         out, 배경들[:] = list(배경들), []
+    return out
+
+
+# ---------------------------------------------------------------- 배경 감시는 재시작을 살아 넘긴다
+# 실측 2026-09-12: `!개선` 을 16:08 에 띄웠고 16:22 에 배포가 봇을 재시작했다. 일(setsid)은 계속 돌았는데
+# **감시가 죽어 아무도 끝을 알리지 않았다.** 사용자: "결과가 끝나면 봇에서 나에게 알려주게 할 수 있어?"
+# 알리는 장치는 있었다 -- 감시가 봇 프로세스 안의 asyncio 작업이라 재시작에 휩쓸린 것이다. 배포는 하루에
+# 여러 번 있고 긴 일은 몇십 분이므로 이 겹침은 예외가 아니라 보통이다.
+# 그래서 맡긴 일을 파일에 적어 둔다. 봇이 다시 뜨면 읽어서 감시를 다시 붙인다 -- 그 사이에 끝났으면
+# 첫 확인에서 바로 알린다. logs/ 는 .gitignore 라 런타임 상태로만 남는다.
+맡긴것상대 = "logs/배경맡김.json"
+맡김한도초 = 12 * 3600         # 이보다 오래된 것은 버린다(옛 실행의 찌꺼기)
+
+
+def _맡김파일(repo=None) -> Path:
+    return Path(repo or Path(__file__).resolve().parent) / 맡긴것상대
+
+
+def _맡김읽기(repo=None) -> dict:
+    p = _맡김파일(repo)
+    if not p.is_file():
+        return {}
+    try:
+        d = json.loads(p.read_text(encoding="utf-8"))
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _맡김쓰기(d: dict, repo=None) -> None:
+    p = _맡김파일(repo)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(d, ensure_ascii=False, indent=1), encoding="utf-8")
+    tmp.replace(p)                                    # 한 번에 바꾼다 -- 반쯤 쓴 파일을 안 읽게
+
+
+def 배경맡김(배경: dict, 채널id: int, repo=None) -> str:
+    """감시를 붙일 때 적어 둔다. 돌려주는 것은 아이디(놓을 때 쓴다)."""
+    d = _맡김읽기(repo)
+    아이디 = str(배경.get("아이디") or f"{배경.get('무엇', '?')}-{int(배경.get('시작벽시계', time.time()))}")
+    d[아이디] = {"무엇": 배경.get("무엇", ""), "로그": 배경.get("로그", ""), "명령": 배경.get("명령", ""),
+               "시작바이트": int(배경.get("시작바이트", 0) or 0), "찾을말": 배경.get("찾을말", ""),
+               "채널id": int(채널id), "적은때": time.time()}
+    _맡김쓰기(d, repo)
+    return 아이디
+
+
+def 배경놓음(아이디: str, repo=None) -> None:
+    d = _맡김읽기(repo)
+    if 아이디 in d:
+        del d[아이디]
+        _맡김쓰기(d, repo)
+
+
+def 배경맡긴것(repo=None) -> list:
+    """{아이디, 배경(감시가 쓰는 꼴), 채널id} 목록. 너무 오래된 것은 버리고 파일도 줄인다."""
+    d = _맡김읽기(repo)
+    지금, 남김, out = time.time(), {}, []
+    for 아이디, v in d.items():
+        if 지금 - float(v.get("적은때", 0)) > 맡김한도초:
+            continue
+        남김[아이디] = v
+        out.append({"아이디": 아이디, "채널id": int(v.get("채널id", 0)),
+                    "배경": {"무엇": v.get("무엇", ""), "로그": v.get("로그", ""), "명령": v.get("명령", ""),
+                           "시작바이트": int(v.get("시작바이트", 0) or 0), "찾을말": v.get("찾을말", ""),
+                           "시작": time.monotonic() - max(0.0, 지금 - float(v.get("적은때", 지금))),
+                           "아이디": 아이디}})
+    if len(남김) != len(d):
+        _맡김쓰기(남김, repo)
     return out
 
 

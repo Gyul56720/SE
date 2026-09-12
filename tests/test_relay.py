@@ -191,6 +191,42 @@ ok("시작바이트 = 로그파일.stat().st_size" in _ed and ", 시작바이트
 _bot2 = (뿌리 / "discord_bot_server.py").read_text(encoding="utf-8")
 ok("relay.배경로그, 배경" in _bot2, "봇이 증거로 **이 실행의 출력**을 넘긴다")
 
+print("\n== 배경 감시는 봇 재시작을 살아 넘긴다 (맡김 파일) ==")
+# 실측 2026-09-12: `!개선` 을 16:08 에 띄웠고 16:22 배포가 봇을 재시작했다. 일(setsid)은 계속 돌았는데
+# 감시가 봇 안의 asyncio 작업이라 같이 죽어 **아무도 끝을 알리지 않았다.** 배포는 하루에 여러 번,
+# 긴 일은 몇십 분 -- 이 겹침은 예외가 아니다.
+import tempfile as _tf3, time as _t4, json as _js4
+_맡 = Path(_tf3.mkdtemp(prefix="relay-맡김-"))
+try:
+    _e9 = relay.배경등록("improve/run.py", str(_맡 / "x.log"), "python3 -m improve.run", 7, 찾을말="improve.run")
+    relay.배경꺼내기()
+    ok(_e9.get("아이디") and _e9.get("시작벽시계"), f"등록이 아이디와 벽시계를 단다 ({_e9.get('아이디')})")
+    아 = relay.배경맡김(_e9, 12345, repo=_맡)
+    ok((_맡 / relay.맡긴것상대).is_file(), "맡김 파일이 생긴다")
+    남 = relay.배경맡긴것(repo=_맡)
+    ok(len(남) == 1 and 남[0]["채널id"] == 12345 and 남[0]["배경"]["찾을말"] == "improve.run"
+       and 남[0]["배경"]["시작바이트"] == 7 and 남[0]["배경"]["로그"].endswith("x.log"),
+       f"**감시에 필요한 것이 그대로 돌아온다** -- 채널·찾을말·시작바이트·로그 ({남[0]['채널id']})")
+    relay.배경놓음(아, repo=_맡)
+    ok(relay.배경맡긴것(repo=_맡) == [], "알리고 나면 놓는다 -- 두 번 알리지 않는다")
+    relay.배경놓음(아, repo=_맡)
+    ok(relay.배경맡긴것(repo=_맡) == [], "두 번 놓아도 조용하다")
+    아2 = relay.배경맡김(_e9, 1, repo=_맡)
+    _d9 = _js4.loads((_맡 / relay.맡긴것상대).read_text(encoding="utf-8"))
+    _d9[아2]["적은때"] = _t4.time() - relay.맡김한도초 - 60
+    (_맡 / relay.맡긴것상대).write_text(_js4.dumps(_d9, ensure_ascii=False), encoding="utf-8")
+    ok(relay.배경맡긴것(repo=_맡) == [] and _js4.loads((_맡 / relay.맡긴것상대).read_text(encoding="utf-8")) == {},
+       f"{relay.맡김한도초 // 3600}시간보다 오래된 것은 버리고 파일도 줄인다 -- 옛 실행의 찌꺼기")
+    ok(relay.배경맡긴것(repo=_맡 / "없는곳") == [], "맡김 파일이 없으면 빈 목록")
+finally:
+    import shutil as _sh9; _sh9.rmtree(_맡, ignore_errors=True)
+
+_봇9 = (뿌리 / "discord_bot_server.py").read_text(encoding="utf-8")
+ok("relay.배경맡김" in _봇9 and "relay.배경놓음" in _봇9, "감시가 붙을 때 맡기고 끝날 때 놓는다")
+ok("_맡긴배경다시" in _봇9 and "asyncio.create_task(_맡긴배경다시())" in _봇9, "on_ready 가 맡긴 것을 다시 맡는다")
+ok("_다시맡은것" in _봇9, "on_ready 가 여러 번 불려도 두 번 붙지 않는다(아이디로 막는다)")
+ok("finally:" in _봇9.split("async def _배경지켜보기(")[1].split("async def")[0], "놓는 것은 finally 에 있다 -- 터져도 맡김이 남지 않는다")
+
 print()
 if FAIL:
     print(f"실패 {len(FAIL)}개 -- {FAIL}")

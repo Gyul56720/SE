@@ -183,8 +183,68 @@ try:
 finally:
     shutil.rmtree(_공, ignore_errors=True)
 
+print("\n== 절제 검사: 기능을 하나씩 빼면 검사가 무너지나 -- 빼면 빨강 · 넣으면 초록 ==")
+# 사용자(2026-09-12): "기능의 존재를 주장하지 말고, 그 기능을 제거했을 때 검사가 무너지고 다시 넣었을 때 복구되는지."
+# 공허검사는 패치 전체를 빼고 보므로 함수 셋 중 하나만 걸려도 통과한다. 여기서는 함수마다 몸통을 빼고 패치의 검사를 돌린다.
+_절 = Path(tempfile.mkdtemp(prefix="절제-"))
+try:
+    git(_절, "init", "-q"); git(_절, "config", "user.email", "t@t"); git(_절, "config", "user.name", "t")
+    (_절 / "tests").mkdir()
+    (_절 / "mod.py").write_text("def f():\n    return 2\n\n\nclass C:\n    def m(self):\n        return 0\n", encoding="utf-8")
+    (_절 / "old.py").write_text("X = 1\n", encoding="utf-8")
+    git(_절, "add", "-A"); git(_절, "commit", "-qm", "init")
+
+    def 절판(지울=(), **files):
+        w = Path(tempfile.mkdtemp(prefix="판-"))
+        git(_절, "worktree", "add", "-q", "--detach", str(w), "HEAD")
+        for rel, 본 in files.items():
+            (w / rel).parent.mkdir(parents=True, exist_ok=True); (w / rel).write_text(본, encoding="utf-8")
+        for rel in 지울:
+            (w / rel).unlink()
+        return w
+
+    def 절재기(지울=(), 상한=None, **files):
+        w = 절판(지울, **files)
+        try:
+            return R.절제검사(_절, w, 상한=상한)
+        finally:
+            git(_절, "worktree", "remove", "--force", str(w))
+
+    F1 = "def f():\n    return 1\n"
+    T_F = "import mod\nassert mod.f() == 1\n"
+    r = 절재기(**{"mod.py": F1})
+    ok(r["성립"] and "검사가 없다" in r["말"] and not r["잰것"], "검사 없는 패치는 여기 몫이 아니다(공허검사가 막는다)")
+    r = 절재기(**{"tests/test_a.py": "assert True\n"})
+    ok(r["성립"] and "뺄 수 있는 단위가 없다" in r["말"], "검사만 바뀐 패치는 뺄 단위가 없다")
+    r = 절재기(**{"mod.py": F1, "tests/test_a.py": T_F})
+    ok(r["성립"] and r["잰것"] == [{"이름": "mod.py:f", "무너짐": True, "어디": "tests/test_a.py"}] and "다 무너졌다" in r["말"],
+       "**f 를 빼면 f 의 검사가 빨갛다** -- 성립")
+    r = 절재기(**{"mod.py": F1 + "\n\ndef g():\n    return 9\n", "tests/test_a.py": T_F})
+    ok(not r["성립"] and r["안잡힌것"] == ["mod.py:g"] and "절제해도 검사가 안 무너진다" in r["말"] and "mod.py:g" in r["말"],
+       f"**검사에 안 걸리는 함수 g 를 같이 넣으면 잡힌다** -- 공허검사는 놓치는 자리 ({r['안잡힌것']})")
+    ok([x["이름"] for x in r["잰것"]] == ["mod.py:f", "mod.py:g"], "바뀐 함수마다 하나씩 잰다")
+    r = 절재기(**{"mod.py": F1 + "def h(): return 3\n", "tests/test_a.py": T_F})
+    ok(not r["성립"] and r["안잡힌것"] == ["mod.py:h"] and not r["못잼"], "한 줄짜리 `def h(): return 3` 도 몸통을 빼서 잰다")
+    r = 절재기(**{"mod.py": F1 + "\n\nclass C:\n    def m(self):\n        return 5\n", "tests/test_a.py": T_F + "assert mod.C().m() == 5\n"})
+    ok(r["성립"] and [x["이름"] for x in r["잰것"]] == ["mod.py:f", "mod.py:C.m"], "클래스 안 메서드는 `C.m` 으로 따로 잰다")
+    r = 절재기(**{"mod.py": 'def f():\n    return 1\n\n\nclass C:\n    def m(self):\n        """설명"""\n        return 0  # 주석\n',
+                 "tests/test_a.py": T_F})
+    ok(r["성립"] and [x["이름"] for x in r["잰것"]] == ["mod.py:f"], "독스트링·주석만 바뀐 함수는 단위가 아니다")
+    r = 절재기(**{"new.py": "def a():\n    return 1\n\n\ndef b():\n    return 2\n", "tests/test_n.py": "import new\nassert new.a() == 1\n"})
+    ok(not r["성립"] and r["안잡힌것"] == ["new.py:b"], "새 파일도 함수마다 잰다 -- 파일을 임포트만 하는 검사로는 못 넘어간다")
+    r = 절재기(**{"new.py": "X = 1\n", "tests/test_n.py": "import new\nassert new.X == 1\n"})
+    ok(r["성립"] and r["잰것"] == [{"이름": "new.py(파일 전체)", "무너짐": True, "어디": "tests/test_n.py"}], "함수 없는 새 파일은 통째로 뺀다")
+    r = 절재기(지울=("old.py",), **{"mod.py": F1 + "\n\ndef g():\n    return 9\n",
+                                   "tests/test_a.py": T_F + "import importlib.util\nassert importlib.util.find_spec('old') is None\n"})
+    ok(not r["성립"] and r["안잡힌것"] == ["mod.py:g"], "패치가 지운 파일은 절제 판에서도 없다 -- 지움 때문에 빨개지는 것을 '잡혔다' 로 안 친다")
+    r = 절재기(상한=1, **{"mod.py": F1 + "\n\ndef g():\n    return 9\n", "tests/test_a.py": T_F})
+    ok(r["성립"] and len(r["잰것"]) == 1 and "1개는 안 쟀다" in r["말"], "상한을 넘는 단위는 안 재고 그렇게 말한다")
+    ok(git(_절, "worktree", "list").stdout.strip().count("\n") == 0, "절제 워크트리가 안 남는다")
+finally:
+    shutil.rmtree(_절, ignore_errors=True)
+
 print()
 if FAIL:
     print(f"실패 {len(FAIL)}개 -- {FAIL}")
     raise SystemExit(1)
-print("rehearsal: 문법 · 뜻 · 초록 · 안 건드림 · 못잼 · 승인 전제 · 배선 · 공허 검사 -- 통과")
+print("rehearsal: 문법 · 뜻 · 초록 · 안 건드림 · 못잼 · 승인 전제 · 배선 · 공허 검사 · 절제 검사 -- 통과")
