@@ -100,6 +100,36 @@ try:
     finally:
         git(판, "worktree", "remove", "--force", str(w))
 
+    print("\n== 판정 정의: 비등가 · 덮임 · 동등제외를 가른다 (사용자 정의 2026-09-12) ==")
+    # "원본이 통과한 뒤, 의미를 보존하지 않는 유한한 독립 변형 집합을 같은 검사·환경에서 돌려, 원본과
+    # 구별되어 실패해야 할 **비등가** 변형이 하나라도 통과하면 거짓 Green. **동등 변형은 별도 판정으로 제외.**"
+    ok(M.동등한가("def f(a):\n    return a + 1\n", "def f(a):\n    return a + 1\n"), "같은 글은 동등(TCE)")
+    ok(M.동등한가("def f(a):\n    return a + 1\n", "def f(a):\n    # 주석\n    return a + 1\n"),
+       "주석·줄번호만 다른 것은 동등 -- 의미가 보존됐다")
+    ok(not M.동등한가("def f(a):\n    return a + 1\n", "def f(a):\n    return None\n"), "값이 달라지는 변형은 비등가")
+    ok(not M.동등한가("def f(a):\n    return a + 1\n", "def f(a):\n    return a - 1\n"), "연산이 달라지는 변형은 비등가")
+
+    (판 / "반쪽.py").write_text(
+        "def 고르기(x):\n"
+        "    if x > 100:\n"
+        "        return '큰것'\n"
+        "    return '작은것'\n", encoding="utf-8")
+    (판 / "tests" / "test_반쪽.py").write_text(
+        'import sys; sys.path.insert(0, ".")\nimport 반쪽\nassert 반쪽.고르기(1) == "작은것"\nprint("작은 쪽만 본다")\n',
+        encoding="utf-8")
+    git(판, "add", "-A"); git(판, "commit", "-qm", "반쪽만 덮는 검사")
+    덮 = M.덮인줄(판, "반쪽.py", ["tests/test_반쪽.py"])
+    ok(2 in 덮 and 4 in 덮 and 3 not in 덮, f"**실행된 줄만 덮임으로 센다** -- 큰 쪽(3줄)은 안 돌았다 ({sorted(덮)})")
+    r6 = M.사냥(판, 파일들=["반쪽.py"], 시한초=180, 말하기=lambda s: None)
+    ok(r6["덮이지않음"] >= 1 and any(x["변형"].startswith("3줄") for x in r6["덮이지않은것"]),
+       f"**안 덮인 줄의 변형은 '거짓초록' 이 아니라 '덮이지않음' 이다** (덮이지않음 {r6['덮이지않음']})")
+    ok(all(not x["변형"].startswith("3줄") for x in r6["살아남은것"]),
+       "덮이지 않은 변형을 거짓초록으로 세지 않는다 -- 그랬으면 판정 자체가 거짓이 된다")
+    ok(any(x.get("꼴") == "덮이지않음" for x in M.원장읽기(판)) and any(x.get("꼴") == "덮임" for x in M.원장읽기(판)),
+       "원장에 덮임과 덮이지않음이 남는다")
+    보2 = M.보고(판)
+    ok("덮이지않음" in 보2 or "한 번도 실행되지 않는" in 보2, "보고가 둘을 갈라 말한다")
+
     print("\n== 못 재는 것은 못 잰다고 적는다 ==")
     (판 / "혼자.py").write_text("def 아무것(x):\n    return x + 1\n", encoding="utf-8")
     git(판, "add", "-A"); git(판, "commit", "-qm", "검사 없는 파일")
@@ -133,4 +163,4 @@ print()
 if FAIL:
     print(f"실패 {len(FAIL)}개 -- {FAIL}")
     raise SystemExit(1)
-print("mutate: 조용한 변형 · 보는 검사는 죽인다 · 부르기만 하면 살린다 · 절제와의 차이 · 못잼 · 시한 · 원장 · 배선 -- 통과")
+print("mutate: 조용한 변형 · 보는 검사는 죽인다 · 부르기만 하면 살린다 · 절제와의 차이 · 비등가·덮임·동등제외 · 못잼 · 시한 · 원장 · 배선 -- 통과")
