@@ -187,7 +187,7 @@ _bot = (뿌리 / "discord_bot_server.py").read_text(encoding="utf-8")
 ok('"investigate/run.py", "--증상"' in _bot and "긴 호흡으로 넘긴다" in _bot,
    "**repair 세 바퀴로 안 풀리면 봇이 조사를 배경으로 띄운다**")
 _넘김 = _bot[_bot.index('"investigate/run.py", "--증상"'):][:600]
-ok('"--증거", 로그파일' in _넘김, "봇이 로그 꼬리를 증거로 넘긴다")
+ok('"--증거", _증거파일' in _넘김, "봇이 **이 실행의 출력**을 증거 파일로 넘긴다")
 ok("!조사 <증상> :: <재현 명령>" in _bot, "프롬프트가 이름을 대고 시킨다")
 _wf = (뿌리 / ".github" / "workflows" / "deploy-oracle.yml").read_text(encoding="utf-8")
 ok('"investigate/**.py"' in _wf, "배포 경로에")

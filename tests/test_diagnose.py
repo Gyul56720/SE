@@ -96,8 +96,8 @@ try:
     r = D.판이낡았나(자리옛, 판)
     ok(r["판정"] == "그렇다" and r.get("커밋") == 옛,
        f"**도는 코드가 낡았다고 짚고 어느 판인지 댄다** ({r.get('커밋')} vs 옛 {옛})")
-    ok("또 고치지 마라" in r["고칠거리"] and "도착하지 않은" in r["고칠거리"],
-       "**코드를 또 고치라고 하지 않는다** -- 도달 문제라고 말한다")
+    ok("또 고치지 마라" in r["고칠거리"] and "안 닿았거나" in r["고칠거리"] and "옛 실행의 것" in r["고칠거리"],
+       "**코드를 또 고치라고 하지 않는다** -- 도달 문제거나 옛 실행의 글이라고 말한다")
     ok(r["판정명령"], "다시 확인할 명령을 들려 준다")
 
     print("\n== 저장소 안 모듈은 '없는' 것이 아니다 ==")
@@ -111,6 +111,18 @@ try:
     ok(r["판정"] == "그렇다" and "origin/main 밖에" in r["말"], f"안 민 커밋을 짚는다 ({r['말'][:60]})")
     git(판, "push", "-q", "origin", "main")
     ok(D.머지했나("improve/run.py", 판)["판정"] == "아니다", "밀고 나면 '아니다'")
+
+    print("\n== 도달 확인: 지금 판이 그 판의 후손이고 origin/main 과 같으면 **옛 실행의 글**이다 ==")
+    r = D.도달확인(옛, 판)
+    ok(r["판정"] == "그렇다" and "옛 실행의 글" in r["말"] and "고칠 코드가 없다" in r["고칠거리"],
+       f"**고칠 코드가 없다고 끝맺는다** ({r['말'][:60]})")
+    (판 / "plan" / "store.py").write_text("값 = 2\n", encoding="utf-8")
+    git(판, "add", "-A"); git(판, "commit", "-qm", "로컬만")
+    git(판, "push", "-q", "origin", "main")
+    git(판, "reset", "-q", "--hard", "HEAD~1")
+    r = D.도달확인(옛, 판)
+    ok(r["판정"] == "그렇다" and "배포가 안 닿았다" in r["말"], f"origin/main 보다 뒤면 **배포가 안 닿았다** ({r['말'][:60]})")
+    git(판, "reset", "-q", "--hard", "origin/main")
 
     print("\n== 진단 한 바퀴: 차례가 옳은가 ==")
     글판 = ('  File "improve/run.py", line 5, in 사용자개선\n'
@@ -210,6 +222,10 @@ _bot = (뿌리 / "discord_bot_server.py").read_text(encoding="utf-8")
 ok("증거글=증거글" in _bot and "로그파일" in _bot,
    "**봇이 배경 로그 꼬리를 들려 보낸다** -- 재현 안 되는 사고도 진단이 본다")
 ok("증거부터 캤다" in _bot, "사람에게 증거를 먼저 보여 준다")
+# 사용자(2026-09-12): "여기서 끝나네 끝까지 못 고쳐주고?" -- 진단이 '도달' 이라 했으면 그 확인을 실제로 한다.
+ok("_dg.도달확인" in _bot and "도달 확인" in _bot, "**봇이 '판이낡았나' 가설의 확인을 실제로 돌려 끝맺는다**")
+ok('"--증거", _증거파일' in _bot, "조사로 넘길 때도 이 실행의 출력만 증거로 준다")
+ok("--도달" in (뿌리 / "diagnose.py").read_text(encoding="utf-8"), "`python3 -m diagnose --도달 <커밋>` 이 있다")
 
 _rp = (뿌리 / "repair" / "run.py").read_text(encoding="utf-8")
 ok(_rp.index("진단기 or _진단기본") < _rp.index("제안기 or _제안기본"),

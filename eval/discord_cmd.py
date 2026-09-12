@@ -44,6 +44,7 @@ def _배경으로(argv: "list[str]", 로그파일: Path, 무엇: str) -> str:
     if 살아:
         return f"이미 돌고 있다 -- 또 띄우면 같은 원장을 서로 덮는다.\n{살아[:120]}"
     로그파일.parent.mkdir(parents=True, exist_ok=True)
+    시작바이트 = 로그파일.stat().st_size if 로그파일.is_file() else 0     # 이 실행이 쓸 자리
     with open(로그파일, "ab") as f:
         subprocess.Popen(argv, cwd=str(REPO), stdout=f, stderr=subprocess.STDOUT,
                          stdin=subprocess.DEVNULL, start_new_session=True)
@@ -51,7 +52,7 @@ def _배경으로(argv: "list[str]", 로그파일: Path, 무엇: str) -> str:
     if not 살아:
         return f"띄웠는데 pgrep 에 안 보인다 -- 시작했다고 말하지 않는다. 로그를 보라: {로그파일}"
     import relay
-    relay.배경등록(무엇, str(로그파일), " ".join(argv))
+    relay.배경등록(무엇, str(로그파일), " ".join(argv), 시작바이트)
     return (f"백그라운드로 시작했다 (pgrep 확인됨): {살아[:100]}\n"
             f"로그: {로그파일} · **끝나면 이 채널에 알린다**")
 
