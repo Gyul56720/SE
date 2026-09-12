@@ -39,7 +39,7 @@ def ok(cond, what):
 os.environ.update({"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@x",
                    "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@x"})
 판 = Path(tempfile.mkdtemp(prefix="test-iv-"))
-_원 = (I.두뇌, I.판정기, I.진단기, I.모으기, I.머지기)
+_원 = (I.두뇌, I.판정기, I.진단기, I.모으기, I.머지기, I.대조기)
 머지호출 = []
 try:
     subprocess.run(["git", "-C", str(판), "init", "-q"], check=False)
@@ -230,7 +230,7 @@ try:
     메모 = list((판 / "public_agent_memory").glob("*_고치기_*.md"))
     ok(메모 and any("조사 t3" in m.read_text(encoding="utf-8") for m in 메모), "메모가 남는다 -- 밤에 간추려 장기기억이 된다")
 finally:
-    I.두뇌, I.판정기, I.진단기, I.모으기, I.머지기 = _원
+    I.두뇌, I.판정기, I.진단기, I.모으기, I.머지기, I.대조기 = _원
     shutil.rmtree(판, ignore_errors=True)
 
 print("\n== claude 두뇌: 같은 조사는 같은 세션 ==")
@@ -294,6 +294,70 @@ _wire = (뿌리 / "eval" / "wire.py").read_text(encoding="utf-8")
 ok('"investigate.run", "--배선"' in _wire, "읽기점검이 배선을 본다(두뇌 안 부름)")
 p = subprocess.run([sys.executable, "-m", "investigate.run", "--배선"], cwd=str(뿌리), capture_output=True, text=True, timeout=120)
 ok(p.returncode == 0 and "배선됨" in p.stdout, f"--배선 CLI 끝값 0 ({p.stdout.strip()[:50]})")
+print("\n== 예측-관측 대조: 믿음을 사실에 부딪힌다 (순수 함수) ==")
+# 사용자(2026-09-12): "구조가 좋으면 모델의 성능을 이길 수 있다." 정답을 짓는 것보다 예/아니오를 맞히는 것이 쉽고,
+# 틀린 예측은 모호함이 없는 오류 신호다. "됐습니다" 라고 지어내면 예측 0 이 관측 1 과 부딪혀 지어내기가 드러난다.
+ok(I.예측뽑기("고쳤다.\n예측: 재현=0 게이트=0 감사=1\n") == {"재현": 0, "게이트": 0, "감사": 1}, "마지막 `예측:` 줄을 읽는다")
+ok(I.예측뽑기("예측: 재현=1\n또 고침\n예측: 재현=0") == {"재현": 0}, "여러 줄이면 마지막 것")
+ok(I.예측뽑기("아무 말") == {}, "없으면 빈 dict")
+_판정 = [{"이름": "재현", "끝값": 1, "꼬리": ""}, {"이름": "게이트", "끝값": 0, "꼬리": ""}]
+_대 = I.예측대조({"재현": 0, "게이트": 0}, _판정)
+ok([(d["이름"], d["맞음"]) for d in _대] == [("재현", False), ("게이트", True)], f"0 인지 아닌지로 견준다 ({_대})")
+ok(I.예측대조({"재현": 2}, _판정)[0]["맞음"] is True, "끝값의 정확한 수까지는 안 묻는다 -- 빨강이냐 초록이냐")
+
+print("\n== 루프: 틀린 예측이 다음 바퀴 프롬프트에 온다 · 예측을 안 적으면 그것도 온다 ==")
+판2 = Path(tempfile.mkdtemp(prefix="test-iv2-"))
+try:
+    subprocess.run(["git", "-C", str(판2), "init", "-q"], check=False)
+    (판2 / "repair").mkdir(); (판2 / "public_agent_memory").mkdir()
+    (판2 / "상태").write_text("빨강", encoding="utf-8")
+    subprocess.run(["git", "-C", str(판2), "add", "-A"], check=False)
+    subprocess.run(["git", "-C", str(판2), "commit", "-qm", "init"], check=False)
+    I.판정기 = 판정_파일로
+    I.대조기 = lambda repo, 판정, 검사상대: {p["이름"]: 0 for p in 판정 if p["끝값"]}      # HEAD 에서는 초록 = 내 탓
+    받은3 = []
+
+    def 두뇌_거짓예측(p, t):
+        받은3.append(p)
+        if len([x for x in 받은3 if x.startswith("[조사 바퀴")]) == 1:
+            return "고쳤습니다.\n예측: 재현=0 게이트=0"          # 그런데 상태는 그대로 빨강 -- 지어낸 것
+        if len([x for x in 받은3 if x.startswith("[조사 바퀴")]) == 2:
+            return "다시 봤다"                                     # 예측을 안 적음
+        (판2 / "상태").write_text("초록", encoding="utf-8")
+        return "진짜 고쳤다\n예측: 재현=0 게이트=0"
+    I.두뇌 = 두뇌_거짓예측
+    r = I.조사("증상 P", repo=판2, 시한초=60, 최대바퀴=5, 아이디="p1")
+    바퀴들 = [x for x in 받은3 if x.startswith("[조사 바퀴")]
+    ok(r["해결"] and r["바퀴"] == 3, f"셋째 바퀴에 해결 (바퀴 {r['바퀴']})")
+    ok("예측 0 → 관측 1 **틀림" in 바퀴들[1] and "재현" in 바퀴들[1], "**틀린 예측이 다음 바퀴에 온다** -- '고쳤습니다' 가 사실과 부딪혔다")
+    ok("예측을 안 적었다" in 바퀴들[2], "예측을 안 적으면 그것도 온다")
+    ok("귀속: **내 변경 탓**" in 바퀴들[0], "빨강마다 귀속(HEAD 대조)이 프롬프트에 든다")
+    ok("맨 마지막 줄에 예측을 적어라" in 바퀴들[0] and "`예측: 재현=0 게이트=0`" in 바퀴들[0], "예측 꼴을 판정 이름 그대로 못박는다")
+    줄들p = [d for d in I.원장읽기(판2, "p1") if d.get("단계") == "바퀴"]
+    ok(줄들p[0].get("틀린수") == 1 and 줄들p[0].get("맞춘수") == 1 and 줄들p[0].get("예측") == {"재현": 0, "게이트": 0},
+       f"원장에 예측·맞춘수·틀린수가 남는다 ({줄들p[0].get('예측')} 맞음 {줄들p[0].get('맞춘수')} 틀림 {줄들p[0].get('틀린수')})")
+    ok(줄들p[0].get("귀속") == {"재현": 0}, f"원장에 귀속이 남는다 ({줄들p[0].get('귀속')})")
+
+    print("\n== 귀속: 같은 명령을 HEAD 판에서 돌려 조회한다 (진짜 sandbox) ==")
+    I.대조기 = None
+    (판2 / "깨짐").write_text("x", encoding="utf-8")          # 이 조사가 만든(미커밋) 파일 -- HEAD 에는 없다
+    판정3 = [{"이름": "게이트", "끝값": 1, "꼬리": "", "명령": ["bash", "-c", "test -f 깨짐 && exit 1 || exit 0"], "초": 30},
+            {"이름": "감사", "끝값": 1, "꼬리": "", "명령": ["bash", "-c", "exit 1"], "초": 30},
+            {"이름": "재현", "끝값": 1, "꼬리": "", "명령": ["bash", "-c", "exit 1"], "초": 30},
+            {"이름": "초록", "끝값": 0, "꼬리": "", "명령": ["true"], "초": 30}]
+    I._대조캐시.clear()
+    귀 = I._대조기본(판2, 판정3, 검사상대="tests/test_목표_x.py")
+    ok(귀.get("게이트") == 0 and "내 변경 탓" in I.귀속말("게이트", 1, 귀["게이트"]), f"미커밋 파일 때문에 빨간 것은 HEAD 에서 초록 -> **내 변경 탓** ({귀})")
+    ok(귀.get("감사") == 1 and "원래 빨강" in I.귀속말("감사", 1, 귀["감사"]), "HEAD 에서도 빨간 것은 **원래 빨강**")
+    ok("재현" not in 귀 and "초록" not in 귀, "목표 모드의 재현(HEAD 에 검사가 없다)과 초록인 판정은 안 잰다")
+    n캐시 = len(I._대조캐시)
+    I._대조기본(판2, 판정3, 검사상대="tests/test_목표_x.py")
+    ok(len(I._대조캐시) == n캐시, "같은 HEAD 에서는 한 번만 잰다(캐시)")
+    ok("HEAD 판을 못 돌렸다" in I.귀속말("x", 1, None), "못 재면 못 쟀다고 한다")
+finally:
+    I.대조기 = None
+    import shutil as _sh3; _sh3.rmtree(판2, ignore_errors=True)
+
 p = subprocess.run([sys.executable, "-m", "investigate.run"], cwd=str(뿌리), capture_output=True, text=True, timeout=120)
 ok(p.returncode == 3, "증상 없이 부르면 끝값 3 -- 초록이 아니다")
 _run = (뿌리 / "investigate" / "run.py").read_text(encoding="utf-8")
