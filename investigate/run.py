@@ -53,6 +53,7 @@ if str(REPO) not in sys.path:
 절제검사기 = None  # 검사 주입: (repo, 시작커밋) -> dict{성립, 말, 잰것, 안잡힌것, 못잼}.  None 이면 _절제기본
 열쇠검사기 = None  # 검사 주입: (repo, 시작커밋) -> dict{성립, 말, 죽은읽기, 있는열쇠}.  None 이면 _열쇠기본
 이름검사기 = None  # 검사 주입: (repo, 시작커밋) -> dict{성립, 말, 찾은것}.  None 이면 _이름기본
+순환검사기 = None  # 검사 주입: (repo, 시작커밋) -> dict{성립, 말, 찾은것}.  None 이면 _순환기본
 
 
 # ------------------------------------------------------------------ 두뇌·판정 기본
@@ -299,6 +300,13 @@ def _이름기본(repo: Path, 시작커밋: str) -> dict:
     """패치가 만진 파일에 없는 이름을 부르는 자리가 있나 -- rehearsal.미정의이름. LLM 0회 · subprocess 0회."""
     import rehearsal
     return rehearsal.미정의이름(repo, repo, 기준=시작커밋)
+
+
+def _순환기본(repo: Path, 시작커밋: str) -> dict:
+    """목표 검사가 **제 실행이 고친 원장**을 읽고 초록이 되는가 -- rehearsal.순환검사.
+    실측 2026-09-12 PR #214: 조사가 repair/ledger.jsonl 에 적은 `귀속` 을 제 검사가 읽어 '해결' 이 됐다."""
+    import rehearsal
+    return rehearsal.순환검사(repo, repo, 기준=시작커밋)
 
 
 def _명령기록(thread_id: str) -> "dict | None":
@@ -768,6 +776,15 @@ def 조사(증상: str, 재현명령: str = "", 증거글: str = "", 시한초: 
                 if not 이.get("성립", True):
                     판정 = [{"이름": "미정의이름", "끝값": 1, "꼬리": "[없는 이름] " + 이["말"]}] + [p for p in 판정 if p["이름"] != "재현"]
                     h["빨강"] = ["미정의이름"]
+                    continue
+                순 = (순환검사기 or _순환기본)(repo, 시작커밋)
+                _적기(repo, {"때": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "조사": 아이디,
+                            "단계": "순환아님" if 순.get("성립", True) else "순환", "바퀴": n, "말": 순.get("말", "")[:200],
+                            "찾은것": [f"{y['검사']}:{y['줄']} {y['읽은것']}" for y in 순.get("찾은것", [])][:6]})
+                말하기(f"[조사 {아이디}] 순환 {'아님' if 순.get('성립', True) else '**이다**'}: {순.get('말', '')[:80]}")
+                if not 순.get("성립", True):
+                    판정 = [{"이름": "순환검사", "끝값": 1, "꼬리": "[순환] " + 순["말"]}] + [p for p in 판정 if p["이름"] != "재현"]
+                    h["빨강"] = ["순환검사"]
                     continue
             결과["해결"] = True
             break

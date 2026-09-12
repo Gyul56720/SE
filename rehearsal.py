@@ -420,6 +420,128 @@ def 절제검사(repo=None, 판=None, 초: int = 300, 상한: int = None, 기준
     return out
 
 
+# ------------------------------------------------------------------ 순환검사: 제 부산물을 보고 초록이 되나
+# 실측 2026-09-12(VM, PR #214 "[조사 f867ea29] scripts/ledgerstat.py 열쇠 집계 기능 수정"): 조사가 '해결' 로
+# 스스로 머지했는데 **고쳤다는 파일이 머지에 없었다.** 코드 변경은 목표 검사 한 파일뿐이고, 그 검사가 이렇게
+# 바뀌어 있었다 -- `for entry in 원장: if '귀속' in entry: return`(통과). 그런데 `귀속` 은 조사 루프가
+# 바퀴마다 repair/ledger.jsonl 에 적는 필드다. 같은 PR 이 그 원장에 6줄을 더했다.
+# **검사가 자기 실행의 부산물을 보고 초록이 됐다.** 공허도 절제도 이것을 못 본다(검사는 정말 무언가를 읽고
+# 단언한다). 목표검사유효한가 도 통과시킨다 -- 시작 판에는 그 줄이 아직 없어 빨강, 지금은 있어 초록이니
+# '검사 구실을 한다' 로 보인다. 데이터가 그 사이 **제 손으로** 바뀐 것을 아무도 안 봤다.
+#
+# 그래서 목록을 박지 않고 이렇게 잰다: **패치가 고친 데이터 파일(이미 있던 것)을 패치의 검사가 읽으면 순환.**
+# 패치가 새로 더한 표본 파일은 기준 커밋에 없으므로 걸리지 않는다 -- 그것은 정당한 붙임이다.
+순환볼꼴 = (".jsonl", ".json", ".log", ".csv", ".txt")
+읽는부름 = ("read_text", "read_bytes", "readlines", "read", "open", "load", "loads")
+
+
+def _판변경모두(판: Path, 기준: str = "HEAD") -> "list[str]":
+    """판에서 기준 대비 바뀐 **모든** 경로(.py 만이 아니다). 지운 것도 든다."""
+    out, 본것 = [], set()
+
+    def 넣기(rel: str) -> None:
+        if rel and rel not in 본것:
+            본것.add(rel); out.append(rel)
+
+    if 기준 != "HEAD":
+        r = subprocess.run(["git", "-C", str(판), "diff", "--name-only", "-z", 기준],
+                           capture_output=True, text=True)
+        for x in r.stdout.split("\0"):
+            넣기(x)
+    r = subprocess.run(["git", "-C", str(판), "status", "--porcelain", "-z", "--untracked-files=all"],
+                       capture_output=True, text=True)
+    항목 = [x for x in r.stdout.split("\0") if x]
+    i = 0
+    while i < len(항목):
+        줄 = 항목[i]; i += 1
+        코드글, rel = 줄[:2], 줄[3:]
+        if "R" in 코드글 or "C" in 코드글:
+            i += 1
+        if 기준 != "HEAD" and 코드글 != "??":
+            continue
+        넣기(rel)
+    return out
+
+
+def _읽는파일들(노드들, 판: Path) -> "dict[str, int]":
+    """그 조각이 **실제로 읽는** 파일 -> 줄번호. 문자열로 '언급' 만 한 것은 안 센다.
+
+    센다: open("a.jsonl") · Path("a.jsonl").read_text() · p = "a.jsonl" 뒤 open(p) (한 홉).
+    안 센다: 딕트 값·보고 문구·명령 문자열 안의 경로 -- 실측: 지금 검사들은 원장 경로를 그렇게만 들고 있다."""
+    import ast
+    쓸것: dict = {}
+    이름표 = _이름에든자료(판, 노드들)
+
+    def 글자(노드):
+        if isinstance(노드, ast.Constant) and isinstance(노드.value, str):
+            return 노드.value.strip()
+        if isinstance(노드, ast.Name):
+            return 이름표.get(노드.id)
+        if isinstance(노드, ast.Call) and 노드.args:        # Path("a") · str(x)
+            return 글자(노드.args[0])
+        return None
+
+    for 노드 in 노드들:
+        if not isinstance(노드, ast.Call):
+            continue
+        이름 = (노드.func.attr if isinstance(노드.func, ast.Attribute)
+                else 노드.func.id if isinstance(노드.func, ast.Name) else "")
+        if 이름 not in 읽는부름:
+            continue
+        몫 = list(노드.args)
+        if isinstance(노드.func, ast.Attribute):           # Path(...).read_text() 의 그 Path(...)
+            몫.append(노드.func.value)
+        for a in 몫:
+            g = 글자(a)
+            if g and (판 / g).is_file() and g not in 쓸것:
+                쓸것[g] = 노드.lineno
+    return 쓸것
+
+
+def 순환검사(repo=None, 판=None, 기준: str = "HEAD") -> dict:
+    """**검사가 제 실행의 부산물을 보고 초록이 되나.** {성립, 말, 찾은것:[{검사, 읽은것, 줄}], 본것}.
+
+    패치가 고친 데이터 파일(.jsonl/.json/.log/.csv/.txt) 중 **기준 커밋에 이미 있던 것**을, 패치의 검사가
+    실제로 읽으면 순환이다 -- 그 초록은 기능이 아니라 같은 실행이 덧붙인 줄을 증언한다.
+    패치가 새로 더한 표본 파일은 기준에 없으니 걸리지 않는다. LLM 0회 · subprocess 는 git 조회뿐."""
+    repo = Path(repo or REPO)
+    판 = Path(판) if 판 else repo
+    out = {"성립": True, "말": "", "찾은것": [], "본것": []}
+    바뀐것 = _판변경모두(판, 기준)
+    의심 = []
+    for rel in 바뀐것:
+        if not rel.endswith(순환볼꼴):
+            continue
+        있었나 = subprocess.run(["git", "-C", str(판), "cat-file", "-e", f"{기준}:{rel}"],
+                              capture_output=True, text=True).returncode == 0
+        if 있었나:
+            의심.append(rel)
+    if not 의심:
+        out["말"] = "패치가 고친 기존 데이터 파일이 없다 -- 볼 것 없다"
+        return out
+    검사, _코드, _지움 = _판변경(판, 기준)
+    for t in 검사:
+        낱 = 판 / t
+        if not 낱.is_file():
+            continue
+        out["본것"].append(t)
+        나무, 조각들 = _조각들(낱.read_text(encoding="utf-8", errors="replace"))
+        for 조각, 노드들, _함수 in 조각들:
+            for 경로, 줄 in _읽는파일들(노드들, 판).items():
+                if 경로 in 의심 and not any(x["읽은것"] == 경로 and x["검사"] == t for x in out["찾은것"]):
+                    out["찾은것"].append({"검사": t, "읽은것": 경로, "줄": 줄})
+    if out["찾은것"]:
+        보임 = ", ".join(f"{x['검사']}:{x['줄']} -> {x['읽은것']}" for x in out["찾은것"][:4])
+        out["성립"] = False
+        out["말"] = (f"**검사가 제 실행이 고친 원장을 읽는다**: {보임}. 같은 패치가 그 파일을 바꿨으니 그 초록은 "
+                     f"기능이 아니라 **이 실행이 덧붙인 줄**을 증언한다(실측 2026-09-12 PR #214: 조사가 "
+                     f"repair/ledger.jsonl 에 적은 `귀속` 을 제 검사가 보고 '해결' 이 됐다). 검사는 원장이 아니라 "
+                     f"**고친 코드**를 불러 결과를 단언해라 -- 원장이 필요하면 검사가 지은 임시 파일을 써라.")
+    else:
+        out["말"] = f"검사가 제 실행이 고친 원장을 읽지 않는다 (고친 데이터 {len(의심)}개)"
+    return out
+
+
 # ------------------------------------------------------------------ 미정의이름: 없는 이름을 부르나
 # 실측 2026-09-12: `discord_bot_server._git_sync_locked` 가 `report.summary()` 를 불렀는데 그 이름이 없었다
 # (게이트 보고 변수 이름이 `보고` 로 바뀐 뒤에 남은 줄). **밀기가 성공한 경로에서만** 터지므로 커밋·푸시가 다
