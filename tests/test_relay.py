@@ -137,6 +137,17 @@ _보 = relay.배경보고({"무엇": "improve.run", "로그": "/tmp/없는로그
                     "명령": "python3 -m improve.run"})
 ok(f"판 {_판}" in _보.splitlines()[0], f"끝났다는 줄에 판이 적힌다 ({_보.splitlines()[0][:70]})")
 
+# 사용자(2026-09-12): 로그 꼬리([run_shell]·[admin-agent] …)를 그대로 보냈더니 "내가 못 알아먹는다".
+import tempfile as _tf
+_d2 = _tf.mkdtemp(prefix="relay-보고-")
+_lg = Path(_d2) / "x.log"
+_lg.write_text("[run_shell] 잡음 1\n[admin-agent] 잡음 2\n" + relay.보고표지 + "\n조사 x -- **해결**\nPR #9\n", encoding="utf-8")
+_보2 = relay.배경보고({"무엇": "investigate/run.py", "로그": str(_lg), "시작": _t.monotonic() - 5, "명령": "", "시작바이트": 0})
+ok("조사 x -- **해결**" in _보2 and "잡음" not in _보2, "**표지 뒤의 보고만 보낸다** -- 로그 잡음은 사람에게 안 간다")
+_lg.write_text("[run_shell] 잡음만\n", encoding="utf-8")
+ok("잡음만" in relay.배경보고({"무엇": "x", "로그": str(_lg), "시작": _t.monotonic(), "명령": "", "시작바이트": 0}), "표지가 없으면 전처럼 꼬리")
+import shutil as _sh2; _sh2.rmtree(_d2, ignore_errors=True)
+
 print("\n== 배경 로그는 **이 실행이 쓴 부분만** 읽는다 (덧쓰기의 옛 트레이스백을 안 본다) ==")
 # 실측 2026-09-12: 새 실행은 멀쩡히 끝났는데 옛 트레이스백을 읽고 "터졌다" 고 했고, 진단은
 # 그 옛 줄번호로 "도는 코드가 낡았다" 고 했다. 전부 옛 글이었다.

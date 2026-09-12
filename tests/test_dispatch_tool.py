@@ -30,7 +30,7 @@ def ok(cond, what):
 
 
 print("== 사람만 치는 것 ==")
-for cmd in ("!목표 승인 abc", "!계획 승인", "!열쇠 GITHUB_TOKEN=x"):
+for cmd in ("!목표 승인 abc", "!계획 승인", "!열쇠 GITHUB_TOKEN=x", "!조사 머지 201", "!머지 201"):
     돼, 왜 = dispatch.도구로쳐도되나(cmd)
     ok(not 돼 and 왜, f"거절 {cmd.split('=')[0]!r} -- {왜[:30]}")
 ok(not dispatch.도구로쳐도되나("연구 해줘")[0], "`!` 없는 글은 명령이 아니다")
