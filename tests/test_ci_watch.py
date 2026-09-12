@@ -32,16 +32,19 @@ def ok(cond, what):
 
 
 def 가짜(결론="failure", 로그="  실패 test_rhythm.py\n  OK test_x.py\n  실패 test_echo.py\n"):
-    def 요청(url, headers):
-        if "/workflows/gates.yml/runs" in url:
-            return 200, json.dumps({"workflow_runs": [{"conclusion": 결론, "head_sha": "abcdef0123", "html_url": "https://x/run/9",
-                                                         "run_number": 9, "updated_at": "t", "id": 77, "display_title": "m"}]})
-        if url.endswith("/runs/77/jobs"):
-            return 200, json.dumps({"jobs": [{"id": 5, "conclusion": "failure"}, {"id": 6, "conclusion": "success"}]})
-        if url.endswith("/jobs/5/logs"):
-            return 200, 로그
-        return 404, "{}"
-    return 요청
+    """결론을 하나 주면 실행 하나, 목록을 주면 **새것부터** 그만큼의 완료 실행을 흉내 낸다."""
+    결론들 = [결론] if isinstance(결론, str) else list(결론)
+
+    def f(url, h):
+        if "/runs?" in url:
+            return 200, json.dumps({"workflow_runs": [
+                {"conclusion": c, "head_sha": f"abcdef{i}123456", "html_url": "https://x/run/9",
+                 "run_number": 100 - i, "updated_at": "2026-01-01T00:00:00Z", "id": 900 + i,
+                 "display_title": "제목"} for i, c in enumerate(결론들)]})
+        if url.endswith("/jobs"):
+            return 200, json.dumps({"jobs": [{"id": 1, "conclusion": "failure"}, {"id": 2, "conclusion": "success"}]})
+        return 200, 로그
+    return f
 
 
 임시 = Path(tempfile.mkdtemp(prefix="test-ci-"))
@@ -88,6 +91,40 @@ ok("ci_watch.바뀌었나" in _서버 and "ADMIN_CHANNEL_ID" in _서버.split("a
    "상태가 바뀔 때만 관리 채널에 알린다")
 _wf = (뿌리 / ".github" / "workflows" / "deploy-oracle.yml").read_text(encoding="utf-8")
 ok('"ci_watch.py"' in _wf, "ci_watch 가 배포 경로에")
+
+print("\n== 취소는 실패가 아니다 (cancel-in-progress) ==")
+# 실측 2026-09-12 18:21: 봇이 켜지며 `[ci_watch] 빨강 c8f96c3 실패 []` 를 찍었다. main 의 마지막 완료 실행이
+# conclusion=cancelled 였고 취소된 실행에는 실패 job 이 없으니 이름 없는 '빨강' 이 됐다. 그러면 commit_guard 가
+# **거짓 빨강으로 자가 커밋을 전부 막는다** -- 재지 않은 것을 빨강이라 하는 것은 초록이라 하는 것과 같은 잘못이다.
+CW.요청 = 가짜(["cancelled"] * 3)
+r = CW.보기()
+ok(r["상태"] == "못잼" and "취소" in r["말"] and r["실패"] == [],
+   f"**완료 실행이 다 취소면 못잼** -- 빨강으로 치지 않는다 ({r['상태']})")
+CW.요청 = 가짜(["cancelled", "cancelled", "success"])
+r = CW.보기()
+ok(r["상태"] == "초록" and "2개는 취소돼 안 쟀다" in r["말"],
+   f"취소를 건너뛰고 **판정이 있는 실행**을 찾는다 -- 초록 ({r['말'][:60]})")
+CW.요청 = 가짜(["cancelled", "failure"])
+r = CW.보기()
+ok(r["상태"] == "빨강" and r["실패"] == ["test_rhythm.py", "test_echo.py"],
+   f"취소 뒤의 실패는 그대로 빨강이고 검사 이름도 준다 ({r['실패']})")
+CW.요청 = 가짜("timed_out")
+r = CW.보기()
+ok(r["상태"] == "빨강", "시한 초과는 빨강이다(실제로 돌다 못 끝냈다)")
+CW.요청 = 가짜("skipped")
+r = CW.보기()
+ok(r["상태"] == "못잼", "건너뛴 실행도 못잼이다")
+_통 = __import__("commit_guard")
+_원CI = _통.CI기
+try:
+    _통.CI기 = lambda repo=None: {"상태": "못잼", "실패": [], "말": "취소뿐"}
+    통과, 보 = _통.검사(뿌리, 게이트=False, 감사=False, ci=True)
+    ok(통과 and "(경고)" in 보, f"**못잼은 커밋을 막지 않는다(경고만)** -- 6시간 무인 실행이 거짓 빨강에 멈추지 않는다 ({통과})")
+    _통.CI기 = lambda repo=None: {"상태": "빨강", "실패": ["test_x.py"], "말": "빨강"}
+    통과2, 보2 = _통.검사(뿌리, 게이트=False, 감사=False, ci=True)
+    ok(not 통과2 and "[CI 차단]" in 보2, "진짜 빨강은 그대로 막는다")
+finally:
+    _통.CI기 = _원CI
 
 print()
 if FAIL:

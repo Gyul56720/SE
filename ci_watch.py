@@ -59,9 +59,25 @@ def _헤더(repo=None) -> dict:
     return h
 
 
+# **취소는 실패가 아니다.** gates.yml 은 concurrency: cancel-in-progress 라, 푸시가 잦으면(봇이 몇 분마다
+# 원장을 커밋한다) 앞 실행이 거의 매번 끊긴다. 실측 2026-09-12 18:21: 봇이 켜지며 `[ci_watch] 빨강 c8f96c3
+# 실패 []` 를 찍었다 -- main 의 마지막 '완료' 실행이 conclusion=cancelled 였고, 취소된 실행에는 실패 job 이
+# 없으니 이름이 빈 채로 '빨강' 이 됐다. 그러면 commit_guard 가 **거짓 빨강으로 자가 커밋을 전부 막는다.**
+# 취소된 실행은 아무것도 재지 않았다 -- 초록도 빨강도 아닌 **못잼**이다. 그래서 결론이 있는 실행을 뒤로
+# 몇 개 더 훑어 찾고, 다 취소면 못잼으로 말한다. 이 저장소의 규율: 모르는 것은 초록이 아니다. 그러나
+# **재지 않은 것을 빨강이라 하는 것도 같은 잘못이다** -- 거짓 빨강은 멈추게 하고, 멈춘 것은 아무것도 안 고친다.
+잰결론 = ("success", "failure", "timed_out")     # 이것만 판정이다
+안잰결론 = ("cancelled", "skipped", "stale", "neutral", "action_required")
+훑을실행수 = 10
+
+
 def 마지막실행(workflow: str = "gates.yml", branch: str = "main", repo=None) -> "dict | None":
-    """branch 의 마지막 **완료된** 실행. {"결론","sha","url","번호","때","id"} 또는 None(못잼)."""
-    url = f"{API}/repos/{저장소이름()}/actions/workflows/{workflow}/runs?branch={branch}&status=completed&per_page=1"
+    """branch 의 마지막 **판정이 있는** 완료 실행. {"결론","sha","url","번호","때","id","건너뛴취소"} 또는 None.
+
+    취소·건너뜀만 있으면 None 이 아니라 결론을 `"취소뿐"` 으로 돌려준다 -- 부른 쪽이 '못잼' 과 '못 읽음' 을
+    가릴 수 있게."""
+    url = (f"{API}/repos/{저장소이름()}/actions/workflows/{workflow}/runs"
+           f"?branch={branch}&status=completed&per_page={훑을실행수}")
     status, body = (요청 or _요청기본)(url, _헤더(repo))
     if status != 200:
         return None
@@ -71,10 +87,18 @@ def 마지막실행(workflow: str = "gates.yml", branch: str = "main", repo=None
         return None
     if not runs:
         return None
-    r = runs[0]
-    return {"결론": r.get("conclusion") or "?", "sha": (r.get("head_sha") or "")[:7], "url": r.get("html_url", ""),
-            "번호": r.get("run_number", 0), "때": r.get("updated_at", ""), "id": r.get("id", 0),
-            "제목": (r.get("display_title") or "")[:60]}
+    건너뛴 = 0
+    for r in runs:
+        결론 = r.get("conclusion") or "?"
+        if 결론 in 잰결론:
+            return {"결론": 결론, "sha": (r.get("head_sha") or "")[:7], "url": r.get("html_url", ""),
+                    "번호": r.get("run_number", 0), "때": r.get("updated_at", ""), "id": r.get("id", 0),
+                    "제목": (r.get("display_title") or "")[:60], "건너뛴취소": 건너뛴}
+        건너뛴 += 1
+    첫 = runs[0]
+    return {"결론": "취소뿐", "sha": (첫.get("head_sha") or "")[:7], "url": 첫.get("html_url", ""),
+            "번호": 첫.get("run_number", 0), "때": 첫.get("updated_at", ""), "id": 0,
+            "제목": (첫.get("display_title") or "")[:60], "건너뛴취소": 건너뛴}
 
 
 def 실패검사들(run_id: int, repo=None) -> "list[str]":
@@ -108,12 +132,19 @@ def 보기(repo=None, 검사이름도: bool = True) -> dict:
     if r is None:
         return {"상태": "못잼", "sha": "", "url": "", "번호": 0, "실패": [],
                 "말": "main CI 결론을 못 읽었다(망·권한) -- 모르는 것은 초록이 아니다"}
+    if r["결론"] == "취소뿐":
+        return {"상태": "못잼", "sha": r["sha"], "url": r["url"], "번호": r["번호"], "실패": [],
+                "말": (f"main CI 를 못 쟀다 -- 마지막 완료 {r['건너뛴취소']}개가 다 취소(cancel-in-progress)다 "
+                      f"(#{r['번호']} {r['sha']}). **취소는 실패가 아니다** -- 빨강으로 치지 않는다")}
     if r["결론"] == "success":
-        return {"상태": "초록", "sha": r["sha"], "url": r["url"], "번호": r["번호"], "실패": [],
-                "말": f"main CI 초록 (#{r['번호']} {r['sha']})"}
+        말 = f"main CI 초록 (#{r['번호']} {r['sha']})"
+        if r.get("건너뛴취소"):
+            말 += f" · 그 뒤 {r['건너뛴취소']}개는 취소돼 안 쟀다"
+        return {"상태": "초록", "sha": r["sha"], "url": r["url"], "번호": r["번호"], "실패": [], "말": 말}
     실패 = 실패검사들(r["id"], repo) if 검사이름도 else []
     말 = (f"**main CI 빨강** (#{r['번호']} {r['sha']} {r['결론']}) {r['url']}"
-         + (f"\n  실패 검사: {', '.join(실패)}" if 실패 else "\n  실패 검사 이름은 로그를 못 받아 모른다(GITHUB_TOKEN 필요)"))
+         + (f"\n  실패 검사: {', '.join(실패)}" if 실패 else "\n  실패 검사 이름은 로그를 못 받아 모른다(GITHUB_TOKEN 필요)")
+         + (f"\n  그 뒤 {r['건너뛴취소']}개는 취소돼 안 쟀다 -- 이 빨강이 가장 최신 판정이다" if r.get("건너뛴취소") else ""))
     return {"상태": "빨강", "sha": r["sha"], "url": r["url"], "번호": r["번호"], "실패": 실패, "말": 말}
 
 
