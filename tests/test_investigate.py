@@ -154,8 +154,32 @@ try:
     I.두뇌 = 두뇌_목표
     r = I.조사("md 를 pdf 로 제공", repo=판, 시한초=120, 최대바퀴=4, 아이디="g1", 목표=True)
     ok(r["해결"] and r["바퀴"] == 2, f"**검사가 없을 땐 빨강, 지어서 지나면 초록** (바퀴 {r['바퀴']})")
-    ok("tests/test_목표_g1.py" in 받은[0] and "못박아라" in 받은[0], "첫 일이 검사로 못박기라고 말한다")
-    ok("재현 명령: `python3 tests/test_목표_g1.py`" in 받은[0], "그 검사가 재현 명령이 된다 -- 판정은 끝값")
+    ok(any(d.get("단계") == "검사유효" for d in I.원장읽기(판, "g1")), "해결 전에 검사가 시작 판에서 빨간지 확인했다")
+
+    print("\n  -- 실측(PR #194): 함수만 정의하고 안 부르는 검사는 늘 초록이다 -> **무효**, 해결로 안 친다 --")
+    (판 / "pdfout.py").unlink(missing_ok=True); (판 / "tests" / "test_목표_g1.py").unlink(missing_ok=True)
+    받은.clear()
+
+    def 두뇌_속임(p, t):
+        받은.append(p)
+        n = sum(1 for x in 받은 if x.startswith("[조사 바퀴"))
+        if n == 1:                        # 속임수 검사 + 껍데기 기능 (스크립트로 돌면 아무것도 안 돈다)
+            (판 / "tests" / "test_목표_g2.py").write_text(
+                "def test_x():\n    assert 'pdf' in open('상태').read().lower() or True\n", encoding="utf-8")
+            return "검사와 기능을 지었다"
+        if n == 2:                        # 되묻자 진짜 검사 + 진짜 기능
+            (판 / "tests" / "test_목표_g2.py").write_text("import pdfout\nassert pdfout.만들기('x') == 'ok'\n", encoding="utf-8")
+            (판 / "pdfout.py").write_text("def 만들기(md):\n    return 'ok'\n", encoding="utf-8")
+            return "제대로 지었다"
+        return "…"
+    I.두뇌 = 두뇌_속임
+    r = I.조사("md 를 pdf 로 제공", repo=판, 시한초=120, 최대바퀴=4, 아이디="g2", 목표=True)
+    ok(r["해결"] and r["바퀴"] == 2, f"**속임수 검사는 해결로 안 치고, 진짜 검사로 바꾼 뒤에 해결** (바퀴 {r['바퀴']})")
+    ok("[검사 무효]" in 받은[1] and "기능이 없는 판" in 받은[1], "두뇌에게 검사가 무효인 까닭을 들려 준다")
+    단 = [d.get("단계") for d in I.원장읽기(판, "g2")]
+    ok("검사무효" in 단 and 단[-2] == "검사유효", f"원장에 무효 -> 유효가 남는다 ({단})")
+    ok("tests/test_목표_g2.py" in 받은[0] and "못박아라" in 받은[0], "첫 일이 검사로 못박기라고 말한다")
+    ok("재현 명령: `python3 tests/test_목표_g2.py`" in 받은[0], "그 검사가 재현 명령이 된다 -- 판정은 끝값")
     I.판정기 = 판정_파일로
 
     print("\n== 원장·메모 ==")

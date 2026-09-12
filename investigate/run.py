@@ -154,6 +154,36 @@ def _제2의뇌(증상: str, 꼬리: str) -> "list[str]":
         return [f"(제2의 뇌를 못 열었다: {type(e).__name__})"]
 
 
+def 목표검사유효한가(repo: Path, 시작커밋: str, 검사상대: str) -> "tuple[bool, str]":
+    """목표 검사가 **검사 구실을 하는가** -- 기능이 없는 판(조사 시작 커밋)에서 빨갛고, 지금 초록이어야 한다.
+
+    실측 2026-09-12(VM, PR #194): 두뇌가 `def test_…` 만 있고 아무것도 안 부르는 검사를 지었다.
+    스크립트로 돌면 늘 끝값 0 이라 '해결' 이 찍혔다 -- 검사하지 않은 초록불. 검사와 기능을 같은
+    두뇌가 짓는 이상, **기능 없이도 지나는 검사는 검사가 아니다** 를 코드가 봐야 한다."""
+    import os, shutil, tempfile
+    src = repo / 검사상대
+    if not src.is_file():
+        return False, f"검사 파일이 없다: {검사상대}"
+    tmp = Path(tempfile.mkdtemp(prefix="se-goal-base-"))
+    try:
+        rc, out = _돌리기(["git", "worktree", "add", "--detach", str(tmp), 시작커밋], repo, 120)
+        if rc != 0:
+            return False, f"시작 판을 못 꺼냈다: {out[-160:]}"
+        dst = tmp / 검사상대
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(src, dst)
+        env = {**os.environ, "PYTHONPATH": str(tmp)}
+        rc2, out2 = _돌리기(["python3", 검사상대], tmp, 300, env=env)
+        if rc2 == 0:
+            return False, ("**검사 무효** -- 기능이 없는 판(조사 시작 커밋)에서도 초록이다. 함수만 정의하고 안 부르거나, "
+                           "글자가 있는지만 보는 검사다. 기능이 없으면 빨갛게 죽는 검사(모듈 임포트 · 함수 호출 · "
+                           "결과 단언, 모듈 수준에서 실제로 실행)로 다시 써라.")
+        return True, f"시작 판에서 빨강(끝값 {rc2}) · 지금 초록 -- 검사가 검사 구실을 한다"
+    finally:
+        _돌리기(["git", "worktree", "remove", "--force", str(tmp)], repo, 60)
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def 프롬프트(증상: str, 진: dict, 판정: "list[dict]", 해본: "list[dict]", 바퀴: int, 남은초: float,
           되풀이: int, 재현명령: str, 참고: "list[str] | None" = None) -> str:
     빨강 = [p for p in 판정 if p["끝값"] != 0]
@@ -241,11 +271,16 @@ def 조사(증상: str, 재현명령: str = "", 증거글: str = "", 시한초: 
     성패를 모델의 말이 아니라 **검사의 끝값**으로 판정하는 길이다."""
     repo = Path(repo or REPO)
     아이디 = 아이디 or uuid.uuid4().hex[:8]
+    검사상대 = ""
     if 목표 and not 재현명령:
-        재현명령 = f"python3 tests/test_목표_{아이디}.py"
+        검사상대 = f"tests/test_목표_{아이디}.py"
+        재현명령 = f"python3 {검사상대}"
         증상 = (f"[목표] {증상}\n첫 일: 이 부탁을 `tests/test_목표_{아이디}.py` 로 못박아라 -- 부탁이 이뤄졌을 때만 "
               f"끝값 0 인 검사(기능이 없으면 ImportError/AssertionError). 그다음 그 검사가 지나게 기능을 지어라 "
-              f"(새 모듈 · 필요하면 requirements.txt 한 줄). 검사를 지우거나 비우면 판정이 무의미해진다 -- 그러지 마라.")
+              f"(새 모듈 · 필요하면 requirements.txt 한 줄). 검사는 모듈 수준에서 실제로 실행되고 단언해야 한다 -- "
+              f"함수만 정의하면 아무것도 안 돈다. 기능이 없는 판에서 초록인 검사는 코드가 무효로 친다.")
+    rc0, 시작커밋 = _돌리기(["git", "rev-parse", "HEAD"], repo, 30)
+    시작커밋 = 시작커밋.strip() if rc0 == 0 else ""
     시작 = time.monotonic()
     해본: list[dict] = []
     결과 = {"조사": 아이디, "해결": False, "돌았나": True, "바퀴": 0, "해본것": 해본,
@@ -303,6 +338,16 @@ def 조사(증상: str, 재현명령: str = "", 증거글: str = "", 시한초: 
                     "바퀴": n, "빨강": 빨강, "되풀이": 되풀이, "요약": h["요약"][:200], "가설": h["가설"]})
         말하기(f"[조사 {아이디}] 바퀴 {n} 끝 · 빨강 {빨강} · 되풀이 {되풀이}")
         if not 빨강:
+            if 검사상대 and 시작커밋:
+                유효, 유효말 = 목표검사유효한가(repo, 시작커밋, 검사상대)
+                _적기(repo, {"때": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "조사": 아이디,
+                            "단계": "검사유효" if 유효 else "검사무효", "바퀴": n, "말": 유효말[:200]})
+                말하기(f"[조사 {아이디}] 목표 검사 {'유효' if 유효 else '무효'}: {유효말[:80]}")
+                if not 유효:
+                    # 초록이지만 검사가 아니다 -- 해결로 치지 않고 두뇌에게 그 사실을 들려 계속 돈다.
+                    판정 = [{"이름": "목표검사", "끝값": 1, "꼬리": "[검사 무효] " + 유효말}] + [p for p in 판정 if p["이름"] != "재현"]
+                    h["빨강"] = ["목표검사"]
+                    continue
             결과["해결"] = True
             break
         if 되풀이 >= 되풀이한도:
