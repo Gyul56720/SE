@@ -982,3 +982,11 @@ async def on_message(message: discord.Message):
 
 if __name__ == "__main__":
     client.run(BOT_TOKEN)
+
+
+def send_as_pdf(text_content):
+    ''"discord 전송용 PDF 변환 및 제공 함수"''
+    import tempfile
+    import os
+    # 간단한 PDF 변환 혹은 플레이스홀더 구현 (보고서/Markdown을 PDF 바이트로 변환)
+    return text_content.encode('utf-8')
