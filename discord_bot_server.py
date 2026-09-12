@@ -636,7 +636,9 @@ def run_admin_agent(prompt: str, thread_id: str, 중계판=None) -> str:
         def _더필요():
             도구들 = relay.마지막도구.get(thread_id)
             무거웠나 = relay.무거운일(thread_id, bot_tools.이번셸())
-            if not 도구들 and relay.실측필요(prompt, reply):
+            # 셸 원장에 이번 턴 줄이 있으면 도구는 **확실히** 돌았다 -- 메시지에서 세는 쪽이
+            # 눈이 멀어도(제공자가 tool_calls 를 안 실어 보내는 꼴) 없는 잘못을 씌우지 않는다.
+            if not 도구들 and not bot_tools.이번셸() and relay.실측필요(prompt, reply):
                 return True
             return relay.떠넘김(reply) and not 무거웠나
         if _더필요():

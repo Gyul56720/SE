@@ -122,19 +122,39 @@ class 중계판:
 
 def 도구호출들(messages) -> "list[str]":
     """agent.invoke 결과의 messages 에서 **마지막 사람 말 뒤에** 모델이 부른 도구 이름들.
-    langchain 메시지를 오리 타이핑으로 본다: type == "human" · AIMessage.tool_calls."""
+    langchain 메시지를 오리 타이핑으로 본다: type == "human" · AIMessage.tool_calls.
+
+    **도구가 돌았다는 증거가 세 군데에 있다** -- AIMessage.tool_calls · additional_kwargs 의
+    tool_calls(제공자에 따라 여기에만 실려 온다) · 그리고 ToolMessage(type == "tool") 자체.
+    한 군데만 읽으면 돌았는데도 0 이 나오고, 0 은 답에 "실측 없는 답이다" 딱지를 붙인다 --
+    **잘못 세는 계수기는 없는 잘못을 씌운다.** 그래서 셋을 다 보되, 같은 호출을 두 번 세지
+    않게 이름마다 많은 쪽만 남긴다(부른 기록과 돌아온 기록이 둘 다 있으면 한 번)."""
+    import collections
     턴 = []
     for m in reversed(list(messages or [])):
         if getattr(m, "type", "") == "human":
             break
         턴.append(m)
-    out = []
-    for m in reversed(턴):
-        for tc in (getattr(m, "tool_calls", None) or []):
-            name = tc.get("name") if isinstance(tc, dict) else getattr(tc, "name", "")
+    턴.reverse()
+    부른것, 돌아온것 = [], []
+    for m in 턴:
+        calls = list(getattr(m, "tool_calls", None) or [])
+        더 = getattr(m, "additional_kwargs", None)
+        if isinstance(더, dict):
+            calls += list(더.get("tool_calls") or [])
+        for tc in calls:
+            if isinstance(tc, dict):
+                name = tc.get("name") or (tc.get("function") or {}).get("name", "")
+            else:
+                name = getattr(tc, "name", "")
             if name:
-                out.append(str(name))
-    return out
+                부른것.append(str(name))
+        if getattr(m, "type", "") == "tool":
+            돌아온것.append(str(getattr(m, "name", "") or "(이름없음)"))
+    셈 = collections.Counter(부른것)
+    for 이름, 몇 in collections.Counter(돌아온것).items():
+        부른것.extend([이름] * max(0, 몇 - 셈.get(이름, 0)))
+    return 부른것
 
 
 def 턴기록(thread_id: str, messages) -> "list[str]":

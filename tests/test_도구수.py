@@ -58,6 +58,25 @@ ok(relay.도구호출들([]) == [] and relay.도구호출들(None) == [], "빈 �
 ok(relay.도구호출들([사람("x"), NS(type="ai", content="", tool_calls=[NS(name="delegate")])]) == ["delegate"],
    "tool_calls 가 객체여도 이름을 읽는다")
 
+# 실측 2026-09-12: 봇이 "브랜치로 전환해 확인했다 · rc=0" 이라 답했는데 도구 0개로 세었고, 셋으로 맞춰 보니
+# (3초 · 셸 줄 없음 · 저장소가 그 갈래로 안 바뀜) **세기가 맞았다.** 다만 증거는 세 군데에 있다 --
+# 한 군데만 읽으면 돌았는데도 0 이 되고, 0 은 "실측 없는 답" 딱지가 된다. 잘못 세는 계수기는 없느니만 못하다.
+def 도구답(name, **kw):
+    return NS(type="tool", content="...", name=name, tool_calls=None, **kw)
+
+
+ok(relay.도구호출들([사람("x"), NS(type="ai", content="", tool_calls=[]), 도구답("run_shell"), 모델("답")]) == ["run_shell"],
+   "**모델이 tool_calls 를 안 실어 보내도 ToolMessage 가 있으면 돈 것이다** (0 이라 우기지 않는다)")
+ok(relay.도구호출들([사람("x"), NS(type="ai", content="", tool_calls=[],
+                                additional_kwargs={"tool_calls": [{"function": {"name": "search_memory"}}]}),
+                   모델("답")]) == ["search_memory"],
+   "additional_kwargs 에만 실려 온 호출도 센다(OpenAI 꼴 function.name)")
+ok(relay.도구호출들([사람("x"), 모델("", "run_shell"), 도구답("run_shell"), 모델("답")]) == ["run_shell"],
+   "부른 기록과 돌아온 기록이 둘 다 있으면 **한 번만** 센다(두 벌로 안 센다)")
+ok(relay.도구호출들([사람("x"), 모델("", "run_shell"), 도구답("run_shell"), 도구답("run_shell"), 모델("답")]) == ["run_shell", "run_shell"],
+   "돌아온 것이 더 많으면 그만큼 더 센다")
+ok(relay.도구호출들([사람("x"), 모델("지식으로 답")]) == [], "그래도 진짜 0 은 0 이다 -- 세 군데가 다 비었다")
+
 print("\n== 턴기록: 🔧 줄은 스스로 안 적는 도구만 ==")
 편집된 = []
 
@@ -178,6 +197,8 @@ ok("relay.마지막도구.get(thread_id)" in _서버 and "relay.되묻는말" in
    "run_admin_agent 가 도구 0회 답을 되묻고, 그래도 0 이면 답에 적는다")
 ok(_서버.index("relay.실측필요(prompt, reply)") < _서버.index("reply={reply[:200]!r}"),
    "되묻기가 답을 돌려주기 전에 있다")
+ok("not bot_tools.이번셸() and relay.실측필요(prompt, reply)" in _서버,
+   "**셸 원장에 이번 턴 줄이 있으면 '도구 0회' 로 몰지 않는다** -- 세기가 눈멀어도 없는 잘못을 안 씌운다")
 ok("async def _배경지켜보기" in _서버 and "relay.배경꺼내기()" in _서버 and "relay.배경끝났나" in _서버
    and "relay.배경보고(배경)" in _서버, "**서버가 배경 일을 지켜보다 끝나면 채널에 알린다**")
 ok("relay.산출물찾기" in _서버 and "discord.File" in _서버,
@@ -192,4 +213,4 @@ print()
 if FAIL:
     print(f"실패 {len(FAIL)}개 -- {FAIL}")
     raise SystemExit(1)
-print("도구수: 턴 세기 · 🔧 중계 · 도구 N개 · 되묻기 규칙 · 배선 -- 통과")
+print("도구수: 턴 세기 · 세 군데 증거 · 🔧 중계 · 도구 N개 · 되묻기 규칙 · 배선 -- 통과")
