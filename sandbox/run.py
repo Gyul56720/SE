@@ -7,8 +7,10 @@
 수법은 새것이 아니다 -- `scripts/precheck.sh` 가 이미 하는 것(HEAD 를 임시 워크트리로)을
 모듈로 뺐다. 세 겹이다.
 
-  판   -- HEAD 워크트리(기본) 또는 `--지금트리`(작업 트리 사본). 어느 쪽이든 안에서
-          무엇을 쓰고 지우든 저장소에 닿지 않는다.
+  판   -- HEAD 워크트리(기본) 또는 `--지금트리`(HEAD 워크트리 + 미커밋 변경). **둘 다 git
+          워크트리다** -- 바탕과 후보가 다른 종류면 git 을 부르는 검사가 후보에서만 죽어
+          유령 회귀가 난다(실측 2026-09-12). 안에서 무엇을 쓰고 지우든 저장소에 닿지 않는다.
+          requirements.txt 에 있는데 없는 배포는 캐시 자리에 한 번 깔아 PYTHONPATH 로 준다(저장소에는 안 깐다).
   고삐 -- 벽시계 시간(기본 180초, 넘으면 프로세스 그룹째 죽인다) · CPU(RLIMIT_CPU) ·
           메모리(RLIMIT_AS).
   환경 -- 비밀 변수는 기본으로 지운다(secret_filter.secret_names). `--키포함` 을
@@ -121,25 +123,40 @@ def _깨끗한판(repo: Path, tmp: Path) -> "tuple[str, bool]":
 
 
 def _지금판(repo: Path, tmp: Path) -> "tuple[str, bool]":
-    """지금 작업 트리의 사본. 커밋 안 한 변경을 실험할 때 쓴다. .gitignore 에 걸린 것
-    (.env · venv 등)은 복사하지 않는다 -- 비밀 파일이 판으로 딸려 가는 길을 막는다."""
-    # -z 가 없으면 git 이 비ASCII 경로를 "\354..." 로 인용해서(core.quotepath 기본값)
-    # 한글 파일명이 통째로 복사에서 빠진다(실측: 이 모듈의 첫 검사가 잡았다). 이 저장소는
-    # 파일 이름부터 한글이다 -- NUL 구분으로 받아 인용을 아예 없앤다.
-    r = subprocess.run(["git", "-C", str(repo), "ls-files", "-z", "--cached", "--others",
-                        "--exclude-standard"], capture_output=True, text=True)
+    """지금 작업 트리의 사본 -- **HEAD 워크트리 위에 미커밋 변경을 덮는다.**
+
+    실측 2026-09-12(VM): `!개선` 의 레포 전체 시뮬이 매번 "새로 깨짐 6개" 로 빨갰다. 패치와 상관
+    없는 검사들(test_relay · test_seek_report · test_jaso_sift …)이었다. 바탕은 HEAD **워크트리**
+    (git 저장소)에서 재고, 후보는 파일만 베낀 **사본**(git 이 아니다)에서 쟀다 -- git 을 부르는
+    검사(`git rev-parse` · `check-ignore`)가 후보에서만 죽어 유령 회귀가 됐다. 판정이 거짓말이면
+    두뇌는 무엇을 고쳐도 못 끝낸다. 그래서 후보도 워크트리로 깐다: 둘이 같은 종류다.
+
+    .gitignore 에 걸린 것(.env · venv 등)은 여전히 안 딸려 간다 -- git status 가 안 세니까."""
+    r = subprocess.run(["git", "-C", str(repo), "worktree", "add", "--detach", str(tmp), "HEAD"],
+                       capture_output=True, text=True)
     if r.returncode != 0:
-        return f"파일 목록을 못 얻었다: {r.stderr.strip()[:300]}", False
-    for line in r.stdout.split("\0"):
-        if not line:
-            continue
-        src = repo / line
-        if not src.is_file():
-            continue  # 지웠는데 아직 인덱스에 남은 것
-        dst = tmp / line
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src, dst)
-    return "지금 트리 사본", True
+        return f"워크트리를 못 꺼냈다: {r.stderr.strip()[:300]}", False
+    # -z: 비ASCII(한글) 경로 인용을 없앤다. --untracked-files=all: 디렉터리째가 아니라 파일마다.
+    st = subprocess.run(["git", "-C", str(repo), "status", "--porcelain", "-z", "--untracked-files=all"],
+                        capture_output=True, text=True)
+    if st.returncode != 0:
+        return f"변경 목록을 못 얻었다: {st.stderr.strip()[:300]}", False
+    항목 = [x for x in st.stdout.split("\0") if x]
+    i, 덮음, 지움 = 0, 0, 0
+    while i < len(항목):
+        줄 = 항목[i]; i += 1
+        코드, 경로 = 줄[:2], 줄[3:]
+        if "R" in 코드 or "C" in 코드:          # 이름 바꿈: 다음 항목이 원래 경로
+            i += 1
+        src, dst = repo / 경로, tmp / 경로
+        if src.is_file():
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst); 덮음 += 1
+        elif dst.exists():
+            dst.unlink(); 지움 += 1
+    sha = subprocess.run(["git", "-C", str(repo), "rev-parse", "--short", "HEAD"],
+                         capture_output=True, text=True).stdout.strip()
+    return f"HEAD {sha} 워크트리 + 미커밋 {덮음}개 덮음" + (f" · {지움}개 지움" if 지움 else ""), True
 
 
 def _꺼내기(tmp: Path, 가져와: "list[str]", 밖으로) -> "list[str]":
@@ -163,13 +180,111 @@ def _꺼내기(tmp: Path, 가져와: "list[str]", 밖으로) -> "list[str]":
     return 담긴
 
 
-def _치우기(repo: Path, tmp: Path, 워크트리등록: bool) -> None:
+def _치우기(repo: Path, tmp: Path, 워크트리등록: bool = True) -> None:
+    """두 판 다 워크트리라 늘 지운다. `worktree add` 가 됐는데 그 뒤(status)가 실패한 경우도
+    등록은 남아 있다 -- 그래서 성공 여부를 안 묻고 지운다(워크트리가 아니면 git 이 조용히 거절)."""
     if 워크트리등록:
         subprocess.run(["git", "-C", str(repo), "worktree", "remove", "--force",
                         str(tmp)], capture_output=True, text=True)
         subprocess.run(["git", "-C", str(repo), "worktree", "prune"],
                        capture_output=True, text=True)
     shutil.rmtree(tmp, ignore_errors=True)
+
+
+# ---------------------------------------------------------------- 새 의존성: 캐시 자리에 한 번 깐다
+# 실측 2026-09-12(VM): `!개선` 이 fpdf 로 PDF 를 만드는 새 모듈과 requirements.txt 한 줄을 붙였는데
+# 시뮬이 `ModuleNotFoundError: fpdf` 로 빨갰다. 기능은 다 됐는데 판정이 "안 깔린 라이브러리" 를
+# 두뇌 탓으로 돌렸다 -- 두뇌는 requirements.txt 밖에 못 만지니 무엇을 고쳐도 못 끝난다.
+# 그래서 실행기가 판의 requirements.txt 를 읽어 **없는 것만** 캐시 자리에 깐다(~/.cache/se-sandbox-deps,
+# SE_DEPS_CACHE 로 바꾼다). 저장소와 시스템 파이썬에는 안 깐다. 시험에서는 pip 을 가짜로 바꿔 끼운다(망 없이 돈다).
+pip깔기 = None
+_의존성_초 = 240
+
+
+def _요구이름(줄: str) -> "str | None":
+    """requirements.txt 한 줄에서 배포 이름만. 옵션 줄(-r · -e · --…)과 주석은 None."""
+    import re
+    줄 = 줄.split("#", 1)[0].strip()
+    if not 줄 or 줄.startswith("-"):
+        return None
+    m = re.match(r"^([A-Za-z0-9][A-Za-z0-9._-]*)", 줄)
+    return m.group(1) if m else None
+
+
+def _깔렸나(이름: str) -> bool:
+    from importlib import metadata
+    후보 = {이름, 이름.replace("_", "-"), 이름.replace("-", "_"), 이름.lower()}
+    for n in 후보:
+        try:
+            metadata.distribution(n)
+            return True
+        except metadata.PackageNotFoundError:
+            continue
+    return False
+
+
+def _pip기본(spec: str, 어디: Path, 초: int) -> "tuple[bool, str]":
+    r = subprocess.run([sys.executable, "-m", "pip", "install", "--quiet", "--disable-pip-version-check",
+                        "--no-input", "--target", str(어디), spec],
+                       capture_output=True, text=True, timeout=초)
+    return r.returncode == 0, (r.stderr or r.stdout or "").strip()[-300:]
+
+
+def _캐시뿌리() -> Path:
+    return Path(os.environ.get("SE_DEPS_CACHE") or (Path.home() / ".cache" / "se-sandbox-deps"))
+
+
+def _캐시자리(spec: str) -> Path:
+    import hashlib
+    import re
+    slug = re.sub(r"[^A-Za-z0-9._-]+", "_", spec)[:40]
+    return _캐시뿌리() / f"{slug}-{hashlib.sha256(spec.encode()).hexdigest()[:8]}"
+
+
+def 새의존성깔기(tmp: Path, env: dict, 초: int = _의존성_초) -> str:
+    """판의 requirements.txt 에 있는데 이 파이썬에 없는 배포를 **캐시(배포 하나에 자리 하나)** 에 깔고
+    그 자리들을 PYTHONPATH 맨 앞에 둔다. 같은 줄은 한 번만 깐다 -- 리허설은 검사마다 판을 새로 까는데
+    (검사상한 10), 매번 pip 을 돌리면 그것만으로 몇 분이다. 저장소와 시스템 파이썬에는 안 깐다.
+    돌려주는 것은 메모 한 줄(아무것도 안 했으면 빈 글)."""
+    req = tmp / "requirements.txt"
+    if not req.is_file():
+        return ""
+    없는: list[str] = []
+    for 줄 in req.read_text(encoding="utf-8", errors="replace").splitlines():
+        이름 = _요구이름(줄)
+        if 이름 and not _깔렸나(이름):
+            없는.append(줄.split("#", 1)[0].strip())
+    if not 없는:
+        return ""
+    새로, 재사용, 실패 = [], [], []
+    자리들: list[str] = []
+    for spec in 없는:
+        어디 = _캐시자리(spec)
+        if (어디 / ".ok").is_file():
+            재사용.append(spec); 자리들.append(str(어디))
+            continue
+        shutil.rmtree(어디, ignore_errors=True)           # 반쯤 깔린 자리는 믿지 않는다
+        어디.mkdir(parents=True, exist_ok=True)
+        try:
+            ok, 말 = (pip깔기 or _pip기본)(spec, 어디, 초)
+        except (subprocess.TimeoutExpired, OSError) as e:      # noqa: PERF203
+            ok, 말 = False, f"{type(e).__name__}: {e}"
+        if ok:
+            (어디 / ".ok").write_text(spec + "\n", encoding="utf-8")
+            새로.append(spec); 자리들.append(str(어디))
+        else:
+            shutil.rmtree(어디, ignore_errors=True)
+            실패.append(f"{spec} ({말[-120:]})")
+    if 자리들:
+        env["PYTHONPATH"] = os.pathsep.join(자리들) + os.pathsep + env.get("PYTHONPATH", "")
+    조각 = []
+    if 새로:
+        조각.append(f"새로 깐 의존성 {len(새로)}개: {', '.join(새로)}")
+    if 재사용:
+        조각.append(f"캐시에서 쓴 의존성 {len(재사용)}개")
+    if 실패:
+        조각.append(f"못 깐 의존성 {len(실패)}개: {'; '.join(실패)}")
+    return " · ".join(조각)
 
 
 def 실행(argv: "list[str]", *, 지금트리: bool = False, 초: int = 180,
@@ -192,7 +307,7 @@ def 실행(argv: "list[str]", *, 지금트리: bool = False, 초: int = 180,
     워크트리등록 = False
     try:
         판, ok = _지금판(repo, tmp) if 지금트리 else _깨끗한판(repo, tmp)
-        워크트리등록 = ok and not 지금트리
+        워크트리등록 = True                      # 두 판 다 워크트리다(_치우기 참고)
         if not ok:
             return {"끝값": 3, "stdout": "", "stderr": 판, "산출물": [], "판": "",
                     "돌았나": False,
@@ -204,6 +319,9 @@ def 실행(argv: "list[str]", *, 지금트리: bool = False, 초: int = 180,
         # 다 됐는데 그 한 줄로 빨강이면 판정이 거짓말이다. 실행기가 뿌리를 놓아 주면 함정이 사라진다.
         env = _환경(키포함)
         env["PYTHONPATH"] = str(tmp) + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+        의존메모 = "" if 망차단 else 새의존성깔기(tmp, env)     # 망을 끊었으면 깔 수 없다 -- 그대로 돈다
+        if 의존메모:
+            판 += " · " + 의존메모
         proc = subprocess.Popen(
             list(argv), cwd=str(tmp), env=env,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
