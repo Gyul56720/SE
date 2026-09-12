@@ -747,6 +747,11 @@ def 거짓빨강사냥(repo=None, 검사들: "list[str]" = None, 시한초: int 
             out["잰것"] += 1
             if not 첫빨강 and not 둘빨강:
                 out[멀쩡] += 1
+                # **멀쩡도 적는다** -- 이것이 없으면 한 번 FR 로 찍힌 검사가 고쳐져도 영영 제외된다.
+                # 복구도 측정으로 한다(U_t = (U_{t-1} \ Clean_t) ∪ FR_t).
+                적기(repo, {"꼴": "거짓빨강", "검사": t, "test": t, "classification": 멀쩡,
+                          "baseline_pass": True, "repeat_fail": False, "worktree_pass": None,
+                          "cause": "", "failure_cause": ""})
                 continue
             if not 첫빨강 and 둘빨강:
                 _외부, 까닭 = 실패원인(둘글)
@@ -786,16 +791,26 @@ def 거짓빨강사냥(repo=None, 검사들: "list[str]" = None, 시한초: int 
 
 
 def 못믿을검사들(repo=None) -> "list[str]":
-    """**FR 이력이 있는 검사.** ReliableTest = RG0 ∧ ¬FR이력 -- RG0 통과는 신뢰성이 아니다.
+    r"""**FR 이력이 있는 검사.** ReliableTest = RG0 ∧ ¬FR이력 -- RG0 통과는 신뢰성이 아니다.
 
     사용자(2026-09-12): "RG0 PASS 와 검사 신뢰성을 혼동하지 마라." 상태오염 검사는 **첫 실행이
-    초록이므로 RG0 를 지난다.** 그래도 바탕으로 쓸 수 없다 -- 그 초록이 두 번째에 무너지기 때문이다.
-    그래서 신뢰성은 원장의 FR 이력으로 판단한다(이 함수), RG0 로 판단하지 않는다."""
-    것 = {}
+    초록이므로 RG0 를 지난다.** 그래도 바탕으로 쓸 수 없다 -- 그 초록이 두 번째에 무너진다. 그래서
+    신뢰성은 원장의 FR 이력으로 판단한다(이 함수), RG0 로 판단하지 않는다.
+
+    **마지막 관측이 이긴다.** 누적이지만 단조(monotone)는 아니다:
+
+        U_t = (U_{t-1} \ Clean_t) ∪ FR_t
+
+    순수 누적이면 고친 검사가 **영영** 제외되고, 그 파일을 다시는 못 잰다. 나중 사냥이 그 검사를
+    `멀쩡` 으로 관측하면 빠져나온다 -- 복구도 측정으로 한다. 진짜빨강은 여기 안 넣는다(거짓이 아니다).
+    RG0 가 알아서 막는다."""
+    마지막: dict = {}
     for x in 원장읽기(repo):
-        if x.get("꼴") == "거짓빨강" and x.get("classification") in (상태오염, 환경의존):
-            것[str(x.get("test") or x.get("검사"))] = x.get("classification")
-    return sorted(것)
+        if x.get("꼴") == "거짓빨강":
+            이름 = str(x.get("test") or x.get("검사") or "")
+            if 이름:
+                마지막[이름] = x.get("classification")
+    return sorted(k for k, v in 마지막.items() if v in (상태오염, 환경의존))
 
 
 def FR보고(repo=None) -> str:
@@ -905,9 +920,14 @@ def 둘다사냥(repo=None, 시한초: int = 기본시한초, 파일들: "list[s
     FR시한 = max(60, int(시한초 * FR몫))
     말(f"[사냥] 1/2 거짓 빨강 -- 시한 {FR시한}초")
     fr = 거짓빨강사냥(repo, 시한초=FR시한, 말하기=말하기)
-    못믿을검사 = [x["검사"] for x in fr["찾은것"] if x["분류"] in (상태오염, 환경의존)]
+    # **이번 것과 원장의 누적을 합친다** -- U_t = (U_{t-1} \ Clean_t) ∪ FR_t.
+    # 이번 호출 것만 쓰면 구멍이 난다: FR 에 시한의 일부만 주므로 **다 못 훑으면 못 닿은 검사가
+    # 조용히 신뢰받는다**(검사 186개 · FR 시한 1/4). 누적이면 지난 사냥이 찍어 둔 것이 계속 빠진다.
+    이번것 = [x["검사"] for x in fr["찾은것"] if x["분류"] in (상태오염, 환경의존)]
+    못믿을검사 = sorted(set(이번것) | set(못믿을검사들(repo)))
     if 못믿을검사:
-        말(f"[사냥] 바탕으로 쓸 수 없는 검사 {len(못믿을검사)}개: {', '.join(못믿을검사[:4])}")
+        말(f"[사냥] 바탕으로 쓸 수 없는 검사 {len(못믿을검사)}개"
+          f"(이번에 찾은 것 {len(이번것)}개 + 원장 누적): {', '.join(못믿을검사[:4])}")
     FG시한 = max(60, 시한초 - FR시한)
     말(f"[사냥] 2/2 거짓 초록 -- 시한 {FG시한}초"
       + (f" · 바탕에서 뺀 검사 {len(못믿을검사)}개" if 못믿을검사 else ""))
@@ -915,7 +935,7 @@ def 둘다사냥(repo=None, 시한초: int = 기본시한초, 파일들: "list[s
     적기(repo, {"꼴": "둘다끝", "FR": {k: v for k, v in fr.items() if k != "찾은것"},
               "FG": {k: v for k, v in fg.items() if k not in ("살아남은것", "덮이지않은것")},
               "못믿을검사": 못믿을검사[:12]})
-    return {"FR": fr, "FG": fg, "못믿을검사": 못믿을검사,
+    return {"FR": fr, "FG": fg, "못믿을검사": 못믿을검사, "이번에찾은것": 이번것,
             "말": (f"거짓빨강 {fr[상태오염] + fr[환경의존]}개(상태오염 {fr[상태오염]} · 환경의존 {fr[환경의존]}) · "
                   f"거짓초록 {fg.get(거짓초록, 0)}개 · 잡힘 {fg.get(유효빨강, 0)} · "
                   f"동등 {fg.get(동등변형, 0)} · 못쓸 {fg.get(못쓸변형, 0)}")}
