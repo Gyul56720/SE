@@ -12,7 +12,7 @@ from pathlib import Path
 뿌리 = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(뿌리))
 
-import discord_pdf as D  # noqa: E402
+from investigate import discord_pdf as D  # noqa: E402
 
 FAIL = []
 

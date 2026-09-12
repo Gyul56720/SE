@@ -378,7 +378,7 @@ async def _배경지켜보기(channel, 배경: dict, 간격: float = 20.0, 상�
                     # .md 는 그대로 두고(원문), 같은 내용의 .pdf 를 하나 더. 한글 글꼴이 없으면 PDF 안에 그렇다고 적힌다.
                     if rel.endswith(".md"):
                         try:
-                            import discord_pdf
+                            from investigate import discord_pdf
                             r_pdf = await asyncio.to_thread(discord_pdf.md파일을pdf로, os.path.join(REPO_DIR, rel))
                             await channel.send(file=discord.File(r_pdf["경로"], filename=os.path.basename(r_pdf["경로"])))
                             if not r_pdf["한글"]:

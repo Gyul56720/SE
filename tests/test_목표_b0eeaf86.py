@@ -18,7 +18,7 @@ sys.path.insert(0, str(REPO))
 
 # 1. 모듈 임포트 검증
 try:
-    import discord_pdf as D
+    from investigate import discord_pdf as D
 except ImportError as e:
     raise AssertionError(f"discord_pdf 모듈을 찾을 수 없음: {e}") from e
 
