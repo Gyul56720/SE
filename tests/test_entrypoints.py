@@ -147,11 +147,15 @@ try:
         'def 하기():\n    from plan import store\n    return store.값\n\n\n'
         'if __name__ == "__main__":\n    print("값=", 하기())\n', encoding="utf-8")
     밖2 = tempfile.mkdtemp(prefix="test-밖2-")
-    스 = subprocess.run([sys.executable, "improve/run.py"], cwd=str(_낡), capture_output=True, text=True, timeout=60)
+    # 실행기가 뿌리를 PYTHONPATH 에 두게 되면서(sandbox·tests.sh) 그 값이 여기 자식에게도 물려 온다 --
+    # 이 단언은 **아무 도움 없는** 스크립트 꼴의 사고를 재현하는 것이므로 깨끗한 환경으로 돌린다.
+    import os as _os
+    _깨끗 = {k: v for k, v in _os.environ.items() if k != "PYTHONPATH"}
+    스 = subprocess.run([sys.executable, "improve/run.py"], cwd=str(_낡), capture_output=True, text=True, timeout=60, env=_깨끗)
     ok("No module named 'plan'" in (스.stdout + 스.stderr),
        "스크립트 꼴은 **낡은 판에서 죽는다**(사고의 재현)")
     argv, _ = E.모듈꼴([sys.executable, "improve/run.py"], _낡)
-    모 = subprocess.run(argv, cwd=str(_낡), capture_output=True, text=True, timeout=60)
+    모 = subprocess.run(argv, cwd=str(_낡), capture_output=True, text=True, timeout=60, env=_깨끗)
     ok(모.returncode == 0 and "값= 7" in 모.stdout,
        f"**같은 낡은 파일이 `-m` 으로는 산다** ({(모.stdout + 모.stderr).strip()[:60]})")
     shutil.rmtree(밖2, ignore_errors=True)
