@@ -14,7 +14,9 @@
 """
 from __future__ import annotations
 
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 뿌리 = Path(__file__).resolve().parent.parent
@@ -111,24 +113,24 @@ def _응답들(만들기):
 _원여럿 = FT.여럿
 try:
     FT.여럿 = _응답들(lambda u: FT.응답(url=u, 코드=200, 몸통="<html>ok</html>", 꼴="text/html"))
-    r = SC.망점검(틈=1)
+    r = SC.망점검(틈=1, 적기=False)
     ok(r["됐나"] and r["열린문"] == r["전체"] and "바깥이 된다" in r["진단"], f"다 열리면 된다고 한다 ({r['진단']})")
 
     FT.여럿 = _응답들(lambda u: FT.응답(url=u, 코드=0, 왜="프록시가 끊었다 -- 이 환경의 나가는 길이 막혔다"))
-    r = SC.망점검(틈=1)
+    r = SC.망점검(틈=1, 적기=False)
     ok(not r["됐나"] and "나가는 길이 막혀" in r["진단"], f"**프록시면 코드 문제가 아니라고 말한다** ({r['진단']})")
 
     FT.여럿 = _응답들(lambda u: FT.응답(url=u, 코드=0, 왜="20.0초 안에 답이 없다"))
-    r = SC.망점검(틈=1)
+    r = SC.망점검(틈=1, 적기=False)
     ok(not r["됐나"] and "시간 초과" in r["진단"], f"전부 시간 초과면 그렇다고 ({r['진단']})")
 
     # 서버가 HTTP 로 답했으면 **망은 된 것**이다 -- 그 문이 막았을 뿐. 이 둘을 가르는 것이 요점이다.
     FT.여럿 = _응답들(lambda u: FT.응답(url=u, 코드=403, 몸통="", 왜="HTTP 403 -- 막았다"))
-    r = SC.망점검(틈=1)
+    r = SC.망점검(틈=1, 적기=False)
     ok(not r["됐나"] and r["닿았나"] and "망은 된다" in r["진단"] and "망 탓으로 적지 마라" in r["진단"],
        f"**문이 막은 것과 망이 안 되는 것을 가른다** ({r['진단'][:60]})")
     FT.여럿 = _응답들(lambda u: FT.응답(url=u, 코드=0, 왜="안 닿는다 -- 모르는 까닭"))
-    r = SC.망점검(틈=1)
+    r = SC.망점검(틈=1, 적기=False)
     ok(not r["됐나"] and not r["닿았나"] and "지어내지 마라" in r["진단"], "까닭을 모르면 지어내지 말라고 적는다")
     보 = SC.망보고(r)
     ok("dig 망점검" in 보 and 보.count("\n") >= r["전체"], f"문마다 한 줄 ({보.count(chr(10))}줄)")
@@ -152,15 +154,46 @@ try:
                       몸통=('<a href="https://example.org/a">첫</a><a href="https://example.net/b">둘</a>'
                           if "mojeek" in u else "<html>결과 없음</html>")) for u in urls]
     FT.여럿 = _한문만준다
-    r = SC.망점검(틈=1, 고른것=["mojeek", "brave"])
+    r = SC.망점검(틈=1, 고른것=["mojeek", "brave"], 적기=False)
     센 = {d["이름"]: d["결과"] for d in r["문들"]}
     ok(센 == {"mojeek": 2, "brave": 0},
        f"**200 이어도 결과가 0 이면 그 문은 닫힌 것** -- 문마다 따로 센다 ({센})")
     ok("결과   2" in SC.망보고(r), "보고에 문마다 결과 수가 적힌다")
     ok(len(r["문들"]) == 2, f"`고른것` 으로 새 문만 두드린다 ({len(r['문들'])}개)")
-    ok("그런 이름의 문이 없다" in SC.망점검(틈=1, 고른것=["없는문"])["진단"], "없는 이름은 그렇다고 말한다")
+    ok("그런 이름의 문이 없다" in SC.망점검(틈=1, 고른것=["없는문"], 적기=False)["진단"], "없는 이름은 그렇다고 말한다")
 finally:
     FT.여럿 = _원여럿2
+
+print("\n== 문 원장: 잰 것이 지식이 된다 -- 결과 0 이었던 집을 문으로 넣으면 코드가 잡는다 ==")
+# 사용자(2026-09-12): "구조가 좋으면 모델의 성능을 이길 수 있다." "구글은 봇을 막는다" 는 세상 지식을 구조로
+# 못 준다고 했던 것이 틀렸다 -- 재서 쌓으면 된다. 구글 문 셋이 다시 들어오면 여기서 막힌다.
+_원장집 = Path(tempfile.mkdtemp(prefix="문원장-"))
+_원여럿3 = FT.여럿
+try:
+    def _구글만빈다(urls, 동시=8, 틈=0, 벌수=0):
+        return [FT.응답(url=u, 코드=200, 꼴="text/html",
+                      몸통=("<html>consent</html>" if "google" in u
+                          else '<a href="https://example.org/a">첫</a><a href="https://example.net/b">둘</a>')) for u in urls]
+    FT.여럿 = _구글만빈다
+    구글문 = [("insta-g", "https://www.google.com/search?q=site:instagram.com+{q}"), ("mojeek", "https://www.mojeek.com/search?q={q}")]
+    ok(SC.틀검사(구글문, repo=_원장집) == [], "잰 적이 없으면 꼴 검사만 -- 아직 모른다")
+    _원틀 = SC.틀
+    SC.틀 = tuple(구글문)
+    try:
+        r = SC.망점검(틈=1, repo=_원장집)                                  # 두드려 본다 -- 이 한 번이 원장이 된다
+    finally:
+        SC.틀 = _원틀
+    ok((_원장집 / "dig" / "door_ledger.jsonl").is_file() and len(SC.문원장읽기(_원장집)) == 2, "망점검이 문마다 원장에 적는다")
+    지 = SC.문지식(_원장집)
+    ok(지.get("google.com", {}).get("빈") == 1 and 지.get("mojeek.com", {}).get("있음") == 1, f"집마다 빈/있음을 센다 ({지})")
+    ok(list(SC.막힌집들(_원장집)) == ["google.com"], f"한 번도 결과를 준 적 없는 집만 막힌 집이다 ({list(SC.막힌집들(_원장집))})")
+    탈 = SC.틀검사(구글문, repo=_원장집)
+    ok(len(탈) == 1 and 탈[0].startswith("insta-g") and "전에 재 보니 결과 0" in 탈[0],
+       f"**구글 집을 문으로 넣으면 이제 코드가 잡는다** -- 세상 지식이 누적된 측정이 됐다 ({탈[0][:60]})")
+    ok(SC.틀검사([("x-g", "https://google.co.kr/search?q={q}")], repo=_원장집) == [], "다른 집(google.co.kr)은 아직 안 쟀으니 안 잡는다 -- 지어내지 않는다")
+finally:
+    FT.여럿 = _원여럿3
+    shutil.rmtree(_원장집, ignore_errors=True)
 
 _cmd2 = (뿌리 / "dig" / "discord_cmd.py").read_text(encoding="utf-8")
 ok('말.startswith("망 ")' in _cmd2, "`!수집 망 <문이름>` 으로 봇도 새 문만 두드린다")

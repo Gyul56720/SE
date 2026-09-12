@@ -20,9 +20,12 @@
 """
 from __future__ import annotations
 
+import json
 import os
 import re
+import time
 import urllib.parse
+from pathlib import Path
 
 from dig import extract as EX
 from dig import fetch as FT
@@ -88,21 +91,85 @@ def 틀들() -> tuple:
     return 틀 + tuple((f"덧{i}", u) for i, u in enumerate(더, 1))
 
 
-def 틀검사(틀목록=None) -> "list[str]":
+# ---------------------------------------------------------------- 문 원장: 세상 지식은 누적된 측정이다
+# 사용자(2026-09-12): "구조가 좋으면 모델의 성능을 이길 수 있다." 내가 앞서 틀린 자리 -- "구글이 봇을 막는다"
+# 같은 세상 지식은 구조로 못 준다고 했다. 재서 쌓으면 된다. 망점검이 문마다 결과 수를 세는데, 그것을 원장에
+# 적어 두면 다음에 같은 집을 문으로 넣는 패치를 코드가 거절한다: "전에 재 보니 결과 0 이었다."
+# 원장은 덧붙이기만(append-only). 봇의 git_sync 가 커밋하므로 시뮬 판에도 같이 간다.
+문원장상대 = "dig/door_ledger.jsonl"
+REPO = Path(__file__).resolve().parent.parent
+
+
+def _문적기(repo, 문들: "list[dict]", 말: str) -> None:
+    p = Path(repo or REPO) / 문원장상대
+    p.parent.mkdir(parents=True, exist_ok=True)
+    때 = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    with open(p, "a", encoding="utf-8") as f:
+        for d in 문들:
+            f.write(json.dumps({"때": 때, "이름": d["이름"], "집": d.get("집", ""), "코드": d.get("코드", 0),
+                                "결과": d.get("결과", 0), "왜": (d.get("왜") or "")[:80], "말": 말[:40]},
+                               ensure_ascii=False) + "\n")
+
+
+def 문원장읽기(repo=None) -> "list[dict]":
+    p = Path(repo or REPO) / 문원장상대
+    if not p.is_file():
+        return []
+    out = []
+    for 줄 in p.read_text(encoding="utf-8", errors="replace").splitlines():
+        try:
+            out.append(json.loads(줄))
+        except ValueError:
+            continue
+    return out
+
+
+def 문지식(repo=None) -> "dict[str, dict]":
+    """집마다 {잰: n, 빈: 결과 0 이었던 수, 있음: 결과 >0 이었던 수, 마지막: 때}."""
+    표: dict = {}
+    for d in 문원장읽기(repo):
+        집 = d.get("집") or ""
+        if not 집:
+            continue
+        x = 표.setdefault(집, {"잰": 0, "빈": 0, "있음": 0, "마지막": ""})
+        x["잰"] += 1
+        if int(d.get("결과", 0) or 0) > 0:
+            x["있음"] += 1
+        else:
+            x["빈"] += 1
+        x["마지막"] = max(x["마지막"], str(d.get("때", "")))
+    return 표
+
+
+def 막힌집들(repo=None, 최소: int = 1) -> "dict[str, dict]":
+    """잰 적이 있고 **한 번도 결과를 준 적이 없는** 집. 문으로 두드려 봐야 소용없는 곳이다."""
+    return {집: x for 집, x in 문지식(repo).items() if x["잰"] >= 최소 and x["있음"] == 0}
+
+
+def 틀검사(틀목록=None, repo=None) -> "list[str]":
     """문 목록이 성립하나 -- **망 없이 잴 수 있는 것만**. 어긴 것마다 한 줄(빈 목록이면 성립).
 
     무엇을 잡나: 물음 자리(`{q}`)가 없는 문 · http(s) 가 아닌 문 · 이름이 겹치는 문.
 
-    **무엇을 못 잡나 -- 그리고 왜 여기 적어 두나.** 실측 2026-09-12(VM): `!개선 수집망 url에
-    인스타그램, x, meta 추가해줘` 가 문 셋을 `https://www.google.com/search?q=site:...` 로 넣었다.
-    꼴은 멀쩡하다 -- 여기서는 못 잡는다. **그 문이 답을 주는지는 두드려야 안다**(구글은 자동 질의를
-    막는다). 그것이 `망점검(고른것=[...])` 이다. 문을 더하는 패치는 꼴 검사로 끝내지 말고 그것을
-    돌려라 -- 쓸 만한 결과 수까지 나온다. 잴 수 있는 것을 재지 않으면 '그럴듯한데 안 되는' 문이
-    목록에 쌓인다."""
+    **그리고 원장이 아는 것.** 실측 2026-09-12(VM): `!개선 수집망 url에 인스타그램, x, meta 추가해줘` 가
+    문 셋을 `https://www.google.com/search?q=site:...` 로 넣었다. 꼴은 멀쩡하다. 그 문이 답을 주는지는
+    두드려야 안다(`망점검(고른것=[...])`) -- 그런데 **한 번 두드려 본 뒤로는 안다.** 망점검이 문마다 결과 수를
+    `dig/door_ledger.jsonl` 에 적고, 잰 적이 있는데 한 번도 결과를 준 적 없는 집을 문으로 넣으면 여기서
+    잡는다. 세상 지식("구글은 봇을 막는다")이 누적된 측정이 된다. 문을 더하는 패치는 그 문 이름으로
+    `!수집 망 <이름>` 을 한 번 돌려라 -- 그 한 번이 원장이 되고, 다음부터는 코드가 안다."""
     본 = list(틀목록 if 틀목록 is not None else 틀들())
     이름들 = [n for n, _ in 본]
+    막힌 = 막힌집들(repo)
     탈 = []
     for 이름, 꼴 in 본:
+        try:
+            집 = _집(urllib.parse.urlsplit(꼴.replace("{q}", "q")).netloc)
+        except ValueError:
+            집 = ""
+        if 집 and 집 in 막힌:
+            x = 막힌[집]
+            탈.append(f"{이름}: 이 집({집})은 **전에 재 보니 결과 0 이었다**({x['잰']}번, 마지막 {x['마지막'][:10]}) -- "
+                      f"문으로 두드려도 소용없다. site: 로 좁히려면 결과를 주는 문에 얹어라(dig/door_ledger.jsonl)")
         if "{q}" not in 꼴:
             탈.append(f"{이름}: 물음 자리 `{{q}}` 가 없다 -- 무엇을 물어도 같은 쪽을 받는다")
         if not 꼴.startswith(("https://", "http://")):
@@ -234,7 +301,7 @@ def 거두기(응답들: list, 뽑은것들: list, 말: str, 몇: int = 40) -> l
     return 나온것[:몇] if 몇 else 나온것
 
 
-def 망점검(틈: float = 8.0, 말: str = "wikipedia", 고른것: list = None) -> dict:
+def 망점검(틈: float = 8.0, 말: str = "wikipedia", 고른것: list = None, repo=None, 적기: bool = True) -> dict:
     """**이 기계에서 바깥이 되나**를 코드가 잰다. {됐나, 열린문, 전체, 문들:[{이름,코드,왜}], 진단}.
 
     왜: 실측 2026-09-12, 봇이 "외부 망 접근을 시도했으나 시스템 내부의 인코딩 제한과 서비스 측
@@ -261,8 +328,13 @@ def 망점검(틈: float = 8.0, 말: str = "wikipedia", 고른것: list = None) 
         뽑 = EX.뽑기(r.몸통, r.꼴, r.최종url or r.url)
         센것[이름] = len(거두기([r], [뽑], 말, 몇=0))     # 문 하나씩 -- 그 문이 준 것만 센다
     문들 = [{"이름": 이름, "코드": r.코드, "왜": (r.왜 or "")[:80], "바이트": len(r.몸통 or ""),
-           "결과": 센것.get(이름, 0)}
+           "결과": 센것.get(이름, 0), "집": _집(urllib.parse.urlsplit(_u).netloc)}
            for (이름, _u), r in zip(쌍, 응답들)]
+    if 적기:
+        try:
+            _문적기(repo, 문들, 말)          # 잰 것은 남긴다 -- 다음 틀검사가 이것으로 안다
+        except OSError:
+            pass
     열린문 = sum(1 for r in 응답들 if r.됐나)
     막힘 = [d["왜"] for d in 문들 if d["왜"]]
     # **닿았나**와 **쓸 수 있나**를 가른다. 서버가 코드로 답했으면 망은 된 것이다 -- 그 문이 막았을 뿐이다.
