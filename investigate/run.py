@@ -76,11 +76,15 @@ def _두뇌claude(prompt: str, thread_id: str, repo=None) -> str:
     # --uid=ubuntu 로 띄우므로(run_claude) root 가 아니고 우회가 된다. 기계 이름이 아니라
     # **누구로 도는가**로 가른다.
     if _루트인가():
-        권한 = ["--permission-mode", "acceptEdits", "--allowedTools",
-              "Bash", "Edit", "Write", "Read", "Glob", "Grep", "MultiEdit"]
+        # 한 문자열로 준다. `--allowedTools <tools...>` 는 가변 인자라 뒤에 오는 것을 전부
+        # 도구 이름으로 삼킨다 -- 실측 2026-09-12: 프롬프트가 도구 이름으로 먹혀
+        # "Input must be provided" 로 죽었다(탐침은 프롬프트를 앞에 둬서 통과했었다).
+        권한 = ["--permission-mode", "acceptEdits",
+              "--allowedTools", "Bash,Edit,Write,Read,Glob,Grep,MultiEdit"]
     else:
         권한 = ["--permission-mode", "bypassPermissions"]
-    argv = ["claude", "-p", *잇기, *권한, prompt]
+    # **프롬프트가 깃발보다 앞이다.** 가변 인자 깃발 뒤에 두면 삼켜진다.
+    argv = ["claude", "-p", prompt, *잇기, *권한]
     rc, out = (claude실행기 or (lambda a, c, t: _돌리기(a, c, t)))(argv, repo, 1800)
     # **끝값이 0 이 아니면 그 출력은 답이 아니라 오류다.** 실측: 오류 문구를 답으로 넘겨서
     # 루프가 그것을 세 바퀴 '두뇌의 말' 로 적었다. 올려서 못돌림으로 적히게 한다.
@@ -100,7 +104,8 @@ def _루트인가() -> bool:
 
 def _돌리기(argv: "list[str]", repo: Path, 초: int) -> "tuple[int, str]":
     try:
-        p = subprocess.run(argv, cwd=str(repo), capture_output=True, text=True, errors="replace", timeout=초)
+        p = subprocess.run(argv, cwd=str(repo), capture_output=True, text=True, errors="replace", timeout=초,
+                           stdin=subprocess.DEVNULL)      # claude -p 가 stdin 을 3초 기다린다
         return p.returncode, ((p.stdout or "") + (p.stderr or "")).strip()
     except subprocess.TimeoutExpired:
         return 124, f"시간 초과 ({초}초)"

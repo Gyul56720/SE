@@ -142,9 +142,10 @@ I.claude실행기 = lambda argv, cwd, 초: (_잡.append(argv) or (0, "한 턴"))
 try:
     I._claude세션.clear()
     I._두뇌claude("첫 프롬프트", "x1"); I._두뇌claude("둘째 프롬프트", "x1")
-    ok(_잡[0][2] == "--session-id" and _잡[1][2] == "--resume" and _잡[0][3] == _잡[1][3],
-       f"첫 턴 --session-id, 둘째 --resume, 같은 id ({_잡[0][2]} -> {_잡[1][2]})")
-    ok("--permission-mode" in _잡[0] and _잡[0][-1] == "첫 프롬프트", "권한 bypass · 프롬프트는 맨 끝")
+    ok(_잡[0][3] == "--session-id" and _잡[1][3] == "--resume" and _잡[0][4] == _잡[1][4],
+       f"첫 턴 --session-id, 둘째 --resume, 같은 id ({_잡[0][3]} -> {_잡[1][3]})")
+    # 실측 2026-09-12: 프롬프트를 맨 끝에 두었더니 `--allowedTools <tools...>` 가 삼켰다.
+    ok(_잡[0][2] == "첫 프롬프트" and "--permission-mode" in _잡[0], "**프롬프트는 깃발보다 앞** · 권한 깃발이 있다")
     # 실측 2026-09-12: 첫 실제 조사에서 claude -p 가 끝값 1 과 함께 오류 문구를 냈는데,
     # 출력이 있다는 이유로 그것을 '두뇌의 답' 으로 넘겨 세 바퀴를 태웠다.
     I.claude실행기 = lambda argv, cwd, 초: (1, "--dangerously-skip-permissions cannot be used with root")
@@ -157,8 +158,10 @@ try:
     _잡.clear()
     I._루트인가 = lambda: True
     I._두뇌claude("p", "x3")
-    ok("bypassPermissions" not in _잡[0] and "--allowedTools" in _잡[0] and "Bash" in _잡[0],
-       "**root 면 우회 대신 허용 도구 목록** (root 에선 우회가 거절된다)")
+    _i = _잡[0].index("--allowedTools")
+    ok("bypassPermissions" not in _잡[0] and "Bash" in _잡[0][_i + 1] and "," in _잡[0][_i + 1]
+       and _잡[0][-1] == _잡[0][_i + 1],
+       "**root 면 우회 대신 허용 도구 목록 -- 한 문자열로, 맨 끝에** (가변 인자가 뒤를 삼킨다)")
     I._루트인가 = lambda: False
     I._두뇌claude("p", "x4")
     ok("bypassPermissions" in _잡[1] and "--allowedTools" not in _잡[1], "root 가 아니면 우회")
