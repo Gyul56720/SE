@@ -52,6 +52,7 @@ if str(REPO) not in sys.path:
 머지기 = None   # 검사 주입: (repo, 아이디, 부탁) -> dict.  None 이면 _머지기본 (github_write 로 PR 을 찾아 판단·머지)
 절제검사기 = None  # 검사 주입: (repo, 시작커밋) -> dict{성립, 말, 잰것, 안잡힌것, 못잼}.  None 이면 _절제기본
 열쇠검사기 = None  # 검사 주입: (repo, 시작커밋) -> dict{성립, 말, 죽은읽기, 있는열쇠}.  None 이면 _열쇠기본
+이름검사기 = None  # 검사 주입: (repo, 시작커밋) -> dict{성립, 말, 찾은것}.  None 이면 _이름기본
 
 
 # ------------------------------------------------------------------ 두뇌·판정 기본
@@ -292,6 +293,12 @@ def _열쇠기본(repo: Path, 시작커밋: str) -> dict:
     """읽는 열쇠가 그 원장에 실제로 있나 -- rehearsal.열쇠대조. LLM 0회 · subprocess 0회."""
     import rehearsal
     return rehearsal.열쇠대조(repo, repo, 기준=시작커밋)
+
+
+def _이름기본(repo: Path, 시작커밋: str) -> dict:
+    """패치가 만진 파일에 없는 이름을 부르는 자리가 있나 -- rehearsal.미정의이름. LLM 0회 · subprocess 0회."""
+    import rehearsal
+    return rehearsal.미정의이름(repo, repo, 기준=시작커밋)
 
 
 def _명령기록(thread_id: str) -> "dict | None":
@@ -752,6 +759,15 @@ def 조사(증상: str, 재현명령: str = "", 증거글: str = "", 시한초: 
                 if not 열.get("성립", True):
                     판정 = [{"이름": "열쇠대조", "끝값": 1, "꼬리": "[열쇠 죽음] " + 열["말"]}] + [p for p in 판정 if p["이름"] != "재현"]
                     h["빨강"] = ["열쇠대조"]
+                    continue
+                이 = (이름검사기 or _이름기본)(repo, 시작커밋)
+                _적기(repo, {"때": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "조사": 아이디,
+                            "단계": "이름성립" if 이.get("성립", True) else "이름없음", "바퀴": n, "말": 이.get("말", "")[:200],
+                            "찾은것": [f"{y['파일']}:{y['줄']} {y['이름']}" for y in 이.get("찾은것", [])][:6]})
+                말하기(f"[조사 {아이디}] 이름 {'성립' if 이.get('성립', True) else '없는 이름'}: {이.get('말', '')[:80]}")
+                if not 이.get("성립", True):
+                    판정 = [{"이름": "미정의이름", "끝값": 1, "꼬리": "[없는 이름] " + 이["말"]}] + [p for p in 판정 if p["이름"] != "재현"]
+                    h["빨강"] = ["미정의이름"]
                     continue
             결과["해결"] = True
             break

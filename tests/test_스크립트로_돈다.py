@@ -20,6 +20,7 @@ sys.path[0] 에 넣는다 -- `improve/run.py` 를 돌리면 sys.path[0] 이 `imp
 """
 from __future__ import annotations
 
+import ast                      # 남의꾸러미임포트 가 쓴다 -- 없어서 그 함수가 불리면 NameError 였다
 import subprocess
 import sys
 import tempfile

@@ -420,6 +420,86 @@ def 절제검사(repo=None, 판=None, 초: int = 300, 상한: int = None, 기준
     return out
 
 
+# ------------------------------------------------------------------ 미정의이름: 없는 이름을 부르나
+# 실측 2026-09-12: `discord_bot_server._git_sync_locked` 가 `report.summary()` 를 불렀는데 그 이름이 없었다
+# (게이트 보고 변수 이름이 `보고` 로 바뀐 뒤에 남은 줄). **밀기가 성공한 경로에서만** 터지므로 커밋·푸시가 다
+# 된 뒤에 사용자가 "[git 동기화 실패] NameError" 를 보았다. py_compile 도 임포트도 이것을 못 잡는다 --
+# 파이썬은 함수 몸통의 이름을 **부를 때** 푼다. 같은 결이 저장소에 다섯 군데 있었다(coin/news._주소 ·
+# scripts/gemini_limits._hdr·_die · tests/test_스크립트로_돈다 의 ast). 전부 이 검사가 찾았다.
+_빌트인이름 = None
+미정의봐주기 = ("__class__",)     # super() 가 암묵으로 쓴다 -- 미정의가 아니다
+
+
+def _미정의한파일(src: str, 이름표: str = "<판>") -> "list[tuple[str, int, str]]":
+    """(조각 이름, 줄, 이름) -- 함수 안에서 **어디에도 정의되지 않은** 이름.
+
+    symtable 을 쓴다 -- 파이썬 자신의 스코프 해석이므로 내포 표현식·클로저·global/nonlocal·함수 안 임포트를
+    다 제대로 본다. AST 로 손수 세면 그것들이 전부 거짓 양성이 된다."""
+    import builtins, symtable
+    global _빌트인이름
+    if _빌트인이름 is None:
+        _빌트인이름 = set(dir(builtins)) | {"__file__", "__name__", "__doc__", "__package__",
+                                         "__spec__", "__loader__", "__builtins__", "__debug__"}
+    if "import *" in src:
+        return []                                  # 무엇이 들어왔는지 알 수 없다 -- 재지 않는다
+    try:
+        top = symtable.symtable(src, 이름표, "exec")
+    except (SyntaxError, ValueError):
+        return []
+    모듈이름 = {x.get_name() for x in top.get_symbols()}
+    out = []
+
+    def 돌기(tbl, 감싼: set):
+        여기 = {x.get_name() for x in tbl.get_symbols()
+                if x.is_assigned() or x.is_parameter() or x.is_imported()}
+        if tbl.get_type() == "function":
+            for x in tbl.get_symbols():
+                n = x.get_name()
+                if (not x.is_referenced() or x.is_assigned() or x.is_parameter() or x.is_imported()
+                        or n in 미정의봐주기 or n in _빌트인이름 or n in 모듈이름 or n in 감싼):
+                    continue
+                out.append((tbl.get_name(), tbl.get_lineno(), n))
+        for 아 in tbl.get_children():
+            돌기(아, 감싼 | 여기)
+
+    for 아 in top.get_children():
+        돌기(아, set())
+    return out
+
+
+def 미정의이름(repo=None, 판=None, 기준: str = "HEAD") -> dict:
+    """**없는 이름을 부르나.** {성립, 말, 찾은것:[{파일, 조각, 줄, 이름}], 본것, 못잼}.
+
+    패치가 만지는 .py 전부(검사 파일도 -- 거기 NameError 면 검사가 아예 안 돈다)를 본다.
+    LLM 호출 0회 · subprocess 0회. 저장소 전체에 돌려 거짓 양성이 `__class__` 하나뿐임을 확인했다."""
+    repo = Path(repo or REPO)
+    판 = Path(판) if 판 else repo
+    검사, 코드, 지움 = _판변경(판, 기준)
+    out = {"성립": True, "말": "", "찾은것": [], "본것": [], "못잼": []}
+    for rel in 검사 + 코드:
+        낱 = 판 / rel
+        if not 낱.is_file():
+            continue
+        src = 낱.read_text(encoding="utf-8", errors="replace")
+        if "import *" in src:
+            out["못잼"].append(f"{rel} (import * 가 있어 무엇이 들어왔는지 모른다)")
+            continue
+        out["본것"].append(rel)
+        for 조각, 줄, 이름 in _미정의한파일(src, rel):
+            out["찾은것"].append({"파일": rel, "조각": 조각, "줄": 줄, "이름": 이름})
+    if out["찾은것"]:
+        보임 = ", ".join(f"{x['파일']}:{x['줄']} {x['조각']}() -> `{x['이름']}`" for x in out["찾은것"][:5])
+        out["성립"] = False
+        out["말"] = (f"**없는 이름을 부른다**: {보임}. 그 이름은 그 파일 어디에도 없다(정의도 임포트도 아니다) -- "
+                     f"그 줄이 돌면 NameError 다. py_compile 과 임포트는 이것을 못 잡는다(파이썬은 함수 몸통의 "
+                     f"이름을 **부를 때** 푼다). 이름을 바로잡거나 그 함수에서 임포트해라.")
+    elif out["본것"]:
+        out["말"] = f"파일 {len(out['본것'])}개에 없는 이름을 부르는 자리가 없다"
+    else:
+        out["말"] = "볼 .py 가 없다"
+    return out
+
+
 # ------------------------------------------------------------------ 열쇠대조: 없는 열쇠를 읽고 있나
 # 실측 2026-09-12: 봇이 `scripts/ledgerstat.py` 를 지어 "검증 완료 · OK" 라고 답했다. 검사는 정말 초록이었고
 # 도구도 실제로 돌았다. 그런데 표의 여덟 칸 중 여섯이 **구조적으로 항상 0** 이었다 -- `repair/ledger.jsonl`

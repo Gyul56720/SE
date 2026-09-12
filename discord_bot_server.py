@@ -595,7 +595,10 @@ def _git_sync_locked() -> str | None:
         return f"[git commit 실패] {combined.strip()[:500]}"
     push = subprocess.run(["git", "push"], cwd=REPO_DIR, capture_output=True, text=True)
     if push.returncode == 0:
-        return f"{report.summary()}\n{_verify_pushed()}"
+        # `보고` 는 위 commit_guard.검사 가 준 문지기 보고다. 전에 여기 없는 이름(`report`)을 불러 **밀기가
+        # 성공한 경로에서만** NameError 가 터졌다 -- 사용자는 커밋·푸시가 다 된 뒤에 "[git 동기화 실패]" 를
+        # 보았다(실측 2026-09-12). 그 결은 rehearsal.미정의이름 이 패치마다 잡는다.
+        return f"{보고}\n{_verify_pushed()}"
 
     caught, why = gitsync.reconcile(
         lambda a: subprocess.run(["git", *a], cwd=REPO_DIR, capture_output=True, text=True))
