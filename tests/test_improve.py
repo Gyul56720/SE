@@ -176,6 +176,24 @@ try:
     ok(줄 and 줄[-1].get("diff") and "return 3" in (d / 줄[-1]["diff"]).read_text(encoding="utf-8"),
        f"치우기 전에 그 판의 diff 를 logs/ 에 남긴다 -- 사람 손일 수도 있다 ({(줄 or [{}])[-1].get('diff')})")
     I.버림(d)
+    # 실측 2026-09-12(VM): PDF 부탁이 시험 중일 때 자가개선이 나란히 돌아 그 판을 '시험 안 한 판' 이라며 치웠다.
+    # 켠 프로세스가 살아 있으면 남의 일이 도는 중이다 -- 치우지 않고 판열림으로 기다린다.
+    import subprocess as _sp
+    산것 = _sp.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    try:
+        P.켜기("나란히 도는 실행의 판", repo=d, 누가="개선")
+        상태 = d / P.상태상대; 상 = json.loads(상태.read_text(encoding="utf-8")); 상["pid"] = 산것.pid
+        상태.write_text(json.dumps(상, ensure_ascii=False), encoding="utf-8")
+        r = I.사용자개선("f 가 1", d, 초=30)
+        ok(r["판정"] == "판열림" and "다른 실행이 쓰는 중" in r["말"] and P.현재판(d) is not None,
+           f"**켠 프로세스가 살아 있으면 치우지 않는다** (판정 {r['판정']})")
+        ok("다른 실행이 쓰는 중" in I.자가개선(d)["남은것"], "자가개선도 같은 판단을 한다")
+    finally:
+        산것.kill(); 산것.wait()
+    r = I.사용자개선("f 가 1", d, 초=30)
+    ok(r["판정"] == "동의대기" and any(x.get("꼴") == "판정리" for x in I.원장읽기(d)[-3:]),
+       f"그 프로세스가 죽으면 찌꺼기다 -- 치우고 이어 간다 (판정 {r['판정']})")
+    I.버림(d)
     P.켜기("죽은 판", repo=d, 누가="자가개선")
     import shutil as _sh; _sh.rmtree(P.현재판(d), ignore_errors=True)                       # 디렉터리가 사라진 판
     r = I.사용자개선("f 가 1", d, 초=30)
