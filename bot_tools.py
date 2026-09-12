@@ -74,6 +74,9 @@ _cancel_events_lock = threading.Lock()
 # OS 스레드로 센다: run_public_agent 와 run_shell 이 같은 실행기 스레드에서 돈다.
 _셸기록: dict[int, list] = {}
 _셸기록_lock = threading.Lock()
+
+# 같은 나무에 같은 명령은 두 번 돌리지 않는다 -- 규칙과 저장소는 shellmemo(표준 라이브러리만). 조사가 켜고 끈다.
+import shellmemo
 # thread_id -> 그 실행에서 부른 것. 부르는 쪽(discord_bot_server)이 답과 견준다.
 마지막셸: dict[str, list] = {}
 
@@ -229,6 +232,14 @@ def run_shell(command: str) -> str:
     command, _바뀜 = entrypoints.셸명령_모듈꼴(command, _판)
     if _바뀜:
         print(f"[run_shell] 모듈 꼴로: {'; '.join(_바뀜[:3])}")
+    작성자 = str(_current_author.get())
+    차단중 = shellmemo.켜졌나(작성자)
+    지문 = shellmemo.나무지문(_판) if 차단중 else ""
+    if 차단중:
+        전 = shellmemo.이미돌렸나(작성자, command, 지문)
+        if 전 is not None:
+            print(f"[run_shell] {작성자} :: 중복 차단 {redact_secrets(command)[:100]!r} (같은 나무 {지문})")
+            return shellmemo.막힘말(command, 지문, 전)
     시작 = time.monotonic()
     proc = subprocess.Popen(
         ["bash", "-lc", command], cwd=str(_판),                        # 계획판이면 그림자
@@ -258,6 +269,8 @@ def run_shell(command: str) -> str:
                 (redact_secrets(command)[:160], proc.returncode == 0))
         out = redact_secrets(자르기(stdout, 셸출력_앞, 셸출력_뒤))
         err = redact_secrets(자르기(stderr, 1500, 2500))
+        if 차단중:
+            shellmemo.적기(작성자, command, 지문, proc.returncode, out + ("\n" + err if err.strip() else ""))
         if proc.returncode is not None and proc.returncode < 0:
             return f"[중단됨] stop 명령으로 강제 종료됨(signal={-proc.returncode}).\nSTDOUT:\n{out}\nSTDERR:\n{err}"
         return f"[exit={proc.returncode}]\nSTDOUT:\n{out}\nSTDERR:\n{err}"

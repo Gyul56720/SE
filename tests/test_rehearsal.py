@@ -144,8 +144,47 @@ p = subprocess.run(["python3", "rehearsal.py", "--판", str(뿌리 / "없는판"
                    cwd=str(뿌리), capture_output=True, text=True, timeout=60)
 ok(p.returncode in (0, 1, 3), f"CLI 가 돈다 (끝값 {p.returncode})")
 
+print("\n== 공허 검사: 초록이 뜻이 있나 -- 코드가 바뀌었으면 그 변경 없이 빨간 검사가 하나는 있어야 한다 ==")
+# 사용자(2026-09-12): "구조가 좋으면 모델의 성능을 이길 수 있다." investigate.목표검사유효한가 가 #194 의 속임수를
+# 잡은 것을 **모든 패치**로 넓힌 것이다. #194(함수만 정의) · #201(글자 검사) · 구글 문 셋(검사 없음)이 전부 걸린다.
+_공 = Path(tempfile.mkdtemp(prefix="공허-"))
+try:
+    git(_공, "init", "-q"); git(_공, "config", "user.email", "t@t"); git(_공, "config", "user.name", "t")
+    (_공 / "tests").mkdir(); (_공 / "mod.py").write_text("def f():\n    return 2\n", encoding="utf-8")
+    git(_공, "add", "-A"); git(_공, "commit", "-qm", "init")
+
+    def 판으로(**files):
+        w = Path(tempfile.mkdtemp(prefix="판-"))
+        git(_공, "worktree", "add", "-q", "--detach", str(w), "HEAD")
+        for rel, 본 in files.items():
+            (w / rel).parent.mkdir(parents=True, exist_ok=True); (w / rel).write_text(본, encoding="utf-8")
+        return w
+
+    def 재기(**files):
+        w = 판으로(**files)
+        try:
+            return R.공허검사(_공, w)
+        finally:
+            git(_공, "worktree", "remove", "--force", str(w))
+
+    r = 재기(**{"tests/test_a.py": "import sys\nsys.exit(0)\n"})
+    ok(not r["공허"] and "행동 변화 없음" in r["말"], "검사만 더한 패치는 볼 것 없다")
+    r = 재기(**{"mod.py": 'def f():\n    """설명"""\n    return 2\n'})
+    ok(not r["공허"] and "행동 변화 없음" in r["말"], "독스트링·주석만 바뀐 것은 행동 변화가 아니다")
+    r = 재기(**{"mod.py": "def f():\n    return 1\n"})
+    ok(r["공허"] and "재는 검사가 없다" in r["말"] and r["코드들"] == ["mod.py"], "**코드만 바뀌고 검사가 없으면 공허** -- 구글 문 셋의 자리")
+    r = 재기(**{"mod.py": "def f():\n    return 1\n", "tests/test_b.py": "assert True\n"})
+    ok(r["공허"] and "코드 변경 없이도" in r["말"], "**검사가 코드 변경 없이도 초록이면 공허** -- #194 · #201 의 자리")
+    r = 재기(**{"new.py": "X = 1\n", "tests/test_c.py": "import new\nassert new.X == 1\n"})
+    ok(not r["공허"] and r["빨간검사"] == ["tests/test_c.py (끝값 1)"], "새 모듈을 임포트하는 검사는 기능 없는 판에서 빨강 -- 증언한다")
+    r = 재기(**{"mod.py": "def f():\n    return 1\n", "tests/test_d.py": "import mod\nassert mod.f() == 1\n"})
+    ok(not r["공허"] and "증언한다" in r["말"], "값을 단언하는 검사는 증언한다")
+    ok(git(_공, "worktree", "list").stdout.strip().count("\n") == 0, "HEAD 판 워크트리가 안 남는다")
+finally:
+    shutil.rmtree(_공, ignore_errors=True)
+
 print()
 if FAIL:
     print(f"실패 {len(FAIL)}개 -- {FAIL}")
     raise SystemExit(1)
-print("rehearsal: 문법 · 뜻 · 초록 · 안 건드림 · 못잼 · 승인 전제 · 배선 -- 통과")
+print("rehearsal: 문법 · 뜻 · 초록 · 안 건드림 · 못잼 · 승인 전제 · 배선 · 공허 검사 -- 통과")

@@ -62,6 +62,9 @@ try:
     Rs.분해기 = lambda 목표, 막힌것: "general method one\ngeneral method two"   # 모델 없이 빠르게
     I.틈모으기_ = lambda repo: [틈]
     P.리허설기 = 초록리허설
+    # 여기 대목들은 **흐름**을 본다(패치가 붙고 시뮬을 지나 동의대기까지). 검사 없는 가짜 패치가 많으니 공허 판정은
+    # 주입으로 꺼 둔다 -- 진짜 공허 판정은 아래 '초록의 뜻' 대목에서 실제 저장소로 붙든다.
+    I.공허검사기 = lambda repo, 판: {"공허": False, "말": "검사 주입", "검사들": [], "코드들": []}
     넓힌 = []
     I.넓히기_ = lambda 질의들, repo: 넓힌.append(list(질의들))
 
@@ -352,7 +355,7 @@ try:
     I.제안기 = lambda prompt: (받은2.append(prompt) or json.dumps({"꼴": "패치", "왜": "x", "편집": [{"path": "mod.py", "old": "return 2", "new": "return 1"}]}))
     r = I.사용자개선("고쳐줘", d, 초=30)
     ok(r["판정"] == "동의대기" and r.get("시뮬시도") == 2, f"**빨강 -> 되묻기 -> 초록이면 동의대기** ({r['판정']} · 시뮬 {r.get('시뮬시도')})")
-    ok(len(받은2) == 2 and "[레포 전체 시뮬 빨강 1/2]" in 받은2[1] and "test_far.py" in 받은2[1],
+    ok(len(받은2) == 2 and "[시뮬 판정 1/2]" in 받은2[1] and "test_far.py" in 받은2[1],
        "되묻는 프롬프트에 **무엇이 깨졌는지**가 든다")
     I.버림(d)
     P.리허설기 = 리허설_회귀없음
@@ -520,6 +523,40 @@ with tempfile.TemporaryDirectory() as _d4:
     r = I.사용자개선("f 가 1", d4, 초=30)
     ok(r["판정"] == "조사로" and "두 번 청해도" in r["말"],
        f"**두 번 청해도 아니면 긴 호흡으로 넘긴다** -- 사람 몫이 아니다 (판정 {r['판정']})")
+
+print("\n== 초록의 뜻: 코드는 바뀌었는데 그 변경 없이도 초록인 검사뿐이면 공허 -- 빨강과 같이 다룬다 ==")
+# 사용자(2026-09-12): "구조가 좋으면 모델의 성능을 이길 수 있다." 오늘 초록으로 지나간 것 셋(#194 함수만 정의한
+# 검사 · #201 글자 검사 · 구글 문 셋)이 전부 여기서 걸린다. 판정은 rehearsal.공허검사 -- 모델이 아니다.
+I.공허검사기 = None                    # 진짜 판정
+호출3 = []
+
+
+def _처음은공허(prompt):
+    호출3.append(prompt)
+    if len(호출3) == 1:                 # 코드만 바꾸고 검사는 assert True -- #201 꼴
+        return json.dumps({"꼴": "패치", "왜": "공허", "편집": [{"path": "mod.py", "old": "return 2", "new": "return 1"}],
+                           "새파일": [{"path": "tests/test_공허.py", "내용": "assert True\n"}]}, ensure_ascii=False)
+    return json.dumps({"꼴": "패치", "왜": "증인", "편집": [{"path": "mod.py", "old": "return 2", "new": "return 1"}],
+                       "새파일": [{"path": "tests/test_공허.py", "내용": "import sys; sys.path.insert(0, '.')\nimport mod\nassert mod.f() == 1\n"}]}, ensure_ascii=False)
+
+
+with tempfile.TemporaryDirectory() as _d5:
+    d5 = Path(_d5)
+    git(d5, "init", "-q"); git(d5, "config", "user.email", "t@t"); git(d5, "config", "user.name", "t")
+    (d5 / "mod.py").write_text("def f():\n    return 2\n", encoding="utf-8"); (d5 / "tests").mkdir()
+    git(d5, "add", "-A"); git(d5, "commit", "-qm", "init")
+    P.리허설기 = 리허설_회귀없음
+    I.제안기 = _처음은공허
+    r = I.사용자개선("f 가 1", d5, 초=30)
+    ok(r["판정"] == "동의대기" and r.get("시뮬시도") == 2 and len(호출3) == 2,
+       f"**공허한 초록은 막고 되물어, 증인 검사가 오면 동의대기** (판정 {r['판정']} · 시뮬시도 {r.get('시뮬시도')})")
+    ok("공허" in 호출3[1] and "코드 변경 없이도" in 호출3[1], "되묻는 프롬프트에 왜 공허한지가 든다")
+    ok(any(x.get("꼴") == "공허" for x in I.원장읽기(d5)), "원장에 공허 판정이 남는다")
+    I.버림(d5)
+    I.제안기 = lambda prompt: json.dumps({"꼴": "패치", "왜": "검사 없음", "편집": [{"path": "mod.py", "old": "return 2", "new": "return 1"}]}, ensure_ascii=False)
+    r = I.사용자개선("f 가 1", d5, 초=30)
+    ok(r["판정"] == "조사로" and "재는 검사가 없다" in r["말"],
+       f"**검사 없는 코드 변경은 끝까지 안 받고 조사로 넘긴다** -- 구글 문 셋이 지나간 자리 (판정 {r['판정']})")
 
 print()
 if FAIL:
