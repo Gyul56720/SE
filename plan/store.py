@@ -147,6 +147,10 @@ def 승인(repo=None, 누가: str = "cli", 건너뛰기: bool = False) -> str:
         if not 시.get("통과"):
             return (f"[{s['id']}] **리허설이 빨강이었다 -- 붙이지 않았다.** 먼저 고치고 `!계획 시험` 을 다시 돌려라 "
                     f"({시.get('때', '')})")
+    # **색인을 먼저 새로 고친다.** 실측 2026-09-12: 파일을 쓰고 커밋하고 같은 초 안에 승인하면
+    # `git apply --index` 가 "does not match index" 로 거절했다(간헐 -- 8번 중 1번). git 은 mtime 이
+    # 색인 갱신과 같은 초면 그 항목을 못 믿는다(racy git). 새로 고치면 내용을 다시 읽어 확정한다.
+    _git(repo, "update-index", "-q", "--refresh")
     r = _git(repo, "apply", "--index", "--whitespace=nowarn", "-", 입력=d)
     if r.returncode != 0:
         return (f"[{s['id']}] **적용 실패 -- 코드가 거절했다**: {r.stderr.strip()[:300]}\n"
