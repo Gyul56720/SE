@@ -395,6 +395,68 @@ ok("improve/ledger.jsonl merge=union" in (뿌리 / ".gitattributes").read_text(e
 p = subprocess.run(["python3", "improve/run.py", "--틈만"], cwd=str(뿌리), capture_output=True, text=True, timeout=120)
 ok(p.returncode == 0 and "틈" in p.stdout, f"--틈만 CLI 가 돈다 ({p.stdout.strip().splitlines()[-1][:40] if p.stdout.strip() else ''})")
 
+print("\n== 파일 고르기: git 이 아는 것만 · 명령 꾸러미 · 조사 떼기 ==")
+# 실측 2026-09-12(VM): `!개선 수집망 url에 인스타그램, x, meta 추가해줘` 가 고른 파일이
+# `.venv-torch/lib/python3.12/site-packages/torch/_meta_registrations.py` 였다 -- 건너뛸 곳을 손으로
+# 적어 두었는데 `.venv-torch` 는 그 중 어느 이름도 아니었다. 남의 코드를 발췌로 받으면 못 고친다.
+import subprocess as _sp2
+_d3 = Path(tempfile.mkdtemp(prefix="improve-고르기-"))
+try:
+    _g = lambda *a: _sp2.run(["git", "-C", str(_d3), *a], capture_output=True, text=True)  # noqa: E731
+    _g("init", "-q"); _g("config", "user.email", "t@t"); _g("config", "user.name", "t")
+    (_d3 / ".gitignore").write_text(".venv*\n", encoding="utf-8")
+    (_d3 / "dig").mkdir(); (_d3 / "dig" / "__init__.py").write_text("", encoding="utf-8")
+    (_d3 / "dig" / "search.py").write_text("틀들 = ('https://x/?q={q}',)  # url 목록\n" * 3, encoding="utf-8")
+    (_d3 / ".venv-torch" / "lib" / "site-packages" / "torch").mkdir(parents=True)
+    (_d3 / ".venv-torch" / "lib" / "site-packages" / "torch" / "_meta_registrations.py").write_text(
+        "# meta url url url\n" * 50, encoding="utf-8")
+    _g("add", "-A"); _g("commit", "-qm", "init")
+    났 = I.저장소파이썬(_d3)
+    ok("dig/search.py" in 났 and not any(".venv" in x for x in 났),
+       f"**git 이 추적하는 것만** -- 무시된 .venv-torch 는 없다 ({[x for x in 났 if chr(46)+chr(118) in x]})")
+    고른 = I._관련파일찾기("수집망 url에 meta 추가해줘", _d3)
+    ok(고른 and all(not x.startswith(".venv") for x in 고른), f"고른 파일에 남의 코드가 없다 ({고른})")
+    ok("dig/__init__.py" not in 고른, f"빈 꾸러미 표지는 안 고른다 ({고른})")
+finally:
+    shutil.rmtree(_d3, ignore_errors=True)
+
+ok("url" in I._낱말뽑기("수집망 url에 meta 추가해줘") and "pdf" in I._낱말뽑기("md가 안보이니 pdf로"),
+   "**한글 조사가 붙은 라틴 낱말을 떼어 낸다** (`url에` -> `url` · `pdf로` -> `pdf`)")
+ok("dig" in I._부탁의모듈("수집망 고쳐줘") and "novel" in I._부탁의모듈("소설 문체"),
+   "고정 명령 이름(`!수집` · `!소설`)으로 그 꾸러미를 찾는다 -- dispatch 에 묻는다(목록 없음)")
+ok(I._부탁의모듈("아무 말도 아니다") == [], "아무 명령도 안 가리키면 빈 목록")
+
+print("\n== 패치 꼴이 아닌 답도 한 번 더 청하고, 그래도 아니면 긴 호흡으로 ==")
+# 실측 2026-09-12(VM): 첫 답이 패치 꼴이 아니어서 그 자리에서 끝났다(판정: 제안없음).
+# 적용 실패와 시뮬 빨강은 이미 되풀이하는데 이 자리만 한 번에 포기했다.
+호출2 = []
+
+
+def _둘째에패치(prompt):
+    호출2.append(prompt)
+    if len(호출2) == 1:
+        return "알겠습니다. 아래와 같이 고치면 좋겠습니다만 JSON 은 아닙니다."
+    return json.dumps({"꼴": "패치", "왜": "둘째에 꼴을 맞췄다", "편집": [{"path": "mod.py", "old": "return 2", "new": "return 1"}]}, ensure_ascii=False)
+
+
+with tempfile.TemporaryDirectory() as _d4:
+    d4 = Path(_d4)
+    git(d4, "init", "-q"); git(d4, "config", "user.email", "t@t"); git(d4, "config", "user.name", "t")
+    (d4 / "mod.py").write_text("def f():\n    return 2\n", encoding="utf-8")
+    git(d4, "add", "-A"); git(d4, "commit", "-qm", "init")
+    P.리허설기 = 리허설_회귀없음
+    I.제안기 = _둘째에패치
+    r = I.사용자개선("f 가 1", d4, 초=30)
+    ok(r["판정"] == "동의대기" and r.get("제안시도") == 2 and len(호출2) == 2,
+       f"**꼴이 아니면 다시 청해서 둘째에 간다** (판정 {r['판정']} · 시도 {r.get('제안시도')})")
+    ok("JSON 하나만" in 호출2[1] and "알겠습니다" in 호출2[1],
+       "되묻는 프롬프트에 **꼴을 못박고 앞 답이 무엇이었는지** 보여 준다")
+    I.버림(d4)
+    I.제안기 = lambda prompt: "끝까지 JSON 이 아닌 말"
+    r = I.사용자개선("f 가 1", d4, 초=30)
+    ok(r["판정"] == "조사로" and "두 번 청해도" in r["말"],
+       f"**두 번 청해도 아니면 긴 호흡으로 넘긴다** -- 사람 몫이 아니다 (판정 {r['판정']})")
+
 print()
 if FAIL:
     print(f"실패 {len(FAIL)}개 -- {FAIL}")
