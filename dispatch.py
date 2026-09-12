@@ -28,10 +28,11 @@ from investigate import discord_cmd as 조사
 from secaudit import discord_cmd as 점검
 from router import discord_cmd as 경로
 from sandbox import discord_cmd as 실험
+from falsegreen import discord_cmd as 거짓초록
 import keys as 열쇠
 import relay as 중계
 
-명령들 = (소설, 실험, 감사, 기억, 평가, 경로, 목표, 진화, 중계, 위임, 수집, 열쇠, 고치기, 점검, 코드화, 연구, 계획, 자가개선, 조사)
+명령들 = (소설, 실험, 감사, 기억, 평가, 경로, 목표, 진화, 중계, 위임, 수집, 열쇠, 고치기, 점검, 코드화, 연구, 계획, 자가개선, 조사, 거짓초록)
 
 
 def run(text: str, runner=None, allow_write: bool = True) -> "str | None":
