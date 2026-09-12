@@ -167,7 +167,9 @@ _pr = _sp.Popen([sys.executable, "-c", "import time; time.sleep(8)  # improve.ru
 try:
     ok(relay.배경끝났나({"무엇": "improve/run.py", "찾을말": "improve.run 흉내"}) is False,
        "**찾을말로 살아 있는지 본다** -- 보이는 이름으로 보면 살아 있는 일을 죽었다고 한다")
-    ok(relay.배경끝났나("improve/run.py") is True, "(견줌) 보이는 이름으로는 못 찾는다 -- 그것이 사고였다")
+    # 견줌의 이름은 이 검사만 아는 글이어야 한다. "improve/run.py" 로 물으면 같은 판에서 나란히 도는
+    # test_improve 가 띄운 진짜 improve/run.py 에 걸려 빨갛다(실측 2026-09-12, precheck 안에서 2/4).
+    ok(relay.배경끝났나("improve/run.py 흉내") is True, "(견줌) 보이는 이름으로는 못 찾는다 -- 그것이 사고였다")
 finally:
     _pr.kill(); _pr.wait()
 _bot4 = (뿌리 / "discord_bot_server.py").read_text(encoding="utf-8")
