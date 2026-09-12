@@ -358,6 +358,24 @@ finally:
     I.대조기 = None
     import shutil as _sh3; _sh3.rmtree(판2, ignore_errors=True)
 
+print("\n== 최소 재현 축소: 감사 빨강을 파일마다의 판정으로 좁힌다 ==")
+# 사용자(2026-09-12): "구조가 좋으면 모델의 성능을 이길 수 있다." 8개 중 7번. '감사 빨강' 한 덩어리 대신
+# `감사:tests/test_x.py` 와 그 파일만의 꼬리 -- 신호가 좁아지면 탐색 공간도 좁아지고 귀속도 파일마다 된다.
+판3 = Path(tempfile.mkdtemp(prefix="test-iv3-"))
+try:
+    (판3 / "tests").mkdir()
+    (판3 / "tests" / "test_b.py").write_text("print('b 빨강'); raise SystemExit(1)\n", encoding="utf-8")
+    (판3 / "tests" / "test_ok.py").write_text("print('ok')\n", encoding="utf-8")
+    감사꼬리 = "  OK   tests/test_ok.py\n  실패 tests/test_b.py (끝값 1)\n  실패 tests/test_없음.py (끝값 1)\n"
+    좁힘 = I._감사좁히기(판3, 감사꼬리, dict(os.environ), 이미=[])
+    ok(len(좁힘) == 1 and 좁힘[0]["이름"] == "감사:tests/test_b.py" and 좁힘[0]["끝값"] == 1 and "b 빨강" in 좁힘[0]["꼬리"]
+       and 좁힘[0]["명령"] == ["python3", "tests/test_b.py"],
+       f"**빨간 파일마다 판정 하나** -- 그 파일만의 끝값·꼬리·명령 ({[(x['이름'], x['끝값']) for x in 좁힘]})")
+    ok(I._감사좁히기(판3, 감사꼬리, dict(os.environ), 이미=[["python3", "tests/test_b.py"]]) == [], "이미 있는 명령(재현과 겹침)은 두 번 안 만든다")
+    ok(I._감사좁히기(판3, "  OK   tests/test_ok.py\n", dict(os.environ), 이미=[]) == [], "감사가 초록이면 좁힐 것이 없다")
+finally:
+    import shutil as _sh4; _sh4.rmtree(판3, ignore_errors=True)
+
 p = subprocess.run([sys.executable, "-m", "investigate.run"], cwd=str(뿌리), capture_output=True, text=True, timeout=120)
 ok(p.returncode == 3, "증상 없이 부르면 끝값 3 -- 초록이 아니다")
 _run = (뿌리 / "investigate" / "run.py").read_text(encoding="utf-8")

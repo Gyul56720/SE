@@ -133,6 +133,28 @@ def _판정기본(repo: Path, 재현명령: str = "") -> "list[dict]":
     for 이름, argv, 초 in 표:
         rc, 꼬리 = _돌리기(argv, repo, 초, env=env)
         out.append({"이름": 이름, "끝값": rc, "꼬리": "\n".join(꼬리.splitlines()[-8:]), "명령": argv, "초": 초})
+        if 이름 == "감사" and rc != 0:
+            out += _감사좁히기(repo, 꼬리, env, 이미=[p["명령"] for p in out])
+    return out
+
+
+_감사실패꼴 = re.compile(r"^\s*실패 (tests/[\w가-힣./-]+\.py) \(끝값 (\d+)\)", re.M)
+
+
+def _감사좁히기(repo: Path, 감사꼬리: str, env: dict, 이미: "list[list]") -> "list[dict]":
+    """**최소 재현 축소.** 감사가 빨가면 그 안의 어느 검사 파일이 빨간지 코드가 읽어 **파일마다 판정**을 더한다.
+    두뇌는 '감사 빨강' 한 덩어리 대신 `감사:tests/test_x.py` 와 그 파일만의 꼬리·귀속을 받는다.
+
+    사용자(2026-09-12): "구조가 좋으면 모델의 성능을 이길 수 있다." 8개 중 7번. 이 저장소의 검사는 파일 단위
+    스크립트라 파일보다 작게 쪼갤 것이 없다 -- 파이프라인 전체에서 파일 하나로 좁히는 것이 축소다.
+    신호가 좁아지면 두뇌의 탐색 공간도 좁아지고, 대조(HEAD 에서 다시 돌리기)도 그 파일에 대해 따로 된다."""
+    out = []
+    for 파일, _rc in _감사실패꼴.findall(감사꼬리 or ""):
+        argv = ["python3", 파일]
+        if argv in 이미 or not (repo / 파일).is_file():
+            continue
+        rc, 꼬리 = _돌리기(argv, repo, 300, env=env)
+        out.append({"이름": f"감사:{파일}", "끝값": rc, "꼬리": "\n".join(꼬리.splitlines()[-8:]), "명령": argv, "초": 300})
     return out
 
 
