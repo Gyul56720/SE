@@ -46,6 +46,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 import time
@@ -679,6 +680,23 @@ def 사용자개선(말: str, repo=None, 초: int = 180, 전부: bool = True, �
 
 
 # ---------------------------------------------------------------- 남은 계획판: 봇이 켠 것은 봇이 치운다
+def _살아있나(pid) -> bool:
+    """그 pid 의 프로세스가 지금 돌고 있나. 나 자신이면 False(내가 켠 판을 내가 막을 일은 없다)."""
+    try:
+        pid = int(pid or 0)
+    except (TypeError, ValueError):
+        return False
+    if pid <= 0 or pid == os.getpid():
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
 def 판정리(repo) -> "tuple[bool, str]":
     """켜져 있는 계획판을 코드가 가른다. (막힘, 말).
 
@@ -696,6 +714,11 @@ def 판정리(repo) -> "tuple[bool, str]":
     판 = Path(s["판"])                                   # 디렉터리가 사라진 판은 P.읽기 가 이미 None 으로 친다
     초록 = bool(시.get("통과")) and 시.get("해시") == P._해시(판)
     머리 = f"[{s.get('id', '?')}] {s.get('누가', '?')} · {str(s.get('요청', ''))[:60]!r}"
+    # **켠 프로세스가 살아 있으면 남의 일이 도는 중이다.** 실측 2026-09-12(VM): PDF 부탁이 시험 중일 때
+    # 자가개선이 나란히 돌아 그 판을 '시험 안 한 판' 이라며 치웠다. 산 실행의 판은 찌꺼기가 아니다 -- 기다린다.
+    if _살아있나(s.get("pid")):
+        return True, (f"계획판을 다른 실행이 쓰는 중이다 {머리} (pid {s.get('pid')}) -- 그 실행이 끝나면 "
+                      f"다시 부탁하라(한 번에 하나)")
     if 초록:
         return True, (f"계획판이 이미 켜져 있다 -- 리허설 초록으로 동의를 기다리는 중 {머리}. `!개선 승인` 으로 "
                       f"붙이거나 `!개선 버림` 으로 치워야 다음 부탁을 받는다(한 번에 하나)")

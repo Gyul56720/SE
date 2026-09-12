@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -66,8 +67,10 @@ def 켜기(요청: str, repo=None, 누가: str = "cli") -> str:
     if r.returncode != 0:
         return f"그림자를 못 꺼냈다: {r.stderr.strip()[:200]}"
     아이디 = time.strftime("%Y%m%d%H%M%S", time.gmtime())
+    # pid: 켠 프로세스. improve.판정리 가 "살아 있는 실행의 판인가" 를 이것으로 가른다(실측 2026-09-12:
+    # 시험 중인 판을 나란히 돈 자가개선이 '시험 안 한 판' 이라며 치웠다 -- 산 것과 죽은 것을 갈라야 한다).
     s = {"id": 아이디, "판": str(tmp), "요청": (요청 or "").strip()[:300], "누가": 누가,
-         "때": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+         "때": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "pid": os.getpid()}
     p = repo / 상태상대
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(s, ensure_ascii=False, indent=1), encoding="utf-8")
