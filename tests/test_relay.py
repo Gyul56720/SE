@@ -146,16 +146,17 @@ _log = _os.path.join(_d, "x.log")
 with open(_log, "w", encoding="utf-8") as _f:
     _f.write('Traceback (most recent call last):\n  File "improve/run.py", line 410, in 사용자개선\n'
              "ModuleNotFoundError: No module named 'plan'\n")
-_e = relay.배경등록("x", _log, "python3 x")            # 시작바이트를 안 주면 지금 크기 = 옛 글 뒤
+_e = relay.배경등록("x", _log, "python3 x", 시작바이트=_os.path.getsize(_log))   # 띄우는 쪽이 열기 전에 잰 자리
 relay.배경꺼내기()
 with open(_log, "a", encoding="utf-8") as _f:
     _f.write("개선 부탁: 핸드폰\n  판정: **판열림**\n")
 ok(relay.배경로그(_e).startswith("개선 부탁"), "배경로그 는 이 실행이 쓴 부분만 돌려준다")
 ok(relay.터졌나(_e) == (False, ""), "**옛 트레이스백으로 '터졌다' 고 하지 않는다**")
 ok("ModuleNotFoundError" not in relay.배경보고(_e) and "판열림" in relay.배경보고(_e), "끝 보고도 이 실행의 줄만")
-_e2 = relay.배경등록("y", _log, "python3 y", 시작바이트=0)
+_e2 = relay.배경등록("y", _log, "python3 y")
 relay.배경꺼내기()
-ok(relay.터졌나(_e2)[0] is True, "시작바이트 0 이면 예전처럼 전부 본다 (옛 글이 이 실행 것일 때)")
+ok(_e2["시작바이트"] == 0 and relay.터졌나(_e2)[0] is True,
+   "**안 주면 0 -- 전부 본다.** 등록 시점에 재면 자식이 이미 쓴 줄이 잘린다(띄운 뒤 등록하므로)")
 import shutil as _sh; _sh.rmtree(_d, ignore_errors=True)
 _ed = (뿌리 / "eval" / "discord_cmd.py").read_text(encoding="utf-8")
 ok("시작바이트 = 로그파일.stat().st_size" in _ed and ", 시작바이트)" in _ed, "띄우는 쪽이 열기 전 크기를 재서 넘긴다")
