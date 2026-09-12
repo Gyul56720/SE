@@ -39,7 +39,7 @@ def ok(cond, what):
 os.environ.update({"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@x",
                    "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@x"})
 판 = Path(tempfile.mkdtemp(prefix="test-iv-"))
-_원 = (I.두뇌, I.판정기, I.진단기, I.모으기, I.머지기, I.대조기)
+_원 = (I.두뇌, I.판정기, I.진단기, I.모으기, I.머지기, I.대조기, I.절제검사기)
 머지호출 = []
 try:
     subprocess.run(["git", "-C", str(판), "init", "-q"], check=False)
@@ -55,6 +55,8 @@ try:
 
     I.판정기 = 판정_파일로
     I.진단기 = lambda 글, repo=None: {"증상": {}, "증거": [], "가설": []}
+    # 절제는 아래 목표 모드 대목에서 따로 붙든다 -- 다른 대목의 가짜 패치가 걸리지 않게 주입으로 성립시킨다
+    I.절제검사기 = lambda repo, 시작: {"성립": True, "말": "검사 주입", "잰것": [], "안잡힌것": [], "못잼": []}
     # 머지는 GitHub 를 부르지 않는다 -- 가짜가 호출을 적고 "문제 없음, 붙였다" 를 돌려준다
     I.머지기 = lambda repo, 아이디, 부탁: (머지호출.append((아이디, 부탁)) or
                                      {"됐나": True, "번호": 9, "url": "https://x/pull/9", "문제": [], "알림": ["새 의존성(requirements.txt) -- 배포가 pip 로 깐다"], "왜": "머지됨", "갈래정리": "main 으로 돌아왔다", "크기": "+10 / -0 · 파일 2"})
@@ -186,7 +188,43 @@ try:
     ok(r["해결"] and r["바퀴"] == 2, f"**속임수 검사는 해결로 안 치고, 진짜 검사로 바꾼 뒤에 해결** (바퀴 {r['바퀴']})")
     ok("[검사 무효]" in 받은[1] and "기능이 없는 판" in 받은[1], "두뇌에게 검사가 무효인 까닭을 들려 준다")
     단 = [d.get("단계") for d in I.원장읽기(판, "g2")]
-    ok("검사무효" in 단 and 단[-3:] == ["검사유효", "머지", "끝"], f"원장에 무효 -> 유효 -> 머지가 남는다 ({단})")
+    ok("검사무효" in 단 and 단[-4:] == ["검사유효", "절제성립", "머지", "끝"], f"원장에 무효 -> 유효 -> 절제 -> 머지가 남는다 ({단})")
+
+    print("\n  -- 절제: 검사가 검사 구실을 해도 기능마다 걸리는지는 따로다 (빼면 빨강 · 넣으면 초록) --")
+    # 사용자(2026-09-12): "기능의 존재를 주장하지 말고, 그 기능을 제거했을 때 검사가 무너지고 다시 넣었을 때 복구되는지."
+    (판 / "pdfout.py").unlink(missing_ok=True); (판 / "tests" / "test_목표_g2.py").unlink(missing_ok=True)
+    받은.clear(); 절제호출 = []
+
+    def 절제_둘째에성립(repo, 시작):
+        절제호출.append(시작)
+        if len(절제호출) == 1:
+            return {"성립": False, "말": "**절제해도 검사가 안 무너진다**: pdfout.py:쪽수. 그 기능을 빼도 패치의 검사(tests/test_목표_g3.py)가 초록이다",
+                    "잰것": [{"이름": "pdfout.py:만들기", "무너짐": True, "어디": "tests/test_목표_g3.py"}, {"이름": "pdfout.py:쪽수", "무너짐": False, "어디": ""}],
+                    "안잡힌것": ["pdfout.py:쪽수"], "못잼": []}
+        return {"성립": True, "말": "절제 2개 다 무너졌다", "잰것": [], "안잡힌것": [], "못잼": []}
+    I.절제검사기 = 절제_둘째에성립
+
+    def 두뇌_절제(p, t):
+        받은.append(p)
+        n = sum(1 for x in 받은 if x.startswith("[조사 바퀴"))
+        if n == 1:                        # 검사는 만들기만 재고, 기능은 만들기·쪽수 둘 -- 쪽수는 아무 검사도 안 본다
+            (판 / "tests" / "test_목표_g3.py").write_text("import pdfout\nassert pdfout.만들기('x') == 'ok'\n", encoding="utf-8")
+            (판 / "pdfout.py").write_text("def 만들기(md):\n    return 'ok'\n\n\ndef 쪽수(md):\n    return 1\n", encoding="utf-8")
+            return "지었다"
+        if n == 2:                        # 되묻자 쪽수도 재는 검사를 더한다
+            (판 / "tests" / "test_목표_g3.py").write_text("import pdfout\nassert pdfout.만들기('x') == 'ok'\nassert pdfout.쪽수('x') == 1\n", encoding="utf-8")
+            return "쪽수 검사를 더했다"
+        return "…"
+    I.두뇌 = 두뇌_절제
+    r = I.조사("md 를 pdf 로 제공", repo=판, 시한초=120, 최대바퀴=4, 아이디="g3", 목표=True)
+    ok(r["해결"] and r["바퀴"] == 2, f"**검사가 유효해도 절제에 안 잡히면 해결로 안 치고, 잡힌 뒤에 해결** (바퀴 {r['바퀴']})")
+    ok("[절제 안 잡힘]" in 받은[1] and "pdfout.py:쪽수" in 받은[1], "두뇌에게 **무엇을 빼도 안 무너졌는지**를 들려 준다")
+    ok(len(절제호출) == 2 and all(re.fullmatch(r"[0-9a-f]{40}", c) for c in 절제호출), f"절제는 조사 **시작 커밋**을 기준으로 잰다 ({절제호출[:1]})")
+    단 = [d.get("단계") for d in I.원장읽기(판, "g3")]
+    ok("절제안잡힘" in 단 and 단[-4:] == ["검사유효", "절제성립", "머지", "끝"], f"원장에 절제안잡힘 -> 절제성립 -> 머지가 남는다 ({단})")
+    안 = [d for d in I.원장읽기(판, "g3") if d.get("단계") == "절제안잡힘"]
+    ok(안 and 안[0].get("안잡힌것") == ["pdfout.py:쪽수"], "원장 행에 안 잡힌 단위가 남는다")
+    I.절제검사기 = lambda repo, 시작: {"성립": True, "말": "검사 주입", "잰것": [], "안잡힌것": [], "못잼": []}
 
     print("\n== 머지 판단: 문제는 막고, 알림은 적기만 한다 (순수 함수) ==")
     깨끗 = {"겹침": False, "검사": [{"이름": "gates", "상태": "completed", "결론": "success"}], "파일들": [{"경로": "x.py", "상태": "modified"}], "더함": 10, "뺌": 2}
@@ -217,8 +255,8 @@ try:
     ok(r["해결"] and not r["머지"]["됐나"] and "안 붙였다" in 보 and "CI 빨강: gates" in 보 and "`!조사 머지 12`" in 보,
        "**문제가 있으면 안 붙이고, 무엇이 문제인지와 확정 명령을 적는다**")
     I.두뇌, I.판정기 = _두뇌전, None
-    ok("tests/test_목표_g2.py" in 받은[0] and "못박아라" in 받은[0], "첫 일이 검사로 못박기라고 말한다")
-    ok("재현 명령: `python3 tests/test_목표_g2.py`" in 받은[0], "그 검사가 재현 명령이 된다 -- 판정은 끝값")
+    ok("tests/test_목표_g3.py" in 받은[0] and "못박아라" in 받은[0], "첫 일이 검사로 못박기라고 말한다")
+    ok("재현 명령: `python3 tests/test_목표_g3.py`" in 받은[0], "그 검사가 재현 명령이 된다 -- 판정은 끝값")
     I.판정기 = 판정_파일로
 
     print("\n== 원장·메모 ==")
@@ -230,7 +268,7 @@ try:
     메모 = list((판 / "public_agent_memory").glob("*_고치기_*.md"))
     ok(메모 and any("조사 t3" in m.read_text(encoding="utf-8") for m in 메모), "메모가 남는다 -- 밤에 간추려 장기기억이 된다")
 finally:
-    I.두뇌, I.판정기, I.진단기, I.모으기, I.머지기, I.대조기 = _원
+    I.두뇌, I.판정기, I.진단기, I.모으기, I.머지기, I.대조기, I.절제검사기 = _원
     shutil.rmtree(판, ignore_errors=True)
 
 print("\n== claude 두뇌: 같은 조사는 같은 세션 ==")

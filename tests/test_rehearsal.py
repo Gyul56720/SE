@@ -240,6 +240,24 @@ try:
     r = 절재기(상한=1, **{"mod.py": F1 + "\n\ndef g():\n    return 9\n", "tests/test_a.py": T_F})
     ok(r["성립"] and len(r["잰것"]) == 1 and "1개는 안 쟀다" in r["말"], "상한을 넘는 단위는 안 재고 그렇게 말한다")
     ok(git(_절, "worktree", "list").stdout.strip().count("\n") == 0, "절제 워크트리가 안 남는다")
+
+    print("\n  -- 기준 커밋: 조사 모드처럼 두뇌가 바퀴마다 커밋해 HEAD 가 움직여도 시작 커밋 대비 전부가 한 패치다 --")
+    w = 절판(**{"mod.py": F1 + "\n\ndef g():\n    return 9\n", "tests/test_a.py": T_F})
+    try:
+        시작 = git(w, "rev-parse", "HEAD").stdout.strip()
+        git(w, "add", "-A"); git(w, "commit", "-qm", "바퀴 1")            # f·g·검사를 커밋했다 -- HEAD 대비는 빈 판
+        (w / "mod.py").write_text(F1 + "\n\ndef g():\n    return 9\n\n\ndef k():\n    return 0\n", encoding="utf-8")
+        r = R.절제검사(_절, w)
+        ok(r["성립"] and "검사가 없다" in r["말"], "기준 HEAD 로는 커밋된 검사가 안 보인다(패치에 검사가 없다고 본다)")
+        r = R.절제검사(_절, w, 기준=시작)
+        ok(not r["성립"] and r["안잡힌것"] == ["mod.py:g", "mod.py:k"] and [x["이름"] for x in r["잰것"]] == ["mod.py:f", "mod.py:g", "mod.py:k"],
+           f"**기준=시작 커밋이면 커밋된 것 + 작업 디렉터리 것이 다 한 패치다** -- f 잡힘, g·k 안 잡힘 ({r['안잡힌것']})")
+        (w / "old.py").unlink(); git(w, "add", "-A"); git(w, "commit", "-qm", "바퀴 2")
+        r = R.절제검사(_절, w, 기준=시작)
+        ok(not r["성립"] and r["안잡힌것"] == ["mod.py:g", "mod.py:k"], "커밋으로 지운 파일도 기준 대비 지움으로 잡혀 절제 판에서 빠진다")
+    finally:
+        git(_절, "worktree", "remove", "--force", str(w))
+    ok(git(_절, "worktree", "list").stdout.strip().count("\n") == 0, "기준 커밋 절제 뒤에도 워크트리가 안 남는다")
 finally:
     shutil.rmtree(_절, ignore_errors=True)
 
