@@ -24,13 +24,14 @@ from repair import discord_cmd as 고치기
 from research import discord_cmd as 연구
 from plan import discord_cmd as 계획
 from improve import discord_cmd as 자가개선
+from investigate import discord_cmd as 조사
 from secaudit import discord_cmd as 점검
 from router import discord_cmd as 경로
 from sandbox import discord_cmd as 실험
 import keys as 열쇠
 import relay as 중계
 
-명령들 = (소설, 실험, 감사, 기억, 평가, 경로, 목표, 진화, 중계, 위임, 수집, 열쇠, 고치기, 점검, 코드화, 연구, 계획, 자가개선)
+명령들 = (소설, 실험, 감사, 기억, 평가, 경로, 목표, 진화, 중계, 위임, 수집, 열쇠, 고치기, 점검, 코드화, 연구, 계획, 자가개선, 조사)
 
 
 def run(text: str, runner=None, allow_write: bool = True) -> "str | None":
@@ -92,6 +93,10 @@ def _아이디(말: str) -> str:
      lambda 말: ("!계획 시험", "")),
     ("계획", r"(?:저장소|코드|파일|\.py)[^\n]{0,12}(?:고쳐|수정|바꿔|추가|붙여|만들)|리팩터|기능[^\n]{0,8}(?:추가|붙여|만들)",
      lambda 말: (f"!계획 켜기 {말.strip()[:180]}", "")),
+    # 긴 호흡. "끝까지" · "시간이 걸려도" · "파헤쳐" 는 한 턴짜리 고치기가 아니라 조사다.
+    # '조사해' 는 안 건다 -- "시세 방법론 조사해줘" 같은 연구 부탁까지 삼킨다(실측 test_dispatch_tool).
+    ("조사", r"끝까지\s*(?:고쳐|풀어|해결|파)|시간이?\s*(?:걸려도|들어도)|파헤쳐|원인[^\n]{0,6}(?:찾아|캐|밝혀)|될\s*때까지",
+     lambda 말: (f"!조사 {말.strip()[:180]}", "")),
     ("고치기", r"고치기|오류|에러|실패하는|안\s*돌아|깨졌|repair|터졌|죽었",
      lambda 말: (None, "재현 명령과 증상이 필요하다 -- `!고치기 <재현 명령> :: <증상>` 또는 repair 도구를 직접 불러라")),
     ("점검", r"보안|취약|해킹|포트|방화벽|점검해",
