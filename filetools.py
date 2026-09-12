@@ -51,16 +51,65 @@ def 편집(path: str, old: str, new: str, repo=None) -> str:
         raise ValueError(f"파일이 없다: {path} -- 새 파일은 run_shell 로 만들되 작게")
     text = p.read_text(encoding="utf-8", errors="replace")
     n = text.count(old)
+    꼬리말 = ""
     if n == 0:
-        힌트 = ""
-        한줄 = old.strip().splitlines()[0] if old.strip() else ""
-        if 한줄 and 한줄 in text:
-            힌트 = " (첫 줄은 있다 -- 들여쓰기나 줄바꿈이 다르다. read_file 로 실제 글자를 봐라)"
-        raise ValueError(f"old 가 파일에 없다{힌트}")
-    if n > 1:
+        # **공백만 다른 자리가 딱 하나면 그 자리다.** 실측 2026-09-12(VM): `!개선` 이 제2의 뇌 근거까지
+        # 들고 패치를 냈는데 `old 가 파일에 없다` 로 끝났다. 모델은 앞 200줄을 보고 old 를 짓고,
+        # 들여쓰기 한 칸·줄 끝 공백 하나면 정확히-한-번 규칙에 걸린다. 그 실패의 대부분은 뜻이
+        # 아니라 공백이다. 유일할 때만 맞춘다 -- 둘 이상이면 예전처럼 거절한다(안전 규칙은 그대로).
+        자리 = _공백무시로_찾기(text, old)
+        if 자리 is None:
+            힌트 = ""
+            한줄 = old.strip().splitlines()[0] if old.strip() else ""
+            if 한줄 and 한줄 in text:
+                힌트 = " (첫 줄은 있다 -- 들여쓰기나 줄바꿈이 다르다. read_file 로 실제 글자를 봐라)"
+            raise ValueError(f"old 가 파일에 없다{힌트}")
+        if 자리 == "여럿":
+            raise ValueError("old 가 공백만 다른 꼴로 여러 번 나온다 -- 앞뒤를 더 붙여 하나로 좁혀라")
+        old = 자리                                   # 파일의 실제 글로 바꿔 끼운다
+        꼬리말 = " (공백만 달라 실제 글에 맞췄다)"
+    elif n > 1:
         raise ValueError(f"old 가 {n}번 나온다 -- 앞뒤를 더 붙여 하나로 좁혀라")
     새글 = text.replace(old, new, 1)
     p.write_text(새글, encoding="utf-8")
     뺀줄 = len(old.splitlines())          # "x\n" 은 1줄이다 -- count("\n")+1 은 2로 센다
     넣은줄 = len(new.splitlines())
-    return f"{p.relative_to(Path(repo or toolgate.REPO).resolve())}: {뺀줄}줄 -> {넣은줄}줄 바꿈"
+    return f"{p.relative_to(Path(repo or toolgate.REPO).resolve())}: {뺀줄}줄 -> {넣은줄}줄 바꿈{꼬리말}"
+
+
+def _공백무시로_찾기(text: str, old: str) -> "str | None":
+    """줄마다 앞뒤 공백을 떼고 속 공백을 하나로 접어 견준다. 딱 하나면 **파일의 실제 글**을,
+    여럿이면 "여럿", 없으면 None."""
+    import re as _re
+
+    def 접기(줄: str) -> str:
+        # 줄 안의 공백은 전부 뗀다 -- `a + b` 와 `a+b` 는 같은 글이다. 줄 나눔은 그대로 센다.
+        return _re.sub(r"\s+", "", 줄)
+    old줄 = [접기(x) for x in old.splitlines() if 접기(x)]
+    if not old줄:
+        return None
+    줄들 = text.splitlines(keepends=True)
+    접은 = [접기(x) for x in 줄들]
+    맞은 = []
+    n = len(old줄)
+    for i in range(0, len(줄들)):
+        # 빈 줄은 건너뛰며 맞춘다 -- old 에 빈 줄이 없어도 파일엔 있을 수 있다
+        j, k = i, 0
+        while j < len(줄들) and k < n:
+            if 접은[j] == "":
+                j += 1
+                continue
+            if 접은[j] != old줄[k]:
+                break
+            j += 1; k += 1
+        if k == n and 접은[i] != "":
+            맞은.append((i, j))
+    if not 맞은:
+        return None
+    if len(맞은) > 1:
+        return "여럿"
+    i, j = 맞은[0]
+    실제 = "".join(줄들[i:j])
+    if not old.endswith("\n") and 실제.endswith("\n"):
+        실제 = 실제[:-1]
+    return 실제

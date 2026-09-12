@@ -127,13 +127,21 @@ try:
             ok(False, f"{왜} 가 거절되지 않았다")
         except ValueError as e:
             ok(True, f"{왜} 는 거절 ({str(e)[:40]})")
+    # 첫 줄은 맞는데 **뜻이 다른** old(`a * b`)는 여전히 거절 -- 들여쓰기 힌트도 그대로.
     try:
-        filetools.편집("src/셈.py", "def 빼기(a, b):\n  return a - b", "x", repo=repo)
-        ok(False, "줄바꿈·들여쓰기 다른 old 가 통과했다")
+        filetools.편집("src/셈.py", "def 빼기(a, b):\n  return a * b", "x", repo=repo)
+        ok(False, "뜻이 다른 old 가 통과했다")
     except ValueError as e:
         ok("들여쓰기" in str(e), f"**첫 줄만 맞으면 들여쓰기 힌트를 준다** ({str(e)[:50]})")
     ok((repo / "src" / "셈.py").read_text(encoding="utf-8").count("def ") == 2,
        "거절된 편집은 파일을 안 건드린다")
+    # **공백만 다른 유일한 자리는 맞춘다.** 실측 2026-09-12(VM): `!개선` 의 패치가 들여쓰기 한 칸 차이로
+    # `old 가 파일에 없다` 에서 끝났다. 뜻이 아니라 공백이었다. 유일할 때만이고, 그렇다고 말한다.
+    _앞 = (repo / "src" / "셈.py").read_text(encoding="utf-8")
+    말 = filetools.편집("src/셈.py", "def 빼기(a, b):\n  return a - b", "def 빼기(a, b):\n    return b - a", repo=repo)
+    ok("공백만 달라" in 말 and "return b - a" in (repo / "src" / "셈.py").read_text(encoding="utf-8"),
+       f"**들여쓰기만 다른 old 는 실제 글에 맞춰 바꾼다 -- 그리고 그렇다고 말한다** ({말})")
+    (repo / "src" / "셈.py").write_text(_앞, encoding="utf-8")       # 아래 읽기 검사는 원래 글을 본다
 
     print("\n== 읽기 ==")
     본 = filetools.읽기("src/셈.py", repo=repo)

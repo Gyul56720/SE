@@ -323,16 +323,26 @@ def _제안기본(prompt: str) -> str:
     return R.부르기("수리기", prompt)["답"]
 
 
+def _JSON뽑기(답: str) -> "dict | None":
+    """펜스(```json)·앞뒤 말·뒤에 붙은 다른 중괄호가 있어도 **첫 번째로 온전한 사전**을 뽑는다.
+    탐욕 정규식(여는 중괄호부터 마지막 닫는 중괄호까지)은 답 끝의 아무 중괄호까지 삼켜서 json 이
+    안 열렸다(실측 꼴)."""
+    글 = re.sub(r"```(?:json)?", "", 답)
+    dec = json.JSONDecoder()
+    for m in re.finditer(r"\{", 글):
+        try:
+            d, _ = dec.raw_decode(글, m.start())
+        except ValueError:
+            continue
+        if isinstance(d, dict) and d.get("꼴"):
+            return d
+    return None
+
+
 def 해석(답: str) -> "dict | None":
     """답에서 JSON 하나를 뽑아 이 자리의 꼴로 검사한다. repair.해석 은 repair 의 꼴("패치" 목록)을
     강제하므로 그대로 못 쓴다 -- 여기 꼴은 "편집"/"새파일" 이다(실측: 재사용했더니 전부 '제안없음')."""
-    m = re.search(r"\{.*\}", 답 or "", re.S)
-    if not m:
-        return None
-    try:
-        d = json.loads(m.group(0))
-    except ValueError:
-        return None
+    d = _JSON뽑기(답 or "")
     if not isinstance(d, dict) or d.get("꼴") not in ("패치", "사람"):
         return None
     if d["꼴"] == "사람":
@@ -383,6 +393,63 @@ def 적용(제안: dict, 판: Path) -> "tuple[bool, str]":
     if not 한것:
         return False, "패치에 편집도 새파일도 없다"
     return True, " · ".join(한것)[:300]
+
+
+적용되풀이횟수 = 3
+
+
+def _못맞춘자리(판: Path, 편집: dict) -> str:
+    """old 가 안 맞은 파일의 **실제 글**을 돌려준다 -- 가장 비슷한 대목의 앞뒤 여섯 줄."""
+    import difflib
+    try:
+        줄들 = (판 / str(편집.get("path", ""))).read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return f"### {편집.get('path')} -- 파일이 없다 (새파일로 지어야 한다)"
+    old줄 = str(편집.get("old", "")).splitlines() or [""]
+    n = max(1, len(old줄))
+    최고 = (0.0, 0)
+    for i in range(0, max(1, len(줄들) - n + 1)):
+        r = difflib.SequenceMatcher(None, "\n".join(줄들[i:i + n]), "\n".join(old줄)).ratio()
+        if r > 최고[0]:
+            최고 = (r, i)
+    a, b = max(0, 최고[1] - 6), min(len(줄들), 최고[1] + n + 6)
+    return (f"### {편집.get('path')} 의 실제 글 {a + 1}~{b}줄 (네 old 와 비슷함 {최고[0]:.2f})\n"
+            + "\n".join(줄들[a:b]))
+
+
+def 적용되풀이(제안: dict, 원프롬프트: str, 판새로, 횟수: int = 적용되풀이횟수) -> "tuple[bool, str, dict, int]":
+    """적용이 `old 가 파일에 없다` 로 막히면 **그 파일의 실제 글을 들려 다시 청한다.** (ok, 말, 제안, 시도수)
+
+    실측 2026-09-12(VM): `!개선 md가 안보이니 …` 가 제2의 뇌 근거까지 들고 패치를 냈는데
+    `ValueError: old 가 파일에 없다` 로 끝났다. 모델은 파일의 앞 200줄만 보고 old 를 짓는다 --
+    한 글자만 달라도 정확히-한-번 규칙에 걸린다. 한 번 틀리면 끝나던 자리를 되풀이로 바꾼다.
+    되풀이마다 판을 새로 깐다 -- 앞 시도가 편집 일부를 이미 적용했을 수 있어서다(그러면
+    같은 old 가 두 번째엔 정말 없다).
+    검사를 약화하는 패치(까닭이 있는 거절)는 되풀이하지 않는다 -- 글이 아니라 뜻이 틀린 것이다."""
+    말 = ""
+    for k in range(1, max(1, 횟수) + 1):
+        판 = 판새로()
+        if 판 is None:
+            return False, "그림자를 못 꺼냈다", 제안, k
+        ok, 말 = 적용(제안, 판)
+        if ok:
+            return True, 말, 제안, k
+        if "old 가 파일에 없다" not in 말 and "두 번" not in 말 and "KeyError" not in 말:
+            return False, 말, 제안, k                      # 뜻이 틀린 거절 -- 되풀이해도 같다
+        if k == 횟수:
+            break
+        자리 = "\n\n".join(_못맞춘자리(판, e) for e in (제안.get("편집") or []))
+        되묻기 = (원프롬프트 + f"\n\n[적용 실패 {k}/{횟수}] {말}\n"
+                "old 는 **아래 실제 글에서 글자 그대로** 베껴라(공백·따옴표까지). 없는 글을 짓지 마라. "
+                "같은 JSON 꼴로 다시 답하라.\n\n" + 자리)
+        try:
+            새 = 해석((제안기 or _제안기본)(되묻기))
+        except Exception as e:                             # noqa: BLE001
+            return False, f"{말} · 되묻기 실패: {type(e).__name__}", 제안, k
+        if not 새 or 새.get("꼴") != "패치":
+            return False, f"{말} · 되물었더니 패치 꼴이 아니었다", 제안, k
+        제안 = 새
+    return False, f"{횟수}번 청했는데 old 가 계속 안 맞는다 -- 마지막: {말}", 제안, 횟수
 
 
 # ---------------------------------------------------------------- 사용자가 말한 개선 (!개선 <말>)
@@ -469,8 +536,9 @@ def 사용자개선(말: str, repo=None, 초: int = 180, 전부: bool = True, �
     r["근거"] = [f"{x['출처']}#{x['해시']}" for x in 근거["참고"]]
     r["확장"] = 근거["확장"]
     r["파일들"] = _관련파일찾기(말, repo)
+    원프롬프트 = 부탁프롬프트(말, repo, 근거, r["파일들"])
     try:
-        답 = (제안기 or _제안기본)(부탁프롬프트(말, repo, 근거, r["파일들"]))
+        답 = (제안기 or _제안기본)(원프롬프트)
     except Exception as e:                             # noqa: BLE001
         r.update(판정="제안없음", 말=f"제안기를 못 불렀다: {type(e).__name__}: {str(e)[:100]}")
         return r
@@ -481,15 +549,17 @@ def 사용자개선(말: str, repo=None, 초: int = 180, 전부: bool = True, �
     r["왜"] = str(제안.get("왜", ""))[:200]
     r["댄근거"] = [str(x) for x in (제안.get("근거") or [])][:6]
 
-    P.켜기(f"자가개선: [부탁] {말[:80]}", repo=repo, 누가="개선")
-    판 = P.현재판(repo)
-    if 판 is None:
-        r.update(판정="판못깜", 말="그림자를 못 꺼냈다")
-        return r
-    ok, 적용말 = 적용(제안, 판)
+    def _판새로():
+        if P.현재판(repo) is not None:
+            P.버림(repo)
+        P.켜기(f"자가개선: [부탁] {말[:80]}", repo=repo, 누가="개선")
+        return P.현재판(repo)
+    ok, 적용말, 제안, r["적용시도"] = 적용되풀이(제안, 원프롬프트, _판새로)
+    r["왜"] = str(제안.get("왜", ""))[:200]
     if not ok:
-        P.버림(repo)
-        r.update(판정="적용실패", 말=적용말)
+        if P.현재판(repo) is not None:
+            P.버림(repo)
+        r.update(판정="적용실패" if "그림자" not in 적용말 else "판못깜", 말=적용말)
         return r
 
     시험보고 = P.시험하기(repo, 초=초, 전부=전부, 전부초=전부초)
@@ -639,8 +709,9 @@ def 한후보(틈: dict, repo=None, 초: int = 120, 자: bool = False,
     근거 = 근거모으기(틈, repo)
     r["근거"] = [f"{x['출처']}#{x['해시']}" for x in 근거["참고"]]
     r["확장"] = 근거["확장"]
+    원프롬프트 = 프롬프트(틈, 전꼬리, repo, 근거)
     try:
-        답 = (제안기 or _제안기본)(프롬프트(틈, 전꼬리, repo, 근거))
+        답 = (제안기 or _제안기본)(원프롬프트)
     except Exception as e:                             # noqa: BLE001
         r.update(판정="제안없음", 말=f"제안기를 못 불렀다: {type(e).__name__}: {str(e)[:100]}")
         return r
@@ -651,15 +722,18 @@ def 한후보(틈: dict, repo=None, 초: int = 120, 자: bool = False,
     r["왜"] = str(제안.get("왜", ""))[:200]
     r["댄근거"] = [str(x) for x in (제안.get("근거") or [])][:6]
 
-    켜 = P.켜기(f"자가개선: [{틈['종류']}] {틈['무엇']}", repo=repo, 누가="자가개선")
+    def _판새로():
+        if P.현재판(repo) is not None:
+            P.버림(repo)
+        P.켜기(f"자가개선: [{틈['종류']}] {틈['무엇']}", repo=repo, 누가="자가개선")
+        return P.현재판(repo)
+    ok, 말, 제안, r["적용시도"] = 적용되풀이(제안, 원프롬프트, _판새로)
+    r["왜"] = str(제안.get("왜", ""))[:200]
     판 = P.현재판(repo)
-    if 판 is None:
-        r.update(판정="판못깜", 말=켜)
-        return r
-    ok, 말 = 적용(제안, 판)
     if not ok:
-        P.버림(repo)
-        r.update(판정="적용실패", 말=말)
+        if 판 is not None:
+            P.버림(repo)
+        r.update(판정="적용실패" if "그림자" not in 말 else "판못깜", 말=말)
         return r
 
     후끝, 후꼬리 = 판정(틈["판정명령"], 판, 초)

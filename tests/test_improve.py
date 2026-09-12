@@ -141,6 +141,58 @@ try:
     ok("적용됨" in I.승인(d, 누가="검사"), "`!개선 승인` 으로 붙는다")
     git(d, "commit", "-qam", "부탁 반영")
 
+    print("\n== 고약한 제안기: 실제 모델처럼 틀리는 답 -- 그래도 끝까지 가는가 ==")
+    # 사용자(2026-09-12): "왜 이런 버그가 계속 생기지? 근본적으로 잡아봐." -- 여기까지의 가짜 제안기는
+    # 전부 얌전했다(old 가 글자 그대로, JSON 이 깨끗). 실제 모델은 펜스로 감싸고 앞뒤에 말을 붙이고
+    # 들여쓰기 한 칸을 틀린다. 얌전한 가짜로만 검사하면 첫 실전에서만 터진다. 그래서 고약하게 만든다.
+    (d / "mod.py").write_text("def f():\n    return 2\n", encoding="utf-8"); git(d, "commit", "-qam", "고약 전")
+    P.리허설기 = 리허설_회귀없음
+    호출 = []
+
+    def _고약_공백(prompt):            # 펜스 + 앞뒤 말 + 들여쓰기 두 칸(파일은 네 칸)
+        호출.append(prompt)
+        return ('물론입니다. 아래처럼 고치면 됩니다.\n```json\n'
+                + json.dumps({"꼴": "패치", "왜": "공백 틀림", "근거": ["x#1"],
+                              "편집": [{"path": "mod.py", "old": "def f():\n  return 2\n", "new": "def f():\n    return 1\n"}]}, ensure_ascii=False)
+                + '\n```\n끝입니다. {참고}')
+    I.제안기 = _고약_공백
+    r = I.사용자개선("f 가 1", d, 초=30)
+    ok(r["판정"] == "동의대기" and r.get("적용시도") == 1 and len(호출) == 1,
+       f"**펜스·말·들여쓰기 틀림은 되묻지 않고 그 자리에서 맞춘다** (판정 {r['판정']} · 시도 {r.get('적용시도')} · 호출 {len(호출)})")
+    I.버림(d)
+
+    호출.clear()
+
+    def _고약_틀린old(prompt):         # 첫 답은 없는 글, 되묻자 실제 글을 베껴 맞춘다
+        호출.append(prompt)
+        if len(호출) == 1:
+            return json.dumps({"꼴": "패치", "왜": "틀림", "편집": [{"path": "mod.py", "old": "    return 99\n", "new": "    return 1\n"}]})
+        return json.dumps({"꼴": "패치", "왜": "맞음", "편집": [{"path": "mod.py", "old": "    return 2\n", "new": "    return 1\n"}]})
+    I.제안기 = _고약_틀린old
+    r = I.사용자개선("f 가 1", d, 초=30)
+    ok(r["판정"] == "동의대기" and r.get("적용시도") == 2,
+       f"**뜻이 틀린 old 는 실제 글을 들려 되묻고 둘째에 맞춘다** (판정 {r['판정']} · 시도 {r.get('적용시도')})")
+    ok(len(호출) == 2 and "[적용 실패 1/3]" in 호출[1] and "실제 글" in 호출[1] and "return 2" in 호출[1],
+       "되묻는 프롬프트에 **그 파일의 실제 글**과 실패 이유가 든다")
+    I.버림(d)
+
+    호출.clear()
+    I.제안기 = lambda prompt: (호출.append(prompt) or json.dumps({"꼴": "패치", "왜": "x", "편집": [{"path": "mod.py", "old": "    return 99\n", "new": "x\n"}]}))
+    r = I.사용자개선("f 가 1", d, 초=30)
+    ok(r["판정"] == "적용실패" and r.get("적용시도") == 3 and "3번" in r["말"] and P.현재판(d) is None,
+       f"끝까지 안 맞으면 **몇 번 청했는지** 말하고 판을 닫는다 ({r['말'][:60]})")
+    ok((d / "mod.py").read_text(encoding="utf-8") == "def f():\n    return 2\n", "실제 트리는 한 번도 안 건드렸다")
+
+    print("\n== 해석: 펜스·말·뒤따르는 중괄호에도 JSON 을 뽑는다 ==")
+    ok(I.해석('설명.\n```json\n{"꼴": "사람", "사람이_할_것": "키"}\n```\n끝 {x}') == {"꼴": "사람", "사람이_할_것": "키"},
+       "펜스와 앞뒤 말을 벗긴다")
+    ok(I.해석('{"꼴": "패치", "왜": "x", "편집": [{"path": "a", "old": "b", "new": "c"}]} 뒤에 {"딴것": 1}') is not None,
+       "**탐욕 정규식이 삼키던 꼴**도 첫 온전한 사전을 뽑는다")
+    ok(I.해석("그냥 말") is None and I.해석('{"꼴": "패치"}') is None, "꼴이 안 맞으면 None")
+    # 다음 대목은 '옳은 old' 제안기를 전제한다 -- 고약한 것을 되돌린다.
+    I.제안기 = lambda prompt: json.dumps({"꼴": "패치", "왜": "부탁대로 고침", "근거": ["arxiv#1"],
+                                      "편집": [{"path": "mod.py", "old": "return 2", "new": "return 1"}]}, ensure_ascii=False)
+
     print("\n== 멀리서 깨뜨리면 거절한다 ==")
     (d / "mod.py").write_text("def f():\n    return 2\n", encoding="utf-8"); git(d, "commit", "-qam", "again")
     P.리허설기 = lambda repo, 판, 초, 전부=False, 전부초=1800: {
@@ -180,7 +232,10 @@ try:
         ok("성능 개선거리" in I.보고(r), "보고가 성능 길로 갔다고 말한다")
         꼴들2 = [x.get("꼴") for x in I.원장읽기(d)]
         ok("성능고르기" in 꼴들2, "원장에 성능고르기가 남는다")
-        I.승인(d, 누가="검사"); git(d, "commit", "-qam", "성능 반영")
+        # 승인 결과를 **본다**. 실측: 거절이 조용히 지나가 판이 열린 채 다음 대목이 "판열림" 으로 죽었다.
+        _승 = I.승인(d, 누가="검사")
+        ok("적용됨" in _승, f"성능 개선거리도 승인으로 붙는다 ({_승[:80]})")
+        git(d, "commit", "-qam", "성능 반영")
 
         print("\n== 근거가 없으면 정직히 멈춘다 ==")
         (d / "mod.py").write_text("def f():\n    return 2\n", encoding="utf-8"); git(d, "commit", "-qam", "again")
