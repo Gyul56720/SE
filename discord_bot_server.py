@@ -374,6 +374,17 @@ async def _배경지켜보기(channel, 배경: dict, 간격: float = 20.0, 상�
                         await channel.send(file=discord.File(os.path.join(REPO_DIR, rel), filename=os.path.basename(rel)))
                     except Exception as e2:                         # noqa: BLE001 -- 하나가 커도 나머지는 보낸다
                         print(f"[배경] 산출물 {rel} 못 붙임: {type(e2).__name__}: {e2}")
+                    # **핸드폰에서 열리는 꼴로도 붙인다.** 사용자(2026-09-12): "md가 안보이니 discord에서는 pdf로."
+                    # .md 는 그대로 두고(원문), 같은 내용의 .pdf 를 하나 더. 한글 글꼴이 없으면 PDF 안에 그렇다고 적힌다.
+                    if rel.endswith(".md"):
+                        try:
+                            from investigate import discord_pdf
+                            r_pdf = await asyncio.to_thread(discord_pdf.md파일을pdf로, os.path.join(REPO_DIR, rel))
+                            await channel.send(file=discord.File(r_pdf["경로"], filename=os.path.basename(r_pdf["경로"])))
+                            if not r_pdf["한글"]:
+                                await channel.send("⚠ 이 기계에 한글 글꼴이 없어 PDF 의 한글이 안 그려진다 -- `sudo apt-get install -y fonts-nanum`")
+                        except Exception as e3:                     # noqa: BLE001 -- PDF 가 실패해도 .md 는 이미 갔다
+                            print(f"[배경] {rel} PDF 못 만듦: {type(e3).__name__}: {e3}")
             except Exception as e:                                  # noqa: BLE001
                 print(f"[배경] 끝 알림 실패: {type(e).__name__}: {e}")
             return
