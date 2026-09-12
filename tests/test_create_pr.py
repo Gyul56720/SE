@@ -81,7 +81,7 @@ try:
     c = 호출[-1]
     ok(c["method"] == "POST" and c["url"].endswith("/pulls") and c["body"]["head"] == "feat" and c["body"]["base"] == "main"
        and c["auth"] == "Bearer tok-xyz", f"POST /pulls head=feat base=main + Bearer ({c['url'][-30:]})")
-    ok("머지는 사람" in r["왜"], "보고가 '머지는 사람' 을 말한다")
+    ok("머지는 코드가" in r["왜"], "보고가 머지는 코드가 잰 뒤 정한다고 말한다")
 
     print("\n== 원격이 앞서면 merge 로 따라잡고 다시 민다 (--force 없음) ==")
     git(root, "clone", "-q", str(bare), "other")
@@ -103,11 +103,13 @@ finally:
 
 print("\n== 폭: merge 없음 · 배선 ==")
 _src = (뿌리 / "github_write.py").read_text(encoding="utf-8")
-ok("def merge" not in _src and "/merge" not in _src, "**이 모듈엔 merge 가 없다 -- 머지는 사람**")
+import inspect as _insp
+ok("/merge" not in _insp.getsource(GW.pr만들기) and "/merge" in _insp.getsource(GW.pr머지하기),
+   "**PR 열기는 머지하지 않는다** -- 머지는 pr머지하기 하나뿐이고, 그것은 판단하지 않는다(investigate 가 잰 뒤 부른다)")
 _도구 = (뿌리 / "bot_tools.py").read_text(encoding="utf-8")
 _서버 = (뿌리 / "discord_bot_server.py").read_text(encoding="utf-8")
 ok("def create_pr" in _도구 and _서버.count(" create_pr,") >= 2, "create_pr 도구·ADMIN_TOOLS·임포트")
-ok("create_pr 도구" in _서버 and "머지는" in _서버, "프롬프트가 create_pr 를 이름을 대고 '머지는 사람' 을 적는다")
+ok("create_pr 도구" in _서버 and "머지는 네가 누르지 않는다" in _서버, "프롬프트가 create_pr 를 이름을 대고 두뇌는 머지하지 않는다고 적는다")
 _wf = (뿌리 / ".github" / "workflows" / "deploy-oracle.yml").read_text(encoding="utf-8")
 ok('"github_write.py"' in _wf, "github_write 가 배포 경로에")
 

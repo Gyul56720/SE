@@ -5,7 +5,7 @@
 
 두뇌·판정·진단을 전부 갈아 끼워(망·모델·게이트 없이) 루프의 뼈대만 본다:
 (1) 시작부터 초록이면 안 돈다, (2) 두뇌가 둘째 바퀴에 고치면 둘째 바퀴에 끝나고 마무리
-턴을 받는다(머지는 사람), (3) **두뇌가 '됐다' 고 해도 판정이 빨강이면 안 끝난다**,
+턴을 받는다(머지는 코드가 문제를 잰 뒤), (3) **두뇌가 '됐다' 고 해도 판정이 빨강이면 안 끝난다**,
 (4) 아무것도 안 바뀌면 둘째 바퀴에 '갈래 바꿔라' 를 넣고 셋째에 멈춘다, (5) 시한을
 지킨다, (6) 두뇌를 못 부르면 못돌림이다, (7) 진단의 가설이 프롬프트에 든다, (8) 원장·메모,
 (9) 배선 -- dispatch · 자연어 · 봇의 넘기기 · 배포 · 읽기점검.
@@ -39,7 +39,8 @@ def ok(cond, what):
 os.environ.update({"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@x",
                    "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@x"})
 판 = Path(tempfile.mkdtemp(prefix="test-iv-"))
-_원 = (I.두뇌, I.판정기, I.진단기, I.모으기)
+_원 = (I.두뇌, I.판정기, I.진단기, I.모으기, I.머지기)
+머지호출 = []
 try:
     subprocess.run(["git", "-C", str(판), "init", "-q"], check=False)
     (판 / "repair").mkdir(); (판 / "public_agent_memory").mkdir()
@@ -54,6 +55,9 @@ try:
 
     I.판정기 = 판정_파일로
     I.진단기 = lambda 글, repo=None: {"증상": {}, "증거": [], "가설": []}
+    # 머지는 GitHub 를 부르지 않는다 -- 가짜가 호출을 적고 "문제 없음, 붙였다" 를 돌려준다
+    I.머지기 = lambda repo, 아이디, 부탁: (머지호출.append((아이디, 부탁)) or
+                                     {"됐나": True, "번호": 9, "url": "https://x/pull/9", "문제": [], "알림": ["새 의존성(requirements.txt) -- 배포가 pip 로 깐다"], "왜": "머지됨", "갈래정리": "main 으로 돌아왔다", "크기": "+10 / -0 · 파일 2"})
 
     print("== 시작부터 초록이면 안 돈다 ==")
     (판 / "상태").write_text("초록", encoding="utf-8")
@@ -78,8 +82,13 @@ try:
     r = I.조사("증상 A", repo=판, 시한초=60, 최대바퀴=5, 아이디="t1")
     ok(r["해결"] and r["바퀴"] == 2, f"둘째 바퀴에 해결 (바퀴 {r['바퀴']})")
     ok(any(p.startswith("[조사 마무리]") for p in 받은), "해결되면 마무리 턴을 한 번 준다")
-    ok("머지는 사람" in next(p for p in 받은 if p.startswith("[조사 마무리]")), "**머지는 사람이 누른다**고 못박는다")
+    ok("네가 머지하지 마라" in next(p for p in 받은 if p.startswith("[조사 마무리]")), "두뇌는 머지하지 않는다고 못박는다 -- 코드가 잰다")
     ok("PR https://x/1" in r["마무리"], "마무리 답을 남긴다")
+    ok(머지호출 and 머지호출[-1] == ("t1", "증상 A") and r["머지"]["됐나"], f"**해결 뒤 코드가 머지를 판단한다** (호출 {머지호출[-1:]})")
+    보 = I.보고(r)
+    ok("PR #9 https://x/pull/9" in 보 and "알림: 새 의존성" in 보 and "코드가 붙였다" in 보 and "부탁: 증상 A" in 보,
+       "보고가 사람 꼴이다: 부탁 · PR · 알림 · 머지됨")
+    ok(any(d.get("단계") == "머지" and d.get("됐나") for d in I.원장읽기(판, "t1")), "원장에 머지 단계가 남는다")
     ok(all(t == "investigate-t1" for t in [I and "investigate-t1"]), "한 조사는 한 thread 로 기억이 이어진다")
     첫 = 받은[0]
     ok("지금 빨강인 판정" in 첫 and "AssertionError: 아직 빨강" in 첫, "프롬프트에 빨강 판정과 그 꼬리가 든다")
@@ -177,7 +186,37 @@ try:
     ok(r["해결"] and r["바퀴"] == 2, f"**속임수 검사는 해결로 안 치고, 진짜 검사로 바꾼 뒤에 해결** (바퀴 {r['바퀴']})")
     ok("[검사 무효]" in 받은[1] and "기능이 없는 판" in 받은[1], "두뇌에게 검사가 무효인 까닭을 들려 준다")
     단 = [d.get("단계") for d in I.원장읽기(판, "g2")]
-    ok("검사무효" in 단 and 단[-2] == "검사유효", f"원장에 무효 -> 유효가 남는다 ({단})")
+    ok("검사무효" in 단 and 단[-3:] == ["검사유효", "머지", "끝"], f"원장에 무효 -> 유효 -> 머지가 남는다 ({단})")
+
+    print("\n== 머지 판단: 문제는 막고, 알림은 적기만 한다 (순수 함수) ==")
+    깨끗 = {"겹침": False, "검사": [{"이름": "gates", "상태": "completed", "결론": "success"}], "파일들": [{"경로": "x.py", "상태": "modified"}], "더함": 10, "뺌": 2}
+    ok(I.머지위험(깨끗) == ([], []), "겹침 없음 · CI 초록 · 작은 diff -> 문제도 알림도 없다(코드가 붙인다)")
+    문, 알 = I.머지위험({**깨끗, "겹침": True})
+    ok(len(문) == 1 and "충돌" in 문[0], f"충돌은 문제다 ({문})")
+    문, 알 = I.머지위험({**깨끗, "검사": [{"이름": "gates", "상태": "completed", "결론": "failure"}]})
+    ok(len(문) == 1 and "CI 빨강: gates" in 문[0], f"CI 빨강은 문제다 ({문})")
+    문, 알 = I.머지위험({**깨끗, "검사": [{"이름": "gates", "상태": "in_progress", "결론": ""}]})
+    ok(문 == [] and 알 and "도는 중" in 알[0], "CI 도는 중은 알림일 뿐 -- 기다리지 않는다")
+    문, 알 = I.머지위험({**깨끗, "파일들": [{"경로": "gates/G003_invariants.py", "상태": "removed"}]})
+    ok(len(문) == 1 and "삭제" in 문[0], f"파일 삭제는 문제다 ({문})")
+    문, 알 = I.머지위험({**깨끗, "더함": 2000, "뺌": 0})
+    ok(len(문) == 1 and "상한" in 문[0], "큰 diff 는 문제다 -- 사람이 봐야 할 크기")
+    문, 알 = I.머지위험({**깨끗, "파일들": [{"경로": "discord_bot_server.py", "상태": "modified"}, {"경로": "requirements.txt", "상태": "modified"},
+                                     {"경로": "public_agent_memory/a.md", "상태": "added"}, {"경로": "repair/ledger.jsonl", "상태": "modified"}]})
+    ok(문 == [] and len(알) == 3 and any("봇 본체" in x for x in 알) and any("의존성" in x for x in 알) and any("2개가 딸려" in x for x in 알),
+       f"봇 본체 · 의존성 · 딸린 메모는 알림이다 ({알})")
+    I.머지기 = lambda repo, 아이디, 부탁: {"됐나": False, "번호": 12, "url": "https://x/pull/12", "문제": ["CI 빨강: gates -- 로그를 봐야 한다"], "알림": [], "왜": "문제 1개", "크기": "+1 / -0 · 파일 1"}
+    I.판정기 = 판정_파일로                 # 목표 대목이 진짜 판정기로 바꿔 두었다 -- 파일 판정기로 잠시 되돌린다
+    (판 / "상태").write_text("빨강", encoding="utf-8")
+    _두뇌전 = I.두뇌
+    def 두뇌_바로고침(p, t):               # `받은` 은 건드리지 않는다 -- 아래 목표 대목의 단언이 그것을 읽는다
+        (판 / "상태").write_text("초록", encoding="utf-8"); return "고쳤다"
+    I.두뇌 = 두뇌_바로고침
+    r = I.조사("증상 C", repo=판, 시한초=60, 최대바퀴=3, 아이디="t9")
+    보 = I.보고(r)
+    ok(r["해결"] and not r["머지"]["됐나"] and "안 붙였다" in 보 and "CI 빨강: gates" in 보 and "`!조사 머지 12`" in 보,
+       "**문제가 있으면 안 붙이고, 무엇이 문제인지와 확정 명령을 적는다**")
+    I.두뇌, I.판정기 = _두뇌전, None
     ok("tests/test_목표_g2.py" in 받은[0] and "못박아라" in 받은[0], "첫 일이 검사로 못박기라고 말한다")
     ok("재현 명령: `python3 tests/test_목표_g2.py`" in 받은[0], "그 검사가 재현 명령이 된다 -- 판정은 끝값")
     I.판정기 = 판정_파일로
@@ -191,7 +230,7 @@ try:
     메모 = list((판 / "public_agent_memory").glob("*_고치기_*.md"))
     ok(메모 and any("조사 t3" in m.read_text(encoding="utf-8") for m in 메모), "메모가 남는다 -- 밤에 간추려 장기기억이 된다")
 finally:
-    I.두뇌, I.판정기, I.진단기, I.모으기 = _원
+    I.두뇌, I.판정기, I.진단기, I.모으기, I.머지기 = _원
     shutil.rmtree(판, ignore_errors=True)
 
 print("\n== claude 두뇌: 같은 조사는 같은 세션 ==")

@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import subprocess
 import sys
 import time
@@ -48,6 +49,7 @@ if str(REPO) not in sys.path:
 모으기 = None   # 검사 주입: (증상) -> list[str].  None 이면 repair._모으기기본 (dig/harvest + graph/ask)
 판정기 = None   # 검사 주입: (repo, 재현명령) -> list[dict{"이름","끝값","꼬리"}]
 진단기 = None   # 검사 주입: (글, repo) -> dict.  None 이면 diagnose.진단
+머지기 = None   # 검사 주입: (repo, 아이디, 부탁) -> dict.  None 이면 _머지기본 (github_write 로 PR 을 찾아 판단·머지)
 
 
 # ------------------------------------------------------------------ 두뇌·판정 기본
@@ -243,9 +245,93 @@ def 마무리프롬프트(증상: str, 아이디: str) -> str:
         "  1. `git status --porcelain` 으로 바뀐 것을 보고, `python3 gatekeeper.py` 가 0 인지 한 번 더 확인하라.",
         "  2. 커밋하라. 메시지에는 무엇이 왜 깨졌고 어떻게 고쳤는지, 검사가 무엇을 붙드는지 적어라.",
         f"  3. create_pr 도구로 PR 을 열어라 (제목에 `[조사 {아이디}]`). 도구가 준 URL 만 말하라.",
-        "  4. **머지는 사람이 누른다.** 네가 머지하지 마라.",
+        "  4. 네가 머지하지 마라. PR 이 열리면 **코드가** 문제를 재고, 문제가 없으면 코드가 머지한다.",
         "  한 줄로 보고하라: 커밋 해시 · PR URL · 남은 것(없으면 없음).",
     ]))
+
+
+# ------------------------------------------------------------------ 머지: 문제는 코드가 재고, 없으면 코드가 누른다
+# 사용자(2026-09-12): "최대한 스스로 하고 문제가 있을 경우에만 의견 물어봐. 그리고 그 문제가 뭔지 정확히 설명해."
+# 그래서 둘로 가른다. **문제** = 붙이면 안 되는 사실(막는다). **알림** = 붙으면 일어나는 일(적기만 한다).
+# 문제가 없으면 코드가 머지한다. 있으면 무엇이 문제인지 그대로 적고 `!조사 머지 <번호>` 를 사람이 친다.
+줄수상한 = 1500                      # 이보다 크면 사람이 봐야 할 크기다
+_봇본체 = ("discord_bot_server.py", "bot_tools.py", "main_public.py", "dispatch.py")
+_딸림꼴 = re.compile(r"(^|/)(public_agent_memory/|.*ledger\.jsonl$|logs/)")
+
+
+def 머지위험(상태: dict) -> "tuple[list[str], list[str]]":
+    """pr상태() 의 사실에서 (문제, 알림). 순수 함수 -- 검사가 사실을 꽂아 붙든다."""
+    문제, 알림 = [], []
+    if 상태.get("겹침"):
+        문제.append("main 과 겹친다(충돌) -- 그대로는 못 붙는다. 갈래에 main 을 merge 해서 풀어야 한다")
+    빨강 = [c["이름"] for c in 상태.get("검사", []) if c.get("결론") in ("failure", "timed_out", "action_required")]
+    if 빨강:
+        문제.append(f"CI 빨강: {', '.join(sorted(set(빨강)))} -- 여기서 초록이었던 판정이 CI 러너에서는 빨갛다. 로그를 봐야 한다")
+    파일들 = 상태.get("파일들", [])
+    지움 = [f["경로"] for f in 파일들 if f.get("상태") == "removed"]
+    if 지움:
+        문제.append(f"파일 삭제 {len(지움)}개: {', '.join(지움[:5])} -- 지운 것은 되돌리기 어렵다")
+    줄 = int(상태.get("더함", 0)) + int(상태.get("뺌", 0))
+    if 줄 > 줄수상한:
+        문제.append(f"바뀐 줄이 {줄:,}줄 -- 상한 {줄수상한:,} 을 넘는다. 사람이 봐야 할 크기다")
+    도는중 = [c["이름"] for c in 상태.get("검사", []) if c.get("상태") != "completed"]
+    if 도는중:
+        알림.append(f"CI 가 아직 도는 중({', '.join(sorted(set(도는중)))}) -- 기다리지 않는다(여기 판정이 초록이다). 빨개지면 CI 가 알린다")
+    본체 = [f["경로"] for f in 파일들 if f["경로"] in _봇본체]
+    if 본체:
+        알림.append(f"봇 본체가 바뀐다: {', '.join(본체)} -- 배포가 봇을 재시작한다. 임포트가 깨지면 봇이 죽는다(G012 가 막는다)")
+    if any(f["경로"] == "requirements.txt" for f in 파일들):
+        알림.append("새 의존성(requirements.txt) -- 배포가 pip 로 깐다")
+    if any(f["경로"].startswith(".github/workflows/") for f in 파일들):
+        알림.append("배포·CI 워크플로가 바뀐다 -- 다음 배포부터 적용")
+    딸림 = [f["경로"] for f in 파일들 if _딸림꼴.search(f["경로"])]
+    if 딸림:
+        알림.append(f"메모·원장 {len(딸림)}개가 딸려 간다(덧붙이기만 하는 파일이라 해롭지 않다)")
+    return 문제, 알림
+
+
+def _main으로(repo: Path) -> str:
+    """머지 뒤 저장소를 main 으로 되돌린다 -- 안 그러면 다음 실행과 봇의 자동 반영이 이 갈래에 계속 쌓인다
+    (실측 2026-09-12: 봇 커밋 "SE-agent: Discord 요청 처리 결과 자동 반영" 이 조사 갈래에 붙었다)."""
+    g = lambda *a: subprocess.run(["git", "-C", str(repo), *a], capture_output=True, text=True)  # noqa: E731
+    g("fetch", "-q", "origin", "main")
+    co = g("checkout", "-q", "main")
+    ff = g("merge", "-q", "--ff-only", "origin/main") if co.returncode == 0 else co
+    return "main 으로 돌아왔다" if ff.returncode == 0 else f"main 으로 못 돌아왔다: {(ff.stderr or '').strip()[:120]}"
+
+
+def _머지기본(repo: Path, 아이디: str, 부탁: str = "") -> dict:
+    """이 갈래의 열린 PR 을 찾아 문제를 재고, 없으면 머지한다. {됐나, 번호, url, 문제, 알림, 왜, 갈래정리}."""
+    import github_write as GW
+    br = subprocess.run(["git", "-C", str(repo), "rev-parse", "--abbrev-ref", "HEAD"],
+                        capture_output=True, text=True).stdout.strip()
+    pr = GW.열린pr(갈래=br if br != "main" else "", 제목에=f"[조사 {아이디}]", repo=repo)
+    if not pr["됐나"]:
+        return {"됐나": False, "번호": 0, "url": "", "문제": [], "알림": [], "왜": pr["왜"]}
+    상태 = GW.pr상태(pr["번호"], repo=repo)
+    if not 상태.get("됐나"):
+        return {"됐나": False, "번호": pr["번호"], "url": pr["url"], "문제": [], "알림": [], "왜": 상태.get("왜", "")}
+    문제, 알림 = 머지위험(상태)
+    out = {"됐나": False, "번호": pr["번호"], "url": pr["url"], "문제": 문제, "알림": 알림, "왜": "",
+           "크기": f"+{상태['더함']} / -{상태['뺌']} · 파일 {len(상태['파일들'])}"}
+    if 문제:
+        out["왜"] = f"문제 {len(문제)}개 -- 사람이 `!조사 머지 {pr['번호']}` 로 확정해야 붙는다"
+        return out
+    m = GW.pr머지하기(pr["번호"], repo=repo)
+    out["됐나"] = m["됐나"]; out["왜"] = m["왜"]
+    if m["됐나"]:
+        out["갈래정리"] = _main으로(repo)
+    return out
+
+
+def 머지확정(번호: int, repo=None) -> str:
+    """`!조사 머지 <번호>` -- 사람이 문제를 보고도 붙이기로 한 것. 코드는 더 판단하지 않고 누른다."""
+    import github_write as GW
+    repo = Path(repo or REPO)
+    m = GW.pr머지하기(int(번호), repo=repo)
+    if not m["됐나"]:
+        return f"PR #{번호} 머지 못 함 -- {m['왜']}"
+    return f"PR #{번호} 머지됨 ({m['sha']}) · {_main으로(repo)} · 배포는 main 밀기가 트리거한다"
 
 
 # ------------------------------------------------------------------ 원장·메모 (repair 의 것을 그대로 쓴다)
@@ -283,7 +369,7 @@ def 조사(증상: str, 재현명령: str = "", 증거글: str = "", 시한초: 
     시작커밋 = 시작커밋.strip() if rc0 == 0 else ""
     시작 = time.monotonic()
     해본: list[dict] = []
-    결과 = {"조사": 아이디, "해결": False, "돌았나": True, "바퀴": 0, "해본것": 해본,
+    결과 = {"조사": 아이디, "증상": 증상, "해결": False, "돌았나": True, "바퀴": 0, "해본것": 해본,
           "남은것": "", "메모": "", "걸린초": 0.0, "마무리": ""}
     말하기 = 진행 or (lambda s: print(s, flush=True))
     thread_id = f"investigate-{아이디}"
@@ -364,6 +450,15 @@ def 조사(증상: str, 재현명령: str = "", 증거글: str = "", 시한초: 
             결과["마무리"] = ((두뇌 or _두뇌기본)(마무리프롬프트(증상, 아이디), thread_id) or "").strip()[:600]
         except Exception as e:                                        # noqa: BLE001
             결과["마무리"] = f"(마무리 턴을 못 돌렸다: {type(e).__name__}) 판정은 초록이다 -- 커밋·PR 은 손으로"
+        # 머지는 코드가 판단한다 -- 두뇌의 말("PR 열었다")이 아니라 GitHub 에서 갈래로 찾아서.
+        try:
+            결과["머지"] = (머지기 or _머지기본)(repo, 아이디, 증상)
+        except Exception as e:                                        # noqa: BLE001
+            결과["머지"] = {"됐나": False, "번호": 0, "url": "", "문제": [], "알림": [], "왜": f"{type(e).__name__}: {e}"[:160]}
+        m = 결과["머지"]
+        _적기(repo, {"때": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "조사": 아이디, "단계": "머지",
+                    "됐나": m["됐나"], "번호": m["번호"], "문제": m["문제"][:6], "왜": m["왜"][:160]})
+        말하기(f"[조사 {아이디}] 머지 {'됨 #' + str(m['번호']) if m['됐나'] else '안 됨: ' + m['왜'][:80]}")
     from repair import run as R
     결과["메모"] = R.기억쓰기(f"조사 {아이디}: {증상}", 재현명령 or "(판정: 게이트·감사)",
                         [{"바퀴": h["바퀴"], "꼴": "조사", "요약": h["요약"][:120], "판정": "초록" if not h["빨강"] else f"빨강 {h['빨강']}",
@@ -384,16 +479,32 @@ def _진단기본(글: str, repo=None) -> dict:
 
 
 def 보고(r: dict) -> str:
-    줄 = [f"조사 {r['조사']} -- {'**해결**' if r['해결'] else '못 풀었다'} ({r['바퀴']}바퀴 · {r['걸린초']}초)"]
-    for h in r["해본것"][-6:]:
-        줄.append(f"  바퀴 {h['바퀴']} 빨강 {h['빨강'] or '없음'}" + (f" · 되풀이 {h['되풀이']}" if h["되풀이"] else "")
-                  + f" · {h['요약'][:100]}")
-    if r["해결"] and r.get("마무리"):
-        줄.append(f"  마무리: {r['마무리'][:300]}")
+    """사람이 읽는 보고. 사용자(2026-09-12): 로그 꼬리를 그대로 보내면 못 알아먹는다 -- 상황 · 문제 · 다음 한 줄."""
+    분 = r.get("걸린초", 0) / 60
+    줄 = [f"조사 {r['조사']} -- {'**해결**' if r['해결'] else '**못 풀었다**'} ({r['바퀴']}바퀴 · {분:.1f}분)"]
+    줄.append(f"부탁: {str(r.get('증상', ''))[:160]}")
+    if r["해본것"]:
+        h = r["해본것"][-1]
+        줄.append(f"한 일: {h['요약'][:220]}")
     if not r["해결"]:
-        줄.append(f"  남은 것: {r['남은것'][:300]}")
+        줄.append(f"막힌 것: {r['남은것'][:300]}")
+    m = r.get("머지")
+    if m:
+        if m.get("번호"):
+            줄.append(f"PR #{m['번호']} {m.get('url', '')}" + (f" ({m['크기']})" if m.get("크기") else ""))
+        for x in m.get("알림", []):
+            줄.append(f"  · 알림: {x}")
+        if m["됐나"]:
+            줄.append("머지: **됨** -- 문제가 없어 코드가 붙였다" + (f" · {m['갈래정리']}" if m.get("갈래정리") else ""))
+        elif m.get("문제"):
+            줄.append(f"머지: **안 붙였다** -- 문제 {len(m['문제'])}개:")
+            for x in m["문제"]:
+                줄.append(f"  · {x}")
+            줄.append(f"그래도 붙이려면: `!조사 머지 {m['번호']}`")
+        else:
+            줄.append(f"머지: 못 했다 -- {m['왜'][:200]}")
     if r.get("메모"):
-        줄.append(f"  메모: {r['메모']}")
+        줄.append(f"메모: {r['메모']}")
     return "\n".join(줄)
 
 
@@ -428,7 +539,8 @@ def main() -> int:
         except OSError as e:
             print(f"증거 파일을 못 읽었다: {e}")
     r = 조사(a.증상, a.명령, 증거, a.시한, a.바퀴, a.저장소 or None, 목표=a.목표)
-    print(보고(r))
+    import relay
+    print(f"\n{relay.보고표지}\n" + 보고(r), flush=True)      # relay.배경보고 가 이 표지 뒤만 사람에게 보낸다
     if not r["돌았나"]:
         return 3
     return 0 if r["해결"] else 1

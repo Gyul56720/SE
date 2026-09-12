@@ -1,4 +1,4 @@
-"""github_write -- GitHub **쓰기는 이 좁은 문 하나**: 지금 갈래를 밀고 PR 을 연다. **머지는 사람이.**
+"""github_write -- GitHub **쓰기는 이 좁은 문**: 지금 갈래를 밀고 PR 을 연다. 머지는 **코드가 문제를 잰 뒤**(investigate.머지위험) 문제가 없을 때만, 있으면 사람이 `!조사 머지 <번호>` 로.
 
 격차표(SE vs Claude Code) 'GitHub 쓰기': 조회만 하던 것을 PR 생성까지. 권한을 넓히는 일이라
 마지막에 두었고, 넓히는 폭도 딱 이만큼이다 -- 이 모듈에는 merge 함수가 **없다**. 머지는
@@ -96,12 +96,79 @@ def pr만들기(title: str, body: str = "", base: str = "main", repo=None) -> di
         j = {}
     if status == 201:
         return {"됐나": True, "url": j.get("html_url", ""), "번호": int(j.get("number") or 0), "갈래": br,
-                "왜": f"{말} · 열렸다 -- **머지는 사람이 GitHub 에서 누른다**"}
+                "왜": f"{말} · 열렸다 -- 머지는 코드가 문제를 잰 뒤 정한다(문제 없으면 붙인다)"}
     if status == 422 and "already exists" in text:
         return {"됐나": False, "갈래": br, "url": "", "번호": 0,
                 "왜": f"{br} 의 PR 이 이미 열려 있다 -- 새로 열 것 없이 그 PR 을 보라"}
     msg = (j.get("message") or text)[:200]
     return {"됐나": False, "갈래": br, "url": "", "번호": 0, "왜": f"GitHub 가 {status} 로 거절: {msg}"}
+
+
+def _헤더(tok: str) -> dict:
+    return {"Authorization": f"Bearer {tok}", "Accept": "application/vnd.github+json",
+            "Content-Type": "application/json", "User-Agent": "SE-agent"}
+
+
+def _GET(url: str, tok: str):
+    status, text = (요청 or _요청기본)("GET", url, _헤더(tok), None)
+    try:
+        return status, (json.loads(text) if text else None)
+    except ValueError:
+        return status, None
+
+
+def 열린pr(갈래: str = "", 제목에: str = "", repo=None) -> dict:
+    """열린 PR 하나 -- 갈래(head.ref)가 같거나 제목에 그 글이 든 것. {됐나, 번호, url, 갈래, 제목, 왜}."""
+    tok = 토큰(repo)
+    if not tok:
+        return {"됐나": False, "번호": 0, "url": "", "갈래": "", "제목": "", "왜": "GITHUB_TOKEN 이 없다"}
+    status, j = _GET(f"{API}/repos/{저장소이름()}/pulls?state=open&per_page=50", tok)
+    if status != 200 or not isinstance(j, list):
+        return {"됐나": False, "번호": 0, "url": "", "갈래": "", "제목": "", "왜": f"GitHub 가 {status} 로 답했다"}
+    for pr in j:
+        ref = (pr.get("head") or {}).get("ref") or ""
+        if (갈래 and ref == 갈래) or (제목에 and 제목에 in (pr.get("title") or "")):
+            return {"됐나": True, "번호": int(pr.get("number") or 0), "url": pr.get("html_url", ""),
+                    "갈래": ref, "제목": pr.get("title", ""), "왜": ""}
+    return {"됐나": False, "번호": 0, "url": "", "갈래": "", "제목": "", "왜": f"열린 PR 이 없다 (갈래 {갈래!r} · 제목 {제목에!r})"}
+
+
+def pr상태(번호: int, repo=None) -> dict:
+    """머지 판단에 필요한 사실만: {됐나, 머지됨, 겹침, 상태, 갈래, 더함, 뺌, 파일들:[{경로,상태,더함,뺌}], 검사:[{이름,상태,결론}], 왜}."""
+    tok = 토큰(repo)
+    if not tok:
+        return {"됐나": False, "왜": "GITHUB_TOKEN 이 없다"}
+    base = f"{API}/repos/{저장소이름()}"
+    status, pr = _GET(f"{base}/pulls/{int(번호)}", tok)
+    if status != 200 or not isinstance(pr, dict):
+        return {"됐나": False, "왜": f"PR #{번호} 를 못 읽었다 ({status})"}
+    _, 파일 = _GET(f"{base}/pulls/{int(번호)}/files?per_page=100", tok)
+    파일들 = [{"경로": f.get("filename", ""), "상태": f.get("status", ""), "더함": int(f.get("additions") or 0),
+             "뺌": int(f.get("deletions") or 0)} for f in (파일 if isinstance(파일, list) else [])]
+    sha = (pr.get("head") or {}).get("sha") or ""
+    _, cr = _GET(f"{base}/commits/{sha}/check-runs", tok) if sha else (0, None)
+    검사 = [{"이름": c.get("name", ""), "상태": c.get("status", ""), "결론": c.get("conclusion") or ""}
+          for c in ((cr or {}).get("check_runs") or [])] if isinstance(cr, dict) else []
+    return {"됐나": True, "머지됨": bool(pr.get("merged")), "겹침": pr.get("mergeable") is False,
+            "상태": pr.get("mergeable_state") or "", "갈래": (pr.get("head") or {}).get("ref") or "",
+            "더함": int(pr.get("additions") or 0), "뺌": int(pr.get("deletions") or 0),
+            "파일들": 파일들, "검사": 검사, "url": pr.get("html_url", ""), "왜": ""}
+
+
+def pr머지하기(번호: int, repo=None) -> dict:
+    """PR 을 머지한다(merge 커밋). {됐나, sha, 왜}. **여기는 판단하지 않는다** -- 부르는 쪽이 판정을 끝낸 뒤에만 온다."""
+    tok = 토큰(repo)
+    if not tok:
+        return {"됐나": False, "sha": "", "왜": "GITHUB_TOKEN 이 없다"}
+    payload = json.dumps({"merge_method": "merge"}).encode("utf-8")
+    status, text = (요청 or _요청기본)("PUT", f"{API}/repos/{저장소이름()}/pulls/{int(번호)}/merge", _헤더(tok), payload)
+    try:
+        j = json.loads(text) if text else {}
+    except ValueError:
+        j = {}
+    if status == 200 and j.get("merged"):
+        return {"됐나": True, "sha": str(j.get("sha", ""))[:12], "왜": "머지됨"}
+    return {"됐나": False, "sha": "", "왜": f"GitHub 가 {status} 로 거절: {(j.get('message') or text or '')[:160]}"}
 
 
 def 보고(r: dict) -> str:
@@ -111,7 +178,7 @@ def 보고(r: dict) -> str:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="지금 갈래를 밀고 PR 을 연다 (머지는 사람)")
+    ap = argparse.ArgumentParser(description="지금 갈래를 밀고 PR 을 연다 (머지는 코드가 잰 뒤)")
     ap.add_argument("--title", required=True)
     ap.add_argument("--body", default="")
     ap.add_argument("--base", default="main")
