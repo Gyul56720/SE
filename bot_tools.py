@@ -280,6 +280,30 @@ def run_shell(command: str) -> str:
 
 
 @tool
+def run_probes(commands: str, minutes: int = 2) -> str:
+    """**탐침 여러 개를 한꺼번에** 돌린다 -- 줄마다 명령 하나(최대 12줄), 저장소(또는 계획판)에서 나란히
+    실행해 명령마다 (끝값 · 걸린초 · 출력 꼬리) 표로 돌려준다. 가설 하나를 확인하려고 명령을 하나씩 돌리지
+    말고, 갈릴 만한 탐침 3~6개를 한 번에 던져라: 예) "python3 tests/test_x.py" · "git log -3 --oneline -- 파일" ·
+    "grep -n 이름 파일" · "python3 -c 'import 모듈'". 각 명령은 toolgate 를 지난다. minutes 는 명령마다의 상한."""
+    if agent_context.is_blocked():
+        return "실패: 게스트는 run_probes 를 사용할 수 없습니다."
+    import probes
+    줄들 = [c.strip() for c in (commands or "").splitlines() if c.strip()]
+    막힌 = [(c, toolgate.검사(c)) for c in 줄들]
+    막힌 = [(c, 왜) for c, 왜 in 막힌 if 왜]
+    if 막힌:
+        return "[도구 게이트 차단 -- 하나도 돌리지 않았다]\n" + "\n".join(f"  {redact_secrets(c)[:90]} -- {왜[:60]}" for c, 왜 in 막힌)
+    _판 = _계획판() or REPO_DIR
+    import entrypoints
+    줄들 = [entrypoints.셸명령_모듈꼴(c, _판)[0] for c in 줄들]
+    결과 = probes.묶음(줄들, cwd=_판, 초=max(1, min(int(minutes), 10)) * 60, env=child_env())
+    for r in 결과:
+        relay.적기(relay.줄(redact_secrets(r["명령"]), r["끝값"], r["걸린초"]))
+        print(f"[run_probes] {_current_author.get()} :: [{r['끝값']}] {redact_secrets(r['명령'])[:120]!r}")
+    return redact_secrets(probes.표(결과))
+
+
+@tool
 def run_experiment(command: str, minutes: int = 3) -> str:
     """실험·검증용 명령을 깨끗한 격리 판에서 돌린다: HEAD 를 임시 워크트리로 꺼내 그 안에서
     실행하므로 저장소 작업 트리에 아무 흔적이 안 남고, 비밀 환경변수도 지운 채 돈다.
