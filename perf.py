@@ -98,21 +98,25 @@ def _git(판: Path, *a) -> subprocess.CompletedProcess:
     return subprocess.run(["git", "-C", str(판), *a], capture_output=True, text=True)
 
 
-def 한번(판: Path, argv: "list[str]", 시한초: int = 워크로드시한초) -> "tuple[float | None, int, str]":
+def 한번(판: Path, argv: "list[str]", 시한초: int = 워크로드시한초) -> "tuple[float | None, int, str, dict]":
     """한 번 돌린 벽시계 초. 끝값이 0 이 아니면 시간을 **안 돌려준다**(None) -- 터진 것의
-    시간은 성능이 아니다."""
+    시간은 성능이 아니다.
+
+    넷째로 **관측**을 돌려준다: {나간, 샌, 끝값}. 셋째 `글` 은 사람이 읽을 것(둘을 붙인
+    것)이고, 의미 대조는 셋째가 아니라 넷째로 한다 -- `관측지문` 의 까닭을 보라."""
     env = {**os.environ, "PYTHONPATH": str(판), **맑은환경}
     t0 = time.perf_counter()
     try:
         r = subprocess.run(argv, cwd=str(판), env=env, capture_output=True, text=True,
                            timeout=시한초)
     except subprocess.TimeoutExpired:
-        return None, 124, "Timeout"
+        return None, 124, "Timeout", {"나간": "", "샌": "Timeout", "끝값": 124}
     걸림 = time.perf_counter() - t0
     글 = (r.stdout or "") + (r.stderr or "")
+    관측 = {"나간": r.stdout or "", "샌": r.stderr or "", "끝값": r.returncode}
     if r.returncode != 0:
-        return None, r.returncode, 글[-400:]
-    return 걸림, 0, 글
+        return None, r.returncode, 글[-400:], 관측
+    return 걸림, 0, 글, 관측
 
 
 def 지문(글: str) -> str:
@@ -121,11 +125,40 @@ def 지문(글: str) -> str:
     return hashlib.sha256((글 or "").encode("utf-8", "replace")).hexdigest()[:12]
 
 
+관측칸 = ("나간", "샌")          # 시간·자원은 여기 **없다**. 그것이 J 다
+
+
+def 관측지문(관측: dict) -> str:
+    r"""**관측 벡터**의 지문. 칸을 붙이지 않고 **나눠서** 센다.
+
+    실측 2026-09-13: 붙여서 셌더니(`stdout + stderr`) 출력 전부를 stdout 에서 stderr 로
+    옮긴 프로그램의 지문이 바탕과 **글자 하나까지 같았다**(`6c6915b81725`) -- 판정은 `같음`.
+    칸 사이를 옮기는 변화가 통째로 안 보였다. 로그를 리다이렉트하는 것은 흔한 "최적화" 이고,
+    stdout 을 파이프로 받는 쪽에는 그것이 **출력이 사라진 것**이다. 그래서 칸마다 길이를
+    앞에 붙여 경계를 못 넘게 한다.
+
+    여기 없는 것이 둘이다. 빠뜨린 것이 아니라 **뺀 것**이다.
+
+        끝값        rc != 0 이면 `한번` 이 시간을 안 돌려준다 -> 터짐 -> REJECT.
+                    지문보다 **먼저·더 세게** 막힌다. 여기 넣으면 늘 0 인 죽은 칸이 된다
+        시간·자원   그것이 **J 다.** O 에 넣으면 빨라진 후보가 전부 `다름` 이 되어
+                    이 도구는 아무것도 받아들일 수 없다 -- 보존할 것과 고칠 것을 섞으면 안 된다"""
+    관 = 관측 or {}
+    몸 = "".join(f"<{칸}:{len(str(관.get(칸) or ''))}>{관.get(칸) or ''}" for 칸 in 관측칸)
+    return 지문(몸)
+
+
+def 관측맛보기(관측: dict, 칸당: int = 200) -> str:
+    """사람이 읽을 꼴. **어느 칸이 다른지** 보이게 칸 이름을 붙인다."""
+    관 = 관측 or {}
+    return "\n".join(f"[{칸}] {str(관.get(칸) or '').strip()[-칸당:]}" for 칸 in 관측칸)
+
+
 def 잰다(판: Path, argv: "list[str]", 반복: int = 기본반복) -> dict:
     """같은 것을 `반복`번 돌린다. {표본, 중앙값, 최소, 최대, 터진것, 까닭}."""
     표본, 터짐, 까닭 = [], 0, ""
     for _ in range(max(1, 반복)):
-        초, rc, 글 = 한번(판, argv)
+        초, rc, 글, _ = 한번(판, argv)
         if 초 is None:
             터짐 += 1
             까닭 = 까닭 or f"rc={rc}: {글.strip()[:160]}"
@@ -258,6 +291,10 @@ def 출력대조(지문들: dict, 맛보기: dict = None) -> dict:
     결정적이면 `출력이 같다` 는 곧 **그 입력에서 Φ' ⇒ Φ ∧ Φ ⇒ Φ'** 의 유한 확인이다.
     증명이 아니다 -- **입력 하나, 관측 하나**에 대한 전수 확인이다. 그 한계를 이름에 담는다.
 
+    **무엇을 대조하나(O).** 관측은 하나가 아니라 칸이다 -- `관측칸 = (나간, 샌)`. 붙여 세면
+    칸 사이를 옮기는 변화가 안 보인다(실측: `관측지문` 을 보라). 여기 없는 것도 이유가 있어서
+    없다: 끝값은 터짐이 더 세게 막고, 시간·자원은 **J 라서** O 에 넣으면 안 된다.
+
     셋 중 하나를 돌려준다.
       같음    바탕끼리 같고 후보끼리 같고 둘이 같다      -> 의미가 보존됐다(그 관측에서)
       다름    바탕과 후보의 지문이 다르다               -> **성능이 아니라 의미가 바뀌었다. REJECT**
@@ -273,7 +310,7 @@ def 출력대조(지문들: dict, 맛보기: dict = None) -> dict:
     if a[0] != b[0]:
         return {"출력대조": "다름", "출력지문": {"바탕": a[0], "후보": b[0]},
                 "출력말": f"출력이 다르다 ({a[0]} vs {b[0]}) -- **성능이 아니라 의미가 바뀌었다**",
-                "출력맛보기": {"바탕": 맛.get("바탕", "")[-200:], "후보": 맛.get("후보", "")[-200:]}}
+                "출력맛보기": {"바탕": 맛.get("바탕", "")[-400:], "후보": 맛.get("후보", "")[-400:]}}
     return {"출력대조": "같음", "출력지문": {"바탕": a[0], "후보": b[0]},
             "출력말": f"출력이 {len(a)}+{len(b)}번 모두 같다({a[0]}) -- 그 입력·그 관측에서 "
                     "의미가 보존됐다(증명은 아니다)"}
@@ -292,15 +329,15 @@ def 견주기(바탕판: Path, 후보판: Path, argv: "list[str]", 반복: int =
         if i % 2:
             차례.reverse()                          # 순서도 번갈아 -- 먼저 도는 쪽의 이득을 없앤다
         for 누구, 판, 통 in 차례:
-            초, rc, 글 = 한번(판, argv)
+            초, rc, 글, 관측 = 한번(판, argv)
             if 초 is None:
                 터짐[누구] += 1
                 까닭[누구] = 까닭[누구] or f"rc={rc}: {글.strip()[:160]}"
             else:
                 통.append(round(초, 4))
-                지문들[누구].append(지문(글))
+                지문들[누구].append(관측지문(관측))
                 if not 맛보기[누구]:
-                    맛보기[누구] = (글 or "").strip()[-300:]
+                    맛보기[누구] = 관측맛보기(관측)
         말(f"[성능] {i + 1}/{반복} 바탕 {a표본[-1] if a표본 else '--'} · "
           f"후보 {b표본[-1] if b표본 else '--'}")
     a중 = round(statistics.median(a표본), 4) if a표본 else None
