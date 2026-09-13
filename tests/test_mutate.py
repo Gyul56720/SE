@@ -529,6 +529,29 @@ try:
     되찾음 = M.사냥(판, 파일들=["붙은것.py"], 시한초=120, 말하기=lambda s: None)
     ok(되찾음["잰변형"] >= 1, f"그 파일을 다시 잴 수 있다 ({되찾음['잰변형']}개)")
 
+    print("\n== 실행 산출물은 안 잰다 -- 고쳐야 할 코드가 아니다 ==")
+    # **실측 2026-09-13 (D_0):** 19파일 중 4개가 `orchestrator/runs/` 의 커밋된 출력물이었고
+    # 전부 Killed 0 · FG 40 이었다. 시한을 버리고 점수의 뜻도 흐린다(0.327 -> 산출물 빼면 0.341).
+    산 = Path(tempfile.mkdtemp(prefix="test-산출물-"))
+    try:
+        git(산, "init", "-q")
+        (산 / "tests").mkdir()
+        (산 / "진짜.py").write_text("def f(a):\n    return a + 1\n", encoding="utf-8")
+        (산 / "orchestrator" / "runs" / "20260101-000000" / "components").mkdir(parents=True)
+        (산 / "orchestrator/runs/20260101-000000/components/out.py").write_text(
+            "def g(a):\n    return a * 2\n", encoding="utf-8")
+        git(산, "add", "-A"); git(산, "commit", "-qm", "init")
+        것 = M._쟬파일들(산)
+        ok("진짜.py" in 것, f"진짜 코드는 잰다 ({것})")
+        ok(not any("/runs/" in x for x in 것),
+           f"**실행 산출물은 목록에 없다** -- 아무도 검사하지 않는 출력물에 시한을 쓰지 않는다 ({것})")
+        ok(M.안잴곳 and all(isinstance(x, str) for x in M.안잴곳), f"안 잴 곳을 한 군데에 적는다 ({M.안잴곳})")
+        산사냥 = M.사냥(산, 시한초=120, 말하기=lambda s: None)
+        적힌 = {str(x.get("target", "")).split(":")[0] for x in M.원장읽기(산) if x.get("outcome")}
+        ok(not any("/runs/" in x for x in 적힌), f"사냥도 안 잰다 ({sorted(적힌)})")
+    finally:
+        shutil.rmtree(산, ignore_errors=True)
+
     print("\n== 병렬: 빨라지되 **판정이 바뀌지 않아야** 한다 ==")
     # 사용자(2026-09-13): "시간이 문제면 비동기로 하면 안 되나? 병렬로 한 번에 뿌려서."
     # 맞다. 다만 병렬은 판정을 바꿀 수 있다(판을 공유하면 서로의 되돌림을 본다). 그래서

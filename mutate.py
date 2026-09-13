@@ -84,6 +84,13 @@ REPO = Path(__file__).resolve().parent
 # 그래서 씨앗으로 섞는다. 전수로 끝나면 결과가 같고, 시한에 잘리면 **치우치지 않은 표본**이 된다.
 # 씨앗을 고정하는 까닭은 π0 -> π1 비교에서 차이가 씨앗 탓이 아니게 하기 위함이다.
 기본씨앗 = 0
+# ------------------------------------------------------------------ 잴 값이 없는 곳
+# **실측 2026-09-13 (D_0):** 19파일 중 4개가 `orchestrator/runs/` 의 **실행 산출물**이었다
+# (커밋된 출력물 110개 · 1,276줄). 전부 Killed 0 · FG 40 -- 아무도 검사하지 않으니 당연하다.
+# 그것을 세면 두 가지를 잃는다: 시한(16.8초×40)과 **점수의 뜻**(0.327 이 산출물을 빼면 0.341 이다).
+#
+#   잴 값이 있는 것 = 누군가 쓰는 코드.  산출물은 고쳐야 할 코드가 아니다.
+안잴곳 = ("orchestrator/runs/",)
 
 
 def _원장(repo: Path) -> Path:
@@ -693,7 +700,8 @@ def 사냥(repo=None, 파일들: "list[str]" = None, 시한초: int = 기본시�
     if 파일들 is None:
         r = subprocess.run(["git", "-C", str(repo), "-c", "core.quotepath=off", "ls-files", "-z", "*.py"],
                            capture_output=True, text=True)
-        파일들 = sorted(x for x in r.stdout.split("\0") if x and not x.startswith("tests/"))
+        파일들 = sorted(x for x in r.stdout.split("\0")
+                     if x and not x.startswith("tests/") and not x.startswith(안잴곳))
         주사위.shuffle(파일들)                      # π0 -- 시한에 잘려도 표본이 치우치지 않게
     out = {"잰변형": 0, "살아남음": 0, "죽음": 0, "못잼": 0, "덮이지않음": 0, "동등제외": 0,
            "살아남은것": [], "덮이지않은것": [], "파일수": 0}
@@ -809,7 +817,8 @@ def _쟬파일들(repo: Path, 파일들=None, 씨앗: int = 기본씨앗) -> "li
     import random
     r = subprocess.run(["git", "-C", str(repo), "-c", "core.quotepath=off", "ls-files", "-z", "*.py"],
                        capture_output=True, text=True)
-    것 = sorted(x for x in r.stdout.split("\0") if x and not x.startswith("tests/"))
+    것 = sorted(x for x in r.stdout.split("\0")
+              if x and not x.startswith("tests/") and not x.startswith(안잴곳))
     random.Random(씨앗).shuffle(것)
     return 것
 
