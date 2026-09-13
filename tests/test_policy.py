@@ -187,4 +187,4 @@ if FAIL:
     print(f"실패 {len(FAIL)}개 -- {FAIL}")
     raise SystemExit(1)
 print("policy: π 의 정의역 · 선택에 닿음 · 결정적 후보 · J(π) 는 칸 · "
-      "ACCEPT 는 V∧ΔJ · 기본 REJECT · 거절된 π 안 씀 -- 통과")
+      "**비퇴행이 J 보다 먼저** · ACCEPT 는 V∧ΔJ · 기본 REJECT · 거절된 π 안 씀 -- 통과")
