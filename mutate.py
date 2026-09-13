@@ -403,6 +403,51 @@ def 변형들(src: str, 이름: str, 상한: int = 24) -> "list[tuple[str, str, 
     return out[:상한]
 
 
+# ------------------------------------------------------------------ π 가 연산자를 고른다
+# 여기가 **정책이 실제로 닿는 한 군데**다. π0 은 무게가 전부 1.0 이라 균등 섞기와 같고,
+# π1 이 받아들여지면 무게가 큰 연산자가 먼저·자주 뽑힌다. 시한에 잘리는 순회에서는
+# **순서가 곧 표본**이므로, 무게를 순서에 먹이면 그것이 곧 P(m) 이다.
+연산자모두 = ("return_none", "return_zero", "return_minus1", "const_return", "const_num",
+          "cmp_negate", "cmp_boundary", "bool_negate", "bool_swap",
+          "branch_drop", "branch_force", "branch_swap", "arith_swap")
+
+
+def 연산자목록() -> "tuple[str, ...]":
+    """변형 연산자 이름 전부. π 의 정의역이다(검사가 `변형들` 과 어긋나지 않는지 본다)."""
+    return 연산자모두
+
+
+def 변형뽑기(변형목록: list, 무게: dict = None, 주사위=None) -> list:
+    """무게를 먹인 **한 벌의 순서**(weighted permutation). 무게가 다 같으면 균등 섞기와 같다.
+
+    Efraimidis-Spirakis: 키 = u^(1/w) 를 내림차순으로. 뽑을 개수를 미리 안 정하고도
+    무게대로 앞이 채워진다 -- 시한에 잘리는 순회에 맞는 꼴이다. 무게 0 이나 음수는 바닥으로
+    올린다(**한 연산자를 아예 버리면 그것이 재는 의미 변화를 영영 못 본다**)."""
+    import random
+    주사위 = 주사위 or random.Random(기본씨앗)
+    if not 무게:
+        것 = list(변형목록)
+        주사위.shuffle(것)
+        return 것
+    def 키(항):
+        w = float(무게.get(항[0], 1.0) or 0)
+        w = max(0.001, w)
+        u = 주사위.random() or 1e-12
+        return u ** (1.0 / w)
+    return sorted(변형목록, key=키, reverse=True)
+
+
+def _정책(repo: Path, 정책=None) -> dict:
+    """쓸 π. 안 주면 받아들여진 마지막 것(없으면 π0). policy 가 없어도 돌아간다."""
+    if 정책 is not None:
+        return 정책
+    try:
+        import policy
+        return policy.지금정책(repo)
+    except Exception:                                  # noqa: BLE001 -- π 를 못 읽으면 균등이다
+        return {"이름": "pi0", "무게": {}}
+
+
 # ------------------------------------------------------------------ 어느 검사를 돌리나
 def _검사고르기(repo: Path, rel: str, 몇: int = 한함수검사수) -> "list[str]":
     """그 파일을 재는 검사들. 이름이 닮은 것 -> 그 모듈을 임포트하는 것 순으로 고른다."""
@@ -691,7 +736,7 @@ def 접을까(판: Path, repo: Path, rel: str, 검사들: "list[str]", out: dict
 
 
 def 사냥(repo=None, 파일들: "list[str]" = None, 시한초: int = 기본시한초, 말하기=None,
-       함수상한: int = 0, 뺄검사: "list[str]" = None, 씨앗: int = 기본씨앗) -> dict:
+       함수상한: int = 0, 뺄검사: "list[str]" = None, 씨앗: int = 기본씨앗, 정책=None) -> dict:
     """**조용히 틀려도 초록인 자리**를 시한까지 찾는다. {잰변형, 살아남음, 죽음, 못잼, 살아남은것}.
 
     파일마다: 바꿀 함수를 고르고, 그 파일을 재는 검사를 고르고, **깨끗한 HEAD 판**에 변형을 얹어
@@ -712,8 +757,9 @@ def 사냥(repo=None, 파일들: "list[str]" = None, 시한초: int = 기본시�
         파일들 = sorted(x for x in r.stdout.split("\0")
                      if x and not x.startswith("tests/") and not x.startswith(안잴곳))
         주사위.shuffle(파일들)                      # π0 -- 시한에 잘려도 표본이 치우치지 않게
+    쓴정책 = _정책(repo, 정책)
     out = {"잰변형": 0, "살아남음": 0, "죽음": 0, "못잼": 0, "덮이지않음": 0, "동등제외": 0,
-           "살아남은것": [], "덮이지않은것": [], "파일수": 0}
+           "살아남은것": [], "덮이지않은것": [], "파일수": 0, "정책": 쓴정책.get("이름", "pi0")}
     판 = Path(tempfile.mkdtemp(prefix="se-변형-"))
     깔림 = subprocess.run(["git", "-C", str(repo), "worktree", "add", "--detach", str(판), "HEAD"],
                         capture_output=True, text=True)
@@ -723,7 +769,11 @@ def 사냥(repo=None, 파일들: "list[str]" = None, 시한초: int = 기본시�
         return out
     try:
         적기(repo, {"꼴": "사냥시작", "파일수": len(파일들), "시한초": 시한초,
-                  "정책": {"이름": "pi0", "연산자": "uniform(전수)", "파일": "uniform(전수, 섞음)",
+                  "정책": {"이름": 쓴정책.get("이름", "pi0"),
+                         "연산자": ("uniform(전수)" if not 쓴정책.get("무게")
+                                 else "weighted(전수, π 무게)"),
+                         "무게": 쓴정책.get("무게") or {},
+                         "파일": "uniform(전수, 섞음)",
                          "seed": 씨앗, "뺀검사수": len(뺄검사 or ())}})
         for rel in 파일들:
             if time.monotonic() - 시작 > 시한초:
@@ -759,7 +809,8 @@ def 사냥(repo=None, 파일들: "list[str]" = None, 시한초: int = 기본시�
                 if 접었다 or time.monotonic() - 시작 > 시한초:
                     break
                 변형목록 = 변형들(원글, 이름)
-                주사위.shuffle(변형목록)            # 연산자도 균등하게 -- 상한·시한에 앞쪽만 쓰이지 않게
+                # **π 가 닿는 자리.** 무게가 다 같으면(π0) 균등 섞기와 같다.
+                변형목록 = 변형뽑기(변형목록, 쓴정책.get("무게"), 주사위)
                 for 연산자, 설명, 새글, 자취 in 변형목록:
                     if time.monotonic() - 시작 > 시한초:
                         break

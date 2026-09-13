@@ -30,6 +30,8 @@ HELP = f"""**거짓 판정 사냥 (mutate)** -- 한 번에 둘을 본다.
 `{PREFIX} 보고` 원장(logs/거짓초록.jsonl) 요약 -- 사냥 안 하고 바로 답한다
 `{PREFIX} 요약` D_0 -> D_1 점수 추이 (falsegreen/요약.jsonl -- **추적된다**. 원장은 logs/ 라 저장소에 안 남는다)
 `{PREFIX} 순차` 병렬을 끈다 (기본은 코어수-1 일꾼으로 병렬 -- 실측 3일꾼 2.99배, 판정은 안 바뀐다)
+`{PREFIX} 정책` 지금 π 와 결정 이력 · `{PREFIX} 정책 후보` π' 후보 · `{PREFIX} 정책 결정` ACCEPT/REJECT
+  -- **π 는 개선하는 방법 자신이다.** 코드를 고치는 것(P->P')과 다르다. 검증을 지난 때만 바뀐다
 `{PREFIX} 먼검사` 전체 검사를 주기로 돌린 기록 · `{PREFIX} 먼검사 돌려` 한 바퀴 (배경)
   -- 빠른 precheck 은 먼 검사를 안 본다. 그 사각지대에서 **며칠씩 안 들킨 빨강**이 난다(실측: test_law_hwp)."""
 
@@ -51,6 +53,23 @@ def run(text: str, runner=None, allow_write: bool = True) -> "str | None":
     if 말 in ("요약", "추이"):
         # 추적되는 요약(falsegreen/요약.jsonl) -- 원장은 logs/ 라 저장소에 안 남는다
         return mutate.요약보고(REPO)
+    if 말.startswith("정책") or 말.startswith("pi") or 말.startswith("π"):
+        import policy
+        뒤 = 말.split(maxsplit=1)[1].strip() if " " in 말 else ""
+        if 뒤 in ("후보",):
+            import json as _j
+            return "```json\n" + _j.dumps(policy.후보만들기(mutate.요약들(REPO)[-1] if mutate.요약들(REPO)
+                                                        else {}, policy.지금정책(REPO)),
+                                        ensure_ascii=False, indent=2)[:1700] + "\n```"
+        if 뒤 in ("결정", "판정"):
+            요 = mutate.요약들(REPO)
+            if len(요) < 2:
+                return f"요약이 {len(요)}줄이다 -- 바탕과 후보가 둘 다 있어야 한다(사냥 두 번)"
+            후보 = policy.후보만들기(요[-2], policy.지금정책(REPO))
+            r = policy.개선결정(요[-2], 요[-1], 후보)
+            policy.정책적기(REPO, 정책=후보, 결정=r["결정"], 까닭=r["까닭"], 잰것=r["잰것"])
+            return f"**{r['결정']}** · ΔJ(π) {r['ΔJ']}\n" + "\n".join(f"  {x}" for x in r["까닭"])
+        return policy.보고(REPO)
     if 말.startswith("먼검사"):
         import farcheck
         뒤 = 말[3:].strip()
