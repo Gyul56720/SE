@@ -27,7 +27,10 @@ HELP = f"""**거짓 판정 사냥 (mutate)** -- 한 번에 둘을 본다.
 **거짓 초록** 그다음: 코드를 조용히 틀리게 바꿔도 초록이면 그 검사는 부르기만 하고 보지 않는다(Survived = 증거).
 순서가 그런 까닭: 환경 때문에 빨간 검사는 초록 사냥의 **바탕을 무효로** 만든다(T(P)=PASS 가 깨진다).
 `{PREFIX}` 1시간 · `{PREFIX} 24` 24시간 (배경 -- 끝나면 알린다) · `{PREFIX} 빨강만` · `{PREFIX} 초록만` · `{PREFIX} <파일.py>`
-`{PREFIX} 보고` 원장(logs/거짓초록.jsonl) 요약 -- 사냥 안 하고 바로 답한다"""
+`{PREFIX} 보고` 원장(logs/거짓초록.jsonl) 요약 -- 사냥 안 하고 바로 답한다
+`{PREFIX} 요약` D_0 -> D_1 점수 추이 (falsegreen/요약.jsonl -- **추적된다**. 원장은 logs/ 라 저장소에 안 남는다)
+`{PREFIX} 먼검사` 전체 검사를 주기로 돌린 기록 · `{PREFIX} 먼검사 돌려` 한 바퀴 (배경)
+  -- 빠른 precheck 은 먼 검사를 안 본다. 그 사각지대에서 **며칠씩 안 들킨 빨강**이 난다(실측: test_law_hwp)."""
 
 
 def run(text: str, runner=None, allow_write: bool = True) -> "str | None":
@@ -44,6 +47,16 @@ def run(text: str, runner=None, allow_write: bool = True) -> "str | None":
     import mutate
     if 말 == "보고":
         return mutate.둘다보고(REPO)
+    if 말 in ("요약", "추이"):
+        # 추적되는 요약(falsegreen/요약.jsonl) -- 원장은 logs/ 라 저장소에 안 남는다
+        return mutate.요약보고(REPO)
+    if 말.startswith("먼검사"):
+        import farcheck
+        뒤 = 말[3:].strip()
+        if 뒤 not in ("돌려", "돌려라", "시작"):
+            return farcheck.보고(REPO)
+        return (runner or _배경으로)(["python3", "farcheck.py", "--밀기"],
+                                  REPO / "logs" / "farcheck.log", "먼 검사 한 바퀴")
     argv = ["python3", "mutate.py"]
     한쪽 = None
     if 말.startswith("빨강만"):

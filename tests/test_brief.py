@@ -10,6 +10,7 @@ B004 는 값을 본다 -- 값을 손으로 바꿔치기해 놓고 관문이 잡�
 from __future__ import annotations
 
 import contextlib
+import datetime
 import io
 import json
 import sys
@@ -43,7 +44,15 @@ CSV = ("Symbol,Date,Time,Open,High,Low,Close,Volume\n"
 주식 = SRC.get("주식")
 
 
-def led_of(text=CSV, 받은날="2026-09-09"):
+# **받은날을 박아 두지 마라.** 2026-09-09 로 박아 두었더니 신선도(3일)를 넘긴 날
+# 부터 "멀쩡한 보고서" 검사가 혼자 빨개졌다(실측 2026-09-13: `B003/hard 주식: 4일
+# 낡았다`). 코드는 그대로인데 **시계가 움직여서** 빨간 것이다 -- 거짓 빨강이고,
+# 그날 거짓초록 사냥이 brief/report.py 에서 107 번 연속 FALSE_RED 를 낸 까닭이다.
+# 낡음을 재는 검사는 아래에서 날짜를 **일부러** 넘겨 준다(2020-01-01 따위).
+오늘 = datetime.date.today().isoformat()
+
+
+def led_of(text=CSV, 받은날=오늘):
     v = LG.inspect(주식, LG.parse(주식, text))
     return LG.Ledger(출처="주식", 받은날=받은날, 질의="검사", 줄=v["good"],
                      버린것=v["버린것"])
@@ -102,7 +111,7 @@ with tempfile.TemporaryDirectory() as d:
     p = Path(d) / "a.json"
     LG.save(led_of(), p)
     back = LG.load(p)
-    ok(back is not None and len(back) == 2 and back.받은날 == "2026-09-09",
+    ok(back is not None and len(back) == 2 and back.받은날 == 오늘,
        "저장 -> 읽기 왕복")
     p.write_text(json.dumps({"줄": [{"id": "x"}]}), encoding="utf-8")
     ok(LG.load(p) is None, "**출처·받은날이 없으면 None** -- 언제 것인지 모르면 못 쓴다")
@@ -217,7 +226,6 @@ with tempfile.TemporaryDirectory() as d:
        "읽게 두지 않는다")
 
     p2 = Path(d) / "좋음.json"
-    import datetime
     LG.save(led_of(받은날=datetime.date.today().isoformat()), p2)
     code, out = run(["주식", "--원장", str(p2)])
     ok(code == 0, "신선한 원장이면 끝값 0")
