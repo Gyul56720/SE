@@ -216,6 +216,52 @@ try:
 finally:
     FT.한번 = 진짜한번
 
+print("\n== 앞문을 병렬로 뿌린다: 빨라지되 **받는 것이 바뀌면 안 된다** ==")
+# **실측 2026-09-13.** `캐기` 의 앞문 갈래 바로 위에 "한 주소씩 차례로 캐면 열 곳이 열 배
+# 걸린다" 고 적혀 있는데 그 아래가 `for u in 앞것:` 이었다 -- 주석이 코드의 반대를 말했다.
+# 곁문은 `FT.캐기` 안에서 이미 병렬이라 주소 하나에 1.2초인데, 주소 여덟이 그대로 쌓여
+# 9.75초였다(한 쪽 0.4초 서버, 응답 120개). 뿌리고 나서 2.91초 -- 3.35배.
+import http.server, socketserver, threading, time                # noqa: E402
+
+class _느린쪽(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        time.sleep(0.25)
+        b = b"<html><body><h1>x</h1><a href='/a'>a</a></body></html>"
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html")
+        self.send_header("Content-Length", str(len(b)))
+        self.end_headers(); self.wfile.write(b)
+    def log_message(self, *a): pass
+
+_서버 = socketserver.ThreadingTCPServer(("127.0.0.1", 0), _느린쪽)
+_서버.daemon_threads = True
+threading.Thread(target=_서버.serve_forever, daemon=True).start()
+try:
+    _포트 = _서버.server_address[1]
+    _주소들 = [f"http://127.0.0.1:{_포트}/p{i}" for i in range(6)]
+
+    def _차례로(urls, 틈):
+        났 = []
+        for u in urls:
+            났 += FT.캐기(u, 곁문까지=True, 틈=틈)
+        return 났
+
+    t0 = time.perf_counter(); _차 = _차례로(_주소들, 10.0); 차초 = time.perf_counter() - t0
+    t0 = time.perf_counter(); _뿌 = RN.뿌리기(_주소들, 10.0); 뿌초 = time.perf_counter() - t0
+    ok(len(_뿌) == len(_차), f"**받는 응답 수가 같다** (차례로 {len(_차)} · 뿌려서 {len(_뿌)})")
+    ok([r.url for r in _뿌] == [r.url for r in _차],
+       "**순서까지 같다** -- 준 대로 지킨다(뒤섞이면 안쪽으로 팔 차례가 달라진다)")
+    ok(sum(1 for r in _뿌 if r.됐나) == sum(1 for r in _차 if r.됐나),
+       f"성공한 수가 같다 ({sum(1 for r in _뿌 if r.됐나)}개) -- 빨라지려고 덜 받지 않았다")
+    ok(뿌초 < 차초, f"**빨라졌다** ({차초:.2f}초 -> {뿌초:.2f}초 · {차초 / max(뿌초, 1e-9):.2f}배)")
+    ok(len(RN.뿌리기([], 10.0)) == 0, "빈 목록이면 빈 것을 준다")
+    ok([r.url for r in RN.뿌리기([_주소들[0]], 10.0)] == [r.url for r in FT.캐기(_주소들[0], True, 10.0)],
+       "하나짜리도 같은 것을 준다 -- 병렬이 다른 길이 아니다")
+    _캐응, _ = RN.캐기(_주소들, 앞문만=False, 따라=0, 틈=10.0)
+    ok(len(_캐응) == len(_차), f"`캐기` 가 그 뿌리기를 실제로 쓴다 ({len(_캐응)}개)")
+finally:
+    _서버.shutdown()
+
 print()
 if fails:
     print(f"dig: {len(fails)}개 실패 -- {fails}")
