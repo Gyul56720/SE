@@ -96,6 +96,8 @@ on:
       # 리허설 -- plan 이 승인 전에 부른다(격리 판에서 미리 돌려 본다).
       - "rehearsal.py"
       - "mutate.py"
+      # 먼 검사 사각지대 -- 전체 검사를 주기로 돌려 '늦게 발견되는 빨강'을 잰다.
+      - "farcheck.py"
       - "judge.py"
       - "improveloop.py"
       - "falsegreen/**.py"
