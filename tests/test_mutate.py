@@ -529,6 +529,55 @@ try:
     되찾음 = M.사냥(판, 파일들=["붙은것.py"], 시한초=120, 말하기=lambda s: None)
     ok(되찾음["잰변형"] >= 1, f"그 파일을 다시 잴 수 있다 ({되찾음['잰변형']}개)")
 
+    print("\n== 병렬: 빨라지되 **판정이 바뀌지 않아야** 한다 ==")
+    # 사용자(2026-09-13): "시간이 문제면 비동기로 하면 안 되나? 병렬로 한 번에 뿌려서."
+    # 맞다. 다만 병렬은 판정을 바꿀 수 있다(판을 공유하면 서로의 되돌림을 본다). 그래서
+    # **같은 표본을 순차로 한 번, 병렬로 한 번 재서 변형마다의 판정이 같은지** 본다.
+    병 = Path(tempfile.mkdtemp(prefix="test-병렬-"))
+    try:
+        git(병, "init", "-q")
+        (병 / "tests").mkdir()
+        for 이 in ("하나", "둘", "셋"):
+            (병 / f"{이}.py").write_text(
+                f"def f(a):\n    if a > 1:\n        return a + 1\n    return 0\n", encoding="utf-8")
+            (병 / "tests" / f"test_{이}.py").write_text(
+                f'import sys\nsys.path.insert(0, ".")\nimport {이}\n'
+                f'assert {이}.f(2) == 3\nassert {이}.f(0) == 0\nprint("본다")\n', encoding="utf-8")
+        git(병, "add", "-A"); git(병, "commit", "-qm", "init")
+
+        def 판정들(저장소):
+            것 = {}
+            for x in M.원장읽기(저장소):
+                if x.get("mutation_id") and x.get("classification"):
+                    것[x["mutation_id"]] = x["classification"]
+            return 것
+
+        순 = M.사냥(병, 시한초=300, 말하기=lambda s: None)
+        순판정 = 판정들(병)
+        (병 / M.원장상대).unlink()                 # 다음 재기를 섞지 않게
+        병결과 = M.병렬사냥(병, 시한초=300, 일꾼=3, 말하기=lambda s: None)
+        병판정 = 판정들(병)
+        ok(병결과.get("일꾼") == 3, f"일꾼 3으로 돌았다 ({병결과.get('일꾼')})")
+        ok(순["잰변형"] >= 3 and 순판정, f"순차가 잰 것이 있다 ({순['잰변형']}개)")
+        ok(set(순판정) == set(병판정),
+           f"**같은 변형 집합을 잰다** (순차 {len(순판정)} · 병렬 {len(병판정)} · "
+           f"차이 {sorted(set(순판정) ^ set(병판정))[:3]})")
+        다른 = {k: (순판정[k], 병판정[k]) for k in 순판정 if k in 병판정 and 순판정[k] != 병판정[k]}
+        ok(not 다른, f"**판정이 하나도 안 바뀐다 -- 병렬이 측정을 바꾸지 않는다** (다른 것 {list(다른.items())[:3]})")
+        ok(병결과["잰변형"] == 순["잰변형"],
+           f"잰 수도 같다 ({순['잰변형']} vs {병결과['잰변형']})")
+        ok(not list((병 / "logs").glob("거짓초록-일꾼*.jsonl")),
+           "일꾼 샤드를 합친 뒤 치운다 -- 같은 판정이 두 벌 남지 않는다")
+        ok(any(x.get("꼴") == "병렬시작" and x.get("일꾼") == 3 for x in M.원장읽기(병)),
+           "원장에 몇 일꾼으로 쟀는지 적는다 -- 표본의 조건이다")
+        홀 = M.병렬사냥(병, 시한초=120, 일꾼=1, 파일들=["하나.py"], 말하기=lambda s: None)
+        ok(홀.get("일꾼") is None and 홀["잰변형"] >= 1,
+           "일꾼 1이면 그냥 순차다 -- 다른 길이 아니다")
+        ok(M._일꾼수(0) >= 1 and M._일꾼수(0) <= max(1, (os.cpu_count() or 1)),
+           f"일꾼 0이면 코어 수에서 하나 남긴다 ({M._일꾼수(0)} / 코어 {os.cpu_count()})")
+    finally:
+        shutil.rmtree(병, ignore_errors=True)
+
     print("\n== 배선 ==")
     _서버 = (뿌리 / "discord_bot_server.py").read_text(encoding="utf-8")
     ok("mutate" in (뿌리 / "dispatch.py").read_text(encoding="utf-8")
@@ -540,6 +589,12 @@ try:
     ok("--둘다" in _FC.run("!거짓초록 24", runner=보기) and "86400" in _FC.run("!거짓초록 24", runner=보기),
        "**`!거짓초록 24` 는 둘 다 돌린다** (거짓 빨강 -> 거짓 초록)")
     ok("--거짓빨강" in _FC.run("!거짓초록 빨강만", runner=보기), "`빨강만` 은 FR 만")
+    ok("--일꾼 0" in _FC.run("!거짓초록 6", runner=보기),
+       "**기본이 병렬이다** (코어수-1 -- 봇에게 한 코어는 남긴다)")
+    ok("--일꾼 1" in _FC.run("!거짓초록 6 순차", runner=보기) and "21600" in _FC.run("!거짓초록 6 순차", runner=보기),
+       "`순차` 는 병렬을 끈다 -- 시간은 그대로 읽는다")
+    ok("--일꾼" not in _FC.run("!거짓초록 빨강만", runner=보기),
+       "FR 만 돌릴 때는 일꾼을 안 준다 -- 두 번 돌려 상태오염을 보는 판정이다")
     ok("--둘다" not in _FC.run("!거짓초록 초록만", runner=보기), "`초록만` 은 FG 만")
     ok(_FC.run("!거짓초록 보고") is not None, "`보고` 는 둘 다 요약한다(즉시)")
     _요 = _FC.run("!거짓초록 요약") or ""

@@ -778,6 +778,137 @@ def 사냥(repo=None, 파일들: "list[str]" = None, 시한초: int = 기본시�
     return out
 
 
+# ------------------------------------------------------------------ 병렬 사냥: 판정을 바꾸지 않는 범위에서만
+# 사용자(2026-09-13): "시간이 문제면 비동기로 하면 안 되나? 병렬로 한 번에 뿌려서."
+#
+# 맞다 -- 16.8초/변형의 대부분은 **검사 서브프로세스를 기다리는 시간**이다. 그런데 병렬화는
+# **판정을 바꿀 수 있다.** 그래서 바꾸지 않는 범위만 병렬로 돈다.
+#
+#   파일 단위로 나눈다       -- 일꾼마다 **자기 판(worktree)** 을 갖는다. 서로의 되돌림을 안 본다
+#   한 판 안은 순차다        -- `깨끗하게` 와 복원 귀속(RG0 -> 변형 -> RG1)은 **독점된 판**을 요구한다
+#   원장은 일꾼마다 따로 쓴다 -- 덧붙이기가 섞여 한 줄이 찢기지 않게. 끝에 합친다
+#   HOME·TMPDIR 도 갈라 준다 -- 검사가 판 밖(캐시·고정 경로)에 쓰면 그것이 서로를 오염시킨다
+#
+# **그래도 가정으로 두지 않는다.** `tests/test_mutate.py` 가 같은 표본을 순차로 한 번,
+# 병렬로 한 번 재서 **변형마다의 판정이 똑같은지** 본다. 다르면 병렬이 측정을 바꾼 것이다.
+#
+# 시한초과는 늘어날 수 있다(코어를 나눠 쓰니 느려진다). 그것은 빨강이 아니라 못잼으로 적히고,
+# 요약의 `시한초과` 와 `견줄수있나` 가 그만큼 표본이 줄었다고 말해 준다 -- 숨지 않는다.
+def _일꾼수(바람: int = 0) -> int:
+    """쓸 일꾼 수. 0 이면 코어 수 - 1(봇에게 한 코어는 남긴다). 최소 1."""
+    if 바람 and 바람 > 0:
+        return int(바람)
+    n = os.cpu_count() or 1
+    return max(1, n - 1)
+
+
+def _쟬파일들(repo: Path, 파일들=None, 씨앗: int = 기본씨앗) -> "list[str]":
+    """π0 의 순서를 **부모에서 한 번** 만든다. 일꾼에게 나눠 줘도 같은 순서에서 나온 것이어야 한다."""
+    if 파일들 is not None:
+        return list(파일들)
+    import random
+    r = subprocess.run(["git", "-C", str(repo), "-c", "core.quotepath=off", "ls-files", "-z", "*.py"],
+                       capture_output=True, text=True)
+    것 = sorted(x for x in r.stdout.split("\0") if x and not x.startswith("tests/"))
+    random.Random(씨앗).shuffle(것)
+    return 것
+
+
+def 병렬사냥(repo=None, 시한초: int = 기본시한초, 일꾼: int = 0, 파일들=None, 말하기=None,
+        함수상한: int = 0, 뺄검사: "list[str]" = None, 씨앗: int = 기본씨앗) -> dict:
+    """파일을 일꾼들에게 나눠 동시에 잰다. 일꾼이 1이면 그냥 `사냥` 이다(다른 길이 아니다).
+
+    돌려주는 것은 `사냥` 과 같은 꼴 -- 합친 원장에서 다시 센 것이다."""
+    repo = Path(repo or REPO)
+    말 = 말하기 or (lambda s: print(s, flush=True))
+    n = _일꾼수(일꾼)
+    차례 = _쟬파일들(repo, 파일들, 씨앗)
+    if n <= 1 or len(차례) <= 1:
+        return 사냥(repo, 차례, 시한초, 말하기, 함수상한, 뺄검사, 씨앗)
+    n = min(n, len(차례))
+    몫 = [차례[i::n] for i in range(n)]              # 돌려 나눈다 -- π0 의 순서를 고르게 쪼갠다
+    적기(repo, {"꼴": "병렬시작", "일꾼": n, "파일수": len(차례), "시한초": 시한초,
+              "정책": {"이름": "pi0", "seed": 씨앗, "일꾼": n, "나눔": "round-robin"}})
+    말(f"[변형] 병렬 {n}일꾼 · 파일 {len(차례)}개 ({'·'.join(str(len(x)) for x in 몫)})")
+    샤드 = [f"logs/거짓초록-일꾼{i}.jsonl" for i in range(n)]
+    for s in 샤드:
+        (repo / s).parent.mkdir(parents=True, exist_ok=True)
+        (repo / s).unlink(missing_ok=True)
+    집 = Path(tempfile.mkdtemp(prefix="se-일꾼집-"))
+    일들 = []
+    try:
+        for i, (몫하나, s) in enumerate(zip(몫, 샤드)):
+            argv = [sys.executable, str(Path(__file__).resolve()), "--저장소", str(repo),
+                    "--원장이름", s, "--시한", str(시한초), "--씨앗", str(씨앗)]
+            if 함수상한:
+                argv += ["--함수상한", str(함수상한)]
+            for f in 몫하나:
+                argv += ["--파일", f]
+            for x in (뺄검사 or ()):
+                argv += ["--뺄검사", x]
+            칸 = 집 / f"일꾼{i}"
+            (칸 / "tmp").mkdir(parents=True, exist_ok=True)
+            env = {**os.environ, "HOME": str(칸), "TMPDIR": str(칸 / "tmp"), **맑은환경}
+            일들.append(subprocess.Popen(argv, env=env, cwd=str(repo),
+                                      stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True))
+        for i, 일 in enumerate(일들):
+            try:
+                _, 에러 = 일.communicate(timeout=시한초 + 600)
+            except subprocess.TimeoutExpired:
+                일.kill()
+                _, 에러 = 일.communicate()
+                에러 = (에러 or "") + " -- 일꾼이 시한을 넘겨 죽였다"
+            if 에러 and 일.returncode not in (0, 1):
+                말(f"[변형] 일꾼 {i} 끝값 {일.returncode}: {에러.strip()[:200]}")
+                적기(repo, {"꼴": "일꾼터짐", "일꾼": i, "끝값": 일.returncode,
+                          "failure_cause": (에러 or "").strip()[-300:]})
+    finally:
+        shutil.rmtree(집, ignore_errors=True)
+    # ---- 샤드를 합친다. 덧붙이기만 -- 한 줄도 버리지 않는다.
+    모은: "list[dict]" = []
+    for s in 샤드:
+        p = repo / s
+        if not p.is_file():
+            continue
+        줄들 = [x for x in p.read_text(encoding="utf-8", errors="replace").splitlines() if x.strip()]
+        with _원장(repo).open("a", encoding="utf-8") as f:
+            for 줄 in 줄들:
+                f.write(줄 + "\n")
+                try:
+                    모은.append(json.loads(줄))
+                except ValueError:
+                    pass
+        p.unlink(missing_ok=True)
+    out = {"잰변형": 0, "살아남음": 0, "죽음": 0, "못잼": 0, "덮이지않음": 0, "동등제외": 0,
+           "살아남은것": [], "덮이지않은것": [], "파일수": 0, "일꾼": n}
+    for x in 모은:
+        결 = x.get("outcome")
+        if not 결:
+            if x.get("꼴") == "덮임":
+                out["파일수"] += 1
+            continue
+        out["잰변형"] += 1
+        분 = x.get("classification")
+        out[분] = out.get(분, 0) + 1
+        if 분 == 거짓초록:
+            out["살아남음"] += 1
+            out["살아남은것"].append({"파일": str(x.get("target", "")).split(":")[0],
+                                  "함수": str(x.get("target", "")).split(":")[-1],
+                                  "변형": x.get("mutation"), "검사": x.get("tests"),
+                                  "why": x.get("why", "")})
+            if x.get("why") == "not_covered":
+                out["덮이지않음"] += 1
+        elif 분 == 유효빨강:
+            out["죽음"] += 1
+        elif 분 == 동등변형:
+            out["동등제외"] += 1
+        else:
+            out["못잼"] += 1
+    적기(repo, {"꼴": "사냥끝", **{k: v for k, v in out.items()
+                               if k not in ("살아남은것", "덮이지않은것")}})
+    return out
+
+
 # ------------------------------------------------------------------ 거짓 빨강 사냥: 빨강이 거짓인가
 # 사용자(2026-09-12): "왜 거짓 빨강은 조사 안 해?"  맞는 지적이었다 -- 거짓 초록에는 저장소를 훑는
 # 사냥이 있는데, 거짓 빨강은 변형 하나 단위로 **막기만** 하고 찾아다니지 않았다.
@@ -1089,6 +1220,7 @@ def 요약(repo=None) -> dict:
     무효 = sum(v[못쓸] for v in 연산자.values())
     끝 = 마지막사냥(repo)
     시작줄 = next((x for x in reversed(행들) if x.get("꼴") == "사냥시작"), {})
+    병렬줄 = next((x for x in reversed(행들) if x.get("꼴") == "병렬시작"), {})
     FR끝 = next((x for x in reversed(행들) if x.get("꼴") == "FR사냥끝"), {})
     r = subprocess.run(["git", "-C", str(repo), "rev-parse", "--short", "HEAD"],
                        capture_output=True, text=True)
@@ -1109,7 +1241,9 @@ def 요약(repo=None) -> dict:
             "파일수": len(쟨파일들), "함수수": len(함수들),
             "검사수": FR끝.get("잰것", 0),
             "시한초": 시작줄.get("시한초"), "씨앗": (시작줄.get("정책") or {}).get("seed"),
-            "정책": 시작줄.get("정책") or {},
+            # **일꾼 수도 표본의 조건이다** -- 코어를 나눠 쓰면 느려져 시한초과가 늘 수 있다.
+            "일꾼": 병렬줄.get("일꾼", 1),
+            "정책": 병렬줄.get("정책") or 시작줄.get("정책") or {},
             # ---- 점수: 가를 수 있었던 것만 분모로 쓴다. **홀로 읽으면 안 된다.**
             "점수": round(잡 / (잡 + 산), 4) if (잡 + 산) else None,
             "분류": 분류, "연산자": 연산자,
@@ -1249,7 +1383,7 @@ def 요약보고(repo=None) -> str:
     줄.append(f"  FG 가운데 안덮임 {마.get('안덮임', 0)} · 약한단언 {마.get('약한단언', 0)} "
               f"-- 안덮임은 단언이 약한 것이 아니라 **그 줄이 아예 안 돈다**는 뜻이다")
     줄.append(f"  파일 {마.get('파일수', 0)} · 함수 {마.get('함수수', 0)} · 검사 {마.get('검사수', 0)} · "
-              f"시한 {마.get('시한초')}초 · 씨앗 {마.get('씨앗')}")
+              f"시한 {마.get('시한초')}초 · 씨앗 {마.get('씨앗')} · 일꾼 {마.get('일꾼', 1)}")
     return "\n".join(줄)
 
 
@@ -1263,7 +1397,7 @@ def 파일별거짓초록(repo=None, 파일들: "list[str]" = None) -> "list[dic
 
 
 def 둘다사냥(repo=None, 시한초: int = 기본시한초, 파일들: "list[str]" = None,
-         말하기=None, FR몫: float = 0.25, 씨앗: int = 기본씨앗) -> dict:
+         말하기=None, FR몫: float = 0.25, 씨앗: int = 기본씨앗, 일꾼: int = 1) -> dict:
     """**거짓 빨강을 먼저, 거짓 초록을 그다음.** {FR, FG, 말}
 
     순서가 중요하다 -- 환경 때문에 빨간 검사는 FG 사냥의 **바탕을 무효로 만든다**(T(P)=PASS 가 깨지면
@@ -1285,7 +1419,11 @@ def 둘다사냥(repo=None, 시한초: int = 기본시한초, 파일들: "list[s
     FG시한 = max(60, 시한초 - FR시한)
     말(f"[사냥] 2/2 거짓 초록 -- 시한 {FG시한}초"
       + (f" · 바탕에서 뺀 검사 {len(못믿을검사)}개" if 못믿을검사 else ""))
-    fg = 사냥(repo, 파일들=파일들, 시한초=FG시한, 말하기=말하기, 뺄검사=못믿을검사, 씨앗=씨앗)
+    # 일꾼 2 이상이면 파일을 나눠 동시에 잰다. **FR 은 순차로 둔다** -- 검사를 두 번 돌려
+    # 상태오염을 보는 판정이라, 같이 돌리면 서로가 그 '두 번째' 가 된다.
+    fg = (병렬사냥(repo, 시한초=FG시한, 일꾼=일꾼, 파일들=파일들, 말하기=말하기,
+                뺄검사=못믿을검사, 씨앗=씨앗) if (일꾼 or 0) > 1
+          else 사냥(repo, 파일들=파일들, 시한초=FG시한, 말하기=말하기, 뺄검사=못믿을검사, 씨앗=씨앗))
     적기(repo, {"꼴": "둘다끝", "FR": {k: v for k, v in fr.items() if k != "찾은것"},
               "FG": {k: v for k, v in fg.items() if k not in ("살아남은것", "덮이지않은것")},
               "못믿을검사": 못믿을검사[:12]})
@@ -1378,7 +1516,17 @@ def main(argv=None) -> int:
     ap.add_argument("--요약적기", action="store_true",
                     help=f"원장을 한 줄로 줄여 {요약경로}(추적됨) 에 덧붙인다")
     ap.add_argument("--요약보고", action="store_true", help="D_0 -> D_1 -> ... 점수 추이")
+    ap.add_argument("--일꾼", type=int, default=1,
+                    help="파일을 나눠 동시에 잰다 (0=코어수-1, 1=순차). 판정은 바뀌지 않아야 한다")
+    ap.add_argument("--저장소", default=None, help="이 저장소를 잰다 (일꾼이 쓴다)")
+    ap.add_argument("--원장이름", default=None, help="원장 경로를 갈아끼운다 (일꾼이 쓴다)")
+    ap.add_argument("--뺄검사", action="append", default=None, help="바탕에서 뺄 검사 (일꾼이 쓴다)")
     a = ap.parse_args(argv)
+    global 원장상대, REPO
+    if a.원장이름:
+        원장상대 = a.원장이름                      # 일꾼마다 제 원장에 쓴다 -- 덧붙이기가 섞여 찢기지 않게
+    if a.저장소:
+        REPO = Path(a.저장소)
     if a.요약보고:
         print(요약보고())
         return 0
@@ -1391,7 +1539,7 @@ def main(argv=None) -> int:
         print(FR보고())
         return 0
     if a.둘다:
-        r = 둘다사냥(시한초=a.시한, 파일들=a.파일, 씨앗=a.씨앗)
+        r = 둘다사냥(시한초=a.시한, 파일들=a.파일, 씨앗=a.씨앗, 일꾼=a.일꾼)
         요약적기()                                  # D_t 를 추적되는 자리에 남긴다
         print()
         print(둘다보고())
@@ -1404,8 +1552,11 @@ def main(argv=None) -> int:
     if a.보고:
         print(보고())
         return 0
-    r = 사냥(파일들=a.파일, 시한초=a.시한, 함수상한=a.함수상한, 씨앗=a.씨앗)
-    요약적기()
+    r = (병렬사냥(시한초=a.시한, 일꾼=a.일꾼, 파일들=a.파일, 함수상한=a.함수상한,
+                뺄검사=a.뺄검사, 씨앗=a.씨앗) if (a.일꾼 or 0) != 1
+         else 사냥(파일들=a.파일, 시한초=a.시한, 함수상한=a.함수상한, 뺄검사=a.뺄검사, 씨앗=a.씨앗))
+    if not a.원장이름:                              # 일꾼은 요약을 안 적는다 -- 부모가 합친 뒤에 적는다
+        요약적기()
     print()
     print(보고())
     return 1 if r["살아남음"] else 0
