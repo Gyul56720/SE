@@ -129,6 +129,102 @@ def 자원깎기(바탕: T.망, 요청: T.망, 배치: dict, 쓴cpu: dict, 쓴�
             쓴대역[k] = 쓴대역.get(k, 0.0) + 부호 * 필요
 
 
+# ------------------------------------------------------------------ 다리: MIP 를 배치기로
+MIP불능 = "MIP불능"
+
+
+def _남은망(바탕: T.망, 쓴cpu: dict, 쓴대역: dict) -> T.망:
+    """**남은 용량으로 된 바탕망.** 온라인이라 앞 요청이 이미 자원을 물고 있다.
+
+    FF 는 용량을 상수로 읽으므로, 지금 남은 것을 용량으로 삼은 판을 따로 지어 준다.
+    가중치(`값`)는 그대로 옮긴다 -- 그것은 자원이 아니라 값이다."""
+    새 = T.망(바탕.이름 + ":남은것")
+    새.노드 = {u: {**속, "cpu": 속["cpu"] - 쓴cpu.get(u, 0.0)} for u, 속 in 바탕.노드.items()}
+    새.링크 = {k: {**속, "대역": 속["대역"] - 쓴대역.get(k, 0.0)} for k, 속 in 바탕.링크.items()}
+    return 새
+
+
+def _경로뽑기(요청: T.망, 노드배치: dict, 호들: list, y값: dict) -> dict:
+    """흐름 변수에서 **경로를 복원한다.** 정수해라 가상 링크마다 호가 사슬을 이룬다."""
+    길들 = {}
+    for e in 요청.링크:
+        a, b = e
+        s, t = 노드배치[a], 노드배치[b]
+        나간것 = {}
+        for 호 in 호들:
+            if y값.get((e, 호), 0.0) > 0.5:
+                나간것.setdefault(호[0], []).append(호[1])
+        길, x, 본것 = [s], s, {s}
+        while x != t:
+            다음 = [v for v in 나간것.get(x, []) if v not in 본것]
+            if not 다음:
+                break                       # 사슬이 안 이어진다 -- 아래에서 걸러진다
+            x = 다음[0]
+            본것.add(x)
+            길.append(x)
+        길들[e] = 길 if 길[-1] == t else None
+    return 길들
+
+
+def FF배치(바탕: T.망, 요청: T.망, 쓴cpu: dict, 쓴대역: dict, 시한초: float = 30.0,
+        덧제약=None) -> dict:
+    r"""**FF MILP 를 최적까지 풀어 배치한다.** 탐욕이 놓치는 것을 잡는 바탕(baseline)이다.
+
+    `덧제약` 에 (a, b) 목록을 주면 `a z <= b` 를 얹는다 -- 받아들인 cut 을 넣어 보는 자리다.
+
+    **못 푼 것은 거절이 아니다.** 시한초과·풀이기 없음은 터뜨려서 부르는 쪽이 `못잼` 으로
+    세게 한다. 둘을 섞으면 수용률이 방법이 아니라 시한의 함수가 된다."""
+    import numpy as np
+    from cut import ff as FF
+    남 = _남은망(바탕, 쓴cpu, 쓴대역)
+    p = FF.짓기(남, 요청)
+    if 덧제약:
+        from cut import 판정 as J
+        줄들 = [J.벡터(p, a) for a, _ in 덧제약]
+        p = FF.판(바탕=남, 요청=요청, x자리=p.x자리, y자리=p.y자리, 호들=p.호들, c=p.c,
+                A_eq=p.A_eq, b_eq=p.b_eq,
+                A_ub=np.vstack([p.A_ub] + [줄[None, :] for 줄 in 줄들]),
+                b_ub=np.append(p.b_ub, [float(b) for _, b in 덧제약]))
+    r = FF.풀기(p, 정수=True, 시한초=시한초)
+    if r["상태"] == "불능":
+        return {"됐나": False, "사유": MIP불능, "노드배치": {}, "링크배치": {},
+                "비용": 0.0, "가중비용": 0.0, "매출": 0.0}
+    if r["상태"] != "최적":
+        raise RuntimeError(f"FF 를 못 풀었다: {r['왜']}")      # -> 부르는 쪽이 못잼으로 센다
+    z = r["해"]
+    노드배치 = {}
+    for (v, u), 자리 in p.x자리.items():
+        if z[자리] > 0.5:
+            노드배치[v] = u
+    if len(노드배치) != len(요청.노드):
+        raise RuntimeError("MIP 해에서 배치를 못 읽었다 -- 정수해가 아니다")
+    y값 = {열쇠: z[자리] for 열쇠, 자리 in p.y자리.items()}
+    길들 = _경로뽑기(요청, 노드배치, p.호들, y값)
+    if any(길 is None for 길 in 길들.values()):
+        raise RuntimeError("MIP 해에서 경로를 못 읽었다 -- 흐름이 사슬을 안 이룬다")
+    cpu합 = sum(s["cpu"] for s in 요청.노드.values())
+    대역합 = sum(s["대역"] for s in 요청.링크.values())
+    홉비용 = sum(요청.링크[e]["대역"] * (len(길) - 1) for e, 길 in 길들.items())
+    return {"됐나": True, "사유": "", "노드배치": 노드배치, "링크배치": 길들,
+            "매출": cpu합 + 대역합, "비용": cpu합 + 홉비용,
+            # **MIP 가 실제로 줄인 것**은 이쪽이다(가중치가 들어간 FF 목적함수)
+            "가중비용": round(float(r["값"]), 4)}
+
+
+def 가중비용(바탕: T.망, 요청: T.망, 배치: dict) -> float:
+    """FF 목적함수와 **같은 꼴**로 배치 하나의 값을 잰다: sum d_r w_u + sum d_e w_uw.
+
+    탐욕과 MIP 를 같은 자로 견주려면 이것이 있어야 한다 -- 탐욕의 `비용` 은 홉 수만 세서
+    가중치를 안 본다(그것대로 남겨 둔다. 옛 원장이 그 수로 쌓여 있다)."""
+    값 = sum(요청.노드[v]["cpu"] * float(바탕.노드[u].get("값", 1.0))
+            for v, u in (배치.get("노드배치") or {}).items())
+    for e, 길 in (배치.get("링크배치") or {}).items():
+        d = 요청.링크[e]["대역"]
+        for i in range(len(길) - 1):
+            값 += d * float(바탕.링크[바탕.링크키(길[i], 길[i + 1])].get("값", 1.0))
+    return round(값, 4)
+
+
 def 탐욕cpu(바탕: T.망, 요청: T.망, 쓴cpu: dict, 쓴대역: dict) -> dict:
     """**일부러 더 나쁜 바탕.** 노드 순위를 CPU 만 보고 매긴다(대역을 안 본다).
 
@@ -143,4 +239,4 @@ def 탐욕cpu(바탕: T.망, 요청: T.망, 쓴cpu: dict, 쓴대역: dict) -> di
         globals()["노드순위"] = 옛순위
 
 
-방법들 = {"탐욕": 탐욕배치, "탐욕cpu": 탐욕cpu}
+방법들 = {"탐욕": 탐욕배치, "탐욕cpu": 탐욕cpu, "FF": FF배치}
