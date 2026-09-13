@@ -27,7 +27,18 @@ EVIDENCE = ""
 
 # 판정의 역사가 담기는 원장들. 파생 색인(graph/ledger.jsonl)은 일부러 없다.
 보호원장 = ("eval/ledger.jsonl", "router/ledger.jsonl", "graph/edges.jsonl",
-          "intent/ledger.jsonl")
+          "intent/ledger.jsonl",
+          # **실측 2026-09-13 -- 신뢰 루트가 지난 세대를 지키고 있었다.** 위 넷은 2026-09-11
+          # 의 채점표다. 그 뒤에 오늘의 채점표가 생겼는데(거짓초록 사냥의 D_t · 성능 판정의
+          # ACCEPT/REJECT · 먼검사의 빨강 이력) 이 목록은 안 따라왔다. 그래서 이 게이트가
+          # 막으려던 바로 그 길 -- "채점표를 고쳐 실패를 없애는 것" -- 이 **오늘의 채점표에
+          # 대해서는 열려 있었다.** G009 가 `mathmetics/.../verifier.py` 를 지키고 있는
+          # 것과 같은 표류다. 목록이 도구를 안 따라가는 것이 표류의 꼴이므로,
+          # tests/test_gate_g020.py 가 도구의 경로 상수와 이 목록을 맞춰 붙든다.
+          "falsegreen/요약.jsonl",      # mutate.요약경로   -- D_t (잰변형·Killed·FG·못잼)
+          "falsegreen/성능.jsonl",      # perf.성능경로     -- 성능 판정 ACCEPT/REJECT
+          "falsegreen/정책.jsonl",      # policy.정책경로   -- π 의 채택 이력
+          "falsegreen/먼검사.jsonl")    # farcheck.기록경로 -- 먼 검사의 빨강 이력
 
 
 def _경로풀기(path: str) -> str:
