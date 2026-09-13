@@ -43,6 +43,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import statistics
 import subprocess
@@ -85,6 +86,14 @@ REPO = Path(__file__).resolve().parent
 }
 
 
+def _기계() -> dict:
+    r"""**어느 기계에서 쟀나.** 실측 2026-09-13: 같은 워크로드가 이 컨테이너에서 13.41초,
+    VM 에서 9.94초였다. 기계를 안 적으면 원장이 두 기계를 섞어 놓고 **아무 표시도 안 한다** --
+    나중에 그 줄들을 나란히 읽으면 없던 개선·없던 퇴화가 보인다."""
+    import platform
+    return {"이름": platform.node(), "코어": os.cpu_count()}
+
+
 def _git(판: Path, *a) -> subprocess.CompletedProcess:
     return subprocess.run(["git", "-C", str(판), *a], capture_output=True, text=True)
 
@@ -92,7 +101,6 @@ def _git(판: Path, *a) -> subprocess.CompletedProcess:
 def 한번(판: Path, argv: "list[str]", 시한초: int = 워크로드시한초) -> "tuple[float | None, int, str]":
     """한 번 돌린 벽시계 초. 끝값이 0 이 아니면 시간을 **안 돌려준다**(None) -- 터진 것의
     시간은 성능이 아니다."""
-    import os
     env = {**os.environ, "PYTHONPATH": str(판), **맑은환경}
     t0 = time.perf_counter()
     try:
@@ -372,7 +380,11 @@ def 성능개선(바탕판, 후보판, 워크로드: str = "관문", 반복: int
 def 적기(repo=None, 결과: dict = None, 바탕: str = "", 후보: str = "") -> dict:
     repo = Path(repo or REPO)
     잰 = (결과 or {}).get("잰것") or {}
-    줄 = {"때": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    때 = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    # **줄마다 고유 id.** `때` 는 초 단위라 같은 초에 쓰인 줄들이 겹친다(실측: 흉내 검사에서
+    # 두 줄이 같은 `때` 를 받아 버림 하나가 둘을 물었다). 쓰는 시점의 줄 수를 붙여 가른다.
+    id = f"{때}#{len(기록들(repo)) + 1}"
+    줄 = {"id": id, "때": 때, "기계": _기계(),
          "워크로드": 잰.get("워크로드"), "바탕판": 바탕, "후보판": 후보,
          "결정": (결과 or {}).get("결정"), "V": (결과 or {}).get("V"),
          "바탕중앙값": 잰.get("바탕중앙값"), "후보중앙값": 잰.get("후보중앙값"),
@@ -409,17 +421,46 @@ def 보고(repo=None) -> str:
     if not 것:
         return (f"{성능경로} 가 비어 있다 -- `python3 perf.py --재기 관문` 으로 한 번 재거나 "
                 "`--결정 --후보 <갈래>` 로 견줘라")
-    줄 = [f"{'때':17} {'워크로드':10} {'바탕':>9} {'후보':>9} {'Δ':>9} {'잡음':>8} {'결정':>8}"]
-    for x in 것[-12:]:
-        def 수(v, n=4):
-            return f"{v:.{n}f}" if isinstance(v, (int, float)) else "--"
-        줄.append(f"{str(x.get('때'))[:16]:17} {str(x.get('워크로드'))[:10]:10} "
-                  f"{수(x.get('바탕중앙값')):>9} {수(x.get('후보중앙값')):>9} "
-                  f"{수(x.get('Δ')):>9} {수(x.get('잡음바닥')):>8} {str(x.get('결정')):>8}")
-    받음 = [x for x in 것 if x.get("결정") == "ACCEPT"]
-    줄.append(f"\nACCEPT {len(받음)} / {len(것)}번. "
-              + ("가장 큰 이득: " + max(((x.get('Δ') or 0), str(x.get('워크로드')))
-                                   for x in 받음)[1] if 받음 else "아직 받아들인 것이 없다"))
+    # **버림 줄은 무른 대상을 이름으로 가리킨다.** 원장은 덧붙이기만 하므로 ACCEPT 줄을 지우지
+    # 않는다 -- 그 대신 `무른것`(그 줄의 `때`)으로 짚는다. 안 그러면 보고가 "ACCEPT 2번" 이라고
+    # 말하는데 그 둘 중 하나는 **내가 버린 것**이다(실측 2026-09-13).
+    #
+    # 처음에는 "바로 앞의 판정" 으로 찾게 했다. **그것도 틀렸다** -- 내 버림 줄은 두 ACCEPT
+    # **뒤**에 있어서, 버린 07:13 이 아니라 쓰기로 한 07:22 를 물렀다. 위치로 짚는 것은
+    # 원장이 덧붙여지는 동안 뜻이 바뀐다. 이름으로 짚어야 한다.
+    무른것 = {str(x.get("무른것")) for x in 것 if x.get("결정") == "버림" and x.get("무른것")}
+    이름없는버림 = [x for x in 것 if x.get("결정") == "버림" and not x.get("무른것")]
+    무름 = {i for i, x in enumerate(것)
+          if (x.get("id") and str(x["id"]) in 무른것)
+          or (not x.get("id") and str(x.get("때")) in 무른것)}
+
+    def 수(v, n=4):
+        return f"{v:.{n}f}" if isinstance(v, (int, float)) else "--"
+
+    def 기계글(x):
+        기 = x.get("기계") or {}
+        return f"{str(기.get('이름') or '?')[:9]}/{기.get('코어') or '?'}"
+
+    줄 = [f"{'때':17} {'기계':12} {'바탕':>8} {'후보':>8} {'Δ':>8} {'잡음':>7} {'결정':>8}"]
+    처음 = max(0, len(것) - 12)
+    for i, x in enumerate(것[처음:], start=처음):
+        줄.append(f"{str(x.get('때'))[:16]:17} {기계글(x):12} "
+                  f"{수(x.get('바탕중앙값')):>8} {수(x.get('후보중앙값')):>8} "
+                  f"{수(x.get('Δ')):>8} {수(x.get('잡음바닥')):>7} {str(x.get('결정')):>8}"
+                  + ("   <- 무름(뒤에서 버렸다)" if i in 무름 else ""))
+    판정 = [x for i, x in enumerate(것) if i not in 무름 and x.get("결정") in ("ACCEPT", "REJECT")]
+    받음 = [x for x in 판정 if x.get("결정") == "ACCEPT"]
+    줄.append(f"\n살아 있는 판정 {len(판정)}번 중 ACCEPT {len(받음)}번"
+              + (f" (무른 것 {len(무름)}개)" if 무름 else "") + ". "
+              + (f"가장 큰 이득 {min((x.get('Δ') or 0) for x in 받음):+.4f}초"
+                 if 받음 else "아직 받아들인 것이 없다"))
+    if 이름없는버림:
+        줄.append(f"버림 줄 {len(이름없는버림)}개에 `무른것` 이 안 적혀 있다 -- **셈에 반영하지 "
+                  "못한다**(무엇을 물렀는지 모른다). `--버림 <때>` 로 다시 적어라.")
+    기계들 = {기계글(x) for x in 것 if x.get("기계")}
+    if len(기계들) > 1:
+        줄.append(f"**기계가 {len(기계들)}가지 섞여 있다** ({', '.join(sorted(기계들))}) -- "
+                  "다른 기계의 줄끼리 견주지 마라. 한 판정 안의 바탕·후보만 견줄 수 있다.")
     if 것[-1].get("까닭"):
         줄.append("마지막 까닭: " + " · ".join(str(w)[:90] for w in 것[-1]["까닭"][:3]))
     return "\n".join(줄)
@@ -448,7 +489,34 @@ def main(argv=None) -> int:
     ap.add_argument("--워크로드", default="관문")
     ap.add_argument("--반복", type=int, default=기본반복)
     ap.add_argument("--보고", action="store_true")
+    ap.add_argument("--버림", default=None,
+                    help="그 판정을 무른다 (원장의 `때` 값 -- 앞 글자만 줘도 된다)")
+    ap.add_argument("--까닭", default="", help="--버림 과 함께: 왜 버리나")
     a = ap.parse_args(argv)
+    if a.버림:
+        맞는 = [x for x in 기록들()
+              if (str(x.get("id") or x.get("때") or "").startswith(a.버림)
+                  or str(x.get("때", "")).startswith(a.버림))
+              and x.get("결정") in ("ACCEPT", "REJECT")]
+        if not 맞는:
+            print(f"'{a.버림}' 로 시작하는 판정 줄이 없다")
+            return 2
+        if len(맞는) > 1:
+            print(f"'{a.버림}' 에 {len(맞는)}줄이 걸린다 -- 더 길게 줘라")
+            return 2
+        적기(결과={"결정": "버림", "Δ": None, "V": None, "잰것": {},
+                 "까닭": [a.까닭 or "(까닭을 안 적었다)"]},
+           바탕=맞는[0].get("바탕판", ""), 후보=맞는[0].get("후보판", ""))
+        # `무른것` 은 적기가 모르는 칸이라 마지막 줄에 덧붙인다
+        import json as _j
+        p = REPO / 성능경로
+        줄들 = [x for x in p.read_text(encoding="utf-8").splitlines() if x.strip()]
+        마 = _j.loads(줄들[-1])
+        마["무른것"] = 맞는[0].get("id") or 맞는[0]["때"]
+        줄들[-1] = _j.dumps(마, ensure_ascii=False)
+        p.write_text("\n".join(줄들) + "\n", encoding="utf-8")
+        print(f"{맞는[0]['때']} 의 {맞는[0]['결정']} 을 물렀다")
+        return 0
     if a.워크로드목록:
         for 이름, 일 in 워크로드들.items():
             print(f"  {이름:10} {일['왜']}")
@@ -468,6 +536,13 @@ def main(argv=None) -> int:
         print(f"{a.재기}: 중앙값 {r['중앙값']}초 (표본 {r['표본']} · 터진 것 {r['터진것']})")
         print(f"  흔들림(MAD) {흔들림(r['표본'])}초 · J = 1/t = "
               f"{round(1 / r['중앙값'], 4) if r['중앙값'] else '--'}")
+        # **바탕선도 원장에 남긴다** -- 기계마다 다르고(실측: 컨테이너 13.4초 · VM 9.94초)
+        # 판 따라 달라진다. 적어 두지 않으면 "전에는 얼마였나" 를 물을 데가 없다.
+        적기(결과={"결정": "재기", "Δ": None, "V": None,
+                 "잰것": {"워크로드": a.재기, "바탕중앙값": r["중앙값"], "바탕표본": r["표본"],
+                        "잡음바닥": 흔들림(r["표본"])}},
+           바탕=_git(REPO, "rev-parse", "--short", "HEAD").stdout.strip())
+        print(f"  {성능경로} 에 남겼다 -- 이 기계의 바탕선이다")
         return 0
     if a.결정:
         if not a.후보:

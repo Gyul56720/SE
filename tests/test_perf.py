@@ -211,7 +211,33 @@ try:
     빠진 = [k for k in ("워크로드", "바탕중앙값", "후보중앙값", "Δ", "잡음바닥", "J바탕", "J후보",
                       "결정", "바탕표본") if k not in 줄]
     ok(not 빠진, f"원장 줄에 표본까지 다 있다 (빠진 것 {빠진})")
-    ok("ACCEPT 1 / 2" in PF.보고(집), f"보고가 받아들인 수를 센다 ({PF.보고(집).splitlines()[-2][:40]})")
+    ok("ACCEPT 1번" in PF.보고(집), f"보고가 받아들인 수를 센다 ({PF.보고(집).splitlines()[-1][:50]})")
+    ok("가장 큰 이득 -" in PF.보고(집),
+       f"**가장 큰 이득은 가장 음수인 Δ 다** (max 를 쓰면 가장 작은 이득을 보고한다)")
+    ok("기계" in PF.보고(집).splitlines()[0], "기계 칸이 있다 -- 같은 워크로드가 기계마다 다르다")
+    ok((PF.기록들(집)[0].get("기계") or {}).get("이름"),
+       f"원장 줄이 어느 기계에서 쟀는지 적는다 ({PF.기록들(집)[0].get('기계')})")
+
+    # **버림은 무른 대상을 이름으로 짚는다.** 위치로 짚으면 원장이 덧붙여지는 동안 뜻이 바뀐다 --
+    # 실측 2026-09-13: "바로 앞의 판정" 으로 찾게 했더니 버린 07:13 이 아니라 쓰기로 한
+    # 07:22 를 물렀다(버림 줄이 두 ACCEPT 뒤에 있었다).
+    ok(all(x.get("id") for x in PF.기록들(집)),
+       f"줄마다 고유 id 가 있다 -- `때` 는 초 단위라 같은 초에 겹친다 ({PF.기록들(집)[0]['id']})")
+    ok(len({x["id"] for x in PF.기록들(집)}) == len(PF.기록들(집)), "id 가 서로 다르다")
+    받은때 = [x["id"] for x in PF.기록들(집) if x["결정"] == "ACCEPT"][0]
+    PF.적기(집, {"결정": "버림", "Δ": None, "잰것": {}, "까닭": ["흉내"]}, "", "")
+    줄들 = [x for x in (집 / PF.성능경로).read_text(encoding="utf-8").splitlines() if x.strip()]
+    import json as _j
+    마 = _j.loads(줄들[-1]); 마["무른것"] = 받은때
+    줄들[-1] = _j.dumps(마, ensure_ascii=False)
+    (집 / PF.성능경로).write_text("\n".join(줄들) + "\n", encoding="utf-8")
+    글 = PF.보고(집)
+    ok("ACCEPT 0번" in 글 and "무른 것 1개" in 글,
+       f"**이름으로 짚은 버림이 그 판정을 무른다** ({[x for x in 글.splitlines() if 'ACCEPT' in x][-1][:60]})")
+    ok("무름(뒤에서 버렸다)" in 글, "무른 줄에 표시가 붙는다 -- 원장은 지우지 않는다")
+    PF.적기(집, {"결정": "버림", "Δ": None, "잰것": {}, "까닭": ["대상을 안 적었다"]}, "", "")
+    ok("`무른것` 이 안 적혀 있다" in PF.보고(집),
+       "**대상을 안 적은 버림은 셈에 반영하지 않고 그렇다고 말한다** -- 무엇을 물렀는지 모른다")
     shutil.rmtree(집, ignore_errors=True)
 finally:
     shutil.rmtree(느림, ignore_errors=True); shutil.rmtree(빠름, ignore_errors=True)
