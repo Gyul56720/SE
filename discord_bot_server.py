@@ -988,8 +988,15 @@ async def _handle_public_message(message: discord.Message) -> None:
         await message.channel.send("(응답 생성 실패 -- 로그를 확인하세요)")
     for chunk_start in range(0, len(reply or ""), 1900):
         await message.channel.send(reply[chunk_start:chunk_start + 1900] or "(빈 응답)")
+    # **공개 채널에는 sync_note 를 안 보낸다.** 그것은 답이 아니라 운영 정보다 -- 관문 사슬
+    # (Commit = BasePass ∧ ToolInvoked ∧ ...)·커밋 해시·"Obsidian에서 pull하면 보입니다".
+    # 실측 2026-09-13: `1+1 문제 풀어줘` 와 `누가 이겨?` 에 그 블록이 답보다 길게 따라붙었다.
+    # 공개 채널에서 묻는 사람은 저장소를 안 본다. 버리지는 않는다 -- 로그에는 남긴다.
     if sync_note:
-        await message.channel.send(sync_note)
+        print(f"[public] ch={message.channel.id} sync_note={sync_note[:400]!r}")
+    # **integrity_note 는 보낸다.** 그것은 보고가 아니라 **경고**다 -- 에이전트가 "저장했다"
+    # 고 말했는데 원격에 그 커밋이 없을 때만 뜬다(2026-08-29 사고, 4회 반복). 이것까지 끄면
+    # 거짓 보고가 조용해진다. 시끄러운 것과 틀린 것을 가려서 끈다.
     if integrity_note:
         await message.channel.send(integrity_note)
 
