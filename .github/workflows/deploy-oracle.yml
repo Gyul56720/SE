@@ -98,6 +98,8 @@ on:
       - "mutate.py"
       # 먼 검사 사각지대 -- 전체 검사를 주기로 돌려 '늦게 발견되는 빨강'을 잰다.
       - "farcheck.py"
+      # π -- 개선하는 방법 자신. 사냥이 이것을 읽어 연산자를 고른다.
+      - "policy.py"
       - "judge.py"
       - "improveloop.py"
       - "falsegreen/**.py"

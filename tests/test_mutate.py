@@ -658,6 +658,8 @@ try:
        "`먼검사` 는 먼 검사 기록을 찍는다")
     ok("farcheck.py" in (_FC.run("!거짓초록 먼검사 돌려", runner=보기) or ""),
        "`먼검사 돌려` 는 배경으로 한 바퀴 돌린다")
+    ok("π" in (_FC.run("!거짓초록 정책") or ""), "`정책` 은 지금 π 를 찍는다")
+    ok("이름" in (_FC.run("!거짓초록 정책 후보") or ""), "`정책 후보` 는 π' 후보를 찍는다")
     ok("farcheck.py" in (뿌리 / ".github/workflows/deploy-oracle.yml").read_text(encoding="utf-8"),
        "배포가 farcheck.py 를 서버에 올린다")
 finally:
