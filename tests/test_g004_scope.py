@@ -76,6 +76,32 @@ STEM = "TOK" + "EN"
 v = run({"harvest.sh": f"grep -r . | grep {STEM}\n"})
 ok(any("자격증명을 수집하는 패턴" in x for x in v), f"grep -r + TOKEN 은 위반 ({v})")
 
+print("[선걸러내기] 낱말이 없는 파일은 안 훑는다 -- **판정은 그대로여야 한다**")
+# 세 패턴(_ECHO_SECRET · _HARVEST · _LIVE_SECRET)은 하나도 예외 없이 TOKEN|SECRET|KEY|
+# PASSWORD|CREDENTIAL 중 하나를 요구하고, `_code_only` 는 줄을 빈 줄로 **지우기만** 한다.
+# 그러므로 원본에 그 낱말이 없으면 지운 뒤에도 없다 -- 훑을 까닭이 없다(실측 2026-09-13:
+# 훑는 파일 1153개 중 804개(70%)가 여기서 빠지고 G004 가 4.28 -> 2.34초).
+# **이 검사는 그 걸러내기가 판정을 바꾸지 않는다는 것만 본다.**
+섞어서 = {
+    "live.sh": f"export DISCORD_{STEM}=MTIzNDU2Nzg5MDEyMzQ1Njc4\n",     # 잡아야 한다
+    "harvest.sh": f"grep -r . | grep {STEM}\n",                        # 잡아야 한다
+    "place.sh": "export API_KEY=your_api_key_here\n",                  # 자리표시자 -- 안 잡는다
+    "clean.py": "def f(a):\n    return a + 1\n",                       # 낱말 없음 -- 안 훑는다
+    "doc.md": "# 문서\n아무 낱말도 없다.\n",                              # 낱말 없음 -- 안 훑는다
+    "memo.py": f'# echo "비밀: ${STEM}" -- 사고 경위 기록\nx = 1\n',       # 주석 -- 안 잡는다
+}
+v = run(섞어서)
+잡힌곳 = sorted({x.split(":")[0] for x in v})
+ok(잡힌곳 == ["harvest.sh", "live.sh"],
+   f"**잡을 것만 잡는다** -- 걸러내기를 넣어도 목록이 그대로다 ({잡힌곳})")
+ok(len(v) == 2, f"두 개다 -- 낱말 없는 파일이 빠져도 검출이 줄지 않는다 ({len(v)}: {v})")
+ok(not any("clean.py" in x or "doc.md" in x for x in v), "낱말 없는 파일은 위반이 아니다")
+import gates.G004_secret_exposure as _G
+ok(하나 := all(w == w.lower() for w in _G._MUST_WORDS),
+   f"낱말 목록이 소문자다 -- 비교를 `text.lower()` 로 하므로 ({_G._MUST_WORDS})")
+for _낱 in ("token", "secret", "key", "password", "credential"):
+    ok(_낱 in _G._MUST_WORDS, f"`{_낱}` 이 목록에 있다 -- 빠지면 그 패턴이 영영 안 돈다")
+
 print()
 if fails:
     print(f"G004 범위: {len(fails)}개 실패 -- {fails}")

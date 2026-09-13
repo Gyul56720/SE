@@ -41,6 +41,15 @@ _LIVE_SECRET = re.compile(
 _PLACEHOLDER = re.compile(r"your_|_here|example|placeholder|xxx+|\.\.\.|changeme|<.*>", re.IGNORECASE)
 
 _SKIP_DIRS = {".git", "node_modules", "venv", "__pycache__"}
+# **선걸러내기.** 아래 세 패턴은 **하나도 예외 없이** 이 낱말 중 하나를 요구한다:
+#   _ECHO_SECRET  TOKEN|SECRET|PASSWORD|APIKEY|API_KEY|CREDENTIAL   (APIKEY·API_KEY 는 KEY 를 담는다)
+#   _HARVEST      TOKEN|SECRET|KEY
+#   _LIVE_SECRET  TOKEN|SECRET|PASSWORD|API_KEY
+# 그리고 `_code_only` 는 줄을 **빈 줄로 지우기만** 한다 -- 글자를 더하지 않는다. 그러므로
+# 원본에 이 낱말이 하나도 없으면 지운 뒤에도 없고, 세 패턴 중 어느 것도 맞을 수 없다.
+# 그 파일에서는 tokenize + AST + 정규식 셋을 **아예 안 돌린다**(판정은 그대로다).
+# 실측 2026-09-13: 훑는 파일 1153개 중 804개(70% · 글자의 54%)가 여기서 빠진다.
+_MUST_WORDS = ("token", "secret", "key", "password", "credential")
 
 
 def _code_only(text: str, suffix: str) -> str:
@@ -109,6 +118,9 @@ def check(ctx) -> "list[str]":
         try:
             text = path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
+            continue
+        low = text.lower()
+        if not any(w in low for w in _MUST_WORDS):
             continue
         rel = ctx.rel(path)
         text = _code_only(text, path.suffix)
