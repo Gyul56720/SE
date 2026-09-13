@@ -501,6 +501,31 @@ try:
        "**바탕으로도 쓸 수 없다** -- RG0 가 시한을 넘기면 그 파일을 통째로 못 잰다")
     ok("시한초과" in M.FR보고(판) or M.시한초과 in M.FR보고(판),
        "FR 보고가 그것을 빨강과 따로 적는다")
+    # **둘째 실행이 넘겼을 때도 시한초과다.** 실측 2026-09-13: 첫 실행만 보게 짜 놔서
+    # `tests/test_improve.py` 가 "두 번째에 빨강" -> 상태오염으로 떨어졌다(까닭 글에는
+    # "시한 초과" 가 찍혀 있었다). 2코어에서 부하가 걸리면 바로 나는 꼴이다.
+    밖셈 = Path(tempfile.mkdtemp(prefix="둘째늦-")) / "셈.txt"
+    (판 / "tests" / "test_둘째늦다.py").write_text(
+        'import time\n'
+        f'p = {str(밖셈)!r}\n'
+        'n = 0\n'
+        'try:\n    n = int(open(p).read())\nexcept OSError:\n    pass\n'
+        'open(p, "w").write(str(n + 1))\n'
+        'if n >= 1:\n    time.sleep(30)\n'          # 첫 실행은 빠르고 둘째가 시한을 넘긴다
+        'print("첫 실행은 초록")\n', encoding="utf-8")
+    git(판, "add", "-A"); git(판, "commit", "-qm", "둘째 실행이 시한을 넘기는 검사")
+    옛2 = M.검사시한초
+    M.검사시한초 = 2
+    try:
+        둘늦 = M.거짓빨강사냥(판, 검사들=["tests/test_둘째늦다.py"], 시한초=60, 말하기=lambda s: None)
+    finally:
+        M.검사시한초 = 옛2
+    ok(둘늦[M.시한초과] == 1 and 둘늦[M.상태오염] == 0,
+       f"**둘째 실행이 넘겨도 시한초과다 -- 상태오염이 아니다** "
+       f"(시한초과 {둘늦[M.시한초과]} · 상태오염 {둘늦[M.상태오염]})")
+    늦줄 = [x for x in M.원장읽기(판) if x.get("test") == "tests/test_둘째늦다.py"][-1]
+    ok(늦줄.get("why") == "timeout_둘째" and 늦줄.get("baseline_pass") is True,
+       f"어느 쪽이 넘겼는지 적는다 (why {늦줄.get('why')} · 첫 실행은 통과 {늦줄.get('baseline_pass')})")
 
     # 보조: 고리 하나를 따로 붙든다(사용자 권고). 사슬이 깨졌을 때 **어느 고리가** 끊겼는지 짚으려면
     # 자동 사슬만으로는 모자란다 -- 수동 주입은 `뺄검사` 옵션 자체가 살아 있는지만 본다.
