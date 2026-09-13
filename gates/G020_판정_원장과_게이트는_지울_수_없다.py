@@ -38,7 +38,8 @@ EVIDENCE = ""
           "falsegreen/요약.jsonl",      # mutate.요약경로   -- D_t (잰변형·Killed·FG·못잼)
           "falsegreen/성능.jsonl",      # perf.성능경로     -- 성능 판정 ACCEPT/REJECT
           "falsegreen/정책.jsonl",      # policy.정책경로   -- π 의 채택 이력
-          "falsegreen/먼검사.jsonl")    # farcheck.기록경로 -- 먼 검사의 빨강 이력
+          "falsegreen/먼검사.jsonl",    # farcheck.기록경로 -- 먼 검사의 빨강 이력
+          "vne/측정.jsonl")             # vne.measure.원장경로 -- VNE 수용률·매출비·시간
 
 
 def _경로풀기(path: str) -> str:
