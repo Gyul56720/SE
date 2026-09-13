@@ -204,3 +204,4 @@ codify/out/
 
 # 계획판 상태(그림자 워크트리 경로) -- 그 기계에만 뜻이 있다
 plan/state.json
+cut/증서/
