@@ -139,6 +139,25 @@ def _안쪽(뽑은것: dict, 바탕url: str, 찾을말: list = None) -> list:
     return [(v, u) for v, _l, u in 나온것]
 
 
+앞문동시 = 8              # 주소를 한꺼번에 몇 개나 뿌릴지. 곁문은 `FT.캐기` 안에서 또 병렬이다
+
+
+def 뿌리기(urls: list, 틈: float = FT.기본틈, 동시: int = 앞문동시) -> list:
+    """주소들을 **한꺼번에** 판다(곁문까지). 순서는 준 대로 지킨다.
+
+    `FT.여럿` 은 앞문 하나씩만 받는다 -- 곁문을 안 친다. 여기서는 주소마다 `FT.캐기`(앞문 +
+    곁문 전부)를 통째로 병렬에 올린다. 하나가 터져도 나머지는 온다."""
+    urls = [u for u in urls if u]
+    if not urls:
+        return []
+    if len(urls) == 1:
+        return FT.캐기(urls[0], 곁문까지=True, 틈=틈)
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=max(1, min(동시, len(urls)))) as ex:
+        묶음 = list(ex.map(lambda u: FT.캐기(u, 곁문까지=True, 틈=틈), urls))
+    return [r for 한묶음 in 묶음 for r in 한묶음]
+
+
 def 캐기(urls: list, 앞문만: bool = False, 따라: int = 0, 틈: float = FT.기본틈,
         찾을말: list = None, 깊이: int = 깊이기본, 쪽상한: int = 쪽상한기본) -> tuple:
     """(응답들, 뽑은것들). **하나가 터져도 나머지는 온다.**
@@ -153,8 +172,12 @@ def 캐기(urls: list, 앞문만: bool = False, 따라: int = 0, 틈: float = FT
     else:
         # **한 주소씩 차례로 캐면 열 곳이 열 배 걸린다.** 곁문까지 치면 곱절이라
         # 결국 한두 곳만 보게 된다 -- 적게 모으는 쪽으로 저절로 기운다.
-        for u in 앞것:
-            응답들 += FT.캐기(u, 곁문까지=True, 틈=틈)
+        #
+        # 실측 2026-09-13: 이 주석 바로 아래가 `for u in 앞것:` 이었다. **주석이 코드의
+        # 반대를 말하고 있었다.** 곁문은 `FT.캐기` 안에서 이미 병렬이라 주소 하나에 1.2초인데,
+        # 주소 여덟이 그대로 쌓여 9.75초가 걸렸다(한 쪽 0.4초짜리 서버, 응답 120개).
+        # 주소끼리도 뿌리면 그 쌓임이 사라진다.
+        응답들 += 뿌리기(앞것, 틈)
     뽑은것들 = [EX.뽑기(r.몸통, r.꼴, r.최종url or r.url) for r in 응답들 if r.몸통]
 
     # ── 안쪽으로 판다. **한 홉이 아니라 `깊이` 홉** ──────────────────
