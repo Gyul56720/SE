@@ -92,6 +92,11 @@ REPO = Path(__file__).resolve().parent
 #   잴 값이 있는 것 = 누군가 쓰는 코드.  산출물은 고쳐야 할 코드가 아니다.
 안잴곳 = ("orchestrator/runs/",)
 
+# **사냥꾼 자신.** 거짓초록을 재는 장치가 거짓초록을 갖고 있으면, 그 아래 모든 판정이 뜻을 잃는다.
+검증기접두 = ("gates/",)
+검증기파일 = ("gatekeeper.py", "mutate.py", "judge.py", "perf.py", "policy.py",
+          "farcheck.py", "gitsync.py")
+
 
 def _원장(repo: Path) -> Path:
     p = repo / 원장상대
@@ -876,6 +881,29 @@ def _일꾼수(바람: int = 0) -> int:
     return 2 if n <= 2 else n - 1
 
 
+def 자기파일들(repo=None) -> "list[str]":
+    r"""**검증기 자신**의 추적 파일. `--자기` 가 쓰는 목록이다.
+
+    이것은 M 을 넓히는 것이 아니다 -- 이 파일들은 **처음부터 M 안에 있었다**(`ls-files *.py`
+    에서 `tests/` 와 `안잴곳` 만 뺀다). 그런데 실측 2026-09-13, D0 는 6시간에 변형 1111개를
+    쟀고 그중 **검증기 파일에 닿은 것이 하나도 없었다**:
+
+        잴 수 있는 파일 383개 · D0 이 실제로 닿은 것 19개 (5.0%)
+        그중 검증기 파일 24개 · D0 이 닿은 검증기 파일 **0개**
+
+    까닭은 M 의 정의가 아니라 **시한에 잘린 순회**다. π0 는 골고루 섞지만, 5% 만 도는 동안
+    24/383 짜리 부분집합에 닿을 일은 드물다. 그래서 사각지대를 없애는 데에 새 구조가 필요하지
+    않다 -- **겨눌 수 있으면 된다.** 목록은 손으로 적지 않고 추적 파일에서 걸러 낸다(손으로
+    적으면 파일이 늘 때 조용히 낡는다)."""
+    repo = Path(repo or REPO)
+    r = subprocess.run(["git", "-C", str(repo), "-c", "core.quotepath=off", "ls-files", "-z", "*.py"],
+                       capture_output=True, text=True)
+    것 = [x for x in r.stdout.split("\0")
+         if x and not x.startswith("tests/") and not x.startswith(안잴곳)
+         and (x.startswith(검증기접두) or x in 검증기파일)]
+    return sorted(것)
+
+
 def _쟬파일들(repo: Path, 파일들=None, 씨앗: int = 기본씨앗) -> "list[str]":
     """π0 의 순서를 **부모에서 한 번** 만든다. 일꾼에게 나눠 줘도 같은 순서에서 나온 것이어야 한다."""
     if 파일들 is not None:
@@ -1593,6 +1621,8 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="거짓 초록 사냥 -- 조용히 틀려도 초록인 검사를 찾는다")
     ap.add_argument("--시한", type=int, default=기본시한초, help=f"초 (기본 {기본시한초})")
     ap.add_argument("--파일", action="append", default=None, help="이 파일만 (여러 번)")
+    ap.add_argument("--자기", action="store_true",
+                    help="검증기 자신만 잰다(gates/ · mutate · judge · perf · policy · gatekeeper)")
     ap.add_argument("--함수상한", type=int, default=0, help="파일마다 함수 이만큼만 (0=전부)")
     ap.add_argument("--보고", action="store_true", help="원장 요약만 찍는다")
     ap.add_argument("--거짓빨강", action="store_true", help="빨강이 거짓인 검사를 찾는다(변형 안 함)")
@@ -1613,6 +1643,13 @@ def main(argv=None) -> int:
         원장상대 = a.원장이름                      # 일꾼마다 제 원장에 쓴다 -- 덧붙이기가 섞여 찢기지 않게
     if a.저장소:
         REPO = Path(a.저장소)
+    잴것 = list(a.파일) if a.파일 else None
+    if a.자기:
+        자기 = 자기파일들()
+        잴것 = sorted(set(잴것) & set(자기)) if 잴것 else 자기
+        print(f"[자기] 검증기 자신 {len(잴것)}개 파일만 잰다 -- 사냥꾼이 사냥감이다")
+        if a.거짓빨강:
+            print("  (`--거짓빨강` 은 **검사**를 고르는 것이라 `--자기` 가 걸리지 않는다)")
     if a.요약보고:
         print(요약보고())
         return 0
@@ -1625,7 +1662,7 @@ def main(argv=None) -> int:
         print(FR보고())
         return 0
     if a.둘다:
-        r = 둘다사냥(시한초=a.시한, 파일들=a.파일, 씨앗=a.씨앗, 일꾼=a.일꾼)
+        r = 둘다사냥(시한초=a.시한, 파일들=잴것, 씨앗=a.씨앗, 일꾼=a.일꾼)
         요약적기()                                  # D_t 를 추적되는 자리에 남긴다
         print()
         print(둘다보고())
@@ -1638,9 +1675,9 @@ def main(argv=None) -> int:
     if a.보고:
         print(보고())
         return 0
-    r = (병렬사냥(시한초=a.시한, 일꾼=a.일꾼, 파일들=a.파일, 함수상한=a.함수상한,
+    r = (병렬사냥(시한초=a.시한, 일꾼=a.일꾼, 파일들=잴것, 함수상한=a.함수상한,
                 뺄검사=a.뺄검사, 씨앗=a.씨앗) if (a.일꾼 or 0) != 1
-         else 사냥(파일들=a.파일, 시한초=a.시한, 함수상한=a.함수상한, 뺄검사=a.뺄검사, 씨앗=a.씨앗))
+         else 사냥(파일들=잴것, 시한초=a.시한, 함수상한=a.함수상한, 뺄검사=a.뺄검사, 씨앗=a.씨앗))
     if not a.원장이름:                              # 일꾼은 요약을 안 적는다 -- 부모가 합친 뒤에 적는다
         요약적기()
     print()
