@@ -170,11 +170,59 @@ def 짝배제족(바탕, 요청, 상한: int = 기본상한, **_):
                 return
 
 
+def 분리유도족(바탕, 요청, 상한: int = 기본상한, z별=None, **_):
+    r"""**LP 해의 쪼개진 자리에서 후보를 짓는다.** 눈감고 열거하지 않는다.
+
+    지금까지의 족은 T·S 를 **조합으로 전수 열거**했다. 그러면 후보 수가 금방 터지고,
+    대부분은 지금 fractional 점과 아무 상관이 없다(실측: 노드덮개 117개 중 ACCEPT 9개).
+
+    여기서는 **z\* 를 읽어서** 만든다.
+
+        1. LP 를 푼다
+        2. x 가 쪼개진 자리를 모은다 --  0 < x*[v,u] < 1
+        3. T = 쪼개진 가상 노드, S = 그것들이 걸쳐 있는 바탕 노드
+        4. 덮개 조건(sum d > sum cap)을 만족하는 부분집합만 낸다
+
+    이것이 사용자가 말한 v3 의 **모델 없는 꼴**이다 -- "fractional solution -> feature
+    extraction -> candidate inequality -> verifier". 여기서 feature 는 **쪼개진 받침
+    (fractional support)** 이고, 그것을 뽑는 데 회귀도 LLM 도 필요 없다.
+
+    **유효성 증명은 그대로다.** 덮개 부등식의 증명은 T·S 를 *어떻게 골랐는지*에 안 기댄다
+    (`노드덮개족` 을 보라). 고르는 법만 바뀌었지 성립 근거는 같다. 그래서 이 족도
+    `무효` 가 안 나와야 하고, 안 나오는지는 판정기가 답한다."""
+    from . import ff as FF
+    p = FF.짓기(바탕, 요청)
+    if z별 is None:
+        r = FF.풀기(p, 정수=False)
+        if r["상태"] != "최적":
+            return                                  # LP 를 못 풀면 낼 후보가 없다
+        z별 = r["해"]
+    쪼갠것 = [(v, u) for (v, u), 자리 in p.x자리.items() if 1e-6 < z별[자리] < 1 - 1e-6]
+    if not 쪼갠것:
+        return                                      # 정수해다 -- 자를 쪼개짐이 없다
+    T후보 = sorted({v for v, _ in 쪼갠것})
+    S후보 = sorted({u for _, u in 쪼갠것})
+    난것 = 0
+    for t in range(2, len(T후보) + 1):
+        for T in itertools.combinations(T후보, t):
+            need = sum(요청.노드[v]["cpu"] for v in T)
+            for ss in range(max(2, t), len(S후보) + 1):
+                for S in itertools.combinations(S후보, ss):
+                    if sum(바탕.노드[u]["cpu"] for u in S) >= need:
+                        continue
+                    a = {("x", v, u): 1.0 for v in T for u in S}
+                    yield (f"분리유도 T{list(T)} S{list(S)}", a, float(t - 1))
+                    난것 += 1
+                    if 난것 >= 상한:
+                        return
+
+
 # **증명할 수 있는 것만 넣는다.** 사용자는 10~20 개를 말했는데 여섯 개에서 멈췄다 --
 # 족 하나하나에 "모든 인스턴스에서 성립한다" 는 논증이 붙어야 family 로 올릴 수 있고,
 # 못 붙인 족은 이 인스턴스에서만 맞는 식이 되어 논문에서 쓸 수 없다. 수보다 증명이 먼저다.
 족들 = {"노드덮개": 노드덮개족, "링크덮개": 링크덮개족, "최소홉": 최소홉족,
-      "노드고정": 노드고정족, "링크고정": 링크고정족, "짝배제": 짝배제족}
+      "노드고정": 노드고정족, "링크고정": 링크고정족, "짝배제": 짝배제족,
+      "분리유도": 분리유도족}
 
 
 def 훑기(바탕, 요청, 족: str = "노드덮개", 상한: int = 기본상한, 시한초: float = 30.0,
