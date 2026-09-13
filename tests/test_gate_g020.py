@@ -96,7 +96,8 @@ print("\n== 보호 목록이 **도구를 따라가는가** (표류 방지) ==")
 # 도구의 경로 상수와 목록을 맞춰 붙든다 -- 새 원장을 만들고 여기 안 넣으면 이 검사가 빨갛다.
 import importlib  # noqa: E402
 for 모듈, 상수 in (("mutate", "요약경로"), ("perf", "성능경로"),
-                ("policy", "정책경로"), ("farcheck", "기록경로")):
+                ("policy", "정책경로"), ("farcheck", "기록경로"),
+                ("vne.measure", "원장경로")):
     경로 = getattr(importlib.import_module(모듈), 상수)
     ok(경로 in G.보호원장,
        f"**{모듈}.{상수} ({경로}) 를 G020 이 지킨다** -- 판정의 역사가 지워지면 그 위의 모든 "

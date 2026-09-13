@@ -15,3 +15,4 @@ falsegreen/요약.jsonl merge=union
 falsegreen/먼검사.jsonl merge=union
 falsegreen/성능.jsonl merge=union
 falsegreen/정책.jsonl merge=union
+vne/측정.jsonl merge=union
