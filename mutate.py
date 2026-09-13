@@ -211,9 +211,13 @@ def 단일변형인가(원글: str, 새글: str, 예상줄들=None) -> "tuple[bo
     if 예상줄들 is None:
         return (len(다른) == 1), [f"{sorted(다른)}"]
     예상 = {int(예상줄들)} if isinstance(예상줄들, int) else set(int(x) for x in 예상줄들)
-    if 다른 == 예상:
+    # **자취 밖이 바뀌었나**를 본다 -- 같은지가 아니라 **드는지**(Δ ⊆ 자취). 자취 안의 어떤 줄이
+    # 안 바뀌는 것은 흠이 아니다: 가지 맞바꾸기는 `else:` 줄과 두 가지의 똑같은 줄은 그대로 두므로
+    # 같음을 요구하면 멀쩡한 변형이 INVALID_MUTATION 으로 버려진다(실측 2026-09-13: D_0 에서 5건).
+    # 한 줄 변형은 |자취|=1 이라 드는 것 = 같은 것이어서 더 느슨해지지 않는다.
+    if 다른 <= 예상:
         return True, [f"{sorted(다른)}"]
-    return False, [f"선언한 자취 {sorted(예상)} 와 실제 {sorted(다른)} 가 다르다"]
+    return False, [f"선언한 자취 {sorted(예상)} 밖이 바뀌었다: {sorted(다른 - 예상)}"]
 
 
 def 변형유효한가(새글: str, rel: str = "") -> "tuple[bool, str]":
@@ -447,9 +451,10 @@ finally:
 """
 
 
-def 덮인줄(판: Path, rel: str, 검사들: "list[str]", 초: int = 검사시한초) -> "set[int]":
+def 덮인줄(판: Path, rel: str, 검사들: "list[str]", 초: int = None) -> "set[int]":
     """그 검사들이 **실제로 실행한** rel 의 줄 번호. 변형된 줄이 여기 없으면 살아남아도
     단언의 약함이 아니라 **덮임의 구멍**이다 -- 비등가 변형의 전제가 깨진다."""
+    초 = 초 or 검사시한초
     본: "set[int]" = set()
     도구 = 판 / ".se_덮기.py"
     도구.write_text(_덮기자, encoding="utf-8")
@@ -497,9 +502,13 @@ def 동등한가(원글: str, 새글: str) -> bool:
     return a is not None and a == b
 
 
-def _돌려보기(판: Path, 검사들: "list[str]", 초: int = 검사시한초) -> "tuple[bool, str, str]":
+def _돌려보기(판: Path, 검사들: "list[str]", 초: int = None) -> "tuple[bool, str, str]":
     """하나라도 빨갛면 (True, 그 검사, 출력). 전부 초록이면 (False, "", "").
-    **출력을 돌려준다** -- Cause(FAIL) 을 귀속하려면 트레이스백을 봐야 한다."""
+    **출력을 돌려준다** -- Cause(FAIL) 을 귀속하려면 트레이스백을 봐야 한다.
+
+    시한은 **부를 때** 모듈 전역에서 읽는다 -- 기본값으로 박아 두면 정의될 때 한 번 묶여서
+    `M.검사시한초 = 2` 가 아무 효과가 없다(검사가 그것을 못 흉내 낸다)."""
+    초 = 초 or 검사시한초
     env = {**os.environ, "PYTHONPATH": str(판), **맑은환경}
     for t in 검사들:
         if not (판 / t).is_file():
@@ -614,6 +623,35 @@ def _한변형(판: Path, repo: Path, rel: str, 이름: str, 연산자: str, 설
         깨끗하게(판)                                    # 다음 변형도 같은 E 에서 시작한다
 
 
+# ------------------------------------------------------------------ 바탕이 도중에 무너졌나
+# **실측 2026-09-13 (D_0):** `brief/report.py` 에서 FALSE_RED 가 **107 번 잇따랐다.** 까닭을 끝까지
+# 따라가니 `tests/test_brief.py` 가 받은날을 `2026-09-09` 로 박아 두었고 신선도가 3일이어서,
+# **사냥이 도는 동안 날이 바뀌며 그 검사가 혼자 빨개졌다.** RG0 는 파일마다 **한 번만** 재므로
+# 그 뒤로는 변형마다 "변형을 빼도 빨갛다" 를 107 번 되풀이했다 -- 판정은 옳았지만(잡힘으로 안 셌다)
+# 시한을 그만큼 버렸다.
+#
+#   RG0 의 유효 기간은 영원하지 않다. 거짓 빨강이 잇따르면 **바탕을 다시 잰다.**
+잇단거짓빨강상한 = 3
+
+
+def 접을까(판: Path, repo: Path, rel: str, 검사들: "list[str]", out: dict, 말) -> bool:
+    """거짓 빨강이 잇따랐다 -- RG0 를 **다시** 재고, 빨갛면 그 파일은 더 재지 않는다.
+
+    참을 돌려주면 부르는 쪽이 그 파일을 접는다. 이미 적힌 FALSE_RED 줄은 그대로 둔다 --
+    그것들도 사실이었다(변형 탓이 아니었다). 다만 그 뒤를 더 재지 않는다."""
+    깨끗하게(판)                                  # 판에 변형이 남아 있지 않게
+    또빨강, 또어디, _ = _돌려보기(판, 검사들)
+    if not 또빨강:
+        return False                              # 바탕은 멀쩡하다 -- 거짓 빨강이 우연히 몰렸다
+    out["못잼"] += 1
+    out[못쓸바탕] = out.get(못쓸바탕, 0) + 1
+    적기(repo, {"꼴": "바탕무너짐", "파일": rel, "검사": 또어디, "classification": 못쓸바탕,
+             "failure_cause": f"거짓 빨강 {잇단거짓빨강상한}번 뒤 RG0 를 다시 재니 빨강 -- "
+                              "사냥 도중에 바탕이 무너졌다(RG0 의 유효 기간이 끝났다)"})
+    말(f"[변형] {rel}: 도중에 바탕이 무너졌다({또어디}) -- 이 파일은 접는다")
+    return True
+
+
 def 사냥(repo=None, 파일들: "list[str]" = None, 시한초: int = 기본시한초, 말하기=None,
        함수상한: int = 0, 뺄검사: "list[str]" = None, 씨앗: int = 기본씨앗) -> dict:
     """**조용히 틀려도 초록인 자리**를 시한까지 찾는다. {잰변형, 살아남음, 죽음, 못잼, 살아남은것}.
@@ -677,8 +715,9 @@ def 사냥(repo=None, 파일들: "list[str]" = None, 시한초: int = 기본시�
             주사위.shuffle(이름들)                  # 함수 순서도 씨앗으로 -- 같은 까닭
             if 함수상한:
                 이름들 = 이름들[:함수상한]
+            잇단거짓빨강, 접었다 = 0, False
             for 이름 in 이름들:
-                if time.monotonic() - 시작 > 시한초:
+                if 접었다 or time.monotonic() - 시작 > 시한초:
                     break
                 변형목록 = 변형들(원글, 이름)
                 주사위.shuffle(변형목록)            # 연산자도 균등하게 -- 상한·시한에 앞쪽만 쓰이지 않게
@@ -704,6 +743,10 @@ def 사냥(repo=None, 파일들: "list[str]" = None, 시한초: int = 기본시�
                     elif 판정 in (거짓빨강, 못쓸변형, 바탕터짐):
                         out["못잼"] += 1
                         말(f"[변형] {판정} {rel}:{이름} -- {설명} · {행.get('failure_cause', '')[:60]}")
+                    잇단거짓빨강 = 잇단거짓빨강 + 1 if 판정 == 거짓빨강 else 0
+                    if 잇단거짓빨강 >= 잇단거짓빨강상한 and 접을까(판, repo, rel, 검사들, out, 말):
+                        접었다 = True
+                        break
             적기(repo, {"꼴": "파일끝", "파일": rel, "잰변형": out["잰변형"], "살아남음": out["살아남음"]})
     finally:
         subprocess.run(["git", "-C", str(repo), "worktree", "remove", "--force", str(판)],
@@ -730,6 +773,12 @@ def 사냥(repo=None, 파일들: "list[str]" = None, 시한초: int = 기본시�
 상태오염 = "StatePollution"
 환경의존 = "EnvDependent"
 원래빨강 = "TrueRed"
+# **실측 2026-09-13 (D_0):** FR 사냥이 `진짜빨강 5` 를 보고했는데, 같은 판에서 다시 재 보니 넷은
+# 초록이고(이 컨테이너) 하나(`tests/test_precheck.py`)는 **시한을 넘긴 것**이었다. 시한을 넘긴 것은
+# 빨간 것이 아니라 **재지 못한 것**이다. 그것을 "고쳐야 할 빨강" 으로 적으면 이 저장소가 오늘 배운
+# 바로 그 잘못이 된다 -- **재지 않은 것을 빨강이라 하지 마라.**
+시한초과 = "Timeout"
+시한넘김표 = "Timeout"
 
 
 def 거짓빨강사냥(repo=None, 검사들: "list[str]" = None, 시한초: int = 기본시한초,
@@ -749,7 +798,8 @@ def 거짓빨강사냥(repo=None, 검사들: "list[str]" = None, 시한초: int 
         import random
         검사들 = sorted(f"tests/{x.name}" for x in (repo / "tests").glob("test_*.py"))
         random.Random(씨앗).shuffle(검사들)          # π0 -- 시한에 잘려도 치우치지 않게
-    out = {"잰것": 0, 멀쩡: 0, 상태오염: 0, 환경의존: 0, 원래빨강: 0, "못잼": 0, "찾은것": []}
+    out = {"잰것": 0, 멀쩡: 0, 상태오염: 0, 환경의존: 0, 원래빨강: 0, 시한초과: 0,
+           "못잼": 0, "찾은것": []}
     판 = Path(tempfile.mkdtemp(prefix="se-FR-"))
     r = subprocess.run(["git", "-C", str(repo), "worktree", "add", "--detach", str(판), "HEAD"],
                        capture_output=True, text=True)
@@ -772,6 +822,16 @@ def 거짓빨강사냥(repo=None, 검사들: "list[str]" = None, 시한초: int 
             첫빨강, _어디1, 첫글 = _돌려보기(판, [t])
             둘빨강, _어디2, 둘글 = _돌려보기(판, [t])          # 되돌리지 않는다 -- 제 상태가 남았나 본다
             out["잰것"] += 1
+            if 첫빨강 and 첫글.strip() == 시한넘김표:
+                out["못잼"] += 1
+                out[시한초과] = out.get(시한초과, 0) + 1
+                적기(repo, {"꼴": "거짓빨강", "검사": t, "test": t, "classification": 시한초과,
+                          "cost": {"초": round(time.monotonic() - 검사때, 2)},
+                          "baseline_pass": None, "repeat_fail": None, "worktree_pass": None,
+                          "cause": f"{검사시한초}초 안에 안 끝났다",
+                          "failure_cause": f"{검사시한초}초 안에 안 끝났다 -- **빨강이 아니라 못 잰 것이다**"})
+                말(f"[거짓빨강] {시한초과} {t} -- {검사시한초}초를 넘겼다. 빨강이라 하지 않는다(못잼)")
+                continue
             if not 첫빨강 and not 둘빨강:
                 out[멀쩡] += 1
                 # **멀쩡도 적는다** -- 이것이 없으면 한 번 FR 로 찍힌 검사가 고쳐져도 영영 제외된다.
@@ -841,7 +901,9 @@ def 못믿을검사들(repo=None) -> "list[str]":
             이름 = str(x.get("test") or x.get("검사") or "")
             if 이름:
                 마지막[이름] = x.get("classification")
-    return sorted(k for k, v in 마지막.items() if v in (상태오염, 환경의존))
+    # 시한초과도 넣는다 -- **바탕으로 쓸 수 없다**(RG0 가 시한을 넘기면 그 파일을 통째로 못 잰다).
+    # 진짜빨강은 안 넣는다(거짓이 아니다). RG0 가 알아서 막는다.
+    return sorted(k for k, v in 마지막.items() if v in (상태오염, 환경의존, 시한초과))
 
 
 def FR보고(repo=None) -> str:
@@ -853,7 +915,8 @@ def FR보고(repo=None) -> str:
         마 = 끝[-1]
         줄.append(f"마지막: 검사 {마.get('잰것', 0)}개 · 멀쩡 {마.get(멀쩡, 0)} · "
                   f"**상태오염 {마.get(상태오염, 0)}** · **환경의존 {마.get(환경의존, 0)}** · "
-                  f"진짜빨강 {마.get(원래빨강, 0)} · 못잼 {마.get('못잼', 0)}")
+                  f"진짜빨강 {마.get(원래빨강, 0)} · 시한초과 {마.get(시한초과, 0)} · "
+                  f"못잼 {마.get('못잼', 0)}")
     거짓 = [x for x in 것 if x.get("classification") in (상태오염, 환경의존)]
     if 거짓:
         줄.append(f"\n**거짓 빨강 {len(거짓)}개** (그 빨강은 검사 대상의 잘못이 아니다):")
@@ -863,6 +926,10 @@ def FR보고(repo=None) -> str:
     if 진짜:
         줄.append(f"\n진짜 빨강 {len(진짜)}개 (고쳐야 한다): "
                   + ", ".join(str(x.get("검사")) for x in 진짜[-8:]))
+    늦 = [x for x in 것 if x.get("classification") == 시한초과]
+    if 늦:
+        줄.append(f"\n시한초과 {len(늦)}개 (**빨강이 아니다 -- 못 쟀다**): "
+                  + ", ".join(str(x.get("검사")) for x in 늦[-8:]))
     if not 것:
         줄.append("아직 안 돌렸다 -- `python3 mutate.py --거짓빨강` 또는 `!거짓빨강`")
     return "\n".join(줄)
@@ -928,6 +995,98 @@ def 마지막사냥(repo=None) -> dict:
         if x.get("꼴") == "사냥끝":
             return x
     return {}
+
+
+# ------------------------------------------------------------------ 추적되는 요약 (D_0 를 남긴다)
+# **실측 2026-09-13:** 6시간 사냥이 끝났는데 **나는 그 숫자를 볼 수 없었다.** 원장은
+# `logs/거짓초록.jsonl` 이고 `logs/` 는 .gitignore 에 들어 있다 -- VM 에만 있고 저장소에는 없다.
+# 그래서 사용자가 Discord 출력을 손으로 붙여 줘야 D_0 가 여기 닿았고, `judge.py` 는 이 컨테이너에서
+# 늘 `관찰파일수 0` 을 본다(원장이 없으니 관찰이 없다고 읽는다).
+#
+#   원장은 크고 사사롭다 -> 안 추적한다.  **요약은 작고 비교 가능하다 -> 추적한다.**
+#
+# D_t 가 git 에 남으면 D_0 -> D_1 의 차이(ΔJ)를 사람 손을 안 거치고 잴 수 있다. 그것이 π 갱신의 재료다.
+요약경로 = "falsegreen/요약.jsonl"
+
+
+def 요약(repo=None) -> dict:
+    """원장 전체를 **작은 한 줄**로 줄인다. 판정별 셈 · 연산자별 셈 · 파일별 Killed/FG · FR 분류."""
+    repo = Path(repo or REPO)
+    행들 = 원장읽기(repo)
+    분류: dict = {}
+    연산자: dict = {}
+    파일: dict = {}
+    for x in 행들:
+        c = x.get("classification")
+        if c:
+            분류[c] = 분류.get(c, 0) + 1
+        m, 결 = x.get("operator"), x.get("outcome")
+        if m:
+            칸 = 연산자.setdefault(m, {"잰것": 0, 잡힘: 0, 살아남음: 0, 동등: 0, 거짓빨강결과: 0, 못쓸: 0})
+            칸["잰것"] += 1
+            if 결 in 칸:
+                칸[결] += 1
+        rel = x.get("파일") or x.get("file")
+        if rel and 결 in (잡힘, 살아남음):
+            파일.setdefault(rel, {잡힘: 0, 살아남음: 0})[결] += 1
+    잡 = sum(v[잡힘] for v in 연산자.values())
+    산 = sum(v[살아남음] for v in 연산자.values())
+    끝 = 마지막사냥(repo)
+    r = subprocess.run(["git", "-C", str(repo), "rev-parse", "--short", "HEAD"],
+                       capture_output=True, text=True)
+    return {"때": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "판": (r.stdout or "").strip(),
+            "줄수": len(행들),
+            "사냥끝": bool(끝),
+            "잰변형": 잡 + 산 + sum(v[동등] + v[거짓빨강결과] + v[못쓸] for v in 연산자.values()),
+            "Killed": 잡, "FG": 산,
+            # **점수는 가를 수 있었던 것만 분모로 쓴다** -- 동등·못쓸·거짓빨강은 검사 탓이 아니다.
+            "점수": round(잡 / (잡 + 산), 4) if (잡 + 산) else None,
+            "분류": 분류, "연산자": 연산자,
+            "파일": dict(sorted(파일.items(), key=lambda kv: -kv[1][살아남음])[:40]),
+            "못믿을검사": sorted(못믿을검사들(repo))}
+
+
+def 요약적기(repo=None) -> dict:
+    """요약을 **추적되는 경로**에 덧붙인다. 덧붙이기만 -- D_0 를 지우고 D_1 을 쓰지 않는다."""
+    repo = Path(repo or REPO)
+    줄 = 요약(repo)
+    p = repo / 요약경로
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with p.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(줄, ensure_ascii=False) + "\n")
+    return 줄
+
+
+def 요약들(repo=None) -> "list[dict]":
+    p = Path(repo or REPO) / 요약경로
+    if not p.is_file():
+        return []
+    out = []
+    for 줄 in p.read_text(encoding="utf-8", errors="replace").splitlines():
+        if 줄.strip():
+            try:
+                out.append(json.loads(줄))
+            except ValueError:
+                continue
+    return out
+
+
+def 요약보고(repo=None) -> str:
+    """D_0 -> D_1 -> ... 를 한눈에. **점수가 오르고 있나**를 사람이 읽는 자리."""
+    것 = 요약들(repo)
+    if not 것:
+        return f"{요약경로} 가 비어 있다 -- `python3 mutate.py --요약적기` 로 한 줄 남겨라"
+    줄 = [f"{'때':20} {'판':10} {'잰변형':>6} {'Killed':>7} {'FG':>5} {'점수':>6} {'끝':>3}"]
+    for x in 것[-12:]:
+        점 = x.get("점수")
+        줄.append(f"{str(x.get('때'))[:19]:20} {str(x.get('판')):10} {x.get('잰변형', 0):>6} "
+                  f"{x.get('Killed', 0):>7} {x.get('FG', 0):>5} "
+                  f"{(f'{점:.3f}' if 점 is not None else '--'):>6} {'o' if x.get('사냥끝') else 'x':>3}")
+    if len(것) >= 2 and 것[-1].get("점수") is not None and 것[-2].get("점수") is not None:
+        d = 것[-1]["점수"] - 것[-2]["점수"]
+        줄.append(f"\n점수 변화 {d:+.4f} -- 오르면 검사가 더 많은 의미 변화를 잡는다는 뜻이다")
+    return "\n".join(줄)
 
 
 def 파일별거짓초록(repo=None, 파일들: "list[str]" = None) -> "list[dict]":
@@ -1052,12 +1211,24 @@ def main(argv=None) -> int:
     ap.add_argument("--FR보고", action="store_true", help="거짓 빨강 원장 요약")
     ap.add_argument("--둘다", action="store_true", help="거짓 빨강 -> 거짓 초록 (한 번에)")
     ap.add_argument("--씨앗", type=int, default=기본씨앗, help=f"π0 의 고정 씨앗 (기본 {기본씨앗})")
+    ap.add_argument("--요약적기", action="store_true",
+                    help=f"원장을 한 줄로 줄여 {요약경로}(추적됨) 에 덧붙인다")
+    ap.add_argument("--요약보고", action="store_true", help="D_0 -> D_1 -> ... 점수 추이")
     a = ap.parse_args(argv)
+    if a.요약보고:
+        print(요약보고())
+        return 0
+    if a.요약적기:
+        줄 = 요약적기()
+        print(f"{요약경로} 에 남겼다 -- 잰변형 {줄['잰변형']} · Killed {줄['Killed']} · FG {줄['FG']} "
+              f"· 점수 {줄['점수']}")
+        return 0
     if a.FR보고:
         print(FR보고())
         return 0
     if a.둘다:
         r = 둘다사냥(시한초=a.시한, 파일들=a.파일, 씨앗=a.씨앗)
+        요약적기()                                  # D_t 를 추적되는 자리에 남긴다
         print()
         print(둘다보고())
         return 1 if (r["FR"][상태오염] or r["FR"][환경의존] or r["FG"].get(거짓초록, 0)) else 0
@@ -1070,6 +1241,7 @@ def main(argv=None) -> int:
         print(보고())
         return 0
     r = 사냥(파일들=a.파일, 시한초=a.시한, 함수상한=a.함수상한, 씨앗=a.씨앗)
+    요약적기()
     print()
     print(보고())
     return 1 if r["살아남음"] else 0
