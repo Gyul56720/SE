@@ -100,6 +100,8 @@ on:
       - "farcheck.py"
       # π -- 개선하는 방법 자신. 사냥이 이것을 읽어 연산자를 고른다.
       - "policy.py"
+      # 성능개선 -- 같은 워크로드로 견줘 실제로 빨라진 변경만 받아들인다.
+      - "perf.py"
       - "judge.py"
       - "improveloop.py"
       - "falsegreen/**.py"

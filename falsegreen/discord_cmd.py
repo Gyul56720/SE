@@ -30,6 +30,8 @@ HELP = f"""**거짓 판정 사냥 (mutate)** -- 한 번에 둘을 본다.
 `{PREFIX} 보고` 원장(logs/거짓초록.jsonl) 요약 -- 사냥 안 하고 바로 답한다
 `{PREFIX} 요약` D_0 -> D_1 점수 추이 (falsegreen/요약.jsonl -- **추적된다**. 원장은 logs/ 라 저장소에 안 남는다)
 `{PREFIX} 순차` 병렬을 끈다 (기본은 코어수-1 일꾼으로 병렬 -- 실측 3일꾼 2.99배, 판정은 안 바뀐다)
+`{PREFIX} 성능` 실행시간 기록 · `{PREFIX} 성능 목록` 워크로드 · `{PREFIX} 성능 재기 관문` 지금 HEAD 를 잰다
+  -- **같은 입력으로 되풀이 돌려 실제로 빨라진 변경만 받아들인다.** 깨뜨려서 빠른 것과 잡음을 둘 다 막는다
 `{PREFIX} 정책` 지금 π 와 결정 이력 · `{PREFIX} 정책 후보` π' 후보 · `{PREFIX} 정책 결정` ACCEPT/REJECT
   -- **π 는 개선하는 방법 자신이다.** 코드를 고치는 것(P->P')과 다르다. 검증을 지난 때만 바뀐다
 `{PREFIX} 먼검사` 전체 검사를 주기로 돌린 기록 · `{PREFIX} 먼검사 돌려` 한 바퀴 (배경)
@@ -53,6 +55,18 @@ def run(text: str, runner=None, allow_write: bool = True) -> "str | None":
     if 말 in ("요약", "추이"):
         # 추적되는 요약(falsegreen/요약.jsonl) -- 원장은 logs/ 라 저장소에 안 남는다
         return mutate.요약보고(REPO)
+    if 말.startswith("성능"):
+        import perf
+        뒤 = 말[2:].strip()
+        if 뒤.startswith("재기"):
+            일 = 뒤[2:].strip() or "관문"
+            if 일 not in perf.워크로드들:
+                return f"워크로드 '{일}' 를 모른다 ({', '.join(perf.워크로드들)})"
+            return (runner or _배경으로)(["python3", "perf.py", "--재기", 일],
+                                      REPO / "logs" / "perf.log", f"성능 재기 {일}")
+        if 뒤 in ("목록", "워크로드"):
+            return "\n".join(f"`{k}` {v['왜']}" for k, v in perf.워크로드들.items())
+        return perf.보고(REPO)
     if 말.startswith("정책") or 말.startswith("pi") or 말.startswith("π"):
         import policy
         뒤 = 말.split(maxsplit=1)[1].strip() if " " in 말 else ""
