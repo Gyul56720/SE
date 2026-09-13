@@ -164,6 +164,13 @@ def check(ctx) -> "list[str]":
     tests = sorted((ctx.repo / "tests").glob("test_*.py")) if (ctx.repo / "tests").is_dir() else []
     for t in tests:
         src = t.read_text(encoding="utf-8")
+        # **선걸러내기.** `_reads_py` 가 참이 되려면 AST 덤프에 "read_text" 나 "'read'" 가
+        # 있어야 하고, 덤프의 글자는 다 소스에서 온다 -- 그러니 소스에 `read` 가 없으면 이
+        # 파일은 한 건도 걸릴 수 없다. 노드마다 `ast.dump` 를 돌리기 전에 파일째로 뺀다.
+        # 판정은 그대로이고 **실측 4.1% 빠르다**(관문 13.99 -> 13.41초 · 짝 14/14 ·
+        # 부호검정 p 0.01% · `falsegreen/성능.jsonl`). `perf.py` 가 그것을 받아들였다.
+        if "read" not in src:
+            continue
         lines = src.split("\n")
         try:
             tree = ast.parse(src)
