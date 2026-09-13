@@ -868,6 +868,9 @@ async def _handle_admin_message(message: discord.Message) -> None:
             # CancelledError만 잡아서, git_sync가 던진 예외가 그대로 전파되며 전송 루프에
             # 도달하지 못했다(실측 2026-08-30: 답변이 로그에는 찍혔는데 Discord로는 안 감).
             # 그래서 여기서부터는 실패를 예외가 아니라 '보고할 메모'로 바꾼다.
+            # **그리고 답을 먼저 보낸다** -- `_답보내기` 의 까닭을 볼 것. 동기화가 취소되면
+            # 그 뒤는 못 돌지만, 답은 이미 사용자에게 가 있다.
+            await _답보내기(message, reply)
             sync_note, integrity_note = await _sync_and_note(loop, message, reply)
     except asyncio.CancelledError:
         # "stop"으로 취소됨 -- _handle_stop이 이미 상태 메시지를 보냈으므로 조용히 반환한다.
@@ -876,16 +879,35 @@ async def _handle_admin_message(message: discord.Message) -> None:
         _active_tasks.pop(thread_id, None)
         _active_prompts.pop(thread_id, None)
 
-    # reply 가 None 이면 에이전트 호출 자체가 실패한 것이다. 그 경우에도 사용자가 무응답을
-    # 겪지 않도록 사유를 알린다(예전엔 여기서 NameError 가 나며 아무것도 못 보냈다).
-    if not reply:
-        await message.channel.send("(응답 생성 실패 -- 로그를 확인하세요)")
-    for chunk_start in range(0, len(reply or ""), 1900):
-        await message.channel.send(reply[chunk_start:chunk_start + 1900] or "(빈 응답)")
     if sync_note:
         await message.channel.send(sync_note)
     if integrity_note:
         await message.channel.send(integrity_note)
+
+
+async def _답보내기(message: discord.Message, reply: str | None) -> None:
+    r"""**답이 생기는 즉시 보낸다.** 뒤에 오는 단계가 답을 먹지 못하게.
+
+    실측 2026-08-30, 그리고 **또 2026-09-13.** 답이 로그에는 찍혔는데 Discord 로는 안 갔다.
+    첫 번째는 git_sync 의 **예외**가 전송 루프까지 못 가게 막은 것이었고, 그때 예외는
+    `_sync_and_note` 안에서 메모로 바꿔 막았다. 그런데 같은 함수가 `CancelledError` 만은
+    **일부러 다시 올린다**(stop 명령의 정상 경로라서). 그래서 부름쪽의
+
+        sync_note, integrity_note = await _sync_and_note(...)   # git fetch/commit/push
+        except asyncio.CancelledError:
+            return                                              # <- 답을 안 보내고 끝
+
+    이 남아 있었다. git 단계는 망을 타고 잠금을 기다리므로 수 초가 걸리고, 그 사이에 같은
+    방에 물음이 하나 더 오거나 stop 이 걸리면 **이미 다 만들어진 답이 통째로 사라진다.**
+
+    고칠 자리는 예외 처리가 아니라 **순서**다. 답은 산출물이고 git 동기화는 뒷정리다.
+    뒷정리가 산출물을 먹을 수 있는 순서면, 막아도 다음 경로로 또 샌다."""
+    if not reply:
+        # 에이전트 호출 자체가 실패한 경우에도 무응답을 겪지 않게 한다.
+        await message.channel.send("(응답 생성 실패 -- 로그를 확인하세요)")
+        return
+    for 시작 in range(0, len(reply), 1900):
+        await message.channel.send(reply[시작:시작 + 1900] or "(빈 응답)")
 
 
 async def _sync_and_note(loop, message: discord.Message, reply: str) -> "tuple[str | None, str | None]":
@@ -974,7 +996,9 @@ async def _handle_public_message(message: discord.Message) -> None:
                 print(f"[public] ch={message.channel.id} **어긋남** "
                       f"셸 {len(부른것)}회 -- {어긋남[:80]}")
                 reply = f"{reply}\n\n{어긋남}"
-            # admin 경로와 같은 이유로 git 단계의 실패가 답변 전달을 막지 못하게 한다.
+            # **답을 먼저 보낸다.** admin 경로와 같은 까닭이고, 같은 사고가 한 번 더 났다
+            # (실측 2026-09-13: 로그에 reply 가 다 찍혔는데 채널에는 아무것도 안 왔다).
+            await _답보내기(message, reply)
             sync_note, integrity_note = await _sync_and_note(loop, message, reply)
     except asyncio.CancelledError:
         return
@@ -982,14 +1006,15 @@ async def _handle_public_message(message: discord.Message) -> None:
         _active_tasks.pop(thread_id, None)
         _active_prompts.pop(thread_id, None)
 
-    # reply 가 None 이면 에이전트 호출 자체가 실패한 것이다. 그 경우에도 사용자가 무응답을
-    # 겪지 않도록 사유를 알린다(예전엔 여기서 NameError 가 나며 아무것도 못 보냈다).
-    if not reply:
-        await message.channel.send("(응답 생성 실패 -- 로그를 확인하세요)")
-    for chunk_start in range(0, len(reply or ""), 1900):
-        await message.channel.send(reply[chunk_start:chunk_start + 1900] or "(빈 응답)")
+    # **공개 채널에는 sync_note 를 안 보낸다.** 그것은 답이 아니라 운영 정보다 -- 관문 사슬
+    # (Commit = BasePass ∧ ToolInvoked ∧ ...)·커밋 해시·"Obsidian에서 pull하면 보입니다".
+    # 실측 2026-09-13: `1+1 문제 풀어줘` 와 `누가 이겨?` 에 그 블록이 답보다 길게 따라붙었다.
+    # 공개 채널에서 묻는 사람은 저장소를 안 본다. 버리지는 않는다 -- 로그에는 남긴다.
     if sync_note:
-        await message.channel.send(sync_note)
+        print(f"[public] ch={message.channel.id} sync_note={sync_note[:400]!r}")
+    # **integrity_note 는 보낸다.** 그것은 보고가 아니라 **경고**다 -- 에이전트가 "저장했다"
+    # 고 말했는데 원격에 그 커밋이 없을 때만 뜬다(2026-08-29 사고, 4회 반복). 이것까지 끄면
+    # 거짓 보고가 조용해진다. 시끄러운 것과 틀린 것을 가려서 끈다.
     if integrity_note:
         await message.channel.send(integrity_note)
 
