@@ -25,6 +25,11 @@ from dataclasses import dataclass, field
 바탕CPU범위 = (50, 100)
 바탕대역범위 = (20, 50)
 waxman_a, waxman_b = 0.5, 0.2          # a 가 크면 전체가 촘촘, b 가 크면 먼 것도 이어진다
+# **값(w_u, w_uv)** -- FF 목적함수의 가중치. min [ sum d_r w_u x + sum d_e w_uv y ].
+# w_u 가 노드마다 같으면 노드 항이 **상수**가 된다(배치 제약이 sum_u x = 1 이므로 어떤
+# 배치를 골라도 합이 같다). 그러면 x 를 건드리는 부등식은 경계를 영영 못 올린다 --
+# 실측 2026-09-13: 노드덮개 후보 117개가 전부 `안조임` 이었던 까닭이 이것이었다.
+바탕값범위 = (1, 5)
 
 # 요청망 기본값
 요청노드범위 = (2, 10)
@@ -62,7 +67,7 @@ def _거리(p, q) -> float:
 
 def 바탕망(씨앗: int = 0, 노드수: int = 바탕노드수, 꼴: str = "waxman",
         cpu범위=바탕CPU범위, 대역범위=바탕대역범위, p: float = 0.5,
-        a: float = waxman_a, b: float = waxman_b) -> 망:
+        a: float = waxman_a, b: float = waxman_b, 값범위=바탕값범위) -> 망:
     """바탕(물리)망 하나. **이어진 망만 돌려준다** -- 갈라진 망에서 잰 수용률은 위상 탓이지
     방법 탓이 아니다. 안 이어졌으면 가장 큰 덩이만 남기고 그 사실을 이름에 적는다."""
     주사위 = random.Random(씨앗)
@@ -80,6 +85,13 @@ def 바탕망(씨앗: int = 0, 노드수: int = 바탕노드수, 꼴: str = "wax
     if len(큰덩이) < 노드수:
         g = _추리기(g, 큰덩이)
         g.이름 += f":덩이{len(큰덩이)}/{노드수}"
+    # **값은 따로 뽑는다.** 위 주사위에 끼워 넣으면 난수 차례가 밀려 기존 인스턴스가
+    # 통째로 바뀐다 -- 그러면 `vne/측정.jsonl` 에 쌓인 판이 재현 불가가 된다.
+    값주사위 = random.Random(씨앗 * 7919 + 104729)
+    for u in sorted(g.노드):
+        g.노드[u]["값"] = float(값주사위.randint(*값범위))
+    for k in sorted(g.링크):
+        g.링크[k]["값"] = float(값주사위.randint(*값범위))
     return g
 
 
