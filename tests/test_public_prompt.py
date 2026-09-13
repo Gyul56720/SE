@@ -90,6 +90,24 @@ ok("await message.channel.send(integrity_note)" in 공개,
 ok("await message.channel.send(sync_note)" in 봇,
    "**관리 채널에는 그대로 남아 있다** -- 거기서는 그것이 답의 일부다")
 
+print("\n== 답을 **뒷정리보다 먼저** 보낸다 ==")
+# **실측 2026-08-30, 그리고 또 2026-09-13.** 답이 로그에는 다 찍혔는데 Discord 로는 안 왔다.
+# 첫 번째는 git_sync 의 예외가 전송 루프를 막은 것이었고 예외는 메모로 바꿔 막았다. 그런데
+# `_sync_and_note` 는 CancelledError 만은 일부러 다시 올린다(stop 의 정상 경로). 그래서
+# 부름쪽 `except CancelledError: return` 이 **이미 만들어진 답을 통째로 버리는** 길로 남았다.
+# git 단계는 망을 타고 잠금을 기다려 수 초가 걸리므로 그 창은 넓다.
+# 고칠 자리는 예외 처리가 아니라 **순서**였다 -- 뒷정리가 산출물을 먹을 수 있는 순서면
+# 한 경로를 막아도 다음 경로로 또 샌다.
+ok("async def _답보내기" in 봇, "답을 보내는 자리가 한 군데로 모여 있다")
+for 이름, 몸 in (("공개", 공개), ("관리", 봇[:봇.index("async def _답보내기")])):
+    보냄 = 몸.find("await _답보내기(message, reply)")
+    동기 = 몸.find("await _sync_and_note(loop, message, reply)")
+    ok(보냄 != -1 and 동기 != -1 and 보냄 < 동기,
+       f"**{이름} 채널: 답을 먼저 보내고 그 다음에 동기화한다** (보냄 {보냄} < 동기화 {동기})")
+ok("for chunk_start in range(0, len(reply or \"\"), 1900)" not in 봇,
+   "**finally 뒤에 있던 전송 루프가 없다** -- 취소되면 거기까지 못 갔다")
+ok("CancelledError" in 봇, "stop 의 정상 경로는 그대로 남아 있다(취소를 삼키지 않는다)")
+
 print("\n== 그래도 다른 파이프라인은 흉내 내지 않는다 ==")
 ok("지어서 쓰지 마라" in 글 or "네가 지어" in 글,
    "시황·예측·지표·보고서를 **네가 지어 쓰지 말라**고는 그대로 남아 있다")
