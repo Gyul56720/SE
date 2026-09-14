@@ -247,3 +247,110 @@ def 보고(증서: dict, 산수: dict, 대조: dict = None) -> str:
         줄.append(f"  줄대조  **{대조['판정']}** -- {대조['말']}")
     줄.append("  **산수는 이 저장소 없이 확인된다.** 줄대조만 모델을 본다")
     return "\n".join(줄)
+
+
+# ------------------------------------------------------------------ CG-1 폐포 소속 (자동)
+폐포안 = "폐포안"
+폐포밖 = "폐포밖"
+
+
+def cg폐포판정(p, a: dict, b: float, 정수성: bool = True, 시한초: float = 30.0) -> dict:
+    r"""**f = (a,b) 가 기초 행 넷(배치·일대일·CPU·대역·흐름보존)의 CG-1 결합인가.**
+
+    `판정.독립판정` 과 **다른 물음**이다. 그것은 "다른 여섯 연산자의 *이 인스턴스* 후보를
+    LP 에 얹고도 자르는가" 였다 -- 비교 대상이 다른 템플릿이었다. 여기서는 **모델 자신의
+    기초 행**(`p.A_eq` · `p.A_ub`, 그 위 다른 부등식은 안 얹는다)만 놓고 λ >= 0(등식은
+    부호 자유)을 자동으로 찾는다. `노드덮개증서` 가 손으로 하던 일 -- 어느 배수로 어느
+    줄을 더하면 이 부등식이 나오나 -- 을 일반화한 것이다.
+
+        min λᵀb   subject to   λᵀA >= a (성분마다), λ_ub >= 0
+        찾으면(정수 a 면 내림까지) b >= 최소값  ->  **폐포안**
+        못 찾으면(그 LP 가 infeasible)          ->  **폐포밖** -- 어떤 배수로도 안 된다
+        수치가 애매하면                          ->  **못잼**
+
+    **찾는 것은 solver 가 한다 -- 이것은 탐색이다.** `증명.확인` 처럼 solver 없이 도는
+    함수가 아니다. 다만 찾고 나면 λ 를 유리수로 되돌려 `확인` 으로 **다시** 검증한다 --
+    LP 가 준 부동소수점 λ 를 그대로 믿지 않는다. 그래서 최종 판정은 여전히 산수가 낸다.
+
+    **닿는 범위.** 이것은 **rank-1** CG 다 -- 기초 행을 한 번 결합해서 나오는 것만 본다.
+    반복 CG(그 결과에 또 CG를 먹이는 것)는 더 많은 것을 폐포 안에 넣을 수 있고, 여기서는
+    안 잰다. `폐포밖` 은 "rank-1 로는 못 만든다" 이지 "독립이다" 가 아니다."""
+    import numpy as np
+    from .판정 import 벡터
+
+    try:
+        a벡 = 벡터(p, a)
+    except KeyError as e:
+        return {"판정": 못잼, "말": f"a 를 못 읽는다: {e}"}
+    try:
+        from scipy.optimize import linprog
+    except ImportError as e:
+        return {"판정": 못잼, "말": f"scipy 가 없다: {e}"}
+
+    n_eq, n_ub = len(p.b_eq), len(p.b_ub)
+    if n_eq + n_ub == 0:
+        return {"판정": 폐포밖, "말": "이 모델에 기초 행이 없다"}
+    # A_ub_lp x <= b_ub_lp 꼴로: λᵀA >= a 를 -λᵀA <= -a 로 뒤집는다
+    합A = np.vstack([p.A_eq, p.A_ub]) if n_eq and n_ub else (p.A_eq if n_eq else p.A_ub)
+    합b = np.concatenate([p.b_eq, p.b_ub]) if n_eq and n_ub else (p.b_eq if n_eq else p.b_ub)
+    A_lp = -합A.T                          # 변수: λ (길이 n_eq+n_ub). 행: 원 변수 하나마다
+    b_lp = -a벡
+    경계 = [(-np.inf, np.inf)] * n_eq + [(0, np.inf)] * n_ub
+    목적 = 합b                             # min λᵀb
+
+    try:
+        r = linprog(목적, A_ub=A_lp, b_ub=b_lp, bounds=경계, method="highs",
+                   options={"time_limit": 시한초})
+    except Exception as e:                                          # noqa: BLE001
+        return {"판정": 못잼, "말": f"{type(e).__name__}: {e}"[:140]}
+
+    if r.status == 2:                                                # infeasible
+        return {"판정": 폐포밖, "말": "**어떤 배수로도 a <= λᵀA 를 못 채운다** "
+                                  "-- rank-1 CG 폐포 밖이다"}
+    if r.status != 0 or r.x is None:
+        return {"판정": 못잼, "말": f"solver status={r.status}: {getattr(r, 'message', '')}"[:140]}
+
+    λ = r.x
+    # **먼저 solver 의 raw 최적값으로 걸러낸다.** 유리수로 되돌리기 전에 이미 최적값이
+    # b 보다 뚜렷이 크면(반올림으로 메꿀 수 없을 만큼) 그건 "반올림 오차" 가 아니라
+    # **정말로 못 만드는 것**이다 -- solver 가 낸 최적값 자체가 도달 가능한 하한이므로.
+    # 실측: 처음엔 이 구분이 없어서 `b=-1` 처럼 뚜렷이 안 되는 경우까지 "못잼(반올림 오차)"
+    # 로 뭉개고 있었다. 얼마나 벌어졌는지로 가른다 -- 작은 틈만 반올림 탓으로 돌린다.
+    최적값 = float(r.fun)
+    if 정수성 and all(float(v).is_integer() for v in a.values()):
+        import math
+        근사최적 = math.floor(최적값 + 1e-7)
+    else:
+        근사최적 = 최적값
+    if 근사최적 > b + 1e-6:
+        return {"판정": 폐포밖,
+                "말": f"**LP 최적값 자체가 b 를 못 채운다** (min λᵀb ≈ {최적값:.6g}"
+                    + (f" -> 내림 {근사최적}" if 근사최적 != 최적값 else "")
+                    + f" > b {b}) -- 반올림이 아니라 진짜로 안 된다"}
+
+    # ---- 부동소수점 λ 를 유리수로 되돌려 **산수로 다시 검증한다** ----
+    이름들 = (list(p.eq이름 or []) + list(p.ub이름 or []))
+    꼴들 = (["="] * n_eq) + (["<="] * n_ub)
+    쓴줄 = []
+    for i, (이름, 꼴, λi) in enumerate(zip(이름들, 꼴들, λ)):
+        if abs(λi) < 1e-9:
+            continue
+        try:
+            줄 = _줄뽑기(p, 이름, Fraction(λi).limit_denominator(10 ** 6))
+        except KeyError:
+            return {"판정": 못잼, "말": f"줄 이름을 못 찾았다: {이름}"}
+        쓴줄.append(줄)
+    if not 쓴줄:
+        return {"판정": 폐포밖, "말": "λ 가 전부 0 이다 -- a 가 이미 0 이 아닌 한 뜻이 없다"}
+
+    변수 = 이름표(p)
+    a_str = {변수[j]: float(v) for j, v in enumerate(a벡) if abs(float(v)) > 1e-12}
+    증서 = {"이름": "cg자동", "부등식": {"a": a_str, "b": float(b)},
+          "쓴줄": 쓴줄, "정수성": 정수성}
+    산 = 확인(증서)
+    if 산["판정"] == 맞다:
+        return {"판정": 폐포안, "말": f"**폐포 안이다** -- {산['말']}", "증서": 증서, "확인": 산}
+    if 산["판정"] == 어긋난다:
+        return {"판정": 못잼, "말": f"LP 는 찾았는데 유리수로 되돌리니 안 선다"
+                                  f"(반올림 오차) -- {산['말'][:80]}", "증서": 증서}
+    return {"판정": 못잼, "말": 산["말"]}
