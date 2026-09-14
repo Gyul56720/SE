@@ -141,7 +141,8 @@ def 짓기(바탕, 요청) -> 판:
              b_ub=np.array(b_ub), eq이름=eq이름, ub이름=ub이름)
 
 
-def 풀기(p: 판, 정수: bool = True, 시한초: float = 60.0, 목적=None, 최대화: bool = False) -> dict:
+def 풀기(p: 판, 정수: bool = True, 시한초: float = 60.0, 목적=None, 최대화: bool = False,
+       더한줄=None) -> dict:
     """{상태, 값, 해, 왜}. 상태는 **세 값이다** -- `최적` / `불능` / `못잼`.
 
     `못잼` 은 시한초과·solver 없음·수치오류다. **불능이 아니다.** 둘을 섞으면 "못 푼 것"이
@@ -155,6 +156,11 @@ def 풀기(p: 판, 정수: bool = True, 시한초: float = 60.0, 목적=None, �
     묶음 = [LinearConstraint(p.A_eq, p.b_eq, p.b_eq)] if len(p.b_eq) else []
     if len(p.b_ub):
         묶음.append(LinearConstraint(p.A_ub, -np.inf, p.b_ub))
+    # **더한 줄**은 `a z <= b` 꼴로만 받는다. 알려진 부등식을 얹고 다시 푸는 데 쓴다
+    # (`판정.독립판정`) -- 모델 자체는 안 건드린다.
+    for 벡, 우 in (더한줄 or ()):
+        묶음.append(LinearConstraint(np.asarray(벡, dtype=float).reshape(1, -1),
+                                    -np.inf, float(우)))
     정수성 = np.ones(p.변수수) if 정수 else np.zeros(p.변수수)
     try:
         r = milp(c=(-목 if 최대화 else 목), constraints=묶음,
