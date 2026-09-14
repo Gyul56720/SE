@@ -46,32 +46,58 @@ print("\n== !소설 이 예전 그대로 들린다 ==")
 답 = dispatch.run("!소설")
 ok(답 is not None and "소설" in 답, f"도움말이 나온다 ({(답 or '')[:40]!r})")
 
+
+# ---- 목록에서 뺀 명령은 dispatch 를 안 거친다 -------------------------------------
+# 2026-09-14 `!실험`·`!감사` 를 포함한 여섯을 `명령들` 에서 뺐다(원장 0줄). 모듈 자체는
+# 그대로 살아 있으므로 **모듈의 규약은 계속 붙든다** -- 되살릴 때 깨져 있으면 안 된다.
+def _안쓴것(text, runner=None, allow_write=True):
+    for _모 in dispatch.안쓴것:
+        r = _모.run(text, runner, allow_write)
+        if r is not None:
+            return r
+    return None
+
+
+print("\n== 뺀 명령은 에이전트로 떨어진다 (조용히 죽지 않는다) ==")
+for _친말 in ("!실험", "!감사", "!목표", "!진화", "!위임"):
+    ok(dispatch.run(_친말) is None, f"`{_친말}` 은 dispatch 가 안 받는다 -- 에이전트로 간다")
+ok(len(dispatch.안쓴것) == 5 and all(hasattr(m, "PREFIX") for m in dispatch.안쓴것),
+   f"뺀 다섯이 규약은 그대로 지킨다 ({[m.PREFIX for m in dispatch.안쓴것]})")
+# **`!계획` 은 실려 있어야 한다.** 한 번 뺐다가 되돌린 자리다 -- `plan/할일.jsonl` 이
+# 0바이트라 '안 쓴다' 로 읽혔는데, 그 기관이 실제로 쓰는 `plan/state.json` 은
+# .gitignore 에 있어 저장소에서 안 보였다. **안 잰 것을 0 으로 읽으면 안 된다.**
+ok(dispatch.run("!계획") is not None, "`!계획` 은 실려 있다 -- 저장소를 고치는 기본 경로다")
+_봇 = (뿌리 / "discord_bot_server.py").read_text(encoding="utf-8")
+for _죽은 in [m.PREFIX for m in dispatch.안쓴것]:
+    ok(_죽은 not in _봇,
+       f"프롬프트가 `{_죽은}` 을 시키지 않는다 -- 안 실린 명령을 시키면 조용히 떨어진다")
+
 print("\n== !실험 -- 도움말과 경계 ==")
-답 = dispatch.run("!실험")
+답 = _안쓴것("!실험")
 ok(답 is not None and "깨끗한 판" in 답, "도움말이 나온다")
-답 = dispatch.run("!실험 이상한말")
+답 = _안쓴것("!실험 이상한말")
 ok(답 is not None and "모르는 말" in 답, "모르는 하위 명령은 도움말로")
-답 = dispatch.run("!실험 검사 dig", allow_write=False)
+답 = _안쓴것("!실험 검사 dig", allow_write=False)
 ok(답 is not None and "관리 채널" in 답 and not 불림,
    "공개 채널에서는 안 돌린다 -- 러너가 안 불렸다")
 
 print("\n== !실험 검사/게이트 -- argv 배열만, 셸 문자열 없음 ==")
-답 = dispatch.run("!실험 검사 dig", runner=가짜러너, allow_write=True)
+답 = _안쓴것("!실험 검사 dig", runner=가짜러너, allow_write=True)
 ok(len(불림) == 1 and 불림[0][0] == ["bash", "scripts/tests.sh", "-k", "dig"],
    f"검사가 argv 배열로 넘어간다 ({불림})")
 ok(답 is not None and "가짜 결과" in 답, "러너의 결과가 답이 된다")
 불림.clear()
-답 = dispatch.run("!실험 게이트", runner=가짜러너, allow_write=True)
+답 = _안쓴것("!실험 게이트", runner=가짜러너, allow_write=True)
 ok(불림 and 불림[0][0] == ["python3", "gatekeeper.py"], f"게이트도 argv 배열 ({불림})")
 불림.clear()
-답 = dispatch.run("!실험 검사 dig; rm -rf /", runner=가짜러너, allow_write=True)
+답 = _안쓴것("!실험 검사 dig; rm -rf /", runner=가짜러너, allow_write=True)
 ok(not 불림 and 답 is not None and "글자" in 답,
    "**글자꼴 밖의 <말>은 러너에 닿기 전에 거절된다**")
-답 = dispatch.run("!실험 검사", runner=가짜러너, allow_write=True)
+답 = _안쓴것("!실험 검사", runner=가짜러너, allow_write=True)
 ok(not 불림 and 답 is not None, "<말> 없는 전체 검사도 거절된다(6분짜리)")
 
 print("\n== !감사 · !기억 -- 새 명령의 경계 ==")
-답 = dispatch.run("!감사", allow_write=False)
+답 = _안쓴것("!감사", allow_write=False)
 ok(답 is not None and "관리 채널" in 답, "!감사 는 공개 채널에서 안 돌린다")
 감사불림 = []
 
@@ -81,7 +107,7 @@ def 가짜감사(커밋=False):
     return {"결과": [], "안덮임": [], "안봄": [], "변경": ["x.py"]}
 
 
-답 = dispatch.run("!감사 커밋", runner=가짜감사, allow_write=True)
+답 = _안쓴것("!감사 커밋", runner=가짜감사, allow_write=True)
 ok(감사불림 == [True], f"!감사 커밋 이 커밋 감사로 간다 ({감사불림})")
 답 = dispatch.run("!기억")
 ok(답 is not None and "깃발" in 답, "!기억 도움말이 나온다")

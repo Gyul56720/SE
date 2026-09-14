@@ -1,9 +1,0 @@
-{
-  "pid": 622654,
-  "log": "/home/ubuntu/SE/logs/orchestrator/20260910-072235.log",
-  "started_at": 1789025248.0128367,
-  "cmd": [
-    "--resume",
-    "/home/ubuntu/SE/orchestrator/runs/20260910-072235"
-  ]
-}
