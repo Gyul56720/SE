@@ -135,15 +135,16 @@ print("\n== 2차 메타검증 문: Commit = Green ∧ (FR∪FG)^c (판정은 mut
 # 사용자(2026-09-12): "Red/Green 은 1차 전이, FR/FG 는 그 판정이 옳았나를 보는 2차 메타층."
 _원메타 = G.메타기
 try:
-    G.메타기 = lambda repo, 바뀐: {"commit": True, "있나": True, "FG": 0, "FR": 0, "INVALID": 0, "말": "FG·FR 없음"}
+    G.메타기 = lambda repo, 바뀐: {"commit": True, "있나": True, "미해결": 0, "FR": 0, "INVALID": 0,
+                           "말": "UNRESOLVED·FALSE_RED 없음"}
     통, 보 = G.검사(뿌리, 게이트=False, 감사=False, ci=False, 메타=True)
-    ok(통 and "메타검증 통과" in 보, f"FG·FR 이 없으면 지나간다 ({통})")
-    G.메타기 = lambda repo, 바뀐: {"commit": False, "있나": True, "FG": 2, "FR": 0, "INVALID": 0,
-                              "말": "FALSE_GREEN 2개 -- 그 초록은 못 믿는다"}
+    ok(통 and "메타검증 통과" in 보, f"UNRESOLVED·FALSE_RED 가 없으면 지나간다 ({통})")
+    G.메타기 = lambda repo, 바뀐: {"commit": False, "있나": True, "미해결": 2, "FR": 0, "INVALID": 0,
+                              "말": "UNRESOLVED 2개 -- 반례를 못 찾았을 뿐 통과가 아니다"}
     통2, 보2 = G.검사(뿌리, 게이트=False, 감사=False, ci=False, 메타=True)
-    ok(not 통2 and "[메타 차단]" in 보2 and "FALSE_GREEN" in 보2,
-       "**FG 가 있으면 1차가 초록이어도 커밋을 막는다**")
-    G.메타기 = lambda repo, 바뀐: {"commit": False, "있나": True, "FG": 0, "FR": 1, "INVALID": 0,
+    ok(not 통2 and "[메타 차단]" in 보2 and "UNRESOLVED" in 보2,
+       "**UNRESOLVED 가 있으면 1차가 초록이어도 커밋을 막는다**")
+    G.메타기 = lambda repo, 바뀐: {"commit": False, "있나": True, "미해결": 0, "FR": 1, "INVALID": 0,
                               "말": "FALSE_RED 1개 -- 변형과 무관한 실패를 잡힌 것으로 셀 수 없다"}
     통3, 보3 = G.검사(뿌리, 게이트=False, 감사=False, ci=False, 메타=True)
     ok(not 통3 and "[메타 차단]" in 보3, "**FR 이 있어도 막는다** -- 그 빨강으로는 아무것도 증명되지 않았다")
@@ -166,9 +167,11 @@ ok(G.상태(도구호출됨=True, 기본검증통과=False) == "R", "기본 검�
 ok(G.상태(도구호출됨=True, 기본검증통과=True) == "G", "도구를 부르고 기본 검증이 지나면 G")
 ok(G.전이("R", 1) == "G" and G.전이("R", 0) == "R", "R --[V(P)=1]--> G")
 ok(G.전이("G", 0) == "R", "V=0 이면 G 에서도 R 로 되돌아간다")
-ok(G.승인(1, True, 0, 0)["Commit"] == 1, "V=1 ∧ T=PASS ∧ FG=∅ ∧ FR=∅ -> Commit=1")
-ok(G.승인(1, True, 1, 0)["Commit"] == 0 and "FG=∅" in G.승인(1, True, 1, 0)["깨진것"], "FG 가 있으면 Commit=0")
-ok(G.승인(1, True, 0, 1)["Commit"] == 0 and "FR=∅" in G.승인(1, True, 0, 1)["깨진것"], "FR 이 있으면 Commit=0")
+ok(G.승인(1, True, 0, 0)["Commit"] == 1, "V=1 ∧ T=PASS ∧ UNRESOLVED=∅ ∧ FALSE_RED=∅ -> Commit=1")
+ok(G.승인(1, True, 1, 0)["Commit"] == 0 and "UNRESOLVED=∅" in G.승인(1, True, 1, 0)["깨진것"],
+   "UNRESOLVED 가 있으면 Commit=0")
+ok(G.승인(1, True, 0, 1)["Commit"] == 0 and "FALSE_RED=∅" in G.승인(1, True, 0, 1)["깨진것"],
+   "FALSE_RED 가 있으면 Commit=0")
 ok(G.승인(0, True, 0, 0)["Commit"] == 0, "V=0 이면 Commit=0")
 ok(G.승인(1, False, 0, 0)["Commit"] == 0, "T(P)=FAIL 이면 Commit=0")
 ok(G.여섯조건({k: (G.참, "") for k in G.여섯항})["commit"] is True, "여섯 항이 다 참이면 허용")

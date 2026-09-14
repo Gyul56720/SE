@@ -29,7 +29,7 @@ REPO = Path(__file__).resolve().parent
 게이트기 = None    # (repo) -> (통과:bool, 고친것:list[str], 위반요약:str)
 감사기 = None      # (repo) -> dict  (audit.감사 의 꼴)
 CI기 = None        # (repo) -> dict  (ci_watch.보기 의 꼴)
-메타기 = None      # (repo, 바뀐파일들) -> dict{commit, 말, FG, FR, INVALID}. None 이면 _메타 (mutate 원장을 읽는다)
+메타기 = None      # (repo, 바뀐파일들) -> dict{commit, 말, 미해결, FR, INVALID}. None 이면 _메타 (mutate 원장을 읽는다)
 
 
 def _게이트(repo: Path):
@@ -87,9 +87,11 @@ def 전이(이전: str, V: int) -> str:
     return 초록 if int(V) == 1 else 빨강
 
 
-def 승인(V: int, T통과: bool, FG: int, FR: int) -> dict:
-    """Commit(P) = 1[ V=1 ∧ T(P)=PASS ∧ (FG ∪ FR) = ∅ ]. **순수 지시함수 -- 아무것도 재지 않는다.**"""
-    조건 = {"V(P)=1": int(V) == 1, "T(P)=PASS": bool(T통과), "FG=∅": int(FG) == 0, "FR=∅": int(FR) == 0}
+def 승인(V: int, T통과: bool, 미해결: int, FR: int) -> dict:
+    """Commit(P) = 1[ V=1 ∧ T(P)=PASS ∧ (UNRESOLVED ∪ FALSE_RED) = ∅ ].
+    **순수 지시함수 -- 아무것도 재지 않는다.**"""
+    조건 = {"V(P)=1": int(V) == 1, "T(P)=PASS": bool(T통과),
+          "UNRESOLVED=∅": int(미해결) == 0, "FALSE_RED=∅": int(FR) == 0}
     값 = 1 if all(조건.values()) else 0
     깨진것 = [k for k, v in 조건.items() if not v]
     return {"Commit": 값, "조건": 조건, "깨진것": 깨진것,
@@ -144,8 +146,8 @@ def _메타(repo: Path, 바뀐: "list[str]") -> dict:
     걸린것 = mutate.파일별미해결(repo, 바뀐)
     마지막 = mutate.마지막사냥(repo)
     if not 마지막:
-        return {"commit": True, "있나": False, "FG": 0, "FR": 0, "INVALID": 0,
-                "말": "반례 사냥 기록이 없다 -- `!거짓초록` 으로 재면 이 문이 켜진다(막지 않는다)"}
+        return {"commit": True, "있나": False, "미해결": 0, "FR": 0, "INVALID": 0,
+                "말": "반례 사냥 기록이 없다 -- `!반례` 으로 재면 이 문이 켜진다(막지 않는다)"}
     r = mutate.신뢰(True, {mutate.미해결: len(걸린것),
                          mutate.거짓빨강: int(마지막.get(mutate.거짓빨강, 0)),
                          mutate.못쓸변형: int(마지막.get(mutate.못쓸변형, 0))})
@@ -252,12 +254,14 @@ def 검사(repo=None, 게이트: bool = True, 감사: bool = True, ci: bool = Tr
             m = {"commit": True, "있나": False, "말": f"메타검증을 못 읽었다: {type(e).__name__}"}
         if not m.get("있나"):
             줄.append("  (경고) " + m["말"])
-            항들["NoUnresolved"] = (못잼, "반례 사냥 기록이 없다 -- `!거짓초록` 으로 재라")
+            항들["NoUnresolved"] = (못잼, "반례 사냥 기록이 없다 -- `!반례` 으로 재라")
             항들["NoFalseRed"] = (못잼, "같다")
             항들["EnvironmentInvariant"] = (못잼, "변형 판정을 안 돌려 환경 불변식을 못 쟀다")
         else:
-            FG, FR, 무효 = int(m.get("FG", 0)), int(m.get("FR", 0)), int(m.get("INVALID", 0))
-            항들["NoUnresolved"] = ((거짓, f"UNRESOLVED {FG}개 -- 반례를 못 찾았을 뿐 통과가 아니다") if FG
+            # **옛 칸 이름도 받는다** -- 2026-09-14 이전 메타 결과는 `FG` 로 적혔다
+            미해 = int(m["미해결"] if "미해결" in m else m.get("FG", 0))
+            FR, 무효 = int(m.get("FR", 0)), int(m.get("INVALID", 0))
+            항들["NoUnresolved"] = ((거짓, f"UNRESOLVED {미해}개 -- 반례를 못 찾았을 뿐 통과가 아니다") if 미해
                                  else (참, "UNRESOLVED 0"))
             항들["NoFalseRed"] = ((거짓, f"FALSE_RED {FR}개 -- 변형과 무관한 실패를 잡힌 것으로 셀 수 없다") if FR
                                else (참, "FALSE_RED 0"))

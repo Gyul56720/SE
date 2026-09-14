@@ -121,7 +121,9 @@ _적혀야 = {"sandbox": "run_experiment", "audit": "audit/run.py", "graph": "gr
          # 조사는 긴 호흡 루프 -- 에이전트가 dispatch_command 로 친다. 머지는 사람.
          "investigate": "!조사 <증상> :: <재현 명령>",
          # 반례 사냥은 사람이 켜는 긴 사냥이다 -- 에이전트에겐 그 명령이 적혀야 한다.
-         "falsegreen": "!거짓초록"}
+         # 2026-09-14 이름을 `!반례` 로 맞췄다(옛 `!거짓초록` 도 계속 받는다). 프롬프트에는
+         # **지금 이름**이 적혀 있어야 한다 -- 옛 이름만 적혀 있으면 낱말이 또 둘로 갈린다.
+         "falsegreen": "!반례"}
 for _모듈 in dispatch.명령들:
     _꾸러미 = _모듈.__name__.split(".")[0]
     if _꾸러미 == "evolve":
