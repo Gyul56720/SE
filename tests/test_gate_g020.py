@@ -50,6 +50,10 @@ def 저장소() -> Path:
     (d / "eval" / "ledger.jsonl").write_text('{"판정":"초록"}\n{"판정":"빨강"}\n', encoding="utf-8")
     (d / "graph" / "ledger.jsonl").write_text('{"색인":1}\n{"색인":2}\n', encoding="utf-8")
     (d / "gates" / "G998_더미.py").write_text("RULE_ID='G998'\n", encoding="utf-8")
+    # 목록에 이름이 **없는** 새 계보. `--묶음 vne` 가 만드는 꼴이다.
+    (d / "falsegreen").mkdir()
+    (d / "falsegreen" / "요약-cut+vne.jsonl").write_text(
+        '{"잰변형":10}\n{"잰변형":20}\n', encoding="utf-8")
     subprocess.run(["git", "-C", str(d), "add", "-A"], check=True)
     subprocess.run(["git", "-C", str(d), "commit", "-qm", "기준"], check=True)
     return d
@@ -64,6 +68,23 @@ try:
     (repo / "eval" / "ledger.jsonl").write_text('{"판정":"초록"}\n', encoding="utf-8")
     v = G.check(gatekeeper.GateContext(repo))
     ok(len(v) == 1 and "append-only" in v[0], f"**빨강 줄을 지우면 걸린다** ({v})")
+
+    print("\n== 이름이 목록에 없는 새 계보도 자리로 지킨다 ==")
+    (repo / "eval" / "ledger.jsonl").write_text(
+        '{"판정":"초록"}\n{"판정":"빨강"}\n', encoding="utf-8")          # 앞 위반을 되돌린다
+    ok(not G.check(gatekeeper.GateContext(repo)), "되돌리면 성한 트리다")
+    ok("falsegreen/요약-cut+vne.jsonl" not in G.보호원장,
+       "이 이름은 목록에 **없다** -- 자리로만 걸려야 뜻이 있다")
+    (repo / "falsegreen" / "요약-cut+vne.jsonl").write_text('{"잰변형":10}\n', encoding="utf-8")
+    v = G.check(gatekeeper.GateContext(repo))
+    ok(len(v) == 1 and "append-only" in v[0],
+       f"**falsegreen/ 아래 새 계보의 줄을 지워도 걸린다** ({v})")
+    (repo / "falsegreen" / "요약-cut+vne.jsonl").unlink()
+    v = G.check(gatekeeper.GateContext(repo))
+    ok(any("사라졌다" in x for x in v), f"파일째 지워도 걸린다 ({v})")
+    (repo / "falsegreen" / "요약-cut+vne.jsonl").write_text(
+        '{"잰변형":10}\n{"잰변형":20}\n', encoding="utf-8")
+    ok(not G.check(gatekeeper.GateContext(repo)), "되돌리면 다시 성하다")
 
     print("\n== 줄을 더하는 것은 안 잡는다 ==")
     (repo / "eval" / "ledger.jsonl").write_text(
