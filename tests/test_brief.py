@@ -47,7 +47,7 @@ CSV = ("Symbol,Date,Time,Open,High,Low,Close,Volume\n"
 # **받은날을 박아 두지 마라.** 2026-09-09 로 박아 두었더니 신선도(3일)를 넘긴 날
 # 부터 "멀쩡한 보고서" 검사가 혼자 빨개졌다(실측 2026-09-13: `B003/hard 주식: 4일
 # 낡았다`). 코드는 그대로인데 **시계가 움직여서** 빨간 것이다 -- 거짓 빨강이고,
-# 그날 거짓초록 사냥이 brief/report.py 에서 107 번 연속 FALSE_RED 를 낸 까닭이다.
+# 그날 반례 사냥이 brief/report.py 에서 107 번 연속 FALSE_RED 를 낸 까닭이다.
 # 낡음을 재는 검사는 아래에서 날짜를 **일부러** 넘겨 준다(2020-01-01 따위).
 오늘 = datetime.date.today().isoformat()
 

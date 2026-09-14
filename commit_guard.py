@@ -100,7 +100,7 @@ def 승인(V: int, T통과: bool, FG: int, FR: int) -> dict:
 # 사용자(2026-09-12):
 #
 #   Commit = BasePass ∧ ToolInvoked ∧ SemanticObservation ∧ EnvironmentInvariant
-#            ∧ ¬FalseGreen ∧ ¬FalseRed
+#            ∧ ¬Unresolved ∧ ¬FalseRed
 #
 # 이 파일은 **판정하지 않는다.** 여섯 항은 저마다 다른 곳에서 이미 재어 온다 --
 #
@@ -108,7 +108,7 @@ def 승인(V: int, T통과: bool, FG: int, FR: int) -> dict:
 #   ToolInvoked          relay.도구호출들 / bot_tools.이번셸  (도구 0회면 실측 없는 답이다)
 #   SemanticObservation  rehearsal 의 공허 · 절제 · 열쇠 · 미정의 · 순환
 #   EnvironmentInvariant mutate.환경보존됐나 · 단일변형인가 · 절제의 I1·I4
-#   ¬FalseGreen          mutate 의 FALSE_GREEN 셈
+#   ¬Unresolved          mutate 의 UNRESOLVED 셈 (반례를 못 찾은 변형)
 #   ¬FalseRed            mutate 의 FALSE_RED 셈 (귀속은 복원 재실행으로 한다)
 #
 # 여기서 하는 일은 **논리곱과 보고**뿐이다.
@@ -118,7 +118,7 @@ def 승인(V: int, T통과: bool, FG: int, FR: int) -> dict:
 # **재지 않은 것을 빨강이라 하는 것도 같은 잘못이다**(거짓 빨강은 전부를 멈춘다).
 참, 거짓, 못잼 = "참", "거짓", "못잼"
 여섯항 = ("BasePass", "ToolInvoked", "SemanticObservation", "EnvironmentInvariant",
-       "NoFalseGreen", "NoFalseRed")
+       "NoUnresolved", "NoFalseRed")
 
 
 def 여섯조건(항들: dict) -> dict:
@@ -138,20 +138,20 @@ def _메타(repo: Path, 바뀐: "list[str]") -> dict:
 
     사용자(2026-09-12): "Red/Green 은 1차 전이, FR/FG 는 그 판정이 옳았나를 보는 2차 메타층이고,
     Commit = Green ∧ (FR∪FG)^c 다." 판정은 mutate 가 하고, 이 문은 그 결과로 **막을지만** 정한다.
-    커밋이 만진 파일에 걸린 FALSE_GREEN 만 본다 -- 저장소 어딘가의 옛 거짓초록으로 무관한 커밋을
+    커밋이 만진 파일에 걸린 UNRESOLVED 만 본다 -- 저장소 어딘가의 옛 미해결로 무관한 커밋을
     인질로 잡지 않는다. 사냥을 한 적이 없으면 `없다` 로 말하고 막지 않는다(모르는 것은 빨강도 아니다)."""
     import mutate
-    걸린것 = mutate.파일별거짓초록(repo, 바뀐)
+    걸린것 = mutate.파일별미해결(repo, 바뀐)
     마지막 = mutate.마지막사냥(repo)
     if not 마지막:
         return {"commit": True, "있나": False, "FG": 0, "FR": 0, "INVALID": 0,
-                "말": "거짓초록 사냥 기록이 없다 -- `!거짓초록` 으로 재면 이 문이 켜진다(막지 않는다)"}
-    r = mutate.신뢰(True, {mutate.거짓초록: len(걸린것),
+                "말": "반례 사냥 기록이 없다 -- `!거짓초록` 으로 재면 이 문이 켜진다(막지 않는다)"}
+    r = mutate.신뢰(True, {mutate.미해결: len(걸린것),
                          mutate.거짓빨강: int(마지막.get(mutate.거짓빨강, 0)),
                          mutate.못쓸변형: int(마지막.get(mutate.못쓸변형, 0))})
     r["있나"] = True
     if 걸린것:
-        r["말"] += " · 이 커밋이 만진 파일의 FALSE_GREEN: " + ", ".join(
+        r["말"] += " · 이 커밋이 만진 파일의 UNRESOLVED: " + ", ".join(
             f"{x.get('target')} [{x.get('mutation', '')[:30]}]" for x in 걸린것[:4])
     return r
 
@@ -252,13 +252,13 @@ def 검사(repo=None, 게이트: bool = True, 감사: bool = True, ci: bool = Tr
             m = {"commit": True, "있나": False, "말": f"메타검증을 못 읽었다: {type(e).__name__}"}
         if not m.get("있나"):
             줄.append("  (경고) " + m["말"])
-            항들["NoFalseGreen"] = (못잼, "거짓초록 사냥 기록이 없다 -- `!거짓초록` 으로 재라")
+            항들["NoUnresolved"] = (못잼, "반례 사냥 기록이 없다 -- `!거짓초록` 으로 재라")
             항들["NoFalseRed"] = (못잼, "같다")
             항들["EnvironmentInvariant"] = (못잼, "변형 판정을 안 돌려 환경 불변식을 못 쟀다")
         else:
             FG, FR, 무효 = int(m.get("FG", 0)), int(m.get("FR", 0)), int(m.get("INVALID", 0))
-            항들["NoFalseGreen"] = ((거짓, f"FALSE_GREEN {FG}개 -- 그 초록은 못 믿는다") if FG
-                                 else (참, "FALSE_GREEN 0"))
+            항들["NoUnresolved"] = ((거짓, f"UNRESOLVED {FG}개 -- 반례를 못 찾았을 뿐 통과가 아니다") if FG
+                                 else (참, "UNRESOLVED 0"))
             항들["NoFalseRed"] = ((거짓, f"FALSE_RED {FR}개 -- 변형과 무관한 실패를 잡힌 것으로 셀 수 없다") if FR
                                else (참, "FALSE_RED 0"))
             항들["EnvironmentInvariant"] = ((거짓, f"판정에 쓸 수 없는 것 {무효}개(Δ≠{{m}} · E(P)≠E(Pm))") if 무효
@@ -278,13 +278,13 @@ def 검사(repo=None, 게이트: bool = True, 감사: bool = True, ci: bool = Tr
     if not 여섯["commit"]:
         통과 = False
     줄.append("Commit = BasePass ∧ ToolInvoked ∧ SemanticObservation ∧ EnvironmentInvariant"
-             " ∧ ¬FalseGreen ∧ ¬FalseRed")
+             " ∧ ¬Unresolved ∧ ¬FalseRed")
     줄.append(여섯["표"])
     _도구상태 = (항들.get("ToolInvoked") or (못잼, ""))[0]
     _바탕상태 = (항들.get("BasePass") or (못잼, ""))[0]
     S0 = 상태(_도구상태 != 거짓, _바탕상태 != 거짓)
     _V = 1 if (여섯["commit"] and _바탕상태 != 거짓) else 0
-    _FG = 1 if "NoFalseGreen" in 여섯["거짓인항"] else 0
+    _FG = 1 if "NoUnresolved" in 여섯["거짓인항"] else 0
     _FR = 1 if "NoFalseRed" in 여섯["거짓인항"] else 0
     승 = 승인(_V, _바탕상태 != 거짓, _FG, _FR)
     줄.append(f"  S0 = {S0} · 전이 V(P)={_V} -> {전이(S0, _V)} · {승['말']}")
