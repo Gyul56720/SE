@@ -795,8 +795,14 @@ try:
 
     print("\n== 배선 ==")
     _서버 = (뿌리 / "discord_bot_server.py").read_text(encoding="utf-8")
-    ok("mutate" in (뿌리 / "dispatch.py").read_text(encoding="utf-8")
-       or "거짓초록" in (뿌리 / "dispatch.py").read_text(encoding="utf-8"), "dispatch 가 거짓초록 명령을 안다")
+    # **모듈 이름이 아니라 명령 이름으로 본다.** 2026-09-14 dispatch 안의 별명을
+    # `거짓초록` -> `반례` 로 바꿨더니 이 줄이 빨개졌다. 별명은 낱말을 맞출 때마다
+    # 바뀌지만 **PREFIX 는 사람이 치는 것**이라 그것을 붙드는 게 맞다.
+    _디 = (뿌리 / "dispatch.py").read_text(encoding="utf-8")
+    from falsegreen import discord_cmd as _반례
+    ok("falsegreen" in _디, f"dispatch 가 반례 사냥 명령을 싣는다 ({_반례.PREFIX})")
+    ok(_반례.PREFIX == "!반례" and "!거짓초록" in _반례.별칭,
+       f"지금 이름은 `{_반례.PREFIX}` 이고 **옛 이름도 계속 받는다** ({_반례.별칭})")
     ok("mutate.py" in (뿌리 / ".github/workflows/deploy-oracle.yml").read_text(encoding="utf-8"),
        "배포가 mutate.py 를 서버에 올린다")
     from falsegreen import discord_cmd as _FC
