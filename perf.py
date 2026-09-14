@@ -71,7 +71,7 @@ REPO = Path(__file__).resolve().parent
                      "    s = pathlib.Path(f).read_text(encoding='utf-8',errors='replace')\n"
                      "    import rehearsal\n"
                      "    for 이름 in list(rehearsal._함수자리(s))[:6]:\n"
-                     "        n += len(mutate.변형들(s, 이름))\n"
+                     "        n += len(mutate.변형들(s, 이름, 상한=24))\n"   # **24 를 못 박는다** -- 일이 바뀌면 옛 성능 원장과 못 견준다
                      "print(n)"],
              "왜": "사냥의 알맹이. AST 를 읽어 변형을 짓는다 -- 순수 CPU 이고 결정적이다"},
     "검사고르기": {"argv": ["python3", "-B", "-c",
