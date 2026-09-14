@@ -10,6 +10,14 @@ discord.py>=2.4.0
 # CI(.github/workflows/gates.yml)는 이 패키지들이 실제로 깔렸는지 먼저 확인한다 --
 # 안 그러면 게이트가 조용히 SKIP 되면서 CI 만 초록으로 뜬다.
 numpy>=1.24.0
+# **scipy 가 여기 없어서 VM 이 깨졌다** (실측 2026-09-14).
+#   numpy 2.x 는 `numpy.Inf` 를 없앴는데, 핀이 없으니 VM 에는 그것을 쓰는 옛 scipy 가
+#   남아 있었다 -> `cut/ff.py` 가 import 에서 터지고 `tests/test_cut.py` 가 아예 안 돈다
+#       cannot import name 'Inf' from 'numpy'
+#   고치기 루프가 세 바퀴 돌고 못 풀었다(numpy 를 **내리려** 했다 -- 방향이 반대다.
+#   올려야 하는 것은 scipy 다). 이 컨테이너의 실측 조합: scipy 1.17.1 + numpy 2.4.6,
+#   그 scipy 의 요구가 `numpy<2.7,>=1.26.4` 다.
+scipy>=1.14.0
 # mathgen 의 심판이 이것으로만 푼다(mathgen/_worker.py · champion.py). 없으면
 # test_mathgen_judge 가 죽는데, 예전에는 CI 목록에 그 테스트가 없어서 안 보였다.
 sympy>=1.12
