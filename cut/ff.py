@@ -48,6 +48,8 @@ class 판:
     b_eq: np.ndarray
     A_ub: np.ndarray
     b_ub: np.ndarray
+    eq이름: list = None            # 등식 줄마다 사람이 읽는 이름 (증서가 인용한다)
+    ub이름: list = None            # 부등식 줄마다
 
     @property
     def 변수수(self) -> int:
@@ -86,13 +88,14 @@ def 짓기(바탕, 요청) -> 판:
             k = 호 if 호 in 바탕.링크 else (호[1], 호[0])
             c[y자리[(e, 호)]] = 요청.링크[e]["대역"] * float(바탕.링크[k].get("값", 1.0))
 
-    등식, b_eq = [], []
+    등식, b_eq, eq이름 = [], [], []
     for v in VR:                                            # 배치: 정확히 하나
         줄 = np.zeros(n)
         for u in VS:
             줄[x자리[(v, u)]] = 1.0
         등식.append(줄)
         b_eq.append(1.0)
+        eq이름.append(f"배치[{v}]")
     for e in ER:                                            # 흐름 보존
         a, b = e
         for u in VS:
@@ -106,20 +109,23 @@ def 짓기(바탕, 요청) -> 판:
             줄[x자리[(b, u)]] += 1.0
             등식.append(줄)
             b_eq.append(0.0)
+            eq이름.append(f"흐름보존[{e},{u}]")
 
-    부등, b_ub = [], []
+    부등, b_ub, ub이름 = [], [], []
     for u in VS:                                            # 일대일
         줄 = np.zeros(n)
         for v in VR:
             줄[x자리[(v, u)]] = 1.0
         부등.append(줄)
         b_ub.append(1.0)
+        ub이름.append(f"일대일[{u}]")
     for u in VS:                                            # CPU
         줄 = np.zeros(n)
         for v in VR:
             줄[x자리[(v, u)]] = 요청.노드[v]["cpu"]
         부등.append(줄)
         b_ub.append(바탕.노드[u]["cpu"])
+        ub이름.append(f"CPU[{u}]")
     for (u, w) in 바탕.링크:                                 # 대역 (양방향 합)
         줄 = np.zeros(n)
         for e in ER:
@@ -127,11 +133,12 @@ def 짓기(바탕, 요청) -> 판:
             줄[y자리[(e, (w, u))]] += 요청.링크[e]["대역"]
         부등.append(줄)
         b_ub.append(바탕.링크[(u, w)]["대역"])
+        ub이름.append(f"대역[{u},{w}]")
 
     return 판(바탕=바탕, 요청=요청, x자리=x자리, y자리=y자리, 호들=호들, c=c,
              A_eq=np.array(등식) if 등식 else np.zeros((0, n)),
              b_eq=np.array(b_eq), A_ub=np.array(부등) if 부등 else np.zeros((0, n)),
-             b_ub=np.array(b_ub))
+             b_ub=np.array(b_ub), eq이름=eq이름, ub이름=ub이름)
 
 
 def 풀기(p: 판, 정수: bool = True, 시한초: float = 60.0, 목적=None, 최대화: bool = False) -> dict:
