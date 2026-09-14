@@ -28,11 +28,30 @@ from investigate import discord_cmd as 조사
 from secaudit import discord_cmd as 점검
 from router import discord_cmd as 경로
 from sandbox import discord_cmd as 실험
-from falsegreen import discord_cmd as 거짓초록
+from falsegreen import discord_cmd as 반례
 import keys as 열쇠
 import relay as 중계
 
-명령들 = (소설, 실험, 감사, 기억, 평가, 경로, 목표, 진화, 중계, 위임, 수집, 열쇠, 고치기, 점검, 코드화, 연구, 계획, 자가개선, 조사, 거짓초록)
+# **한 번도 안 쓴 명령은 싣지 않는다.** 사용자(2026-09-14): "너무 어수선해."
+# 재 본 것은 각 기관 원장의 줄 수다 -- 그 기관이 실제로 한 일의 수다.
+#
+#     router 425 · graph 411 · eval 258 · dig 201 · improve 91 · codify 78
+#     repair 43 · secaudit 27 · research 21 · falsegreen 16
+#     investigate 0*  (*제 원장이 없다. logs/ 로 적는다 -- PR #267 을 낳은 것이 이것이다)
+#     novel 0*        (*제 원장이 없다. 54개 파일짜리 파이프라인이 따로 돈다)
+#     sandbox 0 · intent 0 · evolve 0 · delegate 0 · audit 0            <- 이 다섯
+#
+# **plan 은 처음에 이 목록에 넣었다가 되돌렸다.** `plan/할일.jsonl` 이 0바이트라 0 으로
+# 읽혔는데, 정작 그 기관이 쓰는 것은 `plan/state.json` 이고 **그건 .gitignore 에 있다** --
+# 여기서는 영영 안 보인다. 안 잰 것을 0 으로 읽은 것이다. 봇 프롬프트도 `!계획 켜기 ->
+# 시험 -> 승인` 을 저장소를 고치는 기본 경로로 세 번 가리킨다. 그래서 실려 있다.
+# (`intent` 는 다르다 -- `intent/ledger.jsonl` 이 **파일 자체가 없다**. 한 번도 안 돌았다.)
+#
+# 다섯은 원장에 한 줄도 없다. 지우지 않는다 -- 여기 목록에서만 뺀다. 파일은 그대로 있고
+# `python3 -m <기관>` 으로 여전히 돌고, 되돌리는 것은 아래 한 줄에 이름을 넣는 일이다.
+# 뺀 뒤에는 그 말이 에이전트로 떨어진다(이 파일의 규약대로) -- 조용히 죽지 않는다.
+안쓴것 = (실험, 목표, 진화, 위임, 감사)          # 원장 0줄. 되살리려면 아래 줄에 넣어라
+명령들 = (소설, 기억, 평가, 경로, 중계, 수집, 열쇠, 고치기, 점검, 코드화, 연구, 계획, 자가개선, 조사, 반례)
 
 
 def run(text: str, runner=None, allow_write: bool = True) -> "str | None":
