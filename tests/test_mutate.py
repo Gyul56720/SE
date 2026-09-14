@@ -1,4 +1,4 @@
-"""거짓 초록 사냥(mutate)을 **진짜 저장소**로 붙든다.
+"""반례 사냥(mutate)을 **진짜 저장소**로 붙든다.
 
 사용자(2026-09-12): "거짓 초록이 문제인데, 그냥 거짓 초록을 24시간 동안 보는 기능을 만들어."
 그리고 물었다 -- 절제(red-green)를 넣었으면 거짓 초록은 이론적으로 안 걸리나?
@@ -136,11 +136,14 @@ try:
        and any("return" in x["변형"] for x in r2["살아남은것"]),
        f"어느 함수의 어떤 변형이 살았는지 적는다 ({[x['변형'][:28] for x in r2['살아남은것']][:3]})")
     원 = M.원장읽기(판)
-    ok(any(x.get("classification") == M.거짓초록 and x.get("target", "").startswith("부름.py") for x in 원),
-       "원장에 FALSE_GREEN 줄이 남는다(분류 이름으로)")
+    ok(any(x.get("classification") == M.미해결 and x.get("target", "").startswith("부름.py") for x in 원),
+       "원장에 UNRESOLVED 줄이 남는다(분류 이름으로)")
     ok(any(x.get("꼴") == "사냥끝" for x in 원), "사냥 끝 줄이 남는다")
     보 = M.보고(판)
-    ok("거짓 초록" in 보 and "부름.py" in 보 and M.거짓초록 in 보, f"보고가 원장을 읽어 사람 말로 적는다 ({보[:60]!r})")
+    ok("반례 사냥" in 보 and "부름.py" in 보 and M.미해결 in 보,
+       f"보고가 원장을 읽어 사람 말로 적는다 ({보[:60]!r})")
+    ok("거짓 초록" not in 보 and "FALSE_GREEN" not in 보,
+       "**보고에 초록이라는 낱말이 없다** -- 못 찾은 것을 통과라 부르지 않는다")
 
     print("\n== 절제는 그 둘을 구별하지 못한다 (그래서 변형이 따로 필요하다) ==")
     w = Path(tempfile.mkdtemp(prefix="판-"))
@@ -178,10 +181,10 @@ try:
     ok(2 in 덮 and 4 in 덮 and 3 not in 덮, f"**실행된 줄만 덮임으로 센다** -- 큰 쪽(3줄)은 안 돌았다 ({sorted(덮)})")
     r6 = M.사냥(판, 파일들=["반쪽.py"], 시한초=180, 말하기=lambda s: None)
     ok(r6["덮이지않음"] >= 1 and any(x["변형"].startswith("3줄") for x in r6["덮이지않은것"]),
-       f"**안 덮인 줄의 변형은 '거짓초록' 이 아니라 '덮이지않음' 이다** (덮이지않음 {r6['덮이지않음']})")
+       f"**안 덮인 줄의 변형은 '미해결' 이 아니라 '덮이지않음' 이다** (덮이지않음 {r6['덮이지않음']})")
     # 정의대로: 안 덮인 줄의 생존도 FG 다(의미가 달라졌는데 검사가 못 잡았다). 다만 **까닭이 다르다** --
     # 단언이 약한 것이 아니라 그 줄에 닿지 않은 것이다. 그래서 why 로 갈라 적고 보고가 따로 센다.
-    ok(any(x.get("classification") == M.거짓초록 and x.get("why") == "not_covered"
+    ok(any(x.get("classification") == M.미해결 and x.get("why") == "not_covered"
            for x in M.원장읽기(판)), "안 덮인 줄의 생존은 why=not_covered 로 적힌다")
     ok(any(x.get("꼴") == "덮임" for x in M.원장읽기(판)), "원장에 덮임 줄이 남는다")
     보2 = M.보고(판)
@@ -213,8 +216,8 @@ try:
 
     print("  -- Case A: 반환값을 바꾸면 검사가 잡는다 -> VALID_RED --")
     rA = M.사냥(판, 파일들=["계산.py"], 시한초=180, 말하기=lambda s: None)
-    ok(rA.get(M.유효빨강, 0) >= 1 and rA.get(M.거짓빨강, 0) == 0 and rA.get(M.거짓초록, 0) == 0,
-       f"Case A -- VALID_RED {rA.get(M.유효빨강, 0)} · FALSE_RED {rA.get(M.거짓빨강, 0)} · FALSE_GREEN {rA.get(M.거짓초록, 0)}")
+    ok(rA.get(M.유효빨강, 0) >= 1 and rA.get(M.거짓빨강, 0) == 0 and rA.get(M.미해결, 0) == 0,
+       f"Case A -- VALID_RED {rA.get(M.유효빨강, 0)} · FALSE_RED {rA.get(M.거짓빨강, 0)} · UNRESOLVED {rA.get(M.미해결, 0)}")
     ok(all(x.get("baseline_rerun_status") == "PASS" for x in M.원장읽기(판)
            if x.get("classification") == M.유효빨강),
        "**모든 VALID_RED 은 되돌림 재실행이 PASS 였다** -- 귀속이 차감으로 증명된다")
@@ -222,11 +225,11 @@ try:
     ok(any(x.get("operator") == "arith_swap" and x.get("classification") == M.유효빨강 for x in M.원장읽기(판)),
        "**길이가 같은 변형도 VALID_RED** -- 바이트코드 캐시를 꺼서 거짓 Red 가 안 난다(실측 회귀)")
 
-    print("  -- Case B: 틀린 값으로 바꿨는데 계속 PASS -> FALSE_GREEN --")
+    print("  -- Case B: 틀린 값으로 바꿨는데 계속 PASS -> UNRESOLVED --")
     rB = M.사냥(판, 파일들=["부름.py"], 시한초=180, 말하기=lambda s: None)
-    ok(rB.get(M.거짓초록, 0) >= 1 and rB.get(M.유효빨강, 0) == 0,
-       f"Case B -- FALSE_GREEN {rB.get(M.거짓초록, 0)} (부르기만 하는 검사)")
-    ok(any(x.get("classification") == M.거짓초록 and x.get("why") == "weak_assertion"
+    ok(rB.get(M.미해결, 0) >= 1 and rB.get(M.유효빨강, 0) == 0,
+       f"Case B -- UNRESOLVED {rB.get(M.미해결, 0)} (부르기만 하는 검사)")
+    ok(any(x.get("classification") == M.미해결 and x.get("why") == "weak_assertion"
            for x in M.원장읽기(판)), "까닭이 weak_assertion 으로 적힌다(덮임의 구멍과 구별된다)")
 
     print("  -- Case D: 변형과 무관한 실패는 VALID_RED 가 아니다 -> FALSE_RED --")
@@ -253,7 +256,7 @@ try:
 
     print("  -- 2차 메타검증: Commit = Green ∧ (FR∪FG)^c --")
     ok(M.신뢰(True, {M.유효빨강: 3})["commit"] is True, "1차 초록 + FG·FR 없음 -> 커밋 허용")
-    ok(M.신뢰(True, {M.유효빨강: 3, M.거짓초록: 1})["commit"] is False, "**FG 가 있으면 초록이어도 막는다**")
+    ok(M.신뢰(True, {M.유효빨강: 3, M.미해결: 1})["commit"] is False, "**FG 가 있으면 초록이어도 막는다**")
     ok(M.신뢰(True, {M.유효빨강: 3, M.거짓빨강: 1})["commit"] is False, "**FR 이 있으면 초록이어도 막는다**")
     ok(M.신뢰(True, {M.못쓸변형: 1})["commit"] is False, "판정에 쓸 수 없는 것이 남으면 막는다")
     ok(M.신뢰(False, {M.유효빨강: 3})["commit"] is False and M.신뢰(False, {M.유효빨강: 3})["reliable"] is True,
@@ -851,6 +854,35 @@ try:
     ok("vne/embed.py" in _묶 and "mutate.py" not in _묶, "저장소 전체가 아니다")
     ok(not any(x.startswith("tests/") for x in _묶), "검사 파일은 사냥감이 아니다")
     ok(M.묶음파일들(["없는폴더"], repo=뿌리) == [], "없는 폴더는 빈 목록 -- 조용히 전체로 안 번진다")
+
+
+    # ---- 판정의 이름: **초록을 뺐다** ------------------------------------------
+    # 사용자(2026-09-14): "RED = 반례 발견 · UNRESOLVED = 못 찾음 · EQUIVALENT = 증명.
+    # GREEN 이라는 단어 자체를 없애는 것도 좋은 선택이다."  까닭은 TCE 가 한 방향만
+    # 건전하기 때문이다 -- 동등은 증명해도 **비동등은 증명 못 한다**. 그런데 옛 이름
+    # `FALSE_GREEN` 은 "이 초록은 거짓이다", 곧 변형이 실제로 다르다고 단정했다.
+    # 실측 2026-09-14 그 대가를 치렀다: `cut/일반화.py` 의 항등 `round` 둘이 그렇게
+    # 적혔는데 실제로는 동등변형이었다.
+    ok(M.미해결 == "UNRESOLVED", f"살아남은 변형의 이름은 UNRESOLVED 다 ({M.미해결})")
+    ok(not hasattr(M, "거짓초록") and not hasattr(M, "유효초록"),
+       "**초록이 붙은 판정 상수가 없다**")
+    ok("GREEN" not in M.유효빨강 + M.미해결 + M.동등변형 + M.거짓빨강 + M.못쓸변형 + M.못쓸바탕,
+       "판정 이름 어디에도 GREEN 이 없다")
+    ok(M.동등변형 == "EQUIVALENT_MUTANT" and M.유효빨강 == "VALID_RED",
+       "RED 와 EQUIVALENT 는 그대로다 -- 둘은 실제로 증명되는 쪽이다")
+
+    # **옛 원장을 계속 읽는다.** 원장은 append-only 라 D_0·D_1 에 옛 이름이 그대로 있다.
+    ok(M.판정풀기("FALSE_GREEN") == M.미해결, "옛 이름을 지금 이름으로 푼다")
+    ok(M.판정풀기("VALID_RED") == "VALID_RED", "다른 이름은 안 건드린다")
+    ok(M.판정풀기(None) is None, "없는 값에 이름을 지어내지 않는다")
+    _섞 = [{"classification": "FALSE_GREEN", "outcome": M.살아남음, "operator": "x"},
+          {"classification": M.미해결, "outcome": M.살아남음, "operator": "x"}]
+    _센 = {}
+    for _x in _섞:
+        _c = M.판정풀기(_x["classification"])
+        _센[_c] = _센.get(_c, 0) + 1
+    ok(_센 == {M.미해결: 2},
+       f"**옛 줄과 새 줄이 한 칸으로 합쳐진다** ({_센}) -- 안 그러면 D_t 가 둘로 쪼개진다")
 
 finally:
     shutil.rmtree(판, ignore_errors=True)
