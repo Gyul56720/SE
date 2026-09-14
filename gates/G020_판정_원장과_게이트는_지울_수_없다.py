@@ -39,7 +39,8 @@ EVIDENCE = ""
           "falsegreen/성능.jsonl",      # perf.성능경로     -- 성능 판정 ACCEPT/REJECT
           "falsegreen/정책.jsonl",      # policy.정책경로   -- π 의 채택 이력
           "falsegreen/먼검사.jsonl",    # farcheck.기록경로 -- 먼 검사의 빨강 이력
-          "vne/측정.jsonl")             # vne.measure.원장경로 -- VNE 수용률·매출비·시간
+          "attic/vne/측정.jsonl")       # 2026-09-14 attic/ 으로 얼렸다. **자리가 바뀌어도
+                                        # 지운 역사는 남는다** -- 원장은 얼려도 append-only 다
 
 # **목록은 도구를 안 따라간다 -- 그래서 자리를 통째로 지킨다.** 실측 2026-09-14: `--묶음 vne`
 # 가 제 계보(`falsegreen/요약-cut+vne.jsonl`)를 쓰기 시작했는데, 위 목록은 이름을 하나씩
