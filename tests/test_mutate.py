@@ -825,6 +825,33 @@ try:
        "배포가 perf.py 를 서버에 올린다")
     ok("farcheck.py" in (뿌리 / ".github/workflows/deploy-oracle.yml").read_text(encoding="utf-8"),
        "배포가 farcheck.py 를 서버에 올린다")
+
+    # ---- 검사고르기: "이름이 닮았다" 는 **토막**이지 부분문자열이 아니다 -------------
+    # 실측 2026-09-14: `줄기 in t` 라서 `cut/ff.py` 가 test_diffusion·test_payoff 를 뽑았고,
+    # `한함수검사수 = 3` 이라 22개 파일에서 **진짜 검사가 상한 밖으로 밀려났다**.
+    # 밀려난 자리는 조용하다 -- 그 변형을 재는 검사를 안 돌려 놓고 `살아남음` 으로 적힌다.
+    ok(M._토막으로("test_cut.py", "cut"), "test_cut.py 는 cut 의 검사다")
+    ok(M._토막으로("test_mathdrift_prove.py", "prove"), "밑줄 뒤 토막도 맞다")
+    ok(M._토막으로("test_agent_context.py", "agent_context"), "밑줄이 든 줄기도 통째로 맞다")
+    ok(not M._토막으로("test_payoff.py", "ff"), "'ff' 는 payoff 안에 **묻혀** 있다")
+    ok(not M._토막으로("test_diffusion.py", "ff"), "'ff' 는 diffusion 안에 묻혀 있다")
+    ok(not M._토막으로("test_improveloop.py", "prove"), "'prove' 는 improveloop 안에 묻혀 있다")
+    ok(not M._토막으로("test_키찾기.py", "찾기"), "한글 이름에는 밑줄 경계가 없다 -- 안 맞는다")
+    _고른 = M._검사고르기(뿌리, "cut/ff.py")
+    ok("tests/test_payoff.py" not in _고른 and "tests/test_diffusion.py" not in _고른,
+       f"cut/ff.py 는 남의 검사를 안 끌어온다 ({_고른})")
+    _프 = M._검사고르기(뿌리, "mathdrift/prove.py")
+    ok("tests/test_mathdrift_prove.py" in _프,
+       f"진짜 검사가 상한 안에 남는다 ({_프})")
+
+    # ---- 묶음: 지금 손대는 폴더만 겨눈다 -----------------------------------------
+    _묶 = M.묶음파일들(["vne", "cut"], repo=뿌리)
+    ok(_묶 and all(x.startswith(("vne/", "cut/")) for x in _묶),
+       f"--묶음 은 그 폴더 아래만 준다 ({len(_묶)}개)")
+    ok("vne/embed.py" in _묶 and "mutate.py" not in _묶, "저장소 전체가 아니다")
+    ok(not any(x.startswith("tests/") for x in _묶), "검사 파일은 사냥감이 아니다")
+    ok(M.묶음파일들(["없는폴더"], repo=뿌리) == [], "없는 폴더는 빈 목록 -- 조용히 전체로 안 번진다")
+
 finally:
     shutil.rmtree(판, ignore_errors=True)
 

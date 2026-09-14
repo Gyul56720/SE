@@ -55,6 +55,7 @@ import argparse
 import ast
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -454,8 +455,31 @@ def _정책(repo: Path, 정책=None) -> dict:
 
 
 # ------------------------------------------------------------------ 어느 검사를 돌리나
+def _토막으로(이름: str, 낱말: str) -> bool:
+    r"""검사 파일 `이름` 안에서 `낱말` 이 **밑줄로 끊긴 한 토막**인가.
+
+    **실측 2026-09-14: 여기가 부분문자열이었다.** `줄기 in t` 라서 짧은 이름이 남의 검사를
+    끌어왔다 -- `cut/ff.py` 가 `test_diffusion.py` 와 `test_payoff.py` 를 뽑았다('ff' 가
+    두 이름 안에 묻혀 있다). 이름으로 뽑힌 263짝 중 **31짝(11.8%)** 이 이런 것이었고,
+    `한함수검사수 = 3` 이라 그중 **22개 파일에서 진짜 검사가 상한 밖으로 밀려났다**:
+
+        mathdrift/prove.py -> test_improve.py · test_improveloop.py   (가짜가 두 칸)
+                              밀려난 것: **test_mathdrift_prove.py**  (진짜)
+
+    밀려난 자리는 조용하다. 남은 검사가 변형을 못 잡으면 `살아남음` 으로 적히는데, 그것은
+    "단언이 약하다" 가 아니라 **그 변형을 재는 검사를 아예 안 돌렸다** 는 뜻이다. 곧
+    거짓 초록 후보가 근거 없이 불어난다 -- 재지 않은 것이 빨강으로 적힌 꼴이다.
+
+    밑줄만 경계로 친다. 한글 이름에는 밑줄이 없으므로 `test_키찾기.py` 는 `찾기` 와
+    안 맞는다(맞으면 안 된다 -- `cut/찾기.py` 와 무관한 검사다)."""
+    핵 = 이름[len("test_"):-len(".py")] if 이름.startswith("test_") and 이름.endswith(".py") else 이름
+    return re.search(r"(?:^|_)" + re.escape(낱말) + r"(?:_|$)", 핵) is not None
+
+
 def _검사고르기(repo: Path, rel: str, 몇: int = 한함수검사수) -> "list[str]":
-    """그 파일을 재는 검사들. 이름이 닮은 것 -> 그 모듈을 임포트하는 것 순으로 고른다."""
+    """그 파일을 재는 검사들. 이름이 닮은 것 -> 그 모듈을 임포트하는 것 순으로 고른다.
+
+    "닮았다" 는 **토막이 같다** 는 뜻이지 글자가 들어 있다는 뜻이 아니다 -- `_토막으로` 를 보라."""
     줄기 = Path(rel).stem
     꾸러미 = Path(rel).parts[0] if len(Path(rel).parts) > 1 else ""
     검사들 = sorted(x.name for x in (repo / "tests").glob("test_*.py"))
@@ -464,9 +488,9 @@ def _검사고르기(repo: Path, rel: str, 몇: int = 한함수검사수) -> "li
     for t in 검사들:
         글 = (repo / "tests" / t).read_text(encoding="utf-8", errors="replace")
         s = 0
-        if 줄기 and 줄기 in t:
+        if 줄기 and _토막으로(t, 줄기):
             s += 10
-        if 꾸러미 and 꾸러미 in t:
+        if 꾸러미 and _토막으로(t, 꾸러미):
             s += 3
         if 모듈 in 글 or f"import {줄기}" in 글 or f"from {꾸러미} import" in 글:
             s += 5
@@ -902,6 +926,38 @@ def 자기파일들(repo=None) -> "list[str]":
          if x and not x.startswith("tests/") and not x.startswith(안잴곳)
          and (x.startswith(검증기접두) or x in 검증기파일)]
     return sorted(것)
+
+
+def 묶음자리(접두들) -> "tuple[str, str]":
+    r"""그 묶음의 (원장, 요약) 자리. **계보를 가른다.**
+
+    **`요약()` 은 원장 *전체*를 읽는다** -- 누적이다(D1 의 잰변형 4187 은 D0 의 1111 을 품고 있다).
+    그래서 VNE 10개 파일 사냥을 저장소 전체 원장에 부으면, 새 줄의 잰변형은 4187+α 가 되고
+    **α 를 도로 빼낼 수가 없다.** 칸도 union 이라 `견줄수있나` 가 "견줄 만하다" 고 말한다 --
+    실제로 달라진 것은 VNE 열 칸뿐인데.
+
+    그러니 묶음마다 **제 원장과 제 요약**을 쓴다. D0^vne -> D1^vne 은 저희끼리 견준다.
+    전체 계보(`falsegreen/요약.jsonl`)는 건드리지 않는다 -- 섞이지 않는 것이 요점이다."""
+    이름 = "+".join(sorted(x.strip("/") for x in 접두들))
+    return f"logs/거짓초록-{이름}.jsonl", f"falsegreen/요약-{이름}.jsonl"
+
+
+def 묶음파일들(접두들, repo=None) -> "list[str]":
+    r"""그 접두(폴더) 아래의 추적 `*.py` 만. `--묶음 vne --묶음 cut` 이 쓴다.
+
+    `--자기` 와 같은 까닭으로 있다 -- **M 을 넓히는 게 아니라 겨누는 것**이다. 저장소 전체는
+    393개 파일이고 D1 은 6시간에 53개(13%)에 닿았다. 지금 손대는 곳만 재고 싶으면 그 13%
+    안에 들기를 기다릴 게 아니라 대놓고 고르는 편이 낫다.
+
+    목록은 손으로 안 적는다(`자기파일들` 이 적어 둔 까닭 그대로 -- 손으로 적으면 파일이
+    늘 때 조용히 낡는다). 접두는 `vne/` 처럼 슬래시가 없어도 된다."""
+    repo = Path(repo or REPO)
+    접두 = tuple(x if x.endswith("/") else x + "/" for x in 접두들)
+    r = subprocess.run(["git", "-C", str(repo), "-c", "core.quotepath=off", "ls-files", "-z", "*.py"],
+                       capture_output=True, text=True)
+    return sorted(x for x in r.stdout.split("\0")
+                  if x and not x.startswith("tests/") and not x.startswith(안잴곳)
+                  and x.startswith(접두))
 
 
 def _쟬파일들(repo: Path, 파일들=None, 씨앗: int = 기본씨앗) -> "list[str]":
@@ -1829,9 +1885,12 @@ def 보고(repo=None, 몇: int = 20) -> str:
 
 
 def main(argv=None) -> int:
+    global 원장상대, 요약경로, REPO
     ap = argparse.ArgumentParser(description="거짓 초록 사냥 -- 조용히 틀려도 초록인 검사를 찾는다")
     ap.add_argument("--시한", type=int, default=기본시한초, help=f"초 (기본 {기본시한초})")
     ap.add_argument("--파일", action="append", default=None, help="이 파일만 (여러 번)")
+    ap.add_argument("--묶음", action="append", default=None,
+                    help="이 폴더 아래만 잰다 (여러 번). 보기: --묶음 vne --묶음 cut")
     ap.add_argument("--자기", action="store_true",
                     help="검증기 자신만 잰다(gates/ · mutate · judge · perf · policy · gatekeeper)")
     ap.add_argument("--함수상한", type=int, default=0, help="파일마다 함수 이만큼만 (0=전부)")
@@ -1851,12 +1910,21 @@ def main(argv=None) -> int:
     ap.add_argument("--원장이름", default=None, help="원장 경로를 갈아끼운다 (일꾼이 쓴다)")
     ap.add_argument("--뺄검사", action="append", default=None, help="바탕에서 뺄 검사 (일꾼이 쓴다)")
     a = ap.parse_args(argv)
-    global 원장상대, REPO
     if a.원장이름:
         원장상대 = a.원장이름                      # 일꾼마다 제 원장에 쓴다 -- 덧붙이기가 섞여 찢기지 않게
     if a.저장소:
         REPO = Path(a.저장소)
     잴것 = list(a.파일) if a.파일 else None
+    if a.묶음:
+        묶 = 묶음파일들(a.묶음)
+        if not 묶:
+            print(f"[묶음] {'·'.join(a.묶음)} 아래에 잴 파일이 없다")
+            return 3
+        잴것 = sorted(set(잴것) & set(묶)) if 잴것 else 묶
+        if not a.원장이름:                          # 일꾼은 제 샤드에 쓴다 -- 여기서 덮지 않는다
+            원장상대, 요약경로 = 묶음자리(a.묶음)
+        print(f"[묶음] {'·'.join(a.묶음)} 아래 {len(잴것)}개 파일만 잰다 "
+              f"-- 원장 {원장상대} · 요약 {요약경로} (전체 계보와 안 섞는다)")
     if a.자기:
         자기 = 자기파일들()
         잴것 = sorted(set(잴것) & set(자기)) if 잴것 else 자기

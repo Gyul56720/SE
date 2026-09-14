@@ -41,6 +41,19 @@ EVIDENCE = ""
           "falsegreen/먼검사.jsonl",    # farcheck.기록경로 -- 먼 검사의 빨강 이력
           "vne/측정.jsonl")             # vne.measure.원장경로 -- VNE 수용률·매출비·시간
 
+# **목록은 도구를 안 따라간다 -- 그래서 자리를 통째로 지킨다.** 실측 2026-09-14: `--묶음 vne`
+# 가 제 계보(`falsegreen/요약-cut+vne.jsonl`)를 쓰기 시작했는데, 위 목록은 이름을 하나씩
+# 적어 둔 것이라 **새 계보가 태어나는 순간 보호 밖이었다.** 묶음은 앞으로도 늘어난다.
+# 이름을 따라 적는 대신 **`falsegreen/*.jsonl` 은 전부 append-only 로 친다** -- 이 폴더에
+# 들어오는 것은 정의상 판정의 역사다. 새 계보가 생겨도 목록을 고칠 일이 없다.
+보호접두 = (("falsegreen/", ".jsonl"),)
+
+
+def 보호원장인가(path: str) -> bool:
+    """이 경로가 판정 원장인가. 이름표(보호원장)와 자리(보호접두) 둘 다로 본다."""
+    return path in 보호원장 or any(
+        path.startswith(앞) and path.endswith(뒤) for 앞, 뒤 in 보호접두)
+
 
 def _경로풀기(path: str) -> str:
     """git 은 비ASCII 경로를 "\\353..." 꼴로 인용한다(core.quotepath 기본값). 풀지
@@ -69,7 +82,7 @@ def check(ctx) -> "list[str]":
             continue                      # 바이너리("-")나 이름 바꿈 꼴은 여기 원장이 아니다
         if del_n <= 0:
             continue
-        if path in 보호원장:
+        if 보호원장인가(path):
             어디로갔나 = "" if (ctx.repo / path).is_file() else " (파일째 사라졌다)"
             violations.append(
                 f"{path}: 줄 {del_n}개가 지워졌다{어디로갔나} -- 판정 원장은 append-only 다. "
