@@ -85,6 +85,10 @@ novel/final.txt
 # drift.sh 가 start/go 마다 .bak 을 남기므로 놔두면 계속 쌓인다.
 # 이미 커밋된 것들은 이력에 남아 있다 -- git show <커밋>:<경로> 로 되살릴 수 있다.
 novel/*.bak
+# 2026-09-14 사용자 지시로 `novel/full_drift.txt`(1045줄 산문)를 지웠다. **원고는 저장소에
+# 안 담는다** -- 아래 novel/*.json · final.txt 와 같은 규칙인데 이것 하나만 빠져 있었다.
+novel/full_drift.txt
+novel/*_drift.txt
 novel/drift.json.*
 novel/baseline_*.txt
 corpus_report.txt
