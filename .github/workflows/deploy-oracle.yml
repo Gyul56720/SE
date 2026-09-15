@@ -84,6 +84,9 @@ on:
       # 커버리지(run_rtl 의 min_coverage). Verilator 는 커버리지를 모으고 **버린다** --
       # 생성된 main 이 write() 를 안 불러서, 그 한 줄을 끼워 넣는다 (2026-09-15)
       - "cover.py"
+      # IP 사인오프 관문(ip_signoff). LINT -> SIM -> COVERAGE -> FORMAL -> SYNTH ->
+      # TIMING -> DOCS 를 한 번에 돌린다. **하나라도 못 재면 전체가 못잼**이다
+      - "ipflow.py"
       # 답에 박힌 LaTeX 를 유니코드·PNG 로 바꾼다. `_답보내기` 가 부른다 (2026-09-15)
       - "latex_formatter.py"
       # 메일(send_email 도구)과 열쇠(!열쇠). 봇이 임포트한다.
