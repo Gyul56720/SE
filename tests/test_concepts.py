@@ -244,6 +244,19 @@ ok(not 없는넷, f"**없는 넷리스트를 가리키지 않는다**: {없는�
 없는그림 = [(c["이름"], c["회로도"]) for c in k.개념
          if c["회로도"] and c["회로도"] not in circuitdraw.본보기]
 ok(not 없는그림, f"**없는 회로도를 가리키지 않는다**: {없는그림}")
+import serdes
+링크들 = sorted({c["링크"] for c in k.개념 if c.get("링크")})
+없는링크 = [(c["이름"], c["링크"]) for c in k.개념
+         if c.get("링크") and c["링크"] not in serdes.본보기]
+ok(not 없는링크, f"**없는 SerDes 본보기를 가리키지 않는다**: {없는링크}")
+ok(len(링크들) >= 5, f"SerDes 본보기를 가리키는 개념이 있다: {len(링크들)}가지")
+# **가리키는 데가 실제로 돌아야 한다** -- 넷리스트·회로도와 같은 규율이다.
+못돈링크 = []
+for 이름 in 링크들:
+    r = serdes.본보기돌리기(이름)
+    if r.get("잰비트", 0) <= 0 or r.get("판정") == serdes.못잼:
+        못돈링크.append((이름, r.get("왜", "")[:60]))
+ok(not 못돈링크, f"**SerDes 본보기가 다 돌아간다**: {못돈링크}")
 
 if not spice.있나():
     print("  ngspice 가 없다 -- 돌리기는 건너뛴다 (배포는 깐다)")

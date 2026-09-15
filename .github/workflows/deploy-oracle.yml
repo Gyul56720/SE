@@ -87,6 +87,10 @@ on:
       # IP 사인오프 관문(ip_signoff). LINT -> SIM -> COVERAGE -> FORMAL -> SYNTH ->
       # TIMING -> DOCS 를 한 번에 돌린다. **하나라도 못 재면 전체가 못잼**이다
       - "ipflow.py"
+      # 와이어라인 SerDes 링크(serdes_link · quant_sweep). 닫힌 꼴 Q(10^(SNR/20)) 로
+      # 교정돼 있다. 오류 0 을 BER 0 이라 안 하고(3의 규칙), 오차막대 안의 차이를
+      # '열화 없음' 이라 안 적는다
+      - "serdes.py"
       # 답에 박힌 LaTeX 를 유니코드·PNG 로 바꾼다. `_답보내기` 가 부른다 (2026-09-15)
       - "latex_formatter.py"
       # 메일(send_email 도구)과 열쇠(!열쇠). 봇이 임포트한다.
