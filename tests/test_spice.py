@@ -24,6 +24,7 @@
 from __future__ import annotations
 
 import math
+import re
 import sys
 from pathlib import Path
 
@@ -147,6 +148,155 @@ else:
             continue
         차 = abs(v - 참값) / abs(참값) * 100
         ok(차 < 5, f"{이름}: {칸}={v:.5g} vs 손계산 {참값:.5g} ({차:.2f}%) -- {근거}")
+
+    print("\n[돌리기] 2차 본보기도 손계산과 대조한다")
+
+    def 잰다(이름, 초=200):
+        r = spice.돌리기(spice.본보기[이름], 초=초)
+        ok(r["판정"] == spice.PASS, f"{이름}: {r['판정']} -- {r['왜'][:50]}")
+        return r["잰것"] or {}, r["로그"] or ""
+
+    def 가깝나(이름, 잰값, 참값, 안에, 근거):
+        차 = abs(잰값 - 참값) / abs(참값) * 100
+        ok(차 < 안에, f"{이름}: {잰값:.5g} vs 손계산 {참값:.5g} ({차:.1f}%) -- {근거}")
+
+    def 로그값(로그, 이름):
+        m = re.search(rf"^\s*{re.escape(이름)}\s*=\s*([-+0-9.eE]+)", 로그, re.M)
+        return float(m.group(1)) if m else None
+
+    # --- gm/ID: 제곱법칙이 그대로 나온다. 가장 날카로운 대조다.
+    잰것, _ = 잰다("gm_id")
+    for 칸, vov in (("gmid_vov100m", 0.1), ("gmid_vov400m", 0.4), ("gmid_vov800m", 0.8)):
+        가깝나("gm_id/" + 칸, 잰것[칸], 2 / vov, 2, f"gm/ID = 2/Vov (Vov={vov})")
+    가깝나("gm_id/gain", 잰것["gain_vov800m"], 2 / (0.05 * 0.8), 10, "gm/gds = 2/(lambda*Vov)")
+
+    # --- 몸효과: GAMMA*(sqrt(PHI+Vsb)-sqrt(PHI)). **SPICE 의 PHI 가 2*phi_F 다.**
+    잰것, _ = 잰다("body_effect")
+    가깝나("body_effect", 잰것["dvth"], 0.4 * (math.sqrt(0.7 + 0.5) - math.sqrt(0.7)), 5,
+          "dVth = GAMMA(sqrt(PHI+Vsb)-sqrt(PHI))")
+
+    # --- 밀러: Cin = Cgs + Cgd(1+|Av|). 모델의 CGSO·CGDO 에서 곧바로 나온다.
+    잰것, 로그 = 잰다("miller")
+    cgd = 0.3e-9 * 30e-6
+    ok(abs(잰것["cin_flat"] - 2 * cgd) / (2 * cgd) < 0.05,
+       f"이득 없을 때 Cin = Cgs+Cgd = {2*cgd:.4g}: {잰것['cin_flat']:.4g}")
+    av = 10 ** (잰것["av_db"] / 20)
+    가깝나("miller/Cin", 잰것["cin_gain"], cgd * (2 + av), 10,
+          f"Cgs + Cgd(1+|Av|), |Av|={av:.2f}")
+    ok(잰것["miller_ratio"] > 4,
+       f"**이득이 있으면 입력 용량이 몇 배로 는다**: {잰것['miller_ratio']:.2f}배")
+
+    # --- 소스팔로워·공통게이트: AC 이득이 소신호식과 맞나(동작점의 gm 을 써서 대조)
+    잰것, 로그 = 잰다("source_follower")
+    gm, gmb, gds = (로그값(로그, x) for x in ("@m1[gm]", "@m1[gmbs]", "@m1[gds]"))
+    가깝나("source_follower", 10 ** (잰것["av_db"] / 20), gm / (gm + gmb + gds), 2,
+          "Av = gm/(gm+gmb+gds) < 1")
+    ok(잰것["av_db"] < 0, f"**이득이 1 을 못 넘는다**: {잰것['av_db']:.3f} dB")
+
+    잰것, 로그 = 잰다("common_gate")
+    gm, gmb, gds = (로그값(로그, x) for x in ("@m1[gm]", "@m1[gmbs]", "@m1[gds]"))
+    가깝나("common_gate", 10 ** (잰것["av_db"] / 20), (gm + gmb) * (20e3 * (1 / gds) / (20e3 + 1 / gds)),
+          5, "Av = (gm+gmb)(RD||ro), 반전이 아니다")
+
+    # --- 캐스코드: Rout 이 ro 의 gm*ro 배로 뛴다
+    잰것, 로그 = 잰다("cascode")
+    gm2, gds1 = 로그값(로그, "@m2[gm]"), 로그값(로그, "@m1[gds]")
+    rout = abs(로그값(로그, "rout"))
+    ok(rout > 20e6, f"Rout 이 수십 메그옴이다: {rout:.3g}")
+    가깝나("cascode/Rout", rout, gm2 / (gds1 ** 2), 40, "Rout ~ gm2*ro2*ro1")
+    ok(rout / (1 / gds1) > 50,
+       f"**단일 소자 ro 의 {rout/(1/gds1):.0f}배** -- 그것이 캐스코드의 전부다")
+
+    잰것, 로그 = 잰다("cascode_mirror")
+    가깝나("cascode_mirror/I", abs(잰것["i_lo"]), 50e-6, 5, "Iref 를 베낀다")
+    ok(abs(잰것["i_hi"] - 잰것["i_lo"]) / abs(잰것["i_lo"]) < 0.005,
+       f"**출력 전압이 0.6V 움직여도 전류가 안 변한다**: "
+       f"{abs(잰것['i_hi']-잰것['i_lo'])/abs(잰것['i_lo'])*100:.3f}%")
+
+    # --- CMRR: 꼬리 전류원의 ro 가 정한다
+    잰것, 로그 = 잰다("cmrr")
+    cmrr = 잰것["ad_db"] - 잰것["acm_db"]
+    gm1, gds3 = 로그값(로그, "@m1[gm]"), 로그값(로그, "@m3[gds]")
+    가깝나("cmrr", cmrr, 20 * math.log10(2 * gm1 / gds3), 15, "CMRR ~ 2*gm*r_tail")
+    ok(잰것["acm_db"] < 0, f"공통모드는 깎인다: {잰것['acm_db']:.2f} dB")
+
+    # --- 디지털
+    잰것, _ = 잰다("inverter_delay")
+    t10, t40 = 잰것["tphl_10f"], 잰것["tphl_40f"]
+    ok(t40 > t10, f"부하가 늘면 느려진다: {t10*1e12:.1f}ps -> {t40*1e12:.1f}ps")
+    ok(1.5 < t40 / t10 < 3.5,
+       f"**부하 4배에 지연은 4배가 아니다** -- 자기부하(절편)가 있다: {t40/t10:.2f}배")
+
+    잰것, 로그 = 잰다("inverter_power")
+    가깝나("inverter_power", 로그값(로그, "pdyn"), 100e-15 * 1.8 ** 2 * 100e6, 15,
+          "P = C*V^2*f (남는 몫이 단락 전력이다)")
+    ok(로그값(로그, "pdyn") > 100e-15 * 1.8 ** 2 * 100e6,
+       "**잰 값이 CV^2f 보다 크다** -- 그 차이가 단락 전력이다")
+
+    잰것, _ = 잰다("transmission_gate")
+    ron = [잰것["ron_lo"], 잰것["ron_mid"], 잰것["ron_hi"]]
+    ok(max(ron) / min(ron) < 4,
+       f"**양 끝에서도 켜져 있다** (NMOS 혼자면 위가, PMOS 혼자면 아래가 죽는다): "
+       f"{min(ron):.0f}~{max(ron):.0f}ohm")
+    ok(잰것["ron_mid"] == max(ron), "가운데서 가장 세다 -- 교과서의 그 언덕")
+
+    잰것, _ = 잰다("elmore")
+    t = [잰것[f"t_len{n}"] for n in (1, 2, 4, 8)]
+    가깝나("elmore/1칸", t[0], 0.69 * 1e3 * 1e-12, 5, "한 칸은 0.69*RC")
+    for i in range(3):
+        ok(t[i + 1] / t[i] > 2.5,
+           f"**길이를 2배 하면 지연이 {t[i+1]/t[i]:.2f}배** -- 선형이면 2배다")
+    ok(t[3] / t[0] > 20, f"1칸 -> 8칸이 {t[3]/t[0]:.0f}배 (선형이면 8배)")
+
+    잰것, _ = 잰다("sram_read_disturb")
+    ok(잰것["v_hold"] < 0.05, f"읽기 전에는 0 을 잡고 있다: {잰것['v_hold']:.3g} V")
+    ok(0.18 < 잰것["v_disturb"] < 0.28,
+       f"**읽는 동안 0 노드가 뜬다 -- 뜨되 트립점을 안 넘는다**: {잰것['v_disturb']:.3f} V")
+    # **셀 비가 방해를 정한다.** 이 의존이 없으면 드라이버를 좁혀도 검사가 안 빨개진다
+    # (실측: W 4u->2u 로 바꿔도 살아남았다 -- 범위가 헐렁했다).
+    좁힌것 = (spice.본보기["sram_read_disturb"]
+            .replace("MNL ql qr 0   0   nch W=4u", "MNL ql qr 0   0   nch W=2u")
+            .replace("MNR qr ql 0   0   nch W=4u", "MNR qr ql 0   0   nch W=2u"))
+    r2 = spice.돌리기(좁힌것, 초=180)
+    약한것 = (r2["잰것"] or {}).get("v_disturb", 0)
+    ok(약한것 > 잰것["v_disturb"] * 1.3,
+       f"**셀 비를 2 에서 1 로 낮추면 방해가 커진다**: "
+       f"{잰것['v_disturb']:.3f} V -> {약한것:.3f} V (드라이버를 좁힌 대가)")
+    ok(잰것["v_high"] > 1.7, f"1 노드는 그대로다: {잰것['v_high']:.3g} V")
+
+    # **초기 상태를 둘 다 빼면 셀이 반대로 앉는다.** `.ic` 하나만 빼거나 `uic` 하나만
+    # 빼는 것은 결과가 똑같아서(실측) 반례가 될 수 없다 -- 그건 미해결이 아니라 동등이다.
+    # 진짜 의존은 "둘 중 하나는 있어야 한다" 이고, 그것을 여기 못 박는다.
+    맨것 = (spice.본보기["sram_read_disturb"]
+          .replace(".ic v(ql)=0 v(qr)=1.8", "* none")
+          .replace("tran 10p 10n uic", "tran 10p 10n"))
+    r = spice.돌리기(맨것, 초=180)
+    뒤집힘 = (r["잰것"] or {}).get("v_hold", 0)
+    ok(뒤집힘 > 1.0,
+       f"**초기 상태를 둘 다 빼면 셀이 반대로 앉는다** (v_hold {뒤집힘:.3g} V) -- "
+       "`.ic` 나 `uic` 중 하나는 있어야 한다")
+
+    print("\n[저장빠짐] `save` 없이 스윕에서 소자값을 읽으면 조용히 틀린다")
+    # **장치가 `돌리기` 에 실제로 물려 있나.** 함수만 따로 불러 보면 이 배선이 안 검사된다
+    # (실측: `빠진 = []` 로 장치를 꺼도 아무 검사가 안 빨개졌다).
+    막힌것 = spice.돌리기("* t\nV1 a 0 DC 1\nR1 a 0 1k\n.control\n"
+                      "dc V1 0 1 0.1\nlet x=@m1[gm]\nprint x\n.endc\n", 초=30)
+    ok(막힌것["판정"] == spice.못잼 and "save" in 막힌것["왜"],
+       f"**`돌리기` 가 그것 때문에 못잼을 낸다**: {막힌것['판정']} -- {막힌것['왜'][:50]}")
+    ok(막힌것["로그"] == "", "돌리지도 않는다 -- 돌리면 틀린 곡선이 돌아온다")
+
+    ok(bool(spice.저장빠짐("* t\n.control\ndc V1 0 1 0.1\nlet x=@m1[gm]\n.endc\n")),
+       "**save 없는 스윕 읽기를 잡는다**")
+    ok(not spice.저장빠짐("* t\n.control\nsave @m1[gm]\ndc V1 0 1 0.1\nlet x=@m1[gm]\n.endc\n"),
+       "save 가 있으면 안 잡는다")
+    ok(not spice.저장빠짐("* t\n.control\nop\nprint @m1[gm]\n.endc\n"),
+       "스윕이 없으면 안 잡는다 (op 의 스칼라는 맞다)")
+    ok(not spice.저장빠짐("* t\n.control\ndc V1 0 1 0.1\nalter @V1[acmag]=0\n.endc\n"),
+       "**`alter` 는 읽기가 아니다** -- 처음엔 이것까지 걸어 거짓 못잼을 냈다")
+    ok(bool(spice.저장빠짐("* t\n.control\nsave all\ndc V1 0 1 0.1\nlet x=@m1[gm]\n.endc\n")),
+       "`save all` 만으로는 소자값이 안 담긴다")
+    걸린것 = [n for n in spice.본보기 if spice.저장빠짐(spice.본보기[n])]
+    ok(not 걸린것, f"**본보기가 하나도 안 걸린다**: {걸린것}")
 
     print("\n[돌리기] 일부러 틀린 것들이 실제로 빨개지나")
 
