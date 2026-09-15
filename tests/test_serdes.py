@@ -1,0 +1,229 @@
+"""`serdes.py` -- 와이어라인 링크. **닫힌 꼴로 교정하고, 물리로 붙든다.**
+
+사용자(2026-09-15)가 고른 주제: "경량화 신경망 기반 wireline SerDes 등화기의 FPGA
+실시간 구현". 그 방법론 1~2 단계(채널·CTLE+DFE 기준선·BER)와 4 단계(비트폭 대비 BER)
+가 이 모듈이다.
+
+## 시뮬레이터는 **교정해야 한다**
+
+BER 을 내는 코드는 아무 숫자나 낼 수 있고, 그 숫자가 틀렸는지 눈으로는 모른다.
+그래서 손실 0 · 등화 없음일 때 닫힌 꼴
+
+    BER = Q(10^(SNRdB/20))
+
+과 나란히 놓는다. 이것이 맞아야 SNR 정의 · 잡음 · 슬라이서가 다 맞는 것이다.
+
+## 첫 판이 낸 것들 -- 실측 2026-09-15, 전부 고쳤다
+
+    정렬을 안 밀었다      -> 모든 BER 이 0.5 (동전 던지기)였다. 등화기가 나쁜 줄 알았다
+    틀을 원형으로 굴렸다  -> 한 심볼 끝을 제 앞머리에 이어 붙여 t=0 에 가짜 이음매
+    너비를 "높이>0 인 위상 수" 로 -> 20dB 로 닫힌 눈이 **1.00 UI** 로 나왔다
+    평평 판정이 헐거웠다  -> 1e-5 짜리 실눈을 이상적 NRZ 로 보아 틀이 안 돌아갔다
+
+## 물리로 붙드는 자리
+
+**잰 눈높이는 peak distortion 한계보다 작을 수 없다.** 무작위 데이터는 최악 패턴을
+잘 안 만들기 때문이다. 이 부등식이 깨지면 커서 분해든 아이 측정이든 하나가 틀린
+것이다 -- 손계산 없이도 걸린다.
+"""
+from __future__ import annotations
+
+import math
+import sys
+from pathlib import Path
+
+import numpy as np
+
+뿌리 = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(뿌리))
+
+import serdes
+
+FAIL_목록 = []
+
+
+def ok(참, 말):
+    print(("  통과 " if 참 else "  실패 ") + 말)
+    if not 참:
+        FAIL_목록.append(말)
+
+
+print("[교정 -- 닫힌 꼴 BER = Q(10^(SNR/20)) 과 나란히]")
+for snr in (6.0, 8.0, 10.0):
+    r = serdes.링크(비트수=300000, 손실dB=0.0, SNRdB=snr, sps=4, 학습비율=0.0, 씨=1)
+    이론 = serdes.Q(10 ** (snr / 20.0))
+    막대 = 3.0 / math.sqrt(max(r["오류수"], 1))          # 3시그마 상대폭
+    어긋남 = abs(r["BER"] - 이론) / 이론
+    ok(어긋남 < max(막대, 0.05),
+       f"SNR {snr:.0f}dB: 잰 {r['BER']:.3e} vs 이론 {이론:.3e} "
+       f"(어긋남 {100 * 어긋남:.1f}%, 3시그마 {100 * 막대:.1f}%)")
+
+print("\n[오류 0 은 BER 0 이 아니다]")
+말 = serdes.BER말(0, 10000)
+ok("3의 규칙" in 말 and "3.00e-04" in 말, f"3의 규칙으로 위쪽 한계를 말한다: {말[:70]}")
+ok("BER 0" in 말, "**오류 0 을 BER 0 이라 부르지 않는다**")
+ok("±" in serdes.BER말(9, 10000), "오류가 있으면 상대오차를 같이 말한다")
+ok("잰 비트가 없다" in serdes.BER말(0, 0), "안 잰 것은 측정이 아니다")
+
+print("\n[아이 -- 이상적 NRZ 는 2.000 V · 1.00 UI]")
+rng = np.random.default_rng(1)
+sps = 16
+b = rng.integers(0, 2, 4000) * 2 - 1
+깨끗 = np.repeat(b, sps).astype(float)
+r = serdes.아이재기(깨끗, sps)
+ok(abs(r["눈높이"] - 2.0) < 1e-9, f"이상적 눈높이 = 2.000 V (±1 레일): {r['눈높이']}")
+ok(abs(r["눈너비UI"] - 1.0) < 1e-9,
+   f"**이상적 눈너비 = 1.00 UI** (첫 판은 0.50 이었다): {r['눈너비UI']}")
+ok(abs(r["최적표본위상UI"]) < 1e-9,
+   f"평평하면 최적 표본점이 한가운데다: {r['최적표본위상UI']}")
+ok(serdes.눈한가운데(np.array([0.5] * 8)) == 4, "평평한 높이 -> 틀 한가운데")
+ok(serdes.눈한가운데(np.array([0.1, 0.9, 0.2, 0.05])) == 1, "안 평평하면 제일 높은 위상")
+ok(serdes.눈한가운데(np.array([1e-5] * 3 + [0.9] + [1e-5] * 4)) == 3,
+   "**1e-5 짜리 실눈을 평평한 것으로 보지 않는다** -- 첫 판이 여기서 틀렸다")
+
+print("\n[물리 -- 잰 눈은 peak distortion 한계보다 작을 수 없다]")
+앞눈, 앞너비 = float("inf"), float("inf")
+for 손실 in (3.0, 6.0, 9.0, 12.0, 20.0):
+    h = serdes.채널(손실, sps, 64)
+    y = np.convolve(깨끗, h, mode="full")[:len(깨끗)]
+    잰것 = serdes.아이재기(y, sps)
+    c = serdes.커서들(h, sps)
+    ok(잰것["눈높이"] >= c["아이높이_ISI"] - 1e-9,
+       f"{손실:.0f}dB: 잰 눈 {잰것['눈높이']:.4f} >= peak distortion "
+       f"{c['아이높이_ISI']:+.4f}")
+    # **세로로 닫힌 눈은 가로로도 닫혀 있어야 한다.** 첫 판은 "높이>0 인 위상의 수" 로
+    # 너비를 세어서 0.001 V 까지 닫힌 눈을 1.00 UI 로 냈다(실측 2026-09-15).
+    if 잰것["눈높이"] < 0.05:
+        ok(잰것["눈너비UI"] == 0.0,
+           f"{손실:.0f}dB: 눈높이 {잰것['눈높이']:.4f} 인데 너비가 "
+           f"{잰것['눈너비UI']:.2f} UI -- **닫힌 눈은 너비 0 이다**")
+    ok(잰것["눈높이"] < 앞눈, f"{손실:.0f}dB: 손실이 커지면 눈이 작아진다")
+    앞눈 = 잰것["눈높이"]
+    ok(sum(abs(x) for x in c["후행"]) > sum(abs(x) for x in c["선행"]),
+       f"{손실:.0f}dB: **후행 커서가 선행보다 크다** -- 최소위상 채널이다(DFE 가 뜻이 있다)")
+
+print("\n[양자화·프루닝 -- 연구 기여 2번이 여기 선다]")
+탭 = np.array([1.0, -0.5, 0.25, -0.125, 0.0625])
+ok(np.allclose(serdes.양자화(탭, 12), 탭, atol=1e-3), "12비트면 거의 그대로")
+ok(np.array_equal(np.sign(serdes.양자화(탭, 1)), np.sign(탭)),
+   "1비트는 부호만 남는다")
+ok(abs(np.max(np.abs(serdes.양자화(탭, 4)))) == 1.0, "최댓값 스케일이 보존된다")
+q = serdes.양자화(탭, 3)
+ok(np.max(np.abs(q - 탭)) > 1e-3, "**3비트는 실제로 값을 바꾼다** -- 안 바꾸면 쓸기가 헛돈다")
+ok(int(np.sum(serdes.프루닝(탭, 0.4) != 0)) == 2, "프루닝이 남길 수를 지킨다")
+ok(np.array_equal(serdes.프루닝(탭, 1.0), 탭), "다 남기면 그대로")
+ok(serdes.프루닝(탭, 0.0)[np.argmax(np.abs(탭))] != 0, "적어도 제일 큰 탭 하나는 남는다")
+
+print("\n[구별되나 -- 오차막대 안의 차이를 '같다'고 말하지 않는다]")
+다름, 말 = serdes.구별되나(709, 105000, 8, 105000)
+ok(다름, f"709 대 8 오류는 구별된다: {말[:50]}")
+같음, 말2 = serdes.구별되나(11, 105000, 8, 105000)
+ok(not 같음, f"**11 대 8 오류는 구별 안 된다**: {말2[:60]}")
+ok("구별 안 된다" in 말2 and "비트를 더 세라" in 말2,
+   "구별 안 되면 그렇게 말하고 어떻게 해야 하는지도 말한다")
+
+print("\n[학습 구간과 측정 구간을 가른다]")
+r = serdes.링크(비트수=40000, 손실dB=12.0, SNRdB=26.0, sps=8, FFE탭=9, 학습비율=0.3, 씨=2)
+ok(r["잰비트"] < 40000 * 0.75,
+   f"**BER 을 학습에 안 쓴 비트로만 센다**: 잰비트 {r['잰비트']} / 4만")
+ok(r["잰비트"] > 40000 * 0.6, f"측정 구간이 남아 있다: {r['잰비트']}")
+
+print("\n[DFE 탭이 채널의 후행 커서 비와 맞는다 -- 손계산으로 확인되는 물리]")
+# 상관으로 잰 첫 DFE 탭은 **p1/p0**(첫 후행 커서 / 메인 커서) 여야 한다. 이 항등식이
+# 탭 추정과 AGC 를 한꺼번에 붙든다 -- AGC 를 빼면 탭이 이득만큼 작아져 어긋난다
+# (실측 2026-09-15: 0.593 -> 0.143). BER 은 문턱 0 슬라이서라 그대로여서 안 걸린다.
+h = serdes.채널(20.0, 8, 64)
+c = serdes.커서들(h, 8)
+바람 = c["후행"][0] / c["메인"]
+r = serdes.링크(비트수=40000, 손실dB=20.0, SNRdB=28.0, sps=8, DFE탭=4, 씨=3)
+ok(abs(r["DFE탭"][0] - 바람) < 0.05,
+   f"첫 DFE 탭 {r['DFE탭'][0]:.4f} ~= p1/p0 {바람:.4f} "
+   f"(어긋남 {100 * abs(r['DFE탭'][0] - 바람) / 바람:.1f}%)")
+ok(all(abs(t) < 1.0 for t in r["DFE탭"]),
+   f"탭이 메인 커서로 정규화돼 있다(읽을 수 있는 값이다): {[round(t, 3) for t in r['DFE탭']]}")
+ok(r["DFE탭"][0] > r["DFE탭"][1] > r["DFE탭"][2],
+   "후행 커서는 뒤로 갈수록 작아진다")
+
+print("\n[정렬 -- 채널 지연만큼 밀지 않으면 BER 이 0.5 가 된다]")
+# 실측: sps=8 에서 20dB 채널의 펄스 꼭대기는 심볼 하나 뒤에 있다(지연심볼=1).
+# 그 밀기를 빼먹으면 정답을 한 심볼 어긋난 데 대고 세게 되어 **모든 BER 이 동전
+# 던지기(0.5)로 나온다** -- 등화기가 나쁜 것처럼 보이지만 재는 자리가 틀린 것이다.
+r = serdes.링크(비트수=60000, 손실dB=20.0, SNRdB=30.0, sps=8, 씨=11)
+ok(r["지연심볼"] == 1, f"20dB/sps=8 은 심볼 하나가 밀린다: {r['지연심볼']}")
+ok(r["BER"] < 0.25,
+   f"**정렬이 맞으면 무등화 BER 이 0.5 근처가 아니다**: {r['BER']:.3f}")
+깨끗r = serdes.링크(비트수=60000, 손실dB=4.0, SNRdB=32.0, sps=8, 씨=11)
+ok(깨끗r["오류수"] == 0,
+   f"4dB 에 SNR 32dB 면 등화 없이도 오류가 없다: {깨끗r['오류수']}")
+
+print("\n[DFE 되먹임 -- 정답을 먹이면 오류 번짐이 사라진다]")
+A = dict(비트수=150000, 손실dB=22.0, SNRdB=22.0, sps=8, DFE탭=10, 씨=5)
+진짜 = serdes.링크(**A, 이상적판정=False)
+정답 = serdes.링크(**A, 이상적판정=True)
+ok(진짜["BER"] > 정답["BER"],
+   f"**정답 되먹임이 더 좋아 보인다**(거짓 초록): {진짜['BER']:.3e} vs {정답['BER']:.3e}")
+ok(serdes.구별되나(진짜["오류수"], 진짜["잰비트"], 정답["오류수"], 정답["잰비트"])[0],
+   "그 차이는 오차막대 밖이다 -- 우연이 아니다")
+ok("ideal-decision" in serdes.말로(정답),
+   "**정답을 먹였으면 답에 적는다** -- 하드웨어는 정답을 모른다")
+ok("ideal-decision" not in serdes.말로(진짜), "안 먹였으면 안 적는다")
+
+print("\n[LMS 가 발산하면 발산했다고 말한다]")
+표본 = np.random.default_rng(0).normal(0, 1, 4000)
+정 = np.sign(표본)
+난것 = serdes.LMS_FFE(표본, 정, 9, 4, 걸음=50.0)
+ok(난것["발산"], f"큰 걸음은 발산으로 잡힌다: {난것['왜'][:60]}")
+ok(not serdes.LMS_FFE(표본, 정, 9, 4, 걸음=0.005)["발산"], "작은 걸음은 안 발산")
+r = serdes.링크(비트수=20000, 손실dB=10.0, SNRdB=25.0, sps=8, FFE탭=9, 씨=1)
+ok(r["적응"]["탭"] is not None and not r["적응"]["발산"], "링크 안의 LMS 가 수렴한다")
+
+print("\n[등화가 실제로 BER 을 줄인다]")
+B = dict(비트수=120000, 손실dB=20.0, SNRdB=28.0, sps=8, 씨=3)
+민것 = serdes.링크(**B)
+등화 = serdes.링크(**B, FFE탭=11, DFE탭=8)
+ok(등화["오류수"] < 민것["오류수"] / 10,
+   f"FFE+DFE 가 오류를 한 자릿수 넘게 줄인다: {민것['오류수']} -> {등화['오류수']}")
+
+print("\n[본보기 -- 개념이 가리키는 데가 실제로 돈다]")
+꼭있어야 = ["awgn_calibration", "isi_closed_eye", "ffe_dfe", "quantized_4bit"]
+for 이름 in 꼭있어야:
+    ok(이름 in serdes.본보기, f"본보기 `{이름}` 이 있다")
+r = serdes.본보기돌리기("awgn_calibration")
+ok(r["잰비트"] > 0, f"본보기가 돌아간다: {r['왜'][:50]}")
+ok(serdes.본보기돌리기("없는것")["판정"] == serdes.못잼,
+   "**모르는 이름은 못잼이다** -- 조용히 아무것이나 돌리지 않는다")
+
+print("\n[배선]")
+도구글 = (뿌리 / "bot_tools.py").read_text(encoding="utf-8")
+서버 = (뿌리 / "discord_bot_server.py").read_text(encoding="utf-8")
+공개 = (뿌리 / "main_public.py").read_text(encoding="utf-8")
+for 이름 in ("serdes_link", "quant_sweep"):
+    ok(f"def {이름}(" in 도구글, f"bot_tools 에 {이름}")
+    ok(이름 in 서버.split("ADMIN_TOOLS = [")[1].split("]")[0], f"ADMIN_TOOLS 에 {이름}")
+    ok(이름 in 공개.split("PUBLIC_TOOLS = [")[1].split("]")[0], f"PUBLIC_TOOLS 에 {이름}")
+ok("serdes_link" in (뿌리 / "eda_prompt.py").read_text(encoding="utf-8"),
+   "**갈래규칙에 있다** -- 물려 놓고 쓰라고 안 하면 안 쓴다")
+배포 = (뿌리 / ".github" / "workflows" / "deploy-oracle.yml").read_text(encoding="utf-8")
+ok('- "serdes.py"' in 배포, "**serdes.py 가 배포 paths 에 있다** -- 없으면 서버에 안 간다")
+import concepts as _k
+ok(any(c.get("링크") for c in _k.개념),
+   "개념 목록이 SerDes 본보기를 가리킨다")
+ok("고속링크" in _k.덮임()["트랙별"], "고속링크 트랙이 있다")
+# **약어로 찾힌다.** 이 바닥은 약어로 말한다 -- `DFE` 로 물었는데 FFE 가 먼저 나오면
+# 답이 엉뚱한 개념을 설명한다(실측: 붙이기 전에 그랬다). 데이터 밖에 못 박는다.
+약어 = {"DFE": "Decision feedback equalizer", "FFE": "Feed-forward equalizer",
+      "CTLE": "Continuous time linear equalizer", "TDC": "Time-to-digital converter",
+      "CDR": "Clock and data recovery", "ADPLL": "All-digital PLL",
+      "PFD": "Phase frequency detector", "ISI": "Intersymbol interference",
+      "BER": "Bit error rate", "DCO": "Digitally controlled oscillator",
+      "LMS": "Least mean squares adaptation"}
+for 줄임, 온것 in 약어.items():
+    난것 = [c["이름"] for c in _k.찾기(줄임)]
+    ok(난것[:1] == [온것], f"`{줄임}` -> {온것} (나온 것: {난것[:2]})")
+
+print()
+if FAIL_목록:
+    print(f"실패 {len(FAIL_목록)}개 -- {FAIL_목록}")
+    sys.exit(1)
+print("serdes: 닫힌 꼴로 교정됐다 · 오류 0 을 BER 0 이라 안 한다 · "
+      "잰 눈이 peak distortion 한계를 안 어긴다 -- 통과")

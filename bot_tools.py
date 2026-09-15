@@ -758,6 +758,87 @@ def place_rtl(design: str, target_mhz: float, top: str = "", chip: str = "hx8k",
 
 
 @tool
+def serdes_link(loss_db: float = 20.0, snr_db: float = 26.0, bits: int = 100000,
+                ctle_peaking_db: float = 0.0, ffe_taps: int = 0, dfe_taps: int = 0,
+                tap_bits: int = 0, keep_fraction: float = 1.0,
+                ideal_decision: bool = False, eye: bool = True,
+                sps: int = 8, seed: int = 0) -> str:
+    """**Actually simulate a wireline SerDes link and measure BER** (channel/CTLE/FFE/DFE).
+
+    A lossy minimum-phase channel (`loss_db` at Nyquist) closes the eye with ISI; CTLE,
+    an LMS-adapted FFE and a decision-feedback DFE reopen it. Returns the measured BER,
+    the eye height/width, and an eye-diagram PNG. Calibrated: with `loss_db=0` and no
+    equaliser the measured BER matches the closed form `Q(10^(snr_db/20))` -- that is
+    what pins the SNR definition (noise relative to the ideal loss-free main cursor).
+
+    Four things here are silently wrong if you do not guard them, and this does:
+
+        * **0 errors is not BER 0** -- the reply gives the rule-of-three upper bound
+        * taps are adapted on the first 30% of bits and BER is counted on the rest;
+          measuring on the training bits is memorisation, not equalisation
+        * the DFE feeds back **its own decisions**, so error propagation is included.
+          `ideal_decision=True` feeds the true bits instead: it makes BER look better
+          and is labelled as such in the reply. Hardware does not know the answer.
+        * a diverged LMS is reported as diverged, not as "equalisation did not help"
+
+    `tap_bits` quantises the taps (research contribution: BER vs word length) and
+    `keep_fraction` prunes them. Identifiers must be ASCII.
+    """
+    if agent_context.is_blocked():
+        return "실패: 게스트는 serdes_link 을 사용할 수 없습니다."
+    import serdes
+    r = serdes.링크(비트수=int(bits), 손실dB=loss_db, SNRdB=snr_db, sps=int(sps),
+                  CTLE피킹dB=ctle_peaking_db, FFE탭=int(ffe_taps),
+                  DFE탭=int(dfe_taps), 탭비트=int(tap_bits),
+                  남길비율=keep_fraction, 이상적판정=bool(ideal_decision), 씨=int(seed))
+    줄 = [serdes.말로(r)]
+    if eye and r.get("판정") != "못잼":
+        자리 = os.path.join(REPO_DIR, 회로그림자리)
+        os.makedirs(자리, exist_ok=True)
+        쪽 = os.path.join(자리, f"eye-{uuid.uuid4().hex[:8]}.png")
+        파형 = serdes.받은파형(손실dB=loss_db, SNRdB=snr_db, sps=int(sps),
+                          CTLE피킹dB=ctle_peaking_db, 비트수=min(int(bits), 4000),
+                          씨=int(seed))
+        g = serdes.아이그리기(파형, int(sps), 쪽,
+                          f"loss {loss_db:.0f} dB, SNR {snr_db:.0f} dB"
+                          + (f", CTLE {ctle_peaking_db:.0f} dB" if ctle_peaking_db else ""))
+        _그림남기기(g["경로"])
+        줄.append(f"Eye (channel output, before FFE/DFE): {g['왜']}")
+        줄.append(f"[drew] {os.path.basename(g['경로'])} -- uploaded with this reply")
+    return "\n".join(줄)
+
+
+@tool
+def quant_sweep(widths: str = "2,3,4,6,8,12", loss_db: float = 20.0,
+                snr_db: float = 26.0, bits: int = 150000, ffe_taps: int = 11,
+                dfe_taps: int = 8, sps: int = 8, seed: int = 7) -> str:
+    """**BER versus tap word length** -- the quantisation trade-off curve, measured.
+
+    Runs the same link once per word width and compares each against the floating-point
+    baseline. Crucially it says which widths are **not distinguishable** from float at
+    the bit count you ran: 11 errors versus 8 errors is not a difference, it is counting
+    noise, and calling it "no degradation" is exactly the false green this repo hunts.
+    To claim two widths are equal, run more bits and narrow the bars.
+
+    Feed the smallest width that survives into `place_rtl` / `ip_signoff` to get the
+    LUT/DSP/Fmax cost of that choice on a real device. Identifiers must be ASCII.
+    """
+    if agent_context.is_blocked():
+        return "실패: 게스트는 quant_sweep 을 사용할 수 없습니다."
+    import serdes
+    try:
+        비트들 = tuple(int(x) for x in str(widths).replace(" ", "").split(",") if x)
+    except ValueError:
+        return f"실패: widths 를 못 읽었다: {widths!r} -- `2,3,4,6,8` 처럼 줘라"
+    if not 비트들:
+        return "실패: widths 가 비었다"
+    s = serdes.비트폭쓸기(비트들, 비트수=int(bits), 손실dB=loss_db, SNRdB=snr_db,
+                    sps=int(sps), FFE탭=int(ffe_taps), DFE탭=int(dfe_taps),
+                    씨=int(seed))
+    return serdes.쓸기말로(s)
+
+
+@tool
 def ip_signoff(design: str, testbench: str, top: str = "tb",
                min_coverage: float = 80.0, target_mhz: float = 0.0,
                chip: str = "hx8k", deliverables: str = "",

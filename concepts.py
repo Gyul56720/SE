@@ -39,13 +39,17 @@ import re
 # 셀을 **블랙박스로 받아** 배치·배선·타이밍을 다룬다. 배선의 RC 기생만 직접 추출한다.
 공통, 프론트, 백엔드, 아날로그, IP특화, 포트폴리오, 생태계 = (
     "공통기초", "프론트엔드", "백엔드", "아날로그", "IP특화", "포트폴리오", "생태계")
-트랙들 = (공통, 프론트, 백엔드, 아날로그, IP특화, 포트폴리오, 생태계)
+# 사용자(2026-09-15)가 고른 연구 주제의 트랙. SK하이닉스 SerDes/PHY 와 커널 최적화·
+# 양자화가 만나는 자리이고, 교안(2026 VLSI ch0 의 Eye Diagram · ch4 의 PLL/CDR)이
+# 바로 여기로 이어진다. `serdes.py` 가 이 트랙의 본보기를 **실제로 돌린다.**
+고속링크 = "고속링크"
+트랙들 = (공통, 프론트, 백엔드, 아날로그, IP특화, 포트폴리오, 생태계, 고속링크)
 A, D, DEV, M = "analog", "digital", "device", "mixed"
 
 
-def _(이름, 한글, 층, 갈래, 식, 말, 넷="", 그림="", 이웃=(), 트랙=""):
+def _(이름, 한글, 층, 갈래, 식, 말, 넷="", 그림="", 이웃=(), 트랙="", 링크=""):
     return {"이름": 이름, "한글": 한글, "층": 층, "갈래": 갈래, "식": 식, "말": 말,
-            "넷리스트": 넷, "회로도": 그림, "이웃": list(이웃), "트랙": 트랙}
+            "넷리스트": 넷, "회로도": 그림, "링크": 링크, "이웃": list(이웃), "트랙": 트랙}
 
 
 개념: "list[dict]" = [
@@ -712,6 +716,247 @@ def _(이름, 한글, 층, 갈래, 식, 말, 넷="", 그림="", 이웃=(), 트�
       r"\text{Apple M-series},\ \text{Google TPU},\ \text{Tesla FSD}\ \to\ \text{custom} \Rightarrow \text{differentiation}",
       "애플·구글·테슬라는 칩을 설계하지만 팔지 않는다. 자기 작업부하에 맞춘 칩이 가장 빠르기 때문이다 -- 장래 고용주가 반도체 회사만은 아니라는 뜻이다.",
       이웃=["Company types", "IP and design house"], 트랙=생태계),
+
+    # ------------------------------------------------ 교안: 2026 VLSI ch0 (Introduction)
+    _("Design abstraction levels", "설계 추상 계층", 학부, D,
+      r"\text{device}\to\text{circuit}\to\text{gate}\to\text{module}\to\text{system}",
+      "한 칩을 다섯 층으로 나눠 본다. 어느 층의 물음인지 먼저 정해야 답의 도구가 정해진다 -- "
+      "소자는 SPICE, 게이트 위는 RTL 과 합성이다.",
+      이웃=["Analog versus digital design", "Standard cell library"], 트랙=공통),
+    _("Analog versus digital design", "아날로그 대 디지털 설계", 학부, M,
+      r"\text{analog: not rail-to-rail},\quad \text{digital: rail-to-rail, fixed }T",
+      "아날로그 신호는 레일 사이 아무 값이고 주기가 없으며 잡음에 약해 손으로 레이아웃한다. "
+      "디지털은 레일 투 레일에 주기가 일정하고 잡음에 강해 도구가 배치한다. 같은 칩, 다른 공학 문화다.",
+      그림="cmos_inverter", 이웃=["Noise margins", "Design abstraction levels"], 트랙=공통),
+    _("Combinational versus sequential", "조합 대 순차", 학부, D,
+      r"\text{comb: }Y=f(X),\quad \text{seq: }Q^{+}=f(X,Q)",
+      "조합은 클럭도 기억도 없어 출력이 입력에 곧바로 따른다. 순차는 클럭과 임시 기억이 있어 "
+      "이전 상태를 쓴다 -- 그 기억을 위해 이상적인 경우에도 D 에서 Q 까지 지연이 있다고 본다.",
+      그림="setup_hold", 이웃=["Setup and hold", "Static timing analysis"], 트랙=공통),
+    _("Eye diagram", "아이 다이어그램", 학부, M,
+      r"\text{fold }v(t)\text{ modulo }T_{UI}\Rightarrow(\text{eye height},\ \text{eye width})",
+      "한 주기씩 접어 한 틀에 겹쳐 그린다. 눈으로는 안 보이던 잡음과 ISI 가 눈높이(V)와 "
+      "눈너비(UI)라는 두 숫자가 된다. 고속 링크에서 가장 먼저 보는 그림이다.",
+      이웃=["Intersymbol interference", "Clock skew and jitter", "Bit error rate"],
+      트랙=고속링크, 링크="isi_closed_eye"),
+    _("Clock versus data rate", "클럭과 데이터율의 단위", 학부, D,
+      r"f_{clk}=500\,\text{MHz}\ \ne\ 500\,\text{Mb/s data}",
+      "500MHz 클럭은 한 주기에 1과 0을 한 번씩 내지만 500Mb/s 데이터는 한 UI 에 한 비트다. "
+      "같은 그림을 1100 이라 읽을 수도 11000 이라 읽을 수도 있다 -- 단위를 못 박지 않으면 둘이 섞인다.",
+      이웃=["Eye diagram", "Clock and data recovery"], 트랙=고속링크),
+
+    # ------------------------------------------------ 교안: ch1 (Inverter, Fanout)
+    _("Inverter VTC", "인버터 전달특성", 학부, D,
+      r"V_{M}:\ V_{out}=V_{in},\quad \tfrac{\partial V_{out}}{\partial V_{in}}\ll -1",
+      "입력을 쓸었을 때 출력이 그리는 곡선. PMOS 와 NMOS 의 Ron 싸움이 출력을 0 이나 VDD 로 "
+      "밀고, 둘이 비기는 점이 스위칭 문턱 VM 이다. 잡음 여유가 전부 이 곡선에서 나온다.",
+      넷="cmos_inverter_vtc", 그림="cmos_inverter",
+      이웃=["Noise margins", "PMOS to NMOS width ratio"], 트랙=공통),
+    _("PMOS to NMOS width ratio", "WP 대 WN 비", 학부, D,
+      r"R_{on}\propto\frac{1}{\mu C_{ox}(W/L)(V_{DD}-V_{th})}\Rightarrow W_P=\frac{\mu_n}{\mu_p}W_N",
+      "Ron 을 맞추려면 이동도 비만큼 PMOS 를 넓혀야 한다. 긴 채널에서 mu_n 은 mu_p 의 약 2배라 "
+      "WP=2WN 이다. 짧은 채널에서는 속도포화로 1.3~1.5배까지 줄어든다.",
+      넷="cmos_inverter_vtc", 그림="cmos_inverter",
+      이웃=["Short-channel effects", "Inverter VTC"], 트랙=공통),
+    _("Ideal switch RC delay model", "이상 스위치-RC 지연 모형", 학부, D,
+      r"t_{pHL}=\ln 2\cdot R_{on,N}C_L,\qquad t_{pLH}=\ln 2\cdot R_{on,P}C_L",
+      "트랜지스터를 켜짐 저항으로, 부하를 커패시터로 바꿔 RC 로 푼다. VDD/2 를 지나는 데 "
+      "걸리는 시간이 ln2·RC 다 -- 디지털 지연 계산의 밑동이고, 0.69RC 라는 숫자가 여기서 나온다.",
+      넷="inverter_delay", 그림="cmos_inverter",
+      이웃=["Interconnect RC delay", "Fanout"], 트랙=공통),
+    _("Fanout", "팬아웃", 학부, D,
+      r"C_L=3C_{out}+f\cdot 3C_{in},\qquad t_p=\ln 2\cdot R_{on}\cdot 3C_{in}(\alpha+f)",
+      "다음 단이 이번 단보다 f 배 크다는 비율. 한 단의 지연이 (alpha+f) 에 비례하므로 "
+      "f 가 커지면 한 단은 느려지지만 필요한 단수는 준다 -- 그 맞바꿈이 다음 항목이다.",
+      이웃=["FO4 delay", "Ideal switch RC delay model"], 트랙=공통),
+    _("FO4 delay", "FO4 지연", 학부, D,
+      r"t_{p,total}=N\ln 2\,R_{on}3C_{in}(\alpha+f),\ \ 3C_{in}=\frac{C_L}{f^{N}}\Rightarrow f=e^{1+\alpha/f}",
+      "전체 지연을 f 로 미분해 0 으로 두면 최적 팬아웃이 f=e^(1+alpha/f) 를 푼 값이다. "
+      "기생이 없으면 e=2.718, 실제 공정(alpha~1)에서는 4 근처라 FO4 를 공정 무관 속도 잣대로 쓴다.",
+      이웃=["Fanout", "Logical effort"], 트랙=공통),
+    _("Ring oscillator", "링 오실레이터", 학부, M,
+      r"f_{osc}=\frac{1}{2N t_{p}},\qquad N\ \text{odd}",
+      "인버터를 홀수 개 고리로 이으면 발진한다. 한 바퀴에 반주기가 지나가므로 주기가 2N·tp 다. "
+      "공정 속도를 재는 자와 VCO 의 몸통 둘 다로 쓴다 -- 단수가 짝수면 래치가 되어 안 돈다.",
+      이웃=["Voltage controlled oscillator", "FO4 delay"], 트랙=공통),
+
+    # ------------------------------------------------ 교안: ch4 (PLL / DPLL)
+    _("H-tree clock distribution", "H 트리 클럭 분배", 석사, D,
+      r"\ell(\text{root}\to\text{leaf})=\text{const}\Rightarrow\text{skew}\approx 0",
+      "뿌리에서 모든 잎까지 배선 길이를 같게 만드는 레이아웃. 길이가 같으면 지연이 같고, "
+      "그래야 스큐가 안 생긴다. 클럭을 '어디서 얻나' 의 다음 물음이 '어떻게 고르게 뿌리나' 다.",
+      이웃=["Clock skew and jitter", "Phase-locked loop"], 트랙=백엔드),
+    _("Phase-locked loop", "위상고정루프 PLL", 석사, M,
+      r"\frac{\Phi_{out}}{\Phi_{ref}}(s)=\frac{K_{PD}K_{VCO}F(s)/s}{1+K_{PD}K_{VCO}F(s)/(sN)}",
+      "밖에서 온 느리지만 정확한 기준 클럭에 칩 안의 빠른 발진기를 음되먹임으로 묶는다. "
+      "빠른 클럭은 핀 부하 때문에 밖에서 못 받고, 칩 안 발진기는 공정 산포로 주파수가 안 맞기 때문이다.",
+      이웃=["Phase frequency detector", "Phase-locked loop",
+          "Voltage controlled oscillator", "Frequency divider"], 트랙=고속링크),
+    _("Phase frequency detector", "위상주파수 검출기 PFD", 석사, M,
+      r"\text{UP}-\text{DN}\ \propto\ \Delta\phi\quad(\text{range }\pm 2\pi)",
+      "두 클럭의 앞섬/뒤짐을 UP·DN 펄스 폭으로 낸다. 단순 XOR 위상검출기와 달리 주파수 차이도 "
+      "구별해서 락 범위가 ±2pi 로 넓다 -- 그래서 PLL 이 처음부터 잡을 수 있다.",
+      이웃=["Phase-locked loop", "Phase-locked loop", "Bang-bang phase detector"], 트랙=고속링크),
+    _("Voltage controlled oscillator", "전압제어 발진기 VCO", 석사, M,
+      r"\omega_{out}=\omega_0+K_{VCO}V_{ctrl},\qquad \Phi_{out}=\frac{K_{VCO}}{s}V_{ctrl}",
+      "제어 전압으로 주파수를 움직인다. 위상은 주파수의 적분이므로 루프에 1/s 극점을 하나 "
+      "공짜로 넣는다 -- PLL 이 최소 2차가 되는 까닭이다.",
+      이웃=["Ring oscillator", "LC versus ring oscillator",
+          "Digitally controlled oscillator"], 트랙=고속링크),
+    _("LC versus ring oscillator", "LC 대 링 발진기", 석사, A,
+      r"Q_{LC}\gg Q_{ring}\Rightarrow \mathcal{L}(\Delta f)_{LC}\ll \mathcal{L}(\Delta f)_{ring}",
+      "LC 는 위상잡음이 낮지만 주파수 범위가 좁고 인덕터가 면적을 먹는다. 링은 범위가 넓고 "
+      "작지만 위상잡음이 크다. 무엇을 살지 고르는 맞바꿈이다.",
+      이웃=["Ring oscillator", "Voltage controlled oscillator", "Clock skew and jitter"], 트랙=고속링크),
+    _("Frequency divider", "주파수 분주기", 석사, D,
+      r"f_{out}=\frac{f_{in}}{2}\ \ (\text{toggle FF}),\qquad f_{out}=\frac{f_{in}}{N}",
+      "되먹임 플립플롭 하나가 상태 둘을 오가며 2분주한다. 분주기는 상태 기계이고, PLL 의 "
+      "되먹임 경로에 들어가 출력 주파수를 기준의 N 배로 곱한다.",
+      이웃=["Dual-modulus divider", "Phase-locked loop"], 트랙=고속링크),
+    _("Dual-modulus divider", "듀얼 모듈러스 분주기", 박사, D,
+      r"N=P\cdot M+S\quad(\text{swallow }S\text{ of }P\text{ cycles at }M{+}1)",
+      "제어 비트로 M 과 M+1 을 오가는 분주기를 펄스 스왈로 카운터와 엮으면 임의의 정수 N 이 "
+      "나온다. 빠른 앞단만 고속으로 짓고 뒷단은 느리게 지어도 되게 하는 구조다.",
+      이웃=["Frequency divider", "Phase-locked loop"], 트랙=고속링크),
+    _("Current mode logic latch", "CML 래치 current mode logic", 박사, M,
+      r"V_{swing}=I_{SS}R_D\ \ (\ll V_{DD}),\qquad f_{max}\propto\frac{1}{R_D C_L}",
+      "차동쌍이 꼬리전류를 좌우로 옮겨 작은 스윙으로 판정한다. 스윙이 작아 CMOS 보다 훨씬 "
+      "빠르고 전원 잡음에 강하지만 정적 전류를 늘 먹는다 -- VCO 바로 뒤의 분주기가 이것을 쓴다.",
+      그림="diff_pair", 이웃=["Differential pair", "Frequency divider"], 트랙=고속링크),
+    _("All-digital PLL", "전디지털 PLL ADPLL", 박사, D,
+      r"\text{TDC}\to\text{DLF}(K_P,K_I)\to\text{DCO},\quad \text{feedback }1/N",
+      "위상 검출을 TDC 로, 루프 필터를 디지털 덧셈기와 누산기로, 발진기를 DCO 로 바꾼다. "
+      "면적이 작고 공정 미세화의 이득을 그대로 받으며 다른 공정으로 옮기기 쉽다.",
+      이웃=["Time-to-digital converter", "Digital loop filter",
+          "Digitally controlled oscillator"], 트랙=고속링크),
+    _("Time-to-digital converter", "시간-디지털 변환기 TDC", 박사, M,
+      r"B_{TDC}=\left\lfloor\frac{\Delta t}{\Delta t_{resol}}\right\rfloor\ (\text{2's complement})",
+      "두 클럭의 시간 차이를 지연 소자 사슬로 재서 정수로 낸다. 분해능이 한 지연 소자이고, "
+      "앞섬/뒤짐을 부호로 내야 하므로 2의 보수로 적는다 -- 이것이 ADPLL 의 위상 검출기다.",
+      이웃=["All-digital PLL", "Ring oscillator", "Quantized equalizer taps"], 트랙=고속링크),
+    _("Digital loop filter", "디지털 루프 필터 DLF", 박사, D,
+      r"B_{ctrl}[n]=K_P B_{TDC}[n]+K_I\sum_{k\le n}B_{TDC}[k],\quad H(z)=K_P+\frac{K_I}{1-z^{-1}}",
+      "비례항이 응답 속도를, 적분항이 정상상태 오차 0 을 맡는다. 이득 곱셈은 2의 거듭제곱이라 "
+      "곱셈기 없이 MUX 로 자리 옮김만 하면 된다 -- 2의 보수라 부호 확장까지 같이 해야 한다.",
+      이웃=["All-digital PLL", "Carry lookahead adder", "Loop phase margin"], 트랙=고속링크),
+    _("Digitally controlled oscillator", "디지털 제어 발진기 DCO", 박사, M,
+      r"f_{DCO}=f_0+K_{DCO}\cdot B_{ctrl},\qquad [K_{DCO}]=\text{Hz/LSB}",
+      "VCO 의 제어 전압 자리에 정수 코드가 들어간다. 이득의 단위가 Hz/V 가 아니라 Hz/LSB 이고, "
+      "그 LSB 크기가 곧 주파수 양자화 잡음이 된다.",
+      이웃=["Voltage controlled oscillator", "All-digital PLL",
+          "Digital-to-analog converter"], 트랙=고속링크),
+    _("Digital-to-analog converter", "디지털-아날로그 변환기 DAC", 석사, M,
+      r"V_{out}=V_{DD}-R_D I_0\sum_k 2^{k}D[k]\quad(\text{binary-weighted current steering})",
+      "코드를 전압/전류로 되돌린다. 전류 스티어링은 빠르지만 소자 정합에 기대고, R-2R 은 저항 "
+      "두 값만 써서 정합이 쉽다. ADPLL 에서는 내부 버스를 눈으로 보려고 모니터용으로도 쓴다.",
+      이웃=["Digitally controlled oscillator", "Current mirror"], 트랙=고속링크),
+    _("Carry lookahead adder", "캐리 예측 덧셈기", 학부, D,
+      r"G_i=A_iB_i,\ P_i=A_i\!\oplus\!B_i,\quad C_{i+1}=G_i+P_iC_i",
+      "리플 캐리는 캐리가 n 단을 줄줄이 지나 지연이 O(n) 이다. 생성(G)과 전파(P)를 미리 뽑아 "
+      "캐리를 병렬로 펼치면 O(log n) 이 된다 -- DPLL 루프 필터의 속도를 정하는 것이 이 덧셈기다.",
+      이웃=["Digital loop filter", "Static timing analysis"], 트랙=프론트),
+    _("Loop phase margin", "루프 위상 여유", 박사, M,
+      r"PM=180^\circ+\angle L(j\omega_c),\quad |L(j\omega_c)|=1",
+      "열린 루프 이득이 1이 되는 주파수에서 위상이 -180도에서 얼마나 떨어져 있나. 60~70도가 "
+      "넘으면 과도응답이 안 출렁인다. 교안 예제(Fref 10MHz, Tresol 1.592ns, KI 1e-3, KP 1e-1, "
+      "KDCO 10MHz/LSB, Ndiv 100)에서 73도가 나온다.",
+      이웃=["Digital loop filter", "Loop phase margin", "All-digital PLL"], 트랙=고속링크),
+
+    # ------------------------------------------------ 와이어라인 SerDes / PHY
+    _("Intersymbol interference", "심볼간 간섭 ISI", 석사, M,
+      r"y[n]=p_0 b[n]+\sum_{k\ne 0}p_k b[n-k],\quad \text{eye}=2(|p_0|-\sum_{k\ne0}|p_k|)",
+      "채널이 한 심볼의 에너지를 뒤로 끌어 이웃 심볼에 얹는다. 메인 커서 밖의 커서 합이 ISI 이고, "
+      "그 합이 메인을 넘으면 잡음이 없어도 눈이 닫힌다(peak distortion).",
+      이웃=["Eye diagram", "Decision feedback equalizer", "Channel loss"],
+      트랙=고속링크, 링크="isi_closed_eye"),
+    _("Channel loss", "채널 손실", 석사, M,
+      r"|H(f)|_{dB}\approx-\left(a\sqrt{f}+bf\right)\ell\quad(\text{skin effect}+\text{dielectric})",
+      "구리 손실은 표피효과로 sqrt(f) 에, 유전체 손실은 f 에 비례한다. 규격은 보통 Nyquist "
+      "주파수에서 몇 dB 인지로 채널을 말한다 -- 그 한 숫자가 등화기 예산을 정한다.",
+      이웃=["Intersymbol interference", "Continuous time linear equalizer"],
+      트랙=고속링크, 링크="isi_closed_eye"),
+    _("Continuous time linear equalizer", "연속시간 선형 등화기 CTLE", 석사, A,
+      r"H_{CTLE}(s)=A\frac{1+s/\omega_z}{(1+s/\omega_{p1})(1+s/\omega_{p2})}",
+      "영점으로 고주파를 들어 올려 채널 손실을 거꾸로 돌린다. **선형이라 잡음도 같이 든다** -- "
+      "실측으로 피킹을 6dB 에서 12dB 로 올리면 BER 이 도리어 나빠진다.",
+      이웃=["Channel loss", "Feed-forward equalizer", "Decision feedback equalizer"],
+      트랙=고속링크, 링크="ctle_only"),
+    _("Feed-forward equalizer", "피드포워드 등화기 FFE", 석사, M,
+      r"y[n]=\sum_{k=0}^{L-1}w_k x[n-k],\qquad w=\arg\min E\{|b[n-d]-y[n]|^2\}",
+      "선행·후행 커서를 함께 지우는 선형 FIR. LMS 나 MMSE 로 탭을 맞춘다. 선형이므로 잡음을 "
+      "증폭하지만 DFE 와 달리 선행 커서도 지울 수 있다.",
+      이웃=["Least mean squares adaptation", "Decision feedback equalizer"],
+      트랙=고속링크, 링크="ffe_dfe"),
+    _("Decision feedback equalizer", "결정 궤환 등화기 DFE", 석사, M,
+      r"v[n]=x[n]-\sum_{k=1}^{M}c_k\hat{b}[n-k],\qquad \hat{b}[n]=\mathrm{sgn}(v[n])",
+      "이미 내린 판정으로 후행 커서만 빼므로 **잡음을 증폭하지 않는다**. 대신 한 번 틀리면 그 "
+      "오류가 뒤로 번진다(error propagation) -- 정답 비트를 되먹이면 그 번짐이 사라져 BER 이 "
+      "실제보다 좋게 나온다.",
+      이웃=["Feed-forward equalizer", "Error propagation"],
+      트랙=고속링크, 링크="dfe_only"),
+    _("Error propagation", "오류 번짐", 박사, M,
+      r"\Pr\{\text{burst}\}\ \text{grows with}\ \sum_k|c_k|",
+      "DFE 가 제 판정을 되먹이므로 한 번의 오판이 다음 심볼들의 되먹임 값을 틀리게 만든다. "
+      "시뮬에서 정답을 먹이면 이것이 통째로 사라진다 -- 하드웨어는 정답을 모른다.",
+      이웃=["Decision feedback equalizer", "Bit error rate"],
+      트랙=고속링크, 링크="ideal_decision_dfe"),
+    _("Least mean squares adaptation", "LMS 적응 최소평균제곱", 석사, M,
+      r"w[n+1]=w[n]+\mu\,e[n]\,x[n],\qquad 0<\mu<\frac{2}{\lambda_{max}}",
+      "오차와 입력의 곱으로 탭을 조금씩 옮긴다. 레이더 적응필터(LMS/RLS)와 수학이 같은 계열이다. "
+      "걸음 mu 가 크면 발산하는데, 발산한 탭도 BER 은 그냥 나쁘게 나올 뿐이라 따로 봐야 한다.",
+      이웃=["Feed-forward equalizer", "Decision feedback equalizer"],
+      트랙=고속링크, 링크="ffe_dfe"),
+    _("Bit error rate", "비트 오류율 BER", 석사, M,
+      r"\mathrm{BER}=Q\!\left(\frac{A}{\sigma}\right),\qquad Q(x)=\tfrac{1}{2}\mathrm{erfc}\!\left(\tfrac{x}{\sqrt{2}}\right)",
+      "링크의 최종 성적. ISI 가 없으면 눈높이 대 잡음비의 Q 함수로 닫힌 꼴이 나오고, 그 닫힌 꼴이 "
+      "시뮬레이터를 **교정하는** 잣대다. 재는 것과 맞는지 먼저 확인하지 않은 BER 은 아무 숫자다.",
+      이웃=["Rule of three", "Eye diagram"], 트랙=고속링크, 링크="awgn_calibration"),
+    _("Rule of three", "3의 규칙", 석사, M,
+      r"n\ \text{errors}=0\ \Rightarrow\ \mathrm{BER}<\frac{3}{N}\ (95\%)",
+      "N 비트에 오류가 0 이어도 참 BER 은 3/N 까지 갈 수 있다. **오류 0 은 BER 0 이 아니다** -- "
+      "1e-12 를 주장하려면 적어도 3e12 비트를 봐야 한다는 뜻이고, 그래서 규격은 BER 바닥을 외삽한다.",
+      이웃=["Bit error rate", "Eye diagram"], 트랙=고속링크, 링크="ffe_dfe"),
+    _("Clock and data recovery", "클럭·데이터 복원 CDR", 박사, M,
+      r"\text{sample at}\ \arg\max_{\phi}\ \text{eye height}(\phi)",
+      "받은 데이터에서 클럭을 뽑아 눈 한가운데를 찍는다. 링크에는 기준 클럭이 따로 안 오므로 "
+      "CDR 이 없으면 아무리 눈이 열려도 못 읽는다.",
+      이웃=["Bang-bang phase detector", "Mueller-Muller CDR", "Phase-locked loop"],
+      트랙=고속링크),
+    _("Bang-bang phase detector", "뱅뱅 위상검출기", 박사, M,
+      r"e[n]=\mathrm{sgn}(x_{edge}[n])\left(\hat b[n]-\hat b[n-1]\right)",
+      "가장자리 표본이 앞 비트 쪽인지 뒤 비트 쪽인지 부호만 낸다(Alexander PD). 이득이 비선형이라 "
+      "지터 추적 대역이 입력 지터 크기에 따라 달라진다.",
+      이웃=["Clock and data recovery", "Clock skew and jitter"], 트랙=고속링크),
+    _("Mueller-Muller CDR", "뮐러-뮐러 CDR", 박사, M,
+      r"e[n]=\hat b[n-1]y[n]-\hat b[n]y[n-1]\ \to\ 0\ \Rightarrow\ p_{-1}=p_{+1}",
+      "가장자리 표본을 따로 뜨지 않고 **데이터 표본만으로** 위상을 맞춘다(baud-rate). 선행 커서와 "
+      "후행 커서가 같아지는 자리에 잠기므로 2배 오버샘플이 필요 없어 전력이 준다.",
+      이웃=["Clock and data recovery", "Intersymbol interference"], 트랙=고속링크),
+    _("Channel operating margin", "채널 동작 여유(COM)", 박사, M,
+      r"\mathrm{COM}=20\log_{10}\frac{A_{signal}}{A_{noise}}\ \ge\ 3\,\text{dB}",
+      "IEEE 802.3 이 채널 합격을 재는 한 숫자. 규격 송수신기 모형(TX FFE + CTLE + DFE)을 쓴 뒤 "
+      "남은 신호 대 잡음 여유를 dB 로 낸다 -- 눈 그림 대신 수치로 통과/불통을 가른다.",
+      이웃=["Bit error rate", "Eye diagram", "Channel loss"], 트랙=고속링크),
+    _("Quantized equalizer taps", "등화기 탭 양자화", 박사, M,
+      r"w_q=\frac{\max|w|}{2^{B-1}-1}\left\lfloor\frac{w(2^{B-1}-1)}{\max|w|}\right\rceil",
+      "탭을 몇 비트로 자를 수 있나. 연구 기여가 서는 자리다 -- **오차막대 안의 차이를 '열화 없음' "
+      "이라 적으면 안 된다.** 오류 11개와 8개는 차이가 아니라 셈의 흔들림이다.",
+      이웃=["Pruned equalizer taps", "Bit error rate", "Rule of three"],
+      트랙=고속링크, 링크="quantized_4bit"),
+    _("Pruned equalizer taps", "등화기 탭 프루닝", 박사, M,
+      r"w_p=w\odot\mathbb{1}\{|w|\ge\tau\},\qquad \|w_p\|_0=\lceil\rho L\rceil",
+      "작은 탭을 0 으로 만들어 곱셈기를 없앤다. 양자화와 함께 쓰면 신경망 등화기를 FPGA 에 "
+      "올릴 수 있는 크기로 줄인다 -- 줄인 만큼 BER 이 상하는지는 재야 안다.",
+      이웃=["Quantized equalizer taps", "Neural network equalizer"],
+      트랙=고속링크, 링크="pruned_half"),
+    _("Neural network equalizer", "신경망 등화기", 박사, M,
+      r"\hat b[n]=\mathrm{sgn}(W_2\,\phi(W_1 x_{n-L:n+L}+b_1)+b_2)",
+      "선형 FFE 와 판정 되먹임이 못 잡는 비선형 왜곡(드라이버 압축, 크로스토크)을 비선형 사상으로 "
+      "잡는다. 광통신 쪽에서는 이미 양자화·프루닝해 FPGA 에 올린 사례가 있고, 전기 와이어라인 "
+      "쪽이 상대적으로 비어 있다 -- 거기가 파고들 틈이다.",
+      이웃=["Quantized equalizer taps", "Pruned equalizer taps",
+          "Decision feedback equalizer"], 트랙=고속링크),
+
 ]
 
 
@@ -821,7 +1066,7 @@ def 목록(층: str = "", 갈래: str = "", 트랙: str = "") -> "list[dict]":
 
 def 덮임() -> dict:
     """**몇 개가 실제로 돌아가는지 센다.** 설명뿐인 것을 숨기지 않는다."""
-    돎 = [c for c in 개념 if c["넷리스트"] or c["회로도"]]
+    돎 = [c for c in 개념 if c["넷리스트"] or c["회로도"] or c.get("링크")]
     return {"모두": len(개념), "돌려볼수있음": len(돎),
             "설명만": len(개념) - len(돎),
             "층별": {층: len(목록(층)) for 층 in (학부, 석사, 박사)},
@@ -837,6 +1082,8 @@ def 말로(c: dict) -> str:
         줄.append(f"run it: `run_spice(\"{c['넷리스트']}\")`")
     if c["회로도"]:
         줄.append(f"draw it: `draw_circuit(example=\"{c['회로도']}\")`")
+    if c.get("링크"):
+        줄.append(f"measure it: `serdes_link(...)` — example `{c['링크']}`")
     if c["이웃"]:
         줄.append("see also: " + " · ".join(c["이웃"]))
     return "\n".join(줄)
