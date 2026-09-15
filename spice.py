@@ -118,6 +118,14 @@ def _자르기(글: str) -> str:
 def 잰것뽑기(로그: str) -> "dict[str, float]":
     """`.meas` 가 찍은 `이름 = 값` 을 모은다."""
     나온것 = {}
+    # `fourier`/`.four` 는 `이름 = 값` 이 아니라 `THD: 2.55333 %` 로 찍는다(실측).
+    # 그래도 그것은 **잰 값**이다 -- 안 담으면 왜곡 본보기가 "아무것도 안 쟀다" 가 된다.
+    m = re.search(r"THD:\s*([-+0-9.eE]+)\s*%", 로그 or "")
+    if m:
+        try:
+            나온것["thd_pct"] = float(m.group(1))
+        except ValueError:
+            pass
     for 무늬, 꼬리 in ((_잰것, ""), (_잰것자리, "_at")):
         for 이름, 값 in 무늬.findall(로그 or ""):
             try:
@@ -678,6 +686,182 @@ tran 10p 10n uic
 meas tran v_hold FIND v(ql) AT=1.5n
 meas tran v_disturb MAX v(ql) FROM=3n TO=7n
 meas tran v_high FIND v(qr) AT=6n
+.endc
+"""
+
+
+# ---------------------------------------------------------------------------
+# 3차 -- 연산증폭기와 디지털 회로의 나머지. 역시 전부 손계산과 대조하고 넣었다.
+# ---------------------------------------------------------------------------
+
+본보기["twostage_ota"] = _모델 + """\
+* Two-stage Miller-compensated OTA, measured OPEN LOOP with the standard SPICE trick:
+* a 1 TH inductor closes the loop at DC (so the bias finds itself) and is an open at AC,
+* while a 1 TF capacitor feeds the AC input in. No hand-tuned output bias needed.
+* Cc splits the poles -- the first drops to 1/(gm6*ro6*ro1*Cc), the second climbs to
+* gm6/CL -- so the loop looks single-pole out to wu = gm1/Cc.
+* Watch the feedback POLARITY: wire it to the wrong input and the loop latches to a
+* rail (measured: v(out) sat at 0.05 V and the gain read -29 dB).
+Vdd vdd 0 DC 1.8
+Vcm cm 0 DC 0.8
+Vin in 0 DC 0 AC 1
+Lfb out ip 1T
+Cfb ip 0 1T
+Cac in im 1T
+Rcm cm im 1T
+M1 n1 ip tail vdd pch W=40u L=1u
+M2 n2 im tail vdd pch W=40u L=1u
+M3 n1 n1 0 0 nch W=10u L=1u
+M4 n2 n1 0 0 nch W=10u L=1u
+Vbp bp 0 DC 0.95
+M5 tail bp vdd vdd pch W=80u L=1u
+M6 out n2 0 0 nch W=40u L=1u
+Mb1 nb nb vdd vdd pch W=80u L=1u
+Ib nb 0 DC 200u
+M7 out nb vdd vdd pch W=160u L=1u
+Cc n2 out 1p
+CL out 0 2p
+.control
+op
+print v(n2) v(out) @m1[gm] @m6[gm] @m1[id] @m6[id]
+ac dec 30 0.1 1G
+meas ac a0_db FIND vdb(out) AT=1
+meas ac ugb WHEN vdb(out)=0 FALL=1
+.endc
+"""
+
+본보기["slew_rate"] = _모델 + """\
+* Slew rate. A step too big for the tail current makes the output RAMP instead of
+* following the small-signal bandwidth. The classic formula is SR = I_tail/Cc, but here
+* the second stage must charge CL as well, so the measured slope lands on I/(Cc+CL).
+* Unity-gain buffer, 0.4 V step.
+Vdd vdd 0 DC 1.8
+Vin in 0 PULSE(0.6 1.0 100n 100p 100p 900n 2u)
+M1 n1 out tail vdd pch W=40u L=1u
+M2 n2 in  tail vdd pch W=40u L=1u
+M3 n1 n1 0 0 nch W=10u L=1u
+M4 n2 n1 0 0 nch W=10u L=1u
+Vbp bp 0 DC 0.95
+M5 tail bp vdd vdd pch W=80u L=1u
+M6 out n2 0 0 nch W=40u L=1u
+Mb1 nb nb vdd vdd pch W=80u L=1u
+Ib nb 0 DC 200u
+M7 out nb vdd vdd pch W=160u L=1u
+Cc n2 out 1p
+CL out 0 2p
+.control
+op
+print v(out) @m5[id]
+tran 200p 500n
+meas tran t10 WHEN v(out)=0.65 RISE=1
+meas tran t90 WHEN v(out)=0.95 RISE=1
+let sr = 0.30/(t90-t10)
+print sr
+.endc
+"""
+
+본보기["distortion"] = _모델 + """\
+* Distortion. A square-law common-source stage turns a sine into a sine plus a SECOND
+* harmonic: for I ~ (Vov + A sin)^2 the second-order term gives HD2 = A/(4*Vov).
+* A differential pair cancels the even orders, which is why analog front ends are
+* differential and why HD3 is the one left to fight.
+Vdd vdd 0 DC 1.8
+Vin in 0 DC 0.9 SIN(0.9 0.05 1Meg)
+RD vdd out 20k
+M1 out in 0 0 nch W=3u L=1u
+.control
+tran 5n 20u
+fourier 1Meg v(out)
+.endc
+"""
+
+본보기["flicker_noise"] = """\
+* Flicker (1/f) noise and its corner, measured as a BAND RATIO so it does not lean on
+* the absolute KF. Two noise runs over the same circuit: one decade down low where 1/f
+* rules, one decade up high where the thermal floor rules. The two totals come out
+* nearly EQUAL even though the high band is a million times wider -- that is the 1/f
+* law. Flicker goes as 1/(W*L), so the corner is pushed down with AREA, not current.
+.model nchf NMOS (LEVEL=1 VTO=0.5 KP=200u LAMBDA=0.05 TOX=4n KF=1e-27 AF=1)
+Vdd vdd 0 DC 1.8
+Vin in 0 DC 0.9 AC 1
+RD vdd out 20k
+M1 out in 0 0 nchf W=3u L=1u
+.control
+noise v(out) Vin dec 40 1 10
+let n_low_band = onoise_total
+print n_low_band
+noise v(out) Vin dec 40 1Meg 10Meg
+let n_high_band = onoise_total
+print n_high_band
+.endc
+"""
+
+본보기["noise_margins"] = _모델 + """\
+* Noise margins. VIL and VIH are the two points where the inverter's slope is exactly
+* -1; the margins are NMH = VOH-VIH and NML = VIL-VOL. Inside them a disturbed input
+* still gets restored, which is the whole reason digital logic is robust at all.
+Vdd vdd 0 DC 1.8
+Vin in 0 DC 0
+M1 out in 0   0   nch W=2u L=0.5u
+M2 out in vdd vdd pch W=5u L=0.5u
+.control
+dc Vin 0 1.8 0.002
+let slope = deriv(v(out))
+meas dc vil WHEN slope=-1 FALL=1
+meas dc vih WHEN slope=-1 RISE=1
+meas dc voh FIND v(out) AT=0.1
+meas dc vol FIND v(out) AT=1.7
+meas dc vm WHEN v(out)=v(in)
+.endc
+"""
+
+본보기["nand_stack"] = _모델 + """\
+* Stacking. A NAND2 puts two NMOS in series, so to match an inverter's pull-down each
+* must be TWICE as wide. Here the NAND is built with the SAME width as the inverter --
+* the series stack then shows up directly as a roughly 2x slower falling edge.
+Vdd vdd 0 DC 1.8
+Va a 0 DC 1.8
+Vin in 0 PULSE(0 1.8 1n 50p 50p 5n 10n)
+MI1 oi in 0   0   nch W=2u L=0.5u
+MI2 oi in vdd vdd pch W=5u L=0.5u
+CI oi 0 20f
+MN1 on in  mid 0   nch W=2u L=0.5u
+MN2 mid a  0   0   nch W=2u L=0.5u
+MP1 on in  vdd vdd pch W=5u L=0.5u
+MP2 on a   vdd vdd pch W=5u L=0.5u
+CN on 0 20f
+.control
+tran 5p 12n
+meas tran t_inv  TRIG v(in) VAL=0.9 RISE=1 TARG v(oi) VAL=0.9 FALL=1
+meas tran t_nand TRIG v(in) VAL=0.9 RISE=1 TARG v(on) VAL=0.9 FALL=1
+.endc
+"""
+
+본보기["charge_sharing"] = _모델 + """\
+* Charge sharing in dynamic logic. The output is precharged high. When the clock
+* evaluates and only the TOP input goes high, charge on CL redistributes onto the
+* internal node X even though the path never reaches ground. Sharing stops when the
+* pass device turns off, so the settled value is NOT the ideal divider but
+*   CL*VDD = CL*Vout + Cx*(Vout - Vth)
+* which for CL=20f, Cx=10f, Vth~0.6 gives 1.40 V (measured 1.46 V with body effect).
+* That droop is why dynamic gates carry a keeper.
+Vdd vdd 0 DC 1.8
+Vclk clk 0 PULSE(0 1.8 2n 100p 100p 8n 20n)
+Va a 0 PULSE(0 1.8 3n 100p 100p 6n 20n)
+Vb b 0 DC 0
+MP out clk vdd vdd pch W=4u L=0.5u
+MA out a  x  0 nch W=4u L=0.5u
+MB x   b  y  0 nch W=4u L=0.5u
+ME y   clk 0  0 nch W=4u L=0.5u
+CL out 0 20f
+CX x 0 10f
+.ic v(x)=0
+.control
+tran 10p 14n
+meas tran v_pre FIND v(out) AT=1.9n
+meas tran v_after MIN v(out) FROM=4n TO=8n
+let droop = v_pre-v_after
+print droop
 .endc
 """
 
