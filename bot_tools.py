@@ -836,6 +836,48 @@ def monte_carlo(netlist: str, spread: str, runs: int = 30, checks: str = "",
 
 
 @tool
+def concept(name: str = "", level: str = "", domain: str = "") -> str:
+    """**Look up an IC design concept** — the defining equation, what it governs, and the
+    example you can actually run for it.
+
+    Covers the undergrad / MS / PhD range of analog and digital IC design: device physics
+    (square law, Vth, body effect, CLM, short-channel, subthreshold), single-stage amps,
+    current mirrors and cascodes, differential pairs, OTAs (telescopic, folded, two-stage
+    Miller), feedback and compensation, noise (thermal, kT/C, flicker), mismatch and
+    Pelgrom, switched-capacitor, data converters, PLL, and on the digital side CMOS logic,
+    logical effort, sequencing and timing, metastability and CDC, power, adders and
+    multipliers, SRAM, interconnect and STA.
+
+    Call with no arguments to see the index and how much of it is runnable. `level` is
+    `학부`/`석사`/`박사`, `domain` is `analog`/`digital`/`device`/`mixed`.
+
+    Every entry that names an example is **verified to run** — `tests/test_concepts.py`
+    executes each linked netlist and draws each linked schematic, so a dead link is a red
+    test, not a paragraph that merely claims coverage. Entries with no example are shown
+    as explanation-only rather than hidden.
+
+    Use this to fix the depth and the notation before answering, then run or draw the
+    example instead of only describing it.
+    """
+    import concepts
+    if not (name or "").strip():
+        d = concepts.덮임()
+        줄 = [f"**{d['모두']} concepts** — {d['돌려볼수있음']} with a runnable example, "
+             f"{d['설명만']} explanation-only.",
+             "by level: " + " · ".join(f"{k} {v}" for k, v in d["층별"].items()),
+             "by domain: " + " · ".join(f"{k} {v}" for k, v in d["갈래별"].items()), ""]
+        for c in concepts.목록(level, domain):
+            표 = "▶" if (c["넷리스트"] or c["회로도"]) else "·"
+            줄.append(f"{표} {c['이름']} ({c['한글']}) — {c['층']}/{c['갈래']}")
+        return "\n".join(줄)
+    난것 = concepts.찾기(name)
+    if not 난것:
+        return (f"no concept matched {name!r}. Call `concept()` with no argument for the "
+                "index, or try an alias like `cascode`, `gm/ID`, `SNM`, `FO4`, `CDC`.")
+    return "\n\n".join(concepts.말로(c) for c in 난것[:3])
+
+
+@tool
 def spice_example(name: str = "") -> str:
     """**List or fetch a ready-made, verified analog netlist** for `run_spice`.
 
