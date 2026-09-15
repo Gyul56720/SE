@@ -179,6 +179,40 @@ import circuitdraw                                                 # noqa: E402
 그림들 = sorted({c["회로도"] for c in k.개념 if c["회로도"]})
 ok(len(넷들) >= 6, f"넷리스트를 가리키는 개념이 있다: {len(넷들)}가지")
 ok(len(그림들) >= 5, f"회로도를 가리키는 개념이 있다: {len(그림들)}가지")
+# **가리키는 데가 있다고 맞는 것이 아니다.** 실측 2026-09-15: 일괄 편집이 `Slew rate` 에
+# `twostage_ota` 를, `Static CMOS logic` 에 `noise_margins` 를 붙였다. 둘 다 실재하는
+# 본보기라 "없는 것을 가리키나" 검사는 조용히 통과했다 -- 엉뚱한 데를 가리켰을 뿐이다.
+# 그래서 중요한 짝은 **여기 바깥에 못 박는다**(별칭 때와 같은 처방).
+필수연결 = {
+    "Current mirror": "current_mirror", "Cascode": "cascode",
+    "Cascode current mirror": "cascode_mirror", "Source follower": "source_follower",
+    "Common gate": "common_gate", "Common source": "common_source",
+    "Miller effect": "miller", "Body effect": "body_effect",
+    "gm/ID methodology": "gm_id", "CMRR": "cmrr",
+    "Differential pair": "diff_pair", "Two-stage Miller OTA": "twostage_ota",
+    "Slew rate": "slew_rate", "Flicker noise": "flicker_noise",
+    "Distortion HD2/HD3/IIP3": "distortion", "Monte Carlo": "mc_mirror",
+    "Mismatch (Pelgrom)": "mc_mirror", "kT/C noise": "rc_noise",
+    "CMOS inverter VTC": "cmos_inverter_vtc", "Noise margins": "noise_margins",
+    "Static CMOS logic": "nand_stack", "Propagation delay": "inverter_delay",
+    "Dynamic power": "inverter_power", "Transmission gate": "transmission_gate",
+    "Dynamic / domino logic": "charge_sharing", "SRAM 6T cell": "sram_read_disturb",
+    "Interconnect RC delay": "elmore", "Channel-length modulation": "mosfet_iv",
+    "Threshold voltage": "nmos_vth", "RLC resonance and Q": "rlc_resonance",
+    "RC low-pass / first-order response": "rc_lowpass",
+}
+_어디 = {c["이름"]: c for c in k.개념}
+어긋난것 = []
+for 이름, 넷 in 필수연결.items():
+    c = _어디.get(이름)
+    if c is None:
+        어긋난것.append((이름, "그런 개념이 없다"))
+    elif c["넷리스트"] != 넷:
+        어긋난것.append((이름, f"{c['넷리스트']!r} 인데 {넷!r} 이어야 한다"))
+ok(not 어긋난것,
+   f"**핵심 개념 {len(필수연결)}개가 제 본보기를 가리킨다** (엉뚱한 데를 가리켜도 "
+   f"'없는 것' 검사는 통과한다): {어긋난것[:4]}")
+
 없는넷 = [(c["이름"], c["넷리스트"]) for c in k.개념
         if c["넷리스트"] and c["넷리스트"] not in spice.본보기]
 ok(not 없는넷, f"**없는 넷리스트를 가리키지 않는다**: {없는넷}")
