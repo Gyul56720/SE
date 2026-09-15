@@ -85,8 +85,14 @@ def 판정하기(로그: str) -> "tuple[str, str]":
                 "`$display(\"FAIL ...\")` 를 넣어라. **안 찍은 것을 통과로 세지 않는다**")
 
 
-def 시뮬(design: str, testbench: str, top: str = "tb", 초: int = None) -> dict:
-    """설계와 테스트벤치를 짓고 돌린다. {판정, 끝값, 로그, 왜}."""
+def 시뮬(design: str, testbench: str, top: str = "tb", 초: int = None,
+       파형낼곳: str = "") -> dict:
+    """설계와 테스트벤치를 짓고 돌린다. {판정, 끝값, 로그, 왜}.
+
+    `파형낼곳` 을 주면 VCD 를 떠 파형 PNG 까지 그린다. 그러면 `파형`·`파형말` 이 는다.
+    테스트벤치에 `$dumpfile` 이 없으면 끼워 넣고 **끼웠다고 말한다** -- 남의 코드를
+    조용히 고쳐 놓고 결과만 보이면 그 결과가 무엇의 결과인지 알 수 없다.
+    """
     빠진 = 없는도구("iverilog", "vvp")
     if 빠진:
         return {"판정": 못잼, "끝값": -1, "로그": "",
@@ -97,8 +103,12 @@ def 시뮬(design: str, testbench: str, top: str = "tb", 초: int = None) -> dic
         return {"판정": 못잼, "끝값": -1, "로그": "",
                 "왜": "테스트벤치가 없다 -- **돌려 보지 않은 코드는 통과가 아니다**"}
     판 = tempfile.mkdtemp(prefix="rtl-")
+    벤치, 끼웠나 = testbench, False
+    if 파형낼곳:
+        import vcd as _vcd
+        벤치, 끼웠나 = _vcd.덤프끼우기(testbench, top, "wave.vcd")
     _쓰기(판, "design.v", design)
-    _쓰기(판, "tb.v", testbench)
+    _쓰기(판, "tb.v",벤치)
     끝값, 로그 = _돌리기(["iverilog", "-g2012", "-o", "sim.vvp", "-s", top,
                        "design.v", "tb.v"], 판)
     if 끝값 != 0 or _짓기오류.search(로그):
@@ -108,7 +118,26 @@ def 시뮬(design: str, testbench: str, top: str = "tb", 초: int = None) -> dic
     if 끝값 == 124:
         return {"판정": 못잼, "끝값": 끝값, "로그": 로그, "왜": 로그}
     판정, 왜 = 판정하기(로그)
-    return {"판정": 판정, "끝값": 끝값, "로그": 로그, "왜": 왜}
+    난것 = {"판정": 판정, "끝값": 끝값, "로그": 로그, "왜": 왜}
+    if 파형낼곳:
+        난것.update(_파형(판, 파형낼곳, 끼웠나))
+    return 난것
+
+
+def _파형(판: str, 낼곳: str, 끼웠나: bool) -> dict:
+    """VCD 를 그림으로. **못 그렸으면 못 그렸다고 말한다** -- 조용히 없는 척하지 않는다."""
+    import vcd as _vcd
+    쪽 = os.path.join(판, "wave.vcd")
+    말 = ["(dump block was injected — the bench had no `$dumpfile`)"] if 끼웠나 else []
+    if not os.path.exists(쪽):
+        말.append("no VCD was written — add `$dumpfile(\"wave.vcd\"); $dumpvars(0, tb);`")
+        return {"파형": "", "파형말": " ".join(말)}
+    r = _vcd.그리기(쪽, 낼곳)
+    if not r.get("그렸나"):
+        말.append("waveform not drawn: " + str(r.get("왜")))
+        return {"파형": "", "파형말": " ".join(말)}
+    말.append(r["왜"])
+    return {"파형": r["경로"], "파형말": "\n".join(말)}
 
 
 def 린트(design: str, 엄하게: bool = True) -> dict:

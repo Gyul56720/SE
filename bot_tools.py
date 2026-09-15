@@ -605,7 +605,8 @@ def _rtl보고(머리: str, r: dict, 꼬리칸: "list[str]") -> str:
 
 
 @tool
-def run_rtl(design: str, testbench: str, top: str = "tb", seconds: int = 60) -> str:
+def run_rtl(design: str, testbench: str, top: str = "tb", seconds: int = 60,
+            waveform: bool = True) -> str:
     """**Compile and actually RUN Verilog/SystemVerilog** (iverilog + vvp).
 
     `design` is the DUT, `testbench` is the bench that drives it. The bench MUST print
@@ -617,6 +618,12 @@ def run_rtl(design: str, testbench: str, top: str = "tb", seconds: int = 60) -> 
       FAIL  a fail marker is printed (`FAIL`, `ERROR`, `$error`, `$fatal`, mismatch)
       못잼  neither was printed, or it did not even compile -- **not a pass**
 
+    `waveform=True` (the default) also **draws the waveform and attaches it to the
+    reply** — no need to mention a path. x/z is drawn as a red hatched band, never as 0,
+    and the reply says in words which signals were x/z for the whole run. A bench can
+    print PASS while every input sat at x (measured 2026-09-15); the waveform is how you
+    see that. If the bench has no `$dumpfile`, one is injected and the reply says so.
+
     Write self-checking benches: compare against expected values and
     `$display("FAIL: got %0d expected %0d", got, exp)` on mismatch,
     `$display("PASS")` at the end. Always `$finish`.
@@ -624,7 +631,17 @@ def run_rtl(design: str, testbench: str, top: str = "tb", seconds: int = 60) -> 
     if agent_context.is_blocked():
         return "실패: 게스트는 run_rtl 을 사용할 수 없습니다."
     import rtl
-    return _rtl보고("Simulation", rtl.시뮬(design, testbench, top, seconds), ["끝값"])
+    낼곳 = ""
+    if waveform:
+        자리 = os.path.join(REPO_DIR, 회로그림자리)
+        os.makedirs(자리, exist_ok=True)
+        낼곳 = os.path.join(자리, f"wave-{uuid.uuid4().hex[:8]}.png")
+    r = rtl.시뮬(design, testbench, top, seconds, 낼곳)
+    if r.get("파형"):
+        _그림남기기(r["파형"])
+    if r.get("파형말"):
+        r["waveform"] = r["파형말"]
+    return _rtl보고("Simulation", r, ["waveform", "끝값"])
 
 
 @tool
