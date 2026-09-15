@@ -839,6 +839,52 @@ def quant_sweep(widths: str = "2,3,4,6,8,12", loss_db: float = 20.0,
 
 
 @tool
+def adc_sweep(widths: str = "4,5,6,7,8", full_scales: str = "2.0,2.5,3.0,4.0",
+              loss_db: float = 25.0, snr_db: float = 30.0, bits: int = 300000,
+              ffe_taps: int = 11, dfe_taps: int = 8, coef_bits: int = 0,
+              sps: int = 8, seed: int = 7) -> str:
+    """**BER versus ADC resolution AND full scale** -- the two cannot be chosen apart.
+
+    An ADC is fixed by two numbers: how many bits, and how far it reaches. Narrow the
+    full scale and large samples clip; widen it and the same bits buy a coarser step.
+    Sweeping resolution alone silently assumes the full scale is already optimal, and
+    that assumption has never been measured. This sweeps the grid and prints the clip
+    rate next to every BER.
+
+    Measured 2026-09-15 (25 dB channel, SNR 30 dB, FFE 11 + DFE 8): the floor sits at
+    **2.5 sigma at every resolution**, and there the ADC clips **0.45%** of samples, not
+    0% -- a well-set ADC clips a little on purpose. 3.0 sigma was slightly too wide.
+
+    Each row's full scale is **chosen** by lowest BER, so that BER is optimistically
+    biased (winner's curse). The reply re-runs the chosen full scale on a different seed
+    and prints that separately -- quote the re-measured number, not the grid. Rows that
+    do not separate from float print the bit count that would settle them; `NOT YET
+    separated` is not `equal`.
+
+    `coef_bits` quantises the equaliser taps at the same time, so you can ask the joint
+    question instead of assuming the two word lengths are independent. Feed the answer
+    into `place_rtl` for the LUT cost -- measured, an ADC bit costs ~249 LC in an 11-tap
+    FFE against ~170 LC for a coefficient bit, and that is only the digital back end:
+    the converter's own area and power (roughly doubling per bit) are **not measured by
+    this stack**. Identifiers must be ASCII.
+    """
+    if agent_context.is_blocked():
+        return "실패: 게스트는 adc_sweep 을 사용할 수 없습니다."
+    import serdes
+    try:
+        비트들 = tuple(int(x) for x in str(widths).replace(" ", "").split(",") if x)
+        스케일들 = tuple(float(x) for x in str(full_scales).replace(" ", "").split(",") if x)
+    except ValueError:
+        return f"실패: widths/full_scales 를 못 읽었다: {widths!r} / {full_scales!r}"
+    if not 비트들 or not 스케일들:
+        return "실패: widths 나 full_scales 가 비었다"
+    s = serdes.ADC쓸기(비트들, 스케일들, 비트수=int(bits), 손실dB=loss_db,
+                    SNRdB=snr_db, sps=int(sps), FFE탭=int(ffe_taps),
+                    DFE탭=int(dfe_taps), 탭비트=int(coef_bits), 씨=int(seed))
+    return serdes.ADC쓸기말로(s)
+
+
+@tool
 def ip_signoff(design: str, testbench: str, top: str = "tb",
                min_coverage: float = 80.0, target_mhz: float = 0.0,
                chip: str = "hx8k", deliverables: str = "",

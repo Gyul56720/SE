@@ -141,6 +141,30 @@ def 프루닝(탭: np.ndarray, 남길비율: float) -> np.ndarray:
     return 탭
 
 
+def ADC(x: np.ndarray, 비트: int, 풀스케일: float) -> "tuple[np.ndarray, float]":
+    """균일 ADC. **분해능만이 아니라 자르기(클리핑)까지 모형에 넣는다.**
+
+    ADC 는 두 숫자로 정해진다 -- 몇 비트인가(분해능)와 어디까지 받나(풀스케일).
+    풀스케일을 좁히면 큰 표본이 잘리고, 넓히면 같은 비트로 더 성긴 눈금을 쓴다.
+    **그 맞바꿈이 진짜 설계 결정이라 둘을 따로 못 쓴다** -- 비트만 쓸면 풀스케일을
+    이미 최적이라 가정한 것이고, 그 가정은 잰 적이 없다.
+
+    돌려주는 것: (양자화된 표본, 잘린 비율). 잘린 비율을 같이 내는 까닭은 링크가
+    5% 를 자르고도 BER 이 그럭저럭 나올 수 있어서다 -- 그 BER 은 분해능의 성적이
+    아니라 범위 부족의 성적이다.
+    """
+    if 비트 <= 0:
+        return x, 0.0
+    단계수 = 2 ** (비트 - 1)
+    if 풀스케일 <= 0:
+        return x, 0.0
+    눈금 = 풀스케일 / 단계수
+    코드 = np.round(x / 눈금)
+    잘린 = np.clip(코드, -단계수, 단계수 - 1)
+    클립 = float(np.mean(코드 != 잘린)) if 코드.size else 0.0
+    return 잘린 * 눈금, 클립
+
+
 def LMS_FFE(받은것: np.ndarray, 정답: np.ndarray, 탭수: int, 지연: int,
             걸음: float = 0.01) -> dict:
     """FFE 탭을 LMS 로 맞춘다. **발산했는지 본다.**
@@ -173,6 +197,7 @@ def LMS_FFE(받은것: np.ndarray, 정답: np.ndarray, 탭수: int, 지연: int,
 def 링크(비트수: int = 20000, 손실dB: float = 20.0, SNRdB: float = 20.0,
        sps: int = 8, CTLE피킹dB: float = 0.0, FFE탭: int = 0, DFE탭: int = 0,
        탭비트: int = 0, 남길비율: float = 1.0, 이상적판정: bool = False,
+       ADC비트: int = 0, ADC풀스케일시그마: float = 3.0,
        학습비율: float = 0.3, 씨: int = 0) -> dict:
     """PRBS -> 채널 -> 잡음 -> CTLE -> FFE -> DFE -> 슬라이서. {BER, 오류수, ...}.
 
@@ -207,6 +232,13 @@ def 링크(비트수: int = 20000, 손실dB: float = 20.0, SNRdB: float = 20.0,
     학습끝 = int(np.clip(len(표본) * 학습비율, 0, len(표본) - 1))
     학습 = slice(0, max(학습끝, 1))
 
+    # ADC -- **아날로그 AGC 가 풀스케일을 잡고 그 다음에 양자화된다.** 여기 뒤로는
+    # 전부 디지털이므로 FFE·DFE 는 양자화된 표본만 본다.
+    클립비율 = 0.0
+    if ADC비트 and ADC비트 > 0:
+        rms = float(np.sqrt(np.mean(표본[학습] ** 2))) or 1.0
+        표본, 클립비율 = ADC(표본, int(ADC비트), ADC풀스케일시그마 * rms)
+
     # AGC: 메인 커서 이득을 **학습 구간의 상관으로 잰다**(수신기가 아는 것만 쓴다)
     g = float(np.mean(표본[학습] * 맞춘것[학습])) or 1.0
     표본 = 표본 / g
@@ -219,7 +251,9 @@ def 링크(비트수: int = 20000, 손실dB: float = 20.0, SNRdB: float = 20.0,
         if 적응["발산"]:
             return {"BER": float("nan"), "오류수": -1, "잰비트": 0, "표본": 표본,
                     "비트": 맞춘것, "판정": 못잼, "왜": 적응["왜"], "적응": 적응,
-                    "DFE탭": None, "이상적판정": 이상적판정}
+                    "DFE탭": None, "이상적판정": 이상적판정,
+                    "ADC비트": int(ADC비트), "클립비율": 클립비율,
+                    "ADC풀스케일시그마": ADC풀스케일시그마}
         w = 적응["탭"]
         if 탭비트:
             w = 양자화(w, 탭비트)
@@ -255,6 +289,8 @@ def 링크(비트수: int = 20000, 손실dB: float = 20.0, SNRdB: float = 20.0,
     return {"BER": (오류 / 잰비트) if 잰비트 else float("nan"),
             "오류수": 오류, "잰비트": 잰비트, "표본": 표본, "비트": 맞춘것,
             "위상": 위상, "지연심볼": 지연심볼, "sigma": sigma, "적응": 적응,
+            "ADC비트": int(ADC비트), "클립비율": 클립비율,
+            "ADC풀스케일시그마": ADC풀스케일시그마,
             "DFE탭": None if dfe탭값 is None else list(map(float, dfe탭값)),
             "이상적판정": 이상적판정, "판정": PASS,
             "왜": BER말(오류, 잰비트)}
@@ -492,6 +528,87 @@ def 비트폭쓸기(비트들=(2, 3, 4, 5, 6, 8, 10, 12), **인자) -> dict:
             "줄": 줄, "열화없는최소비트": 열화없는최소}
 
 
+def ADC쓸기(비트들=(4, 5, 6, 7, 8), 풀스케일들=(2.0, 2.5, 3.0, 4.0),
+         고르기씨: int = 12345, **인자) -> dict:
+    """**ADC 분해능과 풀스케일을 함께 쓴다.** 둘은 따로 고를 수 없다.
+
+    비트만 쓸면 풀스케일이 이미 최적이라고 가정한 것이고, 그 가정은 잰 적이 없다.
+    실측 2026-09-15(25dB · SNR 30dB · FFE 11 + DFE 8): 어느 분해능에서나 바닥이
+    **2.5 시그마**에 있었고, 그때 클립률이 0% 가 아니라 **0.45%** 였다 --
+    잘 맞춘 ADC 는 일부러 조금 자른다. 3.0 시그마(옛 기본값)는 조금 넓었다.
+
+    ## 고른 자리의 BER 은 낙관적이다 -- 그래서 다시 잰다
+
+    여러 풀스케일 중 **제일 좋은 것을 고르면** 그 값은 셈의 흔들림까지 같이 고른 것이라
+    실제보다 좋게 나온다(승자의 저주). 그래서 고른 풀스케일을 **다른 씨**로 한 번 더
+    돌려 그 숫자를 따로 낸다. 고를 때 쓴 숫자와 말할 때 쓰는 숫자를 가른다.
+    """
+    if int(고르기씨) == int(인자.get("씨", 0)):
+        # **같은 씨로 다시 재면 다시 잰 것이 아니다.** 고를 때 쓴 바로 그 숫자를
+        # '독립 측정' 이라고 내놓게 되고, 승자의 저주가 그대로 남은 채 이름만 바뀐다.
+        raise ValueError(
+            f"고르기씨({고르기씨})가 쓸기 씨({인자.get('씨', 0)})와 같다 -- "
+            "다시 재려면 다른 씨라야 한다")
+    기준 = 링크(ADC비트=0, **인자)
+    줄 = []
+    for B in 비트들:
+        칸 = []
+        for k in 풀스케일들:
+            r = 링크(ADC비트=int(B), ADC풀스케일시그마=float(k), **인자)
+            다름, _ = 구별되나(r["오류수"], r["잰비트"], 기준["오류수"], 기준["잰비트"])
+            칸.append({"풀스케일": float(k), "BER": r["BER"], "오류수": r["오류수"],
+                      "잰비트": r["잰비트"], "클립비율": r["클립비율"],
+                      "기준선과다름": 다름,
+                      "가르려면": 가르려면몇비트(r["BER"], 기준["BER"])})
+        제일 = min(칸, key=lambda c: c["오류수"])
+        다시인자 = dict(인자)
+        다시인자["씨"] = 고르기씨
+        다시 = 링크(ADC비트=int(B), ADC풀스케일시그마=제일["풀스케일"], **다시인자)
+        기준다시 = 링크(ADC비트=0, **다시인자)
+        다름2, _ = 구별되나(다시["오류수"], 다시["잰비트"],
+                        기준다시["오류수"], 기준다시["잰비트"])
+        줄.append({"비트": int(B), "칸": 칸, "최적풀스케일": 제일["풀스케일"],
+                  "고를때BER": 제일["BER"], "다시잰BER": 다시["BER"],
+                  "다시잰오류수": 다시["오류수"], "다시잰잰비트": 다시["잰비트"],
+                  "다시잰클립": 다시["클립비율"], "기준선과다름": 다름2,
+                  "가르려면": 가르려면몇비트(다시["BER"], 기준다시["BER"])})
+    최소 = next((x["비트"] for x in 줄 if not x["기준선과다름"]), None)
+    return {"기준선": {"BER": 기준["BER"], "오류수": 기준["오류수"],
+                    "잰비트": 기준["잰비트"], "왜": 기준["왜"]},
+            "줄": 줄, "열화없는최소비트": 최소, "고르기씨": 고르기씨}
+
+
+def ADC쓸기말로(s: dict) -> str:
+    줄 = [f"float (no ADC) baseline: {s['기준선']['왜']}", "",
+         "ADC resolution x full scale (full scale in sigma of the sampled signal):", ""]
+    머리 = "  bit " + "".join(f"{k['풀스케일']:>10.1f}s" for k in s["줄"][0]["칸"])
+    줄.append(머리)
+    for x in s["줄"]:
+        줄.append(f"  {x['비트']:3d} " + "".join(f"{c['BER']:>11.2e}" for c in x["칸"]))
+        줄.append("      " + "".join(f"{100 * c['클립비율']:>10.2f}%" for c in x["칸"])
+                  + "   <- clipped")
+    줄.append("")
+    for x in s["줄"]:
+        표 = ("differs from float"
+              if x["기준선과다름"] else
+              ("NOT YET separated -- would need >= "
+               f"{x['가르려면']:,.0f} evaluation bits to settle"
+               if x["가르려면"] < float("inf") else "identical to float"))
+        줄.append(f"  {x['비트']:2d} bit  best full scale {x['최적풀스케일']:.1f} sigma  "
+                  f"(clips {100 * x['다시잰클립']:.2f}%)  "
+                  f"re-measured BER {x['다시잰BER']:.3e}  {표}")
+    줄.append("")
+    b = s.get("열화없는최소비트")
+    줄.append(f"**smallest ADC width NOT YET separated from float: {b} bit**"
+              if b else "**every ADC width tested is distinguishable from float**")
+    줄.append("Each row's full scale was **chosen** by the lowest BER, so that BER is "
+              "optimistically biased (winner's curse). The `re-measured BER` re-runs the "
+              "chosen full scale on a different seed -- quote that one, not the grid.")
+    줄.append("`NOT YET separated` does NOT mean equal. **Absence of a measured "
+              "difference is not evidence of no degradation.**")
+    return "\n".join(줄)
+
+
 def 쓸기말로(s: dict) -> str:
     줄 = [f"float baseline: {s['기준선']['왜']}", ""]
     for x in s["줄"]:
@@ -558,6 +675,13 @@ def 말로(r: dict) -> str:
         줄.append(f"FFE: {적['왜']}")
     if r.get("DFE탭"):
         줄.append("DFE taps: " + " · ".join(f"{t:+.3f}" for t in r["DFE탭"]))
+    if r.get("ADC비트"):
+        c = r.get("클립비율", 0.0)
+        줄.append(f"ADC: {r['ADC비트']}-bit, full scale "
+                  f"{r.get('ADC풀스케일시그마', 0):.1f} sigma, clipped {100 * c:.2f}% "
+                  + ("of samples" if c < 0.01 else
+                     "of samples -- **this BER is a range failure, not a resolution "
+                     "result. Widen the full scale before reading it.**"))
     if r.get("이상적판정"):
         줄.append("**ideal-decision DFE — this hides error propagation; hardware "
                   "does not know the answer**")
