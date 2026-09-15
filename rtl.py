@@ -39,6 +39,13 @@ _불합격 = re.compile(
 _합격 = re.compile(r"\b(PASS(ED)?|ALL\s+TESTS?\s+(OK|PASSED)|OK)\b", re.I)
 # 컴파일러가 낸 진짜 오류(문법 등). 이건 못잼이지 불합격이 아니다.
 _짓기오류 = re.compile(r"(syntax error|error:|Unable to bind|Cannot find)", re.I)
+# **vvp 가 아예 안 돌았을 때.** iverilog 는 통과시켰는데 vvp 가 elaboration 에서
+# 거부한 경우다 -- 시뮬레이션이 한 걸음도 안 갔다.
+_안돌았다 = re.compile(
+    r"Program not runnable|Unable to open input file"
+    r"|System task/function (\$\w+)\(?\)? is not defined", re.I)
+_모르는시스템함수 = re.compile(
+    r"System task/function (\$\w+)\(?\)? is not defined", re.I)
 
 
 def 있나(도구: str) -> bool:
@@ -75,6 +82,21 @@ def _돌리기(argv, 판, 초=None):
 
 def 판정하기(로그: str) -> "tuple[str, str]":
     """출력만 보고 (판정, 까닭). **끝값을 안 본다** -- 위 머리말의 까닭이다."""
+    # **안 돈 것을 불합격으로 세지 않는다.** 실측 2026-09-15: `$past` 를 쓴 설계가
+    # iverilog 는 끝값 0 으로 지나고 vvp 가 거부했는데, 그 메시지에 `Error` 가 들어
+    # 있어서 `FAIL` 로 찍혔다 -- **시뮬레이션은 한 걸음도 안 갔는데 설계가 틀렸다고
+    # 말한 것이다.** 거짓 초록의 거울상이고, 사인오프 리포트에서는 더 나쁘다:
+    # 고칠 데가 아닌 곳을 가리킨다. (`$fatal` 도 끝값 1 이라 끝값으로는 못 가른다.)
+    m = _안돌았다.search(로그 or "")
+    if m:
+        f = _모르는시스템함수.search(로그 or "")
+        더 = ""
+        if f:
+            더 = (f" -- `{f.group(1)}` 를 iverilog 가 모른다. SVA/형식 전용 함수"
+                 f"(`$past` · `$rose` · `$stable`)는 `ifdef FORMAL` 안에 넣고 "
+                 "형식 검증(`prove_rtl`)으로 돌려라")
+        return 못잼, ("**시뮬레이션이 한 걸음도 안 갔다**" + 더 +
+                     ". 안 돈 것은 불합격이 아니다 -- 고칠 데는 설계가 아니라 여기다")
     불 = _불합격.search(로그 or "")
     합 = _합격.search(로그 or "")
     if 불:

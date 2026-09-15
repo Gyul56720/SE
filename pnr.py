@@ -26,6 +26,18 @@
 
 한 깃발로 빨간불이 초록이 된다. 여기서는 절대 안 붙인다.
 
+## `assert` 가 있으면 배치가 아예 안 된다 -- 실측 2026-09-15
+
+성질을 단 설계를 그대로 `synth_ice40` 에 넣으면 이렇게 끝난다.
+
+    ERROR: cell type '$assert' is unsupported
+           (instantiated as 'rst_n_SB_LUT4_I3_1_O_SB_DFF_D_Q_$assert_EN')
+
+**성질을 단 설계는 영영 타이밍을 못 잰다.** 그런데 그건 설계의 흠이 아니다 --
+현업에서도 어서션은 합성 대상이 아니다(`// synopsys translate_off`, `ifdef FORMAL`,
+합성 툴의 assertion 무시). 그래서 여기서는 P&R 전에 `chformal -remove` 로 걷어내고,
+**걷어냈다고 말한다.** 조용히 지우면 무엇을 배치한 것인지 알 수 없다.
+
 ## Fmax 줄은 **두 번** 나온다
 
     Info: Max frequency ... : 190.33 MHz     <- 배치 중 추정
@@ -59,6 +71,9 @@ _Fmax = re.compile(
 _칸 = re.compile(r"^Info:\s+(\w+):\s+(\d+)/\s*(\d+)\s+(\d+)%", re.M)
 _자리없음 = re.compile(r"Unable to find a placement location|Failed to place|out of", re.I)
 _오류 = re.compile(r"^ERROR:\s*(.+)$", re.M)
+# 합성 전 `stat` 에 찍힌 형식 셀. **소스 글자가 아니라 셀을 센다** -- `ifdef FORMAL`
+# 안에 있으면 읽히지도 않으므로 글자로 세면 없는 것을 있다고 말하게 된다.
+_형식셀 = re.compile(r"^\s+\$(assert|assume|cover|live|fair)\s+(\d+)\s*$", re.M)
 
 
 def 없는도구(*도구들) -> "list[str]":
@@ -88,6 +103,14 @@ def 클럭들(로그: str) -> "list[dict]":
         # 같은 클럭이 두 번 나온다(배치 중 추정 -> 배선 후 최종). 뒤엣것이 진짜다.
         마지막[이름] = {"클럭": 이름, "Fmax": float(f), "판": 판, "목표": float(목표)}
     return list(마지막.values())
+
+
+def 걷어낸형식셀(합성로그: str) -> "dict":
+    """P&R 전에 없앤 형식 셀. `{'$assert': 1}` 꼴. 없으면 빈 것."""
+    난것 = {}
+    for 종, 수 in _형식셀.findall(합성로그 or ""):
+        난것["$" + 종] = 난것.get("$" + 종, 0) + int(수)
+    return 난것
 
 
 def 쓰임(로그: str) -> "list[dict]":
@@ -146,8 +169,11 @@ def 맞춰보기(design: str, top: str = "", 목표MHz: float = 0.0, 칩: str = 
     이름 = top or 첫모듈(design) or "top"
     with open(os.path.join(판, "design.v"), "w", encoding="utf-8") as f:
         f.write(design)
+    # `proc; stat` 은 **무엇을 걷어냈는지 세기 위한 것**이고, `chformal -remove` 가
+    # 형식 셀을 없앤다. 없애지 않으면 nextpnr 가 `$assert` 에서 통째로 막힌다(머리말).
     끝값, 합성로그 = _돌리기(
-        ["yosys", "-p", f"read_verilog -sv design.v; synth_ice40 -top {이름} -json design.json"],
+        ["yosys", "-p", (f"read_verilog -sv design.v; proc; stat; chformal -remove; "
+                         f"synth_ice40 -top {이름} -json design.json")],
         판, 초 or 시한초)
     if 끝값 != 0 or not os.path.exists(os.path.join(판, "design.json")):
         return {"판정": 못잼, "Fmax": -1, "목표": 목표MHz, "클럭": [], "쓰임": [],
@@ -160,8 +186,15 @@ def 맞춰보기(design: str, top: str = "", 목표MHz: float = 0.0, 칩: str = 
          "--freq", str(목표MHz), "--pcf-allow-unconstrained"], 판, 초 or 시한초)
     판정, 왜, 클럭 = 판정하기(로그, 목표MHz)
     최저 = min((c["Fmax"] for c in 클럭), default=-1)
+    걷어냄 = 걷어낸형식셀(합성로그)
+    if 걷어냄:
+        # **조용히 지우지 않는다.** 배치된 것이 소스 그대로가 아니면 그렇다고 말한다.
+        왜 += ("  (P&R 전에 형식 셀을 걷어냈다: "
+              + " · ".join(f"{k} {v}" for k, v in sorted(걷어냄.items()))
+              + " -- 어서션은 합성 대상이 아니다. Fmax 는 걷어낸 회로의 것이다)")
     return {"판정": 판정, "Fmax": 최저, "목표": 목표MHz, "클럭": 클럭,
-            "쓰임": 쓰임(로그), "칩": 칩이름, "로그": 로그[-6000:], "왜": 왜}
+            "쓰임": 쓰임(로그), "칩": 칩이름, "걷어낸형식셀": 걷어냄,
+            "로그": 로그[-6000:], "왜": 왜}
 
 
 def 말로(r: dict) -> str:

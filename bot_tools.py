@@ -758,6 +758,51 @@ def place_rtl(design: str, target_mhz: float, top: str = "", chip: str = "hx8k",
 
 
 @tool
+def ip_signoff(design: str, testbench: str, top: str = "tb",
+               min_coverage: float = 80.0, target_mhz: float = 0.0,
+               chip: str = "hx8k", deliverables: str = "",
+               seconds: int = 300) -> str:
+    """**Run the IP sign-off gates an IP/design house actually passes before delivery.**
+
+    "The RTL runs" is not a deliverable. Handing over commercial IP means handing over
+    RTL + a self-checking bench + a coverage report + area + timing + an SDC + a
+    register map + a TRM + a version. This runs the gates in order and refuses to call
+    the result a pass unless **every** gate passed:
+
+        LINT      verilator -Wall            no warnings
+        SIM       iverilog + self-checking   a PASS marker must be printed
+        COVERAGE  verilator, DUT only        must clear `min_coverage`
+        FORMAL    yosys sat, unbounded       properties must exist AND be proven
+        SYNTH     yosys                      cell count
+        TIMING    nextpnr vs `target_mhz`    must meet the target
+        DOCS      deliverable list           says what is missing
+
+    One broken gate makes the whole sign-off FAIL; one unmeasured gate makes it 못잼.
+    An unmeasured gate is never counted as a pass -- that is the whole point of the
+    report. `deliverables` is a comma-separated list of what you actually have, out of
+    `rtl, testbench, sdc, register_map, trm, version`.
+
+    Formal cells are stripped (`chformal -remove`) before place & route and the reply
+    says so -- measured 2026-09-15, a design carrying one `assert` dies in nextpnr with
+    `cell type '$assert' is unsupported`, so a design with properties could otherwise
+    never reach the TIMING gate at all. Put SVA-only functions (`$past`, `$rose`) inside
+    `ifdef FORMAL`: iverilog cannot run them and the simulation never starts.
+
+    DFT/ATPG, MBIST, CDC/RDC, IR drop, DRC/LVS and multi-corner are **not measured
+    here** (they need commercial tools and a PDK). The reply lists them rather than
+    letting their silence read as a pass. Identifiers must be ASCII.
+    """
+    if agent_context.is_blocked():
+        return "실패: 게스트는 ip_signoff 을 사용할 수 없습니다."
+    import ipflow
+    있는것 = [x.strip() for x in (deliverables or "").replace("\n", ",").split(",")
+            if x.strip()]
+    r = ipflow.관문들(design, testbench, top, min_coverage, target_mhz, chip,
+                    있는것, seconds)
+    return ipflow.말로(r)
+
+
+@tool
 def run_spice(netlist: str, checks: str = "", seconds: int = 90) -> str:
     """**Actually SIMULATE an analog circuit** with ngspice (DC / AC / transient).
 
