@@ -35,6 +35,15 @@ fi
 want=""
 [ "${1:-}" = "-k" ] && want="${2:-}"
 
+# **검사가 추적되는 파일을 건드리면 그것도 실패다** (실측 2026-09-15).
+# `eval/wire.py` 의 배선 점검이 `codify/run.py` 를 진짜로 돌리는데, 그때마다 추적되는
+# `codify/ledger.jsonl` 에 줄이 하나씩 쌓였다. 사람은 그것을 못 보고 `git add -A` 로
+# 커밋에 쓸어 담았고, 그 판이 다른 갈래와 충돌했다. 검사는 **판정을 남기는 것이 아니라
+# 재는 것**이므로, 끝났을 때 나무가 처음과 같아야 한다.
+#
+# 한글 변수명을 안 쓴다 -- bash 는 식별자로 [A-Za-z_][A-Za-z0-9_]* 만 받는다(CLAUDE.md).
+before_tree="$(git status --porcelain -uno 2>/dev/null | sort || true)"
+
 fail=0
 ran=0
 for f in tests/test_*.py; do
@@ -67,8 +76,16 @@ for f in tests/test_*.py; do
 done
 
 echo
+after_tree="$(git status --porcelain -uno 2>/dev/null | sort || true)"
+if [ "$before_tree" != "$after_tree" ]; then
+  echo "**검사가 추적되는 파일을 건드렸다** -- 잰 것이 아니라 남긴 것이다:"
+  printf '%s\n' "$after_tree" | grep -vxF "$(printf '%s' "$before_tree")" 2>/dev/null |
+    sed 's/^/    /' || printf '%s\n' "$after_tree" | sed 's/^/    /'
+  echo "  (검사는 임시 저장소에 써야 한다. 커밋 전에 \`git checkout --\` 로 되돌려라)"
+  fail=$((fail + 1))
+fi
 if [ "$fail" -gt 0 ]; then
   echo "테스트 $ran개 중 $fail개 실패"
   exit 1
 fi
-echo "테스트 $ran개 전부 통과"
+echo "테스트 $ran개 전부 통과 · 나무도 안 건드렸다"
