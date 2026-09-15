@@ -146,6 +146,34 @@ ok('git status --porcelain -uno' in _셸,
    "**추적되는 것만 본다**(-uno) -- 새 임시 파일까지 실패로 세면 늘 우는 경보가 된다")
 _끝 = _셸.split("after_tree=", 1)[-1]
 ok('fail=$((fail + 1))' in _끝, "다르면 실패 수를 올린다 -- 말만 하고 지나가지 않는다")
+
+# **글자만 보면 안 된다.** 바로 위 세 줄은 `tests.sh` 의 원문을 본 것이고, 원문이
+# 맞아도 안 도는 수가 있다(이 저장소가 seek.sh 에서 치른 값이다). 그래서 **더럽히는
+# 검사를 하나 지어 실제로 돌려** 빨개지는지 본다. 더럽히는 자리는 `.gitignore` 가
+# 아닌 추적되는 파일이어야 한다.
+_찌꺼기 = 뿌리 / "tests" / "test_zz일부러더럽힌다.py"
+_더럽힐것 = 뿌리 / "codify" / "ledger.jsonl"
+_원본 = _더럽힐것.read_text(encoding="utf-8")
+_찌꺼기.write_text("\n".join([
+    "from pathlib import Path",
+    "p = Path(__file__).resolve().parent.parent / 'codify' / 'ledger.jsonl'",
+    "with open(p, 'a', encoding='utf-8') as f:",
+    "    f.write('일부러 더럽힌 줄\\n')",
+    "print('일부러 더럽혔다 -- tests.sh 가 이것을 잡아야 한다')",
+    "",
+]), encoding="utf-8")
+try:
+    _r = subprocess.run(["bash", "scripts/tests.sh", "-k", "zz일부러더럽힌다"],
+                        cwd=str(뿌리), capture_output=True, text=True, timeout=300)
+    _글 = _r.stdout + _r.stderr
+    ok(_r.returncode != 0,
+       f"**더럽힌 판이 빨강으로 끝난다** (끝값 {_r.returncode}) -- 초록이면 아무도 못 본다")
+    ok("추적되는 파일을 건드렸다" in _글, f"무엇이 잘못인지 말한다 -- {_글.strip()[-120:]!r}")
+    ok("codify/ledger.jsonl" in _글, "**어느 파일인지 짚는다** -- 안 짚으면 찾느라 또 헤맨다")
+finally:
+    _찌꺼기.unlink(missing_ok=True)
+    _더럽힐것.write_text(_원본, encoding="utf-8")
+ok(_더럽힐것.read_text(encoding="utf-8") == _원본, "검사가 제 뒤를 치운다")
 ok("한글" in _셸 or all(ord(c) < 128 for c in
                       "".join(l.split("=")[0] for l in _셸.splitlines()
                               if "=" in l and not l.strip().startswith("#"))),
