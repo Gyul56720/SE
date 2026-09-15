@@ -846,7 +846,8 @@ def monte_carlo(netlist: str, spread: str, runs: int = 30, checks: str = "",
 
 
 @tool
-def concept(name: str = "", level: str = "", domain: str = "") -> str:
+def concept(name: str = "", level: str = "", domain: str = "",
+            track: str = "") -> str:
     """**Look up an IC design concept** — the defining equation, what it governs, and the
     example you can actually run for it.
 
@@ -859,7 +860,12 @@ def concept(name: str = "", level: str = "", domain: str = "") -> str:
     multipliers, SRAM, interconnect and STA.
 
     Call with no arguments to see the index and how much of it is runnable. `level` is
-    `학부`/`석사`/`박사`, `domain` is `analog`/`digital`/`device`/`mixed`.
+    `학부`/`석사`/`박사`, `domain` is `analog`/`digital`/`device`/`mixed`, and `track`
+    follows the IP-design-house career map: `공통기초` · `프론트엔드`(RTL+검증) ·
+    `백엔드`(물리 구현 — **a third domain, neither digital logic design nor analog:
+    it takes SPICE-characterized standard cells as black boxes**) · `아날로그` ·
+    `IP특화`(AMBA/PCIe, VIP, soft vs hard IP, TRM) · `포트폴리오` · `생태계`
+    (IDM/fabless/foundry/OSAT/chipless, PDK & tape-out, who captures the value).
 
     Every entry that names an example is **verified to run** — `tests/test_concepts.py`
     executes each linked netlist and draws each linked schematic, so a dead link is a red
@@ -875,10 +881,11 @@ def concept(name: str = "", level: str = "", domain: str = "") -> str:
         줄 = [f"**{d['모두']} concepts** — {d['돌려볼수있음']} with a runnable example, "
              f"{d['설명만']} explanation-only.",
              "by level: " + " · ".join(f"{k} {v}" for k, v in d["층별"].items()),
-             "by domain: " + " · ".join(f"{k} {v}" for k, v in d["갈래별"].items()), ""]
-        for c in concepts.목록(level, domain):
+             "by domain: " + " · ".join(f"{k} {v}" for k, v in d["갈래별"].items()),
+             "by track: " + " · ".join(f"{k} {v}" for k, v in d["트랙별"].items()), ""]
+        for c in concepts.목록(level, domain, track):
             표 = "▶" if (c["넷리스트"] or c["회로도"]) else "·"
-            줄.append(f"{표} {c['이름']} ({c['한글']}) — {c['층']}/{c['갈래']}")
+            줄.append(f"{표} {c['이름']} ({c['한글']}) — {c['층']}/{c['트랙']}")
         return "\n".join(줄)
     난것 = concepts.찾기(name)
     if not 난것:
