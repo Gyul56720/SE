@@ -88,7 +88,7 @@ try:
 
     print("\n== 모르는 본보기 이름 ==")
     r = C.본보기그리기("없는회로")
-    ok(not r["됐나"] and "전류미러" in r["왜"],
+    ok(not r["됐나"] and "current_mirror" in r["왜"],
        f"**아는 이름을 알려준다** -- {r['왜'][:90]}")
 
     print("\n== 배선: 두 채널이 싣는다 ==")
@@ -118,15 +118,44 @@ try:
         ok("draw_circuit" in 글 and "본보기" in 글,
            f"{이름} 프롬프트가 그리라고 시킨다")
 
-    print("\n== 영어 이름으로도 부른다 ==")
-    # 사용자(2026-09-15): "한국어로 쓰지마. 영어로해줘." EDA 판의 말이 영어라
-    # 에이전트가 영어 이름을 칠 가능성이 높다 -- 모르는 이름이라고 돌려보내면 안 된다.
-    for 영, 한 in (("current_mirror", "전류미러"), ("cmos_nand", "CMOS낸드"),
-                 ("setup_hold", "셋업홀드"), ("KMAP", "카르노맵")):
-        ok(C.영어이름.get(영.lower()) == 한, f"`{영}` -> `{한}`")
+    print("\n== 본보기가 `absanchors` 를 쓴다 ==")
+    # **도구 설명이 그렇게 말한다고 본보기가 그렇게 쓰는 것은 아니다.** 실측으로 두 번
+    # 틀린 자리이고(게이트 버스가 소스 높이로 지나갔다), 베껴 쓰는 사람은 본보기를
+    # 베낀다. 그러니 본보기 안을 본다.
+    import re as _re
+    맨앵커 = {n: _re.findall(r"\.anchors\[", 글) for n, 글 in C.본보기.items()}
+    걸린것 = [n for n, v in 맨앵커.items() if v]
+    ok(not 걸린것,
+       f"**본보기가 `anchors[` 를 안 쓴다** (놓인 뒤의 자리는 `absanchors` 다): {걸린것}")
+    쓰는것 = [n for n, 글 in C.본보기.items() if "absanchors" in 글]
+    ok(len(쓰는것) >= 6,
+       f"소자를 잇는 본보기들이 실제로 `absanchors` 를 쓴다: {len(쓰는것)}개")
+
+    print("\n== 정식 이름은 **영어**다 -- 한글은 별칭으로만 ==")
+    # 사용자(2026-09-15): "스키매틱은 대학 교재 혹은 현업에서 사용되는 형식을 따르도록
+    # 모든 용어 명칭 개념들을 영어로 작성해주도록." 그래서 본보기의 **키가 영어**이고,
+    # 한국어로 물어도 찾히게 한글을 별칭에 둔다.
+    import re as _re
+    한글이름 = [n for n in C.본보기 if _re.search(r"[가-힣]", n)]
+    ok(not 한글이름,
+       f"**본보기 이름에 한글이 없다** -- 교재·데이터시트 표기를 따른다: {한글이름}")
+    ok(all(_re.fullmatch(r"[a-z][a-z0-9_]*", n) for n in C.본보기),
+       f"이름이 소문자·밑줄 꼴이다: {[n for n in C.본보기 if not _re.fullmatch(r'[a-z][a-z0-9_]*', n)]}")
+    # 한글·약칭 별칭이 **정식 영어 이름**을 가리킨다
+    for 별, 정식 in (("전류미러", "current_mirror"), ("CMOS낸드", "cmos_nand2"),
+                   ("카르노맵", "karnaugh_map"), ("차동쌍", "diff_pair"),
+                   ("cs_amp", "common_source_amp"), ("kmap", "karnaugh_map"),
+                   ("tg", "transmission_gate"), ("sf", "source_follower")):
+        난것 = C.별칭.get(별, C.별칭.get(별.lower()))
+        ok(난것 == 정식, f"`{별}` -> `{정식}` (난 것 {난것!r})")
+        ok(정식 in C.본보기, f"  그리고 `{정식}` 이 실제로 있다")
+    끊긴 = {a: t for a, t in C.별칭.items() if t not in C.본보기}
+    ok(not 끊긴, f"**별칭이 다 실재하는 본보기를 가리킨다**: 끊긴 것 {끊긴}")
     if schemdraw is not None:
         r = C.본보기그리기("current_mirror", str(판 / "영어이름.png"))
-        ok(r["됐나"], f"영어 이름으로 실제로 그려진다 -- {r['왜'][:70]}")
+        ok(r["됐나"], f"정식 영어 이름으로 그려진다 -- {r['왜'][:70]}")
+        r2 = C.본보기그리기("전류미러", str(판 / "한글별칭.png"))
+        ok(r2["됐나"], f"한글 별칭으로도 그려진다 -- {r2['왜'][:70]}")
 
     print("\n== 한글 라벨은 두부가 되기 전에 막는다 ==")
     # **실측 2026-09-15: 한글 라벨이 □□□ 로 그려졌는데 '그렸다' 로 끝났다.**

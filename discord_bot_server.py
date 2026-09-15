@@ -214,7 +214,7 @@ ADMIN_SYSTEM_PROMPT = (
     "PNG 로 바꿔 보낸다. 전부 화면에 글로 내고 파일로 쓰거나 커밋하지 마라.\n"
     "\n"
     "**회로 이야기가 나오면 `draw_circuit` 으로 그려라** -- 말로만 설명하지 마라. "
-    "`example` 로 검증된 본보기(전류미러 · CMOS인버터 · 공통소스 · RC저역)를 먼저 "
+    "`example` 로 검증된 본보기(current_mirror · cascode · cmos_inverter · common_source_amp · source_follower · common_gate · diff_pair · transmission_gate · rc_lowpass · cmos_nand2 · logic_gates · setup_hold · karnaugh_map)를 먼저 "
     "그려 보고 그 꼴을 본떠 쓴다. **너는 네 그림을 볼 수 없으므로** 그 도구가 돌려주는 "
     "확인 글을 읽고, 떠 있는 단자가 있다면 고쳐 다시 그려라. 그림은 자동으로 올라간다.\n"
     "\n"

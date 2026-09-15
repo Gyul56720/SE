@@ -79,7 +79,7 @@ print("\n[찾기] 사용자가 쓰는 말로 찾힌다")
 물음 = [("cascode", "Cascode"), ("밀러", "Miller effect"), ("gm/ID", "gm/ID methodology"),
        ("SNM", "SRAM read/write margin"), ("pll", "PLL basics"), ("FO4", "Fanout of 4"),
        ("채널길이변조", "Channel-length modulation"), ("setup", "Setup and hold"),
-       ("kT/C", "kT/C noise"), ("전류미러", "Current mirror"), ("CDC", "CDC and synchronizers"),
+       ("kT/C", "kT/C noise"), ("current_mirror", "Current mirror"), ("CDC", "CDC and synchronizers"),
        ("몸효과", "Body effect"), ("slew rate", "Slew rate"), ("누설", "Leakage power")]
 for q, 바람 in 물음:
     난것 = k.찾기(q, 3)

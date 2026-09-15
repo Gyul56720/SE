@@ -124,7 +124,7 @@ def 그리기(코드: str, 경로: str = None) -> dict:
 # **여기 있는 것은 그려 보고 눈으로 확인한 것이다.** 베껴 쓰면 맞는 그림이 나온다.
 # 처음 두 판은 `anchors` 를 써서 게이트 버스가 어긋났다 -- `absanchors` 로 고쳤다.
 본보기 = {
-    "전류미러": '''
+    "current_mirror": '''
         M1 = d.add(elm.AnalogNFet().anchor('source').at((0, 0)).label('$M_1$', loc='left'))
         M2 = d.add(elm.AnalogNFet().anchor('source').at((5, 0)).label('$M_2$', loc='right'))
         for M, 이름 in ((M1, '$I_{REF}$'), (M2, '$I_{OUT}$')):
@@ -140,7 +140,7 @@ def 그리기(코드: str, 경로: str = None) -> dict:
         d += elm.Dot().at(d1)
         d += elm.Dot().at(g2)
     ''',
-    "CMOS인버터": '''
+    "cmos_inverter": '''
         MP = d.add(elm.AnalogPFet().anchor('drain').at((0, 0)).label('$M_P$', loc='left'))
         MN = d.add(elm.AnalogNFet().anchor('drain').at((0, -2.2)).label('$M_N$', loc='left'))
         d += elm.Line().at(MP.absanchors['source']).up().length(0.7)
@@ -154,7 +154,7 @@ def 그리기(코드: str, 경로: str = None) -> dict:
         d += elm.Dot().at(마디)
         d += elm.Line().at(마디).right().length(1.6).label('$V_{OUT}$', loc='right')
     ''',
-    "공통소스": '''
+    "common_source_amp": '''
         M1 = d.add(elm.AnalogNFet().anchor('source').at((0, 0)).label('$M_1$', loc='right'))
         d += elm.Ground().at(M1.absanchors['source'])
         d += elm.Line().at(M1.absanchors['drain']).up().length(0.5)
@@ -169,7 +169,7 @@ def 그리기(코드: str, 경로: str = None) -> dict:
     ''',
     # **첫 판은 축전기가 떠 있었다** -- `d.here` 가 출력선 끝이라 마디에서 떨어졌다.
     # 마디를 변수로 잡아 거기서 내린다. 그려 보고 눈으로 확인한 판이 이것이다.
-    "RC저역": '''
+    "rc_lowpass": '''
         d += elm.SourceV().up().label('$v_{in}$')
         위 = d.here
         d += elm.Resistor().right().label('$R$')
@@ -184,7 +184,7 @@ def 그리기(코드: str, 경로: str = None) -> dict:
     # ---- 디지털 ----------------------------------------------------------------
     # 사용자(2026-09-15): "디지털 회로 설계로 아날로그 회로 설계처럼 스키마틱 출력이랑
     # 개념, 변수 등의 석사 교과서적 내용들을 물어 볼 수 있으면 좋겠어."
-    "CMOS낸드": '''
+    "cmos_nand2": '''
         P1 = d.add(elm.AnalogPFet().anchor('drain').at((0, 0)).label('$M_{P1}$', loc='left'))
         P2 = d.add(elm.AnalogPFet().anchor('drain').at((2.4, 0)).label('$M_{P2}$', loc='right'))
         for P in (P1, P2):
@@ -207,14 +207,14 @@ def 그리기(코드: str, 경로: str = None) -> dict:
         d += elm.Line().left().to(N2.absanchors['gate'])
         d += elm.Line().at((5.6, P2.absanchors['gate'][1])).up().length(0.7).label('$B$', loc='right')
     ''',
-    "논리게이트": '''
+    "logic_gates": '''
         d += logic.Nand().right().label('NAND', loc='top').at((0, 3))
         d += logic.Nor().right().label('NOR', loc='top').at((0, 1.2))
         d += logic.Xor().right().label('XOR', loc='top').at((0, -0.6))
         d += logic.Not().right().label('NOT', loc='top').at((0, -2.2))
         d += logic.Tgate().right().label('T-GATE', loc='top').at((0, -3.8))
     ''',
-    "셋업홀드": '''
+    "setup_hold": '''
         d += logic.TimingDiagram(
             {'signal': [
                 {'name': 'CLK', 'wave': 'P....'},
@@ -222,7 +222,7 @@ def 그리기(코드: str, 경로: str = None) -> dict:
                 {'name': 'Q',   'wave': 'x.3..', 'data': ['Q']}]},
             ygap=.4, grid=False)
     ''',
-    "카르노맵": '''
+    "karnaugh_map": '''
         d += logic.Kmap(names='ABCD',
                         truthtable=[('1100', '1'), ('1101', '1'),
                                     ('1111', '1'), ('1110', '1')])
@@ -233,26 +233,129 @@ def 그리기(코드: str, 경로: str = None) -> dict:
 # **영어 이름으로도 부를 수 있게 한다.** 사용자(2026-09-15): "한국어로 쓰지마.
 # 영어로해줘." EDA 판의 말이 영어라 에이전트가 영어 이름을 칠 가능성이 높다 --
 # 모르는 이름이라고 돌려보내는 것보다 받아 주는 편이 낫다.
-영어이름 = {
-    "current_mirror": "전류미러", "cmos_inverter": "CMOS인버터",
-    "cs_amp": "공통소스", "common_source": "공통소스",
-    "rc_lowpass": "RC저역", "rc_filter": "RC저역",
-    "cmos_nand": "CMOS낸드", "nand": "CMOS낸드",
-    "logic_gates": "논리게이트", "gates": "논리게이트",
-    "setup_hold": "셋업홀드", "timing": "셋업홀드",
-    "kmap": "카르노맵", "karnaugh": "카르노맵",
+# --- 2차. **전부 그려서 눈으로 확인하고 넣었다**(2026-09-15). 교재 표기를 따른다:
+# 소자 라벨은 `elm.Label().at(center)` 로 몸통에 얹고, 게이트 선은 앵커가 있는
+# **오른쪽**으로 뺀다. 처음엔 `loc='left'` 라벨이 소자 위에 겹쳐 그림이 뭉개졌다.
+본보기["cascode"] = """
+    M1 = d.add(elm.AnalogNFet().anchor('source').at((0, 0)))
+    d += elm.Label().at(M1.absanchors['center']).label('$M_1$').color('#333')
+    d += elm.Ground().at(M1.absanchors['source'])
+    d += elm.Line().at(M1.absanchors['gate']).right().length(1.2).label('$V_{IN}$', loc='right')
+    M2 = d.add(elm.AnalogNFet().anchor('source').at(M1.absanchors['drain']))
+    d += elm.Label().at(M2.absanchors['center']).label('$M_2$').color('#333')
+    d += elm.Line().at(M2.absanchors['gate']).right().length(1.2).label('$V_B$', loc='right')
+    o = M2.absanchors['drain']
+    d += elm.Dot().at(o)
+    d += elm.Line().at(o).left().length(1.6).label('$V_{OUT}$', loc='left')
+    d += elm.Line().at(o).up().length(0.6)
+    d += elm.SourceI().up().label('$I_{BIAS}$')
+    d += elm.Vdd().label('$V_{DD}$')
+"""
+
+본보기["source_follower"] = """
+    M1 = d.add(elm.AnalogNFet().anchor('drain').at((0, 0)))
+    d += elm.Label().at(M1.absanchors['center']).label('$M_1$').color('#333')
+    d += elm.Line().at(M1.absanchors['drain']).up().length(0.7)
+    d += elm.Vdd().label('$V_{DD}$')
+    d += elm.Line().at(M1.absanchors['gate']).right().length(1.3).label('$V_{IN}$', loc='right')
+    s = M1.absanchors['source']
+    d += elm.Dot().at(s)
+    d += elm.Line().at(s).left().length(1.7).label('$V_{OUT}$', loc='left')
+    d += elm.Line().at(s).down().length(0.6)
+    d += elm.SourceI().down().label('$I_{BIAS}$')
+    d += elm.Ground()
+"""
+
+본보기["common_gate"] = """
+    M1 = d.add(elm.AnalogNFet().anchor('source').at((0, 0)))
+    d += elm.Label().at(M1.absanchors['center']).label('$M_1$').color('#333')
+    d += elm.Line().at(M1.absanchors['gate']).right().length(1.3).label('$V_B$', loc='right')
+    s = M1.absanchors['source']
+    d += elm.Dot().at(s)
+    d += elm.Line().at(s).down().length(0.7)
+    d += elm.SourceI().down().label('$I_{IN}$')
+    d += elm.Ground()
+    dr = M1.absanchors['drain']
+    d += elm.Dot().at(dr)
+    d += elm.Line().at(dr).left().length(1.7).label('$V_{OUT}$', loc='left')
+    d += elm.Line().at(dr).up().length(0.5)
+    d += elm.Resistor().up().label('$R_D$')
+    d += elm.Vdd().label('$V_{DD}$')
+"""
+
+본보기["diff_pair"] = """
+    M1 = d.add(elm.AnalogNFet().anchor('source').at((0, 0)))
+    d += elm.Label().at(M1.absanchors['center']).label('$M_1$').color('#333')
+    M2 = d.add(elm.AnalogNFet().anchor('source').at((4.5, 0)).reverse())
+    d += elm.Label().at(M2.absanchors['center']).label('$M_2$').color('#333')
+    t1, t2 = M1.absanchors['source'], M2.absanchors['source']
+    d += elm.Line().at(t1).to(t2)
+    tail = ((t1.x + t2.x) / 2, t1.y)
+    d += elm.Dot().at(tail)
+    d += elm.Line().at(tail).down().length(0.6)
+    d += elm.SourceI().down().label('$I_{SS}$')
+    d += elm.Ground()
+    d += elm.Line().at(M1.absanchors['gate']).right().length(0.9).label('$V_{IN+}$', loc='top')
+    d += elm.Line().at(M2.absanchors['gate']).left().length(0.9).label('$V_{IN-}$', loc='top')
+    for M, nm, side in ((M1, '$V_{O-}$', 'left'), (M2, '$V_{O+}$', 'right')):
+        dr = M.absanchors['drain']
+        d += elm.Dot().at(dr)
+        d += elm.Line().at(dr).up().length(0.4)
+        d += elm.Resistor().up().label('$R_D$')
+        d += elm.Vdd().label('$V_{DD}$')
+        d += elm.Line().at(dr).theta(180 if side == 'left' else 0).length(1.3).label(nm, loc=side)
+"""
+
+본보기["transmission_gate"] = """
+    MN = d.add(elm.AnalogNFet().anchor('source').at((0, 0)))
+    d += elm.Label().at((-0.55, 0.83)).label('$M_N$').color('#333')
+    MP = d.add(elm.AnalogPFet().anchor('source').at((4.2, 1.6667)))
+    d += elm.Label().at((3.65, 0.83)).label('$M_P$').color('#333')
+    low = [MN.absanchors['source'], (0, -1.0), (4.2, -1.0), MP.absanchors['drain']]
+    high = [MN.absanchors['drain'], (0, 2.7), (4.2, 2.7), MP.absanchors['source']]
+    for path in (low, high):
+        for a, b in zip(path, path[1:]):
+            d += elm.Line().at(a).to(b)
+    d += elm.Dot().at((2.1, -1.0))
+    d += elm.Line().at((2.1, -1.0)).down().length(0.8).label('$IN$', loc='bottom')
+    d += elm.Dot().at((2.1, 2.7))
+    d += elm.Line().at((2.1, 2.7)).up().length(0.8).label('$OUT$', loc='top')
+    d += elm.Line().at(MN.absanchors['gate']).right().length(0.8).label('$CLK$', loc='right')
+    d += elm.Line().at(MP.absanchors['gate']).right().length(0.8).label('$\\\\overline{CLK}$', loc='right')
+"""
+
+
+별칭 = {
+    # **표준 이름은 영어다**(사용자 2026-09-15: "스키매틱은 대학 교재 혹은 현업에서
+    # 사용되는 형식을 따르도록 모든 용어 명칭 개념들을 영어로"). 한국어로 물어도
+    # 찾히게 한글을 별칭으로 남긴다.
+    "전류미러": "current_mirror", "cm": "current_mirror", "mirror": "current_mirror",
+    "CMOS인버터": "cmos_inverter", "inverter": "cmos_inverter",
+    "공통소스": "common_source_amp", "cs_amp": "common_source_amp",
+    "common_source": "common_source_amp", "cs": "common_source_amp",
+    "RC저역": "rc_lowpass", "rc_filter": "rc_lowpass", "rc": "rc_lowpass",
+    "CMOS낸드": "cmos_nand2", "nand": "cmos_nand2", "cmos_nand": "cmos_nand2",
+    "논리게이트": "logic_gates", "gates": "logic_gates",
+    "셋업홀드": "setup_hold", "timing": "setup_hold",
+    "카르노맵": "karnaugh_map", "kmap": "karnaugh_map", "karnaugh": "karnaugh_map",
+    "캐스코드": "cascode", "소스팔로워": "source_follower", "sf": "source_follower",
+    "공통게이트": "common_gate", "cg": "common_gate",
+    "차동쌍": "diff_pair", "differential_pair": "diff_pair",
+    "전송게이트": "transmission_gate", "tg": "transmission_gate",
 }
+영어이름 = 별칭          # 옛 이름. 부르는 데가 있어 남긴다
 
 
 def 본보기그리기(이름: str, 경로: str = None) -> dict:
     """본보기 하나를 그린다. 이름을 모르면 아는 이름을 알려준다."""
     이름 = (이름 or "").strip()
-    이름 = 영어이름.get(이름.lower(), 이름)
+    이름 = 별칭.get(이름, 별칭.get(이름.lower(), 이름))
     코드 = 본보기.get(이름)
     if 코드 is None:
-        return 됐나틀(False, None, "모르는 본보기다 -- 아는 것: "
-                    + " · ".join(f"{e}({k})" for e, k in 영어이름.items()
-                                if e in ("current_mirror", "cmos_inverter", "cs_amp",
-                                         "rc_lowpass", "cmos_nand", "logic_gates",
-                                         "setup_hold", "kmap")))
+        # **정식 이름을 알려준다.** 예전에는 별칭 목록을 보여 줬는데, 그러면 정작
+        # 본보기의 진짜 이름은 어디에도 안 나온다. 정식 이름은 영어다(사용자 2026-09-15).
+        return 됐나틀(False, None,
+                    "모르는 본보기다 -- 아는 것(정식 이름은 영어다): "
+                    + " · ".join(f"`{k}`" for k in 본보기)
+                    + ". 한국어 별칭도 받는다(전류미러 · 차동쌍 · 카르노맵 ...)")
     return 그리기(코드, 경로)
