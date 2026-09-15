@@ -69,6 +69,31 @@ for 층 in (k.학부, k.석사, k.박사):
 for g in (k.A, k.D):
     ok(셈["갈래별"][g] >= 25, f"{g} 개념이 {셈['갈래별'][g]}개")
 
+print("\n[트랙] IP 디자인하우스 진로 갈래")
+# 사용자(2026-09-15)가 준 로드맵의 갈래다. **백엔드는 디지털도 아날로그도 아닌
+# 제3의 영역**이라는 것이 이 목록의 핵심 구분이고, 그것이 실제로 적혀 있는지 본다.
+ok(all(c["트랙"] in k.트랙들 for c in k.개념),
+   f"모든 항목에 트랙이 있다: {[c['이름'] for c in k.개념 if c['트랙'] not in k.트랙들][:3]}")
+for 트 in k.트랙들:
+    ok(len(k.목록(트랙=트)) >= 3, f"{트} 에 개념이 있다: {len(k.목록(트랙=트))}개")
+_백 = [c for c in k.개념 if c["이름"] == "Physical design is a third domain"]
+ok(_백, "**백엔드가 제3의 영역이라는 항목이 있다**")
+if _백:
+    ok("트랜지스터를 설계·시뮬레이션하지 않는다" in _백[0]["말"],
+       f"**그 말이 실제로 적혀 있다** (백엔드를 아날로그로 오해하지 않게): {_백[0]['말'][:50]}")
+    ok(_백[0]["트랙"] == k.백엔드, "트랙이 백엔드다")
+_셀 = [c for c in k.개념 if c["이름"] == "Standard cell library"]
+ok(_셀 and "블랙박스" in _셀[0]["말"],
+   "**셀은 블랙박스로 받는다고 적혀 있다** -- SPICE 로 캐릭터라이즈한 .lib 를 쓴다")
+for 이름 in ("IP and design house", "Company types", "Value capture",
+            "Verification IP", "IP deliverables", "Technical documentation (TRM)",
+            "AMBA AXI / AHB / APB", "Functional coverage", "UVM",
+            "Clock tree synthesis", "Timing closure", "DFT: scan and ATPG",
+            "Parasitic extraction", "MPW shuttle", "Open source IP cores"):
+    ok(any(c["이름"] == 이름 for c in k.개념), f"로드맵 개념이 있다: {이름}")
+ok(len(k.목록(트랙=k.생태계)) >= 10,
+   f"생태계(밸류체인)가 들어 있다: {len(k.목록(트랙=k.생태계))}개")
+
 print("\n[링크] 끊긴 데가 없다")
 끊긴이웃 = [(c["이름"], n) for c in k.개념 for n in c["이웃"] if n not in 이름들]
 ok(not 끊긴이웃, f"**`이웃` 이 다 실제 개념을 가리킨다**: {끊긴이웃[:4]}")

@@ -32,12 +32,20 @@ from __future__ import annotations
 import re
 
 학부, 석사, 박사 = "학부", "석사", "박사"
+
+# 트랙 -- 사용자(2026-09-15)가 준 IP 디자인하우스 입사 로드맵의 갈래다.
+# **백엔드는 디지털도 아날로그도 아닌 제3의 영역이다.** 트랜지스터를 직접 설계·시뮬레이션
+# 하지 않고, 파운드리·셀 라이브러리 팀이 SPICE 로 캐릭터라이즈해 `.lib` 로 넘긴 스탠다드
+# 셀을 **블랙박스로 받아** 배치·배선·타이밍을 다룬다. 배선의 RC 기생만 직접 추출한다.
+공통, 프론트, 백엔드, 아날로그, IP특화, 포트폴리오, 생태계 = (
+    "공통기초", "프론트엔드", "백엔드", "아날로그", "IP특화", "포트폴리오", "생태계")
+트랙들 = (공통, 프론트, 백엔드, 아날로그, IP특화, 포트폴리오, 생태계)
 A, D, DEV, M = "analog", "digital", "device", "mixed"
 
 
-def _(이름, 한글, 층, 갈래, 식, 말, 넷="", 그림="", 이웃=()):
+def _(이름, 한글, 층, 갈래, 식, 말, 넷="", 그림="", 이웃=(), 트랙=""):
     return {"이름": 이름, "한글": 한글, "층": 층, "갈래": 갈래, "식": 식, "말": 말,
-            "넷리스트": 넷, "회로도": 그림, "이웃": list(이웃)}
+            "넷리스트": 넷, "회로도": 그림, "이웃": list(이웃), "트랙": 트랙}
 
 
 개념: "list[dict]" = [
@@ -474,7 +482,272 @@ def _(이름, 한글, 층, 갈래, 식, 말, 넷="", 그림="", 이웃=()):
       r"f_0=\tfrac{1}{2\pi\sqrt{LC}},\quad Q=\tfrac{1}{R}\sqrt{\tfrac{L}{C}}",
       "선택도. LC 발진기와 매칭망의 밑동이고, Q 가 위상잡음을 정한다.",
       "rlc_resonance", 이웃=["VCO phase noise"]),
+    # ============================================================ 프론트엔드: 검증
+    _("SystemVerilog for design", "설계용 SystemVerilog", 학부, D,
+      r"\text{logic, always\_ff / always\_comb, packed vs unpacked, interface, package}",
+      "합성되는 것과 시뮬레이션 전용을 가르는 것이 실력이다. `always_ff` 는 의도를 도구에 말하는 문법이다.",
+      이웃=["Static CMOS logic", "Lint and coding standards"], 트랙=프론트),
+    _("SystemVerilog Assertions", "SVA 단언", 석사, D,
+      r"\text{assert property (@(posedge clk) req |-> \#\#[1:3] ack);}",
+      "성질을 설계 옆에 붙여 둔다. 시뮬에서도 형식검증에서도 같은 문장이 쓰인다.",
+      이웃=["Formal property verification", "Functional coverage"],
+      트랙=프론트),
+    _("Constrained-random verification", "제약 난수 검증", 석사, D,
+      r"\text{class}\ \to\ \text{rand + constraint}\ \to\ \text{solver}\ \to\ \text{coverage feedback}",
+      "직접 벡터로는 상태공간을 못 덮는다. 난수를 제약으로 몰아 넣고 커버리지로 되먹인다.",
+      이웃=["Functional coverage", "UVM"], 트랙=프론트),
+    _("Functional coverage", "기능 커버리지", 석사, D,
+      r"\text{covergroup / coverpoint / cross}\ \to\ \text{hit all intended scenarios}",
+      "코드 커버리지는 '돌았나', 기능 커버리지는 '의도한 상황을 봤나'. 둘 다 없으면 검증이 아니다.",
+      이웃=["Code coverage", "Constrained-random verification"], 트랙=프론트),
+    _("Code coverage", "코드 커버리지", 석사, D,
+      r"\text{line, branch, toggle, FSM, expression}",
+      "벤치가 설계의 얼마를 건드렸나. 통과한 벤치가 절반만 건드리는 일이 실제로 난다.",
+      이웃=["Functional coverage", "Regression"], 트랙=프론트),
+    _("UVM", "UVM 검증 방법론", 석사, D,
+      r"\text{sequence}\to\text{driver}\to\text{DUT}\to\text{monitor}\to\text{scoreboard}",
+      "검증 환경을 재사용 가능한 부품으로 쪼개는 표준. IP 와 함께 파는 VIP 가 이 꼴이다.",
+      이웃=["Verification IP", "Constrained-random verification"], 트랙=프론트),
+    _("Formal property verification", "형식 속성 검증", 석사, D,
+      r"\text{BMC: } \exists\ \text{trace} \le k,\quad \text{induction: } \forall k",
+      "솔버가 모든 입력을 뒤진다. 유계는 증명이 아니다 -- 귀납이 끝나야 증명이다.",
+      이웃=["SystemVerilog Assertions", "CDC and synchronizers"],
+      트랙=프론트),
+    _("Regression", "회귀 검증", 석사, D,
+      r"\text{nightly: } N\ \text{seeds}\times M\ \text{tests}\ \to\ \text{pass rate + coverage trend}",
+      "한 번 통과는 우연일 수 있다. 상용 IP 는 시드를 바꿔 매일 돌린 결과를 딜리버러블로 낸다.",
+      이웃=["Constrained-random verification", "Code coverage"], 트랙=프론트),
+    _("Lint and coding standards", "린트와 코딩 표준", 학부, D,
+      r"\text{width mismatch, inferred latch, blocking in seq, unused/undriven}",
+      "시뮬은 통과하고 합성에서 무는 것들. IP 딜리버러블에는 린트 클린 리포트가 들어간다.",
+      이웃=["SystemVerilog for design", "Static timing analysis"], 트랙=프론트),
+    _("Low-power design and UPF", "저전력 설계·UPF", 석사, D,
+      r"\text{power domain, isolation, level shifter, retention, state table}",
+      "전원이 여럿인 칩에서 무엇을 끄고 무엇을 지킬지 UPF 로 적는다. RTL 에는 안 보인다.",
+      이웃=["Power gating", "Clock gating"], 트랙=프론트),
+
+    # ============================================================ 백엔드: 물리 구현
+    _("Physical design is a third domain", "백엔드는 제3의 영역", 학부, D,
+      r"\text{RTL}\ \to\ \text{netlist of characterized cells}\ \to\ \text{GDSII}",
+      "백엔드는 트랜지스터를 설계·시뮬레이션하지 않는다. 캐릭터라이즈된 셀을 블랙박스로 받아 배치·배선·타이밍을 다룬다 -- 디지털 논리도 아날로그도 아니다.",
+      이웃=["Standard cell library", "Place and route"], 트랙=백엔드),
+    _("Standard cell library", "스탠다드 셀 라이브러리", 석사, D,
+      r"\text{.lib: } t_{pd}=f(\text{input slew},\ C_{load})\ \text{lookup table (NLDM)}",
+      "셀의 지연·전력은 파운드리가 SPICE 로 미리 재서 표로 넘긴다. 백엔드는 그것을 **블랙박스**로 받아 값만 쓰고, 왜 그 지연이 나는지 트랜지스터 식으로 유도하지 않는다.",
+      이웃=["Physical design is a third domain", "Static timing analysis"], 트랙=백엔드),
+    _("Logic synthesis", "논리 합성", 석사, D,
+      r"\text{RTL}\to\text{generic}\to\text{technology mapping}\to\text{gate netlist + area/timing}",
+      "제약(SDC)과 라이브러리를 주면 게이트로 바꿔 준다. 제약 없는 합성은 뜻이 없다.",
+      이웃=["Standard cell library", "Timing constraints (SDC)"],
+      트랙=백엔드),
+    _("Timing constraints (SDC)", "타이밍 제약 SDC", 석사, D,
+      r"\text{create\_clock, set\_input\_delay, set\_false\_path, set\_multicycle\_path}",
+      "도구에게 무엇이 맞는지 알려 주는 유일한 통로. 제약이 틀리면 초록불이 거짓말을 한다.",
+      이웃=["Static timing analysis", "Logic synthesis"], 트랙=백엔드),
+    _("Floorplanning", "플로어플랜", 석사, D,
+      r"\text{utilization} = \tfrac{\text{cell area}}{\text{core area}},\quad \text{macro placement, pin assignment}",
+      "칩의 첫 결정이고 뒤를 다 좌우한다. 여기서 틀리면 배선에서 못 푼다.",
+      이웃=["Placement", "Power grid and IR drop"], 트랙=백엔드),
+    _("Placement", "배치", 석사, D,
+      r"\min \sum \text{HPWL} \ \text{s.t. legality, density, timing}",
+      "선 길이를 줄이는 문제이자 타이밍 문제다. 배선 지연의 대부분이 여기서 정해진다.",
+      이웃=["Floorplanning", "Routing"], 트랙=백엔드),
+    _("Clock tree synthesis", "클럭 트리 합성 CTS", 석사, D,
+      r"\text{skew} = \max_i t_i - \min_i t_i,\quad \text{insertion delay, H-tree / mesh}",
+      "클럭을 모든 플립플롭에 같은 때에 넣는 일. 칩 전력의 3분의 1이 여기 간다.",
+      이웃=["Clock skew and jitter", "Clock distribution"], 트랙=백엔드),
+    _("Routing", "배선", 석사, D,
+      r"\text{global}\to\text{track assign}\to\text{detail},\quad \text{DRC clean}",
+      "금속층에 실제 선을 긋는다. 여기서 생긴 RC 가 타이밍을 다시 흔든다.",
+      이웃=["Placement", "Parasitic extraction"], 트랙=백엔드),
+    _("Parasitic extraction", "기생 추출", 석사, D,
+      r"\text{SPEF: } R,\ C_{gnd},\ C_{coupling}\ \text{per net}",
+      "배선의 저항·용량을 뽑아 타이밍에 되먹인다. **백엔드가 직접 다루는 유일한 회로 이론**이다.",
+      "elmore", 이웃=["Interconnect RC delay", "Crosstalk"], 트랙=백엔드),
+    _("Timing closure", "타이밍 클로저", 석사, D,
+      r"\text{WNS} \ge 0\ \text{and}\ \text{TNS}=0\ \text{across all corners and modes}",
+      "음의 슬랙 하나가 못 쓰는 칩이다. 합성-배치-배선을 되풀이하며 좁혀 간다.",
+      이웃=["Static timing analysis", "MCMM"], 트랙=백엔드),
+    _("MCMM", "다중 코너·다중 모드", 석사, D,
+      r"\text{corner} \in \{SS,TT,FF\}\times\{V_{min},V_{max}\}\times\{T_{min},T_{max}\}",
+      "느린 코너가 셋업을, 빠른 코너가 홀드를 깬다. 한 코너만 맞추면 칩이 안 돈다.",
+      이웃=["Timing closure", "Static timing analysis"], 트랙=백엔드),
+    _("DFT: scan and ATPG", "DFT 스캔·ATPG", 석사, D,
+      r"\text{coverage} = \tfrac{\text{detected faults}}{\text{total faults}},\ \text{stuck-at / transition}",
+      "다 만든 칩이 제대로 만들어졌는지 테스트하는 회로를 미리 넣는다. 면적과 타이밍을 먹는다.",
+      이웃=["MBIST", "Timing closure"], 트랙=백엔드),
+    _("MBIST", "메모리 내장 자가시험", 석사, D,
+      r"\text{March C-}:\ \Uparrow(w0)\Uparrow(r0,w1)\Uparrow(r1,w0)\Downarrow(r0,w1)\Downarrow(r1,w0)\Uparrow(r0)",
+      "메모리는 스캔으로 못 본다. 패턴 발생기를 칩 안에 넣어 스스로 돌린다.",
+      이웃=["DFT: scan and ATPG", "SRAM 6T cell"], 트랙=백엔드),
+    _("Power grid and IR drop", "전원망과 IR 드롭", 박사, D,
+      r"\Delta V = I R_{grid},\quad \text{dynamic: } L\tfrac{di}{dt}\ \text{(di/dt noise)}",
+      "전원이 내려앉으면 셀이 느려지고 타이밍이 깨진다. 플로어플랜에서 같이 푼다.",
+      이웃=["Floorplanning", "Signal integrity"], 트랙=백엔드),
+    _("Signal integrity", "신호 무결성 SI", 박사, D,
+      r"\text{crosstalk delay/noise},\quad \text{EM: } J < J_{max}",
+      "옆 선과 전자이동. 미세 공정에서 이것이 실제로 칩을 죽인다.",
+      이웃=["Crosstalk", "Power grid and IR drop"], 트랙=백엔드),
+    _("Physical verification (DRC/LVS)", "물리 검증 DRC·LVS", 석사, D,
+      r"\text{DRC: layout} \models \text{rules},\quad \text{LVS: layout} \equiv \text{schematic}",
+      "파운드리에 넘기기 전 마지막 관문. 여기서 빨간불이면 테이프아웃이 안 된다.",
+      이웃=["Routing", "GDSII and tapeout"], 트랙=백엔드),
+    _("GDSII and tapeout", "GDSII·테이프아웃", 석사, D,
+      r"\text{GDSII / OASIS} \to \text{mask} \to \text{wafer}",
+      "설계가 마스크가 되는 자리. 되돌릴 수 없어서 그 앞의 모든 검사가 존재한다.",
+      이웃=["Physical verification (DRC/LVS)", "MPW shuttle"], 트랙=백엔드),
+    _("PDK", "공정 설계 키트", 석사, D,
+      r"\text{models (SPICE) + .lib + LEF/DEF + DRC/LVS rules + layers}",
+      "파운드리가 주는 한 벌. 오픈 PDK(Skywater 130nm)로 상용 툴 없이 전 과정을 실습할 수 있다.",
+      이웃=["Standard cell library", "Open EDA flow"], 트랙=백엔드),
+    _("Open EDA flow", "오픈 EDA 흐름", 석사, D,
+      r"\text{Yosys}\to\text{OpenROAD/OpenLane}\to\text{GDSII},\ \text{Skywater 130nm}",
+      "라이선스 없이 RTL 에서 GDSII 까지 손으로 돌려 볼 수 있다. 백엔드는 손으로 해 봐야 붙는다.",
+      이웃=["PDK", "Place and route"], 트랙=백엔드),
+
+    # ============================================================ IP 특화
+    _("AMBA AXI / AHB / APB", "AMBA 버스", 석사, D,
+      r"\text{AXI: 5 channels, } \text{VALID}/\text{READY handshake, out-of-order via ID}",
+      "팔리는 IP 는 대부분 표준 버스를 구현한 것이다. 스펙 문서를 읽고 해석하는 능력이 핵심이다.",
+      이웃=["Verification IP", "Soft IP vs hard IP"], 트랙=IP특화),
+    _("High-speed interface IP", "고속 인터페이스 IP", 석사, M,
+      r"\text{PCIe, USB, DDR/HBM, MIPI, UCIe} = \text{PHY} + \text{controller}",
+      "가장 비싸게 팔리는 IP 갈래. PHY 는 아날로그, 컨트롤러는 디지털이라 둘 다 필요하다.",
+      이웃=["AMBA AXI / AHB / APB", "PLL basics"], 트랙=IP특화),
+    _("Soft IP vs hard IP", "소프트 IP·하드 IP", 석사, D,
+      r"\text{soft}=\text{RTL (portable)},\quad \text{hard}=\text{GDSII (fixed process)}",
+      "소프트는 공정을 옮길 수 있고 하드는 성능이 보장된다. 파는 물건의 꼴이 다르다.",
+      이웃=["Design reuse", "PDK"], 트랙=IP특화),
+    _("Design reuse", "재사용 설계", 석사, D,
+      r"\text{parameterize, no hard-coded timing, clean CDC, documented interfaces}",
+      "여러 공정·여러 SoC 에 이식되도록 짓는 원칙. IP 를 제품으로 만드는 것은 이것이다.",
+      이웃=["Soft IP vs hard IP", "IP deliverables"], 트랙=IP특화),
+    _("Verification IP", "검증 IP (VIP)", 석사, D,
+      r"\text{protocol checker + stimulus generator + coverage model}",
+      "IP 만 파는 것이 아니라 그것을 검증하는 IP 까지 같이 판다. 업계 관행이다.",
+      이웃=["UVM", "AMBA AXI / AHB / APB"], 트랙=IP특화),
+    _("IP deliverables", "IP 딜리버러블", 석사, D,
+      r"\text{RTL + VIP + coverage + synth/timing + SDC + TRM + integration guide}",
+      "'도는 RTL' 은 딜리버러블이 아니다. 무엇을 함께 내야 하는지가 상용과 습작을 가른다.",
+      이웃=["Technical documentation (TRM)", "Silicon proven"], 트랙=IP특화),
+    _("Technical documentation (TRM)", "기술 문서·TRM", 석사, D,
+      r"\text{register map + timing diagrams + integration + programming model}",
+      "영어 기술 문서 작성력이 실제 채용 기준에 든다. Arm Cortex-M TRM 이 그 표준 꼴이다.",
+      이웃=["IP deliverables", "Design reuse"], 트랙=IP특화),
+    _("Silicon proven", "실리콘 검증", 석사, D,
+      r"\text{test chip}\to\text{bring-up}\to\text{shmoo plot}\ (V_{DD}\times f)",
+      "돌아 본 적 있는 IP 와 없는 IP 는 값이 다르다. 그래서 테스트칩 이력이 팔린다.",
+      이웃=["IP deliverables", "MPW shuttle"], 트랙=IP특화),
+
+    # ============================================================ 포트폴리오
+    _("MPW shuttle", "MPW 셔틀", 석사, D,
+      r"\text{many designs on one wafer}\ \Rightarrow\ \text{cost}/N",
+      "Efabless·Europractice 로 실제 테이프아웃 경험을 싸게 얻는다. 이력서에서 가장 센 한 줄.",
+      이웃=["GDSII and tapeout", "Open EDA flow"], 트랙=포트폴리오),
+    _("Open source IP cores", "오픈소스 IP 코어", 학부, D,
+      r"\text{Ibex/OpenTitan (lowRISC), Caliptra/VeeR (CHIPS), CVA6, PULP, OpenCores}",
+      "상용에 가장 가까운 공개 실물. 검증 파이프라인(CI, riscv-dv)까지 그대로 배울 수 있다.",
+      이웃=["Regression", "IP deliverables"], 트랙=포트폴리오),
+    _("Reading a real IP datasheet", "IP 데이터시트 읽기", 학부, D,
+      r"\text{D and R catalog},\ \text{Synopsys DesignWare},\ \text{Arm TRM}",
+      "무엇이 스펙으로 적히는지 보면 무엇을 만들어야 하는지 보인다. RTL 은 NDA 지만 스펙은 공개다.",
+      이웃=["Technical documentation (TRM)", "High-speed interface IP"], 트랙=포트폴리오),
+    # ============================================================ 생태계
+    # 출처: 사용자 강의자료 `반도체공학개론` Lecture 4 "The Semiconductor Ecosystem"
+    # (Jaeeun Jang, Department of Semiconductor System). IP 디자인하우스가 밸류체인의
+    # 어디에 앉고 무엇을 파는지를 여기 둔다 -- 기술만 알고 자리를 모르면 진로가 안 잡힌다.
+    _("Company types", "회사 갈래", 학부, D,
+      r"\text{IDM},\ \text{Fabless},\ \text{Foundry},\ \text{OSAT},\ \text{Chipless (IP + design house)}",
+      "IDM 은 설계와 제조를 다 하고, 팹리스는 설계만, 파운드리는 제조만, OSAT 는 패키지·테스트, 칩리스는 설계 자체를 판다.",
+      이웃=["IP and design house", "Fabless-foundry model"], 트랙=생태계),
+    _("IP and design house", "IP·디자인하우스", 학부, D,
+      r"\text{revenue} = \text{license fee} + \text{royalty}\times\text{units}",
+      "ARM 은 청사진을 팔지 칩을 안 판다 -- 스마트폰의 약 99% 안에 들어 있다. 디자인하우스는 팀이 없는 회사를 대신해 설계해 주는 곳이고, 이 학과 졸업생의 실제 진로다.",
+      이웃=["Company types", "Why buy IP", "Value capture"], 트랙=생태계),
+    _("Why buy IP", "왜 IP 를 사는가", 학부, D,
+      r"\text{modern SoC} \supset 100+\ \text{IP blocks}",
+      "한 팀이 다 설계할 수 없다. 표준 부품은 사고 차별화되는 데에 재능을 쓴다 -- 그래서 IP 시장이 존재한다.",
+      이웃=["IP and design house", "RISC-V and open ISA"], 트랙=생태계),
+    _("RISC-V and open ISA", "RISC-V·개방 ISA", 학부, D,
+      r"\text{ISA}\ \text{free}\ \ne\ \text{implementation free}",
+      "프로세서의 리눅스 같은 것. MCU 와 AI 칩에서 빠르게 는다. 명령어 집합은 공짜여도 구현(코어)은 여전히 만들거나 사야 한다.",
+      이웃=["Why buy IP", "Open source IP cores"], 트랙=생태계),
+    _("Fields of chip design", "칩 설계의 갈래", 학부, M,
+      r"\text{digital},\ \text{analog},\ \text{mixed-signal},\ \text{RF},\ \text{memory}",
+      "디지털은 HDL 로 쓰고 도구가 배치하는 큰 팀, 아날로그는 Virtuoso 에서 트랜지스터를 손으로 그리는 작은 정예 팀. 같은 칩 안에 다섯 가지 공학 문화가 있다.",
+      이웃=["Physical design is a third domain", "Company types"], 트랙=생태계),
+    _("Fabless-foundry model", "팹리스·파운드리 모델", 학부, D,
+      r"1987:\ \text{TSMC} \Rightarrow \text{design}\ \perp\ \text{manufacturing}",
+      "설계와 제조를 갈라 놓은 사업 모델 하나가 산업 전체를 다시 그렸다. 팹이 없어도 칩을 팔 수 있게 됐다.",
+      이웃=["Company types", "PDK and tape-out"], 트랙=생태계),
+    _("PDK and tape-out", "PDK 와 테이프아웃", 학부, D,
+      r"\text{PDK}\ \to\ \text{design in rules}\ \to\ \text{GDS}\ \to\ \text{mask}\ (5\text{-}20\ \mathrm{M\ USD})",
+      "파운드리가 그 공정의 규칙서와 부품 목록(PDK)을 준다. 테이프아웃은 GDS 를 넘기는 날이고, 그 뒤로는 고칠 수 없다.",
+      이웃=["PDK", "GDSII and tapeout", "MPW shuttle"], 트랙=생태계),
+    _("Foundry process menu", "파운드리 공정 메뉴", 학부, M,
+      r"\text{2-5nm logic},\ \text{28-180nm mature},\ \text{BCD},\ \text{RF-SOI/SiGe},\ \text{CIS}",
+      "최신 공정만 있는 게 아니다. MCU 와 차량용은 성숙 공정이 싸고 검증됐고, PMIC 는 BCD, 라디오는 RF-SOI 가 맞다. 공정은 일에 맞춰 고른다.",
+      이웃=["PDK and tape-out", "High-speed interface IP"], 트랙=생태계),
+    _("EDA industry", "EDA 산업", 학부, D,
+      r"\text{SPICE},\ \text{layout},\ \text{DRC/LVS},\ \text{synthesis + P and R}:\ \sim 15\text{-}20\ \mathrm{B\ USD}",
+      "920억 개 트랜지스터를 손으로 그릴 수 없다. Synopsys·Cadence·Siemens 셋이 지배한다 -- 이 저장소가 쓰는 오픈 도구들이 그 자리의 무료판이다.",
+      이웃=["Open EDA flow", "Value capture"], 트랙=생태계),
+    _("Equipment and materials layer", "장비·소재 층", 학부, D,
+      r"\text{ASML EUV }13.5\,\mathrm{nm},\ \sim 200\ \mathrm{M\ USD/tool};\ \text{wafer purity } 99.9999999\%",
+      "EUV 는 ASML 한 곳만 만든다. 2019년 일본의 소재 3종 수출 규제가 한국 반도체를 흔들었다 -- '지루한' 층이 700조 산업을 하루아침에 멈출 수 있다.",
+      이웃=["EDA industry", "Company types"], 트랙=생태계),
+    _("Advanced packaging", "선단 패키징", 석사, M,
+      r"\text{2.5D: interposer},\quad \text{3D: HBM }8\text{-}12\ \text{dies stacked}",
+      "트랜지스터 미세화가 느려지자 패키징이 새 전선이 됐다. TSMC 의 CoWoS 용량이 세계 AI GPU 공급을 정한다.",
+      이웃=["Foundry process menu", "High-speed interface IP"], 트랙=생태계),
+    _("Chip development timeline", "칩 개발 기간", 학부, D,
+      r"12\text{-}24\ \text{mo design} + 3\text{-}4\ \text{mo fab} + 3\text{-}6\ \text{mo test} \approx 2\text{-}3\ \text{yr}",
+      "NRE 가 1억 달러대로 앞에 들고, 칩당 원가는 몇 달러다. 그래서 칩은 큰 시장을 쫓고 실수는 몇 년을 먹는다.",
+      이웃=["PDK and tape-out", "Value capture"], 트랙=생태계),
+    _("Value capture", "값은 누가 가져가나", 학부, D,
+      r"\text{EDA/IP } 85\text{-}95\%\ >\ \text{fabless } 60\text{-}75\%\ >\ \text{foundry } 50\text{-}55\%\ >\ \text{OSAT } 10\text{-}20\%",
+      "사슬에 있는 것과 돈을 버는 것은 다르다. IP 와 EDA 가 소프트웨어 경제학으로 가장 높은 마진을 가져간다 -- IP 디자인하우스를 노리는 이유가 여기 있다.",
+      이웃=["IP and design house", "EDA industry"], 트랙=생태계),
+    _("Chip design spreads everywhere", "칩 설계가 퍼진다", 학부, D,
+      r"\text{Apple M-series},\ \text{Google TPU},\ \text{Tesla FSD}\ \to\ \text{custom} \Rightarrow \text{differentiation}",
+      "애플·구글·테슬라는 칩을 설계하지만 팔지 않는다. 자기 작업부하에 맞춘 칩이 가장 빠르기 때문이다 -- 장래 고용주가 반도체 회사만은 아니라는 뜻이다.",
+      이웃=["Company types", "IP and design house"], 트랙=생태계),
 ]
+
+
+# ---------------------------------------------------------------------------
+# 트랙 붙이기. 항목마다 인자를 더 쓰는 대신 **한 표에 모아** 감사할 수 있게 둔다.
+# 규칙: 소자물리와 디지털 논리 기초는 공통, 아날로그 회로는 아날로그, RTL·검증은
+# 프론트엔드, 물리 구현은 백엔드. 안 적힌 것은 `_기본트랙` 이 갈래로 정한다.
+# ---------------------------------------------------------------------------
+_트랙표 = {
+    공통: ["MOSFET square law", "Triode vs saturation", "Threshold voltage",
+          "Body effect", "Overdrive voltage", "Transconductance",
+          "Channel-length modulation", "Output resistance", "Short-channel effects",
+          "Subthreshold conduction", "Intrinsic capacitances",
+          "CMOS inverter VTC", "Noise margins", "Static CMOS logic",
+          "Propagation delay", "Logical effort", "Fanout of 4",
+          "Transmission gate", "Pass-transistor logic",
+          "Karnaugh map / logic minimization", "Boolean / gate basics",
+          "RC low-pass / first-order response", "RLC resonance and Q"],
+    프론트: ["Latch vs flip-flop", "Setup and hold", "Metastability",
+            "CDC and synchronizers", "Dynamic / domino logic", "Adders",
+            "Multipliers", "SRAM 6T cell", "SRAM read/write margin",
+            "Sense amplifier", "Clock gating"],
+    백엔드: ["Clock skew and jitter", "Clock distribution",
+            "Static timing analysis", "Place and route", "Interconnect RC delay",
+            "Repeater insertion", "Crosstalk", "Power gating", "DVFS",
+            "Dynamic power", "Short-circuit power", "Leakage power"],
+}
+_어디 = {c["이름"]: c for c in 개념}
+for _트, _목록 in _트랙표.items():
+    for _n in _목록:
+        if _n in _어디:
+            _어디[_n]["트랙"] = _트
+# 남은 것은 갈래로 정한다 -- 아날로그 회로는 아날로그 트랙, 나머지는 공통.
+for _c in 개념:
+    if not _c["트랙"]:
+        _c["트랙"] = 아날로그 if _c["갈래"] in (A, M) else 공통
 
 
 별칭 = {
@@ -540,9 +813,10 @@ def 찾기(질의: str, 최대: int = 6) -> "list[dict]":
     return [c for _, c in 난것[:최대]]
 
 
-def 목록(층: str = "", 갈래: str = "") -> "list[dict]":
+def 목록(층: str = "", 갈래: str = "", 트랙: str = "") -> "list[dict]":
     return [c for c in 개념
-            if (not 층 or c["층"] == 층) and (not 갈래 or c["갈래"] == 갈래)]
+            if (not 층 or c["층"] == 층) and (not 갈래 or c["갈래"] == 갈래)
+            and (not 트랙 or c["트랙"] == 트랙)]
 
 
 def 덮임() -> dict:
@@ -551,12 +825,13 @@ def 덮임() -> dict:
     return {"모두": len(개념), "돌려볼수있음": len(돎),
             "설명만": len(개념) - len(돎),
             "층별": {층: len(목록(층)) for 층 in (학부, 석사, 박사)},
-            "갈래별": {g: len(목록(갈래=g)) for g in (A, D, DEV, M)}}
+            "갈래별": {g: len(목록(갈래=g)) for g in (A, D, DEV, M)},
+            "트랙별": {t: len(목록(트랙=t)) for t in 트랙들}}
 
 
 def 말로(c: dict) -> str:
     """개념 하나를 사람이 읽는 꼴로. 수식은 `$...$` 로 감싼다."""
-    줄 = [f"**{c['이름']}** ({c['한글']}) — {c['층']} · {c['갈래']}",
+    줄 = [f"**{c['이름']}** ({c['한글']}) — {c['층']} · {c['갈래']} · {c['트랙']}",
          f"$${c['식']}$$", c["말"]]
     if c["넷리스트"]:
         줄.append(f"run it: `run_spice(\"{c['넷리스트']}\")`")
