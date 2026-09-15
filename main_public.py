@@ -25,7 +25,7 @@ import channels
 
 from bot_tools import (
     search_memory, save_memory, run_shell, read_image, draw_circuit,
-    run_rtl, lint_rtl, synth_rtl,
+    run_rtl, lint_rtl, synth_rtl, run_spice, spice_example,
     build_agent_pool, run_with_fallback_pool, _current_author,
     register_thread, unregister_thread,
 )
@@ -68,7 +68,7 @@ PUBLIC_MODEL_CANDIDATES = [PUBLIC_MODEL_NAME] + [m for m in _extra_models if m !
 # **`draw_circuit` 도 넣는다** (사용자 2026-09-15: 회로도를 그려 주고 원리를
 # 설명해 주는 기능). 도구가 없으면 못 쓴다 -- 이 파일이 두 번째로 겪는 그것이다.
 PUBLIC_TOOLS = [search_memory, save_memory, run_shell, read_image, draw_circuit,
-                run_rtl, lint_rtl, synth_rtl]
+                run_rtl, lint_rtl, synth_rtl, run_spice, spice_example]
 # admin과 동일한 "적극적으로 조사해서 근거 기반으로 답하라"는 태도로 통일했다 -- 예전엔
 # "간결하게/불필요한 수식어 금지" 규칙 때문에, 상태·속도·에러를 묻는 질문에도 조사 없이
 # "OK" 한마디로 끝내버리는 경우가 있었다(admin은 run_shell로 journalctl을 직접 뒤져서 표까지
@@ -153,6 +153,18 @@ PUBLIC_SYSTEM_PROMPT = (
     "- `synth_rtl(design, top)` — Yosys cell count. \"It runs\" first, \"how big\" next.\n"
     "\n"
     "**Always write a self-checking testbench and run it before you claim the RTL works.** Report the verdict you actually got, including FAIL — a red you measured beats a green nobody checked. If a tool is missing, say so; do not pretend it passed.\n"
+    "\n"
+    "### Analog — **simulate it, do not just draw it**\n"
+    "A schematic is a claim, not a result. `draw_circuit` draws; `run_spice` proves:\n"
+    "- `run_spice(netlist, checks)` — ngspice DC / AC / transient. Same discipline as RTL: the verdict is read from the **output**, not the exit code. Measured on ngspice 42 — a floating node, a mistyped node name, and a failed `.meas` all exit 0.\n"
+    "- `spice_example(name)` — eight ready netlists whose numbers were checked against hand calculation: `rc_lowpass` · `mosfet_iv`(the Id–Vds family, and `$\\lambda$` extracted from its slope) · `nmos_vth` · `current_mirror` · `common_source` · `cmos_inverter_vtc` · `diff_pair` · `rlc_resonance`. Pass a name straight to `run_spice`.\n"
+    "\n"
+    "Rules that come from how SPICE actually behaves:\n"
+    "- **The first line of a netlist is eaten as the title.** Always start with a `*` comment or your first real card disappears.\n"
+    "- Put the analysis in a `.control` / `.endc` block and always `meas` what you claim. **Running is not measuring** — a netlist that runs and measures nothing comes back `못잼`, not PASS.\n"
+    "- State the expected value in `checks` (`name low high`) **before** you look at the answer. Then hand-derive the same number from the square-law model and compare; if they disagree, say so and find out why.\n"
+    "- The built-in `LEVEL=1` models are the textbook square law on purpose: `$I_D = \\tfrac{1}{2}K'\\tfrac{W}{L}(V_{GS}-V_{th})^2(1+\\lambda V_{DS})$`. `VTO` is `$V_{th}$`, `KP` is `$K'$`, `LAMBDA` is `$\\lambda$`, so the parameters the user asks about are literally in the model card and can be extracted back out of a sweep.\n"
+    "- Every node needs a DC path to ground, or you get a singular matrix — which **still exits 0**.\n"
     "\n"
     "\n"
     "### 찾아 달라는 것 -- dig\n"

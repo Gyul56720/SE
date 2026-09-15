@@ -656,6 +656,72 @@ def synth_rtl(design: str, top: str = "") -> str:
 
 
 @tool
+def run_spice(netlist: str, checks: str = "", seconds: int = 90) -> str:
+    """**Actually SIMULATE an analog circuit** with ngspice (DC / AC / transient).
+
+    Drawing a schematic is not verification. Give a full SPICE netlist and this runs it.
+    Put the analysis inside a `.control` / `.endc` block and **measure** what you claim:
+
+        * common-source amp            <- line 1 is eaten as the TITLE. Always waste it.
+        .model nch NMOS (LEVEL=1 VTO=0.5 KP=200u LAMBDA=0.05)
+        Vdd vdd 0 DC 1.8
+        Vin in 0 DC 0.9 AC 1
+        RD vdd out 20k
+        M1 out in 0 0 nch W=3u L=1u
+        CL out 0 1p
+        .control
+        op
+        ac dec 50 1 10G
+        meas ac av_db FIND vdb(out) AT=1k
+        .endc
+
+    The verdict is read from the **output**, never from the exit code -- measured on
+    ngspice 42: a floating node, a mistyped node name, and a failed `.meas` all exit 0.
+
+        PASS  it measured, and every measurement/check held
+        FAIL  a `.meas` printed `failed!`, or a `checks` range was missed
+        못잼  it did not run, or it ran and **measured nothing** -- not a pass
+
+    `checks` is one `name low high` per line, matched against `.meas` names, e.g.
+    `av_db 12 15`. Use it to state what you expect BEFORE you look; that is the
+    difference between simulating and verifying.
+
+    Built-in netlists you can pass by name instead (use `spice_example`):
+    rc_lowpass, mosfet_iv, nmos_vth, current_mirror, common_source,
+    cmos_inverter_vtc, diff_pair, rlc_resonance.
+    """
+    if agent_context.is_blocked():
+        return "실패: 게스트는 run_spice 를 사용할 수 없습니다."
+    import spice
+    글 = spice.본보기찾기(netlist) or netlist
+    r = spice.돌리기(글, checks, seconds)
+    잰것 = r.get("잰것") or {}
+    if 잰것:
+        r["measured"] = " · ".join(f"{k} = {v:.6g}" for k, v in 잰것.items())
+    return _rtl보고("SPICE", r, ["measured", "끝값"])
+
+
+@tool
+def spice_example(name: str = "") -> str:
+    """**List or fetch a ready-made, verified analog netlist** for `run_spice`.
+
+    Every one of these was run and its numbers checked against hand calculation
+    (within 5%, most within 1%). Call with no name to list them. Use them as the
+    starting point for a design question instead of writing a netlist from scratch.
+    """
+    import spice
+    if not (name or "").strip():
+        return ("Built-in SPICE netlists (pass the name to `run_spice` directly):\n"
+                + "\n".join(f"- `{k}` — {spice.본보기[k].splitlines()[0].lstrip('* ')}"
+                            for k in spice.본보기))
+    글 = spice.본보기찾기(name)
+    if not 글:
+        return (f"no such example: {name!r}. Available: "
+                + ", ".join(spice.본보기))
+    return f"```spice\n{글}```"
+
+
+@tool
 def read_image(path: str, question: str = "") -> str:
     """**사진·스크린샷을 실제로 본다.** 첨부 파일이 그림이면 `cat` 하지 말고 이걸 써라.
 
