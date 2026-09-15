@@ -53,6 +53,8 @@ import sys
 import time
 from pathlib import Path
 
+import ledgerroot
+
 REPO = Path(__file__).resolve().parent.parent
 # **스크립트로 돌 때 sys.path[0] 은 이 파일의 디렉터리(improve/)다 -- 뿌리가 아니다.**
 # 실측 2026-09-11(VM): `python3 improve/run.py --부탁 ...` 가
@@ -102,14 +104,14 @@ def 핵심모듈들(repo=None) -> "list[str]":
 
 # ---------------------------------------------------------------- 원장 · 도움
 def _적기(repo, 줄: dict) -> None:
-    p = Path(repo or REPO) / 원장상대
+    p = ledgerroot.뿌리(repo, REPO) / 원장상대
     p.parent.mkdir(parents=True, exist_ok=True)
     with open(p, "a", encoding="utf-8") as f:
         f.write(json.dumps({"때": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), **줄}, ensure_ascii=False) + "\n")
 
 
 def 원장읽기(repo=None) -> "list[dict]":
-    p = Path(repo or REPO) / 원장상대
+    p = ledgerroot.뿌리(repo, REPO) / 원장상대
     if not p.is_file():
         return []
     out = []

@@ -47,6 +47,8 @@ import tempfile
 import time
 from pathlib import Path
 
+import ledgerroot
+
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
@@ -89,7 +91,7 @@ def 과제검사(t: dict) -> "list[str]":
 
 def 과제읽기(repo=None) -> "tuple[list[dict], list[str]]":
     """(성한 과제들, 거른 까닭들). id 순."""
-    d = Path(repo or REPO) / 과제상대
+    d = ledgerroot.뿌리(repo, REPO) / 과제상대
     과제들, 거른 = [], []
     for p in sorted(d.glob("*.json")) if d.is_dir() else []:
         try:
@@ -245,7 +247,7 @@ def 한과제(과제: dict, 참고: str, repo=None) -> dict:
 
 
 def 원장읽기(repo=None) -> "list[dict]":
-    p = Path(repo or REPO) / 원장상대
+    p = ledgerroot.뿌리(repo, REPO) / 원장상대
     if not p.is_file():
         return []
     out = []

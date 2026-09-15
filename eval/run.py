@@ -33,6 +33,8 @@ import subprocess
 import time
 from pathlib import Path
 
+import ledgerroot
+
 REPO = Path(__file__).resolve().parent.parent
 원장상대 = "eval/ledger.jsonl"
 
@@ -58,7 +60,7 @@ REPO = Path(__file__).resolve().parent.parent
 
 
 def _원장(repo=None) -> Path:
-    return Path(repo or REPO) / 원장상대
+    return ledgerroot.뿌리(repo, REPO) / 원장상대
 
 
 def 원장읽기(repo=None) -> "list[dict]":

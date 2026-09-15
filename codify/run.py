@@ -33,6 +33,8 @@ import sys
 import time
 from pathlib import Path
 
+import ledgerroot
+
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
@@ -102,14 +104,14 @@ def _코드공기본(prompt: str) -> str:
 
 # ---------------------------------------------------------------- 원장·저장·색인
 def _적기(repo, 줄: dict) -> None:
-    p = Path(repo or REPO) / 원장상대
+    p = ledgerroot.뿌리(repo, REPO) / 원장상대
     p.parent.mkdir(parents=True, exist_ok=True)
     with open(p, "a", encoding="utf-8") as f:
         f.write(json.dumps(줄, ensure_ascii=False) + "\n")
 
 
 def 원장읽기(repo=None) -> "list[dict]":
-    p = Path(repo or REPO) / 원장상대
+    p = ledgerroot.뿌리(repo, REPO) / 원장상대
     if not p.is_file():
         return []
     out = []
@@ -252,17 +254,24 @@ def main() -> int:
     ap.add_argument("--원문", default="")
     ap.add_argument("--예시", default="", help="JSON: [{부른다,입력,답,허용}]")
     ap.add_argument("--바퀴", type=int, default=기본바퀴, help=f"최대 {최대바퀴}")
+    # **점검용.** 원장을 여기 말고 다른 데 쓴다 -- `eval/wire.py` 의 배선 점검이 이 파일을
+    # 진짜로 돌려 보는데, 그때마다 추적되는 `codify/ledger.jsonl` 에 줄이 하나씩 쌓였다
+    # (실측 2026-09-15: 되돌이와 겹쳐 다섯 줄이 커밋에 쓸려 들어갔다). 점검은 "도는가" 만
+    # 보면 되고, 도는 것을 보려고 판정의 역사를 더럽힐 이유가 없다.
+    ap.add_argument("--저장소", default="", help="원장·산출물을 여기 쓴다(점검용)")
     args = ap.parse_args()
+    뿌리 = Path(args.저장소) if args.저장소 else None
     if args.논문:
         url = args.논문 if "arxiv" in args.논문 else f"https://arxiv.org/abs/{args.논문}"
-        r = 논문코드화(url, 바퀴=args.바퀴)
+        r = 논문코드화(url, 바퀴=args.바퀴, repo=뿌리)
         print(보고(r))
         return 0 if r["성공"] else 1
     if not args.원문:
         print("--원문 또는 --논문 이 필요하다")
         return 3
     예시 = json.loads(args.예시) if args.예시 else []
-    r = 코드화({"종류": args.종류, "이름": args.이름 or "x", "원문": args.원문, "예시": 예시}, 바퀴=args.바퀴)
+    r = 코드화({"종류": args.종류, "이름": args.이름 or "x", "원문": args.원문, "예시": 예시},
+             바퀴=args.바퀴, repo=뿌리)
     print(보고(r))
     if not r["돌았나"]:
         return 3

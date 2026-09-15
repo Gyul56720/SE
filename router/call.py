@@ -39,6 +39,8 @@ import sys
 import time
 from pathlib import Path
 
+import ledgerroot
+
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 원장상대 = "router/ledger.jsonl"
@@ -81,7 +83,7 @@ sys.path.insert(0, str(REPO))
 
 
 def _원장(repo=None) -> Path:
-    return Path(repo or REPO) / 원장상대
+    return ledgerroot.뿌리(repo, REPO) / 원장상대
 
 
 def _클로드기본():

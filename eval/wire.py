@@ -24,9 +24,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
+
+import ledgerroot
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -62,7 +67,9 @@ sys.path.insert(0, str(REPO))
      (0, 3), "수집기가 자의 틈을 읽는가 (망 없음 · 3 은 틈 없음)"),
     ("기관:mailer", ["python3", "mailer.py", "--필요"],
      (0, 3), "메일 수단이 있는가 (3 은 없음 -- 딱 그것만 묻는다)"),
-    ("기관:codify", ["python3", "codify/run.py", "--원문", "x"],
+    # **`--저장소` 로 임시 자리를 준다.** 안 주면 점검이 돌 때마다 추적되는
+    # `codify/ledger.jsonl` 에 줄이 하나씩 쌓인다(실측 2026-09-15). 도는지만 보면 된다.
+    ("기관:codify", ["python3", "codify/run.py", "--원문", "x", "--저장소", "{임시}"],
      (3,), "codify 가 도는가 (--원문 만 주고 모델 없음 -- 끝값 3)"),
     ("기관:secaudit", ["python3", "secaudit/run.py", "--json"],
      (0, 1, 3), "보안 자가점검이 도는가 (0 높음없음 · 1 높음 · 3 전부 못잼)"),
@@ -169,13 +176,46 @@ def 가르기(끝값: int, 기대: tuple, 꼬리: str = "") -> str:
     return "끊김"
 
 
+# **되돌이를 끊는다** (실측 2026-09-15). `eval/acceptance.py` 나 `eval/wire.py` 를 고친
+# 판에서 이 점검을 돌리면 **끝없이 불어난다**:
+#
+#     eval/acceptance.py --(아래 기관:audit)--> audit/run.py
+#       --(바뀐 파일에 걸린 검사)--> tests/test_acceptance.py --> eval/acceptance.py --> ...
+#
+# 실제로 났다. 고아 프로세스가 10벌 넘게 살아 있었고, 각 대마다 `기관:codify` 가
+# `codify/ledger.jsonl` 에 줄을 하나씩 더했다(그래서 추적되는 원장이 더러워졌다).
+# 고리가 잠기는 것은 **acceptance 를 고쳤을 때**뿐인데, 그때가 바로 이 점검을 돌릴 때다.
+#
+# **끊는 자리는 바깥 고리다.** 감사가 제 안에서 인수 검사를 또 돌리는 것은 어차피 틀렸다 --
+# 30초짜리 감사 안에서 2분짜리 끝단 검사를 돌릴 일이 아니다. 그래서 감사 밑에서 불렸으면
+# `기관:audit` 한 점만 건너뛴다. **통과로 세지 않고 '못돌림' 으로 적는다** -- 안 돌린 것을
+# 초록으로 세면 그것이 이 저장소가 말하는 검사하지 않은 초록불이다.
+안에서돈다 = "SE_IN_AUDIT"
+
+
 def 읽기(repo=None) -> "list[dict]":
     repo = Path(repo or REPO)
+    감사안 = bool(os.environ.get(안에서돈다))
+    # **점검이 추적되는 원장에 안 쓰게 한다** (실측 2026-09-15: 한 바퀴에 다섯 원장에
+    # 스물두 줄이 쌓였다 -- codify 1 · eval답 4 · improve 4 · router 10 · secaudit 4).
+    # 점검은 "도는가" 만 보면 되고, 도는 것을 보려고 판정의 역사를 더럽힐 이유가 없다.
+    # `{임시}` 를 쓰는 점검은 깃발로 받고, 나머지는 `SE_LEDGER_ROOT` 로 옮긴다.
+    임시 = tempfile.mkdtemp(prefix="wire-")
     out = []
     for 이름, argv, 기대, 무엇 in 읽기점검:
+        argv = [a.replace("{임시}", 임시) for a in argv]
+        if 감사안 and 이름 == "기관:audit":
+            out.append({"이름": 이름, "판정": "못돌림", "끝값": -1, "무엇": 무엇,
+                        "꼬리": "감사 안에서 불렸다 -- 되돌이를 끊으려고 건너뛴다"})
+            continue
         try:
+            # **자식에게 표를 내려보낸다.** 감사가 띄운 검사가 다시 감사를 부르지 않게.
+            환 = dict(os.environ)
+            환[ledgerroot.환경이름] = 임시
+            if 이름 == "기관:audit":
+                환[안에서돈다] = "1"
             p = subprocess.run(argv, cwd=str(repo), capture_output=True, text=True,
-                               errors="replace", timeout=300)
+                               errors="replace", timeout=300, env=환)
             끝값, 꼬리 = p.returncode, ((p.stdout or "") + (p.stderr or "")).strip()
         except subprocess.TimeoutExpired:
             끝값, 꼬리 = 124, "시간 초과"
@@ -183,6 +223,7 @@ def 읽기(repo=None) -> "list[dict]":
             끝값, 꼬리 = 127, f"{type(e).__name__}"
         out.append({"이름": 이름, "판정": 가르기(끝값, 기대, 꼬리), "끝값": 끝값, "무엇": 무엇,
                     "꼬리": "" if 끝값 in 기대 else "\n".join(꼬리.splitlines()[-3:])})
+    shutil.rmtree(임시, ignore_errors=True)
     return out
 
 

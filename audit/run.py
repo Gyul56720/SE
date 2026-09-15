@@ -26,6 +26,7 @@ tests/test_foo*.py, (2) 임포트 -- 그 모듈을 import 하는 검사 파일. 
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import subprocess
 import sys
@@ -118,6 +119,17 @@ def 감사(repo=None, 커밋: bool = False, 초: int = 180) -> dict:
     안봄 = [c for c in 변경 if not c.endswith(".py")]
     걸림, 안덮임 = 검사찾기(repo, 바뀐py)
     돌릴 = sorted({t for ts in 걸림.values() for t in ts})
+    # **되돌이를 끊는다** (실측 2026-09-15). `eval/acceptance.py` 를 고친 판에서 감사를
+    # 돌리면 끝없이 불어났다:
+    #
+    #     audit/run.py --(바뀐 파일에 걸린 검사)--> tests/test_acceptance.py
+    #       --> eval/acceptance.py --(기관:audit 점검)--> audit/run.py --> ...
+    #
+    # 고아 프로세스가 10벌 넘게 살아 있었고 대마다 추적되는 원장에 줄을 더했다.
+    # 여기서 표를 세워 두면 `eval/wire.py` 가 그것을 보고 `기관:audit` 한 점만
+    # 건너뛴다(통과가 아니라 **못돌림**으로 적는다 -- 안 돌린 것을 초록으로 세지 않는다).
+    # 격리 판이 `os.environ` 을 그대로 복사하므로 손자까지 내려간다.
+    os.environ["SE_IN_AUDIT"] = "1"
     결과 = []
     for t in 돌릴:
         r = 격리.실행(["python3", t], repo=repo, 초=초, 메모리MB=4096, 지금트리=not 커밋)

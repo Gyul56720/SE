@@ -26,6 +26,8 @@ import sys
 import time
 from pathlib import Path
 
+import ledgerroot
+
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
@@ -70,14 +72,14 @@ def 규칙대조(낱낱: dict, repo=None) -> "list[str]":
 
 # ---------------------------------------------------------------- 원장
 def _적기(repo, 줄: dict) -> None:
-    p = Path(repo or REPO) / 원장상대
+    p = ledgerroot.뿌리(repo, REPO) / 원장상대
     p.parent.mkdir(parents=True, exist_ok=True)
     with open(p, "a", encoding="utf-8") as f:
         f.write(json.dumps(줄, ensure_ascii=False) + "\n")
 
 
 def 원장읽기(repo=None) -> "list[dict]":
-    p = Path(repo or REPO) / 원장상대
+    p = ledgerroot.뿌리(repo, REPO) / 원장상대
     if not p.is_file():
         return []
     out = []
