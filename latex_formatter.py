@@ -44,6 +44,42 @@ import tempfile
 코드펜스 = "```"
 
 
+# ------------------------------------------------------------------ 한글 글꼴
+# **실측 2026-09-15: 한글 라벨이 두부(□□□)로 그려졌다.** matplotlib 의 기본 글꼴에는
+# 한글이 없다. VM 에는 `fonts-nanum` 이 깔려 있는데(배포가 깐다 -- G021) matplotlib 에
+# **알려 주지 않았다.** 이 컨테이너에는 아예 없다.
+#
+# 두부는 "그렸다" 로 끝나므로 **조용한 실패**다 -- 사용자만 깨진 그림을 본다.
+# 그래서 (1) 있으면 골라 쓰고 (2) 없는데 한글을 그리려 하면 **그렇다고 말한다.**
+_한글후보 = ("NanumGothic", "NanumBarunGothic", "Noto Sans CJK KR", "Noto Sans KR",
+         "Malgun Gothic", "AppleGothic", "UnDotum", "Baekmuk Gulim")
+
+
+def 한글글꼴() -> str:
+    """쓸 수 있는 한글 글꼴 이름. 없으면 빈 문자열."""
+    try:
+        from matplotlib import font_manager as fm
+    except ImportError:
+        return ""
+    있는것 = {f.name for f in fm.fontManager.ttflist}
+    return next((n for n in _한글후보 if n in 있는것), "")
+
+
+def 한글있나(글: str) -> bool:
+    return any("\uac00" <= c <= "\ud7a3" or "\u3131" <= c <= "\u318e" for c in 글 or "")
+
+
+def 글꼴세우기():
+    """한글 글꼴이 있으면 matplotlib 에 세운다. 세운 이름(없으면 "")을 돌려준다."""
+    이름 = 한글글꼴()
+    if 이름:
+        import matplotlib
+        matplotlib.rcParams["font.family"] = [이름]
+        # 수식의 마이너스는 글꼴에 없을 수 있다 -- 네모로 나오면 그것도 두부다
+        matplotlib.rcParams["axes.unicode_minus"] = False
+    return 이름
+
+
 def 유니코드(수식: str) -> dict:
     r"""LaTeX 를 **글자 그림**으로. {됐나, 글, 왜}.
 
@@ -96,6 +132,12 @@ def 그림(수식: str, 경로: str = None, 글자크기: int = 28, dpi: int = 2
     except ImportError as e:
         return {"됐나": False, "경로": None,
                 "왜": f"matplotlib 이 없다: {e} -- `pip install matplotlib`"}
+    # **두부(□□□)를 그려 놓고 성공했다고 하지 않는다.** 실측 2026-09-15.
+    글꼴 = 글꼴세우기()
+    if 한글있나(수식) and not 글꼴:
+        return {"됐나": False, "경로": None,
+                "왜": "한글이 든 수식인데 이 기계에 한글 글꼴이 없다 -- 그리면 네모로 "
+                      "나온다(두부). 라벨을 영어로 쓰거나 `fonts-nanum` 을 깔아라"}
 
     글 = 수식.strip()
     if not (글.startswith("$") and 글.endswith("$")):

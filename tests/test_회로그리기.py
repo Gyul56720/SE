@@ -117,6 +117,34 @@ try:
     for 이름, 글 in (("public", 공개), ("admin", 서버)):
         ok("draw_circuit" in 글 and "본보기" in 글,
            f"{이름} 프롬프트가 그리라고 시킨다")
+
+    print("\n== 영어 이름으로도 부른다 ==")
+    # 사용자(2026-09-15): "한국어로 쓰지마. 영어로해줘." EDA 판의 말이 영어라
+    # 에이전트가 영어 이름을 칠 가능성이 높다 -- 모르는 이름이라고 돌려보내면 안 된다.
+    for 영, 한 in (("current_mirror", "전류미러"), ("cmos_nand", "CMOS낸드"),
+                 ("setup_hold", "셋업홀드"), ("KMAP", "카르노맵")):
+        ok(C.영어이름.get(영.lower()) == 한, f"`{영}` -> `{한}`")
+    if schemdraw is not None:
+        r = C.본보기그리기("current_mirror", str(판 / "영어이름.png"))
+        ok(r["됐나"], f"영어 이름으로 실제로 그려진다 -- {r['왜'][:70]}")
+
+    print("\n== 한글 라벨은 두부가 되기 전에 막는다 ==")
+    # **실측 2026-09-15: 한글 라벨이 □□□ 로 그려졌는데 '그렸다' 로 끝났다.**
+    # 조용한 실패다 -- 사용자만 깨진 그림을 본다.
+    import latex_formatter as _LF                                 # noqa: E402
+    if not _LF.한글글꼴():
+        r = C.그리기("d += elm.Resistor().label('저항')")
+        ok(not r["됐나"] and "두부" in r["왜"],
+           f"글꼴이 없으면 그리기 전에 막고 까닭을 말한다 -- {r['왜'][:60]}")
+        ok("영어로" in r["왜"], "무엇을 하라고까지 말한다")
+    else:
+        ok(True, f"이 기계에는 한글 글꼴이 있다({_LF.한글글꼴()}) -- 그대로 그린다")
+    # **주석에 든 한글에는 안 걸려야 한다.** 주석은 그림에 안 나간다 -- 처음에 코드
+    # 전체를 보다가 본보기 여덟이 통째로 거절됐다.
+    if schemdraw is not None:
+        r = C.그리기("# 저항 하나를 놓는다\nd += elm.Resistor().label('$R$')",
+                   str(판 / "주석한글.png"))
+        ok(r["됐나"], f"**한글 주석은 통과한다** -- {r['왜'][:70]}")
 finally:
     shutil.rmtree(판, ignore_errors=True)
 
