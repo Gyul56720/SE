@@ -343,3 +343,182 @@ def 본보기찾기(이름: str) -> str:
     키 = (이름 or "").strip().lower().replace("-", "_").replace(" ", "_")
     키 = 영어이름.get(키, 키)
     return 본보기.get(키, "")
+
+
+# ---------------------------------------------------------------------------
+# 몬테카를로 -- 공정 산포. **흩어졌는지 세어서 말한다.**
+#
+# ngspice 안에서 `alterparam vtn = agauss(...)` 로 흔들려 했더니 42 에서
+# `Formula() error` 로 죽었다(실측 2026-09-15). 그래서 **파이썬에서 뽑아** 넷리스트의
+# `.param` 값을 바꿔 끼운다. 그 편이 나은 까닭이 하나 더 있다 --
+#
+#   **흔들었다고 믿는 것과 실제로 흔들린 것은 다르다.**
+#
+# 이름을 틀리거나 `.param` 이 없으면 바꿔 끼우기가 조용히 아무것도 안 하고, 같은 판을
+# N 번 돌린 뒤 "30판 다 통과, 수율 100%" 가 나온다. 그것이 여기서 제일 큰 거짓 초록이다.
+# 그래서 **바꿔 끼운 자리 수를 세고, 결과가 실제로 흩어졌는지도 센다.**
+# ---------------------------------------------------------------------------
+
+import random as _random
+import math as _math
+import statistics as _stat
+
+_파람 = r"^([ \t]*\.param[ \t]+{이름}[ \t]*=[ \t]*)([^\s;$]+)"
+
+
+def 산포읽기(글) -> "list[tuple[str, float]]":
+    """`이름 시그마` 줄들. 시그마는 **절대값**이다(상대가 아니다)."""
+    if not 글:
+        return []
+    if isinstance(글, dict):
+        return [(k, float(v)) for k, v in 글.items()]
+    나온것 = []
+    for 줄 in str(글).splitlines():
+        조각 = 줄.replace(",", " ").split()
+        if len(조각) != 2:
+            continue
+        try:
+            나온것.append((조각[0], float(조각[1])))
+        except ValueError:
+            continue
+    return 나온것
+
+
+def 파람값(netlist: str, 이름: str):
+    m = re.search(_파람.format(이름=re.escape(이름)), netlist or "", re.M | re.I)
+    if not m:
+        return None
+    try:
+        return float(m.group(2))
+    except ValueError:
+        return None
+
+
+def 파람바꾸기(netlist: str, 이름: str, 값: float) -> "tuple[str, int]":
+    """`.param 이름 = ...` 의 값을 바꾼다. (바뀐 글, 바꾼 자리 수)."""
+    새글, 수 = re.subn(_파람.format(이름=re.escape(이름)),
+                     lambda m: m.group(1) + repr(값), netlist or "", flags=re.M | re.I)
+    return 새글, 수
+
+
+def 흩뿌리기(netlist: str, 산포, 횟수: int = 30, 확인=None, 씨: int = 1234,
+          초: int = None) -> dict:
+    """공정 산포를 넣고 `횟수` 만큼 돌린다. {판정, 판수, 흩어짐, 수율, 잰것, 왜}."""
+    if not 있나():
+        return {"판정": 못잼, "판수": 0, "흩어짐": {}, "수율": -1, "잰것": {},
+                "왜": "ngspice 가 없다 -- `apt-get install -y ngspice`"}
+    퍼짐 = 산포읽기(산포)
+    if not 퍼짐:
+        return {"판정": 못잼, "판수": 0, "흩어짐": {}, "수율": -1, "잰것": {},
+                "왜": ("**흔들 것을 안 줬다** -- `이름 시그마` 를 한 줄씩 줘라. "
+                      "산포 없는 몬테카를로는 같은 판을 N 번 돌리는 것이다")}
+    횟수 = max(2, min(int(횟수 or 30), 300))
+    없는이름 = [이름 for 이름, _ in 퍼짐 if 파람값(netlist, 이름) is None]
+    if 없는이름:
+        # **여기서 막는다.** 안 막으면 아무것도 안 흔들린 채 수율 100% 가 나온다.
+        return {"판정": 못잼, "판수": 0, "흩어짐": {}, "수율": -1, "잰것": {},
+                "왜": (f"넷리스트에 `.param {없는이름[0]} = ...` 이 없다 -- 바꿔 끼울 자리가 "
+                      "없으면 **같은 판을 N 번 돌리게 된다**. 흔들 값은 `.param` 으로 "
+                      f"빼 두고 모델에서 `{{{없는이름[0]}}}` 로 써라")}
+    뽑기 = _random.Random(씨)
+    본값 = {이름: 파람값(netlist, 이름) for 이름, _ in 퍼짐}
+    모은것: "dict[str, list]" = {}
+    뽑힌값: "dict[str, list]" = {이름: [] for 이름, _ in 퍼짐}
+    센판, 깨진판, 첫탈 = 0, 0, ""
+    for _ in range(횟수):
+        글 = netlist
+        for 이름, 시그마 in 퍼짐:
+            v = 뽑기.gauss(본값[이름], 시그마)
+            뽑힌값[이름].append(v)
+            글, _ = 파람바꾸기(글, 이름, v)
+        r = 돌리기(글, 확인, 초)
+        if r["판정"] == 못잼:
+            return {"판정": 못잼, "판수": 센판, "흩어짐": {}, "수율": -1, "잰것": {},
+                    "왜": f"한 판이 못잼이라 멈춘다 -- {r['왜']}", "로그": r.get("로그", "")}
+        센판 += 1
+        if r["판정"] == FAIL:
+            깨진판 += 1
+            첫탈 = 첫탈 or r["왜"]
+        for k, v in (r["잰것"] or {}).items():
+            모은것.setdefault(k, []).append(v)
+
+    흩어짐 = {}
+    for k, vs in 모은것.items():
+        if len(vs) >= 2:
+            흩어짐[k] = {"평균": _stat.fmean(vs), "시그마": _stat.pstdev(vs),
+                       "최소": min(vs), "최대": max(vs)}
+    수율 = 100.0 * (센판 - 깨진판) / 센판 if 센판 else -1
+
+    def _수율말(수율, 센판):
+        """**수율에 오차를 붙인다.** 20판짜리 85% 는 ±8% 다 -- 소수점 한 자리로 적어 놓으면
+        그 정밀이 있는 줄 안다. 판을 늘리는 것 말고 그 오차를 줄이는 길은 없다."""
+        p = 수율 / 100.0
+        if 깨진판 == 0:
+            # **0 탈락에 ±0% 를 적으면 안 된다.** 이항 표준오차가 p=1 에서 0 이 되는데,
+            # 40판에 0탈락이 "정확히 100%" 를 뜻하지는 않는다. 3의 규칙을 쓴다:
+            # 95% 신뢰로 참 탈락률은 3/n 까지 갈 수 있다.
+            return (f"수율 {수율:.1f}% -- {센판}판에 탈락 0. 그래도 참 탈락률은 "
+                    f"{300.0 / 센판:.1f}% 까지 갈 수 있다(3의 규칙). "
+                    f"**0 탈락은 0% 가 아니다**")
+        오차 = 100.0 * _math.sqrt(max(p * (1 - p), 0.0) / 센판)
+        말 = f"수율 {수율:.1f}% ±{오차:.1f}% ({센판}판)"
+        if 센판 < 30:
+            말 += " -- **판이 적어 이 숫자는 성글다**"
+        return 말
+
+    # **흔들었는데 결과가 안 흩어졌으면 말한다.** 아무것도 안 먹은 것일 수 있다.
+    안흩어진것 = [k for k, v in 흩어짐.items() if v["최대"] == v["최소"]]
+    if 흩어짐 and len(안흩어진것) == len(흩어짐):
+        return {"판정": 못잼, "판수": 센판, "흩어짐": 흩어짐, "수율": 수율, "잰것": 모은것,
+                "왜": ("**{}판을 돌렸는데 잰 값이 하나도 안 흩어졌다** -- 흔든 파라미터가 "
+                      "결과에 안 닿는다. `.param` 이름이 모델 안에서 실제로 쓰이는지 "
+                      "봐라. 안 흩어진 몬테카를로는 같은 판을 {}번 돌린 것이다"
+                      .format(센판, 센판))}
+    말 = " · ".join(f"{k}: {v['평균']:.4g} ±{v['시그마']:.3g} "
+                   f"[{v['최소']:.4g}, {v['최대']:.4g}]" for k, v in 흩어짐.items())
+    if 깨진판:
+        return {"판정": FAIL, "판수": 센판, "흩어짐": 흩어짐, "수율": 수율, "잰것": 모은것,
+                "왜": (f"**{센판}판 중 {깨진판}판이 범위를 벗어났다 ({_수율말(수율, 센판)})** -- "
+                      f"{첫탈[:80]}. {말}")}
+    if not 확인:
+        return {"판정": 못잼, "판수": 센판, "흩어짐": 흩어짐, "수율": -1, "잰것": 모은것,
+                "왜": (f"{센판}판이 다 돌았고 흩어짐은 이렇다 -- {말}. 그런데 **무엇을 "
+                      "통과로 볼지 안 줬다**(`확인`). 수율을 말하려면 범위가 있어야 한다")}
+    return {"판정": PASS, "판수": 센판, "흩어짐": 흩어짐, "수율": 수율, "잰것": 모은것,
+            "왜": f"**{센판}판 전부 범위 안 ({_수율말(수율, 센판)})** -- {말}"}
+
+
+본보기["mc_mirror"] = _모델 + """\
+* Current-mirror MISMATCH -- the copy is only as good as the two Vth match.
+* `vtn2` is the mirrored device's threshold; sweep it with Monte Carlo.
+.param vtn2 = 0.5
+.model nch2 NMOS (LEVEL=1 VTO={vtn2} KP=200u GAMMA=0.4 PHI=0.7 LAMBDA=0.05)
+Vdd vdd 0 DC 1.8
+Iref vdd ref DC 50u
+Vout vdd out DC 0.9
+M1 ref ref 0 0 nch  W=10u L=1u
+M2 out ref 0 0 nch2 W=10u L=1u
+.control
+op
+let iout = i(Vout)
+let mismatch_pct = 100*(iout-50u)/50u
+print iout mismatch_pct
+.endc
+"""
+
+본보기["rc_noise"] = """\
+* Thermal noise of an RC low-pass. The famous answer is sqrt(kT/C) -- **independent
+* of R**: a bigger R makes more noise but also a narrower band, and the two cancel.
+V1 in 0 DC 0 AC 1
+R1 in out 1k
+C1 out 0 1n
+.control
+noise v(out) V1 dec 40 1 100Meg
+print inoise_total onoise_total
+.endc
+"""
+
+영어이름.update({
+    "mismatch": "mc_mirror", "montecarlo": "mc_mirror", "mc": "mc_mirror",
+    "noise": "rc_noise", "ktc": "rc_noise", "kt_c": "rc_noise",
+})
