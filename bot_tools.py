@@ -606,7 +606,7 @@ def _rtl보고(머리: str, r: dict, 꼬리칸: "list[str]") -> str:
 
 @tool
 def run_rtl(design: str, testbench: str, top: str = "tb", seconds: int = 60,
-            waveform: bool = True) -> str:
+            waveform: bool = True, min_coverage: float = 0.0) -> str:
     """**Compile and actually RUN Verilog/SystemVerilog** (iverilog + vvp).
 
     `design` is the DUT, `testbench` is the bench that drives it. The bench MUST print
@@ -624,6 +624,14 @@ def run_rtl(design: str, testbench: str, top: str = "tb", seconds: int = 60,
     print PASS while every input sat at x (measured 2026-09-15); the waveform is how you
     see that. If the bench has no `$dumpfile`, one is injected and the reply says so.
 
+    `min_coverage` (percent) turns this into an **IP-grade** check: the bench must both
+    print PASS **and** reach that much coverage of the DUT, or the verdict is 못잼.
+    Measured 2026-09-15: two benches for the same counter BOTH printed PASS, but one
+    reached 52.9% (it never toggled `load`) and the other 100%. "It passes" is not a
+    verification result — a commercial IP ships a coverage report, not a green log.
+    Use 80-90 for anything you would call verified; the reply lists the dark points so
+    you know what stimulus is missing. It costs ~10 s (Verilator builds a C++ model).
+
     Write self-checking benches: compare against expected values and
     `$display("FAIL: got %0d expected %0d", got, exp)` on mismatch,
     `$display("PASS")` at the end. Always `$finish`.
@@ -636,12 +644,14 @@ def run_rtl(design: str, testbench: str, top: str = "tb", seconds: int = 60,
         자리 = os.path.join(REPO_DIR, 회로그림자리)
         os.makedirs(자리, exist_ok=True)
         낼곳 = os.path.join(자리, f"wave-{uuid.uuid4().hex[:8]}.png")
-    r = rtl.시뮬(design, testbench, top, seconds, 낼곳)
+    r = rtl.시뮬(design, testbench, top, seconds, 낼곳, min_coverage)
+    if r.get("커버리지말"):
+        r["coverage"] = r["커버리지말"]
     if r.get("파형"):
         _그림남기기(r["파형"])
     if r.get("파형말"):
         r["waveform"] = r["파형말"]
-    return _rtl보고("Simulation", r, ["waveform", "끝값"])
+    return _rtl보고("Simulation", r, ["coverage", "waveform", "끝값"])
 
 
 @tool
