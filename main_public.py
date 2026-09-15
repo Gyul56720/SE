@@ -24,7 +24,7 @@ import agent_context
 import channels
 
 from bot_tools import (
-    search_memory, save_memory, run_shell, read_image,
+    search_memory, save_memory, run_shell, read_image, draw_circuit,
     build_agent_pool, run_with_fallback_pool, _current_author,
     register_thread, unregister_thread,
 )
@@ -64,7 +64,9 @@ PUBLIC_MODEL_CANDIDATES = [PUBLIC_MODEL_NAME] + [m for m in _extra_models if m !
 # "아직 문제 이미지나 텍스트가 보이지 않습니다" 가 돌아왔다. 그림을 볼 길이
 # 아예 없었다 -- 도구가 없으면 못 쓴다(이 파일이 write_public_answer 를 뺄 때
 # 쓴 것과 같은 논리인데, 이번에는 그 반대쪽이다).
-PUBLIC_TOOLS = [search_memory, save_memory, run_shell, read_image]
+# **`draw_circuit` 도 넣는다** (사용자 2026-09-15: 회로도를 그려 주고 원리를
+# 설명해 주는 기능). 도구가 없으면 못 쓴다 -- 이 파일이 두 번째로 겪는 그것이다.
+PUBLIC_TOOLS = [search_memory, save_memory, run_shell, read_image, draw_circuit]
 # admin과 동일한 "적극적으로 조사해서 근거 기반으로 답하라"는 태도로 통일했다 -- 예전엔
 # "간결하게/불필요한 수식어 금지" 규칙 때문에, 상태·속도·에러를 묻는 질문에도 조사 없이
 # "OK" 한마디로 끝내버리는 경우가 있었다(admin은 run_shell로 journalctl을 직접 뒤져서 표까지
@@ -107,6 +109,16 @@ PUBLIC_SYSTEM_PROMPT = (
     "`1+1 문제 풀어줘` 한 줄이 공책에 파일을 쓰고 커밋까지 갔다 -- 물어본 것은 답이었다).\n"
     "**사진이 안 보인다고 답하지 마라.** `read_image` 로 읽어라. 흐려서 못 읽은 곳이 "
     "있으면 어디가 안 보이는지 말하고, 읽은 데까지는 풀어 줘라.\n"
+    "\n"
+    "## 회로 이야기 -- 그림을 그려 준다\n"
+    "CMOS·NMOS·PMOS·전류미러·캐스코드·차동쌍·연산증폭기·RC·RLC 처럼 **회로 이야기가 나오면 `draw_circuit` 으로 그려라.** 말로만 설명하지 마라 -- 회로는 그림이 절반이다.\n"
+    "`example` 로 검증된 본보기를 먼저 그려 보고(전류미러 · CMOS인버터 · 공통소스 · RC저역), 다른 회로는 그 꼴을 본떠 `code` 를 쓴다.\n"
+    "**너는 네가 그린 그림을 볼 수 없다.** 그래서 그 도구가 그림을 다시 읽어 무엇이 그려졌는지 글로 돌려준다 -- 떠 있는 단자가 있다고 하면 코드를 고쳐 다시 그려라.\n"
+    "그림은 답과 함께 자동으로 올라가니 경로를 답에 적지 마라.\n"
+    "\n"
+    "원리를 물으면 **식과 같이** 답하라. 수식은 LaTeX 로(`$...$` · `$$...$$`):\n"
+    "포화 전류 $I_D = \\tfrac{1}{2}\\mu_n C_{ox}\\tfrac{W}{L}(V_{GS}-V_{TH})^2(1+\\lambda V_{DS})$ · 채널 길이 변조 $\\lambda$ · 전달컨덕턴스 $g_m$ · 출력저항 $r_o = 1/(\\lambda I_D)$ · 전류미러의 비 $I_{OUT}/I_{REF} = (W/L)_2/(W/L)_1$ 처럼, **어느 항이 어디서 오는지**를 짚어 줘라. 값만 던지지 마라.\n"
+    "\n"
     "\n"
     "### 찾아 달라는 것 -- dig\n"
     "무엇을 묻든(맛집·부품 값·논문·전적·처음 보는 것) 되는 방법을 다 써서 긁어모아 "

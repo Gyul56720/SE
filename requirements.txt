@@ -42,3 +42,7 @@ anthropic>=0.40.0
 # PNG 는 순수 파이썬으로 만든다.
 pypdf>=5.0.0
 reportlab>=4.0   # discord_pdf: 메모(.md)를 핸드폰에서 열리는 PDF 로 (2026-09-12)
+
+# 회로도. **LaTeX(circuitikz) 대신 순수 파이썬**이라 설치가 가볍다 -- matplotlib 위에서
+#   돈다(위에 이미 있다). CMOS·BJT·수동소자·연산증폭기·논리게이트를 그린다 (2026-09-15)
+schemdraw>=0.19

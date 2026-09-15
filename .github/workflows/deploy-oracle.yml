@@ -57,6 +57,8 @@ on:
       - "imageread.py"
       # 원장을 어디에 쓸지 한 자리에서 정한다. 기관 모듈 여섯이 임포트한다 (2026-09-15)
       - "ledgerroot.py"
+      # 회로도(draw_circuit 도구). schemdraw 로 그린다 -- LaTeX 불필요 (2026-09-15)
+      - "circuitdraw.py"
       # 답에 박힌 LaTeX 를 유니코드·PNG 로 바꾼다. `_답보내기` 가 부른다 (2026-09-15)
       - "latex_formatter.py"
       # 메일(send_email 도구)과 열쇠(!열쇠). 봇이 임포트한다.

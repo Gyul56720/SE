@@ -25,6 +25,7 @@ import uuid
 from typing import Optional
 
 import channels
+import circuitdraw
 import imageread
 
 import requests
@@ -80,6 +81,10 @@ _셸기록_lock = threading.Lock()
 import shellmemo
 # thread_id -> 그 실행에서 부른 것. 부르는 쪽(discord_bot_server)이 답과 견준다.
 마지막셸: dict[str, list] = {}
+# thread_id -> 그 실행에서 **그린 그림들**(회로도 등). 부르는 쪽이 답에 붙여 보낸다.
+# 셸 기록과 같은 자리를 쓴다 -- 한 실행이 끝날 때 옮겨진다(`unregister_thread`).
+마지막그림: dict[str, list] = {}
+_그림기록: dict[int, list] = {}
 
 
 # **앞과 뒤를 둘 다 남긴다.** 예전엔 뒤 4000 자만 남겼고(`stdout[-4000:]`), 그것이
@@ -153,12 +158,15 @@ def register_thread(thread_id: str) -> None:
         _cancel_events.setdefault(thread_id, threading.Event()).clear()
     with _셸기록_lock:
         _셸기록[threading.get_ident()] = []
+    with _셸기록_lock:
+        _그림기록[threading.get_ident()] = []
 
 
 def unregister_thread(thread_id: str) -> None:
     # **이 실행에서 부른 것을 thread_id 쪽으로 옮긴다.** 부르는 쪽이 답과 견준다.
     with _셸기록_lock:
         마지막셸[thread_id] = _셸기록.pop(threading.get_ident(), [])
+        마지막그림[thread_id] = _그림기록.pop(threading.get_ident(), [])
     with _thread_registry_lock:
         _thread_registry.pop(thread_id, None)
 
@@ -536,6 +544,54 @@ def delegate(question: str, scope: str) -> str:
     with _셸기록_lock:
         _셸기록.setdefault(threading.get_ident(), []).append((f"delegate {scope}"[:160], bool(r["채택"])))
     return redact_secrets(자르기(delegate_run.보고(r, question), 셸출력_앞, 셸출력_뒤))
+
+
+회로그림자리 = "inbox/회로그림"
+
+
+def _그림남기기(경로: str) -> None:
+    """이 실행이 그린 그림을 적어 둔다. 부르는 쪽이 답에 붙여 보낸다."""
+    with _셸기록_lock:
+        _그림기록.setdefault(threading.get_ident(), []).append(경로)
+
+
+@tool
+def draw_circuit(code: str = "", example: str = "", check: bool = True) -> str:
+    """**회로도를 그린다.** CMOS·NMOS·PMOS·저항·축전기·코일·전류원·연산증폭기 등.
+
+    그린 그림은 **답과 함께 자동으로 디스코드에 올라간다** -- 경로를 답에 적을 필요 없다.
+
+    `example` 로 검증된 본보기를 바로 그릴 수 있다(전류미러 · CMOS인버터 · 공통소스 ·
+    RC저역). 그 밖의 회로는 `code` 에 schemdraw 코드를 쓴다. `d` 라는 Drawing 안에서
+    도니 `with` 없이 `d += elm.Resistor().right().label('$R_D$')` 처럼 쌓으면 된다.
+    `elm` 과 `logic` 이 이미 들어와 있다.
+
+    **트랜지스터 단자를 이을 때는 `M.absanchors['gate']` 를 써라.** `anchors` 는 소자
+    안에서의 상대 좌표라, 그것으로 이으면 선이 엉뚱한 높이에 그어진다(실측으로 두 번
+    틀렸다). 본보기들이 그 꼴을 그대로 보여 준다 -- 먼저 본보기를 그려 보고 고쳐 써라.
+
+    `check` 가 참이면 **그린 그림을 다시 읽어** 무엇이 그려졌는지 글로 돌려준다.
+    너는 그림을 볼 수 없으므로, 이것이 네가 제 그림을 확인하는 유일한 길이다.
+    어긋났으면 코드를 고쳐 다시 그려라.
+    """
+    if agent_context.is_blocked():
+        return "실패: 게스트는 draw_circuit 을 사용할 수 없습니다."
+    자리 = os.path.join(REPO_DIR, 회로그림자리)
+    os.makedirs(자리, exist_ok=True)
+    쪽 = os.path.join(자리, f"회로-{uuid.uuid4().hex[:8]}.png")
+    r = (circuitdraw.본보기그리기(example, 쪽) if example
+         else circuitdraw.그리기(code, 쪽))
+    if not r["됐나"]:
+        return f"[회로 못 그림] {r['왜']}"
+    _그림남기기(r["경로"])
+    말 = [f"[그렸다] {os.path.basename(r['경로'])} -- **답과 함께 자동으로 올라간다**"]
+    if check:
+        본것 = imageread.읽기(r["경로"], "이 회로도에 무엇이 그려져 있나. 소자와 "
+                                    "연결을 짧게 적어라. 떠 있는(안 이어진) 단자가 "
+                                    "있으면 그것부터 말하라.",
+                          repo=REPO_DIR)
+        말 += ["", "그림을 다시 읽어 본 것 -- 어긋났으면 코드를 고쳐 다시 그려라:", 본것]
+    return "\n".join(말)
 
 
 @tool
