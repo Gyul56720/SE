@@ -69,6 +69,40 @@ _잰것실패 = re.compile(r"^\s*meas\b.*\bfailed!", re.M | re.I)
 _숫자 = re.compile(r"[-+]?\d+\.\d+e[-+]\d+", re.I)
 
 
+# --- `save` 없이 스윕 안에서 `@소자[값]` 을 쓰면 **조용히 틀린 곡선**이 나온다 ---
+# 실측 2026-09-15. `dc Vg ...` 안에서 `let gmid = @m1[gm]/@m1[id]` 을 썼더니 오류 없이
+# 3점짜리 그럴듯한 곡선이 나왔다. 그런데 `@m1[gm]` 은 **스윕 벡터가 아니라 스칼라 한 점**
+# 이었고, 그것이 스윕된 전류에 방송(broadcast)되어 값이 전부 틀렸다.
+#
+#     save 없이:  2.6956  2.5641  2.4390     <- 그럴듯하게 줄어드는 곡선. 전부 틀림
+#     save 붙여:  2.5641  2.5000  2.4390     <- 2/Vov 와 네 자리까지 일치
+#
+# 곡선이 단조롭게 내려가 보여서 눈으로는 절대 못 잡는다. 그래서 여기서 막는다.
+_소자값 = re.compile(r"@\w+\[\w+\]")
+_스윕 = re.compile(r"^\s*(dc|ac|tran|noise)\s+\S", re.M | re.I)
+_저장 = re.compile(r"^\s*save\b", re.M | re.I)
+
+
+def 저장빠짐(netlist: str) -> "list[str]":
+    """스윕 뒤에서 `save` 없이 쓰인 `@소자[값]` 들. 없으면 빈 목록."""
+    글 = netlist or ""
+    m = _스윕.search(글)
+    if not m:
+        return []                      # 스윕이 없으면 `op` 의 스칼라라 맞다
+    뒤 = 글[m.start():]
+    # **`alter`·`save`·`show` 줄은 읽기가 아니다.** `alter @Vid[acmag] = 0` 은 값을
+    # 바꾸는 것이라 벡터가 될 일이 없는데, 처음엔 이것까지 걸어 **거짓 못잼**을 냈다.
+    읽는줄 = [l for l in 뒤.splitlines()
+            if not re.match(r"\s*(alter\w*|save|show|setplot|destroy)\b", l, re.I)]
+    쓴것 = set(_소자값.findall("\n".join(읽는줄)))
+    if not 쓴것:
+        return []
+    저장된 = " ".join(l for l in 글.splitlines() if _저장.match(l))
+    if "all" in 저장된.split() and 저장된.count("@") == 0:
+        저장된 = ""                     # `save all` 만으로는 소자값이 안 담긴다(실측)
+    return sorted(x for x in 쓴것 if x not in 저장된)
+
+
 def 있나() -> bool:
     return shutil.which("ngspice") is not None
 
@@ -150,6 +184,13 @@ def 돌리기(netlist: str, 확인=None, 초: int = None) -> dict:
                 "왜": "ngspice 가 없다 -- `apt-get install -y ngspice`"}
     if not (netlist or "").strip():
         return {"판정": 못잼, "끝값": -1, "로그": "", "잰것": {}, "왜": "넷리스트가 비었다"}
+    빠진 = 저장빠짐(netlist)
+    if 빠진:
+        return {"판정": 못잼, "끝값": -1, "로그": "", "잰것": {},
+                "왜": ("**`save` 없이 스윕 안에서 " + " · ".join(빠진[:4]) + " 를 쓴다** -- "
+                      "그러면 ngspice 가 오류 없이 **틀린 곡선**을 낸다(스칼라 한 점이 "
+                      "스윕 벡터에 방송된다). 스윕 앞에 `save " + " ".join(빠진[:4]) +
+                      "` 를 넣어라")}
     글 = netlist
     if not re.search(r"^\s*\.end\s*$", 글, re.M | re.I):
         글 = 글.rstrip() + "\n.end\n"
@@ -324,6 +365,322 @@ let t3 = vpk-3
 meas ac fhi WHEN vdb(b)=t3 FALL=1
 .endc
 """
+
+# ---------------------------------------------------------------------------
+# 2차 -- 학부·석사 과정의 표준 회로들. **전부 손계산과 대조하고 넣었다**(2026-09-15).
+# 대조는 `tests/test_spice.py` 가 매번 다시 한다.
+# ---------------------------------------------------------------------------
+
+본보기["cascode"] = _모델 + """\
+* Cascode. The top device multiplies the output resistance by its own gm*ro, so Rout
+* jumps from ro (a few hundred kohm) to tens of megohm. That is where gain comes from
+* once you have run out of current. The price is one Vov of output swing.
+Vdd vdd 0 DC 1.8
+Vin in 0 DC 0.75
+Vb  b  0 DC 1.3
+Vout out 0 DC 1.2
+M1 mid in  0   0 nch W=10u L=1u
+M2 out b   mid 0 nch W=10u L=1u
+.control
+op
+print @m1[id] @m1[gm] @m1[gds] @m2[gm] @m2[gds]
+dc Vout 0.9 1.7 0.01
+meas dc i_lo FIND i(Vout) AT=1.0
+meas dc i_hi FIND i(Vout) AT=1.6
+let rout = 0.6/(i_hi-i_lo)
+print rout
+.endc
+"""
+
+본보기["cascode_mirror"] = _모델 + """\
+* Cascode current mirror. The copy is flat against output voltage because Rout is now
+* ~gm*ro^2 instead of ro -- about 200x better than the plain mirror.
+* Vb must sit at TWO gate-source drops. Set it too low and the upper device starves in
+* triode and the mirror quietly copies the wrong current (measured: 15.8uA for 50uA).
+Vdd vdd 0 DC 1.8
+Iref vdd ref DC 50u
+Vout vdd out DC 0.9
+Vb b 0 DC 1.45
+M1 r1  r1 0  0 nch W=10u L=1u
+M2 ref b  r1 0 nch W=10u L=1u
+M3 m1  r1 0  0 nch W=10u L=1u
+M4 out b  m1 0 nch W=10u L=1u
+.control
+dc Vout 0 1.2 0.01
+meas dc i_lo FIND i(Vout) AT=0.3
+meas dc i_hi FIND i(Vout) AT=0.9
+let rout_casc = 0.6/(i_hi-i_lo)
+print rout_casc
+.endc
+"""
+
+본보기["source_follower"] = _모델 + """\
+* Source follower (common drain). Gain is below one and the body effect is why:
+*   Av = gm/(gm+gmb+gds)
+* What you buy is a low output resistance ~1/gm for driving a heavy load.
+Vdd vdd 0 DC 1.8
+Vin in 0 DC 1.2 AC 1
+M1 vdd in out 0 nch W=20u L=1u
+Ibias out 0 DC 100u
+.control
+op
+print v(out) @m1[gm] @m1[gmbs] @m1[gds] @m1[id]
+ac dec 20 1 1Meg
+meas ac av_db FIND vdb(out) AT=1k
+.endc
+"""
+
+본보기["common_gate"] = _모델 + """\
+* Common gate. Input resistance is low (1/(gm+gmb)) and the gain is non-inverting:
+*   Av = (gm+gmb)*(RD||ro)
+* This is the upper half of a cascode, and the input stage of a current-mode receiver.
+Vdd vdd 0 DC 1.8
+Vb  b  0 DC 1.2
+Vs  s  0 DC 0.4 AC 1
+RD vdd out 20k
+M1 out b s 0 nch W=10u L=1u
+.control
+op
+print v(out) @m1[gm] @m1[gmbs] @m1[gds] @m1[id]
+ac dec 20 1 10Meg
+meas ac av_db FIND vdb(out) AT=1k
+.endc
+"""
+
+본보기["body_effect"] = _모델 + """\
+* Body effect. Two identical devices, one with Vsb=0 and one with Vsb=0.5. At the same
+* drain current their gate voltages differ by exactly the threshold shift:
+*   dVth = GAMMA*(sqrt(PHI+Vsb) - sqrt(PHI))
+* Note SPICE's PHI *is* 2*phi_F, so with GAMMA=0.4 and PHI=0.7 this is 0.1035 V.
+Vg  g  0 DC 0
+Vd1 d1 0 DC 1.8
+Vd2 d2 0 DC 1.8
+Vs2 s2 0 DC 0.5
+M1 d1 g 0  0 nch W=10u L=1u
+M2 d2 g s2 0 nch W=10u L=1u
+.control
+dc Vg 0 1.8 0.002
+meas dc vg1 WHEN i(Vd1)=-10u
+meas dc vg2 WHEN i(Vd2)=-10u
+let dvth = vg2-vg1-0.5
+print dvth
+.endc
+"""
+
+본보기["miller"] = _모델 + """\
+* Miller effect, measured directly as INPUT CAPACITANCE rather than argued about.
+* Two identical devices: M1 has a real load so it has gain, M2's drain is held by an
+* ideal source so it has none. The gate current at 1 MHz gives Cin for each:
+*   with gain   Cin = Cgs + Cgd(1+|Av|)
+*   without     Cin = Cgs + Cgd
+Vdd vdd 0 DC 1.8
+V1 g1 0 DC 0.6225 AC 1
+V2 g2 0 DC 0.6225 AC 1
+RD vdd o1 20k
+Vd2 o2 0 DC 0.9
+M1 o1 g1 0 0 nch W=30u L=1u
+M2 o2 g2 0 0 nch W=30u L=1u
+.control
+op
+print v(o1) @m1[id] @m1[gm]
+ac lin 1 1Meg 1Meg
+let cin_gain = mag(i(V1))/(2*PI*1e6)
+let cin_flat = mag(i(V2))/(2*PI*1e6)
+let miller_ratio = cin_gain/cin_flat
+print cin_gain cin_flat miller_ratio
+ac dec 50 1k 1G
+meas ac av_db FIND vdb(o1) AT=10k
+.endc
+"""
+
+본보기["gm_id"] = _모델 + """\
+* gm/ID -- the one knob that trades gain against speed. Square law gives gm/ID = 2/Vov,
+* so a small overdrive buys transconductance per amp (gain, low power) and a large one
+* buys fT. The intrinsic gain gm/gds follows the same trade in reverse.
+* **`save` is not optional here.** Without it ngspice returns a plausible but WRONG
+* curve: @m1[gm] stays a scalar and gets broadcast over the swept current.
+Vd d 0 DC 1.2
+Vg g 0 DC 0.7
+M1 d g 0 0 nch W=10u L=1u
+.control
+save all @m1[gm] @m1[id] @m1[gds]
+dc Vg 0.55 1.5 0.005
+let gm_id = @m1[gm]/@m1[id]
+let gain = @m1[gm]/@m1[gds]
+meas dc gmid_vov100m FIND gm_id AT=0.6
+meas dc gmid_vov400m FIND gm_id AT=0.9
+meas dc gmid_vov800m FIND gm_id AT=1.3
+meas dc gain_vov100m FIND gain AT=0.6
+meas dc gain_vov800m FIND gain AT=1.3
+.endc
+"""
+
+본보기["cmrr"] = _모델 + """\
+* CMRR. Differential gain is gm*RD; common-mode gain is set by how good the tail is,
+* Acm ~ -RD/(2*r_tail). A plain tail MOSFET has finite ro, so CMRR is finite -- which
+* is exactly why a serious design cascodes the tail. Measured in two AC runs;
+* CMRR(dB) = ad_db - acm_db.
+Vdd vdd 0 DC 1.8
+Vcm cm 0 DC 0.9
+Vid id 0 DC 0 AC 1
+Vic ic 0 DC 0 AC 0
+Eip ip 0 VALUE={V(cm)+V(id)/2+V(ic)}
+Ein in 0 VALUE={V(cm)-V(id)/2+V(ic)}
+RD1 vdd op 20k
+RD2 vdd om 20k
+M1 op ip tail 0 nch W=20u L=1u
+M2 om in tail 0 nch W=20u L=1u
+Vbt bt 0 DC 0.75
+M3 tail bt 0 0 nch W=20u L=2u
+.control
+op
+print @m1[gm] @m3[id] @m3[gds]
+ac dec 20 1 1Meg
+let adiff = v(op)-v(om)
+meas ac ad_db FIND vdb(adiff) AT=1k
+alter @Vid[acmag] = 0
+alter @Vic[acmag] = 1
+ac dec 20 1 1Meg
+meas ac acm_db FIND vdb(op) AT=1k
+.endc
+"""
+
+본보기["inverter_delay"] = _모델 + """\
+* Propagation delay is LINEAR in load: tp = t_intrinsic + 0.69*Req*CL. Two identical
+* inverters with 10 fF and 40 fF show the slope and the intercept -- that intercept is
+* the self-load, and it is why fan-out curves do not pass through the origin.
+Vdd vdd 0 DC 1.8
+Vin in 0 PULSE(0 1.8 1n 50p 50p 5n 10n)
+M1 o1 in 0   0   nch W=2u L=0.5u
+M2 o1 in vdd vdd pch W=5u L=0.5u
+M3 o2 in 0   0   nch W=2u L=0.5u
+M4 o2 in vdd vdd pch W=5u L=0.5u
+C1 o1 0 10f
+C2 o2 0 40f
+.control
+tran 5p 12n
+meas tran tphl_10f TRIG v(in) VAL=0.9 RISE=1 TARG v(o1) VAL=0.9 FALL=1
+meas tran tplh_10f TRIG v(in) VAL=0.9 FALL=1 TARG v(o1) VAL=0.9 RISE=1
+meas tran tphl_40f TRIG v(in) VAL=0.9 RISE=1 TARG v(o2) VAL=0.9 FALL=1
+meas tran tplh_40f TRIG v(in) VAL=0.9 FALL=1 TARG v(o2) VAL=0.9 RISE=1
+.endc
+"""
+
+본보기["inverter_power"] = _모델 + """\
+* Dynamic power. Each full cycle moves CL*VDD of charge out of the supply, so
+*   P = CL * VDD^2 * f
+* independent of how fast the devices are. The measured number lands a few percent
+* ABOVE that -- the excess is short-circuit current while both devices are on.
+Vdd vdd 0 DC 1.8
+Vin in 0 PULSE(0 1.8 0 50p 50p 4.95n 10n)
+M1 out in 0   0   nch W=2u L=0.5u
+M2 out in vdd vdd pch W=5u L=0.5u
+CL out 0 100f
+.control
+tran 2p 100n
+meas tran iavg AVG i(Vdd) FROM=10n TO=100n
+let pdyn = -iavg*1.8
+print pdyn
+.endc
+"""
+
+본보기["transmission_gate"] = _모델 + """\
+* Transmission gate. An NMOS alone dies near VDD (a threshold drop) and a PMOS alone
+* dies near ground; in parallel the on-resistance stays within about 2.5x across the
+* whole input range. Measured as a divider against a 100k load.
+Vdd vdd 0 DC 1.8
+Vc  c  0 DC 1.8
+Vcb cb 0 DC 0
+Vin in 0 DC 0
+MN out c  in 0   nch W=4u L=0.5u
+MP out cb in vdd pch W=8u L=0.5u
+RL out 0 100k
+.control
+dc Vin 0.05 1.75 0.01
+let ron = (v(in)-v(out))/(v(out)/100k)
+meas dc ron_lo  FIND ron AT=0.2
+meas dc ron_mid FIND ron AT=0.9
+meas dc ron_hi  FIND ron AT=1.6
+.endc
+"""
+
+본보기["elmore"] = """\
+* Wire delay grows as the SQUARE of length. Four INDEPENDENT ladders of 1, 2, 4 and 8
+* equal RC segments, all driven from the same step. Doubling the length more than
+* TRIPLES the delay -- a linear model would say 2x. That gap is why long wires get
+* repeaters, which cut L^2 back to L.
+Vin in 0 PULSE(0 1 0 1p 1p 100n 200n)
+Ra1 in a1 1k
+Ca1 a1 0 1p
+Rb1 in b1 1k
+Cb1 b1 0 1p
+Rb2 b1 b2 1k
+Cb2 b2 0 1p
+Rc1 in c1 1k
+Cc1 c1 0 1p
+Rc2 c1 c2 1k
+Cc2 c2 0 1p
+Rc3 c2 c3 1k
+Cc3 c3 0 1p
+Rc4 c3 c4 1k
+Cc4 c4 0 1p
+Rd1 in d1 1k
+Cd1 d1 0 1p
+Rd2 d1 d2 1k
+Cd2 d2 0 1p
+Rd3 d2 d3 1k
+Cd3 d3 0 1p
+Rd4 d3 d4 1k
+Cd4 d4 0 1p
+Rd5 d4 d5 1k
+Cd5 d5 0 1p
+Rd6 d5 d6 1k
+Cd6 d6 0 1p
+Rd7 d6 d7 1k
+Cd7 d7 0 1p
+Rd8 d7 d8 1k
+Cd8 d8 0 1p
+.control
+tran 20p 150n
+meas tran t_len1 TRIG v(in) VAL=0.5 RISE=1 TARG v(a1) VAL=0.5 RISE=1
+meas tran t_len2 TRIG v(in) VAL=0.5 RISE=1 TARG v(b2) VAL=0.5 RISE=1
+meas tran t_len4 TRIG v(in) VAL=0.5 RISE=1 TARG v(c4) VAL=0.5 RISE=1
+meas tran t_len8 TRIG v(in) VAL=0.5 RISE=1 TARG v(d8) VAL=0.5 RISE=1
+.endc
+"""
+
+본보기["sram_read_disturb"] = _모델 + """\
+* 6T SRAM read disturb. The cell holds 0 on QL. During a read the access device pulls
+* QL up from the precharged bitline while the driver pulls it down -- a divider set by
+* the CELL RATIO (driver W/L over access W/L, here 2). If QL climbs past the other
+* inverter's trip point the cell flips and the data is gone. Shrink the ratio and watch
+* v_disturb climb.
+* The cell needs an initial state, and measurement (2026-09-15) says EITHER `.ic` or
+* `uic` alone is enough -- they give bit-identical results here. Drop BOTH and the cell
+* settles the other way round (QL=1.8, QR=0) and every number below describes the mirror
+* image. A plain `op` with no transient parks both nodes at the metastable point
+* (measured: both sat at 0.796 V) and the cell holds nothing at all.
+Vdd vdd 0 DC 1.8
+Vwl wl 0 PULSE(0 1.8 2n 100p 100p 6n 20n)
+Vbl bl 0 DC 1.8
+Vblb blb 0 DC 1.8
+MNL ql qr 0   0   nch W=4u L=0.5u
+MPL ql qr vdd vdd pch W=1u L=0.5u
+MNR qr ql 0   0   nch W=4u L=0.5u
+MPR qr ql vdd vdd pch W=1u L=0.5u
+MAL ql wl bl  0 nch W=2u L=0.5u
+MAR qr wl blb 0 nch W=2u L=0.5u
+CL ql 0 1f
+CR qr 0 1f
+.ic v(ql)=0 v(qr)=1.8
+.control
+tran 10p 10n uic
+meas tran v_hold FIND v(ql) AT=1.5n
+meas tran v_disturb MAX v(ql) FROM=3n TO=7n
+meas tran v_high FIND v(qr) AT=6n
+.endc
+"""
+
 
 영어이름 = {
     "rc": "rc_lowpass", "lowpass": "rc_lowpass",
