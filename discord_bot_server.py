@@ -36,6 +36,7 @@ from langgraph.checkpoint.memory import MemorySaver  # noqa: E402
 
 import agent_context  # noqa: E402
 import channels  # noqa: E402
+import eda_prompt as _eda
 import agent_memory
 import gitsync  # noqa: E402
 import gatekeeper  # noqa: E402
@@ -205,6 +206,7 @@ ADMIN_SYSTEM_PROMPT = (
     "\n"
     "**사진이 오면 `read_image` 로 읽는다.** `cat` 은 그림에 안 통한다 -- 깨진 바이트만 "
     "나온다. 그리고 **보이지 않는다고 답하지 마라**(실측 2026-09-15: 그렇게 답했다).\n"
+    "" + _eda.갈래규칙 + "\n"
     "문제가 오면 **풀이 · 약한 개념 · 오답노트 · 예상 질문과 답변** 넷을 다 내라. "
     "풀이는 한 걸음씩 쓰고 마지막 줄에 `답: ...`. 예상 질문은 **이 문제를 처음 보는 "
     "사람**이 막힐 자리를 네가 먼저 묻고 답하는 것이다(`Q:` / `A:` 3~5개).\n"
