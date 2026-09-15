@@ -42,7 +42,56 @@ def Q(x: float) -> float:
 
 # ---------------------------------------------------------------- 채널
 
-def 채널(손실dB: float = 20.0, sps: int = 16, 길이심볼: int = 64) -> np.ndarray:
+def 반사읽기(글: str):
+    """`"0.35@11, 0.2@4"` 를 `[(0.35, 11.0), (0.2, 4.0)]` 로. 빈 글은 빈 것."""
+    난것 = []
+    for 조각 in str(글 or "").replace(" ", "").split(","):
+        if not 조각:
+            continue
+        if "@" not in 조각:
+            raise ValueError(f"반사는 `계수@지연심볼` 꼴이라야 한다: {조각!r}")
+        계, 지 = 조각.split("@", 1)
+        try:
+            계수, 지연 = float(계), float(지)
+        except ValueError:
+            raise ValueError(f"반사의 숫자를 못 읽었다: {조각!r}")
+        if not (0.0 < abs(계수) < 1.0):
+            raise ValueError(f"반사 계수는 0 과 1 사이라야 한다(수동적 채널): {계수}")
+        if 지연 <= 0:
+            raise ValueError(f"반사 지연은 0보다 커야 한다: {지연}")
+        난것.append((계수, 지연))
+    return 난것
+
+
+def 반사붙이기(h: np.ndarray, sps: int, 반사) -> np.ndarray:
+    """스킨이펙트 응답에 **반사(에코)** 를 얹는다. `반사` 는 `[(계수, 지연심볼), ...]`.
+
+    실제 백플레인은 매끄러운 손실만 있지 않다 -- 커넥터·비아 스터브·임피던스 불연속이
+    신호 일부를 되돌려 보내고, 그것이 τ 만큼 늦게 다시 도착한다.
+
+        H_total(f) = H_skin(f) · (1 + Σ Γ_k e^{-j2πfτ_k})
+
+    그래서 |H| 에 **노치**가 생긴다: Γ 하나면 f·τ = 1/2 인 데서 합이 (1-|Γ|) 로 꺼지고,
+    깊이가 20log10(1-|Γ|) 다. 스킨이펙트는 주파수에 대해 단조롭게 죽지만 **노치는
+    특정 주파수만 파낸다** -- 그래서 CTLE 처럼 매끄러운 부스트로는 못 메운다.
+
+    시간 영역에서는 이것이 **τ 만큼 떨어진 자리에 커서 하나**를 만든다. 짧은 FFE 는
+    그 자리에 손이 닿지 않는다 -- 스팬 밖이기 때문이다. 탭 수를 늘리거나, 그 자리에만
+    탭을 놓아야(floating tap) 잡힌다.
+    """
+    if not 반사:
+        return h
+    긴것 = max(int(round(d * sps)) for _, d in 반사)
+    되돌림 = np.zeros(긴것 + 1)
+    되돌림[0] = 1.0
+    for 계수, 지연심볼 in 반사:
+        k = int(round(float(지연심볼) * sps))
+        if 0 < k < len(되돌림):
+            되돌림[k] += float(계수)
+    return np.convolve(h, 되돌림)[:len(h)]
+
+
+def 채널(손실dB: float = 20.0, sps: int = 16, 길이심볼: int = 64, 반사=()) -> np.ndarray:
     """Nyquist 에서 `손실dB` 만큼 죽는 **최소위상** 채널의 임펄스 응답.
 
     스킨이펙트꼴로 `|H(f)| = 10^(-(손실dB/20)·sqrt(f/f_nyq))` 을 세우고, 로그 크기의
@@ -63,7 +112,7 @@ def 채널(손실dB: float = 20.0, sps: int = 16, 길이심볼: int = 64) -> np.
     m[1:N // 2] = 2.0 * c[1:N // 2]
     m[N // 2] = c[N // 2]
     h = np.fft.ifft(np.exp(np.fft.fft(m))).real
-    return h
+    return 반사붙이기(h, sps, 반사)
 
 
 def 펄스응답(h: np.ndarray, sps: int) -> np.ndarray:
@@ -196,6 +245,7 @@ def LMS_FFE(받은것: np.ndarray, 정답: np.ndarray, 탭수: int, 지연: int,
 
 def 링크(비트수: int = 20000, 손실dB: float = 20.0, SNRdB: float = 20.0,
        sps: int = 8, CTLE피킹dB: float = 0.0, FFE탭: int = 0, DFE탭: int = 0,
+       반사=(), DFE자리=None,
        탭비트: int = 0, 남길비율: float = 1.0, 이상적판정: bool = False,
        ADC비트: int = 0, ADC풀스케일시그마: float = 3.0,
        학습비율: float = 0.3, 씨: int = 0) -> dict:
@@ -210,7 +260,7 @@ def 링크(비트수: int = 20000, 손실dB: float = 20.0, SNRdB: float = 20.0,
     """
     rng = np.random.default_rng(씨)
     b = rng.integers(0, 2, 비트수) * 2 - 1        # ±1 NRZ
-    h = 채널(손실dB, sps, 64)
+    h = 채널(손실dB, sps, 64, 반사)
 
     보낸것 = np.repeat(b, sps).astype(float)
     y = np.convolve(보낸것, h, mode="full")[:len(보낸것)]
@@ -246,8 +296,13 @@ def 링크(비트수: int = 20000, 손실dB: float = 20.0, SNRdB: float = 20.0,
     적응 = {"왜": "FFE 를 안 썼다", "발산": False, "MSE": float("nan"), "탭": None}
     if FFE탭 > 0:
         지연 = FFE탭 // 2
+        # **걸음을 탭 수로도 나눈다(NLMS).** 안정 조건이 mu < 2/(L·sigma^2) 라 탭이
+        # 길어지면 같은 걸음이 발산한다 -- 실측 2026-09-15: 전력으로만 나눴더니
+        # FFE 29탭이 탭 1.08e+06 까지 터졌다. 그 상태로 "탭을 늘려도 안 낫다" 고
+        # 말하면 물리가 아니라 내 걸음을 재는 것이다.
         힘 = float(np.mean(표본[학습] ** 2)) or 1.0
-        적응 = LMS_FFE(표본[학습], 맞춘것[학습], FFE탭, 지연, 걸음=0.02 / 힘)
+        적응 = LMS_FFE(표본[학습], 맞춘것[학습], FFE탭, 지연,
+                     걸음=0.2 / (max(1, FFE탭) * 힘))
         if 적응["발산"]:
             return {"BER": float("nan"), "오류수": -1, "잰비트": 0, "표본": 표본,
                     "비트": 맞춘것, "판정": 못잼, "왜": 적응["왜"], "적응": 적응,
@@ -267,12 +322,18 @@ def 링크(비트수: int = 20000, 손실dB: float = 20.0, SNRdB: float = 20.0,
 
     # DFE 탭을 **지금 이 파형의 후행 커서로 잰다** -- 채널 h 의 커서가 아니다.
     # CTLE·FFE 를 지난 뒤 남은 ISI 라야 DFE 가 지울 것이 맞는다.
+    # DFE 탭 **자리**를 정한다. 이어진 1..N 이 기본이고, `DFE자리` 를 주면 그 자리에만
+    # 놓는다 -- 반사가 만든 먼 커서(예: 11심볼 뒤)를 잡는 floating tap 이 그것이다.
+    # 이어진 탭으로 11심볼까지 가려면 탭이 11개 필요하지만, 자리를 알면 서너 개면 된다.
+    자리들 = ([int(x) for x in DFE자리 if int(x) > 0]
+            if DFE자리 else list(range(1, int(DFE탭) + 1)))
+    자리들 = sorted(set(자리들))
     dfe탭값 = None
-    if DFE탭 > 0:
+    if 자리들:
         탭 = []
-        for m in range(1, DFE탭 + 1):
+        for m in 자리들:
             앞 = 표본[학습][m:]
-            뒤 = 맞춘것[학습][:-m] if m else 맞춘것[학습]
+            뒤 = 맞춘것[학습][:-m]
             n = min(len(앞), len(뒤))
             탭.append(float(np.mean(앞[:n] * 뒤[:n])) if n else 0.0)
         dfe탭값 = np.array(탭)
@@ -281,7 +342,7 @@ def 링크(비트수: int = 20000, 손실dB: float = 20.0, SNRdB: float = 20.0,
         if 남길비율 < 1.0:
             dfe탭값 = 프루닝(dfe탭값, 남길비율)
 
-    판정 = _슬라이스(표본, dfe탭값, 맞춘것 if 이상적판정 else None)
+    판정 = _슬라이스(표본, dfe탭값, 맞춘것 if 이상적판정 else None, 자리들)
 
     잰것 = slice(학습끝, len(판정))
     오류 = int(np.sum(판정[잰것] != 맞춘것[잰것]))
@@ -292,6 +353,7 @@ def 링크(비트수: int = 20000, 손실dB: float = 20.0, SNRdB: float = 20.0,
             "ADC비트": int(ADC비트), "클립비율": 클립비율,
             "ADC풀스케일시그마": ADC풀스케일시그마,
             "DFE탭": None if dfe탭값 is None else list(map(float, dfe탭값)),
+            "DFE자리": 자리들, "반사": list(반사),
             "이상적판정": 이상적판정, "판정": PASS,
             "왜": BER말(오류, 잰비트)}
 
@@ -311,21 +373,44 @@ def 받은파형(비트수: int = 4000, 손실dB: float = 20.0, SNRdB: float = 2
     return CTLE(y, sps, CTLE피킹dB) if CTLE피킹dB else y
 
 
-def _슬라이스(표본: np.ndarray, dfe탭, 정답) -> np.ndarray:
-    """문턱 0 슬라이서. DFE 가 있으면 **한 심볼씩 순차로** 돈다(되먹임이라 벡터화 못 한다)."""
+def _슬라이스(표본: np.ndarray, dfe탭, 정답, 자리들=None) -> np.ndarray:
+    """문턱 0 슬라이서. DFE 가 있으면 **한 심볼씩 순차로** 돈다(되먹임이라 벡터화 못 한다).
+
+    `자리들` 은 각 탭이 몇 심볼 뒤를 보는가다. 이어진 1..N 이 아니어도 된다 --
+    반사가 만든 먼 커서만 골라 잡는 floating tap 을 위해서다.
+    """
     if dfe탭 is None or len(dfe탭) == 0:
         return np.where(표본 >= 0, 1, -1)
-    n마디 = len(dfe탭)
+    자리들 = list(자리들) if 자리들 else list(range(1, len(dfe탭) + 1))
+    깊이 = max(자리들)
     난것 = np.zeros(len(표본), dtype=int)
-    지난판정 = np.zeros(n마디)
+    지난판정 = np.zeros(깊이)          # 지난판정[0] 이 한 심볼 전
     for i in range(len(표본)):
-        v = 표본[i] - float(dfe탭 @ 지난판정)
+        v = 표본[i] - float(sum(c * 지난판정[m - 1] for c, m in zip(dfe탭, 자리들)))
         난것[i] = 1 if v >= 0 else -1
         # **되먹이는 것은 판정이다.** `정답` 을 먹이면 오류 번짐이 사라져 BER 이
         # 실제보다 좋게 나온다 -- 하드웨어는 정답을 모른다.
         먹일것 = float(정답[i]) if 정답 is not None and i < len(정답) else float(난것[i])
         지난판정 = np.concatenate([[먹일것], 지난판정[:-1]])
     return 난것
+
+
+def 반사자리찾기(표본: np.ndarray, 비트: np.ndarray, 최대지연: int = 40,
+           건너뛸앞: int = 6, 몇개: int = 3) -> "list[int]":
+    """**반사가 어디 있나.** 먼 자리의 커서를 상관으로 훑어 큰 것부터 돌려준다.
+
+    하드웨어의 floating-tap DFE 가 실제로 하는 일이다 -- 탭을 이어 붙여 멀리 뻗는
+    대신, 어디가 큰지 **찾아서** 그 자리에만 탭을 놓는다. `건너뛸앞` 은 이어진
+    탭이 이미 맡는 앞쪽 구간이다.
+    """
+    n = min(len(표본), len(비트))
+    난것 = []
+    for m in range(int(건너뛸앞) + 1, int(최대지연) + 1):
+        if m >= n:
+            break
+        난것.append((abs(float(np.mean(표본[m:n] * 비트[:n - m]))), m))
+    난것.sort(reverse=True)
+    return sorted(m for _, m in 난것[:int(몇개)])
 
 
 def BER말(오류: int, 잰비트: int) -> str:
@@ -836,8 +921,14 @@ def 말로(r: dict) -> str:
     적 = r.get("적응") or {}
     if 적.get("탭") is not None:
         줄.append(f"FFE: {적['왜']}")
+    if r.get("반사"):
+        줄.append("channel reflections: "
+                  + " · ".join(f"{g:+.2f} at {d:.0f} UI" for g, d in r["반사"])
+                  + "  (notch at f*tau = 1/2, depth 20log10(1-|G|))")
     if r.get("DFE탭"):
-        줄.append("DFE taps: " + " · ".join(f"{t:+.3f}" for t in r["DFE탭"]))
+        자리 = r.get("DFE자리") or list(range(1, len(r["DFE탭"]) + 1))
+        줄.append("DFE taps @" + ",".join(str(m) for m in 자리) + ": "
+                  + " · ".join(f"{t:+.3f}" for t in r["DFE탭"]))
     if r.get("ADC비트"):
         c = r.get("클립비율", 0.0)
         줄.append(f"ADC: {r['ADC비트']}-bit, full scale "

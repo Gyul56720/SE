@@ -762,6 +762,7 @@ def serdes_link(loss_db: float = 20.0, snr_db: float = 26.0, bits: int = 100000,
                 ctle_peaking_db: float = 0.0, ffe_taps: int = 0, dfe_taps: int = 0,
                 tap_bits: int = 0, keep_fraction: float = 1.0,
                 ideal_decision: bool = False, eye: bool = True,
+                reflections: str = "", dfe_positions: str = "",
                 sps: int = 8, seed: int = 0) -> str:
     """**Actually simulate a wireline SerDes link and measure BER** (channel/CTLE/FFE/DFE).
 
@@ -782,14 +783,33 @@ def serdes_link(loss_db: float = 20.0, snr_db: float = 26.0, bits: int = 100000,
         * a diverged LMS is reported as diverged, not as "equalisation did not help"
 
     `tap_bits` quantises the taps (research contribution: BER vs word length) and
-    `keep_fraction` prunes them. Identifiers must be ASCII.
+    `keep_fraction` prunes them.
+
+    **`reflections` adds echoes** -- `"0.35@11"` is a coefficient 0.35 arriving 11 symbols
+    late, several separated by commas. A real backplane is not just smooth skin-effect
+    loss: connectors and via stubs send part of the signal back, and it returns as
+    `H(f) = H_skin(f)(1 + sum Gamma_k e^-j2pi f tau_k)` -- a **notch** at f*tau = 1/2,
+    20log10(1-Gamma) deep, which no smooth CTLE boost can fill. In time it is one
+    isolated cursor at that delay. Measured: Gamma 0.35 at tau 11 puts a +0.358 cursor at
+    tap 11 while every other residual is below 0.055.
+
+    **`dfe_positions` places DFE taps at chosen delays** -- `"1,2,3,4,11"` instead of a
+    contiguous bank (this is a floating-tap DFE, what real receivers do). Measured on
+    that channel: eight contiguous taps cannot reach delay 11 and buy almost nothing
+    (BER 1.4e-3 for 373 LC), while **one tap placed at 11 gives 2.0e-5 for 49 LC**.
+    Where the taps go beats how many there are. Identifiers must be ASCII.
     """
     if agent_context.is_blocked():
         return "실패: 게스트는 serdes_link 을 사용할 수 없습니다."
     import serdes
+    try:
+        반사 = serdes.반사읽기(reflections)
+    except ValueError as e:
+        return f"실패: {e}"
+    자리 = [int(x) for x in str(dfe_positions).replace(" ", "").split(",") if x] or None
     r = serdes.링크(비트수=int(bits), 손실dB=loss_db, SNRdB=snr_db, sps=int(sps),
                   CTLE피킹dB=ctle_peaking_db, FFE탭=int(ffe_taps),
-                  DFE탭=int(dfe_taps), 탭비트=int(tap_bits),
+                  DFE탭=int(dfe_taps), 탭비트=int(tap_bits), 반사=반사, DFE자리=자리,
                   남길비율=keep_fraction, 이상적판정=bool(ideal_decision), 씨=int(seed))
     줄 = [serdes.말로(r)]
     if eye and r.get("판정") != "못잼":
