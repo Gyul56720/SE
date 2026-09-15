@@ -86,7 +86,7 @@ def 판정하기(로그: str) -> "tuple[str, str]":
 
 
 def 시뮬(design: str, testbench: str, top: str = "tb", 초: int = None,
-       파형낼곳: str = "") -> dict:
+       파형낼곳: str = "", 커버리지바닥: float = 0.0) -> dict:
     """설계와 테스트벤치를 짓고 돌린다. {판정, 끝값, 로그, 왜}.
 
     `파형낼곳` 을 주면 VCD 를 떠 파형 PNG 까지 그린다. 그러면 `파형`·`파형말` 이 는다.
@@ -121,6 +121,40 @@ def 시뮬(design: str, testbench: str, top: str = "tb", 초: int = None,
     난것 = {"판정": 판정, "끝값": 끝값, "로그": 로그, "왜": 왜}
     if 파형낼곳:
         난것.update(_파형(판, 파형낼곳, 끼웠나))
+    if 커버리지바닥 and 커버리지바닥 > 0:
+        난것.update(_커버리지(design, testbench, top, 커버리지바닥, 초))
+    elif 판정 == PASS:
+        # **안 잰 것을 안 말하면 초록이 더 크게 보인다.** 벤치가 통과했다는 것과
+        # 설계를 검증했다는 것은 다른 말이다 -- IP 딜리버러블은 커버리지를 같이 낸다.
+        난것["왜"] += ("  (커버리지를 안 쟀다 -- 통과한 벤치가 설계의 얼마를 "
+                     "건드렸는지는 모른다. `min_coverage` 를 줘라)")
+    return 난것
+
+
+def _커버리지(design: str, testbench: str, top: str, 바닥: float, 초) -> dict:
+    """커버리지를 재서 **바닥을 못 넘으면 통과를 거둔다.**
+
+    실측 2026-09-15: 같은 카운터를 두 벤치로 돌렸더니 **둘 다 PASS** 인데 하나는
+    DUT 52.9%(`load` 를 한 번도 안 흔듦), 하나는 100% 였다. 같은 초록, 다른 검증.
+    """
+    import cover
+    if not cover.있나():
+        return {"커버리지말": "verilator 가 없어 커버리지를 못 쟀다"}
+    판 = tempfile.mkdtemp(prefix="cov-")
+    이름 = (첫모듈(design) or "design") + ".sv"
+    _쓰기(판, 이름, design)
+    _쓰기(판, "tb.sv", testbench)
+    r = cover.재기(판, [이름], "tb.sv", top, 초=max(초 or 시한초, 300))
+    if not r.get("됐나"):
+        return {"커버리지말": f"커버리지를 못 쟀다: {r.get('왜','')}",
+                "커버리지": -1}
+    c = r["커버리지"]
+    난것 = {"커버리지": c["전체"], "커버리지말": r["왜"]}
+    if c["전체"] < 바닥:
+        난것["판정"] = 못잼
+        난것["왜"] = (f"**벤치는 통과했지만 설계의 {c['전체']:.1f}% 밖에 안 건드렸다** "
+                    f"(바닥 {바닥:.0f}%). 안 건드린 자리는 검증된 것이 아니다 -- "
+                    "아래 dark 목록을 치는 자극을 더 써라")
     return 난것
 
 
@@ -178,6 +212,18 @@ def 합성(design: str, top: str = "") -> dict:
     # (실측 2026-09-15: 셀수 -1 이 나왔는데 합성은 성공한 것이었다).
     끝값, 로그 = _돌리기(["yosys", "-p", 명], 판)
     if 끝값 != 0:
+        # **무엇에 막혔는지 가려서 말한다.** 실측 2026-09-15: Ibex(lowRISC) 의
+        # `ibex_pkg.sv` 가 `OP_CAST` 에서 막혔다. 그건 설계의 흠이 아니라 **Yosys
+        # 0.33 내장 프런트엔드가 SystemVerilog 를 다 못 받는 것**이다. 같은 파일이
+        # Verilator 린트는 경고 0으로 지난다. "합성이 막혔다" 로만 말하면 설계를
+        # 고치려 든다 -- 고칠 데가 아니다.
+        if re.search(r"unexpected OP_CAST|unexpected TOK_|syntax error", 로그 or "", re.I):
+            return {"판정": 못잼, "셀수": -1, "로그": 로그,
+                    "왜": ("**Yosys 내장 프런트엔드가 이 SystemVerilog 를 못 읽는다** -- "
+                          "설계의 흠이 아닐 수 있다(실측: Ibex 가 여기서 막히는데 "
+                          "Verilator 린트는 경고 0으로 지난다). 확인하려면 `lint_rtl` 을 "
+                          "먼저 돌려라. 통과하면 문법이 아니라 도구의 한계이고, "
+                          "실무에서는 sv2v 나 slang 프런트엔드를 끼운다")}
         return {"판정": 못잼, "셀수": -1, "로그": 로그, "왜": "합성이 막혔다"}
     m = re.search(r"Number of cells:\s+(\d+)", 로그 or "")
     셀 = int(m.group(1)) if m else -1
