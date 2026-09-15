@@ -454,6 +454,23 @@ def 구별되나(오류1: int, 비트1: int, 오류2: int, 비트2: int) -> "tup
                    f"2시그마 ±{2 * 시그마:.1e}). 같다고 말하려면 비트를 더 세라")
 
 
+def 가르려면몇비트(p1: float, p2: float) -> float:
+    """두 BER 을 2시그마로 **가르려면** 측정 구간이 몇 비트여야 하나.
+
+        |p1-p2| > 2(sigma1+sigma2),  sigma_i = sqrt(p_i/N)
+        => N > [ 2(sqrt(p1)+sqrt(p2)) / |p1-p2| ]^2
+
+    이 숫자가 없으면 "구별 안 된다" 가 "같다" 로 읽힌다. 실측 2026-09-15: 25dB 채널
+    SNR 30dB 에서 6비트가 35만 비트로는 '구별 안 됨' 이었는데, 필요한 것이 **35.1만**
+    이었다 -- 경계에 걸쳐 있었다. 140만으로 다시 재니 **구별됐다**(BER 31% 상승).
+    그 한 줄이 없어서 '6비트면 열화 없음' 이라는 결론이 나왔다.
+    """
+    if p1 <= 0 or p2 <= 0 or p1 == p2:
+        return float("inf")
+    import math as _m
+    return (2.0 * (_m.sqrt(p1) + _m.sqrt(p2)) / abs(p1 - p2)) ** 2
+
+
 def 비트폭쓸기(비트들=(2, 3, 4, 5, 6, 8, 10, 12), **인자) -> dict:
     """**연구 기여 2번**: 탭 비트폭 대비 BER. 부동소수점 기준선과 나란히 놓는다.
 
@@ -465,9 +482,10 @@ def 비트폭쓸기(비트들=(2, 3, 4, 5, 6, 8, 10, 12), **인자) -> dict:
     for b in 비트들:
         r = 링크(탭비트=int(b), **인자)
         다른가, 말 = 구별되나(r["오류수"], r["잰비트"], 기준["오류수"], 기준["잰비트"])
+        필요 = 가르려면몇비트(r["BER"], 기준["BER"])
         줄.append({"비트": int(b), "BER": r["BER"], "오류수": r["오류수"],
                   "잰비트": r["잰비트"], "기준선과다름": 다른가, "견줌": 말,
-                  "왜": r["왜"]})
+                  "가르려면": 필요, "왜": r["왜"]})
     열화없는최소 = next((x["비트"] for x in 줄 if not x["기준선과다름"]), None)
     return {"기준선": {"BER": 기준["BER"], "오류수": 기준["오류수"],
                     "잰비트": 기준["잰비트"], "왜": 기준["왜"]},
@@ -477,14 +495,35 @@ def 비트폭쓸기(비트들=(2, 3, 4, 5, 6, 8, 10, 12), **인자) -> dict:
 def 쓸기말로(s: dict) -> str:
     줄 = [f"float baseline: {s['기준선']['왜']}", ""]
     for x in s["줄"]:
-        표 = "differs" if x["기준선과다름"] else "same (within error)"
-        줄.append(f"  {x['비트']:2d} bit   BER {x['BER']:.3e}  ({x['오류수']:,} errors)  {표}")
+        if x["기준선과다름"]:
+            표 = "differs"
+        else:
+            # **'구별 안 됨' 옆에 곧바로 조건을 붙인다.** 맨 아래 한 줄로만 적었더니
+            # 옮겨 적히는 동안 떨어져 나가고 "no degradation" 이 되었다(실측).
+            n = x["가르려면"]
+            표 = ("NOT YET separated -- would need >= "
+                  f"{n:,.0f} evaluation bits to settle (ran {x['잰비트']:,})"
+                  if n < float("inf") else "identical to float")
+        줄.append(f"  {x['비트']:2d} bit   BER {x['BER']:.3e}  "
+                  f"({x['오류수']:,} errors)  {표}")
     줄.append("")
     b = s.get("열화없는최소비트")
-    줄.append(f"**smallest width not distinguishable from float: {b} bit**"
-              if b else "**every width tested is distinguishable from float**")
-    줄.append("Widths marked `same` are not proven equal -- they are not separated by "
-              "2 sigma at this bit count. Run more bits to narrow the bars.")
+    if not b:
+        줄.append("**every width tested is distinguishable from float**")
+        return "\n".join(줄)
+    그줄 = next(x for x in s["줄"] if x["비트"] == b)
+    모자란가 = 그줄["가르려면"] > 그줄["잰비트"]
+    줄.append(f"**smallest width NOT YET separated from float: {b} bit**"
+              + ("  <- PROVISIONAL: this run cannot settle it"
+                 if 모자란가 else ""))
+    줄.append("`NOT YET separated` does NOT mean equal. **Absence of a measured "
+              "difference is not evidence of no degradation** -- it means the error "
+              "bars are wider than the gap. Re-run at the bit count each row names "
+              "before quoting a word length as safe for hardware.")
+    if 모자란가:
+        줄.append(f"Measured 2026-09-15: a {b}-bit row that read `same` at 350,000 bits "
+                  "separated cleanly at 1,400,000 (BER +31%). The width that survived "
+                  "was one bit wider.")
     return "\n".join(줄)
 
 
