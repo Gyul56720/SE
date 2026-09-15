@@ -25,7 +25,7 @@ import channels
 
 from bot_tools import (
     search_memory, save_memory, run_shell, read_image, draw_circuit,
-    run_rtl, lint_rtl, synth_rtl, run_spice, spice_example,
+    run_rtl, lint_rtl, synth_rtl, prove_rtl, run_spice, spice_example,
     build_agent_pool, run_with_fallback_pool, _current_author,
     register_thread, unregister_thread,
 )
@@ -68,7 +68,7 @@ PUBLIC_MODEL_CANDIDATES = [PUBLIC_MODEL_NAME] + [m for m in _extra_models if m !
 # **`draw_circuit` 도 넣는다** (사용자 2026-09-15: 회로도를 그려 주고 원리를
 # 설명해 주는 기능). 도구가 없으면 못 쓴다 -- 이 파일이 두 번째로 겪는 그것이다.
 PUBLIC_TOOLS = [search_memory, save_memory, run_shell, read_image, draw_circuit,
-                run_rtl, lint_rtl, synth_rtl, run_spice, spice_example]
+                run_rtl, lint_rtl, synth_rtl, prove_rtl, run_spice, spice_example]
 # admin과 동일한 "적극적으로 조사해서 근거 기반으로 답하라"는 태도로 통일했다 -- 예전엔
 # "간결하게/불필요한 수식어 금지" 규칙 때문에, 상태·속도·에러를 묻는 질문에도 조사 없이
 # "OK" 한마디로 끝내버리는 경우가 있었다(admin은 run_shell로 journalctl을 직접 뒤져서 표까지
@@ -152,6 +152,8 @@ PUBLIC_SYSTEM_PROMPT = (
     "- **The waveform comes back with it.** `run_rtl` draws the VCD and attaches the picture; `$dumpfile` is injected if the bench lacks one. **x/z is drawn as a red hatched band, never as 0**, and the reply names in words every signal that sat at x/z for the whole run. A bench can print PASS while every input was x — measured 2026-09-15 — so read that line before you believe a pass. Pass `waveform=False` only when you truly do not need it.\n"
     "- `lint_rtl(design)` — Verilator `--lint-only -Wall`: width mismatches, inferred latches, unused/undriven nets. Things that simulate fine and bite at synthesis.\n"
     "- `synth_rtl(design, top)` — Yosys cell count. \"It runs\" first, \"how big\" next.\n"
+    "- `prove_rtl(design, top, depth, unbounded)` — **formal proof** over all inputs. A testbench visits the states it happened to drive; the solver visits every one. Write the property as `assert (...)` in the clocked block. Three things all exit 0 on Yosys 0.33 (measured 2026-09-15), so read the verdict, not the exit code: a counterexample, a **vacuous pass with no `assert` at all**, and a **bounded pass**. `PASS` means proved unbounded by induction; \"no counterexample within N steps\" is `못잼`, not a proof — a design that broke on cycle 200 was green at depth 20. On FAIL the counterexample trace comes back **as a waveform picture**.\n"
+    "  Formal starts from an **arbitrary** state, not from reset, so a design that simulates fine can break here at once. Give registers initial values or constrain reset with `assume`. Identifiers must be ASCII — Korean names break the Yosys frontend.\n"
     "\n"
     "**Always write a self-checking testbench and run it before you claim the RTL works.** Report the verdict you actually got, including FAIL — a red you measured beats a green nobody checked. If a tool is missing, say so; do not pretend it passed.\n"
     "\n"
