@@ -59,6 +59,9 @@ on:
       - "ledgerroot.py"
       # 회로도(draw_circuit 도구). schemdraw 로 그린다 -- LaTeX 불필요 (2026-09-15)
       - "circuitdraw.py"
+      # RTL 흐름(iverilog·verilator·yosys 를 부른다). 끝값이 아니라 **출력**으로
+      # 판정한다 -- vvp 는 FAIL 을 찍고도 0 을 낸다 (2026-09-15)
+      - "rtl.py"
       # 답에 박힌 LaTeX 를 유니코드·PNG 로 바꾼다. `_답보내기` 가 부른다 (2026-09-15)
       - "latex_formatter.py"
       # 메일(send_email 도구)과 열쇠(!열쇠). 봇이 임포트한다.
@@ -201,6 +204,12 @@ jobs:
             git reset --hard origin/main
             # G021: 코드(discord_pdf)가 기대는 한글 글꼴은 배포가 깐다 -- 사람에게 apt 를 시키지 않는다.
             sudo apt-get install -y fonts-nanum || (sudo apt-get update -qq && sudo apt-get install -y fonts-nanum)
+            # RTL 흐름(run_rtl · lint_rtl · synth_rtl). **사람에게 시키지 않는다** --
+            # G021 과 같은 규율이다. iverilog 로 돌리고 verilator 로 린트하고
+            # yosys 로 셀 수를 센다. 첫 설치만 느리고 그 뒤엔 "already newest" 다.
+            sudo apt-get install -y iverilog verilator yosys \
+              || (sudo apt-get update -qq && sudo apt-get install -y iverilog verilator yosys) \
+              || echo "[경고] RTL 도구 설치 실패 -- run_rtl 이 '도구가 없다' 로 답한다"
             pip3 install --break-system-packages -r requirements.txt discord.py
             sudo cp deploy/se-discord-bot.service /etc/systemd/system/
             sudo cp deploy/se-log-streamer.service /etc/systemd/system/
