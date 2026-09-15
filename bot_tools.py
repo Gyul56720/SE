@@ -885,6 +885,52 @@ def adc_sweep(widths: str = "4,5,6,7,8", full_scales: str = "2.0,2.5,3.0,4.0",
 
 
 @tool
+def loss_sweep(losses: str = "15,20,25,30,35", widths: str = "7,8,9,10",
+               target_ber: float = 1e-3, bits: int = 800000, seeds: str = "7,11,23,42",
+               quantize_adc: bool = True, adc_full_scale: float = 2.5,
+               ffe_taps: int = 11, dfe_taps: int = 8, sps: int = 8) -> str:
+    """**How far does a given word length hold as the channel gets worse?**
+
+    Sweeping loss at a fixed SNR cannot answer this. In this model SNR is referenced to
+    the ideal loss-free main cursor, so raising the loss worsens ISI **and** the effective
+    SNR together; measured at SNR 30 dB, 10-20 dB of loss gave zero errors (nothing to
+    compare) while 30 dB was already a broken link. So each loss is first moved to a
+    **common float BER** by bisecting on SNR -- then the rows differ in ISI, not in how
+    broken the link is. The SNR column is the price of that.
+
+    **Every cell is a mean over several seeds with its seed-to-seed spread**, because a
+    single seed cannot name a word length. Measured 2026-09-15 at 30 dB loss, 7-bit
+    coefficients read -4.7% on one seed and +26.2% on another: at coarse widths it is
+    where that seed's LMS solution happens to round that decides, not the step size. A
+    width is called sufficient only when the mean degradation AND the spread are both
+    small -- a large spread means the answer depends on which seed you looked at, which
+    is another way of saying the design has no margin.
+
+    Measured result (coefficients only, ideal ADC): 7 bit is flat to 20 dB, its spread
+    climbs from +-2.8% to +-10% by 30 dB, and its mean breaks to +11.7% at 35 dB. 8 bit
+    stays within +-3% mean and +-3.7% spread out to 35 dB. Identifiers must be ASCII.
+    """
+    if agent_context.is_blocked():
+        return "실패: 게스트는 loss_sweep 을 사용할 수 없습니다."
+    import serdes
+    try:
+        손실들 = tuple(float(x) for x in str(losses).replace(" ", "").split(",") if x)
+        폭들 = tuple(int(x) for x in str(widths).replace(" ", "").split(",") if x)
+        씨들 = tuple(int(x) for x in str(seeds).replace(" ", "").split(",") if x)
+    except ValueError:
+        return f"실패: losses/widths/seeds 를 못 읽었다: {losses!r} / {widths!r} / {seeds!r}"
+    if not 손실들 or not 폭들 or not 씨들:
+        return "실패: losses·widths·seeds 중에 빈 것이 있다"
+    if len(씨들) < 2:
+        return ("실패: **씨가 하나로는 워드 길이를 말할 수 없다** -- 실측으로 같은 7비트가 "
+                "한 씨에서 -4.7%, 다른 씨에서 +26.2% 였다. 씨를 둘 이상 줘라")
+    s = serdes.손실쓸기(손실들, 폭들, 목표BER=target_ber, 비트수=int(bits),
+                    ADC도=bool(quantize_adc), ADC풀스케일시그마=adc_full_scale,
+                    씨들=씨들, sps=int(sps), FFE탭=int(ffe_taps), DFE탭=int(dfe_taps))
+    return serdes.손실쓸기말로(s)
+
+
+@tool
 def ip_signoff(design: str, testbench: str, top: str = "tb",
                min_coverage: float = 80.0, target_mhz: float = 0.0,
                chip: str = "hx8k", deliverables: str = "",
