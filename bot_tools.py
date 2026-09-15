@@ -594,6 +594,67 @@ def draw_circuit(code: str = "", example: str = "", check: bool = True) -> str:
     return "\n".join(말)
 
 
+def _rtl보고(머리: str, r: dict, 꼬리칸: "list[str]") -> str:
+    """RTL 결과를 사람이 읽는 꼴로. **로그를 통째로 삼키지 않는다.**"""
+    줄 = [f"{머리}: **{r['판정']}** -- {r['왜']}"]
+    줄 += [f"{k}: {r[k]}" for k in 꼬리칸 if k in r and r[k] not in (-1, "", None)]
+    로그 = (r.get("로그") or "").strip()
+    if 로그:
+        줄 += ["", "```", 자르기(로그, 1200, 1200), "```"]
+    return "\n".join(줄)
+
+
+@tool
+def run_rtl(design: str, testbench: str, top: str = "tb", seconds: int = 60) -> str:
+    """**Compile and actually RUN Verilog/SystemVerilog** (iverilog + vvp).
+
+    `design` is the DUT, `testbench` is the bench that drives it. The bench MUST print
+    an explicit `PASS` or `FAIL` — see below.
+
+    Verdict is read from the **output**, never from the exit code: `vvp` exits 0 even
+    when the bench prints FAIL (measured 2026-09-15). So:
+      PASS  a pass marker is printed and no fail marker
+      FAIL  a fail marker is printed (`FAIL`, `ERROR`, `$error`, `$fatal`, mismatch)
+      못잼  neither was printed, or it did not even compile -- **not a pass**
+
+    Write self-checking benches: compare against expected values and
+    `$display("FAIL: got %0d expected %0d", got, exp)` on mismatch,
+    `$display("PASS")` at the end. Always `$finish`.
+    """
+    if agent_context.is_blocked():
+        return "실패: 게스트는 run_rtl 을 사용할 수 없습니다."
+    import rtl
+    return _rtl보고("Simulation", rtl.시뮬(design, testbench, top, seconds), ["끝값"])
+
+
+@tool
+def lint_rtl(design: str, strict: bool = True) -> str:
+    """**Static-check Verilog with Verilator** (`--lint-only -Wall`).
+
+    Catches width mismatches, unused/undriven signals, latch inference, blocking
+    assignments in sequential blocks -- the things that simulate fine and then bite in
+    synthesis. `strict=False` drops `-Wall` when the style warnings are too loud.
+    """
+    if agent_context.is_blocked():
+        return "실패: 게스트는 lint_rtl 을 사용할 수 없습니다."
+    import rtl
+    return _rtl보고("Lint", rtl.린트(design, strict), ["경고수"])
+
+
+@tool
+def synth_rtl(design: str, top: str = "") -> str:
+    """**Synthesize with Yosys and count cells** -- the 'A' in PPA.
+
+    "It runs" is the first question; "how big is it" is the next one. Returns the cell
+    count and the Yosys stat table. `top` is the top module (defaults to whatever
+    Yosys picks).
+    """
+    if agent_context.is_blocked():
+        return "실패: 게스트는 synth_rtl 을 사용할 수 없습니다."
+    import rtl
+    return _rtl보고("Synthesis", rtl.합성(design, top), ["셀수"])
+
+
 @tool
 def read_image(path: str, question: str = "") -> str:
     """**사진·스크린샷을 실제로 본다.** 첨부 파일이 그림이면 `cat` 하지 말고 이걸 써라.

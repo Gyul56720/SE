@@ -48,7 +48,7 @@ import time  # noqa: E402
 import keys  # noqa: E402
 import relay  # noqa: E402
 from bot_tools import (  # noqa: E402
-    REPO_DIR, run_shell, run_experiment, run_probes, read_file, read_image, draw_circuit, edit_file, delegate, send_email, repair, set_key, security_audit, codify_paper, research, create_pr, dispatch_command, search_memory, save_memory,
+    REPO_DIR, run_shell, run_experiment, run_probes, read_file, read_image, draw_circuit, run_rtl, lint_rtl, synth_rtl, edit_file, delegate, send_email, repair, set_key, security_audit, codify_paper, research, create_pr, dispatch_command, search_memory, save_memory,
     build_agent_pool, run_with_fallback_pool,
     register_thread, unregister_thread, request_cancel,
     orchestrator_solve, orchestrator_status, orchestrator_resume, orchestrator_stop,
@@ -83,7 +83,7 @@ ADMIN_MODEL_CANDIDATES = [ADMIN_MODEL_NAME] + [m for m in _admin_extra_models if
 ADMIN_PRIMARY_KEY = os.getenv("GEMINI_API_KEY_FALLBACK") or os.environ["GEMINI_API_KEY"]
 ADMIN_SECONDARY_KEY = os.environ["GEMINI_API_KEY"] if os.getenv("GEMINI_API_KEY_FALLBACK") else None
 
-ADMIN_TOOLS = [run_shell, run_experiment, run_probes, read_file, read_image, draw_circuit, edit_file, delegate, send_email, repair, set_key, security_audit, codify_paper, research, create_pr, dispatch_command, search_memory, save_memory,
+ADMIN_TOOLS = [run_shell, run_experiment, run_probes, read_file, read_image, draw_circuit, run_rtl, lint_rtl, synth_rtl, edit_file, delegate, send_email, repair, set_key, security_audit, codify_paper, research, create_pr, dispatch_command, search_memory, save_memory,
                orchestrator_solve, orchestrator_status, orchestrator_resume,
                orchestrator_stop]
 ADMIN_SYSTEM_PROMPT = (
@@ -215,6 +215,12 @@ ADMIN_SYSTEM_PROMPT = (
     "`example` 로 검증된 본보기(전류미러 · CMOS인버터 · 공통소스 · RC저역)를 먼저 "
     "그려 보고 그 꼴을 본떠 쓴다. **너는 네 그림을 볼 수 없으므로** 그 도구가 돌려주는 "
     "확인 글을 읽고, 떠 있는 단자가 있다면 고쳐 다시 그려라. 그림은 자동으로 올라간다.\n"
+    "\n"
+    "**RTL 은 쓰지만 말고 돌려라** -- `run_rtl(design, testbench)` 가 iverilog 로 짓고 "
+    "돌린다. 판정은 **출력**으로 난다(vvp 는 FAIL 을 찍고도 끝값 0 이다) -- 벤치가 "
+    "`$display(\"PASS\")` / `$display(\"FAIL ...\")` 를 찍게 하고 `$finish` 를 넣어라. "
+    "둘 다 없으면 통과가 아니라 못잼이다. `lint_rtl` 은 verilator, `synth_rtl` 은 "
+    "yosys 셀 수다. **잰 빨강을 그대로 보고하라** -- 검사 안 한 초록보다 낫다.\n"
     "각 폴더의 README.md 가 무엇을 하는지 적고 있다 -- 모르면 먼저 읽어라. 그리고 "
     "**사용자가 `!` 로 시작하는 고정 명령을 쳤다면 그것은 너에게 오지 않는다**(봇이 먼저 "
     "받는다). 너에게 왔다면 고정 명령이 아닌 말이므로, 네가 위에서 골라 돌리면 된다."

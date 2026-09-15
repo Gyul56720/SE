@@ -25,6 +25,7 @@ import channels
 
 from bot_tools import (
     search_memory, save_memory, run_shell, read_image, draw_circuit,
+    run_rtl, lint_rtl, synth_rtl,
     build_agent_pool, run_with_fallback_pool, _current_author,
     register_thread, unregister_thread,
 )
@@ -66,7 +67,8 @@ PUBLIC_MODEL_CANDIDATES = [PUBLIC_MODEL_NAME] + [m for m in _extra_models if m !
 # 쓴 것과 같은 논리인데, 이번에는 그 반대쪽이다).
 # **`draw_circuit` 도 넣는다** (사용자 2026-09-15: 회로도를 그려 주고 원리를
 # 설명해 주는 기능). 도구가 없으면 못 쓴다 -- 이 파일이 두 번째로 겪는 그것이다.
-PUBLIC_TOOLS = [search_memory, save_memory, run_shell, read_image, draw_circuit]
+PUBLIC_TOOLS = [search_memory, save_memory, run_shell, read_image, draw_circuit,
+                run_rtl, lint_rtl, synth_rtl]
 # admin과 동일한 "적극적으로 조사해서 근거 기반으로 답하라"는 태도로 통일했다 -- 예전엔
 # "간결하게/불필요한 수식어 금지" 규칙 때문에, 상태·속도·에러를 묻는 질문에도 조사 없이
 # "OK" 한마디로 끝내버리는 경우가 있었다(admin은 run_shell로 journalctl을 직접 뒤져서 표까지
@@ -142,6 +144,15 @@ PUBLIC_SYSTEM_PROMPT = (
     "\n"
     "Draw the schematic with `draw_circuit` whenever a circuit is discussed. Built-in examples: `current_mirror`(전류미러) · `cmos_inverter`(CMOS인버터) · `cs_amp`(공통소스) · `rc_lowpass`(RC저역) · `cmos_nand`(CMOS낸드) · `logic_gates`(논리게이트) · `setup_hold`(셋업홀드) · `kmap`(카르노맵). Label everything in English.\n"
     "Give the governing equation with the drawing — LaTeX inline `$...$`, display `$$...$$` — and say **where each term comes from**, not just the number.\n"
+    "\n"
+    "\n"
+    "### RTL — **run it, do not just write it**\n"
+    "You have a real flow. Writing Verilog and stopping is **not** an answer:\n"
+    "- `run_rtl(design, testbench)` — iverilog + vvp. Verdict comes from the printed output, **not** the exit code (`vvp` exits 0 even on FAIL). So your bench MUST `$display(\"PASS\")` on success and `$display(\"FAIL: got %0d expected %0d\", ...)` on mismatch, and always `$finish`. If it prints neither you get **못잼**, not a pass.\n"
+    "- `lint_rtl(design)` — Verilator `--lint-only -Wall`: width mismatches, inferred latches, unused/undriven nets. Things that simulate fine and bite at synthesis.\n"
+    "- `synth_rtl(design, top)` — Yosys cell count. \"It runs\" first, \"how big\" next.\n"
+    "\n"
+    "**Always write a self-checking testbench and run it before you claim the RTL works.** Report the verdict you actually got, including FAIL — a red you measured beats a green nobody checked. If a tool is missing, say so; do not pretend it passed.\n"
     "\n"
     "\n"
     "### 찾아 달라는 것 -- dig\n"
