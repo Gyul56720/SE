@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import re as _re
 import sys
 from pathlib import Path
 
@@ -99,11 +100,20 @@ print("\n== 답을 **뒷정리보다 먼저** 보낸다 ==")
 # 고칠 자리는 예외 처리가 아니라 **순서**였다 -- 뒷정리가 산출물을 먹을 수 있는 순서면
 # 한 경로를 막아도 다음 경로로 또 샌다.
 ok("async def _답보내기" in 봇, "답을 보내는 자리가 한 군데로 모여 있다")
+# **글자를 그대로 맞추지 않는다.** 처음에는 `"await _답보내기(message, reply)"` 를
+# 통째로 찾았는데, 그림 첨부를 붙이며 인자 하나(`thread_id`)가 는 순간 **-1** 이 되어
+# 순서가 멀쩡한데도 빨개졌다. 낡은 글자에 걸린 검사는 가리키는 데가 틀린 검사다.
+# 인자는 또 늘 수 있으므로 여는 괄호까지만 보고, **없으면 없다고 말한다.**
+_보냄꼴 = _re.compile(r"await _답보내기\(\s*message\s*,\s*reply\b")
+_동기꼴 = _re.compile(r"await _sync_and_note\(\s*loop\s*,\s*message\s*,\s*reply\b")
 for 이름, 몸 in (("공개", 공개), ("관리", 봇[:봇.index("async def _답보내기")])):
-    보냄 = 몸.find("await _답보내기(message, reply)")
-    동기 = 몸.find("await _sync_and_note(loop, message, reply)")
-    ok(보냄 != -1 and 동기 != -1 and 보냄 < 동기,
-       f"**{이름} 채널: 답을 먼저 보내고 그 다음에 동기화한다** (보냄 {보냄} < 동기화 {동기})")
+    보냄 = _보냄꼴.search(몸)
+    동기 = _동기꼴.search(몸)
+    ok(보냄 is not None, f"{이름} 채널에 `_답보내기` 부름이 있다")
+    ok(동기 is not None, f"{이름} 채널에 `_sync_and_note` 부름이 있다")
+    ok(bool(보냄 and 동기 and 보냄.start() < 동기.start()),
+       f"**{이름} 채널: 답을 먼저 보내고 그 다음에 동기화한다** "
+       f"(보냄 {보냄.start() if 보냄 else -1} < 동기화 {동기.start() if 동기 else -1})")
 ok("for chunk_start in range(0, len(reply or \"\"), 1900)" not in 봇,
    "**finally 뒤에 있던 전송 루프가 없다** -- 취소되면 거기까지 못 갔다")
 ok("CancelledError" in 봇, "stop 의 정상 경로는 그대로 남아 있다(취소를 삼키지 않는다)")
