@@ -160,8 +160,12 @@ ok("toolgate.검사(command)" in _런셸, "run_shell 이 toolgate 를 부른다"
 ok(_런셸.index("toolgate.검사(command)") < _런셸.index("subprocess.Popen("),
    "**Popen 앞에서** 부른다 -- 돌기 전에 거절해야 게이트다")
 ok("def read_file" in _도구 and "def edit_file" in _도구, "두 도구가 정의돼 있다")
-ok("read_file, edit_file" in _서버.split("ADMIN_TOOLS = [", 1)[-1].split("]", 1)[0],
-   "ADMIN_TOOLS 에 들어 있다")
+# **이름을 하나씩 본다 -- 붙어 있는지가 아니라.** 전에는 `"read_file, edit_file"` 이라는
+# 한 토막을 찾았는데, 2026-09-15 에 그 사이에 `read_image` 를 끼우자 **둘 다 그대로
+# 있는데도 빨개졌다.** 도구를 하나 더 싣는 것은 이 검사가 막을 일이 아니다.
+_실린것 = _서버.split("ADMIN_TOOLS = [", 1)[-1].split("]", 1)[0]
+_빠진것 = [n for n in ("read_file", "edit_file") if n not in _실린것]
+ok(not _빠진것, f"ADMIN_TOOLS 에 들어 있다 (빠진 것 {_빠진것})")
 _프롬프트 = _서버.split("ADMIN_SYSTEM_PROMPT = (", 1)[-1].split("\n)", 1)[0]
 ok("edit_file" in _프롬프트 and "read_file" in _프롬프트, "프롬프트가 edit_file 을 시킨다")
 ok("toolgate" in _프롬프트, "프롬프트가 도구 게이트를 알린다 -- 우회하지 말라고")

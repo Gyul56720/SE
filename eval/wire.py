@@ -96,7 +96,25 @@ sys.path.insert(0, str(REPO))
 ]
 
 # 고정 명령: 이것을 치면 에이전트로 안 떨어지고 봇이 받아야 한다.
-고정명령들 = ("!소설", "!실험", "!감사", "!기억", "!평가", "!경로", "!목표", "!진화", "!중계", "!위임", "!수집", "!열쇠", "!고치기", "!점검", "!코드화", "!연구", "!계획", "!자가개선")
+#
+# **2026-09-14 다섯을 내렸다.** `!실험`·`!감사`·`!목표`·`!진화`·`!위임` -- 각 기관 원장에
+# 줄이 한 개도 없어서 `dispatch.명령들` 에서 뺐다(모듈은 그대로 있다). 그러면 그 말은
+# 에이전트로 떨어지는 것이 **맞는 동작**이다. 이 목록이 진실의 자리이므로 같이 고친다.
+#
+# **여기를 손으로 적어 두는 것이 이 목록의 약점이다.** 그래서 dispatch 를 따라가게 한다 --
+# 명령을 싣거나 내릴 때 이 줄을 잊어도 어긋나지 않는다(실측 2026-09-15: 잊어서
+# `test_acceptance.py` 가 빨개진 채로 main 에 갔다).
+def _고정명령들():
+    import dispatch
+    return tuple(m.PREFIX for m in dispatch.명령들 if getattr(m, "PREFIX", ""))
+
+
+try:
+    고정명령들 = _고정명령들()
+except Exception:                                                 # noqa: BLE001
+    # dispatch 를 못 들이는 데서도 이 모듈은 읽혀야 한다. 그때는 빈 목록이고,
+    # `명령점검` 이 dispatch 임포트 실패를 따로 '끊김' 으로 낸다.
+    고정명령들 = ()
 
 원장들 = ("graph/ledger.jsonl", "graph/edges.jsonl", "eval/ledger.jsonl",
         "router/ledger.jsonl", "intent/ledger.jsonl")

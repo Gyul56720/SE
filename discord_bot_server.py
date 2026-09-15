@@ -48,7 +48,7 @@ import time  # noqa: E402
 import keys  # noqa: E402
 import relay  # noqa: E402
 from bot_tools import (  # noqa: E402
-    REPO_DIR, run_shell, run_experiment, run_probes, read_file, edit_file, delegate, send_email, repair, set_key, security_audit, codify_paper, research, create_pr, dispatch_command, search_memory, save_memory,
+    REPO_DIR, run_shell, run_experiment, run_probes, read_file, read_image, edit_file, delegate, send_email, repair, set_key, security_audit, codify_paper, research, create_pr, dispatch_command, search_memory, save_memory,
     build_agent_pool, run_with_fallback_pool,
     register_thread, unregister_thread, request_cancel,
     orchestrator_solve, orchestrator_status, orchestrator_resume, orchestrator_stop,
@@ -83,7 +83,7 @@ ADMIN_MODEL_CANDIDATES = [ADMIN_MODEL_NAME] + [m for m in _admin_extra_models if
 ADMIN_PRIMARY_KEY = os.getenv("GEMINI_API_KEY_FALLBACK") or os.environ["GEMINI_API_KEY"]
 ADMIN_SECONDARY_KEY = os.environ["GEMINI_API_KEY"] if os.getenv("GEMINI_API_KEY_FALLBACK") else None
 
-ADMIN_TOOLS = [run_shell, run_experiment, run_probes, read_file, edit_file, delegate, send_email, repair, set_key, security_audit, codify_paper, research, create_pr, dispatch_command, search_memory, save_memory,
+ADMIN_TOOLS = [run_shell, run_experiment, run_probes, read_file, read_image, edit_file, delegate, send_email, repair, set_key, security_audit, codify_paper, research, create_pr, dispatch_command, search_memory, save_memory,
                orchestrator_solve, orchestrator_status, orchestrator_resume,
                orchestrator_stop]
 ADMIN_SYSTEM_PROMPT = (
@@ -202,6 +202,14 @@ ADMIN_SYSTEM_PROMPT = (
     "하나가 drift.sh 287줄을 20줄 촌극으로 덮어 열 곳 넘는 참조가 끊겼다\n"
     "  · 진행 상황을 보고 싶다는 말 -> 네가 켜지 말고 `!중계 켜기` 를 치라고 안내하라 "
     "(사람이 켜는 스위치다. 도구·끝값·걸린 초만 보이고 네 생각은 안 실린다)\n"
+    "\n"
+    "**사진이 오면 `read_image` 로 읽는다.** `cat` 은 그림에 안 통한다 -- 깨진 바이트만 "
+    "나온다. 그리고 **보이지 않는다고 답하지 마라**(실측 2026-09-15: 그렇게 답했다).\n"
+    "문제가 오면 **풀이 · 약한 개념 · 오답노트 · 예상 질문과 답변** 넷을 다 내라. "
+    "풀이는 한 걸음씩 쓰고 마지막 줄에 `답: ...`. 예상 질문은 **이 문제를 처음 보는 "
+    "사람**이 막힐 자리를 네가 먼저 묻고 답하는 것이다(`Q:` / `A:` 3~5개).\n"
+    "**수식은 LaTeX 로 써라** -- 줄 안은 `$...$`, 세우는 식은 `$$...$$`. 봇이 유니코드와 "
+    "PNG 로 바꿔 보낸다. 전부 화면에 글로 내고 파일로 쓰거나 커밋하지 마라.\n"
     "각 폴더의 README.md 가 무엇을 하는지 적고 있다 -- 모르면 먼저 읽어라. 그리고 "
     "**사용자가 `!` 로 시작하는 고정 명령을 쳤다면 그것은 너에게 오지 않는다**(봇이 먼저 "
     "받는다). 너에게 왔다면 고정 명령이 아닌 말이므로, 네가 위에서 골라 돌리면 된다."
@@ -802,8 +810,13 @@ ATTACHMENTS_DIR = os.path.join(REPO_DIR, "inbox", "discord_attachments")
 
 async def _save_attachments(message: discord.Message) -> list[str]:
     """스크린샷 등 첨부파일을 로컬에 저장하고 절대경로 목록을 반환한다.
-    에이전트는 텍스트 프롬프트만 받으므로, 이미지 자체를 전달할 방법이 없다 -- 대신 파일로
-    저장한 뒤 그 경로를 프롬프트에 적어주면 run_shell(cat 등)로 직접 열어볼 수 있다."""
+
+    **여기 적혀 있던 말이 틀렸었다** (실측 2026-09-15). 전에는 "에이전트는 텍스트
+    프롬프트만 받으므로 이미지 자체를 전달할 방법이 없다" 고 적고 `cat` 으로 열어 보라고
+    했다. PNG 를 cat 하면 깨진 바이트가 나오고, 봇은 "아직 문제 이미지가 보이지 않습니다"
+    라고 답했다. 그런데 **그 방법은 이미 있었다** -- `orchestrator/gemini_http.py` 의
+    `invoke(prompt, images=)` 가 inline_data 로 그림을 싣고 `law/ocr.py` 가 그 길로
+    시험지를 읽고 있었다. 봇만 안 쓰고 있었다. 지금은 `read_image` 도구가 그 길이다."""
     if not message.attachments:
         return []
     os.makedirs(ATTACHMENTS_DIR, exist_ok=True)
@@ -814,6 +827,28 @@ async def _save_attachments(message: discord.Message) -> list[str]:
         await att.save(path)
         saved_paths.append(path)
     return saved_paths
+
+
+# **그림이면 `cat` 하라고 시키지 않는다.** 그 한 줄이 이 버그의 전부였다.
+_그림꼴 = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".heic", ".pdf")
+
+
+def _첨부안내(paths: list) -> str:
+    """첨부 경로를 프롬프트에 적는 말. **두 채널이 같은 말을 쓴다.**"""
+    if not paths:
+        return ""
+    줄 = ["", "", "첨부 파일:"]
+    그림있나 = False
+    for p in paths:
+        if p.lower().endswith(_그림꼴):
+            그림있나 = True
+            줄.append(f"- {p}  <- 그림이다. **`read_image` 로 읽어라** (cat 하지 마라)")
+        else:
+            줄.append(f"- {p}  <- 글 파일이다. read_file 또는 run_shell 로 읽어라")
+    if 그림있나:
+        줄 += ["", "**보이지 않는다고 답하지 마라.** 읽을 도구가 있다 -- 먼저 read_image 를 부르고,",
+              "정말 못 읽으면 그 도구가 돌려준 실패 문구를 그대로 사용자에게 보여 줘라."]
+    return "\n".join(줄)
 
 
 async def _handle_admin_message(message: discord.Message) -> None:
@@ -831,10 +866,7 @@ async def _handle_admin_message(message: discord.Message) -> None:
     if not content and not attachment_paths:
         return
     if attachment_paths:
-        attachments_note = "\n\n첨부 파일(로컬 경로, run_shell로 cat/열어볼 것):\n" + "\n".join(
-            f"- {p}" for p in attachment_paths
-        )
-        content = (content or "(첨부파일 확인)") + attachments_note
+        content = (content or "(첨부파일 확인)") + _첨부안내(attachment_paths)
 
     loop = asyncio.get_running_loop()
     _active_tasks[thread_id] = asyncio.current_task()
@@ -906,8 +938,29 @@ async def _답보내기(message: discord.Message, reply: str | None) -> None:
         # 에이전트 호출 자체가 실패한 경우에도 무응답을 겪지 않게 한다.
         await message.channel.send("(응답 생성 실패 -- 로그를 확인하세요)")
         return
+    # **답 안의 LaTeX 를 보이게 바꾼다** (사용자 2026-09-15: "풀이는 latex 를 제공해줘야해").
+    # 안 하면 디스코드에 `$\frac{-3\pm\sqrt{17}}{2}$` 라는 날글자가 그대로 나간다 --
+    # 풀이를 LaTeX 로 쓰게 시켜 놓고 그것을 사람이 못 읽으면 시킨 보람이 없다.
+    # **여기 한 자리에 둔다.** 두 채널이 다 이 함수를 지나므로 한쪽만 고쳐질 일이 없다.
+    그림들 = []
+    try:
+        import latex_formatter
+        다듬 = latex_formatter.답다듬기(reply)
+        if 다듬["셈"]["덩어리"] or 다듬["셈"]["줄안"]:
+            reply, 그림들 = 다듬["글"], 다듬["그림들"]
+            print(f"[수식] 덩어리 {다듬['셈']['덩어리']} · 줄안 {다듬['셈']['줄안']} "
+                  f"· 그림 {다듬['셈']['그림']} · 못그림 {다듬['셈']['못그림']}")
+    except Exception as e:                                        # noqa: BLE001
+        # **답을 먹지 않는다.** 이 함수의 머리말이 적고 있는 그 사고와 같은 부류다 --
+        # 뒷단장이 산출물을 삼키면 사용자는 아무것도 못 받는다.
+        print(f"[수식] 다듬기 실패, 원문 그대로 보낸다: {type(e).__name__}: {e}")
     for 시작 in range(0, len(reply), 1900):
         await message.channel.send(reply[시작:시작 + 1900] or "(빈 응답)")
+    for 쪽 in 그림들:
+        try:
+            await message.channel.send(file=discord.File(쪽, filename=os.path.basename(쪽)))
+        except Exception as e:                                    # noqa: BLE001
+            print(f"[수식] 그림 못 보냄 {쪽}: {type(e).__name__}: {e}")
 
 
 async def _sync_and_note(loop, message: discord.Message, reply: str) -> "tuple[str | None, str | None]":
@@ -952,8 +1005,14 @@ async def _handle_public_message(message: discord.Message) -> None:
     """공개 채널: 화이트리스트 없음 -- main_public.py의 에이전트(run_shell 포함)로 답한다.
     유저별로 대화 맥락이 이어진다."""
     content = message.content.strip()
-    if not content:
+    # **첨부를 여기서 받지 않고 있었다** (실측 2026-09-15). 위 두 줄이 예전에는
+    # `if not content: return` 이라, 사진만 올린 메시지는 **저장조차 안 하고 버려졌다.**
+    # 사용자에게는 봇이 사진을 못 보는 것으로 보였다. 관리 채널과 같은 길을 쓴다.
+    attachment_paths = await _save_attachments(message)
+    if not content and not attachment_paths:
         return
+    if attachment_paths:
+        content = (content or "(첨부파일 확인)") + _첨부안내(attachment_paths)
 
     # **방마다 다른 대화.** 한때 사람 id 하나였는데, 같은 사람이 두 채널에서 물으면
     # **같은 LangGraph 스레드 위에서 두 실행이 겹쳤다**(실측 2026-09-09: 10:17:30 에

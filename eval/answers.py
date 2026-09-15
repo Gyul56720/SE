@@ -56,11 +56,22 @@ def 행검사(행: dict) -> "list[str]":
             return [f"찾긴 했는데 출처가 다르다: {[n['출처'] for _, n in hits[:3]]}"]
         return []
 
-    답 = dispatch.run(물음, None, 행.get("채널", "관리") != "공개")
+    쓰기 = 행.get("채널", "관리") != "공개"
+    답 = dispatch.run(물음, None, 쓰기)
     if 꼴 == "에이전트로":
         return [] if 답 is None else [f"고정 명령이 남의 말을 삼켰다: {답[:80]!r}"]
     if 답 is None:
-        return ["고정 명령이 못 알아듣는다 (None) -- 배선이 끊겼다"]
+        # **내려온 명령일 수 있다.** 2026-09-14 에 원장 0줄인 다섯(`!실험`·`!감사`·
+        # `!목표`·`!진화`·`!위임`)을 dispatch 목록에서 뺐다. 모듈은 그대로 살아 있으므로
+        # **그 모듈의 규약은 계속 붙든다** -- 되살릴 때 깨져 있으면 안 된다. 다만
+        # dispatch 가 안 받는 것은 지금으로선 맞는 동작이라 배선 끊김으로 세지 않는다.
+        내려온것 = next((m for m in getattr(dispatch, "안쓴것", ())
+                     if 물음.startswith(getattr(m, "PREFIX", "\0"))), None)
+        if 내려온것 is None:
+            return ["고정 명령이 못 알아듣는다 (None) -- 배선이 끊겼다"]
+        답 = 내려온것.run(물음, None, 쓰기)
+        if 답 is None:
+            return [f"내려온 명령인데 모듈도 못 알아듣는다: {내려온것.PREFIX}"]
     어긋 = [f"담겨야 할 말이 없다: {말!r}" for 말 in 행.get("담겨야", []) if 말 not in 답]
     어긋 += [f"담기면 안 되는 말이 있다: {말!r}" for 말 in 행.get("안담겨야", []) if 말 in 답]
     return 어긋

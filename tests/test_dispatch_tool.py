@@ -36,10 +36,21 @@ for cmd in ("!목표 승인 abc", "!계획 승인", "!열쇠 GITHUB_TOKEN=x", "!
 ok(not dispatch.도구로쳐도되나("연구 해줘")[0], "`!` 없는 글은 명령이 아니다")
 
 print("\n== 그 밖은 허용되고 실제로 답이 온다 ==")
+# **내려온 명령도 여기 남긴다.** 2026-09-14 에 원장 0줄인 다섯을 dispatch 목록에서
+# 뺐다(`!목표`·`!진화` 포함). 그래도 **도구가 쳐도 되는지**의 판정은 그대로여야 하고,
+# 모듈 자체도 여전히 답해야 한다 -- 되살릴 때 깨져 있으면 안 된다. 다만 `dispatch.run`
+# 이 안 받는 것은 지금으로선 맞는 동작이라, 그때는 모듈을 직접 물어본다.
+_안쓴 = {m.PREFIX: m for m in dispatch.안쓴것}
 for cmd in ("!수집 상태", "!연구 상태", "!계획 상태", "!목표 다음", "!코드화 상태", "!경로", "!진화"):
     돼, _ = dispatch.도구로쳐도되나(cmd)
     답 = dispatch.run(cmd, allow_write=True) if 돼 else None
+    내려온 = _안쓴.get(cmd.split()[0])
+    if 답 is None and 내려온 is not None:
+        답 = 내려온.run(cmd, None, True)
     ok(돼 and isinstance(답, str) and 답, f"{cmd} -> 답 {len(답 or '')}자")
+    if 내려온 is not None:
+        ok(dispatch.run(cmd, allow_write=True) is None,
+           f"{cmd} 는 dispatch 가 안 받는다 -- 목록에서 내려왔다")
 ok(dispatch.도구로쳐도되나("!계획 켜기 x")[0] and dispatch.도구로쳐도되나("!목표 제안 x")[0], "켜기·제안은 봇이 쳐도 된다(승인만 사람)")
 
 print("\n== 자연어 -> 명령: 코드가 고른다 ==")
