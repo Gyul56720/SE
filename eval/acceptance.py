@@ -324,9 +324,22 @@ def _s14():
 @장면("승인 경계: 목표·계획 승인은 공개 채널에서 안 된다 (승인 주체는 사람)", "실측")
 def _s15():
     import dispatch
-    a = dispatch.run("!목표 승인 x", allow_write=False) or ""
-    b = dispatch.run("!계획 승인", allow_write=False) or ""
-    assert "읽기만" in a and "읽기만" in b, f"공개 채널 승인이 막히지 않았다: {a[:40]!r} / {b[:40]!r}"
+    # **실린 명령만 본다.** 2026-09-14 에 `!목표` 를 dispatch 목록에서 내렸다(원장 0줄).
+    # 안 실린 명령은 봇이 받지 않으므로 그 경로로는 승인 자체가 일어나지 않는다 --
+    # 느슨해진 것이 아니라 더 좁아진 것이다. 그래도 **그것도 확인한다**(아래 둘째 줄):
+    # 내렸다고만 믿고 넘어가면, 다시 실을 때 경계가 비어 있는 채로 돌아온다.
+    실린것 = {m.PREFIX for m in dispatch.명령들 if getattr(m, "PREFIX", "")}
+    for 접두, 말 in (("!목표", "!목표 승인 x"), ("!계획", "!계획 승인")):
+        답 = dispatch.run(말, allow_write=False) or ""
+        if 접두 in 실린것:
+            assert "읽기만" in 답, f"공개 채널 승인이 막히지 않았다: {접두} -> {답[:40]!r}"
+        else:
+            assert 답 == "", f"{접두} 는 안 실렸는데 봇이 받았다: {답[:40]!r}"
+            # 모듈 자체의 경계는 그대로여야 한다 -- 되살릴 때 비어 있으면 안 된다
+            모듈 = next((m for m in dispatch.안쓴것 if m.PREFIX == 접두), None)
+            if 모듈 is not None:
+                직답 = 모듈.run(말, None, False) or ""
+                assert "읽기만" in 직답, f"{접두} 모듈의 승인 경계가 비었다: {직답[:40]!r}"
     return "!목표 승인 · !계획 승인 모두 공개 채널 거절"
 
 
