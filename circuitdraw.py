@@ -25,6 +25,7 @@ inductor ... current mirror 등)이나, 원리를 설명해주는 그런 기능�
 from __future__ import annotations
 
 import os
+import re as _re
 import subprocess
 import sys
 import tempfile
@@ -34,10 +35,17 @@ import textwrap
 _머리 = textwrap.dedent('''
     import matplotlib
     matplotlib.use("Agg")
+    import sys
+    sys.path.insert(0, %r)
+    try:
+        import latex_formatter as _lf
+        _lf.글꼴세우기()          # 한글 라벨이 두부로 안 나오게 (실측 2026-09-15)
+    except Exception:
+        pass
     import schemdraw
     import schemdraw.elements as elm
     from schemdraw import logic
-''').strip()
+''').strip() % os.path.dirname(os.path.abspath(__file__))
 
 
 def 됐나틀(됐나, 경로, 왜):
@@ -57,6 +65,20 @@ def 그리기(코드: str, 경로: str = None) -> dict:
     # 공통 앞머리가 빈 문자열이 되고, dedent 가 아무 일도 안 한다 -- 그러면 붙여 넣은
     # 코드가 통째로 `IndentationError` 다(실측 2026-09-15: 본보기 넷이 다 그렇게 터졌다).
     코드 = textwrap.dedent(코드 or "").strip("\n").rstrip()
+    try:
+        import latex_formatter as _lf
+        # **따옴표 안만 본다.** 코드 전체를 보면 한글 **주석**에 걸린다 -- 주석은
+        # 그림에 안 나가는데 본보기가 통째로 거절됐다(실측 2026-09-15). 두부가 되는
+        # 것은 화면에 그려지는 글자, 곧 문자열 리터럴뿐이다.
+        _주석없이 = _re.sub(r"(?m)#.*$", "", 코드)
+        _라벨들 = " ".join(a or b for a, b in
+                         _re.findall(r"'([^']*)'|\"([^\"]*)\"", _주석없이))
+        if _lf.한글있나(_라벨들) and not _lf.한글글꼴():
+            return 됐나틀(False, None,
+                       "라벨에 한글이 있는데 이 기계에 한글 글꼴이 없다 -- 그리면 네모로 "
+                       "나온다(두부). **라벨을 영어로 써라**(EDA 판의 말이 어차피 영어다)")
+    except ImportError:
+        pass
     if not 코드.strip():
         return 됐나틀(False, None, "빈 코드다")
     경로 = 경로 or os.path.join(tempfile.mkdtemp(prefix="회로-"), "회로.png")
@@ -158,12 +180,79 @@ def 그리기(코드: str, 경로: str = None) -> dict:
         d += elm.Line().left().tox(위[0])
         d += elm.Ground()
     ''',
+
+    # ---- 디지털 ----------------------------------------------------------------
+    # 사용자(2026-09-15): "디지털 회로 설계로 아날로그 회로 설계처럼 스키마틱 출력이랑
+    # 개념, 변수 등의 석사 교과서적 내용들을 물어 볼 수 있으면 좋겠어."
+    "CMOS낸드": '''
+        P1 = d.add(elm.AnalogPFet().anchor('drain').at((0, 0)).label('$M_{P1}$', loc='left'))
+        P2 = d.add(elm.AnalogPFet().anchor('drain').at((2.4, 0)).label('$M_{P2}$', loc='right'))
+        for P in (P1, P2):
+            d += elm.Line().at(P.absanchors['source']).up().length(0.6)
+        위 = P1.absanchors['source'][1] + 0.6
+        d += elm.Line().at((0, 위)).to((2.4, 위))
+        d += elm.Vdd().at((1.2, 위)).label('$V_{DD}$')
+        d += elm.Line().at(P1.absanchors['drain']).to(P2.absanchors['drain'])
+        마디 = P1.absanchors['drain']
+        N1 = d.add(elm.AnalogNFet().anchor('drain').at((0, -1.6)).label('$M_{N1}$', loc='left'))
+        N2 = d.add(elm.AnalogNFet().anchor('drain').at(N1.absanchors['source']).label('$M_{N2}$', loc='left'))
+        d += elm.Line().at(마디).to(N1.absanchors['drain'])
+        d += elm.Dot().at(마디)
+        d += elm.Ground().at(N2.absanchors['source'])
+        d += elm.Line().at(마디).right().tox(3.6).label('$Y$', loc='right')
+        d += elm.Line().at(P1.absanchors['gate']).to(N1.absanchors['gate'])
+        d += elm.Line().at(N1.absanchors['gate']).left().tox(-1.6).label('$A$', loc='left')
+        d += elm.Line().at(P2.absanchors['gate']).right().tox(5.6)
+        d += elm.Line().down().toy(N2.absanchors['gate'][1])
+        d += elm.Line().left().to(N2.absanchors['gate'])
+        d += elm.Line().at((5.6, P2.absanchors['gate'][1])).up().length(0.7).label('$B$', loc='right')
+    ''',
+    "논리게이트": '''
+        d += logic.Nand().right().label('NAND', loc='top').at((0, 3))
+        d += logic.Nor().right().label('NOR', loc='top').at((0, 1.2))
+        d += logic.Xor().right().label('XOR', loc='top').at((0, -0.6))
+        d += logic.Not().right().label('NOT', loc='top').at((0, -2.2))
+        d += logic.Tgate().right().label('T-GATE', loc='top').at((0, -3.8))
+    ''',
+    "셋업홀드": '''
+        d += logic.TimingDiagram(
+            {'signal': [
+                {'name': 'CLK', 'wave': 'P....'},
+                {'name': 'D',   'wave': 'x3..x', 'data': ['D valid']},
+                {'name': 'Q',   'wave': 'x.3..', 'data': ['Q']}]},
+            ygap=.4, grid=False)
+    ''',
+    "카르노맵": '''
+        d += logic.Kmap(names='ABCD',
+                        truthtable=[('1100', '1'), ('1101', '1'),
+                                    ('1111', '1'), ('1110', '1')])
+    ''',
+}
+
+
+# **영어 이름으로도 부를 수 있게 한다.** 사용자(2026-09-15): "한국어로 쓰지마.
+# 영어로해줘." EDA 판의 말이 영어라 에이전트가 영어 이름을 칠 가능성이 높다 --
+# 모르는 이름이라고 돌려보내는 것보다 받아 주는 편이 낫다.
+영어이름 = {
+    "current_mirror": "전류미러", "cmos_inverter": "CMOS인버터",
+    "cs_amp": "공통소스", "common_source": "공통소스",
+    "rc_lowpass": "RC저역", "rc_filter": "RC저역",
+    "cmos_nand": "CMOS낸드", "nand": "CMOS낸드",
+    "logic_gates": "논리게이트", "gates": "논리게이트",
+    "setup_hold": "셋업홀드", "timing": "셋업홀드",
+    "kmap": "카르노맵", "karnaugh": "카르노맵",
 }
 
 
 def 본보기그리기(이름: str, 경로: str = None) -> dict:
     """본보기 하나를 그린다. 이름을 모르면 아는 이름을 알려준다."""
+    이름 = (이름 or "").strip()
+    이름 = 영어이름.get(이름.lower(), 이름)
     코드 = 본보기.get(이름)
     if 코드 is None:
-        return 됐나틀(False, None, f"모르는 본보기다 -- 아는 것: {' · '.join(본보기)}")
+        return 됐나틀(False, None, "모르는 본보기다 -- 아는 것: "
+                    + " · ".join(f"{e}({k})" for e, k in 영어이름.items()
+                                if e in ("current_mirror", "cmos_inverter", "cs_amp",
+                                         "rc_lowpass", "cmos_nand", "logic_gates",
+                                         "setup_hold", "kmap")))
     return 그리기(코드, 경로)
