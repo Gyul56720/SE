@@ -145,6 +145,66 @@ ok("not evidence of no degradation" in 글,
    "**없는 증거를 없음의 증거로 읽지 말라고 적는다**")
 ok("PROVISIONAL" in 글, "못 가른 최소 비트폭에 잠정이라고 표를 단다")
 
+print("\n[ADC -- 분해능과 풀스케일은 따로 못 고른다]")
+# 3비트 -> 단계수 4, 눈금 0.25, 코드 범위 [-4, +3].
+# **2의 보수는 안 대칭이다** -- 양수 쪽이 한 눈금 먼저 잘린다. 0.9 는 코드 3.6 -> 4 인데
+# 위 끝이 3 이라 잘리고, -0.9 는 코드 -3.6 -> -4 로 아래 끝에 딱 맞아 안 잘린다.
+x = np.array([0.0, 0.4, 0.9, 1.4, -1.4, -0.9])
+q, 클립 = serdes.ADC(x, 3, 1.0)
+ok(np.allclose(q, [0.0, 0.5, 0.75, 0.75, -1.0, -1.0]),
+   f"양자화하고 풀스케일 밖은 자른다: {list(np.round(q, 3))}")
+ok(abs(클립 - 3 / 6) < 1e-9,
+   f"**잘린 비율을 센다**: {클립:.3f} (6개 중 3개 -- 양수 쪽이 한 눈금 먼저 잘린다)")
+ok(serdes.ADC(np.array([0.74, -0.99]), 3, 1.0)[1] == 0.0,
+   "위 끝 +3, 아래 끝 -4 안쪽은 안 잘린다")
+ok(serdes.ADC(np.array([1.0]), 3, 1.0)[1] == 1.0,
+   "**+풀스케일 자신은 잘린다** -- 코드 4 는 3비트 2의 보수에 없다")
+ok(serdes.ADC(np.array([-1.0]), 3, 1.0)[1] == 0.0, "-풀스케일은 안 잘린다")
+ok(serdes.ADC(x, 0, 1.0)[0] is x, "0비트는 ADC 를 안 쓴다는 뜻")
+ok(serdes.ADC(x, 12, 10.0)[1] == 0.0, "넉넉한 풀스케일이면 안 잘린다")
+큰것 = serdes.ADC(x, 12, 10.0)[0]
+ok(np.max(np.abs(큰것 - x)) < 10.0 / 2 ** 11, "12비트는 눈금 안에서 원래 값에 붙는다")
+
+A = dict(비트수=120000, 손실dB=25.0, SNRdB=30.0, sps=8, FFE탭=11, DFE탭=8, 씨=7)
+기준 = serdes.링크(**A)
+ok(기준["ADC비트"] == 0 and 기준["클립비율"] == 0.0, "ADC 를 안 쓰면 안 잘린다")
+넉넉 = serdes.링크(**A, ADC비트=12, ADC풀스케일시그마=3.0)
+ok(넉넉["오류수"] == 기준["오류수"],
+   f"**12비트 ADC 는 float 과 같은 답을 낸다**: {넉넉['오류수']} vs {기준['오류수']}")
+거침 = serdes.링크(**A, ADC비트=3, ADC풀스케일시그마=2.5)
+ok(거침["오류수"] > 기준["오류수"] * 3, f"3비트는 크게 나빠진다: {거침['오류수']}")
+좁게 = serdes.링크(**A, ADC비트=6, ADC풀스케일시그마=1.0)
+ok(좁게["클립비율"] > 0.2,
+   f"**풀스케일을 좁히면 대량으로 잘린다**: {100 * 좁게['클립비율']:.1f}%")
+ok("range failure" in serdes.말로(좁게),
+   "많이 잘렸으면 **분해능 결과가 아니라 범위 실패라고 적는다**")
+ok("range failure" not in serdes.말로(넉넉), "안 잘렸으면 안 적는다")
+넓게 = serdes.링크(**A, ADC비트=5, ADC풀스케일시그마=8.0)
+알맞게 = serdes.링크(**A, ADC비트=5, ADC풀스케일시그마=2.5)
+ok(알맞게["오류수"] < 넓게["오류수"],
+   f"**너무 넓은 풀스케일은 분해능을 버린다**: 2.5s {알맞게['오류수']} vs 8s {넓게['오류수']}")
+ok(알맞게["클립비율"] > 0.001,
+   f"**잘 맞춘 ADC 는 조금 자른다** -- 0% 가 최적이 아니다: "
+   f"{100 * 알맞게['클립비율']:.2f}%")
+
+쓸 = serdes.ADC쓸기((5, 8), (2.5, 4.0), 비트수=120000, 손실dB=25.0, SNRdB=30.0,
+                 sps=8, FFE탭=11, DFE탭=8, 씨=7)
+글 = serdes.ADC쓸기말로(쓸)
+ok("clipped" in 글, "격자에 클립률을 같이 찍는다")
+ok("winner's curse" in 글 and "re-measured BER" in 글,
+   "**고른 값은 낙관적이라고 적고 다른 씨로 다시 잰 값을 따로 낸다**")
+ok(쓸["고르기씨"] != 7, "다시 잴 때 쓴 씨가 쓸 때 쓴 씨와 다르다")
+ok(any(x2["다시잰오류수"] != min(c["오류수"] for c in x2["칸"]) for x2 in 쓸["줄"]),
+   "**다시 잰 오류 수가 격자의 최솟값과 다르다** -- 같으면 다시 잰 것이 아니다")
+try:
+    serdes.ADC쓸기((5,), (2.5,), 고르기씨=7, 비트수=20000, 손실dB=25.0, SNRdB=30.0,
+                 sps=8, FFE탭=11, DFE탭=8, 씨=7)
+    ok(False, "같은 씨로 다시 재는 것을 막는다")
+except ValueError as e:
+    ok("다른 씨라야" in str(e),
+       f"**같은 씨로 '다시 재는' 것을 거부한다**: {str(e)[:60]}")
+ok("same (within error)" not in 글, "여기서도 `same` 이라는 낱말을 안 쓴다")
+
 print("\n[학습 구간과 측정 구간을 가른다]")
 r = serdes.링크(비트수=40000, 손실dB=12.0, SNRdB=26.0, sps=8, FFE탭=9, 학습비율=0.3, 씨=2)
 ok(r["잰비트"] < 40000 * 0.75,
@@ -220,7 +280,7 @@ print("\n[배선]")
 도구글 = (뿌리 / "bot_tools.py").read_text(encoding="utf-8")
 서버 = (뿌리 / "discord_bot_server.py").read_text(encoding="utf-8")
 공개 = (뿌리 / "main_public.py").read_text(encoding="utf-8")
-for 이름 in ("serdes_link", "quant_sweep"):
+for 이름 in ("serdes_link", "quant_sweep", "adc_sweep"):
     ok(f"def {이름}(" in 도구글, f"bot_tools 에 {이름}")
     ok(이름 in 서버.split("ADMIN_TOOLS = [")[1].split("]")[0], f"ADMIN_TOOLS 에 {이름}")
     ok(이름 in 공개.split("PUBLIC_TOOLS = [")[1].split("]")[0], f"PUBLIC_TOOLS 에 {이름}")
