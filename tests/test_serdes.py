@@ -209,6 +209,17 @@ import concepts as _k
 ok(any(c.get("링크") for c in _k.개념),
    "개념 목록이 SerDes 본보기를 가리킨다")
 ok("고속링크" in _k.덮임()["트랙별"], "고속링크 트랙이 있다")
+# **약어로 찾힌다.** 이 바닥은 약어로 말한다 -- `DFE` 로 물었는데 FFE 가 먼저 나오면
+# 답이 엉뚱한 개념을 설명한다(실측: 붙이기 전에 그랬다). 데이터 밖에 못 박는다.
+약어 = {"DFE": "Decision feedback equalizer", "FFE": "Feed-forward equalizer",
+      "CTLE": "Continuous time linear equalizer", "TDC": "Time-to-digital converter",
+      "CDR": "Clock and data recovery", "ADPLL": "All-digital PLL",
+      "PFD": "Phase frequency detector", "ISI": "Intersymbol interference",
+      "BER": "Bit error rate", "DCO": "Digitally controlled oscillator",
+      "LMS": "Least mean squares adaptation"}
+for 줄임, 온것 in 약어.items():
+    난것 = [c["이름"] for c in _k.찾기(줄임)]
+    ok(난것[:1] == [온것], f"`{줄임}` -> {온것} (나온 것: {난것[:2]})")
 
 print()
 if FAIL_목록:
