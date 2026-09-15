@@ -62,7 +62,7 @@ def 덤프끼우기(테스트벤치: str, top: str, 파일: str = "wave.vcd") ->
 
 def 읽기(경로: str) -> dict:
     """VCD 를 읽는다. {신호: [(이름, 폭, 열쇠)], 바뀜: {열쇠: [(시각, 값)]}, 끝시각, 눈금}."""
-    신호, 바뀜, 이름들 = [], {}, {}
+    신호, 바뀜, 이름들, 선언 = [], {}, {}, {}
     눈금, 시각, 머리 = "1ns", 0, True
     범위, 눈금기다림 = [], False
     with open(경로, encoding="utf-8", errors="replace") as f:
@@ -89,7 +89,7 @@ def 읽기(경로: str) -> dict:
                 if 줄.startswith("$scope"):
                     조각 = 줄.split()
                     if len(조각) >= 3:
-                        범위.append(조각[2])
+                        범위.append(조각[2].lstrip("\\"))
                     continue
                 if 줄.startswith("$upscope"):
                     if 범위:
@@ -103,9 +103,12 @@ def 읽기(경로: str) -> dict:
                         # **파라미터는 파형이 아니다.** 늘 한 값이라 "안 변한다" 칸만 채운다.
                         if 갈래 == "parameter":
                             continue
+                        # yosys 는 RTLIL 표기로 `\c` 처럼 쓴다. 앞 역슬래시를 뗀다.
+                        이름 = 이름.lstrip("\\")
                         온이름 = ".".join(범위 + [이름]) if 범위 else 이름
                         if 열쇠 not in 이름들:      # 같은 열쇠를 여러 이름이 나눠 쓴다
                             이름들[열쇠] = 온이름
+                            선언[열쇠] = 이름            # 범위를 뺀, 선언된 그대로
                             신호.append((온이름, 폭, 열쇠))
                     continue
                 if 줄.startswith("$enddefinitions"):
@@ -136,7 +139,8 @@ def 읽기(경로: str) -> dict:
                 if 열쇠:
                     바뀜.setdefault(열쇠, []).append((시각, 값))
     끝 = max((v[-1][0] for v in 바뀜.values() if v), default=시각)
-    return {"신호": 신호, "바뀜": 바뀜, "끝시각": max(끝, 시각), "눈금": 눈금}
+    return {"신호": 신호, "바뀜": 바뀜, "끝시각": max(끝, 시각), "눈금": 눈금,
+            "선언": 선언}
 
 
 def 헤아리기(잰것: dict) -> dict:
@@ -199,7 +203,9 @@ def 그리기(경로: str, 낼곳: str, 고를것="", 최대: int = 14) -> dict:
     # **값의 흐름까지 같을 때만** 한 줄로 합치고, 이름만 겹치면 긴 이름을 그대로 쓴다.
     본것, 신호2 = {}, []
     for 이름, 폭, 열쇠 in 신호:
-        짧 = 이름.split(".")[-1]
+        # **`split(".")[-1]` 을 쓰지 않는다.** yosys 반례에는 `_formal_x.sv_5_1_CHECK`
+        # 처럼 **이름 자체에 점이 든 것**이 있어 앞이 잘려 나간다(실측 2026-09-15).
+        짧 = (잰것.get("선언") or {}).get(열쇠) or 이름.split(".")[-1]
         자취 = tuple(sorted(잰것["바뀜"].get(열쇠) or []))
         도장 = (짧, 폭, 자취)
         if 도장 in 본것:
@@ -209,7 +215,14 @@ def 그리기(경로: str, 낼곳: str, 고를것="", 최대: int = 14) -> dict:
     겹침 = {}
     for _, 짧, _, _ in 신호2:
         겹침[짧] = 겹침.get(짧, 0) + 1
-    신호 = [((짧 if 겹침[짧] == 1 else 온), 폭, 열쇠) for 온, 짧, 폭, 열쇠 in 신호2][:최대]
+    신호 = [((짧 if 겹침[짧] == 1 else 온), 폭, 열쇠) for 온, 짧, 폭, 열쇠 in 신호2]
+    # **속 신호는 뒤로 민다.** 지우지는 않는다 -- 상한에 걸려 잘릴 뿐이다.
+    # yosys 반례에는 `$`·`_0\c`·`sv_5_6_Y` 같은 중간 이름이 섞여 나와, 정작 보고 싶은
+    # `c` 와 `rst_n` 이 상한 밖으로 밀린다(실측 2026-09-15).
+    def _속(이름):
+        return 1 if ("$" in 이름 or 이름.startswith("_")
+                     or re.search(r"_\d+_\d+_", 이름)) else 0
+    신호 = sorted(신호, key=lambda t: _속(t[0]))[:최대]
 
     끝 = max(잰것["끝시각"], 1)
     fig, ax = plt.subplots(figsize=(11, 0.55 * len(신호) + 1.1))

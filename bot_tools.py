@@ -673,6 +673,50 @@ def synth_rtl(design: str, top: str = "") -> str:
 
 
 @tool
+def prove_rtl(design: str, top: str = "", depth: int = 20, unbounded: bool = True,
+              seconds: int = 280) -> str:
+    """**Formally PROVE a property** over all inputs (Yosys SAT / temporal induction).
+
+    A testbench only visits the states it happened to drive. The solver visits **every**
+    state — so it finds the bug that only shows up on cycle 200. Put the property in the
+    design as `assert (...)` inside the clocked block, e.g.
+
+        always @(posedge clk)
+            if (!rst_n) s <= 4'b0001;
+            else begin
+                s <= {s[2:0], s[3]};
+                assert (s == 4'b0001 || s == 4'b0010 || s == 4'b0100 || s == 4'b1000);
+            end
+
+    Verdict is read from the output, never the exit code — measured 2026-09-15 on Yosys
+    0.33, a counterexample, a vacuous pass and a bounded pass ALL exit 0:
+
+        PASS  a property exists and was **proved unbounded** (induction)
+        FAIL  a counterexample was found — **the trace comes back as a waveform picture**
+        못잼  no `assert` at all (nothing to prove — the solver still says SUCCESS!),
+              or only bounded (`unbounded=False`): "no counterexample within N steps"
+              is NOT a proof — a design that breaks on cycle 200 was green at depth 20
+
+    Formal starts from an **arbitrary** state, not from reset — a design that simulates
+    fine can break here immediately. Give registers initial values (`reg x = 0;`) or
+    constrain reset with an `assume`. Keep `depth` small first; induction is expensive.
+    Identifiers must be ASCII — Korean names break the Yosys Verilog frontend.
+    """
+    if agent_context.is_blocked():
+        return "실패: 게스트는 prove_rtl 을 사용할 수 없습니다."
+    import formal
+    자리 = os.path.join(REPO_DIR, 회로그림자리)
+    os.makedirs(자리, exist_ok=True)
+    낼곳 = os.path.join(자리, f"cex-{uuid.uuid4().hex[:8]}.png")
+    r = formal.증명(design, top, depth, unbounded, 초=seconds, 반례낼곳=낼곳)
+    if r.get("반례"):
+        _그림남기기(r["반례"])
+    r["properties"] = r.get("성질수", 0)
+    r["depth"] = r.get("깊이", 0)
+    return _rtl보고("Formal", r, ["properties", "depth"])
+
+
+@tool
 def run_spice(netlist: str, checks: str = "", seconds: int = 90) -> str:
     """**Actually SIMULATE an analog circuit** with ngspice (DC / AC / transient).
 
