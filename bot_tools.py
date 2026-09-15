@@ -794,6 +794,48 @@ def run_spice(netlist: str, checks: str = "", seconds: int = 90) -> str:
 
 
 @tool
+def monte_carlo(netlist: str, spread: str, runs: int = 30, checks: str = "",
+                seed: int = 1234, seconds: int = 90) -> str:
+    """**Process variation: run the circuit N times with parameters drawn from a Gaussian.**
+
+    One nominal simulation says nothing about yield. Mismatch between two supposedly
+    identical devices is what actually limits a mirror, a diff pair or a comparator.
+
+    `spread` is one `param_name sigma` per line — **absolute** sigma, not a percentage —
+    and each name must exist as a `.param name = value` line in the netlist, used from
+    the model card as `{name}`:
+
+        .param vtn2 = 0.5
+        .model nch2 NMOS (LEVEL=1 VTO={vtn2} KP=200u)
+
+    If the name has no `.param` to land on, this refuses to run instead of quietly
+    simulating the same circuit N times and reporting 100% yield — measured, that is the
+    biggest trap here. It also refuses if N runs produce **no spread at all** in the
+    measurements, which means the parameter never reached the result.
+
+    `checks` (`name low high`, same as `run_spice`) defines what counts as a pass; the
+    yield comes back **with its own error bar** — 85% out of 20 runs is ±8%, and zero
+    failures is reported by the rule of three (3/N), never as a flat 0%. Without
+    `checks` there is no yield, only the spread, and the verdict is `못잼`.
+
+    Built in: `mc_mirror` (current-mirror Vth mismatch) and `rc_noise` (thermal noise,
+    whose answer is sqrt(kT/C), independent of R — verified to 0.06%).
+    """
+    if agent_context.is_blocked():
+        return "실패: 게스트는 monte_carlo 를 사용할 수 없습니다."
+    import spice
+    글 = spice.본보기찾기(netlist) or netlist
+    r = spice.흩뿌리기(글, spread, runs, checks, seed, seconds)
+    흩 = r.get("흩어짐") or {}
+    if 흩:
+        r["spread"] = " · ".join(
+            f"{k}: mean {v['평균']:.6g}, sigma {v['시그마']:.4g}, "
+            f"[{v['최소']:.6g}, {v['최대']:.6g}]" for k, v in 흩.items())
+    r["runs"] = r.get("판수", 0)
+    return _rtl보고("Monte Carlo", r, ["runs", "spread"])
+
+
+@tool
 def spice_example(name: str = "") -> str:
     """**List or fetch a ready-made, verified analog netlist** for `run_spice`.
 

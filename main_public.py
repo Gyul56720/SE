@@ -25,7 +25,7 @@ import channels
 
 from bot_tools import (
     search_memory, save_memory, run_shell, read_image, draw_circuit,
-    run_rtl, lint_rtl, synth_rtl, prove_rtl, place_rtl, run_spice, spice_example,
+    run_rtl, lint_rtl, synth_rtl, prove_rtl, place_rtl, run_spice, spice_example, monte_carlo,
     build_agent_pool, run_with_fallback_pool, _current_author,
     register_thread, unregister_thread,
 )
@@ -68,7 +68,7 @@ PUBLIC_MODEL_CANDIDATES = [PUBLIC_MODEL_NAME] + [m for m in _extra_models if m !
 # **`draw_circuit` 도 넣는다** (사용자 2026-09-15: 회로도를 그려 주고 원리를
 # 설명해 주는 기능). 도구가 없으면 못 쓴다 -- 이 파일이 두 번째로 겪는 그것이다.
 PUBLIC_TOOLS = [search_memory, save_memory, run_shell, read_image, draw_circuit,
-                run_rtl, lint_rtl, synth_rtl, prove_rtl, place_rtl, run_spice, spice_example]
+                run_rtl, lint_rtl, synth_rtl, prove_rtl, place_rtl, run_spice, spice_example, monte_carlo]
 # admin과 동일한 "적극적으로 조사해서 근거 기반으로 답하라"는 태도로 통일했다 -- 예전엔
 # "간결하게/불필요한 수식어 금지" 규칙 때문에, 상태·속도·에러를 묻는 질문에도 조사 없이
 # "OK" 한마디로 끝내버리는 경우가 있었다(admin은 run_shell로 journalctl을 직접 뒤져서 표까지
@@ -164,6 +164,8 @@ PUBLIC_SYSTEM_PROMPT = (
     "- `spice_example(name)` — eight ready netlists whose numbers were checked against hand calculation: `rc_lowpass` · `mosfet_iv`(the Id–Vds family, and `$\\lambda$` extracted from its slope) · `nmos_vth` · `current_mirror` · `common_source` · `cmos_inverter_vtc` · `diff_pair` · `rlc_resonance`. Pass a name straight to `run_spice`.\n"
     "\n"
     "Rules that come from how SPICE actually behaves:\n"
+    "- `monte_carlo(netlist, spread, runs, checks)` — **process variation.** One nominal run says nothing about yield; mismatch between two supposedly identical devices is what limits a mirror, a diff pair, a comparator. `spread` is `param_name sigma` per line (absolute sigma), and the name must exist as `.param name = value` used from the model card as `{name}`. If it does not, this **refuses to run** rather than quietly simulating the same circuit N times and reporting 100% yield. The yield comes back **with its own error bar** (85% of 20 runs is ±8%; zero failures uses the rule of three, never a flat 0%).\n"
+    "- Noise works through `run_spice`: `.noise v(out) V1 dec 40 1 100Meg` then `print inoise_total onoise_total`. The `rc_noise` example lands on sqrt(kT/C) to 0.06% — the R cancels, which is worth showing rather than asserting.\n"
     "- **The first line of a netlist is eaten as the title.** Always start with a `*` comment or your first real card disappears.\n"
     "- Put the analysis in a `.control` / `.endc` block and always `meas` what you claim. **Running is not measuring** — a netlist that runs and measures nothing comes back `못잼`, not PASS.\n"
     "- State the expected value in `checks` (`name low high`) **before** you look at the answer. Then hand-derive the same number from the square-law model and compare; if they disagree, say so and find out why.\n"
