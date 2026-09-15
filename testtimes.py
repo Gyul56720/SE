@@ -25,6 +25,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import sys
 from pathlib import Path
@@ -45,13 +46,55 @@ REPO = Path(__file__).resolve().parent
 _되돌이표 = ("precheck.sh",)
 
 
+def _글만빼기(본: str) -> str:
+    """주석과 **독스트링**을 지운 소스. 실행되는 자리만 남긴다."""
+    try:
+        나무 = ast.parse(본)
+    except SyntaxError:
+        return 본
+    지울 = []
+    for 마디 in ast.walk(나무):
+        if isinstance(마디, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef,
+                            ast.ClassDef)):
+            첫 = 마디.body[0] if 마디.body else None
+            if (isinstance(첫, ast.Expr) and isinstance(첫.value, ast.Constant)
+                    and isinstance(첫.value.value, str)):
+                지울.append((첫.lineno, 첫.end_lineno))
+    줄들 = 본.splitlines()
+    for a, b in 지울:
+        for i in range(a - 1, min(b, len(줄들))):
+            줄들[i] = ""
+    return "\n".join(l.split("#", 1)[0] for l in 줄들)
+
+
 def 되돌이인가(파일: Path) -> bool:
-    """이 검사가 precheck 를 실제로 돌리는가 -- 그러면 빠른 검사 안에서 빼야 한다."""
+    """이 검사가 precheck 를 **실제로 돌리는가** -- 그러면 빠른 검사 안에서 빼야 한다.
+
+    ## 독스트링에 이름을 적었다고 검사가 통째로 사라졌다 -- 실측 2026-09-15
+
+    첫 판은 파일에 `precheck.sh` 라는 **글자가 있으면** 되돌이로 봤다. 그래서
+    `tests/test_serdes_sweep.py` 가 머리말에 "precheck.sh 의 25초 상한을 넘어서
+    갈랐다" 고 적은 것만으로 빠른 검사에서 빠졌다. **시간이 넘어서가 아니라 글자
+    때문이라 `--보기` 의 '건너뜀' 목록에도 안 나온다** -- 아무도 모르게 사라진 검사다.
+
+    이제 **주석과 독스트링을 지운 뒤** 본다. 실행되는 자리에 그 이름이 있어야 한다.
+
+    ## AST 로 호출만 보는 것은 **안 된다** -- 더 위험한 쪽으로 틀린다
+
+    `subprocess.*` 호출의 **리터럴 인자**만 보는 판도 만들어 봤는데,
+    `tests/test_precheck.py` 를 놓쳤다: 거기서는 `SH = ROOT / "scripts" / "precheck.sh"`
+    로 변수에 담아 `subprocess.run(["bash", str(SH)])` 로 부른다. 놓치면 precheck 가
+    자기를 부르고, 그 검사의 '실제로 돌려 보기' 대목이 빈 검사가 된다. 거짓 음성이
+    거짓 양성보다 나쁜 자리라 **넓게 잡는 쪽**을 고른다.
+    """
     try:
         본 = 파일.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return False
-    return any(표 in 본 for 표 in _되돌이표)
+    if not any(표 in 본 for 표 in _되돌이표):
+        return False
+    코드 = _글만빼기(본)
+    return any(표 in 코드 for 표 in _되돌이표)
 
 
 def _읽기(p: Path) -> dict:
