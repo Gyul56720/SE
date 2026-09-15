@@ -528,6 +528,169 @@ def 비트폭쓸기(비트들=(2, 3, 4, 5, 6, 8, 10, 12), **인자) -> dict:
             "줄": 줄, "열화없는최소비트": 열화없는최소}
 
 
+def 동작점SNR(손실dB: float, 목표BER: float = 1e-3, 비트수: int = 200000,
+          낮게: float = 10.0, 높게: float = 50.0, 되풀이: int = 14, **인자) -> dict:
+    """float 기준선 BER 이 `목표BER` 이 되는 SNR 을 이분법으로 찾는다.
+
+    ## 왜 필요한가 -- 고정 SNR 으로는 채널을 못 쓴다
+
+    이 모형의 SNR 은 **손실 없는 이상적 메인 커서(=1)** 에 견준 값이라, 손실을 올리면
+    ISI 와 실효 SNR 이 **같이** 나빠진다. 실측 2026-09-15(SNR 30dB 고정, FFE11+DFE8):
+
+        10~20dB  오류 0        <- 견줄 수가 없다(측정 바닥 아래)
+        25dB     BER 7.0e-04
+        30dB     BER 3.2e-02   <- 이미 깨진 링크
+        35dB     BER 1.2e-01
+
+    쓸 수 있는 창이 한 점뿐이다. 손실마다 **같은 BER 자리**로 옮겨 놓아야 "몇 비트가
+    필요한가" 를 손실끼리 견줄 수 있다. 그러지 않으면 비트 수 차이인지 동작점 차이인지
+    영영 못 가른다.
+
+    돌려주는 것에 **실제로 난 BER 을 같이 싣는다** -- 이분법이 목표에 못 닿을 수도
+    있고(측정 바닥·링크 붕괴), 그때 SNR 만 보면 닿은 줄 안다.
+    """
+    인자 = dict(인자)
+    인자.pop("SNRdB", None)
+    낮, 높 = float(낮게), float(높게)
+    난것 = None
+    for _ in range(int(되풀이)):
+        가운데 = 0.5 * (낮 + 높)
+        r = 링크(비트수=int(비트수), 손실dB=float(손실dB), SNRdB=가운데, **인자)
+        난것 = r
+        # 오류 0 은 BER 0 이 아니다 -- 3의 규칙 위쪽 한계로 다룬다
+        p = r["BER"] if r["오류수"] > 0 else 3.0 / max(r["잰비트"], 1)
+        if p > 목표BER:
+            낮 = 가운데          # 너무 나쁘다 -> SNR 을 올린다
+        else:
+            높 = 가운데
+    SNR = 0.5 * (낮 + 높)
+    끝 = 링크(비트수=int(비트수), 손실dB=float(손실dB), SNRdB=SNR, **인자)
+    닿았나 = 끝["오류수"] > 0 and 0.2 * 목표BER < 끝["BER"] < 5.0 * 목표BER
+    return {"SNRdB": SNR, "BER": 끝["BER"], "오류수": 끝["오류수"],
+            "잰비트": 끝["잰비트"], "닿았나": bool(닿았나),
+            "왜": (f"SNR {SNR:.2f} dB 에서 float BER {끝['BER']:.3e} "
+                  f"({끝['오류수']:,} 오류) -- 목표 {목표BER:.1e}"
+                  + ("" if 닿았나 else "  **목표에 못 닿았다 -- 이 점은 믿지 마라**"))}
+
+
+def 여러씨(씨들, 만들기) -> dict:
+    """같은 물음을 씨 여러 개로 돌려 **평균과 산포**를 낸다.
+
+    ## 왜 이것이 필요한가 -- 실측 2026-09-15, 이 세션에서 세 번째로 같은 병
+
+    손실 30dB 에서 계수 폭을 씨 네 개로 돌렸더니 이랬다(float 대비 BER 올림).
+
+        seed      6b       7b       8b       9b      10b
+           7  +24.5%    -4.7%   +30.6%    -2.5%    -1.5%
+          11   +6.0%   +26.2%    -6.5%    +2.3%    -2.3%
+          23  +81.3%    +5.5%    -3.8%    +6.4%    -0.9%
+          42  +40.8%    -0.8%    +6.3%    +1.9%    -2.9%
+        산포    27.8     11.9     14.6      3.2      0.8
+
+    **거친 폭에서는 씨끼리의 산포가 재려는 효과보다 크다.** 한 씨로 보면 7비트가
+    -4.7% 로도 +26.2% 로도 나온다 -- 어느 쪽을 봤느냐가 결론을 정한다. 거친 폭에서
+    LMS 해가 어디로 반올림되는지가 씨마다 달라서이고, 9~10비트에서야 산포가 무너진다.
+
+    그래서 **한 씨로 워드 길이를 말하지 않는다.** 평균과 산포를 같이 낸다.
+    """
+    값들 = [만들기(int(씨)) for 씨 in 씨들]
+    n = len(값들)
+    평균 = sum(값들) / n if n else float("nan")
+    산포 = (sum((v - 평균) ** 2 for v in 값들) / n) ** 0.5 if n else float("nan")
+    return {"값들": 값들, "평균": 평균, "산포": 산포, "씨수": n,
+            "낮": min(값들) if 값들 else float("nan"),
+            "높": max(값들) if 값들 else float("nan")}
+
+
+def 충분한가(칸: dict, 넉넉함: float = 1.0) -> bool:
+    """이 워드 길이가 **충분한가.** 평균 열화가 작고 **씨 산포도 작아야** 참이다.
+
+    둘 다여야 한다. 평균만 보면 실측 2026-09-15 의 30dB · 7비트가 통과한다 --
+    평균 +6.6% 인데 산포가 ±11.9% 라 한 씨에서 -4.7%, 다른 씨에서 +26.2% 였다.
+    **어느 씨를 뽑았느냐가 결론을 정하는 폭은 설계 여유가 없는 폭이다.**
+    """
+    바닥 = 5.0 * 넉넉함
+    return abs(칸["올림%"]) <= 바닥 and 칸["산포"] <= 바닥
+
+
+def 손실쓸기(손실들=(15.0, 20.0, 25.0, 30.0), 비트폭들=(7, 8, 9, 10),
+         목표BER: float = 1e-3, 비트수: int = 800000, 찾기비트수: int = 200000,
+         ADC도: bool = True, ADC풀스케일시그마: float = 2.5,
+         씨들=(7, 11, 23, 42), 넉넉함: float = 1.0, **인자) -> dict:
+    """**손실마다 같은 BER 자리로 옮겨 놓고** 필요한 워드 길이를 잰다.
+
+    `ADC도` 가 참이면 계수와 ADC 를 **같은 폭으로 함께** 자른다(현업에서 둘을 따로
+    고르지 않는다). 거짓이면 계수만 자르고 ADC 는 이상적이다.
+
+    **씨를 여러 개 돌린다.** 한 씨로는 워드 길이를 못 말한다 -- `여러씨()` 머리말의
+    실측을 보라. 어떤 폭이 '충분하다' 고 말하려면 평균 열화가 작은 것만으로 모자라고
+    **씨끼리의 산포도 그 열화만큼 작아야** 한다. 산포가 크면 그 폭에서는 어느 씨를
+    뽑았느냐가 결론을 정한다는 뜻이고, 그것은 설계 여유가 없다는 말이다.
+    """
+    인자 = dict(인자)
+    인자.pop("씨", None)
+    난것 = []
+    for L in 손실들:
+        점 = 동작점SNR(L, 목표BER, 찾기비트수, 씨=씨들[0], **인자)
+        칸 = []
+        for B in 비트폭들:
+            더 = {"탭비트": int(B)}
+            if ADC도:
+                더["ADC비트"] = int(B)
+                더["ADC풀스케일시그마"] = ADC풀스케일시그마
+
+            def 한번(씨, B=B, 더=더, L=L, 점=점):
+                공통 = dict(비트수=int(비트수), 손실dB=float(L),
+                          SNRdB=점["SNRdB"], 씨=씨, **인자)
+                기준 = 링크(**공통)
+                r = 링크(**공통, **더)
+                return (100.0 * (r["BER"] / 기준["BER"] - 1.0)
+                        if 기준["BER"] > 0 else float("nan"))
+
+            m = 여러씨(씨들, 한번)
+            칸.append({"비트": int(B), "올림%": m["평균"], "산포": m["산포"],
+                      "낮": m["낮"], "높": m["높"], "값들": m["값들"],
+                      "씨수": m["씨수"]})
+        최소 = next((c["비트"] for c in 칸 if 충분한가(c, 넉넉함)), None)
+        흔들리는것 = [c["비트"] for c in 칸 if c["산포"] > 5.0 * 넉넉함]
+        난것.append({"손실dB": float(L), "동작점": 점, "칸": 칸,
+                    "필요비트": 최소, "흔들리는폭": 흔들리는것,
+                    "쓸만한가": 점["닿았나"]})
+    return {"줄": 난것, "목표BER": 목표BER, "ADC도": bool(ADC도),
+            "씨들": list(씨들), "넉넉함": 넉넉함}
+
+
+def 손실쓸기말로(s: dict) -> str:
+    함께 = "coefficients AND ADC at the same width" if s["ADC도"] else "coefficients only"
+    줄 = [f"Word length vs channel loss ({함께}), each loss moved to a common "
+         f"float BER of {s['목표BER']:.0e}.",
+         f"Every cell is the mean BER increase over float across {len(s['씨들'])} seeds, "
+         "+- the seed-to-seed spread.", ""]
+    줄.append("  loss   SNR  " + "".join(f"{c['비트']:>17d}b" for c in s["줄"][0]["칸"]))
+    for x in s["줄"]:
+        줄.append(f"  {x['손실dB']:4.0f}dB {x['동작점']['SNRdB']:5.1f}  "
+                  + "".join(f"{c['올림%']:>+10.1f}% +-{c['산포']:>4.1f}"
+                            for c in x["칸"]))
+        if not x["쓸만한가"]:
+            줄.append(f"      ** {x['동작점']['왜']} **")
+    줄.append("")
+    for x in s["줄"]:
+        b = x["필요비트"]
+        줄.append(f"  {x['손실dB']:4.0f} dB: smallest width that is both small in mean AND "
+                  f"stable across seeds = " + (f"**{b} bit**" if b else "none tested"))
+        if x["흔들리는폭"]:
+            줄.append("          seed-unstable widths (spread larger than the effect): "
+                      + " · ".join(f"{w}b" for w in x["흔들리는폭"]))
+    줄.append("")
+    줄.append("A width is only called sufficient when the mean degradation AND the "
+              "seed spread are both small. **A single seed cannot name a word length** "
+              "-- measured, 7-bit at 30 dB read -4.7% on one seed and +26.2% on another, "
+              "because at coarse widths it is the rounding of that seed's LMS solution "
+              "that decides, not the step size. The spread collapses only once the width "
+              "is genuinely sufficient.")
+    return "\n".join(줄)
+
+
 def ADC쓸기(비트들=(4, 5, 6, 7, 8), 풀스케일들=(2.0, 2.5, 3.0, 4.0),
          고르기씨: int = 12345, **인자) -> dict:
     """**ADC 분해능과 풀스케일을 함께 쓴다.** 둘은 따로 고를 수 없다.
