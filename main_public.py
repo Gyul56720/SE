@@ -149,6 +149,7 @@ PUBLIC_SYSTEM_PROMPT = (
     "### RTL — **run it, do not just write it**\n"
     "You have a real flow. Writing Verilog and stopping is **not** an answer:\n"
     "- `run_rtl(design, testbench)` — iverilog + vvp. Verdict comes from the printed output, **not** the exit code (`vvp` exits 0 even on FAIL). So your bench MUST `$display(\"PASS\")` on success and `$display(\"FAIL: got %0d expected %0d\", ...)` on mismatch, and always `$finish`. If it prints neither you get **못잼**, not a pass.\n"
+    "- **The waveform comes back with it.** `run_rtl` draws the VCD and attaches the picture; `$dumpfile` is injected if the bench lacks one. **x/z is drawn as a red hatched band, never as 0**, and the reply names in words every signal that sat at x/z for the whole run. A bench can print PASS while every input was x — measured 2026-09-15 — so read that line before you believe a pass. Pass `waveform=False` only when you truly do not need it.\n"
     "- `lint_rtl(design)` — Verilator `--lint-only -Wall`: width mismatches, inferred latches, unused/undriven nets. Things that simulate fine and bite at synthesis.\n"
     "- `synth_rtl(design, top)` — Yosys cell count. \"It runs\" first, \"how big\" next.\n"
     "\n"
