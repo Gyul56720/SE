@@ -52,6 +52,11 @@ on:
       # 탐침 묶음 병렬 실행 -- run_probes 가 부른다 (2026-09-12)
       - "probes.py"
       - "filetools.py"
+      # 그림 읽기(read_image 도구). **langchain 이 없는 데서도 읽히게** bot_tools 에서
+      # 갈라 둔 파일이라 따로 적는다 -- 빠지면 봇이 임포트에서 죽는다 (2026-09-15)
+      - "imageread.py"
+      # 답에 박힌 LaTeX 를 유니코드·PNG 로 바꾼다. `_답보내기` 가 부른다 (2026-09-15)
+      - "latex_formatter.py"
       # 메일(send_email 도구)과 열쇠(!열쇠). 봇이 임포트한다.
       - "mailer.py"
       - "keys.py"

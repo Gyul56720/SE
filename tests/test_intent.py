@@ -79,15 +79,31 @@ finally:
 
 print("\n== !목표 배선 ==")
 import dispatch  # noqa: E402
-답 = dispatch.run("!목표 제안 아무거나", allow_write=False)
+# **이 명령은 dispatch 목록에서 내려왔다** (2026-09-14, 원장 0줄이라서). 모듈은 그대로
+# 살아 있으므로 **규약은 계속 붙든다** -- 되살릴 때 깨져 있으면 안 된다. 그래서 여기서는
+# `dispatch.run` 이 아니라 `dispatch.안쓴것` 을 직접 돈다. 아래에서 dispatch 가 이 말을
+# 안 받는다는 것도 따로 본다(사람이 쳐도 조용히 죽지 않고 에이전트로 간다).
+def _뺀것(text, runner=None, allow_write=True):
+    for _모 in dispatch.안쓴것:
+        r = _모.run(text, runner, allow_write)
+        if r is not None:
+            return r
+    return None
+
+답 = _뺀것("!목표 제안 아무거나", allow_write=False)
 ok(답 is not None and "관리 채널" in 답, "**공개 채널에서는 제안·승인이 안 된다**")
-답 = dispatch.run("!목표 승인 x", allow_write=False)
+답 = _뺀것("!목표 승인 x", allow_write=False)
 ok(답 is not None and "관리 채널" in 답, "공개 채널 승인도 막힌다")
-답 = dispatch.run("!목표 다음", allow_write=False)
+답 = _뺀것("!목표 다음", allow_write=False)
 ok(답 is not None, "공개 채널도 읽기는 된다")
 ok(dispatch.run("!목표수립을 도와줘") is None, "붙여 쓴 `!목표수립` 은 명령이 아니다")
-답 = dispatch.run("!진화")
+답 = _뺀것("!진화")
 ok(답 is not None and "G020" in 답, "!진화 현황에 상한(G020)이 보인다")
+ok(dispatch.run("!진화") is None,
+   "`!진화` 도 dispatch 가 안 받는다 -- 목록에서 내려왔다(에이전트로 간다)")
+
+ok(dispatch.run("!목표") is None,
+   "`!목표` 는 dispatch 가 안 받는다 -- 목록에서 내려왔다(에이전트로 간다)")
 
 print()
 if FAIL:

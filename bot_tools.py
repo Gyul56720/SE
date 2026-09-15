@@ -25,6 +25,7 @@ import uuid
 from typing import Optional
 
 import channels
+import imageread
 
 import requests
 from langchain_core.tools import tool
@@ -535,6 +536,20 @@ def delegate(question: str, scope: str) -> str:
     with _셸기록_lock:
         _셸기록.setdefault(threading.get_ident(), []).append((f"delegate {scope}"[:160], bool(r["채택"])))
     return redact_secrets(자르기(delegate_run.보고(r, question), 셸출력_앞, 셸출력_뒤))
+
+
+@tool
+def read_image(path: str, question: str = "") -> str:
+    """**사진·스크린샷을 실제로 본다.** 첨부 파일이 그림이면 `cat` 하지 말고 이걸 써라.
+
+    그림에 적힌 것(문제·수식·표·오류 화면)을 글로 옮겨 돌려준다. `question` 을 주면
+    옮긴 뒤 그 물음에도 답한다. path 는 첨부 메시지에 적힌 경로를 그대로 넣으면 된다.
+    png·jpg·webp·gif·heic·pdf 를 읽는다. 글 파일은 read_file 을 써라.
+    """
+    if agent_context.is_blocked():
+        return "실패: 게스트는 read_image 를 사용할 수 없습니다."
+    return imageread.읽기(path, question, repo=REPO_DIR,
+                        자르개=lambda t: 자르기(t, 셸출력_앞, 셸출력_뒤))
 
 
 @tool

@@ -130,22 +130,36 @@ finally:
 
 print("\n== !위임 배선 ==")
 import dispatch  # noqa: E402
-ok(dispatch.run("!위임 graph/*.py :: 해시", allow_write=False) is not None
-   and "관리 채널" in dispatch.run("!위임 graph/*.py :: 해시", allow_write=False), "공개 채널은 거절")
+# **이 명령은 dispatch 목록에서 내려왔다** (2026-09-14, 원장 0줄이라서). 모듈은 그대로
+# 살아 있으므로 **규약은 계속 붙든다** -- 되살릴 때 깨져 있으면 안 된다. 그래서 여기서는
+# `dispatch.run` 이 아니라 `dispatch.안쓴것` 을 직접 돈다. 아래에서 dispatch 가 이 말을
+# 안 받는다는 것도 따로 본다(사람이 쳐도 조용히 죽지 않고 에이전트로 간다).
+def _뺀것(text, runner=None, allow_write=True):
+    for _모 in dispatch.안쓴것:
+        r = _모.run(text, runner, allow_write)
+        if r is not None:
+            return r
+    return None
+
+ok(_뺀것("!위임 graph/*.py :: 해시", allow_write=False) is not None
+   and "관리 채널" in _뺀것("!위임 graph/*.py :: 해시", allow_write=False), "공개 채널은 거절")
 불림 = []
-답 = dispatch.run("!위임 graph/*.py router/*.py :: 해시를 어디서",
+답 = _뺀것("!위임 graph/*.py router/*.py :: 해시를 어디서",
                  runner=lambda 물음, 범위들: (불림.append((물음, 범위들)) or
                                           {"채택": [], "퇴짜": [], "묶음": 0, "파일": 0, "호출": 0, "걸린초": 0.0, "돌았나": True}),
                  allow_write=True)
 ok(불림 and 불림[0] == ("해시를 어디서", ["graph/*.py", "router/*.py"]), f"글롭과 물음이 갈라져 넘어간다 ({불림})")
-ok("::" in (dispatch.run("!위임 graph/*.py 해시", allow_write=True) or ""), ":: 없으면 꼴을 알려준다")
-ok("거절" in (dispatch.run("!위임 ../x :: 해시", allow_write=True) or ""), "저장소 밖 글롭은 거절")
+ok("::" in (_뺀것("!위임 graph/*.py 해시", allow_write=True) or ""), ":: 없으면 꼴을 알려준다")
+ok("거절" in (_뺀것("!위임 ../x :: 해시", allow_write=True) or ""), "저장소 밖 글롭은 거절")
 ok(dispatch.run("!위임장 써줘") is None, "붙여 쓴 `!위임장` 은 명령이 아니다")
 _도구 = (뿌리 / "bot_tools.py").read_text(encoding="utf-8")
 _서버 = (뿌리 / "discord_bot_server.py").read_text(encoding="utf-8")
 _도구줄 = next((ln for ln in _서버.splitlines() if ln.startswith("ADMIN_TOOLS = [")), "")
 ok("def delegate" in _도구 and " delegate," in _도구줄, "delegate 도구가 정의되고 ADMIN_TOOLS 에 있다")
 ok("탐색기" in R.역할들 and R.역할들["탐색기"]["바탕"] == "gemini", "router 역할표에 탐색기가 있다")
+
+ok(dispatch.run("!위임") is None,
+   "`!위임` 는 dispatch 가 안 받는다 -- 목록에서 내려왔다(에이전트로 간다)")
 
 print()
 if FAIL:
