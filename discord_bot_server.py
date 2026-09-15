@@ -48,7 +48,7 @@ import time  # noqa: E402
 import keys  # noqa: E402
 import relay  # noqa: E402
 from bot_tools import (  # noqa: E402
-    REPO_DIR, run_shell, run_experiment, run_probes, read_file, read_image, edit_file, delegate, send_email, repair, set_key, security_audit, codify_paper, research, create_pr, dispatch_command, search_memory, save_memory,
+    REPO_DIR, run_shell, run_experiment, run_probes, read_file, read_image, draw_circuit, edit_file, delegate, send_email, repair, set_key, security_audit, codify_paper, research, create_pr, dispatch_command, search_memory, save_memory,
     build_agent_pool, run_with_fallback_pool,
     register_thread, unregister_thread, request_cancel,
     orchestrator_solve, orchestrator_status, orchestrator_resume, orchestrator_stop,
@@ -83,7 +83,7 @@ ADMIN_MODEL_CANDIDATES = [ADMIN_MODEL_NAME] + [m for m in _admin_extra_models if
 ADMIN_PRIMARY_KEY = os.getenv("GEMINI_API_KEY_FALLBACK") or os.environ["GEMINI_API_KEY"]
 ADMIN_SECONDARY_KEY = os.environ["GEMINI_API_KEY"] if os.getenv("GEMINI_API_KEY_FALLBACK") else None
 
-ADMIN_TOOLS = [run_shell, run_experiment, run_probes, read_file, read_image, edit_file, delegate, send_email, repair, set_key, security_audit, codify_paper, research, create_pr, dispatch_command, search_memory, save_memory,
+ADMIN_TOOLS = [run_shell, run_experiment, run_probes, read_file, read_image, draw_circuit, edit_file, delegate, send_email, repair, set_key, security_audit, codify_paper, research, create_pr, dispatch_command, search_memory, save_memory,
                orchestrator_solve, orchestrator_status, orchestrator_resume,
                orchestrator_stop]
 ADMIN_SYSTEM_PROMPT = (
@@ -210,6 +210,11 @@ ADMIN_SYSTEM_PROMPT = (
     "사람**이 막힐 자리를 네가 먼저 묻고 답하는 것이다(`Q:` / `A:` 3~5개).\n"
     "**수식은 LaTeX 로 써라** -- 줄 안은 `$...$`, 세우는 식은 `$$...$$`. 봇이 유니코드와 "
     "PNG 로 바꿔 보낸다. 전부 화면에 글로 내고 파일로 쓰거나 커밋하지 마라.\n"
+    "\n"
+    "**회로 이야기가 나오면 `draw_circuit` 으로 그려라** -- 말로만 설명하지 마라. "
+    "`example` 로 검증된 본보기(전류미러 · CMOS인버터 · 공통소스 · RC저역)를 먼저 "
+    "그려 보고 그 꼴을 본떠 쓴다. **너는 네 그림을 볼 수 없으므로** 그 도구가 돌려주는 "
+    "확인 글을 읽고, 떠 있는 단자가 있다면 고쳐 다시 그려라. 그림은 자동으로 올라간다.\n"
     "각 폴더의 README.md 가 무엇을 하는지 적고 있다 -- 모르면 먼저 읽어라. 그리고 "
     "**사용자가 `!` 로 시작하는 고정 명령을 쳤다면 그것은 너에게 오지 않는다**(봇이 먼저 "
     "받는다). 너에게 왔다면 고정 명령이 아닌 말이므로, 네가 위에서 골라 돌리면 된다."
@@ -902,7 +907,7 @@ async def _handle_admin_message(message: discord.Message) -> None:
             # 그래서 여기서부터는 실패를 예외가 아니라 '보고할 메모'로 바꾼다.
             # **그리고 답을 먼저 보낸다** -- `_답보내기` 의 까닭을 볼 것. 동기화가 취소되면
             # 그 뒤는 못 돌지만, 답은 이미 사용자에게 가 있다.
-            await _답보내기(message, reply)
+            await _답보내기(message, reply, thread_id)
             sync_note, integrity_note = await _sync_and_note(loop, message, reply)
     except asyncio.CancelledError:
         # "stop"으로 취소됨 -- _handle_stop이 이미 상태 메시지를 보냈으므로 조용히 반환한다.
@@ -917,7 +922,8 @@ async def _handle_admin_message(message: discord.Message) -> None:
         await message.channel.send(integrity_note)
 
 
-async def _답보내기(message: discord.Message, reply: str | None) -> None:
+async def _답보내기(message: discord.Message, reply: str | None,
+                 thread_id: str = "") -> None:
     r"""**답이 생기는 즉시 보낸다.** 뒤에 오는 단계가 답을 먹지 못하게.
 
     실측 2026-08-30, 그리고 **또 2026-09-13.** 답이 로그에는 찍혔는데 Discord 로는 안 갔다.
@@ -956,11 +962,17 @@ async def _답보내기(message: discord.Message, reply: str | None) -> None:
         print(f"[수식] 다듬기 실패, 원문 그대로 보낸다: {type(e).__name__}: {e}")
     for 시작 in range(0, len(reply), 1900):
         await message.channel.send(reply[시작:시작 + 1900] or "(빈 응답)")
+    # **이 실행이 그린 회로도도 같이 올린다.** 도구가 경로를 돌려줘도 사용자는 그것을
+    # 못 연다 -- 화면에 올라가야 본 것이다. 에이전트가 답에 경로를 적는 데 기대지
+    # 않는다(적는 것을 잊으면 그림이 통째로 사라진다). `bot_tools` 가 실행마다 적어 둔
+    # 자리를 여기서 읽는다 -- `마지막셸` 과 같은 자리·같은 때에 옮겨진다.
+    if thread_id:
+        그림들 = list(그림들) + (bot_tools.마지막그림.pop(thread_id, None) or [])
     for 쪽 in 그림들:
         try:
             await message.channel.send(file=discord.File(쪽, filename=os.path.basename(쪽)))
         except Exception as e:                                    # noqa: BLE001
-            print(f"[수식] 그림 못 보냄 {쪽}: {type(e).__name__}: {e}")
+            print(f"[그림] 못 보냄 {쪽}: {type(e).__name__}: {e}")
 
 
 async def _sync_and_note(loop, message: discord.Message, reply: str) -> "tuple[str | None, str | None]":
@@ -1057,7 +1069,7 @@ async def _handle_public_message(message: discord.Message) -> None:
                 reply = f"{reply}\n\n{어긋남}"
             # **답을 먼저 보낸다.** admin 경로와 같은 까닭이고, 같은 사고가 한 번 더 났다
             # (실측 2026-09-13: 로그에 reply 가 다 찍혔는데 채널에는 아무것도 안 왔다).
-            await _답보내기(message, reply)
+            await _답보내기(message, reply, thread_id)
             sync_note, integrity_note = await _sync_and_note(loop, message, reply)
     except asyncio.CancelledError:
         return
