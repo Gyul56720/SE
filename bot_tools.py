@@ -717,6 +717,37 @@ def prove_rtl(design: str, top: str = "", depth: int = 20, unbounded: bool = Tru
 
 
 @tool
+def place_rtl(design: str, target_mhz: float, top: str = "", chip: str = "hx8k",
+              seconds: int = 500) -> str:
+    """**Place, route and time the design on a real FPGA** (Yosys + nextpnr-ice40).
+
+    `run_rtl` answers "does it work", `synth_rtl` answers "how big", this answers
+    **"how fast"** — and that needs a real device, because most of the delay is wiring.
+    Returns Fmax per clock plus LC/RAM/IO utilisation against the part.
+
+    **`target_mhz` is required.** With no target, nextpnr compares against its own
+    default and prints `PASS at 12.00 MHz` (measured 2026-09-15) — a green that has
+    nothing to do with the speed your design will run at. No target, no verdict:
+
+        PASS  every clock meets `target_mhz` after routing
+        FAIL  a clock falls short — the reply says by how much
+        못잼  no target given · does not fit the part · no clock at all · tool missing
+
+    `--timing-allow-fail` is never used: measured, that one flag turns exit 1 into
+    exit 0 on the same timing violation. Chips: `hx1k`(1280 LC) · `hx8k`(7680, default)
+    · `lp384`(384) · `up5k`(5280). Identifiers must be ASCII.
+    """
+    if agent_context.is_blocked():
+        return "실패: 게스트는 place_rtl 을 사용할 수 없습니다."
+    import pnr
+    r = pnr.맞춰보기(design, top, target_mhz, chip, 초=seconds)
+    말 = pnr.말로(r)
+    if 말:
+        r["timing"] = 말.replace("\n", " | ")
+    return _rtl보고("Place & route", r, ["timing"])
+
+
+@tool
 def run_spice(netlist: str, checks: str = "", seconds: int = 90) -> str:
     """**Actually SIMULATE an analog circuit** with ngspice (DC / AC / transient).
 
