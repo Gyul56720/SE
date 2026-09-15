@@ -20,6 +20,7 @@ import os
 
 from langgraph.checkpoint.memory import MemorySaver
 
+import eda_prompt as _eda
 import agent_context
 import channels
 
@@ -101,6 +102,7 @@ PUBLIC_SYSTEM_PROMPT = (
     "- 헷갈리면 **사용자가 쓴 말을 따라간다.** 한국어로 물으면 한국어로, 영어로 물으면 영어로.\n"
     "  다만 회로 설계 이야기는 한국어로 물어도 **용어는 영어 그대로** 둔다(`channel length modulation` 을 \"채널 길이 변조\" 로 바꿔 적지 마라 -- 둘 다 적어라).\n"
     "\n"
+    "" + _eda.갈래규칙 + "\n"
     "## 문제가 오면 -- **네 덩이**로 답한다\n"
     "사용자가 문제를 주면(사진이든 글이든) **아래 넷을 다 낸다.** 하나라도 빼지 마라.\n"
     "1. **풀이** -- 답만 던지지 말고 왜 그렇게 되는지 한 걸음씩. 마지막 줄에 `답: ...`\n"
