@@ -951,6 +951,68 @@ def loss_sweep(losses: str = "15,20,25,30,35", widths: str = "7,8,9,10",
 
 
 @tool
+def nn_equalizer(loss_db: float = 25.0, snr_db: float = 30.0, compression: float = 1.0,
+                 bits: int = 300000, window: int = 10, hidden: int = 16,
+                 epochs: int = 12, dfe_taps: int = 0, weight_bits: int = 0,
+                 keep_fraction: float = 1.0, reflections: str = "",
+                 adc_bits: int = 0, sps: int = 8, seed: int = 7) -> str:
+    """**Neural-network equaliser** -- and the control that says when it is allowed to win.
+
+    On a linear channel with AWGN the optimal equaliser **is linear** (MMSE-DFE), so an
+    MLP can at best tie FFE+DFE. If it wins there, that is not physics, it is a leak:
+    BER being counted on training bits, or true bits fed into the decision feedback.
+    Measured 2026-09-16 at `compression=0`: linear 6.33e-4, net 6.75e-4 -- the net loses,
+    which is what makes the rest of the numbers believable.
+
+    `compression` is receiver-front-end saturation, `tanh(a*y)/a`. Put it at the RX, not
+    the TX: NRZ has only two levels, so a memoryless nonlinearity on the transmitted
+    symbols is **just a gain change** and moves BER not at all. It needs the many-level
+    signal that ISI creates. No linear inverse exists, so this is the first thing FFE,
+    DFE and CTLE cannot undo -- and the first thing a net can:
+
+        compression   linear FFE11+DFE8      net        gain
+             0.0          6.333e-04      6.746e-04     0.9x   <- loses, correctly
+             0.5          1.786e-03      6.651e-04     2.7x
+             1.0          2.421e-02      1.498e-03    16.2x
+             1.5          5.680e-02      7.841e-03     7.3x
+             2.0          8.240e-02      2.084e-02     4.1x
+
+    The gain peaks and then falls: past a point saturation destroys the information
+    irreversibly and no equaliser gets it back. Adding a DFE after the net changes almost
+    nothing (1.498e-3 vs 1.548e-3) -- the net already did that job, so spending parameter
+    budget there is waste.
+
+    Training uses only the first 30% of bits and BER is counted on the rest; a run that
+    did not converge is reported as 못잼, never as a bad BER. `weight_bits` and
+    `keep_fraction` quantise and prune the weights for the hardware step.
+    Identifiers must be ASCII.
+    """
+    if agent_context.is_blocked():
+        return "실패: 게스트는 nn_equalizer 을 사용할 수 없습니다."
+    import serdes
+    import nneq
+    try:
+        반사 = serdes.반사읽기(reflections)
+    except ValueError as e:
+        return f"실패: {e}"
+    r = nneq.링크(비트수=int(bits), 손실dB=loss_db, SNRdB=snr_db, 압축=compression,
+                sps=int(sps), 앞뒤=int(window), 은닉수=int(hidden), 에폭=int(epochs),
+                DFE탭=int(dfe_taps), 가중치비트=int(weight_bits),
+                남길비율=keep_fraction, 반사=반사, ADC비트=int(adc_bits), 씨=int(seed))
+    선 = serdes.링크(비트수=int(bits), 손실dB=loss_db, SNRdB=snr_db, sps=int(sps),
+                   FFE탭=11, DFE탭=8, 압축=compression, 반사=반사,
+                   ADC비트=int(adc_bits), 씨=int(seed))
+    줄 = [nneq.말로(r), "",
+         f"linear FFE11+DFE8 on the same channel: {선['왜']}"]
+    if r["오류수"] >= 0 and 선["오류수"] > 0:
+        다름, 말 = serdes.구별되나(r["오류수"], r["잰비트"], 선["오류수"], 선["잰비트"])
+        줄.append(("net vs linear: " + 말) if 다름 else
+                  ("net vs linear: " + 말 + "  -- on a LINEAR channel this tie is the "
+                   "expected result, not a failure"))
+    return "\n".join(줄)
+
+
+@tool
 def ip_signoff(design: str, testbench: str, top: str = "tb",
                min_coverage: float = 80.0, target_mhz: float = 0.0,
                chip: str = "hx8k", deliverables: str = "",

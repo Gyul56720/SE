@@ -190,6 +190,33 @@ def 프루닝(탭: np.ndarray, 남길비율: float) -> np.ndarray:
     return 탭
 
 
+def 압축하기(y: np.ndarray, 세기: float) -> np.ndarray:
+    """수신 앞단 증폭기의 **비선형 압축**. `세기`=0 이면 아무것도 안 한다.
+
+        y_out = tanh(a*y) / a,   a = 세기 / rms(y)
+
+    ## 왜 수신단인가 -- 송신단에 걸면 **아무 일도 안 일어난다**
+
+    NRZ 는 레벨이 ±1 둘뿐이다. 메모리 없는 비선형은 그 둘을 각각 다른 값으로 옮길
+    뿐이라 **그냥 이득 변화**이고, 슬라이서 문턱이 0 이면 BER 이 한 톨도 안 변한다.
+    비선형이 뜻을 가지려면 신호에 **레벨이 여럿**이어야 하고, 그 자리가 ISI 로
+    퍼진 뒤의 수신 파형이다. 실제 링크에서도 압축은 작은 신호를 크게 키우는 RX
+    앞단(CTLE·VGA)에서 난다.
+
+    ## 이것이 선형 등화기가 못 푸는 것이다
+
+    FFE·DFE·CTLE 는 전부 선형 연산이다. 선형 채널 + AWGN 에서는 최적 등화기도
+    선형이라(MMSE-DFE) 신경망을 얹어도 잘해야 비긴다 -- **이기면 그건 물리가
+    아니라 새는 구멍이다.** 압축은 선형 역연산이 존재하지 않으므로 여기서 처음으로
+    비선형 사상이 할 일이 생긴다.
+    """
+    if not 세기 or 세기 <= 0:
+        return y
+    rms = float(np.sqrt(np.mean(y ** 2))) or 1.0
+    a = float(세기) / rms
+    return np.tanh(a * y) / a
+
+
 def ADC(x: np.ndarray, 비트: int, 풀스케일: float) -> "tuple[np.ndarray, float]":
     """균일 ADC. **분해능만이 아니라 자르기(클리핑)까지 모형에 넣는다.**
 
@@ -245,7 +272,7 @@ def LMS_FFE(받은것: np.ndarray, 정답: np.ndarray, 탭수: int, 지연: int,
 
 def 링크(비트수: int = 20000, 손실dB: float = 20.0, SNRdB: float = 20.0,
        sps: int = 8, CTLE피킹dB: float = 0.0, FFE탭: int = 0, DFE탭: int = 0,
-       반사=(), DFE자리=None,
+       반사=(), DFE자리=None, 압축: float = 0.0,
        탭비트: int = 0, 남길비율: float = 1.0, 이상적판정: bool = False,
        ADC비트: int = 0, ADC풀스케일시그마: float = 3.0,
        학습비율: float = 0.3, 씨: int = 0) -> dict:
@@ -267,6 +294,8 @@ def 링크(비트수: int = 20000, 손실dB: float = 20.0, SNRdB: float = 20.0,
     # SNR 정의: **손실 없는 이상적 메인 커서(=1)** 에 견준다. 머리말 참조.
     sigma = 10.0 ** (-SNRdB / 20.0)
     y = y + rng.normal(0.0, sigma, len(y))
+    # **압축은 잡음이 실린 뒤, 등화 앞에서** 난다 -- RX 앞단의 자리가 거기다.
+    y = 압축하기(y, 압축)
     if CTLE피킹dB:
         y = CTLE(y, sps, CTLE피킹dB)
 
@@ -350,7 +379,7 @@ def 링크(비트수: int = 20000, 손실dB: float = 20.0, SNRdB: float = 20.0,
     return {"BER": (오류 / 잰비트) if 잰비트 else float("nan"),
             "오류수": 오류, "잰비트": 잰비트, "표본": 표본, "비트": 맞춘것,
             "위상": 위상, "지연심볼": 지연심볼, "sigma": sigma, "적응": 적응,
-            "ADC비트": int(ADC비트), "클립비율": 클립비율,
+            "ADC비트": int(ADC비트), "클립비율": 클립비율, "압축": float(압축),
             "ADC풀스케일시그마": ADC풀스케일시그마,
             "DFE탭": None if dfe탭값 is None else list(map(float, dfe탭값)),
             "DFE자리": 자리들, "반사": list(반사),
