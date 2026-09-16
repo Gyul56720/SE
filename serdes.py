@@ -28,6 +28,7 @@ SNR 은 아무 숫자나 된다.
 """
 from __future__ import annotations
 
+import functools as _functools
 import math
 
 import numpy as np
@@ -168,6 +169,166 @@ def 채널물리(sps: int = 8, 길이심볼: int = 64, 도체dB: float = 12.0,
         t = np.nan_to_num(t, nan=0.0, posinf=1e9, neginf=-1e9)
         크기 = 크기 * np.abs(2.0 / (2.0 + 1j * float(스터브세기) * t))
     return 반사붙이기(_최소위상(크기, N), sps, 반사)
+
+
+def _skrf():
+    """`scikit-rf` 를 늦게 부른다. 없으면 **사실대로 못 한다고 말한다.**"""
+    try:
+        import skrf
+        return skrf
+    except Exception as e:      # pragma: no cover
+        raise RuntimeError(
+            "scikit-rf 가 없다 -- `requirements.txt` 에 들어 있고 배포가 깐다. "
+            f"여기서는 `pip install scikit-rf`. ({e})") from e
+
+
+def 채널S21(f: np.ndarray, S21: np.ndarray, sps: int = 8, 길이심볼: int = 64,
+         보드율: float = 20e9, 앞심볼: int = 8) -> np.ndarray:
+    """**S-파라미터 한 벌을 임펄스 응답으로.** 측정본이든 모형이든 입구가 여기다.
+
+    `f` 는 FFT 격자(0 .. fs/2, fs = 보드율·sps)여야 한다 -- **격자에 맞춰 모형을
+    평가하는 것이 격자로 보간하는 것보다 낫다.** 보간은 없는 위상을 지어내고, 그
+    지어낸 위상이 곧 가짜 인과성이 된다.
+
+    ## 왜 큰 FFT 로 재고 잘라 오나
+
+    30인치 선로의 지연은 4.2 ns 다. 20 GBd · sps 8 이면 674 표본이므로, 64심볼
+    (512표본) 창으로 바로 역변환하면 **꼬리가 제 앞머리로 감긴다**(시간 영역 에일리어싱).
+    그래서 큰 N 으로 역변환한 뒤 **꼭대기 둘레만 잘라 온다.**
+    """
+    h = np.fft.irfft(np.asarray(S21), 2 * (len(f) - 1))
+    k = int(np.argmax(np.abs(h)))
+    앞 = int(앞심볼) * int(sps)
+    시작 = max(0, k - 앞)
+    끝 = 시작 + int(길이심볼) * int(sps)
+    잘린 = h[시작:끝]
+    if len(잘린) < int(길이심볼) * int(sps):
+        잘린 = np.concatenate([잘린, np.zeros(int(길이심볼) * int(sps) - len(잘린))])
+    return 잘린
+
+
+def 선로격자(sps: int = 8, 보드율: float = 20e9, FFT: int = 16384):
+    """FFT 격자와 `skrf.Frequency`. f=0 은 0 이 아니라 아주 작은 값으로 둔다."""
+    skrf = _skrf()
+    fs = float(보드율) * int(sps)
+    f = np.fft.rfftfreq(int(FFT), 1.0 / fs)
+    f2 = f.copy()
+    f2[0] = f[1] * 1e-3            # DC 에서 손실 모형이 정의되지 않는다
+    return f2, skrf.Frequency.from_f(f2, unit="Hz")
+
+
+def 채널선로(sps: int = 8, 길이심볼: int = 64, 보드율: float = 20e9,
+         인치: float = 30.0, 폭: float = 200e-6, 높이: float = 100e-6,
+         두께: float = 35e-6, 유전율: float = 3.7, 손실각: float = 0.002,
+         저항률: float = 1.72e-8, 거칠기: float = 0.4e-6,
+         불연속=(), FFT: int = 16384) -> np.ndarray:
+    """**기하와 재료에서** 임펄스 응답을 짓는다 -- `scikit-rf` 의 마이크로스트립.
+
+    `serdes.채널()` 과 `채널물리()` 는 **dB 숫자를 맞춘 것**이다. 여기서는 선폭 ·
+    기판 두께 · 유전율 · 손실각 · 구리 저항률 · 표면 거칠기를 주면 남이 쓴 라이브러리가
+    S-파라미터를 낸다. 유전체는 **Djordjevic-Svensson 인과 모형**(크라머스-크로니히를
+    만족하는 Dk(f) · Df(f))이고, 분산은 Kirschning-Jansen 이다. 내 손으로 맞춘
+    크기 곡선이 아니라는 것이 요점이다.
+
+    `불연속` 은 `(위치비율, 길이m, 폭m)` 의 열이다. 폭이 다르면 임피던스가 다르므로
+    **진짜 반사**가 난다(비아 · 커넥터 · 패키지 자리). 임의의 감쇠 계수를 손으로 넣는
+    `반사붙이기` 와 달리 여기서는 반사가 기하에서 나온다.
+
+    기본값(30인치 · Megtron-6 급 3.7/0.002 · 20 GBd)이 Nyquist 10 GHz 에서 19.8 dB,
+    메인 커서 0.30, ISI 0.52 를 낸다 -- 실제 백플레인의 자리다.
+
+    **낮은 주파수에서 도체 손실 모형이 유효하지 않다**(두께가 표피 깊이의 3배 미만).
+    skrf 가 그것을 경고하는데, 그 대역에서 도체 손실 자체가 무시할 만하므로 그대로 쓴다.
+    """
+    skrf = _skrf()
+    from skrf.media import MLine
+    import warnings
+    f, fr = 선로격자(sps, 보드율, FFT)
+
+    def 매질(w):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return MLine(frequency=fr, w=float(w), h=float(높이), t=float(두께),
+                         ep_r=float(유전율), tand=float(손실각), rho=float(저항률),
+                         rough=float(거칠기), diel="djordjevicsvensson",
+                         disp="kirschningjansen")
+
+    주 = 매질(폭)
+    전체 = float(인치) * 25.4e-3
+    조각 = []
+    앞 = 0.0
+    for 위치, 길, w in sorted(불연속, key=lambda t: t[0]):
+        여기 = float(위치) * 전체
+        조각.append(주.line(max(여기 - 앞, 1e-6), "m"))
+        조각.append(매질(w).line(float(길), "m"))
+        앞 = 여기
+    조각.append(주.line(max(전체 - 앞, 1e-6), "m"))
+    net = 조각[0]
+    for n in 조각[1:]:
+        net = net ** n
+    return 채널S21(f, net.s[:, 1, 0], sps, 길이심볼, 보드율)
+
+
+def 채널측정(K: int = 16, sps: int = 4, 길이심볼: int = 64,
+         이름: str = "ntwk1", FFT: int = 8192):
+    """**측정된 2포트를 K 벌 이어 붙인** 채널. 손실도 반사도 전부 계측기에서 나온다.
+
+    `scikit-rf` 가 함께 배포하는 측정 파일을 쓴다(`skrf.data.ntwk1`, 1~10 GHz 91점,
+    2010년 측정). 한 벌은 Nyquist 에서 1 dB 밖에 안 죽는 순한 물건이라 등화기를
+    가르지 못한다. 그래서 **같은 것을 K 벌 직렬로 잇는다** -- 물리적으로 말이 되는
+    구성이고(같은 조각을 이어 단 것), 그러면 손실과 **계면마다의 실제 반사**가 같이
+    쌓인다.
+
+        K= 1   0.98 dB   아이 +2.08     K=16  19.65 dB   아이 -0.23
+        K= 8  10.61 dB   아이 +0.38     K=24  28.77 dB   아이 -0.40
+
+    ## 대역 밖으로 **늘리지 않는다**
+
+    측정은 1~10 GHz 다. 그래서 표본율을 `fs = 2·10 GHz` 로 못 박고 sps=4 를 쓴다 --
+    그러면 FFT 격자가 **측정 대역 안에만** 놓인다. 1 GHz 아래만 DC 외삽인데 그것은
+    업계가 늘 하는 일이고 skrf 가 인과성을 지켜 준다(`extrapolate_to_dc`).
+    10 GHz 위로 외삽해서 20 GBd 를 흉내 내면 그 숫자는 **측정이 아니라 내 외삽**이다.
+
+    돌려주는 것은 `(h, 보드율)` 이다 -- 보드율이 측정 대역에서 정해지므로 부르는 쪽이
+    고를 수 없다.
+    """
+    skrf = _skrf()
+    import warnings
+    n0 = getattr(skrf.data, str(이름))
+    fmax = float(n0.f[-1])
+    fs = 2.0 * fmax
+    보드율 = fs / int(sps)
+    f = np.fft.rfftfreq(int(FFT), 1.0 / fs)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        nd = n0.extrapolate_to_dc(kind="cubic")
+        ni = nd.interpolate(skrf.Frequency.from_f(np.clip(f, 0.0, fmax), unit="Hz"),
+                            kind="cubic")
+        net = ni.copy()
+        for _ in range(max(int(K), 1) - 1):
+            net = net ** ni
+    return 채널S21(f, net.s[:, 1, 0], sps, 길이심볼, 보드율), 보드율
+
+
+@_functools.lru_cache(maxsize=32)
+def _채널지음(항목):
+    """`링크` 가 쓰는 캐시. skrf 호출이 비싸서 같은 설정을 두 번 안 짓는다."""
+    인자 = dict(항목)
+    꼴 = 인자.pop("꼴", "선로")
+    if 꼴 == "선로":
+        불연속 = 인자.pop("불연속", ())
+        return 채널선로(불연속=[tuple(x) for x in 불연속], **인자)
+    if 꼴 == "측정":
+        return 채널측정(**인자)[0]
+    raise ValueError(f"모르는 채널 꼴 {꼴!r} -- '선로' 또는 '측정'")
+
+
+def 채널짓기(설정: dict) -> np.ndarray:
+    """dict 를 캐시가 먹을 수 있는 꼴로 얼려 `_채널지음` 에 넘긴다."""
+    얼린 = tuple(sorted(
+        (k, tuple(tuple(x) for x in v) if k == "불연속" else v)
+        for k, v in dict(설정).items()))
+    return _채널지음(얼린)
 
 
 def 펄스응답(h: np.ndarray, sps: int) -> np.ndarray:
@@ -511,7 +672,7 @@ def 링크(비트수: int = 20000, 손실dB: float = 20.0, SNRdB: float = 20.0,
        슬루율: float = 0.0, 누설시상수: float = 0.0,
        누화세기: float = 0.0, 전원세기: float = 0.0, 전원주기: float = 37.0,
        지터rjUI: float = 0.0, 지터sjUI: float = 0.0, 지터sj주기: float = 100.0,
-       물리채널=None,
+       물리채널=None, 채널지음=None, 선형표본: bool = False,
        ROM깊이: int = 0, ROM최소표본: int = 8,
        ROM차수: int = 0, 표본표창: int = 0, 표본표비트: int = 4,
        표본표시프트: bool = True, 표본표특징비트: int = 0,
@@ -530,14 +691,23 @@ def 링크(비트수: int = 20000, 손실dB: float = 20.0, SNRdB: float = 20.0,
     b = rng.integers(0, 2, 비트수) * 2 - 1        # ±1 NRZ
     # **채널.** `물리채널` 을 주면 도체·유전 손실을 나누고 비아 스터브를 붙인 쪽을
     # 쓴다(`채널물리`). 안 주면 sqrt(f) 한 기구짜리 기본 채널이다.
-    h = (채널물리(sps=sps, 길이심볼=64, 반사=반사, **dict(물리채널))
-         if 물리채널 else 채널(손실dB, sps, 64, 반사))
+    if 채널지음:
+        # **기하·재료에서 짓거나(선로) 측정본을 이어 붙인(측정)** 채널.
+        h = 채널짓기(채널지음)
+    elif 물리채널:
+        h = 채널물리(sps=sps, 길이심볼=64, 반사=반사, **dict(물리채널))
+    else:
+        h = 채널(손실dB, sps, 64, 반사)
 
     보낸것 = np.repeat(b, sps).astype(float)
     y = np.convolve(보낸것, h, mode="full")[:len(보낸것)]
     # SNR 정의: **손실 없는 이상적 메인 커서(=1)** 에 견준다. 머리말 참조.
     sigma = 10.0 ** (-SNRdB / 20.0)
     y = y + rng.normal(0.0, sigma, len(y))
+    # **손상 앞의 파형을 붙든다**(선택). 이것이 이론 한계를 재는 자리다 -- 수신단
+    # 손상은 전부 이 뒤에 오므로, 이 파형 위의 최적 검출기는 **어떤 구조도 못 넘는다**
+    # (자료처리 부등식: 뒤에 붙는 결정적 사상은 정보를 더하지 못한다).
+    y선형 = y.copy() if 선형표본 else None
     # **원단 누화** -- 다른 레인이 같은 채널을 지나 미분 결합으로 실린다.
     if 누화세기:
         y = 크로스토크(y, h, sps, 누화세기, 비트수, rng)
@@ -569,6 +739,12 @@ def 링크(비트수: int = 20000, 손실dB: float = 20.0, SNRdB: float = 20.0,
     p = 펄스응답(h, sps)
     꼭대기 = int(np.argmax(np.abs(p)))
     위상, 지연심볼 = 꼭대기 % sps, 꼭대기 // sps
+    손상파형 = y.copy() if 선형표본 else None      # 표본 뽑기 직전(= 수신단 손상 뒤)
+    선형뽑은것 = None
+    if y선형 is not None:
+        선형뽑은것 = y선형[위상::sps]
+        if 지연심볼:
+            선형뽑은것 = 선형뽑은것[지연심볼:]
     if 지터rjUI or 지터sjUI:
         # **지터는 표본을 뽑을 때 난다** -- 파형을 흔드는 것이 아니라 뽑는 때를 흔든다.
         표본 = 지터표본(y, 위상, sps, (len(y) - 위상) // sps,
@@ -679,6 +855,10 @@ def 링크(비트수: int = 20000, 손실dB: float = 20.0, SNRdB: float = 20.0,
     잰비트 = int(잰것.stop - 잰것.start)
     return {"BER": (오류 / 잰비트) if 잰비트 else float("nan"),
             "오류수": 오류, "잰비트": 잰비트, "표본": 표본, "비트": 맞춘것,
+            "채널h": h, "선형파형": y선형, "손상파형": 손상파형,
+            "압축a": float(_압축a),
+            "선형표본": (None if 선형뽑은것 is None
+                     else 선형뽑은것[:len(맞춘것)]),
             "위상": 위상, "지연심볼": 지연심볼, "sigma": sigma, "적응": 적응,
             "ADC비트": int(ADC비트), "클립비율": 클립비율, "압축": float(압축),
             "ADC풀스케일시그마": ADC풀스케일시그마,
