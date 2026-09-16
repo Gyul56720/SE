@@ -1,0 +1,674 @@
+<title>경량 신경망 SerDes 등화기</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+<style>
+  :root{
+    --paper:#F7F8F6; --panel:#FFFFFF; --ink:#16201C; --muted:#5C6A63;
+    --rule:#D3DAD5; --rule-soft:#E6EAE7;
+    --ok:#0F6B4F; --ok-bg:#E6F0EB;
+    --open:#A8551A; --open-bg:#F6EBE0;
+    --none:#8C2F32; --none-bg:#F4E6E6;
+    --sans:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    --serif:"Source Serif 4","Noto Serif KR",Georgia,serif;
+    --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --paper:#101613; --panel:#161D19; --ink:#E4EAE6; --muted:#93A29A;
+      --rule:#2C3934; --rule-soft:#222C28;
+      --ok:#5FBF9A; --ok-bg:#12271F;
+      --open:#DB9A5C; --open-bg:#2A1F13;
+      --none:#DB8285; --none-bg:#2A1517;
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#101613; --panel:#161D19; --ink:#E4EAE6; --muted:#93A29A;
+    --rule:#2C3934; --rule-soft:#222C28;
+    --ok:#5FBF9A; --ok-bg:#12271F;
+    --open:#DB9A5C; --open-bg:#2A1F13;
+    --none:#DB8285; --none-bg:#2A1517;
+  }
+
+  body{background:var(--paper);color:var(--ink);font-family:var(--serif);
+       font-size:17px;line-height:1.72;-webkit-text-size-adjust:100%}
+  .wrap{max-width:52rem;margin:0 auto;padding-inline:20px;padding-block:0 5rem}
+
+  /* ---- 표제 ---- */
+  header.head{border-bottom:2px solid var(--ink);padding-block:3.5rem 1.6rem;margin-bottom:2.5rem}
+  .kicker{font-family:var(--mono);font-size:.68rem;letter-spacing:.14em;
+          text-transform:uppercase;color:var(--muted);margin:0 0 1.1rem}
+  h1{font-family:var(--sans);font-weight:700;font-size:clamp(1.75rem,5.2vw,2.6rem);
+     line-height:1.2;letter-spacing:-.02em;margin:0 0 .7rem;text-wrap:balance}
+  .sub{font-size:1.06rem;color:var(--muted);margin:0 0 1.8rem;text-wrap:balance}
+  .byline{font-family:var(--mono);font-size:.74rem;color:var(--muted);
+          display:flex;flex-wrap:wrap;gap:.4rem 1.4rem;line-height:1.6}
+
+  /* ---- 판정 어휘 ---- */
+  .legend{display:grid;gap:.55rem;background:var(--panel);border:1px solid var(--rule);
+          padding:1.1rem 1.2rem;margin:0 0 2.6rem}
+  .legend h2{font-family:var(--mono);font-size:.66rem;letter-spacing:.14em;
+             text-transform:uppercase;color:var(--muted);margin:0 0 .3rem;font-weight:600}
+  .legend div{font-size:.9rem;line-height:1.55}
+  .v{font-family:var(--mono);font-size:.72rem;font-weight:600;padding:.12em .5em;
+     border-radius:2px;white-space:nowrap;letter-spacing:.02em}
+  .v-ok{background:var(--ok-bg);color:var(--ok)}
+  .v-open{background:var(--open-bg);color:var(--open)}
+  .v-none{background:var(--none-bg);color:var(--none)}
+
+  /* ---- 본문 ---- */
+  h2.sec{font-family:var(--sans);font-weight:600;font-size:1.32rem;letter-spacing:-.01em;
+         margin:3.4rem 0 .9rem;padding-top:1.2rem;border-top:1px solid var(--rule);
+         display:flex;gap:.75rem;align-items:baseline;text-wrap:balance}
+  h2.sec .n{font-family:var(--mono);font-size:.82rem;font-weight:500;color:var(--ok);
+            flex:none;padding-top:.15em}
+  h3{font-family:var(--sans);font-weight:600;font-size:1.02rem;margin:2.1rem 0 .55rem;
+     letter-spacing:-.005em;text-wrap:balance}
+  p{margin:0 0 1.05rem}
+  strong{font-weight:600}
+  em{font-style:italic;color:var(--muted)}
+  code,.m{font-family:var(--mono);font-size:.86em;font-variant-numeric:tabular-nums}
+  abbr{text-decoration:none;border-bottom:1px dotted var(--rule)}
+  ul,ol{margin:0 0 1.05rem;padding-left:1.35rem}
+  li{margin-bottom:.4rem}
+  a{color:var(--ok)}
+  a:focus-visible,summary:focus-visible{outline:2px solid var(--ok);outline-offset:2px}
+
+  .lead{font-size:1.06rem}
+  .abstract{background:var(--panel);border-left:3px solid var(--ok);
+            padding:1.3rem 1.4rem;margin:0 0 2.4rem}
+  .abstract p:last-child{margin-bottom:0}
+
+  blockquote{margin:1.4rem 0;padding:0 0 0 1.1rem;border-left:2px solid var(--rule);
+             color:var(--muted);font-size:.96rem}
+  blockquote p:last-child{margin-bottom:0}
+
+  /* ---- 표 ---- */
+  figure{margin:1.8rem 0 2rem}
+  figcaption{font-family:var(--mono);font-size:.72rem;color:var(--muted);
+             line-height:1.6;margin-top:.7rem}
+  figcaption b{color:var(--ink);font-weight:600}
+  .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--rule);
+          background:var(--panel)}
+  table{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:.78rem;
+        font-variant-numeric:tabular-nums;min-width:max-content}
+  th,td{padding:.42rem .75rem;text-align:right;white-space:nowrap;
+        border-bottom:1px solid var(--rule-soft)}
+  th{font-weight:600;color:var(--muted);font-size:.68rem;letter-spacing:.06em;
+     text-transform:uppercase;border-bottom:1px solid var(--rule);text-align:right}
+  th:first-child,td:first-child{text-align:left}
+  tbody tr:last-child td{border-bottom:none}
+  td.hl{color:var(--ok);font-weight:600}
+  td.bad{color:var(--none)}
+  td.warn{color:var(--open)}
+  tr.rule-top td{border-top:1px solid var(--rule)}
+
+  /* ---- 그림 ---- */
+  .chart{background:var(--panel);border:1px solid var(--rule);padding:1.1rem}
+  .chart svg{display:block;width:100%;height:auto;max-width:100%}
+
+  /* ---- 결함 목록 ---- */
+  .defect{border:1px solid var(--rule);background:var(--panel);margin:0 0 .7rem}
+  .defect summary{cursor:pointer;padding:.7rem .9rem;font-family:var(--sans);
+                  font-size:.92rem;font-weight:500;display:flex;gap:.6rem;
+                  align-items:baseline;list-style:none}
+  .defect summary::-webkit-details-marker{display:none}
+  .defect summary::before{content:"▸";color:var(--muted);font-size:.8em;flex:none}
+  .defect[open] summary::before{content:"▾"}
+  .defect summary .tag{font-family:var(--mono);font-size:.64rem;color:var(--muted);
+                       flex:none;padding-top:.1em}
+  .defect .body{padding:0 .9rem 1rem 2rem;font-size:.93rem;line-height:1.65}
+  .defect .body p{margin:0 0 .6rem}
+  .defect .body p:last-child{margin:0}
+  pre{font-family:var(--mono);font-size:.74rem;line-height:1.6;background:var(--paper);
+      border:1px solid var(--rule-soft);padding:.7rem .8rem;overflow-x:auto;margin:.7rem 0}
+
+  .limits{background:var(--none-bg);border:1px solid var(--rule);padding:1.2rem 1.3rem;margin:1.6rem 0}
+  .limits h3{margin-top:0}
+  .limits ul{margin-bottom:0}
+
+  footer{margin-top:4rem;padding-top:1.4rem;border-top:1px solid var(--rule);
+         font-family:var(--mono);font-size:.72rem;color:var(--muted);line-height:1.7}
+
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<div class="wrap">
+
+<header class="head">
+  <p class="kicker">연구 보고 · 와이어라인 SerDes · 2026-09-16</p>
+  <h1>경량화 신경망 기반 와이어라인 SerDes 등화기의 FPGA 실시간 구현</h1>
+  <p class="sub">면적·BER·클럭 맞바꿈의 실측, 그리고 계측 장치 자신의 결함 열둘</p>
+  <div class="byline">
+    <span>SE/ASTRA 자율 연구 파이프라인</span>
+    <span>NRZ · 25 dB 백플레인 · iCE40 HX8K</span>
+    <span>코드·검사 전부 공개 저장소</span>
+  </div>
+</header>
+
+<div class="legend">
+  <h2>판정 어휘 — 이 보고서는 세 상태를 섞지 않는다</h2>
+  <div><span class="v v-ok">확립</span> 평균 차이가 크고 씨(seed)끼리의 산포도 그만큼 작다. 결론으로 쓴다.</div>
+  <div><span class="v v-open">미해결</span> 방향은 보이나 산포가 차이를 가로지른다. <strong>“같다”로도 “다르다”로도 쓰지 않는다.</strong></div>
+  <div><span class="v v-none">못잼</span> 이 실험 장치로는 잴 수 없다. 통과로 세지 않고 못 잰다고 적는다.</div>
+</div>
+
+<div class="abstract">
+  <p class="lead"><strong>초록.</strong> 와이어라인 SerDes 수신단의 비선형 왜곡은 선형 등화기(CTLE·FFE·DFE)로 되돌릴 수 없다. 본 연구는 25 dB 손실 백플레인 모형 위에서 <strong>양자화 신경망 등화기</strong>를 설계하고, 고정소수점 기준모델과 <strong>비트 단위로 일치하는 Verilog</strong>를 작성해 iCE40 HX8K에 실제로 배치·배선하여 면적(LC)과 최대 동작주파수(Fmax)를 측정했다.</p>
+  <p>수신단 압축 세기 1.0에서 신경망은 선형 FFE 11탭 + DFE 8탭 대비 <strong>BER을 10.1배 낮춘다</strong>(float). 고정소수점·FPGA 구현까지 내린 뒤에도 <strong>거의 같은 면적(+4%)에서 6.96배</strong>[4.21, 10.10]가 남고, 대가는 <strong>클럭 0.84배</strong>다. 경량화의 지배적 축은 통념과 달리 비트폭이 아니라 <strong>망 크기</strong>였으며(곱셈 12개로 이득의 41%를 얻는다), 고정소수점에서 성능을 가른 것은 소수부 해상도가 아니라 <strong>가중치의 정수부 여유</strong>였다. 타이밍에서 탈락하는 원인은 회로 크기가 아니라 <strong>한 사이클 안의 조합 경로 깊이</strong>이며, 이는 선형 DFE 8탭도 동일하게 겪는다.</p>
+  <p>본 보고의 두 번째 기여는 결과가 아니라 절차다. 연구 과정에서 <strong>계측 장치 자신의 결함 열둘</strong>을 발견했고, 그중 여덟은 <em>초록불로 위장한 오류</em>였다. 전량을 부록 A에 원인·증상·재현과 함께 공개한다.</p>
+</div>
+
+<!-- ══════════════════════ 1 ══════════════════════ -->
+<h2 class="sec"><span class="n">1</span>서론</h2>
+
+<p>채널 손실이 커지면 심볼간 간섭(<abbr title="Inter-Symbol Interference">ISI</abbr>)이 눈을 닫는다. 표준적인 해법은 송신 FFE, 수신 CTLE, 그리고 판정 되먹임 등화기(DFE)다. 선형 채널에 가우시안 잡음만 있다면 <strong>최적 등화기는 선형</strong>(MMSE-DFE)이므로, 그 위에 신경망을 얹어 이기는 일은 원리적으로 없다.</p>
+
+<p>그러나 실제 수신 앞단은 선형이 아니다. AFE의 이득 압축, ADC 앞 버퍼의 포화, 드라이버의 비선형성이 레벨을 눌러 놓는다. <strong>메모리 없는 비선형은 선형 역연산이 없으므로 FFE·DFE·CTLE로 되돌릴 수 없다.</strong> 신경망이 할 일이 있는 자리는 정확히 여기다.</p>
+
+<p>본 연구의 물음은 셋이다.</p>
+<ol>
+  <li><strong>이득이 있는가.</strong> 비선형이 있을 때 신경망은 선형 기준선을 얼마나 이기는가. 없을 때는 <em>져야</em> 한다.</li>
+  <li><strong>경량화의 축은 어디인가.</strong> 양자화·프루닝·망 크기 중 무엇이 실제로 비용을 가르는가.</li>
+  <li><strong>하드웨어로 내렸을 때 남는가.</strong> 부동소수점의 이득이 고정소수점·RTL·배치배선을 다 통과하고도 남는가, 그리고 대가는 무엇인가.</li>
+</ol>
+
+<h3>본 연구가 하지 않은 것 — 먼저 밝힌다</h3>
+
+<div class="limits">
+  <h3 style="color:var(--none)">선행연구 조사를 수행하지 않았다</h3>
+  <p style="margin-bottom:.6rem">본 보고서에는 <strong>참고문헌 목록이 없다.</strong> ML 기반 SerDes 등화에 관한 문헌 조사를 하지 않았으므로, 여기 있는 어떤 결과도 선행연구 대비 신규성·우월성을 주장하지 않는다. 측정된 것은 <em>이 실험 장치 안에서의 상대 비교</em>뿐이다.</p>
+  <p style="margin-bottom:0">이것을 각주로 숨기지 않고 서론에 두는 이유는, 문헌 없이 쓴 글에 그럴듯한 인용을 붙이는 것이 본 연구가 부록 A에서 다루는 바로 그 부류의 오류이기 때문이다 — <strong>검사하지 않은 초록불.</strong></p>
+</div>
+
+<!-- ══════════════════════ 2 ══════════════════════ -->
+<h2 class="sec"><span class="n">2</span>실험 장치와 교정</h2>
+
+<h3>2.1 채널 모형</h3>
+<p>표피효과 지배 구간의 손실을 주파수 응답으로 세운다.</p>
+<pre>|H(f)| = 10^( -(L/20) · sqrt(f / f_nyq) )        L = Nyquist 손실 [dB]</pre>
+<p>위상은 <strong>최소위상</strong>으로 재구성한다(로그 크기의 실켑스트럼 접기). 선형위상으로 두면 커서가 앞뒤 대칭이 되어 후행 커서만 지우는 DFE가 의미를 잃는다 — 실제 채널의 꼬리는 뒤로 끌린다.</p>
+<p>반사는 곱셈항으로 얹는다. <code>H(f) = H_skin(f) · (1 + Σ Γ_k e^(−j2πf·τ_k))</code>. Γ 하나면 <code>f·τ = 1/2</code>에서 합이 <code>(1−|Γ|)</code>로 꺼져 깊이 <code>20·log10(1−|Γ|)</code>의 노치가 생긴다. 표피효과는 단조롭게 죽지만 <strong>노치는 특정 주파수만 파낸다</strong> — CTLE 같은 매끄러운 부스트로는 메울 수 없다.</p>
+
+<h3>2.2 SNR의 정의를 못 박는다</h3>
+<p><code>SNRdB</code>는 <strong>손실 없는 이상적 링크의 메인 커서(=1)에 견준</strong> 잡음이다: <code>σ = 10^(−SNRdB/20)</code>. 따라서 손실 0·등화 없음이면 닫힌 꼴 <code>BER = Q(10^(SNRdB/20))</code>이 나와야 한다. <strong>정의가 없는 SNR은 아무 숫자나 된다.</strong></p>
+
+<figure>
+  <div class="scroll"><table>
+    <thead><tr><th>SNR</th><th>측정 BER</th><th>닫힌 꼴 Q(·)</th><th>어긋남</th></tr></thead>
+    <tbody>
+      <tr><td>6 dB</td><td>2.2895e−02</td><td>2.3007e−02</td><td class="hl">0.49 %</td></tr>
+      <tr><td>8 dB</td><td>5.8225e−03</td><td>6.0044e−03</td><td class="hl">3.03 %</td></tr>
+      <tr><td>10 dB</td><td>7.7250e−04</td><td>7.8270e−04</td><td class="hl">1.30 %</td></tr>
+    </tbody>
+  </table></div>
+  <figcaption><b>표 1. 시뮬레이터 교정.</b> 40만 비트, 손실 0 dB, sps=4. 셋 다 3σ 통계 오차 안. <span class="v v-ok">확립</span></figcaption>
+</figure>
+
+<h3>2.3 동작점 정규화 — 고정 SNR으로는 채널을 비교할 수 없다</h3>
+<p>이 모형의 SNR은 이상적 메인 커서 기준이므로, 손실을 올리면 ISI와 실효 SNR이 <strong>함께</strong> 나빠진다. SNR 30 dB 고정으로 손실을 훑으면 15 dB 이하는 오류 0(측정 바닥 아래), 30 dB는 이미 깨진 링크가 되어 <strong>쓸 수 있는 창이 한 점뿐</strong>이다. 그 상태로 “몇 비트가 필요한가”를 손실끼리 비교하면 비트 수 차이인지 동작점 차이인지 영영 가를 수 없다.</p>
+<p>그래서 손실마다 기준선 BER이 <code>1e−3</code>이 되는 SNR을 이분법으로 찾아 <strong>같은 자리로 옮긴 뒤</strong> 비교한다.</p>
+
+<figure>
+  <div class="scroll"><table>
+    <thead><tr><th>채널 손실</th><th>정규화 SNR</th><th>그때 기준선 BER</th></tr></thead>
+    <tbody>
+      <tr><td>15 dB</td><td>19.93 dB</td><td>1.00e−03</td></tr>
+      <tr><td>20 dB</td><td>24.13 dB</td><td>1.00e−03</td></tr>
+      <tr><td>25 dB</td><td>29.64 dB</td><td>1.00e−03</td></tr>
+      <tr><td>30 dB</td><td>35.69 dB</td><td>1.00e−03</td></tr>
+      <tr><td>35 dB</td><td>44.45 dB</td><td>1.01e−03</td></tr>
+    </tbody>
+  </table></div>
+  <figcaption><b>표 2. 동작점 정규화.</b> FFE 11탭 + DFE 8탭, 이분법 14회, 15만 비트. 이후 모든 손실별 비교는 이 자리에서 이루어진다.</figcaption>
+</figure>
+
+<h3>2.4 이 장치에 숨어 있는 거짓 초록 넷</h3>
+<p>BER 시뮬레이터는 조용히 틀리기 쉽다. 네 가지를 구조적으로 막았다.</p>
+<ul>
+  <li><strong>오류 0을 BER 0이라 부르지 않는다.</strong> 3의 규칙으로 상한 <code>3/N</code>을 함께 보고한다.</li>
+  <li><strong>학습에 쓴 비트로 BER을 재지 않는다.</strong> 앞 30%는 학습, 나머지에서만 센다.</li>
+  <li><strong>DFE에 정답 비트를 먹이지 않는다.</strong> 되먹임은 제 판정이다. 정답을 먹이면 오류 번짐(error propagation)이 통째로 사라져 BER이 몇 자릿수 좋게 나온다. <em>하드웨어는 정답을 모른다.</em></li>
+  <li><strong>LMS가 발산하면 발산했다고 말한다.</strong> 마지막 MSE만 보면 학습 실패를 등화기 성능으로 오독한다.</li>
+</ul>
+<p>셋째가 가장 조용하다. 이를 실제로 잡아내려면 망이 약한 조건이 필요했다 — 실측: 창 5·손실 32 dB에서 오류 9,141 대 8,262, <strong>6.7σ</strong>.</p>
+
+<!-- ══════════════════════ 3 ══════════════════════ -->
+<h2 class="sec"><span class="n">3</span>통계적 판별 규율</h2>
+
+<p>본 연구의 결론 대부분은 “A가 B보다 낫다”가 아니라 <strong>“A와 B를 지금 데이터로 가를 수 있는가”</strong>에 걸려 있다. 세 장치를 썼다.</p>
+
+<h3>3.1 두 BER을 가르려면 몇 비트가 필요한가</h3>
+<pre>N_필요 = [ 2(√p₁ + √p₂) / |p₁ − p₂| ]²</pre>
+<p>이 수가 없으면 <strong>“구별되지 않음”이 “같음”으로 읽힌다.</strong> 실측 사례: 25 dB/SNR 30 dB에서 계수 6비트가 35만 비트로 “구별 안 됨”이었는데, 필요한 것이 <strong>35.06만</strong>이었다 — 경계에 걸쳐 있었다. 140만으로 다시 재니 구별되었고 BER이 +31%였다. 그 한 줄이 없어서 “6비트면 열화 없음”이라는 결론이 한 번 나왔다.</p>
+<p>그래서 보고 문구에서 <strong><code>same (within error)</code>라는 낱말을 제거했다.</strong> 그 낱말은 옮겨 적히는 동안 “no degradation”이 된다. 지금은 줄마다 <code>아직 갈리지 않음 — 확정하려면 N비트 이상 필요</code>이고, 갈리지 않은 최소 폭에는 <span class="v v-open">잠정</span> 표가 붙는다.</p>
+
+<h3>3.2 한 씨(seed)로는 워드 길이를 말할 수 없다</h3>
+<p>실측: 30 dB·7비트가 한 씨에서 <strong>−4.7%</strong>, 다른 씨에서 <strong>+26.2%</strong>였다. 어떤 폭이 “충분하다”고 말하려면 평균 열화가 작은 것만으로 모자라고 <strong>씨끼리의 산포도 그 열화만큼 작아야</strong> 한다. 산포가 크다는 것은 어느 씨를 뽑았느냐가 결론을 정한다는 뜻이고, 그것은 설계 여유가 없다는 말이다.</p>
+
+<h3>3.3 승자의 저주를 막는다</h3>
+<p>격자에서 <strong>제일 좋은 값을 고르면</strong> 그 값은 셈의 흔들림까지 같이 고른 것이라 실제보다 낙관적이다. 그래서 고른 설정을 <strong>다른 씨로 한 번 더</strong> 돌려 그 숫자를 따로 보고한다. 같은 씨로 다시 재는 것은 다시 잰 것이 아니므로 코드가 이를 <strong>예외로 거부</strong>한다.</p>
+
+<!-- ══════════════════════ 4 ══════════════════════ -->
+<h2 class="sec"><span class="n">4</span>선형 기준선 — ①②</h2>
+
+<h3>4.1 워드 길이 × 채널 손실</h3>
+<p>계수와 ADC를 <strong>같은 폭으로 함께</strong> 자른다(현업에서 둘을 따로 고르지 않는다). 손실마다 §2.3의 정규화된 동작점에서, 씨 4개로 부동소수점 대비 BER 상승률을 잰다.</p>
+
+<figure>
+  <div class="scroll"><table>
+    <thead><tr><th>손실</th><th>6 비트</th><th>7 비트</th><th>8 비트</th><th>9 비트</th><th>필요 폭</th></tr></thead>
+    <tbody>
+      <tr><td>15 dB</td><td class="warn">+17.4 %</td><td class="hl">−1.2 %</td><td>+0.8 %</td><td>−0.3 %</td><td class="hl">7</td></tr>
+      <tr><td>20 dB</td><td class="warn">+13.8 %</td><td class="hl">+3.2 %</td><td>+2.4 %</td><td>+2.6 %</td><td class="hl">7</td></tr>
+      <tr><td>25 dB</td><td class="warn">+26.6 %</td><td class="hl">+1.3 %</td><td>+2.9 %</td><td>+2.7 %</td><td class="hl">7</td></tr>
+      <tr class="rule-top"><td>30 dB</td><td class="bad">+44.3 %</td><td class="bad">+27.7 %</td><td class="bad">+17.3 %</td><td class="bad">+13.8 %</td><td class="bad">없음</td></tr>
+      <tr><td>35 dB</td><td class="bad">+687 %</td><td class="bad">+322 %</td><td class="bad">+297 %</td><td class="bad">+260 %</td><td class="bad">없음</td></tr>
+    </tbody>
+  </table></div>
+  <figcaption><b>표 3. 계수+ADC 공통 워드 길이가 BER에 미치는 영향.</b> 각 칸은 씨 4개(7·11·23·42) 평균, 40만 평가 비트. “필요 폭”은 <b>평균 열화와 씨 산포가 모두 작은</b> 최소 폭. <span class="v v-ok">확립</span> 20 dB까지 7비트로 평평하다. <span class="v v-none">못잼</span> 30 dB 이상에서는 어떤 폭도 조건을 못 채운다 — 9비트에서도 산포가 3.3%p이고 평균이 +13.8%다. 이 실험 장치로는 “30 dB에 몇 비트”를 말할 수 없다.</figcaption>
+</figure>
+
+<p>25 dB의 6비트 칸은 평균 +26.6%인데 <strong>산포가 [+6.5, +69.6]%</strong>다. 평균만 보면 “20% 남짓 손해”로 읽히지만, 실제로는 <em>어느 씨를 뽑느냐에 따라 7% 손해일 수도 70% 손해일 수도 있다.</em> 그것이 설계 여유가 없다는 뜻이고, 이 표에서 6비트를 쓰지 않는 진짜 이유다.</p>
+
+<h3>4.2 ADC는 두 숫자로 정해진다</h3>
+<p>분해능만 훑으면 풀스케일이 이미 최적이라고 가정한 것이고, 그 가정은 잰 적이 없다. 좁히면 큰 표본이 잘리고 넓히면 같은 비트로 성긴 눈금을 쓴다. 격자로 쟀다.</p>
+
+<figure>
+  <div class="scroll"><table>
+    <thead><tr><th>ADC</th><th>2.0 σ</th><th>2.5 σ</th><th>3.0 σ</th><th>4.0 σ</th><th>최적</th><th>클립률</th><th>다른 씨 재측정</th></tr></thead>
+    <tbody>
+      <tr><td>5 비트</td><td>1.339e−03</td><td>1.375e−03</td><td>1.514e−03</td><td>2.550e−03</td><td>2.0 σ</td><td>3.60 %</td><td class="bad">1.596e−03 · 구별됨</td></tr>
+      <tr><td>6 비트</td><td>1.025e−03</td><td class="hl">7.857e−04</td><td>8.500e−04</td><td>1.000e−03</td><td>2.5 σ</td><td>0.44 %</td><td class="warn">7.964e−04 · 잠정</td></tr>
+      <tr><td>7 비트</td><td>9.643e−04</td><td class="hl">7.143e−04</td><td>7.786e−04</td><td>7.357e−04</td><td>2.5 σ</td><td>0.43 %</td><td class="hl">7.036e−04 · 구별 안 됨</td></tr>
+      <tr><td>8 비트</td><td>9.750e−04</td><td>7.286e−04</td><td class="hl">7.143e−04</td><td>7.250e−04</td><td>3.0 σ</td><td>0.01 %</td><td class="hl">6.536e−04 · 구별 안 됨</td></tr>
+    </tbody>
+  </table></div>
+  <figcaption><b>표 4. ADC 분해능 × 풀스케일.</b> 25 dB·SNR 30 dB·FFE 11+DFE 8, 28만 평가 비트. float 기준선 7.036e−04. <span class="v v-ok">확립</span> 어느 분해능에서나 바닥이 <b>2.5 σ</b>이고, 그때 클립률이 0%가 아니라 <b>0.43 %</b>다 — 잘 맞춘 ADC는 일부러 조금 자른다. <span class="v v-open">잠정</span> 6비트가 이 비트수에서 “구별 안 됨”으로 나오지만, 385만 비트로 늘리면 <b>+20.2 %로 갈린다</b>. 짧은 측정이 낸 이 칸이 §3.1이 경고하는 바로 그 함정이다.</figcaption>
+</figure>
+
+<p>385만 평가 비트에서 최종 확정한 값은 <strong>계수 7비트 · ADC 7비트</strong>다. float/float 5.951e−04 대 7b/7b 6.081e−04로 <strong>+2.2%</strong>이고(가르려면 5,700만 비트 필요), 둘을 동시에 양자화해도 두 오차가 겹쳐 커지지 않는다.</p>
+
+<h3>4.3 반사 — 탭의 개수가 아니라 자리다</h3>
+<p>Γ=0.35, τ=11 심볼의 반사를 넣으면 FFE(스팬 ±5) 뒤 잔류 커서가 지연 1–10에서 전부 |x| ≤ 0.055인데 <strong>지연 11에서 +0.358</strong>이다. 이 한 자리가 BER을 지배한다.</p>
+
+<figure>
+  <div class="scroll"><table>
+    <thead><tr><th>떠있는 DFE 탭 자리</th><th>BER</th><th>참 자리 대비</th></tr></thead>
+    <tbody>
+      <tr><td>[11] — 정답</td><td class="hl">1.8300e−03</td><td class="hl">1.0 ×</td></tr>
+      <tr><td>[9]</td><td class="bad">1.5014e−02</td><td class="bad">8.2 ×</td></tr>
+      <tr><td>[10]</td><td class="bad">1.4932e−02</td><td class="bad">8.2 ×</td></tr>
+      <tr><td>[12]</td><td class="bad">1.5031e−02</td><td class="bad">8.2 ×</td></tr>
+      <tr><td>[13]</td><td class="bad">1.5178e−02</td><td class="bad">8.3 ×</td></tr>
+      <tr class="rule-top"><td>[10, 11]</td><td class="hl">1.7564e−03</td><td class="hl">1.0 ×</td></tr>
+      <tr><td>[11, 12]</td><td class="hl">1.7864e−03</td><td class="hl">1.0 ×</td></tr>
+      <tr><td>[10, 11, 12]</td><td class="hl">1.7421e−03</td><td class="hl">1.0 ×</td></tr>
+    </tbody>
+  </table></div>
+  <figcaption><b>표 5. 반사 자리를 잘못 짚었을 때의 대가.</b> 25 dB, Γ=0.35@11, FFE 11탭, 50만 비트, 씨 4개. <span class="v v-ok">확립</span> 탭 <b>하나</b>일 때 허용 오차는 <b>0 심볼</b>이다 — 한 칸만 빗나가도 8.2배. <b>두 탭을 나란히 놓으면 그 절벽이 사라진다.</b> 온도·채널 변화로 자리가 움직이는 실제 링크에서, 여분의 탭 하나는 성능이 아니라 <b>여유</b>를 사는 것이다.</figcaption>
+</figure>
+
+<figure>
+  <div class="scroll"><table>
+    <thead><tr><th>상관에 쓴 심볼 수</th><th>12개 씨 중 자리를 맞힌 횟수</th></tr></thead>
+    <tbody>
+      <tr><td>100</td><td class="warn">10 / 12</td></tr>
+      <tr><td>200</td><td class="hl">12 / 12</td></tr>
+      <tr><td>300 · 500 · 1,000 · 3,000</td><td class="hl">12 / 12</td></tr>
+    </tbody>
+  </table></div>
+  <figcaption><b>표 6. 자리 탐색 비용.</b> <span class="v v-ok">확립</span> <b>200 심볼이면 충분하다.</b> 탐색이 사실상 공짜이므로, 자리가 움직이는 것은 설계 문제가 아니라 <b>주기적 재탐색으로 해결되는 운용 문제</b>다. 백그라운드 재탐색 주기는 200 심볼 × (채널 드리프트 시상수)로 잡으면 된다.</figcaption>
+</figure>
+
+<p>면적 관점의 결론도 같다. 같은 BER(1.7e−5)을 FFE 29탭은 5,024 LC로, <strong>FFE 11탭 + 떠있는 DFE 1탭은 1,920 LC</strong>로 산다 — <strong>2.6배</strong> 차이다. 계수 한 비트의 값이 11탭에서 +192 LC, 29탭에서 +488 LC(비 2.54, 탭 비 2.64)로 <strong>면적 ∝ 탭수 × 계수폭</strong>이 4% 안에서 확인되므로, 워드 길이를 줄이는 것과 탭을 줄이는 것은 같은 축에 있고 <strong>탭을 옮기는 것만이 그 축을 벗어난다.</strong></p>
+
+<!-- ══════════════════════ 5 ══════════════════════ -->
+<h2 class="sec"><span class="n">5</span>신경망 등화기 — ③</h2>
+
+<h3>5.1 대조가 먼저다 — 이기면 빨간불인 조건</h3>
+<p>신경망 논문에서 가장 흔한 거짓 초록은 “우리 망이 기준선을 이겼다”이다. 그래서 이 연구의 <strong>첫 검사는 신경망이 져야 통과한다.</strong> 비선형이 없는 채널에서 신경망이 선형을 이기면 물리가 아니라 새는 데가 있는 것이다.</p>
+
+<figure>
+  <div class="scroll"><table>
+    <thead><tr><th>수신단 압축 세기</th><th>선형 FFE 11+DFE 8</th><th>신경망 (float)</th><th>이득</th></tr></thead>
+    <tbody>
+      <tr><td>0.0 — 비선형 없음</td><td class="hl">6.4405e−04</td><td>7.3333e−04</td><td class="hl">0.88 × — 진다 ✓</td></tr>
+      <tr><td>0.5</td><td>1.7607e−03</td><td>7.7976e−04</td><td>2.26 ×</td></tr>
+      <tr><td>1.0</td><td class="bad">2.2999e−02</td><td class="hl">2.2869e−03</td><td class="hl">10.06 ×</td></tr>
+      <tr><td>1.5</td><td class="bad">5.3886e−02</td><td>8.7560e−03</td><td>6.15 ×</td></tr>
+      <tr><td>2.0</td><td class="bad">7.8314e−02</td><td>1.9006e−02</td><td>4.12 ×</td></tr>
+    </tbody>
+  </table></div>
+  <figcaption><b>표 7. 압축 세기에 따른 이득.</b> 25 dB·SNR 30 dB·ADC 7비트, 30만 비트, 씨 4개. 신경망은 창 11 · 은닉 8. <span class="v v-ok">확립</span> <b>압축 0에서 신경망이 진다</b> — 이 줄이 나머지 줄을 믿을 수 있게 만든다. 이득은 압축 1.0에서 최대이고 그 위에서 다시 준다: 포화가 심해지면 정보 자체가 비가역적으로 파괴되어 신경망도 되살리지 못한다. 그것도 물리다.</figcaption>
+</figure>
+
+<h3>5.2 압축은 왜 수신단이어야 하는가</h3>
+<p>NRZ는 레벨이 ±1 둘뿐이라 <strong>메모리 없는 비선형은 송신단에 걸면 그냥 이득 변화</strong>다 — BER이 한 톨도 변하지 않는다. 비선형이 의미를 가지려면 ISI로 레벨이 퍼진 <em>뒤</em>여야 하고, 그 자리가 수신 앞단이다. 이 사실 자체가 검사 항목으로 고정되어 있다.</p>
+
+<h3>5.3 DFE를 신경망 뒤에 다는 것은 낭비다</h3>
+<p>신경망 뒤에 DFE 8탭을 덧붙여도 BER이 움직이지 않는다. 별도 측정(25 dB·SNR 30 dB·30만 비트·씨 3개)에서 압축 0.5는 6.651e−04 대 6.556e−04, 압축 1.0은 1.498e−03 대 1.548e−03, 압축 2.0은 2.084e−02 대 1.989e−02로, 어느 쪽도 오차 범위를 벗어나지 않고 부호조차 일정하지 않다. <strong>망의 탭 지연선이 이미 후행 커서를 보고 있다.</strong> 신경망 등화기의 면적 예산에 DFE를 더할 이유가 없다 — 표 12 기준으로 438 LC를 쓰고 아무것도 사지 못한다.</p>
+
+<!-- ══════════════════════ 6 ══════════════════════ -->
+<h2 class="sec"><span class="n">6</span>경량화 — ④</h2>
+
+<h3>6.1 텐서 하나를 통째로 스케일하면 가중치가 죽는다</h3>
+<p>학습된 W1(21×16)의 분포는 max 2.4003, 중앙값 0.1133 — <strong>21배</strong>다. 텐서 스케일 하나로 4비트 양자화하면 눈금이 <code>max/7 = 0.3429</code>라 그 눈금 절반보다 작은 가중치가 전부 0으로 반올림되어 <strong>369개 중 138개만 살아남는다.</strong> 출력 뉴런마다 최댓값이 <strong>7.7배</strong>까지 다르고(0.313–2.400), 한 뉴런의 큰 값이 다른 열을 통째로 민다.</p>
+<p>채널(출력 뉴런)별로 스케일하니 4비트에서 <strong>282/369</strong>가 산다. 선형 등화기 탭은 한 자릿수 안에 모여 있어 텐서 스케일로 충분했다 — <strong>신경망은 그렇지 않다.</strong> 이것이 선형 등화기의 양자화 직관을 그대로 옮기면 안 되는 첫 지점이다.</p>
+
+<h3>6.2 QAT는 이 규모에서 확립되지 않았다</h3>
+<figure>
+  <div class="scroll"><table>
+    <thead><tr><th>QAT 구현</th><th>PTQ를 이긴 비트폭</th><th>판정</th></tr></thead>
+    <tbody>
+      <tr><td>맨땅에서 잘린 채 학습</td><td>없음 (산포가 PTQ의 몇 배)</td><td class="bad">불공정한 비교였다</td></tr>
+      <tr><td>float 해에서 미세조정</td><td>8·6비트 (1.20 · 1.21 ×)</td><td class="warn">산포 &gt; 차이</td></tr>
+      <tr><td>거기에 양자화 격자까지 동결</td><td>8·5비트 (1.34 · 1.64 ×)</td><td class="warn">산포 &gt; 차이</td></tr>
+    </tbody>
+  </table></div>
+  <figcaption><b>표 8. QAT 세 구현과 그 판정.</b> <span class="v v-open">미해결</span> 이기는 비트폭이 구현마다 옮겨 다니고, 5비트 이하에서 산포가 ±1e−2 ~ ±1e−1로 차이보다 크다. <b>여기서 더 변형을 찾는 것은 승자의 저주를 스스로 만드는 일이라 중단했다.</b></figcaption>
+</figure>
+<p>첫 구현이 진 것은 QAT 탓이 아니라 <strong>비교가 불공정해서</strong>였다 — PTQ는 학습된 float 해에서 출발하는데 QAT만 맨땅에서 시작했다. 같은 출발점을 주고, 격자가 매 미니배치마다 새로 잡혀 손실면이 튀는 것도 동결해 막았다. 그래도 확립되지 않았다.</p>
+<p>확립된 것은 <strong>PTQ + 채널별 스케일</strong>로 8비트가 float와 구별 안 됨, 6비트가 1.3배, 5비트부터 급락이다.</p>
+
+<h3>6.3 진짜 축은 망 크기였다</h3>
+
+<figure>
+  <div class="chart">
+    <svg viewBox="0 0 640 250" role="img" aria-label="곱셈 수에 따른 선형 대비 BER 이득. 12개에서 3.1배, 24개 5.1배, 80개 7.1배, 352개 7.6배로 포화한다.">
+      <!-- 축 -->
+      <line x1="62" y1="200" x2="612" y2="200" stroke="var(--rule)" stroke-width="1"/>
+      <line x1="62" y1="26" x2="62" y2="200" stroke="var(--rule)" stroke-width="1"/>
+      <!-- y 눈금: 0..8배 -->
+      <g font-family="IBM Plex Mono, monospace" font-size="10" fill="var(--muted)">
+        <line x1="62" y1="200" x2="612" y2="200" stroke="var(--rule-soft)"/><text x="54" y="204" text-anchor="end">0×</text>
+        <line x1="62" y1="157.5" x2="612" y2="157.5" stroke="var(--rule-soft)"/><text x="54" y="161" text-anchor="end">2×</text>
+        <line x1="62" y1="115" x2="612" y2="115" stroke="var(--rule-soft)"/><text x="54" y="118" text-anchor="end">4×</text>
+        <line x1="62" y1="72.5" x2="612" y2="72.5" stroke="var(--rule-soft)"/><text x="54" y="76" text-anchor="end">6×</text>
+        <line x1="62" y1="30" x2="612" y2="30" stroke="var(--rule-soft)"/><text x="54" y="33" text-anchor="end">8×</text>
+      </g>
+      <!-- x: log10(곱셈), 12→1.079, 24→1.380, 80→1.903, 352→2.546. 범위 1.0..2.65 -->
+      <!-- px = 80 + (log-1.0)/1.65*510 -->
+      <!-- 12:104.4  24:197.4  80:359.2  352:557.9 -->
+      <polyline points="104.4,134.1 197.4,91.6 359.2,49.1 557.9,38.5"
+                fill="none" stroke="var(--ok)" stroke-width="2"/>
+      <g fill="var(--ok)">
+        <circle cx="104.4" cy="134.1" r="4.5"/><circle cx="197.4" cy="91.6" r="4.5"/>
+        <circle cx="359.2" cy="49.1" r="4.5"/><circle cx="557.9" cy="38.5" r="4.5"/>
+      </g>
+      <g font-family="IBM Plex Mono, monospace" font-size="10" fill="var(--ink)" text-anchor="middle">
+        <text x="104.4" y="124">3.1×</text>
+        <text x="197.4" y="81">5.1×</text>
+        <text x="359.2" y="39">7.1×</text>
+        <text x="540" y="28">7.6×</text>
+      </g>
+      <g font-family="IBM Plex Mono, monospace" font-size="10" fill="var(--muted)" text-anchor="middle">
+        <text x="104.4" y="216">12</text><text x="197.4" y="216">24</text>
+        <text x="359.2" y="216">80</text><text x="557.9" y="216">352</text>
+        <text x="337" y="238">곱셈기 개수 (로그 축)</text>
+      </g>
+      <!-- 강조: 12개 지점 -->
+      <line x1="104.4" y1="134.1" x2="104.4" y2="200" stroke="var(--open)" stroke-width="1" stroke-dasharray="3 3"/>
+      <text x="112" y="192" font-family="IBM Plex Mono, monospace" font-size="10" fill="var(--open)">곱셈 12개로 이득의 41%</text>
+    </svg>
+  </div>
+  <figcaption><b>그림 1. 곱셈기 개수 대비 이득의 포화.</b> 압축 1.0 · 25 dB · SNR 30 dB · 8비트 · 씨 4개, 기준은 선형 FFE 11+DFE 8(8비트). <span class="v v-ok">확립</span> 곱셈 <b>12개로 3.1배</b>를 얻는다 — FFE의 11개와 거의 같은 값이다. 352개를 쓰면 7.6배인데, <b>15배를 더 써서 1.5배를 더 사는 셈</b>이다.</figcaption>
+</figure>
+
+<figure>
+  <div class="scroll"><table>
+    <thead><tr><th>창</th><th>은닉</th><th>곱셈</th><th>BER</th><th>선형 대비</th><th>곱셈당 효율</th></tr></thead>
+    <tbody>
+      <tr><td>5</td><td>2</td><td class="hl">12</td><td>7.671e−03</td><td>3.1 ×</td><td class="hl">2.89</td></tr>
+      <tr><td>5</td><td>4</td><td>24</td><td>4.775e−03</td><td>5.1 ×</td><td>2.32</td></tr>
+      <tr><td>9</td><td>8</td><td>80</td><td>3.409e−03</td><td>7.1 ×</td><td>0.97</td></tr>
+      <tr><td>21</td><td>16</td><td>352</td><td>3.161e−03</td><td>7.6 ×</td><td class="bad">0.24</td></tr>
+    </tbody>
+  </table></div>
+  <figcaption><b>표 9. 망 크기와 이득.</b> <b>경량화의 축은 비트폭이 아니라 여기 있었다.</b> 8비트에서 6비트로 내리면 면적을 14.8% 아끼고 BER을 31% 내주는 반면, 망을 352→12 곱셈으로 줄이면 면적을 한 자릿수 아끼고 이득의 59%를 내준다 — 후자가 비교할 수 없이 큰 손잡이다.</figcaption>
+</figure>
+
+<!-- ══════════════════════ 7 ══════════════════════ -->
+<h2 class="sec"><span class="n">7</span>FPGA 구현 — ⑤</h2>
+
+<p>이 절의 작업 순서를 먼저 밝힌다. <strong>면적을 재기 전에 회로가 옳은지를 먼저 증명한다.</strong> 그 이유는 단순하다 — <em>틀린 회로가 언제나 제일 작다.</em> 합성해서 LC를 보고하고 그것이 맞는 답을 내는지 보지 않는 것이 이 단계의 지배적 실패 모드다.</p>
+<pre>활성함수를 BER로 선택  →  고정소수점 기준모델  →  RTL이 그것과 비트 단위 일치  →  그 다음에 면적</pre>
+
+<h3>7.1 활성함수 — 하드웨어가 할 수 있는 것으로</h3>
+<p><code>tanh</code>는 하드웨어가 직접 계산하지 못한다. 세 후보를 BER로 비교했다: <code>tanh</code>(기준), <code>hardtanh</code>(±1 클립 — 곱셈도 룩업테이블도 없이 비교 둘), <code>pwl3</code>(세 구간 선형).</p>
+
+<figure>
+  <div class="scroll"><table>
+    <thead><tr><th>곱셈</th><th>tanh</th><th>hardtanh</th><th>pwl3</th><th>hardtanh / tanh</th><th>이긴 씨</th></tr></thead>
+    <tbody>
+      <tr><td>12</td><td>6.322e−03</td><td class="hl">5.378e−03</td><td class="bad">1.071e−02</td><td class="hl">0.85 ×</td><td class="hl">7 / 8</td></tr>
+      <tr><td>24</td><td>5.667e−03</td><td>5.559e−03</td><td class="bad">7.872e−03</td><td>0.98 ×</td><td>5 / 8</td></tr>
+      <tr><td>40</td><td class="hl">4.320e−03</td><td>5.483e−03</td><td class="bad">8.171e−03</td><td class="warn">1.27 ×</td><td class="warn">3 / 8</td></tr>
+    </tbody>
+  </table></div>
+  <figcaption><b>표 10. 활성함수 선택.</b> 20만 비트, 씨 8개. <span class="v v-ok">확립</span> 이 설계가 쓰는 크기(곱셈 12개)에서 hardtanh가 8씨 중 7씨를 이긴다(부호검정 p ≈ 0.04). <span class="v v-open">미해결</span> 곱셈 40개에서는 평균이 1.27배 나쁘지만 씨별 비가 [0.93, 2.40]으로 1을 가로지르고 이긴 씨가 3/8이라 <b>나쁘다고 말할 수 없다</b> — 한 씨(2.40배)가 평균을 끌었다.</figcaption>
+</figure>
+
+<p>주목할 것은 <code>pwl3</code>이다. 세 구간 선형은 <code>hardtanh</code>보다 <code>tanh</code>를 훨씬 잘 근사하는데 <strong>BER은 어느 크기에서나 가장 나쁘다</strong>(1.4–1.9배). 망이 주어진 비선형에 맞춰 학습하므로 <strong>“더 정확한 근사”가 “더 좋은 등화기”가 아니다.</strong> 근사 오차를 재서 활성함수를 고르면 여기서 틀린다 — BER로 골라야 한다.</p>
+
+<h3>7.2 고정소수점 — 갈린 것은 정수부였다</h3>
+<p>전체 폭과 소수부 비트를 <strong>따로</strong> 흔들었다. 이 분리가 결론을 뒤집었다.</p>
+
+<figure>
+  <div class="scroll"><table>
+    <thead><tr><th>전체 폭</th><th>소수부</th><th>정수부</th><th>스케일</th><th>float 대비</th><th>씨별 산포</th></tr></thead>
+    <tbody>
+      <tr><td>7</td><td>6</td><td class="bad">0</td><td>2</td><td class="bad">7.86 ×</td><td class="bad">[5.74, 10.84]</td></tr>
+      <tr><td>8</td><td>6</td><td class="warn">1</td><td>1</td><td class="warn">1.84 ×</td><td>[1.62, 2.05]</td></tr>
+      <tr><td>10</td><td>8</td><td class="warn">1</td><td>1</td><td class="warn">1.86 ×</td><td>[1.66, 2.10]</td></tr>
+      <tr class="rule-top"><td>9</td><td>6</td><td class="hl">2</td><td>1</td><td class="hl">0.98 ×</td><td>[0.92, 1.08]</td></tr>
+      <tr><td>8</td><td>5</td><td class="hl">2</td><td>1</td><td class="hl">0.99 ×</td><td>[0.79, 1.36]</td></tr>
+      <tr><td><strong>7</strong></td><td><strong>4</strong></td><td class="hl">2</td><td>1</td><td class="hl">1.00 ×</td><td>[0.85, 1.24]</td></tr>
+      <tr><td>10</td><td>6</td><td class="hl">3</td><td>1</td><td class="hl">0.98 ×</td><td>[0.92, 1.08]</td></tr>
+      <tr><td>10</td><td>4</td><td class="hl">5</td><td>1</td><td class="hl">1.00 ×</td><td>[0.85, 1.24]</td></tr>
+    </tbody>
+  </table></div>
+  <figcaption><b>표 11. 고정소수점 형식 대 BER.</b> 6만 비트, 씨 6개. <span class="v v-ok">확립</span> <b>같은 정수부면 전체 폭이 달라도 같은 값이 난다</b> — 폭 8/소수부 6과 폭 10/소수부 8이 둘 다 1.85배다. 갈린 것은 소수 해상도가 아니라 <b>가중치가 담기는 범위</b>이고, 바닥은 정수부 2(가중치 ±4)다. 소수부에도 따로 바닥이 있다: 소수부 3은 1.21배인데 산포가 [0.60, 2.15]로 1을 가로질러 <span class="v v-open">미해결</span>이므로, 안전한 바닥으로 4를 쓴다.</figcaption>
+</figure>
+
+<p>두 바닥을 합치면 <strong>부호 1 + 정수부 2 + 소수부 4 = 7비트, Q2.4</strong>다. 그리고 이것이 선형 FFE의 계수 폭과 <strong>같다</strong> — 신경망이 더 넓은 워드를 요구한다는 통념은 이 설계에서 성립하지 않는다.</p>
+
+<h3>7.3 이 오진에는 값이 붙는다</h3>
+
+<figure>
+  <div class="chart">
+    <svg viewBox="0 0 640 176" role="img" aria-label="워드 형식에 따른 면적. Q2.4 7비트 2368 LC, Q2.5 8비트 3011 LC, Q3.6 10비트 4498 LC. BER 비는 각각 1.00, 0.99, 0.98배로 사실상 같다.">
+      <g font-family="IBM Plex Mono, monospace" font-size="11">
+        <!-- 눈금 -->
+        <g stroke="var(--rule-soft)">
+          <line x1="150" y1="18" x2="150" y2="140"/>
+          <line x1="256" y1="18" x2="256" y2="140"/>
+          <line x1="362" y1="18" x2="362" y2="140"/>
+          <line x1="468" y1="18" x2="468" y2="140"/>
+          <line x1="574" y1="18" x2="574" y2="140"/>
+        </g>
+        <g fill="var(--muted)" font-size="9" text-anchor="middle">
+          <text x="150" y="154">0</text><text x="256" y="154">1,250</text>
+          <text x="362" y="154">2,500</text><text x="468" y="154">3,750</text>
+          <text x="574" y="154">5,000 LC</text>
+        </g>
+        <!-- 막대: px = 150 + LC/5000*424 -->
+        <rect x="150" y="24" width="200.8" height="26" fill="var(--ok)"/>
+        <rect x="150" y="62" width="255.3" height="26" fill="var(--muted)" opacity=".55"/>
+        <rect x="150" y="100" width="381.4" height="26" fill="var(--none)" opacity=".75"/>
+        <g fill="var(--ink)" text-anchor="end">
+          <text x="140" y="42">Q2.4 · 7비트</text>
+          <text x="140" y="80">Q2.5 · 8비트</text>
+          <text x="140" y="118">Q3.6 · 10비트</text>
+        </g>
+        <g fill="var(--paper)" font-size="10" font-weight="600" text-anchor="end">
+          <text x="342" y="42">2,368 LC</text>
+          <text x="397" y="80" fill="var(--ink)">3,011 LC</text>
+          <text x="523" y="118">4,498 LC</text>
+        </g>
+        <g fill="var(--muted)" font-size="9">
+          <text x="360" y="42">BER 1.00×</text>
+          <text x="415" y="80">BER 0.99×</text>
+          <text x="541" y="118">BER 0.98×</text>
+        </g>
+      </g>
+    </svg>
+  </div>
+  <figcaption><b>그림 2. 같은 BER, 1.9배의 면적.</b> 신경망 5→2, iCE40 HX8K. <span class="v v-ok">확립</span> BER은 세 형식에서 통계적으로 구별되지 않는데 면적은 <b>1.9배</b> 차이가 난다. 자릿수를 재지 않고 넉넉히 잡는 것만으로 치르는 값이다.</figcaption>
+</figure>
+
+<p>이 절에 처음 기록해 두었던 내용은 <em>“Q1.6 8비트가 2.6배 나쁘고, 원인은 W1이 8비트에 들어가지 않아 스케일 s=8로 나눠 담은 것”</em>이었다. <strong>둘 다 틀렸다.</strong> 8비트에서 스케일 선택 함수는 1을 내놓는다 — 나누기가 시작되는 것은 7비트부터다. 배수도 2.6이 아니라 1.84다. 한 씨로 한 번 돌린 값에 원인까지 붙여 적어 둔 것이었고, <strong>여섯 씨로 축 둘을 따로 흔들기 전에는 무엇이 갈랐는지 알 수 없었다.</strong></p>
+
+<h3>7.4 RTL은 부호가 아니라 누산기 정수값으로 검증한다</h3>
+<p>등화기의 출력은 결국 ±1 판정이다. 따라서 <strong>결정만 비교하면 어긋난 회로도 절반은 우연히 맞아</strong> 50% 언저리가 초록처럼 보인다. 실제로 이 검증의 첫 두 판이 <strong>52%와 91%</strong>였고 둘 다 정렬 문제였다.</p>
+<p>그래서 최종 누산기 <code>y</code>의 <strong>정수값 전체</strong>를 iverilog로 덤프해 고정소수점 기준모델과 한 값씩 대조한다. 결과: <strong>215/215 = 100.00%</strong>(누산기), <strong>215/215 = 100.00%</strong>(결정). 학습된 계수는 수치 구석에 가지 않으므로 누산기 폭 검증에는 <strong>극단 자극을 따로</strong> 먹인다(|z| 최대 18,837 &gt; 2¹³).</p>
+
+<h3>7.5 면적과 Fmax</h3>
+
+<figure>
+  <div class="scroll"><table>
+    <thead><tr><th>설계</th><th>곱셈</th><th>LC</th><th>Fmax</th><th>목표 50 MHz</th></tr></thead>
+    <tbody>
+      <tr><td>DFE 4탭 W8</td><td class="hl">0</td><td class="hl">210</td><td>69.82 MHz</td><td class="hl">PASS</td></tr>
+      <tr><td>DFE 8탭 W8</td><td class="hl">0</td><td>438</td><td class="bad">36.54 MHz</td><td class="bad">FAIL</td></tr>
+      <tr><td>FFE 5탭 W7</td><td>5</td><td>802</td><td>69.24 MHz</td><td class="hl">PASS</td></tr>
+      <tr><td>FFE 11탭 W7</td><td>11</td><td>1,835</td><td>56.11 MHz</td><td class="hl">PASS</td></tr>
+      <tr class="rule-top"><td><strong>NN 5→2 · Q2.4 7b</strong></td><td>12</td><td class="hl">2,368</td><td class="bad">30.58 MHz</td><td class="bad">FAIL</td></tr>
+      <tr><td>NN 5→2 · Q2.5 8b</td><td>12</td><td>3,011</td><td class="bad">28.08 MHz</td><td class="bad">FAIL</td></tr>
+      <tr><td>NN 5→2 · Q3.6 10b</td><td>12</td><td class="bad">4,498</td><td class="bad">26.20 MHz</td><td class="bad">FAIL</td></tr>
+      <tr><td>NN 5→4 · Q2.4 7b</td><td>24</td><td>4,636</td><td class="bad">26.73 MHz</td><td class="bad">FAIL</td></tr>
+      <tr><td>NN 11→2 · Q2.4 7b</td><td>24</td><td>4,762</td><td class="bad">26.01 MHz</td><td class="bad">FAIL</td></tr>
+      <tr><td>NN 9→4 · Q2.4 7b</td><td>40</td><td class="bad">7,915</td><td>—</td><td class="bad">칩 밖 (103 %)</td></tr>
+    </tbody>
+  </table></div>
+  <figcaption><b>표 12. 배치·배선 결과.</b> yosys + nextpnr, iCE40 HX8K(7,680 LC), 목표 50 MHz. 계수는 상위 핀이 아니라 <b>내부 레지스터</b>에 둔다(핀으로 빼면 IO 한계에 먼저 걸려 “칩에 안 들어간다”가 나온다 — 부록 A.11). <code>--timing-allow-fail</code>은 사용하지 않았다.</figcaption>
+</figure>
+
+<p>세 가지가 읽힌다.</p>
+<ul>
+  <li><strong>곱셈 하나당 비용은 선형과 거의 같다.</strong> 신경망 2,368/12 = 197 LC, FFE 1,835/11 = 167 LC. iCE40에는 하드 곱셈기가 없어 LUT로 짓고, 그 값은 폭의 제곱을 따른다(7→8비트에서 +27%, 8²/7² = 1.31). <strong>망이라서 비싼 것이 아니라 곱셈이 비싸다.</strong></li>
+  <li><strong>DFE 탭에는 곱셈기가 아예 없다.</strong> NRZ 판정이 ±1이므로 되먹임은 계수의 덧셈·뺄셈이다. 그래서 DFE 8탭(438 LC)이 FFE 5탭(802 LC)보다 작다. <strong>등화기에서 가장 싼 탭은 DFE 탭이다.</strong></li>
+  <li><strong>타이밍에서 탈락하는 원인은 크기가 아니라 조합 경로 깊이다.</strong> 50 MHz를 놓치는 것이 신경망만이 아니다 — <strong>DFE 8탭도 36.5 MHz로 떨어진다</strong>(여덟 단의 덧셈이 한 사이클에 줄줄이 들어 있다). 신경망은 곱셈 → 시프트·클립 → 곱셈 두 층이 한 경로에 있다. <em>같은 병이고 고치는 법도 같다.</em></li>
+</ul>
+
+<!-- ══════════════════════ 8 ══════════════════════ -->
+<h2 class="sec"><span class="n">8</span>맞바꿈 — ⑥</h2>
+
+<figure>
+  <div class="scroll"><table>
+    <thead><tr><th>등화기</th><th>BER</th><th>씨별 범위</th><th>면적</th><th>Fmax</th></tr></thead>
+    <tbody>
+      <tr><td>선형 FFE 11 + DFE 8</td><td>2.34e−02</td><td>[2.21, 2.47]e−02</td><td>~2,273 LC</td><td>36.5 MHz</td></tr>
+      <tr><td><strong>NN 5→2 · Q2.4 7b</strong></td><td class="hl">3.69e−03</td><td>[2.30, 5.47]e−03</td><td>2,368 LC</td><td>30.6 MHz</td></tr>
+      <tr class="rule-top"><td><strong>차이</strong></td><td class="hl">6.96 × 개선</td><td class="hl">[4.21, 10.10]</td><td class="warn">+4 %</td><td class="warn">0.84 ×</td></tr>
+    </tbody>
+  </table></div>
+  <figcaption><b>표 13. 최종 맞바꿈.</b> 25 dB · SNR 30 dB · 압축 1.0 · ADC 7비트 · 30만 비트 · 씨 6개. 선형 쪽 LC는 두 모듈을 <b>따로 재서 더한 값</b>이다(2,273 = 1,835 + 438) — 한 모듈로 합성하면 슬라이서가 붙고 배선이 공유되므로 그대로 나오지 않는다. <span class="v v-ok">확립</span> 이득은 씨 6개 전부에서 1보다 크다(최솟값 4.21배).</figcaption>
+</figure>
+
+<p><strong>거의 같은 면적에서 BER 7배, 대가는 클럭 0.84배.</strong> 그리고 이 클럭 대가는 구조적 한계가 아니다 — 은닉층 뒤에 레지스터를 한 단 넣으면(파이프라인) 풀린다. 등화기는 한 심볼에 한 결정을 내면 되므로 지연이 한 사이클 늘어도 처리율은 줄지 않는다.</p>
+<p><strong>본 연구는 파이프라인을 구현하지 않았다.</strong> 따라서 “파이프라인하면 선형만큼 빨라진다”는 예측이지 측정이 아니다. 재지 않은 것을 되었다고 적지 않는다.</p>
+<p>덧붙여 DFE는 사정이 다르다. 되먹임 고리이므로 지연을 넣으면 <strong>되먹임 자체가 늦어져</strong> 풀리지 않는다 — 현업의 답은 unrolled(speculative) DFE다. 신경망 쪽이 오히려 파이프라인하기 <em>쉬운</em> 구조라는 점은 이 아키텍처의 부수적 이점이다.</p>
+
+<h3>8.1 전력은 측정하지 못했다</h3>
+<div class="limits">
+  <h3 style="color:var(--none)">⑥의 세 축 중 전력 축은 비어 있다</h3>
+  <p>nextpnr에는 전력 모델이 없다. 스위칭 활동 × 셀 수 같은 대리값을 계산할 수는 있으나, 그것은 측정이 아니라 가정이므로 <strong>본 보고서는 전력 수치를 제시하지 않는다.</strong></p>
+  <p style="margin-bottom:0">같은 이유로 <strong>ADC 자신의 면적과 전력</strong>(대략 비트당 두 배)도 측정 범위 밖이다. 표 12의 LC는 전부 <em>ADC 뒷단</em>만의 값이다. ADC 비트가 계수 비트보다 비싸다는 측정(비트당 249 LC 대 170 LC)조차 FFE 뒷단만 센 것이다.</p>
+</div>
+
+<!-- ══════════════════════ 9 ══════════════════════ -->
+<h2 class="sec"><span class="n">9</span>타당성 위협</h2>
+
+<p>결과를 읽을 때 반드시 함께 읽어야 할 제약을 모은다.</p>
+<ul>
+  <li><strong>선행연구 대비 위치를 모른다.</strong> 문헌 조사를 하지 않았다(§1).</li>
+  <li><strong>채널이 합성 모형이다.</strong> 실측 S-파라미터가 아니라 표피효과 근사 + 인공 반사다. 실제 백플레인의 공진·크로스토크·전원 잡음은 없다.</li>
+  <li><strong>비선형이 하나의 형태뿐이다.</strong> <code>tanh</code>꼴 메모리 없는 압축만 모형화했다. 실제 AFE의 메모리 있는 비선형은 다르게 거동할 수 있고, 그쪽에서는 신경망의 상대 이득이 더 클 수도 작을 수도 있다.</li>
+  <li><strong>타이밍 복원이 이상적이다.</strong> 표본 위상은 눈이 가장 크게 열린 곳으로 고정했다(CDR이 수렴하려는 지점). CDR 루프 자체는 돌리지 않았으므로 지터·루프 대역폭의 영향은 포함되어 있지 않다.</li>
+  <li><strong>NRZ 전용이다.</strong> PAM4에서는 판정이 ±1이 아니므로 “DFE 탭에 곱셈기가 없다”는 결론이 그대로 성립하지 않는다.</li>
+  <li><strong>대상 소자가 하드 곱셈기 없는 소형 FPGA다.</strong> iCE40 HX8K에는 DSP 블록이 없어 곱셈이 전부 LUT로 간다. DSP가 있는 FPGA나 ASIC에서는 곱셈의 상대 비용이 크게 달라지고, <strong>따라서 “면적 +4%”라는 결론은 이 소자에 한정된다.</strong></li>
+  <li><strong>동작점이 하나다.</strong> 표 13은 25 dB·SNR 30 dB·압축 1.0 한 점의 값이다. 표 7이 보이듯 이득은 압축 세기에 크게 의존한다.</li>
+  <li><strong>파이프라인·unrolled DFE 미구현.</strong> §8의 클럭 논의는 그만큼 예측이다.</li>
+</ul>
+
+<!-- ══════════════════════ 10 ══════════════════════ -->
+<h2 class="sec"><span class="n">10</span>결론</h2>
+
+<ol>
+  <li><strong>이득은 있고, 하드웨어까지 내려도 남는다.</strong> 수신단 비선형이 있을 때 신경망 등화기는 선형 기준선을 압축 1.0에서 10.1배(float), 고정소수점·FPGA 구현 후 6.96배[4.21, 10.10] 이긴다. 비선형이 없으면 진다(0.88배) — 그것이 나머지 숫자를 믿을 수 있게 만든다.</li>
+  <li><strong>경량화의 축은 비트폭이 아니라 망 크기다.</strong> 곱셈 12개로 이득의 41%를 얻고, 352개로 늘려도 7.6배에 그친다. 비트폭 축은 8→6비트에서 면적 14.8%에 BER 31%를 맞바꾸는 훨씬 작은 손잡이다.</li>
+  <li><strong>고정소수점에서 성능을 가르는 것은 정수부 여유다.</strong> 같은 정수부면 전체 폭이 달라도 결과가 같다. 이를 오진하면 같은 BER에 1.9배의 면적을 치른다.</li>
+  <li><strong>타이밍의 적은 크기가 아니라 조합 경로 깊이이며, 이는 선형 DFE도 동일하게 겪는다.</strong> 그리고 신경망 쪽이 파이프라인하기 쉬운 구조다(DFE는 되먹임 고리라 그렇지 않다).</li>
+  <li><strong>반사 대응에서는 탭의 자리가 개수를 이긴다.</strong> 탭 하나의 자리 허용 오차는 0 심볼(8.2배 벌점)이지만 두 탭을 나란히 놓으면 절벽이 사라지고, 자리 탐색은 200 심볼이면 끝난다.</li>
+</ol>
+
+<h3>향후 과제</h3>
+<ul>
+  <li>은닉층 파이프라인 후 Fmax 재측정 — §8의 예측을 측정으로 바꾸는 일.</li>
+  <li>전력 축을 채울 방법의 확보(게이트 레벨 스위칭 활동 기반 추정 도구, 또는 전력 모델이 있는 대상 소자로 이전).</li>
+  <li>DSP 블록이 있는 소자에서의 재측정 — “면적 +4%”가 소자 의존적 결론이므로.</li>
+  <li>PAM4 확장 및 메모리 있는 비선형 모형.</li>
+  <li>선행연구 조사 — 본 연구가 재발견한 것과 새로 잰 것을 가르는 일.</li>
+</ul>
+
+<!-- ══════════════════════ 부록 ══════════════════════ -->
+<h2 class="sec"><span class="n">A</span>부록 — 계측 장치 자신의 결함 열둘</h2>
+
+<p>본 연구에서 발견한 결함의 대부분은 등화기가 아니라 <strong>등화기를 재는 장치</strong>에 있었고, 그중 여덟은 <strong>초록불로 위장</strong>해 있었다. 결과보다 이 목록이 재현하려는 사람에게 더 쓸모 있을 것이다.</p>
+
+<details class="defect"><summary><span class="tag">A.1</span> 정렬을 잊어 모든 BER이 0.5였다</summary>
+<div class="body"><p>채널의 심볼 지연만큼 판정을 옮기지 않아 모든 BER이 동전 던지기(0.5)로 나왔다. <strong>증상이 명백해 금방 잡혔고, 그래서 이 목록에서 가장 덜 위험한 부류다.</strong> 나머지 열하나는 그럴듯한 숫자를 냈다.</p></div></details>
+
+<details class="defect"><summary><span class="tag">A.2</span> <span class="v v-none">거짓 초록</span> 완전히 닫힌 눈의 너비가 1.00 UI로 읽혔다</summary>
+<div class="body"><p>눈 너비를 “눈높이 &gt; 0인 위상의 개수”로 세었다. 0.001 V짜리 사실상 닫힌 눈이 1.00 UI로 나왔다. 영교차 산포로 바꿨다.</p>
+<p>같은 자리에서 <strong>이상적 NRZ의 눈 너비가 0.50 UI</strong>로 나온 적도 있다. <code>argmax</code>로 최적 위상을 잡았는데 이상적 NRZ는 모든 위상의 눈높이가 같아 0번을 집었고, 그래서 틀이 심볼 경계에 걸려 <em>한가운데에 천이가 놓였다.</em></p></div></details>
+
+<details class="defect"><summary><span class="tag">A.3</span> <span class="v v-none">거짓 초록</span> 아이 다이어그램이 제 꼬리를 제 머리에 이어 붙였다</summary>
+<div class="body"><p><code>np.roll</code>로 틀을 돌렸더니 한 심볼의 끝이 그 심볼 자신의 앞머리에 붙어 <strong>t=0에 가짜 세로 다발</strong>이 생겼다. 눈이 실제보다 닫혀 보였다. 오프셋을 주어 다시 자르는 방식으로 고쳤다.</p></div></details>
+
+<details class="defect"><summary><span class="tag">A.4</span> <span class="v v-none">거짓 초록</span> “구별 안 됨”이 “같음”으로 옮겨 적혔다</summary>
+<div class="body"><p>35만 비트에서 6비트가 “오차 범위 내”로 나왔고, 필요한 것이 35.06만이었다 — <strong>경계에 걸쳐 있었다.</strong> 140만으로 다시 재니 BER +31%로 갈렸다.</p>
+<p>고친 것은 코드만이 아니다. <code>same (within error)</code>라는 <strong>낱말을 없앴다</strong>. 그 낱말이 옮겨 적히는 동안 “no degradation”이 되었기 때문이다. 경고도 문단 맨 밑 한 줄이 아니라 <strong>각 줄 옆</strong>에 붙였다 — 밑줄은 떨어져 나간다.</p></div></details>
+
+<details class="defect"><summary><span class="tag">A.5</span> <span class="v v-none">거짓 초록</span> 한 씨(seed)로 워드 길이를 단언했다</summary>
+<div class="body"><p>30 dB·7비트가 한 씨에서 −4.7%, 다른 씨에서 +26.2%였다. 그 사이 어떤 값이든 “측정 결과”로 보고될 수 있었다.</p>
+<p>보고서의 한 주장을 이 때문에 <strong>철회했다</strong>: “30 dB에는 10비트가 필요하다”는 한 씨의 나쁜 반올림이었고, 4씨 평균으로는 8비트로 족했다.</p></div></details>
+
+<details class="defect"><summary><span class="tag">A.6</span> LMS 걸음을 탭 수로 나누지 않아 물리 대신 내 걸음을 쟀다</summary>
+<div class="body"><p>FFE 29탭이 발산해 탭 계수가 1.08e6까지 갔다(안정 조건 <code>μ &lt; 2/(L·σ²)</code>). 그 상태로 <em>“탭을 늘려도 나아지지 않는다”</em>고 적었다면 물리가 아니라 내 학습률을 보고한 것이 된다. NLMS로 고치자 17탭이 11탭보다 나빴던 이상도 사라졌다(3.14e−3 → 1.52e−3, 단조로워짐).</p></div></details>
+
+<details class="defect"><summary><span class="tag">A.7</span> <span class="v v-none">거짓 초록</span> 텐서 단위 양자화가 가중치 65%를 죽이는데 BER만 보고 있었다</summary>
+<div class="body"><p>4비트에서 369개 중 231개가 0으로 반올림되고 있었다. BER은 “나빠졌다”고만 말했고, <strong>왜</strong> 나빠졌는지는 <em>살아남은 가중치 개수를 세기 전까지</em> 보이지 않았다. 채널별 스케일로 282/369가 살아났다.</p></div></details>
+
+<details class="defect"><summary><span class="tag">A.8</span> QAT를 불공정하게 비교하고 있었다</summary>
+<div class="body"><p>PTQ는 학습된 float 해에서 출발하는데 QAT만 맨땅에서 시작시켰다. QAT가 한 번도 이기지 못한 것은 QAT 탓이 아니라 <strong>출발점 탓</strong>이었다.</p>
+<p>고친 뒤에도 산포가 차이보다 컸다. 여기서 <em>이기는 변형을 더 찾는 것</em>은 승자의 저주를 스스로 만드는 일이라 <strong>중단했다</strong> — 이 목록에서 유일하게 “고치지 않고 멈춘” 항목이다.</p></div></details>
+
+<details class="defect"><summary><span class="tag">A.9</span> <span class="v v-none">거짓 초록</span> 검사 세 줄이 <code>or True</code>로 항상 통과하고 있었다</summary>
+<div class="body"><p>신경망 검사 파일에 무의미한 단언 세 개가 있었다. 실제로 링크를 망가뜨리는 조건(학습률 1e5)으로 바꿔 진짜 핀을 박았다.</p></div></details>
+
+<details class="defect"><summary><span class="tag">A.10</span> <span class="v v-none">거짓 초록</span> RTL 검증이 부호만 비교해 52%와 91%가 나왔다</summary>
+<div class="body"><p>±1 판정만 비교하면 어긋난 회로도 절반은 우연히 맞는다. 첫 판 52%(원시 스트림 대신 창의 한 열을 먹임), 둘째 판 91%(창 순서 불일치) — <strong>둘 다 “거의 맞는다”처럼 보였다.</strong> 최종 누산기의 정수값 전체를 비교하도록 바꿔 215/215 = 100.00%를 얻었다.</p>
+<p>덧붙여, 검사가 기준 산술을 <strong>손으로 다시 옮겨 적어</strong> 놓은 탓에 기준모델 쪽 hardtanh 한계를 두 배로 바꿔도 검사가 통과했다. 산술을 한 군데로 모았다.</p></div></details>
+
+<details class="defect"><summary><span class="tag">A.11</span> <span class="v v-none">거짓 초록</span> 면적 측정이 IO 핀 한계를 재고 있었다</summary>
+<div class="body"><p>FFE 29탭이 “칩에 들어가지 않는다”로 나왔는데, LUT는 61%인 반면 <strong>SB_IO가 90%</strong>였다 — 계수를 상위 포트로 뺀 테스트벤치가 29×7 = 203핀을 먹은 것이다. 실제 설계는 적응 엔진이 계수를 레지스터에 쓴다. 고치니 전부 PASS.</p>
+<p>같은 부류로, 첫 신경망 RTL은 모든 항을 32비트로 부호확장해 곱했다. <strong>비트 단위로는 정확했지만</strong> 면적이 5,239 LC로 나와 “곱셈 12개가 FFE의 11개보다 2.8배 크다”는 거짓 결론을 냈다. 폭을 자리에 맞추니 2,368 LC. <em>맞는 답을 내는 회로도 면적은 틀릴 수 있다.</em></p></div></details>
+
+<details class="defect"><summary><span class="tag">A.12</span> <span class="v v-none">거짓 초록</span> 누산기 폭 검사가 구석을 한 번도 밟지 않았다</summary>
+<div class="body"><p>누산기를 <code>XW+WW</code>로 좁혀도 검사가 통과했다 — <strong>학습된 계수가 작아 자극이 넘칠 만큼 가지 않았기 때문</strong>이다. 극단 계수를 먹였더니 이번에는 다른 이유로 통과했다: 감긴 값(20,853 → +4,469)이 여전히 양수라 hardtanh가 어차피 같은 값으로 눌러 버렸다. 램프로 훑어 <strong>감기가 부호를 뒤집는 자리</strong>를 지나게 하고서야 잡혔다.</p>
+<p>또한 폭은 <code>y</code>가 아니라 <code>z</code>로 재야 했다 — <code>y</code>는 hardtanh가 이미 눌러 놓은 뒤라 어떤 극단을 먹여도 넘치지 않는다.</p></div></details>
+
+<h3>A.13 이 목록에서 배운 것 하나</h3>
+<blockquote>
+  <p>열둘 중 여덟이 초록불이었다. 그리고 그중 다섯은 <strong>측정을 더 오래 하거나 씨를 더 쓰기 전까지 보이지 않았다.</strong></p>
+  <p>이 연구가 채택한 원칙은 하나로 요약된다 — <strong>검사하지 않은 초록불은 검사한 빨간불보다 나쁘다.</strong> 빨간불은 사람을 고칠 자리로 데려가지만, 검사하지 않은 초록불은 그 자리를 영영 가린다.</p>
+</blockquote>
+
+<footer>
+  <p>모든 수치는 공개 저장소의 코드로 재현 가능하다. 시뮬레이터 <code>serdes.py</code> · 신경망 <code>nneq.py</code> · 고정소수점 기준모델 <code>nnfix.py</code> · 등화기 Verilog <code>eqrtl.py</code> · 배치배선 <code>pnr.py</code>. 검증은 <code>tests/test_serdes.py</code> · <code>tests/test_serdes_sweep.py</code> · <code>tests/test_nneq.py</code> · <code>tests/test_nnfix.py</code>.</p>
+  <p>도구: numpy · yosys · nextpnr-ice40 · iverilog. 대상 소자 Lattice iCE40 HX8K (7,680 LC), 패키지 CT256.</p>
+  <p>측정 일자 2026-09-15 ~ 2026-09-16. 본 보고서의 모든 표는 해당 일자에 커밋된 코드로 재실행해 얻은 값이다.</p>
+</footer>
+
+</div>
