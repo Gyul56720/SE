@@ -94,6 +94,11 @@ on:
       # 신경망 등화기(nn_equalizer). **선형 채널에서 선형을 이기면 구멍**이라는
       # 대조가 이 파일 안에 있다. numpy 만 쓴다(torch 없음)
       - "nneq.py"
+      # 고정소수점 기준모델과 등화기 Verilog(eq_area). **RTL 이 nnfix 와 비트까지
+      # 같은지**를 tests/test_nnfix.py 가 누산기 정수값으로 붙든다 -- 그것이 맞아야
+      # LC 숫자가 뜻을 갖는다. 견줄 선형 FFE·DFE 도 같이 둔다
+      - "nnfix.py"
+      - "eqrtl.py"
       # 답에 박힌 LaTeX 를 유니코드·PNG 로 바꾼다. `_답보내기` 가 부른다 (2026-09-15)
       - "latex_formatter.py"
       # 메일(send_email 도구)과 열쇠(!열쇠). 봇이 임포트한다.

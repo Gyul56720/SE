@@ -26,7 +26,7 @@ import channels
 
 from bot_tools import (
     search_memory, save_memory, run_shell, read_image, draw_circuit,
-    run_rtl, lint_rtl, synth_rtl, prove_rtl, place_rtl, ip_signoff, serdes_link, quant_sweep, adc_sweep, loss_sweep, nn_equalizer, run_spice, spice_example, monte_carlo, concept,
+    run_rtl, lint_rtl, synth_rtl, prove_rtl, place_rtl, ip_signoff, serdes_link, quant_sweep, adc_sweep, loss_sweep, nn_equalizer, eq_area, run_spice, spice_example, monte_carlo, concept,
     build_agent_pool, run_with_fallback_pool, _current_author,
     register_thread, unregister_thread,
 )
@@ -69,7 +69,7 @@ PUBLIC_MODEL_CANDIDATES = [PUBLIC_MODEL_NAME] + [m for m in _extra_models if m !
 # **`draw_circuit` 도 넣는다** (사용자 2026-09-15: 회로도를 그려 주고 원리를
 # 설명해 주는 기능). 도구가 없으면 못 쓴다 -- 이 파일이 두 번째로 겪는 그것이다.
 PUBLIC_TOOLS = [search_memory, save_memory, run_shell, read_image, draw_circuit,
-                run_rtl, lint_rtl, synth_rtl, prove_rtl, place_rtl, ip_signoff, serdes_link, quant_sweep, adc_sweep, loss_sweep, nn_equalizer, run_spice, spice_example, monte_carlo, concept]
+                run_rtl, lint_rtl, synth_rtl, prove_rtl, place_rtl, ip_signoff, serdes_link, quant_sweep, adc_sweep, loss_sweep, nn_equalizer, eq_area, run_spice, spice_example, monte_carlo, concept]
 # admin과 동일한 "적극적으로 조사해서 근거 기반으로 답하라"는 태도로 통일했다 -- 예전엔
 # "간결하게/불필요한 수식어 금지" 규칙 때문에, 상태·속도·에러를 묻는 질문에도 조사 없이
 # "OK" 한마디로 끝내버리는 경우가 있었다(admin은 run_shell로 journalctl을 직접 뒤져서 표까지
@@ -162,6 +162,7 @@ PUBLIC_SYSTEM_PROMPT = (
     "- `quant_sweep(widths, loss_db, snr_db)` — **BER versus tap word length**. Says which widths are *not distinguishable* from the floating-point baseline at the bit count you ran, instead of calling counting noise `no degradation`.\n"
     "- `adc_sweep(widths, full_scales, coef_bits)` — **BER versus ADC resolution AND full scale**, with the clip rate beside every cell. The two cannot be chosen apart: narrow the range and samples clip, widen it and the same bits buy a coarser step. Measured, the floor is at 2.5 sigma where the ADC clips 0.45% of samples — not 0%. The chosen full scale is re-measured on a different seed because picking the lowest BER of a grid biases it (winner's curse).\n"
     "- `loss_sweep(losses, widths, seeds)` — **how far a word length holds as the channel worsens**. Each loss is first bisected onto a common float BER (a fixed-SNR loss sweep cannot compare: low loss gives zero errors, high loss a broken link), and every cell is a mean over seeds with its spread. A single seed cannot name a word length — measured, 7-bit at 30 dB read -4.7% on one seed and +26.2% on another.\n"
+    "- `eq_area(kind, taps, hidden, bits, target_mhz)` — **what the equaliser costs on a real device** (yosys + nextpnr, iCE40). Measured: FFE 11-tap 1,835 LC at 56 MHz; the same-BER neural net 2,368 LC at 31 MHz. Word length is half the area (Q3.6/10-bit is 1.9x Q2.4/7-bit for identical BER), DFE taps carry no multiplier at all, and what misses timing is combinational depth, not size. The net's Verilog is checked bit-exact against the fixed-point reference — without that, an LC number means nothing, because the wrong circuit is always the smallest.\n"
     "- `nn_equalizer(loss_db, snr_db, compression, weight_bits)` — **a neural-network equaliser, with the control that says when it may win**. On a linear channel the optimal equaliser is linear, so the net ties FFE+DFE; measured, it loses slightly (6.75e-4 vs 6.33e-4), and that is what makes the rest believable. Add RX `compression` — which no linear equaliser can invert — and the net wins 16x. Training uses only the first 30% of bits; a run that did not converge is 못잼.\n"
     "  Formal starts from an **arbitrary** state, not from reset, so a design that simulates fine can break here at once. Give registers initial values or constrain reset with `assume`. Identifiers must be ASCII — Korean names break the Yosys frontend.\n"
     "\n"
