@@ -250,6 +250,10 @@ def 링크(비트수: int = 300000, 손실dB: float = 25.0, SNRdB: float = 30.0,
        에폭: int = 12, 걸음: float = 3e-3, 학습비율: float = 0.3,
        ADC비트: int = 0, ADC풀스케일시그마: float = 2.5, 반사=(),
        역압축: bool = False, 압축뒤대역: float = 0.0,
+       슬루율: float = 0.0, 누설시상수: float = 0.0,
+       누화세기: float = 0.0, 전원세기: float = 0.0, 전원주기: float = 37.0,
+       지터rjUI: float = 0.0, 지터sjUI: float = 0.0, 지터sj주기: float = 100.0,
+       물리채널=None,
        활성꼴: str = "tanh", 씨: int = 0) -> dict:
     """신경망 등화기로 링크를 돌린다. {BER, 오류수, 잰비트, 파라미터수, 학습, 왜}.
 
@@ -260,6 +264,10 @@ def 링크(비트수: int = 300000, 손실dB: float = 25.0, SNRdB: float = 30.0,
     밑 = serdes.링크(비트수=int(비트수), 손실dB=손실dB, SNRdB=SNRdB, sps=int(sps),
                    FFE탭=0, DFE탭=0, 반사=반사, 압축=압축, 역압축=역압축,
                    압축뒤대역=압축뒤대역,
+                   슬루율=슬루율, 누설시상수=누설시상수, 누화세기=누화세기,
+                   전원세기=전원세기, 전원주기=전원주기,
+                   지터rjUI=지터rjUI, 지터sjUI=지터sjUI, 지터sj주기=지터sj주기,
+                   물리채널=물리채널,
                    ADC비트=int(ADC비트),
                    ADC풀스케일시그마=ADC풀스케일시그마, 학습비율=학습비율, 씨=int(씨))
     표본, 비트 = 밑["표본"], 밑["비트"].astype(float)

@@ -115,6 +115,61 @@ def 채널(손실dB: float = 20.0, sps: int = 16, 길이심볼: int = 64, 반사
     return 반사붙이기(h, sps, 반사)
 
 
+def _최소위상(크기: np.ndarray, N: int) -> np.ndarray:
+    """로그 크기의 켑스트럼을 접어 **최소위상** 임펄스 응답을 낸다."""
+    크기 = np.maximum(크기, 1e-9)
+    전체 = np.concatenate([크기, 크기[-2:0:-1]])
+    c = np.fft.ifft(np.log(전체)).real
+    m = np.zeros(N)
+    m[0] = c[0]
+    m[1:N // 2] = 2.0 * c[1:N // 2]
+    m[N // 2] = c[N // 2]
+    return np.fft.ifft(np.exp(np.fft.fft(m))).real
+
+
+def 채널물리(sps: int = 8, 길이심볼: int = 64, 도체dB: float = 12.0,
+         유전dB: float = 8.0, 스터브UI: float = 0.0, 스터브세기: float = 1.0,
+         반사=()) -> np.ndarray:
+    """**두 손실 기구를 따로 세우고 비아 스터브 공진을 붙인** 채널.
+
+        |H(f)| = 10^( -( 도체dB·sqrt(f/f_nyq) + 유전dB·(f/f_nyq) ) / 20 )
+        S21_stub(f) = 2 / ( 2 + j·세기·tan(2π f τ) ),  τ = 스터브UI·sps 표본
+
+    ## 왜 sqrt(f) 하나로는 모자라나
+
+    `채널()` 은 손실을 `sqrt(f)` 하나로 세운다. 그것은 **도체 손실(표피효과)** 의
+    꼴이다. 실제 PCB 에서는 **유전 손실이 f 에 비례해서** 같이 나고, 보드가 길수록
+    이쪽이 지배한다. 둘을 하나로 뭉치면 같은 Nyquist 손실이라도 **꼬리 모양이 다르다**
+    -- 유전 손실 쪽이 고주파를 더 가파르게 깎아 선행 커서가 길어진다.
+
+    ## 비아 스터브 -- 측정 S-파라미터에서 가장 눈에 띄는 것
+
+    관통 비아에서 쓰이지 않고 남은 토막은 **개방 스터브**로 매달린다. 전기 길이가
+    1/4 파장이 되는 주파수에서 단락처럼 보여 **깊은 노치**가 난다. 이것은 손실이
+    아니라 공진이므로 `sqrt(f)` 어떤 값으로도 못 만든다. 측정된 S21 에서 실제로
+    보이는 것이 이 노치이고, 등화기를 가르는 것도 대개 이것이다.
+
+    ## 이것은 측정값이 아니다
+
+    실제 S-파라미터 파일(Touchstone)을 읽어 쓰는 것이 옳지만, 이 환경은 바깥
+    망으로 못 나가므로 파일을 구할 수 없다. 그래서 **측정값 대신 업계가 쓰는
+    물리 모형**을 세운다 -- 도체·유전 손실을 나누고 스터브 공진을 넣는다. 가깝기는
+    훨씬 가깝지만 **측정값은 아니다**. 이 한계는 논문에 그대로 적는다.
+    """
+    N = int(sps * 길이심볼)
+    f = np.fft.rfftfreq(N, 1.0)
+    f_nyq = 0.5 / sps
+    비 = np.maximum(f, 0.0) / f_nyq
+    크기 = 10.0 ** (-(도체dB * np.sqrt(비) + 유전dB * 비) / 20.0)
+    if 스터브UI and 스터브UI > 0:
+        타우 = float(스터브UI) * int(sps)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            t = np.tan(2 * np.pi * f * 타우)
+        t = np.nan_to_num(t, nan=0.0, posinf=1e9, neginf=-1e9)
+        크기 = 크기 * np.abs(2.0 / (2.0 + 1j * float(스터브세기) * t))
+    return 반사붙이기(_최소위상(크기, N), sps, 반사)
+
+
 def 펄스응답(h: np.ndarray, sps: int) -> np.ndarray:
     """한 심볼(NRZ 사각 펄스)이 채널을 지나 나온 꼴."""
     return np.convolve(h, np.ones(sps), mode="full")
@@ -225,6 +280,148 @@ def 압축세기(y: np.ndarray, 세기: float) -> float:
     return float(세기) / rms
 
 
+def 슬루(u: np.ndarray, 최대기울기: float) -> np.ndarray:
+    """**슬루율 제한** -- 메모리가 긴 비선형. 표가 무너지는 자리를 만든다.
+
+        v[n] = v[n-1] + clip( u[n] - v[n-1], -S, +S )
+
+    한 표본에 S 보다 더 못 움직인다. 이것이 `압축하기` 와 결정적으로 다른 점은
+    **상태가 있다**는 것이다 -- v[n] 이 v[n-1] 에 달려 있고 그것이 다시 v[n-2] 에
+    달려 있으므로, 유효 메모리가 S 가 작아질수록 길어진다(대략 진폭/S 표본).
+
+    ## 왜 이것을 넣었나 -- 그리고 **안 통했다**
+
+    메모리 없는 비선형은 2^B 칸 표가 정확히 되돌린다(명제 1). 압축 뒤 대역제한을
+    넣으면 메모리가 생기지만 그 길이가 필터 탭 수로 묶여 있어, 표본 두 개를 색인하는
+    256칸 표로 충분했다. 표가 무너지려면 메모리가 표의 주소 공간보다 길어야 하고,
+    슬루율 제한은 그 길이를 S 하나로 이어서 조절할 수 있다 -- 고 생각했다.
+
+    **실측 2026-09-16: 안 통했다.** S 를 줄이면 손상이 커지기는 하는데, 깊은 포화
+    구간에서는 출력이 부호 열의 적분에 가까워져 **정보 자체가 사라진다** -- FFE 도
+    표도 망도 같이 무너진다(S=0.015 에서 셋 다 1e-2 대). 얕게 걸면 저역통과처럼
+    굴어 잡음을 깎아 **BER 이 오히려 좋아진다**(S=0.05 에서 오류 0). 가르는 창이
+    없었다. 표가 지는 자리를 실제로 연 것은 슬루가 아니라 **압축의 세기**였다
+    (`eqsweep` 머리말). 이 함수는 그 시도의 기록으로 남긴다.
+
+    드라이버·AFE 에서 실제로 나는 손상이기도 하다 -- 증폭기가 유한한 전류로 용량성
+    부하를 몰 때 정확히 이 꼴이 된다.
+    """
+    if not 최대기울기 or 최대기울기 <= 0:
+        return u
+    u = np.asarray(u, dtype=float)
+    S = float(최대기울기)
+    v = np.empty_like(u)
+    앞 = 0.0
+    for i, x in enumerate(u.tolist()):
+        d = x - 앞
+        앞 = 앞 + (S if d > S else (-S if d < -S else d))
+        v[i] = 앞
+    return v
+
+
+def 누설(u: np.ndarray, 시상수표본: float) -> np.ndarray:
+    """**AC 결합 드룹**(베이스라인 원더). 일차 고역통과, 메모리가 시상수만큼 길다.
+
+        b[n] = a·b[n-1] + (1-a)·u[n],   v[n] = u[n] - b[n],   a = exp(-1/tau)
+
+    이것 자체는 선형이라 FFE 가 어느 정도 잡는다. 그런데 **드룹 뒤에 압축이 오면**
+    누른 정도가 긴 과거에 달리게 되어, 표본마다 되돌리는 것이 과거를 모르면 틀린다.
+    """
+    if not 시상수표본 or 시상수표본 <= 0:
+        return u
+    a = float(np.exp(-1.0 / float(시상수표본)))
+    u = np.asarray(u, dtype=float)
+    # 일차 IIR 이라 `lfilter` 로 똑같은 것을 훨씬 빨리 낸다(파이썬 되돌이 아님).
+    from scipy.signal import lfilter
+    b = lfilter([1.0 - a], [1.0, -a], u)
+    return u - b
+
+
+def 크로스토크(y: np.ndarray, h: np.ndarray, sps: int, 세기: float,
+          비트수: int, rng) -> np.ndarray:
+    """**원단 누화(FEXT)** -- 다른 레인의 신호가 미분 결합으로 실린다.
+
+    공격자는 독립 PRBS 이고, 결합은 미분 꼴(고주파에서 커진다)로 둔다. 누화는
+    비선형이 아니지만 **등화기가 못 지우는 잡음**이라 모든 구조를 똑같이 깎는다 --
+    그래서 구조 사이의 순서가 유지되는지 보는 데 쓴다.
+    """
+    if not 세기 or 세기 <= 0:
+        return y
+    a = rng.integers(0, 2, int(비트수)) * 2.0 - 1.0
+    보낸 = np.repeat(a, sps).astype(float)
+    지난 = np.convolve(보낸, h, mode="full")[:len(보낸)]
+    미분 = np.diff(지난, prepend=지난[:1])
+    n = min(len(y), len(미분))
+    난것 = np.array(y, dtype=float, copy=True)
+    쓸것 = 미분[:n]
+    세 = float(세기) * (float(np.std(y[:n])) / (float(np.std(쓸것)) or 1.0))
+    난것[:n] = 난것[:n] + 세 * 쓸것
+    return 난것
+
+
+def 전원잡음(y: np.ndarray, sps: int, 세기: float, 주기심볼: float) -> np.ndarray:
+    """**전원 잡음** -- 공급 전압 흔들림이 앞단 이득을 곱셈으로 흔든다.
+
+        v[n] = y[n] · (1 + m·sin(2πn/(sps·주기심볼)))
+
+    더해지는 잡음이 아니라 **곱해지는** 것이다. 여기에 두 가지 예상이 있었고
+    **둘 다 재 보니 반만 맞았다**(실측 2026-09-16, 씨 4 × 40만 비트).
+
+    *맞은 것.* m < 1 이면 **부호를 못 뒤집는다** -- NRZ 판정은 부호이므로 이득
+    흔들림 자체로는 오류가 안 난다. 아픈 것은 ADC 클리핑과 탭 추정이 흐려지는
+    쪽이다. 그래서 절대 벌점이 작다.
+
+    *틀린 것.* "정적인 표에 특히 나쁘다" 고 적어 두었는데 **아니었다.** m=0.5 에서
+    선형 슬라이서가 2.66배, 긴메모리+표가 2.43배로 **같은 비율만큼** 나빠졌다.
+    표가 더 약하다는 근거가 없다. 그 줄은 재기 전에 적은 것이고, 재고 나서 지운다.
+    """
+    if not 세기 or 세기 <= 0:
+        return y
+    n = np.arange(len(y))
+    주기 = max(float(주기심볼) * int(sps), 2.0)
+    return np.asarray(y, dtype=float) * (1.0 + float(세기) * np.sin(2 * np.pi * n / 주기))
+
+
+def 지터표본(y: np.ndarray, 위상: int, sps: int, 개수: int,
+          rjUI: float = 0.0, sjUI: float = 0.0, sj주기심볼: float = 100.0,
+          rng=None) -> np.ndarray:
+    """**표본 위상 지터**로 심볼률 표본을 뽑는다. CDR 이 못 지운 잔류 지터다.
+
+        t[n] = 위상 + n·sps + sps·( rj[n] + sjUI·sin(2πn/sj주기) )
+
+    `rjUI` 는 UI 단위 rms 랜덤 지터, `sjUI` 는 UI 단위 정현 지터 진폭이다. 표본은
+    선형 보간으로 뽑는다.
+
+    ## 왜 이것이 구조 사이를 가르나
+
+    지터는 **표본을 옆으로 민다.** 선형 등화기에게 이것은 채널이 조금 바뀐 것이라
+    탭이 따라간다(느린 성분이면). 그런데 **표본값 색인 표**에게는 같은 코드가 다른
+    위상에서 온 것이 되어 **칸의 뜻이 흐려진다** -- 정적인 표가 가장 약한 자리다.
+    신경망도 정적이지만 값이 이어져 있어 가장자리에서 덜 튄다. 어느 쪽이 얼마나
+    버티는지는 재 봐야 안다.
+
+    CDR 자체는 모형에 없다. 여기 쓰는 것은 **CDR 이 지우고 남은 것**이고, 느린
+    성분(작은 `sj주기`가 아니라 큰 것)은 실제 CDR 이 상당 부분 따라가므로 이
+    모형은 **보수적**이다(실제보다 나쁘게 본다).
+    """
+    y = np.asarray(y, dtype=float)
+    n = np.arange(int(개수))
+    t = 위상 + n * int(sps)
+    if rjUI or sjUI:
+        rng = rng if rng is not None else np.random.default_rng(0)
+        오프 = np.zeros(len(n), dtype=float)
+        if rjUI:
+            오프 = 오프 + rng.normal(0.0, float(rjUI), len(n))
+        if sjUI:
+            주기 = max(float(sj주기심볼), 2.0)
+            오프 = 오프 + float(sjUI) * np.sin(2 * np.pi * n / 주기)
+        t = t + int(sps) * 오프
+    t = np.clip(t, 0.0, len(y) - 1.0000001)
+    i0 = np.floor(t).astype(np.int64)
+    f = t - i0
+    return y[i0] * (1.0 - f) + y[np.minimum(i0 + 1, len(y) - 1)] * f
+
+
 def 압축하기(y: np.ndarray, 세기: float) -> np.ndarray:
     """수신 앞단 증폭기의 **비선형 압축**. `세기`=0 이면 아무것도 안 한다.
 
@@ -310,9 +507,15 @@ def 링크(비트수: int = 20000, 손실dB: float = 20.0, SNRdB: float = 20.0,
        반사=(), DFE자리=None, 압축: float = 0.0,
        탭비트: int = 0, 남길비율: float = 1.0, 이상적판정: bool = False,
        ADC비트: int = 0, ADC풀스케일시그마: float = 3.0, 역압축: bool = False,
-       압축뒤대역: float = 0.0, ROM깊이: int = 0, ROM최소표본: int = 8,
+       압축뒤대역: float = 0.0,
+       슬루율: float = 0.0, 누설시상수: float = 0.0,
+       누화세기: float = 0.0, 전원세기: float = 0.0, 전원주기: float = 37.0,
+       지터rjUI: float = 0.0, 지터sjUI: float = 0.0, 지터sj주기: float = 100.0,
+       물리채널=None,
+       ROM깊이: int = 0, ROM최소표본: int = 8,
        ROM차수: int = 0, 표본표창: int = 0, 표본표비트: int = 4,
-       표본표시프트: bool = True,
+       표본표시프트: bool = True, 표본표특징비트: int = 0,
+       표본표특징시프트: int = 5,
        학습비율: float = 0.3, 씨: int = 0) -> dict:
     """PRBS -> 채널 -> 잡음 -> CTLE -> FFE -> DFE -> 슬라이서. {BER, 오류수, ...}.
 
@@ -325,13 +528,29 @@ def 링크(비트수: int = 20000, 손실dB: float = 20.0, SNRdB: float = 20.0,
     """
     rng = np.random.default_rng(씨)
     b = rng.integers(0, 2, 비트수) * 2 - 1        # ±1 NRZ
-    h = 채널(손실dB, sps, 64, 반사)
+    # **채널.** `물리채널` 을 주면 도체·유전 손실을 나누고 비아 스터브를 붙인 쪽을
+    # 쓴다(`채널물리`). 안 주면 sqrt(f) 한 기구짜리 기본 채널이다.
+    h = (채널물리(sps=sps, 길이심볼=64, 반사=반사, **dict(물리채널))
+         if 물리채널 else 채널(손실dB, sps, 64, 반사))
 
     보낸것 = np.repeat(b, sps).astype(float)
     y = np.convolve(보낸것, h, mode="full")[:len(보낸것)]
     # SNR 정의: **손실 없는 이상적 메인 커서(=1)** 에 견준다. 머리말 참조.
     sigma = 10.0 ** (-SNRdB / 20.0)
     y = y + rng.normal(0.0, sigma, len(y))
+    # **원단 누화** -- 다른 레인이 같은 채널을 지나 미분 결합으로 실린다.
+    if 누화세기:
+        y = 크로스토크(y, h, sps, 누화세기, 비트수, rng)
+    # **AC 결합 드룹** -- RX 입력망. 선형이지만 메모리가 시상수만큼 길다.
+    if 누설시상수:
+        y = 누설(y, 누설시상수)
+    # **슬루율 제한** -- AFE 증폭기가 유한한 전류로 용량성 부하를 몬다. 상태가 있는
+    # 비선형이라 메모리가 진폭/S 표본만큼 길다. 표가 무너지는 자리를 여는 손잡이다.
+    if 슬루율:
+        y = 슬루(y, 슬루율)
+    # **전원 잡음** -- 공급 전압이 앞단 이득을 곱셈으로 흔든다.
+    if 전원세기:
+        y = 전원잡음(y, sps, 전원세기, 전원주기)
     # **압축은 잡음이 실린 뒤, 등화 앞에서** 난다 -- RX 앞단의 자리가 거기다.
     _압축a = 압축세기(y, 압축)          # 역보정에 같은 값을 주려고 붙든다
     y = 압축하기(y, 압축)
@@ -350,7 +569,12 @@ def 링크(비트수: int = 20000, 손실dB: float = 20.0, SNRdB: float = 20.0,
     p = 펄스응답(h, sps)
     꼭대기 = int(np.argmax(np.abs(p)))
     위상, 지연심볼 = 꼭대기 % sps, 꼭대기 // sps
-    표본 = y[위상::sps]
+    if 지터rjUI or 지터sjUI:
+        # **지터는 표본을 뽑을 때 난다** -- 파형을 흔드는 것이 아니라 뽑는 때를 흔든다.
+        표본 = 지터표본(y, 위상, sps, (len(y) - 위상) // sps,
+                     지터rjUI, 지터sjUI, 지터sj주기, rng)
+    else:
+        표본 = y[위상::sps]
     if 지연심볼:
         표본 = 표본[지연심볼:]
     맞춘것 = b[:len(표본)]
@@ -432,7 +656,9 @@ def 링크(비트수: int = 20000, 손실dB: float = 20.0, SNRdB: float = 20.0,
         # **표본 코드 색인 표.** 되먹임이 없다 -- 앞먹임이라 오류 번짐도 없다.
         표, 주소, 찬칸 = 표본색인표학습(표본, 맞춘것, int(표본표창),
                                    int(표본표비트), 학습끝,
-                                   시프트=bool(표본표시프트))
+                                   시프트=bool(표본표시프트),
+                                   특징비트=int(표본표특징비트),
+                                   특징시프트=int(표본표특징시프트))
         판정 = np.where(표[주소] >= 0, 1.0, -1.0)
         파라미터수 = len(표)
     elif ROM깊이 and int(ROM깊이) > 0:
@@ -456,12 +682,18 @@ def 링크(비트수: int = 20000, 손실dB: float = 20.0, SNRdB: float = 20.0,
             "위상": 위상, "지연심볼": 지연심볼, "sigma": sigma, "적응": 적응,
             "ADC비트": int(ADC비트), "클립비율": 클립비율, "압축": float(압축),
             "ADC풀스케일시그마": ADC풀스케일시그마,
+            "슬루율": float(슬루율), "누설시상수": float(누설시상수),
+            "누화세기": float(누화세기), "전원세기": float(전원세기),
+            "지터rjUI": float(지터rjUI), "지터sjUI": float(지터sjUI),
             "DFE탭": None if dfe탭값 is None else list(map(float, dfe탭값)),
             "DFE자리": 자리들, "반사": list(반사),
             "ROM깊이": int(ROM깊이), "ROM칸수": (0 if ROM표 is None else len(ROM표)),
             "ROM되돌린칸": 되돌린칸, "ROM차수": int(ROM차수),
             "ROM파라미터수": int(파라미터수),
             "표본표창": int(표본표창), "표본표찬칸": 찬칸,
+            "표본표특징비트": int(표본표특징비트),
+            "표본표칸수": (0 if not 표본표창 else
+                      1 << (int(표본표비트) * int(표본표창) + int(표본표특징비트))),
             "이상적판정": 이상적판정, "판정": PASS,
             "왜": BER말(오류, 잰비트)}
 
@@ -611,8 +843,49 @@ def 판정볼테라학습(표본: np.ndarray, 정답: np.ndarray, 깊이: int, �
     return 표, len(계수)
 
 
+def 느린바탕(x: np.ndarray, 시프트: int) -> np.ndarray:
+    """**곱셈기 0개짜리 긴 메모리 특징** -- 새는 누산기 하나.
+
+        m[n] = m[n-1] + ( x[n] - m[n-1] ) >> k      (a = 2^-k)
+
+    하드웨어로는 **시프트 하나와 덧셈 둘**이다. 시상수가 2^k 표본이므로 k=5 면
+    32 표본, k=7 이면 128 표본을 되돌아본다 -- 표의 창으로는 닿지 못하는 길이다.
+
+    ## 재 보니 **안 됐다** -- 실측 2026-09-16, 그대로 적는다
+
+    생각은 이랬다: 주소 한 자리를 이 특징에 내주면 `특징비트`만큼만 늘어난 주소로
+    2^k 표본을 되돌아볼 수 있으니, 2^(창·색인비트) 로 터지는 주소 폭을 피할 수 있다.
+    긴메모리 손상(드룹 tau=150 뒤 압축, 손실 20dB · SNR 26dB · ADC 7비트 · 64만 비트)
+    에서 재 보니 **어느 배치도 그냥 표본 하나 더 넣는 것만 못했다.**
+
+        표 창2·4비트 (256칸)                 3.63e-3   <- 기준
+        표 창2·5비트 (1024칸)                2.87e-3   <- 주소를 표본에 쓴 쪽
+        +느린바탕 3비트 k=5 (2048칸)         4.20e-3
+        +느린바탕 4비트 k=6 (4096칸)         5.38e-3
+        +느린바탕 4비트 k=7 (4096칸)         5.32e-3
+        표 창1·5비트 +느린바탕 4비트 (512칸)  2.91e-2
+
+    **주소 한 자리의 값은 그 자리가 담는 정보로 정해진다.** 이웃 표본 하나가 담는
+    것이 느린 평균 하나가 담는 것보다 컸다. 그래서 `특징비트` 는 기본이 0이다 --
+    되는 것인 양 켜 두지 않는다. 이 자리를 남겨 두는 까닭은 **다음 사람이 같은
+    생각을 또 하지 않게** 하려는 것이다.
+    """
+    a = 1.0 / float(1 << int(시프트))
+    from scipy.signal import lfilter
+    return lfilter([a], [1.0, -(1.0 - a)], np.asarray(x, dtype=float))
+
+
+def _코드(v: np.ndarray, 끝: int, 비트: int) -> np.ndarray:
+    """2의 거듭제곱 눈금 + 클램프. **자르기만 한다**(곱셈 없음)."""
+    칸당 = (1 << 비트) - 1
+    rms = float(np.sqrt(np.mean(v[:끝] ** 2))) or 1.0
+    눈금 = 2.0 ** np.round(np.log2(max(2.5 * rms / ((1 << 비트) / 2), 1e-12)))
+    return np.clip(np.floor(v / 눈금) + (1 << (비트 - 1)), 0, 칸당).astype(np.int64)
+
+
 def 표본색인표학습(표본: np.ndarray, 정답: np.ndarray, 창: int, 색인비트: int,
-             끝: int, 최소표본: int = 4, 시프트: bool = True):
+             끝: int, 최소표본: int = 4, 시프트: bool = True,
+             특징비트: int = 0, 특징시프트: int = 5):
     """**표본 코드로 색인하는 표.** 판정이 아니라 진폭을 본다. 곱셈기 0개.
 
     ## 왜 판정 영역 구조가 천장에 걸렸나 -- 실측 2026-09-16
@@ -675,7 +948,15 @@ def 표본색인표학습(표본: np.ndarray, 정답: np.ndarray, 창: int, 색�
     for k in range(창):
         앞 = np.concatenate([np.zeros(k, dtype=np.int64), 코드[:n - k]])
         주소 += 앞 << (색인비트 * k)
-    칸수 = 1 << (색인비트 * 창)
+    폭 = 색인비트 * 창
+    if 특징비트 and int(특징비트) > 0:
+        # **주소의 한 자리를 '느린 바탕' 에 내준다.** 이웃 표본을 하나 더 넣는 대신
+        # 지난 2^k 표본의 요약을 넣는 것이다 -- 주소는 `특징비트`만큼만 늘어나는데
+        # 되돌아보는 길이는 2^k 표본이 된다.
+        특 = _코드(느린바탕(표본[:n], int(특징시프트)), 끝, int(특징비트))
+        주소 = 주소 + (특 << 폭)
+        폭 += int(특징비트)
+    칸수 = 1 << 폭
     합 = np.zeros(칸수)
     수 = np.zeros(칸수)
     np.add.at(합, 주소[:끝], 정답[:끝])
