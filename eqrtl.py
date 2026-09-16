@@ -363,6 +363,105 @@ def ffe(탭: int = 11, W: int = 7, DW: int = 6) -> str:
     return FFE.format(L=탭, W=W, DW=DW, YW=YW, AW=주소폭(탭))
 
 
+FFEDA = r"""
+module ffe_da (
+    input  wire                   clk,
+    input  wire                   rst_n,
+    input  wire signed [{DW}-1:0] x,
+    input  wire                   cw_we,
+    input  wire [{AW}-1:0]        cw_addr,
+    input  wire signed [{W}-1:0]  cw_data,
+    input  wire                   rom_we,
+    input  wire [{NA}-1:0]        rom_addr,
+    input  wire signed [{RW}-1:0] rom_data,
+    output reg  signed [{YW}-1:0] y
+);
+    localparam L  = {L};
+    localparam N  = {N};
+    localparam W  = {W};
+    localparam DW = {DW};
+    localparam RW = {RW};
+    localparam YW = {YW};
+    reg signed [DW-1:0] sr   [0:L-1];
+    reg signed [W-1:0]  coef [0:L-1];
+    reg signed [RW-1:0] rom  [0:{ROMN}-1];
+    integer k, b;
+    reg [N-1:0] addr;
+    reg signed [YW-1:0] acc;
+    // **분산 산술**: 앞 N 탭은 곱셈기가 아니라 비트면마다 ROM 을 읽어 자리를 옮겨 더한다.
+    // ROM[a] = sum_k coef_k * a_k  이고 a_k 는 0/1 이다. 최상위 비트면만 빼 준다
+    // (2의 보수: x = -2^(DW-1) x[DW-1] + sum_b 2^b x[b]).
+    wire signed [W+DW-1:0] prod [0:L-1];
+    genvar i;
+    generate
+        for (i = N; i < L; i = i + 1) begin : taps
+            assign prod[i] = coef[i] * sr[i];
+        end
+    endgenerate
+    always @* begin
+        acc = 0;
+        for (b = 0; b < DW - 1; b = b + 1) begin
+            for (k = 0; k < N; k = k + 1) addr[k] = sr[k][b];
+            acc = acc + ($signed(rom[addr]) <<< b);
+        end
+        for (k = 0; k < N; k = k + 1) addr[k] = sr[k][DW-1];
+        acc = acc - ($signed(rom[addr]) <<< (DW - 1));
+        for (k = N; k < L; k = k + 1) acc = acc + $signed(prod[k]);
+    end
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            for (k = 0; k < L; k = k + 1) begin sr[k] <= 0; coef[k] <= 0; end
+            for (k = 0; k < {ROMN}; k = k + 1) rom[k] <= 0;
+            y <= 0;
+        end else begin
+            if (cw_we)  coef[cw_addr] <= cw_data;
+            if (rom_we) rom[rom_addr] <= rom_data;
+            for (k = L - 1; k > 0; k = k - 1) sr[k] <= sr[k-1];
+            sr[0] <= x;
+            y <= acc;
+        end
+    end
+endmodule
+"""
+
+
+def ffe_da(탭: int = 11, DA탭: int = 3, W: int = 7, DW: int = 7) -> str:
+    """**앞 `DA탭` 개를 분산 산술 ROM 으로** 푼 FFE. `top` 은 `ffe_da`.
+
+    사용자가 알려 준 선행 사례(28 Gb/s PAM-4 수신기에서 FFE 앞 세 탭을 LUT 로 짓고,
+    오프라인 ADC 계산값을 그 LUT 에 싣는다)를 그대로 지어 본 것이다. 고전적으로는
+    **분산 산술**(Peled & Liu, 1974)이라 부른다.
+
+        sum_k c_k x_k = -2^(DW-1) ROM(msb 비트들) + sum_b 2^b ROM(b번째 비트들)
+        ROM[a] = sum_k c_k a_k,   a_k in {{0,1}},   칸 2^N 개
+
+    ## 이 표와 이 논문의 표는 **다른 물건이다**
+
+    여기 ROM 이 담는 것은 **주소의 선형 함수**다. 계수가 정해지면 내용이 정해지고,
+    학습이 없다. 그래서 **계산 결과가 곱셈기 판과 비트까지 같다** -- 바꾸는 것은
+    구현 비용이지 함수가 아니다.
+
+    이 논문이 제안하는 표는 `E[b | 주소]` 를 담는다. 주소의 선형 함수가 **아니고**,
+    어떤 FIR 로도 못 만들며, 프리앰블에서 학습된다. 바꾸는 것이 함수 자체다.
+
+    둘은 경쟁하지 않는다 -- **겹쳐 쓸 수 있다.** 앞단 FFE 의 탭을 DA 로 풀고 그
+    출력을 다시 판정 표로 색인하면, 수신기 뒷단에 곱셈기가 `탭-DA탭` 개만 남는다.
+    """
+    탭, N, W, DW = int(탭), int(DA탭), int(W), int(DW)
+    N = max(0, min(N, 탭))
+    RW = W + 주소폭(N + 1)
+    YW = W + DW + 주소폭(탭 + 1)
+    return FFEDA.format(L=탭, N=N, W=W, DW=DW, RW=RW, YW=YW,
+                        AW=주소폭(탭), NA=max(N, 1), ROMN=1 << N)
+
+
+def da롬(계수들) -> "list[int]":
+    """`ROM[a] = sum_k c_k a_k` -- **계수에서 그대로 셈해 나온다**(학습 없음)."""
+    계수들 = [int(c) for c in 계수들]
+    N = len(계수들)
+    return [sum(c for k, c in enumerate(계수들) if (a >> k) & 1) for a in range(1 << N)]
+
+
 def dfe(자리들=(1, 2, 3, 4, 5, 6, 7, 8), W: int = 8, XW: int = 12) -> str:
     """판정 되먹임. `top` 은 `dfe_pos`. **곱셈이 하나도 없다** -- ±1 이라 더하기·빼기다."""
     자리들 = [int(p) for p in 자리들]

@@ -192,6 +192,7 @@
   <p style="margin-bottom:.6rem">이 오류는 계산 실수가 아니라 <strong>대조의 결손</strong>이었다. 넉 판 동안 “압축 0에서 신경망이 져야 한다”는 대조는 꼼꼼히 돌렸지만, <em>“이 비선형을 신경망 말고 무엇이 푸는가”</em>는 한 번도 묻지 않았다.</p>
   <p style="margin-bottom:.6rem">그래서 제5판은 정정으로 시작한다. §8이 그 정정이고, §9–§11이 그 정정 뒤에 남은 자리를 찾아 들어간 기록이다.</p>
   <p style="margin-bottom:0"><strong>제6판에서 또 한 번 뒤집혔다.</strong> 제5판은 “메모리가 아주 길면 표가 무너질 것”이라고 적었고, 이번에 드룹으로 그 경우를 지어 재 보니 <strong>메모리 길이는 비를 15 %밖에 안 움직였다</strong>(§15.2). 가른 것은 <strong>비선형의 세기</strong>였고, 그마저도 <strong>표 쪽에 명제 1의 앞단을 안 깔아 준 탓이 컸다</strong>(§15.3). 깔고 다시 재니 곱셈기 0개가 κ≈1.6까지 버틴다. <strong>예상과 그 반증을 같이 적는다 — 반증이 결과다.</strong></p>
+  <p style="margin-bottom:0"><strong>제7판에서 면적 논증이 뒤집혔다.</strong> DSP 가 있는 계열로 같은 RTL 을 합성하니 Xilinx 7 계열에서 <strong>표 1,316 셀 대 망 391 셀</strong>로 순서가 거꾸로 섰다(§16.5). “곱셈기 0개” 는 <strong>곱셈기가 표와 같은 패브릭으로 지어지는 소자에서만</strong> 이득이다. 그리고 구조들을 처음으로 <strong>최적</strong>에 견주어 보니, 전부 25배 넘게 떨어져 있었다 — 다만 <strong>β 영역에서만</strong> 표가 최적(선형 모형 수열 검출기)을 열 배 이긴다(§16.2).</p>
 </div>
 
 <h3>1.3 하지 않은 것</h3>
@@ -869,7 +870,149 @@ N_필요 = [ 2(√p₁ + √p₂) / |p₁ − p₂| ]²</pre>
   <p style="margin-bottom:0">이 빈자리는 장식이 아니다. 비아 스터브를 대역 <em>안</em>에 놓으면(τ<sub>s</sub>=0.6T, 0.72 f<sub>N</sub> 에 −50 dB) <strong>모든 구조가 5~14 % BER</strong> 에서 논다 — 등화의 문제가 아니라 정보가 사라지는 자리다. 노치를 대역 바로 위로 옮기면(τ<sub>s</sub>=0.35T) §10~11 의 결론이 그대로 돌아온다: 선형+메모리없음 채널에서는 <strong>표가 낫고</strong>(4.97e−4 대 망 1.05e−3, 망 0/6), 긴 메모리 비선형을 더하면 <strong>망이 낫다</strong>(3.62e−3 대 6.65e−3, 6/6). <strong>실제로 측정한 채널이 둘 중 어느 쪽에 가까운지가 이 연구에 남은 가장 큰 물음이다.</strong></p>
 </div>
 
-<h2 class="sec"><span class="n">16</span>결론</h2>
+<!-- ══════════ 16 ══════════ -->
+<h2 class="sec"><span class="n">16</span>바닥을 깔았다 — 측정 채널 · 검출 한계 · 다른 소자</h2>
+
+<p>제6판까지 남은 구멍이 셋이었다. 채널이 내가 지은 것이었고, 구조들을 <b>서로</b>만 견주었고, 면적을 <b>하드 곱셈기가 없는</b> 소자 하나에서만 쟀다. 셋 다 메운다. 그리고 <b>둘은 앞 판의 결론을 깎는다.</b></p>
+
+<h3>16.1 내가 짓지 않은 채널 둘</h3>
+
+<p><b>하나 — 기하와 재료에서.</b> <code>serdes.채널선로</code> 는 `scikit-rf` 의 마이크로스트립을 쓴다. 유전체는 <b>Djordjevic-Svensson 인과 모형</b>, 분산은 Kirschning-Jansen, 도체 저항률과 표면 거칠기까지 들어간다. 내가 고르는 것은 선폭·기판 두께·유전율·손실각·저항률·길이뿐이고, <b>크기 곡선도 위상도 남이 낸다.</b> 200/100 µm · ε<sub>r</sub>=3.7 · tanδ=0.002 · 40인치 · 20 GBd 에서 Nyquist 26 dB, 메인 커서 0.22, 눈이 닫힌다.</p>
+
+<p><b>둘 — 실제로 측정된 것.</b> `scikit-rf` 가 함께 배포하는 2포트 VNA 측정본(1~10 GHz, 91점)이다. 한 벌은 Nyquist 에서 0.98 dB 밖에 안 죽어 등화기를 못 가른다. 그래서 <b>같은 것을 K 벌 직렬로 잇는다</b> — 그러면 모든 dB·리플·반사가 <b>모형이 아니라 계측기에서</b> 온다.</p>
+
+<div class="limits">
+  <h3 style="color:var(--none)">대역 밖으로는 안 늘린다</h3>
+  <p style="margin-bottom:0">표본율을 <b>측정 상한의 두 배</b>로 못 박아 FFT 격자가 측정 대역을 안 벗어나게 했다(sps=4, 5 GBd). 1 GHz 아래만 DC 외삽이고 그것은 skrf 가 인과적으로 한다. 10 GHz 위로 외삽해 20 GBd 를 흉내 내면 그 숫자는 <b>측정이 아니라 내 외삽</b>이다.</p>
+</div>
+
+<figure>
+  <div class="scroll"><table>
+    <thead><tr><th>이은 벌 K</th><th>Nyquist 손실</th><th>메인 커서</th><th>ISI 아이</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>0.98 dB</td><td>1.057</td><td>+2.08</td></tr>
+      <tr><td>8</td><td>10.61 dB</td><td>0.462</td><td>+0.38</td></tr>
+      <tr class="rule-top"><td><strong>16</strong></td><td class="hl">19.65 dB</td><td>0.211</td><td>−0.23</td></tr>
+      <tr><td>24</td><td>28.77 dB</td><td>0.098</td><td>−0.40</td></tr>
+    </tbody>
+  </table></div>
+  <figcaption><b>표 28. 측정본을 이어 붙인 채널.</b> sps=4 · 5 GBd · Nyquist 2.5 GHz — <b>측정 대역 안</b>이다.</figcaption>
+</figure>
+
+<h3>16.2 최적은 어디인가 — 한계 둘과 달성 가능한 점 하나</h3>
+
+<p>이제까지 이 논문은 구조를 <b>서로</b> 견주었다. 그런 비에는 바닥이 없다. 7.98배가 최적의 코앞인지 아직 천 배가 남았는지 모르면 <b>“신경망이 필요한가”도 끝내 못 닫는다.</b></p>
+
+<p><b>하한 둘.</b> 오버샘플 파형 전체를 모아 받는 천사의 오류율이 <code>Q(‖p‖/σ)</code> 이고, 이 저장소의 구조처럼 <b>심볼당 표본 하나</b>에 갇힌 검출기의 하한이 <code>Q(‖p_sym‖/σ)</code> 다. 둘 다 <b>가정하지 않고 교정했다</b> — 고립 펄스를 실제로 쏘아 정합필터로 받으니 닫힌 꼴과 1.1~6.1 % 안에서 맞았고(오류 234개·967개), 2σ 로 구별되지 않았다.</p>
+
+<p><b>달성 가능한 점 하나.</b> 25 dB 채널의 펄스응답은 60심볼 넘게 끌려서 전 메모리 비터비를 못 짓는다(12심볼로 자르면 <b>SNR 60 dB 에서도 2.8e−3 에서 안 떨어진다</b> — 잡음이 아니라 모형이 모자란 것이다). 그래서 상태 축소 + 살아남은 길의 판정으로 꼬리를 빼는 <b>DDFSE</b> 를 썼다.</p>
+
+<div class="limits">
+  <h3 style="color:var(--pass)">명제 4 — 수신단 손상은 최적 수신기를 못 이롭게 한다</h3>
+  <p style="margin-bottom:.6rem"><b>받은 파형이 r = h∗b + n 이고 수신단 손상이 전부 잡음 뒤에 오는 사상 Φ 라면</b>(Φ 는 b 에 안 달렸다), 어떤 검출기 d(Φ(r)) 도 r 위의 최적 검출기보다 나을 수 없다. <b>Φ 가 가역이면 등호</b>가 성립하고, Φ<sup>−1</sup> 뒤에 최적 검출기를 두면 닿는다.</p>
+  <p style="margin-bottom:.6rem"><i>증명.</i> b → r → Φ(r) 이 마르코프 사슬이므로 자료처리 부등식이 바로 준다. 가역이면 두 번째 고리가 정보를 안 버린다. ∎</p>
+  <p style="margin-bottom:0"><b>등호가 명제 1 을 수열 검출로 넓힌 것이다</b> — 메모리 없는 가역 압축은 최적 수신기에 <b>공짜</b>다. 재 보았다: 정확한 역을 깔고 양자화를 빼면 κ=1.0 이 선형 채널의 BER 을 <b>마지막 자리까지</b> 되풀이하고(6.46e−4 · 4.77e−4 · 9.71e−4), DDFSE 는 둘 다 15만 심볼에 오류 0 이다.</p>
+</div>
+
+<figure>
+  <div class="scroll"><table>
+    <thead><tr><th>손상</th><th>MFB(심볼률)</th><th>DDFSE</th><th>선형</th><th>표</th><th>NN 5→2</th><th>선형<br>ADC없음</th><th>표<br>ADC없음</th><th>NN<br>ADC없음</th></tr></thead>
+    <tbody>
+      <tr><td>선형</td><td>1.1e−15</td><td class="hl">&lt;2e−5</td><td>6.7e−4</td><td>5.0e−4</td><td>1.0e−3</td><td>6.5e−4</td><td>4.8e−4</td><td>9.7e−4</td></tr>
+      <tr><td>κ=1.0 메모리없음</td><td>1.1e−15</td><td class="hl">&lt;2e−5</td><td>3.4e−3</td><td>1.3e−3</td><td>1.4e−3</td><td>6.5e−4</td><td>4.8e−4</td><td>9.7e−4</td></tr>
+      <tr><td>κ=2.0 메모리없음</td><td>1.1e−15</td><td>3.4e−3</td><td>1.4e−2</td><td>1.1e−2</td><td>7.3e−3</td><td>1.4e−3</td><td>9.4e−4</td><td>1.6e−3</td></tr>
+      <tr><td>κ=1.0 드룹 18.8UI</td><td>1.1e−15</td><td>6.7e−6</td><td>1.6e−3</td><td>1.1e−3</td><td>1.5e−3</td><td>1.2e−3</td><td>9.1e−4</td><td>1.3e−3</td></tr>
+      <tr class="rule-top"><td><strong>κ=1.0 β=0.35</strong></td><td>1.1e−15</td><td class="bad"><strong>2.2e−2</strong></td><td>1.1e−2</td><td class="hl"><strong>2.3e−3</strong></td><td>4.2e−3</td><td>1.1e−3</td><td>2.2e−4</td><td>7.1e−4</td></tr>
+    </tbody>
+  </table></div>
+  <figcaption><b>표 29. 구조들을 최적에 견준다.</b> 25 dB · SNR 30 dB · 64만 비트 · 씨 4, DDFSE 는 15만 심볼. 기준 검출기는 <b>양자화 안 된</b> 표본을 보므로, 뒤 세 칸은 구조에서 ADC 를 빼 그 몫을 갈라 놓았다.</figcaption>
+</figure>
+
+<p><b>셋이 따라 나오고 둘은 이 논문에 불리하다.</b></p>
+
+<p><b>하나 — 모든 구조가 한 자릿수를 남겨 두고 있다.</b> 선형 채널에서도, 메모리 없는 비선형에서도, 수열 검출기는 오류 0 인데 제일 나은 구조가 5e−4 다. 이 논문이 내내 재 온 3~8배 차이는 <b>다 같이 최적에서 25배 넘게 떨어진 것들 사이의 차이</b>다. 그 간격은 비선형 탓이 아니라 <b>심볼마다 판정하기로 한 값</b>이다.</p>
+
+<p><b>둘 — 곱셈기 0개 역보정은 ADC 뒤에서는 공짜가 아니다.</b> κ=1.0 에서 ADC 를 빼면 선형 채널과 같은데, 7비트를 넣으면 같은 배치가 <b>5.3배</b> 나빠진다(6.5e−4 → 3.4e−3). artanh 가 포화 구간의 양자화 잡음을 늘린다. §8 은 이 역보정을 “공짜” 라고 적었다 — <b>산술로는 공짜가 맞고, 7비트에서 잡음으로는 5.3배다.</b></p>
+
+<p><b>셋 — β 영역만이 최적이 수열 검출기가 아닌 자리다.</b> β=0.35 에서 DDFSE 는 2.2e−2 인데 256칸 표가 2.3e−3 이다. <b>표가 어떤 선형 응답으로 지은 검출기보다도 열 배 낫다</b>(손상된 파형에서 실효 응답을 재서 준 것까지 포함해서). 이것이 이 논문에 내내 없던 이론적 진술이다 — <b>압축 뒤 대역제한은 어떤 선형 모형으로도 안 잡히는 채널을 만들고, 작은 비선형 표가 값을 하는 조건이 정확히 그것이다.</b> 표의 다른 줄에서는 선형 모형 수열 검출기가 표도 망도 이긴다.</p>
+
+<h3>16.3 새 채널 둘에서 같은 겨룸</h3>
+
+<figure>
+  <div class="scroll"><table>
+    <thead><tr><th>채널 / 손상</th><th>DDFSE</th><th>선형</th><th>표</th><th>NN 5→2</th><th>표/선형</th><th>NN/표</th><th>NN 이긴씨</th></tr></thead>
+    <tbody>
+      <tr><td>선로 40″ κ=1.0</td><td>6.7e−5</td><td>6.8e−3</td><td>4.1e−3</td><td>7.3e−3</td><td>1.59 ×</td><td>0.57 ×</td><td>0/6</td></tr>
+      <tr><td>선로 40″ κ=2.0</td><td>5.0e−5</td><td>1.2e−2</td><td>1.2e−2</td><td>1.1e−2</td><td>1.04 ×</td><td>1.06 ×</td><td>4/6</td></tr>
+      <tr class="rule-top"><td>선로 40″ β=0.35</td><td>2.5e−2</td><td>7.6e−3</td><td class="hl">2.2e−3</td><td>2.2e−3</td><td class="hl">3.43 ×</td><td>1.00 ×</td><td>3/6</td></tr>
+      <tr><td>측정본 K=16 κ=1.0</td><td>&lt;2.5e−5</td><td>1.1e−2</td><td>9.3e−3</td><td>1.0e−2</td><td>1.18 ×</td><td>0.93 ×</td><td>1/6</td></tr>
+      <tr><td>측정본 K=16 κ=2.0</td><td>&lt;2.5e−5</td><td>1.6e−2</td><td>1.3e−2</td><td>1.1e−2</td><td>1.26 ×</td><td>1.08 ×</td><td>5/6</td></tr>
+      <tr class="rule-top"><td><strong>측정본 K=16 β=0.35</strong></td><td>2.8e−4</td><td>1.1e−2</td><td class="hl"><strong>1.3e−3</strong></td><td>2.9e−3</td><td class="hl"><strong>8.48 ×</strong></td><td>0.46 ×</td><td>0/6</td></tr>
+    </tbody>
+  </table></div>
+  <figcaption><b>표 30. 물리 선로와 측정본 캐스케이드.</b> 40만 비트 · 씨 6 · ADC 7비트 · 양쪽 다 앞단에 역압축. 비는 씨별 중앙값.<br><b>머릿줄 결과가 채널을 바꿔도 산다 — 다만 그것이 나온 그 영역 안에서만.</b> 측정 채널 + 압축뒤대역에서 표가 선형 대비 <b>8.48배</b>로, 표 17 의 7.98배보다도 크다. 그 영역 밖에서는 표의 이득이 1.04~1.59배로 주저앉는다. <b>이 표는 범용 등화기가 아니라 짧은 메모리 비선형에 맞는 구조다</b> — 그것이 기여의 정직한 범위다. §15 의 κ=2.0 교차점도 이 채널들에서는 1.06·1.08배(4/6·5/6)로 약해지므로, <b>그 경계는 합성 채널에 한정된 것으로 읽어야 한다.</b></figcaption>
+</figure>
+
+<h3>16.4 선행 사례 — FFE 탭을 LUT 로 짓는 것과 무엇이 다른가</h3>
+
+<p>사용자가 알려 준 사례: <b>28 Gb/s PAM-4 수신기에서 FFE 앞 세 탭을 LUT 로 구현하고, 오프라인 ADC 계산값을 그 LUT 에 싣는다.</b> 고전적으로는 <b>분산 산술</b>(Peled &amp; Liu, 1974)이다. 이 저장소가 “곱셈기 없는 표”를 말하고 있으니 <b>같은 것이냐</b>가 먼저 답할 물음이다.</p>
+
+<div class="limits">
+  <h3 style="color:var(--none)">그 논문을 읽지 못했다</h3>
+  <p style="margin-bottom:0">이 환경에서 arxiv · IEEE Xplore · OpenReview · Semantic Scholar 가 전부 막혀 있다(조회로 확인했다, 전부 연결 실패). 그러므로 <b>아래 어느 문장도 그 논문에 대한 평가가 아니다</b> — 알려 준 설명대로의 <b>기법</b>과 견준다.</p>
+</div>
+
+<p><b>담는 것이 다르다. 그리고 그 차이는 잴 수 있다.</b> 분산 산술의 ROM 은 <code>R[a] = Σ c<sub>k</sub> a<sub>k</sub></code> 로 <b>주소의 선형 함수</b>다. 계수가 정해지면 내용이 정해지고, 학습 데이터가 안 든다. 이 논문의 표는 <code>E[b | 주소]</code> 를 담고, 주소의 선형 함수가 <b>아니며</b>, 어떤 FIR 로도 못 만든다. 말로 가르지 않고 <b>각 표의 내용을 제 주소 비트로 최소제곱 맞춤</b>해 보았다 — 분산 산술 ROM 은 상대 잔차 <b>3e−15</b> 로 정확히 맞고, 학습된 판정 표는 <b>0.27</b> 이 남는다. 그리고 식 (35) 를 RTL 로 지어 곱셈기 판과 300개 자극으로 맞대 보니 <b>한 비트도 안 다르다.</b> <b>분산 산술은 셈의 값을 바꾸고, 이 표는 무엇을 셈하는지를 바꾼다.</b></p>
+
+<figure>
+  <div class="scroll"><table>
+    <thead><tr><th>설계</th><th>곱셈기</th><th>LC</th><th>Fmax</th></tr></thead>
+    <tbody>
+      <tr class="rule-top"><td>FFE 11, 전부 곱셈기</td><td>11</td><td class="hl">2,237</td><td class="hl">52.38 MHz</td></tr>
+      <tr><td>FFE 11, 앞 3탭 DA</td><td>8</td><td>2,339</td><td>48.82 MHz</td></tr>
+      <tr><td>FFE 11, 앞 4탭 DA</td><td>7</td><td>2,701</td><td>49.56 MHz</td></tr>
+      <tr><td>FFE 11, 앞 6탭 DA</td><td>5</td><td class="bad">5,745</td><td class="bad">36.83 MHz</td></tr>
+    </tbody>
+  </table></div>
+  <figcaption><b>표 31. 앞 N 탭을 분산 산술로 푼 FFE</b>(iCE40 HX8K · 50 MHz 목표 · W7/DW7).<br><b>이 소자에서는 손해다.</b> 곱셈기가 이미 LUT 인 FPGA 에서 곱셈 셋을 비트면 ROM 읽기 일곱 번과 시프트 덧셈으로 바꾸면 102 LC 와 3.6 MHz 를 더 쓰고, 비용이 2<sup>N</sup> 으로 는다. 분산 산술이 값을 하는 자리는 <b>곱셈기가 작은 ROM 보다 진짜로 비싼 곳</b> — 맞춤 수신기 앞단, 즉 인용된 사례의 자리다.</figcaption>
+</figure>
+
+<p><b>이것이 우리 결과의 범위도 정해 준다.</b> §10 의 표가 이 소자에서 싼 까닭은 “표가 원래 싸서” 가 아니라 <b>판정 단을 대신하기 때문</b>이다. 그리고 둘은 겹쳐 쓸 수 있다 — 앞단 FFE 를 식 (35) 로 풀고 그 출력을 판정 표로 색인하면, 수신기 데이터 경로 전체에 곱셈기가 <code>L−N</code> 개만 남는다.</p>
+
+<h3>16.5 소자 하나를 넘어서 — 여기서 결론이 뒤집힌다</h3>
+
+<p>이 논문의 모든 면적 숫자는 <b>하드 곱셈기가 없는</b> 소자에서 났다. DSP 가 있는 계열로 같은 RTL 을 합성했더니 <b>순서가 뒤집혔다.</b> 이 논문의 주장에 가장 센 반론이므로 그대로 싣는다.</p>
+
+<figure>
+  <div class="scroll"><table>
+    <thead><tr><th>설계</th><th>곱셈기</th><th>iCE40</th><th>ECP5</th><th>Xilinx 7</th><th>Intel ALM</th></tr></thead>
+    <tbody>
+      <tr><td>FFE 11</td><td>11</td><td>2,267</td><td>1,575 +11D</td><td>406 +11D</td><td>483</td></tr>
+      <tr><td>FFE 11 + DFE 8</td><td>11</td><td>3,290</td><td>2,124 +11D</td><td>862 +11D</td><td>1,029</td></tr>
+      <tr class="rule-top"><td><strong>FFE 11 + 표 2×4</strong></td><td>11</td><td class="hl"><strong>3,053</strong></td><td>2,333 +11D</td><td class="bad"><strong>1,316 +11D</strong></td><td>1,218</td></tr>
+      <tr><td>FFE 11, 앞 3탭 DA</td><td>8</td><td>2,368</td><td class="bad">3,238 +8D</td><td>1,031 +8D</td><td>942</td></tr>
+      <tr class="rule-top"><td><strong>NN 5→2</strong></td><td>12</td><td>2,388</td><td>1,240 +12D</td><td class="hl"><strong>391 +12D</strong></td><td>485</td></tr>
+      <tr><td>NN 11→4</td><td>48</td><td>9,612</td><td>6,093 +48D</td><td>1,202 +48D</td><td>1,869</td></tr>
+      <tr><td>NN 11→16</td><td>192</td><td class="bad">37,727</td><td>14,529 +192D</td><td class="hl">4,106 +192D</td><td>7,256</td></tr>
+    </tbody>
+  </table></div>
+  <figcaption><b>표 32. 네 계열 합성 셀 수.</b> “+nD” 는 하드 곱셈 셀(ECP5 <code>MULT18X18D</code>, Xilinx <code>DSP48E1</code>)이고 셀 합계에 안 든다. <b>합성 결과이지 배치 결과가 아니다.</b></figcaption>
+</figure>
+
+<p><b>DSP 가 있으면 순서가 뒤집힌다.</b> Xilinx 7 계열에서 제안한 표는 패브릭 1,316 셀인데, 그것이 대신하려던 신경망은 <b>391 셀</b>이다 — <b>망이 3.4배 작고, 11탭 FFE 하나보다도 작다.</b> 망의 산술은 DSP48 열두 장으로 통째로 빠져나가는데, <b>표의 값은 주소 해독과 저장이라 어떤 DSP 도 안 먹어 준다.</b> ECP5 와 Intel ALM 에서도 같다. 게다가 iCE40 에 아예 안 들어가던 넓은 망(NN 11→16, 37,727 셀 대 7,680)이 7 계열에서는 4,106 셀 + DSP48 192장이라 <b>중급 부품에 여유 있게 들어간다.</b></p>
+
+<div class="limits">
+  <h3 style="color:var(--none)">면적 주장의 정직한 범위</h3>
+  <p style="margin-bottom:.6rem"><b>곱셈기를 표로 바꿔 면적을 버는 것은, 그 곱셈기가 표와 같은 패브릭으로 지어질 때뿐이다.</b> iCE40 에서는 그것이 참이고 표가 이긴다. 하드 곱셈기가 있는 소자라면 — <b>지금 나오는 모든 FPGA 계열, 그리고 7×7 곱셈기가 수백 게이트인 어떤 ASIC 이라도</b> — 표의 패브릭 값이 지배하고 작은 망이 더 싸다.</p>
+  <p style="margin-bottom:0"><b>§10·§16 의 BER 결과는 그대로다.</b> 소자에 매인 것은 <b>면적 논증뿐</b>이다. 같은 이유로 §16.4 의 분산 산술이 ECP5 에서 더 비싼 것도 설명된다(3,238 대 1,575) — 일을 DSP 에서 패브릭으로 옮기기 때문이다. <b>그 기법도 이 표도 “패브릭이 곱셈기보다 싸다”는 내기이고, 그 내기는 알고리즘이 아니라 소자가 건다.</b></p>
+</div>
+
+<div class="limits">
+  <h3 style="color:var(--none)">셀 수만 낸다 — Fmax 도 ASIC 도 아니다</h3>
+  <p style="margin-bottom:0">이 컨테이너의 배치·배선기는 <code>nextpnr-ice40</code> 하나뿐이고 표준셀 Liberty 파일이 없다. 그러므로 <b>iCE40 말고 어떤 소자에 대해서도 Fmax · 점유율 · 혼잡 · ASIC 면적/지연/전력을 내지 않는다.</b> 위의 뒤집힘도 <b>배치·배선으로 확인해야 할 면적 대리값</b>으로 읽어야 한다. 합성 결과만 보고 “ECP5 에서 몇 MHz” 를 적는 것이 바로 이 저장소가 내내 쫓은 거짓 초록이다.</p>
+</div>
+
+<h2 class="sec"><span class="n">17</span>결론</h2>
 
 <ol>
   <li><strong>이 논문의 전제가 틀렸었다.</strong> 메모리 없는 비선형은 메모리 없는 역함수가 있고, 그것은 128칸 표 하나다. 그 표가 곱셈 96개짜리 신경망을 2.02배 이기고, 표를 먼저 쓰면 신경망이 더 주는 것이 없다. <em>“선형 FFE·DFE가 못 푼다”와 “신경망이 필요하다”는 다른 말이다.</em></li>
