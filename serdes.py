@@ -310,7 +310,7 @@ def 링크(비트수: int = 20000, 손실dB: float = 20.0, SNRdB: float = 20.0,
        반사=(), DFE자리=None, 압축: float = 0.0,
        탭비트: int = 0, 남길비율: float = 1.0, 이상적판정: bool = False,
        ADC비트: int = 0, ADC풀스케일시그마: float = 3.0, 역압축: bool = False,
-       압축뒤대역: float = 0.0,
+       압축뒤대역: float = 0.0, ROM깊이: int = 0, ROM최소표본: int = 8,
        학습비율: float = 0.3, 씨: int = 0) -> dict:
     """PRBS -> 채널 -> 잡음 -> CTLE -> FFE -> DFE -> 슬라이서. {BER, 오류수, ...}.
 
@@ -423,7 +423,15 @@ def 링크(비트수: int = 20000, 손실dB: float = 20.0, SNRdB: float = 20.0,
         if 남길비율 < 1.0:
             dfe탭값 = 프루닝(dfe탭값, 남길비율)
 
-    판정 = _슬라이스(표본, dfe탭값, 맞춘것 if 이상적판정 else None, 자리들)
+    # **판정 색인 ROM**(선택). 같은 과거 판정에 대해 DFE 의 선형 함수를 임의 함수로
+    # 넓힌다 -- 곱셈기는 여전히 0개이고 2^깊이 칸 ROM 하나가 는다.
+    ROM표, 되돌린칸 = None, 0
+    if ROM깊이 and int(ROM깊이) > 0:
+        ROM표, 되돌린칸 = 판정ROM학습(표본, 맞춘것, int(ROM깊이), 학습끝,
+                                  dfe탭값, 자리들, int(ROM최소표본))
+        판정 = _슬라이스ROM(표본, ROM표, int(ROM깊이))
+    else:
+        판정 = _슬라이스(표본, dfe탭값, 맞춘것 if 이상적판정 else None, 자리들)
 
     잰것 = slice(학습끝, len(판정))
     오류 = int(np.sum(판정[잰것] != 맞춘것[잰것]))
@@ -435,6 +443,8 @@ def 링크(비트수: int = 20000, 손실dB: float = 20.0, SNRdB: float = 20.0,
             "ADC풀스케일시그마": ADC풀스케일시그마,
             "DFE탭": None if dfe탭값 is None else list(map(float, dfe탭값)),
             "DFE자리": 자리들, "반사": list(반사),
+            "ROM깊이": int(ROM깊이), "ROM칸수": (0 if ROM표 is None else len(ROM표)),
+            "ROM되돌린칸": 되돌린칸,
             "이상적판정": 이상적판정, "판정": PASS,
             "왜": BER말(오류, 잰비트)}
 
@@ -452,6 +462,82 @@ def 받은파형(비트수: int = 4000, 손실dB: float = 20.0, SNRdB: float = 2
                     mode="full")[:int(비트수) * sps]
     y = y + rng.normal(0.0, 10.0 ** (-SNRdB / 20.0), len(y))
     return CTLE(y, sps, CTLE피킹dB) if CTLE피킹dB else y
+
+
+def 판정ROM학습(표본: np.ndarray, 정답: np.ndarray, 깊이: int, 끝: int,
+            dfe탭=None, 자리들=None, 최소표본: int = 8):
+    """**과거 `깊이`개 판정으로 색인되는 표**를 학습 구간에서 만든다. 곱셈기 0개.
+
+    ## 왜 이것인가 -- 값이 매겨진 축에서 고른 구조
+
+    이 저장소가 잰 곱셈기 값은 이렇다(표 12).
+
+        메모리 없는 비선형   ADC 코드 표          곱셈 0
+        선형 선행커서 ISI    FFE                  탭당 1 (약 197 LC)
+        선형 후행커서 ISI    DFE                  곱셈 0 (NRZ 판정이 ±1)
+        **비선형 후행커서**  **판정 색인 표**     **곱셈 0**
+        표본에 달린 비선형   신경망 · Volterra    많다
+
+    선형 DFE 는 과거 판정의 **선형** 함수 `Σ c_k d_{t-k}` 로 뺄 값을 정한다. 같은
+    입력에 대해 **임의의** 함수를 담으면 그것이 2^깊이 칸짜리 표 하나이고, 곱셈기는
+    여전히 0개다. 즉 **표는 같은 탭 수의 DFE 를 엄밀히 일반화한다.**
+
+    일반 MLP 가 틀린 도구인 까닭이 여기 있다 -- 곱셈기 0개로 되는 일(판정에 달린
+    비선형)에 곱셈기를 낸다. 망이 곱셈기 값을 해야 하는 자리는 **판정이 아니라 표본에
+    달린** 비선형뿐이다.
+
+    ## 누수를 막는 두 가지
+
+    *하나.* 표는 **학습 구간에서만** 만든다. 색인에 정답 비트를 쓰는 것은 표준 PHY 의
+    학습 프리앰블에 해당하므로 괜찮다. 그러나 **평가 구간에서는 제 판정으로 색인해야**
+    하고(`_슬라이스ROM`), 그래야 오류 번짐이 DFE 와 똑같이 산다.
+
+    *둘.* 표본이 모자란 칸은 배우지 않는다 -- `최소표본` 미만이면 **선형 DFE 값으로
+    되돌린다.** 그러지 않으면 드문 패턴에서 잡음을 외운 값이 들어가 평가에서 터진다.
+    되돌릴 DFE 가 없으면 0 이다.
+    """
+    깊이 = int(깊이)
+    if 깊이 <= 0:
+        return None, 0
+    끝 = int(max(끝, 1))
+    칸수 = 1 << 깊이
+    합 = np.zeros(칸수)
+    수 = np.zeros(칸수, dtype=np.int64)
+    # 색인: 과거 깊이개 판정(정답)을 비트로. d=+1 -> 1, d=-1 -> 0. 최근 것이 최하위.
+    쓸것 = min(끝, len(표본), len(정답))
+    for t in range(깊이, 쓸것):
+        idx = 0
+        for k in range(깊이):
+            idx |= (1 if 정답[t - 1 - k] > 0 else 0) << k
+        합[idx] += 표본[t] - 정답[t]
+        수[idx] += 1
+    표 = np.zeros(칸수)
+    되돌린칸 = 0
+    for i in range(칸수):
+        if 수[i] >= 최소표본:
+            표[i] = 합[i] / 수[i]
+        else:
+            되돌린칸 += 1
+            if dfe탭 is not None and 자리들:
+                # 이 칸의 패턴이 뜻하는 지난 판정으로 선형 DFE 값을 낸다
+                표[i] = float(sum(c * (1.0 if (i >> (m - 1)) & 1 else -1.0)
+                                  for c, m in zip(dfe탭, 자리들) if m <= 깊이))
+    return 표, 되돌린칸
+
+
+def _슬라이스ROM(표본: np.ndarray, 표: np.ndarray, 깊이: int) -> np.ndarray:
+    """판정 색인 표로 되먹이는 슬라이서. **되먹이는 것은 제 판정이다.**"""
+    깊이 = int(깊이)
+    난것 = np.empty(len(표본))
+    지난 = np.zeros(깊이)              # 지난[0] 이 한 심볼 전
+    for i in range(len(표본)):
+        idx = 0
+        for k in range(깊이):
+            idx |= (1 if 지난[k] > 0 else 0) << k
+        v = 표본[i] - 표[idx]
+        난것[i] = 1.0 if v >= 0 else -1.0
+        지난 = np.concatenate([[난것[i]], 지난[:-1]])
+    return 난것
 
 
 def _슬라이스(표본: np.ndarray, dfe탭, 정답, 자리들=None) -> np.ndarray:
