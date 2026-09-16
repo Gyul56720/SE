@@ -37,6 +37,36 @@ import serdes
 PASS, FAIL, 못잼 = serdes.PASS, serdes.FAIL, serdes.못잼
 
 
+# 활성함수. **tanh 는 하드웨어가 바로 못 한다** -- 어떻게 근사하느냐가 면적을 정한다.
+#   tanh      기준(부동소수점)
+#   hardtanh  clip(x, -1, 1). 곱셈도 표도 없다. 비교 둘이면 끝난다
+#   pwl3      세 토막 구간선형: |x|<0.5 는 x, 0.5<=|x|<2 는 0.5x+sign*0.25, 아니면 sign
+# 어느 것을 쓸지는 **BER 로 재서** 정한다 -- "tanh 가 정확하니까" 로 고르지 않는다.
+def 활성(x: np.ndarray, 꼴: str = "tanh") -> np.ndarray:
+    if 꼴 == "tanh":
+        return np.tanh(x)
+    if 꼴 == "hardtanh":
+        return np.clip(x, -1.0, 1.0)
+    if 꼴 == "pwl3":
+        a = np.abs(x)
+        s = np.sign(x)
+        return np.where(a < 0.5, x,
+                        np.where(a < 2.0, s * (0.5 * a + 0.25), s))
+    raise ValueError(f"모르는 활성함수 {꼴!r} -- tanh · hardtanh · pwl3")
+
+
+def 활성미분(h: np.ndarray, x: np.ndarray, 꼴: str = "tanh") -> np.ndarray:
+    """역전파용. `h` 는 활성 출력, `x` 는 그 입력."""
+    if 꼴 == "tanh":
+        return 1.0 - h ** 2
+    if 꼴 == "hardtanh":
+        return (np.abs(x) < 1.0).astype(float)
+    if 꼴 == "pwl3":
+        a = np.abs(x)
+        return np.where(a < 0.5, 1.0, np.where(a < 2.0, 0.5, 0.0))
+    raise ValueError(f"모르는 활성함수 {꼴!r}")
+
+
 def 창만들기(표본: np.ndarray, 앞뒤: int) -> np.ndarray:
     """각 심볼마다 앞뒤 `앞뒤` 개를 붙인 (N, 2*앞뒤+1) 행렬. 가장자리는 0 으로 채운다."""
     n, 폭 = len(표본), 2 * int(앞뒤) + 1
@@ -60,13 +90,30 @@ def 파라미터수(모: dict) -> int:
     return int(sum(v.size for v in 모.values()))
 
 
-def 앞먹임(모: dict, X: np.ndarray):
-    h = np.tanh(X @ 모["W1"] + 모["b1"])
-    return h, (h @ 모["W2"] + 모["b2"]).ravel()
+def 앞먹임(모: dict, X: np.ndarray, 꼴: str = "tanh"):
+    z = X @ 모["W1"] + 모["b1"]
+    h = 활성(z, 꼴)
+    return h, (h @ 모["W2"] + 모["b2"]).ravel(), z
 
 
-def 예측(모: dict, X: np.ndarray) -> np.ndarray:
-    return 앞먹임(모, X)[1]
+def 예측(모: dict, X: np.ndarray, 꼴: str = "tanh") -> np.ndarray:
+    return 앞먹임(모, X, 꼴)[1]
+
+
+def 굳히기(모: dict, 비트: int = 0, 남길비율: float = 1.0, 스케일=None) -> dict:
+    """앞먹임에 쓸 **굳힌 가중치**. 양자화·프루닝을 한 자리에서 건다.
+
+    `스케일` 을 주면 그 격자로 자른다 -- QAT 에서 **격자를 얼려 두기** 위해서다.
+    안 얼리면 가중치가 움직일 때마다 채널 최댓값이 새로 잡혀 격자가 통째로 흔들리고,
+    손실면이 계단처럼 튀어 학습이 불안정해진다(실측 2026-09-16: 5비트 이하에서
+    씨 산포가 ±2.8e-2 까지 벌어졌다 -- PTQ 는 ±4.1e-3 였다).
+    """
+    난것 = 모
+    if 비트 and 비트 > 0:
+        난것 = 가중치양자화(난것, int(비트), 스케일=스케일)
+    if 남길비율 < 1.0:
+        난것 = 가중치프루닝(난것, 남길비율)
+    return 난것
 
 
 def 굳히기(모: dict, 비트: int = 0, 남길비율: float = 1.0, 스케일=None) -> dict:
@@ -87,7 +134,8 @@ def 굳히기(모: dict, 비트: int = 0, 남길비율: float = 1.0, 스케일=N
 
 def 학습(모: dict, X: np.ndarray, d: np.ndarray, 걸음: float = 3e-3,
        에폭: int = 12, 배치: int = 256, 씨: int = 0,
-       QAT비트: int = 0, QAT남길비율: float = 1.0, QAT스케일=None) -> dict:
+       QAT비트: int = 0, QAT남길비율: float = 1.0, QAT스케일=None,
+       활성꼴: str = "tanh") -> dict:
     """Adam 으로 MSE 를 줄인다. **수렴했는지 같이 낸다.**
 
     끝 MSE 가 시작보다 안 줄었으면 안 수렴한 것이다. 그때 BER 이 나쁜 것은
@@ -118,13 +166,13 @@ def 학습(모: dict, X: np.ndarray, d: np.ndarray, 걸음: float = 3e-3,
             xb, db = X[골], d[골]
             # **앞먹임은 굳힌 가중치로, 갱신은 원래 가중치에** (straight-through).
             굳은 = 굳히기(모, QAT비트, QAT남길비율, QAT스케일)
-            h, y = 앞먹임(굳은, xb)
+            h, y, z = 앞먹임(굳은, xb, 활성꼴)
             e = y - db
             모은것.append(float(np.mean(e ** 2)))
             g = {}
             g["W2"] = h.T @ e[:, None] / len(골)
             g["b2"] = np.array([float(np.mean(e))])
-            뒤 = (e[:, None] @ 굳은["W2"].T) * (1.0 - h ** 2)
+            뒤 = (e[:, None] @ 굳은["W2"].T) * 활성미분(h, z, 활성꼴)
             g["W1"] = xb.T @ 뒤 / len(골)
             g["b1"] = 뒤.mean(axis=0)
             t += 1
@@ -200,7 +248,8 @@ def 링크(비트수: int = 300000, 손실dB: float = 25.0, SNRdB: float = 30.0,
        가중치비트: int = 0, 남길비율: float = 1.0, QAT: bool = False,
        미세에폭: int = 0,
        에폭: int = 12, 걸음: float = 3e-3, 학습비율: float = 0.3,
-       ADC비트: int = 0, ADC풀스케일시그마: float = 2.5, 반사=(), 씨: int = 0) -> dict:
+       ADC비트: int = 0, ADC풀스케일시그마: float = 2.5, 반사=(),
+       활성꼴: str = "tanh", 씨: int = 0) -> dict:
     """신경망 등화기로 링크를 돌린다. {BER, 오류수, 잰비트, 파라미터수, 학습, 왜}.
 
     `serdes.링크` 로 **정렬·AGC·ADC 까지 끝난 표본**을 받아 그 위에 신경망을 얹는다.
@@ -220,14 +269,15 @@ def 링크(비트수: int = 300000, 손실dB: float = 25.0, SNRdB: float = 30.0,
     # 안 이겼고 산포가 PTQ 의 몇 배였다(5비트 ±1.1e-2 대 ±4.1e-3) -- 스케일이 매
     # 미니배치마다 새로 잡히니 학습이 흔들린 것이다. 현업의 QAT 는 미세조정이다.
     쓴스케일 = None
-    r = 학습(모, X[:학습끝], 비트[:학습끝], 걸음=걸음, 에폭=int(에폭), 씨=int(씨))
+    r = 학습(모, X[:학습끝], 비트[:학습끝], 걸음=걸음, 에폭=int(에폭), 씨=int(씨),
+           활성꼴=활성꼴)
     if QAT and (가중치비트 or 남길비율 < 1.0):
         더 = int(미세에폭) if 미세에폭 else max(2, int(에폭) // 2)
         # **격자를 float 해에서 한 번 잡고 얼린다.**
         언것 = 스케일뽑기(r["모"]) if 가중치비트 else None
         r2 = 학습(r["모"], X[:학습끝], 비트[:학습끝], 걸음=걸음 * 0.3, 에폭=더,
                 씨=int(씨) + 1, QAT비트=int(가중치비트),
-                QAT남길비율=남길비율, QAT스케일=언것)
+                QAT남길비율=남길비율, QAT스케일=언것, 활성꼴=활성꼴)
         모끝 = 굳히기(r2["모"], int(가중치비트), 남길비율, 언것)
         쓴스케일 = 언것
         r = {**r2, "왜": r["왜"] + f" -> QAT 미세조정 {더}에폭: {r2['왜']}",
@@ -242,7 +292,7 @@ def 링크(비트수: int = 300000, 손실dB: float = 25.0, SNRdB: float = 30.0,
         쓴스케일 = 스케일뽑기(r["모"]) if 가중치비트 else None
         모 = 굳히기(r["모"], int(가중치비트), 남길비율, 쓴스케일)
 
-    y = 예측(모, X)
+    y = 예측(모, X, 활성꼴)
     # 신경망 출력을 메인 커서 이득으로 정규화한다 -- DFE 탭이 읽을 수 있는 값이 되게
     g = float(np.mean(y[:학습끝] * 비트[:학습끝])) or 1.0
     y = y / g
@@ -269,7 +319,7 @@ def 링크(비트수: int = 300000, 손실dB: float = 25.0, SNRdB: float = 30.0,
             "양자화스케일": 쓴스케일,
             "남길비율": float(남길비율), "QAT": bool(QAT),
             "학습": {k: v for k, v in r.items() if k != "모"}, "모": 모,
-            "DFE자리": 자리들, "압축": 압축, "이상적판정": bool(이상적판정),
+            "DFE자리": 자리들, "압축": 압축, "활성꼴": 활성꼴, "이상적판정": bool(이상적판정),
             "판정": PASS if r["수렴"] else 못잼,
             "왜": (serdes.BER말(오류, 잰비트) if r["수렴"] else r["왜"])}
 

@@ -1013,6 +1013,62 @@ def nn_equalizer(loss_db: float = 25.0, snr_db: float = 30.0, compression: float
 
 
 @tool
+def eq_area(kind: str = "nn", taps: int = 5, hidden: int = 2, bits: int = 7,
+            frac: int = 4, target_mhz: float = 50.0, chip: str = "hx8k",
+            seconds: int = 300) -> str:
+    """**Area and Fmax of an equaliser, on a real device** (yosys + nextpnr, iCE40).
+
+    `kind` is `nn` (quantised MLP), `ffe` (linear feed-forward) or `dfe` (decision
+    feedback). The neural net's Verilog is **bit-exact against `nnfix`**, the
+    fixed-point reference -- `tests/test_nnfix.py` runs it and compares the final
+    accumulator integer, not just the sign. That check is the reason these LC numbers
+    mean anything: the smallest circuit is always the wrong one.
+
+    Measured 2026-09-16, HX8K, target 50 MHz:
+
+        DFE 4 taps W8      0 mults    211 LC  71.25 MHz  PASS
+        DFE 8 taps W8      0 mults    439 LC  37.86 MHz  FAIL
+        FFE 11 taps W7    11 mults  1,835 LC  56.11 MHz  PASS
+        NN 5->2 Q2.4 7b   12 mults  2,368 LC  30.58 MHz  FAIL
+        NN 5->2 Q3.6 10b  12 mults  4,498 LC  26.20 MHz  FAIL
+
+    Three things that table says. **Word length is half the area** -- the same net at
+    Q3.6/10-bit is 1.9x the size of Q2.4/7-bit and its BER is the same (the floor is
+    the *integer* part, 2 bits; fractional resolution below 4 is what actually hurts).
+    **DFE taps carry no multiplier at all** -- NRZ decisions are +-1, so feedback is an
+    add or a subtract. And **what fails timing is combinational depth, not size**: the
+    net puts multiply -> shift/clip -> multiply in one cycle, and an 8-tap DFE puts
+    eight adds in one cycle; both miss 50 MHz while the bigger FFE makes it.
+
+    `target_mhz` is mandatory in spirit: without a target nextpnr reports PASS against
+    its own 12 MHz default, which is meaningless. Identifiers must be ASCII.
+    """
+    if agent_context.is_blocked():
+        return "실패: 게스트는 eq_area 을 사용할 수 없습니다."
+    import eqrtl
+    import pnr
+    종 = (kind or "nn").strip().lower()
+    if 종 == "nn":
+        설계, top = eqrtl.nn(int(taps), int(hidden), XW=int(bits), WW=int(bits),
+                            FRAC=int(frac)), "nneq_eq"
+        곱 = int(taps) * int(hidden) + int(hidden)
+    elif 종 == "ffe":
+        설계, top = eqrtl.ffe(int(taps), W=int(bits)), "ffe"
+        곱 = int(taps)
+    elif 종 == "dfe":
+        설계, top = eqrtl.dfe(range(1, int(taps) + 1), W=int(bits)), "dfe_pos"
+        곱 = 0
+    else:
+        return f"실패: kind 는 nn · ffe · dfe 중 하나다 (받은 것: {kind!r})"
+    r = pnr.맞춰보기(설계, top=top, 목표MHz=target_mhz, 칩=chip, 초=int(seconds))
+    줄 = [f"{종} · {곱} multipliers · {r['판정']}", r["왜"]]
+    말 = pnr.말로(r)
+    if 말:
+        줄.append(말)
+    return "\n".join(줄)
+
+
+@tool
 def ip_signoff(design: str, testbench: str, top: str = "tb",
                min_coverage: float = 80.0, target_mhz: float = 0.0,
                chip: str = "hx8k", deliverables: str = "",

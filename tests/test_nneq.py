@@ -263,6 +263,34 @@ ok("optimal equaliser **is linear**" in 잘린,
 ok("6.75e-4" in 잘린 and "6.33e-4" in 잘린, "대조 실측 숫자를 든다")
 ok("just a gain change" in 잘린, "송신단 압축이 헛일인 까닭을 적는다")
 
+print("\n[활성함수 -- 하드웨어가 할 수 있는 것으로 갈아탄다]")
+x = np.array([-3.0, -1.5, -0.25, 0.0, 0.25, 1.5, 3.0])
+ok(np.allclose(nneq.활성(x, "tanh"), np.tanh(x)), "tanh 는 np.tanh 다")
+ok(np.array_equal(nneq.활성(x, "hardtanh"), np.clip(x, -1.0, 1.0)),
+   "hardtanh 는 ±1 클립이다 -- 곱셈도 표도 없다")
+# pwl3: |x|<0.5 는 x, 0.5<=|x|<2 는 sign*(0.5|x|+0.25), 아니면 sign
+ok(np.allclose(nneq.활성(np.array([0.25, 1.0, 3.0]), "pwl3"), [0.25, 0.75, 1.0]),
+   "pwl3 가 세 토막 그대로다")
+ok(np.allclose(nneq.활성(np.array([-1.0]), "pwl3"), [-0.75]), "pwl3 가 홀함수다")
+try:
+    nneq.활성(x, "없는것")
+    ok(False, "모르는 활성함수에 ValueError")
+except ValueError:
+    ok(True, "**모르는 활성함수는 조용히 tanh 로 안 떨어진다** -- ValueError 다")
+# 미분: hardtanh 는 클립 밖에서 0, pwl3 는 가운데서 1 · 바깥에서 0
+ok(np.array_equal(nneq.활성미분(None, np.array([-2.0, 0.5, 2.0]), "hardtanh"),
+                  np.array([0.0, 1.0, 0.0])), "hardtanh 미분이 클립 밖에서 0 이다")
+ok(np.allclose(nneq.활성미분(None, np.array([0.25, 1.0, 3.0]), "pwl3"),
+               [1.0, 0.5, 0.0]), "pwl3 미분이 세 토막이다")
+h = np.tanh(x)
+ok(np.allclose(nneq.활성미분(h, x, "tanh"), 1 - h ** 2), "tanh 미분이 1-h² 다")
+# **미분이 실제로 학습에 쓰이는가** -- 상수로 바꿔도 통과하면 안 잡는 것이다
+표본 = np.linspace(-1, 1, 4000)
+Xq = nneq.창만들기(표본, 2)
+정답 = np.sign(np.sin(np.arange(4000) * 0.7)) 
+모q = nneq.짓기(Xq.shape[1], 3, 씨=0)
+rq = nneq.학습(모q, Xq, 정답, 에폭=4, 씨=0, 활성꼴="hardtanh")
+ok(rq["수렴"], "hardtanh 로도 학습이 돈다 (역전파 경로가 이어져 있다)")
 print()
 if FAIL_목록:
     print(f"실패 {len(FAIL_목록)}개 -- {FAIL_목록}")
