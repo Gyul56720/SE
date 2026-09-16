@@ -432,6 +432,83 @@ else:
             if (1 if int(찍6[i][1]) else -1) != 기준[i - 2]]
     ok(not 어긋8, f"파이프라인 신경망이 **같은 판정을 한 칸 늦게** 낸다 ({len(찍6)}개)"
        if not 어긋8 else f"파이프라인 신경망이 {len(어긋8)}개 어긋났다: {어긋8[:3]}")
+
+    # ---- FFE + 표본 색인 표: 뒷단에 곱셈기가 없는 구조. **면적을 재기 전에 맞는지 본다.**
+    # 시프트는 **표본 대부분이 범위 안에 들어오게** 고른다. 처음에 5 로 뒀더니
+    # 90/90 이 죔쇠에 걸려 범위 안 산술을 하나도 안 재고 있었다. 9 로 올리니 이번엔
+    # 0/90 이라 죔쇠를 안 쟀다. 8 에서 26/90 -- 양쪽 길이 다 돈다(A.12 와 같은 결손).
+    Lt, 창t, qb, sh = 5, 2, 4, 8
+    계t = [40, -18, 7, -3, 2]
+    입력t = [((i * 53) % 127) - 63 for i in range(90)]
+    표t = [(i * 37) % 2 for i in range(1 << (qb * 창t))]   # 아무 표나 -- 배선을 본다
+    줄t = ["`timescale 1ns/1ps", "module tb;",
+          "  reg clk=0, rst_n=0, cw_we=0, tw_we=0, tw_data=0;",
+          f"  reg [{eqrtl.주소폭(Lt) - 1}:0] cw_addr=0;",
+          f"  reg [{qb * 창t - 1}:0] tw_addr=0;",
+          "  reg signed [6:0] cw_data=0;  reg signed [6:0] x=0;",
+          "  wire d;",
+          "  ffe_tbl dut(.clk(clk),.rst_n(rst_n),.x(x),.cw_we(cw_we),.cw_addr(cw_addr),"
+          ".cw_data(cw_data),.tw_we(tw_we),.tw_addr(tw_addr),.tw_data(tw_data),.d(d));",
+          "  always #5 clk = ~clk;", "  initial begin",
+          "    @(negedge clk); rst_n = 1;"]
+    for a, v in enumerate(계t):
+        줄t.append(f"    @(negedge clk); cw_we=1; cw_addr={a}; cw_data={v};")
+    줄t.append("    @(negedge clk); cw_we=0;")
+    for a, v in enumerate(표t):
+        줄t.append(f"    @(negedge clk); tw_we=1; tw_addr={a}; tw_data={v};")
+    줄t.append("    @(negedge clk); tw_we=0;")
+    for v in 입력t:
+        줄t.append(f"    @(negedge clk); x = {v};")
+        줄t.append('    @(posedge clk); #1 $display("D %0d", d);')
+    줄t += ["    $finish;", "  end", "endmodule"]
+    찍t = [int(ln.split()[1]) for ln in
+          돌리기(eqrtl.ffe_tbl(Lt, 창t, qb, sh, W=7, DW=7), "ffe_tbl", 줄t, "d").splitlines()
+          if ln.startswith("D ")]
+
+    # 정수 기준모델: RTL 의 흐름 그대로 (sr[0]=최신, 자르기+죔쇠, 코드 이어붙이기)
+    def 코드내기(acc):
+        옮 = acc >> sh                       # 산술 우시프트 = 내림
+        큰, 작 = (1 << (qb - 1)) - 1, -(1 << (qb - 1))
+        if 옮 > 큰: return (1 << qb) - 1
+        if 옮 < 작: return 0
+        return (옮 + (1 << (qb - 1))) & ((1 << qb) - 1)
+    기대t, 지난c = [], [0] * max(창t - 1, 1)
+    for i in range(len(입력t)):
+        acc = sum(계t[k] * 입력t[i - k] for k in range(Lt) if i - k >= 0)
+        c = 코드내기(acc)
+        주소 = c
+        for k in range(창t - 1):
+            주소 |= 지난c[k] << (qb * (k + 1))
+        기대t.append(표t[주소])
+        지난c = [c] + 지난c[:-1]
+    # sr 를 거치므로 한 칸 늦다
+    어긋t = [(i, 찍t[i], 기대t[i - 1]) for i in range(Lt + 2, min(len(찍t), len(기대t)))
+            if 찍t[i] != 기대t[i - 1]]
+    ok(not 어긋t, f"**FFE+표 RTL 이 정수 기준모델과 같다** ({len(찍t)}개)"
+       if not 어긋t else f"FFE+표가 {len(어긋t)}개 어긋났다: {어긋t[:3]}")
+    ok(0 < sum(기대t) < len(기대t), "기대 판정이 양쪽으로 다 난다")
+    # 죔쇠가 실제로 걸리는가 -- 안 걸리면 죔쇠 논리를 재는 것이 아니다
+    accs = [sum(계t[k] * 입력t[i - k] for k in range(Lt) if i - k >= 0)
+            for i in range(len(입력t))]
+    걸린 = sum(1 for a in accs if not (-(1 << (qb - 1)) <= (a >> sh) <= (1 << (qb - 1)) - 1))
+    # 파이프판은 **같은 판정을 한 칸 늦게** 내야 한다 (되먹임이 없어 자를 수 있다)
+    찍tp = [int(ln.split()[1]) for ln in
+           돌리기(eqrtl.ffe_tbl(Lt, 창t, qb, sh, W=7, DW=7, 파이프=True),
+                "ffe_tbl", 줄t, "d").splitlines() if ln.startswith("D ")]
+    어긋tp = [(i, 찍tp[i], 기대t[i - 2]) for i in range(Lt + 3, min(len(찍tp), len(기대t)))
+             if 찍tp[i] != 기대t[i - 2]]
+    ok(not 어긋tp, f"**파이프 FFE+표가 같은 판정을 한 칸 늦게 낸다** ({len(찍tp)}개)"
+       if not 어긋tp else f"파이프 FFE+표가 {len(어긋tp)}개 어긋났다: {어긋tp[:3]}")
+    같은칸t = sum(1 for i in range(Lt + 3, min(len(찍tp), len(기대t)))
+                 if 찍tp[i] == 기대t[i - 1])
+    센칸t = len(range(Lt + 3, min(len(찍tp), len(기대t))))
+    ok(같은칸t < 센칸t,
+       f"**실제로 한 칸 늦다** (민판 정렬로는 {같은칸t}/{센칸t}) -- 다 맞으면 "
+       "레지스터가 안 들어간 것이다")
+
+    ok(len(accs) // 10 < 걸린 < len(accs) * 9 // 10,
+       f"**죔쇠가 걸리기도 하고 안 걸리기도 한다** ({걸린}/{len(accs)}) -- 전부 걸리면 "
+       "범위 안 산술을 안 재는 것이고, 하나도 안 걸리면 죔쇠를 안 재는 것이다")
     최대acc = max(abs(a) for a in acc들)
     ok(최대acc > (1 << 11) - 1,
        f"**되먹임이 acc 를 x 폭 밖으로 민다** (|acc| 최대 {최대acc} > 2047) "

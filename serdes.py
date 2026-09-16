@@ -312,6 +312,7 @@ def 링크(비트수: int = 20000, 손실dB: float = 20.0, SNRdB: float = 20.0,
        ADC비트: int = 0, ADC풀스케일시그마: float = 3.0, 역압축: bool = False,
        압축뒤대역: float = 0.0, ROM깊이: int = 0, ROM최소표본: int = 8,
        ROM차수: int = 0, 표본표창: int = 0, 표본표비트: int = 4,
+       표본표시프트: bool = True,
        학습비율: float = 0.3, 씨: int = 0) -> dict:
     """PRBS -> 채널 -> 잡음 -> CTLE -> FFE -> DFE -> 슬라이서. {BER, 오류수, ...}.
 
@@ -430,7 +431,8 @@ def 링크(비트수: int = 20000, 손실dB: float = 20.0, SNRdB: float = 20.0,
     if 표본표창 and int(표본표창) > 0:
         # **표본 코드 색인 표.** 되먹임이 없다 -- 앞먹임이라 오류 번짐도 없다.
         표, 주소, 찬칸 = 표본색인표학습(표본, 맞춘것, int(표본표창),
-                                   int(표본표비트), 학습끝)
+                                   int(표본표비트), 학습끝,
+                                   시프트=bool(표본표시프트))
         판정 = np.where(표[주소] >= 0, 1.0, -1.0)
         파라미터수 = len(표)
     elif ROM깊이 and int(ROM깊이) > 0:
@@ -610,7 +612,7 @@ def 판정볼테라학습(표본: np.ndarray, 정답: np.ndarray, 깊이: int, �
 
 
 def 표본색인표학습(표본: np.ndarray, 정답: np.ndarray, 창: int, 색인비트: int,
-             끝: int, 최소표본: int = 4):
+             끝: int, 최소표본: int = 4, 시프트: bool = True):
     """**표본 코드로 색인하는 표.** 판정이 아니라 진폭을 본다. 곱셈기 0개.
 
     ## 왜 판정 영역 구조가 천장에 걸렸나 -- 실측 2026-09-16
@@ -655,11 +657,20 @@ def 표본색인표학습(표본: np.ndarray, 정답: np.ndarray, 창: int, 색�
         return None, 0, 0
     끝 = int(max(끝, 1))
     n = min(len(표본), len(정답))
-    # 양자화 범위를 **학습 구간의 백분위로** 잡는다 -- 수신기가 아는 것만 쓴다
-    낮, 높 = np.percentile(표본[:끝], [0.5, 99.5])
     칸당 = (1 << 색인비트) - 1
-    코드 = np.clip(((표본[:n] - 낮) / max(높 - 낮, 1e-12) * 칸당).round(),
-                  0, 칸당).astype(np.int64)
+    if 시프트:
+        # **하드웨어가 실제로 할 수 있는 양자화.** 백분위로 늘이고 줄이는 것은 곱셈이다.
+        # 여기서는 누산기의 비트를 **잘라 쓰기만** 한다(2의 거듭제곱 눈금 + 클램프).
+        # 눈금은 학습 구간의 rms 에서 2의 거듭제곱 하나로 고르고 그대로 못 박는다.
+        rms = float(np.sqrt(np.mean(표본[:끝] ** 2))) or 1.0
+        눈금 = 2.0 ** np.round(np.log2(max(2.5 * rms / ((1 << 색인비트) / 2), 1e-12)))
+        가운데 = 1 << (색인비트 - 1)
+        코드 = np.clip(np.floor(표본[:n] / 눈금) + 가운데, 0, 칸당).astype(np.int64)
+    else:
+        # 백분위로 늘인다 -- 참고용(하드웨어로는 곱셈이 든다)
+        낮, 높 = np.percentile(표본[:끝], [0.5, 99.5])
+        코드 = np.clip(((표본[:n] - 낮) / max(높 - 낮, 1e-12) * 칸당).round(),
+                      0, 칸당).astype(np.int64)
     주소 = np.zeros(n, dtype=np.int64)
     for k in range(창):
         앞 = np.concatenate([np.zeros(k, dtype=np.int64), 코드[:n - k]])
