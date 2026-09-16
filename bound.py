@@ -45,6 +45,8 @@ ISI 를 공짜로 없애 주는 검출기는 없으므로 **어떤 등화기도 
 """
 from __future__ import annotations
 
+import math
+
 import numpy as np
 
 import serdes
@@ -354,3 +356,98 @@ def 말로(r: dict) -> str:
         f"  DDFSE 손상 파형      {r['DDFSE손상']['BER']:.2e}   "
         f"(펄스 {r['DDFSE손상']['펄스']}) {r['DDFSE손상']['왜']}",
     ])
+
+
+# ---------------------------------------------------------------- 낮은 BER
+
+def Q역(p: float) -> float:
+    """`Q(x) = p` 의 x. 이분법 -- scipy 없이도 돌게."""
+    if not (0.0 < p < 0.5):
+        return float("nan")
+    lo, hi = 0.0, 40.0
+    for _ in range(200):
+        mid = 0.5 * (lo + hi)
+        if serdes.Q(mid) > p:
+            lo = mid
+        else:
+            hi = mid
+    return 0.5 * (lo + hi)
+
+
+def 큐플롯(잰것) -> dict:
+    """**BER 을 1e-12 까지 말하려면 기울기를 봐야 한다.** Q 플롯 직선 맞춤.
+
+    문턱 검출기 + AWGN 에서 sigma -> 0 이면 오류는 **제일 좁은 눈** 하나가 지배한다:
+
+        BER ~ p_min · Q( v_min / sigma )
+        => Q^-1(BER) ~ (v_min) · (1/sigma) + 상수,   1/sigma = 10^(SNR/20)
+
+    그러므로 `Q^-1(BER)` 를 `10^(SNR/20)` 에 대해 그리면 **직선**이라야 하고, 그
+    기울기가 최악 눈 높이다. 직선이면 1e-12 까지 외삽하는 것이 업계의 표준 관행이고,
+    **직선이 아니면 외삽이 성립하지 않는다** -- 그때는 외삽값을 내지 않는다.
+
+    `잰것` 은 `[(SNRdB, 오류수, 잰비트), ...]` 다. 오류 0 인 점은 버린다(Q^-1 이 없다).
+    """
+    쓸것 = [(snr, e, b) for snr, e, b in 잰것 if e > 0 and b > 0]
+    if len(쓸것) < 3:
+        return {"판정": serdes.못잼, "왜": f"쓸 수 있는 점이 {len(쓸것)}개뿐이다(>=3 필요)"}
+    x = np.array([10.0 ** (snr / 20.0) for snr, _, _ in 쓸것])
+    y = np.array([Q역(e / b) for _, e, b in 쓸것])
+    좋 = np.isfinite(y)
+    x, y = x[좋], y[좋]
+    if len(x) < 3:
+        return {"판정": serdes.못잼, "왜": "Q^-1 을 못 내는 점이 너무 많다"}
+    A = np.vstack([x, np.ones_like(x)]).T
+    (기울기, 절편), 잔차, *_ = np.linalg.lstsq(A, y, rcond=None)
+    예측 = A @ np.array([기울기, 절편])
+    ss_res = float(np.sum((y - 예측) ** 2))
+    ss_tot = float(np.sum((y - y.mean()) ** 2)) or 1e-30
+    R2 = 1.0 - ss_res / ss_tot
+    곧은가 = bool(R2 > 0.99 and 기울기 > 0)
+    난다 = {"기울기": float(기울기), "절편": float(절편), "R2": float(R2),
+          "직선인가": 곧은가, "점수": int(len(x)), "판정": serdes.PASS}
+    난다["왜"] = ("Q 플롯이 직선이다 -- 외삽이 선다"
+               if 곧은가 else
+               "**Q 플롯이 직선이 아니다**(기울기 <= 0 이거나 R2 < 0.99). "
+               "바닥이 있거나 잡음이 지배하지 않는다는 뜻이고, **외삽하면 안 된다**")
+    return 난다
+
+
+def 필요SNR(맞춤: dict, 목표BER: float = 1e-12) -> float:
+    """Q 플롯 맞춤에서 목표 BER 에 필요한 SNR(dB). **직선이 아니면 안 낸다.**"""
+    if 맞춤.get("판정") != serdes.PASS or not 맞춤.get("직선인가"):
+        return float("nan")
+    필요 = Q역(목표BER)
+    x = (필요 - 맞춤["절편"]) / max(맞춤["기울기"], 1e-30)
+    if x <= 0:
+        return float("nan")
+    return 20.0 * math.log10(x)
+
+
+def 바닥재기(만들기, SNR들=(30, 36, 42, 50, 60), 비트수: int = 1000000,
+         씨수: int = 3) -> dict:
+    """SNR 을 올리며 BER 이 **내려가기를 멈추는 자리**를 찾는다.
+
+    `만들기(snr, 씨)` 가 `링크` 결과 dict 를 돌려주면 된다. 바닥이 있으면 그 링크는
+    **SNR 을 아무리 줘도 그 아래로 못 간다** -- 1e-12 를 말할 수 없다는 뜻이다.
+    """
+    잰것 = []
+    for snr in SNR들:
+        e = b = 0
+        for 씨 in range(씨수):
+            r = 만들기(snr, 씨)
+            e += r["오류수"]
+            b += r["잰비트"]
+        잰것.append((float(snr), int(e), int(b)))
+    BER들 = [e / b if b else float("nan") for _, e, b in 잰것]
+    끝, 앞 = BER들[-1], BER들[-2]
+    맞춤 = 큐플롯(잰것)
+    # **바닥 판정**: SNR 을 한 칸 더 줬는데 BER 이 반으로도 안 줄면 안 내려간 것이다.
+    #
+    # 첫 판은 "끝 값이 최솟값의 두 배 안이면 바닥" 으로 썼다. **단조 감소면 끝이 곧
+    # 최솟값이라 늘 참이었다** -- 멀쩡히 내려가는 곡선까지 전부 '바닥 있음' 으로 찍혔다.
+    # 재는 것은 값이 아니라 **기울기**다.
+    바닥 = bool(끝 > 0 and 앞 == 앞 and 끝 > 0.5 * 앞)
+    return {"잰것": 잰것, "BER들": BER들, "맞춤": 맞춤, "바닥있나": 바닥,
+            "바닥값": (끝 if 바닥 else float("nan")),
+            "필요SNR_1e12": 필요SNR(맞춤, 1e-12)}

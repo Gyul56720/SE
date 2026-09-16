@@ -1012,7 +1012,107 @@ N_필요 = [ 2(√p₁ + √p₂) / |p₁ − p₂| ]²</pre>
   <p style="margin-bottom:0">이 컨테이너의 배치·배선기는 <code>nextpnr-ice40</code> 하나뿐이고 표준셀 Liberty 파일이 없다. 그러므로 <b>iCE40 말고 어떤 소자에 대해서도 Fmax · 점유율 · 혼잡 · ASIC 면적/지연/전력을 내지 않는다.</b> 위의 뒤집힘도 <b>배치·배선으로 확인해야 할 면적 대리값</b>으로 읽어야 한다. 합성 결과만 보고 “ECP5 에서 몇 MHz” 를 적는 것이 바로 이 저장소가 내내 쫓은 거짓 초록이다.</p>
 </div>
 
-<h2 class="sec"><span class="n">17</span>결론</h2>
+<!-- ══════════ 17 ══════════ -->
+<h2 class="sec"><span class="n">17</span>BER 동작점과 닫힌 꼴 재검증 — 7.98배는 몇 dB 인가</h2>
+
+<h3>17.1 같은 이득이 낮은 BER 에서는 훨씬 적은 dB 다</h3>
+
+<p>문턱 검출기 + AWGN 이면 <code>BER = Q(v/σ)</code> 이므로, 이득 G 는 진폭비 <code>Q⁻¹(p/G)/Q⁻¹(p)</code> 에 해당한다.</p>
+
+<div class="eq"><code>ΔSNR = 20 log₁₀ [ Q⁻¹(p/G) / Q⁻¹(p) ]  [dB]</code></div>
+
+<figure>
+  <div class="scroll"><table>
+    <thead><tr><th>기준 BER</th><th>1e−2</th><th>1e−4</th><th>1e−6</th><th>1e−9</th><th>1e−12</th></tr></thead>
+    <tbody><tr><td><strong>7.98배의 값</strong></td><td>2.27 dB</td><td>1.09 dB</td><td>0.71 dB</td><td>0.46 dB</td><td class="bad"><strong>0.34 dB</strong></td></tr></tbody>
+  </table></div>
+  <figcaption><b>표 33. 머릿줄 숫자를 링크 예산의 단위로.</b> 가우시안 꼬리가 가팔라서 <b>규격이 보는 자리(1e−12)에서 7.98배는 0.34 dB</b> 다 — CTLE 피킹 반 칸이다. <b>비가 아니라 여유로 적으면 훨씬 작다</b>, 그리고 링크 예산은 여유로 쓰인다.</figcaption>
+</figure>
+
+<h3>17.2 더 심각한 것 — 표가 이기는 자리에서 링크는 1e−12 에 아예 못 간다</h3>
+
+<figure>
+  <div class="scroll"><table>
+    <thead><tr><th>ADC</th><th>SNR</th><th>선형 FFE+DFE</th><th>표 2×4</th><th>NN 5→2</th></tr></thead>
+    <tbody>
+      <tr><td>7비트</td><td>30 dB</td><td>1.17e−2</td><td>2.39e−3</td><td>3.46e−3</td></tr>
+      <tr><td>7비트</td><td>40 dB</td><td>1.15e−2</td><td>2.36e−3</td><td>3.27e−3</td></tr>
+      <tr class="rule-top"><td>7비트</td><td>50 dB</td><td class="bad"><strong>1.13e−2</strong></td><td class="bad"><strong>2.34e−3</strong></td><td class="bad"><strong>3.26e−3</strong></td></tr>
+      <tr><td>8비트</td><td>50 dB</td><td>5.74e−3</td><td>6.92e−4</td><td>1.05e−3</td></tr>
+      <tr><td>10비트</td><td>50 dB</td><td>1.10e−3</td><td>1.37e−4</td><td>8.17e−5</td></tr>
+      <tr><td>없음</td><td>50 dB</td><td>4.25e−4</td><td>8.73e−5</td><td>5.41e−4</td></tr>
+    </tbody>
+  </table></div>
+  <figcaption><b>표 34. 오류 바닥</b>(§10 의 동작점: 25 dB · κ=1.0 · β=0.35 · 역압축 깔림 · 120만 비트 × 씨 3).<br><b>SNR 을 20 dB 더 줘도 아무것도 안 바뀐다.</b> 바닥은 ADC 분해능을 올리면 내려가지만(7→8→10비트에서 1.13e−2 → 5.7e−3 → 1.1e−3), <b>양자화를 아예 빼도 4.25e−4 에서 안 사라진다</b> — 압축 뒤 대역제한이 남기는 결정론적 잔차를 어떤 메모리 없는 보정기도 못 지우기 때문이다.<br><b>표 17 의 7.98배는 두 바닥 사이의 비이지 기울기의 이득이 아니다.</b></figcaption>
+</figure>
+
+<figure>
+  <div class="scroll"><table>
+    <thead><tr><th>손상</th><th>구조</th><th>Q 플롯 R²</th><th>1e−12 에 필요한 SNR</th></tr></thead>
+    <tbody>
+      <tr><td rowspan="3">선형 채널</td><td>선형 FFE+DFE</td><td>0.9998</td><td>36.8 dB</td></tr>
+      <tr><td>표 2×4</td><td>0.9982</td><td>36.8 dB</td></tr>
+      <tr><td>NN 5→2</td><td>0.9998</td><td>37.3 dB</td></tr>
+      <tr class="rule-top"><td rowspan="3">κ=1.0 필터 없음</td><td>선형 FFE+DFE</td><td>0.9989</td><td>37.1 dB</td></tr>
+      <tr><td>표 2×4</td><td>0.9996</td><td>37.1 dB</td></tr>
+      <tr><td>NN 5→2</td><td>0.9998</td><td>37.5 dB</td></tr>
+      <tr class="rule-top"><td>κ=1.0 β=0.50</td><td>셋 다</td><td>—</td><td class="bad">바닥 — 외삽 안 함</td></tr>
+      <tr><td>κ=1.0 β=0.35</td><td>셋 다</td><td>—</td><td class="bad">바닥 — 외삽 안 함</td></tr>
+    </tbody>
+  </table></div>
+  <figcaption><b>표 35. Q 플롯 외삽으로 낸 1e−12 필요 SNR.</b> <code>Q⁻¹(BER)</code> 를 <code>10^(SNR/20)</code> 에 대해 그려 직선이면 외삽하고, <b>직선이 아니면 숫자를 내지 않는다.</b><br>바닥이 없는 두 영역에서 셋이 <b>36.8 · 36.8 · 37.3 dB</b> — 반 dB 안이고 <b>표에 여유 이득이 없다</b>. 표가 크게 앞서는 두 영역에서는 외삽이 거부된다. <b>이 연구 안에 “표가 앞서면서 동시에 외삽 가능한” 동작점은 없다.</b></figcaption>
+</figure>
+
+<h3>17.3 닫힌 꼴 재검증 — 핵심 다섯(A)</h3>
+
+<div class="limits">
+  <h3 style="color:var(--pass)">A1 · 역압축은 열잡음이 아니라 <b>양자화 잡음</b>을 키운다</h3>
+  <p style="margin-bottom:.6rem">역의 기울기가 <code>cosh²(ar)</code>. 열잡음은 압축 <b>앞</b>에 실리므로 같이 눌렸다 같이 펴진다(명제 4 의 등호) — 커지는 것은 압축 <b>뒤</b>의 ADC 양자화뿐이다. <code>σ²_eff = σ² + (Δ²/12)·cosh⁴(κ)</code> 로 예측한 벌점이 ADC 7비트에서 <b>7.1배</b>, 실측 <b>5.3배</b>. 10비트로 올리면 예측 1.05배 — 표 34 의 방향과 같다.</p>
+  <p style="margin-bottom:0"><b>첫 유도가 틀렸다.</b> <code>E[cosh⁴(ar)]</code> 를 전체 분포에서 잡아 16 dB 를 냈는데, 그 기대값은 <b>드문 큰 |r| 이 지배</b>한다. 판정은 거기서 안 난다. <code>|r|≈rms</code> 에서 <code>cosh²(1.0)=2.38</code>, 7.5 dB 다.</p>
+</div>
+
+<div class="limits">
+  <h3 style="color:var(--pass)">A2 · κ 교차점의 기구 = 양자화가 버리는 정보</h3>
+  <p style="margin-bottom:.6rem">표는 주소 <code>c</code> 만, 망은 양자화 안 된 <code>x</code> 를 본다. 자료처리 부등식으로 <code>I(b;c) ≤ I(b;x)</code> 이고 차이가 양자화가 버린 것이다. 4비트 색인에서 κ=0 → 0.3 %, 1.0 → 0.6 %, 1.6 → 0.9 %, 2.0 → 1.0 %, 2.5 → 1.2 % 로 <b>단조 증가</b>한다. 크기가 1 % 남짓인 것이 교차점 이득이 1.79배에 그치는 것과 앞뒤가 맞는다.</p>
+  <p style="margin-bottom:0"><b>첫 지표가 죽은 계기였다.</b> “판정을 가르는 코드 수” 로 재려 했는데 <b>AGC 가 메인 커서 이득을 1 로 맞추므로 κ 를 0→2.5 로 쓸어도 8.00칸 그대로</b> 였다. 정규화가 지운 것을 세고 있었다. 정보량은 정규화에 안 지워진다.</p>
+</div>
+
+<div class="limits">
+  <h3 style="color:var(--pass)">A3 · β≈0.35 의 창은 <b>필터 지지 길이 1/β UI</b> 다</h3>
+  <p style="margin-bottom:0">시뮬레이터의 Hann 창 길이가 <code>round(sps/β)</code> 이므로 지지가 정확히 <code>1/β</code> UI 다. β=1.0 → 1.00 UI(메모리 없음), 0.5 → 2.00, 0.35 → 2.88(<b>표본 두 개 표의 자리</b>), 0.25 → 4.00(창 밖). <b>실측된 창(β=0.35 에서만 8/8 씨, β≥0.5 는 표 승, β≤0.25 는 링크 사망)이 이 경계에 정확히 얹힌다.</b> §6 의 “좁은 창” 은 경험적 우연이 아니라 <b>메모리가 표본 하나보다 길고 표의 두 개보다 짧은 구간</b>이다.</p>
+</div>
+
+<div class="limits">
+  <h3 style="color:var(--pass)">A4 · 판정 영역은 <b>깊이</b>로도 멈춘다</h3>
+  <p style="margin-bottom:0">이상적 과거 판정 + 꽉 찬 ROM 으로 깊이 2·4·6·8·10 에서 1.15e−2 · 1.07e−2 · 9.70e−3 · 9.48e−3 · 9.58e−3 — 파라미터가 4 → 1,024 로 느는 동안 <b>1.21배</b>. 선형 채널 대조는 9.90e−4 → 6.33e−4(1.56배). <b>둘 다 멈추고, 갈리는 것은 멈추는 자리다</b> — 같은 채널에서 진폭 색인 표는 2.3e−3 에 있고 어떤 깊이도 그 간격을 못 닫는다.</p>
+</div>
+
+<div class="limits">
+  <h3 style="color:var(--pass)">A5 · 찬 칸 수를 <b>미리 셀 수 있다</b></h3>
+  <p style="margin-bottom:.6rem"><code>E[찬칸] = Σᵢ P(Bin(N,pᵢ) ≥ m)</code> (푸아송 근사). 19.2만 학습 심볼 · m=4 에서 예측 대 실측: 256칸 <b>253.4 / 253</b>, 1,024칸 <b>925.4 / 928</b>, 4,096칸 <b>2,174.8 / 2,191</b>, 32,768칸 <b>8,257.9 / 8,197</b> — <b>주소 공간 128배 범위에서 오차 1 % 미만.</b></p>
+  <p style="margin-bottom:0">호에프딩이 반대쪽을 준다: 칸당 다수결이 틀릴 확률 ≤ <code>e^(−2nᵢγ²)</code> 이므로 <code>N = Ω(C·ln(1/δ)/γ²)</code> — <b>칸 수에 선형, 곧 창에 지수</b>다. 망은 파라미터가 창에 선형일 뿐이다. 프리앰블 길이는 표준이 정하므로 <b>이 축은 설계자에게 닫혀 있다.</b></p>
+</div>
+
+<h3>17.4 공학 숫자 재검증(B)</h3>
+
+<figure>
+  <div class="scroll"><table>
+    <thead><tr><th>양</th><th>닫힌 꼴</th><th>예측</th><th>실측</th></tr></thead>
+    <tbody>
+      <tr><td>BER 이득 → 여유</td><td>ΔSNR 식</td><td>7.98배 = 2.27 dB@1e−2, 0.34 dB@1e−12</td><td>항등식</td></tr>
+      <tr><td>곱셈기, FFE L탭</td><td>L</td><td>11</td><td>11</td></tr>
+      <tr><td>곱셈기, DFE · 표</td><td>0 (부호 선택)</td><td>0</td><td>0</td></tr>
+      <tr><td>곱셈기, MLP L→H</td><td>LH+H</td><td>12</td><td>12</td></tr>
+      <tr><td>표 칸수</td><td>2^(QW)</td><td>256 / 1,024 / 32,768</td><td>같음</td></tr>
+      <tr class="rule-top"><td><strong>면적 대 곱셈기(iCE40)</strong></td><td>LC = aM + b</td><td class="hl">194.4M + 195</td><td class="hl">오차 ≤ 8.2 % (M=12~192)</td></tr>
+      <tr><td>파이프라인 이득</td><td>깊이 절반 → 2배</td><td>2.00배</td><td class="warn">1.52~1.70배</td></tr>
+      <tr><td>누산기 폭</td><td>W_z · W_h · W_u</td><td>17 / 6 / 15</td><td>17 / 6 / 15 (RTL)</td></tr>
+    </tbody>
+  </table></div>
+  <figcaption><b>표 36. 여섯 공학 숫자의 닫힌 꼴 대조.</b> 면적 모형은 추세 맞춤이 아니라 <b>소자에 대한 진술</b>이다 — 하드 곱셈기가 없는 패브릭에서 이 논문의 모든 설계가 <b>곱셈기당 194 LC + 상수 200</b> 이고, 16배 범위에서 그렇다. 그래서 §16.5 의 뒤집힘이 사소한 게 아니라 <b>면적 논증 전부</b>다. 파이프라인 모형은 18~30 % 과대예측한다 — 논리 깊이를 반으로 잘라도 <b>배선 지연은 안 반으로 준다</b>. 모형을 숫자에 맞춰 손보지 않고 그 차이를 그대로 적는다.</figcaption>
+</figure>
+
+<h2 class="sec"><span class="n">18</span>결론</h2>
 
 <ol>
   <li><strong>이 논문의 전제가 틀렸었다.</strong> 메모리 없는 비선형은 메모리 없는 역함수가 있고, 그것은 128칸 표 하나다. 그 표가 곱셈 96개짜리 신경망을 2.02배 이기고, 표를 먼저 쓰면 신경망이 더 주는 것이 없다. <em>“선형 FFE·DFE가 못 푼다”와 “신경망이 필요하다”는 다른 말이다.</em></li>
