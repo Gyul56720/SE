@@ -249,6 +249,7 @@ def 링크(비트수: int = 300000, 손실dB: float = 25.0, SNRdB: float = 30.0,
        미세에폭: int = 0,
        에폭: int = 12, 걸음: float = 3e-3, 학습비율: float = 0.3,
        ADC비트: int = 0, ADC풀스케일시그마: float = 2.5, 반사=(),
+       역압축: bool = False, 압축뒤대역: float = 0.0,
        활성꼴: str = "tanh", 씨: int = 0) -> dict:
     """신경망 등화기로 링크를 돌린다. {BER, 오류수, 잰비트, 파라미터수, 학습, 왜}.
 
@@ -257,7 +258,9 @@ def 링크(비트수: int = 300000, 손실dB: float = 25.0, SNRdB: float = 30.0,
     신경망 출력 뒤에 판정 되먹임을 붙인다(되먹이는 것은 **제 판정**이다).
     """
     밑 = serdes.링크(비트수=int(비트수), 손실dB=손실dB, SNRdB=SNRdB, sps=int(sps),
-                   FFE탭=0, DFE탭=0, 반사=반사, 압축=압축, ADC비트=int(ADC비트),
+                   FFE탭=0, DFE탭=0, 반사=반사, 압축=압축, 역압축=역압축,
+                   압축뒤대역=압축뒤대역,
+                   ADC비트=int(ADC비트),
                    ADC풀스케일시그마=ADC풀스케일시그마, 학습비율=학습비율, 씨=int(씨))
     표본, 비트 = 밑["표본"], 밑["비트"].astype(float)
     학습끝 = int(np.clip(len(표본) * 학습비율, 1, len(표본) - 1))
