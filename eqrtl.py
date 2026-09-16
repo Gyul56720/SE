@@ -24,55 +24,59 @@
 
 ## 재 놓은 면적과 Fmax -- iCE40 HX8K, 목표 50 MHz, yosys + nextpnr
 
-    설계                     곱셈      LC     Fmax      판정
-    DFE 4탭 W8                0      210   69.82 MHz  PASS
-    DFE 8탭 W8                0      438   36.54 MHz  FAIL
-    FFE 5탭 W7                5      802   69.24 MHz  PASS
-    FFE 11탭 W7              11    1,835   56.11 MHz  PASS
-    NN 5->2  Q2.4  7비트     12    2,368   30.58 MHz  FAIL
-    NN 5->2  Q2.5  8비트     12    3,011   28.08 MHz  FAIL
-    NN 5->2  Q3.6 10비트     12    4,498   26.20 MHz  FAIL
-    NN 5->4  Q2.4  7비트     24    4,636   26.73 MHz  FAIL
-    NN 11->2 Q2.4  7비트     24    4,762   26.01 MHz  FAIL
-    NN 9->4  Q2.4  7비트     40    7,915       --     칩 밖 (103%)
+    설계                          곱셈      LC     Fmax      판정
+    DFE 4탭 W8                     0      210   69.82 MHz  PASS
+    DFE 8탭 W8                     0      438   36.54 MHz  FAIL
+    FFE 5탭 W7 DW6                 5      802   69.24 MHz  PASS
+    FFE 11탭 W7 DW6               11    1,835   56.11 MHz  PASS
+    FFE 11탭 W7 DW7               11    2,237   52.38 MHz  PASS
+    **FFE11+DFE8 합친 것 DW6**    11    2,559   22.83 MHz  FAIL
+    **FFE11+DFE8 합친 것 DW7**    11    2,999   22.63 MHz  FAIL
+    NN 5->2  Q2.4  7비트          12    2,368   30.58 MHz  FAIL
+    NN 5->2  Q2.5  8비트          12    3,011   28.08 MHz  FAIL
+    NN 5->2  Q3.6 10비트          12    4,498   26.20 MHz  FAIL
+    NN 5->4  Q2.4  7비트          24    4,636   26.73 MHz  FAIL
+    NN 11->2 Q2.4  7비트          24    4,762   26.01 MHz  FAIL
+    NN 9->4  Q2.4  7비트          40    7,915       --     칩 밖 (103%)
 
-네 가지가 읽힌다.
+## 따로 재서 더하면 틀린다 -- 실측 2026-09-16
+
+앞선 판은 FFE(1,835)와 DFE(438)를 따로 재서 **2,273 LC** 라고 적었다. 합쳐서 재니
+**2,559 LC (DW6)** 다 -- 더한 값이 **11% 작다.** Fmax 는 더 크게 어긋난다: 따로 재면
+56.1 과 36.5 라 "36.5" 로 읽히는데, 합친 것은 **22.8 MHz** 다.
+
+까닭은 구조다. 합치면 FFE 의 17비트 누산과 DFE 의 여덟 단 덧셈이 **한 조합 경로에
+직렬로 들어가고**, 누산기도 한 비트 깊어진다. 슬라이서가 하나로 주는 이득보다 이쪽이
+크다. **따로 잰 두 수를 더한 값은 과소도 과대도 아닌 다른 물건이다.**
+
+그리고 공정성 문제가 하나 더 있었다. 워드 길이 실측의 결론은 **계수 7비트 · ADC
+7비트** 였는데 위 FFE 는 데이터 폭을 6 으로 뒀다 -- 선형 쪽에 제 결론보다 싼 데이터
+경로를 준 셈이다. 7 로 맞추면 합친 것이 **2,999 LC · 22.63 MHz** 다.
+
+그래서 같은 조건(둘 다 완결된 단일 모듈, 출력이 판정 한 비트, 데이터 7비트)에서:
+
+    선형 FFE11+DFE8   2,999 LC   22.63 MHz   BER 2.34e-02
+    NN 5->2 Q2.4      2,368 LC   30.58 MHz   BER 3.69e-03
+                      **21% 작고 · 1.35배 빠르고 · BER 6.96배 좋다**
+
+## 곱셈기 값은 폭의 제곱과 **맞는다** (단정하지는 않는다)
+
+    Q2.4  7비트  2,368 LC      8²/7²  = 1.306   잰 값 3,011/2,368 = 1.272
+    Q2.5  8비트  3,011 LC     10²/8²  = 1.563   잰 값 4,498/3,011 = 1.494
+    Q3.6 10비트  4,498 LC
+
+세 점 다 제곱 예측보다 3~4% 낮다. 점이 셋뿐이라 지수를 맞춰 정하지는 못하고,
+**제곱 축척과 어긋나지 않는다**까지가 이 측정이 받치는 말이다.
+
+## 그 밖에 읽히는 것 둘
 
 *하나 -- 자릿수가 면적의 절반이다.* 같은 망이 Q3.6 10비트에서 4,498 LC, Q2.4
 7비트에서 2,368 LC 다. BER 은 float 대비 0.98 배와 1.00 배로 **같다**(nnfix 머리말).
-자릿수를 안 재고 넉넉히 잡는 것만으로 면적이 1.9배가 된다.
 
-*둘 -- 곱셈 하나당 값은 선형과 거의 같다.* NN 은 2,368/12 = 197 LC, FFE 는
-1,835/11 = 167 LC. iCE40 에는 곱셈기가 없어 LUT 로 짓고, 그 값은 폭의 제곱을
-따른다(7 -> 8비트에서 2,368 -> 3,011, +27%; 8²/7² = 1.31). **망이라서 비싼 것이
-아니라 곱셈이 비싸다.** 그래서 곱셈 수가 곧 면적이다 -- 12 · 24 · 40 개가
-2,368 · 4,7xx · 7,915 LC 다.
-
-*셋 -- 판정 되먹임은 곱셈이 하나도 없다.* NRZ 판정이 ±1 뿐이라 되먹임은 계수를
+*둘 -- 판정 되먹임은 곱셈이 하나도 없다.* NRZ 판정이 ±1 뿐이라 되먹임은 계수를
 더하거나 빼는 것이다. 그래서 DFE 8탭이 438 LC 로 FFE 5탭(802 LC)보다 작다.
-**등화기에서 제일 싼 탭은 DFE 탭이다.**
-
-*넷 -- 지는 자리는 면적이 아니라 조합 경로다.* 50 MHz 에서 떨어지는 것이 NN 만이
-아니다. **DFE 8탭도 36.5 MHz 로 떨어진다** -- 여덟 단 더하기가 한 사이클에 줄줄이
-들어 있어서다. NN 은 곱셈 -> 시프트·클립 -> 곱셈 두 층이 한 경로에 있다. 둘 다
-같은 병이고 고치는 법도 같다.
-
-**층 사이에 레지스터를 한 단 넣으면(파이프라인) 풀린다** -- 등화기는 한 심볼에 한
-결정을 내면 되므로 지연이 한 사이클 늘어도 처리율은 안 준다. 다만 DFE 는 다르다:
-되먹임 고리라 지연을 넣으면 **되먹임 자체가 늦어져** 풀리지 않는다(unrolled DFE 가
-현업의 답이다). 여기서는 둘 다 안 했다. **재지 않은 것을 됐다고 말하지 않는다.**
-
-## 그래서 맞바꿈은 이렇다 -- 25dB · SNR 30dB · 압축 1.0 · 30만 비트 · 씨 6개
-
-    선형 FFE11 + DFE8   BER 2.34e-02 [2.21, 2.47]   ~2,273 LC   36.5 MHz
-    NN 5->2 Q2.4        BER 3.69e-03 [2.30, 5.47]    2,368 LC   30.6 MHz
-    이득                6.96배 [4.21, 10.10]        면적 +4%    클럭 0.84배
-
-**거의 같은 면적에 BER 7배, 대신 클럭 0.84배.** 둘 다 파이프라인 전이다.
-
-선형 쪽 LC 는 두 모듈을 **따로 재서 더한 값**이다(2,273 = 1,835 + 438). 한 모듈로
-합성하면 슬라이서가 붙고 배선이 공유되므로 그대로는 안 나온다 -- 더한 값이라고
-적어 둔다.
+**등화기에서 제일 싼 탭은 DFE 탭이다.** 다만 그 여덟 단이 한 사이클에 직렬로 들어가
+Fmax 를 36.5 MHz 로 끌어내리고, 합치면 22.6 까지 간다.
 
 ## 선형 쪽도 여기 있다 -- 안 그러면 위 표를 아무도 다시 못 잰다
 
@@ -300,3 +304,97 @@ def dfe(자리들=(1, 2, 3, 4, 5, 6, 7, 8), W: int = 8, XW: int = 12) -> str:
         for i, p in enumerate(자리들))
     return DFE.format(DEPTH=max(깊이 - 1, 1), NT=len(자리들), W=W, XW=XW, TW=TW,
                       AW=주소폭(len(자리들)), 합산=합산)
+
+
+FFEDFE = r"""
+module ffe_dfe (
+    input  wire                   clk,
+    input  wire                   rst_n,
+    input  wire signed [{DW}-1:0] x,
+    input  wire                   cw_we,
+    input  wire [{AW}-1:0]        cw_addr,
+    input  wire signed [{CW}-1:0] cw_data,
+    output reg                    d
+);
+    localparam L     = {L};        // FFE 탭
+    localparam NT    = {NT};       // DFE 탭
+    localparam DEPTH = {DEPTH};
+    localparam DW    = {DW};
+    localparam CW    = {CW};
+    localparam AW    = {AW};
+    localparam FW    = {FW};       // FFE 누산기
+    localparam TW    = {TW};       // 합친 누산기
+
+    reg signed [DW-1:0] sr   [0:L-1];
+    reg                 hist [0:DEPTH-1];
+    // **계수가 한 주소 공간에 있다.** 0..L-1 이 FFE, L..L+NT-1 이 DFE 다.
+    reg signed [CW-1:0] coef [0:{NCO}-1];
+
+    wire signed [CW+DW-1:0] prod [0:L-1];
+    genvar i;
+    generate
+        for (i = 0; i < L; i = i + 1) begin : taps
+            assign prod[i] = coef[i] * sr[i];
+        end
+    endgenerate
+
+    integer k;
+    reg signed [FW-1:0] accf;
+    reg signed [TW-1:0] acc;
+    always @* begin
+        accf = 0;
+        for (k = 0; k < L; k = k + 1)
+            accf = accf + $signed({{{{(FW-CW-DW){{prod[k][CW+DW-1]}}}}, prod[k]}});
+        acc = $signed({{{{(TW-FW){{accf[FW-1]}}}}, accf}});
+{합산}
+    end
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            for (k = 0; k < L; k = k + 1) sr[k] <= 0;
+            for (k = 0; k < DEPTH; k = k + 1) hist[k] <= 1'b0;
+            for (k = 0; k < {NCO}; k = k + 1) coef[k] <= 0;
+            d <= 1'b0;
+        end else begin
+            if (cw_we) coef[cw_addr] <= cw_data;
+            sr[0] <= x;
+            for (k = 1; k < L; k = k + 1) sr[k] <= sr[k-1];
+            for (k = DEPTH-1; k > 0; k = k - 1) hist[k] <= hist[k-1];
+            hist[0] <= d;
+            d <= ~acc[TW-1];
+        end
+    end
+endmodule
+"""
+
+
+def ffe_dfe(ffe탭: int = 11, dfe자리=(1, 2, 3, 4, 5, 6, 7, 8), W: int = 7,
+            DW: int = 6, WD: int = 8) -> str:
+    """FFE 와 DFE 를 **한 모듈로** 합친 것. `top` 은 `ffe_dfe`.
+
+    ## 왜 따로 잰 것을 더하면 안 되나 -- 실측 2026-09-16
+
+    앞선 판은 FFE(1,835 LC)와 DFE(438 LC)를 따로 재서 2,273 LC 라고 적었다. 그 값은
+    **둘 다 과소도 과대도 아닌 다른 물건**이다. 따로 재면 FFE 가 출력 포트 17비트를,
+    DFE 가 입력 포트 12비트를 각자 물고 있는데 합치면 그 사이가 **내부 배선**이 되고,
+    슬라이서도 하나만 남는다. 반대로 누산기는 한 단 더 깊어진다.
+
+    `W` 와 `WD` 를 따로 두는 것은 실측을 따른 것이다 -- 계수는 7비트, DFE 탭은 8비트가
+    바닥이었다(논문 표 3 · 4단계).
+    """
+    자리 = [int(p) for p in dfe자리]
+    L, NT = int(ffe탭), len(자리)
+    깊이 = max(max(자리) - 1, 1)
+    cw = max(int(W), int(WD))                 # 계수 램 한 칸의 폭
+    FW = int(W) + int(DW) + 주소폭(L + 1)
+    TW = max(FW, int(WD) + 주소폭(NT + 1)) + 1
+
+    def 어디(p):
+        return "d" if p == 1 else f"hist[{p - 2}]"
+    합산 = "\n".join(
+        f"        acc = {어디(p)} ? (acc - $signed(coef[{L + i}]))"
+        f" : (acc + $signed(coef[{L + i}]));"
+        for i, p in enumerate(자리))
+    return FFEDFE.format(L=L, NT=NT, DEPTH=깊이, DW=int(DW), CW=cw,
+                         AW=주소폭(L + NT), FW=FW, TW=TW,
+                         NCO=L + NT, 합산=합산)
