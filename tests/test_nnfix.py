@@ -399,6 +399,39 @@ else:
     ok(not 어긋6, f"되먹임이 지배적일 때도 합친 것이 모델과 같다 ({len(찍4)}개)"
        if not 어긋6 else f"되먹임 자극에서 {len(어긋6)}개 어긋났다: {어긋6[:3]}")
     ok(0 < sum(기대4) < len(기대4), "되먹임 자극의 결정도 양쪽으로 다 난다")
+
+    # ---- 파이프라인: **판정 순서가 그대로여야 한다.** 한 칸 더 늦을 뿐이다.
+    # 이것이 맞아야 "파이프라인이 Fmax 를 올린다" 는 말이 뜻을 갖는다 -- 안 그러면
+    # 더 빠른 대신 다른 답을 내는 회로를 재는 것이 된다.
+    def 줄바꿔(줄들, 설계이름):
+        난 = list(줄들)
+        return [l.replace("ffe_dfe dut", f"{설계이름} dut") for l in 난]
+
+    찍5 = [int(ln.split()[1]) for ln in
+          돌리기(eqrtl.ffe_dfe(Lf, 자리3, W=8, DW=7, WD=8, 파이프=True),
+               "ffe_dfe", 줄4, "d").splitlines() if ln.startswith("D ")]
+    # 민판은 기대4[i-1] 과 맞았다 -> 파이프는 기대4[i-2] 와 맞아야 한다
+    어긋7 = [(i, 찍5[i], 기대4[i - 2]) for i in range(Lf + 2, min(len(찍5), len(기대4)))
+            if 찍5[i] != 기대4[i - 2]]
+    ok(not 어긋7, f"파이프라인 선형이 **같은 판정을 한 칸 늦게** 낸다 ({len(찍5)}개)"
+       if not 어긋7 else f"파이프라인 선형이 {len(어긋7)}개 어긋났다: {어긋7[:3]}")
+    # **한 칸 늦은 것이 맞는지도 확인한다** -- 안 늦었으면 레지스터가 안 들어간 것이다
+    같은칸 = sum(1 for i in range(Lf + 2, min(len(찍5), len(기대4)))
+                if 찍5[i] == 기대4[i - 1])
+    센칸 = len(range(Lf + 2, min(len(찍5), len(기대4))))
+    ok(같은칸 < 센칸,
+       f"**실제로 한 칸 늦다** (민판 정렬로는 {같은칸}/{센칸} 만 맞는다) "
+       "-- 다 맞으면 레지스터가 안 들어간 것이다")
+
+    # 신경망 쪽도 같은 것을 본다
+    찍6 = [ln.split()[1:] for ln in
+          돌리기(eqrtl.nn(창, 은닉, XW=폭, WW=폭, FRAC=프랙, 파이프=True),
+               "nneq_eq", tb, "y d").splitlines() if ln.startswith("D ")]
+    어긋8 = [(i, 찍6[i][1], int(기준[i - 2]))
+            for i in range(창, min(len(찍6), len(기준)))
+            if (1 if int(찍6[i][1]) else -1) != 기준[i - 2]]
+    ok(not 어긋8, f"파이프라인 신경망이 **같은 판정을 한 칸 늦게** 낸다 ({len(찍6)}개)"
+       if not 어긋8 else f"파이프라인 신경망이 {len(어긋8)}개 어긋났다: {어긋8[:3]}")
     최대acc = max(abs(a) for a in acc들)
     ok(최대acc > (1 << 11) - 1,
        f"**되먹임이 acc 를 x 폭 밖으로 민다** (|acc| 최대 {최대acc} > 2047) "

@@ -135,7 +135,7 @@
 <div class="wrap">
 
 <header class="head">
-  <p class="kicker">연구 보고 · 와이어라인 SerDes · 2026-09-16 · <b>제2판</b></p>
+  <p class="kicker">연구 보고 · 와이어라인 SerDes · 2026-09-16 · <b>제3판</b></p>
   <h1>경량화 신경망 기반 와이어라인 SerDes 등화기의 FPGA 실시간 구현</h1>
   <p class="sub">면적·BER·클럭 맞바꿈의 실측, 그리고 계측 장치 자신의 결함 열둘</p>
   <div class="byline">
@@ -155,7 +155,7 @@
 <div class="abstract">
   <p class="lead"><strong>초록.</strong> 와이어라인 SerDes 수신단의 메모리 없는 비선형 왜곡은 선형 등화기(CTLE·FFE·DFE)로 되돌릴 수 없다. 본 연구는 <strong>합성 25 dB 손실 채널 모형</strong>(표피효과 근사 + 인공 반사, 실측 S-파라미터가 아니다) 위에서 <strong>양자화 신경망 등화기</strong>를 설계하고, 고정소수점 기준모델과 <strong>비트 단위로 일치하는 Verilog</strong>를 작성해 iCE40 HX8K에 실제로 배치·배선하여 면적(LC)과 최대 동작주파수(Fmax)를 측정했다.</p>
   <p>비교 대상은 이론적 최적해(MMSE-DFE)가 아니라 <strong>유한 탭·NLMS 적응·7비트 양자화된 실제 구현</strong>(FFE 11탭 + DFE 8탭)이다. 이 구분이 결과 해석을 좌우하므로 §1.2에서 따로 다룬다.</p>
-  <p>수신단 압축 세기 1.0에서 신경망은 이 기준선 대비 <strong>BER을 10.1배 낮춘다</strong>(float). 고정소수점·FPGA 구현까지 내린 뒤에도 <strong>6.96배</strong>[4.21, 10.10]가 남는다. 두 등화기를 <strong>각각 완결된 단일 모듈로 합성</strong>해 같은 조건에서 재면 신경망이 <strong>면적 21% 작고 클럭 1.35배 빠르다</strong>. 경량화의 지배적 축은 <strong>본 설계 공간 안에서</strong> 비트폭이 아니라 <strong>망 크기</strong>였고(곱셈 12개로 이득의 41%), 고정소수점에서 성능을 가른 것은 소수부 해상도가 아니라 <strong>가중치의 정수부 여유</strong>였다. 타이밍에서 탈락하는 원인은 회로 크기가 아니라 <strong>한 사이클 안의 조합 경로 깊이</strong>이며, 합친 선형 등화기는 그 때문에 22.6 MHz로 더 크게 떨어진다.</p>
+  <p>수신단 압축 세기 1.0에서 신경망은 이 기준선 대비 <strong>BER을 10.1배 낮춘다</strong>(float). 고정소수점·FPGA 구현까지 내린 뒤에도 <strong>6.96배</strong>[4.21, 10.10]가 남는다. 두 등화기를 <strong>각각 완결된 단일 모듈로 합성</strong>해 같은 조건에서 재면 신경망이 <strong>면적 21% 작고 클럭 1.35배 빠르다</strong>. 경량화의 지배적 축은 <strong>본 설계 공간 안에서</strong> 비트폭이 아니라 <strong>망 크기</strong>였고(곱셈 12개로 이득의 41%), 고정소수점에서 성능을 가른 것은 소수부 해상도가 아니라 <strong>가중치의 정수부 여유</strong>였다. 타이밍에서 탈락하는 원인은 회로 크기가 아니라 <strong>한 사이클 안의 조합 경로 깊이</strong>이며, 합친 선형 등화기는 그 때문에 22.6 MHz로 더 크게 떨어진다. 층 사이에 레지스터를 한 단 넣으면 <strong>면적 대가 없이</strong> 신경망이 47.9 MHz, 선형이 34.7 MHz로 오르지만 <strong>목표 50 MHz에는 여전히 4 % 모자라고</strong>, 선형 쪽도 같은 만큼 빨라져 두 설계의 간격은 유지된다(1.35배 → 1.38배).</p>
   <p>본 보고의 두 번째 기여는 결과가 아니라 절차다. 연구 과정에서 <strong>계측 장치 자신의 결함 열셋</strong>을 발견했고, 그중 아홉은 <em>초록불로 위장한 오류</em>였다. 전량을 부록 A에 원인·증상·재현과 함께 공개한다. 제1판이 낸 결론 하나가 그중 하나(A.13)로 뒤집혔다 — <strong>선형 기준선의 면적을 두 모듈을 따로 재서 더한 값</strong>으로 적었던 것이다.</p>
 </div>
 
@@ -583,10 +583,14 @@ N_필요 = [ 2(√p₁ + √p₂) / |p₁ − p₂| ]²</pre>
       <tr class="rule-top"><td><em>위 둘을 따로 재서 더한 값</em></td><td>11</td><td><em>2,273</em></td><td><em>— 정의되지 않음</em></td><td><em>—</em></td></tr>
       <tr><td><strong>FFE11+DFE8 합친 모듈 · DW6</strong></td><td>11</td><td class="bad">2,559</td><td class="bad">22.83 MHz</td><td class="bad">FAIL</td></tr>
       <tr><td><strong>FFE11+DFE8 합친 모듈 · DW7</strong></td><td>11</td><td class="bad">2,999</td><td class="bad">22.63 MHz</td><td class="bad">FAIL</td></tr>
-      <tr class="rule-top"><td><strong>NN 5→2 · Q2.4 7b</strong></td><td>12</td><td class="hl">2,368</td><td class="hl">30.58 MHz</td><td class="bad">FAIL</td></tr>
+      <tr class="rule-top"><td><strong>NN 5→2 · Q2.4 7b</strong></td><td>12</td><td class="hl">2,368</td><td>30.58 MHz</td><td class="bad">FAIL</td></tr>
       <tr><td>NN 5→2 · Q2.5 8b</td><td>12</td><td>3,011</td><td class="bad">28.08 MHz</td><td class="bad">FAIL</td></tr>
       <tr><td>NN 5→2 · Q3.6 10b</td><td>12</td><td class="bad">4,498</td><td class="bad">26.20 MHz</td><td class="bad">FAIL</td></tr>
       <tr><td>NN 5→4 · Q2.4 7b</td><td>24</td><td>4,636</td><td class="bad">26.73 MHz</td><td class="bad">FAIL</td></tr>
+      <tr class="rule-top"><td colspan="5" style="text-align:left;color:var(--muted);font-size:.72rem;letter-spacing:.06em">─ 파이프라인 한 단 (판정 동일, 지연 +1 사이클) ─</td></tr>
+      <tr><td><strong>NN 5→2 · Q2.4 7b · 파이프</strong></td><td>12</td><td class="hl">2,336</td><td class="hl">47.87 MHz</td><td class="warn">FAIL (4 % 모자람)</td></tr>
+      <tr><td>NN 5→4 · Q2.4 7b · 파이프</td><td>24</td><td>4,736</td><td class="hl">45.42 MHz</td><td class="bad">FAIL</td></tr>
+      <tr><td>FFE11+DFE8 · DW7 · 파이프</td><td>11</td><td>2,999</td><td class="warn">34.73 MHz</td><td class="bad">FAIL</td></tr>
       <tr><td>NN 11→2 · Q2.4 7b</td><td>24</td><td>4,762</td><td class="bad">26.01 MHz</td><td class="bad">FAIL</td></tr>
       <tr><td>NN 9→4 · Q2.4 7b</td><td>40</td><td class="bad">7,915</td><td>—</td><td class="bad">칩 밖 (103 %)</td></tr>
     </tbody>
@@ -622,23 +626,57 @@ N_필요 = [ 2(√p₁ + √p₂) / |p₁ − p₂| ]²</pre>
       <tr><td>선형 FFE 11 + DFE 8 (합친 모듈, DW7)</td><td>2.34e−02</td><td>[2.21, 2.47]e−02</td><td>2,999 LC</td><td>22.63 MHz</td></tr>
       <tr><td><strong>NN 5→2 · Q2.4 7b</strong></td><td class="hl">3.69e−03</td><td>[2.30, 5.47]e−03</td><td class="hl">2,368 LC</td><td class="hl">30.58 MHz</td></tr>
       <tr class="rule-top"><td><strong>신경망 쪽 차이</strong></td><td class="hl">6.96 × 개선</td><td class="hl">[4.21, 10.10]</td><td class="hl">−21 %</td><td class="hl">1.35 ×</td></tr>
+      <tr class="rule-top"><td colspan="5" style="text-align:left;color:var(--muted);font-size:.72rem;letter-spacing:.06em">─ 둘 다 파이프라인 한 단 (판정 동일 → BER 동일) ─</td></tr>
+      <tr><td>선형 FFE 11 + DFE 8 · 파이프</td><td>2.34e−02</td><td>[2.21, 2.47]e−02</td><td>2,999 LC</td><td>34.73 MHz</td></tr>
+      <tr><td><strong>NN 5→2 · Q2.4 7b · 파이프</strong></td><td class="hl">3.69e−03</td><td>[2.30, 5.47]e−03</td><td class="hl">2,336 LC</td><td class="hl">47.87 MHz</td></tr>
+      <tr><td><strong>신경망 쪽 차이</strong></td><td class="hl">6.96 × 개선</td><td class="hl">[4.21, 10.10]</td><td class="hl">−22 %</td><td class="hl">1.38 ×</td></tr>
     </tbody>
   </table></div>
-  <figcaption><b>표 13. 최종 맞바꿈 (제2판).</b> 합성 25 dB 채널 · SNR 30 dB · 압축 1.0 · ADC 7비트 · 30만 비트 · 씨 6개. 양쪽 모두 <b>완결된 단일 모듈</b>이며 인터페이스가 같다 — 입력은 7비트 표본, 출력은 판정 한 비트. <span class="v v-ok">확립</span> BER 이득은 씨 6개 전부에서 1보다 크다(최솟값 4.21배).<br><b>제1판은 이 줄을 “면적 +4 %, 클럭 0.84배”로 적었다.</b> 선형 쪽을 따로 재서 더한 2,273 LC와 “느린 쪽” 36.5 MHz로 잡았기 때문이며, 합쳐 재어 바로잡은 결과가 위 표다(§7.6 · 부록 A.13).</figcaption>
+  <figcaption><b>표 13. 최종 맞바꿈 (제2판).</b> 합성 25 dB 채널 · SNR 30 dB · 압축 1.0 · ADC 7비트 · 30만 비트 · 씨 6개. 양쪽 모두 <b>완결된 단일 모듈</b>이며 인터페이스가 같다 — 입력은 7비트 표본, 출력은 판정 한 비트. <span class="v v-ok">확립</span> BER 이득은 씨 6개 전부에서 1보다 크다(최솟값 4.21배).<br><b>제1판은 이 줄을 “면적 +4 %, 클럭 0.84배”로 적었다.</b> 선형 쪽을 따로 재서 더한 2,273 LC와 “느린 쪽” 36.5 MHz로 잡았기 때문이며, 합쳐 재어 바로잡은 결과가 위 표다(§7.6 · 부록 A.13). <b>파이프라인 줄은 제3판에서 추가되었다</b> — 판정이 동일하므로 BER은 다시 재지 않았고, 그 동일성 자체를 검사가 붙든다(§8.1).</figcaption>
 </figure>
 
 <p><strong>더 작고(−21 %), 더 빠르고(1.35×), BER이 7배 낮다.</strong> 세 축 모두에서 신경망이 앞선다 — 제1판이 “면적을 조금 더 쓰고 클럭을 내주는 맞바꿈”으로 적었던 것과 다르다. 바뀐 것은 신경망이 아니라 <em>기준선을 재는 방법</em>이다(§7.6).</p>
 
-<p>다만 <strong>둘 다 목표 50 MHz에 못 미친다.</strong> 두 설계 모두 한 사이클 안에 긴 조합 경로를 두고 있고, 합친 선형 등화기 쪽이 그 경로가 더 길다(FFE 누산 → 8단 되먹임 덧셈).</p>
+<p>다만 <strong>둘 다 목표 50 MHz에 못 미친다</strong> — 파이프라인을 한 단 넣은 뒤에도 그렇다(47.87과 34.73). 두 설계 모두 한 사이클 안에 긴 조합 경로를 두고 있고, 합친 선형 등화기 쪽이 그 경로가 더 길다(FFE 누산 → 8단 되먹임 덧셈).</p>
 
-<h3>8.1 파이프라인은 아직 가설이다</h3>
-<div class="limits" style="background:var(--open-bg)">
-  <h3 style="color:var(--open)">검증되지 않은 예측 — 측정으로 대체되기 전까지는 결론이 아니다</h3>
-  <p style="margin-bottom:.6rem"><strong>가설.</strong> 은닉층 뒤에 레지스터를 한 단 넣으면 신경망 쪽의 조합 경로가 둘로 갈려 Fmax가 오를 것이다. 등화기는 한 심볼에 한 결정을 내면 되므로 지연이 한 사이클 늘어도 처리율은 줄지 않는다.</p>
-  <p style="margin-bottom:.6rem"><strong>근거.</strong> 임계 경로가 곱셈 → 시프트·클립 → 곱셈 → 덧셈 트리로 이어져 있고 중간 절단점이 존재한다는 것까지는 구조에서 읽힌다.</p>
-  <p style="margin-bottom:.6rem"><strong>검증되지 않은 것.</strong> 실제로 얼마나 오르는지, 절단 후 어느 쪽이 새 임계 경로가 되는지, 추가 레지스터가 면적에 얼마를 더하는지 — <strong>셋 다 재지 않았다.</strong> 배치·배선 후 임계 경로가 예상과 다른 곳에 서는 일은 흔하다.</p>
-  <p style="margin-bottom:0"><strong>DFE 쪽은 같은 가설이 서지도 않는다.</strong> 되먹임 고리이므로 절단점을 넣으면 되먹임 자체가 늦어진다. 이 경우의 표준적 접근은 unrolled(speculative) DFE이지만, 그 역시 <em>본 연구에서 구현하거나 측정하지 않았다.</em></p>
-</div>
+<h3>8.1 파이프라인 — 가설을 측정으로 바꾸었다</h3>
+
+<p>제2판은 “층 사이에 레지스터를 한 단 넣으면 조합 경로가 갈려 Fmax가 오른다”를 <strong>검증되지 않은 가설</strong>로 격리해 두었다. 제3판에서 실제로 넣고 배치·배선했다. 양쪽 모두에 넣었다 — 선형 쪽도 FFE 누산은 되먹임 고리 <em>밖</em>이라 자를 수 있기 때문이며, 한쪽만 파이프라인한 비교는 공정하지 않다.</p>
+
+<figure>
+  <div class="scroll"><table>
+    <thead><tr><th>설계</th><th>민판</th><th>파이프라인 한 단</th><th>Fmax 변화</th><th>면적 변화</th></tr></thead>
+    <tbody>
+      <tr><td>NN 5→2 · Q2.4</td><td>2,368 LC · 30.58 MHz</td><td class="hl">2,336 LC · 47.87 MHz</td><td class="hl">+56.5 %</td><td class="hl">−1.4 %</td></tr>
+      <tr><td>NN 5→4 · Q2.4</td><td>4,636 LC · 26.73 MHz</td><td>4,736 LC · 45.42 MHz</td><td class="hl">+69.9 %</td><td>+2.2 %</td></tr>
+      <tr><td>선형 FFE11+DFE8 · DW7</td><td>2,999 LC · 22.63 MHz</td><td>2,999 LC · 34.73 MHz</td><td class="hl">+53.5 %</td><td class="hl">±0 %</td></tr>
+    </tbody>
+  </table></div>
+  <figcaption><b>표 14. 파이프라인 한 단의 효과.</b> 같은 소자·같은 목표(50 MHz). 파이프라인판은 민판과 <b>같은 판정을 한 사이클 늦게</b> 내며, 이것을 검사가 붙든다(아래). <span class="v v-ok">확립</span> 가설의 방향과 크기가 모두 확인되었다.</figcaption>
+</figure>
+
+<p><strong>가설은 맞았다.</strong> 그러나 가설이 말하지 않은 것 셋이 나왔고, 그중 하나는 결론을 바꾼다.</p>
+
+<h4 style="font-family:var(--sans);font-weight:600;font-size:.98rem;margin:1.6rem 0 .5rem">하나 — 50 MHz는 여전히 못 넘는다</h4>
+<p>제일 좋은 것이 <strong>47.87 MHz</strong>로 목표에 <strong>4 % 모자란다.</strong> 제2판의 가설 문단은 “풀린다”고 썼고 그 낱말은 “목표를 만족한다”로 읽히기 쉬운데, <strong>만족하지 않는다.</strong> 한 단을 더 넣으면 넘을 가능성이 높지만 <span class="v v-none">재지 않았다</span> — 여기서 다시 예측으로 넘어가지 않는다.</p>
+
+<h4 style="font-family:var(--sans);font-weight:600;font-size:.98rem;margin:1.6rem 0 .5rem">둘 — 면적이 늘지 않았고, 작은 쪽은 오히려 줄었다</h4>
+<p>레지스터를 더 넣었는데 NN 5→2는 <strong>32 LC 줄었다</strong>(−1.4 %). 조합 경로가 짧아지면서 배치·배선이 더 촘촘히 채운 것으로 <em>보인다</em> — <strong>“보인다”까지가 이 측정이 받치는 말이다.</strong> 넷리스트를 뜯어 확인하지 않았고, 단일 배치·배선 실행이라 도구의 실행 간 변동과 이 크기의 차이를 구분하지도 못했다. <span class="v v-open">미해결</span></p>
+<p>다만 방향은 분명하다: <strong>이 설계에서 파이프라인의 면적 대가는 사실상 없다.</strong> 세 설계 모두 −1.4 %에서 +2.2 % 사이다.</p>
+
+<h4 style="font-family:var(--sans);font-weight:600;font-size:.98rem;margin:1.6rem 0 .5rem">셋 — 선형 쪽도 같은 만큼 빨라져서 간격이 유지된다</h4>
+<p>제2판은 “신경망 쪽이 파이프라인하기 쉬운 구조”라고 적었다. <strong>측정은 그 함의를 지지하지 않는다.</strong> 선형 등화기도 FFE 누산을 자를 수 있어 +53.5 %를 얻는다 — 못 자르는 것은 되먹임 고리 안(<code>acc → d → hist</code>)뿐이고, 그 고리는 한 단 자른 뒤에도 임계 경로가 아니다.</p>
+<pre>민판    30.58 / 22.63 = 1.35 ×
+파이프  47.87 / 34.73 = 1.38 ×      <- 간격이 그대로다</pre>
+<p>즉 파이프라인은 <strong>두 설계를 같이 끌어올리지 순위를 바꾸지 않는다.</strong> 신경망의 클럭 우위는 파이프라인 전에도 후에도 같은 이유에서 나온다 — 선형 쪽 임계 경로에 8단 되먹임 덧셈이 들어 있다.</p>
+
+<h4 style="font-family:var(--sans);font-weight:600;font-size:.98rem;margin:1.6rem 0 .5rem">더 빠른 회로가 다른 답을 내면 의미가 없다</h4>
+<p>파이프라인은 <strong>Fmax를 올리면서 조용히 답을 바꾸기 쉬운 변경</strong>이다. 그래서 검사가 두 가지를 본다.</p>
+<ul>
+  <li>파이프라인판이 민판과 <strong>같은 판정 열을 한 칸 늦게</strong> 내는가 (80·220 샘플 전량 일치).</li>
+  <li><strong>실제로 한 칸 늦는가.</strong> 민판 정렬로 맞춰 보면 73개 중 12개만 맞는다 — 이 두 번째 검사가 없으면 <code>파이프=True</code>가 무시되어도 첫 번째 검사가 통과한다.</li>
+</ul>
+<p>판정이 동일하므로 <strong>표 7·13의 BER은 파이프라인판에도 그대로 적용된다.</strong> 다시 시뮬레이션할 필요가 없다.</p>
 
 <h3>8.2 전력은 측정하지 못했다</h3>
 <div class="limits">
@@ -661,7 +699,8 @@ N_필요 = [ 2(√p₁ + √p₂) / |p₁ − p₂| ]²</pre>
   <li><strong>동작점이 하나다.</strong> 표 13은 25 dB·SNR 30 dB·압축 1.0 한 점의 값이다. 표 7이 보이듯 이득은 압축 세기에 크게 의존한다.</li>
   <li><strong>온도·전압·공정 변동을 모형화하지 않았다.</strong> §4.3은 “반사 자리가 움직인다면 여분의 탭이 여유를 산다”는 조건문이며, 실제로 얼마나 움직이는지는 이 장치가 재지 못한다. 마찬가지로 아날로그 앞단의 이득·오프셋 드리프트가 신경망의 학습된 가중치를 얼마나 무효화하는지, 재적응 주기가 얼마여야 하는지도 <strong>측정 범위 밖이다.</strong></li>
   <li><strong>기준선이 최적해가 아니다</strong>(§1.1). 더 긴 FFE·DFE나 더 나은 적응 알고리즘을 쓴 선형 기준선이라면 격차가 줄 수 있다.</li>
-  <li><strong>파이프라인·unrolled DFE 미구현.</strong> §8의 클럭 논의는 그만큼 예측이다.</li>
+  <li><strong>파이프라인은 한 단만 쟀고 unrolled DFE는 구현하지 않았다.</strong> 두 번째 단을 넣었을 때의 Fmax, 그리고 DFE 되먹임 고리를 unroll했을 때의 면적·클럭은 측정 범위 밖이다.</li>
+  <li><strong>배치·배선을 설계마다 한 번씩만 돌렸다.</strong> nextpnr의 실행 간 변동을 측정하지 않았으므로, 표 14의 −1.4 % 같은 작은 면적 차이는 도구 잡음과 구분되지 않는다. 50 %대의 Fmax 변화는 그 잡음보다 훨씬 크다.</li>
 </ul>
 
 <!-- ══════════════════════ 10 ══════════════════════ -->
@@ -672,13 +711,14 @@ N_필요 = [ 2(√p₁ + √p₂) / |p₁ − p₂| ]²</pre>
   <li><strong>같은 방식으로 재면 신경망이 더 작고 더 빠르다.</strong> 완결된 단일 모듈끼리 비교하면 2,368 LC / 30.6 MHz 대 2,999 LC / 22.6 MHz다. 제1판이 낸 “면적 +4 %, 클럭 0.84배”는 <strong>선형 쪽을 따로 재서 더한 탓</strong>이었다 — 그 더한 값이 실제보다 11 % 작았다.</li>
   <li><strong>본 설계 공간에서 경량화의 축은 비트폭이 아니라 망 크기다.</strong> 곱셈 12개로 이득의 41%를 얻고, 352개로 늘려도 7.6배에 그친다. 비트폭 축은 8→6비트에서 면적 14.8%에 BER 31%를 맞바꾸는 훨씬 작은 손잡이다. <em>훑은 범위 밖으로 일반화하지 않는다</em>(표 9 캡션).</li>
   <li><strong>고정소수점에서 성능을 가르는 것은 정수부 여유다.</strong> 같은 정수부면 전체 폭이 달라도 결과가 같다. 이를 오진하면 같은 BER에 1.9배의 면적을 치른다.</li>
-  <li><strong>타이밍의 적은 크기가 아니라 조합 경로 깊이이며, 합친 선형 등화기가 더 심하게 겪는다</strong>(22.6 MHz). 신경망 쪽이 파이프라인하기 쉬운 구조라는 것은 <em>구조에서 읽히는 가설이고 측정하지 않았다</em>(§8.1).</li>
+  <li><strong>타이밍의 적은 크기가 아니라 조합 경로 깊이다.</strong> 파이프라인 한 단이 <strong>면적 대가 없이</strong> Fmax를 53–70 % 올린다(측정). 그러나 <strong>목표 50 MHz에는 여전히 4 % 모자라고</strong>, <strong>선형 쪽도 같은 만큼 빨라져 순위가 바뀌지 않는다</strong> — 제2판이 시사한 “신경망이 파이프라인하기 더 쉽다”는 측정으로 지지되지 않았다. 못 자르는 것은 DFE의 되먹임 고리뿐이고 그 고리는 임계 경로가 아니었다.</li>
   <li><strong>반사 대응에서는 탭의 자리가 개수를 이긴다.</strong> 탭 하나의 자리 허용 오차는 0 심볼(8.2배 벌점)이지만 두 탭을 나란히 놓으면 절벽이 사라지고, 자리 탐색은 200 심볼이면 끝난다.</li>
 </ol>
 
 <h3>향후 과제</h3>
 <ul>
-  <li>은닉층 파이프라인 후 Fmax 재측정 — §8의 예측을 측정으로 바꾸는 일.</li>
+  <li><strong>파이프라인 두 번째 단</strong> — 한 단으로 47.87 MHz까지 갔고 목표에 4 % 모자란다. 곱셈 뒤·덧셈 트리 앞을 자르는 것이 다음 절단점이다. 넘을 가능성이 높으나 <em>재기 전에는 말하지 않는다.</em></li>
+  <li>파이프라인의 면적 변화(−1.4 %)가 실재하는지 — 배치·배선을 여러 씨로 돌려 도구의 실행 간 변동과 구분하는 일.</li>
   <li>전력 축을 채울 방법의 확보(게이트 레벨 스위칭 활동 기반 추정 도구, 또는 전력 모델이 있는 대상 소자로 이전).</li>
   <li>DSP 블록이 있는 소자에서의 재측정 — “면적 +4%”가 소자 의존적 결론이므로.</li>
   <li>PAM4 확장 및 메모리 있는 비선형 모형.</li>
@@ -691,7 +731,7 @@ N_필요 = [ 2(√p₁ + √p₂) / |p₁ − p₂| ]²</pre>
 <h2 class="sec"><span class="n">A</span>부록 — 계측 장치 자신의 결함 열둘</h2>
 
 <p>본 연구에서 발견한 결함의 대부분은 등화기가 아니라 <strong>등화기를 재는 장치</strong>에 있었고, 그중 아홉은 <strong>초록불로 위장</strong>해 있었다. 결과보다 이 목록이 재현하려는 사람에게 더 쓸모 있을 것이다.</p>
-<p><strong>A.13과 A.14는 제2판에서 추가된 것이며, 둘 다 제1판을 쓰는 동안 저지른 것이다.</strong> 하나는 제1판의 결론 하나를 뒤집었고, 다른 하나는 <em>이 부록이 이미 경고하고 있던 실수를 그대로 반복한 것</em>이다.</p>
+<p><strong>A.13과 A.14는 제2판에서 추가된 것이며, 둘 다 제1판을 쓰는 동안 저지른 것이다.</strong> 하나는 제1판의 결론 하나를 뒤집었고, 다른 하나는 <em>이 부록이 이미 경고하고 있던 실수를 그대로 반복한 것</em>이다. 제3판에서는 새 결함이 나오지 않았다 — 파이프라인은 <strong>답을 바꾸기 쉬운 변경</strong>이라 검사를 먼저 쓰고 측정했고(§8.1), 그 검사가 “한 칸 늦는지”까지 보기 때문에 <code>파이프=True</code>가 무시되는 경우도 걸린다.</p>
 
 <details class="defect"><summary><span class="tag">A.1</span> 정렬을 잊어 모든 BER이 0.5였다</summary>
 <div class="body"><p>채널의 심볼 지연만큼 판정을 옮기지 않아 모든 BER이 동전 던지기(0.5)로 나왔다. <strong>증상이 명백해 금방 잡혔고, 그래서 이 목록에서 가장 덜 위험한 부류다.</strong> 나머지 열하나는 그럴듯한 숫자를 냈다.</p></div></details>
@@ -768,6 +808,7 @@ N_필요 = [ 2(√p₁ + √p₂) / |p₁ − p₂| ]²</pre>
   <p>모든 수치는 공개 저장소의 코드로 재현 가능하다. 시뮬레이터 <code>serdes.py</code> · 신경망 <code>nneq.py</code> · 고정소수점 기준모델 <code>nnfix.py</code> · 등화기 Verilog <code>eqrtl.py</code> · 배치배선 <code>pnr.py</code>. 검증은 <code>tests/test_serdes.py</code> · <code>tests/test_serdes_sweep.py</code> · <code>tests/test_nneq.py</code> · <code>tests/test_nnfix.py</code>.</p>
   <p>도구: numpy · yosys · nextpnr-ice40 · iverilog. 대상 소자 Lattice iCE40 HX8K (7,680 LC), 패키지 CT256.</p>
   <p>측정 일자 2026-09-15 ~ 2026-09-16. 본 보고서의 모든 표는 해당 일자에 커밋된 코드로 재실행해 얻은 값이다.</p>
+  <p><b>제3판 변경.</b> 제2판이 §8.1에 가설로 격리해 둔 파이프라인을 <b>실제로 구현해 측정했다</b>(표 14). 가설의 방향과 크기는 확인되었으나 셋이 갈렸다 — 목표 50 MHz를 여전히 4 % 차로 못 넘고, 면적 대가가 사실상 없으며, <b>선형 쪽도 같은 만큼 빨라져 순위가 바뀌지 않는다</b>(제2판이 시사한 “신경망이 파이프라인하기 더 쉽다”는 지지되지 않았다). 표 12·13에 파이프라인 줄을 넣었고, 판정 동일성을 검사가 붙든다.</p>
   <p><b>제2판 변경.</b> ① 선형 기준선을 합친 단일 모듈로 다시 측정(표 12·13, §7.6, A.13) — 제1판의 “면적 +4 %, 클럭 0.84배”가 “−21 %, 1.35배”로 바뀌었다. ② MMSE-DFE 최적해와 실제 기준선을 §1.1로 분리. ③ “25 dB 백플레인”을 “합성 25 dB 채널 모형”으로. ④ N_필요 유도와 보수성(최대 √2배) 명시. ⑤ 파이프라인을 §8.1의 가설로 격리. ⑥ 망 크기 결론을 훑은 설계 공간으로 한정. ⑦ 곱셈기 면적의 제곱 축척을 “어긋나지 않는다”로 완화. ⑧ 실측 채널·온도·CDR 관련 문장을 조건형으로. 부록에 A.13·A.14 추가.</p>
 </footer>
 
