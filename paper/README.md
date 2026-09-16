@@ -162,3 +162,32 @@ A.15 가 제일 비싸다 -- **넉 판 동안 엉뚱한 대조만 돌렸다.** "
 
 > 검사하지 않은 초록불은 검사한 빨간불보다 나쁘다.
 > **묻지 않은 질문은 검사하지 않은 초록불보다 나쁘다.**
+
+## IEEE 판 (영문) -- `multiplier_free_lookup_eq_IEEE.pdf`
+
+*Multiplier-Free Sample-Indexed Lookup Equalization for Nonlinear Wireline
+SerDes Receivers.* 8쪽, IEEE 2단. 한글 판(`serdes_nn_eq.html`)과 **내용이 다르다** --
+검증 절차·에이전트·부록(결함 목록)을 전부 빼고 **본질만** 남겼다. 대신 한글 판에 없는
+것을 채웠다.
+
+  · 신호 모형 전체 수식 (식 1~8): 스킨이펙트 · 최소위상 켑스트럼 · 반사 · 압축 ·
+    압축뒤필터 · ADC
+  · NLMS 안정 조건과 탭수 정규화 (식 9~10), DFE 임의 탭 (식 11)
+  · 신경망 순전파와 채널별 양자화 (식 12~15), 고정소수점 기준 (식 16~19)
+  · **명제 1** 메모리 없는 비선형의 MMSE 보정기는 정확히 2^B 칸 표다 (증명 포함)
+  · **명제 2** ±1 변수 위의 다항식은 곱셈기 없이 실현된다 (부호 = XOR)
+  · **명제 3** 검출기는 관측이 나르는 정보로 순서가 매겨진다 -> 판정 영역 천장의 설명
+  · 알고리즘 1 (표 학습), 리스팅 1 (파이썬), 리스팅 2 (합성 가능한 Verilog 전문)
+  · 표 I~IX, 재현 파라미터 부록
+
+### 만드는 법
+
+LaTeX 이 없어서 **Chromium 프린트 + CSS 2단**으로 조판했다.
+
+    B=/opt/pw-browsers/chromium-1194/chrome-linux/chrome
+    $B --headless --disable-gpu --no-sandbox --no-pdf-header-footer \
+       --print-to-pdf=paper.pdf file://$PWD/multiplier_free_lookup_eq_IEEE.html
+
+**코드 리스팅은 단 폭(약 58자)에 맞춰 조판해야 한다.** `column-span: all` 로 전폭을
+주면 잘리지는 않지만 단 흐름이 끊겨 빈 자리가 생기고 쪽수가 7 -> 9 로 는다. 줄을
+58자 이하로 접는 쪽이 낫다(지금 8쪽).
