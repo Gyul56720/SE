@@ -1,0 +1,562 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<title>Multiplier-Free Sample-Indexed Lookup Equalization</title>
+<style>
+@page { size: letter; margin: 0.75in 0.625in 1in 0.625in; }
+html { font-size: 10pt; }
+body { font-family: "Liberation Serif","Times New Roman",Times,serif;
+       font-size: 10pt; line-height: 1.12; margin: 0; text-align: justify;
+       hyphens: auto; -webkit-hyphens: auto; color:#000; }
+.onecol { column-count: 1; margin-bottom: 10pt; }
+.body2 { column-count: 2; column-gap: 0.25in; column-fill: auto; }
+
+h1.title { font-size: 20pt; font-weight: normal; text-align:center;
+           margin: 0 0 12pt; line-height:1.1; }
+.authors { text-align:center; font-size: 11pt; margin-bottom: 2pt; }
+.affil { text-align:center; font-size: 9pt; font-style: italic; margin-bottom: 14pt; }
+
+.abs { font-size: 9pt; }
+.abs b { font-style: italic; }
+.kw { font-size: 9pt; margin-top: 6pt; }
+
+h2 { font-size: 10pt; font-weight: normal; font-variant: small-caps;
+     text-align: center; margin: 12pt 0 4pt; letter-spacing:.02em; break-after: avoid; }
+h3 { font-size: 10pt; font-weight: normal; font-style: italic;
+     margin: 8pt 0 3pt; break-after: avoid; }
+h4 { font-size: 10pt; font-weight: normal; font-style: italic;
+     margin: 6pt 0 2pt; break-after: avoid; display:inline; }
+p { margin: 0; text-indent: 1.2em; }
+p.first, h2 + p, h3 + p, .noind { text-indent: 0; }
+
+i.v { font-style: italic; }
+.eq { display:block; text-align:center; margin: 6pt 0; font-style: normal;
+      break-inside: avoid; position: relative; }
+.eq .n { position:absolute; right:0; font-style:normal; }
+.eq .m { font-family:"Liberation Serif",Times,serif; }
+.frac { display:inline-block; vertical-align:-0.55em; text-align:center; margin:0 .18em; }
+.frac .num { display:block; border-bottom:.6pt solid #000; padding:0 .25em; }
+.frac .den { display:block; padding:0 .25em; }
+.rad { border-top:.6pt solid #000; padding:0 .12em; }
+
+table { border-collapse: collapse; font-size: 8pt; margin: 0 auto;
+        font-variant-numeric: tabular-nums; }
+caption { caption-side: top; font-size: 8pt; text-align:center;
+          font-variant: small-caps; margin-bottom: 3pt; }
+caption b { font-variant: normal; font-weight: normal; display:block;
+            font-size:8pt; text-align:justify; margin-top:2pt; font-variant:normal; }
+th { font-weight: normal; font-style: italic; border-top:.8pt solid #000;
+     border-bottom:.5pt solid #000; padding: 2pt 4pt; text-align:center; }
+td { padding: 1.6pt 4pt; text-align:center; }
+td.l, th.l { text-align:left; }
+tbody tr:last-child td { border-bottom:.8pt solid #000; }
+tr.rt td { border-top:.5pt solid #000; }
+figure { margin: 8pt 0; break-inside: avoid; }
+figure.wide { column-span: all; }
+figcaption { font-size: 8pt; text-align: justify; margin-top: 4pt; }
+figcaption b { font-variant: small-caps; font-weight: normal; }
+
+pre { font-family:"Liberation Mono","DejaVu Sans Mono",monospace; font-size: 7.0pt;
+      line-height: 1.22; margin: 5pt 0; white-space: pre; break-inside: avoid;
+      border-top:.8pt solid #000; border-bottom:.8pt solid #000; padding: 3pt 0; }
+pre.hdr::before { content: attr(data-t); display:block; font-family:"Liberation Serif",serif;
+      font-size:8pt; font-variant:small-caps; text-align:center; margin-bottom:3pt; }
+code { font-family:"Liberation Mono",monospace; font-size: 8.6pt; }
+.alg { border-top:.8pt solid #000; border-bottom:.8pt solid #000; font-size:8pt;
+       margin:6pt 0; padding:3pt 0; break-inside:avoid; line-height:1.3; }
+.alg .t { text-align:center; font-variant:small-caps; border-bottom:.5pt solid #000;
+          padding-bottom:2pt; margin-bottom:3pt; }
+.alg ol { margin:0; padding-left:1.6em; }
+.alg li { margin:0; }
+ul.tight { margin: 3pt 0; padding-left: 1.1em; }
+ul.tight li { margin-bottom: 2pt; }
+.ref { font-size: 8pt; }
+.ref ol { padding-left: 1.4em; margin: 0; }
+.ref li { margin-bottom: 2pt; text-indent:0; }
+.thm { font-style: italic; }
+.thm b { font-style: normal; font-variant: small-caps; }
+</style></head><body>
+<div class="onecol">
+<h1 class="title">Multiplier-Free Sample-Indexed Lookup Equalization<br>for Nonlinear Wireline SerDes Receivers</h1>
+<div class="affil">Design study, NRZ wireline link model, Lattice iCE40 HX8K target</div>
+
+<div class="abs"><b>Abstract—</b>Receiver-side nonlinearity in high-loss wireline links cannot be undone by linear equalization, and this observation is routinely used to motivate neural-network (NN) equalizers. We show that the motivation is incomplete. If the front-end nonlinearity is memoryless, its inverse is also memoryless and is therefore exactly a <i>2<sup>B</sup></i>-entry lookup table over the ADC code, costing no multipliers; measured on a 25&nbsp;dB skin-effect channel with <i>tanh</i> compression, this 128-entry table reduces BER by 20.9&times; over an NLMS FFE+DFE baseline and outperforms a 96-multiplier MLP by 2.02&times;, after which the MLP adds nothing (0.94&times;). A NN earns its multipliers only when the nonlinearity has memory. We create that regime by band-limiting after compression, and identify a narrow operating window (3-dB bandwidth &asymp;&nbsp;0.35/<i>T</i>) in which an MLP beats the memoryless table on 8/8 seeds. Within that window we prove and measure a <i>decision-domain ceiling</i>: a linear DFE, a decision-indexed ROM, and a multiplier-free Volterra expansion over &plusmn;1 decisions all saturate near 3.1&times; regardless of parameter count (8 to 1351 parameters), because past decisions discard amplitude. Moving the index from decisions to quantized samples removes the ceiling: a 256-entry, 1-bit-per-entry table placed after an 11-tap FFE achieves <b>7.98&times;</b> with <i>zero</i> back-end multipliers, exceeding a 96-multiplier MLP (5.80&times;) that does not fit the target device. Place-and-routed on iCE40 HX8K, the proposed equalizer costs 3&nbsp;037 LC and 41.4&nbsp;MHz against 2&nbsp;999 LC and 34.7&nbsp;MHz for the linear baseline &mdash; <b>+1.3&thinsp;% area, 1.19&times; clock, 8&times; lower BER</b>. We give the full signal model, training algorithms, fixed-point definitions, and RTL.</div>
+
+<div class="kw"><i>Index Terms</i>&mdash;Wireline SerDes, decision-feedback equalization, nonlinear equalization, lookup-table detection, Volterra series, quantization, FPGA implementation.</div>
+</div>
+
+<div class="body2">
+
+<h2>I.&ensp;Introduction</h2>
+
+<p class="first">In a high-loss wireline channel the pulse response spreads over many unit intervals and the eye closes through intersymbol interference (ISI). The standard remedy is a cascade of a continuous-time linear equalizer (CTLE), a feed-forward equalizer (FFE), and a decision-feedback equalizer (DFE). For a linear channel with additive Gaussian noise this cascade is asymptotically optimal in the MMSE sense, so any nonlinear detector can at best tie it.</p>
+
+<p>Real receivers are not linear. Gain compression in the analog front end, buffer saturation, and driver nonlinearity all warp the signal <i>after</i> ISI has spread it. Such a warp has no linear inverse, and this is the standard argument for a neural-network equalizer.</p>
+
+<p><i>The argument has a gap.</i> &ldquo;A linear FFE/DFE cannot invert it&rdquo; and &ldquo;a neural network is required&rdquo; are different claims, and between them lies the entire class of <i>nonlinear but non-neural</i> correctors. In this paper we close that gap and find that it dominates the design space we studied.</p>
+
+<p>Our contributions are:</p>
+<ul class="tight">
+<li>A proposition and measurement showing that a <i>memoryless</i> front-end nonlinearity admits an exact <i>2<sup>B</sup></i>-entry lookup inverse over the ADC code, with zero multipliers, which outperforms an MLP of 96 multipliers by 2.02&times; and renders it redundant (Sec.&nbsp;V).</li>
+<li>Identification of the regime in which a NN does earn its cost &mdash; nonlinearity <i>with memory</i>, created by post-compression band-limiting &mdash; and measurement of how narrow that window is (Sec.&nbsp;VI).</li>
+<li>A <i>decision-domain ceiling</i>: an information argument plus measurement showing that a linear DFE, a full decision-indexed ROM, and a multiplier-free &plusmn;1 Volterra expansion all saturate near 3.1&times; irrespective of parameter count (Sec.&nbsp;VII). We prove that any polynomial in &plusmn;1 decision variables is realizable with sign-controlled additions only.</li>
+<li>A <i>sample-indexed lookup equalizer</i> that removes the ceiling at zero back-end multiplier cost, with a hardware-realizable shift-and-clamp quantizer, its training rule, complexity analysis, RTL, and place-and-route results (Sec.&nbsp;VIII&ndash;X).</li>
+</ul>
+
+<h2>II.&ensp;System Model</h2>
+
+<h3>A. Channel</h3>
+<p class="first">NRZ symbols <i>b</i>[<i>n</i>]&nbsp;&isin;&nbsp;{&minus;1,&thinsp;+1} at rate 1/<i>T</i> are oversampled by <i>M</i> samples per symbol. The channel magnitude follows a skin-effect law,</p>
+
+<div class="eq">|<i>H</i><sub>ch</sub>(<i>f</i>)| = 10<sup>&minus;(<i>L</i><sub>dB</sub>/20)&thinsp;&radic;(<i>f</i>/<i>f</i><sub>N</sub>)</sup>,&emsp;<i>f</i><sub>N</sub> = 1/(2<i>T</i>)<span class="n">(1)</span></div>
+
+<p class="noind">with <i>L</i><sub>dB</sub> the Nyquist loss. Phase is not free: a linear-phase reconstruction produces a symmetric cursor set, which removes the very post-cursor asymmetry a DFE exists to cancel. We therefore build the minimum-phase response from the real cepstrum. With <i>N</i>-point DFTs and <i>c</i> = IDFT{ln|<i>H</i>|},</p>
+
+<div class="eq"><i>m</i>[<i>k</i>] = <i>c</i>[0], 2<i>c</i>[<i>k</i>]<sub>0&lt;k&lt;N/2</sub>, <i>c</i>[<i>N</i>/2], 0<span class="n">(2)</span></div>
+<div class="eq"><i>h</i> = IDFT{ exp( DFT{<i>m</i>} ) }<span class="n">(3)</span></div>
+
+<p>Connector and via-stub reflections are applied multiplicatively,</p>
+
+<div class="eq"><i>H</i>(<i>f</i>) = <i>H</i><sub>ch</sub>(<i>f</i>) &middot; ( 1 + &Sigma;<sub><i>k</i></sub> &Gamma;<sub><i>k</i></sub> <i>e</i><sup>&minus;<i>j</i>2&pi;<i>f</i>&tau;<sub><i>k</i></sub></sup> )<span class="n">(4)</span></div>
+
+<p class="noind">which places a notch wherever <i>f</i>&thinsp;&tau;&nbsp;=&nbsp;1/2, of depth 20&thinsp;log<sub>10</sub>(1&minus;|&Gamma;|). Unlike skin-effect loss, a notch removes one frequency and cannot be filled by the smooth boost of a CTLE. In the time domain it appears as an isolated cursor at lag &tau;/<i>T</i>.</p>
+
+<h3>B. Noise and receiver nonlinearity</h3>
+<p class="first">Additive Gaussian noise is referenced to the main cursor of a lossless link, so that the loss-free, unequalized link satisfies a closed form used later for calibration:</p>
+
+<div class="eq"><i>r</i>(<i>t</i>) = (<i>x</i> &lowast; <i>h</i>)(<i>t</i>) + <i>w</i>(<i>t</i>),&emsp;<i>&sigma;</i> = 10<sup>&minus;SNR<sub>dB</sub>/20</sup><span class="n">(5)</span></div>
+
+<p>Front-end compression is applied <i>after</i> noise and <i>before</i> equalization, which is where a VGA/CTLE stage sits:</p>
+
+<div class="eq"><i>g</i>(<i>u</i>) = <span class="frac"><span class="num">tanh(<i>a u</i>)</span><span class="den"><i>a</i></span></span>,&emsp;<i>a</i> = <span class="frac"><span class="num">&kappa;</span><span class="den">RMS(<i>u</i>)</span></span><span class="n">(6)</span></div>
+
+<p class="noind">where &kappa; is the compression strength. Two properties of (6) matter. First, it is <b>memoryless</b>: <i>g</i> acts on one sample. Second, applying it at the transmitter would do nothing at all &mdash; NRZ has only two levels, so a memoryless map is a pure gain change and the slicer output is unchanged. Nonlinearity acquires meaning only after ISI has spread the levels, which is why it is placed at the receiver.</p>
+
+<h3>C. Post-compression band-limiting</h3>
+<p class="first">A real receiver filters again after the compressing stage &mdash; CTLE loading, ADC input network, package. We model this with a Hann low-pass <i>q</i> of 3-dB bandwidth &beta;/<i>T</i>:</p>
+
+<div class="eq"><i>v</i>[<i>n</i>] = &Sigma;<sub><i>m</i></sub> <i>q</i>[<i>m</i>] &middot; <i>g</i>( <i>r</i>[<i>n</i>&minus;<i>m</i>] )<span class="n">(7)</span></div>
+
+<p class="noind">Equation (7) is the crux of this paper. When <i>q</i> = &delta;, <i>v</i>[<i>n</i>] is a function of <i>r</i>[<i>n</i>] alone and the nonlinearity remains memoryless. When <i>q</i> has support greater than one, <i>v</i>[<i>n</i>] mixes several <i>compressed</i> values and <b>no memoryless map can recover</b> <i>r</i>[<i>n</i>]. The parameter &beta; therefore moves the impairment continuously between two qualitatively different classes.</p>
+
+<h3>D. Quantization and gain control</h3>
+<p class="first">Sampling at the pulse-response peak phase, a <i>B</i>-bit ADC with full scale &rho;&sigma;<sub><i>v</i></sub> yields</p>
+
+<div class="eq"><i>y</i>[<i>n</i>] = &Delta; &middot; clip( round(<i>v</i>[<i>n</i>]/&Delta;), &minus;2<sup><i>B</i>&minus;1</sup>, 2<sup><i>B</i>&minus;1</sup>&minus;1 )<span class="n">(8)</span></div>
+
+<p class="noind">with &Delta; = &rho;&thinsp;&sigma;<sub><i>v</i></sub>/2<sup><i>B</i>&minus;1</sup>, &sigma;<sub><i>v</i></sub> estimated over the training preamble. A digital AGC then normalizes by the measured main-cursor gain <i>&gamma;</i> = E[<i>y</i>&thinsp;<i>b</i>] taken over the preamble only.</p>
+
+<h3>E. Calibration</h3>
+<p class="first">With <i>L</i><sub>dB</sub>&nbsp;=&nbsp;0, &kappa;&nbsp;=&nbsp;0 and no equalizer, the model must reproduce BER = <i>Q</i>(10<sup>SNR/20</sup>). Over 4&times;10<sup>5</sup> bits the measured values agree to 0.49&thinsp;%, 3.03&thinsp;% and 1.30&thinsp;% at 6, 8 and 10&nbsp;dB, all inside the 3&sigma; counting error. An SNR without such a definition is an arbitrary number.</p>
+
+<h2>III.&ensp;Baseline Equalizers</h2>
+
+<h3>A. NLMS feed-forward equalizer</h3>
+<p class="first">The FFE is adapted by normalized LMS over the preamble. With tap vector <b>w</b> &isin; &#8477;<sup><i>L</i></sup>, input window <b>y</b>[<i>n</i>] = (<i>y</i>[<i>n</i>], &hellip;, <i>y</i>[<i>n</i>&minus;<i>L</i>+1])<sup>T</sup> and reference delay <i>D</i> = &lfloor;<i>L</i>/2&rfloor;,</p>
+
+<div class="eq"><i>e</i>[<i>n</i>] = <b>w</b><sup>T</sup><b>y</b>[<i>n</i>] &minus; <i>b</i>[<i>n</i>&minus;<i>D</i>]<span class="n">(9)</span></div>
+<div class="eq"><b>w</b> &larr; <b>w</b> &minus; <span class="frac"><span class="num">&mu;</span><span class="den"><i>L P</i></span></span> <i>e</i>[<i>n</i>] <b>y</b>[<i>n</i>],&emsp;<i>P</i> = E[<i>y</i><sup>2</sup>]<span class="n">(10)</span></div>
+
+<p class="noind">The division by <i>L</i> is not cosmetic. The LMS stability bound is &mu; &lt; 2/(<i>L</i>&thinsp;&sigma;<sub><i>y</i></sub><sup>2</sup>), so normalizing by power alone diverges as taps are added; with power-only normalization a 29-tap FFE diverged to tap magnitudes of 1.08&times;10<sup>6</sup> in our runs, which would have been misread as &ldquo;more taps do not help.&rdquo; We use &mu; = 0.2 throughout.</p>
+
+<h3>B. Decision feedback with arbitrary tap placement</h3>
+<p class="first">The slicer feeds back its <i>own</i> decisions &mdash; substituting true bits removes error propagation and inflates BER by orders of magnitude. For tap positions <i>p</i><sub>1</sub>&hellip;<i>p</i><sub><i>K</i></sub> (not necessarily contiguous) and coefficients <i>c</i><sub><i>k</i></sub>,</p>
+
+<div class="eq"><i>d</i>&#770;[<i>n</i>] = sgn( <i>y</i><sub>f</sub>[<i>n</i>] &minus; &Sigma;<sub><i>k</i>=1</sub><sup><i>K</i></sup> <i>c</i><sub><i>k</i></sub> <i>d</i>&#770;[<i>n</i>&minus;<i>p</i><sub><i>k</i></sub>] )<span class="n">(11)</span></div>
+
+<p class="noind">Because <i>d</i>&#770; &isin; {&minus;1,+1}, every product in (11) is a sign selection: <b>a DFE tap contains no multiplier</b>, only an add/subtract. This is the single most important cost asymmetry in the paper and it recurs in Sec.&nbsp;VII.</p>
+
+<p>Free tap placement matters more than tap count. For &Gamma; = 0.35 at &tau; = 11<i>T</i>, the residual cursor after an 11-tap FFE is &le;&thinsp;0.055 at lags 1&ndash;10 and <b>+0.358</b> at lag 11. A single floating tap at 11 is worth 8.2&times; in BER over a tap at 10 or 12; a <i>pair</i> of adjacent taps removes that cliff entirely (Table&nbsp;I). Locating the reflection by correlation needs only 200 symbols (12/12 seeds), so tracking a drifting reflection is an operational matter, not a design constraint.</p>
+
+<figure>
+<table><caption>Table&nbsp;I<br><b>Cost of misplacing a floating DFE tap. &Gamma;=0.35 at &tau;=11T, 11-tap FFE, 5&times;10<sup>5</sup> bits, 4 seeds.</b></caption>
+<thead><tr><th class="l">Floating tap position</th><th>BER</th><th>vs. correct</th></tr></thead>
+<tbody>
+<tr><td class="l">{11} &mdash; correct</td><td>1.83e&minus;03</td><td>1.0&times;</td></tr>
+<tr><td class="l">{9}, {10}, {12}, {13}</td><td>1.49&ndash;1.52e&minus;02</td><td>8.2&ndash;8.3&times;</td></tr>
+<tr class="rt"><td class="l">{10,11}, {11,12}, {10,11,12}</td><td>1.74&ndash;1.79e&minus;03</td><td>1.0&times;</td></tr>
+</tbody></table>
+</figure>
+
+<h3>C. Word length</h3>
+<p class="first">Coefficients and ADC are quantized jointly, since they are not chosen independently in practice. Sweeping channel loss with each point re-normalized to a BER of 10<sup>&minus;3</sup>, 7&nbsp;bits is flat to 20&nbsp;dB; at 25&nbsp;dB the 6-bit setting averages +26.6&thinsp;% but spreads over [+6.5, +69.6]&thinsp;% across seeds, which is why it is not usable. Above 30&nbsp;dB no width in the swept range satisfies both a small mean and a small spread. The ADC optimum is <i>&rho;</i> = 2.5&sigma; at every resolution, with a clipping fraction of 0.43&thinsp;% rather than zero &mdash; a well-set ADC deliberately clips a little. The joint operating point used throughout is <b>7-bit coefficients, 7-bit ADC</b>, which costs +2.2&thinsp;% BER relative to floating point.</p>
+
+<h2>IV.&ensp;Neural-Network Equalizer</h2>
+
+<h3>A. Architecture and training</h3>
+<p class="first">The NN equalizer is a single-hidden-layer MLP over a centred tapped-delay line of the ADC samples. With window half-width <i>A</i>, <i>L</i> = 2<i>A</i>+1, hidden width <i>H</i>:</p>
+
+<div class="eq"><b>x</b>[<i>n</i>] = ( <i>y</i>[<i>n</i>&minus;<i>A</i>], &hellip;, <i>y</i>[<i>n</i>+<i>A</i>] )<sup>T</sup><span class="n">(12)</span></div>
+<div class="eq"><b>z</b> = <b>W</b><sub>1</sub><sup>T</sup><b>x</b> + <b>b</b><sub>1</sub>,&emsp;<b>h</b> = &phi;(<b>z</b>),&emsp;<i>u</i> = <b>w</b><sub>2</sub><sup>T</sup><b>h</b> + <i>b</i><sub>2</sub><span class="n">(13)</span></div>
+<div class="eq"><i>d</i>&#770;[<i>n</i>] = sgn(<i>u</i>[<i>n</i>])<span class="n">(14)</span></div>
+
+<p class="noind">Training minimizes the MSE to <i>b</i>[<i>n</i>] with Adam over the first 30&thinsp;% of the record; BER is counted on the remainder only. The multiplier count is <i>LH</i>&nbsp;+&nbsp;<i>H</i>.</p>
+
+<p>The activation is chosen by BER, not by approximation error. Hardware cannot evaluate <i>tanh</i> directly, so we compare <i>tanh</i> against <i>hardtanh</i>(<i>z</i>)&nbsp;=&nbsp;clip(<i>z</i>,&minus;1,1) &mdash; two comparisons, no table &mdash; and a three-segment piecewise-linear fit <i>pwl3</i>. At 12 multipliers <i>hardtanh</i> wins on 7 of 8 seeds (sign test <i>p</i>&nbsp;&asymp;&nbsp;0.04). Notably <i>pwl3</i> approximates <i>tanh</i> far better yet is worst in BER at every size (1.4&ndash;1.9&times;), because the network adapts to whatever nonlinearity it is given: <b>a better approximation is not a better equalizer</b>.</p>
+
+<h3>B. Quantization</h3>
+<p class="first">Per-tensor scaling destroys the network. A trained <b>W</b><sub>1</sub> of shape 21&times;16 has max 2.4003 and median 0.1133 &mdash; a spread of 21&times; &mdash; so a 4-bit tensor-wide step of max/7 rounds all but 138 of 369 weights to zero. Per-output-channel scaling,</p>
+
+<div class="eq"><i>s</i><sub><i>j</i></sub> = max<sub><i>i</i></sub> |<i>W</i><sub><i>ij</i></sub>|,&emsp;<i>W</i>&#770;<sub><i>ij</i></sub> = <span class="frac"><span class="num"><i>s</i><sub><i>j</i></sub></span><span class="den"><i>S</i></span></span> clip( round( <i>S</i> <i>W</i><sub><i>ij</i></sub>/<i>s</i><sub><i>j</i></sub> ), &minus;<i>S</i>&minus;1, <i>S</i> )<span class="n">(15)</span></div>
+
+<p class="noind">with <i>S</i> = 2<sup><i>B</i><sub>w</sub>&minus;1</sup>&minus;1, keeps 282 of 369 alive at 4&nbsp;bits. Linear equalizer taps span one decade and tolerate tensor scaling; NN weights do not. Quantization-aware training with a straight-through estimator and a grid frozen at the float solution was implemented but <b>did not establish a gain</b> at this scale: the winning width moved between variants and the seed spread exceeded the differences. What is established is post-training quantization with per-channel scaling.</p>
+
+<p>The dominant lightweighting axis in the swept space is network size, not width:</p>
+
+<figure>
+<table><caption>Table&nbsp;II<br><b>Network size versus gain over the 8-bit linear baseline. &kappa;=1.0, 25 dB, SNR 30 dB, 4 seeds.</b></caption>
+<thead><tr><th>Window</th><th>Hidden</th><th>Mults</th><th>BER</th><th>Gain</th><th>Gain/mult</th></tr></thead>
+<tbody>
+<tr><td>5</td><td>2</td><td>12</td><td>7.671e&minus;03</td><td>3.1&times;</td><td>2.89</td></tr>
+<tr><td>5</td><td>4</td><td>24</td><td>4.775e&minus;03</td><td>5.1&times;</td><td>2.32</td></tr>
+<tr><td>9</td><td>8</td><td>80</td><td>3.409e&minus;03</td><td>7.1&times;</td><td>0.97</td></tr>
+<tr><td>21</td><td>16</td><td>352</td><td>3.161e&minus;03</td><td>7.6&times;</td><td>0.24</td></tr>
+</tbody></table>
+</figure>
+
+<p class="noind">Twelve multipliers buy 41&thinsp;% of the available gain; a further 15&times; in multipliers buys 1.5&times; more. By comparison, 8&rarr;6&nbsp;bit saves 14.8&thinsp;% area for 31&thinsp;% worse BER &mdash; a far smaller handle.</p>
+
+<h3>C. Fixed point</h3>
+<p class="first">The integer reference that the RTL must match is</p>
+
+<div class="eq"><b>z</b><sup><i>q</i></sup> = ( <b>X</b><sup><i>q</i></sup><b>W</b><sub>1</sub><sup><i>q</i></sup> + <b>b</b><sub>1</sub><sup><i>q</i></sup> 2<sup><i>F</i></sup> ) &gt;&gt; <i>F</i><span class="n">(16)</span></div>
+<div class="eq"><b>h</b><sup><i>q</i></sup> = clip( <b>z</b><sup><i>q</i></sup>, &minus;2<sup><i>F</i></sup>, 2<sup><i>F</i></sup> ),&emsp; <i>u</i><sup><i>q</i></sup> = <b>h</b><sup><i>q</i></sup><b>w</b><sub>2</sub><sup><i>q</i></sup> + <i>b</i><sub>2</sub><sup><i>q</i></sup>2<sup><i>F</i></sup><span class="n">(17)</span></div>
+
+<p class="noind">where <i>F</i> is the fractional width and &gt;&gt; is an arithmetic shift. Sweeping total width and <i>F</i> independently separates two effects that are usually conflated. <b>Performance is set by the integer headroom, not the fractional resolution:</b> width&nbsp;8/<i>F</i>&nbsp;=&nbsp;6 and width&nbsp;10/<i>F</i>&nbsp;=&nbsp;8 &mdash; both with one integer bit &mdash; are equally bad (1.84&times; and 1.86&times; float), while any format with two integer bits and <i>F</i>&nbsp;&ge;&nbsp;4 matches float (0.98&ndash;1.00&times;). The minimum is therefore <b>Q2.4 in 7 bits</b>, which is the same width the linear FFE needs. Choosing Q3.6/10-bit instead, as we did initially, costs 1.9&times; the area for identical BER.</p>
+
+<p>Accumulator widths are sized so that no truncation occurs: with <i>W</i><sub>x</sub>, <i>W</i><sub>w</sub> the sample and weight widths,</p>
+
+<div class="eq"><i>W</i><sub><i>z</i></sub> = <i>W</i><sub>x</sub>+<i>W</i><sub>w</sub>+&lceil;log<sub>2</sub>(<i>L</i>+1)&rceil;,&emsp;<i>W</i><sub><i>h</i></sub> = <i>F</i>+2<span class="n">(18)</span></div>
+<div class="eq"><i>W</i><sub><i>u</i></sub> = <i>W</i><sub><i>h</i></sub>+<i>W</i><sub>w</sub>+&lceil;log<sub>2</sub>(<i>H</i>+1)&rceil;<span class="n">(19)</span></div>
+
+<h2>V.&ensp;The Memoryless Inverse</h2>
+
+<p class="first">We now supply the control that the usual motivation omits.</p>
+
+<div class="thm"><b>Proposition 1.</b> Let the receiver impairment be <i>y</i>[<i>n</i>] = <i>Q</i><sub><i>B</i></sub>(<i>g</i>(<i>r</i>[<i>n</i>])) with <i>g</i> memoryless and strictly monotone and <i>Q</i><sub><i>B</i></sub> a <i>B</i>-bit quantizer. Then the MMSE memoryless corrector is exactly the table</div>
+
+<div class="eq"><i>T</i>[<i>c</i>] = E[ <i>r</i>[<i>n</i>] | <i>y</i>[<i>n</i>] = <i>c</i> ],&emsp;<i>c</i> &isin; {0,&hellip;,2<sup><i>B</i></sup>&minus;1}<span class="n">(20)</span></div>
+
+<div class="thm">and no memoryless corrector of any complexity can do better.</div>
+
+<p class="noind"><i>Proof.</i> A memoryless corrector is a map from the observation alphabet to &#8477;. The observation alphabet is the set of 2<sup><i>B</i></sup> ADC codes, hence any such map <i>is</i> a table of 2<sup><i>B</i></sup> entries. Among all such maps the conditional mean minimizes mean-square error. &#9633;</p>
+
+<p>The consequence is a hardware statement: <b>inverting a memoryless nonlinearity costs one ROM read and no multiplier.</b> For <i>B</i>&nbsp;=&nbsp;7 that is 128 entries. When the compression law is known the table can also be written in closed form,</p>
+
+<div class="eq"><i>T</i><sub>inv</sub>(<i>z</i>) = <span class="frac"><span class="num">1</span><span class="den"><i>a</i></span></span> artanh( clip(<i>a z</i>, &minus;1+&epsilon;, 1&minus;&epsilon;) )<span class="n">(21)</span></div>
+
+<p class="noind">which is an <i>upper bound</i> on any data-driven memoryless corrector, since it assumes exact knowledge of <i>a</i>. The clipping in (21) is physical, not numerical: artanh diverges as |<i>az</i>|&rarr;1, and that divergence is the statement that information destroyed in saturation cannot be recovered &mdash; inverting there only amplifies noise.</p>
+
+<figure>
+<table><caption>Table&nbsp;III<br><b>The missing control. 25 dB, SNR 30 dB, &kappa;=1.0, no post-filter, 3&times;10<sup>5</sup> bits, 6 seeds.</b></caption>
+<thead><tr><th class="l">Equalizer</th><th>BER</th><th>Gain</th><th>Mults</th><th>Entries</th></tr></thead>
+<tbody>
+<tr><td class="l">Linear FFE&nbsp;11 + DFE&nbsp;8</td><td>2.3379e&minus;02</td><td>1.00&times;</td><td>11</td><td>&mdash;</td></tr>
+<tr class="rt"><td class="l"><b>Inverse table + linear</b></td><td><b>1.1190e&minus;03</b></td><td><b>20.9&times;</b></td><td><b>11</b></td><td><b>128</b></td></tr>
+<tr><td class="l">MLP, 96 multipliers</td><td>2.2563e&minus;03</td><td>10.4&times;</td><td>96</td><td>&mdash;</td></tr>
+<tr><td class="l">MLP, 12 multipliers</td><td>4.3746e&minus;03</td><td>5.3&times;</td><td>12</td><td>&mdash;</td></tr>
+<tr><td class="l">Inverse table + MLP&nbsp;96</td><td>1.1937e&minus;03</td><td>19.6&times;</td><td>96</td><td>128</td></tr>
+</tbody></table>
+</figure>
+
+<p>Table&nbsp;III settles the question for this impairment. The 128-entry table beats the 96-multiplier network by 2.02&times; and the 12-multiplier network by 3.9&times;, adding no multipliers. More decisively, <b>once the table is applied the network contributes nothing</b> (0.94&times;; 3.3&times;10<sup>6</sup> bits would be needed to separate the two). The residual impairment after memoryless correction is linear, and a linear equalizer handles it.</p>
+
+<p>The precise claim is therefore not &ldquo;a neural network solves what a linear equalizer cannot,&rdquo; but rather: <i>a linear FFE/DFE cannot invert a memoryless warp, and a network does so more expensively and less well than a table.</i></p>
+
+<h2>VI.&ensp;Nonlinearity With Memory</h2>
+
+<p class="first">Proposition&nbsp;1 depends on the impairment being a function of a single sample. Equation&nbsp;(7) breaks that condition: after band-limiting, <i>v</i>[<i>n</i>] depends on <i>g</i>(<i>r</i>[<i>n</i>]), <i>g</i>(<i>r</i>[<i>n</i>&minus;1]), &hellip; jointly, so the map <i>r</i>[<i>n</i>]&nbsp;&#8614;&nbsp;<i>v</i>[<i>n</i>] is not injective and (20) is no longer sufficient. This is where a nonlinear detector with memory becomes necessary.</p>
+
+<p>Sweeping &beta; and comparing <i>per-seed ratios</i> (means of heavy-tailed BERs are dominated by a single bad seed) locates the regime:</p>
+
+<figure>
+<table><caption>Table&nbsp;IV<br><b>Where a network beats the memoryless table. 25 dB, SNR 30 dB, &kappa;=1.0, 3&times;10<sup>5</sup> bits, 8 seeds.</b></caption>
+<thead><tr><th>Post-comp. BW &beta;</th><th>MLP / table</th><th>Spread</th><th>MLP wins</th></tr></thead>
+<tbody>
+<tr><td>&infin; (no filter)</td><td>0.51&times;</td><td>[0.32, 0.70]</td><td>0/8</td></tr>
+<tr><td>0.50</td><td>0.30&times;</td><td>[0.11, 0.51]</td><td>0/8</td></tr>
+<tr class="rt"><td><b>0.35</b></td><td><b>3.20&times;</b></td><td>[2.49, 5.16]</td><td><b>8/8</b></td></tr>
+<tr class="rt"><td>0.25</td><td>2.28&times;</td><td>[0.69, 11.90]</td><td>1/8</td></tr>
+<tr><td>0.20</td><td>0.87&times;</td><td>[0.66, 1.08]</td><td>1/8</td></tr>
+</tbody></table>
+</figure>
+
+<p class="noind">The window is narrow and one-sided in both directions: wide bandwidth leaves the impairment effectively memoryless, where the table wins; very narrow bandwidth destroys the link for every structure. At &beta;&nbsp;=&nbsp;0.25 the mean ratio of 2.28&times; is produced by a single seed at 11.90&times; while the network wins only 1 of 8 &mdash; not an established result. <b>All experiments in Sec.&nbsp;VII&ndash;X are conducted at &beta; = 0.35.</b></p>
+
+<h2>VII.&ensp;The Decision-Domain Ceiling</h2>
+
+<p class="first">Within the window, what can be achieved without adding multipliers? The cost structure measured on the target device is:</p>
+
+<figure>
+<table><caption>Table&nbsp;V<br><b>Impairment class, matched corrector, multiplier cost.</b></caption>
+<thead><tr><th class="l">Impairment</th><th class="l">Matched corrector</th><th>Mults</th></tr></thead>
+<tbody>
+<tr><td class="l">Memoryless nonlinearity</td><td class="l">ADC-code table, 2<sup><i>B</i></sup></td><td>0</td></tr>
+<tr><td class="l">Linear pre-cursor ISI</td><td class="l">FFE</td><td>1/tap</td></tr>
+<tr><td class="l">Linear post-cursor ISI</td><td class="l">DFE</td><td>0</td></tr>
+<tr><td class="l"><b>Decision-dependent nonlinearity</b></td><td class="l"><b>Decision-indexed table, 2<sup><i>L</i></sup></b></td><td><b>0</b></td></tr>
+<tr><td class="l">Sample-dependent nonlinearity</td><td class="l">MLP / Volterra on samples</td><td>many</td></tr>
+</tbody></table>
+</figure>
+
+<h3>A. Decision-indexed ROM</h3>
+<p class="first">A linear DFE computes a <i>linear</i> function of the past <i>L</i> decisions. Replacing it by an arbitrary function of the same inputs is one table of 2<sup><i>L</i></sup> entries and still contains no multiplier. With index</p>
+
+<div class="eq"><i>&iota;</i>[<i>n</i>] = &Sigma;<sub><i>k</i>=0</sub><sup><i>L</i>&minus;1</sup> 2<sup><i>k</i></sup> &middot; <b>1</b>[ <i>d</i>&#770;[<i>n</i>&minus;1&minus;<i>k</i>] &gt; 0 ]<span class="n">(22)</span></div>
+<div class="eq"><i>T</i>[<i>i</i>] = E[ <i>y</i><sub>f</sub>[<i>n</i>] &minus; <i>b</i>[<i>n</i>] | <i>&iota;</i>[<i>n</i>]=<i>i</i> ]<span class="n">(23)</span></div>
+<div class="eq"><i>d</i>&#770;[<i>n</i>] = sgn( <i>y</i><sub>f</sub>[<i>n</i>] &minus; <i>T</i>[<i>&iota;</i>[<i>n</i>]] )<span class="n">(24)</span></div>
+
+<p class="noind">The table is trained on the preamble with known bits &mdash; the standard situation &mdash; but indexed at run time by the receiver's <i>own</i> decisions, so error propagation behaves exactly as in a DFE. Cells with fewer than a threshold of training samples fall back to the linear DFE value; otherwise rare patterns memorize noise.</p>
+
+<p>This structure strictly generalizes the DFE, so a control is available: on a <i>linear</i> channel the optimal post-cursor canceller is linear and the ROM must not win. It does not &mdash; 6.5060e&minus;04 versus 6.5595e&minus;04, winning 3 of 8 seeds, requiring 3.6&times;10<sup>8</sup> bits to separate. Inside the window it reaches 3.08&times;, but depth does not help beyond 8&ndash;10 and then hurts (2.13&times; at depth 12), because 4096 cells over 9&times;10<sup>4</sup> training symbols is 22 samples per cell. <b>The ceiling of a table is set by training data, not by area.</b></p>
+
+<h3>B. Volterra over &plusmn;1 decisions</h3>
+
+<div class="thm"><b>Proposition 2.</b> Let <i>d</i><sub>1</sub>&hellip;<i>d</i><sub><i>L</i></sub> &isin; {&minus;1,+1}. Every monomial &prod;<sub><i>k</i>&isin;<i>S</i></sub> <i>d</i><sub><i>k</i></sub> takes values in {&minus;1,+1}, and its value is determined by the parity (XOR) of the sign bits of {<i>d</i><sub><i>k</i></sub>}<sub><i>k</i>&isin;<i>S</i></sub>. Consequently any polynomial</div>
+
+<div class="eq"><i>f</i>(<b>d</b>) = <i>w</i><sub>0</sub> + &Sigma;<sub>|<i>S</i>|&le;<i>D</i></sub> <i>w</i><sub><i>S</i></sub> &prod;<sub><i>k</i>&isin;<i>S</i></sub> <i>d</i><sub><i>k</i></sub><span class="n">(25)</span></div>
+
+<div class="thm">is realizable with sign-controlled additions only, using <i>no multipliers</i>, with &Sigma;<sub><i>j</i>&le;<i>D</i></sub> <i>C</i>(<i>L</i>,<i>j</i>) coefficients.</div>
+
+<p class="noind">Proposition&nbsp;2 gives exactly the parameter sharing a table lacks: the full ROM is the degree-<i>L</i> case with 2<sup><i>L</i></sup> coefficients, while truncating to degree <i>D</i> reduces this to <i>O</i>(<i>L</i><sup><i>D</i></sup>) at unchanged multiplier cost. Coefficients are fit by least squares on the preamble design matrix of monomials; for evaluation we expand them back into a 2<sup><i>L</i></sup> table, the two realizations being equivalent in hardware (one adder tree of |<i>S</i>| terms, or one ROM read).</p>
+
+<p>It does not work.</p>
+
+<figure>
+<table><caption>Table&nbsp;VI<br><b>Decision-domain structures at &beta;=0.35. All win over linear on 8/8 seeds; none escapes ~3.1&times;.</b></caption>
+<thead><tr><th class="l">Structure</th><th>Params</th><th>Gain</th><th>Spread</th><th>Mults</th></tr></thead>
+<tbody>
+<tr><td class="l">Linear DFE, 8 taps</td><td>8</td><td>1.00&times;</td><td>&mdash;</td><td>0</td></tr>
+<tr><td class="l">Volterra <i>L</i>=12, <i>D</i>=2</td><td>79</td><td>1.04&times;</td><td>[0.98, 1.11]</td><td>0</td></tr>
+<tr><td class="l">Volterra <i>L</i>=16, <i>D</i>=2</td><td>137</td><td>1.10&times;</td><td>[1.00, 1.22]</td><td>0</td></tr>
+<tr><td class="l">Volterra <i>L</i>=12, <i>D</i>=3</td><td>299</td><td>2.68&times;</td><td>[1.99, 3.17]</td><td>0</td></tr>
+<tr><td class="l">Volterra <i>L</i>=16, <i>D</i>=3</td><td>697</td><td>2.87&times;</td><td>[2.15, 3.38]</td><td>0</td></tr>
+<tr><td class="l">Volterra <i>L</i>=20, <i>D</i>=3</td><td>1351</td><td>2.91&times;</td><td>[2.25, 3.47]</td><td>0</td></tr>
+<tr class="rt"><td class="l">Decision ROM, <i>L</i>=8</td><td>256</td><td>3.08&times;</td><td>[2.18, 3.64]</td><td>0</td></tr>
+<tr><td class="l">Decision ROM, <i>L</i>=10</td><td>1024</td><td>3.09&times;</td><td>[2.11, 3.91]</td><td>0</td></tr>
+<tr><td class="l">Decision ROM, <i>L</i>=12</td><td>4094</td><td>2.13&times;</td><td>[1.69, 2.55]</td><td>0</td></tr>
+<tr class="rt"><td class="l">MLP, 96 multipliers</td><td>~193</td><td>5.80&times;</td><td>[4.81, 6.71]</td><td>96</td></tr>
+</tbody></table>
+</figure>
+
+<h3>C. Diagnosis</h3>
+<p class="first">Three structurally different correctors &mdash; linear, degree-truncated polynomial, and full table &mdash; saturate at the same value while their parameter counts span 8 to 1351. An MLP with roughly 193 parameters reaches 5.80&times;. The common property of the saturating three is their <i>observation</i>.</p>
+
+<div class="thm"><b>Proposition 3.</b> Let <i>O</i><sub><i>n</i></sub> be the observation available to a detector. The minimum achievable error probability given <i>O</i><sub><i>n</i></sub> is that of the MAP rule sgn&thinsp;E[<i>b</i>[<i>n</i>]&thinsp;|&thinsp;<i>O</i><sub><i>n</i></sub>], and a lookup table indexed by a finite quantization of <i>O</i><sub><i>n</i></sub> converges to it as the training record grows. Hence detectors that differ only in <i>O</i><sub><i>n</i></sub> are ordered by the information <i>O</i><sub><i>n</i></sub> carries about <i>b</i>[<i>n</i>].</div>
+
+<p class="noind">Decisions <i>d</i>&#770;[<i>n</i>&minus;1],&hellip;,<i>d</i>&#770;[<i>n</i>&minus;<i>L</i>] are one-bit functions of <i>past</i> observations. They carry no information about the amplitude of the current sample, and it is precisely amplitude that (7) mixes. <b>The limit is the observation, not the parameter count</b> &mdash; which is why adding 1343 parameters moves the result by 0.23&times; while changing the observation moves it by more than 2&times;.</p>
+
+<p>A corollary, also measured: composing two individually correct correctors can be worse than either. Inverse table followed by decision ROM gives 2.11&times; against 3.08&times; for the ROM alone (7/8 seeds worse), because artanh amplifies noise in the saturated tail and the ROM then averages a noisier signal.</p>
+
+<h2>VIII.&ensp;Proposed: Sample-Indexed Lookup Equalizer</h2>
+
+<p class="first">Proposition&nbsp;3 prescribes the fix: move the index from decisions to samples. It does <i>not</i> prescribe multipliers &mdash; a coarsely quantized sample is an address.</p>
+
+<h3>A. Architecture</h3>
+<p class="first">The FFE is retained, because the table cannot perform linear equalization (Sec.&nbsp;X). Its accumulator <i>a</i>[<i>n</i>] is quantized by an arithmetic shift and a clamp, and <i>W</i> consecutive codes form the address:</p>
+
+<div class="eq"><i>c</i>[<i>n</i>] = clip( (<i>a</i>[<i>n</i>] &gt;&gt; <i>s</i>) + 2<sup><i>Q</i>&minus;1</sup>, 0, 2<sup><i>Q</i></sup>&minus;1 )<span class="n">(26)</span></div>
+<div class="eq"><i>&iota;</i>[<i>n</i>] = &Sigma;<sub><i>k</i>=0</sub><sup><i>W</i>&minus;1</sup> <i>c</i>[<i>n</i>&minus;<i>k</i>] &middot; 2<sup><i>Qk</i></sup><span class="n">(27)</span></div>
+<div class="eq"><i>T</i>[<i>i</i>] = E[ <i>b</i>[<i>n</i>] | <i>&iota;</i>[<i>n</i>]=<i>i</i> ],&emsp; <i>d</i>&#770;[<i>n</i>] = sgn( <i>T</i>[<i>&iota;</i>[<i>n</i>]] )<span class="n">(28)</span></div>
+
+<p class="noind">By Proposition&nbsp;3, (28) is the empirical MAP detector on the quantized <i>W</i>-sample observation. Because only the sign of <i>T</i> is used, the stored table is <b>one bit per entry</b>: 2<sup><i>QW</i></sup> bits, i.e. 256&nbsp;bits at <i>Q</i>=4, <i>W</i>=2. The back end contains no multiplier and no adder &mdash; a shift, a clamp, a concatenation and a ROM read. There is also <b>no decision feedback</b>: past <i>codes</i> are retained, not past decisions, so there is no error propagation and no feedback loop to constrain pipelining.</p>
+
+<p>The quantizer must be hardware-realizable. Stretching by a training percentile requires a multiply; (26) uses a power-of-two step chosen once from the preamble RMS. Measured, the restriction is not a cost at all: 7.98&times; for the shift quantizer against 7.80&times; for the percentile version.</p>
+
+<div class="alg"><div class="t">Algorithm 1: Training the sample-indexed table</div>
+<ol>
+<li>Adapt FFE taps <b>w</b> by NLMS (9)&ndash;(10) on the preamble.</li>
+<li>Estimate &sigma; = RMS(<i>a</i>[<i>n</i>]) over the preamble; set <br><i>s</i> = round( log<sub>2</sub>( &rho;&sigma; / 2<sup><i>Q</i>&minus;1</sup> ) ).</li>
+<li>Zero accumulators: <i>S</i>[<i>i</i>] &larr; 0, <i>N</i>[<i>i</i>] &larr; 0 for all <i>i</i>.</li>
+<li>For each preamble index <i>n</i>: form <i>c</i>[<i>n</i>] by (26) and <i>&iota;</i>[<i>n</i>] by (27); <i>S</i>[<i>&iota;</i>] &larr; <i>S</i>[<i>&iota;</i>] + <i>b</i>[<i>n</i>]; <i>N</i>[<i>&iota;</i>] &larr; <i>N</i>[<i>&iota;</i>] + 1.</li>
+<li>For each cell <i>i</i>: <i>T</i>[<i>i</i>] &larr; 1 if <i>N</i>[<i>i</i>]&nbsp;&ge;&nbsp;<i>N</i><sub>min</sub> and <i>S</i>[<i>i</i>]&nbsp;&ge;&nbsp;0; <i>T</i>[<i>i</i>] &larr; 0 if <i>N</i>[<i>i</i>]&nbsp;&ge;&nbsp;<i>N</i><sub>min</sub> and <i>S</i>[<i>i</i>]&nbsp;&lt;&nbsp;0; else default.</li>
+<li>Write <i>T</i> into the ROM through the coefficient port.</li>
+</ol></div>
+
+<p class="noind">Step 5 is a single pass of counting; no gradient, no iteration, and the convergence criterion is simply how many samples each cell has received. Complexity is <i>O</i>(<i>N</i><sub>pre</sub>) time and <i>O</i>(2<sup><i>QW</i></sup>) memory.</p>
+
+<pre class="hdr" data-t="Listing 1: Table construction (Python)">def build_table(a, b, n_tr, W=2, Q=4, rho=2.5, n_min=4):
+    """a: FFE accumulator; b: +-1 bits; n_tr: preamble."""
+    rms  = np.sqrt(np.mean(a[:n_tr] ** 2)) or 1.0
+    step = 2.0 ** np.round(
+        np.log2(rho*rms / (1 &lt;&lt; (Q-1))))     # eq.(26)
+    code = np.clip(np.floor(a / step) + (1 &lt;&lt; (Q - 1)),
+                   0, (1 &lt;&lt; Q) - 1).astype(np.int64)
+
+    idx = np.zeros(len(a), dtype=np.int64)   # eq.(27)
+    for k in range(W):
+        past = np.concatenate(
+            [np.zeros(k, np.int64), code[:len(a) - k]])
+        idx += past &lt;&lt; (Q * k)
+
+    cells = 1 &lt;&lt; (Q * W)
+    s = np.zeros(cells);  n = np.zeros(cells)
+    np.add.at(s, idx[:n_tr], b[:n_tr])  # preamble only
+    np.add.at(n, idx[:n_tr], 1.0)
+    T = np.where(n &gt;= n_min, s / np.maximum(n, 1.0), 0.0)
+    return np.where(T[idx] &gt;= 0, 1.0, -1.0), T, step</pre>
+
+<h3>B. Complexity</h3>
+<p class="first">Let <i>L</i><sub>f</sub> be the FFE length. Per symbol the proposed equalizer costs <i>L</i><sub>f</sub> multiplies (FFE), one shift, two comparisons, one concatenation and one ROM access. The DFE it replaces costs <i>K</i> add/subtracts in a serial chain; the MLP it replaces costs <i>LH</i>+<i>H</i> multiplies in two serial layers. Memory is 2<sup><i>QW</i></sup> bits against <i>K</i>&thinsp;<i>W</i><sub>c</sub> bits for the DFE and (<i>LH</i>+2<i>H</i>+1)<i>W</i><sub>w</sub> for the MLP.</p>
+
+<p>The exponential memory in <i>QW</i> is the binding constraint, and it binds through data rather than area: the number of cells that receive enough training samples grows far more slowly than the number of cells. At <i>Q</i>=4, <i>W</i>=2 (256 cells) 217 are populated and the gain is 7.98&times;; at <i>W</i>=3 (4096 cells) only 1531 are populated and the gain collapses to 2.01&times;. <b>Enlarging the observation window without enlarging the preamble is counter-productive.</b></p>
+
+<h2>IX.&ensp;RTL and Implementation</h2>
+
+<p class="first">Listing&nbsp;2 gives the synthesizable core. The FFE products are formed at exact width, the accumulator is sized by (18), and the quantizer is a shift with saturation. The coefficient and table write ports keep the adaptation engine out of the datapath; exporting coefficients to top-level pins instead would exhaust the device I/O long before its logic.</p>
+
+<pre class="hdr" data-t="Listing 2: Sample-indexed lookup equalizer (Verilog)">module ffe_tbl #(parameter L=11, W=7, DW=7, FW=18,
+                 SH=6, QB=4, WIN=2, TA=8, NT=256)(
+  input  wire clk, rst_n,
+  input  wire signed [DW-1:0] x,
+  input  wire cw_we,  input wire [3:0]    cw_addr,
+  input  wire signed [W-1:0]  cw_data,
+  input  wire tw_we,  input wire [TA-1:0] tw_addr,
+  input  wire tw_data,
+  output reg  d);
+
+  reg signed [DW-1:0] sr   [0:L-1];
+  reg signed [W-1:0]  coef [0:L-1];
+  reg                 tbl  [0:NT-1];   // 1 bit / entry
+
+  wire signed [W+DW-1:0] prod [0:L-1];
+  wire signed [FW-1:0]   ext  [0:L-1];
+  genvar i;
+  generate for (i=0;i&lt;L;i=i+1) begin : taps
+    assign prod[i] = coef[i] * sr[i];
+    assign ext[i]  = {{(FW-W-DW){prod[i][W+DW-1]}},
+                      prod[i]};
+  end endgenerate
+
+  integer k;  reg signed [FW-1:0] accf;
+  always @* begin
+    accf = 0;
+    for (k=0;k&lt;L;k=k+1) accf = accf + ext[k];
+  end
+
+  // eq.(26): arithmetic shift + clamp, no multiply
+  wire signed [FW-1:0] sh = accf &gt;&gt;&gt; SH;
+  localparam HI =  (1&lt;&lt;(QB-1)) - 1;
+  localparam LO = -(1&lt;&lt;(QB-1));
+  wire [QB-1:0] qcode = (sh &gt; HI) ? {QB{1'b1}} :
+                        (sh &lt; LO) ? {QB{1'b0}} :
+              (sh[QB-1:0] + {1'b1,{(QB-1){1'b0}}});
+
+  reg [QB-1:0] qreg;                   // pipeline reg
+  reg [QB-1:0] pcode [0:WIN-2];
+  reg [TA-1:0] addr;
+  always @* begin                              // eq.(27)
+    addr = {{(TA-QB){1'b0}}, qreg};
+    for (k=0;k&lt;WIN-1;k=k+1)
+      addr = addr | ({{(TA-QB){1'b0}}, pcode[k]}
+                     &lt;&lt; (QB*(k+1)));
+  end
+
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+      for (k=0;k&lt;L;k=k+1) begin
+        sr[k] &lt;= 0;  coef[k] &lt;= 0;
+      end
+      for (k=0;k&lt;WIN-1;k=k+1) pcode[k] &lt;= 0;
+      for (k=0;k&lt;NT;k=k+1)    tbl[k]   &lt;= 1'b0;
+      qreg &lt;= 0;  d &lt;= 1'b0;
+    end else begin
+      if (cw_we) coef[cw_addr] &lt;= cw_data;
+      if (tw_we) tbl[tw_addr]  &lt;= tw_data;
+      sr[0] &lt;= x;
+      for (k=1;k&lt;L;k=k+1) sr[k] &lt;= sr[k-1];
+      qreg     &lt;= qcode;
+      pcode[0] &lt;= qreg;
+      for (k=1;k&lt;WIN-1;k=k+1) pcode[k] &lt;= pcode[k-1];
+      d &lt;= tbl[addr];                          // eq.(28)
+    end
+  end
+endmodule</pre>
+
+<p class="noind">Because the structure has no feedback, the single register on <i>qreg</i> splits the critical path into <i>multiply&rarr;adder&nbsp;tree&rarr;shift/clamp</i> and <i>ROM&nbsp;read</i>, raising <i>F</i><sub>max</sub> from 26.62 to 41.38&nbsp;MHz at <i>lower</i> area. Latency rises by one cycle; throughput is unchanged, since the equalizer emits one decision per symbol. The same cut cannot be applied inside a DFE loop, where inserting a register delays the feedback itself.</p>
+
+<h2>X.&ensp;Results</h2>
+
+<h3>A. Bit error rate</h3>
+<figure>
+<table><caption>Table&nbsp;VII<br><b>Sample-indexed table at &beta;=0.35. 25 dB, SNR 30 dB, &kappa;=1.0, 3&times;10<sup>5</sup> bits, 8 seeds.</b></caption>
+<thead><tr><th class="l">Configuration</th><th>Cells</th><th>Filled</th><th>Gain</th><th>Wins</th></tr></thead>
+<tbody>
+<tr class="rt"><td class="l"><b>FFE&nbsp;11 + table 2&times;4&thinsp;b</b></td><td><b>256</b></td><td>217</td><td><b>7.98&times;</b></td><td><b>8/8</b></td></tr>
+<tr><td class="l">FFE&nbsp;11 + table 2&times;5&thinsp;b</td><td>1024</td><td>796</td><td>6.86&times;</td><td>8/8</td></tr>
+<tr><td class="l">FFE&nbsp;11 + table 3&times;4&thinsp;b</td><td>4096</td><td>1531</td><td>2.01&times;</td><td>8/8</td></tr>
+<tr class="rt"><td class="l">Table 2&times;4&thinsp;b, <i>no FFE</i></td><td>256</td><td>136</td><td>0.26&times;</td><td>0/6</td></tr>
+<tr><td class="l">Table 3&times;5&thinsp;b, <i>no FFE</i></td><td>32768</td><td>3383</td><td>0.63&times;</td><td>0/6</td></tr>
+</tbody></table>
+</figure>
+
+<p class="first">Two facts bound the claim. The 256-cell table exceeds the 96-multiplier MLP (5.80&times;, Table&nbsp;VI) using no back-end multipliers. And <b>without the FFE the table fails outright</b> (0.26&ndash;0.63&times;): it cannot perform linear equalization, so &ldquo;multiplier-free&rdquo; describes only the stage that replaces the DFE or the network, not the receiver.</p>
+
+<p>The required control is that on a linear channel, where the optimal equalizer is linear, the table must not win:</p>
+
+<figure>
+<table><caption>Table&nbsp;VIII<br><b>Control. Gain of FFE 11 + table 2&times;4 over FFE 11 + DFE 8, 6 seeds.</b></caption>
+<thead><tr><th class="l">Condition</th><th>Gain</th><th>Spread</th><th>Wins</th></tr></thead>
+<tbody>
+<tr><td class="l">&kappa;=0, no post-filter</td><td>1.14&times;</td><td>[0.87, 1.45]</td><td>4/6</td></tr>
+<tr><td class="l">&kappa;=0, &beta;=0.35</td><td>0.27&times;</td><td>[0.16, 0.40]</td><td>0/6</td></tr>
+<tr class="rt"><td class="l">&kappa;=1.0, no post-filter</td><td>6.36&times;</td><td>[2.30, 11.94]</td><td>6/6</td></tr>
+<tr><td class="l">&kappa;=1.0, &beta;=0.35</td><td>7.49&times;</td><td>[4.13, 12.21]</td><td>6/6</td></tr>
+</tbody></table>
+</figure>
+
+<p class="noind">On a linear channel the table ties or loses badly &mdash; it observes two samples and cannot match the span of an 11+8-tap linear equalizer. This is the expected and required behaviour.</p>
+
+<h3>B. Area and timing</h3>
+<p class="first">All designs were synthesized with Yosys and placed and routed with nextpnr on a Lattice iCE40 HX8K (7680 logic cells), targeting 50&nbsp;MHz; no timing-failure override was used. The device has no hard multipliers, so all products map to LUTs.</p>
+
+<figure class="wide">
+<table><caption>Table&nbsp;IX<br><b>Place-and-route on iCE40 HX8K, 50 MHz target. BER gains at &beta;=0.35 relative to the linear baseline.</b></caption>
+<thead><tr><th class="l">Design</th><th>Mults</th><th>LC</th><th><i>F</i><sub>max</sub></th><th>50 MHz</th><th>BER gain</th></tr></thead>
+<tbody>
+<tr><td class="l">FFE 11 tap, W7/DW7 (alone)</td><td>11</td><td>2237</td><td>52.38 MHz</td><td>pass</td><td>&mdash;</td></tr>
+<tr><td class="l">Linear FFE 11 + DFE 8, pipelined</td><td>11</td><td>2999</td><td>34.73 MHz</td><td>fail</td><td>1.00&times;</td></tr>
+<tr><td class="l">MLP 5&rarr;2, Q2.4, pipelined</td><td>12</td><td>2336</td><td>47.87 MHz</td><td>fail</td><td>2.55&times;</td></tr>
+<tr class="rt"><td class="l"><b>FFE 11 + table 2&times;4, unpipelined</b></td><td>11</td><td>3047</td><td>26.62 MHz</td><td>fail</td><td><b>7.98&times;</b></td></tr>
+<tr><td class="l"><b>FFE 11 + table 2&times;4, pipelined</b></td><td><b>11</b></td><td><b>3037</b></td><td><b>41.38 MHz</b></td><td>fail</td><td><b>7.98&times;</b></td></tr>
+<tr><td class="l">FFE 11 + table 2&times;5, pipelined</td><td>11</td><td>5497</td><td>&mdash;</td><td>&mdash;</td><td>6.86&times;</td></tr>
+<tr><td class="l">MLP, window 11, hidden 8</td><td>96</td><td>~19000</td><td>&mdash;</td><td>does not fit</td><td>5.80&times;</td></tr>
+</tbody></table>
+</figure>
+
+<p>Against the linear baseline the proposed equalizer costs <b>+1.3&thinsp;% area</b>, runs <b>1.19&times; faster</b>, and lowers BER by <b>8&times;</b>. Against an area-matched network it is 30&thinsp;% larger and 14&thinsp;% slower but 3.1&times; better in BER; the network configuration that would reach 5.80&times; requires roughly 19&thinsp;000 LC and does not fit the device.</p>
+
+<p>Two scaling laws were measured. First, the table stage is <b>linear in cell count at &asymp;3.2&nbsp;LC per cell</b> (810 LC at 256 cells, 3283 at 1024, 12698 at 4096). The stored data is only 256&nbsp;bits; the area is the address decode and the write port. A 256-cell table is therefore comparable in area to an 8-tap DFE (762 LC): <b>multiplier-free is not free</b>. Second, since gain <i>falls</i> with cell count beyond 256 (Table&nbsp;VII) while area rises linearly, this axis offers nothing to trade.</p>
+
+<p>Multiplier width follows an approximately quadratic law in the neural path: widening Q2.4/7-bit to Q2.5/8-bit costs 1.272&times; the area against a quadratic prediction of 1.306&times;, and 8&rarr;10 bit costs 1.494&times; against 1.563&times;. With three points we report consistency with quadratic scaling rather than fitting an exponent.</p>
+
+<h3>C. Pipelining</h3>
+<p class="first">One register stage raises <i>F</i><sub>max</sub> by 53&ndash;70&thinsp;% across all three designs at no area cost (&minus;1.4&thinsp;% to +2.2&thinsp;%), and every pipelined variant emits the identical decision sequence one cycle later. It does not, however, reorder the designs: the linear baseline improves by the same proportion, because only the DFE feedback loop resists cutting and that loop is not the critical path. None of the three reaches the 50&nbsp;MHz target; the best is 4&thinsp;% short.</p>
+
+<h2>XI.&ensp;Discussion and Limitations</h2>
+
+<p class="first"><i>The impairment model determines the conclusion.</i> This is the principal threat to validity. Section&nbsp;V shows that a memoryless warp is best undone by a 128-entry table; Section&nbsp;VIII shows that a memory-2 warp is best undone by a 256-entry table. Both conclusions are statements about the <i>structure</i> of the impairment. If a real front end exhibits a nonlinearity of substantially longer memory, or one whose relevant observation is high-dimensional, the address space 2<sup><i>QW</i></sup> grows out of reach and a parametric model &mdash; a network &mdash; becomes necessary. We did not construct such a case, and therefore we have not demonstrated a regime that <i>requires</i> a neural equalizer.</p>
+
+<p><i>Channel and device scope.</i> The channel is synthetic (skin-effect magnitude with minimum-phase reconstruction plus injected reflections), not measured S-parameters; resonances, crosstalk and supply noise are absent. The target device has no DSP blocks, so all multipliers map to LUTs and the relative cost of a multiplier is at its most unfavourable; on a DSP-bearing FPGA or an ASIC the area comparison would shift in favour of the multiplier-based designs.</p>
+
+<p><i>NRZ only.</i> Two results depend on binary decisions: DFE taps are multiplier-free because <i>d</i>&#770;&nbsp;&isin;&nbsp;{&plusmn;1}, and the table stores one bit per cell. Under PAM4 neither holds, the decision alphabet grows, and the address space of any sample-indexed table grows with it.</p>
+
+<p><i>Timing recovery.</i> The sampling phase is fixed at the maximum eye opening &mdash; where a CDR would converge &mdash; but no CDR loop is simulated, so jitter and phase error are excluded. Whether the two structures are equally sensitive to phase error is untested, and the ratios in Table&nbsp;IX therefore carry no guarantee under a real CDR.</p>
+
+<p><i>Rare-event behaviour.</i> The operating BERs here are 10<sup>&minus;2</sup>&ndash;10<sup>&minus;3</sup>. Counting to a compliance floor of 10<sup>&minus;12</sup> would require 3&times;10<sup>12</sup> bits &mdash; 242 core-days at the measured 1.4&times;10<sup>5</sup>&thinsp;bit/s &mdash; so statistical extrapolation is unavoidable, and the usual Gaussian-tail argument does not transfer cleanly to a nonlinear decision boundary. A table has a specific exposure here: under-populated cells emit a default, and nothing guarantees that default is correct for rare excursions. This is untested and is the most likely place for the present results to fail.</p>
+
+<p><i>Adaptation protocol.</i> Standards prescribe how equalizer coefficients are negotiated, typically as increment/decrement handshakes over a back channel. Neither a weight matrix nor a populated table speaks that language. The table is arguably closer &mdash; it is filled by one counting pass over the preamble, so its convergence criterion reduces to samples-per-cell &mdash; but mapping either onto a standard link-training sequence is unaddressed here.</p>
+
+<h2>XII.&ensp;Conclusion</h2>
+
+<p class="first">The common motivation for neural equalization in wireline receivers &mdash; that linear equalizers cannot invert front-end nonlinearity &mdash; is true but insufficient. For a memoryless nonlinearity the optimal memoryless corrector is a <i>2<sup>B</sup></i>-entry table with no multipliers, and measured on our model it outperforms a 96-multiplier MLP by 2.02&times;, after which the network is redundant.</p>
+
+<p>Where nonlinearity does have memory, we showed that all structures observing only past decisions &mdash; linear DFE, decision-indexed ROM, and multiplier-free Volterra expansions &mdash; saturate near 3.1&times; irrespective of parameter count, because decisions discard the amplitude that the impairment mixes. Changing the observation rather than the parameter budget removes the ceiling: a 256-entry, one-bit-per-entry table indexed by two quantized FFE output samples achieves 7.98&times; with zero back-end multipliers, exceeding a 96-multiplier network that does not fit the target device, at +1.3&thinsp;% area and 1.19&times; the clock of the linear baseline.</p>
+
+<p>The organizing principle is that impairments decompose and each class has a matched corrector with a characteristic hardware cost: memoryless warp &rarr; code table (0 multipliers); linear pre-cursor ISI &rarr; FFE (1 multiplier per tap); linear post-cursor ISI &rarr; DFE (0); decision-dependent nonlinearity &rarr; decision table (0); sample-dependent nonlinearity with memory &rarr; sample table (0) up to the address space it can populate, and only beyond that a parametric network. A general-purpose MLP is expensive precisely because it does not exploit this decomposition, spending multipliers on work that costs none in the matched structure.</p>
+
+<div class="ref">
+<h2>Appendix: Reproduction Parameters</h2>
+<p class="first">Unless stated otherwise: <i>L</i><sub>dB</sub>&nbsp;=&nbsp;25&nbsp;dB, SNR&nbsp;=&nbsp;30&nbsp;dB, <i>M</i>&nbsp;=&nbsp;8&nbsp;samples/symbol, &kappa;&nbsp;=&nbsp;1.0, &beta;&nbsp;=&nbsp;0.35/<i>T</i> where a post-filter is used, <i>B</i>&nbsp;=&nbsp;7-bit ADC at &rho;&nbsp;=&nbsp;2.5&sigma;, FFE 11 taps at 7-bit coefficients and 7-bit data, DFE 8 taps at 8&nbsp;bits, 3&times;10<sup>5</sup> symbols per run with the first 30&thinsp;% used for adaptation and the remainder for error counting, and 6&ndash;8 independent seeds per point. Neural equalizers use <i>hardtanh</i>, Adam, 10&ndash;12 epochs, and Q2.4 fixed point in 7 bits. Table training uses <i>N</i><sub>min</sub>&nbsp;=&nbsp;4. All reported multi-seed comparisons are means of per-seed ratios, with the observed minimum and maximum quoted as the spread.</p>
+</div>
+
+</div>
+</body></html>
