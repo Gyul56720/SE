@@ -78,9 +78,9 @@ ul.tight li { margin-bottom: 2pt; }
 <h1 class="title">Multiplier-Free Sample-Indexed Lookup Equalization<br>for Nonlinear Wireline SerDes Receivers</h1>
 <div class="affil">Design study, NRZ wireline link model, Lattice iCE40 HX8K target</div>
 
-<div class="abs"><b>Abstract—</b>Receiver-side nonlinearity in high-loss wireline links cannot be undone by linear equalization, and this observation is routinely used to motivate neural-network (NN) equalizers. We show that the motivation is incomplete. If the front-end nonlinearity is memoryless, its inverse is also memoryless and is therefore exactly a <i>2<sup>B</sup></i>-entry lookup table over the ADC code, costing no multipliers; measured on a 25&nbsp;dB skin-effect channel with <i>tanh</i> compression, this 128-entry table reduces BER by 20.9&times; over an NLMS FFE+DFE baseline and outperforms a 96-multiplier MLP by 2.02&times;, after which the MLP adds nothing (0.94&times;). A NN earns its multipliers only when the nonlinearity has memory. We create that regime by band-limiting after compression, and identify a narrow operating window (3-dB bandwidth &asymp;&nbsp;0.35/<i>T</i>) in which an MLP beats the memoryless table on 8/8 seeds. Within that window we prove and measure a <i>decision-domain ceiling</i>: a linear DFE, a decision-indexed ROM, and a multiplier-free Volterra expansion over &plusmn;1 decisions all saturate near 3.1&times; regardless of parameter count (8 to 1351 parameters), because past decisions discard amplitude. Moving the index from decisions to quantized samples removes the ceiling: a 256-entry, 1-bit-per-entry table placed after an 11-tap FFE achieves <b>7.98&times;</b> with <i>zero</i> back-end multipliers, exceeding a 96-multiplier MLP (5.80&times;) that does not fit the target device. Place-and-routed on iCE40 HX8K, the proposed equalizer costs 3&nbsp;037 LC and 41.4&nbsp;MHz against 2&nbsp;999 LC and 34.7&nbsp;MHz for the linear baseline &mdash; <b>+1.3&thinsp;% area, 1.19&times; clock, 8&times; lower BER</b>. We give the full signal model, training algorithms, fixed-point definitions, and RTL.</div>
+<div class="abs"><b>Abstract—</b>Receiver-side nonlinearity in high-loss wireline links cannot be undone by linear equalization, and this observation is routinely used to motivate neural-network (NN) equalizers. We show that the motivation is incomplete. If the front-end nonlinearity is memoryless, its inverse is also memoryless and is therefore exactly a <i>2<sup>B</sup></i>-entry lookup table over the ADC code, costing no multipliers; measured on a 25&nbsp;dB skin-effect channel with <i>tanh</i> compression, this 128-entry table reduces BER by 20.9&times; over an NLMS FFE+DFE baseline and outperforms a 96-multiplier MLP by 2.02&times;, after which the MLP adds nothing (0.94&times;). A NN earns its multipliers only when the nonlinearity has memory. We create that regime by band-limiting after compression, and identify a narrow operating window (3-dB bandwidth &asymp;&nbsp;0.35/<i>T</i>) in which an MLP beats the memoryless table on 8/8 seeds. Within that window we prove and measure a <i>decision-domain ceiling</i>: a linear DFE, a decision-indexed ROM, and a multiplier-free Volterra expansion over &plusmn;1 decisions all saturate near 3.1&times; regardless of parameter count (8 to 1351 parameters), because past decisions discard amplitude. Moving the index from decisions to quantized samples removes the ceiling: a 256-entry, 1-bit-per-entry table placed after an 11-tap FFE achieves <b>7.98&times;</b> with <i>zero</i> back-end multipliers, exceeding a 96-multiplier MLP (5.80&times;) that does not fit the target device. Place-and-routed on iCE40 HX8K, the proposed equalizer costs 3&nbsp;037 LC and 41.4&nbsp;MHz against 2&nbsp;999 LC and 34.7&nbsp;MHz for the linear baseline &mdash; <b>+1.3&thinsp;% area, 1.19&times; clock, 8&times; lower BER</b>. We then look for the boundary of the multiplier-free approach. Extending the model with slew-rate limiting, AC-coupling droop, far-end crosstalk, supply-gain modulation, sampling jitter and a via-stub channel resonance, we find that the binding variable is <i>not</i> the memory of the nonlinearity &mdash; ten octaves of added memory move the comparison by 15&thinsp;% &mdash; but its <i>severity</i>: once both arms are given the zero-multiplier memoryless inverse, the table holds to a compression index &kappa;&nbsp;&asymp;&nbsp;1.6 and a 12-multiplier network wins at &kappa;=2.0 on 8/8 seeds. Three multiplier-free attempts to extend the table past that point &mdash; more cells, a leaky-accumulator memory field, and a joint amplitude/decision index evaluated with ideal feedback &mdash; all fail, and we report them. We give the full signal model, training algorithms, fixed-point definitions, and RTL.</div>
 
-<div class="kw"><i>Index Terms</i>&mdash;Wireline SerDes, decision-feedback equalization, nonlinear equalization, lookup-table detection, Volterra series, quantization, FPGA implementation.</div>
+<div class="kw"><i>Index Terms</i>&mdash;Wireline SerDes, decision-feedback equalization, nonlinear equalization, lookup-table detection, Volterra series, quantization, FPGA implementation, crosstalk, timing jitter, channel modeling.</div>
 </div>
 
 <div class="body2">
@@ -531,21 +531,151 @@ endmodule</pre>
 <h3>C. Pipelining</h3>
 <p class="first">One register stage raises <i>F</i><sub>max</sub> by 53&ndash;70&thinsp;% across all three designs at no area cost (&minus;1.4&thinsp;% to +2.2&thinsp;%), and every pipelined variant emits the identical decision sequence one cycle later. It does not, however, reorder the designs: the linear baseline improves by the same proportion, because only the DFE feedback loop resists cutting and that loop is not the critical path. None of the three reaches the 50&nbsp;MHz target; the best is 4&thinsp;% short.</p>
 
-<h2>XI.&ensp;Discussion and Limitations</h2>
+<h2>XI.&ensp;Where the Lookup Equalizer Fails</h2>
 
-<p class="first"><i>The impairment model determines the conclusion.</i> This is the principal threat to validity. Section&nbsp;V shows that a memoryless warp is best undone by a 128-entry table; Section&nbsp;VIII shows that a memory-2 warp is best undone by a 256-entry table. Both conclusions are statements about the <i>structure</i> of the impairment. If a real front end exhibits a nonlinearity of substantially longer memory, or one whose relevant observation is high-dimensional, the address space 2<sup><i>QW</i></sup> grows out of reach and a parametric model &mdash; a network &mdash; becomes necessary. We did not construct such a case, and therefore we have not demonstrated a regime that <i>requires</i> a neural equalizer.</p>
+<p class="first">The previous edition of this work closed with an admission: the address space 2<sup><i>QW</i></sup> must eventually grow out of reach, <i>&ldquo;but we did not construct such a case, and therefore we have not demonstrated a regime that requires a neural equalizer.&rdquo;</i> This section constructs the case. The outcome is not the one we predicted, and we report the prediction and its refutation together, because the refutation is the result.</p>
 
-<p><i>Channel and device scope.</i> The channel is synthetic (skin-effect magnitude with minimum-phase reconstruction plus injected reflections), not measured S-parameters; resonances, crosstalk and supply noise are absent. The target device has no DSP blocks, so all multipliers map to LUTs and the relative cost of a multiplier is at its most unfavourable; on a DSP-bearing FPGA or an ASIC the area comparison would shift in favour of the multiplier-based designs.</p>
+<h3>A. Extended impairment set</h3>
+
+<p class="first">Five impairments are added to the model of Sec.&nbsp;II. <i>Slew-rate limiting</i>, the finite current of an amplifier driving a capacitive load, is a nonlinear recursion whose memory grows as the limit tightens:</p>
+
+<div class="eq"><i>v</i>[<i>n</i>] = <i>v</i>[<i>n</i>&minus;1] + clip( <i>u</i>[<i>n</i>] &minus; <i>v</i>[<i>n</i>&minus;1], &minus;<i>S</i>, +<i>S</i> )<span class="n">(29)</span></div>
+
+<p class="noind"><i>AC-coupling droop</i> is a first-order high-pass whose memory is set directly by a time constant, and whose interaction with a following compressor is the mechanism we intended to exploit: the amount by which a sample is compressed comes to depend on a slow baseline:</p>
+
+<div class="eq"><i>b</i>[<i>n</i>] = <i>a b</i>[<i>n</i>&minus;1] + (1&minus;<i>a</i>)<i>u</i>[<i>n</i>],&emsp; <i>v</i>[<i>n</i>] = <i>u</i>[<i>n</i>] &minus; <i>b</i>[<i>n</i>],&emsp; <i>a</i> = <i>e</i><sup>&minus;1/&tau;</sup><span class="n">(30)</span></div>
+
+<p class="noind">Far-end crosstalk adds an independent PRBS aggressor through the same channel with a differentiating coupling; supply noise modulates the front-end gain multiplicatively, <i>y</i>[<i>n</i>](1 + <i>m</i>&thinsp;sin 2&pi;<i>n</i>/<i>MP</i>); and residual timing error displaces the sampling instants, the samples being taken by linear interpolation:</p>
+
+<div class="eq"><i>t</i>[<i>n</i>] = &phi; + <i>nM</i> + <i>M</i>&thinsp;( &sigma;<sub>rj</sub><i>g</i>[<i>n</i>] + <i>A</i><sub>sj</sub> sin 2&pi;<i>n</i>/<i>P</i><sub>sj</sub> )<span class="n">(31)</span></div>
+
+<p class="noind">Finally the channel itself is re-parameterized. A single &radic;<i>f</i> term is the shape of conductor loss alone; a printed-circuit link also carries dielectric loss proportional to <i>f</i>, and the most conspicuous feature of a measured <i>S</i><sub>21</sub> is neither &mdash; it is the resonance of an unused via stub, which shorts the line at its quarter-wave frequency:</p>
+
+<div class="eq">|<i>H</i>(<i>f</i>)| = 10<sup>&minus;(&alpha;<sub>c</sub>&radic;(<i>f</i>/<i>f</i><sub>N</sub>) + &alpha;<sub>d</sub>(<i>f</i>/<i>f</i><sub>N</sub>))/20</sup>&emsp;&middot;&emsp;| 2 / (2 + <i>j s</i> tan 2&pi;<i>f</i>&tau;<sub>s</sub>) |<span class="n">(32)</span></div>
+
+<p class="noind">Minimum phase is imposed as in (2). Two checks pin the parameterization: with &alpha;<sub>d</sub>=0 and <i>s</i>=0, (32) reproduces the channel of Sec.&nbsp;II to 4&times;10<sup>&minus;17</sup>; and the notch falls at 1/(4&tau;<sub>s</sub>), measured at 1.00&thinsp;<i>f</i><sub>N</sub> for &tau;<sub>s</sub>=0.5&thinsp;<i>T</i> and 0.50&thinsp;<i>f</i><sub>N</sub> for &tau;<sub>s</sub>=1.0&thinsp;<i>T</i>. At equal 20&nbsp;dB Nyquist loss the two mechanisms are not interchangeable: the main cursor is 0.238 under conductor loss and 0.358 under dielectric loss.</p>
+
+<h3>B. Long memory does not break the table</h3>
+
+<p class="first">The droop of (30) reaches 18.8&thinsp;UI &mdash; an order of magnitude beyond the <i>W</i>=2 window &mdash; and the prediction was that the table would collapse there. It does not. Holding every other parameter at the operating point of Sec.&nbsp;X and changing one variable at a time:</p>
+
+<figure>
+<table><caption>Table&nbsp;X<br><b>One variable at a time from 25 dB, SNR 30 dB, &kappa;=1.0, no post-filter, 6.4&times;10<sup>5</sup> bits, 8 seeds. Ratio is NN&nbsp;5&rarr;2 (7-bit, 12 multipliers) over FFE&nbsp;11 + table 2&times;4, per-seed median.</b></caption>
+<thead><tr><th class="l">Change</th><th>NN / table</th><th>NN wins</th></tr></thead>
+<tbody>
+<tr><td class="l">none (reference)</td><td>1.28&times;</td><td>5/8</td></tr>
+<tr><td class="l">droop &tau; = 18.8&thinsp;UI</td><td>1.47&times;</td><td>7/8</td></tr>
+<tr><td class="l">post-comp. &beta; = 0.35</td><td>0.56&times;</td><td>1/8</td></tr>
+<tr class="rt"><td class="l">compression &kappa; = 1.3</td><td>2.17&times;</td><td>8/8</td></tr>
+<tr><td class="l">compression &kappa; = 1.6</td><td>2.50&times;</td><td>8/8</td></tr>
+<tr><td class="l">compression &kappa; = 2.0</td><td>3.40&times;</td><td>8/8</td></tr>
+<tr class="rt"><td class="l">loss 25&rarr;20&nbsp;dB</td><td>1.83&times;</td><td>7/8</td></tr>
+<tr><td class="l">SNR 30&rarr;26&nbsp;dB</td><td>1.23&times;</td><td>7/8</td></tr>
+</tbody></table>
+</figure>
+
+<p class="noind">Ten octaves of added memory move the ratio by 15&thinsp;%. <b>Nonlinearity severity moves it by a factor of three, monotonically and on 8/8 seeds.</b> The hypothesis that motivated this section &mdash; memory length as the binding variable &mdash; is not supported. Sweeping &tau; over 5&ndash;150&thinsp;UI at a harsher operating point reproduces the same flatness: the NN/table ratio stays within 1.21&ndash;2.66&times; with no trend in &tau;.</p>
+
+<h3>C. The real mechanism, and a defect in the comparison</h3>
+
+<p class="first">Why should compression severity favour a network? It should not &mdash; by Proposition&nbsp;1 a memoryless warp is exactly invertible by an ADC-code table at zero multipliers, and severity is precisely what that table absorbs. Inspecting the configuration revealed that the table path did not have one. The compressed signal was being fed directly to the NLMS front end, so as &kappa; grew it was the <i>linear adapter</i> that degraded, not the table. Installing the memoryless inverse of Sec.&nbsp;V &mdash; which the paper already advocates, and which costs nothing &mdash; ahead of both structures repairs it:</p>
+
+<figure>
+<table><caption>Table&nbsp;XI<br><b>Effect of the zero-multiplier memoryless inverse ahead of the FFE. 25 dB, SNR 30 dB, 6.4&times;10<sup>5</sup> bits, 8 seeds, pooled BER.</b></caption>
+<thead><tr><th class="l">Structure</th><th>&kappa;=1.0</th><th>&kappa;=1.6</th><th>&kappa;=2.0</th></tr></thead>
+<tbody>
+<tr><td class="l">FFE 11 + DFE 8</td><td>2.42e&minus;02</td><td>6.24e&minus;02</td><td>8.25e&minus;02</td></tr>
+<tr><td class="l">FFE 11 + table 2&times;4</td><td>3.92e&minus;03</td><td>3.34e&minus;02</td><td>5.87e&minus;02</td></tr>
+<tr><td class="l">NN 5&rarr;2, 7-bit</td><td>3.48e&minus;03</td><td>1.33e&minus;02</td><td>1.88e&minus;02</td></tr>
+<tr class="rt"><td class="l">inv. + FFE 11 + table 2&times;4</td><td>1.06e&minus;03</td><td>4.87e&minus;03</td><td>1.13e&minus;02</td></tr>
+<tr><td class="l">inv. + NN 5&rarr;2, 7-bit</td><td>1.64e&minus;03</td><td>4.96e&minus;03</td><td>6.36e&minus;03</td></tr>
+</tbody></table>
+</figure>
+
+<p class="noind">At &kappa;=2.0 the table improves by 5.2&times; from a stage that costs no multipliers, and the apparent superiority of the network at &kappa;=1.6 disappears. Neither structure is being measured until both are given the front end that Proposition&nbsp;1 prescribes. <b>An architecture comparison is only as good as the weaker arm&rsquo;s configuration</b>, and for three editions the weaker arm was ours.</p>
+
+<h3>D. The crossover, measured fairly</h3>
+
+<p class="first">With the memoryless inverse installed on both sides, the boundary is sharp and it is in &kappa;, not in memory:</p>
+
+<figure>
+<table><caption>Table&nbsp;XII<br><b>Crossover in nonlinearity severity. Memoryless inverse ahead of both arms. 25 dB, SNR 30 dB, 6.4&times;10<sup>5</sup> bits, 8 seeds; ratios are per-seed medians.</b></caption>
+<thead><tr><th class="l">&kappa;</th><th>table / linear</th><th>NN / linear</th><th>NN / table</th><th>NN wins</th></tr></thead>
+<tbody>
+<tr><td class="l">1.0</td><td>3.48&times;</td><td>2.11&times;</td><td>0.59&times;</td><td>1/8</td></tr>
+<tr><td class="l">1.3</td><td>1.93&times;</td><td>1.41&times;</td><td>0.71&times;</td><td>0/8</td></tr>
+<tr><td class="l">1.6</td><td>1.84&times;</td><td>1.62&times;</td><td>0.78&times;</td><td>2/8</td></tr>
+<tr class="rt"><td class="l">2.0</td><td>1.32&times;</td><td>2.23&times;</td><td><b>1.79&times;</b></td><td><b>8/8</b></td></tr>
+</tbody></table>
+</figure>
+
+<p class="noind">The zero-multiplier arm holds to &kappa;&nbsp;&asymp;&nbsp;1.6 and loses at &kappa;=2.0 on every seed. This is the regime that requires a network, and it is a regime of <i>severity</i>, not of memory. Adding droop to this sweep does not shift the boundary in a reproducible direction: the ratios become non-monotone in &kappa; (0.81, 0.88, 1.44, 0.78), and we draw no conclusion from them.</p>
+
+<h3>E. Three attempts to rescue the table, all failed</h3>
+
+<p class="first"><i>Enlarge it.</i> At every training budget a larger address space is worse, and the constraint is data rather than area: with 1.92&times;10<sup>5</sup> training symbols a 32&thinsp;768-cell table populates 11&thinsp;339 cells (35&thinsp;%) against 256/256 for the small one, and its BER is six times worse. Preamble length is fixed by the standard, so this axis is closed to the designer.</p>
+
+<p><i>Summarize the past into one address field.</i> A leaky accumulator <i>m</i>[<i>n</i>] = <i>m</i>[<i>n</i>&minus;1] + (<i>x</i>[<i>n</i>]&minus;<i>m</i>[<i>n</i>&minus;1])&gt;&gt;<i>k</i> costs one shift and two adds and looks back 2<sup><i>k</i></sup> samples; appending its code to the address should buy memory for a few bits instead of a few octaves. Measured, every configuration was worse than spending the same bits on one more raw sample (4.20e&minus;3 and 5.38e&minus;3 against 2.87e&minus;3 for a 1024-cell two-sample table). An address bit is worth what it carries, and a neighbouring sample carried more than a slow mean.</p>
+
+<p><i>Index on amplitude and past decisions jointly.</i> Decisions are free (Sec.&nbsp;VI) and each costs one address bit, so a hybrid index is the natural union of the two structures of this paper &mdash; and, evaluated with <i>ideal</i> past decisions, it is an upper bound on any table-plus-DFE. It helps and it is not enough: 2.62e&minus;3 at 2048 cells against 3.63e&minus;3 for the plain table and 9.2e&minus;4 for the network on the same data. The ceiling of Proposition&nbsp;3 is relaxed by the amplitude field but not removed.</p>
+
+<h3>F. Crosstalk, supply noise and timing error</h3>
+
+<p class="first">These three are not equalizable by any of the structures considered &mdash; they are, respectively, another transmitter&rsquo;s data, a time-varying gain and a displacement of the observation. The question they answer is whether the ordering survives them.</p>
+
+<figure>
+<table><caption>Table&nbsp;XIII<br><b>Robustness. Pooled BER, 4&times;10<sup>5</sup> bits, 4 seeds. Best in each row in bold.</b></caption>
+<thead><tr><th class="l">Level</th><th>FFE 11</th><th>table 2&times;4</th><th>NN 5&rarr;2</th><th>MLP 21&times;16</th></tr></thead>
+<tbody>
+<tr><td class="l">FEXT 0.0</td><td>2.39e&minus;02</td><td>2.24e&minus;03</td><td>1.33e&minus;03</td><td><b>9.05e&minus;04</b></td></tr>
+<tr><td class="l">FEXT 0.1</td><td>2.47e&minus;02</td><td>2.54e&minus;03</td><td>1.59e&minus;03</td><td><b>1.19e&minus;03</b></td></tr>
+<tr><td class="l">FEXT 0.2</td><td>2.87e&minus;02</td><td>4.76e&minus;03</td><td>2.83e&minus;03</td><td><b>2.34e&minus;03</b></td></tr>
+<tr><td class="l">FEXT 0.3</td><td>3.60e&minus;02</td><td>1.03e&minus;02</td><td>6.03e&minus;03</td><td><b>5.47e&minus;03</b></td></tr>
+<tr class="rt"><td class="l">RJ 0.05&thinsp;UI</td><td>2.03e&minus;02</td><td>1.48e&minus;03</td><td>9.37e&minus;04</td><td><b>6.10e&minus;04</b></td></tr>
+<tr><td class="l">RJ 0.15&thinsp;UI</td><td>3.11e&minus;02</td><td>6.22e&minus;03</td><td>3.69e&minus;03</td><td><b>3.44e&minus;03</b></td></tr>
+<tr class="rt"><td class="l">supply &plusmn;25&thinsp;%</td><td>2.30e&minus;02</td><td>2.80e&minus;03</td><td>1.70e&minus;03</td><td><b>1.22e&minus;03</b></td></tr>
+<tr><td class="l">supply &plusmn;50&thinsp;%</td><td>2.16e&minus;02</td><td>5.46e&minus;03</td><td>2.36e&minus;03</td><td><b>2.05e&minus;03</b></td></tr>
+</tbody></table>
+</figure>
+
+<p class="noind">The ordering is preserved throughout; no impairment reverses a conclusion of Sec.&nbsp;X. Two specific expectations were wrong. We expected a static table to be hurt more by a time-varying gain than a slicer is, because a stored cell acquires a different meaning at each phase of the modulation; measured over 4&times;10<sup>5</sup> bits and 4 seeds at &plusmn;50&thinsp;%, the penalty is 2.43&times; for the table against 2.66&times; for the linear slicer &mdash; no asymmetry. And because <i>m</i>&nbsp;&lt;&nbsp;1 cannot change a sign, the absolute penalty from supply noise is small for every structure. Timing error is non-monotone in this regime (RJ&nbsp;0.05&thinsp;UI improves on RJ&nbsp;0) because our interpolating sampler low-passes the waveform slightly; on a linear channel the same sweep degrades monotonically (7.1e&minus;5 to 6.4e&minus;4 at 0.12&thinsp;UI), so the non-monotonicity is an artifact of the impairment, not of the structures.</p>
+
+<h3>G. What the crossover costs</h3>
+
+<p class="first">The network that wins at &kappa;=2.0 is the same NN&nbsp;5&rarr;2 of Table&nbsp;IX: 12 multipliers, 2336&nbsp;LC, 47.87&nbsp;MHz. It is <i>smaller and faster</i> than FFE&nbsp;11 + table (3037&nbsp;LC, 41.38&nbsp;MHz). Where a network is genuinely required, it need not be a large one &mdash; and the multiplier-free thesis of this paper does not survive by an area argument at that point, it simply ceases to apply. Networks large enough to exploit a long observation, by contrast, are unbuildable on this device:</p>
+
+<figure>
+<table><caption>Table&nbsp;XIV<br><b>Place-and-route of wide networks, iCE40 HX8K (7680 LC), pipelined, Q2.4.</b></caption>
+<thead><tr><th class="l">Design</th><th>Mults</th><th>LC</th><th>Utilization</th></tr></thead>
+<tbody>
+<tr><td class="l">NN 5&rarr;2</td><td>12</td><td>2336</td><td>30&thinsp;%</td></tr>
+<tr><td class="l">NN 11&rarr;4</td><td>48</td><td>9515</td><td>123&thinsp;% &mdash; does not fit</td></tr>
+<tr><td class="l">NN 21&rarr;4</td><td>88</td><td>17646</td><td>229&thinsp;% &mdash; does not fit</td></tr>
+<tr><td class="l">NN 11&rarr;16</td><td>192</td><td>37371</td><td>486&thinsp;% &mdash; does not fit</td></tr>
+</tbody></table>
+</figure>
+
+<p class="noind">Area is very nearly proportional to multiplier count (198, 198, 201, 195&nbsp;LC per multiplier), so the window length a network may use on a fixed device is set by that constant, not by the training procedure.</p>
+
+<h3>H. What is still missing</h3>
+
+<p class="first">The channel of (32) is a physical parameterization, not a measurement. Obtaining Touchstone data requires network access that the environment in which this work was produced does not have, and we state this rather than presenting a model as data. The gap is not cosmetic: with a via stub placed so that its notch falls inside the band (&tau;<sub>s</sub>=0.6&thinsp;<i>T</i>, notch at 0.72&thinsp;<i>f</i><sub>N</sub>, &minus;50&nbsp;dB) every structure operates between 5&thinsp;% and 14&thinsp;% BER, a regime of information loss in which the equalizer choice is nearly irrelevant. With the notch moved just above the band (&tau;<sub>s</sub>=0.35&thinsp;<i>T</i>) the conclusions of Sec.&nbsp;X reappear intact: the table is best on the linear-plus-memoryless channel (4.97e&minus;4 against 1.05e&minus;3 for the network, 0/6 network wins), and the network is best once a long-memory nonlinearity is added (3.62e&minus;3 against 6.65e&minus;3, 6/6). Whether a measured channel lands nearer the first case or the second is the single largest open question in this work.</p>
+
+<h2>XII.&ensp;Discussion and Limitations</h2>
+
+<p class="first"><i>The impairment model determines the conclusion.</i> This is the principal threat to validity. Section&nbsp;V shows that a memoryless warp is best undone by a 128-entry table; Section&nbsp;VIII shows that a memory-2 warp is best undone by a 256-entry table. Both conclusions are statements about the <i>structure</i> of the impairment. Sec.&nbsp;XI constructs the case in which the zero-multiplier arm loses, and locates it in the <i>severity</i> of the nonlinearity (&kappa;&nbsp;&asymp;&nbsp;2) rather than in its memory: ten octaves of added memory move the comparison by 15&thinsp;%, while severity moves it by a factor of three. The address-space argument that motivated this paper is therefore correct in form and wrong about which variable binds first.</p>
+
+<p><i>Channel and device scope.</i> The channel remains synthetic. Sec.&nbsp;XI-A adds the two loss mechanisms separately, a via-stub resonance, crosstalk, supply noise and sampling jitter, and Sec.&nbsp;XI-F shows the ordering survives all of them &mdash; but a physical parameterization is still not a measurement, and measured S-parameters remain the largest gap. The target device has no DSP blocks, so all multipliers map to LUTs and the relative cost of a multiplier is at its most unfavourable; on a DSP-bearing FPGA or an ASIC the area comparison would shift in favour of the multiplier-based designs.</p>
 
 <p><i>NRZ only.</i> Two results depend on binary decisions: DFE taps are multiplier-free because <i>d</i>&#770;&nbsp;&isin;&nbsp;{&plusmn;1}, and the table stores one bit per cell. Under PAM4 neither holds, the decision alphabet grows, and the address space of any sample-indexed table grows with it.</p>
 
-<p><i>Timing recovery.</i> The sampling phase is fixed at the maximum eye opening &mdash; where a CDR would converge &mdash; but no CDR loop is simulated, so jitter and phase error are excluded. Whether the two structures are equally sensitive to phase error is untested, and the ratios in Table&nbsp;IX therefore carry no guarantee under a real CDR.</p>
+<p><i>Timing recovery.</i> Sec.&nbsp;XI-F adds residual random and sinusoidal sampling jitter (31) and finds the ordering unchanged to 0.15&thinsp;UI rms, but no CDR loop is simulated: the model applies jitter that a loop has already failed to track and cannot reproduce loop bandwidth, pattern-dependent jitter, or the interaction between a nonlinear detector and the phase detector that feeds it. That interaction is untested.</p>
 
 <p><i>Rare-event behaviour.</i> The operating BERs here are 10<sup>&minus;2</sup>&ndash;10<sup>&minus;3</sup>. Counting to a compliance floor of 10<sup>&minus;12</sup> would require 3&times;10<sup>12</sup> bits &mdash; 242 core-days at the measured 1.4&times;10<sup>5</sup>&thinsp;bit/s &mdash; so statistical extrapolation is unavoidable, and the usual Gaussian-tail argument does not transfer cleanly to a nonlinear decision boundary. A table has a specific exposure here: under-populated cells emit a default, and nothing guarantees that default is correct for rare excursions. This is untested and is the most likely place for the present results to fail.</p>
 
 <p><i>Adaptation protocol.</i> Standards prescribe how equalizer coefficients are negotiated, typically as increment/decrement handshakes over a back channel. Neither a weight matrix nor a populated table speaks that language. The table is arguably closer &mdash; it is filled by one counting pass over the preamble, so its convergence criterion reduces to samples-per-cell &mdash; but mapping either onto a standard link-training sequence is unaddressed here.</p>
 
-<h2>XII.&ensp;Conclusion</h2>
+<h2>XIII.&ensp;Conclusion</h2>
 
 <p class="first">The common motivation for neural equalization in wireline receivers &mdash; that linear equalizers cannot invert front-end nonlinearity &mdash; is true but insufficient. For a memoryless nonlinearity the optimal memoryless corrector is a <i>2<sup>B</sup></i>-entry table with no multipliers, and measured on our model it outperforms a 96-multiplier MLP by 2.02&times;, after which the network is redundant.</p>
 
