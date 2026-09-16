@@ -312,6 +312,93 @@ else:
     ok(not 어긋4, f"DFE 가 되먹임 모델과 같다 ({len(찍2)}개)" if not 어긋4
        else f"DFE 가 {len(어긋4)}개 어긋났다: {어긋4[:3]}")
     ok(0 < sum(기대2) < len(기대2), "기대 결정이 양쪽으로 다 난다")
+
+    # ---- 합친 FFE+DFE: 면적을 '따로 재서 더한 값' 으로 말하지 않으려면 이것이 맞아야 한다
+    Lf, 자리3 = 5, [1, 2, 3]
+    # **계수를 끝값에 둔다.** 작은 계수로는 누산기가 CW+DW 안에 머물러, 폭을 좁혀도
+    # 검사가 통과한다(실측: |acc| 최대 4,270 < 2^14).
+    계f = [127, -127, 120, -110, 100]
+    계d = [127, -127, 120]
+    # 부호를 교대로 줘야 탭 부호와 맞아 누산기가 끝까지 간다(37,139). 램프만 주면
+    # 13,924 에 그쳐 CW+DW 를 못 넘는다. 일곱 번마다 램프 값을 끼워 결정을 흔든다.
+    입력3 = [(63 if i % 2 == 0 else -64) if i % 7 else ((i * 37) % 127) - 63
+            for i in range(80)]
+    줄3 = ["`timescale 1ns/1ps", "module tb;",
+          "  reg clk=0, rst_n=0, cw_we=0;",
+          f"  reg [{eqrtl.주소폭(Lf + len(자리3)) - 1}:0] cw_addr=0;",
+          "  reg signed [7:0] cw_data=0;  reg signed [6:0] x=0;",
+          "  wire d;",
+          "  ffe_dfe dut(.clk(clk),.rst_n(rst_n),.x(x),.cw_we(cw_we),"
+          ".cw_addr(cw_addr),.cw_data(cw_data),.d(d));",
+          "  always #5 clk = ~clk;", "  initial begin",
+          "    @(negedge clk); rst_n = 1;"]
+    for a, v in enumerate(계f + 계d):
+        줄3.append(f"    @(negedge clk); cw_we=1; cw_addr={a}; cw_data={v};")
+    줄3.append("    @(negedge clk); cw_we=0;")
+    for v in 입력3:
+        줄3.append(f"    @(negedge clk); x = {v};")
+        줄3.append('    @(posedge clk); #1 $display("D %0d", d);')
+    줄3 += ["    $finish;", "  end", "endmodule"]
+    찍3 = [int(ln.split()[1]) for ln in
+          돌리기(eqrtl.ffe_dfe(Lf, 자리3, W=8, DW=7, WD=8), "ffe_dfe", 줄3, "d").splitlines()
+          if ln.startswith("D ")]
+    # 파이썬 쪽도 같은 흐름: sr[0]=최신이고 acc 는 x 를 시프트 레지스터로 받는다.
+    이력3 = [0] * (max(자리3) + 1)
+    기대3, acc3들 = [], []
+    for i in range(len(입력3)):
+        accf = sum(계f[k] * 입력3[i - k] for k in range(Lf) if i - k >= 0)
+        acc = accf
+        for j, pp in enumerate(자리3):
+            acc += -계d[j] if 이력3[pp - 1] else 계d[j]
+        acc3들.append(acc)
+        결 = 1 if acc >= 0 else 0
+        기대3.append(결)
+        이력3 = [결] + 이력3[:-1]
+    # y 는 sr 를 거치므로 한 칸 늦고, 되먹임은 같은 사이클이다 -- RTL 의 sr[0] <= x 때문에
+    어긋5 = [(i, 찍3[i], 기대3[i - 1]) for i in range(Lf + 1, min(len(찍3), len(기대3)))
+            if 찍3[i] != 기대3[i - 1]]
+    ok(not 어긋5, f"합친 FFE+DFE 가 모델과 같다 ({len(찍3)}개)" if not 어긋5
+       else f"합친 FFE+DFE 가 {len(어긋5)}개 어긋났다: {어긋5[:3]}")
+    ok(0 < sum(기대3) < len(기대3), "합친 것의 결정도 양쪽으로 다 난다")
+    ok(max(abs(a) for a in acc3들) > (1 << (8 + 7 - 1)),
+       f"**합친 누산기가 CW+DW 를 넘긴다** (|acc| 최대 {max(abs(a) for a in acc3들)})")
+
+    # ---- 되먹임은 **따로** 재야 한다. 위 자극은 폭을 재려고 FFE 계수를 끝값에 뒀는데,
+    # 그러면 accf 가 ~37,000 이고 DFE 항은 최대 381 이라 **되먹임이 판정에 안 닿는다**.
+    # 실제로 그 상태에서 되먹임을 한 칸 밀어 봐도 검사가 통과했다(실측). 폭을 재는 자극과
+    # 되먹임을 재는 자극은 요구가 반대라서 한 자극으로는 둘 다 못 잰다.
+    계f2 = [8, -3, 2, -1, 1]
+    계d2 = [60, -28, 14]
+    입력4 = [((i * 29) % 41) - 20 for i in range(80)]
+    줄4 = 줄3[:10]                      # 머리말은 같다 (rst 까지)
+    for a, v in enumerate(계f2 + 계d2):
+        줄4.append(f"    @(negedge clk); cw_we=1; cw_addr={a}; cw_data={v};")
+    줄4.append("    @(negedge clk); cw_we=0;")
+    for v in 입력4:
+        줄4.append(f"    @(negedge clk); x = {v};")
+        줄4.append('    @(posedge clk); #1 $display("D %0d", d);')
+    줄4 += ["    $finish;", "  end", "endmodule"]
+    찍4 = [int(ln.split()[1]) for ln in
+          돌리기(eqrtl.ffe_dfe(Lf, 자리3, W=8, DW=7, WD=8), "ffe_dfe", 줄4, "d").splitlines()
+          if ln.startswith("D ")]
+    이력4 = [0] * (max(자리3) + 1)
+    기대4, 되먹임몫 = [], []
+    for i in range(len(입력4)):
+        accf = sum(계f2[k] * 입력4[i - k] for k in range(Lf) if i - k >= 0)
+        되 = sum(-계d2[j] if 이력4[pp - 1] else 계d2[j] for j, pp in enumerate(자리3))
+        되먹임몫.append(abs(되) / max(abs(accf) + abs(되), 1))
+        결 = 1 if accf + 되 >= 0 else 0
+        기대4.append(결)
+        이력4 = [결] + 이력4[:-1]
+    어긋6 = [(i, 찍4[i], 기대4[i - 1]) for i in range(Lf + 1, min(len(찍4), len(기대4)))
+            if 찍4[i] != 기대4[i - 1]]
+    몫 = sum(되먹임몫) / len(되먹임몫)
+    ok(몫 > 0.25,
+       f"**되먹임이 판정에 실제로 닿는다** (누산기 크기의 평균 {100*몫:.0f}%) "
+       "-- 안 닿으면 되먹임을 재는 것이 아니다")
+    ok(not 어긋6, f"되먹임이 지배적일 때도 합친 것이 모델과 같다 ({len(찍4)}개)"
+       if not 어긋6 else f"되먹임 자극에서 {len(어긋6)}개 어긋났다: {어긋6[:3]}")
+    ok(0 < sum(기대4) < len(기대4), "되먹임 자극의 결정도 양쪽으로 다 난다")
     최대acc = max(abs(a) for a in acc들)
     ok(최대acc > (1 << 11) - 1,
        f"**되먹임이 acc 를 x 폭 밖으로 민다** (|acc| 최대 {최대acc} > 2047) "
