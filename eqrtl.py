@@ -59,6 +59,34 @@
     NN 5->2 Q2.4      2,368 LC   30.58 MHz   BER 3.69e-03
                       **21% 작고 · 1.35배 빠르고 · BER 6.96배 좋다**
 
+## 파이프라인 -- 재 봤다 (실측 2026-09-16)
+
+앞 판은 "층 사이에 레지스터를 한 단 넣으면 풀린다" 를 **가설로** 적어 뒀다. 넣고 쟀다.
+
+    설계                        민판              한 단 넣은 것        Fmax 변화
+    NN 5->2  Q2.4    2,368 LC · 30.58 MHz   2,336 LC · 47.87 MHz   +56.5%
+    NN 5->4  Q2.4    4,636 LC · 26.73 MHz   4,736 LC · 45.42 MHz   +69.9%
+    선형 FFE11+DFE8  2,999 LC · 22.63 MHz   2,999 LC · 34.73 MHz   +53.5%
+
+**방향은 맞았고 크기도 컸다.** 그런데 가설이 안 말한 것이 셋 나왔다.
+
+*하나 -- 50 MHz 를 여전히 못 넘는다.* 제일 좋은 것이 47.87 이라 목표에 **4% 모자란다.**
+"파이프라인하면 목표를 만족한다" 는 여전히 거짓이다. 한 단 더 넣어야 한다(안 쟀다).
+
+*둘 -- 면적이 늘지 않았다. 5->2 는 오히려 32 LC 줄었다(-1.4%).* 레지스터를 더 넣었는데
+작아진 것은, 조합 경로가 짧아지면서 배치·배선이 더 촘촘히 채웠기 때문으로 보인다.
+**보인다까지가 이 측정이 받치는 말이다** -- 넷리스트를 뜯어 확인하지 않았다.
+
+*셋 -- 선형 쪽도 같은 만큼 빨라진다(+53.5%).* 되먹임 고리 **밖**인 FFE 누산은 자를 수
+있어서다. 고리 안(acc -> d -> hist)은 못 자른다. 그래서 두 설계의 간격은 그대로다:
+
+    민판    30.58 / 22.63 = 1.35배
+    파이프  47.87 / 34.73 = **1.38배**
+
+*판정은 안 바뀐다.* `tests/test_nnfix.py` 가 파이프판이 민판과 **같은 판정을 한 칸 늦게**
+내는지 본다. 그리고 **실제로 한 칸 늦은지도** 본다 -- 민판 정렬로 다 맞으면 레지스터가
+안 들어간 것이므로, 그 검사가 없으면 `파이프=True` 가 무시돼도 초록이 난다.
+
 ## 곱셈기 값은 폭의 제곱과 **맞는다** (단정하지는 않는다)
 
     Q2.4  7비트  2,368 LC      8²/7²  = 1.306   잰 값 3,011/2,368 = 1.272
@@ -121,7 +149,7 @@ module nneq_eq (
     reg signed [HW-1:0] h  [0:H-1];
     reg signed [YW-1:0] y;
     reg signed [ZW-1:0] zs;
-
+{은닉레지선언}
     always @* begin
         for (j = 0; j < H; j = j + 1) begin
             z[j] = $signed({{{{(ZW-WW-FRAC){{coef[L*H+j][WW-1]}}}},
@@ -135,19 +163,19 @@ module nneq_eq (
         y = $signed({{{{(YW-WW-FRAC){{coef[{B2}][WW-1]}}}},
                     coef[{B2}], {{FRAC{{1'b0}}}}}});
         for (j = 0; j < H; j = j + 1)
-            y = y + $signed(h[j]) * $signed(coef[L*H+H+j]);
+            y = y + $signed({은닉원}[j]) * $signed(coef[L*H+H+j]);
     end
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             for (k = 0; k < L; k = k + 1) sr[k] <= 0;
             for (k = 0; k < {NCO}; k = k + 1) coef[k] <= 0;
-            d <= 1'b0;
+{은닉리셋}            d <= 1'b0;
         end else begin
             if (cw_we) coef[cw_addr] <= cw_data;
             for (k = L-1; k > 0; k = k - 1) sr[k] <= sr[k-1];
             sr[0] <= x;
-            d <= ~y[YW-1];
+{은닉갱신}            d <= ~y[YW-1];
         end
     end
 endmodule
@@ -166,16 +194,32 @@ def 계수수(창: int, 은닉: int) -> int:
 
 
 def nn(창: int = 5, 은닉: int = 2, XW: int = 7, WW: int = 7,
-       FRAC: int = 4) -> str:
-    """등화기 Verilog 한 벌. `top` 은 `nneq_eq`."""
+       FRAC: int = 4, 파이프: bool = False) -> str:
+    """등화기 Verilog 한 벌. `top` 은 `nneq_eq`.
+
+    `파이프` 가 참이면 **은닉층 뒤에 레지스터를 한 단** 넣는다. 조합 경로가
+    `sr -> 곱셈 L개 -> 덧셈 -> 시프트·클립` 과 `hq -> 곱셈 H개 -> 덧셈` 둘로 갈린다.
+    지연이 한 사이클 늘지만 심볼당 한 결정이라 처리율은 안 준다. **판정 순서는
+    그대로이므로 비트 일치 검사가 그대로 붙든다**(한 칸 더 늦을 뿐이다).
+    """
     창, 은닉 = int(창), int(은닉)
     nco = 계수수(창, 은닉)
     HW = int(FRAC) + 2
     ZW = int(XW) + int(WW) + 주소폭(창 + 1)
     YW = HW + int(WW) + 주소폭(은닉 + 1)
+    if 파이프:
+        은닉레지선언 = f"    reg signed [{HW}-1:0] hq [0:{은닉}-1];\n"
+        은닉리셋 = f"            for (k = 0; k < {은닉}; k = k + 1) hq[k] <= 0;\n"
+        은닉갱신 = f"            for (k = 0; k < {은닉}; k = k + 1) hq[k] <= h[k];\n"
+        은닉원 = "hq"
+    else:
+        은닉레지선언 = 은닉리셋 = 은닉갱신 = ""
+        은닉원 = "h"
     return NN.format(L=창, H=은닉, XW=int(XW), WW=int(WW), FRAC=int(FRAC),
                      LIM=1 << int(FRAC), ZW=ZW, YW=YW, HW=HW,
-                     NCO=nco, AW=주소폭(nco), B2=창 * 은닉 + 2 * 은닉)
+                     NCO=nco, AW=주소폭(nco), B2=창 * 은닉 + 2 * 은닉,
+                     은닉레지선언=은닉레지선언, 은닉리셋=은닉리셋,
+                     은닉갱신=은닉갱신, 은닉원=은닉원)
 
 
 def 계수싣기(정수모: dict) -> "list[int]":
@@ -341,11 +385,12 @@ module ffe_dfe (
     integer k;
     reg signed [FW-1:0] accf;
     reg signed [TW-1:0] acc;
+{누산레지선언}
     always @* begin
         accf = 0;
         for (k = 0; k < L; k = k + 1)
             accf = accf + $signed({{{{(FW-CW-DW){{prod[k][CW+DW-1]}}}}, prod[k]}});
-        acc = $signed({{{{(TW-FW){{accf[FW-1]}}}}, accf}});
+        acc = $signed({{{{(TW-FW){{{누산원}[FW-1]}}}}, {누산원}}});
 {합산}
     end
 
@@ -354,13 +399,13 @@ module ffe_dfe (
             for (k = 0; k < L; k = k + 1) sr[k] <= 0;
             for (k = 0; k < DEPTH; k = k + 1) hist[k] <= 1'b0;
             for (k = 0; k < {NCO}; k = k + 1) coef[k] <= 0;
-            d <= 1'b0;
+{누산리셋}            d <= 1'b0;
         end else begin
             if (cw_we) coef[cw_addr] <= cw_data;
             sr[0] <= x;
             for (k = 1; k < L; k = k + 1) sr[k] <= sr[k-1];
             for (k = DEPTH-1; k > 0; k = k - 1) hist[k] <= hist[k-1];
-            hist[0] <= d;
+{누산갱신}            hist[0] <= d;
             d <= ~acc[TW-1];
         end
     end
@@ -369,7 +414,7 @@ endmodule
 
 
 def ffe_dfe(ffe탭: int = 11, dfe자리=(1, 2, 3, 4, 5, 6, 7, 8), W: int = 7,
-            DW: int = 6, WD: int = 8) -> str:
+            DW: int = 6, WD: int = 8, 파이프: bool = False) -> str:
     """FFE 와 DFE 를 **한 모듈로** 합친 것. `top` 은 `ffe_dfe`.
 
     ## 왜 따로 잰 것을 더하면 안 되나 -- 실측 2026-09-16
@@ -395,6 +440,18 @@ def ffe_dfe(ffe탭: int = 11, dfe자리=(1, 2, 3, 4, 5, 6, 7, 8), W: int = 7,
         f"        acc = {어디(p)} ? (acc - $signed(coef[{L + i}]))"
         f" : (acc + $signed(coef[{L + i}]));"
         for i, p in enumerate(자리))
+    # **되먹임 고리 밖만 자를 수 있다.** accf 는 sr 와 계수에만 달려 있어 자를 수 있고,
+    # acc -> d -> hist -> acc 고리는 못 자른다(자르면 되먹임 자체가 늦는다).
+    if 파이프:
+        누산레지선언 = f"    reg signed [{FW}-1:0] accq;\n"
+        누산리셋 = "            accq <= 0;\n"
+        누산갱신 = "            accq <= accf;\n"
+        누산원 = "accq"
+    else:
+        누산레지선언 = 누산리셋 = 누산갱신 = ""
+        누산원 = "accf"
     return FFEDFE.format(L=L, NT=NT, DEPTH=깊이, DW=int(DW), CW=cw,
                          AW=주소폭(L + NT), FW=FW, TW=TW,
-                         NCO=L + NT, 합산=합산)
+                         NCO=L + NT, 합산=합산,
+                         누산레지선언=누산레지선언, 누산리셋=누산리셋,
+                         누산갱신=누산갱신, 누산원=누산원)
