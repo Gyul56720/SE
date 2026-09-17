@@ -407,6 +407,46 @@ svg .blkt{font:12px var(--sans);fill:var(--ink);stroke:none}
   <p style="margin-bottom:0"><b>바닥을 정하는 것은 양자화 계단이다.</b> 이것은 실측과도 맞는다 — §17.2 의 바닥이 ADC 비트에 따라 1.13e−2 → 5.7e−3 → 1.1e−3 으로 내려갔다. 비교기가 원인이었다면 ADC 비트를 올려도 안 움직였어야 한다. <b>회로 쪽 계산이 어느 기구가 지배하는지 먼저 맞혔고, 측정이 그것을 확인했다.</b></p>
 </div>
 
+<h2 class="sec"><span class="n">4.5</span>SPICE 가 더 고쳐 준 것 — CTLE 매핑과 오프셋</h2>
+
+<h3>4.5.1 <code>serdes.CTLE</code> 는 꼴이 아니라 <b>매핑</b>이 틀렸다</h3>
+
+<p>§2 에서 "시뮬레이터가 3.73 dB 어긋난다" 고 적었다. sky130 으로 실제 소스 축퇴 CTLE 를 AC 스윕해 보니(피킹 4.14 dB @ 1.12 GHz) 그 읽기가 거칠었다.</p>
+
+<figure>
+  <div class="scroll"><table>
+    <thead><tr><th>맞추는 방법</th><th>최대 잔차 (10 MHz ~ 12 GHz)</th></tr></thead>
+    <tbody>
+      <tr><td>회로값을 <code>ctle환산</code> 으로 옮겨 넣기</td><td class="bad">3.73 dB</td></tr>
+      <tr class="rule-top"><td><b><code>serdes.CTLE</code> 세 파라미터를 자유 맞춤</b></td><td class="hl"><b>1.56 dB</b></td></tr>
+      <tr><td>내 닫힌 꼴(<code>afe.ctle전달</code>, 구조가 같다)로 맞춤</td><td>1.27 dB</td></tr>
+    </tbody>
+  </table></div>
+  <figcaption><b>표 2-c. 실제 sky130 CTLE 곡선을 두 모형이 얼마나 맞추나.</b><br><b>1영점 2극점 꼴 자체는 쓸 만하다</b>(1.56 dB). 남는 1.3~1.6 dB 는 C<sub>gd</sub> 앞먹임·출력 컨덕턴스처럼 <b>어느 3-파라미터 모형도 못 담는 것</b>이다(내 닫힌 꼴도 1.27 dB 남는다).<br>그러므로 바른 문장은 "꼴이 틀렸다" 가 아니라 <b>"회로값을 파라미터로 옮기는 식이 틀렸다"</b> — 회로로 시뮬레이터를 몰려면 <b>환산이 아니라 맞춤</b>을 해야 한다.</figcaption>
+</figure>
+
+<h3>4.5.2 바닥의 기여자는 <b>둘</b>이다 — 재생 감도가 아니라 오프셋</h3>
+
+<p>§4 에서 "바닥은 양자화가 정한다(비교기 41 µV 대 LSB 2,617 µV)" 고 적었다. 맞다 — 다만 그때 잰 것은 <b>재생 감도</b>였고, 비교기에는 다른 한계가 있다: <b>미스매치 오프셋</b>. sky130 <code>tt_mm</code> 코너로 몬테카를로를 돌렸다.</p>
+
+<figure>
+  <div class="scroll"><table>
+    <thead><tr><th>기여자</th><th>크기</th><th>LSB 대비</th><th>줄이는 법</th></tr></thead>
+    <tbody>
+      <tr><td>비교기 재생 감도</td><td>41 µV</td><td>0.016</td><td>—(이미 작다)</td></tr>
+      <tr class="rule-top"><td><b>비교기 오프셋 σ</b></td><td class="bad"><b>1,400~2,000 µV</b></td><td class="bad"><b>0.55~0.75</b></td><td class="hl">면적(Pelgrom)</td></tr>
+      <tr><td><b>ADC LSB (7비트)</b></td><td class="bad"><b>2,617 µV</b></td><td>1.00</td><td class="hl">ADC 비트</td></tr>
+    </tbody>
+  </table></div>
+  <figcaption><b>표 3-b. §17.2 오류 바닥의 기여자</b>(sky130 tt_mm · W=20 µm · L=0.5 µm · nf=4 · I_D=100 µA).<br>대조로 미스매치 없는 <code>tt</code> 코너를 돌리면 오프셋이 <b>정확히 0</b>(2.4e−14 mV)이다 — 측정이 살아 있다.<br><b>양자화와 오프셋이 같은 자리에 있고 재생 감도만 멀리 있다.</b> 그리고 Pelgrom 이 실제로 선다 — 면적 40 → 160 µm² 에서 σ 가 1.59 → 0.69 mV 로 줄고(1/√면적 예측 0.79 mV 의 0.87배), <b>같은 면적이면 W 로 키우든 L 로 키우든 같다</b>(0.740 vs 0.789 mV).<br>즉 바닥의 이 몫은 <b>면적으로 살 수 있고</b>, 나머지 몫은 ADC 비트로 산다.</figcaption>
+</figure>
+
+<div class="limits">
+  <h3 style="color:var(--none)">CML 에지는 <b>못 했다</b> — 숫자를 안 싣는다</h3>
+  <p style="margin-bottom:.6rem"><code>serdes.슬루</code> 의 S 를 실제 드라이버에서 재려고 세 번 지었고 세 번 다 못 믿을 값이 나왔다. 큰 소자(총 8,000 µm)로는 스윙이 1,274 mV<sub>ppd</sub> 로 <b>이상적 2·I·R_eff = 400 mV 를 넘었고</b>, 작은 소자로는 <b>꼬리 노드가 −0.337 V</b> 로 내려갔다 — 이상적 전류원이 그 소자로 실현 불가능한 전류를 강요하고 있다는 뜻, 즉 <b>설계가 자기모순</b>이다. <code>.meas</code> 로 에지를 재려 했더니 창 밖 교차를 잡아 상승 시간이 음수로 나왔다.</p>
+  <p style="margin-bottom:0">진짜 꼬리 트랜지스터와 헤드룸 예산을 세우고 크기를 제대로 잡아야 하는데, 그것은 이 문서의 범위를 넘는 <b>회로 설계</b>다. <b>그래서 S 의 SPICE 값은 내지 않는다.</b> §1.3 의 닫힌 꼴 결론(논문의 S 는 시상수 2.5~8.3 UI 에 해당한다)은 그대로 두고, "실제 드라이버가 정확히 얼마인지" 는 <b>안 잰 것으로 남긴다.</b> 못 믿을 숫자를 싣는 것이 안 싣는 것보다 나쁘다.</p>
+</div>
+
 <h2 class="sec"><span class="n">5</span>CDR — 남는 것은 <b>루프 대역 위</b>다</h2>
 
 <p>Alexander(2× 오버샘플) 위상검출기 → 전하펌프 → 루프필터 → 위상보간기. 위상검출기는 <b>빠른가 늦은가 한 비트</b>만 낸다. 전하펌프가 그 한 비트로 커패시터에 전하를 넣거나 뺀다. <b>여기도 곱셈기가 없다.</b></p>
@@ -479,9 +519,9 @@ svg .blkt{font:12px var(--sans);fill:var(--ink);stroke:none}
       <tr><td><code>압축 κ</code></td><td>AFE·VGA 차동쌍 포화</td><td><code>κ = V_in,rms / V_lim</code></td><td class="hl">모양은 같다 (닫힌 꼴 2e−16, SPICE 0.012~0.105)</td></tr>
       <tr><td><code>κ</code> → mV 환산</td><td>sky130 nfet_01v8 (BSIM4)</td><td><code>V_lim</code> = 원점 기울기의 역수</td><td class="warn">상수가 아니다 — 78~297 mV (바이어스)</td></tr>
       <tr><td><code>슬루 S</code></td><td>TX CML 출력 RC</td><td><code>S = T_s/(R_eff·C_L)</code></td><td class="bad">논문 값이 2.5~8.3 UI — 닿을 수 없다</td></tr>
-      <tr><td><code>CTLE 피킹</code></td><td>소스 축퇴쌍</td><td><code>1 + g_m R_S/2</code></td><td class="bad">시뮬레이터와 3.73 dB 어긋남</td></tr>
+      <tr><td><code>CTLE 피킹</code></td><td>소스 축퇴쌍</td><td><code>1 + g_m R_S/2</code></td><td class="warn">매핑 3.73 dB / <b>자유 맞춤 1.56 dB</b> — 꼴이 아니라 매핑</td></tr>
       <tr><td><code>지터 rjUI</code></td><td>뱅뱅 CDR 루프</td><td><code>∫|1−H|²S_φ</code></td><td class="hl">0.05 UI ≈ 루프 2 MHz</td></tr>
-      <tr><td><code>ADC 비트</code></td><td>StrongARM + 양자화</td><td>LSB vs <code>V_DD e^(−UI·g_m/C_L)</code></td><td class="hl">LSB 가 64배 커서 바닥을 정한다</td></tr>
+      <tr><td><code>ADC 비트</code></td><td>StrongARM + 양자화</td><td>LSB vs 재생 감도 vs <b>오프셋</b></td><td class="hl">기여자 <b>둘</b>: LSB 2,617 µV · 오프셋 σ 1,400~2,000 µV (재생 41 µV)</td></tr>
       <tr><td>DFE 파이프라인 불가</td><td>1 UI 되먹임 고리</td><td><code>Σt ≤ 1 UI</code></td><td class="hl">32.3 GBd 한계, 위는 unrolling</td></tr>
     </tbody>
   </table></div>
