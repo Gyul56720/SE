@@ -15,8 +15,9 @@
 
 ## 왜 최소 집합만 푸나
 
-전체는 129 MB 다. 이 저장소가 쓰는 것은 `nfet_01v8` · `pfet_01v8` 과 결합 모델뿐이라
-34.5 MB 면 된다. 그래도 **커밋하지 않는다** -- 캐시에 두고 없으면 받는다.
+전체 129 MB 를 푼다. 골라 풀어 34.5 MB 로 줄여 봤더니 코너 파일이 참조하는
+셀이 빠져 ngspice 가 include 오류를 뱉었다 -- **오류를 뱉으며 도는 것은 도는 것이
+아니다**. 커밋하지 않으므로(캐시) 저장소 크기와는 무관하다.
 
 ## 없을 때
 
@@ -48,14 +49,16 @@ _lib상대 = os.path.join(_안쪽, "combined_models", "sky130.lib.spice")
 
 
 def _필요한가(n: str) -> bool:
-    """쓰는 셀만 푼다 -- 전체 129 MB 중 34.5 MB."""
-    if not n.startswith(_안쪽.replace(os.sep, "/") + "/"):
-        return False
-    if "/combined_models/" in n:
-        return True
-    셀 = ("nfet_01v8", "pfet_01v8", "nfet_01v8_lvt", "pfet_01v8_hvt",
-          "res_generic_po", "cap_mim_m3")
-    return any(f"/cells/{c}/" in n for c in 셀)
+    """`sky130_fd_pr` 을 통째로 푼다(129 MB).
+
+    처음에는 쓰는 셀만 골라 34.5 MB 로 줄였다. **그랬더니 ngspice 가 include 를
+    못 찾는다고 다섯 줄을 뱉었다** -- 코너 파일이 우리가 안 쓰는 셀(special_nfet ·
+    cap_vpp 여러 개)을 참조한다. 시뮬레이션은 그래도 돌았지만, **오류를 뱉으면서
+    도는 것은 도는 것이 아니다** -- 다음에 진짜 오류가 나도 묻힌다.
+
+    129 MB 는 캐시에 두는 값으로 충분히 싸다. 커밋하지 않으므로 저장소는 안 는다.
+    """
+    return n.startswith(_안쪽.replace(os.sep, "/") + "/")
 
 
 def 자리() -> "str | None":
