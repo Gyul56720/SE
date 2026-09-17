@@ -23,6 +23,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import gzip
 import io
 import json
@@ -78,19 +79,50 @@ def _바이트기본(url: str) -> "bytes | None":
         return None
 
 
+def 옵션모듈(이름: str) -> "tuple[object | None, str]":
+    """선택 의존성을 **어떤 예외로도 안 터지게** 불러온다. `(모듈, 못 부른 까닭)`.
+
+    ## `except ImportError` 로는 모자란다 -- 실측
+
+    `pypdf` 는 `cryptography` 를 부르고, 그것은 Rust(pyo3) 확장을 부른다. 그 확장이
+    깨져 있으면(여기서는 `_cffi_backend` 가 없어서) 터지는 것은 파이썬이 아니라
+    **네이티브 쪽**이고, pyo3 는 그것을 `PanicException` 으로 올린다. 그 클래스의
+    MRO 를 재 보면
+
+        ['PanicException', 'BaseException', 'object']
+
+    다 -- **`Exception` 을 상속하지 않는다.** pyo3 가 일부러 그렇게 만들어 두었다
+    (평범한 `except Exception` 에 삼켜지면 안 되는 것이라서). 그래서
+    `except ImportError` 도 `except Exception` 도 이것을 못 잡고, 선택 의존성 하나가
+    깨져 있으면 **도구 전체가 죽는다.**
+
+    dig 의 규율은 "거절이 없다 -- 못 받은 것도 까닭과 함께 낸다" 이므로, 여기서
+    죽으면 안 된다. `BaseException` 까지 잡되 **`KeyboardInterrupt` 와 `SystemExit`
+    만은 그대로 올려 보낸다** -- 그 둘까지 삼키면 사람이 도구를 못 멈춘다.
+    """
+    try:
+        return importlib.import_module(이름), ""
+    except (KeyboardInterrupt, SystemExit):
+        raise
+    except BaseException as e:                                     # noqa: BLE001
+        return None, f"{이름} 을 못 불렀다 ({type(e).__name__})"
+
+
 def pdf텍스트(raw: bytes) -> "tuple[str, str]":
-    """(글, 못읽은까닭). pypdf 가 있을 때만 -- 없으면 '못읽음' 이지 빈 글이 아니다."""
+    """(글, 못읽은까닭). pypdf 가 있을 때만 -- 없거나 깨졌으면 '못읽음' 이지 빈 글이 아니다."""
     if not raw or raw[:5] != b"%PDF-":
         return "", "PDF 가 아니다"
-    try:
-        import pypdf
-    except ImportError:
-        return "", "PDF 텍스트 층: pypdf 없음 (pip install pypdf)"
+    pypdf, 왜 = 옵션모듈("pypdf")
+    if pypdf is None:
+        return "", f"PDF 텍스트 층: {왜} (pip install pypdf)"
     try:
         r = pypdf.PdfReader(io.BytesIO(raw))
         글 = "\n".join((pg.extract_text() or "") for pg in r.pages[:40])
         return 글, "" if 글.strip() else "PDF 텍스트 층이 비었다(스캔본?)"
-    except Exception as e:                                         # noqa: BLE001
+    except (KeyboardInterrupt, SystemExit):
+        raise
+    except BaseException as e:                                     # noqa: BLE001
+        # 읽는 도중에도 같은 일이 난다 -- 확장이 깨진 채로 부르면 파싱 중에 터진다.
         return "", f"PDF 못 읽음: {type(e).__name__}"
 
 

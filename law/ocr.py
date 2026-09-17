@@ -263,10 +263,17 @@ def main(argv=None) -> int:
     if not a.pdf:
         ap.error("시험지 PDF 를 주거나 --견줌 을 주십시오")
 
+    # **`except ImportError` 로는 모자란다.** pypdf -> cryptography -> Rust(pyo3)
+    # 확장이고, 그 확장이 깨져 있으면 pyo3 가 `PanicException` 을 내는데 그것은
+    # `Exception` 이 아니라 `BaseException` 을 상속한다(MRO 로 확인). 그러면 이
+    # 자리가 안 잡히고 **역추적만 뱉으며 죽는다** -- 사람이 무엇을 해야 하는지
+    # 모르게 된다. 같은 병이 `dig/paper.py` 에도 있었고 거기서 먼저 잡았다.
     try:
         from pypdf import PdfReader
-    except ImportError:
-        raise SystemExit("pypdf 가 없다:  pip install pypdf")
+    except (KeyboardInterrupt, SystemExit):
+        raise
+    except BaseException as e:                                     # noqa: BLE001
+        raise SystemExit(f"pypdf 를 못 불렀다 ({type(e).__name__}):  pip install pypdf")
     r = PdfReader(a.pdf)
     want = pages_of(a.pages, len(r.pages))
     out = Path(a.out) if a.out else None

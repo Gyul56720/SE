@@ -127,6 +127,57 @@ finally:
     PP.한번 = None
     PP.바이트받기 = None
 
+print("\n== paper: 선택 의존성이 BaseException 으로 터져도 안 죽는다 ==")
+# **이 마당은 환경에 기대면 안 된다.** 지금 이 컨테이너에서는 pypdf -> cryptography ->
+# pyo3 확장이 `_cffi_backend` 를 못 찾아 `PanicException` 을 내는데, 그 클래스의 MRO 는
+# ['PanicException', 'BaseException', 'object'] 라 **Exception 을 상속하지 않는다.**
+# 그래서 `except ImportError` 도 `except Exception` 도 못 잡고 도구가 통째로 죽었다.
+# 누가 그 확장을 고치면 이 경로가 안 밟히므로, 여기서는 **가짜로 터뜨려** 붙든다.
+import importlib.abc
+import sys as _sys
+
+
+class _가짜패닉(BaseException):
+    """네이티브 확장이 내는 것과 같은 자리(Exception 을 안 상속한다)."""
+
+
+class _터지는파인더(importlib.abc.MetaPathFinder):
+    def __init__(self, 이름, 낼것):
+        self.이름, self.낼것 = 이름, 낼것
+
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname == self.이름:
+            raise self.낼것
+        return None
+
+
+_sys.meta_path.insert(0, _터지는파인더("se_가짜_터지는모듈", _가짜패닉("네이티브가 터졌다")))
+try:
+    모, 왜 = PP.옵션모듈("se_가짜_터지는모듈")
+    ok(모 is None and "_가짜패닉" in 왜,
+       f"Exception 을 안 상속하는 예외로 터져도 (None, 까닭) 을 낸다 ({왜})")
+finally:
+    _sys.meta_path.pop(0)
+
+# **대조: 삼키면 안 되는 둘은 그대로 올려 보낸다.** 여기까지 삼키면 사람이 도구를
+# 못 멈춘다 -- 검사가 한쪽으로 고정돼 있지 않은지 보는 자리이기도 하다.
+for 낼것, 이름 in ((KeyboardInterrupt(), "KeyboardInterrupt"), (SystemExit(), "SystemExit")):
+    _sys.meta_path.insert(0, _터지는파인더("se_가짜_중단모듈", 낼것))
+    try:
+        PP.옵션모듈("se_가짜_중단모듈")
+        올라옴 = False
+    except (KeyboardInterrupt, SystemExit):
+        올라옴 = True
+    finally:
+        _sys.meta_path.pop(0)
+    ok(올라옴, f"{이름} 은 삼키지 않고 그대로 올려 보낸다")
+
+# 그리고 멀쩡한 모듈은 멀쩡히 온다
+모, 왜 = PP.옵션모듈("json")
+ok(모 is not None and not 왜, "있는 모듈은 그대로 온다 (까닭 없음)")
+모, 왜 = PP.옵션모듈("se_없는모듈_zzz")
+ok(모 is None and "ModuleNotFound" in 왜, f"없는 모듈은 까닭이 붙는다 ({왜})")
+
 print("\n== 배선 ==")
 import subprocess  # noqa: E402
 _wf = (뿌리 / ".github" / "workflows" / "deploy-oracle.yml").read_text(encoding="utf-8")
