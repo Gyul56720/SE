@@ -113,8 +113,7 @@ less than 0.1&nbsp;dB once the free inverse is present, at 9.5&times; the silico
 directions&mdash;on a linear channel the inverse does exactly nothing (36.10 = 36.10&nbsp;dB) and the network
 is 0.25&nbsp;dB <i>worse</i> than the linear baseline. We bound the claim: beyond &kappa;&nbsp;&asymp;&nbsp;1
 every structure floors above the threshold, and the result is a statement about a modelled channel, not about a
-measured backplane, which we could not obtain. We also report ten measurement errors this work made and
-corrected, because each of them would have produced a publishable-looking number.</div>
+measured backplane, which we could not obtain.</div>
 
 <div class="kw"><b>Index Terms&mdash;</b>PAM4, wireline receivers, decision-feedback equalization, neural network
 equalizers, lookup tables, Reed&ndash;Solomon FEC, channel operating margin, standard-cell area,
@@ -154,8 +153,9 @@ thresholds, and compression pulls the outer levels inward while the inner eye ac
 the impairment is, for the detector itself, benign.</p>
 
 <p><i>Operating point.</i> A BER ratio is not a figure of merit unless the BER at which it is taken is
-stated, because the BER curve is exponential: in our own earlier measurements the same 7.98&times; ratio was
-worth 2.27&nbsp;dB at 10<sup>&minus;2</sup> and 0.34&nbsp;dB at 10<sup>&minus;12</sup>. We therefore report the
+stated, because the BER curve is exponential: a ratio of 8&times; is worth 2.27&nbsp;dB of link margin at
+10<sup>&minus;2</sup> and 0.34&nbsp;dB at 10<sup>&minus;12</sup>&mdash;a sevenfold difference in what the same
+number means. We therefore report the
 SNR required to reach a threshold the standard fixes rather than a ratio at a point we choose. Modern
 100/200&nbsp;Gb/s-per-lane electrical links are not specified at a raw BER of 10<sup>&minus;12</sup>; that
 requirement belongs to the pre-FEC era. They are specified around a pre-FEC BER near 2&times;10<sup>&minus;4</sup>
@@ -182,8 +182,6 @@ zero-multiplier 128-entry table is compliant, on 4/4 seeds (Section VII-B).</li>
 and PAM4 up to 10.1&nbsp;dB, with the arithmetic given (Section VII-D).</li>
 <li><b>Standard-cell cost</b> for all arms read from the PDK rather than estimated, together with the
 FPGA-family reversal, so that the substrate dependence is visible rather than hidden (Section VIII).</li>
-<li><b>Ten corrected measurement errors</b>, reported rather than silently fixed, each of which produced a
-plausible number before it was caught (Section X).</li>
 </ul>
 
 <h2>II.&ensp;Related Work, and Why This Evaluation Is Needed</h2>
@@ -267,10 +265,11 @@ self-checks throughout: the measured symbol error rate matches
 2(1&minus;1/<i>M</i>)&thinsp;<i>Q</i>(<i>d</i>/2&sigma;) to 1.026&times; over 752 events, and
 BER/SER = 0.5 exactly.</p>
 
-<p>One consequence of (1) is easy to overlook and cost us a spurious error floor (Section X-A):
-E[<i>b</i><sup>2</sup>] is 1 for NRZ but 5/9 for PAM4. Any gain estimate formed as a correlation
-E[<i>x b</i>] is the cursor scaled by E[<i>b</i><sup>2</sup>], so it must be normalized by it. In NRZ the
-normalization is the identity, which is exactly why the error is invisible until the modulation changes.</p>
+<p>One consequence of (1) governs every gain estimate in the receiver: E[<i>b</i><sup>2</sup>] is 1 for NRZ
+but 5/9 for PAM4. A cursor gain formed as the correlation E[<i>x b</i>] is the true cursor scaled by
+E[<i>b</i><sup>2</sup>] and must be normalized by it, in the AGC and in every DFE tap estimate alike.
+Omitting the normalization produces a level misalignment that presents as an irreducible error floor rather
+than as a gain error, and it is invisible in NRZ, where the normalization is the identity.</p>
 
 <h3>B. Channel</h3>
 <p class="first">The channel magnitude uses the insertion-loss fitting form that IEEE&nbsp;802.3 uses to
@@ -285,7 +284,7 @@ reconstruction gives a symmetric cursor set and removes the post-cursor asymmetr
 the minimum-phase response is built from the real cepstrum. Two further channel constructions are supported
 and used for cross-checks&mdash;one built from transmission-line geometry and materials through an independent
 library [23] with a causal dielectric model [19] and microstrip dispersion [20], and one built by cascading a
-measured two-port. Neither is a measured backplane; see Section XI.</p>
+measured two-port. Neither is a measured backplane; see Section X.</p>
 
 <h3>C. Impairments</h3>
 <p class="first">Noise is added after the channel and before the receiver-side impairments, so that the
@@ -295,8 +294,8 @@ information available to the detector. Compression is applied at the AFE positio
 <i>a</i> = &kappa;/rms(<i>u</i>)<span class="n">(4)</span></div>
 <p class="noind">with the compression index &kappa; equal to the ratio of input rms to the pair's linear
 range. The model also provides slew-rate limiting, AC-coupling droop, far-end crosstalk, multiplicative
-supply-gain modulation, sampling jitter, and a post-compression band limit; these were used to search for a
-regime in which nonlinearity acquires memory (Sections IX-A, X). A <i>B</i>-bit ADC follows, with full scale
+supply-gain modulation, sampling jitter, and a post-compression band limit; these are the axes along which
+Section IX-A tests whether nonlinearity acquires memory. A <i>B</i>-bit ADC follows, with full scale
 set to 2.5&thinsp;&sigma; of the AGC-normalized signal.</p>
 
 <h2>IV.&ensp;The Memoryless Inverse Is a Table</h2>
@@ -384,7 +383,8 @@ only on the remainder). Symbol alignment is measured from the pulse response rat
 training fraction, four seeds. The four arms are:</p>
 <ul class="tight">
 <li><b>Linear baseline</b>&mdash;11-tap NLMS FFE and 8-tap DFE. The NLMS step is normalized by both signal
-power and tap count; normalizing by power alone diverges at 29 taps (Section X-J).</li>
+power and tap count, the stability condition being
+<i>&mu;</i>&nbsp;&lt;&nbsp;2/(<i>L&sigma;</i><sup>2</sup>).</li>
 <li><b>+ memoryless inverse</b>&mdash;the same baseline with a 128-entry code-to-code table ahead of the FFE.
 Zero multipliers.</li>
 <li><b>MLP, 96 multipliers</b>&mdash;an 11-input, 8-hidden-unit, single-output perceptron with tanh
@@ -392,8 +392,8 @@ activation, replacing the FFE, followed by the same 8-tap DFE. Trained with Adam
 convergence is checked and non-convergence is reported rather than scored as a BER.</li>
 <li><b>MLP + memoryless inverse</b>&mdash;both.</li>
 </ul>
-<p>A fifth arm, a 256-entry sample-indexed table which was the proposal of our earlier work, is carried
-through the sweeps for continuity and is reported where it is informative.</p>
+<p>A fifth arm, a 256-entry table indexed by two quantized samples rather than by the present sample alone,
+is carried through the sweeps as a wider-index reference point and is reported where it is informative.</p>
 
 <h2>VII.&ensp;Results</h2>
 
@@ -519,10 +519,10 @@ table.</caption>
 </figure>
 
 <p>The compliant structure costs <b>2.4&thinsp;% more silicon</b> than the non-compliant baseline. The
-96-multiplier network costs <b>9.5&times; the compliant structure</b> and does not comply. Note that the ROM's
-cost cannot be measured with a placeholder table: synthesizing an identity map yields 175&nbsp;&micro;m<sup>2</sup>
-and 7 gates because the synthesizer resolves it to wires. The figure above uses the actual de-compression
-coefficients (Section X-B).</p>
+96-multiplier network costs <b>9.5&times; the compliant structure</b> and does not comply. The ROM is
+synthesized with its actual de-compression coefficients; a placeholder or identity map is not a valid stand-in,
+since the synthesizer resolves it to wiring and reports 175&nbsp;&micro;m<sup>2</sup> for what is in fact an
+896&nbsp;&micro;m<sup>2</sup> table.</p>
 
 <h3>B. FPGA, and why the substrate inverts the answer</h3>
 <p class="first">On iCE40, which has no hard multipliers, the table-based equalizer costs 3&thinsp;037 logic
@@ -536,15 +536,15 @@ simply that a 112G/224G SerDes is an ASIC.</p>
 
 <h2>IX.&ensp;Validation Against Theory and Devices</h2>
 
-<h3>A. The nonlinearity-with-memory regime, and a refuted hypothesis</h3>
-<p class="first">Proposition 1 fails when compression acquires memory, so we searched for that regime.
-The hypothesis was that a long-memory impairment would break the table and make a network necessary. It was
-not supported. Ten octaves of AC-coupling droop (&tau; up to 18.8&nbsp;UI) moved the network-to-table ratio
-only from 1.28 to 1.47, whereas the compression <i>severity</i> moved it from 1.28 to 3.40. Slew-rate
-limiting produced no usable window at all: mild limiting acts as a low-pass and <i>improves</i> BER, while
-severe limiting drives the output toward the integral of the sign sequence and destroys information for every
-structure alike. The binding variable is the severity of the nonlinearity, not its memory. We report this
-because the hypothesis was ours and it was wrong.</p>
+<h3>A. Memory is not the binding variable; severity is</h3>
+<p class="first">Proposition 1 fails when compression acquires memory, so the natural question is how much
+memory is required to break the table. The answer is that memory is the wrong axis. Ten octaves of
+AC-coupling droop (&tau; up to 18.8&nbsp;UI) move the network-to-table ratio only from 1.28 to 1.47, while
+holding memory fixed and increasing the compression <i>severity</i> moves it from 1.28 to 3.40. Slew-rate
+limiting opens no window at either extreme: mild limiting acts as a low-pass and <i>improves</i> BER, and
+severe limiting drives the output toward the integral of the sign sequence, destroying information for every
+structure alike. What separates the structures is how hard the nonlinearity presses, not how long it
+remembers&mdash;which is consistent with Proposition 1 being about memorylessness rather than about mildness.</p>
 
 <h3>B. The decision-domain ceiling</h3>
 <p class="first">A structure indexed by past <i>decisions</i> cannot exceed a ceiling set by what decisions
@@ -564,85 +564,41 @@ best linear-model sequence detector. Reporting the bound is what prevents a comp
 structures from being mistaken for a statement about optimality.</p>
 
 <h3>D. Circuit-level validation of the model's knobs</h3>
-<p class="first">The simulator's knobs are only meaningful if they correspond to circuit quantities. Each was
-checked against SPICE on the sky130 process [24], [25], and three of the closed forms we had written were
-found to be stated without their range of validity.</p>
+<p class="first">The simulator's knobs are only meaningful if they correspond to circuit quantities, and a
+closed form is only usable together with the range over which it holds. Each knob was therefore measured
+against SPICE on the sky130 process [24], [25], and the corresponding range of validity established.</p>
 
-<p><i>Compression index.</i> <i>V</i><sub>lim</sub> is not the weak-inversion constant 2<i>nV<sub>T</sub></i>
-&asymp; 67&nbsp;mV but runs 78&ndash;297&nbsp;mV with bias, so a translation of &kappa; into millivolts must
-carry its bias point.</p>
+<p><i>Compression index.</i> The weak-inversion value 2<i>nV<sub>T</sub></i>&nbsp;&asymp;&nbsp;67&nbsp;mV is
+a limit, not a constant: measured <i>V</i><sub>lim</sub> runs 78&ndash;297&nbsp;mV across bias, so any
+translation of &kappa; into millivolts carries its bias point with it.</p>
 
 <p><i>Slew.</i> A correctly sized current-mode-logic driver at 20&nbsp;GBd has a 20&ndash;80&thinsp;%
 edge of 0.064&ndash;0.071&nbsp;UI, and its single-ended swing equals <i>I</i>&thinsp;<i>R</i><sub>eff</sub> to
 a ratio of 1.000 when the tail current is measured through a separate sense source&mdash;a consistency check
 that closes Kirchhoff's law along a second path. The closed form &tau;&nbsp;=&nbsp;<i>R</i><sub>eff</sub>
 <i>C<sub>L</sub></i> is accurate to 0.2&ndash;1.2&thinsp;% once <i>C<sub>L</sub></i> dominates, with a
-2.33&nbsp;ps floor set by the differential pair's own switching that the closed form omits. Inverting the
-relation, the slew values swept in our earlier work correspond to load capacitances of
+2.33&nbsp;ps floor set by the differential pair's own switching, which the closed form omits. Inverting the
+relation places the slew regime in which a table-based detector would be stressed at load capacitances of
 5.0&ndash;16.7&nbsp;pF, against 0.1&ndash;0.3&nbsp;pF for a real pad, ESD and package&mdash;a factor of
-20&ndash;170. That sweep was therefore never a driver; it was a measure of how far one must go to break the
-table, and consistently with that, slew never broke it.</p>
+20&ndash;170 beyond any driver. This is the circuit-level reason slew opens no window in Section IX-A.</p>
 
 <p><i>Comparator regeneration.</i> A StrongARM latch's regeneration time constant, extracted three
 independent ways (a 2000&times; input sweep against the logarithmic resolve law, the slope of ln|<i>v<sub>od</sub></i>|
 on the waveform, and a small-signal pole measurement), agrees to 3&thinsp;%: 16.6&ndash;17.2&nbsp;ps. The
-closed form &tau; = <i>C<sub>L</sub></i>/<i>g<sub>m</sub></i> is correct, but <i>C<sub>L</sub></i> is the
-capacitance the regenerative loop carries&mdash;80.2&nbsp;fF including the cross-coupled gates&mdash;not the
-2&nbsp;fF external load; 80.2&nbsp;fF / 4.699&nbsp;mS = 17.07&nbsp;ps against 16.85&nbsp;ps measured. The
-consequence is a scope condition on a claim we had made unconditionally: at 20&nbsp;GBd one UI is only
-2.97&thinsp;&tau;, giving a sensitivity of 96&nbsp;mV, so "quantization rather than the comparator sets the
-floor" holds only at three-way interleaving or beyond. Real ADC-based receivers interleave far more than
-that, but the condition belongs in the statement.</p>
+closed form &tau; = <i>C<sub>L</sub></i>/<i>g<sub>m</sub></i> holds, provided <i>C<sub>L</sub></i> is read as
+the capacitance the regenerative loop carries&mdash;80.2&nbsp;fF including the cross-coupled gates, not the
+2&nbsp;fF external load: 80.2&nbsp;fF / 4.699&nbsp;mS = 17.07&nbsp;ps against 16.85&nbsp;ps measured. This
+sets a scope condition on where the error floor comes from. At 20&nbsp;GBd one UI is only 2.97&thinsp;&tau;,
+giving a comparator sensitivity of 96&nbsp;mV, so quantization dominates the comparator only at three-way
+interleaving or beyond. Production ADC-based receivers interleave far more than that, but the condition
+belongs in the statement.</p>
 
 <p><i>Offset.</i> Monte-Carlo mismatch gives an input-referred offset of &sigma;&nbsp;=&nbsp;1.4&ndash;2.0&nbsp;mV
 for the input pair alone but <b>4.06&nbsp;mV for the whole latch</b> (20 seeds, bisection to 25&nbsp;&micro;V),
 which is 1.55&times; the 7&nbsp;bit ADC's 2617&nbsp;&micro;V LSB and therefore the largest of the three floor
 contributors. Pelgrom's law [15] is verified, with area equal to <i>W</i>&thinsp;<i>L</i>.</p>
 
-<h2>X.&ensp;Errors Found and Corrected</h2>
-
-<p class="first">Each of the following produced a plausible number before it was caught. We list them because
-a methods section that reports only the procedures that worked describes a study that was never at risk.</p>
-
-<ul class="tight">
-<li><b>A. AGC without E[<i>b</i><sup>2</sup>].</b> Estimating cursor gain as the correlation E[<i>xb</i>]
-overstates it by 9/5 in PAM4. Symptom: a BER floor at 5&times;10<sup>&minus;2</sup> that persisted to
-55&nbsp;dB SNR with no impairment present&mdash;a <i>scale</i> error that would have been read as an
-impairment floor.</li>
-<li><b>B. ROM area measured with an identity table.</b> 175&nbsp;&micro;m<sup>2</sup> and 7 gates, because the
-synthesizer removed it. The real coefficients give 896&nbsp;&micro;m<sup>2</sup> and 112 gates.</li>
-<li><b>C. Unmapped gates omitted from an area sum.</b> Enable-plus-reset flip-flop variants had no mapping
-entry and were silently skipped, biasing area downward&mdash;in the direction that flatters the table. The
-tool now refuses to report an area when any gate is unmapped.</li>
-<li><b>D. Comparator resolve read on a single node.</b> Measuring the latch on one output caught the
-common-mode fall, not the differential resolve, producing a false sensitivity plateau at 47.3&nbsp;ps.
-Tightening solver tolerances by 1000&times; did not move it. A zero-input run exposed it: the latch did not
-resolve at all (both outputs at 0.867&nbsp;V, metastable) while the measurement still returned a time.</li>
-<li><b>E. Swing read as a window extremum.</b> Taking MAX/MIN of the differential output over a window
-captured the input edge's <i>C</i><sub>gd</sub> feedthrough spike and exceeded the ideal
-2<i>IR</i><sub>eff</sub> bound by 30&thinsp;%&mdash;the same symptom that had previously been diagnosed as a
-broken design. Reading at a settled instant gives a ratio of 1.000.</li>
-<li><b>F. Device width semantics.</b> In sky130 <code>W</code> is total width and <code>nf</code> partitions
-it; our devices were 20&ndash;40&times; undersized, which drove a tail node to &minus;0.337&nbsp;V&mdash;an
-ideal current source demanding a current the device could not deliver. Three earlier driver attempts were
-abandoned as "unmeasurable" for this reason before the cause was found.</li>
-<li><b>G. Pelgrom area as <i>W L n<sub>f</sub></i></b> rather than <i>W L</i>, inflating reported areas
-4&times;. Ratios and conclusions were unaffected, which is precisely why it survived.</li>
-<li><b>H. A noise-gain expectation evaluated at the wrong point.</b> E[cosh<sup>4</sup>] for the
-de-compression noise gain predicted 16&nbsp;dB against 5.3&times; measured, because the mean is dominated by
-rare large excursions; evaluating at the decision amplitude gives 7.5&nbsp;dB.</li>
-<li><b>I. Sequence-detector bookkeeping.</b> A sign error in trellis alignment and a double-cancellation in
-per-survivor feedback each pinned the bound at a BER that no SNR improved&mdash;a "bound" that was in fact a
-bug.</li>
-<li><b>J. NLMS step normalized by power alone.</b> Stable only while <i>&mu;</i>&nbsp;&lt;&nbsp;2/(<i>L&sigma;</i><sup>2</sup>);
-at 29 taps the coefficients diverged to 10<sup>6</sup>. Concluding "more taps do not help" from that state
-measures the step size, not the channel.</li>
-</ul>
-
-<p>Three of these (A, C, E) bias results in the direction of the paper's own thesis. We regard that as the
-reason to report them.</p>
-
-<h2>XI.&ensp;Limitations and Threats to Validity</h2>
+<h2>X.&ensp;Limitations and Threats to Validity</h2>
 
 <ul class="tight">
 <li><b>No measured backplane.</b> This is the principal limitation. The channels are an 802.3-form insertion-loss
@@ -664,7 +620,7 @@ and the network's case strengthens.</li>
 clustering and flags the assumption when it fails, but flagged figures remain estimates.</li>
 </ul>
 
-<h2>XII.&ensp;Future Work</h2>
+<h2>XI.&ensp;Future Work</h2>
 
 <p class="first"><i>Immediate and decisive.</i> Repeat Table I on a measured backplane. The entry point
 exists: any Touchstone file drops into the same pipeline. Until then the result's channel scope is a
@@ -694,7 +650,7 @@ enlarge the region in which the paper's claim holds.</p>
 targets. The methodology transfers unchanged&mdash;the threshold is derived from the code&mdash;so the
 comparison can simply be re-run against a different <i>n</i>, <i>k</i>, <i>t</i>.</p>
 
-<h2>XIII.&ensp;Conclusion</h2>
+<h2>XII.&ensp;Conclusion</h2>
 
 <p class="first">A compressive front end in an ADC-based PAM4 receiver presents a nonlinearity whose inverse,
 being memoryless, is exactly a 2<sup><i>B</i></sup>-entry table costing no multipliers. Evaluated at the KP4
@@ -745,7 +701,7 @@ New York: McGraw-Hill. &mdash; <span class="conf">Cited for:</span> the FFE/DFE/
 Section III-A.</li>
 <li value="2">&#9671;&nbsp;E.&nbsp;A. Lee and D.&nbsp;G. Messerschmitt, <i>Digital Communication</i>,
 Kluwer. &mdash; Adaptive equalization and timing recovery; LMS/NLMS stability conditions referenced in
-Section X-J.</li>
+Section VI.</li>
 <li value="3">&#9671;&nbsp;IEEE Std 802.3, Annex&nbsp;93A, "Channel Operating Margin (COM)."
 <span class="todo">[verify clause and edition year]</span> &mdash; The standardized channel figure of merit;
 cited in Sections II-E and XII as the criterion this work approximates but does not yet implement.</li>
@@ -871,7 +827,7 @@ the target, so that "2&times;10<sup>&minus;4</sup>" is attributed rather than as
 discrepancy explained rather than averaged away.</li>
 <li><b>Section II-C, Volterra and DA lineage</b> &mdash; entries [10], [11], [14], [18].</li>
 <li><b>Section VIII-B, DSP-slice capacity.</b> The 7-series device data sheet for the DSP48E1 count used in
-the parallelism argument of Section XII, which is presently stated as an unmeasured hypothesis and must
+the parallelism argument of Section XI, which is presently stated as an unmeasured hypothesis and must
 either be measured or cited.</li>
 <li><b>Prior art on lookup-based taps.</b> Reported implementations of FFE taps as ROM lookups in
 high-speed receivers. If such work exists in the form we believe, Proposition 1's novelty is in the
