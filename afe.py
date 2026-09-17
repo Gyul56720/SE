@@ -150,6 +150,22 @@ def 압축세기(입력rmsV: float, 꼴: str = "약반전", V_ov: float = 0.1,
         κ = 1.0 -> 약반전에서 67 mV rms · 강반전에서 141 mV rms
         κ = 2.0 -> 약반전에서 134 mV rms · 강반전에서 283 mV rms
 
+    ## **그런데 V_lim 은 상수가 아니다** -- SPICE 가 고쳐 준 것
+
+    위 67 mV 는 **전류를 0 으로 보낸 극한**이다. sky130 `nfet_01v8` 로 실제로 돌려
+    보니(`spice차동쌍()`, L=1u W=10u, tt) 바이어스에 따라 이렇게 움직인다:
+
+        소자당 ID   0.1 uA    1 uA     10 uA    100 uA
+        V_lim       78 mV    87 mV    117 mV   297 mV
+        tanh 오차   0.012    0.013    0.034    0.105
+
+    **깊은 약반전으로 갈수록 67 mV 와 tanh 에 수렴하고, 강반전으로 갈수록 둘 다
+    멀어진다.** 20 GBd 앞단은 소자당 수백 uA 를 쓰므로 `V_lim ~ 300 mV` 쪽이다.
+
+    그러므로 **κ 를 mV 로 옮길 때는 바이어스를 같이 적어야 한다.** "κ=2.0 = 134 mV"
+    는 약반전 극한의 값이고, 실제 앞단에서는 **600 mV 에 가깝다** -- 그만큼 스윙이
+    커야 그 압축이 걸린다는 뜻이고, 교차점이 더 먼 자리라는 뜻이다.
+
     **둘 다 실제 수신기 앞단이 보는 스윙이다.** 25 dB 채널을 지난 800 mVppd 송신이
     수신단에서 대략 45 mVppd 로 남고, AGC 가 그것을 올린다. 즉 논문이 교차점을 잡은
     κ≈2 는 **AFE 입력이 포화 무릎에 닿는 자리**이고, 헤드룸을 더 주거나(V_ov 를 올리거나)
@@ -500,3 +516,100 @@ def 지터_검증(보드율: float = 20e9) -> dict:
             "말": (f"논문의 0.05 UI 는 루프 대역 ~2 MHz 에 해당한다(잔류 {최대:.3f} UI). "
                  f"0.15 UI 는 이 프로파일로는 안 나온다 -- **비관적인 값**이고, "
                  f"그 점에서 순서가 안 뒤집힌 것은 여유가 있다는 뜻이다")}
+
+
+# ---------------------------------------------------------------- SPICE 대조
+
+def spice차동쌍(꼬리전류A: float = 20e-6, W: float = 10.0, L: float = 1.0,
+            부하옴: float = 5e3, VDD: float = 1.8, 코너: str = "tt",
+            폭V: float = 0.4, 점: int = 161, 초: int = 300) -> dict:
+    """**진짜 소자 모델로 차동쌍을 돌린다** -- 손계산이 맞는지 본다.
+
+    sky130 `nfet_01v8`(BSIM4) 로 대신호 전달을 DC 스윕한다. 돌려주는 것은
+
+        V_lim     원점 기울기의 역수 -- `압축세기()` 가 쓰는 그 한계 스케일
+        tanh오차   같은 원점 기울기로 맞춘 tanh 와의 최대 차(정규화 출력 -1..+1)
+
+    ## 재고 나서 알게 된 것 -- **V_lim 은 상수가 아니다**
+
+    `압축세기()` 는 약반전 한계 `2nV_T ~ 67 mV` 를 썼다. 그것은 **전류를 0 으로
+    보낸 극한**이고, 실제 바이어스에서는 더 크다(실측, L=1u W=10u, tt):
+
+        I_SS      소자당 ID    V_lim      tanh 오차
+        0.2 uA    0.1 uA       77.4 mV    0.008
+        2   uA    1   uA       87.3 mV    0.013
+        20  uA    10  uA      116.8 mV    0.034
+        200 uA    100 uA      297.4 mV    0.105
+
+    **깊은 약반전으로 갈수록 67 mV 와 tanh 에 수렴하고, 강반전으로 갈수록 둘 다
+    멀어진다.** 20 GBd 앞단은 소자당 수백 uA 를 쓰므로 `V_lim ~ 300 mV` 쪽이다.
+    그러므로 논문의 κ 를 mV 로 옮길 때는 **바이어스를 같이 적어야 한다** --
+    "κ=2.0 = 134 mV" 는 약반전 극한의 값이고, 실제 앞단에서는 600 mV 에 가깝다.
+    """
+    import pdk
+    import spice
+    if not spice.있나():
+        return {"판정": serdes.못잼, "왜": "ngspice 가 없다"}
+    if not pdk.있나():
+        받 = pdk.받기()
+        if not 받["됐나"]:
+            return {"판정": serdes.못잼, "왜": 받["왜"]}
+    net = f"""* sky130 differential pair large-signal transfer
+{pdk.lib줄(코너)}
+.param ISS={꼬리전류A} VCM={VDD / 2.4:.4f}
+VDD vdd 0 {VDD}
+VID vid 0 0
+Eip ip 0 vol='VCM + 0.5*v(vid)'
+Eim im 0 vol='VCM - 0.5*v(vid)'
+RD1 vdd d1 {부하옴}
+RD2 vdd d2 {부하옴}
+XM1 d1 ip tail 0 sky130_fd_pr__nfet_01v8 L={L} W={W} nf=1 m=1
+XM2 d2 im tail 0 sky130_fd_pr__nfet_01v8 L={L} W={W} nf=1 m=1
+ITAIL tail 0 {{ISS}}
+.control
+save v(d1) v(d2)
+dc VID {-폭V} {폭V} {2 * 폭V / (점 - 1):.6f}
+print v(d1) v(d2)
+.endc
+.end
+"""
+    r = spice.돌리기(net, 초=초)
+    줄 = []
+    for 한줄 in r["로그"].splitlines():
+        조각 = 한줄.split()
+        if len(조각) == 4 and 조각[0].isdigit():
+            try:
+                줄.append((float(조각[1]), float(조각[2]), float(조각[3])))
+            except ValueError:
+                pass
+    if len(줄) < 20:
+        return {"판정": serdes.못잼,
+                "왜": f"곡선을 못 읽었다({len(줄)}점) -- {r['왜']}", "로그": r["로그"][-600:]}
+    a = np.array(줄)
+    vid, v1, v2 = a[:, 0], a[:, 1], a[:, 2]
+    iod = (v2 - v1) / (float(꼬리전류A) * float(부하옴))
+    k = len(vid) // 2
+    기울기 = float((iod[k + 1] - iod[k - 1]) / (vid[k + 1] - vid[k - 1]))
+    맞춤 = np.tanh(기울기 * vid)
+    return {"판정": serdes.PASS, "왜": "",
+            "꼬리전류A": float(꼬리전류A), "소자당ID_uA": 5e5 * float(꼬리전류A),
+            "원점기울기_perV": 기울기, "V_lim_mV": 1000.0 / abs(기울기),
+            "tanh오차": float(np.max(np.abs(iod - 맞춤))),
+            "포화값": float(np.max(np.abs(iod))), "점수": len(vid)}
+
+
+def spice_검증(꼬리들=(0.2e-6, 2e-6, 20e-6, 200e-6)) -> dict:
+    """바이어스를 쓸어 **V_lim 이 약반전 극한으로 수렴하는지** 본다."""
+    줄 = []
+    for I in 꼬리들:
+        r = spice차동쌍(꼬리전류A=I)
+        if r["판정"] != serdes.PASS:
+            return {"판정": serdes.못잼, "왜": r["왜"], "줄": 줄}
+        줄.append(r)
+    극한 = 1000.0 * 2 * 1.3 * V_T
+    단조 = all(줄[i]["V_lim_mV"] < 줄[i + 1]["V_lim_mV"] for i in range(len(줄) - 1))
+    좋아짐 = all(줄[i]["tanh오차"] < 줄[i + 1]["tanh오차"] for i in range(len(줄) - 1))
+    return {"판정": serdes.PASS, "약반전극한_mV": 극한, "줄": 줄,
+            "V_lim이단조증가": 단조, "tanh오차도단조증가": 좋아짐,
+            "제일작은V_lim_mV": 줄[0]["V_lim_mV"],
+            "극한에가까운가": 줄[0]["V_lim_mV"] < 1.3 * 극한}

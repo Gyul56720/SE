@@ -127,6 +127,42 @@ ok(낮 < 0.05 < 높 * 1.2,
 넓 = afe.cdr잔류지터(루프BW_Hz=30e6)["잔류rjUI"]
 ok(좁 > 넓, f"루프를 넓히면 잔류가 준다 ({좁:.3f} -> {넓:.3f} UI)")
 
+# ---------------------------------------------------------------- SPICE 대조
+# **진짜 소자 모델로 손계산을 친다.** ngspice 와 sky130 이 둘 다 있어야 돈다 --
+# 없으면 건너뛴다(없는 것을 있다고 하지 않는다).
+print("[사 -- sky130 BSIM4 로 차동쌍을 실제로 돌린다]")
+import shutil as _sh
+import pdk as _pdk
+
+if not _sh.which("ngspice"):
+    print("  건너뜀 -- ngspice 가 없다")
+elif not (_pdk.있나() or _pdk.받기()["됐나"]):
+    print("  건너뜀 -- sky130 모델을 못 구했다:", _pdk.말로()[:120])
+else:
+    import afe as _afe
+    r = _afe.spice_검증()
+    ok(r["판정"] == serdes.PASS, f"sky130 nfet_01v8 차동쌍이 돈다 ({r.get('왜','')[:80]})")
+    if r["판정"] == serdes.PASS:
+        줄 = r["줄"]
+        ok(all(x["포화값"] > 0.95 for x in 줄),
+           "전류가 완전히 쏠린다(포화 |I_od/I_SS| > 0.95) -- " +
+           " · ".join(f"{x['포화값']:.3f}" for x in 줄))
+        ok(r["V_lim이단조증가"],
+           "전류를 키우면 V_lim 이 는다: " +
+           " · ".join(f"{x['소자당ID_uA']:.1f}uA→{x['V_lim_mV']:.0f}mV" for x in 줄))
+        ok(r["tanh오차도단조증가"],
+           "강반전으로 갈수록 tanh 가 나빠진다: " +
+           " · ".join(f"{x['tanh오차']:.3f}" for x in 줄))
+        ok(r["극한에가까운가"],
+           f"제일 약한 바이어스의 V_lim {r['제일작은V_lim_mV']:.0f} mV 가 "
+           f"약반전 극한 {r['약반전극한_mV']:.0f} mV 의 1.3배 안 -- "
+           f"**닫힌 꼴이 맞는 극한을 가리킨다**")
+        # **손계산이 틀렸던 자리도 붙든다**: 67 mV 는 상수가 아니다
+        ok(줄[-1]["V_lim_mV"] > 3 * r["약반전극한_mV"],
+           f"강반전에서는 {줄[-1]['V_lim_mV']:.0f} mV 로 극한의 "
+           f"{줄[-1]['V_lim_mV'] / r['약반전극한_mV']:.1f}배다 -- "
+           f"**κ 를 mV 로 옮길 때 바이어스를 같이 적어야 한다**")
+
 print()
 if FAIL_목록:
     print(f"실패 {len(FAIL_목록)}개")
