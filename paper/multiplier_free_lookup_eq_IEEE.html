@@ -1,5 +1,5 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8">
-<title>When Does a Multiplier-Free Lookup Detector Beat a Neural Equalizer?</title>
+<title>Judging Nonlinear Equalizers at the FEC Threshold</title>
 <style>
 @page { size: letter; margin: 0.75in 0.625in 1in 0.625in; }
 html { font-size: 10pt; }
@@ -73,887 +73,819 @@ ul.tight li { margin-bottom: 2pt; }
 .ref li { margin-bottom: 2pt; text-indent:0; }
 .thm { font-style: italic; }
 .thm b { font-style: normal; font-variant: small-caps; }
+.conf { font-size:7.2pt; font-variant: small-caps; }
+.todo { font-size:7.2pt; font-style:italic; }
+.ref li { margin-bottom: 3pt; }
+.box { border-top:.8pt solid #000; border-bottom:.8pt solid #000; padding:3pt 0;
+       margin:6pt 0; font-size:9pt; break-inside:avoid; }
+.box .t { font-variant:small-caps; text-align:center; border-bottom:.5pt solid #000;
+          padding-bottom:2pt; margin-bottom:3pt; }
 </style></head><body>
+
 <div class="onecol">
-<h1 class="title">When Does a Multiplier-Free Lookup Detector<br>Beat a Neural Equalizer?<br><span style="font-size:.62em; font-weight:normal">Scope, Detection Bounds and Device Dependence in a Wireline Receiver Model</span></h1>
-<div class="affil">Simulation study on an NRZ wireline link model &mdash; not a measured backplane, not silicon</div>
+<h1 class="title">Judging Nonlinear Equalizers at the FEC Threshold:<br>
+A Zero-Multiplier Memoryless Inverse Clears KP4<br>Where a Neural Equalizer Does Not</h1>
+<div class="authors">&nbsp;</div>
+<div class="affil">Compliance-referred evaluation of PAM4 receiver equalization under front-end compression,
+with standard-cell implementation cost</div>
 
-<div class="abs"><b>Abstract—</b>Receiver-side nonlinearity in high-loss wireline links cannot be undone by linear equalization, and this observation is routinely used to motivate neural-network (NN) equalizers. We show that the motivation is incomplete. If the front-end nonlinearity is memoryless, its inverse is also memoryless and is therefore exactly a <i>2<sup>B</sup></i>-entry lookup table over the ADC code, costing no multipliers; measured on a 25&nbsp;dB skin-effect channel with <i>tanh</i> compression, this 128-entry table reduces BER by 20.9&times; over an NLMS FFE+DFE baseline and outperforms a 96-multiplier MLP by 2.02&times;, after which the MLP adds nothing (0.94&times;). A NN earns its multipliers only when the nonlinearity has memory. We create that regime by band-limiting after compression, and identify a narrow operating window (3-dB bandwidth &asymp;&nbsp;0.35/<i>T</i>) in which an MLP beats the memoryless table on 8/8 seeds. Within that window we prove and measure a <i>decision-domain ceiling</i>: a linear DFE, a decision-indexed ROM, and a multiplier-free Volterra expansion over &plusmn;1 decisions all saturate near 3.1&times; regardless of parameter count (8 to 1351 parameters), because past decisions discard amplitude. Moving the index from decisions to quantized samples removes the ceiling: a 256-entry, 1-bit-per-entry table placed after an 11-tap FFE achieves <b>7.98&times;</b> with <i>zero</i> back-end multipliers, exceeding a 96-multiplier MLP (5.80&times;) that does not fit the target device. Place-and-routed on iCE40 HX8K, the proposed equalizer costs 3&nbsp;037 LC and 41.4&nbsp;MHz against 2&nbsp;999 LC and 34.7&nbsp;MHz for the linear baseline &mdash; <b>+1.3&thinsp;% area, 1.19&times; clock, 8&times; lower BER</b>. We then look for the boundary of the multiplier-free approach. Extending the model with slew-rate limiting, AC-coupling droop, far-end crosstalk, supply-gain modulation, sampling jitter and a via-stub channel resonance, we find that the binding variable is <i>not</i> the memory of the nonlinearity &mdash; ten octaves of added memory move the comparison by 15&thinsp;% &mdash; but its <i>severity</i>: once both arms are given the zero-multiplier memoryless inverse, the table holds to a compression index &kappa;&nbsp;&asymp;&nbsp;1.6 and a 12-multiplier network wins at &kappa;=2.0 on 8/8 seeds. Three multiplier-free attempts to extend the table past that point &mdash; more cells, a leaky-accumulator memory field, and a joint amplitude/decision index evaluated with ideal feedback &mdash; all fail, and we report them. Finally we bound the whole comparison: a calibrated matched-filter bound and an achievable reduced-state sequence detector show that every structure here &mdash; ours included &mdash; sits at least 25&times; from what the same channel and noise permit, <i>except</i> under post-compression band-limiting, where the table beats the best linear-model sequence detector tenfold. Repeating the comparison on a channel built from geometry and materials by an independent library, and on a cascade of a measured two-port, the table gains <b>8.48&times;</b> over the linear baseline in that regime and 1.04&ndash;1.59&times; outside it. Finally, synthesizing the same RTL for four device families reverses the area conclusion: on Xilinx&nbsp;7-series the network costs 391 fabric cells and 12 DSP slices against 1316 cells for the table, so the multiplier-free result is bound to devices whose multipliers are themselves fabric. Two further limits are measured rather than conceded. Stated as link margin instead of a ratio, the headline 7.98&times; is worth 2.27&nbsp;dB at 10<sup>&minus;2</sup> but only <b>0.34&nbsp;dB at 10<sup>&minus;12</sup></b>; and in the regime where the table wins, every structure &mdash; table, network and linear baseline alike &mdash; sits on an <b>error floor</b> that twenty decibels of extra SNR does not move, so the ratio is between floors and does not extrapolate to a compliance target. Where the link does not floor, all three structures need the same SNR within half a decibel. Finally, closed-form cross-checks are given for the five load-bearing claims and the six reported engineering quantities, including two first derivations of our own that were wrong and how. We give the full signal model, training algorithms, fixed-point definitions, and RTL.</div>
+<div class="abs"><b>Abstract&mdash;</b>Neural-network (NN) equalizers are routinely motivated by front-end
+nonlinearity in high-loss wireline receivers. We show that this motivation, as usually evaluated, does not
+survive contact with three things a real link is defined by: its modulation (PAM4, not NRZ), its operating
+point (a forward-error-correction threshold, not an arbitrary bit-error-rate at which ratios are quoted),
+and its substrate (an ASIC, not a multiplier-free FPGA fabric). We rebuild the comparison on all three.
+First, we observe that a compressive front end acts on NRZ and PAM4 in categorically different ways: because
+<i>tanh</i> is odd and monotone, sign detection is invariant and the compression costs an NRZ slicer exactly
+0&nbsp;dB, whereas in PAM4 it closes the outer eye by up to 10.1&nbsp;dB at the compression indices we study.
+The question "does a network earn its multipliers" is therefore only meaningful in PAM4. Second, we replace
+the ratio metric with a compliance-referred one: the SNR required to reach the KP4 RS(544,514) pre-FEC
+threshold, which we derive from the code parameters rather than quote (2.262&times;10<sup>&minus;4</sup> for a
+10<sup>&minus;15</sup> post-FEC target, within 6&thinsp;% of the value cited in practice), and we probe for an
+error floor <i>before</i> bisecting, so that a structure which can never comply is reported as such instead of
+returning a number. Third, we price implementations in standard-cell area read from the library's own LEF and
+SPICE views. At a compression index &kappa;=0.5 on a 20&nbsp;dB channel with a 7&nbsp;bit ADC, an
+11-tap FFE with an 8-tap DFE floors at 4.55&times;10<sup>&minus;3</sup> and is <i>non-compliant at any SNR</i>;
+so is a 96-multiplier MLP, which floors at 9.24&times;10<sup>&minus;4</sup>&mdash;4.1&times; the threshold&mdash;on
+4/4 seeds. A 128-entry, 896&nbsp;&micro;m<sup>2</sup> lookup table implementing the exact memoryless inverse,
+costing <i>zero multipliers</i>, clears the threshold at 36.15&nbsp;dB on 4/4 seeds. Adding that table to the
+network gives 36.25&nbsp;dB, statistically indistinguishable from the table alone: the 96 multipliers are worth
+less than 0.1&nbsp;dB once the free inverse is present, at 9.5&times; the silicon. Controls hold in both
+directions&mdash;on a linear channel the inverse does exactly nothing (36.10 = 36.10&nbsp;dB) and the network
+is 0.25&nbsp;dB <i>worse</i> than the linear baseline. We bound the claim: beyond &kappa;&nbsp;&asymp;&nbsp;1
+every structure floors above the threshold, and the result is a statement about a modelled channel, not about a
+measured backplane, which we could not obtain. We also report ten measurement errors this work made and
+corrected, because each of them would have produced a publishable-looking number.</div>
 
-<div class="kw"><i>Index Terms</i>&mdash;Wireline SerDes, decision-feedback equalization, nonlinear equalization, lookup-table detection, Volterra series, quantization, FPGA implementation, crosstalk, timing jitter, channel modeling.</div>
+<div class="kw"><b>Index Terms&mdash;</b>PAM4, wireline receivers, decision-feedback equalization, neural network
+equalizers, lookup tables, Reed&ndash;Solomon FEC, channel operating margin, standard-cell area,
+SkyWater sky130.</div>
 </div>
 
 <div class="body2">
 
 <h2>I.&ensp;Introduction</h2>
 
-<p class="first">In a high-loss wireline channel the pulse response spreads over many unit intervals and the eye closes through intersymbol interference (ISI). The standard remedy is a cascade of a continuous-time linear equalizer (CTLE), a feed-forward equalizer (FFE), and a decision-feedback equalizer (DFE). For a linear channel with additive Gaussian noise this cascade is asymptotically optimal in the MMSE sense, so any nonlinear detector can at best tie it.</p>
+<p class="first">A wireline receiver at 100&nbsp;Gb/s per lane sees a channel that is strongly low-pass and an
+analog front end (AFE) that is not linear. The channel part is well understood and is handled by
+continuous-time linear equalization (CTLE), feed-forward equalization (FFE) and decision-feedback
+equalization (DFE). The front-end part&mdash;compression as the differential pair leaves its linear
+range&mdash;breaks superposition, and a linear equalizer cannot undo it by construction. This observation is
+the standard motivation for neural-network equalizers: the channel is nonlinear, so use a nonlinear
+learner.</p>
 
-<p>Real receivers are not linear. Gain compression in the analog front end, buffer saturation, and driver nonlinearity all warp the signal <i>after</i> ISI has spread it. Such a warp has no linear inverse, and this is the standard argument for a neural-network equalizer.</p>
+<p>The motivation is incomplete in a specific way. If the front-end nonlinearity is <i>memoryless</i>&mdash;if
+its output depends only on the present input&mdash;then its inverse is also memoryless, and after an
+<i>B</i>-bit ADC the signal takes only 2<sup><i>B</i></sup> values. The inverse is therefore realizable
+<i>exactly</i> as a 2<sup><i>B</i></sup>-entry table mapping one ADC code to another: no multipliers, no
+adders, no feedback. Whatever a network learns about a memoryless nonlinearity, that table already does
+exactly and nearly for free. A comparison that does not give the linear baseline this table is not measuring
+what the network contributes; it is measuring what compression costs.</p>
 
-<p><i>The argument has a gap.</i> &ldquo;A linear FFE/DFE cannot invert it&rdquo; and &ldquo;a neural network is required&rdquo; are different claims, and between them lies the entire class of <i>nonlinear but non-neural</i> correctors. In this paper we close that gap and find that it dominates the design space we studied.</p>
+<p>This paper makes that comparison, and makes it at the place where the answer matters. Three
+methodological choices distinguish it from how such comparisons are usually reported.</p>
 
-<p>Our contributions are:</p>
+<p><i>Modulation.</i> Compression is not a modulation-neutral impairment. Because <i>tanh</i> is odd and
+strictly increasing, sign(<i>tanh</i>(<i>a x</i>)) = sign(<i>x</i>) for all <i>x</i>&nbsp;&ne;&nbsp;0. NRZ
+detection <i>is</i> a sign decision, so&mdash;absent the equalizer&mdash;compression changes no NRZ decision
+at all; after automatic gain control the eye is unchanged, exactly 0&nbsp;dB. PAM4 detection uses three
+thresholds, and compression pulls the outer levels inward while the inner eye actually widens, so the
+<i>minimum</i> distance, which sets the error rate, shrinks by up to 10.1&nbsp;dB over the range we sweep
+(Section VII-D). Asking whether the memoryless inverse is worth anything in NRZ is asking at a point where
+the impairment is, for the detector itself, benign.</p>
+
+<p><i>Operating point.</i> A BER ratio is not a figure of merit unless the BER at which it is taken is
+stated, because the BER curve is exponential: in our own earlier measurements the same 7.98&times; ratio was
+worth 2.27&nbsp;dB at 10<sup>&minus;2</sup> and 0.34&nbsp;dB at 10<sup>&minus;12</sup>. We therefore report the
+SNR required to reach a threshold the standard fixes rather than a ratio at a point we choose. Modern
+100/200&nbsp;Gb/s-per-lane electrical links are not specified at a raw BER of 10<sup>&minus;12</sup>; that
+requirement belongs to the pre-FEC era. They are specified around a pre-FEC BER near 2&times;10<sup>&minus;4</sup>
+with RS(544,514) "KP4" FEC delivering a post-FEC target near 10<sup>&minus;15</sup>. We derive that threshold
+from the code parameters (Section V-A) instead of quoting it.</p>
+
+<p><i>Substrate.</i> "Multiplier-free is cheaper" is true only where multipliers are built from fabric. On a
+device with hard DSP slices the ordering reverses, as we measured previously and repeat here. But a
+112G/224G SerDes is an ASIC, so the question that matters is silicon area, which we obtain by synthesizing to
+generic gates and pricing each gate with the area recorded in the SkyWater sky130 standard-cell library's own
+LEF view, with transistor counts from its SPICE netlists.</p>
+
+<h3>A. Contributions</h3>
 <ul class="tight">
-<li>A proposition and measurement showing that a <i>memoryless</i> front-end nonlinearity admits an exact <i>2<sup>B</sup></i>-entry lookup inverse over the ADC code, with zero multipliers, which outperforms an MLP of 96 multipliers by 2.02&times; and renders it redundant (Sec.&nbsp;V).</li>
-<li>Identification of the regime in which a NN does earn its cost &mdash; nonlinearity <i>with memory</i>, created by post-compression band-limiting &mdash; and measurement of how narrow that window is (Sec.&nbsp;VI).</li>
-<li>A <i>decision-domain ceiling</i>: an information argument plus measurement showing that a linear DFE, a full decision-indexed ROM, and a multiplier-free &plusmn;1 Volterra expansion all saturate near 3.1&times; irrespective of parameter count (Sec.&nbsp;VII). We prove that any polynomial in &plusmn;1 decision variables is realizable with sign-controlled additions only.</li>
-<li>A <i>sample-indexed lookup equalizer</i> that removes the ceiling at zero back-end multiplier cost, with a hardware-realizable shift-and-clamp quantizer, its training rule, complexity analysis, RTL, and place-and-route results (Sec.&nbsp;VIII&ndash;X).</li>
-<li>Three boundaries of that result, each measured rather than conceded: the impairment regime outside which it does not hold (Sec.&nbsp;XI&ndash;XII), the BER range within which it was established and the error floors that prevent extrapolating it (Sec.&nbsp;XII-F), and the device class on which the area argument depends and off which it reverses (Sec.&nbsp;XII-E).</li>
+<li><b>A compliance-referred evaluation protocol</b> for receiver equalizers: derive the FEC threshold from
+the code, probe for an error floor before searching for a required SNR, and refuse to report a required SNR
+for a structure that floors above the threshold (Section V).</li>
+<li><b>The first measurement, at a standard's own threshold, of what a neural equalizer contributes over the
+free memoryless inverse.</b> The answer is under 0.1&nbsp;dB, with the sign not even consistent, at
+9.5&times; the silicon (Section VII-B, VIII-A).</li>
+<li><b>A decisive negative result</b>: a 96-multiplier MLP is non-compliant at the operating point where a
+zero-multiplier 128-entry table is compliant, on 4/4 seeds (Section VII-B).</li>
+<li><b>An exact statement of why the modulation matters</b>: compression costs NRZ detection exactly 0&nbsp;dB
+and PAM4 up to 10.1&nbsp;dB, with the arithmetic given (Section VII-D).</li>
+<li><b>Standard-cell cost</b> for all arms read from the PDK rather than estimated, together with the
+FPGA-family reversal, so that the substrate dependence is visible rather than hidden (Section VIII).</li>
+<li><b>Ten corrected measurement errors</b>, reported rather than silently fixed, each of which produced a
+plausible number before it was caught (Section X).</li>
 </ul>
 
-<div class="thm" style="font-style:normal; border:0.6pt solid #000; padding:5pt 7pt; margin:6pt 0;">
-<b style="font-variant:small-caps">Scope of the claims in this paper.</b> Three limits bound every number below, and we state them before the results rather than after.
+<h2>II.&ensp;Related Work, and Why This Evaluation Is Needed</h2>
+
+<h3>A. Linear equalization in wireline links</h3>
+<p class="first">The standard receiver chain&mdash;CTLE, then a sampled FFE, then a DFE&mdash;is textbook
+[1] and its wireline specialization is treated in [17]. The division of labour is structural rather than
+conventional: a DFE can only cancel post-cursor intersymbol interference, because it feeds back decisions
+that have already been made, so pre-cursor ISI is necessarily the FFE's. The DFE's advantages (it does not
+amplify noise) and its costs (error propagation; a feedback loop that must close within one unit interval)
+are equally structural. We adopt this chain unchanged as the baseline and as the substrate on which all
+nonlinear arms are added.</p>
+
+<h3>B. Sequence detection and achievable bounds</h3>
+<p class="first">Symbol-by-symbol equalization is not optimal on an ISI channel; maximum-likelihood
+sequence estimation is [6], at a state count exponential in the memory. Reduced-state variants&mdash;RSSE
+[8] and delayed decision-feedback sequence estimation [7]&mdash;trade states for per-survivor decision
+feedback. We use a calibrated matched-filter bound together with a DDFSE implementation not as a proposal
+but as a <i>ceiling</i>: without it, a comparison among suboptimal structures cannot say whether any of them
+is close to what the channel permits. Our earlier measurements placed every structure considered here,
+including our own, at least 25&times; from that ceiling, except in one narrow regime (Section IX-C).</p>
+
+<h3>C. Nonlinear equalization before neural networks</h3>
+<p class="first">Nonlinear equalization of channels with memory has a long history in Volterra-series form
+[10], [11], where the parameter count grows combinatorially with kernel order and memory. Look-up
+architectures are equally old: distributed arithmetic [13], [14] replaces the multipliers of an inner product
+with a ROM addressed by a bit-slice across the data words. It is worth being precise about the relationship,
+because the two are often conflated. Distributed arithmetic's ROM stores a <i>linear</i> function of its
+address&mdash;it is an exact rearrangement of a multiply&ndash;accumulate, and a fitted linear model
+reproduces its contents to numerical precision. The table proposed here stores a function that is not linear
+in its address; that is the whole point of it.</p>
+
+<h3>D. Neural equalizers, and how they are evaluated</h3>
+<p class="first">A large recent literature applies small multilayer perceptrons, and latterly recurrent and
+convolutional structures, to wireline and short-reach optical receivers, generally reporting a BER
+improvement over an FFE/DFE baseline and a parameter or multiplier count
+<span class="todo">[refs to be supplied&mdash;see Section&nbsp;R]</span>. Three features of that evaluation
+practice recur and are what this paper responds to:</p>
 <ul class="tight">
-<li><i>Channel.</i> A synthetic model, a geometry-and-materials model built by an independent library, and a cascade of one measured two-port (1&ndash;10&nbsp;GHz). <b>No measured backplane.</b> Nothing here supports a claim about a shipping 112G or 224G product; the claim is about the channel and impairment regime defined in Sec.&nbsp;II and&nbsp;XII-A.</li>
-<li><i>BER range.</i> Every reported point is counted, in the range 10<sup>&minus;2</sup>&ndash;10<sup>&minus;5</sup>. Sec.&nbsp;XII-F shows that in the regime where the table wins, <b>both the table and the linear baseline reach an error floor</b> that no additional SNR removes, so the ratios reported here are ratios between floors and <b>cannot be extrapolated to a 10<sup>&minus;12</sup> compliance target</b>. Where the link does not floor we report a required-SNR margin instead of a BER ratio.</li>
-<li><i>Device.</i> &ldquo;Multiplier-free&rdquo; is an algorithmic property. Its area benefit holds on a device whose multipliers are built from the same fabric as the lookup. On families with hard multipliers the ordering reverses (Sec.&nbsp;XII-E), so <b>multiplier-free must not be read as hardware-efficient in general.</b></li>
+<li>The baseline is a <i>linear</i> equalizer with no nonlinear front-end correction of any kind. If the
+dominant impairment is memoryless, this attributes to the network a gain that a table obtains for free.</li>
+<li>The comparison is reported as a BER ratio at a BER between 10<sup>&minus;2</sup> and 10<sup>&minus;4</sup>,
+which is not the operating point of a FEC-protected link and, being a ratio on an exponential curve, does not
+transfer to one.</li>
+<li>Cost is reported as parameter count, multiplier count, or FPGA fabric utilization, none of which is
+silicon area on the substrate the application actually uses.</li>
 </ul>
+
+<h3>E. The standardized operating point</h3>
+<p class="first">Ethernet electrical interfaces at 50&nbsp;Gb/s per lane and beyond are specified with
+RS-FEC: RS(528,514) "KR4" and RS(544,514) "KP4" over GF(2<sup>10</sup>) [4], [5], with KP4 correcting
+<i>t</i>&nbsp;=&nbsp;15 symbols per codeword [9]. Channel compliance itself is expressed through Channel
+Operating Margin [3], whose internal detector-error-ratio target is of the same order as the pre-FEC BER used
+here. That the standard fixes a threshold is what makes a threshold-referred comparison possible at all; it
+removes the freedom to choose the operating point that makes a ratio look large.</p>
+
+<h3>F. The gap this paper fills</h3>
+<div class="box"><div class="t">Gap statement</div>
+<p class="noind">To our knowledge no published comparison of a neural equalizer against a linear baseline in a
+compressive receiver (i) gives the baseline the zero-multiplier memoryless inverse that the impairment's own
+structure makes available, (ii) judges both at a FEC threshold derived from the code rather than at a chosen
+BER, and (iii) prices both in standard-cell area. Each omission individually flatters the network. Taken
+together they can invert the conclusion, which is what we find.</p>
 </div>
 
-<h2>II.&ensp;System Model</h2>
+<h2>III.&ensp;System Model</h2>
 
-<h3>A. Channel</h3>
-<p class="first">NRZ symbols <i>b</i>[<i>n</i>]&nbsp;&isin;&nbsp;{&minus;1,&thinsp;+1} at rate 1/<i>T</i> are oversampled by <i>M</i> samples per symbol. The channel magnitude follows a skin-effect law,</p>
+<h3>A. Modulation</h3>
+<p class="first">Symbols are drawn uniformly from an <i>M</i>-PAM alphabet normalized so that the outer
+levels are &plusmn;1,</p>
+<div class="eq"><i>b</i> &isin; { (2<i>k</i> &minus; (<i>M</i>&minus;1)) / (<i>M</i>&minus;1) },&emsp;
+<i>k</i> = 0&hellip;<i>M</i>&minus;1<span class="n">(1)</span></div>
+<p class="noind">so that <i>M</i>=2 gives &plusmn;1 and <i>M</i>=4 gives {&minus;1,&thinsp;&minus;1/3,
+&thinsp;+1/3,&thinsp;+1}. This normalization keeps peak amplitude constant across modulations, so the two are
+compared at equal peak power and the textbook penalty appears without adjustment: the minimum distance falls
+from 2 to 2/3, giving</p>
+<div class="eq">20&thinsp;log<sub>10</sub>(3) = 9.5424&nbsp;dB<span class="n">(2)</span></div>
+<p class="noind">Bits are Gray-mapped, so adjacent-level errors&mdash;which are essentially all errors at the
+error rates of interest&mdash;produce one bit error each. Two invariants of this mapping are used as
+self-checks throughout: the measured symbol error rate matches
+2(1&minus;1/<i>M</i>)&thinsp;<i>Q</i>(<i>d</i>/2&sigma;) to 1.026&times; over 752 events, and
+BER/SER = 0.5 exactly.</p>
 
-<div class="eq">|<i>H</i><sub>ch</sub>(<i>f</i>)| = 10<sup>&minus;(<i>L</i><sub>dB</sub>/20)&thinsp;&radic;(<i>f</i>/<i>f</i><sub>N</sub>)</sup>,&emsp;<i>f</i><sub>N</sub> = 1/(2<i>T</i>)<span class="n">(1)</span></div>
+<p>One consequence of (1) is easy to overlook and cost us a spurious error floor (Section X-A):
+E[<i>b</i><sup>2</sup>] is 1 for NRZ but 5/9 for PAM4. Any gain estimate formed as a correlation
+E[<i>x b</i>] is the cursor scaled by E[<i>b</i><sup>2</sup>], so it must be normalized by it. In NRZ the
+normalization is the identity, which is exactly why the error is invisible until the modulation changes.</p>
 
-<p class="noind">with <i>L</i><sub>dB</sub> the Nyquist loss. Phase is not free: a linear-phase reconstruction produces a symmetric cursor set, which removes the very post-cursor asymmetry a DFE exists to cancel. We therefore build the minimum-phase response from the real cepstrum. With <i>N</i>-point DFTs and <i>c</i> = IDFT{ln|<i>H</i>|},</p>
+<h3>B. Channel</h3>
+<p class="first">The channel magnitude uses the insertion-loss fitting form that IEEE&nbsp;802.3 uses to
+describe measured channels, so that the model is stated in the same coordinates as a specification:</p>
+<div class="eq">IL(<i>f</i>)&thinsp;[dB] = <i>a</i><sub>0</sub> + <i>a</i><sub>1</sub>&radic;<i>f</i> +
+<i>a</i><sub>2</sub><i>f</i> + <i>a</i><sub>4</sub><i>f</i><sup>2</sup><span class="n">(3)</span></div>
+<p class="noind">whose terms correspond to frequency-independent connector and bonding loss, conductor skin
+effect, dielectric loss, and surface roughness. A via-stub resonance is applied multiplicatively as an open
+stub of electrical delay &tau;, which produces a notch no power of <i>f</i> can reproduce and which is the
+feature that most often separates equalizers on measured channels. Phase is not free: a linear-phase
+reconstruction gives a symmetric cursor set and removes the post-cursor asymmetry a DFE exists to cancel, so
+the minimum-phase response is built from the real cepstrum. Two further channel constructions are supported
+and used for cross-checks&mdash;one built from transmission-line geometry and materials through an independent
+library [23] with a causal dielectric model [19] and microstrip dispersion [20], and one built by cascading a
+measured two-port. Neither is a measured backplane; see Section XI.</p>
 
-<div class="eq"><i>m</i>[<i>k</i>] = <i>c</i>[0], 2<i>c</i>[<i>k</i>]<sub>0&lt;k&lt;N/2</sub>, <i>c</i>[<i>N</i>/2], 0<span class="n">(2)</span></div>
-<div class="eq"><i>h</i> = IDFT{ exp( DFT{<i>m</i>} ) }<span class="n">(3)</span></div>
+<h3>C. Impairments</h3>
+<p class="first">Noise is added after the channel and before the receiver-side impairments, so that the
+data-processing inequality applies to everything downstream: no receiver impairment can increase the
+information available to the detector. Compression is applied at the AFE position,</p>
+<div class="eq"><i>y</i> = <i>tanh</i>(<i>a u</i>)/<i>a</i>,&emsp;
+<i>a</i> = &kappa;/rms(<i>u</i>)<span class="n">(4)</span></div>
+<p class="noind">with the compression index &kappa; equal to the ratio of input rms to the pair's linear
+range. The model also provides slew-rate limiting, AC-coupling droop, far-end crosstalk, multiplicative
+supply-gain modulation, sampling jitter, and a post-compression band limit; these were used to search for a
+regime in which nonlinearity acquires memory (Sections IX-A, X). A <i>B</i>-bit ADC follows, with full scale
+set to 2.5&thinsp;&sigma; of the AGC-normalized signal.</p>
 
-<p>Connector and via-stub reflections are applied multiplicatively,</p>
+<h2>IV.&ensp;The Memoryless Inverse Is a Table</h2>
 
-<div class="eq"><i>H</i>(<i>f</i>) = <i>H</i><sub>ch</sub>(<i>f</i>) &middot; ( 1 + &Sigma;<sub><i>k</i></sub> &Gamma;<sub><i>k</i></sub> <i>e</i><sup>&minus;<i>j</i>2&pi;<i>f</i>&tau;<sub><i>k</i></sub></sup> )<span class="n">(4)</span></div>
+<div class="thm"><b>Proposition 1.</b> Let <i>f</i> be memoryless and strictly monotone on the signal
+range, and let the received sample be quantized to <i>B</i> bits. Then <i>f</i><sup>&minus;1</sup> is
+realizable exactly by a 2<sup><i>B</i></sup>-entry table mapping one ADC code to another, requiring no
+multipliers, no adders, and no feedback.</div>
 
-<p class="noind">which places a notch wherever <i>f</i>&thinsp;&tau;&nbsp;=&nbsp;1/2, of depth 20&thinsp;log<sub>10</sub>(1&minus;|&Gamma;|). Unlike skin-effect loss, a notch removes one frequency and cannot be filled by the smooth boost of a CTLE. In the time domain it appears as an isolated cursor at lag &tau;/<i>T</i>.</p>
+<p class="first"><i>Proof.</i> Memorylessness gives <i>y</i>[<i>n</i>] = <i>f</i>(<i>u</i>[<i>n</i>]), so
+<i>u</i>[<i>n</i>] = <i>f</i><sup>&minus;1</sup>(<i>y</i>[<i>n</i>]) depends on the present sample only; a
+function of one variable is memoryless. Quantization restricts the domain of that function to a finite set of
+cardinality 2<sup><i>B</i></sup>. A function on a finite domain is a table. &#9633;</p>
 
-<h3>B. Noise and receiver nonlinearity</h3>
-<p class="first">Additive Gaussian noise is referenced to the main cursor of a lossless link, so that the loss-free, unequalized link satisfies a closed form used later for calibration:</p>
+<p>Three remarks make the proposition operational rather than decorative.</p>
 
-<div class="eq"><i>r</i>(<i>t</i>) = (<i>x</i> &lowast; <i>h</i>)(<i>t</i>) + <i>w</i>(<i>t</i>),&emsp;<i>&sigma;</i> = 10<sup>&minus;SNR<sub>dB</sub>/20</sup><span class="n">(5)</span></div>
+<p><i>It is exact, not approximate.</i> Within the quantizer's own resolution the table commits no
+modelling error, because it is not a model: it is the function. A learner approximating the same function
+incurs approximation error that no amount of training removes, only reduces. This distinction is what
+Section VII-B measures, and it is the reason the network floors where the table does not.</p>
 
-<p>Front-end compression is applied <i>after</i> noise and <i>before</i> equalization, which is where a VGA/CTLE stage sits:</p>
+<p><i>Its cost does not scale with the nonlinearity's severity.</i> A 7&nbsp;bit ADC gives 128 entries
+whether &kappa; is 0.1 or 3. Approximation cost, by contrast, grows with curvature.</p>
 
-<div class="eq"><i>g</i>(<i>u</i>) = <span class="frac"><span class="num">tanh(<i>a u</i>)</span><span class="den"><i>a</i></span></span>,&emsp;<i>a</i> = <span class="frac"><span class="num">&kappa;</span><span class="den">RMS(<i>u</i>)</span></span><span class="n">(6)</span></div>
+<p><i>It is an upper bound on all memoryless correction.</i> Any front end that corrects the compression
+sample-by-sample&mdash;analog predistortion, a polynomial, a small network restricted to one tap&mdash;is a
+memoryless function of the same quantized variable, hence a table, hence no better than this one. Giving the
+baseline this table is therefore not a courtesy; it is the only way to isolate what a structure contributes
+<i>beyond</i> memorylessness.</p>
 
-<p class="noind">where &kappa; is the compression strength. Two properties of (6) matter. First, it is <b>memoryless</b>: <i>g</i> acts on one sample. Second, applying it at the transmitter would do nothing at all &mdash; NRZ has only two levels, so a memoryless map is a pure gain change and the slicer output is unchanged. Nonlinearity acquires meaning only after ISI has spread the levels, which is why it is placed at the receiver.</p>
+<p>The converse delimits the claim. If the nonlinearity has memory&mdash;if the compression is followed by
+filtering that mixes compressed samples, or if it has internal state as slew limiting does&mdash;then the
+inverse has memory too, and Proposition 1 does not apply. Whether such a regime exists at physically
+reachable parameter values is an empirical question, addressed in Section IX-A.</p>
 
-<h3>C. Post-compression band-limiting</h3>
-<p class="first">A real receiver filters again after the compressing stage &mdash; CTLE loading, ADC input network, package. We model this with a Hann low-pass <i>q</i> of 3-dB bandwidth &beta;/<i>T</i>:</p>
+<h2>V.&ensp;Compliance-Referred Methodology</h2>
 
-<div class="eq"><i>v</i>[<i>n</i>] = &Sigma;<sub><i>m</i></sub> <i>q</i>[<i>m</i>] &middot; <i>g</i>( <i>r</i>[<i>n</i>&minus;<i>m</i>] )<span class="n">(7)</span></div>
+<h3>A. Deriving the threshold rather than quoting it</h3>
+<p class="first">KP4 is RS(544,514) over GF(2<sup>10</sup>), correcting <i>t</i> = 15 symbols per 5440-bit
+codeword. For a bounded-distance decoder, a codeword is corrected if and only if at most <i>t</i> of its
+<i>n</i> symbols are in error, so the residual symbol error rate after decoding is</p>
+<div class="eq"><i>P</i><sub>out</sub> = &Sigma;<sub><i>j</i>&gt;<i>t</i></sub>
+(<i>j</i>/<i>n</i>)&thinsp;C(<i>n</i>,<i>j</i>)&thinsp;<i>p</i><sub>s</sub><sup><i>j</i></sup>
+(1&minus;<i>p</i><sub>s</sub>)<sup><i>n</i>&minus;<i>j</i></sup><span class="n">(5)</span></div>
+<p class="noind">with <i>p</i><sub>s</sub> = 1&minus;(1&minus;<i>p</i><sub>b</sub>)<sup>10</sup> the symbol
+error rate implied by a bit error rate <i>p</i><sub>b</sub>. Evaluating (5) term by term at <i>n</i>=544
+loses precision; the identity <i>j</i>&thinsp;C(<i>n</i>,<i>j</i>) =
+<i>n</i>&thinsp;C(<i>n</i>&minus;1,<i>j</i>&minus;1) folds it to a single tail probability,</p>
+<div class="eq"><i>P</i><sub>out</sub> = <i>p</i><sub>s</sub>&thinsp;
+Pr[ Bin(<i>n</i>&minus;1, <i>p</i><sub>s</sub>) &ge; <i>t</i> ]<span class="n">(6)</span></div>
+<p class="noind">and the post-FEC bit error rate follows by scaling with the observed number of bad bits per
+bad symbol. Bisecting (6) for a post-FEC target of 10<sup>&minus;15</sup> gives a pre-FEC threshold of
+<b>2.262&times;10<sup>&minus;4</sup></b>, within 6&thinsp;% of the figure used in practice. The same
+computation with KR4's <i>t</i>=7 returns 2.182&times;10<sup>&minus;5</sup>, confirming that the number
+responds to the code rather than being a constant we inserted. A unit test compares the folded form against a
+brute-force sum on a small code.</p>
 
-<p class="noind">Equation (7) is the crux of this paper. When <i>q</i> = &delta;, <i>v</i>[<i>n</i>] is a function of <i>r</i>[<i>n</i>] alone and the nonlinearity remains memoryless. When <i>q</i> has support greater than one, <i>v</i>[<i>n</i>] mixes several <i>compressed</i> values and <b>no memoryless map can recover</b> <i>r</i>[<i>n</i>]. The parameter &beta; therefore moves the impairment continuously between two qualitatively different classes.</p>
+<h3>B. Floor-first: refusing to report a number that does not exist</h3>
+<p class="first">Bisecting for "the SNR at which a structure reaches the threshold" returns a number even
+when the structure has an error floor above the threshold and reaches it at no SNR whatsoever. That number is
+then read as a result. We therefore run a single high-SNR probe (55&nbsp;dB) before bisecting. If the BER
+there still exceeds the threshold the arm is reported as <span class="sc">floored</span> and
+<i>no required SNR is produced</i>. Zero observed errors is not a BER of zero: it is treated as an upper
+bound 3/<i>N</i>, and if that bound itself exceeds the threshold the run is reported as having too few
+symbols rather than as a pass.</p>
 
-<h3>D. Quantization and gain control</h3>
-<p class="first">Sampling at the pulse-response peak phase, a <i>B</i>-bit ADC with full scale &rho;&sigma;<sub><i>v</i></sub> yields</p>
+<h3>C. Checking the assumption the threshold rests on</h3>
+<p class="first">The threshold in Section V-A assumes errors are independent across RS symbols. DFE error
+propagation violates this by clustering errors&mdash;and does so in the <i>favourable</i> direction, since the
+same bit errors packed into fewer symbols are easier for a symbol-correcting code. We therefore measure the
+per-codeword symbol-error histogram and compare its variance against the binomial prediction; a ratio outside
+[0.5,&thinsp;1.5] flags the post-FEC figure as not trustworthy rather than silently reporting it. As an
+illustration of the size of the effect, 4000 bit errors scattered at random corrupt 3692 RS symbols, while the
+same 4000 packed in runs of ten corrupt 400.</p>
 
-<div class="eq"><i>y</i>[<i>n</i>] = &Delta; &middot; clip( round(<i>v</i>[<i>n</i>]/&Delta;), &minus;2<sup><i>B</i>&minus;1</sup>, 2<sup><i>B</i>&minus;1</sup>&minus;1 )<span class="n">(8)</span></div>
+<h3>D. Statistical discipline</h3>
+<p class="first">All comparisons are run across independent seeds and reported per seed, with the count of
+seeds on which each arm reached the threshold, because a mean over seeds can be carried by one. Training and
+measurement windows are disjoint (first 30&thinsp;% trains taps, tables and network weights; BER is counted
+only on the remainder). Symbol alignment is measured from the pulse response rather than assumed.</p>
 
-<p class="noind">with &Delta; = &rho;&thinsp;&sigma;<sub><i>v</i></sub>/2<sup><i>B</i>&minus;1</sup>, &sigma;<sub><i>v</i></sub> estimated over the training preamble. A digital AGC then normalizes by the measured main-cursor gain <i>&gamma;</i> = E[<i>y</i>&thinsp;<i>b</i>] taken over the preamble only.</p>
+<h2>VI.&ensp;Experimental Setup</h2>
+<p class="first">Unless stated otherwise: PAM4, 20&nbsp;dB Nyquist insertion loss, 8 samples per symbol,
+7&nbsp;bit ADC at 2.5&thinsp;&sigma; full scale, 200&thinsp;000 symbols (400&thinsp;000 bits) per run, 30&thinsp;%
+training fraction, four seeds. The four arms are:</p>
+<ul class="tight">
+<li><b>Linear baseline</b>&mdash;11-tap NLMS FFE and 8-tap DFE. The NLMS step is normalized by both signal
+power and tap count; normalizing by power alone diverges at 29 taps (Section X-J).</li>
+<li><b>+ memoryless inverse</b>&mdash;the same baseline with a 128-entry code-to-code table ahead of the FFE.
+Zero multipliers.</li>
+<li><b>MLP, 96 multipliers</b>&mdash;an 11-input, 8-hidden-unit, single-output perceptron with tanh
+activation, replacing the FFE, followed by the same 8-tap DFE. Trained with Adam on MSE for 8 epochs;
+convergence is checked and non-convergence is reported rather than scored as a BER.</li>
+<li><b>MLP + memoryless inverse</b>&mdash;both.</li>
+</ul>
+<p>A fifth arm, a 256-entry sample-indexed table which was the proposal of our earlier work, is carried
+through the sweeps for continuity and is reported where it is informative.</p>
 
-<h3>E. Calibration</h3>
-<p class="first">With <i>L</i><sub>dB</sub>&nbsp;=&nbsp;0, &kappa;&nbsp;=&nbsp;0 and no equalizer, the model must reproduce BER = <i>Q</i>(10<sup>SNR/20</sup>). Over 4&times;10<sup>5</sup> bits the measured values agree to 0.49&thinsp;%, 3.03&thinsp;% and 1.30&thinsp;% at 6, 8 and 10&nbsp;dB, all inside the 3&sigma; counting error. An SNR without such a definition is an arbitrary number.</p>
+<h2>VII.&ensp;Results</h2>
 
-<h2>III.&ensp;Baseline Equalizers</h2>
+<h3>A. Controls</h3>
+<p class="first">On a linear channel (&kappa;=0) the optimum equalizer is linear, so nothing should win. The
+memoryless inverse does exactly nothing, to the digit: 36.10&nbsp;dB against 36.10&nbsp;dB. The
+sample-indexed table costs 7.73&nbsp;dB, as it must, since two quantized samples cannot span what eleven FFE
+taps and eight DFE taps span. The MLP is 0.25&nbsp;dB <i>worse</i> than the linear baseline, which is the
+expected cost of fitting a nonlinear approximator where the optimum is linear. Any arm winning here would
+indicate a leak in the harness.</p>
 
-<h3>A. NLMS feed-forward equalizer</h3>
-<p class="first">The FFE is adapted by normalized LMS over the preamble. With tap vector <b>w</b> &isin; &#8477;<sup><i>L</i></sup>, input window <b>y</b>[<i>n</i>] = (<i>y</i>[<i>n</i>], &hellip;, <i>y</i>[<i>n</i>&minus;<i>L</i>+1])<sup>T</sup> and reference delay <i>D</i> = &lfloor;<i>L</i>/2&rfloor;,</p>
+<h3>B. The compliance point</h3>
+<p class="first">Table I is the paper's result.</p>
 
-<div class="eq"><i>e</i>[<i>n</i>] = <b>w</b><sup>T</sup><b>y</b>[<i>n</i>] &minus; <i>b</i>[<i>n</i>&minus;<i>D</i>]<span class="n">(9)</span></div>
-<div class="eq"><b>w</b> &larr; <b>w</b> &minus; <span class="frac"><span class="num">&mu;</span><span class="den"><i>L P</i></span></span> <i>e</i>[<i>n</i>] <b>y</b>[<i>n</i>],&emsp;<i>P</i> = E[<i>y</i><sup>2</sup>]<span class="n">(10)</span></div>
-
-<p class="noind">The division by <i>L</i> is not cosmetic. The LMS stability bound is &mu; &lt; 2/(<i>L</i>&thinsp;&sigma;<sub><i>y</i></sub><sup>2</sup>), so normalizing by power alone diverges as taps are added; with power-only normalization a 29-tap FFE diverged to tap magnitudes of 1.08&times;10<sup>6</sup> in our runs, which would have been misread as &ldquo;more taps do not help.&rdquo; We use &mu; = 0.2 throughout.</p>
-
-<h3>B. Decision feedback with arbitrary tap placement</h3>
-<p class="first">The slicer feeds back its <i>own</i> decisions &mdash; substituting true bits removes error propagation and inflates BER by orders of magnitude. For tap positions <i>p</i><sub>1</sub>&hellip;<i>p</i><sub><i>K</i></sub> (not necessarily contiguous) and coefficients <i>c</i><sub><i>k</i></sub>,</p>
-
-<div class="eq"><i>d</i>&#770;[<i>n</i>] = sgn( <i>y</i><sub>f</sub>[<i>n</i>] &minus; &Sigma;<sub><i>k</i>=1</sub><sup><i>K</i></sup> <i>c</i><sub><i>k</i></sub> <i>d</i>&#770;[<i>n</i>&minus;<i>p</i><sub><i>k</i></sub>] )<span class="n">(11)</span></div>
-
-<p class="noind">Because <i>d</i>&#770; &isin; {&minus;1,+1}, every product in (11) is a sign selection: <b>a DFE tap contains no multiplier</b>, only an add/subtract. This is the single most important cost asymmetry in the paper and it recurs in Sec.&nbsp;VII.</p>
-
-<p>Free tap placement matters more than tap count. For &Gamma; = 0.35 at &tau; = 11<i>T</i>, the residual cursor after an 11-tap FFE is &le;&thinsp;0.055 at lags 1&ndash;10 and <b>+0.358</b> at lag 11. A single floating tap at 11 is worth 8.2&times; in BER over a tap at 10 or 12; a <i>pair</i> of adjacent taps removes that cliff entirely (Table&nbsp;I). Locating the reflection by correlation needs only 200 symbols (12/12 seeds), so tracking a drifting reflection is an operational matter, not a design constraint.</p>
-
-<figure>
-<table><caption>Table&nbsp;I<br><b>Cost of misplacing a floating DFE tap. &Gamma;=0.35 at &tau;=11T, 11-tap FFE, 5&times;10<sup>5</sup> bits, 4 seeds.</b></caption>
-<thead><tr><th class="l">Floating tap position</th><th>BER</th><th>vs. correct</th></tr></thead>
+<figure class="wide">
+<table>
+<caption><b>Table I.</b> Compliance at &kappa;=0.5 (PAM4, 20&nbsp;dB, 7&nbsp;bit ADC, KP4 threshold
+2.262&times;10<sup>&minus;4</sup>, four seeds). "Floor" is the BER still present at 55&nbsp;dB SNR; an arm that
+floors above the threshold reaches it at no SNR. Area is standard-cell sum in sky130 (Section VIII-A).</caption>
+<thead><tr><th class="l">Arm</th><th>Multipliers</th><th>Compliant</th><th>Floor / required SNR</th>
+<th>Seeds</th><th>Area (&micro;m<sup>2</sup>)</th></tr></thead>
 <tbody>
-<tr><td class="l">{11} &mdash; correct</td><td>1.83e&minus;03</td><td>1.0&times;</td></tr>
-<tr><td class="l">{9}, {10}, {12}, {13}</td><td>1.49&ndash;1.52e&minus;02</td><td>8.2&ndash;8.3&times;</td></tr>
-<tr class="rt"><td class="l">{10,11}, {11,12}, {10,11,12}</td><td>1.74&ndash;1.79e&minus;03</td><td>1.0&times;</td></tr>
+<tr><td class="l">Linear FFE11 + DFE8</td><td>11</td><td>no</td><td>floor 4.55&times;10<sup>&minus;3</sup>
+(20.1&times; thr.)</td><td>0/4</td><td>37&thinsp;666</td></tr>
+<tr class="rt"><td class="l"><b>+ memoryless inverse</b></td><td><b>0 added</b></td><td><b>yes</b></td>
+<td><b>36.15 dB</b></td><td><b>4/4</b></td><td><b>38&thinsp;562</b></td></tr>
+<tr><td class="l"><b>MLP (96 mult.)</b></td><td>96</td><td><b>no</b></td>
+<td>floor 9.24&times;10<sup>&minus;4</sup> (4.1&times; thr.)</td><td>0/4</td><td>368&thinsp;026</td></tr>
+<tr><td class="l">MLP + memoryless inverse</td><td>96</td><td>yes</td><td>36.25 dB</td><td>4/4</td>
+<td>368&thinsp;922</td></tr>
 </tbody></table>
 </figure>
 
-<h3>C. Word length</h3>
-<p class="first">Coefficients and ADC are quantized jointly, since they are not chosen independently in practice. Sweeping channel loss with each point re-normalized to a BER of 10<sup>&minus;3</sup>, 7&nbsp;bits is flat to 20&nbsp;dB; at 25&nbsp;dB the 6-bit setting averages +26.6&thinsp;% but spreads over [+6.5, +69.6]&thinsp;% across seeds, which is why it is not usable. Above 30&nbsp;dB no width in the swept range satisfies both a small mean and a small spread. The ADC optimum is <i>&rho;</i> = 2.5&sigma; at every resolution, with a clipping fraction of 0.43&thinsp;% rather than zero &mdash; a well-set ADC deliberately clips a little. The joint operating point used throughout is <b>7-bit coefficients, 7-bit ADC</b>, which costs +2.2&thinsp;% BER relative to floating point.</p>
+<p>Per-seed values do not straddle the boundary. The inverse reaches the threshold at 35.88, 36.25, 36.79 and
+35.68&nbsp;dB; the network floors at 8.2, 4.4, 14 and 10&thinsp;&times;10<sup>&minus;4</sup>. The outcome is
+unanimous in both directions.</p>
 
-<h2>IV.&ensp;Neural-Network Equalizer</h2>
+<p>Three findings follow, and it is worth separating them because they are often conflated.</p>
 
-<h3>A. Architecture and training</h3>
-<p class="first">The NN equalizer is a single-hidden-layer MLP over a centred tapped-delay line of the ADC samples. With window half-width <i>A</i>, <i>L</i> = 2<i>A</i>+1, hidden width <i>H</i>:</p>
+<p><i>The network does learn the inverse&mdash;partially.</i> Its floor is 4.9&times; below the linear
+baseline's. A structure that had learned nothing about the compression would floor where the baseline does.
+The network is doing the right thing; it is doing it approximately, and the approximation error is large
+compared to a threshold that sits four times below its floor.</p>
 
-<div class="eq"><b>x</b>[<i>n</i>] = ( <i>y</i>[<i>n</i>&minus;<i>A</i>], &hellip;, <i>y</i>[<i>n</i>+<i>A</i>] )<sup>T</sup><span class="n">(12)</span></div>
-<div class="eq"><b>z</b> = <b>W</b><sub>1</sub><sup>T</sup><b>x</b> + <b>b</b><sub>1</sub>,&emsp;<b>h</b> = &phi;(<b>z</b>),&emsp;<i>u</i> = <b>w</b><sub>2</sub><sup>T</sup><b>h</b> + <i>b</i><sub>2</sub><span class="n">(13)</span></div>
-<div class="eq"><i>d</i>&#770;[<i>n</i>] = sgn(<i>u</i>[<i>n</i>])<span class="n">(14)</span></div>
+<p><i>Once the exact inverse is present, the multipliers buy nothing measurable.</i> 36.25&nbsp;dB with the
+network against 36.15&nbsp;dB without it&mdash;a difference of 0.10&nbsp;dB, against a seed-to-seed spread of
+0.62 and 1.11&nbsp;dB in the two arms. The sign is not even consistent with the network helping: the table
+alone is nominally <i>lower</i>. The honest statement is that 96 multipliers are worth less than 0.1&nbsp;dB
+here, not that they are worth &minus;0.1&nbsp;dB.</p>
 
-<p class="noind">Training minimizes the MSE to <i>b</i>[<i>n</i>] with Adam over the first 30&thinsp;% of the record; BER is counted on the remainder only. The multiplier count is <i>LH</i>&nbsp;+&nbsp;<i>H</i>.</p>
+<p><i>The cost ratio is 9.5&times;.</i> Section VIII-A.</p>
 
-<p>The activation is chosen by BER, not by approximation error. Hardware cannot evaluate <i>tanh</i> directly, so we compare <i>tanh</i> against <i>hardtanh</i>(<i>z</i>)&nbsp;=&nbsp;clip(<i>z</i>,&minus;1,1) &mdash; two comparisons, no table &mdash; and a three-segment piecewise-linear fit <i>pwl3</i>. At 12 multipliers <i>hardtanh</i> wins on 7 of 8 seeds (sign test <i>p</i>&nbsp;&asymp;&nbsp;0.04). Notably <i>pwl3</i> approximates <i>tanh</i> far better yet is worst in BER at every size (1.4&ndash;1.9&times;), because the network adapts to whatever nonlinearity it is given: <b>a better approximation is not a better equalizer</b>.</p>
+<h3>C. Range of validity</h3>
+<p class="first">Beyond &kappa;&nbsp;&asymp;&nbsp;1 every arm floors above the threshold: at &kappa;=1.0 the
+floors are 6.2&times;10<sup>&minus;2</sup> (linear), 5.7&times;10<sup>&minus;4</sup> (inverse) and
+1.2&times;10<sup>&minus;3</sup> (sample table); at &kappa;=2.0 they are
+1.8&times;10<sup>&minus;1</sup>, 4.8&times;10<sup>&minus;2</sup> and 4.4&times;10<sup>&minus;2</sup>. Compression
+that severe destroys information that no receiver structure recovers, and the claim of this paper ends there.
+We state the boundary rather than sweeping only inside it.</p>
 
-<h3>B. Quantization</h3>
-<p class="first">Per-tensor scaling destroys the network. A trained <b>W</b><sub>1</sub> of shape 21&times;16 has max 2.4003 and median 0.1133 &mdash; a spread of 21&times; &mdash; so a 4-bit tensor-wide step of max/7 rounds all but 138 of 369 weights to zero. Per-output-channel scaling,</p>
+<h3>D. Why the modulation decides whether the question is meaningful</h3>
+<p class="first">For NRZ the statement is exact. <i>tanh</i> is odd and strictly increasing, so</p>
+<div class="eq">sign(&thinsp;<i>tanh</i>(<i>a x</i>)&thinsp;) = sign(<i>x</i>),&emsp;
+<i>x</i> &ne; 0<span class="n">(7)</span></div>
+<p class="noind">and NRZ detection is precisely a sign decision. After AGC restores the levels to &plusmn;1 the
+eye is unchanged: compression costs the NRZ slicer <b>0.00&nbsp;dB</b>, not approximately but identically.
+Compression can still hurt an NRZ <i>link</i>, but only through the equalizer, whose linearity assumption it
+breaks&mdash;not through the detector.</p>
 
-<div class="eq"><i>s</i><sub><i>j</i></sub> = max<sub><i>i</i></sub> |<i>W</i><sub><i>ij</i></sub>|,&emsp;<i>W</i>&#770;<sub><i>ij</i></sub> = <span class="frac"><span class="num"><i>s</i><sub><i>j</i></sub></span><span class="den"><i>S</i></span></span> clip( round( <i>S</i> <i>W</i><sub><i>ij</i></sub>/<i>s</i><sub><i>j</i></sub> ), &minus;<i>S</i>&minus;1, <i>S</i> )<span class="n">(15)</span></div>
-
-<p class="noind">with <i>S</i> = 2<sup><i>B</i><sub>w</sub>&minus;1</sup>&minus;1, keeps 282 of 369 alive at 4&nbsp;bits. Linear equalizer taps span one decade and tolerate tensor scaling; NN weights do not. Quantization-aware training with a straight-through estimator and a grid frozen at the float solution was implemented but <b>did not establish a gain</b> at this scale: the winning width moved between variants and the seed spread exceeded the differences. What is established is post-training quantization with per-channel scaling.</p>
-
-<p>The dominant lightweighting axis in the swept space is network size, not width:</p>
+<p>For PAM4 the three thresholds sit at different points on the compressive curve, whose slope decreases with
+|<i>u</i>|. The outer level spacing is compressed more than the inner. Table II gives the arithmetic after
+AGC.</p>
 
 <figure>
-<table><caption>Table&nbsp;II<br><b>Network size versus gain over the 8-bit linear baseline. &kappa;=1.0, 25 dB, SNR 30 dB, 4 seeds.</b></caption>
-<thead><tr><th>Window</th><th>Hidden</th><th>Mults</th><th>BER</th><th>Gain</th><th>Gain/mult</th></tr></thead>
+<table>
+<caption><b>Table II.</b> Eye openings after compression and AGC, PAM4. The inner eye <i>widens</i>; the outer
+eye closes; the minimum distance, which sets the error rate, follows the outer eye. The corresponding NRZ
+column would read 0.00&nbsp;dB at every row.</caption>
+<thead><tr><th>&kappa;</th><th>levels after AGC</th><th>inner eye</th><th>outer eye</th>
+<th>&Delta; min. dist.</th></tr></thead>
 <tbody>
-<tr><td>5</td><td>2</td><td>12</td><td>7.671e&minus;03</td><td>3.1&times;</td><td>2.89</td></tr>
-<tr><td>5</td><td>4</td><td>24</td><td>4.775e&minus;03</td><td>5.1&times;</td><td>2.32</td></tr>
-<tr><td>9</td><td>8</td><td>80</td><td>3.409e&minus;03</td><td>7.1&times;</td><td>0.97</td></tr>
-<tr><td>21</td><td>16</td><td>352</td><td>3.161e&minus;03</td><td>7.6&times;</td><td>0.24</td></tr>
+<tr><td>0</td><td>&plusmn;1, &plusmn;0.333</td><td>0.667</td><td>0.667</td><td>&mdash;</td></tr>
+<tr><td>0.5</td><td>&plusmn;0.993, &plusmn;0.355</td><td>0.710</td><td>0.638</td><td>&minus;0.38 dB</td></tr>
+<tr><td>1.0</td><td>&plusmn;0.974, &plusmn;0.411</td><td>0.822</td><td>0.563</td><td>&minus;1.47 dB</td></tr>
+<tr><td>1.5</td><td>&plusmn;0.950, &plusmn;0.485</td><td>0.970</td><td>0.465</td><td>&minus;3.13 dB</td></tr>
+<tr><td>2.0</td><td>&plusmn;0.925, &plusmn;0.559</td><td>1.118</td><td>0.366</td><td>&minus;5.22 dB</td></tr>
+<tr><td>3.0</td><td>&plusmn;0.885, &plusmn;0.678</td><td>1.355</td><td>0.208</td><td>&minus;10.13 dB</td></tr>
 </tbody></table>
 </figure>
 
-<p class="noind">Twelve multipliers buy 41&thinsp;% of the available gain; a further 15&times; in multipliers buys 1.5&times; more. By comparison, 8&rarr;6&nbsp;bit saves 14.8&thinsp;% area for 31&thinsp;% worse BER &mdash; a far smaller handle.</p>
+<p>This is the justification for rebuilding the evaluation in PAM4 rather than a matter of following current
+practice. In NRZ the impairment under study is, for the detector, invisible.</p>
 
-<h3>C. Fixed point</h3>
-<p class="first">The integer reference that the RTL must match is</p>
+<h2>VIII.&ensp;Implementation Cost</h2>
 
-<div class="eq"><b>z</b><sup><i>q</i></sup> = ( <b>X</b><sup><i>q</i></sup><b>W</b><sub>1</sub><sup><i>q</i></sup> + <b>b</b><sub>1</sub><sup><i>q</i></sup> 2<sup><i>F</i></sup> ) &gt;&gt; <i>F</i><span class="n">(16)</span></div>
-<div class="eq"><b>h</b><sup><i>q</i></sup> = clip( <b>z</b><sup><i>q</i></sup>, &minus;2<sup><i>F</i></sup>, 2<sup><i>F</i></sup> ),&emsp; <i>u</i><sup><i>q</i></sup> = <b>h</b><sup><i>q</i></sup><b>w</b><sub>2</sub><sup><i>q</i></sup> + <i>b</i><sub>2</sub><sup><i>q</i></sup>2<sup><i>F</i></sup><span class="n">(17)</span></div>
-
-<p class="noind">where <i>F</i> is the fractional width and &gt;&gt; is an arithmetic shift. Sweeping total width and <i>F</i> independently separates two effects that are usually conflated. <b>Performance is set by the integer headroom, not the fractional resolution:</b> width&nbsp;8/<i>F</i>&nbsp;=&nbsp;6 and width&nbsp;10/<i>F</i>&nbsp;=&nbsp;8 &mdash; both with one integer bit &mdash; are equally bad (1.84&times; and 1.86&times; float), while any format with two integer bits and <i>F</i>&nbsp;&ge;&nbsp;4 matches float (0.98&ndash;1.00&times;). The minimum is therefore <b>Q2.4 in 7 bits</b>, which is the same width the linear FFE needs. Choosing Q3.6/10-bit instead, as we did initially, costs 1.9&times; the area for identical BER.</p>
-
-<p>Accumulator widths are sized so that no truncation occurs: with <i>W</i><sub>x</sub>, <i>W</i><sub>w</sub> the sample and weight widths,</p>
-
-<div class="eq"><i>W</i><sub><i>z</i></sub> = <i>W</i><sub>x</sub>+<i>W</i><sub>w</sub>+&lceil;log<sub>2</sub>(<i>L</i>+1)&rceil;,&emsp;<i>W</i><sub><i>h</i></sub> = <i>F</i>+2<span class="n">(18)</span></div>
-<div class="eq"><i>W</i><sub><i>u</i></sub> = <i>W</i><sub><i>h</i></sub>+<i>W</i><sub>w</sub>+&lceil;log<sub>2</sub>(<i>H</i>+1)&rceil;<span class="n">(19)</span></div>
-
-<h2>V.&ensp;The Memoryless Inverse</h2>
-
-<p class="first">We now supply the control that the usual motivation omits.</p>
-
-<div class="thm"><b>Proposition 1.</b> Let the receiver impairment be <i>y</i>[<i>n</i>] = <i>Q</i><sub><i>B</i></sub>(<i>g</i>(<i>r</i>[<i>n</i>])) with <i>g</i> memoryless and strictly monotone and <i>Q</i><sub><i>B</i></sub> a <i>B</i>-bit quantizer. Then the MMSE memoryless corrector is exactly the table</div>
-
-<div class="eq"><i>T</i>[<i>c</i>] = E[ <i>r</i>[<i>n</i>] | <i>y</i>[<i>n</i>] = <i>c</i> ],&emsp;<i>c</i> &isin; {0,&hellip;,2<sup><i>B</i></sup>&minus;1}<span class="n">(20)</span></div>
-
-<div class="thm">and no memoryless corrector of any complexity can do better.</div>
-
-<p class="noind"><i>Proof.</i> A memoryless corrector is a map from the observation alphabet to &#8477;. The observation alphabet is the set of 2<sup><i>B</i></sup> ADC codes, hence any such map <i>is</i> a table of 2<sup><i>B</i></sup> entries. Among all such maps the conditional mean minimizes mean-square error. &#9633;</p>
-
-<p>The consequence is a hardware statement: <b>inverting a memoryless nonlinearity costs one ROM read and no multiplier.</b> For <i>B</i>&nbsp;=&nbsp;7 that is 128 entries. When the compression law is known the table can also be written in closed form,</p>
-
-<div class="eq"><i>T</i><sub>inv</sub>(<i>z</i>) = <span class="frac"><span class="num">1</span><span class="den"><i>a</i></span></span> artanh( clip(<i>a z</i>, &minus;1+&epsilon;, 1&minus;&epsilon;) )<span class="n">(21)</span></div>
-
-<p class="noind">which is an <i>upper bound</i> on any data-driven memoryless corrector, since it assumes exact knowledge of <i>a</i>. The clipping in (21) is physical, not numerical: artanh diverges as |<i>az</i>|&rarr;1, and that divergence is the statement that information destroyed in saturation cannot be recovered &mdash; inverting there only amplifies noise.</p>
+<h3>A. ASIC standard cells</h3>
+<p class="first">Each design is synthesized to a generic gate set and every gate priced with the area recorded
+in the sky130 high-density library's own LEF <code>SIZE</code> record, with transistor counts from the
+library's SPICE netlists [24]. No area constant is written by us. Flip-flops are mapped to the library's
+asynchronous-reset cell; the enable-plus-reset variant, which has no single cell, is priced as its actual
+implementation (reset flop plus a 2:1 multiplexer). All drive strengths are fixed to the smallest, which is
+an assumption, but one shared by every arm, so the ratio is insensitive to it.</p>
 
 <figure>
-<table><caption>Table&nbsp;III<br><b>The missing control. 25 dB, SNR 30 dB, &kappa;=1.0, no post-filter, 3&times;10<sup>5</sup> bits, 6 seeds.</b></caption>
-<thead><tr><th class="l">Equalizer</th><th>BER</th><th>Gain</th><th>Mults</th><th>Entries</th></tr></thead>
+<table>
+<caption><b>Table III.</b> Standard-cell cost, sky130. Areas are cell-area sums, not post-place-and-route die
+area, and must be read as ratios. The compliant structure is the linear baseline plus the 128-entry inverse
+table.</caption>
+<thead><tr><th class="l">Design</th><th>gates</th><th>area (&micro;m<sup>2</sup>)</th><th>transistors</th>
+<th>ratio</th></tr></thead>
 <tbody>
-<tr><td class="l">Linear FFE&nbsp;11 + DFE&nbsp;8</td><td>2.3379e&minus;02</td><td>1.00&times;</td><td>11</td><td>&mdash;</td></tr>
-<tr class="rt"><td class="l"><b>Inverse table + linear</b></td><td><b>1.1190e&minus;03</b></td><td><b>20.9&times;</b></td><td><b>11</b></td><td><b>128</b></td></tr>
-<tr><td class="l">MLP, 96 multipliers</td><td>2.2563e&minus;03</td><td>10.4&times;</td><td>96</td><td>&mdash;</td></tr>
-<tr><td class="l">MLP, 12 multipliers</td><td>4.3746e&minus;03</td><td>5.3&times;</td><td>12</td><td>&mdash;</td></tr>
-<tr><td class="l">Inverse table + MLP&nbsp;96</td><td>1.1937e&minus;03</td><td>19.6&times;</td><td>96</td><td>128</td></tr>
+<tr><td class="l">FFE11 + DFE8 (linear)</td><td>4&thinsp;778</td><td>37&thinsp;666</td><td>41&thinsp;052</td>
+<td>1.000</td></tr>
+<tr class="rt"><td class="l"><b>+ inverse ROM (128&times;7)</b></td><td>112</td><td><b>+896</b></td>
+<td>944</td><td><b>1.024</b></td></tr>
+<tr><td class="l">MLP 11&times;8 (96 multipliers)</td><td>51&thinsp;585</td><td>368&thinsp;026</td>
+<td>401&thinsp;706</td><td>9.77</td></tr>
+<tr><td class="l">MLP 5&times;2 (small)</td><td>6&thinsp;317</td><td>46&thinsp;545</td><td>50&thinsp;870</td>
+<td>1.236</td></tr>
+<tr><td class="l">FFE11 + sample table (256)</td><td>4&thinsp;802</td><td>42&thinsp;735</td>
+<td>46&thinsp;408</td><td>1.135</td></tr>
 </tbody></table>
 </figure>
 
-<p>Table&nbsp;III settles the question for this impairment. The 128-entry table beats the 96-multiplier network by 2.02&times; and the 12-multiplier network by 3.9&times;, adding no multipliers. More decisively, <b>once the table is applied the network contributes nothing</b> (0.94&times;; 3.3&times;10<sup>6</sup> bits would be needed to separate the two). The residual impairment after memoryless correction is linear, and a linear equalizer handles it.</p>
+<p>The compliant structure costs <b>2.4&thinsp;% more silicon</b> than the non-compliant baseline. The
+96-multiplier network costs <b>9.5&times; the compliant structure</b> and does not comply. Note that the ROM's
+cost cannot be measured with a placeholder table: synthesizing an identity map yields 175&nbsp;&micro;m<sup>2</sup>
+and 7 gates because the synthesizer resolves it to wires. The figure above uses the actual de-compression
+coefficients (Section X-B).</p>
 
-<p>The precise claim is therefore not &ldquo;a neural network solves what a linear equalizer cannot,&rdquo; but rather: <i>a linear FFE/DFE cannot invert a memoryless warp, and a network does so more expensively and less well than a table.</i></p>
+<h3>B. FPGA, and why the substrate inverts the answer</h3>
+<p class="first">On iCE40, which has no hard multipliers, the table-based equalizer costs 3&thinsp;037 logic
+cells at 41.4&nbsp;MHz against 2&thinsp;999 cells at 34.7&nbsp;MHz for the linear baseline&mdash;+1.3&thinsp;%
+area at 1.19&times; the clock. On Xilinx 7-series the ordering reverses: the table costs 1&thinsp;316 fabric
+cells while the network costs 391 cells plus 12 DSP slices, and the DSP slices are already on the die. We
+report both, and we regard the reversal as the substantive point rather than an inconvenience:
+<i>multiplier-free is an algorithmic property, not a cost property</i>, and it converts into cost only where
+multipliers consume the same resource as logic. What makes the ASIC number decisive for this application is
+simply that a 112G/224G SerDes is an ASIC.</p>
 
-<h2>VI.&ensp;Nonlinearity With Memory</h2>
+<h2>IX.&ensp;Validation Against Theory and Devices</h2>
 
-<p class="first">Proposition&nbsp;1 depends on the impairment being a function of a single sample. Equation&nbsp;(7) breaks that condition: after band-limiting, <i>v</i>[<i>n</i>] depends on <i>g</i>(<i>r</i>[<i>n</i>]), <i>g</i>(<i>r</i>[<i>n</i>&minus;1]), &hellip; jointly, so the map <i>r</i>[<i>n</i>]&nbsp;&#8614;&nbsp;<i>v</i>[<i>n</i>] is not injective and (20) is no longer sufficient. This is where a nonlinear detector with memory becomes necessary.</p>
+<h3>A. The nonlinearity-with-memory regime, and a refuted hypothesis</h3>
+<p class="first">Proposition 1 fails when compression acquires memory, so we searched for that regime.
+The hypothesis was that a long-memory impairment would break the table and make a network necessary. It was
+not supported. Ten octaves of AC-coupling droop (&tau; up to 18.8&nbsp;UI) moved the network-to-table ratio
+only from 1.28 to 1.47, whereas the compression <i>severity</i> moved it from 1.28 to 3.40. Slew-rate
+limiting produced no usable window at all: mild limiting acts as a low-pass and <i>improves</i> BER, while
+severe limiting drives the output toward the integral of the sign sequence and destroys information for every
+structure alike. The binding variable is the severity of the nonlinearity, not its memory. We report this
+because the hypothesis was ours and it was wrong.</p>
 
-<p>Sweeping &beta; and comparing <i>per-seed ratios</i> (means of heavy-tailed BERs are dominated by a single bad seed) locates the regime:</p>
+<h3>B. The decision-domain ceiling</h3>
+<p class="first">A structure indexed by past <i>decisions</i> cannot exceed a ceiling set by what decisions
+discard. Measured in the band-limited regime: a linear DFE 1.00&times;, a truncated Volterra expansion over
+&plusmn;1 decisions 1.04&ndash;1.10&times; at order 2 (79&ndash;137 parameters) and 2.68&ndash;2.91&times; at
+order 3 (299&ndash;1351 parameters), and a fully populated decision-indexed ROM 3.08&ndash;3.09&times;
+(256&ndash;1024 entries). Growing the parameter count by 17&times; moves nothing, because the limitation is the
+index, not the capacity: past decisions have already thrown away amplitude. This is why the useful table is
+indexed by ADC codes rather than by decisions.</p>
 
-<figure>
-<table><caption>Table&nbsp;IV<br><b>Where a network beats the memoryless table. 25 dB, SNR 30 dB, &kappa;=1.0, 3&times;10<sup>5</sup> bits, 8 seeds.</b></caption>
-<thead><tr><th>Post-comp. BW &beta;</th><th>MLP / table</th><th>Spread</th><th>MLP wins</th></tr></thead>
-<tbody>
-<tr><td>&infin; (no filter)</td><td>0.51&times;</td><td>[0.32, 0.70]</td><td>0/8</td></tr>
-<tr><td>0.50</td><td>0.30&times;</td><td>[0.11, 0.51]</td><td>0/8</td></tr>
-<tr class="rt"><td><b>0.35</b></td><td><b>3.20&times;</b></td><td>[2.49, 5.16]</td><td><b>8/8</b></td></tr>
-<tr class="rt"><td>0.25</td><td>2.28&times;</td><td>[0.69, 11.90]</td><td>1/8</td></tr>
-<tr><td>0.20</td><td>0.87&times;</td><td>[0.66, 1.08]</td><td>1/8</td></tr>
-</tbody></table>
-</figure>
+<h3>C. Detection bounds</h3>
+<p class="first">A calibrated matched-filter bound and an achievable reduced-state sequence detector place
+every structure considered here&mdash;ours included&mdash;at least 25&times; from what the same channel and
+noise permit, with one exception: under post-compression band limiting at a 3&nbsp;dB bandwidth near
+0.35/<i>T</i>, the table reaches 2.3&times;10<sup>&minus;3</sup> against 2.2&times;10<sup>&minus;2</sup> for the
+best linear-model sequence detector. Reporting the bound is what prevents a comparison among suboptimal
+structures from being mistaken for a statement about optimality.</p>
 
-<p class="noind">The window is narrow and one-sided in both directions: wide bandwidth leaves the impairment effectively memoryless, where the table wins; very narrow bandwidth destroys the link for every structure. At &beta;&nbsp;=&nbsp;0.25 the mean ratio of 2.28&times; is produced by a single seed at 11.90&times; while the network wins only 1 of 8 &mdash; not an established result. <b>All experiments in Sec.&nbsp;VII&ndash;X are conducted at &beta; = 0.35.</b></p>
+<h3>D. Circuit-level validation of the model's knobs</h3>
+<p class="first">The simulator's knobs are only meaningful if they correspond to circuit quantities. Each was
+checked against SPICE on the sky130 process [24], [25], and three of the closed forms we had written were
+found to be stated without their range of validity.</p>
 
-<h2>VII.&ensp;The Decision-Domain Ceiling</h2>
+<p><i>Compression index.</i> <i>V</i><sub>lim</sub> is not the weak-inversion constant 2<i>nV<sub>T</sub></i>
+&asymp; 67&nbsp;mV but runs 78&ndash;297&nbsp;mV with bias, so a translation of &kappa; into millivolts must
+carry its bias point.</p>
 
-<p class="first">Within the window, what can be achieved without adding multipliers? The cost structure measured on the target device is:</p>
+<p><i>Slew.</i> A correctly sized current-mode-logic driver at 20&nbsp;GBd has a 20&ndash;80&thinsp;%
+edge of 0.064&ndash;0.071&nbsp;UI, and its single-ended swing equals <i>I</i>&thinsp;<i>R</i><sub>eff</sub> to
+a ratio of 1.000 when the tail current is measured through a separate sense source&mdash;a consistency check
+that closes Kirchhoff's law along a second path. The closed form &tau;&nbsp;=&nbsp;<i>R</i><sub>eff</sub>
+<i>C<sub>L</sub></i> is accurate to 0.2&ndash;1.2&thinsp;% once <i>C<sub>L</sub></i> dominates, with a
+2.33&nbsp;ps floor set by the differential pair's own switching that the closed form omits. Inverting the
+relation, the slew values swept in our earlier work correspond to load capacitances of
+5.0&ndash;16.7&nbsp;pF, against 0.1&ndash;0.3&nbsp;pF for a real pad, ESD and package&mdash;a factor of
+20&ndash;170. That sweep was therefore never a driver; it was a measure of how far one must go to break the
+table, and consistently with that, slew never broke it.</p>
 
-<figure>
-<table><caption>Table&nbsp;V<br><b>Impairment class, matched corrector, multiplier cost.</b></caption>
-<thead><tr><th class="l">Impairment</th><th class="l">Matched corrector</th><th>Mults</th></tr></thead>
-<tbody>
-<tr><td class="l">Memoryless nonlinearity</td><td class="l">ADC-code table, 2<sup><i>B</i></sup></td><td>0</td></tr>
-<tr><td class="l">Linear pre-cursor ISI</td><td class="l">FFE</td><td>1/tap</td></tr>
-<tr><td class="l">Linear post-cursor ISI</td><td class="l">DFE</td><td>0</td></tr>
-<tr><td class="l"><b>Decision-dependent nonlinearity</b></td><td class="l"><b>Decision-indexed table, 2<sup><i>L</i></sup></b></td><td><b>0</b></td></tr>
-<tr><td class="l">Sample-dependent nonlinearity</td><td class="l">MLP / Volterra on samples</td><td>many</td></tr>
-</tbody></table>
-</figure>
+<p><i>Comparator regeneration.</i> A StrongARM latch's regeneration time constant, extracted three
+independent ways (a 2000&times; input sweep against the logarithmic resolve law, the slope of ln|<i>v<sub>od</sub></i>|
+on the waveform, and a small-signal pole measurement), agrees to 3&thinsp;%: 16.6&ndash;17.2&nbsp;ps. The
+closed form &tau; = <i>C<sub>L</sub></i>/<i>g<sub>m</sub></i> is correct, but <i>C<sub>L</sub></i> is the
+capacitance the regenerative loop carries&mdash;80.2&nbsp;fF including the cross-coupled gates&mdash;not the
+2&nbsp;fF external load; 80.2&nbsp;fF / 4.699&nbsp;mS = 17.07&nbsp;ps against 16.85&nbsp;ps measured. The
+consequence is a scope condition on a claim we had made unconditionally: at 20&nbsp;GBd one UI is only
+2.97&thinsp;&tau;, giving a sensitivity of 96&nbsp;mV, so "quantization rather than the comparator sets the
+floor" holds only at three-way interleaving or beyond. Real ADC-based receivers interleave far more than
+that, but the condition belongs in the statement.</p>
 
-<h3>A. Decision-indexed ROM</h3>
-<p class="first">A linear DFE computes a <i>linear</i> function of the past <i>L</i> decisions. Replacing it by an arbitrary function of the same inputs is one table of 2<sup><i>L</i></sup> entries and still contains no multiplier. With index</p>
+<p><i>Offset.</i> Monte-Carlo mismatch gives an input-referred offset of &sigma;&nbsp;=&nbsp;1.4&ndash;2.0&nbsp;mV
+for the input pair alone but <b>4.06&nbsp;mV for the whole latch</b> (20 seeds, bisection to 25&nbsp;&micro;V),
+which is 1.55&times; the 7&nbsp;bit ADC's 2617&nbsp;&micro;V LSB and therefore the largest of the three floor
+contributors. Pelgrom's law [15] is verified, with area equal to <i>W</i>&thinsp;<i>L</i>.</p>
 
-<div class="eq"><i>&iota;</i>[<i>n</i>] = &Sigma;<sub><i>k</i>=0</sub><sup><i>L</i>&minus;1</sup> 2<sup><i>k</i></sup> &middot; <b>1</b>[ <i>d</i>&#770;[<i>n</i>&minus;1&minus;<i>k</i>] &gt; 0 ]<span class="n">(22)</span></div>
-<div class="eq"><i>T</i>[<i>i</i>] = E[ <i>y</i><sub>f</sub>[<i>n</i>] &minus; <i>b</i>[<i>n</i>] | <i>&iota;</i>[<i>n</i>]=<i>i</i> ]<span class="n">(23)</span></div>
-<div class="eq"><i>d</i>&#770;[<i>n</i>] = sgn( <i>y</i><sub>f</sub>[<i>n</i>] &minus; <i>T</i>[<i>&iota;</i>[<i>n</i>]] )<span class="n">(24)</span></div>
+<h2>X.&ensp;Errors Found and Corrected</h2>
 
-<p class="noind">The table is trained on the preamble with known bits &mdash; the standard situation &mdash; but indexed at run time by the receiver's <i>own</i> decisions, so error propagation behaves exactly as in a DFE. Cells with fewer than a threshold of training samples fall back to the linear DFE value; otherwise rare patterns memorize noise.</p>
+<p class="first">Each of the following produced a plausible number before it was caught. We list them because
+a methods section that reports only the procedures that worked describes a study that was never at risk.</p>
 
-<p>This structure strictly generalizes the DFE, so a control is available: on a <i>linear</i> channel the optimal post-cursor canceller is linear and the ROM must not win. It does not &mdash; 6.5060e&minus;04 versus 6.5595e&minus;04, winning 3 of 8 seeds, requiring 3.6&times;10<sup>8</sup> bits to separate. Inside the window it reaches 3.08&times;, but depth does not help beyond 8&ndash;10 and then hurts (2.13&times; at depth 12), because 4096 cells over 9&times;10<sup>4</sup> training symbols is 22 samples per cell. <b>The ceiling of a table is set by training data, not by area.</b></p>
+<ul class="tight">
+<li><b>A. AGC without E[<i>b</i><sup>2</sup>].</b> Estimating cursor gain as the correlation E[<i>xb</i>]
+overstates it by 9/5 in PAM4. Symptom: a BER floor at 5&times;10<sup>&minus;2</sup> that persisted to
+55&nbsp;dB SNR with no impairment present&mdash;a <i>scale</i> error that would have been read as an
+impairment floor.</li>
+<li><b>B. ROM area measured with an identity table.</b> 175&nbsp;&micro;m<sup>2</sup> and 7 gates, because the
+synthesizer removed it. The real coefficients give 896&nbsp;&micro;m<sup>2</sup> and 112 gates.</li>
+<li><b>C. Unmapped gates omitted from an area sum.</b> Enable-plus-reset flip-flop variants had no mapping
+entry and were silently skipped, biasing area downward&mdash;in the direction that flatters the table. The
+tool now refuses to report an area when any gate is unmapped.</li>
+<li><b>D. Comparator resolve read on a single node.</b> Measuring the latch on one output caught the
+common-mode fall, not the differential resolve, producing a false sensitivity plateau at 47.3&nbsp;ps.
+Tightening solver tolerances by 1000&times; did not move it. A zero-input run exposed it: the latch did not
+resolve at all (both outputs at 0.867&nbsp;V, metastable) while the measurement still returned a time.</li>
+<li><b>E. Swing read as a window extremum.</b> Taking MAX/MIN of the differential output over a window
+captured the input edge's <i>C</i><sub>gd</sub> feedthrough spike and exceeded the ideal
+2<i>IR</i><sub>eff</sub> bound by 30&thinsp;%&mdash;the same symptom that had previously been diagnosed as a
+broken design. Reading at a settled instant gives a ratio of 1.000.</li>
+<li><b>F. Device width semantics.</b> In sky130 <code>W</code> is total width and <code>nf</code> partitions
+it; our devices were 20&ndash;40&times; undersized, which drove a tail node to &minus;0.337&nbsp;V&mdash;an
+ideal current source demanding a current the device could not deliver. Three earlier driver attempts were
+abandoned as "unmeasurable" for this reason before the cause was found.</li>
+<li><b>G. Pelgrom area as <i>W L n<sub>f</sub></i></b> rather than <i>W L</i>, inflating reported areas
+4&times;. Ratios and conclusions were unaffected, which is precisely why it survived.</li>
+<li><b>H. A noise-gain expectation evaluated at the wrong point.</b> E[cosh<sup>4</sup>] for the
+de-compression noise gain predicted 16&nbsp;dB against 5.3&times; measured, because the mean is dominated by
+rare large excursions; evaluating at the decision amplitude gives 7.5&nbsp;dB.</li>
+<li><b>I. Sequence-detector bookkeeping.</b> A sign error in trellis alignment and a double-cancellation in
+per-survivor feedback each pinned the bound at a BER that no SNR improved&mdash;a "bound" that was in fact a
+bug.</li>
+<li><b>J. NLMS step normalized by power alone.</b> Stable only while <i>&mu;</i>&nbsp;&lt;&nbsp;2/(<i>L&sigma;</i><sup>2</sup>);
+at 29 taps the coefficients diverged to 10<sup>6</sup>. Concluding "more taps do not help" from that state
+measures the step size, not the channel.</li>
+</ul>
 
-<h3>B. Volterra over &plusmn;1 decisions</h3>
+<p>Three of these (A, C, E) bias results in the direction of the paper's own thesis. We regard that as the
+reason to report them.</p>
 
-<div class="thm"><b>Proposition 2.</b> Let <i>d</i><sub>1</sub>&hellip;<i>d</i><sub><i>L</i></sub> &isin; {&minus;1,+1}. Every monomial &prod;<sub><i>k</i>&isin;<i>S</i></sub> <i>d</i><sub><i>k</i></sub> takes values in {&minus;1,+1}, and its value is determined by the parity (XOR) of the sign bits of {<i>d</i><sub><i>k</i></sub>}<sub><i>k</i>&isin;<i>S</i></sub>. Consequently any polynomial</div>
+<h2>XI.&ensp;Limitations and Threats to Validity</h2>
 
-<div class="eq"><i>f</i>(<b>d</b>) = <i>w</i><sub>0</sub> + &Sigma;<sub>|<i>S</i>|&le;<i>D</i></sub> <i>w</i><sub><i>S</i></sub> &prod;<sub><i>k</i>&isin;<i>S</i></sub> <i>d</i><sub><i>k</i></sub><span class="n">(25)</span></div>
+<ul class="tight">
+<li><b>No measured backplane.</b> This is the principal limitation. The channels are an 802.3-form insertion-loss
+fit, a geometry-and-materials transmission-line construction, and a cascade of a measured two-port&mdash;none of
+which is a backplane measurement. We were unable to obtain Touchstone data for one. The claim is therefore
+about a modelled channel class, not about a product.</li>
+<li><b>One network, one training budget.</b> The MLP is 11&times;8, 8 epochs, 200&thinsp;000 symbols. A larger
+or longer-trained network may clear the threshold. The claim is <i>not</i> that networks cannot; it is that
+this one costs 9.5&times; the silicon and does not, while the exact inverse costs 896&nbsp;&micro;m<sup>2</sup>
+and does&mdash;and that a larger network moves the area ratio further in the same direction.</li>
+<li><b>Cell-area sums, not die area.</b> Table III omits place-and-route utilization; only ratios are claimed.</li>
+<li><b>Single process node.</b> sky130 is a 130&nbsp;nm process. The regeneration and offset figures in
+Section IX-D are statements about it, not about the 5&ndash;7&nbsp;nm nodes of production SerDes, where
+&tau; is an order smaller.</li>
+<li><b>Compression model.</b> A single <i>tanh</i> stands for the AFE's compression. Real front ends have
+several compressive stages with memory between them; where that memory is significant, Proposition 1 weakens
+and the network's case strengthens.</li>
+<li><b>Post-FEC figures are conditional.</b> They assume independent symbol errors; the harness measures the
+clustering and flags the assumption when it fails, but flagged figures remain estimates.</li>
+</ul>
 
-<div class="thm">is realizable with sign-controlled additions only, using <i>no multipliers</i>, with &Sigma;<sub><i>j</i>&le;<i>D</i></sub> <i>C</i>(<i>L</i>,<i>j</i>) coefficients.</div>
+<h2>XII.&ensp;Future Work</h2>
 
-<p class="noind">Proposition&nbsp;2 gives exactly the parameter sharing a table lacks: the full ROM is the degree-<i>L</i> case with 2<sup><i>L</i></sup> coefficients, while truncating to degree <i>D</i> reduces this to <i>O</i>(<i>L</i><sup><i>D</i></sup>) at unchanged multiplier cost. Coefficients are fit by least squares on the preamble design matrix of monomials; for evaluation we expand them back into a 2<sup><i>L</i></sup> table, the two realizations being equivalent in hardware (one adder tree of |<i>S</i>| terms, or one ROM read).</p>
+<p class="first"><i>Immediate and decisive.</i> Repeat Table I on a measured backplane. The entry point
+exists: any Touchstone file drops into the same pipeline. Until then the result's channel scope is a
+modelling assumption.</p>
 
-<p>It does not work.</p>
+<p><i>Close the remaining standards gap.</i> Implement Channel Operating Margin [3] in full, so that channels
+are admitted by the same criterion a compliance body would use, and report margin in the units a working
+group reads.</p>
 
-<figure>
-<table><caption>Table&nbsp;VI<br><b>Decision-domain structures at &beta;=0.35. All win over linear on 8/8 seeds; none escapes ~3.1&times;.</b></caption>
-<thead><tr><th class="l">Structure</th><th>Params</th><th>Gain</th><th>Spread</th><th>Mults</th></tr></thead>
-<tbody>
-<tr><td class="l">Linear DFE, 8 taps</td><td>8</td><td>1.00&times;</td><td>&mdash;</td><td>0</td></tr>
-<tr><td class="l">Volterra <i>L</i>=12, <i>D</i>=2</td><td>79</td><td>1.04&times;</td><td>[0.98, 1.11]</td><td>0</td></tr>
-<tr><td class="l">Volterra <i>L</i>=16, <i>D</i>=2</td><td>137</td><td>1.10&times;</td><td>[1.00, 1.22]</td><td>0</td></tr>
-<tr><td class="l">Volterra <i>L</i>=12, <i>D</i>=3</td><td>299</td><td>2.68&times;</td><td>[1.99, 3.17]</td><td>0</td></tr>
-<tr><td class="l">Volterra <i>L</i>=16, <i>D</i>=3</td><td>697</td><td>2.87&times;</td><td>[2.15, 3.38]</td><td>0</td></tr>
-<tr><td class="l">Volterra <i>L</i>=20, <i>D</i>=3</td><td>1351</td><td>2.91&times;</td><td>[2.25, 3.47]</td><td>0</td></tr>
-<tr class="rt"><td class="l">Decision ROM, <i>L</i>=8</td><td>256</td><td>3.08&times;</td><td>[2.18, 3.64]</td><td>0</td></tr>
-<tr><td class="l">Decision ROM, <i>L</i>=10</td><td>1024</td><td>3.09&times;</td><td>[2.11, 3.91]</td><td>0</td></tr>
-<tr><td class="l">Decision ROM, <i>L</i>=12</td><td>4094</td><td>2.13&times;</td><td>[1.69, 2.55]</td><td>0</td></tr>
-<tr class="rt"><td class="l">MLP, 96 multipliers</td><td>~193</td><td>5.80&times;</td><td>[4.81, 6.71]</td><td>96</td></tr>
-</tbody></table>
-</figure>
+<p><i>Parallelism as a cost axis.</i> A 20&nbsp;GBd receiver on 500&nbsp;MHz logic needs ~40-way unrolling, so
+12 DSP slices become ~480 and exceed mid-range 7-series capacity. Our FPGA comparison is per-lane and
+single-rate; redoing it at deployment parallelism would test whether the substrate reversal of Section VIII-B
+survives at scale. We flag this as a hypothesis we have <i>not</i> measured.</p>
 
-<h3>C. Diagnosis</h3>
-<p class="first">Three structurally different correctors &mdash; linear, degree-truncated polynomial, and full table &mdash; saturate at the same value while their parameter counts span 8 to 1351. An MLP with roughly 193 parameters reaches 5.80&times;. The common property of the saturating three is their <i>observation</i>.</p>
+<p><i>Find the memory regime honestly.</i> Proposition 1's converse is the paper's real boundary. A
+front-end model with compression interleaved between filter stages&mdash;rather than followed by one&mdash;is
+the natural place for a network to earn its multipliers, and our earlier band-limiting experiments hint at
+it. That regime should be sought in a physically parameterized AFE, not by sweeping an abstract knob until
+something breaks.</p>
 
-<div class="thm"><b>Proposition 3.</b> Let <i>O</i><sub><i>n</i></sub> be the observation available to a detector. The minimum achievable error probability given <i>O</i><sub><i>n</i></sub> is that of the MAP rule sgn&thinsp;E[<i>b</i>[<i>n</i>]&thinsp;|&thinsp;<i>O</i><sub><i>n</i></sub>], and a lookup table indexed by a finite quantization of <i>O</i><sub><i>n</i></sub> converges to it as the training record grows. Hence detectors that differ only in <i>O</i><sub><i>n</i></sub> are ordered by the information <i>O</i><sub><i>n</i></sub> carries about <i>b</i>[<i>n</i>].</div>
+<p><i>Offset calibration in the loop.</i> The largest floor contributor is comparator offset at
+4.06&nbsp;mV, above the ADC LSB. Production receivers calibrate it; the model does not. Adding calibration
+would lower every arm's floor and might move the &kappa; boundary of Section VII-C outward, which would
+enlarge the region in which the paper's claim holds.</p>
 
-<p class="noind">Decisions <i>d</i>&#770;[<i>n</i>&minus;1],&hellip;,<i>d</i>&#770;[<i>n</i>&minus;<i>L</i>] are one-bit functions of <i>past</i> observations. They carry no information about the amplitude of the current sample, and it is precisely amplitude that (7) mixes. <b>The limit is the observation, not the parameter count</b> &mdash; which is why adding 1343 parameters moves the result by 0.23&times; while changing the observation moves it by more than 2&times;.</p>
+<p><i>Stronger codes.</i> 200&nbsp;Gb/s-per-lane work is considering concatenated FEC with different pre-FEC
+targets. The methodology transfers unchanged&mdash;the threshold is derived from the code&mdash;so the
+comparison can simply be re-run against a different <i>n</i>, <i>k</i>, <i>t</i>.</p>
 
-<p>A corollary, also measured: composing two individually correct correctors can be worse than either. Inverse table followed by decision ROM gives 2.11&times; against 3.08&times; for the ROM alone (7/8 seeds worse), because artanh amplifies noise in the saturated tail and the ROM then averages a noisier signal.</p>
+<h2>XIII.&ensp;Conclusion</h2>
 
-<h2>VIII.&ensp;Proposed: Sample-Indexed Lookup Equalizer</h2>
+<p class="first">A compressive front end in an ADC-based PAM4 receiver presents a nonlinearity whose inverse,
+being memoryless, is exactly a 2<sup><i>B</i></sup>-entry table costing no multipliers. Evaluated at the KP4
+pre-FEC threshold derived from the code, that table moves a link from non-compliant at any SNR to compliant at
+36.15&nbsp;dB, on four seeds out of four, for 2.4&thinsp;% additional standard-cell area. A 96-multiplier
+neural equalizer at the same operating point is non-compliant, and once the table is present its multipliers
+are worth less than 0.1&nbsp;dB at 9.5&times; the silicon. The result does not show that neural equalizers are
+useless; it shows that a comparison which omits the free memoryless inverse, reports ratios away from the
+standardized operating point, and prices multipliers on a fabric that has none, can invert its own conclusion
+on all three counts at once.</p>
 
-<p class="first">Proposition&nbsp;3 prescribes the fix: move the index from decisions to samples. It does <i>not</i> prescribe multipliers &mdash; a coarsely quantized sample is an address.</p>
+<h2>Appendix: Reproduction</h2>
+<pre class="hdr" data-t="Reproducing Table I">import comply, nneq
+NN = {"_dorigi": nneq.link, "_ppaelgeot": ("FFEtap",),
+      "window": 5, "hidden": 8, "epochs": 8}
+base = dict(symbols=200000, lossdB=20.0, FFEtap=11, DFEtap=8,
+            ADCbits=7, levels=4, compression=0.5)
+arms = {"linear": {}, "+inverse": dict(decompress=True),
+        "MLP96": dict(NN), "MLP96+inv": dict(NN, decompress=True)}
+print(comply.말로(comply.팔들(base, arms, seeds=(0,1,2,3))))</pre>
+<p class="noind"><span class="conf">Note.</span> The repository's identifiers are Korean; the listing above
+transliterates them for readability. Threshold derivation is <code>fec.문턱()</code>; the floor-first protocol
+is <code>comply.필요SNR()</code>; standard-cell pricing is <code>asic.잰것()</code>; circuit measurements are
+in <code>afespice.py</code>. Channel construction, impairments and the PAM4 primitives are in
+<code>serdes.py</code> and <code>pam.py</code>.</p>
 
-<h3>A. Architecture</h3>
-<p class="first">The FFE is retained, because the table cannot perform linear equalization (Sec.&nbsp;X). Its accumulator <i>a</i>[<i>n</i>] is quantized by an arithmetic shift and a clamp, and <i>W</i> consecutive codes form the address:</p>
+<h2>References</h2>
 
-<div class="eq"><i>c</i>[<i>n</i>] = clip( (<i>a</i>[<i>n</i>] &gt;&gt; <i>s</i>) + 2<sup><i>Q</i>&minus;1</sup>, 0, 2<sup><i>Q</i></sup>&minus;1 )<span class="n">(26)</span></div>
-<div class="eq"><i>&iota;</i>[<i>n</i>] = &Sigma;<sub><i>k</i>=0</sub><sup><i>W</i>&minus;1</sup> <i>c</i>[<i>n</i>&minus;<i>k</i>] &middot; 2<sup><i>Qk</i></sup><span class="n">(27)</span></div>
-<div class="eq"><i>T</i>[<i>i</i>] = E[ <i>b</i>[<i>n</i>] | <i>&iota;</i>[<i>n</i>]=<i>i</i> ],&emsp; <i>d</i>&#770;[<i>n</i>] = sgn( <i>T</i>[<i>&iota;</i>[<i>n</i>]] )<span class="n">(28)</span></div>
+<div class="box"><div class="t">Editorial note &mdash; remove before submission</div>
+<p class="noind" style="font-size:8pt">This bibliography was assembled without access to any bibliographic
+database: arXiv, Crossref, Semantic Scholar, DBLP, OpenAlex, DOI resolution and IEEE&nbsp;Xplore were all
+unreachable from the environment in which this draft was produced. <b>Not one entry has been verified against
+a record.</b> Each is therefore marked with its confidence, and fields that could not be recalled with
+confidence are left as <span class="todo">[verify]</span> rather than filled with a plausible guess.
+Section&nbsp;R lists what must be added. A fabricated citation is worse than a missing one, so nothing here is
+invented to look complete.</p>
+<p class="noind" style="font-size:8pt"><span class="conf">Confidence key.</span>
+&#9670;&nbsp;content and bibliographic fields both recalled with high confidence &middot;
+&#9671;&nbsp;content confident, fields to be confirmed &middot;
+&#9675;&nbsp;placeholder: the citation is required at this point but must be selected and verified.</p>
+</div>
 
-<p class="noind">By Proposition&nbsp;3, (28) is the empirical MAP detector on the quantized <i>W</i>-sample observation. Because only the sign of <i>T</i> is used, the stored table is <b>one bit per entry</b>: 2<sup><i>QW</i></sup> bits, i.e. 256&nbsp;bits at <i>Q</i>=4, <i>W</i>=2. The back end contains no multiplier and no adder &mdash; a shift, a clamp, a concatenation and a ROM read. There is also <b>no decision feedback</b>: past <i>codes</i> are retained, not past decisions, so there is no error propagation and no feedback loop to constrain pipelining.</p>
-
-<p>The quantizer must be hardware-realizable. Stretching by a training percentile requires a multiply; (26) uses a power-of-two step chosen once from the preamble RMS. Measured, the restriction is not a cost at all: 7.98&times; for the shift quantizer against 7.80&times; for the percentile version.</p>
-
-<div class="alg"><div class="t">Algorithm 1: Training the sample-indexed table</div>
-<ol>
-<li>Adapt FFE taps <b>w</b> by NLMS (9)&ndash;(10) on the preamble.</li>
-<li>Estimate &sigma; = RMS(<i>a</i>[<i>n</i>]) over the preamble; set <br><i>s</i> = round( log<sub>2</sub>( &rho;&sigma; / 2<sup><i>Q</i>&minus;1</sup> ) ).</li>
-<li>Zero accumulators: <i>S</i>[<i>i</i>] &larr; 0, <i>N</i>[<i>i</i>] &larr; 0 for all <i>i</i>.</li>
-<li>For each preamble index <i>n</i>: form <i>c</i>[<i>n</i>] by (26) and <i>&iota;</i>[<i>n</i>] by (27); <i>S</i>[<i>&iota;</i>] &larr; <i>S</i>[<i>&iota;</i>] + <i>b</i>[<i>n</i>]; <i>N</i>[<i>&iota;</i>] &larr; <i>N</i>[<i>&iota;</i>] + 1.</li>
-<li>For each cell <i>i</i>: <i>T</i>[<i>i</i>] &larr; 1 if <i>N</i>[<i>i</i>]&nbsp;&ge;&nbsp;<i>N</i><sub>min</sub> and <i>S</i>[<i>i</i>]&nbsp;&ge;&nbsp;0; <i>T</i>[<i>i</i>] &larr; 0 if <i>N</i>[<i>i</i>]&nbsp;&ge;&nbsp;<i>N</i><sub>min</sub> and <i>S</i>[<i>i</i>]&nbsp;&lt;&nbsp;0; else default.</li>
-<li>Write <i>T</i> into the ROM through the coefficient port.</li>
+<h3>A. Equalization and detection</h3>
+<div class="ref"><ol>
+<li value="1">&#9670;&nbsp;J.&nbsp;G. Proakis and M. Salehi, <i>Digital Communications</i>, 5th ed.
+New York: McGraw-Hill. &mdash; <span class="conf">Cited for:</span> the FFE/DFE/MLSE framework, the
+<i>Q</i>-function error expressions, and the <i>M</i>-PAM symbol-error formula used as a self-check in
+Section III-A.</li>
+<li value="2">&#9671;&nbsp;E.&nbsp;A. Lee and D.&nbsp;G. Messerschmitt, <i>Digital Communication</i>,
+Kluwer. &mdash; Adaptive equalization and timing recovery; LMS/NLMS stability conditions referenced in
+Section X-J.</li>
+<li value="3">&#9671;&nbsp;IEEE Std 802.3, Annex&nbsp;93A, "Channel Operating Margin (COM)."
+<span class="todo">[verify clause and edition year]</span> &mdash; The standardized channel figure of merit;
+cited in Sections II-E and XII as the criterion this work approximates but does not yet implement.</li>
+<li value="4">&#9671;&nbsp;IEEE Std 802.3bj, "Physical Layer Specifications for 100&nbsp;Gb/s Operation Over
+Backplanes and Copper Cables." <span class="todo">[verify year]</span> &mdash; Introduces the RS-FEC
+variants; source for the KR4 RS(528,514) and KP4 RS(544,514) parameters.</li>
+<li value="5">&#9671;&nbsp;IEEE Std 802.3ck, "Physical Layer Specifications for 100&nbsp;Gb/s, 200&nbsp;Gb/s
+and 400&nbsp;Gb/s Electrical Interfaces." <span class="todo">[verify year]</span> &mdash; The 100&nbsp;Gb/s
+per-lane PAM4 electrical interface whose operating point Section V-A targets.</li>
+<li value="6">&#9670;&nbsp;G.&nbsp;D. Forney, Jr., "Maximum-likelihood sequence estimation of digital
+sequences in the presence of intersymbol interference," <i>IEEE Trans. Inf. Theory</i>, vol.&nbsp;18,
+no.&nbsp;3, pp.&nbsp;363&ndash;378, May 1972.</li>
+<li value="7">&#9671;&nbsp;A. Duel-Hallen and C. Heegard, "Delayed decision-feedback sequence estimation,"
+<i>IEEE Trans. Commun.</i>, 1989. <span class="todo">[verify volume, issue, pages]</span> &mdash; The
+reduced-state detector with per-survivor tail cancellation implemented as the achievability bound in
+Section IX-C.</li>
+<li value="8">&#9671;&nbsp;M.&nbsp;V. Eyuboglu and S.&nbsp;U.&nbsp;H. Qureshi, "Reduced-state sequence
+estimation with set partitioning and decision feedback," <i>IEEE Trans. Commun.</i>, 1988.
+<span class="todo">[verify volume, issue, pages]</span></li>
+<li value="9">&#9670;&nbsp;I.&nbsp;S. Reed and G. Solomon, "Polynomial codes over certain finite fields,"
+<i>J. Soc. Ind. Appl. Math.</i>, vol.&nbsp;8, no.&nbsp;2, pp.&nbsp;300&ndash;304, 1960. &mdash; The code
+family whose bounded-distance decoding gives (5)&ndash;(6).</li>
 </ol></div>
 
-<p class="noind">Step 5 is a single pass of counting; no gradient, no iteration, and the convergence criterion is simply how many samples each cell has received. Complexity is <i>O</i>(<i>N</i><sub>pre</sub>) time and <i>O</i>(2<sup><i>QW</i></sup>) memory.</p>
-
-<pre class="hdr" data-t="Listing 1: Table construction (Python)">def build_table(a, b, n_tr, W=2, Q=4, rho=2.5, n_min=4):
-    """a: FFE accumulator; b: +-1 bits; n_tr: preamble."""
-    rms  = np.sqrt(np.mean(a[:n_tr] ** 2)) or 1.0
-    step = 2.0 ** np.round(
-        np.log2(rho*rms / (1 &lt;&lt; (Q-1))))     # eq.(26)
-    code = np.clip(np.floor(a / step) + (1 &lt;&lt; (Q - 1)),
-                   0, (1 &lt;&lt; Q) - 1).astype(np.int64)
-
-    idx = np.zeros(len(a), dtype=np.int64)   # eq.(27)
-    for k in range(W):
-        past = np.concatenate(
-            [np.zeros(k, np.int64), code[:len(a) - k]])
-        idx += past &lt;&lt; (Q * k)
-
-    cells = 1 &lt;&lt; (Q * W)
-    s = np.zeros(cells);  n = np.zeros(cells)
-    np.add.at(s, idx[:n_tr], b[:n_tr])  # preamble only
-    np.add.at(n, idx[:n_tr], 1.0)
-    T = np.where(n &gt;= n_min, s / np.maximum(n, 1.0), 0.0)
-    return np.where(T[idx] &gt;= 0, 1.0, -1.0), T, step</pre>
-
-<h3>B. Complexity</h3>
-<p class="first">Let <i>L</i><sub>f</sub> be the FFE length. Per symbol the proposed equalizer costs <i>L</i><sub>f</sub> multiplies (FFE), one shift, two comparisons, one concatenation and one ROM access. The DFE it replaces costs <i>K</i> add/subtracts in a serial chain; the MLP it replaces costs <i>LH</i>+<i>H</i> multiplies in two serial layers. Memory is 2<sup><i>QW</i></sup> bits against <i>K</i>&thinsp;<i>W</i><sub>c</sub> bits for the DFE and (<i>LH</i>+2<i>H</i>+1)<i>W</i><sub>w</sub> for the MLP.</p>
-
-<p>The exponential memory in <i>QW</i> is the binding constraint, and it binds through data rather than area: the number of cells that receive enough training samples grows far more slowly than the number of cells. At <i>Q</i>=4, <i>W</i>=2 (256 cells) 217 are populated and the gain is 7.98&times;; at <i>W</i>=3 (4096 cells) only 1531 are populated and the gain collapses to 2.01&times;. <b>Enlarging the observation window without enlarging the preamble is counter-productive.</b></p>
-
-<h2>IX.&ensp;RTL and Implementation</h2>
-
-<p class="first">Listing&nbsp;2 gives the synthesizable core. The FFE products are formed at exact width, the accumulator is sized by (18), and the quantizer is a shift with saturation. The coefficient and table write ports keep the adaptation engine out of the datapath; exporting coefficients to top-level pins instead would exhaust the device I/O long before its logic.</p>
-
-<pre class="hdr" data-t="Listing 2: Sample-indexed lookup equalizer (Verilog)">module ffe_tbl #(parameter L=11, W=7, DW=7, FW=18,
-                 SH=6, QB=4, WIN=2, TA=8, NT=256)(
-  input  wire clk, rst_n,
-  input  wire signed [DW-1:0] x,
-  input  wire cw_we,  input wire [3:0]    cw_addr,
-  input  wire signed [W-1:0]  cw_data,
-  input  wire tw_we,  input wire [TA-1:0] tw_addr,
-  input  wire tw_data,
-  output reg  d);
-
-  reg signed [DW-1:0] sr   [0:L-1];
-  reg signed [W-1:0]  coef [0:L-1];
-  reg                 tbl  [0:NT-1];   // 1 bit / entry
-
-  wire signed [W+DW-1:0] prod [0:L-1];
-  wire signed [FW-1:0]   ext  [0:L-1];
-  genvar i;
-  generate for (i=0;i&lt;L;i=i+1) begin : taps
-    assign prod[i] = coef[i] * sr[i];
-    assign ext[i]  = {{(FW-W-DW){prod[i][W+DW-1]}},
-                      prod[i]};
-  end endgenerate
-
-  integer k;  reg signed [FW-1:0] accf;
-  always @* begin
-    accf = 0;
-    for (k=0;k&lt;L;k=k+1) accf = accf + ext[k];
-  end
-
-  // eq.(26): arithmetic shift + clamp, no multiply
-  wire signed [FW-1:0] sh = accf &gt;&gt;&gt; SH;
-  localparam HI =  (1&lt;&lt;(QB-1)) - 1;
-  localparam LO = -(1&lt;&lt;(QB-1));
-  wire [QB-1:0] qcode = (sh &gt; HI) ? {QB{1'b1}} :
-                        (sh &lt; LO) ? {QB{1'b0}} :
-              (sh[QB-1:0] + {1'b1,{(QB-1){1'b0}}});
-
-  reg [QB-1:0] qreg;                   // pipeline reg
-  reg [QB-1:0] pcode [0:WIN-2];
-  reg [TA-1:0] addr;
-  always @* begin                              // eq.(27)
-    addr = {{(TA-QB){1'b0}}, qreg};
-    for (k=0;k&lt;WIN-1;k=k+1)
-      addr = addr | ({{(TA-QB){1'b0}}, pcode[k]}
-                     &lt;&lt; (QB*(k+1)));
-  end
-
-  always @(posedge clk or negedge rst_n) begin
-    if (!rst_n) begin
-      for (k=0;k&lt;L;k=k+1) begin
-        sr[k] &lt;= 0;  coef[k] &lt;= 0;
-      end
-      for (k=0;k&lt;WIN-1;k=k+1) pcode[k] &lt;= 0;
-      for (k=0;k&lt;NT;k=k+1)    tbl[k]   &lt;= 1'b0;
-      qreg &lt;= 0;  d &lt;= 1'b0;
-    end else begin
-      if (cw_we) coef[cw_addr] &lt;= cw_data;
-      if (tw_we) tbl[tw_addr]  &lt;= tw_data;
-      sr[0] &lt;= x;
-      for (k=1;k&lt;L;k=k+1) sr[k] &lt;= sr[k-1];
-      qreg     &lt;= qcode;
-      pcode[0] &lt;= qreg;
-      for (k=1;k&lt;WIN-1;k=k+1) pcode[k] &lt;= pcode[k-1];
-      d &lt;= tbl[addr];                          // eq.(28)
-    end
-  end
-endmodule</pre>
-
-<p class="noind">Because the structure has no feedback, the single register on <i>qreg</i> splits the critical path into <i>multiply&rarr;adder&nbsp;tree&rarr;shift/clamp</i> and <i>ROM&nbsp;read</i>, raising <i>F</i><sub>max</sub> from 26.62 to 41.38&nbsp;MHz at <i>lower</i> area. Latency rises by one cycle; throughput is unchanged, since the equalizer emits one decision per symbol. The same cut cannot be applied inside a DFE loop, where inserting a register delays the feedback itself.</p>
-
-<h2>X.&ensp;Results</h2>
-
-<h3>A. Bit error rate</h3>
-<figure>
-<table><caption>Table&nbsp;VII<br><b>Sample-indexed table at &beta;=0.35. 25 dB, SNR 30 dB, &kappa;=1.0, 3&times;10<sup>5</sup> bits, 8 seeds.</b></caption>
-<thead><tr><th class="l">Configuration</th><th>Cells</th><th>Filled</th><th>Gain</th><th>Wins</th></tr></thead>
-<tbody>
-<tr class="rt"><td class="l"><b>FFE&nbsp;11 + table 2&times;4&thinsp;b</b></td><td><b>256</b></td><td>217</td><td><b>7.98&times;</b></td><td><b>8/8</b></td></tr>
-<tr><td class="l">FFE&nbsp;11 + table 2&times;5&thinsp;b</td><td>1024</td><td>796</td><td>6.86&times;</td><td>8/8</td></tr>
-<tr><td class="l">FFE&nbsp;11 + table 3&times;4&thinsp;b</td><td>4096</td><td>1531</td><td>2.01&times;</td><td>8/8</td></tr>
-<tr class="rt"><td class="l">Table 2&times;4&thinsp;b, <i>no FFE</i></td><td>256</td><td>136</td><td>0.26&times;</td><td>0/6</td></tr>
-<tr><td class="l">Table 3&times;5&thinsp;b, <i>no FFE</i></td><td>32768</td><td>3383</td><td>0.63&times;</td><td>0/6</td></tr>
-</tbody></table>
-</figure>
-
-<p class="first">Two facts bound the claim. The 256-cell table exceeds the 96-multiplier MLP (5.80&times;, Table&nbsp;VI) using no back-end multipliers. And <b>without the FFE the table fails outright</b> (0.26&ndash;0.63&times;): it cannot perform linear equalization, so &ldquo;multiplier-free&rdquo; describes only the stage that replaces the DFE or the network, not the receiver.</p>
-
-<p>The required control is that on a linear channel, where the optimal equalizer is linear, the table must not win:</p>
-
-<figure>
-<table><caption>Table&nbsp;VIII<br><b>Control. Gain of FFE 11 + table 2&times;4 over FFE 11 + DFE 8, 6 seeds.</b></caption>
-<thead><tr><th class="l">Condition</th><th>Gain</th><th>Spread</th><th>Wins</th></tr></thead>
-<tbody>
-<tr><td class="l">&kappa;=0, no post-filter</td><td>1.14&times;</td><td>[0.87, 1.45]</td><td>4/6</td></tr>
-<tr><td class="l">&kappa;=0, &beta;=0.35</td><td>0.27&times;</td><td>[0.16, 0.40]</td><td>0/6</td></tr>
-<tr class="rt"><td class="l">&kappa;=1.0, no post-filter</td><td>6.36&times;</td><td>[2.30, 11.94]</td><td>6/6</td></tr>
-<tr><td class="l">&kappa;=1.0, &beta;=0.35</td><td>7.49&times;</td><td>[4.13, 12.21]</td><td>6/6</td></tr>
-</tbody></table>
-</figure>
-
-<p class="noind">On a linear channel the table ties or loses badly &mdash; it observes two samples and cannot match the span of an 11+8-tap linear equalizer. This is the expected and required behaviour.</p>
-
-<h3>B. Area and timing</h3>
-<p class="first">All designs were synthesized with Yosys and placed and routed with nextpnr on a Lattice iCE40 HX8K (7680 logic cells), targeting 50&nbsp;MHz; no timing-failure override was used. The device has no hard multipliers, so all products map to LUTs.</p>
-
-<figure class="wide">
-<table><caption>Table&nbsp;IX<br><b>Place-and-route on iCE40 HX8K, 50 MHz target. BER gains at &beta;=0.35 relative to the linear baseline.</b></caption>
-<thead><tr><th class="l">Design</th><th>Mults</th><th>LC</th><th><i>F</i><sub>max</sub></th><th>50 MHz</th><th>BER gain</th></tr></thead>
-<tbody>
-<tr><td class="l">FFE 11 tap, W7/DW7 (alone)</td><td>11</td><td>2237</td><td>52.38 MHz</td><td>pass</td><td>&mdash;</td></tr>
-<tr><td class="l">Linear FFE 11 + DFE 8, pipelined</td><td>11</td><td>2999</td><td>34.73 MHz</td><td>fail</td><td>1.00&times;</td></tr>
-<tr><td class="l">MLP 5&rarr;2, Q2.4, pipelined</td><td>12</td><td>2336</td><td>47.87 MHz</td><td>fail</td><td>2.55&times;</td></tr>
-<tr class="rt"><td class="l"><b>FFE 11 + table 2&times;4, unpipelined</b></td><td>11</td><td>3047</td><td>26.62 MHz</td><td>fail</td><td><b>7.98&times;</b></td></tr>
-<tr><td class="l"><b>FFE 11 + table 2&times;4, pipelined</b></td><td><b>11</b></td><td><b>3037</b></td><td><b>41.38 MHz</b></td><td>fail</td><td><b>7.98&times;</b></td></tr>
-<tr><td class="l">FFE 11 + table 2&times;5, pipelined</td><td>11</td><td>5497</td><td>&mdash;</td><td>&mdash;</td><td>6.86&times;</td></tr>
-<tr><td class="l">MLP, window 11, hidden 8</td><td>96</td><td>~19000</td><td>&mdash;</td><td>does not fit</td><td>5.80&times;</td></tr>
-</tbody></table>
-</figure>
-
-<p>Against the linear baseline the proposed equalizer costs <b>+1.3&thinsp;% area</b>, runs <b>1.19&times; faster</b>, and lowers BER by <b>8&times;</b>. Against an area-matched network it is 30&thinsp;% larger and 14&thinsp;% slower but 3.1&times; better in BER; the network configuration that would reach 5.80&times; requires roughly 19&thinsp;000 LC and does not fit the device.</p>
-
-<p>Two scaling laws were measured. First, the table stage is <b>linear in cell count at &asymp;3.2&nbsp;LC per cell</b> (810 LC at 256 cells, 3283 at 1024, 12698 at 4096). The stored data is only 256&nbsp;bits; the area is the address decode and the write port. A 256-cell table is therefore comparable in area to an 8-tap DFE (762 LC): <b>multiplier-free is not free</b>. Second, since gain <i>falls</i> with cell count beyond 256 (Table&nbsp;VII) while area rises linearly, this axis offers nothing to trade.</p>
-
-<p>Multiplier width follows an approximately quadratic law in the neural path: widening Q2.4/7-bit to Q2.5/8-bit costs 1.272&times; the area against a quadratic prediction of 1.306&times;, and 8&rarr;10 bit costs 1.494&times; against 1.563&times;. With three points we report consistency with quadratic scaling rather than fitting an exponent.</p>
-
-<h3>C. Pipelining</h3>
-<p class="first">One register stage raises <i>F</i><sub>max</sub> by 53&ndash;70&thinsp;% across all three designs at no area cost (&minus;1.4&thinsp;% to +2.2&thinsp;%), and every pipelined variant emits the identical decision sequence one cycle later. It does not, however, reorder the designs: the linear baseline improves by the same proportion, because only the DFE feedback loop resists cutting and that loop is not the critical path. None of the three reaches the 50&nbsp;MHz target; the best is 4&thinsp;% short.</p>
-
-<h2>XI.&ensp;Where the Lookup Equalizer Fails</h2>
-
-<p class="first">The previous edition of this work closed with an admission: the address space 2<sup><i>QW</i></sup> must eventually grow out of reach, <i>&ldquo;but we did not construct such a case, and therefore we have not demonstrated a regime that requires a neural equalizer.&rdquo;</i> This section constructs the case. The outcome is not the one we predicted, and we report the prediction and its refutation together, because the refutation is the result.</p>
-
-<h3>A. Extended impairment set</h3>
-
-<p class="first">Five impairments are added to the model of Sec.&nbsp;II. <i>Slew-rate limiting</i>, the finite current of an amplifier driving a capacitive load, is a nonlinear recursion whose memory grows as the limit tightens:</p>
-
-<div class="eq"><i>v</i>[<i>n</i>] = <i>v</i>[<i>n</i>&minus;1] + clip( <i>u</i>[<i>n</i>] &minus; <i>v</i>[<i>n</i>&minus;1], &minus;<i>S</i>, +<i>S</i> )<span class="n">(29)</span></div>
-
-<p class="noind"><i>AC-coupling droop</i> is a first-order high-pass whose memory is set directly by a time constant, and whose interaction with a following compressor is the mechanism we intended to exploit: the amount by which a sample is compressed comes to depend on a slow baseline:</p>
-
-<div class="eq"><i>b</i>[<i>n</i>] = <i>a b</i>[<i>n</i>&minus;1] + (1&minus;<i>a</i>)<i>u</i>[<i>n</i>],&emsp; <i>v</i>[<i>n</i>] = <i>u</i>[<i>n</i>] &minus; <i>b</i>[<i>n</i>],&emsp; <i>a</i> = <i>e</i><sup>&minus;1/&tau;</sup><span class="n">(30)</span></div>
-
-<p class="noind">Far-end crosstalk adds an independent PRBS aggressor through the same channel with a differentiating coupling; supply noise modulates the front-end gain multiplicatively, <i>y</i>[<i>n</i>](1 + <i>m</i>&thinsp;sin 2&pi;<i>n</i>/<i>MP</i>); and residual timing error displaces the sampling instants, the samples being taken by linear interpolation:</p>
-
-<div class="eq"><i>t</i>[<i>n</i>] = &phi; + <i>nM</i> + <i>M</i>&thinsp;( &sigma;<sub>rj</sub><i>g</i>[<i>n</i>] + <i>A</i><sub>sj</sub> sin 2&pi;<i>n</i>/<i>P</i><sub>sj</sub> )<span class="n">(31)</span></div>
-
-<p class="noind">Finally the channel itself is re-parameterized. A single &radic;<i>f</i> term is the shape of conductor loss alone; a printed-circuit link also carries dielectric loss proportional to <i>f</i>, and the most conspicuous feature of a measured <i>S</i><sub>21</sub> is neither &mdash; it is the resonance of an unused via stub, which shorts the line at its quarter-wave frequency:</p>
-
-<div class="eq">|<i>H</i>(<i>f</i>)| = 10<sup>&minus;(&alpha;<sub>c</sub>&radic;(<i>f</i>/<i>f</i><sub>N</sub>) + &alpha;<sub>d</sub>(<i>f</i>/<i>f</i><sub>N</sub>))/20</sup>&emsp;&middot;&emsp;| 2 / (2 + <i>j s</i> tan 2&pi;<i>f</i>&tau;<sub>s</sub>) |<span class="n">(32)</span></div>
-
-<p class="noind">Minimum phase is imposed as in (2). Two checks pin the parameterization: with &alpha;<sub>d</sub>=0 and <i>s</i>=0, (32) reproduces the channel of Sec.&nbsp;II to 4&times;10<sup>&minus;17</sup>; and the notch falls at 1/(4&tau;<sub>s</sub>), measured at 1.00&thinsp;<i>f</i><sub>N</sub> for &tau;<sub>s</sub>=0.5&thinsp;<i>T</i> and 0.50&thinsp;<i>f</i><sub>N</sub> for &tau;<sub>s</sub>=1.0&thinsp;<i>T</i>. At equal 20&nbsp;dB Nyquist loss the two mechanisms are not interchangeable: the main cursor is 0.238 under conductor loss and 0.358 under dielectric loss.</p>
-
-<h3>B. Long memory does not break the table</h3>
-
-<p class="first">The droop of (30) reaches 18.8&thinsp;UI &mdash; an order of magnitude beyond the <i>W</i>=2 window &mdash; and the prediction was that the table would collapse there. It does not. Holding every other parameter at the operating point of Sec.&nbsp;X and changing one variable at a time:</p>
-
-<figure>
-<table><caption>Table&nbsp;X<br><b>One variable at a time from 25 dB, SNR 30 dB, &kappa;=1.0, no post-filter, 6.4&times;10<sup>5</sup> bits, 8 seeds. Ratio is NN&nbsp;5&rarr;2 (7-bit, 12 multipliers) over FFE&nbsp;11 + table 2&times;4, per-seed median.</b></caption>
-<thead><tr><th class="l">Change</th><th>NN / table</th><th>NN wins</th></tr></thead>
-<tbody>
-<tr><td class="l">none (reference)</td><td>1.28&times;</td><td>5/8</td></tr>
-<tr><td class="l">droop &tau; = 18.8&thinsp;UI</td><td>1.47&times;</td><td>7/8</td></tr>
-<tr><td class="l">post-comp. &beta; = 0.35</td><td>0.56&times;</td><td>1/8</td></tr>
-<tr class="rt"><td class="l">compression &kappa; = 1.3</td><td>2.17&times;</td><td>8/8</td></tr>
-<tr><td class="l">compression &kappa; = 1.6</td><td>2.50&times;</td><td>8/8</td></tr>
-<tr><td class="l">compression &kappa; = 2.0</td><td>3.40&times;</td><td>8/8</td></tr>
-<tr class="rt"><td class="l">loss 25&rarr;20&nbsp;dB</td><td>1.83&times;</td><td>7/8</td></tr>
-<tr><td class="l">SNR 30&rarr;26&nbsp;dB</td><td>1.23&times;</td><td>7/8</td></tr>
-</tbody></table>
-</figure>
-
-<p class="noind">Ten octaves of added memory move the ratio by 15&thinsp;%. <b>Nonlinearity severity moves it by a factor of three, monotonically and on 8/8 seeds.</b> The hypothesis that motivated this section &mdash; memory length as the binding variable &mdash; is not supported. Sweeping &tau; over 5&ndash;150&thinsp;UI at a harsher operating point reproduces the same flatness: the NN/table ratio stays within 1.21&ndash;2.66&times; with no trend in &tau;.</p>
-
-<h3>C. The real mechanism, and a defect in the comparison</h3>
-
-<p class="first">Why should compression severity favour a network? It should not &mdash; by Proposition&nbsp;1 a memoryless warp is exactly invertible by an ADC-code table at zero multipliers, and severity is precisely what that table absorbs. Inspecting the configuration revealed that the table path did not have one. The compressed signal was being fed directly to the NLMS front end, so as &kappa; grew it was the <i>linear adapter</i> that degraded, not the table. Installing the memoryless inverse of Sec.&nbsp;V &mdash; which the paper already advocates, and which costs nothing &mdash; ahead of both structures repairs it:</p>
-
-<figure>
-<table><caption>Table&nbsp;XI<br><b>Effect of the zero-multiplier memoryless inverse ahead of the FFE. 25 dB, SNR 30 dB, 6.4&times;10<sup>5</sup> bits, 8 seeds, pooled BER.</b></caption>
-<thead><tr><th class="l">Structure</th><th>&kappa;=1.0</th><th>&kappa;=1.6</th><th>&kappa;=2.0</th></tr></thead>
-<tbody>
-<tr><td class="l">FFE 11 + DFE 8</td><td>2.42e&minus;02</td><td>6.24e&minus;02</td><td>8.25e&minus;02</td></tr>
-<tr><td class="l">FFE 11 + table 2&times;4</td><td>3.92e&minus;03</td><td>3.34e&minus;02</td><td>5.87e&minus;02</td></tr>
-<tr><td class="l">NN 5&rarr;2, 7-bit</td><td>3.48e&minus;03</td><td>1.33e&minus;02</td><td>1.88e&minus;02</td></tr>
-<tr class="rt"><td class="l">inv. + FFE 11 + table 2&times;4</td><td>1.06e&minus;03</td><td>4.87e&minus;03</td><td>1.13e&minus;02</td></tr>
-<tr><td class="l">inv. + NN 5&rarr;2, 7-bit</td><td>1.64e&minus;03</td><td>4.96e&minus;03</td><td>6.36e&minus;03</td></tr>
-</tbody></table>
-</figure>
-
-<p class="noind">At &kappa;=2.0 the table improves by 5.2&times; from a stage that costs no multipliers, and the apparent superiority of the network at &kappa;=1.6 disappears. Neither structure is being measured until both are given the front end that Proposition&nbsp;1 prescribes. <b>An architecture comparison is only as good as the weaker arm&rsquo;s configuration</b>, and for three editions the weaker arm was ours.</p>
-
-<h3>D. The crossover, measured fairly</h3>
-
-<p class="first">With the memoryless inverse installed on both sides, the boundary is sharp and it is in &kappa;, not in memory:</p>
-
-<figure>
-<table><caption>Table&nbsp;XII<br><b>Crossover in nonlinearity severity. Memoryless inverse ahead of both arms. 25 dB, SNR 30 dB, 6.4&times;10<sup>5</sup> bits, 8 seeds; ratios are per-seed medians.</b></caption>
-<thead><tr><th class="l">&kappa;</th><th>table / linear</th><th>NN / linear</th><th>NN / table</th><th>NN wins</th></tr></thead>
-<tbody>
-<tr><td class="l">1.0</td><td>3.48&times;</td><td>2.11&times;</td><td>0.59&times;</td><td>1/8</td></tr>
-<tr><td class="l">1.3</td><td>1.93&times;</td><td>1.41&times;</td><td>0.71&times;</td><td>0/8</td></tr>
-<tr><td class="l">1.6</td><td>1.84&times;</td><td>1.62&times;</td><td>0.78&times;</td><td>2/8</td></tr>
-<tr class="rt"><td class="l">2.0</td><td>1.32&times;</td><td>2.23&times;</td><td><b>1.79&times;</b></td><td><b>8/8</b></td></tr>
-</tbody></table>
-</figure>
-
-<p class="noind">The zero-multiplier arm holds to &kappa;&nbsp;&asymp;&nbsp;1.6 and loses at &kappa;=2.0 on every seed. This is the regime that requires a network, and it is a regime of <i>severity</i>, not of memory. Adding droop to this sweep does not shift the boundary in a reproducible direction: the ratios become non-monotone in &kappa; (0.81, 0.88, 1.44, 0.78), and we draw no conclusion from them.</p>
-
-<h3>E. Three attempts to rescue the table, all failed</h3>
-
-<p class="first"><i>Enlarge it.</i> At every training budget a larger address space is worse, and the constraint is data rather than area: with 1.92&times;10<sup>5</sup> training symbols a 32&thinsp;768-cell table populates 11&thinsp;339 cells (35&thinsp;%) against 256/256 for the small one, and its BER is six times worse. Preamble length is fixed by the standard, so this axis is closed to the designer.</p>
-
-<p><i>Summarize the past into one address field.</i> A leaky accumulator <i>m</i>[<i>n</i>] = <i>m</i>[<i>n</i>&minus;1] + (<i>x</i>[<i>n</i>]&minus;<i>m</i>[<i>n</i>&minus;1])&gt;&gt;<i>k</i> costs one shift and two adds and looks back 2<sup><i>k</i></sup> samples; appending its code to the address should buy memory for a few bits instead of a few octaves. Measured, every configuration was worse than spending the same bits on one more raw sample (4.20e&minus;3 and 5.38e&minus;3 against 2.87e&minus;3 for a 1024-cell two-sample table). An address bit is worth what it carries, and a neighbouring sample carried more than a slow mean.</p>
-
-<p><i>Index on amplitude and past decisions jointly.</i> Decisions are free (Sec.&nbsp;VI) and each costs one address bit, so a hybrid index is the natural union of the two structures of this paper &mdash; and, evaluated with <i>ideal</i> past decisions, it is an upper bound on any table-plus-DFE. It helps and it is not enough: 2.62e&minus;3 at 2048 cells against 3.63e&minus;3 for the plain table and 9.2e&minus;4 for the network on the same data. The ceiling of Proposition&nbsp;3 is relaxed by the amplitude field but not removed.</p>
-
-<h3>F. Crosstalk, supply noise and timing error</h3>
-
-<p class="first">These three are not equalizable by any of the structures considered &mdash; they are, respectively, another transmitter&rsquo;s data, a time-varying gain and a displacement of the observation. The question they answer is whether the ordering survives them.</p>
-
-<figure>
-<table><caption>Table&nbsp;XIII<br><b>Robustness. Pooled BER, 4&times;10<sup>5</sup> bits, 4 seeds. Best in each row in bold.</b></caption>
-<thead><tr><th class="l">Level</th><th>FFE 11</th><th>table 2&times;4</th><th>NN 5&rarr;2</th><th>MLP 21&times;16</th></tr></thead>
-<tbody>
-<tr><td class="l">FEXT 0.0</td><td>2.39e&minus;02</td><td>2.24e&minus;03</td><td>1.33e&minus;03</td><td><b>9.05e&minus;04</b></td></tr>
-<tr><td class="l">FEXT 0.1</td><td>2.47e&minus;02</td><td>2.54e&minus;03</td><td>1.59e&minus;03</td><td><b>1.19e&minus;03</b></td></tr>
-<tr><td class="l">FEXT 0.2</td><td>2.87e&minus;02</td><td>4.76e&minus;03</td><td>2.83e&minus;03</td><td><b>2.34e&minus;03</b></td></tr>
-<tr><td class="l">FEXT 0.3</td><td>3.60e&minus;02</td><td>1.03e&minus;02</td><td>6.03e&minus;03</td><td><b>5.47e&minus;03</b></td></tr>
-<tr class="rt"><td class="l">RJ 0.05&thinsp;UI</td><td>2.03e&minus;02</td><td>1.48e&minus;03</td><td>9.37e&minus;04</td><td><b>6.10e&minus;04</b></td></tr>
-<tr><td class="l">RJ 0.15&thinsp;UI</td><td>3.11e&minus;02</td><td>6.22e&minus;03</td><td>3.69e&minus;03</td><td><b>3.44e&minus;03</b></td></tr>
-<tr class="rt"><td class="l">supply &plusmn;25&thinsp;%</td><td>2.30e&minus;02</td><td>2.80e&minus;03</td><td>1.70e&minus;03</td><td><b>1.22e&minus;03</b></td></tr>
-<tr><td class="l">supply &plusmn;50&thinsp;%</td><td>2.16e&minus;02</td><td>5.46e&minus;03</td><td>2.36e&minus;03</td><td><b>2.05e&minus;03</b></td></tr>
-</tbody></table>
-</figure>
-
-<p class="noind">The ordering is preserved throughout; no impairment reverses a conclusion of Sec.&nbsp;X. Two specific expectations were wrong. We expected a static table to be hurt more by a time-varying gain than a slicer is, because a stored cell acquires a different meaning at each phase of the modulation; measured over 4&times;10<sup>5</sup> bits and 4 seeds at &plusmn;50&thinsp;%, the penalty is 2.43&times; for the table against 2.66&times; for the linear slicer &mdash; no asymmetry. And because <i>m</i>&nbsp;&lt;&nbsp;1 cannot change a sign, the absolute penalty from supply noise is small for every structure. Timing error is non-monotone in this regime (RJ&nbsp;0.05&thinsp;UI improves on RJ&nbsp;0) because our interpolating sampler low-passes the waveform slightly; on a linear channel the same sweep degrades monotonically (7.1e&minus;5 to 6.4e&minus;4 at 0.12&thinsp;UI), so the non-monotonicity is an artifact of the impairment, not of the structures.</p>
-
-<h3>G. What the crossover costs</h3>
-
-<p class="first">The network that wins at &kappa;=2.0 is the same NN&nbsp;5&rarr;2 of Table&nbsp;IX: 12 multipliers, 2336&nbsp;LC, 47.87&nbsp;MHz. It is <i>smaller and faster</i> than FFE&nbsp;11 + table (3037&nbsp;LC, 41.38&nbsp;MHz). Where a network is genuinely required, it need not be a large one &mdash; and the multiplier-free thesis of this paper does not survive by an area argument at that point, it simply ceases to apply. Networks large enough to exploit a long observation, by contrast, are unbuildable on this device:</p>
-
-<figure>
-<table><caption>Table&nbsp;XIV<br><b>Place-and-route of wide networks, iCE40 HX8K (7680 LC), pipelined, Q2.4.</b></caption>
-<thead><tr><th class="l">Design</th><th>Mults</th><th>LC</th><th>Utilization</th></tr></thead>
-<tbody>
-<tr><td class="l">NN 5&rarr;2</td><td>12</td><td>2336</td><td>30&thinsp;%</td></tr>
-<tr><td class="l">NN 11&rarr;4</td><td>48</td><td>9515</td><td>123&thinsp;% &mdash; does not fit</td></tr>
-<tr><td class="l">NN 21&rarr;4</td><td>88</td><td>17646</td><td>229&thinsp;% &mdash; does not fit</td></tr>
-<tr><td class="l">NN 11&rarr;16</td><td>192</td><td>37371</td><td>486&thinsp;% &mdash; does not fit</td></tr>
-</tbody></table>
-</figure>
-
-<p class="noind">Area is very nearly proportional to multiplier count (198, 198, 201, 195&nbsp;LC per multiplier), so the window length a network may use on a fixed device is set by that constant, not by the training procedure.</p>
-
-<h3>H. What is still missing</h3>
-
-<p class="first">The channel of (32) is a physical parameterization, not a measurement. Obtaining Touchstone data requires network access that the environment in which this work was produced does not have, and we state this rather than presenting a model as data. The gap is not cosmetic: with a via stub placed so that its notch falls inside the band (&tau;<sub>s</sub>=0.6&thinsp;<i>T</i>, notch at 0.72&thinsp;<i>f</i><sub>N</sub>, &minus;50&nbsp;dB) every structure operates between 5&thinsp;% and 14&thinsp;% BER, a regime of information loss in which the equalizer choice is nearly irrelevant. With the notch moved just above the band (&tau;<sub>s</sub>=0.35&thinsp;<i>T</i>) the conclusions of Sec.&nbsp;X reappear intact: the table is best on the linear-plus-memoryless channel (4.97e&minus;4 against 1.05e&minus;3 for the network, 0/6 network wins), and the network is best once a long-memory nonlinearity is added (3.62e&minus;3 against 6.65e&minus;3, 6/6). Whether a measured channel lands nearer the first case or the second is the single largest open question in this work.</p>
-
-<h2>XII.&ensp;Measured Channels, Detection Bounds, and Device Scope</h2>
-
-<p class="first">Three gaps remained: the channel was synthetic, the structures were compared only against each other, and the area comparison came from a single device with no hard multipliers. This section closes all three. Two of the three outcomes revise conclusions stated earlier in this paper.</p>
-
-<h3>A. Channels that are not ours</h3>
-
-<p class="first">Two channels replace the fitted magnitude curve of Sec.&nbsp;II. The first is built from geometry and materials by an independent library (scikit-rf): a microstrip with the causal Djordjevi&cacute;&ndash;Svensson dielectric, Kirschning&ndash;Jansen dispersion, conductor resistivity and surface roughness, over which impedance discontinuities are cascaded as real line sections. Nothing in its magnitude or phase is chosen by us; we choose only <i>w</i>, <i>h</i>, <i>t</i>, &epsilon;<sub>r</sub>, tan&thinsp;&delta;, &rho; and length. At 200&thinsp;&micro;m/100&thinsp;&micro;m, &epsilon;<sub>r</sub>=3.7, tan&thinsp;&delta;=0.002, 40&nbsp;inch and 20&nbsp;GBd it gives 26&nbsp;dB at Nyquist, main cursor 0.22, and a closed eye.</p>
-
-<p>The second is <i>measured</i>. scikit-rf ships a two-port vector-network-analyzer measurement (1&ndash;10&nbsp;GHz, 91 points). One section is too mild to separate equalizers (0.98&nbsp;dB at Nyquist), so we cascade <i>K</i> identical measured sections &mdash; a physically meaningful construction &mdash; and every decibel, ripple and reflection then comes from an instrument rather than from a model. We fix the sample rate at twice the highest measured frequency so the FFT grid never leaves the measured band; only the sub-1&nbsp;GHz region is extrapolated to DC, which scikit-rf does causally. Extrapolating above 10&nbsp;GHz to imitate 20&nbsp;GBd would make the result our extrapolation, not a measurement, so we do not.</p>
-
-<figure>
-<table><caption>Table&nbsp;XV<br><b>Cascaded measured two-port. sps=4, 5&nbsp;GBd, Nyquist 2.5&nbsp;GHz &mdash; inside the measured band.</b></caption>
-<thead><tr><th class="l">Sections <i>K</i></th><th>Loss at Nyquist</th><th>Main cursor</th><th>ISI eye</th></tr></thead>
-<tbody>
-<tr><td class="l">1</td><td>0.98&nbsp;dB</td><td>1.057</td><td>+2.08</td></tr>
-<tr><td class="l">8</td><td>10.61&nbsp;dB</td><td>0.462</td><td>+0.38</td></tr>
-<tr class="rt"><td class="l">16</td><td>19.65&nbsp;dB</td><td>0.211</td><td>&minus;0.23</td></tr>
-<tr><td class="l">24</td><td>28.77&nbsp;dB</td><td>0.098</td><td>&minus;0.40</td></tr>
-</tbody></table>
-</figure>
-
-<h3>B. What every structure is worth against the optimum</h3>
-
-<p class="first">Until now this paper compared structures with each other. Such ratios have no floor: 7.98&times; may be near the optimum or a thousand times from it, and the question &ldquo;is a network necessary&rdquo; cannot be closed without knowing which. Three references settle it. The matched-filter bound over the oversampled waveform,</p>
-
-<div class="eq"><i>P</i><sub>e</sub> &ge; <i>Q</i>( &Vert;<i>p</i>&Vert;<sub>2</sub> / &sigma; )<span class="n">(33)</span></div>
-
-<p class="noind">is the ISI-free limit of the waveform itself. Because every structure here observes one sample per symbol, the binding lower bound is the matched-filter bound over the symbol-spaced cursor vector <i>p</i><sub>sym</sub>[<i>k</i>]&nbsp;=&nbsp;<i>p</i>[<i>k</i><sub>peak</sub>+<i>kM</i>]:</p>
-
-<div class="eq"><i>P</i><sub>e</sub> &ge; <i>Q</i>( &Vert;<i>p</i><sub>sym</sub>&Vert;<sub>2</sub> / &sigma; )<span class="n">(34)</span></div>
-
-<p class="noind">Both are calibrated rather than assumed: transmitting isolated pulses and detecting them with a matched filter reproduces (33) to 1.1&ndash;6.1&thinsp;% with 234 and 967 errors counted, indistinguishable at 2&sigma;. The third reference is <i>achievable</i>: a reduced-state sequence detector with per-survivor decision feedback (DDFSE), because the pulse response of a 25&nbsp;dB channel spans more than sixty symbols and a full-memory Viterbi is not constructible &mdash; truncated at twelve symbols it plateaus at 2.8e&minus;3 even at 60&nbsp;dB SNR, which is a model deficiency, not noise.</p>
-
-<p>These references apply to the <i>nonlinear</i> link as well, by a data-processing argument we state as a proposition.</p>
-
-<div class="thm"><b>Proposition 4.</b> <i>Let the received waveform be r = h&lowast;b + n and let every receiver impairment be a map &Phi; applied after n, with &Phi; not depending on b. Then for any detector d(&Phi;(r)), P<sub>e</sub> &ge; min<sub>d'</sub> P<sub>e</sub>(d'(r)). If &Phi; is invertible, equality is attained by &Phi;<sup>&minus;1</sup> followed by the optimal detector for r.</i></div>
-
-<p class="noind"><i>Proof.</i> b &rarr; r &rarr; &Phi;(r) is a Markov chain, so the optimal detector on r is at least as good as any detector on &Phi;(r); invertibility makes the second link lossless. &#9633;</p>
-
-<p class="noind">The equality case is Proposition&nbsp;1 extended from symbol-by-symbol estimation to sequence detection: a memoryless invertible front-end compression <i>costs an optimal receiver nothing</i>. We measure it. With the exact inverse installed and no quantizer, &kappa;=1.0 reproduces the linear-channel BER of all three structures to the last digit (6.46e&minus;4, 4.77e&minus;4, 9.71e&minus;4 in both cases), and the DDFSE makes zero errors in 150&thinsp;000 symbols in both.</p>
-
-<figure class="wide">
-<table><caption>Table&nbsp;XVI<br><b>Structures against the optimum. 25 dB, SNR 30 dB, 6.4&times;10<sup>5</sup> bits, 4 seeds; DDFSE over 1.5&times;10<sup>5</sup> symbols. The reference detector sees unquantized samples, so the last three columns remove the ADC from the structures to separate that effect.</b></caption>
-<thead><tr><th class="l">Impairment</th><th>MFB (34)</th><th>DDFSE</th><th>FFE+DFE</th><th>table</th><th>NN&nbsp;5&rarr;2</th><th>FFE+DFE<br>no ADC</th><th>table<br>no ADC</th><th>NN<br>no ADC</th></tr></thead>
-<tbody>
-<tr><td class="l">linear</td><td>1.1e&minus;15</td><td>&lt;2e&minus;5</td><td>6.7e&minus;4</td><td>5.0e&minus;4</td><td>1.0e&minus;3</td><td>6.5e&minus;4</td><td>4.8e&minus;4</td><td>9.7e&minus;4</td></tr>
-<tr><td class="l">&kappa;=1.0, memoryless</td><td>1.1e&minus;15</td><td>&lt;2e&minus;5</td><td>3.4e&minus;3</td><td>1.3e&minus;3</td><td>1.4e&minus;3</td><td>6.5e&minus;4</td><td>4.8e&minus;4</td><td>9.7e&minus;4</td></tr>
-<tr><td class="l">&kappa;=2.0, memoryless</td><td>1.1e&minus;15</td><td>3.4e&minus;3</td><td>1.4e&minus;2</td><td>1.1e&minus;2</td><td>7.3e&minus;3</td><td>1.4e&minus;3</td><td>9.4e&minus;4</td><td>1.6e&minus;3</td></tr>
-<tr><td class="l">&kappa;=1.0, droop 18.8&thinsp;UI</td><td>1.1e&minus;15</td><td>6.7e&minus;6</td><td>1.6e&minus;3</td><td>1.1e&minus;3</td><td>1.5e&minus;3</td><td>1.2e&minus;3</td><td>9.1e&minus;4</td><td>1.3e&minus;3</td></tr>
-<tr class="rt"><td class="l">&kappa;=1.0, &beta;=0.35</td><td>1.1e&minus;15</td><td><b>2.2e&minus;2</b></td><td>1.1e&minus;2</td><td><b>2.3e&minus;3</b></td><td>4.2e&minus;3</td><td>1.1e&minus;3</td><td>2.2e&minus;4</td><td>7.1e&minus;4</td></tr>
-</tbody></table>
-</figure>
-
-<p class="noind">Three things follow, and two of them are unfavourable to this paper.</p>
-
-<p><i>Every structure leaves an order of magnitude on the table.</i> On a linear channel, and on a channel with a memoryless nonlinearity, a sequence detector makes no errors where the best structure makes 5e&minus;4. The 3&times;&ndash;8&times; differences this paper has been measuring are differences among detectors that are all &ge;&thinsp;25&times; from what the same channel and noise permit. The gap is not caused by the nonlinearity &mdash; it is the price of deciding symbol by symbol.</p>
-
-<p><i>The zero-multiplier inverse is not free once the ADC precedes it.</i> At &kappa;=1.0 the no-ADC columns are identical to the linear channel, but with a 7-bit ADC the same configuration degrades by 5.3&times; (6.5e&minus;4 &rarr; 3.4e&minus;3). The arctanh stretch amplifies quantization noise in the saturated region. Sec.&nbsp;V reported the inverse as costing nothing; it costs nothing in <i>arithmetic</i>, and it costs 5.3&times; in <i>noise</i> at 7 bits.</p>
-
-<p><i>The &beta; regime is the only one where the optimum is not a sequence detector.</i> At &beta;=0.35 the DDFSE reaches 2.2e&minus;2 while the 256-cell table reaches 2.3e&minus;3 &mdash; the table is ten times better than the best detector built on <i>any</i> linear response, including one whose response is estimated from the impaired waveform itself. This is the theoretical statement the paper has been missing: post-compression band-limiting produces a channel that no linear model describes, and that is exactly the condition under which a small nonlinear table earns its place. Everywhere else in the table, a linear-model sequence detector dominates both the table and the network.</p>
-
-<h3>C. The same comparison on the two new channels</h3>
-
-<figure class="wide">
-<table><caption>Table&nbsp;XVII<br><b>Modelled line and measured cascade. 4&times;10<sup>5</sup> bits, 6 seeds, 7-bit ADC, memoryless inverse ahead of all arms. Ratios are per-seed medians.</b></caption>
-<thead><tr><th class="l">Channel / impairment</th><th>DDFSE</th><th>FFE+DFE</th><th>table</th><th>NN&nbsp;5&rarr;2</th><th>table/lin</th><th>NN/table</th><th>NN wins</th></tr></thead>
-<tbody>
-<tr><td class="l">line 40&Prime;, &kappa;=1.0</td><td>6.7e&minus;5</td><td>6.8e&minus;3</td><td>4.1e&minus;3</td><td>7.3e&minus;3</td><td>1.59&times;</td><td>0.57&times;</td><td>0/6</td></tr>
-<tr><td class="l">line 40&Prime;, &kappa;=2.0</td><td>5.0e&minus;5</td><td>1.2e&minus;2</td><td>1.2e&minus;2</td><td>1.1e&minus;2</td><td>1.04&times;</td><td>1.06&times;</td><td>4/6</td></tr>
-<tr class="rt"><td class="l">line 40&Prime;, &beta;=0.35</td><td>2.5e&minus;2</td><td>7.6e&minus;3</td><td>2.2e&minus;3</td><td>2.2e&minus;3</td><td>3.43&times;</td><td>1.00&times;</td><td>3/6</td></tr>
-<tr><td class="l">measured <i>K</i>=16, &kappa;=1.0</td><td>&lt;2.5e&minus;5</td><td>1.1e&minus;2</td><td>9.3e&minus;3</td><td>1.0e&minus;2</td><td>1.18&times;</td><td>0.93&times;</td><td>1/6</td></tr>
-<tr><td class="l">measured <i>K</i>=16, &kappa;=2.0</td><td>&lt;2.5e&minus;5</td><td>1.6e&minus;2</td><td>1.3e&minus;2</td><td>1.1e&minus;2</td><td>1.26&times;</td><td>1.08&times;</td><td>5/6</td></tr>
-<tr class="rt"><td class="l">measured <i>K</i>=16, &beta;=0.35</td><td>2.8e&minus;4</td><td>1.1e&minus;2</td><td><b>1.3e&minus;3</b></td><td>2.9e&minus;3</td><td><b>8.48&times;</b></td><td>0.46&times;</td><td>0/6</td></tr>
-</tbody></table>
-</figure>
-
-<p class="noind">The headline result survives the change of channel, and only in the regime it was derived for. On a measured channel with post-compression band-limiting the table gains 8.48&times; over the linear baseline &mdash; larger than the 7.98&times; of Table&nbsp;VII &mdash; and the network loses to it on 6/6 seeds. Away from that regime the table's advantage collapses to 1.04&ndash;1.59&times;, which is the honest scope of the contribution: <b>the sample-indexed table is not a general-purpose equalizer, it is the matched structure for a nonlinearity with short memory.</b> The &kappa;=2.0 crossover of Sec.&nbsp;XI also weakens on these channels (1.06&times; and 1.08&times;, 4/6 and 5/6), so the boundary located there should be read as specific to the synthetic channel.</p>
-
-<h3>D. Relation to LUT-based FFE taps</h3>
-
-<p class="first">A reviewer points to a 28&nbsp;Gb/s PAM-4 receiver in which the first three FFE taps are implemented as a lookup table, the entries being computed offline from ADC data and loaded into the table. The technique is classical distributed arithmetic: with <i>x<sub>k</sub></i> in two's complement,</p>
-
-<div class="eq">&Sigma;<sub><i>k</i></sub> <i>c<sub>k</sub>x<sub>k</sub></i> = &minus;2<sup><i>B</i>&minus;1</sup><i>R</i>(<i>a</i><sup>(<i>B</i>&minus;1)</sup>) + &Sigma;<sub><i>b</i>&lt;<i>B</i>&minus;1</sub> 2<sup><i>b</i></sup><i>R</i>(<i>a</i><sup>(<i>b</i>)</sup>),&emsp; <i>R</i>[<i>a</i>] = &Sigma;<sub><i>k</i></sub> <i>c<sub>k</sub>a<sub>k</sub></i><span class="n">(35)</span></div>
-
-<p class="noind">where <i>a</i><sup>(<i>b</i>)</sup> collects bit <i>b</i> of each tap input. We could not read the cited work &mdash; the environment in which this study was produced has no access to the publisher &mdash; so we take the description as given and compare against the technique rather than the paper.</p>
-
-<p><b>The two tables store different kinds of object, and the difference is testable.</b> <i>R</i>[<i>a</i>] in (35) is a <i>linear</i> function of the address: its contents follow from the tap values by arithmetic, no training data is involved, and the computed result is bit-identical to a multiplier implementation. The table proposed here stores E[<i>b</i>[<i>n</i>]&nbsp;|&nbsp;<i>&iota;</i>[<i>n</i>]], which is not a linear function of the address and cannot be produced by any FIR. Fitting each table's contents by least squares against its own address bits separates them without argument: the distributed-arithmetic ROM is reproduced to a relative residual of 3e&minus;15, the trained decision table leaves 0.27. We also built (35) in RTL and verified against the multiplier FFE over 300 random stimuli: <i>not one bit differs</i>. Distributed arithmetic changes the cost of a computation; the proposed table changes which function is computed.</p>
-
-<p>On cost, the measurement is unfavourable to distributed arithmetic <i>on this device</i>, and the reason is instructive:</p>
-
-<figure>
-<table><caption>Table&nbsp;XVIII<br><b>FFE with the first <i>N</i> taps in distributed arithmetic, iCE40 HX8K, 50 MHz target, W7/DW7.</b></caption>
-<thead><tr><th class="l">Design</th><th>Mults</th><th>LC</th><th><i>F</i><sub>max</sub></th></tr></thead>
-<tbody>
-<tr class="rt"><td class="l">FFE 11, all multipliers</td><td>11</td><td>2237</td><td>52.38 MHz</td></tr>
-<tr><td class="l">FFE 11, <i>N</i>=3 in DA</td><td>8</td><td>2339</td><td>48.82 MHz</td></tr>
-<tr><td class="l">FFE 11, <i>N</i>=4 in DA</td><td>7</td><td>2701</td><td>49.56 MHz</td></tr>
-<tr><td class="l">FFE 11, <i>N</i>=6 in DA</td><td>5</td><td>5745</td><td>36.83 MHz</td></tr>
-</tbody></table>
-</figure>
-
-<p class="noind">On an FPGA whose multipliers are already LUTs, replacing three of them with seven bit-plane ROM reads and a shift-add tree costs 102&nbsp;LC and 3.6&nbsp;MHz, and the cost grows as 2<sup><i>N</i></sup>. Distributed arithmetic pays where a multiplier is genuinely expensive relative to a small ROM &mdash; a custom receiver front end, which is the setting of the cited work &mdash; and not here. This also bounds what our own result means: <b>the table of Sec.&nbsp;VIII is cheap on this device because it replaces a <i>decision</i> stage, not because tables are cheap in general.</b> The two techniques are composable: a receiver may compute the FFE partial sums by (35) and index the proposed decision table with the result, leaving <i>L</i>&minus;<i>N</i> multipliers in the entire data path.</p>
-
-<h3>E. Device scope beyond one FPGA</h3>
-
-<p class="first">Every area figure in Table&nbsp;IX comes from a device with no hard multipliers, which is the least favourable setting for multiplier-based designs. Synthesizing the same RTL for families that do have DSP blocks reverses the conclusion, and we report it because it is the strongest objection to this paper's thesis.</p>
-
-<figure class="wide">
-<table><caption>Table&nbsp;XIX<br><b>Synthesis cell counts for four families. &ldquo;+<i>n</i>D&rdquo; counts hard multiplier cells (ECP5 <code>MULT18X18D</code>, Xilinx <code>DSP48E1</code>), which are not included in the cell total. Synthesis only &mdash; see the caveat below.</b></caption>
-<thead><tr><th class="l">Design</th><th>Mults</th><th>iCE40</th><th>ECP5</th><th>Xilinx 7</th><th>Intel ALM</th></tr></thead>
-<tbody>
-<tr><td class="l">FFE 11</td><td>11</td><td>2267</td><td>1575 +11D</td><td>406 +11D</td><td>483</td></tr>
-<tr><td class="l">FFE 11 + DFE 8</td><td>11</td><td>3290</td><td>2124 +11D</td><td>862 +11D</td><td>1029</td></tr>
-<tr class="rt"><td class="l"><b>FFE 11 + table 2&times;4</b></td><td>11</td><td><b>3053</b></td><td>2333 +11D</td><td><b>1316 +11D</b></td><td>1218</td></tr>
-<tr><td class="l">FFE 11, <i>N</i>=3 in DA (35)</td><td>8</td><td>2368</td><td>3238 +8D</td><td>1031 +8D</td><td>942</td></tr>
-<tr class="rt"><td class="l"><b>NN 5&rarr;2</b></td><td>12</td><td>2388</td><td>1240 +12D</td><td><b>391 +12D</b></td><td>485</td></tr>
-<tr><td class="l">NN 11&rarr;4</td><td>48</td><td>9612</td><td>6093 +48D</td><td>1202 +48D</td><td>1869</td></tr>
-<tr><td class="l">NN 11&rarr;16</td><td>192</td><td>37727</td><td>14529 +192D</td><td>4106 +192D</td><td>7256</td></tr>
-</tbody></table>
-</figure>
-
-<p class="noind"><b>On a device with hard multipliers the ordering inverts.</b> On Xilinx 7-series the proposed table costs 1316 fabric cells while the network it was built to displace costs 391 &mdash; the network is 3.4&times; <i>smaller</i>, and smaller than the 11-tap FFE alone, because its arithmetic leaves the fabric entirely for twelve DSP48 slices while the table's cost is address decode and storage that no DSP absorbs. The same reversal holds on ECP5 and Intel ALM. Furthermore the wide network that cannot be built at all on the iCE40 (NN&nbsp;11&rarr;16, 37&thinsp;727 cells against 7680 available) is 4106 cells and 192 DSP48 on 7-series, which fits a mid-range part with room to spare.</p>
-
-<p>The honest formulation of this paper's cost claim is therefore narrower than &ldquo;multiplier-free is cheaper&rdquo;:</p>
-
-<div class="thm"><b>Scope of the area result.</b> <i>Replacing multipliers with a lookup saves area only where a multiplier is itself built from the same fabric as the lookup. On the iCE40 that is true and the table wins. On any device with hard multipliers &mdash; every current FPGA family, and any ASIC where a 7&times;7 multiplier is a few hundred gates &mdash; the table's fabric cost dominates and a small network is cheaper. The BER results of Sec.&nbsp;X and XII are unaffected; only the area argument is device-bound.</i></div>
-
-<p class="noind">This also explains the distributed-arithmetic measurement of Sec.&nbsp;XII-D from the other direction: DA costs more on ECP5 (3238 cells against 1575) precisely because it moves work out of DSP slices and into fabric. The technique and our table are both bets on fabric being cheaper than multipliers, and that bet is won or lost by the device, not by the algorithm.</p>
-
-<p><b>We report cell counts only.</b> The only place-and-route tool available here targets iCE40; there is no ECP5, Xilinx or Intel router and no standard-cell library. No <i>F</i><sub>max</sub>, utilization, congestion, ASIC area, delay or power figure is claimed for any device other than the iCE40, and the reversal above should be read as an area-proxy result awaiting place-and-route confirmation. Quoting a frequency from synthesis alone would be exactly the kind of unverified green light this work is otherwise at pains to avoid.</p>
-
-<h3>F. The BER operating point, and why the ratios do not extrapolate</h3>
-
-<p class="first">Every BER reported in this paper is counted, in the range 10<sup>&minus;2</sup>&ndash;10<sup>&minus;5</sup>. A compliance target is 10<sup>&minus;12</sup>. Counting there needs 3&times;10<sup>12</sup> bits, so the question is whether a ratio measured at 10<sup>&minus;3</sup> says anything at 10<sup>&minus;12</sup>. It does not, for two separate reasons, and both are measurable.</p>
-
-<p><i>First, the same ratio is worth far less margin at low BER.</i> For a threshold detector in AWGN, BER&nbsp;=&nbsp;<i>Q</i>(<i>v</i>/&sigma;), so a gain <i>G</i> corresponds to an amplitude ratio <i>Q</i><sup>&minus;1</sup>(<i>p</i>/<i>G</i>)&thinsp;/&thinsp;<i>Q</i><sup>&minus;1</sup>(<i>p</i>) and therefore to</p>
-
-<div class="eq">&Delta;SNR = 20&thinsp;log<sub>10</sub> [ <i>Q</i><sup>&minus;1</sup>(<i>p</i>/<i>G</i>) / <i>Q</i><sup>&minus;1</sup>(<i>p</i>) ]&emsp;[dB]<span class="n">(36)</span></div>
-
-<p class="noind">Because the Gaussian tail steepens, the headline 7.98&times; is worth <b>2.27&nbsp;dB at 10<sup>&minus;2</sup> but only 0.34&nbsp;dB at 10<sup>&minus;12</sup></b> (1.09&nbsp;dB at 10<sup>&minus;4</sup>, 0.71&nbsp;dB at 10<sup>&minus;6</sup>). A third of a decibel is half a step of CTLE peaking. Stated as margin rather than as a ratio, the result is much smaller than it looks, and margin is what a link budget is written in.</p>
-
-<p><i>Second, and more seriously, in the regime where the table wins the link does not reach 10<sup>&minus;12</sup> at all.</i> Raising SNR stops helping:</p>
-
-<figure class="wide">
-<table><caption>Table&nbsp;XX<br><b>Error floor at the operating point of Sec.&nbsp;X (25 dB, &kappa;=1.0, &beta;=0.35, memoryless inverse installed). 1.2&times;10<sup>6</sup> bits &times; 3 seeds per entry; error counts in parentheses.</b></caption>
-<thead><tr><th class="l">ADC</th><th>SNR</th><th>FFE+DFE</th><th>table 2&times;4</th><th>NN 5&rarr;2</th></tr></thead>
-<tbody>
-<tr><td class="l">7 bit</td><td>30 dB</td><td>1.17e&minus;2 (29605)</td><td>2.39e&minus;3 (6022)</td><td>3.46e&minus;3 (8708)</td></tr>
-<tr><td class="l">7 bit</td><td>40 dB</td><td>1.15e&minus;2 (28993)</td><td>2.36e&minus;3 (5948)</td><td>3.27e&minus;3 (8229)</td></tr>
-<tr class="rt"><td class="l">7 bit</td><td>50 dB</td><td><b>1.13e&minus;2</b></td><td><b>2.34e&minus;3</b></td><td><b>3.26e&minus;3</b></td></tr>
-<tr><td class="l">8 bit</td><td>50 dB</td><td>5.74e&minus;3</td><td>6.92e&minus;4</td><td>1.05e&minus;3</td></tr>
-<tr><td class="l">10 bit</td><td>50 dB</td><td>1.10e&minus;3</td><td>1.37e&minus;4</td><td>8.17e&minus;5</td></tr>
-<tr><td class="l">none</td><td>50 dB</td><td>4.25e&minus;4</td><td>8.73e&minus;5</td><td>5.41e&minus;4</td></tr>
-</tbody></table>
-</figure>
-
-<p class="noind">A twenty-decibel increase in SNR changes nothing: every structure sits on an irreducible floor. The floor falls with ADC resolution &mdash; 1.13e&minus;2&nbsp;&rarr;&nbsp;5.7e&minus;3&nbsp;&rarr;&nbsp;1.1e&minus;3 for the linear baseline at 7, 8 and 10 bits &mdash; but it does not vanish even with no quantizer at all (4.25e&minus;4), because post-compression band-limiting leaves a deterministic residual that no memoryless corrector removes. <b>The 7.98&times; of Table&nbsp;VII is a ratio between two floors</b>, not a slope advantage, and a link built from any of these structures at this ADC resolution cannot approach a compliance target regardless of transmit power.</p>
-
-<p>Where the link does <i>not</i> floor, extrapolation is legitimate and we do it properly. Plotting <i>Q</i><sup>&minus;1</sup>(BER) against 10<sup>SNR/20</sup> should be a straight line whose slope is the worst-case eye; if it is straight, the standard extrapolation applies, and if it is not, we report no extrapolated number.</p>
-
-<figure class="wide">
-<table><caption>Table&nbsp;XXI<br><b>Required SNR for BER&nbsp;=&nbsp;10<sup>&minus;12</sup> by <i>Q</i>-plot extrapolation. 25 dB, 7-bit ADC, 1.2&times;10<sup>6</sup> bits &times; 3 seeds at each of six SNR points.</b></caption>
-<thead><tr><th class="l">Impairment</th><th>Structure</th><th><i>Q</i>-plot <i>R</i><sup>2</sup></th><th>SNR for 10<sup>&minus;12</sup></th></tr></thead>
-<tbody>
-<tr><td class="l" rowspan="3">linear channel</td><td>FFE+DFE</td><td>0.9998</td><td>36.8 dB</td></tr>
-<tr><td>table 2&times;4</td><td>0.9982</td><td>36.8 dB</td></tr>
-<tr><td>NN 5&rarr;2</td><td>0.9998</td><td>37.3 dB</td></tr>
-<tr class="rt"><td class="l" rowspan="3">&kappa;=1.0, no post-filter</td><td>FFE+DFE</td><td>0.9989</td><td>37.1 dB</td></tr>
-<tr><td>table 2&times;4</td><td>0.9996</td><td>37.1 dB</td></tr>
-<tr><td>NN 5&rarr;2</td><td>0.9998</td><td>37.5 dB</td></tr>
-<tr class="rt"><td class="l">&kappa;=1.0, &beta;=0.50</td><td>all three</td><td>&mdash;</td><td>floored &mdash; no extrapolation</td></tr>
-<tr><td class="l">&kappa;=1.0, &beta;=0.35</td><td>all three</td><td>&mdash;</td><td>floored &mdash; no extrapolation</td></tr>
-</tbody></table>
-</figure>
-
-<p class="noind">In the two regimes that do not floor, the three structures need <b>36.8, 36.8 and 37.3&nbsp;dB</b> &mdash; they are within half a decibel of one another, and the table has no margin advantage at all. In the two regimes where the table's BER advantage is large, the <i>Q</i>-plot is not straight and the extrapolation is refused. <b>There is no operating point in this study at which the table is both ahead and extrapolable.</b> The correct reading of the 7.98&times; is: at a fixed, relatively high operating BER set by a residual the structure cannot remove, the table removes more of that residual than the alternatives. Whether that translates into margin at 10<sup>&minus;12</sup> in a link whose floor has first been engineered away is untested here, and is the single most important open question for anyone considering this structure in a real receiver.</p>
-
-<h2>XIII.&ensp;Closed-Form Cross-Checks</h2>
-
-<p class="first">Every number above comes from Monte Carlo. A simulator with a wiring error still produces plausible numbers, and nothing in the number itself reveals the error. This section places a hand-derived expression next to each load-bearing quantity. Where the two disagree we say by how much; where the first derivation was wrong we say what was wrong with it.</p>
-
-<h3>A. The five claims the paper rests on</h3>
-
-<p class="first"><i>A1. The memoryless inverse, and what it costs after quantization.</i> With <i>g</i>(<i>r</i>)&nbsp;=&nbsp;tanh(<i>ar</i>)/<i>a</i>, the inverse has slope</p>
-
-<div class="eq">d<i>g</i><sup>&minus;1</sup>/d<i>z</i> = 1/<i>g</i>&prime;(<i>r</i>) = cosh<sup>2</sup>(<i>ar</i>)<span class="n">(37)</span></div>
-
-<p class="noind">Thermal noise is added <i>before</i> compression, so it is squeezed and restored with the signal and pays nothing &mdash; this is the equality case of Proposition&nbsp;4. What is amplified is noise added <i>after</i> compression, i.e. ADC quantization. With step &Delta;&nbsp;=&nbsp;2&rho;/2<sup><i>B</i></sup> after AGC,</p>
-
-<div class="eq">&sigma;<sub>eff</sub><sup>2</sup> = &sigma;<sup>2</sup> + (&Delta;<sup>2</sup>/12)&thinsp;cosh<sup>4</sup>(&kappa;),&emsp; BER&prime; = <i>Q</i>( <i>Q</i><sup>&minus;1</sup>(BER) &middot; &sigma;/&sigma;<sub>eff</sub> )<span class="n">(38)</span></div>
-
-<p class="noind">at the decision-relevant amplitude |<i>r</i>|&nbsp;&asymp;&nbsp;rms, where <i>a</i>&middot;rms&nbsp;=&nbsp;&kappa; by construction. Predicted penalty at &kappa;=1.0 and <i>B</i>=7: <b>7.1&times;</b>; measured: <b>5.3&times;</b>. At <i>B</i>=10 the prediction falls to 1.05&times;, matching the direction of Table&nbsp;XX. <i>Our first derivation was wrong</i>: we used E[cosh<sup>4</sup>(<i>ar</i>)] over the whole distribution, which is dominated by rare large |<i>r</i>| and gave 16&nbsp;dB against a measured 5.3&times;. Decisions are not made in the tail; the expectation must be taken at the decision amplitude, where cosh<sup>2</sup>(1.0)&nbsp;=&nbsp;2.38 and the loss is 7.5&nbsp;dB of quantization noise, not 16.</p>
-
-<p><i>A2. Why compression severity moves the crossover.</i> The table observes the address <i>c</i>; the network observes the unquantized sample <i>x</i>. By the data-processing inequality the table can never use more than <i>I</i>(<i>b</i>;&thinsp;<i>c</i>)&nbsp;&le;&nbsp;<i>I</i>(<i>b</i>;&thinsp;<i>x</i>), and the difference is exactly what the quantizer discards. Measured at <i>Q</i>=4 bits:</p>
-
-<figure>
-<table><caption>Table&nbsp;XXII<br><b>Information the 4-bit index discards, 25 dB, SNR 30 dB, 3&times;10<sup>5</sup> symbols.</b></caption>
-<thead><tr><th class="l">&kappa;</th><th><i>I</i>(<i>b</i>;<i>c</i>)</th><th><i>I</i>(<i>b</i>;<i>x</i>)</th><th>discarded</th></tr></thead>
-<tbody>
-<tr><td class="l">0 (linear)</td><td>0.9946</td><td>0.9971</td><td>0.3&thinsp;%</td></tr>
-<tr><td class="l">1.0</td><td>0.9751</td><td>0.9807</td><td>0.6&thinsp;%</td></tr>
-<tr><td class="l">1.6</td><td>0.9328</td><td>0.9415</td><td>0.9&thinsp;%</td></tr>
-<tr><td class="l">2.0</td><td>0.9304</td><td>0.9395</td><td>1.0&thinsp;%</td></tr>
-<tr><td class="l">2.5</td><td>0.8832</td><td>0.8935</td><td>1.2&thinsp;%</td></tr>
-</tbody></table>
-</figure>
-
-<p class="noind">The discarded fraction grows monotonically with &kappa;, which is the mechanism behind the crossover of Table&nbsp;XII, and its magnitude &mdash; one per cent of a bit &mdash; is consistent with the modest 1.79&times; that the crossover actually delivers. <i>Our first attempt at this measurement was a dead instrument</i>: we counted &ldquo;how many quantizer codes separate the two conditional means&rdquo;, which the AGC normalizes to exactly 8.00 codes for every &kappa; from 0 to 2.5. Mutual information is not removed by normalization.</p>
-
-<p><i>A3. Why memory appears near &beta;&nbsp;&asymp;&nbsp;0.35.</i> The post-compression filter is a Hann window of length round(<i>M</i>/&beta;) samples, so its support is exactly 1/&beta; unit intervals. This partitions the parameter into three regimes with no free constants:</p>
-
-<div class="eq">support = 1/&beta; [UI]:&emsp; &le;1 &rarr; memoryless;&emsp; 2&ndash;3 &rarr; a two-sample table suffices;&emsp; &gt;3.5 &rarr; beyond any window here<span class="n">(39)</span></div>
-
-<p class="noind">&beta;=1.0 gives 1.00&nbsp;UI, &beta;=0.5 gives 2.00, &beta;=0.35 gives 2.88, &beta;=0.25 gives 4.00. The measured window &mdash; the network beats the memoryless table on 8/8 seeds only at &beta;=0.35, the table wins at &beta;&nbsp;&ge;&nbsp;0.5, and &beta;&nbsp;&le;&nbsp;0.25 destroys the link for everything (Table&nbsp;IV) &mdash; falls exactly on these boundaries. The &ldquo;narrow operating window&rdquo; of Sec.&nbsp;VI is not an empirical curiosity: it is the interval in which the impairment's memory is longer than one sample and shorter than the table's two.</p>
-
-<p><i>A4. The decision-domain ceiling.</i> Proposition&nbsp;3 predicts saturation in <i>depth</i>, not merely in parameter count. Measured with ideal past decisions and a fully populated ROM at the &beta;=0.35 operating point, BER goes 1.15e&minus;2, 1.07e&minus;2, 9.70e&minus;3, 9.48e&minus;3, 9.58e&minus;3 for depths 2, 4, 6, 8, 10 &mdash; a 1.21&times; improvement while the parameter count grows from 4 to 1024. On a linear channel the same sweep gives 9.90e&minus;4 &rarr; 6.33e&minus;4, a 1.56&times; improvement over the same 256-fold parameter growth. Both saturate; what distinguishes the nonlinear case is <i>where</i>: the decision-domain ceiling sits an order of magnitude above what the amplitude-indexed table reaches on the same channel (2.3e&minus;3), and no depth closes that.</p>
-
-<p><i>A5. Address space against training data.</i> With <i>N</i> preamble symbols and empirical cell probabilities <i>p<sub>i</sub></i>, occupancy is Binomial and a cell is usable at <i>n<sub>i</sub></i>&nbsp;&ge;&nbsp;<i>m</i>, so</p>
-
-<div class="eq">E[filled] = &Sigma;<sub><i>i</i></sub> P( Bin(<i>N</i>, <i>p<sub>i</sub></i>) &ge; <i>m</i> ) &asymp; &Sigma;<sub><i>i</i></sub> [ 1 &minus; &Sigma;<sub><i>j</i>&lt;<i>m</i></sub> <i>e</i><sup>&minus;<i>Np<sub>i</sub></i></sup>(<i>Np<sub>i</sub></i>)<sup><i>j</i></sup>/<i>j</i>! ]<span class="n">(40)</span></div>
-
-<figure>
-<table><caption>Table&nbsp;XXIII<br><b>Predicted against measured populated cells. 1.92&times;10<sup>5</sup> training symbols, <i>N</i><sub>min</sub>=4.</b></caption>
-<thead><tr><th class="l">Table</th><th>Cells</th><th>Predicted (40)</th><th>Measured</th><th>Error</th></tr></thead>
-<tbody>
-<tr><td class="l">2&times;4&thinsp;b</td><td>256</td><td>253.4</td><td>253</td><td>0.2&thinsp;%</td></tr>
-<tr><td class="l">2&times;5&thinsp;b</td><td>1024</td><td>925.4</td><td>928</td><td>0.3&thinsp;%</td></tr>
-<tr><td class="l">3&times;4&thinsp;b</td><td>4096</td><td>2174.8</td><td>2191</td><td>0.7&thinsp;%</td></tr>
-<tr><td class="l">3&times;5&thinsp;b</td><td>32768</td><td>8257.9</td><td>8197</td><td>0.7&thinsp;%</td></tr>
-</tbody></table>
-</figure>
-
-<p class="noind">Across a 128-fold range of address space the closed form is accurate to under one per cent, so the data wall is not an artifact of our training procedure. Hoeffding gives the complementary statement: a per-cell majority vote is wrong with probability at most <i>e</i><sup>&minus;2<i>n</i><sub><i>i</i></sub>&gamma;<sup>2</sup></sup>, so <i>N</i>&nbsp;=&nbsp;&Omega;(<i>C</i>&thinsp;ln(1/&delta;)/&gamma;<sup>2</sup>) &mdash; <b>linear in the number of cells, hence exponential in the window</b>, while a network's sample requirement grows with its parameter count, which is linear in the window. Preamble length is fixed by the standard, so this axis is closed to the designer.</p>
-
-<h3>B. The engineering numbers</h3>
-
-<figure class="wide">
-<table><caption>Table&nbsp;XXIV<br><b>Closed form against measurement for the six reported quantities.</b></caption>
-<thead><tr><th class="l">Quantity</th><th>Closed form</th><th>Predicted</th><th>Measured</th></tr></thead>
-<tbody>
-<tr><td class="l">BER gain &rarr; margin</td><td>Eq.&nbsp;(36)</td><td>7.98&times; = 2.27&nbsp;dB @10<sup>&minus;2</sup>, 0.34&nbsp;dB @10<sup>&minus;12</sup></td><td>exact identity</td></tr>
-<tr><td class="l">Multipliers, FFE <i>L</i></td><td><i>L</i></td><td>11</td><td>11</td></tr>
-<tr><td class="l">Multipliers, DFE / table</td><td>0 (sign select)</td><td>0</td><td>0</td></tr>
-<tr><td class="l">Multipliers, MLP <i>L</i>&rarr;<i>H</i></td><td><i>LH</i>+<i>H</i></td><td>12</td><td>12</td></tr>
-<tr><td class="l">Table cells</td><td>2<sup><i>QW</i></sup></td><td>256 / 1024 / 32768</td><td>256 / 1024 / 32768</td></tr>
-<tr class="rt"><td class="l">Area vs multipliers (iCE40)</td><td>LC = <i>a M</i> + <i>b</i></td><td>194.4<i>M</i> + 195</td><td>&le;&thinsp;8.2&thinsp;% error, <i>M</i>=12&ndash;192</td></tr>
-<tr><td class="l">Pipeline gain</td><td>depth halves &rarr; 2&times;</td><td>2.00&times;</td><td>1.52&ndash;1.70&times;</td></tr>
-<tr><td class="l">Accumulator widths</td><td>Eq.&nbsp;(17)&ndash;(19)</td><td>17 / 6 / 15</td><td>17 / 6 / 15 (RTL)</td></tr>
-</tbody></table>
-</figure>
-
-<p class="noind">Two entries deserve comment. The area model is not a fit to a trend but a statement about the device: on a fabric without hard multipliers the area of every design in this paper is 194&nbsp;LC per multiplier plus a two-hundred-cell constant, across a sixteen-fold range, which is why Sec.&nbsp;XII-E's reversal on DSP-bearing families is not a detail but the whole of the area argument. The pipeline model over-predicts by 18&ndash;30&thinsp;%: halving logic depth does not halve the path because routing delay does not halve, and we report the gap rather than tuning the model to hide it.</p>
-
-<h2>XIV.&ensp;Discussion and Limitations</h2>
-
-<p class="first"><i>The comparisons in Sec.&nbsp;V&ndash;XI are among detectors that are all far from optimal.</i> Sec.&nbsp;XII-B measures it: on a linear channel and under a memoryless nonlinearity a sequence detector makes no errors where the best structure here makes 5e&minus;4. The one regime in which that is not so is &beta;=0.35, where no linear response describes the channel and the 256-cell table beats the sequence detector tenfold. The scope of this paper's contribution is that regime, and readers should not carry its ratios outside it.</p>
-
-<p><i>The impairment model determines the conclusion.</i> This is the principal threat to validity. Section&nbsp;V shows that a memoryless warp is best undone by a 128-entry table; Section&nbsp;VIII shows that a memory-2 warp is best undone by a 256-entry table. Both conclusions are statements about the <i>structure</i> of the impairment. Sec.&nbsp;XI constructs the case in which the zero-multiplier arm loses, and locates it in the <i>severity</i> of the nonlinearity (&kappa;&nbsp;&asymp;&nbsp;2) rather than in its memory: ten octaves of added memory move the comparison by 15&thinsp;%, while severity moves it by a factor of three. The address-space argument that motivated this paper is therefore correct in form and wrong about which variable binds first.</p>
-
-<p><i>Channel and device scope.</i> Sec.&nbsp;XII-A replaces the fitted channel with one built from geometry and materials by an independent library, and with a cascade of a measured two-port; the headline result survives on both, and only inside the &beta; regime. What remains missing is a measured <i>backplane</i>: the instrument data we could obtain covers 1&ndash;10&nbsp;GHz and a mild interconnect, so the hard channel is built by cascading it. Area beyond the iCE40 is reported as synthesis cell counts only (Sec.&nbsp;XII-E); there is no router for other families here and no standard-cell library, so no <i>F</i><sub>max</sub> or ASIC figure is claimed. The target device has no DSP blocks, so all multipliers map to LUTs and the relative cost of a multiplier is at its most unfavourable; on a DSP-bearing FPGA or an ASIC the area comparison would shift in favour of the multiplier-based designs.</p>
-
-<p><i>NRZ only.</i> Two results depend on binary decisions: DFE taps are multiplier-free because <i>d</i>&#770;&nbsp;&isin;&nbsp;{&plusmn;1}, and the table stores one bit per cell. Under PAM4 neither holds, the decision alphabet grows, and the address space of any sample-indexed table grows with it.</p>
-
-<p><i>Timing recovery.</i> Sec.&nbsp;XI-F adds residual random and sinusoidal sampling jitter (31) and finds the ordering unchanged to 0.15&thinsp;UI rms, but no CDR loop is simulated: the model applies jitter that a loop has already failed to track and cannot reproduce loop bandwidth, pattern-dependent jitter, or the interaction between a nonlinear detector and the phase detector that feeds it. That interaction is untested.</p>
-
-<p><i>Rare-event behaviour.</i> The operating BERs here are 10<sup>&minus;2</sup>&ndash;10<sup>&minus;3</sup>. Counting to a compliance floor of 10<sup>&minus;12</sup> would require 3&times;10<sup>12</sup> bits &mdash; 242 core-days at the measured 1.4&times;10<sup>5</sup>&thinsp;bit/s &mdash; so statistical extrapolation is unavoidable, and the usual Gaussian-tail argument does not transfer cleanly to a nonlinear decision boundary. A table has a specific exposure here: under-populated cells emit a default, and nothing guarantees that default is correct for rare excursions. This is untested and is the most likely place for the present results to fail.</p>
-
-<p><i>Adaptation protocol.</i> Standards prescribe how equalizer coefficients are negotiated, typically as increment/decrement handshakes over a back channel. Neither a weight matrix nor a populated table speaks that language. The table is arguably closer &mdash; it is filled by one counting pass over the preamble, so its convergence criterion reduces to samples-per-cell &mdash; but mapping either onto a standard link-training sequence is unaddressed here.</p>
-
-<h2>XV.&ensp;Conclusion</h2>
-
-<p class="first">The common motivation for neural equalization in wireline receivers &mdash; that linear equalizers cannot invert front-end nonlinearity &mdash; is true but insufficient. For a memoryless nonlinearity the optimal memoryless corrector is a <i>2<sup>B</sup></i>-entry table with no multipliers, and measured on our model it outperforms a 96-multiplier MLP by 2.02&times;, after which the network is redundant.</p>
-
-<p>Where nonlinearity does have memory, we showed that all structures observing only past decisions &mdash; linear DFE, decision-indexed ROM, and multiplier-free Volterra expansions &mdash; saturate near 3.1&times; irrespective of parameter count, because decisions discard the amplitude that the impairment mixes. Changing the observation rather than the parameter budget removes the ceiling: a 256-entry, one-bit-per-entry table indexed by two quantized FFE output samples achieves 7.98&times; with zero back-end multipliers, exceeding a 96-multiplier network that does not fit the target device, at +1.3&thinsp;% area and 1.19&times; the clock of the linear baseline.</p>
-
-<p>The organizing principle is that impairments decompose and each class has a matched corrector with a characteristic hardware cost: memoryless warp &rarr; code table (0 multipliers); linear pre-cursor ISI &rarr; FFE (1 multiplier per tap); linear post-cursor ISI &rarr; DFE (0); decision-dependent nonlinearity &rarr; decision table (0); sample-dependent nonlinearity with memory &rarr; sample table (0) up to the address space it can populate, and only beyond that a parametric network. A general-purpose MLP is expensive precisely because it does not exploit this decomposition, spending multipliers on work that costs none in the matched structure.</p>
-
-<p>Two limits of that statement were then measured rather than assumed, and both narrow it. <i>In detection terms</i>, all of these structures &mdash; ours included &mdash; are at least 25&times; from what the channel and noise permit, because they decide symbol by symbol; the sole exception is post-compression band-limiting, where no linear response describes the channel and the 256-entry table beats the best linear-model sequence detector tenfold. That regime, and not nonlinearity in general, is where the contribution lives, and it survives on a channel built from geometry and materials by an independent library and on a cascade of a measured two-port (8.48&times; there, against 1.04&ndash;1.59&times; outside it). <i>In hardware terms</i>, &ldquo;multiplier-free&rdquo; is a statement about a device class: on the iCE40 the table is cheaper, but on any family with hard multipliers the same network costs 391 fabric cells against the table's 1316, because the table's cost is address decode and storage that no DSP absorbs. The decomposition above remains the useful organizing principle; what it buys depends on which fabric the matched corrector is spent on.</p>
-
-<div class="ref">
-<h2>Appendix: Reproduction Parameters</h2>
-<p class="first">Unless stated otherwise: <i>L</i><sub>dB</sub>&nbsp;=&nbsp;25&nbsp;dB, SNR&nbsp;=&nbsp;30&nbsp;dB, <i>M</i>&nbsp;=&nbsp;8&nbsp;samples/symbol, &kappa;&nbsp;=&nbsp;1.0, &beta;&nbsp;=&nbsp;0.35/<i>T</i> where a post-filter is used, <i>B</i>&nbsp;=&nbsp;7-bit ADC at &rho;&nbsp;=&nbsp;2.5&sigma;, FFE 11 taps at 7-bit coefficients and 7-bit data, DFE 8 taps at 8&nbsp;bits, 3&times;10<sup>5</sup> symbols per run with the first 30&thinsp;% used for adaptation and the remainder for error counting, and 6&ndash;8 independent seeds per point. Neural equalizers use <i>hardtanh</i>, Adam, 10&ndash;12 epochs, and Q2.4 fixed point in 7 bits. Table training uses <i>N</i><sub>min</sub>&nbsp;=&nbsp;4. All reported multi-seed comparisons are means of per-seed ratios, with the observed minimum and maximum quoted as the spread.</p>
-</div>
+<h3>B. Nonlinear equalization</h3>
+<div class="ref"><ol>
+<li value="10">&#9675;&nbsp;Volterra-series equalization of nonlinear channels.
+<span class="todo">[select and verify &mdash; the canonical satellite/voiceband nonlinear-ISI references,
+e.g. work by Benedetto and Biglieri, and by Biglieri, Gersho, Gitlin and Lim in the early 1980s]</span>
+&mdash; Cited in Section II-C for the combinatorial parameter growth that motivates truncation, and in
+Section IX-B where a truncated decision-domain Volterra expansion is one of the structures measured against
+the ceiling.</li>
+<li value="11">&#9675;&nbsp;Adaptive cancellation of nonlinear intersymbol interference.
+<span class="todo">[select and verify]</span></li>
+<li value="12">&#9675;&nbsp;<b>Neural-network equalizers for wireline and short-reach optical receivers.</b>
+<span class="todo">[This is the most important gap. Section II-D characterizes an evaluation practice
+&mdash; linear-only baseline, BER ratio away from the FEC point, parameter/multiplier cost &mdash; and that
+characterization must be supported by three to six representative and recent citations that the authors have
+read. Candidates to search: MLP/CNN/RNN equalizers in IEEE JLT, OFC/ECOC proceedings, IEEE TCAS-I/II, and
+DesignCon, 2019&ndash;2025. Any claim in Section II-D that a cited work does not in fact make must be
+withdrawn.]</span></li>
+</ol></div>
+
+<h3>C. Multiplier-free arithmetic</h3>
+<div class="ref"><ol>
+<li value="13">&#9670;&nbsp;A. Peled and B. Liu, "A new hardware realization of digital filters,"
+<i>IEEE Trans. Acoust., Speech, Signal Process.</i>, vol.&nbsp;22, no.&nbsp;6, pp.&nbsp;456&ndash;462,
+Dec.&nbsp;1974. &mdash; Distributed arithmetic. Cited in Section II-C for the distinction that matters here:
+a DA ROM stores a function <i>linear</i> in its address, whereas the table of Proposition 1 does not.</li>
+<li value="14">&#9671;&nbsp;S.&nbsp;A. White, "Applications of distributed arithmetic to digital signal
+processing: A tutorial review," <i>IEEE ASSP Magazine</i>, 1989.
+<span class="todo">[verify volume, issue, pages]</span></li>
+</ol></div>
+
+<h3>D. Circuits and devices</h3>
+<div class="ref"><ol>
+<li value="15">&#9670;&nbsp;M.&nbsp;J.&nbsp;M. Pelgrom, A.&nbsp;C.&nbsp;J. Duinmaijer and A.&nbsp;P.&nbsp;G.
+Welbers, "Matching properties of MOS transistors," <i>IEEE J. Solid-State Circuits</i>, vol.&nbsp;24,
+no.&nbsp;5, pp.&nbsp;1433&ndash;1439, Oct.&nbsp;1989. &mdash; The 1/&radic;(<i>WL</i>) mismatch law verified in
+Section IX-D.</li>
+<li value="16">&#9670;&nbsp;B. Razavi, "The StrongARM latch [A circuit for all seasons],"
+<i>IEEE Solid-State Circuits Magazine</i>, vol.&nbsp;7, no.&nbsp;2, 2015.
+<span class="todo">[verify pages]</span> &mdash; Regeneration rather than amplification; the
+&tau;&nbsp;=&nbsp;<i>C<sub>L</sub></i>/<i>g<sub>m</sub></i> form whose <i>C<sub>L</sub></i> Section IX-D
+corrects.</li>
+<li value="17">&#9671;&nbsp;B. Razavi, <i>Design of Integrated Circuits for Optical Communications</i>.
+&mdash; CML drivers, CTLE, and the high-speed receiver chain of Section III.</li>
+<li value="18">&#9675;&nbsp;Origin of the clocked sense-amplifier latch topology.
+<span class="todo">[select and verify &mdash; commonly attributed to a 1990s JSSC sense-amplifier paper;
+confirm before attributing]</span></li>
+</ol></div>
+
+<h3>E. Channel and material models</h3>
+<div class="ref"><ol>
+<li value="19">&#9671;&nbsp;A.&nbsp;R. Djordjevi&#263; <i>et al.</i>, "Wideband frequency-domain
+characterization of FR-4 and time-domain causality," <i>IEEE Trans. Electromagn. Compat.</i>, 2001.
+<span class="todo">[verify volume, issue, pages, full author list]</span> &mdash; The causal
+dielectric model used by the geometry-based channel construction.</li>
+<li value="20">&#9671;&nbsp;M. Kirschning and R.&nbsp;H. Jansen, "Accurate model for effective dielectric
+constant of microstrip with validity up to millimetre-wave frequencies," <i>Electronics Letters</i>, 1982.
+<span class="todo">[verify volume, pages]</span></li>
+<li value="21">&#9671;&nbsp;E. Hammerstad and &Oslash;. Jensen, "Accurate models for microstrip
+computer-aided design," <i>IEEE MTT-S Int. Microwave Symp. Dig.</i>, 1980.
+<span class="todo">[verify pages]</span></li>
+</ol></div>
+
+<h3>F. Tools and data</h3>
+<div class="ref"><ol>
+<li value="22">&#9670;&nbsp;C. Wolf, "Yosys Open SYnthesis Suite." [Online]. Available:
+https://yosyshq.net/yosys/ &mdash; Logic synthesis for all area figures in Section VIII.</li>
+<li value="23">&#9671;&nbsp;A. Arsenovic <i>et al.</i>, "scikit-rf: An open source Python package for
+microwave network creation, analysis and calibration," <i>IEEE Microwave Magazine</i>, 2022.
+<span class="todo">[verify volume, issue, pages]</span></li>
+<li value="24">&#9670;&nbsp;SkyWater Technology and Google, "SkyWater Open Source PDK (sky130)." [Online].
+Available: https://github.com/google/skywater-pdk &mdash; BSIM4 device models, mismatch corners, and the
+<code>sky130_fd_sc_hd</code> standard-cell library whose LEF and SPICE views supply every area and transistor
+count in Table III.</li>
+<li value="25">&#9670;&nbsp;"Ngspice, the open source SPICE circuit simulator." [Online]. Available:
+https://ngspice.sourceforge.io/</li>
+<li value="26">&#9671;&nbsp;L.&nbsp;W. Nagel and D.&nbsp;O. Pederson, "SPICE (Simulation Program with
+Integrated Circuit Emphasis)," Univ. California, Berkeley, Memo ERL-M382, 1973.
+<span class="todo">[verify memo number]</span></li>
+</ol></div>
+
+<h3>G. Statistics</h3>
+<div class="ref"><ol>
+<li value="27">&#9671;&nbsp;J.&nbsp;A. Hanley and A. Lippman-Hand, "If nothing goes wrong, is everything all
+right? Interpreting zero numerators," <i>JAMA</i>, vol.&nbsp;249, no.&nbsp;13, 1983.
+<span class="todo">[verify pages]</span> &mdash; The rule of three, used wherever a run produces zero
+errors (Section V-B).</li>
+</ol></div>
+
+<h3 id="secR">R. Citations still required</h3>
+<p class="first">The following claims in this draft are <i>not yet</i> supported by a verified citation and
+must not be submitted in this state.</p>
+<div class="ref"><ol style="list-style-type:upper-alpha">
+<li><b>Section II-D, the evaluation-practice characterization.</b> Three to six read, recent neural-equalizer
+papers. This is load-bearing: the paper's gap statement (Section II-F) claims an omission in existing
+practice, and an unsupported claim of omission is the weakest possible foundation for a contribution.</li>
+<li><b>Section II-E, the pre-FEC operating point.</b> The specific clause of 802.3ck (or 802.3bs) that fixes
+the target, so that "2&times;10<sup>&minus;4</sup>" is attributed rather than asserted. Our derived
+2.262&times;10<sup>&minus;4</sup> should be compared against the standard's own stated figure, and any
+discrepancy explained rather than averaged away.</li>
+<li><b>Section II-C, Volterra and DA lineage</b> &mdash; entries [10], [11], [14], [18].</li>
+<li><b>Section VIII-B, DSP-slice capacity.</b> The 7-series device data sheet for the DSP48E1 count used in
+the parallelism argument of Section XII, which is presently stated as an unmeasured hypothesis and must
+either be measured or cited.</li>
+<li><b>Prior art on lookup-based taps.</b> Reported implementations of FFE taps as ROM lookups in
+high-speed receivers. If such work exists in the form we believe, Proposition 1's novelty is in the
+<i>compliance-referred evaluation</i> and the exactness argument, not in the use of a table, and the
+introduction must say so.</li>
+</ol></div>
+
+<h3>Note on novelty</h3>
+<p class="first">Proposition 1 is not deep; the inverse of a memoryless invertible function being memoryless
+is immediate, and lookup tables in receivers are old. The contribution claimed here is not the table. It is
+the <i>evaluation</i>: that giving the baseline this free, exact inverse, judging at a threshold derived from
+the deployed code rather than at a chosen BER, and pricing in standard cells, jointly reverse the conclusion
+that a comparison omitting all three reaches. Section R-E is therefore the citation that most directly
+threatens the framing, and it should be resolved first.</p>
 
 </div>
 </body></html>
