@@ -433,18 +433,86 @@ svg .blkt{font:12px var(--sans);fill:var(--ink);stroke:none}
   <div class="scroll"><table>
     <thead><tr><th>기여자</th><th>크기</th><th>LSB 대비</th><th>줄이는 법</th></tr></thead>
     <tbody>
-      <tr><td>비교기 재생 감도</td><td>41 µV</td><td>0.016</td><td>—(이미 작다)</td></tr>
-      <tr class="rule-top"><td><b>비교기 오프셋 σ</b></td><td class="bad"><b>1,400~2,000 µV</b></td><td class="bad"><b>0.55~0.75</b></td><td class="hl">면적(Pelgrom)</td></tr>
+      <tr><td>비교기 재생 감도 (8-way 인터리빙)</td><td>1.2e−4 µV</td><td>~0</td><td>—(이미 작다)</td></tr>
+      <tr><td>비교기 재생 감도 (인터리빙 없음)</td><td class="bad">96,160 µV</td><td class="bad">37</td><td class="hl">인터리빙(§4.5.4)</td></tr>
+      <tr class="rule-top"><td><b>입력쌍만의 오프셋 σ</b></td><td class="bad"><b>1,400~2,000 µV</b></td><td class="bad"><b>0.55~0.75</b></td><td class="hl">면적(Pelgrom)</td></tr>
+      <tr><td><b>래치 통째의 오프셋 σ</b></td><td class="bad"><b>4,059 µV</b></td><td class="bad"><b>1.55</b></td><td class="hl">면적 + 오프셋 보정</td></tr>
       <tr><td><b>ADC LSB (7비트)</b></td><td class="bad"><b>2,617 µV</b></td><td>1.00</td><td class="hl">ADC 비트</td></tr>
     </tbody>
   </table></div>
-  <figcaption><b>표 3-b. §17.2 오류 바닥의 기여자</b>(sky130 tt_mm · W=20 µm · L=0.5 µm · nf=4 · I_D=100 µA).<br>대조로 미스매치 없는 <code>tt</code> 코너를 돌리면 오프셋이 <b>정확히 0</b>(2.4e−14 mV)이다 — 측정이 살아 있다.<br><b>양자화와 오프셋이 같은 자리에 있고 재생 감도만 멀리 있다.</b> 그리고 Pelgrom 이 실제로 선다 — 면적 40 → 160 µm² 에서 σ 가 1.59 → 0.69 mV 로 줄고(1/√면적 예측 0.79 mV 의 0.87배), <b>같은 면적이면 W 로 키우든 L 로 키우든 같다</b>(0.740 vs 0.789 mV).<br>즉 바닥의 이 몫은 <b>면적으로 살 수 있고</b>, 나머지 몫은 ADC 비트로 산다.</figcaption>
+  <figcaption><b>표 3-b. §17.2 오류 바닥의 기여자</b>(sky130 tt_mm · W=20 µm · L=0.5 µm · nf=4 · I_D=100 µA — sky130 에서 <code>W</code> 는 <b>총폭</b>이므로 면적은 W·L=10 µm² 다. 앞판은 <code>nf</code> 를 곱해 네 배로 적었었다).<br>대조로 미스매치 없는 <code>tt</code> 코너를 돌리면 오프셋이 <b>정확히 0</b>(2.4e−14 mV)이다 — 측정이 살아 있다.<br><b>양자화와 오프셋이 같은 자리에 있고, 재생 감도는 인터리빙을 세느냐에 따라 맨 아래거나 맨 위다</b>(§4.5.4). 그리고 <b>판정을 하는 것은 입력쌍이 아니라 래치 통째</b>다 — 씨앗마다 답이 뒤집히는 ΔV 를 이분법으로 찾으면(20씨, 25 µV 해상도) σ=<b>4,059 µV</b> 로 <b>LSB 의 1.55배, 기여자 중 가장 크다</b>. 이 래치의 입력쌍이 L=0.15 µm(면적 3 µm²)로 작고 교차결합쌍·리셋 소자의 미스매치가 더해지기 때문이다 — 면적과 오프셋 보정으로 사는 몫이다. 그리고 Pelgrom 이 실제로 선다 — 면적 10 → 40 µm² 에서 σ 가 1.59 → 0.69 mV 로 줄고(1/√면적 예측 0.79 mV 의 0.87배), <b>같은 면적이면 W 로 키우든 L 로 키우든 같다</b>(0.740 vs 0.789 mV).<br>즉 바닥의 이 몫은 <b>면적으로 살 수 있고</b>, 나머지 몫은 ADC 비트로 산다.</figcaption>
 </figure>
 
+<h3>4.5.3 CML 에지 — 못 하던 칸을 채웠다. <b>`W` 는 총폭이었다</b></h3>
+
+<p>앞판에는 이 자리에 "<b>못 했다 — 숫자를 안 싣는다</b>" 가 적혀 있었다. <code>serdes.슬루</code> 의 S 를 실제 드라이버에서 재려고 세 번 지었고 세 번 다 못 믿을 값이 나왔다 — 스윙이 이상적 <code>2·I·R_eff</code> 를 넘거나, <b>꼬리 노드가 −0.337 V</b> 로 내려갔다(이상적 전류원이 실현 불가능한 전류를 강요한다는 뜻이다).</p>
+
+<p><b>원인은 회로가 아니라 내가 소자 크기를 20~40배 작게 썼다는 것이었다.</b> sky130 에서 <code>W</code> 는 핑거 하나의 폭이 아니라 <b>총폭</b>이고 <code>nf</code> 는 그것을 몇 조각으로 나누는지다. 실측으로 붙들었다:</p>
+
+<div class="eq"><code>W=1 nf=1 → 149 µA　　W=10 nf=1 → 1,784 µA　　W=10 nf=10 → 1,672 µA　　W=1 nf=1 m=10 → 1,489 µA</code></div>
+
+<p><code>W</code> 를 열 배 하면 전류가 열 배가 되고 <code>nf</code> 를 바꾸면 거의 안 변한다. 크기를 제대로 잡으니(스위치 W=100 µm · 꼬리 W=300 µm · R_eff=25 Ω · 입력 600 mV<sub>ppd</sub>) 자기모순이 사라졌다 — 꼬리 노드가 <b>0.580 V</b> 로 접지 위에 얌전히 있다.</p>
+
 <div class="limits">
-  <h3 style="color:var(--none)">CML 에지는 <b>못 했다</b> — 숫자를 안 싣는다</h3>
-  <p style="margin-bottom:.6rem"><code>serdes.슬루</code> 의 S 를 실제 드라이버에서 재려고 세 번 지었고 세 번 다 못 믿을 값이 나왔다. 큰 소자(총 8,000 µm)로는 스윙이 1,274 mV<sub>ppd</sub> 로 <b>이상적 2·I·R_eff = 400 mV 를 넘었고</b>, 작은 소자로는 <b>꼬리 노드가 −0.337 V</b> 로 내려갔다 — 이상적 전류원이 그 소자로 실현 불가능한 전류를 강요하고 있다는 뜻, 즉 <b>설계가 자기모순</b>이다. <code>.meas</code> 로 에지를 재려 했더니 창 밖 교차를 잡아 상승 시간이 음수로 나왔다.</p>
-  <p style="margin-bottom:0">진짜 꼬리 트랜지스터와 헤드룸 예산을 세우고 크기를 제대로 잡아야 하는데, 그것은 이 문서의 범위를 넘는 <b>회로 설계</b>다. <b>그래서 S 의 SPICE 값은 내지 않는다.</b> §1.3 의 닫힌 꼴 결론(논문의 S 는 시상수 2.5~8.3 UI 에 해당한다)은 그대로 두고, "실제 드라이버가 정확히 얼마인지" 는 <b>안 잰 것으로 남긴다.</b> 못 믿을 숫자를 싣는 것이 안 싣는 것보다 나쁘다.</p>
+  <h3 style="color:var(--none)">스윙을 또 잘못 읽었다 — 창 전체의 MAX/MIN 은 <b>스파이크</b>를 잡는다</h3>
+  <p style="margin-bottom:.6rem">고친 회로를 <code>.meas MAX/MIN</code> 으로 읽으니 684 mV<sub>ppd</sub> 가 나왔는데 이상적 한계 <code>2·I·R_eff</code> 는 524 mV 다 — <b>30% 넘친다.</b> 앞판 세 번을 못 믿게 만든 바로 그 증상이라 또 자기모순인 줄 알았다. 아니었다: 입력 에지가 스위치의 <code>C_gd</code> 를 통해 출력 노드로 밀어 넣는 <b>스파이크를 MAX 가 잡은 것</b>이다.</p>
+  <p style="margin-bottom:0"><b>가라앉은 자리</b>(다음 에지 3 ps 전)에서 읽으니 단일단 스윙 <b>261.8 mV</b>, 한편 꼬리에 <b>따로 단 0 V 원</b>으로 잰 전류는 10.47 mA 이고 <code>I·R_eff = 261.8 mV</code> 다 — <b>비 1.000.</b> 네 자리까지 맞는다. 전류를 출력이 아니라 다른 가지에서 쟀으므로 이 일치는 정의가 아니라 <b>검사</b>다.</p>
+</div>
+
+<figure>
+  <div class="scroll"><table>
+    <thead><tr><th>C_L</th><th>상승 20–80%</th><th>τ = t<sub>2080</sub>/ln4</th><th>R_eff·C_L</th><th>비</th><th>S = T_s/τ</th></tr></thead>
+    <tbody>
+      <tr><td>0 fF</td><td>3.22 ps (0.064 UI)</td><td>2.33 ps</td><td>0 ps</td><td>—</td><td>2.69</td></tr>
+      <tr><td>60 fF</td><td>3.54 ps (0.071 UI)</td><td>2.55 ps</td><td>1.50 ps</td><td class="bad">1.70</td><td>2.45</td></tr>
+      <tr class="rule-top"><td>200 fF</td><td>6.90 ps (0.138 UI)</td><td>4.98 ps</td><td>5.00 ps</td><td class="hl"><b>0.996</b></td><td>1.26</td></tr>
+      <tr><td>500 fF</td><td>17.30 ps (0.346 UI)</td><td>12.48 ps</td><td>12.50 ps</td><td class="hl"><b>0.998</b></td><td>0.50</td></tr>
+      <tr><td>1 pF</td><td>34.26 ps (0.685 UI)</td><td>24.71 ps</td><td>25.00 ps</td><td class="hl"><b>0.988</b></td><td>0.25</td></tr>
+    </tbody>
+  </table></div>
+  <figcaption><b>표 3-c. sky130 CML 드라이버, 20 GBd.</b> <code>T_s = UI/sps = 6.25 ps</code> 다 — <b>S 는 UI 당이 아니라 표본당</b>이다.<br><b>닫힌 꼴 <code>τ = R_eff·C_L</code> 은 자기 영역에서 0.2~1.2% 안에 맞는다.</b> 작은 C_L 에서 남는 <b>2.33 ps 의 바닥</b>은 RC 가 아니라 <b>차동쌍이 갈리는 속도</b>다(입력 에지 8 ps 에 V_lim 이 작아 입력보다 빨리 갈린다). <code>afe.cml드라이버</code> 가 낸 S=6.25 는 그 바닥을 안 세어 낙관적이고, 바닥까지 세면 <b>S=2.5~2.7</b> 이다 — <b>꼴은 맞고 바닥 항을 안 적었다.</b></figcaption>
+</figure>
+
+<p><b>그래서 논문의 S 는 물리적으로 무엇인가.</b> <code>S = T_s/(R_eff·C_L)</code> 을 C_L 로 풀면</p>
+
+<div class="eq"><code>S = 0.05 → τ = 125 ps → C_L = <b>5.0 pF</b>　　　S = 0.015 → τ = 417 ps → C_L = <b>16.7 pF</b></code></div>
+
+<p>20 GBd 드라이버의 패드·ESD·패키지는 다 합쳐 <b>100~300 fF</b> 다. <b>20~170배 어긋난다.</b> 그러니 그 S 쓸기는 "이 드라이버가 그렇다" 가 아니라 <b>"표를 깨려면 이만큼 가야 한다"</b> 는 뜻이고, 실제로 슬루는 표를 못 깼다 — <b>두 사실이 서로 맞는다.</b></p>
+
+<h3>4.5.4 StrongARM 재생 — <code>τ = C_L/g_m</code> 은 <b>꼴이 맞고 넣은 C 가 6.7배 작았다</b></h3>
+
+<p>§4 는 재생 시상수를 <code>τ = C_L/g_m</code> 으로 적고 <code>g_m=5 mS · C_L=25 fF → τ=5 ps</code> 를 넣어 감도 41 µV 를 냈다. 그 값을 소자에 물었다. sky130 으로 래치를 짓고(입력쌍 W=20 µm · 꼬리 W=40 µm · 교차결합 NMOS W=10 µm / PMOS W=20 µm) <b>입력 크기를 2,000배 쓸어</b> 해결 시간을 쟀다. 재생이 지수면 해결 시간은 입력의 <b>로그</b>라야 한다.</p>
+
+<div class="eq"><code>t_해결 = t₀ + τ·ln(1/ΔV_in)</code></div>
+
+<div class="limits">
+  <h3 style="color:var(--none)">첫 판은 거짓 값을 냈다 — <b>공통모드 하강을 해결로 읽었다</b></h3>
+  <p style="margin-bottom:.6rem">처음에는 <code>v(o⁻)</code> 가 V_DD/2 를 지나는 때로 쟀다. 작은 ΔV 에서 <b>47.3 ps 로 평평</b>해졌고, 그대로 실었으면 "비교기 감도 바닥이 50 µV" 라는 <b>틀린 숫자</b>가 논문에 들어갔을 것이다. 솔버 공차를 1000배 조여도 안 움직였으니 수치 문제도 아니었다.</p>
+  <p style="margin-bottom:0"><b>ΔV=0 으로 돌려 보니 답이 나왔다.</b> 래치는 안 풀리고(o⁺=o⁻=0.867 V, 메타스테이블) <b>그런데도</b> 측정기가 47.3 ps 를 냈다 — 두 출력이 <b>함께</b> 내려가는 공통모드 하강이 문턱을 지난 것이었다. 차동 <code>v_od = v(o⁺)−v(o⁻)</code> 로 바꾸니 ΔV 를 40,000배 쓸어도 로그 법칙이 곧게 선다(잔차 rms 1.38 ps). <b>한 노드로 재면 안 된다.</b></p>
+</div>
+
+<figure>
+  <div class="scroll"><table>
+    <thead><tr><th>ΔV_in</th><th>400 mV</th><th>100 mV</th><th>10 mV</th><th>1 mV</th><th>0.2 mV</th><th>0.01 mV</th></tr></thead>
+    <tbody>
+      <tr><td><b>t_해결</b></td><td>61.5 ps</td><td>78.9 ps</td><td>118.3 ps</td><td>157.1 ps</td><td>184.2 ps</td><td>234.6 ps</td></tr>
+    </tbody>
+  </table></div>
+  <figcaption><b>표 3-d. StrongARM 해결 시간</b>(sky130 tt · V_DD=1.8 V · 공통 1.2 V · C_L=2 fF).<br>맞춤: <code>t_해결 = 42.3 ps + τ·ln(1/ΔV)</code>, <b>τ = 16.59 ps</b>(기본 쓸기 2,000배) · 16.68 ps(40,000배). 파형에서 <code>ln|v_od|</code> 의 기울기로 <b>따로</b> 재면 16.85~17.17 ps 다 — <b>세 길이 3% 안에서 만난다.</b> 지수 구간을 셋으로 쪼개도 τ 가 16.85 · 16.84 · 16.90 ps 로 안 움직인다 — 재생이 정말 한 지수다.</figcaption>
+</figure>
+
+<p><b>그러면 닫힌 꼴은 틀렸나? 아니다 — 넣은 값이 틀렸다.</b> 교차결합단을 반전점(0.849 V)에 세워 재니 <code>g_m = 4.699 mS</code>(NMOS 2.754 + PMOS 1.945)이고, 고리를 끊고 <b>다음단 게이트까지 단</b> 노드의 용량이 <b>80.2 fF</b> 였다 — 밖에 단 짐 2 fF 가 아니라 <b>교차결합쌍의 게이트 용량</b>이 대부분이다.</p>
+
+<div class="eq"><code>τ = C/g_m = 80.2 fF / 4.699 mS = <b>17.07 ps</b>　vs　실측 16.85 ps　　— 1.3% 차</code></div>
+
+<p>즉 <code>τ = C_L/g_m</code> 은 맞고, <code>C_L</code> 을 <b>밖에 단 짐</b>으로 읽은 것이 잘못이다. V_lim·CTLE 때와 같은 부류다 — <b>꼴이 아니라 그 꼴이 어느 양을 가리키는지를 안 적었다.</b></p>
+
+<div class="limits">
+  <h3 style="color:var(--none)">§4 의 결론은 살아남되 <b>조건이 붙는다</b> — 3-way 이상 인터리빙</h3>
+  <p style="margin-bottom:.6rem">τ=16.85 ps 면 한 UI(50 ps)는 <b>2.97 τ</b> 뿐이다. 그러니 감도는</p>
+  <div class="eq"><code>V_DD·e^(−UI/τ) = 1.8·e^−2.97 = <b>88 mV</b>　　— ADC LSB(2,617 µV)의 34배</code></div>
+  <p style="margin-bottom:.6rem">이지, §4 가 낸 41 µV 가 아니다. LSB 아래로 가려면 <code>ln(1.8/2.617e−3) = 6.53 τ</code> 가 들고, 위 쓸기에서 직접 읽으면 ΔV=2.6 mV 를 푸는 데 <b>141 ps = 2.8 UI</b> 다.</p>
+  <p style="margin-bottom:0"><b>"비교기 감도가 아니라 양자화가 바닥을 정한다" 는 그대로 서는데, 그것은 3-way 이상으로 인터리빙했을 때다.</b> 한 래치를 20 GBd 로 그냥 돌리면 비교기가 바닥을 정한다. 130 nm 공정이라 그렇고 — 실제 112G/224G 수신기의 5~7 nm 에서는 τ 가 한 자릿수 작다. <b>이것은 이 공정에 대한 진술이지 제품에 대한 진술이 아니다</b>(§1 의 범위 규율과 같다). 그리고 실제 ADC 기반 SerDes 는 <b>원래</b> 수십 way 로 인터리빙한다 — 조건은 실무에서 이미 충족돼 있다.</p>
 </div>
 
 <h2 class="sec"><span class="n">5</span>CDR — 남는 것은 <b>루프 대역 위</b>다</h2>
@@ -521,7 +589,7 @@ svg .blkt{font:12px var(--sans);fill:var(--ink);stroke:none}
       <tr><td><code>슬루 S</code></td><td>TX CML 출력 RC</td><td><code>S = T_s/(R_eff·C_L)</code></td><td class="bad">논문 값이 2.5~8.3 UI — 닿을 수 없다</td></tr>
       <tr><td><code>CTLE 피킹</code></td><td>소스 축퇴쌍</td><td><code>1 + g_m R_S/2</code></td><td class="warn">매핑 3.73 dB / <b>자유 맞춤 1.56 dB</b> — 꼴이 아니라 매핑</td></tr>
       <tr><td><code>지터 rjUI</code></td><td>뱅뱅 CDR 루프</td><td><code>∫|1−H|²S_φ</code></td><td class="hl">0.05 UI ≈ 루프 2 MHz</td></tr>
-      <tr><td><code>ADC 비트</code></td><td>StrongARM + 양자화</td><td>LSB vs 재생 감도 vs <b>오프셋</b></td><td class="hl">기여자 <b>둘</b>: LSB 2,617 µV · 오프셋 σ 1,400~2,000 µV (재생 41 µV)</td></tr>
+      <tr><td><code>ADC 비트</code></td><td>StrongARM + 양자화</td><td>LSB vs 재생 감도 vs <b>오프셋</b></td><td class="hl">기여자 <b>셋</b>: 래치 오프셋 σ <b>4,059 µV</b> · LSB 2,617 µV · 재생 감도(8-way) ~0 — <b>인터리빙 없으면 재생이 96 mV 로 맨 위</b></td></tr>
       <tr><td>DFE 파이프라인 불가</td><td>1 UI 되먹임 고리</td><td><code>Σt ≤ 1 UI</code></td><td class="hl">32.3 GBd 한계, 위는 unrolling</td></tr>
     </tbody>
   </table></div>
