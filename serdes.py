@@ -33,6 +33,8 @@ import math
 
 import numpy as np
 
+import pam
+
 PASS, FAIL, 못잼 = "PASS", "FAIL", "못잼"
 
 
@@ -130,11 +132,19 @@ def _최소위상(크기: np.ndarray, N: int) -> np.ndarray:
 
 def 채널물리(sps: int = 8, 길이심볼: int = 64, 도체dB: float = 12.0,
          유전dB: float = 8.0, 스터브UI: float = 0.0, 스터브세기: float = 1.0,
+         평탄dB: float = 0.0, 제곱dB: float = 0.0,
          반사=()) -> np.ndarray:
-    """**두 손실 기구를 따로 세우고 비아 스터브 공진을 붙인** 채널.
+    """**IEEE 802.3 의 삽입손실 맞춤 꼴**로 세우고 비아 스터브 공진을 붙인 채널.
 
-        |H(f)| = 10^( -( 도체dB·sqrt(f/f_nyq) + 유전dB·(f/f_nyq) ) / 20 )
+        IL(f) [dB] = 평탄 + 도체·sqrt(f/f_nyq) + 유전·(f/f_nyq) + 제곱·(f/f_nyq)^2
         S21_stub(f) = 2 / ( 2 + j·세기·tan(2π f τ) ),  τ = 스터브UI·sps 표본
+
+    네 항은 IEEE 802.3 채널 규격이 실측 삽입손실을 맞출 때 쓰는 것과 **같은 꼴**이다
+    (`a0 + a1·sqrt(f) + a2·f + a4·f^2`): 평탄항은 커넥터·본딩의 주파수 무관 손실,
+    sqrt(f) 는 표피효과, f 는 유전 손실, f^2 는 거칠기·복사다. 규격이 채널을 적을
+    때 쓰는 좌표가 이것이므로, 여기에 맞추면 **같은 좌표로 말할 수 있다.**
+
+    `평탄dB` 와 `제곱dB` 의 기본은 0 이라 **예전 부름은 값이 한 비트도 안 바뀐다.**
 
     ## 왜 sqrt(f) 하나로는 모자라나
 
@@ -161,7 +171,8 @@ def 채널물리(sps: int = 8, 길이심볼: int = 64, 도체dB: float = 12.0,
     f = np.fft.rfftfreq(N, 1.0)
     f_nyq = 0.5 / sps
     비 = np.maximum(f, 0.0) / f_nyq
-    크기 = 10.0 ** (-(도체dB * np.sqrt(비) + 유전dB * 비) / 20.0)
+    크기 = 10.0 ** (-(float(평탄dB) + 도체dB * np.sqrt(비) + 유전dB * 비
+                     + float(제곱dB) * 비 ** 2) / 20.0)
     if 스터브UI and 스터브UI > 0:
         타우 = float(스터브UI) * int(sps)
         with np.errstate(divide="ignore", invalid="ignore"):
@@ -677,8 +688,20 @@ def 링크(비트수: int = 20000, 손실dB: float = 20.0, SNRdB: float = 20.0,
        ROM차수: int = 0, 표본표창: int = 0, 표본표비트: int = 4,
        표본표시프트: bool = True, 표본표특징비트: int = 0,
        표본표특징시프트: int = 5,
+       레벨: int = 2, 심볼수: int = 0,
        학습비율: float = 0.3, 씨: int = 0) -> dict:
     """PRBS -> 채널 -> 잡음 -> CTLE -> FFE -> DFE -> 슬라이서. {BER, 오류수, ...}.
+
+    ## `레벨` -- NRZ(2) 인가 PAM4(4) 인가
+
+    112G/224G 는 PAM4 다. 그리고 이 저장소가 쓰는 손상(`압축하기`)은 두 변조에
+    **전혀 다르게** 작용한다 -- tanh 는 단조증가라 NRZ 의 **부호를 안 바꾸는데**,
+    PAM4 에서는 바깥 레벨을 안쪽으로 끌어당겨 **바깥 눈을 먼저 닫는다.** 그러니
+    "메모리 없는 역변환이 값어치가 있나" 는 PAM4 에서 물어야 뜻이 있다.
+
+    `심볼수` 를 주면 그만큼의 **심볼**을 보낸다. 안 주면 `비트수` 를 심볼 수로 쓴다
+    (NRZ 에서 둘이 같아서 예전 부름이 그대로 돈다). 결과의 `잰비트` 는 **비트**이고
+    `잰심볼` 이 심볼이다 -- PAM4 면 `잰비트 = 2 x 잰심볼` 이다.
 
     **학습 구간과 측정 구간을 가른다.** 탭은 앞 `학습비율` 만큼으로 맞추고 BER 은
     나머지에서만 센다. 같은 비트로 맞추고 재면 그 BER 은 등화기 성능이 아니라 암기다.
@@ -688,7 +711,19 @@ def 링크(비트수: int = 20000, 손실dB: float = 20.0, SNRdB: float = 20.0,
     (동전 던지기) -- 등화기가 나쁜 것처럼 보였지만 실은 정답을 엉뚱한 데 대고 있었다.
     """
     rng = np.random.default_rng(씨)
-    b = rng.integers(0, 2, 비트수) * 2 - 1        # ±1 NRZ
+    M = int(레벨)
+    if M not in (2, 4, 8):
+        return {"BER": float("nan"), "오류수": -1, "잰비트": 0, "판정": 못잼,
+                "왜": f"레벨 {M} 은 안 된다 (2·4·8)"}
+    if M > 2 and ((ROM깊이 and int(ROM깊이) > 0) or (ROM차수 and int(ROM차수) > 0)):
+        # **안 되는 것을 조용히 돌리지 않는다.** 판정색인 ROM 은 ±1 판정으로 주소를
+        # 짓는다 -- PAM4 면 상태가 2^깊이 가 아니라 M^깊이 이고 아직 안 고쳤다.
+        return {"BER": float("nan"), "오류수": -1, "잰비트": 0, "판정": 못잼,
+                "왜": "PAM4 에서 판정ROM/볼테라는 아직 안 된다"}
+    N심볼 = int(심볼수) if 심볼수 else int(비트수)
+    # M=2 면 `rng.integers(0,2,N)*2-1` 과 **뽑는 난수도 값도 같다**(pam 이 그렇게 짜여
+    # 있다) -- 그래서 예전 결과가 비트 하나 안 바뀐다. `tests/test_pam4.py` 가 붙든다.
+    b, _, _ = pam.심볼만들기(rng, N심볼, M)
     # **채널.** `물리채널` 을 주면 도체·유전 손실을 나누고 비아 스터브를 붙인 쪽을
     # 쓴다(`채널물리`). 안 주면 sqrt(f) 한 기구짜리 기본 채널이다.
     if 채널지음:
@@ -772,8 +807,14 @@ def 링크(비트수: int = 20000, 손실dB: float = 20.0, SNRdB: float = 20.0,
     if 역압축 and 압축:
         표본 = 역압축하기(표본, 압축, _압축a)
 
-    # AGC: 메인 커서 이득을 **학습 구간의 상관으로 잰다**(수신기가 아는 것만 쓴다)
-    g = float(np.mean(표본[학습] * 맞춘것[학습])) or 1.0
+    # AGC: 메인 커서 이득을 **학습 구간의 상관으로 잰다**(수신기가 아는 것만 쓴다).
+    # **E[b^2] 로 나눈다.** 상관 E[x·b] 는 커서 g 에 E[b^2] 이 곱해진 값이다. NRZ 는
+    # b=±1 이라 E[b^2]=1 이어서 안 나눠도 같았는데, PAM4 는 레벨이 (±1,±1/3) 이라
+    # E[b^2]=5/9 다. 안 나누면 이득을 9/5 배로 잘못 잡아 **레벨이 어긋나고**, 그러면
+    # SNR 을 55 dB 로 올려도 BER 이 5e-2 에서 안 내려간다(실측). 잡음 탓이 아니라
+    # 눈금 탓인 바닥이라, 바닥을 손상 탓으로 읽을 뻔했다.
+    힘b = float(np.mean(맞춘것[학습] ** 2)) or 1.0
+    g = (float(np.mean(표본[학습] * 맞춘것[학습])) / 힘b) or 1.0
     표본 = 표본 / g
 
     적응 = {"왜": "FFE 를 안 썼다", "발산": False, "MSE": float("nan"), "탭": None}
@@ -800,7 +841,7 @@ def 링크(비트수: int = 20000, 손실dB: float = 20.0, SNRdB: float = 20.0,
         적응["쓴탭"] = list(map(float, w))
         나온것 = np.convolve(표본, w, mode="full")
         표본 = 나온것[지연:지연 + len(맞춘것)]
-        g2 = float(np.mean(표본[학습] * 맞춘것[학습])) or 1.0
+        g2 = (float(np.mean(표본[학습] * 맞춘것[학습])) / 힘b) or 1.0
         표본 = 표본 / g2
 
     # DFE 탭을 **지금 이 파형의 후행 커서로 잰다** -- 채널 h 의 커서가 아니다.
@@ -818,7 +859,8 @@ def 링크(비트수: int = 20000, 손실dB: float = 20.0, SNRdB: float = 20.0,
             앞 = 표본[학습][m:]
             뒤 = 맞춘것[학습][:-m]
             n = min(len(앞), len(뒤))
-            탭.append(float(np.mean(앞[:n] * 뒤[:n])) if n else 0.0)
+            # 여기도 E[b^2] 로 나눈다 -- 상관이지 커서가 아니다(위 AGC 와 같은 까닭)
+            탭.append(float(np.mean(앞[:n] * 뒤[:n]) / 힘b) if n else 0.0)
         dfe탭값 = np.array(탭)
         if 탭비트:
             dfe탭값 = 양자화(dfe탭값, 탭비트)
@@ -835,7 +877,7 @@ def 링크(비트수: int = 20000, 손실dB: float = 20.0, SNRdB: float = 20.0,
                                    시프트=bool(표본표시프트),
                                    특징비트=int(표본표특징비트),
                                    특징시프트=int(표본표특징시프트))
-        판정 = np.where(표[주소] >= 0, 1.0, -1.0)
+        판정 = pam.슬라이스(표[주소], M)
         파라미터수 = len(표)
     elif ROM깊이 and int(ROM깊이) > 0:
         if ROM차수 and int(ROM차수) > 0:
@@ -848,13 +890,21 @@ def 링크(비트수: int = 20000, 손실dB: float = 20.0, SNRdB: float = 20.0,
             파라미터수 = len(ROM표) - 되돌린칸
         판정 = _슬라이스ROM(표본, ROM표, int(ROM깊이))
     else:
-        판정 = _슬라이스(표본, dfe탭값, 맞춘것 if 이상적판정 else None, 자리들)
+        판정 = _슬라이스(표본, dfe탭값, 맞춘것 if 이상적판정 else None,
+                     자리들, M)
 
     잰것 = slice(학습끝, len(판정))
-    오류 = int(np.sum(판정[잰것] != 맞춘것[잰것]))
-    잰비트 = int(잰것.stop - 잰것.start)
-    return {"BER": (오류 / 잰비트) if 잰비트 else float("nan"),
+    # **심볼오류와 비트오류를 따로 센다.** RS FEC 는 심볼로 세고, 규격 판정은
+    # 비트로 한다. 그리고 **비트오류 자리**를 남긴다 -- `fec.판정()` 이 그것을
+    # 10비트 심볼로 잘라 코드워드당 분포를 내야 뭉침(burst)을 볼 수 있다.
+    센것 = pam.오류세기(판정[잰것], 맞춘것[잰것], M)
+    오류 = int(센것["비트오류"])
+    잰비트 = int(센것["비트수"])
+    return {"BER": 센것["BER"],
             "오류수": 오류, "잰비트": 잰비트, "표본": 표본, "비트": 맞춘것,
+            "M": M, "잰심볼": 센것["심볼수"], "심볼오류": 센것["심볼오류"],
+            "SER": 센것["SER"], "이웃비율": 센것["이웃비율"],
+            "비트오류자리": 센것["비트오류자리"],
             "채널h": h, "선형파형": y선형, "손상파형": 손상파형,
             "압축a": float(_압축a),
             "선형표본": (None if 선형뽑은것 is None
@@ -1163,21 +1213,28 @@ def _슬라이스ROM(표본: np.ndarray, 표: np.ndarray, 깊이: int) -> np.nda
     return 난것
 
 
-def _슬라이스(표본: np.ndarray, dfe탭, 정답, 자리들=None) -> np.ndarray:
-    """문턱 0 슬라이서. DFE 가 있으면 **한 심볼씩 순차로** 돈다(되먹임이라 벡터화 못 한다).
+def _슬라이스(표본: np.ndarray, dfe탭, 정답, 자리들=None, M: int = 2) -> np.ndarray:
+    """**M-PAM 슬라이서.** DFE 가 있으면 한 심볼씩 순차로 돈다(되먹임이라 벡터화 못 한다).
 
     `자리들` 은 각 탭이 몇 심볼 뒤를 보는가다. 이어진 1..N 이 아니어도 된다 --
     반사가 만든 먼 커서만 골라 잡는 floating tap 을 위해서다.
+
+    **M=2 면 예전의 부호 슬라이서와 값이 같다**(`pam.슬라이스` 가 그렇게 짜여 있다).
+    PAM4 면 문턱이 셋이고, DFE 가 되먹이는 것도 ±1 이 아니라 네 레벨 중 하나다 --
+    그래서 오류 하나가 되먹임에 싣는 크기도 NRZ 와 다르다(이웃이면 2/3 만큼).
     """
+    M = int(M)
     if dfe탭 is None or len(dfe탭) == 0:
-        return np.where(표본 >= 0, 1, -1)
+        return pam.슬라이스(표본, M)
+    레 = pam.레벨들(M)
+    문턱 = (레[:-1] + 레[1:]) / 2.0
     자리들 = list(자리들) if 자리들 else list(range(1, len(dfe탭) + 1))
     깊이 = max(자리들)
-    난것 = np.zeros(len(표본), dtype=int)
+    난것 = np.zeros(len(표본), dtype=float)
     지난판정 = np.zeros(깊이)          # 지난판정[0] 이 한 심볼 전
     for i in range(len(표본)):
         v = 표본[i] - float(sum(c * 지난판정[m - 1] for c, m in zip(dfe탭, 자리들)))
-        난것[i] = 1 if v >= 0 else -1
+        난것[i] = 레[int(np.searchsorted(문턱, v))]
         # **되먹이는 것은 판정이다.** `정답` 을 먹이면 오류 번짐이 사라져 BER 이
         # 실제보다 좋게 나온다 -- 하드웨어는 정답을 모른다.
         먹일것 = float(정답[i]) if 정답 is not None and i < len(정답) else float(난것[i])
@@ -1731,3 +1788,21 @@ def 말로(r: dict) -> str:
         줄.append("**ideal-decision DFE — this hides error propagation; hardware "
                   "does not know the answer**")
     return "\n".join(줄)
+
+
+def IL핏(닢스트dB: float = 30.0, 배분=(0.10, 0.55, 0.30, 0.05)) -> dict:
+    """**Nyquist 삽입손실 하나로 802.3 맞춤 꼴의 네 계수를 정한다.**
+
+    규격은 채널을 "Nyquist 에서 몇 dB" 로 말한다(예: 802.3ck C2C 는 수십 dB). 그런데
+    모형은 **꼴**이 필요하다. `배분` 은 그 총손실을 (평탄, sqrt(f), f, f^2) 에 어떻게
+    나눌지다 -- 전부 `f = f_nyq` 에서 재므로 네 몫을 더하면 `닢스트dB` 가 된다.
+
+    기본 배분은 긴 백플레인에서 흔한 꼴이다(유전 손실이 표피효과 다음으로 크고 거칠기
+    항이 조금). **이것은 실측 맞춤이 아니라 그럴듯한 배분**이다 -- 실측 파일을 얻으면
+    `채널측정`/`채널S21` 로 바로 갈아끼운다.
+    """
+    b = np.asarray(배분, dtype=float)
+    b = b / b.sum() * float(닢스트dB)
+    return {"평탄dB": float(b[0]), "도체dB": float(b[1]),
+            "유전dB": float(b[2]), "제곱dB": float(b[3]),
+            "닢스트dB": float(닢스트dB)}

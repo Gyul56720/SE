@@ -58,7 +58,40 @@ def _필요한가(n: str) -> bool:
 
     129 MB 는 캐시에 두는 값으로 충분히 싸다. 커밋하지 않으므로 저장소는 안 는다.
     """
-    return n.startswith(_안쪽.replace(os.sep, "/") + "/")
+    if n.startswith(_안쪽.replace(os.sep, "/") + "/"):
+        return True
+    return _표준셀필요한가(n)
+
+
+# **표준셀도 같은 휠 안에 있다** -- `sky130_fd_sc_hd` 7,582 파일.
+# 그중 두 가지만 푼다(합쳐 2.8 MB):
+#   .lef    셀마다 `SIZE w BY h` -- **실제 면적**이 여기 있다
+#   .spice  셀마다 트랜지스터 넷리스트 -- **소자 수**를 셀 수 있다
+# 위의 `sky130_fd_pr` 은 통째로 풀어야 했다(코너 파일이 안 쓰는 셀을 include 한다).
+# 여기는 다르다 -- 이 파일들은 서로를 참조하지 않고 **내 파서가 직접 읽는 자료**라
+# 골라 풀어도 아무것도 안 깨진다. 그래서 이유가 다르면 판단도 다르다.
+_표준셀 = "sky130/src/sky130_fd_sc_hd"
+
+
+def _표준셀필요한가(n: str) -> bool:
+    if not n.startswith(_표준셀 + "/"):
+        return False
+    if n.endswith(".spice"):
+        return True
+    return n.endswith(".lef") and ".magic." not in n
+
+
+def 표준셀자리() -> "str | None":
+    """`sky130_fd_sc_hd` 셀 디렉터리. 없으면 None."""
+    직접 = os.environ.get("SKY130_SC")
+    if 직접 and os.path.isdir(직접):
+        return 직접
+    p = os.path.join(집, _표준셀.replace("/", os.sep), "cells")
+    return p if os.path.isdir(p) else None
+
+
+def 표준셀있나() -> bool:
+    return 표준셀자리() is not None
 
 
 def 자리() -> "str | None":
@@ -100,7 +133,7 @@ def 받기(초: int = 900) -> dict:
         z.extractall(집, members=골라)
     shutil.rmtree(받은곳, ignore_errors=True)    # 휠 38 MB 는 안 남긴다
     p = 자리()
-    return {"됐나": bool(p), "경로": p,
+    return {"됐나": bool(p), "경로": p, "표준셀": 표준셀자리(),
             "왜": "" if p else f"풀었는데 라이브러리가 없다.\n{손으로}"}
 
 
