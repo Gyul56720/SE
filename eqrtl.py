@@ -721,3 +721,40 @@ def ffe_tbl(ffe탭: int = 11, 창: int = 2, 색인비트: int = 4, 시프트: in
                          NT=1 << TA, TA=TA, AW=주소폭(L),
                          PIPEDECL=PIPEDECL, PIPERST=PIPERST, PIPEUPD=PIPEUPD,
                          QNOW=QNOW)
+
+
+def invrom(비트: int = 7, 나갈비트: int = 7, 표=None) -> str:
+    """**메모리 없는 역변환** -- ADC 코드 하나를 다른 코드로 바꾸는 표 하나.
+
+    `serdes.역압축하기` 가 하는 일이 하드웨어로는 이것뿐이다: `2^비트` 칸짜리 ROM
+    하나에 레지스터 하나. **곱셈기도 덧셈기도 없다.** 이 저장소가 규격 문턱을 넘긴
+    구조가 바로 이것이므로(`comply`), 그 값을 매기는 자리가 필요하다.
+
+    `표` 를 안 주면 항등(자기 자신)을 넣는다 -- 면적은 내용이 아니라 **칸 수와
+    폭**이 정하므로 비용을 재는 데는 그것으로 충분하다. 진짜 계수를 넣으려면
+    `serdes.역압축하기` 가 낸 값을 양자화해 넘긴다.
+    """
+    비트, 나갈비트 = int(비트), int(나갈비트)
+    N = 1 << 비트
+    if 표 is None:
+        표 = list(range(N))
+    표 = [int(v) & ((1 << 나갈비트) - 1) for v in list(표)[:N]]
+    표 += [0] * (N - len(표))
+    줄 = "\n".join(f"      {비트}'d{i}: y <= {나갈비트}'d{v};" for i, v in enumerate(표))
+    return f"""// 메모리 없는 역변환: {N}칸 x {나갈비트}비트 ROM. 곱셈기 0, 덧셈기 0.
+module invrom (
+    input  wire clk,
+    input  wire rst_n,
+    input  wire signed [{비트-1}:0] x,
+    output reg  signed [{나갈비트-1}:0] y
+);
+  wire [{비트-1}:0] a = x[{비트-1}:0];
+  always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) y <= {나갈비트}'d0;
+    else case (a)
+{줄}
+      default: y <= {나갈비트}'d0;
+    endcase
+  end
+endmodule
+"""
