@@ -1,0 +1,600 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<title>Forgetting-Rate Bounded Recurrence Elimination</title>
+<style>
+@page { size: letter; margin: 0.75in 0.625in 1in 0.625in; }
+html { font-size: 10pt; }
+body { font-family: "Liberation Serif","Times New Roman",Times,serif;
+       font-size: 10pt; line-height: 1.12; margin: 0; text-align: justify;
+       hyphens: auto; -webkit-hyphens: auto; color:#000; }
+.onecol { column-count: 1; margin-bottom: 10pt; }
+.body2 { column-count: 2; column-gap: 0.25in; column-fill: auto; }
+
+h1.title { font-size: 20pt; font-weight: normal; text-align:center;
+           margin: 0 0 12pt; line-height:1.1; }
+.authors { text-align:center; font-size: 11pt; margin-bottom: 2pt; }
+.affil { text-align:center; font-size: 9pt; font-style: italic; margin-bottom: 14pt; }
+
+.abs { font-size: 9pt; }
+.abs b { font-style: italic; }
+.kw { font-size: 9pt; margin-top: 6pt; }
+
+h2 { font-size: 10pt; font-weight: normal; font-variant: small-caps;
+     text-align: center; margin: 12pt 0 4pt; letter-spacing:.02em; break-after: avoid; }
+h3 { font-size: 10pt; font-weight: normal; font-style: italic;
+     margin: 8pt 0 3pt; break-after: avoid; }
+h4 { font-size: 10pt; font-weight: normal; font-style: italic;
+     margin: 6pt 0 2pt; break-after: avoid; display:inline; }
+p { margin: 0; text-indent: 1.2em; }
+p.first, h2 + p, h3 + p, .noind { text-indent: 0; }
+
+i.v { font-style: italic; }
+.eq { display:block; text-align:center; margin: 6pt 0; font-style: normal;
+      break-inside: avoid; position: relative; }
+.eq .n { position:absolute; right:0; font-style:normal; }
+.eq .m { font-family:"Liberation Serif",Times,serif; }
+.frac { display:inline-block; vertical-align:-0.55em; text-align:center; margin:0 .18em; }
+.frac .num { display:block; border-bottom:.6pt solid #000; padding:0 .25em; }
+.frac .den { display:block; padding:0 .25em; }
+.rad { border-top:.6pt solid #000; padding:0 .12em; }
+
+table { border-collapse: collapse; font-size: 8pt; margin: 0 auto;
+        font-variant-numeric: tabular-nums; }
+caption { caption-side: top; font-size: 8pt; text-align:center;
+          font-variant: small-caps; margin-bottom: 3pt; }
+caption b { font-variant: normal; font-weight: normal; display:block;
+            font-size:8pt; text-align:justify; margin-top:2pt; font-variant:normal; }
+th { font-weight: normal; font-style: italic; border-top:.8pt solid #000;
+     border-bottom:.5pt solid #000; padding: 2pt 4pt; text-align:center; }
+td { padding: 1.6pt 4pt; text-align:center; }
+td.l, th.l { text-align:left; }
+tbody tr:last-child td { border-bottom:.8pt solid #000; }
+tr.rt td { border-top:.5pt solid #000; }
+figure { margin: 8pt 0; break-inside: avoid; }
+figure.wide { column-span: all; }
+figcaption { font-size: 8pt; text-align: justify; margin-top: 4pt; }
+figcaption b { font-variant: small-caps; font-weight: normal; }
+
+pre { font-family:"Liberation Mono","DejaVu Sans Mono",monospace; font-size: 7.0pt;
+      line-height: 1.22; margin: 5pt 0; white-space: pre; break-inside: avoid;
+      border-top:.8pt solid #000; border-bottom:.8pt solid #000; padding: 3pt 0; }
+pre.hdr::before { content: attr(data-t); display:block; font-family:"Liberation Serif",serif;
+      font-size:8pt; font-variant:small-caps; text-align:center; margin-bottom:3pt; }
+code { font-family:"Liberation Mono",monospace; font-size: 8.6pt; }
+.alg { border-top:.8pt solid #000; border-bottom:.8pt solid #000; font-size:8pt;
+       margin:6pt 0; padding:3pt 0; break-inside:avoid; line-height:1.3; }
+.alg .t { text-align:center; font-variant:small-caps; border-bottom:.5pt solid #000;
+          padding-bottom:2pt; margin-bottom:3pt; }
+.alg ol { margin:0; padding-left:1.6em; }
+.alg li { margin:0; }
+ul.tight { margin: 3pt 0; padding-left: 1.1em; }
+ul.tight li { margin-bottom: 2pt; }
+.ref { font-size: 8pt; }
+.ref ol { padding-left: 1.4em; margin: 0; }
+.ref li { margin-bottom: 2pt; text-indent:0; }
+.thm { font-style: italic; }
+.thm b { font-style: normal; font-variant: small-caps; }
+.conf { font-size:7.2pt; font-variant: small-caps; }
+.todo { font-size:7.2pt; font-style:italic; }
+.ref li { margin-bottom: 3pt; }
+.box { border-top:.8pt solid #000; border-bottom:.8pt solid #000; padding:3pt 0;
+       margin:6pt 0; font-size:9pt; break-inside:avoid; }
+.box .t { font-variant:small-caps; text-align:center; border-bottom:.5pt solid #000;
+          padding-bottom:2pt; margin-bottom:3pt; }
+</style></head><body>
+
+<div class="onecol">
+<h1 class="title">Forgetting-Rate&ndash;Bounded Elimination of Nonlinear<br>
+Recurrences in FEC-Protected Receivers:<br>
+An HLS Transformation Priced in Decibels</h1>
+<div class="authors">&nbsp;</div>
+<div class="affil">First draft &mdash; measured results and research plan.
+Sections&nbsp;IV&ndash;VI report measurements already taken; Section&nbsp;VII is the proposal for
+the work that follows.</div>
+
+<div class="abs"><b>Abstract&mdash;</b>High-speed receivers have migrated, generation by generation,
+from mixed-signal slicing to ADC-plus-DSP architectures: 25&nbsp;Gb/s per lane became 112, then 224,
+and OIF is now framing 448&nbsp;Gb/s per lane, while 5G and 6G fronthaul rides on the same electrical
+lanes. That migration moved the receiver's difficulty out of the analog front end and into a digital
+datapath whose design space&mdash;tap counts, word lengths, detector order, code choice&mdash;is far too
+large to explore in hand-written RTL. High-level synthesis (HLS) arrived as the vehicle for that
+exploration, and for feed-forward datapaths it delivers: a C description is scheduled, pipelined, and
+retimed to an initiation interval of one. <i>Receivers, however, are not feed-forward.</i> Their inner
+loops&mdash;decision feedback, add-compare-select, timing and gain recovery, decision-directed
+adaptation&mdash;are recurrences with a quantizer inside the loop, and the recurrence, not the arithmetic,
+fixes the achievable initiation interval. The classical remedy, look-ahead, is exact for linear
+recurrences but stops at the quantizer, because a slicer does not commute with the algebra that
+look-ahead performs. What remains is speculation: enumerate every value the in-loop nonlinearity can
+take and select afterwards, at a cost exponential in the depth unrolled. The field's current answers
+either shorten the recurrence (dynamic and speculative scheduling, recurrence-aware placement) or
+enumerate it exhaustively; none removes it. We propose to remove it, and we take the first step here.
+We observe that these recurrences <i>forget</i>, and we make that quantitative: the forgetting rate
+&rho;(<i>W</i>) is the probability that perturbing the loop state at time <i>n</i>&minus;<i>W</i> changes
+the output at time <i>n</i>. Measured on a decision-feedback loop, &rho; decays geometrically and&mdash;the
+result that motivates everything downstream&mdash;the window required to reach a fixed replacement error
+is <i>not a design constant</i>: it spans <i>W</i>&nbsp;=&nbsp;1 to 11 for &epsilon;&nbsp;=&nbsp;10<sup>&minus;3</sup>
+across operating points of a single equalizer. Current practice fixes unroll depth and traceback depth
+as constants, so it is over-provisioned in area or under-provisioned in accuracy, and never both right.
+We further argue, and show, that such a transformation cannot be judged by the error metrics HLS
+approximation work uses. At a pre-FEC bit-error rate held exactly at the KP4 RS(544,514) threshold
+(2.2619&times;10<sup>&minus;4</sup>, derived here from the code parameters rather than quoted), post-FEC
+bit-error rate ranges from 1.7&times;10<sup>&minus;14</sup> to 2.262&times;10<sup>&minus;4</sup>&mdash;more than
+ten orders of magnitude, and at the upper end the code delivers <i>no coding gain at all</i>&mdash;depending
+only on how the errors cluster. Since a recurrence approximation errs by letting stale loop state through,
+its errors are clustered by construction; mean-squared error and pre-FEC bit-error rate therefore cannot
+rank two such designs. We propose instead to price the transformation in the receiver's own currency,
+the SNR required to reach the FEC threshold, against standard-cell area read from a real library.
+This draft reports the forgetting-rate measurements, the ranking-failure measurement, and the
+standard-cell costs already in hand; Section&nbsp;VII specifies the synthesis, HLS, and FPGA experiments
+that follow, together with the conditions under which the hypothesis is to be abandoned.</div>
+
+<div class="kw"><b>Index Terms&mdash;</b>High-level synthesis, initiation interval, loop-carried dependence,
+recurrence, decision-feedback equalization, Viterbi algorithm, forward error correction, Reed&ndash;Solomon,
+burst errors, standard-cell area, approximate computing.</div>
+</div>
+
+<div class="body2">
+
+<h2>I.&ensp;Introduction</h2>
+
+<p class="first">Two decades of per-lane rate scaling have changed what a receiver <i>is</i>. At
+25&nbsp;Gb/s a wireline receiver was a continuous-time equalizer, a slicer, and a short
+decision-feedback tail. At 112&nbsp;Gb/s it is an analog front end followed by a
+time-interleaved analog-to-digital converter and a digital signal processor; published
+receivers of that class devote roughly half their analog power to the converter alone and
+run it 64&nbsp;ways interleaved. At 224&nbsp;Gb/s the same architecture compensates 31 to
+50&nbsp;dB of insertion loss, and OIF's CEI-448G framework now frames the next generation,
+where the modulation itself&mdash;PAM4 at 212.5&nbsp;GBd against PAM6 at 170 or PAM8 at
+141.6&mdash;is still open [23]. Wireless fronthaul rides the same lanes: an O-RAN 7-2x split
+carries frequency-domain IQ over Ethernet, and the electrical interface underneath it is the
+same one.</p>
+
+<p>The consequence for design practice is that the hard part of a receiver is now a digital
+datapath with a very large parameter space. Tap counts, word lengths, the detector's memory
+order, the placement of floating taps, the interaction with the outer code&mdash;these interact,
+and exploring them in hand-written register-transfer level (RTL) code is prohibitively slow.
+High-level synthesis is the answer the field reached for, and for the feed-forward parts of a
+receiver it is a good one: a C or C++ loop nest over a finite impulse response is scheduled,
+pipelined, and retimed to an initiation interval (II) of one, and the designer explores the
+space by editing constants.</p>
+
+<h3>A.&ensp;Where it stops</h3>
+
+<p class="noind">A receiver is not feed-forward. Table&nbsp;I lists the recurrences that sit at
+its centre. Each has the same shape: a state updated from its own past, with a
+<i>quantizer</i>&mdash;a slicer, a sign, a minimum, a saturation&mdash;inside the loop.</p>
+
+<table style="margin-top:4pt">
+<caption>Table I<br><b>Nonlinear recurrences at the centre of a receiver. Each is bound by the
+recurrence-constrained minimum initiation interval; none is reachable by algebraic look-ahead,
+because a quantizer sits inside the loop.</b></caption>
+<thead><tr><th class="l">Kernel</th><th class="l">Recurrence</th><th class="l">In-loop nonlinearity</th></tr></thead>
+<tbody>
+<tr><td class="l">DFE</td><td class="l"><i>d</i>[<i>n</i>]=<i>Q</i>(<i>x</i>[<i>n</i>]&minus;&Sigma;<i>c<sub>k</sub>d</i>[<i>n</i>&minus;<i>k</i>])</td><td class="l">slicer <i>Q</i></td></tr>
+<tr><td class="l">Viterbi ACS</td><td class="l"><i>M</i>[<i>n</i>]=min<sub><i>j</i></sub>(<i>M<sub>j</sub></i>[<i>n</i>&minus;1]+&lambda;)</td><td class="l">minimum</td></tr>
+<tr><td class="l">Bang-bang CDR</td><td class="l">&phi;[<i>n</i>]=&phi;[<i>n</i>&minus;1]+&mu;&thinsp;sgn(<i>e</i>)</td><td class="l">sign</td></tr>
+<tr><td class="l">AGC</td><td class="l"><i>g</i>[<i>n</i>]=<i>g</i>[<i>n</i>&minus;1]+&mu;&thinsp;sgn(|<i>y</i>|&minus;<i>r</i>)</td><td class="l">sign</td></tr>
+<tr><td class="l">Layered min-sum</td><td class="l">message update over rows</td><td class="l">min, sign</td></tr>
+<tr><td class="l">DD-LMS</td><td class="l"><b>w</b>[<i>n</i>]=<b>w</b>[<i>n</i>&minus;1]+&mu;<i>e</i><b>x</b></td><td class="l">decision device</td></tr>
+</tbody></table>
+
+<p>For a loop whose recurrence path spans <i>d</i> pipeline stages, no new iteration may be
+initiated until <i>d</i> cycles have elapsed; the recurrence-constrained minimum initiation
+interval satisfies RecMII&nbsp;&ge;&nbsp;<i>d</i> [9]. Because the loop must close within one
+symbol period, this is not an abstraction: in the analog instance of the same constraint we
+measured a StrongARM latch's regeneration time constant at 16.85&nbsp;ps in a 130&nbsp;nm
+process, against a closed-form <i>C<sub>L</sub></i>/<i>g<sub>m</sub></i> of 17.07&nbsp;ps
+(1.3&nbsp;% agreement), and the first decision-feedback tap must resolve, level-shift, and
+return to the summing node inside a single unit interval. The digital instance is the same
+statement in a different unit: II, not <i>f</i><sub>T</sub>.</p>
+
+<h3>B.&ensp;Why the classical remedy stops too</h3>
+
+<p class="noind">For a <i>linear</i> recurrence, look-ahead removes the bottleneck exactly.
+Substituting the recurrence into itself once turns <i>y</i>[<i>n</i>]=<i>ay</i>[<i>n</i>&minus;1]+<i>x</i>[<i>n</i>]
+into <i>y</i>[<i>n</i>]=<i>a</i><sup>2</sup><i>y</i>[<i>n</i>&minus;2]+<i>ax</i>[<i>n</i>&minus;1]+<i>x</i>[<i>n</i>],
+halving RecMII; scattered look-ahead and decomposition extend this to arbitrary pipelining
+depth at logarithmic overhead [1], [2].</p>
+
+<p>The substitution requires that the loop operator commute with itself under composition.
+A quantizer does not: <i>Q</i>(<i>a</i>&thinsp;<i>Q</i>(<i>u</i>)+<i>v</i>) cannot be rewritten as a
+function of <i>u</i> and <i>v</i> through the same algebra. Every entry in Table&nbsp;I is
+therefore out of look-ahead's reach, and what remains is <i>speculation</i>: precompute the
+datapath for each value the in-loop nonlinearity may take and select the correct branch once
+the previous decision resolves. This is exactly the loop-unrolled decision-feedback equalizer
+[7] and the <i>M</i>-step add-compare-select of the parallel Viterbi algorithm [3]. It is exact,
+and its cost is |<i>A</i>|<sup><i>d</i></sup> copies of the speculated datapath for alphabet
+<i>A</i> unrolled <i>d</i> steps&mdash;exponential.</p>
+
+<h3>C.&ensp;What we propose, and what this draft establishes</h3>
+
+<p class="noind">The recurrences of Table&nbsp;I share a property that neither remedy uses:
+they <i>forget</i>. An error injected into the loop state does not persist; its influence on the
+output decays. Viterbi implementations already exploit one instance of this&mdash;survivor paths
+merge, which is why a traceback depth of roughly five constraint lengths suffices&mdash;but as a
+rule of thumb attached to one algorithm, not as a quantity that is measured and then used to
+size a transformation.</p>
+
+<p>We make it a measured quantity and propose to build a transformation on it:</p>
+
+<div class="box"><div class="t">Hypothesis</div>
+<p class="noind"><b>H1 (bound).</b> For a recurrence whose in-loop nonlinearity has a finite output
+alphabet there exists a computable forgetting rate &rho;(<i>W</i>) such that replacing the loop by a
+feed-forward map over a window of <i>W</i> loop inputs incurs a per-sample disagreement probability
+bounded by &rho;(<i>W</i>).</p>
+<p><b>H2 (crossover).</b> The eliminated form costs 2<sup><i>BW</i></sup> table entries against
+|<i>A</i>|<sup><i>d</i></sup> speculated datapaths; which wins is predictable from &rho; alone, before
+synthesis.</p>
+<p><b>H3 (relevance).</b> Current HLS tools report RecMII&nbsp;&gt;&nbsp;1 for every kernel in
+Table&nbsp;I and cannot perform this transformation; applied at source level it yields II&nbsp;=&nbsp;1.</p>
+<p><b>H4 (currency).</b> The replacement error must be priced as required SNR at the FEC threshold,
+not as mean-squared error, because recurrence approximations produce clustered errors and the
+outer code is orders of magnitude more sensitive to clustering than to rate.</p>
+</div>
+
+<p>This first draft establishes the measurements that H1, H2 and H4 rest on&mdash;Sections&nbsp;IV,
+V and VI&mdash;and specifies in Section&nbsp;VII the synthesis, HLS and FPGA experiments that test
+H3 and complete the others, including the conditions under which we abandon the hypothesis.</p>
+
+<h2>II.&ensp;Related Work</h2>
+
+<h3>A.&ensp;Recurrence-bound initiation interval in HLS</h3>
+<p class="noind">The HLS literature attacks RecMII by scheduling and by architecture. Loop splitting
+separates iterations whose dependences differ so that the common case pipelines [11]; polyhedral
+analysis admits dynamic pipelining where the dependence distance is data-dependent [12]; dynamic
+scheduling, and its hybrids with static scheduling, resolve dependences at run time with load-store
+queues and rollback [10]; speculative loop pipelining models the paths explicitly [14]; dynamic loop
+fusion targets loops whose dependences cross [13]. On the architecture side, recurrence-aware
+placement collapses a multi-stage recurrence path into few registered cycles by co-locating its
+endpoints [9]. Every one of these <i>shortens or reorders</i> the recurrence. None removes it, and
+none is specific to the case where the loop operator is a quantizer with a small output alphabet.</p>
+
+<h3>B.&ensp;Look-ahead, unfolding, retiming</h3>
+<p class="noind">Parhi's transformations are the exact remedy for linear recurrences and are the
+standard reference for pipelining recursive filters [1], [2]. Their scope is the limitation we build
+on, not a shortcoming: the algebra is exact precisely because the loop is linear.</p>
+
+<h3>C.&ensp;Domain-specific speculation</h3>
+<p class="noind">The loop-unrolled (speculative) decision-feedback equalizer [7] and the parallel
+Viterbi algorithm that breaks the add-compare-select bottleneck by <i>M</i>-step look-ahead [3] are
+the two canonical instances of exhaustive enumeration in receivers. Reduced-state and
+delayed-decision variants [27], [28] cut the state count by merging states, which is a
+<i>structural</i> approximation; our forgetting rate is the <i>temporal</i> counterpart, and we
+expect the two to compose.</p>
+
+<h3>D.&ensp;Tables in place of arithmetic</h3>
+<p class="noind">Distributed arithmetic replaces multiplication by table lookup [4], but the stored
+function is linear in the address and the technique does not touch recurrences. Data-dependent
+noise-predictive detection in magnetic recording conditions a detector's branch metric on the data
+pattern [5], [6]; it is the nearest prior instance of "condition on a window instead of computing,"
+and it is realized as a bank of filters, one per pattern&mdash;affordable at disk rates, not at receiver
+parallelism.</p>
+
+<h3>E.&ensp;Error metrics for approximation</h3>
+<p class="noind">Approximate HLS judges a transformation by average error, maximum error, mean
+absolute percentage error, peak signal-to-noise ratio, or bit-error rate [18]. All five are
+first-order statistics of the error <i>magnitude</i> or <i>rate</i>. None is a statistic of the
+error's <i>temporal correlation</i>, which Section&nbsp;V shows is the dominant term once an outer
+code is present. That the application metric should be preferred to a numerical one is standard
+advice; that <i>the</i> application metric normally used&mdash;pre-FEC bit-error rate&mdash;is itself
+insufficient is the point we make.</p>
+
+<h2>III.&ensp;The Forgetting Rate</h2>
+
+<p class="first">Let a recurrence carry state <b>s</b>[<i>n</i>] updated as
+<b>s</b>[<i>n</i>]&nbsp;=&nbsp;<i>F</i>(<b>s</b>[<i>n</i>&minus;1],&thinsp;<i>u</i>[<i>n</i>]) with output
+<i>o</i>[<i>n</i>]&nbsp;=&nbsp;<i>G</i>(<b>s</b>[<i>n</i>&minus;1],&thinsp;<i>u</i>[<i>n</i>]), where <i>u</i> is
+the loop input and <i>G</i> ends in a quantizer with finite output alphabet <i>A</i>.</p>
+
+<p class="noind"><b>Definition 1 (forgetting rate).</b> Run two copies of the recurrence driven by the
+same input, whose states differ at time <i>n</i><sub>0</sub> by one admissible perturbation of the most
+recent decision. Then</p>
+
+<div class="eq"><i>&rho;</i>(<i>W</i>) = Pr{ <i>o</i>[<i>n</i><sub>0</sub>+<i>W</i>&minus;1] &ne;
+<i>o</i>&prime;[<i>n</i><sub>0</sub>+<i>W</i>&minus;1] },<span class="n">(1)</span></div>
+
+<p class="noind">the probability over data and noise that the perturbation is still visible at the output
+<i>W</i> steps later. Both copies feed back <i>their own</i> decisions after the perturbation, so
+&rho; measures the loop's own error propagation, not an oracle's.</p>
+
+<p><b>Why it bounds replacement error.</b> If the state at time <i>n</i>&minus;<i>W</i> is
+irrelevant to the output at <i>n</i> with probability 1&minus;&epsilon;, then the output at <i>n</i>
+is, with that probability, a function of the last <i>W</i> loop inputs alone. A feed-forward map over
+that window therefore reproduces the recurrence except on an event of probability at most
+&epsilon;&nbsp;=&nbsp;&rho;(<i>W</i>). We state this as the working bound, not as a theorem: a proof
+requires care about whether the perturbation used in (1) is the worst case over admissible states,
+and we treat that as open (Section&nbsp;VIII).</p>
+
+<p><b>The design rule that follows.</b> Fix a tolerable replacement error &epsilon; and read off</p>
+
+<div class="eq"><i>W</i>(&epsilon;) = min{ <i>W</i> : <i>&rho;</i>(<i>W</i>) &le; &epsilon; }.<span class="n">(2)</span></div>
+
+<p class="noind">The eliminated form then needs a table of 2<sup><i>BW</i></sup> entries for a
+<i>B</i>-bit quantized loop input, against |<i>A</i>|<sup><i>d</i></sup> speculated datapaths for the
+unrolled form. Both are known before synthesis.</p>
+
+<h2>IV.&ensp;Measured Forgetting Rates</h2>
+
+<p class="first">We measured (1) on a decision-feedback loop inside a full link model&mdash;channel,
+continuous-time equalizer, 11-tap feed-forward equalizer, 8-tap DFE&mdash;at three operating points,
+with 4000 independent perturbation trials each. Table&nbsp;II reports &rho;(<i>W</i>) and the window
+(2) at three tolerances.</p>
+
+<table style="margin-top:4pt">
+<caption>Table II<br><b>Measured forgetting rate of a decision-feedback loop. The window needed to
+reach a fixed replacement error is not a constant: it spans 1 to 11 across operating points of the
+same equalizer.</b></caption>
+<thead><tr><th class="l">Operating point</th><th>&rho;(1)</th><th>&rho;(4)</th><th>&rho;(8)</th>
+<th><i>W</i>(10<sup>&minus;1</sup>)</th><th><i>W</i>(10<sup>&minus;2</sup>)</th><th><i>W</i>(10<sup>&minus;3</sup>)</th></tr></thead>
+<tbody>
+<tr><td class="l">NRZ, 20&nbsp;dB, SNR&nbsp;26&nbsp;dB</td><td>0.0013</td><td>0.0005</td><td>0.0005</td><td>1</td><td>1</td><td>4</td></tr>
+<tr><td class="l">NRZ, 30&nbsp;dB, SNR&nbsp;30&nbsp;dB</td><td>0.1500</td><td>0.0320</td><td>0.0073</td><td>2</td><td>8</td><td>11</td></tr>
+<tr><td class="l">PAM4, 20&nbsp;dB, SNR&nbsp;38&nbsp;dB</td><td>0.0008</td><td>0.0003</td><td>0.0008</td><td>1</td><td>1</td><td>1</td></tr>
+</tbody></table>
+
+<p>Two things follow. First, &rho; decays, and on the one operating point where the loop is doing
+substantial work&mdash;30&nbsp;dB of loss, where the feed-forward equalizer cannot cope alone&mdash;it
+decays geometrically from 0.15 to 7.3&times;10<sup>&minus;3</sup> over eight symbols. Second, and this
+is the result the rest of the work rests on, <i>W</i>(10<sup>&minus;3</sup>) takes the values 4, 11 and 1
+on three operating points of one equalizer. A design that fixes its unroll depth, or its traceback
+depth, at a constant is therefore provisioning for one of these and mis-provisioning for the others.</p>
+
+<p>Read against the crossover of H2, this is also where the transformation's limits appear. With a
+4-bit quantized loop input, <i>W</i>&nbsp;=&nbsp;1 is trivial, <i>W</i>&nbsp;=&nbsp;4 gives a 16-bit
+address (65&thinsp;536 entries, buildable), and <i>W</i>&nbsp;=&nbsp;11 gives a 44-bit address, which is
+not. <i>The transformation is conditional, and &rho; is what decides.</i> We regard reporting that
+boundary as part of the contribution rather than a weakness; a transformation that claimed to apply
+everywhere would be the suspicious one.</p>
+
+<p><b>A confound we have not yet separated.</b> A small &rho; may mean the loop forgets quickly, or it
+may mean the loop is contributing little in the first place&mdash;an 11-tap feed-forward equalizer ahead
+of the DFE leaves the DFE little to do at 20&nbsp;dB. These have the same signature in (1) and
+opposite engineering meanings. Section&nbsp;VII-C specifies the control that separates them.</p>
+
+<h2>V.&ensp;Why Mean-Squared Error Cannot Rank These Designs</h2>
+
+<p class="first">A recurrence approximation errs in a specific way: it lets stale loop state through,
+and stale state in a decision-feedback loop produces <i>runs</i> of wrong decisions rather than
+isolated ones. The question is whether an outer code cares about the difference. It cares by more
+than ten orders of magnitude.</p>
+
+<p>We derive the KP4 threshold rather than quote it. For RS(<i>n</i>,<i>k</i>) over
+GF(2<sup><i>m</i></sup>) with <i>t</i>&nbsp;=&nbsp;(<i>n</i>&minus;<i>k</i>)/2, the post-decoding symbol
+error rate follows from the tail sum, which folds by <i>j</i>C(<i>n</i>,<i>j</i>)&nbsp;=&nbsp;<i>n</i>C(<i>n</i>&minus;1,<i>j</i>&minus;1):</p>
+
+<div class="eq">&Sigma;<sub><i>j</i>&gt;<i>t</i></sub> (<i>j</i>/<i>n</i>) C(<i>n</i>,<i>j</i>)
+<i>p<sup>j</sup></i>(1&minus;<i>p</i>)<sup><i>n</i>&minus;<i>j</i></sup> =
+<i>p</i>&thinsp;Pr{Bin(<i>n</i>&minus;1,<i>p</i>) &ge; <i>t</i>}.<span class="n">(3)</span></div>
+
+<p class="noind">Bisecting (3) for RS(544,514), <i>m</i>&nbsp;=&nbsp;10, <i>t</i>&nbsp;=&nbsp;15 at a
+10<sup>&minus;15</sup> post-FEC target gives a pre-FEC threshold of
+2.2619&times;10<sup>&minus;4</sup>, within 6&nbsp;% of the value used in practice.</p>
+
+<p>Holding the pre-FEC bit-error rate <i>exactly</i> at that threshold and varying only the error
+structure gives Table&nbsp;III.</p>
+
+<table style="margin-top:4pt">
+<caption>Table III<br><b>Post-FEC bit-error rate at a pre-FEC rate fixed at the KP4 threshold
+2.2619&times;10<sup>&minus;4</sup>. Only the clustering changes. Beyond <i>t</i>&nbsp;=&nbsp;15 symbols a
+single burst exhausts the code and the coding gain is zero&mdash;this row is arithmetic, not
+modelling.</b></caption>
+<thead><tr><th class="l">Error structure</th><th>events / codeword</th><th>post-FEC BER</th></tr></thead>
+<tbody>
+<tr><td class="l">random (the assumed case)</td><td>&mdash;</td><td>1.0&times;10<sup>&minus;13</sup></td></tr>
+<tr><td class="l">bursts of 2 symbols</td><td>0.1230</td><td>1.7&times;10<sup>&minus;14</sup></td></tr>
+<tr><td class="l">bursts of 4 symbols</td><td>0.0615</td><td>8.4&times;10<sup>&minus;9</sup></td></tr>
+<tr><td class="l">bursts of 8 symbols</td><td>0.0308</td><td>6.8&times;10<sup>&minus;6</sup></td></tr>
+<tr class="rt"><td class="l">bursts of 16 symbols</td><td>0.0154</td><td>2.262&times;10<sup>&minus;4</sup></td></tr>
+<tr><td class="l">bursts of 40 symbols</td><td>0.0062</td><td>2.262&times;10<sup>&minus;4</sup></td></tr>
+</tbody></table>
+
+<p>A design-space exploration that ranks by mean-squared error, by maximum error, or by pre-FEC
+bit-error rate sees these six designs as identical on the last of those and cannot distinguish them at
+all on the first two. The correct ranking is by required SNR at the threshold, evaluated on the
+<i>actual</i> error positions the implementation produces, and that is what we propose as the objective.</p>
+
+<p>We are explicit that the insufficiency of pre-FEC bit-error rate is known: instrument vendors say
+so, and the 802.3 record contains contributions on burst sensitivity, interleaving and pre-FEC
+monitoring [17], [21], [22]. What is not established, and what we claim, is the consequence for
+<i>synthesis</i>: that the objective function of approximate and precision-tuning HLS is, for this
+class of hardware, measuring the wrong thing by ten orders of magnitude, and that the fix is cheap.</p>
+
+<h2>VI.&ensp;Implementation Cost Already in Hand</h2>
+
+<p class="first">Costs are read from the standard-cell library's own views&mdash;cell area from the
+LEF <code>SIZE</code> record, device count from the SPICE view&mdash;after mapping with an open
+synthesis flow, so that the numbers are a reproducible computation rather than an estimate. The flow
+refuses to report an area when any gate in the mapped netlist is unmatched, because a silently
+dropped gate biases area downward, which is to say toward whatever the author is arguing.</p>
+
+<table style="margin-top:4pt">
+<caption>Table IV<br><b>Standard-cell cost of receiver blocks in a 130&nbsp;nm open library. These are
+the baselines against which the eliminated forms of Section&nbsp;VII will be measured.</b></caption>
+<thead><tr><th class="l">Block</th><th>area (&micro;m<sup>2</sup>)</th><th>gates</th></tr></thead>
+<tbody>
+<tr><td class="l">11-tap FFE + 8-tap DFE</td><td>37&thinsp;666</td><td>4&thinsp;778</td></tr>
+<tr><td class="l">FFE + table variant</td><td>42&thinsp;735</td><td>&mdash;</td></tr>
+<tr><td class="l">128-entry inverse ROM</td><td>896</td><td>112</td></tr>
+<tr><td class="l">MLP, 11&times;8, 96 multipliers</td><td>368&thinsp;026</td><td>51&thinsp;585</td></tr>
+</tbody></table>
+
+<p>One observation from building Table&nbsp;IV is worth recording because it will recur in the
+synthesis experiments of Section&nbsp;VII: a table whose contents are trivial is optimized away. An
+identity-valued ROM mapped to 175&nbsp;&micro;m<sup>2</sup> and 7 gates because the synthesizer
+resolved it to wires, while the same ROM holding real coefficients mapped to 896&nbsp;&micro;m<sup>2</sup>
+and 112 gates. Any area reported for an eliminated recurrence must therefore be measured with the
+<i>trained</i> table contents, never with a placeholder.</p>
+
+<h2>VII.&ensp;Research Plan</h2>
+
+<p class="first">This section is the proposal. It states, for each remaining claim, the experiment,
+the platform, the controls, and the outcome that would end the line of work.</p>
+
+<h3>A.&ensp;Stage 1 &mdash; Separate forgetting from irrelevance</h3>
+<p class="noind">The confound of Section&nbsp;IV must be removed before anything is built.
+<i>Experiment.</i> Re-measure &rho;(<i>W</i>) with the DFE's contribution swept independently of the
+operating point, by (i) disabling the feed-forward equalizer so the DFE carries the whole postcursor,
+(ii) sweeping the DFE tap energy &Sigma;<i>c<sub>k</sub></i><sup>2</sup> as an independent variable,
+and (iii) reporting &rho; against that energy rather than against loss and SNR.
+<i>Control.</i> A loop with all taps forced to zero must give &rho;(1)&nbsp;=&nbsp;0 identically; any
+non-zero value is measurement leakage and invalidates the instrument.
+<i>Kill condition.</i> If &rho; tracks tap energy so tightly that it carries no information beyond
+&Sigma;<i>c<sub>k</sub></i><sup>2</sup>, then &rho; is not a new quantity and H1 collapses to a
+restatement of tap energy.</p>
+
+<h3>B.&ensp;Stage 2 &mdash; Synthesis, both forms, same library</h3>
+<p class="noind"><i>Experiment.</i> Generate RTL for three forms of the same DFE&mdash;recurrent,
+speculative at depth <i>d</i>&nbsp;=&nbsp;1,2,3, and eliminated at <i>W</i>&nbsp;=&nbsp;<i>W</i>(&epsilon;)&mdash;and
+map all of them through the same open flow to the same 130&nbsp;nm library. Report cell area, device
+count, and static-timing critical path.
+<i>Controls.</i> (i) Tables must be populated with trained contents, per Section&nbsp;VI. (ii) All
+three forms must be verified bit-exact against the same reference vectors in simulation before any
+area is quoted; an area for a netlist that has not been shown functionally equivalent is not reported.
+(iii) The recurrent form's critical path must be reported through the loop, not the longest
+combinational path, since those differ.
+<i>Kill condition.</i> If the eliminated form's area at <i>W</i>(10<sup>&minus;3</sup>) exceeds the
+speculative form's at every operating point in Table&nbsp;II, H2 predicts nothing useful.</p>
+
+<h3>C.&ensp;Stage 3 &mdash; HLS: does the tool see it?</h3>
+<p class="noind"><i>Experiment.</i> Describe each kernel of Table&nbsp;I in C and synthesize with a
+commercial HLS tool at a fixed target period. Record the reported II, the reported RecMII, the
+resource estimate, and the scheduling report's stated reason for II&nbsp;&gt;&nbsp;1. Then apply the
+source-level transformation and record the same quantities.
+<i>Expected outcome (H3).</i> II&nbsp;&gt;&nbsp;1 for every untransformed kernel with the recurrence
+named as the cause; II&nbsp;=&nbsp;1 after transformation.
+<i>Controls.</i> (i) Identical pragmas, target period and tool version across both arms. (ii) A
+feed-forward FIR of the same tap count as a positive control&mdash;it must reach II&nbsp;=&nbsp;1 in both
+arms, confirming that nothing else in the harness limits II. (iii) Report tool version explicitly;
+scheduling behaviour is version-dependent and an unversioned II claim is not reproducible.
+<i>Kill condition.</i> If the tool already achieves II&nbsp;=&nbsp;1 on any Table&nbsp;I kernel without
+the transformation, that kernel leaves the study and we say so.</p>
+
+<h3>D.&ensp;Stage 4 &mdash; FPGA measurement</h3>
+<p class="noind">Simulation cannot establish that a transformed design closes timing, and it cannot
+reach the error rates the FEC argument needs. Both require hardware.</p>
+
+<p><b>Platform requirements.</b> The measurement dictates the board rather than the reverse:</p>
+<ul class="tight">
+<li><i>Fabric.</i> A device with hard DSP slices and block RAM, so that the multiplier-free and
+table-based arms are priced on a fabric where multipliers are <i>not</i> free&mdash;the opposite of the
+platform bias we have criticized elsewhere. A mid-range 16&nbsp;nm-class part (e.g. Zynq
+UltraScale+ or Agilex-class) is sufficient; the claim is about II and relative resource, not about
+absolute frequency records.</li>
+<li><i>Capacity.</i> Enough block RAM to hold the largest table under test. At
+<i>W</i>&nbsp;=&nbsp;4 and <i>B</i>&nbsp;=&nbsp;4 the table is 65&thinsp;536 entries; at
+<i>W</i>&nbsp;=&nbsp;5 it is 2<sup>20</sup>, which sets the practical ceiling and must be reported as
+such.</li>
+<li><i>Instrumentation.</i> On-chip error counting at line rate, since off-chip capture cannot sustain
+the bit counts required. A pattern generator, the datapath under test, and a comparator with
+per-codeword symbol-error histogramming&mdash;not merely a bit-error counter, because Section&nbsp;V is
+precisely the argument that a bit-error counter is insufficient.</li>
+<li><i>Observability.</i> The histogram, the error-position stream for offline post-FEC evaluation, and
+the II and <i>f</i><sub>max</sub> reported by place-and-route, not by synthesis estimate.</li>
+</ul>
+
+<p><b>Statistical requirement.</b> To distinguish a post-FEC rate of 10<sup>&minus;9</sup> from
+10<sup>&minus;6</sup> with confidence, the run must accumulate enough codewords that the rarer event
+is observed tens of times; at 10<sup>&minus;6</sup> codeword failure rate and 5440 bits per codeword
+this is order 10<sup>11</sup> bits per operating point. At a realistic 100&nbsp;MHz&nbsp;&times;&nbsp;64-bit
+datapath that is minutes per point, which is why the counting must be on-chip. Operating points
+below that rate are reported as bounds, not as values.</p>
+
+<p><b>Controls.</b> (i) A floating-point software reference must reproduce the FPGA's error
+<i>positions</i>, not merely its error rate, on a common seed and a common injected noise
+sequence&mdash;if the positions differ the two are not the same experiment. (ii) Each arm is run at
+identical SNR, identical seed, and identical pattern. (iii) An unmodified recurrent arm is measured on
+the same board in the same session, so that board, temperature and toolchain are held fixed.
+(iv) Seeds are reported individually, not averaged, and a claim is made only where it holds on every
+seed.</p>
+
+<p><b>Instrument budget.</b> Oscilloscope for clocking and timing-closure debug only; no analog claim
+is made from it. No RF, no anechoic environment, and no wireless measurement is required for any claim
+in this work&mdash;the study is entirely a baseband digital one, and we say so rather than allowing a
+reader to assume otherwise.</p>
+
+<h3>E.&ensp;Stage 5 &mdash; The other kernels</h3>
+<p class="noind">Only the decision-feedback loop is measured here. The remaining rows of
+Table&nbsp;I are the generalization test, and they differ in ways that matter: the add-compare-select
+recurrence forgets by path merging with a well-understood geometric rate, so it is the case where a
+<i>predicted</i> <i>W</i> can be compared against a measured one; the bang-bang timing loop is
+deliberately slow to forget, since its whole purpose is to integrate, and we expect it to fail the
+crossover&mdash;which makes it the honest negative example the study needs.</p>
+
+<h3>F.&ensp;Deliverable</h3>
+<p class="noind">A source-level transformation, expressed as an HLS pragma and a supporting library,
+that takes &epsilon; as a parameter, measures &rho; from a calibration run, selects between recurrent,
+speculative and eliminated forms by the crossover of H2, and reports the cost of its choice in both
+&micro;m<sup>2</sup> and decibels at the FEC threshold.</p>
+
+<h2>VIII.&ensp;Threats to Validity</h2>
+
+<ul class="tight">
+<li><i>The bound in Section&nbsp;III is a working bound.</i> Definition&nbsp;1 perturbs the most recent
+decision by one admissible step. Whether that is the worst case over admissible state pairs is open;
+if it is not, &rho;(<i>W</i>) under-estimates the replacement error and every window in Table&nbsp;II is
+optimistic.</li>
+<li><i>The confound of Section&nbsp;IV-D is unresolved.</i> Two of the three operating points may be
+reporting an idle loop rather than a forgetful one.</li>
+<li><i>Channels are synthetic.</i> No measured backplane scattering parameters were used. This bounds
+the claims about particular operating points, though not the arithmetic of Table&nbsp;III.</li>
+<li><i>Table&nbsp;III uses a burst model, not measured error positions.</i> The <i>B</i>&nbsp;&ge;&nbsp;16
+rows are arithmetic&mdash;a burst longer than <i>t</i> symbols within one codeword is uncorrectable by
+construction&mdash;but the event rates that map a given burst length onto a given pre-FEC rate follow
+from a model, and Stage&nbsp;4 replaces them with measured positions.</li>
+<li><i>Interleaving is not yet modelled.</i> Standardized links interleave codewords precisely to break
+bursts. The strength of the Section&nbsp;V argument depends on whether the interleaver breaks the
+bursts a transformed recurrence actually produces, and that comparison is owed.</li>
+<li><i>Bibliographic verification is incomplete.</i> Several references below were identified through
+secondary sources because direct access to publishers was unavailable from the environment in which
+this draft was prepared; they are marked, and must be checked against the published record before
+submission.</li>
+</ul>
+
+<h2>IX.&ensp;Conclusion</h2>
+
+<p class="first">The recurrence, not the arithmetic, sets the initiation interval of a receiver's
+inner loop, and the classical remedy stops at the quantizer that every such loop contains. We propose
+to eliminate the recurrence rather than shorten or enumerate it, using the fact that these loops
+forget, and we have made the forgetting quantitative. The measured result that organizes the rest of
+the work is that the window required for a fixed replacement error is not a design constant: it takes
+the values 1, 4 and 11 across operating points of a single equalizer, so that any fixed unroll or
+traceback depth is wrong somewhere. We have also shown why such a transformation cannot be judged by
+the metrics the approximation literature uses: with the pre-FEC bit-error rate pinned exactly at the
+KP4 threshold, changing only the clustering moves the post-FEC rate across more than ten orders of
+magnitude, and at bursts longer than the code's correction radius the coding gain is zero. What
+remains is to build both forms, to measure what the synthesis tool does with them, and to close the
+loop on hardware; Section&nbsp;VII says how, and says what would make us stop.</p>
+
+<h2>References</h2>
+<div class="ref"><ol>
+<li>K. K. Parhi, <i>VLSI Digital Signal Processing Systems: Design and Implementation.</i> New York: Wiley, 1999. <span class="conf">[standard text]</span></li>
+<li>K. K. Parhi and D. G. Messerschmitt, "Pipeline interleaving and parallelism in recursive digital filters&mdash;Parts I and II," <i>IEEE Trans. Acoust., Speech, Signal Process.</i>, vol. 37, no. 7, pp. 1099&ndash;1134, Jul. 1989. <span class="todo">[verify volume/pages]</span></li>
+<li>G. Fettweis and H. Meyr, "Parallel Viterbi algorithm implementation: breaking the ACS-bottleneck," <i>IEEE Trans. Commun.</i>, vol. 37, no. 8, pp. 785&ndash;790, Aug. 1989. <span class="todo">[verify pages]</span></li>
+<li>A. Peled and B. Liu, "A new hardware realization of digital filters," <i>IEEE Trans. Acoust., Speech, Signal Process.</i>, vol. 22, no. 6, pp. 456&ndash;462, Dec. 1974. <span class="todo">[verify pages]</span></li>
+<li>A. Kav&#269;i&#263; and J. M. F. Moura, "The Viterbi algorithm and Markov noise memory," <i>IEEE Trans. Inf. Theory</i>, vol. 46, no. 1, pp. 291&ndash;301, Jan. 2000. <span class="conf">[confirmed via index]</span></li>
+<li>E. Eleftheriou and W. Hirt, "Noise-predictive maximum-likelihood (NPML) detection for the magnetic recording channel," in <i>Proc. IEEE Int. Conf. Commun.</i>, 1996. <span class="todo">[verify venue/year]</span></li>
+<li>S. Kasturia and J. H. Winters, "Techniques for high-speed implementation of nonlinear cancellation," <i>IEEE J. Sel. Areas Commun.</i>, vol. 9, no. 5, pp. 711&ndash;717, Jun. 1991. <span class="todo">[verify &mdash; canonical speculative-DFE reference]</span></li>
+<li>A. A. Bazargani, H. Shakiba, and D. A. Johns, "MMSE equalizer design optimization for wireline SerDes applications," <i>IEEE Trans. Circuits Syst. I</i>, vol. 72, no. 4, pp. 1852&ndash;1865, 2025. <span class="conf">[confirmed via index]</span></li>
+<li>"COMPOSE: Static timing-driven composable reconfigurable architecture for accelerating recurrence-bound loops," arXiv:2606.21454. <span class="todo">[verify authors; preprint]</span></li>
+<li>J. Cheng, L. Josipovi&#263;, G. A. Constantinides, P. Ienne, and J. Wickerson, "Combining dynamic and static scheduling in high-level synthesis" (DASS), in <i>Proc. ACM/SIGDA FPGA</i>, 2020. <span class="todo">[verify year/pages]</span></li>
+<li>J. Liu, J. Wickerson, and G. A. Constantinides, "Loop splitting for efficient pipelining in high-level synthesis," in <i>Proc. IEEE FCCM</i>, 2016. <span class="conf">[confirmed]</span></li>
+<li>J. Liu, J. Wickerson, S. Bayliss, and G. A. Constantinides, "Polyhedral-based dynamic loop pipelining for high-level synthesis," <i>IEEE Trans. Comput.-Aided Design</i>, 2017. <span class="conf">[confirmed]</span></li>
+<li>"Dynamic loop fusion in high-level synthesis," in <i>Proc. ACM/SIGDA FPGA</i>, 2025; arXiv:2501.14631. <span class="conf">[confirmed]</span></li>
+<li>"A speculative loop pipeline framework with accurate path modeling for high-level synthesis," <i>ACM Trans. Reconfig. Technol. Syst.</i>, 2025, doi:10.1145/3705732. <span class="conf">[confirmed via DOI]</span></li>
+<li>"FPGA HLS today: successes, challenges, and opportunities," <i>ACM Trans. Reconfig. Technol. Syst.</i>, doi:10.1145/3530775. <span class="todo">[verify authors]</span></li>
+<li>"ForgeHLS: A large-scale, open-source dataset for high-level synthesis," arXiv:2507.03255. <span class="todo">[verify authors; preprint]</span></li>
+<li>IEEE Std 802.3, Clause 91, Reed&ndash;Solomon forward error correction RS(544,514), RS-FEC sublayer. <span class="conf">[standard]</span></li>
+<li>"Approximate computing in high-level synthesis: from survey to practical implementation," <i>ACM Comput. Surv.</i>, doi:10.1145/3785334. <span class="todo">[verify authors]</span></li>
+<li>Y. Herklotz, Z. Du, N. Ramanathan, and J. Wickerson, "An empirical study of the reliability of high-level synthesis tools," in <i>Proc. IEEE FCCM</i>, 2021. <span class="todo">[verify]</span></li>
+<li>Y. Herklotz and J. Wickerson, "Finding and understanding bugs in FPGA synthesis tools," in <i>Proc. ACM/SIGDA FPGA</i>, 2020. <span class="todo">[verify]</span></li>
+<li>Keysight Technologies, "Relief on the search of burst errors," technical blog, Jan. 2021. <span class="todo">[trade source &mdash; replace with a peer-reviewed equivalent if one exists]</span></li>
+<li>D. Ofelt, "Pre-FEC BER monitoring proposal," IEEE P802.3bs contribution, Jan. 2016; and X. Wang, "FEC performance over PAM4 links with bit-multiplexing," IEEE P802.3bs contribution, Jul. 2015. <span class="todo">[verify contribution numbers]</span></li>
+<li>Optical Internetworking Forum, <i>Next Generation CEI-448G Framework Document</i>, OIF-FD-CEI-448G-01.0, 2025. <span class="todo">[verify document number]</span></li>
+<li>SkyWater Technology and Google, <i>SkyWater Open Source PDK (sky130)</i>. <span class="conf">[tool]</span></li>
+<li>C. Wolf, <i>Yosys Open Synthesis Suite.</i> <span class="conf">[tool]</span></li>
+<li>G. Ungerboeck, "Adaptive maximum-likelihood receiver for carrier-modulated data-transmission systems," <i>IEEE Trans. Commun.</i>, vol. 22, no. 5, pp. 624&ndash;636, May 1974. <span class="todo">[verify pages]</span></li>
+<li>A. Duel-Hallen and C. Heegard, "Delayed decision-feedback sequence estimation," <i>IEEE Trans. Commun.</i>, vol. 37, no. 5, pp. 428&ndash;436, May 1989. <span class="todo">[verify pages]</span></li>
+<li>M. V. Eyuboglu and S. U. H. Qureshi, "Reduced-state sequence estimation with set partitioning and decision feedback," <i>IEEE Trans. Commun.</i>, vol. 36, no. 1, pp. 13&ndash;20, Jan. 1988. <span class="todo">[verify pages]</span></li>
+</ol></div>
+
+</div>
+</body></html>
