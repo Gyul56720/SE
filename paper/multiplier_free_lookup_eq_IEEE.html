@@ -214,7 +214,29 @@ address&mdash;it is an exact rearrangement of a multiply&ndash;accumulate, and a
 reproduces its contents to numerical precision. The table proposed here stores a function that is not linear
 in its address; that is the whole point of it.</p>
 
-<h3>D. Neural equalizers, and how they are evaluated</h3>
+<h3>D. The adjacent discipline: digital predistortion</h3>
+<p class="first">The closest developed treatment of the problem in Proposition 1 is not in the equalization
+literature at all but in digital predistortion (DPD) for RF power amplifiers, where inverting a compressive
+nonlinearity is the entire subject. That field's organizing distinction is exactly ours: a memoryless
+amplifier characteristic is inverted exactly by a lookup table, while <i>memory effects</i> require memory
+polynomials or Volterra kernels, and a substantial literature exists on where the boundary lies and how to
+detect which side of it a device is on
+<span class="todo">[refs to be supplied&mdash;see Section&nbsp;R]</span>. Neural-network predistorters, and
+the question of what they add over a table, have been posed there too.</p>
+<p>We therefore claim no novelty for the table itself, nor for the memoryless/memory distinction. Two things
+transfer poorly from DPD and are what this paper supplies: DPD is evaluated by error-vector magnitude and
+spectral mask rather than at a FEC threshold, and its cost accounting is not the receiver's. What we claim is
+the transfer of the memoryless control into a wireline receiver comparison, and its evaluation at the
+standardized operating point.</p>
+<p>A further consequence deserves stating because it cuts against our own framing. A code-remapping ROM of
+the kind Proposition 1 describes is the same hardware an ADC already uses for integral- and
+differential-nonlinearity calibration. To the extent that a production ADC-based receiver already carries
+such a table, the linear baseline used throughout the neural-equalizer literature&mdash;and reproduced here
+as our own baseline&mdash;is not the receiver anyone builds. That makes the evaluation criticism stronger and
+the proposal weaker: there may be nothing here to propose, only something to stop omitting from baselines.
+Section R-F records this as a citation requirement rather than resolving it by assertion.</p>
+
+<h3>E. Neural equalizers, and how they are evaluated</h3>
 <p class="first">A large recent literature applies small multilayer perceptrons, and latterly recurrent and
 convolutional structures, to wireline and short-reach optical receivers, generally reporting a BER
 improvement over an FFE/DFE baseline and a parameter or multiplier count
@@ -230,7 +252,7 @@ transfer to one.</li>
 silicon area on the substrate the application actually uses.</li>
 </ul>
 
-<h3>E. The standardized operating point</h3>
+<h3>F. The standardized operating point</h3>
 <p class="first">Ethernet electrical interfaces at 50&nbsp;Gb/s per lane and beyond are specified with
 RS-FEC: RS(528,514) "KR4" and RS(544,514) "KP4" over GF(2<sup>10</sup>) [4], [5], with KP4 correcting
 <i>t</i>&nbsp;=&nbsp;15 symbols per codeword [9]. Channel compliance itself is expressed through Channel
@@ -238,7 +260,7 @@ Operating Margin [3], whose internal detector-error-ratio target is of the same 
 here. That the standard fixes a threshold is what makes a threshold-referred comparison possible at all; it
 removes the freedom to choose the operating point that makes a ratio look large.</p>
 
-<h3>F. The gap this paper fills</h3>
+<h3>G. The gap this paper fills</h3>
 <div class="box"><div class="t">Gap statement</div>
 <p class="noind">To our knowledge no published comparison of a neural equalizer against a linear baseline in a
 compressive receiver (i) gives the baseline the zero-multiplier memoryless inverse that the impairment's own
@@ -704,7 +726,7 @@ Kluwer. &mdash; Adaptive equalization and timing recovery; LMS/NLMS stability co
 Section VI.</li>
 <li value="3">&#9671;&nbsp;IEEE Std 802.3, Annex&nbsp;93A, "Channel Operating Margin (COM)."
 <span class="todo">[verify clause and edition year]</span> &mdash; The standardized channel figure of merit;
-cited in Sections II-E and XII as the criterion this work approximates but does not yet implement.</li>
+cited in Sections II-F and XI as the criterion this work approximates but does not yet implement.</li>
 <li value="4">&#9671;&nbsp;IEEE Std 802.3bj, "Physical Layer Specifications for 100&nbsp;Gb/s Operation Over
 Backplanes and Copper Cables." <span class="todo">[verify year]</span> &mdash; Introduces the RS-FEC
 variants; source for the KR4 RS(528,514) and KP4 RS(544,514) parameters.</li>
@@ -737,12 +759,16 @@ the ceiling.</li>
 <li value="11">&#9675;&nbsp;Adaptive cancellation of nonlinear intersymbol interference.
 <span class="todo">[select and verify]</span></li>
 <li value="12">&#9675;&nbsp;<b>Neural-network equalizers for wireline and short-reach optical receivers.</b>
-<span class="todo">[This is the most important gap. Section II-D characterizes an evaluation practice
+<span class="todo">[This is the most important gap. Section II-E characterizes an evaluation practice
 &mdash; linear-only baseline, BER ratio away from the FEC point, parameter/multiplier cost &mdash; and that
 characterization must be supported by three to six representative and recent citations that the authors have
 read. Candidates to search: MLP/CNN/RNN equalizers in IEEE JLT, OFC/ECOC proceedings, IEEE TCAS-I/II, and
-DesignCon, 2019&ndash;2025. Any claim in Section II-D that a cited work does not in fact make must be
+DesignCon, 2019&ndash;2025. Any claim in Section II-E that a cited work does not in fact make must be
 withdrawn.]</span></li>
+<li value="12b">&#9675;&nbsp;<b>Digital predistortion of compressive nonlinearities.</b>
+<span class="todo">[select and verify &mdash; the LUT-versus-memory-polynomial line of work, and neural
+predistorters. Required by Section II-D, where Proposition 1's content is already standard practice.
+Renumber into sequence once selected.]</span></li>
 </ol></div>
 
 <h3>C. Multiplier-free arithmetic</h3>
@@ -818,10 +844,10 @@ errors (Section V-B).</li>
 <p class="first">The following claims in this draft are <i>not yet</i> supported by a verified citation and
 must not be submitted in this state.</p>
 <div class="ref"><ol style="list-style-type:upper-alpha">
-<li><b>Section II-D, the evaluation-practice characterization.</b> Three to six read, recent neural-equalizer
-papers. This is load-bearing: the paper's gap statement (Section II-F) claims an omission in existing
+<li><b>Section II-E, the evaluation-practice characterization.</b> Three to six read, recent neural-equalizer
+papers. This is load-bearing: the paper's gap statement (Section II-G) claims an omission in existing
 practice, and an unsupported claim of omission is the weakest possible foundation for a contribution.</li>
-<li><b>Section II-E, the pre-FEC operating point.</b> The specific clause of 802.3ck (or 802.3bs) that fixes
+<li><b>Section II-F, the pre-FEC operating point.</b> The specific clause of 802.3ck (or 802.3bs) that fixes
 the target, so that "2&times;10<sup>&minus;4</sup>" is attributed rather than asserted. Our derived
 2.262&times;10<sup>&minus;4</sup> should be compared against the standard's own stated figure, and any
 discrepancy explained rather than averaged away.</li>
@@ -829,6 +855,15 @@ discrepancy explained rather than averaged away.</li>
 <li><b>Section VIII-B, DSP-slice capacity.</b> The 7-series device data sheet for the DSP48E1 count used in
 the parallelism argument of Section XI, which is presently stated as an unmeasured hypothesis and must
 either be measured or cited.</li>
+<li><b>Section II-D, digital predistortion.</b> The memoryless-versus-memory boundary, LUT
+predistorters, memory-polynomial predistorters, and neural predistorters. This is the discipline in which
+Proposition 1's content is <i>already standard</i>, and the paper must position against it explicitly rather
+than rediscover it. Search: LUT DPD, memory polynomial DPD, neural network predistortion, IEEE TMTT / TCAS /
+TVT, 1990&ndash;2025.</li>
+<li><b>ADC integral-nonlinearity calibration by code remapping.</b> If production ADC-based receivers already
+carry a code-to-code correction table, our linear baseline is not a receiver anyone builds. Confirm what a
+current ADC-based SerDes actually implements; if the table is already present, the contribution is the
+<i>evaluation</i> and the baseline critique, and the introduction must be rewritten to say only that.</li>
 <li><b>Prior art on lookup-based taps.</b> Reported implementations of FFE taps as ROM lookups in
 high-speed receivers. If such work exists in the form we believe, Proposition 1's novelty is in the
 <i>compliance-referred evaluation</i> and the exactness argument, not in the use of a table, and the
