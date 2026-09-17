@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import numpy as np
 
+import pam
 import serdes
 
 PASS, FAIL, 못잼 = serdes.PASS, serdes.FAIL, serdes.못잼
@@ -253,15 +254,32 @@ def 링크(비트수: int = 300000, 손실dB: float = 25.0, SNRdB: float = 30.0,
        슬루율: float = 0.0, 누설시상수: float = 0.0,
        누화세기: float = 0.0, 전원세기: float = 0.0, 전원주기: float = 37.0,
        지터rjUI: float = 0.0, 지터sjUI: float = 0.0, 지터sj주기: float = 100.0,
-       물리채널=None, 채널지음=None,
+       물리채널=None, 채널지음=None, 레벨: int = 2, 심볼수: int = 0,
        활성꼴: str = "tanh", 씨: int = 0) -> dict:
     """신경망 등화기로 링크를 돌린다. {BER, 오류수, 잰비트, 파라미터수, 학습, 왜}.
 
     `serdes.링크` 로 **정렬·AGC·ADC 까지 끝난 표본**을 받아 그 위에 신경망을 얹는다.
     선형 등화(FFE)는 끄고 신경망이 그 자리를 맡는다. `DFE탭`/`DFE자리` 를 주면
     신경망 출력 뒤에 판정 되먹임을 붙인다(되먹이는 것은 **제 판정**이다).
+
+    ## PAM4 (`레벨=4`)
+
+    **망 자체는 안 고쳐도 된다.** 출력이 선형 한 개이고 손실이 MSE 라, 목표를 ±1 에서
+    네 레벨로 바꾸면 그대로 **레벨 회귀**가 된다. 고쳐야 하는 것은 그 앞뒤다:
+
+        이득 정규화   E[y·b] 는 커서에 E[b^2] 이 곱해진 값이다. NRZ 는 1 이라
+                      안 나눠도 같았는데 PAM4 는 5/9 다 -- 안 나누면 망 출력이
+                      9/5 배 어긋난 자리에 앉아 슬라이서가 엉뚱하게 자른다.
+        DFE 탭        같은 까닭으로 같이 나눈다.
+        슬라이서      문턱이 하나가 아니라 셋이다.
+        오류 세기     심볼오류와 비트오류를 따로 세고 **비트오류 자리**를 남긴다
+                      (`fec.판정()` 이 코드워드당 뭉침을 보려면 자리가 필요하다).
+
+    `레벨=2` 면 값이 한 비트도 안 바뀐다(`tests/test_nn_pam4.py` 가 붙든다).
     """
-    밑 = serdes.링크(비트수=int(비트수), 손실dB=손실dB, SNRdB=SNRdB, sps=int(sps),
+    M = int(레벨)
+    밑 = serdes.링크(비트수=int(비트수), 심볼수=int(심볼수), 레벨=M,
+                   손실dB=손실dB, SNRdB=SNRdB, sps=int(sps),
                    FFE탭=0, DFE탭=0, 반사=반사, 압축=압축, 역압축=역압축,
                    압축뒤대역=압축뒤대역,
                    슬루율=슬루율, 누설시상수=누설시상수, 누화세기=누화세기,
@@ -270,7 +288,11 @@ def 링크(비트수: int = 300000, 손실dB: float = 25.0, SNRdB: float = 30.0,
                    물리채널=물리채널, 채널지음=채널지음,
                    ADC비트=int(ADC비트),
                    ADC풀스케일시그마=ADC풀스케일시그마, 학습비율=학습비율, 씨=int(씨))
-    표본, 비트 = 밑["표본"], 밑["비트"].astype(float)
+    if 밑.get("판정") != PASS:
+        return {"BER": float("nan"), "오류수": -1, "잰비트": 0,
+                "판정": 못잼, "왜": 밑.get("왜", "밑 링크가 못 돌았다")}
+    표본, 비트 = 밑["표본"], 밑["비트"].astype(float)   # PAM4 면 `비트` 는 레벨이다
+    힘b = float(np.mean(비트 ** 2)) or 1.0              # E[b^2]: NRZ 1, PAM4 5/9
     학습끝 = int(np.clip(len(표본) * 학습비율, 1, len(표본) - 1))
     X = 창만들기(표본, int(앞뒤))
     모 = 짓기(X.shape[1], int(은닉수), 씨=int(씨))
@@ -305,27 +327,30 @@ def 링크(비트수: int = 300000, 손실dB: float = 25.0, SNRdB: float = 30.0,
 
     y = 예측(모, X, 활성꼴)
     # 신경망 출력을 메인 커서 이득으로 정규화한다 -- DFE 탭이 읽을 수 있는 값이 되게
-    g = float(np.mean(y[:학습끝] * 비트[:학습끝])) or 1.0
+    g = (float(np.mean(y[:학습끝] * 비트[:학습끝])) / 힘b) or 1.0
     y = y / g
     자리들 = ([int(x) for x in DFE자리 if int(x) > 0] if DFE자리
             else list(range(1, int(DFE탭) + 1)))
     자리들 = sorted(set(자리들))
     탭 = None
     if 자리들:
-        탭 = np.array([float(np.mean(y[:학습끝][m:] * 비트[:학습끝][:-m] if m else 0.0))
-                     if m < 학습끝 else 0.0 for m in 자리들])
+        탭 = np.array([float(np.mean(y[:학습끝][m:] * 비트[:학습끝][:-m]) / 힘b)
+                     if 0 < m < 학습끝 else 0.0 for m in 자리들])
         if 가중치비트:
             탭 = serdes.양자화(탭, int(가중치비트))
     살아있는 = int(sum(int(np.sum(v != 0)) for v in 모.values()))
     # **되먹이는 것은 제 판정이다.** `이상적판정` 은 그것을 일부러 깨는 손잡이이고,
     # 그 차이가 오류 번짐의 크기다 -- 하드웨어는 정답을 모른다.
-    판정 = serdes._슬라이스(y, 탭, 비트 if 이상적판정 else None, 자리들)
+    판정 = serdes._슬라이스(y, 탭, 비트 if 이상적판정 else None, 자리들, M)
 
     잰것 = slice(학습끝, len(판정))
-    오류 = int(np.sum(판정[잰것] != 비트[잰것]))
-    잰비트 = int(잰것.stop - 잰것.start)
-    return {"BER": (오류 / 잰비트) if 잰비트 else float("nan"),
+    센것 = pam.오류세기(판정[잰것], 비트[잰것], M)
+    오류, 잰비트 = int(센것["비트오류"]), int(센것["비트수"])
+    return {"BER": 센것["BER"],
             "오류수": 오류, "잰비트": 잰비트, "파라미터수": 파라미터수(모),
+            "M": M, "잰심볼": 센것["심볼수"], "심볼오류": 센것["심볼오류"],
+            "SER": 센것["SER"], "이웃비율": 센것["이웃비율"],
+            "비트오류자리": 센것["비트오류자리"],
             "살아있는가중치": 살아있는, "가중치비트": int(가중치비트),
             "양자화스케일": 쓴스케일,
             "남길비율": float(남길비율), "QAT": bool(QAT),
