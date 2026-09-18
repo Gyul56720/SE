@@ -1,4 +1,4 @@
-<title>FPGA에선 맞고 칩에선 틀리다</title>
+<title>비트를 줄일까 반복을 늘릴까</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@400;600&family=Source+Sans+3:wght@400;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap">
 <style>
 :root{
@@ -116,241 +116,236 @@ footer b{color:var(--ink-2)}
 
 <header>
   <div class="eyebrow">IP 개발 계획 · 통신융합시스템 · 2026-09-18</div>
-  <h1>FPGA에선 맞고 칩에선 틀리다</h1>
-  <p class="ko">통신 수신기 등화기 IP를 HLS로 개발한다. 그리고 같은 IP를 FPGA와 ASIC
-  양쪽에 넣어 본다 &mdash; 고를 답이 달라진다.</p>
-  <p class="en">An HLS-Developed Adaptive Equalizer IP for FEC-Protected Receivers:
-  Dual-Substrate Evaluation on FPGA and Open-PDK ASIC</p>
+  <h1>비트를 줄일까 반복을 늘릴까</h1>
+  <p class="ko">massive MIMO 검출기의 행렬 역변환 병목을 <b>기존 반복법</b>으로 없애고,
+  HLS로 IP를 만든다. 그리고 <b>정밀도와 반복 횟수가 서로 바꿔 쓸 수 있는지</b> 잰다 &mdash;
+  분야가 아직 &ldquo;미지&rdquo;라고 적어 둔 칸이다.</p>
+  <p class="en">A Matrix-Inversion-Free MMSE Detector IP in HLS:
+  Trading Fixed-Point Word Length against Iteration Count</p>
   <div class="tags">
-    <span class="tag">만드는 것 = IP</span><span class="tag">알고리즘은 기존 것</span>
-    <span class="tag">HLS · Vitis</span><span class="tag">Artix-7</span>
-    <span class="tag">sky130 + yosys</span><span class="tag">RS(544,514) KP4</span>
+    <span class="tag">병목 = O(K&sup3;) 역변환</span><span class="tag">알고리즘 = Gauss-Seidel</span>
+    <span class="tag">MATLAB 황금모델</span><span class="tag">Vitis HLS</span>
+    <span class="tag">작은 IP 하나</span>
   </div>
 </header>
 
 <section class="body">
-  <div class="shead"><div class="eyebrow">01 &mdash; 한 문장</div><h2>무엇을 만드는가</h2></div>
-  <p class="lead"><b>FEC로 보호되는 링크의 수신기 앞단 IP</b>를 HLS로 만든다.
-  적응 등화기(FFE&nbsp;+&nbsp;DFE)와 연판정 복조기(LLR 생성)를, <b>워드길이·포화 방식·병렬도를
-  파라미터로 뽑아 쓸 수 있는</b> 재사용 가능한 블록으로 짓는다.</p>
-  <p><b>알고리즘은 하나도 새로 만들지 않는다.</b> LMS/RLS 적응 등화, 판정귀환, 연판정 LLR,
-  RS(544,514) &mdash; 전부 교과서와 규격에 있는 것을 가져다 쓴다. 이 작업의 산출물은
-  <b>알고리즘이 아니라 IP와 그 값매김 데이터</b>다.</p>
-  <p>그리고 만든 IP를 <b>두 기판에 넣어 본다</b> &mdash; FPGA(Artix-7)와 오픈 PDK ASIC(sky130).
-  대부분의 FPGA 논문에 없는 다리가 이것이고, 여기서 이 계획의 이름이 나온다.</p>
+  <div class="shead"><div class="eyebrow">01 &mdash; 병목</div><h2>안테나가 늘면 역변환이 터진다</h2></div>
+  <p class="lead">massive MIMO 수신기에서 MMSE/ZF 검출은 <b>K&times;K 채널 상관행렬을 역변환</b>해야 한다.
+  그 비용이 <b>O(K&sup3;)</b> 다. 기지국 안테나가 128, 256으로 가고 RIS 소자가 수백 개로 가는
+  6G 방향에서 이건 그대로 벽이 된다.</p>
+  <p>문헌이 같은 말을 한다 &mdash; <i>"ZF precoding in massive MIMO suffers from high implementation
+  complexity of O(K&sup3;) owing to the inversion of a K&times;K channel correlation matrix"</i>,
+  <i>"linear MMSE detection achieves near-optimal performance but suffers from excessively high
+  complexity due to the large-scale matrix inversion."</i></p>
+  <p><b>이건 우리가 발견한 병목이 아니다.</b> 교과서에 적힌 병목이고, 그래서 <b>이미 답도 나와 있다.</b>
+  이 프로젝트는 그 답을 가져다 IP로 만드는 것이다.</p>
 </section>
 
 <section class="body">
-  <div class="shead"><div class="eyebrow">02 &mdash; 직관</div><h2>왜 정답이 달라지나</h2></div>
-  <p class="lead">FPGA에는 <b>곱셈기(DSP48)가 이미 박혀 있다.</b> 안 쓰면 그냥 노는 자원이다.
-  그래서 HLS로 설계할 때 LUT를 아끼려고 곱셈을 DSP 블록으로 몰아넣는 것이 이득이다.
-  <b>공짜처럼 보이기 때문이다.</b></p>
-  <p>ASIC에는 그런 게 없다. <b>곱셈 하나가 그대로 면적이다.</b> 그러면 FPGA에서
-  "곱셈을 많이 쓰고 LUT를 아낀" 구성이 칩에서는 가장 비싼 구성이 된다.
-  <b>1등이 꼴찌가 된다.</b></p>
-  <p>여기에 축이 하나 더 있다. 통신 링크에서 진짜 성적표는 자원 수가 아니라
-  <b>FEC를 통과한 뒤의 오류율</b>이다. 그런데 정밀도를 줄일 때 생기는 <b>포화(saturation)는
-  오류를 뭉치게 만들고</b>, FEC는 뭉친 오류에 급격히 약하다. 평균 오차(MSE)만 보면
-  이 차이가 안 보인다.</p>
-  <p><b>그래서 축이 셋이다</b> &mdash; FPGA 자원 · ASIC 면적 · post-FEC 오류율.
-  이 셋이 같은 답을 주는지, 이 개발에서 실제로 재 본다.</p>
-</section>
-
-<section>
-  <div class="shead"><div class="eyebrow">03 &mdash; 그림</div><h2>같은 설계, 세 개의 순위</h2></div>
-  <figure>
-    <svg viewBox="0 0 720 372" role="img" aria-label="세 가지 목적함수가 같은 다섯 설계를 서로 다르게 순위 매기는 가설 그림">
-      <g class="sv-hd">
-        <text x="118" y="26" text-anchor="middle" fill="var(--fpga)">FPGA 자원</text>
-        <text x="360" y="26" text-anchor="middle" fill="var(--asic)">ASIC 면적</text>
-        <text x="602" y="26" text-anchor="middle" fill="var(--ber)">post-FEC BER</text>
-      </g>
-      <g class="sv-sub">
-        <text x="118" y="42" text-anchor="middle">LUT · DSP · BRAM</text>
-        <text x="360" y="42" text-anchor="middle">sky130 셀 면적</text>
-        <text x="602" y="42" text-anchor="middle">KP4 문턱 대비</text>
-      </g>
-      <g stroke="var(--line)" stroke-width="1">
-        <line x1="118" y1="56" x2="118" y2="340"/>
-        <line x1="360" y1="56" x2="360" y2="340"/>
-        <line x1="602" y1="56" x2="602" y2="340"/>
-      </g>
-      <g class="sv-rk">
-        <text x="28" y="84">1위</text><text x="28" y="140">2위</text><text x="28" y="196">3위</text>
-        <text x="28" y="252">4위</text><text x="28" y="308">5위</text>
-      </g>
-      <g stroke-width="2" fill="none" stroke-dasharray="7 4" opacity="0.85">
-        <path d="M118 80 L360 136 L602 192" stroke="var(--d1)"/>
-        <path d="M118 136 L360 248 L602 80" stroke="var(--d2)"/>
-        <path d="M118 192 L360 80 L602 304" stroke="var(--d3)"/>
-        <path d="M118 248 L360 304 L602 248" stroke="var(--d4)"/>
-        <path d="M118 304 L360 192 L602 136" stroke="var(--d5)"/>
-      </g>
-      <g>
-        <circle cx="118" cy="80"  r="5" fill="var(--d1)"/><circle cx="360" cy="136" r="5" fill="var(--d1)"/><circle cx="602" cy="192" r="5" fill="var(--d1)"/>
-        <circle cx="118" cy="136" r="5" fill="var(--d2)"/><circle cx="360" cy="248" r="5" fill="var(--d2)"/><circle cx="602" cy="80"  r="5" fill="var(--d2)"/>
-        <circle cx="118" cy="192" r="5" fill="var(--d3)"/><circle cx="360" cy="80"  r="5" fill="var(--d3)"/><circle cx="602" cy="304" r="5" fill="var(--d3)"/>
-        <circle cx="118" cy="248" r="5" fill="var(--d4)"/><circle cx="360" cy="304" r="5" fill="var(--d4)"/><circle cx="602" cy="248" r="5" fill="var(--d4)"/>
-        <circle cx="118" cy="304" r="5" fill="var(--d5)"/><circle cx="360" cy="192" r="5" fill="var(--d5)"/><circle cx="602" cy="136" r="5" fill="var(--d5)"/>
-      </g>
-      <g class="sv-lbl">
-        <text x="104" y="84"  text-anchor="end" fill="var(--d1)">A</text>
-        <text x="104" y="140" text-anchor="end" fill="var(--d2)">B</text>
-        <text x="104" y="196" text-anchor="end" fill="var(--d3)">C</text>
-        <text x="104" y="252" text-anchor="end" fill="var(--d4)">D</text>
-        <text x="104" y="308" text-anchor="end" fill="var(--d5)">E</text>
-        <text x="616" y="196" fill="var(--d1)">A</text>
-        <text x="616" y="84"  fill="var(--d2)">B</text>
-        <text x="616" y="308" fill="var(--d3)">C</text>
-        <text x="616" y="252" fill="var(--d4)">D</text>
-        <text x="616" y="140" fill="var(--d5)">E</text>
-      </g>
-      <text x="360" y="362" text-anchor="middle" class="sv-sub" fill="var(--ber)">
-        점선 = 가설. 아직 측정하지 않았다.</text>
-    </svg>
-    <figcaption>같은 다섯 개의 <span class="mono">ap_fixed</span> 구성(A~E)을 세 기준으로 줄 세운다.
-    선이 교차하면 이 연구는 할 말이 있고, 나란히 가면 <b>"기존 목적함수로 충분하다"</b> 는
-    부정 결과를 그대로 적는다. 위 배치는 <b>가설을 보여주는 그림이지 측정값이 아니다.</b></figcaption>
-  </figure>
-</section>
-
-<section>
-  <div class="shead"><div class="eyebrow">04 &mdash; 쓰는 것</div><h2>알고리즘은 전부 기존 것</h2></div>
+  <div class="shead"><div class="eyebrow">02 &mdash; 쓰는 알고리즘</div><h2>전부 남이 만든 것</h2></div>
+  <p>역변환을 <b>반복법</b>으로 바꾸면 O(K&sup3;)가 O(K&sup2;)로 내려간다. 후보가 여럿이고
+  전부 수십 년 된 수치해석이다.</p>
   <div class="tw">
     <table>
-      <thead><tr><th>블록</th><th>쓰는 알고리즘</th><th>출처</th></tr></thead>
+      <thead><tr><th>알고리즘</th><th>성격</th><th>문헌이 말하는 것</th></tr></thead>
       <tbody>
-        <tr><td><strong>적응 등화기 FFE</strong></td><td>LMS / RLS 계수 적응</td>
-            <td>교과서. 새로 만들지 않는다</td></tr>
-        <tr><td><strong>판정귀환 DFE</strong></td><td>판정귀환 + 언롤(speculative) 구조</td>
-            <td>Kasturia&amp;Winters 이래 표준 기법</td></tr>
-        <tr><td><strong>연판정 복조</strong></td><td>PAM4 LLR 근사(max-log)</td>
-            <td>표준 근사</td></tr>
-        <tr><td><strong>FEC 판정</strong></td><td>RS(544,514) over GF(2<sup>10</sup>), t=15</td>
-            <td>IEEE 802.3 Clause 91 (KP4)</td></tr>
-        <tr><td><strong>합성·구현</strong></td><td>Vitis HLS &rarr; Vivado / yosys &rarr; sky130</td>
-            <td>기성 도구</td></tr>
+        <tr><td><strong>Gauss-Seidel</strong></td><td>반복, 역변환 자체가 없음</td>
+            <td>NSE보다 효율적이라고 보고됨. <b>1순위로 고른다</b></td></tr>
+        <tr><td><strong>Neumann series (NSE)</strong></td><td>급수 전개</td>
+            <td>수렴이 느림. Newton 반복과 결합해 가속하는 변형들이 있음</td></tr>
+        <tr><td><strong>Conjugate Gradient</strong></td><td>반복</td>
+            <td>OCD와 함께 복잡도 최저, 성능 수용 가능</td></tr>
+        <tr><td><strong>Jacobi · SOR · Richardson</strong></td><td>반복</td>
+            <td>비교군으로 둔다</td></tr>
+        <tr><td><strong>직접 역변환 (Cholesky)</strong></td><td>정확</td>
+            <td><b>황금 모델의 참값</b>. 여기가 기준선</td></tr>
       </tbody>
     </table>
   </div>
-  <p style="font-size:14.5px;color:var(--ink-2);max-width:66ch;margin-top:12px">
-  <b>새로 만드는 것은 딱 하나다</b> &mdash; 이 블록들을 워드길이·포화·병렬도로 파라미터화해서
-  <b>수백 개 구성을 자동으로 뽑고 세 축에서 동시에 재는 개발 하네스</b>. 그게 이 프로젝트의
-  기술적 산출물이고, 논문은 그것으로 얻은 데이터다.</p>
+  <p style="margin-top:12px"><b>새 알고리즘은 하나도 만들지 않는다.</b> Gauss-Seidel을 본체로 쓰고
+  나머지는 비교군이다.</p>
+</section>
+
+<section class="body">
+  <div class="shead"><div class="eyebrow">03 &mdash; 우리가 묻는 것</div><h2>작지만 아무도 답을 안 적어 뒀다</h2></div>
+  <p class="lead">반복법에는 <b>두 개의 손잡이</b>가 있다. <b>반복을 몇 번 돌 것인가</b>와
+  <b>고정소수점 워드길이를 몇 비트로 할 것인가</b>. 둘 다 정확도를 올리고, 둘 다 값이 든다.</p>
+  <p>그런데 <b>값을 치르는 통화가 다르다.</b> 반복을 늘리면 <b>시간</b>(지연·처리율)을 내고,
+  비트를 늘리면 <b>면적</b>을 낸다. 그러면 자연히 물음이 선다 &mdash;</p>
+  <p class="lead" style="margin-top:6px">&ldquo;<b>같은 BER을 얻는 데, 비트를 한 칸 줄이고 반복을 한 번
+  늘리는 게 싼가, 그 반대가 싼가?</b>&rdquo;</p>
+  <p>그리고 답이 <b>기판에 따라 뒤집힐 수 있다.</b> FPGA에서 반복 한 번은 이미 박혀 있는 DSP48을
+  한 번 더 쓰는 것이라 거의 공짜에 가깝다. ASIC에서 비트 한 칸은 곱셈기 면적에 그대로 붙는다.
+  <b>FPGA에서 고른 답이 칩에서 틀릴 수 있다.</b></p>
 </section>
 
 <section>
-  <div class="shead"><div class="eyebrow">05 &mdash; 개발 계획</div><h2>단계마다 나오는 물건</h2></div>
+  <div class="shead"><div class="eyebrow">04 &mdash; 그림</div><h2>같은 BER, 다른 값</h2></div>
+  <figure><svg viewBox="0 0 680 392" role="img" aria-label="워드길이와 반복 횟수의 맞바꿈을 보여주는 가설 그림">
+  <g stroke="var(--line)" stroke-width="1">
+    <line x1="90" y1="300" x2="618" y2="300"/>
+    <line x1="90" y1="40"  x2="90"  y2="300"/>
+  </g>
+  <g class="sv-rk">
+    <text x="90"  y="320" text-anchor="middle">1</text>
+    <text x="218" y="320" text-anchor="middle">2</text>
+    <text x="345" y="320" text-anchor="middle">3</text>
+    <text x="472" y="320" text-anchor="middle">4</text>
+    <text x="600" y="320" text-anchor="middle">5</text>
+    <text x="78" y="54"  text-anchor="end">16b</text>
+    <text x="78" y="147" text-anchor="end">13b</text>
+    <text x="78" y="241" text-anchor="end">10b</text>
+  </g>
+  <text x="354" y="342" text-anchor="middle" class="sv-sub">Gauss-Seidel 반복 횟수 &rarr;</text>
+  <text x="20" y="170" class="sv-sub" transform="rotate(-90 20 170)" text-anchor="middle">&larr; ap_fixed 워드길이</text>
+
+  <path d="M90 50 Q 180 120 218 144 Q 300 180 345 191 Q 420 212 472 222 Q 545 233 600 238"
+        fill="none" stroke="var(--ber)" stroke-width="2.5" stroke-dasharray="7 4"/>
+  <g>
+    <circle cx="90"  cy="50"  r="6" fill="var(--ber)"/>
+    <circle cx="218" cy="144" r="6" fill="var(--ber)"/>
+    <circle cx="345" cy="191" r="6" fill="var(--ber)"/>
+    <circle cx="472" cy="222" r="6" fill="var(--ber)"/>
+    <circle cx="600" cy="238" r="6" fill="var(--ber)"/>
+  </g>
+  <text x="352" y="172" class="sv-lbl" fill="var(--ber)">같은 BER 을 주는 구성들</text>
+
+  <g stroke-width="2" marker-end="url(#ar)">
+    <line x1="120" y1="272" x2="120" y2="212" stroke="var(--asic)"/>
+    <line x1="150" y1="278" x2="250" y2="278" stroke="var(--fpga)"/>
+  </g>
+  <defs><marker id="ar" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+    <path d="M0 0 L7 3.5 L0 7 z" fill="context-stroke"/></marker></defs>
+  <text x="132" y="208" class="sv-lbl" fill="var(--asic)">비트 &uarr; = ASIC 면적 &uarr;</text>
+  <text x="258" y="282" class="sv-lbl" fill="var(--fpga)">반복 &uarr; = 지연 &uarr; · 처리율 &darr;</text>
+
+  <text x="354" y="382" text-anchor="middle" class="sv-sub" fill="var(--ber)">
+    점선 = 가설. 아직 측정하지 않았다.</text>
+</svg>
+  <figcaption>가로는 Gauss-Seidel 반복 횟수, 세로는 <span class="mono">ap_fixed</span> 워드길이.
+  점선 위의 점들은 <b>같은 BER</b>을 내는 구성이다. 그중 어느 것이 가장 싼가 &mdash; 그리고
+  그 답이 FPGA와 ASIC에서 같은가. 이 그림은 <b>가설이지 측정값이 아니다.</b></figcaption></figure>
+</section>
+
+<section>
+  <div class="shead"><div class="eyebrow">05 &mdash; 파이프라인</div><h2>단계마다 나오는 물건</h2></div>
   <div class="steps">
-<span><b>1단계</b>  HLS IP 골격 &mdash; ap_fixed 파라미터화된 FFE+DFE+LLR. C 시뮬레이션이 MATLAB 황금모델과 비트-정확</span>
-<span>        <b>산출</b> 합성 가능한 HLS 소스 + 황금모델 대조 통과</span>
+<span><b>1단계</b>  MATLAB 황금 모델 &mdash; 채널 생성 → Cholesky 직접 역변환(참값) → Gauss-Seidel 반복</span>
+<span>        BER 곡선으로 "반복 몇 번이면 직접 역변환에 붙나" 를 먼저 확인한다</span>
+<span>        <b>산출</b> 부동소수점 기준선 + BER 곡선</span>
 <span></span>
-<span><b>2단계</b>  링크 시뮬레이터 &mdash; 채널·잡음·오류 위치 기록 → RS(544,514) 판정까지</span>
-<span>        <b>산출</b> post-FEC BER 을 내는 재현 가능한 측정대</span>
+<span><b>2단계</b>  고정소수점 모델 &mdash; 같은 MATLAB 코드에 워드길이를 넣는다</span>
+<span>        <b>산출</b> (워드길이 &times; 반복) 격자 위의 BER 표 &mdash; 03절 그림의 실제 데이터</span>
 <span></span>
-<span><b>3단계</b>  FPGA 축 &mdash; Vivado 합성 + <b>구현까지</b> (추정치가 아니라 P&amp;R 후 값)</span>
-<span>        <b>산출</b> 구성별 LUT · FF · DSP · BRAM · Fmax 표</span>
+<span><b>3단계</b>  HLS IP &mdash; ap_fixed 로 Gauss-Seidel. 워드길이·반복·병렬도를 파라미터로</span>
+<span>        C 시뮬레이션이 2단계 고정소수점 모델과 <b>비트-정확</b> 해야 통과</span>
+<span>        <b>산출</b> 합성 가능한 IP + 황금모델 대조 통과</span>
 <span></span>
-<span><b>4단계</b>  ASIC 축 &mdash; yosys + sky130_fd_sc_hd</span>
-<span>        <b>산출</b> 구성별 셀 면적 · 게이트 수 · 소자 수 · 논리 깊이</span>
-<span></span>
-<span><b>5단계</b>  판정 &mdash; 축 사이 Spearman rho · 최적해 겹침률 · 목적함수별 최적해의 타 축 백분위</span>
-<span>        <b>산출</b> 논문 + <b>공개 IP 와 재현 패키지</b></span>
+<span><b>4단계</b>  값매김 &mdash; Vitis HLS 리포트(지연·II·자원) + Vivado 구현 + yosys/sky130 면적</span>
+<span>        <b>산출</b> 구성별 비용표. 03절 물음에 대한 답</span>
   </div>
   <p style="font-size:14.5px;color:var(--ink-2);max-width:66ch;margin-top:12px">
-  각 단계가 <b>그 자체로 쓸 수 있는 물건</b>을 낸다. 5단계에서 결과가 시시하게 나와도
-  1~4단계의 IP와 측정대는 남는다.</p>
+  <b>1~3단계까지가 사용자가 말한 파이프라인 전부다.</b> 4단계는 그 위에 얹는 값매김이고,
+  시간이 모자라면 Vitis HLS 리포트까지만 해도 이야기가 선다.</p>
 </section>
 
 <section>
-  <div class="shead"><div class="eyebrow">06 &mdash; 판정</div><h2>무엇이 나오면 실패인가</h2></div>
-
-  <div class="hyp">
-    <div class="hyp-h"><span class="hyp-n">Q1</span><h3>FPGA 순위와 ASIC 순위가 다른가</h3></div>
-    <div class="hyp-b">
-      <div class="row"><span class="pin ev">예상</span><p>다르다. FPGA의 DSP48·BRAM은 이산적 하드 자원이고
-      ASIC의 곱셈은 면적에 그대로 든다. 등화기는 곱셈 밀도가 높아 차이가 누적된다.</p></div>
-      <div class="row"><span class="pin kill">아니면</span><p>Spearman rho &ge; 0.9 면 "FPGA에서 고르면 칩에서도 맞다"
-      가 성립한다. 그러면 ASIC 다리는 불필요하고, 그 사실을 그대로 적는다.</p></div>
-    </div>
-  </div>
-
-  <div class="hyp">
-    <div class="hyp-h"><span class="hyp-n">Q2</span><h3>MSE 순위와 post-FEC 순위가 다른가</h3></div>
-    <div class="hyp-b">
-      <div class="row"><span class="pin ev">근거</span><p>직접 계산해 둔 것: pre-FEC BER을 고정한 채로도
-      post-FEC가 <span class="mono">1.7e-14 ~ 2.26e-4</span>로 열 자리 넘게 벌어진다. 오직 오류가
-      코드워드 안에서 뭉치느냐에만 달렸고, KP4에서 버스트 <span class="mono">B &ge; 16</span> 심볼이면
-      부호화 이득이 <b>정확히 0</b>이다. 모형이 아니라 산술이다.</p></div>
-      <div class="row"><span class="pin kill">아니면</span><p>동작점이 FEC 문턱에서 멀거나 결함이 전부
-      반올림형이면 두 순위가 일치한다. 그때 결론은 <b>"MSE로 충분하다"</b>이고, 그대로 적는다.</p></div>
-    </div>
-  </div>
-</section>
-
-<section>
-  <div class="shead"><div class="eyebrow">07 &mdash; 이미 있는 것</div><h2>정직하게: 주변은 빽빽하다</h2></div>
+  <div class="shead"><div class="eyebrow">06 &mdash; 이미 있는 것</div><h2>기준선이 숫자로 있다 &mdash; 좋은 일이다</h2></div>
+  <p style="max-width:66ch;color:var(--ink-2)">이 분야는 빽빽하다. 그런데 이번엔 그게 <b>유리하다</b> &mdash;
+  견줄 숫자가 이미 공개돼 있기 때문이다.</p>
   <div class="tw">
     <table>
-      <thead><tr><th>이미 있는 것</th><th>우리가 다른 점</th></tr></thead>
+      <thead><tr><th>이미 있는 것</th><th>우리에게 주는 것</th></tr></thead>
       <tbody>
-        <tr><td><strong>워드길이 최적화</strong> &mdash; MiniBit(TCAD 2006) · 민감도 탐색(EURASIP 2006) ·
-            Winandy(2025). 20년 된 분야</td>
-            <td>저들의 목적함수는 <span class="ax b">정확도/MSE</span> 하나다. 우리는 축을 셋 놓고
-            <b>순위가 뒤집히는지</b>를 잰다</td></tr>
-        <tr><td><strong>LDPC 복호기 양자화 대 BER</strong> &mdash; 3~6비트에 0.1~0.25 dB 페널티.
-            완전한 표준 관행</td>
-            <td>대상이 다르다. 우리는 <b>복호기가 아니라 복호기 앞단</b>(등화·복조)이고,
-            거기서는 지금도 MSE/EVM으로 고른다</td></tr>
-        <tr><td><strong>DFE 버스트 &rarr; FEC 열화</strong> &mdash; 알려져 있다.
-            Signal Integrity Journal(2019) · 특허 US8555132 · arXiv:2306.07873</td>
-            <td>저들은 <b>등화 알고리즘</b>이 버스트를 만든다고 본다. 우리는
-            <b>고정소수점 구현 선택</b>이 같은 일을 하는지를 본다</td></tr>
-        <tr><td><strong>post-FEC를 기준으로</strong> &mdash; Yang, ISCAS 2021</td>
-            <td>저들의 대상은 <b>송수신기 설정</b>. 우리는 <b>HLS 정밀도 배정</b>이고
-            <b>기판 축</b>이 하나 더 붙는다</td></tr>
+        <tr><td><strong>Gauss-Seidel 검출기 FPGA 구현</strong> &mdash; Virtex-7, 128 안테나 &times; 8 사용자,
+            <b>732 Mb/s</b>, MMSE에 근접한 오류율</td>
+            <td><b>비교 기준선.</b> 우리 IP가 같은 조건에서 어디쯤인지 말할 수 있다</td></tr>
+        <tr><td><strong>수정 NSE + tridiagonal 근사</strong> &mdash; 상관 채널, <b>630 Mb/s</b></td>
+            <td>두 번째 기준선</td></tr>
+        <tr><td><strong>알고리즘 비교 문헌</strong> &mdash; GS가 NSE보다 효율적, CG·OCD가 복잡도 최저</td>
+            <td>어느 것을 고를지 <b>우리가 정할 필요가 없다.</b> 문헌이 정해 준다</td></tr>
+        <tr><td><strong>워드길이 최적화</strong> &mdash; MiniBit 등 20년 분야</td>
+            <td>저들의 손잡이는 비트 하나뿐이다. 우리는 <b>비트 &times; 반복</b> 격자를 본다</td></tr>
       </tbody>
     </table>
   </div>
   <div class="note">
-    <h3>새로운 것은 부품이 아니라 조합이다</h3>
-    <p>각 부품은 전부 남이 이미 했다. 그래서 이 프로젝트는 <b>새 알고리즘을 주장하지 않는다.</b>
-    주장하는 것은 <b>만든 IP</b>와 <b>측정된 사실</b>이다 &mdash; 세 축을 같은 설계공간 위에 동시에
-    올려 재 본 데이터는 공개된 적이 없다.</p>
+    <h3>아직 확인 못 한 것 &mdash; 여기가 생사를 가른다</h3>
+    <p><b>"워드길이와 반복 횟수의 맞바꿈"을 격자로 재 본 문헌이 이미 있는지 아직 모른다.</b>
+    반복법 논문은 보통 반복 횟수만 쓸고, 워드길이 논문은 보통 반복을 고정한다 &mdash; 라는 것이
+    지금까지 본 조각들의 인상이지만, <b>확인한 것이 아니다.</b> 이걸 먼저 파야 한다.
+    이미 있으면 이 프로젝트는 &ldquo;IP를 만들어 공개한다&rdquo;로 목표를 낮춘다.</p>
+  </div>
+</section>
+
+<section>
+  <div class="shead"><div class="eyebrow">07 &mdash; 한 층 더</div><h2>회로가 아직 없는 자리 &mdash; 분야가 스스로 인정한 구멍</h2></div>
+  <p style="max-width:66ch;color:var(--ink-2)">위 계획(Gauss-Seidel)은 <b>안전하다</b> &mdash; 알고리즘도
+  회로도 이미 있다. 그래서 산출물이 &ldquo;IP를 만들어 공개했다&rdquo;에 머문다. 여기에 한 층을 얹으면
+  <b>분야가 답을 모르는 질문</b>에 닿는다.</p>
+
+  <div class="note" style="border-left-color:var(--ok)">
+    <h3 style="color:var(--ok)">Deep unfolding &mdash; 알고리즘은 있는데 회로가 거의 없다</h3>
+    <p>Gauss-Seidel·CG 같은 반복법에 <b>학습 가능한 스텝 크기</b>를 붙여 반복 횟수를 줄이는 기법이
+    <b>deep unfolding</b> 이다. 여전히 기존 알고리즘이다 &mdash; 새로 만드는 게 아니다.
+    그런데 이 분야의 서베이가 이렇게 적는다:</p>
+    <p style="margin-top:8px;padding-left:14px;border-left:2px solid var(--line);font-style:italic">
+    &ldquo;Hardware implementation complexity is typically <b>not considered</b> in the literature on
+    deep unfolding, with only a few exceptions presenting FPGA and ASIC implementation results.
+    It remains <b>largely unclear how the additional trainable parameters</b> required by unfolded
+    algorithms <b>affect the hardware implementation complexity and achieved throughput</b>.&rdquo;</p>
+    <p style="margin-top:8px">우리 파이프라인이 <b>정확히 이 질문에 답하는 모양</b>이다.
+    MATLAB 황금모델 &rarr; HLS &rarr; 자원/지연 리포트. 그게 곧 &ldquo;학습 파라미터가 하드웨어로
+    얼마짜리냐&rdquo;의 답이다.</p>
+  </div>
+
+  <div class="note">
+    <h3>다만 &ldquo;최초 구현&rdquo; 이라고 말하면 안 된다</h3>
+    <p>같은 검색에서 <b>반례</b>가 나왔다 &mdash; deep-unfolding 으로 최적화한 Gram-domain 블록
+    좌표하강 검출기를 <b>22&nbsp;nm FD-SOI 로 실제 제작</b>하고 측정까지 한 2025년 논문이 있다
+    (arXiv:2501.14861). 그러니 &ldquo;아무도 안 했다&rdquo;는 <b>거짓</b>이다.
+    안전하게 말할 수 있는 것은 <b>&ldquo;드물다&rdquo;</b> 와 <b>&ldquo;서베이가 미지라고 적었다&rdquo;</b>
+    까지다. 이 선을 넘지 않는다.</p>
+  </div>
+
+  <div class="steps" style="margin-top:14px">
+<span><b>층 1 (안전)</b>  Gauss-Seidel 검출기 IP &mdash; 문헌 기준선(732 Mb/s)과 견준다</span>
+<span><b>층 2 (질문)</b>  같은 IP에 학습 스텝 크기를 붙인다(deep unfolding) &mdash; 반복은 줄고 비용은?</span>
+<span><b>층 3 (답)</b>    (워드길이 &times; 반복 &times; 학습파라미터) 격자의 비용표</span>
+<span></span>
+<span>층 1만 해도 IP는 나온다. 층 2까지 가면 분야가 미지라고 적어 둔 칸을 채운다.</span>
   </div>
 </section>
 
 <section>
   <div class="shead"><div class="eyebrow">08 &mdash; 한계</div><h2>먼저 말해 두는 약점</h2></div>
   <div class="note">
-    <h3>sky130으로는 면적까지만</h3>
-    <p>배포된 sky130 표준셀에 <b>Liberty(.lib)가 하나도 없다</b>(직접 확인: 437개
-    <span class="mono">.lef</span>와 437개 <span class="mono">.spice</span>뿐).
-    <b>정적 타이밍 분석과 전력 추정이 불가능</b>하다. 면적·게이트 수·논리 깊이까지만 말하고,
-    130&nbsp;nm이므로 <b>구성 사이의 상대 비교</b>로만 쓴다.</p>
+    <h3>새 알고리즘이 없다</h3>
+    <p>의도한 것이다. 산출물은 <b>IP와 측정 데이터</b>이지 알고리즘이 아니다. 그래서 이 작업은
+    &ldquo;기여가 무엇이냐&rdquo;는 질문에 <b>알고리즘으로 답하지 않는다</b> &mdash; 공개된 IP,
+    재현 가능한 격자 데이터, 그리고 기존 구현과의 비교로 답한다.</p>
   </div>
   <div class="note">
-    <h3>&#8361;100만 보드는 400G 현장이 아니다</h3>
-    <p>예산 안의 Artix-7급은 GTP가 <b>최대 6.6 Gb/s</b>다. 400G 링크를 실측할 수 없다.
-    그래서 <b>링크 속도를 주장하지 않는다</b> &mdash; 주장하는 것은 <b>설계공간의 구조</b>이고
-    그것은 속도에 의존하지 않는다.</p>
+    <h3>sky130으로는 면적까지만</h3>
+    <p>Liberty(.lib)가 없어 STA와 전력이 불가능하다(직접 확인: <span class="mono">.lef</span> 437개,
+    <span class="mono">.spice</span> 437개뿐). 면적·게이트 수·논리 깊이까지만 말한다.</p>
   </div>
   <div class="note good">
-    <h3>결과가 어느 쪽이어도 낼 것이 있다</h3>
-    <p>세 축이 어긋나면 "지금의 목적함수는 불완전하다", 나란히 가면 "기존 목적함수로 충분하다".
-    둘 다 아무도 재 보지 않은 사실이다. 그리고 <b>IP와 측정대와 데이터셋은 결과와 무관하게 남는다.</b>
-    이 주제를 고른 가장 큰 이유가 이것이다.</p>
+    <h3>실패해도 IP는 남는다</h3>
+    <p>격자를 다 재고 나서 &ldquo;비트와 반복은 그냥 독립적이다&rdquo;가 나와도,
+    <b>합성 가능한 검출기 IP와 황금 모델과 격자 데이터</b>는 그대로 남는다.
+    그리고 그 결론 자체도 아무도 안 적어 둔 것이다.</p>
   </div>
 </section>
 
 <footer>
-  <div><b>다음 걸음</b> &mdash; 첫 산출물은 코드가 아니라
-    <span class="mono">paper/선행조사/</span> 기록이다. 07절 표의 네 줄을 <b>전문까지</b> 확인해야 한다.
-    1순위는 <b>FPGA 자원과 ASIC 면적의 상관을 이미 다룬 문헌이 있는지</b>다 &mdash; 있으면 Q1을 뺀다.</div>
-  <div><b>아직 못 정한 것</b> &mdash; FPGA 보드 기종(&#8361;100만 이내) · 마감.</div>
-  <div><b>주의</b> &mdash; 이 문서의 수 가운데 <span class="mono">1.7e-14 ~ 2.26e-4</span>와
-    <span class="mono">B &ge; 16</span>만 우리가 직접 계산한 것이다. 나머지 인용은 모두
-    <b>검색 조각 수준</b>이며 전문 미확인이다.</div>
+  <div><b>다음 걸음</b> &mdash; 06절의 "아직 확인 못 한 것" 부터. 워드길이&times;반복 격자를 재 본
+    문헌이 있는지 <span class="mono">paper/선행조사/</span> 에 기록하며 판다.</div>
+  <div><b>아직 못 정한 것</b> &mdash; FPGA 보드 기종(&#8361;100만 이내) · 마감 · 안테나 구성(K&times;M).</div>
+  <div><b>주의</b> &mdash; 이 문서의 인용은 모두 <b>검색 조각 수준</b>이며 전문 미확인이다.
+    732 Mb/s · 630 Mb/s 는 조각에 적힌 수를 옮긴 것이고, 조건(공정·클럭·정밀도)을
+    전문에서 확인해야 견줄 수 있다.</div>
 </footer>
 
 </div>
