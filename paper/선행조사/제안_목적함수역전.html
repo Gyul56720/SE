@@ -1,4 +1,4 @@
-<title>목적함수가 최적해를 바꾼다</title>
+<title>FPGA에선 맞고 칩에선 틀리다</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@400;600&family=Source+Sans+3:wght@400;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap">
 <style>
 :root{
@@ -115,36 +115,49 @@ footer b{color:var(--ink-2)}
 <div class="wrap">
 
 <header>
-  <div class="eyebrow">연구 주제 제안 · 통신융합시스템 · 2026-09-18</div>
-  <h1>목적함수가 최적해를 바꾼다</h1>
-  <p class="ko">FEC 로 보호되는 수신기를 HLS 로 설계할 때, 무엇을 기준으로 고르느냐에 따라
-  최적 구성이 뒤집힌다.</p>
-  <p class="en">Objective-Dependent Optimality in HLS Design-Space Exploration for FEC-Protected
-  Receivers: FPGA Resources, ASIC Area, and Post-FEC BER Do Not Agree</p>
+  <div class="eyebrow">IP 개발 계획 · 통신융합시스템 · 2026-09-18</div>
+  <h1>FPGA에선 맞고 칩에선 틀리다</h1>
+  <p class="ko">통신 수신기 등화기 IP를 HLS로 개발한다. 그리고 같은 IP를 FPGA와 ASIC
+  양쪽에 넣어 본다 &mdash; 고를 답이 달라진다.</p>
+  <p class="en">An HLS-Developed Adaptive Equalizer IP for FEC-Protected Receivers:
+  Dual-Substrate Evaluation on FPGA and Open-PDK ASIC</p>
   <div class="tags">
-    <span class="tag">HLS · Vitis</span><span class="tag">ap_fixed 설계공간</span>
-    <span class="tag">RS(544,514) KP4</span><span class="tag">Artix-7</span>
-    <span class="tag">sky130 + yosys</span><span class="tag">FEC · DSP · EDA 융합</span>
+    <span class="tag">만드는 것 = IP</span><span class="tag">알고리즘은 기존 것</span>
+    <span class="tag">HLS · Vitis</span><span class="tag">Artix-7</span>
+    <span class="tag">sky130 + yosys</span><span class="tag">RS(544,514) KP4</span>
   </div>
 </header>
 
 <section class="body">
-  <div class="shead"><div class="eyebrow">01 — 왜 지금인가</div><h2>탐색은 자동화됐는데, 무엇을 향해 탐색할지는 그대로다</h2></div>
-  <p class="lead">HLS 설계공간 탐색(DSE)은 2024년 이후 빠르게 자동화되고 있다. LLM 이 pragma 를
-  고르고(HLSPilot · ChatHLS · iDSE), 강화학습이 QoR 을 좇고, 타이밍까지 인식한다.
-  <b>탐색이 사람 손을 떠나면 남는 것은 목적함수 하나다</b> — 무엇을 최소화하라고 적어 주느냐가
-  결과 전부를 정한다.</p>
-  <p>그런데 통신 수신기에서 그 목적함수는 관행적으로 <b>자원 수와 정확도(MSE·EVM)</b> 다.
-  이 제안의 출발점은 단순한 의심이다. 통신 링크에서 실제로 중요한 것은 그 둘이 아니다.
-  실제로 중요한 것은 <b>FEC 를 통과한 뒤의 BER</b> 이고, 만들어지는 물건이 FPGA 냐 ASIC 이냐에 따라
-  <b>같은 자원 수가 전혀 다른 비용</b>을 뜻한다.</p>
-  <p>세 기준이 같은 답을 준다면 이 제안은 필요 없다. 다른 답을 준다면, 지금 자동 DSE 가
-  찾고 있는 "최적해" 는 <b>세 기준 중 하나에서만 최적</b>이다. 이 연구는 그것을 같은 설계공간
-  위에서 실제로 재서 판정한다.</p>
+  <div class="shead"><div class="eyebrow">01 &mdash; 한 문장</div><h2>무엇을 만드는가</h2></div>
+  <p class="lead"><b>FEC로 보호되는 링크의 수신기 앞단 IP</b>를 HLS로 만든다.
+  적응 등화기(FFE&nbsp;+&nbsp;DFE)와 연판정 복조기(LLR 생성)를, <b>워드길이·포화 방식·병렬도를
+  파라미터로 뽑아 쓸 수 있는</b> 재사용 가능한 블록으로 짓는다.</p>
+  <p><b>알고리즘은 하나도 새로 만들지 않는다.</b> LMS/RLS 적응 등화, 판정귀환, 연판정 LLR,
+  RS(544,514) &mdash; 전부 교과서와 규격에 있는 것을 가져다 쓴다. 이 작업의 산출물은
+  <b>알고리즘이 아니라 IP와 그 값매김 데이터</b>다.</p>
+  <p>그리고 만든 IP를 <b>두 기판에 넣어 본다</b> &mdash; FPGA(Artix-7)와 오픈 PDK ASIC(sky130).
+  대부분의 FPGA 논문에 없는 다리가 이것이고, 여기서 이 계획의 이름이 나온다.</p>
+</section>
+
+<section class="body">
+  <div class="shead"><div class="eyebrow">02 &mdash; 직관</div><h2>왜 정답이 달라지나</h2></div>
+  <p class="lead">FPGA에는 <b>곱셈기(DSP48)가 이미 박혀 있다.</b> 안 쓰면 그냥 노는 자원이다.
+  그래서 HLS로 설계할 때 LUT를 아끼려고 곱셈을 DSP 블록으로 몰아넣는 것이 이득이다.
+  <b>공짜처럼 보이기 때문이다.</b></p>
+  <p>ASIC에는 그런 게 없다. <b>곱셈 하나가 그대로 면적이다.</b> 그러면 FPGA에서
+  "곱셈을 많이 쓰고 LUT를 아낀" 구성이 칩에서는 가장 비싼 구성이 된다.
+  <b>1등이 꼴찌가 된다.</b></p>
+  <p>여기에 축이 하나 더 있다. 통신 링크에서 진짜 성적표는 자원 수가 아니라
+  <b>FEC를 통과한 뒤의 오류율</b>이다. 그런데 정밀도를 줄일 때 생기는 <b>포화(saturation)는
+  오류를 뭉치게 만들고</b>, FEC는 뭉친 오류에 급격히 약하다. 평균 오차(MSE)만 보면
+  이 차이가 안 보인다.</p>
+  <p><b>그래서 축이 셋이다</b> &mdash; FPGA 자원 · ASIC 면적 · post-FEC 오류율.
+  이 셋이 같은 답을 주는지, 이 개발에서 실제로 재 본다.</p>
 </section>
 
 <section>
-  <div class="shead"><div class="eyebrow">02 — 그림</div><h2>같은 설계, 세 개의 순위</h2></div>
+  <div class="shead"><div class="eyebrow">03 &mdash; 그림</div><h2>같은 설계, 세 개의 순위</h2></div>
   <figure>
     <svg viewBox="0 0 720 372" role="img" aria-label="세 가지 목적함수가 같은 다섯 설계를 서로 다르게 순위 매기는 가설 그림">
       <g class="sv-hd">
@@ -202,146 +215,141 @@ footer b{color:var(--ink-2)}
 </section>
 
 <section>
-  <div class="shead"><div class="eyebrow">03 — 가설</div><h2>세 개, 각각 깨지는 조건과 함께</h2></div>
-
-  <div class="hyp">
-    <div class="hyp-h"><span class="hyp-n">H1</span><h3>기판이 바뀌면 최적해가 바뀐다</h3></div>
-    <div class="hyp-b">
-      <p>같은 HLS 설계공간에서 <b>FPGA 자원 기준 최적 구성</b>과 <b>sky130 표준셀 면적 기준
-      최적 구성</b>이 다르다.</p>
-      <div class="row"><span class="pin ev">근거</span><p>FPGA 의 DSP48 과 BRAM 은 이산적 하드 자원이라
-      곱셈이 "이미 거기 있는 것" 처럼 값이 매겨진다. ASIC 에서 곱셈은 면적에 그대로 든다.
-      통신 데이터패스는 곱셈 밀도가 높아 이 차이가 누적된다.</p></div>
-      <div class="row"><span class="pin kill">무효화</span><p>두 축의 순위 상관(Spearman ρ)이 0.9 이상이면
-      기각한다. 그러면 "FPGA 에서 고르면 ASIC 에서도 맞다" 가 성립하고, ASIC 다리는 불필요하다.</p></div>
-    </div>
+  <div class="shead"><div class="eyebrow">04 &mdash; 쓰는 것</div><h2>알고리즘은 전부 기존 것</h2></div>
+  <div class="tw">
+    <table>
+      <thead><tr><th>블록</th><th>쓰는 알고리즘</th><th>출처</th></tr></thead>
+      <tbody>
+        <tr><td><strong>적응 등화기 FFE</strong></td><td>LMS / RLS 계수 적응</td>
+            <td>교과서. 새로 만들지 않는다</td></tr>
+        <tr><td><strong>판정귀환 DFE</strong></td><td>판정귀환 + 언롤(speculative) 구조</td>
+            <td>Kasturia&amp;Winters 이래 표준 기법</td></tr>
+        <tr><td><strong>연판정 복조</strong></td><td>PAM4 LLR 근사(max-log)</td>
+            <td>표준 근사</td></tr>
+        <tr><td><strong>FEC 판정</strong></td><td>RS(544,514) over GF(2<sup>10</sup>), t=15</td>
+            <td>IEEE 802.3 Clause 91 (KP4)</td></tr>
+        <tr><td><strong>합성·구현</strong></td><td>Vitis HLS &rarr; Vivado / yosys &rarr; sky130</td>
+            <td>기성 도구</td></tr>
+      </tbody>
+    </table>
   </div>
-
-  <div class="hyp">
-    <div class="hyp-h"><span class="hyp-n">H2</span><h3>오차 지표가 바뀌면 최적해가 바뀐다</h3></div>
-    <div class="hyp-b">
-      <p>MSE/EVM 으로 매긴 정밀도 구성 순위와 <b>post-FEC BER</b> 로 매긴 순위가 다르다.
-      어긋남은 <b>포화·넘침</b>을 일으키는 구성에서 크고, 반올림 계열에서 작다.</p>
-      <div class="row"><span class="pin ev">근거</span><p>우리가 직접 계산한 것: pre-FEC BER 을 고정한 채로도
-      post-FEC BER 이 <span class="mono">1.7e-14 ~ 2.26e-4</span> 로 열 자리 넘게 벌어진다.
-      오직 코드워드 안에서 오류가 뭉치느냐에만 달렸고, KP4 RS(544,514) 에서 버스트 길이
-      <span class="mono">B ≥ 16</span> 심볼이면 부호화 이득이 <b>정확히 0</b> 이다. 모형이 아니라 산술이다.
-      포화는 오류를 뭉치게 만들고 반올림 잡음은 흩뿌리는데, MSE 는 그 둘을 구별하지 못한다.</p></div>
-      <div class="row"><span class="pin kill">무효화</span><p>주입한 결함이 전부 반올림형이거나 동작점이
-      FEC 문턱에서 멀면 두 순위가 일치한다. 그때 결과는 <b>"MSE 로 충분하다"</b> 는 부정 결과이고,
-      그대로 적는다.</p></div>
-    </div>
-  </div>
-
-  <div class="hyp">
-    <div class="hyp-h"><span class="hyp-n">H3</span><h3>단일 목적 자동 DSE 는 다른 축에서 평범하다</h3></div>
-    <div class="hyp-b">
-      <p>자동 DSE 가 하나의 목적함수로 찾아낸 최적해는, 나머지 두 축에서 <b>중위권 이하</b>에 놓인다.</p>
-      <div class="row"><span class="pin ev">근거</span><p>H1·H2 가 성립하면 따라 나온다. 다만 따로 재야
-      크기를 말할 수 있다.</p></div>
-      <div class="row"><span class="pin kill">무효화</span><p>단일 목적 최적해가 다른 축에서도 상위 20% 안에
-      들면 기각. 그러면 목적함수 선택은 실무적으로 중요하지 않다.</p></div>
-    </div>
-  </div>
+  <p style="font-size:14.5px;color:var(--ink-2);max-width:66ch;margin-top:12px">
+  <b>새로 만드는 것은 딱 하나다</b> &mdash; 이 블록들을 워드길이·포화·병렬도로 파라미터화해서
+  <b>수백 개 구성을 자동으로 뽑고 세 축에서 동시에 재는 개발 하네스</b>. 그게 이 프로젝트의
+  기술적 산출물이고, 논문은 그것으로 얻은 데이터다.</p>
 </section>
 
 <section>
-  <div class="shead"><div class="eyebrow">04 — 방법</div><h2>무엇을 어떻게 재는가</h2></div>
+  <div class="shead"><div class="eyebrow">05 &mdash; 개발 계획</div><h2>단계마다 나오는 물건</h2></div>
   <div class="steps">
-<span><b>설계 대상</b>  통신 수신기 데이터패스 2~3 블록 — FFE/DFE 등화기 · FFT · 복조 LLR 생성</span>
-<span><b>설계공간</b>  ap_fixed 워드길이(정수/소수) × 포화 vs 랩 × 반올림 방식 × 언롤·파이프라인 pragma</span>
-<span>           → 수십~수백 구성. 결함 주입으로 <b>정답(ground truth)</b> 을 만든다</span>
+<span><b>1단계</b>  HLS IP 골격 &mdash; ap_fixed 파라미터화된 FFE+DFE+LLR. C 시뮬레이션이 MATLAB 황금모델과 비트-정확</span>
+<span>        <b>산출</b> 합성 가능한 HLS 소스 + 황금모델 대조 통과</span>
 <span></span>
-<span><b>축 1 · FPGA</b>  Vivado 합성 + <b>구현까지</b> → LUT · FF · DSP · BRAM · Fmax  (합성 추정치 아님)</span>
-<span><b>축 2 · ASIC</b>  yosys + sky130_fd_sc_hd → 셀 면적 · 게이트 수 · 소자 수 · 논리 깊이</span>
-<span><b>축 3 · BER</b>   링크 시뮬레이션 → pre-FEC BER + <b>오류 위치 기록</b> → RS(544,514) 판정</span>
+<span><b>2단계</b>  링크 시뮬레이터 &mdash; 채널·잡음·오류 위치 기록 → RS(544,514) 판정까지</span>
+<span>        <b>산출</b> post-FEC BER 을 내는 재현 가능한 측정대</span>
 <span></span>
-<span><b>판정</b>      축 사이 Spearman ρ · 최적해 겹침률 · 목적함수별 최적해의 타 축 백분위</span>
+<span><b>3단계</b>  FPGA 축 &mdash; Vivado 합성 + <b>구현까지</b> (추정치가 아니라 P&amp;R 후 값)</span>
+<span>        <b>산출</b> 구성별 LUT · FF · DSP · BRAM · Fmax 표</span>
+<span></span>
+<span><b>4단계</b>  ASIC 축 &mdash; yosys + sky130_fd_sc_hd</span>
+<span>        <b>산출</b> 구성별 셀 면적 · 게이트 수 · 소자 수 · 논리 깊이</span>
+<span></span>
+<span><b>5단계</b>  판정 &mdash; 축 사이 Spearman rho · 최적해 겹침률 · 목적함수별 최적해의 타 축 백분위</span>
+<span>        <b>산출</b> 논문 + <b>공개 IP 와 재현 패키지</b></span>
   </div>
-  <p style="font-size:14.5px;color:var(--ink-2);max-width:66ch">모든 수는 저장소의 원장 규칙을
-  통과해야 논문에 들어간다 — <b>독립 대조 하나</b>(같은 수를 다른 길로 한 번 더), <b>사소한 설명의
-  배제</b>(그 수가 시시하게 나올 길을 재서 죽인다), <b>무효화 조건</b>(이 주장이 깨지는 지점).
-  이 세 칸이 비면 커밋이 막힌다.</p>
+  <p style="font-size:14.5px;color:var(--ink-2);max-width:66ch;margin-top:12px">
+  각 단계가 <b>그 자체로 쓸 수 있는 물건</b>을 낸다. 5단계에서 결과가 시시하게 나와도
+  1~4단계의 IP와 측정대는 남는다.</p>
 </section>
 
 <section>
-  <div class="shead"><div class="eyebrow">05 — 이미 있는 것</div><h2>정직하게: 주변은 빽빽하다</h2></div>
+  <div class="shead"><div class="eyebrow">06 &mdash; 판정</div><h2>무엇이 나오면 실패인가</h2></div>
+
+  <div class="hyp">
+    <div class="hyp-h"><span class="hyp-n">Q1</span><h3>FPGA 순위와 ASIC 순위가 다른가</h3></div>
+    <div class="hyp-b">
+      <div class="row"><span class="pin ev">예상</span><p>다르다. FPGA의 DSP48·BRAM은 이산적 하드 자원이고
+      ASIC의 곱셈은 면적에 그대로 든다. 등화기는 곱셈 밀도가 높아 차이가 누적된다.</p></div>
+      <div class="row"><span class="pin kill">아니면</span><p>Spearman rho &ge; 0.9 면 "FPGA에서 고르면 칩에서도 맞다"
+      가 성립한다. 그러면 ASIC 다리는 불필요하고, 그 사실을 그대로 적는다.</p></div>
+    </div>
+  </div>
+
+  <div class="hyp">
+    <div class="hyp-h"><span class="hyp-n">Q2</span><h3>MSE 순위와 post-FEC 순위가 다른가</h3></div>
+    <div class="hyp-b">
+      <div class="row"><span class="pin ev">근거</span><p>직접 계산해 둔 것: pre-FEC BER을 고정한 채로도
+      post-FEC가 <span class="mono">1.7e-14 ~ 2.26e-4</span>로 열 자리 넘게 벌어진다. 오직 오류가
+      코드워드 안에서 뭉치느냐에만 달렸고, KP4에서 버스트 <span class="mono">B &ge; 16</span> 심볼이면
+      부호화 이득이 <b>정확히 0</b>이다. 모형이 아니라 산술이다.</p></div>
+      <div class="row"><span class="pin kill">아니면</span><p>동작점이 FEC 문턱에서 멀거나 결함이 전부
+      반올림형이면 두 순위가 일치한다. 그때 결론은 <b>"MSE로 충분하다"</b>이고, 그대로 적는다.</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="shead"><div class="eyebrow">07 &mdash; 이미 있는 것</div><h2>정직하게: 주변은 빽빽하다</h2></div>
   <div class="tw">
     <table>
       <thead><tr><th>이미 있는 것</th><th>우리가 다른 점</th></tr></thead>
       <tbody>
-        <tr><td><strong>워드길이 최적화</strong> — MiniBit(TCAD 2006) · 민감도 탐색(EURASIP 2006) ·
-            Winandy(2025). 20년 된 분야다</td>
-            <td>저들의 목적함수는 <span class="ax b">정확도/MSE</span>. 우리는 목적함수 자체를
-            바꾸고, <b>바꾼 결과 순위가 뒤집히는지</b>를 잰다</td></tr>
-        <tr><td><strong>LDPC 복호기 양자화 대 BER</strong> — 3~6비트에 0.1~0.25 dB 페널티.
-            완전한 표준 관행이다</td>
-            <td>대상이 다르다. 우리는 <b>복호기가 아니라 복호기 앞단</b>(등화·동기·복조)의
-            정밀도 배정을 본다. 거기서는 지금도 MSE/EVM 으로 고른다</td></tr>
-        <tr><td><strong>DFE 버스트 → FEC 열화</strong> — 알려져 있다. Signal Integrity Journal(2019),
-            특허 US8555132(등화기 뒤 오류통계 변형), arXiv:2306.07873</td>
+        <tr><td><strong>워드길이 최적화</strong> &mdash; MiniBit(TCAD 2006) · 민감도 탐색(EURASIP 2006) ·
+            Winandy(2025). 20년 된 분야</td>
+            <td>저들의 목적함수는 <span class="ax b">정확도/MSE</span> 하나다. 우리는 축을 셋 놓고
+            <b>순위가 뒤집히는지</b>를 잰다</td></tr>
+        <tr><td><strong>LDPC 복호기 양자화 대 BER</strong> &mdash; 3~6비트에 0.1~0.25 dB 페널티.
+            완전한 표준 관행</td>
+            <td>대상이 다르다. 우리는 <b>복호기가 아니라 복호기 앞단</b>(등화·복조)이고,
+            거기서는 지금도 MSE/EVM으로 고른다</td></tr>
+        <tr><td><strong>DFE 버스트 &rarr; FEC 열화</strong> &mdash; 알려져 있다.
+            Signal Integrity Journal(2019) · 특허 US8555132 · arXiv:2306.07873</td>
             <td>저들은 <b>등화 알고리즘</b>이 버스트를 만든다고 본다. 우리는
-            <b>고정소수점 구현 선택</b>이 같은 일을 하는지, 그리고 그것이 설계 결정을
-            바꾸는지를 본다</td></tr>
-        <tr><td><strong>post-FEC 를 기준으로 쓰기</strong> — Yang, ISCAS 2021 이 이미 제안</td>
-            <td>저들의 대상은 <b>송수신기 설정</b>(등화기 탭 등). 우리는 <b>HLS 정밀도 배정</b>이고,
-            거기에 <b>기판 축</b>이 하나 더 붙는다</td></tr>
-        <tr><td><strong>HLS 대 RTL 대 HDL Coder 비교</strong> — 2025년 직접 비교 논문 있음</td>
-            <td>저들은 <b>도구</b>를 비교한다. 우리는 한 도구 안에서 <b>목적함수</b>를 비교한다</td></tr>
+            <b>고정소수점 구현 선택</b>이 같은 일을 하는지를 본다</td></tr>
+        <tr><td><strong>post-FEC를 기준으로</strong> &mdash; Yang, ISCAS 2021</td>
+            <td>저들의 대상은 <b>송수신기 설정</b>. 우리는 <b>HLS 정밀도 배정</b>이고
+            <b>기판 축</b>이 하나 더 붙는다</td></tr>
       </tbody>
     </table>
   </div>
   <div class="note">
-    <h3>이 표가 말해 주는 것</h3>
-    <p>새로운 것은 <b>부품이 아니라 조합</b>이다. 각 부품은 전부 남이 이미 했다. 우리 기여는
-    "세 축을 <b>같은 설계공간 위에</b> 동시에 올려놓고 순위가 어긋나는지 잰다" 는 것 하나다.
-    그러니 이 연구는 <b>새로운 알고리즘을 주장하지 않는다.</b> 주장하는 것은 측정된 사실이고,
-    그 사실이 자동 DSE 의 목적함수 설계에 주는 함의다.</p>
+    <h3>새로운 것은 부품이 아니라 조합이다</h3>
+    <p>각 부품은 전부 남이 이미 했다. 그래서 이 프로젝트는 <b>새 알고리즘을 주장하지 않는다.</b>
+    주장하는 것은 <b>만든 IP</b>와 <b>측정된 사실</b>이다 &mdash; 세 축을 같은 설계공간 위에 동시에
+    올려 재 본 데이터는 공개된 적이 없다.</p>
   </div>
 </section>
 
 <section>
-  <div class="shead"><div class="eyebrow">06 — 한계</div><h2>먼저 말해 두는 약점</h2></div>
+  <div class="shead"><div class="eyebrow">08 &mdash; 한계</div><h2>먼저 말해 두는 약점</h2></div>
   <div class="note">
-    <h3>sky130 으로는 면적까지만 말할 수 있다</h3>
-    <p>배포된 sky130 표준셀 꾸러미에 <b>Liberty(.lib) 파일이 하나도 없다</b>(직접 확인: 437 개
-    <span class="mono">.lef</span> 와 437 개 <span class="mono">.spice</span> 뿐). 그래서
-    <b>정적 타이밍 분석과 전력 추정이 불가능</b>하다. 면적·게이트 수·논리 깊이까지만 말한다.
-    130 nm 이므로 절대 성능을 최신 공정과 견주지 않고, <b>구성 사이의 상대 비교</b>로만 쓴다.</p>
+    <h3>sky130으로는 면적까지만</h3>
+    <p>배포된 sky130 표준셀에 <b>Liberty(.lib)가 하나도 없다</b>(직접 확인: 437개
+    <span class="mono">.lef</span>와 437개 <span class="mono">.spice</span>뿐).
+    <b>정적 타이밍 분석과 전력 추정이 불가능</b>하다. 면적·게이트 수·논리 깊이까지만 말하고,
+    130&nbsp;nm이므로 <b>구성 사이의 상대 비교</b>로만 쓴다.</p>
   </div>
   <div class="note">
-    <h3>₩100만 보드는 400G 현장이 아니다</h3>
-    <p>예산 안의 Artix-7 급 보드는 GTP 가 <b>최대 6.6 Gb/s</b> 다. 400G 링크를 실측할 수 없다.
-    그래서 이 연구는 <b>링크 속도를 주장하지 않는다</b> — 주장하는 것은 <b>설계공간의 구조</b>이고,
-    그것은 속도에 의존하지 않는다. FPGA 는 자원·Fmax 를 실측하는 도구로 쓴다.</p>
+    <h3>&#8361;100만 보드는 400G 현장이 아니다</h3>
+    <p>예산 안의 Artix-7급은 GTP가 <b>최대 6.6 Gb/s</b>다. 400G 링크를 실측할 수 없다.
+    그래서 <b>링크 속도를 주장하지 않는다</b> &mdash; 주장하는 것은 <b>설계공간의 구조</b>이고
+    그것은 속도에 의존하지 않는다.</p>
   </div>
   <div class="note good">
-    <h3>세 축이 일치해도 논문은 남는다</h3>
-    <p>H1~H3 가 모두 기각되면 결론은 <b>"기존 목적함수로 충분하다"</b> 가 된다. 그것도 지금
-    아무도 재 보지 않은 사실이고, 자동 DSE 를 짓는 사람에게 쓸모가 있다. 그리고 세 축을 동시에
-    잰 <b>공개 데이터셋</b>은 어느 쪽이든 남는다. <b>이 연구는 결과가 어느 쪽이어도 낼 것이 있다</b> —
-    그게 이 주제를 고른 가장 큰 이유다.</p>
+    <h3>결과가 어느 쪽이어도 낼 것이 있다</h3>
+    <p>세 축이 어긋나면 "지금의 목적함수는 불완전하다", 나란히 가면 "기존 목적함수로 충분하다".
+    둘 다 아무도 재 보지 않은 사실이다. 그리고 <b>IP와 측정대와 데이터셋은 결과와 무관하게 남는다.</b>
+    이 주제를 고른 가장 큰 이유가 이것이다.</p>
   </div>
-</section>
-
-<section>
-  <div class="shead"><div class="eyebrow">07 — 산출</div><h2>무엇을 내는가</h2></div>
-  <ul>
-    <li><b>공개 데이터셋</b> — 같은 HLS 설계공간을 FPGA · ASIC · post-FEC 세 축에서 동시에 잰 것.
-    이런 데이터가 공개된 적이 없다는 것이 이 연구의 실용적 가치다.</li>
-    <li><b>축 간 어긋남의 정량화</b> — Spearman ρ, 최적해 겹침률, 목적함수별 최적해의 타 축 백분위.</li>
-    <li><b>FEC 인지 목적함수</b> — 오류 뭉침을 반영하는 비용함수와, 기존 MSE 목적함수 대비 비교.</li>
-    <li><b>재현 패키지</b> — HLS 소스 · 합성 스크립트 · 시뮬레이터 · 원장. 모든 수를 명령 한 줄로 재현.</li>
-  </ul>
 </section>
 
 <footer>
-  <div><b>다음 걸음</b> — 이 주제로 가면 첫 산출물은 논문이 아니라
-    <span class="mono">paper/선행조사/</span> 기록이다. 위 표의 다섯 줄을 각각 <b>전문까지</b>
-    확인해야 한다(현재 전부 검색 조각 수준이다).</div>
-  <div><b>아직 못 정한 것</b> — FPGA 보드 기종(예산 ₩100만 이내, GTP 노출 여부가 관건) · 마감.</div>
-  <div><b>주의</b> — 이 문서의 수 가운데 <span class="mono">1.7e-14 ~ 2.26e-4</span> 와
-    <span class="mono">B ≥ 16</span> 만 우리가 직접 계산한 것이다. 나머지 인용은 모두
+  <div><b>다음 걸음</b> &mdash; 첫 산출물은 코드가 아니라
+    <span class="mono">paper/선행조사/</span> 기록이다. 07절 표의 네 줄을 <b>전문까지</b> 확인해야 한다.
+    1순위는 <b>FPGA 자원과 ASIC 면적의 상관을 이미 다룬 문헌이 있는지</b>다 &mdash; 있으면 Q1을 뺀다.</div>
+  <div><b>아직 못 정한 것</b> &mdash; FPGA 보드 기종(&#8361;100만 이내) · 마감.</div>
+  <div><b>주의</b> &mdash; 이 문서의 수 가운데 <span class="mono">1.7e-14 ~ 2.26e-4</span>와
+    <span class="mono">B &ge; 16</span>만 우리가 직접 계산한 것이다. 나머지 인용은 모두
     <b>검색 조각 수준</b>이며 전문 미확인이다.</div>
 </footer>
 
