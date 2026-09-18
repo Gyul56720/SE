@@ -1,0 +1,283 @@
+<title>MIMO 검출 기술 지도</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+:root{
+  --ground:#F3F5F6; --surface:#FFFFFF; --sunk:#E7EBEC;
+  --ink:#14191C; --ink2:#3C464B; --muted:#6B767C; --line:#D2D8DA; --line2:#E4E8EA;
+  --t1:#5B6770; --t1s:#E6E9EB;
+  --t2:#12658A; --t2s:#DDEDF4;
+  --t3:#65389B; --t3s:#EBE2F6;
+  --new:#A8421A; --news:#F7E6DD;
+  --ours:#0C7358; --ourss:#DCEFE8;
+  --f:"Barlow",-apple-system,BlinkMacSystemFont,sans-serif;
+  --m:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --ground:#0D1113; --surface:#151B1E; --sunk:#111619;
+  --ink:#E6EBED; --ink2:#BAC4C8; --muted:#87939A; --line:#283136; --line2:#1F272B;
+  --t1:#96A3AB; --t1s:#1D2429;
+  --t2:#5DB2D8; --t2s:#0F2A38;
+  --t3:#B08EE2; --t3s:#241934;
+  --new:#E38254; --news:#351C11;
+  --ours:#49BC97; --ourss:#0D2E25;
+}}
+:root[data-theme="dark"]{
+  --ground:#0D1113; --surface:#151B1E; --sunk:#111619;
+  --ink:#E6EBED; --ink2:#BAC4C8; --muted:#87939A; --line:#283136; --line2:#1F272B;
+  --t1:#96A3AB; --t1s:#1D2429; --t2:#5DB2D8; --t2s:#0F2A38; --t3:#B08EE2; --t3s:#241934;
+  --new:#E38254; --news:#351C11; --ours:#49BC97; --ourss:#0D2E25;
+}
+*{box-sizing:border-box}
+body{background:var(--ground);color:var(--ink);font-family:var(--f);font-size:16px;
+     line-height:1.65;-webkit-font-smoothing:antialiased;margin:0}
+.wrap{max-width:860px;margin:0 auto;padding-inline:20px;padding-block:44px 76px}
+h1,h2,h3{margin:0;text-wrap:balance;letter-spacing:-.015em}
+h1{font-size:clamp(28px,5vw,44px);line-height:1.1;font-weight:700}
+h2{font-size:clamp(20px,3vw,27px);font-weight:700}
+h3{font-size:16.5px;font-weight:600}
+p{margin:0;max-width:66ch}
+.m{font-family:var(--m);font-size:.9em;font-variant-numeric:tabular-nums}
+.eyebrow{font-family:var(--m);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+section{margin-top:48px} section>*+*{margin-top:14px}
+header{border-bottom:2px solid var(--ink);padding-bottom:24px}
+.sub{margin-top:16px;font-size:17.5px;font-weight:500;line-height:1.5;max-width:46ch;color:var(--ink2)}
+.sub b{color:var(--ink);font-weight:600}
+.meta{margin-top:18px;font-family:var(--m);font-size:11px;color:var(--muted)}
+
+.tier{border:1px solid var(--line);background:var(--surface);border-radius:5px;overflow:hidden}
+.tier+.tier{margin-top:11px}
+.tr-h{display:flex;gap:10px;align-items:baseline;padding:12px 16px;border-bottom:1px solid var(--line)}
+.tr-h h3{flex:1}
+.tr-n{font-family:var(--m);font-size:10.5px;font-weight:600;letter-spacing:.08em;flex:none}
+.cost{font-family:var(--m);font-size:11px;padding:2px 8px;border-radius:2px;white-space:nowrap}
+.t-1 .tr-h{background:var(--t1s)} .t-1 .tr-n,.t-1 h3{color:var(--t1)} .t-1 .cost{background:var(--t1);color:#fff}
+.t-2 .tr-h{background:var(--t2s)} .t-2 .tr-n,.t-2 h3{color:var(--t2)} .t-2 .cost{background:var(--t2);color:#fff}
+.t-3 .tr-h{background:var(--t3s)} .t-3 .tr-n,.t-3 h3{color:var(--t3)} .t-3 .cost{background:var(--t3);color:#fff}
+.t-n .tr-h{background:var(--news)} .t-n .tr-n,.t-n h3{color:var(--new)} .t-n .cost{background:var(--new);color:#fff}
+.t-n{border-color:var(--new);border-width:2px}
+.tr-b{padding:13px 16px;display:flex;flex-direction:column;gap:9px}
+.tr-b p{font-size:14.5px;color:var(--ink2);max-width:none}
+.algs{display:flex;flex-wrap:wrap;gap:6px}
+.alg{font-family:var(--m);font-size:11.5px;border:1px solid var(--line);border-radius:2px;
+     padding:2px 7px;color:var(--ink2);background:var(--sunk)}
+.alg.hi{border-color:var(--ours);color:var(--ours);background:var(--ourss);font-weight:600}
+.q{font-size:14px;color:var(--muted);font-style:italic;padding-left:12px;border-left:2px solid var(--line)}
+
+.tw{overflow-x:auto;border:1px solid var(--line);border-radius:5px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:640px;font-size:14px}
+th,td{text-align:left;padding:10px 13px;border-bottom:1px solid var(--line2);vertical-align:top}
+th{font-family:var(--m);font-size:10px;letter-spacing:.09em;text-transform:uppercase;
+   color:var(--muted);font-weight:400;background:var(--sunk);white-space:nowrap}
+tbody tr:last-child td{border-bottom:none}
+td.n{font-family:var(--m);font-variant-numeric:tabular-nums;white-space:nowrap}
+tr.mark td{background:var(--ourss)}
+tr.new td{background:var(--news)}
+
+.box{border:1px solid var(--line);border-left:3px solid var(--new);background:var(--surface);
+     border-radius:5px;padding:15px 18px}
+.box h3{color:var(--new);margin-bottom:6px}
+.box p{font-size:14.4px;color:var(--ink2);max-width:none}
+.box p+p{margin-top:8px}
+.box.ours{border-left-color:var(--ours)} .box.ours h3{color:var(--ours)}
+.box.warn{border-left-color:var(--t1)} .box.warn h3{color:var(--t1)}
+.box+.box{margin-top:10px}
+ul{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:7px}
+li{color:var(--ink2);font-size:14.8px}
+li b{color:var(--ink);font-weight:600}
+footer{margin-top:50px;border-top:1px solid var(--line);padding-top:18px;font-size:12.6px;color:var(--muted)}
+@media (max-width:600px){.tr-h{flex-wrap:wrap}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">섞인 신호를 푸는 기술 · 2026 현재</div>
+  <h1>MIMO 검출 기술 지도</h1>
+  <p class="sub">같은 문제 <span class="m">Ax=b</span>를 푸는 방법이 <b>다섯 층</b>으로 쌓여 있습니다.
+  아래로 갈수록 정확하고 비쌉니다. 그리고 <b>층 밖에서 판을 바꾸려는 흐름</b>이 하나 있습니다.</p>
+  <p class="meta">조사 2026-09-18 · 인용은 전부 검색 조각 수준(전문 미확인)</p>
+</header>
+
+<section>
+  <div class="eyebrow">축 1 — 알고리즘</div>
+  <h2>다섯 층</h2>
+
+  <div class="tier t-1">
+    <div class="tr-h"><span class="tr-n">층 0</span><h3>정확한 직접 해법</h3><span class="cost">O(K&sup3;)</span></div>
+    <div class="tr-b">
+      <div class="algs"><span class="alg">Cholesky</span><span class="alg">QR (Givens · MGS)</span>
+        <span class="alg">LU</span><span class="alg">명시적 역행렬</span></div>
+      <p>기준이자 정답. 하드웨어에서는 <b>QR</b>이 선호됩니다 &mdash; Gram 행렬을 만들면 조건수가
+      제곱되어 고정소수점에 불리한데 QR은 그걸 피합니다. 제곱근과 나눗셈이 필요해 회로가 큽니다.</p>
+    </div>
+  </div>
+
+  <div class="tier t-2">
+    <div class="tr-h"><span class="tr-n">층 1</span><h3>반복 근사 &mdash; 역행렬을 안 만든다</h3><span class="cost">O(N·K&sup2;)</span></div>
+    <div class="tr-b">
+      <div class="algs"><span class="alg hi">Gauss-Seidel</span><span class="alg">Jacobi</span>
+        <span class="alg">SOR</span><span class="alg">Richardson</span><span class="alg">Neumann 급수</span>
+        <span class="alg">Newton</span><span class="alg">Conjugate Gradient</span>
+        <span class="alg">Coordinate Descent (OCD)</span></div>
+      <p>massive MIMO에서 채널이 <b>대각우세</b>해지는 성질(채널 하드닝)을 이용합니다.
+      문헌 정리: <b>GS가 Neumann보다 효율적</b>이고, <b>CG와 OCD가 복잡도 최저</b>입니다.
+      개선판도 계속 나옵니다 &mdash; 전처리 GS, 고정밀 반복 전처리 GS.</p>
+      <p class="q">우리 프로젝트가 있는 층입니다. 그리고 <b>가장 빽빽한 층</b>이기도 합니다.</p>
+    </div>
+  </div>
+
+  <div class="tier t-3">
+    <div class="tr-h"><span class="tr-n">층 2</span><h3>베이지안 메시지 전달 &mdash; 확률로 푼다</h3><span class="cost">반복 × 비선형</span></div>
+    <div class="tr-b">
+      <div class="algs"><span class="alg">AMP</span><span class="alg">GAMP</span>
+        <span class="alg">Expectation Propagation (EP)</span><span class="alg">VAMP</span>
+        <span class="alg">Belief Propagation</span></div>
+      <p>&ldquo;x가 QAM 성상점 중 하나&rdquo;라는 <b>사전 정보</b>를 써서 확률적으로 추론합니다.
+      선형 검출보다 훨씬 정확합니다 &mdash; <b>ML에 근접</b>합니다.</p>
+      <p class="q">&ldquo;EP achieves superior performance in high-dimensional systems with
+      high-order modulations... <b>however, its complexity increases exponentially with the number
+      of sending antennas and the modulation order</b>.&rdquo;</p>
+      <p>AWGN 채널에서는 <b>EP와 AMP가 같은 것</b>으로 밝혀져 있습니다. 상관 채널·cell-free로
+      확장하는 연구가 2025~2026에도 활발합니다.</p>
+    </div>
+  </div>
+
+  <div class="tier t-3">
+    <div class="tr-h"><span class="tr-n">층 3</span><h3>트리 탐색 &mdash; 후보를 뒤진다</h3><span class="cost">최악 지수</span></div>
+    <div class="tr-b">
+      <div class="algs"><span class="alg">ML (완전 탐색)</span><span class="alg">Sphere Decoding</span>
+        <span class="alg">K-best</span><span class="alg">Fixed-Complexity SD</span>
+        <span class="alg">Lattice Reduction 보조</span><span class="alg">국소 탐색</span></div>
+      <p>구(sphere) 안의 후보만 뒤져 ML에 가까운 성능을 냅니다. 그런데 문헌의 평가가 냉정합니다 &mdash;
+      <b>massive MIMO에서는 &ldquo;infeasible&rdquo;</b>. K-best는 경로 선택이 어렵고,
+      FCSD는 성능을 깎고, LR 보조는 준최적에 머뭅니다.</p>
+      <p>안테나가 적은 4&times;4~8&times;8에서는 여전히 현역입니다.</p>
+    </div>
+  </div>
+
+  <div class="tier t-3">
+    <div class="tr-h"><span class="tr-n">층 4</span><h3>딥 언폴딩 &mdash; 반복법에 학습을 붙인다</h3><span class="cost">반복 ↓ · 파라미터 ↑</span></div>
+    <div class="tr-b">
+      <div class="algs"><span class="alg">DetNet</span><span class="alg">OAMPNet</span>
+        <span class="alg">Learned CG</span><span class="alg">DPST</span>
+        <span class="alg">Deep-unfolded GBCD</span><span class="alg">Quasi-Newton + Deep Q-Network</span></div>
+      <p>반복법의 각 단계를 신경망 층처럼 펼치고 <b>스텝 크기를 학습</b>시켜 반복 횟수를 줄입니다.
+      알고리즘은 그대로이고 상수만 배웁니다.</p>
+      <p>2025년 추세를 문헌이 이렇게 적습니다 &mdash; <b>&ldquo;hybrid approaches that combine
+      classical algorithms with machine learning techniques to balance performance and
+      computational complexity.&rdquo;</b></p>
+      <p class="q">하드웨어 비용은 서베이가 <b>&ldquo;largely unclear&rdquo;</b>라고 적어 뒀지만,
+      22&nbsp;nm FD-SOI로 제작·측정한 사례가 이미 있습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">축 2 — 하드웨어</div>
+  <h2>실제로 만들어진 것들</h2>
+  <div class="tw"><table>
+    <thead><tr><th>구현</th><th>공정 / 플랫폼</th><th>구성</th><th>처리율</th><th>면적 · 전력</th></tr></thead>
+    <tbody>
+      <tr class="mark"><td><b>Gauss-Seidel 검출기</b></td><td class="n">Virtex-7 FPGA</td>
+        <td class="n">128 &times; 8</td><td class="n">732 Mb/s</td><td>&mdash;</td></tr>
+      <tr><td>수정 Neumann + tridiagonal</td><td class="n">FPGA</td><td class="n">상관 채널</td>
+        <td class="n">630 Mb/s</td><td>&mdash;</td></tr>
+      <tr><td><b>Near-MAP 연판정 검출기</b></td><td class="n">28 nm CMOS</td>
+        <td class="n">32 사용자 256-QAM</td><td class="n">354 Mb/s @400 MHz</td>
+        <td class="n">0.37 mm&sup2; · 151 mW<br>(0.35 V에서 123 pJ/bit)</td></tr>
+      <tr><td>K-best (완전 파이프라인)</td><td class="n">ASIC</td><td class="n">&mdash;</td>
+        <td class="n">3,288 Mb/s @137 MHz</td><td class="n">1,467 kGE · 357 mW</td></tr>
+      <tr><td>확장형 검출 프로세서</td><td class="n">40 nm CMOS</td><td class="n">&mdash;</td>
+        <td class="n">571 GOPS/mm&sup2;</td><td class="n">3.3 GOPS/mW</td></tr>
+      <tr><td>딥언폴딩 좌표하강</td><td class="n">22 nm FD-SOI</td><td class="n">mmWave massive MIMO</td>
+        <td class="n">제작 · 측정 완료</td><td>&mdash;</td></tr>
+    </tbody>
+  </table></div>
+  <div class="box warn">
+    <h3>이 표를 그대로 견주면 안 된다</h3>
+    <p>공정·안테나 수·변조·반복 횟수·정밀도가 전부 달라서 숫자를 나란히 놓는 것 자체가
+    오해를 부릅니다. <b>모두 검색 조각에서 옮긴 값이고 측정 조건을 전문에서 확인하지 않았습니다.</b>
+    비교에 쓰려면 각 논문의 조건표를 직접 봐야 합니다.</p>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">축 3 — 판을 바꾸려는 것</div>
+  <h2>아날로그 인메모리 컴퓨팅</h2>
+  <p>위의 모든 층은 <b>디지털</b>입니다. 그리고 전부 같은 전제 위에 있습니다 &mdash;
+  &ldquo;행렬 연산은 곱셈기로 한 번에 하나씩 한다.&rdquo;</p>
+
+  <div class="tier t-n">
+    <div class="tr-h"><span class="tr-n">최전선</span><h3>RRAM 아날로그 행렬 연산</h3><span class="cost">물리로 푼다</span></div>
+    <div class="tr-b">
+      <p>저항변화 메모리(RRAM) 격자에 행렬을 <b>전기 전도도로</b> 새겨 넣고, 전압을 걸면
+      <b>옴의 법칙과 키르히호프 법칙이 행렬-벡터 곱을 한 걸음에</b> 수행합니다.
+      그리고 되먹임을 걸면 <b>역행렬까지</b> 한 걸음에 나옵니다.</p>
+      <p class="q">&ldquo;MIMO detection and precoding using MVM-based iterative algorithms; and
+      <b>rapid one-step solutions enabled by matrix inversion (INV) and generalized inverse (GINV)
+      circuits</b>.&rdquo; &mdash; arXiv:2512.04365 (2025-12 리뷰)</p>
+      <p><b>우리가 붙잡고 있는 O(K&sup3;) 병목을 아예 우회하는 방향입니다.</b>
+      반복도, 분해도 필요 없습니다 &mdash; 회로가 물리적으로 방정식을 풉니다.</p>
+      <div class="algs" style="margin-top:4px">
+        <span class="alg">arXiv:2512.04365 리뷰</span>
+        <span class="alg">arXiv:2211.03624 프리코딩</span>
+        <span class="alg">arXiv:2412.17026 선형 검출기</span>
+        <span class="alg">arXiv:2607.02842 연속시간 폐루프</span>
+        <span class="alg">arXiv:2508.17820 초저지연</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="box">
+    <h3>보고된 격차가 크다</h3>
+    <p>인메모리 딥 MIMO 검출기가 <b>기존 최신 ASIC 검출기 대비 처리율 3.6&times;~159.3&times;,
+    에너지 효율 4.6&times;~8.1&times;</b>를 보고합니다. 다만 이건 <b>논문이 주장하는 값</b>이고,
+    아날로그 회로의 정밀도·소자 편차·수율 문제는 별개입니다.</p>
+    <p>사용자님이 &ldquo;아날로그는 안 한다&rdquo;고 하셨으므로 <b>우리 범위 밖</b>입니다.
+    다만 <b>이 분야가 어디로 가는지</b>는 알아야 합니다 &mdash; 5년 뒤 이 병목이
+    디지털 문제가 아닐 수 있습니다.</p>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">축 4 — 문제 자체가 바뀌는 곳</div>
+  <h2>6G가 가져오는 새 문제들</h2>
+  <ul>
+    <li><b>XL-MIMO · 근거리장(near-field)</b> &mdash; 안테나 배열이 너무 커져서 전파가
+    평면파가 아니라 <b>구면파</b>로 도착합니다. 채널 모델 자체가 달라지고, 기존 검출·추정
+    전제가 흔들립니다. IEEE COMST 튜토리얼(2024)이 나와 있습니다.</li>
+    <li><b>Cell-free massive MIMO</b> &mdash; 기지국 하나가 아니라 <b>분산된 여러 접속점</b>이
+    협력합니다. 검출이 <b>분산 알고리즘</b> 문제가 됩니다 &mdash; 분산 EP 연구가 활발합니다.</li>
+    <li><b>1비트 · 저해상도 ADC</b> &mdash; 안테나가 수백 개면 ADC 전력이 감당 안 되니
+    분해능을 극단적으로 낮춥니다. 그러면 검출이 <b>완전히 다른 문제</b>가 됩니다
+    (1비트 sphere decoding, one-bit AMP 등).</li>
+    <li><b>THz 대역</b> &mdash; 상관이 강한 채널의 부분공간 구조를 이용해 복잡도를 줄이는 연구.</li>
+  </ul>
+</section>
+
+<section>
+  <div class="eyebrow">정리</div>
+  <h2>지도 위에서 우리 위치</h2>
+  <div class="box ours">
+    <h3>층 1의 가장 빽빽한 자리</h3>
+    <p>우리 프로젝트는 <b>층 1(반복 근사)</b>에 있고, 그중에서도 <b>Gauss-Seidel</b>이라는
+    가장 많이 연구된 갈래입니다. 위아래로 층 0(직접 해법)과 층 2~4(베이지안·탐색·학습)가 있고,
+    옆으로는 아날로그가 판을 바꾸려 하고 있습니다.</p>
+    <p><b>새로울 자리가 아닙니다.</b> 대신 <b>배우기 좋은 자리</b>입니다 &mdash; 기준선이
+    공개돼 있고, 알고리즘이 단순하고, 하드웨어로 만들기 쉽고, 위아래 층과 비교할 수 있습니다.</p>
+  </div>
+  <div class="box warn">
+    <h3>만약 새로움이 필요하다면 &mdash; 어디를 볼 것인가</h3>
+    <p>지도에서 <b>비어 보이는 자리</b>는 층 1이 아니라 층 사이의 <b>연결</b>과
+    축 4의 <b>새 문제</b>입니다. 다만 &ldquo;비어 보인다&rdquo;는 것은 제가 조각만 보고 한 말이고,
+    파면 대개 차 있었습니다 &mdash; <b>이 대화에서 여섯 번 그랬습니다.</b></p>
+  </div>
+</section>
+
+<footer>
+  <p><b>한계</b> &mdash; 이 지도는 검색 결과 조각만으로 그렸습니다. 전문을 본 문헌이 하나도
+  없습니다(학술 사이트가 이 환경에서 차단). 특히 축 2의 성능 수치는 측정 조건을 확인하지 않아
+  <b>비교에 쓰면 안 됩니다</b>. 분류 체계는 IEEE COMST 서베이 &ldquo;Massive MIMO Detection
+  Techniques: A Survey&rdquo;(Albreem 외, 2019)의 틀을 따랐습니다.</p>
+</footer>
+</div>
