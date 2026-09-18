@@ -1,0 +1,69 @@
+@page {
+  size: 8.5in 11in;
+  margin: 0.75in 0.65in 0.8in 0.65in;
+  @top-left  { content: string(runhead); font-family:"Liberation Serif",serif;
+               font-size:7.2pt; letter-spacing:.2px; vertical-align:bottom; padding-bottom:6pt; }
+  @top-right { content: counter(page); font-family:"Liberation Serif",serif;
+               font-size:8pt; vertical-align:bottom; padding-bottom:6pt; }
+}
+@page :left {
+  @top-left  { content: counter(page); font-size:8pt; }
+  @top-right { content: string(runhead); font-size:7.2pt; }
+}
+@page :first { @top-left{content:none} @top-right{content:none} }
+
+html { string-set: runhead "JOURNAL OF COMMUNICATIONS AND NETWORKS, VOL. 28, NO. 3, SEPTEMBER 2026"; }
+body { font-family:"Liberation Serif","Nimbus Roman",serif; font-size:9.3pt; line-height:1.16;
+       text-align:justify; hyphens:auto; margin:0; color:#000; }
+
+.hdr1 { font-size:7.2pt; letter-spacing:.2px; margin:0 0 26pt 0; }
+.hdr1 .pg { float:right; font-size:8pt; }
+h1.title { font-size:17pt; font-weight:bold; text-align:center; line-height:1.18;
+           margin:0 0 14pt 0; }
+.authors { text-align:center; font-size:11pt; margin:0 0 16pt 0; line-height:1.35; }
+.cols { column-count:2; column-gap:0.26in; column-fill:auto; }
+p { margin:0; text-indent:1.5em; }
+p.noind, .abs p, .idx p { text-indent:0; }
+.abs { font-weight:bold; margin-bottom:8pt; }
+.abs .lbl, .idx .lbl { font-style:italic; }
+.idx { font-weight:bold; margin-bottom:12pt; }
+h2 { font-size:9.3pt; font-weight:bold; text-align:center; text-transform:uppercase;
+     margin:12pt 0 6pt 0; letter-spacing:.3px; break-after:avoid; }
+h3 { font-size:9.3pt; font-weight:normal; font-style:italic; text-align:left;
+     margin:9pt 0 4pt 0; break-after:avoid; }
+h4 { font-size:9.3pt; font-weight:normal; font-style:italic; text-align:left;
+     margin:7pt 0 3pt 0; text-indent:1.5em; break-after:avoid; }
+figure { margin:10pt 0 10pt 0; break-inside:avoid; text-align:center; }
+figure svg { max-width:100%; height:auto; }
+figcaption { font-size:8.2pt; text-align:left; margin-top:5pt; line-height:1.18; }
+figure.wide { column-span:all; margin:12pt 0 14pt 0; }
+figure.wide figcaption { text-align:center; }
+table { border-collapse:collapse; font-size:8.2pt; margin:0 auto; }
+table caption { font-size:8.2pt; text-align:center; margin-bottom:4pt; caption-side:top; }
+th,td { border:0.6pt solid #000; padding:1.6pt 4pt; }
+th { font-weight:normal; }
+.tbl { break-inside:avoid; margin:10pt 0; }
+.tbl.wide { column-span:all; }
+pre { font-family:"Liberation Mono","DejaVu Sans Mono",monospace; font-size:6.9pt;
+      line-height:1.22; margin:5pt 0 5pt 0; white-space:pre-wrap; text-indent:0;
+      border-left:1.6pt solid #999; padding:2pt 0 2pt 6pt; break-inside:avoid; }
+code { font-family:"Liberation Mono",monospace; font-size:8.2pt; }
+.fn { font-size:7.6pt; line-height:1.2; border-top:0.6pt solid #000; padding-top:3pt;
+      margin-top:8pt; text-indent:0; }
+.fn p { text-indent:0; margin:0 0 1pt 0; }
+.issn { text-align:center; font-size:7.6pt; margin-top:6pt; }
+ol.ref { font-size:8.2pt; padding-left:1.6em; margin:0; line-height:1.2; }
+ol.ref li { margin-bottom:1.5pt; }
+ul { margin:3pt 0 3pt 0; padding-left:1.2em; }
+li { margin-bottom:1pt; }
+.kv { font-size:8.2pt; }
+@page :first {
+  @bottom-left { content: element(fnote); font-size:7.6pt; vertical-align:bottom;
+                 width:3.35in; padding-top:3pt; }
+  @bottom-center { content: none; }
+}
+.fnote { position: running(fnote); font-size:7.6pt; line-height:1.2; text-indent:0;
+         border-top:0.6pt solid #000; padding-top:3pt; width:3.35in; }
+.fnote p { text-indent:0; margin:0 0 1pt 0; }
+.fnote .issn { text-align:center; margin-top:4pt; }
+h2 + .tbl, h2 + figure { margin-top:6pt; }
