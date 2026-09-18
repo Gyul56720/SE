@@ -34,6 +34,7 @@ import time
 
 import numpy as np
 
+import ldpcpipe as PIPE
 import nrldpc as F
 import nrldpcfix as X
 
@@ -69,26 +70,19 @@ def 말(*a):
 
 # ================================================================ 해저드 단계
 def 지지목록(bg: str):
-    표 = F.기저행렬(bg)
-    R = max(r for r, _ in 표) + 1
-    지 = [set() for _ in range(R)]
-    for (r, c) in 표:
-        지[r].add(c)
-    return 지
+    """층 비트맵. `ldpcpipe` 와 같은 표현을 쓴다."""
+    return PIPE.층비트맵(bg)
 
 
-def 멈춤수(지: list, 순서: list, D: int) -> int:
-    s = 0
-    for i in range(len(순서)):
-        w = 0
-        for back in range(1, D):
-            j = i - back
-            if j < 0:
-                break
-            if 지[순서[i]] & 지[순서[j]]:
-                w = max(w, D - back)
-        s += w
-    return s
+def 멈춤수(맵: list, 순서: list, D: int) -> int:
+    """**사이클 정확 모형**으로 센다.
+
+    첫 판은 조합 공식("D 안에 겹치면 (D-back) 만큼 멈춤" 을 층마다 더하기)을 썼다.
+    그것은 **상한**이다 -- 앞선 멈춤이 이미 간격을 벌려 놓은 것을 안 본다.
+    BG1 D=4 에서 공식 108, 실제 80 이었다. 상한을 최적화하면 엉뚱한 순서를 고른다.
+    (`tests/test_ldpcpipe.py` 가 공식 >= 모형 == RTL 을 매번 다시 본다.)
+    """
+    return PIPE.사이클모형(맵, D, 순서=순서)["멈춤"]
 
 
 def 해저드단계(초: float):
@@ -158,6 +152,7 @@ def 해저드단계(초: float):
                         최선, 최선순 = v, cur[:]
                 _쓰기(f, {"열쇠": 열쇠, "종류": "해저드", "bg": bg, "D": D,
                        "층수": R, "자연순서멈춤": 기준, "최선멈춤": 최선,
+                       "공식상한_자연": PIPE.공식멈춤(지, D),
                        "시도": 시도, "최선순서": 최선순,
                        "자연손실%": round(기준 / (R + 기준) * 100, 2),
                        "최선손실%": round(최선 / (R + 최선) * 100, 2)})
