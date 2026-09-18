@@ -293,11 +293,13 @@ footer{margin-top:52px;border-top:1px solid var(--line);padding-top:18px}
       <div class="cell">
         <div class="node t2"><div class="yr mono">2020s</div><div class="nm">Vitis Model Composer</div>
           <div class="ds">System Generator for DSP 를 <b>흡수</b>(독립 제품 단종). PL(RTL·HLS 블록셋)과
-          AI Engine 배열(AIE 블록셋)을 <b>동시에</b> 겨냥해 Simulink 에서 전체를 시뮬레이션하고,
-          PL 은 RTL 로 AIE 는 C++ 그래프로 낸다.</div></div>
+          AI Engine 배열(AIE 블록셋)을 동시에 겨냥한다. <b>그런데 속은 Vitis HLS 다</b> —
+          Model Composer 는 C++ 를 중간 산출물로 낸 뒤 Vitis HLS 로 IP 를 만든다.
+          두 갈래가 여기서 <b>합류</b>한다.</div></div>
         <div class="node t2 kill"><div class="yr mono">—</div><div class="nm">분업선이 그어지다</div>
-          <div class="ds">HLS 의 동작은 "입력 받고 · 알고리즘 돌리고 · 결과 낸다" 라서,
-          System Generator 와 달리 <b>섬세한 신호 조작에는 안 맞는다</b>. 통신 프런트엔드가 여기 걸린다.</div></div>
+          <div class="ds">HLS 의 동작은 "입력 받고 · 알고리즘 돌리고 · 결과 낸다" 라서
+          <b>섬세한 신호 조작에는 안 맞는다</b>. 그 자리는 플립플롭까지 내려가는
+          <b>System Generator</b> 가 계속 맡는다 — PWM 변조기 · SPI 제어기 같은 구조 수준 설계.</div></div>
       </div>
       <div class="cell">
         <div class="node t3"><div class="yr mono">2025</div><div class="nm">SerDes 가 224G 로</div>
@@ -332,6 +334,9 @@ footer{margin-top:52px;border-top:1px solid var(--line);padding-top:18px}
         <div class="node t2"><div class="yr mono">2026</div><div class="nm">MATLAB R2026a — Simulink Copilot</div>
           <div class="ds">모델 설명 생성 · 모델 동작 질의응답 · 문제 식별과 해법 제안.
           Polyspace Copilot 이 AI 가 쓴 코드까지 규칙 검사.</div></div>
+        <div class="node t2 kill"><div class="yr mono">—</div><div class="nm">HDL Coder 가 HLS 로 넘겨준다</div>
+          <div class="ds">HDL Coder 는 MATLAB 함수에서 <b>합성가능한 SystemC/C++</b> 도 낸다.
+          그 C++ 가 그대로 <b>Vitis HLS 의 입력</b>이 된다. 경쟁이 아니라 <b>사슬</b>이다.</div></div>
         <div class="node t2"><div class="yr mono">—</div><div class="nm">HDL Coder 의 자리</div>
           <div class="ds">FPGA · SoC · ASIC 용 이식 가능 합성가능 코드 생성. 속도·면적 최적화,
           임계경로 강조, 합성 전 자원 사용량 추정.</div></div>
@@ -364,7 +369,8 @@ footer{margin-top:52px;border-top:1px solid var(--line);padding-top:18px}
     <div class="layer">
       <div class="who"><small>층 2</small>베이스밴드 DSP · 등화 · 동기</div>
       <div class="tools"><span class="tool a">HLS</span><span class="tool b">HDL Coder</span><span class="tool b">Model Composer</span></div>
-      <div class="why"><b>둘이 겹쳐 싸우는 유일한 층.</b> 여기가 실제 전장이다.</div>
+      <div class="why"><b>둘이 겹치는 유일한 층.</b> 그런데 싸우는 게 아니라 <b>합류한다</b> —
+      Model Composer 는 속으로 Vitis HLS 를 부르고, HDL Coder 는 Vitis HLS 용 C++ 를 낸다.</div>
     </div>
     <div class="layer">
       <div class="who"><small>층 3</small>FEC (LDPC · Polar · RS)</div>
@@ -437,9 +443,15 @@ footer{margin-top:52px;border-top:1px solid var(--line);padding-top:18px}
       <li><b>HLS 의 약점은 문헌으로 못 박혀 있다 — 물리 인식의 부재다.</b> 이건 추측이 아니라
       TRETS 에 적힌 것이고, AutoBridge 가 +102% 로 그 크기를 쟀다. 약점이 명시돼 있다는 건
       그 자리에 사람이 몰려 있다는 뜻이기도 하다.</li>
-      <li><b>"HLS 대 MATLAB" 비교 자체가 비어 있다.</b> AMD 문서조차 Model Composer 와 Vitis HLS 를
-      "블록 설계자용 / C++ 설계자용" 으로만 가른다. 같은 통신 블록을 양쪽으로 짓고
-      <b>동일 조건에서 PPA 를 재 본</b> 공개 연구는 이 조사에서 안 나왔다.</li>
+      <li><b>[정정 2026-09-18] "HLS 대 MATLAB 비교가 비어 있다" 는 이 문서의 첫 판 주장은 틀렸다.</b>
+      더 파니 바로 나왔다 — "Comparison of Compilers for Generating a Hardware Description Based on an
+      Imperative Program: HDL Coder and Vitis HLS"(2025)가 <b>정확히 그 비교</b>다(MATLAB↔HDL Coder,
+      C++↔Vitis HLS, 테스트벤치·합성·구현까지). 그 밖에 "A Comparative Study between MATLAB HDL Coder
+      and VHDL", "Two FPGA Case Studies Comparing High Level Synthesis"(arXiv:1806.10672),
+      Wi-Fi 트랜시버 사례(arXiv:2305.13351)가 있다. <b>비어 있지 않다.</b></li>
+      <li><b>그리고 애초에 비교 구도가 틀렸다.</b> Model Composer 는 속으로 Vitis HLS 를 부르고,
+      HDL Coder 는 Vitis HLS 용 SystemC/C++ 를 낸다. 두 갈래는 경쟁이 아니라 <b>사슬</b>로 이어져 있다.
+      "어느 쪽이 PPA 가 좋은가" 는 상당 부분 <b>같은 백엔드를 두고 묻는 질문</b>이다.</li>
       <li><b>굳어 가는 층은 피한다.</b> FEC 와 PCS 계측은 표준과 하드 IP 가 이미 먹었다.
       거기서 새 계측기나 새 가속기를 제안하면 표준 재구현이 된다 — 앞서 한 번 확인한 바 있다.</li>
     </ul>
@@ -478,6 +490,14 @@ footer{margin-top:52px;border-top:1px solid var(--line);padding-top:18px}
       AccelerComm T1 / RFSoC · ETNews &amp; BusinessKorea 디자인하우스 기사 · Gaonchips 뉴스</div>
     <div><b>표준</b> — IEEE 802.3 RS-FEC codeword monitoring (91.5.3.3.2 · 119.2.5.3.1 · 134.5.3.3.3) ·
       IEEE 802.3dj Clause 177 Inner FEC Counters (2024-05)</div>
+    <div><b>HLS 대 MATLAB 비교</b> — "Comparison of Compilers for Generating a Hardware Description
+      Based on an Imperative Program: HDL Coder and Vitis HLS" (2025) ·
+      "A Comparative Study between MATLAB HDL Coder and VHDL for FPGAs Design and Implementation" ·
+      "Two FPGA Case Studies Comparing High Level Synthesis", arXiv:1806.10672 ·
+      "Accelerating FPGA-Based Wi-Fi Transceiver Design and Prototyping by High-Level Synthesis",
+      arXiv:2305.13351 (IEEE doc 10171553) · "Analyzing the capabilities of HLS and RTL tools in the
+      design of an FPGA Montgomery Multiplier", arXiv:2509.08067 · imperix: System Generator /
+      Model Composer 문서</div>
     <div><b>통신 IP 를 HLS 로 지은 사례</b> — "Fast Design Space Exploration using Vivado HLS:
       Non-Binary LDPC Decoders" · "Model-Based Design of Flexible and Efficient LDPC Decoders on
       FPGA Devices", J. Signal Process. Syst., doi:10.1007/s11265-020-01519-0</div>
