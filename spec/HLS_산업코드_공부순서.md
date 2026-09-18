@@ -1,7 +1,13 @@
 # 실제로 팔리는 HLS 코드 -- 무엇을 어떤 순서로 볼 것인가
 
-2026-09-18 에 받았다. **전부 Apache-2.0** 이라 읽고 배우고 인용하는 데 제약이 없다
-(저작권 표시는 파일 머리에 그대로 있다). 저장소에는 넣지 않았다 -- 남의 코드로
+2026-09-18 에 받았다. **라이선스가 둘로 갈린다** -- 파일을 열어 확인했다.
+
+    Vitis_solver · Vitis_security · Vitis_dsp_fft    Apache-2.0  (Xilinx/AMD)
+    finn_hlslib                                     **BSD-3-Clause**  (Xilinx)
+
+첫 판에 "전부 Apache-2.0" 이라고 적었다가 고쳤다. 둘 다 재배포를 허용하지만 조건이
+다르다 -- BSD-3 은 이름을 광고에 못 쓰게 하는 조항이 따로 있다. 저작권 표시는 파일
+머리에 그대로 있다. 저장소에는 넣지 않았다 -- 남의 코드로
 우리 트리를 채울 이유가 없다. 받은 자리는 `/home/user/hls_study` 이고 사용자에게
 묶어서 보냈다.
 
@@ -9,11 +15,18 @@
 
 | 묶음 | 줄 | 무엇인가 |
 |---|---|---|
-| **finn_hlslib** | 6,528 | Xilinx 가 **배포하는** 신경망 HLS 라이브러리. FINN 툴체인의 알맹이 |
-| **Vitis_solver** | 3,198 | AMD 가 **IP 로 파는** 선형대수. `cholesky.hpp` · `qrf.hpp` · `svd.hpp` |
-| **Vitis_security** | 1,864 | AES · SHA-256. 실제 제품에 들어가는 암호 IP |
-| Vitis_solver_L2 | 200 | `potrf.hpp` (블록 Cholesky, L2 레벨) |
-| Vitis_dsp_fft | 25 | SSR FFT 의 include 허브 |
+| **finn_hlslib** | 6,528 | Xilinx 가 배포하는 **양자화 신경망 가속기 IP**. 16 파일 |
+| **Vitis_solver** | 3,198 | AMD 가 **IP 로 파는 선형대수**. Cholesky(732) · QR/Givens(889) · SVD/Jacobi(1577) |
+| **Vitis_security** | 1,966 | **AES-128/192/256**(1010) · SHA-224/256(854) + 공용 타입 |
+| Vitis_solver_L2 | 200 | `potrf.hpp` 블록 Cholesky, `NCU` 로 병렬화 |
+
+**Vitis_solver 는 우리가 버린 MMSE 검출기의 바로 그 블록이다** -- `A = H^H H + s^2 I`
+를 푸는 Cholesky·QR 이 AMD 의 판매 품목이다. "MMSE 검출기 IP" 가 실제로 어떤 꼴로
+팔리는지가 그 네 파일이다.
+| Vitis_dsp_fft | 25 | `vt_fft.hpp` **include 허브뿐** -- 실제 FFT 구현은 **못 받았다**(경로 404) |
+
+**FFT 는 받은 것이 아니다.** 25줄짜리 헤더 하나이고 그것이 가리키는 구현 파일은
+전부 404 였다. "FFT 를 받았다" 고 말하면 거짓이라 여기 적어 둔다.
 
 **어디서 못 받았나:** `ap_fixed.h` · `hls_stream.h` · `hls_x_complex.h` 는 GitHub 에
 없다 -- **Vitis HLS 설치본 안에** 있다. 그래서 이 코드들은 여기서 컴파일이 안 된다.
