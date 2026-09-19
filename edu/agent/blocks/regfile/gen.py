@@ -124,7 +124,11 @@ def 만들기(낼자리):
             else:
                 hw.append(f".{n}()")
     tb = TB.replace("HWPORTS", ",\n                  ".join(hw))
-    p = os.path.join(낼자리, "regfile_tb.v")
-    with open(p, "w", encoding="utf-8") as f:
-        f.write(v + "\n" + tb)
-    return p
+    # **한 파일에 한 모듈** -- lint(DECLFILENAME) 과 합성이 DUT 만 보게 한다.
+    dutp = os.path.join(낼자리, "crcip_regs.v")
+    tbp = os.path.join(낼자리, "tb.v")
+    with open(dutp, "w", encoding="utf-8") as f:
+        f.write(v + "\n")
+    with open(tbp, "w", encoding="utf-8") as f:
+        f.write(tb)
+    return dutp, tbp

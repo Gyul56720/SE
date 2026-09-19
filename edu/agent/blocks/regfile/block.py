@@ -21,12 +21,16 @@ import gen
 _만든것 = {}
 
 
+합성톱 = "crcip_regs"
+
+
 def 소스들():
+    """[0] 이 **생성된** DUT 다.  생성기가 바뀌면 여기가 바뀐다."""
     if "p" not in _만든것:
         d = tempfile.mkdtemp(prefix="regf_")
         _만든것["d"] = d
         _만든것["p"] = gen.만들기(d)
-    return [_만든것["p"]]
+    return list(_만든것["p"])
 
 
 def _골든(접근들):
