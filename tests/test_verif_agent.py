@@ -37,7 +37,8 @@ def _블록(이름):
 
 def test_성한_블록은_초록이고_비교가_문다():
     import harness
-    for 이름 in ("gf_mul", "crc32", "rs_syndrome", "crc32_stream"):
+    for 이름 in ("gf_mul", "crc32", "rs_syndrome", "crc32_stream",
+                "regfile"):
         b = _블록(이름)
         ok, 왜 = harness.자해검사(b)
         assert ok, f"{이름}: 자해검사 실패 -- {왜}"
@@ -173,6 +174,76 @@ def test_변이점수가_실제로_변이를_돌린다():
     assert s["변이수"] > 0
     assert s["잡힘"] > 0, "변이를 하나도 못 잡았다 -- 검사가 안 문다"
     assert 0.0 <= s["점수"] <= 1.0
+
+
+def test_생성된_레지스터파일이_독립모델과_맞는다():
+    """`edu/house/regmap.py` 가 **생성한** RTL 을 독립 모델과 비교한다.
+
+    골든모델은 생성기 코드를 베낀 것이 아니라 접근 종류의 정의에서 왔다.
+    이 검사가 실제로 생성기 버그 둘을 잡았다:
+      * RO 필드를 전부 하드웨어 입력으로 만들어 **ID 레지스터를 표현 못 함**
+      * `rd` 에 penable 이 빠져 **RC 가 setup 단계에서 미리 지워짐**
+    """
+    import harness
+    b = _블록("regfile")
+    ok, 왜 = harness.자해검사(b, 시행=60)
+    assert ok, 왜
+    for 씨 in (1, 2, 7):
+        r = harness.잰다(b, 시행=400, 씨앗=씨)
+        assert r.오류 is None, r.오류
+        assert r.틀림 == 0, (씨, r.첫실패)
+        assert r.서로다른출력 >= 20, r.dict()
+
+
+def test_regmap_생성물이_문법적으로_성하다():
+    """생성한 RTL 이 컴파일되고, C 헤더가 컴파일되는지 본다."""
+    import shutil, subprocess, tempfile
+    sys.path.insert(0, os.path.join(뿌리, "edu", "house"))
+    import regmap
+    d = tempfile.mkdtemp(prefix="rmgen_")
+    try:
+        m = regmap.예제
+        v = os.path.join(d, "r.v")
+        open(v, "w", encoding="utf-8").write(regmap.rtl(m))
+        h = os.path.join(d, "r.h")
+        open(h, "w", encoding="utf-8").write(regmap.c헤더(m))
+        r = subprocess.run(["iverilog", "-g2012", "-o", os.path.join(d, "a.out"), v],
+                           capture_output=True, text=True, timeout=120)
+        assert r.returncode == 0, r.stderr[-1200:]
+        if shutil.which("gcc"):
+            r = subprocess.run(["gcc", "-fsyntax-only", "-x", "c", "/dev/null",
+                                "-include", h],
+                               capture_output=True, text=True, timeout=120)
+            assert r.returncode == 0, r.stderr[-1200:]
+        assert "IP-XACT" or True
+        x = regmap.ipxact(m)
+        assert x.count("<ipxact:register>") == len(m.레지스터들)
+        md = regmap.마크다운(m)
+        for reg in m.레지스터들:
+            assert reg.이름 in md
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def test_regmap_이_잘못된_맵을_거부한다():
+    """생성기가 조용히 틀린 것을 내지 않는지 -- 겹치는 비트, 나쁜 오프셋 등."""
+    import pytest as _pt
+    sys.path.insert(0, os.path.join(뿌리, "edu", "house"))
+    import regmap
+    with _pt.raises(ValueError):
+        regmap.레지스터("X", 0x00, [regmap.필드("A", 3, 0, "RW", 0, ""),
+                                  regmap.필드("B", 5, 2, "RW", 0, "")])
+    with _pt.raises(ValueError):
+        regmap.레지스터("X", 0x02, [regmap.필드("A", 3, 0, "RW", 0, "")])
+    with _pt.raises(ValueError):
+        regmap.필드("A", 3, 0, "RW", 99, "")
+    with _pt.raises(ValueError):
+        regmap.필드("A", 3, 0, "NOPE", 0, "")
+    with _pt.raises(ValueError):
+        regmap.맵("m", [regmap.레지스터("A", 0, [regmap.필드("F", 0, 0, "RW", 0, "")]),
+                       regmap.레지스터("B", 0, [regmap.필드("G", 0, 0, "RW", 0, "")])])
+    with _pt.raises(ValueError):
+        regmap.필드("A", 0, 0, "RW", 0, "", 하드웨어=True)
 
 
 def test_에이전트가_원장을_SE_LEDGER_ROOT_에_쓴다():
