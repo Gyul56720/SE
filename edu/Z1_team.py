@@ -166,7 +166,12 @@ def ch_team():
             "testbench, and not inside a comment, because mutating either produces "
             "escapes that mean nothing. <b>An escape is a finding, not a defect in the "
             "score</b>: it is either an equivalent mutant or a place the stimulus does "
-            "not reach, and both need a human to say which."))
+            "not reach, and both need a human to say which. <b>Every block reads "
+            "100&nbsp;% with zero unjudged escapes, which is the state the release "
+            "gate of Part&nbsp;Z3 requires</b> &mdash; a column that is constant "
+            "because the bar was met, not because the measurement is stuck. It was "
+            "not always so: the register file scored 58.3&nbsp;% until the escapes "
+            "were read."))
     except Exception as e:
         s.append(f'<div class="warn">Could not run the agent at build time: '
                  f'{E(type(e).__name__)}: {E(str(e))[:300]}</div>')
