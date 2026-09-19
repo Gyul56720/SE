@@ -24,8 +24,12 @@ def body():
         ("I_info",    ["ch_info", "ch_algebra", "ch_opt", "ch_discrete"]),
         ("J_blocks",  ["ch_memory_design", "ch_accel", "ch_noc", "ch_codec"]),
         ("K_wireless",["ch_wireless", "ch_protocol", "ch_reliability", "ch_modern"]),
-        ("W_practice",["ch_house", "ch_process", "ch_auto",
-                       "ch_labs", "ch_papers", "ch_career"]),
+        ("L_phys",    ["ch_semi", "ch_power", "ch_thermal", "ch_control"]),
+        ("M_soft",    ["ch_hwsw", "ch_ml", "ch_image", "ch_measure"]),
+        ("N_extra",   ["ch_async", "ch_physdes", "ch_stats", "ch_optics"]),
+        ("W_practice",["ch_house", "ch_process", "ch_auto", "ch_labs",
+                       "ch_papers", "ch_career", "ch_bringup", "ch_business"]),
+        ("P_iface",   ["ch_mipi", "ch_pcie", "ch_gmac"]),
     ]
     out = []
     for m, fns in mods:

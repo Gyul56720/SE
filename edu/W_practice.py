@@ -579,3 +579,168 @@ def ch_career():
     immediately; one that blends them forces every reader to re-derive the distinction.
     Over a project's life this single discipline saves more time than any tool.</div>""")
     return "\n".join(s)
+
+
+def ch_bringup():
+    s = ['<h1 id="w7">W7. Debug and Bring-Up</h1>']
+    s.append("""<p>The chapters so far describe how to avoid defects. This one describes
+    what to do when one is present anyway, which is a distinct skill and the one most
+    visibly separating experienced engineers from new ones.</p>""")
+    s.append("<h2>W7.1 A debugging method</h2>")
+    s.append(tab("Systematic debugging",
+        ["Step", "Action", "Why this order"],
+        [["1", "<b>Reproduce reliably</b>", "An unreproducible failure cannot be verified "
+          "as fixed. Record the seed, the command and the environment"],
+         ["2", "<b>Minimise</b>", "Shrink the stimulus until any further reduction removes "
+          "the failure. Often reveals the cause without further work"],
+         ["3", "<b>Bisect in time</b>", "Find the first cycle at which observed and "
+          "expected diverge &mdash; not where the symptom appears"],
+         ["4", "<b>Bisect in space</b>", "Move the observation point upstream until the "
+          "signal is correct; the boundary contains the fault"],
+         ["5", "<b>Bisect in history</b>", "If it worked before, bisect the revisions"],
+         ["6", "<b>Form one hypothesis and test it</b>",
+          "Changing several things at once destroys the evidence"],
+         ["7", "<b>Explain the mechanism</b>", "A fix that works without an explanation "
+          "has probably moved the bug"],
+         ["8", "<b>Add the check that would have caught it</b>",
+          "Otherwise the class of defect will recur"]]))
+    s.append("""<div class="warn"><b>Step 7 is the one under schedule pressure most often
+    skipped, and it is the one that causes recurrence.</b> A change that makes a symptom
+    disappear without an understood mechanism has frequently only altered timing or
+    masking, leaving the defect present and less observable. The question that settles it
+    is: <i>can I re-create the failure on demand by undoing exactly this change, and does
+    my explanation predict that?</i> If not, the investigation is not finished.</div>""")
+
+    s.append("<h2>W7.2 Observation techniques by level</h2>")
+    s.append(tab("What can be observed where",
+        ["Level", "Technique", "Visibility", "Cost"],
+        [["Simulation", "Waveforms, printouts, assertions", "<b>Complete</b>", "Slow"],
+         ["Formal", "Counterexample trace", "Complete, minimal", "Limited scope"],
+         ["Emulation", "Trace buffers, triggers", "Large but finite", "Expensive"],
+         ["FPGA prototype", "Integrated logic analyser", "Small window", "Compile time"],
+         ["<b>Silicon</b>", "Scan dump, on-chip trace, debug bus",
+          "<b>Very limited</b>", "<b>Must be designed in beforehand</b>"],
+         ["Silicon, physical", "Laser probing, FIB, e-beam", "Specialist", "Very expensive"]]))
+    s.append("""<div class="ms"><b>Observability in silicon is decided at design time, and
+    it is decided by people who are not yet debugging.</b> Once a chip exists, the only
+    internal state visible is what someone chose to expose: scan chains, trace buffers,
+    performance counters, a debug bus. A block that provides no status registers, no error
+    counters and no way to inject or capture data is effectively opaque, and diagnosing a
+    problem in it means diagnosing the whole subsystem. <b>For an IP vendor, debug
+    features are a support-cost investment</b>: an error counter and a loopback mode cost
+    a few hundred gates and can save a week of remote debugging on a customer's
+    board.</div>""")
+
+    s.append("<h2>W7.3 Bring-up</h2>")
+    s.append(tab("Bring-up order",
+        ["Stage", "Check", "If it fails"],
+        [["Power", "Rails at expected voltages and sequence", "Board or PMIC; no chip involvement"],
+         ["Clocks", "Reference present; PLL locks", "Check the reference before the PLL"],
+         ["Reset", "Released cleanly, in the right order", "Reset sequencing"],
+         ["<b>Basic life</b>", "JTAG IDCODE reads back",
+          "<b>If this fails, nothing else can be diagnosed</b>"],
+         ["Debug access", "Core halts and registers are readable", "Debug module or its clocking"],
+         ["Memory", "Write and read back patterns", "Interface training"],
+         ["Boot", "First instructions execute", "ROM, fuses, boot mode pins"],
+         ["<b>Console</b>", "UART output", "<b>From here the system can explain itself</b>"],
+         ["Peripherals", "One at a time", "&mdash;"],
+         ["Performance", "Against the model's prediction", "Configuration or a real shortfall"]]))
+    s.append("""<div class="ms"><b>The ordering is not arbitrary: each stage is the
+    prerequisite for diagnosing the next.</b> Chasing a peripheral fault before the console
+    works means debugging blind. This is also why the UART and the debug module deserve
+    disproportionate care in design and verification &mdash; they are the instruments with
+    which everything else will be measured. <b>A bug in the debug path costs far more than
+    its size suggests</b>, because it removes the means of finding other bugs.</div>""")
+
+    s.append("<h2>W7.4 Classes of bug and where each is found</h2>")
+    s.append(tab("Bug taxonomy",
+        ["Class", "Typical cause", "Found by", "Missed by"],
+        [["Functional", "Misread specification", "Model comparison", "Directed tests alone"],
+         ["Protocol", "Interface misuse", "Protocol checkers, formal", "Block-level tests"],
+         ["<b>Corner case</b>", "Unusual combination", "Constrained random, formal",
+          "<b>Directed tests</b>"],
+         ["Race / CDC", "Missing synchroniser", "CDC analysis, gate-level simulation",
+          "<b>RTL simulation</b>"],
+         ["Reset", "Uninitialised state", "X-propagation analysis", "RTL with optimistic X"],
+         ["Timing", "Path too long", "STA", "Any simulation"],
+         ["Power/IR", "Local droop", "Power analysis", "All functional verification"],
+         ["Performance", "Wrong architecture", "<b>System model</b>", "Block verification"],
+         ["Integration", "Misunderstood interface", "System simulation", "Block verification"],
+         ["Specification", "Requirement wrong", "<b>Review, prototype</b>", "<b>All verification</b>"]]))
+    s.append("""<div class="warn"><b>The last row is the one no amount of verification can
+    address.</b> If the specification asks for the wrong thing, a perfectly verified
+    implementation of it is still useless. This is the argument for early prototypes, for
+    system models built before RTL, and for showing a specification to whoever will
+    ultimately use the block. <b>Verification answers "did we build it right"; only review
+    and prototyping answer "did we build the right thing".</b></div>""")
+    return "\n".join(s)
+
+
+def ch_business():
+    s = ['<h1 id="w8">W8. Positioning, Pricing and Support</h1>']
+    s.append("<h2>W8.1 Who buys IP and why</h2>")
+    s.append(tab("Buyer motivations",
+        ["Buyer situation", "What they are really buying", "What convinces them"],
+        [["No in-house expertise", "Capability", "Evidence the block works; references"],
+         ["Expertise but no schedule", "Time", "Maturity; a working example design"],
+         ["<b>Risk aversion</b>", "<b>Someone to hold responsible</b>",
+          "<b>Verification evidence and support terms</b>"],
+         ["Standard conformance needed", "Conformance evidence", "Test vector results, certification"],
+         ["Cost reduction", "Lower total cost than building", "A credible effort comparison"],
+         ["Second source", "Supply security", "Compatibility with the incumbent"]]))
+    s.append("""<div class="ms"><b>The third row is the most common and the least
+    discussed.</b> An engineering manager who licenses a block has converted an internal
+    schedule risk into a contractual relationship. That is worth paying for, and it
+    explains why the verification report and the support agreement carry more weight in
+    the decision than the RTL's elegance. <b>It also explains why a first sale is so much
+    harder than a second one to the same customer</b>: the first requires establishing
+    that the risk transfer is real.</div>""")
+    s.append(tab("Pricing inputs",
+        ["Factor", "Direction", "Note"],
+        [["Development cost", "Floor", "Must be recovered across expected licences"],
+         ["Customer's build-versus-buy cost", "Ceiling", "Their engineer-years times their rate"],
+         ["Value of the schedule saved", "Raises the ceiling", "Often larger than the build cost"],
+         ["Competitive alternatives", "Anchors", "Including open-source options"],
+         ["Volume", "&mdash;", "Royalty structures capture upside"],
+         ["Source access", "Raises price substantially", "Source enables the customer to fork"],
+         ["Support scope", "Recurring revenue", "Usually 15&ndash;20% of licence per year"],
+         ["Exclusivity", "Large premium", "Rarely wise for a small vendor"]]))
+    s.append("""<div class="warn"><b>Free alternatives set the floor even when they are not
+    equivalent.</b> If an open-source block exists that does approximately the same thing,
+    the value proposition must be stated against it explicitly: verification evidence,
+    documentation, support, conformance testing, indemnity. &ldquo;Ours is better&rdquo;
+    is not an argument a procurement process can act on; &ldquo;here is the verification
+    report and the conformance results that the open version does not have&rdquo; is.
+    <b>This is another reason to invest in the evidence package rather than in additional
+    features.</b></div>""")
+
+    s.append("<h2>W8.2 Support</h2>")
+    s.append(tab("Support categories and their true cost",
+        ["Category", "Frequency", "Cost driver", "How to reduce it"],
+        [["Integration questions", "High initially", "Documentation gaps",
+          "<b>Better user guide and example design</b>"],
+         ["Configuration errors", "High", "Unclear parameter rules",
+          "Elaboration-time assertions"],
+         ["Environment differences", "Moderate", "Tool and version variety",
+          "State tested tool versions"],
+         ["<b>Real defects</b>", "Low if verification was good", "&mdash;",
+          "Verification investment"],
+         ["Feature requests", "Moderate", "&mdash;", "Roadmap and paid customisation"],
+         ["Performance shortfalls", "Moderate", "Unstated assumptions",
+          "Document measurement conditions"]]))
+    s.append("""<div class="ms"><b>Most support load is documentation debt, not defects.</b>
+    A useful discipline is to treat every support question as a documentation bug: when
+    the answer is given, the document is updated so that the same question cannot be asked
+    twice. Over a few customers this converges, and support cost per customer falls
+    sharply. <b>For a one-person practice this is the difference between a viable business
+    and one that cannot take a second customer</b>, because support is the cost that
+    scales with customers rather than with product.</div>""")
+    s.append(tab("What to track from the first release",
+        ["Item", "Why"],
+        [["Every question asked, and by whom", "Reveals documentation gaps"],
+         ["Time spent per customer", "<b>Tells you whether the price is right</b>"],
+         ["Defects found after release, and how", "Shows what verification missed"],
+         ["Configurations actually used", "Focuses future verification effort"],
+         ["Tool and version combinations", "Compatibility matrix"],
+         ["Reasons for lost sales", "Product direction"]]))
+    return "\n".join(s)
