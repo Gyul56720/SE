@@ -130,8 +130,10 @@ assertion was wrong.</em> The types are published in
 <code>Xilinx/HLS_arbitrary_Precision_Types</code>, the stream class in
 <code>Xilinx/hls-lib-stream</code>, and the mathematics and simulation headers in
 <code>Xilinx/hls-utilities</code>; a small number of remaining utility headers were located in
-<code>Xilinx/merlin-compiler</code>. Resolving the closure by iterative compilation yielded 50
-headers totalling 1.5&nbsp;MB, after which 25 of the 26 corpus files compile. The single
+<code>Xilinx/merlin-compiler</code>. Resolving the closure by iterative compilation&mdash;reading each
+missing-header diagnostic and fetching that name from the four repositories in turn&mdash;yielded
+51 headers totalling 38,811 lines, after which 26 of the 27 corpus files compile cleanly under
+Clang 18. The single
 exception is <code>vt_fft.hpp</code>, whose implementation files return HTTP 404 and were never
 retrieved; Table 1 counts it, and no claim in Section III&ndash;V rests on it.</p>
 

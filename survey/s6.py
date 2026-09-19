@@ -228,11 +228,26 @@ circuit a pragma induces remains an <em>inference from source text and from the 
 in comments</em>. We have measured no latency, area or frequency figure for this corpus and
 report none.</p>
 
-<p><i>The compilation is with a different compiler.</i> Vitis HLS uses a Clang-derived front end
-with its own extensions; we used GCC with <code>-fpermissive</code>, which was required because
-one Xilinx macro, <code>_AP_UNUSED_PARAM</code>, is rejected by GCC's stricter template
-name-lookup rules. A file that compiles under GCC therefore does not prove it compiles under
-Vitis HLS, although the converse failure would have been strong evidence of a problem.</p>
+<p><i>The compiler is not the vendor's.</i> Vitis HLS uses a Clang-derived front end. We
+compiled with both GCC 13 and Clang 18. Under GCC, <code>-fpermissive</code> was required
+because one Xilinx-internal macro, <code>_AP_UNUSED_PARAM</code>, is supplied by the Vitis
+preprocessor and is absent from the public headers; supplying a one-line definition of it
+(<code>((void)(x))</code>) removes the need, and under Clang 18 all 26 retrievable files then
+compile cleanly with no permissive flag and no warnings suppressed beyond <code>-w</code>. A
+file that compiles under Clang 18 still does not prove it compiles under the Vitis front end,
+although the converse failure would have been strong evidence of a defect.</p>
+
+<p><i>No high-level-synthesis tool was obtainable.</i> Synthesising the corpus would require a
+C-to-RTL compiler that accepts this dialect. We searched five distribution channels and found
+none: the system package index has no such package; the GitHub release endpoints that host the
+Bambu/PandA binaries answer 403 through our proxy; the Python package index carries only
+wrappers that themselves require Vitis HLS (<code>tapa</code>) or orchestration frameworks that
+fetch tools at run time (<code>siliconcompiler</code>); the conda-forge channel carries
+Verilator and Yosys but no HLS compiler; and the upstream project's own distribution host is
+unreachable. This is a negative result obtained by checking rather than by assumption, and it
+is the reason Section VI's statements about schedules and initiation intervals remain
+inferences. A reader with a Vitis HLS installation can settle them in an afternoon; we supply
+the project scripts to do so as supplementary material.</p>
 
 <p><i>The sample is small and vendor-biased.</i> Three families, two vendors, both from the same
 FPGA ecosystem. Patterns common to all three may reflect a shared house style or shared tool
