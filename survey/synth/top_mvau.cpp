@@ -1,9 +1,11 @@
 // Concrete top level: FINN matrix-vector-activate, 64x64, SIMD=8, PE=4.
 #include "hls_compat.h"
 #include "bnn-library.h"
-#include "interpret.hpp"
+// bnn-library.h pulls in 15 of the 16 FINN headers, including mvau.hpp
+// (via convlayer.h) and interpret.hpp (via maxpool.h).  activations.hpp is the
+// one it does not reach, and every MVAU instantiation needs an activation type,
+// so it must be included explicitly.  Verified with clang -H.
 #include "activations.hpp"
-#include "mvau.hpp"
 
 #define MW 64
 #define MH 64

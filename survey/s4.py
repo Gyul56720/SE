@@ -282,10 +282,23 @@ index of the interval. Fig. 17 shows the structure.</p>
 %s
 
 <p>The consequence is that no multiplier appears in the activation path at all. The classes
-provided include <code>Identity</code>, binary and multi-bit thresholding with per-channel
-parameters, and variants that fold a bias into the threshold set. The
-<code>activation.init(nf, pe)</code> member seen in the MVAU belongs to this interface: it
-supplies the initial accumulator value, which is how a bias is added without an extra adder.</p>
+provided include <code>Identity</code>, <code>PassThroughActivation</code>,
+<code>ThresholdActivation</code>, <code>ThresholdsActivation</code> with per-channel parameters,
+and <code>ChannelWiseOperation</code>. The <code>activation.init(nf, pe)</code> member seen in
+the MVAU belongs to this interface: it supplies the initial accumulator value, which is how a
+bias is added without an extra adder.</p>
+
+<p>One packaging detail is worth recording because it is invisible from the source listing and
+only appears when the preprocessor is run. <code>bnn-library.h</code> is the library's aggregate
+header, and dumping its include tree with <code>clang -H</code> shows that it reaches 15 of the
+16 headers, several only indirectly: <code>interpret.hpp</code> arrives through
+<code>maxpool.h</code>, and <code>mvau.hpp</code> (with <code>mac.hpp</code> beneath it) through
+<code>convlayer.h</code>. The one file it never reaches is <code>activations.hpp</code>. Since
+every <code>Matrix_Vector_Activate_Batch</code> and <code>Vector_Vector_Activate_Batch</code>
+instantiation requires an activation type, any top-level design that uses them must include
+that header explicitly. We discovered this only when the synthesis wrappers of the
+supplementary material failed to instantiate, and we record it because it is the kind of
+integration detail that a reading of the source alone does not surface.</p>
 
 <h3>G. Weight Storage &mdash; <code>weights.hpp</code> (%s lines)</h3>
 

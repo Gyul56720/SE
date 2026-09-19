@@ -46,3 +46,25 @@ Sweeping is the interesting part: edit `ARCH` and `UNROLL_FACTOR` in
 `top_cholesky.cpp`, or `SIMD`/`PE` in `top_mvau.cpp`, re-run, and compare the
 reports.  That sweep is exactly what Section VI-E of the survey describes and
 could not measure.
+
+## One thing this harness uncovered
+
+`bnn-library.h` is FINN's aggregate header, but it does not reach every file.
+Dumping the include tree with `clang -H` shows 15 of the 16 headers arrive,
+several of them only indirectly:
+
+    bnn-library.h
+    |- weights.hpp  mmv.hpp  streamtools.h  dma.h
+    |- slidingwindow.h -> utils.hpp
+    |- maxpool.h       -> interpret.hpp
+    |- convlayer.h     -> mvau.hpp -> mac.hpp
+    |                  -> tmrcheck.hpp
+    `- vvau.hpp  upsample.hpp
+
+The one it never reaches is **`activations.hpp`**.  Since every MVAU and VVAU
+instantiation needs an activation type, any top level that uses them must
+include it explicitly.  That is the single extra line in `top_mvau.cpp`.
+
+An earlier note in this file claimed `mvau.hpp` and `interpret.hpp` were also
+missing.  That was wrong; both arrive transitively.  The claim was made from
+reading the direct `#include` list rather than from the preprocessor.
