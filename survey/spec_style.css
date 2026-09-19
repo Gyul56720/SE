@@ -1,0 +1,86 @@
+/* 스펙 문서 -- AMD Product Guide 계열 레이아웃.
+   본문은 1단(스펙 문서는 2단을 쓰지 않는다), 소스 부록만 2단으로 좁힌다. */
+@page {
+  size: letter; margin: 21mm 18mm 20mm 18mm;
+  @bottom-center { content: counter(page); font-size: 8pt;
+                   font-family:"Liberation Sans","DejaVu Sans",sans-serif; }
+  @top-right { content: string(runhead); font-size: 7.6pt; color:#444;
+               font-family:"Liberation Sans",sans-serif; }
+  @top-left  { content: string(doctitle); font-size: 7.6pt; color:#444;
+               font-family:"Liberation Sans",sans-serif; }
+}
+@page :first { @top-left{content:none} @top-right{content:none} @bottom-center{content:none} }
+
+body { font-family:"Liberation Serif","Nimbus Roman",serif; font-size:9.6pt;
+       line-height:1.30; text-align:justify; hyphens:auto; }
+
+h1 { string-set: runhead content(); font-family:"Liberation Sans",sans-serif;
+     font-size:16pt; font-weight:bold; color:#0b3d62; margin:0 0 10pt 0;
+     padding-bottom:4pt; border-bottom:2pt solid #0b3d62; break-before:page; }
+h2 { font-family:"Liberation Sans",sans-serif; font-size:12pt; font-weight:bold;
+     color:#0b3d62; margin:14pt 0 5pt 0; break-after:avoid; }
+h3 { font-family:"Liberation Sans",sans-serif; font-size:10.2pt; font-weight:bold;
+     margin:10pt 0 3pt 0; break-after:avoid; }
+h4 { font-family:"Liberation Sans",sans-serif; font-size:9.6pt; font-weight:bold;
+     font-style:italic; margin:8pt 0 2pt 0; break-after:avoid; }
+p  { margin:0 0 5pt 0; }
+
+table { border-collapse:collapse; font-size:8.4pt; width:100%; margin:5pt 0 8pt 0;
+        font-family:"Liberation Sans",sans-serif; }
+th { background:#e8eef3; border:0.6pt solid #7d95a6; padding:2.6pt 4pt;
+     text-align:left; font-weight:bold; }
+td { border:0.6pt solid #a8bac7; padding:2.4pt 4pt; vertical-align:top; }
+table caption { caption-side:top; text-align:left; font-weight:bold; font-size:8.6pt;
+                margin-bottom:3pt; font-family:"Liberation Sans",sans-serif; }
+tr { break-inside:avoid; }
+
+pre.code { font-family:"Liberation Mono","DejaVu Sans Mono",monospace; font-size:7.6pt;
+           line-height:1.22; background:#f6f8fa; border:0.6pt solid #ccd6dd;
+           padding:4pt 6pt; margin:4pt 0 8pt 0; white-space:pre-wrap;
+           word-wrap:break-word; }
+code { font-family:"Liberation Mono",monospace; font-size:8.8pt; }
+
+figure { margin:8pt 0 10pt 0; break-inside:avoid; text-align:center; }
+figcaption { font-size:8.4pt; text-align:left; margin-top:4pt;
+             font-family:"Liberation Sans",sans-serif; }
+
+/* --- 소스 부록: 2단, 아주 작은 고정폭 --- */
+h1#D, h1#E { break-before:page; }
+.srcwrap { columns:2; column-gap:7mm; column-rule:0.4pt solid #ccc; }
+h3.srcfile { font-size:8pt; background:#0b3d62; color:#fff; padding:2pt 4pt;
+             margin:6pt 0 2pt 0; break-after:avoid; break-inside:avoid; }
+.srcmeta { font-weight:normal; font-size:7pt; color:#cfe0ec; }
+pre.src { font-family:"Liberation Mono","DejaVu Sans Mono",monospace;
+          font-size:5.9pt; line-height:1.14; margin:0 0 4pt 0;
+          white-space:pre-wrap; word-break:break-all; }
+pre.src .ln { color:#8a9aa6; }
+
+.note { border-left:2.4pt solid #0b3d62; background:#f2f6f9; padding:4pt 7pt;
+        margin:6pt 0; font-size:8.8pt; }
+.warn { border-left:2.4pt solid #a33; background:#fbf2f2; padding:4pt 7pt;
+        margin:6pt 0; font-size:8.8pt; }
+
+/* --- 표지 · 목차 · 판본 이력 --- */
+.cover { string-set: doctitle "HLS-IP-SPEC-001"; text-align:center;
+         padding-top:34mm; break-after:page; }
+.cover .docno { font-family:"Liberation Sans",sans-serif; font-size:9pt;
+                letter-spacing:1.2px; color:#0b3d62; margin-bottom:16pt; }
+h1.ctitle { font-family:"Liberation Sans",sans-serif; font-size:27pt; color:#0b3d62;
+            border:none; margin:0 0 6pt 0; padding:0; break-before:auto; }
+.cover .csub { font-family:"Liberation Sans",sans-serif; font-size:13pt; color:#456;
+               margin-bottom:20pt; }
+.cover .cline { border-top:2.4pt solid #0b3d62; width:58%; margin:0 auto 20pt auto; }
+.cover .cmeta { text-align:justify; font-size:9.6pt; margin:0 8mm; }
+.cover .cfoot { margin-top:26pt; font-size:8.6pt; color:#456; font-style:italic; }
+.revwrap, .tocwrap { break-after:page; }
+h2.nobrk { break-before:auto; }
+.tocwrap a { text-decoration:none; color:#000; }
+.toc1 { font-family:"Liberation Sans",sans-serif; font-weight:bold; font-size:9.6pt;
+        margin:7pt 0 1pt 0; }
+.toc2 { font-size:9pt; margin-left:7mm; }
+.toc1 a::after, .toc2 a::after {
+   content: leader('.') target-counter(attr(href), page); color:#456; }
+.kvbar { background:#eef3f7; border-left:2.6pt solid #0b3d62; padding:4pt 7pt;
+         font-size:8.6pt; margin:4pt 0 9pt 0; font-family:"Liberation Sans",sans-serif; }
+.spec { font-weight:normal; font-size:8pt; color:#567; }
+h2[id^="s"] { break-before:page; }
