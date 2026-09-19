@@ -122,3 +122,10 @@ def test_신드롬이_틀린_부호어를_거른다():
     assert c.신드롬0(cw)
     cw[3, 0] ^= 1
     assert not c.신드롬0(cw), "한 비트를 뒤집었는데 신드롬이 0 이다"
+
+
+if __name__ == "__main__":
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import _run
+    _run.돌리기(globals())

@@ -108,3 +108,10 @@ def test_제어기가_합성된다():
     큰 = rtl.합성(P.스톨제어기(52, 6, len(맵), 맵), top="stallctl")
     assert 작.get("판정") == "PASS" and 큰.get("판정") == "PASS"
     assert 큰["셀수"] > 작["셀수"], (작["셀수"], 큰["셀수"])
+
+
+if __name__ == "__main__":
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import _run
+    _run.돌리기(globals())

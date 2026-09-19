@@ -87,3 +87,10 @@ def test_미확인_표시가_붙어_있다():
     f = gf.KP4필드()
     assert f.확인됨 is False, "확인하지도 않고 확인됨=True 로 바꿨다"
     assert "미확인" in repr(f)
+
+
+if __name__ == "__main__":
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import _run
+    _run.돌리기(globals())

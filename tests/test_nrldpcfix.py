@@ -117,3 +117,10 @@ def test_스케일이_BLER을_가른다():
     값 = [X.측정(c, -1.5, W=5, 스케일=s, 블록수=30, 씨=28)["BLER"]
          for s in (1, 2, 30)]
     assert max(값) - min(값) > 0.15, 값
+
+
+if __name__ == "__main__":
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import _run
+    _run.돌리기(globals())

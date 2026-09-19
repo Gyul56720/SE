@@ -139,3 +139,10 @@ def test_에이전트가_원장을_SE_LEDGER_ROOT_에_쓴다():
             "SE_LEDGER_ROOT 를 줬는데 저장소 원장에도 썼다"
     finally:
         shutil.rmtree(d, ignore_errors=True)
+
+
+if __name__ == "__main__":
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import _run
+    _run.돌리기(globals())

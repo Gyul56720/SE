@@ -133,3 +133,10 @@ def test_N이_탭수를_넘으면_탭수로_잘린다():
     W = S.누산최소폭(400, c, S.NRZ)
     assert S.투기형(x, c, G, S.NRZ, 99, 초기, W) == \
            S.투기형(x, c, G, S.NRZ, 3, 초기, W)
+
+
+if __name__ == "__main__":
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import _run
+    _run.돌리기(globals())

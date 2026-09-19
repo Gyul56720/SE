@@ -148,3 +148,10 @@ def test_fcr이_달라도_성질은_산다():
         r = rs.측정(c, c.t, 시행=30, 씨앗=fcr)
         assert r["고침"] == 30, (fcr, r)
         assert r["**오정정**"] == 0, (fcr, r)
+
+
+if __name__ == "__main__":
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import _run
+    _run.돌리기(globals())

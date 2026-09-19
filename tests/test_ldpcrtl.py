@@ -101,3 +101,10 @@ def test_린트가_남긴_경고를_숨기지_않는다():
     로그 = l.get("로그") or ""
     assert "UNUSEDSIGNAL" in 로그 and "pr0" in 로그, \
         f"경고가 바뀌었다 -- 문서를 고쳐라: {로그[:200]}"
+
+
+if __name__ == "__main__":
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import _run
+    _run.돌리기(globals())

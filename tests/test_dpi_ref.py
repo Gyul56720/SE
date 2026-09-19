@@ -98,3 +98,10 @@ def test_벤치가_부호확장을_한다():
     """`int'()` 캐스팅이 없으면 음수가 큰 양수로 넘어가 조용히 틀린다."""
     tb = open(os.path.join(DPI, "cnu_tb.sv")).read()
     assert re.search(r"cnu_ref\(\s*int'\(q0\)", tb), "DPI 호출에 int'() 캐스팅이 없다"
+
+
+if __name__ == "__main__":
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import _run
+    _run.돌리기(globals())
