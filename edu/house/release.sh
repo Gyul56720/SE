@@ -88,7 +88,8 @@ print('BADC=%d' % d.get('틀림', -1))
 print('DIST=%d' % d.get('최소서로다른출력', 0))
 print('PERF=%d' % (1 if d.get('성능') else 0))
 print('PDEC=%d' % (1 if d.get('성능한계선언') else 0))
-print('PNA=%s' % (d.get('성능해당없음') or ''))
+import shlex
+print('PNA=%s' % shlex.quote((d.get('성능해당없음') or '').replace(chr(10), ' ')))
 print('MSCORE=%.1f' % (v['점수'] * 100))
 print('MESC=%d' % v['탈출'])
 print('MNUM=%d' % v['수'])
@@ -139,10 +140,15 @@ print(getattr(m, '합성톱', '') or '')
     fi
     if command -v yosys >/dev/null 2>&1; then
       YS=""; for f in $SRC; do YS="$YS read_verilog -sv $f;"; done
-      if yosys -q -p "$YS hierarchy -top $TOP; proc; opt; techmap; opt; stat" \
+      if yosys -p "$YS hierarchy -top $TOP; proc; opt; techmap; opt; stat" \
            >/tmp/ys.$$ 2>&1; then
-        CELLS=$(grep -oP 'Number of cells:\s+\K[0-9]+' /tmp/ys.$$ | tail -1)
-        ok "합성" "$TOP: 셀 ${CELLS:-?}개"
+        CELLS=$(sed -n 's/.*Number of cells: *\([0-9][0-9]*\).*/\1/p' /tmp/ys.$$ | tail -1)
+        if [ -z "$CELLS" ]; then
+          # yosys 판마다 stat 출력이 다르다.  **못 읽었으면 ? 로 덮지 않고 말한다.**
+          huh "합성" "$TOP: 돌았는데 셀 수를 못 읽었다 (yosys stat 출력 형식)"
+        else
+          ok "합성" "$TOP: 셀 ${CELLS}개"
+        fi
       else
         bad "합성" "yosys 실패"
       fi
