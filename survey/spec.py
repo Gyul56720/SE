@@ -71,6 +71,44 @@ assert 총프라그마 == 대조프라그마, (총프라그마, 대조프라그�
 벤더함수 = sum(len(f["funcs"]) for f in 벤더)
 벤더클래스 = sum(len(f["classes"]) for f in 벤더)
 
+
+# ---- 타깃 디바이스 증거: 소스에 실제로 박힌 프리미티브 이름을 센다 ----
+# 두 가지를 조심한다.
+#  (1) 말뭉치와 벤더를 **가른다**.  합친 수는 말뭉치에 대한 진술로 쓸 수 없다.
+#  (2) **낱말 경계를 준다.**  경계 없이 세었더니 ROM_INT 가 73 개 나왔는데,
+#      실재하지 않는 수였다 -- ASSIGN_OP_F(ROM_INT) 45 + CTOR_F(ROM_INT) 28 이
+#      부분 문자열로 걸린 것이었다.  \b 를 주면 0 이다.
+import re as _re
+_KEYS = ("ROM_INT", "ROM_1P_LUTRAM", "ROM_nP_LUTRAM", "ROM_1P", "LUTRAM",
+         "URAM", "BRAM")
+
+def _세기(목록, 밑="/home/user/hls_study"):
+    c = {}
+    for f in 목록:
+        try:
+            t = open(os.path.join(밑, f["rel"]), encoding="utf-8",
+                     errors="replace").read()
+        except OSError:
+            continue
+        for k in _KEYS:
+            n = len(_re.findall(r"\b" + k + r"\b", t))
+            if n:
+                c[k] = c.get(k, 0) + n
+    return c
+
+PRIM_C = _세기(말뭉치)
+PRIM_V = _세기(벤더, "/home/user/hls_study/vendor")
+AIE = 0
+for 밑, 목록 in (("/home/user/hls_study", 말뭉치),
+                 ("/home/user/hls_study/vendor", 벤더)):
+    for f in 목록:
+        try:
+            AIE += len(_re.findall(r"\b(adf|aie|AIE)\b",
+                       open(os.path.join(밑, f["rel"]), encoding="utf-8",
+                            errors="replace").read()))
+        except OSError:
+            pass
+
 DOCNO = "HLS-IP-SPEC-001"
 VER   = "1.1"
 DATE  = "19 September 2026"
@@ -318,13 +356,67 @@ def ch2():
           "<code>extern \"C\"</code> kernel", "Yes"],
          ["<code>Vitis_security</code>", "L1",
           "function template over <code>hls::stream</code>", "No"],
-         ["<code>Vitis_dsp_fft</code>", "L1/L2",
-          "graph or function template", "Partly"],
+         ["<code>Vitis_dsp_fft</code>", "L1",
+          "function template (dispatch header only; body not retrievable)", "n/a"],
          ["<code>finn_hlslib</code>", "L1",
           "function template, composed by a generator", "No"]]))
     s.append(fig(2, "Layering. An L1 template has no ports; ports appear only where an "
                     "L2 wrapper declares them. The corpus contains both, and Chapters 3 "
                     "to 6 state for each core which level it belongs to."))
+
+    s.append("<h3>2.1.1&nbsp;&nbsp;Target device class</h3>")
+    s.append("""<p>Every core in this corpus targets <b>FPGA programmable logic</b>
+    &mdash; AMD's fabric &mdash; and not an ASIC, and not the hardened AI Engine vector
+    array. That is not an assumption; the source names the primitives it expects.</p>""")
+    설명 = {"ROM_INT": "Constant table in fabric ROM",
+            "LUTRAM": "Distributed RAM in the LUTs &mdash; replicable, many ports",
+            "ROM_1P": "Single-port ROM",
+            "ROM_nP_LUTRAM": "Multi-port ROM in LUT RAM &mdash; the AES S-box binding "
+                             "of &sect;4.1",
+            "ROM_1P_LUTRAM": "Single-port ROM in LUT RAM",
+            "URAM": "UltraRAM block &mdash; UltraScale+ and later only",
+            "BRAM": "Block RAM"}
+    행 = [[f"<code>{E(k)}</code>", str(PRIM_C.get(k, 0)), str(PRIM_V.get(k, 0)), 설명[k]]
+          for k in _KEYS if PRIM_C.get(k) or PRIM_V.get(k)]
+    행.append(["<b>Total</b>", f"<b>{sum(PRIM_C.values())}</b>",
+               f"<b>{sum(PRIM_V.values())}</b>", ""])
+    s.append(tab("Device primitives named in the source, corpus and vendor headers "
+                 "counted separately",
+                 ["Primitive", "In the corpus", "In the vendor headers",
+                  "What it is"], 행))
+    s.append("""<div class="note"><b>The two columns are kept apart deliberately.</b>
+    Reporting a combined figure would attribute the vendor's storage choices to the IP
+    being specified. The vendor column here comes from one file,
+    <code>etc/hls_hotbm_apfixed.h</code>, which implements fixed-point elementary
+    functions by table lookup and therefore has to name its own storage. The corpus
+    column is small because the corpus mostly leaves the binding to the tool, and names
+    a primitive only where the choice is load-bearing &mdash; as in the AES S-box of
+    &sect;4.1.</div>
+    <div class="warn"><b>Word boundaries matter in a count like this.</b> Counted as
+    plain substrings, this table reported 73 occurrences of a
+    <code>ROM_INT</code> primitive. <b>No such primitive exists in this code.</b> The 73
+    were <code>ASSIGN_OP_F<u>ROM_INT</u></code> (45) and
+    <code>CTOR_F<u>ROM_INT</u></code> (28) &mdash; ordinary macro names in
+    <code>ap_int_base.h</code>. The counter used here is anchored on word boundaries and
+    reports zero. A number that looks plausible is the easiest kind to publish without
+    checking.</div>""")
+    s.append(f"""<div class="note"><b>The counter-evidence was looked for and is
+    zero.</b> All {SRC['총파일']} files together contain <b>{AIE}</b> references to the AI Engine namespace
+    (<code>adf</code>, <code>aie</code>). AMD publishes AI Engine versions of several of
+    these same library elements &mdash; its own documentation for the AIE Cholesky says
+    it &ldquo;supports AIE, AIE-ML, and AIE-MLv2 devices&rdquo; &mdash; and those are
+    different source files, built by a different compiler, with a graph rather than a
+    function as the entry point. <b>None of them is in this corpus.</b> Chapter 6
+    records a claim that was withdrawn for exactly this confusion.</div>""")
+    s.append("""<p>The practical consequences for an integrator are three. First, these
+    cores are <b>accelerator blocks inside a larger device</b>, not chips: they have no
+    pads, no PLL, no power management and no reset controller, and something else on the
+    device supplies all four (&sect;7.1). Second, the cores are <b>reconfigurable</b>:
+    the folding parameters of &sect;5.2 and the storage bindings above can be changed
+    and the part rebuilt, which is the economic reason this IP is shipped as C++ at all.
+    Third, the primitives above must <b>exist on the target part</b> &mdash;
+    <code>URAM</code> is UltraScale+ and later, and a design bound to it will not build
+    on a 7-series device.</p>""")
 
     s.append("<h2>2.2&nbsp;&nbsp;Standards Compliance</h2>")
     s.append("""<p>The corpus is ISO C++ with two vendor extensions: the
@@ -1435,8 +1527,8 @@ def ch6():
     s.append("""<p>This chapter is short, and the reason is recorded rather than
     hidden.</p>
     <div class="warn"><b>The FFT core is incomplete in this corpus.</b>
-    <code>vt_fft.hpp</code> is 26 lines and is a dispatch header: it includes the
-    implementation and exposes the graph entry point. The implementation file was not
+    <code>vt_fft.hpp</code> is 26 lines and is a dispatch header: after the licence
+    block its entire content is one include. The implementation file was not
     retrievable &mdash; every attempt returned HTTP 404 &mdash; so the corpus contains
     the interface and not the body. <b>No claim is made in this document about the FFT
     core's micro-architecture</b>, because the source that would support such a claim
@@ -1444,13 +1536,25 @@ def ch6():
     Appendix D, as is every other file.</div>""")
     s.append(서명표("Vitis_dsp_fft/vt_fft.hpp"))
     s.append(의존표("Vitis_dsp_fft/vt_fft.hpp"))
-    s.append("""<p>What can be said from the interface alone: the entry point is a
-    <i>graph</i> rather than a function, which places this core in the AI Engine
-    programming model rather than the fabric HLS model used by every other core in the
-    corpus. A graph entry point is connected by the AIE compiler, not instantiated by an
-    HLS kernel, and the two cannot be composed directly &mdash; an integrator mixing
-    them needs an explicit boundary between the AIE array and the programmable
-    logic.</p>""")
+    s.append("""<p>What can be said from the file itself is short and exact. Its whole
+    body is this:</p>
+    <pre class="code">#include "vitis_fft/hls_ssr_fft.hpp"</pre>
+    <p>The name states the architecture. <b>SSR</b> is Super Sample Rate: the transform
+    is decomposed across parallel lanes so that several samples arrive per clock, which
+    is what allows a fabric implementation to keep up with a converter running faster
+    than the fabric clock. The <code>hls_</code> prefix places it in the
+    programmable-logic HLS flow &mdash; the same flow as every other core in this
+    corpus.</p>""")
+    s.append("""<div class="warn"><b>A claim withdrawn from an earlier revision of this
+    chapter.</b> It stated that the entry point here is a <i>graph</i>, and therefore
+    that this core belongs to the AI Engine programming model rather than the fabric HLS
+    model. <b>That is false, and the file's single line of content says so:</b>
+    <code>hls_ssr_fft.hpp</code> is fabric HLS. The error came from reading AMD's
+    published documentation for the <i>AI Engine</i> versions of these library elements
+    &mdash; which genuinely are graphs, and which say &ldquo;supports AIE, AIE-ML and
+    AIE-MLv2 devices&rdquo; &mdash; and carrying that model across to a file that is not
+    one of them. AMD ships both an AIE and a fabric implementation of several of these
+    transforms. <b>This corpus contains the fabric one, throughout.</b></div>""")
     return "\n".join(s)
 
 # ====================================== 7 Designing with the Cores
