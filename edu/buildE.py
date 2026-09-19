@@ -32,6 +32,7 @@ def body():
         ("Q_more",    ["ch_queue", "ch_hls", "ch_embedded", "ch_emc"]),
         ("R_crypto",  ["ch_cryptomath", "ch_test", "ch_quantum"]),
         ("P_iface",   ["ch_mipi", "ch_pcie", "ch_gmac"]),
+        ("S_iface2",  ["ch_storage", "ch_display", "ch_clocking", "ch_ipxact"]),
     ]
     out = []
     for m, fns in mods:
