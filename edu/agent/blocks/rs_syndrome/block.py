@@ -12,11 +12,16 @@ from gf import 필드
 여기 = os.path.dirname(os.path.abspath(__file__))
 이름 = "rs_syn_step"
 톱 = "tb"
+
+# 합성·lint 는 **DUT 만** 본다.  테스트벤치를 같이 넣으면 $fopen 때문에
+# yosys 가 실패하고 verilator 가 경고를 쏟는다 -- 그것은 블록의 품질이 아니다.
+합성톱 = "rs_syn_step"
 _f = 필드(10, 0x409, 확인됨=False)
 
 
 def 소스들():
-    return [os.path.join(여기, "dut.v")]
+    """[0] 이 DUT 다 -- 수리와 변이는 이 파일만 건드린다."""
+    return [os.path.join(여기, "dut.v"), os.path.join(여기, "tb.v")]
 
 
 def 자극(시행, 씨앗):
@@ -29,3 +34,9 @@ def 자극(시행, 씨앗):
     입력 = [f"{s:03x} {a:03x} {r:03x}" for s, a, r in 셋]
     골든 = [_f.더하기(_f.곱하기(s, a), r) for s, a, r in 셋]
     return 입력, 골든
+
+
+# 처리량 한계를 선언하지 않는 이유를 **적는다**.  관문이 "못 쟀다" 로 내는 것과
+# "해당 없다" 는 다르다 -- 모르는 것은 안 된 것으로 다루되, 아는 것은 적는다.
+성능해당없음 = ("조합 블록이다 -- 한 걸음이 조합이다. 위와 같다."
+              )

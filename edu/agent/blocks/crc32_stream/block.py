@@ -15,9 +15,14 @@ import os, random, zlib
 이름 = "crc32_stream"
 톱 = "tb"
 
+# 합성·lint 는 **DUT 만** 본다.  테스트벤치를 같이 넣으면 $fopen 때문에
+# yosys 가 실패하고 verilator 가 경고를 쏟는다 -- 그것은 블록의 품질이 아니다.
+합성톱 = "crc32_stream"
+
 
 def 소스들():
-    return [os.path.join(여기, "dut.v")]
+    """[0] 이 DUT 다 -- 수리와 변이는 이 파일만 건드린다."""
+    return [os.path.join(여기, "dut.v"), os.path.join(여기, "tb.v")]
 
 
 def 자극(시행, 씨앗):
