@@ -1,0 +1,95 @@
+/* 교안 -- 1단 본문, 수식과 코드가 많다. 소스 부록만 2단. */
+@page {
+  size: letter; margin: 20mm 17mm 19mm 17mm;
+  @bottom-center { content: counter(page); font-size:8pt;
+                   font-family:"Liberation Sans",sans-serif; color:#333; }
+  @top-right { content: string(runhead); font-size:7.6pt; color:#555;
+               font-family:"Liberation Sans",sans-serif; }
+  @top-left  { content: string(doctitle); font-size:7.6pt; color:#555;
+               font-family:"Liberation Sans",sans-serif; }
+}
+@page :first { @top-left{content:none} @top-right{content:none} @bottom-center{content:none} }
+
+body { font-family:"Liberation Serif","Nimbus Roman",serif; font-size:10pt;
+       line-height:1.38; text-align:justify; hyphens:auto; }
+
+h1 { string-set: runhead content(); font-family:"Liberation Sans",sans-serif;
+     font-size:17pt; font-weight:bold; color:#123f6d; margin:0 0 10pt 0;
+     padding-bottom:5pt; border-bottom:2.4pt solid #123f6d; break-before:page; }
+h2 { font-family:"Liberation Sans",sans-serif; font-size:13pt; font-weight:bold;
+     color:#123f6d; margin:15pt 0 5pt 0; break-after:avoid; }
+h3 { font-family:"Liberation Sans",sans-serif; font-size:10.8pt; font-weight:bold;
+     margin:11pt 0 3pt 0; break-after:avoid; }
+h4 { font-family:"Liberation Sans",sans-serif; font-size:10pt; font-weight:bold;
+     font-style:italic; margin:8pt 0 2pt 0; break-after:avoid; }
+p { margin:0 0 6pt 0; }
+ul, ol { margin:0 0 7pt 0; padding-left:1.5em; }
+li { margin-bottom:2pt; }
+
+table { border-collapse:collapse; font-size:8.6pt; width:100%; margin:6pt 0 9pt 0;
+        font-family:"Liberation Sans",sans-serif; }
+th { background:#e6edf4; border:0.6pt solid #7a93ab; padding:3pt 4pt;
+     text-align:left; font-weight:bold; }
+td { border:0.6pt solid #a9bccd; padding:2.8pt 4pt; vertical-align:top; }
+table caption { caption-side:top; text-align:left; font-weight:bold; font-size:8.8pt;
+                margin-bottom:3pt; font-family:"Liberation Sans",sans-serif; }
+tr { break-inside:avoid; }
+
+pre.code { font-family:"Liberation Mono","DejaVu Sans Mono",monospace; font-size:7.8pt;
+           line-height:1.25; background:#f6f8fa; border:0.6pt solid #ccd6dd;
+           border-left:2.6pt solid #123f6d;
+           padding:5pt 7pt; margin:5pt 0 9pt 0; white-space:pre-wrap;
+           word-wrap:break-word; }
+pre.code .cap { color:#567; font-style:italic; }
+code { font-family:"Liberation Mono",monospace; font-size:9pt; }
+
+figure { margin:9pt 0 11pt 0; break-inside:avoid; text-align:center; }
+figcaption { font-size:8.6pt; text-align:left; margin-top:4pt;
+             font-family:"Liberation Sans",sans-serif; }
+
+/* --- 수준 표시 상자 --- */
+.bs   { border-left:3pt solid #2a7f5f; background:#eef7f2; padding:5pt 8pt;
+        margin:7pt 0; font-size:9.6pt; }
+.ms   { border-left:3pt solid #7a4fa3; background:#f4eefa; padding:5pt 8pt;
+        margin:7pt 0; font-size:9.6pt; }
+.ms::before { content:"석사 수준 · "; font-weight:bold; color:#5b3a7d;
+              font-family:"Liberation Sans",sans-serif; font-size:8.6pt; }
+.bs::before { content:"학부 복습 · "; font-weight:bold; color:#1f5f47;
+              font-family:"Liberation Sans",sans-serif; font-size:8.6pt; }
+.warn { border-left:3pt solid #a33; background:#fbf2f2; padding:5pt 8pt;
+        margin:7pt 0; font-size:9.6pt; }
+.note { border-left:3pt solid #123f6d; background:#eef2f7; padding:5pt 8pt;
+        margin:7pt 0; font-size:9.6pt; }
+.math { text-align:center; margin:8pt 0; font-size:10.4pt; font-style:italic; }
+.kvbar { background:#eef2f7; border-left:2.8pt solid #123f6d; padding:4pt 8pt;
+         font-size:8.8pt; margin:5pt 0 10pt 0; font-family:"Liberation Sans",sans-serif; }
+
+/* --- 표지 · 목차 --- */
+.cover { string-set: doctitle "EDU-IP-001"; text-align:center; padding-top:30mm;
+         break-after:page; }
+.cover .docno { font-family:"Liberation Sans",sans-serif; font-size:9pt;
+                letter-spacing:1.2px; color:#123f6d; margin-bottom:14pt; }
+h1.ctitle { font-family:"Liberation Sans",sans-serif; font-size:26pt; color:#123f6d;
+            border:none; margin:0 0 6pt 0; padding:0; break-before:auto; }
+.cover .csub { font-family:"Liberation Sans",sans-serif; font-size:13pt; color:#456;
+               margin-bottom:18pt; }
+.cover .cline { border-top:2.4pt solid #123f6d; width:56%; margin:0 auto 18pt auto; }
+.cover .cmeta { text-align:justify; font-size:9.8pt; margin:0 8mm; }
+.tocwrap { break-after:page; }
+.tocwrap a { text-decoration:none; color:#000; }
+.toc1 { font-family:"Liberation Sans",sans-serif; font-weight:bold; font-size:10pt;
+        margin:8pt 0 1pt 0; }
+.toc2 { font-size:9.2pt; margin-left:7mm; }
+.toc1 a::after, .toc2 a::after {
+   content: leader('.') target-counter(attr(href), page); color:#456; }
+
+/* --- 소스 부록 --- */
+h1.srcapp { break-before:page; }
+.srcwrap { columns:2; column-gap:7mm; column-rule:0.4pt solid #ccc; }
+h3.srcfile { font-size:8pt; background:#123f6d; color:#fff; padding:2pt 4pt;
+             margin:6pt 0 2pt 0; break-after:avoid; break-inside:avoid; }
+.srcmeta { font-weight:normal; font-size:7pt; color:#c9dcec; }
+pre.src { font-family:"Liberation Mono","DejaVu Sans Mono",monospace;
+          font-size:5.9pt; line-height:1.14; margin:0 0 4pt 0;
+          white-space:pre-wrap; word-break:break-all; }
+pre.src .ln { color:#8a9aa6; }
