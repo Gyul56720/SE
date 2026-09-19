@@ -3,7 +3,7 @@
 import sys, os, importlib
 sys.path.insert(0, "/home/user/SE/edu")
 from bookE import cover, toc, render, zoo, E, read, ZOO
-import srcsel, srcdoc, apidoc, bookE
+import srcsel, srcdocE, apidoc, bookE
 
 Z, BY = zoo()
 NF = sum(len(v) for v in Z.values())
@@ -12,6 +12,7 @@ NL = sum(f["줄"] for v in Z.values() for f in v)
 # ----------------------------------------------------------------- body
 def body():
     mods = [
+        ("Z_found0",  ["ch_abstraction", "ch_boolean", "ch_sequential", "ch_circuits"]),
         ("A_found",   ["ch_lti", "ch_transform", "ch_sampling", "ch_prob", "ch_linalg"]),
         ("B_device",  ["ch_mos", "ch_cmos", "ch_timing", "ch_interconnect", "ch_analog"]),
         ("C_digital", ["ch_arith", "ch_control", "ch_cdc"]),
@@ -20,7 +21,11 @@ def body():
         ("F_comm",    ["ch_link", "ch_fec"]),
         ("G_rf",      ["ch_tline", "ch_radar"]),
         ("H_verif",   ["ch_verif", "ch_eda", "ch_sec"]),
-        ("W_practice",["ch_house", "ch_process", "ch_auto"]),
+        ("I_info",    ["ch_info", "ch_algebra", "ch_opt", "ch_discrete"]),
+        ("J_blocks",  ["ch_memory_design", "ch_accel", "ch_noc", "ch_codec"]),
+        ("K_wireless",["ch_wireless", "ch_protocol", "ch_reliability", "ch_modern"]),
+        ("W_practice",["ch_house", "ch_process", "ch_auto",
+                       "ch_labs", "ch_papers", "ch_career"]),
     ]
     out = []
     for m, fns in mods:
@@ -52,12 +57,14 @@ def code_appendix():
 
     for name, files in groups:
         out.append(f'<h1 class="srcapp" id="blk_{abs(hash(name))%10**8}">{E(name)}</h1>')
-        d = srcdoc.해설.get(name)
+        d = srcdocE.D.get(name)
         if d:
-            out.append(f'<div class="note"><b>What.</b> {d["무엇"]}</div>')
-            out.append(f'<div class="warn"><b>Why it exists.</b> {d["왜"]}</div>')
-            out.append(f'<div class="bs"><b>EECS concepts.</b> {d["EECS"]}</div>')
-            out.append(f'<div class="ms"><b>Practice note.</b> {d["실무"]}</div>')
+            out.append(f'<div class="note"><b>What this is.</b> {d["what"]}</div>')
+            out.append(f'<div class="warn"><b>Why it exists.</b> {d["why"]}</div>')
+            out.append(f'<div class="bs"><b>EECS concepts.</b> {d["eecs"]}</div>')
+            out.append(f'<div class="ms"><b>Practice note.</b> {d["practice"]}</div>')
+        else:
+            raise KeyError(f"no note for bundle: {name!r}")
         tot = sum(n for _, _, n in files)
         out.append(f'<div class="kvbar">{len(files)} files &bull; {tot:,} lines</div>')
 

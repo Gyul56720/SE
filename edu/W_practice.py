@@ -325,3 +325,257 @@ def ch_auto():
     Those comparisons are legitimate, useful during architecture, and free. <b>State the
     tool and PDK next to every number and the report stays honest.</b></div>""")
     return "\n".join(s)
+
+
+def ch_labs():
+    s = ['<h1 id="w4">W4. Worked Exercises</h1>']
+    s.append("""<p>Each exercise below is a self-contained project that can be completed
+    with open tools and produces an artefact of the kind described in W1. They are ordered
+    so that each reuses the infrastructure built by the previous one.</p>""")
+
+    s.append("<h2>Exercise 1 &mdash; A verified GF(2<sup>m</sup>) arithmetic library</h2>")
+    s.append(tab("Exercise 1",
+        ["Element", "Specification"],
+        [["Objective", "Parameterised finite-field arithmetic in software, with a test "
+          "suite that verifies the <i>field axioms</i> rather than sample values"],
+         ["Deliverable", "Library, test suite, short note on the primitive-polynomial requirement"],
+         ["Key decisions", "Log/antilog tables versus direct reduction; whether the "
+          "polynomial is a parameter or a constant"],
+         ["<b>Tests that bite</b>",
+          "Every non-zero element has an inverse and <i>a</i>&middot;<i>a</i><sup>&minus;1</sup>=1; "
+          "the exponent table is a bijection onto the non-zero elements; a "
+          "<b>non-primitive polynomial is rejected</b> rather than silently accepted; "
+          "corrupting the multiply makes the axiom tests fail"],
+         ["Why it matters", "Every code and cipher block rests on this. A silent error "
+          "here is invisible everywhere above it"]]))
+    s.append("""<div class="ms"><b>The non-primitive-polynomial test is the instructive
+    one.</b> An irreducible polynomial that is not primitive still defines a field, but
+    &alpha;&nbsp;=&nbsp;<i>x</i> no longer generates the whole multiplicative group, so a
+    log/antilog implementation built on it is wrong &mdash; and wrong in a way that
+    ordinary arithmetic tests may not reveal, because most products are still correct.
+    The defence is to verify at construction that the powers of &alpha; enumerate all
+    2<sup><i>m</i></sup>&minus;1 non-zero elements, and to refuse otherwise. <b>A library
+    that validates its own parameters is the difference between a component and a
+    hazard.</b></div>""")
+
+    s.append("<h2>Exercise 2 &mdash; Reed&ndash;Solomon encoder and decoder (model)</h2>")
+    s.append(tab("Exercise 2",
+        ["Element", "Specification"],
+        [["Objective", "RS(<i>n</i>,<i>k</i>) over the library from Exercise 1: systematic "
+          "encoder, syndrome/BM/Chien/Forney decoder"],
+         ["Parameters", "<i>n</i>, <i>k</i>, first consecutive root &mdash; all arguments, "
+          "because the standard's values may not yet be confirmed"],
+         ["<b>Tests that bite</b>",
+          "Encoder output has zero syndrome; <b>exactly <i>t</i> errors are always "
+          "corrected with zero mis-corrections</b>; <b><i>t</i>+1 errors are never "
+          "recovered</b>, and the detected-versus-mis-corrected split is counted rather "
+          "than assumed; a test with zero injected errors is explicitly flagged as "
+          "meaningless; forcing the syndrome to zero makes the suite fail"],
+         ["Honest reporting", "Do not claim that all errors beyond <i>t</i> are detected. "
+          "Measure the mis-correction rate and state it"]]))
+    s.append("""<div class="ms"><b>Parameterising the unknown constants is the
+    professional move here.</b> When the standard's field polynomial and first-root index
+    have not been confirmed from the specification text, hard-coding a plausible value
+    creates a model that is confidently wrong. Making them arguments, defaulting to a
+    documented guess, and marking the guess as unverified in the code keeps the work
+    moving without creating a false record. <b>The tests verify <i>properties</i> &mdash;
+    <i>t</i> corrected, <i>t</i>+1 not recovered &mdash; which hold for any legal
+    parameter choice, so they remain valid when the constants are later confirmed.</b></div>""")
+
+    s.append("<h2>Exercise 3 &mdash; RTL and co-simulation</h2>")
+    s.append(tab("Exercise 3",
+        ["Element", "Specification"],
+        [["Objective", "Synthesisable RTL for the Exercise 2 decoder's syndrome stage, "
+          "co-simulated against the model"],
+         ["Method", "DPI-C or cocotb; random vectors; seeds recorded"],
+         ["<b>Tests that bite</b>",
+          "Break the RTL deliberately and confirm the comparison fails; break the "
+          "<i>model</i> deliberately and confirm it also fails &mdash; a harness that has "
+          "only ever seen a correct design has not been tested"],
+         ["Extension", "Sweep the parallelism parameter and plot cells versus throughput "
+          "with Yosys; report the trend, not absolute area"]]))
+
+    s.append("<h2>Exercise 4 &mdash; Fixed-point conversion</h2>")
+    s.append(tab("Exercise 4",
+        ["Element", "Specification"],
+        [["Objective", "Convert a floating-point reference to fixed point and find the "
+          "minimum word length meeting an accuracy target"],
+         ["Method", "Sweep integer and fractional bits; measure the metric that matters "
+          "(BER, SNR, residual) rather than raw error"],
+         ["<b>Required experiments</b>",
+          "Saturation versus wrap-around at each width; rounding mode comparison; "
+          "<b>reset-value alignment between model and RTL</b>"],
+         ["Expected finding",
+          "The correct overflow policy is block-dependent: a CIC needs wrap, an LLR-based "
+          "decoder needs saturation. <b>Reproduce both results</b> rather than accepting "
+          "the claim"]]))
+    s.append("""<div class="warn"><b>Check the operating point before believing any
+    fixed-point result.</b> If the floating-point baseline is already failing &mdash; BER
+    near 0.5, a decoder not converging, a sampling phase misaligned &mdash; then every
+    quantisation comparison made on top of it is meaningless, and the numbers will look
+    plausible. The discipline is to sweep first for a healthy operating point, assert that
+    the baseline metric lies in a sensible range, and only then vary word length. An
+    assertion such as <code>0.02 &lt; BLER &lt; 0.6</code> in the test harness makes this
+    automatic.</div>""")
+
+    s.append("<h2>Exercise 5 &mdash; A complete deliverable package</h2>")
+    s.append(tab("Exercise 5",
+        ["Element", "Specification"],
+        [["Objective", "Assemble the twelve deliverables of W1.1 for the Exercise 3 block"],
+         ["Hardest parts", "The verification report's <i>known limitations</i> section; "
+          "the PPA report's <i>conditions</i>; the example design that runs from a clean "
+          "checkout"],
+         ["Self-test", "Hand the package to someone else and ask them to integrate it "
+          "without speaking to you. <b>Every question they ask is a documentation defect</b>"],
+         ["Outcome", "This is the artefact that demonstrates capability to an employer or "
+          "a customer &mdash; not the RTL alone"]]))
+    return "\n".join(s)
+
+
+def ch_papers():
+    s = ['<h1 id="w5">W5. From Literature to a Block</h1>']
+    s.append("<h2>W5.1 What published work is for</h2>")
+    s.append(tab("Four uses of literature in an IP practice",
+        ["Use", "What to extract", "Where to look", "Trap"],
+        [["Architecture selection", "Which structure, and under what conditions",
+          "JSSC, ISSCC, VLSI Symposia, DAC/ICCAD",
+          "Reported numbers come from the authors' best operating point"],
+         ["Algorithmic justification", "Correctness conditions, convergence bounds",
+          "IEEE Transactions, arXiv", "Confusing a theory paper with an implementable one"],
+         ["Attack awareness", "Whether a countermeasure is already broken",
+          "CHES, CCS, USENIX Security, IACR ePrint",
+          "<b>Mandatory for security IP</b>"],
+         ["Standards rationale", "Why a specification says what it says",
+          "<b>Standards-body contribution archives</b>",
+          "Contributions are proposals; not all were adopted"]]))
+    s.append("""<div class="ms"><b>Standards contributions are the most under-used
+    resource.</b> The published standard states <i>what</i>; the working-group
+    contributions that preceded it state <i>why</i>, with the measurements and the
+    alternatives that were rejected. For IEEE 802 these are publicly archived. Reading the
+    contributions for the clause you are implementing typically answers the questions the
+    standard's terse language leaves open, and it does so faster than deriving the answer.
+    <b>It also reveals which parameter choices were contentious, which is exactly where
+    implementations are most likely to differ.</b></div>""")
+
+    s.append("<h2>W5.2 Reading efficiently</h2>")
+    s.append(tab("A triage procedure",
+        ["Step", "Action", "Decision"],
+        [["1", "Read the figures and tables first", "What was measured?"],
+         ["2", "Find the experimental conditions", "Is this comparable to my case?"],
+         ["3", "Identify the baseline", "<b>Is the comparison fair?</b>"],
+         ["4", "Find the crossover", "Where does the claimed advantage disappear?"],
+         ["5", "Only now read the method", "How does it work?"],
+         ["6", "Read limitations and future work", "What do the authors already know is wrong?"]]))
+    s.append("""<div class="warn"><b>Record your confidence level with every citation.</b>
+    A note that says "full text read", "abstract only", or "search snippet only" costs
+    nothing to write and prevents the most damaging failure mode in technical work:
+    building a plan on a claim nobody actually verified. If a design decision rests on a
+    paper you have not read in full, that fact should be visible in the document where
+    the decision is recorded. <b>Unverified citations propagate quietly and are discovered
+    late.</b></div>""")
+
+    s.append("<h2>W5.3 Turning a paper into a specification</h2>")
+    s.append(tab("Translation checklist",
+        ["Question", "Why it must be answered before design starts"],
+        [["What exactly is the input and output format?",
+          "Papers routinely omit scaling, ordering and normalisation conventions"],
+         ["What are the numerical requirements?",
+          "Most papers assume floating point; the word lengths are yours to determine"],
+         ["What is the initialisation?",
+          "Iterative methods rarely state the starting point; it affects convergence"],
+         ["What is the termination condition?",
+          "&lsquo;Until converged&rsquo; is not implementable; fixed iteration counts are"],
+         ["Which parameters were tuned to the reported data set?",
+          "Those parameters will not transfer"],
+         ["What is the failure behaviour?",
+          "Papers report average performance; you must specify the worst case"],
+         ["Is there a patent?",
+          "<b>Published does not mean free to use</b>"]]))
+    s.append("""<div class="ms"><b>The termination-condition question separates research
+    from engineering.</b> An algorithm described as iterating until a residual falls below
+    a threshold has data-dependent latency, which a streaming datapath cannot accept. The
+    engineering translation is a fixed iteration count chosen so that the worst case in
+    the operating region still meets the accuracy requirement &mdash; and then the
+    accuracy becomes a design-time constant rather than a run-time property. This is
+    exactly what the Jacobi SVD does with a fixed sweep count, what an LDPC decoder does
+    with a maximum iteration limit, and what K-best detection does relative to sphere
+    decoding. <b>Converting an adaptive algorithm into a fixed-latency one is a recurring
+    and characteristic act of hardware design</b>, and the specification must record the
+    accuracy that the fixed budget guarantees.</div>""")
+    return "\n".join(s)
+
+
+def ch_career():
+    s = ['<h1 id="w6">W6. Working on a Modelling Team</h1>']
+    s.append("<h2>W6.1 The first week</h2>")
+    s.append(tab("Questions to ask, and what the answers reveal",
+        ["Question", "What a good answer looks like", "What a poor answer means"],
+        [["What is our golden model, and who owns it?",
+          "A named artefact with an owner", "Correctness is decided ad hoc"],
+         ["How does the model connect to the RTL?",
+          "A defined trace interface (RVFI-like) or DPI harness",
+          "<b>Building one is your first project</b>"],
+         ["How often does the regression run, and how long does it take?",
+          "Nightly, under eight hours", "Feedback is too slow to steer design"],
+         ["What is the specification?",
+          "A standard document or a maintained internal spec",
+          "<b>The model <i>is</i> the specification &mdash; large responsibility</b>"],
+         ["How is undefined behaviour handled?",
+          "Explicitly marked and masked in comparison",
+          "The model may have been tuned to match the RTL &mdash; independence lost"],
+         ["Who verifies the model?",
+          "Standard vectors, a second implementation, mutation testing",
+          "<b>Nobody &mdash; this is your highest-value contribution</b>"],
+         ["What escaped in the last year, and why?",
+          "A specific analysis", "No escape analysis means no learning loop"]]))
+    s.append("""<div class="ms"><b>The last question is the most informative one you can
+    ask.</b> An organisation that can describe a specific escape, its root cause, and the
+    check that was added in response has a functioning improvement loop. One that cannot
+    recall any escape either has not shipped much or does not trace failures back. The
+    answer tells you more about how the team works than any description of its
+    methodology.</div>""")
+
+    s.append("<h2>W6.2 Habits that compound</h2>")
+    s.append(tab("Working practices",
+        ["Practice", "Effect"],
+        [["Annotate model code with specification section numbers",
+          "Makes the model auditable and survivable"],
+         ["Record the seed and the exact command with every failure",
+          "<b>Turns an anecdote into a reproducible fact</b>"],
+         ["Minimise a failing case before reporting it",
+          "Preserves the designer's trust and time"],
+         ["Suspect the comparison before the design",
+          "Most mismatches are scoreboard or timing issues"],
+         ["Write the check that would have caught it",
+          "Converts each bug into permanent coverage"],
+         ["Deliberately break things to test the tests",
+          "The only way to know a suite is alive"],
+         ["State confidence levels in reports",
+          "Distinguishes measured from assumed"],
+         ["Never close an unreproduced intermittent failure",
+          "<b>Removes evidence, not the bug</b>"]]))
+    s.append("""<div class="ms"><b>&ldquo;Suspect the comparison first&rdquo; is worth
+    making a reflex.</b> In a mature project the ordering of likelihood is: the scoreboard
+    or its timing assumptions, then the model, then the RTL. Reporting a suspected RTL bug
+    that turns out to be a testbench issue twice in a row is enough to make the third
+    report &mdash; the real one &mdash; go unexamined for a week. Running the model and the
+    RTL separately on the same stimulus and reading both logs takes an hour and settles
+    the question before anyone else is involved.</div>""")
+
+    s.append("<h2>W6.3 Writing that gets read</h2>")
+    s.append(tab("Reporting a discrepancy",
+        ["Section", "Content"],
+        [["One-line summary", "What differs, where, under what condition"],
+         ["Minimal reproducer", "Exact command, seed, and the shortest failing stimulus"],
+         ["Evidence", "Model output and RTL output side by side, with the first "
+          "differing cycle identified"],
+         ["Triage", "Which of the three causes has been ruled out, and how"],
+         ["Specification reference", "The clause or section that decides the question"],
+         ["Proposed disposition", "Model change, RTL change, or specification clarification"],
+         ["<b>Confidence</b>", "<b>What you verified versus what you inferred</b>"]]))
+    s.append("""<div class="note">The last row is the habit that most distinguishes
+    experienced engineers in written communication. A report that separates &ldquo;I
+    measured this&rdquo; from &ldquo;I believe this follows&rdquo; can be acted on
+    immediately; one that blends them forces every reader to re-derive the distinction.
+    Over a project's life this single discipline saves more time than any tool.</div>""")
+    return "\n".join(s)
