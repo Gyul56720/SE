@@ -49,7 +49,7 @@ import time  # noqa: E402
 import keys  # noqa: E402
 import relay  # noqa: E402
 from bot_tools import (  # noqa: E402
-    REPO_DIR, run_shell, run_experiment, run_probes, read_file, read_image, draw_circuit, run_rtl, lint_rtl, synth_rtl, prove_rtl, place_rtl, ip_signoff, serdes_link, quant_sweep, adc_sweep, loss_sweep, nn_equalizer, eq_area, run_spice, spice_example, monte_carlo, concept, edit_file, delegate, send_email, repair, set_key, security_audit, codify_paper, research, create_pr, dispatch_command, search_memory, save_memory,
+    REPO_DIR, run_shell, run_experiment, run_probes, read_file, read_image, read_pdf, draw_circuit, run_rtl, lint_rtl, synth_rtl, prove_rtl, place_rtl, ip_signoff, serdes_link, quant_sweep, adc_sweep, loss_sweep, nn_equalizer, eq_area, run_spice, spice_example, monte_carlo, concept, edit_file, delegate, send_email, repair, set_key, security_audit, codify_paper, research, create_pr, dispatch_command, search_memory, save_memory,
     build_agent_pool, run_with_fallback_pool,
     register_thread, unregister_thread, request_cancel,
     orchestrator_solve, orchestrator_status, orchestrator_resume, orchestrator_stop,
@@ -84,7 +84,7 @@ ADMIN_MODEL_CANDIDATES = [ADMIN_MODEL_NAME] + [m for m in _admin_extra_models if
 ADMIN_PRIMARY_KEY = os.getenv("GEMINI_API_KEY_FALLBACK") or os.environ["GEMINI_API_KEY"]
 ADMIN_SECONDARY_KEY = os.environ["GEMINI_API_KEY"] if os.getenv("GEMINI_API_KEY_FALLBACK") else None
 
-ADMIN_TOOLS = [run_shell, run_experiment, run_probes, read_file, read_image, draw_circuit, run_rtl, lint_rtl, synth_rtl, prove_rtl, place_rtl, ip_signoff, serdes_link, quant_sweep, adc_sweep, loss_sweep, nn_equalizer, eq_area, run_spice, spice_example, monte_carlo, concept, edit_file, delegate, send_email, repair, set_key, security_audit, codify_paper, research, create_pr, dispatch_command, search_memory, save_memory,
+ADMIN_TOOLS = [run_shell, run_experiment, run_probes, read_file, read_image, read_pdf, draw_circuit, run_rtl, lint_rtl, synth_rtl, prove_rtl, place_rtl, ip_signoff, serdes_link, quant_sweep, adc_sweep, loss_sweep, nn_equalizer, eq_area, run_spice, spice_example, monte_carlo, concept, edit_file, delegate, send_email, repair, set_key, security_audit, codify_paper, research, create_pr, dispatch_command, search_memory, save_memory,
                orchestrator_solve, orchestrator_status, orchestrator_resume,
                orchestrator_stop]
 ADMIN_SYSTEM_PROMPT = (
@@ -852,12 +852,27 @@ def _첨부안내(paths: list) -> str:
         return ""
     줄 = ["", "", "첨부 파일:"]
     그림있나 = False
+    pdf있나 = False
     for p in paths:
-        if p.lower().endswith(_그림꼴):
+        if p.lower().endswith(".pdf"):
+            pdf있나 = True
+            줄.append(f"- {p}  <- PDF 다. **`read_pdf` 로 읽어라** "
+                     f"(read_image 로 통째로 보내면 토큰이 터진다)")
+        elif p.lower().endswith(_그림꼴):
             그림있나 = True
             줄.append(f"- {p}  <- 그림이다. **`read_image` 로 읽어라** (cat 하지 마라)")
         else:
             줄.append(f"- {p}  <- 글 파일이다. read_file 또는 run_shell 로 읽어라")
+    if pdf있나:
+        # 실측 2026-09-19: 2000 쪽짜리 PDF 에 대해 봇이 "토큰이 너무 커서 못 읽는다,
+        # 텍스트를 복사해 붙여넣거나 스크린샷으로 나눠 올려 달라" 고 답했다.
+        # 사람에게 일을 떠넘긴 것이다 -- 도구가 있는데 안 썼다.
+        줄 += ["", "**PDF 가 커서 못 읽는다고 답하지 마라.** 쪽수와 상관없이 읽는 길이 있다:",
+              "  1. `read_pdf(path)`                          먼저 훑는다 -- 쪽수와 목차가 나온다",
+              "  2. `read_pdf(path, 물음='찾을 말')`           그 말이 나오는 쪽만 본다",
+              "  3. `read_pdf(path, 쪽='120-150')`             그 범위만 글로 읽는다",
+              "  4. `read_pdf(path, 모드='그림', 쪽='137')`    도면이나 스캔본이면 그 쪽만 그림으로",
+              "**사용자에게 텍스트를 복사해 달라거나 스크린샷으로 나눠 올려 달라고 하지 마라.**"]
     if 그림있나:
         줄 += ["", "**보이지 않는다고 답하지 마라.** 읽을 도구가 있다 -- 먼저 read_image 를 부르고,",
               "정말 못 읽으면 그 도구가 돌려준 실패 문구를 그대로 사용자에게 보여 줘라."]

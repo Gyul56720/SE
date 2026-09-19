@@ -44,6 +44,37 @@ def 옮겨적기프롬프트(물음: str = "") -> str:
     return "\n".join(줄)
 
 
+PDF쪽상한 = 4          # 이보다 많으면 통째로 안 보낸다 -- 토큰이 터진다
+
+
+def _큰PDF인가(쪽):
+    """통째로 보내면 안 되는 PDF 인가.  이유를 돌려준다 (아니면 None).
+
+    쪽수를 못 세면 **보내지 않는다** -- 모르는 것은 안 된 것으로 다룬다.
+    """
+    import shutil as _sh
+    import subprocess as _sp
+    if not _sh.which("pdfinfo"):
+        return None          # 셀 길이 없으면 예전대로 (작은 파일이 대부분이다)
+    try:
+        r = _sp.run(["pdfinfo", str(쪽)], capture_output=True, text=True, timeout=60)
+    except Exception:                                             # noqa: BLE001
+        return "쪽수를 못 셌다 -- 통째로 보내지 않는다"
+    if r.returncode:
+        return "pdfinfo 가 실패했다 -- 통째로 보내지 않는다"
+    for l in r.stdout.splitlines():
+        if l.startswith("Pages:"):
+            try:
+                n = int(l.split(":", 1)[1].strip())
+            except ValueError:
+                return "쪽수를 못 읽었다 -- 통째로 보내지 않는다"
+            if n > PDF쪽상한:
+                return (f"{n:,} 쪽이다 -- {PDF쪽상한} 쪽을 넘으면 통째로 안 보낸다 "
+                        f"(토큰 한계). 아래대로 골라 읽어라")
+            return None
+    return "Pages 줄이 없다 -- 통째로 보내지 않는다"
+
+
 def 읽기(path: str, question: str = "", repo: str = "", 자르개=None) -> str:
     """그림 한 장을 글로. 실패하면 **왜 못 읽었는지**를 돌려준다.
 
@@ -56,6 +87,22 @@ def 읽기(path: str, question: str = "", repo: str = "", 자르개=None) -> str
         쪽 = Path(뿌리) / path
     if not 쪽.is_file():
         return f"[그림 없음] {쪽} -- 경로가 틀렸거나 첨부가 저장되지 않았다"
+    # **PDF 는 통째로 보내지 않는다.**  실측 2026-09-19: 사용자가 2000 쪽짜리를
+    # 줬더니 바이트 상한(20 MB)은 통과했는데 모델이
+    # "The input token count exceeds the maximum number of tokens allowed" 로
+    # 거절했고, 봇은 **"텍스트를 복사해 붙여넣거나 스크린샷으로 나눠 올려 달라"**
+    # 고 답했다 -- 사람에게 일을 떠넘긴 것이다.
+    #
+    # 토큰은 바이트가 아니다.  PDF 한 쪽이 그림 한 장에 준하는 토큰을 먹으므로
+    # 쪽수로 막아야 한다.  몇 쪽짜리(문제지 사진 같은 것)는 그대로 보내고,
+    # 그보다 크면 `pdfread` 로 넘겨 **어떻게 읽으면 되는지** 돌려준다.
+    if 쪽.suffix.lower() == ".pdf":
+        넘길까 = _큰PDF인가(쪽)
+        if 넘길까:
+            import pdfread
+            return (f"[{쪽.name}] {넘길까}\n\n"
+                    + pdfread.훑기(str(쪽), repo=뿌리))
+
     mime = 꼴.get(쪽.suffix.lower())
     if mime is None:
         return (f"[그림 아님] {쪽.name} -- {' · '.join(sorted(꼴))} 만 읽는다. "

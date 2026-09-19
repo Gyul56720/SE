@@ -25,7 +25,7 @@ import agent_context
 import channels
 
 from bot_tools import (
-    search_memory, save_memory, run_shell, read_image, draw_circuit,
+    search_memory, save_memory, run_shell, read_image, read_pdf, draw_circuit,
     run_rtl, lint_rtl, synth_rtl, prove_rtl, place_rtl, ip_signoff, serdes_link, quant_sweep, adc_sweep, loss_sweep, nn_equalizer, eq_area, run_spice, spice_example, monte_carlo, concept,
     build_agent_pool, run_with_fallback_pool, _current_author,
     register_thread, unregister_thread,
@@ -68,7 +68,7 @@ PUBLIC_MODEL_CANDIDATES = [PUBLIC_MODEL_NAME] + [m for m in _extra_models if m !
 # 쓴 것과 같은 논리인데, 이번에는 그 반대쪽이다).
 # **`draw_circuit` 도 넣는다** (사용자 2026-09-15: 회로도를 그려 주고 원리를
 # 설명해 주는 기능). 도구가 없으면 못 쓴다 -- 이 파일이 두 번째로 겪는 그것이다.
-PUBLIC_TOOLS = [search_memory, save_memory, run_shell, read_image, draw_circuit,
+PUBLIC_TOOLS = [search_memory, save_memory, run_shell, read_image, read_pdf, draw_circuit,
                 run_rtl, lint_rtl, synth_rtl, prove_rtl, place_rtl, ip_signoff, serdes_link, quant_sweep, adc_sweep, loss_sweep, nn_equalizer, eq_area, run_spice, spice_example, monte_carlo, concept]
 # admin과 동일한 "적극적으로 조사해서 근거 기반으로 답하라"는 태도로 통일했다 -- 예전엔
 # "간결하게/불필요한 수식어 금지" 규칙 때문에, 상태·속도·에러를 묻는 질문에도 조사 없이
