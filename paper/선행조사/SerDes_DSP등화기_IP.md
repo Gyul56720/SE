@@ -157,3 +157,97 @@ FINN 의 6,544줄은 **16개 블록의 구성 키트**라 우리 규모가 아�
     speculative unrolled DFE loop unrolling half-rate 2024 2025 wireline receiver ISSCC JSSC
     OpenSerDes arXiv 2105.13256 process-portable all-digital serial link FFE DFE taps abstract
     SerDes Toolbox required products Simulink Fixed-Point Designer HDL Coder license dependencies
+
+---
+
+# 추가 조사 2026-09-19 (2차) -- 특허와 상용 카탈로그
+
+6절의 못 본 곳 4·5번을 채웠다. **둘 다 계획을 바꾼다.**
+
+## 8. 특허 -- 우리가 가려던 구조가 이미 특허다
+
+| 특허 | 권리자 | 내용 | 확인 |
+|---|---|---|---|
+| **US 9,077,574 B1** (2015-07-07 등록) | Avago Technologies (현 Broadcom) | DSP SerDes 수신기, **FFE-DFE-DFFE 데이터패스**. 요약에 **"8-way parallel, 2-tap, fully unrolled DFE"** 와 **"8-way parallel FIR FFE"** 가 명시된다 | `[출처:조각]` |
+| **US 8,787,439** (2014-07-22 등록) | (동 계열) | **DFFE**. "탭 수가 늘어도 하드웨어가 지수로 안 늘면서 DFE 를 병렬 구현" | `[출처:조각]` |
+| **US 8,837,570** | (동 계열) | **Receiver with parallel decision feedback equalizers** | `[출처:목록]` |
+| GB 2497144 A | | SERDES 수신기용 FFE | `[출처:목록]` |
+
+### 왜 이것이 직격탄인가
+
+3절의 우리 실측이 말한 결론은 이것이었다:
+
+    래치+배선+준비만 23 ps > 1 UI 17.86 ps
+    -> 언롤만으로는 56 GBd 에 못 닿는다.  **sub-rate 병렬화가 필수다**
+
+그리고 US 9,077,574 의 요약에 있는 것이 정확히 **"8-way parallel + fully unrolled
+DFE"** 다. **물리가 강요하는 해답이 하나뿐이라 우리가 거기로 갔고, 2013년에 이미
+거기 가 있었다.**
+
+### 그러나 -- 청구항을 안 봤다
+
+**특허의 범위는 요약이 아니라 청구항이 정한다.** 나는 요약과 검색 조각만 봤다.
+`image-ppubs.uspto.gov` 링크가 검색에 떴지만 **본문을 안 받았다.**
+
+  · 청구항이 좁으면(특정 탭 수 · 특정 DFFE 조합) 우리가 비껴갈 수 있다
+  · 청구항이 넓으면 데이터패스 쪽은 포기해야 한다
+  · **출원 2013년 근처면 존속기간은 2033년 전후다.** 아직 살아 있다
+
+**연구·학습·비상업 구현은 특허와 무관하다.** 문제가 되는 것은 **파는 것**이다.
+사용자의 목표가 취업 포트폴리오면 이 특허는 **막지 않는다.** IP 를 팔 거면 막는다.
+
+## 9. 상용 SerDes IP 는 어떻게 팔리나 -- 그리고 여기서 길이 갈린다
+
+| 벤더 | 물건 | 확인 |
+|---|---|---|
+| Cadence | 112G-ULR / 112G-VSR PAM4 SerDes PHY, 1G~116Gbps | `[출처:조각]` |
+| Synopsys | Multi-Protocol 112G PHY IP (PCIe 6.0 · 400G/800G Ethernet · CXL · JESD204C …) | `[출처:조각]` |
+| **Alphawave** | 112G/224G SerDes. **"hardened PMA layer and a soft PCS layer deliverable"** | `[출처:조각]` |
+| Credo | 112G PAM4 SerDes IP on **TSMC N3 / N7 / N6** | `[출처:조각]` |
+
+### 구조적 발견 -- PHY 는 두 쪽으로 팔린다
+
+    PHY = PCS  +  PMA(+PMD)
+
+    PMA/PMD   ADC · AFE · CDR · 직렬화 · 비트 타이밍
+              -> **하드 매크로.**  TSMC N3/N7 같은 선단 공정에 박혀 나온다
+              -> 우리가 접근 불가.  sky130 FO4 48 ps 가 그것을 말한다
+
+    PCS       64b/66b 인코딩 · 프레임 구획 · deskew · **gearbox** · **RS-FEC**
+              · 레인 정렬 · fault 전달
+              -> **소프트 IP.  RTL 로 납품된다**
+              -> **공정 무관.  우리가 할 수 있다**
+
+**Alphawave 가 "hardened PMA + soft PCS" 라고 명시적으로 나눠 판다.** 이것이 이번
+조사에서 가장 값있는 한 줄이다.
+
+## 10. 그래서 길이 셋으로 갈렸다
+
+| | 길 | 특허 | 공정 | 우리 자산 | 판정 |
+|---|---|---|---|---|---|
+| A | **DSP 등화기 데이터패스** (FFE/DFE, sub-rate 병렬 + 언롤) | **US 9,077,574 직격** | 디지털이라 무관 | `afe.py` `eqrtl.py` `specdfe.py` 1,771줄 | 포트폴리오면 OK, **팔면 막힘** |
+| B | **PCS / FEC 계층** (RS-FEC KP4 · gearbox · 64b/66b · 레인 정렬) | **미조사** | 무관 | `fec.py` `pam.py` `comply.py` 607줄 | **상용 납품 형태와 일치.** 유망 |
+| C | 아날로그 AFE/ADC/CDR | | **선단 공정 필수** | 없음 | **불가** |
+
+### B 를 새로 주목하는 이유
+
+  1. **상용 납품 경계와 정확히 일치한다** -- "soft PCS layer deliverable" 이 팔리는 물건이다
+  2. **특허 지뢰가 데이터패스보다 얕을 가능성** -- PCS 는 IEEE 802.3 **표준**이다.
+     표준 기술은 보통 FRAND 이거나 특허가 만료됐다. **다만 이것은 추정이고, 8절처럼
+     조사해야 한다 -- 아직 안 했다**
+  3. **우리가 이미 KP4 를 잰다** -- `fec.py` 가 RS(544,514) 문턱을 계산한다.
+     다만 **부호기/복호기 구현은 없다.** 계산만 한다. 거기가 지을 자리다
+  4. **LDPC 체인에서 배운 것이 그대로 옮겨간다** -- 골든 -> 고정소수점 -> Verilog
+     -> DPI-C -> 파이프라인 모델. GF(2^10) RS 도 같은 뼈대다
+
+## 11. 갱신된 "못 지운 가능성"
+
+  1. **MathWorks 문서 전문** -- 여전히 못 봄. **사용자가 확인 중**
+  2. **논문 본문** -- 여전히 하나도 못 봄
+  3. **GitHub 체계적 훑기** -- 여전히 안 함
+  4. ~~상용 IP 카탈로그~~ -> **9절에서 봄** (요약 수준)
+  5. ~~특허~~ -> **8절에서 봄. 그러나 청구항을 안 읽었다** -- 범위를 모른다
+  6. **새로 생김: PCS/FEC 쪽 특허를 전혀 안 봤다.** B 를 고르면 8절을 그쪽에
+     다시 해야 한다
+  7. **새로 생김: 상용 PCS IP 의 사양서를 안 봤다.** 무엇을 납품해야 "IP" 인지
+     기준을 아직 모른다
