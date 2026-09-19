@@ -72,7 +72,7 @@ assert 총프라그마 == 대조프라그마, (총프라그마, 대조프라그�
 벤더클래스 = sum(len(f["classes"]) for f in 벤더)
 
 DOCNO = "HLS-IP-SPEC-001"
-VER   = "1.0"
+VER   = "1.1"
 DATE  = "19 September 2026"
 
 # ------------------------------------------------------------------ 표지
@@ -107,6 +107,10 @@ REVHIST = """
 <h2 class="nobrk">Revision History</h2>
 <table><thead><tr><th style="width:14%">Version</th><th style="width:20%">Date</th>
 <th>Description of change</th></tr></thead><tbody>
+<tr><td>1.1</td><td>19 Sep 2026</td><td>Chapter 10 added: an HLS tool was built and
+run. The corpus does not synthesise under it, and the cause was isolated to the pragma
+dialect and to <code>hls::stream</code> by single-variable controls. Two errors in the
+author's own harness are recorded in &sect;10.5.</td></tr>
 <tr><td>1.0</td><td>19 Sep 2026</td><td>Initial release. Full verbatim source of the
 27-file corpus and the 51 vendor headers. Section structure derived by measurement from
 127 AMD Vitis Libraries documents. All quantitative claims regenerated from
@@ -279,7 +283,9 @@ INFO [HLS SIM]: The maximum depth reached by any hls::stream() instance is 1</pr
     s.append("""<h3>1.5.3&nbsp;&nbsp;What this document does not claim</h3>
     <ul>
     <li><b>No core in this corpus has been synthesised.</b> No timing, area or frequency
-    figure appears anywhere in this document, because none was measured. Statements
+    figure appears anywhere in this document, because none was measured. This is not for
+    want of trying: Chapter&nbsp;10 records an HLS tool being built and run, the corpus
+    failing to pass through it, and the cause being isolated by controlled experiment. Statements
     about what the hardware will look like are inferences from the source and the
     directives, and are marked as such.</li>
     <li><b>No claim of completeness about the upstream libraries.</b> The corpus is 27
@@ -450,7 +456,7 @@ def ch2b():
     s.append(f"""<div class="note"><b>No performance figures are given in this
     document.</b> Throughput, latency, clock frequency and resource usage all depend on
     the target part, the tool version and the parameter set, and none of the
-    {len(말뭉치)} cores here was synthesised. What <i>can</i> be stated from the source,
+    {len(말뭉치)} cores here was synthesised (Chapter&nbsp;10). What <i>can</i> be stated from the source,
     and is stated in each core's &sect;<i>n</i>.8, is the <i>shape</i> of the cost: which
     loop bounds multiply, which parameters replicate hardware linearly, and which
     replicate it exponentially. Those relations are properties of the source and do not
@@ -1674,6 +1680,114 @@ if (actual !== expected) $fatal(1, "mismatch at vector %0d", i);</pre>
     property of the loop structure and is stable across tool versions.</p>""")
     return "\n".join(s)
 
+
+# ====================================== 10 Synthesis attempt
+def ch10():
+    s = ['<h1 id="c10">10&nbsp;&nbsp;Synthesis Attempt and Tool-Dialect Findings</h1>']
+    s.append("""<p>Chapters 1 to 9 state repeatedly that no core in this corpus has been
+    synthesised, and that no timing or area figure is therefore given. That remains
+    true, and this chapter explains <b>why</b> it is true rather than leaving it as an
+    unexplained omission. An open-source HLS tool was built and run; the corpus does not
+    pass through it; and the reason is a dialect incompatibility that was isolated by
+    controlled experiment rather than inferred.</p>""")
+
+    s.append("<h2>10.1&nbsp;&nbsp;The tool</h2>")
+    s.append("""<p>PandA Bambu 2024.10 (Politecnico di Milano), built from source in the
+    working environment. Seven other acquisition routes were tried first and all failed;
+    they are recorded here because &ldquo;the tool was not available&rdquo; is only a
+    finding if the places that were looked at are named.</p>""")
+    s.append(tab("Routes tried to obtain an HLS tool",
+        ["Route", "Result"],
+        [["Distribution packages (<code>apt</code>)", "Not packaged"],
+         ["GitHub release AppImage", "HTTP 404 for every tag tried "
+          "(2024.10, 2024.04, v2024.03, v2023.1, v0.9.8)"],
+         ["PyPI", "Only <code>tapa</code> and <code>siliconcompiler</code> wrappers; "
+          "no synthesiser"],
+         ["conda-forge", "<code>verilator</code> and <code>yosys</code> only"],
+         ["<code>release.bambuhls.eu</code>", "Unreachable"],
+         ["<code>docs.amd.com</code> (Vitis HLS)", "HTTP 000"],
+         ["<code>docker pull bambuhls/dev</code>",
+          "Authentication succeeds; the layer CDN "
+          "(<code>production.cloudfront.docker.com</code>) returns 403"],
+         ["<b><code>git clone</code> and build from source</b>", "<b>Succeeded</b>"]]))
+
+    s.append("<h2>10.2&nbsp;&nbsp;Establishing that the tool works</h2>")
+    s.append("""<p>A negative result about the corpus is worthless if the tool is simply
+    broken. That explanation was measured and eliminated first. A plain C kernel &mdash;
+    an eight-tap FIR over sixty-four samples &mdash; was synthesised:</p>
+    <pre class="code">rc = 0,  fir8.v generated
+Estimated max frequency (MHz): 101.03
+Minimum slack: 0.1024 ns
+Register allocation: 37 registers</pre>
+    <p>The tool emits Verilog. Everything below is therefore about the source, not about
+    the installation.</p>""")
+
+    s.append("<h2>10.3&nbsp;&nbsp;Isolating what blocks the corpus</h2>")
+    s.append("""<p>Four single-variable controls. Each changes exactly one thing
+    relative to a case that works.</p>""")
+    s.append(tab("Single-variable controls",
+        ["#", "Input", "Result"],
+        [["1", "Plain C kernel", "<b>rc = 0, Verilog generated</b>"],
+         ["2", "<b>The same C file, with one line added:</b> "
+               "<code>#pragma HLS PIPELINE II=1</code>",
+          "rc = 11, <code>error: Loop pipelining pragma not supported</code>"],
+         ["3", "C++ class templates, no pragmas", "<b>rc = 0, Verilog generated</b>"],
+         ["4a", "<code>ap_uint</code> arithmetic only, no <code>hls::stream</code>",
+          "<b>rc = 0, Verilog generated, 119&ndash;147 MHz</b>"],
+         ["4b", "<code>hls::stream</code> only, nothing else",
+          "rc = 1, crash in <code>FixStructsPassedByValue.cpp:377</code>"],
+         ["5", "The real corpus top level: complex <code>ap_fixed</code> 8&times;8 "
+               "Cholesky, pragmas stripped",
+          "rc = 124 &mdash; killed after <b>40 minutes</b> in the front end"]]))
+    s.append("""<div class="note"><b>Control 2 is the load-bearing one.</b> It differs
+    from control 1 by a single line in the same file, and it reproduces the failure
+    exactly. The blocker is the pragma dialect, not C++: Bambu defines its own
+    <code>#pragma</code> set and rejects the Xilinx spelling as an error rather than
+    ignoring it.</div>
+    <div class="note"><b>Control 4 is the second finding, and it is the more
+    surprising one.</b> Xilinx's arbitrary-precision types &mdash; the subject of
+    &sect;2.3 and of much of Appendix E &mdash; <b>work under Bambu unchanged</b>. What
+    does not work is <code>hls::stream</code>, on which the tool's
+    struct-passing IR pass crashes. This holds whether the stream is a top-level
+    parameter or purely internal, so replacing the interface does not help.</div>""")
+
+    s.append("<h2>10.4&nbsp;&nbsp;Result</h2>")
+    s.append("""<p>The 652 active <code>#pragma HLS</code> lines were stripped from a
+    copy of the corpus, leaving the algorithms untouched, and synthesis was retried. The
+    first blocker is removable this way and the compilation advanced past it. The second
+    is not: every streaming core in the corpus &mdash; all of the security cores, all of
+    the FINN cores, Cholesky and QRF &mdash; is built on <code>hls::stream</code>.</p>
+    <p>A third obstacle was measured rather than anticipated. The complex
+    <code>ap_fixed&lt;24,8&gt;</code> 8&times;8 Cholesky top level did not reach the
+    <code>hls::stream</code> crash at all: it spent <b>forty minutes in the compiler
+    front end without emitting a line of progress and was killed by the timeout
+    (rc&nbsp;=&nbsp;124)</b>. Instantiating the traits chain of &sect;3.1 over a complex
+    fixed-point type is heavy enough on its own to be a practical limit, independently
+    of the two dialect problems.</p>
+    <div class="warn"><b>Conclusion. This corpus cannot be synthesised by Bambu, and the
+    obstacle is dialect, not installation.</b> Vitis HLS is required, and it was not
+    obtainable by any of the eight routes in Table&nbsp;10.1. The absence of timing and
+    area numbers throughout this document is therefore a measured limitation with a
+    named cause, and not an omission.</div>""")
+
+    s.append("<h2>10.5&nbsp;&nbsp;Two errors of my own, recorded</h2>")
+    s.append("""<p>Both would have produced a correct verdict for the wrong reason, which
+    is the failure mode this document is most concerned with.</p>
+    <p><b>The pragma-stripping filter was wrong.</b> A line-oriented filter removed only
+    the first line of the one backslash-continued pragma in the corpus
+    (<code>cholesky.hpp:539&ndash;540</code>), leaving the orphan token
+    <code>CholeskyTraits::UNROLL_FACTOR</code> behind. The resulting C++ error looked
+    like evidence that the Xilinx source was non-conforming. It was evidence that the
+    filter was. The corrected filter handles continuations and the orphan count is
+    asserted to be zero.</p>
+    <p><b>The top-level function name was wrong.</b> <code>aes_top</code> was passed
+    where the harness defines <code>aes128_top</code>. Bambu said exactly that
+    (<code>Function aes_top not found in IR</code>) and it would have been easy to read
+    the non-zero exit as a synthesis failure.</p>
+    <p>In both cases the outcome &mdash; failure &mdash; was correct and the reason was
+    not. The first line of every failure log was read directly for this reason.</p>""")
+    return "\n".join(s)
+
 # ====================================== 부록 A / B / C / F
 def appA():
     s = ['<h1 id="cA">Appendix A&nbsp;&nbsp;Complete File Inventory</h1>']
@@ -1785,7 +1899,7 @@ def 목차(본문):
 
 def 조립(소스부록):
     본문 = "\n".join([ch1(), ch1b(), ch2(), ch2b(), ch3(), ch3b(), ch4(),
-                      ch5(), ch5b(), ch5c(), ch6(), ch7(), ch8(), ch9(),
+                      ch5(), ch5b(), ch5c(), ch6(), ch7(), ch8(), ch9(), ch10(),
                       appA(), appB(), appC(), appF()])
     전체 = 본문 + 소스부록
     앞 = COVER + REVHIST + 목차(전체)
