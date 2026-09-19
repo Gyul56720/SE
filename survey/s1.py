@@ -118,15 +118,27 @@ S2 = """
 
 <p class="noind">The corpus was assembled by retrieving individual files over HTTPS from the
 canonical source repositories. Directory listing was not available in our environment, so the
-dependency closure was obtained by parsing <code>#include</code> directives from a set of
-seed files and fetching the named headers transitively to a depth of three. Nine header names
-could not be resolved this way. Inspection shows that all nine&mdash;<code>ap_fixed.h</code>,
-<code>ap_int.h</code>, <code>hls_stream.h</code>, <code>hls_x_complex.h</code>,
-<code>hls_math.h</code>, <code>ap_axi_sdata.h</code> and three internal utility
-headers&mdash;are shipped inside the Vitis HLS installation rather than in the public
-repositories. Their absence has one consequence that we state plainly: <em>no file in this
-corpus was compiled during this study.</em> Section VIII returns to what that forbids us from
-claiming.</p>
+dependency closure was obtained by parsing <code>#include</code> directives from a set of seed
+files and fetching the named headers transitively.</p>
+
+<p>An earlier draft of this paper asserted that the vendor headers on which the corpus
+depends&mdash;<code>ap_int.h</code>, <code>ap_fixed.h</code>, <code>hls_stream.h</code>,
+<code>hls_x_complex.h</code>, <code>hls_math.h</code>, <code>ap_axi_sdata.h</code> and their
+transitive closure&mdash;were distributed only inside the Vitis HLS installation and were
+therefore unobtainable, and concluded that no file in the corpus could be compiled. <em>That
+assertion was wrong.</em> The types are published in
+<code>Xilinx/HLS_arbitrary_Precision_Types</code>, the stream class in
+<code>Xilinx/hls-lib-stream</code>, and the mathematics and simulation headers in
+<code>Xilinx/hls-utilities</code>; a small number of remaining utility headers were located in
+<code>Xilinx/merlin-compiler</code>. Resolving the closure by iterative compilation yielded 50
+headers totalling 1.5&nbsp;MB, after which 25 of the 26 corpus files compile. The single
+exception is <code>vt_fft.hpp</code>, whose implementation files return HTTP 404 and were never
+retrieved; Table 1 counts it, and no claim in Section III&ndash;V rests on it.</p>
+
+<p>The correction matters to the reader in one direction only: the study is a reading of source
+code either way, but the reading is now known to be of code that a compiler accepts rather than
+of code we merely believed to be well formed. Section VIII states precisely what the
+compilation does and does not establish.</p>
 
 <p>%s</p>
 

@@ -215,11 +215,24 @@ synthesis tool or written by hand.</p>
 <p class="noind">We state the limits of this study explicitly, because a survey that does not is
 inviting its reader to over-generalise.</p>
 
-<p><i>Nothing was compiled.</i> The vendor headers that these files include are distributed
-inside the Vitis HLS installation and are not publicly available. No file in the corpus was
-compiled, simulated or synthesised during this work. Every statement about circuit structure is
-an inference from source text and from the stated intent in comments. We have not measured a
-single latency, area or frequency figure for this corpus, and none is reported.</p>
+<p><i>The corpus compiles; it was not synthesised.</i> After the header closure described in
+Section II-A was resolved, 25 of the 26 corpus files compile under <code>g++ -std=c++14</code>
+against the public Xilinx headers, and a small program exercising
+<code>ap_uint</code>, <code>ap_int</code>, <code>ap_fixed</code> and
+<code>hls::stream</code> builds and runs. This establishes that the sources are well formed and
+that the types behave as the text assumes. It establishes nothing about hardware. No file was
+put through a synthesis tool, because none is available in our environment: there is no Vitis
+HLS, no Catapult, and no open-source C-to-RTL compiler that accepts this dialect. Consequently
+every statement in Sections III&ndash;V about scheduling, initiation interval, area or the
+circuit a pragma induces remains an <em>inference from source text and from the stated intent
+in comments</em>. We have measured no latency, area or frequency figure for this corpus and
+report none.</p>
+
+<p><i>The compilation is with a different compiler.</i> Vitis HLS uses a Clang-derived front end
+with its own extensions; we used GCC with <code>-fpermissive</code>, which was required because
+one Xilinx macro, <code>_AP_UNUSED_PARAM</code>, is rejected by GCC's stricter template
+name-lookup rules. A file that compiles under GCC therefore does not prove it compiles under
+Vitis HLS, although the converse failure would have been strong evidence of a problem.</p>
 
 <p><i>The sample is small and vendor-biased.</i> Three families, two vendors, both from the same
 FPGA ecosystem. Patterns common to all three may reflect a shared house style or shared tool
