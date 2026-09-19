@@ -29,6 +29,8 @@ def body():
         ("N_extra",   ["ch_async", "ch_physdes", "ch_stats", "ch_optics"]),
         ("W_practice",["ch_house", "ch_process", "ch_auto", "ch_labs",
                        "ch_papers", "ch_career", "ch_bringup", "ch_business"]),
+        ("Q_more",    ["ch_queue", "ch_hls", "ch_embedded", "ch_emc"]),
+        ("R_crypto",  ["ch_cryptomath", "ch_test", "ch_quantum"]),
         ("P_iface",   ["ch_mipi", "ch_pcie", "ch_gmac"]),
     ]
     out = []
