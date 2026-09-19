@@ -59,9 +59,14 @@ class 필드:
             raise ValueError(f"{이름}: 리셋값 {리셋} 이 {폭} 비트에 안 들어간다")
         self.이름, self.상위, self.하위 = 이름, 상위, 하위
         self.접근, self.리셋, self.설명 = 접근, 리셋, 설명
-        # 기본값: RO 는 상수, W1C/W1S/RC 는 하드웨어가 세운다, 나머지는 소프트웨어
+        # 기본값: RO 는 상수, **W1C 와 RC 만** 하드웨어가 세운다, 나머지는 소프트웨어.
+        #
+        # 실측 2026-09-19: 처음에는 W1S 도 하드웨어 기본이었다.  그런데 W1S 의
+        # 흔한 용도는 CTRL.SOFT_RESET 처럼 **소프트웨어가 세우는** 비트라, 생성기가
+        # 쓰이지 않는 hw_set_ 포트를 만들었다.  `verilator -Wall` 의 UNUSEDSIGNAL
+        # 이 잡았다.  쓰이지 않는 포트는 통합자에게 "이건 뭐냐" 를 묻게 만든다.
         if 하드웨어 is None:
-            하드웨어 = 접근 in ("W1C", "W1S", "RC")
+            하드웨어 = 접근 in ("W1C", "RC")
         self.하드웨어 = 하드웨어
         if 하드웨어 and 접근 in ("RW", "WO", "RW1"):
             raise ValueError(f"{이름}: {접근} 필드를 하드웨어가 쓰면 "
@@ -135,12 +140,18 @@ def rtl(m):
                     o.append(f"   input  wire [{f.폭-1}:0] hw_{n},")
                 # 상수 RO 는 포트를 만들지 않는다
             elif f.접근 in ("W1C", "W1S", "RC"):
-                o.append(f"   input  wire [{f.폭-1}:0] hw_set_{n},")
+                if f.하드웨어:
+                    o.append(f"   input  wire [{f.폭-1}:0] hw_set_{n},")
                 o.append(f"   output wire [{f.폭-1}:0] {n},")
             else:
                 o.append(f"   output wire [{f.폭-1}:0] {n},")
     o[-1] = o[-1].rstrip(",")
     o.append(");")
+    o.append("   // 32 비트 레지스터 파일이라 주소 하위 두 비트는 안 쓴다.")
+    o.append("   // 면제 사유를 적는다 -- 면제는 조용히 하지 않는다(교안 Z3 장).")
+    o.append("   /* verilator lint_off UNUSEDSIGNAL */")
+    o.append("   wire [1:0] _unused_paddr = paddr[1:0];")
+    o.append("   /* verilator lint_on UNUSEDSIGNAL */")
     o.append("   assign pready = 1'b1;")
     o.append("   // 접근은 **enable 단계에서만** 일어난다.  처음에는 rd 에서")
     o.append("   // penable 을 빠뜨렸는데, 그러면 RC 레지스터가 setup 단계에서")
@@ -177,14 +188,19 @@ def rtl(m):
                 o.append(f"         if (wr && {sel} && (r_{n} == {f.폭}'d{f.리셋}))"
                          f" r_{n} <= {sl};")
             elif f.접근 == "W1C":
-                o.append(f"         r_{n} <= (r_{n} | hw_set_{n})"
+                세움 = f" | hw_set_{n}" if f.하드웨어 else ""
+                o.append(f"         r_{n} <= (r_{n}{세움})"
                          f" & ~((wr && {sel}) ? {sl} : {f.폭}'d0);")
             elif f.접근 == "W1S":
-                o.append(f"         r_{n} <= r_{n} | ((wr && {sel}) ? {sl}"
+                세움 = f" | hw_set_{n}" if f.하드웨어 else ""
+                o.append(f"         r_{n} <= r_{n}{세움} | ((wr && {sel}) ? {sl}"
                          f" : {f.폭}'d0);")
             elif f.접근 == "RC":
-                o.append(f"         r_{n} <= (rd && {sel}) ? hw_set_{n}"
-                         f" : (r_{n} | hw_set_{n});")
+                if f.하드웨어:
+                    o.append(f"         r_{n} <= (rd && {sel}) ? hw_set_{n}"
+                             f" : (r_{n} | hw_set_{n});")
+                else:
+                    o.append(f"         r_{n} <= (rd && {sel}) ? {f.폭}'d0 : r_{n};")
     o.append("      end")
     o.append("   end")
     o.append("   always @* begin")

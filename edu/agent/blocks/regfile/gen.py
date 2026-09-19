@@ -113,6 +113,10 @@ def 만들기(낼자리):
                 if f.하드웨어:
                     hw.append(f".hw_{n}({f.폭}'d0)")
             elif f.접근 in ("W1C", "W1S", "RC"):
+                if not f.하드웨어:
+                    # 하드웨어가 안 세우는 필드는 hw_set 포트가 없다
+                    hw.append(f".{n}()")
+                    continue
                 if r.이름 == "IRQ_STATUS":
                     비트 = {"ERR_CRC": 0, "ERR_LEN": 1, "OVERFLOW": 2}[f.이름]
                     hw.append(f".hw_set_{n}(hw_irq[{비트}])")
@@ -128,7 +132,7 @@ def 만들기(낼자리):
     dutp = os.path.join(낼자리, "crcip_regs.v")
     tbp = os.path.join(낼자리, "tb.v")
     with open(dutp, "w", encoding="utf-8") as f:
-        f.write(v + "\n")
+        f.write(v.rstrip() + "\n")          # 파일 끝 개행 (verilator EOFNEWLINE)
     with open(tbp, "w", encoding="utf-8") as f:
         f.write(tb)
     return dutp, tbp
