@@ -47,21 +47,31 @@ def 옮겨적기프롬프트(물음: str = "") -> str:
 PDF쪽상한 = 4          # 이보다 많으면 통째로 안 보낸다 -- 토큰이 터진다
 
 
+PDF안세고보낼바이트 = 2 * 1024 * 1024   # 이보다 작으면 못 세도 보낸다 (토큰이 안 터진다)
+
+
 def _큰PDF인가(쪽):
     """통째로 보내면 안 되는 PDF 인가.  이유를 돌려준다 (아니면 None).
 
-    쪽수를 못 세면 **보내지 않는다** -- 모르는 것은 안 된 것으로 다룬다.
+    쪽수를 못 세면 **큰 것만** 막는다.  이 관문이 막으려는 것은 토큰 폭발이고,
+    2 MB 아래 파일은 쪽수를 몰라도 터뜨릴 수 없다.  못 센다고 전부 막으면
+    깨진 한 바이트짜리까지 막혀서, PDF 가 시각 모델로 가는 길을 확인하던
+    `tests/test_read_image.py` 가 빨개진다 -- 실측으로 그랬다.
+    **막는 것은 쉽고, 막기만 하면 되던 것이 죽는다.**
     """
     import shutil as _sh
     import subprocess as _sp
+    작다 = 쪽.stat().st_size <= PDF안세고보낼바이트
     if not _sh.which("pdfinfo"):
-        return None          # 셀 길이 없으면 예전대로 (작은 파일이 대부분이다)
+        return None if 작다 else (
+            f"{쪽.stat().st_size // (1024*1024)}MB 인데 pdfinfo 가 없어 쪽수를 "
+            f"못 센다 -- 통째로 보내지 않는다")
     try:
         r = _sp.run(["pdfinfo", str(쪽)], capture_output=True, text=True, timeout=60)
     except Exception:                                             # noqa: BLE001
-        return "쪽수를 못 셌다 -- 통째로 보내지 않는다"
+        return None if 작다 else "쪽수를 못 셌다 -- 통째로 보내지 않는다"
     if r.returncode:
-        return "pdfinfo 가 실패했다 -- 통째로 보내지 않는다"
+        return None if 작다 else "pdfinfo 가 실패했다 -- 통째로 보내지 않는다"
     for l in r.stdout.splitlines():
         if l.startswith("Pages:"):
             try:
@@ -72,7 +82,7 @@ def _큰PDF인가(쪽):
                 return (f"{n:,} 쪽이다 -- {PDF쪽상한} 쪽을 넘으면 통째로 안 보낸다 "
                         f"(토큰 한계). 아래대로 골라 읽어라")
             return None
-    return "Pages 줄이 없다 -- 통째로 보내지 않는다"
+    return None if 작다 else "Pages 줄이 없다 -- 통째로 보내지 않는다"
 
 
 def 읽기(path: str, question: str = "", repo: str = "", 자르개=None) -> str:

@@ -140,6 +140,31 @@ def test_작은_PDF_는_예전대로_그림으로_간다():
         shutil.rmtree(d, ignore_errors=True)
 
 
+def test_깨진_작은_PDF_는_막지_않는다():
+    """**막는 것은 쉽고, 막기만 하면 되던 것이 죽는다.**
+
+    실측 2026-09-19: 쪽수를 못 세면 전부 막게 했더니 `tests/test_read_image.py`
+    가 빨개졌다 -- 그 검사는 1 바이트짜리 가짜 .pdf 로 **PDF 가 시각 모델로 가는
+    배선**을 확인한다.  이 관문이 막으려는 것은 토큰 폭발이고, 작은 파일은
+    쪽수를 몰라도 터뜨릴 수 없다.
+    """
+    import pathlib
+    import imageread
+    d = tempfile.mkdtemp(prefix="brokenpdf_")
+    try:
+        p = os.path.join(d, "깨진.pdf")
+        open(p, "wb").write(b"x")
+        assert imageread._큰PDF인가(pathlib.Path(p)) is None, \
+            "1 바이트짜리를 막았다 -- 토큰이 터질 수 없는 크기다"
+        # 그런데 **크면서 못 세는 것은 막는다**
+        큰가짜 = os.path.join(d, "큰깨진.pdf")
+        open(큰가짜, "wb").write(b"x" * (3 * 1024 * 1024))
+        판정 = imageread._큰PDF인가(pathlib.Path(큰가짜))
+        assert 판정 and "통째로 보내지 않는다" in 판정, 판정
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def test_부르기가_모드를_알아서_고른다():
     import pdfread
     assert "쪽에서 나왔다" in pdfread.부르기(쪽PDF, 물음="Cholesky", repo=뿌리)
