@@ -1738,7 +1738,8 @@ Register allocation: 37 registers</pre>
           "rc = 1, crash in <code>FixStructsPassedByValue.cpp:377</code>"],
          ["5", "The real corpus top level: complex <code>ap_fixed</code> 8&times;8 "
                "Cholesky, pragmas stripped",
-          "rc = 124 &mdash; killed after <b>40 minutes</b> in the front end"]]))
+          "rc = 124 &mdash; killed after <b>40 minutes</b> in the front end, before "
+          "reaching the <code>hls::stream</code> check (&sect;10.4.1 isolates why)"]]))
     s.append("""<div class="note"><b>Control 2 is the load-bearing one.</b> It differs
     from control 1 by a single line in the same file, and it reproduces the failure
     exactly. The blocker is the pragma dialect, not C++: Bambu defines its own
@@ -1751,25 +1752,67 @@ Register allocation: 37 registers</pre>
     struct-passing IR pass crashes. This holds whether the stream is a top-level
     parameter or purely internal, so replacing the interface does not help.</div>""")
 
-    s.append("<h2>10.4&nbsp;&nbsp;Result</h2>")
+    s.append("<h2>10.4&nbsp;&nbsp;Result on the real corpus</h2>")
     s.append("""<p>The 652 active <code>#pragma HLS</code> lines were stripped from a
-    copy of the corpus, leaving the algorithms untouched, and synthesis was retried. The
-    first blocker is removable this way and the compilation advanced past it. The second
-    is not: every streaming core in the corpus &mdash; all of the security cores, all of
-    the FINN cores, Cholesky and QRF &mdash; is built on <code>hls::stream</code>.</p>
-    <p>A third obstacle was measured rather than anticipated. The complex
-    <code>ap_fixed&lt;24,8&gt;</code> 8&times;8 Cholesky top level did not reach the
-    <code>hls::stream</code> crash at all: it spent <b>forty minutes in the compiler
-    front end without emitting a line of progress and was killed by the timeout
-    (rc&nbsp;=&nbsp;124)</b>. Instantiating the traits chain of &sect;3.1 over a complex
-    fixed-point type is heavy enough on its own to be a practical limit, independently
-    of the two dialect problems.</p>
-    <div class="warn"><b>Conclusion. This corpus cannot be synthesised by Bambu, and the
-    obstacle is dialect, not installation.</b> Vitis HLS is required, and it was not
-    obtainable by any of the eight routes in Table&nbsp;10.1. The absence of timing and
-    area numbers throughout this document is therefore a measured limitation with a
-    named cause, and not an omission.</div>""")
+    copy of the corpus, leaving the algorithms untouched, and three real top levels were
+    synthesised: the complex <code>ap_fixed&lt;24,8&gt;</code> 8&times;8 Cholesky, the
+    128-bit AES block, and the FINN matrix&ndash;vector unit. All three cleared the
+    pragma-dialect error. All three were then killed by a forty-minute timeout, still in
+    the compiler front end, with no progress output.</p>""")
+    s.append("""<div class="warn"><b>A correction made before this was written down as a
+    conclusion.</b> The obvious reading of controls 4a and 4b is that the corpus fails
+    because of <code>hls::stream</code>. At that point <b>that was not what had been
+    measured</b>: none of the three had reached the <code>hls::stream</code> pass, so
+    naming it as the cause would have been an inference presented as a measurement. The
+    front-end cost had to be explained first.</div>""")
 
+    s.append("<h3>10.4.1&nbsp;&nbsp;Isolating the front-end cost</h3>")
+    s.append("""<p>The failing top level differs from a trivially compiling one in three
+    ways at once: it is complex, it is fixed-point, and it is 8&times;8. Each was varied
+    on its own, against the same Xilinx Cholesky source.</p>""")
+    s.append(tab("Cost of the element type, isolated. Same algorithm, same file, one "
+                 "variable changed per row",
+        ["Element type", "Complex", "<code>ap_fixed</code>", "Size", "Front-end time",
+         "Outcome"],
+        [["<code>float</code>", "no", "no", "4&times;4", "<b>10 s</b>",
+          "Reaches <code>FixStructsPassedByValue</code>"],
+         ["<code>float</code>", "no", "no", "8&times;8", "<b>9 s</b>", "Same"],
+         ["<code>hls::x_complex&lt;float&gt;</code>", "<b>yes</b>", "no", "8&times;8",
+          "<b>9 s</b>", "Same"],
+         ["<code>ap_fixed&lt;24,8&gt;</code>", "no", "<b>yes</b>", "8&times;8",
+          "<b>&gt; 900 s (timeout)</b>", "Never gets there"],
+         ["<code>hls::x_complex&lt;ap_fixed&lt;24,8&gt; &gt;</code>", "<b>yes</b>",
+          "<b>yes</b>", "8&times;8", "<b>&gt; 2400 s (timeout)</b>", "Never gets there"]]))
+    s.append("""<div class="note"><b>The cost driver is <code>ap_fixed</code>, and
+    nothing else.</b> Quadrupling the matrix costs nothing (10&nbsp;s against
+    9&nbsp;s). Making the element complex costs nothing (9&nbsp;s). Making it
+    fixed-point turns 9&nbsp;seconds into more than 900 &mdash; a factor of at least a
+    hundred, from a change that does not alter a single line of the algorithm.</div>
+    <p>The reason is the property described in &sect;2.3, seen from the compiler's side.
+    Every <code>ap_fixed</code> arithmetic operator computes its own result width at
+    compile time, so an expression tree instantiates a lattice of distinct types rather
+    than reusing one. That is exactly what makes the type system safe &mdash; a width
+    mistake is a compile error instead of a silent truncation &mdash; and it is paid for
+    in front-end time. <b>The property this document praises in &sect;2.3 and the
+    property that stopped every synthesis run here are the same property.</b></p>""")
+
+    s.append("<h3>10.4.2&nbsp;&nbsp;What the corpus does when it gets that far</h3>")
+    s.append("""<p>With the element type changed to <code>float</code>, the real Xilinx
+    Cholesky compiles in ten seconds and then fails in
+    <code>FixStructsPassedByValue.cpp:377</code> &mdash; the same crash, at the same
+    line, as the minimal <code>hls::stream</code> test of control 4b. The inference
+    withdrawn above is now a measurement: <b><code>hls::stream</code> is the corpus's
+    blocker, confirmed on the corpus and not only on a test case.</b></p>
+    <div class="note"><b>Conclusion, stated to the limit of the evidence.</b> Three
+    independent obstacles, each isolated by changing one variable: the pragma dialect
+    (control 2), <code>hls::stream</code> (control 4b, confirmed on the real Cholesky in
+    &sect;10.4.2), and <code>ap_fixed</code> front-end cost (&sect;10.4.1). The first is
+    removable by stripping directives; the second is not, because every streaming core
+    here is built on <code>hls::stream</code>; the third is intrinsic to the type system
+    the library is designed around. Vitis HLS is required and was not obtainable by any
+    of the eight routes in Table&nbsp;10.1. The absence of timing and area numbers
+    throughout this document is a measured limitation with a named cause, not an
+    omission.</div>""")
     s.append("<h2>10.5&nbsp;&nbsp;Two errors of my own, recorded</h2>")
     s.append("""<p>Both would have produced a correct verdict for the wrong reason, which
     is the failure mode this document is most concerned with.</p>
