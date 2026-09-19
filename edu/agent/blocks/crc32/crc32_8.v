@@ -5,6 +5,10 @@
 module crc32_8 (input  wire [31:0] crc_in,
                 input  wire  [7:0] d,
                 output wire [31:0] crc_out);
+   /* verilator lint_off BLKSEQ */
+   // 면제 사유: 함수의 지역 변수는 blocking 대입이라야 한다.
+   // 함수는 조합 계산이고, 그 안의 t 는 레지스터가 아니다.
+   // 여기서 '<=' 를 쓰면 루프가 의도대로 안 돈다.
    function [31:0] step;
       input [31:0] c;
       input        b;
@@ -13,6 +17,7 @@ module crc32_8 (input  wire [31:0] crc_in,
          else            step = (c >> 1);
       end
    endfunction
+   /* verilator lint_on BLKSEQ */
 
    reg [31:0] c;
    integer i;

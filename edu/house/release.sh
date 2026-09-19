@@ -57,8 +57,9 @@ res = {}
 ok, why = harness.자해검사(m, 시행=80)
 res["자해검사"] = [bool(ok), why]
 bad = 0; mind = 10**9; perf = None
+시행 = getattr(m, "관문시행", 600)
 for s_ in range(20):
-    r = harness.잰다(m, 시행=600, 씨앗=1000 + s_)
+    r = harness.잰다(m, 시행=시행, 씨앗=1000 + s_)
     if r.오류:
         res["실행오류"] = r.오류; break
     bad += r.틀림; mind = min(mind, r.서로다른출력)
@@ -111,16 +112,23 @@ print('MNUM=%d' % v['수'])
     fi
   fi
 
-  SRC="$AGENT/blocks/$B/dut.v"
+  # DUT 파일들 = 소스들() 에서 tb.v 를 뺀 것.  여러 모듈이면 다 같이 본다 --
+  # 하나만 lint 하면 인스턴스된 모듈을 못 찾아 실패한다.
+  SRC=$(cd "$AGENT" && python3 -c "
+import importlib.util, os
+sp = importlib.util.spec_from_file_location('b', 'blocks/$B/block.py')
+m = importlib.util.module_from_spec(sp); sp.loader.exec_module(m)
+print(' '.join(p for p in m.소스들() if os.path.basename(p) != 'tb.v'))
+" 2>/dev/null)
   TOP=$(cd "$AGENT" && python3 -c "
 import importlib.util, sys
 sp = importlib.util.spec_from_file_location('b', 'blocks/$B/block.py')
 m = importlib.util.module_from_spec(sp); sp.loader.exec_module(m)
 print(getattr(m, '합성톱', '') or '')
 " 2>/dev/null)
-  if [ -f "$SRC" ] && [ -n "$TOP" ]; then
+  if [ -n "$SRC" ] && [ -n "$TOP" ]; then
     if command -v verilator >/dev/null 2>&1; then
-      if verilator --lint-only -Wall --top-module "$TOP" "$SRC" >/tmp/lint.$$ 2>&1; then
+      if verilator --lint-only -Wall --top-module "$TOP" $SRC >/tmp/lint.$$ 2>&1; then
         ok "lint" "경고 없음"
       else
         bad "lint" "$(wc -l </tmp/lint.$$) 줄 -- verilator --lint-only -Wall"
@@ -130,9 +138,10 @@ print(getattr(m, '합성톱', '') or '')
       huh "lint" "verilator 가 없다"
     fi
     if command -v yosys >/dev/null 2>&1; then
-      if yosys -q -p "read_verilog -sv $SRC; hierarchy -top $TOP; proc; opt; techmap; opt; stat" \
+      YS=""; for f in $SRC; do YS="$YS read_verilog -sv $f;"; done
+      if yosys -q -p "$YS hierarchy -top $TOP; proc; opt; techmap; opt; stat" \
            >/tmp/ys.$$ 2>&1; then
-        CELLS=$(grep -m1 -oP 'Number of cells:\s+\K[0-9]+' /tmp/ys.$$)
+        CELLS=$(grep -oP 'Number of cells:\s+\K[0-9]+' /tmp/ys.$$ | tail -1)
         ok "합성" "$TOP: 셀 ${CELLS:-?}개"
       else
         bad "합성" "yosys 실패"

@@ -17,6 +17,10 @@ module crc32_stream (input  wire        clk,
                      output reg         m_valid,
                      input  wire        m_ready);
 
+   /* verilator lint_off BLKSEQ */
+   // 면제 사유: 함수의 지역 변수는 blocking 대입이라야 한다.
+   // 함수는 조합 계산이고, 그 안의 t 는 레지스터가 아니다.
+   // 여기서 '<=' 를 쓰면 루프가 의도대로 안 돈다.
    function [31:0] crc_step;
       input [31:0] c;
       input        b;
@@ -25,7 +29,12 @@ module crc32_stream (input  wire        clk,
          else          crc_step = (c >> 1);
       end
    endfunction
+   /* verilator lint_on BLKSEQ */
 
+   /* verilator lint_off BLKSEQ */
+   // 면제 사유: 함수의 지역 변수는 blocking 대입이라야 한다.
+   // 함수는 조합 계산이고, 그 안의 t 는 레지스터가 아니다.
+   // 여기서 '<=' 를 쓰면 루프가 의도대로 안 돈다.
    function [31:0] crc_byte;
       input [31:0] c;
       input  [7:0] d;
@@ -38,6 +47,7 @@ module crc32_stream (input  wire        clk,
          crc_byte = t;
       end
    endfunction
+   /* verilator lint_on BLKSEQ */
 
    reg [31:0] acc;
 

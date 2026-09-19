@@ -2,20 +2,6 @@
 //
 // 544 심볼짜리 코드워드의 신드롬은 이 걸음을 544 번 도는 것이다 (X5 장).
 // 곱셈은 GF(2^10), 기약다항식 0x409.
-module gf_mul10 (input wire [9:0] a, input wire [9:0] b, output wire [9:0] y);
-   reg [9:0] acc, p;
-   integer i;
-   always @* begin
-      acc = 10'd0;
-      p   = a;
-      for (i = 0; i < 10; i = i + 1) begin
-         if (b[i]) acc = acc ^ p;
-         if (p[9]) p = (p << 1) ^ 10'h009;   // x^10 + x^3 + 1, 하위 10 비트
-         else      p = (p << 1);
-      end
-   end
-   assign y = acc;
-endmodule
 
 module rs_syn_step (input  wire [9:0] s_in,
                     input  wire [9:0] alpha_j,

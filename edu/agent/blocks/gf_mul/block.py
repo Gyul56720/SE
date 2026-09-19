@@ -16,8 +16,13 @@ _f = 필드(10, 0x409, 확인됨=False, 이름="GF(1024) 0x409")
 
 
 def 소스들():
-    """[0] 이 DUT 다 -- 수리와 변이는 이 파일만 건드린다."""
-    return [os.path.join(여기, "dut.v"), os.path.join(여기, "tb.v")]
+    """[0] 이 DUT 다 -- 수리와 변이는 이 파일만 건드린다.
+
+    파일 이름이 모듈 이름과 같다.  `verilator -Wall` 의
+    DECLFILENAME 이 이것을 요구하고, 그것이 업계 관례다 --
+    한 파일에 한 모듈, 파일 이름은 모듈 이름.
+    """
+    return [os.path.join(여기, "gf_mul.v"), os.path.join(여기, "tb.v")]
 
 
 def 자극(시행, 씨앗):

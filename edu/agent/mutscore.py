@@ -54,14 +54,24 @@ def 점수(블록, 시행=600, 씨앗들=(1, 2), 최대변이=200, 시간제한=
         컴파일실패  문법이 깨진 변이 (점수에서 뺀다 -- 검사의 공이 아니다)
         멈추지않음  시뮬레이션이 안 끝난 변이 (잡힌 것으로 센다: 관문이 막는다)
     """
-    파일 = 블록.소스들()[0]
-    원문 = open(파일, encoding="utf-8").read()
-    cands = vrepair.후보들(원문, 최대변이)
+    # 블록이 `변이대상()` 을 주면 그 파일들을 전부 변이시킨다.  모듈이 여럿인
+    # 블록에서 [0] 만 변이시키면 **높은 점수가 거짓이 된다** -- 나머지 모듈을
+    # 아예 안 본 점수이기 때문이다.
+    대상들 = (블록.변이대상() if hasattr(블록, "변이대상")
+             else [블록.소스들()[0]])
+    cands = []
+    for 파일 in 대상들:
+        원문 = open(파일, encoding="utf-8").read()
+        for c in vrepair.후보들(원문, 최대변이):
+            c["파일"] = 파일
+            cands.append(c)
+        if len(cands) >= 최대변이:
+            break
     셈 = {"변이수": 0, "잡힘": 0, "안잡힘": 0, "컴파일실패": 0, "멈추지않음": 0}
     탈출 = []
     t0 = time.time()
     for c in cands:
-        tb = vrepair.임시블록(블록, 파일, c["원문"])
+        tb = vrepair.임시블록(블록, c["파일"], c["원문"])
         try:
             잡았나 = False
             깨짐 = False
@@ -86,20 +96,22 @@ def 점수(블록, 시행=600, 씨앗들=(1, 2), 최대변이=200, 시간제한=
             else:
                 셈["안잡힘"] += 1
                 탈출.append({"규칙": c["규칙"], "줄번호": c["줄번호"],
+                            "파일": os.path.basename(c["파일"]),
                             "전": c["전"], "후": c["후"]})
         finally:
             tb.닫기()
     # **판정된 등가 변이**를 뺀다 -- 이유가 적힌 것만.  파일이 없으면 아무것도
     # 빼지 않는다(조용히 점수가 오르는 일이 없게).
     판정 = []
-    판정파일 = os.path.join(os.path.dirname(파일), "판정된탈출.py")
+    판정파일 = os.path.join(os.path.dirname(대상들[0]), "판정된탈출.py")
     if os.path.exists(판정파일):
         ns = {}
         exec(open(판정파일, encoding="utf-8").read(), ns)
         판정 = ns.get("판정", [])
     def 판정됐나(t_):
         for j in 판정:
-            if j["규칙"] == t_["규칙"] and j["줄번호"] == t_["줄번호"]:
+            if (j["규칙"] == t_["규칙"] and j["줄번호"] == t_["줄번호"]
+                    and j.get("파일", t_.get("파일")) == t_.get("파일")):
                 return True
         return False
     등가 = [t_ for t_ in 탈출 if 판정됐나(t_)]
@@ -142,8 +154,8 @@ def 본체(argv=None):
                   + (f", 등가판정 {등가}" if 등가 else "")
                   + f", {s['초']}초)")
             for t in s["탈출"]:
-                print(f"    탈출 줄{t['줄번호']:3d} [{t['규칙']}] "
-                      f"{t['전'][:50]} -> {t['후'][:50]}")
+                print(f"    탈출 {t.get('파일','?')}:{t['줄번호']} "
+                      f"[{t['규칙']}] {t['전'][:46]} -> {t['후'][:46]}")
     if a.json:
         print(json.dumps(전체, ensure_ascii=False, indent=1))
     return 0
