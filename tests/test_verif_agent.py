@@ -37,7 +37,7 @@ def _블록(이름):
 
 def test_성한_블록은_초록이고_비교가_문다():
     import harness
-    for 이름 in ("gf_mul", "crc32", "rs_syndrome"):
+    for 이름 in ("gf_mul", "crc32", "rs_syndrome", "crc32_stream"):
         b = _블록(이름)
         ok, 왜 = harness.자해검사(b)
         assert ok, f"{이름}: 자해검사 실패 -- {왜}"
@@ -113,6 +113,66 @@ def test_과적합_편집은_거부된다():
         assert r.틀림 > 0, "특수처리만으로 회귀가 초록이 됐다 -- 자극이 너무 약하다"
     finally:
         tb.닫기()
+
+
+def test_스트리밍_블록은_back_pressure_아래서도_맞는다():
+    """순차 블록을 여러 씨앗으로 돌린다.
+
+    테스트벤치가 무작위 공백과 back-pressure 를 넣으므로 씨앗마다 타이밍이
+    다르다.  값과 순서는 같아야 한다 -- 트랜잭션 수준 비교의 요점이다.
+    """
+    import harness
+    b = _블록("crc32_stream")
+    for 씨 in (1, 7, 99, 12345):
+        r = harness.잰다(b, 시행=800, 씨앗=씨)
+        assert r.오류 is None, r.오류
+        assert r.틀림 == 0, (씨, r.dict())
+        assert r.성능실패 is None, (씨, r.성능실패)
+        assert r.서로다른출력 >= 5, r.dict()
+
+
+def test_성능검사가_느려지는_결함을_잡는다():
+    """값은 다 맞고 **처리량만** 떨어지는 변이를 심는다.
+
+    실측 2026-09-19: 변이 점수가 바로 이 변이를 놓쳤다(값만 보고 있었다).
+    성능 한계는 재서 정했다 -- 성한 것 2.18, 이 변이 3.16 사이클/바이트.
+    """
+    import harness, vrepair
+    b = _블록("crc32_stream")
+    원본 = open(b.소스들()[0], encoding="utf-8").read()
+    느린 = 원본.replace("assign s_ready = ~(m_valid & ~m_ready);",
+                      "assign s_ready = ~(m_valid | ~m_ready);")
+    assert 느린 != 원본, "심을 자리를 못 찾았다"
+    tb = vrepair.임시블록(b, b.소스들()[0], 느린)
+    try:
+        r = harness.잰다(tb, 시행=800, 씨앗=1)
+        assert r.오류 is None, r.오류
+        assert r.성능실패, (
+            "값은 맞고 느리기만 한 변이를 성능 검사가 놓쳤다 -- "
+            "임시블록이 성능한계를 안 넘겨받았을 때 실제로 이랬다")
+        assert r.틀림 > 0, "성능 위반인데 빨간불이 아니다"
+    finally:
+        tb.닫기()
+
+
+def test_변이점수가_실제로_변이를_돌린다():
+    """변이 점수가 수를 내고, 주석과 테스트벤치는 안 건드리는지 본다."""
+    import mutscore, vrepair
+    b = _블록("gf_mul")
+    원문 = open(b.소스들()[0], encoding="utf-8").read()
+    cands = vrepair.후보들(원문, 200)
+    assert cands, "변이를 하나도 못 만들었다"
+    줄들 = 원문.split("\n")
+    for c in cands:
+        줄 = 줄들[c["줄번호"] - 1]
+        assert not 줄.strip().startswith("//"), c
+        # 테스트벤치 구역은 제외돼야 한다
+        구역 = vrepair._디유티구역(원문)
+        assert (c["줄번호"] - 1) in 구역, ("테스트벤치를 변이시켰다", c)
+    s = mutscore.점수(b, 시행=200, 씨앗들=(1,), 최대변이=8, 시간제한=10)
+    assert s["변이수"] > 0
+    assert s["잡힘"] > 0, "변이를 하나도 못 잡았다 -- 검사가 안 문다"
+    assert 0.0 <= s["점수"] <= 1.0
 
 
 def test_에이전트가_원장을_SE_LEDGER_ROOT_에_쓴다():

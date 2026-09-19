@@ -21,6 +21,8 @@ import os, subprocess, tempfile, shutil, json, time, random
 
 
 class 결과:
+    성능실패 = None
+
     def __init__(self, 이름, 시행, 틀림, 서로다른출력, 첫실패, 초, 오류=None):
         self.이름, self.시행, self.틀림 = 이름, 시행, 틀림
         self.서로다른출력, self.첫실패, self.초 = 서로다른출력, 첫실패, 초
@@ -35,7 +37,7 @@ class 결과:
         return {"이름": self.이름, "시행": self.시행, "틀림": self.틀림,
                 "서로다른출력": self.서로다른출력, "첫실패": self.첫실패,
                 "초": round(self.초, 2), "오류": self.오류,
-                "쓸모있나": self.쓸모있나}
+                "성능실패": self.성능실패, "쓸모있나": self.쓸모있나}
 
 
 def 컴파일(소스들, 톱, 일터):
@@ -65,6 +67,17 @@ def 돌리기(벌, 일터, 입력줄들, 시간제한=120):
     return [l.strip() for l in open(p) if l.strip()], None
 
 
+def 사이클읽기(일터):
+    """테스트벤치가 cycles.txt 를 냈으면 그 수를 돌려준다.  없으면 None."""
+    p = os.path.join(일터, "cycles.txt")
+    if not os.path.exists(p):
+        return None
+    try:
+        return int(open(p).read().strip().split()[0])
+    except Exception:
+        return None
+
+
 def 잰다(블록, 시행=2000, 씨앗=0, 일터=None, 시간제한=120):
     """블록 하나를 회귀한다.
 
@@ -87,14 +100,33 @@ def 잰다(블록, 시행=2000, 씨앗=0, 일터=None, 시간제한=120):
         if len(얻은) != len(골든):
             return 결과(블록.이름, len(골든), 0, 0, None, time.time() - t0,
                        f"출력 개수 {len(얻은)} != 자극 {len(골든)}")
+        # --- 성능 검사.  값만 보는 회귀는 **느려지는 결함을 못 잡는다**.
+        # 실측 2026-09-19: 변이 점수가 `s_ready = ~(m_valid & ~m_ready)` 를
+        # `|` 로 바꾼 변이를 **못 잡았다** -- 값은 전부 맞고 처리량만 떨어진다.
+        # 블록이 `성능한계(입력수)` 를 주면 여기서 잰다.
+        성능말 = None
+        if hasattr(블록, "성능한계"):
+            사이클 = 사이클읽기(일터)
+            if 사이클 is None:
+                성능말 = "성능한계를 선언했는데 테스트벤치가 cycles.txt 를 안 냈다"
+            else:
+                한계 = 블록.성능한계(len(입력))
+                if 사이클 > 한계:
+                    성능말 = f"사이클 {사이클} > 한계 {한계}"
         틀림, 첫 = 0, None
         for i, (a, b) in enumerate(zip(얻은, 골든)):
             if int(a, 16) != b:
                 틀림 += 1
                 if 첫 is None:
                     첫 = {"i": i, "입력": 입력[i], "골든": f"{b:x}", "DUT": a}
-        return 결과(블록.이름, len(골든), 틀림, len(set(골든)), 첫,
-                   time.time() - t0)
+        r = 결과(블록.이름, len(골든), 틀림, len(set(골든)), 첫,
+                 time.time() - t0)
+        if 성능말:
+            r.성능실패 = 성능말
+            if 틀림 == 0:
+                r.틀림 = 1      # 성능 위반도 빨간불이다
+                r.첫실패 = {"i": -1, "입력": "(성능)", "골든": "-", "DUT": 성능말}
+        return r
     finally:
         if 지움:
             shutil.rmtree(일터, ignore_errors=True)

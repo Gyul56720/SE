@@ -20,7 +20,9 @@
 가지고 그 자리만 건드린다.  목록은 이 저장소가 겪은 것과 표준적인 RTL 실수에서
 왔고, 각 항목은 '왜 이것이 흔한가' 를 달고 있다.
 """
-import os, re, itertools, tempfile, shutil
+import os
+import re as _re
+import itertools, tempfile, shutil
 
 # (이름, 정규식, 치환, 왜 흔한가)
 규칙 = [
@@ -53,16 +55,54 @@ import os, re, itertools, tempfile, shutil
 ]
 
 
-def 후보들(원문, 최대=400):
+def _디유티구역(원문):
+    """테스트벤치가 아닌 줄의 인덱스 집합.
+
+    실측 2026-09-19: 변이 점수를 처음 돌렸더니 **테스트벤치의 LFSR** 과 **주석**
+    까지 변이시키고 있었다.  둘 다 영원히 안 잡히므로 점수를 끌어내리고, 사람이
+    봐야 할 진짜 탈출을 그 속에 묻는다.
+
+      * 테스트벤치를 고치는 것은 수리가 아니다 -- 검사를 고쳐 초록을 만드는 것이다
+      * 주석을 바꾼 변이는 **정의상 등가**다
+
+    `module tb` 부터 그 `endmodule` 까지를 뺀다.  이름이 tb 가 아닌 테스트벤치는
+    블록이 `디유티모듈` 로 알려 줄 수 있다.
+    """
+    줄들 = 원문.split("\n")
+    쓸것 = set(range(len(줄들)))
+    깊이 = 0
+    tb중 = False
+    for i, l in enumerate(줄들):
+        s = l.strip()
+        if _re.match(r"^module\s+tb\b", s):
+            tb중 = True
+        if tb중:
+            쓸것.discard(i)
+            if _re.match(r"^endmodule\b", s):
+                tb중 = False
+    return 쓸것
+
+
+def 후보들(원문, 최대=400, 디유티만=True):
     """한 곳만 바꾼 편집들을 낸다.  두 곳 이상은 내지 않는다 -- 탐색이 터지고,
-    실제 버그도 대개 한 곳이다."""
+    실제 버그도 대개 한 곳이다.
+
+    주석 안과 테스트벤치 안은 건드리지 않는다 (`_디유티구역` 설명 참고).
+    """
     낸것 = []
     줄들 = 원문.split("\n")
+    구역 = _디유티구역(원문) if 디유티만 else set(range(len(줄들)))
     for 이름, pat, rep, 왜 in 규칙:
         for li, 줄 in enumerate(줄들):
+            if li not in 구역:
+                continue
             if 줄.strip().startswith("//"):
                 continue
-            for m in re.finditer(pat, 줄):
+            # 줄 끝 주석은 변이 대상에서 뺀다 (문자열 리터럴 안의 // 는 이 저장소의
+            # Verilog 에 없으므로 단순 절단으로 충분하다)
+            끝 = 줄.find("//")
+            코드끝 = len(줄) if 끝 < 0 else 끝
+            for m in _re.finditer(pat, 줄[:코드끝]):
                 새줄 = 줄[:m.start()] + rep + 줄[m.end():]
                 if 새줄 == 줄:
                     continue
@@ -91,6 +131,16 @@ class 임시블록:
 
     def 소스들(self):
         return list(self._소스)
+
+    def __getattr__(self, 이름):
+        """감싼 블록의 나머지 속성을 그대로 넘긴다.
+
+        실측 2026-09-19: 처음에는 이름·톱·자극만 베껴 왔는데, 블록이 나중에
+        `성능한계` 를 추가하자 **변이에는 그것이 안 붙어서 성능 검사가 조용히
+        꺼졌다** -- 느려지는 변이가 통과했고 원인이 보이지 않았다.  명시적으로
+        베끼는 방식은 이렇게 조용히 낡는다.
+        """
+        return getattr(self.블록, 이름)
 
     def 닫기(self):
         shutil.rmtree(self.디렉, ignore_errors=True)
