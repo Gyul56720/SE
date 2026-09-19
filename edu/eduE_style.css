@@ -1,0 +1,39 @@
+/* English edition: inherits the base sheet, overrides the Korean marginal
+   labels, and adds the worked-example / derivation furniture. */
+@import url("edu_style.css");
+
+.ms::before { content:"Graduate \00b7 "; }
+.bs::before { content:"Undergraduate review \00b7 "; }
+
+/* --- worked examples --- */
+.wex  { border:0.8pt solid #123f6d; background:#fcfdff; margin:9pt 0;
+        padding:0 0 6pt 0; font-size:9.5pt; break-inside:avoid-page; }
+.wexh { background:#123f6d; color:#fff; font-family:"Liberation Sans",sans-serif;
+        font-size:8.8pt; font-weight:bold; padding:3pt 7pt; }
+.wexg, .wexm { padding:4pt 8pt 0 8pt; text-align:justify; }
+.wext { margin:5pt 8pt 0 8pt; padding:4pt 7pt; background:#fbf2f2;
+        border-left:2.6pt solid #a33; font-size:9.1pt; text-align:justify; }
+table.wexn { width:auto; margin:6pt 8pt; border-collapse:collapse; font-size:9.3pt; }
+table.wexn td { border:0.4pt solid #b8c4d0; padding:2pt 8pt; }
+table.wexn td:first-child { background:#eef2f7; }
+
+/* --- derivations --- */
+.deriv { border-left:3pt solid #4a6fa5; background:#f7f9fc; margin:8pt 0;
+         padding:5pt 8pt; break-inside:avoid-page; }
+.derh  { font-family:"Liberation Sans",sans-serif; font-weight:bold;
+         font-size:9pt; color:#1d3f6b; margin-bottom:3pt; }
+table.dtab { width:100%; border-collapse:collapse; font-size:9.2pt; }
+table.dtab th { text-align:left; font-size:8.2pt; color:#456;
+                border-bottom:0.5pt solid #9aa; padding:1pt 4pt; }
+table.dtab td { vertical-align:top; padding:2pt 4pt; border-bottom:0.3pt dotted #ccd; }
+td.dn   { width:5mm; color:#789; font-size:8.2pt; }
+td.dstep{ width:52%; }
+td.dwhy { color:#445; font-size:8.7pt; font-style:italic; }
+
+/* --- problems --- */
+.prob { border-left:2.6pt solid #6a6a6a; background:#fafafa; margin:7pt 0;
+        padding:4pt 8pt; font-size:9.4pt; text-align:justify;
+        break-inside:avoid-page; }
+.prob .sol { margin-top:3pt; padding-top:3pt; border-top:0.4pt dotted #aaa;
+             color:#223; }
+.swnote { font-size:8.6pt; color:#445; font-style:italic; margin:-4pt 0 8pt 0; }

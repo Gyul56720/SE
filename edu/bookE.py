@@ -74,7 +74,7 @@ def cover(num, title, sub, meta):
             f'<h1 class="ctitle">{E(title)}</h1><div class="csub">{E(sub)}</div>'
             f'<div class="cline"></div><div class="cmeta">{meta}</div></div>')
 
-def render(doc, out, css="/home/user/SE/edu/edu_style.css"):
+def render(doc, out, css="/home/user/SE/edu/eduE_style.css"):
     from weasyprint import HTML, CSS
     tmp = f"{D}/{os.path.basename(out)}.html"
     open(tmp, "w", encoding="utf-8").write(doc)

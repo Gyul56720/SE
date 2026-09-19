@@ -33,14 +33,108 @@ def body():
         ("R_crypto",  ["ch_cryptomath", "ch_test", "ch_quantum"]),
         ("P_iface",   ["ch_mipi", "ch_pcie", "ch_gmac"]),
         ("S_iface2",  ["ch_storage", "ch_display", "ch_clocking", "ch_ipxact"]),
+        ("X1_fixed",  ["ch_fixed"]),
+        ("X2_timing", ["ch_sta"]),
+        ("X3_cdc",    ["ch_cdc"]),
+        ("X4_link",   ["ch_linkbudget"]),
+        ("X5_fec",    ["ch_rs"]),
+        ("X6_fft",    ["ch_fft"]),
+        ("X7_power",  ["ch_power"]),
+        ("X8_verif",  ["ch_verifmath"]),
+        ("X9_arith",  ["ch_arith2"]),
+        ("X10_mem",   ["ch_mem2"]),
+        ("X11_noc",   ["ch_noc2"]),
+        ("X12_ams",   ["ch_ams"]),
+        ("X13_ml",    ["ch_mlhw"]),
+        ("X14_physdes", ["ch_physdes2"]),
+        ("X15_sec",   ["ch_hwsec"]),
+        ("X16_rel",   ["ch_reliability2"]),
+        ("X17_modern",["ch_modern2"]),
+        ("X18_queue", ["ch_perf2"]),
+        ("X19_isa",   ["ch_cores"]),
+        ("X20_codec", ["ch_codec2"]),
+        ("X21_control",["ch_control2"]),
+        ("X22_dsp2",  ["ch_resample"]),
+        ("Y1_mipi",   ["ch_mipi2"]),
+        ("Y2_pcie",   ["ch_pcie2"]),
+        ("Y3_gmac",   ["ch_gmac2"]),
+        ("Y4_agent",  ["ch_agent"]),
+        ("Y5_business", ["ch_business2"]),
+        ("Y6_papers", ["ch_papers2"]),
+        ("Y7_bringup",["ch_bringup2"]),
+        ("Y8_solo",   ["ch_solo"]),
+        ("Y9_compliance", ["ch_compliance"]),
+        ("Y10_regmap", ["ch_regmap"]),
+        ("Y11_model",  ["ch_modelling"]),
+        ("Y12_hls",    ["ch_hls2"]),
+        ("Y13_career", ["ch_career2"]),
+        ("Y14_toolchain", ["ch_toolchain"]),
+        ("Y15_first90", ["ch_project"]),
     ]
     out = []
     for m, fns in mods:
         mod = importlib.import_module(m)
         importlib.reload(mod)
         for f in fns:
-            out.append(getattr(mod, f)())
+            h = getattr(mod, f)()
+            _검사(m, f, h)
+            out.append(h)
     return "\n".join(out)
+
+
+상수열 = []
+
+
+def _상수열찾기(모듈, 함수, h):
+    """'measured' 라고 적힌 표에서 **모든 행이 같은 값인 칸**을 찾아 모아 둔다.
+
+    실측 2026-09-19: 이 책의 FIFO 표가 드롭 0 을 여섯 줄 내리 찍고 있었는데
+    본문은 "작은 FIFO 는 드롭한다" 고 적혀 있었다.  모델이 퇴화해서 큐가 아예
+    안 생겼던 것이다 -- **수를 안 보고 문장을 썼다.**  글자를 보는 검사는 이것을
+    못 잡는다.  그래서 수를 본다.
+
+    상수 칸이 늘 잘못인 것은 아니다(경계 자체가 상수인 표가 있다).  그래서
+    **실패로 내지 않고 빌드 끝에 목록으로 찍는다** -- 사람이 한 줄씩 본다.
+    """
+    import re as _re
+    for 표 in _re.findall(r"<table>.*?</table>", h, _re.S):
+        cap = _re.search(r"<caption>(.*?)</caption>", 표, _re.S)
+        cap = _re.sub(r"<[^>]+>", "", cap.group(1)) if cap else ""
+        if "easured" not in cap and "imulated" not in cap:
+            continue
+        몸 = _re.search(r"<tbody>(.*?)</tbody>", 표, _re.S)
+        if not 몸:
+            continue
+        행들 = [_re.findall(r"<td>(.*?)</td>", r, _re.S)
+                for r in _re.findall(r"<tr>(.*?)</tr>", 몸.group(1), _re.S)]
+        행들 = [r for r in 행들 if r]
+        if len(행들) < 4:
+            continue
+        머리 = _re.findall(r"<th>(.*?)</th>", 표, _re.S)
+        폭 = min(len(r) for r in 행들)
+        for c in range(1, 폭):
+            값 = {_re.sub(r"<[^>]+>", "", r[c]).strip() for r in 행들}
+            if len(값) == 1:
+                이름 = _re.sub(r"<[^>]+>", "", 머리[c]) if c < len(머리) else f"col{c}"
+                상수열.append(f"{모듈}.{함수}: \"{cap[:60]}\" 의 칸 "
+                            f"\"{이름[:40]}\" 이 {len(행들)} 줄 내내 {값.pop()!r}")
+
+
+def _검사(모듈, 함수, h):
+    """장 하나의 HTML 이 성한지 본다 -- **빌드가 실패로 끝나게** 한다.
+
+    안 닫힌 <div> 는 WeasyPrint 가 조용히 고쳐 주므로 렌더는 성공한다.  그런데
+    그 뒤의 내용이 통째로 그 상자 안에 들어가 배경색이 몇 페이지씩 번진다.
+    눈으로 1600 페이지를 보지 않을 것이므로 기계가 본다.
+    """
+    import re as _re
+    for 태그 in ("div", "table", "figure", "pre", "h1", "h2"):
+        연 = len(_re.findall(rf"<{태그}[ >]", h))
+        닫 = len(_re.findall(rf"</{태그}>", h))
+        assert 연 == 닫, f"{모듈}.{함수}: <{태그}> {연}개, </{태그}> {닫}개"
+    if "<h1 " not in h:
+        raise AssertionError(f"{모듈}.{함수}: h1 이 없다 -- 목차에 안 잡힌다")
+    _상수열찾기(모듈, 함수, h)
 
 
 # ------------------------------------------------------- code appendix
@@ -131,3 +225,9 @@ failed.</p>"""
            + front + full + '</body></html>')
     render(doc, "/home/user/SE/edu/IP_Design_Textbook.pdf")
     print(f"code appendix: {total:,} lines")
+    if 상수열:
+        print(f"\n== 잰 표인데 칸이 상수인 곳 {len(상수열)}건 -- 한 줄씩 볼 것 ==")
+        for l in 상수열:
+            print("  " + l)
+    else:
+        print("잰 표에 상수 칸 없음")
