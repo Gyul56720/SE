@@ -11,6 +11,10 @@ from book import ZOO
 
 # (존, 상대경로, 확장자들, 설명) -- 순서가 곧 부록의 순서다
 묶음 = [
+ ("ip","circuitvalley_USB3_MIPI_CSI2_RX_V2_Crosslink_NX/FPGA_Source/source/mipi_csi_bridge",{".v"},"MIPI CSI-2 수신기 -- 패킷 디코더 · 레인 정렬 · RAW 언팩"),
+ ("ip","circuitvalley_mipi_csi_receiver_FPGA",{".v"},"MIPI CSI-2 수신기 (1세대)"),
+ ("ip","alexforencich_verilog-ethernet/rtl",{".v"},"이더넷 MAC · 10G BASE-R PCS · XGMII/GMII"),
+ ("ip","alexforencich_verilog-pcie/rtl",{".v"},"PCIe 코어 (추가)"),
  ("model","kokke_tiny-AES-c",{".c",".h"},"AES 골든 모델 (C)"),
  ("model","B-Con_crypto-algorithms",{".c",".h"},"AES·SHA·MD5 C 참조 구현"),
  ("ip","secworks_aes/src/rtl",{".v"},"AES 코어 (Verilog)"),

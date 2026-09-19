@@ -414,3 +414,51 @@ _("플래시 컨트롤러", "The flash controller's interface logic.",
   "interface must allow the core to make progress. The resulting concurrency &mdash; "
   "erase in progress while reads continue from another bank &mdash; is where the "
   "verification effort concentrates.")
+
+_("MIPI CSI-2 수신기 -- 패킷 디코더 · 레인 정렬 · RAW 언팩",
+  "A working MIPI CSI-2 receiver in Verilog: byte and lane aligners, the packet decoder, "
+  "RAW8/10/12 depackers, an output reformatter, and a debayer filter.",
+  "<b>Because it is the concrete form of every block named in Chapter P1.</b> Reading "
+  "<code>mipi_rx_lane_aligner.v</code> alongside the description of lane deskew, and "
+  "<code>mipi_rx_raw12_depacker.v</code> alongside the explanation of RAW packing, turns "
+  "an abstract block diagram into something that can be modified.",
+  "Packet framing and synchronisation; ECC and CRC; bit-packing and unpacking; "
+  "multi-lane deskew; line buffering for neighbourhood operations.",
+  "Start with <code>mipi_rx_raw_depacker.v</code>. The bit-slicing there is exactly the "
+  "part that Chapter P1 identifies as where verification effort concentrates, and seeing "
+  "how few lines it takes &mdash; and how many ways it can be wrong &mdash; makes the "
+  "point better than any description.")
+
+_("MIPI CSI-2 수신기 (1세대)",
+  "An earlier generation of the same receiver, targeting a different FPGA family.",
+  "<b>Because comparing two implementations of one specification is instructive.</b> The "
+  "differences show which parts are forced by the standard and which are choices &mdash; "
+  "the distinction a specification writer must be able to make.",
+  "Design portability; the boundary between specification and implementation.",
+  "A useful exercise: list the differences between the two versions and classify each as "
+  "required by the standard, forced by the target device, or a free choice. That "
+  "classification is the substance of a good specification document.")
+
+_("이더넷 MAC · 10G BASE-R PCS · XGMII/GMII",
+  "A widely used open Ethernet implementation: 1G and 10G MACs, the 10G BASE-R PCS "
+  "(64b/66b encode and decode, block synchronisation, BER monitor), and the GMII/XGMII "
+  "interface adapters.",
+  "<b>Because it is the reference point for Chapter P3.</b> It shows what a complete MAC "
+  "contains, and &mdash; equally usefully &mdash; what it does not: there is no RS-FEC and "
+  "no 100G multi-lane PCS here, which is precisely the gap a new IP could fill.",
+  "Framing; CRC-32; inter-frame gap; 64b/66b line coding; scrambling for DC balance; "
+  "block synchronisation state machines.",
+  "Read <code>xgmii_baser_enc_64.v</code> and <code>xgmii_baser_dec_64.v</code> together "
+  "with Chapter K2's account of 64b/66b. The two-bit sync header and the block type field "
+  "are visible directly in the code, and the scrambler is in <code>lfsr.v</code> &mdash; "
+  "the same LFSR structure that Chapter Z3 introduces as CRC, PRBS and scrambler at once.")
+
+_("PCIe 코어 (추가)",
+  "Additional PCIe interface logic: transaction handling and DMA.",
+  "<b>Because Chapter P2 describes the layering abstractly and this shows the transaction "
+  "layer as code.</b> DMA and descriptor handling, in particular, are where the "
+  "throughput analysis of that chapter becomes concrete.",
+  "Layered protocols; credit-based flow control; descriptor rings; DMA engines.",
+  "Trace how outstanding requests are tracked. Chapter P2 argues that tag capacity rather "
+  "than link width limits read throughput; the tag management logic here is where that "
+  "limit physically lives.")
