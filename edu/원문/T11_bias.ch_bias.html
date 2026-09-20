@@ -1,0 +1,167 @@
+<h1 id="T11">T11. Bias and References — Making a Number That Does Not Move</h1>
+<p class="한줄">Everything else in this book assumes a stable current or voltage exists. Making one costs more thought than using one.</p>
+<div class="사다리"><div class="사다리앞"><b>읽기 전에 알아야 하는 것</b><br>전압 · 전류 · 저항 · 온도 · 지수함수 · 로그 · 미분 · 문턱전압 · 트랜스컨덕턴스 · 출력저항 · 정합 · 플리커잡음 · 열잡음 · 등가저항</div><div class="사다리뒤"><b>이 장에서 새로 나오는 것</b><br>PTAT · CTAT · 밴드갭기준 · 곡률보정 · 온도계수 · 시동회로 · 퇴화동작점 · 전원제거비 · 부하조정 · 일정gm바이어스 · 기준전류 · 트리밍</div></div>
+<p>A chip has no accurate absolute quantities. Resistors vary ±20 %, capacitors
+    ±10 %, threshold voltages by tens of millivolts, and everything moves with
+    temperature. Yet a data converter needs a reference stable to a fraction of an LSB,
+    and an amplifier needs a bias current that does not double over the automotive
+    temperature range. This chapter is about where that stability comes from — and
+    the answer is that it is <b>constructed by cancelling two opposite temperature
+    dependencies against each other</b>, which is why it is never free and never
+    perfect.</p>
+<h2>T11.1 Two things a process gives you for free, both temperature-dependent</h2>
+<div class="정의"><b>CTAT (complementary to absolute temperature)</b> &mdash; A quantity that <b>falls</b> with temperature. The base-emitter voltage of a bipolar transistor at fixed current is the canonical one: V<sub>BE</sub> ≈ 0.7 V at room temperature with a slope of about −2 mV/°C, and it is <i>not</i> linear — the curvature it leaves behind is the floor on every plain bandgap.</div>
+<div class="정의"><b>PTAT (proportional to absolute temperature)</b> &mdash; A quantity that <b>rises</b> proportionally with absolute temperature. The difference between two V<sub>BE</sub>s at a current-density ratio N is exactly PTAT: ΔV<sub>BE</sub> = (kT/q)·ln N. It is <b>linear in T by construction</b>, and it depends only on a ratio and on physical constants — not on process.</div>
+<div class="유도"><div class="유도머리">유도 &mdash; Why adding them in the right proportion gives ~1.2 V</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">V<sub>BE</sub>(T) falls at about −2 mV/°C; ΔV<sub>BE</sub> = (kT/q)·ln N rises at +0.086·ln N mV/°C.</td><td class="유도왜">For N = 8, that is +0.179 mV/°C — far too small on its own, which is why it must be amplified.</td></tr><tr><td class="유도번호">2</td><td class="유도말">Amplify the PTAT term by R1/R3 and add: V<sub>ref</sub> = V<sub>BE</sub> + (R1/R3)·ΔV<sub>BE</sub>.</td><td class="유도왜">The gain is a <b>resistor ratio</b> — the one accurate thing a process offers (T10), which is why this topology survived.</td></tr><tr><td class="유도번호">3</td><td class="유도말">Choose the ratio so the slopes cancel at the temperature of interest.</td><td class="유도왜">One equation, one unknown. The cancellation is exact only at one temperature because V<sub>BE</sub> is curved and the PTAT term is straight.</td></tr><tr><td class="유도번호">4</td><td class="유도말">The value at which the slopes cancel is the silicon bandgap extrapolated to 0 K — about 1.2 V. <b>You do not choose it; it chooses itself.</b></td><td class="유도왜">Measured below: the best temperature coefficient lands at V<sub>ref</sub> = 1.1652&nbsp;V. Nobody designed that number — it is where the cancellation happens to occur.</td></tr></tbody></table></div>
+<h2>T11.2 The measurement: a sharp optimum, and what sets its floor</h2>
+<table><caption>표 5. Measured temperature coefficient against PTAT gain (ngspice, −40…125 °C, N = 8, box method)</caption><thead><tr><th>R3</th><th>V_ref</th><th>TC</th><th></th></tr></thead><tbody><tr><td>6&nbsp;kΩ</td><td>1.5678&nbsp;V</td><td>817.8&nbsp; ppm/°C</td><td></td></tr><tr><td>8&nbsp;kΩ</td><td>1.3243&nbsp;V</td><td>385.6&nbsp; ppm/°C</td><td></td></tr><tr><td>9&nbsp;kΩ</td><td>1.2425&nbsp;V</td><td>202.5&nbsp; ppm/°C</td><td></td></tr><tr><td>9.8&nbsp;kΩ</td><td>1.1889&nbsp;V</td><td>68.8&nbsp; ppm/°C</td><td></td></tr><tr><td>10&nbsp;kΩ</td><td>1.1768&nbsp;V</td><td>37&nbsp; ppm/°C</td><td></td></tr><tr><td>10.2&nbsp;kΩ</td><td>1.1652&nbsp;V</td><td>12.7&nbsp; ppm/°C</td><td><b>optimum</b></td></tr><tr><td>10.3&nbsp;kΩ</td><td>1.1595&nbsp;V</td><td>15.5&nbsp; ppm/°C</td><td></td></tr><tr><td>11&nbsp;kΩ</td><td>1.1228&nbsp;V</td><td>113.7&nbsp; ppm/°C</td><td></td></tr><tr><td>12&nbsp;kΩ</td><td>1.0776&nbsp;V</td><td>251.4&nbsp; ppm/°C</td><td></td></tr><tr><td>14&nbsp;kΩ</td><td>1.0061&nbsp;V</td><td>494.5&nbsp; ppm/°C</td><td></td></tr></tbody></table>
+<figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 430 230" width="100%" style="max-width:430px;height:auto" font-family="ui-monospace,monospace" font-size="11"><path d="M52,18 L52,196 L414,196" fill="none" stroke="#888" stroke-width="1.2"/><path d="M52.0,196 L52.0,200" fill="none" stroke="#888" stroke-width="1.0"/><text x="52.0" y="212" fill="#888" font-size="9" text-anchor="middle">6</text><path d="M233.0,196 L233.0,200" fill="none" stroke="#888" stroke-width="1.0"/><text x="233.0" y="212" fill="#888" font-size="9" text-anchor="middle">10</text><path d="M414.0,196 L414.0,200" fill="none" stroke="#888" stroke-width="1.0"/><text x="414.0" y="212" fill="#888" font-size="9" text-anchor="middle">14</text><path d="M48,196.0 L52,196.0" fill="none" stroke="#888" stroke-width="1.0"/><text x="44" y="199.0" fill="#888" font-size="9" text-anchor="end">0</text><path d="M48,107.0 L52,107.0" fill="none" stroke="#888" stroke-width="1.0"/><text x="44" y="110.0" fill="#888" font-size="9" text-anchor="end">408.9</text><path d="M48,18.0 L52,18.0" fill="none" stroke="#888" stroke-width="1.0"/><text x="44" y="21.0" fill="#888" font-size="9" text-anchor="end">817.8</text><text x="233.0" y="224" fill="#111" font-size="10" text-anchor="middle">R3 (kΩ) — sets the PTAT gain</text><text x="12" y="107.0" font-size="10" fill="#111" transform="rotate(-90 12 107.0)" text-anchor="middle">TC (ppm/°C)</text><path d="M52.0,18.0 L142.5,112.07141110295915 L187.75,151.92443140132062 L223.95000000000005,181.02518953289314 L233.0,187.9466862313524 L242.04999999999995,193.23575446319393 L246.57500000000005,192.6263145023233 L278.25,171.25238444607484 L323.5,141.28099779897286 L414.0,88.36854976766936" fill="none" stroke="#c0392b" stroke-width="1.8"/><circle cx="52.0" cy="18.0" r="2.2" fill="#c0392b"/><circle cx="142.5" cy="112.07141110295915" r="2.2" fill="#c0392b"/><circle cx="187.75" cy="151.92443140132062" r="2.2" fill="#c0392b"/><circle cx="223.95000000000005" cy="181.02518953289314" r="2.2" fill="#c0392b"/><circle cx="233.0" cy="187.9466862313524" r="2.2" fill="#c0392b"/><circle cx="242.04999999999995" cy="193.23575446319393" r="2.2" fill="#c0392b"/><circle cx="246.57500000000005" cy="192.6263145023233" r="2.2" fill="#c0392b"/><circle cx="278.25" cy="171.25238444607484" r="2.2" fill="#c0392b"/><circle cx="323.5" cy="141.28099779897286" r="2.2" fill="#c0392b"/><circle cx="414.0" cy="88.36854976766936" r="2.2" fill="#c0392b"/><text x="410" y="30" fill="#c0392b" font-size="9.5" text-anchor="end" font-weight="bold">TC</text><circle cx="242.04999999999995" cy="193.23575446319393" r="3.4" fill="#c0392b"/><text x="248.04999999999995" y="187.23575446319393" fill="#c0392b" font-size="9" text-anchor="start" font-weight="bold">12.7</text></svg><figcaption><b>그림 1.</b> The optimum is <b>sharp</b>, unlike the PLL's loop-bandwidth optimum in T7:
+        a 2 % error in the ratio triples the temperature coefficient. That is the
+        difference between an optimum set by a <i>cancellation</i> and one set by a
+        <i>sum of two opposing costs</i> — and it is why references are trimmed and
+        loop filters are not.</figcaption></figure>
+<div class="예제"><div class="예제머리">예제 1. How accurately must that ratio be set?</div><div class="예제줄"><b>주어진 것.</b> The measured optimum is R3 = 10.2&nbsp;kΩ giving
+        12.7&nbsp; ppm/°C. Neighbouring points:
+        10&nbsp;kΩ → 37&nbsp; ppm/°C and
+        10.3&nbsp;kΩ → 15.5&nbsp; ppm/°C.</div><div class="예제줄"><b>푸는 법.</b> Compute the fractional ratio error at each point and compare with the TC
+        degradation.</div><div class="예제답"><b>답.</b> A 2&nbsp;% error costs
+        2.91× the temperature coefficient.
+        <b>Sub-per-cent ratio accuracy is required</b>, which is a matching problem
+        (T12) and usually a trim.</div><div class="예제함정"><b>여기서 틀린다.</b> Assuming the optimum found in simulation is the optimum in silicon. The
+        cancellation depends on V<sub>BE</sub>'s actual slope, which is a process
+        parameter with its own spread — so the optimum <b>moves per lot</b>. This is
+        precisely why production references are trimmed at test, and why a design that
+        cannot be trimmed must be designed for the <i>worst-case</i> optimum offset,
+        not the nominal one.</div></div>
+<table><caption>표 6. The same knob from the other side: area ratio N at fixed R3 = 10 kΩ</caption><thead><tr><th>N</th><th>V_ref</th><th>TC</th></tr></thead><tbody><tr><td>4</td><td>0.9773&nbsp;V</td><td>602.5&nbsp; ppm/°C</td></tr><tr><td>8</td><td>1.1768&nbsp;V</td><td>37&nbsp; ppm/°C</td></tr><tr><td>16</td><td>1.3732&nbsp;V</td><td>484.7&nbsp; ppm/°C</td></tr><tr><td>32</td><td>1.5678&nbsp;V</td><td>817.8&nbsp; ppm/°C</td></tr></tbody></table>
+<div class="짚기">Both tables tune the same physical quantity — the PTAT gain — and both
+    show the same sharp optimum. The practical difference is cost: N enters as ln N, so
+    doubling the area ratio buys only 0.69 of a unit of gain, while the resistor ratio
+    is linear and free. <b>That is why real designs use a modest N (8 is almost
+    universal) and set the fine adjustment with resistors</b> — the area would otherwise
+    be enormous for a ratio that a resistor provides for nothing.</div>
+<div class="개념"><div class="개념머리">곡률 (curvature) — the floor the plain topology cannot cross</div>
+<div class="개념이론"><p>The measured best is 12.7&nbsp; ppm/°C, and no choice
+        of ratio does better. The reason is structural: V<sub>BE</sub>(T) contains a
+        T·ln T term while the PTAT correction is exactly linear in T, so their
+        difference cannot be zero everywhere. What remains is a bow — the reference is
+        equal at two temperatures and off in between.</p>
+        <p>Curvature-corrected references add a third term with the right curvature
+        (from a resistor's own temperature coefficient, from a PTAT² current, or from
+        the difference of two V<sub>BE</sub>s at different current
+        <i>temperature dependencies</i>) and reach single-digit ppm/°C. Each of those
+        schemes costs area and a new sensitivity, which is why the plain topology is
+        still shipped wherever tens of ppm are enough.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>Any reference feeding a converter of 12 bits or more, and any system specified over the automotive or industrial temperature range.</td></tr>
+<tr><th>언제 쓰나</th><td>Compare the reference's drift with the converter's LSB over the operating range before choosing. At 12 bits and 1 V full scale an LSB is 244 µV; a 12.7&nbsp; ppm/°C reference drifts 2,515&nbsp;µV over 165 °C — <b>about 10 LSB</b>, which is why converters are specified at a temperature and references are trimmed.</td></tr>
+<tr><th>어떻게 쓰나</th><td>Measure TC as a box (max−min over the range, not a local slope), report the range it was measured over, and state whether it is trimmed. Those three facts make two references comparable; without them, nothing does.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>* Box TC, which is what a datasheet means, and the local slope,
+* which is what a naive .measure gives.  They differ by 2-5x.
+.dc TEMP -40 125 5
+.measure dc vmax MAX v(out)
+.measure dc vmin MIN v(out)
+.measure dc vavg AVG v(out)
+.measure dc tc_box param='(vmax-vmin)/vavg/165*1e6'   $ ppm/degC -- the honest one
+* Reporting a slope taken at 27 C as 'the TC' is the standard way to make a
+* reference look 3x better than it is.</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> A temperature coefficient quoted without its range is not a
+            specification. The box method over −40…125 °C and a local slope at 27 °C can
+            differ by a factor of five on the <b>same</b> circuit, and the second number
+            is the one that appears in optimistic datasheets.</div>
+</div>
+<h2>T11.3 The failure mode that has nothing to do with temperature</h2>
+<div class="개념"><div class="개념머리">시동 회로 (start-up) and the degenerate operating point</div>
+<div class="개념이론"><p>A bandgap's loop has <b>two</b> stable solutions: the intended one, and
+        the one where every current is zero. Zero is perfectly self-consistent — no
+        current means no V<sub>BE</sub>, which means no current — and nothing in the
+        loop distinguishes it from the useful solution.</p>
+        <p>A start-up circuit injects a small current when the reference is near zero
+        and then <b>gets out of the way</b>. Both halves matter: a start-up that keeps
+        conducting adds its own temperature dependence to the output, and a start-up
+        that is too weak leaves a fraction of parts dead on the slow corner.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>Every bandgap, every constant-g<sub>m</sub> bias cell, every circuit whose bias is derived from itself.</td></tr>
+<tr><th>언제 쓰나</th><td>It is not optional and it is not a nominal-corner check: the zero state is reached by a slow supply ramp, by a brown-out, or by any sequence the designer did not think of.</td></tr>
+<tr><th>어떻게 쓰나</th><td>Simulate the <b>supply ramp</b>, not the operating point, at every corner and at several ramp rates including a very slow one. Then force the output to zero with an initial condition and verify that it recovers.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>* The two simulations that must both pass. The .op alone proves nothing --
+* it simply finds A solution, and a degenerate circuit HAS a solution.
+.tran 1u 500u                        $ 1) slow supply ramp
+Vcc vcc 0 PWL(0 0 400u 1.8)          $   400 us ramp -- deliberately slow
+.measure tran vref_final FIND v(ref) AT=480u
+
+.ic v(ref)=0                         $ 2) forced into the dead state
+.tran 1u 100u
+.measure tran vref_rec FIND v(ref) AT=90u
+* Both must land at the design value. A circuit that passes .op and fails these
+* is a part that works on the bench and fails in the field at cold start.</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> The most common start-up bug is not the absence of the circuit but its
+            <b>strength at the fast corner</b>: a start-up device sized for the slow
+            corner may still be injecting current at the fast one, shifting the
+            reference by a few millivolts in a way that tracks process. Check that the
+            start-up current is essentially zero once the loop is up — at every
+            corner.</div>
+</div>
+<h2>T11.4 A reference has three specifications, not one</h2>
+<table><caption>표 7. What a reference must guarantee</caption><thead><tr><th>Specification</th><th>What it is</th><th>Fails as</th><th>Set by</th></tr></thead><tbody><tr><td>Temperature coefficient</td><td>Drift over the operating range</td><td>Gain error that changes with ambient</td><td>PTAT/CTAT balance, curvature, trim</td></tr><tr><td><b>PSRR</b></td><td>Rejection of supply noise, at frequency</td><td>The converter's noise floor rises when the digital side is busy</td><td>The amplifier's supply rejection <b>and the layout</b></td></tr><tr><td>Load regulation</td><td>Output shift versus load current</td><td>The reference moves when the converter samples — a code-dependent error</td><td>Output impedance and the buffer, not the core</td></tr><tr><td>Noise</td><td>Integrated output noise in band</td><td>Directly adds to the converter's noise floor (T4)</td><td>Resistor thermal noise and the amplifier's 1/f</td></tr></tbody></table>
+<div class="사고"><b>실제로 난 일</b><br>Load regulation is the specification that surprises digital
+    integrators. A SAR converter's reference is not a DC load: it draws a charge pulse
+    at every bit trial, and the reference must settle between trials to the full
+    accuracy of the conversion (T10's settling argument, applied to a load that changes
+    every cycle). A reference that meets its DC specification perfectly can still
+    produce a converter with <b>code-dependent INL</b>, because the charge demanded
+    depends on the code being tested. <b>The fix is a local decoupling capacitor sized
+    against the charge per trial</b> — and that capacitor is often larger than the
+    converter's own array.</div>
+<div class="개념"><div class="개념머리">일정 g_m 바이어스 (constant-g_m bias)</div>
+<div class="개념이론"><p>Most analog specifications — bandwidth, noise, gain — depend on
+        g<sub>m</sub>, not on current. A bias that holds current constant therefore holds
+        the <i>wrong</i> thing: g<sub>m</sub> = √(2μC<sub>ox</sub>(W/L)I) still moves
+        with mobility, which moves with temperature and process.</p>
+        <p>The constant-g<sub>m</sub> cell sets g<sub>m</sub> = 1/(R·(1−1/√K)) by
+        forcing the source-degeneration resistor to define it — so g<sub>m</sub> now
+        tracks a <b>resistor</b> rather than a mobility. It does not remove the
+        dependence; it <i>moves it</i> to a component whose variation you can choose by
+        picking a resistor type.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>The bias of amplifiers, comparators, output drivers — anything whose bandwidth must be stable across corners.</td></tr>
+<tr><th>언제 쓰나</th><td>When bandwidth or noise must hold across process and temperature. It is the default for signal-path bias in mixed-signal IP.</td></tr>
+<tr><th>어떻게 쓰나</th><td>Pick the resistor type deliberately (poly resistors and diffusion resistors have very different temperature coefficients), and remember this cell also has a degenerate zero state — it needs its own start-up.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>* What the bias must actually hold, checked across corners.
+* Constant CURRENT is the wrong target; constant gm is the right one.
+.dc TEMP -40 125 5
+.measure dc gm_min MIN @m.xamp.m1[gm]
+.measure dc gm_max MAX @m.xamp.m1[gm]
+.measure dc gm_spread param='(gm_max-gm_min)/gm_min*100'   $ percent
+* A constant-current bias typically gives 30-40% here; constant-gm, under 10%.</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> Constant-g<sub>m</sub> makes g<sub>m</sub> track 1/R, so the circuit's
+            bandwidth now depends on the resistor's temperature coefficient — which for
+            a diffusion resistor can be thousands of ppm/°C. Choosing the resistor is
+            part of the design, not a layout detail.</div>
+</div>
+<h2>T11.5 What to do with this on Monday</h2>
+<table><caption>표 8. 이 장의 개념이 실제로 쓰이는 자리</caption><thead><tr><th>개념</th><th>쓰이는 블록</th><th>무엇을 정하나</th></tr></thead><tbody><tr><td>PTAT · CTAT · 밴드갭기준</td><td>Any converter or precision block</td><td>The reference topology and whether it must be trimmed</td></tr><tr><td>온도계수 · 곡률보정</td><td>System specification over temperature</td><td>Whether tens of ppm are enough or curvature correction is needed</td></tr><tr><td>시동회로 · 퇴화동작점</td><td>Every self-biased cell</td><td>Whether the part comes up at cold start — at every corner</td></tr><tr><td>전원제거비 · 부하조정</td><td>Integration with the digital side</td><td>The decoupling the reference needs, and who pays for it</td></tr><tr><td>일정gm바이어스</td><td>Signal-path bias</td><td>Whether bandwidth holds across corners, and which resistor type</td></tr></tbody></table>
+<p>The measured result to carry: the plain bandgap's best temperature
+    coefficient in this simulation is 12.7&nbsp; ppm/°C at
+    V<sub>ref</sub> = 1.1652&nbsp;V, and the optimum is <b>sharp</b> —
+    a 2&nbsp;% ratio error costs
+    2.91× the drift. Everything else in this
+    chapter follows from that sharpness: it is why references are trimmed, why matching
+    (the next chapter) is the limiting discipline, and why the value nobody chose —
+    1.2 V — is printed on every datasheet in the field.</p>
+<p>The next chapter takes the assumption this one has been leaning on — that two
+    identically drawn devices are identical — and replaces it with a distribution.</p>
+<div class="특허"><div class="특허머리">특허로 가는 길 &mdash; 이 주제에서 발명이 일어나는 자리</div><div class="특허속">References are an old field with a live patent stream, and it clusters
+        in three places: <b>curvature correction</b> (every scheme that cancels the
+        V<sub>BE</sub> non-linearity the plain bandgap leaves behind), <b>low-voltage
+        operation</b> (current-mode and resistive-divider bandgaps that work below
+        1.2 V, which the classic topology cannot), and <b>trim and calibration</b>
+        (one-point trim schemes that infer the curvature from a single measurement).
+        The first and third are the same idea seen twice: <i>accept a physical error and
+        remove it somewhere cheaper</i> — the pattern from T6.</div></div>
