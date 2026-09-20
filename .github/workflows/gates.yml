@@ -86,6 +86,22 @@ jobs:
       - name: 의존성이 실제로 깔렸는지 확인
         run: python3 -c "import langchain_core, langchain_google_genai, langgraph, discord, numpy, sympy, requests, dotenv"
 
+      - name: EDA 도구 설치 (없으면 검사가 '못 잼' 으로 빨개진다)
+        # 실측 2026-09-20 CI 로그: test_hls_flow · test_ldpcpipe(3) · test_ldpcrtl(4)
+        # · test_manual(2) · test_proto(2) · test_pnr(1) 이 전부
+        # "도구가 없다 -- '통과' 가 아니라 '못 잼' 이다" 로 빨갰다.
+        # **검사가 옳다** -- 못 잰 것을 통과로 세지 않는 것이 이 저장소의 규율이다.
+        # 그러니 고칠 곳은 검사가 아니라 **도구를 깔지 않는 여기**다.
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+              build-essential iverilog yosys verilator ngspice nextpnr-ice40 \
+            || sudo apt-get install -y --no-install-recommends \
+              build-essential iverilog yosys verilator ngspice
+          for t in g++ iverilog vvp yosys verilator ngspice; do
+            command -v $t >/dev/null && echo "  있다 $t" || echo "  **없다** $t"
+          done
+
       - name: 테스트 전부 (목록은 scripts/tests.sh 한 군데에만 있다)
         # **로컬과 같은 것을 돌린다.** 전에는 여기에 파일 이름을 손으로 나열했고,
         # 새 테스트를 만들면 넣는 것을 잊었다 -- 로컬은 초록인데 CI 만 빨갛거나,
@@ -93,6 +109,12 @@ jobs:
         env:
           # 의존성이 없어 건너뛰는 것을 CI 에서는 실패로 만든다.
           SE_REQUIRE_DEPS: "1"
+          # **원장을 임시 자리에 쓰게 한다.** 실측 2026-09-20: 검사 한 바퀴가
+          # eval·improve·router·secaudit 원장 넷을 더럽혀서, 검사가 다 통과해도
+          # `scripts/tests.sh` 가 "검사가 추적되는 파일을 건드렸다" 로 빨개졌다.
+          # 검사는 재는 것이지 남기는 것이 아니다(CLAUDE.md) -- 깃발은 파일 하나에만
+          # 닿고 환경 변수라야 손자까지 내려간다.
+          SE_LEDGER_ROOT: ${{ runner.temp }}/ledgers
         run: scripts/tests.sh
 
       - name: 오케스트레이터 계획 수리 테스트

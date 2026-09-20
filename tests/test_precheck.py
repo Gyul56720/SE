@@ -11,6 +11,7 @@ CI 를 안 기다리기로 했으므로 이 스크립트가 CI 자리에 선다.
 """
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -61,8 +62,13 @@ print("[돌려 보기] 실제로 돌고 판정을 낸다")
 # 돌릴 것을 **재서 고르게** 되면서 검사 수가 54개에서 상한 아래 전부로 늘었다.
 # 그래도 총 시간은 예전과 비슷하다(느린 것이 빠지므로). 넉넉히 준다 -- 여기서 시간을
 # 짜면 **스크립트가 멀쩡한데 검사가 빨개진다.**
+# CI 에서 900초를 넘겨 터졌다(실측 2026-09-20). 러너가 느리고, EDA 도구가 깔리면서
+# 건너뛰던 검사까지 실제로 돌기 때문이다. **여기서 시간을 짜면 스크립트가 멀쩡한데
+# 검사가 빨개진다** -- 위에 이미 적힌 그 까닭 그대로다. 상한을 낮춰(빠른 것만 고르게)
+# 뜻을 지키면서 시간을 묶는다.
+_환경 = dict(os.environ, PRECHECK_LIMIT=os.environ.get("PRECHECK_LIMIT", "8"))
 _돌 = subprocess.run(["bash", str(SH)], capture_output=True, text=True, cwd=str(ROOT),
-                    timeout=900)
+                    env=_환경, timeout=1500)
 _출 = _돌.stdout + _돌.stderr
 ok("깨끗한 판에서 검사" in _출, "어느 판을 검사하는지 찍는다")
 ok("command not found" not in _출 and "bad substitution" not in _출,
@@ -79,7 +85,6 @@ ok(not re.findall(r"tests/test_[^\s\"']+\.py",
 ok("merge-base" in _글, "빨간 것은 갈림점에서 다시 돌려 내 탓인지 가른다")
 
 # 빗장이 서 있으면 아무것도 안 하고 빠진다 -- 그래야 안쪽에서 안 내려간다.
-import os                                                             # noqa: E402
 _안 = subprocess.run(["bash", str(SH)], capture_output=True, text=True, cwd=str(ROOT),
                     env={**os.environ, "PRECHECK_RUNNING": "1"}, timeout=60)
 ok(_안.returncode == 0 and "되돌이" in _안.stdout,
