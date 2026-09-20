@@ -391,6 +391,16 @@ import re
     "에이엑스아이": "axi burst channel id outstanding",
     "에이피비": "apb register bus psel penable",
     "제이택": "jtag tap boundary scan",
+    # --- 실습(T23 · lab/).  실측 2026-09-20: "실습 흐름을 어떻게 돌리나" 가
+    # 아무것도 못 찾았고, "변이검사가 뭐야" 는 W6.1(첫 주)이 T21.2 를 눌렀다.
+    "실습": "lab flow run stage measured",
+    "실습흐름": "lab flow nine stages run yosys measured",
+    "변이검사": "mutation testing inject bug scoreboard red hole",
+    "회귀기준": "regression baseline golden numbers",
+    "우회비": "detour ratio wirelength hpwl routed",
+    "표류": "drift slack pre-route post-route correlation",
+    "균형맞추기": "clock tree balancing skew buffers power",
+    "고장시뮬": "fault simulation parallel pattern dropping coverage",
     # --- 구현 흐름 (T17~T22). 사용자가 붙인 강의 화면의 말을 그대로 열쇠로 삼는다.
     # 실측 2026-09-20: "타이밍 수렴이 안 되면 어떻게 하나" 가 T17.4 를 못 찾고
     # B3.3 로 갔다 -- `타이밍수렴` 열쇠가 없어 `타이밍` 으로만 넓혀져서다.
