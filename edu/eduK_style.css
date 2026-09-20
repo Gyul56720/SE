@@ -1,0 +1,90 @@
+@page { size: A4; margin: 20mm 17mm 18mm 17mm;
+        @bottom-center { content: counter(page); font-size: 9pt; color:#666; } }
+body { font-family:"NanumGothic","Nanum Gothic","DejaVu Sans",sans-serif;
+       font-size:10.2pt; line-height:1.62; color:#1a1a1a; }
+code, pre { font-family:"NanumGothicCoding","DejaVu Sans Mono",monospace; }
+
+h1 { font-size:20pt; margin:0 0 4pt 0; padding-top:6pt;
+     border-bottom:2.4pt solid #123f6d; page-break-before:always; }
+h2 { font-size:14pt; margin:16pt 0 5pt 0; color:#123f6d;
+     border-bottom:0.6pt solid #cfd8e3; padding-bottom:2pt; }
+h3 { font-size:11.6pt; margin:11pt 0 4pt 0; color:#2a2a2a; }
+p  { margin:5pt 0; text-align:justify; }
+
+.한줄 { font-size:10.6pt; color:#444; font-style:italic; margin:2pt 0 8pt 0; }
+
+/* 사다리 상자 -- 읽기 전에 / 읽고 나면 */
+.사다리 { display:table; width:100%; margin:8pt 0 12pt 0; border-collapse:separate;
+          border-spacing:6pt 0; }
+.사다리앞, .사다리뒤 { display:table-cell; width:50%; font-size:8.8pt;
+          padding:6pt 8pt; border-radius:3pt; line-height:1.45; }
+.사다리앞 { background:#eef3f8; border-left:2.6pt solid #5b8db8; }
+.사다리뒤 { background:#eef7f2; border-left:2.6pt solid #3f8f63; }
+
+/* 개념 다섯 칸 */
+.개념 { margin:12pt 0; border:0.8pt solid #c9d4e0; border-radius:4pt;
+        page-break-inside:avoid; }
+.개념머리 { background:#123f6d; color:#fff; font-weight:bold; font-size:10.8pt;
+           padding:4pt 9pt; border-radius:3pt 3pt 0 0; }
+.개념이론 { padding:7pt 10pt; }
+.개념표 { width:100%; margin:0; border-top:0.6pt solid #dde4ec; font-size:9.4pt; }
+.개념표 th { width:82pt; text-align:left; background:#f6f8fb; color:#123f6d;
+            vertical-align:top; padding:4pt 9pt; font-weight:bold; }
+.개념표 td { padding:4pt 9pt; vertical-align:top; }
+.개념코드머리 { font-size:8.8pt; color:#555; padding:5pt 10pt 0 10pt; font-weight:bold; }
+.개념주의 { background:#fbf2f2; border-top:0.6pt solid #e4c9c9; font-size:9.4pt;
+           padding:5pt 10pt; }
+
+/* 유도 */
+.유도 { margin:10pt 0; border-left:2.6pt solid #7a5ba8; background:#faf8fd;
+        page-break-inside:avoid; }
+.유도머리 { font-weight:bold; font-size:9.6pt; color:#5a3f85; padding:5pt 9pt 2pt 9pt; }
+.유도표 { width:100%; font-size:9.2pt; margin:0; }
+.유도표 th { text-align:left; color:#666; font-size:8.4pt; padding:2pt 9pt;
+            border-bottom:0.5pt solid #e0d8ec; font-weight:normal; }
+.유도번호 { width:14pt; color:#9a8ab5; vertical-align:top; padding:3pt 0 3pt 9pt; }
+.유도말 { width:52%; vertical-align:top; padding:3pt 8pt; }
+.유도왜 { color:#4a4a4a; vertical-align:top; padding:3pt 9pt 3pt 8pt; font-size:8.9pt; }
+
+/* 예제 */
+.예제 { margin:10pt 0; border:0.8pt solid #d8c9a8; border-radius:4pt;
+        page-break-inside:avoid; }
+.예제머리 { background:#8a6d3b; color:#fff; font-weight:bold; font-size:9.8pt;
+           padding:4pt 9pt; border-radius:3pt 3pt 0 0; }
+.예제줄 { padding:4pt 10pt; font-size:9.6pt; }
+.예제답 { padding:5pt 10pt; background:#fdfaf3; font-size:9.8pt; }
+.예제덧 { padding:4pt 10pt; font-size:9.2pt; color:#555; }
+.예제함정 { background:#fbf2f2; font-size:9.4pt; padding:5pt 10pt;
+           border-top:0.6pt solid #e4c9c9; }
+
+/* 정의 · 짚기 · 사고 · 특허 */
+.정의 { background:#f4f7fa; border-left:2.6pt solid #123f6d; padding:5pt 9pt;
+        margin:7pt 0; font-size:9.8pt; }
+.짚기 { background:#fffbe9; border-left:2.6pt solid #c9a227; padding:5pt 9pt;
+        margin:7pt 0; font-size:9.6pt; }
+.사고 { background:#fbf2f2; border-left:2.6pt solid #a83f3f; padding:5pt 9pt;
+        margin:7pt 0; font-size:9.6pt; }
+.특허 { margin:12pt 0 4pt 0; border:1pt solid #3f8f63; border-radius:4pt;
+        page-break-inside:avoid; }
+.특허머리 { background:#3f8f63; color:#fff; font-weight:bold; font-size:9.8pt;
+           padding:4pt 9pt; border-radius:3pt 3pt 0 0; }
+.특허속 { padding:6pt 10pt; font-size:9.6pt; }
+
+table { border-collapse:collapse; width:100%; margin:8pt 0; font-size:9.3pt;
+        page-break-inside:avoid; }
+caption { caption-side:top; text-align:left; font-size:8.8pt; color:#555;
+          padding-bottom:3pt; font-style:italic; }
+th, td { border:0.5pt solid #d5dde6; padding:3.4pt 5pt; vertical-align:top;
+         text-align:left; }
+thead th { background:#eef2f7; color:#123f6d; font-weight:bold; }
+
+pre { background:#f7f8fa; border:0.5pt solid #dde3ea; border-left:2.4pt solid #8fa4bb;
+      padding:6pt 8pt; font-size:8.5pt; line-height:1.42; overflow-wrap:break-word;
+      white-space:pre-wrap; page-break-inside:avoid; margin:7pt 0; }
+code { font-size:9pt; background:#f2f4f7; padding:0 2pt; border-radius:2pt; }
+pre code { background:none; padding:0; font-size:8.5pt; }
+
+figure { margin:10pt 0; text-align:center; page-break-inside:avoid; }
+figcaption { font-size:8.8pt; color:#555; text-align:left; margin-top:3pt;
+             line-height:1.45; }
+svg { max-width:100%; height:auto; }

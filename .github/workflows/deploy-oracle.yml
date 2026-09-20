@@ -210,6 +210,10 @@ on:
       - "mathmetics/matrix_exponent/benchmarks.json"
       # 배포 스크립트 자신. 이게 없으면 배포 방식을 고쳐도 그 수정이 배포되지 않는다.
       - ".github/workflows/deploy-oracle.yml"
+      # G013 자동 추가 -- 서버가 실행/임포트하는 파일.
+      # imageread.py 가 큰 PDF 를 만나면 이것으로 넘긴다.  이 목록은
+      # **임포트를 따라가지 않으므로** 이름이 적혀 있어야 배포가 걸린다.
+      - "pdfread.py"
   workflow_dispatch: {}
 
 jobs:
@@ -240,7 +244,23 @@ jobs:
             git branch -f "deploy-backup-$(date +%Y%m%d-%H%M%S)" HEAD || true
             # 실측 2026-09-12: 조사가 PR 갈래(fix/…)를 체크아웃한 채 끝나면 reset 은 그 갈래 이름에 남는다.
             # 그러면 봇의 자동 반영 커밋이 계속 그 갈래로 밀린다(머지된 뒤에도 세 번). 배포 대상은 main 이다.
-            git checkout -q -B main origin/main
+            #
+            # `-f` 가 왜 있나 -- 실측 2026-09-20, 배포가 여기서 영영 막혔다:
+            #
+            #     error: Your local changes to the following files would be
+            #     overwritten by checkout:  .github/workflows/deploy-oracle.yml
+            #     Aborting
+            #
+            # 서버의 추적 파일 하나가 고쳐져 있으면 checkout 이 **중단**되고,
+            # 그것을 되돌릴 `reset --hard` 는 **바로 다음 줄이라 영영 안 돈다.**
+            # 복구 장치가 복구해야 할 상황 뒤에 놓여 있었던 셈이다.
+            # 결과: VM 이 머지 이전 커밋에 멈춰 있었고, 새 문서가 거기 없었다.
+            #
+            # 이 서버는 **배포 대상이지 작업 공간이 아니다.**  추적 파일의
+            # 로컬 수정은 지켜야 할 것이 아니라 버려야 할 것이다.  진짜 커밋이
+            # 있었다면 바로 위의 deploy-backup 브랜치에 남는다.
+            # (추적 안 되는 런타임 상태는 -f 도 reset 도 안 건드린다.)
+            git checkout -q -f -B main origin/main
             git reset --hard origin/main
             # G021: 코드(discord_pdf)가 기대는 한글 글꼴은 배포가 깐다 -- 사람에게 apt 를 시키지 않는다.
             sudo apt-get install -y fonts-nanum || (sudo apt-get update -qq && sudo apt-get install -y fonts-nanum)
