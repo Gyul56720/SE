@@ -33,7 +33,9 @@ import bookK  # noqa: E402
       ("T5_sample", "ch_sample"), ("T6_dataconv", "ch_dataconv"),
       ("T7_pll", "ch_pll"), ("T8_serdes", "ch_serdes"),
       ("T9_channel", "ch_channel"), ("T10_switchcap", "ch_switchcap"),
-      ("T11_bias", "ch_bias"), ("T12_match", "ch_match")]
+      ("T11_bias", "ch_bias"), ("T12_match", "ch_match"),
+      ("T13_pi", "ch_pi"), ("T14_rel", "ch_rel"),
+      ("T15_layout", "ch_layout"), ("T16_esd", "ch_esd")]
 
 
 def _짓기():

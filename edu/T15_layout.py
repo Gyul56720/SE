@@ -1,0 +1,206 @@
+# -*- coding: utf-8 -*-
+"""T15 -- Layout: where a correct schematic can still fail."""
+import sys, os, math
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from bookK import 장, 개념, 표, 그림, 정의, 유도, 예제, 짚기, 사고, 수, 쓰는자리
+import sch
+
+
+def ch_layout():
+    c = 장(
+        "T15", "Layout — Where a Correct Schematic Can Still Fail",
+        "The schematic says what is connected. The layout decides what it does.",
+        쓰는것=["저항", "전압", "전류", "주파수", "RC지연", "엘모어지연",
+              "배선지연", "리피터", "정합", "계통불일치", "공통중심", "더미소자",
+              "문턱전압", "일렉트로마이그레이션", "전압강하", "목표임피던스",
+              "레이아웃의존효과"],
+        내놓는것=["기생", "웰근접효과", "STI응력", "밀도규칙",
+                "안테나규칙", "추출", "LVS", "DRC", "플로어플랜", "핀배치",
+                "추상화뷰", "GDS", "하드매크로", "소프트매크로"],
+        특허="""Layout technique is mostly trade practice rather than patent, but two
+        adjacent areas are not: <b>automated layout generation</b> for analog (generators
+        that emit a matched, DRC-clean array from a schematic and a set of constraints)
+        and <b>layout-aware synthesis</b>, where the placement feeds back into sizing.
+        Both attack the same weakness — that the constraints which matter most (match
+        these, keep this away from that, this net carries DC) live in the designer's
+        head and are not in the netlist.""")
+
+    c.글("""Everything this book has computed assumed devices connected by ideal wires.
+    Layout removes that assumption in four ways at once: wires have resistance and
+    capacitance (T2), devices change their behaviour depending on what is drawn next to
+    them, the supply grid becomes the impedance of T13, and the geometry itself must
+    satisfy hundreds of manufacturing rules that have nothing to do with the circuit.
+    A schematic that is correct in every respect can still fail all four.""")
+
+    # ------------------------------------------------------------------
+    c.절("T15.1 The device is not what the schematic says")
+
+    c.날것(정의("레이아웃 의존 효과 (LDE, layout-dependent effects)",
+        "Systematic changes in a device's parameters caused by its surroundings rather "
+        "than by its own dimensions. The same W/L, drawn differently, gives a "
+        "<b>different threshold, different mobility and different matching</b> — and "
+        "the difference is repeatable, so it is not mismatch (T12); it is a shift you "
+        "can predict and must extract."))
+
+    c.날것(표("The three that matter most, and what each one does",
+        ["Effect", "Cause", "Typical size", "How to avoid it"],
+        [["<b>Well proximity (WPE)</b>",
+          "Ions scatter off the well mask edge during implant, raising V<sub>th</sub> "
+          "near it", "Tens of mV within ~1 µm of the well edge",
+          "Keep matched devices well away from the well boundary — and <b>equally</b> "
+          "far"],
+         ["<b>STI stress (LOD)</b>",
+          "The shallow-trench oxide compresses the channel; mobility changes with the "
+          "distance from gate to trench", "Several per cent of drive current",
+          "Identical diffusion extensions on every device of a matched set — which is "
+          "what dummy devices give you"],
+         ["<b>Poly spacing / OD spacing</b>",
+          "Lithography and etch see a different environment at the edge of an array",
+          "A few per cent", "Dummy gates at the ends of every row"]]))
+
+    c.날것(짚기("""All three have the same practical consequence and it is worth stating
+    plainly: <b>a device at the edge of an array is not the same device as one in the
+    middle</b>. That is why dummies exist, why a matched pair must have identical
+    surroundings rather than merely identical dimensions, and why 'the layout engineer
+    can figure it out' is not a design methodology — the constraint is electrical and
+    only the designer knows which devices carry it."""))
+
+    c.날것(개념(
+        "추출 (extraction) — the only netlist that means anything",
+        """<p>Post-layout extraction produces a netlist with every parasitic resistance
+        and capacitance the layout created. It is the netlist that corresponds to
+        silicon; the schematic netlist is a statement of intent.</p>
+        <p>The gap between them is not small. In an analog block the extracted
+        capacitance on a high-impedance node routinely doubles the load the designer
+        assumed, and the routing resistance in a current mirror's source connection can
+        add a systematic offset larger than the mismatch budget of T12. <b>A design is
+        not verified until it has been simulated post-extraction</b>, at every corner
+        that mattered pre-layout.</p>""",
+        어디에="Every block, before tape-out. For analog it is the main verification "
+             "step; for digital it is inside the STA flow (T2's SPEF).",
+        언제="As soon as a first layout exists — not at the end. An extraction that "
+            "reveals a 2× capacitance on a critical node is a re-design, and it is "
+            "cheaper to learn that early.",
+        어떻게="Extract with coupling capacitance included (not just ground "
+             "capacitance), and re-run the corner set. Compare the pre- and post- "
+             "numbers <b>explicitly</b> — the ratio is the thing to look at, and a "
+             "surprise in it usually points at one net.",
+        산업코드="""# The comparison that belongs in every block's review, as a table:
+#   node          C_schematic   C_extracted   ratio
+#   vout_amp         42 fF        96 fF        2.3x   <- investigate THIS
+#   vbias            15 fF        31 fF        2.1x
+#   vin              80 fF        94 fF        1.2x
+# A 2x on a high-impedance node is a bandwidth halving. Finding it here costs a
+# day; finding it in silicon costs a spin.""",
+        주의="""Extraction tools have <b>modes</b> — ground-only, coupled, with or "
+            "without inductance — and a block extracted in the cheap mode can pass
+            everything and fail in silicon through crosstalk (T9's lesson, one level
+            down). Record which mode was used alongside the result."""))
+
+    # ------------------------------------------------------------------
+    c.절("T15.2 Rules that are not about your circuit")
+
+    c.날것(표("Manufacturing rules a designer must plan for, not merely obey",
+        ["Rule", "Why it exists", "What it costs you if ignored"],
+        [["<b>Density</b> (metal and OD fill)",
+          "CMP polishes an uneven surface unevenly",
+          "Fill is inserted automatically — <b>into your matched analog region</b>, changing "
+          "the capacitance you carefully matched. Reserve fill-exclusion regions "
+          "deliberately"],
+         ["<b>Antenna</b>",
+          "A long metal stub connected to a gate collects charge during plasma etch and "
+          "punches the oxide",
+          "The tool inserts a diode or a metal jog — usually fine, but on a "
+          "high-impedance analog node the diode's leakage is not"],
+         ["<b>Minimum area / enclosure / spacing</b>",
+          "Lithography and etch limits",
+          "DRC failures, which are mechanical to fix — the cost is schedule, not "
+          "function"],
+         ["<b>Latch-up rules</b> (guard rings, well ties)",
+          "The parasitic thyristor formed by every CMOS structure",
+          "A chip that destroys itself when an I/O is driven beyond the rail — and it "
+          "passes every functional test first"]]))
+
+    c.날것(사고("""Density fill is the one that surprises analog designers. The tool adds
+    floating metal shapes to meet a density rule, and those shapes sit next to the
+    matched capacitors you laid out by hand — <b>adding capacitance that is neither
+    matched nor extracted in early runs</b>. The professional habit is to place your own
+    fill inside the analog region, in a pattern you control and that the extractor
+    sees, rather than letting the tool do it after you stopped looking."""))
+
+    # ------------------------------------------------------------------
+    c.절("T15.3 What an IP actually hands over")
+
+    c.날것(표("Two ways to deliver a block, and what each commits you to",
+        ["", "Soft macro (RTL)", "Hard macro (GDS)"],
+        [["What ships", "RTL, constraints, testbench, documentation",
+          "GDS, LEF abstract, Liberty timing, and the same documentation"],
+         ["Process", "Any — the integrator synthesises it",
+          "<b>One</b>. A new node is a new implementation"],
+         ["Integrator's freedom", "Full: they choose the library and the floorplan",
+          "None inside the macro; they place a rectangle"],
+         ["What you must guarantee", "That it synthesises and meets timing at a stated "
+          "frequency, in their library",
+          "Timing, power, EM, antenna, density and pin access — <b>everything</b>"],
+         ["Where the risk sits", "With the integrator, who can get it wrong",
+          "With you, and it is fixed at tape-out"],
+         ["Typical for", "Controllers, protocol logic, anything digital",
+          "PHYs, SerDes, PLLs, memories, anything with analog"]]))
+
+    c.날것(개념(
+        "추상화 뷰 (abstract / LEF) and the pin-access problem",
+        """<p>An integrator does not place your GDS; the tool places your <b>abstract</b>
+        — a simplified view giving the outline, the pin shapes and the blockages. If the
+        abstract says a pin is on metal 3 in the middle of the macro's edge, the router
+        must be able to reach it with the layers it is allowed to use.</p>
+        <p><b>Pin access is the most common integration failure for hard macros</b>, and
+        it is entirely avoidable: pins on a coarse grid, on the layers the integrator's
+        flow routes with, with enough space around them, and never all crowded on one
+        side. It costs nothing at design time and it is unfixable afterwards.</p>""",
+        어디에="Every hard macro, and it is decided when the floorplan is decided.",
+        언제="Before the internal layout is finished — the pin plan constrains the "
+            "internal routing, not the other way round.",
+        어떻게="Ask the integrator what their routing layers and track pitch are, put "
+             "pins on that pitch, and hand them a test placement that routes. Then "
+             "ship the LEF <b>and</b> a small example integration that demonstrates it.",
+        산업코드="""# The deliverable list for a hard macro. Missing any one of these turns
+# into a support call, which is the thing a one-person house cannot afford (Z12).
+#   design.gds          the layout
+#   design.lef          abstract: outline, pins, blockages   <- pin access lives here
+#   design.lib          timing/power at each corner          <- one per corner
+#   design.cdl          netlist for LVS
+#   design_antenna.rpt  antenna and density status of the macro
+#   design.sdc          the constraints the integrator must apply
+#   INTEGRATION.md      supply, decoupling (T13), keep-out, temperature, lifetime
+#   example/            a placement that routes, so they can diff against it""",
+        주의="""A macro that meets timing standalone can fail in the integrator's
+            context because its clock arrives through <b>their</b> tree: the .lib must
+            state the input clock's assumed transition, and the SDC must state the
+            insertion delay you assumed. Shipping an ideal-clock .lib is the same error
+            as quoting ideal-clock F<sub>max</sub> in T2."""))
+
+    # ------------------------------------------------------------------
+    c.절("T15.4 What to do with this on Monday")
+
+    c.날것(쓰는자리([
+        ["레이아웃의존효과 · 웰근접 · STI응력", "Any matched or precision device",
+         "Keep-out distances and dummy patterns, written as constraints"],
+        ["추출", "Before declaring a block finished",
+         "Whether the simulated design is the one you drew"],
+        ["밀도규칙 · 안테나규칙", "Analog regions, early",
+         "Whether the tool edits your matched structures after you stop looking"],
+        ["추상화뷰 · 핀배치", "Hard-macro floorplan",
+         "Whether the integrator can route to you at all"],
+        ["하드매크로 · 소프트매크로", "The business decision",
+         "Which process risk you own, and what you can charge for"]]))
+
+    c.글("""Layout is where an IP business decides what it is selling. A soft macro moves
+    the physical risk to the customer and can be sold into any process; a hard macro
+    keeps the risk and commands a higher price because the customer is buying
+    <b>certainty</b>. The engineering in this chapter is what makes that certainty
+    deliverable — and the documentation list above is what makes it saleable.""")
+
+    c.글("""One chapter remains, and it is about the failure that happens before the chip
+    is ever powered: a few hundred volts arriving on a pin from a human finger.""")
+
+    return c.완성()

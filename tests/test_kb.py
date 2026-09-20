@@ -87,7 +87,7 @@ def test_새_장을_쓰고_색인을_안_지으면_걸린다():
     ("문턱전압과 바디효과 관계가 뭐야?",                  ("B_device", "T1_device", "X31_analog")),
     ("HLS 로 hand RTL 보다 좋은 QoR 내는 방법",           ("Z15_hls", "Y12_hls", "Q_more")),
     ("AXI 버스트와 outstanding 이 뭐야?",                 ("X37_bus", "Z11_axi", "J_blocks")),
-    ("IR drop 과 decap 을 어떻게 잡아?",                  ("X32_pdn", "L_phys", "X14_physdes")),
+    ("IR drop 과 decap 을 어떻게 잡아?",                  ("T13_pi", "X32_pdn", "L_phys", "X14_physdes")),
     ("MIPI CSI-2 패킷 헤더 구조 알려줘",                  ("P_iface", "Y1_mipi", "Z21_spec")),
     ("변이 점수가 뭐고 왜 재?",                           ("Z1_team", "Z3_bar", "H_verif", "X8_verif")),
     ("SRAM 비트셀과 센스앰프가 어떻게 동작해?",           ("X10_mem", "J_blocks", "B_device")),
@@ -219,12 +219,11 @@ def test_근거와_답의_꼴을_같이_준다():
 def test_안_덮는_것을_물으면_도구가_먼저_말한다():
     """빈자리에 적힌 주제를 물으면 답 첫머리에 '안 덮는다' 가 붙어야 한다.
 
-    (전에는 `noise margin` 으로 물었다.  **T4.3 이 그것을 메워서** 이 검사가
-    빨개졌고 -- 설계대로다 -- 아직 안 메운 ESD 로 바꿨다.  이 자리도 T16 을
-    쓰면 빨개진다.  그때는 빈자리 목록과 여기를 같이 고친다.)
+    (이 자리는 두 번 빨개졌고 두 번 다 설계대로였다: `noise margin` 은 T4.3 이,
+    `electrostatic discharge` 는 T16 이 메웠다.  그때마다 **코퍼스에서 말을 세어**
+    아직 안 덮은 것으로 바꿨다 -- 지금은 TSV 다.)
     """
-    글 = kb.답근거("ESD 보호에 electrostatic discharge 클램프가 어떻게 들어가나",
-                 sections=3)
+    글 = kb.답근거("through-silicon via 와 tsv 의 전기적 성질", sections=3)
     assert "does not cover" in 글, 글[:400]
 
 

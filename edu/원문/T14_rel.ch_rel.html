@@ -1,0 +1,160 @@
+<h1 id="T14">T14. Reliability — What the Circuit Looks Like After Ten Years</h1>
+<p class="한줄">Every parameter in this book drifts. A design signed off at time zero has been signed off for the wrong day.</p>
+<div class="사다리"><div class="사다리앞"><b>읽기 전에 알아야 하는 것</b><br>전압 · 전류 · 온도 · 지수함수 · 로그 · 확률 · 정규분포 · 문턱전압 · 트랜스컨덕턴스 · 슬랙 · 정착시간 · 펠그롬법칙 · 오프셋 · 최소동작전압 · 전압강하</div><div class="사다리뒤"><b>이 장에서 새로 나오는 것</b><br>BTI · HCI · TDDB · 일렉트로마이그레이션 · 아레니우스 · 가속계수 · 활성화에너지 · 블랙식 · 와이블 · 번인 · 노화인지설계 · 수명목표</div></div>
+<p>A transistor that meets its specification on the day it is made will not meet
+    it in ten years. Thresholds shift, oxides break down, and metal atoms move. None of
+    this is a defect: it is the ordinary ageing of the materials, it is characterised
+    and modelled by the foundry, and it is <b>your job to budget for it</b> — because a
+    timing signoff at time zero is a signoff for a chip that has not yet been
+    shipped.</p>
+<h2>T14.1 The four mechanisms, and what each one eats</h2>
+<table><caption>표 17. The mechanisms you must budget for</caption><thead><tr><th>Mechanism</th><th>What physically happens</th><th>What it degrades</th><th>Worst when</th></tr></thead><tbody><tr><td><b>BTI</b> (bias temperature instability)</td><td>Charge trapping at the oxide interface under gate bias</td><td>|V<sub>th</sub>| rises → speed falls, offsets drift</td><td>High temperature, high V<sub>GS</sub>, DC bias (no recovery)</td></tr><tr><td><b>HCI</b> (hot carrier injection)</td><td>Energetic carriers damage the drain-end oxide</td><td>Drive current falls, mismatch grows</td><td>High V<sub>DS</sub> <i>while switching</i> — fast edges, high activity</td></tr><tr><td><b>TDDB</b> (time-dependent dielectric breakdown)</td><td>The gate oxide eventually conducts, permanently</td><td>The device — it is a <b>hard failure</b>, not a drift</td><td>High field, thin oxide, large total gate area</td></tr><tr><td><b>Electromigration</b></td><td>Momentum transfer from electrons moves metal atoms</td><td>Wires open or short — also a hard failure</td><td>High current density, DC (unidirectional) current, high temperature</td></tr></tbody></table>
+<div class="짚기">Two of these are <b>drifts</b> and two are <b>failures</b>, and they
+    need different arithmetic. A drift is budgeted as a margin: you sign off timing with
+    a degraded library and accept the area cost. A failure is budgeted as a
+    <i>probability</i>: you compute the fraction of parts that fail before the lifetime
+    target and compare it against the allowed FIT rate. Mixing the two — for instance
+    treating TDDB as 'a bit more V<sub>th</sub> drift' — produces a design that meets
+    its timing and fails its qualification.</div>
+<h2>T14.2 Acceleration: how a 1000-hour test predicts ten years</h2>
+<div class="개념"><div class="개념머리">아레니우스 가속 (Arrhenius acceleration)</div>
+<div class="개념이론"><p>Wear-out rates follow exp(−E<sub>a</sub>/kT), so raising the temperature
+        multiplies the rate by a computable factor:
+        AF = exp[(E<sub>a</sub>/k)(1/T<sub>use</sub> − 1/T<sub>stress</sub>)].</p>
+        <p>With E<sub>a</sub> = 0.9 eV, stressing at 125 °C instead of 85 °C is
+        <b>18.7× faster</b> — which is how a 1000-hour oven test
+        stands in for years of field use. The same arithmetic run backwards is the
+        familiar rule of thumb: every 10 °C of cooling roughly
+        2.08× the life.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>Qualification planning, and the argument with the thermal engineer about junction temperature.</td></tr>
+<tr><th>언제 쓰나</th><td>Whenever a lifetime is claimed. A lifetime without a temperature is not a specification.</td></tr>
+<tr><th>어떻게 쓰나</th><td>Pick E<sub>a</sub> from the foundry's model for the mechanism in question — <b>not a generic 0.7 eV</b> — and state it alongside the result, because the answer depends on it strongly.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code># The same 1000-hour test, read with three different activation energies.
+# This is why Ea must be quoted with any lifetime claim.
+Ea = {0.7: 9.8, 0.9: 18.7, 1.1: 35.9}     # AF from 85 C to 125 C
+# 1000 h at 125 C therefore stands for 9800 h / 18700 h / 35900 h at 85 C
+#   -&gt; 1.1 years / 2.1 years / 4.1 years.
+# The SAME DATA supports "passes 1 year" or "passes 4 years" depending on a
+# number the report often does not state.</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> Activation energy is per <b>mechanism</b>, and using one number for a
+            mixed failure population is the standard way to get a lifetime wrong by
+            3.68×. If a qualification report
+            does not say which mechanism and which E<sub>a</sub>, it has not made a
+            claim you can check.</div>
+</div>
+<table><caption>표 18. Acceleration factor from 85 °C use to 125 °C stress</caption><thead><tr><th>E_a</th><th>AF (125 °C vs 85 °C)</th><th>10 °C cooling buys</th><th>1000 h stress stands for</th></tr></thead><tbody><tr><td>0.7&nbsp;eV</td><td>9.76×</td><td>1.77×</td><td>1.11&nbsp;년</td></tr><tr><td>0.9&nbsp;eV</td><td>18.7×</td><td>2.08×</td><td>2.14&nbsp;년</td></tr><tr><td>1.1&nbsp;eV</td><td>35.9×</td><td>2.44×</td><td>4.1&nbsp;년</td></tr></tbody></table>
+<div class="예제"><div class="예제머리">예제 2. A 1000-hour BTI stress: what does it say about ten years?</div><div class="예제줄"><b>주어진 것.</b> BTI's threshold shift grows as a power law in time, ΔV<sub>th</sub> ∝
+        t<sup>n</sup>, with n typically 0.15–0.25. A part is stressed
+        for 1000 hours and shows some shift.</div><div class="예제줄"><b>푸는 법.</b> Ten years is 87,600 hours, or 87.6× the stress
+        time. The shift grows by that ratio raised to n.</div><div class="예제답"><b>답.</b> n = 0.15 → 1.96×;
+        n = 0.2 → 2.45×;
+        n = 0.25 → 3.06×.
+        <b>The same measurement predicts a shift that differs by
+        1.56× depending on an exponent nobody
+        measured in this test.</b></div><div class="예제덧"><table><caption>표 19. Voltage acceleration, for the same reason</caption><thead><tr><th>γ</th><th>100 mV overvoltage ages it</th></tr></thead><tbody><tr><td>8&nbsp;/V</td><td>2.23×</td></tr><tr><td>12&nbsp;/V</td><td>3.32×</td></tr><tr><td>16&nbsp;/V</td><td>4.95×</td></tr></tbody></table></div><div class="예제함정"><b>여기서 틀린다.</b> Extrapolating a power law from one time point. With a single stress duration,
+        n is an assumption, not a measurement — and the answer is roughly linear in it.
+        A credible BTI characterisation stresses at <b>several durations</b> and fits n;
+        anything else is a number with an unstated multiplier.</div></div>
+<div class="짚기">Voltage acceleration is the reason a design must never be
+    characterised only at nominal. At γ = 12&nbsp;/V — a typical value — running
+    100 mV above nominal ages the device 3.32× faster, so a rail
+    that overshoots during a DVFS transition can consume years of budget in seconds.
+    <b>The reliability question about DVFS is not the average voltage; it is the
+    transients.</b></div>
+<h2>T14.3 Electromigration, and the rule that surprises digital designers</h2>
+<div class="개념"><div class="개념머리">블랙 식 (Black's equation) and why AC is easier than DC</div>
+<div class="개념이론"><p>MTF = A·J<sup>−n</sup>·exp(E<sub>a</sub>/kT), with n ≈ 2 for the usual
+        regime. Lifetime falls as the <b>square</b> of current density and rises
+        exponentially as temperature falls: at E<sub>a</sub> = 0.9 eV, cooling a wire
+        from 110&nbsp;°C to 85&nbsp;°C buys
+        6.7× its life.</p>
+        <p>The part that surprises digital designers: <b>bidirectional (AC) current is
+        far less damaging than unidirectional (DC)</b>, because atoms pushed one way are
+        partly pushed back. EM rules therefore give a much higher limit for signal nets
+        than for power nets — and the nets that fail are almost always power, clock
+        drivers, or any signal with a duty cycle far from 50 %.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>Power grid sizing, clock-tree driver outputs, and the output stage of any driver with a static current.</td></tr>
+<tr><th>언제 쓰나</th><td>Checked automatically by the EM/IR tools at signoff — but <b>designed for</b> long before, since the grid's width is a floorplan decision.</td></tr>
+<tr><th>어떻게 쓰나</th><td>Keep current density below the foundry's limit at the <b>maximum</b> junction temperature, and remember the limit depends on the duty cycle and direction. Vias are usually the binding constraint, not wires: one via carries far less than the wire it connects.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code># What the EM report actually flags, in order of frequency:
+#   1. VIAS on power straps -- a single via where four were needed
+#   2. Clock driver outputs -- high activity, high capacitance, one direction of
+#      net current per edge
+#   3. Long thin nets from a pad to a block at the far side of the die
+# The fix for (1) and (2) is always the same: more parallel vias, wider metal,
+# and it is FREE if done at floorplan time and expensive after routing.</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> EM limits are specified at a temperature. A design checked at 85 °C
+            and run at 110 °C has 6.7× less margin than the
+            report says — and the junction temperature of a block just woken from sleep
+            is not the average temperature anybody simulated.</div>
+</div>
+<h2>T14.4 Designing for the tenth year, not the first</h2>
+<table><caption>표 20. How each mechanism enters the design flow</caption><thead><tr><th>Mechanism</th><th>Enters as</th><th>Who owns it</th></tr></thead><tbody><tr><td>BTI / HCI</td><td>A <b>degraded timing library</b> — signoff runs twice, at time zero and at end of life</td><td>Timing signoff; the margin is the design's</td></tr><tr><td>TDDB</td><td>A limit on gate area at a given field, and a FIT budget</td><td>Foundry rules; the designer chooses the oxide type</td></tr><tr><td>Electromigration</td><td>Current-density checks on every net</td><td>Physical design, but the grid was decided at floorplan</td></tr><tr><td>Ageing mismatch</td><td>σ(ΔV<sub>th</sub>) grows over life, so offsets and V<sub>min</sub> get worse</td><td>Analog designer — and it is often forgotten</td></tr></tbody></table>
+<div class="사고"><b>실제로 난 일</b><br>The last row is the one that catches analog designs. BTI is not only a
+    mean shift; it has a <b>spread</b>, and that spread adds to the mismatch of T12. A
+    comparator whose offset was trimmed at test drifts back, because the two halves age
+    differently — and they age differently precisely because they carry different
+    duty cycles. <b>A trimmed offset is trimmed for the day it was trimmed.</b> Designs
+    that must hold an offset for ten years either re-trim in the field (auto-zero, T10)
+    or are built so that both halves age identically by construction.</div>
+<div class="개념"><div class="개념머리">노화 인지 설계 (ageing-aware design)</div>
+<div class="개념이론"><p>Three things make a design survive its tenth year, and none of them is
+        margin alone:</p>
+        <ul>
+        <li><b>Balance the stress.</b> If a differential pair's two sides see different
+        duty cycles, they will diverge. Swapping roles periodically (chopping, T10) makes
+        them age together.</li>
+        <li><b>Prefer ratios of aged devices.</b> A reference built from two devices that
+        age identically drifts far less than one built from an absolute.</li>
+        <li><b>Allow recovery.</b> BTI recovers partially when the bias is removed; a
+        circuit that is DC-biased for ten years gets the worst case, and one that is
+        duty-cycled does not.</li>
+        </ul></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>Any IP with a ten-year or automotive lifetime target, and any analog block whose accuracy is trimmed.</td></tr>
+<tr><th>언제 쓰나</th><td>At topology selection. None of these can be retrofitted.</td></tr>
+<tr><th>어떻게 쓰나</th><td>Run the ageing simulation the PDK provides (a degraded model deck), with the <b>real</b> duty cycles — not with everything at DC — and check the offset and V<sub>min</sub> at end of life, not just the timing.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>* Ageing simulation: the same netlist, twice, with the PDK's aged models.
+.lib 'models/pdk.lib' tt
+.option reliability_analysis          $ vendor-specific; every PDK has one
+.param age_years = 10
+.param duty_cycle = 0.5               $ THIS is the parameter people get wrong --
+                                      $ a DC-biased device is duty_cycle = 1.0
+.op
+.measure op vth_shift param='v(m1.vth_aged) - v(m1.vth_fresh)'
+* Sign off BOTH decks. A design that only passes fresh is a design that only
+* passes on the day it is made.</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> Ageing models are statistical and conservative, and running them at the
+            worst corner <i>and</i> worst duty cycle <i>and</i> worst temperature
+            simultaneously produces a design that cannot be built. The skill is
+            choosing which combinations are physically possible — a DC-biased device at
+            maximum temperature is, but maximum activity at maximum temperature and
+            minimum voltage usually is not.</div>
+</div>
+<h2>T14.5 What to do with this on Monday</h2>
+<table><caption>표 21. 이 장의 개념이 실제로 쓰이는 자리</caption><thead><tr><th>개념</th><th>쓰이는 블록</th><th>무엇을 정하나</th></tr></thead><tbody><tr><td>BTI · HCI</td><td>Timing signoff, run twice</td><td>The end-of-life margin, and therefore the area</td></tr><tr><td>아레니우스 · 가속계수</td><td>Qualification planning and datasheet claims</td><td>What a 1000-hour test is allowed to say</td></tr><tr><td>블랙식 · 일렉트로마이그레이션</td><td>Power grid and driver sizing at floorplan</td><td>Wire widths and via counts — free early, expensive late</td></tr><tr><td>노화인지설계</td><td>Topology selection for anything trimmed</td><td>Whether the trim survives to year ten</td></tr><tr><td>수명목표</td><td>The datasheet</td><td>The lifetime, <b>with its temperature and duty cycle</b> — or it says nothing</td></tr></tbody></table>
+<p>The numbers to carry: at E<sub>a</sub> = 0.9&nbsp;eV a 125 °C stress
+    runs 18.7× faster than 85 °C use, so 1000 hours stands for
+    2.14&nbsp;년 — and with a different E<sub>a</sub> the
+    same data says 1.11&nbsp;년 or
+    4.1&nbsp;년. A lifetime claim without its
+    E<sub>a</sub>, its temperature and its duty cycle is not a claim. And 100 mV of
+    overvoltage ages a device 3.32× faster, which is why the
+    transients of a DVFS scheme matter more than its average.</p>
+<p>The next chapter is where all of this becomes geometry: the layout, where
+    a schematic that is correct in every respect can still fail.</p>
+<div class="특허"><div class="특허머리">특허로 가는 길 &mdash; 이 주제에서 발명이 일어나는 자리</div><div class="특허속">Reliability physics belongs to the foundry; the IP-side claims are about
+        <b>surviving it</b>: circuits that sense their own degradation and compensate
+        (adaptive body bias, adaptive voltage scaling driven by on-die ageing monitors),
+        topologies whose critical parameter is a ratio of two equally aged devices
+        rather than an absolute, and duty-cycling schemes that let devices recover.
+        The last one is worth noticing — <b>BTI partially recovers when the stress is
+        removed</b>, which turns a physics constant into a design variable.</div></div>
