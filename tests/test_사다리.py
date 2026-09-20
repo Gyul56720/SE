@@ -41,7 +41,8 @@ import bookK  # noqa: E402
       ("T19_pnr", "ch_pnr"),
       ("T20_signoff", "ch_signoff"),
       ("T21_dv", "ch_dv"),
-      ("T22_ate", "ch_ate")]
+      ("T22_ate", "ch_ate"),
+      ("T23_lab", "ch_lab")]
 
 
 def _짓기():

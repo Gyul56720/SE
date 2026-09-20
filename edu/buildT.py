@@ -88,6 +88,7 @@ import bookE
     ("T20_signoff", ["ch_signoff"]),
     ("T21_dv",      ["ch_dv"]),
     ("T22_ate",     ["ch_ate"]),
+    ("T23_lab",     ["ch_lab"]),
 ]
 
 

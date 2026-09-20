@@ -215,6 +215,8 @@
     "병렬시험": "multi-site test", "다이수율": "die yield",
     "결함수준": "defect level", "DPPM": "DPPM (defective parts per million)",
     "웨이퍼시험": "wafer sort", "양품다이": "known-good die",
+    # --- 실습 (T23) ---
+    "실습흐름": "the lab flow", "회귀기준": "regression baseline",
 })
 
 
