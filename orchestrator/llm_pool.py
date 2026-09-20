@@ -795,3 +795,9 @@ def call(pool, prompt: str, pool_id: str = "orchestrator", max_candidates: int =
         "  이름은 아무것이나 된다 -- 값이 `AIza…` 꼴이면 환경변수든 .env 든 잡는다.\n"
         "  systemd 서비스는 EnvironmentFile 로 .env 를 받지만 SSH 셸은 그렇지 않다.\n"
         "  즉시:  set -a; source ~/SE/.env; set +a")
+
+
+def ask(pool, prompt: str, pool_id: str = "edu_translate", **kwargs):
+    """`llm_pool.call` 의 얇은 별칭 (edu/번역 등 구형 호출 호환)."""
+    text, label = call(pool, prompt, pool_id=pool_id, **kwargs)
+    return text
