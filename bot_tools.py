@@ -1252,6 +1252,47 @@ def concept(name: str = "", level: str = "", domain: str = "",
 
 
 @tool
+def textbook(question: str, sections: int = 5, section_id: str = "") -> str:
+    """**Answer from the textbook, not from memory** — search the 170-chapter IP design
+    book in `edu/` and get back the exact sections that bear on the question.
+
+    Use this for **every** conceptual or design question about semiconductors, circuits,
+    RTL, verification, timing, mixed-signal, protocols (MIPI/PCIe/Ethernet), IP business
+    or patents — including questions asked in Korean. The book is English; Korean query
+    terms are mapped through `edu/용어.py` before the search, and the reply tells you
+    which Korean words could **not** be mapped, so a bad retrieval is visible rather than
+    silent.
+
+    `section_id` fetches one section in full (ids look like `X2_timing.ch_sta#4`) when a
+    search hit is truncated and you need the rest of it.
+
+    **How to answer once you have the sections** — graduate-seminar level, in this order:
+
+    1. **What is actually being asked** — restate it precisely, and name the quantity.
+    2. **The governing relation** — the equation or the invariant, with every symbol
+       defined and its units. Derive it or say where it comes from; never assert it bare.
+    3. **Where it is used** — which block, which part of the flow, which signoff check.
+    4. **When it binds** — the regime where this term dominates and the regime where it
+       is negligible. A number that always holds is not an engineering answer.
+    5. **How to apply it** — the procedure, with a worked number the reader can redo.
+    6. **What the industry code/constraint looks like** — SystemVerilog, SDC, Liberty,
+       UPF or C++, quoted from the retrieved sections.
+    7. **Where people get it wrong** — the specific failure mode, not a platitude.
+    8. **What is not established** — what the book measured vs. what it only asserts.
+       If the retrieved sections do not cover the question, say so plainly and answer
+       from first principles marked as such. **Never present recall as the book's text.**
+
+    Cite the section (`chapter / section`) next to each claim that came from it.
+    """
+    import sys as _s, os as _o
+    _e = _o.path.join(REPO_DIR, "edu")
+    if _e not in _s.path:
+        _s.path.insert(0, _e)
+    import kb
+    return kb.답근거(question, sections, section_id)
+
+
+@tool
 def spice_example(name: str = "") -> str:
     """**List or fetch a ready-made, verified analog netlist** for `run_spice`.
 
