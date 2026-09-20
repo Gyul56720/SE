@@ -439,6 +439,18 @@
    "자": 19249
   },
   {
+   "파일": "T7_pll.ch_pll.html",
+   "모듈": "T7_pll",
+   "함수": "ch_pll",
+   "자": 22445
+  },
+  {
+   "파일": "T8_serdes.ch_serdes.html",
+   "모듈": "T8_serdes",
+   "함수": "ch_serdes",
+   "자": 17261
+  },
+  {
    "파일": "W_practice.ch_auto.html",
    "모듈": "W_practice",
    "함수": "ch_auto",
@@ -802,7 +814,11 @@
    "파일": "Y4_agent.ch_agent.html",
    "모듈": "Y4_agent",
    "함수": "ch_agent",
+<<<<<<< HEAD
    "자": 17733
+=======
+   "자": 17736
+>>>>>>> origin/main
   },
   {
    "파일": "Y5_business.ch_business2.html",
@@ -898,7 +914,11 @@
    "파일": "Z1_team.ch_team.html",
    "모듈": "Z1_team",
    "함수": "ch_team",
+<<<<<<< HEAD
    "자": 14177
+=======
+   "자": 14178
+>>>>>>> origin/main
   },
   {
    "파일": "Z20_tools.ch_tools.html",

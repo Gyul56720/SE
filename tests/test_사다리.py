@@ -31,8 +31,12 @@ import bookK  # noqa: E402
 차례 = [("T1_device", "ch_device"), ("T2_delay", "ch_delay"),
       ("T3_meta", "ch_meta"), ("T4_noise", "ch_noise"),
       ("T5_sample", "ch_sample"), ("T6_dataconv", "ch_dataconv"),
+<<<<<<< HEAD
       ("T7_pll", "ch_pll"), ("T8_serdes", "ch_serdes"),
       ("T9_channel", "ch_channel"), ("T10_switchcap", "ch_switchcap")]
+=======
+      ("T7_pll", "ch_pll"), ("T8_serdes", "ch_serdes")]
+>>>>>>> origin/main
 
 
 def _짓기():
