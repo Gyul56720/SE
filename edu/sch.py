@@ -56,7 +56,109 @@ _깨는태그 = ("b", "big", "blockquote", "body", "br", "center", "code", "dd",
             "table", "tt", "u", "ul", "var")
 
 
+# ---------------------------------------------------------------------------
+# 그림 글자의 영어판 -- 본문(bookK)과 같은 이유로 **그림만 갈아 끼운다**
+# ---------------------------------------------------------------------------
+# 사용자(2026-09-20): "영어 교안도 pdf로 제공해줘."  틀 글자를 영어로 바꿨더니
+# **그림 안의 라벨만 한국어로 남았다**(풀업 · 토막마다 · 길이의 제곱 ...).
+# 그림을 두 벌 그리지 않는다 -- `언어("en")` 을 부르면 `글()` 과 `상자()` 가
+# 이 표를 지나간다.  표에 없는 글자는 **그대로 둔다**(빠뜨린 것이 눈에 띈다).
+_그림말 = {
+    "PMOS = 풀업": "PMOS = pull-up", "NMOS = 풀다운": "NMOS = pull-down",
+    "둘이 동시에 켜지지 않는다 -> 정상상태 전류가 0 이다":
+        "never both on -> zero static current",
+    "입력이 0 -> 위(PMOS)가 켜짐 -> Y 를 VDD 로 당겨 올린다":
+        "in = 0 -> PMOS on -> Y pulled up to VDD",
+    "입력이 1 -> 아래(NMOS)가 켜짐 -> Y 를 GND 로 당겨 내린다":
+        "in = 1 -> NMOS on -> Y pulled down to GND",
+    "풀업 그물: 병렬": "pull-up network: parallel",
+    "풀다운 그물: 직렬": "pull-down network: series",
+    "A·B 가 둘 다 1 일 때만 아래 길이 이어져 Y=0":
+        "Y = 0 only when A and B are both 1",
+    "조각 i 의 저항은 뒤에 달린 용량 전부를 민다 -- 항이 1+2+...+N 로 는다":
+        "section i drives every capacitance behind it -- the sum is 1+2+...+N",
+    "그래서 배선 지연은 길이에 비례하지 않고 길이의 제곱으로 큰다":
+        "so wire delay grows with the SQUARE of length, not with length",
+    "한 칸의 지연 = g·h + p.  사슬 전체는 칸마다 같은 h 일 때 가장 빠르다":
+        "stage delay = g*h + p; the chain is fastest at equal stage effort",
+    "그 h 가 대략 3.6 (전기적 노력의 N 제곱근) -- 4 로 잡고 시작한다":
+        "that h is about 3.6 (the Nth root of the path effort) -- start from 4",
+    "리피터 없이": "no repeaters", "리피터 4 개": "4 repeaters",
+    "토막마다 길이가 L/N 이므로 제곱 항이 N 배 작아지고, 대신 버퍼 지연이 N 배 는다":
+        "each segment is L/N, so the square term falls by N and buffer delay rises by N",
+    "둘이 만나는 N 이 최적이다 -- 이 장에서 수로 푼다":
+        "the optimum N is where the two meet -- solved numerically in this chapter",
+    "첫 단은 준안정 상태에 빠질 수 있다.  둘째 단이 그것이 가라앉을 한 클럭을 준다.":
+        "the first stage can go metastable; the second gives it a clock to settle",
+    "단 하나로는 안 된다 -- 준안정 출력이 그대로 논리로 퍼진다.":
+        "one stage is not enough -- a metastable output spreads into the logic",
+    "리셋 동기화": "reset synchroniser", "클럭 경계": "clock boundary",
+    "클럭 · 리셋": "clock / reset", "안전": "safe",
+    "블록 A": "block A", "블록 B": "block B",
+    "데이터 경로": "data path", "제어 경로": "control path",
+    "우리 IP": "our IP", "레지스터 파일": "register file", "APB 브리지": "APB bridge",
+    "계수 · 바이패스 · 상태": "coefficients / bypass / status",
+    "더하기": "add", "곱하기": "multiply", "포화": "saturate",
+    "더하기 -> 곱하기 -> 포화": "add -> multiply -> saturate",
+    "전 -- 조합 한 덩이": "before: one combinational block",
+    "후 -- 3단 파이프라인": "after: a 3-stage pipeline",
+    "임계경로 = 세 연산 전부.  느리다": "critical path = all three operations; slow",
+    "임계경로 = 한 연산.  빠르다.  대가는 지연 3클럭":
+        "critical path = one operation; fast, at 3 cycles of latency",
+    "대가: 지연 +1 클럭.  처리량은 그대로 1/clk":
+        "cost: +1 cycle of latency; throughput is still 1/clk",
+    "A.ready 가 A.valid 에 조합으로 달려 있으면":
+        "if A.ready depends combinationally on A.valid",
+    "valid -> B -> ready -> A -> valid   고리가 닫힌다":
+        "valid -> B -> ready -> A -> valid : the loop closes",
+    "레지스터 한 단이 조합 경로를 끊는다 -- 고리가 안 닫힌다":
+        "one register stage breaks the combinational path -- the loop cannot close",
+    "합성 실패 또는 시뮬 무한 루프": "synthesis failure, or a simulation hang",
+    "트랜지스터가 1 도 0 도 능동으로 당긴다": "transistors drive both 1 and 0 actively",
+    "정상상태 전류가 없고 모서리가 빠르다": "no static current, and fast edges",
+    "저항이 1 을 만든다.  0 일 때 저항으로 전류가 계속 흐른다":
+        "the resistor makes the 1; current flows through it while the output is 0",
+    "올라가는 모서리가 RC 라 느리다 -- I2C 속도 한계가 여기서 온다":
+        "the rising edge is RC and therefore slow -- this sets I2C's speed limit",
+    "파는 것은 붉은 상자 하나다.  그런데 스펙에 적어야 하는 것은":
+        "what you sell is the red box; what the spec must state is",
+    "그 상자가 닿는 것 전부다 -- 어느 클럭, 어느 리셋, 어느 버스, 어떤 레지스터.":
+        "everything it touches: which clock, which reset, which bus, which registers.",
+    "준안정 가능": "may go metastable", "받은 값": "received value",
+    "비동기!": "asynchronous!", "비동기 인가 (CLR)": "asynchronous assert (CLR)",
+    "인가는 즉시 (클럭 없이도 리셋이 걸린다)":
+        "assert is immediate -- no clock needed",
+    "해제는 클럭에 맞춰 (두 클럭 뒤) -- recovery/removal 위반을 막는다":
+        "release is synchronous (two clocks later) -- avoids recovery/removal violations",
+    "bit0 도착": "bit0 arrives", "bit1 도착": "bit1 arrives",
+    "bit2 도착": "bit2 arrives",
+    "하나라도 0 이면 위 길이 이어져 Y=1   ->   Y = NOT(A AND B)":
+        "if either input is 0 the upper path conducts and Y = 1  ->  Y = NOT(A AND B)",
+    "풀업과 풀다운은 언제나 서로의 쌍대(dual)다 -- 직렬 <-> 병렬":
+        "pull-up and pull-down are always duals: series <-> parallel",
+    "SDA (개방 드레인)": "SDA (open drain)",
+    "8b 로는 못 담는다": "does not fit in 8 bits",
+    "wrap 하면": "if it wraps", "부호가 뒤집힌다": "the sign flips",
+    "x 계수": "x coefficient", "메모리": "memory", "버퍼": "buffer",
+    "센서 / PHY": "sensor / PHY",
+}
+_그림언어 = ["ko"]
+
+
+def 언어(코드="ko"):
+    """그림 글자를 갈아 끼운다.  좌표와 선은 안 건드린다."""
+    _그림언어[0] = "en" if 코드 == "en" else "ko"
+    return _그림언어[0]
+
+
+def _옮김(t):
+    if _그림언어[0] == "ko":
+        return t
+    return _그림말.get(str(t).strip(), t)
+
+
 def 글(x, y, t, 색=먹, 크기=11, 맞춤="start", 굵게=False):
+    t = _옮김(t)
     import re as _re
     for _태그 in _깨는태그:
         if _re.search(rf"</?{_태그}[ />]", str(t)):
@@ -76,6 +178,7 @@ def 점(x, y, r=2.6, 색=먹):
 
 
 def 상자(x, y, w, h, 글자="", 색=먹, 채움="#fff", 점선=None):
+    글자 = _옮김(글자)
     dash = f' stroke-dasharray="{점선}"' if 점선 else ""
     o = (f'<rect x="{x}" y="{y}" width="{w}" height="{h}" fill="{채움}" '
          f'stroke="{색}" stroke-width="1.6" rx="3"{dash}/>')

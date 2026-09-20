@@ -226,7 +226,7 @@ endmodule
          "Bandwidth and DC gain — and whether the process can supply the gain"],
         ["상관이중표본화 · 자동영점", "Near-DC precision paths",
          "Whether the flicker problem is solved in the circuit or in the architecture"],
-        ["kTC잡음(두 상)", "Capacitor sizing",
+        ["kTC잡음", "Capacitor sizing",
          "The factor of √2 that is missing from the textbook formula"]]))
 
     c.글(f"""The numbers to carry: reaching 16 bits needs

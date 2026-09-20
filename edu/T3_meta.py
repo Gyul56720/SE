@@ -171,7 +171,7 @@ wire safe_in = sync_q[1];
         줄 = [수(f/1e9, 2, "GHz"), 수(tr*1e12, 3, "ps")]
         for n in (1, 2, 3):
             y = _년(_mtbf(tr, f, f/10, n))
-            줄.append(수(y, 3, "년") if y < 1e6 else f"{y:.2g} 년")
+            줄.append(수(y, 3, "년") if y < 1e6 else f"{y:.2g} yr")
         표들.append(줄)
     c.날것(표("MTBF against clock frequency and synchroniser depth "
              f"(τ = {수(TAU*1e12,3,'ps')}, T₀ = {수(T0*1e12,3,'ps')}, "
@@ -185,20 +185,20 @@ wire safe_in = sync_q[1];
         {수(_tr(1e9)*1e12,3,'ps')}.""",
         """Put the numbers into the expression once per depth. The exponent scales with
         the number of stages because each stage gets its own full t<sub>r</sub>.""",
-        f"""One stage: {수(_년(_mtbf(_tr(1e9),1e9,1e8,1)),3)} 년 — <b>a failure every
+        f"""One stage: {수(_년(_mtbf(_tr(1e9),1e9,1e8,1)),3,"년")} — <b>a failure every
         couple of years, per crossing.</b> Two stages:
-        {_년(_mtbf(_tr(1e9),1e9,1e8,2)):.2g} 년. Three stages:
-        {_년(_mtbf(_tr(1e9),1e9,1e8,3)):.2g} 년.""",
+        {_년(_mtbf(_tr(1e9),1e9,1e8,2)):.2g} yr. Three stages:
+        {_년(_mtbf(_tr(1e9),1e9,1e8,3)):.2g} yr.""",
         f"""Reading the two-stage number as a property of the design rather than of the
         corner. Recompute it with τ merely 2× worse — a plausible slow-corner,
         low-voltage degradation — and the same two-stage crossing gives
-        <b>{_년(math.exp(2*_tr(1e9)/(2*TAU))/(T0*1e9*1e8)):.3g} 년.</b> The exponent
+        <b>{_년(math.exp(2*_tr(1e9)/(2*TAU))/(T0*1e9*1e8)):.3g} yr.</b> The exponent
         collapsed. <b>MTBF is exponentially sensitive to the one parameter you do not
         control</b>, which is why the number must be quoted at the slow corner and why
         the third stage exists.""",
         덧=표("The same two-stage crossing at 1 GHz, as τ degrades",
              ["τ", "MTBF"],
-             [[수(k, 2) + "×", f"{_년(math.exp(2*_tr(1e9)/(k*TAU))/(T0*1e9*1e8)):.3g} 년"]
+             [[수(k, 2) + "×", f"{_년(math.exp(2*_tr(1e9)/(k*TAU))/(T0*1e9*1e8)):.3g} yr"]
               for k in (1.0, 1.25, 1.5, 2.0)])))
 
     c.날것(짚기(f"""At 2 GHz the table says something worth pausing on: a

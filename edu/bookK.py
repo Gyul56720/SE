@@ -28,6 +28,61 @@
 import os
 import re
 
+# ---------------------------------------------------------------------------
+# 틀 글자 -- 한국어판과 영어판이 **같은 소스**에서 나온다
+# ---------------------------------------------------------------------------
+# 사용자 지시(2026-09-20): "영어 교안도 pdf로 제공해줘."  T 계열 장의 본문은 이미
+# 영어인데 **틀 글자만 한국어**였다(읽기 전에 알아야 하는 것 · 어디에 쓰나 ...).
+# 영어판에 한국어 라벨이 섞이면 읽는 사람이 걸려 넘어진다.
+#
+# 본문을 두 벌 두지 않는다 -- 라벨만 갈아 끼운다.  `언어("en")` 을 부르면 이 표가
+# 바뀌고, 같은 `ch_*()` 가 영어 틀로 나온다.  번역 파이프라인(edu/번역)이 본문을
+# 옮기는 것과는 다른 일이다: 저기는 **본문**, 여기는 **틀**이다.
+_라벨 = {
+    "ko": {
+        "앞": "읽기 전에 알아야 하는 것", "뒤": "이 장에서 새로 나오는 것",
+        "없다": "없다 (여기서 시작한다)",
+        "특허머리": "특허로 가는 길 &mdash; 이 주제에서 발명이 일어나는 자리",
+        "표": "표", "그림": "그림", "예제": "예제",
+        "유도": "유도 &mdash; ", "이렇게": "이렇게 된다", "왜냐": "왜냐하면",
+        "주어진": "주어진 것.", "푸는법": "푸는 법.", "답": "답.",
+        "함정": "여기서 틀린다.", "사고": "실제로 난 일",
+        "어디에": "어디에 쓰나", "언제": "언제 쓰나", "어떻게": "어떻게 쓰나",
+        "코드머리": "실제 코드는 이렇게 생겼다", "주의": "여기서 틀린다.",
+        "쓰는자리": "이 장의 개념이 실제로 쓰이는 자리",
+        "쓰는자리머리": ["개념", "쓰이는 블록", "무엇을 정하나"],
+    },
+    "en": {
+        "앞": "Before you read this", "뒤": "New in this chapter",
+        "없다": "nothing (this is the starting point)",
+        "특허머리": "Where the inventions are &mdash; what is patentable here",
+        "표": "Table", "그림": "Figure", "예제": "Worked example",
+        "유도": "Derivation &mdash; ", "이렇게": "This follows", "왜냐": "Because",
+        "주어진": "Given.", "푸는법": "Method.", "답": "Answer.",
+        "함정": "This is where it goes wrong.", "사고": "What actually happened",
+        "어디에": "Where it is used", "언제": "When it binds",
+        "어떻게": "How to apply it",
+        "코드머리": "What the industry code looks like",
+        "주의": "This is where it goes wrong.",
+        "쓰는자리": "Where this chapter's concepts are actually used",
+        "쓰는자리머리": ["Concept", "Block it appears in", "What it decides"],
+    },
+}
+_지금말 = ["ko"]
+
+
+def 언어(코드="ko"):
+    """틀 글자를 갈아 끼운다.  본문은 안 건드린다."""
+    if 코드 not in _라벨:
+        raise ValueError(f"모르는 언어: {코드} (있는 것: {sorted(_라벨)})")
+    _지금말[0] = 코드
+    return 코드
+
+
+def 말(열쇠):
+    return _라벨[_지금말[0]][열쇠]
+
+
 장들 = []          # 등록된 장들 (선언 순서 = 읽는 순서)
 _표번호 = [0]
 _그림번호 = [0]
@@ -97,20 +152,54 @@ class 장:
         return "\n".join(머리 + self.조각 + 꼬리)
 
 
+_이름꼴 = re.compile(r"^\s*([^()]*?)\s*\(([^()]*)\)\s*(.*)$", re.S)
+_한글있나 = re.compile(r"[가-힣]")
+_단위말 = {"년": "yr", "배": "x", "가지": "cases", "쪽": "pages", "자": "chars"}
+
+
+def _이름(말):
+    """영어판의 머리말을 **영어가 앞**이 되게 고친다.
+
+    세 꼴을 다룬다 (한국어판에서는 아무것도 안 한다):
+        "구경지터 (aperture jitter)"      -> "aperture jitter (구경지터)"
+        "3의법칙 (rule of three) — 꼬리"  -> "rule of three (3의법칙) — 꼬리"
+        "DNL (차등 비선형성)"             -> "DNL"   (괄호가 한국어뿐이면 뗀다)
+    """
+    if _지금말[0] == "ko":
+        return 말
+    m = _이름꼴.match(str(말))
+    if not m:
+        return 말
+    앞, 속, 꼬리 = (m.group(1) or "").strip(), (m.group(2) or "").strip(), (m.group(3) or "").strip()
+    꼬 = (" " + 꼬리) if 꼬리 else ""
+    if _한글있나.search(앞) and not _한글있나.search(속):
+        return f"{속} ({앞}){꼬}"
+    if _한글있나.search(속) and not _한글있나.search(앞):
+        return f"{앞}{꼬}"                       # 괄호가 한국어 주석뿐이면 뗀다
+    return 말
+
+
+def _개념말(것들):
+    """영어판에서는 개념 이름도 영어로.  사다리의 열쇠는 그대로 둔다."""
+    if _지금말[0] == "ko":
+        return list(것들)
+    import 개념영문
+    return [개념영문.영어로(x) for x in 것들]
+
+
 def _알아야(쓰는것, 내놓는것):
     """장 첫머리의 '읽기 전에 / 읽고 나면' 상자."""
-    a = " · ".join(쓰는것) if 쓰는것 else "없다 (여기서 시작한다)"
-    b = " · ".join(내놓는것)
+    a = " · ".join(_개념말(쓰는것)) if 쓰는것 else 말("없다")
+    b = " · ".join(_개념말(내놓는것))
     return (
         '<div class="사다리">'
-        f'<div class="사다리앞"><b>읽기 전에 알아야 하는 것</b><br>{a}</div>'
-        f'<div class="사다리뒤"><b>이 장에서 새로 나오는 것</b><br>{b}</div>'
+        f'<div class="사다리앞"><b>{말("앞")}</b><br>{a}</div>'
+        f'<div class="사다리뒤"><b>{말("뒤")}</b><br>{b}</div>'
         '</div>')
 
 
 def 특허칸(t):
-    return ('<div class="특허"><div class="특허머리">특허로 가는 길 '
-            '&mdash; 이 주제에서 발명이 일어나는 자리</div>'
+    return ('<div class="특허"><div class="특허머리">' + 말("특허머리") + '</div>'
             f'<div class="특허속">{t}</div></div>')
 
 
@@ -125,19 +214,19 @@ def 표(설명, 머리, 줄들):
     _표번호[0] += 1
     h = "".join(f"<th>{c}</th>" for c in 머리)
     b = "".join("<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>" for r in 줄들)
-    return (f'<table><caption>표 {_표번호[0]}. {설명}</caption>'
+    return (f'<table><caption>{말("표")} {_표번호[0]}. {설명}</caption>'
             f'<thead><tr>{h}</tr></thead><tbody>{b}</tbody></table>')
 
 
 def 그림(svg, 설명):
     _그림번호[0] += 1
-    return (f'<figure>{svg}<figcaption><b>그림 {_그림번호[0]}.</b> {설명}'
+    return (f'<figure>{svg}<figcaption><b>{말("그림")} {_그림번호[0]}.</b> {설명}'
             '</figcaption></figure>')
 
 
 def 정의(말, 뜻):
     """새 말을 **처음** 쓸 때.  정의 없이 쓰는 말이 논리 점프의 시작이다."""
-    return f'<div class="정의"><b>{말}</b> &mdash; {뜻}</div>'
+    return f'<div class="정의"><b>{_이름(말)}</b> &mdash; {뜻}</div>'
 
 
 def 유도(제목, 걸음들):
@@ -149,20 +238,22 @@ def 유도(제목, 걸음들):
         f'<tr><td class="유도번호">{i}</td><td class="유도말">{a}</td>'
         f'<td class="유도왜">{b}</td></tr>'
         for i, (a, b) in enumerate(걸음들, 1))
-    return ('<div class="유도"><div class="유도머리">유도 &mdash; ' + 제목 + '</div>'
-            '<table class="유도표"><thead><tr><th></th><th>이렇게 된다</th>'
-            '<th>왜냐하면</th></tr></thead><tbody>' + 행 + '</tbody></table></div>')
+    return ('<div class="유도"><div class="유도머리">' + 말("유도") + 제목 + '</div>'
+            '<table class="유도표"><thead><tr><th></th><th>' + 말("이렇게") + '</th>'
+            '<th>' + 말("왜냐") + '</th></tr></thead><tbody>'
+            + 행 + '</tbody></table></div>')
 
 
 def 예제(제목, 주어진, 푸는법, 답, 함정, 덧=""):
     _예제번호[0] += 1
     덧h = f'<div class="예제덧">{덧}</div>' if 덧 else ""
-    return (f'<div class="예제"><div class="예제머리">예제 {_예제번호[0]}. {제목}</div>'
-            f'<div class="예제줄"><b>주어진 것.</b> {주어진}</div>'
-            f'<div class="예제줄"><b>푸는 법.</b> {푸는법}</div>'
-            f'<div class="예제답"><b>답.</b> {답}</div>'
+    return (f'<div class="예제"><div class="예제머리">{말("예제")} '
+            f'{_예제번호[0]}. {제목}</div>'
+            f'<div class="예제줄"><b>{말("주어진")}</b> {주어진}</div>'
+            f'<div class="예제줄"><b>{말("푸는법")}</b> {푸는법}</div>'
+            f'<div class="예제답"><b>{말("답")}</b> {답}</div>'
             + 덧h +
-            f'<div class="예제함정"><b>여기서 틀린다.</b> {함정}</div></div>')
+            f'<div class="예제함정"><b>{말("함정")}</b> {함정}</div></div>')
 
 
 def 짚기(t):
@@ -172,7 +263,7 @@ def 짚기(t):
 
 def 사고(t):
     """실제로 난 사고."""
-    return f'<div class="사고"><b>실제로 난 일</b><br>{t}</div>'
+    return f'<div class="사고"><b>{말("사고")}</b><br>{t}</div>'
 
 
 def 수(x, 유효=4, 단위=""):
@@ -186,6 +277,7 @@ def 수(x, 유효=4, 단위=""):
             s = f"{m}×10<sup>{int(e)}</sup>"
         else:
             s = f"{x:,.{max(0, 유효 - len(str(int(ax))) )}f}".rstrip("0").rstrip(".")
+    단위 = _단위말.get(단위, 단위) if _지금말[0] == "en" else 단위
     return s + (f"&nbsp;{단위}" if 단위 else "")
 
 
@@ -234,23 +326,27 @@ def 개념(이름, 이론, 어디에, 언제, 어떻게, 산업코드=None, 주�
     산업코드 : 진짜 코드가 어떻게 생겼나 (문자열, <pre> 로 감싼다)
     주의     : 여기서 틀린다
     """
-    o = [f'<div class="개념"><div class="개념머리">{이름}</div>']
+    o = [f'<div class="개념"><div class="개념머리">{_이름(이름)}</div>']
     o.append(f'<div class="개념이론">{이론}</div>')
     o.append('<table class="개념표"><tbody>')
-    o.append(f'<tr><th>어디에 쓰나</th><td>{어디에}</td></tr>')
-    o.append(f'<tr><th>언제 쓰나</th><td>{언제}</td></tr>')
-    o.append(f'<tr><th>어떻게 쓰나</th><td>{어떻게}</td></tr>')
+    o.append(f'<tr><th>{말("어디에")}</th><td>{어디에}</td></tr>')
+    o.append(f'<tr><th>{말("언제")}</th><td>{언제}</td></tr>')
+    o.append(f'<tr><th>{말("어떻게")}</th><td>{어떻게}</td></tr>')
     o.append('</tbody></table>')
     if 산업코드:
-        o.append('<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>')
+        o.append(f'<div class="개념코드머리">{말("코드머리")}</div>')
         o.append('<pre><code>' + 안전(산업코드) + '</code></pre>')
     if 주의:
-        o.append(f'<div class="개념주의"><b>여기서 틀린다.</b> {주의}</div>')
+        o.append(f'<div class="개념주의"><b>{말("주의")}</b> {주의}</div>')
     o.append('</div>')
     return "\n".join(o)
 
 
 def 쓰는자리(줄들):
     """'이 장에서 배운 것을 어디에 쓰나' 를 장 끝에 표로."""
-    return 표("이 장의 개념이 실제로 쓰이는 자리",
-              ["개념", "쓰이는 블록", "무엇을 정하나"], 줄들)
+    # 첫 칸은 개념 이름이라 영어판에서는 같이 옮긴다.  한 칸에 여러 개를
+    # `·` 로 늘어놓은 줄이 있으므로 쪼개서 옮긴다(안 쪼개면 통째로 안 맞아
+    # 한국어가 그대로 남는다 -- 실측 2026-09-20).
+    줄들 = [[" · ".join(_개념말([x.strip() for x in str(r[0]).split("·")]))]
+          + list(r[1:]) for r in 줄들]
+    return 표(말("쓰는자리"), 말("쓰는자리머리"), 줄들)

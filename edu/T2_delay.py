@@ -646,7 +646,7 @@ set_load 0.064 [get_ports dout[*]]     ;# what we assumed -- say it in the datas
          "Whether the tool interpolated or extrapolated your operating point"],
         ["배선지연 · 리피터", "Block boundaries and top-level assembly",
          "The output-load and transition limits you publish in the datasheet"],
-        ["도착 · 요구 · 슬랙", "Every signoff",
+        ["도착시각 · 요구시각 · 슬랙", "Every signoff",
          "Whether the number you are about to sell is real"]]))
 
     c.날것(사고(f"""This repository measured its own FIR filter at <b>455 MHz</b> and then

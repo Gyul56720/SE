@@ -234,7 +234,7 @@ assign sel = {therm, therm} >> rot;     // barrel rotate""",
     c.절("T6.5 What to do with this on Monday")
 
     c.날것(쓰는자리([
-        ["플래시 · 축차비교 · 파이프라인 · 시간인터리브",
+        ["플래시ADC · 축차비교ADC · 파이프라인ADC · 시간인터리브",
          "Architecture selection, first week", "Which limit you will be paying"],
         ["용량DAC · 세그먼테이션", "Sizing the array before any transistor",
          "Unit capacitor, total area, and the reference driver's current"],
