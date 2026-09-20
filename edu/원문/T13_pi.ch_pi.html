@@ -1,0 +1,113 @@
+<h1 id="T13">T13. Power Integrity — the Network Everything Else Sits On</h1>
+<p class="한줄">The supply is not a node; it is an impedance with a frequency response, and your IP's worst jitter usually comes from its peak.</p>
+<div class="사다리"><div class="사다리앞"><b>읽기 전에 알아야 하는 것</b><br>전압 · 전류 · 저항 · 주파수 · 로그 · 특성임피던스 · RC지연 · 엘모어지연 · 위상잡음 · 전원푸싱 · 전원제거비 · 구경지터</div><div class="사다리뒤"><b>이 장에서 새로 나오는 것</b><br>목표임피던스 · PDN · ESR · ESL · 반공진 · 감쇠 · 디캡 · 전류미분 · 전압강하 · 동시스위칭잡음 · 리플버짓</div></div>
+<p>Every block in this book assumed a supply. This chapter is about what that
+    supply actually is: a network of capacitors and inductances whose impedance varies
+    by two orders of magnitude across frequency, with <b>peaks at frequencies nobody
+    designed</b>. The current your IP draws flows through that impedance and becomes a
+    voltage on your own supply — and the failures it causes appear as jitter (T7),
+    reference drift (T11), or timing failures that correlate with software.</p>
+<h2>T13.1 The specification is an impedance, not a voltage</h2>
+<div class="개념"><div class="개념머리">목표 임피던스 (target impedance)</div>
+<div class="개념이론"><p>Z<sub>target</sub> = V<sub>DD</sub>·(allowed ripple)/I<sub>max</sub>.
+        For 1&nbsp;V, 5&nbsp;% ripple and 10&nbsp;A of
+        transient current that is <b>5&nbsp;mΩ</b> — and it must hold
+        <i>at every frequency the load actually contains</i>, not on average.</p>
+        <p>This turns a vague requirement ('clean supply') into a curve that can be
+        measured, simulated and signed off, which is the whole reason the concept
+        exists.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>Board design, package design, and the on-die grid — and it is the number your IP's integration guide should state as a requirement.</td></tr>
+<tr><th>언제 쓰나</th><td>Before the package is chosen. The package's inductance sets the mid-frequency impedance and cannot be fixed later by board capacitors.</td></tr>
+<tr><th>어떻게 쓰나</th><td>Take the block's maximum transient current and its spectral content, set the allowed ripple from the most sensitive circuit (usually a PLL or a reference, not the logic), and check the impedance curve against it <b>at the peaks</b>.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code># What an IP deliverable should say, so the integrator can meet it.
+# INTEGRATION.md:
+#   Supply: 1.0 V +/- 5%, Z_pdn &lt;= 5 mOhm from DC to 200 MHz at the block's pins.
+#   Peak transient: 10 A over 2 ns at the start of a burst (di/dt = 5 A/ns).
+#   On-die decoupling included in the macro: 20 nF.
+#   The PLL supply (VDDA) requires a separate regulator; sharing it with the
+#   digital rail has been measured to add 0.4 ps rms jitter at 1 GHz.
+# Without these four lines the integrator guesses, and the guess is usually wrong
+# in the direction that makes your IP look bad.</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> A flat target is a simplification. The real requirement is the load's
+            current spectrum times the impedance, integrated where the victim circuit is
+            sensitive — a 20 mΩ peak at 1.4 MHz matters enormously to a PLL whose loop
+            bandwidth is 1 MHz (T7) and not at all to a logic block.</div>
+</div>
+<table><caption>표 13. Measured impedance of this chapter's PDN (target 5&nbsp;mΩ)</caption><thead><tr><th>Frequency</th><th>|Z|</th><th>Meets target?</th></tr></thead><tbody><tr><td>0.01&nbsp;MHz</td><td>15.5&nbsp;mΩ</td><td><b>no</b></td></tr><tr><td>0.1&nbsp;MHz</td><td>1.345&nbsp;mΩ</td><td>yes</td></tr><tr><td>1&nbsp;MHz</td><td>5.673&nbsp;mΩ</td><td><b>no</b></td></tr><tr><td>10&nbsp;MHz</td><td>5.232&nbsp;mΩ</td><td><b>no</b></td></tr><tr><td>100&nbsp;MHz</td><td>2.111&nbsp;mΩ</td><td>yes</td></tr><tr><td>1,&nbsp;MHz</td><td>23.07&nbsp;mΩ</td><td><b>no</b></td></tr><tr><td>5,&nbsp;MHz</td><td>115.1&nbsp;mΩ</td><td><b>no</b></td></tr></tbody></table>
+<figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 430 230" width="100%" style="max-width:430px;height:auto" font-family="ui-monospace,monospace" font-size="11"><path d="M52,18 L52,196 L414,196" fill="none" stroke="#888" stroke-width="1.2"/><path d="M52.0,196 L52.0,200" fill="none" stroke="#888" stroke-width="1.0"/><text x="52.0" y="212" fill="#888" font-size="9" text-anchor="middle">3</text><path d="M155.42857142857142,196 L155.42857142857142,200" fill="none" stroke="#888" stroke-width="1.0"/><text x="155.42857142857142" y="212" fill="#888" font-size="9" text-anchor="middle">5</text><path d="M258.85714285714283,196 L258.85714285714283,200" fill="none" stroke="#888" stroke-width="1.0"/><text x="258.85714285714283" y="212" fill="#888" font-size="9" text-anchor="middle">7</text><path d="M362.2857142857143,196 L362.2857142857143,200" fill="none" stroke="#888" stroke-width="1.0"/><text x="362.2857142857143" y="212" fill="#888" font-size="9" text-anchor="middle">9</text><path d="M48,196.0 L52,196.0" fill="none" stroke="#888" stroke-width="1.0"/><text x="44" y="199.0" fill="#888" font-size="9" text-anchor="end">0</text><path d="M48,107.0 L52,107.0" fill="none" stroke="#888" stroke-width="1.0"/><text x="44" y="110.0" fill="#888" font-size="9" text-anchor="end">92.5268</text><path d="M48,18.0 L52,18.0" fill="none" stroke="#888" stroke-width="1.0"/><text x="44" y="21.0" fill="#888" font-size="9" text-anchor="end">185.054</text><text x="233.0" y="224" fill="#111" font-size="10" text-anchor="middle">log10(f / Hz)</text><text x="12" y="107.0" font-size="10" fill="#111" transform="rotate(-90 12 107.0)" text-anchor="middle">|Z| (mΩ)</text><path d="M52.0,46.65040590552397 L58.74011774217031,85.3719749890946 L65.48023548434062,114.05507511411632 L72.22035322651095,135.30243199999543 L78.96047096868126,151.04204646892063 L85.70058871085158,162.70214259884312 L92.4407064530219,171.34076566238883 L99.1808241951922,177.74178951490546 L105.92094193736253,182.4860448422816 L112.66105967953287,186.00402157524164 L119.40117742170317,188.6149254064357 L126.1412951638735,190.55562649981033 L132.8814129060438,192.00211162073438 L139.62153064821413,193.08534311925388 L146.3616483903844,193.9028343700556 L153.10176613255476,194.526552626593 L159.84188387472506,195.00609898732236 L166.5820016168954,195.35903658555742 L173.32211935906574,195.51917029864748 L180.06223710123604,195.36664828492061 L186.80235484340636,194.97334787390082 L193.54247258557666,194.35030915917955 L200.282590327747,193.26458900839407 L207.0227080699173,190.62696369446806 L213.76282581208764,176.78471160415714 L220.50294355425794,189.4545553137864 L227.24306129642827,193.21781445638794 L233.9831790385986,194.61955052879804 L240.7232967807689,195.41449388086983 L247.46341452293922,195.22113075756516 L254.20353226510952,193.70889068170558 L260.94365000727987,189.60991777914168 L267.6837677494501,192.95813963968686 L274.4238854916205,194.5378701773534 L281.1640032337908,195.2020481502572 L287.9041209759612,195.42631191252352 L294.6442387181314,195.2253790457951 L301.3843564603018,194.79541306986235 L308.1244742024721,194.2184277913589 L314.86459194464237,193.4697684900059 L321.6047096868127,192.48835484150607 L328.3448274289831,191.18718721869982 L335.0849451711533,189.44890848455012 L341.8250629133236,187.11607940916875 L348.565180655494,183.9772082199314 L355.30529839766433,179.74773794619512 L362.0454161398346,174.04445917161834 L368.7855338820049,166.35123648309224 L375.5256516241753,155.97337133624407 L382.2657693663456,141.9774911278102 L389.00588710851594,123.11401405096325 L395.7460048506862,97.72121451369152 L402.48612259285653,63.61666733783585 L409.22624033502683,18.0" fill="none" stroke="#c0392b" stroke-width="1.8"/><circle cx="52.0" cy="46.65040590552397" r="2.2" fill="#c0392b"/><circle cx="58.74011774217031" cy="85.3719749890946" r="2.2" fill="#c0392b"/><circle cx="65.48023548434062" cy="114.05507511411632" r="2.2" fill="#c0392b"/><circle cx="72.22035322651095" cy="135.30243199999543" r="2.2" fill="#c0392b"/><circle cx="78.96047096868126" cy="151.04204646892063" r="2.2" fill="#c0392b"/><circle cx="85.70058871085158" cy="162.70214259884312" r="2.2" fill="#c0392b"/><circle cx="92.4407064530219" cy="171.34076566238883" r="2.2" fill="#c0392b"/><circle cx="99.1808241951922" cy="177.74178951490546" r="2.2" fill="#c0392b"/><circle cx="105.92094193736253" cy="182.4860448422816" r="2.2" fill="#c0392b"/><circle cx="112.66105967953287" cy="186.00402157524164" r="2.2" fill="#c0392b"/><circle cx="119.40117742170317" cy="188.6149254064357" r="2.2" fill="#c0392b"/><circle cx="126.1412951638735" cy="190.55562649981033" r="2.2" fill="#c0392b"/><circle cx="132.8814129060438" cy="192.00211162073438" r="2.2" fill="#c0392b"/><circle cx="139.62153064821413" cy="193.08534311925388" r="2.2" fill="#c0392b"/><circle cx="146.3616483903844" cy="193.9028343700556" r="2.2" fill="#c0392b"/><circle cx="153.10176613255476" cy="194.526552626593" r="2.2" fill="#c0392b"/><circle cx="159.84188387472506" cy="195.00609898732236" r="2.2" fill="#c0392b"/><circle cx="166.5820016168954" cy="195.35903658555742" r="2.2" fill="#c0392b"/><circle cx="173.32211935906574" cy="195.51917029864748" r="2.2" fill="#c0392b"/><circle cx="180.06223710123604" cy="195.36664828492061" r="2.2" fill="#c0392b"/><circle cx="186.80235484340636" cy="194.97334787390082" r="2.2" fill="#c0392b"/><circle cx="193.54247258557666" cy="194.35030915917955" r="2.2" fill="#c0392b"/><circle cx="200.282590327747" cy="193.26458900839407" r="2.2" fill="#c0392b"/><circle cx="207.0227080699173" cy="190.62696369446806" r="2.2" fill="#c0392b"/><circle cx="213.76282581208764" cy="176.78471160415714" r="2.2" fill="#c0392b"/><circle cx="220.50294355425794" cy="189.4545553137864" r="2.2" fill="#c0392b"/><circle cx="227.24306129642827" cy="193.21781445638794" r="2.2" fill="#c0392b"/><circle cx="233.9831790385986" cy="194.61955052879804" r="2.2" fill="#c0392b"/><circle cx="240.7232967807689" cy="195.41449388086983" r="2.2" fill="#c0392b"/><circle cx="247.46341452293922" cy="195.22113075756516" r="2.2" fill="#c0392b"/><circle cx="254.20353226510952" cy="193.70889068170558" r="2.2" fill="#c0392b"/><circle cx="260.94365000727987" cy="189.60991777914168" r="2.2" fill="#c0392b"/><circle cx="267.6837677494501" cy="192.95813963968686" r="2.2" fill="#c0392b"/><circle cx="274.4238854916205" cy="194.5378701773534" r="2.2" fill="#c0392b"/><circle cx="281.1640032337908" cy="195.2020481502572" r="2.2" fill="#c0392b"/><circle cx="287.9041209759612" cy="195.42631191252352" r="2.2" fill="#c0392b"/><circle cx="294.6442387181314" cy="195.2253790457951" r="2.2" fill="#c0392b"/><circle cx="301.3843564603018" cy="194.79541306986235" r="2.2" fill="#c0392b"/><circle cx="308.1244742024721" cy="194.2184277913589" r="2.2" fill="#c0392b"/><circle cx="314.86459194464237" cy="193.4697684900059" r="2.2" fill="#c0392b"/><circle cx="321.6047096868127" cy="192.48835484150607" r="2.2" fill="#c0392b"/><circle cx="328.3448274289831" cy="191.18718721869982" r="2.2" fill="#c0392b"/><circle cx="335.0849451711533" cy="189.44890848455012" r="2.2" fill="#c0392b"/><circle cx="341.8250629133236" cy="187.11607940916875" r="2.2" fill="#c0392b"/><circle cx="348.565180655494" cy="183.9772082199314" r="2.2" fill="#c0392b"/><circle cx="355.30529839766433" cy="179.74773794619512" r="2.2" fill="#c0392b"/><circle cx="362.0454161398346" cy="174.04445917161834" r="2.2" fill="#c0392b"/><circle cx="368.7855338820049" cy="166.35123648309224" r="2.2" fill="#c0392b"/><circle cx="375.5256516241753" cy="155.97337133624407" r="2.2" fill="#c0392b"/><circle cx="382.2657693663456" cy="141.9774911278102" r="2.2" fill="#c0392b"/><circle cx="389.00588710851594" cy="123.11401405096325" r="2.2" fill="#c0392b"/><circle cx="395.7460048506862" cy="97.72121451369152" r="2.2" fill="#c0392b"/><circle cx="402.48612259285653" cy="63.61666733783585" r="2.2" fill="#c0392b"/><circle cx="409.22624033502683" cy="18.0" r="2.2" fill="#c0392b"/><text x="410" y="30" fill="#c0392b" font-size="9.5" text-anchor="end" font-weight="bold">|Z| (mΩ)</text><path d="M52.0,191.1905824678336 L414.0,191.1905824678336" fill="none" stroke="#1f6feb" stroke-width="1.8"/><circle cx="52.0" cy="191.1905824678336" r="2.2" fill="#1f6feb"/><circle cx="414.0" cy="191.1905824678336" r="2.2" fill="#1f6feb"/><text x="410" y="43" fill="#1f6feb" font-size="9.5" text-anchor="end" font-weight="bold">target</text><circle cx="214.647637014532" cy="175.16476876903522" r="3.4" fill="#c0392b"/><text x="220.647637014532" y="169.16476876903522" fill="#c0392b" font-size="9" text-anchor="start" font-weight="bold">1.4&nbsp;MHz</text></svg><figcaption><b>그림 2.</b> The impedance profile. It meets the target over most of the range and
+        <b>violates it at the anti-resonance</b> — 21.66&nbsp;mΩ at
+        1.4&nbsp;MHz, 4.33× the target. The peak, not
+        the average, is the specification.</figcaption></figure>
+<h2>T13.2 Anti-resonance: why adding a capacitor can make it worse</h2>
+<div class="유도"><div class="유도머리">유도 &mdash; Where the peak comes from</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">A real capacitor is series R–L–C: capacitive below its self-resonance, <b>inductive above it</b>.</td><td class="유도왜">ESL comes from the package and the mounting; it is why a 100 µF bulk capacitor does nothing at 100 MHz.</td></tr><tr><td class="유도번호">2</td><td class="유도말">Put two capacitors in parallel. Between their self-resonances, one is already inductive and the other is still capacitive.</td><td class="유도왜">An inductor in parallel with a capacitor is a <b>parallel resonant tank</b>, and a parallel tank has <i>high</i> impedance at resonance.</td></tr><tr><td class="유도번호">3</td><td class="유도말">So the combination has a peak where the individual parts each had a dip.</td><td class="유도왜">Measured on this PDN: peaks at 1.4&nbsp;MHz (21.66&nbsp;mΩ) and 11.1&nbsp;MHz (6.683&nbsp;mΩ).</td></tr><tr><td class="유도번호">4</td><td class="유도말">The peak's height is set by the <b>damping</b> — the ESR in the loop.</td><td class="유도왜">Which produces the result below, and it is the one that surprises people.</td></tr></tbody></table></div>
+<table><caption>표 14. Increasing ESR to lower the peak (the ceramic branch)</caption><thead><tr><th>Ceramic ESR</th><th>Peak frequency</th><th>Peak |Z|</th><th></th></tr></thead><tbody><tr><td>5&nbsp;mΩ</td><td>1.4&nbsp;MHz</td><td>26.77&nbsp;mΩ</td><td></td></tr><tr><td>10&nbsp;mΩ</td><td>1.4&nbsp;MHz</td><td>21.66&nbsp;mΩ</td><td></td></tr><tr><td>30&nbsp;mΩ</td><td>1.4&nbsp;MHz</td><td>12.64&nbsp;mΩ</td><td></td></tr><tr><td>100&nbsp;mΩ</td><td>1.62&nbsp;MHz</td><td>7.018&nbsp;mΩ</td><td><b>minimum</b></td></tr><tr><td>300&nbsp;mΩ</td><td>3.01&nbsp;MHz</td><td>12.96&nbsp;mΩ</td><td></td></tr></tbody></table>
+<div class="짚기">Read that table twice. Going from 5&nbsp;mΩ to
+    100&nbsp;mΩ of ESR — making each capacitor <b>worse</b> by the
+    usual figure of merit — lowers the anti-resonance peak from
+    26.77&nbsp;mΩ to 7.018&nbsp;mΩ, a factor of
+    3.81. Past the optimum it rises again, because the branch
+    stops conducting at all. <b>'Lowest ESR' is not the specification; the right ESR
+    is.</b> This is why controlled-ESR capacitors exist and why a well-meaning
+    substitution to a 'better' part can break a board that was working.</div>
+<h2>T13.3 The three droops, and which one is yours</h2>
+<table><caption>표 15. A current step produces three separate droops</caption><thead><tr><th>Droop</th><th>Time scale</th><th>Set by</th><th>Fixed by</th></tr></thead><tbody><tr><td>First</td><td>sub-ns to a few ns</td><td>On-die grid resistance and on-die decap</td><td>More on-die decap, a denser grid — <b>inside the die, nothing else helps</b></td></tr><tr><td>Second</td><td>tens of ns</td><td>Package inductance against package and on-die capacitance</td><td>Package choice, more package capacitance, more bumps</td></tr><tr><td>Third</td><td>µs</td><td>Board capacitance and the regulator's loop bandwidth</td><td>Bulk capacitance, regulator response</td></tr></tbody></table>
+<div class="개념"><div class="개념머리">di/dt, and why the derivative is the enemy</div>
+<div class="개념이론"><p>The resistive drop I·R is easy to compute and rarely the problem. The
+        inductive drop is L·di/dt, and di/dt in a modern digital block is enormous: a
+        clock-gated domain waking up can move amperes in nanoseconds.</p>
+        <p>Worse, di/dt is <b>periodic and correlated with the workload</b>. A processor
+        running a loop that alternates between a heavy and a light instruction produces
+        a current square wave at whatever rate the loop runs — which can land exactly on
+        an anti-resonance. The classic symptom: a machine that fails one specific
+        benchmark and passes everything else.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>Any design with clock gating, power gating, or a bursty accelerator — which is every SoC.</td></tr>
+<tr><th>언제 쓰나</th><td>At architecture time. Staggering the wake-up of a wide datapath is a micro-architectural decision, not a physical one.</td></tr>
+<tr><th>어떻게 쓰나</th><td>Stagger enables over several cycles, ramp clock-gate release, and <b>never</b> release a whole power domain on one edge. On the analysis side, drive the PDN model with the real current profile, not a step.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>// The cheapest di/dt fix in RTL: stagger the ungating.
+// Releasing 64 lanes on one edge is a current step; releasing them over 8 cycles
+// is the same charge with 1/8 the di/dt, and usually nobody notices the latency.
+always_ff @(posedge clk) begin
+    if (wake) stagger &lt;= {stagger[6:0], 1'b1};     // 8-deep shift
+    else      stagger &lt;= '0;
+end
+generate for (genvar i = 0; i &lt; 64; i++)
+    assign lane_en[i] = stagger[i/8];
+endgenerate
+// Measured effect belongs in the integration guide: peak di/dt with and without.</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> Simulating the PDN with a current <b>step</b> gives the worst case and
+            is useful, but it hides resonance: a step contains all frequencies at
+            declining amplitude, while the real failure is a periodic load that
+            concentrates energy at one frequency. Drive the model with the real
+            workload's current spectrum as well.</div>
+</div>
+<div class="사고"><b>실제로 난 일</b><br>Supply noise reaches your IP through two doors, and only one of them
+    is the supply. The first is direct: V<sub>DD</sub> moves, and a VCO's frequency
+    moves with it (T7's pushing). The second is the <b>substrate</b>: current returning
+    through the die's bulk modulates body voltages, which modulates thresholds (T1's
+    body effect). The second path does not appear in any PDN impedance plot, and it is
+    why physical separation and guard rings matter even when the supply is separately
+    regulated.</div>
+<h2>T13.4 What to do with this on Monday</h2>
+<table><caption>표 16. 이 장의 개념이 실제로 쓰이는 자리</caption><thead><tr><th>개념</th><th>쓰이는 블록</th><th>무엇을 정하나</th></tr></thead><tbody><tr><td>목표임피던스</td><td>The integration guide you ship</td><td>The requirement the integrator must meet — state it or inherit their guess</td></tr><tr><td>반공진 · 감쇠</td><td>Board and package capacitor selection</td><td>Which capacitors, and that 'lowest ESR' is the wrong criterion</td></tr><tr><td>전류미분</td><td>RTL and micro-architecture</td><td>Whether wake-up is staggered — a free fix at design time, expensive later</td></tr><tr><td>디캡</td><td>Floorplan</td><td>How much on-die capacitance fits, and the leakage it costs</td></tr><tr><td>동시스위칭잡음</td><td>I/O design</td><td>How many simultaneous outputs are allowed to switch</td></tr></tbody></table>
+<p>The computed results to carry: this PDN meets its
+    5&nbsp;mΩ target at most frequencies and misses it by
+    4.33× at a 1.4&nbsp;MHz anti-resonance that no
+    component has by itself. And raising the ceramic branch's ESR from
+    5&nbsp;mΩ to 100&nbsp;mΩ <b>lowers</b> that peak
+    by 3.81× — the one place in this book where making a
+    component worse makes the system better.</p>
+<p>The next chapter takes the longest time scale of all: what happens to these
+    circuits after they have been running for ten years.</p>
+<div class="특허"><div class="특허머리">특허로 가는 길 &mdash; 이 주제에서 발명이 일어나는 자리</div><div class="특허속">Power delivery is a board and package discipline, but the IP-side claims
+        are real and they all have the same shape: <b>make the block insensitive
+        instead of making the supply clean.</b> Regulators local to a sensitive block,
+        differential and supply-referenced signalling, bias schemes whose output does
+        not track V<sub>DD</sub>, and clock distribution that is immune to supply
+        modulation. Every one of them is cheaper than lowering a PDN's impedance by the
+        same factor.</div></div>

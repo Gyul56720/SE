@@ -1,0 +1,231 @@
+# -*- coding: utf-8 -*-
+"""T16 -- ESD: the failure that happens before the chip is ever powered."""
+import sys, os, math
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from bookK import 장, 개념, 표, 그림, 정의, 유도, 예제, 짚기, 사고, 수, 쓰는자리
+import sch
+
+# HBM 은 계산할 수 있다: 2 kV 가 1.5 kΩ 를 지난다.
+HBM_V, HBM_R, HBM_C = 2000.0, 1500.0, 100e-12
+
+
+def _hbm():
+    return HBM_V / HBM_R, HBM_R * HBM_C, 0.5 * HBM_C * HBM_V ** 2
+
+
+def _대역폭(C, R):
+    return 1.0 / (2 * math.pi * R * C)
+
+
+def ch_esd():
+    I, tau, E = _hbm()
+    c = 장(
+        "T16", "ESD — the Failure That Happens Before the Chip Is Powered",
+        "Every pin must survive a few amps from a finger, and the circuit that "
+        "survives it is in the signal path of the circuit that must not be slowed "
+        "down by it.",
+        쓰는것=["전압", "전류", "전하", "저항", "주파수", "적분", "RC지연",
+              "게이트용량", "문턱전압", "반사계수", "기생", "레이아웃의존효과",
+              "TDDB", "일렉트로마이그레이션", "특성임피던스"],
+        내놓는것=["정전기방전", "인체모델", "기계모델", "충전소자모델",
+                "클램프", "스냅백", "설계창", "유지전압", "트리거전압",
+                "전류경로", "패드용량", "이차항복", "래치업"],
+        특허="""ESD is one of the most actively patented areas in I/O design, and the
+        reason is the constraint itself: the protection sits <b>in the signal path</b>,
+        so every claim is a way to get more protection per femtofarad. Distributed
+        protection along a T-coil or an inductor-peaked network; active clamps that
+        conduct only during a real event; protection that reuses the driver's own
+        devices; and CDM-specific secondary protection placed at the gate rather than
+        at the pad. If you ship a high-speed interface, this is the chapter where your
+        differentiation lives.""")
+
+    c.글("""A person walking across a carpet charges to a few kilovolts. When they touch
+    a pin, that charge flows into the chip in a hundred nanoseconds, and every internal
+    gate oxide is a few nanometres thick. Protection is therefore not optional and it is
+    not a detail: <b>it is a circuit in series with your signal</b>, and its capacitance
+    is subtracted directly from your bandwidth.""")
+
+    # ------------------------------------------------------------------
+    c.절("T16.1 Three models, three entirely different events")
+
+    c.날것(개념(
+        "인체·기계·충전소자 모델 (HBM, MM, CDM)",
+        f"""<p><b>HBM</b> models a charged person: {수(HBM_C*1e12,3,'pF')} charged to
+        2 kV, discharged through {수(HBM_R/1e3,3,'kΩ')}. That gives a peak current of
+        {수(I,3,'A')} with a time constant of {수(tau*1e9,3,'ns')} and an energy of
+        {수(E*1e6,3,'µJ')} — <b>computed, and worth doing once by hand</b> because the
+        numbers are less dramatic than people expect.</p>
+        <p><b>CDM</b> models the <i>chip itself</i> charged and then discharged through
+        one pin. It is far faster (rise time well under a nanosecond) and the peak
+        current is several amps, but the total energy is small. Published CDM waveforms
+        for 500 V give peaks of roughly 5–10 A — a figure from the standards and
+        practice, <b>not computed here</b>, because the peak is set by the package's
+        inductance rather than by a resistor.</p>
+        <p><b>MM</b> (machine model) sits between them and is largely retired.</p>""",
+        어디에="Qualification of every pin of every product. The targets are usually "
+             "2 kV HBM and 500 V CDM, and customers sometimes ask for more.",
+        언제="At the very start of I/O design — the protection's capacitance is a term "
+            "in the bandwidth budget and cannot be added later.",
+        어떻게="Design for HBM at the pad with a clamp and diodes, and for CDM with "
+             "<b>secondary</b> protection close to the gate it protects, plus a small "
+             "series resistance. The two need different structures because they have "
+             "different time scales.",
+        산업코드="""* TLP (transmission-line pulse) is how protection is characterised:
+* rectangular 100 ns pulses of increasing current, measuring V at each step.
+* The plot that comes out IS the design window check.
+*   I_t2  : the current at which the structure fails (second breakdown)
+*   V_h   : holding voltage after snapback  -- must be ABOVE the supply
+*   V_t1  : trigger voltage                 -- must be BELOW the oxide limit
+* A 2 kV HBM target needs I_t2 >= 1.33 A with margin -- the number computed above.""",
+        주의="""HBM and CDM fail <b>different</b> structures. A design that passes 4 kV
+            HBM can fail 250 V CDM, because CDM's current appears inside the die, rises
+            in picoseconds, and finds the nearest thin oxide before the pad clamp has
+            turned on. Reporting only HBM is reporting the easy half."""))
+
+    c.날것(표("The three events, side by side",
+        ["", "HBM", "MM", "CDM"],
+        [["What is charged", "A person", "A tool or fixture", "<b>The chip itself</b>"],
+         ["Typical target", "2 kV", "200 V (largely retired)", "500 V"],
+         ["Peak current", f"{수(I,3,'A')} (computed)", "several A",
+          "5–10 A (from practice)"],
+         ["Rise time", "~10 ns", "~ns", "<b>&lt; 250 ps</b>"],
+         ["Duration", f"~{수(tau*1e9,3,'ns')}", "~ns", "~1 ns"],
+         ["Energy", f"{수(E*1e6,3,'µJ')}", "~µJ", "~1 µJ"],
+         ["Fails", "Pad structures, clamps", "Similar to HBM",
+          "<b>Internal thin oxides</b> — far from the pad"]]))
+
+    # ------------------------------------------------------------------
+    c.절("T16.2 The design window, and why it is a window")
+
+    c.날것(유도("Four inequalities that must hold at once", [
+        ("The clamp must not conduct in normal operation: "
+         "V<sub>trigger</sub> > V<sub>DD,max</sub> including overshoot.",
+         "A clamp that triggers on a supply transient is a short circuit across the "
+         "power rail — the chip destroys itself while working."),
+        ("It must turn on before anything else breaks: V<sub>trigger</sub> < "
+         "V<sub>oxide breakdown</sub>.",
+         "The whole purpose. This and the previous line define the window, and in an "
+         "advanced node with a thin oxide and a supply close to it, <b>the window is "
+         "only a volt or two wide</b>."),
+        ("After snapback it must hold above the supply: V<sub>hold</sub> > V<sub>DD</sub>.",
+         "Otherwise, once triggered by an event, the clamp stays on when normal power "
+         "returns — <b>latch-up</b>, and the part is destroyed on the bench after the "
+         "ESD tester has already passed it."),
+        ("It must carry the current without failing: I<sub>t2</sub> > the target's "
+         f"peak, i.e. above {수(I,3,'A')} for 2 kV HBM, with margin.",
+         "Second breakdown is thermal and it is permanent."),
+    ]))
+
+    c.날것(짚기("""The second and third inequalities move in opposite directions as the
+    process scales: the oxide gets thinner (lowering the ceiling) while the supply falls
+    more slowly (raising the floor). <b>The design window narrows with every node</b>,
+    which is why ESD design has become a specialisation and why the protection for a
+    new node is rarely a straight port of the old one."""))
+
+    c.날것(개념(
+        "전류 경로 (the current path) — the part people forget",
+        """<p>Protection is not a component you attach to a pin; it is a <b>path between
+        every pair of pins</b>. A pulse applied to an input with respect to some other
+        I/O must find a low-impedance route: typically up through a diode to the local
+        supply, along the supply bus, through a rail clamp to ground, and back through
+        another diode.</p>
+        <p>Three things break that path and all three are layout, not schematic:
+        <b>bus resistance</b> (the supply bus between the pin and the clamp — at several
+        amps, a few hundred milliohms is volts), <b>missing back-to-back diodes</b>
+        between separate supply domains, and <b>a clamp that is too far away</b>. The
+        schematic shows the protection; only the extracted layout shows the path.</p>""",
+        어디에="Every I/O, and especially every pin that sits in its own supply domain "
+             "— a PHY's analog supply, a separately regulated PLL rail (T13).",
+        언제="At floorplan, because the answer is 'a clamp near every pad' and that "
+            "costs area at the edge of the die.",
+        어떻게="Enumerate the pin pairs (I/O to I/O, I/O to any supply, supply to "
+             "supply) and make sure each has a designed path. Then verify it on the "
+             "extracted layout with an ESD-path checking tool — <b>the voltage across "
+             "the whole path</b> at the target current is the number that matters, not "
+             "the clamp's own voltage.",
+        산업코드="""# What an ESD path check reports, and how to read it.
+#   pad_rx -> VSS  : clamp V 4.1 V + bus IR 1.3 V = 5.4 V  @ 1.33 A   <- FAIL (oxide 5.0)
+#   pad_rx -> VDDA : diode 1.1 V + bus 0.4 V     = 1.5 V              <- ok
+#   VDDA   -> VDD  : NO PATH                                          <- FAIL
+# Two failures, and NEITHER is the clamp's fault:
+#   the first is a BUS WIDTH problem; the second is a MISSING back-to-back
+#   diode pair between two supply domains. Both are floorplan decisions.""",
+        주의="""Separate supply domains are the classic hole. Two rails that are never
+            connected on the die still get connected on the tester, and if no designed
+            path exists between them the current finds one through whatever signal
+            crosses the boundary — usually a level shifter's thin-oxide gate."""))
+
+    # ------------------------------------------------------------------
+    c.절("T16.3 What it costs the signal")
+
+    c.날것(표("Pad capacitance against bandwidth "
+             "(f_3dB = 1/(2πRC); 25 Ω is a doubly-terminated 50 Ω line)",
+        ["Pad + protection C", "f_3dB at 25 Ω", "f_3dB at 50 Ω", "Usable for"],
+        [[수(C*1e15, 4, "fF"), 수(_대역폭(C, 25)/1e9, 4, "GHz"),
+          수(_대역폭(C, 50)/1e9, 4, "GHz"),
+          ("112G PAM4 class" if C <= 150e-15 else
+           "25–56 G" if C <= 300e-15 else
+           "10 G and below" if C <= 500e-15 else "low speed / control")]
+         for C in (100e-15, 200e-15, 300e-15, 500e-15, 1e-12)]))
+
+    c.날것(유도("Why this table is the real ESD constraint for a SerDes", [
+        ("A diode big enough to carry amps has a junction area, and a junction has "
+         "capacitance.",
+         f"Protection capacitance and I<sub>t2</sub> are roughly proportional — "
+         "you cannot have one without the other, which is the whole problem."),
+        (f"That capacitance sits at the pad, in parallel with the line.",
+         f"At {수(300e-15*1e15,4,'fF')} and 25 Ω the pole is "
+         f"{수(_대역폭(300e-15,25)/1e9,4,'GHz')} — below Nyquist for a 56 GBd link."),
+        ("So protection directly removes channel margin — the same margin T8's "
+         "equalisers were fighting for.",
+         "<b>ESD and link budget are the same negotiation</b>, and the ESD engineer is "
+         "usually not in the room when the data rate is promised."),
+        ("The escapes are architectural: distribute the protection along an inductive "
+         "network (T-coil) so the capacitance is absorbed into a transmission line, or "
+         "use smaller primary protection plus fast secondary protection inside.",
+         "Both are why this is a patent-dense area. Neither is free — a T-coil costs "
+         "area and its own parasitics."),
+    ]))
+
+    c.날것(사고("""ESD is where a one-person IP house should be explicit about its
+    limits. Designing and <b>qualifying</b> protection needs TLP measurement equipment
+    and silicon to characterise, neither of which exists in a solo digital flow. The
+    honest deliverable is therefore a soft macro that stops at the pad, an integration
+    guide that states the assumed protection and its capacitance budget, and the
+    sentence that this repository's rules demand: <b>what was not verified, stated as
+    not verified.</b> A datasheet that implies ESD qualification that never happened is
+    the kind of claim that ends a small vendor."""))
+
+    # ------------------------------------------------------------------
+    c.절("T16.4 What to do with this on Monday")
+
+    c.날것(쓰는자리([
+        ["인체·충전소자모델", "The qualification plan and the datasheet",
+         "The targets, and that CDM is reported as well as HBM"],
+        ["설계창 · 유지전압 · 트리거전압", "Clamp selection for the node",
+         "Whether the protection can exist at this supply and oxide at all"],
+        ["전류경로", "Floorplan and supply-domain planning",
+         "Clamp placement, bus width, and the diodes between domains"],
+        ["패드용량", "The link budget, with the SerDes architect present",
+         "Data rate — the same margin the equalisers are fighting for"],
+        ["래치업", "Guard rings and well ties everywhere",
+         "Whether the part survives its own I/O being driven out of range"]]))
+
+    c.글(f"""The computed numbers to carry: a 2 kV HBM event is {수(I,3,'A')} for about
+    {수(tau*1e9,3,'ns')}, carrying {수(E*1e6,3,'µJ')} — small enough to be survivable
+    and large enough to destroy a thin oxide. And protection of
+    {수(300e-15*1e15,4,'fF')} at a pad puts a pole at
+    {수(_대역폭(300e-15,25)/1e9,4,'GHz')}, which is the sentence that connects this
+    chapter to T8: <b>ESD is not a separate discipline from the link budget; it is a
+    line in it.</b>""")
+
+    c.글("""That closes the graduate volume. It began with one device in four operating
+    regions and ends at the pad, having passed through delay, metastability, noise,
+    sampling, conversion, clocking, links, channels, switched capacitors, references,
+    matching, power, ageing and geometry. The common thread was a single discipline:
+    <b>every number was computed or measured, the trivial explanations were killed
+    before the number was reported, and what could not be established was said to be
+    unestablished.</b> That habit, more than any formula in these pages, is what makes
+    an IP deliverable something another company can buy.""")
+
+    return c.완성()
