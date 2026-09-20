@@ -4,6 +4,7 @@ import sys, os, math, random
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from bookK import 장, 개념, 표, 그림, 정의, 유도, 예제, 짚기, 사고, 수, 쓰는자리
 import sch
+import sch_flow
 from T18_floorplan import 코어변, 코어면적, 인스턴스, 행높이, 자리폭, 전력 as 블록전력
 
 # ---------------------------------------------------------------------------
@@ -250,6 +251,11 @@ def ch_pnr():
         f"{클럭단수()} levels deep and holds about {클럭버퍼수():,} buffers — every one "
         f"of which is a source of the variation computed below."))
 
+    c.날것(그림(sch_flow.클럭트리대메시(),
+        "The two structures, and the property that separates them. In the tree "
+        "each leaf has its own path, so local variation accumulates along it; in "
+        "the mesh the leaves are shorted together, so it averages instead."))
+
     c.날것(유도("How on-chip variation turns latency into skew", [
         ("Two flops share the clock path up to the point where the tree branches.",
          "By construction — the tree is a tree. Call the shared fraction the "
@@ -274,6 +280,11 @@ def ch_pnr():
          "multiplied by the derate difference and reappears as skew — so a deep tree "
          "costs frequency even when it is perfectly balanced."),
     ]))
+
+    c.날것(그림(sch_flow.OCV스큐(),
+        "The arithmetic in one picture. The common path is derated late on one "
+        "side and early on the other, so it does not cancel — and what does not "
+        "cancel is a fraction of the insertion delay."))
 
     줄 = []
     for 지연 in (200e-12, 400e-12, 600e-12, 900e-12, 1.2e-9):
@@ -343,6 +354,12 @@ def ch_pnr():
             branch and therefore the skew it delivers. Keep gating cells above the
             point where useful skew is applied."""))
 
+    c.날것(그림(sch_flow.클럭게이팅(),
+        "The integrated clock-gating cell and why the latch is not optional. "
+        "The waveform is the whole argument: the latch is transparent only while "
+        "the clock is low, so the enable is stable for the entire high phase and "
+        "the gated clock is always a full pulse or no pulse."))
+
     c.날것(개념(
         "클럭 게이팅 (clock gating) and the latch that makes it legal",
         f"""<p>A clock network switches every cycle whether or not the flops it feeds
@@ -393,6 +410,12 @@ always_ff @(posedge clk) q <= en ? d : q;         // recirculating mux
 
     # ------------------------------------------------------------------
     c.절("T19.4 Routing, in two passes and a repair loop")
+
+    c.날것(그림(sch_flow.배선세걸음(),
+        "Three different problems solved three different ways. The red cells in "
+        "the first panel are gcells whose demand exceeds supply; the red squares "
+        "in the second are DRC violations that detail routing could not avoid; "
+        "the third panel is what the repair loop does with them."))
 
     c.날것(표("Why routing is not one algorithm",
         ["Pass", "Works on", "Decides", "What it deliberately ignores"],

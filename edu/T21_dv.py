@@ -4,6 +4,7 @@ import sys, os, math, random
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from bookK import 장, 개념, 표, 그림, 정의, 유도, 예제, 짚기, 사고, 수, 쓰는자리
 import sch
+import sch_flow
 
 
 def 조화수(K):
@@ -91,6 +92,12 @@ def ch_dv():
         "and judges. They are deliberately not connected to each other — the monitor "
         "reconstructs what happened from the pins, so that a driver bug cannot hide "
         "itself by telling the scoreboard what it intended."))
+
+    c.날것(그림(sch_flow.UVM테스트벤치(),
+        "The environment in full. Read it as two halves that meet only at the "
+        "DUT: sequences drive down the left of each agent, monitors observe up "
+        "the right, and the scoreboard in the middle is the only thing that ever "
+        "says the design is wrong."))
 
     c.날것(표("Each component, and the one question it answers",
         ["Component", "Answers", "Why it is separate from its neighbour"],

@@ -4,6 +4,7 @@ import sys, os, math
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from bookK import 장, 개념, 표, 그림, 정의, 유도, 예제, 짚기, 사고, 수, 쓰는자리
 import sch
+import sch_flow
 
 # ---------------------------------------------------------------------------
 # 이 장이 쓰는 수 -- 전부 여기서 한 번만 정하고 아래에서 계산한다.
@@ -115,12 +116,23 @@ def ch_floorplan():
     # ------------------------------------------------------------------
     c.절("T18.1 From a gate count to a rectangle")
 
+    c.날것(그림(sch_flow.플로어플랜(),
+        "The floorplan, from the outside in: the pad ring with its corner cells "
+        "and fillers, two power rings, the stripes that cross the core, and the "
+        "rows the cells will sit on. Every element in this drawing is sized by a "
+        "calculation in this chapter."))
+
     c.날것(정의("자리 (SITE) and the 표준셀 행 (standard-cell row)",
         "A digital library does not place cells anywhere. It defines a <b>site</b> — "
         "the smallest placement unit — and cells are integer multiples of it. Rows are "
         "one site high and run the width of the core; a cell snaps to a site boundary "
         "in a row. Everything about digital area arithmetic follows from this: the "
         "layout is a <b>tiling</b>, not a free placement."))
+
+    c.날것(그림(sch_flow.표준셀행(),
+        "Rows, sites and the two supply rails that run the length of every row. "
+        "A cell occupies a whole number of sites and snaps to a site boundary; "
+        "that is what makes digital area arithmetic a tiling problem."))
 
     c.날것(표("A real SITE definition, and what each number means",
         ["LEF", "Value here", "What it decides"],

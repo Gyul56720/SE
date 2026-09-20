@@ -4,6 +4,7 @@ import sys, os, math, random
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from bookK import 장, 개념, 표, 그림, 정의, 유도, 예제, 짚기, 사고, 수, 쓰는자리
 import sch
+import sch_flow
 from T18_floorplan import 코어면적
 from T19_pnr import 플롭수
 
@@ -132,6 +133,12 @@ def ch_ate():
          ["Routing", "The chains are long nets crossing the die",
           "Nothing, and chain ordering after placement is how the cost is contained"]]))
 
+    c.날것(그림(sch_flow.스캔압축(),
+        "Compression in one picture: a decompressor fans a few tester channels "
+        "out to many short internal chains, and a compactor squeezes the "
+        "responses back. Both the test time and the pattern volume fall by the "
+        "same factor."))
+
     c.날것(표("Fault models, and the defects each one is a proxy for",
         ["Model", "What it assumes", "What it misses"],
         [["<b>Stuck-at</b>", "A node is permanently 0 or 1",
@@ -220,6 +227,12 @@ def ch_ate():
         "with a programmable timing generator and one driver/comparator pair per pin. "
         "Everything in the previous table is a statement about one of these boxes."))
 
+    c.날것(그림(sch_flow.ATE구조(),
+        "The machine the last column of that table is renting. The pattern "
+        "memory holds the vectors, the pin electronics drive and compare one pin "
+        "each, and the test program decides what runs and what counts as a "
+        "pass."))
+
     c.날것(개념(
         "병렬 시험 (multi-site test) — the other way to divide the cost",
         f"""<p>Compression reduces the time one die takes. Multi-site test reduces the
@@ -249,6 +262,11 @@ def ch_ate():
 
     # ------------------------------------------------------------------
     c.절("T22.3 BIST: moving the tester onto the die")
+
+    c.날것(그림(sch_flow.하이브리드BIST(),
+        "BIST moves the pattern source onto the die. The memory side replaces "
+        "data with an algorithm; the logic side replaces it with an LFSR and a "
+        "signature. The controller decides which of the two is running."))
 
     c.날것(표("Where BIST wins and where it does not",
         ["Kind", "What it tests", "Why it is better than external patterns there"],

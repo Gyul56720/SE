@@ -4,6 +4,7 @@ import sys, os, math
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from bookK import 장, 개념, 표, 그림, 정의, 유도, 예제, 짚기, 사고, 수, 쓰는자리
 import sch
+import sch_flow
 
 # ---------------------------------------------------------------------------
 # 코너의 곱셈 -- 가정이 아니라 셈이다.  각 축의 칸 수만 가정한다.
@@ -157,6 +158,11 @@ def ch_signoff():
 
     # ------------------------------------------------------------------
     c.절("T20.2 Corners multiply, and most of them are dominated")
+
+    c.날것(그림(sch_flow.코너곱셈(),
+        "Why signoff runs on a farm. The axes are independent of each other, so "
+        "they multiply rather than add — and the corner list is therefore "
+        "negotiated rather than assumed."))
 
     c.날것(유도("Where the signoff runtime comes from", [
         (" · ".join(f"{이름}: {k}" for 이름, k, _ in 축) + ".",
