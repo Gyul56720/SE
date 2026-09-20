@@ -50,7 +50,11 @@ def ex(title, given, method, numbers, trap, extra=""):
     """
     _n[0] += 1
     if isinstance(numbers, str):
-        nb = numbers
+        # 문자열로 준 `numbers` 를 **감싸서** 낸다.  감싸지 않으면 바로 뒤의
+        # `extra` 와 글자가 맞붙는다 -- 실측: "It meets neither.The fix is"
+        # 처럼 문장 사이 공백이 사라졌고, 이것이 `ex()` 를 쓰는 모든 장에
+        # 걸려 있었다.  태그 균형 검사는 이것을 못 잡는다(태그가 없으므로).
+        nb = f'<div class="wexn"><b>Numbers.</b> {numbers}</div>' 
     else:
         nb = ('<table class="wexn"><tbody>' + "".join(
             f"<tr><td>{k}</td><td><b>{v}</b></td></tr>" for k, v in numbers)
@@ -58,8 +62,9 @@ def ex(title, given, method, numbers, trap, extra=""):
     return (f'<div class="wex"><div class="wexh">Worked example {_n[0]}. {title}</div>'
             f'<div class="wexg"><b>Given.</b> {given}</div>'
             f'<div class="wexm"><b>Method.</b> {method}</div>'
-            f'{nb}{extra}'
-            f'<div class="wext"><b>How this is got wrong.</b> {trap}</div></div>')
+            f'{nb}'
+            + (f'<div class="wexx">{extra}</div>' if extra else "")
+            + f'<div class="wext"><b>How this is got wrong.</b> {trap}</div></div>')
 
 
 def prob(q, sol):
