@@ -147,6 +147,65 @@ def test_원문파일에서_읽는다():
     assert html.lstrip().startswith("<h1"), html[:80]
 
 
+def test_묶기는_옮긴_장만_모으고_몇_장인지_센다():
+    """쿼터가 끊겨 반만 옮겨도 묶을 수 있어야 한다 -- 대신 **반쪽이라고 적는다.**"""
+    import 한국어책
+    원래 = 한국어책.한국어
+    d = tempfile.mkdtemp(prefix="한국어-")
+    try:
+        한국어책.한국어 = d
+        본문, 있는것, 전체 = 한국어책.묶기()
+        assert 전체 >= 60, f"원문 차례가 {전체}권뿐이다"
+        assert 있는것 == 0 and not 본문.strip(), "옮긴 것이 없는데 뭔가 모았다"
+        open(os.path.join(d, "T1.html"), "w", encoding="utf-8").write(
+            '<h1 id="t1">T1. 소자</h1><p>문턱전압은 소자의 성질이다.</p>')
+        본문, 있는것, 전체 = 한국어책.묶기()
+        assert 있는것 == 1 and "문턱전압" in 본문, (있는것, 본문[:80])
+        차 = 한국어책.차례만들기(본문)
+        assert 'href="#t1"' in 차 and "T1. 소자" in 차, 차
+    finally:
+        한국어책.한국어 = 원래
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def test_옮긴_것이_없으면_PDF_를_만들지_않는다():
+    import 한국어책
+    원래 = 한국어책.한국어
+    d = tempfile.mkdtemp(prefix="한국어빈-")
+    낼것 = os.path.join(d, "x.pdf")
+    try:
+        한국어책.한국어 = d
+        assert 한국어책.내기(낼것) == 2, "빈 채로 PDF 를 만들었다"
+        assert not os.path.exists(낼것)
+    finally:
+        한국어책.한국어 = 원래
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def test_PDF_가_실제로_나온다():
+    """weasyprint 가 있는 자리에서는 **진짜 PDF 를 만든다** -- 글자만 보지 않는다."""
+    try:
+        import weasyprint  # noqa: F401
+    except Exception:                                     # noqa: BLE001
+        print("    (weasyprint 가 없다 -- 렌더는 개발 자리에서만 본다. "
+              "VM·CI 에는 일부러 안 깐다: 한 번 쓰는 렌더에 무거운 의존성을 안 얹는다)")
+        return
+    import 한국어책
+    원래 = 한국어책.한국어
+    d = tempfile.mkdtemp(prefix="한국어pdf-")
+    낼것 = os.path.join(d, "책.pdf")
+    try:
+        한국어책.한국어 = d
+        open(os.path.join(d, "T1.html"), "w", encoding="utf-8").write(
+            '<h1 id="t1">T1. 소자</h1><p>문턱전압 V<sub>th</sub> 는 소자의 성질이다.</p>')
+        assert 한국어책.내기(낼것) == 0
+        assert os.path.getsize(낼것) > 2000, os.path.getsize(낼것)
+        assert open(낼것, "rb").read(5) == b"%PDF-"
+    finally:
+        한국어책.한국어 = 원래
+        shutil.rmtree(d, ignore_errors=True)
+
+
 if __name__ == "__main__":
     import _run
     _run.돌리기(globals())
