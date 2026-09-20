@@ -209,6 +209,67 @@ def test_매뉴얼대로_따라가면_초록이_된다():
         ok("팔 수 있는 모양이다" in 합, "끝나면 다음 단계를 가리킨다")
 
 
+def test_경로를_박아넣지_않았다():
+    """매뉴얼에 **절대경로가 없어야** 한다.
+
+    실측 2026-09-20: 매뉴얼 전체에 `/home/user/SE` 를 박아 넣었다.
+    그런데 그것은 **내 컨테이너 경로**이고 사용자의 기계는
+    `/home/ubuntu/SE` 였다.  첫 명령부터
+
+        bash: cd: /home/user/SE: No such file or directory
+
+    로 죽었다.  매뉴얼의 첫 줄이 안 돌면 나머지는 읽히지도 않는다.
+
+    고친 방식: `cd "$(git rev-parse --show-toplevel)"`.  저장소 안
+    어디서 실행해도 루트를 찾아 주므로 받은 자리가 어디든 상관없다.
+    """
+    print("\n== 매뉴얼에 절대경로가 없다 ==")
+    나쁜 = []
+    for f in sorted(os.listdir(매뉴얼)):
+        if not (f.endswith(".md") or f.endswith(".sh") or f.endswith(".py")):
+            continue
+        for i, l in enumerate(open(os.path.join(매뉴얼, f),
+                                   encoding="utf-8").read().splitlines(), 1):
+            # /tmp 는 일부러 쓴다 (임시 작업터).  홈 디렉터리 경로만 잡는다.
+            if re.search(r"/home/[A-Za-z0-9_.-]+/", l):
+                나쁜.append(f"{f}:{i}")
+    ok(not 나쁜, f"**홈 디렉터리 경로를 박아 넣지 않았다** ({나쁜[:4]})")
+
+    # 시작 명령이 저장소 루트를 스스로 찾는가
+    r = open(os.path.join(매뉴얼, "README.md"), encoding="utf-8").read()
+    ok("git rev-parse --show-toplevel" in r,
+       "README 의 첫 명령이 저장소 루트를 스스로 찾는다")
+
+    # 상태 스크립트도 자기 자리를 스스로 찾는가
+    s = open(os.path.join(매뉴얼, "지금어디.sh"), encoding="utf-8").read()
+    ok('dirname "$0"' in s or "rev-parse" in s,
+       "지금어디.sh 가 자기 자리를 스스로 찾는다 (어디서 불러도 된다)")
+
+
+def test_명령블록이_문법상_성하다():
+    """매뉴얼의 bash 블록이 **문법상 돌 수 있는가**.
+
+    매뉴얼의 명령은 복사해서 붙이라고 있는 것이다.  붙였는데 문법 오류가
+    나면 따라 하는 사람은 자기가 잘못 붙인 줄 안다.
+    """
+    print("\n== 매뉴얼의 bash 블록이 문법상 성하다 ==")
+    나쁜, 셈 = [], 0
+    for f in sorted(os.listdir(매뉴얼)):
+        if not f.endswith(".md"):
+            continue
+        t = open(os.path.join(매뉴얼, f), encoding="utf-8").read()
+        for i, blk in enumerate(re.findall(r"```bash\n(.*?)```", t, re.S)):
+            셈 += 1
+            # <자리표시자> 와 $EDITOR 는 셸 문법이 아니므로 치환해서 본다
+            s = re.sub(r"<[^>\n]+>", "X", blk).replace("$EDITOR", "true")
+            r = 돌려(["bash", "-n"], 시간=30) if False else subprocess.run(
+                ["bash", "-n"], input=s, capture_output=True, text=True, timeout=30)
+            if r.returncode:
+                나쁜.append(f"{f}#{i}: {r.stderr.strip().splitlines()[0][:70]}")
+    ok(셈 >= 20, f"검사한 블록이 충분하다 ({셈} 개)")
+    ok(not 나쁜, f"**문법 오류가 없다** ({나쁜[:3]})")
+
+
 def test_링크가_성하다():
     print("\n== 문서 사이 링크가 성하다 ==")
     깨진 = []
@@ -295,6 +356,7 @@ def test_매뉴얼이_규율을_적어두었다():
 if __name__ == "__main__":
     for f in (test_상태스크립트가_돈다, test_뼈대가_이어붙어_통과한다,
               test_매뉴얼대로_따라가면_초록이_된다,
+              test_경로를_박아넣지_않았다, test_명령블록이_문법상_성하다,
               test_링크가_성하다, test_그림이_있고_성하다,
               test_템플릿에_채울자리가_있다,
               test_매뉴얼이_규율을_적어두었다):

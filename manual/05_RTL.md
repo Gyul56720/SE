@@ -13,7 +13,7 @@
 ## 시작은 뼈대를 복사하는 것이다
 
 ```bash
-cd /home/user/SE
+cd "$(git rev-parse --show-toplevel)"
 mkdir -p work/rtl
 cp manual/템플릿/rtl/block.v    work/rtl/<블록이름>.v
 cp manual/템플릿/rtl/block_tb.v work/rtl/<블록이름>_tb.v
@@ -105,7 +105,7 @@ valid/ready 를 쓰면 반드시 지킬 것 하나:
 | 시뮬 | `vvp sim.out` | `틀림 0` |
 
 ```bash
-cd /home/user/SE && bash manual/지금어디.sh   # 4단계 [o]
+cd "$(git rev-parse --show-toplevel)" && bash manual/지금어디.sh   # 4단계 [o]
 ```
 
 > 아직 **끝이 아니다.** `틀림 0` 이 뜻을 가지려면 06단계의 자해검사를

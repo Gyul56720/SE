@@ -8,7 +8,7 @@
 ## 30초 안에 시작하기
 
 ```bash
-cd /home/user/SE
+cd "$(git rev-parse --show-toplevel)"
 bash manual/지금어디.sh
 ```
 
