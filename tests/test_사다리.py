@@ -28,7 +28,8 @@ sys.path.insert(0, os.path.join(뿌리, "edu"))
 import bookK  # noqa: E402
 
 # 읽는 순서대로.  장을 더하면 여기에 더한다.
-차례 = [("T1_device", "ch_device"), ("T2_delay", "ch_delay")]
+차례 = [("T1_device", "ch_device"), ("T2_delay", "ch_delay"),
+      ("T3_meta", "ch_meta"), ("T4_noise", "ch_noise")]
 
 
 def _짓기():
