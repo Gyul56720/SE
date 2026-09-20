@@ -62,6 +62,44 @@ try:
     r = CW.보기(임시)
     ok(r["상태"] == "못잼" and "초록이 아니다" in r["말"], "조회 실패는 못잼 -- 초록도 빨강도 아니다")
 
+    print("\n== 묵은 빨강: 이미 지나간 커밋의 빨강으로 무기한 막지 않는다 ==")
+
+    def 가짜_머리(결론들, 머리sha, 로그="  실패 test_rhythm.py\n"):
+        """`결론들` 을 새것부터 흉내 내고, main 의 끝 커밋을 `머리sha` 로 답한다."""
+        기본 = 가짜(결론들, 로그)
+
+        def f(url, h):
+            if "/commits/main" in url:
+                return 200, json.dumps({"sha": 머리sha})
+            return 기본(url, h)
+        return f
+
+    # 빨강 뒤로 취소가 둘 쌓였고, main 의 끝은 그 빨강이 아닌 다른 커밋이다
+    CW.요청 = 가짜_머리(["cancelled", "cancelled", "failure"], "9999999aaaaaaa")
+    r = CW.보기(임시)
+    ok(r["상태"] == "못잼" and "이미 지나간 커밋" in r["말"],
+       f"**지나간 커밋의 빨강 + 그 뒤 전부 취소 -> 못잼** ({r['상태']})")
+    ok("timeout-minutes" in r["말"], "고칠 곳(CI 자체)을 말해 준다")
+
+    # 자해검사 1 -- 그 빨강이 **지금 main 의 끝**이면 그대로 막아야 한다
+    CW.요청 = 가짜_머리(["cancelled", "cancelled", "failure"], "abcdef2123456")
+    r = CW.보기(임시)
+    ok(r["상태"] == "빨강", f"끝 커밋이 그 빨강이면 그대로 빨강 ({r['상태']})")
+
+    # 자해검사 2 -- 취소가 하나도 없으면(가장 최신 실행이 빨강) 그대로 막는다
+    CW.요청 = 가짜_머리(["failure"], "9999999aaaaaaa")
+    r = CW.보기(임시)
+    ok(r["상태"] == "빨강", f"가장 최신 실행이 빨강이면 그대로 빨강 ({r['상태']})")
+
+    # 자해검사 3 -- 끝 커밋을 **못 읽으면** 느슨해지지 않는다
+    def 끝못읽음(url, h):
+        if "/commits/main" in url:
+            return 403, "forbidden"
+        return 가짜(["cancelled", "failure"])(url, h)
+    CW.요청 = 끝못읽음
+    r = CW.보기(임시)
+    ok(r["상태"] == "빨강", f"끝 커밋을 못 읽으면 빨강을 그대로 둔다 ({r['상태']})")
+
     print("\n== 바뀌었나: 같은 상태는 두 번 알리지 않는다 ==")
     CW.요청 = 가짜("failure")
     r = CW.보기(임시)

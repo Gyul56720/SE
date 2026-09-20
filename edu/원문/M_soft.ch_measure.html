@@ -1,0 +1,25 @@
+<h1 id="m4">M4. Measurement and Characterisation</h1>
+<p>Everything in this book that is stated as a number came from a
+    measurement, and the difference between a useful number and a misleading one is
+    usually in the method rather than the instrument.</p>
+<table><caption>Table 129. Instruments and what they actually measure</caption><thead><tr><th>Instrument</th><th>Measures</th><th>Principal limitation</th></tr></thead><tbody><tr><td>Oscilloscope</td><td>Voltage versus time</td><td>Bandwidth and probe loading</td></tr><tr><td>Real-time versus sampling scope</td><td>&mdash;</td><td>Sampling scopes need a repetitive signal</td></tr><tr><td>Spectrum analyser</td><td>Power versus frequency</td><td><b>Resolution bandwidth changes the displayed noise floor</b></td></tr><tr><td>Vector network analyser</td><td>S-parameters</td><td>Calibration plane definition</td></tr><tr><td><b>BER tester</b></td><td>Errors per bit</td><td><b>Time: 10<sup>&minus;12</sup> at 10 Gb/s takes ~100 s per point</b></td></tr><tr><td>Time interval analyser</td><td>Jitter statistics</td><td>Trigger accuracy</td></tr><tr><td>Logic analyser</td><td>Digital state</td><td>No analogue detail</td></tr><tr><td>Thermal camera</td><td>Surface temperature</td><td>Emissivity; not junction temperature</td></tr><tr><td>Power analyser / shunt</td><td>Current</td><td>Bandwidth versus resolution</td></tr></tbody></table>
+<div class="ms"><b>Bathtub extrapolation exists because direct BER
+    measurement does not scale.</b> Confirming 10<sup>&minus;15</sup> by counting errors
+    would take days per operating point, which is impossible for a characterisation sweep.
+    Instead the eye is scanned at several sampling phases, the error rate is measured where
+    it is high enough to be quick, and the Gaussian random-jitter tails are extrapolated to
+    the target BER. <b>The extrapolation is only valid if the random component really is
+    Gaussian and has been correctly separated from the bounded deterministic component</b>
+    &mdash; which is why jitter decomposition is a required capability rather than a
+    convenience, and why a reported margin should always name the method.</div>
+<table><caption>Table 130. Characterisation practices</caption><thead><tr><th>Practice</th><th>Reason</th></tr></thead><tbody><tr><td>Sweep, do not spot-check</td><td>A single operating point can be unrepresentative or accidentally favourable</td></tr><tr><td>Confirm the operating point is healthy first</td><td><b>Measurements taken on a broken setup look plausible</b></td></tr><tr><td>Obtain the same quantity a second way</td><td>An independent estimate catches methodological errors</td></tr><tr><td>List the trivial explanations and rule each out by measurement</td><td>A result that could be an artefact is a hypothesis, not a finding</td></tr><tr><td>Record conditions with every number</td><td>Temperature, voltage, part, instrument, settings</td></tr><tr><td>Report the condition under which the claim fails</td><td><b>A claim with no stated failure condition is advertising</b></td></tr></tbody></table>
+<div class="warn"><b>Four measurement failures, each of which produced a
+    plausible number that meant nothing.</b> Taking the slope of a pulse at its peak
+    &mdash; which is zero by definition &mdash; and reporting it as a sensitivity.
+    Measuring residuals at an operating point where BER was already 0.49, so the link
+    carried no information. Asking a tool for the longest path in an entire netlist when
+    the quantity of interest was the delay around one feedback loop. Reporting a lookup
+    table's accuracy at an operating point where the feedback taps were so small that the
+    loop was effectively inactive, so the table was never exercised. <b>In every case the
+    instrument worked and the number was wrong, because the quantity measured was not the
+    quantity intended.</b> The four rules above are written to prevent exactly these.</div>

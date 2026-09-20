@@ -1,0 +1,20 @@
+<h1 id="j4">J4. Image and Video Coding</h1>
+<table><caption>Table 98. Codec pipeline stages</caption><thead><tr><th>Stage</th><th>Purpose</th><th>Hardware character</th></tr></thead><tbody><tr><td>Prediction (intra)</td><td>Exploit spatial correlation</td><td>Many modes &rarr; mode decision is a search</td></tr><tr><td><b>Prediction (inter / motion)</b></td><td>Exploit temporal correlation</td><td><b>Motion estimation dominates encoder cost</b></td></tr><tr><td>Transform</td><td>Energy compaction (integer DCT)</td><td>Multiplier-free integer approximations</td></tr><tr><td>Quantisation</td><td>Lossy step &mdash; rate control lives here</td><td>Divide by a table value</td></tr><tr><td><b>Entropy coding</b></td><td>Remove remaining redundancy (CABAC)</td><td><b>Serial bottleneck</b></td></tr><tr><td>Loop filter (deblocking, SAO, ALF)</td><td>Remove artefacts</td><td>In the reconstruction loop &mdash; must be bit-exact</td></tr><tr><td>Reference frame store</td><td>&mdash;</td><td><b>DRAM bandwidth dominates</b></td></tr></tbody></table>
+<div class="ms"><b>Encoder and decoder are asymmetric by design.</b> The
+    standard specifies only the decoder; the encoder may choose modes however it likes,
+    provided the bitstream is conformant. This means <b>encoder quality is a product
+    differentiator while decoder correctness is a conformance requirement</b>, and the two
+    have completely different verification strategies: a decoder is verified against
+    conformance bitstreams with bit-exact expected output, whereas an encoder is evaluated
+    on rate&ndash;distortion curves and must only produce decodable output. A design house
+    entering video should know which side it is selling into, because the effort profiles
+    differ by an order of magnitude.</div>
+<table><caption>Table 99. Standards and their distinguishing features</caption><thead><tr><th>Codec</th><th>Year</th><th>Key additions</th><th>Hardware impact</th></tr></thead><tbody><tr><td>JPEG</td><td>1992</td><td>8&times;8 DCT, Huffman</td><td>Simple, still ubiquitous</td></tr><tr><td>H.264/AVC</td><td>2003</td><td>Integer transform, CABAC, variable block size</td><td><b>Integer transform removes encoder/decoder drift</b></td></tr><tr><td>HEVC/H.265</td><td>2013</td><td>CTU up to 64&times;64, 35 intra modes, SAO</td><td>Much larger mode search</td></tr><tr><td>VP9 / AV1</td><td>2013/2018</td><td>Royalty-free, ANS coding, many partitions</td><td>Very large encoder search space</td></tr><tr><td>VVC/H.266</td><td>2020</td><td>More partitions, ALF, affine motion</td><td>Further complexity</td></tr><tr><td>JPEG XS / lightweight</td><td>&mdash;</td><td>Low latency, visually lossless</td><td><b>Line-based, small buffers</b> &mdash; a good niche for a small IP house</td></tr></tbody></table>
+<div class="warn"><b>Bit-exactness inside the reconstruction loop is
+    non-negotiable.</b> The decoder's output feeds the encoder's prediction, so any
+    arithmetic difference accumulates frame after frame &mdash; drift. This is why every
+    in-loop operation (transform, quantisation, interpolation filters, deblocking) is
+    specified as exact integer arithmetic with defined rounding, and why a reference model
+    for a codec must reproduce those operations bit for bit rather than
+    mathematically. <b>A floating-point reference model of a video codec is not a
+    reference model.</b></div>

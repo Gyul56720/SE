@@ -1,0 +1,51 @@
+<h1 id="c1">C1. Arithmetic Units &mdash; The Core of Every Datapath</h1>
+<h2>C1.1 Addition</h2>
+<figure id="fig5"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 236" width="100%" font-family="Times New Roman, Nimbus Roman, serif"><defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#000"/></marker><marker id="ao" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="none" stroke="#000" stroke-width="1.4"/></marker></defs><rect x="150" y="30" width="30" height="26" fill="#123f6d" opacity="0.75"/><text x="144" y="48" font-size="9" text-anchor="end" fill="#000" >Ripple carry</text><text x="186" y="48" font-size="9" text-anchor="start" fill="#000" >O(n)   area: smallest</text><rect x="150" y="64" width="90" height="26" fill="#123f6d" opacity="0.75"/><text x="144" y="82" font-size="9" text-anchor="end" fill="#000" >Carry-skip</text><text x="246" y="82" font-size="9" text-anchor="start" fill="#000" >O(√n)   area: small</text><rect x="150" y="98" width="165" height="26" fill="#123f6d" opacity="0.75"/><text x="144" y="116" font-size="9" text-anchor="end" fill="#000" >Carry-select</text><text x="321" y="116" font-size="9" text-anchor="start" fill="#000" >O(√n)   area: medium</text><rect x="150" y="132" width="216" height="26" fill="#123f6d" opacity="0.75"/><text x="144" y="150" font-size="9" text-anchor="end" fill="#000" >Carry-lookahead</text><text x="372" y="150" font-size="9" text-anchor="start" fill="#000" >O(log n)   area: large</text><rect x="150" y="166" width="300" height="26" fill="#123f6d" opacity="0.75"/><text x="144" y="184" font-size="9" text-anchor="end" fill="#000" >Kogge–Stone</text><text x="456" y="184" font-size="9" text-anchor="start" fill="#000" >O(log n)   area: largest, most wires</text><text x="300" y="224" font-size="9" text-anchor="middle" fill="#000" font-style="italic">Same function. Five points on the area–delay curve.</text></svg><figcaption><b>Figure 5.</b> Adder architectures span an area&ndash;delay curve of roughly an order of magnitude in each axis.</figcaption></figure>
+<table><caption>Table 33. Adder architectures</caption><thead><tr><th>Architecture</th><th>Delay</th><th>Area</th><th>Notes</th></tr></thead><tbody><tr><td>Ripple carry</td><td>O(<i>n</i>)</td><td>O(<i>n</i>)</td><td>Baseline; fine for <i>n</i>&le;8 at low frequency</td></tr><tr><td>Carry-skip</td><td>O(&radic;<i>n</i>)</td><td>O(<i>n</i>)</td><td>Cheap improvement</td></tr><tr><td>Carry-select</td><td>O(&radic;<i>n</i>)</td><td>~2&times;</td><td>Duplicate blocks, select on carry</td></tr><tr><td>Carry-lookahead</td><td>O(log <i>n</i>)</td><td>O(<i>n</i> log <i>n</i>)</td><td>Classic</td></tr><tr><td><b>Kogge&ndash;Stone</b></td><td>O(log <i>n</i>)</td><td>Large, heavy wiring</td><td>Minimum depth; <b>wire-limited in practice</b></td></tr><tr><td>Brent&ndash;Kung</td><td>O(log <i>n</i>)</td><td>Fewer wires</td><td>Depth 2log<i>n</i>; better area</td></tr><tr><td><b>Carry-save</b></td><td>O(1) per add</td><td>O(<i>n</i>)</td><td><b>Does not propagate carry</b> &mdash; the key to fast multipliers and accumulators</td></tr></tbody></table>
+<div class="ms"><b>Carry-save is the single most useful idea in this
+    table.</b> A carry-save adder takes three operands and produces two (sum and carry
+    vectors) in constant time, because no carry propagates. A chain of them accumulates
+    many terms at constant delay per term, and only the <i>final</i> conversion to a
+    normal binary number requires a carry-propagate adder. This is why multiplier trees,
+    FIR accumulators, and MAC units are built as "compress many partial products with
+    carry-save, then one fast adder at the end". <b>In an accumulation loop &mdash; the
+    feedback path that limits every recursive filter &mdash; keeping the state in
+    carry-save form removes the carry-propagate delay from the loop entirely.</b> That
+    single transformation has rescued more timing-critical datapaths than any other.</div>
+<h2>C1.2 Multiplication</h2>
+<table><caption>Table 34. Multiplier construction</caption><thead><tr><th>Stage</th><th>Technique</th><th>Effect</th></tr></thead><tbody><tr><td>Partial product generation</td><td><b>Booth radix-4</b></td><td>Halves the number of partial products; needs 2's-complement handling</td></tr><tr><td></td><td>Booth radix-8</td><td>Fewer still, but needs a 3&times; multiple (extra adder)</td></tr><tr><td>Reduction</td><td><b>Wallace tree</b></td><td>O(log <i>n</i>) depth, irregular layout</td></tr><tr><td></td><td><b>Dadda tree</b></td><td>Slightly fewer adders than Wallace</td></tr><tr><td></td><td>Array</td><td>Regular layout, O(<i>n</i>) depth</td></tr><tr><td>Final add</td><td>Fast carry-propagate adder</td><td>Kogge&ndash;Stone or similar</td></tr><tr><td>Whole unit</td><td>Pipelining</td><td>Cut the tree with registers to raise <i>f</i><sub>max</sub></td></tr></tbody></table>
+<div class="ms"><b>Constant multiplication is a different problem</b> and
+    is worth separating in any specification. When one operand is a compile-time constant
+    &mdash; filter coefficients, twiddle factors, scaling constants &mdash; the multiplier
+    collapses into shifts and adds. Canonical signed digit (CSD) representation minimises
+    the number of non-zero digits, and <b>multiple constant multiplication (MCM)</b>
+    algorithms share sub-expressions across a whole coefficient set. For a 32-tap FIR with
+    fixed coefficients this routinely gives a 3&ndash;5&times; area reduction over generic
+    multipliers. The commercial point: <b>an IP that is parameterised for
+    <i>run-time</i> coefficients cannot use this, so "programmable coefficients" is an
+    expensive feature</b> that should be priced and specified as such, not thrown in
+    because it seems flexible.</div>
+<h2>C1.3 Division, square root, and reciprocal</h2>
+<table><caption>Table 35. Division approaches</caption><thead><tr><th>Method</th><th>Convergence</th><th>Hardware</th><th>Use</th></tr></thead><tbody><tr><td>Restoring / non-restoring</td><td>1 bit per cycle</td><td>Adder + shifter</td><td>Small area, high latency</td></tr><tr><td><b>SRT</b> (radix-4/8)</td><td>2&ndash;3 bits per cycle</td><td>Lookup for quotient digit</td><td><b>Standard in FPUs</b></td></tr><tr><td><b>Newton&ndash;Raphson</b></td><td>Quadratic (doubles digits)</td><td>Multipliers</td><td>Reuses the multiplier; good when one exists</td></tr><tr><td>Goldschmidt</td><td>Quadratic</td><td>Multipliers</td><td>Better pipelining than Newton</td></tr><tr><td><b>Reciprocal LUT + refine</b></td><td>&mdash;</td><td>Small ROM + multiplier</td><td><b>The usual answer in DSP</b></td></tr></tbody></table>
+<div class="warn"><b>The most important division fact for an IP designer
+    is architectural, not numerical: never put a divider in a feedback loop.</b> Its
+    latency enters the loop directly and sets the initiation interval. The standard
+    transformation is to compute a reciprocal <i>once</i> outside the loop and multiply
+    inside it. The Cholesky decomposition is a textbook example &mdash; the diagonal
+    reciprocal is formed once per column and the column is then scaled by multiplication,
+    which is why the inner loop can be pipelined at II&nbsp;=&nbsp;1. This is also a
+    place where the reference model and the RTL can legitimately differ: the model may
+    divide, the RTL multiplies by a reciprocal, and the two agree only to within the
+    reciprocal's rounding. <b>The specification must state which one is normative.</b></div>
+<h2>C1.4 Fixed-point and floating-point units</h2>
+<table><caption>Table 36. Number format decisions</caption><thead><tr><th>Format</th><th>Range</th><th>Hardware cost</th><th>Where it belongs</th></tr></thead><tbody><tr><td>Fixed point Q<i>m</i>.<i>n</i></td><td>Limited, uniform</td><td>Adder/multiplier only</td><td><b>Most DSP and comms datapaths</b></td></tr><tr><td>Block floating point</td><td>Shared exponent per block</td><td>Small extra</td><td>FFT, where dynamic range grows predictably</td></tr><tr><td>IEEE 754 binary32</td><td>Wide</td><td>Align, normalise, round &mdash; expensive</td><td>Scientific, some solvers</td></tr><tr><td>binary16 / bfloat16</td><td>Wide, low precision</td><td>Cheaper</td><td>Neural inference</td></tr><tr><td><b>Integer with saturation</b></td><td>Limited, clamped</td><td>Compare and clamp</td><td>Where wrap would be catastrophic (LLRs, audio)</td></tr><tr><td>Posit / logarithmic</td><td>Tapered</td><td>Unusual</td><td>Research; rarely in shipped IP</td></tr></tbody></table>
+<div class="ms"><b>Block floating point deserves more attention than it
+    gets.</b> In an FFT the signal magnitude grows by up to a factor of two per stage. Full
+    floating point is overkill; fixed point requires either wide words or per-stage
+    scaling that loses SNR. Block floating point keeps one exponent per stage (or per
+    block) and normalises once, recovering most of floating point's dynamic range at a
+    small fraction of the cost. <b>For a modelling engineer this format is a trap</b>,
+    because a naive floating-point reference model will not match the hardware's
+    block-normalised behaviour bit for bit &mdash; the reference must model the
+    normalisation decisions too. Specifying "bit-accurate reference model" without
+    specifying the scaling policy produces months of false mismatches.</div>

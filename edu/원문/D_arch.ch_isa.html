@@ -1,0 +1,32 @@
+<h1 id="d1">D1. Instruction Set Architecture</h1>
+<p>An ISA is a contract between hardware and software. For a modelling
+    engineer it is the <i>specification document</i> in the most literal sense: the
+    reference model <b>is</b> the ISA, written executably.</p>
+<table><caption>Table 45. ISA design axes</caption><thead><tr><th>Axis</th><th>Options</th><th>Consequence for hardware</th></tr></thead><tbody><tr><td>Operand model</td><td>Stack / accumulator / register&ndash;memory / <b>load&ndash;store</b></td><td>Load&ndash;store simplifies pipelining; every RISC uses it</td></tr><tr><td>Instruction length</td><td>Fixed / <b>variable</b> / compressed</td><td>Fixed simplifies fetch; compressed (RVC, Thumb) saves 25&ndash;30% code size at the cost of alignment logic</td></tr><tr><td>Addressing modes</td><td>Few / many</td><td>Many modes need an address generation unit; few modes need more instructions</td></tr><tr><td>Condition handling</td><td>Flags / compare-and-branch</td><td><b>Flags create a serialising dependency</b>; RISC-V deliberately has none</td></tr><tr><td>Delay slots</td><td>Present (classic MIPS) / absent</td><td>Delay slots expose the pipeline in the ISA &mdash; a design mistake later reversed</td></tr><tr><td>Register count</td><td>8 / 16 / <b>32</b> / more</td><td>More registers reduce spills but widen every instruction field</td></tr><tr><td>Exceptions</td><td>Precise / imprecise</td><td><b>Precise exceptions constrain the whole microarchitecture</b></td></tr></tbody></table>
+<div class="ms"><b>Delay slots are the canonical example of leaking
+    microarchitecture into architecture.</b> MIPS exposed its single branch-delay slot so
+    that the compiler could fill it, saving a stall in a five-stage pipeline. When later
+    implementations had deeper pipelines and branch prediction, the delay slot became
+    useless baggage that every implementation still had to honour. <b>The lesson for IP
+    design generalises: a specification that encodes today's implementation constrains
+    tomorrow's.</b> When writing a block's interface, ask which parts describe
+    <i>what</i> and which describe <i>how</i>, and expose only the former.</div>
+<div class="ms"><b>Precise exceptions</b> mean that when an exception is
+    taken, all instructions before it have completed and none after it has had any
+    effect. This is what makes an ISS a valid reference: the model can execute one
+    instruction at a time and still describe a machine that executes many concurrently.
+    Achieving it in an out-of-order machine requires a reorder buffer and speculative
+    state, which is a large fraction of such a core's complexity. <b>The entire
+    step-and-compare verification methodology rests on precise exceptions</b>; without
+    them there would be no well-defined point at which model and RTL should agree.</div>
+<h2>D1.2 RISC-V as a case study</h2>
+<table><caption>Table 46. RISC-V structure</caption><thead><tr><th>Element</th><th>Content</th><th>Modelling note</th></tr></thead><tbody><tr><td>Base integer</td><td>RV32I / RV64I &mdash; ~40 instructions</td><td>Small enough to model exhaustively</td></tr><tr><td>M</td><td>Multiply/divide</td><td>Division by zero is <b>defined</b>, not trapping</td></tr><tr><td>A</td><td>Atomics (LR/SC, AMO)</td><td><b>Requires a memory consistency model</b></td></tr><tr><td>F/D/Q</td><td>Floating point</td><td>IEEE 754; needs SoftFloat, not host arithmetic</td></tr><tr><td>C</td><td>Compressed 16-bit</td><td>Alignment: instructions may straddle a word</td></tr><tr><td>V</td><td>Vector</td><td>Vector-length agnostic &mdash; a model must track <code>vl</code>, <code>vtype</code></td></tr><tr><td>B, Zk, Zc&hellip;</td><td>Bit manipulation, crypto, code size</td><td>&mdash;</td></tr><tr><td>Privileged</td><td>M/S/U modes, CSRs, PMP, virtual memory</td><td><b>Where most model bugs live</b>: exception priority and CSR side effects</td></tr></tbody></table>
+<div class="warn"><b>Exception priority is the most common source of
+    reference-model defects in a CPU project.</b> One instruction can simultaneously
+    satisfy the conditions for several exceptions &mdash; misaligned address, page fault,
+    access fault, breakpoint. The specification gives a strict priority order. A model
+    that implements a different order is correct on almost every test and wrong on a
+    narrow class of inputs that constrained-random stimulus may take weeks to find. The
+    remedy is not more random testing but <b>directed tests derived from the priority
+    table itself</b>: enumerate the table, construct one case per row, and check. This is
+    a half-day of work that reliably finds bugs a month of random testing misses.</div>

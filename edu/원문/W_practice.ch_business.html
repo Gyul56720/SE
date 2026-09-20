@@ -1,0 +1,29 @@
+<h1 id="w8">W8. Positioning, Pricing and Support</h1>
+<h2>W8.1 Who buys IP and why</h2>
+<table><caption>Table 191. Buyer motivations</caption><thead><tr><th>Buyer situation</th><th>What they are really buying</th><th>What convinces them</th></tr></thead><tbody><tr><td>No in-house expertise</td><td>Capability</td><td>Evidence the block works; references</td></tr><tr><td>Expertise but no schedule</td><td>Time</td><td>Maturity; a working example design</td></tr><tr><td><b>Risk aversion</b></td><td><b>Someone to hold responsible</b></td><td><b>Verification evidence and support terms</b></td></tr><tr><td>Standard conformance needed</td><td>Conformance evidence</td><td>Test vector results, certification</td></tr><tr><td>Cost reduction</td><td>Lower total cost than building</td><td>A credible effort comparison</td></tr><tr><td>Second source</td><td>Supply security</td><td>Compatibility with the incumbent</td></tr></tbody></table>
+<div class="ms"><b>The third row is the most common and the least
+    discussed.</b> An engineering manager who licenses a block has converted an internal
+    schedule risk into a contractual relationship. That is worth paying for, and it
+    explains why the verification report and the support agreement carry more weight in
+    the decision than the RTL's elegance. <b>It also explains why a first sale is so much
+    harder than a second one to the same customer</b>: the first requires establishing
+    that the risk transfer is real.</div>
+<table><caption>Table 192. Pricing inputs</caption><thead><tr><th>Factor</th><th>Direction</th><th>Note</th></tr></thead><tbody><tr><td>Development cost</td><td>Floor</td><td>Must be recovered across expected licences</td></tr><tr><td>Customer's build-versus-buy cost</td><td>Ceiling</td><td>Their engineer-years times their rate</td></tr><tr><td>Value of the schedule saved</td><td>Raises the ceiling</td><td>Often larger than the build cost</td></tr><tr><td>Competitive alternatives</td><td>Anchors</td><td>Including open-source options</td></tr><tr><td>Volume</td><td>&mdash;</td><td>Royalty structures capture upside</td></tr><tr><td>Source access</td><td>Raises price substantially</td><td>Source enables the customer to fork</td></tr><tr><td>Support scope</td><td>Recurring revenue</td><td>Usually 15&ndash;20% of licence per year</td></tr><tr><td>Exclusivity</td><td>Large premium</td><td>Rarely wise for a small vendor</td></tr></tbody></table>
+<div class="warn"><b>Free alternatives set the floor even when they are not
+    equivalent.</b> If an open-source block exists that does approximately the same thing,
+    the value proposition must be stated against it explicitly: verification evidence,
+    documentation, support, conformance testing, indemnity. &ldquo;Ours is better&rdquo;
+    is not an argument a procurement process can act on; &ldquo;here is the verification
+    report and the conformance results that the open version does not have&rdquo; is.
+    <b>This is another reason to invest in the evidence package rather than in additional
+    features.</b></div>
+<h2>W8.2 Support</h2>
+<table><caption>Table 193. Support categories and their true cost</caption><thead><tr><th>Category</th><th>Frequency</th><th>Cost driver</th><th>How to reduce it</th></tr></thead><tbody><tr><td>Integration questions</td><td>High initially</td><td>Documentation gaps</td><td><b>Better user guide and example design</b></td></tr><tr><td>Configuration errors</td><td>High</td><td>Unclear parameter rules</td><td>Elaboration-time assertions</td></tr><tr><td>Environment differences</td><td>Moderate</td><td>Tool and version variety</td><td>State tested tool versions</td></tr><tr><td><b>Real defects</b></td><td>Low if verification was good</td><td>&mdash;</td><td>Verification investment</td></tr><tr><td>Feature requests</td><td>Moderate</td><td>&mdash;</td><td>Roadmap and paid customisation</td></tr><tr><td>Performance shortfalls</td><td>Moderate</td><td>Unstated assumptions</td><td>Document measurement conditions</td></tr></tbody></table>
+<div class="ms"><b>Most support load is documentation debt, not defects.</b>
+    A useful discipline is to treat every support question as a documentation bug: when
+    the answer is given, the document is updated so that the same question cannot be asked
+    twice. Over a few customers this converges, and support cost per customer falls
+    sharply. <b>For a one-person practice this is the difference between a viable business
+    and one that cannot take a second customer</b>, because support is the cost that
+    scales with customers rather than with product.</div>
+<table><caption>Table 194. What to track from the first release</caption><thead><tr><th>Item</th><th>Why</th></tr></thead><tbody><tr><td>Every question asked, and by whom</td><td>Reveals documentation gaps</td></tr><tr><td>Time spent per customer</td><td><b>Tells you whether the price is right</b></td></tr><tr><td>Defects found after release, and how</td><td>Shows what verification missed</td></tr><tr><td>Configurations actually used</td><td>Focuses future verification effort</td></tr><tr><td>Tool and version combinations</td><td>Compatibility matrix</td></tr><tr><td>Reasons for lost sales</td><td>Product direction</td></tr></tbody></table>

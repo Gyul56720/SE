@@ -1,0 +1,23 @@
+<h1 id="r3">R3. Quantum Computing: What a Hardware Engineer Should Know</h1>
+<p>Quantum computing is unlikely to be an IP engineer's day job, but it
+    determines the timeline for post-quantum cryptography and it is generating demand for
+    conventional control electronics. This chapter covers only what is decision-relevant.</p>
+<table><caption>Table 169. Concepts</caption><thead><tr><th>Concept</th><th>Meaning</th><th>Consequence</th></tr></thead><tbody><tr><td>Qubit</td><td>Two-level quantum system</td><td>State is a superposition, not a bit</td></tr><tr><td>Superposition and entanglement</td><td>&mdash;</td><td>Source of the potential speedup</td></tr><tr><td><b>Decoherence</b></td><td>Loss of quantum state to the environment</td><td><b>The central engineering problem</b></td></tr><tr><td>Gate fidelity</td><td>Error per operation</td><td>Currently ~10<sup>&minus;3</sup>&ndash;10<sup>&minus;4</sup></td></tr><tr><td><b>Error correction</b></td><td>Many physical qubits per logical qubit</td><td><b>Overhead of 10<sup>3</sup>&ndash;10<sup>4</sup>&times;</b></td></tr><tr><td>Shor's algorithm</td><td>Factoring in polynomial time</td><td><b>Breaks RSA and ECC &mdash; the reason for PQC</b></td></tr><tr><td>Grover's algorithm</td><td>Quadratic search speedup</td><td>Halves effective symmetric key strength &mdash; AES-256 remains adequate</td></tr></tbody></table>
+<div class="ms"><b>The asymmetry between Shor and Grover is the fact that
+    determines the migration plan.</b> Shor breaks public-key cryptography outright, so
+    RSA and ECC must be replaced. Grover only square-roots the search space for symmetric
+    ciphers and hashes, so doubling the key length restores the margin &mdash; AES-256 and
+    SHA-384 are considered adequate. <b>The practical consequence is that the transition is
+    about key exchange and signatures, not about bulk encryption</b>, which is why
+    FIPS&nbsp;203 and 204 arrived while AES was left alone. An IP portfolio needs new
+    asymmetric blocks, not new symmetric ones.</div>
+<table><caption>Table 170. Conventional electronics needed by quantum systems</caption><thead><tr><th>Function</th><th>Requirement</th><th>Nature</th></tr></thead><tbody><tr><td>Qubit control pulses</td><td>Precise microwave shaping</td><td><b>DAC + DSP &mdash; conventional high-speed design</b></td></tr><tr><td>Readout</td><td>Low-noise amplification and discrimination</td><td>ADC + classification</td></tr><tr><td><b>Real-time feedback</b></td><td>Error correction within the coherence time</td><td><b>Sub-microsecond latency &mdash; an FPGA or ASIC problem</b></td></tr><tr><td>Cryogenic operation</td><td>Operate at 4 K or below</td><td>Cryo-CMOS; extreme power limits</td></tr><tr><td>Classical control processor</td><td>Sequencing</td><td>Conventional</td></tr></tbody></table>
+<div class="ms"><b>Quantum error correction is a real-time classical
+    signal-processing problem, and that is where conventional IP meets the field.</b>
+    Syndrome measurements must be decoded and corrections applied faster than the qubits
+    decohere &mdash; microseconds, not milliseconds &mdash; for thousands of qubits
+    simultaneously. The decoders involved (minimum-weight perfect matching and its
+    approximations) are graph algorithms with hard latency budgets, which is precisely the
+    kind of problem the rest of this book is about. <b>A designer who can build a
+    low-latency decoder for LDPC or surface codes has transferable skills here</b>,
+    without needing any quantum physics.</div>

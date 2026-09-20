@@ -1,0 +1,26 @@
+<h1 id="q2">Q2. Compilers and High-Level Synthesis Internals</h1>
+<p>HLS is often treated as a black box. Knowing what it does internally
+    makes the difference between fighting the tool and directing it, and the internal
+    steps are the same scheduling and binding problems that appear elsewhere in design.</p>
+<table><caption>Table 161. The HLS pipeline</caption><thead><tr><th>Step</th><th>Function</th><th>What the designer controls</th></tr></thead><tbody><tr><td>Front end</td><td>Parse to an intermediate representation</td><td>Language subset used</td></tr><tr><td>Optimisation</td><td>Constant folding, loop transforms, inlining</td><td>Code structure; pragmas</td></tr><tr><td><b>Scheduling</b></td><td>Assign operations to clock cycles</td><td><b>Target II and latency constraints; dependences</b></td></tr><tr><td><b>Allocation</b></td><td>Decide how many of each resource</td><td>Resource constraints, binding directives</td></tr><tr><td><b>Binding</b></td><td>Map operations to specific units, values to registers</td><td>Storage directives</td></tr><tr><td>Interface synthesis</td><td>Turn arguments into ports/protocols</td><td>Interface pragmas</td></tr><tr><td>RTL generation</td><td>Emit Verilog/VHDL</td><td>&mdash;</td></tr></tbody></table>
+<div class="ms"><b>Scheduling is a constrained optimisation problem and
+    that explains the tool's behaviour.</b> Given a dependence graph and resource limits,
+    the scheduler minimises latency or the initiation interval. Because the problem is
+    NP-hard in general, tools use heuristics (list scheduling, modulo scheduling for
+    pipelines, occasionally ILP for small regions). Two consequences follow. First, a
+    small change in the source can produce a disproportionate change in the schedule,
+    because the heuristic follows a different path &mdash; which is why HLS results can be
+    unstable. Second, <b>the tool cannot schedule around a dependence it cannot
+    disprove</b>, so telling it the truth about aliasing is the highest-leverage thing a
+    designer does. That is what a dependence directive is: not an optimisation hint, but a
+    fact the tool could not derive.</div>
+<table><caption>Table 162. Directive families and what they actually do</caption><thead><tr><th>Family</th><th>Examples</th><th>Nature</th><th>Risk of misuse</th></tr></thead><tbody><tr><td><b>Scheduling</b></td><td>pipeline, unroll, inline, loop_flatten, loop_merge</td><td><b>Requests</b> &mdash; the tool may not achieve them</td><td>Silent failure to meet the target; check the report</td></tr><tr><td><b>Structural</b></td><td>array_partition, bind_storage, bind_op, dataflow, stream</td><td><b>Change what is built</b></td><td>Area explosion</td></tr><tr><td><b>Assertions</b></td><td>dependence, loop_tripcount</td><td><b>Facts the tool trusts</b></td><td><b>A false assertion produces silently wrong hardware</b></td></tr><tr><td>Interface</td><td>interface, axis, m_axi, s_axilite</td><td>Define ports</td><td>Protocol mismatch</td></tr></tbody></table>
+<div class="warn"><b>The third family is categorically different from the
+    other two and should be reviewed differently.</b> A scheduling directive that cannot be
+    satisfied produces a worse result and a report message. A structural directive produces
+    a bigger design. A false dependence assertion produces hardware that computes the wrong
+    answer, with no message and no simulation failure &mdash; because the C semantics are
+    unaffected. <b>Every dependence directive is therefore a proof obligation</b>: the
+    reviewer must be able to state why the asserted independence holds for every legal
+    parameter value. Treating it as an optimisation switch is how silent bugs enter.</div>
+<table><caption>Table 163. What HLS is good and bad at</caption><thead><tr><th>Suited</th><th>Reason</th><th>Unsuited</th><th>Reason</th></tr></thead><tbody><tr><td>Loop-dominated datapaths</td><td>Regular dependence structure</td><td>Cycle-exact interface protocols</td><td>The tool owns the schedule</td></tr><tr><td>Design-space exploration</td><td>One source, many points</td><td>Control-dominated logic</td><td>Irregular; RTL is clearer</td></tr><tr><td>Filters, transforms, crypto rounds</td><td>Well-structured loops</td><td>Blocks needing precise latency</td><td>Latency is an output, not an input</td></tr><tr><td>Algorithm-level changes</td><td>Edit the C, not the RTL</td><td>Deep pipelines with feedback</td><td>The iteration bound still applies</td></tr></tbody></table>

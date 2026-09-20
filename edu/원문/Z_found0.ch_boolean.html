@@ -1,0 +1,26 @@
+<h1 id="z2">Z2. Boolean Algebra and Combinational Logic</h1>
+<div class="bs">Digital logic rests on a two-element Boolean algebra with
+    operations AND (&middot;), OR (+) and NOT (&prime;). Its axioms give the identities
+    used to simplify expressions, and every combinational circuit is the realisation of
+    some Boolean function.</div>
+<table><caption>Table 527. Identities used constantly</caption><thead><tr><th>Name</th><th>Statement</th></tr></thead><tbody><tr><td>Identity</td><td><i>A</i>&middot;1 = <i>A</i>, &nbsp; <i>A</i>+0 = <i>A</i></td></tr><tr><td>Null</td><td><i>A</i>&middot;0 = 0, &nbsp; <i>A</i>+1 = 1</td></tr><tr><td>Idempotence</td><td><i>A</i>&middot;<i>A</i> = <i>A</i></td></tr><tr><td>Complement</td><td><i>A</i>&middot;<i>A</i>&prime; = 0, &nbsp; <i>A</i>+<i>A</i>&prime; = 1</td></tr><tr><td><b>De Morgan</b></td><td>(<i>A</i>&middot;<i>B</i>)&prime; = <i>A</i>&prime;+<i>B</i>&prime;, &nbsp; (<i>A</i>+<i>B</i>)&prime; = <i>A</i>&prime;&middot;<i>B</i>&prime;</td></tr><tr><td>Absorption</td><td><i>A</i> + <i>A</i>&middot;<i>B</i> = <i>A</i></td></tr><tr><td>Consensus</td><td><i>AB</i> + <i>A</i>&prime;<i>C</i> + <i>BC</i> = <i>AB</i> + <i>A</i>&prime;<i>C</i></td></tr><tr><td>Shannon expansion</td><td><i>f</i> = <i>x</i>&middot;<i>f</i>|<sub><i>x</i>=1</sub> + <i>x</i>&prime;&middot;<i>f</i>|<sub><i>x</i>=0</sub></td></tr></tbody></table>
+<div class="ms"><b>Two of these are more than algebra.</b> De Morgan's laws
+    are the reason CMOS is built from NAND and NOR rather than AND and OR: a CMOS gate is
+    naturally inverting, so <i>every</i> logic function must be expressible in inverting
+    gates, which De Morgan guarantees. The <b>consensus term</b> is the redundant product
+    that can be removed without changing the function &mdash; but removing it can create a
+    <i>static hazard</i>, a momentary glitch when inputs change. In synchronous logic a
+    glitch before the next clock edge is harmless and the term is removed for area; in
+    asynchronous logic or in a clock-gating enable it is not, and the redundant term must
+    be kept. <b>The same simplification is correct in one context and a bug in another,
+    which is why hazard-free synthesis is a distinct option in the tools.</b></div>
+<table><caption>Table 528. Representations of a Boolean function</caption><thead><tr><th>Form</th><th>Size</th><th>Canonical?</th><th>Use</th></tr></thead><tbody><tr><td>Truth table</td><td>2<sup><i>n</i></sup> rows</td><td>Yes</td><td>Definition; small functions</td></tr><tr><td>Karnaugh map</td><td>2<sup><i>n</i></sup></td><td>No</td><td>Hand minimisation up to ~5 variables</td></tr><tr><td>Sum of products</td><td>Varies</td><td>No (unless canonical)</td><td>PLA, two-level synthesis</td></tr><tr><td>Quine&ndash;McCluskey</td><td>&mdash;</td><td>&mdash;</td><td>Exact minimisation; exponential</td></tr><tr><td>Espresso</td><td>&mdash;</td><td>&mdash;</td><td>Heuristic; what tools actually use</td></tr><tr><td>BDD</td><td>Order-dependent</td><td><b>Yes</b></td><td>Equivalence checking</td></tr><tr><td>AIG</td><td>Compact</td><td>No</td><td><b>Modern synthesis and formal engines</b></td></tr></tbody></table>
+<h2>Z2.2 Standard combinational blocks</h2>
+<table><caption>Table 529. The building blocks every design contains</caption><thead><tr><th>Block</th><th>Function</th><th>Cost</th><th>Note</th></tr></thead><tbody><tr><td>Multiplexer</td><td>Select one of <i>n</i> inputs</td><td><i>n</i>&minus;1 two-input muxes, or a tree</td><td><b>A mux is functionally complete</b> &mdash; any function can be built from muxes</td></tr><tr><td>Decoder</td><td><i>n</i> &rarr; 2<sup><i>n</i></sup> one-hot</td><td>2<sup><i>n</i></sup> gates</td><td>Address decoding, instruction decode</td></tr><tr><td>Encoder / priority encoder</td><td>one-hot &rarr; binary</td><td>&mdash;</td><td>Interrupt arbitration, leading-zero detection</td></tr><tr><td>Comparator</td><td>Equality or magnitude</td><td>XOR tree / subtract</td><td>Magnitude comparison is an adder in disguise</td></tr><tr><td>Shifter / barrel shifter</td><td>Shift by a variable amount</td><td>log<sub>2</sub><i>n</i> mux stages</td><td>Used in floating point, in gearboxes</td></tr><tr><td>Adder</td><td>See Chapter C1</td><td>&mdash;</td><td>The most studied block in the field</td></tr><tr><td>Parity / population count</td><td>XOR tree / adder tree</td><td>&mdash;</td><td>ECC, binary neural networks</td></tr></tbody></table>
+<div class="ms"><b>The observation that a multiplexer is functionally
+    complete is more than a curiosity: it is why FPGAs work.</b> An FPGA's logic element is
+    a small lookup table, which is physically a multiplexer tree driven by configuration
+    bits. Any four-input function is realised by loading sixteen bits. The entire
+    programmable-logic industry rests on the Shannon expansion identity in the table
+    above. <b>Recognising that a familiar identity is the foundation of a product category
+    is the kind of connection this book is trying to make routine.</b></div>

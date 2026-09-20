@@ -1,0 +1,22 @@
+<h1 id="k4">K4. Current Research Directions</h1>
+<p>This chapter surveys the areas where current literature is active, so
+    that a reader who has absorbed the preceding chapters can approach a recent paper
+    knowing what problem it is addressing and which established constraint it is trying to
+    relax.</p>
+<table><caption>Table 105. Active areas and the constraint each attacks</caption><thead><tr><th>Area</th><th>Constraint attacked</th><th>Approach</th><th>Open problem</th></tr></thead><tbody><tr><td><b>Post-quantum cryptography</b></td><td>Shor's algorithm breaks RSA/ECC</td><td>Lattice (ML-KEM/ML-DSA), hash-based (SLH-DSA)</td><td>Large keys; NTT throughput; <b>side-channel protection of lattice arithmetic</b></td></tr><tr><td><b>In-memory computing</b></td><td>Von Neumann data movement energy</td><td>Analogue MAC in memory arrays (RRAM, SRAM)</td><td>ADC overhead often cancels the saving; device variability</td></tr><tr><td><b>Approximate computing</b></td><td>Exactness is expensive</td><td>Truncated multipliers, stochastic computing, voltage overscaling</td><td><b>Error bounds must be guaranteed, not measured</b></td></tr><tr><td><b>Chiplets / UCIe</b></td><td>Reticle limit and yield vs die area</td><td>Disaggregation with standard die-to-die links</td><td>Test, thermal, known-good-die</td></tr><tr><td><b>Nonlinear equalisation</b></td><td>Linear equalisers fail on nonlinear channels</td><td>Volterra series, neural equalisers</td><td>Power and latency; <b>verification of a learned block</b></td></tr><tr><td><b>Concatenated FEC for 224G</b></td><td>KP4 alone insufficient at 200G/lane</td><td>Outer RS-KP4 + inner Hamming(128,120)</td><td>Latency budget; decoder complexity</td></tr><tr><td><b>Formal at scale</b></td><td>Simulation cannot cover state space</td><td>Word-level model checking, SMT</td><td>Datapath equivalence remains hard</td></tr><tr><td><b>ML for EDA</b></td><td>Heuristics in placement/routing</td><td>Learned cost models, RL for scheduling</td><td><b>Reproducibility and trust in sign-off</b></td></tr><tr><td><b>Open PDK / open EDA</b></td><td>Tool licence cost as a barrier</td><td>SkyWater/IHP PDKs, OpenROAD, Yosys</td><td>Analogue and advanced-node support</td></tr><tr><td>Cryogenic and superconducting</td><td>CMOS energy floor</td><td>SFQ logic, cryo-CMOS</td><td>Infrastructure; interface to room temperature</td></tr></tbody></table>
+<div class="ms"><b>How to read a paper in any of these areas.</b> Each row
+    names a constraint from earlier chapters. In-memory computing attacks the roofline's
+    memory-bound region (J2); approximate computing attacks the fixed-point
+    accuracy&ndash;area trade (A3, C1); neural equalisation attacks the linear-model
+    assumption behind every equaliser in F1; chiplets attack the yield-versus-area
+    relation in K3. <b>Identifying which constraint a paper is relaxing, and what it pays
+    for the relaxation, is a faster route to understanding than reading the method
+    first</b> &mdash; and it immediately tells you whether the result transfers to your
+    own problem, because you know which assumption it depends on.</div>
+<div class="warn"><b>A caution that applies to all of these areas.</b>
+    Reported gains are measured at an operating point the authors chose. Before accepting
+    a claim, locate three things: the baseline (is it a strong implementation or a
+    straw man?), the operating conditions (process, voltage, data set, channel), and the
+    point at which the advantage disappears. A result quoted without the crossover point
+    is a data point, not a design rule &mdash; and in an IP business, mistaking one for
+    the other is how a year is lost.</div>

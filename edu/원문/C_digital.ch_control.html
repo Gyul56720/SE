@@ -1,0 +1,55 @@
+<h1 id="c2">C2. Control: State Machines, Pipelines and Flow Control</h1>
+<h2>C2.1 FSM encoding</h2>
+<table><caption>Table 41. State encodings</caption><thead><tr><th>Encoding</th><th>Registers</th><th>Next-state logic</th><th>When</th></tr></thead><tbody><tr><td>Binary</td><td>log<sub>2</sub><i>N</i></td><td>Complex</td><td>Many states, area critical</td></tr><tr><td>Gray</td><td>log<sub>2</sub><i>N</i></td><td>Complex</td><td><b>Adjacent states differ by one bit</b> &mdash; low power, safer across CDC</td></tr><tr><td><b>One-hot</b></td><td><i>N</i></td><td>Simple (one AND per transition)</td><td><b>FPGA default</b>; fast; easy to check</td></tr><tr><td>Johnson</td><td><i>N</i>/2</td><td>Simple</td><td>Counters, ring sequencers</td></tr><tr><td><b>Hamming-protected</b></td><td>&gt;log<sub>2</sub><i>N</i></td><td>&mdash;</td><td><b>Safety/security</b>: illegal states detectable</td></tr></tbody></table>
+<div class="ms"><b>Security-grade FSM encoding</b> is a concrete example
+    of a requirement that comes from a threat model rather than from function. If an
+    attacker can flip a state bit with a laser or a voltage glitch, a binary-encoded FSM
+    may land in a valid but wrong state &mdash; for instance skipping rounds of a cipher.
+    Countermeasures are: sparse encodings with large Hamming distance so that a single
+    flip lands in an illegal state; a default branch that raises an alarm rather than
+    doing nothing; and <b>duplicated FSMs with complementary encodings</b> whose outputs
+    must remain complementary. The last technique requires a synthesis barrier so the
+    tool does not optimise the inverters away and merge the two copies &mdash; if it
+    does, the redundancy disappears while <i>functional verification still passes</i>.
+    That silent failure mode is the reason such designs contain explicit buffer
+    primitives whose only purpose is to stop the optimiser.</div>
+<h2>C2.2 Pipelining and its hazards</h2>
+<table><caption>Table 42. Pipeline transformations</caption><thead><tr><th>Transformation</th><th>What it does</th><th>Cost</th><th>Limit</th></tr></thead><tbody><tr><td>Pipelining</td><td>Insert registers between logic stages</td><td>Latency, area</td><td><b>Cannot cut a feedback loop</b></td></tr><tr><td>Retiming</td><td>Move existing registers across logic</td><td>None (if legal)</td><td>Total registers on each loop is invariant</td></tr><tr><td><b>Loop unrolling</b></td><td>Process <i>k</i> iterations per cycle</td><td><i>k</i>&times; area</td><td>The loop's critical path is divided by <i>k</i> only in the feedforward part</td></tr><tr><td><b>Speculation</b></td><td>Compute all outcomes, select afterwards</td><td>Exponential in the number of speculated bits</td><td><b>Removes the decision from the loop</b></td></tr><tr><td>C-slow</td><td>Interleave <i>k</i> independent streams</td><td>Registers &times;<i>k</i></td><td>Needs <i>k</i> independent problems</td></tr><tr><td>Algebraic transform</td><td>Restructure the recurrence itself</td><td>Design effort</td><td><b>The only way past a fundamental loop bound</b></td></tr></tbody></table>
+<div class="ms"><b>The iteration bound</b> is the hard limit that these
+    transformations negotiate with. For a recursive system, the minimum achievable
+    iteration period is
+    <i>T</i><sub>&infin;</sub> = max<sub>loops</sub> (<i>t</i><sub>loop</sub>/<i>w</i><sub>loop</sub>),
+    where <i>t</i><sub>loop</sub> is the total computation delay around a loop and
+    <i>w</i><sub>loop</sub> the number of registers in it. Retiming and pipelining cannot
+    beat it; only changing the recurrence can. Recognising this quantity turns a vague
+    "we need more speed" into a specific question: <i>which loop, and can its algebra be
+    rewritten?</i> Look-ahead transformation (computing two steps of a recurrence in one)
+    doubles <i>w</i> and thereby halves <i>T</i><sub>&infin;</sub>, at the cost of more
+    arithmetic. <b>This is the abstract form of the unrolled DFE, radix-4 Viterbi ACS,
+    and reformulated Berlekamp&ndash;Massey &mdash; three blocks that look unrelated and
+    are the same transformation.</b></div>
+<h2>C2.3 Flow control and backpressure</h2>
+<table><caption>Table 43. Handshake styles</caption><thead><tr><th>Style</th><th>Signals</th><th>Property</th><th>Hazard</th></tr></thead><tbody><tr><td>Valid only</td><td><code>valid</code></td><td>Producer never stalls</td><td>Consumer must always accept &mdash; needs guaranteed rate</td></tr><tr><td><b>Valid/Ready</b></td><td><code>valid</code>, <code>ready</code></td><td>Full backpressure</td><td><b>Combinational loop if ready depends on valid</b></td></tr><tr><td>Credit-based</td><td>credits returned</td><td>Decouples latency from throughput</td><td>Credit accounting bugs</td></tr><tr><td>Req/Ack (4-phase)</td><td>handshake pairs</td><td>Async-safe</td><td>Slow (two round trips)</td></tr></tbody></table>
+<div class="warn"><b>The valid/ready combinational loop</b> is one of the
+    most common integration failures in modular RTL. If module A's <code>ready</code>
+    depends combinationally on its input <code>valid</code>, and module B's
+    <code>valid</code> depends combinationally on its input <code>ready</code>, connecting
+    them creates a zero-delay cycle. Each module is individually correct and passes its
+    own tests. The standard remedies are a <i>skid buffer</i> (also called a spill
+    register), which breaks the path at the cost of one register stage and one entry of
+    buffering, or a rule that <code>ready</code> is registered. <b>An IP that documents
+    which of its interfaces are combinationally coupled &mdash; and ships a skid buffer
+    &mdash; saves its customers a week each.</b> This is exactly the kind of detail that
+    distinguishes a product from a piece of code.</div>
+<h2>C2.4 Arbitration</h2>
+<table><caption>Table 44. Arbiter types</caption><thead><tr><th>Type</th><th>Fairness</th><th>Latency</th><th>Use</th></tr></thead><tbody><tr><td>Fixed priority</td><td>None (starvation possible)</td><td>Lowest</td><td>Strict QoS classes</td></tr><tr><td><b>Round robin</b></td><td>Fair</td><td>Low</td><td>General purpose</td></tr><tr><td>Weighted round robin</td><td>Proportional</td><td>Low</td><td>Mixed traffic classes</td></tr><tr><td>Matrix / LRU</td><td>Fair, true least-recently-used</td><td>Higher</td><td>Caches</td></tr><tr><td>Lottery</td><td>Statistical</td><td>Low</td><td>Rare</td></tr><tr><td>Age-based</td><td>Strict FIFO fairness</td><td>Higher</td><td>Avoids starvation strictly</td></tr></tbody></table>
+<div class="ms">Arbitration is where <b>fairness and forward progress</b>
+    become formal properties rather than intentions. A round-robin arbiter is fair by
+    construction; a fixed-priority arbiter is not, and a low-priority requester can starve
+    forever. Whether starvation matters is a system question &mdash; it is acceptable for
+    a debug port, fatal for a DMA that feeds a real-time codec. Because starvation is a
+    <i>liveness</i> property ("eventually granted") rather than a safety property, it is
+    natural to express and prove with formal tools, and arbiters are one of the few places
+    where formal verification is both easy and genuinely valuable. <b>Shipping a formally
+    proven arbiter with its properties is a differentiator that costs a design house
+    little.</b></div>

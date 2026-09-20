@@ -1,0 +1,29 @@
+<h1 id="m2">M2. Machine Learning Hardware</h1>
+<table><caption>Table 131. Operations that dominate inference</caption><thead><tr><th>Operation</th><th>Share of compute</th><th>Arithmetic intensity</th><th>Hardware mapping</th></tr></thead><tbody><tr><td>Convolution</td><td>High in CNNs</td><td>High with tiling</td><td>Systolic array or vector units</td></tr><tr><td><b>Matrix multiply (GEMM)</b></td><td>Dominant in transformers</td><td>High</td><td><b>The universal accelerator primitive</b></td></tr><tr><td>Attention (QK<sup>T</sup>V)</td><td>Dominant in LLMs</td><td>Moderate</td><td><b>Memory bound at long sequence lengths</b></td></tr><tr><td>Element-wise / activation</td><td>Low compute</td><td><b>Very low</b></td><td>Memory bound; fuse with the previous layer</td></tr><tr><td>Normalisation</td><td>Low</td><td>Low</td><td>Fuse; needs reductions</td></tr><tr><td>Softmax</td><td>Low</td><td>Low</td><td>Needs exp and a reduction; numerically delicate</td></tr><tr><td>Embedding lookup</td><td>&mdash;</td><td>Very low</td><td>Random memory access</td></tr></tbody></table>
+<div class="ms"><b>Fusion is the main architectural lever and it follows
+    directly from the roofline.</b> An activation function performs one operation per
+    element and therefore has arithmetic intensity near zero &mdash; it is entirely memory
+    bound. Executed as a separate pass it costs a full read and write of the tensor.
+    Fused into the preceding matrix multiply's output stage it costs essentially nothing.
+    Real accelerators therefore expose fused operations rather than primitive ones, and
+    their compilers spend most of their effort deciding what to fuse. <b>An IP block that
+    implements a single layer type in isolation will underperform in a system for reasons
+    that have nothing to do with its internal quality.</b></div>
+<table><caption>Table 132. Quantisation approaches</caption><thead><tr><th>Approach</th><th>Accuracy loss</th><th>Effort</th><th>Hardware</th></tr></thead><tbody><tr><td>Post-training, per-tensor INT8</td><td>Moderate</td><td>Low</td><td>One scale per tensor</td></tr><tr><td><b>Post-training, per-channel INT8</b></td><td>Small</td><td>Low</td><td><b>Per-channel scale multiply &mdash; usually worth it</b></td></tr><tr><td>Quantisation-aware training</td><td>Very small</td><td>High</td><td>Same as above</td></tr><tr><td>INT4 with grouping</td><td>Noticeable</td><td>High</td><td>Group-wise scales</td></tr><tr><td>Mixed precision</td><td>Small</td><td>Moderate</td><td>Sensitive layers kept wider</td></tr><tr><td>Binary / ternary</td><td>Large</td><td>High</td><td><b>XNOR&ndash;popcount; no multipliers</b></td></tr></tbody></table>
+<div class="ms"><b>Quantisation is a fixed-point problem and the
+    vocabulary of Chapter A3 applies unchanged.</b> A per-tensor scale is a single Q
+    format for the whole tensor; per-channel scaling is the recognition that different
+    channels have different dynamic ranges, which is exactly the block-floating-point idea
+    from the FFT chapter. Understanding this correspondence prevents an engineer from
+    treating ML quantisation as a separate discipline: the questions &mdash; where to
+    round, when to saturate, how dynamic range grows through a computation &mdash; are the
+    same, and the answers are reached the same way.</div>
+<table><caption>Table 133. Sparsity</caption><thead><tr><th>Kind</th><th>Speedup potential</th><th>Hardware feasibility</th></tr></thead><tbody><tr><td>Unstructured (random zeros)</td><td>High in theory</td><td><b>Poor</b> &mdash; irregular access defeats the memory system</td></tr><tr><td><b>Structured (2:4, block)</b></td><td>Moderate</td><td><b>Good</b> &mdash; regular indexing</td></tr><tr><td>Channel / filter pruning</td><td>Moderate</td><td>Excellent &mdash; it is just a smaller dense model</td></tr><tr><td>Activation sparsity (ReLU)</td><td>Moderate</td><td>Dynamic; needs run-time detection</td></tr></tbody></table>
+<div class="warn"><b>Unstructured sparsity is the clearest case of a
+    metric that does not translate into hardware.</b> A paper reporting 90% of weights
+    pruned implies a tenfold reduction in operations, but realising it requires indexing
+    individual non-zeros, which destroys the regular access patterns that give an
+    accelerator its efficiency. The achieved speedup is commonly a small fraction of the
+    nominal one, and can be below unity. <b>Structured sparsity exists because hardware
+    needs regularity more than it needs fewer operations</b> &mdash; a principle that
+    recurs whenever an algorithmic saving is proposed.</div>

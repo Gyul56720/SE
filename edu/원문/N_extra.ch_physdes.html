@@ -1,0 +1,18 @@
+<h1 id="n2">N2. Physical Design in More Depth</h1>
+<table><caption>Table 139. Placement and routing concerns</caption><thead><tr><th>Concern</th><th>Cause</th><th>Symptom</th><th>Remedy</th></tr></thead><tbody><tr><td><b>Congestion</b></td><td>More nets than routing tracks in a region</td><td>Routing failures, detours, timing loss</td><td>Spread cells, reduce utilisation, restructure logic</td></tr><tr><td>Timing/congestion conflict</td><td>Timing wants cells close; routing wants them apart</td><td>&mdash;</td><td>Iterate; sometimes an architectural change is needed</td></tr><tr><td>Antenna effect</td><td>Charge accumulation on a long metal segment during etch</td><td>Gate oxide damage</td><td>Diode insertion, layer jumping</td></tr><tr><td>Crosstalk delay and noise</td><td>Coupling between adjacent nets</td><td>Timing variation, glitches</td><td>Spacing, shielding, net ordering</td></tr><tr><td>Electromigration</td><td>Current density</td><td>Long-term failure</td><td>Wire widening, via arrays</td></tr><tr><td>IR drop</td><td>Grid resistance</td><td>Local slowdown</td><td>Grid strengthening, decap</td></tr><tr><td><b>Hold violations after CTS</b></td><td>Skew changes after the clock tree is built</td><td>&mdash;</td><td>Buffer insertion; usually many thousands</td></tr></tbody></table>
+<div class="ms"><b>Utilisation is the number that governs the whole
+    back-end schedule.</b> Utilisation &mdash; the fraction of core area occupied by cells
+    &mdash; trades area against routability. Below roughly 60% a design routes easily and
+    wastes area; above roughly 80% congestion begins to dominate and each iteration
+    becomes slower and less predictable. A block delivered with a recommended utilisation
+    lets the customer floorplan correctly the first time. <b>Omitting it is one of the
+    common causes of "the IP does not meet timing in our flow"</b>, because the customer
+    packed it at 85% while the vendor characterised it at 65%.</div>
+<table><caption>Table 140. Standard cell library concepts</caption><thead><tr><th>Concept</th><th>Meaning</th><th>Selection consequence</th></tr></thead><tbody><tr><td>Track height (e.g. 7.5T, 9T)</td><td>Cell height in routing tracks</td><td>Taller cells are faster and larger</td></tr><tr><td>Drive strength (X1, X2, X4&hellip;)</td><td>Transistor width multiplier</td><td>Higher drive for larger loads</td></tr><tr><td>Multi-<i>V<sub>TH</sub></i> (LVT/SVT/HVT)</td><td>Threshold variants</td><td><b>Leakage versus speed, per cell</b></td></tr><tr><td>Characterisation corner</td><td>PVT point of the timing data</td><td>Must match the sign-off corner</td></tr><tr><td>NLDM / CCS</td><td>Delay model fidelity</td><td>CCS is needed at advanced nodes</td></tr><tr><td>Engineering change order cells</td><td>Spare gates scattered in the layout</td><td><b>Enable metal-only fixes after tape-out</b></td></tr></tbody></table>
+<div class="ms"><b>Spare cells are cheap insurance that is often omitted
+    and then badly missed.</b> Scattering a small percentage of unused gates across the
+    floorplan allows a post-silicon logic fix to be implemented by changing only the metal
+    masks, which costs a fraction of a full mask set and weeks rather than months. The
+    area cost is typically one or two percent. <b>The decision is made at floorplan time
+    and cannot be revisited</b>, which is why it belongs on the checklist of Chapter
+    W1 rather than being left to back-end judgement.</div>

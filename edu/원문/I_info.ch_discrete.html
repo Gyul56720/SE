@@ -1,0 +1,23 @@
+<h1 id="i4">I4. Discrete Mathematics and Graphs in Hardware</h1>
+<table><caption>Table 88. Graph problems in the design flow</caption><thead><tr><th>Problem</th><th>Where it appears</th><th>Complexity</th><th>Practical method</th></tr></thead><tbody><tr><td>Topological sort</td><td>Netlist evaluation, scheduling</td><td>Linear</td><td>Exact</td></tr><tr><td>Longest path</td><td><b>Static timing analysis</b></td><td>Linear on a DAG</td><td>Exact &mdash; this is what STA computes</td></tr><tr><td>Cycle detection</td><td>Combinational loop check</td><td>Linear</td><td>Exact</td></tr><tr><td>Min-cut / max-flow</td><td>Partitioning, retiming</td><td>Polynomial</td><td>Exact</td></tr><tr><td>Graph colouring</td><td>Register allocation, channel assignment</td><td>NP-hard</td><td>Heuristic</td></tr><tr><td>Clique / independent set</td><td>Binding in HLS</td><td>NP-hard</td><td>Heuristic</td></tr><tr><td>Shortest path</td><td>Routing</td><td>Polynomial</td><td>A*, maze routing</td></tr><tr><td>Steiner tree</td><td>Multi-pin net routing</td><td>NP-hard</td><td>Heuristic</td></tr><tr><td>Isomorphism</td><td><b>LVS (layout vs schematic)</b></td><td>Unknown class</td><td>Practical algorithms</td></tr></tbody></table>
+<div class="ms"><b>Recognising that a design task is a known graph problem
+    is worth more than knowing an algorithm for it.</b> Static timing analysis is longest
+    path on a DAG &mdash; which is why combinational loops must be forbidden: they make the
+    problem ill-posed, not merely difficult. Retiming is a min-cost flow problem, which is
+    why it is exactly solvable while placement (a quadratic assignment problem) is not.
+    <b>The tractability boundary explains the tool landscape</b>: tasks on the polynomial
+    side have exact tools that engineers trust, and tasks on the NP-hard side have
+    heuristics whose results engineers must inspect. A designer who knows which side a
+    problem lies on knows whether to argue with the tool.</div>
+<table><caption>Table 89. Boolean algebra and representations</caption><thead><tr><th>Representation</th><th>Property</th><th>Use</th></tr></thead><tbody><tr><td>Truth table</td><td>Exponential size</td><td>Small functions, LUT mapping</td></tr><tr><td>SOP / POS</td><td>Two-level</td><td>PLA, simple synthesis</td></tr><tr><td><b>BDD</b></td><td>Canonical for a fixed variable order</td><td><b>Equivalence checking</b>; order-sensitive size</td></tr><tr><td>AIG (And-Inverter Graph)</td><td>Compact, not canonical</td><td><b>Modern synthesis and formal engines</b></td></tr><tr><td><b>CNF + SAT</b></td><td>&mdash;</td><td><b>Bounded model checking, equivalence</b></td></tr><tr><td>SMT</td><td>Theories beyond Boolean</td><td>Word-level formal verification</td></tr></tbody></table>
+<div class="ms"><b>The shift from BDDs to SAT reshaped formal
+    verification.</b> BDDs are canonical, which makes equivalence a pointer comparison,
+    but their size explodes for arithmetic functions such as multipliers and is acutely
+    sensitive to variable ordering. Modern SAT solvers, with conflict-driven clause
+    learning, handle far larger instances without canonicity. The practical consequence
+    for an IP engineer is that <b>formal property checking is now feasible on real control
+    logic</b> &mdash; arbiters, FIFOs, protocol adapters, FSM reachability &mdash; where a
+    decade ago it was a specialist activity. It remains infeasible on deep datapaths, so
+    the division of labour is: formal for control, simulation with a golden model for
+    datapath. <b>Knowing which side of that line a block falls on is how a verification
+    plan is written.</b></div>

@@ -1,0 +1,20 @@
+<h1 id="paper">논문 활용법 &mdash; 실무에서 어떻게 쓰나</h1>
+<p>모델링 팀에서 논문은 <b>읽는 대상이 아니라 도구</b>다. 쓰임새가
+    분명하다.</p>
+<table><caption>표 48. 실무에서 논문이 쓰이는 네 가지 자리</caption><thead><tr><th>쓰임</th><th>무엇을 찾나</th><th>어디서</th><th>주의</th></tr></thead><tbody><tr><td><b>구조 선택</b></td><td>같은 기능의 여러 회로 중 무엇이 왜 나은가</td><td>JSSC · ISSCC · VLSI · DAC/ICCAD</td><td>논문의 수는 <b>가장 유리한 조건</b>에서 나온다. 조건을 먼저 읽어라</td></tr><tr><td><b>알고리즘 근거</b></td><td>왜 이 수식이 맞는가, 수렴 조건은</td><td>IEEE Trans. · arXiv</td><td>구현 논문과 이론 논문을 구분하라</td></tr><tr><td><b>공격/취약점</b></td><td>우리 대책이 이미 깨졌나</td><td>CHES · CCS · USENIX Security</td><td>보안 IP 는 <b>필수</b></td></tr><tr><td><b>표준의 배경</b></td><td>규격이 왜 그렇게 정해졌나</td><td>표준화 기구 기고문(IEEE 802 public 디렉터리 등)</td><td><b>규격 본문보다 기고문이 더 잘 설명한다</b></td></tr></tbody></table>
+<h2>논문을 읽는 순서 (30분 안에 판단하기)</h2>
+<ol>
+    <li><b>표/그림부터</b> 본다. 무엇을 쟀는지가 거기 있다</li>
+    <li><b>실험 조건</b>을 찾는다. 공정 · 전압 · 온도 · 채널 · 데이터셋. <b>여기가
+        비교 가능성을 정한다</b></li>
+    <li><b>기준선(baseline)</b>이 무엇인지 본다. 약한 기준선과 비교했으면 수가 커 보인다</li>
+    <li>그제서야 <b>방법</b>을 읽는다</li>
+    <li>마지막에 <b>한계/future work</b> 를 읽는다. 저자가 아는 약점이 거기 있다</li>
+    </ol>
+<div class="warn"><b>실무에서 가장 위험한 인용은 &ldquo;읽지 않고 쓴
+    인용&rdquo;이다.</b> 초록과 검색 조각만 보고 &ldquo;이 방식이 좋다&rdquo;고 보고하면,
+    조건이 우리와 다를 때 몇 달을 버린다. <b>확인 수준을 표시하는 습관</b>을 권한다 &mdash;
+    전문을 읽었나(전문) · 초록만인가(초록) · 검색 조각인가(조각). 이 교안 저자의 저장소는
+    문서에 그 표시를 강제한다.</div>
+<h2>어디서 찾나 (접근 가능성 순)</h2>
+<table><caption>표 49. 문헌 접근 경로</caption><thead><tr><th>경로</th><th>무엇</th><th>비용</th></tr></thead><tbody><tr><td><b>arXiv</b></td><td>프리프린트. 통신·ML·아키텍처가 많다</td><td>무료</td></tr><tr><td><b>표준화 기구 공개 디렉터리</b></td><td>IEEE 802 기고문 등. <b>보물창고</b></td><td>무료</td></tr><tr><td><b>Get IEEE 802</b></td><td>802 계열 규격 원문</td><td>무료</td></tr><tr><td>NIST 간행물</td><td>FIPS · SP 800 시리즈</td><td>무료</td></tr><tr><td>IACR ePrint</td><td>암호 논문 전량</td><td>무료</td></tr><tr><td>IEEE Xplore · ACM DL</td><td>JSSC · ISSCC · TC 등</td><td>회사/학교 구독</td></tr><tr><td>회사 내부 위키 · 이전 프로젝트 문서</td><td><b>가장 관련성 높다</b></td><td>무료</td></tr><tr><td>벤더 IP 사양서(PG/PB/데이터시트)</td><td>실제 납품물의 형태</td><td>공개된 것이 많다</td></tr></tbody></table>

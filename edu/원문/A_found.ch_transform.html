@@ -1,0 +1,27 @@
+<h1 id="a2">A2. Transforms and Spectral Representation</h1>
+<table><caption>Table 13. The transform family</caption><thead><tr><th>Transform</th><th>Domain</th><th>Kernel</th><th>Principal use in IP work</th></tr></thead><tbody><tr><td>CTFT</td><td>continuous time &rarr; &omega;</td><td><i>e</i><sup>&minus;j&omega;t</sup></td><td>Analogue filter and antenna analysis</td></tr><tr><td>Laplace</td><td>continuous time &rarr; <i>s</i></td><td><i>e</i><sup>&minus;st</sup></td><td>PLL loop dynamics, control, transmission lines</td></tr><tr><td>DTFT</td><td>discrete time &rarr; &omega;</td><td><i>e</i><sup>&minus;j&omega;n</sup></td><td>Theoretical filter response (continuous in &omega;)</td></tr><tr><td><b>DFT / FFT</b></td><td>finite sequence &rarr; bins</td><td><i>e</i><sup>&minus;j2&pi;kn/N</sup></td><td>Everything computable</td></tr><tr><td>Z</td><td>discrete time &rarr; <i>z</i></td><td><i>z</i><sup>&minus;n</sup></td><td>Poles, zeros, stability, filter structures</td></tr><tr><td>Hilbert</td><td>real &rarr; analytic</td><td>&minus;j&nbsp;sgn(&omega;)</td><td>I/Q generation, envelope, SSB</td></tr><tr><td>DCT</td><td>finite &rarr; cosine basis</td><td>cos</td><td>Image/video coding (energy compaction)</td></tr><tr><td>Wavelet</td><td>time&ndash;scale</td><td>scaled basis</td><td>Transient detection, JPEG2000</td></tr></tbody></table>
+<h2>A2.1 The DFT is not the DTFT</h2>
+<p>The DFT computes samples of the DTFT of a <b>windowed, periodically
+    extended</b> sequence. Three artefacts follow, and all three appear as bugs in
+    practice.</p>
+<table><caption>Table 14. DFT artefacts</caption><thead><tr><th>Artefact</th><th>Cause</th><th>Symptom</th><th>Mitigation</th></tr></thead><tbody><tr><td><b>Spectral leakage</b></td><td>Implicit rectangular window</td><td>A pure tone smears across bins</td><td>Apply a window (Hann, Blackman&ndash;Harris)</td></tr><tr><td><b>Scalloping loss</b></td><td>Tone falls between bin centres</td><td>Up to 3.9&nbsp;dB amplitude error (rectangular)</td><td>Window, or interpolate the peak</td></tr><tr><td><b>Picket fence</b></td><td>Only <i>N</i> samples of a continuum</td><td>Frequency resolution limited to <i>f<sub>s</sub></i>/<i>N</i></td><td>Zero-pad (interpolates, does <b>not</b> add resolution)</td></tr><tr><td>Circular convolution</td><td>Periodic extension</td><td>Wrap-around in fast convolution</td><td>Zero-pad to <i>N</i>&ge;<i>L</i>+<i>M</i>&minus;1</td></tr></tbody></table>
+<div class="warn">Zero-padding is routinely misdescribed as improving
+    resolution. It does not. <b>Resolution is set by the observation time</b>
+    <i>T</i>&nbsp;=&nbsp;<i>N</i>/<i>f<sub>s</sub></i>; two tones closer than
+    &asymp;1/<i>T</i> cannot be separated no matter how many zeros are appended. Padding
+    interpolates the displayed spectrum, which makes peaks easier to <i>locate</i> but
+    not easier to <i>resolve</i>. In a specification, resolution and interpolation must
+    be stated separately.</div>
+<table><caption>Table 15. Common windows</caption><thead><tr><th>Window</th><th>Main-lobe width (bins)</th><th>First sidelobe</th><th>Use</th></tr></thead><tbody><tr><td>Rectangular</td><td>2</td><td>&minus;13 dB</td><td>Transient capture; maximum resolution</td></tr><tr><td>Hann</td><td>4</td><td>&minus;31 dB</td><td>General purpose</td></tr><tr><td>Hamming</td><td>4</td><td>&minus;41 dB</td><td>Slightly better near sidelobe</td></tr><tr><td>Blackman&ndash;Harris (4-term)</td><td>8</td><td>&minus;92 dB</td><td><b>Spur hunting in converter test</b></td></tr><tr><td>Kaiser (&beta; adjustable)</td><td>tunable</td><td>tunable</td><td>Design-to-spec</td></tr><tr><td>Flat-top</td><td>~9</td><td>&minus;90 dB</td><td><b>Amplitude accuracy</b> (calibration)</td></tr></tbody></table>
+<h2>A2.2 Parseval, power spectral density, and dB conventions</h2>
+<div class="math">&sum;<sub>n</sub>|x[n]|<sup>2</sup> =
+    (1/N)&sum;<sub>k</sub>|X[k]|<sup>2</sup></div>
+<table><caption>Table 16. Decibel conventions that are routinely confused</caption><thead><tr><th>Unit</th><th>Reference</th><th>Note</th></tr></thead><tbody><tr><td>dB</td><td>ratio</td><td>10&nbsp;log for power, 20&nbsp;log for amplitude</td></tr><tr><td>dBm</td><td>1 mW</td><td>Absolute power</td></tr><tr><td>dBc</td><td>carrier</td><td>Spur levels, phase noise</td></tr><tr><td>dBFS</td><td>converter full scale</td><td><b>Digital</b> level; not a physical power</td></tr><tr><td>dBm/Hz</td><td>1 mW per Hz</td><td>Spectral density; thermal floor &minus;174 dBm/Hz @ 290 K</td></tr><tr><td>dBc/Hz</td><td>carrier per Hz</td><td>Phase noise <i>L</i>(&Delta;<i>f</i>)</td></tr></tbody></table>
+<div class="ms">A recurring measurement error is comparing a
+    <b>single-bin</b> FFT magnitude with a <b>spectral density</b>. The FFT bin contains
+    power integrated over the equivalent noise bandwidth of the window, which for a Hann
+    window is 1.5&nbsp;bins, not 1. Reporting &ldquo;noise floor at &minus;110&nbsp;dBFS&rdquo;
+    without stating <i>N</i>, <i>f<sub>s</sub></i> and the window is not a measurement,
+    because the number changes when any of the three changes. <b>Processing gain
+    10&nbsp;log<sub>10</sub>(<i>N</i>/2) is often mistaken for converter
+    performance.</b></div>

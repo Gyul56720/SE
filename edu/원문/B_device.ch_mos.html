@@ -1,0 +1,36 @@
+<h1 id="b1">B1. The MOSFET &mdash; What a Digital Designer Must Know</h1>
+<p>A digital IP engineer does not size transistors, but every timing
+    number, every power figure and several verification hazards trace back to device
+    behaviour. This chapter keeps only what changes decisions.</p>
+<h2>B1.1 Regions of operation</h2>
+<table><caption>Table 28. MOSFET regions</caption><thead><tr><th>Region</th><th>Condition</th><th>Current</th><th>Where it matters</th></tr></thead><tbody><tr><td>Cut-off</td><td><i>V<sub>GS</sub></i> &lt; <i>V<sub>TH</sub></i></td><td><i>I</i><sub>sub</sub> &prop; e<sup>(V<sub>GS</sub>&minus;V<sub>TH</sub>)/nV<sub>T</sub></sup></td><td><b>Subthreshold leakage</b> &mdash; the dominant static power term below 65 nm</td></tr><tr><td>Triode / linear</td><td><i>V<sub>DS</sub></i> &lt; <i>V<sub>GS</sub></i>&minus;<i>V<sub>TH</sub></i></td><td>&mu;C<sub>ox</sub>(W/L)[(V<sub>GS</sub>&minus;V<sub>TH</sub>)V<sub>DS</sub> &minus; V<sub>DS</sub><sup>2</sup>/2]</td><td>Switch resistance <i>R</i><sub>on</sub>; pass gates; the ON device of an inverter at end of transition</td></tr><tr><td>Saturation</td><td><i>V<sub>DS</sub></i> &gt; <i>V<sub>GS</sub></i>&minus;<i>V<sub>TH</sub></i></td><td>&frac12;&mu;C<sub>ox</sub>(W/L)(V<sub>GS</sub>&minus;V<sub>TH</sub>)<sup>2</sup>(1+&lambda;V<sub>DS</sub>)</td><td>Analogue gain stages; the beginning of a digital transition</td></tr><tr><td>Velocity saturation</td><td>Short channel, high field</td><td>&prop; (V<sub>GS</sub>&minus;V<sub>TH</sub>)<sup>1</sup> &mdash; <b>linear, not square</b></td><td><b>Modern nodes live here.</b> Textbook square-law intuition overestimates drive</td></tr></tbody></table>
+<div class="ms">The last row is the single most important correction for
+    anyone who learned the square law. In a short-channel device carriers reach their
+    saturation velocity, so drive current becomes roughly proportional to overdrive
+    rather than its square. Two practical consequences: <b>(i)</b> increasing supply
+    voltage buys less speed than square-law intuition suggests, while dynamic power still
+    rises as <i>V</i><sup>2</sup>, so voltage scaling is a poor speed lever; <b>(ii)</b>
+    stacking devices (as in a NAND with many inputs) costs more than the naive series-resistance
+    estimate, which is why wide fan-in gates are avoided and logic is restructured into
+    trees. When a synthesis tool reports that a 4-input gate is slower than two 2-input
+    gates in series, this is why.</div>
+<h2>B1.2 Threshold voltage and its enemies</h2>
+<table><caption>Table 29. V<sub>TH</sub> modulation effects</caption><thead><tr><th>Effect</th><th>Mechanism</th><th>Design consequence</th></tr></thead><tbody><tr><td>Body effect</td><td>Source&ndash;bulk bias raises <i>V<sub>TH</sub></i></td><td>Stacked devices are slower than expected</td></tr><tr><td>DIBL</td><td>Drain field lowers the barrier</td><td><i>V<sub>TH</sub></i> falls with <i>V<sub>DS</sub></i> &rarr; more leakage</td></tr><tr><td>Random dopant fluctuation</td><td>Discrete dopant atoms</td><td>&sigma;<sub>VTH</sub> &prop; 1/&radic;(<i>WL</i>) &mdash; <b>small devices mismatch more</b></td></tr><tr><td>Temperature</td><td>&minus;1 to &minus;2 mV/K</td><td>Hot chip is <i>faster</i> at low <i>V<sub>DD</sub></i> (temperature inversion)</td></tr><tr><td>NBTI / PBTI ageing</td><td>Trap generation under stress</td><td><b>|<i>V<sub>TH</sub></i>| drifts over years</b> &mdash; timing must include an ageing margin</td></tr><tr><td>Multi-<i>V<sub>TH</sub></i> offering</td><td>Process option</td><td>LVT for critical paths, HVT elsewhere: the primary leakage-vs-speed lever</td></tr></tbody></table>
+<div class="ms"><b>Temperature inversion is a verification trap.</b> At
+    high supply voltage a chip is slowest when hot, so signing off at the high-temperature
+    corner is conservative. At low supply voltage &mdash; which is where modern low-power
+    modes operate &mdash; the <i>V<sub>TH</sub></i> reduction outweighs mobility
+    degradation and the chip is slowest when <b>cold</b>. Teams that carried forward a
+    "hot is worst case" habit have taped out parts that fail at &minus;40&nbsp;&deg;C.
+    The corner list is not a formality; it is a statement about which physics dominates
+    in the operating region you are selling into.</div>
+<h2>B1.3 Scaling and what it stopped giving</h2>
+<table><caption>Table 30. Dennard scaling and its breakdown</caption><thead><tr><th>Quantity</th><th>Ideal scaling (factor <i>s</i>&gt;1)</th><th>What actually happened</th></tr></thead><tbody><tr><td>Dimensions</td><td>1/<i>s</i></td><td>Continued (with FinFET, GAA)</td></tr><tr><td>Supply <i>V<sub>DD</sub></i></td><td>1/<i>s</i></td><td><b>Stalled near 0.7&ndash;0.9 V</b> &mdash; <i>V<sub>TH</sub></i> cannot follow without leakage explosion</td></tr><tr><td>Delay</td><td>1/<i>s</i></td><td>Slower than ideal; interconnect does not scale</td></tr><tr><td>Power density</td><td>constant</td><td><b>Rose</b> &rarr; dark silicon, thermal limits</td></tr><tr><td>Leakage</td><td>negligible</td><td><b>Comparable to dynamic</b> below 65 nm</td></tr><tr><td>Interconnect RC</td><td>&mdash;</td><td><b>Worsens</b>: resistance rises as cross-section shrinks</td></tr></tbody></table>
+<div class="ms">The end of Dennard scaling is the reason the industry
+    turned to <b>specialised accelerators</b>, and therefore the reason the IP business
+    grew. When a single general-purpose core could no longer be made faster within a
+    power budget, the way to get performance became putting the right fixed-function
+    block next to the processor. <b>Every FEC, crypto, codec and NPU IP sold today exists
+    because of this graph.</b> Understanding it lets a design house argue its value
+    proposition in the customer's own terms: not "our block is fast", but "your
+    general-purpose alternative costs <i>x</i> times the energy per operation".</div>

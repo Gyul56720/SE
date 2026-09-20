@@ -1,0 +1,116 @@
+<h1 id="y4">Y4. A Verification Agent That Runs While You Sleep</h1>
+<p>A one-person design house has one engineer and twenty-four hours in a
+    day, and the engineer needs some of them. The only way the arithmetic works is for
+    verification to run unattended overnight and to leave behind something better than a
+    log file. This part documents such a system, which lives in this repository under
+    <code>edu/agent/</code> and which is exercised by
+    <code>tests/test_verif_agent.py</code>. It is deliberately small &mdash; roughly the
+    size one person can maintain &mdash; and it is deliberately suspicious of
+    itself.</p>
+<figure id="fig52"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 490 138" width="100%" font-family="Times New Roman, Nimbus Roman, serif"><defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#000"/></marker><marker id="ao" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="none" stroke="#000" stroke-width="1.4"/></marker></defs><rect x="14" y="30" width="82" height="28" rx="2" fill="#fff" stroke="#000" stroke-width="1.1"/><text x="55.0" y="48.0" font-size="8" text-anchor="middle">self-check</text><rect x="104" y="30" width="82" height="28" rx="2" fill="#fff" stroke="#000" stroke-width="1.1"/><text x="145.0" y="48.0" font-size="8" text-anchor="middle">regression</text><path d="M96,44 L104,44" stroke="#000" stroke-width="1.1" fill="none" marker-end="url(#a)"/><rect x="196" y="30" width="82" height="28" rx="2" fill="#fff" stroke="#000" stroke-width="1.1"/><text x="237.0" y="48.0" font-size="8" text-anchor="middle">shrink</text><path d="M188,44 L196,44" stroke="#000" stroke-width="1.1" fill="none" marker-end="url(#a)"/><rect x="282" y="30" width="82" height="28" rx="2" fill="#fff" stroke="#000" stroke-width="1.1"/><text x="323.0" y="48.0" font-size="8" text-anchor="middle">repair search</text><path d="M274,44 L282,44" stroke="#000" stroke-width="1.1" fill="none" marker-end="url(#a)"/><rect x="380" y="30" width="92" height="28" rx="2" fill="#fff" stroke="#000" stroke-width="1.1"/><text x="426.0" y="48.0" font-size="8" text-anchor="middle">apply / report</text><path d="M372,44 L380,44" stroke="#000" stroke-width="1.1" fill="none" marker-end="url(#a)"/><text x="58" y="76" font-size="7" text-anchor="middle" fill="#000" >does the</text><text x="58" y="85" font-size="7" text-anchor="middle" fill="#000" >checker bite?</text><text x="145" y="76" font-size="7" text-anchor="middle" fill="#000" >golden vs DUT</text><text x="237" y="76" font-size="7" text-anchor="middle" fill="#000" >one failing</text><text x="237" y="85" font-size="7" text-anchor="middle" fill="#000" >stimulus</text><text x="323" y="76" font-size="7" text-anchor="middle" fill="#000" >one-edit</text><text x="323" y="85" font-size="7" text-anchor="middle" fill="#000" >candidates</text><text x="426" y="76" font-size="7" text-anchor="middle" fill="#000" >three gates</text><path d="M426,96 L426,114" stroke="#000" stroke-width="0.9" fill="none"/><path d="M426,114 L55,114" stroke="#000" stroke-width="0.9" fill="none"/><path d="M55,114 L55,60" stroke="#000" stroke-width="1.1" fill="none" marker-end="url(#a)"/><text x="240" y="128" font-size="8" text-anchor="middle" fill="#000" font-style="italic">next seed &mdash; the loop never reuses stimulus, so a flat find-rate means something</text></svg><figcaption><b>Figure 52.</b> One iteration of the loop. The first box is the one most regression systems lack, and it is the reason the rest can be believed.</figcaption></figure>
+<h2>Y4.1 The design, and the two failures it is built around</h2>
+<p>An unattended regression can fail in two directions, and the second is
+    far more dangerous than the first. It can report a failure that is not there, which
+    wastes a morning. Or it can report success while checking nothing, which wastes a
+    tape-out. The loop is structured so that the second is caught by construction.</p>
+<table><caption>Table 414. What each stage is for, and what would go wrong without it</caption><thead><tr><th>Stage</th><th>What it does</th><th>Without it</th></tr></thead><tbody><tr><td><b>Self-check</b></td><td>Corrupts one golden value and asserts that the comparison notices</td><td><b>A comparison that silently stopped comparing reports green forever.</b> This is the failure mode this whole repository is organised against</td></tr><tr><td>Regression</td><td>Runs the DUT and the golden model on the same stimulus and compares every output</td><td>&mdash;</td></tr><tr><td>Distinct-output count</td><td>Counts how many <i>different</i> values the golden model produced</td><td><b>A stimulus that drives one constant passes trivially.</b> The loop treats fewer than two distinct outputs as a failure, not a pass</td></tr><tr><td>Shrink</td><td>Re-runs the single failing stimulus on its own</td><td>A 4000-transaction failure report that nobody can debug</td></tr><tr><td>Repair search</td><td>Generates single-edit candidates from a rule library and tests each</td><td>The engineer starts every morning from a raw failure</td></tr><tr><td>Three gates</td><td>Original seed, an unused seed, and the self-check</td><td><b>An edit that special-cases the failing input passes.</b> The overfitting gate is the reason this can be left running unattended</td></tr></tbody></table>
+<div class="ms"><b>The overfitting gate deserves its own sentence,
+    because automated repair without it is actively harmful.</b> A search that accepts any
+    edit making the failing test pass will, given a large enough rule library, eventually
+    find one that hard-codes the answer. Such an edit is worse than the original bug: the
+    bug was visible and the patch is not. The rule here is that a candidate must pass a
+    seed that was <i>never used during the search</i>, which is the same
+    train/test separation that any honest empirical claim requires. This book's
+    Part&nbsp;X8 makes the same point about a bug-find-rate curve, and
+    Part&nbsp;X1 about a range justified by simulation: <b>a number validated on the data
+    that produced it is not validated.</b></div>
+<h2>Y4.2 The blocks under test, measured now</h2>
+<table><caption>Table 415. The agent's blocks, run at build time against their golden models</caption><thead><tr><th>Block</th><th>Golden model</th><th>Stimuli</th><th>Mismatches</th><th>Distinct outputs</th><th>Checker bites?</th><th>Wall time</th></tr></thead><tbody><tr><td><code>crc32_8</code></td><td>Python's <code>zlib.crc32</code></td><td>1,500</td><td>0</td><td>1,499</td><td>yes</td><td>0.0491&nbsp;s</td></tr><tr><td><code>crc32_stream</code></td><td>&mdash;</td><td>52</td><td>0</td><td>51</td><td>yes</td><td>0.0805&nbsp;s</td></tr><tr><td><code>enc8b10b</code></td><td>&mdash;</td><td>3,000</td><td>0</td><td>488</td><td>yes</td><td>0.0487&nbsp;s</td></tr><tr><td><code>gf_mul</code></td><td>the repository's <code>gf.py</code></td><td>1,500</td><td>0</td><td>808</td><td>yes</td><td>0.0426&nbsp;s</td></tr><tr><td><code>regfile</code></td><td>&mdash;</td><td>1,500</td><td>0</td><td>169</td><td>yes</td><td>0.0612&nbsp;s</td></tr><tr><td><code>rs_syn_step</code></td><td>the repository's <code>gf.py</code></td><td>1,500</td><td>0</td><td>796</td><td>yes</td><td>0.0444&nbsp;s</td></tr></tbody></table><div class="swnote">Run by this chapter as the book is rendered, with Icarus Verilog. <b>The &lsquo;distinct outputs&rsquo; column is the one that makes the &lsquo;mismatches&rsquo; column mean something</b>; a zero in the fourth column beside a one in the fifth would be a false green.</div>
+<div class="bs"><b>Why the CRC block's golden model is
+    <code>zlib</code> and not a hand-written CRC.</b> If the reference and the design are
+    written by the same person from the same understanding, they share that person's
+    misunderstandings, and the comparison certifies the misunderstanding rather than
+    detecting it. This is not hypothetical: reflected versus non-reflected CRC, initial
+    value, and final XOR are four independent conventions and a hand-written reference
+    gets at least one of them wrong about as often as the RTL does. <b>An independent
+    reference is worth more than a more accurate one.</b> The same argument is why a
+    modelling team is organisationally separate from the design team &mdash; the
+    independence is the product.</div>
+<h2>Y4.3 Repair, measured on injected faults</h2>
+<p>The claim that the agent repairs Verilog is only worth making with
+    numbers behind it. The following table injects known faults into the GF multiplier and
+    reports what the search did, computed while this page was rendered.</p>
+<table><caption>Table 416. Injected faults and what the repair search did, run at build time</caption><thead><tr><th>Injected fault</th><th>Mismatches before</th><th>Candidates tried</th><th>Rule that repaired it</th><th>Rejected for overfitting</th><th>Search time</th></tr></thead><tbody><tr><td>overflow bit read one position low</td><td>393 / 400</td><td>7 of 7</td><td><b>MSB 인덱스 M-2 / M-1</b></td><td>0</td><td>10.2&nbsp;s</td></tr><tr><td>accumulate with OR instead of XOR</td><td>384 / 400</td><td>3 of 7</td><td><b>OR / XOR</b></td><td>0</td><td>0.102&nbsp;s</td></tr><tr><td>reduction shift in the wrong direction</td><td>390 / 400</td><td>5 of 7</td><td><b>우시프트 / 좌시프트</b></td><td>0</td><td>0.142&nbsp;s</td></tr></tbody></table><div class="swnote">The search is exhaustive over single edits from the rule library, so a &lsquo;not repaired&rsquo; result means the fault is outside the library &mdash; which is information, not a failure. <b>The candidate counts are small because the rule library is deliberately narrow</b>; a library that edits anything would find something for every fault and most of it would be wrong.</div>
+<div class="warn"><b>What this system is not.</b> It is not a bug finder
+    for logic it has no golden model of, and it is not a substitute for a verification
+    plan. The rule library covers the small syntactic faults that a tired engineer
+    introduces at two in the morning &mdash; an inverted comparison, a shift the wrong
+    way, an index off by one &mdash; and nothing else. A missing state in a state machine,
+    a protocol rule that was never implemented, or a specification misread will all pass
+    the repair search untouched, because there is no single-token edit that fixes them.
+    <b>The value is not that it repairs everything; it is that it removes the trivial
+    failures from the morning's queue</b>, with a patch and a minimal reproducer attached
+    to each of the rest.</div>
+<h2>Y4.4 Running it for twenty-four hours</h2>
+<p>The launcher follows this repository's rule for background work, which
+    exists because the obvious way does not work: a process started with a bare
+    <code>&amp;</code> from inside an agent session is reaped when that session's process
+    exits, and the evidence for that is a night in which nothing ran and a message the
+    next morning saying it had.</p>
+<pre class="code"><span class="cap">edu/agent/run.sh &mdash; the launcher</span>
+#!/usr/bin/env bash
+# 24시간 회귀 에이전트를 **부모가 죽어도 사는** 방식으로 띄운다.
+#
+# CLAUDE.md 의 백그라운드 규칙 그대로다: setsid + nohup + disown, 그리고
+# stdin/stdout/stderr 를 전부 리다이렉트한다.  claude -p 가 응답 직후 끝나도
+# 이 프로세스는 남는다.
+#
+#   사용:  bash run.sh [--적용] [시간]
+#
+# 확인은 `ps -p $!` 가 아니라 `pgrep -af agent.py` 로 한다 -- setsid 가 fork 하므로
+# $! 는 이미 끝난 래퍼다.  셸 변수명에 한글을 쓰지 않는다 (bash 는 받지 않는다).
+set -u
+
+HERE=&quot;$(cd &quot;$(dirname &quot;$0&quot;)&quot; &amp;&amp; pwd)&quot;
+LOGDIR=&quot;${SE_AGENT_LOG:-/home/user/SE/logs}&quot;
+mkdir -p &quot;$LOGDIR&quot;
+LOG=&quot;$LOGDIR/verif_agent.log&quot;
+
+APPLY=&quot;&quot;
+HOURS=&quot;24&quot;
+for a in &quot;$@&quot;; do
+  case &quot;$a&quot; in
+    --적용|--apply) APPLY=&quot;--적용&quot; ;;
+    *) HOURS=&quot;$a&quot; ;;
+  esac
+done
+
+setsid nohup python3 &quot;$HERE/agent.py&quot; --시간 &quot;$HOURS&quot; ${APPLY:+$APPLY} \
+       &gt; &quot;$LOG&quot; 2&gt;&amp;1 &lt; /dev/null &amp;
+disown
+
+sleep 3
+if pgrep -af &quot;agent.py&quot; &gt; /dev/null; then
+  echo &quot;살아 있다:&quot;
+  pgrep -af &quot;agent.py&quot;
+  echo &quot;로그: $LOG&quot;
+  sleep 2
+  echo &quot;--- 로그 첫 줄 ---&quot;
+  head -3 &quot;$LOG&quot;
+else
+  echo &quot;띄우지 못했다.  로그:&quot;
+  cat &quot;$LOG&quot;
+  exit 1
+fi
+</pre>
+<table><caption>Table 417. The three things that make an unattended launch survive</caption><thead><tr><th>Element</th><th>What it detaches from</th><th>What happens without it</th></tr></thead><tbody><tr><td><code>setsid</code></td><td>The parent's session and process group</td><td>The process dies with the session that started it</td></tr><tr><td><code>nohup</code></td><td>SIGHUP</td><td>The process dies when the terminal closes</td></tr><tr><td><code>disown</code></td><td>The shell's job table</td><td>The shell may still signal it on exit</td></tr><tr><td><code>&lt; /dev/null</code> and redirected output</td><td>The terminal's pipes</td><td>A write to a closed pipe kills the process, often hours later</td></tr><tr><td><b><code>pgrep -af agent.py</code></b></td><td>&mdash;</td><td><b><code>ps -p $!</code> reports nothing even when the job is running</b>, because <code>setsid</code> forks when it is already a group leader, so <code>$!</code> is the wrapper that has already exited. Believing it leads to starting a second copy that overwrites the first one's files</td></tr></tbody></table>
+<div class="warn"><b>Do not put non-ASCII text in a <code>pgrep -f</code>
+    pattern.</b> The pattern is matched against <code>/proc/&lt;pid&gt;/cmdline</code>,
+    whose bytes may not decode in the current locale; a pattern containing characters that
+    cannot be decoded matches nothing, and a match of nothing reads as
+    &lsquo;finished&rsquo;. A job that is running is then reported as done, or started a
+    second time. Wait on a <b>PID</b> with <code>kill -0</code>, or match an ASCII-only
+    fragment of the command line.</div>
+<div class="wex"><div class="wexh">Worked example 64. What a night actually buys</div><div class="wexg"><b>Given.</b> The loop measured above runs roughly 900&ndash;2000 regression rounds per minute on this container for these small combinational blocks, each round a fresh seed.</div><div class="wexm"><b>Method.</b> Extrapolate to eight hours and compare with what a person can supervise. Then note the limit, which is not the compute.</div><table class="wexn"><tbody><tr><td>Rounds per hour (order of magnitude)</td><td><b>10<sup>5</sup></b></td></tr><tr><td>Rounds in an eight-hour night</td><td><b>&asymp;10<sup>6</sup></b></td></tr><tr><td>Distinct seeds consumed</td><td><b>one per block per round</b></td></tr><tr><td>Engineer-hours consumed</td><td><b>0</b></td></tr><tr><td>What limits the value</td><td><b><b>the golden models and the stimulus, not the machine</b></b></td></tr></tbody></table><div class="wext"><b>How this is got wrong.</b> <b>By reading the round count as coverage.</b> A million rounds of the same random distribution explore the same region a thousand times. Part&nbsp;X8's coupon-collector arithmetic says where the return flattens, and the answer is far below a million for any of these blocks. <b>The honest use of an overnight run is not volume but variety</b>: rotate the constraint sets, inject faults deliberately to measure whether the suite still bites, and re-run the previous night's minimal reproducers as a growing regression. A loop that only turns the seed is a loop that stops learning after the first hour.</div></div>
+<div class="prob"><b>Problem.</b> You arrive in the morning to nine failures, all in one block, all with the same minimal reproducer shape. What do you do first?<div class="sol"><b>Solution.</b> Deduplicate before debugging. Nine reports with one shape are one bug, and the first task is to confirm that by checking whether a single edit makes all nine reproducers pass &mdash; which the repair search has already attempted and logged. If it found an edit and the overfitting gate rejected it, <b>that rejection is the most informative line in the whole night's ledger</b>: it says a plausible local fix exists and is wrong, which usually means the bug is one level up from where it manifests. If the search found nothing, read the minimal reproducer and ask which of the four X8 categories it belongs to before opening the RTL. The failure the agent cannot repair is the one worth your morning; the ones it repaired are worth only a review of the patch.</div></div>
+<div class="prob"><b>Problem.</b> Your manager asks whether the agent could write the RTL as well as fix it. What is the honest answer?<div class="sol"><b>Solution.</b> The honest answer distinguishes two things this chapter has kept separate. <b>Search over a small edit space with a strong oracle is reliable</b>, and that is what this agent does: the golden model is the oracle, the edit space is a dozen rules, and the three gates bound the false-accept rate. <b>Generation without an oracle is not</b>, because nothing is checking the result except a human reading it, and the failure mode is code that looks right. The useful framing for a design house is therefore: let generation propose and let the oracle dispose, and <b>invest in the oracle</b>. A team with an excellent golden model and a mediocre generator will out-ship a team with the reverse, because the first can accept help from any source and the second cannot tell good help from bad. That is also why the modelling role &mdash; the one this book is written for &mdash; becomes more valuable as generation improves, not less.</div></div>

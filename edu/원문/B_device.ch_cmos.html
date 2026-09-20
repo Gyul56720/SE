@@ -1,0 +1,47 @@
+<h1 id="b2">B2. CMOS Logic, Delay and Power</h1>
+<figure id="fig3"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 200" width="100%" font-family="Times New Roman, Nimbus Roman, serif"><defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#000"/></marker><marker id="ao" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="none" stroke="#000" stroke-width="1.4"/></marker></defs><path d="M120,25 L120,55" stroke="#000" stroke-width="1.1" fill="none"/><text x="124" y="22" font-size="9" text-anchor="start" fill="#000" >VDD</text><rect x="95" y="55" width="52" height="34" rx="2" fill="#fff" stroke="#000" stroke-width="1.1"/><text x="121.0" y="76.0" font-size="8" text-anchor="middle">PMOS</text><rect x="95" y="111" width="52" height="34" rx="2" fill="#fff" stroke="#000" stroke-width="1.1"/><text x="121.0" y="132.0" font-size="8" text-anchor="middle">NMOS</text><path d="M120,89 L120,111" stroke="#000" stroke-width="1.1" fill="none"/><path d="M120,145 L120,175" stroke="#000" stroke-width="1.1" fill="none"/><text x="124" y="190" font-size="9" text-anchor="start" fill="#000" >GND</text><path d="M120,100 L190,100" stroke="#000" stroke-width="1.1" fill="none"/><path d="M190,100 L215,100" stroke="#000" stroke-width="1.1" fill="none" marker-end="url(#a)"/><text x="196" y="92" font-size="9" text-anchor="start" fill="#000" >OUT</text><path d="M35,100 L95,100" stroke="#000" stroke-width="1.1" fill="none" marker-end="url(#a)"/><text x="37" y="92" font-size="9" text-anchor="start" fill="#000" >IN</text><path d="M75,72 L75,128" stroke="#000" stroke-width="1.1" fill="none"/><path d="M75,100 L95,100" stroke="#000" stroke-width="1.1" fill="none"/><path d="M215,100 L215,130" stroke="#000" stroke-width="1.1" fill="none"/><rect x="196" y="130" width="40" height="22" rx="2" fill="#fff" stroke="#000" stroke-width="1.1"/><text x="216.0" y="145.0" font-size="8" text-anchor="middle">C_L</text><text x="300" y="60" font-size="10" text-anchor="start" fill="#000" >t_pd ≈ 0.69 R_on C_L</text><text x="300" y="82" font-size="9" text-anchor="start" fill="#000" >R_on ∝ 1/(W/L) ⇒ bigger device, faster, more input cap</text><text x="300" y="104" font-size="9" text-anchor="start" fill="#000" >FO4 = delay driving four identical inverters</text><text x="300" y="126" font-size="9" text-anchor="start" fill="#000" font-style="italic">— the technology-independent speed unit</text></svg><figcaption><b>Figure 3.</b> The inverter, and the delay model every timing number ultimately rests on.</figcaption></figure>
+<h2>B2.1 Delay models</h2>
+<table><caption>Table 21. Delay models by fidelity</caption><thead><tr><th>Model</th><th>Form</th><th>Use</th></tr></thead><tbody><tr><td>RC (Elmore)</td><td><i>t<sub>pd</sub></i> = 0.69<i>R</i><sub>on</sub><i>C<sub>L</sub></i></td><td>Hand estimates, intuition</td></tr><tr><td><b>Logical effort</b></td><td><i>d</i> = <i>gh</i> + <i>p</i></td><td><b>Optimal gate sizing and stage count</b> without simulation</td></tr><tr><td>NLDM (lookup)</td><td>table over input slew &times; output load</td><td>Standard-cell STA</td></tr><tr><td>CCS / ECSM</td><td>current-source model</td><td>Advanced nodes, accurate slew propagation</td></tr><tr><td>SPICE</td><td>device equations</td><td>Characterisation, critical custom paths</td></tr></tbody></table>
+<div class="ms"><b>Logical effort is the one hand method worth
+    memorising.</b> With <i>g</i> the logical effort of a gate (1 for an inverter, 4/3 for
+    NAND2, 5/3 for NOR2), <i>h</i> the electrical effort (fanout), and <i>p</i> parasitic
+    delay, the path delay is minimised when <b>every stage carries equal effort</b>
+    <i>f</i> = (<i>GH</i>)<sup>1/<i>N</i></sup>, and the optimal per-stage effort is
+    &asymp;&nbsp;3.6&nbsp;(&asymp;4 in practice, whence "fanout-of-4"). This yields the
+    optimal number of stages <i>N</i> &asymp; log<sub>4</sub>(<i>GH</i>) directly.
+    In an IP context it answers questions such as "how many buffer stages should the
+    clock tree have?" or "is this 12-input decoder better as one stage or three?" before
+    a single tool is run &mdash; which matters because those questions arise during
+    architecture, when no netlist exists.</div>
+<div class="ms"><b>FO4 as a unit.</b> Quoting delay in FO4 units makes a
+    design comparable across processes: a 30-FO4 pipeline stage is 30 FO4 whether the
+    node is 130 nm or 5 nm. A measured data point for calibration: in the open
+    SkyWater 130 nm PDK, an inverter chain with <i>W<sub>p</sub></i>=2.0&nbsp;&mu;m,
+    <i>W<sub>n</sub></i>=1.0&nbsp;&mu;m, <i>L</i>=0.15&nbsp;&mu;m and
+    <i>C<sub>L</sub></i>=6&nbsp;fF gives <b>FO4 &asymp; 48 ps</b> (ngspice; stage delays
+    47.5 and 44.5 ps, rise time 67.9 ps). That implies a practical ceiling near
+    <b>1 GHz</b> for a ~20-FO4 pipeline stage in that process &mdash; which is the
+    quantitative reason a 56 GBd analogue decision loop is impossible there, and why an
+    open-PDK project must choose a digital, sub-rate architecture.</div>
+<h2>B2.2 Power</h2>
+<div class="math">P = &alpha;C V<sub>DD</sub><sup>2</sup> f
+    &nbsp;+&nbsp; I<sub>SC</sub>V<sub>DD</sub> &nbsp;+&nbsp; I<sub>leak</sub>V<sub>DD</sub></div>
+<table><caption>Table 22. Power components and levers</caption><thead><tr><th>Component</th><th>Driver</th><th>Lever</th><th>Cost of the lever</th></tr></thead><tbody><tr><td>Dynamic (switching)</td><td>&alpha;<i>CV</i><sup>2</sup><i>f</i></td><td>Clock gating; reduce &alpha; by data gating; lower <i>V<sub>DD</sub></i></td><td>Gating adds skew and verification states</td></tr><tr><td>Short-circuit</td><td>Both devices on during transition</td><td>Sharp input slews</td><td>Bigger drivers &rarr; more <i>C</i></td></tr><tr><td>Subthreshold leakage</td><td>e<sup>&minus;V<sub>TH</sub>/nV<sub>T</sub></sup></td><td>HVT cells, power gating, body bias</td><td>Slower; wake-up latency; state retention</td></tr><tr><td>Gate leakage</td><td>Tunnelling through oxide</td><td>High-&kappa; dielectric</td><td>Process choice, not design</td></tr><tr><td>Glitch power</td><td>Unbalanced arrival times</td><td><b>Balance logic depth</b>; pipeline</td><td>Area, latency</td></tr></tbody></table>
+<div class="ms"><b>Glitch power is an IP-level design decision that
+    rarely appears in textbooks.</b> In an unbalanced arithmetic tree, a node can toggle
+    several times before settling, and each toggle costs full switching energy. Ripple-carry
+    adders and unbalanced multiplier trees are notorious. Balancing the tree &mdash; or
+    inserting a pipeline register that stops glitch propagation &mdash; can reduce
+    datapath power by tens of percent at no functional cost. Because glitching is
+    invisible in RTL simulation (it appears only in gate-level simulation with timing),
+    it is systematically underestimated during architecture. <b>A design house that
+    reports power measured from a back-annotated gate-level run, with the customer's own
+    data pattern, differentiates itself from one that reports a synthesis estimate.</b></div>
+<h2>B2.3 Logic families</h2>
+<table><caption>Table 23. Logic styles</caption><thead><tr><th>Style</th><th>Principle</th><th>Advantage</th><th>Why it is rarely used in IP</th></tr></thead><tbody><tr><td><b>Static CMOS</b></td><td>Complementary pull-up/down</td><td>Robust, no clock, easy to verify</td><td>&mdash; the default</td></tr><tr><td>Transmission gate</td><td>Pass logic</td><td>Fewer devices for MUX/XOR</td><td>Threshold loss, charge sharing</td></tr><tr><td>Domino / dynamic</td><td>Precharge then evaluate</td><td>Fast, small</td><td><b>Noise-sensitive, needs custom timing</b>; not synthesisable</td></tr><tr><td>Pass-transistor (CPL)</td><td>&mdash;</td><td>Compact XOR</td><td>Level restoration needed</td></tr><tr><td>Current-mode (CML/ECL)</td><td>Differential current steering</td><td><b>Very high speed, constant current</b></td><td>Static power; used only in SerDes front ends</td></tr><tr><td>Adiabatic</td><td>Slow charge recovery</td><td>Low energy</td><td>Needs special clocks; niche</td></tr></tbody></table>
+<div class="ms">A synthesisable IP is static CMOS by definition &mdash;
+    everything else requires custom timing verification that a customer cannot repeat in
+    their own flow. <b>This is a commercial constraint, not a technical preference.</b>
+    The exception is the SerDes front end, where CML is unavoidable above a few GHz;
+    that is precisely the part that is sold as a hard macro rather than RTL, and it is
+    why the PMA/PCS boundary in a PHY falls where it does.</div>

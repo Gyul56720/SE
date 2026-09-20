@@ -1,0 +1,25 @@
+<h1 id="l4">L4. Feedback and Control</h1>
+<p>Feedback loops appear throughout an IP portfolio: PLLs, CDRs, adaptive
+    equalisers, AGC, DVFS controllers, thermal throttling, and the convergence of iterative
+    decoders. The same small set of concepts governs all of them.</p>
+<table><caption>Table 116. Control concepts and their hardware instances</caption><thead><tr><th>Concept</th><th>Meaning</th><th>Instance</th></tr></thead><tbody><tr><td>Open-loop gain</td><td>Gain around the loop</td><td>PLL <i>K</i><sub>PD</sub><i>K</i><sub>VCO</sub></td></tr><tr><td><b>Loop bandwidth</b></td><td>Where gain crosses unity</td><td><b>The central design parameter of every loop</b></td></tr><tr><td><b>Phase margin</b></td><td>Phase at crossover, relative to &minus;180&deg;</td><td>&lt;45&deg; gives peaking and ringing</td></tr><tr><td>Type / order</td><td>Number of integrators / poles</td><td>Type-2 PLL tracks a frequency step with zero error</td></tr><tr><td>Damping &zeta;</td><td>&mdash;</td><td>&zeta;&asymp;0.707 is the usual target</td></tr><tr><td>Steady-state error</td><td>&mdash;</td><td>Determines whether an offset persists</td></tr><tr><td>Settling time</td><td>&mdash;</td><td>Lock time; adaptation time</td></tr><tr><td>Discrete-time effects</td><td>Sampling and delay in the loop</td><td><b>Digital loops must include their own latency</b></td></tr></tbody></table>
+<div class="warn"><b>Latency inside a digital loop is a stability problem,
+    not merely a performance one.</b> A digital adaptation loop that computes an error,
+    pipelines it through several stages, and then applies a correction has inserted pure
+    delay, which subtracts phase without reducing gain &mdash; exactly what destroys phase
+    margin. The loop can oscillate even though every block in it is correct. The standard
+    remedies are to reduce the loop gain (slower adaptation), to shorten the loop, or to
+    compensate explicitly. <b>A model that applies the correction instantaneously will not
+    show the instability</b>, so the pipeline delay must be in the model. This is one of
+    the most common gaps between a working model and non-working hardware.</div>
+<table><caption>Table 117. Adaptation loops in a receiver and their interactions</caption><thead><tr><th>Loop</th><th>Controls</th><th>Typical bandwidth</th><th>Interacts with</th></tr></thead><tbody><tr><td>AGC</td><td>Input amplitude</td><td>Fast</td><td>Everything downstream</td></tr><tr><td>CDR</td><td>Sampling phase</td><td>Moderate</td><td><b>Equaliser &mdash; MM lock point depends on it</b></td></tr><tr><td>CTLE adaptation</td><td>Analogue peaking</td><td>Slow</td><td>FFE</td></tr><tr><td>FFE/DFE adaptation</td><td>Tap weights</td><td>Slow</td><td>CDR</td></tr><tr><td>Offset calibration</td><td>Comparator offsets</td><td>Very slow</td><td>Slicer thresholds</td></tr><tr><td>Interleaving calibration</td><td>ADC mismatch</td><td>Very slow</td><td>All of the above</td></tr></tbody></table>
+<div class="ms"><b>Six loops sharing one signal is the hardest part of a
+    modern receiver, and it is a systems problem rather than a circuit one.</b> Each loop
+    is stable alone; together they can hunt, lock to a wrong point, or fail to converge
+    from certain initial conditions. The standard engineering response is <b>bandwidth
+    separation</b> &mdash; giving each loop a rate an order of magnitude apart so that
+    faster loops appear instantaneous to slower ones and slower loops appear constant to
+    faster ones &mdash; plus a defined start-up sequence. <b>Both the separation and the
+    sequence belong in the specification</b>, and verifying convergence from adverse
+    initial conditions is a system-model task that no block-level testbench will
+    perform.</div>

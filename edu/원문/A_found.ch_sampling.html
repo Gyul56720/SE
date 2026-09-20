@@ -1,0 +1,33 @@
+<h1 id="a3">A3. Sampling, Reconstruction and Quantisation</h1>
+<h2>A3.1 The sampling theorem and its practical corollaries</h2>
+<div class="math">X<sub>s</sub>(f) = f<sub>s</sub> &sum;<sub>k</sub>
+    X(f &minus; k f<sub>s</sub>)</div>
+<table><caption>Table 10. Sampling regimes</caption><thead><tr><th>Regime</th><th>Condition</th><th>Where used</th><th>Hardware cost</th></tr></thead><tbody><tr><td>Nyquist</td><td><i>f<sub>s</sub></i> &gt; 2<i>B</i>, baseband</td><td>Most baseband DSP</td><td>Anti-alias filter must be steep</td></tr><tr><td><b>Oversampling</b> (OSR &gt; 1)</td><td><i>f<sub>s</sub></i> &Gt; 2<i>B</i></td><td>&Sigma;&Delta; converters, relaxed AAF</td><td>Quantisation noise spread over wider band: +3 dB SNR per doubling</td></tr><tr><td><b>Bandpass / undersampling</b></td><td>2<i>f<sub>H</sub></i>/<i>n</i> &le; <i>f<sub>s</sub></i> &le; 2<i>f<sub>L</sub></i>/(<i>n</i>&minus;1)</td><td>RF direct sampling receivers</td><td>Sampler analogue bandwidth must exceed <i>f<sub>H</sub></i>, not <i>f<sub>s</sub></i></td></tr><tr><td><b>Time-interleaved</b></td><td><i>M</i> converters at <i>f<sub>s</sub></i>/<i>M</i></td><td>&gt;10 GS/s ADCs (112G SerDes uses 32&ndash;64 way)</td><td>Offset / gain / <b>timing skew</b> mismatch creates spurs at <i>kf<sub>s</sub></i>/<i>M</i></td></tr></tbody></table>
+<div class="ms"><b>Time-interleaving is where the design house earns its
+    fee.</b> An <i>M</i>-way interleaved ADC has three mismatch mechanisms, each producing
+    a distinct spur family: offset mismatch gives tones at <i>kf<sub>s</sub></i>/<i>M</i>
+    independent of input; gain mismatch gives sidebands at
+    <i>kf<sub>s</sub></i>/<i>M</i>&nbsp;&plusmn;&nbsp;<i>f<sub>in</sub></i>; timing skew
+    gives the same sideband locations but with amplitude proportional to
+    <i>f<sub>in</sub></i>. <b>The frequency dependence is the diagnostic</b>: sweep the
+    input and see which spur grows. Digital background calibration of all three is a
+    standard deliverable in a modern ADC-DSP receiver, and it is a <i>digital</i> block
+    &mdash; which means a fabless digital IP vendor can sell it even though the converter
+    itself is analogue. This is a concrete example of finding a sellable digital block
+    adjacent to an analogue one you cannot build.</div>
+<h2>A3.2 Quantisation noise</h2>
+<div class="math">SQNR<sub>dB</sub> = 6.02 B + 1.76 +
+    10 log<sub>10</sub>(OSR)</div>
+<table><caption>Table 11. Where the ideal formula breaks</caption><thead><tr><th>Effect</th><th>Mechanism</th><th>Consequence</th><th>Design response</th></tr></thead><tbody><tr><td>Aperture jitter</td><td>Sampling instant uncertainty &sigma;<sub>t</sub></td><td>SNR = &minus;20 log<sub>10</sub>(2&pi;<i>f<sub>in</sub></i>&sigma;<sub>t</sub>)</td><td><b>Dominates above ~1 GHz input</b>; clock design becomes the ADC spec</td></tr><tr><td>Thermal noise</td><td>kT/C of sampling capacitor</td><td>Floors SNR regardless of bits</td><td>Increase C (costs power and bandwidth)</td></tr><tr><td>DNL / INL</td><td>Element mismatch</td><td>Harmonic distortion, missing codes</td><td>Calibration, dynamic element matching</td></tr><tr><td>Comparator metastability</td><td>Finite regeneration time</td><td>Rare large errors</td><td>More regeneration time or error detection</td></tr><tr><td>Correlated quantisation</td><td>Low-amplitude periodic input</td><td>Quantisation noise becomes tonal, not white</td><td><b>Dither</b> &mdash; deliberately added noise to decorrelate</td></tr></tbody></table>
+<div class="ms">The dither entry deserves emphasis because it is
+    counter-intuitive: <b>adding noise improves the result</b>. Quantisation error is
+    only white and signal-independent when the signal moves over many LSBs; for a small
+    or slowly varying signal the error becomes periodic and produces discrete tones,
+    which are far more objectionable than an equivalent amount of broadband noise (in
+    audio they are audible; in a radar they look like targets). Subtractive dither &mdash;
+    add a known pseudo-random sequence before quantising and subtract it after &mdash;
+    removes the tones without the SNR penalty. <b>A dither generator is a small, precisely
+    specifiable digital block and therefore exactly the kind of thing a one-person IP
+    house can build and sell as part of a converter-adjacent package.</b></div>
+<h2>A3.3 Reconstruction</h2>
+<table><caption>Table 12. Reconstruction effects</caption><thead><tr><th>Effect</th><th>Expression</th><th>Compensation</th></tr></thead><tbody><tr><td>Zero-order hold droop</td><td>sinc(<i>f</i>/<i>f<sub>s</sub></i>)</td><td>&minus;3.92 dB at Nyquist; pre-compensate with an inverse-sinc FIR</td></tr><tr><td>Image replicas</td><td>at <i>kf<sub>s</sub></i> &plusmn; <i>f</i></td><td>Reconstruction (anti-imaging) filter</td></tr><tr><td>Interpolation</td><td>up-sample then low-pass</td><td>Moves images away so the analogue filter can be gentle</td></tr><tr><td><b>Mismatch-shaping DAC</b></td><td>&mdash;</td><td>Pushes element mismatch error out of band; a digital technique for an analogue defect</td></tr></tbody></table>

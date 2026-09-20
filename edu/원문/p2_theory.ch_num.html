@@ -1,0 +1,35 @@
+<h1 id="num">수 체계 &mdash; 모델과 RTL 이 갈라지는 1번 원인</h1>
+<p>모델링 팀에서 가장 비싼 버그는 알고리즘 오류가 아니다.
+    <b>수를 어떻게 자르고 넘치게 하느냐</b>에서 난다. 이 장은 그것만 다룬다.</p>
+<figure id="fig10"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 195" width="100%" font-family="Times New Roman, Nimbus Roman, serif"><defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#000"/></marker><marker id="ao" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="none" stroke="#000" stroke-width="1.4"/></marker></defs><text x="20" y="24" font-size="10" text-anchor="start" fill="#000" font-weight="bold">Q4.12  (부호 1 · 정수 4 · 소수 12 = 16비트)</text><rect x="20" y="38" width="26" height="30" fill="#d9e6f2" stroke="#000" stroke-width="1"/><text x="33.0" y="58" font-size="10" text-anchor="middle" fill="#000" >S</text><rect x="46" y="38" width="96" height="30" fill="#eef2f7" stroke="#000" stroke-width="1"/><text x="94.0" y="58" font-size="10" text-anchor="middle" fill="#000" >정수 4</text><rect x="142" y="38" width="290" height="30" fill="#f6f8fa" stroke="#000" stroke-width="1"/><text x="287.0" y="58" font-size="10" text-anchor="middle" fill="#000" >소수 12</text><text x="20" y="92" font-size="9" text-anchor="start" fill="#000" >곱셈: Q4.12 × Q4.12 = Q8.24  →  32비트. 그대로 두면 폭이 매 연산마다 커진다</text><text x="20" y="110" font-size="9" text-anchor="start" fill="#000" >그래서 다시 Q4.12 로 줄인다 —  그 순간 두 가지를 정해야 한다:</text><rect x="40" y="124" width="200" height="34" rx="2" fill="#fff" stroke="#000" stroke-width="1.1"/><text x="140.0" y="138.0" font-size="9" text-anchor="middle">반올림 (Rounding)</text><text x="140.0" y="152.0" font-size="7" text-anchor="middle" fill="#333">버릴 비트를 어떻게</text><rect x="270" y="124" width="200" height="34" rx="2" fill="#fff" stroke="#000" stroke-width="1.1"/><text x="370.0" y="138.0" font-size="9" text-anchor="middle">넘침 (Overflow)</text><text x="370.0" y="152.0" font-size="7" text-anchor="middle" fill="#333">포화 vs 감싸기</text><text x="255" y="178" font-size="10" text-anchor="middle" fill="#000" font-style="italic">**이 두 선택이 모델과 RTL 을 갈라놓는 최대 원인이다**</text></svg><figcaption><b>그림 10.</b> 고정소수점 표기와 연산 후 폭 증가. 폭을 줄일 때 반올림과 넘침 방식을 정해야 하고, 그 선택이 명세에 없으면 모델과 RTL 이 달라진다.</figcaption></figure>
+<h2>1. 고정소수점의 네 가지 결정</h2>
+<table><caption>표 42. 모든 고정소수점 블록에서 반드시 명세에 적혀야 하는 것</caption><thead><tr><th>결정</th><th>선택지</th><th>안 적으면</th></tr></thead><tbody><tr><td><b>폭과 소수점 위치</b></td><td>Q<i>m</i>.<i>n</i>, 부호 유무</td><td>가장 먼저 어긋난다</td></tr><tr><td><b>반올림</b></td><td>절삭(truncate) · 최근접 · 최근접짝수 · 0에서 멀리</td><td>LSB 가 다르다. 누적되면 크게 벌어진다</td></tr><tr><td><b>넘침</b></td><td><b>포화(saturate)</b> vs <b>감싸기(wrap)</b></td><td>최악. 부호가 뒤집힌다</td></tr><tr><td><b>연산 순서</b></td><td>누산 순서 · 결합 순서</td><td>포화를 쓰면 순서가 결과를 바꾼다</td></tr></tbody></table>
+<div class="ms"><b>포화와 감싸기는 취향이 아니다.</b> 두 가지를 실측으로
+    구분해 둔다.
+    <ul>
+    <li><b>2의 보수 <i>감싸기</i>는 환(ring)이다.</b> 덧셈에 대해 mod 2<sup><i>W</i></sup>
+    로 닫혀 있으므로 <b>연산 순서를 바꿔도 결과가 같다</b>. 중간이 넘쳐도 최종값이
+    범위 안이면 정답이 나온다.</li>
+    <li><b>포화는 환이 아니다.</b> 한 번 붙잡히면 정보가 사라지므로
+    <b>순서가 결과를 바꾼다</b>. 같은 식을 다른 순서로 계산한 모델과 RTL 이 갈라진다.</li>
+    </ul>
+    그런데 <b>어느 쪽이 옳은지는 응용이 정한다.</b> 등화기 같은 신호처리 데이터패스는
+    감싸기가 안전할 때가 많고(중간 넘침이 서로 상쇄됨), <b>LLR 을 다루는 복호기는
+    반대로 반드시 포화해야 한다</b> &mdash; 감싸면 확률의 <i>부호</i>가 뒤집혀 복호가
+    무너진다. 저자의 실측: LDPC 복호에서 폭을 줄였을 때 포화는 BLER 0.250, 감싸기는
+    1.000(완전 실패)이었다.</div>
+<h2>2. 되먹임 레지스터의 초기값</h2>
+<div class="warn"><b>실측 사고.</b> 되먹임 구조(DFE · IIR · 누산기)에서
+    모델과 RTL 의 <b>레지스터 초기값</b>이 다르면, 초기 몇 심볼이 다르고 그 차이가
+    되먹임으로 남는다. 저자의 실측에서 200개 벡터 중 <b>103개가 불일치</b>했고, 초기값을
+    맞추자 <b>10개</b>로 줄었다(나머지는 다른 원인). <b>&ldquo;리셋 후 상태&rdquo;는
+    명세 항목이다.</b> 모델이 0으로 시작하는지, RTL 이 X 로 시작하는지 반드시 정하라.</div>
+<h2>3. 부동소수점 &mdash; 호스트를 믿지 마라</h2>
+<table><caption>표 43. IEEE 754 에서 반드시 맞춰야 하는 것</caption><thead><tr><th>항목</th><th>선택지</th><th>모델이 흔히 틀리는 방식</th></tr></thead><tbody><tr><td>반올림 모드</td><td>RNE · RTZ · RUP · RDN · RMM</td><td>호스트 기본값(RNE)만 쓰고 모드 전환을 무시</td></tr><tr><td>예외 플래그</td><td>NV · DZ · OF · UF · NX</td><td>플래그를 아예 안 만든다. RTL 은 만든다</td></tr><tr><td>비정규수</td><td>지원 / flush-to-zero</td><td>호스트가 FTZ 로 돌고 있는 줄 모른다</td></tr><tr><td>NaN 전파</td><td>어느 피연산자의 payload 를 남기나</td><td>규격마다 다르다</td></tr><tr><td>부호 있는 0</td><td>&minus;0 과 +0 구분</td><td>비교에서 같다고 판정해 버린다</td></tr><tr><td>FMA</td><td>중간 반올림 없음</td><td><code>a*b+c</code> 를 따로 계산해 LSB 가 다르다</td></tr></tbody></table>
+<div class="note"><b>그래서 Spike 는 Berkeley SoftFloat 를 쓴다</b>
+    &mdash; 이 교안의 실물로 <code>softfloat/</code> 만
+    <b>25,219줄</b>이다.
+    부동소수점을 맡으면 <b>첫 질문은 &ldquo;우리 모델이 호스트 부동소수점을 쓰고
+    있는가&rdquo;</b> 다.</div>
+<h2>4. 실무 점검표</h2>
+<table><caption>표 44. 수 체계 점검표 &mdash; 블록을 받으면 이것부터</caption><thead><tr><th>#</th><th>확인</th><th>확인 방법</th></tr></thead><tbody><tr><td>1</td><td>모든 신호의 Q 포맷이 문서에 있나</td><td>없으면 RTL 에서 추출해 문서화한다</td></tr><tr><td>2</td><td>반올림 방식이 단 하나로 정해졌나</td><td>블록마다 다르면 그 자체가 위험</td></tr><tr><td>3</td><td>포화인가 감싸기인가</td><td><b>경계값 벡터</b>로 직접 재본다</td></tr><tr><td>4</td><td>리셋 후 초기값이 모델과 RTL 에서 같나</td><td>첫 N 사이클을 따로 비교</td></tr><tr><td>5</td><td>누산 순서가 정해졌나</td><td>포화를 쓴다면 반드시</td></tr><tr><td>6</td><td>경계값 시험이 있나</td><td>최대 · 최소 · 최대+1 · 0 · &minus;1</td></tr><tr><td>7</td><td>부동소수점이면 SoftFloat 계열인가</td><td>호스트 의존이면 즉시 보고</td></tr></tbody></table>

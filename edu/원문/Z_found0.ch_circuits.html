@@ -1,0 +1,18 @@
+<h1 id="z4">Z4. Circuit Analysis: the Minimum Needed</h1>
+<table><caption>Table 530. Laws and elements</caption><thead><tr><th>Item</th><th>Statement</th><th>Digital-design relevance</th></tr></thead><tbody><tr><td>KCL</td><td>Currents into a node sum to zero</td><td>Power grid analysis</td></tr><tr><td>KVL</td><td>Voltages around a loop sum to zero</td><td>IR drop</td></tr><tr><td>Ohm</td><td><i>V</i> = <i>IR</i></td><td>Wire and switch resistance</td></tr><tr><td>Capacitor</td><td><i>i</i> = <i>C</i>&nbsp;d<i>v</i>/d<i>t</i></td><td><b>The dominant load in CMOS</b></td></tr><tr><td>Inductor</td><td><i>v</i> = <i>L</i>&nbsp;d<i>i</i>/d<i>t</i></td><td>Package and board; cause of supply noise</td></tr><tr><td>RC time constant</td><td>&tau; = <i>RC</i></td><td><b>Gate delay, wire delay, rise time</b></td></tr><tr><td>Th&eacute;venin / Norton</td><td>Source equivalents</td><td>Driver modelling, termination</td></tr><tr><td>Superposition</td><td>Linear circuits only</td><td>Noise analysis</td></tr></tbody></table>
+<div class="bs">For digital work the essential relation is the RC charging
+    curve: a capacitor charged through a resistor reaches 63% of its final value in one
+    time constant &tau;&nbsp;=&nbsp;<i>RC</i>, and about 50% in 0.69&tau;. Since a logic
+    gate switches when its input crosses the threshold near mid-supply, <b>propagation
+    delay is approximately 0.69<i>R</i><sub>on</sub><i>C</i><sub>load</sub></b>.</div>
+<div class="ms"><b>That single expression explains most of digital design
+    practice.</b> Delay is proportional to load capacitance, so driving many gates is slow
+    &mdash; hence buffer trees. Delay is proportional to on-resistance, which falls as
+    transistor width rises, so wider devices are faster &mdash; but a wider device presents
+    a larger capacitance to <i>its</i> driver, which is why sizing is a chain optimisation
+    rather than a local one, and why the logical-effort method of Chapter B2 exists.
+    Dynamic energy is <i>CV</i><sup>2</sup> per transition, which is why lowering supply
+    voltage is the strongest power lever and why it costs speed. <b>Four consequences from
+    one equation; this is the level of leverage that makes a small amount of circuit
+    theory worth carrying.</b></div>
+<table><caption>Table 531. Frequency-domain concepts a digital engineer meets</caption><thead><tr><th>Concept</th><th>Meaning</th><th>Where encountered</th></tr></thead><tbody><tr><td>Impedance <i>Z</i>(&omega;)</td><td>Generalised resistance</td><td>Power delivery, termination</td></tr><tr><td>Pole / zero</td><td>Roots of the denominator / numerator</td><td>Filter and loop design</td></tr><tr><td>Bode plot</td><td>Magnitude and phase versus frequency</td><td>PLL loop stability</td></tr><tr><td>Q factor</td><td>Energy stored / dissipated per cycle</td><td>Resonance in power networks, oscillator phase noise</td></tr><tr><td>Phase margin</td><td>Stability measure</td><td><b>Any feedback loop, including a PLL</b></td></tr><tr><td>Bandwidth &times; gain</td><td>Roughly constant for an amplifier</td><td>Why high gain and high speed conflict</td></tr></tbody></table>

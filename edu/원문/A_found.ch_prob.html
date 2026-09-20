@@ -1,0 +1,36 @@
+<h1 id="a4">A4. Probability, Random Processes and Noise</h1>
+<h2>A4.1 Distributions that occur in hardware</h2>
+<table><caption>Table 6. Distributions and where they arise</caption><thead><tr><th>Distribution</th><th>Arises from</th><th>Appears in</th></tr></thead><tbody><tr><td>Gaussian</td><td>Sum of many small independent effects (CLT)</td><td>Thermal noise, random jitter, process variation</td></tr><tr><td>Rayleigh</td><td>Magnitude of complex Gaussian</td><td>Fading envelope, noise magnitude</td></tr><tr><td>Rician</td><td>Complex Gaussian + deterministic component</td><td>Fading with line of sight</td></tr><tr><td>Poisson</td><td>Rare independent events</td><td>Shot noise, soft-error (SER) counts</td></tr><tr><td>Uniform</td><td>Quantisation residue (ideal)</td><td>Quantisation noise model</td></tr><tr><td>Exponential</td><td>Waiting time between Poisson events</td><td>Time between soft errors</td></tr><tr><td>Log-normal</td><td>Product of many factors</td><td>Shadowing, some reliability lifetimes</td></tr><tr><td>Weibull</td><td>Weakest-link failure</td><td><b>Oxide breakdown, reliability</b></td></tr><tr><td>Binomial</td><td><i>n</i> Bernoulli trials</td><td>Bit errors in a block, yield</td></tr><tr><td>Chi-square</td><td>Sum of squared Gaussians</td><td>Energy detection, CFAR statistics</td></tr></tbody></table>
+<h2>A4.2 Physical noise mechanisms</h2>
+<table><caption>Table 7. Noise sources in silicon</caption><thead><tr><th>Mechanism</th><th>Spectrum</th><th>Expression</th><th>Design lever</th></tr></thead><tbody><tr><td><b>Thermal (Johnson)</b></td><td>White</td><td><i>v<sub>n</sub></i><sup>2</sup> = 4<i>kTR&Delta;f</i></td><td>Lower R; lower T; narrower band</td></tr><tr><td><b>Channel thermal (MOS)</b></td><td>White</td><td><i>i<sub>n</sub></i><sup>2</sup> = 4<i>kT&gamma;g<sub>m</sub>&Delta;f</i></td><td>Higher <i>g<sub>m</sub></i> improves noise <i>figure</i> though noise power rises</td></tr><tr><td><b>Flicker (1/f)</b></td><td>1/<i>f</i></td><td>&prop; <i>K</i>/(<i>WLC</i><sub>ox</sub><i>f</i>)</td><td><b>Larger devices</b>; chopping; auto-zeroing</td></tr><tr><td>Shot</td><td>White</td><td><i>i<sub>n</sub></i><sup>2</sup> = 2<i>qI&Delta;f</i></td><td>Present where carriers cross a barrier (junctions, photodiodes)</td></tr><tr><td>kT/C</td><td>Sampled</td><td><i>v</i><sup>2</sup> = <i>kT</i>/<i>C</i></td><td><b>Independent of resistance</b>; only C helps</td></tr><tr><td>Substrate / supply coupling</td><td>Structured</td><td>&mdash;</td><td>Guard rings, separate supplies, differential design</td></tr><tr><td>Phase noise</td><td>1/<i>f</i><sup>3</sup>, 1/<i>f</i><sup>2</sup>, flat</td><td>Leeson model</td><td>Higher Q, higher power, lower flicker</td></tr></tbody></table>
+<div class="ms"><b>Why flicker noise sets the architecture of precision
+    analogue.</b> 1/<i>f</i> noise is not reducible by filtering, because it lives at the
+    frequencies where the signal of interest often lives (DC to kHz). The standard
+    responses &mdash; chopping and auto-zeroing &mdash; both work by <i>moving the signal
+    to a higher frequency where only white noise remains</i>, and both require digital
+    support: a chopping clock, demodulation, and residual-ripple filtering. In a modern
+    mixed-signal IP the digital half of that scheme is a well-defined block with a clean
+    interface, and it is again a piece that a digital design house can own.</div>
+<h2>A4.3 Jitter and phase noise &mdash; the same thing in two languages</h2>
+<div class="math">&sigma;<sub>t</sub><sup>2</sup> = (1/(2&pi;f<sub>0</sub>)<sup>2</sup>)
+    &int; 2&thinsp;L(f) df</div>
+<table><caption>Table 8. Jitter taxonomy used in link specifications</caption><thead><tr><th>Type</th><th>Symbol</th><th>Statistics</th><th>Cause</th><th>How it is separated</th></tr></thead><tbody><tr><td>Random jitter</td><td>RJ</td><td>Gaussian, unbounded</td><td>Thermal, flicker</td><td>Fit tails of the bathtub curve</td></tr><tr><td>Deterministic jitter</td><td>DJ</td><td>Bounded</td><td>&mdash;</td><td>Peak-to-peak; decomposed below</td></tr><tr><td>&emsp;Periodic</td><td>PJ</td><td>Sinusoidal</td><td>Supply coupling, spurs</td><td>FFT of the jitter sequence</td></tr><tr><td>&emsp;Data-dependent</td><td>DDJ / ISI</td><td>Pattern-correlated</td><td>Channel loss</td><td>Compare per-pattern edge times</td></tr><tr><td>&emsp;Duty-cycle distortion</td><td>DCD</td><td>Two-valued</td><td>Rise/fall asymmetry, threshold offset</td><td>Even/odd UI comparison</td></tr><tr><td>Bounded uncorrelated</td><td>BUJ</td><td>Bounded, random</td><td>Crosstalk</td><td>Statistical separation</td></tr><tr><td>Total jitter at BER</td><td>TJ(BER)</td><td>RJ&otimes;DJ convolution</td><td>&mdash;</td><td><b>TJ = DJ + 2&middot;Q(BER)&middot;RJ<sub>rms</sub></b></td></tr></tbody></table>
+<div class="ms">The last row is the one that appears in every SerDes
+    specification, and the factor <i>Q</i>(BER) is why: at BER&nbsp;10<sup>&minus;12</sup>,
+    <i>Q</i>&nbsp;=&nbsp;7.03, so TJ&nbsp;=&nbsp;DJ&nbsp;+&nbsp;14.07&nbsp;RJ<sub>rms</sub>.
+    <b>Random jitter is multiplied by fourteen.</b> This is why a small improvement in
+    oscillator phase noise is worth a large amount of design effort, and why jitter
+    separation &mdash; distinguishing RJ from DJ in a measurement &mdash; is a required
+    capability rather than a nicety. A modelling engineer asked to produce a link budget
+    must implement this convolution correctly; adding RMS values in quadrature, which is
+    the intuitive move, is wrong because DJ is bounded and does not add that way.</div>
+<h2>A4.4 Random processes</h2>
+<table><caption>Table 9. Concepts and their use</caption><thead><tr><th>Concept</th><th>Statement</th><th>Use in IP design</th></tr></thead><tbody><tr><td>Stationarity (WSS)</td><td>Mean constant, autocorrelation depends on lag only</td><td>Precondition for spectral analysis</td></tr><tr><td>Ergodicity</td><td>Time average = ensemble average</td><td><b>Justifies measuring one long record instead of many devices</b></td></tr><tr><td>Wiener&ndash;Khinchin</td><td>PSD = FT of autocorrelation</td><td>Links time and spectrum</td></tr><tr><td>Markov chain</td><td>Memoryless state evolution</td><td>Bus arbitration analysis, FIFO occupancy, error models</td></tr><tr><td>Gauss&ndash;Markov</td><td>Correlated Gaussian</td><td>Coloured noise models</td></tr><tr><td>Cyclostationarity</td><td>Statistics periodic in time</td><td><b>All digitally modulated signals</b>; exploited for blind synchronisation</td></tr><tr><td>Point process</td><td>Random event times</td><td>Soft errors, packet arrivals</td></tr></tbody></table>
+<div class="ms">Cyclostationarity is the theoretical basis for
+    <b>blind</b> timing and carrier recovery: a modulated signal has periodically varying
+    statistics at the symbol rate, so a suitable nonlinearity produces a spectral line at
+    that rate even though the signal itself has no such line. Gardner and Mueller&ndash;Müller
+    timing detectors are practical exploitations of this. Knowing the principle rather
+    than the recipe is what lets an engineer design a detector for a modulation format
+    that has no textbook detector &mdash; a situation that occurs constantly in
+    proprietary links.</div>

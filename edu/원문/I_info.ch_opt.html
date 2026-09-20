@@ -1,0 +1,21 @@
+<h1 id="i3">I3. Optimisation and Numerical Methods</h1>
+<table><caption>Table 93. Optimisation problems that appear in IP design</caption><thead><tr><th>Problem</th><th>Class</th><th>Method</th><th>Where</th></tr></thead><tbody><tr><td>Filter coefficient design</td><td>Convex (minimax)</td><td>Remez, convex solvers</td><td>FIR design with quantised coefficients</td></tr><tr><td>Equaliser tap solution</td><td>Least squares</td><td>Normal equations, QR</td><td>MMSE equaliser initialisation</td></tr><tr><td>Bit allocation</td><td>Integer, convex relaxation</td><td>Water-filling then rounding</td><td>OFDM loading, quantisation budgeting</td></tr><tr><td><b>Scheduling / binding</b></td><td>NP-hard</td><td>ILP, list scheduling, force-directed</td><td><b>HLS internals</b></td></tr><tr><td>Retiming</td><td>Polynomial</td><td>Leiserson&ndash;Saxe</td><td>Timing optimisation</td></tr><tr><td>Placement</td><td>NP-hard</td><td>Analytic + partitioning</td><td>Physical design</td></tr><tr><td>Layer/schedule ordering</td><td>Combinatorial</td><td>Local search, simulated annealing</td><td><b>LDPC layered decoding order</b></td></tr><tr><td>Word-length assignment</td><td>Mixed integer</td><td>Heuristic + simulation</td><td>Fixed-point conversion</td></tr></tbody></table>
+<div class="warn"><b>The objective function must be the true cost, not a
+    convenient proxy.</b> A measured example: optimising an LDPC layer ordering against a
+    closed-form stall estimate produced a schedule that a cycle-accurate model scored
+    differently &mdash; the formula predicted 108 stall cycles where the true figure was
+    80. Because the formula is an upper bound that assumes every potential conflict
+    materialises, it ranks schedules incorrectly, and the search converges on the wrong
+    one. <b>Build the accurate evaluator before the optimiser</b>; a search is only as good
+    as the function it is minimising, and a fast wrong objective is worse than a slow
+    right one.</div>
+<table><caption>Table 94. Numerical methods and their hardware suitability</caption><thead><tr><th>Method</th><th>Convergence</th><th>Hardware note</th></tr></thead><tbody><tr><td>Newton&ndash;Raphson</td><td>Quadratic</td><td>Needs a multiplier and a good seed; used for reciprocal and rsqrt</td></tr><tr><td>Goldschmidt</td><td>Quadratic</td><td>Better pipelining than Newton (no dependency chain)</td></tr><tr><td>CORDIC</td><td>Linear (one bit per iteration)</td><td><b>Shifts and adds only</b></td></tr><tr><td>Polynomial (minimax)</td><td>Fixed degree</td><td><b>Remez-fitted polynomials beat Taylor</b> for equal degree</td></tr><tr><td>Piecewise polynomial + LUT</td><td>&mdash;</td><td>The usual production answer</td></tr><tr><td>Iterative refinement</td><td>Doubles accuracy per step</td><td><b>Limited by conditioning</b> &mdash; see A5.2</td></tr></tbody></table>
+<div class="ms"><b>Taylor series should almost never appear in shipped
+    hardware.</b> A Taylor expansion minimises error at a single point and degrades away
+    from it; a minimax (Remez) polynomial of the same degree distributes error evenly and
+    typically achieves the same worst-case accuracy with one or two fewer terms. Since
+    each term is a multiply&ndash;add, that is a direct area and latency saving. The
+    standard production recipe is: reduce the argument to a small interval using the
+    number's exponent, evaluate a low-degree minimax polynomial on that interval, then
+    reconstruct. <b>Knowing that the textbook series is the wrong tool is a small piece of
+    knowledge with a consistently measurable payoff.</b></div>

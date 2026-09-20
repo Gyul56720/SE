@@ -1,0 +1,19 @@
+<h1 id="n4">N4. Optical Links and Photonics</h1>
+<p>Beyond a few metres of copper, electrical links become impractical and
+    the industry switches to optics. The digital blocks on either side &mdash; the FEC, the
+    PCS, the DSP &mdash; are the same kind of IP discussed throughout this book, which is
+    why the domain deserves a chapter.</p>
+<table><caption>Table 136. Optical link components</caption><thead><tr><th>Component</th><th>Function</th><th>Impairment introduced</th></tr></thead><tbody><tr><td>Laser (DFB, VCSEL)</td><td>Source</td><td>RIN, chirp, temperature drift</td></tr><tr><td>Modulator (direct, EML, MZM)</td><td>Impress data on light</td><td>Extinction ratio, chirp, nonlinearity</td></tr><tr><td>Fibre (SMF, MMF)</td><td>Transport</td><td><b>Chromatic dispersion, modal dispersion, attenuation, nonlinearity</b></td></tr><tr><td>Photodiode (PIN, APD)</td><td>Detect</td><td>Shot noise; APD adds excess noise</td></tr><tr><td><b>TIA</b></td><td>Current to voltage</td><td>Noise; bandwidth</td></tr><tr><td>Coherent receiver</td><td>Recover amplitude and phase</td><td>Requires a local oscillator and heavy DSP</td></tr></tbody></table>
+<table><caption>Table 137. Modulation and detection schemes</caption><thead><tr><th>Scheme</th><th>Detection</th><th>Reach</th><th>DSP required</th></tr></thead><tbody><tr><td><b>NRZ / PAM4 IM-DD</b></td><td>Direct (intensity only)</td><td>&le; 10 km</td><td>Equalisation, FEC &mdash; <b>802.3 territory</b></td></tr><tr><td><b>Coherent QPSK / 16-QAM</b></td><td>Coherent (amplitude and phase)</td><td>Long haul</td><td><b>Very heavy: CD and PMD compensation, carrier recovery</b></td></tr><tr><td>Probabilistic shaping</td><td>Coherent</td><td>Long haul</td><td>Shaping encoder/decoder</td></tr></tbody></table>
+<div class="ms"><b>Chromatic dispersion compensation is where photonics
+    becomes a large digital problem.</b> Different wavelengths travel at slightly different
+    speeds in fibre, so a pulse spreads over distance &mdash; and over hundreds of
+    kilometres the spread reaches hundreds of symbol periods. Compensating it optically
+    requires dispersion-compensating fibre; compensating it digitally requires a very long
+    filter, which is implemented in the frequency domain because a direct FIR of that
+    length is uneconomical. <b>The result is that a coherent optical receiver contains one
+    of the largest FFT blocks in commercial electronics</b>, and the chapter on multirate
+    and transform architectures applies directly. This is an unusually clear case of a
+    physical-layer impairment creating a large, well-specified digital IP
+    opportunity.</div>
+<table><caption>Table 138. Co-packaged and silicon photonics</caption><thead><tr><th>Development</th><th>Motivation</th><th>Consequence</th></tr></thead><tbody><tr><td>Pluggable optics</td><td>Serviceability</td><td>Electrical link to the module costs power</td></tr><tr><td><b>Co-packaged optics</b></td><td>Remove the electrical link</td><td><b>Large power saving</b>; serviceability and thermal challenges</td></tr><tr><td>Silicon photonics</td><td>CMOS-compatible fabrication</td><td>Integration density, cost</td></tr><tr><td>Optical I/O for chiplets</td><td>Bandwidth density</td><td>Research to early product</td></tr></tbody></table>

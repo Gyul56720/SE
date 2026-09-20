@@ -1,0 +1,37 @@
+<h1 id="i1">I1. Information Theory</h1>
+<h2>I1.1 Entropy and its operational meanings</h2>
+<div class="math">H(X) = &minus;&sum;<sub>x</sub> p(x) log<sub>2</sub> p(x)
+    &nbsp;&nbsp;&nbsp; I(X;Y) = H(X) &minus; H(X|Y)</div>
+<table><caption>Table 90. Information-theoretic quantities and where they bind hardware</caption><thead><tr><th>Quantity</th><th>Meaning</th><th>Operational limit it sets</th></tr></thead><tbody><tr><td>Entropy <i>H</i>(<i>X</i>)</td><td>Average information per symbol</td><td><b>Lossless compression cannot go below it</b> &mdash; bounds a codec's ratio</td></tr><tr><td>Min-entropy <i>H</i><sub>&infin;</sub></td><td>&minus;log<sub>2</sub> max<sub>x</sub> <i>p</i>(<i>x</i>)</td><td><b>The measure NIST SP 800-90B requires</b> for an entropy source; always &le; <i>H</i></td></tr><tr><td>Conditional entropy</td><td>Remaining uncertainty given side information</td><td>Leakage analysis in side-channel evaluation</td></tr><tr><td>Mutual information</td><td>Information one variable carries about another</td><td><b>Side-channel leakage metric</b>; also the quantity maximised by capacity</td></tr><tr><td>Channel capacity <i>C</i></td><td>max <i>I</i>(<i>X</i>;<i>Y</i>)</td><td>No code can exceed it; tells you how far your FEC is from optimal</td></tr><tr><td>Rate&ndash;distortion <i>R</i>(<i>D</i>)</td><td>Minimum rate for distortion <i>D</i></td><td><b>Lossy codec bound</b> &mdash; the theoretical floor of a video encoder</td></tr><tr><td>Kolmogorov complexity</td><td>Shortest program producing the string</td><td>Uncomputable; conceptual only</td></tr></tbody></table>
+<div class="ms"><b>Min-entropy is the one an IP engineer must get right,
+    and it is not Shannon entropy.</b> A biased source that outputs 0 with probability
+    0.9 has Shannon entropy 0.47 bits but min-entropy only
+    &minus;log<sub>2</sub>(0.9) = 0.152 bits. Certification uses min-entropy because
+    security must hold against the <i>most likely</i> guess, not the average case. A TRNG
+    that claims "0.5 bits of entropy per sample" on Shannon grounds and is conditioned on
+    that basis will fail validation and, worse, will produce keys with less
+    unpredictability than advertised. <b>The conditioning ratio &mdash; how many raw bits
+    are compressed into one output bit &mdash; is derived from min-entropy, and it is a
+    hardware parameter.</b></div>
+<h2>I1.2 Capacity results that matter in practice</h2>
+<table><caption>Table 91. Capacity expressions</caption><thead><tr><th>Channel</th><th>Capacity</th><th>Design meaning</th></tr></thead><tbody><tr><td>AWGN</td><td><i>B</i> log<sub>2</sub>(1+SNR)</td><td>The reference against which every modem is measured</td></tr><tr><td>Binary symmetric (BSC)</td><td>1 &minus; <i>H</i><sub>b</sub>(<i>p</i>)</td><td>Hard-decision decoding loses ~2 dB versus soft</td></tr><tr><td>Binary erasure (BEC)</td><td>1 &minus; &epsilon;</td><td><b>Erasure decoding doubles RS correction capability</b></td></tr><tr><td>MIMO (<i>N<sub>t</sub></i>&times;<i>N<sub>r</sub></i>)</td><td>&asymp; min(<i>N<sub>t</sub></i>,<i>N<sub>r</sub></i>) log(1+SNR)</td><td>Capacity scales with antennas, not power</td></tr><tr><td>Fading with CSI</td><td>E[log(1+|<i>h</i>|<sup>2</sup>SNR)]</td><td>Motivates adaptive modulation and coding</td></tr><tr><td>Band-limited with ISI</td><td>water-filling over the channel response</td><td><b>The theoretical justification for OFDM bit loading</b></td></tr></tbody></table>
+<div class="ms"><b>The soft-versus-hard decision gap is the most
+    actionable number here.</b> Passing hard decisions to a decoder discards the
+    reliability information the slicer had, and costs roughly 2&nbsp;dB on an AWGN
+    channel. In a link budget 2&nbsp;dB is enormous &mdash; it is the difference between
+    needing an extra equaliser tap and not. This is why modern FEC interfaces carry LLRs
+    rather than bits, why the slicer in an ADC-based receiver reports a multi-bit
+    soft value, and why the fixed-point width of that LLR is a system-level parameter
+    rather than a local choice. <b>An interface that carries one bit where it could carry
+    four has thrown away 2&nbsp;dB before the decoder starts.</b></div>
+<h2>I1.3 Source coding</h2>
+<table><caption>Table 92. Compression methods in hardware</caption><thead><tr><th>Method</th><th>Principle</th><th>Hardware character</th></tr></thead><tbody><tr><td>Huffman</td><td>Prefix code by symbol probability</td><td>Table lookup; <b>variable-length decode is serial</b></td></tr><tr><td>Canonical Huffman</td><td>Ordered code lengths</td><td>Compact tables, faster decode</td></tr><tr><td><b>Arithmetic / range</b></td><td>Interval subdivision</td><td>Better ratio; <b>strictly serial</b> &mdash; a throughput bottleneck</td></tr><tr><td><b>CABAC</b></td><td>Context-adaptive binary arithmetic</td><td><b>The critical path of an H.264/HEVC decoder</b></td></tr><tr><td>ANS / rANS</td><td>Asymmetric numeral systems</td><td>Arithmetic-coding ratio with table-driven speed; used in AV1, Zstd</td></tr><tr><td>LZ family</td><td>Dictionary matching</td><td>Match search is the expensive part</td></tr><tr><td>RLE</td><td>Run lengths</td><td>Trivial; still used for coefficient maps</td></tr></tbody></table>
+<div class="warn"><b>Entropy coding is where video decoders stop
+    parallelising.</b> Transform, prediction and filtering all parallelise over blocks,
+    but arithmetic decoding is inherently sequential: the next symbol's interval depends
+    on the current state. This is why real decoders introduce architectural workarounds
+    &mdash; slices and tiles that reset the context so they can be decoded independently,
+    wavefront parallel processing, or the bypass modes that skip context modelling for
+    near-uniform symbols. <b>The bitstream syntax was designed around a hardware
+    constraint</b>, which is the clearest possible illustration that standards and
+    architectures co-evolve.</div>

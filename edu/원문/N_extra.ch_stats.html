@@ -1,0 +1,20 @@
+<h1 id="n3">N3. Statistics for Silicon</h1>
+<table><caption>Table 141. Variation sources</caption><thead><tr><th>Source</th><th>Scale</th><th>Correlation</th><th>Handled by</th></tr></thead><tbody><tr><td>Lot to lot</td><td>Global</td><td>Fully correlated on a die</td><td>Process corners</td></tr><tr><td>Wafer to wafer</td><td>Global</td><td>Correlated</td><td>Corners</td></tr><tr><td>Die to die</td><td>Global</td><td>Correlated</td><td>Corners</td></tr><tr><td><b>Within die, systematic</b></td><td>Local</td><td>Position dependent</td><td>Layout-dependent effects, proximity rules</td></tr><tr><td><b>Within die, random</b></td><td>Local</td><td><b>Uncorrelated</b></td><td><b>OCV / AOCV / POCV derating</b></td></tr><tr><td>Random dopant fluctuation</td><td>Per device</td><td>None</td><td>&sigma; &prop; 1/&radic;(<i>WL</i>) &mdash; <b>matters most for small devices</b></td></tr></tbody></table>
+<div class="ms"><b>The distinction between correlated and uncorrelated
+    variation is what makes modern timing analysis tractable.</b> If every device on a path
+    varied independently, a long path would average out and show <i>less</i> relative
+    variation than a short one &mdash; which is exactly what statistical on-chip variation
+    (POCV) captures, and why it recovers pessimism that flat derating throws away. Flat OCV
+    applies the same percentage to every path regardless of depth, which over-penalises
+    long paths and under-penalises short ones (making hold analysis optimistic). <b>The
+    statistics are not a refinement; using the wrong model can make a design that signs off
+    fail in silicon.</b></div>
+<table><caption>Table 142. Statistical concepts used in characterisation</caption><thead><tr><th>Concept</th><th>Use</th></tr></thead><tbody><tr><td>Mean, &sigma;, &plusmn;3&sigma;</td><td>Basic spread; 3&sigma; &asymp; 99.73%</td></tr><tr><td><b>6&sigma; design</b></td><td>Memory bit cells &mdash; billions of instances require extreme tails to be safe</td></tr><tr><td><b>Importance sampling</b></td><td>Simulating a 6&sigma; failure directly is infeasible; bias the sampling and correct</td></tr><tr><td>Monte Carlo</td><td>General variation analysis</td></tr><tr><td>Design of experiments</td><td>Efficient exploration of many parameters</td></tr><tr><td>Regression / response surface</td><td>Build a fast surrogate model</td></tr><tr><td>Confidence intervals</td><td><b>A measurement without one is an anecdote</b></td></tr><tr><td>Process capability <i>C<sub>pk</sub></i></td><td>Manufacturing margin</td></tr></tbody></table>
+<div class="ms"><b>Memory bit cells illustrate why tail statistics matter
+    so much.</b> A 100&nbsp;Mbit memory contains 10<sup>8</sup> cells; for the chip to
+    yield, the per-cell failure probability must be well below 10<sup>&minus;8</sup>,
+    which corresponds to roughly 5.7&sigma;. Plain Monte Carlo would need on the order of
+    10<sup>9</sup> simulations to see such an event, so importance sampling &mdash;
+    deliberately sampling the tail and reweighting &mdash; is mandatory. <b>This is why
+    memory design is a specialised discipline</b>, and why memories come from compilers
+    rather than being drawn by hand.</div>

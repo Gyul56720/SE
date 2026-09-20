@@ -1,0 +1,39 @@
+<h1 id="w4">W4. Worked Exercises</h1>
+<p>Each exercise below is a self-contained project that can be completed
+    with open tools and produces an artefact of the kind described in W1. They are ordered
+    so that each reuses the infrastructure built by the previous one.</p>
+<h2>Exercise 1 &mdash; A verified GF(2<sup>m</sup>) arithmetic library</h2>
+<table><caption>Table 202. Exercise 1</caption><thead><tr><th>Element</th><th>Specification</th></tr></thead><tbody><tr><td>Objective</td><td>Parameterised finite-field arithmetic in software, with a test suite that verifies the <i>field axioms</i> rather than sample values</td></tr><tr><td>Deliverable</td><td>Library, test suite, short note on the primitive-polynomial requirement</td></tr><tr><td>Key decisions</td><td>Log/antilog tables versus direct reduction; whether the polynomial is a parameter or a constant</td></tr><tr><td><b>Tests that bite</b></td><td>Every non-zero element has an inverse and <i>a</i>&middot;<i>a</i><sup>&minus;1</sup>=1; the exponent table is a bijection onto the non-zero elements; a <b>non-primitive polynomial is rejected</b> rather than silently accepted; corrupting the multiply makes the axiom tests fail</td></tr><tr><td>Why it matters</td><td>Every code and cipher block rests on this. A silent error here is invisible everywhere above it</td></tr></tbody></table>
+<div class="ms"><b>The non-primitive-polynomial test is the instructive
+    one.</b> An irreducible polynomial that is not primitive still defines a field, but
+    &alpha;&nbsp;=&nbsp;<i>x</i> no longer generates the whole multiplicative group, so a
+    log/antilog implementation built on it is wrong &mdash; and wrong in a way that
+    ordinary arithmetic tests may not reveal, because most products are still correct.
+    The defence is to verify at construction that the powers of &alpha; enumerate all
+    2<sup><i>m</i></sup>&minus;1 non-zero elements, and to refuse otherwise. <b>A library
+    that validates its own parameters is the difference between a component and a
+    hazard.</b></div>
+<h2>Exercise 2 &mdash; Reed&ndash;Solomon encoder and decoder (model)</h2>
+<table><caption>Table 203. Exercise 2</caption><thead><tr><th>Element</th><th>Specification</th></tr></thead><tbody><tr><td>Objective</td><td>RS(<i>n</i>,<i>k</i>) over the library from Exercise 1: systematic encoder, syndrome/BM/Chien/Forney decoder</td></tr><tr><td>Parameters</td><td><i>n</i>, <i>k</i>, first consecutive root &mdash; all arguments, because the standard's values may not yet be confirmed</td></tr><tr><td><b>Tests that bite</b></td><td>Encoder output has zero syndrome; <b>exactly <i>t</i> errors are always corrected with zero mis-corrections</b>; <b><i>t</i>+1 errors are never recovered</b>, and the detected-versus-mis-corrected split is counted rather than assumed; a test with zero injected errors is explicitly flagged as meaningless; forcing the syndrome to zero makes the suite fail</td></tr><tr><td>Honest reporting</td><td>Do not claim that all errors beyond <i>t</i> are detected. Measure the mis-correction rate and state it</td></tr></tbody></table>
+<div class="ms"><b>Parameterising the unknown constants is the
+    professional move here.</b> When the standard's field polynomial and first-root index
+    have not been confirmed from the specification text, hard-coding a plausible value
+    creates a model that is confidently wrong. Making them arguments, defaulting to a
+    documented guess, and marking the guess as unverified in the code keeps the work
+    moving without creating a false record. <b>The tests verify <i>properties</i> &mdash;
+    <i>t</i> corrected, <i>t</i>+1 not recovered &mdash; which hold for any legal
+    parameter choice, so they remain valid when the constants are later confirmed.</b></div>
+<h2>Exercise 3 &mdash; RTL and co-simulation</h2>
+<table><caption>Table 204. Exercise 3</caption><thead><tr><th>Element</th><th>Specification</th></tr></thead><tbody><tr><td>Objective</td><td>Synthesisable RTL for the Exercise 2 decoder's syndrome stage, co-simulated against the model</td></tr><tr><td>Method</td><td>DPI-C or cocotb; random vectors; seeds recorded</td></tr><tr><td><b>Tests that bite</b></td><td>Break the RTL deliberately and confirm the comparison fails; break the <i>model</i> deliberately and confirm it also fails &mdash; a harness that has only ever seen a correct design has not been tested</td></tr><tr><td>Extension</td><td>Sweep the parallelism parameter and plot cells versus throughput with Yosys; report the trend, not absolute area</td></tr></tbody></table>
+<h2>Exercise 4 &mdash; Fixed-point conversion</h2>
+<table><caption>Table 205. Exercise 4</caption><thead><tr><th>Element</th><th>Specification</th></tr></thead><tbody><tr><td>Objective</td><td>Convert a floating-point reference to fixed point and find the minimum word length meeting an accuracy target</td></tr><tr><td>Method</td><td>Sweep integer and fractional bits; measure the metric that matters (BER, SNR, residual) rather than raw error</td></tr><tr><td><b>Required experiments</b></td><td>Saturation versus wrap-around at each width; rounding mode comparison; <b>reset-value alignment between model and RTL</b></td></tr><tr><td>Expected finding</td><td>The correct overflow policy is block-dependent: a CIC needs wrap, an LLR-based decoder needs saturation. <b>Reproduce both results</b> rather than accepting the claim</td></tr></tbody></table>
+<div class="warn"><b>Check the operating point before believing any
+    fixed-point result.</b> If the floating-point baseline is already failing &mdash; BER
+    near 0.5, a decoder not converging, a sampling phase misaligned &mdash; then every
+    quantisation comparison made on top of it is meaningless, and the numbers will look
+    plausible. The discipline is to sweep first for a healthy operating point, assert that
+    the baseline metric lies in a sensible range, and only then vary word length. An
+    assertion such as <code>0.02 &lt; BLER &lt; 0.6</code> in the test harness makes this
+    automatic.</div>
+<h2>Exercise 5 &mdash; A complete deliverable package</h2>
+<table><caption>Table 206. Exercise 5</caption><thead><tr><th>Element</th><th>Specification</th></tr></thead><tbody><tr><td>Objective</td><td>Assemble the twelve deliverables of W1.1 for the Exercise 3 block</td></tr><tr><td>Hardest parts</td><td>The verification report's <i>known limitations</i> section; the PPA report's <i>conditions</i>; the example design that runs from a clean checkout</td></tr><tr><td>Self-test</td><td>Hand the package to someone else and ask them to integrate it without speaking to you. <b>Every question they ask is a documentation defect</b></td></tr><tr><td>Outcome</td><td>This is the artefact that demonstrates capability to an employer or a customer &mdash; not the RTL alone</td></tr></tbody></table>

@@ -1,0 +1,317 @@
+<h1 id="T2">T2. Delay — From One RC to a Whole Timing Path</h1>
+<p class="한줄">Every delay number a tool reports is one of four models. Know which one, or you will trust a number that was never about your circuit.</p>
+<div class="사다리"><div class="사다리앞"><b>읽기 전에 알아야 하는 것</b><br>전압 · 전류 · 저항 · 미분 · 지수함수 · 옴의법칙 · 문턱전압 · 선형영역 · 포화영역 · 온저항 · 게이트용량 · 출력저항</div><div class="사다리뒤"><b>이 장에서 새로 나오는 것</b><br>RC지연 · 엘모어지연 · 논리적노력 · 전기적노력 · 기생지연 · FO4 · 슬루 · 단락전류 · 배선지연 · 리피터 · 도착시각 · 요구시각 · 슬랙 · OCV · NLDM · 비선형지연모델</div></div>
+<p>Ask four engineers what the delay of an inverter is and you get four answers,
+    all correct, because they are answering with four different models. A SPICE user
+    answers with a differential equation. A physical-design engineer answers with a
+    two-dimensional lookup table from a Liberty file. A microarchitect answers in FO4.
+    A synthesis engineer answers with a dimensionless number that has no picoseconds in
+    it at all. These are not competing approximations of one truth; they are four tools
+    with different jobs, and using the wrong one is how a design gets signed off on a
+    number that was never about the path that failed.</p>
+<p>This chapter builds them in order, each from the one before, and at every
+    step states the regime in which that model is the right one to use. The numbers
+    throughout come from one set of process constants declared at the top of this
+    chapter's source — a 28 nm-class low-power node at 0.9&nbsp;V —
+    and every table below is computed from them, not typed in.</p>
+<h2>T2.1 The one model you can do in your head: switched RC</h2>
+<p>A CMOS gate charges and discharges a capacitor through a transistor that is
+    acting as a resistor. That is the whole of it. Everything else in this chapter is a
+    refinement of that sentence, and every refinement exists because a specific
+    assumption in it broke.</p>
+<div class="정의"><b>RC지연 (RC delay)</b> &mdash; A gate's output node is a capacitance C driven through an equivalent resistance R. The node's voltage is a decaying exponential, and the delay is the time to cross the receiver's switching threshold — conventionally 50 % of V<sub>DD</sub>.</div>
+<div class="유도"><div class="유도머리">유도 &mdash; From the transistor to 0.69 RC</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">A switching gate connects the output node either to V<sub>DD</sub> through the PMOS stack or to ground through the NMOS stack.</td><td class="유도왜">That is what a static CMOS gate is: two complementary networks, exactly one of which conducts in steady state.</td></tr><tr><td class="유도번호">2</td><td class="유도말">While it switches, the conducting transistor is not a resistor — it starts in saturation and ends in triode.</td><td class="유도왜">V<sub>DS</sub> starts at V<sub>DD</sub> and falls toward 0, so the device crosses regions during the transition (T1).</td></tr><tr><td class="유도번호">3</td><td class="유도말">We replace it anyway with a single equivalent resistance R<sub>eq</sub>, defined as the value that gives the same 50 % crossing time.</td><td class="유도왜">This is a <i>fitted</i> quantity, not a measured resistance — which is why it differs between textbooks and why you never compare R<sub>eq</sub> numbers across sources.</td></tr><tr><td class="유도번호">4</td><td class="유도말">Then V(t) = V<sub>DD</sub>·e<sup>−t/RC</sup> for a falling output.</td><td class="유도왜">First-order linear ODE with a step excitation: the standard solution.</td></tr><tr><td class="유도번호">5</td><td class="유도말">Setting V = V<sub>DD</sub>/2 gives t = RC·ln 2 = 0.69 RC.</td><td class="유도왜">ln 2 = 0.693. This is where the 0.69 in every delay formula comes from — it is the 50 % point, nothing more.</td></tr><tr><td class="유도번호">6</td><td class="유도말">For 10–90 % rise/fall time the same solution gives t = RC·ln 9 = 2.2 RC.</td><td class="유도왜">Same exponential, different two crossings. <b>0.69 and 2.2 describe the same waveform</b> — a delay and a slew are two readings of one curve.</td></tr></tbody></table></div>
+<figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="40 8 380 284" width="100%" style="max-width:420px;height:auto" font-family="ui-monospace,monospace" font-size="11"><path d="M176,30 L176,38" fill="none" stroke="#c0392b" stroke-width="1.6"/><path d="M167,30 L185,30" fill="none" stroke="#c0392b" stroke-width="2.2"/><text x="176" y="25" fill="#c0392b" font-size="10" text-anchor="middle">VDD</text><path d="M150,80 L160,80" fill="none" stroke="#111" stroke-width="1.6"/><circle cx="164" cy="80" r="3.5" fill="#fff" stroke="#111" stroke-width="1.6"/><path d="M168,67 L168,93" fill="none" stroke="#111" stroke-width="2.0"/><path d="M173,67 L173,93" fill="none" stroke="#111" stroke-width="2.0"/><path d="M173,69 L176,69 L176,62" fill="none" stroke="#111" stroke-width="1.6"/><path d="M173,91 L176,91 L176,98" fill="none" stroke="#111" stroke-width="1.6"/><path d="M150,170 L164,170" fill="none" stroke="#111" stroke-width="1.6"/><path d="M168,157 L168,183" fill="none" stroke="#111" stroke-width="2.0"/><path d="M173,157 L173,183" fill="none" stroke="#111" stroke-width="2.0"/><path d="M173,159 L176,159 L176,152" fill="none" stroke="#111" stroke-width="1.6"/><path d="M173,181 L176,181 L176,188" fill="none" stroke="#111" stroke-width="1.6"/><path d="M176,38 L176,62" fill="none" stroke="#111" stroke-width="1.6"/><path d="M176,98 L176,152" fill="none" stroke="#111" stroke-width="1.6"/><path d="M176,188 L176,215" fill="none" stroke="#111" stroke-width="1.6"/><path d="M176,215 L176,221" fill="none" stroke="#137333" stroke-width="1.6"/><path d="M166,221 L186,221" fill="none" stroke="#137333" stroke-width="2.0"/><path d="M169.5,225 L182.5,225" fill="none" stroke="#137333" stroke-width="2.0"/><path d="M173,229 L179,229" fill="none" stroke="#137333" stroke-width="2.0"/><path d="M150,80 L110,80 L110,170 L150,170" fill="none" stroke="#111" stroke-width="1.6"/><path d="M110,125 L62,125" fill="none" stroke="#111" stroke-width="1.6"/><circle cx="110" cy="125" r="2.6" fill="#111"/><text x="56" y="129" fill="#111" font-size="11" text-anchor="end" font-weight="bold">A</text><path d="M176,125 L268,125" fill="none" stroke="#111" stroke-width="1.6"/><circle cx="176" cy="125" r="2.6" fill="#111"/><text x="274" y="129" fill="#111" font-size="11" text-anchor="start" font-weight="bold">Y = NOT A</text><text x="196" y="84" fill="#c0392b" font-size="9.5" text-anchor="start">PMOS = 풀업</text><text x="196" y="174" fill="#137333" font-size="9.5" text-anchor="start">NMOS = 풀다운</text><text x="58" y="252" fill="#888" font-size="9.5" text-anchor="start">입력이 0 -> 위(PMOS)가 켜짐 -> Y 를 VDD 로 당겨 올린다</text><text x="58" y="265" fill="#888" font-size="9.5" text-anchor="start">입력이 1 -> 아래(NMOS)가 켜짐 -> Y 를 GND 로 당겨 내린다</text><text x="58" y="278" fill="#888" font-size="9.5" text-anchor="start">둘이 동시에 켜지지 않는다 -> 정상상태 전류가 0 이다</text></svg><figcaption><b>그림 1.</b> The unit inverter. The pull-up and pull-down networks are the R in RC; the next stage's gate capacitance and the wire are the C.</figcaption></figure>
+<div class="개념"><div class="개념머리">τ = R<sub>eq</sub>·C<sub>g</sub> — the process's unit of time</div>
+<div class="개념이론"><p>Pick one reference device — the minimum-size inverter — and give it two
+        numbers: an equivalent output resistance R<sub>eq</sub> = 8&nbsp;kΩ
+        and an input capacitance C<sub>g</sub> = 1&nbsp;fF. Their product
+        τ = 8&nbsp;ps is the only absolute time in the rest of this chapter. Every other
+        delay will be quoted as a multiple of it.</p>
+        <p>This is not a cosmetic choice. Ratios between gates are set by topology and
+        are stable across process, voltage and temperature to within a few per cent;
+        the absolute τ moves by <b>2× or more</b> across corners. Separating the two is
+        what lets you do architecture on paper and let the tool supply the picoseconds.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>Every hand estimate of a critical path, every early architectural trade-off, every 'will this fit in one cycle' question before the RTL exists.</td></tr>
+<tr><th>언제 쓰나</th><td>Before synthesis — when there is no netlist to run STA on, and after STA, to check whether a reported number is even plausible.</td></tr>
+<tr><th>어떻게 쓰나</th><td>Express the path in τ, then multiply once at the end. A useful
+             anchor is <b>FO4</b> — an inverter driving four copies of itself —
+             which in this process is 40&nbsp;ps. A modern high-performance pipeline
+             stage is roughly 12–20 FO4; a low-power one, 25–40.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>// A 'timing shell' exists so that the number you measure is about
+// your logic, not about the pads. Synthesise the DUT inside registers:
+module fir_shell (input clk, input rst, input signed [7:0] din, output signed [15:0] dout);
+    reg signed  [7:0] din_q;
+    reg signed [15:0] dout_q;
+    wire signed [15:0] y;
+    always @(posedge clk) begin din_q &lt;= din; dout_q &lt;= y; end
+    fir4 u_dut (.clk(clk), .rst(rst), .x(din_q), .y(y));
+    assign dout = dout_q;
+endmodule
+// Measured on this repository's own FIR: 455 MHz without the shell, 47 MHz with it.
+// The 455 MHz was the tool timing a path that started and ended at a pin.</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> Quoting F<sub>max</sub> from a design whose inputs and outputs are pins
+            is the single most common false number in an IP datasheet. If a path has no
+            launching and no capturing register, the tool has nothing to constrain and
+            will report whatever combinational delay it found — often 10× optimistic.</div>
+</div>
+<h2>T2.2 Elmore delay — when one RC becomes a chain of them</h2>
+<p>The single-RC model assumes the resistance is at one end and the capacitance
+    at the other. A wire violates both: its resistance and its capacitance are
+    distributed along it. Cutting it into N lumps and summing gives the Elmore delay,
+    and the sum has a shape worth memorising, because it is the reason long wires do not
+    scale.</p>
+<figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 140" width="100%" style="max-width:420px;height:auto" font-family="ui-monospace,monospace" font-size="11"><text x="10" y="16" fill="#888" font-size="9.5" text-anchor="start">driver</text><rect x="8" y="22" width="52" height="34" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="34" y="44" fill="#111" font-size="10" text-anchor="middle" font-weight="bold">Rd</text><path d="M60,39 L70,39" fill="none" stroke="#111" stroke-width="1.6"/><rect x="70" y="31" width="34" height="16" fill="#fff" stroke="#111" stroke-width="1.4"/><text x="87" y="43" fill="#111" font-size="9" text-anchor="middle">R1</text><path d="M104,39 L134,39" fill="none" stroke="#111" stroke-width="1.6"/><circle cx="120" cy="39" r="2.6" fill="#111"/><path d="M120,39 L120,62" fill="none" stroke="#111" stroke-width="1.6"/><line x1="108" y1="62" x2="132" y2="62" stroke="#111" stroke-width="1.6"/><line x1="108" y1="68" x2="132" y2="68" stroke="#111" stroke-width="1.6"/><path d="M120,68 L120,78" fill="none" stroke="#111" stroke-width="1.6"/><path d="M120,78 L120,84" fill="none" stroke="#137333" stroke-width="1.6"/><path d="M110,84 L130,84" fill="none" stroke="#137333" stroke-width="2.0"/><path d="M113.5,88 L126.5,88" fill="none" stroke="#137333" stroke-width="2.0"/><path d="M117,92 L123,92" fill="none" stroke="#137333" stroke-width="2.0"/><text x="136" y="66" fill="#111" font-size="9" text-anchor="start">C1</text><path d="M134,39 L144,39" fill="none" stroke="#111" stroke-width="1.6"/><rect x="144" y="31" width="34" height="16" fill="#fff" stroke="#111" stroke-width="1.4"/><text x="161" y="43" fill="#111" font-size="9" text-anchor="middle">R2</text><path d="M178,39 L208,39" fill="none" stroke="#111" stroke-width="1.6"/><circle cx="194" cy="39" r="2.6" fill="#111"/><path d="M194,39 L194,62" fill="none" stroke="#111" stroke-width="1.6"/><line x1="182" y1="62" x2="206" y2="62" stroke="#111" stroke-width="1.6"/><line x1="182" y1="68" x2="206" y2="68" stroke="#111" stroke-width="1.6"/><path d="M194,68 L194,78" fill="none" stroke="#111" stroke-width="1.6"/><path d="M194,78 L194,84" fill="none" stroke="#137333" stroke-width="1.6"/><path d="M184,84 L204,84" fill="none" stroke="#137333" stroke-width="2.0"/><path d="M187.5,88 L200.5,88" fill="none" stroke="#137333" stroke-width="2.0"/><path d="M191,92 L197,92" fill="none" stroke="#137333" stroke-width="2.0"/><text x="210" y="66" fill="#111" font-size="9" text-anchor="start">C2</text><path d="M208,39 L218,39" fill="none" stroke="#111" stroke-width="1.6"/><rect x="218" y="31" width="34" height="16" fill="#fff" stroke="#111" stroke-width="1.4"/><text x="235" y="43" fill="#111" font-size="9" text-anchor="middle">R3</text><path d="M252,39 L282,39" fill="none" stroke="#111" stroke-width="1.6"/><circle cx="268" cy="39" r="2.6" fill="#111"/><path d="M268,39 L268,62" fill="none" stroke="#111" stroke-width="1.6"/><line x1="256" y1="62" x2="280" y2="62" stroke="#111" stroke-width="1.6"/><line x1="256" y1="68" x2="280" y2="68" stroke="#111" stroke-width="1.6"/><path d="M268,68 L268,78" fill="none" stroke="#111" stroke-width="1.6"/><path d="M268,78 L268,84" fill="none" stroke="#137333" stroke-width="1.6"/><path d="M258,84 L278,84" fill="none" stroke="#137333" stroke-width="2.0"/><path d="M261.5,88 L274.5,88" fill="none" stroke="#137333" stroke-width="2.0"/><path d="M265,92 L271,92" fill="none" stroke="#137333" stroke-width="2.0"/><text x="284" y="66" fill="#111" font-size="9" text-anchor="start">C3</text><path d="M282,39 L292,39" fill="none" stroke="#111" stroke-width="1.6"/><rect x="292" y="31" width="34" height="16" fill="#fff" stroke="#111" stroke-width="1.4"/><text x="309" y="43" fill="#111" font-size="9" text-anchor="middle">R4</text><path d="M326,39 L356,39" fill="none" stroke="#111" stroke-width="1.6"/><circle cx="342" cy="39" r="2.6" fill="#111"/><path d="M342,39 L342,62" fill="none" stroke="#111" stroke-width="1.6"/><line x1="330" y1="62" x2="354" y2="62" stroke="#111" stroke-width="1.6"/><line x1="330" y1="68" x2="354" y2="68" stroke="#111" stroke-width="1.6"/><path d="M342,68 L342,78" fill="none" stroke="#111" stroke-width="1.6"/><path d="M342,78 L342,84" fill="none" stroke="#137333" stroke-width="1.6"/><path d="M332,84 L352,84" fill="none" stroke="#137333" stroke-width="2.0"/><path d="M335.5,88 L348.5,88" fill="none" stroke="#137333" stroke-width="2.0"/><path d="M339,92 L345,92" fill="none" stroke="#137333" stroke-width="2.0"/><text x="358" y="66" fill="#111" font-size="9" text-anchor="start">C4</text><text x="8" y="112" fill="#888" font-size="9.5" text-anchor="start">조각 i 의 저항은 뒤에 달린 용량 전부를 민다 -- 항이 1+2+...+N 로 는다</text><text x="8" y="126" fill="#c0392b" font-size="9.5" text-anchor="start" font-weight="bold">그래서 배선 지연은 길이에 비례하지 않고 길이의 제곱으로 큰다</text></svg><figcaption><b>그림 2.</b> A wire cut into four RC sections. Section 1's resistance pushes the capacitance of sections 1–4; section 4's pushes only its own.</figcaption></figure>
+<div class="유도"><div class="유도머리">유도 &mdash; Why wire delay grows with the square of length</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">Cut a wire of length L into N equal sections, each with resistance R/N and capacitance C/N.</td><td class="유도왜">R = r·L and C = c·L, with r in Ω/µm and c in F/µm from the technology file.</td></tr><tr><td class="유도번호">2</td><td class="유도말">The charge for every capacitance downstream of section i must flow through section i's resistance.</td><td class="유도왜">Charge has only one path to reach them — that is the whole content of the Elmore model.</td></tr><tr><td class="유도번호">3</td><td class="유도말">So the delay is Σ<sub>i</sub> (R/N)·(N−i+1)(C/N) = RC·(N+1)/(2N).</td><td class="유도왜">Arithmetic series 1+2+…+N = N(N+1)/2. Substituting gives the closed form.</td></tr><tr><td class="유도번호">4</td><td class="유도말">As N → ∞ this tends to RC/2, and R and C are each proportional to L.</td><td class="유도왜">Hence t ∝ r·c·L² — <b>doubling a wire's length quadruples its delay</b>, while a gate's delay does not change at all.</td></tr><tr><td class="유도번호">5</td><td class="유도말">For this process, a 1,&nbsp;µm wire gives RC/2 = 90&nbsp;ps, and the four-lump approximation gives 112&nbsp;ps.</td><td class="유도왜">The coarse lump <b>over</b>estimates by 1.25×. Use the closed form for the distributed case and lumps only when the sections are real (a via, a branch, a tap).</td></tr></tbody></table></div>
+<table><caption>표 3. Lumping a distributed wire: how many sections are enough</caption><thead><tr><th>Sections N</th><th>Elmore delay</th><th>Error vs. distributed RC/2</th></tr></thead><tbody><tr><td>1</td><td>18&nbsp;ps</td><td>1&nbsp;%</td></tr><tr><td>2</td><td>135&nbsp;ps</td><td>50&nbsp;%</td></tr><tr><td>4</td><td>112&nbsp;ps</td><td>25&nbsp;%</td></tr><tr><td>8</td><td>101&nbsp;ps</td><td>12.5&nbsp;%</td></tr><tr><td>16</td><td>95.6&nbsp;ps</td><td>6.25&nbsp;%</td></tr><tr><td>32</td><td>92.8&nbsp;ps</td><td>3.12&nbsp;%</td></tr></tbody></table>
+<div class="짚기">Two facts hide in that table. First, <b>a single lump is 100 % wrong</b>
+    — and a single lump is exactly what a naive spreadsheet does. Second, convergence is
+    slow: even 8 sections is still 6 % high. This is why extraction tools do not lump
+    at all; they solve the distributed network. Your hand estimate should use RC/2 and
+    remember that it is a lower bound on what the extractor will report, because the
+    extractor also sees coupling capacitance to neighbours.</div>
+<div class="개념"><div class="개념머리">Elmore delay</div>
+<div class="개념이론"><p>The first moment of the impulse response of an RC tree: for a node k,
+        t<sub>k</sub> = Σ<sub>i</sub> R<sub>ik</sub>·C<sub>i</sub>, where R<sub>ik</sub>
+        is the resistance shared by the path to node i and the path to node k. It is
+        exact for a single RC, always an <b>upper bound</b> on the 50 % delay for an RC
+        tree with a step input, and it ignores inductance entirely.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>Clock-tree synthesis (balancing sinks), buffer and repeater insertion, and the delay model inside every placer's incremental timing engine — the placer cannot afford a full extraction per move.</td></tr>
+<tr><th>언제 쓰나</th><td>Whenever you need a delay that is monotone in the tree's structure and cheap to update. It is wrong by 10–30 % in absolute terms and right in its ordering, which is what an optimiser needs.</td></tr>
+<tr><th>어떻게 쓰나</th><td>Walk the tree from the driver; accumulate the shared resistance for each sink. Never use it to sign off timing — it is an optimisation objective, not a signoff model.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code># Extraction produces this; you read it when a net is suspect.
+# SPEF, standard parasitic exchange format, one net:
+*D_NET net_dout_3 1.84e-01          $ total capacitance, pF
+*CONN
+*I u_fir/Z O *L 0 *D INVX4          $ driver
+*I u_reg/D I *L 1.02e-03            $ receiver pin cap, pF
+*CAP
+1 net_dout_3:1 2.31e-02
+2 net_dout_3:2 net_clk:7 4.10e-03   $ COUPLING to an aggressor -- not in your hand estimate
+*RES
+1 net_dout_3:1 net_dout_3:2 1.79e+01 $ ohms</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> Elmore is an upper bound <i>for a step input</i>. Real inputs have finite
+            slew, and for a fast input into a long wire the true 50 % delay can exceed
+            it. The bound you rely on is not the bound you were taught if the slew is
+            large — which is the next section.</div>
+</div>
+<h2>T2.3 Logical effort — delay with the picoseconds factored out</h2>
+<p>Sizing a chain of gates by RC arithmetic works and is miserable. Logical
+    effort removes the process from the problem entirely, leaving a dimensionless
+    expression you can optimise in your head, and it answers the two questions that
+    actually come up: <i>how many stages</i>, and <i>how much bigger should each one
+    be</i>.</p>
+<div class="유도"><div class="유도머리">유도 &mdash; The normalised delay of one stage</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">Write a gate's delay as d = (R<sub>gate</sub>·C<sub>out</sub>) + (R<sub>gate</sub>·C<sub>self</sub>).</td><td class="유도왜">The output node carries the load <i>and</i> the gate's own drain capacitance; both are charged through the same resistance.</td></tr><tr><td class="유도번호">2</td><td class="유도말">Divide through by τ = R<sub>inv</sub>C<sub>g</sub>.</td><td class="유도왜">We choose to measure everything relative to the minimum inverter. Nothing is lost; the units are.</td></tr><tr><td class="유도번호">3</td><td class="유도말">The first term becomes g·h: <b>logical effort</b> g = how much worse this topology is than an inverter at driving current, and <b>electrical effort</b> h = C<sub>out</sub>/C<sub>in</sub>.</td><td class="유도왜">g depends only on topology (NAND2 = 4/3, NOR2 = 5/3, inverter = 1); h depends only on the ratio of load to input, so it is independent of absolute size.</td></tr><tr><td class="유도번호">4</td><td class="유도말">The second term becomes p, the <b>parasitic delay</b> — the delay of the gate driving nothing.</td><td class="유도왜">It scales with the gate's own diffusion, which grows with its width exactly as its drive does — so p is size-independent. p<sub>inv</sub> ≈ 1.</td></tr><tr><td class="유도번호">5</td><td class="유도말">d = g·h + p.</td><td class="유도왜">Two multiplications and an addition, and no process constant anywhere.</td></tr><tr><td class="유도번호">6</td><td class="유도말">For a path of N stages, the total is minimised when every stage carries the <b>same</b> stage effort f = (G·B·H)<sup>1/N</sup>.</td><td class="유도왜">Differentiate the sum with respect to each stage's size and set to zero; the symmetric solution falls out. G = Πg, H = C<sub>load</sub>/C<sub>in</sub>, and B accounts for branching off the path.</td></tr></tbody></table></div>
+<figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 8 402 138" width="100%" style="max-width:402px;height:auto" font-family="ui-monospace,monospace" font-size="11"><rect x="16" y="34" width="56" height="44" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><path d="M32,44 L32,68 L56,56 Z" fill="#fff" stroke="#111" stroke-width="1.4"/><circle cx="60" cy="56" r="3.6" fill="#fff" stroke="#111" stroke-width="1.4"/><text x="44" y="92" fill="#111" font-size="10" text-anchor="middle" font-weight="bold">x1</text><path d="M72,56 L90,56" fill="none" stroke="#111" stroke-width="1.6"/><rect x="90" y="34" width="56" height="44" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><path d="M106,44 L106,68 L130,56 Z" fill="#fff" stroke="#111" stroke-width="1.4"/><circle cx="134" cy="56" r="3.6" fill="#fff" stroke="#111" stroke-width="1.4"/><text x="118" y="92" fill="#111" font-size="10" text-anchor="middle" font-weight="bold">x4</text><text x="72" y="28" fill="#c0392b" font-size="9" text-anchor="middle">h=4</text><path d="M146,56 L164,56" fill="none" stroke="#111" stroke-width="1.6"/><rect x="164" y="34" width="56" height="44" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><path d="M180,44 L180,68 L204,56 Z" fill="#fff" stroke="#111" stroke-width="1.4"/><circle cx="208" cy="56" r="3.6" fill="#fff" stroke="#111" stroke-width="1.4"/><text x="192" y="92" fill="#111" font-size="10" text-anchor="middle" font-weight="bold">x16</text><text x="146" y="28" fill="#c0392b" font-size="9" text-anchor="middle">h=4</text><path d="M220,56 L238,56" fill="none" stroke="#111" stroke-width="1.6"/><rect x="238" y="34" width="56" height="44" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><path d="M254,44 L254,68 L278,56 Z" fill="#fff" stroke="#111" stroke-width="1.4"/><circle cx="282" cy="56" r="3.6" fill="#fff" stroke="#111" stroke-width="1.4"/><text x="266" y="92" fill="#111" font-size="10" text-anchor="middle" font-weight="bold">x64</text><text x="220" y="28" fill="#c0392b" font-size="9" text-anchor="middle">h=4</text><path d="M294,56 L316,56" fill="none" stroke="#111" stroke-width="1.6"/><circle cx="316" cy="56" r="2.6" fill="#111"/><text x="322" y="60" fill="#111" font-size="9.5" text-anchor="start" font-weight="bold">C_load</text><text x="16" y="118" fill="#888" font-size="9.5" text-anchor="start">한 칸의 지연 = g·h + p.  사슬 전체는 칸마다 같은 h 일 때 가장 빠르다</text><text x="16" y="132" fill="#137333" font-size="9.5" text-anchor="start" font-weight="bold">그 h 가 대략 3.6 (전기적 노력의 N 제곱근) -- 4 로 잡고 시작한다</text></svg><figcaption><b>그림 3.</b> Four stages, each 4× the last. Equal stage effort is what makes the total minimal — not equal sizes, and not one huge final stage.</figcaption></figure>
+<div class="예제"><div class="예제머리">예제 3. Driving a 64× load: how many stages?</div><div class="예제줄"><b>주어진 것.</b> A 1× inverter must drive a load of 64·C<sub>g</sub> (an on-chip bus with
+        several receivers). Logical effort of an inverter chain is G = 1, no branching
+        so B = 1, and H = 64, giving path effort F = 64.</div><div class="예제줄"><b>푸는 법.</b> Try each N, computing D = N·F<sup>1/N</sup> + N·p<sub>inv</sub>, and pick
+        the smallest. The table below is computed, not recalled.</div><div class="예제답"><b>답.</b> N = 3 stages, with stage effort f = 4
+        and total delay 15·τ = 12&nbsp;ps. A single stage would
+        take 52&nbsp;ps — <b>4.33× slower</b>.</div><div class="예제덧"><table><caption>표 4. Stage count versus total delay for F = 64</caption><thead><tr><th>Stages N</th><th>Stage effort f</th><th>Delay (τ)</th><th>Delay</th></tr></thead><tbody><tr><td>1</td><td>64</td><td>65</td><td>52&nbsp;ps</td></tr><tr><td>2</td><td>8</td><td>18</td><td>144&nbsp;ps</td></tr><tr><td>3</td><td>4</td><td>15</td><td>12&nbsp;ps</td></tr><tr><td>4</td><td>2.83</td><td>15.31</td><td>123&nbsp;ps</td></tr><tr><td>5</td><td>2.3</td><td>16.49</td><td>132&nbsp;ps</td></tr><tr><td>6</td><td>2</td><td>18</td><td>144&nbsp;ps</td></tr></tbody></table></div><div class="예제함정"><b>여기서 틀린다.</b> Reading the table's minimum as a sharp optimum. N = 3 and N = 4 differ by
+        2.1&nbsp;% — inside the
+        noise of any real p. Take the <i>cheaper</i> of the two, not the nominally
+        faster one; the extra stage costs area, leakage and a slew you must then drive.</div></div>
+<table><caption>표 5. Logical effort of the cells you will actually instantiate</caption><thead><tr><th>Gate</th><th>g</th><th>p (τ)</th><th>Why g is what it is</th></tr></thead><tbody><tr><td>Inverter</td><td>1</td><td>1</td><td>The reference</td></tr><tr><td>NAND2</td><td>4/3</td><td>2</td><td>Two series NMOS: each must be 2× wider for the same pull-down current, so the input cap rises to 4/3 per input</td></tr><tr><td>NAND3</td><td>5/3</td><td>3</td><td>Three in series — g grows linearly with stack depth</td></tr><tr><td>NOR2</td><td>5/3</td><td>2</td><td>Series PMOS, and PMOS is the weaker device; this is why <b>NOR is avoided in fast logic</b> and NAND is not</td></tr><tr><td>NOR3</td><td>7/3</td><td>3</td><td>Same reason, worse</td></tr><tr><td>XOR2</td><td>4</td><td>4</td><td>Both polarities of both inputs are needed internally</td></tr><tr><td>MUX2</td><td>2</td><td>4</td><td>Two transmission paths plus select drive</td></tr><tr><td>Tri-state inverter</td><td>2</td><td>2</td><td>The enable device is in series with the output — the classic bus driver</td></tr></tbody></table>
+<div class="개념"><div class="개념머리">Logical effort, used as a design instrument</div>
+<div class="개념이론"><p>d = g·h + p. Total path delay D = Σ(g<sub>i</sub>h<sub>i</sub>) + Σp<sub>i</sub>,
+        minimised at equal stage effort f = F<sup>1/N</sup>, with the practical rule that
+        <b>f ≈ 4</b> (the true optimum for p<sub>inv</sub> = 1 is 3.6) and an extra stage
+        is worth adding only while it removes more than p of delay.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>Deciding how deep a pipeline stage can be before synthesis; choosing between a NAND-NAND and a NOR-NOR implementation; sizing a clock or reset distribution by hand; arguing with a synthesis result that looks wrong.</td></tr>
+<tr><th>언제 쓰나</th><td>At architecture time, and every time a tool's answer needs a sanity check. Synthesis does this internally but with a cost function that also weighs area and power, so its answer will differ — knowing the ideal tells you whether the difference is a trade or a mistake.</td></tr>
+<tr><th>어떻게 쓰나</th><td>Count G along the path, compute H from the real load, take F = G·B·H, then N ≈ log<sub>4</sub>F and f = F<sup>1/N</sup>. Work backwards from the load to size each stage: C<sub>in,i</sub> = g<sub>i</sub>·C<sub>out,i</sub>/f.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code># The synthesis constraint that makes the tool solve the same problem.
+# Without a real load and a real driver, the tool optimises a fiction.
+set_load        0.064            [get_ports dout*]   ;# pF -- from the receiver's .lib
+set_driving_cell -lib_cell INVX4 [get_ports din*]    ;# not an ideal source
+set_max_transition 0.150 [current_design]            ;# ns -- bounds slew degradation
+set_max_fanout    16     [current_design]
+# And the one that is almost always missing on a first pass:
+set_max_capacitance 0.200 [current_design]</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> g is a property of the <i>topology</i>, not of the cell you picked from
+            the library. A library's NAND2_X4 and NAND2_X1 have the same g; only C<sub>in</sub>
+            differs. Engineers who 'fix timing' by swapping to a bigger cell without
+            changing the stage count are changing h for the previous stage — they move
+            the problem upstream, and on a long chain it comes back.</div>
+</div>
+<h2>T2.4 Slew, and why a delay has two arguments</h2>
+<p>Both models so far take one input: the load. Every real timing tool takes
+    two, because the delay of a gate depends on how fast its <i>input</i> moved. A slow
+    input keeps both transistors partially on, wastes current through the stack, and
+    starts the output late. That is the single largest correction to everything above,
+    and it is why a Liberty file holds a table rather than a formula.</p>
+<div class="정의"><b>슬루 (slew / transition time)</b> &mdash; The time for a signal to cross between two defined fractions of V<sub>DD</sub>, conventionally 10 %–90 % or 30 %–70 %. <b>Which pair is a property of the library, and mixing libraries that use different pairs silently changes every delay in the design.</b></div>
+<div class="정의"><b>단락전류 (short-circuit current)</b> &mdash; During a transition both the pull-up and pull-down networks conduct simultaneously, shorting V<sub>DD</sub> to ground through the stack. The charge lost this way is proportional to the input transition time; at normal slews it is 5–15 % of switching energy, and at degraded slews it can exceed the useful switching energy.</div>
+<table><caption>표 6. The same inverter, four different 'delays' — an NLDM slice</caption><thead><tr><th>Input slew (ps)</th><th>Load 4 fF</th><th>Load 16 fF</th><th>Load 64 fF</th></tr></thead><tbody><tr><td>20</td><td>16&nbsp;ps</td><td>40.4&nbsp;ps</td><td>137&nbsp;ps</td></tr><tr><td>60</td><td>24&nbsp;ps</td><td>49.2&nbsp;ps</td><td>147&nbsp;ps</td></tr><tr><td>120</td><td>36&nbsp;ps</td><td>62.4&nbsp;ps</td><td>162&nbsp;ps</td></tr><tr><td>240</td><td>60&nbsp;ps</td><td>88.8&nbsp;ps</td><td>192&nbsp;ps</td></tr></tbody></table>
+<div class="짚기">That table is a model, not a measurement — the slew coefficients are
+    illustrative. <b>Say so.</b> A real NLDM table is characterised by running SPICE at
+    every grid point over the full corner set, typically 7×7 points per arc, per cell,
+    per corner. What is real in the table is its shape: delay rises roughly linearly in
+    load and roughly linearly in input slew, and <b>the slew term is not small</b> — at
+    the light load it is the dominant term.</div>
+<div class="개념"><div class="개념머리">NLDM — the non-linear delay model, and what a tool actually reads</div>
+<div class="개념이론"><p>A Liberty (<code>.lib</code>) file gives, for each timing arc of each cell,
+        two 2-D tables — one for delay and one for output slew — indexed by input
+        transition time and total output capacitance. The tool bilinearly interpolates
+        (and, at the edges, <b>extrapolates</b>) to get a number. Everything downstream —
+        STA, synthesis cost, placement timing — is built on these tables.</p>
+        <p>Its successor, CCS (composite current source), stores a current waveform
+        rather than a scalar, which matters when the receiver's input capacitance is
+        itself voltage-dependent or when the net's resistance is large enough that the
+        driver and the net interact. For an IP deliverable, <b>state which model your
+        numbers came from</b>; they are not interchangeable at the 5 % level.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>Every delay number in synthesis, STA, and place-and-route. Also in the IP datasheet, indirectly: your F<sub>max</sub> is only meaningful with the library and corner named.</td></tr>
+<tr><th>언제 쓰나</th><td>You read a .lib directly in exactly two situations: when a path's reported delay makes no sense and you want to see whether the tool extrapolated off the table, and when you are asked to support a library you have never seen.</td></tr>
+<tr><th>어떻게 쓰나</th><td>Find the arc, read index_1 (input slew) and index_2 (load), and check that your operating point is <i>inside</i> both. Off-table extrapolation is the standard cause of 'the tool says it passes and silicon says it does not'.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>/* Liberty, one arc of one cell -- this is what the tool reads. */
+cell (INVX1) {
+  area : 1.596 ;
+  pin (A) { direction : input ;  capacitance : 1.02 ; }      /* fF */
+  pin (Z) {
+    direction : output ;
+    function : "!A" ;
+    max_capacitance : 64.0 ;
+    timing () {
+      related_pin : "A" ;
+      timing_sense : negative_unate ;
+      cell_fall (delay_7x7) {
+        index_1 ("0.004, 0.012, 0.028, 0.060, 0.124, 0.252, 0.508");  /* input slew, ns */
+        index_2 ("0.4, 1.6, 4.0, 8.8, 18.4, 37.6, 76.0");             /* load, fF */
+        values ( "0.0091, 0.0142, 0.0241, 0.0431, 0.0812, 0.1574, 0.3098", \
+                 "0.0113, 0.0164, 0.0263, 0.0453, 0.0834, 0.1596, 0.3120", \
+                 /* ... five more rows, one per input slew ... */ );
+      }
+      fall_transition (delay_7x7) { /* the OUTPUT slew -- this feeds the next stage */ }
+    }
+  }
+}</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> Delay and output slew are two <i>separate</i> tables, and the output slew
+            is the next stage's input slew. This is how one badly driven net poisons a
+            whole path: each stage receives a worse slew, produces a worse slew, and the
+            degradation compounds. <b><code>set_max_transition</code> exists to stop that
+            compounding</b>, and a design with no max_transition constraint can meet
+            setup in the report and fail in silicon.</div>
+</div>
+<h2>T2.5 The wire, and the repeater that saves it</h2>
+<p>Gate delay shrinks with each process node. Wire delay does not: r rises as
+    wires get thinner, c stays roughly constant per micron, and the die does not shrink
+    as fast as the transistors. Beyond a length that has been getting shorter every
+    node, a wire dominates the path, and the fix is not a bigger driver — it is to stop
+    the wire being long.</p>
+<figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 6 520 178" width="100%" style="max-width:520px;height:auto" font-family="ui-monospace,monospace" font-size="11"><text x="8" y="18" fill="#111" font-size="10" text-anchor="start" font-weight="bold">리피터 없이</text><rect x="8" y="26" width="40" height="30" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="28.0" y="45.0" fill="#111" font-size="11" text-anchor="middle">drv</text><path d="M48,41 L400,41" fill="none" stroke="#111" stroke-width="2.4"/><text x="210" y="34" fill="#888" font-size="9.5" text-anchor="middle">L</text><rect x="400" y="26" width="40" height="30" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="420.0" y="45.0" fill="#111" font-size="11" text-anchor="middle">rcv</text><text x="452" y="45" fill="#c0392b" font-size="10" text-anchor="start" font-weight="bold">t ∝ L²</text><text x="8" y="92" fill="#111" font-size="10" text-anchor="start" font-weight="bold">리피터 4 개</text><rect x="8" y="100" width="40" height="30" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="28.0" y="119.0" fill="#111" font-size="11" text-anchor="middle">drv</text><path d="M48,115 L110,115" fill="none" stroke="#111" stroke-width="2.4"/><path d="M110,105 L110,125 L128,115 Z" fill="#fff" stroke="#111" stroke-width="1.4"/><path d="M128,115 L190,115" fill="none" stroke="#111" stroke-width="2.4"/><path d="M190,105 L190,125 L208,115 Z" fill="#fff" stroke="#111" stroke-width="1.4"/><path d="M208,115 L270,115" fill="none" stroke="#111" stroke-width="2.4"/><path d="M270,105 L270,125 L288,115 Z" fill="#fff" stroke="#111" stroke-width="1.4"/><path d="M288,115 L350,115" fill="none" stroke="#111" stroke-width="2.4"/><path d="M350,105 L350,125 L368,115 Z" fill="#fff" stroke="#111" stroke-width="1.4"/><path d="M368,115 L378,115" fill="none" stroke="#111" stroke-width="2.4"/><rect x="378" y="100" width="40" height="30" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="398.0" y="119.0" fill="#111" font-size="11" text-anchor="middle">rcv</text><text x="8" y="156" fill="#888" font-size="9.5" text-anchor="start">토막마다 길이가 L/N 이므로 제곱 항이 N 배 작아지고, 대신 버퍼 지연이 N 배 는다</text><text x="8" y="170" fill="#137333" font-size="9.5" text-anchor="start" font-weight="bold">둘이 만나는 N 이 최적이다 -- 이 장에서 수로 푼다</text></svg><figcaption><b>그림 4.</b> A long wire, and the same wire cut into segments by repeaters. The quadratic term shrinks by N; the buffer delay grows by N.</figcaption></figure>
+<figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 430 230" width="100%" style="max-width:430px;height:auto" font-family="ui-monospace,monospace" font-size="11"><path d="M52,18 L52,196 L414,196" fill="none" stroke="#888" stroke-width="1.2"/><path d="M52.0,196 L52.0,200" fill="none" stroke="#888" stroke-width="1.0"/><text x="52.0" y="212" fill="#888" font-size="9" text-anchor="middle">1</text><path d="M150.72727272727272,196 L150.72727272727272,200" fill="none" stroke="#888" stroke-width="1.0"/><text x="150.72727272727272" y="212" fill="#888" font-size="9" text-anchor="middle">4</text><path d="M282.3636363636364,196 L282.3636363636364,200" fill="none" stroke="#888" stroke-width="1.0"/><text x="282.3636363636364" y="212" fill="#888" font-size="9" text-anchor="middle">8</text><path d="M414.0,196 L414.0,200" fill="none" stroke="#888" stroke-width="1.0"/><text x="414.0" y="212" fill="#888" font-size="9" text-anchor="middle">12</text><path d="M48,196.0 L52,196.0" fill="none" stroke="#888" stroke-width="1.0"/><text x="44" y="199.0" fill="#888" font-size="9" text-anchor="end">0</text><path d="M48,107.0 L52,107.0" fill="none" stroke="#888" stroke-width="1.0"/><text x="44" y="110.0" fill="#888" font-size="9" text-anchor="end">65.3632</text><path d="M48,18.0 L52,18.0" fill="none" stroke="#888" stroke-width="1.0"/><text x="44" y="21.0" fill="#888" font-size="9" text-anchor="end">130.726</text><text x="233.0" y="224" fill="#111" font-size="10" text-anchor="middle">repeaters N</text><text x="12" y="107.0" font-size="10" fill="#111" transform="rotate(-90 12 107.0)" text-anchor="middle">delay (ps)</text><path d="M52.0,18.0 L84.9090909090909,59.39334890087767 L117.81818181818181,68.10773814316774 L150.72727272727272,68.65238747081084 L183.63636363636363,65.92914083259518 L216.54545454545453,61.57194621145021 L249.45454545454544,56.28106702863121 L282.3636363636364,50.40663499476608 L315.27272727272725,44.143167726870104 L348.1818181818182,37.607375795152564 L381.09090909090907,30.87352956247389 L414.0,23.991142604074383" fill="none" stroke="#c0392b" stroke-width="1.8"/><circle cx="52.0" cy="18.0" r="2.2" fill="#c0392b"/><circle cx="84.9090909090909" cy="59.39334890087767" r="2.2" fill="#c0392b"/><circle cx="117.81818181818181" cy="68.10773814316774" r="2.2" fill="#c0392b"/><circle cx="150.72727272727272" cy="68.65238747081084" r="2.2" fill="#c0392b"/><circle cx="183.63636363636363" cy="65.92914083259518" r="2.2" fill="#c0392b"/><circle cx="216.54545454545453" cy="61.57194621145021" r="2.2" fill="#c0392b"/><circle cx="249.45454545454544" cy="56.28106702863121" r="2.2" fill="#c0392b"/><circle cx="282.3636363636364" cy="50.40663499476608" r="2.2" fill="#c0392b"/><circle cx="315.27272727272725" cy="44.143167726870104" r="2.2" fill="#c0392b"/><circle cx="348.1818181818182" cy="37.607375795152564" r="2.2" fill="#c0392b"/><circle cx="381.09090909090907" cy="30.87352956247389" r="2.2" fill="#c0392b"/><circle cx="414.0" cy="23.991142604074383" r="2.2" fill="#c0392b"/><text x="410" y="30" fill="#c0392b" font-size="9.5" text-anchor="end" font-weight="bold">total delay</text><circle cx="150.72727272727272" cy="68.65238747081084" r="3.4" fill="#c0392b"/><text x="156.72727272727272" y="62.65238747081084" fill="#c0392b" font-size="9" text-anchor="start" font-weight="bold">N=4</text></svg><figcaption><b>그림 5.</b> The full sweep for a 1,&nbsp;µm wire, each point at its own optimal
+        repeater size. <b>The minimum is shallow</b> — N = 3, 4 and 5 are within
+        2.1&nbsp;% of each other — so take the one
+        that routes.</figcaption></figure>
+<div class="유도"><div class="유도머리">유도 &mdash; Where the optimum comes from, and a check on it</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">Cut the wire into k segments, each driven by an inverter of size h.</td><td class="유도왜">One repeater per segment; the last one drives the receiver.</td></tr><tr><td class="유도번호">2</td><td class="유도말">Each segment costs 0.7·(R<sub>inv</sub>/h)(C<sub>w</sub>/k + h·C<sub>g</sub>) for the driver, 0.4·R<sub>s</sub>C<sub>s</sub> for the distributed wire, and 0.7·R<sub>s</sub>·hC<sub>g</sub> for the far-end load.</td><td class="유도왜">The 0.4 and 0.7 are the standard distributed-RC coefficients — 0.4 for a wire driving its own capacitance, 0.69 for a lumped load.</td></tr><tr><td class="유도번호">3</td><td class="유도말">Sweeping k and h numerically gives 93.5&nbsp;ps at k = 4, h = 38.</td><td class="유도왜">Brute force over the whole grid — no assumption about the shape of the optimum.</td></tr><tr><td class="유도번호">4</td><td class="유도말">The closed forms k = √(0.4R<sub>w</sub>C<sub>w</sub> / 0.7R<sub>inv</sub>C<sub>g</sub>) and h = √(R<sub>inv</sub>C<sub>w</sub> / R<sub>w</sub>C<sub>g</sub>) give k = 3.59, h = 37.9.</td><td class="유도왜"><b>Independent cross-check.</b> Two routes to the same answer, agreeing to 0.1&nbsp;% in size. A single derivation that no one checked is how the wrong constant survives for years.</td></tr><tr><td class="유도번호">5</td><td class="유도말">Without repeaters, the same wire with its own best driver costs 131&nbsp;ps.</td><td class="유도왜">So repeaters buy 1.4× here — <b>and that is the honest headline</b>, not a figure taken from the most favourable corner of the sweep.</td></tr></tbody></table></div>
+<div class="개념"><div class="개념머리">Repeater insertion</div>
+<div class="개념이론"><p>Break a wire whose delay is quadratic in length into segments short enough
+        that the quadratic term is comparable to a buffer delay. The optimum segment
+        length is the one where <b>the wire's RC per segment equals the buffer's own
+        delay</b>; past that, you are paying buffers to save nothing.</p>
+        <p>For this process the crossover is around a wire of
+        25&nbsp;µm — shorter than that and a repeater costs more than
+        it saves.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>Any net that leaves a block: block-to-block datapaths, clock spines, reset distribution, and the top-level assembly of an SoC where your IP's ports land.</td></tr>
+<tr><th>언제 쓰나</th><td>Decided in physical design, but <b>constrained in your deliverable</b>: if your IP's output has 200 ps of budget and the integrator's wire needs 300, the block fails through no fault of its RTL.</td></tr>
+<tr><th>어떻게 쓰나</th><td>Give the integrator a number, not a hope: state output delay, drive strength, and maximum load in the datasheet, and constrain both ends with set_output_delay / set_load. Then the repeater problem is theirs and is solvable.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code># What the integrator must be told, and what you must constrain.
+# In your IP's SDC (shipped with the deliverable):
+create_clock -name clk -period 4.000 [get_ports clk]
+set_output_delay -max 1.200 -clock clk [get_ports {dout[*] dvalid}]
+set_input_delay  -max 1.000 -clock clk [get_ports {din[*] dvalid_i}]
+set_load 0.064 [get_ports dout[*]]     ;# what we assumed -- say it in the datasheet
+# And in DATASHEET.md, the line that prevents the support call:
+#   Output timing assumes &lt;= 64 fF load and &lt;= 150 ps transition at the port.
+#   Beyond that, insert a repeater; every 100 fF adds approximately 25 ps.</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> Repeaters are inverting. An odd number of them flips the polarity of the
+            net, and the fix — using buffers (two inverters) instead — costs more delay
+            than the inverter chain. Tools handle this, but <b>hand-placed repeaters in a
+            reset or scan-enable path are a classic bring-up bug</b>: the block resets on
+            the wrong polarity at one corner only, because that corner is the one where
+            the inserted pair was optimised away.</div>
+</div>
+<h2>T2.6 From cells to a path: what STA actually adds up</h2>
+<p>Static timing analysis does not simulate. It propagates two numbers through
+    the graph — the earliest and latest time a signal can arrive — and compares them
+    against what each endpoint requires. Everything above supplies one edge of that
+    graph; this section is how the edges become a verdict.</p>
+<div class="유도"><div class="유도머리">유도 &mdash; Setup and hold, as one inequality each</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">A launching flop puts data out at t<sub>launch</sub> = T<sub>clk,launch</sub> + t<sub>cq</sub>.</td><td class="유도왜">The clock arrives at the launching flop at its own time — clock delay is not the same at both ends of a path.</td></tr><tr><td class="유도번호">2</td><td class="유도말">It arrives at the capturing flop at t<sub>arrival</sub> = t<sub>launch</sub> + t<sub>logic</sub>.</td><td class="유도왜">t<sub>logic</sub> is everything this chapter has been computing.</td></tr><tr><td class="유도번호">3</td><td class="유도말">The capture edge occurs at T<sub>clk,capture</sub> + T<sub>period</sub>, and the data must be stable t<sub>setup</sub> before it.</td><td class="유도왜">That stability requirement is a property of the flop, characterised the same way as any other arc.</td></tr><tr><td class="유도번호">4</td><td class="유도말"><b>Setup:</b> t<sub>arrival</sub> ≤ T<sub>capture</sub> + T − t<sub>setup</sub> − t<sub>uncertainty</sub>. Slack is the difference.</td><td class="유도왜">Clock uncertainty absorbs jitter and the skew the tool cannot yet know (pre-CTS). Positive slack passes; negative fails.</td></tr><tr><td class="유도번호">5</td><td class="유도말"><b>Hold:</b> the <i>fastest</i> path must not arrive before the same capture edge's hold window: t<sub>arrival,min</sub> ≥ T<sub>capture</sub> + t<sub>hold</sub>.</td><td class="유도왜"><b>Hold has no T in it.</b> Slowing the clock does not fix a hold violation — this is the single most useful fact in the chapter for a first-time designer.</td></tr></tbody></table></div>
+<table><caption>표 7. The four ways a path's numbers get worse than your estimate</caption><thead><tr><th>Effect</th><th>What it does</th><th>Typical size</th><th>Where it is set</th></tr></thead><tbody><tr><td>OCV / AOCV / POCV</td><td>Derates cell and net delays differently on the launch and capture clock paths, because two identical cells on the same die are not identical</td><td>3–10 % of the clock path</td><td>set_timing_derate</td></tr><tr><td>Clock uncertainty</td><td>A flat subtraction standing in for jitter and, pre-CTS, for skew</td><td>50–150 ps</td><td>set_clock_uncertainty</td></tr><tr><td>CPPR / CRPR</td><td><b>Gives back</b> the derate double-counted on the shared part of the launch and capture clock paths</td><td>Recovers 10–50 ps</td><td>on by default in signoff STA; often off in synthesis</td></tr><tr><td>SI / crosstalk delay</td><td>An aggressor switching the other way stretches your transition</td><td>5–15 % on long parallel nets</td><td>SI-aware STA with coupling from SPEF</td></tr></tbody></table>
+<div class="개념"><div class="개념머리">Reading report_timing without being misled</div>
+<div class="개념이론"><p>A timing report is a ledger: clock path to the launch flop, cell and net
+        delays along the data path, clock path to the capture flop, library setup, and
+        the derates. <b>The one line that decides whether the report is meaningful is
+        the corner and mode it was run in</b> — a report from the typical corner with
+        ideal clocks is not evidence of anything.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>Every timing signoff, every 'why is this failing' investigation, and every F<sub>max</sub> number you put in a datasheet.</td></tr>
+<tr><th>언제 쓰나</th><td>Read the whole path when slack is negative; read the <i>startpoint and endpoint</i> first when it is positive, to check that the tool timed the path you think it did. False paths and unconstrained endpoints show up here and nowhere else.</td></tr>
+<tr><th>어떻게 쓰나</th><td>Check: (1) is the endpoint a register, not a port; (2) is the clock real (propagated) or ideal; (3) what is the input transition at the worst cell — if it is at the end of the .lib index range, the number is extrapolated; (4) how much of the path is net delay. Above ~40 % net delay, the fix is placement, not logic.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code># Startpoint: u_fir/acc_reg[7] (rising edge-triggered flip-flop clocked by clk)
+# Endpoint:   u_fir/y_reg[15]   (rising edge-triggered flip-flop clocked by clk)
+# Corner: ss_0p81v_125c    Check: setup   Path Group: clk
+#   Point                                  Incr       Path
+#   clock clk (rise edge)                  0.000      0.000
+#   clock network delay (propagated)       0.412      0.412     &lt;- real CTS, not ideal
+#   u_fir/acc_reg[7]/CK (DFFX1)            0.000      0.412 r
+#   u_fir/acc_reg[7]/Q (DFFX1)             0.138      0.550 f
+#   u_fir/U231/Z (NAND2X2)                 0.061      0.611 r
+#   u_fir/U248/Z (INVX4)                   0.029      0.640 f
+#   net (fanout=6, length=214um)           0.087      0.727    &lt;- 12% of the path is WIRE
+#   u_fir/y_reg[15]/D (DFFX1)              0.000      0.727 f
+#   data arrival time                                 0.727
+#   clock clk (rise edge)                  4.000      4.000
+#   clock network delay (propagated)       0.438      4.438
+#   clock reconvergence pessimism          0.021      4.459    &lt;- CPPR gives this back
+#   library setup time                    -0.096      4.363
+#   data required time                                4.363
+#   slack (MET)                                       3.636</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> <code>clock network delay (ideal)</code> in that report instead of
+            <code>(propagated)</code> means no clock tree exists yet and the skew is a
+            guess. Numbers from an ideal-clock report routinely improve by 200–400 ps at
+            signoff — in the wrong direction. <b>Never put an ideal-clock F<sub>max</sub>
+            in a datasheet.</b></div>
+</div>
+<h2>T2.7 What to do with this on Monday</h2>
+<table><caption>표 8. 이 장의 개념이 실제로 쓰이는 자리</caption><thead><tr><th>개념</th><th>쓰이는 블록</th><th>무엇을 정하나</th></tr></thead><tbody><tr><td>RC지연 · τ · FO4</td><td>Any block, before RTL exists</td><td>Whether the function fits in one cycle at the target frequency</td></tr><tr><td>엘모어지연</td><td>Clock tree, reset tree, long datapath nets</td><td>Where a buffer must go, and which sink is the late one</td></tr><tr><td>논리적노력</td><td>Critical-path restructuring, pipeline depth</td><td>Stage count and the size ratio between stages</td></tr><tr><td>슬루 · NLDM</td><td>Reading .lib, debugging an implausible delay</td><td>Whether the tool interpolated or extrapolated your operating point</td></tr><tr><td>배선지연 · 리피터</td><td>Block boundaries and top-level assembly</td><td>The output-load and transition limits you publish in the datasheet</td></tr><tr><td>도착 · 요구 · 슬랙</td><td>Every signoff</td><td>Whether the number you are about to sell is real</td></tr></tbody></table>
+<div class="사고"><b>실제로 난 일</b><br>This repository measured its own FIR filter at <b>455 MHz</b> and then
+    at <b>47.4&nbsp;MHz</b> — a factor of 9.6 — from the same RTL. The
+    difference was a timing shell. Without registers at the boundary, the tool reported
+    the delay of a path from a pin to a pin, which is not a path that exists in a chip.
+    Every number in this chapter is only as meaningful as the path it was measured on,
+    and the cheapest way to be wrong by 10× is to time the wrong path.</div>
+<p>The next chapter takes the one case this one cannot handle: what happens when
+    the setup inequality is violated not by a slow path but because the data was never
+    synchronous with the clock at all. The answer is not a longer delay but a
+    probability, and it is the only timing quantity in this book that can never be made
+    zero.</p>
+<div class="특허"><div class="특허머리">특허로 가는 길 &mdash; 이 주제에서 발명이 일어나는 자리</div><div class="특허속">The delay of a gate is physics and is not patentable. <b>The way a
+        block arranges itself so that a delay stops mattering is.</b> Look at what the
+        claims in shipping IP actually cover: a speculative (unrolled) decision-feedback
+        equaliser that moves a feedback multiply-add off the critical loop and replaces
+        it with a precomputed mux — the arithmetic is unchanged, the loop delay is not;
+        a carry-select adder that buys delay with area by computing both carries; a
+        clock-tree scheme that deliberately skews two launch points so that a slow path
+        borrows time from a fast one. In every case the invention is <i>where the delay
+        was moved</i>, not how fast a transistor is. That is why this chapter spends as
+        much time on <i>which term dominates</i> as on the formulae: you cannot move a
+        term you have not identified.</div></div>

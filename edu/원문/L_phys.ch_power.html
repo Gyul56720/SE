@@ -1,0 +1,20 @@
+<h1 id="l2">L2. Power Delivery and Conversion</h1>
+<table><caption>Table 118. Voltage regulator types</caption><thead><tr><th>Type</th><th>Efficiency</th><th>Ripple</th><th>Response</th><th>Where</th></tr></thead><tbody><tr><td><b>LDO</b></td><td><i>V</i><sub>out</sub>/<i>V</i><sub>in</sub> &mdash; poor if the drop is large</td><td>Very low</td><td>Fast</td><td>Sensitive analogue, small currents</td></tr><tr><td><b>Buck (switching)</b></td><td>85&ndash;95%</td><td>Higher (switching ripple)</td><td>Slower</td><td>Digital cores, large currents</td></tr><tr><td>Boost</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td>Raising a voltage</td></tr><tr><td>Charge pump</td><td>Moderate</td><td>&mdash;</td><td>&mdash;</td><td>Small currents, no inductor</td></tr><tr><td><b>Integrated voltage regulator</b></td><td>&mdash;</td><td>&mdash;</td><td><b>Very fast</b></td><td>Per-domain DVFS on die</td></tr><tr><td><b>Switched-capacitor</b></td><td>Good at fixed ratios</td><td>&mdash;</td><td>&mdash;</td><td>On-die, no inductor needed</td></tr></tbody></table>
+<div class="ms"><b>Regulator response time is a digital design constraint.</b>
+    When a large synchronous block starts, it draws a current step; the regulator takes
+    time to respond, and during that time the supply droops. The droop reduces gate drive
+    and therefore increases delay, which can violate timing. Designers respond with
+    <b>di/dt management</b> &mdash; staggering the release of clock gates so a block wakes
+    in stages rather than all at once. <b>This is a purely digital technique introduced to
+    solve an analogue problem, and it must be specified</b>: an IP that draws its full
+    current in one cycle after an enable is harder to integrate than one that ramps.</div>
+<table><caption>Table 119. Decoupling hierarchy</caption><thead><tr><th>Level</th><th>Capacitance</th><th>Effective range</th><th>Limit</th></tr></thead><tbody><tr><td>On-die (MOS, MIM)</td><td>nF</td><td>&gt;100 MHz</td><td>Area</td></tr><tr><td>Package</td><td>&mu;F</td><td>10&ndash;100 MHz</td><td>Package inductance</td></tr><tr><td>Board ceramic</td><td>&mu;F</td><td>1&ndash;10 MHz</td><td>ESL</td></tr><tr><td>Bulk electrolytic</td><td>100&nbsp;&mu;F+</td><td>&lt;1 MHz</td><td>&mdash;</td></tr><tr><td><b>Anti-resonance</b></td><td>&mdash;</td><td><b>50&ndash;200 MHz typically</b></td><td><b>Where package L resonates with die C</b> &mdash; must be damped</td></tr></tbody></table>
+<div class="warn"><b>The anti-resonance peak is a common cause of
+    otherwise inexplicable failures.</b> Package inductance and on-die capacitance form a
+    parallel resonance at which the power delivery network's impedance is much higher than
+    at neighbouring frequencies. A workload whose current draw happens to contain energy at
+    that frequency &mdash; a loop running at the resonant rate, a burst-mode accelerator
+    &mdash; produces supply noise far larger than the average current would suggest. The
+    symptom is a design that passes all tests but fails on one specific piece of
+    software. <b>A digital block's current <i>spectrum</i>, not only its average power,
+    is a system-level property.</b></div>

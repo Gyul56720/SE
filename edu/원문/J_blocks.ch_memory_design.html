@@ -1,0 +1,23 @@
+<h1 id="j1">J1. On-Chip Memory</h1>
+<table><caption>Table 100. Memory types available to an IP block</caption><thead><tr><th>Type</th><th>Bit cell</th><th>Density</th><th>Notes</th></tr></thead><tbody><tr><td><b>6T SRAM</b></td><td>6 transistors</td><td>High</td><td>Standard; compiled by the foundry</td></tr><tr><td>8T / 10T SRAM</td><td>8&ndash;10 T</td><td>Lower</td><td>Better read stability, low-voltage operation</td></tr><tr><td>Register file</td><td>Latch or flop array</td><td>Low</td><td>Multi-port, fast, expensive</td></tr><tr><td><b>Flip-flop array</b></td><td>&mdash;</td><td>Lowest</td><td><b>Synthesisable</b> &mdash; the only portable option for small storage</td></tr><tr><td>Dual-port SRAM</td><td>8T</td><td>Lower</td><td>True dual port costs ~30&ndash;40% more area</td></tr><tr><td>Pseudo dual port</td><td>6T, time-multiplexed</td><td>High</td><td>Half the bandwidth</td></tr><tr><td>ROM</td><td>&mdash;</td><td>Very high</td><td>Constants, microcode, S-boxes</td></tr><tr><td>eDRAM / MRAM / RRAM</td><td>&mdash;</td><td>Very high</td><td>Process-specific; limited availability</td></tr></tbody></table>
+<div class="ms"><b>For an IP vendor the portability question dominates the
+    density question.</b> A compiled SRAM is smaller and faster than a flip-flop array,
+    but it is a foundry-specific macro: shipping RTL that instantiates one ties the
+    customer to a particular process and library. The standard resolution is a
+    <b>memory wrapper</b> &mdash; the IP instantiates a thin module with a defined
+    interface, and the customer maps it to their compiler's output or to a behavioural
+    model. A well-built IP ships the wrapper, a synthesisable fallback, and a document
+    specifying the required timing (read latency, write behaviour on a read&ndash;write
+    collision). <b>Omitting the collision behaviour is a frequent and expensive
+    omission</b>, because different compilers do different things and the block's
+    correctness may depend on which.</div>
+<table><caption>Table 101. Memory design considerations</caption><thead><tr><th>Issue</th><th>Consequence</th><th>Handling</th></tr></thead><tbody><tr><td>Read/write collision</td><td>Behaviour is compiler-dependent</td><td><b>Specify it</b>; forbid it in the design if possible</td></tr><tr><td>Banking</td><td>Enables parallel access</td><td>Address mapping becomes a design choice</td></tr><tr><td>Wide words vs many banks</td><td>Power and area trade</td><td>Follow the access pattern</td></tr><tr><td><b>ECC</b></td><td>Soft-error protection</td><td>Adds a cycle of latency and ~12&ndash;25% bits</td></tr><tr><td>Scrubbing</td><td>Corrects accumulated errors</td><td>Background read&ndash;correct&ndash;write</td></tr><tr><td>Redundancy and repair</td><td>Yield</td><td>Foundry feature; needs BIST/BIRA</td></tr><tr><td>Retention voltage</td><td>Low-power state</td><td>Below it, data is lost</td></tr></tbody></table>
+<div class="ms"><b>ECC on memory is a reliability calculation, not a
+    preference.</b> Soft-error rate is quoted in FIT per megabit (failures in
+    10<sup>9</sup> device-hours), typically a few hundred FIT/Mb at sea level for SRAM.
+    A 10&nbsp;Mb on-chip memory at 300&nbsp;FIT/Mb gives 3000 FIT, or roughly one upset
+    per 38 years per device &mdash; negligible for a phone, unacceptable for a fleet of
+    a million servers, where it means an upset every twenty minutes somewhere in the
+    fleet. <b>The same silicon needs ECC in one market and not in another</b>, which is
+    why it must be a parameter rather than a fixed design choice, and why the datasheet
+    must state the FIT contribution with and without it.</div>

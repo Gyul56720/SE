@@ -1,0 +1,45 @@
+<h1 id="a5">A5. Linear Algebra and Numerical Methods for Hardware</h1>
+<h2>A5.1 Decompositions and their hardware character</h2>
+<table><caption>Table 1. Matrix decompositions as IP blocks</caption><thead><tr><th>Decomposition</th><th>Form</th><th>Cost</th><th>Streaming?</th><th>Numerical character</th></tr></thead><tbody><tr><td><b>LU</b></td><td><i>A</i> = <i>LU</i></td><td><i>n</i><sup>3</sup>/3</td><td>No (pivoting needs lookahead)</td><td>Needs pivoting for stability</td></tr><tr><td><b>Cholesky</b></td><td><i>A</i> = <i>LL</i>*</td><td><i>n</i><sup>3</sup>/6</td><td><b>Yes</b></td><td><b>No pivoting needed</b> for SPD; half the work of LU</td></tr><tr><td><b>QR (Givens)</b></td><td><i>A</i> = <i>QR</i></td><td>2<i>mn</i><sup>2</sup></td><td><b>Yes</b></td><td>Backward stable; rotations are well conditioned</td></tr><tr><td>QR (Householder)</td><td>same</td><td>fewer ops</td><td>Less so</td><td>Best stability</td></tr><tr><td><b>SVD</b></td><td><i>A</i> = <i>U&Sigma;V</i>*</td><td>iterative</td><td>No</td><td><b>Most robust</b>; reveals rank and conditioning</td></tr><tr><td>Eigen (symmetric)</td><td><i>A</i> = <i>Q&Lambda;Q</i>*</td><td>iterative</td><td>No</td><td>Jacobi parallelises well</td></tr><tr><td>Schur / Hessenberg</td><td>&mdash;</td><td><i>n</i><sup>3</sup></td><td>No</td><td>Control applications</td></tr></tbody></table>
+<div class="ms"><b>The streaming column is the commercial column.</b>
+    Cholesky and Givens QR touch each input element once and can therefore be built with
+    an <code>hls::stream</code>-style interface and no external memory; SVD and LU must
+    revisit the array and therefore need an AXI master and a buffer. That single
+    architectural difference changes the IP's integration story, its area, and its price.
+    When a customer asks for &ldquo;a matrix inverse block&rdquo;, the first engineering
+    question is whether the matrix is symmetric positive definite &mdash; because if it
+    is, Cholesky gives a streaming solution at half the arithmetic, and if it is not, you
+    are quoting a much larger block.</div>
+<h2>A5.2 Conditioning</h2>
+<div class="math">&kappa;(A) = &sigma;<sub>max</sub>/&sigma;<sub>min</sub>
+    &nbsp;&nbsp;&nbsp; relative error &lesssim; &kappa;(A) &middot; &epsilon;<sub>machine</sub></div>
+<div class="ms">The rule of thumb that follows is directly usable:
+    <b>you lose roughly log<sub>10</sub>&kappa; decimal digits</b>. In fixed point,
+    substitute &epsilon; = 2<sup>&minus;<i>F</i></sup> for <i>F</i> fractional bits and the
+    statement becomes a word-length requirement:
+    <i>F</i> &gtrsim; log<sub>2</sub>&kappa; + (bits of accuracy required). This is how a
+    modelling engineer converts a mathematical property of the customer's data into a
+    hardware parameter. It also explains why <b>iterative refinement</b> works: solve in
+    low precision, compute the residual in high precision, correct, repeat. Each
+    iteration roughly squares the accuracy, so three refinements from a rough start can
+    reach near-full precision &mdash; but only if the condition number is modest, because
+    &kappa; enters the convergence factor. <b>Measured behaviour: for a well-conditioned
+    (isotropic) system the scheme reached 24.2 bits of accuracy; at correlation 0.99 it
+    reached only 12.4 bits.</b> An IP that advertises mixed-precision refinement must
+    therefore state a conditioning limit, or it will fail at a customer whose data is
+    correlated.</div>
+<h2>A5.3 Iterative solvers and their hardware mapping</h2>
+<table><caption>Table 2. Iterative methods</caption><thead><tr><th>Method</th><th>Update</th><th>Parallelism</th><th>Convergence</th></tr></thead><tbody><tr><td>Jacobi</td><td>uses only previous iterate</td><td><b>Fully parallel</b></td><td>Slow; needs diagonal dominance</td></tr><tr><td>Gauss&ndash;Seidel</td><td>uses updated values immediately</td><td>Sequential within a sweep</td><td>Roughly twice Jacobi's rate</td></tr><tr><td>SOR</td><td>over-relaxed GS</td><td>Sequential</td><td>Tunable &omega;</td></tr><tr><td><b>Conjugate gradient</b></td><td>Krylov subspace</td><td>Parallel (dot products)</td><td><i>n</i> steps exactly; &radic;&kappa; in practice</td></tr><tr><td>Richardson</td><td><i>x</i> &larr; <i>x</i> + &alpha;(<i>b</i>&minus;<i>Ax</i>)</td><td><b>Fully parallel</b></td><td>Simplest; &alpha; must be tuned</td></tr></tbody></table>
+<div class="ms">There is a physical realisation worth knowing because it
+    is repeatedly rediscovered and mis-described. An RC network that solves
+    <i>C</i>&nbsp;d<b>v</b>/d<i>t</i> = &minus;(<i>A</i><b>v</b> &minus; <b>b</b>) settles to
+    <i>A</i><sup>&minus;1</sup><b>b</b>, and is often presented as an &ldquo;analogue
+    Gauss&ndash;Seidel solver&rdquo;. <b>It is not</b>: because all nodes evolve
+    simultaneously from the same previous state, the continuous-time limit corresponds to
+    <b>Jacobi / Richardson</b>, not Gauss&ndash;Seidel, which is defined by sequential
+    in-sweep updates. The settling time is governed by
+    1/&lambda;<sub>min</sub>, i.e. by the condition number again. Under a normalisation
+    that fixes &lambda;<sub>max</sub>&nbsp;=&nbsp;1, the measured settling-time-to-condition
+    ratio was constant at 13.2 &mdash; the analogue solver buys constant factors, not
+    asymptotic ones. <b>Being able to state this precisely prevents a design house from
+    accepting a proposal whose speedup claim rests on a misidentification.</b></div>

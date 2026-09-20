@@ -1,0 +1,58 @@
+<h1 id="g1">G1. Electromagnetics for the Digital Engineer</h1>
+<p>A digital IP engineer meets electromagnetics at three boundaries: the
+    package and board that carry the block's signals, the channel a SerDes must equalise,
+    and the antenna of a radio or radar system whose baseband processing is the block
+    itself. This chapter covers what is needed at those boundaries.</p>
+<h2>G1.1 From Maxwell to circuits</h2>
+<table><caption>Table 71. Regimes and the model that applies</caption><thead><tr><th>Regime</th><th>Condition</th><th>Model</th><th>Consequence</th></tr></thead><tbody><tr><td>Lumped</td><td>size &Lt; &lambda;</td><td>KCL/KVL, R L C</td><td>Voltage is well defined everywhere</td></tr><tr><td>Quasi-static</td><td>size &lesssim; &lambda;/10</td><td>Lumped + parasitics</td><td>Inductance begins to matter</td></tr><tr><td><b>Distributed</b></td><td>size &gtrsim; &lambda;/10</td><td><b>Transmission line</b></td><td>Position matters; reflections occur</td></tr><tr><td>Full wave</td><td>structure comparable to &lambda;</td><td>Maxwell solvers</td><td>Radiation, resonance, modes</td></tr></tbody></table>
+<div class="ms"><b>The threshold keeps moving toward the designer.</b>
+    The criterion is not clock frequency but edge rate: significant spectral content
+    extends to roughly 0.35/<i>t<sub>r</sub></i>. A 50&nbsp;ps edge has content to
+    7&nbsp;GHz regardless of whether the clock is 100&nbsp;MHz, and at 7&nbsp;GHz a
+    2&nbsp;cm trace is a transmission line. <b>Slow clocks do not protect you from fast
+    edges.</b> This is why deliberately slowing output slew rates is a legitimate design
+    technique &mdash; and why an IP's output driver strength is a specification item with
+    EMI consequences, not just a timing one.</div>
+<h2>G1.2 Transmission lines</h2>
+<div class="math">Z<sub>0</sub> = &radic;((R + j&omega;L)/(G + j&omega;C))
+    &nbsp;&rarr;&nbsp; &radic;(L/C) &nbsp;(lossless)</div>
+<table><caption>Table 72. Line types</caption><thead><tr><th>Type</th><th>Z<sub>0</sub> range</th><th>Where</th></tr></thead><tbody><tr><td>Microstrip</td><td>50&ndash;100 &Omega;</td><td>Outer PCB layer; radiates more</td></tr><tr><td>Stripline</td><td>50&ndash;100 &Omega;</td><td>Inner layer; better shielded, slower (higher &epsilon;<sub>eff</sub>)</td></tr><tr><td>Coplanar waveguide</td><td>tunable</td><td>On-chip RF; ground on the same layer</td></tr><tr><td>Differential pair</td><td>85&ndash;100 &Omega; differential</td><td><b>The standard for high-speed serial</b></td></tr><tr><td>On-chip global wire</td><td>&mdash;</td><td>Usually RC-dominated, not a true TL</td></tr></tbody></table>
+<table><caption>Table 73. Termination strategies</caption><thead><tr><th>Scheme</th><th>Placement</th><th>Power</th><th>Note</th></tr></thead><tbody><tr><td>Series (source)</td><td>At driver</td><td>Low</td><td>Doubles the driver's output swing requirement</td></tr><tr><td>Parallel</td><td>At receiver</td><td>High (static)</td><td>Best match</td></tr><tr><td>Thevenin</td><td>At receiver</td><td>High</td><td>Sets a DC bias</td></tr><tr><td>AC-coupled</td><td>In line</td><td>Low</td><td><b>Requires DC-balanced coding</b> (8b/10b, 64b/66b)</td></tr><tr><td>On-die termination (ODT)</td><td>Inside the chip</td><td>Moderate</td><td><b>Calibrated against an external precision resistor</b></td></tr></tbody></table>
+<div class="ms"><b>AC coupling and line coding are linked requirements.</b>
+    A series capacitor blocks DC, so a long run of identical symbols causes the signal to
+    droop toward the decision threshold &mdash; baseline wander. The line code must
+    therefore bound the run length and keep the running disparity small. 8b/10b does this
+    with an explicit disparity rule at 25% overhead; 64b/66b uses a scrambler and accepts a
+    small probability of a long run, at 3% overhead. <b>The coding choice is thus
+    determined by an analogue component.</b> An engineer who knows only the coding layer
+    cannot explain why 64b/66b needs a scrambler with a particular polynomial, nor why
+    certain data patterns are used as stress tests.</div>
+<h2>G1.3 Antennas and propagation</h2>
+<div class="math">P<sub>r</sub> = P<sub>t</sub>G<sub>t</sub>G<sub>r</sub>
+    (&lambda;/4&pi;d)<sup>2</sup> &nbsp;&nbsp;(Friis)</div>
+<table><caption>Table 74. Antenna and propagation quantities</caption><thead><tr><th>Quantity</th><th>Definition</th><th>Design relevance</th></tr></thead><tbody><tr><td>Gain <i>G</i></td><td>Directivity &times; efficiency</td><td>Trades coverage for range</td></tr><tr><td>Effective aperture</td><td><i>A<sub>e</sub></i> = <i>G</i>&lambda;<sup>2</sup>/4&pi;</td><td><b>Higher frequency &rarr; smaller aperture for the same gain</b></td></tr><tr><td>Beamwidth</td><td>&asymp; 70&deg;&lambda;/<i>D</i></td><td>Array size sets angular resolution</td></tr><tr><td>Path loss exponent</td><td>2 (free space) to 4+ (urban)</td><td>Link budget</td></tr><tr><td>Multipath / delay spread</td><td>&mdash;</td><td><b>Sets the equaliser or OFDM CP length</b></td></tr><tr><td>Doppler shift</td><td><i>f<sub>d</sub></i> = 2<i>v</i>/&lambda;</td><td>Coherence time; tracking loop bandwidth</td></tr><tr><td>Fading</td><td>Rayleigh / Rician</td><td>Diversity, MIMO</td></tr></tbody></table>
+<div class="ms"><b>Delay spread converts directly into a hardware
+    parameter.</b> If the channel's impulse response lasts &tau;<sub>max</sub>, a
+    single-carrier receiver needs an equaliser spanning &tau;<sub>max</sub>/<i>T<sub>s</sub></i>
+    symbols, and an OFDM receiver needs a cyclic prefix at least that long. The first
+    costs taps (area, adaptation time); the second costs throughput (the CP is overhead).
+    <b>This is the quantitative form of the choice between single-carrier and OFDM</b>,
+    and it explains why wireline links &mdash; where delay spread is long but the channel
+    is static &mdash; use equalisers, while wireless links with time-varying multipath use
+    OFDM. The same physics, opposite conclusions, because the <i>rate of change</i>
+    differs.</div>
+<h2>G1.4 Noise figure and receiver chains</h2>
+<div class="math">F<sub>total</sub> = F<sub>1</sub> +
+    (F<sub>2</sub>&minus;1)/G<sub>1</sub> + (F<sub>3</sub>&minus;1)/(G<sub>1</sub>G<sub>2</sub>)
+    + &hellip;</div>
+<div class="ms"><b>Friis's formula justifies the entire architecture of a
+    receiver front end.</b> Because later stages are divided by the cumulative gain ahead
+    of them, the first amplifier dominates the noise figure &mdash; hence the low-noise
+    amplifier, placed as close to the antenna as possible, often before any filter whose
+    insertion loss would add directly to <i>F</i><sub>1</sub>. The counterweight is
+    linearity: gain early in the chain means large signals later, so the cascaded
+    third-order intercept point degrades as
+    1/IIP3<sub>total</sub> = 1/IIP3<sub>1</sub> + <i>G</i><sub>1</sub>/IIP3<sub>2</sub> + &hellip;
+    <b>Noise pushes gain forward; linearity pushes it backward.</b> Every receiver's gain
+    distribution is a solution to that tension, and the digital back end inherits the
+    result as its required dynamic range &mdash; which is to say, as its ADC bit count.</div>

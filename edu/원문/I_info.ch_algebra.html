@@ -1,0 +1,39 @@
+<h1 id="i2">I2. Algebraic Structures for Hardware</h1>
+<h2>I2.1 Groups, rings, fields</h2>
+<table><caption>Table 85. Structures and the hardware they license</caption><thead><tr><th>Structure</th><th>Operations</th><th>Guarantee</th><th>Hardware consequence</th></tr></thead><tbody><tr><td>Group</td><td>one associative op with inverses</td><td>Cancellation</td><td>Reversible transforms</td></tr><tr><td><b>Ring</b></td><td>+ and &times;, no division</td><td>Closure under both</td><td><b>Two's-complement <i>W</i>-bit arithmetic is a ring</b> &mdash; wrap-around is exact, so operation order does not matter</td></tr><tr><td>Field</td><td>+ &times; and division</td><td>Every non-zero element invertible</td><td>GF(2<sup><i>m</i></sup>) arithmetic for codes and crypto</td></tr><tr><td>Vector space over a field</td><td>&mdash;</td><td>Linearity</td><td><b>Linear codes: encoding and syndrome are matrix products</b></td></tr><tr><td>Polynomial ring <i>F</i>[<i>x</i>]/(<i>f</i>)</td><td>&mdash;</td><td>&mdash;</td><td>Cyclic codes, NTT, lattice cryptography</td></tr></tbody></table>
+<div class="ms"><b>The ring property of two's-complement arithmetic is the
+    formal reason behind a practical rule.</b> Because <i>W</i>-bit two's complement is
+    the ring &#8484;/2<sup><i>W</i></sup>&#8484;, addition and multiplication are exact
+    modulo 2<sup><i>W</i></sup>, associative and commutative. Intermediate overflow
+    therefore cancels exactly, provided the final result is in range, and <b>the order of
+    accumulation cannot change the answer</b>. Saturation destroys the ring structure:
+    once a value is clamped, information is lost and order matters. This is why a CIC
+    filter <i>requires</i> wrap-around and why an LDPC decoder <i>requires</i> saturation
+    &mdash; the two blocks rely on opposite algebraic properties. <b>Stating this as
+    algebra rather than as folklore makes it possible to decide the question for a new
+    block instead of guessing.</b></div>
+<h2>I2.2 Finite fields in detail</h2>
+<table><caption>Table 86. GF(2<sup>m</sup>) implementation choices</caption><thead><tr><th>Representation</th><th>Multiplication</th><th>Inversion</th><th>Best for</th></tr></thead><tbody><tr><td>Polynomial basis</td><td>Shift-and-XOR, reduce</td><td>Extended Euclid or Itoh&ndash;Tsujii</td><td>General purpose; most codes</td></tr><tr><td>Normal basis</td><td>More complex</td><td><b>Squaring is a free cyclic shift</b></td><td>Inversion-heavy workloads (ECC)</td></tr><tr><td><b>Log/antilog tables</b></td><td>Add logs</td><td>Negate the log</td><td><b>Small fields (m &le; 12); the usual RS choice</b></td></tr><tr><td>Tower field</td><td>GF(2<sup>8</sup>)&rarr;GF(2<sup>4</sup>)&rarr;GF(2<sup>2</sup>)</td><td>Recursive</td><td><b>Maskable</b> &mdash; the AES DOM S-box</td></tr><tr><td>Composite field</td><td>&mdash;</td><td>&mdash;</td><td>Area reduction</td></tr></tbody></table>
+<div class="ms"><b>The choice of irreducible polynomial is a
+    specification item, not an implementation detail.</b> Two implementations of
+    GF(2<sup>10</sup>) using different primitive polynomials produce entirely different
+    &mdash; though isomorphic &mdash; arithmetic, and codewords from one will not decode in
+    the other. Standards therefore fix the polynomial: AES uses
+    <i>x</i><sup>8</sup>+<i>x</i><sup>4</sup>+<i>x</i><sup>3</sup>+<i>x</i>+1, and
+    IEEE&nbsp;802.3 Clause&nbsp;91 fixes the field for RS(544,514). <b>A reference model
+    that hard-codes a plausible polynomial without checking the standard will interoperate
+    with nothing.</b> The defensive practice is to make the polynomial a parameter, assert
+    that it is primitive (verify that &alpha; generates all 2<sup><i>m</i></sup>&minus;1
+    non-zero elements), and record in the code whether the value has been confirmed
+    against the specification text.</div>
+<table><caption>Table 87. Where finite fields appear</caption><thead><tr><th>Application</th><th>Field</th><th>Operation that dominates</th></tr></thead><tbody><tr><td>Reed&ndash;Solomon</td><td>GF(2<sup>8</sup>), GF(2<sup>10</sup>)</td><td>Multiply, invert</td></tr><tr><td>BCH</td><td>GF(2<sup><i>m</i></sup>)</td><td>Multiply</td></tr><tr><td>AES</td><td>GF(2<sup>8</sup>)</td><td>Inverse (S-box), &times;2 and &times;3 (MixColumns)</td></tr><tr><td>AES-GCM</td><td>GF(2<sup>128</sup>)</td><td>Carry-less multiply</td></tr><tr><td>Elliptic curves</td><td>GF(<i>p</i>) or GF(2<sup><i>m</i></sup>)</td><td>Modular multiply (Montgomery)</td></tr><tr><td><b>ML-KEM / ML-DSA</b></td><td>&#8484;<sub><i>q</i></sub>[<i>x</i>]/(<i>x</i><sup><i>n</i></sup>+1)</td><td><b>Number-theoretic transform</b></td></tr><tr><td>CRC</td><td>GF(2)[<i>x</i>]</td><td>Polynomial remainder (LFSR)</td></tr><tr><td>Erasure coding (RAID)</td><td>GF(2<sup>8</sup>)</td><td>Matrix multiply</td></tr></tbody></table>
+<div class="ms"><b>Post-quantum cryptography brings a new arithmetic
+    requirement into mainstream silicon.</b> ML-KEM and ML-DSA operate in a polynomial
+    ring modulo a small prime (3329 and 8380417 respectively), and their bottleneck is the
+    number-theoretic transform &mdash; an FFT over that ring. The hardware looks like an
+    FFT but with modular multipliers instead of complex ones, and modular reduction by a
+    fixed small prime admits efficient tricks (Montgomery, Barrett, or prime-specific
+    shift&ndash;add chains). <b>For a design house, an NTT block parameterised over
+    modulus and length is a single kernel serving several standards</b>, in the same way
+    that a Cholesky block serves radar, MIMO and beamforming. Finding these shared kernels
+    is how a small portfolio covers a large market.</div>

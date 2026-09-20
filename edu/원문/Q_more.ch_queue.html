@@ -1,0 +1,32 @@
+<h1 id="q1">Q1. Performance Modelling and Queueing</h1>
+<p>Functional correctness is verified against a golden model; performance
+    is predicted by a different kind of model entirely. Confusing the two is a common and
+    expensive mistake, because a functionally perfect block can still fail its throughput
+    requirement in a system.</p>
+<table><caption>Table 164. Model types and what each answers</caption><thead><tr><th>Model</th><th>Question answered</th><th>Cost</th><th>Fidelity</th></tr></thead><tbody><tr><td>Analytical (closed form)</td><td>Rough sizing, bounds</td><td>Minutes</td><td>Low but instant</td></tr><tr><td><b>Spreadsheet / static</b></td><td>Bandwidth and utilisation budgets</td><td>Hours</td><td>Adequate for first-order decisions</td></tr><tr><td><b>Queueing model</b></td><td>Latency under load, buffer sizing</td><td>Days</td><td>Good when arrivals are stochastic</td></tr><tr><td>Trace-driven simulation</td><td>Behaviour on real workloads</td><td>Days</td><td>High</td></tr><tr><td><b>Cycle-approximate (SystemC TLM)</b></td><td>System behaviour before RTL exists</td><td>Weeks</td><td>Good</td></tr><tr><td>Cycle-accurate</td><td>Exact cycle counts</td><td>Weeks&ndash;months</td><td>Highest</td></tr><tr><td>RTL simulation</td><td>Ground truth</td><td>&mdash;</td><td>Exact but far too slow for system studies</td></tr></tbody></table>
+<div class="ms"><b>The practical value of the middle rows is that they
+    exist before RTL does.</b> An architecture decision &mdash; how deep a buffer, how many
+    outstanding transactions, whether to double the datapath width &mdash; must be made
+    months before there is anything to simulate. A cycle-approximate SystemC model built
+    from the specification answers it in days, and being wrong by 10% is usually
+    irrelevant when the alternatives differ by a factor of two. <b>Insisting on
+    cycle-accurate fidelity for an architectural question delays the decision until it is
+    too late to act on.</b></div>
+<table><caption>Table 165. Queueing results worth knowing</caption><thead><tr><th>Result</th><th>Statement</th><th>Use</th></tr></thead><tbody><tr><td><b>Little's law</b></td><td><i>L</i> = &lambda;<i>W</i></td><td><b>Occupancy = arrival rate &times; latency</b> &mdash; sizes any buffer</td></tr><tr><td>M/M/1 latency</td><td><i>W</i> = 1/(&mu;&minus;&lambda;)</td><td><b>Latency diverges as utilisation &rarr; 1</b></td></tr><tr><td>M/M/1 occupancy</td><td>&rho;/(1&minus;&rho;)</td><td>At 90% utilisation the mean queue is 9</td></tr><tr><td>M/D/1</td><td>Deterministic service</td><td>Half the waiting time of M/M/1</td></tr><tr><td>Erlang B</td><td>Blocking probability</td><td>Sizing a finite resource pool</td></tr><tr><td>Burstiness</td><td>&mdash;</td><td><b>Real traffic is burstier than Poisson</b> &mdash; Poisson results are optimistic</td></tr></tbody></table>
+<div class="ms"><b>Little's law is the single most useful formula in
+    system design and it requires no assumptions about distributions.</b> To sustain
+    10&nbsp;GB/s with a 500&nbsp;ns round trip, the system must keep
+    10&times;10<sup>9</sup>&times;500&times;10<sup>&minus;9</sup>&nbsp;=&nbsp;5&nbsp;kB in
+    flight; if the interface supports 32 outstanding 64-byte requests, that is 2&nbsp;kB
+    and the link will run at 40% of its rate no matter how fast it is. <b>This is the
+    quantitative form of the PCIe tag-capacity argument in Chapter P2</b>, and the same
+    calculation sizes DMA descriptor rings, memory controller queues and cache
+    miss-status registers. Learning to apply it in thirty seconds is worth more than any
+    simulator.</div>
+<div class="warn"><b>Designing for average load is designing to fail.</b>
+    The M/M/1 result shows latency rising hyperbolically with utilisation: at 50% the
+    queue is 1, at 90% it is 9, at 99% it is 99. Systems provisioned at their average
+    demand spend a substantial fraction of their time near saturation, where latency is
+    dominated by queueing rather than service. <b>Buffer sizing must be driven by the
+    tail of the arrival distribution, not its mean</b>, and a performance specification
+    that quotes only average throughput is incomplete.</div>

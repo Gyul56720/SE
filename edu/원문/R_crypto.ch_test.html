@@ -1,0 +1,22 @@
+<h1 id="r2">R2. Manufacturing Test</h1>
+<table><caption>Table 171. Fault models</caption><thead><tr><th>Model</th><th>Represents</th><th>Coverage target</th><th>Test method</th></tr></thead><tbody><tr><td><b>Stuck-at</b></td><td>A node permanently 0 or 1</td><td>&gt;99%</td><td>Scan + ATPG</td></tr><tr><td><b>Transition / delay</b></td><td>A path too slow</td><td>&gt;90%</td><td>At-speed scan (launch-on-capture or launch-on-shift)</td></tr><tr><td>Path delay</td><td>A specific critical path</td><td>Selected paths</td><td>Targeted patterns</td></tr><tr><td>Bridging</td><td>Short between nodes</td><td>&mdash;</td><td>Layout-aware ATPG</td></tr><tr><td>Open</td><td>Broken connection</td><td>&mdash;</td><td>&mdash;</td></tr><tr><td>IDDQ</td><td>Abnormal quiescent current</td><td>&mdash;</td><td><b>Less effective at advanced nodes</b> &mdash; leakage swamps it</td></tr><tr><td>Cell-aware</td><td>Defects inside a standard cell</td><td>&mdash;</td><td>Requires cell-level fault dictionaries</td></tr></tbody></table>
+<div class="ms"><b>Stuck-at coverage is a proxy, not a goal, and the
+    distinction matters commercially.</b> No real defect is exactly a stuck-at fault; the
+    model is used because it is tractable and correlates with real defect detection. The
+    correlation is imperfect, which is why transition and cell-aware models were added as
+    geometries shrank. For an IP vendor the practical obligation is to make the block
+    testable &mdash; fully scannable, no uncontrollable clock gating, no internally
+    generated asynchronous resets, memories accessible to BIST &mdash; because the
+    customer must reach <i>their</i> coverage target on the whole chip, and an untestable
+    island drags the total down. <b>Testability is a deliverable property, and it is
+    checked long before the customer ever runs the block.</b></div>
+<table><caption>Table 172. Test economics</caption><thead><tr><th>Factor</th><th>Effect</th><th>Lever</th></tr></thead><tbody><tr><td>Tester time</td><td>Directly proportional to cost per part</td><td><b>Test compression</b> (10&ndash;100&times; pattern reduction)</td></tr><tr><td>Pattern count</td><td>Drives tester time</td><td>ATPG effectiveness</td></tr><tr><td>Test escapes</td><td>Defective parts shipped</td><td>Higher coverage, better fault models</td></tr><tr><td>Yield loss (overkill)</td><td>Good parts rejected</td><td>Correct test limits</td></tr><tr><td><b>Burn-in</b></td><td>Screens infant mortality</td><td>Expensive; sometimes replaced by design margin</td></tr><tr><td>Known-good die</td><td><b>Essential for chiplets</b></td><td><b>Test before assembly or lose the whole package</b></td></tr></tbody></table>
+<div class="ms"><b>Known-good-die testing is what makes chiplets
+    economically possible, and its absence is what delayed them.</b> If four dies are
+    assembled into one package and any is defective, the whole package is lost &mdash; so
+    the compound yield is the product of the individual yields. At 90% each, four dies give
+    66%. Testing each die thoroughly before assembly restores the economics, but testing a
+    bare die at speed is harder than testing a packaged part. <b>This is why the
+    disaggregation trend depended on test technology as much as on interconnect
+    standards</b>, and it is a useful reminder that a manufacturing capability can gate an
+    architectural trend.</div>

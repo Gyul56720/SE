@@ -1,0 +1,109 @@
+<h1 id="z14">Z14. The C++ Model Layer &mdash; One Source, Two Destinations</h1>
+<p>Ask a working design house where its models live and you rarely hear
+    &ldquo;SystemVerilog.&rdquo; You hear C or C++. The RTL is what you sell; the C++ is
+    what tells you the RTL is right, and increasingly it is also what <em>generates</em>
+    the RTL. This part builds that layer for real. Every file named here is in this
+    repository, compiles with <code>g++</code>, and is exercised while this page
+    renders.</p>
+<h2>Z14.1 Why the model is C++ and not Python</h2>
+<p>Earlier parts of this book used Python golden models (<code>zlib</code>
+    for CRC-32, <code>gf.py</code> for the Galois field). That was right for those blocks:
+    the model existed already, independently, which is the property that makes a golden
+    model worth having. It stops being right the moment the model has to do two jobs:</p>
+<table><caption>Table 447. What the model layer has to do, and what language can do it</caption><thead><tr><th>Job</th><th>Python</th><th>C++</th><th>Why</th></tr></thead><tbody><tr><td>Be the verification reference</td><td>yes</td><td>yes</td><td>Both express the algorithm exactly.</td></tr><tr><td>Run billions of vectors</td><td>no</td><td>yes</td><td>Measured below: 144&nbsp;M evaluations/s in C++. CPython is ~1000&times; slower.</td></tr><tr><td>Be the HLS input</td><td>no</td><td>yes</td><td>Every HLS tool in industry takes C, C++ or SystemC. None takes Python.</td></tr><tr><td>Be bit-accurate to the RTL</td><td>awkward</td><td>yes</td><td>Python ints are arbitrary precision. Overflow and truncation must be simulated by hand; in C++ the fixed-width types do it.</td></tr></tbody></table>
+<p>The third row is the one that changes the architecture of the whole
+    flow. If the model is also the HLS input, then the model and the RTL <em>cannot
+    disagree</em>, because there is only one description:</p>
+<figure><figcaption>One source, two destinations</figcaption>
+<pre>
+                    edu/model/fir.h          &lt;- 알고리즘은 여기에만 있다
+                          |
+            +-------------+-------------+
+            |                           |
+        g++ -O2                     bambu (HLS)
+            |                           |
+     equiv.cpp   vectors.cpp        fir_top.v
+     (전수 등가성)  (골든 벡터)       (파는 물건)
+            |                           |
+            +-----------+---------------+
+                        |
+                   iverilog: 같은 벡터로 RTL 을 잰다
+</pre></figure>
+<p>The conventional flow has three descriptions &mdash; a Python model, a
+    C++ HLS source and hand-written RTL &mdash; and therefore three chances to disagree.
+    When they disagree, nobody knows which is right, because each was written from the
+    spec by a different person on a different day. The structure above removes two of the
+    three.</p>
+<h2>Z14.2 The shared header, and why it has no vendor types</h2>
+<p><code>edu/model/ipmodel.h</code> declares the fixed-point contract. It
+    deliberately uses <code>int32_t</code> and hand-written saturation rather than
+    <code>ap_fixed</code> or <code>hls::stream</code>. That was not a style choice; it was
+    measured. Part&nbsp;Z15 gives the four one-variable controls that forced it.</p>
+<pre><code>// C++ 에서 음수 우시프트는 C++20 이전에는 구현정의지만, gcc·clang 은
+// 산술 시프트로 하고 Bambu 도 같다 -- 그래도 기대는 것이 싫어서
+// **나눗셈으로 적지 않는다**: 나눗셈은 0 쪽으로 자르고 시프트는 -무한 쪽으로
+// 자른다.  둘이 음수에서 다르다.  RTL 은 시프트를 하므로 모델도 시프트다.
+static inline int32_t asr(int32_t v, int n) {
+    return (v &lt; 0) ? ~((~v) &gt;&gt; n) : (v &gt;&gt; n);   // 부호와 무관하게 floor 시프트
+}
+
+// n비트 부호있는 범위로 포화.  자르지(wrap) 않고 **포화**하는 이유:
+// 링크 등화기에서 wrap 은 큰 양수를 큰 음수로 뒤집어 슬라이서를 정반대로
+// 틀리게 만든다.  포화는 틀려도 같은 부호 쪽으로 틀린다.
+static inline int32_t sat(int32_t v, int n) {
+    const int32_t hi = (int32_t)((1u &lt;&lt; (n - 1)) - 1);
+    const int32_t lo = -hi - 1;
+    return v &gt; hi ? hi : (v &lt; lo ? lo : v);
+}
+
+// 아래 n비트만 남긴다 (부호 없음).  RTL 의 `[n-1:0]` 과 같다.
+static inline uint32_t mask(uint32_t v, int n) {
+    return n &gt;= 32 ? v : (v &amp; ((1u &lt;&lt; n) - 1));
+}
+</code></pre>
+<p>Two details in that code are worth the ink, because both are places
+    where a model and an RTL silently part company.</p>
+<div class="deriv"><div class="derh">Why the shift is written as a shift and not a division</div><table class="dtab"><thead><tr><th></th><th>Step</th><th>Justification</th></tr></thead><tbody><tr><td class="dn">1</td><td class="dstep">The RTL computes <code>acc[16:7]</code> &mdash; an arithmetic right shift by 7.</td><td class="dwhy">That is what the hardware does; a shift is free, a divider is not.</td></tr><tr><td class="dn">2</td><td class="dstep">In C, <code>acc / 128</code> rounds toward zero. <code>acc &gt;&gt; 7</code> rounds toward negative infinity.</td><td class="dwhy">Integer division truncates toward zero by definition (C99 6.5.5); a shift discards low bits, which floors.</td></tr><tr><td class="dn">3</td><td class="dstep">For <code>acc = -1</code>: division gives 0, shift gives &minus;1.</td><td class="dwhy">&minus;1/128 = &minus;0.0078 truncates to 0; &minus;1 &gt;&gt; 7 = &minus;1.</td></tr><tr><td class="dn">4</td><td class="dstep">So writing the model with division makes it disagree with the RTL on every negative value whose magnitude is below the shift amount.</td><td class="dwhy">That is roughly half of all small negative accumulator values &mdash; common in an equaliser sitting near zero.</td></tr><tr><td class="dn">5</td><td class="dstep">Therefore <code>asr()</code> is written as a shift, with the sign handled explicitly so it does not rely on implementation-defined behaviour.</td><td class="dwhy">C++ left negative right-shift implementation-defined until C++20.</td></tr></tbody></table></div>
+<p>The second is saturation versus wrapping. A wrap turns a large positive
+    accumulator into a large negative one, which drives the slicer to exactly the wrong
+    decision; a saturate is still wrong but wrong in the same direction. The model
+    saturates because the RTL saturates, and the RTL saturates because the specification
+    says so. All three have to agree or the comparison is theatre.</p>
+<h2>Z14.3 Proving three architectures equal &mdash; by exhaustion</h2>
+<p><code>fir.h</code> contains the same filter written three ways: the
+    textbook form, a width-narrowed form, and a symmetry-folded form that uses two
+    multipliers instead of four. They have to compute the same function. Most projects
+    establish that by running a few thousand random vectors and declaring victory. Here
+    the input space is four 8-bit samples, so it has exactly 4,294,967,296 points &mdash; and that is
+    small enough to check <em>all of them</em>.</p>
+<table><caption>Table 448. Exhaustive equivalence, measured</caption><thead><tr><th>Quantity</th><th>Value</th><th>What it means</th></tr></thead><tbody><tr><td>Input space</td><td>4,294,967,296</td><td>256<sup>4</sup> &mdash; every possible input</td></tr><tr><td>Wall time</td><td>29.7 s</td><td>g++ -O2, one core</td></tr><tr><td>Rate</td><td>144,419,484/s</td><td>Each point evaluates all three variants</td></tr><tr><td>Disagreements</td><td>0</td><td>Not &ldquo;none found&rdquo; &mdash; <b>none exist</b></td></tr><tr><td>Distinct outputs</td><td>256</td><td>All 256 output codes occur, so the check is not degenerate</td></tr></tbody></table>
+<p>That last row is the gate this repository puts on every measurement. A
+    comparison that only ever sees one output value has proved nothing, however many
+    vectors it ran. <code>equiv.cpp</code> counts distinct outputs and exits non-zero if
+    there are fewer than two &mdash; the same rule the RTL harness applies in
+    Part&nbsp;Z1.</p>
+<p>The word &ldquo;proof&rdquo; is used carefully. This is exhaustive over
+    the <em>stated</em> input space, which is the combinational function of four samples.
+    It says nothing about the sequential wrapper, the reset behaviour, or the handshake.
+    Those need different arguments &mdash; and in Part&nbsp;Z15 one of them costs us a
+    bug.</p>
+<h2>Z14.4 What verification time actually looks like</h2>
+<p>&ldquo;C++ simulates a thousand times faster than RTL&rdquo; is repeated
+    everywhere and is almost never measured by the person repeating it. Measuring it on
+    this design produces a more useful answer than the folklore.</p>
+<table><caption>Table 449. Vectors per second, same algorithm, same machine</caption><thead><tr><th>Path</th><th>Vectors/s</th><th>Relative</th><th>What is included</th></tr></thead><tbody><tr><td>C++, compute only</td><td>144,419,484</td><td>1,616&times;</td><td>The arithmetic, nothing else (<code>equiv.cpp</code>)</td></tr><tr><td>C++, formatted to a file</td><td>5,110,455</td><td>57&times;</td><td>Same arithmetic plus <code>printf</code> of five integers</td></tr><tr><td>RTL, iverilog + vvp</td><td>89,345</td><td>1&times;</td><td>Event-driven simulation of the synthesisable design</td></tr></tbody></table>
+<div class="wex"><div class="wexh">Worked example 75. Where the speed advantage goes</div><div class="wexg"><b>Given.</b> C++ computes at 144,419,484/s but emits formatted vectors at only 5,110,455/s.</div><div class="wexm"><b>Method.</b> Divide. The ratio is the cost of text formatting relative to the algorithm itself.</div><div class="wexn"><b>Numbers.</b> 28&times;. Formatting five integers as decimal text costs about 28 times more than computing the filter output.</div><div class="wexx">The practical rule: a C++ reference that talks to the RTL through a text file throws away almost all of its speed advantage. Use the file for the few thousand vectors the RTL will actually run, and keep the billion-vector sweeps entirely inside C++.</div><div class="wext"><b>How this is got wrong.</b> The obvious reading is &ldquo;file I/O is slow.&rdquo; It was measured and it is not: writing 200,000 vectors to a file ran at 5,110,455/s and discarding them to <code>/dev/null</code> ran at 5,398,353/s &mdash; a 5&nbsp;% difference. The cost is <code>printf</code>'s decimal conversion, not the disk. Replacing text with a binary buffer, or comparing in memory and never serialising at all, recovers the other 96&nbsp;%.</div></div>
+<p>So the honest version of the folklore is: the algorithm is about
+    1,600&times; faster in C++, and a badly plumbed harness will give you 57&times;. Both
+    are worth having; they buy different things. The 57&times; path is how you drive the
+    RTL. The 1,600&times; path is how you settle the algorithm before any RTL exists
+    &mdash; and that is where the schedule is actually won, because a bug found in the
+    C++ costs minutes and the same bug found in a gate-level regression costs
+    days.</p>
+<h2>Z14.5 Order of work, and what it saves</h2>
+<table><caption>Table 450. Where each class of defect should die</caption><thead><tr><th>Defect class</th><th>Cheapest place to catch it</th><th>Cost if it escapes to RTL</th></tr></thead><tbody><tr><td>Algorithm wrong (wrong formula, wrong rounding)</td><td>C++, exhaustive or bulk</td><td>Days &mdash; the RTL is right and the spec is wrong, which is the slowest kind of debug</td></tr><tr><td>Overflow / width</td><td>C++ with fixed-width types</td><td>Weeks &mdash; appears as &ldquo;fails occasionally&rdquo;</td></tr><tr><td>Handshake, reset, backpressure</td><td>RTL only</td><td>Cannot be found in C++; budget RTL time for exactly this</td></tr><tr><td>Timing / area</td><td>Synthesis and P&amp;R only</td><td>Cannot be found in simulation at all</td></tr></tbody></table>
+<p>The two lower rows are why HLS does not remove the need for RTL
+    verification. It removes the top two rows, which are most of the defects by count, and
+    leaves the bottom two, which are most of the defects by <em>difficulty</em>.
+    Part&nbsp;Z15 hits one of the third-row defects within ten minutes of first running the
+    generated RTL.</p>

@@ -1,0 +1,57 @@
+<h1 id="g2">G2. Radar: Signal Processing as an IP Block Family</h1>
+<p>Automotive and industrial radar is one of the largest current markets
+    for signal-processing IP, and its chain is a clean illustration of how physical
+    parameters become hardware parameters.</p>
+<div class="math">P<sub>r</sub> = P<sub>t</sub>G<sup>2</sup>&lambda;<sup>2</sup>&sigma;
+    / ((4&pi;)<sup>3</sup>R<sup>4</sup>) &nbsp;&nbsp;(radar equation)</div>
+<div class="bs">The fourth-power range dependence is the defining fact of
+    radar: doubling the detection range requires sixteen times the received power. Since
+    transmit power and antenna gain are bounded, the remaining lever is
+    <b>processing gain</b> &mdash; coherent integration &mdash; which is entirely a
+    digital matter and therefore entirely IP.</div>
+<figure id="fig10"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 350 210" width="100%" font-family="Times New Roman, Nimbus Roman, serif"><defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#000"/></marker><marker id="ao" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="none" stroke="#000" stroke-width="1.4"/></marker></defs><path d="M30,150 L330,150" stroke="#000" stroke-width="1.1" fill="none"/><path d="M30,150 L30,30" stroke="#000" stroke-width="1.1" fill="none"/><path d="M40,140 L110,45 L110,140 L180,45 L180,140 L250,45 L250,140" stroke="#123f6d" stroke-width="1.6" fill="none"/><path d="M62,140 L132,45 L132,140 L202,45 L202,140 L272,45 L272,140" stroke="#a33" stroke-width="1.4" fill="none" stroke-dasharray="4,3"/><text x="300" y="44" font-size="9" text-anchor="start" fill="#000" fill="#123f6d">TX</text><text x="300" y="62" font-size="9" text-anchor="start" fill="#000" fill="#a33">RX (delayed)</text><text x="24" y="28" font-size="10" text-anchor="end" fill="#000" >f</text><text x="336" y="154" font-size="10" text-anchor="start" fill="#000" >t</text><text x="180" y="178" font-size="10" text-anchor="middle" fill="#000" >Beat frequency f_b = 2·R·S/c   (S = chirp slope)</text><text x="180" y="198" font-size="9" text-anchor="middle" fill="#000" font-style="italic">Range from frequency; velocity from phase change across chirps</text></svg><figcaption><b>Figure 10.</b> FMCW radar. Range appears as a beat frequency; velocity appears as phase progression across successive chirps.</figcaption></figure>
+<h2>G2.1 FMCW parameter derivation</h2>
+<table><caption>Table 68. From requirement to hardware parameter</caption><thead><tr><th>Requirement</th><th>Relation</th><th>Hardware consequence</th></tr></thead><tbody><tr><td>Range resolution &Delta;<i>R</i></td><td>&Delta;<i>R</i> = <i>c</i>/2<i>B</i></td><td><b>Sweep bandwidth</b> &mdash; 4 GHz gives 3.75 cm</td></tr><tr><td>Maximum range <i>R</i><sub>max</sub></td><td><i>f<sub>b,max</sub></i> = 2<i>R</i><sub>max</sub><i>S</i>/<i>c</i></td><td><b>ADC sample rate and IF bandwidth</b></td></tr><tr><td>Velocity resolution &Delta;<i>v</i></td><td>&Delta;<i>v</i> = &lambda;/(2<i>N<sub>c</sub>T<sub>c</sub></i>)</td><td><b>Number of chirps per frame</b> &rarr; frame memory</td></tr><tr><td>Maximum velocity</td><td><i>v</i><sub>max</sub> = &lambda;/(4<i>T<sub>c</sub></i>)</td><td>Chirp repetition period</td></tr><tr><td>Angular resolution</td><td>&asymp; &lambda;/(<i>N<sub>a</sub>d</i> cos&theta;)</td><td><b>Number of antennas</b> &rarr; number of RX chains</td></tr><tr><td>Processing gain</td><td>10log(<i>N<sub>s</sub>N<sub>c</sub></i>)</td><td>FFT sizes &rarr; compute and memory</td></tr></tbody></table>
+<div class="ms"><b>The range&ndash;Doppler map is a two-dimensional FFT</b>
+    and its dimensions come straight from the table: a fast-time FFT across samples within
+    one chirp yields range bins; a slow-time FFT across chirps at each range bin yields
+    Doppler bins. A typical automotive frame &mdash; 256 samples &times; 128 chirps
+    &times; 8 virtual antennas &mdash; requires a corner-turn between the two FFTs, and
+    <b>that transpose, not the FFTs, dominates the memory bandwidth</b>. Designing the
+    memory organisation (ping-pong banks, tiled transpose, or on-the-fly second-stage
+    accumulation) is the real architectural work. This is a recurring theme: in
+    data-intensive blocks the arithmetic is rarely the bottleneck.</div>
+<h2>G2.2 Detection</h2>
+<table><caption>Table 69. CFAR detectors</caption><thead><tr><th>Type</th><th>Noise estimate</th><th>Strength</th><th>Weakness</th></tr></thead><tbody><tr><td>CA-CFAR</td><td>Mean of surrounding cells</td><td>Simple, efficient in homogeneous noise</td><td><b>Masks targets near clutter edges</b></td></tr><tr><td>GO-CFAR</td><td>Greater of the two halves</td><td>Handles clutter edges</td><td>Loses closely spaced targets</td></tr><tr><td>SO-CFAR</td><td>Smaller of the two halves</td><td>Resolves close targets</td><td>High false alarm at edges</td></tr><tr><td><b>OS-CFAR</b></td><td><i>k</i>-th order statistic</td><td><b>Robust to interfering targets</b></td><td>Needs a sorter &mdash; more hardware</td></tr><tr><td>Adaptive / ML</td><td>learned</td><td>Best in complex scenes</td><td>Verification difficulty</td></tr></tbody></table>
+<div class="ms"><b>CFAR sets a threshold, not a decision.</b> The
+    multiplier &alpha; is chosen so that the probability of false alarm is fixed regardless
+    of the noise level &mdash; that is what "constant false alarm rate" means. For
+    CA-CFAR with <i>N</i> reference cells,
+    &alpha; = <i>N</i>(<i>P<sub>FA</sub></i><sup>&minus;1/<i>N</i></sup> &minus; 1). Two
+    hardware consequences: the block needs a divider or a reciprocal table, and it needs
+    the <i>N</i> reference cells buffered, which for a 2-D CFAR means a sliding window over
+    a two-dimensional array. <b>OS-CFAR's sorter is the most hardware-hungry element in a
+    typical radar back end</b>, and choosing between a full sorting network and an
+    approximate selection is a genuine PPA decision that a design house can differentiate
+    on.</div>
+<h2>G2.3 Angle estimation and MIMO</h2>
+<table><caption>Table 70. Angle-of-arrival methods</caption><thead><tr><th>Method</th><th>Resolution</th><th>Computation</th><th>Robustness</th></tr></thead><tbody><tr><td>FFT beamforming</td><td>Rayleigh limit</td><td>One FFT</td><td>Very robust</td></tr><tr><td>Capon / MVDR</td><td>Super-resolution</td><td><b>Matrix inverse</b> per snapshot</td><td>Needs good covariance estimate</td></tr><tr><td><b>MUSIC</b></td><td>Super-resolution</td><td><b>Eigendecomposition</b></td><td>Needs the source count</td></tr><tr><td>ESPRIT</td><td>Super-resolution</td><td>SVD + rotation</td><td>Needs array structure</td></tr><tr><td>Compressive sensing</td><td>High</td><td>Iterative solver</td><td>Sensitive to model mismatch</td></tr></tbody></table>
+<div class="ms"><b>This is where Part A's matrix decompositions become
+    products.</b> MUSIC needs the eigendecomposition of an <i>N</i>&times;<i>N</i>
+    covariance matrix per snapshot; Capon needs its inverse. For an 8&ndash;16 element
+    array that is a small, dense, Hermitian, <b>positive-definite</b> problem &mdash;
+    exactly the case where Cholesky applies and streams. A design house that owns a
+    parameterised streaming Cholesky or Jacobi eigenvalue block can sell it into radar,
+    into MIMO communications, and into adaptive beamforming, because all three reduce to
+    the same kernel. <b>Recognising that one kernel serves three markets is how a small IP
+    portfolio becomes viable.</b></div>
+<div class="ms"><b>MIMO radar's virtual array</b> deserves a precise
+    statement because it is the main reason automotive radar improved so quickly. With
+    <i>N<sub>t</sub></i> transmitters and <i>N<sub>r</sub></i> receivers, transmitting
+    orthogonal waveforms (time-, frequency-, or code-division) and separating them at the
+    receiver yields <i>N<sub>t</sub></i>&times;<i>N<sub>r</sub></i> distinct
+    transmit&ndash;receive paths, which behave like a physical array of that many
+    elements. Three transmitters and four receivers give a twelve-element virtual array
+    &mdash; a threefold improvement in angular resolution at the cost of <b>digital</b>
+    separation logic rather than antennas and RF chains. <b>Once again the solution to a
+    physical limit is a digital block.</b></div>

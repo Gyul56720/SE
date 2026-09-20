@@ -1,0 +1,20 @@
+<h1 id="m3">M3. Image Signal Processing</h1>
+<table><caption>Table 127. The ISP pipeline</caption><thead><tr><th>Stage</th><th>Function</th><th>Why it is in hardware</th></tr></thead><tbody><tr><td>Black level and defect correction</td><td>Sensor offset, dead pixels</td><td>Per-pixel rate</td></tr><tr><td>Lens shading correction</td><td>Vignetting</td><td>Per-pixel with a gain surface</td></tr><tr><td><b>Demosaic</b></td><td>Bayer &rarr; RGB</td><td><b>Neighbourhood operation at pixel rate</b></td></tr><tr><td>White balance</td><td>Illuminant compensation</td><td>Per-pixel gains</td></tr><tr><td>Colour correction matrix</td><td>Sensor &rarr; standard colour space</td><td>3&times;3 per pixel</td></tr><tr><td>Gamma / tone mapping</td><td>Perceptual encoding</td><td>LUT per pixel</td></tr><tr><td>Noise reduction</td><td>Spatial and temporal filtering</td><td><b>Line buffers dominate the area</b></td></tr><tr><td>Sharpening</td><td>Edge enhancement</td><td>Convolution</td></tr><tr><td>Scaling</td><td>Resize</td><td>Polyphase filter</td></tr></tbody></table>
+<div class="ms"><b>Line buffers, not arithmetic, determine ISP cost.</b> A
+    5&times;5 neighbourhood operation at 4K resolution requires four lines of 3840 pixels
+    each held on chip; at 12 bits per component that is roughly 184&nbsp;kbit per stage
+    before any compute. A pipeline with several such stages spends most of its silicon on
+    storage. The architectural consequences are standard: process in tiles rather than
+    full lines, fuse stages so that a neighbourhood is read once and used by several
+    operations, and choose separable filters wherever possible. <b>This is the same
+    memory-versus-compute analysis as the roofline of Chapter J2, applied to a different
+    domain.</b></div>
+<table><caption>Table 128. Colour and vision concepts that reach the hardware</caption><thead><tr><th>Concept</th><th>Meaning</th><th>Implementation note</th></tr></thead><tbody><tr><td>Bayer pattern</td><td>One colour per photosite</td><td>Demosaic must interpolate two of three</td></tr><tr><td>Colour space (sRGB, YCbCr)</td><td>&mdash;</td><td>YCbCr separates luma for chroma subsampling</td></tr><tr><td>Chroma subsampling (4:2:0)</td><td>Half resolution chroma</td><td>Exploits lower chroma acuity &mdash; halves the data</td></tr><tr><td>Gamma</td><td>Non-linear encoding</td><td><b>Must be undone before linear operations</b></td></tr><tr><td>HDR / tone mapping</td><td>Wide dynamic range compressed for display</td><td>Local operators need neighbourhood statistics</td></tr><tr><td>Rolling shutter</td><td>Rows exposed at different times</td><td>Motion artefacts; a system issue</td></tr></tbody></table>
+<div class="warn"><b>Performing linear operations on gamma-encoded data is
+    a persistent and quiet error.</b> Gamma encoding is non-linear, so averaging two
+    gamma-encoded pixels does not give the gamma encoding of their average. Scaling,
+    blending and filtering must therefore be done in linear light, which means decoding
+    before and re-encoding after. The visible symptom is subtly wrong brightness at edges
+    &mdash; easy to miss in a test pattern and obvious on real images. <b>Specify the
+    colour encoding of every interface</b>, in the same way and for the same reason that
+    fixed-point formats must be specified.</div>

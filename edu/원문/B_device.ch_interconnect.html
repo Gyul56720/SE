@@ -1,0 +1,66 @@
+<h1 id="b4">B4. Interconnect, Transmission Lines and Signal Integrity</h1>
+<p>Below roughly 250 nm, wires stopped being ideal connections and became
+    circuit elements. Above a few GHz they stop being lumped elements and become
+    transmission lines. Both transitions change what a designer must do.</p>
+<h2>B4.1 On-chip interconnect as distributed RC</h2>
+<div class="math">t<sub>delay</sub> &asymp; 0.38 R<sub>w</sub>C<sub>w</sub>L<sup>2</sup>
+    &nbsp;&nbsp;(distributed RC line of length L)</div>
+<table><caption>Table 24. Interconnect scaling and its remedies</caption><thead><tr><th>Problem</th><th>Cause</th><th>Remedy</th><th>Cost</th></tr></thead><tbody><tr><td>Delay grows as <i>L</i><sup>2</sup></td><td>Distributed RC</td><td><b>Repeater insertion</b> &rarr; delay becomes linear in <i>L</i></td><td>Power and area; repeaters can be 30% of a large SoC's dynamic power</td></tr><tr><td>Resistance rises with scaling</td><td>Smaller cross-section, surface scattering</td><td>Thicker upper metal layers for global routes</td><td>Fewer routing tracks</td></tr><tr><td>Coupling capacitance dominates</td><td>Tall narrow wires, close spacing</td><td>Increase spacing; shield with ground lines</td><td>Routing area</td></tr><tr><td>Electromigration</td><td>Current density in narrow wires</td><td>Width rules, current limits</td><td>Area; constrains power grid design</td></tr><tr><td>IR drop</td><td>Resistance of the power grid</td><td>Grid density, decoupling capacitance</td><td>Metal resources</td></tr></tbody></table>
+<div class="ms"><b>Optimal repeater insertion</b> follows from minimising
+    the total delay of a line broken into <i>k</i> segments each driven by a repeater of
+    size <i>h</i>. The classic result is that the optimum makes the repeater's intrinsic
+    delay comparable to the wire segment delay, giving
+    <i>k</i><sub>opt</sub> = <i>L</i>&radic;(<i>R<sub>w</sub>C<sub>w</sub></i>/(2<i>R</i><sub>0</sub><i>C</i><sub>0</sub>)).
+    The practical consequence for an IP vendor is that <b>a block's timing cannot be
+    guaranteed independent of its physical size</b>: a 2&nbsp;mm-wide block has internal
+    wire delays that a synthesis-only estimate will miss entirely. This is why serious IP
+    deliverables include a floorplan hint or a hardened layout, and why "it met timing in
+    synthesis" is not a claim a customer will accept for a large block.</div>
+<h2>B4.2 When a wire becomes a transmission line</h2>
+<div class="bs">A connection must be treated as a transmission line when
+    its electrical length is a significant fraction of the signal's wavelength &mdash; in
+    practice when the propagation delay exceeds roughly one tenth of the signal rise time.
+    Since <i>t<sub>r</sub></i> shrinks with every process generation, the threshold length
+    keeps falling.</div>
+<div class="math">Z<sub>0</sub> = &radic;(L/C) &nbsp;&nbsp;&nbsp;
+    v<sub>p</sub> = 1/&radic;(LC) = c/&radic;&epsilon;<sub>r</sub> &nbsp;&nbsp;&nbsp;
+    &Gamma; = (Z<sub>L</sub>&minus;Z<sub>0</sub>)/(Z<sub>L</sub>+Z<sub>0</sub>)</div>
+<table><caption>Table 25. Transmission-line effects in a link</caption><thead><tr><th>Effect</th><th>Physical cause</th><th>Frequency behaviour</th><th>Consequence</th></tr></thead><tbody><tr><td>Conductor (skin) loss</td><td>Current crowds into a skin depth &delta;&prop;1/&radic;<i>f</i></td><td>&prop; &radic;<i>f</i></td><td>Dominant loss below ~20 GHz on PCB</td></tr><tr><td>Dielectric loss</td><td>tan&delta; of the substrate</td><td>&prop; <i>f</i></td><td>Dominant at high frequency; chooses the laminate</td></tr><tr><td>Reflections</td><td>Impedance discontinuities (vias, connectors)</td><td>Resonant dips</td><td>Return loss; creates ISI that FFE cannot fully fix</td></tr><tr><td>Crosstalk (NEXT/FEXT)</td><td>Mutual L and C between traces</td><td>Rises with <i>f</i></td><td>Limits lane density</td></tr><tr><td>Fibre weave effect</td><td>Inhomogeneous &epsilon;<sub>r</sub> of woven glass</td><td>&mdash;</td><td>Skew between differential pair halves</td></tr><tr><td>Mode conversion</td><td>Asymmetry in a differential pair</td><td>&mdash;</td><td>Differential energy becomes common mode &rarr; EMI</td></tr></tbody></table>
+<div class="ms"><b>Why skin effect makes channel loss go as &radic;<i>f</i>
+    and why that shapes the equaliser.</b> Skin depth &delta;&nbsp;=&nbsp;&radic;(2&rho;/&omega;&mu;)
+    shrinks as 1/&radic;<i>f</i>, so the effective conductor cross-section shrinks and
+    resistance rises as &radic;<i>f</i>. The resulting channel magnitude response is
+    approximately exp(&minus;<i>k</i>&radic;<i>f</i>), which in the time domain produces a
+    <b>long, slowly decaying pulse tail</b> rather than a sharp one. That specific tail
+    shape is why decision-feedback equalisation works so well on wireline channels: the
+    post-cursor ISI is long but the symbols causing it have already been decided, so they
+    can be subtracted exactly without noise enhancement. <b>The physics of the conductor
+    selects the equaliser architecture.</b> An engineer who knows only that "DFE cancels
+    post-cursor ISI" cannot explain why a different channel &mdash; say a multipath radio
+    channel with pre-cursor energy &mdash; needs a different structure.</div>
+<h2>B4.3 S-parameters</h2>
+<table><caption>Table 26. Scattering parameters for a two-port</caption><thead><tr><th>Parameter</th><th>Meaning</th><th>Specification name</th></tr></thead><tbody><tr><td><i>S</i><sub>11</sub></td><td>Input reflection</td><td><b>Return loss</b> (dB, negative is good)</td></tr><tr><td><i>S</i><sub>21</sub></td><td>Forward transmission</td><td><b>Insertion loss</b></td></tr><tr><td><i>S</i><sub>12</sub></td><td>Reverse transmission</td><td>Isolation</td></tr><tr><td><i>S</i><sub>22</sub></td><td>Output reflection</td><td>Output return loss</td></tr><tr><td><i>S<sub>dd</sub></i>, <i>S<sub>cc</sub></i></td><td>Differential / common mode</td><td>Mixed-mode S-parameters</td></tr><tr><td><i>S<sub>cd</sub></i>, <i>S<sub>dc</sub></i></td><td>Mode conversion</td><td><b>Asymmetry metric</b> &mdash; an EMI predictor</td></tr></tbody></table>
+<div class="ms">S-parameters are used because at high frequency you
+    cannot measure voltage and current at a port without perturbing it, but you can
+    measure incident and reflected power waves. For a modelling engineer the practical
+    point is the <b>conversion to a time-domain model</b>: a channel is delivered as a
+    Touchstone (<code>.s4p</code>) file, and a link simulation needs its pulse response.
+    Doing that conversion correctly requires enforcing <b>causality and passivity</b> on
+    measured data that generally violates both because of measurement noise and band
+    limitation. Non-causal channel models produce link simulations that are optimistic in
+    a way that is very hard to notice. <b>A channel-model conditioning tool is a small,
+    genuinely sellable piece of software</b>, and it is squarely modelling-team work.</div>
+<h2>B4.4 Power delivery and simultaneous switching noise</h2>
+<div class="math">V<sub>noise</sub> = L<sub>package</sub> &middot; dI/dt
+    &nbsp;+&nbsp; R<sub>grid</sub> &middot; I</div>
+<table><caption>Table 27. Power integrity mechanisms</caption><thead><tr><th>Mechanism</th><th>Where</th><th>Mitigation</th></tr></thead><tbody><tr><td>Static IR drop</td><td>On-chip grid resistance</td><td>Grid density, more straps</td></tr><tr><td><b>d<i>I</i>/d<i>t</i> noise (SSN)</b></td><td>Package and board inductance</td><td>Decoupling capacitance at three levels: on-die, package, board</td></tr><tr><td>Resonance</td><td><i>L</i><sub>pkg</sub> with on-die <i>C</i></td><td><b>Anti-resonance peak typically 50&ndash;200 MHz</b>; add damping</td></tr><tr><td>Ground bounce</td><td>Shared return inductance</td><td>More ground pins, differential IO</td></tr><tr><td>Supply-induced jitter</td><td><i>V<sub>DD</sub></i> modulates delay</td><td>Regulate locally; use supply-insensitive delay cells in clock paths</td></tr></tbody></table>
+<div class="ms">Supply-induced jitter is the mechanism by which a
+    <i>digital</i> design decision damages an <i>analogue</i> specification. A large
+    synchronous block that starts and stops &mdash; a clock-gated accelerator, a burst-mode
+    FEC decoder &mdash; produces a current step at the burst rate, which modulates the
+    supply, which modulates the delay of the PLL's delay cells, which appears as a
+    spur in the phase noise, which appears as periodic jitter (PJ) in the link budget.
+    <b>The FEC block is the root cause of a jitter specification failure</b>, and nothing
+    in either block's own verification would reveal it. This class of cross-domain
+    coupling is why chip-level power-aware simulation exists, and why an IP datasheet
+    should state the block's <i>current profile</i>, not merely its average power.</div>

@@ -20,9 +20,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # 두 갈래로 나눈 이유 (실측 2026-09-20):
+  #
+  # 한 job 에 다 넣었더니 **20분 job 제한에 걸려 취소**됐다 -- `scripts/tests.sh` 만
+  # 18.8분이다(#1754: 게이트 11초 통과, 검사 전체 1130초에서 잘림). 취소는 판정이
+  # 아니므로 ci_watch 는 결론 난 마지막 실행을 찾아 뒤로 갔고, 그것이 **이미 고쳐진
+  # 옛 커밋의 빨강**이었다. 그래서 봇이 그 빨강으로 무기한 막혔다.
+  #
+  # 게이트는 1분 안에 끝난다. 그것을 느린 검사와 한 통에 묶어 둘 이유가 없다 --
+  # 나누면 게이트의 판정이 검사 전체와 무관하게 결론 난다.
   gates:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -55,6 +64,27 @@ jobs:
 
       - name: G004 적용 범위 (파이썬 오탐 없음 · 셸에서는 그대로)
         run: python3 tests/test_g004_scope.py
+
+  tests:
+    runs-on: ubuntu-latest
+    # 검사 전체가 19분 남짓이고 계속 는다. 45분을 준다 -- **제한에 걸려 취소되면
+    # 판정이 아니라 침묵이 되고, 침묵은 옛 빨강을 되살린다.**
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: 의존성 설치
+        run: pip install -r requirements.txt
+
+      - name: 의존성이 실제로 깔렸는지 확인
+        run: python3 -c "import langchain_core, langchain_google_genai, langgraph, discord, numpy, sympy, requests, dotenv"
 
       - name: 테스트 전부 (목록은 scripts/tests.sh 한 군데에만 있다)
         # **로컬과 같은 것을 돌린다.** 전에는 여기에 파일 이름을 손으로 나열했고,

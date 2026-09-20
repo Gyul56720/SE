@@ -1,0 +1,21 @@
+<h1 id="s2">S2. Display and Audio Interfaces</h1>
+<table><caption>Table 176. Display interfaces</caption><thead><tr><th>Interface</th><th>Layer</th><th>Notes</th></tr></thead><tbody><tr><td><b>MIPI DSI</b></td><td>Mobile panel</td><td>Covered in P1; command and video modes</td></tr><tr><td><b>eDP / DisplayPort</b></td><td>Packetised, micro-packet</td><td><b>Lane count and rate negotiated; supports MST</b></td></tr><tr><td>HDMI</td><td>TMDS or FRL</td><td>Consumer; HDCP content protection</td></tr><tr><td>LVDS / FPD-Link</td><td>Parallel serialised</td><td>Automotive, industrial</td></tr><tr><td>V-by-One</td><td>&mdash;</td><td>Large panels</td></tr><tr><td>Parallel RGB</td><td>&mdash;</td><td>Simple small panels</td></tr></tbody></table>
+<div class="ms"><b>The recurring structure is the same as everywhere else
+    in this volume: a controller above a PHY.</b> For DisplayPort the controller handles
+    link training, stream packing into micro-packets, and the AUX channel; for HDMI it
+    handles TMDS encoding or FRL framing and the DDC channel. In both cases the PHY is a
+    hard macro and the controller is RTL. <b>What differs between display and data
+    interfaces is the consequence of error</b>: a corrupted pixel is a momentary visual
+    artefact, so retransmission is usually absent and error handling is concealment rather
+    than recovery. That asymmetry changes the verification emphasis from data integrity to
+    timing and synchronisation.</div>
+<table><caption>Table 177. Audio interfaces</caption><thead><tr><th>Interface</th><th>Character</th><th>Design note</th></tr></thead><tbody><tr><td>I2S</td><td>Simple serial, word clock + bit clock</td><td><b>Clock relationship is the whole protocol</b></td></tr><tr><td>TDM</td><td>Multi-channel over one data line</td><td>Slot assignment</td></tr><tr><td><b>SoundWire (MIPI)</b></td><td>Multi-drop, two wires</td><td>Control and data combined</td></tr><tr><td>S/PDIF</td><td>Self-clocking biphase-mark</td><td>Consumer digital audio</td></tr><tr><td>PDM</td><td>1-bit oversampled from a MEMS microphone</td><td><b>Needs a decimation filter</b> &mdash; a CIC plus compensation</td></tr><tr><td>USB Audio</td><td>&mdash;</td><td>Isochronous transfers; clock domain handling</td></tr></tbody></table>
+<div class="ms"><b>A PDM microphone is a sigma-delta modulator without its
+    decimator, and that decimator is the sellable block.</b> The microphone outputs a
+    1-bit stream at a few megahertz; converting it to 48&nbsp;kHz multi-bit samples
+    requires exactly the CIC-plus-compensation chain of Chapter E1, including the
+    wrap-around word-growth subtlety. <b>Audio is therefore a low-cost entry point for a
+    designer who wants to build and sell a real DSP block</b>: the specification is
+    simple, the arithmetic is genuinely interesting, and the quality metric (SNR and THD
+    in the audio band) is measurable with open tools.</div>
+<table><caption>Table 178. Audio-specific signal processing</caption><thead><tr><th>Function</th><th>Purpose</th><th>Hardware note</th></tr></thead><tbody><tr><td>Sample rate conversion</td><td>44.1 &harr; 48 kHz and others</td><td><b>Non-integer ratio &rarr; Farrow or polyphase with a long filter</b></td></tr><tr><td>Equalisation</td><td>Tone shaping</td><td>Cascaded biquads &mdash; see Chapter E1</td></tr><tr><td>Dynamic range compression</td><td>Loudness control</td><td>Envelope detection; attack/release</td></tr><tr><td>Echo cancellation</td><td>Full duplex</td><td>Adaptive filter, often frequency domain</td></tr><tr><td>Beamforming</td><td>Microphone array</td><td>Delay-and-sum or MVDR</td></tr><tr><td>Dither and noise shaping</td><td>Requantisation</td><td><b>See Chapter A3</b></td></tr></tbody></table>

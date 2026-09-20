@@ -188,6 +188,92 @@ Translate this fragment:
 {덩이}"""
 
 
+# ---------------------------------------------------------------------------
+# 묶어 부르기 -- 프롬프트가 본문보다 비싸지는 것을 막는다
+# ---------------------------------------------------------------------------
+# 실측 2026-09-20 (전체 교재를 재 보고): 옮길 덩이가 **3,323개**, 옮길 글자가
+# 172만 자다.  덩이 하나에 한 번씩 부르면 프롬프트(지시 + 용어집 300여 항목)가
+# **호출마다** 실린다 -- 대략 900 토큰 × 3,323 = 300만 토큰이, 본문(47만 토큰)의
+# 여섯 배다.  **번역 값의 대부분이 같은 지시문을 3,323번 다시 보내는 데 든다.**
+#
+# 그래서 덩이를 묶어 한 번에 보낸다.  묶은 것을 다시 가르려면 표식이 필요한데,
+# 표식은 **모델이 지울 수 있다.**  그래서 표식이 하나라도 없어지면 그 묶음은
+# 버리고 **덩이 하나씩** 다시 부른다 -- 느려질 뿐 틀리지 않는다.
+묶음자 = 6000                     # 한 번에 보낼 본문 글자 수
+표식틀 = "<!--B{}-->"
+표식패턴 = re.compile(r"<!--B(\d+)-->")
+
+
+def 묶기(덩이들, 상한=None):
+    """[(i, 덩이)] -> [[(i, 덩이), ...]]  -- 글자 수로 묶는다."""
+    상한 = 상한 or 묶음자
+    묶음, 지금, 셈 = [], [], 0
+    for i, d in 덩이들:
+        if 지금 and 셈 + len(d) > 상한:
+            묶음.append(지금)
+            지금, 셈 = [], 0
+        지금.append((i, d))
+        셈 += len(d)
+    if 지금:
+        묶음.append(지금)
+    return 묶음
+
+
+def 묶음글(묶음):
+    return "\n".join(표식틀.format(i) + "\n" + d for i, d in 묶음)
+
+
+def 묶음가르기(글, 묶음):
+    """표식으로 다시 가른다.  하나라도 없으면 None (부른 쪽이 낱개로 돌아간다)."""
+    자리 = {int(m.group(1)): m for m in 표식패턴.finditer(글)}
+    if set(자리) != {i for i, _ in 묶음}:
+        return None
+    차례 = sorted(자리.items(), key=lambda kv: kv[1].start())
+    if [i for i, _ in 차례] != [i for i, _ in 묶음]:
+        return None                      # 순서가 바뀌었다 -- 믿지 않는다
+    난것 = {}
+    for n, (i, m) in enumerate(차례):
+        끝 = 차례[n + 1][1].start() if n + 1 < len(차례) else len(글)
+        난것[i] = 글[m.end():끝].strip()
+    return 난것
+
+
+def 묶어옮기기(묶음, pool, 용어문자열, 시도=2):
+    """묶음 하나를 한 번에 옮긴다.  {i: 옮긴것} 또는 None(낱개로 가라)."""
+    import llm_pool
+    for _ in range(시도):
+        p = 묶음프롬프트.format(용어=용어문자열, 덩이=묶음글(묶음))
+        try:
+            r = llm_pool.ask(pool, p)
+        except Exception:                                 # noqa: BLE001
+            time.sleep(2)
+            continue
+        t = re.sub(r"^```[a-zA-Z]*\n", "", (r or "").strip())
+        t = re.sub(r"\n```$", "", t).strip()
+        갈린것 = 묶음가르기(t, 묶음)
+        if 갈린것 is None:
+            continue                      # 표식을 잃었다 -- 한 번 더, 그래도 안 되면 낱개
+        # **덩이마다 따로 대조한다.** 묶었다고 검사를 묶지 않는다.
+        좋은것 = {i: 갈린것[i] for i, d in 묶음 if not 대조(d, 갈린것[i])}
+        if len(좋은것) == len(묶음):
+            return 좋은것
+        if 좋은것:
+            return 좋은것                 # 통과한 것만 쓰고 나머지는 낱개로 간다
+    return None
+
+
+묶음프롬프트 = 프롬프트.replace(
+    "Translate this fragment:",
+    """The input contains SEVERAL fragments, each preceded by a marker like <!--B12-->.
+
+7. Copy EVERY <!--Bnn--> marker exactly as it appears, on its own line, in the
+   same order, immediately before that fragment's translation. Do not renumber
+   them, do not add markers, do not drop any. The markers are how the output is
+   split back apart; a missing marker throws away the whole batch.
+
+Translate these fragments:""")
+
+
 def 옮기기(덩이: str, pool, 용어문자열: str, 시도=3):
     """한 덩이를 옮긴다.  검사를 통과할 때까지 최대 `시도` 번."""
     import llm_pool
@@ -215,43 +301,146 @@ def 해시(s: str):
 
 
 def 장옮기기(이름: str, html: str, pool, 용어문자열: str, 확인만=False):
+    """장 하나를 옮긴다.  **캐시는 덩이 단위, 호출은 묶음 단위.**
+
+    캐시를 덩이 단위로 두는 까닭: 중간에 끊겨도 다시 돌리면 이미 옮긴 덩이는
+    안 부른다.  172만 자를 한 번에 끝낼 수 없으므로(쿼터) 이어 돌리는 것이 기본이다.
+    """
     os.makedirs(곳간, exist_ok=True)
     조각 = 쪼개기(html)
-    나온것, 실패 = [], []
+    나온것 = [d for d, _ in 조각]
+    실패 = []
+
+    # 1) 캐시에 없는 것만 모은다
+    남은 = []
     for i, (덩이, 옮길까) in enumerate(조각):
         if not 옮길까 or not 덩이.strip():
-            나온것.append(덩이)
             continue
         캐시 = os.path.join(곳간, f"{해시(덩이)}.html")
         if os.path.exists(캐시):
-            나온것.append(open(캐시, encoding="utf-8").read())
+            나온것[i] = open(캐시, encoding="utf-8").read()
             continue
         if 확인만:
             실패.append((i, ["아직 안 옮겼다"]))
-            나온것.append(덩이)
             continue
+        남은.append((i, 덩이))
+
+    # 2) 묶어서 부른다
+    덩이맵 = dict(남은)
+    아직 = []
+    for 묶음 in 묶기(남은):
+        난것 = 묶어옮기기(묶음, pool, 용어문자열)
+        if not 난것:
+            아직 += 묶음
+            continue
+        for i, t in 난것.items():
+            open(os.path.join(곳간, f"{해시(덩이맵[i])}.html"), "w",
+                 encoding="utf-8").write(t)
+            나온것[i] = t
+        아직 += [(i, d) for i, d in 묶음 if i not in 난것]
+
+    # 3) 묶음에서 못 건진 것만 낱개로 -- 느릴 뿐 틀리지 않는다
+    for i, 덩이 in 아직:
         t, 문제 = 옮기기(덩이, pool, 용어문자열)
         if t is None:
-            실패.append((i, 문제))
-            나온것.append(덩이)            # 원문을 그대로 둔다 -- 반쪽을 안 낸다
+            실패.append((i, 문제))        # 원문을 그대로 둔다 -- 반쪽을 안 낸다
         else:
-            open(캐시, "w", encoding="utf-8").write(t)
-            나온것.append(t)
+            open(os.path.join(곳간, f"{해시(덩이)}.html"), "w",
+                 encoding="utf-8").write(t)
+            나온것[i] = t
     return "".join(나온것), 실패
 
 
+# ---------------------------------------------------------------------------
+# 값 어림 -- 돌리기 전에 얼마나 드는지 잰다
+# ---------------------------------------------------------------------------
+# 토큰은 세는 것이 아니라 **어림하는 것**이다(모델의 토크나이저가 여기 없다).
+# 그래서 어림에 쓴 비율을 같이 적는다 -- 수만 주고 근거를 안 주면 믿을 수 없다.
+영어자당토큰 = 1 / 3.7        # 영어 + HTML 태그
+한글자당토큰 = 1 / 1.3        # 한국어는 글자당 토큰이 훨씬 많다
+번역길이비 = 0.75             # 옮기면 글자 수가 이 정도가 된다(태그 포함)
+
+
+def 어림(장들, 용어문자열, 묶음=None):
+    """[(키, html)] -> 호출 수 · 입력/출력 토큰 어림."""
+    지시토큰 = int(len(프롬프트) * 영어자당토큰) + int(len(용어문자열) * 한글자당토큰)
+    본문자 = 호출 = 덩이수 = 0
+    for _, html in 장들:
+        덩이들 = [(i, d) for i, (d, 옮길까) in enumerate(쪼개기(html))
+                if 옮길까 and d.strip()]
+        덩이수 += len(덩이들)
+        본문자 += sum(len(d) for _, d in 덩이들)
+        호출 += len(묶기(덩이들, 묶음))
+    입력 = 호출 * 지시토큰 + int(본문자 * 영어자당토큰)
+    출력 = int(본문자 * 번역길이비 * 한글자당토큰)
+    낱개호출 = 덩이수
+    낱개입력 = 낱개호출 * 지시토큰 + int(본문자 * 영어자당토큰)
+    return {"장": len(장들), "덩이": 덩이수, "본문자": 본문자,
+            "호출": 호출, "지시토큰": 지시토큰,
+            "입력토큰": 입력, "출력토큰": 출력,
+            "낱개호출": 낱개호출, "낱개입력토큰": 낱개입력}
+
+
+def 장들읽기(고른것):
+    """옮길 [(키, html)].  **먼저 `edu/원문/` 을 본다** -- VM 은 장을 못 짓는다.
+
+    원문이 없으면(개발 자리) 모듈을 직접 그린다.  둘 다 없으면 빈 목록이다.
+    """
+    import 원문내기
+    난것 = [(키, html) for 키, _, html in 원문내기.읽기()]
+    if not 난것:
+        import importlib
+        import buildT
+        for 모듈, 함수들 in buildT.이론 + buildT.대학원:
+            try:
+                m = importlib.import_module(모듈)
+            except ModuleNotFoundError:
+                continue
+            for f in 함수들:
+                fn = getattr(m, f, None)
+                if fn:
+                    난것.append((모듈.split("_")[0], fn()))
+    if 고른것:
+        고 = {x.split("_")[0] for x in 고른것}
+        난것 = [(k, h) for k, h in 난것 if k in 고]
+    return 난것
+
+
 def main():
+    global 묶음자
     ap = argparse.ArgumentParser()
     ap.add_argument("--장", nargs="*", help="옮길 장 (예: T1). 없으면 --전부 를 쓴다")
     ap.add_argument("--전부", action="store_true")
     ap.add_argument("--확인만", action="store_true",
                     help="옮기지 않고 무엇이 남았는지만 본다")
+    ap.add_argument("--어림", action="store_true",
+                    help="**부르지 않고** 호출 수와 토큰을 어림한다")
+    ap.add_argument("--묶음", type=int, default=묶음자,
+                    help=f"한 번에 보낼 본문 글자 수 (기본 {묶음자})")
     ap.add_argument("--낼곳", default=os.path.join(여기, "한국어"))
     a = ap.parse_args()
+    묶음자 = a.묶음
 
-    import importlib
     용어 = 용어집()
     용어문자열 = "\n".join(f"  {k} -> {v}" for k, v in sorted(용어.items()))
+    장들 = 장들읽기(a.장 or [])
+    if not 장들:
+        print("옮길 장이 없다 -- `python3 edu/원문내기.py` 로 원문을 먼저 꺼낸다",
+              file=sys.stderr)
+        return 2
+
+    if a.어림:
+        e = 어림(장들, 용어문자열, a.묶음)
+        print(f"장 {e['장']} · 덩이 {e['덩이']:,} · 옮길 글자 {e['본문자']:,}")
+        print(f"묶음 {a.묶음:,}자 -> **호출 {e['호출']:,}회**  "
+              f"(낱개로 부르면 {e['낱개호출']:,}회)")
+        print(f"호출마다 지시+용어집 {e['지시토큰']:,} 토큰")
+        print(f"입력 어림 {e['입력토큰']:,} 토큰   (낱개면 {e['낱개입력토큰']:,})")
+        print(f"출력 어림 {e['출력토큰']:,} 토큰")
+        print(f"어림에 쓴 비율: 영어 {1/영어자당토큰:.1f}자/토큰 · "
+              f"한국어 {1/한글자당토큰:.1f}자/토큰 · 번역 길이비 {번역길이비}")
+        print("재시도(구조 어긋남)는 안 셌다 -- 실제는 이보다 10~20% 많다")
+        return 0
 
     pool = None
     if not a.확인만:
@@ -260,36 +449,20 @@ def main():
         if not pool:
             print("LLM 후보 풀이 비었다 -- GEMINI_API_KEY 를 설정하라", file=sys.stderr)
             return 2
-        print(f"후보 {len(pool)}개")
+        print(f"후보 {len(pool)}개 · 장 {len(장들)}개 · 묶음 {a.묶음:,}자")
 
-    import buildT
-    목록 = buildT.이론 + buildT.대학원
-    고른것 = a.장 or []
     os.makedirs(a.낼곳, exist_ok=True)
-
     총실패 = 0
-    for 모듈, 함수들 in 목록:
-        키 = 모듈.split("_")[0]
-        if 고른것 and 키 not in 고른것 and 모듈 not in 고른것:
-            continue
-        try:
-            m = importlib.import_module(모듈)
-        except ModuleNotFoundError:
-            continue
-        for f in 함수들:
-            fn = getattr(m, f, None)
-            if fn is None:
-                continue
-            html = fn()
-            t0 = time.time()
-            옮긴것, 실패 = 장옮기기(키, html, pool, 용어문자열, a.확인만)
-            open(os.path.join(a.낼곳, f"{키}.html"), "w",
-                 encoding="utf-8").write(옮긴것)
-            총실패 += len(실패)
-            print(f"  {키:<6} {len(html):>7,}자 -> {len(옮긴것):>7,}자  "
-                  f"{time.time()-t0:5.1f}초  실패 {len(실패)}")
-            for i, 문제 in 실패[:3]:
-                print(f"       덩이 {i}: {문제}")
+    for 키, html in 장들:
+        t0 = time.time()
+        옮긴것, 실패 = 장옮기기(키, html, pool, 용어문자열, a.확인만)
+        open(os.path.join(a.낼곳, f"{키}.html"), "w",
+             encoding="utf-8").write(옮긴것)
+        총실패 += len(실패)
+        print(f"  {키:<12} {len(html):>7,}자 -> {len(옮긴것):>7,}자  "
+              f"{time.time()-t0:5.1f}초  실패 {len(실패)}", flush=True)
+        for i, 문제 in 실패[:3]:
+            print(f"       덩이 {i}: {문제}")
 
     print(f"\n남은 실패 {총실패}개")
     return 1 if 총실패 else 0
