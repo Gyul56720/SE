@@ -324,8 +324,15 @@ bash edu/house/synth.sh edu/model/fir4_hand.v fir4_hand --pnr
     s.append(_c("""# Debian / Ubuntu -- 앞의 넷은 패키지가 있다
 sudo apt install verilator yosys nextpnr-ice40 iverilog gtkwave
 
-# Bambu 는 패키지가 없다.  소스에서 짓는다 (이 컨테이너에서 한 일이다)
-sudo apt install gcc-multilib libc6-dev-i386 gcc-13-plugin-dev \\
+# Bambu 는 패키지가 없다.  소스에서 짓는다 (이 컨테이너에서 한 일이다).
+#
+# 이 줄만은 배포가 안 깐다 -- 그리고 그것이 맞다.  이유 셋:
+#   1. Bambu 는 **선택**이다.  이 책의 08단계까지 한 번도 안 쓴다
+#   2. 소스 빌드가 한 시간대다.  배포마다 이것을 하면 배포가 못 끝난다
+#   3. 이 줄은 봇이 돌릴 명령이 아니라 **읽는 사람의 데스크톱** 지시다
+# 그래서 배포에 넣지 않고 표식을 단다.  조용히 넘어가는 것이 아니라
+# 눈에 보이게 고르는 것이다.
+sudo apt install gcc-multilib libc6-dev-i386 gcc-13-plugin-dev \\   # G021: 사람 몫
                  clang-16 llvm-16-dev libclang-16-dev \\
                  autoconf automake libtool
 git clone --recursive https://github.com/ferrandi/PandA-bambu.git
