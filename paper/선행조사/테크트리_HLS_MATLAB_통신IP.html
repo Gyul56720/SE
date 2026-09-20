@@ -1,0 +1,507 @@
+<title>통신 IP 설계 테크트리</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root{
+  --ground:#E9ECE8; --surface:#F6F8F5; --sunk:#DFE3DE;
+  --ink:#141C19; --ink-2:#39433E; --muted:#6B756F; --line:#C9D0CA; --line-2:#DCE1DC;
+  --hls:#0E6B5A; --hls-soft:#DCEAE5;
+  --mat:#2E3E8F; --mat-soft:#DFE3F3;
+  --ip:#8A5A08;  --ip-soft:#F0E5CE;
+  --warn:#9B2C22;
+  --f-disp:"IBM Plex Sans Condensed",-apple-system,BlinkMacSystemFont,sans-serif;
+  --f-body:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --ground:#0F1311; --surface:#171D19; --sunk:#121714;
+  --ink:#E7EBE6; --ink-2:#C2CAC4; --muted:#8F9A93; --line:#2B332D; --line-2:#222A24;
+  --hls:#45BFA4; --hls-soft:#12302A;
+  --mat:#8A9BEE; --mat-soft:#1A2040;
+  --ip:#DBA945;  --ip-soft:#33280E;
+  --warn:#E4776A;
+}}
+:root[data-theme="dark"]{
+  --ground:#0F1311; --surface:#171D19; --sunk:#121714;
+  --ink:#E7EBE6; --ink-2:#C2CAC4; --muted:#8F9A93; --line:#2B332D; --line-2:#222A24;
+  --hls:#45BFA4; --hls-soft:#12302A;
+  --mat:#8A9BEE; --mat-soft:#1A2040;
+  --ip:#DBA945;  --ip-soft:#33280E;
+  --warn:#E4776A;
+}
+*{box-sizing:border-box}
+body{background:var(--ground);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.62;
+     -webkit-font-smoothing:antialiased;margin:0}
+.wrap{max-width:1140px;margin:0 auto;padding-inline:20px;padding-block:44px 72px}
+h1,h2,h3{font-family:var(--f-disp);text-wrap:balance;margin:0}
+h1{font-size:clamp(30px,5.4vw,50px);line-height:1.06;font-weight:700;letter-spacing:-.015em}
+h2{font-size:clamp(20px,3vw,27px);font-weight:700;letter-spacing:-.008em}
+h3{font-size:16px;font-weight:600}
+p{margin:0}
+a{color:inherit}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.eyebrow{font-family:var(--f-mono);font-size:11px;font-weight:500;letter-spacing:.14em;
+         text-transform:uppercase;color:var(--muted)}
+
+/* ---------- head ---------- */
+header{border-bottom:2px solid var(--ink);padding-bottom:26px}
+.lede{margin-top:18px;max-width:62ch;font-size:16.5px;color:var(--ink-2)}
+.lede b{color:var(--ink);font-weight:600}
+.meta{margin-top:20px;display:flex;flex-wrap:wrap;gap:8px 20px;font-family:var(--f-mono);
+      font-size:11.5px;color:var(--muted)}
+
+/* ---------- section ---------- */
+section{margin-top:56px}
+.shead{display:flex;flex-direction:column;gap:6px;margin-bottom:22px}
+.shead p{color:var(--muted);font-size:14px;max-width:70ch}
+
+/* ---------- track legend ---------- */
+.legend{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.lg{border:1px solid var(--line);border-left-width:4px;background:var(--surface);
+    border-radius:3px;padding:13px 15px}
+.lg.t1{border-left-color:var(--hls)} .lg.t2{border-left-color:var(--mat)} .lg.t3{border-left-color:var(--ip)}
+.lg h3{margin-bottom:3px}
+.lg.t1 h3{color:var(--hls)} .lg.t2 h3{color:var(--mat)} .lg.t3 h3{color:var(--ip)}
+.lg p{font-size:13.2px;color:var(--ink-2)}
+
+/* ---------- tech tree ---------- */
+.era{border-top:1px solid var(--line);padding-top:16px;margin-top:0}
+.era + .era{margin-top:30px}
+.era-head{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:14px}
+.era-yr{font-family:var(--f-mono);font-size:13px;font-weight:600;color:var(--ink);
+        background:var(--sunk);border:1px solid var(--line);border-radius:2px;padding:2px 8px}
+.era-name{font-family:var(--f-disp);font-size:18px;font-weight:700}
+.era-note{font-size:13px;color:var(--muted);flex:1 1 22ch;min-width:0}
+.tracks{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;align-items:start}
+.cell{display:flex;flex-direction:column;gap:9px}
+.node{border:1px solid var(--line);background:var(--surface);border-radius:3px;padding:11px 13px;
+      border-top:3px solid var(--line)}
+.node.t1{border-top-color:var(--hls)} .node.t2{border-top-color:var(--mat)} .node.t3{border-top-color:var(--ip)}
+.node .yr{font-family:var(--f-mono);font-size:11px;color:var(--muted);letter-spacing:.04em}
+.node .nm{font-weight:600;font-size:14.2px;margin-top:2px;line-height:1.35}
+.node .ds{font-size:12.8px;color:var(--ink-2);margin-top:5px}
+.node.ghost{background:transparent;border-style:dashed;opacity:.62}
+.node.ghost .nm{font-weight:500}
+.kill{border-top-color:var(--warn)}
+.kill .nm{color:var(--warn)}
+
+/* ---------- layer stack ---------- */
+.stack{display:flex;flex-direction:column;gap:6px}
+.layer{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr) minmax(0,1.25fr);
+       gap:12px;align-items:center;border:1px solid var(--line);background:var(--surface);
+       border-radius:3px;padding:12px 14px}
+.layer .who{font-weight:600;font-size:14px}
+.layer .who small{display:block;font-family:var(--f-mono);font-size:10.5px;color:var(--muted);
+                  letter-spacing:.08em;text-transform:uppercase;font-weight:500;margin-bottom:2px}
+.tool{font-family:var(--f-mono);font-size:12px;font-weight:500;border-radius:2px;padding:3px 7px;
+      display:inline-block;border:1px solid transparent}
+.tool.a{background:var(--hls-soft);color:var(--hls);border-color:var(--hls)}
+.tool.b{background:var(--mat-soft);color:var(--mat);border-color:var(--mat)}
+.tool.c{background:var(--ip-soft);color:var(--ip);border-color:var(--ip)}
+.tool.x{background:transparent;color:var(--muted);border-color:var(--line)}
+.layer .why{font-size:12.8px;color:var(--ink-2)}
+.tools{display:flex;flex-wrap:wrap;gap:5px}
+
+/* ---------- flow ---------- */
+.flow{display:flex;flex-wrap:wrap;gap:7px;align-items:stretch}
+.step{flex:1 1 128px;border:1px solid var(--line);background:var(--surface);border-radius:3px;
+      padding:10px 11px;min-width:0}
+.step .n{font-family:var(--f-mono);font-size:10.5px;color:var(--muted)}
+.step .t{font-weight:600;font-size:13.4px;margin-top:2px}
+.step .u{font-size:11.8px;color:var(--muted);margin-top:4px}
+.step.own{background:var(--ip-soft);border-color:var(--ip)}
+.step.own .t{color:var(--ip)}
+
+/* ---------- table ---------- */
+.tblwrap{overflow-x:auto;border:1px solid var(--line);border-radius:3px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:560px;font-size:13.4px}
+th,td{text-align:left;padding:10px 13px;border-bottom:1px solid var(--line-2);vertical-align:top}
+th{font-family:var(--f-mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+   color:var(--muted);font-weight:500;background:var(--sunk);white-space:nowrap}
+tbody tr:last-child td{border-bottom:none}
+td strong{font-weight:600}
+
+/* ---------- call ---------- */
+.call{border:1px solid var(--ink);background:var(--surface);border-radius:3px;padding:20px 22px}
+.call h3{font-size:17px;margin-bottom:8px}
+.call ul{margin:10px 0 0;padding-left:19px;display:flex;flex-direction:column;gap:7px}
+.call li{font-size:14px;color:var(--ink-2)}
+.call li b{color:var(--ink)}
+.caution{border-left:4px solid var(--warn);background:var(--surface);border:1px solid var(--line);
+         border-left:4px solid var(--warn);border-radius:3px;padding:15px 17px}
+.caution h3{color:var(--warn);margin-bottom:6px}
+.caution p{font-size:13.6px;color:var(--ink-2)}
+
+/* ---------- sources ---------- */
+.src{font-size:12.6px;color:var(--muted);display:flex;flex-direction:column;gap:7px}
+.src div{padding-left:1.1em;text-indent:-1.1em}
+.src b{color:var(--ink-2);font-weight:600}
+footer{margin-top:52px;border-top:1px solid var(--line);padding-top:18px}
+
+@media (max-width:760px){
+  .legend,.tracks{grid-template-columns:1fr}
+  .layer{grid-template-columns:1fr;gap:7px}
+  .tracks{gap:9px}
+  .cell{gap:8px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">데이터통신 실리콘 · 1994 → 2026</div>
+  <h1>통신 IP 설계 테크트리</h1>
+  <p class="lede">HLS 와 MATLAB 이 통신 IP 개발에서 실제로 먹은 층은 어디까지인가. 결론부터:
+  <b>알고리즘과 중속 데이터패스는 먹었고, 고속 PHY 는 못 먹었다.</b> 그리고 둘 중 쓸 만한 것으로
+  판명된 것은 예외 없이 <b>하드 IP 나 블록 라이브러리로 굳어</b>, HLS 를 한 층 위로 밀어 올렸다.
+  그 반복이 이 테크트리의 줄거리다.</p>
+  <div class="meta">
+    <span>조사 2026-09-18</span>
+    <span>세 갈래 · 5개 시대</span>
+    <span>출처 전부 <b>검색 조각</b> 수준 — 전문 미확인</span>
+  </div>
+</header>
+
+<section>
+  <div class="shead">
+    <div class="eyebrow">읽는 법</div>
+    <h2>세 갈래가 서로를 밀어냈다</h2>
+    <p>같은 문제(사양에서 실리콘까지)를 세 진영이 다른 방향에서 공격했다. 아래 테크트리는 같은
+    시대 띠 안에서 세 갈래를 나란히 놓는다 — 한 갈래의 성공이 다음 시대에 다른 갈래를 어떻게
+    바꿨는지가 가로로 읽힌다.</p>
+  </div>
+  <div class="legend">
+    <div class="lg t1"><h3>HLS — C/C++ 에서 RTL 로</h3>
+      <p>알고리즘을 소프트웨어로 쓰고 하드웨어를 뽑는다. EDA 업계가 30년 민 방향.</p></div>
+    <div class="lg t2"><h3>MATLAB — 모델에서 RTL 로</h3>
+      <p>통신 알고리즘의 모국어에서 바로 내려간다. 황금 모델과 구현이 같은 자리에 있다.</p></div>
+    <div class="lg t3"><h3>IP · 디자인하우스</h3>
+      <p>어려운 것은 아예 남이 만들어 판다. 팔리는 것은 굳어서 하드 블록이 된다.</p></div>
+  </div>
+</section>
+
+<section>
+  <div class="shead">
+    <div class="eyebrow">테크트리</div>
+    <h2>다섯 시대</h2>
+  </div>
+
+  <div class="era">
+    <div class="era-head">
+      <span class="era-yr mono">1994 — 2004</span>
+      <span class="era-name">첫 시도, 그리고 첫 실패</span>
+      <span class="era-note">추상화 층을 잘못 골랐다. 언어도 타이밍 모델도 행동 기술에 안 맞았다.</span>
+    </div>
+    <div class="tracks">
+      <div class="cell">
+        <div class="node t1"><div class="yr mono">1994</div><div class="nm">Synopsys Behavioral Compiler</div>
+          <div class="ds">Verilog/VHDL 입력. 언어도 부분 타이밍 추상화도 고수준 행동 기술에 안 맞아 널리 안 쓰였다.</div></div>
+        <div class="node t1 kill"><div class="yr mono">2004</div><div class="nm">Behavioral Compiler 단종</div>
+          <div class="ds">HLS 1세대의 종료. "HDL 을 고수준 언어처럼 쓴다" 는 접근이 실패한 지점.</div></div>
+      </div>
+      <div class="cell">
+        <div class="node t2 ghost"><div class="yr mono">2000s 초</div><div class="nm">System Generator for DSP</div>
+          <div class="ds">블록 단위 · 비트·사이클 정확 모델. DSP 설계자가 Simulink 안에서 FPGA 를 그린다.</div></div>
+      </div>
+      <div class="cell">
+        <div class="node t3 ghost"><div class="yr mono">—</div><div class="nm">IP 재사용 모델 정착</div>
+          <div class="ds">인터페이스·메모리 컨트롤러부터 남이 만든 것을 사 쓰는 관행이 자리잡는다.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="era">
+    <div class="era-head">
+      <span class="era-yr mono">2004 — 2011</span>
+      <span class="era-name">C 를 입구로 삼다</span>
+      <span class="era-note">HDL 이 아니라 소프트웨어 언어를 입구로 바꾸자 비로소 움직였다.</span>
+    </div>
+    <div class="tracks">
+      <div class="cell">
+        <div class="node t1"><div class="yr mono">2004</div><div class="nm">Mentor Catapult C</div>
+          <div class="ds">untimed ANSI C/C++ 에서 파이프라인된 다중블록 서브시스템을 합성. FPGA 와 <b>ASIC</b> 양쪽을 낸다.</div></div>
+        <div class="node t1"><div class="yr mono">2000s 중</div><div class="nm">Forte Cynthesizer</div>
+          <div class="ds">SystemC 를 입구로. C 계열이되 하드웨어 의미를 언어에 심는 쪽.</div></div>
+        <div class="node t1"><div class="yr mono">2006~</div><div class="nm">UCLA xPilot → AutoESL AutoPilot</div>
+          <div class="ds">SDC 스케줄링이 학계에서 나와 상용으로. 오늘 Vitis HLS 의 직계 조상.</div></div>
+      </div>
+      <div class="cell">
+        <div class="node t2"><div class="yr mono">2000s 후</div><div class="nm">MATLAB/Simulink HDL Coder</div>
+          <div class="ds">MATLAB 함수 · Simulink 모델 · Stateflow 차트에서 Verilog/SystemVerilog/VHDL 생성.</div></div>
+        <div class="node t2"><div class="yr mono">—</div><div class="nm">Fixed-Point Designer</div>
+          <div class="ds">부동→고정 변환을 도구가 맡는다. 넘침을 코드 리포트에 <b>줄 단위로</b> 표시하고,
+          변수별 범위·정밀도 히스토그램을 준다.</div></div>
+      </div>
+      <div class="cell">
+        <div class="node t3"><div class="yr mono">—</div><div class="nm">SerDes PHY 가 IP 로 분리</div>
+          <div class="ds">아날로그·혼성신호 고속 PHY 는 SoC 팀이 안 만든다. 전문 벤더에게서 산다.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="era">
+    <div class="era-head">
+      <span class="era-yr mono">2011 — 2020</span>
+      <span class="era-name">FPGA 벤더가 삼키다</span>
+      <span class="era-note">HLS 가 독립 EDA 제품에서 <b>FPGA 툴체인의 기본 기능</b>으로 내려앉는다.</span>
+    </div>
+    <div class="tracks">
+      <div class="cell">
+        <div class="node t1"><div class="yr mono">2011</div><div class="nm">Xilinx, AutoESL 인수 → Vivado HLS</div>
+          <div class="ds">HLS 가 무료로 FPGA 흐름에 딸려 온다. 진입 장벽이 사라지고 학계 사용이 폭발한다.</div></div>
+        <div class="node t1"><div class="yr mono">2014</div><div class="nm">LegUp (오픈소스)</div>
+          <div class="ds">C 프로그램 → MIPS 소프트 프로세서 + 가속기 혼성 구조. 뒤에 Microchip SmartHLS 로 상용화.</div></div>
+        <div class="node t1"><div class="yr mono">—</div><div class="nm">Cadence Stratus · Intel HLS</div>
+          <div class="ds">주요 벤더가 전부 하나씩 갖는다. HLS 의 존재 자체는 논쟁이 끝난다.</div></div>
+      </div>
+      <div class="cell">
+        <div class="node t2"><div class="yr mono">—</div><div class="nm">Wireless HDL Toolbox</div>
+          <div class="ds">5G · LTE · WLAN · 위성(DVB-S2 · GPS · CCSDS) · 사용자 OFDM 용
+          <b>사전검증된 하드웨어-레디 블록</b>. 부호기·복호기·변조기·복조기·수열 생성기.</div></div>
+        <div class="node t2"><div class="yr mono">—</div><div class="nm">산업 적용 사례</div>
+          <div class="ds">ShortLink 이 802.15.4 수신기(GFSK/OQPSK/PSK)를 모델기반 설계로
+          FPGA 프로토타입 → <b>ASIC 레디</b>까지.</div></div>
+      </div>
+      <div class="cell">
+        <div class="node t3"><div class="yr mono">—</div><div class="nm">FEC IP 전문 벤더</div>
+          <div class="ds">Creonic 이 3GPP Rel-15 LDPC·Polar 제품군(HARQ 결합·레이트 매칭·CRC, BG1/BG2 전 부호율).
+          AccelerComm 이 5G NR LDPC 체인.</div></div>
+        <div class="node t3 kill"><div class="yr mono">—</div><div class="nm">RFSoC: SD-FEC 를 굳히다</div>
+          <div class="ds">Zynq UltraScale+ RFSoC 가 소프트판정 FEC 를 <b>하드 IP 블록</b>으로 내장.
+          잘 되는 것은 합성 대상이 아니라 실리콘이 된다.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="era">
+    <div class="era-head">
+      <span class="era-yr mono">2020 — 2024</span>
+      <span class="era-name">한계가 드러나고, 오픈이 성숙하다</span>
+      <span class="era-note">HLS 가 못 하는 것이 무엇인지 문헌으로 못 박힌다 — <b>물리 인식</b>이 없다.</span>
+    </div>
+    <div class="tracks">
+      <div class="cell">
+        <div class="node t1"><div class="yr mono">2020</div><div class="nm">Vitis HLS 로 개명</div>
+          <div class="ds">C/C++ 입력, Verilog/VHDL 출력, AMD FPGA 전용.</div></div>
+        <div class="node t1 kill"><div class="yr mono">2022</div><div class="nm">"FPGA HLS Today" — 물리 인식의 벽</div>
+          <div class="ds">HLS 는 합성 시점에 <b>물리 배치 정보가 없어</b> cross-SLR 연결을 못 알아본다.
+          덜 파이프라인된 그 신호가 설계 전체의 주파수 병목이 된다. AutoBridge 가 147→297 MHz(+102%)로
+          그 자리를 메우고, 원래 라우팅 불가였던 16개를 완주시킨다.</div></div>
+        <div class="node t1"><div class="yr mono">2021~</div><div class="nm">Bambu · XLS(DSLX) · hls4ml</div>
+          <div class="ds">오픈 HLS 가 연구 기반으로 성숙. hls4ml 이 딥러닝 가속을 재구성 하드웨어로 여는 플랫폼이 된다.</div></div>
+      </div>
+      <div class="cell">
+        <div class="node t2"><div class="yr mono">2020s</div><div class="nm">Vitis Model Composer</div>
+          <div class="ds">System Generator for DSP 를 <b>흡수</b>(독립 제품 단종). PL(RTL·HLS 블록셋)과
+          AI Engine 배열(AIE 블록셋)을 동시에 겨냥한다. <b>그런데 속은 Vitis HLS 다</b> —
+          Model Composer 는 C++ 를 중간 산출물로 낸 뒤 Vitis HLS 로 IP 를 만든다.
+          두 갈래가 여기서 <b>합류</b>한다.</div></div>
+        <div class="node t2 kill"><div class="yr mono">—</div><div class="nm">분업선이 그어지다</div>
+          <div class="ds">HLS 의 동작은 "입력 받고 · 알고리즘 돌리고 · 결과 낸다" 라서
+          <b>섬세한 신호 조작에는 안 맞는다</b>. 그 자리는 플립플롭까지 내려가는
+          <b>System Generator</b> 가 계속 맡는다 — PWM 변조기 · SPI 제어기 같은 구조 수준 설계.</div></div>
+      </div>
+      <div class="cell">
+        <div class="node t3"><div class="yr mono">2025</div><div class="nm">SerDes 가 224G 로</div>
+          <div class="ds">Synopsys 400G/800G 급 SerDes PHY 와 IEEE 802.3-2018 기반 1.6T 이더넷 MAC IP.
+          Alphawave 224G XLR · 1.6T 멀티스탠다드 I/O 칩렛 · 800G/1.6T PAM4·coherent-lite DSP.
+          Credo 28G~224G(VSR~LR+), TSMC N5 의 112G PAM4.</div></div>
+        <div class="node t3"><div class="yr mono">—</div><div class="nm">디자인하우스 층 형성</div>
+          <div class="ds">삼성 파운드리 DSP(Design Solution Partner)에 에이디테크놀로지 · 가온칩스 ·
+          세미파이브 · 코아시아. 팹리스와 파운드리 사이의 다리.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="era">
+    <div class="era-head">
+      <span class="era-yr mono">2024 — 2026</span>
+      <span class="era-name">LLM 이 HLS 를 감싸다</span>
+      <span class="era-note">HLS 자체를 고치는 대신, <b>HLS 를 쓰는 사람</b>을 대체하는 쪽으로 연구가 몰린다.</span>
+    </div>
+    <div class="tracks">
+      <div class="cell">
+        <div class="node t1"><div class="yr mono">2024</div><div class="nm">HLSPilot · "Are LLMs Any Good for HLS?"</div>
+          <div class="ds">둘 다 ICCAD 2024. LLM 기반 HLS 와 그 회의론이 같은 학회에 같이 실린다.</div></div>
+        <div class="node t1"><div class="yr mono">2025</div><div class="nm">ChatHLS · iDSE · SAGE-HLS · TimelyHLS</div>
+          <div class="ds">설계 자동화 · 설계공간 탐색 · 구문인식 생성 · 타이밍 인식 최적화로 갈라진다.</div></div>
+        <div class="node t1"><div class="yr mono">2025</div><div class="nm">HLSDebugger · ForgeHLS</div>
+          <div class="ds">HLS 코드의 논리 버그를 LLM 이 잡는다(ICCAD 2025). ForgeHLS 가 대규모 오픈 데이터셋.</div></div>
+        <div class="node t1"><div class="yr mono">2026</div><div class="nm">Bench4HLS (DATE 2026)</div>
+          <div class="ds">LLM 의 HLS 코드 생성을 <b>끝에서 끝까지</b> 재는 벤치마크. 평가 기준이 서는 단계.</div></div>
+      </div>
+      <div class="cell">
+        <div class="node t2"><div class="yr mono">2026</div><div class="nm">MATLAB R2026a — Simulink Copilot</div>
+          <div class="ds">모델 설명 생성 · 모델 동작 질의응답 · 문제 식별과 해법 제안.
+          Polyspace Copilot 이 AI 가 쓴 코드까지 규칙 검사.</div></div>
+        <div class="node t2 kill"><div class="yr mono">—</div><div class="nm">HDL Coder 가 HLS 로 넘겨준다</div>
+          <div class="ds">HDL Coder 는 MATLAB 함수에서 <b>합성가능한 SystemC/C++</b> 도 낸다.
+          그 C++ 가 그대로 <b>Vitis HLS 의 입력</b>이 된다. 경쟁이 아니라 <b>사슬</b>이다.</div></div>
+        <div class="node t2"><div class="yr mono">—</div><div class="nm">HDL Coder 의 자리</div>
+          <div class="ds">FPGA · SoC · ASIC 용 이식 가능 합성가능 코드 생성. 속도·면적 최적화,
+          임계경로 강조, 합성 전 자원 사용량 추정.</div></div>
+      </div>
+      <div class="cell">
+        <div class="node t3"><div class="yr mono">2024</div><div class="nm">802.3dj Clause 177 — Inner FEC 카운터</div>
+          <div class="ds">표준이 계측을 계속 흡수한다. RS-FEC 코드워드 모니터링은 이미
+          91.5.3.3.2 · 119.2.5.3.1 · 134.5.3.3.3 에 있다.</div></div>
+        <div class="node t3"><div class="yr mono">2025~</div><div class="nm">칩렛으로 IP 가 물리화</div>
+          <div class="ds">Alphawave 1.6T I/O 칩렛 · 36G UCIe D2D. IP 가 파일이 아니라
+          <b>물건</b>으로 팔리기 시작한다.</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="shead">
+    <div class="eyebrow">지금의 분업</div>
+    <h2>층마다 주인이 다르다</h2>
+    <p>이게 이 조사의 핵심 결론이다. 통신 수신기를 위에서 아래로 훑으면, 어느 층에서 HLS 와
+    MATLAB 이 멈추는지가 뚜렷하다.</p>
+  </div>
+  <div class="stack">
+    <div class="layer">
+      <div class="who"><small>층 1</small>알고리즘 · 링크 설계</div>
+      <div class="tools"><span class="tool b">MATLAB</span><span class="tool b">Simulink</span></div>
+      <div class="why">황금 모델이 사는 곳. 이견 없이 MATLAB 의 영토다.</div>
+    </div>
+    <div class="layer">
+      <div class="who"><small>층 2</small>베이스밴드 DSP · 등화 · 동기</div>
+      <div class="tools"><span class="tool a">HLS</span><span class="tool b">HDL Coder</span><span class="tool b">Model Composer</span></div>
+      <div class="why"><b>둘이 겹치는 유일한 층.</b> 그런데 싸우는 게 아니라 <b>합류한다</b> —
+      Model Composer 는 속으로 Vitis HLS 를 부르고, HDL Coder 는 Vitis HLS 용 C++ 를 낸다.</div>
+    </div>
+    <div class="layer">
+      <div class="who"><small>층 3</small>FEC (LDPC · Polar · RS)</div>
+      <div class="tools"><span class="tool c">전문 IP 벤더</span><span class="tool c">하드 블록</span><span class="tool a">HLS(탐색용)</span></div>
+      <div class="why">HLS 는 <b>설계공간 탐색</b>에 쓰이고 최종 제품은 IP 를 산다. RFSoC 는 아예 하드웨어로 굳혔다.</div>
+    </div>
+    <div class="layer">
+      <div class="who"><small>층 4</small>PCS · MAC · FEC 카운터</div>
+      <div class="tools"><span class="tool c">벤더 IP</span><span class="tool x">표준이 규정</span></div>
+      <div class="why">802.3 이 레지스터 수준까지 정해 놓아 설계 자유도가 거의 없다.</div>
+    </div>
+    <div class="layer">
+      <div class="who"><small>층 5</small>SerDes PHY (아날로그·혼성)</div>
+      <div class="tools"><span class="tool c">Synopsys · Alphawave · Credo</span><span class="tool x">HLS 불가</span></div>
+      <div class="why">HLS 도 MATLAB 도 <b>여기 못 들어온다.</b> 물리 인식이 없고, 애초에 디지털이 아니다.</div>
+    </div>
+  </div>
+  <div style="margin-top:14px" class="caution">
+    <h3>반복되는 패턴</h3>
+    <p>층 2에서 HLS 로 탐색해 좋은 구조를 찾으면 → 층 3의 IP 벤더가 그것을 제품으로 만들고 →
+    FPGA 벤더가 하드 블록으로 굳힌다(SD-FEC). 그러면 그 층은 HLS 의 대상에서 사라지고,
+    HLS 는 한 층 위로 올라간다. <b>HLS 의 영토는 넓어지는 게 아니라 위로 밀려 올라간다.</b></p>
+  </div>
+</section>
+
+<section>
+  <div class="shead">
+    <div class="eyebrow">디자인하우스</div>
+    <h2>그들이 실제로 하는 일</h2>
+    <p>디자인하우스는 <b>팹리스와 파운드리 사이의 다리</b>다. 팹리스가 설계한 것을 파운드리 공정에
+    맞게 최적화하고, 패키징·테스트 외주까지 포함해 <b>생산을 뺀 전 과정</b>을 관리한다.</p>
+  </div>
+  <div class="flow">
+    <div class="step"><div class="n mono">01</div><div class="t">사양</div><div class="u">팹리스 / 고객</div></div>
+    <div class="step own"><div class="n mono">02</div><div class="t">RTL · IP 선정</div><div class="u">디자인하우스</div></div>
+    <div class="step own"><div class="n mono">03</div><div class="t">논리 설계</div><div class="u">디자인하우스</div></div>
+    <div class="step own"><div class="n mono">04</div><div class="t">물리 설계</div><div class="u">디자인하우스</div></div>
+    <div class="step"><div class="n mono">05</div><div class="t">파운드리</div><div class="u">삼성 / TSMC</div></div>
+    <div class="step own"><div class="n mono">06</div><div class="t">패키지 · 테스트</div><div class="u">OSAT 관리</div></div>
+    <div class="step own"><div class="n mono">07</div><div class="t">양산 · 불량분석</div><div class="u">디자인하우스</div></div>
+  </div>
+  <div class="tblwrap" style="margin-top:16px">
+    <table>
+      <thead><tr><th>구분</th><th>무엇을 파는가</th><th>예</th></tr></thead>
+      <tbody>
+        <tr><td><strong>IP 벤더</strong></td><td>재사용 가능한 설계 블록 (파일 또는 칩렛)</td>
+            <td>Synopsys · Alphawave · Credo (SerDes) / Creonic · AccelerComm (FEC)</td></tr>
+        <tr><td><strong>디자인하우스</strong></td><td>사양→양산까지의 <em>서비스</em>. 공정 최적화와 턴키</td>
+            <td>에이디테크놀로지 · 가온칩스 · 세미파이브 · 코아시아 (삼성 DSP)</td></tr>
+        <tr><td><strong>팹리스</strong></td><td>제품과 사양. 시장을 본다</td><td>고객사</td></tr>
+        <tr><td><strong>파운드리</strong></td><td>공정과 생산능력</td><td>삼성 · TSMC</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p style="margin-top:12px;font-size:13.4px;color:var(--muted)">
+    ASICLAND 는 사양부터 RTL · IP · 논리설계 · 물리설계 · 파운드리 · 패키지 · 테스트 · 양산 ·
+    불량분석까지 <b>원스톱 턴키</b>로 내건다. 디자인하우스의 업무 범위가 어디까지인지 보여주는 문장이다.</p>
+</section>
+
+<section>
+  <div class="shead">
+    <div class="eyebrow">함의</div>
+    <h2>이 지도에서 우리가 설 수 있는 자리</h2>
+  </div>
+  <div class="call">
+    <h3>테크트리가 말해 주는 것</h3>
+    <ul>
+      <li><b>층 2가 유일한 전장이다.</b> HLS 와 MATLAB 이 겹쳐 싸우는 곳은 베이스밴드 DSP 층 하나뿐이다.
+      층 1은 MATLAB 것, 층 3~5는 IP 벤더 것이다. 우리가 낄 수 있는 자리가 있다면 층 2다.</li>
+      <li><b>HLS 의 약점은 문헌으로 못 박혀 있다 — 물리 인식의 부재다.</b> 이건 추측이 아니라
+      TRETS 에 적힌 것이고, AutoBridge 가 +102% 로 그 크기를 쟀다. 약점이 명시돼 있다는 건
+      그 자리에 사람이 몰려 있다는 뜻이기도 하다.</li>
+      <li><b>[정정 2026-09-18] "HLS 대 MATLAB 비교가 비어 있다" 는 이 문서의 첫 판 주장은 틀렸다.</b>
+      더 파니 바로 나왔다 — "Comparison of Compilers for Generating a Hardware Description Based on an
+      Imperative Program: HDL Coder and Vitis HLS"(2025)가 <b>정확히 그 비교</b>다(MATLAB↔HDL Coder,
+      C++↔Vitis HLS, 테스트벤치·합성·구현까지). 그 밖에 "A Comparative Study between MATLAB HDL Coder
+      and VHDL", "Two FPGA Case Studies Comparing High Level Synthesis"(arXiv:1806.10672),
+      Wi-Fi 트랜시버 사례(arXiv:2305.13351)가 있다. <b>비어 있지 않다.</b></li>
+      <li><b>그리고 애초에 비교 구도가 틀렸다.</b> Model Composer 는 속으로 Vitis HLS 를 부르고,
+      HDL Coder 는 Vitis HLS 용 SystemC/C++ 를 낸다. 두 갈래는 경쟁이 아니라 <b>사슬</b>로 이어져 있다.
+      "어느 쪽이 PPA 가 좋은가" 는 상당 부분 <b>같은 백엔드를 두고 묻는 질문</b>이다.</li>
+      <li><b>굳어 가는 층은 피한다.</b> FEC 와 PCS 계측은 표준과 하드 IP 가 이미 먹었다.
+      거기서 새 계측기나 새 가속기를 제안하면 표준 재구현이 된다 — 앞서 한 번 확인한 바 있다.</li>
+    </ul>
+  </div>
+  <div class="caution" style="margin-top:14px">
+    <h3>이 문서의 한계 — 먼저 읽을 것</h3>
+    <p>전부 <b>검색 조각(snippet) 수준</b>이다. 전문을 본 문헌은 하나도 없다.
+    nature.com · dl.acm.org · arxiv.org 등이 이 환경에서 egress 차단이고 우회하지 않았다.
+    특히 <b>연도</b>는 조각에 적힌 것을 옮긴 것이라 ±1년 오차가 있을 수 있고,
+    System Generator 와 HDL Coder 의 최초 출시 연도는 조각에서 확정되지 않아 "2000년대" 로만 적었다.
+    이 지도를 논문의 서론으로 쓰려면 <b>각 항목의 1차 출처를 학교 망에서 다시 확인해야 한다.</b></p>
+  </div>
+</section>
+
+<footer>
+  <div class="eyebrow" style="margin-bottom:10px">출처</div>
+  <div class="src">
+    <div><b>HLS 계보</b> — High-Level Synthesis (Wikipedia) · Catapult C (Wikipedia) ·
+      "High-Level Synthesis: Past, Present, and Future" · "A Taxonomy of the HLS Ecosystem for
+      Heterogeneous FPGA Systems", ACM TRETS, doi:10.1145/3764664</div>
+    <div><b>HLS 한계</b> — "FPGA HLS Today: Successes, Challenges, and Opportunities",
+      ACM TRETS, doi:10.1145/3530775 · "Challenges In Using HLS For FPGA Design" (Semiconductor Engineering) ·
+      "Integration Methodology of High-End SerDes IP into FPGAs" (SemiWiki)</div>
+    <div><b>오픈 HLS</b> — LegUp, ACM TECS 13(2), doi:10.1145/2514740 · Bambu, IEEE (doc 9586110) ·
+      hls4ml, arXiv:2512.01463 · "Comparison of HLS and Hardware Construction Tools" (ISP RAS)</div>
+    <div><b>LLM × HLS</b> — HLSPilot, ICCAD 2024, doi:10.1145/3676536.3676781 ·
+      "Are LLMs Any Good for HLS?", ICCAD 2024, doi:10.1145/3676536.3699507 ·
+      ChatHLS arXiv:2507.00642 · iDSE arXiv:2505.22086 · SAGE-HLS arXiv:2508.03558 ·
+      TimelyHLS arXiv:2507.17962 · ForgeHLS arXiv:2507.03255 · A2H-MAS arXiv:2508.10904 ·
+      CorrectHDL arXiv:2511.16395 · Bench4HLS (DATE 2026)</div>
+    <div><b>MATLAB</b> — MathWorks: HDL Coder · Fixed-Point Designer · Wireless HDL Toolbox ·
+      "Wireless Communications Design for ASICs, FPGAs, and SoCs" ·
+      R2026a 뉴스룸(Simulink Copilot · Polyspace Copilot) · Vitis Model Composer (MathWorks 3rd-party)</div>
+    <div><b>IP · 디자인하우스</b> — Synopsys SerDes PHY IP · Alphawave Semi SerDes / ECOC 2025 보도 ·
+      Credo IP &amp; Chiplets · Creonic 5G LDPC·Polar 제품군 (design-reuse) ·
+      AccelerComm T1 / RFSoC · ETNews &amp; BusinessKorea 디자인하우스 기사 · Gaonchips 뉴스</div>
+    <div><b>표준</b> — IEEE 802.3 RS-FEC codeword monitoring (91.5.3.3.2 · 119.2.5.3.1 · 134.5.3.3.3) ·
+      IEEE 802.3dj Clause 177 Inner FEC Counters (2024-05)</div>
+    <div><b>HLS 대 MATLAB 비교</b> — "Comparison of Compilers for Generating a Hardware Description
+      Based on an Imperative Program: HDL Coder and Vitis HLS" (2025) ·
+      "A Comparative Study between MATLAB HDL Coder and VHDL for FPGAs Design and Implementation" ·
+      "Two FPGA Case Studies Comparing High Level Synthesis", arXiv:1806.10672 ·
+      "Accelerating FPGA-Based Wi-Fi Transceiver Design and Prototyping by High-Level Synthesis",
+      arXiv:2305.13351 (IEEE doc 10171553) · "Analyzing the capabilities of HLS and RTL tools in the
+      design of an FPGA Montgomery Multiplier", arXiv:2509.08067 · imperix: System Generator /
+      Model Composer 문서</div>
+    <div><b>통신 IP 를 HLS 로 지은 사례</b> — "Fast Design Space Exploration using Vivado HLS:
+      Non-Binary LDPC Decoders" · "Model-Based Design of Flexible and Efficient LDPC Decoders on
+      FPGA Devices", J. Signal Process. Syst., doi:10.1007/s11265-020-01519-0</div>
+  </div>
+</footer>
+
+</div>

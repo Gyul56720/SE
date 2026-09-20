@@ -1,0 +1,30 @@
+// CRC-32 (IEEE 802.3) -- 한 사이클에 8 비트.
+//
+// 다항식 0x04C11DB7, 반사 입력/출력, 초기값 0xFFFFFFFF, 최종 XOR 0xFFFFFFFF.
+// 이더넷 FCS 가 쓰는 바로 그 설정이다 (Y3 장 참고).
+module crc32_8 (input  wire [31:0] crc_in,
+                input  wire  [7:0] d,
+                output wire [31:0] crc_out);
+   /* verilator lint_off BLKSEQ */
+   // 면제 사유: 함수의 지역 변수는 blocking 대입이라야 한다.
+   // 함수는 조합 계산이고, 그 안의 t 는 레지스터가 아니다.
+   // 여기서 '<=' 를 쓰면 루프가 의도대로 안 돈다.
+   function [31:0] step;
+      input [31:0] c;
+      input        b;
+      begin
+         if ((c[0]) ^ b) step = (c >> 1) ^ 32'hEDB88320;
+         else            step = (c >> 1);
+      end
+   endfunction
+   /* verilator lint_on BLKSEQ */
+
+   reg [31:0] c;
+   integer i;
+   always @* begin
+      c = crc_in;
+      for (i = 0; i < 8; i = i + 1)
+        c = step(c, d[i]);
+   end
+   assign crc_out = c;
+endmodule

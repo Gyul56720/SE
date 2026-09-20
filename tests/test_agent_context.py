@@ -18,3 +18,10 @@ def test_is_public_channel():
 
 def test_is_blocked():
     assert agent_context.is_blocked("someone") == ("someone" in agent_context.BLOCKED_USER_IDS)
+
+
+if __name__ == "__main__":
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import _run
+    _run.돌리기(globals())

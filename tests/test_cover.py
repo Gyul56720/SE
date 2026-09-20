@@ -147,7 +147,9 @@ else:
 print("\n[배선]")
 도구글 = (뿌리 / "bot_tools.py").read_text(encoding="utf-8")
 ok("min_coverage: float = 0.0" in 도구글, "run_rtl 이 min_coverage 를 받는다")
-ok("IP-grade" in 도구글, "독스트링이 IP 급 검증이라고 말한다")
+ok("IP-grade" in 도구글, "독스트링이 IP 급 검증이라고 말한다")  # G016: 문서 계약
+#   ^ 독스트링 글자를 일부러 잰다 -- 도구 설명이 min_coverage 의 뜻을 말하는지가 계약이다.
+#     동작은 바로 위 [판정] 마디가 run_rtl 을 실제로 불러서 잰다.
 배포 = (뿌리 / ".github" / "workflows" / "deploy-oracle.yml").read_text(encoding="utf-8")
 ok('- "cover.py"' in 배포, "cover.py 가 배포 트리거 paths 에 있다")
 ok(" verilator" in 배포, "배포가 verilator 를 깐다")

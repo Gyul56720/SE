@@ -1,0 +1,363 @@
+<title>신호가 풀리는 순서</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Libre+Franklin:wght@400;500;600;700&display=swap">
+<style>
+:root{
+  --ground:#F5F4F7; --surface:#FFFFFF; --sunk:#EAE8EE;
+  --ink:#1A1620; --ink2:#433C4D; --muted:#6E6678; --line:#D6D2DC; --line2:#E7E4EB;
+  --phase:#6D3C9E; --phase-s:#EEE5F7;
+  --amp:#91600A;   --amp-s:#F6EDDA;
+  --bad:#A02D3A;   --bad-s:#F8E6E8;
+  --ours:#14666B;  --ours-s:#DEEFEF;
+  --f:"Libre Franklin",-apple-system,BlinkMacSystemFont,sans-serif;
+  --m:"JetBrains Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --ground:#100E14; --surface:#181520; --sunk:#14111A;
+  --ink:#E9E6EE; --ink2:#BEB7C8; --muted:#8C8499; --line:#2C2836; --line2:#221F2B;
+  --phase:#B48BE0; --phase-s:#241735;
+  --amp:#D7A442;   --amp-s:#332614;
+  --bad:#E0808C;   --bad-s:#33161C;
+  --ours:#4FB8BD;  --ours-s:#0F2C2E;
+}}
+:root[data-theme="dark"]{
+  --ground:#100E14; --surface:#181520; --sunk:#14111A;
+  --ink:#E9E6EE; --ink2:#BEB7C8; --muted:#8C8499; --line:#2C2836; --line2:#221F2B;
+  --phase:#B48BE0; --phase-s:#241735;
+  --amp:#D7A442;   --amp-s:#332614;
+  --bad:#E0808C;   --bad-s:#33161C;
+  --ours:#4FB8BD;  --ours-s:#0F2C2E;
+}
+*{box-sizing:border-box}
+body{background:var(--ground);color:var(--ink);font-family:var(--f);font-size:16px;
+     line-height:1.7;-webkit-font-smoothing:antialiased;margin:0}
+.wrap{max-width:760px;margin:0 auto;padding-inline:20px;padding-block:46px 80px}
+h1,h2,h3{margin:0;text-wrap:balance;letter-spacing:-.015em}
+h1{font-size:clamp(28px,5vw,42px);line-height:1.12;font-weight:700}
+h2{font-size:clamp(20px,3vw,26px);font-weight:700}
+h3{font-size:16.5px;font-weight:600}
+p{margin:0;max-width:64ch}
+.m{font-family:var(--m);font-size:.9em}
+.eyebrow{font-family:var(--m);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+section{margin-top:48px} section>*+*{margin-top:14px}
+header{border-bottom:2px solid var(--ink);padding-bottom:24px}
+.sub{margin-top:16px;font-size:18px;font-weight:600;line-height:1.5;max-width:40ch}
+
+.key{background:var(--sunk);border:1px solid var(--line);border-radius:5px;padding:18px 20px}
+.key h3{margin-bottom:7px}
+.key p{font-size:15px;color:var(--ink2);max-width:none}
+.key p+p{margin-top:8px}
+
+/* 단계 카드 */
+.stage{border:1px solid var(--line);background:var(--surface);border-radius:6px;overflow:hidden}
+.stage+.stage{margin-top:11px}
+.stage.ours{border-color:var(--ours);border-width:2px}
+.st-h{display:flex;gap:11px;align-items:baseline;padding:13px 17px;background:var(--sunk);
+      border-bottom:1px solid var(--line)}
+.stage.ours .st-h{background:var(--ours-s)}
+.st-n{font-family:var(--m);font-size:11px;font-weight:600;color:var(--muted);flex:none}
+.stage.ours .st-n{color:var(--ours)}
+.st-h h3{flex:1}
+.stage.ours .st-h h3{color:var(--ours)}
+.tagx{font-family:var(--m);font-size:10px;letter-spacing:.06em;border:1px solid var(--line);
+      border-radius:2px;padding:1px 6px;color:var(--muted);white-space:nowrap}
+.st-b{padding:14px 17px;display:flex;flex-direction:column;gap:10px}
+.st-b p{font-size:14.6px;color:var(--ink2);max-width:none}
+.io{display:grid;grid-template-columns:auto 1fr;gap:5px 11px;font-size:13.6px;align-items:baseline}
+.io dt{font-family:var(--m);font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;
+       color:var(--muted);white-space:nowrap}
+.io dd{margin:0;color:var(--ink2)}
+.pa{display:flex;flex-wrap:wrap;gap:8px}
+.chip{font-size:13px;border-radius:3px;padding:4px 10px;border:1px solid;line-height:1.45}
+.c-ph{background:var(--phase-s);color:var(--phase);border-color:var(--phase)}
+.c-am{background:var(--amp-s);color:var(--amp);border-color:var(--amp)}
+.c-bd{background:var(--bad-s);color:var(--bad);border-color:var(--bad)}
+
+.eq{background:var(--sunk);border:1px solid var(--line);border-radius:5px;padding:14px 16px;
+    font-family:var(--m);font-size:13px;line-height:1.85;overflow-x:auto;color:var(--ink)}
+.eq .c{color:var(--muted)}
+.eq b{color:var(--phase)}
+
+figure{margin:0;border:1px solid var(--line);background:var(--surface);border-radius:6px;padding:14px}
+figure svg{display:block;width:100%;height:auto}
+figcaption{margin-top:11px;font-size:13px;color:var(--muted);line-height:1.6}
+.pbox{fill:var(--sunk);stroke:var(--line)}
+.ax{stroke:var(--line);stroke-width:1}
+.pt,.p-ok{fill:var(--ours)} .p-ch{fill:var(--amp)} .p-bad{fill:var(--bad)}
+.ptitle{font-family:var(--m);font-size:11px;font-weight:600;fill:var(--ink)}
+.psub{font-family:var(--m);font-size:9.5px;fill:var(--muted)}
+
+.tw{overflow-x:auto;border:1px solid var(--line);border-radius:5px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:560px;font-size:14px}
+th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line2);vertical-align:top}
+th{font-family:var(--m);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+   color:var(--muted);font-weight:400;background:var(--sunk);white-space:nowrap}
+tbody tr:last-child td{border-bottom:none}
+td.ph{color:var(--phase)} td.am{color:var(--amp)}
+
+.note{border:1px solid var(--line);border-left:3px solid var(--bad);background:var(--surface);
+      border-radius:5px;padding:15px 18px}
+.note h3{color:var(--bad);margin-bottom:6px}
+.note p{font-size:14.3px;color:var(--ink2);max-width:none}
+.note.ok{border-left-color:var(--ours)} .note.ok h3{color:var(--ours)}
+footer{margin-top:50px;border-top:1px solid var(--line);padding-top:18px;font-size:13px;color:var(--muted)}
+@media (max-width:600px){ .st-h{flex-wrap:wrap} }
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">수신기 신호 경로 · 위상과 진폭을 끝까지 따라간다</div>
+  <h1>신호가 풀리는 순서</h1>
+  <p class="sub">안테나에서 FEC 복호까지, 각 단계가 <b>위상</b>과 <b>진폭</b>에 무엇을 하는가.
+  그리고 우리 IP는 그중 어디에 있는가.</p>
+</header>
+
+<section>
+  <div class="key">
+    <h3>먼저 하나의 원리</h3>
+    <p><b>진폭과 위상은 따로 처리되지 않습니다.</b> &ldquo;진폭 보정 회로&rdquo;와 &ldquo;위상 보정 회로&rdquo;가
+    따로 있는 게 아닙니다. 신호는 처음부터 끝까지 <b>복소수 하나</b>이고, <b>복소 곱셈 한 번</b>이
+    크기와 각도를 <b>동시에</b> 바꿉니다.</p>
+    <p>그리고 결함도 두 종류로 갈립니다 &mdash; <b>더해지는 것</b>(열잡음, 양자화)과
+    <b>곱해지는 것</b>(채널, 위상잡음, 주파수 오차). 곱해지는 것은 전력을 키워도 안 없어집니다.
+    이 구분이 아래 전부를 관통합니다.</p>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">성상도로 보면</div>
+  <h2>네 장면</h2>
+  <figure><svg viewBox="0 0 640 186" role="img" aria-label="네 단계의 성상도 변화">
+    <g transform="translate(78,96)">
+      <rect x="-62" y="-62" width="124" height="124" rx="4" class="pbox"/>
+      <line x1="-62" y1="0" x2="62" y2="0" class="ax"/><line x1="0" y1="-62" x2="0" y2="62" class="ax"/>
+      <circle cx="28.5" cy="28.5" r="1.6" class="p-ok"/><circle cx="-28.5" cy="9.5" r="1.6" class="p-ok"/><circle cx="-28.5" cy="-9.5" r="1.6" class="p-ok"/><circle cx="-28.5" cy="-28.5" r="1.6" class="p-ok"/><circle cx="-28.5" cy="-9.5" r="1.6" class="p-ok"/><circle cx="28.5" cy="28.5" r="1.6" class="p-ok"/><circle cx="28.5" cy="9.5" r="1.6" class="p-ok"/><circle cx="9.5" cy="9.5" r="1.6" class="p-ok"/><circle cx="-28.5" cy="28.5" r="1.6" class="p-ok"/><circle cx="-28.5" cy="9.5" r="1.6" class="p-ok"/><circle cx="-9.5" cy="9.5" r="1.6" class="p-ok"/><circle cx="-9.5" cy="-9.5" r="1.6" class="p-ok"/><circle cx="9.5" cy="9.5" r="1.6" class="p-ok"/><circle cx="-9.5" cy="-28.5" r="1.6" class="p-ok"/><circle cx="-9.5" cy="28.5" r="1.6" class="p-ok"/><circle cx="-28.5" cy="-9.5" r="1.6" class="p-ok"/><circle cx="9.5" cy="-28.5" r="1.6" class="p-ok"/><circle cx="9.5" cy="-28.5" r="1.6" class="p-ok"/><circle cx="-28.5" cy="28.5" r="1.6" class="p-ok"/><circle cx="-28.5" cy="9.5" r="1.6" class="p-ok"/><circle cx="-9.5" cy="-28.5" r="1.6" class="p-ok"/><circle cx="-9.5" cy="-9.5" r="1.6" class="p-ok"/><circle cx="28.5" cy="-9.5" r="1.6" class="p-ok"/><circle cx="9.5" cy="28.5" r="1.6" class="p-ok"/><circle cx="-9.5" cy="-9.5" r="1.6" class="p-ok"/><circle cx="-9.5" cy="-9.5" r="1.6" class="p-ok"/><circle cx="9.5" cy="-9.5" r="1.6" class="p-ok"/><circle cx="9.5" cy="9.5" r="1.6" class="p-ok"/><circle cx="-28.5" cy="-9.5" r="1.6" class="p-ok"/><circle cx="9.5" cy="-28.5" r="1.6" class="p-ok"/><circle cx="28.5" cy="28.5" r="1.6" class="p-ok"/><circle cx="28.5" cy="-28.5" r="1.6" class="p-ok"/><circle cx="28.5" cy="28.5" r="1.6" class="p-ok"/><circle cx="-9.5" cy="28.5" r="1.6" class="p-ok"/><circle cx="-9.5" cy="9.5" r="1.6" class="p-ok"/><circle cx="9.5" cy="-9.5" r="1.6" class="p-ok"/><circle cx="9.5" cy="-9.5" r="1.6" class="p-ok"/><circle cx="9.5" cy="-28.5" r="1.6" class="p-ok"/><circle cx="28.5" cy="9.5" r="1.6" class="p-ok"/><circle cx="-9.5" cy="28.5" r="1.6" class="p-ok"/><circle cx="28.5" cy="-28.5" r="1.6" class="p-ok"/><circle cx="-28.5" cy="28.5" r="1.6" class="p-ok"/><circle cx="-28.5" cy="9.5" r="1.6" class="p-ok"/><circle cx="28.5" cy="-28.5" r="1.6" class="p-ok"/><circle cx="28.5" cy="-28.5" r="1.6" class="p-ok"/><circle cx="-9.5" cy="28.5" r="1.6" class="p-ok"/><circle cx="-28.5" cy="-9.5" r="1.6" class="p-ok"/><circle cx="-9.5" cy="9.5" r="1.6" class="p-ok"/><circle cx="-28.5" cy="28.5" r="1.6" class="p-ok"/><circle cx="28.5" cy="-9.5" r="1.6" class="p-ok"/><circle cx="9.5" cy="-9.5" r="1.6" class="p-ok"/><circle cx="9.5" cy="9.5" r="1.6" class="p-ok"/><circle cx="-28.5" cy="-28.5" r="1.6" class="p-ok"/><circle cx="-9.5" cy="-28.5" r="1.6" class="p-ok"/><circle cx="-28.5" cy="-28.5" r="1.6" class="p-ok"/><circle cx="28.5" cy="28.5" r="1.6" class="p-ok"/><circle cx="-9.5" cy="-28.5" r="1.6" class="p-ok"/><circle cx="-28.5" cy="28.5" r="1.6" class="p-ok"/><circle cx="-9.5" cy="28.5" r="1.6" class="p-ok"/><circle cx="9.5" cy="-28.5" r="1.6" class="p-ok"/><circle cx="9.5" cy="28.5" r="1.6" class="p-ok"/><circle cx="-9.5" cy="9.5" r="1.6" class="p-ok"/><circle cx="-9.5" cy="28.5" r="1.6" class="p-ok"/><circle cx="-28.5" cy="9.5" r="1.6" class="p-ok"/><circle cx="9.5" cy="9.5" r="1.6" class="p-ok"/><circle cx="9.5" cy="-9.5" r="1.6" class="p-ok"/><circle cx="9.5" cy="28.5" r="1.6" class="p-ok"/><circle cx="28.5" cy="-9.5" r="1.6" class="p-ok"/><circle cx="28.5" cy="-9.5" r="1.6" class="p-ok"/><circle cx="-28.5" cy="-28.5" r="1.6" class="p-ok"/><circle cx="9.5" cy="9.5" r="1.6" class="p-ok"/><circle cx="9.5" cy="-9.5" r="1.6" class="p-ok"/><circle cx="-28.5" cy="-28.5" r="1.6" class="p-ok"/><circle cx="-9.5" cy="28.5" r="1.6" class="p-ok"/><circle cx="-9.5" cy="-28.5" r="1.6" class="p-ok"/><circle cx="9.5" cy="-28.5" r="1.6" class="p-ok"/><circle cx="-9.5" cy="28.5" r="1.6" class="p-ok"/><circle cx="9.5" cy="-28.5" r="1.6" class="p-ok"/><circle cx="9.5" cy="-9.5" r="1.6" class="p-ok"/><circle cx="-28.5" cy="-28.5" r="1.6" class="p-ok"/><circle cx="-9.5" cy="-9.5" r="1.6" class="p-ok"/><circle cx="28.5" cy="9.5" r="1.6" class="p-ok"/><circle cx="28.5" cy="9.5" r="1.6" class="p-ok"/><circle cx="9.5" cy="-9.5" r="1.6" class="p-ok"/><circle cx="-28.5" cy="28.5" r="1.6" class="p-ok"/><circle cx="9.5" cy="-9.5" r="1.6" class="p-ok"/><circle cx="-28.5" cy="-28.5" r="1.6" class="p-ok"/><circle cx="28.5" cy="9.5" r="1.6" class="p-ok"/><circle cx="28.5" cy="-9.5" r="1.6" class="p-ok"/><circle cx="-9.5" cy="-9.5" r="1.6" class="p-ok"/><circle cx="28.5" cy="-28.5" r="1.6" class="p-ok"/><circle cx="28.5" cy="28.5" r="1.6" class="p-ok"/><circle cx="-9.5" cy="9.5" r="1.6" class="p-ok"/><circle cx="28.5" cy="-9.5" r="1.6" class="p-ok"/><circle cx="-9.5" cy="-9.5" r="1.6" class="p-ok"/><circle cx="-28.5" cy="9.5" r="1.6" class="p-ok"/><circle cx="9.5" cy="9.5" r="1.6" class="p-ok"/><circle cx="28.5" cy="9.5" r="1.6" class="p-ok"/><circle cx="9.5" cy="-9.5" r="1.6" class="p-ok"/><circle cx="-9.5" cy="-9.5" r="1.6" class="p-ok"/><circle cx="28.5" cy="-9.5" r="1.6" class="p-ok"/><circle cx="-9.5" cy="-28.5" r="1.6" class="p-ok"/><circle cx="-9.5" cy="-9.5" r="1.6" class="p-ok"/><circle cx="-28.5" cy="-9.5" r="1.6" class="p-ok"/><circle cx="-28.5" cy="-28.5" r="1.6" class="p-ok"/><circle cx="9.5" cy="-28.5" r="1.6" class="p-ok"/><circle cx="28.5" cy="28.5" r="1.6" class="p-ok"/><circle cx="-9.5" cy="28.5" r="1.6" class="p-ok"/><circle cx="9.5" cy="-9.5" r="1.6" class="p-ok"/><circle cx="28.5" cy="9.5" r="1.6" class="p-ok"/><circle cx="-28.5" cy="-9.5" r="1.6" class="p-ok"/><circle cx="-9.5" cy="28.5" r="1.6" class="p-ok"/><circle cx="9.5" cy="28.5" r="1.6" class="p-ok"/><circle cx="9.5" cy="28.5" r="1.6" class="p-ok"/><circle cx="-9.5" cy="-9.5" r="1.6" class="p-ok"/><circle cx="-9.5" cy="-9.5" r="1.6" class="p-ok"/><circle cx="-28.5" cy="-9.5" r="1.6" class="p-ok"/><circle cx="9.5" cy="9.5" r="1.6" class="p-ok"/><circle cx="28.5" cy="-9.5" r="1.6" class="p-ok"/><circle cx="-28.5" cy="-28.5" r="1.6" class="p-ok"/><circle cx="28.5" cy="28.5" r="1.6" class="p-ok"/><circle cx="-28.5" cy="-9.5" r="1.6" class="p-ok"/><circle cx="-28.5" cy="28.5" r="1.6" class="p-ok"/><circle cx="9.5" cy="-28.5" r="1.6" class="p-ok"/><circle cx="-28.5" cy="-9.5" r="1.6" class="p-ok"/><circle cx="28.5" cy="28.5" r="1.6" class="p-ok"/><circle cx="-9.5" cy="9.5" r="1.6" class="p-ok"/><circle cx="9.5" cy="9.5" r="1.6" class="p-ok"/><circle cx="28.5" cy="-28.5" r="1.6" class="p-ok"/><circle cx="28.5" cy="-9.5" r="1.6" class="p-ok"/><circle cx="-9.5" cy="-28.5" r="1.6" class="p-ok"/><circle cx="-28.5" cy="-28.5" r="1.6" class="p-ok"/><circle cx="-9.5" cy="28.5" r="1.6" class="p-ok"/><circle cx="28.5" cy="9.5" r="1.6" class="p-ok"/><circle cx="9.5" cy="9.5" r="1.6" class="p-ok"/><circle cx="-28.5" cy="-9.5" r="1.6" class="p-ok"/><circle cx="28.5" cy="-9.5" r="1.6" class="p-ok"/><circle cx="28.5" cy="-28.5" r="1.6" class="p-ok"/><circle cx="28.5" cy="-28.5" r="1.6" class="p-ok"/><circle cx="9.5" cy="9.5" r="1.6" class="p-ok"/><circle cx="28.5" cy="-28.5" r="1.6" class="p-ok"/><circle cx="9.5" cy="9.5" r="1.6" class="p-ok"/><circle cx="9.5" cy="28.5" r="1.6" class="p-ok"/><circle cx="28.5" cy="-28.5" r="1.6" class="p-ok"/><circle cx="9.5" cy="9.5" r="1.6" class="p-ok"/><circle cx="28.5" cy="28.5" r="1.6" class="p-ok"/><circle cx="-9.5" cy="9.5" r="1.6" class="p-ok"/><circle cx="28.5" cy="28.5" r="1.6" class="p-ok"/><circle cx="28.5" cy="-28.5" r="1.6" class="p-ok"/><circle cx="-28.5" cy="28.5" r="1.6" class="p-ok"/><circle cx="9.5" cy="28.5" r="1.6" class="p-ok"/><circle cx="-9.5" cy="9.5" r="1.6" class="p-ok"/><circle cx="-28.5" cy="28.5" r="1.6" class="p-ok"/><circle cx="-28.5" cy="9.5" r="1.6" class="p-ok"/><circle cx="-9.5" cy="28.5" r="1.6" class="p-ok"/><circle cx="-28.5" cy="-28.5" r="1.6" class="p-ok"/><circle cx="9.5" cy="-28.5" r="1.6" class="p-ok"/><circle cx="-28.5" cy="-28.5" r="1.6" class="p-ok"/><circle cx="9.5" cy="-9.5" r="1.6" class="p-ok"/><circle cx="28.5" cy="9.5" r="1.6" class="p-ok"/>
+    </g>
+    <text x="78" y="26" text-anchor="middle" class="ptitle">A · 송신</text>
+    <text x="78" y="42" text-anchor="middle" class="psub">깨끗한 16QAM</text><g transform="translate(238,96)">
+      <rect x="-62" y="-62" width="124" height="124" rx="4" class="pbox"/>
+      <line x1="-62" y1="0" x2="62" y2="0" class="ax"/><line x1="0" y1="-62" x2="0" y2="62" class="ax"/>
+      <circle cx="6.3" cy="-24.6" r="1.6" class="p-ch"/><circle cx="13.7" cy="13.0" r="1.6" class="p-ch"/><circle cx="2.7" cy="18.6" r="1.6" class="p-ch"/><circle cx="-5.2" cy="24.2" r="1.6" class="p-ch"/><circle cx="4.3" cy="18.6" r="1.6" class="p-ch"/><circle cx="6.8" cy="-25.3" r="1.6" class="p-ch"/><circle cx="-3.1" cy="-18.3" r="1.6" class="p-ch"/><circle cx="2.3" cy="-7.4" r="1.6" class="p-ch"/><circle cx="23.7" cy="6.8" r="1.6" class="p-ch"/><circle cx="13.5" cy="12.3" r="1.6" class="p-ch"/><circle cx="7.5" cy="0.6" r="1.6" class="p-ch"/><circle cx="-1.2" cy="8.2" r="1.6" class="p-ch"/><circle cx="1.1" cy="-8.1" r="1.6" class="p-ch"/><circle cx="-12.7" cy="13.6" r="1.6" class="p-ch"/><circle cx="18.0" cy="-3.8" r="1.6" class="p-ch"/><circle cx="4.0" cy="16.7" r="1.6" class="p-ch"/><circle cx="-17.8" cy="4.2" r="1.6" class="p-ch"/><circle cx="-19.0" cy="3.3" r="1.6" class="p-ch"/><circle cx="23.0" cy="6.2" r="1.6" class="p-ch"/><circle cx="14.0" cy="11.9" r="1.6" class="p-ch"/><circle cx="-11.5" cy="14.8" r="1.6" class="p-ch"/><circle cx="-1.6" cy="6.9" r="1.6" class="p-ch"/><circle cx="-13.8" cy="-12.2" r="1.6" class="p-ch"/><circle cx="12.1" cy="-14.0" r="1.6" class="p-ch"/><circle cx="-1.9" cy="8.7" r="1.6" class="p-ch"/><circle cx="-2.3" cy="8.5" r="1.6" class="p-ch"/><circle cx="-7.5" cy="-2.5" r="1.6" class="p-ch"/><circle cx="1.6" cy="-8.7" r="1.6" class="p-ch"/><circle cx="3.9" cy="17.7" r="1.6" class="p-ch"/><circle cx="-18.3" cy="3.0" r="1.6" class="p-ch"/><circle cx="6.7" cy="-24.6" r="1.6" class="p-ch"/><circle cx="-24.0" cy="-6.3" r="1.6" class="p-ch"/><circle cx="8.0" cy="-24.7" r="1.6" class="p-ch"/><circle cx="19.2" cy="-4.2" r="1.6" class="p-ch"/><circle cx="9.0" cy="2.2" r="1.6" class="p-ch"/><circle cx="-9.4" cy="-2.6" r="1.6" class="p-ch"/><circle cx="-8.3" cy="-3.0" r="1.6" class="p-ch"/><circle cx="-18.6" cy="3.7" r="1.6" class="p-ch"/><circle cx="-3.5" cy="-18.0" r="1.6" class="p-ch"/><circle cx="16.7" cy="-4.3" r="1.6" class="p-ch"/><circle cx="-23.4" cy="-7.6" r="1.6" class="p-ch"/><circle cx="24.8" cy="6.5" r="1.6" class="p-ch"/><circle cx="13.1" cy="12.3" r="1.6" class="p-ch"/><circle cx="-24.8" cy="-6.2" r="1.6" class="p-ch"/><circle cx="-24.7" cy="-7.1" r="1.6" class="p-ch"/><circle cx="18.2" cy="-2.6" r="1.6" class="p-ch"/><circle cx="4.3" cy="18.0" r="1.6" class="p-ch"/><circle cx="9.4" cy="1.3" r="1.6" class="p-ch"/><circle cx="24.0" cy="6.9" r="1.6" class="p-ch"/><circle cx="-13.5" cy="-13.2" r="1.6" class="p-ch"/><circle cx="-7.9" cy="-2.5" r="1.6" class="p-ch"/><circle cx="3.3" cy="-7.7" r="1.6" class="p-ch"/><circle cx="-5.8" cy="24.0" r="1.6" class="p-ch"/><circle cx="-11.4" cy="15.0" r="1.6" class="p-ch"/><circle cx="-7.0" cy="24.5" r="1.6" class="p-ch"/><circle cx="6.2" cy="-25.3" r="1.6" class="p-ch"/><circle cx="-12.8" cy="14.6" r="1.6" class="p-ch"/><circle cx="25.1" cy="5.1" r="1.6" class="p-ch"/><circle cx="18.6" cy="-3.8" r="1.6" class="p-ch"/><circle cx="-18.4" cy="3.2" r="1.6" class="p-ch"/><circle cx="12.0" cy="-14.0" r="1.6" class="p-ch"/><circle cx="8.4" cy="3.6" r="1.6" class="p-ch"/><circle cx="17.7" cy="-3.5" r="1.6" class="p-ch"/><circle cx="13.4" cy="12.1" r="1.6" class="p-ch"/><circle cx="2.4" cy="-7.3" r="1.6" class="p-ch"/><circle cx="-6.4" cy="-1.2" r="1.6" class="p-ch"/><circle cx="12.1" cy="-14.2" r="1.6" class="p-ch"/><circle cx="-14.4" cy="-11.8" r="1.6" class="p-ch"/><circle cx="-14.8" cy="-11.1" r="1.6" class="p-ch"/><circle cx="-7.2" cy="24.6" r="1.6" class="p-ch"/><circle cx="2.5" cy="-8.6" r="1.6" class="p-ch"/><circle cx="-7.5" cy="-1.8" r="1.6" class="p-ch"/><circle cx="-6.3" cy="23.5" r="1.6" class="p-ch"/><circle cx="18.4" cy="-4.8" r="1.6" class="p-ch"/><circle cx="-12.2" cy="14.0" r="1.6" class="p-ch"/><circle cx="-18.1" cy="4.6" r="1.6" class="p-ch"/><circle cx="17.2" cy="-3.0" r="1.6" class="p-ch"/><circle cx="-18.5" cy="3.8" r="1.6" class="p-ch"/><circle cx="-8.0" cy="-2.7" r="1.6" class="p-ch"/><circle cx="-6.8" cy="24.0" r="1.6" class="p-ch"/><circle cx="-2.4" cy="7.7" r="1.6" class="p-ch"/><circle cx="-4.4" cy="-17.9" r="1.6" class="p-ch"/><circle cx="-4.1" cy="-18.4" r="1.6" class="p-ch"/><circle cx="-7.5" cy="-1.8" r="1.6" class="p-ch"/><circle cx="23.9" cy="6.5" r="1.6" class="p-ch"/><circle cx="-8.1" cy="-1.3" r="1.6" class="p-ch"/><circle cx="-5.8" cy="25.2" r="1.6" class="p-ch"/><circle cx="-3.4" cy="-17.9" r="1.6" class="p-ch"/><circle cx="-12.9" cy="-11.5" r="1.6" class="p-ch"/><circle cx="-3.5" cy="8.7" r="1.6" class="p-ch"/><circle cx="-23.6" cy="-6.8" r="1.6" class="p-ch"/><circle cx="6.0" cy="-24.1" r="1.6" class="p-ch"/><circle cx="8.1" cy="0.2" r="1.6" class="p-ch"/><circle cx="-13.4" cy="-12.9" r="1.6" class="p-ch"/><circle cx="-1.4" cy="8.5" r="1.6" class="p-ch"/><circle cx="14.7" cy="11.7" r="1.6" class="p-ch"/><circle cx="2.2" cy="-8.3" r="1.6" class="p-ch"/><circle cx="-2.8" cy="-17.7" r="1.6" class="p-ch"/><circle cx="-8.2" cy="-2.8" r="1.6" class="p-ch"/><circle cx="-2.2" cy="8.6" r="1.6" class="p-ch"/><circle cx="-13.5" cy="-10.2" r="1.6" class="p-ch"/><circle cx="-12.6" cy="13.5" r="1.6" class="p-ch"/><circle cx="-0.7" cy="8.5" r="1.6" class="p-ch"/><circle cx="4.5" cy="17.2" r="1.6" class="p-ch"/><circle cx="-4.9" cy="24.6" r="1.6" class="p-ch"/><circle cx="-18.2" cy="4.6" r="1.6" class="p-ch"/><circle cx="6.1" cy="-25.2" r="1.6" class="p-ch"/><circle cx="18.3" cy="-3.1" r="1.6" class="p-ch"/><circle cx="-7.6" cy="-2.2" r="1.6" class="p-ch"/><circle cx="-4.2" cy="-19.2" r="1.6" class="p-ch"/><circle cx="4.1" cy="18.1" r="1.6" class="p-ch"/><circle cx="18.2" cy="-3.8" r="1.6" class="p-ch"/><circle cx="13.3" cy="-14.1" r="1.6" class="p-ch"/><circle cx="11.8" cy="-14.5" r="1.6" class="p-ch"/><circle cx="-1.4" cy="8.6" r="1.6" class="p-ch"/><circle cx="-2.5" cy="7.6" r="1.6" class="p-ch"/><circle cx="3.2" cy="17.8" r="1.6" class="p-ch"/><circle cx="1.6" cy="-9.6" r="1.6" class="p-ch"/><circle cx="-14.8" cy="-12.0" r="1.6" class="p-ch"/><circle cx="-6.2" cy="24.7" r="1.6" class="p-ch"/><circle cx="7.0" cy="-24.6" r="1.6" class="p-ch"/><circle cx="3.9" cy="18.5" r="1.6" class="p-ch"/><circle cx="24.6" cy="6.1" r="1.6" class="p-ch"/><circle cx="-17.1" cy="3.7" r="1.6" class="p-ch"/><circle cx="4.0" cy="17.4" r="1.6" class="p-ch"/><circle cx="6.5" cy="-23.7" r="1.6" class="p-ch"/><circle cx="7.9" cy="2.2" r="1.6" class="p-ch"/><circle cx="1.0" cy="-6.4" r="1.6" class="p-ch"/><circle cx="-23.6" cy="-5.7" r="1.6" class="p-ch"/><circle cx="-15.1" cy="-13.3" r="1.6" class="p-ch"/><circle cx="-11.8" cy="14.4" r="1.6" class="p-ch"/><circle cx="-6.3" cy="24.6" r="1.6" class="p-ch"/><circle cx="18.9" cy="-3.0" r="1.6" class="p-ch"/><circle cx="-3.9" cy="-18.6" r="1.6" class="p-ch"/><circle cx="1.6" cy="-8.2" r="1.6" class="p-ch"/><circle cx="4.1" cy="19.0" r="1.6" class="p-ch"/><circle cx="-14.4" cy="-12.7" r="1.6" class="p-ch"/><circle cx="-24.3" cy="-6.5" r="1.6" class="p-ch"/><circle cx="-24.1" cy="-6.8" r="1.6" class="p-ch"/><circle cx="2.0" cy="-7.6" r="1.6" class="p-ch"/><circle cx="-24.3" cy="-7.5" r="1.6" class="p-ch"/><circle cx="1.6" cy="-8.3" r="1.6" class="p-ch"/><circle cx="12.1" cy="-13.9" r="1.6" class="p-ch"/><circle cx="-25.6" cy="-6.0" r="1.6" class="p-ch"/><circle cx="2.0" cy="-7.9" r="1.6" class="p-ch"/><circle cx="5.5" cy="-24.7" r="1.6" class="p-ch"/><circle cx="8.8" cy="2.3" r="1.6" class="p-ch"/><circle cx="7.2" cy="-24.9" r="1.6" class="p-ch"/><circle cx="-25.4" cy="-6.7" r="1.6" class="p-ch"/><circle cx="24.2" cy="5.4" r="1.6" class="p-ch"/><circle cx="12.2" cy="-14.5" r="1.6" class="p-ch"/><circle cx="7.4" cy="2.1" r="1.6" class="p-ch"/><circle cx="24.5" cy="7.6" r="1.6" class="p-ch"/><circle cx="13.7" cy="12.1" r="1.6" class="p-ch"/><circle cx="17.0" cy="-4.4" r="1.6" class="p-ch"/><circle cx="-6.5" cy="24.0" r="1.6" class="p-ch"/><circle cx="-18.3" cy="3.5" r="1.6" class="p-ch"/><circle cx="-6.3" cy="24.5" r="1.6" class="p-ch"/><circle cx="-8.9" cy="-1.9" r="1.6" class="p-ch"/><circle cx="-3.4" cy="-17.6" r="1.6" class="p-ch"/>
+    </g>
+    <text x="238" y="26" text-anchor="middle" class="ptitle">B · 채널 통과</text>
+    <text x="238" y="42" text-anchor="middle" class="psub">회전 + 축소</text><g transform="translate(398,96)">
+      <rect x="-62" y="-62" width="124" height="124" rx="4" class="pbox"/>
+      <line x1="-62" y1="0" x2="62" y2="0" class="ax"/><line x1="0" y1="-62" x2="0" y2="62" class="ax"/>
+      <circle cx="-5.9" cy="-25.7" r="1.6" class="p-bad"/><circle cx="18.7" cy="5.1" r="1.6" class="p-bad"/><circle cx="11.4" cy="14.6" r="1.6" class="p-bad"/><circle cx="6.6" cy="21.3" r="1.6" class="p-bad"/><circle cx="13.2" cy="12.4" r="1.6" class="p-bad"/><circle cx="-5.7" cy="-22.5" r="1.6" class="p-bad"/><circle cx="-11.7" cy="-10.0" r="1.6" class="p-bad"/><circle cx="-2.7" cy="-6.3" r="1.6" class="p-bad"/><circle cx="25.5" cy="-7.8" r="1.6" class="p-bad"/><circle cx="19.6" cy="4.0" r="1.6" class="p-bad"/><circle cx="7.9" cy="-3.2" r="1.6" class="p-bad"/><circle cx="4.2" cy="6.9" r="1.6" class="p-bad"/><circle cx="-1.9" cy="-6.5" r="1.6" class="p-bad"/><circle cx="-3.0" cy="18.0" r="1.6" class="p-bad"/><circle cx="14.3" cy="-13.6" r="1.6" class="p-bad"/><circle cx="11.2" cy="11.6" r="1.6" class="p-bad"/><circle cx="-11.2" cy="12.4" r="1.6" class="p-bad"/><circle cx="-14.2" cy="13.5" r="1.6" class="p-bad"/><circle cx="25.3" cy="-7.3" r="1.6" class="p-bad"/><circle cx="15.7" cy="3.3" r="1.6" class="p-bad"/><circle cx="-1.2" cy="17.0" r="1.6" class="p-bad"/><circle cx="3.4" cy="3.6" r="1.6" class="p-bad"/><circle cx="-18.6" cy="-2.3" r="1.6" class="p-bad"/><circle cx="3.5" cy="-15.6" r="1.6" class="p-bad"/><circle cx="3.8" cy="8.9" r="1.6" class="p-bad"/><circle cx="3.2" cy="8.0" r="1.6" class="p-bad"/><circle cx="-8.3" cy="0.5" r="1.6" class="p-bad"/><circle cx="-3.4" cy="-9.5" r="1.6" class="p-bad"/><circle cx="13.8" cy="14.0" r="1.6" class="p-bad"/><circle cx="-12.5" cy="13.1" r="1.6" class="p-bad"/><circle cx="-7.0" cy="-26.0" r="1.6" class="p-bad"/><circle cx="-23.7" cy="8.4" r="1.6" class="p-bad"/><circle cx="-5.8" cy="-26.5" r="1.6" class="p-bad"/><circle cx="15.4" cy="-13.4" r="1.6" class="p-bad"/><circle cx="7.6" cy="-3.8" r="1.6" class="p-bad"/><circle cx="-11.0" cy="1.9" r="1.6" class="p-bad"/><circle cx="-8.4" cy="0.9" r="1.6" class="p-bad"/><circle cx="-15.3" cy="11.9" r="1.6" class="p-bad"/><circle cx="-13.1" cy="-12.3" r="1.6" class="p-bad"/><circle cx="12.1" cy="-12.8" r="1.6" class="p-bad"/><circle cx="-23.3" cy="5.7" r="1.6" class="p-bad"/><circle cx="23.3" cy="-7.8" r="1.6" class="p-bad"/><circle cx="18.6" cy="2.2" r="1.6" class="p-bad"/><circle cx="-26.5" cy="8.0" r="1.6" class="p-bad"/><circle cx="-24.1" cy="7.7" r="1.6" class="p-bad"/><circle cx="12.3" cy="-10.9" r="1.6" class="p-bad"/><circle cx="11.5" cy="13.5" r="1.6" class="p-bad"/><circle cx="9.5" cy="-4.7" r="1.6" class="p-bad"/><circle cx="23.6" cy="-5.7" r="1.6" class="p-bad"/><circle cx="-19.4" cy="-5.6" r="1.6" class="p-bad"/><circle cx="-8.6" cy="1.7" r="1.6" class="p-bad"/><circle cx="-0.7" cy="-8.0" r="1.6" class="p-bad"/><circle cx="7.5" cy="25.1" r="1.6" class="p-bad"/><circle cx="-1.9" cy="18.4" r="1.6" class="p-bad"/><circle cx="8.1" cy="23.7" r="1.6" class="p-bad"/><circle cx="-8.8" cy="-22.7" r="1.6" class="p-bad"/><circle cx="-3.9" cy="17.7" r="1.6" class="p-bad"/><circle cx="23.5" cy="-10.8" r="1.6" class="p-bad"/><circle cx="15.3" cy="-13.4" r="1.6" class="p-bad"/><circle cx="-12.8" cy="11.7" r="1.6" class="p-bad"/><circle cx="4.4" cy="-21.1" r="1.6" class="p-bad"/><circle cx="9.0" cy="-2.8" r="1.6" class="p-bad"/><circle cx="13.1" cy="-11.1" r="1.6" class="p-bad"/><circle cx="18.8" cy="3.4" r="1.6" class="p-bad"/><circle cx="-2.2" cy="-7.3" r="1.6" class="p-bad"/><circle cx="-5.1" cy="2.5" r="1.6" class="p-bad"/><circle cx="3.7" cy="-15.6" r="1.6" class="p-bad"/><circle cx="-19.3" cy="-3.5" r="1.6" class="p-bad"/><circle cx="-18.5" cy="-1.0" r="1.6" class="p-bad"/><circle cx="6.6" cy="24.5" r="1.6" class="p-bad"/><circle cx="-0.3" cy="-8.5" r="1.6" class="p-bad"/><circle cx="-4.2" cy="1.3" r="1.6" class="p-bad"/><circle cx="6.8" cy="23.7" r="1.6" class="p-bad"/><circle cx="13.2" cy="-12.8" r="1.6" class="p-bad"/><circle cx="-5.8" cy="17.6" r="1.6" class="p-bad"/><circle cx="-12.8" cy="11.7" r="1.6" class="p-bad"/><circle cx="13.1" cy="-11.1" r="1.6" class="p-bad"/><circle cx="-15.1" cy="11.3" r="1.6" class="p-bad"/><circle cx="-7.3" cy="1.6" r="1.6" class="p-bad"/><circle cx="4.8" cy="24.6" r="1.6" class="p-bad"/><circle cx="1.7" cy="6.0" r="1.6" class="p-bad"/><circle cx="-12.9" cy="-12.0" r="1.6" class="p-bad"/><circle cx="-14.6" cy="-14.8" r="1.6" class="p-bad"/><circle cx="-6.3" cy="3.0" r="1.6" class="p-bad"/><circle cx="25.0" cy="-7.4" r="1.6" class="p-bad"/><circle cx="-9.3" cy="4.7" r="1.6" class="p-bad"/><circle cx="6.5" cy="25.5" r="1.6" class="p-bad"/><circle cx="-11.5" cy="-14.7" r="1.6" class="p-bad"/><circle cx="-17.0" cy="-3.3" r="1.6" class="p-bad"/><circle cx="0.1" cy="9.2" r="1.6" class="p-bad"/><circle cx="-24.0" cy="7.1" r="1.6" class="p-bad"/><circle cx="-7.6" cy="-24.2" r="1.6" class="p-bad"/><circle cx="6.9" cy="-2.4" r="1.6" class="p-bad"/><circle cx="-17.2" cy="-2.6" r="1.6" class="p-bad"/><circle cx="3.7" cy="8.1" r="1.6" class="p-bad"/><circle cx="20.8" cy="3.3" r="1.6" class="p-bad"/><circle cx="-0.8" cy="-7.4" r="1.6" class="p-bad"/><circle cx="-10.8" cy="-13.6" r="1.6" class="p-bad"/><circle cx="-7.2" cy="2.1" r="1.6" class="p-bad"/><circle cx="4.2" cy="8.7" r="1.6" class="p-bad"/><circle cx="-16.0" cy="-3.7" r="1.6" class="p-bad"/><circle cx="-5.2" cy="16.9" r="1.6" class="p-bad"/><circle cx="4.9" cy="6.1" r="1.6" class="p-bad"/><circle cx="12.9" cy="12.4" r="1.6" class="p-bad"/><circle cx="10.6" cy="24.1" r="1.6" class="p-bad"/><circle cx="-13.0" cy="15.2" r="1.6" class="p-bad"/><circle cx="-7.3" cy="-24.2" r="1.6" class="p-bad"/><circle cx="14.4" cy="-9.7" r="1.6" class="p-bad"/><circle cx="-5.6" cy="2.7" r="1.6" class="p-bad"/><circle cx="-13.4" cy="-15.0" r="1.6" class="p-bad"/><circle cx="12.6" cy="11.4" r="1.6" class="p-bad"/><circle cx="13.9" cy="-13.9" r="1.6" class="p-bad"/><circle cx="3.5" cy="-17.9" r="1.6" class="p-bad"/><circle cx="2.7" cy="-19.2" r="1.6" class="p-bad"/><circle cx="3.3" cy="9.0" r="1.6" class="p-bad"/><circle cx="2.2" cy="6.9" r="1.6" class="p-bad"/><circle cx="14.3" cy="13.7" r="1.6" class="p-bad"/><circle cx="-4.1" cy="-10.1" r="1.6" class="p-bad"/><circle cx="-18.8" cy="-5.6" r="1.6" class="p-bad"/><circle cx="7.4" cy="23.2" r="1.6" class="p-bad"/><circle cx="-6.1" cy="-27.5" r="1.6" class="p-bad"/><circle cx="11.6" cy="13.5" r="1.6" class="p-bad"/><circle cx="23.3" cy="-7.2" r="1.6" class="p-bad"/><circle cx="-12.7" cy="10.5" r="1.6" class="p-bad"/><circle cx="13.2" cy="10.7" r="1.6" class="p-bad"/><circle cx="-6.9" cy="-22.9" r="1.6" class="p-bad"/><circle cx="7.2" cy="-2.4" r="1.6" class="p-bad"/><circle cx="-3.5" cy="-4.2" r="1.6" class="p-bad"/><circle cx="-22.5" cy="7.7" r="1.6" class="p-bad"/><circle cx="-18.1" cy="-4.5" r="1.6" class="p-bad"/><circle cx="-2.2" cy="18.6" r="1.6" class="p-bad"/><circle cx="7.7" cy="25.0" r="1.6" class="p-bad"/><circle cx="15.1" cy="-10.8" r="1.6" class="p-bad"/><circle cx="-14.1" cy="-14.3" r="1.6" class="p-bad"/><circle cx="-3.3" cy="-8.7" r="1.6" class="p-bad"/><circle cx="13.1" cy="13.3" r="1.6" class="p-bad"/><circle cx="-18.5" cy="-3.6" r="1.6" class="p-bad"/><circle cx="-24.1" cy="8.7" r="1.6" class="p-bad"/><circle cx="-25.6" cy="4.7" r="1.6" class="p-bad"/><circle cx="-0.9" cy="-7.5" r="1.6" class="p-bad"/><circle cx="-22.6" cy="6.5" r="1.6" class="p-bad"/><circle cx="-3.3" cy="-8.8" r="1.6" class="p-bad"/><circle cx="3.6" cy="-15.6" r="1.6" class="p-bad"/><circle cx="-24.6" cy="8.3" r="1.6" class="p-bad"/><circle cx="-1.5" cy="-7.6" r="1.6" class="p-bad"/><circle cx="-10.0" cy="-24.4" r="1.6" class="p-bad"/><circle cx="10.6" cy="-4.3" r="1.6" class="p-bad"/><circle cx="-7.4" cy="-25.5" r="1.6" class="p-bad"/><circle cx="-23.7" cy="9.8" r="1.6" class="p-bad"/><circle cx="23.6" cy="-7.6" r="1.6" class="p-bad"/><circle cx="2.3" cy="-19.0" r="1.6" class="p-bad"/><circle cx="7.2" cy="-2.2" r="1.6" class="p-bad"/><circle cx="25.9" cy="-4.8" r="1.6" class="p-bad"/><circle cx="16.9" cy="5.1" r="1.6" class="p-bad"/><circle cx="11.8" cy="-13.3" r="1.6" class="p-bad"/><circle cx="6.4" cy="23.5" r="1.6" class="p-bad"/><circle cx="-15.8" cy="12.5" r="1.6" class="p-bad"/><circle cx="9.0" cy="26.2" r="1.6" class="p-bad"/><circle cx="-7.8" cy="0.9" r="1.6" class="p-bad"/><circle cx="-12.1" cy="-9.7" r="1.6" class="p-bad"/>
+    </g>
+    <text x="398" y="26" text-anchor="middle" class="ptitle">C · 위상잡음</text>
+    <text x="398" y="42" text-anchor="middle" class="psub">CPE 회전 + ICI 흩뿌림</text><g transform="translate(558,96)">
+      <rect x="-62" y="-62" width="124" height="124" rx="4" class="pbox"/>
+      <line x1="-62" y1="0" x2="62" y2="0" class="ax"/><line x1="0" y1="-62" x2="0" y2="62" class="ax"/>
+      <circle cx="27.9" cy="32.1" r="1.6" class="p-ok"/><circle cx="-30.5" cy="7.0" r="1.6" class="p-ok"/><circle cx="-27.4" cy="-12.0" r="1.6" class="p-ok"/><circle cx="-25.6" cy="-25.2" r="1.6" class="p-ok"/><circle cx="-28.2" cy="-7.6" r="1.6" class="p-ok"/><circle cx="25.2" cy="27.6" r="1.6" class="p-ok"/><circle cx="24.2" cy="5.4" r="1.6" class="p-ok"/><circle cx="8.7" cy="6.8" r="1.6" class="p-ok"/><circle cx="-30.3" cy="30.6" r="1.6" class="p-ok"/><circle cx="-31.0" cy="9.2" r="1.6" class="p-ok"/><circle cx="-8.8" cy="10.5" r="1.6" class="p-ok"/><circle cx="-11.2" cy="-6.6" r="1.6" class="p-ok"/><circle cx="7.6" cy="7.8" r="1.6" class="p-ok"/><circle cx="-9.4" cy="-27.9" r="1.6" class="p-ok"/><circle cx="-9.9" cy="30.2" r="1.6" class="p-ok"/><circle cx="-24.7" cy="-8.0" r="1.6" class="p-ok"/><circle cx="6.5" cy="-26.2" r="1.6" class="p-ok"/><circle cx="9.9" cy="-30.0" r="1.6" class="p-ok"/><circle cx="-30.4" cy="29.7" r="1.6" class="p-ok"/><circle cx="-24.8" cy="7.2" r="1.6" class="p-ok"/><circle cx="-11.2" cy="-25.1" r="1.6" class="p-ok"/><circle cx="-7.6" cy="-2.6" r="1.6" class="p-ok"/><circle cx="28.1" cy="-10.9" r="1.6" class="p-ok"/><circle cx="6.9" cy="24.9" r="1.6" class="p-ok"/><circle cx="-12.2" cy="-9.8" r="1.6" class="p-ok"/><circle cx="-10.7" cy="-8.9" r="1.6" class="p-ok"/><circle cx="11.4" cy="-7.1" r="1.6" class="p-ok"/><circle cx="12.0" cy="11.0" r="1.6" class="p-ok"/><circle cx="-30.3" cy="-9.4" r="1.6" class="p-ok"/><circle cx="7.8" cy="-28.1" r="1.6" class="p-ok"/><circle cx="29.8" cy="31.6" r="1.6" class="p-ok"/><circle cx="27.2" cy="-30.0" r="1.6" class="p-ok"/><circle cx="28.5" cy="33.3" r="1.6" class="p-ok"/><circle cx="-11.7" cy="30.7" r="1.6" class="p-ok"/><circle cx="-7.9" cy="11.2" r="1.6" class="p-ok"/><circle cx="14.2" cy="-11.0" r="1.6" class="p-ok"/><circle cx="11.3" cy="-7.7" r="1.6" class="p-ok"/><circle cx="12.7" cy="-28.5" r="1.6" class="p-ok"/><circle cx="27.9" cy="7.6" r="1.6" class="p-ok"/><circle cx="-7.5" cy="27.3" r="1.6" class="p-ok"/><circle cx="28.8" cy="-25.9" r="1.6" class="p-ok"/><circle cx="-27.1" cy="28.9" r="1.6" class="p-ok"/><circle cx="-28.1" cy="11.1" r="1.6" class="p-ok"/><circle cx="31.6" cy="-31.5" r="1.6" class="p-ok"/><circle cx="28.4" cy="-29.3" r="1.6" class="p-ok"/><circle cx="-9.2" cy="24.8" r="1.6" class="p-ok"/><circle cx="-26.6" cy="-10.4" r="1.6" class="p-ok"/><circle cx="-9.9" cy="13.9" r="1.6" class="p-ok"/><circle cx="-29.2" cy="26.1" r="1.6" class="p-ok"/><circle cx="31.8" cy="-6.7" r="1.6" class="p-ok"/><circle cx="10.9" cy="-9.0" r="1.6" class="p-ok"/><circle cx="7.0" cy="10.8" r="1.6" class="p-ok"/><circle cx="-29.8" cy="-30.0" r="1.6" class="p-ok"/><circle cx="-11.4" cy="-27.6" r="1.6" class="p-ok"/><circle cx="-29.6" cy="-27.6" r="1.6" class="p-ok"/><circle cx="29.9" cy="25.6" r="1.6" class="p-ok"/><circle cx="-8.0" cy="-28.1" r="1.6" class="p-ok"/><circle cx="-25.2" cy="33.2" r="1.6" class="p-ok"/><circle cx="-11.6" cy="30.7" r="1.6" class="p-ok"/><circle cx="9.3" cy="-26.5" r="1.6" class="p-ok"/><circle cx="9.8" cy="33.4" r="1.6" class="p-ok"/><circle cx="-10.6" cy="10.8" r="1.6" class="p-ok"/><circle cx="-10.2" cy="25.8" r="1.6" class="p-ok"/><circle cx="-29.3" cy="9.5" r="1.6" class="p-ok"/><circle cx="8.7" cy="8.7" r="1.6" class="p-ok"/><circle cx="5.4" cy="-7.4" r="1.6" class="p-ok"/><circle cx="6.6" cy="25.1" r="1.6" class="p-ok"/><circle cx="30.0" cy="-9.7" r="1.6" class="p-ok"/><circle cx="27.1" cy="-12.6" r="1.6" class="p-ok"/><circle cx="-28.0" cy="-29.9" r="1.6" class="p-ok"/><circle cx="6.9" cy="11.8" r="1.6" class="p-ok"/><circle cx="5.0" cy="-5.1" r="1.6" class="p-ok"/><circle cx="-27.7" cy="-28.5" r="1.6" class="p-ok"/><circle cx="-9.0" cy="28.2" r="1.6" class="p-ok"/><circle cx="-5.1" cy="-29.5" r="1.6" class="p-ok"/><circle cx="9.3" cy="-26.3" r="1.6" class="p-ok"/><circle cx="-10.1" cy="25.8" r="1.6" class="p-ok"/><circle cx="12.8" cy="-27.5" r="1.6" class="p-ok"/><circle cx="9.1" cy="-7.7" r="1.6" class="p-ok"/><circle cx="-25.6" cy="-31.4" r="1.6" class="p-ok"/><circle cx="-7.0" cy="-7.2" r="1.6" class="p-ok"/><circle cx="27.5" cy="7.2" r="1.6" class="p-ok"/><circle cx="32.0" cy="9.9" r="1.6" class="p-ok"/><circle cx="6.7" cy="-9.0" r="1.6" class="p-ok"/><circle cx="-29.9" cy="29.6" r="1.6" class="p-ok"/><circle cx="9.6" cy="-13.7" r="1.6" class="p-ok"/><circle cx="-28.7" cy="-31.3" r="1.6" class="p-ok"/><circle cx="27.6" cy="12.2" r="1.6" class="p-ok"/><circle cx="26.8" cy="-8.2" r="1.6" class="p-ok"/><circle cx="-7.1" cy="-13.0" r="1.6" class="p-ok"/><circle cx="28.7" cy="-28.3" r="1.6" class="p-ok"/><circle cx="29.2" cy="28.6" r="1.6" class="p-ok"/><circle cx="-7.9" cy="8.7" r="1.6" class="p-ok"/><circle cx="26.4" cy="-9.4" r="1.6" class="p-ok"/><circle cx="-11.5" cy="-8.7" r="1.6" class="p-ok"/><circle cx="-32.1" cy="11.1" r="1.6" class="p-ok"/><circle cx="6.7" cy="9.9" r="1.6" class="p-ok"/><circle cx="25.7" cy="11.1" r="1.6" class="p-ok"/><circle cx="8.7" cy="-8.4" r="1.6" class="p-ok"/><circle cx="-12.6" cy="-9.2" r="1.6" class="p-ok"/><circle cx="25.5" cy="-6.9" r="1.6" class="p-ok"/><circle cx="-5.4" cy="-27.9" r="1.6" class="p-ok"/><circle cx="-11.6" cy="-4.9" r="1.6" class="p-ok"/><circle cx="-27.8" cy="-7.7" r="1.6" class="p-ok"/><circle cx="-33.4" cy="-26.2" r="1.6" class="p-ok"/><circle cx="6.9" cy="-31.5" r="1.6" class="p-ok"/><circle cx="28.9" cy="28.8" r="1.6" class="p-ok"/><circle cx="-13.0" cy="24.8" r="1.6" class="p-ok"/><circle cx="5.9" cy="-8.2" r="1.6" class="p-ok"/><circle cx="30.5" cy="11.2" r="1.6" class="p-ok"/><circle cx="-26.6" cy="-6.6" r="1.6" class="p-ok"/><circle cx="-9.2" cy="30.3" r="1.6" class="p-ok"/><circle cx="8.7" cy="28.1" r="1.6" class="p-ok"/><circle cx="10.8" cy="29.3" r="1.6" class="p-ok"/><circle cx="-11.5" cy="-10.3" r="1.6" class="p-ok"/><circle cx="-8.3" cy="-8.1" r="1.6" class="p-ok"/><circle cx="-30.8" cy="-8.5" r="1.6" class="p-ok"/><circle cx="13.5" cy="11.2" r="1.6" class="p-ok"/><circle cx="31.1" cy="-6.3" r="1.6" class="p-ok"/><circle cx="-28.2" cy="-27.4" r="1.6" class="p-ok"/><circle cx="29.6" cy="34.4" r="1.6" class="p-ok"/><circle cx="-26.7" cy="-10.3" r="1.6" class="p-ok"/><circle cx="-27.6" cy="28.0" r="1.6" class="p-ok"/><circle cx="10.0" cy="-24.6" r="1.6" class="p-ok"/><circle cx="-26.9" cy="-5.2" r="1.6" class="p-ok"/><circle cx="27.3" cy="27.3" r="1.6" class="p-ok"/><circle cx="-8.5" cy="8.9" r="1.6" class="p-ok"/><circle cx="8.2" cy="3.4" r="1.6" class="p-ok"/><circle cx="26.2" cy="-28.1" r="1.6" class="p-ok"/><circle cx="29.2" cy="-7.4" r="1.6" class="p-ok"/><circle cx="-11.1" cy="-28.1" r="1.6" class="p-ok"/><circle cx="-29.9" cy="-29.7" r="1.6" class="p-ok"/><circle cx="-13.3" cy="26.8" r="1.6" class="p-ok"/><circle cx="31.0" cy="9.5" r="1.6" class="p-ok"/><circle cx="11.4" cy="9.9" r="1.6" class="p-ok"/><circle cx="-28.7" cy="-9.0" r="1.6" class="p-ok"/><circle cx="29.1" cy="-8.9" r="1.6" class="p-ok"/><circle cx="27.7" cy="-30.7" r="1.6" class="p-ok"/><circle cx="32.8" cy="-26.1" r="1.6" class="p-ok"/><circle cx="7.0" cy="10.0" r="1.6" class="p-ok"/><circle cx="27.1" cy="-26.4" r="1.6" class="p-ok"/><circle cx="11.4" cy="10.0" r="1.6" class="p-ok"/><circle cx="6.8" cy="24.9" r="1.6" class="p-ok"/><circle cx="28.6" cy="-30.6" r="1.6" class="p-ok"/><circle cx="7.9" cy="9.7" r="1.6" class="p-ok"/><circle cx="32.8" cy="27.1" r="1.6" class="p-ok"/><circle cx="-11.9" cy="14.1" r="1.6" class="p-ok"/><circle cx="30.0" cy="30.6" r="1.6" class="p-ok"/><circle cx="26.2" cy="-31.9" r="1.6" class="p-ok"/><circle cx="-27.7" cy="28.8" r="1.6" class="p-ok"/><circle cx="11.2" cy="28.8" r="1.6" class="p-ok"/><circle cx="-8.6" cy="8.6" r="1.6" class="p-ok"/><circle cx="-33.2" cy="26.6" r="1.6" class="p-ok"/><circle cx="-28.0" cy="5.6" r="1.6" class="p-ok"/><circle cx="-6.7" cy="27.9" r="1.6" class="p-ok"/><circle cx="-27.0" cy="-28.5" r="1.6" class="p-ok"/><circle cx="13.0" cy="-29.9" r="1.6" class="p-ok"/><circle cx="-32.7" cy="-30.4" r="1.6" class="p-ok"/><circle cx="10.4" cy="-7.3" r="1.6" class="p-ok"/><circle cx="24.7" cy="4.6" r="1.6" class="p-ok"/>
+    </g>
+    <text x="558" y="26" text-anchor="middle" class="ptitle">D · 검출 후</text>
+    <text x="558" y="42" text-anchor="middle" class="psub">복원됨</text>
+    </svg>
+  <figcaption><b>A</b> 송신된 16QAM &mdash; 격자가 반듯합니다. &nbsp;<b>B</b> 채널을 지나며
+  <span style="color:var(--amp)">크기가 0.62배로 줄고 2.10 rad 돌았습니다</span> &mdash; 격자 모양은 유지됩니다.
+  &nbsp;<b>C</b> 위상잡음이 더해져 <span style="color:var(--bad)">CPE로 0.55 rad 더 돌고(전체가 같은 각도),
+  ICI로 점들이 흩어집니다</span>. &nbsp;<b>D</b> CPE를 되돌리고 채널을 나누면 격자가 돌아옵니다.
+  <br>예시 데이터입니다(실측 아님). 흩어짐의 정도는 설명을 위해 과장했습니다.</figcaption></figure>
+</section>
+
+<section>
+  <div class="eyebrow">단계별</div>
+  <h2>아홉 칸</h2>
+
+  <div class="stage">
+    <div class="st-h"><span class="st-n">01</span><h3>안테나 → LNA → 믹서</h3><span class="tagx">아날로그</span></div>
+    <div class="st-b">
+      <dl class="io">
+        <dt>들어옴</dt><dd>공중의 전파 (실수 RF 신호, 예: 3.5 GHz 근처)</dd>
+        <dt>하는 일</dt><dd>증폭하고, 국부발진(LO)과 곱해 기저대역으로 내림</dd>
+        <dt>나감</dt><dd>복소 기저대역 (I, Q 두 갈래)</dd>
+      </dl>
+      <div class="eq">받은 RF :  Re{ s(t) · e<sup>j2&pi;f&#8450;t</sup> }
+LO      :  e<sup>&minus;j2&pi;f&#8450;t</sup> · <b>e<sup>j&phi;(t)</sup></b>   <span class="c">&larr; PLL의 위상이 흔들린다</span>
+─────────────────────────────────────────
+믹서 출력:  s(t) · <b>e<sup>j&phi;(t)</sup></b>       <span class="c">&larr; 위상잡음이 곱해진다</span></div>
+      <div class="pa">
+        <span class="chip c-am">진폭 : LNA 이득 (AGC로 조절)</span>
+        <span class="chip c-bd">여기서 위상잡음이 들어온다 — 곱셈으로</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="st-h"><span class="st-n">02</span><h3>ADC</h3><span class="tagx">아날로그↔디지털</span></div>
+    <div class="st-b">
+      <dl class="io">
+        <dt>들어옴</dt><dd>연속시간 복소 기저대역</dd>
+        <dt>하는 일</dt><dd>표본화 (LTE 20 MHz면 30.72 MHz)</dd>
+        <dt>나감</dt><dd>이산 복소 표본 <span class="m">y[n]</span></dd>
+      </dl>
+      <div class="pa">
+        <span class="chip c-bd">양자화 잡음 — 더해진다</span>
+        <span class="chip c-bd">클럭 지터 — 표본 시점이 흔들려 위상 오차처럼 작동</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="st-h"><span class="st-n">03</span><h3>동기부 — CFO · 타이밍 복원</h3><span class="tagx">디지털</span></div>
+    <div class="st-b">
+      <p>송신기와 수신기의 발진기 주파수가 조금 다릅니다. 그 차이 &Delta;f 때문에
+      <b>일정한 속도로 도는 위상</b>이 곱해져 있습니다.</p>
+      <div class="eq">받은 것 :  s[n] · <b>e<sup>j2&pi;&Delta;f·nT</sup></b>   <span class="c">&larr; 일정 속도로 회전</span>
+보정    :  ×  <b>e<sup>&minus;j2&pi;&Delta;f&#770;·nT</sup></b>   <span class="c">&larr; 추정해서 되돌린다</span></div>
+      <div class="note">
+        <h3>CFO와 위상잡음은 다르다</h3>
+        <p>둘 다 <b>곱해지는 위상</b>이지만 성질이 다릅니다. <b>CFO</b>는 결정적이고 일정하게
+        돌아서 <b>추정해 완전히 제거</b>할 수 있습니다. <b>위상잡음</b>은 랜덤해서
+        <b>평균(CPE)만</b> 제거할 수 있습니다.</p>
+      </div>
+      <div class="pa"><span class="chip c-ph">위상 : CFO 회전 제거</span></div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="st-h"><span class="st-n">04</span><h3>CP 제거 → FFT</h3><span class="tagx">디지털</span></div>
+    <div class="st-b">
+      <p><b>여기가 OFDM의 심장입니다.</b> 시간축의 어려운 문제가 주파수축의 쉬운 문제로 바뀝니다.</p>
+      <div class="eq"><span class="c">CP 가 없으면 — 선형 합성곱. 앞뒤 심볼이 서로 번진다 (ISI)</span>
+y[n] = x[n] ⊛ h[n]
+
+<span class="c">CP 를 붙이면 — 원형 합성곱이 된다. 그리고 원형 합성곱의 FFT 는 곱이다</span>
+FFT{ x ⊛<sub>원형</sub> h } = X[k] · H[k]
+
+<span class="c">→ 부반송파마다 복소수 곱 하나. 심볼끼리 안 섞인다</span></div>
+      <p><b>ISI가 사라진 게 아니라 CP가 흡수했습니다.</b> 조건은 하나 &mdash;
+      <b>CP 길이 ≥ 채널의 지연 확산</b>. 이걸 넘으면 ISI가 남습니다.</p>
+      <div class="note">
+        <h3>그런데 위상잡음은 여기서 둘로 갈린다</h3>
+        <p>시간축에서 <span class="m">e<sup>j&phi;(t)</sup></span>가 <b>곱해져</b> 있었습니다.
+        그런데 <b>시간축의 곱셈은 주파수축의 합성곱</b>입니다.</p>
+        <div class="eq" style="margin-top:9px">FFT{ x(t) · e<sup>j&phi;(t)</sup> } = X[k] ⊛ J[k]
+
+  J[0]   = 모든 부반송파에 같은 값이 곱해짐   →  <b>CPE</b>
+  J[m≠0] = 이웃 부반송파가 새어 들어옴        →  <b>ICI</b></div>
+        <p style="margin-top:9px"><b>이것이 CPE와 ICI가 갈리는 정확한 수학적 이유입니다.</b>
+        위상잡음이 느리면 J가 좁아 J[0]에 몰리고(CPE), 빠르면 J가 넓게 퍼져 이웃으로 샙니다(ICI).</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="st-h"><span class="st-n">05</span><h3>채널 추정 (DM-RS)</h3><span class="tagx">디지털</span></div>
+    <div class="st-b">
+      <div class="eq">파일럿 자리 :  H&#770;[k] = Y<sub>파일럿</sub>[k] / X<sub>파일럿</sub>[k]   <span class="c">← 아는 값으로 나눈다</span>
+나머지 자리 :  보간</div>
+      <div class="pa">
+        <span class="chip c-am">진폭 : |H[k]| — 그 부반송파가 얼마나 죽었나</span>
+        <span class="chip c-ph">위상 : ∠H[k] — 얼마나 돌았나</span>
+      </div>
+      <p><b>복소 나눗셈 한 번이 크기와 각도를 동시에 줍니다.</b> 진폭 추정기와 위상 추정기가
+      따로 있는 게 아닙니다.</p>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="st-h"><span class="st-n">06</span><h3>CPE 보정 (PT-RS)</h3><span class="tagx">디지털</span></div>
+    <div class="st-b">
+      <div class="eq">e&#770; = (받은 PT-RS) / (아는 PT-RS)        <span class="c">← 공통 위상 오차를 잰다</span>
+모든 부반송파 ×  e<sup>&minus;j&phi;&#772;</sup>              <span class="c">← 한 번의 복소 곱으로 전부 되돌린다</span></div>
+      <p>CPE는 <b>모든 부반송파가 같은 각도</b>이므로 <b>복소 곱셈 한 번</b>으로 끝납니다.
+      성상도가 통째로 돌아간 것을 통째로 되돌리는 것입니다.</p>
+      <div class="note">
+        <h3>ICI는 여기서 안 없어진다</h3>
+        <p>ICI를 온전히 되돌리려면 <b>부반송파 개수 × 부반송파 개수</b> 행렬을 역변환해야 합니다
+        &mdash; LTE면 2048×2048, 그것도 <b>심볼마다</b>. 그래서 대부분 안 합니다.
+        <b>남은 ICI는 잡음 항에 섞여 들어갑니다.</b></p>
+      </div>
+    </div>
+  </div>
+
+  <div class="stage ours">
+    <div class="st-h"><span class="st-n">07</span><h3>MMSE 검출 — 이 연구의 IP</h3><span class="tagx">디지털</span></div>
+    <div class="st-b">
+      <dl class="io">
+        <dt>들어옴</dt><dd>Y[k] (CPE 보정됨), H&#770;[k]</dd>
+        <dt>나감</dt><dd>x&#770;[k] — K명 사용자의 QAM 심볼</dd>
+      </dl>
+      <div class="eq">전처리 (채널 갱신 때만):  A = H&#770;&#7431;H&#770; + &sigma;&sup2;I        <span class="c">K×K 에르미트</span>
+심볼마다 ①  정합 필터   :  b = H&#770;&#7431;Y
+심볼마다 ②  연립방정식  :  A x = b  를 Gauss-Seidel 반복으로</div>
+      <h3 style="margin-top:4px">여기서 위상과 진폭이 어떻게 처리되나</h3>
+      <p><b>①  H&#770;&#7431; (켤레 전치)를 곱하는 것이 곧 위상 정렬입니다.</b>
+      각 안테나가 받은 값에 그 경로 채널의 <b>켤레</b>를 곱하면, 채널이 준 회전이 정확히
+      되돌려집니다. 그러면 M개 안테나의 기여가 <b>모두 같은 위상으로 정렬되어</b> 더해집니다
+      (coherent combining). 동시에 <b>|H|가 큰 안테나에 더 큰 가중</b>이 붙습니다 &mdash;
+      <b>위상 정렬과 진폭 가중이 같은 한 번의 곱셈</b>입니다.</p>
+      <p><b>②  A&#8315;&#185;을 적용하는 것이 사용자 간 간섭 제거입니다.</b> A의 비대각 성분이
+      &ldquo;사용자 i의 신호가 사용자 j 자리에 얼마나 섞였나&rdquo;이고, 그것을 푸는 것이 검출입니다.
+      우리는 이걸 <b>역행렬 없이 반복</b>으로 풉니다.</p>
+      <div class="pa">
+        <span class="chip c-ph">위상 : Hᴴ 가 채널 회전을 되돌린다</span>
+        <span class="chip c-am">진폭 : Hᴴ 가 세기로 가중한다</span>
+      </div>
+      <div class="note ok">
+        <h3>전부 복소 연산이다 — 그리고 그게 회로 비용이다</h3>
+        <p>복소 곱셈 하나가 <b>실수 곱셈 4개</b>(교과서식) 또는 <b>3개</b>(Karatsuba)입니다.
+        FPGA는 곱셈기가 박혀 있어 4개식이, ASIC은 곱셈기가 면적이라 3개식이 유리할 수 있습니다.
+        <b>같은 수식인데 기판에 따라 답이 갈리는 자리</b>입니다.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="st-h"><span class="st-n">08</span><h3>LLR 생성</h3><span class="tagx">디지털</span></div>
+    <div class="st-b">
+      <p>x&#770;가 성상도의 어느 점에 가까운지 보고, <b>각 비트가 0일 가능성 대 1일 가능성</b>을
+      로그비로 냅니다. 여기서 <b>복소수가 실수 여러 개로 풀립니다</b> &mdash; 심볼 하나가
+      비트별 신뢰도 여러 개가 됩니다.</p>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="st-h"><span class="st-n">09</span><h3>디인터리버 → FEC 복호</h3><span class="tagx">디지털</span></div>
+    <div class="st-b">
+      <p>인터리빙을 되돌려 <b>뭉친 오류를 흩뜨리고</b>, LDPC 복호기가 신뢰도를 써서 오류를
+      정정합니다. 여기서부터는 위상도 진폭도 없습니다 &mdash; 비트만 남습니다.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">요약</div>
+  <h2>무엇이 위상을 건드리나</h2>
+  <div class="tw"><table>
+    <thead><tr><th>단계</th><th>위상에 무슨 일</th><th>진폭에 무슨 일</th><th>더해짐 / 곱해짐</th></tr></thead>
+    <tbody>
+      <tr><td>믹서</td><td class="ph">위상잡음 e<sup>j&phi;(t)</sup> 붙음</td><td class="am">LNA 이득</td><td>곱해짐</td></tr>
+      <tr><td>ADC</td><td class="ph">지터 → 위상 오차</td><td>—</td><td>더해짐(양자화)</td></tr>
+      <tr><td>동기부</td><td class="ph">CFO 회전 <b>제거</b></td><td>—</td><td>곱해짐(역보정)</td></tr>
+      <tr><td>채널</td><td class="ph">∠H[k] 회전</td><td class="am">|H[k]| 감쇠</td><td>곱해짐</td></tr>
+      <tr><td>FFT</td><td class="ph">시간 곱 → 주파수 합성곱 (CPE+ICI)</td><td class="am">같음</td><td>—</td></tr>
+      <tr><td>CPE 보정</td><td class="ph">&phi;&#772; <b>제거</b></td><td>—</td><td>곱해짐(역보정)</td></tr>
+      <tr><td><b>검출 H&#7431;</b></td><td class="ph"><b>∠H 되돌림 (정렬)</b></td><td class="am"><b>|H| 로 가중</b></td><td>곱해짐</td></tr>
+      <tr><td><b>검출 A&#8315;&#185;</b></td><td colspan="2"><b>사용자 간 간섭 제거</b> — 위상·진폭 구분 없음</td><td>곱해짐</td></tr>
+      <tr><td>잔여 ICI</td><td colspan="2" style="color:var(--bad)">안 지워짐 — 잡음으로 남는다</td><td>더해짐(처럼)</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <div class="eyebrow">논리의 뼈대</div>
+  <h2>세 문장으로</h2>
+  <div class="key">
+    <p><b>1.</b> 시간축에서 <b>합성곱</b>인 것(채널)은 FFT 후 <b>곱셈</b>이 된다 &mdash;
+    그래서 CP + FFT가 ISI를 없앤다.</p>
+    <p><b>2.</b> 시간축에서 <b>곱셈</b>인 것(위상잡음)은 FFT 후 <b>합성곱</b>이 된다 &mdash;
+    그래서 위상잡음이 ICI를 만든다. 정확히 반대 방향이다.</p>
+    <p><b>3.</b> 그 합성곱의 중심 항 하나(J[0])만 떼면 CPE고, 복소 곱 한 번으로 지운다.
+    나머지는 남아서 잡음이 된다.</p>
+  </div>
+</section>
+
+<footer>
+  <p>성상도는 설명용 예시이며 실측이 아닙니다. 채널은 |H|=0.62 · 2.10 rad,
+  CPE는 0.55 rad으로 두었고 흩어짐은 눈에 보이도록 키웠습니다.
+  이 문서는 제안서 &ldquo;섞인 신호를 푸는 회로&rdquo;의 배경 설명입니다.</p>
+</footer>
+</div>

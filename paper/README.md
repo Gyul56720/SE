@@ -1,3 +1,9 @@
+> **철회 (2026-09-18).** 여기서 말하는 `serdes_nn_eq.html` 을 비롯한 원고 넷은
+> `attic/폐기논문/` 으로 물러났다. 왜 물러났는지는 `attic/폐기논문/README.md` 에 있다
+> (안 읽은 인용 · 쓸기의 유리한 구석에서 나온 표제 숫자 · 선행조사 없음).
+> 아래 글은 **그때의 기록**으로 남긴다. 새 원고는 `paper/출처.jsonl` ·
+> `paper/측정.jsonl` · `paper/선행조사/` 를 갖춰야 커밋된다 (G022 · G023 · G024).
+
 # 논문 — 경량화 신경망 기반 와이어라인 SerDes 등화기의 FPGA 실시간 구현
 
 `serdes_nn_eq.html` 이 본문이다. 발행본: https://claude.ai/artifact/RYnjHwwdLHJhrjrriqihKL

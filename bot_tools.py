@@ -27,6 +27,7 @@ from typing import Optional
 import channels
 import circuitdraw
 import imageread
+import pdfread
 
 import requests
 from langchain_core.tools import tool
@@ -1282,6 +1283,25 @@ def read_image(path: str, question: str = "") -> str:
         return "실패: 게스트는 read_image 를 사용할 수 없습니다."
     return imageread.읽기(path, question, repo=REPO_DIR,
                         자르개=lambda t: 자르기(t, 셸출력_앞, 셸출력_뒤))
+
+
+@tool
+def read_pdf(path: str, 모드: str = "", 쪽: str = "", 물음: str = "") -> str:
+    """**PDF 를 골라서 읽는다.** 큰 문서는 read_image 로 통째로 보내면 토큰이 터진다.
+
+    모드:
+      `훑기`  (기본) 쪽수 · 글자수 · **목차** 를 준다. 큰 PDF 는 여기서 시작하라
+      `찾기`  `물음` 에 준 말이 나오는 **쪽만** 앞뒤와 함께 준다. 2000 쪽에도 쓴다
+      `읽기`  `쪽='120-150'` 처럼 준 범위만 글로 뽑는다
+      `그림`  `쪽='137'` 그 쪽만 PNG 로 그려 시각 모델에 보낸다 (스캔본·도면)
+
+    모드를 안 주면 알아서 고른다: `물음` 이 있으면 찾기, `쪽` 만 있으면 읽기,
+    둘 다 없으면 훑기. **"너무 커서 못 읽는다" 고 답하지 마라 -- 이 도구가 그 길이다.**
+    """
+    if agent_context.is_blocked():
+        return "실패: 게스트는 read_pdf 를 사용할 수 없습니다."
+    return 자르기(pdfread.부르기(path, 모드=모드, 쪽=쪽, 물음=물음, repo=REPO_DIR),
+                셸출력_앞, 셸출력_뒤)
 
 
 @tool
