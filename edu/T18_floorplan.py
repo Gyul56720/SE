@@ -331,6 +331,14 @@ def ch_floorplan():
     <i>why</i> it is wrong is the point of the rest of this section. The uniform-load
     model above is missing the path from the stripe to the cell."""))
 
+    c.날것(그림(sch_flow.전원경로([
+        ("pad + package", 12.0), ("power ring", 6.0),
+        ("stripe", round(1e3 * IR예산, 1)),
+        ("row rail", round(1e3 * 레일강하(4), 1)), ("cell", 0.0)]),
+        "The supply budget is spent in pieces, and the arithmetic of this "
+        "section is about which piece dominates. The staircase below the boxes "
+        "is the same numbers drawn as a voltage against distance."))
+
     c.날것(유도("What the stripe count actually buys", [
         ("A cell does not connect to a stripe; it connects to the rail in its row.",
          "Rails run horizontally in every row at the library's row pitch; stripes run "

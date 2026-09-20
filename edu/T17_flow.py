@@ -223,6 +223,11 @@ def ch_flow():
     depend on those is the <b>shape</b>: the cost of a loop grows superlinearly with how
     late it closes, because the expensive stages are at the end.""")
 
+    c.날것(그림(sch_flow.되돌이값([(n, t) for n, t in 단계]),
+        "The blue bar is what a stage costs on its own; the pink bar behind it "
+        "is everything that must be re-run to reach that stage again. The two "
+        "diverge because the expensive stages are at the end."))
+
     줄 = []
     for i, (이름, t) in enumerate(단계):
         누적 = _되돌이값(i)

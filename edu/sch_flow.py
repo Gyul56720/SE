@@ -726,6 +726,190 @@ def 코너곱셈():
     return svg(W, H, o)
 
 
+
+# ===========================================================================
+# 14. 되돌이 값 -- 단계마다 쌓이는 계산 시간
+# ===========================================================================
+def 되돌이값(단계):
+    """`단계` = [(이름, 시간h), ...].  누적을 막대로 보인다."""
+    W, H = 620, 40 + len(단계) * 26 + 110
+    o = ""
+    o += 글(300, 20, "What a loop costs, by where it closes", 맞춤="middle",
+            크기=13, 굵게=True)
+    누적, s = [], 0.0
+    for 이름, t in 단계:
+        s += t
+        누적.append((이름, t, s))
+    최대 = 누적[-1][2]
+    y0, 줄h = 38, 26
+    for k, (이름, t, c) in enumerate(누적):
+        y = y0 + k * 줄h
+        o += 글(214, y + 12, 이름, 맞춤="end", 크기=10)
+        w본 = 360 * t / 최대
+        w누 = 360 * c / 최대
+        o += 상자(222, y + 2, max(2, w누), 16, 채움="#f3dede", 색="#e2bcbc")
+        o += 상자(222, y + 2, max(2, w본), 16, 채움="#cfe0f2", 색="#9db9d6")
+        o += 글(590, y + 14, f"{c:.1f} h", 맞춤="end", 크기=9.5, 색=회)
+    o += 상자(222, y0 + len(누적) * 줄h + 8, 14, 10, 채움="#cfe0f2",
+              색="#9db9d6")
+    o += 글(242, y0 + len(누적) * 줄h + 17, "this stage alone", 크기=9.5)
+    o += 상자(372, y0 + len(누적) * 줄h + 8, 14, 10, 채움="#f3dede",
+              색="#e2bcbc")
+    o += 글(392, y0 + len(누적) * 줄h + 17, "everything that must re-run",
+            크기=9.5)
+    o += 글(16, y0 + len(누적) * 줄h + 44,
+            f"A problem found in the last stage costs "
+            f"{최대/누적[0][2]:.0f}x what the same problem costs at lint.",
+            크기=10.5, 색=빨)
+    o += 글(16, y0 + len(누적) * 줄h + 60,
+            "That factor, not a preference for careful work, is the argument "
+            "for moving every check earlier.", 크기=10, 색=회)
+    return svg(W, H, o)
+
+
+# ===========================================================================
+# 15. 전원 경로 -- 패드에서 셀까지, 단계마다 떨어지는 전압
+# ===========================================================================
+def 전원경로(구간=None):
+    """`구간` = [(이름, 강하mV), ...] 이 없으면 꼴만 보인다."""
+    구간 = 구간 or [("pad + package", 12.0), ("power ring", 6.0),
+                  ("stripe", 18.0), ("row rail", 3.0), ("cell", 0.0)]
+    W, H = 620, 250
+    o = ""
+    o += 글(300, 20, "Where the supply voltage goes", 맞춤="middle", 크기=13,
+            굵게=True)
+    x = 20
+    bw, gap = 104, 22
+    합 = 0.0
+    for k, (이름, d) in enumerate(구간):
+        o += 상자(x, 48, bw, 44, 이름, 채움=연 if k % 2 == 0 else 연초)
+        if k + 1 < len(구간):
+            o += _화살(x + bw, 70, x + bw + gap - 2, 70, 색=빨, 굵기=2.4)
+            o += 글(x + bw + gap / 2, 62, f"{d:.0f} mV", 맞춤="middle",
+                    크기=9.5, 색=빨)
+            합 += d
+        x += bw + gap
+    o += 선((20, 120), (20 + 5 * (bw + gap) - gap, 120), 색=회, 굵기=1)
+    # 계단 그래프
+    x, y = 20, 136
+    for k, (이름, d) in enumerate(구간):
+        o += 선((x, y), (x + bw, y), 색=먹, 굵기=2.4)
+        if k + 1 < len(구간):
+            o += 선((x + bw, y), (x + bw, y + d * 1.6), 색=먹, 굵기=1.6)
+            y += d * 1.6
+        x += bw + gap
+    o += 글(16, 216, f"Total: {합:.0f} mV. The budget is spent in pieces, and "
+            f"the piece that dominates is not always the one you sized.",
+            크기=10, 색=회)
+    o += 글(16, 232, "Static IR analysis averages over time AND space — a hot "
+            "macro breaks both averages at once (T18.3).", 크기=10, 색=회)
+    return svg(W, H, o)
+
+
+# ===========================================================================
+# 16. 사인오프 -- 각 검사가 덮는 것과 **그 사이의 틈**
+# ===========================================================================
+def 사인오프틈():
+    W, H = 620, 320
+    o = ""
+    o += 글(300, 20, "Each check is sound, narrow, and blind to the next one",
+            맞춤="middle", 크기=13, 굵게=True)
+    항목 = [("DRC", "geometry obeys the rules", "does not know what it "
+             "implements"),
+          ("LVS", "layout matches the netlist", "does not know the netlist "
+           "is right"),
+          ("STA", "every listed path meets timing", "paths the SDC excluded"),
+          ("EM / IR", "no wire over its limit", "vectors that were not run"),
+          ("Antenna", "no oxide damage during etch", "nothing about the "
+           "finished circuit"),
+          ("Density", "CMP window is met", "the capacitance fill just added")]
+    y = 40
+    for 이름, 덮, 틈 in 항목:
+        o += 상자(16, y, 96, 30, 이름, 채움=연초)
+        o += 상자(124, y, 210, 30, 덮, 채움="#fff")
+        o += _화살(334, y + 15, 352, y + 15, 색=빨)
+        o += 상자(352, y, 252, 30, 틈, 채움=연빨)
+        y += 38
+    o += 글(16, y + 18, "The left column is what signoff establishes. "
+            "The right column is where silicon failures live —", 크기=10.5,
+            색=회)
+    o += 글(16, y + 34, "not inside a check, but in the space between two of "
+            "them. That space is the engineering judgement.", 크기=10.5,
+            색=빨)
+    return svg(W, H, o)
+
+
+# ===========================================================================
+# 17. 커버리지의 곱셈 -- 커버포인트는 차고 크로스는 안 찬다
+# ===========================================================================
+def 크로스폭발(칸=5, 맞은=None):
+    """`맞은` = 맞은 (i,j) 쌍의 집합.  없으면 보기값."""
+    if 맞은 is None:
+        맞은 = {(0, 0), (0, 1), (0, 2), (0, 3), (0, 4), (1, 0), (1, 1),
+               (2, 0), (2, 2), (3, 0), (3, 4), (4, 4)}
+    W, H = 600, 300
+    o = ""
+    o += 글(300, 20, "Coverpoints fill. Crosses do not.", 맞춤="middle",
+            크기=13, 굵게=True)
+    칸크기 = 34
+    x0, y0 = 120, 42
+    for i in range(칸):
+        for j in range(칸):
+            c = "#cde8d3" if (i, j) in 맞은 else "#f2f2f2"
+            o += 상자(x0 + i * 칸크기, y0 + j * 칸크기, 칸크기, 칸크기,
+                      채움=c, 색="#ddd")
+    o += 글(x0 + 칸 * 칸크기 / 2, y0 - 8, "coverpoint a  (5 bins)",
+            맞춤="middle", 크기=10)
+    o += 글(x0 - 10, y0 + 칸 * 칸크기 / 2, "b", 맞춤="end", 크기=10)
+    # 가장자리 막대 -- 한 축만 보면 꽉 찬 것처럼 보인다
+    for i in range(칸):
+        o += 상자(x0 + i * 칸크기 + 4, y0 + 칸 * 칸크기 + 8, 칸크기 - 8, 12,
+                  채움="#cde8d3", 색="#9cc9a8")
+    for j in range(칸):
+        o += 상자(x0 - 26, y0 + j * 칸크기 + 4, 12, 칸크기 - 8,
+                  채움="#cde8d3", 색="#9cc9a8")
+    o += 글(x0, y0 + 칸 * 칸크기 + 40,
+            f"a: 5/5 = 100 %      b: 5/5 = 100 %      "
+            f"a x b: {len(맞은)}/{칸*칸} = {100*len(맞은)/(칸*칸):.0f} %",
+            크기=11.5, 굵게=True)
+    o += 글(16, 268, "Filling K bins with uniform random stimulus costs about "
+            "K.lnK tests. Crossing two 100-bin points makes K = 10,000:",
+            크기=10, 색=회)
+    o += 글(16, 284, "519 tests becomes 97,876. A cross is a multiplication of "
+            "the closure effort, not an addition to the model.", 크기=10,
+            색=빨)
+    return svg(W, H, o)
+
+
+# ===========================================================================
+# 18. 실습 흐름 -- 아홉 단계에 실제로 잰 수를 얹는다
+# ===========================================================================
+def 실습흐름(값=None):
+    """`값` = {단계이름: 한 줄 글자}.  T23 이 lab/기준.json 에서 채운다."""
+    값 = 값 or {}
+    이름 = [("synth", "Synthesis"), ("sta", "STA"), ("fp", "Floorplan"),
+          ("place", "Placement"), ("cts", "CTS"), ("route", "Routing"),
+          ("signoff", "Signoff"), ("dft", "DFT"), ("dv", "DV")]
+    W, H = 620, 40 + len(이름) * 34 + 60
+    o = ""
+    o += 글(300, 22, "python3 lab/run.py  —  nine stages, about eight seconds",
+            맞춤="middle", 크기=12.5, 굵게=True)
+    y = 40
+    for k, (열쇠, 라벨) in enumerate(이름):
+        o += 상자(16, y, 110, 26, f"{k+1:02d}  {라벨}",
+                  채움=연노 if 열쇠 in ("synth",) else 연)
+        o += 상자(134, y, 470, 26, 값.get(열쇠, ""), 채움="#fff", 색="#ddd")
+        if k + 1 < len(이름):
+            o += _화살(71, y + 26, 71, y + 34, 색=회, 굵기=1.2)
+        y += 34
+    o += 글(16, y + 20, "Yellow is the one stage that calls an outside tool "
+            "(yosys). The other eight are in this repository,", 크기=10,
+            색=회)
+    o += 글(16, y + 36, "which is why every intermediate quantity above can be "
+            "re-measured — and is, by tests/test_lab.py.", 크기=10, 색=회)
+    return svg(W, H, o)
+
+
 _목록 = {
     "플로어플랜": 플로어플랜, "구현흐름고리": 구현흐름고리,
     "클럭트리대메시": 클럭트리대메시, "OCV스큐": OCV스큐,
@@ -733,6 +917,13 @@ _목록 = {
     "스캔압축": 스캔압축, "ATE구조": ATE구조, "하이브리드BIST": 하이브리드BIST,
     "UVM테스트벤치": UVM테스트벤치, "표준셀행": 표준셀행,
     "배선세걸음": 배선세걸음, "코너곱셈": 코너곱셈,
+    "되돌이값": lambda: 되돌이값([("Lint", 0.2), ("Simulation", 6.0),
+                             ("Synthesis", 4.0), ("Floorplan", 1.0),
+                             ("Placement", 5.0), ("CTS", 3.0),
+                             ("Routing", 14.0), ("Signoff STA", 10.0),
+                             ("Physical verif.", 8.0)]),
+    "전원경로": 전원경로, "사인오프틈": 사인오프틈,
+    "크로스폭발": 크로스폭발, "실습흐름": 실습흐름,
 }
 
 

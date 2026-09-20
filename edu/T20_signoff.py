@@ -115,6 +115,11 @@ def ch_signoff():
           "the list, in every mode in the list",
           "Paths the SDC excluded, and modes nobody listed"]]))
 
+    c.날것(그림(sch_flow.사인오프틈(),
+        "The same table as a picture, because the shape is the message: every "
+        "check establishes something narrow, and the red column on the right is "
+        "where the failures that reach silicon actually live."))
+
     c.날것(짚기("""Read the third column as a list of where to look after a silicon
     failure. Each check is sound; each is narrow; and the narrowness is deliberate,
     because a check that tried to establish everything could not be run in finite time.

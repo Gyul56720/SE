@@ -109,7 +109,32 @@ def ch_lab():
           f"{len(dv['변이검사']['변이'])} mutations, "
           f"{dv['변이검사']['구멍']} escaped"]]))
 
+    c.날것(그림(sch_flow.실습흐름({
+        "synth": f"{s['인스턴스']} cells, {s['플롭']} flops, "
+                 f"{s['셀면적_um2']:.0f} um2",
+        "sta": f"Fmax {st['Fmax_MHz']:.2f} MHz, {st['임계경로_단수']} stages, "
+               f"two methods agree to {st['두길_차이_ps']} ps",
+        "fp": f"core {fp['코어_um'][0]:.1f} x {fp['코어_um'][1]:.1f} um, "
+              f"{fp['행수']} rows, stripe width set by {fp['무는것']}",
+        "place": f"HPWL {pl['HPWL_전역_um']:.0f} -> {pl['HPWL_합법_um']:.0f} um, "
+                 f"overlaps {pl['겹침']}",
+        "cts": f"insertion {ct['삽입지연_ps']:.0f} ps, skew "
+               f"{ct['스큐_ps']:.0f} ps; balancing costs "
+               f"{ct['균형맞추기']['끼운버퍼']} buffers",
+        "route": f"{rt['총배선길이_um']:.0f} um, detour "
+                 f"{rt['우회비_배선길이/HPWL']}x, overflow {rt['넘친칸']}",
+        "signoff": f"Fmax {so['배선전']['Fmax_MHz']:.1f} -> "
+                   f"{so['배선후']['Fmax_MHz']:.1f} MHz, drift "
+                   f"{so['표류_평균_ps']:.0f} ps",
+        "dft": f"{df['총고장']} faults, {df['패턴수']} patterns, "
+               f"{100*df['커버리지']:.2f} % coverage",
+        "dv": f"{dv['회귀']['거래']} transactions, {dv['회귀']['어긋남']} "
+              f"mismatches, {dv['변이검사']['구멍']} mutations escaped",
+    }), "The run this chapter reports, stage by stage. Reproduce it with one "
+        "command; every box is a number a test re-measures."))
+
     # ------------------------------------------------------------------
+    c.절("T23.2 The four results worth arguing with")    # ------------------------------------------------------------------
     c.절("T23.2 The four results worth arguing with")
 
     _떨어짐 = 100 * so["Fmax_떨어진비"]

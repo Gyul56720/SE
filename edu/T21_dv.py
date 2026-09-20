@@ -230,6 +230,11 @@ if (!uvm_config_db#(virtual my_if)::get(this, "", "vif", vif))
     # ------------------------------------------------------------------
     c.절("T21.3 Why crosses explode: the arithmetic of random closure")
 
+    c.날것(그림(sch_flow.크로스폭발(),
+        "Each axis is fully covered and the cross is not. The bars along the "
+        "edges are what a coverpoint report shows; the grid is what closure "
+        "actually requires."))
+
     c.날것(유도("How long random stimulus takes to fill K bins", [
         ("Assume each test lands in one of K bins, uniformly and independently.",
          "<b>The assumption to argue with.</b> Real constrained-random stimulus is "
