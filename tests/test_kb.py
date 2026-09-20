@@ -217,7 +217,14 @@ def test_근거와_답의_꼴을_같이_준다():
 
 
 def test_안_덮는_것을_물으면_도구가_먼저_말한다():
-    글 = kb.답근거("SRAM 의 noise margin 이 얼마나 나와?", sections=3)
+    """빈자리에 적힌 주제를 물으면 답 첫머리에 '안 덮는다' 가 붙어야 한다.
+
+    (전에는 `noise margin` 으로 물었다.  **T4.3 이 그것을 메워서** 이 검사가
+    빨개졌고 -- 설계대로다 -- 아직 안 메운 ESD 로 바꿨다.  이 자리도 T16 을
+    쓰면 빨개진다.  그때는 빈자리 목록과 여기를 같이 고친다.)
+    """
+    글 = kb.답근거("ESD 보호에 electrostatic discharge 클램프가 어떻게 들어가나",
+                 sections=3)
     assert "does not cover" in 글, 글[:400]
 
 

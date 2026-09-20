@@ -1,0 +1,164 @@
+<h1 id="T4">T4. Noise — and Why It Sets the Size of Everything</h1>
+<p class="한줄">Noise is the one specification you cannot improve with cleverness alone. Every 6 dB costs 4× the capacitance, and therefore 4× the power.</p>
+<div class="사다리"><div class="사다리앞"><b>읽기 전에 알아야 하는 것</b><br>전압 · 전류 · 저항 · 온도 · 확률 · 분산 · 표준편차 · 적분 · 로그 · 주파수 · 트랜스컨덕턴스 · 게이트용량 · 출력저항 · RC지연 · 준안정</div><div class="사다리뒤"><b>이 장에서 새로 나오는 것</b><br>열잡음 · 산탄잡음 · 플리커잡음 · 잡음스펙트럼밀도 · 잡음대역폭 · kTC잡음 · 입력환산잡음 · 플리커코너 · 잡음지수 · 정적잡음여유 · 나비곡선 · 읽기방해 · 최소동작전압 · SNR · SNDR · ENOB</div></div>
+<p>Everything measured in a circuit arrives with noise on it, and the noise does
+    not come from poor engineering — it comes from the thermal motion of charge and from
+    the discreteness of the electron. That makes it the hardest kind of specification:
+    you cannot remove it, you can only spend area and power to average it down, and the
+    exchange rate is fixed by physics at <b>4× the cost per extra bit</b>.</p>
+<p>This chapter establishes the three noise sources you will actually meet, then
+    derives the one number that sizes half the analog blocks in a mixed-signal IP
+    (kT/C), and then does something unusual for a noise chapter: it crosses into the
+    digital side, where the same word means something entirely different and where the
+    consequence — the voltage below which an SRAM cannot be read — is <b>measured here
+    with ngspice rather than asserted.</b></p>
+<h2>T4.1 The three sources, and which one you can do anything about</h2>
+<table><caption>표 14. Noise sources in an IC, by origin</caption><thead><tr><th>Source</th><th>Density</th><th>Origin</th><th>Can you change it?</th></tr></thead><tbody><tr><td>Thermal (Johnson)</td><td>S<sub>v</sub> = 4kTR  [V²/Hz]</td><td>Thermal motion of carriers in any resistive element</td><td>Only by changing R, T, or the bandwidth you look through</td></tr><tr><td>Channel thermal</td><td>S<sub>i</sub> = 4kTγg<sub>m</sub>  [A²/Hz]</td><td>The same mechanism inside a MOSFET channel; γ ≈ 2/3 long-channel, 1–2 short-channel</td><td>Raise g<sub>m</sub> (costs current) or filter</td></tr><tr><td>Flicker (1/f)</td><td>S<sub>v</sub> = K<sub>f</sub>/(C<sub>ox</sub>WL·f)</td><td>Trapping and de-trapping at the oxide interface</td><td><b>Yes — bigger devices, PMOS inputs, chopping, auto-zero</b></td></tr><tr><td>Shot</td><td>S<sub>i</sub> = 2qI  [A²/Hz]</td><td>Discreteness of charge crossing a barrier (junctions, not channels)</td><td>Only by changing the current</td></tr></tbody></table>
+<div class="유도"><div class="유도머리">유도 &mdash; Why the answer always ends up as kT/C</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">A resistor's thermal noise density is 4kTR, independent of frequency.</td><td class="유도왜">Nyquist's result from equilibrium thermodynamics — it contains no device parameter beyond R, which is why it is a floor and not a design choice.</td></tr><tr><td class="유도번호">2</td><td class="유도말">Put that resistor in series with a capacitor C — which is what every sampling switch is.</td><td class="유도왜">The switch's on-resistance (T1: triode region) and the sampling capacitor are in series; there is no third element.</td></tr><tr><td class="유도번호">3</td><td class="유도말">The RC low-pass shapes it, and the <b>noise bandwidth</b> of a single pole is π/2 × f<sub>−3dB</sub> = 1/(4RC).</td><td class="유도왜">Integrating 1/(1+(f/f<sub>0</sub>)²) over all frequency gives π/2·f<sub>0</sub>, not f<sub>0</sub> — a factor people drop and then wonder why measurements are 1.6× worse than predicted.</td></tr><tr><td class="유도번호">4</td><td class="유도말">v<sub>n</sub>² = 4kTR × 1/(4RC) = kT/C.</td><td class="유도왜"><b>R cancels.</b> The noise on a sampled capacitor does not depend on the switch at all — only on C and temperature.</td></tr><tr><td class="유도번호">5</td><td class="유도말">For C = 1 pF at 3&nbsp;K, v<sub>n</sub> = 64.4&nbsp;µV rms.</td><td class="유도왜">One number worth memorising; everything else scales as 1/√C from here.</td></tr></tbody></table></div>
+<div class="개념"><div class="개념머리">kT/C — the rule that sizes capacitors, and therefore power</div>
+<div class="개념이론"><p>A sampled node carries kT/C of noise power regardless of how it was
+        sampled. To keep that below the quantisation noise of an N-bit converter
+        (LSB/√12), the capacitor must satisfy C ≥ 12kT·2<sup>2N</sup>/V<sub>FS</sub>².
+        <b>Every extra bit quadruples C</b>, and because settling in a fixed time needs
+        g<sub>m</sub> ∝ C, it quadruples the current too.</p>
+        <p>This single relation is why a 16-bit converter is not "a bit harder" than a
+        12-bit one: it is 256× the capacitance.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>Every switched-capacitor circuit: SAR and pipeline ADC sampling networks, sample-and-holds, switched-capacitor filters and gain stages, the reference buffer that has to drive them.</td></tr>
+<tr><th>언제 쓰나</th><td>At the very start of an analog block's design, before any transistor is sized. The capacitor comes first because it fixes the power budget.</td></tr>
+<tr><th>어떻게 쓰나</th><td>Fix V<sub>FS</sub> and N, compute C, then size the driver for settling within the sampling phase (T2's RC arithmetic with the switch's R<sub>on</sub> from T1), then check that the reference can supply the charge each cycle.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>* The measurement that separates kT/C from everything else you did wrong.
+* Transient noise in ngspice: sample the same node 1000 times and take the std dev.
+.tran 1n 10u
+.noise v(out) VIN dec 20 1 1G      $ small-signal, for the spectrum
+.measure noise inoise_total_rms param='sqrt(inoise_total)'
+* And the closed form to check it against -- ALWAYS have the hand calculation:
+*   v_n = sqrt(kT/C) = sqrt(1.38e-23*300/1e-12) = 64.4 uV for C = 1 pF</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> kT/C applies to the <b>sampled</b> value. During the tracking phase the
+            noise bandwidth is set by the circuit, not by the sampling — so a
+            track-and-hold that is measured while tracking shows a different (usually
+            larger) number than the same circuit measured after the hold. Reporting one
+            when the spec means the other is a common and expensive mistake.</div>
+</div>
+<table><caption>표 15. Capacitor and power cost per bit (V_FS = 1 V, 300 K, noise = quantisation noise)</caption><thead><tr><th>Bits N</th><th>LSB</th><th>Quantisation rms</th><th>C required</th><th>Relative to 8-bit</th></tr></thead><tbody><tr><td>8</td><td>3,906&nbsp;µV</td><td>1,128&nbsp;µV</td><td>3.26&nbsp;fF</td><td>1×</td></tr><tr><td>10</td><td>977&nbsp;µV</td><td>282&nbsp;µV</td><td>52.1&nbsp;fF</td><td>16×</td></tr><tr><td>12</td><td>244&nbsp;µV</td><td>70.5&nbsp;µV</td><td>834&nbsp;fF</td><td>256×</td></tr><tr><td>14</td><td>61&nbsp;µV</td><td>17.6&nbsp;µV</td><td>13.3&nbsp;pF</td><td>4,096×</td></tr><tr><td>16</td><td>15.3&nbsp;µV</td><td>4.4&nbsp;µV</td><td>213&nbsp;pF</td><td>65,536×</td></tr></tbody></table>
+<h2>T4.2 Flicker noise, and the corner that decides your architecture</h2>
+<div class="정의"><b>플리커코너 (flicker corner, f_c)</b> &mdash; The frequency at which the 1/f density equals the thermal density. Below it the circuit is flicker-dominated, above it thermal-dominated. For a modern CMOS amplifier it lands anywhere from ~100 kHz to a few MHz for NMOS inputs, typically a decade lower for PMOS.</div>
+<div class="개념"><div class="개념머리">Where the signal sits relative to the corner</div>
+<div class="개념이론"><p>Flicker noise density rises as 1/f, so its <b>integrated</b> power over a
+        band from f<sub>1</sub> to f<sub>2</sub> is proportional to ln(f<sub>2</sub>/f<sub>1</sub>)
+        — it depends on the ratio, not the width. A DC-coupled measurement has
+        f<sub>1</sub> → 0 and the integral diverges logarithmically: <b>the longer you
+        average, the worse it gets</b>, which is the opposite of thermal noise.</p>
+        <p>That single fact drives an architectural decision. If the signal is near DC
+        (a temperature sensor, a bandgap reference, a DC offset), averaging does not
+        help and you must <i>move the signal</i> — chop it up to a frequency above the
+        corner, amplify there, and bring it back down. If the signal is already above
+        the corner (an RF or high-speed link front end), flicker is irrelevant and you
+        spend nothing on it.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>Sensor front ends, reference and bias circuits, comparator offset, any DC-accurate measurement. Also the phase noise of an oscillator, where device flicker is up-converted into close-in phase noise.</td></tr>
+<tr><th>언제 쓰나</th><td>Whenever the band of interest includes frequencies below ~1 MHz. Ask the question explicitly at architecture time; retrofitting chopping into a finished amplifier is a redesign.</td></tr>
+<tr><th>어떻게 쓰나</th><td>Reduce it by area (S ∝ 1/WL — 4× the area for 6 dB), by choosing PMOS inputs, or by modulation: <b>chopping</b> (square-wave modulate in and out; leaves residual ripple at the chop frequency) or <b>correlated double sampling</b> (sample the offset, subtract it; costs noise folding and bandwidth).</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>* Flicker in the model card is one parameter -- and simulators differ.
+.model NM NMOS (LEVEL=54 ... KF=1e-25 AF=1.0 EF=1.0)
+* KF alone means nothing: the density is KF/(Cox*W*L*f^EF), so a KF taken from
+* another PDK, or from a model with a different EF convention, is a WRONG number
+* that still simulates.  Always sanity-check the corner against measured silicon:
+.noise v(out) VIN dec 10 1 100MEG
+* then read the point where the 1/f asymptote crosses the flat part.</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> Chopping does not reduce noise; it <b>moves the signal away from the
+            noise</b>. The thermal floor is unchanged and the chopper adds its own
+            switching artefacts at the chop frequency and its harmonics. A design that
+            reports a beautiful low-frequency noise figure and a spur at f<sub>chop</sub>
+            has not improved anything if the spur lands in band.</div>
+</div>
+<h2>T4.3 The other noise: static noise margin, measured</h2>
+<p>On the digital side the word 'noise' means something different and the
+    quantity is not a spectral density but a <b>voltage</b>: how much DC disturbance a
+    storage node can absorb before it flips. The structure is the same cross-coupled pair
+    that produced metastability in T3, viewed statically instead of dynamically.</p>
+<div class="정의"><b>정적잡음여유 (SNM, static noise margin)</b> &mdash; The largest DC voltage that can be inserted in series with <b>both</b> storage nodes of a cross-coupled pair without destroying its bistability. Geometrically it is the side of the largest square that fits inside the butterfly curve formed by the two inverter transfer curves.</div>
+<div class="사고"><b>실제로 난 일</b><br>The extractor used below was <b>wrong twice</b> before it was right,
+    and both times the numbers looked plausible. The first version measured a horizontal
+    gap instead of an inscribed square and reported hold SNM ≈ 0.5·V<sub>DD</sub> — too
+    high. The second version had the access transistor wired with its gate on the bitline
+    instead of the word line; it produced read SNM that <i>fell</i> as the cell ratio
+    rose, which is backwards. <b>The trend caught the bug, not the value.</b> That is the
+    rule this repository runs on: before believing a measurement, check the direction it
+    moves when you change something you understand.</div>
+<div class="짚기">The extractor was then <b>self-checked against two limits</b>: an
+    inverter with very high gain must give SNM → V<sub>DD</sub>/2 (it gives 0.4825) and
+    an 'inverter' with gain 1 must give 0 (it gives 0.0). Only after both did the cell
+    numbers below get written down.</div>
+<table><caption>표 16. Measured SNM of a 6T cell (ngspice, LEVEL=1 model, V_DD = 1.0 V, V_th = 0.35 V) — β is the cell ratio W_pulldown / W_access</caption><thead><tr><th>β</th><th>Hold SNM</th><th>Read SNM</th><th>Read / Hold</th></tr></thead><tbody><tr><td>1</td><td>0.421&nbsp;V</td><td>0.194&nbsp;V</td><td>0.46</td></tr><tr><td>1.5</td><td>0.417&nbsp;V</td><td>0.207&nbsp;V</td><td>0.5</td></tr><tr><td>2</td><td>0.414&nbsp;V</td><td>0.226&nbsp;V</td><td>0.55</td></tr><tr><td>2.5</td><td>0.411&nbsp;V</td><td>0.241&nbsp;V</td><td>0.59</td></tr><tr><td>3</td><td>0.409&nbsp;V</td><td>0.253&nbsp;V</td><td>0.62</td></tr></tbody></table>
+<figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 430 230" width="100%" style="max-width:430px;height:auto" font-family="ui-monospace,monospace" font-size="11"><path d="M52,18 L52,196 L414,196" fill="none" stroke="#888" stroke-width="1.2"/><path d="M52.0,196 L52.0,200" fill="none" stroke="#888" stroke-width="1.0"/><text x="52.0" y="212" fill="#888" font-size="9" text-anchor="middle">1</text><path d="M233.0,196 L233.0,200" fill="none" stroke="#888" stroke-width="1.0"/><text x="233.0" y="212" fill="#888" font-size="9" text-anchor="middle">2</text><path d="M414.0,196 L414.0,200" fill="none" stroke="#888" stroke-width="1.0"/><text x="414.0" y="212" fill="#888" font-size="9" text-anchor="middle">3</text><path d="M48,196.0 L52,196.0" fill="none" stroke="#888" stroke-width="1.0"/><text x="44" y="199.0" fill="#888" font-size="9" text-anchor="end">0</text><path d="M48,107.0 L52,107.0" fill="none" stroke="#888" stroke-width="1.0"/><text x="44" y="110.0" fill="#888" font-size="9" text-anchor="end">210.35</text><path d="M48,18.0 L52,18.0" fill="none" stroke="#888" stroke-width="1.0"/><text x="44" y="21.0" fill="#888" font-size="9" text-anchor="end">420.7</text><text x="233.0" y="224" fill="#111" font-size="10" text-anchor="middle">cell ratio β = W_pd / W_acc</text><text x="12" y="107.0" font-size="10" fill="#111" transform="rotate(-90 12 107.0)" text-anchor="middle">SNM (mV)</text><path d="M52.0,18.0 L142.5,19.438554789636328 L233.0,20.792488709294048 L323.5,21.93487045400525 L414.0,22.95032089374854" fill="none" stroke="#1f6feb" stroke-width="1.8"/><circle cx="52.0" cy="18.0" r="2.2" fill="#1f6feb"/><circle cx="142.5" cy="19.438554789636328" r="2.2" fill="#1f6feb"/><circle cx="233.0" cy="20.792488709294048" r="2.2" fill="#1f6feb"/><circle cx="323.5" cy="21.93487045400525" r="2.2" fill="#1f6feb"/><circle cx="414.0" cy="22.95032089374854" r="2.2" fill="#1f6feb"/><text x="410" y="30" fill="#1f6feb" font-size="9.5" text-anchor="end" font-weight="bold">hold</text><path d="M52.0,114.00237699072974 L142.5,108.37508913715237 L233.0,100.2091751842168 L323.5,94.03185167577848 L414.0,89.12384121701926" fill="none" stroke="#c0392b" stroke-width="1.8"/><circle cx="52.0" cy="114.00237699072974" r="2.2" fill="#c0392b"/><circle cx="142.5" cy="108.37508913715237" r="2.2" fill="#c0392b"/><circle cx="233.0" cy="100.2091751842168" r="2.2" fill="#c0392b"/><circle cx="323.5" cy="94.03185167577848" r="2.2" fill="#c0392b"/><circle cx="414.0" cy="89.12384121701926" r="2.2" fill="#c0392b"/><text x="410" y="43" fill="#c0392b" font-size="9.5" text-anchor="end" font-weight="bold">read</text></svg><figcaption><b>그림 9.</b> Reading costs more than half the cell's margin, and the only structural way to buy it back is a stronger pull-down relative to the access device — which is why the 6T cell is not made of minimum devices.</figcaption></figure>
+<div class="유도"><div class="유도머리">유도 &mdash; Why reading a cell is what almost destroys it</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">To read, the word line turns on both access transistors while both bit lines are precharged high.</td><td class="유도왜">That is the only way to sense the cell without a separate read port.</td></tr><tr><td class="유도번호">2</td><td class="유도말">The access transistor on the '0' side now pulls that node <b>up</b>, through a divider formed with the cell's own pull-down NMOS.</td><td class="유도왜">Two NMOS devices in series between V<sub>DD</sub> and ground, with the storage node in the middle — the node cannot stay at 0 V.</td></tr><tr><td class="유도번호">3</td><td class="유도말">The '0' node rises to roughly V<sub>DD</sub>·(1/(1+β)) in the resistive limit, so a β of 2 already puts it a third of the way up.</td><td class="유도왜">Both devices are in triode at that point; the ratio of their strengths is the divider ratio. This is the <b>only</b> reason the cell ratio exists as a design parameter.</td></tr><tr><td class="유도번호">4</td><td class="유도말">That rise eats directly into the margin: measured read SNM at β = 2 is 0.226&nbsp;V against a hold SNM of 0.414&nbsp;V — 45.3&nbsp;% of the margin is gone the moment the word line rises.</td><td class="유도왜">Measured, not asserted — the deck and the extractor are in this chapter's source.</td></tr><tr><td class="유도번호">5</td><td class="유도말">Raising β raises read SNM and <b>slightly lowers hold SNM</b>.</td><td class="유도왜">Measured: hold falls from 0.421&nbsp;V to 0.409&nbsp;V across the same sweep, because a stronger pull-down skews each inverter's trip point away from V<sub>DD</sub>/2. <b>There is no free direction</b>, which is what makes it a design point rather than a rule.</td></tr></tbody></table></div>
+<div class="개념"><div class="개념머리">V_min — the voltage at which the memory, not the logic, stops the chip</div>
+<div class="개념이론"><p>Read SNM does not degrade gracefully with supply. Measured on the same
+        cell at β = 2, it holds near 0.22&nbsp;V from 1.0 V down to 0.7 V
+        and then <b>collapses</b>: 0.145&nbsp;V at 0.6 V and
+        0.087&nbsp;V at 0.5 V. The knee sits where V<sub>DD</sub> approaches
+        2V<sub>th</sub> (0.7&nbsp;V here) — below that the devices are in weak
+        inversion, the divider ratio depends on exponential currents, and mismatch
+        (T12) turns a marginal cell into a failing one.</p>
+        <p>This is why <b>the SRAM sets the chip's minimum operating voltage</b>, and
+        why DVFS schemes either stop above the array's V<sub>min</sub> or give the array
+        its own supply.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>Any SoC with on-chip SRAM and more than one voltage point: the whole DVFS range, retention voltage in sleep modes, and the low-voltage corner in signoff.</td></tr>
+<tr><th>언제 쓰나</th><td>As soon as a power mode is proposed. The question 'can we drop to 0.6 V' is an SRAM question before it is a logic question.</td></tr>
+<tr><th>어떻게 쓰나</th><td>Either raise V<sub>min</sub> with assist circuits (word-line underdrive for read, negative bit line for write), split the array's supply, or use an 8T cell where the read path does not touch the storage node.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>* The sweep that produces the number above -- run it at every corner,
+* not just typical, because Vmin is a MISMATCH-limited quantity (see T12).
+.param beta=2.0
+.dc VIN 0 VDD 0.004 VDD 1.0 0.5 -0.1     $ nested sweep: input, then supply
+.print dc v(vr)
+* Extraction is NOT a .measure one-liner: you need the butterfly and the largest
+* inscribed square.  Script it, and SELF-CHECK the extractor on two limits
+* (very high gain -&gt; VDD/2, gain 1 -&gt; 0) before trusting any cell number.</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> SNM measured at the typical corner is nearly useless for V<sub>min</sub>.
+            The array fails at its <b>worst</b> cell out of millions, so the quantity
+            that matters is the tail: V<sub>min</sub> is set by roughly the −5σ to −6σ
+            cell, which means the analysis is a Monte Carlo with importance sampling,
+            not a nominal DC sweep. The sweep above tells you the shape; it does not
+            tell you the yield.</div>
+</div>
+<h2>T4.4 From volts to a datasheet number: SNR, SNDR, ENOB</h2>
+<table><caption>표 17. The three numbers, and what each one hides</caption><thead><tr><th>Quantity</th><th>Definition</th><th>Hides</th></tr></thead><tbody><tr><td>SNR</td><td>Signal power / noise power, distortion excluded</td><td><b>Distortion.</b> A converter with terrible linearity can have excellent SNR</td></tr><tr><td>SNDR (SINAD)</td><td>Signal / (noise + all distortion)</td><td>Which of the two dominates — always report the spectrum too</td></tr><tr><td>ENOB</td><td>(SNDR<sub>dB</sub> − 1.76) / 6.02</td><td>That it is <b>derived</b>, not measured. ENOB is SNDR wearing different units; an ENOB quoted without its input frequency and amplitude is not a measurement</td></tr><tr><td>SFDR</td><td>Signal / largest single spur</td><td>Broadband noise entirely — a clean-looking SFDR with a poor noise floor is common</td></tr></tbody></table>
+<div class="예제"><div class="예제머리">예제 5. How many bits does 64 µV of noise allow?</div><div class="예제줄"><b>주어진 것.</b> A 1 V full-scale converter with C = 1 pF on its sampling network, so the
+        sampled noise is 64.4&nbsp;µV rms, and assume everything else
+        is perfect.</div><div class="예제줄"><b>푸는 법.</b> A full-scale sine has rms amplitude V<sub>FS</sub>/(2√2). SNR =
+        20·log<sub>10</sub>(signal rms / noise rms), then ENOB = (SNR − 1.76)/6.02.</div><div class="예제답"><b>답.</b> SNR = 74.8&nbsp;dB,
+        giving ENOB = 12.1
+        bits. <b>A 1 pF sampling capacitor is a ~12-bit part</b>, no matter how good the
+        rest of the design is.</div><div class="예제함정"><b>여기서 틀린다.</b> Forgetting that the sampling network is usually sampled <b>twice</b> (input
+        and reference), and that a differential pair of capacitors doubles the noise
+        power while doubling the signal amplitude — the two partly cancel, and the
+        factor you get depends on the topology. Write the specific network down; do not
+        reuse a remembered factor.</div></div>
+<h2>T4.5 What to do with this on Monday</h2>
+<table><caption>표 18. 이 장의 개념이 실제로 쓰이는 자리</caption><thead><tr><th>개념</th><th>쓰이는 블록</th><th>무엇을 정하나</th></tr></thead><tbody><tr><td>kTC잡음</td><td>Any switched-capacitor block, before sizing transistors</td><td>The sampling capacitor, and therefore the current budget</td></tr><tr><td>열잡음 · 잡음대역폭</td><td>Amplifier and reference design</td><td>How much g<sub>m</sub> the input stage needs</td></tr><tr><td>플리커코너</td><td>Architecture of any near-DC signal path</td><td>Whether the design needs chopping or auto-zeroing at all</td></tr><tr><td>정적잡음여유 · 나비곡선</td><td>SRAM, any cross-coupled sense amp or latch</td><td>Cell ratio β, and whether a read destroys what it reads</td></tr><tr><td>최소동작전압</td><td>DVFS and retention modes</td><td>The lowest voltage the chip may be operated at</td></tr><tr><td>SNDR · ENOB</td><td>Datasheet and customer conversation</td><td>The single number the customer will compare against a competitor</td></tr></tbody></table>
+<p>Two measured results to carry out of this chapter. A 1 pF sampling capacitor
+    is a 12.1-bit part —
+    the capacitor decides the resolution before any transistor is drawn. And reading a
+    6T SRAM cell costs
+    45.3&nbsp;% of its static margin at a
+    cell ratio of 2, which is why that cell ratio exists and why the array, not the
+    logic, sets the lowest voltage the chip can run at.</p>
+<p>The next chapter takes the sampling operation that this one treated as
+    instantaneous and gives it a finite aperture, a jitter, and a spectrum — which is
+    where the noise floor of a high-speed converter actually comes from.</p>
+<div class="특허"><div class="특허머리">특허로 가는 길 &mdash; 이 주제에서 발명이 일어나는 자리</div><div class="특허속">Noise is thermodynamics; nobody patents kT. <b>What gets claimed is
+        every arrangement that buys back the 4× — correlated double sampling, chopping,
+        auto-zeroing, noise shaping, and the family of techniques that let a circuit
+        spend its noise budget only where the signal is.</b> On the digital side the
+        same shape appears as assist circuits for SRAM: negative bitline, word-line
+        underdrive, read-modify-write assist — all of them arrangements that let a cell
+        keep its margin at a voltage where the plain cell has none. Read this chapter
+        asking: where am I paying the 4× rule, and what would let me not pay it?</div></div>

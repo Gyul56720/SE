@@ -1,0 +1,252 @@
+<h1 id="T3">T3. Metastability — the One Failure You Cannot Design Away</h1>
+<p class="한줄">Every other timing quantity can be made to pass. This one can only be made improbable, and you must say how improbable.</p>
+<div class="사다리"><div class="사다리앞"><b>읽기 전에 알아야 하는 것</b><br>전압 · 전류 · 미분 · 지수함수 · 로그 · 확률 · 평균 · 트랜스컨덕턴스 · 출력저항 · 게이트용량 · RC지연 · 도착시각 · 요구시각 · 슬랙 · FO4</div><div class="사다리뒤"><b>이 장에서 새로 나오는 것</b><br>준안정 · 결정시간상수 · 해결시간 · 준안정창 · MTBF · 동기화기깊이 · 다중비트문제 · 재수렴 · 그레이코드 · 핸드셰이크 · 비동기FIFO · 리셋동기화기 · 리커버리 · 리무벌 · CDC검증 · 준정적신호</div></div>
+<p>A setup violation is a scheduling problem: the data was late, and if you slow
+    the clock or shorten the logic, it is fixed. Metastability is not that. When a
+    flip-flop samples an input that is changing at the moment of the clock edge, the
+    output can sit between the two legal levels for an unbounded time. No amount of
+    slowing down removes it — the sampling instant and the data transition are
+    uncorrelated, so the bad coincidence will happen again. <b>The only question is how
+    often, and whether you have budgeted for it.</b></p>
+<p>This chapter answers that question with a number, then spends the rest of its
+    length on the more common failure: engineers who compute the number correctly, put in
+    a two-flop synchroniser, and still ship a chip that hangs — because the thing that
+    crossed the boundary was not one bit.</p>
+<h2>T3.1 Why a decision can take unbounded time</h2>
+<div class="유도"><div class="유도머리">유도 &mdash; From the cross-coupled pair to an exponential</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">A flip-flop's storage element is two inverters in a loop: the output of each drives the input of the other.</td><td class="유도왜">That loop is what holds state with no clock — it is the only structure in digital design that has memory without a capacitor being explicitly named.</td></tr><tr><td class="유도번호">2</td><td class="유도말">The loop has three equilibria: a solid 0, a solid 1, and a point in the middle where both inverters sit at their own switching threshold.</td><td class="유도왜">Plot V<sub>out1</sub> vs V<sub>in1</sub> and the mirrored curve for the second inverter; they cross three times. The middle crossing is the metastable point.</td></tr><tr><td class="유도번호">3</td><td class="유도말">The middle equilibrium is <b>unstable</b>: the loop gain there is A² > 1, so any deviation grows.</td><td class="유도왜">Each inverter has small-signal gain A = −g<sub>m</sub>(r<sub>o,n</sub> ∥ r<sub>o,p</sub>) at its threshold, and T1 gave both terms.</td></tr><tr><td class="유도번호">4</td><td class="유도말">Linearise around it: C·dv/dt = (A − 1)·v/R, so v(t) = v<sub>0</sub>·e<sup>t/τ</sup> with τ = RC/(A − 1).</td><td class="유도왜">This is where <b>τ, the decision time constant, comes from</b>. It is a circuit property — roughly the loop's RC divided by its excess gain — and it is <i>not</i> a specification you can choose.</td></tr><tr><td class="유도번호">5</td><td class="유도말">To resolve to a valid level the loop must grow the deviation from v<sub>0</sub> to about V<sub>DD</sub>/2, which takes t = τ·ln(V<sub>DD</sub>/2v<sub>0</sub>).</td><td class="유도왜">The time is <b>logarithmic in how close the sample landed to the centre</b> — and v<sub>0</sub> can be arbitrarily small, so t is unbounded. There is no worst case to design for, only a distribution.</td></tr><tr><td class="유도번호">6</td><td class="유도말">The probability that a sample lands within a window that needs more than t<sub>r</sub> to resolve falls as e<sup>−t<sub>r</sub>/τ</sup>.</td><td class="유도왜">Uniform arrival within the clock period, and v<sub>0</sub> proportional to how close the edge was, give the exponential directly.</td></tr></tbody></table></div>
+<figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="40 8 380 284" width="100%" style="max-width:420px;height:auto" font-family="ui-monospace,monospace" font-size="11"><path d="M176,30 L176,38" fill="none" stroke="#c0392b" stroke-width="1.6"/><path d="M167,30 L185,30" fill="none" stroke="#c0392b" stroke-width="2.2"/><text x="176" y="25" fill="#c0392b" font-size="10" text-anchor="middle">VDD</text><path d="M150,80 L160,80" fill="none" stroke="#111" stroke-width="1.6"/><circle cx="164" cy="80" r="3.5" fill="#fff" stroke="#111" stroke-width="1.6"/><path d="M168,67 L168,93" fill="none" stroke="#111" stroke-width="2.0"/><path d="M173,67 L173,93" fill="none" stroke="#111" stroke-width="2.0"/><path d="M173,69 L176,69 L176,62" fill="none" stroke="#111" stroke-width="1.6"/><path d="M173,91 L176,91 L176,98" fill="none" stroke="#111" stroke-width="1.6"/><path d="M150,170 L164,170" fill="none" stroke="#111" stroke-width="1.6"/><path d="M168,157 L168,183" fill="none" stroke="#111" stroke-width="2.0"/><path d="M173,157 L173,183" fill="none" stroke="#111" stroke-width="2.0"/><path d="M173,159 L176,159 L176,152" fill="none" stroke="#111" stroke-width="1.6"/><path d="M173,181 L176,181 L176,188" fill="none" stroke="#111" stroke-width="1.6"/><path d="M176,38 L176,62" fill="none" stroke="#111" stroke-width="1.6"/><path d="M176,98 L176,152" fill="none" stroke="#111" stroke-width="1.6"/><path d="M176,188 L176,215" fill="none" stroke="#111" stroke-width="1.6"/><path d="M176,215 L176,221" fill="none" stroke="#137333" stroke-width="1.6"/><path d="M166,221 L186,221" fill="none" stroke="#137333" stroke-width="2.0"/><path d="M169.5,225 L182.5,225" fill="none" stroke="#137333" stroke-width="2.0"/><path d="M173,229 L179,229" fill="none" stroke="#137333" stroke-width="2.0"/><path d="M150,80 L110,80 L110,170 L150,170" fill="none" stroke="#111" stroke-width="1.6"/><path d="M110,125 L62,125" fill="none" stroke="#111" stroke-width="1.6"/><circle cx="110" cy="125" r="2.6" fill="#111"/><text x="56" y="129" fill="#111" font-size="11" text-anchor="end" font-weight="bold">A</text><path d="M176,125 L268,125" fill="none" stroke="#111" stroke-width="1.6"/><circle cx="176" cy="125" r="2.6" fill="#111"/><text x="274" y="129" fill="#111" font-size="11" text-anchor="start" font-weight="bold">Y = NOT A</text><text x="196" y="84" fill="#c0392b" font-size="9.5" text-anchor="start">PMOS = 풀업</text><text x="196" y="174" fill="#137333" font-size="9.5" text-anchor="start">NMOS = 풀다운</text><text x="58" y="252" fill="#888" font-size="9.5" text-anchor="start">입력이 0 -> 위(PMOS)가 켜짐 -> Y 를 VDD 로 당겨 올린다</text><text x="58" y="265" fill="#888" font-size="9.5" text-anchor="start">입력이 1 -> 아래(NMOS)가 켜짐 -> Y 를 GND 로 당겨 내린다</text><text x="58" y="278" fill="#888" font-size="9.5" text-anchor="start">둘이 동시에 켜지지 않는다 -> 정상상태 전류가 0 이다</text></svg><figcaption><b>그림 6.</b> One of the two inverters in the loop. At the metastable point it sits at its own switching threshold with both devices in saturation — the highest-gain, highest-current, least-stable operating point it has.</figcaption></figure>
+<div class="짚기">Two consequences fall out of that derivation and both matter in
+    practice. <b>First, τ is a small-signal quantity</b>, so it degrades exactly where
+    gain degrades: slow corner, low voltage, high temperature. <b>Second, the metastable
+    point is where the flop burns the most current</b> — both devices are on. A design
+    that goes metastable often does not just fail logically; it draws current it was not
+    budgeted for.</div>
+<h2>T3.2 MTBF, and what every symbol in it actually is</h2>
+<div class="정의"><b>MTBF (mean time between failures)</b> &mdash; The average time between two events in which a synchroniser fails to resolve within the time allowed. <b>It is a rate, not a guarantee</b> — a 1000-year MTBF does not mean the first failure is in year 1000; it means the failures are Poisson with that mean.</div>
+<div class="개념"><div class="개념머리">The MTBF expression</div>
+<div class="개념이론"><p>MTBF = e<sup>t<sub>r</sub>/τ</sup> / (T<sub>0</sub>·f<sub>c</sub>·f<sub>d</sub>)</p>
+        <p><b>t<sub>r</sub></b> — resolution time: the time the synchroniser flop is
+        given to settle before anything reads it. In a single-stage crossing that is
+        T<sub>clk</sub> minus the flop's own t<sub>cq</sub>, minus the setup of whatever
+        reads it, minus any logic in between. <b>τ</b> — decision time constant, from
+        T3.1, here 25&nbsp;ps. <b>T<sub>0</sub></b> — the effective width of
+        the aperture in which a sample can go metastable, here 1&nbsp;ps;
+        both are measured per cell per corner, not derived. <b>f<sub>c</sub></b> —
+        the sampling (destination) clock frequency. <b>f<sub>d</sub></b> — the rate at
+        which the asynchronous input changes.</p>
+        <p>Only t<sub>r</sub> is in the exponent, and that is the whole engineering
+        content of this formula: <b>everything you can do is linear, and the thing you
+        cannot control is exponential.</b> Doubling f<sub>d</sub> halves MTBF. Adding
+        one synchroniser stage <i>multiplies the exponent</i>.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>Every asynchronous boundary in the design: an external interrupt, a reset release, a pushbutton, a FIFO pointer crossing between clock domains, a PHY's recovered-clock domain meeting the core's.</td></tr>
+<tr><th>언제 쓰나</th><td>At architecture time you pick the depth; at signoff you state the number. <b>An IP datasheet that claims 'CDC safe' without an MTBF and the conditions it was computed at has claimed nothing.</b></td></tr>
+<tr><th>어떻게 쓰나</th><td>Get τ and T<sub>0</sub> from the library's synchroniser cell characterisation (they are published per corner). Compute t<sub>r</sub> from the real path, not the ideal clock period. Then state MTBF at the <b>slow corner</b>, because τ is worst there.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>// The synchroniser, written so the tools recognise it.
+// The attribute is not decoration: it tells the tool to keep the two flops
+// adjacent and out of retiming, and it tells CDC checkers this is intentional.
+(* ASYNC_REG = "TRUE" *) reg [1:0] sync_q;          // Xilinx; Intel: altera_attribute
+always_ff @(posedge clk_dst or negedge rst_n) begin
+    if (!rst_n) sync_q &lt;= 2'b00;
+    else        sync_q &lt;= {sync_q[0], async_in};    // 2-stage
+end
+wire safe_in = sync_q[1];
+
+// And the constraint, without which STA tries to time an impossible path:
+// set_max_delay -datapath_only 2.0 -from [get_pins u_src/*/Q] -to [get_pins u_sync/sync_q_reg[0]/D]
+// NOT set_false_path -- a false path lets the tool put unbounded wire delay there,
+// and then the first stage's own setup window is no longer what you assumed.</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> Using <code>set_false_path</code> on a crossing is the single most common
+            CDC constraint error. It silences the timing report, but it also removes any
+            bound on the wire delay into the synchroniser — so the source can change
+            arbitrarily close to the destination edge <i>and</i> the skew between the two
+            bits of a bus becomes unbounded. Use <code>set_max_delay -datapath_only</code>.</div>
+</div>
+<table><caption>표 9. MTBF against clock frequency and synchroniser depth (τ = 25&nbsp;ps, T₀ = 1&nbsp;ps, f_d = f_c/10, overhead 15&nbsp;ps)</caption><thead><tr><th>f_clk</th><th>t_r per stage</th><th>1 stage</th><th>2 stages</th><th>3 stages</th></tr></thead><tbody><tr><td>0.5&nbsp;GHz</td><td>1,85&nbsp;ps</td><td>1.7e+18 년</td><td>2.4e+50 년</td><td>3.3e+82 년</td></tr><tr><td>1&nbsp;GHz</td><td>85&nbsp;ps</td><td>1.85&nbsp;년</td><td>1.1e+15 년</td><td>6.3e+29 년</td></tr><tr><td>2&nbsp;GHz</td><td>35&nbsp;ps</td><td>9.53×10<sup>-10</sup>&nbsp;년</td><td>0&nbsp;년</td><td>1,378&nbsp;년</td></tr></tbody></table>
+<div class="예제"><div class="예제머리">예제 4. Why two stages is the default, and where it stops being enough</div><div class="예제줄"><b>주어진 것.</b> A 1 GHz destination clock, an input that changes at 100 MHz, and
+        15&nbsp;ps of overhead per stage, so t<sub>r</sub> =
+        85&nbsp;ps.</div><div class="예제줄"><b>푸는 법.</b> Put the numbers into the expression once per depth. The exponent scales with
+        the number of stages because each stage gets its own full t<sub>r</sub>.</div><div class="예제답"><b>답.</b> One stage: 1.85 년 — <b>a failure every
+        couple of years, per crossing.</b> Two stages:
+        1.1e+15 년. Three stages:
+        6.3e+29 년.</div><div class="예제덧"><table><caption>표 10. The same two-stage crossing at 1 GHz, as τ degrades</caption><thead><tr><th>τ</th><th>MTBF</th></tr></thead><tbody><tr><td>1×</td><td>1.08e+15 년</td></tr><tr><td>1.2×</td><td>1.34e+09 년</td></tr><tr><td>1.5×</td><td>1.54e+05 년</td></tr><tr><td>2×</td><td>1.85 년</td></tr></tbody></table></div><div class="예제함정"><b>여기서 틀린다.</b> Reading the two-stage number as a property of the design rather than of the
+        corner. Recompute it with τ merely 2× worse — a plausible slow-corner,
+        low-voltage degradation — and the same two-stage crossing gives
+        <b>1.85 년.</b> The exponent
+        collapsed. <b>MTBF is exponentially sensitive to the one parameter you do not
+        control</b>, which is why the number must be quoted at the slow corner and why
+        the third stage exists.</div></div>
+<div class="짚기">At 2 GHz the table says something worth pausing on: a
+    <b>single</b>-stage crossing has an MTBF of
+    0.0301 seconds. Not years — seconds. To reach 100 years
+    with one stage at that frequency you would need t<sub>r</sub> =
+    984.4&nbsp;ps, which is longer than the
+    clock period itself (500&nbsp;ps). <b>The requirement is not achievable in one
+    cycle at all</b> — this is the regime where depth stops being a safety margin and
+    becomes the only way the circuit works.</div>
+<h2>T3.3 A synchroniser is not a CDC solution</h2>
+<p>Everything so far concerns one bit. The failures that actually reach silicon
+    almost never come from a wrong MTBF; they come from designers who synchronised each
+    bit of a bus correctly and still lost.</p>
+<figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 468 236" width="100%" style="max-width:468px;height:auto" font-family="ui-monospace,monospace" font-size="11"><path d="M104,10 L104,230" fill="none" stroke="#e3e3e3" stroke-width="1" stroke-dasharray="3,3"/><path d="M190,10 L190,230" fill="none" stroke="#e3e3e3" stroke-width="1" stroke-dasharray="3,3"/><path d="M276,10 L276,230" fill="none" stroke="#e3e3e3" stroke-width="1" stroke-dasharray="3,3"/><path d="M362,10 L362,230" fill="none" stroke="#e3e3e3" stroke-width="1" stroke-dasharray="3,3"/><path d="M448,10 L448,230" fill="none" stroke="#e3e3e3" stroke-width="1" stroke-dasharray="3,3"/><text x="96" y="33.0" fill="#111" font-size="11" text-anchor="end">cnt[2:0] (A)</text><path d="M104,16 L190,16" fill="none" stroke="#111" stroke-width="1.6"/><path d="M190,16 L276,16" fill="none" stroke="#111" stroke-width="1.6"/><path d="M276,16 L362,16" fill="none" stroke="#111" stroke-width="1.6"/><path d="M362,16 L448,16" fill="none" stroke="#111" stroke-width="1.6"/><text x="96" y="75.0" fill="#111" font-size="11" text-anchor="end">bit0 도착</text><path d="M104,84 L190,84" fill="none" stroke="#111" stroke-width="1.6"/><path d="M190,84 L190,58" fill="none" stroke="#111" stroke-width="1.6"/><path d="M190,58 L276,58" fill="none" stroke="#111" stroke-width="1.6"/><path d="M276,58 L362,58" fill="none" stroke="#111" stroke-width="1.6"/><path d="M362,58 L448,58" fill="none" stroke="#111" stroke-width="1.6"/><text x="96" y="117.0" fill="#111" font-size="11" text-anchor="end">bit1 도착</text><path d="M104,126 L190,126" fill="none" stroke="#111" stroke-width="1.6"/><path d="M190,126 L276,126" fill="none" stroke="#111" stroke-width="1.6"/><path d="M276,126 L276,100" fill="none" stroke="#111" stroke-width="1.6"/><path d="M276,100 L362,100" fill="none" stroke="#111" stroke-width="1.6"/><path d="M362,100 L448,100" fill="none" stroke="#111" stroke-width="1.6"/><text x="96" y="159.0" fill="#111" font-size="11" text-anchor="end">bit2 도착</text><path d="M104,168 L190,168" fill="none" stroke="#111" stroke-width="1.6"/><path d="M190,168 L276,168" fill="none" stroke="#111" stroke-width="1.6"/><path d="M276,168 L276,142" fill="none" stroke="#111" stroke-width="1.6"/><path d="M276,142 L362,142" fill="none" stroke="#111" stroke-width="1.6"/><path d="M362,142 L448,142" fill="none" stroke="#111" stroke-width="1.6"/><text x="96" y="201.0" fill="#111" font-size="11" text-anchor="end">받은 값</text><path d="M104,184 L190,210" fill="none" stroke="#111" stroke-width="1.3"/><path d="M104,210 L190,184" fill="none" stroke="#111" stroke-width="1.3"/><path d="M190,184 L276,210" fill="none" stroke="#111" stroke-width="1.3"/><path d="M190,210 L276,184" fill="none" stroke="#111" stroke-width="1.3"/><path d="M276,184 L362,184" fill="none" stroke="#111" stroke-width="1.6"/><path d="M362,184 L448,184" fill="none" stroke="#111" stroke-width="1.6"/></svg><figcaption><b>그림 7.</b> Two bits crossing through their own synchronisers. Each bit is individually safe. The pair is not: one resolves this cycle, the other next cycle, and the receiver sees a value that was never sent.</figcaption></figure>
+<div class="개념"><div class="개념머리">The multi-bit problem, and the three ways out</div>
+<div class="개념이론"><p>Independent synchronisers make independent decisions. If two bits change
+        in the same source cycle, each may resolve on either side of the boundary, so
+        the destination can observe an intermediate value — <b>a code that the source
+        never drove</b>. A binary counter crossing 0111 → 1000 can be seen as 1111 or
+        0000 or anything between. No MTBF calculation detects this: every flop behaved
+        correctly.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>Any bus, counter, pointer, status word or configuration field that crosses a clock boundary. In practice: FIFO pointers, interrupt status registers, and 'mode' fields written by a slow configuration domain and read by a fast datapath.</td></tr>
+<tr><th>언제 쓰나</th><td>The moment more than one bit crosses. The three-bit case is not safer than the thirty-two-bit case — it is the <i>simultaneity</i> that matters, not the width.</td></tr>
+<tr><th>어떻게 쓰나</th><td>Pick one: <b>(1) Gray code</b> — only one bit changes per increment,
+             so an intermediate sample is either the old or the new value, both valid.
+             Works for counters and pointers, not for arbitrary data. <b>(2) Handshake</b>
+             — hold the data stable and cross a single request bit; the receiver
+             acknowledges. Costs round-trip latency, works for anything.
+             <b>(3) Asynchronous FIFO</b> — a dual-port memory with gray-coded pointers;
+             this is (1) and (2) combined and is what you ship for streaming data.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>// Gray-coded pointer crossing -- the standard async FIFO core.
+// The pointer is converted to gray BEFORE crossing and back AFTER.
+function automatic [PW:0] bin2gray(input [PW:0] b); return b ^ (b &gt;&gt; 1); endfunction
+
+always_ff @(posedge wclk or negedge wrst_n)
+    if (!wrst_n) {wbin, wgray} &lt;= '0;
+    else         {wbin, wgray} &lt;= {wbin_next, bin2gray(wbin_next)};
+
+// crossing: gray value only, two stages, one synchroniser per bit is now SAFE
+// because at most one bit differs between consecutive gray values.
+(* ASYNC_REG = "TRUE" *) reg [PW:0] wq1_rgray, wq2_rgray;
+always_ff @(posedge wclk or negedge wrst_n)
+    if (!wrst_n) {wq2_rgray, wq1_rgray} &lt;= '0;
+    else         {wq2_rgray, wq1_rgray} &lt;= {wq1_rgray, rgray};
+
+// FULL is computed from the SYNCHRONISED read pointer, so it is CONSERVATIVE:
+// it can be asserted when the FIFO has already been drained, never the reverse.
+assign wfull = (wgray_next == {~wq2_rgray[PW:PW-1], wq2_rgray[PW-2:0]});</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> Gray code protects the <i>pointer</i>, not the <i>data</i>. The data path
+            in an async FIFO is a dual-port RAM, and it is safe only because the read
+            address is never allowed to reach a location the write side has not finished
+            writing — that is what the conservative full/empty comparison buys. Copying
+            the gray-code trick onto a data bus does nothing: consecutive data words
+            differ in many bits.</div>
+</div>
+<div class="사고"><b>실제로 난 일</b><br>A crossing can also fail with <b>zero</b> metastability events. If a
+    source pulse is shorter than one destination clock period, the destination may never
+    sample it — the synchroniser resolves cleanly to the old value, every time. This is
+    not a probabilistic failure; it is a guaranteed one, and it is invisible to MTBF
+    analysis. The rule that prevents it: <b>a signal crossing into a slower domain must
+    be held for at least one and a half destination periods</b>, or converted to a
+    level-toggle with a handshake back.</div>
+<table><caption>표 11. What each crossing style costs and what it protects</caption><thead><tr><th>Style</th><th>Latency (dst cycles)</th><th>Throughput</th><th>Protects</th><th>Fails when</th></tr></thead><tbody><tr><td>2-flop synchroniser</td><td>2</td><td>1 bit / cycle</td><td>One bit, level-stable</td><td>More than one bit changes together; pulses shorter than 1.5 cycles</td></tr><tr><td>Pulse synchroniser (toggle)</td><td>2–3</td><td>1 event / 3 cycles</td><td>Single events across any ratio</td><td>Events arrive faster than the round trip</td></tr><tr><td>Gray pointer</td><td>2</td><td>1 increment / cycle</td><td>Monotone counters and pointers</td><td>Used on arbitrary data</td></tr><tr><td>Req/ack handshake</td><td>4–6 round trip</td><td>1 word / round trip</td><td>Arbitrary data of any width</td><td>Latency budget cannot absorb the round trip</td></tr><tr><td>Async FIFO</td><td>2–3 + fill</td><td>1 word / cycle sustained</td><td>Streaming data, rate mismatch</td><td>Depth is too small for the burst pattern</td></tr><tr><td>Quasi-static (config field)</td><td>0</td><td>written once</td><td>Fields that change only while the consumer is idle or in reset</td><td>Someone writes it while the datapath is running</td></tr></tbody></table>
+<div class="정의"><b>준정적신호 (quasi-static signal)</b> &mdash; A crossing signal that is <b>guaranteed by protocol</b> to change only while the destination is not using it — typically a configuration field written before the block is enabled. It needs no synchroniser, but it does need <b>a written rule in the datasheet</b> and a CDC waiver that says so. An undocumented quasi-static assumption is how an IP works in the lab and fails in the customer's system.</div>
+<h2>T3.4 Reset: the crossing everyone forgets</h2>
+<p>Reset is asynchronous by nature — it must work before any clock is running —
+    and synchronous by necessity, because releasing it at the wrong instant violates the
+    flop's recovery time and puts the state machine in a metastable state on its first
+    cycle. The resolution is the same for every design and is worth memorising as a
+    single sentence: <b>assert asynchronously, release synchronously.</b></p>
+<figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="-6 4 526 208" width="100%" style="max-width:520px;height:auto" font-family="ui-monospace,monospace" font-size="11"><rect x="120" y="60" width="46" height="54" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="126" y="80.2" fill="#111" font-size="10" text-anchor="start">D</text><text x="160" y="80.2" fill="#111" font-size="10" text-anchor="end">Q</text><path d="M120,94.5 L129,100.5 L120,106.5" fill="none" stroke="#111" stroke-width="1.6"/><text x="143.0" y="54" fill="#888" font-size="10" text-anchor="middle"></text><rect x="240" y="60" width="46" height="54" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="246" y="80.2" fill="#111" font-size="10" text-anchor="start">D</text><text x="280" y="80.2" fill="#111" font-size="10" text-anchor="end">Q</text><path d="M240,94.5 L249,100.5 L240,106.5" fill="none" stroke="#111" stroke-width="1.6"/><text x="263.0" y="54" fill="#888" font-size="10" text-anchor="middle"></text><path d="M84,76.2 L120,76.2" fill="none" stroke="#111" stroke-width="1.6"/><text x="78" y="80.2" fill="#111" font-size="11" text-anchor="end" font-weight="bold">1</text><path d="M166,76.2 L240,76.2" fill="none" stroke="#111" stroke-width="1.6"/><path d="M286,76.2 L356,76.2" fill="none" stroke="#111" stroke-width="1.6"/><text x="362" y="80.2" fill="#111" font-size="11" text-anchor="start" font-weight="bold">rst_sync_n</text><path d="M120,130.5 L286,130.5" fill="none" stroke="#1f6feb" stroke-width="1.6"/><path d="M120,100.5 L120,130.5" fill="none" stroke="#1f6feb" stroke-width="1.6"/><path d="M240,100.5 L240,130.5" fill="none" stroke="#1f6feb" stroke-width="1.6"/><text x="116" y="146.5" fill="#1f6feb" font-size="10" text-anchor="start">clk</text><path d="M84,138 L143,138 L143,114" fill="none" stroke="#c0392b" stroke-width="1.6"/><path d="M84,138 L263,138 L263,114" fill="none" stroke="#c0392b" stroke-width="1.6"/><circle cx="143" cy="138" r="2.6" fill="#c0392b"/><text x="78" y="142" fill="#c0392b" font-size="11" text-anchor="end" font-weight="bold">rst_n</text><text x="300" y="142" fill="#c0392b" font-size="9.5" text-anchor="start">비동기 인가 (CLR)</text><text x="6" y="184" fill="#888" font-size="9.5" text-anchor="start">인가는 즉시 (클럭 없이도 리셋이 걸린다)</text><text x="6" y="197" fill="#888" font-size="9.5" text-anchor="start">해제는 클럭에 맞춰 (두 클럭 뒤) -- recovery/removal 위반을 막는다</text></svg><figcaption><b>그림 8.</b> The reset synchroniser. The asynchronous assertion path has no clock in it; the release path runs through two flops clocked by the destination domain.</figcaption></figure>
+<div class="개념"><div class="개념머리">리커버리 · 리무벌 (recovery and removal)</div>
+<div class="개념이론"><p>Recovery time is the setup constraint on reset <b>de-assertion</b>: reset
+        must be released at least t<sub>recovery</sub> before the active clock edge.
+        Removal time is the corresponding hold constraint. They are characterised like
+        any other timing arc and appear in the .lib — which means STA checks them
+        <b>only if the reset is a timed, synchronous signal at that flop</b>.</p>
+        <p>An asynchronous reset that is released without a synchroniser has no such
+        relation to the clock, so STA reports nothing, and the failure appears as a
+        state machine that occasionally starts in an illegal state after power-up —
+        typically at one corner, on some boards, after some power ramps.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>Every clock domain. A design with three clocks needs three reset synchronisers, each clocked by its own domain and all fed by the same asynchronous source.</td></tr>
+<tr><th>언제 쓰나</th><td>Always. The cost is two flops per domain; the failure it prevents is the hardest class of bug to reproduce.</td></tr>
+<tr><th>어떻게 쓰나</th><td>Assert straight through (no clock), release through two flops. Then constrain it: the release is now a synchronous signal and STA will check recovery/removal on every flop it reaches.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>// Reset synchroniser -- one per clock domain.
+module reset_sync (input clk, input arst_n, output rst_n);
+    (* ASYNC_REG = "TRUE" *) reg [1:0] q;
+    always_ff @(posedge clk or negedge arst_n)
+        if (!arst_n) q &lt;= 2'b00;          // ASSERT: asynchronous, no clock needed
+        else         q &lt;= {q[0], 1'b1};   // RELEASE: two clocked stages
+    assign rst_n = q[1];
+endmodule
+
+// SDC: the asynchronous assertion is not a timed path; the release is.
+set_false_path -from [get_ports arst_n] -to [get_pins u_rsync/q_reg[0]/CLR]
+// and every flop fed by rst_n gets a normal recovery/removal check -- verify with:
+//   report_timing -delay_type max -check_type recovery -from [get_pins u_rsync/q_reg[1]/Q]</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> Resetting the synchroniser's own flops with the <i>synchronised</i> reset
+            is a loop with no way out: the block never leaves reset if the release edge
+            is missed. The synchroniser must take the <b>raw asynchronous</b> reset on
+            its clear pin. This is also why the two flops in a reset synchroniser reset
+            to 0 and shift in 1, rather than the other way round.</div>
+</div>
+<h2>T3.5 What STA cannot check, and what a CDC tool does instead</h2>
+<table><caption>표 12. Two tools, two questions</caption><thead><tr><th>Question</th><th>STA</th><th>CDC analysis</th></tr></thead><tbody><tr><td>Does this path meet setup at the given clock relation?</td><td>yes</td><td>no</td></tr><tr><td>Is there a clock relation at all?</td><td>assumes one</td><td><b>this is its job</b></td></tr><tr><td>Does every crossing have a synchroniser?</td><td>no</td><td>yes (structural)</td></tr><tr><td>Do multiple bits cross together?</td><td>no</td><td>yes — reconvergence and bus-coherency checks</td></tr><tr><td>Is the source stable long enough?</td><td>no</td><td>yes — protocol checks, usually as generated assertions in simulation</td></tr><tr><td>Is this crossing intentionally unsynchronised?</td><td>no</td><td>only if you <b>waive it</b>, by name, with a reason</td></tr></tbody></table>
+<div class="짚기">The waiver file is the part of CDC signoff that decides whether the
+    analysis meant anything. A tool run with two hundred waivers and a green summary is
+    not evidence; it is two hundred assertions by an engineer. <b>An IP deliverable
+    should ship its CDC waivers as a readable document</b>, one line of justification
+    each, because the integrator inherits every one of them and cannot re-derive them
+    from the netlist.</div>
+<div class="개념"><div class="개념머리">Proving a crossing in simulation as well as structurally</div>
+<div class="개념이론"><p>Structural CDC analysis proves a synchroniser <i>exists</i>. It cannot
+        prove the source obeys the protocol the synchroniser assumes — that the data is
+        stable while the request is high, that pulses are long enough, that a
+        quasi-static field is not written while the datapath runs. Those are <b>temporal
+        properties</b>, and they are checked by assertions, either hand-written or
+        generated by the CDC tool.</p>
+        <p>The strongest available check adds metastability <i>injection</i>: the
+        simulator randomly delays the synchroniser output by one cycle, so that a design
+        which only works when the crossing resolves immediately fails in regression
+        rather than in silicon.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>Block-level verification of anything with more than one clock, and every IP you intend to sell into someone else's clocking scheme.</td></tr>
+<tr><th>언제 쓰나</th><td>Run structural CDC at every RTL freeze; run injection in the nightly regression. The two find different bugs and neither subsumes the other.</td></tr>
+<tr><th>어떻게 쓰나</th><td>Bind the assertions to the crossing module, run the regression with injection on, and record the result in the deliverable's verification section with the number of crossings and the number of waivers.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>// The protocol the handshake crossing assumes, stated as a checkable property.
+property data_stable_while_req;
+    @(posedge clk_src) disable iff (!rst_n)
+        req |-&gt; ##0 $stable(data) throughout (req [*1:$] ##1 ack_sync);
+endproperty
+assert property (data_stable_while_req)
+    else $error("CDC: data changed while req was asserted -- the receiver may latch a mix");
+
+// Metastability injection (simulation only): the synchroniser may take one extra cycle.
+`ifdef CDC_INJECT
+    always_ff @(posedge clk_dst)
+        if ($urandom_range(0,99) &lt; 5) sync_q[1] &lt;= sync_q[1];   // hold: resolve later
+`endif</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> Assertions written in the destination domain about source-domain signals
+            are themselves a clock-domain crossing and can report failures that are
+            artefacts of the testbench. Sample source signals in the source domain
+            (<code>@(posedge clk_src)</code>) and cross only the boolean result.</div>
+</div>
+<h2>T3.6 What to do with this on Monday</h2>
+<table><caption>표 13. 이 장의 개념이 실제로 쓰이는 자리</caption><thead><tr><th>개념</th><th>쓰이는 블록</th><th>무엇을 정하나</th></tr></thead><tbody><tr><td>MTBF · 결정시간상수</td><td>Every asynchronous boundary</td><td>Synchroniser depth, and the number you write in the datasheet</td></tr><tr><td>동기화기깊이</td><td>Architecture, per crossing</td><td>Two by default; three above ~1 GHz or when τ is poorly characterised</td></tr><tr><td>다중비트문제 · 그레이코드</td><td>FIFO pointers, counters, status words</td><td>Whether the crossing needs an encoding, a handshake, or a FIFO</td></tr><tr><td>핸드셰이크 · 비동기FIFO</td><td>Streaming data between domains</td><td>Latency and depth, and therefore area</td></tr><tr><td>리셋동기화기 · 리커버리</td><td>Every clock domain</td><td>Whether the block starts in a legal state at every corner</td></tr><tr><td>CDC검증 · 준정적신호</td><td>Signoff and the deliverable</td><td>The waiver list the integrator inherits</td></tr></tbody></table>
+<p>Two numbers end this chapter, and they are the ones to carry: at 1 GHz a
+    single-stage crossing fails about once every 1.8 years, and the same crossing with
+    τ twice as large fails about once every 1.8 years even with two
+    stages. The first number is why synchronisers exist; the second is why the answer is
+    always quoted with its corner.</p>
+<p>The next chapter takes the quantity this one kept assuming — that a sample is
+    either right or wrong — and replaces it with a distribution. Noise sets the floor
+    under every analog measurement in a mixed-signal IP, and unlike metastability it can
+    be traded directly against power and area.</p>
+<div class="특허"><div class="특허머리">특허로 가는 길 &mdash; 이 주제에서 발명이 일어나는 자리</div><div class="특허속">Metastability itself is physics, and the two-flop synchroniser is older
+        than anyone reading this. <b>What is still being claimed is the arrangement
+        around it</b>: a pointer encoding that keeps a multi-bit crossing safe with one
+        synchroniser instead of N (gray codes and their successors); a
+        latency-versus-MTBF scheme that switches synchroniser depth by operating mode;
+        a data-path crossing that avoids synchronising the data at all by synchronising
+        only a qualifier and holding the data <i>stable</i> across the boundary. Every
+        one of these is an argument about <i>what must cross</i>, not about the flop.
+        Read this chapter asking: which of my signals actually has to cross, and what
+        would let the rest stay on one side?</div></div>
