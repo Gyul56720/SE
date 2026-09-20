@@ -27,7 +27,17 @@ module fir4_hand (
     wire signed [8:0] a1 = $signed({x1[7], x1}) + $signed({x2[7], x2});
 
     // 9비트 x 8비트 = 17비트.  계수가 상수이므로 합성기가 곱셈기를 안 쓴다.
+    //
+    // `acc[6:0]` 은 **일부러** 안 쓴다 -- Q3.14 를 Q1.7 로 내릴 때 버리는
+    // 소수 7비트다.  verilator -Wall 이 이것을 UNUSEDSIGNAL 로 잡는데,
+    // 그 경고는 맞는 말이고(정말 안 쓴다) 의도한 것이다.
+    //
+    // 그래서 **그 한 줄에만** 좁게 끈다.  파일 전체나 경고 종류 전체를
+    // 끄지 않는다 -- 그러면 진짜 미사용 신호(대개 배선 실수)까지 같이
+    // 묻힌다.  끄는 이유를 옆에 적는 것이 규칙이다.
+    /* verilator lint_off UNUSEDSIGNAL */
     wire signed [16:0] acc = a0 * $signed(-8'sd18) + a1 * $signed(8'sd111);
+    /* verilator lint_on UNUSEDSIGNAL */
 
     // Q3.14 -> Q1.7 : 산술 우시프트 7.  Verilog 의 >>> 는 부호를 끈다.
     wire signed [9:0] sh = acc[16:7];

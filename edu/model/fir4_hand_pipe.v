@@ -40,7 +40,11 @@ module fir4_hand_pipe (
 
     // --- 2단: 상수 곱셈과 합 ---
     // 계수가 상수라 합성기가 시프트-덧셈으로 푼다.  포트로 받으면 못 푼다.
+    // acc_q[6:0] 은 일부러 안 쓴다 -- 버리는 소수 7비트다 (fir4_hand.v 와 같다).
+    // **그 한 줄에만** 좁게 끈다.  종류 전체를 끄면 진짜 배선 실수가 묻힌다.
+    /* verilator lint_off UNUSEDSIGNAL */
     reg signed [16:0] acc_q;
+    /* verilator lint_on UNUSEDSIGNAL */
     reg               v2;
     always @(posedge clock) begin
         if (reset) v2 <= 1'b0;

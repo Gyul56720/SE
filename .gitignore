@@ -1,220 +1,190 @@
-.env
-venv/
-__pycache__/
+
+!coin/corpus/aliases.json
+!logs/code_dialogue/
+!novel/directives.json
+!novel/plan.json
+!novel/targets.json
+#
+#   git clone --depth 1 https://github.com/park1200656/KnuSentiLex novel/knu
+# (brief/source.py 의 `신선`). 낡은 것을 커밋해 두면 관문 B003 이 매번 걸린다.
+# (compression/ledger.json 과 같은 이유). 실측 2026-09-07: 추적한 채로 뒀더니 VM 이
+# (compression/ledger.json 과 같은 이유). 씬 상태는 run.json 에, 진행 기록은 .scenes.jsonl 에
+# (실측: 게이트가 '대사 몫 0.35~0.65' 로 떨어져 나흘치 커밋이 전부 빨갛게 됐다).
+# (실측: 배포 #36/#37 연속 실패). 둘 다 없으면 런타임에 다시 만들어지고, 사다리는
+# **`_받은범위.json` 을 커밋하면 심판이 뒤집힌다.** 그 파일에 `전부: true` 가 있으면
+# **감성사전은 저장소에 안 들어간다.** KNU 한국어 감성사전(KnuSentiLex)은 라이선스
+# **관문이 뒤집힌다.** coin/gate.py 의 C001·C002 는 "원장에 있는 수인가" 로 판정하는데,
+# **기각**을 올린다. 그런데 판례 본문은 커밋 안 하므로 새로 받은 사람의 원장은 비어
+# **예시 본문. 남의 글이다 -- 저장소에 한 줄도 안 올린다.**
+# **원고는 저장소에 안 들어간다.** DATA.md: "원문은 어디에도 안 들어간다."
+# **이 둘은 코드다.** 원고가 아니라 설정이라 저장소에 있어야 한다 -- 없으면 부르는
+# 108바이트짜리 초기 상태가 추적되고 있었다).
+# 2026-09-07 실측: VM 의 봇이 git add -A 로 원고 백업 40벌(1.3MB)을 커밋했다.
+# 2026-09-14 cut/ 을 attic/ 으로 얼렸다. 규칙도 따라 옮긴다 -- 자리를 안 따라가는 규칙은
+# 2026-09-14 사용자 지시로 `novel/full_drift.txt`(1045줄 산문)를 지웠다. **원고는 저장소에
+# 24시간 루프가 저장소를 부풀리면 안 된다. 색인(graph/ledger)과 수집 원장만 남긴다.
+# IJP 도약 탐색의 런타임 상태 -- jump_searcher.py 가 STATE_PATH 로 계속 쓴다.
+# `1396780 Resolve merge conflict in mathdrift/ledger.json.bak`). novel/*.bak 은
+# `corpus.covers_cases()` 가 참이 되고, L004 가 "원장에 없는 판례 = 지어낸 것" 으로
+# `start` 가 남기는 이전 원장. 다른 브랜치에서 병합 충돌을 냈다(2026-09-08,
+# `작업/` 에는 경험 원장 · 인터뷰 답 원문 · 자소서 · 작성 근거가 들어간다. 전부 그
+# aliases.json 만 남긴다 -- 그것은 받아온 자료가 아니라 **사람 말 이름표**이고,
+# b=2 m=7 -> b=3 m=23 을 즉시 다시 통과해 원래 단계로 스스로 복구된다(실측 4초).
+# codify 가 만든 코드 산출물 -- 원장·graph 색인만 남기고 파일은 안 올린다(runs/ 와 같은 이유).
+# compression/ledger.json · mathdrift/ledger.json 과 같은 부류다(2026-09-08 대청소에서 발견:
+# drift.sh 가 start/go 마다 .bak 을 남기므로 놔두면 계속 쌓인다.
+# flow.py --받기). 못 받으면 미검증으로 빠지지 조용히 통과하지 않는다.
+# iverilog/vvp 시뮬레이션 산출물 (npu/ 에서 재생성 가능)
+# jaso -- **사람의 이력은 저장소에 안 담는다.**
+# npu/axi_fuzz_tester.py 가 "w" 로 만드는 생성물. RUNNING.md 가 "array_*.txt 는 재생성되므로
+# sandbox 산출물 -- 실험은 일회용이다. 남길 것은 에이전트가 골라 저장소 자리로 옮겨
+# 같은 이유). 채택 기록은 champion_v<N>.py 커밋이 남긴다.
+# 결과 기록(jump_project_results.json)은 소스가 아니라 기록이라 남긴다.
+# 계획판 상태(그림자 워크트리 경로) -- 그 기계에만 뜻이 있다
+# 공간 원장 -- 서버가 계속 쓴다. 추적하면 배포의 git pull 이 매번 충돌한다
+# 과잉 기각하는 심판은 맞는 답도 버린다. 범위 기록은 원장과 **같은 자리에서만** 산다.
+# 그런데 크기는 둘째 문제다.
+# 그리고 이것들은 **다시 받으면 되는 것**이다(news.py --과거 · price.py --받기 ·
+# 낳은 공간 15개가 pull 한 번에 씨앗만 든 커밋본으로 되돌아갔다.
+# 대장은 서버가 계속 쓴다 -- 추적하면 배포의 git pull 이 매번 충돌한다(als_state.json 과
+# 덮어써 '이미 실패한 전략' 기억이 사라진다. 채택 기록은 searcher.py 커밋이 남긴다.
+# 로 언제든 꺼낼 수 있다(planner.py 가 주석으로 가리키는 20260829-224043 도 그렇다).
+# 문제 원장 -- 답이 여기 쌓인다. compression/ledger.json 과 같은 부류다.
+# 밖에서 받아온 참고(dig/harvest). law/corpus 와 같은 이유 -- 다시 받으면 되는 것이고,
+# 받는 법은 law/fetch.py 에 있다(--판례 --전부 --이어).
+# 받는 법은 law/fetch.py 에 있다.
+# 받아 둔 보고 원장. 같은 이유이고 여기서는 더 짧다 -- 신선도가 며칠짜리다
+# 받아온 경기 원장. **저장소에 넣지 않는다** -- law/corpus/*.txt 와 같은 이유이고
+# 받아온 암호화폐 원장. law/corpus/*.txt · lol 경기 원장과 같은 이유이고, 여기서도
+# 받아온 조문 원장. **저장소에 넣지 않는다** -- 조문은 개정되므로 커밋해 두면 낡은 조문이
+# 받아온 판례 원장. law/corpus/*.txt 와 같은 이유인데 **여기서는 훨씬 급하다.**
+# 받은 채용 공고문. 남의 것이고 받은 기계에만 있으면 된다(README 는 담는다).
+# 배운 작법도 받은 기계에만 (README 는 담는다).
+# 배포의 git pull 이 "Your local changes would be overwritten by merge" 로 매번 중단된다
+# 법 튜너 장부/챔피언 -- 기계마다 다르다
+# 사람 것이고, 한 번 담기면 이력이 공개 저장소에 남는다. 되돌릴 수 없다.
+# 소설 런 산출물 -- 서버가 계속 쓴다. 추적하면 배포의 git pull 이 매번 충돌한다
+# 실측 2026-09-14: 추적된 파일 215개(py 110 · json 87 · jsonl 18)가 전부 생성물이다.
+# 실측(민법 본문검색): 16,624건. 한 건 10KB 로 잡아도 160MB 이고 .git 이 지금 20MB 다.
+# 쌓이고 둘 다 재개용이지 소스가 아니다.
+# 쓰기 전에 `git check-ignore` 로 이 줄을 확인하고, 없으면 한 자도 안 쓴다.
+# 씨앗(mathdrift/seed.json)은 코드다 -- 원장이 없으면 거기서 새로 세운다.
+# 씨앗(seek/seed.json)만 코드다.
+# 아무것도 안 막으면서 "처리했다" 는 착각만 준다(G018 이 앓은 그 병이다)
+# 안 담는다** -- 아래 novel/*.json · final.txt 와 같은 규칙인데 이것 하나만 빠져 있었다.
+# 압축 코덱 탐색의 런타임 상태. 가중치 캐시는 크고(실제 모델 가중치), 챔피언 포인터와
+# 어려운 문제 생성기 탐색의 대장 -- evolve.py 가 없으면 만들고 계속 쓴다.
+# 여기서는 더 급하다. 조문은 몇 달 그대로지만 레이팅은 **어제 경기 하나로 바뀐다.**
+# 오늘 답을 판정하게 되고, 그것은 검사한 척하는 검사다.
+# 오케스트레이터가 낳은 실행 산출물. **위 codify/out 이 "runs/ 와 같은 이유" 라고
+# 원고 옆에 쌓이는 못 고친 것들 -- 부산물이라 저장소에 안 넣는다
+# 원장을 저장소에 넣으면 그 원장이 커밋 시점에 얼어붙는다. 그러면 어제 받은 원장으로
+# 이미 막혀 있는데 여기만 빠져 있었다.
+# 이미 커밋된 것들은 이력에 남아 있다 -- git show <커밋>:<경로> 로 되살릴 수 있다.
+# 있다. 그러면 **모든 판례 인용이 기각된다** -- 맞는 인용까지 전부.
+# 자가개선 대장도 같은 부류다. 추적하면 배포의 작업 트리 정렬이 서버의 대장을 매번
+# 자유 씨앗 원장 -- 무엇을 이미 썼는지 기록. 원고와 같은 이유로 추적하지 않는다.
+# 잰 형식(본문 없음). 받은 기계마다 다르게 쌓인다.
+# 적고 있었는데 정작 runs/ 규칙은 없었다** -- 까닭만 적히고 규칙은 안 적힌 자리였다.
+# 정답 자리에 남는다(law/corpus/README.md 가 적어둔 이유). 다시 받으면 되는 것이고,
+# 지우는 것이 아니다 -- 깃 역사에는 그대로 남아 `git show <sha>:orchestrator/runs/...`
+# 쪽이 기본값으로 물러서서, CI 에서는 표본에서 온 수가 아니라 옛 짐작이 살아난다
+# 커밋하지 않는다" 고 적어 뒀는데 _hex 꼴은 패턴에서 빠져 있었다.
+# 커밋한다(그 커밋은 게이트를 탄다). 여기 두면 git_sync 의 add -A 가 휩쓸어 가지 않는다.
+# 커밋해 두면 낡은 승률이 정답 자리에 남는다. 받는 법은 lol/fetch.py 에 있다.
+# 코드에 박지 않으려고 데이터로 뺀 것이라 저장소에 있어야 는다.
+# 탐색 루프의 런타임 상태. 서버에서 프로세스가 계속 쓰는 파일을 git 이 추적하면
+# 튜너 장부 -- 시도 기록과 챔피언. 런마다 쌓인다.
+# 표기가 없다 -- 남의 자료를 재배포하지 않는다. turn.py 가 경로에서 읽는다.
+# 표본 소설. 저작물이라 저장소에 넣지 않는다 -- VM 안에만 둔다.
+# 한 번 커밋되면 `git rm` 을 해도 히스토리에 남는다. `jaso/keep.py` 의 K001 이
+*.bin
+*.debt.jsonl
+*.log
+*.npy
 *.pyc
+*.sim
+*.swp
+*_1-3화.txt
+*_sim
 .DS_Store
 .claude/settings.local.json
-keyword_synthesis_log.jsonl
-inbox/discord_attachments/
-*.swp
+.env
+.venv*
 Public_agent/quota_state.json
-bot_execution.log
-bot_pid.txt
-logs/
-*.log
-
-# 탐색 루프의 런타임 상태. 서버에서 프로세스가 계속 쓰는 파일을 git 이 추적하면
-# 배포의 git pull 이 "Your local changes would be overwritten by merge" 로 매번 중단된다
-# (실측: 배포 #36/#37 연속 실패). 둘 다 없으면 런타임에 다시 만들어지고, 사다리는
-# b=2 m=7 -> b=3 m=23 을 즉시 다시 통과해 원래 단계로 스스로 복구된다(실측 4초).
-mathmetics/matrix_exponent/als_state.json
-# 자가개선 대장도 같은 부류다. 추적하면 배포의 작업 트리 정렬이 서버의 대장을 매번
-# 덮어써 '이미 실패한 전략' 기억이 사라진다. 채택 기록은 searcher.py 커밋이 남긴다.
-mathmetics/matrix_exponent/improve_ledger.json
-!logs/code_dialogue/
-*.bin
-*.sim
-*_sim
+Qwen2.5-Coder-7B-partial.gguf
+__pycache__/
+all_stimulus.txt
 array_act.txt
 array_w.txt
-tile_stimulus.txt
-all_stimulus.txt
-Qwen2.5-Coder-7B-partial.gguf
-*.npy
-
-# iverilog/vvp 시뮬레이션 산출물 (npu/ 에서 재생성 가능)
+attic/cut/증서/
+bot_execution.log
+bot_pid.txt
+brief/ledger/*.json
 check_syntax
+codify/out/
+coin/corpus/*
+coin/작업/
+compression/cache/
+compression/codecs/champion.py
+compression/ledger.json
+corpus_report.txt
+dig/corpus/
 final_sim_exec
 final_sim_opt
-npu/*_sim
-npu/array_results.txt
-
-# 압축 코덱 탐색의 런타임 상태. 가중치 캐시는 크고(실제 모델 가중치), 챔피언 포인터와
-# 대장은 서버가 계속 쓴다 -- 추적하면 배포의 git pull 이 매번 충돌한다(als_state.json 과
-# 같은 이유). 채택 기록은 champion_v<N>.py 커밋이 남긴다.
-compression/cache/
-compression/ledger.json
-compression/codecs/champion.py
-
-# 소설 런 산출물 -- 서버가 계속 쓴다. 추적하면 배포의 git pull 이 매번 충돌한다
-# (compression/ledger.json 과 같은 이유). 씬 상태는 run.json 에, 진행 기록은 .scenes.jsonl 에
-# 쌓이고 둘 다 재개용이지 소스가 아니다.
-novel/*.json
-novel/*.scenes.jsonl
-!novel/plan.json
-# **이 둘은 코드다.** 원고가 아니라 설정이라 저장소에 있어야 한다 -- 없으면 부르는
-# 쪽이 기본값으로 물러서서, CI 에서는 표본에서 온 수가 아니라 옛 짐작이 살아난다
-# (실측: 게이트가 '대사 몫 0.35~0.65' 로 떨어져 나흘치 커밋이 전부 빨갛게 됐다).
-!novel/targets.json
-!novel/directives.json
-
-# 자유 씨앗 원장 -- 무엇을 이미 썼는지 기록. 원고와 같은 이유로 추적하지 않는다.
-novel/seeds_used.json
-novel/seed_current.json
-novel/seeded.json
-novel/seeded.scenes.jsonl
-
-# 원고 옆에 쌓이는 못 고친 것들 -- 부산물이라 저장소에 안 넣는다
-*.debt.jsonl
-
-# 표본 소설. 저작물이라 저장소에 넣지 않는다 -- VM 안에만 둔다.
-novel/corpus/
-novel/holdout/
-
-# 튜너 장부 -- 시도 기록과 챔피언. 런마다 쌓인다.
-novel/tune.jsonl
-novel/tune.best.json
-novel/arm.json
-novel/spine.json
-novel/final.json
-novel/final.txt
-.venv*
-
-# **원고는 저장소에 안 들어간다.** DATA.md: "원문은 어디에도 안 들어간다."
-# 2026-09-07 실측: VM 의 봇이 git add -A 로 원고 백업 40벌(1.3MB)을 커밋했다.
-# drift.sh 가 start/go 마다 .bak 을 남기므로 놔두면 계속 쌓인다.
-# 이미 커밋된 것들은 이력에 남아 있다 -- git show <커밋>:<경로> 로 되살릴 수 있다.
-novel/*.bak
-# 2026-09-14 사용자 지시로 `novel/full_drift.txt`(1045줄 산문)를 지웠다. **원고는 저장소에
-# 안 담는다** -- 아래 novel/*.json · final.txt 와 같은 규칙인데 이것 하나만 빠져 있었다.
-novel/full_drift.txt
-novel/*_drift.txt
-novel/drift.json.*
-novel/baseline_*.txt
-corpus_report.txt
-*_1-3화.txt
-orchestrator/.model_cache.json
-
-# **감성사전은 저장소에 안 들어간다.** KNU 한국어 감성사전(KnuSentiLex)은 라이선스
-# 표기가 없다 -- 남의 자료를 재배포하지 않는다. turn.py 가 경로에서 읽는다.
-#   git clone --depth 1 https://github.com/park1200656/KnuSentiLex novel/knu
-novel/knu/
-
-# 받아온 조문 원장. **저장소에 넣지 않는다** -- 조문은 개정되므로 커밋해 두면 낡은 조문이
-# 정답 자리에 남는다(law/corpus/README.md 가 적어둔 이유). 다시 받으면 되는 것이고,
-# 받는 법은 law/fetch.py 에 있다.
+inbox/discord_attachments/
+jaso/corpus/문항/*.json
+jaso/corpus/보기/
+jaso/corpus/작법/*.json
+jaso/corpus/잰형식/*.json
+jaso/작업/
+keyword_synthesis_log.jsonl
 law/corpus/*.txt
-
-# 받아온 판례 원장. law/corpus/*.txt 와 같은 이유인데 **여기서는 훨씬 급하다.**
-#
-# 실측(민법 본문검색): 16,624건. 한 건 10KB 로 잡아도 160MB 이고 .git 이 지금 20MB 다.
-# 그런데 크기는 둘째 문제다.
-#
-# **`_받은범위.json` 을 커밋하면 심판이 뒤집힌다.** 그 파일에 `전부: true` 가 있으면
-# `corpus.covers_cases()` 가 참이 되고, L004 가 "원장에 없는 판례 = 지어낸 것" 으로
-# **기각**을 올린다. 그런데 판례 본문은 커밋 안 하므로 새로 받은 사람의 원장은 비어
-# 있다. 그러면 **모든 판례 인용이 기각된다** -- 맞는 인용까지 전부.
-#
-# 과잉 기각하는 심판은 맞는 답도 버린다. 범위 기록은 원장과 **같은 자리에서만** 산다.
-# 받는 법은 law/fetch.py 에 있다(--판례 --전부 --이어).
+law/exam.jsonl
 law/precedents/*.txt
 law/precedents/_받은범위.json
 law/precedents/_훑던자리.json
-
-# 법 튜너 장부/챔피언 -- 기계마다 다르다
-law/tune.jsonl
 law/tune.best.json
-
-# 받아온 경기 원장. **저장소에 넣지 않는다** -- law/corpus/*.txt 와 같은 이유이고
-# 여기서는 더 급하다. 조문은 몇 달 그대로지만 레이팅은 **어제 경기 하나로 바뀐다.**
-# 커밋해 두면 낡은 승률이 정답 자리에 남는다. 받는 법은 lol/fetch.py 에 있다.
+law/tune.jsonl
+logs/
+logs/coin_*.log
 lol/corpus/*.jsonl
-
-# 받아 둔 보고 원장. 같은 이유이고 여기서는 더 짧다 -- 신선도가 며칠짜리다
-# (brief/source.py 의 `신선`). 낡은 것을 커밋해 두면 관문 B003 이 매번 걸린다.
-brief/ledger/*.json
-
-# 공간 원장 -- 서버가 계속 쓴다. 추적하면 배포의 git pull 이 매번 충돌한다
-# (compression/ledger.json 과 같은 이유). 실측 2026-09-07: 추적한 채로 뒀더니 VM 이
-# 낳은 공간 15개가 pull 한 번에 씨앗만 든 커밋본으로 되돌아갔다.
-# 씨앗(mathdrift/seed.json)은 코드다 -- 원장이 없으면 거기서 새로 세운다.
+mathdrift/*.bak
 mathdrift/ledger.json
-
-# 문제 원장 -- 답이 여기 쌓인다. compression/ledger.json 과 같은 부류다.
-# 씨앗(seek/seed.json)만 코드다.
-seek/ledger.json
+mathgen/ledger.json
+mathmetics/matrix_exponent/als_state.json
+mathmetics/matrix_exponent/improve_ledger.json
+mathmetics/matrix_exponent/jump_state.json
+novel/*.bak
+novel/*.json
+novel/*.scenes.jsonl
+novel/*_drift.txt
+novel/arm.json
+novel/baseline_*.txt
+novel/corpus/
+novel/drift.json.*
+novel/final.json
+novel/final.txt
+novel/full_drift.txt
+novel/holdout/
+novel/knu/
+novel/seed_current.json
+novel/seeded.json
+novel/seeded.scenes.jsonl
+novel/seeds_used.json
+novel/spine.json
+novel/tune.best.json
+novel/tune.jsonl
+npu/*_sim
+npu/array_*_hex.txt
+npu/array_results.txt
+orchestrator/.model_cache.json
+orchestrator/runs/
+plan/state.json
+sandbox/out/
 seek/*.bak
 seek/.격리검사
-# `start` 가 남기는 이전 원장. 다른 브랜치에서 병합 충돌을 냈다(2026-09-08,
-# `1396780 Resolve merge conflict in mathdrift/ledger.json.bak`). novel/*.bak 은
-# 이미 막혀 있는데 여기만 빠져 있었다.
-mathdrift/*.bak
-
-# 어려운 문제 생성기 탐색의 대장 -- evolve.py 가 없으면 만들고 계속 쓴다.
-# compression/ledger.json · mathdrift/ledger.json 과 같은 부류다(2026-09-08 대청소에서 발견:
-# 108바이트짜리 초기 상태가 추적되고 있었다).
-mathgen/ledger.json
-
-# IJP 도약 탐색의 런타임 상태 -- jump_searcher.py 가 STATE_PATH 로 계속 쓴다.
-# 결과 기록(jump_project_results.json)은 소스가 아니라 기록이라 남긴다.
-mathmetics/matrix_exponent/jump_state.json
-
-# npu/axi_fuzz_tester.py 가 "w" 로 만드는 생성물. RUNNING.md 가 "array_*.txt 는 재생성되므로
-# 커밋하지 않는다" 고 적어 뒀는데 _hex 꼴은 패턴에서 빠져 있었다.
-npu/array_*_hex.txt
-
-law/exam.jsonl
-
-# jaso -- **사람의 이력은 저장소에 안 담는다.**
-# `작업/` 에는 경험 원장 · 인터뷰 답 원문 · 자소서 · 작성 근거가 들어간다. 전부 그
-# 사람 것이고, 한 번 담기면 이력이 공개 저장소에 남는다. 되돌릴 수 없다.
-jaso/작업/
-# 받은 채용 공고문. 남의 것이고 받은 기계에만 있으면 된다(README 는 담는다).
-jaso/corpus/문항/*.json
-# 배운 작법도 받은 기계에만 (README 는 담는다).
-jaso/corpus/작법/*.json
-
-# 받아온 암호화폐 원장. law/corpus/*.txt · lol 경기 원장과 같은 이유이고, 여기서도
-# **관문이 뒤집힌다.** coin/gate.py 의 C001·C002 는 "원장에 있는 수인가" 로 판정하는데,
-# 원장을 저장소에 넣으면 그 원장이 커밋 시점에 얼어붙는다. 그러면 어제 받은 원장으로
-# 오늘 답을 판정하게 되고, 그것은 검사한 척하는 검사다.
-#
-# 그리고 이것들은 **다시 받으면 되는 것**이다(news.py --과거 · price.py --받기 ·
-# flow.py --받기). 못 받으면 미검증으로 빠지지 조용히 통과하지 않는다.
-#
-# aliases.json 만 남긴다 -- 그것은 받아온 자료가 아니라 **사람 말 이름표**이고,
-# 코드에 박지 않으려고 데이터로 뺀 것이라 저장소에 있어야 는다.
-coin/corpus/*
-!coin/corpus/aliases.json
-coin/작업/
-logs/coin_*.log
-# 잰 형식(본문 없음). 받은 기계마다 다르게 쌓인다.
-jaso/corpus/잰형식/*.json
-# **예시 본문. 남의 글이다 -- 저장소에 한 줄도 안 올린다.**
-# 한 번 커밋되면 `git rm` 을 해도 히스토리에 남는다. `jaso/keep.py` 의 K001 이
-# 쓰기 전에 `git check-ignore` 로 이 줄을 확인하고, 없으면 한 자도 안 쓴다.
-jaso/corpus/보기/
-
-# sandbox 산출물 -- 실험은 일회용이다. 남길 것은 에이전트가 골라 저장소 자리로 옮겨
-# 커밋한다(그 커밋은 게이트를 탄다). 여기 두면 git_sync 의 add -A 가 휩쓸어 가지 않는다.
-sandbox/out/
-
-# 밖에서 받아온 참고(dig/harvest). law/corpus 와 같은 이유 -- 다시 받으면 되는 것이고,
-# 24시간 루프가 저장소를 부풀리면 안 된다. 색인(graph/ledger)과 수집 원장만 남긴다.
-dig/corpus/
-
-# codify 가 만든 코드 산출물 -- 원장·graph 색인만 남기고 파일은 안 올린다(runs/ 와 같은 이유).
-codify/out/
-
-# 계획판 상태(그림자 워크트리 경로) -- 그 기계에만 뜻이 있다
-plan/state.json
-# 2026-09-14 cut/ 을 attic/ 으로 얼렸다. 규칙도 따라 옮긴다 -- 자리를 안 따라가는 규칙은
-# 아무것도 안 막으면서 "처리했다" 는 착각만 준다(G018 이 앓은 그 병이다)
-attic/cut/증서/
-
-# 오케스트레이터가 낳은 실행 산출물. **위 codify/out 이 "runs/ 와 같은 이유" 라고
-# 적고 있었는데 정작 runs/ 규칙은 없었다** -- 까닭만 적히고 규칙은 안 적힌 자리였다.
-# 실측 2026-09-14: 추적된 파일 215개(py 110 · json 87 · jsonl 18)가 전부 생성물이다.
-# 지우는 것이 아니다 -- 깃 역사에는 그대로 남아 `git show <sha>:orchestrator/runs/...`
-# 로 언제든 꺼낼 수 있다(planner.py 가 주석으로 가리키는 20260829-224043 도 그렇다).
-orchestrator/runs/
+seek/ledger.json
+tile_stimulus.txt
+venv/
+work/
