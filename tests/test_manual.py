@@ -222,6 +222,51 @@ def test_링크가_성하다():
     ok(not 깨진, f"깨진 링크가 없다 ({깨진[:3]})")
 
 
+def test_그림이_있고_성하다():
+    """매뉴얼이 거는 그림이 실제로 있고, SVG 가 성한가.
+
+    그림의 실패도 조용하다 -- 깨진 `<img>` 는 빈 자리로 보일 뿐이다.
+    그리고 SVG 안의 마크다운 별표는 **화면에 별표로 그대로 보인다**
+    (실측으로 그랬다).  둘 다 기계가 본다.
+    """
+    print("\n== 매뉴얼의 그림이 성하다 ==")
+    그림 = os.path.join(매뉴얼, "그림")
+    ok(os.path.isdir(그림), "manual/그림/ 이 있다")
+
+    # 문서가 거는 그림이 전부 있나
+    깨진 = []
+    for f in sorted(os.listdir(매뉴얼)):
+        if not f.endswith(".md"):
+            continue
+        t = open(os.path.join(매뉴얼, f), encoding="utf-8").read()
+        for s in re.findall(r'src="([^"]+)"', t):
+            if not os.path.exists(os.path.join(매뉴얼, s)):
+                깨진.append(f"{f} -> {s}")
+    ok(not 깨진, f"깨진 그림 참조가 없다 ({깨진[:3]})")
+
+    # SVG 가 열리고 닫히나, 별표가 안 남았나
+    import sys as _s
+    _s.path.insert(0, os.path.join(뿌리, "edu"))
+    import sch
+    나쁜 = []
+    n = 0
+    for g in sorted(os.listdir(그림)):
+        if not g.endswith(".svg"):
+            continue
+        n += 1
+        s = open(os.path.join(그림, g), encoding="utf-8").read()
+        if not (s.startswith("<svg") and s.rstrip().endswith("</svg>")):
+            나쁜.append(g + " (svg 가 안 닫힌다)")
+        if sch.글자에별이없나(s):
+            나쁜.append(g + " (마크다운 별표가 남았다)")
+    ok(n >= 8, f"그림이 충분히 있다 ({n} 개)")
+    ok(not 나쁜, f"**모든 SVG 가 성하다** ({나쁜[:2]})")
+
+    # 생성기가 다시 돌아도 같은 것이 나오나
+    r = 돌려([_s.executable, os.path.join(매뉴얼, "그림만들기.py")])
+    ok(r.returncode == 0, f"그림만들기.py 가 돈다 ({r.stderr[:160]})")
+
+
 def test_템플릿에_채울자리가_있다():
     print("\n== 템플릿이 '채워 넣는' 물건이다 ==")
     for 이름 in ("제품.md", "스펙.md", "DATASHEET.md",
@@ -250,7 +295,8 @@ def test_매뉴얼이_규율을_적어두었다():
 if __name__ == "__main__":
     for f in (test_상태스크립트가_돈다, test_뼈대가_이어붙어_통과한다,
               test_매뉴얼대로_따라가면_초록이_된다,
-              test_링크가_성하다, test_템플릿에_채울자리가_있다,
+              test_링크가_성하다, test_그림이_있고_성하다,
+              test_템플릿에_채울자리가_있다,
               test_매뉴얼이_규율을_적어두었다):
         f()
     print()
