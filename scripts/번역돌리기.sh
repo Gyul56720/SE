@@ -4,6 +4,7 @@
 #   bash scripts/번역돌리기.sh            배경으로 시작 (PID·로그를 알려 준다)
 #   bash scripts/번역돌리기.sh --어림     부르지 않고 값만 잰다 (즉시)
 #   bash scripts/번역돌리기.sh --상태     얼마나 갔나
+#   bash scripts/번역돌리기.sh --진단     한 덩이만 옮겨 보고 까닭을 찍는다
 #   bash scripts/번역돌리기.sh T3 T4      그 장만
 #
 # 왜 스크립트인가: CLAUDE.md 의 배경 실행 규칙(`setsid nohup ... disown`)을 손으로
@@ -30,6 +31,13 @@ case "${1:-}" in
   --어림|어림)
     exec python3 edu/번역/translate.py --전부 --어림
     ;;
+  --진단|진단)
+    # **한 덩이만 옮겨 보고 무엇이 어긋났는지 그대로 찍는다.**
+    # 통째 실패의 까닭(키 없음 · 쿼터 · 태그 바뀜 · 설명 덧붙임)은 응답 원문을
+    # 한 번 보면 갈린다. 실측 2026-09-20: 캐시 0 인데 장이 3 개 나왔는데,
+    # 그때 사용자가 볼 수 있는 것이 아무것도 없었다.
+    exec python3 edu/번역/translate.py --전부 --진단
+    ;;
   --상태|상태)
     echo "옮긴 덩이(캐시): $(ls -1 "$CACHE" 2>/dev/null | wc -l)"
     echo "낸 장:           $(ls -1 "$OUT" 2>/dev/null | wc -l)"
@@ -40,6 +48,17 @@ case "${1:-}" in
         echo "돌고 있다: PID $(cat "$PIDF")"
     else
         echo "지금은 안 돈다"
+    fi
+    # **캐시 0 인데 장이 나왔으면 그것은 진행이 아니라 실패다.**
+    # 실측 2026-09-20: 사용자가 "캐시 0 · 낸 장 3" 을 보고도 무엇이 잘못인지
+    # 알 길이 없었다. 상태가 스스로 그것을 말하게 한다.
+    NCACHE=$(ls -1 "$CACHE" 2>/dev/null | wc -l)
+    NOUT=$(ls -1 "$OUT" 2>/dev/null | wc -l)
+    if [ "$NCACHE" -eq 0 ] && [ "$NOUT" -gt 0 ]; then
+        echo ""
+        echo "**한 덩이도 안 옮겼는데 장 파일이 있다 -- 그 파일들은 영어다.**"
+        echo "  까닭을 보라:  bash scripts/번역돌리기.sh --진단"
+        echo "  (키 없음 · 쿼터 · 모델이 태그를 바꿈 · 설명을 덧붙임 중 하나다)"
     fi
     [ -f "$LOG" ] && { echo "--- 로그 끝 12줄 ---"; tail -12 "$LOG"; }
     exit 0

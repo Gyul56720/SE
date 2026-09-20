@@ -351,6 +351,34 @@ def 장옮기기(이름: str, html: str, pool, 용어문자열: str, 확인만=F
     return "".join(나온것), 실패
 
 
+class 통째실패(Exception):
+    """한 장이 거의 통째로 안 옮겨졌다 -- **영어를 한국어 파일로 내보내지 않는다.**
+
+    실측 2026-09-20: 사용자가 VM 에서 돌린 뒤 `--상태` 가 **캐시 0 · 낸 장 3** 을
+    냈다.  한 덩이도 못 옮겼는데 장 파일은 세 개가 생긴 것이다 -- 덩이가 실패하면
+    원문을 그대로 두게 해 놨기 때문이다(반쪽을 안 내려던 것이 **영어 파일을
+    한국어 파일 이름으로 내는** 꼴이 됐다).  그러니 통째로 실패하면 멈춘다.
+    """
+
+
+def 장옮기기_안전(이름, html, pool, 용어문자열, 확인만=False, 최소성공=0.5):
+    """장옮기기 + **거의 다 실패했으면 터뜨린다.**"""
+    조각 = 쪼개기(html)
+    옮길것 = sum(1 for d, 옮길까 in 조각 if 옮길까 and d.strip())
+    옮긴것, 실패 = 장옮기기(이름, html, pool, 용어문자열, 확인만)
+    if 확인만 or 옮길것 == 0:
+        return 옮긴것, 실패
+    성공 = 옮길것 - len(실패)
+    if 성공 < 옮길것 * 최소성공:
+        문제 = 실패[0][1] if 실패 else ["(까닭 없음)"]
+        raise 통째실패(
+            f"{이름}: 덩이 {옮길것}개 중 {성공}개만 옮겼다 -- 멈춘다.\n"
+            f"  첫 까닭: {문제}\n"
+            "  영어를 한국어 파일로 내보내지 않는다. 까닭을 먼저 보라:\n"
+            "    bash scripts/번역돌리기.sh --진단")
+    return 옮긴것, 실패
+
+
 # ---------------------------------------------------------------------------
 # 값 어림 -- 돌리기 전에 얼마나 드는지 잰다
 # ---------------------------------------------------------------------------
@@ -406,6 +434,53 @@ def 장들읽기(고른것):
     return 난것
 
 
+def 진단(장들, 용어문자열):
+    """**한 덩이만** 옮겨 보고 무엇이 어긋났는지 그대로 보인다.
+
+    통째 실패의 까닭은 대개 넷 중 하나다: 키가 없다 · 쿼터가 끝났다 ·
+    모델이 태그를 바꾼다 · 모델이 앞뒤에 설명을 붙인다.  넷은 **증상이 달라서**
+    응답 원문을 한 번 보면 바로 갈린다.  그런데 지금까지는 그 원문을 아무도
+    못 봤다 -- 실패하면 조용히 원문을 두고 넘어갔기 때문이다.
+    """
+    import llm_pool
+    pool = llm_pool.build_pool()
+    print(f"후보 {len(pool) if pool else 0}개")
+    if not pool:
+        print("**키가 없다** -- GEMINI_API_KEY 를 세워라. 이것이 까닭이다.",
+              file=sys.stderr)
+        return 2
+    덩이 = None
+    for _, html in 장들:
+        for d, 옮길까 in 쪼개기(html):
+            if 옮길까 and 200 < len(d.strip()) < 1200:
+                덩이 = d.strip()
+                break
+        if 덩이:
+            break
+    if not 덩이:
+        print("진단에 쓸 덩이를 못 찾았다", file=sys.stderr)
+        return 2
+    print("\n=== 보낸 덩이 ===\n" + 덩이[:600])
+    p = 프롬프트.format(용어=용어문자열, 덩이=덩이)
+    try:
+        r = llm_pool.ask(pool, p)
+    except Exception as e:                                  # noqa: BLE001
+        print(f"\n**호출 자체가 실패했다**: {type(e).__name__}: {e}", file=sys.stderr)
+        print("  쿼터·키·망 중 하나다. 메시지를 그대로 보라.", file=sys.stderr)
+        return 3
+    t = re.sub(r"^```[a-zA-Z]*\n", "", (r or "").strip())
+    t = re.sub(r"\n```$", "", t).strip()
+    print("\n=== 받은 것 ===\n" + (t[:900] if t else "(빈 응답)"))
+    문제 = 대조(덩이, t)
+    if 문제:
+        print("\n**어긋난 곳** (이것 때문에 버린다):", file=sys.stderr)
+        for x in 문제:
+            print("  - " + str(x)[:200], file=sys.stderr)
+        return 1
+    print("\n대조 통과 -- 이 덩이는 멀쩡하다. 통째 실패라면 쿼터나 묶음 쪽을 보라.")
+    return 0
+
+
 def main():
     global 묶음자
     ap = argparse.ArgumentParser()
@@ -415,6 +490,8 @@ def main():
                     help="옮기지 않고 무엇이 남았는지만 본다")
     ap.add_argument("--어림", action="store_true",
                     help="**부르지 않고** 호출 수와 토큰을 어림한다")
+    ap.add_argument("--진단", action="store_true",
+                    help="덩이 하나만 옮겨 보고 **원문·응답·어긋난 곳**을 그대로 찍는다")
     ap.add_argument("--묶음", type=int, default=묶음자,
                     help=f"한 번에 보낼 본문 글자 수 (기본 {묶음자})")
     ap.add_argument("--낼곳", default=os.path.join(여기, "한국어"))
@@ -442,6 +519,9 @@ def main():
         print("재시도(구조 어긋남)는 안 셌다 -- 실제는 이보다 10~20% 많다")
         return 0
 
+    if a.진단:
+        return 진단(장들, 용어문자열)
+
     pool = None
     if not a.확인만:
         import llm_pool
@@ -455,7 +535,11 @@ def main():
     총실패 = 0
     for 키, html in 장들:
         t0 = time.time()
-        옮긴것, 실패 = 장옮기기(키, html, pool, 용어문자열, a.확인만)
+        try:
+            옮긴것, 실패 = 장옮기기_안전(키, html, pool, 용어문자열, a.확인만)
+        except 통째실패 as e:
+            print(f"\n[멈춤] {e}", file=sys.stderr)
+            return 3
         open(os.path.join(a.낼곳, f"{키}.html"), "w",
              encoding="utf-8").write(옮긴것)
         총실패 += len(실패)
