@@ -200,7 +200,7 @@ def ch_esd():
     c.절("T16.4 What to do with this on Monday")
 
     c.날것(쓰는자리([
-        ["인체·충전소자모델", "The qualification plan and the datasheet",
+        ["인체모델 · 충전소자모델", "The qualification plan and the datasheet",
          "The targets, and that CDM is reported as well as HBM"],
         ["설계창 · 유지전압 · 트리거전압", "Clamp selection for the node",
          "Whether the protection can exist at this supply and oxide at all"],

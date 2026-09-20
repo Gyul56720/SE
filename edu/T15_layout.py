@@ -183,7 +183,7 @@ def ch_layout():
     c.절("T15.4 What to do with this on Monday")
 
     c.날것(쓰는자리([
-        ["레이아웃의존효과 · 웰근접 · STI응력", "Any matched or precision device",
+        ["레이아웃의존효과 · 웰근접효과 · STI응력", "Any matched or precision device",
          "Keep-out distances and dummy patterns, written as constraints"],
         ["추출", "Before declaring a block finished",
          "Whether the simulated design is the one you drew"],

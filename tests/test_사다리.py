@@ -89,6 +89,48 @@ def test_중복정의도_자해로_잡힌다():
     bookK.장들.remove(겹친장)
 
 
+def test_영어판에_순수_한국어가_안_남는다():
+    """사용자(2026-09-20): "영어 교안도 pdf로 제공해줘."
+
+    본문은 이미 영어였는데 **틀 글자와 그림 라벨과 개념 이름이 한국어**였다.
+    `bookK.언어("en")` · `sch.언어("en")` 이 그것을 갈아 끼운다.  여기서는
+    **괄호 밖에 한국어만 있는 글자가 남지 않았는지** 본다 -- 괄호 안의 용어 병기
+    (`aperture jitter (구경지터)`)는 남겨 두는 것이 맞다.
+    """
+    import re
+    import sch
+    try:
+        bookK.언어("en")
+        sch.언어("en")
+        장들 = _짓기()
+        나쁨 = []
+        for ch in 장들:
+            h = ch.완성()
+            본문 = re.sub(r"<pre.*?</pre>", "", h, flags=re.S)
+            for t in re.findall(r">([^<]*[가-힣][^<]*)<", 본문):
+                t = t.strip()
+                if not t or re.search(r"\([^)]*[가-힣][^)]*\)", t):
+                    continue          # 용어 병기는 괜찮다
+                if not re.search(r"[A-Za-z0-9]", t):
+                    나쁨.append((ch.번호, t[:60]))
+        assert not 나쁨, "영어판에 한국어만 든 글자가 남았다:\n" + "\n".join(
+            f"  {n}: {t}" for n, t in 나쁨[:10])
+    finally:
+        bookK.언어("ko")
+        sch.언어("ko")
+        _짓기()
+
+
+def test_모든_개념에_영어_이름이_있다():
+    import 개념영문
+    장들 = _짓기()
+    개념 = set()
+    for ch in 장들:
+        개념 |= set(ch.쓰는것) | set(ch.내놓는것)
+    빠진 = sorted(c for c in 개념 if c not in 개념영문.영문)
+    assert not 빠진, f"영어 이름이 없는 개념: {빠진}"
+
+
 if __name__ == "__main__":
     import _run
     _run.돌리기(globals())

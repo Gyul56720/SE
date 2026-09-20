@@ -32,7 +32,8 @@ import sch
 def _ber(t):
     오류, 비트 = t
     if 오류 == 0:
-        return f"&lt; {수(3.0/비트, 3)} <span style='color:#888'>(오류 0, 3의 법칙)</span>"
+        return (f"&lt; {수(3.0/비트, 3)} <span style='color:#888'>"
+                "(0 errors, rule of three)</span>")
     return 수(오류 / 비트, 3)
 
 
@@ -141,7 +142,7 @@ def ch_serdes():
         [[k, str(v[0]), _ber(v)] for k, v in 잰성한점.items()]))
 
     c.날것(개념(
-        "3의 법칙 — what zero errors is allowed to mean",
+        "3의법칙 (rule of three) — what zero errors is allowed to mean",
         f"""<p>Two rows above report <b>zero errors</b>. Zero errors is not a BER of
         zero; it is an upper bound. With no errors in n bits, the 95 % confidence upper
         bound on the error rate is 3/n — the <b>rule of three</b>. For the

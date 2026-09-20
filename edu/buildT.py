@@ -105,6 +105,16 @@ def body(목록):
 
 
 if __name__ == "__main__":
+    # **영어판은 틀 글자만 갈아 끼운다.**  사용자(2026-09-20): "영어 교안도 pdf로
+    # 제공해줘."  T 계열의 본문은 이미 영어인데 라벨(읽기 전에 알아야 하는 것 ·
+    # 어디에 쓰나 ...)만 한국어였다.  본문을 두 벌 두지 않는다 -- `bookK.언어("en")`
+    # 한 줄이 라벨을 바꾸고, 같은 장 함수가 영어 틀로 나온다.
+    영어 = "--영어" in sys.argv or "--en" in sys.argv
+    if 영어:
+        import bookK, sch
+        bookK.언어("en")
+        sch.언어("en")          # 그림 라벨도 같이 -- 안 그러면 그림만 한국어로 남는다
+
     본문, 빠진1 = body(이론)
     대학원본문, 빠진2 = body(대학원)
     full = 본문 + 대학원본문
@@ -127,8 +137,8 @@ real designs have failed.</p>"""
     doc = ('<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">'
            '<title>Mixed-Signal and Digital IC Design</title></head><body>'
            + front + full + '</body></html>')
-    render(doc, os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                             "IP_Theory.pdf"))
+    이름 = "IP_Theory_EN.pdf" if 영어 else "IP_Theory.pdf"
+    render(doc, os.path.join(os.path.dirname(os.path.abspath(__file__)), 이름))
     if 빠진1:
         print("이론에서 빠진 것:", 빠진1)
     if 빠진2:

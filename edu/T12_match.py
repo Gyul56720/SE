@@ -213,13 +213,13 @@ def ch_match():
     c.날것(쓰는자리([
         ["펠그롬법칙 · 일치도면적", "Sizing any matched device",
          "The minimum area — which then sets parasitics and speed"],
-        ["g_m/I_D 와 불일치", "Choosing the bias point",
+        ["트랜스컨덕턴스 · 랜덤불일치", "Choosing the bias point",
          "Whether the efficient operating point is affordable"],
         ["계통불일치 · 공통중심 · 더미소자", "Layout constraints, written by the designer",
           "What the layout engineer must be told, because the netlist does not say it"],
         ["수율시그마 · 중요도표본", "Memory and any large array",
          "How many σ the design must survive, and which method can see that far"],
-        ["트림 · 보정", "When area becomes unaffordable",
+        ["트림 · 디지털보정", "When area becomes unaffordable",
          "Whether to pay in silicon or in test time"]]))
 
     c.글(f"""The measured results to carry: current-mirror mismatch falls as the square
