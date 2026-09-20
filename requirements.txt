@@ -48,3 +48,11 @@ reportlab>=4.0   # discord_pdf: 메모(.md)를 핸드폰에서 열리는 PDF 로
 schemdraw>=0.19
 # S-파라미터 채널(serdes.채널선로 · 채널측정). 배포가 깐다 -- 사람에게 시키지 않는다.
 scikit-rf>=1.0
+
+# **검사가 pytest 를 임포트한다** (실측 2026-09-20, CI 로그):
+#   실패 test_kb.py / test_gf.py / test_rs.py / test_pdfread.py /
+#        test_release_gate.py / test_verif_agent.py / test_검사가_도는가.py
+#        -> No module named 'pytest'  <- CI 에서는 깔려 있어야 한다
+# 일곱 개가 같은 까닭으로 빨갰다. 러너가 그 자리에 "CI 에서는 깔려 있어야 한다" 고
+# 적고 있었는데 **아무도 깔지 않았다.** 사람에게 시키지 않는다 -- 여기 한 줄이 답이다.
+pytest>=8.0
