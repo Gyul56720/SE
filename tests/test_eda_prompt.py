@@ -47,7 +47,14 @@ def 풀기(x):
     if isinstance(x, ast.BinOp) and isinstance(x.op, ast.Add):
         return 풀기(x.left) + 풀기(x.right)
     if isinstance(x, ast.Attribute):
-        return e.갈래규칙
+        # **이름으로 꺼낸다.** 예전엔 어떤 속성이든 갈래규칙으로 읽었다 -- 그래서
+        # `_eda.교재규칙` 을 끼우자 갈래규칙이 두 벌 있는 것처럼 보여 빨개졌다
+        # (실측 2026-09-20). 한 자리에서 오는지 보려는 검사가, 어느 자리에서
+        # 오는지는 안 보고 있었다.
+        났 = getattr(e, x.attr, None)
+        if not isinstance(났, str):
+            raise AssertionError(f"eda_prompt 에 {x.attr} 이 없다(또는 글이 아니다)")
+        return 났
     raise TypeError(type(x).__name__)
 
 
@@ -115,6 +122,14 @@ except ValueError:
 
 for 말, (글, _) in 글들.items():
     ok(글.count(e.표) == 1, f"{말}: 규칙이 한 벌만 들어 있다")
+
+# 교재 규칙도 같은 자리에서 오고 두 채널에 다 있다 -- 도구(`textbook`)를 물리는
+# 것과 그것을 부르라고 말하는 것은 다른 일이다(이 파일이 갈래규칙에서 겪은 그것).
+print("\n[교재] 교재로 답하라는 규칙이 두 채널에 다 있나")
+for 말, (글, _) in 글들.items():
+    ok(글.count(e.교재표) == 1, f"{말}: 교재규칙이 한 벌만 들어 있다")
+for 있어야 in ("textbook(", "지배식", "안 덮으면", "기억으로 답하지 마라"):
+    ok(있어야 in e.교재규칙, f"교재규칙이 `{있어야}` 를 말한다")
 
 print()
 if FAIL:

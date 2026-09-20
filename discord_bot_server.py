@@ -49,7 +49,7 @@ import time  # noqa: E402
 import keys  # noqa: E402
 import relay  # noqa: E402
 from bot_tools import (  # noqa: E402
-    REPO_DIR, run_shell, run_experiment, run_probes, read_file, read_image, read_pdf, draw_circuit, run_rtl, lint_rtl, synth_rtl, prove_rtl, place_rtl, ip_signoff, serdes_link, quant_sweep, adc_sweep, loss_sweep, nn_equalizer, eq_area, run_spice, spice_example, monte_carlo, concept, edit_file, delegate, send_email, repair, set_key, security_audit, codify_paper, research, create_pr, dispatch_command, search_memory, save_memory,
+    REPO_DIR, run_shell, run_experiment, run_probes, read_file, read_image, read_pdf, draw_circuit, run_rtl, lint_rtl, synth_rtl, prove_rtl, place_rtl, ip_signoff, serdes_link, quant_sweep, adc_sweep, loss_sweep, nn_equalizer, eq_area, run_spice, spice_example, monte_carlo, concept, textbook, edit_file, delegate, send_email, repair, set_key, security_audit, codify_paper, research, create_pr, dispatch_command, search_memory, save_memory,
     build_agent_pool, run_with_fallback_pool,
     register_thread, unregister_thread, request_cancel,
     orchestrator_solve, orchestrator_status, orchestrator_resume, orchestrator_stop,
@@ -84,7 +84,7 @@ ADMIN_MODEL_CANDIDATES = [ADMIN_MODEL_NAME] + [m for m in _admin_extra_models if
 ADMIN_PRIMARY_KEY = os.getenv("GEMINI_API_KEY_FALLBACK") or os.environ["GEMINI_API_KEY"]
 ADMIN_SECONDARY_KEY = os.environ["GEMINI_API_KEY"] if os.getenv("GEMINI_API_KEY_FALLBACK") else None
 
-ADMIN_TOOLS = [run_shell, run_experiment, run_probes, read_file, read_image, read_pdf, draw_circuit, run_rtl, lint_rtl, synth_rtl, prove_rtl, place_rtl, ip_signoff, serdes_link, quant_sweep, adc_sweep, loss_sweep, nn_equalizer, eq_area, run_spice, spice_example, monte_carlo, concept, edit_file, delegate, send_email, repair, set_key, security_audit, codify_paper, research, create_pr, dispatch_command, search_memory, save_memory,
+ADMIN_TOOLS = [run_shell, run_experiment, run_probes, read_file, read_image, read_pdf, draw_circuit, run_rtl, lint_rtl, synth_rtl, prove_rtl, place_rtl, ip_signoff, serdes_link, quant_sweep, adc_sweep, loss_sweep, nn_equalizer, eq_area, run_spice, spice_example, monte_carlo, concept, textbook, edit_file, delegate, send_email, repair, set_key, security_audit, codify_paper, research, create_pr, dispatch_command, search_memory, save_memory,
                orchestrator_solve, orchestrator_status, orchestrator_resume,
                orchestrator_stop]
 ADMIN_SYSTEM_PROMPT = (
@@ -207,6 +207,7 @@ ADMIN_SYSTEM_PROMPT = (
     "**사진이 오면 `read_image` 로 읽는다.** `cat` 은 그림에 안 통한다 -- 깨진 바이트만 "
     "나온다. 그리고 **보이지 않는다고 답하지 마라**(실측 2026-09-15: 그렇게 답했다).\n"
     "" + _eda.갈래규칙 + "\n"
+    "" + _eda.교재규칙 + "\n"
     "문제가 오면 **풀이 · 약한 개념 · 오답노트 · 예상 질문과 답변** 넷을 다 내라. "
     "풀이는 한 걸음씩 쓰고 마지막 줄에 `답: ...`. 예상 질문은 **이 문제를 처음 보는 "
     "사람**이 막힐 자리를 네가 먼저 묻고 답하는 것이다(`Q:` / `A:` 3~5개).\n"
