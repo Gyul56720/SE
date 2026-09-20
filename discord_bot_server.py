@@ -597,7 +597,9 @@ def _git_sync_locked() -> str | None:
     통과, 보고 = commit_guard.검사(Path(REPO_DIR), 빠름=True)      # 답변 경로 -- 망 안 타고, 코드 변경 때만 검사
     print(f"[git_sync] 문지기\n{보고}")
     if not 통과:
-        return 보고
+        # **표 전체를 답에 붙이지 않는다.** 사용자(2026-09-20): "디스코드 답변에
+        # 계속 딸려와." 무엇이 막았는지 한두 줄만 보내고 표는 위 로그에 남긴다.
+        return commit_guard.요약(보고, 통과)
 
     # check=True 로 두면 실패가 CalledProcessError 로 튀어나와 호출자의 답변 전송까지
     # 무너뜨린다. 게다가 이제 이 저장소에는 git 작성자가 둘이다 -- 이 봇과, 별도
@@ -625,7 +627,11 @@ def _git_sync_locked() -> str | None:
         # `보고` 는 위 commit_guard.검사 가 준 문지기 보고다. 전에 여기 없는 이름(`report`)을 불러 **밀기가
         # 성공한 경로에서만** NameError 가 터졌다 -- 사용자는 커밋·푸시가 다 된 뒤에 "[git 동기화 실패]" 를
         # 보았다(실측 2026-09-12). 그 결은 rehearsal.미정의이름 이 패치마다 잡는다.
-        return f"{보고}\n{_verify_pushed()}"
+        # 밀기가 성공하면 **문지기 보고를 안 붙인다** -- 그것은 답이 아니라 운영
+        # 정보이고, 답마다 따라붙으면 답보다 길어진다(공개 채널에서 이미 끈 것과
+        # 같은 이유다). 보고는 위 print 로 로그에 남는다. 남기는 한 줄은
+        # `_verify_pushed()` -- "저장했다" 는 말이 참인지 재는 장치라 끄지 않는다.
+        return _verify_pushed()
 
     caught, why = gitsync.reconcile(
         lambda a: subprocess.run(["git", *a], cwd=REPO_DIR, capture_output=True, text=True))

@@ -1,0 +1,24 @@
+<h1 id="n1">N1. Asynchronous and Globally Asynchronous Design</h1>
+<p>Synchronous design &mdash; one clock, one timing constraint &mdash; is
+    overwhelmingly dominant because it makes timing analysis tractable. Asynchronous
+    techniques remain relevant in three specific places, and knowing which is which
+    prevents both over-application and blind avoidance.</p>
+<table><caption>Table 134. Asynchronous styles</caption><thead><tr><th>Style</th><th>Timing assumption</th><th>Property</th><th>Practical use</th></tr></thead><tbody><tr><td>Bundled data</td><td>Matched delay line models the logic</td><td>Simple, small</td><td>Local handshakes, self-timed SRAM</td></tr><tr><td><b>Dual-rail / QDI</b></td><td><b>None (delay insensitive)</b></td><td>Robust to any delay; ~2&times; area</td><td>Extreme reliability, some security uses</td></tr><tr><td>Micropipelines</td><td>Bundled</td><td>Elastic pipelines</td><td>&mdash;</td></tr><tr><td><b>GALS</b></td><td>Synchronous islands, async between</td><td><b>Avoids a global clock tree</b></td><td><b>The practically important case</b> &mdash; multi-domain SoCs</td></tr><tr><td>Self-timed memory</td><td>Internal</td><td>Hidden from the user</td><td>Nearly all SRAM</td></tr></tbody></table>
+<div class="ms"><b>GALS is what most engineers actually encounter, usually
+    without the name.</b> Any SoC with several clock domains connected by asynchronous
+    FIFOs is globally asynchronous and locally synchronous. Framing it that way is useful
+    because it makes the design rules explicit: each island has its own timing closure,
+    and every boundary between islands is a CDC problem requiring one of the techniques of
+    Chapter C3. <b>The failure mode of an undisciplined multi-domain design is not a
+    timing violation but an intermittent data corruption</b>, which is far harder to
+    diagnose &mdash; which is why the boundaries must be enumerated and checked by a
+    tool rather than by inspection.</div>
+<table><caption>Table 135. Where fully asynchronous logic is genuinely used</caption><thead><tr><th>Application</th><th>Reason</th></tr></thead><tbody><tr><td>SRAM internal timing</td><td>Self-timed sense amplifier control is faster than a clock</td></tr><tr><td>Security</td><td>No clock to glitch; power profile is less data-correlated</td></tr><tr><td>Ultra-low power / energy harvesting</td><td>No clock power when idle</td></tr><tr><td>Very wide dynamic voltage range</td><td>Works at whatever speed the supply allows</td></tr><tr><td>Reliability at extremes</td><td>Delay-insensitive circuits tolerate huge variation</td></tr></tbody></table>
+<div class="warn"><b>The barrier to asynchronous design is tooling, not
+    theory.</b> Standard synthesis, static timing analysis, scan insertion and equivalence
+    checking all assume a clock. An asynchronous block therefore needs custom flows, and
+    &mdash; decisively for an IP vendor &mdash; the customer must be able to integrate,
+    verify and test it in <i>their</i> flow. <b>An asynchronous block is usually
+    unsellable as RTL for this reason alone</b>, regardless of its merits. Where the
+    technique is used commercially it is nearly always hidden inside a hard macro with a
+    synchronous interface.</div>

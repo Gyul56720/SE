@@ -1,0 +1,33 @@
+<h1 id="w3">W3. Automation: Running Verification Around the Clock</h1>
+<p>A solo developer cannot out-work a verification team, but can
+    out-schedule one: machines run while people sleep. The objective is a loop that,
+    unattended, generates stimulus, compares against the golden model, classifies
+    failures, and leaves a prioritised queue for the morning.</p>
+<h2>W3.1 The continuous verification loop</h2>
+<table><caption>Table 184. Loop stages</caption><thead><tr><th>Stage</th><th>Action</th><th>Requirement</th></tr></thead><tbody><tr><td>1. Generate</td><td>Random parameters and stimulus from declared legal ranges</td><td>Seeds recorded</td></tr><tr><td>2. Run model</td><td>Reference model produces expected output</td><td>Fast and deterministic</td></tr><tr><td>3. Run RTL</td><td>Open-source simulator (Verilator/Icarus) or vendor tool</td><td>Scriptable, headless</td></tr><tr><td>4. Compare</td><td>Scoreboard with the correct ordering semantics</td><td>See H1.4</td></tr><tr><td>5. Classify</td><td>Group failures by signature</td><td>Automated triage</td></tr><tr><td>6. Minimise</td><td><b>Shrink a failing case to a minimal reproducer</b></td><td>The single highest-value automation step</td></tr><tr><td>7. Report</td><td>Ranked queue with reproduction commands</td><td>&mdash;</td></tr><tr><td>8. Coverage</td><td>Accumulate and identify gaps</td><td>Feeds back into stage 1</td></tr></tbody></table>
+<div class="ms"><b>Stage 6 is where automation earns its keep.</b> A
+    randomly generated failing case may be thousands of transactions long; a human cannot
+    read it. Delta-debugging &mdash; repeatedly removing parts of the stimulus and
+    re-running to see whether the failure persists &mdash; typically reduces such a case to
+    a handful of transactions in a few minutes of machine time. The engineer then arrives
+    to a minimal reproducer rather than a log file. <b>This is the difference between an
+    overnight run that produces work and one that produces guilt.</b></div>
+<h2>W3.2 Where AI helps and where it must not be trusted</h2>
+<table><caption>Table 185. Machine assistance in an IP flow</caption><thead><tr><th>Task</th><th>Suitability</th><th>Condition</th></tr></thead><tbody><tr><td>Writing testbench boilerplate</td><td><b>High</b></td><td>Reviewed; it is code like any other</td></tr><tr><td>Generating directed tests from a specification table</td><td><b>High</b></td><td>The table is the source of truth, not the model</td></tr><tr><td>Triage and clustering of failures</td><td><b>High</b></td><td>Statistical, low risk</td></tr><tr><td>Test case minimisation</td><td><b>High</b></td><td>Mechanical; verifiable by re-running</td></tr><tr><td>Documentation drafting</td><td>Moderate</td><td>Every number must be regenerated from data</td></tr><tr><td>Suggesting RTL fixes</td><td>Moderate</td><td><b>Must be re-verified from scratch</b></td></tr><tr><td>Writing the reference model</td><td><b>Low</b></td><td><b>It would share the same misreading as generated RTL &mdash; independence is lost</b></td></tr><tr><td>Judging whether coverage is sufficient</td><td><b>Low</b></td><td>Requires domain judgement</td></tr><tr><td>Deciding that an intermittent failure is benign</td><td><b>None</b></td><td>This is the judgement that must never be delegated</td></tr></tbody></table>
+<div class="warn"><b>The independence argument constrains automation more
+    than capability does.</b> Verification works because two implementations were derived
+    separately. If the same tool writes the model and the RTL from the same prompt, the
+    two share every misunderstanding and the regression proves only internal consistency.
+    Automation is therefore safest on the <i>mechanical</i> parts of the loop &mdash;
+    generation, execution, comparison, minimisation, reporting &mdash; and least safe on
+    the parts that define what correct means. <b>Automate the pipeline; keep the oracle
+    human or standards-derived.</b></div>
+<h2>W3.3 Infrastructure a solo practice needs</h2>
+<table><caption>Table 186. Toolchain</caption><thead><tr><th>Function</th><th>Open-source option</th><th>Note</th></tr></thead><tbody><tr><td>RTL simulation</td><td><b>Verilator</b> (cycle-based), Icarus Verilog (event)</td><td>Verilator is fast enough for overnight regressions</td></tr><tr><td>Testbench</td><td><b>cocotb</b> (Python) or plain SystemVerilog</td><td>cocotb lets the golden model and testbench share a language</td></tr><tr><td>Formal</td><td>SymbiYosys / Yosys</td><td>Sufficient for arbiters, FIFOs, protocol properties</td></tr><tr><td>Synthesis (estimation)</td><td>Yosys + an open PDK</td><td><b>Relative</b> area/timing trends, not sign-off numbers</td></tr><tr><td>Lint</td><td>Verilator <code>--lint-only</code>, Verible</td><td>&mdash;</td></tr><tr><td>Coverage</td><td>Verilator coverage, simulator built-ins</td><td>&mdash;</td></tr><tr><td>Waveforms</td><td>GTKWave, Surfer</td><td>&mdash;</td></tr><tr><td>CI</td><td>Any runner</td><td><b>The regression must run on a clean checkout</b></td></tr><tr><td>Documentation</td><td>Generated from the same source as the RTL</td><td>See W2.3</td></tr></tbody></table>
+<div class="ms"><b>On open-source synthesis results: report trends, not
+    absolutes.</b> Yosys with an open PDK will not reproduce a commercial tool's area or
+    frequency, and quoting its numbers as a specification invites embarrassment. What it
+    <i>does</i> reliably show is <i>relative</i> behaviour &mdash; that configuration B is
+    40% larger than A, that removing a pipeline stage raises the critical path by 30%.
+    Those comparisons are legitimate, useful during architecture, and free. <b>State the
+    tool and PDK next to every number and the report stays honest.</b></div>

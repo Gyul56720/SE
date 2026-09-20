@@ -1,0 +1,28 @@
+<h1 id="time">타이밍 · 클럭 · 파이프라인 &mdash; 모델에 없는 세계</h1>
+<div class="bs">동기 회로는 클럭 상승엣지마다 플립플롭이 입력을
+    붙잡는다. 붙잡으려면 입력이 엣지 <b>전에</b> 안정되어 있어야 하고(setup),
+    엣지 <b>후에도</b> 잠시 유지되어야 한다(hold). 두 플립플롭 사이 조합논리 지연이
+    클럭 주기보다 길면 setup 위반이다.</div>
+<div class="math">T<sub>clk</sub> &ge; t<sub>cq</sub> +
+    t<sub>logic</sub> + t<sub>setup</sub> + t<sub>skew</sub></div>
+<div class="ms"><b>모델링 팀이 이것을 알아야 하는 이유.</b> 모델은
+    시간을 소비하지 않으므로 이 식이 없다. 그런데 <b>아키텍처 결정이 이 식에 걸린다.</b>
+    예: 되먹임 고리(DFE · 누산기 · 의존성 있는 파이프라인)는 한 사이클 안에 닫혀야 하므로
+    <b>고리 안의 논리량이 성능 상한을 정한다.</b> 언롤 · 투기실행 · sub-rate 병렬화는
+    전부 이 제약을 피하려는 기법이고, 모델 쪽에서는 &ldquo;결과가 같다&rdquo;로만 보인다.
+    <b>모델이 같다고 해서 구현 가능한 것이 아니다.</b></div>
+<table><caption>표 45. 모델에는 없고 RTL 에만 있는 시간 개념</caption><thead><tr><th>개념</th><th>무엇</th><th>모델링 팀이 알아야 할 이유</th></tr></thead><tbody><tr><td>파이프라인 단(stage)</td><td>연산을 쪼개 처리량을 올린다</td><td>지연이 늘어난다 &mdash; 비교 시점이 밀린다</td></tr><tr><td>초기화 구간(II)</td><td>새 입력을 몇 사이클마다 받나</td><td>처리량의 정의</td></tr><tr><td>스톨 / 백프레셔</td><td>받는 쪽이 못 받으면 멈춘다</td><td><b>비교 실패의 최대 원인</b>. 4.3절</td></tr><tr><td>지연(latency)</td><td>입력에서 출력까지 사이클</td><td>스코어보드 정렬에 필요</td></tr><tr><td>클럭 도메인 교차(CDC)</td><td>다른 클럭 사이 신호 전달</td><td>간헐 오류의 원인</td></tr><tr><td>리셋 순서</td><td>비동기 assert · 동기 deassert</td><td>초기값 불일치</td></tr></tbody></table>
+<h2>클럭 도메인 교차(CDC)</h2>
+<figure id="fig11"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 525 222" width="100%" font-family="Times New Roman, Nimbus Roman, serif"><defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#000"/></marker><marker id="ao" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="none" stroke="#000" stroke-width="1.4"/></marker></defs><rect x="25" y="45" width="110" height="44" rx="2" fill="#eef7f2" stroke="#000" stroke-width="1.1"/><text x="80.0" y="64.0" font-size="10" text-anchor="middle">도메인 A</text><text x="80.0" y="78.0" font-size="8" text-anchor="middle" fill="#333">clk_a</text><rect x="390" y="45" width="110" height="44" rx="2" fill="#f4eefa" stroke="#000" stroke-width="1.1"/><text x="445.0" y="64.0" font-size="10" text-anchor="middle">도메인 B</text><text x="445.0" y="78.0" font-size="8" text-anchor="middle" fill="#333">clk_b</text><rect x="180" y="45" width="160" height="44" rx="2" fill="#fff" stroke="#000" stroke-width="1.1"/><text x="260.0" y="64.0" font-size="10" text-anchor="middle">2단 동기화기</text><text x="260.0" y="78.0" font-size="8" text-anchor="middle" fill="#333">FF → FF</text><path d="M135,67 L180,67" stroke="#000" stroke-width="1.1" fill="none" marker-end="url(#a)"/><path d="M340,67 L390,67" stroke="#000" stroke-width="1.1" fill="none" marker-end="url(#a)"/><text x="260" y="120" font-size="9" text-anchor="middle" fill="#000" >1비트 제어신호에만 쓴다</text><rect x="140" y="145" width="240" height="40" rx="2" fill="#fbf2f2" stroke="#000" stroke-width="1.1"/><text x="260.0" y="169.0" font-size="9" text-anchor="middle">다중비트 = 그레이 코드 · 핸드셰이크 · 비동기 FIFO</text><text x="260" y="208" font-size="9" text-anchor="middle" fill="#000" font-style="italic">2단 동기화기를 다중비트에 쓰면 비트마다 다른 사이클에 넘어온다 — 값이 깨진다</text></svg><figcaption><b>그림 11.</b> CDC 의 기본. 2단 동기화기는 <b>1비트 제어신호 전용</b>이다. 다중비트에는 그레이 코드 · 핸드셰이크 · 비동기 FIFO 를 쓴다.</figcaption></figure>
+<div class="ms"><b>메타스테이빌리티.</b> 플립플롭이 setup/hold 를 어긴
+    입력을 붙잡으면 출력이 0도 1도 아닌 중간 전압에 머물 수 있고, 안정되는 시간이
+    <b>확률적</b>이다. 평균 고장 간격은
+    MTBF = e<sup><i>t</i><sub>r</sub>/&tau;</sup> / (<i>T</i><sub>0</sub>
+    &middot; <i>f</i><sub>clk</sub> &middot; <i>f</i><sub>data</sub>) 로 모델링되며,
+    동기화 단을 하나 더 넣으면 <i>t</i><sub>r</sub> 이 한 주기 늘어 MTBF 가
+    <b>지수적으로</b> 좋아진다. 그래서 2단이 표준이고 3단을 쓰기도 한다.
+    <b>시뮬레이션으로는 절대 못 잡는다</b> &mdash; 논리 시뮬레이터에 메타스테이빌리티가
+    없기 때문이다. CDC 는 <b>정적 검사 도구</b>로 잡는다.</div>
+<p>이 교안의 실물에서 CDC 기본 셀을 볼 수 있다 &mdash;
+    <code>pulp-platform/common_cells</code> (25,535줄)
+    에 <code>cdc_2phase</code>, <code>cdc_fifo_gray</code>, <code>sync</code> 등이 있다.</p>

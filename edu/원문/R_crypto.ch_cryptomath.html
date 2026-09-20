@@ -1,0 +1,52 @@
+<h1 id="r1">R1. Cryptographic Mathematics</h1>
+<h2>R1.1 Number theory for public-key cryptography</h2>
+<table><caption>Table 166. Results and the hardware they imply</caption><thead><tr><th>Result</th><th>Statement</th><th>Hardware consequence</th></tr></thead><tbody><tr><td>Fermat's little theorem</td><td><i>a</i><sup><i>p</i>&minus;1</sup> &equiv; 1 (mod <i>p</i>)</td><td>Inversion by exponentiation &mdash; avoids extended Euclid</td></tr><tr><td>Euler's theorem</td><td><i>a</i><sup>&phi;(<i>n</i>)</sup> &equiv; 1 (mod <i>n</i>)</td><td>The basis of RSA</td></tr><tr><td><b>Chinese remainder theorem</b></td><td>Work modulo factors, recombine</td><td><b>RSA private operations run ~4&times; faster</b></td></tr><tr><td>Extended Euclid</td><td>Compute inverses</td><td>Needed for key setup</td></tr><tr><td><b>Montgomery reduction</b></td><td>Modular reduction without division</td><td><b>The core of every modular multiplier</b></td></tr><tr><td>Barrett reduction</td><td>Reduction by precomputed reciprocal</td><td>Alternative; good for fixed small moduli</td></tr><tr><td>Discrete logarithm hardness</td><td>&mdash;</td><td>Security of Diffie&ndash;Hellman and ECC</td></tr><tr><td>Elliptic curve group law</td><td>&mdash;</td><td>Point addition and doubling formulas</td></tr></tbody></table>
+<div class="ms"><b>Montgomery multiplication is worth understanding
+    because it explains why modular arithmetic is feasible in hardware at all.</b> Naive
+    modular reduction requires a division, which is expensive and has data-dependent
+    latency. Montgomery's method transforms operands into a residue domain where reduction
+    becomes a multiplication and a shift &mdash; both cheap and constant time. The cost is
+    a conversion in and out of the domain, which is amortised when many operations are
+    performed, exactly as in an exponentiation. <b>The constant-time property is as
+    important as the speed</b>: a reduction whose duration depended on the operand would
+    leak the secret exponent through timing.</div>
+<div class="warn"><b>The Chinese remainder theorem speedup for RSA is also
+    its most famous vulnerability.</b> Computing modulo <i>p</i> and <i>q</i> separately
+    and recombining is about four times faster, but if a fault is injected during one of
+    the two branches, the faulty signature and a correct one together reveal a factor of
+    the modulus by a single greatest-common-divisor computation &mdash; the entire private
+    key, from one fault. The standard countermeasure is to verify the signature before
+    releasing it. <b>This is the clearest example in the book of a performance optimisation
+    creating a security hole</b>, and of why a countermeasure must be specified alongside
+    the optimisation that makes it necessary.</div>
+<h2>R1.2 Post-quantum cryptography</h2>
+<table><caption>Table 167. NIST post-quantum standards</caption><thead><tr><th>Standard</th><th>Scheme</th><th>Basis</th><th>Hardware character</th></tr></thead><tbody><tr><td><b>FIPS 203</b></td><td>ML-KEM (Kyber)</td><td>Module lattices (MLWE)</td><td><b>NTT over &#8484;<sub>3329</sub></b>; small coefficients</td></tr><tr><td><b>FIPS 204</b></td><td>ML-DSA (Dilithium)</td><td>Module lattices</td><td><b>NTT over &#8484;<sub>8380417</sub></b>; rejection sampling</td></tr><tr><td>FIPS 205</td><td>SLH-DSA (SPHINCS+)</td><td>Hash-based</td><td><b>Many hash evaluations</b>; large signatures; conservative security</td></tr><tr><td>(FN-DSA)</td><td>Falcon</td><td>NTRU lattices</td><td>Floating-point Gaussian sampling &mdash; awkward in hardware</td></tr></tbody></table>
+<div class="ms"><b>The shared kernel across the lattice schemes is the
+    number-theoretic transform, and recognising this is how a design house covers several
+    standards with one block.</b> An NTT is an FFT over a finite ring: the same butterfly
+    structure, with modular multipliers replacing complex ones and a root of unity
+    replacing the twiddle factor. Everything learned about FFT architectures &mdash;
+    pipelined versus memory-based, in-place addressing, bit-reversal handling &mdash;
+    transfers directly. What is new is modular reduction in the datapath, and for the
+    specific small primes used by these standards there are cheap reduction sequences.
+    <b>A parameterised NTT block serves ML-KEM, ML-DSA and homomorphic encryption
+    alike.</b></div>
+<div class="warn"><b>Rejection sampling makes ML-DSA's timing
+    data-dependent, and that is a specification problem.</b> Signature generation retries
+    until the candidate satisfies a bound, so the number of iterations varies. A naive
+    implementation therefore has variable latency &mdash; awkward for a pipeline, and a
+    potential timing side channel. Implementations must either run for a fixed number of
+    iterations with the result masked, or ensure the timing variation reveals nothing about
+    the secret. <b>This is the same fixed-versus-adaptive tension as the SVD sweep count
+    and the LDPC iteration limit of earlier chapters</b>, arriving in a new
+    domain.</div>
+<h2>R1.3 Symmetric primitives and modes</h2>
+<table><caption>Table 168. Modes of operation and their hardware character</caption><thead><tr><th>Mode</th><th>Parallelisable</th><th>Needs</th><th>Note</th></tr></thead><tbody><tr><td>ECB</td><td>Yes</td><td>&mdash;</td><td><b>Insecure for structured data</b> &mdash; never use</td></tr><tr><td>CBC</td><td>Decrypt only</td><td>IV</td><td>Encryption is serial &mdash; a throughput limit</td></tr><tr><td><b>CTR</b></td><td><b>Fully, both directions</b></td><td>Unique counter</td><td><b>Preferred in hardware</b>; turns a cipher into a keystream generator</td></tr><tr><td><b>GCM</b></td><td>Yes</td><td>GF(2<sup>128</sup>) multiplier</td><td>Authenticated encryption; the multiplier is a substantial block</td></tr><tr><td>XTS</td><td>Yes</td><td>Tweak</td><td>Storage encryption</td></tr><tr><td>CMAC / GMAC</td><td>&mdash;</td><td>&mdash;</td><td>Authentication only</td></tr></tbody></table>
+<div class="ms"><b>Counter mode is the reason a high-throughput AES core
+    is feasible.</b> In CBC each block's encryption depends on the previous ciphertext, so
+    the cipher is a serial chain and throughput is bounded by one block per cipher latency.
+    In CTR the cipher encrypts a counter, independent of the data, so many blocks can be
+    computed in parallel and the cipher becomes a pipelined keystream generator whose
+    latency no longer matters. <b>The mode, not the cipher, determines whether the block
+    can be pipelined</b> &mdash; which is why a datasheet must state which modes achieve
+    full throughput and which do not.</div>

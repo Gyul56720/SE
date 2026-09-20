@@ -1,0 +1,22 @@
+<h1 id="m1">M1. The Hardware&ndash;Software Interface</h1>
+<p>An IP block is useless until software can drive it. The interface
+    between them is a design artefact in its own right, and getting it wrong produces
+    integration cost that dwarfs the block's development.</p>
+<table><caption>Table 124. Interface mechanisms</caption><thead><tr><th>Mechanism</th><th>Direction</th><th>Cost</th><th>When appropriate</th></tr></thead><tbody><tr><td><b>Memory-mapped registers</b></td><td>CPU &rarr; block</td><td>Low</td><td>Configuration, status; the default</td></tr><tr><td>Polling</td><td>CPU reads status</td><td><b>Wastes CPU cycles and power</b></td><td>Very short operations</td></tr><tr><td><b>Interrupt</b></td><td>block &rarr; CPU</td><td>Latency and context switch</td><td>Completion of long operations</td></tr><tr><td><b>DMA</b></td><td>block &harr; memory</td><td>Bus bandwidth</td><td>Bulk data; avoids CPU copying</td></tr><tr><td>Descriptor rings</td><td>&mdash;</td><td>Memory traffic</td><td>Streaming with many buffers (network, storage)</td></tr><tr><td>Mailbox / doorbell</td><td>bidirectional</td><td>Low</td><td>Command submission</td></tr><tr><td>Shared memory + fences</td><td>&mdash;</td><td>Coherence traffic</td><td>Tight coupling; <b>requires a memory model</b></td></tr></tbody></table>
+<div class="ms"><b>The single most consequential interface decision is
+    who moves the data.</b> A block that requires the CPU to write its input and read its
+    output word by word can be limited by the CPU even when the block itself is fast; a
+    DMA-capable block moves data in bursts and leaves the CPU free. The difference is
+    frequently an order of magnitude in system throughput, and it is invisible in
+    block-level benchmarks. <b>For an IP vendor this means the example design matters as
+    much as the block</b>: a customer who integrates it through programmed I/O will measure
+    disappointing performance and conclude the IP is slow.</div>
+<table><caption>Table 125. Register map design rules</caption><thead><tr><th>Rule</th><th>Reason</th></tr></thead><tbody><tr><td>Generate RTL, header, documentation and tests from one source</td><td><b>Three hand-maintained copies always diverge</b></td></tr><tr><td>Reserve and document unused bits</td><td>Forward compatibility</td></tr><tr><td>Make read-clear and write-one-clear behaviour explicit</td><td>Ambiguity here produces lost interrupts</td></tr><tr><td>Provide an identification and version register</td><td>Software can adapt to the actual hardware</td></tr><tr><td>Group by function, align to natural boundaries</td><td>Simplifies access</td></tr><tr><td>Avoid side effects on read where possible</td><td><b>A debugger that dumps registers must not change behaviour</b></td></tr><tr><td>State atomicity for wide registers</td><td>Prevents tearing</td></tr></tbody></table>
+<div class="warn"><b>Read side effects break debuggers, and the failure is
+    baffling when it happens.</b> If reading a FIFO status register pops an entry, then
+    attaching a debugger that displays the register window silently consumes data, and the
+    bug disappears when the debugger is detached. Where a read side effect is genuinely
+    required &mdash; a pop-on-read data port, for example &mdash; it must be isolated in
+    its own register and clearly marked, so that a debug tool can be told to avoid it.
+    This is a small documentation duty with a disproportionate payoff.</div>
+<table><caption>Table 126. Driver and firmware concerns an IP vendor should anticipate</caption><thead><tr><th>Concern</th><th>What the IP must provide</th></tr></thead><tbody><tr><td>Initialisation sequence</td><td>Exact required order, including any wait conditions</td></tr><tr><td>Reset semantics</td><td>What a soft reset does and does not clear</td></tr><tr><td>Error reporting</td><td>Sticky status bits with a defined clearing mechanism</td></tr><tr><td>Concurrency</td><td>Which registers may be accessed while the block is running</td></tr><tr><td>Endianness and bit order</td><td><b>Stated explicitly</b></td></tr><tr><td>Timeouts</td><td>Maximum time any operation can take</td></tr><tr><td>Low-power entry/exit</td><td>Sequence and state retention</td></tr></tbody></table>

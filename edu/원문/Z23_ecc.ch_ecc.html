@@ -1,0 +1,94 @@
+<h1 id="z23">Z23. The Packet Header ECC &mdash; Why Headers Get More Than Payloads</h1>
+<p>A MIPI CSI-2 short packet is four bytes: one Data Identifier, two Word
+    Count, one ECC. A long packet adds a payload and a 16-bit CRC at the end. So the
+    header gets an <b>error-correcting</b> code and the payload gets a merely
+    <b>error-detecting</b> one, and the header's code costs a quarter of the header's own
+    size.</p>
+
+    <p>That asymmetry looks wasteful until you ask what each failure costs. This part
+    builds the header code, proves it, and puts it on silicon.</p>
+<h2>Z23.1 Why the header is worth more protection</h2>
+<figure id="fig67"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 116" width="100%" style="max-width:780px;height:auto" font-family="ui-monospace,monospace" font-size="11"><rect x="10" y="14" width="118" height="46" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="69.0" y="41.0" fill="#111" font-size="11" text-anchor="middle">Sensor</text><path d="M128,37.0 L156,37.0" fill="none" stroke="#111" stroke-width="1.6"/><path d="M156,33.0 L162,37.0 L156,41.0 Z" fill="#111"/><rect x="162" y="14" width="118" height="46" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="221.0" y="41.0" fill="#111" font-size="11" text-anchor="middle">CSI-2 TX</text><text x="221.0" y="73" fill="#888" font-size="9.5" text-anchor="middle">패킷을 만든다</text><text x="221.0" y="85" fill="#888" font-size="9.5" text-anchor="middle">헤더+ECC, 페이로드+CRC</text><path d="M280,37.0 L308,37.0" fill="none" stroke="#111" stroke-width="1.6"/><path d="M308,33.0 L314,37.0 L308,41.0 Z" fill="#111"/><rect x="314" y="14" width="118" height="46" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="373.0" y="41.0" fill="#111" font-size="11" text-anchor="middle">D-PHY lanes</text><text x="373.0" y="73" fill="#888" font-size="9.5" text-anchor="middle">차동 1~4 레인</text><text x="373.0" y="85" fill="#888" font-size="9.5" text-anchor="middle">여기서 비트가 깨진다</text><path d="M432,37.0 L460,37.0" fill="none" stroke="#111" stroke-width="1.6"/><path d="M460,33.0 L466,37.0 L460,41.0 Z" fill="#111"/><rect x="466" y="14" width="118" height="46" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="525.0" y="41.0" fill="#111" font-size="11" text-anchor="middle">CSI-2 RX</text><text x="525.0" y="73" fill="#888" font-size="9.5" text-anchor="middle">★ 이 장의 블록</text><text x="525.0" y="85" fill="#888" font-size="9.5" text-anchor="middle">헤더를 먼저 푼다</text><path d="M584,37.0 L612,37.0" fill="none" stroke="#111" stroke-width="1.6"/><path d="M612,33.0 L618,37.0 L612,41.0 Z" fill="#111"/><rect x="618" y="14" width="118" height="46" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="677.0" y="41.0" fill="#111" font-size="11" text-anchor="middle">ISP</text><text x="677.0" y="73" fill="#888" font-size="9.5" text-anchor="middle">영상 처리</text><text x="677.0" y="85" fill="#888" font-size="9.5" text-anchor="middle">디모자이크 등</text></svg><figcaption><b>Figure 67.</b> The camera path. The receiver must read Word Count out of the header to know
+    where the payload ends &mdash; and therefore where the <i>next</i> packet begins.</figcaption></figure>
+<div class="deriv"><div class="derh">Why a 1-bit header error is not a 1-bit problem</div><table class="dtab"><thead><tr><th></th><th>Step</th><th>Justification</th></tr></thead><tbody><tr><td class="dn">1</td><td class="dstep">The header's Word Count says how many payload bytes follow.</td><td class="dwhy">The receiver has no other way to find the packet boundary; CSI-2 packets are not self-delimiting.</td></tr><tr><td class="dn">2</td><td class="dstep">A single bit flipped in Word Count changes that length &mdash; by 1, or by 32768 if it lands in the top bit.</td><td class="dwhy">Binary weighting means the damage is not proportional to the number of bits flipped.</td></tr><tr><td class="dn">3</td><td class="dstep">The receiver then looks for the next packet header at the wrong offset.</td><td class="dwhy">It reads payload bytes as a header, whose ECC will not check, whose Word Count is garbage.</td></tr><tr><td class="dn">4</td><td class="dstep"><b>The error does not stop.</b> Every subsequent packet in the frame is misaligned.</td><td class="dwhy">One bit has cost an entire video frame, and possibly re-synchronisation time beyond it.</td></tr><tr><td class="dn">5</td><td class="dstep">Whereas a single bit flipped in the payload corrupts one pixel.</td><td class="dwhy">The CRC flags the packet as bad; the frame is imperfect but its structure survives. An ISP can interpolate one pixel.</td></tr><tr><td class="dn">6</td><td class="dstep">Therefore: correct the header, merely detect on the payload.</td><td class="dwhy">The cost asymmetry is thousands to one, so the protection asymmetry is justified. This is the same reasoning that puts ECC on DRAM address lines before data lines.</td></tr></tbody></table></div>
+<h2>Z23.2 What SEC-DED means, precisely</h2>
+<table><caption>Table 497. Three codes, three guarantees</caption><thead><tr><th>Code</th><th>1-bit error</th><th>2-bit error</th><th>Cost for 24 data bits</th></tr></thead><tbody><tr><td>Parity (1 bit)</td><td>detected</td><td><b>missed</b></td><td>1 bit</td></tr><tr><td>Hamming SEC (5 bits)</td><td><b>corrected</b></td><td><b>miscorrected</b> &mdash; silently turned into a 3-bit error</td><td>5 bits</td></tr><tr><td>Extended Hamming SEC-DED (6 bits)</td><td><b>corrected</b></td><td>detected, <b>not</b> corrected</td><td>6 bits</td></tr></tbody></table>
+<p>The middle row is the trap, and it is why the sixth bit is not
+    optional. A plain Hamming code always produces a syndrome that names some bit, so
+    given a 2-bit error it confidently flips a third one. You end up worse off than with
+    no ECC at all. The extra overall-parity bit is what lets the decoder say &ldquo;I do
+    not know&rdquo; &mdash; the same distinction this repository insists on everywhere
+    else, here implemented in six wires.</p>
+<div class="wex"><div class="wexh">Worked example 89. How one extra bit buys double-error detection</div><div class="wexg"><b>Given.</b> 5 Hamming parity bits give each of the 30 bit positions a distinct 5-bit syndrome. Add a 6th bit that is the parity of the entire codeword.</div><div class="wexm"><b>Method.</b> Work out what each error class does to the syndrome and to the overall parity, separately.</div><div class="wexn"><b>Numbers.</b> A <b>single</b> error flips an odd number of bits, so overall parity becomes 1, and the syndrome is non-zero and names the bit. A <b>double</b> error flips an even number, so overall parity returns to 0, while the syndrome (the XOR of two distinct non-zero syndromes) is still non-zero. So <i>syndrome non-zero with parity 0</i> is a signature no single error can produce.</div><div class="wexx">That bug is instructive because it is <i>conservative</i>: it never corrupts data, it just declines to fix things it could have fixed. In the field it would look like an unexplained doubling of the dropped-frame rate, with no corrupted output to point at &mdash; the kind of defect that gets blamed on the cable for a year.</div><div class="wext"><b>How this is got wrong.</b> The decoder must compute overall parity <b>directly from the received codeword</b>, not by re-encoding the received data and comparing the 6th bit. Re-encoding folds the syndrome's own parity into the comparison: the result is 1&nbsp;XOR&nbsp;parity(syndrome), which is 0 for every data bit whose syndrome has odd weight. Measured &mdash; the first version of <code>ecc24_dec</code> did exactly this and reported <b>90 of 180 single errors as double errors</b>, i.e. refused to correct half of the correctable ones.</div></div>
+<h2>Z23.3 Constructing the code</h2>
+<p>Part&nbsp;Z21 explained why the remembered MIPI parity masks were
+    discarded: counted before use, they produced 27 distinct syndromes out of the 30 required. So the code here is built from first
+    principles instead, and is <b>not</b> byte-compatible with CSI-2. The construction is
+    four lines:</p>
+<pre><code># 24 데이터 비트에 신드롬을 배정한다.
+# 무게 1 짜리 패턴은 **패리티 비트 자신의 오류**가 쓰므로 데이터에 주면 안 된다.
+cand = [s for s in range(1, 32) if bin(s).count(&#x27;1&#x27;) &gt;= 2]   # 26 개
+syn  = cand[:24]                                             # 24 개만 쓴다
+
+# 패리티 i 의 마스크 = 신드롬의 i 번째 비트가 1 인 데이터 비트들
+masks = [[b for b in range(24) if (syn[b] &gt;&gt; i) &amp; 1] for i in range(5)]</code></pre>
+<div class="deriv"><div class="derh">Why the syndromes must have weight &ge; 2</div><table class="dtab"><thead><tr><th></th><th>Step</th><th>Justification</th></tr></thead><tbody><tr><td class="dn">1</td><td class="dstep">Each parity bit can itself be corrupted in transit.</td><td class="dwhy">The ECC field travels over the same lanes as the data.</td></tr><tr><td class="dn">2</td><td class="dstep">If parity bit <i>i</i> flips, the recomputed syndrome is 2<sup><i>i</i></sup> &mdash; a weight-1 pattern.</td><td class="dwhy">Only that one parity check disagrees.</td></tr><tr><td class="dn">3</td><td class="dstep">So the five weight-1 patterns are already spoken for, and no data bit may be assigned one.</td><td class="dwhy">Otherwise a flipped parity bit and a flipped data bit look identical, and the decoder corrupts good data trying to fix a parity bit that nothing depends on.</td></tr><tr><td class="dn">4</td><td class="dstep">Of the 31 non-zero 5-bit patterns, 26 have weight &ge; 2, and we need 24.</td><td class="dwhy">It fits, with two spare. Had we needed 27 data bits, 5 parity bits would not have been enough.</td></tr><tr><td class="dn">5</td><td class="dstep">Verified rather than argued: all 29 syndromes distinct, none zero, no double-error syndrome colliding with a single-error syndrome.</td><td class="dwhy">29/29, 0 인 것 없음</td></tr></tbody></table></div>
+<h2>Z23.4 Proven exhaustively</h2>
+<table><caption>Table 498. edu/proto/ecc_check.cpp</caption><thead><tr><th>Case</th><th>Enumerated</th><th>Result</th></tr></thead><tbody><tr><td>No error</td><td>6 representative data values</td><td>all report ECC_OK, data unchanged</td></tr><tr><td>Single error</td><td>180 (30 bit positions &times; 6 data values)</td><td><b>0</b> wrong &mdash; every one corrected</td></tr><tr><td>Double error</td><td>2610 (all C(30,2) pairs &times; 6 data values)</td><td><b>2610</b> detected, <b>0</b> miscorrections</td></tr><tr><td>Not degenerate</td><td>20,000 random headers</td><td><b>64</b> of 64 possible ECC values seen</td></tr></tbody></table>
+<p>Six representative data values rather than all 2<sup>24</sup>, because
+    the code is <b>linear</b>: the syndrome of a corrupted codeword depends only on the
+    error pattern, not on the data underneath it. That is a property worth stating rather
+    than assuming, so the six values span all-zeros, all-ones and four irregular patterns,
+    and they all agree &mdash; which is the evidence that linearity holds in the
+    implementation and not merely in the theory.</p>
+<h2>Z23.5 The circuit is a pile of XOR trees</h2>
+<pre><code>// `^(vector)` 는 리덕션 XOR -- 모든 비트를 XOR 한다.
+// 이 한 글자가 14입력 XOR 나무 하나다.  C++ 에는 이런 연산자가 없다.
+wire [4:0] p;
+assign p[0] = ^(data_in &amp; M0);
+assign p[1] = ^(data_in &amp; M1);
+assign p[2] = ^(data_in &amp; M2);
+assign p[3] = ^(data_in &amp; M3);
+assign p[4] = ^(data_in &amp; M4);
+wire p5 = (^data_in) ^ (^p);
+
+// 신드롬 -&gt; 비트 자리.  각 데이터 비트의 신드롬은 그 비트가 어느 마스크에
+// 들어 있는가로 정해진다.  전부 상수라 합성기가 통째로 푼다.
+genvar g;
+generate
+    for (g = 0; g &lt; 24; g = g + 1) begin : gen_fix
+        wire [4:0] s_g = { M4[g], M3[g], M2[g], M1[g], M0[g] };
+        assign fix[g] = (syn == s_g) &amp; opar &amp; (syn != 5&#x27;d0);
+    end
+endgenerate
+assign data_fixed = data_in ^ fix;</code></pre>
+<p>Three things in that fragment are worth naming. The reduction XOR
+    (<code>^vector</code>) has no C++ equivalent and collapses a 14-input parity tree into
+    one character &mdash; Part&nbsp;Z18.6 lists the others. The
+    <code>generate</code> loop builds 24 comparators whose right-hand sides are all
+    compile-time constants, so synthesis evaluates <code>s_g</code> away entirely and what
+    remains is 24 five-bit constant comparisons. And the block is named
+    (<code>gen_fix</code>) because an unnamed generate block gets called
+    <code>genblk1</code>, and every constraint and waveform that references it breaks the
+    day somebody inserts another loop above it.</p>
+<h2>Z23.6 What it costs</h2>
+<table><caption>Table 499. Synthesis, iCE40 HX8K</caption><thead><tr><th>Measure</th><th>Value</th><th>Note</th></tr></thead><tbody><tr><td>Cells</td><td>68</td><td>yosys <code>synth_ice40</code></td></tr><tr><td>SB_LUT4</td><td>68</td><td>All of them &mdash; pure combinational logic</td></tr><tr><td>Flip-flops</td><td>0</td><td>순수 XOR 나무. 조합 논리뿐이라 플립플롭이 없다.</td></tr><tr><td>Verilator <code>-Wall</code></td><td>0 warnings</td><td>Clean</td></tr><tr><td>RTL vs C++ golden</td><td>1500 vectors, 0 wrong</td><td>Stimulus mixes no-error, single-error and double-error 1:1:1</td></tr><tr><td>Self-check</td><td>통과</td><td>Corrupting one golden value makes the comparison fail</td></tr></tbody></table>
+<p>68 LUTs, zero flip-flops, and it corrects any single-bit error in a
+    camera packet header. For comparison the 8b/10b encoder of Part&nbsp;Z22 is 74 LUTs.
+    Both are small enough that the interesting engineering is entirely in the verification
+    and the specification, not in the gates &mdash; which is the usual situation for
+    protocol IP and the reason Parts&nbsp;Y and&nbsp;Z4 spend so much more time on
+    deliverables than on RTL.</p>
+<p>The stimulus mix in that table is the part most easily got wrong. A
+    regression built from random headers contains <b>no bit errors at all</b>, so it
+    exercises only the <code>ECC_OK</code> path &mdash; the correction logic, which is the
+    entire point of the block, would never run. Errors have to be <em>injected</em>, and
+    injected in the proportions you care about.</p>
+<h2>Z23.7 Swapping in the real masks</h2>
+<p>Because the construction is separated from the structure, making this
+    block CSI-2 interoperable is a table change, not a redesign:</p>
+<table><caption>Table 500. What changes, and what does not</caption><thead><tr><th>Item</th><th>Changes?</th></tr></thead><tbody><tr><td><code>ECC_MASK[5]</code> in <code>ecc24.h</code></td><td><b>Yes</b> &mdash; five constants</td></tr><tr><td><code>M0</code>&ndash;<code>M4</code> in <code>ecc24.v</code></td><td><b>Yes</b> &mdash; the same five values</td></tr><tr><td>Encoder, decoder, syndrome decode, correction logic</td><td>No</td></tr><tr><td><code>ecc_check.cpp</code> and all four proofs</td><td>No &mdash; re-run them</td></tr><tr><td>Testbench and golden generator</td><td>No</td></tr><tr><td>Area, timing, interface</td><td>No</td></tr></tbody></table>
+<p>And the proofs are exactly what you re-run after the swap, because a
+    transcription error in five hex constants is precisely the failure this part opened
+    with. The value of having built the harness first is that checking somebody else's
+    constants costs one command.</p>

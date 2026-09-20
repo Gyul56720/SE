@@ -1,0 +1,33 @@
+<h1 id="w5">W5. From Literature to a Block</h1>
+<h2>W5.1 What published work is for</h2>
+<table><caption>Table 207. Four uses of literature in an IP practice</caption><thead><tr><th>Use</th><th>What to extract</th><th>Where to look</th><th>Trap</th></tr></thead><tbody><tr><td>Architecture selection</td><td>Which structure, and under what conditions</td><td>JSSC, ISSCC, VLSI Symposia, DAC/ICCAD</td><td>Reported numbers come from the authors' best operating point</td></tr><tr><td>Algorithmic justification</td><td>Correctness conditions, convergence bounds</td><td>IEEE Transactions, arXiv</td><td>Confusing a theory paper with an implementable one</td></tr><tr><td>Attack awareness</td><td>Whether a countermeasure is already broken</td><td>CHES, CCS, USENIX Security, IACR ePrint</td><td><b>Mandatory for security IP</b></td></tr><tr><td>Standards rationale</td><td>Why a specification says what it says</td><td><b>Standards-body contribution archives</b></td><td>Contributions are proposals; not all were adopted</td></tr></tbody></table>
+<div class="ms"><b>Standards contributions are the most under-used
+    resource.</b> The published standard states <i>what</i>; the working-group
+    contributions that preceded it state <i>why</i>, with the measurements and the
+    alternatives that were rejected. For IEEE 802 these are publicly archived. Reading the
+    contributions for the clause you are implementing typically answers the questions the
+    standard's terse language leaves open, and it does so faster than deriving the answer.
+    <b>It also reveals which parameter choices were contentious, which is exactly where
+    implementations are most likely to differ.</b></div>
+<h2>W5.2 Reading efficiently</h2>
+<table><caption>Table 208. A triage procedure</caption><thead><tr><th>Step</th><th>Action</th><th>Decision</th></tr></thead><tbody><tr><td>1</td><td>Read the figures and tables first</td><td>What was measured?</td></tr><tr><td>2</td><td>Find the experimental conditions</td><td>Is this comparable to my case?</td></tr><tr><td>3</td><td>Identify the baseline</td><td><b>Is the comparison fair?</b></td></tr><tr><td>4</td><td>Find the crossover</td><td>Where does the claimed advantage disappear?</td></tr><tr><td>5</td><td>Only now read the method</td><td>How does it work?</td></tr><tr><td>6</td><td>Read limitations and future work</td><td>What do the authors already know is wrong?</td></tr></tbody></table>
+<div class="warn"><b>Record your confidence level with every citation.</b>
+    A note that says "full text read", "abstract only", or "search snippet only" costs
+    nothing to write and prevents the most damaging failure mode in technical work:
+    building a plan on a claim nobody actually verified. If a design decision rests on a
+    paper you have not read in full, that fact should be visible in the document where
+    the decision is recorded. <b>Unverified citations propagate quietly and are discovered
+    late.</b></div>
+<h2>W5.3 Turning a paper into a specification</h2>
+<table><caption>Table 209. Translation checklist</caption><thead><tr><th>Question</th><th>Why it must be answered before design starts</th></tr></thead><tbody><tr><td>What exactly is the input and output format?</td><td>Papers routinely omit scaling, ordering and normalisation conventions</td></tr><tr><td>What are the numerical requirements?</td><td>Most papers assume floating point; the word lengths are yours to determine</td></tr><tr><td>What is the initialisation?</td><td>Iterative methods rarely state the starting point; it affects convergence</td></tr><tr><td>What is the termination condition?</td><td>&lsquo;Until converged&rsquo; is not implementable; fixed iteration counts are</td></tr><tr><td>Which parameters were tuned to the reported data set?</td><td>Those parameters will not transfer</td></tr><tr><td>What is the failure behaviour?</td><td>Papers report average performance; you must specify the worst case</td></tr><tr><td>Is there a patent?</td><td><b>Published does not mean free to use</b></td></tr></tbody></table>
+<div class="ms"><b>The termination-condition question separates research
+    from engineering.</b> An algorithm described as iterating until a residual falls below
+    a threshold has data-dependent latency, which a streaming datapath cannot accept. The
+    engineering translation is a fixed iteration count chosen so that the worst case in
+    the operating region still meets the accuracy requirement &mdash; and then the
+    accuracy becomes a design-time constant rather than a run-time property. This is
+    exactly what the Jacobi SVD does with a fixed sweep count, what an LDPC decoder does
+    with a maximum iteration limit, and what K-best detection does relative to sphere
+    decoding. <b>Converting an adaptive algorithm into a fixed-latency one is a recurring
+    and characteristic act of hardware design</b>, and the specification must record the
+    accuracy that the fixed budget guarantees.</div>

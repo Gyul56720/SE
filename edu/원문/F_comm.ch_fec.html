@@ -1,0 +1,59 @@
+<h1 id="f2">F2. Error Control Coding</h1>
+<h2>F2.1 The coding landscape</h2>
+<table><caption>Table 60. Codes by structure and application</caption><thead><tr><th>Family</th><th>Alphabet</th><th>Decoding</th><th>Strength</th><th>Typical use</th></tr></thead><tbody><tr><td>Parity / SECDED</td><td>binary</td><td>syndrome</td><td>1-bit correct, 2-bit detect</td><td><b>Memory ECC</b>, register files</td></tr><tr><td>Hamming / extended</td><td>binary</td><td>syndrome</td><td>&mdash;</td><td>Inner code in concatenation</td></tr><tr><td>BCH</td><td>binary</td><td>BM + Chien</td><td><i>t</i> bit errors</td><td>Flash, optical</td></tr><tr><td><b>Reed&ndash;Solomon</b></td><td>GF(2<sup><i>m</i></sup>)</td><td>syndrome&rarr;BM&rarr;Chien&rarr;Forney</td><td><i>t</i> <b>symbol</b> errors &mdash; burst tolerant</td><td><b>Ethernet KP4</b>, storage, DVB</td></tr><tr><td>Convolutional</td><td>binary</td><td><b>Viterbi</b> (ML)</td><td>Random errors</td><td>Legacy wireless, satellite</td></tr><tr><td>Turbo</td><td>binary</td><td>iterative BCJR</td><td>Near capacity</td><td>3G/4G</td></tr><tr><td><b>LDPC</b></td><td>binary</td><td>belief propagation (min-sum)</td><td>Near capacity</td><td><b>5G NR data</b>, Wi-Fi, 802.3ca, NAND</td></tr><tr><td>Polar</td><td>binary</td><td>SC / SC-List</td><td>Provably capacity-achieving</td><td>5G control</td></tr><tr><td>Fountain (LT, Raptor)</td><td>binary</td><td>BP</td><td>Rateless</td><td>Broadcast, storage</td></tr><tr><td><b>Concatenated</b></td><td>mixed</td><td>inner then outer</td><td>Burst + random</td><td><b>802.3dj 224G</b>, deep space</td></tr></tbody></table>
+<div class="ms"><b>Choosing a code is choosing an error model.</b> A
+    binary code assumes errors are independent bit flips; a symbol code assumes they
+    cluster. Getting this wrong is expensive in both directions &mdash; a strong binary
+    code performs poorly on bursts, and an RS code wastes redundancy on isolated bit
+    errors. The correct procedure is to <b>measure the error statistics of the actual
+    slicer output</b>, including DFE error propagation and any burst noise, and choose
+    accordingly. In concatenated schemes the division of labour is explicit: the inner
+    code cleans up random errors and the outer code mops up the bursts that the inner
+    decoder's own failures produce. <b>The inner decoder's failure mode is the outer
+    decoder's input distribution</b> &mdash; a subtlety that must be in the system
+    model.</div>
+<h2>F2.2 Reed&ndash;Solomon in detail</h2>
+<table><caption>Table 61. RS decoder pipeline</caption><thead><tr><th>Stage</th><th>Computation</th><th>Parallelism</th><th>Hardware character</th></tr></thead><tbody><tr><td>Syndrome</td><td><i>S<sub>i</sub></i> = <i>r</i>(&alpha;<sup>fcr+<i>i</i></sup>), <i>i</i>=0&hellip;2<i>t</i>&minus;1</td><td><b>Fully parallel</b> (2<i>t</i> independent evaluations)</td><td>2<i>t</i> constant-multiplier accumulators</td></tr><tr><td>Key equation (BM)</td><td>Find &sigma;(<i>x</i>)</td><td><b>Sequential</b> &mdash; 2<i>t</i> dependent iterations</td><td><b>This is the critical path</b></td></tr><tr><td>Chien search</td><td>Roots of &sigma;(<i>x</i>)</td><td>Parallel over positions</td><td><i>n</i>/<i>P</i> cycles</td></tr><tr><td>Forney</td><td><i>e<sub>j</sub></i> = &omega;/&sigma;&prime; evaluated at roots</td><td>Parallel</td><td>Needs GF inversion (ROM or Itoh&ndash;Tsujii)</td></tr><tr><td>Correction</td><td>XOR into the buffer</td><td>Parallel</td><td>Requires the codeword buffered</td></tr></tbody></table>
+<div class="ms"><b>The Berlekamp&ndash;Massey iteration is the same kind
+    of obstacle as the DFE loop and the OOO wakeup loop.</b> Each iteration depends on the
+    previous discrepancy, so it cannot be pipelined away. The standard remedies mirror
+    those in the other two cases: <i>inversionless</i> BM removes the GF inversion from
+    the loop (replacing it with an extra multiplication), and <i>reformulated</i> BM
+    restructures the recurrence so that fewer operations sit inside it. A design house
+    that recognises this pattern can move an engineer from a SerDes project to an FEC
+    project and expect them to be productive quickly, because the underlying problem is
+    identical.</div>
+<table><caption>Table 62. RS decoder behaviour that must appear in the datasheet</caption><thead><tr><th>Condition</th><th>Behaviour</th><th>Why it must be documented</th></tr></thead><tbody><tr><td>&le; <i>t</i> symbol errors</td><td><b>Always corrected</b></td><td>The guarantee being sold</td></tr><tr><td>&gt; <i>t</i> errors</td><td>Detected <b>or</b> mis-corrected</td><td><b>Not all are detected.</b> Claiming otherwise is false</td></tr><tr><td>Mis-correction probability</td><td>Roughly <i>n</i><sup><i>t</i></sup>/(<i>t</i>! 2<sup><i>m</i>(<i>n</i>&minus;<i>k</i>&minus;<i>t</i>)</sup>)</td><td>Customers at 10<sup>&minus;15</sup> FLR need this number</td></tr><tr><td>Erasure decoding</td><td>Corrects up to <i>n</i>&minus;<i>k</i> erasures</td><td>If the receiver can flag unreliable symbols, capacity doubles</td></tr><tr><td>Latency</td><td>Fixed, = pipeline depth</td><td>Real-time systems need the number</td></tr></tbody></table>
+<div class="warn"><b>&ldquo;All errors beyond <i>t</i> are detected&rdquo;
+    is a false statement that appears in datasheets.</b> A received word with more than
+    <i>t</i> errors may land within distance <i>t</i> of a <i>different</i> valid
+    codeword, in which case the decoder confidently produces the wrong answer. A measured
+    illustration on a small code, RS(15,9) with <i>t</i>&nbsp;=&nbsp;3: injecting exactly
+    four symbol errors 120 times gave <b>117 detected failures and 3 mis-corrections</b>
+    &mdash; never a correct recovery, but not always a detection either. An honest
+    specification states the mis-correction probability; a verification plan must
+    distinguish the three outcomes (corrected / detected / mis-corrected) rather than
+    counting pass and fail.</div>
+<h2>F2.3 LDPC</h2>
+<table><caption>Table 63. LDPC decoding choices</caption><thead><tr><th>Choice</th><th>Options</th><th>Effect</th></tr></thead><tbody><tr><td>Message form</td><td>Probability vs <b>log-likelihood ratio</b></td><td>LLR turns products into sums &mdash; essential in hardware</td></tr><tr><td>Check-node update</td><td>Sum-product (tanh) vs <b>min-sum</b></td><td>Min-sum loses ~0.5 dB, removes transcendental functions</td></tr><tr><td>Correction</td><td>Normalised or offset min-sum</td><td>Recovers most of the loss for one constant</td></tr><tr><td>Schedule</td><td>Flooding vs <b>layered</b></td><td>Layered halves the iteration count; creates pipeline hazards</td></tr><tr><td>Parallelism</td><td>Fully parallel / row / block</td><td>Quasi-cyclic structure enables block parallelism</td></tr><tr><td>Early termination</td><td>Syndrome check per iteration</td><td><b>Large average power saving</b>; worst-case latency unchanged</td></tr></tbody></table>
+<div class="warn"><b>LDPC's fixed-point rule is the opposite of the
+    CIC's.</b> An LLR's sign carries the hard decision. If an LLR wraps in two's
+    complement, a strong belief in &ldquo;0&rdquo; becomes a strong belief in
+    &ldquo;1&rdquo;, and the decoder does not merely lose precision &mdash; it is actively
+    misled, and iteration amplifies the damage. Measured on a 5G NR base-graph decoder,
+    reducing the message width by three bits gave BLER&nbsp;0.250 with saturation and
+    <b>1.000 &mdash; complete failure &mdash; with wrap-around</b>. Meanwhile the CIC
+    filter of Chapter E1 <i>requires</i> wrap-around to function. <b>There is no global
+    "correct" overflow policy; it is a per-block property that must be stated in the
+    specification and enforced by tests.</b></div>
+<div class="ms"><b>Layered scheduling and pipeline hazards.</b> In a
+    layered decoder, layer <i>j</i> may need a variable node that layer <i>i</i> is still
+    updating, forcing a stall whose length depends on the pipeline depth <i>D</i> and on
+    the layer ordering. It is tempting to optimise the ordering against a closed-form
+    stall count, but that formula is only an <b>upper bound</b>: it assumes every
+    potential conflict costs a full stall. A measured comparison on 5G NR base graph 1 at
+    <i>D</i>&nbsp;=&nbsp;4 gave the formula 108 stall cycles while a cycle-accurate model
+    and the RTL both gave <b>80</b> &mdash; the difference between a 70.1% and a 62.0%
+    efficiency loss. <b>Optimising a schedule against the wrong objective function finds
+    the wrong schedule.</b> Build the cycle-accurate model first; it is a day of work and
+    it changes the answer.</div>

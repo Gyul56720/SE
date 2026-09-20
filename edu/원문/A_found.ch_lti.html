@@ -1,0 +1,79 @@
+<h1 id="a1">A1. Signals, Systems and Linearity</h1>
+<p>Every digital IP block is a <i>system</i>: it maps input sequences to
+    output sequences. Before discussing any particular block we fix the vocabulary that
+    makes such maps analysable, and &mdash; more importantly for a hardware engineer
+    &mdash; we identify exactly which property of a system makes it <b>cheap</b> to
+    build and which makes it <b>expensive</b>.</p>
+<h2>A1.1 Definitions</h2>
+<table><caption>Table 3. System properties and their hardware consequences</caption><thead><tr><th>Property</th><th>Definition</th><th>Hardware consequence</th></tr></thead><tbody><tr><td><b>Memoryless</b></td><td><i>y</i>[<i>n</i>] depends only on <i>x</i>[<i>n</i>]</td><td>Pure combinational logic; no registers, no state to reset or scan</td></tr><tr><td><b>Causal</b></td><td><i>y</i>[<i>n</i>] depends only on <i>x</i>[<i>k</i>], <i>k</i>&nbsp;&le;&nbsp;<i>n</i></td><td>Required for real-time streaming. Non-causal filters are realised by <b>adding latency</b>, not by seeing the future</td></tr><tr><td><b>Linear</b></td><td>Superposition holds</td><td>Enables decomposition into impulse responses; permits frequency-domain design</td></tr><tr><td><b>Time-invariant</b></td><td>Delay in &rarr; same delay out</td><td>Coefficients are constants &rarr; can be hard-wired or stored once</td></tr><tr><td><b>BIBO stable</b></td><td>Bounded input &rarr; bounded output</td><td>&sum;|<i>h</i>[<i>n</i>]| &lt; &infin;. In fixed point, determines whether accumulators can overflow</td></tr><tr><td><b>Passive / lossless</b></td><td>Energy not increased</td><td>Guarantees no growth in word length</td></tr></tbody></table>
+<figure id="fig1"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 148" width="100%" font-family="Times New Roman, Nimbus Roman, serif"><defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#000"/></marker><marker id="ao" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="none" stroke="#000" stroke-width="1.4"/></marker></defs><rect x="190" y="40" width="150" height="46" rx="2" fill="#fff" stroke="#000" stroke-width="1.1"/><text x="265.0" y="60.0" font-size="10" text-anchor="middle">LTI system</text><text x="265.0" y="74.0" font-size="8" text-anchor="middle" fill="#333">h[n]</text><path d="M60,63 L190,63" stroke="#000" stroke-width="1.1" fill="none" marker-end="url(#a)"/><text x="62" y="55" font-size="10" text-anchor="start" fill="#000" >x[n]</text><path d="M340,63 L470,63" stroke="#000" stroke-width="1.1" fill="none" marker-end="url(#a)"/><text x="398" y="55" font-size="10" text-anchor="start" fill="#000" >y[n] = (x * h)[n]</text><text x="265" y="112" font-size="9" text-anchor="middle" fill="#000" font-style="italic">Linearity + time invariance ⇒ one impulse response is the whole system</text><text x="265" y="134" font-size="10" text-anchor="middle" fill="#000" >Y(z) = H(z)·X(z)   —  convolution becomes multiplication</text></svg><figcaption><b>Figure 1.</b> An LTI system is completely characterised by its impulse response. This single fact underpins all filter design.</figcaption></figure>
+<div class="ms">The practical importance of linearity is not elegance but
+    <b>separability of verification</b>. If a block is LTI you can characterise it with a
+    single impulse and predict its response to every input; a random-stimulus campaign is
+    then a redundancy check rather than the primary evidence. If it is <i>not</i> LTI
+    &mdash; a decision-feedback equaliser, a &mu;-law compander, a saturating accumulator,
+    any adaptive loop &mdash; superposition fails and you must verify over the operating
+    region, which is exponentially more work. <b>The first architectural question about
+    any new block is therefore "where exactly is the nonlinearity?"</b> Isolating it into
+    the smallest possible sub-block is a verification cost decision, not an aesthetic
+    one.</div>
+<h2>A1.2 Convolution and its cost</h2>
+<div class="math">y[n] = &sum;<sub>k=0</sub><sup>N&minus;1</sup>
+    h[k] x[n&minus;k]</div>
+<table><caption>Table 4. Realisations of the same convolution</caption><thead><tr><th>Method</th><th>Operations per output</th><th>Latency</th><th>When preferred</th></tr></thead><tbody><tr><td>Direct convolution</td><td><i>N</i> MACs</td><td>0 (plus pipeline)</td><td><i>N</i> &lesssim; 64</td></tr><tr><td>Overlap-add FFT</td><td>~(2 log<sub>2</sub><i>L</i> + 1) per sample</td><td>One block (<i>L</i> samples)</td><td>Long filters; latency tolerable</td></tr><tr><td>Overlap-save FFT</td><td>Same order</td><td>One block</td><td>Streaming; avoids add stage</td></tr><tr><td>Frequency-domain adaptive</td><td>FFT + per-bin update</td><td>One block</td><td>Long adaptive filters (echo cancellation)</td></tr><tr><td>Distributed arithmetic</td><td>LUT reads only</td><td><i>W</i> cycles</td><td>Fixed coefficients, LUT-rich fabric</td></tr><tr><td>Multiplierless (CSD)</td><td>Shifts and adds</td><td>0</td><td>Fixed coefficients, ASIC area critical</td></tr></tbody></table>
+<div class="ms">The crossover between direct and FFT-based convolution is
+    not a fixed number of taps; it depends on the <b>cost ratio of a multiplier to a
+    memory word</b> in the target technology, and on whether block latency is acceptable.
+    In an ASIC at an advanced node, multipliers are comparatively cheap and SRAM is
+    comparatively expensive, which pushes the crossover <i>up</i>. On an FPGA with hard
+    DSP slices and abundant block RAM it moves the other way. <b>Quoting a fixed
+    crossover (&ldquo;use FFT above 128 taps&rdquo;) without naming the technology is a
+    common and costly error in architecture documents.</b></div>
+<h2>A1.3 Correlation, matched filtering and the origin of SNR gain</h2>
+<p>Cross-correlation is convolution with a time-reversed conjugated
+    kernel. When the kernel is the transmitted pulse itself, the operation is a
+    <b>matched filter</b>, and it maximises output SNR for a signal in additive white
+    Gaussian noise.</p>
+<div class="math">SNR<sub>out,max</sub> = 2E<sub>s</sub> / N<sub>0</sub></div>
+<div class="ms">The result is worth internalising because it recurs in
+    radar, in spread spectrum, in synchronisation preambles and in every correlator IP.
+    <b>The gain comes from integrating signal coherently while noise adds
+    incoherently</b>: over <i>M</i> samples, signal amplitude grows as <i>M</i> while
+    noise amplitude grows as &radic;<i>M</i>, hence power SNR improves by <i>M</i>
+    (10&nbsp;log<sub>10</sub><i>M</i>&nbsp;dB). Two engineering consequences follow.
+    First, coherent integration requires <b>phase stability over the integration
+    window</b>; if the oscillator drifts, gain saturates &mdash; this is the practical
+    limit on radar integration time and on preamble length. Second, the correlator's
+    dynamic range must accommodate the <i>M</i>-fold growth, which is a fixed-point
+    word-growth problem, not a signal-processing one.</div>
+<h2>A1.4 Group delay, phase linearity and why FIR dominates</h2>
+<div class="math">&tau;<sub>g</sub>(&omega;) = &minus; d&phi;(&omega;)/d&omega;</div>
+<div class="bs">A filter has <b>linear phase</b> when &tau;<sub>g</sub> is
+    constant: all frequency components are delayed equally, so pulse shapes are preserved
+    and only shifted. An FIR filter with symmetric (or antisymmetric) coefficients has
+    exactly linear phase. An IIR filter cannot, except trivially.</div>
+<div class="ms">This is the decisive argument for FIR in data
+    transmission. Non-constant group delay <b>spreads a pulse asymmetrically</b>, which is
+    indistinguishable from channel dispersion and therefore directly closes the eye. In
+    audio the ear is comparatively insensitive to phase and IIR is preferred for its
+    efficiency; in a wireline receiver an IIR equaliser would introduce the very
+    distortion it is meant to remove. <b>The same mathematics leads to opposite
+    engineering choices in two domains, and knowing why is the difference between
+    applying a rule and understanding it.</b> Note also the hardware corollary: symmetric
+    FIR coefficients permit the <i>folded</i> structure that halves the multiplier count,
+    so linear phase is not only free, it is cheaper.</div>
+<h2>A1.5 Stability in the Z domain</h2>
+<figure id="fig2"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 258" width="100%" font-family="Times New Roman, Nimbus Roman, serif"><defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#000"/></marker><marker id="ao" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="none" stroke="#000" stroke-width="1.4"/></marker></defs><path d="M30,120 L330,120" stroke="#000" stroke-width="1.1" fill="none"/><path d="M180,15 L180,225" stroke="#000" stroke-width="1.1" fill="none"/><circle cx="180" cy="120" r="72" fill="none" stroke="#000" stroke-width="1.2"/><circle cx="180" cy="120" r="108" fill="none" stroke="#888" stroke-dasharray="4,3" stroke-width="1"/><text x="225" y="88" font-size="13" text-anchor="middle">×</text><text x="150" y="165" font-size="13" text-anchor="middle">×</text><text x="232" y="150" font-size="13" text-anchor="middle">×</text><text x="258" y="114" font-size="9" text-anchor="start" fill="#000" >|z| = 1</text><text x="300" y="60" font-size="9" text-anchor="start" fill="#000" >ROC</text><text x="180" y="246" font-size="9" text-anchor="middle" fill="#000" font-style="italic">Causal + stable ⇔ all poles inside the unit circle</text></svg><figcaption><b>Figure 2.</b> Pole&ndash;zero plot and region of convergence. For a causal system the ROC is outside the outermost pole; stability additionally requires that the ROC contain the unit circle.</figcaption></figure>
+<table><caption>Table 5. Pole location and behaviour</caption><thead><tr><th>Pole radius |p|</th><th>Behaviour</th><th>Fixed-point implication</th></tr></thead><tbody><tr><td>|p| &lt; 1</td><td>Decaying; stable</td><td>Accumulator bounded by 1/(1&minus;|p|)</td></tr><tr><td>|p| = 1</td><td>Marginally stable (oscillator, integrator)</td><td><b>Accumulator grows without bound</b> &mdash; needs explicit leakage or reset</td></tr><tr><td>|p| &gt; 1</td><td>Divergent</td><td>Unusable</td></tr><tr><td>|p| &rarr; 1<sup>&minus;</sup></td><td>Very narrow band; long memory</td><td><b>Coefficient quantisation can push the pole outside</b> &mdash; the classic failure mode of high-order direct-form IIR</td></tr></tbody></table>
+<div class="ms">Quantifying the last row: for a direct-form IIR of order
+    <i>N</i>, the sensitivity of pole <i>p<sub>i</sub></i> to a denominator coefficient
+    <i>a<sub>k</sub></i> is
+    &part;<i>p<sub>i</sub></i>/&part;<i>a<sub>k</sub></i> =
+    &minus;<i>p<sub>i</sub></i><sup><i>N</i>&minus;<i>k</i></sup> /
+    &prod;<sub><i>j</i>&ne;<i>i</i></sub>(<i>p<sub>i</sub></i>&minus;<i>p<sub>j</sub></i>).
+    The denominator is a product of <i>pole separations</i>: <b>clustered poles make the
+    sensitivity explode</b>. Cascaded second-order sections avoid this because each
+    section contains only one conjugate pair, so no small separations appear in its own
+    denominator. This is the quantitative reason behind the universal practice of
+    implementing high-order IIR filters as cascaded biquads, and it is worth being able
+    to state it rather than merely follow it.</div>

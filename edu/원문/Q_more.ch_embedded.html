@@ -1,0 +1,20 @@
+<h1 id="q3">Q3. Embedded Software Around the Hardware</h1>
+<table><caption>Table 157. Software layers that touch an IP block</caption><thead><tr><th>Layer</th><th>Concern</th><th>What the hardware must provide</th></tr></thead><tbody><tr><td>Boot ROM</td><td>Bring the system up</td><td>Deterministic reset state</td></tr><tr><td><b>Device driver</b></td><td>Register access, interrupts, DMA</td><td><b>A clean register map and a defined initialisation sequence</b></td></tr><tr><td>RTOS / kernel</td><td>Scheduling, memory management</td><td>Interrupt latency guarantees; cache coherence behaviour</td></tr><tr><td>Middleware</td><td>Protocol stacks</td><td>&mdash;</td></tr><tr><td>Application</td><td>&mdash;</td><td>&mdash;</td></tr><tr><td>Firmware in the block</td><td>Local control</td><td>Instruction memory, debug access</td></tr></tbody></table>
+<div class="ms"><b>Cache coherence with a DMA-capable block is the
+    interaction that produces the most confusing bugs.</b> If a block writes to memory by
+    DMA while the CPU has that region cached, the CPU may read stale data; if the CPU
+    writes and the data sits in a write-back cache, the block may read stale data. On a
+    coherent interconnect the hardware resolves this; on a non-coherent one the driver must
+    invalidate before reading and clean before writing, and getting the order wrong
+    produces intermittent corruption that looks like an IP defect. <b>An IP datasheet must
+    state whether its transactions are coherent</b>, and the example driver should
+    demonstrate the required maintenance operations if they are not.</div>
+<table><caption>Table 158. Real-time considerations</caption><thead><tr><th>Concept</th><th>Meaning</th><th>Hardware implication</th></tr></thead><tbody><tr><td>Interrupt latency</td><td>Event to first instruction of the handler</td><td>Interrupt controller design; cache and TLB state</td></tr><tr><td><b>Worst-case execution time</b></td><td>Upper bound, not average</td><td><b>Caches and branch prediction make it hard to bound</b></td></tr><tr><td>Priority inversion</td><td>Low-priority task blocks a high-priority one</td><td>Priority inheritance in locks</td></tr><tr><td>Jitter</td><td>Variation in response time</td><td>Deterministic arbitration helps</td></tr><tr><td>Scratchpad versus cache</td><td>&mdash;</td><td><b>Scratchpads give predictability; caches give average speed</b></td></tr></tbody></table>
+<div class="ms"><b>The tension between average performance and worst-case
+    predictability runs through the whole field.</b> Caches, branch predictors,
+    out-of-order execution and adaptive arbitration all improve the average and widen the
+    distribution. Hard real-time systems therefore often disable or avoid them, accepting
+    lower throughput for a bound that can be certified. <b>An accelerator with
+    deterministic latency is a feature in automotive and industrial markets even if it is
+    slower</b>, which is a positioning fact worth knowing before designing for peak
+    numbers.</div>

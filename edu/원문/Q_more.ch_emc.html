@@ -1,0 +1,25 @@
+<h1 id="q4">Q4. Electromagnetic Compatibility</h1>
+<p>A product must not emit excessive interference and must tolerate what
+    it receives. Both are system properties, but several of the levers are inside the
+    digital design.</p>
+<table><caption>Table 159. Emission mechanisms and mitigations</caption><thead><tr><th>Mechanism</th><th>Source</th><th>Mitigation</th><th>Where decided</th></tr></thead><tbody><tr><td>Differential-mode radiation</td><td>Current loops on the board</td><td>Reduce loop area; ground planes</td><td>Board</td></tr><tr><td><b>Common-mode radiation</b></td><td>Cables driven by common-mode voltage</td><td><b>Balanced differential signalling; common-mode chokes</b></td><td>I/O design and board</td></tr><tr><td>Harmonics of clocks</td><td>Fast edges with periodic content</td><td><b>Spread-spectrum clocking; slew-rate control</b></td><td><b>Clock generator and I/O cells &mdash; a chip-level choice</b></td></tr><tr><td>Simultaneous switching</td><td>Many outputs toggling together</td><td>Stagger switching; use differential I/O</td><td><b>RTL and I/O planning</b></td></tr><tr><td>Power supply coupling</td><td>d<i>I</i>/d<i>t</i></td><td>Decoupling; ramped enables</td><td>Chip and board</td></tr></tbody></table>
+<div class="ms"><b>Spread-spectrum clocking is a direct trade of jitter for
+    emissions.</b> Modulating the clock frequency by a fraction of a percent spreads each
+    harmonic's energy across a band, lowering the peak that a regulatory measurement
+    reports, without reducing total energy. The cost is added low-frequency jitter, which
+    a receiver's CDR must track &mdash; which is why standards that permit SSC also specify
+    a maximum modulation rate and depth, and why a CDR's loop bandwidth must be high enough
+    to follow it. <b>An interface IP that does not support SSC cannot be used in a product
+    that needs it to pass emissions testing</b>, so it is a specification item, not an
+    optional extra.</div>
+<table><caption>Table 160. Immunity concerns</caption><thead><tr><th>Threat</th><th>Standard</th><th>Design response</th></tr></thead><tbody><tr><td>ESD</td><td>IEC 61000-4-2, HBM/CDM</td><td>On-chip protection structures; careful I/O design</td></tr><tr><td>Radiated immunity</td><td>IEC 61000-4-3</td><td>Shielding; filtering</td></tr><tr><td>Fast transients / surge</td><td>IEC 61000-4-4/5</td><td>Board-level protection</td></tr><tr><td>Supply dips</td><td>IEC 61000-4-11</td><td>Brown-out detection and clean reset</td></tr><tr><td><b>Latch-up</b></td><td>&mdash;</td><td><b>Guard rings; substrate contacts</b> &mdash; a layout obligation</td></tr></tbody></table>
+<div class="warn"><b>ESD and latch-up are the two failure modes that
+    destroy parts rather than merely disturb them.</b> An ESD event can be several kilovolts
+    and must be shunted by protection structures before it reaches a gate oxide; latch-up
+    is a parasitic thyristor in the CMOS structure that, once triggered, conducts until
+    power is removed and often destroys the die. Both are addressed in layout and I/O
+    design rather than in RTL, but both constrain what a digital designer may do &mdash;
+    notably the rules about powering domains in a particular order and about driving
+    signals into unpowered domains. <b>An IP with multiple power domains must specify the
+    legal power-up and power-down sequences</b>, and a violation of them is a hardware
+    destruction risk, not a functional one.</div>

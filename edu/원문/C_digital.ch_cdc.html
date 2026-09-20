@@ -1,0 +1,53 @@
+<h1 id="c3">C3. Clock Domain Crossing, Reset and Low Power</h1>
+<h2>C3.1 The CDC problem stated precisely</h2>
+<div class="bs">A signal crossing between unrelated clock domains
+    violates setup or hold at the receiving flip-flop with non-zero probability. The
+    flip-flop may enter a metastable state whose resolution time is unbounded (though
+    exponentially unlikely to be long). <b>This cannot be simulated</b>: a logic
+    simulator has no metastable value and will always resolve to 0 or 1.</div>
+<table><caption>Table 37. CDC techniques by payload type</caption><thead><tr><th>Payload</th><th>Technique</th><th>Why</th><th>Failure if misapplied</th></tr></thead><tbody><tr><td><b>1-bit level</b></td><td>Two-flop synchroniser</td><td>Allows a full cycle to resolve</td><td>&mdash;</td></tr><tr><td><b>1-bit pulse</b></td><td>Toggle synchroniser (level convert, then edge detect)</td><td>A pulse shorter than the destination period would be lost</td><td>Lost events</td></tr><tr><td><b>Multi-bit, unrelated</b></td><td>Synchronise a request; use a data hold register</td><td>Bits arriving in different cycles corrupt the value</td><td><b>Corrupted data words</b></td></tr><tr><td><b>Multi-bit counter</b></td><td>Gray code</td><td>Only one bit changes per increment</td><td>Wrong pointer &rarr; FIFO corruption</td></tr><tr><td><b>Stream</b></td><td>Asynchronous FIFO (Gray pointers, dual-port RAM)</td><td>Decouples rate and phase</td><td>&mdash;</td></tr><tr><td><b>Bus transaction</b></td><td>Handshake (req/ack) or credit</td><td>Explicit acknowledgement</td><td>&mdash;</td></tr><tr><td><b>Reset</b></td><td>Asynchronous assert, synchronous de-assert</td><td>De-assertion must not violate recovery/removal</td><td>Part of the design leaves reset a cycle late</td></tr></tbody></table>
+<div class="ms"><b>Why Gray coding a FIFO pointer is safe even though
+    the pointer is multi-bit.</b> The synchroniser may sample a Gray pointer mid-transition,
+    but since only one bit changes per increment, the sampled value is either the old or
+    the new pointer &mdash; never a third value. An off-by-one pointer makes the FIFO
+    report itself slightly <i>fuller</i> or <i>emptier</i> than it is, which is
+    conservative: the FIFO may stall a cycle early but never overflows or underflows.
+    <b>The design is safe because its error mode is biased in the harmless
+    direction.</b> This principle &mdash; arrange for uncertainty to fail conservatively
+    &mdash; generalises far beyond FIFOs and is one of the most transferable ideas in
+    digital design.</div>
+<h2>C3.2 Reset architecture</h2>
+<table><caption>Table 38. Reset strategies</caption><thead><tr><th>Strategy</th><th>Advantage</th><th>Problem</th></tr></thead><tbody><tr><td>Synchronous</td><td>No recovery/removal issue; clean STA</td><td><b>Needs a running clock</b> &mdash; fails at power-up</td></tr><tr><td>Asynchronous</td><td>Works without a clock</td><td>De-assertion can violate recovery</td></tr><tr><td><b>Async assert, sync de-assert</b></td><td>Both advantages</td><td>Requires a reset synchroniser per domain &mdash; <b>the standard solution</b></td></tr><tr><td>Reset-less registers</td><td>Area and routing saving</td><td>Must be provably initialised by data flow; a verification obligation</td></tr></tbody></table>
+<div class="warn"><b>Reset de-assertion order is a specification item that
+    is almost always omitted.</b> If two blocks leave reset in different cycles and one
+    samples the other's outputs, the receiving block may latch garbage. Within a block the
+    designer controls this; across an IP boundary the <i>customer</i> controls it, and
+    they cannot get it right unless the datasheet states the requirement. A good IP
+    datasheet specifies: the reset polarity, whether it is synchronous or asynchronous,
+    the minimum assertion width in cycles of each clock, and any required ordering between
+    multiple resets. <b>Omitting this produces intermittent bring-up failures that are
+    blamed on the IP.</b></div>
+<h2>C3.3 Low power design</h2>
+<table><caption>Table 39. Power reduction techniques by level</caption><thead><tr><th>Level</th><th>Technique</th><th>Saving</th><th>Verification burden</th></tr></thead><tbody><tr><td>RTL</td><td><b>Clock gating</b></td><td>Large (clock tree is 20&ndash;40% of dynamic power)</td><td>Low &mdash; tools insert it automatically</td></tr><tr><td>RTL</td><td>Operand isolation / data gating</td><td>Moderate</td><td>Low</td></tr><tr><td>RTL</td><td>Reduce switching activity (encoding, bus inversion)</td><td>Moderate</td><td>Low</td></tr><tr><td>Architecture</td><td>Parallelism + voltage scaling</td><td><b>Large</b> &mdash; power &prop; <i>V</i><sup>2</sup></td><td>Moderate</td></tr><tr><td>Architecture</td><td>Memory hierarchy (avoid far accesses)</td><td>Large</td><td>Moderate</td></tr><tr><td>Physical</td><td>Multi-<i>V<sub>TH</sub></i> cells</td><td>Leakage</td><td>None</td></tr><tr><td>System</td><td><b>Power gating</b></td><td>Leakage &rarr; ~0</td><td><b>High</b>: isolation, retention, wake sequencing</td></tr><tr><td>System</td><td>DVFS</td><td>Large</td><td>High: timing at every operating point</td></tr><tr><td>System</td><td>Multiple power domains</td><td>Large</td><td><b>Highest</b>: UPF, isolation cells</td></tr></tbody></table>
+<div class="ms"><b>Parallelism as a power technique</b> is the least
+    intuitive entry and the most powerful. Two copies of a block running at half the clock
+    frequency deliver the same throughput; because they now have twice the time budget,
+    the supply voltage can be lowered until the slower path just meets timing. Dynamic
+    power scales as <i>V</i><sup>2</sup><i>f</i>, so halving <i>f</i> and reducing
+    <i>V</i> by, say, 30% gives roughly 0.5&nbsp;&times;&nbsp;0.49 = 0.25 of the original
+    power, at the cost of about twice the area. <b>This trade &mdash; area for energy
+    &mdash; is the fundamental reason accelerators are more efficient than processors</b>,
+    and it is the argument an IP vendor uses when selling a block against a software
+    implementation. State it with the exponents and it is persuasive; state it as "our
+    block is more efficient" and it is not.</div>
+<h2>C3.4 Design for test</h2>
+<table><caption>Table 40. DFT structures</caption><thead><tr><th>Structure</th><th>Tests what</th><th>Cost</th><th>IP implication</th></tr></thead><tbody><tr><td><b>Scan chains</b></td><td>All flip-flops and combinational logic</td><td>Mux in every FF (~5&ndash;10% area, some delay)</td><td><b>IP must be scan-insertable</b>: no gated clocks without test bypass, no latches, no async loops</td></tr><tr><td><b>MBIST</b></td><td>Embedded memories</td><td>Controller per memory group</td><td>Memory interfaces must be accessible</td></tr><tr><td>BSD (JTAG 1149.1)</td><td>Board-level interconnect</td><td>Boundary cells</td><td>&mdash;</td></tr><tr><td>LBIST</td><td>Logic, in-field</td><td>PRPG + MISR</td><td>Automotive/safety</td></tr><tr><td>ATPG coverage</td><td>&mdash;</td><td>&mdash;</td><td><b>Stuck-at &gt;99%, transition &gt;90% typical targets</b></td></tr><tr><td>Test compression</td><td>&mdash;</td><td>Decompressor/compactor</td><td>Reduces tester time and cost</td></tr></tbody></table>
+<div class="warn"><b>Scan is a security hole.</b> A scan chain can read
+    and write every flip-flop in the design, including key registers. Production chips
+    must therefore disable scan after manufacturing test, typically by blowing a fuse or
+    advancing a life-cycle state. A security IP that does not document its scan-isolation
+    requirement will be integrated insecurely. <b>Conversely, an IP that cannot be scanned
+    at all is unsellable</b>, because the customer cannot achieve their test coverage
+    target. The resolution &mdash; scannable, but with key registers excluded from the
+    chain or cleared on scan entry &mdash; must be designed in, and it is a requirement
+    that comes from neither function nor timing.</div>

@@ -1,0 +1,25 @@
+<h1 id="w6">W6. Working on a Modelling Team</h1>
+<h2>W6.1 The first week</h2>
+<table><caption>Table 195. Questions to ask, and what the answers reveal</caption><thead><tr><th>Question</th><th>What a good answer looks like</th><th>What a poor answer means</th></tr></thead><tbody><tr><td>What is our golden model, and who owns it?</td><td>A named artefact with an owner</td><td>Correctness is decided ad hoc</td></tr><tr><td>How does the model connect to the RTL?</td><td>A defined trace interface (RVFI-like) or DPI harness</td><td><b>Building one is your first project</b></td></tr><tr><td>How often does the regression run, and how long does it take?</td><td>Nightly, under eight hours</td><td>Feedback is too slow to steer design</td></tr><tr><td>What is the specification?</td><td>A standard document or a maintained internal spec</td><td><b>The model <i>is</i> the specification &mdash; large responsibility</b></td></tr><tr><td>How is undefined behaviour handled?</td><td>Explicitly marked and masked in comparison</td><td>The model may have been tuned to match the RTL &mdash; independence lost</td></tr><tr><td>Who verifies the model?</td><td>Standard vectors, a second implementation, mutation testing</td><td><b>Nobody &mdash; this is your highest-value contribution</b></td></tr><tr><td>What escaped in the last year, and why?</td><td>A specific analysis</td><td>No escape analysis means no learning loop</td></tr></tbody></table>
+<div class="ms"><b>The last question is the most informative one you can
+    ask.</b> An organisation that can describe a specific escape, its root cause, and the
+    check that was added in response has a functioning improvement loop. One that cannot
+    recall any escape either has not shipped much or does not trace failures back. The
+    answer tells you more about how the team works than any description of its
+    methodology.</div>
+<h2>W6.2 Habits that compound</h2>
+<table><caption>Table 196. Working practices</caption><thead><tr><th>Practice</th><th>Effect</th></tr></thead><tbody><tr><td>Annotate model code with specification section numbers</td><td>Makes the model auditable and survivable</td></tr><tr><td>Record the seed and the exact command with every failure</td><td><b>Turns an anecdote into a reproducible fact</b></td></tr><tr><td>Minimise a failing case before reporting it</td><td>Preserves the designer's trust and time</td></tr><tr><td>Suspect the comparison before the design</td><td>Most mismatches are scoreboard or timing issues</td></tr><tr><td>Write the check that would have caught it</td><td>Converts each bug into permanent coverage</td></tr><tr><td>Deliberately break things to test the tests</td><td>The only way to know a suite is alive</td></tr><tr><td>State confidence levels in reports</td><td>Distinguishes measured from assumed</td></tr><tr><td>Never close an unreproduced intermittent failure</td><td><b>Removes evidence, not the bug</b></td></tr></tbody></table>
+<div class="ms"><b>&ldquo;Suspect the comparison first&rdquo; is worth
+    making a reflex.</b> In a mature project the ordering of likelihood is: the scoreboard
+    or its timing assumptions, then the model, then the RTL. Reporting a suspected RTL bug
+    that turns out to be a testbench issue twice in a row is enough to make the third
+    report &mdash; the real one &mdash; go unexamined for a week. Running the model and the
+    RTL separately on the same stimulus and reading both logs takes an hour and settles
+    the question before anyone else is involved.</div>
+<h2>W6.3 Writing that gets read</h2>
+<table><caption>Table 197. Reporting a discrepancy</caption><thead><tr><th>Section</th><th>Content</th></tr></thead><tbody><tr><td>One-line summary</td><td>What differs, where, under what condition</td></tr><tr><td>Minimal reproducer</td><td>Exact command, seed, and the shortest failing stimulus</td></tr><tr><td>Evidence</td><td>Model output and RTL output side by side, with the first differing cycle identified</td></tr><tr><td>Triage</td><td>Which of the three causes has been ruled out, and how</td></tr><tr><td>Specification reference</td><td>The clause or section that decides the question</td></tr><tr><td>Proposed disposition</td><td>Model change, RTL change, or specification clarification</td></tr><tr><td><b>Confidence</b></td><td><b>What you verified versus what you inferred</b></td></tr></tbody></table>
+<div class="note">The last row is the habit that most distinguishes
+    experienced engineers in written communication. A report that separates &ldquo;I
+    measured this&rdquo; from &ldquo;I believe this follows&rdquo; can be acted on
+    immediately; one that blends them forces every reader to re-derive the distinction.
+    Over a project's life this single discipline saves more time than any tool.</div>

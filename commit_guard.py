@@ -123,6 +123,29 @@ def 승인(V: int, T통과: bool, 미해결: int, FR: int) -> dict:
        "NoUnresolved", "NoFalseRed")
 
 
+def 요약(보고: str, 통과: bool) -> str:
+    """**답에 딸려 보낼 짧은 줄**만 남긴다 -- 표 전체는 로그로 간다.
+
+    사용자(2026-09-20): "디스코드 답변에 계속 딸려와."  밀기가 성공한 경로에서도
+    `영향 분석 · 관문 사슬 · Commit = BasePass ∧ ...` 표가 통째로 답 뒤에 붙었다.
+    그것은 **답이 아니라 운영 정보**다 -- 공개 채널에서 같은 이유로 이미 끈 것을
+    관리 채널에서는 안 껐다.
+
+    버리지는 않는다.  `git_sync` 가 보고 전체를 로그에 찍고, 여기서는 **막혔을 때
+    무엇이 막았는지** 한두 줄만 돌려준다.  통과했으면 빈 문자열이다 -- 성공은
+    조용한 것이 맞다(밀었다는 확인은 `_verify_pushed` 가 따로 한 줄 준다).
+    """
+    if 통과:
+        return ""
+    머리 = [l for l in 보고.splitlines()
+          if l.startswith(("[게이트 차단]", "[검사 차단]", "[CI 차단]", "[메타 차단]"))]
+    거짓 = [l.strip() for l in 보고.splitlines() if l.strip().startswith("[X]")]
+    줄 = 머리[:2] + 거짓[:3]
+    if not 줄:
+        줄 = [l for l in 보고.splitlines() if l.strip().startswith("->")][:1] or ["커밋이 막혔다"]
+    return "\n".join(줄) + "\n(자세한 표는 서버 로그: `[git_sync] 문지기`)"
+
+
 def 여섯조건(항들: dict) -> dict:
     """{항: (상태, 말)} -> {commit, 거짓인항, 못잰항, 표}. **순수 함수 -- 아무것도 재지 않는다.**"""
     거짓인항 = [k for k in 여섯항 if (항들.get(k) or (못잼, ""))[0] == 거짓]

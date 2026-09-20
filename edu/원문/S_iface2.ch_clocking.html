@@ -1,0 +1,23 @@
+<h1 id="s3">S3. Clock, Reset and Power Architecture of an IP Block</h1>
+<p>These three decisions are made early, are hard to change later, and are
+    the ones a customer will question first. They deserve their own chapter in the practice
+    volume because they are specification items rather than implementation details.</p>
+<table><caption>Table 173. Clock architecture decisions</caption><thead><tr><th>Decision</th><th>Options</th><th>Consequence for the integrator</th></tr></thead><tbody><tr><td>Number of clock domains</td><td>One, or several</td><td><b>Each additional domain is a CDC verification obligation</b></td></tr><tr><td>Clock relationship</td><td>Synchronous ratio, asynchronous, or plesiochronous</td><td>Determines which CDC technique is legal</td></tr><tr><td>Who divides</td><td>Internal divider or external clocks</td><td>Internal is easier to use; external is easier to verify</td></tr><tr><td>Gating</td><td>Internal automatic, external enable, or none</td><td><b>Internal gating must be bypassable for scan</b></td></tr><tr><td>Clock enable versus gating</td><td>&mdash;</td><td>Enables are simpler; gating saves clock-tree power</td></tr><tr><td>DFT</td><td>&mdash;</td><td>Test clock must reach every flip-flop</td></tr></tbody></table>
+<div class="ms"><b>Every clock domain you expose is a cost you impose on
+    the customer.</b> A block with one clock is integrated by connecting one net; a block
+    with three requires the customer to understand their relationship, to run CDC analysis
+    across the boundary, and to constrain three trees. If the second and third domains
+    exist only because it was convenient internally, the block is harder to sell than it
+    needs to be. <b>A useful discipline is to justify each domain in the datasheet</b>:
+    if the justification is weak, the domain should probably be removed.</div>
+<table><caption>Table 174. Reset architecture decisions</caption><thead><tr><th>Decision</th><th>Recommendation</th><th>Reason</th></tr></thead><tbody><tr><td>Polarity</td><td>State it; be consistent</td><td>Mixed polarity causes integration errors</td></tr><tr><td>Synchronous or asynchronous</td><td><b>Async assert, sync de-assert</b></td><td>Works without a clock; avoids recovery/removal violations</td></tr><tr><td>One reset or several</td><td>As few as possible</td><td>Ordering between resets is a hazard</td></tr><tr><td>Minimum assertion width</td><td><b>Specify in cycles of each clock</b></td><td>Otherwise the customer guesses</td></tr><tr><td>Reset-less registers</td><td>Only where provably initialised by data</td><td>Saves area; creates an X-propagation obligation</td></tr><tr><td>Soft reset</td><td>Define exactly what it does and does not clear</td><td><b>Almost always under-specified</b></td></tr></tbody></table>
+<table><caption>Table 175. Power architecture decisions</caption><thead><tr><th>Decision</th><th>Options</th><th>Consequence</th></tr></thead><tbody><tr><td>Single or multiple supplies</td><td>&mdash;</td><td>Level shifters; isolation cells</td></tr><tr><td>Power gating</td><td>Supported or not</td><td>Retention registers; wake sequencing; UPF</td></tr><tr><td>Retention</td><td>Full, partial, none</td><td>Area versus wake latency</td></tr><tr><td>DVFS</td><td>Supported or not</td><td><b>Timing must close at every operating point</b></td></tr><tr><td>Clock gating granularity</td><td>Block, module, register</td><td>Finer saves more and costs more verification states</td></tr><tr><td>Idle behaviour</td><td>Defined quiescent state</td><td>Predictable leakage</td></tr></tbody></table>
+<div class="warn"><b>Power gating is the feature that most often turns out
+    to cost more than expected.</b> It requires isolation cells on every output crossing
+    the boundary, retention flops for whatever state must survive, a power controller with
+    a correct sequence, UPF describing all of it, and verification at every combination of
+    domain states &mdash; which multiplies the functional state space. For an IP vendor the
+    honest positions are either to support it fully, with the UPF and the verification
+    evidence, or to state clearly that the block is not power-gateable. <b>The damaging
+    middle position is a block that appears gateable and has never been verified in that
+    mode.</b></div>

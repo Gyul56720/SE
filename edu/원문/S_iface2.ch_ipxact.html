@@ -1,0 +1,24 @@
+<h1 id="s4">S4. Packaging an IP for Delivery</h1>
+<table><caption>Table 179. Directory structure a customer expects</caption><thead><tr><th>Directory</th><th>Contents</th><th>Note</th></tr></thead><tbody><tr><td><code>doc/</code></td><td>Product brief, user guide, release notes, verification report</td><td><b>The first thing opened</b></td></tr><tr><td><code>rtl/</code></td><td>Synthesisable sources plus a file list</td><td><b>Provide the file list in compile order</b></td></tr><tr><td><code>model/</code></td><td>Reference model, build instructions</td><td>&mdash;</td></tr><tr><td><code>tb/</code></td><td>Testbench, vectors, run scripts</td><td>Must run out of the box</td></tr><tr><td><code>syn/</code></td><td>Synthesis scripts, SDC, reported results</td><td>Reproducibility</td></tr><tr><td><code>example/</code></td><td>A minimal working system</td><td>Named target</td></tr><tr><td><code>sw/</code></td><td>Headers, driver example</td><td>Generated from the register source</td></tr><tr><td><code>ipxact/</code></td><td>Component description</td><td>Enables automated integration</td></tr></tbody></table>
+<div class="ms"><b>The file list in compile order is a small item that
+    saves every customer an hour.</b> SystemVerilog packages must be compiled before their
+    users, and a dependency mistake produces errors that look like the IP is broken.
+    Providing an explicit ordered list &mdash; and ideally a simple filelist format that
+    common tools accept &mdash; removes an entire class of first-hour frustration. The same
+    applies to a documented minimum tool version: nothing damages confidence faster than an
+    IP that does not compile.</div>
+<table><caption>Table 180. IP-XACT: what it buys</caption><thead><tr><th>Element</th><th>Content</th><th>Enables</th></tr></thead><tbody><tr><td>Component</td><td>Name, version, vendor</td><td>Identification in a catalogue</td></tr><tr><td>Ports</td><td>Names, widths, directions</td><td>Automated connection</td></tr><tr><td>Bus interfaces</td><td>AXI/APB mapping of ports</td><td><b>Automatic bus connection</b></td></tr><tr><td>Parameters</td><td>Names, types, ranges, defaults</td><td>Configuration UI</td></tr><tr><td><b>Memory maps</b></td><td>Registers, fields, access, reset values</td><td><b>Generation of RTL, headers, documentation and UVM RAL</b></td></tr><tr><td>File sets</td><td>Source files by purpose</td><td>Build automation</td></tr></tbody></table>
+<div class="ms"><b>The memory map element is where the real value sits.</b>
+    From one description a tool generates the register block RTL, the C header, the
+    documentation table, and the UVM register model &mdash; four artefacts that otherwise
+    drift apart. Even a design house that does not ship IP-XACT should adopt the discipline
+    internally, because the alternative is maintaining four hand-written copies of the same
+    information. <b>A short YAML description and a template engine achieve most of the
+    benefit in a day's work</b>, and that generator itself becomes reusable across every
+    future project.</div>
+<table><caption>Table 181. Release checklist</caption><thead><tr><th>Item</th><th>Check</th></tr></thead><tbody><tr><td>Clean checkout</td><td>Does everything build and run from a fresh clone?</td></tr><tr><td>No absolute paths</td><td>Scripts must not reference the vendor's filesystem</td></tr><tr><td>Tool versions</td><td>Stated and tested</td></tr><tr><td>Licence headers</td><td>On every file</td></tr><tr><td>Third-party notices</td><td>Complete bill of materials</td></tr><tr><td>Version consistency</td><td>Version register, documentation and release note agree</td></tr><tr><td>Example runs</td><td>On the named target, from clean</td></tr><tr><td>Known issues</td><td>Listed, with severity and workaround</td></tr><tr><td><b>Regression evidence</b></td><td><b>Logs included, not just claimed</b></td></tr></tbody></table>
+<div class="note">The last item is worth a sentence of its own. A
+    verification report that states a coverage figure is a claim; one that ships the
+    regression logs and the scripts that produced them is evidence. The difference costs
+    nothing to provide and is immediately visible to a technical evaluator, who has almost
+    certainly received the former from someone else.</div>

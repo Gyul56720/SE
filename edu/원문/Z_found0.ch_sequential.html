@@ -1,0 +1,34 @@
+<h1 id="z3">Z3. Sequential Logic and State</h1>
+<div class="bs">A combinational circuit's output depends only on its
+    present inputs. Adding memory &mdash; elements that hold a value &mdash; produces
+    sequential logic, whose output depends on the history of inputs. That history is
+    summarised in the <b>state</b>.</div>
+<table><caption>Table 532. Storage elements</caption><thead><tr><th>Element</th><th>Behaviour</th><th>Use</th><th>Hazard</th></tr></thead><tbody><tr><td>SR latch</td><td>Set/reset, level sensitive</td><td>Building block</td><td>Forbidden input combination</td></tr><tr><td><b>D latch</b></td><td>Transparent when enabled</td><td>Time borrowing, low-power designs</td><td><b>Transparency complicates timing analysis</b></td></tr><tr><td><b>D flip-flop</b></td><td>Captures on a clock edge</td><td>The standard element</td><td>Setup/hold must be met</td></tr><tr><td>Master&ndash;slave</td><td>Two latches in series</td><td>How a flip-flop is built</td><td>&mdash;</td></tr><tr><td>Pulsed latch</td><td>Narrow transparency window</td><td>High performance</td><td>Timing complexity</td></tr><tr><td>Register file</td><td>Array with multiple ports</td><td>Processors</td><td>Port count costs area</td></tr></tbody></table>
+<div class="warn"><b>Unintentional latches are one of the most common RTL
+    defects.</b> In a combinational <code>always</code> block, if some path through the
+    logic leaves a signal unassigned, the synthesiser must remember its previous value and
+    therefore infers a latch. The design usually still simulates correctly, but a latch in
+    a nominally combinational path is a timing analysis problem and often a functional one.
+    The defence is mechanical: assign a default value at the top of every combinational
+    block, cover every branch, and treat the lint warning as an error. <b>This is the first
+    check in any RTL review.</b></div>
+<table><caption>Table 533. Finite state machine styles</caption><thead><tr><th>Style</th><th>Output depends on</th><th>Property</th></tr></thead><tbody><tr><td><b>Moore</b></td><td>State only</td><td>Outputs are registered and glitch-free; one cycle of latency</td></tr><tr><td><b>Mealy</b></td><td>State and inputs</td><td>Faster response; <b>outputs can glitch and create combinational paths</b></td></tr><tr><td>Registered Mealy</td><td>State and registered inputs</td><td>Compromise; usually preferred</td></tr></tbody></table>
+<div class="ms"><b>The Moore/Mealy choice has a direct consequence at
+    module boundaries.</b> A Mealy output is a combinational function of an input, so
+    connecting two Mealy modules can create a path that runs through both in a single
+    cycle &mdash; or, if each one's input depends on the other's output, a combinational
+    loop. This is the general form of the valid/ready loop described in Chapter C2.
+    <b>For an IP block, registering all outputs (Moore style) costs one cycle of latency
+    and removes an entire class of integration failures</b>, which is usually the right
+    trade for something a stranger will instantiate.</div>
+<h2>Z3.2 Counters, shift registers and LFSRs</h2>
+<table><caption>Table 534. Sequential building blocks</caption><thead><tr><th>Block</th><th>Function</th><th>Where used</th></tr></thead><tbody><tr><td>Binary counter</td><td>Increment</td><td>Addressing, timing</td></tr><tr><td><b>Gray counter</b></td><td>One bit changes per step</td><td><b>CDC-safe pointers</b>, low-power encoding</td></tr><tr><td>Johnson counter</td><td>Twisted ring</td><td>Multi-phase clock generation</td></tr><tr><td>Shift register</td><td>Serial movement</td><td>Serialisers, delay lines</td></tr><tr><td><b>LFSR</b></td><td>Shift with XOR feedback</td><td><b>PRBS generation, scramblers, CRC, BIST, test patterns</b></td></tr><tr><td><b>CRC</b></td><td>Polynomial remainder</td><td>Frame check sequences</td></tr></tbody></table>
+<div class="ms"><b>The LFSR is the most reused structure in
+    communications hardware, and all of its uses are the same mathematics.</b> An LFSR
+    computes a remainder modulo a polynomial over GF(2). Choose a primitive polynomial and
+    it cycles through all 2<sup><i>n</i></sup>&minus;1 non-zero states, giving a
+    maximal-length pseudo-random sequence &mdash; that is a PRBS generator, and also a
+    scrambler. Feed data in as you shift and the final state is the remainder &mdash; that
+    is a CRC. Use it to produce stimulus and to compact responses and you have built-in
+    self test. <b>One circuit, four products, because they are one piece of algebra.</b>
+    Chapter I2 develops the algebra; this is where it first appears.</div>

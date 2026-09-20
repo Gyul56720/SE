@@ -1,0 +1,29 @@
+<h1 id="h2">H2. The Implementation Flow</h1>
+<table><caption>Table 75. From RTL to GDSII</caption><thead><tr><th>Step</th><th>Input &rarr; output</th><th>Key decisions</th><th>Common failure</th></tr></thead><tbody><tr><td>Elaboration</td><td>RTL &rarr; generic netlist</td><td>Parameter resolution</td><td>Unintended latch inference</td></tr><tr><td><b>Logic synthesis</b></td><td>generic &rarr; standard cells</td><td>Constraints, effort, <i>V<sub>TH</sub></i> mix</td><td>Over-constrained clock &rarr; area and power explosion</td></tr><tr><td>DFT insertion</td><td>+ scan chains</td><td>Chain count and length</td><td>Scan shift timing</td></tr><tr><td>Floorplan</td><td>&mdash;</td><td>Block placement, pin assignment, power grid</td><td><b>The decision with the largest downstream impact</b></td></tr><tr><td>Placement</td><td>cells &rarr; locations</td><td>Congestion vs timing</td><td>Routing congestion</td></tr><tr><td><b>CTS</b></td><td>+ clock tree</td><td>Skew target, useful skew</td><td>Clock power, OCV</td></tr><tr><td>Routing</td><td>&mdash;</td><td>Layer assignment, shielding</td><td>DRC violations, crosstalk</td></tr><tr><td>Sign-off STA</td><td>&mdash;</td><td>Corners, derating, SI</td><td>Missing a corner</td></tr><tr><td>Physical verification</td><td>DRC, LVS, antenna</td><td>&mdash;</td><td>&mdash;</td></tr><tr><td>Extraction + final timing</td><td>RC &rarr; delays</td><td>&mdash;</td><td>&mdash;</td></tr></tbody></table>
+<div class="ms"><b>Floorplanning is where an IP block's shape becomes a
+    commercial issue.</b> A block delivered as RTL will be placed by the customer, whose
+    aspect ratio, pin locations and macro placement may be nothing like the vendor's. If
+    the block's internal timing depends on a particular arrangement &mdash; a wide
+    datapath that must stay compact, a memory that must sit next to its controller &mdash;
+    then the RTL alone is not a sufficient deliverable. Serious IP therefore ships a
+    <b>floorplan guideline</b>, sometimes a hardened macro, and always a statement of the
+    assumed aspect ratio and utilisation. <b>A block that met timing in the vendor's flow
+    and misses in the customer's is the single most damaging support event a small IP
+    house can have</b>, because it is expensive to debug remotely and it destroys
+    confidence.</div>
+<table><caption>Table 76. Sign-off corners</caption><thead><tr><th>Axis</th><th>Values</th><th>Why</th></tr></thead><tbody><tr><td>Process</td><td>SS, TT, FF, SF, FS</td><td>Global and local variation</td></tr><tr><td>Voltage</td><td>min, nominal, max</td><td>IR drop and regulation tolerance</td></tr><tr><td>Temperature</td><td>&minus;40, 25, 125 &deg;C</td><td><b>Both extremes</b> &mdash; temperature inversion makes cold the worst case at low <i>V</i></td></tr><tr><td>RC extraction</td><td>Cmin, Cmax, RCmin, RCmax</td><td>Metal thickness variation</td></tr><tr><td>Mode</td><td>functional, scan, BIST, low power</td><td>Different constraints apply</td></tr><tr><td>Ageing</td><td>fresh, end-of-life</td><td>NBTI/PBTI drift</td></tr></tbody></table>
+<div class="ms"><b>The corner count multiplies.</b> Five process points
+    &times; three voltages &times; three temperatures &times; four RC &times; four modes is
+    720 combinations; full sign-off on all of them is not affordable. The industry response
+    is <b>statistical or parametric OCV</b> (POCV), which models variation as a
+    distribution rather than enumerating corners, plus careful selection of dominant
+    corners. For an IP vendor the practical obligation is to state <b>which corners were
+    signed off</b> in the PPA report. "500 MHz" without a corner is not a specification,
+    and a customer who assumes typical-typical will be disappointed at
+    slow&ndash;slow.</div>
+<table><caption>Table 77. High-level synthesis in the flow</caption><thead><tr><th>Aspect</th><th>Reality</th></tr></thead><tbody><tr><td>Input</td><td>C/C++/SystemC with vendor pragmas &mdash; <b>not portable across tools</b></td></tr><tr><td>Strength</td><td>Design-space exploration: one source, many area/throughput points</td></tr><tr><td>Weakness</td><td>Generated RTL is hard to read and debug; timing closure less predictable</td></tr><tr><td>Where it wins</td><td>Datapath-dominated blocks with regular loops (filters, transforms, crypto)</td></tr><tr><td>Where it loses</td><td>Control-dominated logic, precise cycle-level interfaces</td></tr><tr><td><b>Verification role</b></td><td><b>The same C source doubles as the reference model</b>, because a general compiler ignores the pragmas &mdash; convenient, but it shares every algorithmic assumption with the design</td></tr></tbody></table>
+<div class="warn">The last row is a genuine methodological trap. Using the
+    HLS source as the golden model gives <i>zero</i> independence: the two implementations
+    are literally the same text. It verifies the HLS tool, not the design. <b>If the HLS
+    C is the design, the reference model must be written separately</b> &mdash; ideally in
+    a different language, by a different person, from the specification.</div>

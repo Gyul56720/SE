@@ -1,0 +1,15 @@
+<h1 id="idea">IP 아이디어 &mdash; 무엇을 제안할 것인가</h1>
+<p>&ldquo;IP 아이디어를 생각해 오라&rdquo;는 과제에 대한 실무적 접근.
+    <b>새 알고리즘을 제안하는 자리가 아니다.</b> 디자인 하우스가 파는 것은 알고리즘이
+    아니라 <b>PPA · 인터페이스 · 검증 · 납품 패키지</b>다.</p>
+<div class="note"><b>판단 기준 다섯.</b> (1) 표준이 있어 정답이 외부에
+    있는가 (2) 수요가 구조적인가(규격이 강제하는가) (3) 우리가 가진 공정/도구로 만들 수
+    있는가 (4) 특허가 데이터패스를 막고 있지 않은가 (5) 기존 공개 구현이 있는가 &mdash;
+    <b>있으면 기준선이 생기는 것이라 오히려 유리하다.</b></div>
+<table><caption>표 46. 아이디어 후보 &mdash; 표준이 수요를 강제하는 것들</caption><thead><tr><th>#</th><th>IP</th><th>왜 수요가 있나</th><th>난이도</th><th>정답의 출처</th></tr></thead><tbody><tr><td>1</td><td><b>RS-FEC KP4</b> RS(544,514)/GF(2<sup>10</sup>)</td><td>100G 이상 이더넷이 <b>규격으로 강제</b>. 800G·1.6T 로 계속 간다</td><td>중</td><td>IEEE 802.3 Clause 91/161</td></tr><tr><td>2</td><td><b>연접 FEC</b>(외부 RS-KP4 + 내부 Hamming(128,120))</td><td>802.3dj(224G/lane)가 2023~24 채택. <b>공개 구현이 안 보인다</b></td><td>중상</td><td>802.3dj 기고문</td></tr><tr><td>3</td><td><b>100G+ PCS</b>(멀티레인 분배 · AM · gearbox)</td><td>상용은 &lsquo;soft PCS&rsquo; 로 판다. 오픈에는 10G 까지만 있다</td><td>중</td><td>IEEE 802.3</td></tr><tr><td>4</td><td><b>양자내성 암호(ML-KEM/ML-DSA) 가속기</b></td><td>FIPS 203/204 확정. 모든 RoT 가 넣어야 한다</td><td>상</td><td>FIPS 203/204 + Caliptra 참조</td></tr><tr><td>5</td><td><b>TRNG + DRBG</b>(SP 800-90A/B)</td><td>보안칩 필수. 인증이 까다로워 진입장벽</td><td>중상</td><td>NIST SP 800-90 · OpenTitan</td></tr><tr><td>6</td><td><b>AXI/CHI 프로토콜 검사기</b>(형식 속성 포함)</td><td>모든 SoC 가 필요. 재사용성 최고</td><td>중</td><td>AMBA 규격</td></tr><tr><td>7</td><td><b>CDC/리셋 검증 IP</b></td><td>간헐 버그의 최대 원인</td><td>중</td><td>사내 규칙</td></tr><tr><td>8</td><td><b>레지스터맵 단일원천 생성기</b>(IP-XACT &rarr; RTL/UVM/문서/드라이버)</td><td>모든 팀이 자체 제작해 쓴다. 표준화 여지</td><td>중</td><td>IEEE 1685</td></tr><tr><td>9</td><td><b>ECC 가 붙은 SRAM 래퍼</b>(SECDED · 스크러빙)</td><td>안전/보안 요구가 강제(ISO 26262 · FIPS)</td><td>하중</td><td>Hamming/Hsiao 코드</td></tr><tr><td>10</td><td><b>MIPI I3C 컨트롤러</b></td><td>센서 인터페이스 세대교체 중</td><td>중</td><td>MIPI 규격(회원)</td></tr></tbody></table>
+<h2>제안서에 반드시 들어가야 하는 것</h2>
+<table><caption>표 47. IP 제안서 뼈대</caption><thead><tr><th>절</th><th>내용</th><th>빠지면</th></tr></thead><tbody><tr><td>1. 수요</td><td>어느 규격/제품이 이것을 <b>강제</b>하는가</td><td>&lsquo;있으면 좋은 것&rsquo;이 된다</td></tr><tr><td>2. 선행</td><td>상용 · 오픈 구현을 <b>이름과 규모로</b>. 없다고 쓰지 말 것</td><td>이미 있는 것을 만들게 된다</td></tr><tr><td>3. 차별</td><td>PPA · 파라미터 범위 · 인터페이스 · 검증 패키지 중 무엇으로</td><td>&lsquo;더 좋다&rsquo;만 남는다</td></tr><tr><td>4. 규격 접근</td><td>원문을 구할 수 있는가</td><td>착수 불가</td></tr><tr><td>5. 특허</td><td>데이터패스 특허를 조사했는가</td><td>팔 수 없는 물건이 된다</td></tr><tr><td>6. 검증 계획</td><td>정답이 어디서 오는가. 골든 모델은 무엇인가</td><td>&lsquo;돌아간다&rsquo;에서 멈춘다</td></tr><tr><td>7. 규모 추정</td><td><b>기준선과 비교한</b> 줄 수 · 기간 · 인원</td><td>일정이 근거 없이 잡힌다</td></tr><tr><td>8. 실패 조건</td><td><b>무엇이 참이면 이 제안이 무효인가</b></td><td>무효화 조건이 없는 주장은 광고다</td></tr></tbody></table>
+<div class="ms"><b>8번이 제안서의 질을 가른다.</b> &ldquo;이 조건에서는
+    우리가 진다&rdquo;를 먼저 적은 제안은 신뢰를 얻는다. 예: &ldquo;MATLAB SerDes
+    Toolbox + HDL Coder 가 데이터패스까지 RTL 을 생성한다면 이 제안의 3절은 무효다&rdquo;
+    &mdash; 이렇게 적고 실제로 확인하는 것이 실무다.</div>

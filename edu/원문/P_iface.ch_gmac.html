@@ -1,0 +1,57 @@
+<h1 id="p3">P3. The Gigabit Ethernet MAC and Its Transceiver Interfaces</h1>
+<div class="kvbar"><b>Domain</b> networking, automotive, industrial,
+    embedded SoC &nbsp;&bull;&nbsp; <b>Standard</b> IEEE 802.3 Clauses 4, 22, 35, 46, 35
+    &nbsp;&bull;&nbsp; <b>Sellable part</b> the MAC and the media-independent interface
+    logic; the PHY is external or a hard macro</div>
+<h2>P3.1 What a MAC does</h2>
+<table><caption>Table 143. GMAC functional blocks</caption><thead><tr><th>Block</th><th>Function</th><th>Notes</th></tr></thead><tbody><tr><td><b>Transmit framer</b></td><td>Preamble/SFD insertion, padding to 64 B, FCS append, inter-frame gap</td><td><b>The IFG is 96 bit times</b> and must be maintained exactly</td></tr><tr><td><b>Receive framer</b></td><td>Preamble detect, SFD align, FCS check, length check</td><td>Must distinguish a runt, a jabber and a valid short frame</td></tr><tr><td><b>CRC-32</b></td><td>Frame check sequence, polynomial 0x04C11DB7</td><td>Reflected input and output, initial value 0xFFFFFFFF, final XOR &mdash; <b>all four conventions must match the standard</b></td></tr><tr><td>Address filter</td><td>Unicast, multicast hash, broadcast, promiscuous</td><td>Hash table sizing is a parameter</td></tr><tr><td>Flow control</td><td>PAUSE frames (802.3x), priority PAUSE (802.1Qbb)</td><td>Requires watermark logic on the RX FIFO</td></tr><tr><td><b>FIFOs and CDC</b></td><td>Bridge the system clock and the interface clock</td><td><b>Two clock domains; rate adaptation</b></td></tr><tr><td>DMA / descriptors</td><td>Move frames to and from memory</td><td>Descriptor ring design dominates throughput</td></tr><tr><td>Statistics (RMON/MIB)</td><td>Counters for frames, errors, sizes</td><td>Numerous; generate them from a table</td></tr><tr><td>MDIO master</td><td>Manage the external PHY</td><td>Clause 22 and Clause 45 addressing</td></tr><tr><td>Timestamping</td><td>IEEE 1588 / 802.1AS</td><td><b>Capture point accuracy is the spec</b></td></tr></tbody></table>
+<div class="ms"><b>The CRC-32 conventions are a classic interoperability
+    trap and deserve explicit treatment.</b> Ethernet's FCS uses the polynomial
+    0x04C11DB7 with an initial value of all ones, bit-reflected input and output, and a
+    final inversion. An implementation that gets the polynomial right but the reflection
+    wrong produces a CRC that is self-consistent &mdash; it will pass its own loopback
+    test &mdash; and is rejected by every other device on the network. <b>This is the
+    canonical example of why a standard's test vectors, not self-consistency, are the
+    oracle</b>, and why the reference model must be checked against known frames from the
+    specification rather than against the RTL.</div>
+<h2>P3.2 Media-independent interfaces</h2>
+<table><caption>Table 144. The MII family</caption><thead><tr><th>Interface</th><th>Speeds</th><th>Signals</th><th>Clocking</th><th>Where used</th></tr></thead><tbody><tr><td>MII</td><td>10/100</td><td>4-bit each direction</td><td>25 MHz from the PHY</td><td>Legacy</td></tr><tr><td>RMII</td><td>10/100</td><td>2-bit</td><td>50 MHz shared</td><td>Pin reduction</td></tr><tr><td><b>GMII</b></td><td>1000</td><td>8-bit each direction</td><td>125 MHz</td><td><b>Classic gigabit interface</b></td></tr><tr><td><b>RGMII</b></td><td>10/100/1000</td><td>4-bit <b>DDR</b></td><td>125 MHz DDR</td><td><b>Halves the pins; introduces a clock-skew requirement</b></td></tr><tr><td>SGMII</td><td>10/100/1000</td><td>1 serial lane</td><td>625 MHz DDR / SerDes</td><td>Serial; needs a SerDes</td></tr><tr><td>XGMII / XLGMII</td><td>10G / 40G</td><td>32/64-bit</td><td>&mdash;</td><td>Higher speeds</td></tr><tr><td><b>1000BASE-X PCS</b></td><td>1000</td><td>&mdash;</td><td>&mdash;</td><td><b>8b/10b + auto-negotiation, Clause 36/37</b></td></tr></tbody></table>
+<div class="warn"><b>RGMII's clock-to-data relationship is the single most
+    common Gigabit Ethernet bring-up failure.</b> The interface uses DDR signalling and the
+    original specification expects the clock edge aligned with the data, requiring an
+    external trace-length delay; version 2.0 added an internal-delay option that the PHY
+    may or may not implement, and that is often configured by strapping or by an MDIO
+    register. The result is four plausible combinations of delay on each side, only some
+    of which work. <b>An IP that exposes a configurable transmit and receive clock delay,
+    and documents the required PHY configuration for each, converts a multi-day board
+    debug into a register write.</b> This is a small feature with a very large support
+    value.</div>
+<h2>P3.3 Design decisions that matter</h2>
+<table><caption>Table 145. GMAC architecture choices</caption><thead><tr><th>Decision</th><th>Options</th><th>Consequence</th></tr></thead><tbody><tr><td>Store-and-forward vs cut-through</td><td>&mdash;</td><td><b>Store-and-forward can drop bad frames before transmitting</b>; cut-through has lower latency but forwards errors</td></tr><tr><td>FIFO depth</td><td>&mdash;</td><td>Must absorb the maximum frame plus system latency; underrun mid-frame is fatal</td></tr><tr><td>Datapath width</td><td>8 / 32 / 64 bit</td><td>Width &times; clock must exceed 1 Gb/s with margin for IFG and preamble</td></tr><tr><td>Descriptor format</td><td>Ring vs list; scatter-gather</td><td>Throughput under small frames</td></tr><tr><td>Checksum offload</td><td>IPv4/TCP/UDP</td><td><b>Reduces host CPU load substantially</b></td></tr><tr><td>TSO / LRO</td><td>Segmentation offload</td><td>Large benefit; significant complexity</td></tr><tr><td>VLAN handling</td><td>Insert/strip/filter</td><td>Standard expectation</td></tr><tr><td>Jumbo frames</td><td>up to 9 kB</td><td>FIFO and descriptor sizing</td></tr><tr><td><b>1588 timestamping</b></td><td>&mdash;</td><td><b>The capture point must be at a defined layer boundary</b></td></tr></tbody></table>
+<div class="ms"><b>Transmit underrun is the failure mode that defines FIFO
+    sizing.</b> Once transmission starts, the MAC must supply a byte every clock until the
+    frame ends; if the DMA cannot keep up because of bus contention, the frame is
+    truncated and transmitted with a bad CRC, which the link partner discards. The
+    system-level fix is store-and-forward &mdash; do not begin transmitting until the whole
+    frame is buffered &mdash; at the cost of latency and FIFO area. <b>A configurable
+    start-threshold, from cut-through to full store-and-forward, lets the integrator
+    choose their own point on that trade</b>, and it is a parameter worth exposing.</div>
+<div class="ms"><b>IEEE 1588 timestamping accuracy is determined by where
+    the timestamp is taken, not by the counter's resolution.</b> A timestamp captured in
+    software has microseconds of jitter; captured at the MAC it has the variability of the
+    PHY latency; captured at the PHY's serial boundary it can be sub-nanosecond. Since the
+    PHY delay is not constant across speeds and link states, a MAC-level implementation
+    must expose calibration registers for the ingress and egress delays. <b>Specify the
+    capture point and the residual uncertainty</b>; an accuracy figure without a capture
+    point is meaningless.</div>
+<h2>P3.4 Verification and deliverables</h2>
+<table><caption>Table 146. GMAC verification plan</caption><thead><tr><th>Area</th><th>Stimulus</th><th>Oracle</th></tr></thead><tbody><tr><td>Frame sizes</td><td>64 (minimum) to 1518 and jumbo, plus every boundary</td><td>Golden model; <b>runt, oversize and pad cases explicitly</b></td></tr><tr><td><b>CRC</b></td><td>Known frames from the standard</td><td><b>Standard vectors, not self-consistency</b></td></tr><tr><td>IFG and preamble</td><td>Back-to-back frames at line rate</td><td>Protocol checker</td></tr><tr><td>Address filtering</td><td>Unicast, multicast, hash collisions, broadcast</td><td>Model</td></tr><tr><td>Flow control</td><td>Trigger watermarks; receive PAUSE</td><td>Correct pause duration</td></tr><tr><td>Error injection</td><td>Bad CRC, truncated, symbol errors</td><td>Correct counters and discard</td></tr><tr><td>Underrun / overrun</td><td>Starve or stall the DMA</td><td>Defined behaviour, no lockup</td></tr><tr><td>Speed changes</td><td>10/100/1000 transitions</td><td>Clean reconfiguration</td></tr><tr><td><b>MDIO</b></td><td>Clause 22 and 45 transactions</td><td>Timing and turnaround</td></tr><tr><td>Timestamping</td><td>Known packet timing</td><td>Accuracy within the stated bound</td></tr><tr><td><b>Interoperability</b></td><td>Against a real PHY on a board</td><td><b>The only test that finds RGMII delay problems</b></td></tr></tbody></table>
+<div class="note"><b>Deliverable note for all three interface blocks in
+    this chapter.</b> MIPI, PCIe and Ethernet share a structure: a process-independent
+    digital controller above a process-dependent PHY. In every case the integrator's
+    difficulties concentrate at that boundary &mdash; PPI timing for MIPI, PIPE and
+    equalisation for PCIe, RGMII delay and MDIO configuration for Ethernet. <b>The user
+    guide's most valuable section is therefore the numbered PHY bring-up sequence</b>, and
+    the example design's most valuable property is that it drives a real PHY. An IP that
+    has only ever been simulated against a PHY model will meet these problems at the
+    customer's site rather than the vendor's.</div>

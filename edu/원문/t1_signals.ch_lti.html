@@ -1,0 +1,71 @@
+<h1 id="lti">신호와 시스템 &mdash; 모든 DSP IP 의 바닥</h1>
+<p>하드웨어 IP 를 설계하든 모델링하든, 다루는 대상은 <b>신호</b>이고
+    만드는 것은 <b>시스템</b>이다. 이 장은 그 언어를 정리한다. 이미 아는 내용이라도
+    <b>&lsquo;하드웨어에서 무엇을 뜻하는가&rsquo;</b>를 함께 보라 &mdash; 그것이 교과서와
+    실무를 잇는 다리다.</p>
+<h2>1. 선형 시불변(LTI) 시스템</h2>
+<div class="bs">시스템 <i>T</i>{&middot;} 가
+    <b>선형</b>(중첩이 성립: <i>T</i>{<i>ax</i><sub>1</sub>+<i>bx</i><sub>2</sub>}
+    = <i>aT</i>{<i>x</i><sub>1</sub>}+<i>bT</i>{<i>x</i><sub>2</sub>})이고
+    <b>시불변</b>(입력을 미루면 출력도 그만큼 미뤄짐)이면 LTI 라 한다.
+    LTI 시스템은 <b>임펄스 응답 <i>h</i>[<i>n</i>] 하나로 완전히 결정</b>된다.</div>
+<div class="math">y[n] = &sum;<sub>k</sub> x[k] h[n&minus;k]
+    &equiv; (x * h)[n]</div>
+<figure id="fig13"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 155" width="100%" font-family="Times New Roman, Nimbus Roman, serif"><defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#000"/></marker><marker id="ao" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="none" stroke="#000" stroke-width="1.4"/></marker></defs><rect x="190" y="40" width="150" height="46" rx="2" fill="#fff" stroke="#000" stroke-width="1.1"/><text x="265.0" y="60.0" font-size="10" text-anchor="middle">LTI 시스템</text><text x="265.0" y="74.0" font-size="8" text-anchor="middle" fill="#333">h[n]</text><path d="M60,63 L190,63" stroke="#000" stroke-width="1.1" fill="none" marker-end="url(#a)"/><text x="62" y="55" font-size="10" text-anchor="start" fill="#000" >x[n]</text><path d="M340,63 L470,63" stroke="#000" stroke-width="1.1" fill="none" marker-end="url(#a)"/><text x="400" y="55" font-size="10" text-anchor="start" fill="#000" >y[n] = (x * h)[n]</text><text x="265" y="118" font-size="9" text-anchor="middle" fill="#000" font-style="italic">시간불변 + 선형  ⇒  임펄스응답 하나가 시스템 전부를 정한다</text><text x="265" y="140" font-size="10" text-anchor="middle" fill="#000" >Y(z) = H(z)·X(z)    —  합성곱이 곱셈이 된다</text></svg><figcaption><b>그림 13.</b> LTI 시스템과 합성곱. 변환 영역에서 합성곱은 곱셈이 되며, 이 성질이 필터 설계 · FFT 가속 · 등화기 이론 전부의 출발점이다.</figcaption></figure>
+<div class="ms"><b>하드웨어에서 LTI 가 뜻하는 것.</b> LTI 이면
+    &ldquo;계수 <i>h</i>[<i>k</i>]&rdquo; 만 저장하면 되고, 연산은 곱-누산(MAC)의 합이다.
+    그래서 FIR 필터는 <b>MAC 배열 + 지연선</b> 이라는 단일 구조로 환원된다.
+    <b>비선형이거나 시변이면 이 환원이 깨진다</b> &mdash; 예를 들어 판정 되먹임
+    등화기(DFE)는 슬라이서(비선형) 때문에 LTI 가 아니고, 그래서 중첩 원리로 해석할 수
+    없으며 오류 전파(error propagation)라는 고유 현상이 생긴다. <b>모델링에서
+    &ldquo;LTI 인가&rdquo;를 먼저 묻는 습관이 중요하다.</b></div>
+<h2>2. 변환 &mdash; 왜 셋이나 있나</h2>
+<table><caption>표 60. 네 가지 변환과 쓰임</caption><thead><tr><th>변환</th><th>정의역</th><th>핵심 성질</th><th>IP 설계에서</th></tr></thead><tbody><tr><td><b>푸리에 (DTFT/DFT)</b></td><td>이산시간 &rarr; 주파수</td><td>합성곱 &rarr; 곱, 파시발 등식</td><td>스펙트럼 해석 · FFT 블록 · 채널 응답</td></tr><tr><td><b>Z 변환</b></td><td>이산시간 &rarr; 복소 <i>z</i></td><td>지연 <i>z</i><sup>&minus;1</sup>, 극·영점</td><td><b>IIR 안정성</b> · 필터 구조 · 되먹임 해석</td></tr><tr><td><b>라플라스</b></td><td>연속시간 &rarr; 복소 <i>s</i></td><td>미분 &rarr; <i>s</i> 곱</td><td>아날로그 필터 · PLL 루프 · 전송선</td></tr><tr><td><b>힐베르트</b></td><td>실수 &rarr; 해석신호</td><td>음의 주파수 제거</td><td>I/Q 생성 · SSB · 포락선 검출</td></tr></tbody></table>
+<div class="ms"><b>Z 평면에서 안정성.</b> 인과적 IIR 이 BIBO 안정이려면
+    모든 극이 <b>단위원 내부</b>에 있어야 한다(|<i>z</i>|&lt;1). 계수를 양자화하면 극이
+    움직이고, <b>단위원 밖으로 나가면 발산</b>한다. 그래서 고정소수점 IIR 은
+    <i>직접형</i>이 아니라 <b>2차 절편(biquad) 종속 연결</b>로 구현한다 &mdash;
+    2차 절편은 극이 두 개뿐이라 계수 양자화에 대한 극 이동이 작기 때문이다.
+    <b>이것이 &ldquo;수학적으로 같은 전달함수인데 구현이 다르면 성능이 다르다&rdquo;의
+    대표 사례다.</b> 모델이 부동소수점 직접형으로 돼 있고 RTL 이 고정소수점 biquad 면
+    둘은 <b>당연히</b> 다르다 &mdash; 비교 기준을 먼저 정해야 한다.</div>
+<h2>3. 표본화와 에일리어싱</h2>
+<figure id="fig14"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 150" width="100%" font-family="Times New Roman, Nimbus Roman, serif"><defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#000"/></marker><marker id="ao" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="none" stroke="#000" stroke-width="1.4"/></marker></defs><text x="20" y="22" font-size="9" text-anchor="start" fill="#000" >원신호 대역 B</text><polyline points="22,78 60,38 98,78" stroke="#000" stroke-width="1.1" fill="none"/><text x="60" y="92" font-size="9" text-anchor="middle" fill="#000" >0</text><polyline points="172,78 210,38 248,78" stroke="#000" stroke-width="1.1" fill="none"/><text x="210" y="92" font-size="9" text-anchor="middle" fill="#000" >f_s</text><polyline points="322,78 360,38 398,78" stroke="#000" stroke-width="1.1" fill="none"/><text x="360" y="92" font-size="9" text-anchor="middle" fill="#000" >2f_s</text><path d="M20,78 L420,78" stroke="#000" stroke-width="1.1" fill="none"/><text x="20" y="118" font-size="9" text-anchor="start" fill="#000" >f_s > 2B 이면 복제본이 겹치지 않는다 — 나이퀴스트</text><text x="20" y="136" font-size="9" text-anchor="start" fill="#000" fill="#a33">겹치면 되돌릴 수 없다: 에일리어싱은 정보 손실이다</text></svg><figcaption><b>그림 14.</b> 표본화는 스펙트럼을 f<sub>s</sub> 간격으로 복제한다. 복제본이 겹치면(에일리어싱) 원신호를 되돌릴 수 없다.</figcaption></figure>
+<div class="math">f<sub>s</sub> &gt; 2B &nbsp;&nbsp;(나이퀴스트 조건)</div>
+<div class="ms"><b>대역통과 표본화(undersampling).</b> 신호가
+    [<i>f</i><sub>L</sub>, <i>f</i><sub>H</sub>] 에만 있으면 <i>f</i><sub>s</sub> 가
+    2<i>f</i><sub>H</sub> 보다 훨씬 작아도 된다. 조건은
+    2<i>f</i><sub>H</sub>/<i>n</i> &le; <i>f</i><sub>s</sub> &le;
+    2<i>f</i><sub>L</sub>/(<i>n</i>&minus;1) 을 만족하는 정수 <i>n</i> 이 존재하는 것.
+    이것이 <b>RF 수신기에서 ADC 속도를 낮추는 표준 기법</b>이다. 대가는 ADC 의
+    <i>입력 대역폭</i>(샘플러의 아날로그 대역)이 <i>f</i><sub>H</sub> 이상이어야 한다는
+    것 &mdash; <b>표본화율과 입력 대역폭은 다른 사양이다.</b> 데이터시트에서 이 둘을
+    혼동하면 설계가 무너진다.</div>
+<div class="warn"><b>안티에일리어싱 필터는 되돌릴 수 없는 결정이다.</b>
+    표본화 <i>전에</i> 아날로그로 걸러야 한다. 한 번 접힌 스펙트럼은 디지털로 어떤
+    처리를 해도 분리되지 않는다. <b>DSP 가 고칠 수 없는 몇 안 되는 손상</b>이고,
+    그래서 시스템 분담에서 아날로그 쪽 사양으로 못박힌다.</div>
+<h2>4. 확률 · 잡음 · 성능 지표</h2>
+<table><caption>표 61. 통신/신호 IP 에서 쓰는 잡음과 지표</caption><thead><tr><th>양</th><th>정의 / 식</th><th>어디서 나오나</th></tr></thead><tbody><tr><td>열잡음</td><td><i>N</i> = <i>kTB</i>. &minus;174 dBm/Hz @ 290K</td><td>모든 수신기의 하한</td></tr><tr><td>잡음지수 NF</td><td>입력 SNR / 출력 SNR (dB)</td><td>LNA 가 전체 NF 를 지배(Friis 식)</td></tr><tr><td>Friis</td><td>F = F<sub>1</sub> + (F<sub>2</sub>&minus;1)/G<sub>1</sub> + &hellip;</td><td><b>첫 단 이득이 크면 뒷단 잡음이 묻힌다</b></td></tr><tr><td>SNR</td><td>신호전력/잡음전력</td><td>모든 성능의 출발</td></tr><tr><td>E<sub>b</sub>/N<sub>0</sub></td><td>비트당 에너지 / 잡음밀도</td><td><b>변조 방식을 공평하게 비교하는 축</b></td></tr><tr><td>BER</td><td>비트오류율</td><td>링크 품질</td></tr><tr><td>Q 함수</td><td>Q(x) = &frac12;erfc(x/&radic;2)</td><td>BER = Q(&radic;(2E<sub>b</sub>/N<sub>0</sub>)) (BPSK)</td></tr><tr><td>EVM</td><td>오차벡터 크기 (%)</td><td>송신기 품질. SNR 과 대응</td></tr><tr><td>ENOB</td><td>(SNDR&minus;1.76)/6.02</td><td>ADC 의 <b>실효</b> 비트수</td></tr><tr><td>SFDR</td><td>최대 스퓨어 대비 (dBc)</td><td>ADC/DAC 선형성</td></tr><tr><td>위상잡음</td><td>L(&Delta;f) (dBc/Hz)</td><td>PLL/VCO. 지터로 환산된다</td></tr></tbody></table>
+<div class="ms"><b>ENOB 이 왜 중요한가.</b> 12비트 ADC 를 샀는데
+    ENOB 이 9.5 라면 <b>실제 분해능은 9.5비트</b>다. 모델에서 12비트로 양자화하면
+    RTL/실리콘보다 낙관적인 성능이 나온다. <b>시스템 모델에는 ENOB 을 넣어야 한다.</b>
+    특히 고속 ADC 는 <i>지터</i>가 ENOB 을 제한한다:
+    SNR<sub>jitter</sub> = &minus;20log<sub>10</sub>(2&pi;<i>f</i><sub>in</sub>&sigma;<sub>t</sub>).
+    56 GS/s 급에서 입력 14 GHz, 지터 100 fs 면
+    SNR &asymp; 41 dB &rarr; ENOB &asymp; 6.5 로 <b>지터가 분해능을 정한다.</b></div>
+<h2>5. 랜덤 과정과 상관</h2>
+<div class="bs"><b>정상성(stationarity)</b>: 통계가 시간에 불변.
+    <b>광의 정상(WSS)</b> 이면 평균이 상수이고 자기상관이 시간차에만 의존한다.
+    <b>위너&ndash;킨친 정리</b>: WSS 과정의 <b>전력스펙트럼밀도는 자기상관의
+    푸리에 변환</b>이다.</div>
+<div class="math">S<sub>xx</sub>(f) = &#8497;{R<sub>xx</sub>(&tau;)}
+    &nbsp;&nbsp;&nbsp; R<sub>xx</sub>(&tau;) = E[x(t)x*(t&minus;&tau;)]</div>
+<div class="ms"><b>왜 IP 설계자가 이 정리를 써야 하나.</b> 적응 필터
+    (LMS · RLS)의 최적해가 <b>위너 해</b> <b>w</b> = <b>R</b><sup>&minus;1</sup><b>p</b>
+    이고, 여기서 <b>R</b> 이 입력 자기상관행렬, <b>p</b> 가 상호상관벡터다.
+    수렴 속도는 <b>R</b> 의 <b>고유값 퍼짐</b>(&lambda;<sub>max</sub>/&lambda;<sub>min</sub>)이
+    정한다 &mdash; 퍼짐이 크면 LMS 가 느리다. 그래서 채널이 심하게 주파수 선택적이면
+    LMS 대신 RLS 나 주파수영역 적응을 쓴다. <b>&ldquo;적응이 안 수렴한다&rdquo;는 버그
+    보고의 상당수가 실은 고유값 퍼짐 문제</b>이고, 모델링 팀이 이것을 계산해 보여 주면
+    논쟁이 끝난다.</div>

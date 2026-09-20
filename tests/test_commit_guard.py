@@ -32,8 +32,17 @@ def ok(cond, what):
 초록감사 = lambda repo: {"결과": [("tests/test_a.py", 0, ["a: 통과"])], "안덮임": [], "안봄": [], "변경": ["a.py"]}  # noqa: E731
 초록CI = lambda repo: {"상태": "초록", "sha": "abc", "url": "", "번호": 1, "실패": [], "말": "main CI 초록 (#1 abc)"}  # noqa: E731
 
+# **2차 메타 문도 막아 둔다.** 아래 앞 대목은 문 셋(게이트·검사·CI)만 보려는 것인데,
+# 메타 문은 진짜 저장소의 변이 원장을 읽는다 -- 그래서 지금 누가 무엇을 고쳐 두었는지에
+# 따라 통과가 갈렸다(실측 2026-09-20: `commit_guard.py` 를 고치자 그 파일에 걸린
+# UNRESOLVED 19개가 튀어나와 "셋 다 초록 -> 통과" 가 빨개졌다). **검사 결과가 남의 작업
+# 디렉터리에 달려 있으면 그것은 검사가 아니다.** 메타 문 자체는 136줄 아래에서 따로 본다.
+초록메타 = lambda repo, 바뀐: {"commit": True, "있나": True, "미해결": 0, "FR": 0,      # noqa: E731
+                           "INVALID": 0, "말": "(검사용) 메타 초록"}
+
 try:
     G.게이트기, G.감사기, G.CI기 = 초록게이트, 초록감사, 초록CI
+    G.메타기 = 초록메타
     ok_, 보 = G.검사(뿌리)
     ok(ok_ and "검사 통과 1개" in 보 and "초록" in 보, f"셋 다 초록 -> 통과 ({보.splitlines()[0][:40]})")
 
@@ -181,6 +190,28 @@ _못 = G.여섯조건({**{k: (G.참, "") for k in G.여섯항}, "SemanticObserva
 ok(_못["commit"] is True and _못["못잰항"] == ["SemanticObservation"],
    "**못잼은 막지 않고 적는다** -- 재지 않은 것을 빨강이라 하는 것도 거짓 빨강이다")
 ok("[?]" in _못["표"] and "[O]" in _못["표"], "표가 항마다 O/X/? 를 적는다")
+
+print("\n── 답에 딸려 보내는 것은 **짧게** (사용자 2026-09-20) ───────────────")
+_긴보고 = ("영향 분석 -- 바뀐 코드 1개: generate_pdf.py\n"
+        "  덮는 검사 0개 -- **없다**\n"
+        "[CI 차단] main CI 빨강 (5534edd)\n"
+        "  빨강 위에 자가 수정을 쌓지 않는다\n"
+        "Commit = BasePass ∧ ToolInvoked ∧ ...\n"
+        "  [X] BasePass             main CI 빨강\n"
+        "  [O] ToolInvoked          도구 1개\n"
+        "  -> 막음 · 거짓인 항: BasePass")
+_짧 = G.요약(_긴보고, False)
+ok("[CI 차단]" in _짧 and "BasePass" in _짧, "막혔으면 **무엇이 막았는지**는 남긴다")
+ok("영향 분석" not in _짧 and "ToolInvoked" not in _짧,
+   "**표 전체는 안 붙인다** -- 답보다 길어진다")
+ok(len(_짧) < len(_긴보고) / 2, f"짧아야 한다 ({len(_짧)} < {len(_긴보고)//2})")
+ok(G.요약(_긴보고, True) == "", "통과했으면 **아무것도 안 붙인다** -- 성공은 조용한 것이 맞다")
+
+_서버 = (뿌리 / "discord_bot_server.py").read_text(encoding="utf-8")
+ok('return f"{보고}\\n{_verify_pushed()}"' not in _서버,
+   "밀기 성공 경로가 문지기 보고를 답에 안 붙인다")
+ok("commit_guard.요약(보고, 통과)" in _서버, "막힌 경로는 짧은 요약을 보낸다")
+ok('print(f"[git_sync] 문지기' in _서버, "보고 전체는 **로그에 남긴다** -- 버리지 않는다")
 
 print()
 if FAIL:

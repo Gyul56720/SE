@@ -1,0 +1,1031 @@
+{
+ "장": [
+  {
+   "파일": "A_found.ch_linalg.html",
+   "모듈": "A_found",
+   "함수": "ch_linalg",
+   "자": 5478
+  },
+  {
+   "파일": "A_found.ch_lti.html",
+   "모듈": "A_found",
+   "함수": "ch_lti",
+   "자": 11668
+  },
+  {
+   "파일": "A_found.ch_prob.html",
+   "모듈": "A_found",
+   "함수": "ch_prob",
+   "자": 7252
+  },
+  {
+   "파일": "A_found.ch_sampling.html",
+   "모듈": "A_found",
+   "함수": "ch_sampling",
+   "자": 5106
+  },
+  {
+   "파일": "A_found.ch_transform.html",
+   "모듈": "A_found",
+   "함수": "ch_transform",
+   "자": 5234
+  },
+  {
+   "파일": "B_device.ch_analog.html",
+   "모듈": "B_device",
+   "함수": "ch_analog",
+   "자": 7274
+  },
+  {
+   "파일": "B_device.ch_cmos.html",
+   "모듈": "B_device",
+   "함수": "ch_cmos",
+   "자": 8706
+  },
+  {
+   "파일": "B_device.ch_interconnect.html",
+   "모듈": "B_device",
+   "함수": "ch_interconnect",
+   "자": 8862
+  },
+  {
+   "파일": "B_device.ch_mos.html",
+   "모듈": "B_device",
+   "함수": "ch_mos",
+   "자": 5915
+  },
+  {
+   "파일": "B_device.ch_timing.html",
+   "모듈": "B_device",
+   "함수": "ch_timing",
+   "자": 7601
+  },
+  {
+   "파일": "C_digital.ch_arith.html",
+   "모듈": "C_digital",
+   "함수": "ch_arith",
+   "자": 9518
+  },
+  {
+   "파일": "C_digital.ch_cdc.html",
+   "모듈": "C_digital",
+   "함수": "ch_cdc",
+   "자": 8005
+  },
+  {
+   "파일": "C_digital.ch_control.html",
+   "모듈": "C_digital",
+   "함수": "ch_control",
+   "자": 7373
+  },
+  {
+   "파일": "D_arch.ch_isa.html",
+   "모듈": "D_arch",
+   "함수": "ch_isa",
+   "자": 4713
+  },
+  {
+   "파일": "D_arch.ch_memory.html",
+   "모듈": "D_arch",
+   "함수": "ch_memory",
+   "자": 6492
+  },
+  {
+   "파일": "D_arch.ch_pipeline.html",
+   "모듈": "D_arch",
+   "함수": "ch_pipeline",
+   "자": 6686
+  },
+  {
+   "파일": "E_dsp.ch_fft.html",
+   "모듈": "E_dsp",
+   "함수": "ch_fft",
+   "자": 5040
+  },
+  {
+   "파일": "E_dsp.ch_filters.html",
+   "모듈": "E_dsp",
+   "함수": "ch_filters",
+   "자": 11221
+  },
+  {
+   "파일": "F_comm.ch_fec.html",
+   "모듈": "F_comm",
+   "함수": "ch_fec",
+   "자": 8660
+  },
+  {
+   "파일": "F_comm.ch_link.html",
+   "모듈": "F_comm",
+   "함수": "ch_link",
+   "자": 11035
+  },
+  {
+   "파일": "G_rf.ch_radar.html",
+   "모듈": "G_rf",
+   "함수": "ch_radar",
+   "자": 8440
+  },
+  {
+   "파일": "G_rf.ch_tline.html",
+   "모듈": "G_rf",
+   "함수": "ch_tline",
+   "자": 7182
+  },
+  {
+   "파일": "H_verif.ch_eda.html",
+   "모듈": "H_verif",
+   "함수": "ch_eda",
+   "자": 5113
+  },
+  {
+   "파일": "H_verif.ch_sec.html",
+   "모듈": "H_verif",
+   "함수": "ch_sec",
+   "자": 4898
+  },
+  {
+   "파일": "H_verif.ch_verif.html",
+   "모듈": "H_verif",
+   "함수": "ch_verif",
+   "자": 11369
+  },
+  {
+   "파일": "I_info.ch_algebra.html",
+   "모듈": "I_info",
+   "함수": "ch_algebra",
+   "자": 5695
+  },
+  {
+   "파일": "I_info.ch_discrete.html",
+   "모듈": "I_info",
+   "함수": "ch_discrete",
+   "자": 3654
+  },
+  {
+   "파일": "I_info.ch_info.html",
+   "모듈": "I_info",
+   "함수": "ch_info",
+   "자": 5946
+  },
+  {
+   "파일": "I_info.ch_opt.html",
+   "모듈": "I_info",
+   "함수": "ch_opt",
+   "자": 3608
+  },
+  {
+   "파일": "J_blocks.ch_accel.html",
+   "모듈": "J_blocks",
+   "함수": "ch_accel",
+   "자": 11597
+  },
+  {
+   "파일": "J_blocks.ch_codec.html",
+   "모듈": "J_blocks",
+   "함수": "ch_codec",
+   "자": 3394
+  },
+  {
+   "파일": "J_blocks.ch_memory_design.html",
+   "모듈": "J_blocks",
+   "함수": "ch_memory_design",
+   "자": 3663
+  },
+  {
+   "파일": "J_blocks.ch_noc.html",
+   "모듈": "J_blocks",
+   "함수": "ch_noc",
+   "자": 3946
+  },
+  {
+   "파일": "K_wireless.ch_modern.html",
+   "모듈": "K_wireless",
+   "함수": "ch_modern",
+   "자": 3694
+  },
+  {
+   "파일": "K_wireless.ch_protocol.html",
+   "모듈": "K_wireless",
+   "함수": "ch_protocol",
+   "자": 4758
+  },
+  {
+   "파일": "K_wireless.ch_reliability.html",
+   "모듈": "K_wireless",
+   "함수": "ch_reliability",
+   "자": 4160
+  },
+  {
+   "파일": "K_wireless.ch_wireless.html",
+   "모듈": "K_wireless",
+   "함수": "ch_wireless",
+   "자": 7964
+  },
+  {
+   "파일": "L_phys.ch_control.html",
+   "모듈": "L_phys",
+   "함수": "ch_control",
+   "자": 3757
+  },
+  {
+   "파일": "L_phys.ch_power.html",
+   "모듈": "L_phys",
+   "함수": "ch_power",
+   "자": 3185
+  },
+  {
+   "파일": "L_phys.ch_semi.html",
+   "모듈": "L_phys",
+   "함수": "ch_semi",
+   "자": 5876
+  },
+  {
+   "파일": "L_phys.ch_thermal.html",
+   "모듈": "L_phys",
+   "함수": "ch_thermal",
+   "자": 3009
+  },
+  {
+   "파일": "M_soft.ch_hwsw.html",
+   "모듈": "M_soft",
+   "함수": "ch_hwsw",
+   "자": 4249
+  },
+  {
+   "파일": "M_soft.ch_image.html",
+   "모듈": "M_soft",
+   "함수": "ch_image",
+   "자": 3340
+  },
+  {
+   "파일": "M_soft.ch_measure.html",
+   "모듈": "M_soft",
+   "함수": "ch_measure",
+   "자": 3959
+  },
+  {
+   "파일": "M_soft.ch_ml.html",
+   "모듈": "M_soft",
+   "함수": "ch_ml",
+   "자": 4613
+  },
+  {
+   "파일": "N_extra.ch_async.html",
+   "모듈": "N_extra",
+   "함수": "ch_async",
+   "자": 3248
+  },
+  {
+   "파일": "N_extra.ch_optics.html",
+   "모듈": "N_extra",
+   "함수": "ch_optics",
+   "자": 3293
+  },
+  {
+   "파일": "N_extra.ch_physdes.html",
+   "모듈": "N_extra",
+   "함수": "ch_physdes",
+   "자": 3470
+  },
+  {
+   "파일": "N_extra.ch_stats.html",
+   "모듈": "N_extra",
+   "함수": "ch_stats",
+   "자": 3209
+  },
+  {
+   "파일": "P_iface.ch_gmac.html",
+   "모듈": "P_iface",
+   "함수": "ch_gmac",
+   "자": 9384
+  },
+  {
+   "파일": "P_iface.ch_mipi.html",
+   "모듈": "P_iface",
+   "함수": "ch_mipi",
+   "자": 11679
+  },
+  {
+   "파일": "P_iface.ch_pcie.html",
+   "모듈": "P_iface",
+   "함수": "ch_pcie",
+   "자": 11648
+  },
+  {
+   "파일": "Q_more.ch_embedded.html",
+   "모듈": "Q_more",
+   "함수": "ch_embedded",
+   "자": 3035
+  },
+  {
+   "파일": "Q_more.ch_emc.html",
+   "모듈": "Q_more",
+   "함수": "ch_emc",
+   "자": 3473
+  },
+  {
+   "파일": "Q_more.ch_hls.html",
+   "모듈": "Q_more",
+   "함수": "ch_hls",
+   "자": 4516
+  },
+  {
+   "파일": "Q_more.ch_queue.html",
+   "모듈": "Q_more",
+   "함수": "ch_queue",
+   "자": 4206
+  },
+  {
+   "파일": "R_crypto.ch_cryptomath.html",
+   "모듈": "R_crypto",
+   "함수": "ch_cryptomath",
+   "자": 6675
+  },
+  {
+   "파일": "R_crypto.ch_quantum.html",
+   "모듈": "R_crypto",
+   "함수": "ch_quantum",
+   "자": 3540
+  },
+  {
+   "파일": "R_crypto.ch_test.html",
+   "모듈": "R_crypto",
+   "함수": "ch_test",
+   "자": 3394
+  },
+  {
+   "파일": "S_iface2.ch_clocking.html",
+   "모듈": "S_iface2",
+   "함수": "ch_clocking",
+   "자": 4311
+  },
+  {
+   "파일": "S_iface2.ch_display.html",
+   "모듈": "S_iface2",
+   "함수": "ch_display",
+   "자": 3747
+  },
+  {
+   "파일": "S_iface2.ch_ipxact.html",
+   "모듈": "S_iface2",
+   "함수": "ch_ipxact",
+   "자": 4302
+  },
+  {
+   "파일": "S_iface2.ch_storage.html",
+   "모듈": "S_iface2",
+   "함수": "ch_storage",
+   "자": 3583
+  },
+  {
+   "파일": "T1_device.ch_device.html",
+   "모듈": "T1_device",
+   "함수": "ch_device",
+   "자": 35386
+  },
+  {
+   "파일": "T2_delay.ch_delay.html",
+   "모듈": "T2_delay",
+   "함수": "ch_delay",
+   "자": 55132
+  },
+  {
+   "파일": "W_practice.ch_auto.html",
+   "모듈": "W_practice",
+   "함수": "ch_auto",
+   "자": 5766
+  },
+  {
+   "파일": "W_practice.ch_bringup.html",
+   "모듈": "W_practice",
+   "함수": "ch_bringup",
+   "자": 7232
+  },
+  {
+   "파일": "W_practice.ch_business.html",
+   "모듈": "W_practice",
+   "함수": "ch_business",
+   "자": 5255
+  },
+  {
+   "파일": "W_practice.ch_career.html",
+   "모듈": "W_practice",
+   "함수": "ch_career",
+   "자": 4791
+  },
+  {
+   "파일": "W_practice.ch_house.html",
+   "모듈": "W_practice",
+   "함수": "ch_house",
+   "자": 8115
+  },
+  {
+   "파일": "W_practice.ch_labs.html",
+   "모듈": "W_practice",
+   "함수": "ch_labs",
+   "자": 6856
+  },
+  {
+   "파일": "W_practice.ch_papers.html",
+   "모듈": "W_practice",
+   "함수": "ch_papers",
+   "자": 4978
+  },
+  {
+   "파일": "W_practice.ch_process.html",
+   "모듈": "W_practice",
+   "함수": "ch_process",
+   "자": 10901
+  },
+  {
+   "파일": "X10_mem.ch_mem2.html",
+   "모듈": "X10_mem",
+   "함수": "ch_mem2",
+   "자": 14666
+  },
+  {
+   "파일": "X11_noc.ch_noc2.html",
+   "모듈": "X11_noc",
+   "함수": "ch_noc2",
+   "자": 15022
+  },
+  {
+   "파일": "X12_ams.ch_ams.html",
+   "모듈": "X12_ams",
+   "함수": "ch_ams",
+   "자": 17713
+  },
+  {
+   "파일": "X13_ml.ch_mlhw.html",
+   "모듈": "X13_ml",
+   "함수": "ch_mlhw",
+   "자": 14038
+  },
+  {
+   "파일": "X14_physdes.ch_physdes2.html",
+   "모듈": "X14_physdes",
+   "함수": "ch_physdes2",
+   "자": 11372
+  },
+  {
+   "파일": "X15_sec.ch_hwsec.html",
+   "모듈": "X15_sec",
+   "함수": "ch_hwsec",
+   "자": 12017
+  },
+  {
+   "파일": "X16_rel.ch_reliability2.html",
+   "모듈": "X16_rel",
+   "함수": "ch_reliability2",
+   "자": 15421
+  },
+  {
+   "파일": "X17_modern.ch_modern2.html",
+   "모듈": "X17_modern",
+   "함수": "ch_modern2",
+   "자": 11381
+  },
+  {
+   "파일": "X18_queue.ch_perf2.html",
+   "모듈": "X18_queue",
+   "함수": "ch_perf2",
+   "자": 11518
+  },
+  {
+   "파일": "X19_isa.ch_cores.html",
+   "모듈": "X19_isa",
+   "함수": "ch_cores",
+   "자": 11397
+  },
+  {
+   "파일": "X1_fixed.ch_fixed.html",
+   "모듈": "X1_fixed",
+   "함수": "ch_fixed",
+   "자": 30086
+  },
+  {
+   "파일": "X20_codec.ch_codec2.html",
+   "모듈": "X20_codec",
+   "함수": "ch_codec2",
+   "자": 9616
+  },
+  {
+   "파일": "X21_control.ch_control2.html",
+   "모듈": "X21_control",
+   "함수": "ch_control2",
+   "자": 11325
+  },
+  {
+   "파일": "X22_dsp2.ch_resample.html",
+   "모듈": "X22_dsp2",
+   "함수": "ch_resample",
+   "자": 11277
+  },
+  {
+   "파일": "X23_math.ch_complex.html",
+   "모듈": "X23_math",
+   "함수": "ch_complex",
+   "자": 17593
+  },
+  {
+   "파일": "X24_linalg.ch_numlin.html",
+   "모듈": "X24_linalg",
+   "함수": "ch_numlin",
+   "자": 14359
+  },
+  {
+   "파일": "X25_detect.ch_detect.html",
+   "모듈": "X25_detect",
+   "함수": "ch_detect",
+   "자": 15651
+  },
+  {
+   "파일": "X26_opt.ch_opt2.html",
+   "모듈": "X26_opt",
+   "함수": "ch_opt2",
+   "자": 13302
+  },
+  {
+   "파일": "X27_dft.ch_dft.html",
+   "모듈": "X27_dft",
+   "함수": "ch_dft",
+   "자": 18796
+  },
+  {
+   "파일": "X28_cache.ch_cache.html",
+   "모듈": "X28_cache",
+   "함수": "ch_cache",
+   "자": 12444
+  },
+  {
+   "파일": "X29_ldpc.ch_ldpc.html",
+   "모듈": "X29_ldpc",
+   "함수": "ch_ldpc",
+   "자": 14217
+  },
+  {
+   "파일": "X2_timing.ch_sta.html",
+   "모듈": "X2_timing",
+   "함수": "ch_sta",
+   "자": 23748
+  },
+  {
+   "파일": "X30_wireless.ch_ofdm.html",
+   "모듈": "X30_wireless",
+   "함수": "ch_ofdm",
+   "자": 12832
+  },
+  {
+   "파일": "X31_analog.ch_analog2.html",
+   "모듈": "X31_analog",
+   "함수": "ch_analog2",
+   "자": 12188
+  },
+  {
+   "파일": "X32_pdn.ch_pdn.html",
+   "모듈": "X32_pdn",
+   "함수": "ch_pdn",
+   "자": 12653
+  },
+  {
+   "파일": "X33_boolean.ch_boolreason.html",
+   "모듈": "X33_boolean",
+   "함수": "ch_boolreason",
+   "자": 12031
+  },
+  {
+   "파일": "X34_synth.ch_synth.html",
+   "모듈": "X34_synth",
+   "함수": "ch_synth",
+   "자": 10809
+  },
+  {
+   "파일": "X35_netds.ch_hwds.html",
+   "모듈": "X35_netds",
+   "함수": "ch_hwds",
+   "자": 12016
+  },
+  {
+   "파일": "X36_crypto.ch_cryptoeng.html",
+   "모듈": "X36_crypto",
+   "함수": "ch_cryptoeng",
+   "자": 11841
+  },
+  {
+   "파일": "X37_bus.ch_bus.html",
+   "모듈": "X37_bus",
+   "함수": "ch_bus",
+   "자": 14098
+  },
+  {
+   "파일": "X38_isp.ch_isp2.html",
+   "모듈": "X38_isp",
+   "함수": "ch_isp2",
+   "자": 13920
+  },
+  {
+   "파일": "X39_clock.ch_clocking2.html",
+   "모듈": "X39_clock",
+   "함수": "ch_clocking2",
+   "자": 11406
+  },
+  {
+   "파일": "X3_cdc.ch_cdc.html",
+   "모듈": "X3_cdc",
+   "함수": "ch_cdc",
+   "자": 19660
+  },
+  {
+   "파일": "X40_map.ch_map.html",
+   "모듈": "X40_map",
+   "함수": "ch_map",
+   "자": 10568
+  },
+  {
+   "파일": "X41_dram.ch_dram.html",
+   "모듈": "X41_dram",
+   "함수": "ch_dram",
+   "자": 10083
+  },
+  {
+   "파일": "X42_async.ch_reset.html",
+   "모듈": "X42_async",
+   "함수": "ch_reset",
+   "자": 11783
+  },
+  {
+   "파일": "X43_lowpower.ch_powerintent.html",
+   "모듈": "X43_lowpower",
+   "함수": "ch_powerintent",
+   "자": 11656
+  },
+  {
+   "파일": "X4_link.ch_linkbudget.html",
+   "모듈": "X4_link",
+   "함수": "ch_linkbudget",
+   "자": 23049
+  },
+  {
+   "파일": "X5_fec.ch_rs.html",
+   "모듈": "X5_fec",
+   "함수": "ch_rs",
+   "자": 21413
+  },
+  {
+   "파일": "X6_fft.ch_fft.html",
+   "모듈": "X6_fft",
+   "함수": "ch_fft",
+   "자": 14767
+  },
+  {
+   "파일": "X7_power.ch_power.html",
+   "모듈": "X7_power",
+   "함수": "ch_power",
+   "자": 16123
+  },
+  {
+   "파일": "X8_verif.ch_verifmath.html",
+   "모듈": "X8_verif",
+   "함수": "ch_verifmath",
+   "자": 21264
+  },
+  {
+   "파일": "X9_arith.ch_arith2.html",
+   "모듈": "X9_arith",
+   "함수": "ch_arith2",
+   "자": 17319
+  },
+  {
+   "파일": "Y10_regmap.ch_regmap.html",
+   "모듈": "Y10_regmap",
+   "함수": "ch_regmap",
+   "자": 10652
+  },
+  {
+   "파일": "Y11_model.ch_modelling.html",
+   "모듈": "Y11_model",
+   "함수": "ch_modelling",
+   "자": 12793
+  },
+  {
+   "파일": "Y12_hls.ch_hls2.html",
+   "모듈": "Y12_hls",
+   "함수": "ch_hls2",
+   "자": 10702
+  },
+  {
+   "파일": "Y13_career.ch_career2.html",
+   "모듈": "Y13_career",
+   "함수": "ch_career2",
+   "자": 9528
+  },
+  {
+   "파일": "Y14_toolchain.ch_toolchain.html",
+   "모듈": "Y14_toolchain",
+   "함수": "ch_toolchain",
+   "자": 8750
+  },
+  {
+   "파일": "Y15_first90.ch_project.html",
+   "모듈": "Y15_first90",
+   "함수": "ch_project",
+   "자": 11506
+  },
+  {
+   "파일": "Y1_mipi.ch_mipi2.html",
+   "모듈": "Y1_mipi",
+   "함수": "ch_mipi2",
+   "자": 17028
+  },
+  {
+   "파일": "Y2_pcie.ch_pcie2.html",
+   "모듈": "Y2_pcie",
+   "함수": "ch_pcie2",
+   "자": 14343
+  },
+  {
+   "파일": "Y3_gmac.ch_gmac2.html",
+   "모듈": "Y3_gmac",
+   "함수": "ch_gmac2",
+   "자": 12988
+  },
+  {
+   "파일": "Y4_agent.ch_agent.html",
+   "모듈": "Y4_agent",
+   "함수": "ch_agent",
+   "자": 17736
+  },
+  {
+   "파일": "Y5_business.ch_business2.html",
+   "모듈": "Y5_business",
+   "함수": "ch_business2",
+   "자": 13136
+  },
+  {
+   "파일": "Y6_papers.ch_papers2.html",
+   "모듈": "Y6_papers",
+   "함수": "ch_papers2",
+   "자": 12819
+  },
+  {
+   "파일": "Y7_bringup.ch_bringup2.html",
+   "모듈": "Y7_bringup",
+   "함수": "ch_bringup2",
+   "자": 11827
+  },
+  {
+   "파일": "Y8_solo.ch_solo.html",
+   "모듈": "Y8_solo",
+   "함수": "ch_solo",
+   "자": 12924
+  },
+  {
+   "파일": "Y9_compliance.ch_compliance.html",
+   "모듈": "Y9_compliance",
+   "함수": "ch_compliance",
+   "자": 9907
+  },
+  {
+   "파일": "Z10_rskp4.ch_rsplan.html",
+   "모듈": "Z10_rskp4",
+   "함수": "ch_rsplan",
+   "자": 8884
+  },
+  {
+   "파일": "Z11_axi.ch_axiwrap.html",
+   "모듈": "Z11_axi",
+   "함수": "ch_axiwrap",
+   "자": 12654
+  },
+  {
+   "파일": "Z12_docs.ch_docs.html",
+   "모듈": "Z12_docs",
+   "함수": "ch_docs",
+   "자": 8472
+  },
+  {
+   "파일": "Z13_week1.ch_week1.html",
+   "모듈": "Z13_week1",
+   "함수": "ch_week1",
+   "자": 8149
+  },
+  {
+   "파일": "Z14_cpp.ch_cppmodel.html",
+   "모듈": "Z14_cpp",
+   "함수": "ch_cppmodel",
+   "자": 11914
+  },
+  {
+   "파일": "Z15_hls.ch_hls.html",
+   "모듈": "Z15_hls",
+   "함수": "ch_hls",
+   "자": 14104
+  },
+  {
+   "파일": "Z16_arch.ch_sysarch.html",
+   "모듈": "Z16_arch",
+   "함수": "ch_sysarch",
+   "자": 30139
+  },
+  {
+   "파일": "Z17_gates.ch_gates.html",
+   "모듈": "Z17_gates",
+   "함수": "ch_gates",
+   "자": 38651
+  },
+  {
+   "파일": "Z18_sv.ch_sv.html",
+   "모듈": "Z18_sv",
+   "함수": "ch_sv",
+   "자": 29565
+  },
+  {
+   "파일": "Z19_cpp_syntax.ch_cppsyntax.html",
+   "모듈": "Z19_cpp_syntax",
+   "함수": "ch_cppsyntax",
+   "자": 15074
+  },
+  {
+   "파일": "Z1_team.ch_team.html",
+   "모듈": "Z1_team",
+   "함수": "ch_team",
+   "자": 14177
+  },
+  {
+   "파일": "Z20_tools.ch_tools.html",
+   "모듈": "Z20_tools",
+   "함수": "ch_tools",
+   "자": 18781
+  },
+  {
+   "파일": "Z21_spec.ch_protospec.html",
+   "모듈": "Z21_spec",
+   "함수": "ch_protospec",
+   "자": 13546
+  },
+  {
+   "파일": "Z22_8b10b.ch_8b10b.html",
+   "모듈": "Z22_8b10b",
+   "함수": "ch_8b10b",
+   "자": 28065
+  },
+  {
+   "파일": "Z23_ecc.ch_ecc.html",
+   "모듈": "Z23_ecc",
+   "함수": "ch_ecc",
+   "자": 15141
+  },
+  {
+   "파일": "Z2_loop.ch_loop.html",
+   "모듈": "Z2_loop",
+   "함수": "ch_loop",
+   "자": 11912
+  },
+  {
+   "파일": "Z3_bar.ch_bar.html",
+   "모듈": "Z3_bar",
+   "함수": "ch_bar",
+   "자": 9232
+  },
+  {
+   "파일": "Z4_pack.ch_pack.html",
+   "모듈": "Z4_pack",
+   "함수": "ch_pack",
+   "자": 7761
+  },
+  {
+   "파일": "Z5_first.ch_first.html",
+   "모듈": "Z5_first",
+   "함수": "ch_first",
+   "자": 9119
+  },
+  {
+   "파일": "Z6_limits.ch_limits.html",
+   "모듈": "Z6_limits",
+   "함수": "ch_limits",
+   "자": 8653
+  },
+  {
+   "파일": "Z7_bringup.ch_solobringup.html",
+   "모듈": "Z7_bringup",
+   "함수": "ch_solobringup",
+   "자": 8885
+  },
+  {
+   "파일": "Z8_money.ch_money.html",
+   "모듈": "Z8_money",
+   "함수": "ch_money",
+   "자": 8277
+  },
+  {
+   "파일": "Z9_scale.ch_scale.html",
+   "모듈": "Z9_scale",
+   "함수": "ch_scale",
+   "자": 9740
+  },
+  {
+   "파일": "Z_found0.ch_abstraction.html",
+   "모듈": "Z_found0",
+   "함수": "ch_abstraction",
+   "자": 8567
+  },
+  {
+   "파일": "Z_found0.ch_boolean.html",
+   "모듈": "Z_found0",
+   "함수": "ch_boolean",
+   "자": 5035
+  },
+  {
+   "파일": "Z_found0.ch_circuits.html",
+   "모듈": "Z_found0",
+   "함수": "ch_circuits",
+   "자": 3148
+  },
+  {
+   "파일": "Z_found0.ch_sequential.html",
+   "모듈": "Z_found0",
+   "함수": "ch_sequential",
+   "자": 4643
+  },
+  {
+   "파일": "p2_theory.ch_dv.html",
+   "모듈": "p2_theory",
+   "함수": "ch_dv",
+   "자": 2682
+  },
+  {
+   "파일": "p2_theory.ch_num.html",
+   "모듈": "p2_theory",
+   "함수": "ch_num",
+   "자": 5368
+  },
+  {
+   "파일": "p2_theory.ch_time.html",
+   "모듈": "p2_theory",
+   "함수": "ch_time",
+   "자": 4048
+  },
+  {
+   "파일": "p4_chip.ch_idea.html",
+   "모듈": "p4_chip",
+   "함수": "ch_idea",
+   "자": 3013
+  },
+  {
+   "파일": "p4_chip.ch_paper.html",
+   "모듈": "p4_chip",
+   "함수": "ch_paper",
+   "자": 2108
+  },
+  {
+   "파일": "p4_chip.ch_soc.html",
+   "모듈": "p4_chip",
+   "함수": "ch_soc",
+   "자": 3583
+  },
+  {
+   "파일": "p4_chip.ch_std.html",
+   "모듈": "p4_chip",
+   "함수": "ch_std",
+   "자": 3321
+  },
+  {
+   "파일": "t1_signals.ch_dsp.html",
+   "모듈": "t1_signals",
+   "함수": "ch_dsp",
+   "자": 9720
+  },
+  {
+   "파일": "t1_signals.ch_lti.html",
+   "모듈": "t1_signals",
+   "함수": "ch_lti",
+   "자": 8340
+  },
+  {
+   "파일": "t2_comm.ch_coding.html",
+   "모듈": "t2_comm",
+   "함수": "ch_coding",
+   "자": 4755
+  },
+  {
+   "파일": "t2_comm.ch_comm.html",
+   "모듈": "t2_comm",
+   "함수": "ch_comm",
+   "자": 9936
+  },
+  {
+   "파일": "w1_shop.ch_shop.html",
+   "모듈": "w1_shop",
+   "함수": "ch_shop",
+   "자": 9150
+  },
+  {
+   "파일": "w1_shop.ch_spec.html",
+   "모듈": "w1_shop",
+   "함수": "ch_spec",
+   "자": 3259
+  }
+ ],
+ "못한것": []
+}

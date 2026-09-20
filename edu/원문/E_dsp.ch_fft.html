@@ -1,0 +1,34 @@
+<h1 id="e2">E2. Transforms in Hardware: FFT and Friends</h1>
+<table><caption>Table 53. FFT algorithm families</caption><thead><tr><th>Algorithm</th><th>Complex multiplies</th><th>Structure</th><th>Note</th></tr></thead><tbody><tr><td>Radix-2 DIT/DIF</td><td>(<i>N</i>/2)log<sub>2</sub><i>N</i></td><td>Regular butterflies</td><td>Simplest control</td></tr><tr><td>Radix-4</td><td>fewer</td><td>4-point butterflies</td><td>~25% fewer multiplies</td></tr><tr><td>Split-radix</td><td>fewest for radix-2<sup>k</sup></td><td>Irregular</td><td>Control complexity</td></tr><tr><td>Winograd / PFA</td><td>Minimum multiplies</td><td>Length must factor into coprimes</td><td>Niche</td></tr><tr><td><b>Pipelined SDF</b></td><td>&mdash;</td><td>One butterfly per stage + delay line</td><td><b>Streaming; the standard for OFDM</b></td></tr><tr><td>MDC</td><td>&mdash;</td><td>Multiple data paths</td><td>Higher throughput</td></tr><tr><td><b>SSR / parallel</b></td><td>&mdash;</td><td>Several samples per clock</td><td><b>When the data rate exceeds the clock rate</b></td></tr></tbody></table>
+<div class="ms"><b>The resource that actually limits an FFT is memory and
+    the twiddle factors, not the butterflies.</b> A pipelined <i>N</i>-point SDF FFT needs
+    log<sub>2</sub><i>N</i> butterflies but a total of <i>N</i>&minus;1 words of delay
+    line, and a twiddle ROM whose size grows with <i>N</i>. For <i>N</i>&nbsp;=&nbsp;4096
+    that is thousands of words of storage against a dozen arithmetic units. Two standard
+    optimisations follow: exploit twiddle symmetry to store only one eighth of a period
+    and derive the rest by sign and swap, or generate twiddles with a CORDIC instead of a
+    ROM. <b>Which one wins depends on whether the target has cheap memory (FPGA) or cheap
+    logic (ASIC)</b> &mdash; another instance of the rule that architecture choices are
+    technology-dependent and must be re-derived, not memorised.</div>
+<div class="warn"><b>Bit-reversed output order is an interface decision,
+    not an implementation detail.</b> A DIF FFT naturally produces its output in
+    bit-reversed order. Reordering costs a full <i>N</i>-word buffer and its bandwidth. In
+    many systems the consumer &mdash; a channel equaliser, a magnitude detector &mdash;
+    does not care about order, so the reordering is pure waste. Competent designs pass the
+    bit-reversed order through and let the next block absorb it. <b>This means the
+    reference model and the RTL will disagree about output order unless the specification
+    says which convention is normative</b>, and a large fraction of "FFT mismatch" bug
+    reports are exactly this.</div>
+<table><caption>Table 54. Numerical behaviour of fixed-point FFT</caption><thead><tr><th>Issue</th><th>Cause</th><th>Handling</th></tr></thead><tbody><tr><td>Magnitude growth</td><td>Each radix-2 stage can double magnitude</td><td>Scale by &frac12; per stage (lose SNR), grow the word, or <b>block floating point</b></td></tr><tr><td>Twiddle quantisation</td><td>Finite coefficient precision</td><td>Adds a noise floor; usually 2&ndash;4 bits more than data width</td></tr><tr><td>Rounding vs truncation</td><td>Bias accumulates over log<i>N</i> stages</td><td>Convergent rounding avoids DC bias</td></tr><tr><td>Overflow detection</td><td>Input-dependent</td><td>Saturate and flag, or scale conservatively</td></tr></tbody></table>
+<table><caption>Table 55. Other transforms used in IP</caption><thead><tr><th>Transform</th><th>Property</th><th>Application</th></tr></thead><tbody><tr><td>DCT-II</td><td>Energy compaction for correlated signals</td><td>JPEG, H.264/HEVC (integer approximations)</td></tr><tr><td>Integer DCT</td><td>Exactly invertible, multiplier-free</td><td><b>Video codecs</b> &mdash; avoids encoder/decoder drift</td></tr><tr><td>Hadamard</td><td>&plusmn;1 only</td><td>Secondary transform, spreading</td></tr><tr><td>Number-theoretic (NTT)</td><td>Exact modular arithmetic</td><td><b>Post-quantum crypto (ML-KEM/ML-DSA)</b>, homomorphic encryption</td></tr><tr><td>Wavelet (DWT)</td><td>Time&ndash;frequency localisation</td><td>JPEG2000, denoising</td></tr></tbody></table>
+<div class="ms"><b>The integer DCT in video codecs is a beautiful example
+    of specification-driven design.</b> An exact DCT requires irrational coefficients; any
+    two implementations would round differently, and since the decoder's output feeds back
+    into the encoder's prediction loop, the tiny differences would accumulate into visible
+    <i>drift</i>. H.264 solved this by <b>defining the transform to be a specific integer
+    matrix</b>, so every conforming implementation produces bit-identical results. The
+    lesson generalises directly to IP work: <b>when an algorithm sits in a feedback loop
+    that spans two independently implemented systems, the specification must be bit-exact,
+    not mathematical.</b> The same reasoning applies to a DFE's tap update, to an
+    adaptive equaliser shared between link partners, and to any distributed control
+    loop.</div>

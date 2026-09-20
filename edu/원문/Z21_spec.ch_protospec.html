@@ -1,0 +1,87 @@
+<h1 id="z21">Z21. Building Protocol IP When You Cannot Get the Spec</h1>
+<p>Every previous part of this volume built a block whose definition was
+    ours to choose. A protocol block is different: its correctness is defined by a
+    document somebody else wrote, and for the protocols a design house most wants to sell
+    into &mdash; MIPI CSI-2, PCIe, Ethernet &mdash; that document is expensive,
+    membership-gated, or both.</p>
+
+    <p>This part is about what to do then. It is not a workaround chapter. The discipline
+    it describes &mdash; separate what you can prove from what you have assumed, and
+    publish the boundary &mdash; is the same discipline you need <em>with</em> the spec in
+    hand, because having the document does not mean you implemented it correctly.</p>
+<h2>Z21.1 The honest starting position</h2>
+<p>The container this book is built in has no outbound network: a
+    <code>CONNECT</code> to <code>ieee802.org</code> returns 403. So the normative tables
+    for 8b/10b and the MIPI packet-header ECC were not available while the blocks in
+    Parts&nbsp;Z22 and&nbsp;Z23 were written. That is stated first, because everything
+    else in those parts has to be read against it.</p>
+
+    <p>There are exactly three things you can do in that position, and only the third is
+    defensible:</p>
+<table><caption>Table 489. Three responses to a missing specification</caption><thead><tr><th>Response</th><th>What it produces</th><th>Verdict</th></tr></thead><tbody><tr><td>Write the constants from memory and ship</td><td>A block that looks finished and is wrong in ways nobody will notice until integration.</td><td><b>No.</b> This part demonstrates concretely why &mdash; three sets of remembered constants were wrong, and one was not even a valid code.</td></tr><tr><td>Refuse to build anything</td><td>Nothing. The structure, the verification harness and the microarchitecture are all independent of the exact table values.</td><td><b>No.</b> It throws away the 90&nbsp;% of the work that does not depend on the document.</td></tr><tr><td>Build it, prove everything provable, and publish the boundary</td><td>A block that is correct by construction on every property you can state, with a written list of what remains unverified and how to close it.</td><td><b>Yes.</b> This is what Parts Z22&ndash;Z23 do.</td></tr></tbody></table>
+<h2>Z21.2 What &ldquo;provable without the document&rdquo; means</h2>
+<p>A protocol constant is not arbitrary. It was chosen to make the code
+    satisfy properties &mdash; and those properties are usually stated in the open
+    literature even when the tables are not. That gives you a check with real teeth:
+    <b>assert the properties the constants exist to provide, and test them
+    exhaustively.</b></p>
+<table><caption>Table 490. The two blocks, and what each property buys</caption><thead><tr><th>Block</th><th>Property asserted</th><th>What a wrong constant would do</th></tr></thead><tbody><tr><td>8b/10b</td><td>Bijective within each running disparity</td><td>Two data bytes encode to the same codeword &rarr; the link cannot decode at all.</td></tr><tr><td></td><td>Running disparity stays in {&minus;1, +1}</td><td>DC wander on an AC-coupled link &rarr; the receiver's slicer drifts off centre.</td></tr><tr><td></td><td>No more than 5 identical bits in a row, <b>across codeword boundaries</b></td><td>The CDR loses lock. This is the property that caught two of the three defects below.</td></tr><tr><td></td><td>The comma pattern never occurs in data</td><td>The receiver aligns to a false byte boundary and every subsequent byte is garbage.</td></tr><tr><td>24+6 ECC</td><td>All 29 single-error syndromes distinct and non-zero</td><td>Two different single-bit errors look identical &rarr; the decoder &lsquo;corrects&rsquo; the wrong bit.</td></tr><tr><td></td><td>No double-error syndrome equals a single-error syndrome</td><td>A 2-bit error is silently &lsquo;fixed&rsquo; into a 3-bit error. Worse than no ECC.</td></tr></tbody></table>
+<p>Every one of those is checkable by enumeration on a laptop in under a
+    second, and every one of them failed at least once during this work.</p>
+<h2>Z21.3 What the checks actually caught</h2>
+<p>Six defects, all found by machine, none found by reading the code. They
+    are listed in full because the pattern matters more than any one of them.</p>
+<table><caption>Table 491. Every defect found while building the two protocol blocks</caption><thead><tr><th>Where</th><th>What was wrong</th><th>How it surfaced</th></tr></thead><tbody><tr><td>enc8b10b.h API</td><td>새 RD(-1 또는 +1)를 돌려주면서 -1 을 오류 코드로도 썼다. 부르는 쪽이 성한 결과 절반(528 중 264)을 버렸다.</td><td>proto_check 가 첫 실행에서 코드워드 개수가 절반이라고 알렸다</td></tr><tr><td>3b/4b 표 압축</td><td>'불균형 0 이면 RD 양쪽이 같은 코드' 라고 가정해 한 벌만 적었다. 틀렸다 -- 불균형 0 인데 다른 짝이 있고, 그 선택은 DC 균형이 아니라 연속비트가 정한다.</td><td>P3 이 1082 군데, P4 가 2048 번 깨졌다</td></tr><tr><td>5b/6b D.07</td><td>같은 가정. D.07 은 111000/000111 로 둘 다 불균형 0 인데 다르다.</td><td>P3 이 556 군데에서 깨졌다. D7.7 이 RD+1 에서 1110000001 -- 0 이 여섯 개</td></tr><tr><td>기억하고 있던 CSI-2 ECC 마스크</td><td>신드롬 30 개 중 서로 다른 것이 27 개. 단일오류 정정 부호조차 아니었다.</td><td>쓰기 전에 신드롬 distinctness 를 셌다. 그래서 **안 실었다**</td></tr><tr><td>ecc24_dec 의 전체패리티</td><td>다시 부호화해 여섯째 비트를 비교했더니 신드롬 자신의 패리티가 섞였다. 신드롬 무게가 홀수인 단일오류 90/180 이 이중오류로 오인됐다.</td><td>전수 단일오류 확인이 절반 실패</td></tr><tr><td>tb.v 의 자극</td><td>valid 가 0 인 구간을 아예 안 밟아, code_valid 를 가짜로 띄우는 변이가 통과했다.</td><td>변이 점수 71.4 % 의 탈출 하나. 놀림 사이클을 관찰하게 고쳐 100 % 가 됐다</td></tr></tbody></table>
+<div class="wex"><div class="wexh">Worked example 85. The defect that would have shipped</div><div class="wexg"><b>Given.</b> The MIPI CSI-2 packet-header ECC parity masks, written from memory, were about to go into both the C++ model and the RTL.</div><div class="wexm"><b>Method.</b> Before writing any code with them, count the syndromes: each of the 24 data bits and 6 parity bits must produce a distinct, non-zero syndrome, or the code cannot even correct single errors.</div><div class="wexn"><b>Numbers.</b> <b>27 distinct syndromes out of the 30 required</b>, and 96 pairs where a double-bit error is indistinguishable from a single-bit error.</div><div class="wexx">The check that caught it is four lines of Python and it ran before any Verilog existed. The cost of not running it would have been discovered at a customer's integration bench, months later, as &lsquo;your ECC sometimes makes things worse&rsquo;.</div><div class="wext"><b>How this is got wrong.</b> The tempting reading is &ldquo;close enough, it is mostly right.&rdquo; It is not mostly right &mdash; it is <b>not a single-error-correcting code at all</b>. Three of the 24 data bits share a syndrome with another bit, so roughly one single-bit header error in ten would be &lsquo;corrected&rsquo; by flipping the wrong bit, turning a recoverable error into a corrupted packet length. A block like this passes a random-data regression perfectly, because random data contains no bit errors.</div></div>
+<h2>Z21.4 The pattern in the three 8b/10b defects</h2>
+<p>Three separate defects in the encoder all had the same root, and it was
+    not a typo. It was <b>a compression rule that was really an unstated hypothesis</b>.</p>
+<div class="deriv"><div class="derh">How a good idea became three bugs</div><table class="dtab"><thead><tr><th></th><th>Step</th><th>Justification</th></tr></thead><tbody><tr><td class="dn">1</td><td class="dstep">The 8b/10b tables have two columns &mdash; one per running disparity. Writing both invites a typo in one column only.</td><td class="dwhy">A typo in one column is invisible to any check that only exercises the other.</td></tr><tr><td class="dn">2</td><td class="dstep">Observation: most second-column entries are the bitwise complement of the first, and entries with zero disparity appear in both columns unchanged.</td><td class="dwhy">True for the majority of entries, which is what made it convincing.</td></tr><tr><td class="dn">3</td><td class="dstep">So: store one column, derive the other. Half the table, half the typo surface.</td><td class="dwhy">This reasoning is correct as far as it goes, and the comment in the first draft said exactly this.</td></tr><tr><td class="dn">4</td><td class="dstep"><b>But &lsquo;zero disparity implies one codeword&rsquo; is a hypothesis, not a fact.</b></td><td class="dwhy">A 4-bit code with two ones and two zeros has disparity zero &mdash; and so does its complement. Both are legal on disparity grounds, so disparity alone cannot pick one.</td></tr><tr><td class="dn">5</td><td class="dstep">What picks between them is <b>run length</b>, not disparity.</td><td class="dwhy">D.x.3 is 1100 after one six-bit prefix and 0011 after another, because <code>001111</code> followed by <code>1100</code> puts six ones in a row and breaks the CDR.</td></tr><tr><td class="dn">6</td><td class="dstep">The compression therefore collapsed nine genuinely-distinct table entries into one each, and the property check found it: 1082 run-length violations and 2048 false commas.</td><td class="dwhy">Then, after fixing the 4-bit tables, 556 violations remained &mdash; the same hypothesis was also wrong for exactly one 5b/6b entry, D.07 (<code>111000</code>/<code>000111</code>).</td></tr></tbody></table></div>
+<p>The lesson generalises past 8b/10b: <b>every scheme for not writing
+    something down twice encodes an assumption about why the two copies agree.</b> When
+    that assumption is right, the scheme removes a whole class of error &mdash; the
+    register-map generator of Part&nbsp;Z4 and the single-C++-source flow of
+    Part&nbsp;Z14 both work exactly this way. When it is wrong, it replaces typos with a
+    <em>systematic</em> error, which is much harder to see, because every instance is
+    wrong in the same plausible way.</p>
+
+    <p>The difference between the two cases is not cleverness. It is whether you checked.</p>
+<h2>Z21.5 The provenance ledger</h2>
+<p>The repository already requires this for paper citations
+    (Gate&nbsp;G022): every claim carries how well it was verified. Protocol constants get
+    the same treatment, because they are the same kind of claim.</p>
+<table><caption>Table 492. Confirmation level for every constant in edu/proto</caption><thead><tr><th>Constant</th><th>Level</th><th>What that means here</th></tr></thead><tbody><tr><td>8b/10b 5b/6b and 3b/4b tables</td><td><b>property-proven, not source-verified</b></td><td>All four defining properties hold exhaustively over all 528 codewords and every codeword pair. The normative tables were not available for comparison.</td></tr><tr><td>8b/10b well-known codewords (K.28.5, D21.5, D10.2, &hellip;)</td><td><b>corroborated</b></td><td>Seven widely-quoted codewords match exactly. Weak evidence &mdash; the same memory produced both &mdash; but it is independent of the property proof.</td></tr><tr><td>K.28.x selection (K.23.7 etc. omitted)</td><td><b>scoped out, deliberately</b></td><td>Only K.28.x is implemented. Stated in the datasheet rather than left for a customer to discover.</td></tr><tr><td>24+6 ECC parity masks</td><td><b>constructed, explicitly not MIPI</b></td><td>A valid SEC-DED built from first principles and proven exhaustively. It is <b>not</b> byte-compatible with CSI-2 and the header of <code>ecc24.h</code> says so in the first paragraph.</td></tr><tr><td>Ethernet FCS CRC-32 (Part Z1)</td><td><b>independently verified</b></td><td>Checked against Python's <code>zlib.crc32</code>, an implementation written by somebody else from the standard. This is the strongest level available and it is available only because a free reference implementation exists.</td></tr></tbody></table>
+<p>Notice how much the last row differs from the rest. Ethernet's CRC-32
+    is fully pinned down not because the Ethernet standard is easier to read, but because
+    <b>somebody shipped a free, widely-used implementation of it</b>. When you are
+    choosing which protocol block to build first as a one-person house, the existence of
+    an independent reference implementation is worth more than the clarity of the
+    specification &mdash; it is the difference between &ldquo;proven&rdquo; and
+    &ldquo;argued&rdquo;.</p>
+<h2>Z21.6 What to write in the datasheet</h2>
+<p>All of the above is worthless if it stays in a commit message. The
+    boundary between proven and assumed belongs on the page the customer reads, phrased
+    without hedging:</p>
+<pre><code>## 확인 수준 (Verification status)
+
+이 블록은 다음을 **전수로** 확인했다:
+  * 코드워드 528 개가 RD 마다 서로 다르다 (전단사)
+  * running disparity 가 -1 / +1 을 벗어나지 않는다
+  * 같은 비트가 5 개를 넘게 이어지지 않는다 -- **코드워드 이음 전부에서**
+  * 콤마 무늬가 데이터 흐름에 나타나지 않는다
+
+이 블록은 다음을 **확인하지 못했다**:
+  * IEEE 802.3 Clause 36 Table 36-1/36-2 와 바이트까지 같은가
+    -&gt; 상호운용 시험 전에 그 표로 대조할 것.  구조는 그대로 쓸 수 있고
+       바꿀 곳은 `enc8b10b.v` 의 case 문 두 개뿐이다.
+  * K.23.7 · K.27.7 · K.29.7 · K.30.7 (일부러 뺐다)
+  * 복호기 (이 판은 부호기만이다)</code></pre>
+<p>A customer who reads that knows exactly what they are buying and what
+    work remains. A customer who reads &ldquo;IEEE 802.3 compliant&rdquo; on a block that
+    was never compared to IEEE 802.3 finds out later, and tells other people.</p>
+
+    <p>There is a commercial argument here too, and it is not the obvious one. Publishing
+    the boundary does not make the block look weaker &mdash; it makes it look
+    <em>measured</em>, and it is the only version of the claim that survives contact with
+    a reviewer. Every vendor says &ldquo;compliant&rdquo;. Almost none says which of their
+    properties were checked by enumeration and which by reading.</p>

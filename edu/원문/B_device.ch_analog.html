@@ -1,0 +1,51 @@
+<h1 id="b5">B5. Analogue Building Blocks</h1>
+<p>A digital IP house does not design these, but it must model them,
+    specify them, and understand which digital block can compensate which analogue
+    imperfection &mdash; because that compensation is often the sellable part.</p>
+<h2>B5.1 Amplifiers</h2>
+<table><caption>Table 17. Amplifier topologies</caption><thead><tr><th>Topology</th><th>Gain</th><th>Bandwidth</th><th>Where used</th></tr></thead><tbody><tr><td>Common source</td><td>&minus;<i>g<sub>m</sub>r<sub>o</sub></i></td><td>Moderate</td><td>Basic gain stage</td></tr><tr><td>Cascode</td><td>&minus;<i>g<sub>m</sub></i>(<i>g<sub>m</sub>r<sub>o</sub></i>)<i>r<sub>o</sub></i></td><td>High (reduced Miller)</td><td>High-gain stages</td></tr><tr><td>Differential pair</td><td>&mdash;</td><td>&mdash;</td><td><b>Rejects common-mode noise</b>; the basis of nearly everything</td></tr><tr><td>Folded cascode</td><td>High</td><td>Good</td><td>Wide input range op-amps</td></tr><tr><td>Two-stage Miller</td><td>Very high</td><td>Compensated</td><td>General-purpose op-amp</td></tr><tr><td><b>CTLE</b></td><td>peaked</td><td>&mdash;</td><td>Source degeneration creates a zero that boosts high frequency</td></tr><tr><td>TIA</td><td>&minus;<i>R<sub>f</sub></i></td><td>&mdash;</td><td>Photodiode front end</td></tr></tbody></table>
+<div class="ms"><b>Why a CTLE amplifies noise and an FFE does not have
+    to.</b> A CTLE is a linear analogue filter placed <i>before</i> the point where noise
+    is added by the rest of the receiver, but <i>after</i> the channel has already
+    attenuated the signal and after thermal noise from the channel and the front end.
+    Boosting high frequency therefore boosts the noise already present in that band by the
+    same factor. A digital FFE placed after the ADC has exactly the same problem. A
+    <b>DFE</b> escapes it because it subtracts a <i>decided</i> symbol &mdash; a noiseless
+    quantity &mdash; rather than amplifying a received one. This is the whole reason
+    receivers combine a modest CTLE with a DFE instead of using a large CTLE alone, and
+    it is a piece of reasoning that a modelling engineer must be able to reproduce when
+    asked to justify an architecture.</div>
+<h2>B5.2 Comparators and references</h2>
+<table><caption>Table 18. Comparator and reference issues</caption><thead><tr><th>Block</th><th>Key imperfection</th><th>Digital compensation</th></tr></thead><tbody><tr><td>Strong-arm latch</td><td>Input-referred offset (mismatch)</td><td><b>Offset calibration DAC</b> trimmed digitally</td></tr><tr><td></td><td><b>Metastability</b> when inputs are close</td><td>Allow regeneration time; detect and flag</td></tr><tr><td></td><td>Kickback onto the input</td><td>Sample-and-hold isolation</td></tr><tr><td>Bandgap reference</td><td>Curvature over temperature</td><td>Piecewise digital trim</td></tr><tr><td></td><td>Start-up failure mode</td><td>Start-up circuit plus watchdog</td></tr><tr><td>Current DAC</td><td>Element mismatch</td><td><b>Dynamic element matching</b> (digital)</td></tr></tbody></table>
+<div class="ms">Each row's right-hand column is a digital block with a
+    clean specification, and that is the commercial observation: <b>the calibration and
+    trim logic around an analogue block is frequently larger than the analogue block
+    itself, and it is synthesisable</b>. A design house that cannot build a comparator can
+    still own the offset-calibration engine, the DEM scrambler, and the background
+    interleaving-mismatch corrector. These are sold as part of converter IP, and they are
+    where the modelling effort concentrates because their correctness is statistical
+    rather than logical.</div>
+<h2>B5.3 PLLs and clock generation</h2>
+<div class="math">H(s) = K<sub>PD</sub>K<sub>VCO</sub>F(s) /
+    (s + K<sub>PD</sub>K<sub>VCO</sub>F(s)/N)</div>
+<table><caption>Table 19. PLL noise transfer</caption><thead><tr><th>Noise source</th><th>Transfer to output</th><th>Design implication</th></tr></thead><tbody><tr><td>Reference noise</td><td><b>Low-pass</b> (&times;<i>N</i> in band)</td><td>In-band noise is multiplied by 20 log<sub>10</sub><i>N</i></td></tr><tr><td>VCO noise</td><td><b>High-pass</b></td><td>Wide loop suppresses VCO noise</td></tr><tr><td>Divider noise</td><td>Low-pass</td><td>&mdash;</td></tr><tr><td>Charge-pump noise</td><td>Low-pass</td><td>Dominates in-band floor</td></tr><tr><td>&Sigma;&Delta; quantisation (fractional-N)</td><td>High-pass shaped</td><td><b>Loop must be narrow enough to filter it</b></td></tr></tbody></table>
+<div class="ms">The opposing shapes create the <b>optimal loop bandwidth</b>:
+    wide enough to suppress VCO phase noise, narrow enough to suppress reference and
+    fractional-<i>N</i> quantisation noise. The optimum is where the two contributions
+    cross. This is a genuinely quantitative design decision that a system modeller can and
+    should compute, and it is directly connected to the link jitter budget of
+    Chapter A4 &mdash; the integrated phase noise becomes the RJ term that is multiplied
+    by 14 at 10<sup>&minus;12</sup> BER. <b>Chapters A4, B4 and B5 are three views of the
+    same budget</b>, and one of the marks of a senior engineer is holding them together.</div>
+<h2>B5.4 Data converters</h2>
+<table><caption>Table 20. ADC architectures</caption><thead><tr><th>Architecture</th><th>Speed</th><th>Resolution</th><th>Principle</th><th>Digital support needed</th></tr></thead><tbody><tr><td>Flash</td><td>Highest</td><td>&le;6 bit</td><td>2<sup><i>N</i></sup>&minus;1 comparators</td><td>Thermometer&rarr;binary, bubble correction</td></tr><tr><td><b>SAR</b></td><td>Moderate&ndash;high</td><td>8&ndash;14 bit</td><td>Binary search with a DAC</td><td><b>Redundancy and digital error correction</b></td></tr><tr><td>Pipeline</td><td>High</td><td>10&ndash;14 bit</td><td>Stages with residue amplification</td><td>Inter-stage gain calibration</td></tr><tr><td><b>&Sigma;&Delta;</b></td><td>Low&ndash;moderate</td><td>16&ndash;24 bit</td><td>Oversample and noise-shape</td><td><b>Decimation filter (CIC + FIR)</b></td></tr><tr><td><b>Time-interleaved SAR</b></td><td>&gt;10 GS/s</td><td>6&ndash;8 bit</td><td><i>M</i> SARs in parallel</td><td><b>Offset/gain/skew background calibration</b> &mdash; the 112G receiver case</td></tr><tr><td>Folding/interpolating</td><td>High</td><td>8&ndash;10 bit</td><td>Reduce comparator count</td><td>&mdash;</td></tr></tbody></table>
+<div class="ms"><b>&Sigma;&Delta; noise shaping</b> is worth stating
+    exactly because it is the clearest example of trading bandwidth for resolution. An
+    <i>L</i>th-order modulator with oversampling ratio OSR gives
+    SNR gain &asymp; (6<i>L</i>+3)&nbsp;dB per doubling of OSR, versus 3&nbsp;dB for plain
+    oversampling. The price is that the modulator output is a low-resolution, very fast
+    stream that must be decimated &mdash; and <b>that decimation filter is a substantial
+    digital IP block</b> whose passband ripple and stopband attenuation determine the
+    converter's final specification. A converter vendor's datasheet number is in part a
+    statement about a digital filter. This is the second time in this chapter that the
+    saleable digital block sits next to an analogue one.</div>

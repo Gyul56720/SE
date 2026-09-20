@@ -1,0 +1,66 @@
+<h1 id="h1">H1. Verification: Theory and Organisation</h1>
+<figure id="fig11"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 585 318" width="100%" font-family="Times New Roman, Nimbus Roman, serif"><defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#000"/></marker><marker id="ao" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="none" stroke="#000" stroke-width="1.4"/></marker></defs><rect x="35" y="28" width="178" height="50" rx="2" fill="#fff" stroke="#000" stroke-width="1.1"/><text x="124.0" y="50.0" font-size="11" text-anchor="middle">Design team</text><text x="124.0" y="64.0" font-size="9" text-anchor="middle" fill="#333">RTL: SystemVerilog / VHDL</text><rect x="368" y="28" width="178" height="50" rx="2" fill="#fff" stroke="#000" stroke-width="1.1"/><text x="457.0" y="50.0" font-size="11" text-anchor="middle">Modelling team</text><text x="457.0" y="64.0" font-size="9" text-anchor="middle" fill="#333">Reference model: C / C++</text><rect x="200" y="155" width="182" height="56" rx="2" fill="#fff" stroke="#000" stroke-width="1.1"/><text x="291.0" y="180.0" font-size="11" text-anchor="middle">Verification team</text><text x="291.0" y="194.0" font-size="9" text-anchor="middle" fill="#333">testbench + scoreboard</text><path d="M124,78 L268,155" stroke="#000" stroke-width="1.1" fill="none" marker-end="url(#a)"/><path d="M457,78 L318,155" stroke="#000" stroke-width="1.1" fill="none" marker-end="url(#a)"/><text x="140" y="124" font-size="9" text-anchor="middle" fill="#000" >RTL trace</text><text x="448" y="124" font-size="9" text-anchor="middle" fill="#000" >expected</text><rect x="200" y="245" width="182" height="38" rx="2" fill="#fbeaea" stroke="#000" stroke-width="1.1"/><text x="291.0" y="268.0" font-size="10" text-anchor="middle">mismatch = bug</text><path d="M291,211 L291,245" stroke="#000" stroke-width="1.1" fill="none" marker-end="url(#a)"/><text x="291" y="305" font-size="9" text-anchor="middle" fill="#000" font-style="italic">The operational definition of a bug in a regression</text></svg><figcaption><b>Figure 11.</b> The three-team structure. It exists to make &ldquo;correct&rdquo; an operational, testable notion.</figcaption></figure>
+<p>Verification consumes more effort than design in every serious IP
+    project &mdash; commonly cited at 60&ndash;70% of the schedule. Understanding why it
+    is organised as it is prevents a great deal of wasted work.</p>
+<h2>H1.1 Why two independent implementations</h2>
+<div class="bs">A specification written in prose is ambiguous; a single
+    implementation is self-consistent by construction and therefore cannot reveal its own
+    misreadings. Two implementations built independently from the same specification will
+    agree only where both read it the same way. <b>Disagreement localises ambiguity.</b>
+    This is the same principle as dissimilar redundancy in avionics, applied to
+    development rather than to operation.</div>
+<div class="ms"><b>The argument fails if the two implementations are not
+    independent.</b> If the modeller and the designer sit together, share an
+    interpretation, and one consults the other's code when unsure, the common-mode error
+    rate rises and the regression turns green on a shared misunderstanding. Organisations
+    counter this in three ways: physical or organisational separation; deriving one
+    implementation from a <b>formal, executable specification</b> (the RISC-V Sail model
+    is the canonical example, generating both prose and a C emulator from one source); and
+    an <b>external oracle</b> &mdash; standard test vectors from NIST, IEEE or a
+    conformance suite. <b>The third is the strongest and the cheapest, and it is the
+    reason standards-based blocks are the best first product for a small IP house.</b></div>
+<h2>H1.2 The verification stack</h2>
+<table><caption>Table 81. Verification levels</caption><thead><tr><th>Level</th><th>Checks</th><th>Catches</th><th>Cannot catch</th></tr></thead><tbody><tr><td>Lint</td><td>Coding rules</td><td>Latches, width mismatches, incomplete sensitivity</td><td>Anything functional</td></tr><tr><td>CDC / RDC static</td><td>Crossing structure</td><td>Missing synchronisers, reconvergence</td><td>Functional protocol errors</td></tr><tr><td>Unit simulation</td><td>Block behaviour vs model</td><td>Most functional bugs</td><td>Integration, timing</td></tr><tr><td><b>Formal property</b></td><td>Exhaustive over state space</td><td>Deadlock, unreachable states, protocol violations</td><td>Deep datapath equivalence (state explosion)</td></tr><tr><td><b>Formal equivalence (LEC)</b></td><td>RTL vs netlist</td><td>Synthesis and ECO errors</td><td>Specification errors</td></tr><tr><td>Integration / SoC sim</td><td>Blocks together</td><td>Interface mismatches, arbitration</td><td>Long-running system behaviour</td></tr><tr><td>Gate-level with timing</td><td>Netlist + SDF</td><td>X-propagation, timing-dependent bugs</td><td>Slow; limited coverage</td></tr><tr><td><b>Emulation / FPGA prototype</b></td><td>Real software on real RTL</td><td>Software-visible bugs, long sequences</td><td>Analogue, timing corners</td></tr><tr><td>Post-silicon</td><td>Actual device</td><td>Everything else</td><td>&mdash; but fixes are expensive</td></tr></tbody></table>
+<div class="warn"><b>X-propagation deserves a specific warning because it
+    is asymmetric between RTL and gates.</b> In RTL simulation, an <code>if (x)</code>
+    with an unknown condition may take a branch and produce a definite value, hiding the
+    uncertainty &mdash; this is <i>X-optimism</i>. In gate-level simulation the same
+    unknown spreads &mdash; <i>X-pessimism</i>. A design that relies on registers being
+    initialised by data flow rather than by reset can therefore pass RTL simulation and
+    fail in gates, or vice versa. The remedies are X-propagation-aware simulation modes
+    and, better, <b>explicit initialisation of any register whose value is read before it
+    is written</b>. For an IP vendor this is also a deliverable question: if your block
+    requires <i>n</i> cycles of reset before its outputs are valid, say so.</div>
+<h2>H1.3 Coverage and closure</h2>
+<table><caption>Table 82. Coverage metrics</caption><thead><tr><th>Metric</th><th>Measures</th><th>Automatic?</th><th>Weakness</th></tr></thead><tbody><tr><td>Line / block</td><td>Statements executed</td><td>Yes</td><td>Says nothing about values</td></tr><tr><td>Branch / condition</td><td>Decisions taken</td><td>Yes</td><td>&mdash;</td></tr><tr><td>Expression (MC/DC)</td><td>Each condition independently affects the outcome</td><td>Yes</td><td>Required for DO-254 / ISO 26262</td></tr><tr><td>Toggle</td><td>Every bit changed both ways</td><td>Yes</td><td>Weak functional signal</td></tr><tr><td>FSM state / transition</td><td>States and arcs visited</td><td>Yes</td><td>&mdash;</td></tr><tr><td><b>Functional (covergroups)</b></td><td>Scenarios the engineer defined</td><td><b>No</b></td><td><b>Blind to scenarios nobody thought of</b></td></tr><tr><td>Assertion</td><td>Properties actually exercised</td><td>Partly</td><td>Vacuous passes must be excluded</td></tr><tr><td><b>Mutation / fault injection</b></td><td>Whether the testbench would notice a bug</td><td>Yes</td><td><b>The only metric that tests the testbench</b></td></tr></tbody></table>
+<div class="ms"><b>Mutation coverage is the metric that answers the
+    question the others avoid: would this testbench detect a bug if there were one?</b>
+    The procedure is to inject a small, semantically meaningful change &mdash; invert a
+    comparison, drop a term, stick a bit &mdash; and confirm the regression turns red. A
+    mutant that survives identifies a check that does not exist or a stimulus that never
+    reaches the code. This is cheap to automate and routinely reveals that a large
+    fraction of a mature suite is inert. <b>The same technique applies to the reference
+    model itself</b>, which is otherwise unverified: break the model deliberately and
+    confirm the model's own self-checks fail. A verified reference model is a
+    differentiator that very few IP vendors can claim.</div>
+<h2>H1.4 The scoreboard problem</h2>
+<table><caption>Table 83. Comparison strategies</caption><thead><tr><th>Situation</th><th>Strategy</th><th>Pitfall</th></tr></thead><tbody><tr><td>In-order, fixed latency</td><td>FIFO compare</td><td>&mdash;</td></tr><tr><td>In-order, variable latency</td><td>FIFO + timeout</td><td>Timeout too tight &rarr; false failures</td></tr><tr><td>Out-of-order, tagged</td><td><b>Per-tag queues</b></td><td><b>A single queue produces both false failures and false passes</b></td></tr><tr><td>Multiple legal orders</td><td>Compare against a <b>set</b> of allowed outcomes</td><td>Requires the model to enumerate them</td></tr><tr><td>Don't-care fields</td><td>Mask before comparing</td><td>Masking too much hides real bugs</td></tr><tr><td>Weak memory model</td><td><b>Litmus tests</b>, not trace comparison</td><td>Trace comparison is simply invalid here</td></tr></tbody></table>
+<div class="ms">The AXI case is worth stating concretely because it is so
+    common. AXI guarantees ordering only <i>within</i> an ID; transactions with different
+    IDs may complete in any order. A scoreboard with one queue will report a failure when
+    the DUT legitimately reorders across IDs, and &mdash; more dangerously &mdash; may
+    accept a genuine intra-ID reordering as long as the totals match. <b>The correct
+    structure is one queue per ID</b>, and knowing this is a direct consequence of having
+    read the protocol specification rather than inferring behaviour from waveforms. It is
+    a frequent and productive point of contact between the modelling and verification
+    teams.</div>
+<h2>H1.5 Regression engineering</h2>
+<table><caption>Table 84. Regression discipline</caption><thead><tr><th>Practice</th><th>Reason</th></tr></thead><tbody><tr><td>Record the seed with every run</td><td><b>Without it a failure is not reproducible</b></td></tr><tr><td>Classify failures automatically</td><td>Triage time dominates otherwise</td></tr><tr><td>Track failure <i>signatures</i>, not counts</td><td>Distinguishes new from known</td></tr><tr><td>Never close an intermittent failure as &lsquo;flaky&rsquo;</td><td><b>Intermittent failures are usually real races</b></td></tr><tr><td>Keep a golden log of the last known-good</td><td>Enables bisection</td></tr><tr><td>Measure regression runtime</td><td>A suite nobody can run nightly is not a suite</td></tr><tr><td>Separate infrastructure failures</td><td>Licence and disk errors must not be counted as bugs</td></tr></tbody></table>
+<div class="warn">The prohibition on dismissing intermittent failures is
+    the most frequently violated rule in this book. An intermittent failure means the
+    outcome depends on something the test does not control &mdash; a race, an
+    uninitialised value, a timing-dependent path. All three exist in the silicon too.
+    <b>Closing such a ticket does not remove the bug; it removes the evidence.</b> The
+    correct disposition is to keep it open with the failing seed recorded, even if it
+    cannot be root-caused immediately.</div>

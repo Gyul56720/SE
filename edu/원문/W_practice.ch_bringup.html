@@ -1,0 +1,39 @@
+<h1 id="w7">W7. Debug and Bring-Up</h1>
+<p>The chapters so far describe how to avoid defects. This one describes
+    what to do when one is present anyway, which is a distinct skill and the one most
+    visibly separating experienced engineers from new ones.</p>
+<h2>W7.1 A debugging method</h2>
+<table><caption>Table 187. Systematic debugging</caption><thead><tr><th>Step</th><th>Action</th><th>Why this order</th></tr></thead><tbody><tr><td>1</td><td><b>Reproduce reliably</b></td><td>An unreproducible failure cannot be verified as fixed. Record the seed, the command and the environment</td></tr><tr><td>2</td><td><b>Minimise</b></td><td>Shrink the stimulus until any further reduction removes the failure. Often reveals the cause without further work</td></tr><tr><td>3</td><td><b>Bisect in time</b></td><td>Find the first cycle at which observed and expected diverge &mdash; not where the symptom appears</td></tr><tr><td>4</td><td><b>Bisect in space</b></td><td>Move the observation point upstream until the signal is correct; the boundary contains the fault</td></tr><tr><td>5</td><td><b>Bisect in history</b></td><td>If it worked before, bisect the revisions</td></tr><tr><td>6</td><td><b>Form one hypothesis and test it</b></td><td>Changing several things at once destroys the evidence</td></tr><tr><td>7</td><td><b>Explain the mechanism</b></td><td>A fix that works without an explanation has probably moved the bug</td></tr><tr><td>8</td><td><b>Add the check that would have caught it</b></td><td>Otherwise the class of defect will recur</td></tr></tbody></table>
+<div class="warn"><b>Step 7 is the one under schedule pressure most often
+    skipped, and it is the one that causes recurrence.</b> A change that makes a symptom
+    disappear without an understood mechanism has frequently only altered timing or
+    masking, leaving the defect present and less observable. The question that settles it
+    is: <i>can I re-create the failure on demand by undoing exactly this change, and does
+    my explanation predict that?</i> If not, the investigation is not finished.</div>
+<h2>W7.2 Observation techniques by level</h2>
+<table><caption>Table 188. What can be observed where</caption><thead><tr><th>Level</th><th>Technique</th><th>Visibility</th><th>Cost</th></tr></thead><tbody><tr><td>Simulation</td><td>Waveforms, printouts, assertions</td><td><b>Complete</b></td><td>Slow</td></tr><tr><td>Formal</td><td>Counterexample trace</td><td>Complete, minimal</td><td>Limited scope</td></tr><tr><td>Emulation</td><td>Trace buffers, triggers</td><td>Large but finite</td><td>Expensive</td></tr><tr><td>FPGA prototype</td><td>Integrated logic analyser</td><td>Small window</td><td>Compile time</td></tr><tr><td><b>Silicon</b></td><td>Scan dump, on-chip trace, debug bus</td><td><b>Very limited</b></td><td><b>Must be designed in beforehand</b></td></tr><tr><td>Silicon, physical</td><td>Laser probing, FIB, e-beam</td><td>Specialist</td><td>Very expensive</td></tr></tbody></table>
+<div class="ms"><b>Observability in silicon is decided at design time, and
+    it is decided by people who are not yet debugging.</b> Once a chip exists, the only
+    internal state visible is what someone chose to expose: scan chains, trace buffers,
+    performance counters, a debug bus. A block that provides no status registers, no error
+    counters and no way to inject or capture data is effectively opaque, and diagnosing a
+    problem in it means diagnosing the whole subsystem. <b>For an IP vendor, debug
+    features are a support-cost investment</b>: an error counter and a loopback mode cost
+    a few hundred gates and can save a week of remote debugging on a customer's
+    board.</div>
+<h2>W7.3 Bring-up</h2>
+<table><caption>Table 189. Bring-up order</caption><thead><tr><th>Stage</th><th>Check</th><th>If it fails</th></tr></thead><tbody><tr><td>Power</td><td>Rails at expected voltages and sequence</td><td>Board or PMIC; no chip involvement</td></tr><tr><td>Clocks</td><td>Reference present; PLL locks</td><td>Check the reference before the PLL</td></tr><tr><td>Reset</td><td>Released cleanly, in the right order</td><td>Reset sequencing</td></tr><tr><td><b>Basic life</b></td><td>JTAG IDCODE reads back</td><td><b>If this fails, nothing else can be diagnosed</b></td></tr><tr><td>Debug access</td><td>Core halts and registers are readable</td><td>Debug module or its clocking</td></tr><tr><td>Memory</td><td>Write and read back patterns</td><td>Interface training</td></tr><tr><td>Boot</td><td>First instructions execute</td><td>ROM, fuses, boot mode pins</td></tr><tr><td><b>Console</b></td><td>UART output</td><td><b>From here the system can explain itself</b></td></tr><tr><td>Peripherals</td><td>One at a time</td><td>&mdash;</td></tr><tr><td>Performance</td><td>Against the model's prediction</td><td>Configuration or a real shortfall</td></tr></tbody></table>
+<div class="ms"><b>The ordering is not arbitrary: each stage is the
+    prerequisite for diagnosing the next.</b> Chasing a peripheral fault before the console
+    works means debugging blind. This is also why the UART and the debug module deserve
+    disproportionate care in design and verification &mdash; they are the instruments with
+    which everything else will be measured. <b>A bug in the debug path costs far more than
+    its size suggests</b>, because it removes the means of finding other bugs.</div>
+<h2>W7.4 Classes of bug and where each is found</h2>
+<table><caption>Table 190. Bug taxonomy</caption><thead><tr><th>Class</th><th>Typical cause</th><th>Found by</th><th>Missed by</th></tr></thead><tbody><tr><td>Functional</td><td>Misread specification</td><td>Model comparison</td><td>Directed tests alone</td></tr><tr><td>Protocol</td><td>Interface misuse</td><td>Protocol checkers, formal</td><td>Block-level tests</td></tr><tr><td><b>Corner case</b></td><td>Unusual combination</td><td>Constrained random, formal</td><td><b>Directed tests</b></td></tr><tr><td>Race / CDC</td><td>Missing synchroniser</td><td>CDC analysis, gate-level simulation</td><td><b>RTL simulation</b></td></tr><tr><td>Reset</td><td>Uninitialised state</td><td>X-propagation analysis</td><td>RTL with optimistic X</td></tr><tr><td>Timing</td><td>Path too long</td><td>STA</td><td>Any simulation</td></tr><tr><td>Power/IR</td><td>Local droop</td><td>Power analysis</td><td>All functional verification</td></tr><tr><td>Performance</td><td>Wrong architecture</td><td><b>System model</b></td><td>Block verification</td></tr><tr><td>Integration</td><td>Misunderstood interface</td><td>System simulation</td><td>Block verification</td></tr><tr><td>Specification</td><td>Requirement wrong</td><td><b>Review, prototype</b></td><td><b>All verification</b></td></tr></tbody></table>
+<div class="warn"><b>The last row is the one no amount of verification can
+    address.</b> If the specification asks for the wrong thing, a perfectly verified
+    implementation of it is still useless. This is the argument for early prototypes, for
+    system models built before RTL, and for showing a specification to whoever will
+    ultimately use the block. <b>Verification answers "did we build it right"; only review
+    and prototyping answer "did we build the right thing".</b></div>

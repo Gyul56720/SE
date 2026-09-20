@@ -1,0 +1,50 @@
+<h1 id="coding">정보이론과 오류정정 부호</h1>
+<h2>1. 용량과 한계</h2>
+<div class="math">C = B log<sub>2</sub>(1 + SNR) &nbsp;&nbsp;[bit/s]
+    &nbsp;&nbsp;&nbsp;(샤넌&ndash;하틀리)</div>
+<div class="ms"><b>이 식이 IP 설계에 주는 것.</b> 채널 용량은
+    &ldquo;어떤 부호로도 이 이상은 못 보낸다&rdquo;는 상한이다. 설계 회의에서
+    &ldquo;부호를 더 좋게 하면 되지 않나&rdquo;라는 요구가 나올 때, 현재 동작점이
+    용량에서 얼마나 떨어져 있는지를 계산해 보이면 논쟁이 끝난다. 현대 부호(LDPC·터보·극
+    부호)는 <b>용량에서 0.1&ndash;1 dB 이내</b>까지 와 있으므로, 남은 이득은 대개
+    <b>부호가 아니라 등화·동기·구현손실</b>에 있다.</div>
+<table><caption>표 62. 주요 부호와 특성</caption><thead><tr><th>부호</th><th>구조</th><th>복호</th><th>쓰이는 곳</th></tr></thead><tbody><tr><td><b>해밍/SECDED</b></td><td>선형 블록</td><td>신드롬</td><td><b>메모리 ECC</b>. 1비트 정정 2비트 검출</td></tr><tr><td>BCH</td><td>순회</td><td>BM + Chien</td><td>플래시 · 광통신</td></tr><tr><td><b>RS(리드-솔로몬)</b></td><td>비이진 순회, GF(2<sup>m</sup>)</td><td>신드롬&rarr;BM&rarr;Chien&rarr;Forney</td><td><b>이더넷 KP4</b> · 저장장치 · 방송</td></tr><tr><td>합성곱</td><td>상태기계</td><td><b>Viterbi</b></td><td>레거시 무선 · 위성</td></tr><tr><td>터보</td><td>병렬 연접 + 인터리버</td><td>BCJR 반복</td><td>3G/4G</td></tr><tr><td><b>LDPC</b></td><td>희소 패리티검사 행렬</td><td>신뢰전파(min-sum)</td><td><b>5G NR</b> · Wi-Fi · 802.3ca</td></tr><tr><td><b>극(Polar)</b></td><td>채널 분극</td><td>SC / SCL</td><td>5G 제어채널</td></tr><tr><td><b>연접(concatenated)</b></td><td>외부 RS + 내부 이진</td><td>내부&rarr;외부 순차</td><td><b>802.3dj 224G</b></td></tr></tbody></table>
+<h2>2. RS 부호 &mdash; 왜 하드웨어에 잘 맞나</h2>
+<div class="bs">RS 는 <b>심볼 단위</b> 부호다. GF(2<sup>m</sup>) 의
+    한 원소(= m 비트)가 한 심볼이고, t 심볼까지 정정한다. <b>한 심볼 안에서 몇 비트가
+    틀렸든 한 개로 센다</b> &mdash; 그래서 <b>버스트 오류에 강하다</b>.</div>
+<div class="ms"><b>왜 PAM4 링크가 RS 를 쓰는가.</b> PAM4 슬라이서가
+    틀릴 때 이웃 레벨로 틀리므로 그레이 부호에서는 1비트 오류지만, <b>DFE 오류 전파</b>나
+    <b>버스트 잡음</b>이 있으면 연속 심볼이 함께 틀린다. 심볼 단위 정정이 그 구조에
+    맞는다. 또 GF(2<sup>10</sup>) 이면 한 심볼이 10비트 = PAM4 다섯 심볼이므로
+    정렬이 자연스럽다. <b>부호 선택은 채널의 오류 &lsquo;모양&rsquo;을 보고 한다</b> &mdash;
+    랜덤 비트 오류면 이진 부호, 버스트면 비이진 부호.</div>
+<table><caption>표 63. RS 복호기 설계 파라미터</caption><thead><tr><th>파라미터</th><th>영향</th><th>전형값(KP4)</th></tr></thead><tbody><tr><td>m (필드 크기)</td><td>심볼 폭, 곱셈기 크기</td><td>10</td></tr><tr><td>n, k</td><td>부호율 = k/n</td><td>544, 514 &rarr; 94.5%</td></tr><tr><td>t = (n&minus;k)/2</td><td>정정 능력</td><td>15 심볼</td></tr><tr><td>병렬도 P</td><td>처리량 = P 심볼/사이클</td><td>레인당 요구에 맞춤</td></tr><tr><td>BM 변형</td><td>임계경로</td><td>inversionless / reformulated</td></tr><tr><td>Chien 병렬도</td><td>지연</td><td>n/P 사이클</td></tr><tr><td>인터리빙 깊이</td><td>버스트 내성</td><td>802.3 은 4레인 인터리브</td></tr></tbody></table>
+<h2>3. LDPC &mdash; 반복 복호의 구조</h2>
+<div class="bs">LDPC 는 <b>희소한</b> 패리티검사 행렬 <b>H</b> 로
+    정의된다. 복호는 변수노드와 검사노드가 <b>신뢰도(LLR)</b>를 주고받는 반복
+    메시지 전달이다.</div>
+<div class="math">L(x) = log( P(x=0) / P(x=1) )</div>
+<table><caption>표 64. LDPC 복호 방식</caption><thead><tr><th>방식</th><th>정확도</th><th>복잡도</th><th>비고</th></tr></thead><tbody><tr><td>합-곱(SPA)</td><td>최적에 가까움</td><td>tanh 필요. 비쌈</td><td>기준</td></tr><tr><td><b>min-sum</b></td><td>약간 손실</td><td>최소값+부호만</td><td><b>하드웨어 표준</b></td></tr><tr><td>정규화/오프셋 min-sum</td><td>손실 대부분 회복</td><td>상수 곱/뺄셈 하나</td><td>실무 선택</td></tr><tr><td><b>계층(layered)</b> 스케줄</td><td>수렴 반복수 절반</td><td>층 간 의존 &rarr; 파이프라인 해저드</td><td>면적 효율 최고</td></tr></tbody></table>
+<div class="ms"><b>계층 복호의 파이프라인 해저드.</b> 층 <i>i</i> 가
+    갱신한 변수노드를 층 <i>j</i> 가 곧바로 읽으면, 파이프라인 깊이 D 만큼 기다려야 한다.
+    층 순서를 바꾸면 대기(stall)가 줄어든다 &mdash; <b>조합 최적화 문제</b>다.
+    주의할 점: 단순한 조합 공식으로 계산한 스톨 수는 <b>상한</b>일 뿐이고, 실제
+    사이클 정확 모델과 다를 수 있다. 저자의 실측에서 BG1, D=4 일 때 공식은 108, 사이클
+    모델과 RTL 은 <b>80</b> 이었다(손실 70.1% &rarr; 62.0%). <b>스케줄 최적화의 목적함수를
+    공식으로 두면 잘못된 해를 찾는다.</b> 반드시 사이클 정확 모델로 재라.</div>
+<div class="warn"><b>LDPC 의 고정소수점은 RS 와 반대다.</b> LLR 은
+    부호가 확률 판정을 뜻하므로 <b>감싸기(wrap)가 부호를 뒤집으면 복호가 붕괴</b>한다.
+    반드시 <b>포화</b>해야 한다. 저자의 실측: 폭을 3비트 줄였을 때 포화는 BLER 0.250,
+    감싸기는 1.000 이었다. 반면 등화기 데이터패스는 감싸기가 안전한 경우가 많다 &mdash;
+    <b>같은 &lsquo;고정소수점&rsquo;이라도 블록마다 규칙이 반대다.</b></div>
+<h2>4. Viterbi &mdash; 상태기계 복호</h2>
+<p>합성곱 부호의 최우 복호. 상태 수 2<sup><i>K</i>&minus;1</sup>
+    (K = 구속장) 의 트렐리스에서 최단 경로를 찾는다. 하드웨어는 세 블록이다.</p>
+<table><caption>표 65. Viterbi 복호기의 세 블록</caption><thead><tr><th>블록</th><th>하는 일</th><th>병목</th></tr></thead><tbody><tr><td>BMU (가지 척도)</td><td>수신값과 각 가지의 거리</td><td>병렬화 쉬움</td></tr><tr><td><b>ACS (덧셈-비교-선택)</b></td><td>경로 척도 갱신</td><td><b>되먹임 고리 &mdash; 임계경로</b>. 여기가 속도를 정한다</td></tr><tr><td>SMU (생존 경로)</td><td>역추적 또는 레지스터 교환</td><td>메모리 대역</td></tr></tbody></table>
+<div class="ms"><b>ACS 고리를 푸는 표준 기법이 &lsquo;radix-4&rsquo;
+    와 &lsquo;retiming&rsquo;</b> 이다. radix-4 는 두 스텝을 한 번에 처리해 고리를
+    절반의 빈도로 돌린다(면적 증가). 이것은 DFE 의 <b>투기적 언롤</b>, RS 의
+    <b>reformulated BM</b> 과 <b>같은 문제에 대한 같은 해법</b>이다 &mdash;
+    <i>되먹임 고리의 논리 깊이를 줄이거나 고리를 도는 빈도를 낮춘다.</i>
+    <b>이 패턴을 알아보면 처음 보는 블록도 어디가 병목인지 바로 짚는다.</b></div>

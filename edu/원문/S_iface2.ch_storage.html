@@ -1,0 +1,23 @@
+<h1 id="s1">S1. Storage Interfaces</h1>
+<table><caption>Table 182. Storage interface families</caption><thead><tr><th>Interface</th><th>Physical layer</th><th>Protocol</th><th>Where</th></tr></thead><tbody><tr><td>SATA</td><td>1 lane, 1.5/3/6 Gb/s, 8b/10b</td><td>ATA command set</td><td>Legacy HDD/SSD</td></tr><tr><td>SAS</td><td>Similar</td><td>SCSI</td><td>Enterprise</td></tr><tr><td><b>NVMe over PCIe</b></td><td><b>PCIe lanes</b></td><td><b>Queue-pair model in host memory</b></td><td><b>Modern SSD &mdash; dominant</b></td></tr><tr><td>UFS</td><td>M-PHY (MIPI)</td><td>UniPro + SCSI subset</td><td>Mobile</td></tr><tr><td>eMMC</td><td>Parallel, up to 200 MB/s</td><td>MMC</td><td>Cost-sensitive embedded</td></tr><tr><td>SD / SDIO</td><td>Parallel or UHS-II serial</td><td>SD</td><td>Removable</td></tr><tr><td>CXL memory</td><td>PCIe PHY</td><td>Coherent memory semantics</td><td>Datacentre expansion</td></tr></tbody></table>
+<div class="ms"><b>NVMe's design lesson is that the protocol, not the
+    link, was the bottleneck.</b> AHCI (the SATA host interface) supports one command queue
+    of 32 entries and requires several register accesses per command, which was adequate
+    for a rotating disk whose latency was milliseconds. Flash reduced device latency by
+    three orders of magnitude and the host interface became the limit. NVMe replaced it
+    with up to 64k queues of 64k entries each, placed in host memory so that submission
+    costs one memory write and one doorbell write. <b>A protocol designed around the
+    assumptions of one storage medium became the bottleneck when the medium
+    changed</b> &mdash; a pattern worth recognising, because the same thing is happening
+    now at the memory interface.</div>
+<table><caption>Table 183. What a storage controller IP contains</caption><thead><tr><th>Block</th><th>Function</th><th>Difficulty</th></tr></thead><tbody><tr><td>Host interface</td><td>PCIe/SATA link and protocol</td><td>Standard interface work</td></tr><tr><td><b>Command processing</b></td><td>Fetch, decode, dispatch, complete</td><td>Queue management; ordering</td></tr><tr><td><b>DMA engine</b></td><td>Move data between host memory and media buffers</td><td>Scatter-gather; alignment</td></tr><tr><td><b>Flash translation layer</b></td><td>Logical to physical mapping, wear levelling, garbage collection</td><td><b>Usually firmware &mdash; the real product differentiator</b></td></tr><tr><td><b>ECC (BCH or LDPC)</b></td><td>Correct raw flash errors</td><td><b>Raw BER rises as the flash wears &mdash; the code must be sized for end of life</b></td></tr><tr><td>Buffer manager</td><td>DRAM or SRAM buffering</td><td>Bandwidth</td></tr><tr><td>Power loss protection</td><td>Flush on power failure</td><td>Capacitor budget and sequencing</td></tr></tbody></table>
+<div class="ms"><b>Flash ECC is sized for the end of the device's life,
+    not its beginning.</b> A fresh NAND cell has a raw bit error rate that a modest BCH
+    code handles; after thousands of program/erase cycles the rate rises by orders of
+    magnitude, and modern controllers use LDPC with soft information obtained by re-reading
+    at shifted thresholds. This is why the decoder chapter's material is directly relevant
+    to storage: the same min-sum architectures, the same fixed-point traps, and the same
+    trade between average latency (few iterations) and worst-case correction (many).
+    <b>The controller's ECC strength is what determines the drive's endurance
+    rating</b>, which is a marketing number produced by a digital design
+    decision.</div>

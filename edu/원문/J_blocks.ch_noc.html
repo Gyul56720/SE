@@ -1,0 +1,24 @@
+<h1 id="j3">J3. On-Chip Interconnect and Networks</h1>
+<table><caption>Table 102. Interconnect topologies</caption><thead><tr><th>Topology</th><th>Scaling</th><th>Latency</th><th>Use</th></tr></thead><tbody><tr><td>Shared bus</td><td>Poor beyond ~8 masters</td><td>Low</td><td>Small SoC</td></tr><tr><td>Crossbar</td><td><i>O</i>(<i>N</i><sup>2</sup>) area</td><td>Low</td><td>Moderate port counts</td></tr><tr><td><b>Mesh NoC</b></td><td>Good</td><td><i>O</i>(&radic;<i>N</i>) hops</td><td>Many-core</td></tr><tr><td>Torus</td><td>Good</td><td>Lower diameter</td><td>&mdash;</td></tr><tr><td>Ring</td><td>Simple</td><td><i>O</i>(<i>N</i>)</td><td>Moderate core counts</td></tr><tr><td>Tree / fat tree</td><td>Good for hierarchical traffic</td><td>&mdash;</td><td>Cache hierarchies</td></tr><tr><td>Butterfly / Clos</td><td>Good</td><td>Uniform</td><td>Switches</td></tr></tbody></table>
+<table><caption>Table 103. NoC design issues</caption><thead><tr><th>Issue</th><th>Cause</th><th>Solution</th></tr></thead><tbody><tr><td><b>Deadlock</b></td><td>Cyclic dependency among buffers</td><td>Virtual channels, turn-model routing (e.g. dimension-order)</td></tr><tr><td>Livelock</td><td>Packets circulate without progress</td><td>Bounded misrouting, ageing</td></tr><tr><td>Head-of-line blocking</td><td>One blocked packet stalls the queue</td><td>Virtual channels</td></tr><tr><td>Fairness</td><td>Some sources starve</td><td>Arbitration policy</td></tr><tr><td>QoS</td><td>Mixed traffic classes</td><td>Priority virtual channels, rate limiting</td></tr><tr><td>Flow control</td><td>Buffer overflow</td><td>Credit-based</td></tr></tbody></table>
+<div class="ms"><b>Deadlock freedom is a structural property and should be
+    established structurally, not tested.</b> Dimension-order routing (traverse X fully,
+    then Y) makes cyclic buffer dependencies impossible in a mesh, and the argument is a
+    short proof rather than a simulation campaign. Adaptive routing performs better under
+    load but reintroduces the possibility, which is then removed by reserving an escape
+    virtual channel that uses dimension-order. <b>This is an unusually clean example of
+    the general principle that architecture should make undesirable states unreachable
+    rather than merely unlikely</b> &mdash; the same principle behind sparse FSM encodings
+    and Gray-coded FIFO pointers.</div>
+<table><caption>Table 104. Chip-to-chip and chiplet interfaces</caption><thead><tr><th>Standard</th><th>Scope</th><th>Note</th></tr></thead><tbody><tr><td>PCIe</td><td>Board-level, packetised</td><td>Gen6 uses PAM4 and FLIT mode</td></tr><tr><td>CXL</td><td>Cache-coherent over PCIe PHY</td><td>Memory expansion and pooling</td></tr><tr><td><b>UCIe</b></td><td>Die-to-die in a package</td><td><b>Very short reach &rarr; very low energy per bit</b></td></tr><tr><td>BoW / AIB</td><td>Die-to-die</td><td>Open alternatives</td></tr><tr><td>HBM</td><td>Memory via silicon interposer</td><td>Very wide, moderate rate</td></tr><tr><td>Ethernet</td><td>Rack and beyond</td><td>&mdash;</td></tr></tbody></table>
+<div class="ms"><b>Chiplets change the economics that an IP business
+    operates in.</b> When a system is partitioned across dies, the interface between them
+    becomes a standardised product boundary, and a company can sell an entire die rather
+    than an RTL block. Energy per bit is the defining metric: on-chip wires are
+    ~0.1&nbsp;pJ/bit, UCIe die-to-die ~0.5&nbsp;pJ/bit, and long-reach SerDes
+    ~5&ndash;10&nbsp;pJ/bit. <b>That two-order-of-magnitude spread is why partitioning
+    decisions are made at the package level and why die-to-die PHY IP became valuable so
+    quickly.</b> A digital design house cannot build the PHY, but the link layer,
+    the retry and CRC logic, and the protocol adapters above it are all synthesisable
+    &mdash; the familiar pattern of a sellable digital block adjacent to an unreachable
+    analogue one.</div>

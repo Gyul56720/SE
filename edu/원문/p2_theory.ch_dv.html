@@ -1,0 +1,28 @@
+<h1 id="dvth">검증 이론 &mdash; &lsquo;다 돌렸다&rsquo;를 어떻게 말하나</h1>
+<h2>1. 커버리지 세 종류</h2>
+<table><caption>표 39. 커버리지의 종류와 한계</caption><thead><tr><th>종류</th><th>재는 것</th><th>한계</th></tr></thead><tbody><tr><td><b>코드 커버리지</b>(line · branch · toggle · FSM)</td><td>RTL 의 어느 줄/분기/천이가 실행됐나</td><td>100%여도 <b>기능이 맞다는 뜻이 아니다</b>. 안 쓴 조합은 안 보인다</td></tr><tr><td><b>기능 커버리지</b>(covergroup · cross)</td><td>설계자가 &lsquo;봐야 한다&rsquo;고 정의한 상황이 일어났나</td><td><b>정의하지 않은 상황은 영원히 안 보인다</b></td></tr><tr><td><b>단언 커버리지</b></td><td>속성이 실제로 발동했나</td><td>vacuous pass(전제가 거짓이라 자동 통과)에 주의</td></tr></tbody></table>
+<div class="warn"><b>커버리지 100%는 &ldquo;끝&rdquo;이 아니라
+    &ldquo;내가 세운 목표를 다 채웠다&rdquo;는 뜻이다.</b> 기능 커버리지는 사람이 적은
+    것이므로, <b>적지 않은 위험은 커버리지에 나타나지 않는다.</b> 그래서 escape 분석
+    (놓친 버그가 왜 안 잡혔나)이 커버리지보다 중요하다.</div>
+<h2>2. 제약 랜덤(CRV)</h2>
+<p>손으로 벡터를 쓰면 사람이 생각한 것만 시험한다. 제약 랜덤은
+    <b>유효 범위를 제약으로 적고 그 안에서 무작위</b>로 뽑는다. 사람이 생각 못 한
+    조합이 나온다.</p>
+<div class="ms"><b>실무의 어려움은 &lsquo;랜덤&rsquo;이 아니라
+    &lsquo;제약&rsquo;이다.</b> 제약이 느슨하면 무효 입력만 쏟아지고, 빡빡하면 흥미로운
+    구석에 못 간다. 그래서 <b>가중치</b>(<code>dist</code>)로 경계값을 자주 뽑게 하고,
+    커버리지가 안 차는 구멍을 보고 제약을 조인다 &mdash; <b>coverage-driven
+    verification</b>. 씨앗(seed)을 바꿔 가며 야간 회귀를 수천 번 도는 것이 이 때문이다.
+    <b>재현성을 위해 씨앗은 반드시 로그에 남겨야 한다.</b></div>
+<h2>3. 형식 검증(Formal)</h2>
+<table><caption>표 40. 형식 검증이 잘 되는 자리와 안 되는 자리</caption><thead><tr><th>잘 됨</th><th>왜</th><th>안 됨</th><th>왜</th></tr></thead><tbody><tr><td>제어 FSM · 아비터</td><td>상태공간이 작다</td><td>데이터패스 전체</td><td>상태공간 폭발</td></tr><tr><td>프로토콜 준수(AXI 등)</td><td>속성이 국소적</td><td>부동소수점 유닛</td><td>너무 크다</td></tr><tr><td>레지스터 접근 규칙</td><td>규칙이 명시적</td><td>캐시 일관성 전체</td><td>조합 폭발</td></tr><tr><td>데드락 · 도달불가 상태</td><td>도달성 문제</td><td>성능 특성</td><td>형식 대상이 아니다</td></tr></tbody></table>
+<div class="note"><b>모델링 팀과의 접점.</b> 형식 검증은 <b>속성</b>이
+    필요하다. &ldquo;무엇이 참이어야 하는가&rdquo;를 적는 일인데, <b>그 답을 가장 잘
+    아는 사람이 모델러</b>다. 명세를 코드로 옮겨 본 사람이기 때문이다. 형식팀에
+    속성 목록을 제공하는 것은 모델링 팀의 자연스러운 기여다.</div>
+<h2>4. 회귀와 분류(triage)</h2>
+<table><caption>표 41. 야간 회귀가 아침에 남기는 것과 대응</caption><thead><tr><th>결과</th><th>뜻</th><th>먼저 할 일</th></tr></thead><tbody><tr><td><b>새 실패</b></td><td>어제 없던 것</td><td>최근 커밋과 대조. 가장 우선</td></tr><tr><td><b>기존 실패</b></td><td>이미 아는 것</td><td>티켓 번호가 붙어 있어야 한다</td></tr><tr><td><b>간헐 실패</b></td><td>씨앗에 따라 다름</td><td><b>가장 위험하다.</b> &lsquo;플레이크&rsquo;로 치우지 마라 &mdash; 대개 진짜 버그다</td></tr><tr><td><b>인프라 실패</b></td><td>라이선스 · 디스크 · 도구</td><td>실패 이유가 분류돼야 한다</td></tr><tr><td><b>타임아웃</b></td><td>안 끝남</td><td>성능 회귀 또는 라이브락</td></tr></tbody></table>
+<div class="warn"><b>&ldquo;플레이크&rdquo;는 원인이 아니다.</b>
+    간헐 실패를 재현 못 한다고 닫으면, 같은 버그가 실리콘에서 나온다. 씨앗을 고정해
+    재현하고, 못 하면 <b>미해결로 남겨 두는 것</b>이 맞다. 닫지 마라.</div>

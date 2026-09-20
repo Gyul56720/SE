@@ -1,0 +1,21 @@
+<h1 id="l3">L3. Thermal and Packaging</h1>
+<div class="math">T<sub>junction</sub> = T<sub>ambient</sub> +
+    P &middot; &theta;<sub>JA</sub></div>
+<table><caption>Table 122. Thermal resistance path</caption><thead><tr><th>Segment</th><th>Symbol</th><th>Typical</th><th>Improved by</th></tr></thead><tbody><tr><td>Junction to case</td><td>&theta;<sub>JC</sub></td><td>0.1&ndash;1 K/W</td><td>Die attach, lid material</td></tr><tr><td>Case to heatsink</td><td>&mdash;</td><td>0.1&ndash;0.5 K/W</td><td>Thermal interface material</td></tr><tr><td>Heatsink to ambient</td><td>&theta;<sub>SA</sub></td><td>0.5&ndash;10 K/W</td><td>Fin area, airflow</td></tr><tr><td><b>Total</b></td><td>&theta;<sub>JA</sub></td><td>&mdash;</td><td>&mdash;</td></tr><tr><td>Hot spot</td><td>&mdash;</td><td>&mdash;</td><td><b>Local power density, not average</b> &mdash; floorplanning matters</td></tr></tbody></table>
+<div class="ms"><b>Hot spots are a floorplanning problem, and they couple
+    back into timing.</b> Average die temperature may be comfortable while a dense
+    arithmetic block runs 20&nbsp;K hotter than its surroundings. Since delay and leakage
+    both depend on temperature, that block is slower and leakier than the sign-off corner
+    assumed, and its leakage raises its temperature further &mdash; a positive feedback
+    known as thermal runaway in the extreme. The design responses are spreading high-activity
+    logic, inserting thermal sensors and throttling, and accounting for the gradient in
+    timing analysis. <b>For an IP vendor, a block with very high local power density
+    should say so</b>, because the customer's floorplanner needs to know.</div>
+<table><caption>Table 123. Package types</caption><thead><tr><th>Package</th><th>Density</th><th>Thermal</th><th>Use</th></tr></thead><tbody><tr><td>Wire-bond QFN/BGA</td><td>Low</td><td>Moderate</td><td>Cost-sensitive</td></tr><tr><td>Flip-chip BGA</td><td>High</td><td>Good (heat exits through the lid)</td><td>High performance</td></tr><tr><td><b>Silicon interposer (2.5D)</b></td><td>Very high</td><td>Good</td><td>HBM integration</td></tr><tr><td><b>3D stacking</b></td><td>Highest</td><td><b>Difficult &mdash; heat is trapped</b></td><td>Memory on logic</td></tr><tr><td>Fan-out wafer level</td><td>High</td><td>Moderate</td><td>Mobile</td></tr><tr><td>Chiplet in package</td><td>High</td><td>Manageable</td><td>Disaggregated designs</td></tr></tbody></table>
+<div class="ms"><b>Thermal constraints are what limit 3D integration,
+    not manufacturing.</b> Stacking a logic die under another die places its heat behind a
+    thermal barrier, so the achievable power density falls sharply. This is why current 3D
+    products stack memory (low power) on logic rather than logic on logic, and why thermal
+    modelling now appears early in architecture rather than at the end. <b>The physical
+    constraint determines the partitioning, which determines which interfaces are needed,
+    which determines which IP is valuable.</b></div>
