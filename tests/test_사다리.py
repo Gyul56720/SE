@@ -30,7 +30,8 @@ import bookK  # noqa: E402
 # 읽는 순서대로.  장을 더하면 여기에 더한다.
 차례 = [("T1_device", "ch_device"), ("T2_delay", "ch_delay"),
       ("T3_meta", "ch_meta"), ("T4_noise", "ch_noise"),
-      ("T5_sample", "ch_sample"), ("T6_dataconv", "ch_dataconv")]
+      ("T5_sample", "ch_sample"), ("T6_dataconv", "ch_dataconv"),
+      ("T7_pll", "ch_pll"), ("T8_serdes", "ch_serdes")]
 
 
 def _짓기():
