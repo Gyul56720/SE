@@ -159,6 +159,33 @@
     "주기율표": "the periodic table", "공유결합": "covalent bonds",
     "이온": "ions", "이진법": "binary", "논리": "logic", "집합": "sets",
     "함수개념": "the idea of a function",
+    # --- 구현 흐름 (T17~) ---
+    "구현흐름": "implementation flow", "합성": "logic synthesis",
+    "넷리스트": "netlist", "표준셀라이브러리": "standard-cell library",
+    "타이밍라이브러리": "timing library (.lib)", "LEF": "LEF (abstract view)",
+    "DEF": "DEF (placed and routed design)", "SDC": "SDC (design constraints)",
+    "SPEF": "SPEF (extracted parasitics)", "SDF": "SDF (back-annotated delays)",
+    "정적타이밍분석": "static timing analysis", "타이밍수렴": "timing closure",
+    "ECO": "ECO (engineering change order)", "배선부하모델": "wire-load model",
+    "물리인지합성": "physically aware synthesis", "사인오프": "signoff",
+    # --- 플로어플랜·전원계획 (T18) ---
+    "다이": "die", "코어영역": "core area", "점유율": "utilisation",
+    "종횡비": "aspect ratio", "표준셀행": "standard-cell row", "SITE": "SITE",
+    "전원그리드": "power grid", "파워링": "power ring",
+    "파워스트라이프": "power stripe", "스페셜라우트": "special route",
+    "IO패드링": "I/O pad ring", "코너셀": "corner cell", "IO필러": "I/O filler",
+    "필러셀": "filler cell", "탭셀": "tap cell", "킵아웃": "keep-out",
+    "패드제한다이": "pad-limited die", "코어제한다이": "core-limited die",
+    # --- 배치·CTS·배선 (T19) ---
+    "배치": "placement", "합법화": "legalisation", "HPWL": "HPWL (wirelength)",
+    "타이밍주도배치": "timing-driven placement", "혼잡도": "congestion",
+    "트랙": "routing track", "gcell": "gcell", "렌트법칙": "Rent's rule",
+    "클럭트리합성": "clock-tree synthesis", "삽입지연": "insertion delay",
+    "클럭스큐": "clock skew", "유용스큐": "useful skew", "클럭메시": "clock mesh",
+    "H트리": "H-tree", "클럭게이팅": "clock gating",
+    "CGIC": "integrated clock-gating cell", "전역배선": "global routing",
+    "상세배선": "detail routing", "탐색수리": "search and repair",
+    "안테나위반": "antenna violation",
 })
 
 

@@ -35,7 +35,10 @@ import bookK  # noqa: E402
       ("T9_channel", "ch_channel"), ("T10_switchcap", "ch_switchcap"),
       ("T11_bias", "ch_bias"), ("T12_match", "ch_match"),
       ("T13_pi", "ch_pi"), ("T14_rel", "ch_rel"),
-      ("T15_layout", "ch_layout"), ("T16_esd", "ch_esd")]
+      ("T15_layout", "ch_layout"), ("T16_esd", "ch_esd"),
+      ("T17_flow", "ch_flow"),
+      ("T18_floorplan", "ch_floorplan"),
+      ("T19_pnr", "ch_pnr")]
 
 
 def _짓기():
