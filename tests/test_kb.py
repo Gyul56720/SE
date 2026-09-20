@@ -141,23 +141,33 @@ def test_말표가_실제로_바꾼다():
 # ---------------------------------------------------------------------------
 # 자해검사 -- 이 검사가 빨개질 수 있음을 증명한다
 # ---------------------------------------------------------------------------
-def test_자해_색인망가뜨리면_빨개진다(tmp_path, monkeypatch):
+def test_자해_색인망가뜨리면_빨개진다():
     """CDC 장들을 색인에서 빼면, 준안정 물음이 **그 장을 못 찾아야** 한다.
 
     이걸 안 해 두면 `찾기` 가 무엇을 주든 위의 짝 검사가 통과할 수 있다.
+
+    (fixture 를 안 쓴다 -- 이 저장소의 스크립트 러너는 fixture 를 흉내 내지 않아서,
+    `tmp_path` 를 받는 검사는 `python3 tests/test_kb.py` 로 못 돈다.)
     """
+    import tempfile
     뺄것 = {"X3_cdc", "C_digital", "B_device", "T3_meta"}
-    남은 = [r for r in kb.싣기() if r["모듈"] not in 뺄것]
-    assert len(남은) < len(kb.싣기()), "뺄 것이 애초에 없었다 -- 검사가 무의미하다"
-    p = tmp_path / "kb.jsonl"
-    p.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in 남은),
-                 encoding="utf-8")
-    monkeypatch.setattr(kb, "원장", str(p))
-    monkeypatch.setattr(kb, "_실림", None)
-    절들, _ = kb.찾기("준안정 상태가 뭐고 MTBF 는 어떻게 계산해?", 개수=5)
-    온것 = [r["모듈"] for r in 절들]
-    assert not (set(온것) & 뺄것), f"뺐는데도 왔다 -- 찾기가 색인을 안 본다: {온것}"
-    kb._실림 = None
+    원래문서 = kb.싣기()
+    남은 = [r for r in 원래문서 if r["모듈"] not in 뺄것]
+    assert len(남은) < len(원래문서), "뺄 것이 애초에 없었다 -- 검사가 무의미하다"
+    원래원장 = kb.원장
+    d = tempfile.mkdtemp()
+    p = os.path.join(d, "kb.jsonl")
+    with open(p, "w", encoding="utf-8") as f:
+        f.write("\n".join(json.dumps(r, ensure_ascii=False) for r in 남은))
+    try:
+        kb.원장, kb._실림 = p, None
+        절들, _ = kb.찾기("준안정 상태가 뭐고 MTBF 는 어떻게 계산해?", 개수=5)
+        온것 = [r["모듈"] for r in 절들]
+        assert not (set(온것) & 뺄것), f"뺐는데도 왔다 -- 찾기가 색인을 안 본다: {온것}"
+    finally:
+        kb.원장, kb._실림 = 원래원장, None
+        os.remove(p)
+        os.rmdir(d)
 
 
 # ---------------------------------------------------------------------------
@@ -232,3 +242,8 @@ def test_도구_독스트링이_답의_꼴을_말한다():
                 assert 있어야 in d, f"도구 설명에 '{있어야}' 가 없다"
             return
     raise AssertionError("bot_tools.textbook 이 없다")
+
+
+if __name__ == "__main__":
+    import _run
+    _run.돌리기(globals())
