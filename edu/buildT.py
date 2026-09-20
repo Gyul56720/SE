@@ -82,6 +82,12 @@ import bookE
     ("T14_rel",     ["ch_rel"]),
     ("T15_layout",  ["ch_layout"]),
     ("T16_esd",     ["ch_esd"]),
+    ("T17_flow",    ["ch_flow"]),
+    ("T18_floorplan",["ch_floorplan"]),
+    ("T19_pnr",     ["ch_pnr"]),
+    ("T20_signoff", ["ch_signoff"]),
+    ("T21_dv",      ["ch_dv"]),
+    ("T22_ate",     ["ch_ate"]),
 ]
 
 

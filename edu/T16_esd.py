@@ -219,13 +219,21 @@ def ch_esd():
     chapter to T8: <b>ESD is not a separate discipline from the link budget; it is a
     line in it.</b>""")
 
-    c.글("""That closes the graduate volume. It began with one device in four operating
-    regions and ends at the pad, having passed through delay, metastability, noise,
-    sampling, conversion, clocking, links, channels, switched capacitors, references,
-    matching, power, ageing and geometry. The common thread was a single discipline:
-    <b>every number was computed or measured, the trivial explanations were killed
-    before the number was reported, and what could not be established was said to be
-    unestablished.</b> That habit, more than any formula in these pages, is what makes
-    an IP deliverable something another company can buy.""")
+    c.글("""That closes the device half of this volume. It began with one device in
+    four operating regions and ends at the pad, having passed through delay,
+    metastability, noise, sampling, conversion, clocking, links, channels, switched
+    capacitors, references, matching, power, ageing and geometry. The common thread was
+    a single discipline: <b>every number was computed or measured, the trivial
+    explanations were killed before the number was reported, and what could not be
+    established was said to be unestablished.</b>""")
+
+    c.글("""What follows is the other half: the flow that turns a verified netlist into
+    manufactured, tested silicon. It is a different kind of engineering — the quantities
+    are runtimes, track counts, corner lists, test seconds and defective parts per
+    million rather than volts and picoseconds — but the discipline is the same one, and
+    the six chapters apply it to the six stages: the flow and what a loop costs (T17),
+    the floorplan and its power grid (T18), placement, clocking and routing (T19),
+    signoff (T20), the verification environment that had to come first (T21), and the
+    tester that every shipped part passes through (T22).""")
 
     return c.완성()
