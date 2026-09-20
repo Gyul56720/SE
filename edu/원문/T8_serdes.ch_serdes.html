@@ -1,0 +1,151 @@
+<h1 id="T8">T8. The Serial Link — Measured, Including Where It Does Not Work</h1>
+<p class="한줄">A link is the one block where the channel is someone else's problem and entirely your responsibility.</p>
+<div class="사다리"><div class="사다리앞"><b>읽기 전에 알아야 하는 것</b><br>전압 · 주파수 · 위상 · 확률 · 표준편차 · 로그 · 적분 · SNR · 구경지터 · 위상잡음 · 적분지터 · 루프대역폭 · 엘리어싱 · ENOB · 열잡음</div><div class="사다리뒤"><b>이 장에서 새로 나오는 것</b><br>심볼간간섭 · 펄스응답 · 커서 · 선행커서 · 후행커서 · 최악왜곡 · 아이다이어그램 · CTLE · FFE · DFE · 오류전파 · 비트오류율 · 3의법칙 · 클럭데이터복원 · 지터허용 · PAM4</div></div>
+<p>Everything in a serial link is a consequence of one fact: the channel is a
+    low-pass filter with far less bandwidth than the symbol rate, so each symbol arrives
+    smeared across its neighbours. The receiver's job is to undo that smearing well
+    enough that a slicer can decide, and the measurements below — run with this
+    repository's own channel and link model — show both how much equalisation buys and,
+    more usefully, <b>where it buys nothing at all</b>.</p>
+<h2>T8.1 The pulse response, and the numbers that come out of it</h2>
+<div class="정의"><b>커서 (cursor)</b> &mdash; The samples of the channel's pulse response taken at symbol intervals. The <b>main cursor</b> is the one the slicer uses; everything before it is a <b>pre-cursor</b> and everything after a <b>post-cursor</b>. The sum of the magnitudes of all non-main cursors is the worst-case ISI.</div>
+<table><caption>표 32. Measured pulse response of this model's channel (sps = 8)</caption><thead><tr><th>Loss</th><th>Main</th><th>Pre-cursor 1</th><th>Post-cursor 1</th><th>Σ|ISI|</th><th>Worst-case eye</th></tr></thead><tbody><tr><td>10&nbsp;dB</td><td>3.388</td><td>0.348</td><td>1.329</td><td>4.234</td><td><b>-1.692</b></td></tr><tr><td>20&nbsp;dB</td><td>1.693</td><td>0.547</td><td>1.035</td><td>5.444</td><td><b>-7.502</b></td></tr><tr><td>30&nbsp;dB</td><td>0.918</td><td>0.487</td><td>0.744</td><td>5.681</td><td><b>-9.525</b></td></tr></tbody></table>
+<div class="짚기">Read the last column carefully. At <b>every</b> loss — including
+    10&nbsp;dB, where the link runs essentially error-free — the worst-case eye is
+    <b>negative</b>. That is not a contradiction: worst-case (peak-distortion) analysis
+    assumes the data pattern that maximises every interferer simultaneously, and that
+    pattern is astronomically rare. <b>Peak distortion is a bound, not a prediction.</b>
+    A design signed off on it alone is over-designed; a design that ignores it has no
+    bound at all. Both numbers belong in the deliverable.</div>
+<div class="유도"><div class="유도머리">유도 &mdash; Why loss shows up as post-cursors, and why that matters</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">A lossy channel attenuates high frequencies more than low ones.</td><td class="유도왜">Skin effect (∝√f) and dielectric loss (∝f). Both are physics of the medium, not of the driver.</td></tr><tr><td class="유도번호">2</td><td class="유도말">A sharp edge is therefore spread in time: the pulse response develops a long tail.</td><td class="유도왜">Measured at 20&nbsp;dB: the first post-cursor is 1.035 against a main cursor of 1.693 — <b>61.1&nbsp;% of the signal arrives one symbol late</b>.</td></tr><tr><td class="유도번호">3</td><td class="유도말">The tail is <i>causal and past</i> — it depends on symbols already decided.</td><td class="유도왜">That is exactly what makes a decision-feedback equaliser possible: the receiver already knows those bits, so it can subtract their contribution without amplifying noise.</td></tr><tr><td class="유도번호">4</td><td class="유도말">Pre-cursors are not, so they can only be handled by a filter that looks <i>ahead</i> — an FFE, which is linear and therefore amplifies noise along with signal.</td><td class="유도왜">Measured pre-cursor at 20&nbsp;dB is 0.547, a third of the post-cursor. This asymmetry is why receivers use both kinds of equaliser rather than one.</td></tr></tbody></table></div>
+<h2>T8.2 What each equaliser actually buys — measured</h2>
+<table><caption>표 33. BER against channel loss and equalisation (SNR = 26 dB, PRBS, seeds 1·2·3 combined, 420,000 bits per cell)</caption><thead><tr><th>Loss</th><th>No EQ</th><th>CTLE 6 dB</th><th>+ FFE 3</th><th>+ DFE 4</th></tr></thead><tbody><tr><td>10&nbsp;dB</td><td>2.38×10<sup>-6</sup></td><td>&lt; 7.14×10<sup>-6</sup> <span style='color:#888'>(오류 0, 3의 법칙)</span></td><td>&lt; 7.14×10<sup>-6</sup> <span style='color:#888'>(오류 0, 3의 법칙)</span></td><td>&lt; 7.14×10<sup>-6</sup> <span style='color:#888'>(오류 0, 3의 법칙)</span></td></tr><tr><td>20&nbsp;dB</td><td>0.14</td><td>0.01</td><td>0.01</td><td>0</td></tr><tr><td>30&nbsp;dB</td><td>0.27</td><td>0.23</td><td>0.25</td><td>0.25</td></tr></tbody></table>
+<div class="사고"><b>실제로 난 일</b><br><b>The 30 dB row is not a result — it is a broken operating point.</b>
+    Every configuration sits at a BER of roughly 0.2, which is what a slicer
+    does when the eye is fully closed: it guesses. Comparing equalisers there is
+    comparing coin flips, and the apparent finding that FFE is <i>worse</i> than CTLE
+    alone (0.25 against
+    0.23) is noise, not physics.
+    <p>This repository has a rule for exactly this, learned the hard way: <b>check the
+    operating point is healthy before reporting anything measured on it.</b> A BER near
+    0.5, an equaliser that did not converge, a wrong sampling phase — all of them
+    produce numbers that look like data.</p></div>
+<table><caption>표 34. Finding a healthy operating point: SNR sweep at 20&nbsp;dB loss with CTLE + FFE 5 + DFE 6 (630,000 bits per row)</caption><thead><tr><th>SNR</th><th>Errors</th><th>BER</th></tr></thead><tbody><tr><td>26&nbsp;dB</td><td>2226</td><td>0</td></tr><tr><td>30&nbsp;dB</td><td>9</td><td>1.43×10<sup>-5</sup></td></tr><tr><td>34&nbsp;dB</td><td>0</td><td>&lt; 4.76×10<sup>-6</sup> <span style='color:#888'>(오류 0, 3의 법칙)</span></td></tr><tr><td>38&nbsp;dB</td><td>0</td><td>&lt; 4.76×10<sup>-6</sup> <span style='color:#888'>(오류 0, 3의 법칙)</span></td></tr></tbody></table>
+<table><caption>표 35. The same comparison at a <b>healthy</b> operating point (20&nbsp;dB loss, SNR = 34&nbsp;dB)</caption><thead><tr><th>Configuration</th><th>Errors</th><th>BER</th></tr></thead><tbody><tr><td>none</td><td>81496</td><td>0.13</td></tr><tr><td>CTLE</td><td>40</td><td>6.35×10<sup>-5</sup></td></tr><tr><td>CTLE+FFE5</td><td>0</td><td>&lt; 4.76×10<sup>-6</sup> <span style='color:#888'>(오류 0, 3의 법칙)</span></td></tr><tr><td>CTLE+FFE5+DFE6</td><td>0</td><td>&lt; 4.76×10<sup>-6</sup> <span style='color:#888'>(오류 0, 3의 법칙)</span></td></tr></tbody></table>
+<div class="개념"><div class="개념머리">3의 법칙 — what zero errors is allowed to mean</div>
+<div class="개념이론"><p>Two rows above report <b>zero errors</b>. Zero errors is not a BER of
+        zero; it is an upper bound. With no errors in n bits, the 95 % confidence upper
+        bound on the error rate is 3/n — the <b>rule of three</b>. For the
+        630,000-bit runs that is 4.76×10<sup>-6</sup>.</p>
+        <p>So the measurement says CTLE + FFE and CTLE + FFE + DFE are both below
+        4.76×10<sup>-6</sup>, and it says <b>nothing about which is better</b>. Reporting
+        that DFE 'made no difference' would be a claim the data does not support; the
+        honest statement is that this run could not distinguish them, and that
+        distinguishing them needs roughly 100× more bits or a worse channel.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>Every BER measurement, every compliance report, and every datasheet line that contains the letters BER.</td></tr>
+<tr><th>언제 쓰나</th><td>Whenever the error count is small — which, for any link worth shipping, is always.</td></tr>
+<tr><th>어떻게 쓰나</th><td>Report errors and bits, not just the ratio. If errors = 0, quote the 3/n bound and the confidence level. To claim 1e-12 you must observe at least 3e12 bits, which at 25 Gb/s is two minutes — and at 1e-15, a day.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code># The line that belongs in every link report.
+#   errors = 0 in 6.30e5 bits  -&gt;  BER &lt; 4.8e-6 (95% confidence, rule of three)
+# NOT "BER = 0".
+def ber_bound(errors, bits, conf=0.95):
+    if errors == 0:
+        import math
+        return -math.log(1 - conf) / bits        # 3.0/bits at 95%
+    return errors / bits                         # point estimate; add a CI for small n
+# And the check that catches the broken operating point before any of this matters:
+assert 0.0 &lt;= ber &lt; 0.2, f"BER {ber} -- the eye is closed; this run measured nothing" </code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> A BER of exactly 0.5 usually means a polarity or alignment bug, not a
+            bad channel — the receiver is comparing against an inverted or misaligned
+            reference. A BER near 0.25 with PAM4 means the same thing one level up.
+            <b>Check for these before blaming the equaliser</b>: they are far more
+            common than a genuinely closed eye.</div>
+</div>
+<h2>T8.3 The three equalisers, and the one that can make things worse</h2>
+<table><caption>표 36. What each equaliser does to signal and to noise</caption><thead><tr><th></th><th>CTLE</th><th>FFE</th><th>DFE</th></tr></thead><tbody><tr><td>Where</td><td>Analog, before sampling</td><td>Analog or digital, linear FIR</td><td>After the slicer, feedback</td></tr><tr><td>Handles</td><td>Broad high-frequency loss</td><td>Pre- and post-cursors</td><td><b>Post-cursors only</b></td></tr><tr><td>Noise</td><td>Amplifies it with the signal</td><td>Amplifies it — gain at high frequency is noise gain</td><td><b>Does not</b> — it subtracts known symbols</td></tr><tr><td>Cost</td><td>Small; a few devices and a peaking network</td><td>Taps × multipliers; the tap count grows with the tail</td><td>A multiply-add <b>inside one symbol period</b> — the timing wall of T2</td></tr><tr><td>Fails when</td><td>The loss is not a smooth slope (reflections)</td><td>Noise is already the limit</td><td>A wrong decision propagates (error burst)</td></tr></tbody></table>
+<div class="개념"><div class="개념머리">오류전파 (error propagation), and why DFE is still worth it</div>
+<div class="개념이론"><p>A DFE subtracts the contribution of symbols it has already decided. If a
+        decision is wrong, it subtracts the wrong thing, which makes the next decision
+        more likely to be wrong — errors arrive in bursts rather than singly.</p>
+        <p>The effect is real and it is smaller than intuition suggests: for a
+        one-tap DFE the burst length is short because the error has to survive the next
+        correct decision. What matters downstream is not the BER but the <b>burst
+        structure</b>, because the FEC that follows was designed for a burst length. A
+        link that meets its BER and violates the assumed burst distribution will fail
+        after decoding while every pre-FEC measurement looks fine.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>Every receiver above ~10 dB of loss, and every conversation with the FEC designer.</td></tr>
+<tr><th>언제 쓰나</th><td>Whenever the post-cursor tail is significant relative to the main cursor — at 20&nbsp;dB in this model the first post-cursor alone is 61.1&nbsp;% of the main.</td></tr>
+<tr><th>어떻게 쓰나</th><td>Measure the burst-length distribution, not just BER, and hand it to whoever sizes the interleaver. Unrolling (speculation) removes the feedback multiply from the critical path — the T2 argument — at the cost of 2<sup>k</sup> parallel slicers for k unrolled taps.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>// Unrolled (speculative) first DFE tap: both outcomes are precomputed,
+// and the previous decision only selects. The multiply leaves the loop.
+always_comb begin
+    d_if_prev0 = (sample &gt;  +c1) ;      // precomputed thresholds
+    d_if_prev1 = (sample &gt;  -c1) ;
+end
+always_ff @(posedge clk) prev &lt;= prev ? d_if_prev1 : d_if_prev0;   // 2:1 mux only
+// The loop now contains a mux and a flop instead of a multiply-add.
+// Cost: one extra slicer per unrolled tap, and 2^k for k taps.</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> Unrolling is only a win if the loop was the critical path. Measure first:
+            in this repository's own measurement of a DFE at a realistic operating point
+            the feedback taps were |c| ≤ 0.041 — <b>the loop was idle</b>, and the real
+            critical path was the slicer. Optimising an idle loop is the most expensive
+            kind of correct work.</div>
+</div>
+<h2>T8.4 Recovering the clock, and the jitter that decides whether you can</h2>
+<div class="개념"><div class="개념머리">클럭데이터복원 (CDR) — the PLL of T7 with the data as its reference</div>
+<div class="개념이론"><p>There is no separate clock wire. The receiver extracts timing from the
+        data's own transitions using a phase detector (Alexander/bang-bang, or a linear
+        Mueller-Müller) driving the same second-order loop as T7. Everything from that
+        chapter applies, with two changes: the 'reference' arrives only when the data
+        transitions, and the loop must <b>track</b> the transmitter's spread-spectrum
+        modulation while <b>rejecting</b> high-frequency jitter.</p>
+        <p>That is the jitter tolerance mask: below the CDR bandwidth the receiver
+        follows the jitter (so large amplitudes are tolerated); above it, the receiver
+        cannot follow and the jitter eats the eye directly.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>Every receiver in every serial standard — PCIe, USB, Ethernet, MIPI, SATA, HDMI.</td></tr>
+<tr><th>언제 쓰나</th><td>CDR bandwidth is fixed by the standard's jitter-tolerance mask and by the spread-spectrum profile it must track; it is not a free parameter.</td></tr>
+<tr><th>어떻게 쓰나</th><td>Take the standard's mask, place the CDR bandwidth so the tolerance curve sits above it with margin, and check that the transmit PLL's jitter (T7) plus the residual falls inside the budget.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code># The budget is a SUM, and each term has an owner.
+#   TX PLL jitter (T7)          0.30 ps rms   &lt;- clock design
+#   TX driver / ISI (DJ)        0.15 UI pp    &lt;- output stage and package
+#   Channel ISI residual        0.20 UI pp    &lt;- equalisation, this chapter
+#   RX CDR tracking error       0.05 UI pp    &lt;- loop bandwidth
+#   Sampler aperture (T5)       0.10 ps rms   &lt;- sampling network
+# Random terms add in QUADRATURE, deterministic ones LINEARLY -- mixing the two
+# rules is the most common budgeting error, and it always errs optimistic.</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> Spread-spectrum clocking is a <b>requirement to track</b>, not a
+            disturbance to reject: a CDR whose bandwidth is too low to follow a 33 kHz
+            SSC profile loses lock on a compliant transmitter. A receiver that works on
+            the bench with a clean generator and fails against real hosts is usually
+            this.</div>
+</div>
+<h2>T8.5 What to do with this on Monday</h2>
+<table><caption>표 37. 이 장의 개념이 실제로 쓰이는 자리</caption><thead><tr><th>개념</th><th>쓰이는 블록</th><th>무엇을 정하나</th></tr></thead><tbody><tr><td>펄스응답 · 커서 · 최악왜곡</td><td>Before choosing any equaliser</td><td>How many taps of what kind — and the bound that goes in the datasheet</td></tr><tr><td>CTLE · FFE · DFE</td><td>Receiver architecture</td><td>Noise amplification versus error propagation, and the timing wall</td></tr><tr><td>3의법칙</td><td>Every BER number you report</td><td>Whether the measurement supports the claim at all</td></tr><tr><td>오류전파</td><td>The interface with FEC</td><td>Interleaver depth — the number the FEC designer needs from you</td></tr><tr><td>클럭데이터복원 · 지터허용</td><td>Compliance</td><td>CDR bandwidth, which the standard has already chosen for you</td></tr></tbody></table>
+<p>Two measured results to carry. At 20&nbsp;dB of loss and
+    SNR 34&nbsp;dB, CTLE alone takes the link from
+    0.13 to
+    6.35×10<sup>-5</sup> — a factor of about
+    2,037 — and adding FFE pushes it
+    below what 630,000 bits can resolve. And at 30&nbsp;dB of loss with the
+    same SNR, <b>no equaliser does anything at all</b>, because the operating point
+    itself is broken. Reporting the second table without that sentence would be the
+    exact failure this book's rules exist to prevent.</p>
+<p>The next chapter goes underneath the model used here and asks where the
+    channel's loss actually comes from — and what a package, a via and a connector do to
+    the numbers above.</p>
+<div class="특허"><div class="특허머리">특허로 가는 길 &mdash; 이 주제에서 발명이 일어나는 자리</div><div class="특허속">Link patents concentrate where the loop is: speculative (unrolled) DFE
+        that removes the feedback multiply from the critical path; adaptation schemes
+        that converge without a training sequence; CDR phase detectors that tolerate
+        more ISI; and, lately, ADC-based receivers whose equalisation is entirely
+        digital. <b>This repository's own research sits in that first family</b>, and
+        the argument there is the one from T2: the invention is <i>where the delay was
+        moved</i>, not how fast the transistor is.</div></div>
