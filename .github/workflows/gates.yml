@@ -17,7 +17,12 @@ on:
 
 concurrency:
   group: gates-${{ github.ref }}
-  cancel-in-progress: true
+  # **main 에서는 취소하지 않는다.** 취소는 판정이 아니라 침묵이고, 침묵은 결론 난
+  # 옛 빨강을 되살린다(ci_watch 가 뒤로 걸어간다). 실측 2026-09-20: 머지를 잇달아
+  # 하는 동안 main 의 gates 가 #1744·#1747·#1751·#1754·#1770·#1773 여섯 번 연속
+  # 취소됐고, 그 사이 main 은 **한 번도 결론이 안 났다.** 가지에서는 그대로 취소한다
+  # -- 거기서는 최신 푸시만 보면 된다.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   # 두 갈래로 나눈 이유 (실측 2026-09-20):

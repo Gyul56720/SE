@@ -1,0 +1,112 @@
+<h1 id="T10">T10. Switched Capacitors — Accuracy Bought with Time</h1>
+<p class="한줄">A resistor whose value is a capacitor ratio and a clock. That one substitution is why precision analog survived the move to digital processes.</p>
+<div class="사다리"><div class="사다리앞"><b>읽기 전에 알아야 하는 것</b><br>전압 · 전류 · 전하 · 저항 · 주파수 · 적분 · 로그 · kTC잡음 · 차지인젝션 · 부트스트랩스위치 · 표본화정리 · RC지연 · 논리적노력 · 정합 · INL · DNL</div><div class="사다리뒤"><b>이 장에서 새로 나오는 것</b><br>등가저항 · 두상클럭 · 겹침없음 · 바닥판표본화 · SC적분기 · 되먹임계수 · 정착시간 · 유한이득오차 · 상관이중표본화 · 자동영점 · 전하보존 · 기생무감</div></div>
+<p>A precision analog circuit needs an accurate coefficient, and in an
+    integrated process there is exactly one accurate thing: the <b>ratio</b> of two
+    identically drawn structures. Absolute resistance varies ±20 % over process;
+    absolute capacitance likewise; but the ratio of two capacitors drawn side by side
+    matches to a fraction of a per cent. Switched-capacitor technique is the discipline
+    of expressing everything you need in terms of that ratio — and paying for it with
+    sampling, and therefore with time.</p>
+<h2>T10.1 A resistor made of a capacitor and a clock</h2>
+<div class="유도"><div class="유도머리">유도 &mdash; From charge transfer to an equivalent resistance</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">Charge a capacitor C to V₁, then dump it onto a node at V₂. The charge moved is ΔQ = C(V₁ − V₂).</td><td class="유도왜">This is the whole circuit: two switches and one capacitor, driven by non-overlapping clocks.</td></tr><tr><td class="유도번호">2</td><td class="유도말">Repeat at f<sub>s</sub>. The average current is I = f<sub>s</sub>·C·(V₁ − V₂).</td><td class="유도왜">Charge per cycle times cycles per second.</td></tr><tr><td class="유도번호">3</td><td class="유도말">That is Ohm's law with R<sub>eq</sub> = 1/(f<sub>s</sub>C).</td><td class="유도왜">For C = 1&nbsp;pF and f<sub>s</sub> = 10&nbsp;MHz, R<sub>eq</sub> = 100&nbsp;kΩ — a resistor that would be enormous in silicon, built from a capacitor that is not.</td></tr><tr><td class="유도번호">4</td><td class="유도말">A time constant made this way is R<sub>eq</sub>C₂ = C₂/(f<sub>s</sub>C₁) — a <b>capacitor ratio divided by a clock frequency</b>.</td><td class="유도왜">Absolute values cancel. The accuracy of the circuit is now the accuracy of a ratio (fractions of a per cent) and of a crystal (parts per million), instead of the accuracy of an absolute RC (tens of per cent).</td></tr></tbody></table></div>
+<table><caption>표 1. Equivalent resistance of a switched capacitor</caption><thead><tr><th>C</th><th>f_s</th><th>R_eq</th><th>Note</th></tr></thead><tbody><tr><td>1&nbsp;pF</td><td>10&nbsp;MHz</td><td>100&nbsp;kΩ</td><td>A poly resistor this size is hundreds of µm²</td></tr><tr><td>1&nbsp;pF</td><td>100&nbsp;MHz</td><td>10&nbsp;kΩ</td><td></td></tr><tr><td>0.5&nbsp;pF</td><td>500&nbsp;MHz</td><td>4&nbsp;kΩ</td><td>At this rate the settling requirement below is the binding constraint</td></tr></tbody></table>
+<div class="개념"><div class="개념머리">두 상 겹침 없는 클럭 (two-phase non-overlapping clocks)</div>
+<div class="개념이론"><p>The two switches must <b>never be on together</b>: if they are, the source
+        and the destination are shorted and the transferred charge is wrong by an amount
+        that depends on the overlap — which varies with process and temperature. The
+        clocks are therefore generated with a deliberate dead time, typically from a
+        cross-coupled NAND pair whose delay chains set the gap.</p>
+        <p><b>Bottom-plate sampling</b> is the refinement that matters: open the switch
+        connected to the <i>fixed</i> plate slightly first. That switch sees a constant
+        voltage, so the charge it injects is constant and becomes an offset rather than
+        signal-dependent distortion (T5's charge-injection problem, solved by
+        sequencing instead of by circuitry).</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>Every switched-capacitor circuit: SC filters, SAR and pipeline ADC stages, sample-and-holds, reference buffers.</td></tr>
+<tr><th>언제 쓰나</th><td>Always. The dead time is not an optimisation — a design with overlapping phases fails at some corner, and it fails as a slow accuracy drift rather than as an obvious break.</td></tr>
+<tr><th>어떻게 쓰나</th><td>Generate the phases from one clock in a single cell, simulate the overlap at the fast corner (where it is smallest), and route the two phases together so they share delay variation.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>// Two-phase non-overlapping clock. The feedback is what guarantees
+// the gap: neither output can rise until the other has fallen.
+module clk_2ph (input clk, output logic p1, p1d, p2, p2d);
+    wire n1 = ~(clk    &amp; p2);          // cross-coupled NAND pair
+    wire n2 = ~((~clk) &amp; p1);
+    assign p1 = delay_chain(n1);       // the chain sets the dead time
+    assign p2 = delay_chain(n2);
+    assign p1d = delay_small(p1);      // 'delayed' phases for BOTTOM-PLATE sampling:
+    assign p2d = delay_small(p2);      // the fixed-plate switch opens FIRST
+endmodule
+// Verify at the FAST corner -- that is where the dead time is smallest and
+// where overlap, if it exists at all, appears.</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> Simulating the phase generator alone proves nothing: the overlap that
+            matters is at the <b>switches</b>, after routing, with their real loads. A
+            layout that routes one phase across the chip and the other locally has
+            already broken the guarantee that the schematic provides.</div>
+</div>
+<h2>T10.2 What the amplifier must do in half a clock period</h2>
+<div class="유도"><div class="유도머리">유도 &mdash; Two requirements on one op-amp, and why they fight</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">In the transfer phase the amplifier must settle the output to within ½ LSB.</td><td class="유도왜">Anything less and the charge did not fully move — an error that is <i>gain-like</i> and therefore shows up as INL, not as noise.</td></tr><tr><td class="유도번호">2</td><td class="유도말">Settling is exponential, so reaching N-bit accuracy takes ln(2<sup>N</sup>) time constants.</td><td class="유도왜">8.32 time constants for 12 bits, 11.1 for 16 — <b>the requirement grows only logarithmically with resolution</b>, which is the good news.</td></tr><tr><td class="유도번호">3</td><td class="유도말">The available time is half a clock period, so the closed-loop bandwidth must be at least ln(2<sup>N</sup>)/(π·T<sub>s</sub>) — and the open-loop unity-gain frequency is that divided by the feedback factor β.</td><td class="유도왜">β is the fraction of the output fed back, typically 1/2 to 1/4 in a gain stage; a small β multiplies the requirement.</td></tr><tr><td class="유도번호">4</td><td class="유도말">Separately, <b>static</b> accuracy needs loop gain: the residual error is 1/(Aβ), so A must exceed 2<sup>N+1</sup>/β.</td><td class="유도왜">78.3&nbsp;dB for 12 bits at β = 1, 102&nbsp;dB for 16 — <b>and this grows exponentially with resolution</b>. This is the bad news, and it is why high-resolution SC design is hard in a process with low intrinsic gain.</td></tr><tr><td class="유도번호">5</td><td class="유도말">Bandwidth wants a short channel and lots of current; gain wants a long channel and cascodes, which cost headroom.</td><td class="유도왜">The two requirements pull in opposite directions in every process node, and the gap has widened with scaling — which is why calibration and error-cancellation now appear in designs that would once have used a better amplifier.</td></tr></tbody></table></div>
+<table><caption>표 2. What the amplifier must deliver, per resolution</caption><thead><tr><th>Bits</th><th>Time constants to settle</th><th>Minimum DC gain (β = 1)</th><th>Minimum DC gain (β = ¼)</th></tr></thead><tbody><tr><td>10</td><td>6.93</td><td>66.23&nbsp;dB</td><td>78.27&nbsp;dB</td></tr><tr><td>12</td><td>8.32</td><td>78.27&nbsp;dB</td><td>90.31&nbsp;dB</td></tr><tr><td>14</td><td>9.7</td><td>90.31&nbsp;dB</td><td>102.4&nbsp;dB</td></tr><tr><td>16</td><td>11.1</td><td>102.4&nbsp;dB</td><td>114.4&nbsp;dB</td></tr></tbody></table>
+<div class="짚기">Compare the two columns' growth. Going from 10 to 16 bits multiplies
+    the settling requirement by 1.6 and the gain
+    requirement by 64. <b>Speed scales gently with
+    resolution; static accuracy does not.</b> That asymmetry is the reason the
+    high-resolution end of the market moved to architectures that <i>measure</i> the
+    amplifier's shortfall and correct it digitally, rather than architectures that
+    demand a better amplifier.</div>
+<div class="개념"><div class="개념머리">상관 이중 표본화 (correlated double sampling)</div>
+<div class="개념이론"><p>Sample the amplifier's error — its offset and its low-frequency (flicker)
+        noise — in one phase, then subtract that sample during the signal phase. Because
+        the error is correlated between the two closely spaced samples, the subtraction
+        removes most of it.</p>
+        <p>What it costs: the uncorrelated (thermal) noise of the two samples adds in
+        power, so <b>broadband noise gets worse by √2</b> while offset and flicker get
+        much better. It also folds noise from above the sampling rate into the band
+        (T5), so the amplifier's bandwidth must be limited deliberately.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>Precision SC gain stages, image-sensor readout (where it is universal), any circuit whose input is near DC and whose amplifier has a flicker problem (T4).</td></tr>
+<tr><th>언제 쓰나</th><td>When offset and 1/f dominate — which is to say, when the signal band reaches below the flicker corner.</td></tr>
+<tr><th>어떻게 쓰나</th><td>Add one phase and one capacitor. Then check the noise budget again: the √2 penalty on thermal noise may cancel the benefit if the design was already thermal-limited.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>* The measurement that shows whether CDS helped -- run BOTH.
+.noise v(out) VIN dec 20 1 100MEG      $ with CDS disabled
+* ... then with CDS enabled, and compare the INTEGRATED noise over the signal band.
+* Reporting only the 1/f improvement while the broadband floor rose by 3 dB is
+* the kind of half-truth that gets found in the customer's lab.</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> CDS removes what is <b>correlated between the two samples</b>. Noise at
+            frequencies comparable to the sampling rate is not correlated and is not
+            removed — it is aliased in. A design that samples the error long before it
+            uses it has all of the cost and little of the benefit.</div>
+</div>
+<h2>T10.3 Noise: you pay kT/C more than once</h2>
+<table><caption>표 3. kT/C in a two-phase circuit</caption><thead><tr><th>C</th><th>kT/C (one sample)</th><th>Two phases (√2)</th><th>Bits at 1 V FS</th></tr></thead><tbody><tr><td>0.5&nbsp;pF</td><td>91&nbsp;µV</td><td>129&nbsp;µV</td><td>11.1</td></tr><tr><td>1&nbsp;pF</td><td>64.4&nbsp;µV</td><td>91&nbsp;µV</td><td>11.6</td></tr><tr><td>4&nbsp;pF</td><td>32.2&nbsp;µV</td><td>45.5&nbsp;µV</td><td>12.6</td></tr></tbody></table>
+<div class="짚기">A switched-capacitor stage samples at least twice per cycle — once on
+    the input capacitor and once on the feedback capacitor — so the noise power adds.
+    The <b>√2 is the minimum</b>; a pipeline stage with several capacitors and a
+    reference path can easily reach 2×. Taking the single-sample kT/C from T4 and
+    sizing to it is a factor-of-two error in noise power, which is half a bit — and
+    half a bit is exactly the kind of shortfall that gets discovered after tape-out.</div>
+<h2>T10.4 What to do with this on Monday</h2>
+<table><caption>표 4. 이 장의 개념이 실제로 쓰이는 자리</caption><thead><tr><th>개념</th><th>쓰이는 블록</th><th>무엇을 정하나</th></tr></thead><tbody><tr><td>등가저항</td><td>Filter and bias design in a digital process</td><td>Whether a resistor is needed at all</td></tr><tr><td>두상클럭 · 바닥판표본화</td><td>Every SC circuit, at schematic time</td><td>Whether charge injection is an offset or a distortion</td></tr><tr><td>정착시간 · 유한이득오차</td><td>Op-amp specification</td><td>Bandwidth and DC gain — and whether the process can supply the gain</td></tr><tr><td>상관이중표본화 · 자동영점</td><td>Near-DC precision paths</td><td>Whether the flicker problem is solved in the circuit or in the architecture</td></tr><tr><td>kTC잡음(두 상)</td><td>Capacitor sizing</td><td>The factor of √2 that is missing from the textbook formula</td></tr></tbody></table>
+<p>The numbers to carry: reaching 16 bits needs
+    11.1 settling time constants — only
+    1.33× more than 12 bits — but
+    102.4&nbsp;dB of DC gain against
+    78.27&nbsp;dB, which is
+    16× more. <b>Resolution is cheap in time and
+    expensive in gain</b>, and every modern architecture in this space is an answer to
+    that one sentence.</p>
+<p>The next chapter takes the quantity all of these circuits assume they have —
+    a stable bias current that does not move with supply or temperature — and shows what
+    it costs to make one.</p>
+<div class="특허"><div class="특허머리">특허로 가는 길 &mdash; 이 주제에서 발명이 일어나는 자리</div><div class="특허속">The switched-capacitor field is old and its basic circuits are long out
+        of patent, but two families keep producing claims: <b>error-cancellation
+        schemes</b> (correlated double sampling, auto-zeroing, chopper-stabilised
+        amplifiers, and every variant that measures an error in one phase and subtracts
+        it in the next) and <b>amplifier substitutes</b> — ring amplifiers, dynamic
+        amplifiers, comparator-based switched capacitor circuits — whose whole point is
+        that a modern process cannot build the high-gain op-amp the textbook assumes.
+        Both families answer the same question: <i>what do you do when the op-amp is not
+        good enough?</i></div></div>

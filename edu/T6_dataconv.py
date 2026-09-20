@@ -36,7 +36,8 @@ def ch_dataconv():
               "오버샘플링비", "잡음성형", "차지인젝션", "정적잡음여유"],
         내놓는것=["플래시ADC", "축차비교ADC", "파이프라인ADC", "시간인터리브",
                 "용량DAC", "전류구동DAC", "세그먼테이션", "INL", "DNL",
-                "미싱코드", "단조성", "중복성", "디지털보정", "글리치에너지"],
+                "미싱코드", "단조성", "중복성", "디지털보정", "글리치에너지",
+                "정합"],
         특허="""Converter patents cluster in three places and the pattern is worth
         seeing: <b>switching schemes</b> that lower the energy of a SAR's capacitive DAC
         (monotonic, split-cap, V<sub>cm</sub>-based — all the same array, switched

@@ -379,6 +379,12 @@
    "자": 3583
   },
   {
+   "파일": "T10_switchcap.ch_switchcap.html",
+   "모듈": "T10_switchcap",
+   "함수": "ch_switchcap",
+   "자": 13989
+  },
+  {
    "파일": "T1_device.ch_device.html",
    "모듈": "T1_device",
    "함수": "ch_device",
@@ -388,13 +394,13 @@
    "파일": "T2_delay.ch_delay.html",
    "모듈": "T2_delay",
    "함수": "ch_delay",
-   "자": 55132
+   "자": 55135
   },
   {
    "파일": "T3_meta.ch_meta.html",
    "모듈": "T3_meta",
    "함수": "ch_meta",
-   "자": 34799
+   "자": 34800
   },
   {
    "파일": "T4_noise.ch_noise.html",
@@ -412,7 +418,7 @@
    "파일": "T6_dataconv.ch_dataconv.html",
    "모듈": "T6_dataconv",
    "함수": "ch_dataconv",
-   "자": 14246
+   "자": 14251
   },
   {
    "파일": "T7_pll.ch_pll.html",
@@ -425,6 +431,12 @@
    "모듈": "T8_serdes",
    "함수": "ch_serdes",
    "자": 17261
+  },
+  {
+   "파일": "T9_channel.ch_channel.html",
+   "모듈": "T9_channel",
+   "함수": "ch_channel",
+   "자": 19249
   },
   {
    "파일": "W_practice.ch_auto.html",
@@ -790,7 +802,7 @@
    "파일": "Y4_agent.ch_agent.html",
    "모듈": "Y4_agent",
    "함수": "ch_agent",
-   "자": 17736
+   "자": 17733
   },
   {
    "파일": "Y5_business.ch_business2.html",
@@ -886,7 +898,7 @@
    "파일": "Z1_team.ch_team.html",
    "모듈": "Z1_team",
    "함수": "ch_team",
-   "자": 14178
+   "자": 14177
   },
   {
    "파일": "Z20_tools.ch_tools.html",
