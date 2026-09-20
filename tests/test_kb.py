@@ -93,6 +93,9 @@ def test_새_장을_쓰고_색인을_안_지으면_걸린다():
     ("SRAM 비트셀과 센스앰프가 어떻게 동작해?",           ("X10_mem", "J_blocks", "B_device")),
     ("PLL 루프 대역폭은 어떻게 정해?",                    ("X12_ams", "B_device", "T7_pll")),
     ("전력 영역과 UPF 아이솔레이션 셀",                   ("X43_lowpower", "X7_power", "L_phys")),
+    ("NLDM 이 뭐고 슬루가 왜 두 번째 축인가",             ("T2_delay", "B_device", "X2_timing")),
+    ("긴 배선에 리피터를 몇 개 넣어야 하나",              ("T2_delay", "B_device", "X14_physdes")),
+    ("논리적 노력으로 단수를 어떻게 정하나",              ("T2_delay", "B_device", "Z17_gates")),
 ]
 
 
