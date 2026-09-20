@@ -1,0 +1,109 @@
+<h1 id="T12">T12. Matching — Two Identical Devices Are Not Identical</h1>
+<p class="한줄">The only accurate thing on a chip is a ratio, and even that is a distribution. Everything precise is built on knowing its width.</p>
+<div class="사다리"><div class="사다리앞"><b>읽기 전에 알아야 하는 것</b><br>전압 · 전류 · 확률 · 평균 · 분산 · 표준편차 · 정규분포 · 로그 · 제곱근 · 문턱전압 · 트랜스컨덕턴스 · 정합 · 최소동작전압 · INL · DNL · PTAT · 온도계수</div><div class="사다리뒤"><b>이 장에서 새로 나오는 것</b><br>펠그롬법칙 · 랜덤불일치 · 계통불일치 · 공통중심 · 더미소자 · 일치도면적 · 수율시그마 · 중요도표본 · 오프셋 · 트림 · 레이아웃의존효과</div></div>
+<p>Two transistors drawn identically, adjacent, in the same orientation, still
+    differ. Dopant atoms are discrete and land at random; the gate edge is not perfectly
+    straight; the oxide thickness varies atom by atom. The resulting parameter
+    difference is a random variable, and precision analog design is the discipline of
+    <b>knowing its standard deviation and budgeting for its tail</b>.</p>
+<h2>T12.1 Pelgrom's law, and why it is a square root</h2>
+<div class="개념"><div class="개념머리">펠그롬 법칙 (Pelgrom's law)</div>
+<div class="개념이론"><p>For two adjacent identically drawn devices, the standard deviation of a
+        parameter difference falls as the square root of area:
+        <b>σ(ΔV<sub>th</sub>) = A<sub>VT</sub>/√(W·L)</b>, with A<sub>VT</sub> in mV·µm
+        — a per-process constant that the foundry measures and publishes (a few mV·µm,
+        improving slowly with each node).</p>
+        <p>The square root is not empirical curve-fitting: the mismatch comes from
+        counting statistics on independent microscopic events (dopant placement, edge
+        roughness), and the relative fluctuation of a count of N independent events
+        falls as 1/√N. <b>Area is the count.</b></p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>Every current mirror, differential pair, comparator, capacitor array, and SRAM cell in the design. Also in the yield model — this is the distribution that V<sub>min</sub> (T4) is a tail of.</td></tr>
+<tr><th>언제 쓰나</th><td>Before drawing anything precise: the required σ fixes the minimum area, and the minimum area often fixes the whole block's size and its parasitic capacitance, and therefore its speed.</td></tr>
+<tr><th>어떻게 쓰나</th><td>Work backwards from the specification. If an offset of 5 mV at 3σ is allowed, then σ(ΔV<sub>th</sub>) ≤ 1.67 mV, so W·L ≥ (A<sub>VT</sub>/1.67 mV)². With A<sub>VT</sub> = 5&nbsp;mV·µm that is 8.96&nbsp;µm² — <b>per device</b>.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>* Mismatch in a PDK is a MODEL PARAMETER, not something you add by hand.
+* The foundry supplies statistical models; you enable them and run Monte Carlo:
+.lib 'models/pdk.lib' mc              $ NOT the 'tt' corner -- the statistical deck
+.mc 200 op                            $ 200 samples
+.measure op ios param='abs(i(vd2)-i(vd1))'
+* AND THEN: the corners and the mismatch are DIFFERENT analyses.
+*   corner  = global shift  (all devices move together)
+*   mismatch = local spread (devices move independently)
+* Running 'tt + mismatch' and calling it worst case misses the combination that
+* actually fails: slow corner AND an unlucky pair.</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> A<sub>VT</sub> applies to the <b>difference between two adjacent
+            devices</b>. Using it for the absolute value of one device, or for devices
+            on opposite sides of the die, is wrong in both directions: the absolute
+            spread is larger (it includes global process variation) and the
+            device-to-device correlation across a die is a different model entirely.</div>
+</div>
+<table><caption>표 9. Measured: current-mirror ratio versus device area (ngspice Monte Carlo, 80 samples, A_VT = 5&nbsp;mV·µm, I_ref = 10 µA)</caption><thead><tr><th>W × L</th><th>Area</th><th>σ(ΔV_th)</th><th>Mean ratio</th><th>σ(ratio)</th></tr></thead><tbody><tr><td>1x0.2</td><td>0.2&nbsp;µm²</td><td>11.18&nbsp;mV</td><td>0.9779</td><td><b>14.2&nbsp;%</b></td></tr><tr><td>2x0.4</td><td>0.8&nbsp;µm²</td><td>5.59&nbsp;mV</td><td>0.9876</td><td><b>7.17&nbsp;%</b></td></tr><tr><td>4x0.8</td><td>3.2&nbsp;µm²</td><td>2.8&nbsp;mV</td><td>0.9934</td><td><b>3.61&nbsp;%</b></td></tr><tr><td>8x1.6</td><td>12.8&nbsp;µm²</td><td>1.4&nbsp;mV</td><td>0.9966</td><td><b>1.81&nbsp;%</b></td></tr></tbody></table>
+<div class="유도"><div class="유도머리">유도 &mdash; Reading Pelgrom straight out of that table</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">Area 0.2&nbsp;µm² → σ(ratio) = 14.16&nbsp;%; area 0.8&nbsp;µm² → 7.17&nbsp;%.</td><td class="유도왜">Area ×4, σ ÷1.97 — the square-root law, measured, not assumed.</td></tr><tr><td class="유도번호">2</td><td class="유도말">The next two steps repeat it: ÷1.99 and ÷1.99.</td><td class="유도왜">Three independent confirmations of the same exponent. <b>If a measurement like this does not give √, the model or the harness is wrong</b> — and that is the fastest check available on a mismatch setup.</td></tr><tr><td class="유도번호">3</td><td class="유도말">The <b>mean</b> ratio is not 1: it rises from 0.9779 toward 0.9966 as the devices grow.</td><td class="유도왜">A symmetric V<sub>th</sub> error maps to an <i>asymmetric</i> current error — the square-law is convex, so the average of the ratio is pulled below 1. <b>Mismatch biases the mean, not only the spread</b>, and the effect vanishes only as the spread does.</td></tr></tbody></table></div>
+<h2>T12.2 The other knob: overdrive</h2>
+<table><caption>표 10. Measured: the same device, different bias current (W/L = 2/0.4, 80 samples)</caption><thead><tr><th>I_ref</th><th>σ(ratio)</th><th>Relative to 10 µA</th></tr></thead><tbody><tr><td>1 µA</td><td>22.1&nbsp;%</td><td>3.08×</td></tr><tr><td>10 µA</td><td>7.17&nbsp;%</td><td>1×</td></tr><tr><td>100 µA</td><td>2.29&nbsp;%</td><td>0.32×</td></tr></tbody></table>
+<div class="유도"><div class="유도머리">유도 &mdash; Why more current matches better, and what it costs</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">A V<sub>th</sub> error δ produces a current error through the transconductance: δI = g<sub>m</sub>·δ.</td><td class="유도왜">The device does not know why its gate voltage is effectively different.</td></tr><tr><td class="유도번호">2</td><td class="유도말">Relative current mismatch is therefore σ(I)/I = (g<sub>m</sub>/I<sub>D</sub>)·σ(ΔV<sub>th</sub>).</td><td class="유도왜"><b>g<sub>m</sub>/I<sub>D</sub> is the whole story</b> (T1). High g<sub>m</sub> per amp — the efficient, low-power operating point — is also the <i>worst-matching</i> one.</td></tr><tr><td class="유도번호">3</td><td class="유도말">In strong inversion g<sub>m</sub>/I<sub>D</sub> = 2/V<sub>ov</sub>, so σ(I)/I = 2σ(ΔV<sub>th</sub>)/V<sub>ov</sub>.</td><td class="유도왜">Measured: 22.1&nbsp;% at 1 µA against 2.29&nbsp;% at 100 µA — 9.65× better for 100× the current, which is the √ again (V<sub>ov</sub> ∝ √I).</td></tr><tr><td class="유도번호">4</td><td class="유도말">In weak inversion g<sub>m</sub>/I<sub>D</sub> saturates at ~1/(nV<sub>T</sub>) ≈ 25–30 V⁻¹ and matching is at its worst.</td><td class="유도왜"><b>This is why a subthreshold current mirror is a bad current mirror</b>, and why ultra-low-power analog pays for its efficiency in area.</td></tr></tbody></table></div>
+<div class="짚기">Those two tables are the whole design space. Accuracy can be bought
+    with <b>area</b> (σ ∝ 1/√WL) or with <b>overdrive</b> (σ ∝ 1/V<sub>ov</sub>), and
+    both have a square-root character, so both are expensive. Everything else in
+    precision analog — chopping, auto-zero, DEM, digital calibration — exists to avoid
+    paying either.</div>
+<h2>T12.3 The mismatch that is not random</h2>
+<div class="정의"><b>계통 불일치 (systematic mismatch)</b> &mdash; A difference that is the same on every die: a gradient in oxide thickness across the wafer, a temperature gradient from a nearby power device, stress from the package or from a neighbouring well, or simply different surroundings on the two sides of a pair. <b>It does not average out over samples</b>, so no amount of Monte Carlo finds it.</div>
+<table><caption>표 11. Two kinds of mismatch, and what each responds to</caption><thead><tr><th></th><th>Random</th><th>Systematic</th></tr></thead><tbody><tr><td>Source</td><td>Discrete dopants, edge roughness — counting statistics</td><td>Gradients, stress, different neighbours, thermal</td></tr><tr><td>Scales as</td><td>1/√(W·L)</td><td>Does not scale with area — <b>it can get worse</b>, since a larger device spans more of the gradient</td></tr><tr><td>Found by</td><td>Monte Carlo</td><td>Layout review, and measurement on silicon</td></tr><tr><td>Removed by</td><td>Area, overdrive, calibration</td><td><b>Layout</b>: common centroid, dummies, identical orientation and surroundings</td></tr><tr><td>Typical size</td><td>7.17&nbsp;% for a 0.8&nbsp;µm² mirror (measured above)</td><td>0.1–1 % from a gradient across a few hundred µm</td></tr></tbody></table>
+<div class="개념"><div class="개념머리">공통 중심 배치 (common-centroid layout) and dummies</div>
+<div class="개념이론"><p>Split each device of a matched pair into pieces and interleave them so both
+        devices share the same centre of mass: A B B A, or a checkerboard for a
+        two-dimensional gradient. A <b>linear</b> gradient then affects both halves
+        equally and cancels to first order.</p>
+        <p><b>Dummy devices</b> at the edges solve a different problem: the outermost
+        real device has a different neighbour than the inner ones, so etch and stress
+        differ. Dummies give every real device identical surroundings, at the cost of
+        area that does nothing electrically.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>Every matched pair that matters: differential pairs, current-mirror arrays, capacitor arrays in converters (T6), bandgap BJT arrays (T11).</td></tr>
+<tr><th>언제 쓰나</th><td>At layout, and it must be specified <b>by the designer</b> — a layout engineer cannot infer which devices must match from a netlist.</td></tr>
+<tr><th>어떻게 쓰나</th><td>Mark matched groups in the schematic, require common-centroid with dummies, keep orientation identical (never mirror a device to save area), route the two halves symmetrically, and keep the pair away from the package's stress maxima — typically the die corners.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>// The instruction that must reach the layout engineer. A netlist
+// does not carry it, so it goes in the constraint file AND the schematic.
+//   match_group  : M1 M2      common_centroid = ABBA, dummies = 2 each side
+//   orientation  : identical (NO mirroring -- STI stress is not symmetric)
+//   routing      : symmetric; equal parasitic on both gates
+//   keep_out     : &gt; 50 um from the die seal ring and from any power device
+// Verified by an LVS-with-matching check, not by inspection:
+//   assert centroid(M1) == centroid(M2) within 0.5 um</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> Common centroid cancels a <b>linear</b> gradient. A quadratic one — which
+            is what a nearby heat source produces — is not cancelled, and interleaving
+            can even make it worse by spreading the device over more of the curvature.
+            For thermal gradients the answer is distance and orientation relative to the
+            isotherms, not interleaving.</div>
+</div>
+<div class="사고"><b>실제로 난 일</b><br>Mismatch is also the reason SRAM V<sub>min</sub> (T4) is a yield
+    question rather than a design-point question. An array of 10 million cells needs the
+    <b>worst</b> cell to work, which is roughly a −5.5σ event. Ordinary Monte Carlo with
+    a thousand samples cannot see that tail at all — it would take on the order of
+    10<sup>8</sup> samples. Production flows therefore use <b>importance sampling</b>
+    or analytic tail methods, and a report that says 'Monte Carlo passed, 1000 samples'
+    for a memory has not addressed the question it was asked.</div>
+<h2>T12.4 What to do with this on Monday</h2>
+<table><caption>표 12. 이 장의 개념이 실제로 쓰이는 자리</caption><thead><tr><th>개념</th><th>쓰이는 블록</th><th>무엇을 정하나</th></tr></thead><tbody><tr><td>펠그롬법칙 · 일치도면적</td><td>Sizing any matched device</td><td>The minimum area — which then sets parasitics and speed</td></tr><tr><td>g_m/I_D 와 불일치</td><td>Choosing the bias point</td><td>Whether the efficient operating point is affordable</td></tr><tr><td>계통불일치 · 공통중심 · 더미소자</td><td>Layout constraints, written by the designer</td><td>What the layout engineer must be told, because the netlist does not say it</td></tr><tr><td>수율시그마 · 중요도표본</td><td>Memory and any large array</td><td>How many σ the design must survive, and which method can see that far</td></tr><tr><td>트림 · 보정</td><td>When area becomes unaffordable</td><td>Whether to pay in silicon or in test time</td></tr></tbody></table>
+<p>The measured results to carry: current-mirror mismatch falls as the square
+    root of area — 14.16&nbsp;% →
+    7.17&nbsp;% → 3.61&nbsp;% →
+    1.81&nbsp;% for four doublings of area — and as the square root
+    of current: 22.1&nbsp;% at 1 µA against
+    2.29&nbsp;% at 100 µA. <b>Both knobs cost a square</b>, and that
+    single fact is why calibration exists.</p>
+<p>The next chapter leaves the devices and takes up the network that feeds them
+    all — the power delivery network — where the same 'it is a distribution' argument
+    reappears as a question about impedance and time.</p>
+<div class="특허"><div class="특허머리">특허로 가는 길 &mdash; 이 주제에서 발명이 일어나는 자리</div><div class="특허속">Matching itself cannot be patented — it is statistics — but every scheme
+        that <b>buys accuracy without area</b> can be: dynamic element matching, chopper
+        and auto-zero offset cancellation, digital foreground and background calibration,
+        and layout techniques that cancel gradients. Notice the shape again: since
+        σ falls only as 1/√area, buying 4× accuracy with area costs <b>16×</b> the
+        silicon — so almost every commercially interesting idea in precision analog is
+        an alternative to paying that.</div></div>
