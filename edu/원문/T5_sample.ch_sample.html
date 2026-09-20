@@ -1,0 +1,123 @@
+<h1 id="T5">T5. Sampling — Where a Continuous Signal Becomes a Number</h1>
+<p class="한줄">Two clocks decide everything: when you sample, and how precisely you know when. The second one is what limits every high-speed converter shipping today.</p>
+<div class="사다리"><div class="사다리앞"><b>읽기 전에 알아야 하는 것</b><br>전압 · 주파수 · 위상 · 적분 · 미분 · 확률 · 표준편차 · 로그 · RC지연 · 슬루 · kTC잡음 · 열잡음 · SNR · SNDR · ENOB · 잡음대역폭</div><div class="사다리뒤"><b>이 장에서 새로 나오는 것</b><br>표본화정리 · 엘리어싱 · 나이키스트 · 대역통과표본화 · 구경시간 · 구경지터 · 지터한계SNR · 추적유지 · 트래킹대역폭 · 차지인젝션 · 클럭피드스루 · 부트스트랩스위치 · 오버샘플링비 · 잡음성형 · 데시메이션</div></div>
+<p>Sampling is usually taught as an idealisation — multiply by an impulse train,
+    observe the spectrum repeat, avoid overlap. That story is correct and it is not the
+    one that limits hardware. A real sampler closes a switch for a finite time, through
+    a finite resistance, at an instant known only to within some picoseconds, onto a
+    capacitor whose size was already fixed by kT/C in T4. Each of those four words —
+    finite, finite, instant, capacitor — costs resolution, and the one that dominates
+    above a few hundred megahertz is the third.</p>
+<h2>T5.1 Aliasing is not a theorem you obey, it is a filter you buy</h2>
+<div class="유도"><div class="유도머리">유도 &mdash; From the impulse train to the folded spectrum</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">Sampling at f<sub>s</sub> multiplies the signal by a train of impulses spaced T<sub>s</sub> = 1/f<sub>s</sub>.</td><td class="유도왜">The idealisation. Everything about aliasing follows from this one step; the non-idealities come later and do not change it.</td></tr><tr><td class="유도번호">2</td><td class="유도말">Multiplication in time is convolution in frequency, and the impulse train's spectrum is itself an impulse train spaced f<sub>s</sub>.</td><td class="유도왜">So the input spectrum is <b>copied</b> to every multiple of f<sub>s</sub>.</td></tr><tr><td class="유도번호">3</td><td class="유도말">Copies overlap unless the input is confined to a band narrower than f<sub>s</sub>/2.</td><td class="유도왜">Nyquist. Note what it does <i>not</i> say: it says nothing about where the band sits, only how wide it is.</td></tr><tr><td class="유도번호">4</td><td class="유도말">Everything above f<sub>s</sub>/2 folds down and is <b>indistinguishable</b> from a real signal afterwards.</td><td class="유도왜">No digital processing can undo it — the information that told the two apart was destroyed at the sampler. This is why an anti-alias filter is an analog component and cannot be moved into software.</td></tr><tr><td class="유도번호">5</td><td class="유도말"><b>Noise folds too</b>, and by the same rule.</td><td class="유도왜">A front end with 5 GHz of bandwidth sampled at 200 MHz folds 50 bands of thermal noise onto the signal — a 17 dB penalty. <b>Bandwidth you do not need is not free</b>; it is noise you pay for.</td></tr></tbody></table></div>
+<div class="개념"><div class="개념머리">Bandpass sampling — using the folding on purpose</div>
+<div class="개념이론"><p>Nyquist constrains the <i>width</i> of the band, not its position. A signal
+        occupying 100 MHz centred at 2.4 GHz can be sampled at 250 MS/s, provided the
+        band falls entirely inside one Nyquist zone and the sampler's input bandwidth
+        reaches 2.4 GHz. The alias <i>is</i> the wanted signal, translated down for
+        free.</p>
+        <p>The cost is precise: the sampling <b>aperture</b> must be good enough for
+        2.4 GHz even though the sample rate is 250 MHz — jitter is referred to the input
+        frequency, not the clock rate. That trade (no mixer, but a far harder clock) is
+        the whole engineering decision.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>RF receivers that digitise at IF, software-defined radio front ends, and any instrument that must capture a narrow band sitting at a high frequency.</td></tr>
+<tr><th>언제 쓰나</th><td>When the band is narrow relative to its centre frequency and you would otherwise pay for a downconversion mixer and its LO.</td></tr>
+<tr><th>어떻게 쓰나</th><td>Pick f<sub>s</sub> so the band lands strictly inside a single zone (k·f<sub>s</sub>/2 to (k+1)·f<sub>s</sub>/2), add a <b>bandpass</b> anti-alias filter — a low-pass is useless here — and budget the jitter against the RF carrier.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>// Zone check, written as an assertion rather than a comment.
+// A band that straddles a zone boundary is a silent failure: it still samples,
+// and the output is two overlapped copies.
+localparam real FS = 250e6, FC = 2.4e9, BW = 100e6;
+initial begin
+    int k = $floor(2.0*(FC - BW/2)/FS);
+    assert ($floor(2.0*(FC + BW/2)/FS) == k)
+        else $fatal(1, "band straddles a Nyquist zone boundary -- pick another FS");
+end</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> The anti-alias filter for bandpass sampling must reject <b>every other
+            zone</b>, not just frequencies above f<sub>s</sub>/2. Engineers who reuse a
+            low-pass filter here get a receiver that works in the lab (where the only
+            signal present is the wanted one) and fails in the field.</div>
+</div>
+<h2>T5.2 Aperture jitter — the wall</h2>
+<div class="정의"><b>구경지터 (aperture jitter)</b> &mdash; The rms uncertainty in the instant at which the sampler actually captures the signal. It comes from the clock path (phase noise, supply-induced delay modulation, thermal noise in the last buffer) and from the sampler itself, and it is <b>referred to the input frequency</b>, not the sample rate.</div>
+<div class="유도"><div class="유도머리">유도 &mdash; Why jitter costs more as the signal gets faster</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">A sine v(t) = A·sin(2πf<sub>in</sub>t) has slope dv/dt = 2πf<sub>in</sub>A·cos(…).</td><td class="유도왜">The slope is what converts a time error into a voltage error — this is the whole mechanism.</td></tr><tr><td class="유도번호">2</td><td class="유도말">A timing error Δt therefore produces a voltage error Δv = (dv/dt)·Δt, worst at the zero crossing where the slope is greatest.</td><td class="유도왜">The largest error happens where the signal is <i>changing</i> fastest, not where it is largest.</td></tr><tr><td class="유도번호">3</td><td class="유도말">With rms jitter σ<sub>t</sub> and a full-scale sine, the rms error is 2πf<sub>in</sub>·(A/√2)·σ<sub>t</sub>, and the signal rms is A/√2.</td><td class="유도왜">The amplitude cancels — <b>jitter-limited SNR does not depend on signal amplitude</b>, which is why you cannot back away from it by scaling down.</td></tr><tr><td class="유도번호">4</td><td class="유도말">SNR = −20·log<sub>10</sub>(2πf<sub>in</sub>σ<sub>t</sub>).</td><td class="유도왜">One equation, two variables, no device parameters. It is a property of the clock and the input frequency alone.</td></tr><tr><td class="유도번호">5</td><td class="유도말">At f<sub>in</sub> = 1 GHz, 100 fs of jitter gives 64&nbsp;dB — 10.3 bits.</td><td class="유도왜"><b>100 fs is already a hard clock.</b> This is why 12-bit gigahertz converters are difficult in a way that has nothing to do with the comparator.</td></tr></tbody></table></div>
+<table><caption>표 19. Jitter-limited SNR and ENOB (uncorrelated aperture jitter only)</caption><thead><tr><th>f_in</th><th>1 ps</th><th>300 fs</th><th>100 fs</th><th>30 fs</th></tr></thead><tbody><tr><td>0.1&nbsp;GHz</td><td>64.0 dB / 10.3 b</td><td>74.5 dB / 12.1 b</td><td>84.0 dB / 13.7 b</td><td>94.5 dB / 15.4 b</td></tr><tr><td>1&nbsp;GHz</td><td>44.0 dB / 7.0 b</td><td>54.5 dB / 8.8 b</td><td>64.0 dB / 10.3 b</td><td>74.5 dB / 12.1 b</td></tr><tr><td>5&nbsp;GHz</td><td>30.1 dB / 4.7 b</td><td>40.5 dB / 6.4 b</td><td>50.1 dB / 8.0 b</td><td>60.5 dB / 9.8 b</td></tr></tbody></table>
+<div class="예제"><div class="예제머리">예제 6. What clock does a 12-bit, 1 GHz-input converter need?</div><div class="예제줄"><b>주어진 것.</b> The design target is 12 effective bits at a 1 GHz input. Assume jitter is the
+        only error source — an optimistic assumption that makes the answer a <b>lower
+        bound</b> on how good the clock must be.</div><div class="예제줄"><b>푸는 법.</b> Invert the SNR expression: σ<sub>t</sub> = 1/(2π·f<sub>in</sub>·2<sup>N</sup>).</div><div class="예제답"><b>답.</b> σ<sub>t</sub> = 38.9&nbsp;fs rms. For 14 bits it is
+        9.71&nbsp;fs.</div><div class="예제덧"><table><caption>표 20. Required rms aperture jitter at f_in = 1 GHz</caption><thead><tr><th>Bits</th><th>σ_t required</th></tr></thead><tbody><tr><td>8</td><td>622&nbsp;fs</td></tr><tr><td>10</td><td>155&nbsp;fs</td></tr><tr><td>12</td><td>38.9&nbsp;fs</td></tr><tr><td>14</td><td>9.71&nbsp;fs</td></tr><tr><td>16</td><td>2.43&nbsp;fs</td></tr></tbody></table></div><div class="예제함정"><b>여기서 틀린다.</b> Comparing that number against the jitter quoted for a clock <i>source</i>.
+        The specification that matters is the jitter <b>at the sampling switch</b>,
+        after the whole distribution path — buffers, level shifters, the divider, and
+        whatever supply noise the digital side injected into them. A 20 fs source
+        behind a noisy buffer chain is a 200 fs sampler, and the datasheet of the source
+        will not tell you that.</div></div>
+<div class="짚기">Jitter and kT/C add in <b>power</b>, not in amplitude, and they scale
+    in opposite directions with frequency: kT/C is flat while jitter worsens by 6 dB per
+    octave of input frequency. There is therefore always a crossover frequency, and
+    knowing which side of it you are on tells you which knob does anything. Below it,
+    spend area on capacitance. Above it, spend power on the clock — <b>a bigger sampling
+    capacitor buys nothing in a jitter-limited design</b>, and it is the most common way
+    to waste a redesign.</div>
+<h2>T5.3 The switch itself: charge injection, feedthrough, and bootstrapping</h2>
+<figure><path d="M150,90 L164,90" fill="none" stroke="#111" stroke-width="1.6"/><path d="M168,77 L168,103" fill="none" stroke="#111" stroke-width="2.0"/><path d="M173,77 L173,103" fill="none" stroke="#111" stroke-width="2.0"/><path d="M173,79 L176,79 L176,72" fill="none" stroke="#111" stroke-width="1.6"/><path d="M173,101 L176,101 L176,108" fill="none" stroke="#111" stroke-width="1.6"/><path d="M240,30 L240,38" fill="none" stroke="#c0392b" stroke-width="1.6"/><path d="M231,30 L249,30" fill="none" stroke="#c0392b" stroke-width="2.2"/><text x="240" y="25" fill="#c0392b" font-size="10" text-anchor="middle">VDD</text><figcaption><b>그림 10.</b> The sampling switch. Its on-resistance sets the tracking bandwidth; its channel charge lands on the sampling capacitor when it turns off.</figcaption></figure>
+<table><caption>표 21. Three errors the switch adds, and what each depends on</caption><thead><tr><th>Error</th><th>Mechanism</th><th>Scales with</th><th>Signal-dependent?</th></tr></thead><tbody><tr><td>Charge injection</td><td>The channel's inversion charge has to go somewhere when the device turns off; roughly half lands on C<sub>s</sub></td><td>W·L·C<sub>ox</sub>·(V<sub>GS</sub>−V<sub>th</sub>) / C<sub>s</sub></td><td><b>Yes</b> — V<sub>GS</sub> depends on the sampled level, so it becomes distortion, not offset</td></tr><tr><td>Clock feedthrough</td><td>C<sub>gd</sub> couples the falling clock edge onto the capacitor</td><td>C<sub>ov</sub>/(C<sub>ov</sub>+C<sub>s</sub>) · V<sub>clk</sub></td><td>No (to first order) — mostly a fixed offset</td></tr><tr><td>R<sub>on</sub> modulation</td><td>The switch's on-resistance depends on V<sub>GS</sub> = V<sub>clk</sub> − v<sub>in</sub></td><td>1/(μC<sub>ox</sub>(W/L)(V<sub>GS</sub>−V<sub>th</sub>))</td><td><b>Yes</b> — a signal-dependent time constant is signal-dependent settling, which is distortion</td></tr></tbody></table>
+<div class="개념"><div class="개념머리">The bootstrapped switch</div>
+<div class="개념이론"><p>Hold the switch's gate at v<sub>in</sub> + V<sub>DD</sub> instead of at
+        V<sub>DD</sub>, using a capacitor pre-charged to V<sub>DD</sub> and flipped onto
+        the gate during the tracking phase. Then V<sub>GS</sub> is constant regardless
+        of the signal, so R<sub>on</sub> is constant and the charge injected at turn-off
+        is constant — <b>signal-dependent errors become offsets</b>, and offsets are
+        harmless in a differential design.</p>
+        <p>It also solves a reliability problem that is easy to miss: without
+        bootstrapping, a switch passing a signal near ground sees V<sub>GS</sub> =
+        V<sub>DD</sub>, which in an advanced node may exceed the oxide's rating over
+        the device's lifetime (T14).</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>The input sampling network of essentially every SAR and pipeline ADC above 10 bits, and in high-linearity switched-capacitor filters.</td></tr>
+<tr><th>언제 쓰나</th><td>When THD or SFDR matters more than area. A plain NMOS switch is fine for 8 bits and hopeless at 12.</td></tr>
+<tr><th>어떻게 쓰나</th><td>Size the bootstrap capacitor ≫ the gate capacitance it must drive, check the reliability of every node across the clock phases, and verify distortion with a <b>two-tone</b> transient, not a single tone — intermodulation exposes the residual signal dependence a single tone hides.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>* The check that matters, and the one people skip.
+* A single tone can look clean while IM3 is terrible.
+Vin1 in1 0 SIN(0 0.45 100.1MEG)
+Vin2 in2 0 SIN(0 0.45 103.3MEG)
+.tran 10p 20u
+.four 100.1MEG v(sampled)          $ harmonic distortion
+* and post-process the FFT for IM3 at 2*f1-f2 = 96.9 MHz -- the number the
+* customer will measure and the one that exposes Ron modulation.</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> Bootstrapping makes the gate voltage exceed the supply, so every node in
+            the bootstrap network must be checked against the oxide limit at the
+            <b>fast, high-voltage, low-temperature corner</b> — the opposite corner from
+            the one that limits performance. A bootstrap circuit verified only at
+            typical is a reliability report waiting to happen.</div>
+</div>
+<h2>T5.4 Oversampling: buying bits with time</h2>
+<div class="유도"><div class="유도머리">유도 &mdash; Why oversampling helps, and how much</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">Quantisation noise power is LSB²/12 <b>regardless of the sample rate</b>.</td><td class="유도왜">The quantiser does not know how fast it is being clocked; the error per sample has the same distribution.</td></tr><tr><td class="유도번호">2</td><td class="유도말">That fixed power is spread over the Nyquist band, 0 to f<sub>s</sub>/2.</td><td class="유도왜">So the noise <i>density</i> is LSB²/12 divided by f<sub>s</sub>/2 — sampling faster dilutes it.</td></tr><tr><td class="유도번호">3</td><td class="유도말">Filtering down to the signal band B keeps only the fraction 2B/f<sub>s</sub> of it.</td><td class="유도왜">Define the oversampling ratio OSR = f<sub>s</sub>/(2B).</td></tr><tr><td class="유도번호">4</td><td class="유도말">SNR improves by 10·log<sub>10</sub>(OSR): <b>3 dB, or half a bit, per doubling</b>.</td><td class="유도왜">This is plain oversampling, with no feedback. Going from 8 to 12 bits this way needs OSR = 256 — expensive but occasionally the right answer for a slow sensor.</td></tr><tr><td class="유도번호">5</td><td class="유도말">A ΔΣ modulator <b>shapes</b> the noise instead of merely spreading it, giving (6L+3) dB per doubling for an L-th-order loop.</td><td class="유도왜">The loop pushes quantisation noise out of the band. A 2nd-order modulator gains 15 dB per octave of OSR — this is why ΔΣ dominates audio and precision sensing, and why it is useless at gigahertz signal bandwidths.</td></tr></tbody></table></div>
+<table><caption>표 22. What oversampling buys, per doubling of OSR</caption><thead><tr><th>Architecture</th><th>SNR gain per 2× OSR</th><th>Bits per 2× OSR</th><th>Where it wins</th></tr></thead><tbody><tr><td>Plain oversampling + decimation</td><td>3 dB</td><td>0.5</td><td>Cheap resolution on slow signals; anti-alias filter relief</td></tr><tr><td>ΔΣ, 1st order</td><td>9 dB</td><td>1.5</td><td>Simple, but idle tones</td></tr><tr><td>ΔΣ, 2nd order</td><td>15 dB</td><td>2.5</td><td>Audio, precision sensors</td></tr><tr><td>ΔΣ, 3rd+ order / MASH</td><td>21 dB+</td><td>3.5+</td><td>Where stability engineering is worth it</td></tr></tbody></table>
+<div class="짚기">Oversampling relieves the <b>anti-alias filter</b> as much as it buys
+    resolution, and that is often the real reason to do it. Sampling a 20 kHz audio band
+    at 44.1 kHz demands a filter that is flat at 20 kHz and dead at 22.05 kHz — a brutal
+    analog problem. Sampling at 2.8 MHz moves the requirement to 'dead at 1.4 MHz',
+    which is a single RC. <b>The filter that disappears is usually worth more than the
+    half-bit.</b></div>
+<h2>T5.5 What to do with this on Monday</h2>
+<table><caption>표 23. 이 장의 개념이 실제로 쓰이는 자리</caption><thead><tr><th>개념</th><th>쓰이는 블록</th><th>무엇을 정하나</th></tr></thead><tbody><tr><td>엘리어싱 · 나이키스트</td><td>Choosing f_s and the anti-alias filter</td><td>The filter order — and whether it is analog or can be shared with oversampling</td></tr><tr><td>구경지터</td><td>Clocking architecture, before the converter is designed</td><td>Whether the target ENOB is reachable at all at that input frequency</td></tr><tr><td>대역통과표본화</td><td>RF and IF receiver front ends</td><td>Whether a mixer can be removed, and what the clock must then cost</td></tr><tr><td>차지인젝션 · 부트스트랩스위치</td><td>The sampling network of any ≥10-bit converter</td><td>THD and SFDR, and the oxide-reliability check that goes with it</td></tr><tr><td>오버샘플링비 · 잡음성형</td><td>Slow, precise signal paths</td><td>Whether resolution can be bought with time instead of capacitance</td></tr></tbody></table>
+<p>The number to carry: at a 1 GHz input, <b>12 effective bits requires
+    38.9&nbsp;fs rms of aperture jitter</b>, measured at the
+    switch and not at the clock source. Every architecture decision in a high-speed
+    converter — interleaving, bandpass sampling, where the clock buffer sits — is
+    downstream of that one line.</p>
+<p>The next chapter turns the sampled voltage into a code, and finds that the
+    architectures differ less in accuracy than in <i>where</i> they spend the same
+    fundamental limits.</p>
+<div class="특허"><div class="특허머리">특허로 가는 길 &mdash; 이 주제에서 발명이 일어나는 자리</div><div class="특허속">The sampling instant is the most contested square millimetre in a
+        high-speed converter, and the patents show it: bootstrapped switches that hold
+        V<sub>GS</sub> constant so the on-resistance does not depend on the signal;
+        clock paths that deliberately do <i>not</i> share a buffer with anything else;
+        sampling schemes that cancel charge injection by symmetry rather than by
+        trimming; and, one level up, time-interleaved architectures whose entire
+        difficulty is that each slice samples at a slightly wrong instant. <b>Every one
+        of these is an argument about the aperture, not about the amplifier.</b></div></div>
