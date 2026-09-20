@@ -1,0 +1,90 @@
+--- Page 8 ---
+Z1. How a Chip Is Described: Levels of Abstraction
+This chapter is the gentlest in the book and the one that everything else refers back to. A modern chip contains on the order of
+1010 transistors; no person reasons about them individually. The field copes by stacking abstractions, each hiding the one be‐
+neath. Knowing the stack — and knowing where it leaks — is the organising skill of the discipline.
+Figure 1. The abstraction stack. Work at one level, but know which level below will eventually intrude.
+Table 1. What each level is, and who works there
+Level Unit of thought Typical artefact Role
+System Throughput,  latency,  power
+budget
+Architecture  document,  performance
+model
+System architect
+Micro-architec‐
+ture
+Pipelines, buffers, state machines Block diagrams, cycle-accurate model Micro-architect, modelling engin‐
+eer
+RTL Registers and the logic between
+them
+SystemVerilog / VHDL Design engineer
+Gate Boolean functions, standard cells Netlist Synthesis tool (not usually a per‐
+son)
+Circuit Transistors,  resistance,  capacit‐
+ance
+SPICE netlist Analogue / custom designer
+Device Carrier transport, fields Compact models (BSIM) Device engineer
+Materials Doping, oxides, metals Process recipe Process engineer
+System / architecture
+what the chip does
+Micro-architecture
+how it is organised
+RTL
+registers and logic between them
+Gate / netlist
+AND, OR, flip-flops
+Transistor / circuit
+MOSFETs, R, C
+Device physics
+carriers, fields
+Materials
+silicon, oxide, metal
+Each level hides the one below it.
+An abstraction leaks when the level
+below changes the answer above.
+Most hard bugs are leaks.
+EDU-IP-001 Z1. How a Chip Is Described: Levels of Abstraction
+8
+
+--- Page 9 ---
+Undergraduate review ·The middle of this stack is where digital IP work happens. A digital designer writes RTL and trusts
+the synthesis tool to produce gates, the library to characterise them, and the process to build them. The trust is well-founded
+almost all of the time.
+Graduate ·Almost all of the time is the important qualifier, and the exceptions form a checklist worth memorising.  Ab‐
+stractions leak in a small number of recurring ways, each of which appears later in this book: 
+Timing — RTL describes behaviour without delay, but a real gate takes time, so a functionally correct design can fail
+(Chapter B3).
+Metastability — a flip-flop is modelled as producing 0 or 1, but a real one can do neither for a while (Chapter C3).
+Power — RTL has no notion of energy, yet switching activity and glitching are decided by RTL structure (Chapter B2).
+Physical size — RTL has no geometry, but wire delay depends on it (Chapter B4).
+Side channels — two circuits computing the same function can be distinguished by their power consumption (Chapter
+H3).
+Radiation and ageing — a stored bit is assumed permanent; physically it is not (Chapter K3).
+A useful way to read the rest of this book is as a systematic tour of these leaks , because they are exactly the places where
+an engineer's judgement is still required and a tool cannot be trusted alone.
+Z1.2 The design flow in one page
+Table 2. From idea to silicon
+Phase Input Output Principal risk
+Specification Requirements Written specification Ambiguity
+Modelling Specification Reference model Misreading the specification
+RTL design Specification Synthesisable RTL Functional error
+Verification RTL + model Coverage, bug reports Missing a case
+Synthesis RTL + constraints + library Gate netlist Wrong constraints
+Place and route Netlist + floorplan Layout Congestion, timing
+Sign-off Layout GDSII An unchecked corner
+Fabrication GDSII Wafers Yield
+Bring-up Packaged parts Working system No visibility
+Production test — Sorted devices Test escape
+The cost of fixing a defect rises by roughly an order of magnitude at each phase boundary.  A specification ambiguity
+caught while writing the specification costs an hour. Caught in verification it costs a week. Caught at bring-up it costs a mask
+set — hundreds of thousands to millions of dollars and a three-month schedule slip. This asymmetry, not perfectionism, is
+why the industry invests so heavily in front-end rigour, and it is the economic reason a modelling team exists at all.
+• 
+• 
+• 
+• 
+• 
+• 
+EDU-IP-001 Z1. How a Chip Is Described: Levels of Abstraction
+9
+
