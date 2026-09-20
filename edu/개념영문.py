@@ -186,6 +186,35 @@
     "CGIC": "integrated clock-gating cell", "전역배선": "global routing",
     "상세배선": "detail routing", "탐색수리": "search and repair",
     "안테나위반": "antenna violation",
+    # --- 사인오프 (T20) ---
+    "물리검증": "physical verification", "ERC": "ERC (electrical rule check)",
+    "금속채움": "metal fill", "CMP": "CMP (chemical-mechanical polishing)",
+    "코너": "corner", "MMMC": "multi-mode multi-corner analysis",
+    "온도반전": "temperature inversion", "정적IR": "static IR analysis",
+    "동적IR": "dynamic IR analysis", "스위칭벡터": "switching vector",
+    "기능ECO": "functional ECO", "금속ECO": "metal-only ECO",
+    "스페어셀": "spare cell", "테이프아웃": "tape-out", "마스크": "mask",
+    # --- 검증 환경 (T21) ---
+    "검증환경": "verification environment", "테스트벤치": "testbench",
+    "에이전트": "agent", "시퀀스": "sequence", "시퀀서": "sequencer",
+    "드라이버": "driver", "모니터": "monitor", "스코어보드": "scoreboard",
+    "참조모델": "reference model", "가상인터페이스": "virtual interface",
+    "기능커버리지": "functional coverage", "커버그룹": "covergroup",
+    "커버포인트": "coverpoint", "크로스커버리지": "cross coverage",
+    "제약랜덤": "constrained-random stimulus", "어서션": "assertion",
+    "커버리지닫기": "coverage closure", "지시시험": "directed test",
+    "회귀": "regression",
+    # --- DFT 에서 테스터까지 (T22) ---
+    "스캔": "scan", "스캔체인": "scan chain", "ATPG": "ATPG",
+    "고착고장": "stuck-at fault", "천이지연고장": "transition (at-speed) fault",
+    "결함커버리지": "fault coverage", "스캔압축": "scan compression",
+    "해제기": "decompressor", "압축기": "compactor", "LBIST": "logic BIST",
+    "MBIST": "memory BIST", "ATE": "ATE (automatic test equipment)",
+    "핀일렉트로닉스": "pin electronics", "패턴메모리": "pattern memory",
+    "테스트프로그램": "test program", "시험시간": "test time",
+    "병렬시험": "multi-site test", "다이수율": "die yield",
+    "결함수준": "defect level", "DPPM": "DPPM (defective parts per million)",
+    "웨이퍼시험": "wafer sort", "양품다이": "known-good die",
 })
 
 

@@ -200,7 +200,8 @@ def ch_layout():
     <b>certainty</b>. The engineering in this chapter is what makes that certainty
     deliverable — and the documentation list above is what makes it saleable.""")
 
-    c.글("""One chapter remains, and it is about the failure that happens before the chip
-    is ever powered: a few hundred volts arriving on a pin from a human finger.""")
+    c.글("""The next chapter is about the failure that happens before the chip is ever
+    powered: a few hundred volts arriving on a pin from a human finger. After it, the
+    volume turns from the device to the flow that turns a netlist into geometry.""")
 
     return c.완성()
