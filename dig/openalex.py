@@ -82,6 +82,23 @@ def unroll_abstract(inverted) -> str:
     return " ".join(slot.get(i, "") for i in range(max(slot) + 1)).strip()
 
 
+def _oa_locations(w: dict) -> "list[str]":
+    urls = []
+    for loc in (w.get("locations") or []):
+        if not loc.get("is_oa"):
+            continue
+        for key in ("pdf_url", "landing_page_url"):
+            u = loc.get(key)
+            if u and u not in urls:
+                urls.append(u)
+    best = w.get("best_oa_location") or {}
+    for key in ("pdf_url", "landing_page_url"):
+        u = best.get(key)
+        if u and u not in urls:
+            urls.insert(0, u)
+    return urls
+
+
 def work(w: dict) -> dict:
     """One OpenAlex work -> our shape. **Missing fields stay missing.**"""
     loc = w.get("primary_location") or {}
@@ -100,6 +117,13 @@ def work(w: dict) -> dict:
         "n_references": len(w.get("referenced_works") or []),
         "oa_status": oa.get("oa_status") or "unknown",
         "oa_url": oa.get("oa_url") or best.get("pdf_url") or best.get("landing_page_url") or "",
+        # **Every open location, not just the best one.** A publisher landing page
+        # often answers 403 to anything that is not a browser, while the same paper
+        # sits readable in an institutional repository or on arXiv. Using one
+        # location threw those away (measured 2026-09-21: three papers lost to
+        # "HTTP Error 403" with other locations never tried). pdf first -- a pdf is
+        # a body, a landing page usually is not.
+        "oa_locations": _oa_locations(w),
         "license": best.get("license") or loc.get("license") or "",
         "authors": [(a.get("author") or {}).get("display_name", "")
                     for a in (w.get("authorships") or [])][:12],
@@ -107,12 +131,23 @@ def work(w: dict) -> dict:
 
 
 def search(query: str, n: int = 10, since: "int | None" = None,
-           until: "int | None" = None, open_only: bool = False) -> "list[dict]":
-    """Search by topic, **most-cited first**.
+           until: "int | None" = None, open_only: bool = False,
+           sort: str = "relevance") -> "list[dict]":
+    """Search by topic. **Relevance first, citations only on request.**
 
-    Citation count is the cheapest stand-in for the video's "pick good papers" step.
-    Impact factor is a property of the journal, not of one paper, so we do not use it
-    as if it were a per-paper score.
+    It started the other way round and that was wrong (measured 2026-09-21).
+    Asking for "SAR ADC calibration" with `cited_by_count:desc` returned
+    photogrammetry from unmanned aerial systems, multisensor image fusion in remote
+    sensing, and millimetre-wave 5G -- **not one circuit paper.** Two things
+    compounded:
+
+      · In the literature at large, SAR means *synthetic aperture radar* far more
+        often than *successive approximation register*.
+      · Sorting a broad field by citations surfaces its review articles, which are
+        the most-cited things in any field and the least specific.
+
+    So relevance is the default. `sort="cited"` is still there, and it is the right
+    choice once the query is already unambiguous.
     """
     filters = []
     if since:
@@ -121,8 +156,11 @@ def search(query: str, n: int = 10, since: "int | None" = None,
         filters.append(f"to_publication_date:{int(until)}-12-31")
     if open_only:
         filters.append("is_oa:true")
-    params = {"search": query, "per_page": max(1, min(int(n), 50)),
-              "sort": "cited_by_count:desc"}
+    params = {"search": query, "per_page": max(1, min(int(n), 50))}
+    if sort == "cited":
+        params["sort"] = "cited_by_count:desc"
+    # Relevance is OpenAlex's own default when `search` is present, so we send no
+    # sort at all rather than guessing the name of its relevance key.
     if filters:
         params["filter"] = ",".join(filters)
     return [work(w) for w in (_call("works", **params).get("results") or [])]
