@@ -1,0 +1,113 @@
+<h1 id="T6">T6. 데이터 변환기 — 구조마다 같은 한계를 어디에 쓰는가</h1>
+<p class="한줄">어떤 구조도 kT/C 와 지터와 불일치를 이기지 못한다. 다른 것은 무엇을 먼저 치르는가이고, 고르는 근거는 그것이 전부다.</p>
+<div class="사다리"><div class="사다리앞"><b>읽기 전에 알아야 하는 것</b><br>전압 · 전류 · 전하 · 확률 · 표준편차 · 로그 · SNR · SNDR · ENOB · kTC잡음 · 구경지터 · 표본화정리 · 오버샘플링비 · 잡음성형 · 차지인젝션 · 정적잡음여유</div><div class="사다리뒤"><b>이 장에서 새로 나오는 것</b><br>플래시ADC · 축차비교ADC · 파이프라인ADC · 시간인터리브 · 용량DAC · 전류구동DAC · 세그먼테이션 · INL · DNL · 미싱코드 · 단조성 · 중복성 · 디지털보정 · 글리치에너지 · 정합</div></div>
+<p>변환기 구조는 목록처럼 보이지만 사실은 물음 하나다. 해상도와 표본화율이
+    주어졌을 때 어느 근본 한계에 먼저 부딪히고, 어느 구조가 그 한계를 내가 가진
+    화폐로 치르게 해 주는가. 모든 구조가 같은 kT/C, 같은 지터, 같은 불일치를
+    마주한다. 다른 것은 변환 한 번에 각 한계를 몇 번 치르는가다.</p>
+<h2>T6.1 지도, 그리고 경계마다 무엇이 정하나</h2>
+<table><caption>표 91. 네 구조, 그리고 각각을 멈추는 한계</caption><thead><tr><th>구조</th><th>표본당 비교 횟수</th><th>실용 범위</th><th>무엇이 멈추나</th></tr></thead><tbody><tr><td>플래시</td><td>병렬로 2<sup>N</sup> − 1</td><td>4–8 b, 수십 GS/s 까지</td><td>비트마다 면적과 입력 용량이 두 배. 비교기 오프셋 2<sup>N</sup> 개가 각각 ½ LSB 미만이어야 한다</td></tr><tr><td>SAR</td><td>직렬로 N (주기마다 하나)</td><td>8–14 b, 조각마다 ~100 MS/s 까지</td><td>DAC 정착 사슬: 표본마다 N 번 정착하고 매번 전체 정확도까지</td></tr><tr><td>파이프라인</td><td>단마다 ~1.5 b, 동시에</td><td>10–16 b, 50 MS/s–1 GS/s</td><td>단 사이 이득의 정확도와 그것을 대는 연산증폭기</td></tr><tr><td>ΔΣ</td><td>OSR 배 속도에서 1 (또는 몇)</td><td>16–24 b, kHz–MHz 대역폭</td><td>고리 안정성과 공정이 클럭할 수 있는 OSR</td></tr><tr><td>시간 인터리브</td><td>위의 아무거나 M 조각</td><td>해상도가 아니라 속도를 늘린다</td><td><b>조각 사이 불일치</b> — 이득·오프셋·표본화 순간 어긋남이 f<sub>s</sub>/M 에 스퍼로 나타난다</td></tr></tbody></table>
+<div class="짚기">마지막 줄이 사람들을 놀라게 하는 줄이다. M 조각을 인터리브하면
+    처리량이 M 배가 되고 해상도는 <i>나빠진다</i>. 단일 변환기에는 없던 오차 항
+    셋이 새로 생기기 때문이다. 조각 사이의 타이밍 어긋남이 가장 어렵다. 그것은
+    <b>결정론적인</b> 지터 문제(T5)여서 잡음 바닥이 아니라 스퍼를 낳고, 예측
+    가능한 주파수의 스퍼야말로 고객의 스펙트럼 그림에 정확히 나타날 것이다.</div>
+<h2>T6.2 SAR 의 축전기 배열: 정합이 잡음을 이기는 자리</h2>
+<p>SAR 변환기는 용량형 DAC 로 구현한 이진 탐색이다. 그러니 그 정확도는
+    축전기의 비에 달려 있고, 설계 물음은 단순히 단위 축전기가 얼마나 커야 하는가다.
+    서로 무관한 요구 둘이 그것을 정하는데, 둘 다 계산해 보기 전에는 어느 쪽이
+    이기는지 분명하지 않다.</p>
+<div class="유도"><div class="유도머리">유도 &mdash; 같은 축전기에 걸린 요구 둘, 그리고 그 둘이 만나는 자리</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">요구 1 — <b>잡음</b>: 그 배열이 곧 표본화 축전기이므로 kT/C<sub>total</sub> 이 양자화 잡음 아래여야 한다(T4).</td><td class="유도왜">전체 눈금 1 V 이면 C ≥ 12kT·2<sup>2N</sup>/V<sub>FS</sub>² 이고, 12 비트에서 0.83&nbsp;pF 다.</td></tr><tr><td class="유도번호">2</td><td class="유도말">요구 2 — <b>정합</b>: 중간 눈금 전이에서의 DNL 은 가장 큰 축전기와 나머지 전체의 불일치가 지배한다.</td><td class="유도왜">3σ DNL < ½ LSB 이려면 12 비트에서 σ<sub>u</sub>/C<sub>u</sub> < 0.26&nbsp;% 가 필요하고, 펠그롬(T12)에 따라 그 상대 시그마는 <i>면적</i>이 고정한다.</td></tr><tr><td class="유도번호">3</td><td class="유도말">그 수준으로 맞는 축전기는 요즘 MOM 축전기 공정에서 대략 1&nbsp;fF 이고, 그러면 12 비트 배열이 4.1&nbsp;pF — 잡음 요구의 4.91 배다.</td><td class="유도왜"><b>12 비트에서 배열을 정하는 것은 잡음이 아니라 정합이다.</b> kT/C 만으로 치수를 정하면 잡음 바닥은 훌륭하고 DNL 계단이 눈에 보이는 변환기가 나온다.</td></tr><tr><td class="유도번호">4</td><td class="유도말">14 비트에서 두 요구는 16.4&nbsp;pF 과 13.3&nbsp;pF 다 — 수렴했다.</td><td class="유도왜">~14 비트 위에서는 잡음이 넘겨받고 단위 축전기는 맞기만 하면 무엇이든 된다. 그 아래에서는 정합이 지배한다. <b>자신이 어느 쪽에 있는지를 아는 것이 어느 손잡이가 무언가를 하는지 말해 준다.</b></td></tr></tbody></table></div>
+<table><caption>표 92. SAR 배열의 크기를 정하는 한계 (V_FS = 1 V, 단위 용량 1&nbsp;fF)</caption><thead><tr><th>비트</th><th>정합이 요구하는 σ_u/C_u <</th><th>정합에서 나온 배열</th><th>kT/C 에서 나온 배열</th><th>무는 것</th></tr></thead><tbody><tr><td>10</td><td>0.52&nbsp;%</td><td>1.02&nbsp;pF</td><td>0.05&nbsp;pF</td><td><b>정합</b></td></tr><tr><td>12</td><td>0.26&nbsp;%</td><td>4.1&nbsp;pF</td><td>0.83&nbsp;pF</td><td><b>정합</b></td></tr><tr><td>14</td><td>0.13&nbsp;%</td><td>16.4&nbsp;pF</td><td>13.3&nbsp;pF</td><td><b>정합</b></td></tr></tbody></table>
+<div class="개념"><div class="개념머리">중복성 — 비트 하나를 더 써서 정착 시간을 되사기</div>
+<div class="개념이론"><p>맨 이진 탐색에는 틀린 결정에서 돌아올 길이 없다. 비교기가 판단할
+        때 DAC 가 아직 정착하지 않았으면 그 비트는 틀리고, 뒤의 모든 비트가 틀린
+        구간을 더 잘게 다듬는다. 중복성은 기수를 바꿔서 이어지는 구간이
+        <b>겹치게</b> 만든다 — 걸음마다 그 겹침만큼의 앞선 오차를 고칠 수 있다.</p>
+        <p>값은 주기 한둘이고, 얻는 것은 이른 주기가 더 이상 N 비트 전체 정확도까지
+        정착할 필요 없이 겹침 안까지만 정착하면 된다는 것이다. 정착 시간은
+        정확도의 로그이므로(T2), <b>이른 주기를 느슨하게 하는 것이 변환 시간의
+        대부분이다</b>.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>요즘의 모든 고속 SAR, 그리고 파이프라인의 단 사이 단(거기서는 단당 1.5 비트라고 부른다).</td></tr>
+<tr><th>언제 쓰나</th><td>변환이 빨라야 할 때마다. 면적으로는 거의 공짜이고, 같은 해상도에서 10 MS/s SAR 과 100 MS/s SAR 을 가르는 것이 이것이다.</td></tr>
+<tr><th>어떻게 쓰나</th><td>이진보다 작은 기수를 고르고(예: 2 가 아니라 1.86), 거기 맞게 축전기 치수를 정하고, 보정 가중치로 출력을 디지털에서 다시 짓는다. 그 가중치는 <b>보정</b>할 수도 있고, 그러면 축전기 불일치가 오차가 아니라 잰 상수가 된다.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>// Non-binary SAR reconstruction. The weights are NOT powers of two,
+// and they are per-chip once calibration has run.
+localparam int W [0:N] = '{2048, 1088, 576, 320, 176, 96, 56, 32, 18, 10, 6, 4, 2, 1};
+always_comb begin
+    code = 0;
+    for (int i = 0; i &lt;= N; i++) if (bit_decision[i]) code += W[i];
+end
+// The sum of weights EXCEEDS full scale on purpose -- that surplus is the redundancy.
+// A design review question worth asking: what happens if the weights are wrong by 1%?
+// (Answer: nothing, until the error exceeds the overlap -- which is the point.)</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> 중복성은 <b>덜 된 정착과 비교기 잡음</b>을 막아 주지,
+            단조적으로 틀린 DAC 를 막아 주지 않는다. 축전기가 겹침을 넘어서
+            잘못된 크기로 만들어졌으면, 중복성이 간단한 시험에서는 증상을 감추고
+            전체 INL 쓸기에서만 드러나는 코드 의존 오차를 남긴다.</div>
+</div>
+<h2>T6.3 정적 선형성: INL, DNL, 그리고 변환기가 거짓말하는 두 가지 방식</h2>
+<div class="정의"><b>DNL (차등 비선형성)</b> &mdash; 코드마다의 너비가 1 LSB 에서 벗어난 정도. DNL = −1 LSB 는 그 코드의 <b>너비가 0 — 미싱 코드</b>라는 뜻이고, 거기서 변환기는 더 이상 단조가 아니다.</div>
+<div class="정의"><b>INL (적분 비선형성)</b> &mdash; 전이점마다 이상적인 직선에서 벗어난 정도를 누적한 것 — DNL 의 누적합이다. 왜곡 측정이 보는 것이 이것이고, 제어 고리가 느끼는 것은 DNL 이다.</div>
+<table><caption>표 93. 어느 쪽을 볼 것인가, 그리고 언제</caption><thead><tr><th>용도</th><th>중요한 쪽</th><th>왜</th></tr></thead><tbody><tr><td>오디오 / RF 스펙트럼</td><td>INL</td><td>굽음이 곧 왜곡이다. 고객의 FFT 에 고조파가 보인다</td></tr><tr><td>폐루프 제어 (예: 서보 안의 DAC)</td><td>DNL 과 단조성</td><td>단조가 아닌 코드는 그 자리에서 고리의 부호를 뒤집고 발진할 수 있다</td></tr><tr><td>센서 문턱 검출</td><td>DNL</td><td>미싱 코드는 시스템이 영영 보고할 수 없는 값이다</td></tr><tr><td>다른 블록의 디지털 보정</td><td>INL</td><td>보정은 기준 곡선만큼만 좋다</td></tr></tbody></table>
+<div class="사고"><b>실제로 난 일</b><br>변환기가 SNDR 시험을 통과하면서 심하게 단조가
+    아닐 수 있다. 사인파 히스토그램 시험은 모든 코드에 걸쳐 평균을 낸다. 미싱
+    코드 하나는 SNDR 을 dB 의 몇 분의 일만 움직이고 눈에 안 띈다. <b>정적 선형성은
+    자기 나름의 시험이 필요하다</b> — 느린 램프나 코드 밀도 쓸기 — 그리고
+    SNDR 만 적은 IP 납품물은 그 부품을 특성화하지 않은 것이다.</div>
+<h2>T6.4 DAC 쪽: 세그먼테이션과 글리치 에너지</h2>
+<div class="개념"><div class="개념머리">세그먼테이션 (segmentation) — 중요한 데는 온도계, 아닌 데는 이진</div>
+<div class="개념이론"><p>온전히 이진인 DAC 는 중간 눈금에서 가능한 가장 나쁜 글리치를 낸다.
+        모든 스위치가 한꺼번에 바뀌고, 그것들의 타이밍 어긋남이 면적
+        (<b>글리치 에너지</b>, V·s)이 평균으로 안 없어지는 과도를 만든다 —
+        갱신율에 왜곡으로 나타난다. 온전히 온도계 부호인 DAC 에는 그런 전이가
+        없지만 요소가 2<sup>N</sup>−1 개 필요하고 그것을 몰 디코더도 필요하다.</p>
+        <p>진짜 DAC 는 나눈다. 위쪽 M 비트는 온도계, 나머지는 이진. M 은 동시에
+        스위칭하는 가장 큰 사건이 충분히 작아지도록 고르고, 실무적인 답은 대개
+        4–6 이다 — 디코더 값은 2<sup>M</sup> 으로 자라는데 글리치 개선은 포화하기
+        때문이다.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>송신기와 파형 발생기의 전류 구동 DAC. 파이프라인 ADC 안의 기준 DAC. 출력을 주파수 영역에서 보는 모든 DAC.</td></tr>
+<tr><th>언제 쓰나</th><td>SFDR 이 규격에 있을 때마다. 이진 DAC 의 중간 눈금 글리치가 대개 어떤 정적 오차보다도 먼저 SFDR 을 정한다.</td></tr>
+<tr><th>어떻게 쓰나</th><td>MSB 를 나누고, 단위 전류원을 레이아웃으로 맞추고(공통 중심, 더미), 남은 불일치가 스퍼가 아니라 잡음이 되도록 단위 요소의 선택을 <b>무작위화하거나 돌린다</b>(DEM).</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>// Segmented decode: 6 thermometer MSBs + 8 binary LSBs.
+// The point of the thermometer part is that consecutive codes change ONE element.
+logic [62:0] therm;
+always_comb begin
+    therm = '0;
+    for (int i = 0; i &lt; 63; i++) therm[i] = (code[13:8] &gt; i);
+end
+// Dynamic element matching: rotate the starting index so that element mismatch
+// is spread across codes and appears as a raised noise floor, not as a spur.
+always_ff @(posedge clk) rot &lt;= rot + code[13:8];
+assign sel = {therm, therm} &gt;&gt; rot;     // barrel rotate</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> DEM 은 스퍼를 잡음으로 바꾸는 것이지 오차를 없애는 것이
+            아니다. 스펙트럼 요구가 잡음 바닥이면 그것은 이득이고, 총 잡음 전력이면
+            중립이다. DEM 을 켠 뒤 잡음 바닥은 안 적고 'SFDR 이 15 dB 좋아졌다'
+            고만 보고하는 것은, 고객이 자기 실험실에서 찾아내게 되는 종류의
+            반쪽 진실이다.</div>
+</div>
+<h2>T6.5 월요일에 무엇을 할 것인가</h2>
+<table><caption>표 94. 이 장의 개념이 실제로 쓰이는 자리</caption><thead><tr><th>개념</th><th>쓰이는 블록</th><th>무엇을 정하나</th></tr></thead><tbody><tr><td>플래시ADC · 축차비교ADC · 파이프라인ADC · 시간인터리브</td><td>첫 주의 구조 선택</td><td>무엇을 치르게 될 것인가</td></tr><tr><td>용량DAC · 세그먼테이션</td><td>트랜지스터를 하나도 그리기 전의 배열 치수</td><td>단위 축전기, 총 면적, 그리고 기준 드라이버의 전류</td></tr><tr><td>중복성 · 디지털보정</td><td>속도와 수율</td><td>이른 주기의 정착 정확도를 얼마나 덜어 줄 수 있나</td></tr><tr><td>INL · DNL · 미싱코드</td><td>특성화와 데이터시트</td><td>이 부품이 스펙트럼뿐 아니라 제어 고리에서도 쓸 만한가</td></tr><tr><td>글리치에너지</td><td>주파수 영역에서 보는 모든 DAC</td><td>SFDR, 그리고 온도계 비트를 몇 개나 살 것인가</td></tr></tbody></table>
+<p>이 장에서 들고 갈 수: 12 비트에서 SAR 의 축전기 배열은
+    <b>잡음만 따졌을 때보다 4.91 배 크다</b>.
+    정합이 그것을 정하기 때문이다 — 그리고 14 비트에서 그 인자는
+    1.23 로, 거기서는 잡음이 넘겨받았다. 12 비트짜리는
+    정합 요구에서, 14 비트짜리는 kT/C 에서 치수를 정하게 되고, 같은 배열을 서로
+    다른 물리로 치수 잡는 셈이다. 갈림점이 그 둘 사이에 앉아 있기 때문이다.</p>
+<p>다음 장들은 변환기를 떠나, 이 모든 일이 <i>언제</i> 일어나는지를 정하는
+    회로 — 위상 고정 루프 — 를 다룬다. 거기서 잡음과 대역폭과 전력 사이의 같은
+    맞바꿈이 축전기가 아니라 되먹임 시스템 안에서 나타난다.</p>
+<div class="특허"><div class="특허머리">특허로 가는 길 &mdash; 이 주제에서 발명이 일어나는 자리</div><div class="특허속">변환기 특허는 세 자리에 몰리고 그 모양을 보아 둘 값어치가
+        있다. SAR 의 용량형 DAC 가 쓰는 에너지를 낮추는 <b>스위칭 방식</b>(단조,
+        분할 용량, V<sub>cm</sub> 기반 — 전부 같은 배열을 다르게 스위칭하는 것이다).
+        물리적 오차를 한 번 재서 디지털 영역에서 영원히 빼는 <b>보정</b>. 그리고
+        조각 사이의 이득·오프셋·타이밍 어긋남에 대한 <b>인터리빙 보정</b>. 셋 다
+        모양이 같다: <i>아날로그 오차를 받아들이고 그것을 더 싼 데서 없앤다.</i>
+        혼성신호 설계에서 가장 확실하게 특허가 되는 생각이고, 거의 모든 블록에서
+        쓸 수 있다.</div></div>
