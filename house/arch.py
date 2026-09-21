@@ -24,7 +24,7 @@ import sys
 저장소 = 뿌리.parent
 sys.path.insert(0, str(저장소))
 
-from house import people as 사람들    # noqa: E402
+from house import people    # noqa: E402
 from house import report as RPT       # noqa: E402
 from house import sch as SCH          # noqa: E402
 from house import spec as SPEC        # noqa: E402
@@ -127,7 +127,7 @@ def _질의만들기(s) -> list:
 
 def 보고서(m: dict) -> RPT.보고서:
     s = m["_s"]
-    P = 사람들.ETHAN                      # 스펙에서 RTL 로 가는 자리가 Ethan 이다
+    P = people.ETHAN                      # 스펙에서 RTL 로 가는 자리가 Ethan 이다
     R = RPT.보고서(P, f"설계 제안서 — {s.이름 or '(이름 미정)'}",
                  (s.요청 or "")[:70],
                  "요청 판독 · 스펙 · 아키텍처 · 검증 계획 · 위험 — **짓기 전에 내는 것**")
@@ -350,7 +350,7 @@ def 돌리기(요청: str, 묻기=None) -> dict:
     조 = 선행조사쓰기(s, 키)
     R = 보고서(m)
     길 = R.내기(f"{time.strftime('%Y%m%d')}_제안서_{키}.pdf")
-    return {"사람": 사람들.ETHAN, "잰것": m, "pdf": 길, "쪽": RPT.쪽수(길),
+    return {"사람": people.ETHAN, "잰것": m, "pdf": 길, "쪽": RPT.쪽수(길),
             "선행조사": 조, "스펙": s, "요약": R.요약줄,
             "그림수": R.그림수, "표수": R.표수}
 

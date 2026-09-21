@@ -26,7 +26,7 @@ from pathlib import Path
 sys.path.insert(0, str(저장소))
 sys.path.insert(0, str(저장소 / "lab" / "se"))
 
-from house import people as 사람들    # noqa: E402
+from house import people    # noqa: E402
 from house import report as RPT       # noqa: E402
 from house import synth as SYN        # noqa: E402
 from house import sch as SCH          # noqa: E402
@@ -173,7 +173,7 @@ def _고장떨구기(sc, 묶음=8, 표본=None, 씨=11) -> dict:
 # ------------------------------------------------------------------ 보고서
 
 def 보고서(m: dict) -> RPT.보고서:
-    P = 사람들.SOFIA
+    P = people.SOFIA
     R = RPT.보고서(P, "NSW-FIR v1.0 DFT · 스캔 · ATPG · BIST 보고서",
                  "nsw_fir MAC 가속기 IP",
                  "스캔 삽입 · 고장 시뮬 · 결정적 ATPG · MBIST/LBIST · 결함수준")
@@ -574,7 +574,7 @@ def 돌리기(빠르게=False, 묶음=8, 표본=None) -> dict:
     print(f"PDF -> {길}  ({RPT.쪽수(길)} 쪽, 그림 {R.그림수}, 표 {R.표수})")
     for t in R.요약줄:
         print(" · " + t.replace("<b>", "").replace("</b>", ""))
-    return {"사람": 사람들.SOFIA, "잰것": m, "pdf": 길, "쪽": RPT.쪽수(길),
+    return {"사람": people.SOFIA, "잰것": m, "pdf": 길, "쪽": RPT.쪽수(길),
             "요약": R.요약줄, "그림수": R.그림수, "표수": R.표수}
 
 

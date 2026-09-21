@@ -19,9 +19,19 @@ import toolgate
 첨부최대 = 20 * 1024 * 1024
 첨부개수 = 12
 
-# 제목의 **말머리**는 자리표가 아니다. 실측 2026-09-21: Priya 의 보고서가 다 나왔는데
-# 제목의 `[보고]` 를 "안 채운 자리" 로 읽어 메일이 한 통도 안 나갔다.
-말머리 = ["[보고]", "[공유]", "[안내]", "[긴급]", "[회신]"]
+# A subject-line **tag** is not an unfilled placeholder. Measured 2026-09-21:
+# Priya's report was fully generated but not a single mail went out, because
+# `[보고]` in the subject was read as "a slot you forgot to fill".
+#
+# This list is the *only* thing the placeholder gate waives, and it is waived
+# only when a caller names it explicitly. Both the English tags (the company
+# writes in English now) and the Korean ones (older subjects, and what the user
+# still types) are here. `tests/test_mailattach.py` asserts that whatever
+# `house/report.SUBJECT_TAG` currently is appears in this list -- the two must
+# not drift, and they did drift once already, within an hour of each other.
+SUBJECT_TAGS = ["[REPORT]", "[FYI]", "[NOTICE]", "[URGENT]", "[RE]",
+                "[보고]", "[공유]", "[안내]", "[긴급]", "[회신]"]
+말머리 = SUBJECT_TAGS        # kept: existing call sites use this name
 
 
 def 풀기(attach: str, repo=None) -> tuple:

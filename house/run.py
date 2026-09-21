@@ -22,7 +22,7 @@ from pathlib import Path
 저장소 = 뿌리.parent
 sys.path.insert(0, str(저장소))
 
-from house import people as 사람들    # noqa: E402
+from house import people    # noqa: E402
 from house import report as RPT       # noqa: E402
 
 원장 = 뿌리 / "ledger.jsonl"
@@ -67,7 +67,7 @@ def 한명(키: str, 빠르게=False, 회로=None) -> dict:
         r = 함(*인자)
     if not isinstance(r, dict):                  # 예전 꼴 -- 경로만 돌려주던 것
         r = {"pdf": r}
-    r.setdefault("사람", 사람들.키로[키])
+    r.setdefault("사람", people.BY_KEY[키])
     r["키"] = 키
     r["초"] = round(time.time() - t0, 1)
     return r
@@ -128,27 +128,27 @@ def 돌리기(키들=None, 빠르게=False, 메일=False, to=None, 회로=None) 
         print(f"!! 라이브러리 확인 실패: {type(_e).__name__}: {_e}", flush=True)
     낸것 = []
     for k in 키들:
-        p = 사람들.키로[k]
-        print(f"\n=== {p.이름} ({p.팀}) 시작 ===", flush=True)
+        p = people.BY_KEY[k]
+        print(f"\n=== {p.name} ({p.team}) 시작 ===", flush=True)
         try:
             r = 한명(k, 빠르게, 회로=회로)
         except Exception as e:                               # noqa: BLE001
-            print(f"!!! {p.이름} 실패: {type(e).__name__}: {e}", flush=True)
+            print(f"!!! {p.name} 실패: {type(e).__name__}: {e}", flush=True)
             traceback.print_exc()
             낸것.append({"키": k, "사람": p, "됐나": False,
                        "까닭": f"{type(e).__name__}: {e}"[:300]})
-            _적기({"키": k, "이름": p.이름, "됐나": False,
+            _적기({"키": k, "이름": p.name, "됐나": False,
                  "까닭": f"{type(e).__name__}: {e}"[:300]})
             continue
         r["됐나"] = True
-        print(f"--- {p.이름}: {r['pdf']} ({r.get('쪽')}쪽, "
+        print(f"--- {p.name}: {r['pdf']} ({r.get('쪽')}쪽, "
               f"그림 {r.get('그림수')}, 표 {r.get('표수')}, {r['초']} s)", flush=True)
         if 메일:
             m = 메일보내기(r, to=to)
             r["메일"] = m
             print(f"    메일: {m}", flush=True)
         낸것.append(r)
-        _적기({"키": k, "이름": p.이름, "됐나": True, "pdf": str(r["pdf"]),
+        _적기({"키": k, "이름": p.name, "됐나": True, "pdf": str(r["pdf"]),
              "쪽": r.get("쪽"), "그림": r.get("그림수"), "표": r.get("표수"),
              "초": r["초"], "메일": bool(메일) and r.get("메일", {}).get("됐나")})
     return 낸것
@@ -163,17 +163,17 @@ def _적기(줄: dict) -> None:
 
 
 def 요약글(낸것: list) -> str:
-    줄 = [f"**{사람들.회사}** — 이번 실행 {len(낸것)}명"]
+    줄 = [f"**{people.COMPANY}** — 이번 실행 {len(낸것)}명"]
     for r in 낸것:
         p = r["사람"]
         if not r.get("됐나"):
-            줄.append(f"· ❌ **{p.이름}** ({p.팀}) — 실패: {r.get('까닭')}")
+            줄.append(f"· ❌ **{p.name}** ({p.team}) — 실패: {r.get('까닭')}")
             continue
         메 = r.get("메일")
         꼬 = ""
         if 메 is not None:
             꼬 = " · 📧 보냄" if 메.get("됐나") else f" · 📧 못 보냄({메.get('까닭', '')[:40]})"
-        줄.append(f"· ✅ **{p.이름}** ({p.팀}) — `{Path(r['pdf']).name}` "
+        줄.append(f"· ✅ **{p.name}** ({p.team}) — `{Path(r['pdf']).name}` "
                  f"{r.get('쪽')}쪽 / 그림 {r.get('그림수')} / 표 {r.get('표수')} / {r['초']}s{꼬}")
     return "\n".join(줄)
 

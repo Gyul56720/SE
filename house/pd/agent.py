@@ -26,7 +26,7 @@ from pathlib import Path
 sys.path.insert(0, str(저장소))
 sys.path.insert(0, str(저장소 / "lab" / "se"))
 
-from house import people as 사람들    # noqa: E402
+from house import people    # noqa: E402
 from house import report as RPT       # noqa: E402
 from house import synth as SYN        # noqa: E402
 from house import viz as V            # noqa: E402
@@ -212,7 +212,7 @@ def 일하기(빠르게=False) -> dict:
 
 
 def 보고서(m: dict) -> RPT.보고서:
-    P = 사람들.KENJI
+    P = people.KENJI
     R = RPT.보고서(P, "NSW-FIR v1.0 물리 설계 · 사인오프 · GDSII 보고서",
                  "nsw_fir MAC 가속기 IP",
                  "플로어플랜 · 전원계획 · 배치 · CTS · 배선 · 사인오프 · GDSII")
@@ -626,7 +626,7 @@ def 돌리기(빠르게=False) -> dict:
     m = 일하기(빠르게)
     R = 보고서(m)
     길 = R.내기()
-    return {"사람": 사람들.KENJI, "잰것": m, "pdf": 길, "쪽": RPT.쪽수(길),
+    return {"사람": people.KENJI, "잰것": m, "pdf": 길, "쪽": RPT.쪽수(길),
             "요약": R.요약줄, "그림수": R.그림수, "표수": R.표수}
 
 
