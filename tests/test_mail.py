@@ -104,9 +104,17 @@ try:
     ok(mailer.자리표들("[보고] [교수님 성함]께", ["[보고]"]) == ["[교수님 성함]"],
        "**말머리를 봐줘도 진짜 자리표는 그대로 잡는다**")
     import house.report as _R
+    import mailattach as _MA
     _제목 = _R.메일제목("dv", "TDC")
-    ok(mailer.자리표들(_제목, [_R.말머리]) == [] and _제목.startswith("[보고] "),
-       f"house 의 보고 제목이 이 관문을 통과한다 ({_제목[:34]})")
+    # **태그 글자를 박아 두지 않는다.** 예전 판은 `startswith("[보고] ")` 였고,
+    # 회사가 영어로 바뀌며 태그가 `[REPORT]` 가 되자 이 줄이 깨졌다. 검사해야 할
+    # 것은 "태그가 무엇이냐" 가 아니라 **"house 가 쓰는 태그가 관문을 통과하느냐"** 다.
+    ok(_제목.startswith(_R.SUBJECT_TAG + " "),
+       f"house 의 제목이 자기 말머리로 시작한다 ({_제목[:34]})")
+    ok(mailer.자리표들(_제목, [_R.SUBJECT_TAG]) == [],
+       "그 말머리를 명시하면 자리표 관문을 통과한다")
+    ok(_R.SUBJECT_TAG in _MA.말머리,
+       "**봇의 첨부 가드도 같은 말머리를 안다** -- 둘이 어긋나면 메일이 한 통도 안 나간다")
 
     r = mailer.보내기("me", "x", "y", repo=repo)
     ok(not r["보냈나"] and r["필요한것"] == ["USER_EMAIL"] and "set_key(USER_EMAIL" in r["말"], "'내 메일' 을 모르면 그것만 한 번 묻는다")
