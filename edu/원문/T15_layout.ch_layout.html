@@ -86,14 +86,15 @@
             as quoting ideal-clock F<sub>max</sub> in T2.</div>
 </div>
 <h2>T15.4 What to do with this on Monday</h2>
-<table><caption>표 25. 이 장의 개념이 실제로 쓰이는 자리</caption><thead><tr><th>개념</th><th>쓰이는 블록</th><th>무엇을 정하나</th></tr></thead><tbody><tr><td>레이아웃의존효과 · 웰근접 · STI응력</td><td>Any matched or precision device</td><td>Keep-out distances and dummy patterns, written as constraints</td></tr><tr><td>추출</td><td>Before declaring a block finished</td><td>Whether the simulated design is the one you drew</td></tr><tr><td>밀도규칙 · 안테나규칙</td><td>Analog regions, early</td><td>Whether the tool edits your matched structures after you stop looking</td></tr><tr><td>추상화뷰 · 핀배치</td><td>Hard-macro floorplan</td><td>Whether the integrator can route to you at all</td></tr><tr><td>하드매크로 · 소프트매크로</td><td>The business decision</td><td>Which process risk you own, and what you can charge for</td></tr></tbody></table>
+<table><caption>표 25. 이 장의 개념이 실제로 쓰이는 자리</caption><thead><tr><th>개념</th><th>쓰이는 블록</th><th>무엇을 정하나</th></tr></thead><tbody><tr><td>레이아웃의존효과 · 웰근접효과 · STI응력</td><td>Any matched or precision device</td><td>Keep-out distances and dummy patterns, written as constraints</td></tr><tr><td>추출</td><td>Before declaring a block finished</td><td>Whether the simulated design is the one you drew</td></tr><tr><td>밀도규칙 · 안테나규칙</td><td>Analog regions, early</td><td>Whether the tool edits your matched structures after you stop looking</td></tr><tr><td>추상화뷰 · 핀배치</td><td>Hard-macro floorplan</td><td>Whether the integrator can route to you at all</td></tr><tr><td>하드매크로 · 소프트매크로</td><td>The business decision</td><td>Which process risk you own, and what you can charge for</td></tr></tbody></table>
 <p>Layout is where an IP business decides what it is selling. A soft macro moves
     the physical risk to the customer and can be sold into any process; a hard macro
     keeps the risk and commands a higher price because the customer is buying
     <b>certainty</b>. The engineering in this chapter is what makes that certainty
     deliverable — and the documentation list above is what makes it saleable.</p>
-<p>One chapter remains, and it is about the failure that happens before the chip
-    is ever powered: a few hundred volts arriving on a pin from a human finger.</p>
+<p>The next chapter is about the failure that happens before the chip is ever
+    powered: a few hundred volts arriving on a pin from a human finger. After it, the
+    volume turns from the device to the flow that turns a netlist into geometry.</p>
 <div class="특허"><div class="특허머리">특허로 가는 길 &mdash; 이 주제에서 발명이 일어나는 자리</div><div class="특허속">Layout technique is mostly trade practice rather than patent, but two
         adjacent areas are not: <b>automated layout generation</b> for analog (generators
         that emit a matched, DRC-clean array from a schematic and a set of constraints)

@@ -1,0 +1,175 @@
+<h1 id="T20">T20. Signoff — The Checks That Decide Whether It May Be Built</h1>
+<p class="한줄">Every signoff check answers one narrow question, and the failures that reach silicon live in the gaps between them.</p>
+<div class="사다리"><div class="사다리앞"><b>읽기 전에 알아야 하는 것</b><br>사인오프 · 구현흐름 · DRC · LVS · 안테나위반 · 밀도규칙 · 추출 · SPEF · SDF · SDC · 정적타이밍분석 · OCV · 슬랙 · ECO · GDS · 전압강하 · 일렉트로마이그레이션 · 블랙식 · 상세배선 · 클럭스큐 · 문턱전압 · 누설전류 · 래치업</div><div class="사다리뒤"><b>이 장에서 새로 나오는 것</b><br>물리검증 · ERC · 금속채움 · CMP · 코너 · MMMC · 온도반전 · 정적IR · 동적IR · 스위칭벡터 · 기능ECO · 금속ECO · 스페어셀 · 테이프아웃 · 마스크</div></div>
+<p>A routed design is a set of polygons and a claim: that these polygons, made
+    in this process, will behave the way the RTL said. Signoff is the set of
+    independent checks that test that claim before anyone spends mask money on it. Each
+    check is a different tool with a different model of the design, and it is worth
+    being precise about which question each one answers — because <b>the failures that
+    reach silicon are almost never inside a check; they are in the space between
+    two</b>.</p>
+<h2>T20.1 What each check actually asserts</h2>
+<table><caption>표 48. The signoff set, stated as claims</caption><thead><tr><th>Check</th><th>The claim it establishes</th><th>What it cannot see</th></tr></thead><tbody><tr><td><b>DRC</b></td><td>The geometry obeys every manufacturing rule the foundry publishes for this process and this metal stack</td><td>Whether the geometry implements the design. A DRC-clean empty die passes</td></tr><tr><td><b>LVS</b></td><td>The devices and connections extracted from the layout match the netlist, device for device and net for net</td><td>Whether the <i>netlist</i> is right. LVS compares the layout to the schematic; if the schematic is wrong, LVS confirms the error</td></tr><tr><td><b>ERC</b></td><td>No floating gates, no unconnected wells, no supply shorted through a device that was not meant to conduct</td><td>Anything dynamic — it is a topology check</td></tr><tr><td><b>Antenna</b> (T19)</td><td>No metal segment collects enough charge during etch to damage a gate oxide</td><td>Nothing about the finished circuit</td></tr><tr><td><b>Density / fill</b></td><td>Every layer's local metal density is inside the window CMP requires</td><td>The capacitance the fill adds — that is extraction's job, and it must be re-run <b>after</b> fill</td></tr><tr><td><b>EM / IR</b></td><td>No wire exceeds its current-density limit for the required lifetime (T14), and no node sags below the budget</td><td>Whether the switching activity used to drive it resembles the real workload — see T20.3</td></tr><tr><td><b>STA</b></td><td>Every timing path meets setup and hold, at every corner in the list, in every mode in the list</td><td>Paths the SDC excluded, and modes nobody listed</td></tr></tbody></table>
+<figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 320" width="100%" style="max-width:620px;height:auto" font-family="ui-monospace,monospace" font-size="11"><text x="300" y="20" fill="#111" font-size="13" text-anchor="middle" font-weight="bold">Each check is sound, narrow, and blind to the next one</text><rect x="16" y="40" width="96" height="30" fill="#eaf5ee" stroke="#111" stroke-width="1.6" rx="3"/><text x="64.0" y="59.0" fill="#111" font-size="11" text-anchor="middle">DRC</text><rect x="124" y="40" width="210" height="30" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="229.0" y="59.0" fill="#111" font-size="11" text-anchor="middle">geometry obeys the rules</text><path d="M334,55 L352,55" fill="none" stroke="#c0392b" stroke-width="1.6"/><path d="M352.0,55.0 L345.0,51.4 L345.0,58.6 Z" fill="#c0392b"/><rect x="352" y="40" width="252" height="30" fill="#fbeeee" stroke="#111" stroke-width="1.6" rx="3"/><text x="478.0" y="59.0" fill="#111" font-size="11" text-anchor="middle">does not know what it implements</text><rect x="16" y="78" width="96" height="30" fill="#eaf5ee" stroke="#111" stroke-width="1.6" rx="3"/><text x="64.0" y="97.0" fill="#111" font-size="11" text-anchor="middle">LVS</text><rect x="124" y="78" width="210" height="30" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="229.0" y="97.0" fill="#111" font-size="11" text-anchor="middle">layout matches the netlist</text><path d="M334,93 L352,93" fill="none" stroke="#c0392b" stroke-width="1.6"/><path d="M352.0,93.0 L345.0,89.4 L345.0,96.6 Z" fill="#c0392b"/><rect x="352" y="78" width="252" height="30" fill="#fbeeee" stroke="#111" stroke-width="1.6" rx="3"/><text x="478.0" y="97.0" fill="#111" font-size="11" text-anchor="middle">does not know the netlist is right</text><rect x="16" y="116" width="96" height="30" fill="#eaf5ee" stroke="#111" stroke-width="1.6" rx="3"/><text x="64.0" y="135.0" fill="#111" font-size="11" text-anchor="middle">STA</text><rect x="124" y="116" width="210" height="30" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="229.0" y="135.0" fill="#111" font-size="11" text-anchor="middle">every listed path meets timing</text><path d="M334,131 L352,131" fill="none" stroke="#c0392b" stroke-width="1.6"/><path d="M352.0,131.0 L345.0,127.4 L345.0,134.6 Z" fill="#c0392b"/><rect x="352" y="116" width="252" height="30" fill="#fbeeee" stroke="#111" stroke-width="1.6" rx="3"/><text x="478.0" y="135.0" fill="#111" font-size="11" text-anchor="middle">paths the SDC excluded</text><rect x="16" y="154" width="96" height="30" fill="#eaf5ee" stroke="#111" stroke-width="1.6" rx="3"/><text x="64.0" y="173.0" fill="#111" font-size="11" text-anchor="middle">EM / IR</text><rect x="124" y="154" width="210" height="30" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="229.0" y="173.0" fill="#111" font-size="11" text-anchor="middle">no wire over its limit</text><path d="M334,169 L352,169" fill="none" stroke="#c0392b" stroke-width="1.6"/><path d="M352.0,169.0 L345.0,165.4 L345.0,172.6 Z" fill="#c0392b"/><rect x="352" y="154" width="252" height="30" fill="#fbeeee" stroke="#111" stroke-width="1.6" rx="3"/><text x="478.0" y="173.0" fill="#111" font-size="11" text-anchor="middle">vectors that were not run</text><rect x="16" y="192" width="96" height="30" fill="#eaf5ee" stroke="#111" stroke-width="1.6" rx="3"/><text x="64.0" y="211.0" fill="#111" font-size="11" text-anchor="middle">Antenna</text><rect x="124" y="192" width="210" height="30" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="229.0" y="211.0" fill="#111" font-size="11" text-anchor="middle">no oxide damage during etch</text><path d="M334,207 L352,207" fill="none" stroke="#c0392b" stroke-width="1.6"/><path d="M352.0,207.0 L345.0,203.4 L345.0,210.6 Z" fill="#c0392b"/><rect x="352" y="192" width="252" height="30" fill="#fbeeee" stroke="#111" stroke-width="1.6" rx="3"/><text x="478.0" y="211.0" fill="#111" font-size="11" text-anchor="middle">nothing about the finished circuit</text><rect x="16" y="230" width="96" height="30" fill="#eaf5ee" stroke="#111" stroke-width="1.6" rx="3"/><text x="64.0" y="249.0" fill="#111" font-size="11" text-anchor="middle">Density</text><rect x="124" y="230" width="210" height="30" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="229.0" y="249.0" fill="#111" font-size="11" text-anchor="middle">CMP window is met</text><path d="M334,245 L352,245" fill="none" stroke="#c0392b" stroke-width="1.6"/><path d="M352.0,245.0 L345.0,241.4 L345.0,248.6 Z" fill="#c0392b"/><rect x="352" y="230" width="252" height="30" fill="#fbeeee" stroke="#111" stroke-width="1.6" rx="3"/><text x="478.0" y="249.0" fill="#111" font-size="11" text-anchor="middle">the capacitance fill just added</text><text x="16" y="286" fill="#888" font-size="10.5" text-anchor="start">The left column is what signoff establishes. The right column is where silicon failures live —</text><text x="16" y="302" fill="#c0392b" font-size="10.5" text-anchor="start">not inside a check, but in the space between two of them. That space is the engineering judgement.</text></svg><figcaption><b>그림 15.</b> The same table as a picture, because the shape is the message: every check establishes something narrow, and the red column on the right is where the failures that reach silicon actually live.</figcaption></figure>
+<div class="짚기">Read the third column as a list of where to look after a silicon
+    failure. Each check is sound; each is narrow; and the narrowness is deliberate,
+    because a check that tried to establish everything could not be run in finite time.
+    <b>The engineering judgement in signoff is not in running the checks — it is in
+    knowing what the union of them leaves out.</b></div>
+<div class="개념"><div class="개념머리">금속 채움 (metal fill) and the extraction it invalidates</div>
+<div class="개념이론"><p>Chemical-mechanical polishing removes material at a rate that depends on
+        the local pattern density. A region with little metal polishes faster and ends
+        up thinner, which changes both resistance and the thickness of the dielectric
+        above it. The foundry therefore requires every layer's density to sit inside a
+        window, and the flow satisfies that by adding <b>fill</b> — floating or grounded
+        metal shapes in the empty areas.</p>
+        <p>Fill is added after routing, which means it is added <b>after</b> the
+        extraction that timing signoff used. Those shapes are metal next to signal
+        wires; they add capacitance. Grounded fill adds it predictably; floating fill
+        adds a smaller, harder-to-model amount.</p>
+        <p>So the order is: route, fill, <b>re-extract</b>, re-run STA. A flow that
+        signs off timing on the pre-fill extraction has signed off a design that will
+        not be manufactured.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>Between detail routing and final timing signoff.</td></tr>
+<tr><th>언제 쓰나</th><td>Always. The only variation is whether the fill is inserted by the P&amp;R tool or by the physical-verification tool, and the two do not produce identical results.</td></tr>
+<tr><th>어떻게 쓰나</th><td>Insert fill, re-extract with fill present, re-run the corner set, and <b>diff the slack</b> against the pre-fill run. A small, uniform degradation is expected; a large change on a few nets means fill landed next to a long, critical, sparsely-surrounded wire.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code># The diff that must exist before tape-out:
+#   path                   slack pre-fill   slack post-fill   delta
+#   u_dsp/…/mac_out[17]        +45 ps           +31 ps        -14 ps
+#   u_if/…/clk_gate_en          +88 ps           +12 ps        -76 ps   &lt;- look
+# A -76 ps outlier is a wire that was alone in an empty region and is now
+# surrounded by fill. It is real, it is predictable, and it is missed by any
+# flow that signs off before filling.</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> Fill also changes the inductance and the return path of high-speed
+            signals, which matters for the links of T8 far more than for logic. For
+            those, ask for fill exclusion zones — and remember that an exclusion zone
+            is a density violation unless the surrounding area compensates.</div>
+</div>
+<h2>T20.2 Corners multiply, and most of them are dominated</h2>
+<figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 250" width="100%" style="max-width:600px;height:auto" font-family="ui-monospace,monospace" font-size="11"><text x="16" y="28" fill="#111" font-size="11" text-anchor="start" font-weight="bold">Process</text><rect x="16" y="38" width="84" height="20" fill="#eef4fb" stroke="#111" stroke-width="1.6" rx="3"/><text x="58.0" y="52.0" fill="#111" font-size="11" text-anchor="middle">ss</text><rect x="16" y="64" width="84" height="20" fill="#eef4fb" stroke="#111" stroke-width="1.6" rx="3"/><text x="58.0" y="78.0" fill="#111" font-size="11" text-anchor="middle">tt</text><rect x="16" y="90" width="84" height="20" fill="#eef4fb" stroke="#111" stroke-width="1.6" rx="3"/><text x="58.0" y="104.0" fill="#111" font-size="11" text-anchor="middle">ff</text><text x="104" y="62" fill="#c0392b" font-size="16" text-anchor="middle">×</text><text x="116" y="28" fill="#111" font-size="11" text-anchor="start" font-weight="bold">Voltage</text><rect x="116" y="38" width="84" height="20" fill="#eef4fb" stroke="#111" stroke-width="1.6" rx="3"/><text x="158.0" y="52.0" fill="#111" font-size="11" text-anchor="middle">nom</text><rect x="116" y="64" width="84" height="20" fill="#eef4fb" stroke="#111" stroke-width="1.6" rx="3"/><text x="158.0" y="78.0" fill="#111" font-size="11" text-anchor="middle">low</text><text x="204" y="62" fill="#c0392b" font-size="16" text-anchor="middle">×</text><text x="216" y="28" fill="#111" font-size="11" text-anchor="start" font-weight="bold">Temperature</text><rect x="216" y="38" width="84" height="20" fill="#eef4fb" stroke="#111" stroke-width="1.6" rx="3"/><text x="258.0" y="52.0" fill="#111" font-size="11" text-anchor="middle">−40</text><rect x="216" y="64" width="84" height="20" fill="#eef4fb" stroke="#111" stroke-width="1.6" rx="3"/><text x="258.0" y="78.0" fill="#111" font-size="11" text-anchor="middle">25</text><rect x="216" y="90" width="84" height="20" fill="#eef4fb" stroke="#111" stroke-width="1.6" rx="3"/><text x="258.0" y="104.0" fill="#111" font-size="11" text-anchor="middle">125</text><text x="304" y="62" fill="#c0392b" font-size="16" text-anchor="middle">×</text><text x="316" y="28" fill="#111" font-size="11" text-anchor="start" font-weight="bold">RC</text><rect x="316" y="38" width="84" height="20" fill="#eef4fb" stroke="#111" stroke-width="1.6" rx="3"/><text x="358.0" y="52.0" fill="#111" font-size="11" text-anchor="middle">cmin</text><rect x="316" y="64" width="84" height="20" fill="#eef4fb" stroke="#111" stroke-width="1.6" rx="3"/><text x="358.0" y="78.0" fill="#111" font-size="11" text-anchor="middle">cworst</text><rect x="316" y="90" width="84" height="20" fill="#eef4fb" stroke="#111" stroke-width="1.6" rx="3"/><text x="358.0" y="104.0" fill="#111" font-size="11" text-anchor="middle">rcworst</text><text x="404" y="62" fill="#c0392b" font-size="16" text-anchor="middle">×</text><text x="416" y="28" fill="#111" font-size="11" text-anchor="start" font-weight="bold">Mode</text><rect x="416" y="38" width="84" height="20" fill="#eef4fb" stroke="#111" stroke-width="1.6" rx="3"/><text x="458.0" y="52.0" fill="#111" font-size="11" text-anchor="middle">func</text><rect x="416" y="64" width="84" height="20" fill="#eef4fb" stroke="#111" stroke-width="1.6" rx="3"/><text x="458.0" y="78.0" fill="#111" font-size="11" text-anchor="middle">shift</text><rect x="416" y="90" width="84" height="20" fill="#eef4fb" stroke="#111" stroke-width="1.6" rx="3"/><text x="458.0" y="104.0" fill="#111" font-size="11" text-anchor="middle">capture</text><rect x="416" y="116" width="84" height="20" fill="#eef4fb" stroke="#111" stroke-width="1.6" rx="3"/><text x="458.0" y="130.0" fill="#111" font-size="11" text-anchor="middle">retention</text><text x="16" y="176" fill="#111" font-size="13" text-anchor="start" font-weight="bold">3 × 2 × 3 × 3 × 4  =  216 corner-mode combinations</text><text x="16" y="198" fill="#c0392b" font-size="12" text-anchor="start">× 2 h of STA each  =  18 days of compute</text><text x="16" y="222" fill="#888" font-size="10" text-anchor="start">and a single ECO throws all of it away. That is T17.3's loop cost in its most expensive form.</text></svg><figcaption><b>그림 16.</b> Why signoff runs on a farm. The axes are independent of each other, so they multiply rather than add — and the corner list is therefore negotiated rather than assumed.</figcaption></figure>
+<div class="유도"><div class="유도머리">유도 &mdash; Where the signoff runtime comes from</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">Process: 3 · Voltage: 2 · Temperature: 3 · RC (interconnect): 3 · Mode: 4.</td><td class="유도왜">Each axis is independent of the others — that is why they multiply rather than add. The counts are assumed and typical.</td></tr><tr><td class="유도번호">2</td><td class="유도말">That is 3 × 2 × 3 × 3 × 4 = <b>216</b> corner-mode combinations.</td><td class="유도왜">Multiplication. Nothing subtle is happening; that is the point.</td></tr><tr><td class="유도번호">3</td><td class="유도말">At 2&nbsp; h per STA run, a full set is 432&nbsp; h of compute.</td><td class="유도왜">18&nbsp; days on one machine — which is why signoff runs on a farm and why the corner list is negotiated rather than assumed.</td></tr><tr><td class="유도번호">4</td><td class="유도말">A single ECO invalidates all of it.</td><td class="유도왜">This is T17's loop-cost arithmetic in its most expensive form: the last stage in the chain is the largest one.</td></tr></tbody></table></div>
+<table><caption>표 49. The axes, and why each one is there</caption><thead><tr><th>Axis</th><th>Values</th><th>Why it cannot be dropped</th></tr></thead><tbody><tr><td>Process</td><td>3</td><td>slow / typical / fast — and slow-n/fast-p corners on top of that in a mixed-signal part</td></tr><tr><td>Voltage</td><td>2</td><td>nominal and the low end of the regulator's tolerance</td></tr><tr><td>Temperature</td><td>3</td><td>−40 °C, 25 °C, 125 °C</td></tr><tr><td>RC (interconnect)</td><td>3</td><td>cmin / cworst / rcworst — extraction corners are independent of the device corners</td></tr><tr><td>Mode</td><td>4</td><td>functional, scan-shift, scan-capture, low-power retention</td></tr></tbody></table>
+<div class="개념"><div class="개념머리">MMMC — analysing modes and corners together instead of one at a time</div>
+<div class="개념이론"><p>The 216 combinations above are not 216 separate analyses in
+        a modern flow. Multi-mode multi-corner analysis loads the several mode
+        constraints and the several corner libraries into one session and propagates
+        once, sharing the work that is common between them.</p>
+        <p>The saving is real but it is not the main reason to use it. The main reason
+        is that <b>optimisation must see all the corners at once</b>. Fixing a setup
+        violation at the slow corner by adding drive strength can create a hold
+        violation at the fast corner; a tool that sees one corner at a time will
+        oscillate between them, and that oscillation is exactly the non-convergence of
+        T17 with p ≥ 1.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>Post-CTS optimisation onwards, and all of signoff.</td></tr>
+<tr><th>언제 쓰나</th><td>From the first optimisation that can make a corner-dependent trade — which in practice means as soon as hold fixing starts.</td></tr>
+<tr><th>어떻게 쓰나</th><td>Define the analysis views explicitly (a view is one mode plus one delay corner plus one RC corner), mark which are for setup and which for hold, and <b>check that the list covers the product's real operating envelope</b> rather than the list inherited from the previous project.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code># An analysis-view list is a specification, not a configuration:
+#   view              mode        delay corner   rc corner   checks
+#   func_ss_cw        functional  ss_0.9v_125c   cworst      setup
+#   func_ff_cb        functional  ff_1.1v_m40c   cbest       hold
+#   shift_ss_cw       scan_shift  ss_0.9v_125c   cworst      setup
+#   shift_ff_cb       scan_shift  ff_1.1v_m40c   cbest       hold
+# The question to ask of this table is not "is it right" but
+# "which operating condition of the product is NOT in it".</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> Scan-shift mode is the one most often forgotten and the one most often
+            broken, because its clock structure is different from the functional one
+            and its hold requirements are severe. A part that fails only on the tester
+            is usually a shift-mode timing problem, not a defect.</div>
+</div>
+<p>The corner list is long partly because the dominance people expect does not
+    hold. The intuition is that the slow corner bounds setup and the fast corner bounds
+    hold, so two corners would do. That intuition comes from a regime where delay
+    increases monotonically with temperature — and modern low-voltage operation is not
+    in that regime.</p>
+<div class="유도"><div class="유도머리">유도 &mdash; Temperature inversion, from the device model of T1</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">Delay ∝ C·V / I<sub>d</sub>, with I<sub>d</sub> ∝ µ(T)·(V − V<sub>th</sub>(T))<sup>α</sup>.</td><td class="유도왜">The α-power form from T1. α ≈ 1.3 for a short-channel device.</td></tr><tr><td class="유도번호">2</td><td class="유도말">Mobility falls with temperature: µ ∝ T<sup>−1.5</sup>. That makes the part <b>slower</b> when hot.</td><td class="유도왜">Phonon scattering. This is the effect everyone knows.</td></tr><tr><td class="유도번호">3</td><td class="유도말">Threshold also falls with temperature: dV<sub>th</sub>/dT ≈ −0.8&nbsp; mV/K. That makes the part <b>faster</b> when hot.</td><td class="유도왜">The Fermi level moves with temperature. This is the effect that gets forgotten.</td></tr><tr><td class="유도번호">4</td><td class="유도말">Which one wins depends on the overdrive V − V<sub>th</sub>, because the threshold shift is a large fraction of a small overdrive and a small fraction of a large one.</td><td class="유도왜">The two effects enter multiplicatively, so the comparison is between their logarithmic derivatives.</td></tr><tr><td class="유도번호">5</td><td class="유도말">d(ln delay)/dT = 1.5/T − ακ/(V − V<sub>th</sub>). Setting it to zero gives V − V<sub>th</sub> = ακT/1.5.</td><td class="유도왜">Differentiate and solve. The result depends on nothing but the two temperature coefficients and α.</td></tr><tr><td class="유도번호">6</td><td class="유도말">At 300&nbsp; K that is an overdrive of 0.208&nbsp; V, i.e. V ≈ 0.658&nbsp; V.</td><td class="유도왜">Below that supply the part is <b>slowest when cold</b>, and the corner list must contain both temperature extremes for setup.</td></tr></tbody></table></div>
+<table><caption>표 50. Delay against temperature, normalised to 25 °C</caption><thead><tr><th>Supply</th><th>−40 °C</th><th>25 °C</th><th>125 °C</th><th>Which is the slow corner</th></tr></thead><tbody><tr><td>1.8&nbsp; V</td><td>0.728&nbsp;×</td><td>1&nbsp;×</td><td>1.432&nbsp;×</td><td>normal</td></tr><tr><td>1.2&nbsp; V</td><td>0.759&nbsp;×</td><td>1&nbsp;×</td><td>1.352&nbsp;×</td><td>normal</td></tr><tr><td>0.9&nbsp; V</td><td>0.812&nbsp;×</td><td>1&nbsp;×</td><td>1.247&nbsp;×</td><td>normal</td></tr><tr><td>0.75&nbsp; V</td><td>0.887&nbsp;×</td><td>1&nbsp;×</td><td>1.133&nbsp;×</td><td>normal</td></tr><tr><td>0.65&nbsp; V</td><td>1.026&nbsp;×</td><td>1&nbsp;×</td><td>0.994&nbsp;×</td><td><b>inverted</b></td></tr><tr><td>0.6&nbsp; V</td><td>1.211&nbsp;×</td><td>1&nbsp;×</td><td>0.881&nbsp;×</td><td><b>inverted</b></td></tr></tbody></table>
+<div class="짚기">The table stops at 0.6&nbsp; V for a reason worth stating: at
+    −40 °C this model's threshold is 0.503&nbsp; V, so below
+    about 0.5&nbsp; V of supply the device has no overdrive
+    at all when cold and the delay is not merely long, it is undefined. That is not an
+    artefact — it is the near-threshold regime, and it is why a low-voltage retention
+    mode has a minimum supply specified at the <b>cold</b> corner.</div>
+<div class="짚기"><b>The independent control.</b> The crossover supply is computed
+    twice: once from the closed form V = V<sub>th0</sub> + ακT/1.5, giving
+    0.658&nbsp; V, and once by bisecting on the sign of a <i>numerically
+    differentiated</i> delay, using none of that algebra, giving 0.658&nbsp; V —
+    a disagreement of 2.53×10<sup>-8</sup>&nbsp; mV. And the trivial explanation is
+    killed by the table rather than argued away: if the effect were an artefact of the
+    normalisation, the 'inverted' verdict would not move with supply, and it
+    does.</div>
+<div class="사고"><b>실제로 난 일</b><br>A design signed off at 125 °C and typical voltage failed at −40 °C in
+    a cold-start test. It was a low-voltage retention mode: at that supply the part was
+    slowest cold, and the corner list — inherited from a 1.8 V project where the
+    intuition held — contained only the hot corner for setup. <b>Nothing in the flow was
+    broken. The list of what to check was written by someone applying a rule that had
+    stopped being true.</b></div>
+<h2>T20.3 EM and IR signoff need something the design does not contain</h2>
+<div class="정의"><b>정적 IR (static IR) · 동적 IR (dynamic IR) · 스위칭 벡터</b> &mdash; <b>Static</b> IR analysis distributes an average current over the grid and solves the resistive network — the calculation of T18. <b>Dynamic</b> IR analysis solves the grid with the supply's inductance and decoupling included (T13), driven by the current waveform that a particular pattern of switching produces. That pattern is the <b>switching vector</b>, and it is not part of the design: it has to be supplied.</div>
+<div class="짚기">This is the one signoff check whose answer depends on an input that
+    is neither in the netlist nor in the constraints. Choose a quiet vector and the
+    analysis passes; choose the worst one and it may not — and nothing in the flow tells
+    you which you chose. <b>The honest procedure is to state, in the signoff report,
+    which vectors were used and why they are believed to bound the real workload</b>,
+    and to treat a dynamic-IR pass without that statement as an unverified claim rather
+    than a result.</div>
+<table><caption>표 51. Three ways to get a vector, and what each is worth</caption><thead><tr><th>Source</th><th>How representative</th><th>What it misses</th></tr></thead><tbody><tr><td><b>Functional simulation</b> of a real workload</td><td>Best available — it is the actual switching</td><td>Only covers the workload you simulated, and long simulations produce enormous activity files</td></tr><tr><td><b>Vectorless</b> (tool-propagated probabilities from a few toggle rates)</td><td>Adequate for a first pass and for finding gross grid errors</td><td>Correlation. It assumes blocks switch independently, and the failures come from everything switching at once</td></tr><tr><td><b>Scan-capture pattern</b></td><td>The worst case for many designs and rarely analysed</td><td>Nothing — it is often the real answer, because scan capture switches far more of the die simultaneously than any functional mode does</td></tr></tbody></table>
+<div class="예제"><div class="예제머리">예제 8. Which mode sets the peak current?</div><div class="예제줄"><b>주어진 것.</b> The block of T18/T19 draws 350 mW functionally. In scan-shift mode every flop toggles on every cycle, and the shift clock runs at a quarter of the functional frequency.</div><div class="예제줄"><b>푸는 법.</b> Functional switching activity for logic is typically 10–20 % of nodes per cycle; shift activity approaches 50 % of flops per cycle. Take the clock network as fixed (it toggles either way) and compare the flop-output switching: roughly 0.15 → 0.5 is a factor of about 3.3 in that component, against a factor of 0.25 from the slower clock.</div><div class="예제답"><b>답.</b> Shift mode draws roughly <b>0.8×</b> the functional switching power in that component — comparable, not obviously smaller. The peak is set by whichever mode runs its clock fastest at high activity, and on many parts that is scan <i>capture</i>, not shift.</div><div class="예제덧">This is also why test engineers reduce shift frequency and use
+        low-power ATPG that limits simultaneous toggling — not for test quality, but
+        because the part cannot supply the current. That constraint belongs in the
+        floorplan discussion of T18, and it usually arrives after it.</div><div class="예제함정"><b>여기서 틀린다.</b> The numbers above are ratios of assumptions, not measurements, and should not be quoted as results. The conclusion that survives is structural: <b>test modes are not low-power modes</b>, and a grid signed off only against functional vectors has not been signed off against the mode that will run first, on the tester, on every part shipped.</div></div>
+<h2>T20.4 Changing a signed-off design</h2>
+<table><caption>표 52. Two kinds of ECO, and what each one costs</caption><thead><tr><th>Kind</th><th>What changes</th><th>Which signoff must be redone</th></tr></thead><tbody><tr><td><b>Metal-only ECO</b> (uses spare cells)</td><td>Routing only. The function comes from cells already placed and already on the mask, rewired on the metal layers</td><td>Everything downstream of routing: extraction, STA, EM/IR, DRC, LVS. But only the changed masks are re-made — which is the entire point</td></tr><tr><td><b>Functional ECO</b> (new cells)</td><td>Placement and routing. New instances go into gaps, displacing what was there</td><td>All of the above, and every mask is new</td></tr></tbody></table>
+<div class="개념"><div class="개념머리">스페어 셀 (spare cells) — paying now for the option to change later</div>
+<div class="개념이론"><p>Spare cells are unused gates — typically a mix of NANDs, NORs, inverters
+        and flops — scattered through the placement and tied off. They cost area and
+        leakage and do nothing. What they buy is the ability to implement a logic
+        change by <b>rewiring metal only</b>, because the transistors the change needs
+        are already on the diffusion masks.</p>
+        <p>The economics are a straightforward option price. A full mask set at an
+        advanced node costs millions; a metal-only revision costs a fraction of it and
+        takes weeks rather than months. Spending 1–2 % of the area on spares is cheap
+        insurance if the probability of needing a change is anything but negligible —
+        and on a first silicon it never is.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>Inserted at placement, distributed rather than clustered.</td></tr>
+<tr><th>언제 쓰나</th><td>Every design that will have a first silicon. Omit them only on a well-understood derivative of a proven part.</td></tr>
+<tr><th>어떻게 쓰나</th><td>Scatter them so that any region has some within reach — a spare cell 500 µm from the fix is not usable, because the wire that reaches it breaks the timing the fix was made to satisfy. Include flops: the changes you cannot predict are usually sequential.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code># A spare-cell plan is a distribution, not a count:
+#   region      spares: inv  nand2  nor2  dff     nearest-spare distance
+#   core NW           24     16     16     8            &lt; 60 um
+#   core NE           24     16     16     8            &lt; 60 um
+#   near macro A       6      4      4     2            &lt; 90 um   &lt;- thin
+# 'We have 400 spare cells' says nothing. 'No point in the core is more
+# than 90 um from a spare flop' is the statement that makes an ECO possible.</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> Tie the spare inputs off properly and check that ERC sees them as
+            tied. An untied spare gate is a floating input — the failure mode is
+            excess current through a half-on inverter, and it passes DRC, LVS and STA
+            because none of them is looking for it.</div>
+</div>
+<div class="정의"><b>테이프아웃 (tape-out)</b> &mdash; The point at which the GDS is released to the mask shop. It is a commercial event rather than a technical one: after it, changing the design costs a mask set. Everything this chapter describes exists to make the claim that the release is safe — and the honest form of that claim always includes the list of what was <b>not</b> checked.</div>
+<h2>T20.5 What to do with this on Monday</h2>
+<table><caption>표 53. 이 장의 개념이 실제로 쓰이는 자리</caption><thead><tr><th>개념</th><th>쓰이는 블록</th><th>무엇을 정하나</th></tr></thead><tbody><tr><td>물리검증 · ERC · 금속채움 · CMP</td><td>Before every tape-out</td><td>Whether the geometry is manufacturable, and whether timing was signed off on the geometry that will actually be made</td></tr><tr><td>코너 · MMMC · 온도반전</td><td>Writing the analysis-view list</td><td>Whether the corner list covers the product, or the previous project</td></tr><tr><td>정적IR · 동적IR · 스위칭벡터</td><td>Power-integrity signoff</td><td>Whether the vectors bound the real workload — including test modes</td></tr><tr><td>기능ECO · 금속ECO · 스페어셀</td><td>Placement, months before you need them</td><td>Whether a post-silicon fix costs a metal revision or a full mask set</td></tr><tr><td>테이프아웃 · 마스크</td><td>The release decision</td><td>What you are asserting, and what you are not</td></tr></tbody></table>
+<p>The numbers to carry: 216 corner-mode combinations at
+    2&nbsp; h each is 18&nbsp; days of compute that
+    one ECO throws away — the strongest quantitative argument in this book for fixing
+    things early. And the crossover overdrive of 0.208&nbsp; V
+    is why "slow is hot" stopped being a safe rule: below about
+    0.66&nbsp; V of supply, in this model, the slow corner is the
+    cold one.</p>
+<p>The part can now be built. Whether an individual die works is a different
+    question again, answered not by a tool but by a machine with the die in it — and
+    that is the last chapter of this arc.</p>
+<div class="특허"><div class="특허머리">특허로 가는 길 &mdash; 이 주제에서 발명이 일어나는 자리</div><div class="특허속">Signoff itself is the least patent-encumbered part of the flow — the
+        rules belong to the foundry and the checks are commodity. What <i>is</i> filed
+        heavily is <b>ECO automation</b>: choosing which spare cells to use and how to
+        reroute with the minimum disturbance, so that a fix does not invalidate the
+        signoff that has already been paid for. That is a direct attack on the cost
+        computed in T17.</div></div>

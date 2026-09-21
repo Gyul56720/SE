@@ -87,7 +87,7 @@
     not verified.</b> A datasheet that implies ESD qualification that never happened is
     the kind of claim that ends a small vendor.</div>
 <h2>T16.4 What to do with this on Monday</h2>
-<table><caption>표 28. 이 장의 개념이 실제로 쓰이는 자리</caption><thead><tr><th>개념</th><th>쓰이는 블록</th><th>무엇을 정하나</th></tr></thead><tbody><tr><td>인체·충전소자모델</td><td>The qualification plan and the datasheet</td><td>The targets, and that CDM is reported as well as HBM</td></tr><tr><td>설계창 · 유지전압 · 트리거전압</td><td>Clamp selection for the node</td><td>Whether the protection can exist at this supply and oxide at all</td></tr><tr><td>전류경로</td><td>Floorplan and supply-domain planning</td><td>Clamp placement, bus width, and the diodes between domains</td></tr><tr><td>패드용량</td><td>The link budget, with the SerDes architect present</td><td>Data rate — the same margin the equalisers are fighting for</td></tr><tr><td>래치업</td><td>Guard rings and well ties everywhere</td><td>Whether the part survives its own I/O being driven out of range</td></tr></tbody></table>
+<table><caption>표 28. 이 장의 개념이 실제로 쓰이는 자리</caption><thead><tr><th>개념</th><th>쓰이는 블록</th><th>무엇을 정하나</th></tr></thead><tbody><tr><td>인체모델 · 충전소자모델</td><td>The qualification plan and the datasheet</td><td>The targets, and that CDM is reported as well as HBM</td></tr><tr><td>설계창 · 유지전압 · 트리거전압</td><td>Clamp selection for the node</td><td>Whether the protection can exist at this supply and oxide at all</td></tr><tr><td>전류경로</td><td>Floorplan and supply-domain planning</td><td>Clamp placement, bus width, and the diodes between domains</td></tr><tr><td>패드용량</td><td>The link budget, with the SerDes architect present</td><td>Data rate — the same margin the equalisers are fighting for</td></tr><tr><td>래치업</td><td>Guard rings and well ties everywhere</td><td>Whether the part survives its own I/O being driven out of range</td></tr></tbody></table>
 <p>The computed numbers to carry: a 2 kV HBM event is 1.33&nbsp;A for about
     15&nbsp;ns, carrying 2&nbsp;µJ — small enough to be survivable
     and large enough to destroy a thin oxide. And protection of
@@ -95,14 +95,21 @@
     21.22&nbsp;GHz, which is the sentence that connects this
     chapter to T8: <b>ESD is not a separate discipline from the link budget; it is a
     line in it.</b></p>
-<p>That closes the graduate volume. It began with one device in four operating
-    regions and ends at the pad, having passed through delay, metastability, noise,
-    sampling, conversion, clocking, links, channels, switched capacitors, references,
-    matching, power, ageing and geometry. The common thread was a single discipline:
-    <b>every number was computed or measured, the trivial explanations were killed
-    before the number was reported, and what could not be established was said to be
-    unestablished.</b> That habit, more than any formula in these pages, is what makes
-    an IP deliverable something another company can buy.</p>
+<p>That closes the device half of this volume. It began with one device in
+    four operating regions and ends at the pad, having passed through delay,
+    metastability, noise, sampling, conversion, clocking, links, channels, switched
+    capacitors, references, matching, power, ageing and geometry. The common thread was
+    a single discipline: <b>every number was computed or measured, the trivial
+    explanations were killed before the number was reported, and what could not be
+    established was said to be unestablished.</b></p>
+<p>What follows is the other half: the flow that turns a verified netlist into
+    manufactured, tested silicon. It is a different kind of engineering — the quantities
+    are runtimes, track counts, corner lists, test seconds and defective parts per
+    million rather than volts and picoseconds — but the discipline is the same one, and
+    the six chapters apply it to the six stages: the flow and what a loop costs (T17),
+    the floorplan and its power grid (T18), placement, clocking and routing (T19),
+    signoff (T20), the verification environment that had to come first (T21), and the
+    tester that every shipped part passes through (T22).</p>
 <div class="특허"><div class="특허머리">특허로 가는 길 &mdash; 이 주제에서 발명이 일어나는 자리</div><div class="특허속">ESD is one of the most actively patented areas in I/O design, and the
         reason is the constraint itself: the protection sits <b>in the signal path</b>,
         so every claim is a way to get more protection per femtofarad. Distributed
