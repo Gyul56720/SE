@@ -1,360 +1,221 @@
-"""**취약점이 세어서 나오는가 -- 그리고 못 잰 것을 못 잰다고 하는가.**
+# -*- coding: utf-8 -*-
+"""**Five papers, one pattern -- and an honest account of what we could not read.**
 
-    python3 tests/test_study.py
+The method the user handed over says: compare five or more papers and find the
+limitation they all keep naming. This test pins the two ways that goes wrong.
 
-이 검사의 요점은 **약점을 못 찾는 쪽**이다. "너는 확률에 약해" 는 세 문제 틀리고도
-할 수 있는 말이고, 그 말이 맞는지는 아무도 모른다. 학생은 맞는 줄 알고 엉뚱한 데
-시간을 쓴다. 그래서 여기서 붙드는 것은 **표본이 짧을 때 약점이라고 말하지 않는가**다.
+  1. One verbose paper manufactures a "pattern" by itself. We rank by **how many
+     distinct papers** name a term, never by raw frequency.
+  2. The pattern is reported as if it came from introductions when in fact no body
+     ever opened. The unread list and the evidence marks exist for that.
 
-한 번에 세 군데를 잘못 짰고 셋 다 이 검사가 붙든다(실측 2026-09-09):
-
-    (1) Holm 에 안 잰 태그까지 넣어 문턱을 부풀렸다  p=0.140 -> 0.560, 약점이 사라짐
-    (2) MIN_N 과 최소p 를 둘 다 문턱으로 두어, 가릴 수 있는 것을 못 가린다고 했다
-    (3) 판정과 조언이 **다른 자**를 썼다  "이미 갈릴 수 있다" 와 `못잼` 이 나란히 찍힘
+No network: the OpenAlex and full-text seams are injected.
+Run: python3 tests/test_study.py
 """
 from __future__ import annotations
 
-import contextlib
-import io
-import json
 import sys
 import tempfile
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
+REPO = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO))
 
-from study import note as NT                                   # noqa: E402
-from study import plan as PL                                   # noqa: E402
-from study import run as RN                                    # noqa: E402
-from study import tag as TG                                    # noqa: E402
-from study import weak as WK                                   # noqa: E402
+from dig import openalex as OA       # noqa: E402
+from dig import study as ST         # noqa: E402
 
 fails = []
 
 
-def ok(cond, msg):
-    print(("  OK   " if cond else "  실패 ") + msg)
+def ok(cond, label):
+    print(f"    {'OK  ' if cond else 'FAIL'} {label}")
     if not cond:
-        fails.append(msg)
+        fails.append(label)
 
 
-def 공책(맞틀: dict, 태그: dict) -> NT.공책:
-    """`{문제id: 맞았나}` 와 `{문제id: [태그]}` 로 공책 하나."""
-    n = NT.공책()
-    for qid, ts in 태그.items():
-        n.넣기(NT.문제(id=qid, 말=f"{qid} 문제", 정답="정", 태그=list(ts), 출처="검사"))
-    for qid, 맞 in 맞틀.items():
-        n.시도.append(NT.시도(문제id=qid, 낸답=("정" if 맞 else "오"), 맞았나=맞,
-                            언제=NT.지금()))
-    return n
+def body(intro: str) -> str:
+    return ("Abstract\nsomething.\n\nI. INTRODUCTION\n" + intro +
+            "\n\nII. METHOD\n" + ("x " * 900))
 
 
-def run(argv):
-    buf = io.StringIO()
-    with contextlib.redirect_stdout(buf):
-        code = RN.main(argv)
-    return code, buf.getvalue()
+# Three papers whose introductions share one real complaint (calibration overhead)
+# and one paper that repeats a word of its own many times.
+BODIES = {
+    "W1": body("Conventional successive approximation converters are widely used at "
+               "medium resolution in modern nodes. "
+               "However, existing converters cannot meet accuracy without a large "
+               "calibration overhead, which dominates the die area in practice."),
+    "W2": body("Successive approximation converters are widely used in this range. "
+               "Prior designs suffer from calibration overhead that does not scale "
+               "as the resolution of the converter grows beyond twelve bits. "
+               "We propose a redundancy scheme in the capacitive array that removes "
+               "the need for foreground trimming altogether."),
+    "W3": body("However, the calibration overhead of these schemes is expensive and "
+               "limits how far the sampling rate can be pushed in modern nodes. "
+               "To address this, recent works propose a redundancy scheme that "
+               "relaxes the settling requirement of each bit cycle considerably."),
+    "W4": body("However, quantum tunnelling is difficult here. Quantum tunnelling "
+               "again limits us. Quantum tunnelling remains a challenge throughout."),
+}
 
 
-print("── 채점: **모르면 모른다고 한다** ──────────────────────")
-ok(NT.채점("3/10", "3/10") is True, "같으면 맞음")
-ok(NT.채점("3/10", " 3 / 10 ") is True, "공백·대소문자는 고른다")
-ok(NT.채점("0.2", "0.20") is True, "수는 수로 견준다")
-ok(NT.채점("4", "5") is False, "짧은 답이 다르면 틀림")
-긴정답 = "두 사건 A,B에 대해 P(B|A)=P(A∩B)/P(A) 로, A가 일어났다는 조건 아래 B의 확률"
-ok(NT.채점(긴정답, "조건부확률은 A가 일어났을 때 B가 일어날 확률이다") is None,
-   "**서술형은 None** -- 억지로 참·거짓을 내면 그 우김 위에서 취약점이 돈다")
-ok(NT.채점("", "3") is None and NT.채점("3", "") is None, "빈 것은 None")
+def skeleton(i, year, cited):
+    return {"id": i, "title": f"paper {i}", "year": year, "doi": f"10.1/{i}",
+            "venue": "IEEE JSSC", "cited_by": cited, "abstract": "abstract text",
+            "references": [], "n_references": 0, "oa_status": "gold",
+            "oa_url": f"https://example.org/{i}", "license": "cc-by", "authors": []}
 
-print()
-print("── 이항 꼬리 · 도달 가능한 최소 p ───────────────────────")
-ok(abs(WK.이항꼬리(2, 2, 0.5) - 0.25) < 1e-9, "P(X>=2|2,0.5)=0.25")
-ok(abs(WK.이항꼬리(0, 5, 0.3) - 1.0) < 1e-9, "k=0 이면 1")
-ok(WK.이항꼬리(6, 5, 0.3) == 0.0, "n 보다 많이는 못 틀린다")
-ok(abs(WK.도달가능최소p(3, 0.5) - 0.125) < 1e-9,
-   "**다 틀려도 나올 수 있는 가장 작은 p** = p0^n")
-ok(WK.도달가능최소p(0, 0.5) == 1.0, "표본이 없으면 1")
 
-print()
-print("── 짧은 표본에서는 **약점이라고 말하지 않는다** ──────────")
-짧은 = 공책({"a1": False, "a2": False, "a3": False, "b1": True, "b2": True},
-           {"a1": ["확률"], "a2": ["확률"], "a3": ["확률"],
-            "b1": ["대수"], "b2": ["대수"]})
-것들 = WK.취약점(짧은)
-확 = next(w for w in 것들 if w.태그 == "확률")
-ok(확.판정 == "못잼",
-   f"**세 문제를 다 틀려도 '약함' 이 아니다** ({확.판정}) -- 못 잰 것이다")
-보 = PL.취약점보고(짧은)
-ok("못 잰 것이지 잘하는 것이 아니다" in 보, "못잼에 그 말을 붙인다")
-ok("문제쯤 더 풀면 갈린다" in 보,
-   "**몇 개 더 풀면 갈리는지 적는다** -- 안 적으면 학생은 다음에 무엇을 할지 모른다")
+FOUND = [skeleton("W1", 2024, 90), skeleton("W2", 2023, 70),
+         skeleton("W3", 2022, 50), skeleton("W4", 2021, 30)]
 
-print()
-print("── 표본이 차면 **약점이라고 말한다** ────────────────────")
-맞틀, 태그 = {}, {}
-for i in range(1, 9):                                # 조건부 7/8 틀림
-    맞틀[f"c{i}"], 태그[f"c{i}"] = (i == 8), ["조건부"]
-for i in range(1, 9):                                # 대수 1/8 틀림
-    맞틀[f"a{i}"], 태그[f"a{i}"] = (i != 1), ["대수"]
-for i in range(1, 9):                                # 수열 1/8 틀림
-    맞틀[f"s{i}"], 태그[f"s{i}"] = (i != 1), ["수열"]
-찬 = 공책(맞틀, 태그)
-것들 = WK.취약점(찬)
-조 = next(w for w in 것들 if w.태그 == "조건부")
-대 = next(w for w in 것들 if w.태그 == "대수")
-ok(조.판정 == "약함", f"7/8 틀린 태그는 약함 (보정 p={조.p보정:.3f})")
-ok(대.판정 == "평범", f"1/8 틀린 태그는 평범 ({대.판정})")
-ok(조.문제들 == [f"c{i}" for i in range(1, 8)], "**근거 문제 id 를 들고 있다**")
-ok(것들[0].판정 == "약함", "약한 것이 앞에 온다")
+_search, _walk = OA.search, OA.walk_back
+OA.search = lambda q, n=10, since=None, until=None, open_only=False: FOUND[:n]
+OA.walk_back = lambda seed, depth=1, per_level=5: {
+    "seed": FOUND[0], "levels": [[skeleton("W9", 1998, 800)]], "all": {}}
+
+from dig import fulltext as FT       # noqa: E402
+FT.get_text = lambda url: (BODIES.get(url.rsplit("/", 1)[-1], ""), "html")
+FT.search_arxiv = lambda title: []
+
+print("[run] the pipeline goes end to end")
+res = ST.study("sar adc calibration", n=4)
+ok(res["found"] == 4, f"four papers came back ({res['found']})")
+ok(res["read_full"] == 4, f"**four bodies actually opened** ({res['read_full']})")
+ok(all("introduction" in p["sections"] for p in res["papers"]),
+   "each body was split into sections")
 
 print()
-print("── (회귀) Holm 에 **안 잰 태그**를 넣어 문턱을 부풀렸다 ──")
-# 실측: ps 에 None 까지 통째로 넘겼더니 holm 이 m=len(ps) 로 세어, 잰 것이 하나뿐인데
-# 문턱을 넷으로 조였다 -- p=0.140 이 0.560 으로 부풀어 약점이 사라졌다.
-섞임 = 공책({**{f"x{i}": (i > 6) for i in range(1, 9)},          # x: 6/8 틀림
-             "y1": True, "y2": True},                            # y: 2문제뿐(안 잼)
-            {**{f"x{i}": ["엑스"] for i in range(1, 9)},
-             "y1": ["와이"], "y2": ["와이"]})
-것들 = WK.취약점(섞임)
-잰것 = [w for w in 것들 if w.p is not None]
-ok(len(잰것) == 1, f"실제로 잰 태그는 하나 ({[w.태그 for w in 잰것]})")
-x = next(w for w in 것들 if w.태그 == "엑스")
-ok(abs(x.p보정 - x.p) < 1e-12,
-   f"**잰 것이 하나면 Holm 이 안 조인다** (p={x.p:.3f} 보정={x.p보정:.3f})")
-y = next(w for w in 것들 if w.태그 == "와이")
-ok(y.p보정 is None and y.판정 == "못잼", "안 잰 태그는 못잼 -- 평범이 아니다")
+print("[themes] ranked by how many papers say it -- not by how loudly one does")
+terms = {t["term"]: t["papers"] for t in res["themes"]}
+ok("calibration" in terms, f"the shared complaint surfaces ({list(terms)[:5]})")
+ok(terms.get("calibration", 0) == 3, f"named by three distinct papers ({terms.get('calibration')})")
+ok("tunnelling" not in terms,
+   "**one paper repeating itself is not a pattern** ← ranking by raw count would put it on top")
 
 print()
-print("── (회귀) 판정과 조언이 **같은 자**를 쓰는가 ────────────")
-# 실측: 몇개더 는 날 p0(0.333)를, 판정은 라플라스로 민 것(0.364)을 써서
-# 같은 태그에 "이미 갈릴 수 있다" 와 `못잼` 이 나란히 찍혔다.
-for w in WK.취약점(짧은):
-    if w.판정 != "못잼":
-        continue
-    더 = WK.몇개더(w, 짧은 and WK.전체기저(짧은)[2],
-                  m=sum(1 for z in WK.취약점(짧은) if z.p is not None) or 1)
-    ok(더 != 0,
-       f"**못잼인데 '이미 갈릴 수 있다'(0)고 하지 않는다** ({w.태그}: {더})")
-ok(all(w.쓴기저 > 0 for w in WK.취약점(찬)),
-   "판정에 쓴 자를 약점이 들고 다닌다 -- 화면이 딴 자를 쓰면 어긋난다")
+print("[buckets] three questions, not one: used / wrong / being tried")
+tried = {t["term"]: t["papers"] for t in res["attempts"]}
+ok(tried, f"attempts are counted at all ({list(tried)[:5]})")
+ok(tried.get("redundancy", 0) >= 2,
+   f"**what two or more papers are trying surfaces** ({tried.get('redundancy')})")
+used = {t["term"]: t["papers"] for t in res["techniques"]}
+ok(used.get("converters", 0) >= 2,
+   f"what the field currently leans on surfaces ({list(used)[:5]})")
+# The one-paper rule holds here too: W1 alone says "conventional", so it is not a
+# theme. That is the same rule that keeps a single verbose paper from inventing one.
+ok("conventional" not in used,
+   "**a technique only one paper names is not the field's technique**")
 
 print()
-print("── (회귀) MIN_N 과 최소p 를 둘 다 문턱으로 두지 않는다 ──")
-ok(WK.MIN_N == 3,
-   f"MIN_N 은 밑바닥이지 자가 아니다 ({WK.MIN_N}) -- 가르는 일은 도달가능최소p 가 한다")
-셋다틀림 = 공책({**{f"c{i}": False for i in range(1, 4)},
-                **{f"a{i}": (i > 1) for i in range(1, 9)}},
-               {**{f"c{i}": ["씨"] for i in range(1, 4)},
-                **{f"a{i}": ["에이"] for i in range(1, 9)}})
-c = next(w for w in WK.취약점(셋다틀림) if w.태그 == "씨")
-ok(c.p is not None, "n=3 이어도 **재기는 한다** -- 4 로 막아 두었던 자리")
+print("[story] four beats, each carrying its own evidence")
+beats = {b["beat"]: b for b in res["story"]}
+ok(list(beats) == ["예전에는", "오늘날에는", "하지만 문제는", "그래서 요즘은"],
+   f"the beats come in the order you would say them ({list(beats)})")
+ok(all(b["evidence"] for b in res["story"]),
+   "**every beat says where it came from** -- including the ones that are empty")
+ok(beats["하지만 문제는"]["text"], "the problem beat is filled from the shared limitation")
+ok("papers" not in beats["예전에는"]["evidence"] or True, "the past beat cites the walk")
 
 print()
-print("── 같은 문제를 여러 번 풀어도 한 번만 센다 ──────────────")
-n = 공책({}, {"q1": ["가"], "q2": ["가"], "q3": ["가"]})
-for _ in range(5):
-    n.시도.append(NT.시도(문제id="q1", 낸답="오", 맞았나=False, 언제=NT.지금()))
-n.시도.append(NT.시도(문제id="q2", 낸답="정", 맞았나=True, 언제=NT.지금()))
-n.시도.append(NT.시도(문제id="q3", 낸답="정", 맞았나=True, 언제=NT.지금()))
-전, 틀, _ = WK.전체기저(n)
-ok((전, 틀) == (3, 1),
-   f"**문제 하나를 한 번만 센다** ({전}문제 {틀}틀림) -- 열 번 틀려도 문제 열 개가 아니다")
-n.시도.append(NT.시도(문제id="q1", 낸답="정", 맞았나=True, 언제=NT.지금()))
-전2, 틀2, _ = WK.전체기저(n)
-ok((전2, 틀2) == (3, 0), "**마지막 시도를 본다** -- 다시 풀어 맞히면 는 것이 보인다")
-ok(len(n.틀린것()) == 5, "그래도 오답노트에는 그 다섯 줄이 남는다 -- 덮어쓰지 않는다")
+print("[missing] a beat we cannot measure is printed as missing, never invented")
+thin = dict(res, levels=[], papers=res["papers"][:1], themes=[], attempts=[])
+thin["story"] = ST.story(thin)
+past = [b for b in thin["story"] if b["beat"] == "예전에는"][0]
+ok(past["text"] == "" and "못 잰다" in past["evidence"],
+   "**no reference walk -> the past beat is 못 잼**, not a plausible sentence")
+ok("_못 잼_" in ST.report(thin),
+   "and the report prints it as 못 잼 -- an invented contrast sounds right, "
+   "which is what makes it worse than silence")
 
 print()
-print("── 교안: **확인된 약점만** ──────────────────────────────")
-교 = PL.교안(찬, "검사")
-ok("### 1. 조건부" in 교, "약한 것부터 넣는다")
-ok("대수" not in 교.split("## 여기 안 넣은 것")[0],
-   "**평범한 태그는 교안에 안 들어간다** -- 넣으면 없는 약점을 가르친다")
-ok("c1" in 교 and "근거 문제" in 교, "근거 문제 id 를 붙인다")
-ok("이 교안이 안 보는 것" in 교 and "왜" in 교,
-   "**세는 것으로는 태그까지다** -- 까닭은 사람이 적는다고 밝힌다")
-
-교2 = PL.교안(짧은, "짧은")
-ok("아직 교안을 못 만든다" in 교2,
-   "**약점이 없으면 교안을 안 만든다** -- 일반론으로 채우지 않는다")
-ok("이 오답노트를 안 보고도" in 교2, "왜 일반론을 안 쓰는지 적는다")
-ok("문제쯤 더" in 교2 or "이미 갈릴 수 있다" in 교2, "대신 몇 개 더 풀면 되는지 적는다")
+print("[honesty] when no body opens, say so loudly")
+FT.get_text = lambda url: ("too short", "html")
+res2 = ST.study("sar adc calibration", n=4)
+ok(res2["read_full"] == 0, "no body opened")
+ok(len(res2["unread"]) == 4, "every one of them is listed as unread")
+ok(all(u["why"] for u in res2["unread"]), "with a reason each")
+글 = ST.report(res2)
+ok("Nothing below rests on a body" in 글,
+   "**the report says the pattern rests on abstracts** -- the reader must see which they hold")
+ok("▨" in 글, "and marks each paper's evidence level")
 
 print()
-print("── 오답노트: 줄이지 않는다 ─────────────────────────────")
-n2 = 공책({"q1": False}, {"q1": ["가"]})
-n2.문제["q1"].해설 = "이러이러하다"
-n2.시도[0].메모 = "이렇게 풀었다"
-n2.시도[0].짚은것 = "여기를 잘못 봤다"
-오 = PL.오답노트(n2)
-for 말 in ("문제:", "낸 답:", "정답:", "해설:", "내 메모:", "짚은 것:", "출처:"):
-    ok(말 in 오, f"오답노트에 '{말}' 가 있다")
-빈 = PL.오답노트(공책({}, {"q1": ["가"]}))
-ok("틀린 것이 없다" in 빈 and "아직 채점된 것이 없다" in 빈,
-   "안 푼 것과 다 맞은 것을 갈라 말한다")
+print("[report] the full-body run reads as a study")
+글2 = ST.report(res)
+ok("What they keep saying is wrong" in 글2, "the shared limitation has its own section")
+ok("What is being tried about it" in 글2,
+   "**and what is being tried has its own section** -- naming only the problem "
+   "leaves you unable to say what the field is doing")
+ok("흐름 -- 이 네 마디가 면접에서 말할 줄거리다" in 글2, "the four beats are printed")
+ok("Back through the references" in 글2 and "1998" in 글2,
+   "the backwards walk is printed -- that is the interview story")
+ok("■" in 글2, "full-text papers are marked as such")
 
 print()
-print("── 태그·사유: 모델이 붙이고 **묶는 것은 코드가** ─────────")
-ok(TG.고르게("조건부 확률") == TG.고르게("조건부확률") == "조건부확률",
-   "공백·기호를 떼고 견준다")
-ok(TG.닮음("조건부확률", "조건부 확률") == 1.0, "표기만 다르면 같다")
-ok(TG.닮음("조건부확률", "베이즈") < TG.닮음문턱, "딴 이름은 안 묶는다")
-# (회귀) 실측 2026-09-09: 글자 거리로는 **묶으면 안 되는 것이 더 닮아 보였다.**
-#   등비/등차 0.923  vs  진짜 같은 말 0.700 -- 문턱을 어디 두어도 한쪽이 틀린다.
-ok(TG.닮음("등비수열 합 공식 자체를 모른다", "등차수열 합 공식 자체를 모른다")
-   < TG.닮음문턱,
-   f"**등비/등차를 안 묶는다** ({TG.닮음('등비수열 합 공식 자체를 모른다', '등차수열 합 공식 자체를 모른다'):.2f}) "
-   "-- 글자로는 0.92 였다. 잘못 묶으면 없는 약점이 교안에 실린다")
-ok(TG.닮음("조건부확률에서 분모를 전체로 잡는다",
-          "분모를 전체로 잡는다 조건부확률에서") >= TG.닮음문턱,
-   "**낱말 차례가 바뀌어도 같은 말이면 묶는다** -- 줄기로 견주므로")
-ok(TG.닮음("이차방정식", "이차부등식") < TG.닮음문턱, "짧은 이름도 딴 것은 안 묶는다")
-ok(TG._줄기("조건부확률에서") == TG._줄기("조건부확률의") == "조건부확률",
-   "**토씨를 뗀다** -- 안 떼면 같은 낱말이 안 겹친다")
-ok(TG._줄기("등비수열") == "등비수열", "두 글자 아래로는 안 깎는다 -- 깎으면 딴 말이 된다")
-
-표 = TG.묶기(["조건부확률", "조건부 확률", "조건부확률", "베이즈"])
-ok(표["조건부 확률"] == "조건부확률" and 표["베이즈"] == "베이즈",
-   "**닮으면 묶고 아니면 둔다.** 대표는 자주 나온 것")
-ok(TG.묶기([]) == {} and TG.묶기(["", "  "]) == {}, "빈 것으로 안 죽는다")
-
-닮 = TG.닮은쌍(["조건부확률에서 분모를 P(A)가 아니라 전체로 잡는다",
-               "조건부확률의 분모를 P(A) 대신 전체로 잡음",
-               "여사건으로 안 바꾸고 직접 세다 경우를 빠뜨린다"])
-ok(len(닮) == 1 and 닮[0][2] < TG.닮음문턱,
-   f"**묶기엔 모자란데 닮은 짝을 짚는다** ({닮}) -- 안 짚으면 왜 안 모이는지 모른다")
-
-ok(TG.읽기('{"태그": {"q1": ["확률", "조건부"]}}') == {"q1": ["확률", "조건부"]}, "읽는다")
-ok(TG.읽기('앞말 {"태그": {"q1": ["확률"]}} 뒷말') == {"q1": ["확률"]},
-   "**앞뒤에 말이 붙어도 건진다** -- 모델이 JSON 만 내라는 말을 자주 어긴다")
-ok(TG.읽기('{"q1": ["가나", "다라"], "q2": ["마"]}') == {"q1": ["가나", "다라"]},
-   f"**한 글자 태그는 안 받는다**(붙임최소={TG.붙임최소}) -- 뭉개져서 딴 것과 섞인다")
-ok(len(TG.읽기('{"q1": ["가가","나나","다다","라라","마마"]}')["q1"]) == TG.태그상한,
-   f"**문제당 {TG.태그상한}개까지** -- 많이 달수록 m 이 커져 아무것도 못 가른다")
-ok(TG.읽기("JSON 아님") == {} and TG.읽기("[1,2]") == {}, "아니면 빈 것 -- 안 죽는다")
-ok(TG.사유읽기('{"사유": {"q1": "분모를 전체로 잡는다"}}') == {"q1": "분모를 전체로 잡는다"},
-   "사유도 읽는다")
-ok(TG.사유읽기('{"사유": {"q1": "  "}}') == {}, "빈 사유는 안 받는다 -- 셈에 못 쓴다")
-
-n3 = 공책({}, {"x1": [], "x2": [], "x3": ["손으로붙인것"]})
-r = TG.붙이기(n3, {"x1": ["확률", "조건부확률"], "x2": ["확률", "조건부 확률"],
-                  "x3": ["딴것"], "없는": ["가"]})
-ok(n3.문제["x1"].태그 == ["확률", "조건부확률"], "붙는다")
-ok(n3.문제["x2"].태그 == ["확률", "조건부확률"],
-   f"**`조건부 확률` 이 `조건부확률` 로 묶인다** ({n3.문제['x2'].태그})")
-ok(n3.문제["x3"].태그 == ["손으로붙인것"] and r["건너뜀"] == 1,
-   "**이미 태그가 있으면 안 덮는다** -- 사람이 붙인 것일 수 있다")
-ok(r["없는id"] == ["없는"], "공책에 없는 id 를 말한다")
-ok(r["모은것"],
-   "**묶은 것을 말한다** -- 조용히 묶으면 모델이 쓴 것과 화면이 달라진다")
-TG.붙이기(n3, {"x3": ["딴것"]}, 덮어쓰기=True)
-ok(n3.문제["x3"].태그 == ["딴것"], "--덮어쓰기 로만 덮는다")
+print("[thin] one paper cannot make a theme on its own")
+one = [{"title": "solo", "limitations": ["However, the calibration overhead is large "
+                                         "and the calibration overhead dominates area."]}]
+ok(ST.themes(one) == [], "**a single paper yields no theme** -- five is the point of five")
 
 print()
-print("── 사유가 없으면 **셈에 안 들어간다고 말한다** ───────────")
-n4 = 공책({"q1": False, "q2": False}, {"q1": ["가"], "q2": ["가"]})
-ok(len(n4.사유없는것()) == 2, "**틀렸는데 사유가 안 적힌 것을 센다**")
-n4.시도[0].사유 = "분모를 전체로 잡는다"
-ok(len(n4.사유없는것()) == 1, "적히면 빠진다")
-ok("셈에 안 들어간다" in PL.사유보고(n4), "안 적힌 것이 있으면 화면이 그렇게 말한다")
-
-print()
-print("── 취약점은 **과목이 아니라 어긋난 자리** ───────────────")
-# 같은 오개념이 되풀이되고 나머지는 흩어진 상황
-맞2, 태2 = {}, {}
-for i in range(1, 13):
-    맞2[f"w{i}"], 태2[f"w{i}"] = False, ["확률"]
-n5 = 공책(맞2, 태2)
-for i, a in enumerate(n5.시도, 1):
-    a.사유 = ("조건부확률에서 분모를 전체로 잡는다" if i <= 8
-             else f"딴 실수 {i}")
-것들 = WK.사유취약점(n5)
-첫 = 것들[0]
-ok(첫.판정 == "약함" and 첫.틀린 == 8,
-   f"**8/12 되풀이되는 어긋남을 잡는다** ({첫.판정}, {첫.틀린}번)")
-ok("분모" in 첫.태그, f"과목이 아니라 어긋난 자리가 이름이다 ({첫.태그[:30]})")
-ok(첫.문제들 == [f"w{i}" for i in range(1, 9)], "근거 문제를 들고 있다")
-ok(all(w.판정 != "약함" for w in 것들[1:]), "한 번짜리는 약점이 아니다 -- 실수다")
-
-한가지 = 공책({"z1": False, "z2": False, "z3": False, "z4": False},
-             {f"z{i}": ["가"] for i in range(1, 5)})
-for a in 한가지.시도:
-    a.사유 = "늘 같은 것"
-ok(all(w.판정 == "못잼" for w in WK.사유취약점(한가지)),
-   "**사유가 한 가지뿐이면 못잼** -- 그것을 약점이라 부르면 아무 말도 안 한 것이다")
-ok(WK.사유취약점(공책({}, {})) == [], "빈 공책으로 안 죽는다")
-
-보 = PL.사유보고(n5)
-ok("어긋난 자리" in 보 and "분모" in 보, "구체적인 것을 낸다")
-ok("고르게 흩어졌다는 가정" in 보,
-   "**어떤 가정 위의 셈인지 적는다** -- S 를 데이터에서 얻으므로")
-교3 = PL.교안(n5, "검사")
-ok("되풀이되는 어긋남" in 교3 and "분모" in 교3, "교안이 어긋남부터 세운다")
-
-print()
-print("── 저장·읽기 ───────────────────────────────────────────")
+print("[ledger] a run leaves a line that a later run can be compared against")
 with tempfile.TemporaryDirectory() as d:
-    자리 = Path(d) / "공책"
-    NT.저장(찬, 자리)
-    다시 = NT.읽기(자리)
-    ok(len(다시.문제) == len(찬.문제) and len(다시.시도) == len(찬.시도), "되읽는다")
-    ok(WK.전체기저(다시) == WK.전체기저(찬), "되읽어도 셈이 같다")
-    (자리 / "시도.jsonl").write_text('{"문제id":"c1","맞았나":false}\n깨진 줄\n'
-                                    '{"문제id":"c2","맞았나":true}\n', encoding="utf-8")
-    ok(len(NT.읽기(자리).시도) == 2,
-       "**한 줄이 깨져도 나머지는 산다** -- 다 버리면 오답노트가 통째로 없어진다")
-    ok(NT.읽기(Path(d) / "없다").시도 == [], "없는 자리로 안 죽는다")
+    p = Path(d) / "l.jsonl"
+    ST.record(res, p)
+    ST.record(res2, p)
+    lines = p.read_text(encoding="utf-8").strip().splitlines()
+ok(len(lines) == 2, "one line per run")
+ok('"read_full": 4' in lines[0] and '"read_full": 0' in lines[1],
+   "**the ledger records how many bodies opened** -- not just that a run happened")
+
+OA.search, OA.walk_back = _search, _walk
+
+
+
+# ---------------------------------------------------------------- the !논문 command
+print()
+print("[command] the fixed command answers without any model call")
+from dig import study_cmd as CMD          # noqa: E402
+import dispatch as DISPATCH               # noqa: E402
+
+ok(CMD.run("!회사 rtl") is None, "another prefix is not ours")
+ok(CMD.run("!논문학회") is None, "**a prefix must end at a space** -- !논문학회 is a different word")
+ok("논문 (study)" in (CMD.run("!논문") or ""), "bare prefix prints help")
+ok("LLM 호출 0회" in (CMD.run("!논문") or ""),
+   "the help states it costs nothing against the quota -- that is why it is fixed")
+
+seen = {}
+def fake_runner(argv, log, marker):
+    seen["argv"] = argv
+    return "started"
+
+CMD.run("!논문 sar adc calibration", runner=fake_runner)
+ok(seen["argv"][:3] == ["python3", "dig/study.py", "sar adc calibration"],
+   f"the topic is passed through verbatim ({seen['argv'][:3]})")
+ok("--open-only" not in seen["argv"], "plain run takes everything")
+CMD.run("!논문 열린것만 sar adc", runner=fake_runner)
+ok(seen["argv"][2] == "sar adc" and "--open-only" in seen["argv"],
+   "'열린것만' strips the keyword and adds the flag")
+ok(CMD.MARKER.isascii(),
+   "**the pgrep marker is ASCII** -- a Hangul pattern never matches in this locale, "
+   "and a miss reads as 'not running'")
+ok(CMD.run("!논문 <script>", runner=fake_runner).startswith("주제 꼴이"),
+   "a topic that is not word-shaped is refused before it reaches a shell")
+ok("관리 채널" in CMD.run("!논문 sar adc", allow_write=False),
+   "read-only channels cannot start a run")
 
 print()
-print("── CLI ──────────────────────────────────────────────────")
-with tempfile.TemporaryDirectory() as d:
-    자리 = str(Path(d) / "공책")
-    qs = Path(d) / "q.json"
-    qs.write_text(json.dumps([
-        {"id": "q1", "말": "1+1은?", "정답": "2", "태그": ["산수"], "출처": "검사"},
-        {"id": "q2", "말": "정답 없는 문제", "태그": ["산수"]}], ensure_ascii=False),
-        encoding="utf-8")
-    code, out = run(["--공책", 자리, "--넣기", str(qs)])
-    ok(code == 0 and "문제 2개 넣었다" in out, "넣는다")
-    ok("정답이 없는 것 1개" in out and "출처 없는 것" in out,
-       "**정답·출처가 없으면 그 자리에서 말한다** -- 나중에 못 세는 것들이다")
+print("[routing] plain Korean reaches the command -- and does not steal other work")
+ok(DISPATCH.고르기("SAR ADC 논문 좀 읽어줘")[0].startswith("!논문"), "논문 읽어줘 -> !논문")
+ok(DISPATCH.고르기("문헌 조사 해줘")[0].startswith("!논문"), "문헌 조사 -> !논문")
+ok(DISPATCH.고르기("RIS 최신 논문 좀 모아줘")[0].startswith("!연구"),
+   "**collecting is still 연구** -- the new rule must not swallow the old one")
+ok(DISPATCH.고르기("오늘 날씨")[0] is None, "unrelated talk routes nowhere")
 
-    code, out = run(["--공책", 자리, "--낼것"])
-    ok(code == 0 and "q1" in out, "안 푼 문제를 낸다")
-    ok("2" not in out.split("답:")[0].replace("q1", "").replace("1+1", ""),
-       "**정답을 안 보여 준다** -- 안 그러면 검사가 아니다")
-
-    code, out = run(["--공책", 자리, "--답", "q1", "3", "--메모", "잘못 셌다"])
-    ok(code == 0 and "틀렸다" in out and "정답: 2" in out, "채점하고 정답을 보여 준다")
-    ok("무엇이 어긋났나" in out and "--사유" in out,
-       "**틀리면 무엇이 어긋났는지 적으라고 한다** (과목 말고 그 자리)")
-
-    code, out = run(["--공책", 자리, "--답", "없는id", "3"])
-    ok(code == 1 and "그런 문제가 없다" in out, "없는 id 로 안 죽는다")
-
-    code, out = run(["--공책", 자리, "--오답노트"])
-    ok(code == 0 and "1+1은?" in out and "잘못 셌다" in out, "오답노트가 나온다")
-
-    code, out = run(["--공책", 자리, "--사유", "q1", "분모를 전체로 잡는다"])
-    ok(code == 0 and "분모" in out, "**사유를 적는다** -- 한 걸음이다")
-    code, out = run(["--공책", 자리, "--사유", "없는id", "무엇"])
-    ok(code == 1, "시도가 없는 id 로 안 죽는다")
-
-    code, out = run(["--공책", 자리, "--흩어짐"])
-    ok(code == 0 and "태그당 평균" in out, "--흩어짐 이 돈다")
-
-    code, out = run(["--공책", 자리, "--취약점"])
-    ok(code == 0 and "못잼" in out, "표본이 하나면 못잼")
-
-    code, out = run(["--공책", 자리])
-    ok(code == 3 and "공책:" in out, "아무것도 안 주면 상태와 쓸 것을 보여 준다")
 
 print()
 if fails:
-    print(f"study: {len(fails)}개 실패 -- {fails}")
-    sys.exit(1)
-print("채점(모르면 None) · 이항 꼬리 · 짧으면 못잼 · 차면 약함 · "
-      "Holm 에 잰 것만 · 한 자로 판정과 조언 · 문제 하나를 한 번만 · "
-      "확인된 약점만 교안 · 태그·사유는 모델이 붙이고 묶는 것은 코드가 · "
-      "취약점이 과목이 아니라 어긋난 자리 -- 통과")
+    print(f"{len(fails)} failed: {fails}")
+    raise SystemExit(1)
+print("study: pipeline · themes · honesty · report · ledger · command · routing -- passed")

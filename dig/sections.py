@@ -140,21 +140,60 @@ LIMIT_CUES = (
 )
 
 
-def limitation_sentences(text: str, limit: int = 12) -> "list[str]":
-    """Pick the sentences that state a limitation.
+# Cues for a sentence that names an **attempt** -- what people are trying in order
+# to get past the limitation. The method asks for this explicitly: "what attempts
+# are being made recently to solve that problem". Naming only the problem leaves
+# you able to complain but not to say what the field is doing about it.
+ATTEMPT_CUES = (
+    "we propose", "we present", "we introduce", "this paper", "this work",
+    "has been proposed", "have been proposed", "has been shown", "recent work",
+    "recent works", "recently", "to address", "to overcome", "to mitigate",
+    "to alleviate", "to reduce", "to avoid", "in order to", "instead of",
+    "emerging", "promising", "enables", "leverage", "leverages", "exploit",
+    "exploits", "novel", "state-of-the-art", "제안", "시도", "완화", "개선",
+)
 
-    This is the raw material for comparing papers: when five introductions keep
-    naming the same limitation, that repetition *is* the pattern the method is
-    after. Selection is done on strings -- no model call.
-    """
+# Cues for a sentence that says what is **in use** -- the technique the field
+# currently leans on. "What is hot right now", in the method's words.
+TECHNIQUE_CUES = (
+    "conventional", "traditional", "widely used", "commonly used", "typically",
+    "standard", "state of the art", "existing", "current", "prior art",
+    "is used", "are used", "has been used", "have been used", "관행", "널리",
+)
+
+
+def _pick(text: str, cues, limit: int) -> "list[str]":
+    """Sentences carrying one of `cues`, at a readable length.
+
+    Selection is done on strings -- no model call. See the module docstring for
+    why (reproducibility, and the per-minute quota)."""
     out = []
     for raw in re.split(r"(?<=[.!?])\s+|\n{2,}", text or ""):
         s = " ".join(raw.split())
         if not (40 <= len(s) <= 400):
             continue
         low = s.lower()
-        if any(c in low for c in LIMIT_CUES):
+        if any(c in low for c in cues):
             out.append(s)
         if len(out) >= limit:
             break
     return out
+
+
+def limitation_sentences(text: str, limit: int = 12) -> "list[str]":
+    """Sentences that state a limitation -- **what is wrong** with today's approach.
+
+    This is the raw material for comparing papers: when five introductions keep
+    naming the same limitation, that repetition *is* the pattern the method is after.
+    """
+    return _pick(text, LIMIT_CUES, limit)
+
+
+def attempt_sentences(text: str, limit: int = 12) -> "list[str]":
+    """Sentences that name an attempt -- **what is being tried** about it."""
+    return _pick(text, ATTEMPT_CUES, limit)
+
+
+def technique_sentences(text: str, limit: int = 12) -> "list[str]":
+    """Sentences that name what is **currently used** -- the incumbent approach."""
+    return _pick(text, TECHNIQUE_CUES, limit)
