@@ -1,0 +1,156 @@
+<h1 id="T4">T4. 잡음 — 그리고 그것이 왜 모든 것의 크기를 정하나</h1>
+<p class="한줄">잡음은 영리함만으로는 개선할 수 없는 단 하나의 규격이다. 6 dB 마다 용량이 4 배이고, 따라서 전력도 4 배다.</p>
+<div class="사다리"><div class="사다리앞"><b>읽기 전에 알아야 하는 것</b><br>전압 · 전류 · 저항 · 온도 · 확률 · 분산 · 표준편차 · 적분 · 로그 · 주파수 · 트랜스컨덕턴스 · 게이트용량 · 출력저항 · RC지연 · 준안정</div><div class="사다리뒤"><b>이 장에서 새로 나오는 것</b><br>열잡음 · 산탄잡음 · 플리커잡음 · 잡음스펙트럼밀도 · 잡음대역폭 · kTC잡음 · 입력환산잡음 · 플리커코너 · 잡음지수 · 정적잡음여유 · 나비곡선 · 읽기방해 · 최소동작전압 · SNR · SNDR · ENOB</div></div>
+<p>회로에서 재는 모든 것에는 잡음이 얹혀 온다. 그 잡음은 서툰 공학에서 오는
+    것이 아니다 — 전하의 열운동과 전자가 알갱이라는 사실에서 온다. 그래서 가장
+    다루기 어려운 종류의 규격이다. 없앨 수는 없고 면적과 전력을 써서 평균으로
+    깎아 내릴 수만 있는데, 그 환율은 물리가 <b>비트 하나당 4 배</b>로 고정해
+    두었다.</p>
+<p>이 장은 실제로 만나게 될 잡음원 셋을 세우고, 혼성신호 IP 의 아날로그 블록
+    절반의 크기를 정하는 수 하나(kT/C)를 유도한 다음, 잡음 장에서는 드문 일을
+    한다. 디지털 쪽으로 건너간다. 거기서는 같은 낱말이 전혀 다른 것을 뜻하고,
+    그 결과 — SRAM 을 읽을 수 없게 되는 전압 — 를 <b>주장하지 않고 ngspice 로
+    여기서 잰다.</b></p>
+<h2>T4.1 세 가지 원천, 그리고 그중 무엇에 손댈 수 있나</h2>
+<table><caption>표 81. IC 안의 잡음원을 출처로 가른다</caption><thead><tr><th>원천</th><th>밀도</th><th>출처</th><th>바꿀 수 있나?</th></tr></thead><tbody><tr><td>열잡음 (존슨)</td><td>S<sub>v</sub> = 4kTR  [V²/Hz]</td><td>저항성 요소 안 운반자의 열운동</td><td>R 이나 T, 또는 내다보는 대역폭을 바꿔서만</td></tr><tr><td>채널 열잡음</td><td>S<sub>i</sub> = 4kTγg<sub>m</sub>  [A²/Hz]</td><td>MOSFET 채널 안의 같은 기구. γ ≈ 2/3 (장채널), 1–2 (단채널)</td><td>g<sub>m</sub> 을 올리거나(전류가 든다) 거른다</td></tr><tr><td>플리커 (1/f)</td><td>S<sub>v</sub> = K<sub>f</sub>/(C<sub>ox</sub>WL·f)</td><td>산화막 계면에서의 포획과 방출</td><td><b>있다 — 소자를 크게, PMOS 입력, 초핑, 자동영점</b></td></tr><tr><td>산탄</td><td>S<sub>i</sub> = 2qI  [A²/Hz]</td><td>장벽을 건너는 전하가 알갱이라는 것(채널이 아니라 접합)</td><td>전류를 바꿔서만</td></tr></tbody></table>
+<div class="유도"><div class="유도머리">유도 &mdash; 답이 왜 늘 kT/C 로 끝나나</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">저항의 열잡음 밀도는 4kTR 이고 주파수와 무관하다.</td><td class="유도왜">평형 열역학에서 나온 나이퀴스트의 결과다 — R 말고는 소자 매개변수가 하나도 안 들어 있고, 그래서 이것은 설계 선택이 아니라 바닥이다.</td></tr><tr><td class="유도번호">2</td><td class="유도말">그 저항을 축전기 C 와 직렬로 놓는다 — 모든 표본화 스위치가 바로 그것이다.</td><td class="유도왜">스위치의 온저항(T1: 선형 영역)과 표본화 축전기가 직렬이다. 세 번째 요소는 없다.</td></tr><tr><td class="유도번호">3</td><td class="유도말">RC 저역통과가 그것을 모양 지우고, 극 하나의 <b>잡음 대역폭</b>은 π/2 × f<sub>−3dB</sub> = 1/(4RC) 이다.</td><td class="유도왜">1/(1+(f/f<sub>0</sub>)²) 를 모든 주파수에 걸쳐 적분하면 f<sub>0</sub> 가 아니라 π/2·f<sub>0</sub> 가 나온다 — 사람들이 빠뜨리고는 왜 측정이 예측보다 1.6 배 나쁜지 의아해하는 그 인자다.</td></tr><tr><td class="유도번호">4</td><td class="유도말">v<sub>n</sub>² = 4kTR × 1/(4RC) = kT/C.</td><td class="유도왜"><b>R 이 사라진다.</b> 표본화된 축전기의 잡음은 스위치와 전혀 무관하다 — C 와 온도에만 달려 있다.</td></tr><tr><td class="유도번호">5</td><td class="유도말">3&nbsp;K 에서 C = 1 pF 이면 v<sub>n</sub> = 64.4&nbsp;µV rms 다.</td><td class="유도왜">외워 둘 값어치가 있는 수 하나. 나머지는 전부 여기서 1/√C 로 비례한다.</td></tr></tbody></table></div>
+<div class="개념"><div class="개념머리">kT/C — 축전기의 크기를, 따라서 전력을 정하는 규칙</div>
+<div class="개념이론"><p>표본화된 마디는 어떻게 표본화했든 kT/C 의 잡음 전력을 진다. 그것을
+        N 비트 변환기의 양자화 잡음(LSB/√12) 아래로 두려면 축전기가
+        C ≥ 12kT·2<sup>2N</sup>/V<sub>FS</sub>² 를 만족해야 한다.
+        <b>비트 하나마다 C 가 네 배가 되고</b>, 정해진 시간 안에 정착하려면
+        g<sub>m</sub> ∝ C 이므로 전류도 네 배가 된다.</p>
+        <p>이 관계 하나가, 16 비트 변환기가 12 비트보다 "조금 더 어려운" 것이
+        아닌 까닭이다. 용량이 256 배다.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>모든 스위치드 커패시터 회로: SAR 과 파이프라인 ADC 의 표본화 회로망, 샘플앤홀드, 스위치드 커패시터 필터와 이득단, 그리고 그것들을 몰아야 하는 기준 버퍼.</td></tr>
+<tr><th>언제 쓰나</th><td>아날로그 블록 설계의 맨 처음, 트랜지스터 치수를 정하기 전에. 축전기가 먼저다. 그것이 전력 예산을 고정하기 때문이다.</td></tr>
+<tr><th>어떻게 쓰나</th><td>V<sub>FS</sub> 와 N 을 정해 C 를 내고, 표본화 구간 안에 정착하도록 드라이버 치수를 정하고(T1 의 스위치 R<sub>on</sub> 을 쓴 T2 의 RC 셈), 기준이 주기마다 그 전하를 댈 수 있는지 확인한다.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>* The measurement that separates kT/C from everything else you did wrong.
+* Transient noise in ngspice: sample the same node 1000 times and take the std dev.
+.tran 1n 10u
+.noise v(out) VIN dec 20 1 1G      $ small-signal, for the spectrum
+.measure noise inoise_total_rms param='sqrt(inoise_total)'
+* And the closed form to check it against -- ALWAYS have the hand calculation:
+*   v_n = sqrt(kT/C) = sqrt(1.38e-23*300/1e-12) = 64.4 uV for C = 1 pF</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> kT/C 는 <b>표본화된</b> 값에 적용된다. 트래킹 구간에서는
+            잡음 대역폭을 표본화가 아니라 회로가 정한다 — 그래서 트래킹 중에 잰
+            트래킹앤홀드는 같은 회로를 홀드 뒤에 잰 것과 다른(보통 더 큰) 수를
+            보인다. 규격이 뜻하는 쪽이 아닌 쪽을 보고하는 것은 흔하고 비싼 잘못이다.</div>
+</div>
+<table><caption>표 82. 비트당 축전기와 전력 값 (V_FS = 1 V, 300 K, 잡음 = 양자화 잡음)</caption><thead><tr><th>비트 N</th><th>LSB</th><th>양자화 rms</th><th>필요한 C</th><th>8 비트 대비</th></tr></thead><tbody><tr><td>8</td><td>3,906&nbsp;µV</td><td>1,128&nbsp;µV</td><td>3.26&nbsp;fF</td><td>1×</td></tr><tr><td>10</td><td>977&nbsp;µV</td><td>282&nbsp;µV</td><td>52.1&nbsp;fF</td><td>16×</td></tr><tr><td>12</td><td>244&nbsp;µV</td><td>70.5&nbsp;µV</td><td>834&nbsp;fF</td><td>256×</td></tr><tr><td>14</td><td>61&nbsp;µV</td><td>17.6&nbsp;µV</td><td>13.3&nbsp;pF</td><td>4,096×</td></tr><tr><td>16</td><td>15.3&nbsp;µV</td><td>4.4&nbsp;µV</td><td>213&nbsp;pF</td><td>65,536×</td></tr></tbody></table>
+<h2>T4.2 플리커 잡음, 그리고 아키텍처를 정하는 코너</h2>
+<div class="정의"><b>플리커코너 (flicker corner, f_c)</b> &mdash; 1/f 밀도가 열잡음 밀도와 같아지는 주파수. 그 아래는 플리커가 지배하고 그 위는 열잡음이 지배한다. 요즘 CMOS 증폭기에서는 NMOS 입력이면 ~100 kHz 에서 몇 MHz 사이 어디든 앉고, PMOS 면 보통 한 자릿수 낮다.</div>
+<div class="개념"><div class="개념머리">신호가 그 코너의 어느 쪽에 있나</div>
+<div class="개념이론"><p>플리커 잡음 밀도는 1/f 로 오르므로, f<sub>1</sub> 에서 f<sub>2</sub>
+        까지의 <b>적분된</b> 전력은 ln(f<sub>2</sub>/f<sub>1</sub>) 에 비례한다 —
+        폭이 아니라 비에 달려 있다. DC 결합 측정은 f<sub>1</sub> → 0 이고 적분이
+        로그로 발산한다: <b>오래 평균할수록 나빠진다</b>. 열잡음과 정반대다.</p>
+        <p>그 사실 하나가 아키텍처 결정을 이끈다. 신호가 DC 근처에 있으면
+        (온도 센서, 밴드갭 기준, DC 오프셋) 평균은 도움이 안 되고 <i>신호를
+        옮겨야</i> 한다 — 코너 위 주파수로 잘게 썰어 올려 거기서 증폭하고 다시
+        내린다. 신호가 이미 코너 위에 있으면(RF 나 고속 링크 전단) 플리커는
+        상관없고 거기에 아무것도 안 쓴다.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>센서 전단, 기준과 바이어스 회로, 비교기 오프셋, DC 정확도가 필요한 모든 측정. 그리고 발진기의 위상 잡음 — 소자 플리커가 가까운 쪽 위상 잡음으로 올려 실려 간다.</td></tr>
+<tr><th>언제 쓰나</th><td>관심 대역에 ~1 MHz 아래가 들어가면 언제든. 아키텍처 단계에서 그 물음을 명시적으로 던지라. 다 만든 증폭기에 초핑을 나중에 끼워 넣는 것은 재설계다.</td></tr>
+<tr><th>어떻게 쓰나</th><td>면적으로 줄이거나(S ∝ 1/WL — 6 dB 에 면적 4 배), PMOS 입력을 고르거나, 변조로 줄인다: <b>초핑</b>(들어갈 때와 나올 때 구형파로 변조한다. 초핑 주파수에 잔여 리플이 남는다) 또는 <b>상관 이중 표본화</b>(오프셋을 표본화해 빼낸다. 잡음 접힘과 대역폭을 치른다).</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>* Flicker in the model card is one parameter -- and simulators differ.
+.model NM NMOS (LEVEL=54 ... KF=1e-25 AF=1.0 EF=1.0)
+* KF alone means nothing: the density is KF/(Cox*W*L*f^EF), so a KF taken from
+* another PDK, or from a model with a different EF convention, is a WRONG number
+* that still simulates.  Always sanity-check the corner against measured silicon:
+.noise v(out) VIN dec 10 1 100MEG
+* then read the point where the 1/f asymptote crosses the flat part.</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> 초핑은 잡음을 줄이지 않는다. <b>신호를 잡음에서 멀리
+            옮기는</b> 것이다. 열잡음 바닥은 그대로이고, 초퍼는 초핑 주파수와 그
+            고조파에 자기 나름의 스위칭 부산물을 더한다. 저주파 잡음 수치는
+            아름답게 나오고 f<sub>chop</sub> 에 스퍼가 있는 설계는, 그 스퍼가
+            대역 안에 떨어지면 아무것도 개선한 것이 없다.</div>
+</div>
+<h2>T4.3 또 다른 잡음: 정적 잡음 여유를 잰다</h2>
+<p>디지털 쪽에서 '잡음' 이라는 낱말은 다른 것을 뜻하고, 그 양은 스펙트럼
+    밀도가 아니라 <b>전압</b>이다. 저장 마디가 뒤집히기 전에 얼마만큼의 DC 교란을
+    삼킬 수 있는가. 구조는 T3 에서 준안정을 낳았던 그 교차 결합 쌍 그대로이고,
+    동적으로가 아니라 정적으로 볼 뿐이다.</p>
+<div class="정의"><b>정적잡음여유 (SNM, static noise margin)</b> &mdash; 교차 결합 쌍의 <b>두</b> 저장 마디에 직렬로 끼워 넣어도 쌍안정을 무너뜨리지 않는 가장 큰 DC 전압. 기하로는 두 인버터 전달 곡선이 이루는 나비 곡선 안에 들어가는 가장 큰 정사각형의 한 변이다.</div>
+<div class="사고"><b>실제로 난 일</b><br>아래에서 쓴 추출기는 맞기 전에 <b>두 번 틀렸고</b>,
+    두 번 다 수가 그럴듯해 보였다. 첫 판은 내접 정사각형이 아니라 가로 간격을
+    재서 hold SNM ≈ 0.5·V<sub>DD</sub> 를 냈다 — 너무 높다. 둘째 판은 액세스
+    트랜지스터의 게이트가 워드선이 아니라 비트선에 물려 있었다. 그랬더니 셀비가
+    오를수록 read SNM 이 <i>떨어졌다</i>. 거꾸로다. <b>버그를 잡은 것은 값이 아니라
+    경향이었다.</b> 이 저장소가 굴러가는 규칙이 그것이다: 측정을 믿기 전에,
+    내가 이해하는 것을 바꿨을 때 그것이 어느 쪽으로 움직이는지 보라.</div>
+<div class="짚기">그러고 나서 추출기를 <b>두 극한으로 자해검사했다</b>. 이득이
+    아주 큰 인버터는 SNM → V<sub>DD</sub>/2 를 내야 하고(0.4825 를 냈다),
+    이득이 1 인 '인버터' 는 0 을 내야 한다(0.0 을 냈다). 그 둘을 다 지나고 나서야
+    아래 셀 수치를 적었다.</div>
+<table><caption>표 83. 6T 셀의 측정된 SNM (ngspice, LEVEL=1 모형, V_DD = 1.0 V, V_th = 0.35 V) — β 는 셀비 W_pulldown / W_access</caption><thead><tr><th>β</th><th>Hold SNM</th><th>Read SNM</th><th>Read / Hold</th></tr></thead><tbody><tr><td>1</td><td>0.421&nbsp;V</td><td>0.194&nbsp;V</td><td>0.46</td></tr><tr><td>1.5</td><td>0.417&nbsp;V</td><td>0.207&nbsp;V</td><td>0.5</td></tr><tr><td>2</td><td>0.414&nbsp;V</td><td>0.226&nbsp;V</td><td>0.55</td></tr><tr><td>2.5</td><td>0.411&nbsp;V</td><td>0.241&nbsp;V</td><td>0.59</td></tr><tr><td>3</td><td>0.409&nbsp;V</td><td>0.253&nbsp;V</td><td>0.62</td></tr></tbody></table>
+<figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 430 230" width="100%" style="max-width:430px;height:auto" font-family="ui-monospace,monospace" font-size="11"><path d="M52,18 L52,196 L414,196" fill="none" stroke="#888" stroke-width="1.2"/><path d="M52.0,196 L52.0,200" fill="none" stroke="#888" stroke-width="1.0"/><text x="52.0" y="212" fill="#888" font-size="9" text-anchor="middle">1</text><path d="M233.0,196 L233.0,200" fill="none" stroke="#888" stroke-width="1.0"/><text x="233.0" y="212" fill="#888" font-size="9" text-anchor="middle">2</text><path d="M414.0,196 L414.0,200" fill="none" stroke="#888" stroke-width="1.0"/><text x="414.0" y="212" fill="#888" font-size="9" text-anchor="middle">3</text><path d="M48,196.0 L52,196.0" fill="none" stroke="#888" stroke-width="1.0"/><text x="44" y="199.0" fill="#888" font-size="9" text-anchor="end">0</text><path d="M48,107.0 L52,107.0" fill="none" stroke="#888" stroke-width="1.0"/><text x="44" y="110.0" fill="#888" font-size="9" text-anchor="end">210.35</text><path d="M48,18.0 L52,18.0" fill="none" stroke="#888" stroke-width="1.0"/><text x="44" y="21.0" fill="#888" font-size="9" text-anchor="end">420.7</text><text x="233.0" y="224" fill="#111" font-size="10" text-anchor="middle">cell ratio β = W_pd / W_acc</text><text x="12" y="107.0" font-size="10" fill="#111" transform="rotate(-90 12 107.0)" text-anchor="middle">SNM (mV)</text><path d="M52.0,18.0 L142.5,19.438554789636328 L233.0,20.792488709294048 L323.5,21.93487045400525 L414.0,22.95032089374854" fill="none" stroke="#1f6feb" stroke-width="1.8"/><circle cx="52.0" cy="18.0" r="2.2" fill="#1f6feb"/><circle cx="142.5" cy="19.438554789636328" r="2.2" fill="#1f6feb"/><circle cx="233.0" cy="20.792488709294048" r="2.2" fill="#1f6feb"/><circle cx="323.5" cy="21.93487045400525" r="2.2" fill="#1f6feb"/><circle cx="414.0" cy="22.95032089374854" r="2.2" fill="#1f6feb"/><text x="410" y="30" fill="#1f6feb" font-size="9.5" text-anchor="end" font-weight="bold">hold</text><path d="M52.0,114.00237699072974 L142.5,108.37508913715237 L233.0,100.2091751842168 L323.5,94.03185167577848 L414.0,89.12384121701926" fill="none" stroke="#c0392b" stroke-width="1.8"/><circle cx="52.0" cy="114.00237699072974" r="2.2" fill="#c0392b"/><circle cx="142.5" cy="108.37508913715237" r="2.2" fill="#c0392b"/><circle cx="233.0" cy="100.2091751842168" r="2.2" fill="#c0392b"/><circle cx="323.5" cy="94.03185167577848" r="2.2" fill="#c0392b"/><circle cx="414.0" cy="89.12384121701926" r="2.2" fill="#c0392b"/><text x="410" y="43" fill="#c0392b" font-size="9.5" text-anchor="end" font-weight="bold">read</text></svg><figcaption><b>그림 34.</b> 읽기는 셀 여유의 절반 넘게를 먹고, 그것을 되사는 구조적인 길은 액세스 소자에 견준 풀다운을 강하게 하는 것뿐이다 — 6T 셀이 최소 소자로 만들어지지 않는 까닭이다.</figcaption></figure>
+<div class="유도"><div class="유도머리">유도 &mdash; 셀을 읽는 것이 왜 그 셀을 거의 부수는 일인가</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">읽으려면 두 비트선이 높게 미리 충전된 상태에서 워드선이 액세스 트랜지스터 둘을 켠다.</td><td class="유도왜">읽기 포트를 따로 두지 않고 셀을 감지하는 길이 그것뿐이다.</td></tr><tr><td class="유도번호">2</td><td class="유도말">이제 '0' 쪽의 액세스 트랜지스터가 그 마디를 <b>위로</b> 끌어올린다. 셀 자신의 풀다운 NMOS 와 이루는 분압기를 거쳐서.</td><td class="유도왜">V<sub>DD</sub> 와 접지 사이에 NMOS 둘이 직렬이고 저장 마디가 가운데 있다 — 그 마디가 0 V 에 머물 수가 없다.</td></tr><tr><td class="유도번호">3</td><td class="유도말">저항 극한에서 '0' 마디가 대략 V<sub>DD</sub>·(1/(1+β)) 까지 오른다. 그러니 β 가 2 여도 벌써 3 분의 1 만큼 올라간다.</td><td class="유도왜">그 시점에 두 소자가 다 선형 영역에 있고, 둘의 세기 비가 곧 분압비다. 셀비가 설계 매개변수로 존재하는 까닭은 <b>오직</b> 이것이다.</td></tr><tr><td class="유도번호">4</td><td class="유도말">그 상승이 여유를 곧바로 먹는다. β = 2 에서 측정된 read SNM 은 0.226&nbsp;V 이고 hold SNM 은 0.414&nbsp;V 다 — 워드선이 오르는 순간 여유의 45.3&nbsp;% 가 사라진다.</td><td class="유도왜">주장이 아니라 잰 것이다 — 덱과 추출기가 이 장의 소스에 있다.</td></tr><tr><td class="유도번호">5</td><td class="유도말">β 를 올리면 read SNM 이 오르고 hold SNM 은 <b>조금 내려간다</b>.</td><td class="유도왜">쟀다: 같은 쓸기에서 hold 가 0.421&nbsp;V 에서 0.409&nbsp;V 로 떨어진다. 풀다운이 강해지면 인버터마다의 전이점이 V<sub>DD</sub>/2 에서 밀려나기 때문이다. <b>공짜인 방향은 없다.</b> 그래서 이것이 규칙이 아니라 설계점인 것이다.</td></tr></tbody></table></div>
+<div class="개념"><div class="개념머리">V_min — 논리가 아니라 메모리가 칩을 멈추는 전압</div>
+<div class="개념이론"><p>Read SNM 은 전원을 내릴 때 점잖게 나빠지지 않는다. β = 2 인 같은
+        셀에서 재면 1.0 V 에서 0.7 V 까지는 0.22&nbsp;V 언저리를 지키다가
+        <b>무너진다</b>. 0.6 V 에서 0.145&nbsp;V, 0.5 V 에서
+        0.087&nbsp;V. 그 무릎은 V<sub>DD</sub> 가 2V<sub>th</sub>
+        (여기서는 0.7&nbsp;V)에 가까워지는 자리에 앉는다 — 그 아래에서는
+        소자가 약반전에 있고 분압비가 지수 전류에 달리게 되며, 불일치(T12)가
+        아슬아슬한 셀을 실패하는 셀로 바꾼다.</p>
+        <p>그래서 <b>SRAM 이 칩의 최소 동작 전압을 정한다</b>. DVFS 방식이 배열의
+        V<sub>min</sub> 위에서 멈추거나 배열에 자기 전원을 따로 주는 까닭이다.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>칩 안에 SRAM 이 있고 전압점이 하나를 넘는 모든 SoC: DVFS 범위 전체, 잠 모드의 보존 전압, 그리고 사인오프의 저전압 코너.</td></tr>
+<tr><th>언제 쓰나</th><td>전력 모드가 제안되는 즉시. '0.6 V 까지 내려도 되나' 는 논리의 물음이기 전에 SRAM 의 물음이다.</td></tr>
+<tr><th>어떻게 쓰나</th><td>보조 회로로 V<sub>min</sub> 을 올리거나(읽기에는 워드선 언더드라이브, 쓰기에는 음의 비트선), 배열의 전원을 가르거나, 읽기 경로가 저장 마디에 닿지 않는 8T 셀을 쓴다.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>* The sweep that produces the number above -- run it at every corner,
+* not just typical, because Vmin is a MISMATCH-limited quantity (see T12).
+.param beta=2.0
+.dc VIN 0 VDD 0.004 VDD 1.0 0.5 -0.1     $ nested sweep: input, then supply
+.print dc v(vr)
+* Extraction is NOT a .measure one-liner: you need the butterfly and the largest
+* inscribed square.  Script it, and SELF-CHECK the extractor on two limits
+* (very high gain -&gt; VDD/2, gain 1 -&gt; 0) before trusting any cell number.</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> 전형 코너에서 잰 SNM 은 V<sub>min</sub> 에 거의 쓸모가 없다.
+            배열은 수백만 개 가운데 <b>가장 나쁜</b> 셀에서 실패하므로, 중요한 양은
+            꼬리다. V<sub>min</sub> 은 대략 −5σ 에서 −6σ 셀이 정하고, 그 말은
+            분석이 공칭 DC 쓸기가 아니라 중요도 표본화를 쓴 몬테카를로라는 뜻이다.
+            위의 쓸기는 모양을 알려 줄 뿐 수율을 알려 주지 않는다.</div>
+</div>
+<h2>T4.4 볼트에서 데이터시트의 수로: SNR, SNDR, ENOB</h2>
+<table><caption>표 84. 세 수, 그리고 각각이 감추는 것</caption><thead><tr><th>양</th><th>정의</th><th>감추는 것</th></tr></thead><tbody><tr><td>SNR</td><td>신호 전력 / 잡음 전력, 왜곡은 뺀다</td><td><b>왜곡.</b> 선형성이 끔찍한 변환기도 SNR 은 훌륭할 수 있다</td></tr><tr><td>SNDR (SINAD)</td><td>신호 / (잡음 + 모든 왜곡)</td><td>둘 중 무엇이 지배하는지 — 스펙트럼도 늘 같이 적으라</td></tr><tr><td>ENOB</td><td>(SNDR<sub>dB</sub> − 1.76) / 6.02</td><td>그것이 잰 것이 아니라 <b>유도된</b> 것이라는 사실. ENOB 은 단위만 갈아입은 SNDR 이다. 입력 주파수와 진폭 없이 적힌 ENOB 은 측정이 아니다</td></tr><tr><td>SFDR</td><td>신호 / 가장 큰 스퍼 하나</td><td>광대역 잡음을 통째로 — 깨끗해 보이는 SFDR 에 나쁜 잡음 바닥은 흔하다</td></tr></tbody></table>
+<div class="예제"><div class="예제머리">예제 13. 잡음 64 µV 는 몇 비트를 허락하나?</div><div class="예제줄"><b>주어진 것.</b> 전체 눈금 1 V 인 변환기의 표본화 회로망에 C = 1 pF 이 있어
+        표본화된 잡음이 64.4&nbsp;µV rms 이고, 나머지는 전부
+        완벽하다고 하자.</div><div class="예제줄"><b>푸는 법.</b> 전체 눈금 사인파의 rms 진폭은 V<sub>FS</sub>/(2√2) 다. SNR =
+        20·log<sub>10</sub>(신호 rms / 잡음 rms) 이고, ENOB = (SNR − 1.76)/6.02 다.</div><div class="예제답"><b>답.</b> SNR = 74.8&nbsp;dB 이고
+        ENOB = 12.1
+        비트다. <b>표본화 축전기 1 pF 은 ~12 비트짜리 부품이다.</b> 나머지 설계가
+        아무리 좋아도 그렇다.</div><div class="예제함정"><b>여기서 틀린다.</b> 표본화 회로망이 보통 <b>두 번</b> 표본화된다는 것(입력과
+        기준)을 잊는 것, 그리고 축전기를 차동 쌍으로 두면 잡음 전력이 두 배가
+        되면서 신호 진폭도 두 배가 된다는 것 — 둘이 일부 상쇄하고, 나오는 인자는
+        위상에 달려 있다. 그 구체적인 회로망을 적어라. 외워 둔 인자를 재활용하지
+        마라.</div></div>
+<h2>T4.5 월요일에 무엇을 할 것인가</h2>
+<table><caption>표 85. 이 장의 개념이 실제로 쓰이는 자리</caption><thead><tr><th>개념</th><th>쓰이는 블록</th><th>무엇을 정하나</th></tr></thead><tbody><tr><td>kTC잡음</td><td>트랜지스터 치수를 정하기 전의 모든 스위치드 커패시터 블록</td><td>표본화 축전기, 따라서 전류 예산</td></tr><tr><td>열잡음 · 잡음대역폭</td><td>증폭기와 기준 설계</td><td>입력단에 g<sub>m</sub> 이 얼마나 필요한가</td></tr><tr><td>플리커코너</td><td>DC 근처 신호 경로의 아키텍처</td><td>이 설계에 초핑이나 자동영점이 아예 필요한가</td></tr><tr><td>정적잡음여유 · 나비곡선</td><td>SRAM, 모든 교차 결합 감지증폭기와 래치</td><td>셀비 β, 그리고 읽기가 읽은 것을 부수는가</td></tr><tr><td>최소동작전압</td><td>DVFS 와 보존 모드</td><td>칩을 돌려도 되는 가장 낮은 전압</td></tr><tr><td>SNDR · ENOB</td><td>데이터시트와 고객과의 대화</td><td>고객이 경쟁사와 견줄 단 하나의 수</td></tr></tbody></table>
+<p>이 장에서 들고 나갈 잰 결과 둘. 표본화 축전기 1 pF 은
+    12.1 비트짜리 부품이다 —
+    트랜지스터를 하나도 그리기 전에 축전기가 해상도를 정해 버린다. 그리고 6T
+    SRAM 셀을 읽는 것은 셀비 2 에서 그 정적 여유의
+    45.3&nbsp;% 를 치른다.
+    그 셀비가 존재하는 까닭이고, 논리가 아니라 배열이 칩을 돌릴 수 있는 가장 낮은
+    전압을 정하는 까닭이다.</p>
+<p>다음 장은 이 장이 순간적이라고 다룬 표본화 동작에 유한한 구경과 지터와
+    스펙트럼을 준다 — 고속 변환기의 잡음 바닥이 실제로 어디서 오는지가 거기다.</p>
+<div class="특허"><div class="특허머리">특허로 가는 길 &mdash; 이 주제에서 발명이 일어나는 자리</div><div class="특허속">잡음은 열역학이다. kT 에 특허를 내는 사람은 없다. <b>청구되는
+        것은 그 4 배를 되사는 모든 배치다 — 상관 이중 표본화, 초핑, 자동영점,
+        잡음 성형, 그리고 회로가 잡음 예산을 신호가 있는 자리에만 쓰게 해 주는
+        일군의 기법들.</b> 디지털 쪽에서는 같은 모양이 SRAM 보조 회로로 나타난다:
+        음의 비트선, 워드선 언더드라이브, 읽고-고치고-쓰기 보조 — 전부 맨 셀이
+        여유를 하나도 못 갖는 전압에서 셀이 여유를 지키게 해 주는 배치다.
+        이 장을 이렇게 물으며 읽으라: 나는 어디서 4 배 규칙을 치르고 있고,
+        무엇이 있으면 그것을 안 치를 수 있는가?</div></div>
