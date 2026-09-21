@@ -1,0 +1,168 @@
+<h1 id="T20">T20. 사인오프 &mdash; 지어도 되는지를 정하는 검사들</h1>
+<p class="한줄">사인오프 검사는 저마다 좁은 물음 하나에 답하고, 실리콘까지 가는 실패는 그 사이의 틈에 산다.</p>
+<div class="사다리"><div class="사다리앞"><b>읽기 전에 알아야 하는 것</b><br>사인오프 · 구현흐름 · DRC · LVS · 안테나위반 · 밀도규칙 · 추출 · SPEF · SDF · SDC · 정적타이밍분석 · OCV · 슬랙 · ECO · GDS · 전압강하 · 일렉트로마이그레이션 · 블랙식 · 상세배선 · 클럭스큐 · 문턱전압 · 누설전류 · 래치업</div><div class="사다리뒤"><b>이 장에서 새로 나오는 것</b><br>물리검증 · ERC · 금속채움 · CMP · 코너 · MMMC · 온도반전 · 정적IR · 동적IR · 스위칭벡터 · 기능ECO · 금속ECO · 스페어셀 · 테이프아웃 · 마스크</div></div>
+<p>배선된 설계는 다각형 묶음 하나와 주장 하나다. 이 다각형들을 이 공정으로
+    만들면 RTL 이 말한 대로 거동할 것이라는 주장이다. 사인오프는 누군가
+    마스크 값을 치르기 전에 그 주장을 시험하는 독립된 검사들의 묶음이다.
+    검사마다 다른 도구이고 설계에 대한 모형이 다르니, 어느 검사가 어느
+    물음에 답하는지를 또렷이 해 둘 값이 있다 — <b>실리콘까지 가는 실패는
+    거의 언제나 검사 안이 아니라 두 검사 사이의 공간에 있기</b> 때문이다.</p>
+<h2>T20.1 검사마다 실제로 무엇을 주장하나</h2>
+<table><caption>표 48. 사인오프 묶음을 주장으로 적은 것</caption><thead><tr><th>검사</th><th>세우는 주장</th><th>못 보는 것</th></tr></thead><tbody><tr><td><b>DRC</b></td><td>기하가 파운드리가 이 공정과 이 금속 적층에 대해 내놓은 모든 제조 규칙을 지킨다</td><td>그 기하가 설계를 구현하는지. DRC 가 깨끗한 빈 다이도 통과한다</td></tr><tr><td><b>LVS</b></td><td>레이아웃에서 추출한 소자와 연결이 넷리스트와 소자마다 넷마다 맞는다</td><td><i>넷리스트</i>가 옳은지. LVS 는 레이아웃을 회로도와 견준다. 회로도가 틀렸으면 LVS 는 그 잘못을 확인해 준다</td></tr><tr><td><b>ERC</b></td><td>떠 있는 게이트 없음, 안 이어진 웰 없음, 흐르면 안 되는 소자를 거쳐 단락된 전원 없음</td><td>동적인 것은 무엇이든 — 위상 검사다</td></tr><tr><td><b>안테나</b> (T19)</td><td>식각 동안 게이트 산화막을 상하게 할 만큼 전하를 모으는 금속 토막이 없다</td><td>다 만들어진 회로에 대해서는 아무것도</td></tr><tr><td><b>밀도 / 채움</b></td><td>층마다의 국소 금속 밀도가 CMP 가 요구하는 창 안에 있다</td><td>채움이 더하는 용량 — 그것은 추출의 몫이고, 채움 <b>뒤에</b> 다시 돌려야 한다</td></tr><tr><td><b>EM / IR</b></td><td>요구되는 수명에 대해 전류 밀도 한계를 넘는 배선이 없고(T14), 예산 아래로 처지는 마디가 없다</td><td>그것을 몬 스위칭 활동이 진짜 작업부하를 닮았는지 — T20.3 을 보라</td></tr><tr><td><b>STA</b></td><td>모든 타이밍 경로가 목록의 모든 코너에서, 목록의 모든 모드에서 셋업과 홀드를 맞춘다</td><td>SDC 가 빼놓은 경로들, 그리고 아무도 적지 않은 모드들</td></tr></tbody></table>
+<figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 320" width="100%" style="max-width:620px;height:auto" font-family="ui-monospace,monospace" font-size="11"><text x="300" y="20" fill="#111" font-size="13" text-anchor="middle" font-weight="bold">검사마다 건전하고 좁으며 다음 검사에 눈이 멀어 있다</text><rect x="16" y="40" width="96" height="30" fill="#eaf5ee" stroke="#111" stroke-width="1.6" rx="3"/><text x="64.0" y="59.0" fill="#111" font-size="11" text-anchor="middle">DRC</text><rect x="124" y="40" width="210" height="30" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="229.0" y="59.0" fill="#111" font-size="11" text-anchor="middle">기하가 규칙을 지킨다</text><path d="M334,55 L352,55" fill="none" stroke="#c0392b" stroke-width="1.6"/><path d="M352.0,55.0 L345.0,51.4 L345.0,58.6 Z" fill="#c0392b"/><rect x="352" y="40" width="252" height="30" fill="#fbeeee" stroke="#111" stroke-width="1.6" rx="3"/><text x="478.0" y="59.0" fill="#111" font-size="11" text-anchor="middle">무엇을 구현하는지는 모른다</text><rect x="16" y="78" width="96" height="30" fill="#eaf5ee" stroke="#111" stroke-width="1.6" rx="3"/><text x="64.0" y="97.0" fill="#111" font-size="11" text-anchor="middle">LVS</text><rect x="124" y="78" width="210" height="30" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="229.0" y="97.0" fill="#111" font-size="11" text-anchor="middle">레이아웃이 넷리스트와 맞는다</text><path d="M334,93 L352,93" fill="none" stroke="#c0392b" stroke-width="1.6"/><path d="M352.0,93.0 L345.0,89.4 L345.0,96.6 Z" fill="#c0392b"/><rect x="352" y="78" width="252" height="30" fill="#fbeeee" stroke="#111" stroke-width="1.6" rx="3"/><text x="478.0" y="97.0" fill="#111" font-size="11" text-anchor="middle">넷리스트가 옳은지는 모른다</text><rect x="16" y="116" width="96" height="30" fill="#eaf5ee" stroke="#111" stroke-width="1.6" rx="3"/><text x="64.0" y="135.0" fill="#111" font-size="11" text-anchor="middle">STA</text><rect x="124" y="116" width="210" height="30" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="229.0" y="135.0" fill="#111" font-size="11" text-anchor="middle">목록에 든 모든 경로가 타이밍을 맞춘다</text><path d="M334,131 L352,131" fill="none" stroke="#c0392b" stroke-width="1.6"/><path d="M352.0,131.0 L345.0,127.4 L345.0,134.6 Z" fill="#c0392b"/><rect x="352" y="116" width="252" height="30" fill="#fbeeee" stroke="#111" stroke-width="1.6" rx="3"/><text x="478.0" y="135.0" fill="#111" font-size="11" text-anchor="middle">SDC 가 빼놓은 경로들</text><rect x="16" y="154" width="96" height="30" fill="#eaf5ee" stroke="#111" stroke-width="1.6" rx="3"/><text x="64.0" y="173.0" fill="#111" font-size="11" text-anchor="middle">EM / IR</text><rect x="124" y="154" width="210" height="30" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="229.0" y="173.0" fill="#111" font-size="11" text-anchor="middle">한계를 넘는 배선 없음</text><path d="M334,169 L352,169" fill="none" stroke="#c0392b" stroke-width="1.6"/><path d="M352.0,169.0 L345.0,165.4 L345.0,172.6 Z" fill="#c0392b"/><rect x="352" y="154" width="252" height="30" fill="#fbeeee" stroke="#111" stroke-width="1.6" rx="3"/><text x="478.0" y="173.0" fill="#111" font-size="11" text-anchor="middle">안 돌린 벡터들</text><rect x="16" y="192" width="96" height="30" fill="#eaf5ee" stroke="#111" stroke-width="1.6" rx="3"/><text x="64.0" y="211.0" fill="#111" font-size="11" text-anchor="middle">안테나</text><rect x="124" y="192" width="210" height="30" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="229.0" y="211.0" fill="#111" font-size="11" text-anchor="middle">식각 중 산화막 손상 없음</text><path d="M334,207 L352,207" fill="none" stroke="#c0392b" stroke-width="1.6"/><path d="M352.0,207.0 L345.0,203.4 L345.0,210.6 Z" fill="#c0392b"/><rect x="352" y="192" width="252" height="30" fill="#fbeeee" stroke="#111" stroke-width="1.6" rx="3"/><text x="478.0" y="211.0" fill="#111" font-size="11" text-anchor="middle">다 만들어진 회로에 대해서는 아무것도</text><rect x="16" y="230" width="96" height="30" fill="#eaf5ee" stroke="#111" stroke-width="1.6" rx="3"/><text x="64.0" y="249.0" fill="#111" font-size="11" text-anchor="middle">밀도</text><rect x="124" y="230" width="210" height="30" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="229.0" y="249.0" fill="#111" font-size="11" text-anchor="middle">CMP 창을 맞춘다</text><path d="M334,245 L352,245" fill="none" stroke="#c0392b" stroke-width="1.6"/><path d="M352.0,245.0 L345.0,241.4 L345.0,248.6 Z" fill="#c0392b"/><rect x="352" y="230" width="252" height="30" fill="#fbeeee" stroke="#111" stroke-width="1.6" rx="3"/><text x="478.0" y="249.0" fill="#111" font-size="11" text-anchor="middle">채움이 방금 더한 용량</text><text x="16" y="286" fill="#888" font-size="10.5" text-anchor="start">왼쪽 칸이 사인오프가 세우는 것이다. 오른쪽 칸이 실리콘 실패가 사는 곳이다 —</text><text x="16" y="302" fill="#c0392b" font-size="10.5" text-anchor="start">검사 안이 아니라 두 검사 사이의 공간이다. 그 공간이 공학적 판단이다.</text></svg><figcaption><b>그림 15.</b> 같은 표를 그림으로. 꼴이 곧 전할 말이기 때문이다. 검사마다 좁은 것을 세우고, 오른쪽의 빨간 칸이 실리콘까지 가는 실패가 실제로 사는 곳이다.</figcaption></figure>
+<div class="짚기">셋째 칸을 실리콘 실패 뒤에 어디를 들여다볼지의 목록으로 읽어라.
+    검사마다 건전하고, 저마다 좁고, 그 좁음은 일부러다. 모든 것을 세우려는
+    검사는 유한한 시간 안에 못 돌 것이기 때문이다. <b>사인오프의 공학적
+    판단은 검사를 돌리는 데 있지 않다 — 그 검사들의 합집합이 무엇을
+    빼놓는지를 아는 데 있다.</b></div>
+<div class="개념"><div class="개념머리">금속 채움 (metal fill) 과 그것이 무효로 만드는 추출</div>
+<div class="개념이론"><p>화학 기계 연마는 국소 무늬 밀도에 달린 속도로 재료를 깎아 낸다.
+        금속이 적은 영역은 빨리 깎여 더 얇아지는데, 그것이 저항과 그 위
+        유전체 두께를 둘 다 바꾼다. 그래서 파운드리는 층마다의 밀도가 창
+        안에 들 것을 요구하고, 흐름은 빈 자리에 떠 있거나 접지된 금속
+        모양 — <b>채움</b> — 을 더해 그것을 맞춘다.</p>
+        <p>채움은 배선 뒤에 더해진다. 그 말은 타이밍 사인오프가 쓴 추출
+        <b>뒤에</b> 더해진다는 뜻이다. 그 모양들은 신호 배선 곁의 금속이고
+        용량을 더한다. 접지된 채움은 예측할 수 있게 더하고, 떠 있는 채움은
+        더 적지만 모형으로 잡기 더 어려운 양을 더한다.</p>
+        <p>그러니 차례는 이렇다. 배선하고, 채우고, <b>다시 추출하고</b>,
+        STA 를 다시 돌린다. 채움 전 추출로 타이밍을 사인오프한 흐름은
+        제조되지 않을 설계를 사인오프한 것이다.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>상세 배선과 최종 타이밍 사인오프 사이.</td></tr>
+<tr><th>언제 쓰나</th><td>늘. 다른 점은 채움을 P&amp;R 도구가 넣느냐 물리 검증 도구가 넣느냐뿐인데, 둘의 결과가 똑같지는 않다.</td></tr>
+<tr><th>어떻게 쓰나</th><td>채움을 넣고, 채움이 있는 채로 다시 추출하고, 코너 묶음을 다시 돌리고, 채움 전 실행과 <b>슬랙을 견준다</b>. 작고 고른 악화는 예상된 것이고, 몇몇 넷에서 큰 변화는 길고 결정적이며 둘레가 텅 비어 있던 배선 곁에 채움이 떨어졌다는 뜻이다.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code># The diff that must exist before tape-out:
+#   path                   slack pre-fill   slack post-fill   delta
+#   u_dsp/…/mac_out[17]        +45 ps           +31 ps        -14 ps
+#   u_if/…/clk_gate_en          +88 ps           +12 ps        -76 ps   &lt;- look
+# A -76 ps outlier is a wire that was alone in an empty region and is now
+# surrounded by fill. It is real, it is predictable, and it is missed by any
+# flow that signs off before filling.</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> 채움은 고속 신호의 인덕턴스와 되돌아오는 길도 바꾸는데, 그것은
+            논리보다 T8 의 링크에 훨씬 중요하다. 그런 신호에는 채움 제외
+            구역을 요구해라 — 그리고 제외 구역은 둘레가 벌충해 주지 않으면
+            밀도 위반이라는 것을 잊지 마라.</div>
+</div>
+<h2>T20.2 코너는 곱해지고, 대부분은 지배당한다</h2>
+<figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 250" width="100%" style="max-width:600px;height:auto" font-family="ui-monospace,monospace" font-size="11"><text x="16" y="28" fill="#111" font-size="11" text-anchor="start" font-weight="bold">공정</text><rect x="16" y="38" width="84" height="20" fill="#eef4fb" stroke="#111" stroke-width="1.6" rx="3"/><text x="58.0" y="52.0" fill="#111" font-size="11" text-anchor="middle">ss</text><rect x="16" y="64" width="84" height="20" fill="#eef4fb" stroke="#111" stroke-width="1.6" rx="3"/><text x="58.0" y="78.0" fill="#111" font-size="11" text-anchor="middle">tt</text><rect x="16" y="90" width="84" height="20" fill="#eef4fb" stroke="#111" stroke-width="1.6" rx="3"/><text x="58.0" y="104.0" fill="#111" font-size="11" text-anchor="middle">ff</text><text x="104" y="62" fill="#c0392b" font-size="16" text-anchor="middle">×</text><text x="116" y="28" fill="#111" font-size="11" text-anchor="start" font-weight="bold">전압</text><rect x="116" y="38" width="84" height="20" fill="#eef4fb" stroke="#111" stroke-width="1.6" rx="3"/><text x="158.0" y="52.0" fill="#111" font-size="11" text-anchor="middle">공칭</text><rect x="116" y="64" width="84" height="20" fill="#eef4fb" stroke="#111" stroke-width="1.6" rx="3"/><text x="158.0" y="78.0" fill="#111" font-size="11" text-anchor="middle">저</text><text x="204" y="62" fill="#c0392b" font-size="16" text-anchor="middle">×</text><text x="216" y="28" fill="#111" font-size="11" text-anchor="start" font-weight="bold">온도</text><rect x="216" y="38" width="84" height="20" fill="#eef4fb" stroke="#111" stroke-width="1.6" rx="3"/><text x="258.0" y="52.0" fill="#111" font-size="11" text-anchor="middle">−40</text><rect x="216" y="64" width="84" height="20" fill="#eef4fb" stroke="#111" stroke-width="1.6" rx="3"/><text x="258.0" y="78.0" fill="#111" font-size="11" text-anchor="middle">25</text><rect x="216" y="90" width="84" height="20" fill="#eef4fb" stroke="#111" stroke-width="1.6" rx="3"/><text x="258.0" y="104.0" fill="#111" font-size="11" text-anchor="middle">125</text><text x="304" y="62" fill="#c0392b" font-size="16" text-anchor="middle">×</text><text x="316" y="28" fill="#111" font-size="11" text-anchor="start" font-weight="bold">RC</text><rect x="316" y="38" width="84" height="20" fill="#eef4fb" stroke="#111" stroke-width="1.6" rx="3"/><text x="358.0" y="52.0" fill="#111" font-size="11" text-anchor="middle">cmin</text><rect x="316" y="64" width="84" height="20" fill="#eef4fb" stroke="#111" stroke-width="1.6" rx="3"/><text x="358.0" y="78.0" fill="#111" font-size="11" text-anchor="middle">cworst</text><rect x="316" y="90" width="84" height="20" fill="#eef4fb" stroke="#111" stroke-width="1.6" rx="3"/><text x="358.0" y="104.0" fill="#111" font-size="11" text-anchor="middle">rcworst</text><text x="404" y="62" fill="#c0392b" font-size="16" text-anchor="middle">×</text><text x="416" y="28" fill="#111" font-size="11" text-anchor="start" font-weight="bold">모드</text><rect x="416" y="38" width="84" height="20" fill="#eef4fb" stroke="#111" stroke-width="1.6" rx="3"/><text x="458.0" y="52.0" fill="#111" font-size="11" text-anchor="middle">기능</text><rect x="416" y="64" width="84" height="20" fill="#eef4fb" stroke="#111" stroke-width="1.6" rx="3"/><text x="458.0" y="78.0" fill="#111" font-size="11" text-anchor="middle">시프트</text><rect x="416" y="90" width="84" height="20" fill="#eef4fb" stroke="#111" stroke-width="1.6" rx="3"/><text x="458.0" y="104.0" fill="#111" font-size="11" text-anchor="middle">포획</text><rect x="416" y="116" width="84" height="20" fill="#eef4fb" stroke="#111" stroke-width="1.6" rx="3"/><text x="458.0" y="130.0" fill="#111" font-size="11" text-anchor="middle">유지</text><text x="16" y="176" fill="#111" font-size="13" text-anchor="start" font-weight="bold">3 × 2 × 3 × 3 × 4  =  코너·모드 조합 216 가지</text><text x="16" y="198" fill="#c0392b" font-size="12" text-anchor="start">× STA 2 h 씩  =  계산 18 일</text><text x="16" y="222" fill="#888" font-size="10" text-anchor="start">그리고 ECO 하나가 그것을 통째로 버린다. T17.3 의 되돌이 값이 가장 비싼 꼴로 나타난 것이다.</text></svg><figcaption><b>그림 16.</b> 왜 사인오프가 서버 농장에서 도는가. 축들이 서로 독립이라 더해지는 것이 아니라 곱해진다 — 그래서 코너 목록은 가정하는 것이 아니라 흥정하는 것이다.</figcaption></figure>
+<div class="유도"><div class="유도머리">유도 &mdash; 사인오프 실행 시간이 어디서 오나</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">공정: 3 · 전압: 2 · 온도: 3 · RC(배선): 3 · 모드: 4.</td><td class="유도왜">축마다 서로 독립이다 — 그래서 더해지지 않고 곱해진다. 개수는 가정한 것이고 흔한 값이다.</td></tr><tr><td class="유도번호">2</td><td class="유도말">그러니 3 × 2 × 3 × 3 × 4 = <b>216</b> 가지 코너·모드 조합이다.</td><td class="유도왜">곱셈이다. 미묘한 일은 아무것도 안 난다. 그것이 요점이다.</td></tr><tr><td class="유도번호">3</td><td class="유도말">STA 실행마다 2&nbsp; h 면 온전한 묶음이 계산 432&nbsp; h 다.</td><td class="유도왜">기계 한 대로 18&nbsp; 일이다 — 사인오프가 농장에서 도는 까닭이고, 코너 목록을 가정하지 않고 흥정하는 까닭이다.</td></tr><tr><td class="유도번호">4</td><td class="유도말">ECO 하나가 그것을 통째로 무효로 만든다.</td><td class="유도왜">T17 의 되돌이 값 산수가 가장 비싼 꼴로 나타난 것이다. 사슬의 마지막 단계가 가장 크다.</td></tr></tbody></table></div>
+<table><caption>표 49. 축들, 그리고 저마다 왜 거기 있나</caption><thead><tr><th>축</th><th>값</th><th>왜 뺄 수 없나</th></tr></thead><tbody><tr><td>공정</td><td>3</td><td>느림 / 전형 / 빠름 — 그리고 혼성신호 부품이면 그 위에 slow-n/fast-p 코너까지</td></tr><tr><td>전압</td><td>2</td><td>공칭과 레귤레이터 허용 범위의 아래 끝</td></tr><tr><td>온도</td><td>3</td><td>−40 °C, 25 °C, 125 °C</td></tr><tr><td>RC (배선)</td><td>3</td><td>cmin / cworst / rcworst — 추출 코너는 소자 코너와 독립이다</td></tr><tr><td>모드</td><td>4</td><td>기능, 스캔 시프트, 스캔 포획, 저전력 유지</td></tr></tbody></table>
+<div class="개념"><div class="개념머리">MMMC &mdash; 모드와 코너를 하나씩이 아니라 함께 해석하기</div>
+<div class="개념이론"><p>현대 흐름에서 위의 216 가지 조합은 따로 노는 216 번의
+        해석이 아니다. 다중 모드 다중 코너 해석은 여러 모드 제약과 여러 코너
+        라이브러리를 한 세션에 올려 한 번만 전파하고, 그 사이에 공통인 일을
+        나눠 쓴다.</p>
+        <p>아끼는 것은 진짜지만 그것이 쓰는 주된 까닭은 아니다. 주된 까닭은
+        <b>최적화가 모든 코너를 한꺼번에 봐야 한다</b>는 것이다. 느린 코너의
+        셋업 위반을 구동력을 키워 고치면 빠른 코너에서 홀드 위반을 만들 수
+        있다. 코너를 하나씩 보는 도구는 둘 사이를 오가고, 그 진동이 바로
+        p ≥ 1 인 T17 의 비수렴이다.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>CTS 뒤 최적화부터, 그리고 사인오프 전부.</td></tr>
+<tr><th>언제 쓰나</th><td>코너에 따라 달라지는 맞바꿈을 할 수 있는 첫 최적화부터 — 실무에서는 홀드 고침이 시작되자마자다.</td></tr>
+<tr><th>어떻게 쓰나</th><td>해석 뷰를 대놓고 정의하고(뷰 하나는 모드 하나 더하기 지연 코너 하나 더하기 RC 코너 하나다), 어느 것이 셋업용이고 어느 것이 홀드용인지 표시하고, <b>그 목록이 지난 프로젝트에서 물려받은 것이 아니라 이 제품의 진짜 동작 범위를 덮는지 확인한다</b>.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code># An analysis-view list is a specification, not a configuration:
+#   view              mode        delay corner   rc corner   checks
+#   func_ss_cw        functional  ss_0.9v_125c   cworst      setup
+#   func_ff_cb        functional  ff_1.1v_m40c   cbest       hold
+#   shift_ss_cw       scan_shift  ss_0.9v_125c   cworst      setup
+#   shift_ff_cb       scan_shift  ff_1.1v_m40c   cbest       hold
+# The question to ask of this table is not "is it right" but
+# "which operating condition of the product is NOT in it".</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> 스캔 시프트 모드가 가장 자주 잊히고 가장 자주 깨진다. 클럭 구조가
+            기능 모드와 다르고 홀드 요구가 가혹하기 때문이다. 시험기에서만
+            지는 부품은 대개 결함이 아니라 시프트 모드 타이밍 문제다.</div>
+</div>
+<p>코너 목록이 긴 까닭의 일부는 사람들이 기대하는 지배 관계가 성립하지
+    않기 때문이다. 직관은 느린 코너가 셋업을 묶고 빠른 코너가 홀드를 묶으니
+    코너 둘이면 되겠다는 것이다. 그 직관은 지연이 온도를 따라 단조롭게
+    커지는 영역에서 온 것인데 — 현대의 저전압 동작은 그 영역에 있지 않다.</p>
+<div class="유도"><div class="유도머리">유도 &mdash; 온도 반전을, T1 의 소자 모형에서</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">지연 ∝ C·V / I<sub>d</sub> 이고 I<sub>d</sub> ∝ µ(T)·(V − V<sub>th</sub>(T))<sup>α</sup> 다.</td><td class="유도왜">T1 의 α 제곱 꼴이다. 단채널 소자에서 α ≈ 1.3 이다.</td></tr><tr><td class="유도번호">2</td><td class="유도말">이동도는 온도를 따라 떨어진다. µ ∝ T<sup>−1.5</sup> 다. 그래서 뜨거우면 <b>느려진다</b>.</td><td class="유도왜">포논 산란. 누구나 아는 효과다.</td></tr><tr><td class="유도번호">3</td><td class="유도말">문턱도 온도를 따라 떨어진다. dV<sub>th</sub>/dT ≈ −0.8&nbsp; mV/K 다. 그래서 뜨거우면 <b>빨라진다</b>.</td><td class="유도왜">페르미 준위가 온도를 따라 움직인다. 잊히는 효과가 이것이다.</td></tr><tr><td class="유도번호">4</td><td class="유도말">어느 쪽이 이기는지는 오버드라이브 V − V<sub>th</sub> 에 달렸다. 문턱 이동이 작은 오버드라이브에서는 큰 몫이고 큰 오버드라이브에서는 작은 몫이기 때문이다.</td><td class="유도왜">두 효과가 곱으로 들어오므로, 견줄 것은 둘의 로그 미분이다.</td></tr><tr><td class="유도번호">5</td><td class="유도말">d(ln 지연)/dT = 1.5/T − ακ/(V − V<sub>th</sub>) 다. 0 으로 두면 V − V<sub>th</sub> = ακT/1.5 가 나온다.</td><td class="유도왜">미분해서 푼 것이다. 결과는 두 온도계수와 α 말고는 아무것에도 안 달렸다.</td></tr><tr><td class="유도번호">6</td><td class="유도말">300&nbsp; K 에서 그것은 오버드라이브 0.208&nbsp; V, 곧 V ≈ 0.658&nbsp; V 다.</td><td class="유도왜">그 전원 아래에서는 부품이 <b>차가울 때 가장 느리고</b>, 코너 목록에 셋업을 위한 두 온도 끝이 다 들어 있어야 한다.</td></tr></tbody></table></div>
+<table><caption>표 50. 온도에 대한 지연, 25 °C 로 정규화</caption><thead><tr><th>전원</th><th>−40 °C</th><th>25 °C</th><th>125 °C</th><th>어느 쪽이 느린 코너인가</th></tr></thead><tbody><tr><td>1.8&nbsp; V</td><td>0.728&nbsp;×</td><td>1&nbsp;×</td><td>1.432&nbsp;×</td><td>보통</td></tr><tr><td>1.2&nbsp; V</td><td>0.759&nbsp;×</td><td>1&nbsp;×</td><td>1.352&nbsp;×</td><td>보통</td></tr><tr><td>0.9&nbsp; V</td><td>0.812&nbsp;×</td><td>1&nbsp;×</td><td>1.247&nbsp;×</td><td>보통</td></tr><tr><td>0.75&nbsp; V</td><td>0.887&nbsp;×</td><td>1&nbsp;×</td><td>1.133&nbsp;×</td><td>보통</td></tr><tr><td>0.65&nbsp; V</td><td>1.026&nbsp;×</td><td>1&nbsp;×</td><td>0.994&nbsp;×</td><td><b>반전</b></td></tr><tr><td>0.6&nbsp; V</td><td>1.211&nbsp;×</td><td>1&nbsp;×</td><td>0.881&nbsp;×</td><td><b>반전</b></td></tr></tbody></table>
+<div class="짚기">이 표가 0.6&nbsp; V 에서 멈추는 데는 적어 둘 만한 까닭이
+    있다. −40 °C 에서 이 모형의 문턱이 0.503&nbsp; V 이므로,
+    전원이 0.5&nbsp; V 쯤 아래로 내려가면 차가울 때
+    소자에 오버드라이브가 아예 없고 지연은 그저 긴 것이 아니라 정의되지
+    않는다. 인공물이 아니다 — 문턱 근처 영역이고, 저전압 유지 모드가
+    <b>차가운</b> 코너에서 최소 전원을 규정해 두는 까닭이다.</div>
+<div class="짚기"><b>독립 대조.</b> 교차 전원을 두 번 셈했다. 한 번은 닫힌 꼴
+    V = V<sub>th0</sub> + ακT/1.5 로 0.658&nbsp; V 가 나왔고, 한 번은
+    그 대수를 하나도 안 쓰고 <i>수치로 미분한</i> 지연의 부호를 이분법으로
+    좁혀 0.658&nbsp; V 가 나왔다 —
+    어긋남이 2.53×10<sup>-8</sup>&nbsp; mV 다. 그리고 사소한 설명은
+    말로 물리치는 대신 표로 죽인다. 이 효과가 정규화의 인공물이라면
+    '반전' 판정이 전원을 따라 움직이지 않을 텐데, 움직인다.</div>
+<div class="사고"><b>실제로 난 일</b><br>125 °C 와 전형 전압에서 사인오프한 설계가 차가운 시동 시험에서
+    −40 °C 에 졌다. 저전압 유지 모드였다. 그 전원에서 부품은 차가울 때 가장
+    느렸는데, 직관이 성립하던 1.8 V 프로젝트에서 물려받은 코너 목록에는
+    셋업용으로 뜨거운 코너만 들어 있었다. <b>흐름에는 아무것도 안 부서져
+    있었다. 무엇을 검사할지의 목록을, 더는 참이 아니게 된 규칙을 적용하는
+    사람이 썼던 것이다.</b></div>
+<h2>T20.3 EM 과 IR 사인오프에는 설계에 없는 것이 필요하다</h2>
+<div class="정의"><b>정적 IR (static IR) · 동적 IR (dynamic IR) · 스위칭 벡터</b> &mdash; <b>정적</b> IR 해석은 평균 전류를 격자에 흩어 놓고 저항 회로망을 푼다 — T18 의 셈이다. <b>동적</b> IR 해석은 전원의 인덕턴스와 디커플링까지 넣어(T13) 격자를 푸는데, 어떤 스위칭 무늬가 낳는 전류 파형이 그것을 몬다. 그 무늬가 <b>스위칭 벡터</b>이고, 그것은 설계의 일부가 아니다. 누가 대 줘야 한다.</div>
+<div class="짚기">이것은 답이 넷리스트에도 제약에도 없는 입력에 달려 있는 유일한
+    사인오프 검사다. 조용한 벡터를 고르면 해석이 통과하고, 가장 나쁜 것을
+    고르면 안 통과할 수 있다 — 그리고 흐름의 무엇도 당신이 어느 쪽을
+    골랐는지 말해 주지 않는다. <b>정직한 절차는 사인오프 보고서에 어느
+    벡터를 썼고 왜 그것이 진짜 작업부하를 한계 짓는다고 보는지를 적는
+    것</b>이고, 그 진술이 없는 동적 IR 통과는 결과가 아니라 확인되지 않은
+    주장으로 다루는 것이다.</div>
+<table><caption>표 51. 벡터를 얻는 세 길, 그리고 저마다 얼마나 값을 하나</caption><thead><tr><th>출처</th><th>얼마나 대표적인가</th><th>무엇을 놓치나</th></tr></thead><tbody><tr><td>진짜 작업부하의 <b>기능 시뮬레이션</b></td><td>쓸 수 있는 것 중 가장 낫다 — 실제 스위칭이다</td><td>시뮬레이션한 작업부하만 덮고, 긴 시뮬레이션은 어마어마한 활동 파일을 낳는다</td></tr><tr><td><b>벡터 없이</b> (토글률 몇 개에서 도구가 확률을 전파)</td><td>첫 바퀴와 큰 격자 잘못 찾기에는 충분하다</td><td>상관. 블록들이 서로 독립으로 뒤집힌다고 가정하는데, 실패는 전부가 한꺼번에 뒤집힐 때 온다</td></tr><tr><td><b>스캔 포획 패턴</b></td><td>많은 설계에서 최악의 경우인데 좀처럼 해석하지 않는다</td><td>없다 — 흔히 그것이 진짜 답이다. 스캔 포획은 어느 기능 모드보다도 다이의 훨씬 많은 부분을 동시에 뒤집기 때문이다</td></tr></tbody></table>
+<div class="예제"><div class="예제머리">예제 8. 어느 모드가 첨두 전류를 정하나?</div><div class="예제줄"><b>주어진 것.</b> T18/T19 의 블록은 기능적으로 350 mW 를 끌어간다. 스캔 시프트 모드에서는 모든 플롭이 주기마다 뒤집히고, 시프트 클럭은 기능 주파수의 4분의 1로 돈다.</div><div class="예제줄"><b>푸는 법.</b> 논리의 기능 스위칭 활동도는 보통 주기당 마디의 10–20 % 이고, 시프트 활동도는 주기당 플롭의 50 % 에 다가간다. 클럭 회로망은 고정으로 두고(어느 쪽이든 뒤집힌다) 플롭 출력 스위칭을 견준다. 대략 0.15 → 0.5 이니 그 성분에서 3.3 배쯤이고, 느려진 클럭에서 0.25 배다.</div><div class="예제답"><b>답.</b> 시프트 모드는 그 성분에서 기능 스위칭 전력의 대략 <b>0.8배</b> 를 끌어간다 — 엇비슷하고, 눈에 띄게 작지 않다. 첨두는 높은 활동도에서 클럭이 가장 빠르게 도는 모드가 정하는데, 많은 부품에서 그것은 시프트가 아니라 스캔 <i>포획</i>이다.</div><div class="예제덧">시험 담당자가 시프트 주파수를 낮추고 동시 토글을 묶는 저전력 ATPG 를
+        쓰는 까닭도 이것이다 — 시험 품질 때문이 아니라 부품이 그 전류를 댈
+        수 없기 때문이다. 그 제약은 T18 의 플로어플랜 논의에 속하는데,
+        대개 그 뒤에 도착한다.</div><div class="예제함정"><b>여기서 틀린다.</b> 위의 수들은 측정이 아니라 가정들의 비이고, 결과로 대서는 안 된다. 살아남는 결론은 구조적인 것이다. <b>시험 모드는 저전력 모드가 아니다.</b> 기능 벡터로만 사인오프한 격자는, 출하되는 모든 부품에서 시험기 위에서 가장 먼저 돌 그 모드에 대해서는 사인오프되지 않은 것이다.</div></div>
+<h2>T20.4 사인오프한 설계를 바꾸기</h2>
+<table><caption>표 52. 두 가지 ECO, 그리고 저마다 무엇을 치르나</caption><thead><tr><th>종류</th><th>무엇이 바뀌나</th><th>어느 사인오프를 다시 해야 하나</th></tr></thead><tbody><tr><td><b>금속만 바꾸는 ECO</b> (스페어 셀을 쓴다)</td><td>배선만. 기능은 이미 놓여 있고 이미 마스크에 있는 셀들에서 나오고, 금속 층에서 다시 이어질 뿐이다</td><td>배선 뒤의 전부. 추출, STA, EM/IR, DRC, LVS. 그런데 바뀐 마스크만 다시 만든다 — 그것이 요점 전부다</td></tr><tr><td><b>기능 ECO</b> (새 셀)</td><td>배치와 배선. 새 인스턴스가 틈으로 들어가며 거기 있던 것을 밀어낸다</td><td>위의 전부, 그리고 마스크가 전부 새것이다</td></tr></tbody></table>
+<div class="개념"><div class="개념머리">스페어 셀 (spare cells) &mdash; 나중에 바꿀 권리를 지금 사 두기</div>
+<div class="개념이론"><p>스페어 셀은 안 쓰는 게이트다. 보통 NAND 와 NOR 와 인버터와 플롭을
+        섞어 배치 곳곳에 흩어 놓고 입력을 묶어 둔다. 면적과 누설을 먹으면서
+        아무 일도 안 한다. 그것이 사 주는 것은 <b>금속만 다시 이어</b> 논리
+        변경을 구현할 수 있는 능력이다. 그 변경에 필요한 트랜지스터가 이미
+        확산 마스크에 있기 때문이다.</p>
+        <p>경제는 곧바른 옵션 가격이다. 첨단 마디의 온전한 마스크 묶음은
+        수백만 달러이고, 금속만 바꾸는 개정은 그 얼마이며 몇 달이 아니라
+        몇 주가 걸린다. 변경이 필요할 확률이 무시할 만하지만 않다면 면적의
+        1–2 % 를 스페어에 쓰는 것은 싼 보험이다 — 그리고 첫 실리콘에서는
+        결코 무시할 만하지 않다.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>배치에서 끼워 넣는다. 뭉쳐 놓지 말고 흩어서.</td></tr>
+<tr><th>언제 쓰나</th><td>첫 실리콘이 있을 모든 설계에서. 검증된 부품의 잘 아는 파생품에서만 뺀다.</td></tr>
+<tr><th>어떻게 쓰나</th><td>어느 영역에서도 손닿는 데에 몇 개는 있도록 흩는다 — 고칠 자리에서 500 µm 떨어진 스페어 셀은 못 쓴다. 거기까지 가는 배선이 그 고침이 맞추려던 타이밍을 깨기 때문이다. 플롭도 넣어라. 예측 못 하는 변경은 대개 순차 논리다.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code># A spare-cell plan is a distribution, not a count:
+#   region      spares: inv  nand2  nor2  dff     nearest-spare distance
+#   core NW           24     16     16     8            &lt; 60 um
+#   core NE           24     16     16     8            &lt; 60 um
+#   near macro A       6      4      4     2            &lt; 90 um   &lt;- thin
+# 'We have 400 spare cells' says nothing. 'No point in the core is more
+# than 90 um from a spare flop' is the statement that makes an ECO possible.</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> 스페어 입력을 제대로 묶어 두고 ERC 가 묶인 것으로 보는지 확인해라.
+            안 묶인 스페어 게이트는 떠 있는 입력이다 — 반쯤 켜진 인버터로
+            지나친 전류가 흐르는 실패 방식인데, DRC 도 LVS 도 STA 도 그것을
+            찾고 있지 않아서 다 통과한다.</div>
+</div>
+<div class="정의"><b>테이프아웃 (tape-out)</b> &mdash; GDS 를 마스크 공장에 내보내는 시점. 기술적인 사건이라기보다 상업적인 사건이다. 그 뒤로는 설계를 바꾸는 데 마스크 묶음 하나가 든다. 이 장이 기술하는 모든 것은 그 내보냄이 안전하다는 주장을 세우려고 있다 — 그리고 그 주장의 정직한 꼴에는 늘 <b>확인하지 않은</b> 것의 목록이 함께 있다.</div>
+<h2>T20.5 월요일에 이걸로 무엇을 하나</h2>
+<table><caption>표 53. 이 장의 개념이 실제로 쓰이는 자리</caption><thead><tr><th>개념</th><th>쓰이는 블록</th><th>무엇을 정하나</th></tr></thead><tbody><tr><td>물리검증 · ERC · 금속채움 · CMP</td><td>모든 테이프아웃 전</td><td>그 기하를 제조할 수 있는지, 그리고 실제로 만들어질 그 기하 위에서 타이밍을 사인오프했는지</td></tr><tr><td>코너 · MMMC · 온도반전</td><td>해석 뷰 목록을 쓸 때</td><td>코너 목록이 이 제품을 덮는지 지난 프로젝트를 덮는지</td></tr><tr><td>정적IR · 동적IR · 스위칭벡터</td><td>전원 무결성 사인오프</td><td>그 벡터가 진짜 작업부하를 — 시험 모드까지 — 한계 짓는지</td></tr><tr><td>기능ECO · 금속ECO · 스페어셀</td><td>필요해지기 몇 달 전, 배치에서</td><td>실리콘 뒤의 고침이 금속 개정으로 끝나는지 온전한 마스크 묶음이 드는지</td></tr><tr><td>테이프아웃 · 마스크</td><td>내보냄 결정</td><td>당신이 무엇을 주장하고 있고 무엇은 주장하지 않는지</td></tr></tbody></table>
+<p>가지고 갈 수들. 코너·모드 조합 216 가지에
+    2&nbsp; h 씩이면 계산 18&nbsp; 일이고 ECO 하나가
+    그것을 버린다 — 일찍 고치라는, 이 책에서 가장 센 정량적 논거다.
+    그리고 교차 오버드라이브 0.208&nbsp; V 가
+    "느린 것은 뜨거운 것" 이 안전한 규칙이기를 그만둔 까닭이다. 이 모형에서
+    전원이 0.66&nbsp; V 쯤 아래로 내려가면 느린 코너는
+    차가운 쪽이다.</p>
+<p>이제 부품을 지을 수 있다. 낱낱의 다이가 도는지는 또 다른 물음이고,
+    도구가 아니라 다이를 물고 있는 기계가 답한다 — 그것이 이 갈래의 마지막
+    장이다.</p>
+<div class="특허"><div class="특허머리">특허로 가는 길 &mdash; 이 주제에서 발명이 일어나는 자리</div><div class="특허속">사인오프 자체는 흐름에서 특허가 가장 덜 걸린 자리다 — 규칙은
+        파운드리 것이고 검사는 범용품이다. 출원이 <i>빽빽한</i> 것은 <b>ECO
+        자동화</b>다. 어느 스페어 셀을 쓸지 고르고 흔들림을 가장 적게 하며
+        다시 배선해서, 이미 값을 치른 사인오프를 고침이 무효로 만들지 않게
+        하는 것이다. T17 에서 셈한 값을 곧바로 치는 것이다.</div></div>
