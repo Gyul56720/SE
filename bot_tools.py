@@ -30,6 +30,10 @@ import imageread
 import pdfread
 
 import requests
+try:
+    from langchain_core.callbacks import BaseCallbackHandler
+except ImportError:                      # 판에 따라 자리가 다르다 -- 봇 전체를 못 뜨게 하지 않는다
+    from langchain_core.callbacks.base import BaseCallbackHandler
 from langchain_core.tools import tool
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.prebuilt import create_react_agent
@@ -40,6 +44,7 @@ import filetools
 import orchestrator_tool
 import poolpick
 import public_agent_files
+import rpmgate
 import quota_tracker
 import relay
 import toolgate
@@ -1627,7 +1632,7 @@ def invoke_text(prompt: str, api_key: str, model: "str | None" = None,
     last_error: Optional[Exception] = None
     for label, name in ranked:
         try:
-            reply = _make_llm(name, api_key).invoke(prompt)
+            reply = _make_llm(name, api_key, label=label).invoke(prompt)
             quota_tracker.record_success(label)
             quota_tracker.set_pinned(pool_id, label)
             return extract_text(reply.content).strip()
@@ -1688,14 +1693,58 @@ LLM_MAX_RETRIES = int(os.environ.get("GEMINI_MAX_RETRIES", "2"))
 LLM_TIMEOUT = float(os.environ.get("GEMINI_TIMEOUT", "60"))
 
 
-def _make_llm(model: str, key: str):
+class _간격두기(BaseCallbackHandler):
+    """**모델을 부르기 직전에 분당 한도만큼 간격을 둔다.**
+
+    왜 콜백인가. 막아야 하는 것은 `agent.invoke()` 한 번이 아니라 그 **안에서** 나가는
+    호출 하나하나다. ReAct 루프는 도구를 부를 때마다 모델을 다시 부르므로, 평범한 부탁
+    하나가 열 번을 넘게 나간다. 그 자리는 `run_with_fallback_pool` 에서 안 보인다 --
+    거기서는 invoke 가 한 번일 뿐이다. 콜백은 **실제 요청 직전**에 같은 스레드에서
+    불리므로 여기서 재우면 요청이 그만큼 늦게 나간다.
+
+    쿼터 장부(quota_tracker)와 하는 일이 다르다. 그쪽은 **맞고 난 뒤** 쉬게 하고,
+    여기는 **맞기 전에** 간격을 둔다. 둘 다 필요하다 -- 다른 프로세스가 같은 키를 쓰면
+    여기서는 안 보이고, 그건 429 를 맞아야 안다.
+    """
+
+    def __init__(self, label: str):
+        self.label = label
+
+    def _문(self, **_kw):
+        잔 = rpmgate.지나가기(self.label)
+        if 잔 > 0:
+            print(f"[rpmgate] {self.label} 분당 한도가 차서 {잔:.1f}초 쉬고 부른다 "
+                  f"(맞기 전에 간격을 둔다)")
+
+    # langchain 은 채팅 모델이면 on_chat_model_start, 아니면 on_llm_start 를 부른다.
+    def on_chat_model_start(self, *a, **kw):
+        self._문()
+
+    def on_llm_start(self, *a, **kw):
+        self._문()
+
+
+def _make_llm(model: str, key: str, label: "str | None" = None):
     """ChatGoogleGenerativeAI 생성. max_retries/timeout 을 모르는 버전에서도 뜨도록
-    TypeError 면 기본 인자만으로 물러선다."""
+    TypeError 면 기본 인자만으로 물러선다.
+
+    `label` 은 분당 한도를 세는 단위다((키, 모델) -- 구글이 한도를 거는 단위와 같다).
+    안 주면 여기서 짓는다."""
+    if label is None:
+        label = f"key-{hashlib.sha256((key or '').encode()).hexdigest()[:8]}:{model}"
+    콜백 = [_간격두기(label)]
     try:
         return ChatGoogleGenerativeAI(model=model, google_api_key=key,
-                                      max_retries=LLM_MAX_RETRIES, timeout=LLM_TIMEOUT)
+                                      max_retries=LLM_MAX_RETRIES, timeout=LLM_TIMEOUT,
+                                      callbacks=콜백)
     except TypeError:
-        return ChatGoogleGenerativeAI(model=model, google_api_key=key)
+        try:
+            return ChatGoogleGenerativeAI(model=model, google_api_key=key, callbacks=콜백)
+        except TypeError:
+            # 콜백조차 못 받는 판이면 간격 없이라도 뜬다 -- 조용히 넘기지 않는다.
+            print(f"[rpmgate] 이 langchain 판은 callbacks 를 안 받는다 -- {label} 은 "
+                  f"간격 없이 나간다(429 를 맞고 나서 quota_tracker 가 푼다)")
+            return ChatGoogleGenerativeAI(model=model, google_api_key=key)
 
 
 def build_agent_pool(keys: "list[str | None]", models: "list[str] | None", tools: list, prompt: str,
@@ -1730,9 +1779,11 @@ def build_agent_pool(keys: "list[str | None]", models: "list[str] | None", tools
         if key_models is None:
             key_models = list_available_models(key) or fallback_models or list(FALLBACK_MODELS)
         for model in key_models:
-            llm = _make_llm(model, key)
-            agent = create_react_agent(llm, tools=tools, checkpointer=checkpointer, prompt=prompt)
             label = f"key-{key_id}:{model}"
+            # **분당 한도를 세는 단위를 후보 이름과 같게 맞춘다.** 달랐으면 한쪽은
+            # 간격을 재고 다른 쪽은 쿨다운을 걸면서 서로 다른 것을 세게 된다.
+            llm = _make_llm(model, key, label=label)
+            agent = create_react_agent(llm, tools=tools, checkpointer=checkpointer, prompt=prompt)
             pool.append((label, agent))
     return pool
 
@@ -1933,7 +1984,7 @@ def invoke_with_recovery(agent, thread_map: dict, base_thread_id: str, prompt: s
     다른 API 키로) 곧장 넘어갈 수 있게 한다."""
     prompt = compact.씨앗꺼내기(base_thread_id) + prompt      # 간추린 뒤 첫 말에 깃발 한 줄
     thread_id = thread_map.get(base_thread_id, base_thread_id)
-    config = {"configurable": {"thread_id": thread_id}}
+    config = rpmgate.설정(thread_id)
     try:
         result = agent.invoke({"messages": [("user", prompt)]}, config=config)
         relay.턴기록(base_thread_id, result["messages"])
@@ -1942,10 +1993,18 @@ def invoke_with_recovery(agent, thread_map: dict, base_thread_id: str, prompt: s
     except Exception as e:
         if is_unavailable_error(e):
             raise
+        if rpmgate.바퀴넘침(e):
+            # **한 메시지 안에서 도는 바퀴에는 끝이 있다.** 여기서 새 thread 로 재시도하면
+            # 같은 일을 처음부터 또 돌면서 분당 한도만 두 배로 쓴다. 대화는 남아 있으니
+            # 다음 메시지에서 이어가면 된다 -- 사용자에게 그렇게 말한다.
+            print(f"{log_prefix} thread={base_thread_id} 바퀴 상한({rpmgate.바퀴상한})에 "
+                  f"닿았다 -- 끊는다")
+            relay.적기(f"⏹ 한 메시지 안에서 {rpmgate.바퀴상한} 바퀴를 넘겼다 -- 여기서 끊는다")
+            return rpmgate.끊긴말()
         print(f"{log_prefix} thread={base_thread_id} invoke_error={e!r} -- 새 thread로 재시도")
         new_thread_id = f"{base_thread_id}-{uuid.uuid4().hex[:8]}"
         thread_map[base_thread_id] = new_thread_id
-        config = {"configurable": {"thread_id": new_thread_id}}
+        config = rpmgate.설정(new_thread_id)
         result = agent.invoke({"messages": [("user", prompt)]}, config=config)
         relay.턴기록(base_thread_id, result["messages"])
         _간추림(base_thread_id, thread_map, result["messages"])
