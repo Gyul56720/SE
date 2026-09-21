@@ -1,0 +1,22 @@
+    def update(self, values: Sequence[Value]) -> bool:
+        if not values:
+            return False
+        if self.value is MISSING:
+            self.value = values[0]
+            values = values[1:]
+        seen_overwrite: bool = False
+        for value in values:
+            is_overwrite, overwrite_value = _get_overwrite(value)
+            if is_overwrite:
+                if seen_overwrite:
+                    msg = create_error_message(
+                        message="Can receive only one Overwrite value per super-step.",
+                        error_code=ErrorCode.INVALID_CONCURRENT_GRAPH_UPDATE,
+                    )
+                    raise InvalidUpdateError(msg)
+                self.value = overwrite_value
+                seen_overwrite = True
+                continue
+            if not seen_overwrite:
+                self.value = self.operator(self.value, value)
+        return True

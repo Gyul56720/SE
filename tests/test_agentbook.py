@@ -110,11 +110,25 @@ for k, 장들 in sorted(bookA.감당.items()):
 print("\n== 레포 인용은 내가 실제로 읽은 커밋만 ==")
 zoo = json.load(open(os.path.join(책, "zoo.json"), encoding="utf-8"))
 커밋들 = {v["커밋"] for v in zoo.values()}
+# A chapter may quote a **historical** commit (langchain's first commit, for
+# instance) which zoo.json does not carry -- zoo.json records HEAD only. That
+# is legitimate *if* the lines were vendored into agentbook/snips/, because
+# then the quote stays verifiable. So a snippet's recorded commit counts as a
+# source too.
+발췌곳간 = os.path.join(책, "snips")
+if os.path.isdir(발췌곳간):
+    for f in os.listdir(발췌곳간):
+        if f.endswith(".json"):
+            with open(os.path.join(발췌곳간, f), encoding="utf-8") as fh:
+                커밋들.add(json.load(fh)["커밋"])
 ok(len(zoo) >= 10, f"zoo.json 에 저장소 {len(zoo)}개 -- 클론해서 잰 것이다")
 본문 = "".join(getattr(importlib.import_module(m), f)()
              for 부, 목록 in 빌드.차례 for m, 함수들 in 목록
              if m in 있는장 for f in 함수들)
-인용커밋 = set(re.findall(r'@ ([0-9a-f]{7})<', 본문))
+# Short hashes are not always 7 characters -- git gives as many as it needs
+# to stay unique, and langchain's is 9. A fixed {7} silently skipped that
+# citation, so the check was passing without looking at it.
+인용커밋 = set(re.findall(r'@ ([0-9a-f]{7,40})<', 본문))
 낯선 = 인용커밋 - 커밋들
 ok(not 낯선, f"**본문이 대는 커밋이 전부 zoo.json 에 있다** (낯선 것: {낯선})")
 if 인용커밋:
