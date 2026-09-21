@@ -86,14 +86,65 @@ def 태그열(s: str):
     return re.findall(r"</?[a-zA-Z][a-zA-Z0-9]*", s)
 
 
+# 문단·표처럼 **자리를 지켜야 하는** 태그와, 문장 안에서 **자리를 옮겨도 되는**
+# 태그를 가른다.
+#
+# 왜 가르나 (실측 2026-09-21): 영어 "falls by a factor of ten for every
+# <b>85 mV</b> that V<sub>GS</sub> drops" 를 한국어로 옮기면
+# "V<sub>GS</sub> 가 ... <b>85 mV</b> 내려갈 때마다" 가 된다.  태그는 하나도
+# 안 늘고 안 줄었는데 **순서가 바뀐다** -- 한국어 어순이 그러므로.  순서만 보는
+# 검사는 이것을 '구조가 다르다' 로 낸다.  그러면 옳은 번역을 고치게 되고,
+# 고치다 보면 한국어가 뻣뻣해진다.
+#
+# 그렇다고 순서를 통째로 포기하면 <b> 가 이 <div> 에서 저 <div> 로 건너뛴 것도
+# 못 본다.  그래서 **구조 태그는 순서까지, 안쪽 태그는 그 블록 안에 같은 것이
+# 같은 수만큼 있는지**를 본다.
+구조태그 = {"div", "p", "table", "thead", "tbody", "tfoot", "tr", "td", "th",
+         "h1", "h2", "h3", "h4", "pre", "ul", "ol", "li", "blockquote",
+         "figure", "figcaption", "svg", "g", "path", "rect", "circle",
+         "line", "text", "tspan", "polyline", "polygon", "caption"}
+
+
+def 구조열(s: str):
+    """구조 태그만, 순서 그대로."""
+    return [t for t in 태그열(s)
+            if t.lstrip("</").lower() in 구조태그]
+
+
+def 안쪽셈(s: str):
+    """구조 태그로 끊은 토막마다, 그 안의 안쪽 태그를 세어 둔다."""
+    from collections import Counter
+    토막, 현재 = [], []
+    for m in re.finditer(r"</?[a-zA-Z][a-zA-Z0-9]*", s):
+        이름 = m.group(0).lstrip("</").lower()
+        if 이름 in 구조태그:
+            토막.append(Counter(현재))
+            현재 = []
+        else:
+            현재.append(m.group(0).lower())
+    토막.append(Counter(현재))
+    return 토막
+
+
 def 대조(원문: str, 옮긴것: str):
     """다섯 가지를 본다.  어긋난 것의 목록을 돌려준다 (비면 통과)."""
     문제 = []
 
-    # 1. 태그 구조가 그대로인가
-    a, b = 태그열(원문), 태그열(옮긴것)
+    # 1. 태그 구조가 그대로인가 -- 구조는 순서까지, 안쪽은 블록 단위로
+    a, b = 구조열(원문), 구조열(옮긴것)
     if a != b:
-        문제.append(f"태그 구조가 다르다 (원문 {len(a)}개, 옮긴것 {len(b)}개)")
+        같은데까지 = next((i for i in range(min(len(a), len(b)))
+                      if a[i] != b[i]), min(len(a), len(b)))
+        문제.append(f"구조 태그가 다르다 (원문 {len(a)}개, 옮긴것 {len(b)}개, "
+                   f"{같은데까지}번째에서 갈린다)")
+    else:
+        ia, ib = 안쪽셈(원문), 안쪽셈(옮긴것)
+        다른블록 = [k for k, (x, y) in enumerate(zip(ia, ib)) if x != y]
+        if 다른블록:
+            k = 다른블록[0]
+            문제.append(f"블록 안의 태그가 다르다 ({len(다른블록)}곳, 처음은 "
+                       f"{k}번째 블록: {dict(ia[k] - ib[k])} 가 빠지고 "
+                       f"{dict(ib[k] - ia[k])} 가 늘었다)")
 
     # 2. <code> 속은 **글자까지** 같아야 한다 -- 식별자를 옮기면 안 된다
     ca = [re.sub(r"\s+", " ", x) for x in 코드패턴.findall(원문)]
@@ -109,8 +160,15 @@ def 대조(원문: str, 옮긴것: str):
                        f"({원문.count(태그)} -> {옮긴것.count(태그)})")
 
     # 4. 숫자가 사라지지 않았는가 -- 번역기가 수를 빼먹는 일이 실제로 있다
-    수a = re.findall(r"\d[\d,.]*", re.sub(r"<[^>]+>", " ", 원문))
-    수b = re.findall(r"\d[\d,.]*", re.sub(r"<[^>]+>", " ", 옮긴것))
+    # 끝에 붙은 문장부호는 떼고 본다.  영어 "= 7.62." 와 한국어 "= 7.62 다."
+    # 는 같은 수인데, 안 떼면 앞은 `7.62.` 뒤는 `7.62` 로 잡혀 **빠졌다고
+    # 잘못 낸다**(실측 2026-09-21).
+    def _수뽑기(t):
+        return [x.rstrip(".,") for x in
+                re.findall(r"\d[\d,.]*", re.sub(r"<[^>]+>", " ", t))]
+
+    수a = _수뽑기(원문)
+    수b = _수뽑기(옮긴것)
     if sorted(수a) != sorted(수b):
         빠진 = [x for x in 수a if 수a.count(x) > 수b.count(x)]
         if 빠진:
