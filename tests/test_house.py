@@ -228,9 +228,11 @@ ok(not re.search(r"[가-힣]", C.표식),
 ok("house/run.py" in C.표식, "패턴이 실제로 도는 명령줄에 있는 토막이다")
 
 # ------------------------------------------------------------------ 8. 배선
-_d = (뿌리 / "dispatch.py").read_text(encoding="utf-8")
-ok("from house import discord_cmd as 하우스" in _d and "하우스)" in _d,
-   "dispatch.py 의 명령 목록에 실려 있다 -- 디스코드에서 실제로 닿는다")
+# **글자가 아니라 배선을 잰다.** 예전에는 `"하우스)"` 라는 글자를 찾았는데, 목록 끝에
+# 명령을 하나 더 붙이자(`하우스, 논문)`) 멀쩡한 배선을 두고 검사가 빨개졌다. 재려던
+# 것은 괄호가 아니라 "이 모듈이 디스코드에서 실제로 닿는가" 다.
+import dispatch as _D
+ok(C in _D.명령들, "dispatch 의 명령 목록에 실려 있다 -- 디스코드에서 실제로 닿는다")
 import dispatch  # noqa: E402
 ok(dispatch.run("!회사 보고서") is not None, "dispatch 를 거쳐도 답이 온다")
 

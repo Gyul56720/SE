@@ -29,6 +29,7 @@ from secaudit import discord_cmd as 점검
 from router import discord_cmd as 경로
 from sandbox import discord_cmd as 실험
 from falsegreen import discord_cmd as 반례
+from dig import study_cmd as 논문
 from house import discord_cmd as 하우스
 import keys as 열쇠
 import relay as 중계
@@ -52,7 +53,7 @@ import relay as 중계
 # `python3 -m <기관>` 으로 여전히 돌고, 되돌리는 것은 아래 한 줄에 이름을 넣는 일이다.
 # 뺀 뒤에는 그 말이 에이전트로 떨어진다(이 파일의 규약대로) -- 조용히 죽지 않는다.
 안쓴것 = (실험, 목표, 진화, 위임, 감사)          # 원장 0줄. 되살리려면 아래 줄에 넣어라
-명령들 = (소설, 기억, 평가, 경로, 중계, 수집, 열쇠, 고치기, 점검, 코드화, 연구, 계획, 자가개선, 조사, 반례, 하우스)
+명령들 = (소설, 기억, 평가, 경로, 중계, 수집, 열쇠, 고치기, 점검, 코드화, 연구, 계획, 자가개선, 조사, 반례, 하우스, 논문)
 
 
 def run(text: str, runner=None, allow_write: bool = True) -> "str | None":
@@ -138,6 +139,11 @@ def _아이디(말: str) -> str:
      lambda 말: ("!경로 요약", "")),
     ("수집틈", r"틈|약점|스스로.*(?:메워|채워)|자가.*수집",
      lambda 말: ("!수집 틈으로", "")),
+    # **'연구' 보다 앞이어야 한다.** 연구 패턴에 '논문' 이 들어 있어서 뒤에 두면
+    # 이 줄은 영영 안 걸린다(위에서부터 먼저 걸리는 것이 이긴다).
+    ("논문", r"논문[^\n]{0,10}(?:읽|공부|분석|찾아|훑|정리)|이\s*주제의?\s*논문|"
+           r"선행\s*연구|related\s*work|문헌\s*조사|литератур",
+     lambda 말: (f"!논문 {말.strip()[:160]}", "")),
     ("연구", r"연구|조사|알아봐|찾아봐|방법론|논문|최신|모아|수집|자료|정리해",
      lambda 말: (f"!연구 {말.strip()[:180]}", "")),
     ("목표", r"목표|할\s*일|무엇을\s*할",
