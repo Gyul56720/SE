@@ -1,0 +1,138 @@
+/* 에이전트 인프라 공학 교안 -- 한국어 상자 + 정리/증명 + 레포 해부 + 언어 비교.
+   edu_style.css 에서 표지·차례·기본 표/그림을 물려받고, eduK 의 한국어 상자를
+   여기 합친 뒤, 이 책에만 있는 것(정리·증명·레포·논문·언어)을 더한다. */
+@import url("edu_style.css");
+
+body { font-family:"NanumGothic","Nanum Gothic","DejaVu Sans",sans-serif;
+       font-size:10.1pt; line-height:1.6; color:#1a1a1a; }
+code, pre { font-family:"NanumGothicCoding","DejaVu Sans Mono",monospace; }
+h1 { font-size:19pt; margin:0 0 4pt 0; padding-top:6pt;
+     border-bottom:2.4pt solid #123f6d; break-before:page; }
+h1.부 { font-size:26pt; border:0; text-align:center; padding-top:60mm;
+        color:#123f6d; }
+h2 { font-size:13.4pt; margin:15pt 0 5pt 0; color:#123f6d;
+     border-bottom:0.6pt solid #cfd8e3; padding-bottom:2pt; break-after:avoid; }
+h3 { font-size:11.4pt; margin:10pt 0 4pt 0; color:#2a2a2a; break-after:avoid; }
+p  { margin:5pt 0; text-align:justify; }
+.한줄 { font-size:10.4pt; color:#444; font-style:italic; margin:2pt 0 8pt 0; }
+
+/* 사다리 */
+.사다리 { display:table; width:100%; margin:8pt 0 12pt 0; border-spacing:6pt 0; }
+.사다리앞, .사다리뒤 { display:table-cell; width:50%; font-size:8.6pt;
+          padding:6pt 8pt; border-radius:3pt; line-height:1.45; }
+.사다리앞 { background:#eef3f8; border-left:2.6pt solid #5b8db8; }
+.사다리뒤 { background:#eef7f2; border-left:2.6pt solid #3f8f63; }
+
+/* 개념 다섯 칸 */
+.개념 { margin:11pt 0; border:0.8pt solid #c9d4e0; border-radius:4pt;
+        break-inside:avoid; }
+.개념머리 { background:#123f6d; color:#fff; font-weight:bold; font-size:10.6pt;
+           padding:5pt 10pt; border-radius:3pt 3pt 0 0; }
+.개념이론 { padding:7pt 10pt; }
+.개념표 { width:100%; margin:0; border-top:0.6pt solid #dde4ec; font-size:9.2pt; }
+.개념표 th { width:82pt; text-align:left; background:#f6f8fb; color:#123f6d;
+            padding:4pt 9pt; vertical-align:top; }
+.개념표 td { padding:4pt 9pt; vertical-align:top; }
+.개념코드머리 { font-size:8.6pt; color:#555; padding:5pt 10pt 0 10pt; font-weight:bold; }
+.개념주의 { background:#fbf2f2; border-top:0.6pt solid #e4c9c9; font-size:9.2pt;
+           padding:5pt 10pt; }
+
+/* 유도 */
+.유도 { margin:10pt 0; border-left:2.6pt solid #7a5ba8; background:#faf8fd;
+        break-inside:avoid; }
+.유도머리 { font-weight:bold; font-size:9.4pt; color:#5a3f85; padding:5pt 9pt 2pt 9pt; }
+.유도표 { width:100%; font-size:9pt; margin:0; }
+.유도표 th { text-align:left; color:#666; font-size:8.2pt; padding:2pt 9pt; border:0; }
+.유도표 td { border:0; }
+.유도번호 { width:14pt; color:#9a8ab5; vertical-align:top; padding:3pt 0 3pt 9pt; }
+.유도말 { width:50%; vertical-align:top; padding:3pt 8pt; }
+.유도왜 { color:#4a4a4a; vertical-align:top; padding:3pt 9pt 3pt 8pt; font-size:8.7pt; }
+
+/* 예제 */
+.예제 { margin:10pt 0; border:0.8pt solid #d8c9a8; border-radius:4pt; break-inside:avoid; }
+.예제머리 { background:#8a6d3b; color:#fff; font-weight:bold; font-size:9.6pt;
+           padding:4pt 10pt; border-radius:3pt 3pt 0 0; }
+.예제줄 { padding:4pt 10pt; font-size:9.4pt; }
+.예제답 { padding:5pt 10pt; background:#fdfaf3; font-size:9.6pt; }
+.예제덧 { padding:4pt 10pt; font-size:9pt; color:#555; }
+.예제함정 { background:#fbf2f2; font-size:9.2pt; padding:5pt 10pt;
+           border-top:0.6pt solid #e4c9c9; }
+
+/* 정의 · 짚기 · 사고 · 특허 */
+.정의 { background:#f4f7fa; border-left:2.6pt solid #123f6d; padding:5pt 9pt;
+        margin:7pt 0; font-size:9.6pt; }
+.짚기 { background:#fffbe9; border-left:2.6pt solid #c9a227; padding:5pt 9pt;
+        margin:7pt 0; font-size:9.4pt; }
+.사고 { background:#fbf2f2; border-left:2.6pt solid #a83f3f; padding:5pt 9pt;
+        margin:7pt 0; font-size:9.4pt; }
+.특허 { margin:12pt 0 4pt 0; border:1pt solid #3f8f63; border-radius:4pt;
+        break-inside:avoid; }
+.특허머리 { background:#3f8f63; color:#fff; font-weight:bold; font-size:9.6pt;
+           padding:4pt 9pt; border-radius:3pt 3pt 0 0; }
+.특허속 { padding:6pt 10pt; font-size:9.4pt; }
+
+/* ===== 이 책에만 있는 것 ===== */
+
+/* 정리와 증명 -- 이 책의 중심 단위 */
+.정리 { margin:12pt 0 4pt 0; border:1pt solid #1d3f6b; border-radius:4pt;
+        break-inside:avoid; }
+.정리머리 { background:#1d3f6b; color:#fff; font-weight:bold; font-size:10pt;
+           padding:4pt 10pt; border-radius:3pt 3pt 0 0;
+           font-family:"NanumGothic",sans-serif; }
+.정리속 { padding:7pt 11pt; font-size:9.9pt; background:#fbfcfe; }
+.정리가정 { padding:0 11pt 6pt 11pt; font-size:9.2pt; color:#445; background:#fbfcfe; }
+.증명 { margin:0 0 12pt 0; border-left:2.6pt solid #1d3f6b; background:#f7f9fc;
+        padding:4pt 0 4pt 0; }
+.증명머리 { font-weight:bold; font-size:9.2pt; color:#1d3f6b; padding:2pt 10pt; }
+.증명표 { width:100%; font-size:9pt; margin:0; }
+.증명표 td { border:0; }
+.증명번호 { width:15pt; color:#8fa4bb; vertical-align:top; padding:3pt 0 3pt 10pt;
+           font-size:8.2pt; }
+.증명말 { width:50%; vertical-align:top; padding:3pt 8pt; }
+.증명왜 { color:#3a4a5a; vertical-align:top; padding:3pt 10pt 3pt 8pt; font-size:8.6pt; }
+.증명끝 { text-align:right; padding:0 12pt 4pt 0; font-size:11pt; color:#1d3f6b; }
+
+/* 레포 해부 */
+.레포 { margin:12pt 0; border:1pt solid #4a4a6a; border-radius:4pt; break-inside:avoid; }
+.레포머리 { background:#3a3a55; color:#fff; padding:5pt 10pt; border-radius:3pt 3pt 0 0;
+           font-size:10.2pt; font-weight:bold; }
+.레포머리 .주소 { font-weight:normal; font-size:8.4pt; color:#c5cbe0; float:right;
+                 font-family:"DejaVu Sans Mono",monospace; }
+.레포속 { padding:6pt 10pt; font-size:9.6pt; }
+.레포표 { width:100%; margin:0; font-size:9pt; border-top:0.6pt solid #d5d5e0; }
+.레포표 th { background:#f2f2f6; color:#3a3a55; text-align:left; width:90pt;
+            padding:3pt 9pt; vertical-align:top; }
+.레포표 td { padding:3pt 9pt; vertical-align:top; }
+
+/* 논문 -- 밑줄과 그 밑줄이 무슨 뜻인지 */
+.논문 { margin:12pt 0; border:0.9pt solid #7a5ba8; border-radius:4pt; break-inside:avoid; }
+.논문머리 { background:#5a3f85; color:#fff; padding:5pt 10pt; font-size:9.8pt;
+           font-weight:bold; border-radius:3pt 3pt 0 0; }
+.논문머리 .수준 { float:right; font-size:8pt; font-weight:normal;
+                 background:#fff; color:#5a3f85; padding:0 5pt; border-radius:8pt; }
+.논문인용 { padding:7pt 11pt; font-size:9.4pt; background:#faf8fd; line-height:1.7;
+           font-style:italic; }
+.논문인용 u.핵 { text-decoration:none; border-bottom:2pt solid #c9a227;
+                background:#fffbe9; font-style:normal; padding:0 1pt; }
+.논문인용 sup { color:#a8862a; font-weight:bold; font-size:7.4pt; }
+.논문풀이 { width:100%; margin:0; font-size:9pt; border-top:0.6pt solid #ded5ec; }
+.논문풀이 th { background:#f6f3fa; color:#5a3f85; text-align:left; width:20pt;
+              padding:3pt 6pt; vertical-align:top; }
+.논문풀이 td { padding:3pt 9pt; vertical-align:top; }
+.논문풀이 td.밑줄 { width:30%; color:#5a3f85; font-weight:bold; }
+
+/* 언어 비교 -- 같은 일을 여러 말로 */
+.언어 { margin:11pt 0; break-inside:avoid; }
+.언어머리 { font-size:9.4pt; font-weight:bold; color:#123f6d; margin-bottom:3pt; }
+.언어칸 { border:0.6pt solid #dde3ea; border-left:2.6pt solid #8fa4bb; margin:4pt 0;
+         break-inside:avoid; }
+.언어이름 { background:#eef2f7; color:#123f6d; font-size:8.6pt; font-weight:bold;
+           padding:2pt 8pt; font-family:"DejaVu Sans Mono",monospace; }
+.언어칸 pre { border:0; margin:0; background:#fbfcfd; }
+.언어짚 { font-size:8.6pt; color:#445; padding:3pt 8pt; background:#fbfcfd;
+         border-top:0.4pt dotted #ccd; }
+
+/* 이 장이 JD 의 어느 줄을 감당하나 */
+.직무 { margin:9pt 0; border-left:2.6pt solid #3f8f63; background:#f2faf5;
+        padding:5pt 9pt; font-size:8.8pt; }
+.직무 b { color:#2a6b49; }
