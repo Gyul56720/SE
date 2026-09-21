@@ -66,10 +66,12 @@ import bookK                                   # noqa: E402
         ("C3_crdt",      ["ch_crdt"]),
         ("C4_checkpoint", ["ch_checkpoint"]),
     ]),
-    ("8부. 개발자 인터페이스 — SDK 와 CLI", [
+    ("8부. 개발자 인터페이스 — SDK · CLI · 그리고 파일 하나", [
         ("A15_sdk",      ["ch_sdk"]),
         ("A16_cli",      ["ch_cli"]),
         ("A17_mcp",      ["ch_mcp"]),
+        ("S1_decl",      ["ch_decl"]),
+        ("S2_invent",    ["ch_invent"]),
     ]),
     ("9부. 규모와 비용", [
         ("A18_cost",     ["ch_cost"]),
@@ -93,7 +95,12 @@ import bookK                                   # noqa: E402
         ("R9_multi",     ["ch_multi"]),
         ("R10_sdks",     ["ch_sdks"]),
     ]),
-    ("12부. 현장", [
+    ("12부. 최신 논문을 읽는 법", [
+        ("P1_read",      ["ch_read"]),
+        ("P2_frontier",  ["ch_frontier"]),
+        ("P3_repro",     ["ch_repro"]),
+    ]),
+    ("13부. 현장", [
         ("A21_thisagent", ["ch_thisagent"]),
         ("A22_se",       ["ch_se"]),
         ("A23_incident", ["ch_incident"]),
