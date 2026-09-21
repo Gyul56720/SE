@@ -6,3 +6,5 @@ work/
 ledger.jsonl
 lib/nsw10.lib
 lib/nsw10_dft.lib
+gen/
+designs.json
