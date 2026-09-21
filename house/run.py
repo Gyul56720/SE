@@ -38,7 +38,16 @@ from house import report as RPT       # noqa: E402
 차례 = ["rtl", "dv", "syn", "dft", "pd"]      # 흐름 순서 (설계 -> 검증 -> 합성 -> DFT -> PD)
 
 
-def 한명(키: str, 빠르게=False) -> dict:
+def 설계하기(요청: str) -> dict:
+    """자연어 요청 -> 제안서.  **RTL 은 짓지 않는다** -- 사람이 승인해야 짓는다."""
+    from house import arch as ARCH
+    r = ARCH.돌리기(요청)
+    _적기({"키": "arch", "이름": "설계 제안서", "됐나": True, "pdf": str(r["pdf"]),
+         "쪽": r.get("쪽"), "요청": 요청[:200], "선행조사": str(r.get("선행조사"))})
+    return r
+
+
+def 한명(키: str, 빠르게=False, 회로=None) -> dict:
     import importlib
     if 키 not in 직무:
         raise KeyError(f"모르는 직무: {키}")
@@ -47,8 +56,15 @@ def 한명(키: str, 빠르게=False) -> dict:
     t0 = time.time()
     # **DV 만 인자 꼴이 다르다.** 검증은 '빠르게/보통/밤새' 라는 규모를 받는다 --
     # 수만 번 던지는 것이 이 직무의 본업이라 켜고 끄는 값이 아니라 눈금이다.
-    r = (getattr(m, 함수)("빠르게" if 빠르게 else "보통") if 키 == "dv"
-         else getattr(m, 함수)(빠르게))
+    함 = getattr(m, 함수)
+    인자 = ("빠르게" if 빠르게 else "보통",) if 키 == "dv" else (빠르게,)
+    try:
+        r = 함(*인자, 회로=회로) if 회로 else 함(*인자)
+    except TypeError:
+        # 아직 회로 인자를 안 받는 에이전트 -- 기본 회로로 돈다. **조용히 넘어가지 않는다.**
+        if 회로:
+            print(f"!! {키}: 아직 `회로=` 를 안 받는다 -- 기본 회로로 돌린다", flush=True)
+        r = 함(*인자)
     if not isinstance(r, dict):                  # 예전 꼴 -- 경로만 돌려주던 것
         r = {"pdf": r}
     r.setdefault("사람", 사람들.키로[키])
@@ -93,14 +109,14 @@ def _특이사항(r: dict) -> list:
     return 줄
 
 
-def 돌리기(키들=None, 빠르게=False, 메일=False, to=None) -> list:
+def 돌리기(키들=None, 빠르게=False, 메일=False, to=None, 회로=None) -> list:
     키들 = [k for k in (키들 or 차례) if k in 직무] or 차례
     낸것 = []
     for k in 키들:
         p = 사람들.키로[k]
         print(f"\n=== {p.이름} ({p.팀}) 시작 ===", flush=True)
         try:
-            r = 한명(k, 빠르게)
+            r = 한명(k, 빠르게, 회로=회로)
         except Exception as e:                               # noqa: BLE001
             print(f"!!! {p.이름} 실패: {type(e).__name__}: {e}", flush=True)
             traceback.print_exc()
@@ -148,8 +164,25 @@ def 요약글(낸것: list) -> str:
 
 
 if __name__ == "__main__":
-    인자 = [a for a in sys.argv[1:] if not a.startswith("--")]
-    빠 = "--빠르게" in sys.argv
-    메 = "--메일" in sys.argv
-    낸 = 돌리기(인자 or None, 빠르게=빠, 메일=메)
+    av = sys.argv[1:]
+    if "--설계" in av:
+        요청 = " ".join(av[av.index("--설계") + 1:]).strip()
+        if not 요청:
+            print("!! `--설계` 뒤에 무엇을 만들지 적어라")
+            raise SystemExit(2)
+        r = 설계하기(요청)
+        print(f"제안서 -> {r['pdf']}  ({r.get('쪽')} 쪽, 그림 {r.get('그림수')}, "
+              f"표 {r.get('표수')})")
+        print(f"선행조사 -> {r.get('선행조사')}")
+        for t in (r.get("요약") or []):
+            print(" · " + t.replace("<b>", "").replace("</b>", ""))
+        raise SystemExit(0)
+    회 = None
+    if "--회로" in av:
+        i = av.index("--회로")
+        회 = av[i + 1] if i + 1 < len(av) else None
+        av = av[:i] + av[i + 2:]
+    인자 = [a for a in av if not a.startswith("--")]
+    낸 = 돌리기(인자 or None, 빠르게=("--빠르게" in sys.argv),
+             메일=("--메일" in sys.argv), 회로=회)
     print("\n" + 요약글(낸))

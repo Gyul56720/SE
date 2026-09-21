@@ -39,15 +39,18 @@ def _키(파라: dict, top: str, 빠르게: bool) -> str:
     return h.hexdigest()[:12]
 
 
-def 합성(파라: dict | None = None, top="nsw_fir", 빠르게=True, 초=1800) -> dict:
+def 합성(파라: dict | None = None, top=None, 빠르게=True, 초=1800, 설계=None) -> dict:
     """yosys 로 매핑까지 한다.  결과는 캐시한다(같은 파라미터면 다시 안 돈다).
 
     `빠르게` 는 abc 를 `-fast` 로 돌린다. 16x16 곱셈기를 셀로 매핑하는 데 전체
     최적화는 몇 분이 걸리는데, 우리가 견주는 것은 **구성 사이의 차이**이므로
     같은 설정으로 다 돌리면 비교는 성립한다. 보고서에 `abc -fast` 라고 적는다.
     """
-    파라 = 파라 or {}
-    키 = _키(파라, top, 빠르게)
+    from house import designs as DES
+    d = 설계 or DES.NSW_FIR
+    top = top or d.top
+    파라 = {**d.파라, **(파라 or {})}
+    키 = _키(파라, f"{top}|" + "|".join(str(x) for x in d.RTL), 빠르게)
     방 = 내는방 / 키
     캐시 = 방 / "결과.json"
     if 캐시.exists():
@@ -65,7 +68,7 @@ def 합성(파라: dict | None = None, top="nsw_fir", 빠르게=True, 초=1800) 
     # **chparam 은 hierarchy 앞에 와야 한다.** 뒤에 두면 top 의 파라미터만 바뀌고
     # 이미 엘라보레이트된 하위 인스턴스는 옛 값을 쓴다 -- 실측 2026-09-21: TAPS 를
     # 4/8/16 으로 바꿔도 플롭 수가 160 으로 똑같이 나왔다.
-    대본 = (f"read_verilog -sv {RTL}; {chp}hierarchy -top {top}; "
+    대본 = (f"read_verilog -sv " + " ".join(str(x) for x in d.RTL) + f"; {chp}hierarchy -top {top}; "
           f"proc; opt; flatten; opt; fsm; opt; memory -nomap; opt; "
           f"memory_map; opt; techmap; opt; "
           f"techmap -map {ICG맵}; opt; dfflibmap -liberty {LIB}; {abc}; opt_clean; "
