@@ -4,6 +4,7 @@ import sys, os, math, random
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from bookK import 장, 개념, 표, 그림, 정의, 유도, 예제, 짚기, 사고, 수, 쓰는자리
 import sch
+import sch_flow
 
 
 def 조화수(K):
@@ -91,6 +92,12 @@ def ch_dv():
         "and judges. They are deliberately not connected to each other — the monitor "
         "reconstructs what happened from the pins, so that a driver bug cannot hide "
         "itself by telling the scoreboard what it intended."))
+
+    c.날것(그림(sch_flow.UVM테스트벤치(),
+        "The environment in full. Read it as two halves that meet only at the "
+        "DUT: sequences drive down the left of each agent, monitors observe up "
+        "the right, and the scoreboard in the middle is the only thing that ever "
+        "says the design is wrong."))
 
     c.날것(표("Each component, and the one question it answers",
         ["Component", "Answers", "Why it is separate from its neighbour"],
@@ -222,6 +229,11 @@ if (!uvm_config_db#(virtual my_if)::get(this, "", "vif", vif))
 
     # ------------------------------------------------------------------
     c.절("T21.3 Why crosses explode: the arithmetic of random closure")
+
+    c.날것(그림(sch_flow.크로스폭발(),
+        "Each axis is fully covered and the cross is not. The bars along the "
+        "edges are what a coverpoint report shows; the grid is what closure "
+        "actually requires."))
 
     c.날것(유도("How long random stimulus takes to fill K bins", [
         ("Assume each test lands in one of K bins, uniformly and independently.",

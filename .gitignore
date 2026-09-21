@@ -222,3 +222,7 @@ orchestrator/runs/
 # 매뉴얼을 따라 만드는 작업물.  사람마다 다르고 저장소에 안 올린다.
 # (manual/README.md 의 "작업물은 전부 work/ 아래에")
 work/
+
+# 그림 맛보기 -- `python3 edu/sch_flow.py` 가 언제든 다시 낸다.
+# 검사는 재는 것이지 남기는 것이 아니다 (CLAUDE.md).
+edu/원문/그림맛보기.html

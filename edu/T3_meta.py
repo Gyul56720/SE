@@ -7,6 +7,7 @@ import sys, os, math
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from bookK import 장, 개념, 표, 그림, 정의, 유도, 예제, 짚기, 사고, 수, 쓰는자리
 import sch
+import sch_flow
 
 # --- 상수 (28 nm 급 표준 셀 플롭의 공개된 어림값) -------------------------
 TAU  = 25e-12          # s, 결정 시간상수 -- 준안정이 풀리는 속도
@@ -302,6 +303,13 @@ assign wfull = (wgray_next == {~wq2_rgray[PW:PW-1], wq2_rgray[PW-2:0]});""",
         "in the customer's system."))
 
     # ------------------------------------------------------------------
+    c.날것(그림(sch_flow.펄스동기화기(),
+        "The standard way to carry a one-cycle event across a clock boundary. "
+        "Two flops remove metastability; the third holds the previous value, and "
+        "the XOR of the two turns any level change into exactly one pulse in the "
+        "destination domain. The waveform is the proof: a wide pulse in and a "
+        "single-cycle pulse out, on both edges."))
+
     c.절("T3.4 Reset: the crossing everyone forgets")
 
     c.글("""Reset is asynchronous by nature — it must work before any clock is running —

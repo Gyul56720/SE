@@ -4,6 +4,7 @@ import sys, os, math
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from bookK import 장, 개념, 표, 그림, 정의, 유도, 예제, 짚기, 사고, 수, 쓰는자리
 import sch
+import sch_flow
 
 # ---------------------------------------------------------------------------
 # 코너의 곱셈 -- 가정이 아니라 셈이다.  각 축의 칸 수만 가정한다.
@@ -114,6 +115,11 @@ def ch_signoff():
           "the list, in every mode in the list",
           "Paths the SDC excluded, and modes nobody listed"]]))
 
+    c.날것(그림(sch_flow.사인오프틈(),
+        "The same table as a picture, because the shape is the message: every "
+        "check establishes something narrow, and the red column on the right is "
+        "where the failures that reach silicon actually live."))
+
     c.날것(짚기("""Read the third column as a list of where to look after a silicon
     failure. Each check is sound; each is narrow; and the narrowness is deliberate,
     because a check that tried to establish everything could not be run in finite time.
@@ -157,6 +163,11 @@ def ch_signoff():
 
     # ------------------------------------------------------------------
     c.절("T20.2 Corners multiply, and most of them are dominated")
+
+    c.날것(그림(sch_flow.코너곱셈(),
+        "Why signoff runs on a farm. The axes are independent of each other, so "
+        "they multiply rather than add — and the corner list is therefore "
+        "negotiated rather than assumed."))
 
     c.날것(유도("Where the signoff runtime comes from", [
         (" · ".join(f"{이름}: {k}" for 이름, k, _ in 축) + ".",

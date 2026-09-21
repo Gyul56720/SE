@@ -4,6 +4,7 @@ import sys, os, math, random
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from bookK import 장, 개념, 표, 그림, 정의, 유도, 예제, 짚기, 사고, 수, 쓰는자리
 import sch
+import sch_flow
 
 
 # ---------------------------------------------------------------------------
@@ -96,6 +97,13 @@ def ch_flow():
 
     # ------------------------------------------------------------------
     c.절("T17.1 The chain, and what crosses each boundary")
+
+    c.날것(그림(sch_flow.구현흐름고리(),
+        "The same chain drawn as the flow actually runs it. The grey arrows are "
+        "STA, which sees the design twice — once on the netlist, where the wires "
+        "are estimated, and once on the layout, where they are real. The two "
+        "coloured loops are what this chapter costs out: the orange one re-runs "
+        "synthesis, the red one re-runs everything."))
 
     c.날것(그림(sch.블록도(
         [["RTL", "Synthesis", "Floorplan", "Placement"],
@@ -214,6 +222,11 @@ def ch_flow():
     the real numbers depend on the tool, the machine and the design. What does not
     depend on those is the <b>shape</b>: the cost of a loop grows superlinearly with how
     late it closes, because the expensive stages are at the end.""")
+
+    c.날것(그림(sch_flow.되돌이값([(n, t) for n, t in 단계]),
+        "The blue bar is what a stage costs on its own; the pink bar behind it "
+        "is everything that must be re-run to reach that stage again. The two "
+        "diverge because the expensive stages are at the end."))
 
     줄 = []
     for i, (이름, t) in enumerate(단계):
