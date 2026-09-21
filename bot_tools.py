@@ -1614,6 +1614,9 @@ def invoke_text(prompt: str, api_key: str, model: "str | None" = None,
     else:
         candidates = list_available_models(api_key) or list(FALLBACK_MODELS)
 
+    # 단발 경로도 같은 거름망을 거친다 -- `best_available_model` 의 독스트링이 경고하는
+    # 바로 그 함정("품질 순위상 pro 가 1순위라 반드시 그걸 고르고 즉시 429 를 맞는다")이다.
+    candidates = rpmgate.usable_models(candidates) if not model else candidates
     key_id = hashlib.sha256(api_key.encode()).hexdigest()[:8]
     labelled = [(f"key-{key_id}:{m}", m) for m in candidates]
     live = [c for c in labelled if not quota_tracker.is_dead(c[0])] or labelled
@@ -1778,6 +1781,16 @@ def build_agent_pool(keys: "list[str | None]", models: "list[str] | None", tools
         key_models = models
         if key_models is None:
             key_models = list_available_models(key) or fallback_models or list(FALLBACK_MODELS)
+        # **429 만 주는 후보는 후보가 아니다.** 무료 티어에서 pro 계열의 분당 한도는
+        # flash 의 몇 분의 일이라, 끼워 두면 매 메시지가 그것부터 두드리고(품질 순위가
+        # 1등이다) 429 를 먹는다. 답도 못 받고 다음 시도만 늦어진다. llm_pool 은 이미
+        # 이렇게 거르고 있었는데 이 경로만 안 거쳤다. GEMINI_ALLOW_PRO=1 로 되살린다.
+        전 = list(key_models)
+        key_models = rpmgate.usable_models(key_models)
+        if len(key_models) < len(전):
+            print(f"[bot_tools] key-{key_id}: 분당 한도가 너무 낮은 후보 "
+                  f"{len(전) - len(key_models)}개를 뺐다 "
+                  f"({', '.join(m for m in 전 if m not in key_models)[:120]})")
         for model in key_models:
             label = f"key-{key_id}:{model}"
             # **분당 한도를 세는 단위를 후보 이름과 같게 맞춘다.** 달랐으면 한쪽은

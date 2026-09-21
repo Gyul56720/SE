@@ -135,8 +135,30 @@ ok("eval.run" in 한일말 and "git commit" in 한일말,
 ok(R.바퀴상한 >= 40,
    f"상한이 평범한 한 턴보다 넉넉하다 ({R.바퀴상한}) -- 25 는 이 봇의 보통 일도 잘랐다")
 
+
+
+print()
+print("[후보] 429 만 주는 후보는 후보가 아니다")
+_ms = ["gemini-3.1-pro-preview-customtools", "gemini-pro-latest",
+       "gemini-3.5-flash", "gemini-3.5-flash-lite", "gemma-4-26b"]
+남은 = R.usable_models(_ms)
+ok("gemini-pro-latest" not in 남은,
+   "**사용자 로그에 찍힌 그 모델이 빠진다** (gemini-pro-latest -- 매 바퀴 RPM 초과)")
+ok("gemini-3.1-pro-preview-customtools" not in 남은,
+   "preview·customtools 꼬리가 붙어도 pro 는 pro 다")
+ok("gemini-3.5-flash" in 남은 and "gemini-3.5-flash-lite" in 남은, "flash 계열은 남는다")
+ok("gemma-4-26b" in 남은, "pro 가 아닌 것은 안 건드린다")
+ok(R.usable_models(["gemini-pro-latest", "gemini-3.1-pro"]) == ["gemini-pro-latest", "gemini-3.1-pro"],
+   "**다 걸러지면 거르지 않는다** -- 빈 풀은 느린 답보다 나쁘다(아예 답을 못 한다)")
+ok(R.usable_models([]) == [] and R.usable_models(None) == [], "빈 목록은 빈 목록")
+ok(R.worth_calling("key-abc:gemini-3.5-flash") and not R.worth_calling("key-abc:gemini-pro-latest"),
+   "라벨 꼴(key:model)로 줘도 모델 이름만 본다")
+ok(R.모델한도("gemini-pro-latest") == 5,
+   "**왜 빼는지가 수로 적혀 있다** -- pro 는 분당 5, flash 는 10, flash-lite 는 15")
+
+
 print()
 if fails:
     print(f"실패 {len(fails)}개: {fails}")
     raise SystemExit(1)
-print("rpmgate: 한도 · 한가할 때 · 찰 때 · 갈라 세기 · 흐름 -- 통과")
+print("rpmgate: 한도 · 한가할 때 · 찰 때 · 갈라 세기 · 흐름 · 후보 거름망 -- 통과")
