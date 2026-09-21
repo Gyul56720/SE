@@ -1887,7 +1887,6 @@ def run_with_fallback_pool(candidates: "list[tuple[str, object]]", thread_map: d
 
     시작 = time.monotonic()
     시도함: "set[str]" = set()
-    기다린적 = False
     last_error: Optional[Exception] = None
     마지막쉼: list = []
 
@@ -1898,14 +1897,18 @@ def run_with_fallback_pool(candidates: "list[tuple[str, object]]", thread_map: d
         if not 차례:
             # **쉬는 중인 후보를 두드리지 않는다.** 두드려 봐야 backoff 로 수십 초를 물고
             # 같은 429/503 을 다시 받는다. 짧게 풀릴 것이면 기다리는 편이 싸다.
-            기 = None if 기다린적 else poolpick.기다릴까(마지막쉼, time.monotonic() - 시작)
+            #
+            # 기다림을 **횟수로 세지 않는다.** 한 번만 기다리게 했더니, 그 한 번을 쓴
+            # 뒤에는 남은 것이 1초여도 포기하고 사람에게 "1초 남았으니 다시 물어보라"
+            # 고 답했다(실측 2026-09-21). 마감(벽시계) 안쪽이면 몇 번이든 기다린다 --
+            # 다시 실패한 후보는 쉬는 시간이 두 배로 늘어 저절로 끝이 난다.
+            기 = poolpick.기다릴까(마지막쉼, time.monotonic() - 시작)
             if 기 is None:
                 break
             쉬는것, 남은 = 기
             print(f"{log_prefix} thread={base_thread_id} 후보가 모두 쉬는 중 -- "
-                  f"{쉬는것} 의 쿨다운 {남은:.0f}초를 기다린다 (한 바퀴 더 도는 것보다 싸다)")
-            time.sleep(남은 + 1)
-            기다린적 = True
+                  f"{쉬는것} 의 쿨다운 {남은:.1f}초를 기다린다 (한 바퀴 더 도는 것보다 싸다)")
+            time.sleep(남은 + 0.5)
             시도함.discard(쉬는것)
             continue
 
