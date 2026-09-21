@@ -1,0 +1,119 @@
+<h1 id="T17">T17. 구현 흐름 &mdash; 단계마다 무엇을 정하나</h1>
+<p class="한줄">단계마다 자유도 하나가 사라진다. 잘못의 값은 그 자유도를 도로 넣는 값이다.</p>
+<div class="사다리"><div class="사다리앞"><b>읽기 전에 알아야 하는 것</b><br>RC지연 · 배선지연 · 슬루 · 슬랙 · 도착시각 · 요구시각 · OCV · 플로어플랜 · 추상화뷰 · 추출 · GDS · DRC · LVS · 리셋동기화기 · 리커버리</div><div class="사다리뒤"><b>이 장에서 새로 나오는 것</b><br>구현흐름 · 합성 · 넷리스트 · 표준셀라이브러리 · 타이밍라이브러리 · LEF · DEF · SDC · SPEF · SDF · 정적타이밍분석 · 타이밍수렴 · ECO · 배선부하모델 · 물리인지합성 · 사인오프</div></div>
+<p>설계는 한 걸음에 칩이 되지 않는다. 도구의 사슬을 지나는데, 도구마다
+    어떤 면에서 자유로운 기술을 받아 그렇지 않은 기술을 돌려준다. 합성은
+    어떤 게이트가 존재하는지를 굳히고, 배치는 그것들이 어디 있는지를 굳히고,
+    CTS 는 저마다 언제 클럭을 받는지를 굳히고, 배선은 어느 금속이 어느 넷을
+    나르는지를 굳힌다. <b>단계마다 자유도 하나가 사라지고, 뒤의 어느 단계도
+    그것을 싸게 되돌려 놓지 못한다.</b> 그 문장 하나가 흐름 전체의 꼴을
+    설명한다 — 왜 힘이 앞쪽에 실리는지, 왜 파일 형식이 저렇게 생겼는지,
+    그리고 프로젝트 관리자가 실제로 좇는 양이 진척이 아니라 <i>되돌이
+    횟수</i>인 까닭을.</p>
+<h2>T17.1 사슬, 그리고 경계마다 무엇이 건너가나</h2>
+<figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 286" width="100%" style="max-width:640px;height:auto" font-family="ui-monospace,monospace" font-size="11"><rect x="18" y="96" width="92" height="44" fill="#fdf6e3" stroke="#111" stroke-width="1.6" rx="3"/><text x="64.0" y="122.0" fill="#111" font-size="11" text-anchor="middle">RTL</text><rect x="136" y="96" width="92" height="44" fill="#e8e8e8" stroke="#111" stroke-width="1.6" rx="3"/><text x="182.0" y="115.5" fill="#111" font-size="11" text-anchor="middle">논리</text><text x="182.0" y="128.5" fill="#111" font-size="11" text-anchor="middle">합성</text><rect x="254" y="96" width="92" height="44" fill="#eef4fb" stroke="#111" stroke-width="1.6" rx="3"/><text x="300.0" y="122.0" fill="#111" font-size="11" text-anchor="middle">넷리스트</text><rect x="372" y="96" width="92" height="44" fill="#e8e8e8" stroke="#111" stroke-width="1.6" rx="3"/><text x="418.0" y="115.5" fill="#111" font-size="11" text-anchor="middle">물리</text><text x="418.0" y="128.5" fill="#111" font-size="11" text-anchor="middle">설계</text><rect x="490" y="96" width="92" height="44" fill="#eef4fb" stroke="#111" stroke-width="1.6" rx="3"/><text x="536.0" y="122.0" fill="#111" font-size="11" text-anchor="middle">레이아웃</text><rect x="608" y="96" width="92" height="44" fill="#eaf5ee" stroke="#111" stroke-width="1.6" rx="3"/><text x="654.0" y="115.5" fill="#111" font-size="11" text-anchor="middle">타이밍</text><text x="654.0" y="128.5" fill="#111" font-size="11" text-anchor="middle">수렴</text><path d="M110,118.0 L134,118.0" fill="none" stroke="#111" stroke-width="1.6"/><path d="M134.0,118.0 L127.0,114.4 L127.0,121.6 Z" fill="#111"/><path d="M228,118.0 L252,118.0" fill="none" stroke="#111" stroke-width="1.6"/><path d="M252.0,118.0 L245.0,114.4 L245.0,121.6 Z" fill="#111"/><path d="M346,118.0 L370,118.0" fill="none" stroke="#111" stroke-width="1.6"/><path d="M370.0,118.0 L363.0,114.4 L363.0,121.6 Z" fill="#111"/><path d="M464,118.0 L488,118.0" fill="none" stroke="#111" stroke-width="1.6"/><path d="M488.0,118.0 L481.0,114.4 L481.0,121.6 Z" fill="#111"/><path d="M582,118.0 L606,118.0" fill="none" stroke="#111" stroke-width="1.6"/><path d="M606.0,118.0 L599.0,114.4 L599.0,121.6 Z" fill="#111"/><rect x="156" y="192" width="240" height="34" fill="#e8e8e8" stroke="#111" stroke-width="1.6" rx="3"/><text x="276.0" y="213.0" fill="#111" font-size="11" text-anchor="middle">정적 타이밍 분석 (STA)</text><path d="M300.0,140 L300.0,192" fill="none" stroke="#888" stroke-width="1.3" stroke-dasharray="4,3"/><path d="M300.0,192 L300.0,144" fill="none" stroke="#888" stroke-width="1.3" stroke-dasharray="4,3"/><path d="M300.0,144.0 L296.4,151.0 L303.6,151.0 Z" fill="#888"/><path d="M536.0,140 L536.0,192" fill="none" stroke="#888" stroke-width="1.3" stroke-dasharray="4,3"/><path d="M536.0,192 L536.0,144" fill="none" stroke="#888" stroke-width="1.3" stroke-dasharray="4,3"/><path d="M536.0,144.0 L532.4,151.0 L539.6,151.0 Z" fill="#888"/><path d="M536.0,96 L536.0,50" fill="none" stroke="#c0392b" stroke-width="1.6"/><path d="M536.0,50 L64.0,50" fill="none" stroke="#c0392b" stroke-width="1.6"/><path d="M64.0,50 L64.0,92" fill="none" stroke="#c0392b" stroke-width="1.6"/><path d="M64.0,92.0 L67.6,85.0 L60.4,85.0 Z" fill="#c0392b"/><text x="300.0" y="44" fill="#c0392b" font-size="10" text-anchor="middle">여기서 닫히는 되돌이는 앞의 모든 단계를 다시 치른다 (T17.3)</text><path d="M418.0,96 L418.0,74" fill="none" stroke="#e08a2e" stroke-width="1.4"/><path d="M418.0,74 L182.0,74" fill="none" stroke="#e08a2e" stroke-width="1.4"/><path d="M182.0,74 L182.0,92" fill="none" stroke="#e08a2e" stroke-width="1.4"/><path d="M182.0,92.0 L185.6,85.0 L178.4,85.0 Z" fill="#e08a2e"/><text x="234" y="70" fill="#e08a2e" font-size="9.5" text-anchor="start">다시 합성</text><text x="18" y="254" fill="#888" font-size="10" text-anchor="start">단계마다 자유도가 하나씩 사라진다. 각 단계가 다음 단계에 대해 알아야 하는 것은 아직 없다 —</text><text x="18" y="268" fill="#888" font-size="10" text-anchor="start">그래서 단계마다 다음을 어림하고, 그 어림이 빗나간 만큼이 몇 바퀴를 도는지를 정한다.</text></svg><figcaption><b>그림 3.</b> 같은 사슬을 흐름이 실제로 도는 대로 그린 것. 회색 화살표가 STA 인데, 설계를 두 번 본다 — 한 번은 배선이 어림인 넷리스트에서, 한 번은 배선이 진짜인 레이아웃에서. 색깔 있는 두 되돌이가 이 장이 값을 매기는 것이다. 주황은 합성을 다시 돌리고, 빨강은 전부를 다시 돌린다.</figcaption></figure>
+<figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 636 208" width="100%" style="max-width:636px;height:auto" font-family="ui-monospace,monospace" font-size="11"><rect x="10" y="14" width="120" height="46" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="70.0" y="41.0" fill="#111" font-size="11" text-anchor="middle">RTL</text><text x="70.0" y="73" fill="#888" font-size="9.5" text-anchor="middle">거동</text><text x="70.0" y="85" fill="#888" font-size="9.5" text-anchor="middle">+ SDC</text><path d="M130,37.0 L158,37.0" fill="none" stroke="#111" stroke-width="1.6"/><path d="M158,33.0 L164,37.0 L158,41.0 Z" fill="#111"/><rect x="164" y="14" width="120" height="46" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="224.0" y="41.0" fill="#111" font-size="11" text-anchor="middle">합성</text><text x="224.0" y="73" fill="#888" font-size="9.5" text-anchor="middle">게이트 정해짐</text><text x="224.0" y="85" fill="#888" font-size="9.5" text-anchor="middle">넷리스트 + SDC</text><path d="M284,37.0 L312,37.0" fill="none" stroke="#111" stroke-width="1.6"/><path d="M312,33.0 L318,37.0 L312,41.0 Z" fill="#111"/><rect x="318" y="14" width="120" height="46" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="378.0" y="41.0" fill="#111" font-size="11" text-anchor="middle">플로어플랜</text><text x="378.0" y="73" fill="#888" font-size="9.5" text-anchor="middle">다이 · 행 · IO</text><text x="378.0" y="85" fill="#888" font-size="9.5" text-anchor="middle">전원 격자</text><path d="M438,37.0 L466,37.0" fill="none" stroke="#111" stroke-width="1.6"/><path d="M466,33.0 L472,37.0 L466,41.0 Z" fill="#111"/><rect x="472" y="14" width="120" height="46" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="532.0" y="41.0" fill="#111" font-size="11" text-anchor="middle">배치</text><text x="532.0" y="73" fill="#888" font-size="9.5" text-anchor="middle">셀마다의</text><text x="532.0" y="85" fill="#888" font-size="9.5" text-anchor="middle">자리</text><rect x="10" y="106" width="120" height="46" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="70.0" y="133.0" fill="#111" font-size="11" text-anchor="middle">CTS</text><text x="70.0" y="165" fill="#888" font-size="9.5" text-anchor="middle">클럭 도착</text><text x="70.0" y="177" fill="#888" font-size="9.5" text-anchor="middle">굳음</text><path d="M130,129.0 L158,129.0" fill="none" stroke="#111" stroke-width="1.6"/><path d="M158,125.0 L164,129.0 L158,133.0 Z" fill="#111"/><rect x="164" y="106" width="120" height="46" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="224.0" y="133.0" fill="#111" font-size="11" text-anchor="middle">배선</text><text x="224.0" y="165" fill="#888" font-size="9.5" text-anchor="middle">금속 배정</text><text x="224.0" y="177" fill="#888" font-size="9.5" text-anchor="middle">기생이 진짜</text><path d="M284,129.0 L312,129.0" fill="none" stroke="#111" stroke-width="1.6"/><path d="M312,125.0 L318,129.0 L312,133.0 Z" fill="#111"/><rect x="318" y="106" width="120" height="46" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="378.0" y="133.0" fill="#111" font-size="11" text-anchor="middle">사인오프</text><text x="378.0" y="165" fill="#888" font-size="9.5" text-anchor="middle">STA / DRC / LVS</text><text x="378.0" y="177" fill="#888" font-size="9.5" text-anchor="middle">EM-IR</text><path d="M438,129.0 L466,129.0" fill="none" stroke="#111" stroke-width="1.6"/><path d="M466,125.0 L472,129.0 L466,133.0 Z" fill="#111"/><rect x="472" y="106" width="120" height="46" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="532.0" y="133.0" fill="#111" font-size="11" text-anchor="middle">GDS / 테이프아웃</text><text x="532.0" y="165" fill="#888" font-size="9.5" text-anchor="middle">기하</text><text x="532.0" y="177" fill="#888" font-size="9.5" text-anchor="middle">마스크 공장으로</text></svg><figcaption><b>그림 4.</b> 디지털 구현 흐름. 화살표 하나하나가 파일이고, T17.2 의 파일 형식들이 그 화살표를 가능하게 하는 것이다.</figcaption></figure>
+<div class="정의"><b>구현 흐름 (implementation flow)</b> &mdash; RTL 기술과 제약 묶음을 제조할 수 있는 기하로 바꾸는, 차례가 정해진 도구의 사슬. 차례가 정해진 까닭은 한 단계의 출력이 다음 단계의 입력이기 때문이고 — 그리고 <b>각 단계가 그 뒤 단계들에 대해 알아야 하는 것이 아직 없기 때문</b>이다. 이 장의 모든 어려움이 그 마지막 구절에서 나온다.</div>
+<div class="짚기">흐름은 사슬인데 <b>정보</b>는 거꾸로 흐른다. 합성은 알 수 없는
+    지연을 맞추려고 게이트 크기를 골라야 한다. 그 지연이 배치가 아직 고르지
+    않은 배선 길이에 달려 있기 때문이다. 배치는 알 수 없는 지연을 맞추려고
+    자리를 골라야 한다. 배선이 아직 안 됐기 때문이다. 그러니 단계마다
+    <b>제 다음 단계를 어림하고</b> 있고, 최적화의 질이 아니라 그 어림의
+    질이 몇 바퀴를 도는지를 정한다.</div>
+<table><caption>표 29. 경계마다 무엇이 건너가며, 그것이 무엇을 위한 것인가</caption><thead><tr><th>파일</th><th>누가 쓰나</th><th>무엇을 나르나</th><th>틀렸을 때 나는 실패</th></tr></thead><tbody><tr><td><b>.v / .sv</b> (넷리스트)</td><td>합성</td><td>어떤 셀이 있고 어떻게 이어지는지</td><td>RTL 이 기술하지 않은 레지스터를 뒤의 무엇도 더해 주지 못한다</td></tr><tr><td><b>.lib</b> (Liberty)</td><td>파운드리 / 라이브러리 공급자</td><td>모든 셀의 지연·천이·전력·제약 표. <b>코너마다 파일 하나</b></td><td>실리콘이 결코 보지 않는 코너에서 사인오프한 타이밍</td></tr><tr><td><b>.lef</b></td><td>라이브러리 공급자 + 매크로 임자</td><td>추상화된 기하. 셀 윤곽, 핀 모양, 막힘, 배선 층</td><td>배선기가 핀에 못 닿는다(T15.3) — 배선 뒤에 찾고 플로어플랜에서 고친다</td></tr><tr><td><b>.def</b></td><td>배치·배선</td><td>실제 배치와 배선. 인스턴스마다의 자리, 넷마다의 금속</td><td>이것이 설계다. 전원 연결을 잃은 DEF 는 소리 없이 아무 데도 안 이어진 것이다</td></tr><tr><td><b>.sdc</b></td><td><b>설계자</b></td><td>클럭, IO 타이밍, 거짓 경로와 다주기 경로, 디레이트</td><td>이 목록에서 도구가 못 만드는 유일한 파일이고 — '타이밍을 맞춘다' 가 무슨 <i>뜻</i>인지를 정하는 파일이다</td></tr><tr><td><b>.spef</b></td><td>추출</td><td>진짜 기하에서 나온 넷마다의 R 과 C</td><td>배선 전 어림이 그 자리를 대신하는데, 그 어림은 낙관적이다</td></tr><tr><td><b>.sdf</b></td><td>STA</td><td>게이트 수준 시뮬레이션을 위해 되돌려 적은 지연</td><td>사인오프가 동의한 적 없는 지연 위에서 시뮬레이션이 통과한다</td></tr><tr><td><b>.gds</b> / <b>.oas</b></td><td>흐름의 마지막 걸음</td><td>모든 마스크 층의 모든 다각형</td><td>제조되는 것이 이것이다</td></tr></tbody></table>
+<div class="사고"><b>실제로 난 일</b><br>어떤 블록이 모든 코너에서 타이밍을 맞추고 실리콘에서 저온에 졌다.
+    SDC 에 <code>set_false_path</code> 가 리셋에 걸려 있었는데, 그 리셋은 걸릴
+    때는 정말로 비동기였고 <b>풀릴 때는</b> 동기였다(T3, X42). 거짓 경로가
+    리커버리 위반을 잡았을 그 하나의 검사를 걷어낸 것이다. 흐름에는 아무
+    잘못이 없었다. 흐름이 무엇을 검사해야 하는지 말하는 파일이 틀렸고,
+    그것이 아무도 자동으로 만들어 주지 않는 그 파일이다.</div>
+<h2>T17.2 단계마다 제 다음 단계에 대해 하는 어림</h2>
+<div class="개념"><div class="개념머리">배선 부하 모델 (wire-load model) 과 왜 그것을 버렸나</div>
+<div class="개념이론"><p>고전적인 합성은 넷의 용량을 <b>팬아웃</b>에서 어림했다. 라이브러리와
+        함께 오는 표를 써서, 이만한 크기의 블록에서 팬아웃 4 인 넷에는
+        통계적으로 이만큼의 배선이 붙어 있다고 보는 것이다. 배선 지연이
+        경로에서 작은 몫일 때는 버틸 만한 어림이다.</p>
+        <p>그것이 버틸 수 없게 된 까닭은 X14 에서 셈한 그것이다. 배선 지연은
+        트랜지스터를 따라 줄지 않는다. 배선이 경로의 큰 몫이 되고 나면
+        <i>통계적인</i> 배선 길이는 쓸모가 없다. 지는 경로란 바로 배선이
+        전형적이지 <b>않은</b> 경로이기 때문이다. 어림은 평균에서 맞고
+        중요한 데서 틀린다.</p>
+        <p>그 자리를 대신한 것이 <b>물리 인지 합성</b>이다. 합성이 안에서
+        성근 배치를 돌려, 배선 길이가 표가 아니라 자리에서 나오게 한다.
+        어림이 정확해지는 것은 아니다 — 다음 단계와 같은 방향으로
+        틀리게 만드는 것이고, 쓸 만한 어림이란 그런 것이어야 한다.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>가장 긴 배선이 다이의 의미 있는 몫을 가로지를 만큼 큰 블록의 모든 합성 실행.</td></tr>
+<tr><th>언제 쓰나</th><td>이제는 늘. 배선 부하 흐름은 아주 작은 블록과 교재에만 남아 있다.</td></tr>
+<tr><th>어떻게 쓰나</th><td>합성이 최적화하기 전에 — 뒤가 아니라 — 플로어플랜(다이 윤곽, 매크로 자리, IO 자리)을 준다. 그다음 같은 경로들에 대해 합성이 예측한 슬랙과 배선 뒤 슬랙을 견준다. <b>그 차이가 당신 흐름이 수렴하는지를 말해 주는 수다.</b></td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code># The correlation check that belongs in every block's log. Not
+# "did it meet timing" -- how far the estimate moved between stages.
+#
+#   path                 synth slack   place slack   route slack   drift
+#   u_alu/…/sum[31]        +120 ps       +85 ps        -40 ps      -160 ps
+#   u_ctl/…/state[2]        +95 ps       +90 ps        +70 ps       -25 ps
+#
+# A drift column that is large and negative means the flow is not converging:
+# you are not closing timing, you are discovering it.</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> 물리 인지 흐름에서 합성이 큰 양의 슬랙을 보고한다고 해서 그
+            자체로 좋은 소식은 아니다 — 그것이 쓴 플로어플랜이 배치·배선이
+            쓸 플로어플랜인지 확인해라. 낡은 플로어플랜에 대고 한 낙관적인
+            어림은 어림이 아예 없는 것보다 나쁘다. 믿어지기 때문이다.</div>
+</div>
+<h2>T17.3 되돌이의 값, 잰 것</h2>
+<p>흐름의 경제는 도구의 질에 관한 것이 아니다. 사슬의 어디에서 잘못을
+    찾았느냐에 관한 것이다. 단계 <i>k</i> 에서 발견된 문제는 1 부터 <i>k</i>
+    까지를 다시 돌려야 한다. 단계마다 그 앞 단계의 출력을 먹어 치웠기
+    때문이다. 아래 표는 서버 한 대에서 백만 인스턴스짜리 블록에 대해
+    <b>가정한</b> 실행 시간을 쓴다 — 가정한 것이고, 그렇다고 표시해 두었다.
+    진짜 수는 도구와 기계와 설계에 달렸기 때문이다. 거기에 달리지 않은 것은
+    <b>꼴</b>이다. 되돌이의 값은 그것이 늦게 닫힐수록 선형보다 빠르게
+    커진다. 비싼 단계들이 끝에 있기 때문이다.</p>
+<figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 384" width="100%" style="max-width:620px;height:auto" font-family="ui-monospace,monospace" font-size="11"><text x="300" y="20" fill="#111" font-size="13" text-anchor="middle" font-weight="bold">되돌이의 값 — 어디서 닫히느냐에 따라</text><text x="214" y="50" fill="#111" font-size="10" text-anchor="end">엘라보레이션 + 린트</text><rect x="222" y="40" width="2" height="16" fill="#f3dede" stroke="#e2bcbc" stroke-width="1.6" rx="3"/><rect x="222" y="40" width="2" height="16" fill="#cfe0f2" stroke="#9db9d6" stroke-width="1.6" rx="3"/><text x="590" y="52" fill="#888" font-size="9.5" text-anchor="end">0.2 h</text><text x="214" y="76" fill="#111" font-size="10" text-anchor="end">시뮬레이션 (회귀)</text><rect x="222" y="66" width="43.59375" height="16" fill="#f3dede" stroke="#e2bcbc" stroke-width="1.6" rx="3"/><rect x="222" y="66" width="42.1875" height="16" fill="#cfe0f2" stroke="#9db9d6" stroke-width="1.6" rx="3"/><text x="590" y="78" fill="#888" font-size="9.5" text-anchor="end">6.2 h</text><text x="214" y="102" fill="#111" font-size="10" text-anchor="end">논리 합성</text><rect x="222" y="92" width="71.71874999999999" height="16" fill="#f3dede" stroke="#e2bcbc" stroke-width="1.6" rx="3"/><rect x="222" y="92" width="28.125" height="16" fill="#cfe0f2" stroke="#9db9d6" stroke-width="1.6" rx="3"/><text x="590" y="104" fill="#888" font-size="9.5" text-anchor="end">10.2 h</text><text x="214" y="128" fill="#111" font-size="10" text-anchor="end">플로어플랜 + 전원 계획</text><rect x="222" y="118" width="78.74999999999999" height="16" fill="#f3dede" stroke="#e2bcbc" stroke-width="1.6" rx="3"/><rect x="222" y="118" width="7.03125" height="16" fill="#cfe0f2" stroke="#9db9d6" stroke-width="1.6" rx="3"/><text x="590" y="130" fill="#888" font-size="9.5" text-anchor="end">11.2 h</text><text x="214" y="154" fill="#111" font-size="10" text-anchor="end">배치</text><rect x="222" y="144" width="113.90625" height="16" fill="#f3dede" stroke="#e2bcbc" stroke-width="1.6" rx="3"/><rect x="222" y="144" width="35.15625" height="16" fill="#cfe0f2" stroke="#9db9d6" stroke-width="1.6" rx="3"/><text x="590" y="156" fill="#888" font-size="9.5" text-anchor="end">16.2 h</text><text x="214" y="180" fill="#111" font-size="10" text-anchor="end">CTS</text><rect x="222" y="170" width="135.0" height="16" fill="#f3dede" stroke="#e2bcbc" stroke-width="1.6" rx="3"/><rect x="222" y="170" width="21.09375" height="16" fill="#cfe0f2" stroke="#9db9d6" stroke-width="1.6" rx="3"/><text x="590" y="182" fill="#888" font-size="9.5" text-anchor="end">19.2 h</text><text x="214" y="206" fill="#111" font-size="10" text-anchor="end">배선</text><rect x="222" y="196" width="233.43750000000003" height="16" fill="#f3dede" stroke="#e2bcbc" stroke-width="1.6" rx="3"/><rect x="222" y="196" width="98.4375" height="16" fill="#cfe0f2" stroke="#9db9d6" stroke-width="1.6" rx="3"/><text x="590" y="208" fill="#888" font-size="9.5" text-anchor="end">33.2 h</text><text x="214" y="232" fill="#111" font-size="10" text-anchor="end">추출 + 사인오프 STA</text><rect x="222" y="222" width="303.75" height="16" fill="#f3dede" stroke="#e2bcbc" stroke-width="1.6" rx="3"/><rect x="222" y="222" width="70.3125" height="16" fill="#cfe0f2" stroke="#9db9d6" stroke-width="1.6" rx="3"/><text x="590" y="234" fill="#888" font-size="9.5" text-anchor="end">43.2 h</text><text x="214" y="258" fill="#111" font-size="10" text-anchor="end">물리 검증</text><rect x="222" y="248" width="360.0" height="16" fill="#f3dede" stroke="#e2bcbc" stroke-width="1.6" rx="3"/><rect x="222" y="248" width="56.25" height="16" fill="#cfe0f2" stroke="#9db9d6" stroke-width="1.6" rx="3"/><text x="590" y="260" fill="#888" font-size="9.5" text-anchor="end">51.2 h</text><rect x="222" y="280" width="14" height="10" fill="#cfe0f2" stroke="#9db9d6" stroke-width="1.6" rx="3"/><text x="242" y="289" fill="#111" font-size="9.5" text-anchor="start">이 단계 혼자</text><rect x="372" y="280" width="14" height="10" fill="#f3dede" stroke="#e2bcbc" stroke-width="1.6" rx="3"/><text x="392" y="289" fill="#111" font-size="9.5" text-anchor="start">다시 돌려야 하는 전부</text><text x="16" y="316" fill="#c0392b" font-size="10.5" text-anchor="start">마지막 단계에서 찾은 문제는 린트에서 찾았을 때의 256배가 든다.</text><text x="16" y="332" fill="#888" font-size="10" text-anchor="start">모든 검사를 앞으로 당기라는 논거는 꼼꼼함에 대한 취향이 아니라 그 배수다.</text></svg><figcaption><b>그림 5.</b> 파란 막대는 그 단계가 혼자 치르는 값이고, 뒤의 분홍 막대는 그 단계에 다시 닿으려고 다시 돌려야 하는 전부다. 비싼 단계가 끝에 있어서 둘이 벌어진다.</figcaption></figure>
+<table><caption>표 30. 단계마다의 실행 시간(가정), 그리고 거기서 닫히는 되돌이의 값</caption><thead><tr><th>단계</th><th>도는 시간</th><th>여기서 닫히는 되돌이의 값</th><th>린트 되돌이에 견주어</th></tr></thead><tbody><tr><td>엘라보레이션 + 린트</td><td>0.2&nbsp; h</td><td>0.2&nbsp; h</td><td>1&nbsp;×</td></tr><tr><td>시뮬레이션 (회귀)</td><td>6&nbsp; h</td><td>6.2&nbsp; h</td><td>31&nbsp;×</td></tr><tr><td>논리 합성</td><td>4&nbsp; h</td><td>10.2&nbsp; h</td><td>51&nbsp;×</td></tr><tr><td>플로어플랜 + 전원 계획</td><td>1&nbsp; h</td><td>11.2&nbsp; h</td><td>56&nbsp;×</td></tr><tr><td>배치</td><td>5&nbsp; h</td><td>16.2&nbsp; h</td><td>81&nbsp;×</td></tr><tr><td>CTS</td><td>3&nbsp; h</td><td>19.2&nbsp; h</td><td>96&nbsp;×</td></tr><tr><td>배선</td><td>14&nbsp; h</td><td>33.2&nbsp; h</td><td>166&nbsp;×</td></tr><tr><td>추출 + 사인오프 STA</td><td>10&nbsp; h</td><td>43.2&nbsp; h</td><td>216&nbsp;×</td></tr><tr><td>물리 검증</td><td>8&nbsp; h</td><td>51.2&nbsp; h</td><td>256&nbsp;×</td></tr></tbody></table>
+<p>마지막 줄을 읽어라. 물리 검증에서 찾은 문제는 그 자리에 다시 닿는 데
+    계산 시간 51.2&nbsp; h 가 드는데, 린트가 찾은 같은 문제는
+    0.2&nbsp; h 다 —
+    256&nbsp;× 배다. 그리고 그것은 기계 시간뿐이다.
+    기술자의 시간, 달력의 날들, 그리고 이제 그 고침을 이미 닫힌 모든 것을
+    건드리지 않고 해내야 한다는 사실이 그 위에 얹힌다.</p>
+<div class="짚기">앞쪽에 힘을 싣는 논거가 통째로 이것이다. 꼼꼼한 RTL 에 대한
+    문화적 취향이 아니라 산수다. 단계는 싼 것에서 비싼 것 순으로 놓여
+    있으므로, <b>앞으로 당길 수 있는 검사는 무엇이든 위의 비만큼
+    곱해진다</b>. 린트와 CDC 해석과 형식 등가성과 진짜 플로어플랜을 쓴
+    합성을 쉬지 않고 돌리는 까닭이고, '백엔드에서 고치자' 가 같은 고침에
+    수백 배를 치르겠다는 결정인 까닭이다.</div>
+<h2>T17.4 왜 타이밍 수렴이 때로 안 닫히나</h2>
+<p>위의 되돌이 값은 한 바퀴만 돈다고 가정한다. 더 어려운 물음은 몇 바퀴를
+    도느냐이고, 거기서 흐름은 처음 만나는 사람을 놀라게 하는 성질을 갖는다.
+    <b>수렴은 발산할 수 있다.</b> 위반 하나를 고치면 설계가 바뀌고, 바뀐
+    설계는 전에 없던 위반을 낳을 수 있다. 셋업 경로를 고치려고 셀을 키우면
+    그 드라이버에 부하가 걸린다. 버퍼를 끼워 넣으면 배치 공간을 먹어 이웃을
+    민다. 홀드 고침은 셋업 경로가 없기를 기대고 있던 지연을 더한다.</p>
+<div class="유도"><div class="유도머리">유도 &mdash; 고침 하나가 또 하나를 낳을 수 있을 때 기대되는 고침 수</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">위반 하나에서 시작한다. 그것을 고치는 것이 일 한 단위다.</td><td class="유도왜">우리가 세는 일이 그것이다 — ECO 하나를 걸고 다시 해석하는 것.</td></tr><tr><td class="유도번호">2</td><td class="유도말">고침마다 확률 <i>p</i> 로, 서로 독립으로, 새 위반을 낳는다.</td><td class="유도왜">이것이 모형의 가정이고, 따져 볼 대목이 이것이다. 고침의 곁가지가 그 앞에 고침이 몇 개 있었는지에 안 달렸다는 말이다.</td></tr><tr><td class="유도번호">3</td><td class="유도말">그러면 이것은 평균 자손이 <i>p</i> 인 분기 과정이다.</td><td class="유도왜">어버이 하나에 평균 <i>p</i> 개의 자식 — 표준적인 골턴–왓슨 꼴이다.</td></tr><tr><td class="유도번호">4</td><td class="유도말">세대 <i>n</i> 의 기대 크기는 <i>p<sup>n</sup></i> 이다.</td><td class="유도왜">독립인 세대들에 걸쳐 기댓값은 곱해진다.</td></tr><tr><td class="유도번호">5</td><td class="유도말">기대되는 총 일은 p &lt; 1 일 때 1 + p + p² + … = 1/(1−p) 다.</td><td class="유도왜">등비급수다. 그 합은 <b>총</b> 고침 수이지 도구를 돌린 바퀴 수가 아니다.</td></tr><tr><td class="유도번호">6</td><td class="유도말">p ≥ 1 이면 급수가 발산한다. 수렴이 아예 안 된다.</td><td class="유도왜">고침마다 평균 하나 이상을 더 낳으므로 대기열이 영영 안 빈다. 그 설계에 필요한 것은 더 나은 기술자가 아니라 플로어플랜이나 제약이나 목표 주파수를 바꾸는 것이다.</td></tr></tbody></table></div>
+<table><caption>표 31. 기대되는 총 고침 수, 서로 독립인 두 길로</caption><thead><tr><th>p (고침이 또 하나를 낳음)</th><th>급수 1+p+p²+…</th><th>분기 과정 시늉</th><th>어긋남</th></tr></thead><tbody><tr><td>0.1</td><td>1.111</td><td>1.111</td><td>0&nbsp; %</td></tr><tr><td>0.3</td><td>1.429</td><td>1.441</td><td>0.9&nbsp; %</td></tr><tr><td>0.5</td><td>2</td><td>2.012</td><td>0.6&nbsp; %</td></tr><tr><td>0.7</td><td>3.333</td><td>3.361</td><td>0.8&nbsp; %</td></tr><tr><td>0.9</td><td>10</td><td>9.976</td><td>0.2&nbsp; %</td></tr><tr><td>0.9</td><td>20</td><td>20.06</td><td>0.3&nbsp; %</td></tr></tbody></table>
+<div class="짚기">두 칸은 <b>다른 방법</b>으로 셈한 것이다 — 더한 급수와, 급수를 한
+    번도 안 쓰는 시늉 대기열 — 그리고 보인 범위에 걸쳐
+    0.9&nbsp; % 안에서 맞는다.
+    그 맞음이 주장을 허락하는 것이다. 셈 하나만으로는 안 되는데, 깨끗해
+    보이는 곡선에 대한 사소한 설명이 같은 산수를 두 번 찍은 것이기
+    때문이다.</div>
+<div class="예제"><div class="예제머리">예제 3. 이 블록은 닫히겠는가?</div><div class="예제줄"><b>주어진 것.</b> ECO 1 바퀴가 위반 400 개를 고쳤고 다음 STA 실행이 전에 없던 260 개를 새로 보고했다. 2 바퀴가 그 260 개를 고치고 180 개를 새로 낳았다.</div><div class="예제줄"><b>푸는 법.</b> 관측된 비에서 p 를 어림한다. 260/400 = 0.65 이고 180/260 ≈ 0.69 다. p ≈ 0.67 로 잡는다. 지금 열려 있는 180 개에서 기대되는 남은 일은 180/(1−0.67) 이다.</div><div class="예제답"><b>답.</b> 545 개쯤 더 — 같은 크기로 세 바퀴쯤 더다. <b>p 가 0.67 에 머문다면</b> 느리게나마 수렴한다.</div><div class="예제덧"><b>여기서 중요한 독립 대조는 수학이 아니다.</b>
+        p 를 믿기 전에, 새 위반이 정말로 새 경로인지 아니면 제약을 바꾼 뒤
+        같은 경로가 다시 보고된 것인지 확인해라 — 다시 보고하는 도구가
+        겉보기 p 에 대한 사소한 설명이고, 그것은 수를 들여다봐서가 아니라
+        끝점 목록을 견주어서 잰다.</div><div class="예제함정"><b>여기서 틀린다.</b> p 는 상수가 아니다. 점유율이 오르고 남은 위반이 어려워질수록 오르므로, 쉬운 고침에서 잰 p 는 꼬리를 과소평가한다. 비가 오르는 바퀴가 둘 이어지면 ECO 를 그만두고 구조적인 무언가를 바꾸라는 신호다 — 위의 산수는 p 가 1 에 닿으면 ECO 를 아무리 해도 끝나지 않는다고 말한다.</div></div>
+<h2>T17.5 월요일에 이걸로 무엇을 하나</h2>
+<table><caption>표 32. 이 장의 개념이 실제로 쓰이는 자리</caption><thead><tr><th>개념</th><th>쓰이는 블록</th><th>무엇을 정하나</th></tr></thead><tbody><tr><td>구현흐름 · 사인오프</td><td>블록 하나를 계획할 때</td><td>어떤 검사를 얼마나 자주 돌릴 여유가 있는지</td></tr><tr><td>배선부하모델 · 물리인지합성</td><td>합성 설비를 갖출 때</td><td>초기 슬랙 수가 뜻이 있기는 한지</td></tr><tr><td>LEF · DEF · SDC · SPEF · SDF</td><td>모든 넘김</td><td>다음 단계에 무엇을 빚졌고 무엇을 받아야 하는지</td></tr><tr><td>타이밍수렴 · ECO</td><td>백엔드가 수렴을 멈출 때</td><td>계속 고칠지, 플로어플랜이나 주파수를 바꿀지</td></tr></tbody></table>
+<p>다음 세 장은 사슬을 차례대로 걸으며 단계마다 실제로 무엇을 정하는지를
+    셈한다. 나머지 전부가 올라앉는 플로어플랜과 전원 격자(T18), 배치와
+    클럭 트리와 배선(T19), 그리고 그 기하를 제조해도 되는지를 정하는
+    사인오프 검사들(T20)이다.</p>
+<div class="특허"><div class="특허머리">특허로 가는 길 &mdash; 이 주제에서 발명이 일어나는 자리</div><div class="특허속">흐름 자체는 특허가 안 되지만, 그 안의 두 가지는 되고 둘 다 활발히
+        다투어진다. <b>기하가 있기 전의 타이밍 예측</b>(RTL 이나 넷리스트의
+        특징 묶음에서 배선 뒤 지연을 어림해, 되돌이가 며칠이 아니라 몇 분에
+        닫히게 하는 것)과 <b>ECO 배치</b> — 이미 타이밍을 맞춘 것을 건드리지
+        않고 배선된 설계에 고침을 끼워 넣는 것이다. 둘 다 이 장이 셈한 같은
+        경제를 친다. 흐름의 값은 그것을 몇 바퀴 도느냐가 지배한다.</div></div>
