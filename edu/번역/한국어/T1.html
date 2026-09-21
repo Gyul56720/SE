@@ -1,0 +1,466 @@
+<h1 id="T1">T1. 네 가지 기계로서의 MOSFET</h1>
+<p class="한줄">소자는 하나인데 동작 영역은 넷이다 — 그리고 영역마다 다른 회로를 설계하게 된다.</p>
+<div class="사다리"><div class="사다리앞"><b>읽기 전에 알아야 하는 것</b><br>전압 · 전류 · 저항 · 전기장 · 전하 · 전자 · 지수함수 · 로그 · 미분 · 옴의법칙</div><div class="사다리뒤"><b>이 장에서 새로 나오는 것</b><br>문턱전압 · 차단영역 · 선형영역 · 포화영역 · 아문턱영역 · 온저항 · 아문턱기울기 · 누설전류 · 트랜스컨덕턴스 · 채널길이변조 · 출력저항 · 바디효과 · 게이트용량</div></div>
+<p>MOSFET 은 보통 스위치로 소개되고, 디지털 첫 수업에는 그것으로 충분하다.
+    그러나 양산 IP 를 설계하기에는 충분하지 않다. 같은 네 단자 소자가 걸어 준
+    전압에 따라 질적으로 다른 네 가지 기계로 동작하고, 일하는 설계자는 그 넷
+    사이를 오간다 — 흔히 한 블록 안에서 그런다.
+    표본화 전단은 이 소자를 <i>저항</i>으로 쓰고, 그 뒤의 비교기는
+    <i>증폭기</i>로 쓰며, 다시 그 뒤의 디지털 논리는 <i>스위치</i>로 쓴다.
+    그리고 그 전부가 놀고 있는 동안 전지를 비우는 누설은, 아무도 설계하지 않은
+    영역에서 소자가 <i>아주 나쁜 스위치</i>로 동작하는 것이다.</p>
+<p>이 장은 네 영역을 세운 다음, 영역마다 어디에 쓰는지, 언제 꺼내 쓰는지,
+    어떻게 적용하는지, 그리고 실제 IP 납품물에 딸려 나가는 코드가 어떻게
+    생겼는지를 적는다. 이 책의 뒤에서 쓰이지 않는 것은 여기에 넣지 않았다.</p>
+<h2>T1.1 게이트가 실제로 하는 일</h2>
+<p>영역으로 들어가기 전에 물리 사실 하나를 먼저 본다. 뒤의 모든 식이 이것 위에
+    서 있기 때문이다. 게이트는 축전기의 한쪽 판이다. 채널 — 산화막 아래의 얇은
+    실리콘 층 — 이 다른 쪽 판이다. 그 사이에 원자 몇 개 두께의 절연체가 있다.</p>
+<div class="정의"><b>단위 면적당 게이트 산화막 용량, C<sub>ox</sub></b> &mdash; ε<sub>ox</sub>/t<sub>ox</sub>. 물리적 산화막 두께가
+        1.2&nbsp;nm 이고 ε<sub>ox</sub> ≈ 3.9 ε<sub>0</sub> 이면, 이 값은 약
+        16&nbsp;mF/m² — 제곱 마이크로미터당 대략 1.60×10<sup>19</sup> fF 다.
+        트랜지스터가 하는 모든 일이 이 값에 비례한다.</div>
+<div class="유도"><div class="유도머리">유도 &mdash; 게이트 전압이 왜 전류를 제어하는가</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">NMOS 의 게이트에 양의 전압을 건다. 게이트는 축전기의 한쪽 판이므로 단위 면적당 전하 Q = C<sub>ox</sub>·V 를 쌓는다.</td><td class="유도왜">그것이 용량의 정의다. 아직 트랜지스터 물리는 하나도 안 썼다.</td></tr><tr><td class="유도번호">2</td><td class="유도말">반대 부호의 전하가 다른 쪽 판 — 산화막 바로 아래의 실리콘 — 에 나타나야 한다.</td><td class="유도왜">축전기는 두 판에 크기가 같고 부호가 반대인 전하를 갖는다.</td></tr><tr><td class="유도번호">3</td><td class="유도말">p 형 실리콘에서 움직일 수 있는 음전하는 전자인데, 전자는 귀하다. 게이트 전압이 어느 값 아래면 실리콘은 필요한 전하를 <i>정공</i>을 밀어내서 대신 마련하고, 그 자리에 고정된 음의 받개 이온이 남는다.</td><td class="유도왜">다수 운반자를 비우는 쪽이 소수 운반자를 만드는 쪽보다 싸다.</td></tr><tr><td class="유도번호">4</td><td class="유도말">게이트 전압이 어느 값을 넘으면 공핍이 더 자라기를 멈추고, 실리콘이 대신 <b>움직이는 전자</b>를 내놓기 시작한다. 그 전자 층이 채널이다.</td><td class="유도왜">표면이 충분히 끌려가고 나면, 전자를 끌어오는 것이 공핍층을 더 넓히는 것보다 에너지가 덜 든다.</td></tr><tr><td class="유도번호">5</td><td class="유도말"><b>그 갈림이 일어나는 게이트 전압이 문턱전압 V<sub>t</sub> 다.</b></td><td class="유도왜">소자에 설계해 넣은 스위치 동작점이 아니다. 실리콘이 어떤 종류의 전하를 내놓을지를 바꾸는 전압이다.</td></tr><tr><td class="유도번호">6</td><td class="유도말">V<sub>t</sub> 위에서 채널의 움직이는 전하는 단위 면적당 Q<sub>ch</sub> = C<sub>ox</sub>(V<sub>GS</sub> − V<sub>t</sub>) 다.</td><td class="유도왜">처음 V<sub>t</sub> 만큼의 게이트 전압은 공핍에 쓰였다. 그것을 넘은 몫만 움직이는 전하를 만든다.</td></tr><tr><td class="유도번호">7</td><td class="유도말">전류는 전하 곱하기 속도이고, 속도는 이동도 곱하기 전기장이다: I = W·Q<sub>ch</sub>·μ·E.</td><td class="유도왜">표류 전류다. 저항에서 옴의 법칙을 주는 바로 그 관계다.</td></tr></tbody></table></div>
+<p>마지막 줄이 이 소자의 전부다. 아래의 모든 식은 이 관계에, 전기장 E 가 채널을
+    따라 어떻게 변하는지에 대한 서로 다른 가정을 얹은 것이다.
+    <b>V<sub>GS</sub> − V<sub>t</sub></b> 라는 양은 너무 자주 나와서 이름이 있다.
+    <b>과구동(overdrive)</b> 이고 V<sub>ov</sub> 로 적는다. 설계자가 &ldquo;그
+    소자를 과구동 150 밀리볼트로 돌렸다&rdquo; 고 말할 때 그 수가 이것이다.</p>
+<div class="짚기"><b>V<sub>t</sub> 는 하나의 수가 아니다.</b> 온도에 따라 움직이고
+    (대략 −1 mV/°C), 바디 바이어스에 따라, 채널 길이에 따라, 이웃한 폴리실리콘이
+    얼마나 가까운지에 따라 움직인다. 그리고 다이마다 다르고 같은 다이 안의
+    트랜지스터마다 다르다. 공칭 V<sub>t</sub> 에서만 도는 설계는 도는 설계가
+    아니다. T12 장이 이것을 정량화한다. 지금은 이 장의 모든 V<sub>t</sub> 를
+    분포의 중심이라고 여기라.</div>
+<h2>T1.2 영역 1 — 차단: 완전히 꺼지지는 않는 스위치</h2>
+<div class="개념"><div class="개념머리">차단과 아문턱 누설</div>
+<div class="개념이론"><p>문턱 아래에서 채널은 비어 있지 않다 — 지수적으로 희박할 뿐이다.
+        전류는 멈추지 않는다. V<sub>GS</sub> 가 V<sub>t</sub> 아래로
+        <b>85&nbsp;mV</b> 내려갈 때마다 열 배씩 준다. 그 기울기가
+        <b>아문턱 기울기</b> S 이고, 저전력 설계에서 가장 중요한 수 하나다.</p>
+
+        <p>I<sub>leak</sub> = I<sub>0</sub> · 10<sup>(V<sub>GS</sub> − V<sub>t</sub>)/S</sup></p>
+
+        <p>S 에는 바닥이 있다. 채널 전하는 볼츠만 인자를 거쳐 표면 전위에 반응하므로
+        상온에서 S ≥ (kT/q)·ln10 = <b>59.5&nbsp;mV/decade</b> 이고, 실제 소자는
+        게이트 전압의 일부가 공핍 용량에 새기 때문에 그보다 20–40 % 위에 앉는다.
+        <b>이 바닥이, 전원 전압이 줄어드는 동안 누설이 전력의 지배항이 된 까닭이다</b>:
+        속도를 지키려고 V<sub>t</sub> 를 낮추면 누설을 지수로 물어야 하고, 그 지수를
+        더 가파르게 만들 수는 없다.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>내보내는 모든 블록의 대기 전력. 보존 레지스터. 메모리
+        배열(누설이 셀 수백만 개로 곱해지는 자리). 전원 게이팅과 헤더/푸터 스위치의
+        치수 결정. 대기 전류를 명시해서 파는 모든 IP — 대개가 그렇다.</td></tr>
+<tr><th>언제 쓰나</th><td>데이터시트에 누설 수치를 적을 때마다. 합성에서 소자 종류를
+        고를 때마다. 고객이 보존 모드를 요구할 때마다. 그리고 블록이 대부분 놀고 있을
+        때마다 — 시간의 3 % 만 도는 등화기는 동적 전력 문제가 아니라 누설 문제다.</td></tr>
+<tr><th>어떻게 쓰나</th><td>파운드리 특성화에서 최악 코너(최고 온도, 최저 V<sub>t</sub>,
+        최고 전원 — 누설은 속도와 반대 방향으로 나빠진다)의 폭 마이크로미터당
+        I<sub>off</sub> 를 받는다. 블록의 총 폭을 곱한다. 온도 인자를 다시 곱한다 —
+        경험칙은 10 °C 마다 2 배이고, S 자체가 T 에 비례하므로 S 식에서 바로 따라
+        나온다. 그러고 나서 정한다: 답이 예산을 넘으면 임계가 아닌 경로를 고
+        V<sub>t</sub> 셀로 옮기고 타이밍을 다시 잡는다.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>// Liberty (.lib) — what the foundry actually ships you.
+// This is the leakage the synthesiser reads. Note that it is
+// state-dependent: a NAND2 leaks differently per input pattern,
+// because the stacked device changes the internal node voltage.
+
+cell (NAND2_X1) {
+    area : 1.596 ;
+    cell_leakage_power : 4.2851e+03 ;        // nW, the default
+    leakage_power () {
+        when            : "!A1 &amp; !A2" ;
+        value           : 1.8032e+03 ;       // both off: stack effect helps
+    }
+    leakage_power () {
+        when            : "A1 &amp; !A2" ;
+        value           : 4.9210e+03 ;
+    }
+    leakage_power () {
+        when            : "A1 &amp; A2" ;
+        value           : 6.1104e+03 ;       // both on: worst
+    }
+    ...
+}
+
+# Synthesis — trade leakage against timing by device flavour.
+# The tool will use LVT only where it must to close timing.
+set_db library  [list  sc9_base_svt.lib  sc9_base_hvt.lib  sc9_base_lvt.lib ]
+set_db leakage_power_effort         high
+set_db dynamic_power_effort         medium
+# Forbid the leaky flavour outside the critical paths:
+set_dont_use  [get_lib_cells */*_LVT*]
+# ... place and route, then selectively re-enable on failing paths:
+set_dont_use -false [get_lib_cells */BUF_X*_LVT]</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> 공칭 온도에서 누설을 인용하는 것. 누설은 10 °C 마다
+        대략 두 배가 되므로, 25 °C 수치는 125 °C 차량용 코너에 대고 보면
+        <b>8–16 배 낙관적</b>이다. 온도와 전원과 코너를 말하지 않고
+        &ldquo;대기 12 µA&rdquo; 라고 적은 데이터시트는 규격이 아니다 — 그리고
+        자기 열 한계에서 진짜 수를 알게 된 고객은 다시 사지 않는다.</div>
+</div>
+<div class="예제"><div class="예제머리">예제 6. 데이터시트가 요구하는 방식으로 낸 블록의 누설</div><div class="예제줄"><b>주어진 것.</b> 게이트 40,000 개, 게이트당 평균 소자 폭 0.8 µm
+        (n 과 p 를 합쳐), 25 °C 전형 코너에서 V<sub>GS</sub> = 0 일 때
+        I<sub>off</sub> = 0.01&nbsp;nA/µm 인 블록. 고객은 105 °C 에서 돌리며
+        최악 대기 전류를 묻는다.</div><div class="예제줄"><b>푸는 법.</b> 총 폭 곱하기 마이크로미터당 I<sub>off</sub>, 곱하기
+        온도 인자(10 °C 마다 2 배), 곱하기 fast-fast 실리콘의 코너 인자
+        (누설에서 보통 2–3 배).</div><div class="예제답"><b>답.</b> 폭 = 40,000 × 0.8 = 32,000 µm. 25 °C 전형에서
+        32,000 × 0.01 nA = <b>0.24&nbsp;µA</b>.
+        온도: 105 − 25 = 80 °C 이므로 2<sup>8</sup> = 256 배.
+        코너: ×2.5. 합하면 약 <b>0.16&nbsp;mA</b>.</div><div class="예제덧">10 °C 마다 2 배라는 규칙은 지수를 어림한 것이다. 진짜 납품물에서는
+        외삽하지 않고 파운드리의 코너 표에서 수를 읽는다. 이 어림의 쓸모는,
+        예산의 두 배 안에 있는지 쉰 배 밖에 있는지를 **이른 시점에** 아는 것이다.</div><div class="예제함정"><b>여기서 틀린다.</b> 여기서 25 °C 전형 수치와 105 °C fast 수치는
+        <b>640 배</b> 차이가 난다. 기술자가 앞의 것을 인용하는 까닭은 도구가
+        기본으로 찍어 주는 수가 그것이기 때문이다. 고객이 재는 수는 뒤의 것이다.
+        수 옆에 늘 세 가지 — 온도, 전원, 공정 코너 — 를 같이 적으라. 그것이 없는
+        누설 수치는 아무 뜻이 없다.</div></div>
+<h2>T1.3 영역 2 — 선형: 저항으로서의 트랜지스터</h2>
+<div class="개념"><div class="개념머리">선형(삼극관) 영역과 온저항</div>
+<div class="개념이론"><p>게이트를 V<sub>t</sub> 보다 한참 위로 올리고 드레인을 소스 가까이
+        붙들어 둔다. 이제 채널이 길이 전체에 걸쳐 존재하고 그 위의 전기장이 거의
+        고르므로, 소자는 게이트가 값을 제어하는 저항처럼 동작한다:</p>
+
+        <p>I<sub>D</sub> = μC<sub>ox</sub>(W/L)[(V<sub>GS</sub> − V<sub>t</sub>)V<sub>DS</sub>
+        − V<sub>DS</sub>²/2]</p>
+
+        <p>V<sub>DS</sub> 가 작으면 제곱 항이 사라지고 소자는 그냥 이것이다</p>
+
+        <p>R<sub>on</sub> = 1 / [μC<sub>ox</sub>(W/L)(V<sub>GS</sub> − V<sub>t</sub>)]</p>
+
+        <p><b>저 분모를 읽으라.</b> R<sub>on</sub> 은 과구동에 반비례한다. 지나보내는
+        신호가 V<sub>S</sub> 를 움직이면 V<sub>GS</sub> 도 따라 움직이고,
+        <b>저항이 신호에 따라 변한다</b>. 표본화 경로에서 신호에 따라 변하는 저항은
+        왜곡이고, 부트스트랩 스위치가 존재하는 까닭이 그것이다.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>모든 전송 게이트와 패스 게이트. 모든 ADC 와 모든
+        트래킹앤홀드 앞단의 표본화 스위치. 전원 게이팅 헤더와 푸터.
+        CTLE 안의 가변 저항. SRAM 의 쓰기 드라이버. 디지털 신호를 다시 만들지 않고
+        지나보내야 하는 모든 자리.</td></tr>
+<tr><th>언제 쓰나</th><td>한 마디를 <i>구동</i>하는 것이 아니라 두 마디를
+        <i>잇는</i> 것이 필요할 때. &ldquo;신호를 버퍼로 받는다&rdquo; 가 아니라
+        &ldquo;신호를 지나보낸다&rdquo; 라고 쓰고 있는 자신을 발견하는 순간, 선형
+        영역에 있고 R<sub>on</sub> 이 문제가 된다.</td></tr>
+<tr><th>어떻게 쓰나</th><td>정착을 먼저 예산 잡고 거기서 치수를 낸다. 저항 R 인
+        스위치가 용량 C 를 채우면 시간상수 τ = RC 로 정착한다. N 비트까지
+        정착하려면 t<sub>settle</sub> ≥ RC·ln(2<sup>N+1</sup>) 이 필요하다. R 로
+        풀고, R<sub>on</sub> = 1/[μC<sub>ox</sub>(W/L)V<sub>ov</sub>] 로 W/L 을
+        낸다. 그다음 <b>최악 신호 준위에서 R<sub>on</sub> 을 확인한다</b> —
+        중간 눈금이 아니다. 올라가는 신호를 지나보내는 NMOS 는 신호가 오를수록
+        V<sub>GS</sub> 가 줄고, V<sub>DD</sub> − V<sub>t</sub> 근처에서
+        R<sub>on</sub> 이 터진다.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>* SPICE — the measurement you actually run on a sampling switch.
+* You are not checking that it works; you are checking how Ron varies
+* with the signal, because that variation is the distortion.
+
+.param vin_val=0.45
+M1  drain gate source bulk nch  W=2u  L=30n
+Vg  gate  0  DC 0.9
+Vs  source 0 DC 'vin_val'
+Vd  drain  0 DC 'vin_val+1m'      $ 1 mV across the switch: stay in triode
+.dc vin_val 0 0.9 0.01
+.measure dc ron  PARAM='1m/I(Vd)'  $ R = V/I at each input level
+.alter
+.param boot=1                      $ repeat with a bootstrapped gate
+.end
+
+// Verilog-AMS behavioural model used in mixed-signal top-level sims.
+// A digital verification engineer meets this, not the SPICE deck.
+module sw_nmos (inout d, inout s, input g);
+    parameter real ron_nom = 250.0;     // ohms at mid-scale
+    parameter real roff    = 1e12;
+    analog begin
+        // Ron rises as (Vgs - Vt) falls: this is the term that matters.
+        real vgs, ron;
+        vgs = V(g) - V(s);
+        ron = (vgs &gt; 0.35) ? ron_nom * 0.55 / (vgs - 0.35) : roff;
+        I(d,s) &lt;+ V(d,s) / ron;
+    end
+endmodule</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> 중간 눈금에서 스위치 치수를 정하고 끝났다고 하는 것.
+        입력 범위 꼭대기에서의 R<sub>on</sub> 은 중간 눈금 값의 몇 배가 될 수 있고,
+        그것이 만드는 정착 오차는 <i>신호에 따라 달라진다</i> — 즉 잡음이 아니라
+        고조파 왜곡이고, 평균을 내도 없어지지 않는다. 입력 범위 전체에 대해
+        R<sub>on</sub> 을 쓸어 보고 가장 나쁜 점에 맞춰 치수를 정하라.</div>
+</div>
+<div class="예제"><div class="예제머리">예제 7. 정착 요구에서 표본화 스위치의 치수를 낸다</div><div class="예제줄"><b>주어진 것.</b> 10 비트 변환기가 C = 1 pF 에 2 ns 안에 표본화한다.
+        전원 0.9&nbsp;V, V<sub>t</sub> = 0.3&nbsp;V, 최악 입력이
+        0.5 V 이므로 V<sub>ov</sub> = 0.9 − 0.5 − 0.35 = 0.1&nbsp;V.</div><div class="예제줄"><b>푸는 법.</b> 10 비트까지 정착하려면 오차가 ½ LSB 아래여야 하므로
+        e<sup>−t/τ</sup> &lt; 2<sup>−11</sup>, 즉 t/τ &gt; 11·ln2 = 7.62 다.
+        경로의 나머지를 위해 τ 에 2 배 여유를 두고, τ = RC 에서 R 을 풀고,
+        R<sub>on</sub> 에서 W/L 을 낸다.</div><div class="예제답"><b>답.</b> τ ≤ 2 ns / 7.62 = 262&nbsp;ps. 2 배 여유를 두면
+        τ = 131&nbsp;ps. R = τ/C = 131&nbsp;Ω.
+        그러면 W/L = 1/(μC<sub>ox</sub>·R·V<sub>ov</sub>) =
+        <b>317</b>.</div><div class="예제함정"><b>여기서 틀린다.</b> 최악 입력이 아니라 <i>중간 눈금</i> 입력(0.45 V)에서
+        V<sub>ov</sub> 를 잡으면 V<sub>ov</sub> = 0.1&nbsp;V 가 나오고 W/L 이
+        약 2 배 작아진다 — 그러면 스위치는 신호가 가장 큰 바로 그 자리에서
+        정착 목표를 놓치고, 왜곡이 가장 잘 보이는 자리가 거기다.
+        <b>스위치는 평균 신호가 아니라 최악 신호 준위에서 치수를 정하라.</b></div></div>
+<h2>T1.4 영역 3 — 포화: 전류원으로서의 트랜지스터</h2>
+<div class="개념"><div class="개념머리">포화, 트랜스컨덕턴스, 출력저항</div>
+<div class="개념이론"><p>V<sub>DS</sub> 를 과구동보다 높이면 드레인 근처에서 채널이
+        <i>핀치오프</i> 된다. 그 자리의 국소 V<sub>GS</sub> 가 V<sub>t</sub> 까지
+        떨어져 더 이상 움직이는 전하가 없다. 그 점을 넘으면 드레인 전압을 올려도
+        전류가 별로 안 는다. 소자가 게이트로 제어되는 전류원이 된 것이다:</p>
+
+        <p>I<sub>D</sub> = ½ μC<sub>ox</sub>(W/L)(V<sub>GS</sub> − V<sub>t</sub>)²
+        · (1 + λV<sub>DS</sub>)</p>
+
+        <p>여기서 나오는 두 양이 아날로그 설계의 일을 다 한다:</p>
+
+        <p><b>트랜스컨덕턴스</b> g<sub>m</sub> = ∂I<sub>D</sub>/∂V<sub>GS</sub>
+        = 2I<sub>D</sub>/V<sub>ov</sub>. 입력 1 볼트당 얼마나 많은 전류가 나오나 —
+        즉 이득을 만드는 항이다.</p>
+
+        <p><b>출력저항</b> r<sub>o</sub> = ∂V<sub>DS</sub>/∂I<sub>D</sub>
+        ≈ 1/(λI<sub>D</sub>). 이상적인 전류원에 얼마나 가까운가. λ 라는 항이
+        있는 까닭은 핀치오프 지점이 드레인 전압에 따라 움직이기 때문이고 —
+        <b>채널 길이 변조</b> — 짧은 채널일수록 나쁘다. 아날로그 블록이 최소
+        길이의 몇 배 되는 소자를 쓰는 까닭이 그것이다.</p>
+
+        <p>그 곱 g<sub>m</sub>r<sub>o</sub> = 2/(λV<sub>ov</sub>) 가 고유 이득이다:
+        <b>트랜지스터 하나가 줄 수 있는 전압 이득의 최대치.</b> 공정이 작아질수록
+        이 값이 줄고, 그래서 요즘 아날로그 설계는 날 이득보다 디지털의 도움에
+        기댄다.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>비교기와 감지증폭기 — 그 앞단 증폭기. 모든 전류 거울과
+        바이어스 회로. CTLE 와 SerDes 의 아날로그 전단. 천이 중의 레벨 시프터.
+        PLL 의 링 발진기 지연 셀. 회로가 <i>스위칭</i> 이 아니라 <i>증폭</i> 을
+        해야 하는 모든 자리.</td></tr>
+<tr><th>언제 쓰나</th><td>물음이 &ldquo;이득이 얼마인가&rdquo; 또는 &ldquo;부하와
+        무관하게 전류가 얼마인가&rdquo; 일 때. 그리고 뜻밖에도 <i>디지털</i>
+        분석에서도 쓴다: 논리 천이 동안 두 소자가 모두 포화를 지나가고, 그때
+        흐르는 단락 전류가 T4 가 느린 입력 에지에 왜 전력이 드는지 설명할 때
+        쓰는 항이다.</td></tr>
+<tr><th>어떻게 쓰나</th><td>W/L 이 아니라 g<sub>m</sub>/I<sub>D</sub> 로 설계한다.
+        필요한 g<sub>m</sub> 을 이득이나 잡음 요구에서 고르고,
+        g<sub>m</sub>/I<sub>D</sub> 를 속도와 전력의 맞바꿈에서 고른다
+        (g<sub>m</sub>/I<sub>D</sub> 가 크면 ≈ 과구동이 작고 ≈ 효율적이지만
+        느리다. g<sub>m</sub>/I<sub>D</sub> 가 작으면 ≈ 과구동이 크고 ≈ 빠르지만 전력을 먹는다). 그러면
+        I<sub>D</sub> 가 정해지고, W/L 은 파운드리가 특성화해 준
+        g<sub>m</sub>/I<sub>D</sub> 곡선에서 읽는다. 이 방법은 공정이 바뀌어도
+        통하고, 100 nm 아래에서 정확하기를 그만두는 제곱 법칙 식에 기대지
+        않는다.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>* The gm/ID sweep every analog team runs once per process,
+* then reuses for every block. You are not simulating a circuit here;
+* you are characterising the device so design becomes look-up.
+
+.param L_val=100n
+M1  d g 0 0 nch  W=10u  L='L_val'
+Vg  g 0 DC 0.5
+Vd  d 0 DC 0.45          $ hold Vds at VDD/2, in saturation
+.dc Vg 0.2 0.9 0.005
+.measure dc gm_id  PARAM='deriv(I(Vd),V(g))/I(Vd)'
+.measure dc ft     PARAM='deriv(I(Vd),V(g))/(2*3.14159*cgg)'
+.step param L_val list 30n 60n 100n 200n 500n
+.end
+
+// What a digital designer sees of all this: a characterised cell.
+// The analog block arrives as a .lib timing/power view plus a
+// behavioural model. You must still know what is inside, because
+// the constraints you write depend on it.
+cell (CMP_STRONGARM) {
+    pin (CLK)  { direction : input;  clock : true;  capacitance : 4.8; }
+    pin (VINP) { direction : input;  capacitance : 12.1; }
+    pin (OUTP) { direction : output;
+                 timing () {
+                     related_pin  : "CLK" ;
+                     timing_type  : rising_edge ;
+                     cell_rise (delay_template) { ... }
+                 } }
+    // The number a digital designer must not ignore:
+    // the comparator has a metastability window like any bistable.
+    // T3 derives it; the vendor states it here.
+}</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> 요즘 공정에서 제곱 법칙 식으로 설계하는 것.
+        대략 100 nm 아래에서는 운반자 속도가 포화하고 지수가 2 에서 1 쪽으로
+        밀려서, 식이 수십 퍼센트 틀릴 수 있다. <i>따져 보는</i> 데는 여전히
+        훌륭하다 — 방향과 민감도를 바르게 알려 준다 — 그러나 <i>수</i> 로는
+        쓸모가 없다. 식으로 따지고, 치수는 특성화 곡선에서 내라.</div>
+</div>
+<h2>T1.5 영역 4 — 누설이 아니라 설계 공간으로서의 아문턱</h2>
+<div class="개념"><div class="개념머리">아문턱 동작</div>
+<div class="개념이론"><p>누설을 만드는 그 지수가 쓸 만한 전달 특성이기도 하다.
+        V<sub>t</sub> 아래로 바이어스하면 소자는 g<sub>m</sub>/I<sub>D</sub> 를
+        최대로 준다 — 약 <b>27.1&nbsp;V⁻¹</b>, 오로지 S 가 정하는 값 —
+        이것이 어떤 MOSFET 도 넘지 못하는 전류 효율의 한계다. 값은 속도다.
+        f<sub>T</sub> 가 자릿수로 떨어지고, V<sub>t</sub> 에 대한 지수 의존 때문에
+        소자 사이의 V<sub>t</sub> 불일치가 수십 퍼센트의 <i>전류</i> 불일치로
+        바뀐다.</p>
+
+        <p>그러므로 아문턱은 연산당 에너지가 지배하고 속도는 그렇지 않을 때
+        고르는 영역이고, 전원이 꺼질 때 떠밀려 들어가는 영역이다.
+        또한 <b>보존</b> 회로가 사는 영역이다: 겨우 켜져 있는 소자가 상태를
+        붙들고 있다.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>상시 전원 영역 — 깨우기 논리, 워치독 타이머, 보존
+        레지스터. 센서 전단. 아주 작은 전류에서도 살아남아야 하는 바이어스
+        발생기. 그리고 반대 방향으로는, 내보내는 모든 블록의 모든 누설 경로.</td></tr>
+<tr><th>언제 쓰나</th><td>동작률이 아주 낮고 에너지 예산이 초당이 아니라 연산당일
+        때. 고객이 마이크로암페어 수치를 명시한 보존 모드를 요구할 때.
+        V<sub>t</sub> 쪽으로 무너지는 전원에서 살아남으라고 할 때.</td></tr>
+<tr><th>어떻게 쓰나</th><td>속도가 아니라 정합이 면적을 정한다는 것을 받아들인다.
+        강반전에서는 전류 불일치가 g<sub>m</sub>/I<sub>D</sub> 를 거쳐
+        V<sub>t</sub> 불일치를 따라간다. 아문턱에서는
+        g<sub>m</sub>/I<sub>D</sub> 가 최대이므로 <i>같은</i> V<sub>t</sub>
+        불일치가 <i>가장 큰</i> 전류 불일치를 만든다. 정합 요구에서 소자 치수를
+        내고(T12 의 펠그롬 관계), 그다음에 속도를 확인한다 — 반대 순서가
+        아니다.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code># UPF (Unified Power Format) — how the always-on domain is
+# declared to the tools. A digital IP deliverable that supports
+# retention ships this file, and it is as much a part of the
+# product as the RTL.
+
+create_power_domain PD_ALWAYS_ON -elements {u_wake u_timer}
+create_power_domain PD_CORE      -elements {u_dsp u_eq}   -scope .
+
+create_supply_net  VDD_AON  -domain PD_ALWAYS_ON
+create_supply_net  VDD_CORE -domain PD_CORE
+set_domain_supply_net PD_CORE -primary_power_net VDD_CORE \
+                              -primary_ground_net VSS
+
+# Retention: state survives while VDD_CORE collapses.
+set_retention  RET_CORE -domain PD_CORE \
+    -retention_power_net VDD_AON -retention_ground_net VSS \
+    -save_signal  {u_dsp/ret_save  high} \
+    -restore_signal {u_dsp/ret_restore low}
+
+# Isolation: outputs of a collapsed domain must not float into
+# the always-on domain, or the always-on logic burns crowbar current.
+set_isolation ISO_CORE -domain PD_CORE \
+    -isolation_power_net VDD_AON -clamp_value 0 \
+    -applies_to outputs
+set_isolation_control ISO_CORE -domain PD_CORE \
+    -isolation_signal u_pmc/iso_en -isolation_sense high</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> 아이솔레이션을 잊는 것. 전원 영역이 무너지면 그
+        출력은 중간 전압으로 떠간다. 그것을 상시 전원 게이트에 넣으면
+        <b>두</b> 소자가 모두 도통한다 — 상시 전원 영역이 마이크로암페어가
+        아니라 밀리암페어를 먹게 되고, 팔았던 보존 모드는 존재하지 않게 된다.
+        저전력 IP 에서 가장 흔한 통합 실패 가운데 하나이고, RTL 시뮬레이션에는
+        중간 전압이 없으므로 RTL 에서는 안 보인다.</div>
+</div>
+<h2>T1.6 무시할 수 없는 이차 효과 둘</h2>
+<div class="개념"><div class="개념머리">바디 효과</div>
+<div class="개념이론"><p>V<sub>t</sub> 는 소스를 벌크에 묶은 상태로 적힌 값이다. 소스를
+        벌크보다 올리면 채널 아래 공핍층이 넓어지고, 반전이 일어나기까지 게이트
+        전압이 더 필요해진다. 즉 V<sub>t</sub> 가 오른다. 의존 관계는
+        V<sub>t</sub> = V<sub>t0</sub> + γ(√(2φ<sub>F</sub> + V<sub>SB</sub>)
+        − √(2φ<sub>F</sub>)) 이고, γ 는 0.2–0.5 √V 정도의 공정 상수다.</p>
+
+        <p>실제로 따라오는 결과는 이것이다: <b>소스가 레일에 있지 않은 소자는
+        라이브러리가 말하는 것보다 약하다.</b></p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>NAND/NOR 안의 쌓인 소자 — 위쪽 NMOS 는 소스가 접지보다
+        위에 있다. 패스 게이트 사슬. 캐스코드 전류원. 전송 게이트로 지은 다중화기
+        나무. 트랜지스터가 직렬로 놓이는 모든 자리.</td></tr>
+<tr><th>언제 쓰나</th><td>쌓을 때마다. 4 입력 NAND 는 인버터보다 그냥 4 배 느린 것이
+        아니다 — 그보다 나쁘다. 위쪽 소자들이 바디 효과를 받기 때문이다. 넓은
+        게이트를 평평하게 짓지 않고 나무로 쪼개는 까닭 가운데 하나가 이것이다.</td></tr>
+<tr><th>어떻게 쓰나</th><td>손으로 따질 때는 V<sub>t</sub> 이동을 더하고 위쪽 소자의
+        과구동을 다시 계산한다. 실제 치수는 특성화된 라이브러리가 처리하게 둔다 —
+        .lib 의 지연표에 이미 이 효과가 들어 있다 — 그러나 <b>그것이 거기 있다는
+        것은 알고 있어야</b>, 새로 지어낸 쌓기 구조가 선형으로 비례할 것이라고
+        넘겨짚지 않는다. 쌓기가 깊으면 대신 버퍼를 끼운다.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>// Why you will not find `body effect` in an RTL file, but will
+// feel it: the synthesiser's cell choice reflects it.
+// These two are logically identical and time very differently.
+
+assign y = ~(a &amp; b &amp; c &amp; d);          // maps to NAND4 — deep stack
+
+wire ab = ~(a &amp; b);                   // maps to NAND2 + NAND2 + NOR2
+wire cd = ~(c &amp; d);                   // shallower stacks, more cells
+assign y = ~(~ab | ~cd) ? 1'b0 : 1'b1;
+
+// Liberty shows the penalty directly. Compare the intrinsic delays:
+//   NAND2_X1  cell_rise (A1) ~ 0.021 ns
+//   NAND3_X1  cell_rise (A1) ~ 0.031 ns
+//   NAND4_X1  cell_rise (A1) ~ 0.045 ns     &lt;- worse than linear</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> 소자 n 개를 쌓으면 n 배 느려진다고 여기는 것.
+        바디 효과와 내부 마디 용량 때문에 초선형이고, 서넛을 넘으면 벌점이 빠르게
+        커진다. 합성된 넷리스트의 임계 경로에 NAND4 가 있다면, 대개 가장 먼저
+        구조를 뜯어고칠 자리가 거기다.</div>
+</div>
+<div class="개념"><div class="개념머리">게이트 용량 — 당신이 몰고 있는 부하</div>
+<div class="개념이론"><p>당신이 모는 게이트는 축전기다: C<sub>g</sub> ≈ C<sub>ox</sub>·W·L,
+        여기에 L 에 비례하지 않는 겹침 용량이 더해진다.
+        1.2&nbsp;nm 산화막이면 게이트 면적당
+        <b>1.60×10<sup>7</sup>&nbsp;fF/µm²</b> 정도다.</p>
+
+        <p>이 사실 하나가 디지털 설계 전체를 묶는다. 한 게이트의 출력이 다음
+        게이트의 입력 용량을 채워야 하므로, <b>지연은 부하 용량 대 구동 세기의
+        비에 비례한다</b>. 그 비가 T2 의 <i>전기적 노력</i> 이고, 치수 정하기가
+        게이트마다의 문제가 아니라 사슬의 문제인 까닭이 그것이다.</p>
+
+        <p>아날로그와 고속 디지털에서 무는 항이 하나 더 있다. 게이트–드레인 겹침
+        용량 C<sub>gd</sub> 가 출력 쪽에 그 단의 <i>이득만큼 곱해져서</i>
+        나타난다(밀러 효과). 비교기 앞단 증폭기에서는 이것이 부하를 지배할 수
+        있고, 디지털 게이트에서는 천이 동안 보이는 입력 용량이 정적인 값보다
+        큰 까닭이 된다.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>모든 지연 계산. 클럭 트리 전력(클럭은 엄청난 총 게이트
+        용량을 모는데, 클럭 게이팅이 첫 번째 전력 최적화인 까닭이 그것이다).
+        고객이 자기 드라이버를 예산 잡을 수 있도록 데이터시트에 적는 입력 용량.</td></tr>
+<tr><th>언제 쓰나</th><td>디지털에서는 늘. 특히 IP 데이터시트의 입력 용량 줄을 적을
+        때, 그리고 셀 하나가 부하를 몇 개까지 몰아도 되는지 정할 때.</td></tr>
+<tr><th>어떻게 쓰나</th><td>부하를 최소 인버터 입력 용량의 배수로 적으면 셈이 손으로
+        할 만해진다 — 논리적 노력(T2)이 형식화한 것이 정확히 이것이다. 납품물
+        쪽에서는 핀마다의 입력 용량을 .lib 와 데이터시트에 적는다. 통합하는
+        쪽이 그것으로 자기 드라이버 치수를 정하고 클럭 트리를 짓는다.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>// The datasheet line that comes from this, and the .lib it matches.
+// If these two disagree, the customer's timing closure fails and
+// they will find out before you do.
+
+pin (D) {
+    direction          : input ;
+    capacitance        : 1.412 ;       // fF — what the integrator budgets
+    rise_capacitance   : 1.455 ;
+    fall_capacitance   : 1.369 ;
+    max_transition     : 0.300 ;       // ns — beyond this, delay tables
+}                                      //      are extrapolated, not valid
+
+// SDC the customer writes against your block:
+set_load       0.0014   [get_ports eq_out*]    ;# pF
+set_driving_cell -lib_cell BUF_X4 [get_ports adc_data*]
+set_max_transition 0.300 [current_design]</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> 넷이 <code>max_transition</code> 을 넘게 두는 것.
+        그 점을 넘으면 라이브러리의 지연표는 외삽되고 있는 것이고, 타이밍 보고서는
+        더 이상 특성화된 자료가 아니다 — 자신만만한 수가 옆에 붙은 짐작이다.
+        max-transition 위반은 경고가 아니라 확실한 오류로 다루라.</div>
+</div>
+<h2>T1.7 어느 일에 어느 영역인가</h2>
+<table><caption>표 46. 네 영역은 네 가지 설계 연장이다</caption><thead><tr><th>영역</th><th>조건</th><th>소자가 이렇게 동작한다</th><th>이런 데 쓴다</th><th>중요한 수</th></tr></thead><tbody><tr><td>차단</td><td>V<sub>GS</sub> &lt; V<sub>t</sub></td><td>새는 열린 스위치</td><td>대기, 보존, 전원 게이팅</td><td>I<sub>off</sub> 와 아문턱 기울기 S</td></tr><tr><td>선형</td><td>V<sub>GS</sub> &gt; V<sub>t</sub>, V<sub>DS</sub> &lt; V<sub>ov</sub></td><td>게이트로 제어되는 저항</td><td>패스 게이트, 표본화 스위치, 전원 스위치</td><td>R<sub>on</sub>, 그리고 그것이 신호에 따라 얼마나 변하나</td></tr><tr><td>포화</td><td>V<sub>GS</sub> &gt; V<sub>t</sub>, V<sub>DS</sub> &gt; V<sub>ov</sub></td><td>전압으로 제어되는 전류원</td><td>증폭기, 비교기, 전류 거울, CTLE</td><td>g<sub>m</sub>, r<sub>o</sub>, g<sub>m</sub>/I<sub>D</sub></td></tr><tr><td>아문턱</td><td>V<sub>GS</sub> 가 V<sub>t</sub> 보다 조금 &lt; 작다</td><td>지수적 트랜스컨덕터</td><td>상시 전원 블록, 초저전력, 보존</td><td>S, 그리고 V<sub>t</sub> 불일치</td></tr></tbody></table>
+<p>디지털 셀은 거의 모든 시간을 앞의 두 줄에서 보내고, 천이할 때마다 세 번째
+    줄을 잠깐 지나간다. 그 잠깐이 사소한 것이 아니다. 그것이 T2 의 단락 전류이고
+    T3 의 재생이며, 이 책에서 가장 어려운 문제 둘 — 준안정과 비교기의 판별 —
+    은 전부 소자가 선형이나 차단으로 정착하지 않고 포화에 머무는 동안 무슨 일이
+    일어나는가에 대한 논의다.</p>
+<div class="사고"><b>실제로 난 일</b><br>양산에 들어간 표본화 스위치를 중간 눈금
+    R<sub>on</sub> 에서 치수 잡았고, 모든 코너의 시뮬레이션에서 정착 목표를
+    맞췄다. 그런데 실리콘에서 2 차 고조파 왜곡이 시뮬레이션보다 12 dB 나쁘게
+    나왔다. 까닭은 검증 쓸기가 정착을 볼 때는 입력을 중간 눈금에 붙들어 두고,
+    입력을 쓸 때는 이득만 봤다는 것이다 — 그래서 정작 중요한 조합, <i>큰 입력과
+    빠듯한 정착</i> 이 한 번도 시뮬레이션되지 않았다. 설계에는 틀린 것이 없었다.
+    <b>검증 격자</b>가 틀렸다. T21 이 이것을 규칙으로 만든다: 축을 하나씩 쓸지
+    말고 같이 쓸라.</div>
+<table><caption>표 47. 이 장의 개념이 실제로 쓰이는 자리</caption><thead><tr><th>개념</th><th>쓰이는 블록</th><th>무엇을 정하나</th></tr></thead><tbody><tr><td>아문턱 기울기 S</td><td>모든 블록의 대기 규격</td><td>데이터시트의 누설 수치, 그리고 보존이 가능한가</td></tr><tr><td>R<sub>on</sub> 과 그 신호 의존</td><td>표본화 스위치, 패스 게이트, 전원 스위치</td><td>정착 시간, 왜곡, 전원 스위치 양단의 IR 강하</td></tr><tr><td>g<sub>m</sub>/I<sub>D</sub></td><td>비교기 앞단, CTLE, 바이어스</td><td>전류 한 단위당 이득과 잡음 — 즉 전력 예산</td></tr><tr><td>채널 길이 변조 λ</td><td>전류 거울, 캐스코드</td><td>바이어스 전류가 출력 전압에 따라 얼마나 움직이나</td></tr><tr><td>바디 효과 γ</td><td>쌓인 논리, 전송 게이트 나무</td><td>깊은 쌓기가 왜 초선형으로 느린가</td></tr><tr><td>게이트 용량 C<sub>g</sub></td><td>모든 지연 계산과 클럭 전력 계산</td><td>데이터시트의 입력 용량 줄</td></tr></tbody></table>
+<div class="특허"><div class="특허머리">특허로 가는 길 &mdash; 이 주제에서 발명이 일어나는 자리</div><div class="특허속">소자 수준의 발명은 팹리스 IP 회사에는 대체로 닫혀 있다 —
+        소자는 파운드리의 것이다. <b>열려 있는 것은 주어진 소자들 가운데 무엇을
+        어떻게 고르는가다.</b> 실제로 팔리는 IP 포트폴리오의 청구항은 흔히
+        <i>선택과 배치</i> 에 걸린다: 상태를 붙드는 마디에만 고 V<sub>t</sub>
+        소자를 쓰고 읽기 경로는 표준 V<sub>t</sub> 로 두는 보존 래치.
+        코너 전체에서 경합 전류가 묶이도록 풀업 쌓기의 치수를 정한 레벨 시프터.
+        V<sub>GS</sub> 를 일정하게 붙들어 R<sub>on</sub> 이 신호와 무관해지게
+        만드는 부트스트랩 회로를 가진 표본화 스위치. 셋 다 소자 영역에 대한
+        논의이고, 셋 다 회로로서 특허가 된다. <i>나는 지금 어느 영역에 있고, 그
+        영역이 내게 무엇을 주는가</i> 를 물으며 이 장을 읽으라 — 청구항은 그
+        물음에서 나온다.</div></div>

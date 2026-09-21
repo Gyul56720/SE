@@ -113,7 +113,7 @@ def ch_device():
     (roughly −1 mV/°C), with body bias, with channel length, with how close the
     neighbouring polysilicon is, and it differs from die to die and from transistor to
     transistor on the same die. A design that works only for the nominal V<sub>t</sub>
-    does not work. Chapter T27 makes this quantitative; for now, treat every
+    does not work. Chapter T12 makes this quantitative; for now, treat every
     V<sub>t</sub> in this chapter as the centre of a distribution."""))
 
     # ------------------------------------------------------------------
@@ -379,7 +379,7 @@ cell (CMP_STRONGARM) {
                  } }
     // The number a digital designer must not ignore:
     // the comparator has a metastability window like any bistable.
-    // T14 derives it; the vendor states it here.
+    // T3 derives it; the vendor states it here.
 }""",
         주의="""Using the square-law equation for design in a modern process. Below
         roughly 100 nm the velocity of carriers saturates, the exponent drifts from 2
@@ -417,7 +417,7 @@ cell (CMP_STRONGARM) {
         inversion, current mismatch tracks V<sub>t</sub> mismatch through
         g<sub>m</sub>/I<sub>D</sub>; in subthreshold g<sub>m</sub>/I<sub>D</sub> is at its
         maximum, so the <i>same</i> V<sub>t</sub> mismatch produces the <i>largest</i>
-        current mismatch. Size the devices from the matching requirement (T28's Pelgrom
+        current mismatch. Size the devices from the matching requirement (T12's Pelgrom
         relation), then check speed, rather than the other way round.""",
         산업코드="""# UPF (Unified Power Format) — how the always-on domain is
 # declared to the tools. A digital IP deliverable that supports
@@ -505,7 +505,7 @@ assign y = ~(~ab | ~cd) ? 1'b0 : 1'b1;
         <p>This single fact ties the whole of digital design together: the output of one
         gate must charge the input capacitance of the next, so <b>delay is proportional to
         the ratio of load capacitance to drive strength</b>. That ratio is the
-        <i>electrical effort</i> of T3, and it is why sizing is a chain problem rather
+        <i>electrical effort</i> of T2, and it is why sizing is a chain problem rather
         than a per-gate problem.</p>
 
         <p>There is also a term that bites in analog and in high-speed digital: the
@@ -520,7 +520,7 @@ assign y = ~(~ab | ~cd) ? 1'b0 : 1'b1;
         line of an IP datasheet, and when you decide how many loads one cell may drive.""",
         어떻게="""Express loads in units of a minimum inverter's input capacitance and
         the arithmetic becomes tractable by hand — this is exactly what logical effort
-        (T3) formalises. For the deliverable, state input capacitance per pin in the .lib
+        (T2) formalises. For the deliverable, state input capacitance per pin in the .lib
         and in the datasheet; integrators use it to size their drivers and to build the
         clock tree.""",
         산업코드="""// The datasheet line that comes from this, and the .lib it matches.
@@ -568,7 +568,7 @@ set_max_transition 0.300 [current_design]""",
 
     c.글("""A digital cell spends almost all of its time in the first two rows and passes
     briefly through the third on every transition. That brief passage is not a detail: it
-    is the short-circuit current of T4 and the regeneration of T13, and two of the hardest
+    is the short-circuit current of T2 and the regeneration of T3, and two of the hardest
     problems in this book — metastability and comparator resolution — are entirely
     arguments about what happens while a device sits in saturation instead of settling
     into triode or cutoff.""")
@@ -579,7 +579,7 @@ set_max_transition 0.300 [current_design]""",
     verification sweep held the input at mid-scale while checking settling, and swept the
     input only while checking gain — so the combination that mattered, <i>large input and
     tight settling</i>, was never simulated. Nothing in the design was wrong; the
-    <b>verification grid</b> was wrong. T30 turns this into a rule: sweep the axes
+    <b>verification grid</b> was wrong. T21 turns this into a rule: sweep the axes
     together, not one at a time."""))
 
     c.날것(쓰는자리([
