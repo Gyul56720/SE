@@ -1,0 +1,310 @@
+<h1 id="T2">T2. 지연 — RC 하나에서 타이밍 경로 전체까지</h1>
+<p class="한줄">도구가 찍어 주는 지연 수치는 넷 중 하나의 모형이다. 어느 것인지 알라. 모르면 당신 회로와 무관했던 수를 믿게 된다.</p>
+<div class="사다리"><div class="사다리앞"><b>읽기 전에 알아야 하는 것</b><br>전압 · 전류 · 저항 · 미분 · 지수함수 · 옴의법칙 · 문턱전압 · 선형영역 · 포화영역 · 온저항 · 게이트용량 · 출력저항</div><div class="사다리뒤"><b>이 장에서 새로 나오는 것</b><br>RC지연 · 엘모어지연 · 논리적노력 · 전기적노력 · 기생지연 · FO4 · 슬루 · 단락전류 · 배선지연 · 리피터 · 도착시각 · 요구시각 · 슬랙 · OCV · NLDM · 비선형지연모델</div></div>
+<p>기술자 넷에게 인버터의 지연이 얼마냐고 물으면 답이 넷 나오고, 넷 다 맞다.
+    서로 다른 네 모형으로 답하고 있기 때문이다. SPICE 를 쓰는 사람은 미분방정식으로
+    답한다. 물리 설계 기술자는 Liberty 파일의 2 차원 찾아보기 표로 답한다.
+    마이크로아키텍트는 FO4 로 답한다. 합성 기술자는 피코초가 하나도 안 들어간
+    무차원 수로 답한다. 이것들은 하나의 진실을 두고 겨루는 근사가 아니다. 서로
+    다른 일을 맡은 네 개의 연장이고, 엉뚱한 것을 쓰는 것이 바로 **실패한 경로와
+    무관했던 수**로 설계를 사인오프하게 되는 길이다.</p>
+<p>이 장은 그 넷을 차례로, 앞의 것에서 뒤의 것을 지어 나가고, 걸음마다 그
+    모형이 옳은 연장이 되는 영역을 말한다. 여기 나오는 수는 전부 이 장의 소스
+    맨 위에 선언된 공정 상수 한 벌 — 0.9&nbsp;V 의 28 nm 급 저전력 노드 —
+    에서 계산한 것이고, 아래의 모든 표는 손으로 타이핑한 것이 아니라 그것에서
+    계산된다.</p>
+<h2>T2.1 머릿속으로 할 수 있는 단 하나의 모형: 스위치 달린 RC</h2>
+<p>CMOS 게이트는 저항처럼 동작하는 트랜지스터를 거쳐 축전기를 채우고 비운다.
+    그것이 전부다. 이 장의 나머지는 전부 저 한 문장을 다듬은 것이고, 다듬을
+    때마다 저 문장 안의 어떤 가정이 깨졌기 때문에 다듬은 것이다.</p>
+<div class="정의"><b>RC지연 (RC delay)</b> &mdash; 게이트의 출력 마디는 등가 저항 R 을 거쳐 구동되는 용량 C 다. 그 마디의 전압은 감쇠하는 지수함수이고, 지연은 받는 쪽의 스위칭 문턱을 지나가는 데 걸리는 시간 — 관례로 V<sub>DD</sub> 의 50 % — 이다.</div>
+<div class="유도"><div class="유도머리">유도 &mdash; 트랜지스터에서 0.69 RC 까지</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">스위칭하는 게이트는 출력 마디를 PMOS 쌓기를 거쳐 V<sub>DD</sub> 에 잇거나 NMOS 쌓기를 거쳐 접지에 잇는다.</td><td class="유도왜">정적 CMOS 게이트가 바로 그것이다. 서로 보완하는 두 회로망이 있고, 정상상태에서는 정확히 하나만 도통한다.</td></tr><tr><td class="유도번호">2</td><td class="유도말">스위칭하는 동안 도통하는 트랜지스터는 저항이 아니다 — 포화에서 시작해 선형으로 끝난다.</td><td class="유도왜">V<sub>DS</sub> 가 V<sub>DD</sub> 에서 시작해 0 으로 떨어지므로, 소자가 천이 중에 영역을 건너간다 (T1).</td></tr><tr><td class="유도번호">3</td><td class="유도말">그래도 우리는 그것을 등가 저항 R<sub>eq</sub> 하나로 갈음한다. 같은 50 % 통과 시간을 주는 값으로 정의한다.</td><td class="유도왜">이것은 잰 저항이 아니라 <i>맞춰 넣은</i> 양이다 — 책마다 값이 다른 까닭이고, 출처가 다른 R<sub>eq</sub> 를 서로 견주면 안 되는 까닭이다.</td></tr><tr><td class="유도번호">4</td><td class="유도말">그러면 떨어지는 출력에 대해 V(t) = V<sub>DD</sub>·e<sup>−t/RC</sup> 다.</td><td class="유도왜">계단 입력을 받는 1 차 선형 상미분방정식의 표준 해다.</td></tr><tr><td class="유도번호">5</td><td class="유도말">V = V<sub>DD</sub>/2 로 놓으면 t = RC·ln 2 = 0.69 RC 다.</td><td class="유도왜">ln 2 = 0.693. 모든 지연 식에 나오는 0.69 가 여기서 온다 — 그것은 50 % 지점일 뿐 그 이상이 아니다.</td></tr><tr><td class="유도번호">6</td><td class="유도말">10–90 % 상승/하강 시간은 같은 해에서 t = RC·ln 9 = 2.2 RC 로 나온다.</td><td class="유도왜">같은 지수함수, 다른 두 통과점. <b>0.69 와 2.2 는 같은 파형을 말한다</b> — 지연과 슬루는 한 곡선을 두 번 읽은 것이다.</td></tr></tbody></table></div>
+<figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="40 8 380 284" width="100%" style="max-width:420px;height:auto" font-family="ui-monospace,monospace" font-size="11"><path d="M176,30 L176,38" fill="none" stroke="#c0392b" stroke-width="1.6"/><path d="M167,30 L185,30" fill="none" stroke="#c0392b" stroke-width="2.2"/><text x="176" y="25" fill="#c0392b" font-size="10" text-anchor="middle">VDD</text><path d="M150,80 L160,80" fill="none" stroke="#111" stroke-width="1.6"/><circle cx="164" cy="80" r="3.5" fill="#fff" stroke="#111" stroke-width="1.6"/><path d="M168,67 L168,93" fill="none" stroke="#111" stroke-width="2.0"/><path d="M173,67 L173,93" fill="none" stroke="#111" stroke-width="2.0"/><path d="M173,69 L176,69 L176,62" fill="none" stroke="#111" stroke-width="1.6"/><path d="M173,91 L176,91 L176,98" fill="none" stroke="#111" stroke-width="1.6"/><path d="M150,170 L164,170" fill="none" stroke="#111" stroke-width="1.6"/><path d="M168,157 L168,183" fill="none" stroke="#111" stroke-width="2.0"/><path d="M173,157 L173,183" fill="none" stroke="#111" stroke-width="2.0"/><path d="M173,159 L176,159 L176,152" fill="none" stroke="#111" stroke-width="1.6"/><path d="M173,181 L176,181 L176,188" fill="none" stroke="#111" stroke-width="1.6"/><path d="M176,38 L176,62" fill="none" stroke="#111" stroke-width="1.6"/><path d="M176,98 L176,152" fill="none" stroke="#111" stroke-width="1.6"/><path d="M176,188 L176,215" fill="none" stroke="#111" stroke-width="1.6"/><path d="M176,215 L176,221" fill="none" stroke="#137333" stroke-width="1.6"/><path d="M166,221 L186,221" fill="none" stroke="#137333" stroke-width="2.0"/><path d="M169.5,225 L182.5,225" fill="none" stroke="#137333" stroke-width="2.0"/><path d="M173,229 L179,229" fill="none" stroke="#137333" stroke-width="2.0"/><path d="M150,80 L110,80 L110,170 L150,170" fill="none" stroke="#111" stroke-width="1.6"/><path d="M110,125 L62,125" fill="none" stroke="#111" stroke-width="1.6"/><circle cx="110" cy="125" r="2.6" fill="#111"/><text x="56" y="129" fill="#111" font-size="11" text-anchor="end" font-weight="bold">A</text><path d="M176,125 L268,125" fill="none" stroke="#111" stroke-width="1.6"/><circle cx="176" cy="125" r="2.6" fill="#111"/><text x="274" y="129" fill="#111" font-size="11" text-anchor="start" font-weight="bold">Y = NOT A</text><text x="196" y="84" fill="#c0392b" font-size="9.5" text-anchor="start">PMOS = 풀업</text><text x="196" y="174" fill="#137333" font-size="9.5" text-anchor="start">NMOS = 풀다운</text><text x="58" y="252" fill="#888" font-size="9.5" text-anchor="start">입력이 0 -> 위(PMOS)가 켜짐 -> Y 를 VDD 로 당겨 올린다</text><text x="58" y="265" fill="#888" font-size="9.5" text-anchor="start">입력이 1 -> 아래(NMOS)가 켜짐 -> Y 를 GND 로 당겨 내린다</text><text x="58" y="278" fill="#888" font-size="9.5" text-anchor="start">둘이 동시에 켜지지 않는다 -> 정상상태 전류가 0 이다</text></svg><figcaption><b>그림 25.</b> 단위 인버터. 풀업과 풀다운 회로망이 RC 의 R 이고, 다음 단의 게이트 용량과 배선이 C 다.</figcaption></figure>
+<div class="개념"><div class="개념머리">τ = R<sub>eq</sub>·C<sub>g</sub> — 이 공정의 시간 단위</div>
+<div class="개념이론"><p>기준 소자를 하나 고른다 — 최소 크기 인버터 — 그리고 수 둘을
+        준다: 등가 출력 저항 R<sub>eq</sub> = 8&nbsp;kΩ 과
+        입력 용량 C<sub>g</sub> = 1&nbsp;fF. 그 곱
+        τ = 8&nbsp;ps 가 이 장의 나머지에서 유일한 절대 시간이다. 다른 모든
+        지연은 그것의 배수로 적힌다.</p>
+        <p>이것은 꾸밈이 아니다. 게이트 사이의 비는 위상이 정하고 공정·전압·온도가
+        바뀌어도 몇 퍼센트 안에서 안정적이다. 절대값 τ 는 코너를 건너가면
+        <b>2 배 넘게</b> 움직인다. 그 둘을 갈라 두어야 종이 위에서 아키텍처를
+        하고 피코초는 도구가 대게 할 수 있다.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>임계 경로를 손으로 어림하는 모든 자리, 이른 아키텍처 맞바꿈 전부, RTL 이 생기기 전에 '이게 한 주기에 들어가나' 를 묻는 모든 자리.</td></tr>
+<tr><th>언제 쓰나</th><td>합성 전에 — STA 를 걸 넷리스트가 아직 없을 때. 그리고 STA 뒤에, 나온 수가 그럴듯하기라도 한지 확인할 때.</td></tr>
+<tr><th>어떻게 쓰나</th><td>경로를 τ 로 적고 마지막에 한 번만 곱한다. 쓸 만한
+             기준점이 <b>FO4</b> 다 — 인버터가 자기 복사본 넷을 모는 것 —
+             이 공정에서는 40&nbsp;ps 다. 요즘의 고성능 파이프라인 한 단은
+             대략 12–20 FO4 이고, 저전력이면 25–40 이다.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>// A 'timing shell' exists so that the number you measure is about
+// your logic, not about the pads. Synthesise the DUT inside registers:
+module fir_shell (input clk, input rst, input signed [7:0] din, output signed [15:0] dout);
+    reg signed  [7:0] din_q;
+    reg signed [15:0] dout_q;
+    wire signed [15:0] y;
+    always @(posedge clk) begin din_q &lt;= din; dout_q &lt;= y; end
+    fir4 u_dut (.clk(clk), .rst(rst), .x(din_q), .y(y));
+    assign dout = dout_q;
+endmodule
+// Measured on this repository's own FIR: 455 MHz without the shell, 47 MHz with it.
+// The 455 MHz was the tool timing a path that started and ended at a pin.</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> 입력과 출력이 핀인 설계에서 F<sub>max</sub> 를 인용하는 것.
+            IP 데이터시트에서 가장 흔한 거짓 수치다. 경로에 띄우는 레지스터도
+            받는 레지스터도 없으면 도구는 제약할 것이 없어서 찾아낸 조합 지연을
+            그대로 찍는다 — 흔히 10 배 낙관적이다.</div>
+</div><h2>T2.2 엘모어 지연 — RC 하나가 사슬이 될 때</h2>
+<p>단일 RC 모형은 저항이 한쪽 끝에, 용량이 다른 쪽 끝에 있다고 본다. 배선은
+    그 둘을 다 어긴다. 저항도 용량도 배선을 따라 퍼져 있다. 그것을 N 토막으로
+    잘라 더한 것이 엘모어 지연이고, 그 합의 모양은 외워 둘 값어치가 있다.
+    긴 배선이 왜 비례해서 줄지 않는지의 까닭이 거기 있기 때문이다.</p>
+<figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 140" width="100%" style="max-width:420px;height:auto" font-family="ui-monospace,monospace" font-size="11"><text x="10" y="16" fill="#888" font-size="9.5" text-anchor="start">driver</text><rect x="8" y="22" width="52" height="34" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="34" y="44" fill="#111" font-size="10" text-anchor="middle" font-weight="bold">Rd</text><path d="M60,39 L70,39" fill="none" stroke="#111" stroke-width="1.6"/><rect x="70" y="31" width="34" height="16" fill="#fff" stroke="#111" stroke-width="1.4"/><text x="87" y="43" fill="#111" font-size="9" text-anchor="middle">R1</text><path d="M104,39 L134,39" fill="none" stroke="#111" stroke-width="1.6"/><circle cx="120" cy="39" r="2.6" fill="#111"/><path d="M120,39 L120,62" fill="none" stroke="#111" stroke-width="1.6"/><line x1="108" y1="62" x2="132" y2="62" stroke="#111" stroke-width="1.6"/><line x1="108" y1="68" x2="132" y2="68" stroke="#111" stroke-width="1.6"/><path d="M120,68 L120,78" fill="none" stroke="#111" stroke-width="1.6"/><path d="M120,78 L120,84" fill="none" stroke="#137333" stroke-width="1.6"/><path d="M110,84 L130,84" fill="none" stroke="#137333" stroke-width="2.0"/><path d="M113.5,88 L126.5,88" fill="none" stroke="#137333" stroke-width="2.0"/><path d="M117,92 L123,92" fill="none" stroke="#137333" stroke-width="2.0"/><text x="136" y="66" fill="#111" font-size="9" text-anchor="start">C1</text><path d="M134,39 L144,39" fill="none" stroke="#111" stroke-width="1.6"/><rect x="144" y="31" width="34" height="16" fill="#fff" stroke="#111" stroke-width="1.4"/><text x="161" y="43" fill="#111" font-size="9" text-anchor="middle">R2</text><path d="M178,39 L208,39" fill="none" stroke="#111" stroke-width="1.6"/><circle cx="194" cy="39" r="2.6" fill="#111"/><path d="M194,39 L194,62" fill="none" stroke="#111" stroke-width="1.6"/><line x1="182" y1="62" x2="206" y2="62" stroke="#111" stroke-width="1.6"/><line x1="182" y1="68" x2="206" y2="68" stroke="#111" stroke-width="1.6"/><path d="M194,68 L194,78" fill="none" stroke="#111" stroke-width="1.6"/><path d="M194,78 L194,84" fill="none" stroke="#137333" stroke-width="1.6"/><path d="M184,84 L204,84" fill="none" stroke="#137333" stroke-width="2.0"/><path d="M187.5,88 L200.5,88" fill="none" stroke="#137333" stroke-width="2.0"/><path d="M191,92 L197,92" fill="none" stroke="#137333" stroke-width="2.0"/><text x="210" y="66" fill="#111" font-size="9" text-anchor="start">C2</text><path d="M208,39 L218,39" fill="none" stroke="#111" stroke-width="1.6"/><rect x="218" y="31" width="34" height="16" fill="#fff" stroke="#111" stroke-width="1.4"/><text x="235" y="43" fill="#111" font-size="9" text-anchor="middle">R3</text><path d="M252,39 L282,39" fill="none" stroke="#111" stroke-width="1.6"/><circle cx="268" cy="39" r="2.6" fill="#111"/><path d="M268,39 L268,62" fill="none" stroke="#111" stroke-width="1.6"/><line x1="256" y1="62" x2="280" y2="62" stroke="#111" stroke-width="1.6"/><line x1="256" y1="68" x2="280" y2="68" stroke="#111" stroke-width="1.6"/><path d="M268,68 L268,78" fill="none" stroke="#111" stroke-width="1.6"/><path d="M268,78 L268,84" fill="none" stroke="#137333" stroke-width="1.6"/><path d="M258,84 L278,84" fill="none" stroke="#137333" stroke-width="2.0"/><path d="M261.5,88 L274.5,88" fill="none" stroke="#137333" stroke-width="2.0"/><path d="M265,92 L271,92" fill="none" stroke="#137333" stroke-width="2.0"/><text x="284" y="66" fill="#111" font-size="9" text-anchor="start">C3</text><path d="M282,39 L292,39" fill="none" stroke="#111" stroke-width="1.6"/><rect x="292" y="31" width="34" height="16" fill="#fff" stroke="#111" stroke-width="1.4"/><text x="309" y="43" fill="#111" font-size="9" text-anchor="middle">R4</text><path d="M326,39 L356,39" fill="none" stroke="#111" stroke-width="1.6"/><circle cx="342" cy="39" r="2.6" fill="#111"/><path d="M342,39 L342,62" fill="none" stroke="#111" stroke-width="1.6"/><line x1="330" y1="62" x2="354" y2="62" stroke="#111" stroke-width="1.6"/><line x1="330" y1="68" x2="354" y2="68" stroke="#111" stroke-width="1.6"/><path d="M342,68 L342,78" fill="none" stroke="#111" stroke-width="1.6"/><path d="M342,78 L342,84" fill="none" stroke="#137333" stroke-width="1.6"/><path d="M332,84 L352,84" fill="none" stroke="#137333" stroke-width="2.0"/><path d="M335.5,88 L348.5,88" fill="none" stroke="#137333" stroke-width="2.0"/><path d="M339,92 L345,92" fill="none" stroke="#137333" stroke-width="2.0"/><text x="358" y="66" fill="#111" font-size="9" text-anchor="start">C4</text><text x="8" y="112" fill="#888" font-size="9.5" text-anchor="start">조각 i 의 저항은 뒤에 달린 용량 전부를 민다 -- 항이 1+2+...+N 로 는다</text><text x="8" y="126" fill="#c0392b" font-size="9.5" text-anchor="start" font-weight="bold">그래서 배선 지연은 길이에 비례하지 않고 길이의 제곱으로 큰다</text></svg><figcaption><b>그림 26.</b> 배선을 RC 네 토막으로 자른 것. 1 번 토막의 저항은 1–4 번 토막의 용량을 전부 밀어야 하고, 4 번 토막의 저항은 제 것만 민다.</figcaption></figure>
+<div class="유도"><div class="유도머리">유도 &mdash; 배선 지연이 왜 길이의 제곱으로 자라나</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">길이 L 인 배선을 같은 크기 N 토막으로 자른다. 토막마다 저항 R/N, 용량 C/N.</td><td class="유도왜">R = r·L, C = c·L 이고, r 은 Ω/µm, c 는 F/µm 로 기술 파일에서 온다.</td></tr><tr><td class="유도번호">2</td><td class="유도말">i 번 토막보다 뒤에 있는 모든 용량의 전하는 i 번 토막의 저항을 지나가야 한다.</td><td class="유도왜">전하가 거기 닿는 길이 하나뿐이다 — 엘모어 모형의 내용이 그것뿐이다.</td></tr><tr><td class="유도번호">3</td><td class="유도말">그래서 지연은 Σ<sub>i</sub> (R/N)·(N−i+1)(C/N) = RC·(N+1)/(2N) 이다.</td><td class="유도왜">등차급수 1+2+…+N = N(N+1)/2. 대입하면 닫힌 꼴이 나온다.</td></tr><tr><td class="유도번호">4</td><td class="유도말">N → ∞ 이면 RC/2 로 가고, R 과 C 는 각각 L 에 비례한다.</td><td class="유도왜">따라서 t ∝ r·c·L² — <b>배선 길이를 두 배로 하면 지연이 네 배가 된다</b>. 게이트 지연은 전혀 안 변하는데도 그렇다.</td></tr><tr><td class="유도번호">5</td><td class="유도말">이 공정에서 1,&nbsp;µm 배선은 RC/2 = 90&nbsp;ps 를 주고, 네 토막 근사는 112&nbsp;ps 를 준다.</td><td class="유도왜">거친 토막내기는 1.25 배 <b>과</b>대평가한다. 퍼져 있는 경우에는 닫힌 꼴을 쓰고, 토막은 그 토막이 실제로 있을 때만(비아, 가지, 탭) 쓴다.</td></tr></tbody></table></div>
+<table><caption>표 70. 퍼진 배선을 토막내기: 몇 토막이면 되나</caption><thead><tr><th>토막 수 N</th><th>엘모어 지연</th><th>퍼진 RC/2 에 대한 오차</th></tr></thead><tbody><tr><td>1</td><td>18&nbsp;ps</td><td>1&nbsp;%</td></tr><tr><td>2</td><td>135&nbsp;ps</td><td>50&nbsp;%</td></tr><tr><td>4</td><td>112&nbsp;ps</td><td>25&nbsp;%</td></tr><tr><td>8</td><td>101&nbsp;ps</td><td>12.5&nbsp;%</td></tr><tr><td>16</td><td>95.6&nbsp;ps</td><td>6.25&nbsp;%</td></tr><tr><td>32</td><td>92.8&nbsp;ps</td><td>3.12&nbsp;%</td></tr></tbody></table>
+<div class="짚기">저 표에 사실 둘이 숨어 있다. 첫째, <b>한 토막은 100 % 틀린다</b>
+    — 그리고 한 토막이야말로 순진한 스프레드시트가 하는 짓이다. 둘째, 수렴이
+    느리다. 8 토막이어도 여전히 6 % 높다. 추출 도구가 아예 토막을 안 내고
+    퍼진 회로망을 푸는 까닭이 이것이다. 손 어림은 RC/2 를 쓰되, 그것이 추출기가
+    낼 값의 하한이라는 것을 기억하라. 추출기는 이웃과의 결합 용량까지 보기
+    때문이다.</div>
+<div class="개념"><div class="개념머리">엘모어 지연</div>
+<div class="개념이론"><p>RC 나무의 임펄스 응답의 1 차 모멘트다. 마디 k 에 대해
+        t<sub>k</sub> = Σ<sub>i</sub> R<sub>ik</sub>·C<sub>i</sub> 이고, R<sub>ik</sub>
+        는 마디 i 로 가는 길과 마디 k 로 가는 길이 함께 쓰는 저항이다. 단일 RC
+        에서는 정확하고, 계단 입력을 받는 RC 나무의 50 % 지연에 대해서는 늘
+        <b>상한</b>이며, 인덕턴스는 전혀 안 본다.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>클럭 트리 합성(잎의 균형 맞추기), 버퍼와 리피터 끼우기, 그리고 모든 배치기의 증분 타이밍 엔진 안에 든 지연 모형 — 배치기는 한 번 옮길 때마다 전체 추출을 할 여유가 없다.</td></tr>
+<tr><th>언제 쓰나</th><td>나무 구조에 대해 단조롭고 값싸게 갱신되는 지연이 필요할 때마다. 절댓값으로는 10–30 % 틀리고 순서로는 맞는데, 최적화기가 필요한 것이 바로 그 순서다.</td></tr>
+<tr><th>어떻게 쓰나</th><td>구동점에서 나무를 따라 내려가며 잎마다 함께 쓰는 저항을 누적한다. 절대로 사인오프에 쓰지 마라 — 이것은 최적화 목적함수이지 사인오프 모형이 아니다.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code># Extraction produces this; you read it when a net is suspect.
+# SPEF, standard parasitic exchange format, one net:
+*D_NET net_dout_3 1.84e-01          $ total capacitance, pF
+*CONN
+*I u_fir/Z O *L 0 *D INVX4          $ driver
+*I u_reg/D I *L 1.02e-03            $ receiver pin cap, pF
+*CAP
+1 net_dout_3:1 2.31e-02
+2 net_dout_3:2 net_clk:7 4.10e-03   $ COUPLING to an aggressor -- not in your hand estimate
+*RES
+1 net_dout_3:1 net_dout_3:2 1.79e+01 $ ohms</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> 엘모어는 <i>계단 입력에 대한</i> 상한이다. 진짜 입력은
+            슬루가 유한하고, 빠른 입력이 긴 배선으로 들어가면 실제 50 % 지연이
+            그 상한을 넘을 수 있다. 슬루가 크면 당신이 기대는 그 상한은 배운
+            그 상한이 아니다 — 그것이 다음 절이다.</div>
+</div>
+<h2>T2.3 논리적 노력 — 피코초를 덜어 낸 지연</h2>
+<p>게이트 사슬의 치수를 RC 셈으로 정하는 것은 되기는 되는데 괴롭다. 논리적
+    노력은 문제에서 공정을 통째로 걷어 내고, 머릿속에서 최적화할 수 있는 무차원
+    식만 남긴다. 그리고 실제로 부딪히는 두 물음에 답한다: <i>단을 몇 개로 할
+    것인가</i>, 그리고 <i>단마다 얼마나 커져야 하는가</i>.</p>
+<div class="유도"><div class="유도머리">유도 &mdash; 한 단의 정규화된 지연</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">게이트의 지연을 d = (R<sub>gate</sub>·C<sub>out</sub>) + (R<sub>gate</sub>·C<sub>self</sub>) 로 적는다.</td><td class="유도왜">출력 마디는 부하 <i>와</i> 그 게이트 자신의 드레인 용량을 같이 진다. 둘 다 같은 저항을 거쳐 채워진다.</td></tr><tr><td class="유도번호">2</td><td class="유도말">전체를 τ = R<sub>inv</sub>C<sub>g</sub> 로 나눈다.</td><td class="유도왜">모든 것을 최소 인버터에 견주어 재기로 고른 것이다. 잃는 것은 없다. 단위만 없어진다.</td></tr><tr><td class="유도번호">3</td><td class="유도말">첫 항이 g·h 가 된다. <b>논리적 노력</b> g 는 이 위상이 전류를 모는 데 인버터보다 얼마나 나쁜가이고, <b>전기적 노력</b> h = C<sub>out</sub>/C<sub>in</sub> 이다.</td><td class="유도왜">g 는 오직 위상에만 달려 있고(NAND2 = 4/3, NOR2 = 5/3, 인버터 = 1), h 는 부하 대 입력의 비에만 달려 있으므로 절대 크기와 무관하다.</td></tr><tr><td class="유도번호">4</td><td class="유도말">둘째 항이 p, <b>기생 지연</b> 이 된다 — 아무것도 안 모는 게이트의 지연.</td><td class="유도왜">그 게이트 자신의 확산과 함께 자라는데, 확산은 구동력이 자라는 것과 똑같이 폭을 따라 자란다 — 그래서 p 는 크기와 무관하다. p<sub>inv</sub> ≈ 1.</td></tr><tr><td class="유도번호">5</td><td class="유도말">d = g·h + p.</td><td class="유도왜">곱 두 번과 덧셈 한 번, 그리고 공정 상수는 어디에도 없다.</td></tr><tr><td class="유도번호">6</td><td class="유도말">N 단 경로에서 합은 모든 단이 <b>같은</b> 단 노력 f = (G·B·H)<sup>1/N</sup> 을 질 때 최소가 된다.</td><td class="유도왜">단마다의 크기로 합을 미분해 0 으로 놓으면 대칭 해가 떨어진다. G = Πg, H = C<sub>load</sub>/C<sub>in</sub>, B 는 경로에서 갈라져 나가는 가지를 센다.</td></tr></tbody></table></div>
+<figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 8 402 138" width="100%" style="max-width:402px;height:auto" font-family="ui-monospace,monospace" font-size="11"><rect x="16" y="34" width="56" height="44" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><path d="M32,44 L32,68 L56,56 Z" fill="#fff" stroke="#111" stroke-width="1.4"/><circle cx="60" cy="56" r="3.6" fill="#fff" stroke="#111" stroke-width="1.4"/><text x="44" y="92" fill="#111" font-size="10" text-anchor="middle" font-weight="bold">x1</text><path d="M72,56 L90,56" fill="none" stroke="#111" stroke-width="1.6"/><rect x="90" y="34" width="56" height="44" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><path d="M106,44 L106,68 L130,56 Z" fill="#fff" stroke="#111" stroke-width="1.4"/><circle cx="134" cy="56" r="3.6" fill="#fff" stroke="#111" stroke-width="1.4"/><text x="118" y="92" fill="#111" font-size="10" text-anchor="middle" font-weight="bold">x4</text><text x="72" y="28" fill="#c0392b" font-size="9" text-anchor="middle">h=4</text><path d="M146,56 L164,56" fill="none" stroke="#111" stroke-width="1.6"/><rect x="164" y="34" width="56" height="44" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><path d="M180,44 L180,68 L204,56 Z" fill="#fff" stroke="#111" stroke-width="1.4"/><circle cx="208" cy="56" r="3.6" fill="#fff" stroke="#111" stroke-width="1.4"/><text x="192" y="92" fill="#111" font-size="10" text-anchor="middle" font-weight="bold">x16</text><text x="146" y="28" fill="#c0392b" font-size="9" text-anchor="middle">h=4</text><path d="M220,56 L238,56" fill="none" stroke="#111" stroke-width="1.6"/><rect x="238" y="34" width="56" height="44" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><path d="M254,44 L254,68 L278,56 Z" fill="#fff" stroke="#111" stroke-width="1.4"/><circle cx="282" cy="56" r="3.6" fill="#fff" stroke="#111" stroke-width="1.4"/><text x="266" y="92" fill="#111" font-size="10" text-anchor="middle" font-weight="bold">x64</text><text x="220" y="28" fill="#c0392b" font-size="9" text-anchor="middle">h=4</text><path d="M294,56 L316,56" fill="none" stroke="#111" stroke-width="1.6"/><circle cx="316" cy="56" r="2.6" fill="#111"/><text x="322" y="60" fill="#111" font-size="9.5" text-anchor="start" font-weight="bold">C_load</text><text x="16" y="118" fill="#888" font-size="9.5" text-anchor="start">한 칸의 지연 = g·h + p.  사슬 전체는 칸마다 같은 h 일 때 가장 빠르다</text><text x="16" y="132" fill="#137333" font-size="9.5" text-anchor="start" font-weight="bold">그 h 가 대략 3.6 (전기적 노력의 N 제곱근) -- 4 로 잡고 시작한다</text></svg><figcaption><b>그림 27.</b> 네 단, 단마다 앞의 4 배. 합을 최소로 만드는 것은 단 노력이 같은 것이지, 크기가 같은 것도 마지막 단 하나가 거대한 것도 아니다.</figcaption></figure>
+<div class="예제"><div class="예제머리">예제 11. 64 배 부하를 몬다: 단을 몇 개로?</div><div class="예제줄"><b>주어진 것.</b> 1 배 인버터가 64·C<sub>g</sub> 부하(받는 쪽이 여럿인 칩 내부
+        버스)를 몰아야 한다. 인버터 사슬의 논리적 노력은 G = 1, 갈래가 없으므로
+        B = 1, H = 64 이고 경로 노력 F = 64 다.</div><div class="예제줄"><b>푸는 법.</b> N 마다 D = N·F<sup>1/N</sup> + N·p<sub>inv</sub> 를 계산해
+        가장 작은 것을 고른다. 아래 표는 외운 것이 아니라 계산한 것이다.</div><div class="예제답"><b>답.</b> N = 3 단, 단 노력 f = 4,
+        총 지연 15·τ = 12&nbsp;ps. 한 단으로 하면
+        52&nbsp;ps 가 걸린다 — <b>4.33 배 느리다</b>.</div><div class="예제덧"><table><caption>표 71. F = 64 일 때 단 수에 따른 총 지연</caption><thead><tr><th>단 수 N</th><th>단 노력 f</th><th>지연 (τ)</th><th>지연</th></tr></thead><tbody><tr><td>1</td><td>64</td><td>65</td><td>52&nbsp;ps</td></tr><tr><td>2</td><td>8</td><td>18</td><td>144&nbsp;ps</td></tr><tr><td>3</td><td>4</td><td>15</td><td>12&nbsp;ps</td></tr><tr><td>4</td><td>2.83</td><td>15.31</td><td>123&nbsp;ps</td></tr><tr><td>5</td><td>2.3</td><td>16.49</td><td>132&nbsp;ps</td></tr><tr><td>6</td><td>2</td><td>18</td><td>144&nbsp;ps</td></tr></tbody></table></div><div class="예제함정"><b>여기서 틀린다.</b> 표의 최솟값을 날카로운 최적점으로 읽는 것. N = 3 과 N = 4 는
+        2.1&nbsp;% 차이다 — 어떤 실제 p 의
+        잡음 안에 들어가는 차이다. 이름뿐인 빠른 쪽이 아니라 <i>싼</i> 쪽을
+        고르라. 단 하나를 더하면 면적과 누설과, 그리고 그다음에 몰아야 할 슬루가
+        따라온다.</div></div>
+<table><caption>표 72. 실제로 인스턴스화하게 될 셀들의 논리적 노력</caption><thead><tr><th>게이트</th><th>g</th><th>p (τ)</th><th>g 가 왜 그 값인가</th></tr></thead><tbody><tr><td>인버터</td><td>1</td><td>1</td><td>기준</td></tr><tr><td>NAND2</td><td>4/3</td><td>2</td><td>NMOS 둘이 직렬: 같은 풀다운 전류를 내려면 각각 2 배 넓어야 하므로 입력 용량이 입력당 4/3 로 오른다</td></tr><tr><td>NAND3</td><td>5/3</td><td>3</td><td>셋이 직렬 — g 는 쌓기 깊이에 선형으로 자란다</td></tr><tr><td>NOR2</td><td>5/3</td><td>2</td><td>PMOS 가 직렬인데 PMOS 는 약한 소자다. <b>빠른 논리에서 NOR 를 피하고</b> NAND 는 안 피하는 까닭이 이것이다</td></tr><tr><td>NOR3</td><td>7/3</td><td>3</td><td>같은 까닭, 더 나쁘다</td></tr><tr><td>XOR2</td><td>4</td><td>4</td><td>두 입력의 두 극성이 다 내부에 필요하다</td></tr><tr><td>MUX2</td><td>2</td><td>4</td><td>전달 경로 둘에 선택 구동까지</td></tr><tr><td>삼상태 인버터</td><td>2</td><td>2</td><td>인에이블 소자가 출력과 직렬로 붙는다 — 전형적인 버스 드라이버</td></tr></tbody></table>
+<div class="개념"><div class="개념머리">설계 연장으로 쓰는 논리적 노력</div>
+<div class="개념이론"><p>d = g·h + p. 경로 전체는 D = Σ(g<sub>i</sub>h<sub>i</sub>) + Σp<sub>i</sub>
+        이고, 단 노력이 f = F<sup>1/N</sup> 으로 같을 때 최소다. 실무 규칙은
+        <b>f ≈ 4</b> (p<sub>inv</sub> = 1 일 때의 참 최적은 3.6)이고, 단을 하나
+        더하는 것은 그것이 p 보다 많은 지연을 걷어 낼 때만 값어치가 있다.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>합성 전에 파이프라인 한 단을 얼마나 깊게 할 수 있는지 정할 때. NAND-NAND 로 할지 NOR-NOR 로 할지 고를 때. 클럭이나 리셋 분배를 손으로 치수 잡을 때. 이상해 보이는 합성 결과와 다툴 때.</td></tr>
+<tr><th>언제 쓰나</th><td>아키텍처 단계에서, 그리고 도구의 답이 온전한지 확인해야 할 때마다. 합성은 속으로 이것을 하지만 면적과 전력까지 저울에 다는 비용함수를 쓰므로 답이 다르게 나온다 — 이상값을 알아야 그 차이가 맞바꿈인지 실수인지 가를 수 있다.</td></tr>
+<tr><th>어떻게 쓰나</th><td>경로를 따라 G 를 세고, 실제 부하에서 H 를 내고, F = G·B·H 를 잡는다. 그러면 N ≈ log<sub>4</sub>F 이고 f = F<sup>1/N</sup> 이다. 부하에서 거꾸로 올라가며 단마다 치수를 낸다: C<sub>in,i</sub> = g<sub>i</sub>·C<sub>out,i</sub>/f.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code># The synthesis constraint that makes the tool solve the same problem.
+# Without a real load and a real driver, the tool optimises a fiction.
+set_load        0.064            [get_ports dout*]   ;# pF -- from the receiver's .lib
+set_driving_cell -lib_cell INVX4 [get_ports din*]    ;# not an ideal source
+set_max_transition 0.150 [current_design]            ;# ns -- bounds slew degradation
+set_max_fanout    16     [current_design]
+# And the one that is almost always missing on a first pass:
+set_max_capacitance 0.200 [current_design]</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> g 는 <i>위상</i>의 성질이지 라이브러리에서 고른 셀의
+            성질이 아니다. 라이브러리의 NAND2_X4 와 NAND2_X1 은 g 가 같다.
+            다른 것은 C<sub>in</sub> 뿐이다. 단 수를 안 바꾸고 더 큰 셀로 갈아
+            끼워 '타이밍을 고쳤다' 고 하는 기술자는 앞 단의 h 를 바꾼 것이다 —
+            문제를 상류로 옮긴 것이고, 사슬이 길면 그것이 돌아온다.</div>
+</div>
+<h2>T2.4 슬루, 그리고 지연에 인자가 둘인 까닭</h2>
+<p>지금까지의 두 모형은 입력을 하나만 받는다: 부하. 실제 타이밍 도구는 둘을
+    받는다. 게이트의 지연이 그 <i>입력</i>이 얼마나 빨리 움직였는지에 달려 있기
+    때문이다. 느린 입력은 두 트랜지스터를 어정쩡하게 켜 둔 채로 두어 쌓기를 통해
+    전류를 버리고, 출력을 늦게 띄운다. 그것이 위의 모든 것에 대한 가장 큰 보정
+    하나이고, Liberty 파일이 식이 아니라 표를 들고 있는 까닭이다.</p>
+<div class="정의"><b>슬루 (slew / transition time)</b> &mdash; 신호가 V<sub>DD</sub> 의 정해진 두 비율 사이를 지나는 데 걸리는 시간. 관례로 10 %–90 % 또는 30 %–70 % 다. <b>어느 쌍인지는 라이브러리의 성질이고, 서로 다른 쌍을 쓰는 라이브러리를 섞으면 설계의 모든 지연이 조용히 바뀐다.</b></div>
+<div class="정의"><b>단락전류 (short-circuit current)</b> &mdash; 천이하는 동안 풀업과 풀다운 회로망이 동시에 도통해서 쌓기를 통해 V<sub>DD</sub> 를 접지에 단락시킨다. 이렇게 잃는 전하는 입력 천이 시간에 비례한다. 보통의 슬루에서는 스위칭 에너지의 5–15 % 이고, 슬루가 망가지면 쓸모 있는 스위칭 에너지를 넘을 수도 있다.</div>
+<table><caption>표 73. 같은 인버터, 서로 다른 '지연' 넷 — NLDM 의 한 조각</caption><thead><tr><th>입력 슬루 (ps)</th><th>부하 4 fF</th><th>부하 16 fF</th><th>부하 64 fF</th></tr></thead><tbody><tr><td>20</td><td>16&nbsp;ps</td><td>40.4&nbsp;ps</td><td>137&nbsp;ps</td></tr><tr><td>60</td><td>24&nbsp;ps</td><td>49.2&nbsp;ps</td><td>147&nbsp;ps</td></tr><tr><td>120</td><td>36&nbsp;ps</td><td>62.4&nbsp;ps</td><td>162&nbsp;ps</td></tr><tr><td>240</td><td>60&nbsp;ps</td><td>88.8&nbsp;ps</td><td>192&nbsp;ps</td></tr></tbody></table>
+<div class="짚기">저 표는 모형이지 잰 것이 아니다 — 슬루 계수는 보이기 위한 값이다.
+    <b>그렇다고 말하라.</b> 진짜 NLDM 표는 코너 전체에 걸쳐 격자점마다 SPICE 를
+    돌려 특성화한 것이고, 보통 이음마다 · 셀마다 · 코너마다 7×7 점이다. 이 표에서
+    진짜인 것은 모양이다. 지연은 부하에 대체로 선형으로, 입력 슬루에 대체로
+    선형으로 오르고, <b>슬루 항은 작지 않다</b> — 가벼운 부하에서는 그것이 지배
+    항이다.</div>
+<div class="개념"><div class="개념머리">NLDM — 비선형 지연 모형, 그리고 도구가 실제로 읽는 것</div>
+<div class="개념이론"><p>Liberty (<code>.lib</code>) 파일은 셀마다, 타이밍 이음마다 2 차원 표
+        둘을 준다 — 하나는 지연, 하나는 출력 슬루 — 그리고 입력 천이 시간과 총
+        출력 용량으로 색인한다. 도구는 쌍선형으로 보간해서(가장자리에서는
+        <b>외삽해서</b>) 수를 낸다. 그 뒤의 모든 것 — STA, 합성 비용, 배치
+        타이밍 — 이 이 표 위에 서 있다.</p>
+        <p>그 후계인 CCS(composite current source)는 스칼라가 아니라 전류 파형을
+        저장한다. 받는 쪽의 입력 용량 자체가 전압에 따라 변하거나, 넷의 저항이
+        커서 드라이버와 넷이 서로 간섭할 때 그 차이가 문제가 된다. IP 납품물에는
+        <b>당신의 수가 어느 모형에서 나왔는지 적으라</b>. 5 % 수준에서 둘은
+        바꿔 쓸 수 있는 것이 아니다.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>합성 · STA · 배치배선의 모든 지연 수치. 그리고 간접적으로 IP 데이터시트에도: 당신의 F<sub>max</sub> 는 라이브러리와 코너를 같이 적어야 뜻이 생긴다.</td></tr>
+<tr><th>언제 쓰나</th><td>.lib 를 직접 읽게 되는 경우는 딱 둘이다. 어떤 경로의 지연이 말이 안 될 때 도구가 표 밖으로 외삽했는지 보려고, 그리고 한 번도 본 적 없는 라이브러리를 지원하라고 할 때.</td></tr>
+<tr><th>어떻게 쓰나</th><td>이음을 찾아 index_1(입력 슬루)과 index_2(부하)를 읽고, 당신의 동작점이 둘 다의 <i>안쪽</i>인지 확인한다. 표 밖 외삽이 '도구는 통과라는데 실리콘은 아니다' 의 표준적인 까닭이다.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>/* Liberty, one arc of one cell -- this is what the tool reads. */
+cell (INVX1) {
+  area : 1.596 ;
+  pin (A) { direction : input ;  capacitance : 1.02 ; }      /* fF */
+  pin (Z) {
+    direction : output ;
+    function : "!A" ;
+    max_capacitance : 64.0 ;
+    timing () {
+      related_pin : "A" ;
+      timing_sense : negative_unate ;
+      cell_fall (delay_7x7) {
+        index_1 ("0.004, 0.012, 0.028, 0.060, 0.124, 0.252, 0.508");  /* input slew, ns */
+        index_2 ("0.4, 1.6, 4.0, 8.8, 18.4, 37.6, 76.0");             /* load, fF */
+        values ( "0.0091, 0.0142, 0.0241, 0.0431, 0.0812, 0.1574, 0.3098", \
+                 "0.0113, 0.0164, 0.0263, 0.0453, 0.0834, 0.1596, 0.3120", \
+                 /* ... five more rows, one per input slew ... */ );
+      }
+      fall_transition (delay_7x7) { /* the OUTPUT slew -- this feeds the next stage */ }
+    }
+  }
+}</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> 지연과 출력 슬루는 <i>서로 다른</i> 표 둘이고, 출력
+            슬루는 다음 단의 입력 슬루다. 잘못 몰린 넷 하나가 경로 전체를 이렇게
+            오염시킨다. 단마다 더 나쁜 슬루를 받아 더 나쁜 슬루를 내놓고, 그 악화가
+            누적된다. <b><code>set_max_transition</code> 이 있는 까닭이 그 누적을
+            막는 것</b>이고, max_transition 제약이 없는 설계는 보고서에서는 셋업을
+            맞추고 실리콘에서는 실패할 수 있다.</div>
+</div>
+<h2>T2.5 배선, 그리고 그것을 구해 주는 리피터</h2>
+<p>게이트 지연은 공정 노드마다 줄어든다. 배선 지연은 안 줄어든다. 배선이
+    가늘어지면서 r 은 오르고, 마이크로미터당 c 는 대체로 그대로이며, 다이는
+    트랜지스터만큼 빨리 안 줄어든다. 노드마다 짧아져 온 어떤 길이를 넘으면
+    배선이 경로를 지배하고, 해답은 더 큰 드라이버가 아니다 — 배선이 길지
+    않게 만드는 것이다.</p>
+<figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 6 520 178" width="100%" style="max-width:520px;height:auto" font-family="ui-monospace,monospace" font-size="11"><text x="8" y="18" fill="#111" font-size="10" text-anchor="start" font-weight="bold">리피터 없이</text><rect x="8" y="26" width="40" height="30" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="28.0" y="45.0" fill="#111" font-size="11" text-anchor="middle">drv</text><path d="M48,41 L400,41" fill="none" stroke="#111" stroke-width="2.4"/><text x="210" y="34" fill="#888" font-size="9.5" text-anchor="middle">L</text><rect x="400" y="26" width="40" height="30" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="420.0" y="45.0" fill="#111" font-size="11" text-anchor="middle">rcv</text><text x="452" y="45" fill="#c0392b" font-size="10" text-anchor="start" font-weight="bold">t ∝ L²</text><text x="8" y="92" fill="#111" font-size="10" text-anchor="start" font-weight="bold">리피터 4 개</text><rect x="8" y="100" width="40" height="30" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="28.0" y="119.0" fill="#111" font-size="11" text-anchor="middle">drv</text><path d="M48,115 L110,115" fill="none" stroke="#111" stroke-width="2.4"/><path d="M110,105 L110,125 L128,115 Z" fill="#fff" stroke="#111" stroke-width="1.4"/><path d="M128,115 L190,115" fill="none" stroke="#111" stroke-width="2.4"/><path d="M190,105 L190,125 L208,115 Z" fill="#fff" stroke="#111" stroke-width="1.4"/><path d="M208,115 L270,115" fill="none" stroke="#111" stroke-width="2.4"/><path d="M270,105 L270,125 L288,115 Z" fill="#fff" stroke="#111" stroke-width="1.4"/><path d="M288,115 L350,115" fill="none" stroke="#111" stroke-width="2.4"/><path d="M350,105 L350,125 L368,115 Z" fill="#fff" stroke="#111" stroke-width="1.4"/><path d="M368,115 L378,115" fill="none" stroke="#111" stroke-width="2.4"/><rect x="378" y="100" width="40" height="30" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="398.0" y="119.0" fill="#111" font-size="11" text-anchor="middle">rcv</text><text x="8" y="156" fill="#888" font-size="9.5" text-anchor="start">토막마다 길이가 L/N 이므로 제곱 항이 N 배 작아지고, 대신 버퍼 지연이 N 배 는다</text><text x="8" y="170" fill="#137333" font-size="9.5" text-anchor="start" font-weight="bold">둘이 만나는 N 이 최적이다 -- 이 장에서 수로 푼다</text></svg><figcaption><b>그림 28.</b> 긴 배선, 그리고 리피터로 토막 낸 같은 배선. 제곱 항은 N 분의 1 로 줄고 버퍼 지연은 N 배로 는다.</figcaption></figure>
+<figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 430 230" width="100%" style="max-width:430px;height:auto" font-family="ui-monospace,monospace" font-size="11"><path d="M52,18 L52,196 L414,196" fill="none" stroke="#888" stroke-width="1.2"/><path d="M52.0,196 L52.0,200" fill="none" stroke="#888" stroke-width="1.0"/><text x="52.0" y="212" fill="#888" font-size="9" text-anchor="middle">1</text><path d="M150.72727272727272,196 L150.72727272727272,200" fill="none" stroke="#888" stroke-width="1.0"/><text x="150.72727272727272" y="212" fill="#888" font-size="9" text-anchor="middle">4</text><path d="M282.3636363636364,196 L282.3636363636364,200" fill="none" stroke="#888" stroke-width="1.0"/><text x="282.3636363636364" y="212" fill="#888" font-size="9" text-anchor="middle">8</text><path d="M414.0,196 L414.0,200" fill="none" stroke="#888" stroke-width="1.0"/><text x="414.0" y="212" fill="#888" font-size="9" text-anchor="middle">12</text><path d="M48,196.0 L52,196.0" fill="none" stroke="#888" stroke-width="1.0"/><text x="44" y="199.0" fill="#888" font-size="9" text-anchor="end">0</text><path d="M48,107.0 L52,107.0" fill="none" stroke="#888" stroke-width="1.0"/><text x="44" y="110.0" fill="#888" font-size="9" text-anchor="end">65.3632</text><path d="M48,18.0 L52,18.0" fill="none" stroke="#888" stroke-width="1.0"/><text x="44" y="21.0" fill="#888" font-size="9" text-anchor="end">130.726</text><text x="233.0" y="224" fill="#111" font-size="10" text-anchor="middle">repeaters N</text><text x="12" y="107.0" font-size="10" fill="#111" transform="rotate(-90 12 107.0)" text-anchor="middle">delay (ps)</text><path d="M52.0,18.0 L84.9090909090909,59.39334890087767 L117.81818181818181,68.10773814316774 L150.72727272727272,68.65238747081084 L183.63636363636363,65.92914083259518 L216.54545454545453,61.57194621145021 L249.45454545454544,56.28106702863121 L282.3636363636364,50.40663499476608 L315.27272727272725,44.143167726870104 L348.1818181818182,37.607375795152564 L381.09090909090907,30.87352956247389 L414.0,23.991142604074383" fill="none" stroke="#c0392b" stroke-width="1.8"/><circle cx="52.0" cy="18.0" r="2.2" fill="#c0392b"/><circle cx="84.9090909090909" cy="59.39334890087767" r="2.2" fill="#c0392b"/><circle cx="117.81818181818181" cy="68.10773814316774" r="2.2" fill="#c0392b"/><circle cx="150.72727272727272" cy="68.65238747081084" r="2.2" fill="#c0392b"/><circle cx="183.63636363636363" cy="65.92914083259518" r="2.2" fill="#c0392b"/><circle cx="216.54545454545453" cy="61.57194621145021" r="2.2" fill="#c0392b"/><circle cx="249.45454545454544" cy="56.28106702863121" r="2.2" fill="#c0392b"/><circle cx="282.3636363636364" cy="50.40663499476608" r="2.2" fill="#c0392b"/><circle cx="315.27272727272725" cy="44.143167726870104" r="2.2" fill="#c0392b"/><circle cx="348.1818181818182" cy="37.607375795152564" r="2.2" fill="#c0392b"/><circle cx="381.09090909090907" cy="30.87352956247389" r="2.2" fill="#c0392b"/><circle cx="414.0" cy="23.991142604074383" r="2.2" fill="#c0392b"/><text x="410" y="30" fill="#c0392b" font-size="9.5" text-anchor="end" font-weight="bold">total delay</text><circle cx="150.72727272727272" cy="68.65238747081084" r="3.4" fill="#c0392b"/><text x="156.72727272727272" y="62.65238747081084" fill="#c0392b" font-size="9" text-anchor="start" font-weight="bold">N=4</text></svg><figcaption><b>그림 29.</b> 1,&nbsp;µm 배선에 대한 전체 쓸기. 점마다 그 점의 최적
+        리피터 크기를 썼다. <b>최솟값이 얕다</b> — N = 3, 4, 5 가 서로
+        2.1&nbsp;% 안에 있다 — 그러니
+        배선이 되는 쪽을 고르라.</figcaption></figure>
+<div class="유도"><div class="유도머리">유도 &mdash; 최적이 어디서 나오나, 그리고 그것을 대조한다</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">배선을 k 토막으로 자르고 토막마다 크기 h 인 인버터로 몬다.</td><td class="유도왜">토막마다 리피터 하나. 마지막 것이 받는 쪽을 몬다.</td></tr><tr><td class="유도번호">2</td><td class="유도말">토막마다 드라이버가 0.7·(R<sub>inv</sub>/h)(C<sub>w</sub>/k + h·C<sub>g</sub>), 퍼진 배선이 0.4·R<sub>s</sub>C<sub>s</sub>, 먼 쪽 부하가 0.7·R<sub>s</sub>·hC<sub>g</sub> 를 치른다.</td><td class="유도왜">0.4 와 0.7 은 표준적인 분포 RC 계수다 — 자기 용량을 모는 배선에는 0.4, 뭉친 부하에는 0.69.</td></tr><tr><td class="유도번호">3</td><td class="유도말">k 와 h 를 수치로 쓸면 k = 4, h = 38 에서 93.5&nbsp;ps 가 나온다.</td><td class="유도왜">격자 전체를 무식하게 뒤진 것이다 — 최적의 모양에 대해 아무것도 가정하지 않았다.</td></tr><tr><td class="유도번호">4</td><td class="유도말">닫힌 꼴 k = √(0.4R<sub>w</sub>C<sub>w</sub> / 0.7R<sub>inv</sub>C<sub>g</sub>) 과 h = √(R<sub>inv</sub>C<sub>w</sub> / R<sub>w</sub>C<sub>g</sub>) 은 k = 3.59, h = 37.9 를 준다.</td><td class="유도왜"><b>독립 대조다.</b> 같은 답으로 가는 두 길이 크기에서 0.1&nbsp;% 안에서 맞는다. 아무도 대조하지 않은 유도 하나가 틀린 상수를 몇 해씩 살려 두는 길이다.</td></tr><tr><td class="유도번호">5</td><td class="유도말">리피터 없이 같은 배선을 그 배선의 최적 드라이버로 몰면 131&nbsp;ps 다.</td><td class="유도왜">그러니 여기서 리피터가 사 주는 것은 1.4 배다 — <b>그리고 그것이 정직한 표제다</b>. 쓸기에서 가장 유리한 구석에서 집어 온 수가 아니다.</td></tr></tbody></table></div>
+<div class="개념"><div class="개념머리">리피터 끼우기</div>
+<div class="개념이론"><p>지연이 길이의 제곱인 배선을, 제곱 항이 버퍼 지연과 견줄 만해질
+        만큼 짧은 토막으로 끊는다. 최적 토막 길이는 <b>토막마다의 배선 RC 가
+        버퍼 자신의 지연과 같아지는</b> 길이다. 그것을 넘으면 아무것도 못 아끼면서
+        버퍼 값만 치르는 것이다.</p>
+        <p>이 공정에서 갈림점은 배선 25&nbsp;µm 언저리다 — 그보다 짧으면
+        리피터가 아끼는 것보다 더 든다.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>블록을 벗어나는 모든 넷: 블록 사이 데이터패스, 클럭 척추, 리셋 분배, 그리고 당신의 IP 포트가 닿는 SoC 최상위 조립.</td></tr>
+<tr><th>언제 쓰나</th><td>물리 설계에서 정해지지만 <b>당신의 납품물에서 제약된다</b>: 당신 IP 의 출력에 200 ps 예산이 있는데 통합하는 쪽의 배선이 300 을 요구하면, RTL 에는 아무 잘못이 없는데 블록이 실패한다.</td></tr>
+<tr><th>어떻게 쓰나</th><td>통합하는 쪽에 바람이 아니라 수를 주라. 출력 지연, 구동 세기, 최대 부하를 데이터시트에 적고 양쪽 끝을 set_output_delay / set_load 로 제약한다. 그러면 리피터 문제는 그쪽 것이 되고, 풀 수 있는 문제가 된다.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code># What the integrator must be told, and what you must constrain.
+# In your IP's SDC (shipped with the deliverable):
+create_clock -name clk -period 4.000 [get_ports clk]
+set_output_delay -max 1.200 -clock clk [get_ports {dout[*] dvalid}]
+set_input_delay  -max 1.000 -clock clk [get_ports {din[*] dvalid_i}]
+set_load 0.064 [get_ports dout[*]]     ;# what we assumed -- say it in the datasheet
+# And in DATASHEET.md, the line that prevents the support call:
+#   Output timing assumes &lt;= 64 fF load and &lt;= 150 ps transition at the port.
+#   Beyond that, insert a repeater; every 100 fF adds approximately 25 ps.</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> 리피터는 반전한다. 홀수 개면 넷의 극성이 뒤집히고,
+            그 해결책 — 인버터 대신 버퍼(인버터 둘)를 쓰는 것 — 은 인버터 사슬보다
+            지연이 더 든다. 도구가 이것을 처리하지만, <b>리셋이나 스캔 인에이블
+            경로에 손으로 놓은 리피터는 전형적인 브링업 버그다</b>: 한 코너에서만
+            블록이 틀린 극성으로 리셋된다. 끼워 넣은 한 쌍이 바로 그 코너에서
+            최적화로 지워졌기 때문이다.</div>
+</div>
+<h2>T2.6 셀에서 경로로: STA 가 실제로 더하는 것</h2>
+<p>정적 타이밍 분석은 시뮬레이션하지 않는다. 그래프를 따라 수 둘을 민다 —
+    신호가 도착할 수 있는 가장 이른 시각과 가장 늦은 시각 — 그리고 끝점마다
+    요구하는 것과 견준다. 위의 모든 것이 그 그래프의 이음 하나를 댄다. 이 절은
+    그 이음들이 어떻게 판정이 되는가다.</p>
+<div class="유도"><div class="유도머리">유도 &mdash; 셋업과 홀드를 각각 부등식 하나로</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">띄우는 플롭이 t<sub>launch</sub> = T<sub>clk,launch</sub> + t<sub>cq</sub> 에 데이터를 내놓는다.</td><td class="유도왜">클럭은 띄우는 플롭에 그 플롭 나름의 시각에 닿는다 — 클럭 지연은 경로의 양 끝에서 같지 않다.</td></tr><tr><td class="유도번호">2</td><td class="유도말">그것이 받는 플롭에 t<sub>arrival</sub> = t<sub>launch</sub> + t<sub>logic</sub> 에 닿는다.</td><td class="유도왜">t<sub>logic</sub> 이 이 장이 지금까지 계산해 온 전부다.</td></tr><tr><td class="유도번호">3</td><td class="유도말">받는 에지는 T<sub>clk,capture</sub> + T<sub>period</sub> 에 오고, 데이터는 그보다 t<sub>setup</sub> 앞서 안정돼 있어야 한다.</td><td class="유도왜">그 안정 요구는 플롭의 성질이고, 다른 이음과 똑같은 방식으로 특성화된다.</td></tr><tr><td class="유도번호">4</td><td class="유도말"><b>셋업:</b> t<sub>arrival</sub> ≤ T<sub>capture</sub> + T − t<sub>setup</sub> − t<sub>uncertainty</sub>. 슬랙은 그 차다.</td><td class="유도왜">클럭 불확실도가 지터와, (CTS 전이라면) 도구가 아직 알 수 없는 스큐를 흡수한다. 슬랙이 양이면 통과, 음이면 실패다.</td></tr><tr><td class="유도번호">5</td><td class="유도말"><b>홀드:</b> <i>가장 빠른</i> 경로가 같은 받는 에지의 홀드 창보다 먼저 닿으면 안 된다: t<sub>arrival,min</sub> ≥ T<sub>capture</sub> + t<sub>hold</sub>.</td><td class="유도왜"><b>홀드에는 T 가 없다.</b> 클럭을 느리게 해도 홀드 위반은 안 고쳐진다 — 처음 설계하는 사람에게 이 장에서 가장 쓸모 있는 사실 하나다.</td></tr></tbody></table></div>
+<table><caption>표 74. 경로의 수가 당신 어림보다 나빠지는 네 가지 길</caption><thead><tr><th>효과</th><th>무엇을 하나</th><th>대략 크기</th><th>어디서 정하나</th></tr></thead><tbody><tr><td>OCV / AOCV / POCV</td><td>띄우는 클럭 경로와 받는 클럭 경로의 셀·넷 지연을 서로 다르게 디레이트한다. 같은 다이 위의 똑같은 셀 둘이 똑같지 않기 때문이다</td><td>클럭 경로의 3–10 %</td><td>set_timing_derate</td></tr><tr><td>클럭 불확실도</td><td>지터를, 그리고 CTS 전이면 스큐까지 대신하는 평평한 뺄셈</td><td>50–150 ps</td><td>set_clock_uncertainty</td></tr><tr><td>CPPR / CRPR</td><td>띄우는 클럭 경로와 받는 클럭 경로가 함께 쓰는 부분에 두 번 걸린 디레이트를 <b>돌려준다</b></td><td>10–50 ps 를 되찾는다</td><td>사인오프 STA 에서는 기본으로 켜짐. 합성에서는 흔히 꺼짐</td></tr><tr><td>SI / 누화 지연</td><td>반대 방향으로 스위칭하는 가해자가 당신의 천이를 늘인다</td><td>길게 나란한 넷에서 5–15 %</td><td>SPEF 의 결합을 넣은 SI 인지 STA</td></tr></tbody></table>
+<div class="개념"><div class="개념머리">report_timing 을 속지 않고 읽기</div>
+<div class="개념이론"><p>타이밍 보고서는 장부다. 띄우는 플롭까지의 클럭 경로, 데이터 경로를
+        따르는 셀과 넷의 지연, 받는 플롭까지의 클럭 경로, 라이브러리 셋업, 그리고
+        디레이트. <b>그 보고서가 뜻이 있는지를 정하는 줄은 그것이 어느 코너와 어느
+        모드에서 돌았는가 하나다</b> — 이상 클럭으로 전형 코너에서 나온 보고서는
+        아무것에 대한 증거도 아니다.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>모든 타이밍 사인오프, 모든 '이게 왜 실패하지' 조사, 그리고 데이터시트에 적는 모든 F<sub>max</sub> 수치.</td></tr>
+<tr><th>언제 쓰나</th><td>슬랙이 음이면 경로 전체를 읽는다. 양이면 <i>시작점과 끝점</i>을 먼저 읽어서, 도구가 당신 생각의 그 경로를 잰 것이 맞는지 확인한다. 거짓 경로와 제약 없는 끝점은 여기 말고 다른 데서는 안 드러난다.</td></tr>
+<tr><th>어떻게 쓰나</th><td>확인할 것: (1) 끝점이 포트가 아니라 레지스터인가, (2) 클럭이 진짜(전파된 것)인가 이상 클럭인가, (3) 가장 나쁜 셀에서 입력 천이가 얼마인가 — .lib 색인 범위의 끝이면 그 수는 외삽된 것이다, (4) 경로에서 넷 지연이 얼마인가. 넷 지연이 40 % 를 넘으면 고칠 것은 논리가 아니라 배치다.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code># Startpoint: u_fir/acc_reg[7] (rising edge-triggered flip-flop clocked by clk)
+# Endpoint:   u_fir/y_reg[15]   (rising edge-triggered flip-flop clocked by clk)
+# Corner: ss_0p81v_125c    Check: setup   Path Group: clk
+#   Point                                  Incr       Path
+#   clock clk (rise edge)                  0.000      0.000
+#   clock network delay (propagated)       0.412      0.412     &lt;- real CTS, not ideal
+#   u_fir/acc_reg[7]/CK (DFFX1)            0.000      0.412 r
+#   u_fir/acc_reg[7]/Q (DFFX1)             0.138      0.550 f
+#   u_fir/U231/Z (NAND2X2)                 0.061      0.611 r
+#   u_fir/U248/Z (INVX4)                   0.029      0.640 f
+#   net (fanout=6, length=214um)           0.087      0.727    &lt;- 12% of the path is WIRE
+#   u_fir/y_reg[15]/D (DFFX1)              0.000      0.727 f
+#   data arrival time                                 0.727
+#   clock clk (rise edge)                  4.000      4.000
+#   clock network delay (propagated)       0.438      4.438
+#   clock reconvergence pessimism          0.021      4.459    &lt;- CPPR gives this back
+#   library setup time                    -0.096      4.363
+#   data required time                                4.363
+#   slack (MET)                                       3.636</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> 보고서에 <code>clock network delay (ideal)</code> 이라고
+            적혀 있고 <code>(propagated)</code> 가 아니라면, 클럭 트리가
+            아직 없다는 뜻이고 스큐는 짐작이다. 이상 클럭 보고서의 수는 사인오프에서
+            흔히 200–400 ps 움직인다 — 나쁜 쪽으로. <b>이상 클럭
+            F<sub>max</sub> 를 절대 데이터시트에 적지 마라.</b></div>
+</div>
+<h2>T2.7 월요일에 무엇을 할 것인가</h2>
+<table><caption>표 75. 이 장의 개념이 실제로 쓰이는 자리</caption><thead><tr><th>개념</th><th>쓰이는 블록</th><th>무엇을 정하나</th></tr></thead><tbody><tr><td>RC지연 · τ · FO4</td><td>RTL 이 생기기 전의 모든 블록</td><td>목표 주파수에서 그 기능이 한 주기에 들어가나</td></tr><tr><td>엘모어지연</td><td>클럭 트리, 리셋 트리, 긴 데이터패스 넷</td><td>버퍼를 어디에 놓아야 하나, 어느 잎이 늦은 잎인가</td></tr><tr><td>논리적노력</td><td>임계 경로 재구성, 파이프라인 깊이</td><td>단 수, 그리고 단 사이의 크기 비</td></tr><tr><td>슬루 · NLDM</td><td>.lib 읽기, 말 안 되는 지연 디버깅</td><td>도구가 당신 동작점을 보간했나 외삽했나</td></tr><tr><td>배선지연 · 리피터</td><td>블록 경계와 최상위 조립</td><td>데이터시트에 내놓는 출력 부하와 천이 한계</td></tr><tr><td>도착시각 · 요구시각 · 슬랙</td><td>모든 사인오프</td><td>지금 팔려는 그 수가 진짜인가</td></tr></tbody></table>
+<div class="사고"><b>실제로 난 일</b><br>이 저장소는 자기 FIR 필터를 <b>455 MHz</b> 로 쟀다가
+    다시 <b>47.4&nbsp;MHz</b> 로 쟀다 — 9.6 배 차이 — 같은 RTL 에서.
+    다른 것은 타이밍 껍데기 하나였다. 경계에 레지스터가 없으면 도구는 핀에서
+    핀까지 가는 경로의 지연을 찍는데, 그것은 칩 안에 존재하지 않는 경로다.
+    이 장의 모든 수는 그것을 잰 경로만큼만 뜻이 있고, 10 배 틀리는 가장 값싼
+    방법은 엉뚱한 경로를 재는 것이다.</div>
+<p>다음 장은 이 장이 다룰 수 없는 딱 하나의 경우를 맡는다. 셋업 부등식이
+    깨지는 까닭이 경로가 느려서가 아니라 데이터가 애초에 그 클럭과 동기가 아니었기
+    때문일 때 무슨 일이 일어나는가. 답은 더 긴 지연이 아니라 확률이고, 이 책에서
+    결코 0 으로 만들 수 없는 유일한 타이밍 양이다.</p>
+<div class="특허"><div class="특허머리">특허로 가는 길 &mdash; 이 주제에서 발명이 일어나는 자리</div><div class="특허속">게이트의 지연은 물리이고 특허가 안 된다. <b>지연이 문제가
+        되지 않도록 블록이 스스로를 배치하는 방식은 특허가 된다.</b> 실제로 팔리는
+        IP 의 청구항이 무엇을 덮는지 보라. 되먹임 곱셈-덧셈을 임계 고리에서 빼내
+        미리 계산한 다중화기로 갈음하는 투기적(언롤링) 결정 되먹임 등화기 —
+        산술은 그대로인데 고리 지연은 그대로가 아니다. 두 자리올림을 모두 계산해서
+        면적으로 지연을 사는 캐리 셀렉트 가산기. 느린 경로가 빠른 경로에서 시간을
+        빌리도록 두 띄우기 지점을 일부러 어긋나게 하는 클럭 트리 방식. 어느 경우든
+        발명은 <i>지연을 어디로 옮겼는가</i> 이지 트랜지스터가 얼마나 빠른가가
+        아니다. 이 장이 식만큼이나 <i>어느 항이 지배하는가</i> 에 시간을 쓰는 까닭이
+        그것이다: 짚어 내지 못한 항은 옮길 수도 없다.</div></div>
