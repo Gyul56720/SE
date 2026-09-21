@@ -1,0 +1,118 @@
+<h1 id="T16">T16. ESD &mdash; 칩에 전원이 들어오기도 전에 나는 실패</h1>
+<p class="한줄">모든 핀이 손가락에서 오는 몇 암페어를 견뎌야 하는데, 그것을 견디는 회로가 하필 그것 때문에 느려지면 안 되는 회로의 신호 경로 위에 있다.</p>
+<div class="사다리"><div class="사다리앞"><b>읽기 전에 알아야 하는 것</b><br>전압 · 전류 · 전하 · 저항 · 주파수 · 적분 · RC지연 · 게이트용량 · 문턱전압 · 반사계수 · 기생 · 레이아웃의존효과 · TDDB · 일렉트로마이그레이션 · 특성임피던스</div><div class="사다리뒤"><b>이 장에서 새로 나오는 것</b><br>정전기방전 · 인체모델 · 기계모델 · 충전소자모델 · 클램프 · 스냅백 · 설계창 · 유지전압 · 트리거전압 · 전류경로 · 패드용량 · 이차항복 · 래치업</div></div>
+<p>카펫 위를 걸은 사람은 몇 킬로볼트로 충전된다. 그가 핀을 건드리면 그
+    전하가 백 나노초 만에 칩 안으로 흘러드는데, 안쪽의 게이트 산화막은
+    하나하나가 몇 나노미터 두께다. 그러니 보호는 고를 수 있는 것도, 자잘한
+    것도 아니다. <b>그것은 당신 신호와 직렬로 놓인 회로이고</b>, 그 용량은
+    당신 대역폭에서 곧장 빠져나간다.</p>
+<h2>T16.1 세 모형, 전혀 다른 세 사건</h2>
+<div class="개념"><div class="개념머리">인체·기계·충전소자 모델 (HBM, MM, CDM)</div>
+<div class="개념이론"><p><b>HBM</b> 은 충전된 사람을 본뜬다. 1&nbsp;pF 을
+        2 kV 로 채워 1.5&nbsp;kΩ 을 거쳐 방전한다. 그러면 첨두 전류가
+        1.33&nbsp;A 이고 시정수가 15&nbsp;ns, 에너지가
+        2&nbsp;µJ 다 — <b>셈한 것이고, 한 번은 손으로 해 볼 만하다.</b>
+        수가 사람들이 생각하는 것보다 덜 극적이기 때문이다.</p>
+        <p><b>CDM</b> 은 <i>칩 자신</i>이 충전됐다가 핀 하나로 방전되는 것을
+        본뜬다. 훨씬 빠르고(상승 시간이 1 나노초를 한참 밑돈다) 첨두 전류가
+        몇 암페어지만 총 에너지는 작다. 500 V 에 대해 발표된 CDM 파형은
+        첨두가 대략 5–10 A 인데 — 규격과 관행에서 온 수치이고
+        <b>여기서 셈한 것이 아니다</b>. 첨두를 정하는 것이 저항이 아니라
+        패키지의 인덕턴스이기 때문이다.</p>
+        <p><b>MM</b>(기계 모델)은 둘 사이에 있고 대체로 물러났다.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>모든 제품의 모든 핀에 대한 인증. 목표는 보통 HBM 2 kV 와 CDM 500 V 이고, 고객이 더 요구하기도 한다.</td></tr>
+<tr><th>언제 쓰나</th><td>I/O 설계의 맨 처음에 — 보호의 용량은 대역폭 예산의 한 항이고 나중에 더할 수 없다.</td></tr>
+<tr><th>어떻게 쓰나</th><td>HBM 은 패드에서 클램프와 다이오드로, CDM 은 그것이 지키는 게이트 가까이에 <b>2차</b> 보호를 두고 작은 직렬 저항을 붙여 설계한다. 시간 규모가 다르므로 둘은 다른 구조가 필요하다.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>* TLP (transmission-line pulse) is how protection is characterised:
+* rectangular 100 ns pulses of increasing current, measuring V at each step.
+* The plot that comes out IS the design window check.
+*   I_t2  : the current at which the structure fails (second breakdown)
+*   V_h   : holding voltage after snapback  -- must be ABOVE the supply
+*   V_t1  : trigger voltage                 -- must be BELOW the oxide limit
+* A 2 kV HBM target needs I_t2 &gt;= 1.33 A with margin -- the number computed above.</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> HBM 과 CDM 은 <b>서로 다른</b> 구조를 무너뜨린다. HBM 4 kV 를
+            통과하는 설계가 CDM 250 V 에 질 수 있다. CDM 의 전류는 다이
+            안에서 나타나 피코초 만에 치솟고, 패드 클램프가 켜지기 전에
+            가장 가까운 얇은 산화막을 찾아내기 때문이다. HBM 만 보고하는
+            것은 쉬운 쪽 절반만 보고하는 것이다.</div>
+</div>
+<table><caption>표 26. 세 사건을 나란히</caption><thead><tr><th></th><th>HBM</th><th>MM</th><th>CDM</th></tr></thead><tbody><tr><td>무엇이 충전되나</td><td>사람</td><td>공구나 고정구</td><td><b>칩 자신</b></td></tr><tr><td>흔한 목표</td><td>2 kV</td><td>200 V (대체로 물러남)</td><td>500 V</td></tr><tr><td>첨두 전류</td><td>1.33&nbsp;A (셈한 것)</td><td>몇 A</td><td>5–10 A (관행에서)</td></tr><tr><td>상승 시간</td><td>~10 ns</td><td>~ns</td><td><b>&lt; 250 ps</b></td></tr><tr><td>길이</td><td>~15&nbsp;ns</td><td>~ns</td><td>~1 ns</td></tr><tr><td>에너지</td><td>2&nbsp;µJ</td><td>~µJ</td><td>~1 µJ</td></tr><tr><td>무엇이 지나</td><td>패드 구조물, 클램프</td><td>HBM 과 비슷</td><td><b>안쪽의 얇은 산화막</b> — 패드에서 먼 데</td></tr></tbody></table>
+<h2>T16.2 설계창, 그리고 왜 창인가</h2>
+<div class="유도"><div class="유도머리">유도 &mdash; 한꺼번에 지켜져야 하는 부등식 넷</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">클램프는 정상 동작에서 흘려서는 안 된다. 넘실댐까지 넣어 V<sub>trigger</sub> > V<sub>DD,max</sub> 다.</td><td class="유도왜">전원 과도에 켜지는 클램프는 전원 레일을 가로지르는 단락이다 — 칩이 잘 돌다가 스스로를 태운다.</td></tr><tr><td class="유도번호">2</td><td class="유도말">다른 무엇이 무너지기 전에 켜져야 한다. V<sub>trigger</sub> < V<sub>oxide breakdown</sub> 이다.</td><td class="유도왜">있는 목적이 그것이다. 이 줄과 앞 줄이 창을 정하는데, 산화막이 얇고 전원이 거기에 가까운 첨단 마디에서는 <b>창이 겨우 1~2 볼트 폭</b>이다.</td></tr><tr><td class="유도번호">3</td><td class="유도말">스냅백 뒤에는 전원 위에서 버텨야 한다. V<sub>hold</sub> > V<sub>DD</sub> 다.</td><td class="유도왜">아니면 사건으로 한번 켜진 클램프가 정상 전원이 돌아와도 켜진 채로 있는다 — <b>래치업</b>이고, ESD 시험기가 이미 합격을 낸 뒤 작업대 위에서 부품이 망가진다.</td></tr><tr><td class="유도번호">4</td><td class="유도말">지지 않고 전류를 날라야 한다. I<sub>t2</sub> 가 목표의 첨두보다 커야 하니, HBM 2 kV 면 1.33&nbsp;A 위로 여유를 두고다.</td><td class="유도왜">2차 항복은 열적인 것이고 되돌릴 수 없다.</td></tr></tbody></table></div>
+<div class="짚기">둘째와 셋째 부등식은 공정이 미세해질수록 반대로 움직인다. 산화막은
+    얇아지고(천장이 내려간다) 전원은 그보다 느리게 내려간다(바닥이
+    올라간다). <b>설계창은 마디마다 좁아진다.</b> ESD 설계가 전문 분야가 된
+    까닭이고, 새 마디의 보호가 옛것을 그대로 옮긴 것인 경우가 드문
+    까닭이다.</div>
+<div class="개념"><div class="개념머리">전류 경로 (the current path) &mdash; 사람들이 잊는 대목</div>
+<div class="개념이론"><p>보호는 핀에 붙이는 부품이 아니라 <b>모든 핀 쌍 사이의 경로</b>다.
+        다른 어떤 I/O 를 기준으로 입력에 걸린 펄스는 임피던스가 낮은 길을
+        찾아야 한다. 보통은 다이오드를 타고 국소 전원으로 올라가, 전원 버스를
+        따라가, 레일 클램프를 거쳐 접지로 내려가, 다른 다이오드로 돌아오는
+        길이다.</p>
+        <p>그 길을 끊는 것이 셋이고 셋 다 회로도가 아니라 레이아웃이다.
+        <b>버스 저항</b>(핀과 클램프 사이의 전원 버스 — 몇 암페어에서는 수백
+        밀리옴이 몇 볼트다), 서로 다른 전원 도메인 사이의 <b>맞대어 놓은
+        다이오드가 없는 것</b>, 그리고 <b>너무 멀리 있는 클램프</b>다.
+        회로도는 보호를 보여 준다. 경로를 보여 주는 것은 추출된 레이아웃뿐이다.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>모든 I/O, 특히 제 전원 도메인에 앉아 있는 모든 핀 — PHY 의 아날로그 전원, 따로 조정되는 PLL 레일(T13).</td></tr>
+<tr><th>언제 쓰나</th><td>플로어플랜에서. 답이 '모든 패드 가까이에 클램프' 이고 그것이 다이 가장자리의 면적을 먹기 때문이다.</td></tr>
+<tr><th>어떻게 쓰나</th><td>핀 쌍을 (I/O 대 I/O, I/O 대 모든 전원, 전원 대 전원) 다 적어 놓고 저마다 설계된 경로가 있는지 확인한다. 그다음 ESD 경로 점검 도구로 추출된 레이아웃 위에서 확인한다 — 중요한 수는 클램프 자신의 전압이 아니라 목표 전류에서의 <b>경로 전체에 걸린 전압</b>이다.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code># What an ESD path check reports, and how to read it.
+#   pad_rx -&gt; VSS  : clamp V 4.1 V + bus IR 1.3 V = 5.4 V  @ 1.33 A   &lt;- FAIL (oxide 5.0)
+#   pad_rx -&gt; VDDA : diode 1.1 V + bus 0.4 V     = 1.5 V              &lt;- ok
+#   VDDA   -&gt; VDD  : NO PATH                                          &lt;- FAIL
+# Two failures, and NEITHER is the clamp's fault:
+#   the first is a BUS WIDTH problem; the second is a MISSING back-to-back
+#   diode pair between two supply domains. Both are floorplan decisions.</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> 따로 난 전원 도메인이 고전적인 구멍이다. 다이 위에서 한 번도
+            이어지지 않는 두 레일도 시험기 위에서는 이어지고, 둘 사이에
+            설계된 경로가 없으면 전류는 경계를 건너는 아무 신호로나 길을
+            찾아낸다 — 보통은 레벨 시프터의 얇은 산화막 게이트다.</div>
+</div>
+<h2>T16.3 신호가 치르는 값</h2>
+<table><caption>표 27. 패드 용량에 대한 대역폭 (f_3dB = 1/(2πRC). 25 Ω 은 양쪽에서 종단한 50 Ω 선로다)</caption><thead><tr><th>패드 + 보호 C</th><th>25 Ω 에서 f_3dB</th><th>50 Ω 에서 f_3dB</th><th>어디에 쓸 수 있나</th></tr></thead><tbody><tr><td>100&nbsp;fF</td><td>63.66&nbsp;GHz</td><td>31.83&nbsp;GHz</td><td>112G PAM4 급</td></tr><tr><td>200&nbsp;fF</td><td>31.83&nbsp;GHz</td><td>15.92&nbsp;GHz</td><td>25–56 G</td></tr><tr><td>300&nbsp;fF</td><td>21.22&nbsp;GHz</td><td>10.61&nbsp;GHz</td><td>25–56 G</td></tr><tr><td>500&nbsp;fF</td><td>12.73&nbsp;GHz</td><td>6.366&nbsp;GHz</td><td>10 G 이하</td></tr><tr><td>1,&nbsp;fF</td><td>6.366&nbsp;GHz</td><td>3.183&nbsp;GHz</td><td>저속 / 제어</td></tr></tbody></table>
+<div class="유도"><div class="유도머리">유도 &mdash; 왜 이 표가 SerDes 의 진짜 ESD 제약인가</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">암페어를 나를 만큼 큰 다이오드에는 접합 면적이 있고, 접합에는 용량이 있다.</td><td class="유도왜">보호 용량과 I<sub>t2</sub> 는 대체로 비례한다 — 하나 없이 다른 하나를 가질 수 없고, 그것이 문제의 전부다.</td></tr><tr><td class="유도번호">2</td><td class="유도말">그 용량은 선로와 병렬로 패드에 앉는다.</td><td class="유도왜">300&nbsp;fF 에 25 Ω 이면 극이 21.22&nbsp;GHz 인데 — 56 GBd 링크의 나이퀴스트 아래다.</td></tr><tr><td class="유도번호">3</td><td class="유도말">그러니 보호가 채널 여유를 곧장 걷어 간다 — T8 의 등화기들이 싸워서 얻으려던 바로 그 여유다.</td><td class="유도왜"><b>ESD 와 링크 예산은 같은 협상이고</b>, 데이터율을 약속하는 자리에 ESD 담당자는 대개 없다.</td></tr><tr><td class="유도번호">4</td><td class="유도말">빠져나갈 길은 구조적이다. 보호를 유도성 회로망(T 코일)을 따라 흩어 놓아 용량이 전송선 안으로 빨려 들어가게 하거나, 1차 보호를 작게 하고 빠른 2차 보호를 안쪽에 둔다.</td><td class="유도왜">이 바닥에 특허가 빽빽한 까닭이 둘 다다. 어느 것도 공짜가 아니다 — T 코일은 면적과 제 기생을 치른다.</td></tr></tbody></table></div>
+<div class="사고"><b>실제로 난 일</b><br>ESD 는 한 사람짜리 IP 회사가 제 한계를 분명히 말해야 하는
+    자리다. 보호를 설계하고 <b>인증하는</b> 데는 TLP 측정 장비와 특성화할
+    실리콘이 드는데, 혼자 하는 디지털 흐름에는 둘 다 없다. 그러니 정직한
+    납품물은 패드에서 멈추는 소프트 매크로, 가정한 보호와 그 용량 예산을
+    밝힌 연동 안내서, 그리고 이 저장소의 규칙이 요구하는 그 문장이다.
+    <b>확인하지 않은 것을 확인하지 않았다고 적는 것.</b> 한 적도 없는
+    ESD 인증을 암시하는 데이터시트는 작은 공급자를 끝장내는 종류의
+    주장이다.</div>
+<h2>T16.4 월요일에 이걸로 무엇을 하나</h2>
+<table><caption>표 28. 이 장의 개념이 실제로 쓰이는 자리</caption><thead><tr><th>개념</th><th>쓰이는 블록</th><th>무엇을 정하나</th></tr></thead><tbody><tr><td>인체모델 · 충전소자모델</td><td>인증 계획과 데이터시트</td><td>목표, 그리고 HBM 뿐 아니라 CDM 도 보고한다는 것</td></tr><tr><td>설계창 · 유지전압 · 트리거전압</td><td>그 마디에 맞는 클램프 고르기</td><td>이 전원과 이 산화막에서 보호가 존재할 수 있기는 한지</td></tr><tr><td>전류경로</td><td>플로어플랜과 전원 도메인 계획</td><td>클램프 자리, 버스 폭, 그리고 도메인 사이의 다이오드</td></tr><tr><td>패드용량</td><td>SerDes 설계자가 함께 앉은 링크 예산</td><td>데이터율 — 등화기들이 싸워서 얻으려는 바로 그 여유다</td></tr><tr><td>래치업</td><td>어디에나 가드 링과 웰 타이</td><td>제 I/O 가 범위 밖으로 몰렸을 때 부품이 살아남는지</td></tr></tbody></table>
+<p>가지고 갈 셈한 수들. HBM 2 kV 사건은 1.33&nbsp;A 가 대략
+    15&nbsp;ns 동안 2&nbsp;µJ 를 나르는 것이다 — 살아남을 만큼
+    작고 얇은 산화막을 태울 만큼 크다. 그리고 패드의
+    300&nbsp;fF 보호는 극을
+    21.22&nbsp;GHz 에 놓는데, 그것이 이 장을 T8 에
+    잇는 문장이다. <b>ESD 는 링크 예산과 따로 노는 분야가 아니라 그 안의
+    한 줄이다.</b></p>
+<p>이것으로 이 권의 소자 절반이 닫힌다. 동작 영역 넷을 가진 소자 하나로
+    시작해 패드에서 끝났고, 그 사이에 지연, 준안정, 잡음, 표본화, 변환,
+    클러킹, 링크, 채널, 스위치드 커패시터, 기준, 정합, 전원, 노화, 기하를
+    지나왔다. 꿰뚫는 실은 규율 하나였다. <b>모든 수는 셈하거나 쟀고, 수를
+    보고하기 전에 사소한 설명을 죽였고, 세우지 못한 것은 세우지 못했다고
+    말했다.</b></p>
+<p>다음에 오는 것이 나머지 절반이다. 검증된 넷리스트를 제조되고 시험된
+    실리콘으로 바꾸는 흐름이다. 다른 종류의 공학이다 — 재는 양이 볼트와
+    피코초가 아니라 실행 시간, 트랙 수, 코너 목록, 시험 초, 백만 개당 불량
+    개수다 — 그런데 규율은 같은 것이고, 여섯 장이 그것을 여섯 단계에
+    적용한다. 흐름과 되돌이의 값(T17), 플로어플랜과 그 전원 격자(T18),
+    배치·클러킹·배선(T19), 사인오프(T20), 먼저 왔어야 했던 검증 환경(T21),
+    그리고 출하되는 모든 부품이 지나는 시험기(T22)다.</p>
+<div class="특허"><div class="특허머리">특허로 가는 길 &mdash; 이 주제에서 발명이 일어나는 자리</div><div class="특허속">ESD 는 I/O 설계에서 특허가 가장 활발한 영역 가운데 하나이고,
+        까닭은 제약 그 자체다. 보호가 <b>신호 경로 위에</b> 앉으므로, 모든
+        청구항은 펨토패럿당 보호를 더 얻는 방법이다. T 코일이나 인덕터로
+        피킹한 회로망을 따라 흩어 놓은 보호, 진짜 사건 동안에만 흐르는 능동
+        클램프, 드라이버 자신의 소자를 다시 쓰는 보호, 그리고 패드가 아니라
+        게이트에 놓는 CDM 전용 2차 보호. 고속 인터페이스를 내보낸다면,
+        당신의 차별점이 사는 곳이 이 장이다.</div></div>
