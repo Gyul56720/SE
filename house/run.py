@@ -111,6 +111,21 @@ def _특이사항(r: dict) -> list:
 
 def 돌리기(키들=None, 빠르게=False, 메일=False, to=None, 회로=None) -> list:
     키들 = [k for k in (키들 or 차례) if k in 직무] or 차례
+    # **다섯이 줄줄이 같은 까닭으로 죽기 전에 한 번 묻는다.**
+    _p = RPT.PDF된다()
+    if not _p["된다"]:
+        print(f"!! PDF 를 못 만든다: {_p['까닭']}\n   고치는 법: {_p['고치는법']}\n"
+              f"   (그래도 돌린다 -- HTML 은 남는다)", flush=True)
+    try:
+        from house import synth as _SYN
+        _l = _SYN.라이브러리확인()
+        if not (_l["있었나"] or _l["만들었나"]):
+            print(f"!! 표준셀 라이브러리가 없다: {_l.get('까닭', '')}\n"
+                  f"   -> 합성·STA·DFT·PD 가 전부 막힌다", flush=True)
+        elif _l["만들었나"]:
+            print(f"·  표준셀 라이브러리를 새로 만들었다: {_l['길']}", flush=True)
+    except Exception as _e:                                  # noqa: BLE001
+        print(f"!! 라이브러리 확인 실패: {type(_e).__name__}: {_e}", flush=True)
     낸것 = []
     for k in 키들:
         p = 사람들.키로[k]
