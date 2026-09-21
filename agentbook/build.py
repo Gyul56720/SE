@@ -114,6 +114,8 @@ import bookK                                   # noqa: E402
         ("W3_substitute", ["ch_substitute"]),
         ("W4_bite",      ["ch_bite"]),
         ("W5_wiring",    ["ch_wiring"]),
+        ("W6_builder",   ["ch_builder"]),
+        ("W7_bootstrap", ["ch_bootstrap"]),
     ]),
     ("15부. 현장", [
         ("A21_thisagent", ["ch_thisagent"]),
