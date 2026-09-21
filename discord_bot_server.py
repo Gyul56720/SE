@@ -670,6 +670,15 @@ def run_admin_agent(prompt: str, thread_id: str, 중계판=None) -> str:
         # 되묻는 조건 두 가지: (1) 도구 0회인데 실측이 필요하거나, (2) 떠넘김 문구로 끝났는데
         # **무거운 일(논문·코드화·수집·연구·수리)** 은 하나도 안 돌았다 -- 값싼 도구 몇 개만
         # 부르고 소개만 한 답(실측 2026-09-11: harvest --관심/eval/graph ask 뒤 "필요하면 말씀").
+        def _설계인데안쟀나():
+            # **읽은 것과 잰 것을 가른다.** textbook()/concept() 은 도구라서 '도구 0회' 를
+            # 벗어나게 해 주지만, 그것은 읽은 것이지 잰 것이 아니다. 실측 2026-09-21:
+            # 8탭 FIR MAC 데이터패스 물음에 교재 여덟 칸으로 답하면서 f_max·면적·지연을
+            # 전부 지어냈다 -- yosys 도 verilator 도 안 돌았다("에이전트가 안하고 LLM이
+            # 하는데?"). 재는 양을 요구한 물음이면 재는 도구가 돌았는지를 따로 본다.
+            return (relay.설계요구(prompt)
+                    and not relay.잰적있나(thread_id, bot_tools.이번셸()))
+
         def _더필요():
             도구들 = relay.마지막도구.get(thread_id)
             무거웠나 = relay.무거운일(thread_id, bot_tools.이번셸())
@@ -678,7 +687,14 @@ def run_admin_agent(prompt: str, thread_id: str, 중계판=None) -> str:
             if not 도구들 and not bot_tools.이번셸() and relay.실측필요(prompt, reply):
                 return True
             return relay.떠넘김(reply) and not 무거웠나
-        if _더필요():
+        if _설계인데안쟀나():
+            print(f"[admin-agent] thread={thread_id} 설계를 물었는데 잰 도구가 0회 -- 되묻기")
+            relay.적기("↺ 설계인데 잰 것이 없다 -- 실제로 돌려서 다시 답하라고 되묻는다")
+            reply = run_with_fallback_pool(ADMIN_AGENT_POOL, _admin_thread_map, thread_id,
+                                           relay.설계되묻는말, "[admin-agent]")
+            if _설계인데안쟀나():
+                reply = f"{reply}\n\n{relay.안잼표}"
+        elif _더필요():
             print(f"[admin-agent] thread={thread_id} 실행이 비었다(떠넘김/도구0) -- 되묻기")
             relay.적기("↺ 실행이 비었다(떠넘김/도구0) -- 한 호흡에 실행하라고 한 번 되묻는다")
             reply = run_with_fallback_pool(ADMIN_AGENT_POOL, _admin_thread_map, thread_id,

@@ -38,6 +38,7 @@ import agent_context
 import agent_memory
 import filetools
 import orchestrator_tool
+import poolpick
 import public_agent_files
 import quota_tracker
 import relay
@@ -1639,6 +1640,10 @@ def invoke_text(prompt: str, api_key: str, model: "str | None" = None,
                 quota_tracker.record_exhausted(label)
             elif is_permanent_error(e):
                 quota_tracker.mark_dead(label, str(e)[:200])
+            else:
+                # 단발 경로에도 같은 구멍이 있었다 -- 503 만 아무 데도 안 남아서 과부하
+                # 중인 최상위 모델을 매 호출마다 다시 1순위로 두드렸다.
+                quota_tracker.record_transient(label)
             print(f"{log_prefix} candidate={label} 사용 불가({type(e).__name__}), 다음 후보로")
             last_error = e
     raise last_error if last_error else RuntimeError("후보가 비어있음")
@@ -1799,62 +1804,116 @@ def run_with_fallback_pool(candidates: "list[tuple[str, object]]", thread_map: d
     계산으로 1등을 고르는 것과 결과가 비슷할 때가 많지만, 같은 등급 안에서 잔량 차이로
     이리저리 흔들리는 것 없이 "직전에 확인된 살아있는 조합"을 확정적으로 우선한다. pin된
     후보가 이번에도 실패하면 정상적으로 다음 후보로 넘어가고, 그때 새로 성공한 쪽으로
-    pin이 갱신된다."""
+    pin이 갱신된다.
+
+    **순서와 멈춤은 poolpick 이 정한다**(2026-09-21). 이 자리에 세 구멍이 있었다.
+
+      1. 일시 장애(503)가 **아무 데도 안 남았다.** 429 는 소진/쿨다운으로, 404·403 은
+         영구 사망으로 남는데 503 만 기록이 없어서, 잔량 가득 + 등급 높은 그 조합이
+         **다음 요청에서도 또 1순위**가 됐다. 과부하가 이어지는 동안 매 메시지가 같은
+         벽부터 다시 두드렸다 -- 사용자의 물음이 그것이었다("변환을 한거를 계속 안쓰고
+         왜 처음부터 다시 찾지?"). 지금은 quota_tracker.record_transient 로 남기고,
+         연달아 실패하면 쉬는 시간을 두 배씩 늘린다(성공하면 곧바로 지워진다).
+      2. 쿨다운 중인 후보를 **정렬로 뒤로 미룰 뿐 건너뛰지는 않았다.** "지금 안 된다"고
+         이미 아는 조합에 실제 호출을 넣고 langchain backoff 로 수십 초를 물었다. 지금은
+         쉬는 중이면 아예 안 건다.
+      3. **끝이 없었다.** 전부 막히면 전부 한 바퀴 돌고, 그동안 맨 앞 것이 풀려 다음
+         메시지가 또 한 바퀴를 돌았다("도저히 멈추지 않아"). 지금은 poolpick.마감초 를
+         넘기면 순회를 멈추고, 다 쉬는 중인데 곧 풀릴 것이면 그 하나만 기다리고,
+         그것도 아니면 **언제 풀리는지를 적어 사실대로 답한다.**
+
+    poolpick 이 따로 있는 까닭은 검사다 -- 이 모듈은 langchain/discord 를 임포트해서
+    에이전트 컨테이너에서 못 부른다. 그래서 여태 이 규칙을 검사한 적이 없었다.
+    tests/test_poolpick.py 가 그 자리를 붙든다."""
     pool_id = log_prefix.strip("[]")
-    live = [c for c in candidates if not quota_tracker.is_dead(c[0])]
-    if not live:
-        live = candidates  # 다 죽었다고 기록된 상태라도 최후의 수단으로는 시도해본다 (기록이 틀렸을 수 있으니).
+    후보 = {}
+    for label, agent in candidates:
+        후보.setdefault(label, agent)
+    labels = list(후보)
 
-    def _sort_key(candidate):
-        label, _ = candidate
-        model = label.split(":", 1)[1] if ":" in label else label
-        remaining = quota_tracker.remaining(label)
-        return (remaining <= 0, _model_quality_rank(model), -remaining)
+    def _등급(label):
+        return _model_quality_rank(label.split(":", 1)[1] if ":" in label else label)
 
-    ranked = sorted(live, key=_sort_key)
-    pinned_label = quota_tracker.get_pinned(pool_id)
-    # pin은 정렬을 통째로 건너뛰고 맨 앞에 꽂는 장치라, 쿨다운 중인 조합이 pin돼 있으면
-    # remaining()이 0을 돌려줘도 소용없이 매번 먼저 시도돼서 RPM 쿨다운이 무력화된다.
-    if pinned_label and quota_tracker.is_rpm_cooling(pinned_label):
-        pinned_label = None
-    if pinned_label:
-        pinned = [c for c in ranked if c[0] == pinned_label]
-        if pinned:
-            ranked = pinned + [c for c in ranked if c[0] != pinned_label]
-
+    시작 = time.monotonic()
+    시도함: "set[str]" = set()
+    기다린적 = False
     last_error: Optional[Exception] = None
-    for i, (label, agent) in enumerate(ranked):
-        if _is_cancelled(base_thread_id):
-            print(f"{log_prefix} thread={base_thread_id} stop 명령으로 후보 순회 중단 "
-                  f"({i}/{len(ranked)}까지 시도함)")
-            return f"[중단됨] stop 명령으로 응답 생성을 멈췄습니다. ({i}개 후보 시도 후 중단)"
-        try:
-            reply = invoke_with_recovery(agent, thread_map, base_thread_id, prompt, f"{log_prefix}[{label}]")
-            quota_tracker.record_success(label)
-            quota_tracker.set_pinned(pool_id, label)
-            if i > 0:
-                print(f"{log_prefix} Model have changed {label}")
-                # 왜 느렸는지의 흔한 답이 이것이다 -- 앞 후보 i개가 막혀 갈아탔다.
-                relay.적기(f"↻ 모델 전환 → {label.split(':', 1)[-1]} (앞 {i}개 후보 막힘)")
-            return reply
-        except Exception as e:
-            if not is_unavailable_error(e):
-                raise
-            if is_rpm_quota_error(e):
-                # 분당 한도는 1분이면 풀린다 -- 자정까지 봉인하지 말고 잠깐만 쉬게 한다.
-                quota_tracker.record_rpm_cooldown(label)
-                print(f"{log_prefix} thread={base_thread_id} candidate={label} 분당 한도(RPM) 초과, "
-                      f"{quota_tracker.RPM_COOLDOWN_SECONDS}초 쿨다운 후 복귀 예정 -- 다음 후보로 전환")
-            elif is_quota_error(e):
-                quota_tracker.record_exhausted(label)
-                print(f"{log_prefix} thread={base_thread_id} candidate={label} quota exhausted, 다음 후보로 전환")
-            elif is_permanent_error(e):
-                quota_tracker.mark_dead(label, str(e)[:200])
-                print(f"{log_prefix} thread={base_thread_id} candidate={label} 영구 사용불가로 확정({e}), "
-                      f"앞으로 건너뜀")
-            else:
-                print(f"{log_prefix} thread={base_thread_id} candidate={label} 일시 장애({e}), 다음 후보로 전환")
-            last_error = e
+    마지막쉼: list = []
+
+    while True:
+        골 = poolpick.고르기(labels, pool_id, quota_tracker, _등급, 뺄것=시도함)
+        마지막쉼 = 골["쉼"]
+        차례 = 골["순서"]
+        if not 차례:
+            # **쉬는 중인 후보를 두드리지 않는다.** 두드려 봐야 backoff 로 수십 초를 물고
+            # 같은 429/503 을 다시 받는다. 짧게 풀릴 것이면 기다리는 편이 싸다.
+            기 = None if 기다린적 else poolpick.기다릴까(마지막쉼, time.monotonic() - 시작)
+            if 기 is None:
+                break
+            쉬는것, 남은 = 기
+            print(f"{log_prefix} thread={base_thread_id} 후보가 모두 쉬는 중 -- "
+                  f"{쉬는것} 의 쿨다운 {남은:.0f}초를 기다린다 (한 바퀴 더 도는 것보다 싸다)")
+            time.sleep(남은 + 1)
+            기다린적 = True
+            시도함.discard(쉬는것)
+            continue
+
+        for label in 차례:
+            if _is_cancelled(base_thread_id):
+                print(f"{log_prefix} thread={base_thread_id} stop 명령으로 후보 순회 중단 "
+                      f"({len(시도함)}/{len(labels)}까지 시도함)")
+                return (f"[중단됨] stop 명령으로 응답 생성을 멈췄습니다. "
+                        f"({len(시도함)}개 후보 시도 후 중단)")
+            쓴 = time.monotonic() - 시작
+            if 쓴 > poolpick.마감초:
+                print(f"{log_prefix} thread={base_thread_id} 순회 마감({쓴:.0f}초) -- 멈춘다")
+                시도함.update(차례)
+                break
+            시도함.add(label)
+            try:
+                reply = invoke_with_recovery(후보[label], thread_map, base_thread_id,
+                                             prompt, f"{log_prefix}[{label}]")
+                quota_tracker.record_success(label)
+                quota_tracker.set_pinned(pool_id, label)
+                if len(시도함) > 1:
+                    print(f"{log_prefix} Model have changed {label}")
+                    # 왜 느렸는지의 흔한 답이 이것이다 -- 앞 후보들이 막혀 갈아탔다.
+                    relay.적기(f"↻ 모델 전환 → {label.split(':', 1)[-1]} "
+                              f"(앞 {len(시도함) - 1}개 후보 막힘)")
+                return reply
+            except Exception as e:
+                if not is_unavailable_error(e):
+                    raise
+                if is_rpm_quota_error(e):
+                    # 분당 한도는 1분이면 풀린다 -- 자정까지 봉인하지 말고 잠깐만 쉬게 한다.
+                    quota_tracker.record_rpm_cooldown(label)
+                    print(f"{log_prefix} thread={base_thread_id} candidate={label} "
+                          f"분당 한도(RPM) 초과, {quota_tracker.RPM_COOLDOWN_SECONDS}초 "
+                          f"쿨다운 후 복귀 예정 -- 다음 후보로 전환")
+                elif is_quota_error(e):
+                    quota_tracker.record_exhausted(label)
+                    print(f"{log_prefix} thread={base_thread_id} candidate={label} "
+                          f"quota exhausted, 다음 후보로 전환")
+                elif is_permanent_error(e):
+                    quota_tracker.mark_dead(label, str(e)[:200])
+                    print(f"{log_prefix} thread={base_thread_id} candidate={label} "
+                          f"영구 사용불가로 확정({e}), 앞으로 건너뜀")
+                else:
+                    # **일시 장애도 기록한다.** 안 남기면 잔량 가득 + 등급 높은 이 조합이
+                    # 다음 요청에서도 또 1순위가 되어, 과부하가 이어지는 동안 매 메시지가
+                    # 같은 벽부터 다시 두드린다(실측 2026-09-21).
+                    쉼 = quota_tracker.record_transient(label)
+                    print(f"{log_prefix} thread={base_thread_id} candidate={label} "
+                          f"일시 장애({e}), {쉼:.0f}초 쉬게 하고 다음 후보로 전환")
+                last_error = e
+
+    if last_error is None and not 시도함:
+        raise RuntimeError("후보가 비어있음")
+    # 여기까지 왔으면 이번 요청에서는 걸 곳이 없다. **계속 두드리지 않고 사실대로 답한다.**
+    print(f"{log_prefix} thread={base_thread_id} 후보 {len(시도함)}개를 다 시도했고 "
+          f"남은 곳이 없다 ({time.monotonic() - 시작:.0f}초)")
+    if 마지막쉼:
+        return poolpick.막힌말(마지막쉼, len(labels))
     raise last_error if last_error else RuntimeError("후보가 비어있음")
 
 

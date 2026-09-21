@@ -63,6 +63,9 @@ STATE_VERSION = 2
 # 분당 한도(RPM) 429를 맞았을 때 그 조합을 쉬게 하는 시간. Gemini 무료 티어의 RPM 창이
 # 1분이므로 60초면 충분하다.
 RPM_COOLDOWN_SECONDS = 60
+# 일시 장애(503)용. 연달아 실패하면 이 값에서 두 배씩 늘어 cap 까지 간다.
+TRANSIT_BASE_SECONDS = int(os.environ.get("GEMINI_TRANSIENT_BASE", "20"))
+TRANSIT_CAP_SECONDS = int(os.environ.get("GEMINI_TRANSIENT_CAP", "300"))
 _LOCK = threading.Lock()
 
 
@@ -104,11 +107,16 @@ def _entry(data: dict, label: str) -> dict:
 
 
 def record_success(label: str) -> None:
-    """호출이 실제로 성공했음을 기록해서 카운터를 올린다."""
+    """호출이 실제로 성공했음을 기록해서 카운터를 올린다.
+
+    성공하면 **쉬는 표시와 연속 실패 수를 지운다.** 안 지우면 일시 장애로 붙은 벌점이
+    오래 살아남아, 지금 멀쩡히 답을 준 조합이 다음 호출에서 뒤로 밀린다."""
     with _LOCK:
         data = _load()
         rec = _entry(data, label)
         rec["count"] += 1
+        data.get("_rpm_cooldown", {}).pop(label, None)
+        data.get("_streak", {}).pop(label, None)
         _save(data)
 
 
@@ -133,6 +141,32 @@ def record_rpm_cooldown(label: str, seconds: int = RPM_COOLDOWN_SECONDS) -> None
         cooling = data.setdefault("_rpm_cooldown", {})
         cooling[label] = time.time() + seconds
         _save(data)
+
+
+def record_transient(label: str, base: int = TRANSIT_BASE_SECONDS,
+                     cap: int = TRANSIT_CAP_SECONDS) -> float:
+    """일시 장애(503 UNAVAILABLE 등)를 맞았을 때 호출. 쉬는 시간을 돌려준다.
+
+    **이 자리가 비어 있었다.** 쿼터(429)는 소진이나 쿨다운으로 기록됐고 404/403 은 영구
+    사망으로 기록됐는데, 503 만은 *아무 데도 안 남았다.* 그러면 잔량이 가득하고 등급이
+    높은 그 조합이 **다음 요청에서도 또 1순위**가 된다 -- 과부하가 이어지는 동안 매
+    메시지가 같은 조합부터 다시 두드리고, langchain 내부 backoff 로 매번 수십 초를 문다.
+    사용자가 본 것이 이것이다(실측 2026-09-21: `503 UNAVAILABLE ... 다음 후보로 전환`
+    이 같은 조합에 대해 끝없이 반복).
+
+    연달아 실패할수록 쉬는 시간을 두 배로 늘린다(base -> 2x -> 4x ... cap). 과부하는
+    1분에 풀리는 성질의 것이 아니라서 RPM 과 같은 고정 60초로 다루면 1분마다 같은 벽에
+    다시 부딪친다. 성공하면 record_success 가 연속 수를 지워 곧바로 원래 자리로 돌아온다.
+    """
+    with _LOCK:
+        data = _load()
+        streaks = data.setdefault("_streak", {})
+        n = int(streaks.get(label, 0)) + 1
+        streaks[label] = n
+        쉼 = float(min(base * (2 ** (n - 1)), cap))
+        data.setdefault("_rpm_cooldown", {})[label] = time.time() + 쉼
+        _save(data)
+        return 쉼
 
 
 def _cooling_until(data: dict, label: str) -> float:
@@ -212,3 +246,20 @@ def get_pinned(pool_id: str) -> "str | None":
         if pinned and _cooling_until(data, pinned) > time.time():
             return None
         return pinned
+
+
+def cooling_seconds(label: str) -> float:
+    """이 조합이 쉬는 시간이 끝나기까지 남은 초. 쉬는 중이 아니면 0.0.
+
+    rpm_cooldown_remaining 과 같은 값이다 -- 쉼표가 이제 RPM 만의 것이 아니라서
+    (일시 장애도 여기 올라온다) 이름을 하나 더 둔다."""
+    return rpm_cooldown_remaining(label)
+
+
+def streak(label: str) -> int:
+    """연속 일시 장애 횟수. 성공하면 0으로 돌아간다."""
+    with _LOCK:
+        try:
+            return int(_load().get("_streak", {}).get(label, 0))
+        except (TypeError, ValueError):
+            return 0
