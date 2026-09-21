@@ -84,8 +84,15 @@ ok("import mailattach" in _봇 and "mailattach.풀기(attach)" in _봇,
    "가드를 여기서 다시 짜지 않고 mailattach 를 쓴다")
 ok("보내기_첨부" in _봇, "첨부가 있으면 보내기_첨부 로 간다")
 ok("허용자리표=mailattach.말머리" in _봇, "말머리를 통과시킨다")
-ok("첨부가\n    없으면 그건 보고가 아니다" in _봇 or "첨부가" in _봇,
-   "도구 설명이 '첨부 없으면 보고가 아니다' 를 말한다")
+# **여기는 글자를 보고 있었다 -- G016 이 잡았다.** 독스트링에만 있는 문구를 찾고 있어서
+# 기능을 통째로 지워도 초록이었다. 재야 할 것은 문구가 아니라 **동작**이다:
+# 첨부 없이 부르면 보내기가 거부되는가.
+import mailer as _mailer
+_거부 = _mailer.보내기_첨부("a@b.c", "[REPORT] x", "본문", 첨부=[],
+                       허용자리표=mailattach.말머리)
+ok(not _거부.get("보냈나"), "**첨부가 없으면 실제로 안 보낸다** (글자가 아니라 동작으로 잰다)")
+ok("첨부" in (_거부.get("말") or "") + " ".join(_거부.get("필요한것") or []),
+   "왜 안 보냈는지 첨부를 들어 말한다")
 _서버 = (저장소 / "discord_bot_server.py").read_text(encoding="utf-8")
 ok("send_email" in _서버, "send_email 이 도구 목록에 있다")
 

@@ -2003,7 +2003,14 @@ def invoke_with_recovery(agent, thread_map: dict, base_thread_id: str, prompt: s
             print(f"{log_prefix} thread={base_thread_id} 바퀴 상한({rpmgate.바퀴상한})에 "
                   f"닿았다 -- 끊는다")
             relay.적기(f"⏹ 한 메시지 안에서 {rpmgate.바퀴상한} 바퀴를 넘겼다 -- 여기서 끊는다")
-            return rpmgate.끊긴말()
+            # **무엇을 했는지 같이 준다.** 이번 턴에 실제로 돈 셸 줄이 그 증거다.
+            돈것 = []
+            try:
+                돈것 = [줄[0] if isinstance(줄, (list, tuple)) else str(줄)
+                      for 줄 in (이번셸() or [])]
+            except Exception:                                  # noqa: BLE001
+                pass
+            return rpmgate.끊긴말(한일=돈것)
         print(f"{log_prefix} thread={base_thread_id} invoke_error={e!r} -- 새 thread로 재시도")
         new_thread_id = f"{base_thread_id}-{uuid.uuid4().hex[:8]}"
         thread_map[base_thread_id] = new_thread_id
