@@ -1,0 +1,106 @@
+<h1 id="T12">T12. 정합 &mdash; 똑같은 소자 둘은 똑같지 않다</h1>
+<p class="한줄">칩 위에서 정확한 것은 비 하나뿐이고, 그것조차 분포다. 정밀한 것은 전부 그 폭을 아는 데 얹혀 있다.</p>
+<div class="사다리"><div class="사다리앞"><b>읽기 전에 알아야 하는 것</b><br>전압 · 전류 · 확률 · 평균 · 분산 · 표준편차 · 정규분포 · 로그 · 제곱근 · 문턱전압 · 트랜스컨덕턴스 · 정합 · 최소동작전압 · INL · DNL · PTAT · 온도계수</div><div class="사다리뒤"><b>이 장에서 새로 나오는 것</b><br>펠그롬법칙 · 랜덤불일치 · 계통불일치 · 공통중심 · 더미소자 · 일치도면적 · 수율시그마 · 중요도표본 · 오프셋 · 트림 · 레이아웃의존효과</div></div>
+<p>똑같이 그려 나란히 같은 방향으로 놓은 트랜지스터 둘도 서로 다르다.
+    도핑 원자는 낱낱이고 아무렇게나 떨어진다. 게이트 가장자리는 완벽하게
+    곧지 않다. 산화막 두께는 원자 하나씩 달라진다. 그래서 생기는 변수의
+    차는 확률변수이고, 정밀 아날로그 설계는 <b>그 표준편차를 알고 그 꼬리를
+    예산에 넣는</b> 규율이다.</p>
+<h2>T12.1 펠그롬 법칙, 그리고 왜 제곱근인가</h2>
+<div class="개념"><div class="개념머리">펠그롬 법칙 (Pelgrom's law)</div>
+<div class="개념이론"><p>나란히 놓여 똑같이 그려진 두 소자에 대해, 변수 차의 표준편차는
+        면적의 제곱근으로 줄어든다.
+        <b>σ(ΔV<sub>th</sub>) = A<sub>VT</sub>/√(W·L)</b> 이고 A<sub>VT</sub> 의
+        단위는 mV·µm 이다 — 파운드리가 재서 내놓는 공정별 상수다(몇 mV·µm
+        이고, 마디마다 천천히 좋아진다).</p>
+        <p>제곱근은 경험적으로 곡선을 맞춘 것이 아니다. 불일치는 서로 독립인
+        미시 사건(도핑 자리, 가장자리 거칠기)을 세는 통계에서 오고, 독립
+        사건 N 개를 센 것의 상대 요동은 1/√N 로 줄어든다. <b>면적이 그
+        셈이다.</b></p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>설계 안의 모든 전류 거울, 차동쌍, 비교기, 커패시터 어레이, SRAM 셀. 수율 모형에서도 쓴다 — V<sub>min</sub>(T4) 이 그 꼬리인 분포가 이것이다.</td></tr>
+<tr><th>언제 쓰나</th><td>정밀한 것을 그리기 전에. 요구되는 σ 가 최소 면적을 정하고, 최소 면적이 종종 블록 전체의 크기와 그 기생 용량을, 따라서 속도를 정한다.</td></tr>
+<tr><th>어떻게 쓰나</th><td>규격에서 거꾸로 풀어라. 3σ 에서 오프셋 5 mV 가 허용되면 σ(ΔV<sub>th</sub>) ≤ 1.67 mV 이므로 W·L ≥ (A<sub>VT</sub>/1.67 mV)² 다. A<sub>VT</sub> = 5&nbsp;mV·µm 이면 8.96&nbsp;µm² 이고 — <b>소자 하나당</b>이다.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>* Mismatch in a PDK is a MODEL PARAMETER, not something you add by hand.
+* The foundry supplies statistical models; you enable them and run Monte Carlo:
+.lib 'models/pdk.lib' mc              $ NOT the 'tt' corner -- the statistical deck
+.mc 200 op                            $ 200 samples
+.measure op ios param='abs(i(vd2)-i(vd1))'
+* AND THEN: the corners and the mismatch are DIFFERENT analyses.
+*   corner  = global shift  (all devices move together)
+*   mismatch = local spread (devices move independently)
+* Running 'tt + mismatch' and calling it worst case misses the combination that
+* actually fails: slow corner AND an unlucky pair.</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> A<sub>VT</sub> 는 <b>나란히 놓인 두 소자 사이의 차</b>에 적용된다.
+            그것을 소자 하나의 절댓값에 쓰거나 다이의 반대편에 있는 소자들에
+            쓰는 것은 양쪽으로 다 틀렸다. 절대 퍼짐은 더 크고(전역 공정 변동이
+            들어 있다), 다이를 가로지르는 소자 사이의 상관은 아예 다른
+            모형이다.</div>
+</div>
+<table><caption>표 9. 잰 것: 소자 면적에 대한 전류 거울 비 (ngspice 몬테카를로, 80 표본, A_VT = 5&nbsp;mV·µm, I_ref = 10 µA)</caption><thead><tr><th>W × L</th><th>면적</th><th>σ(ΔV_th)</th><th>평균 비</th><th>σ(비)</th></tr></thead><tbody><tr><td>1x0.2</td><td>0.2&nbsp;µm²</td><td>11.18&nbsp;mV</td><td>0.9779</td><td><b>14.2&nbsp;%</b></td></tr><tr><td>2x0.4</td><td>0.8&nbsp;µm²</td><td>5.59&nbsp;mV</td><td>0.9876</td><td><b>7.17&nbsp;%</b></td></tr><tr><td>4x0.8</td><td>3.2&nbsp;µm²</td><td>2.8&nbsp;mV</td><td>0.9934</td><td><b>3.61&nbsp;%</b></td></tr><tr><td>8x1.6</td><td>12.8&nbsp;µm²</td><td>1.4&nbsp;mV</td><td>0.9966</td><td><b>1.81&nbsp;%</b></td></tr></tbody></table>
+<div class="유도"><div class="유도머리">유도 &mdash; 저 표에서 펠그롬을 곧장 읽어 내기</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">면적 0.2&nbsp;µm² → σ(비) = 14.16&nbsp;% 이고, 면적 0.8&nbsp;µm² → 7.17&nbsp;% 다.</td><td class="유도왜">면적 ×4 에 σ ÷1.97 — 제곱근 법칙이고, 가정한 것이 아니라 잰 것이다.</td></tr><tr><td class="유도번호">2</td><td class="유도말">다음 두 걸음이 그것을 되풀이한다. ÷1.99 와 ÷1.99 다.</td><td class="유도왜">같은 지수를 독립으로 세 번 확인한 것이다. <b>이런 측정이 √ 를 안 내면 모형이나 하니스가 틀린 것이고</b>, 그것이 불일치 설비에 쓸 수 있는 가장 빠른 점검이다.</td></tr><tr><td class="유도번호">3</td><td class="유도말"><b>평균</b> 비가 1 이 아니다. 소자가 커지면서 0.9779 에서 0.9966 쪽으로 오른다.</td><td class="유도왜">대칭인 V<sub>th</sub> 오차가 <i>비대칭인</i> 전류 오차로 옮겨진다 — 제곱 법칙이 볼록해서 비의 평균이 1 아래로 끌린다. <b>불일치는 퍼짐만이 아니라 평균도 치우치게 한다</b>. 그리고 그 효과는 퍼짐이 사라져야만 사라진다.</td></tr></tbody></table></div>
+<h2>T12.2 다른 손잡이: 오버드라이브</h2>
+<table><caption>표 10. 잰 것: 같은 소자, 다른 바이어스 전류 (W/L = 2/0.4, 80 표본)</caption><thead><tr><th>I_ref</th><th>σ(비)</th><th>10 µA 에 견주어</th></tr></thead><tbody><tr><td>1 µA</td><td>22.1&nbsp;%</td><td>3.08×</td></tr><tr><td>10 µA</td><td>7.17&nbsp;%</td><td>1×</td></tr><tr><td>100 µA</td><td>2.29&nbsp;%</td><td>0.32×</td></tr></tbody></table>
+<div class="유도"><div class="유도머리">유도 &mdash; 왜 전류가 많으면 더 잘 맞으며, 그 값이 무엇인가</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">V<sub>th</sub> 오차 δ 는 트랜스컨덕턴스를 거쳐 전류 오차를 낳는다. δI = g<sub>m</sub>·δ 다.</td><td class="유도왜">소자는 제 게이트 전압이 왜 사실상 다른지를 모른다.</td></tr><tr><td class="유도번호">2</td><td class="유도말">그래서 상대 전류 불일치는 σ(I)/I = (g<sub>m</sub>/I<sub>D</sub>)·σ(ΔV<sub>th</sub>) 다.</td><td class="유도왜"><b>g<sub>m</sub>/I<sub>D</sub> 가 이야기의 전부다</b>(T1). 암페어당 g<sub>m</sub> 이 높은 것 — 효율적이고 저전력인 동작점 — 이 <i>가장 안 맞는</i> 동작점이기도 하다.</td></tr><tr><td class="유도번호">3</td><td class="유도말">강반전에서는 g<sub>m</sub>/I<sub>D</sub> = 2/V<sub>ov</sub> 이므로 σ(I)/I = 2σ(ΔV<sub>th</sub>)/V<sub>ov</sub> 다.</td><td class="유도왜">잰 것: 1 µA 에서 22.1&nbsp;% 이고 100 µA 에서 2.29&nbsp;% 다 — 전류를 100배 써서 9.65배 나아진 것이고, 이것도 √ 다(V<sub>ov</sub> ∝ √I).</td></tr><tr><td class="유도번호">4</td><td class="유도말">약반전에서는 g<sub>m</sub>/I<sub>D</sub> 가 ~1/(nV<sub>T</sub>) ≈ 25–30 V⁻¹ 에서 포화하고 정합이 가장 나쁘다.</td><td class="유도왜"><b>그래서 서브문턱 전류 거울은 나쁜 전류 거울이고</b>, 초저전력 아날로그가 제 효율의 값을 면적으로 치르는 까닭이 그것이다.</td></tr></tbody></table></div>
+<div class="짚기">저 두 표가 설계 공간의 전부다. 정확도는 <b>면적</b>으로(σ ∝ 1/√WL)
+    사거나 <b>오버드라이브</b>로(σ ∝ 1/V<sub>ov</sub>) 사는데, 둘 다 제곱근의
+    성격이라 둘 다 비싸다. 정밀 아날로그의 나머지 전부 — 초핑, 자동 영점,
+    DEM, 디지털 보정 — 는 그 둘 중 어느 것도 치르지 않으려고 있다.</div>
+<h2>T12.3 아무렇게나가 아닌 불일치</h2>
+<div class="정의"><b>계통 불일치 (systematic mismatch)</b> &mdash; 어느 다이에서나 똑같은 차이. 웨이퍼를 가로지르는 산화막 두께의 기울기, 가까운 전력 소자에서 오는 온도 기울기, 패키지나 이웃한 웰에서 오는 응력, 또는 그저 쌍의 양쪽이 다른 이웃에 둘러싸인 것. <b>표본을 여럿 모아도 평균으로 지워지지 않으므로</b>, 몬테카를로를 아무리 돌려도 못 찾는다.</div>
+<table><caption>표 11. 두 가지 불일치, 그리고 저마다 무엇에 반응하나</caption><thead><tr><th></th><th>무작위</th><th>계통</th></tr></thead><tbody><tr><td>근원</td><td>낱낱의 도핑 원자, 가장자리 거칠기 — 세는 통계</td><td>기울기, 응력, 다른 이웃, 열</td></tr><tr><td>이렇게 커진다</td><td>1/√(W·L)</td><td>면적을 따라 줄지 않는다 — <b>되레 나빠질 수 있다</b>. 소자가 크면 기울기를 더 넓게 걸치기 때문이다</td></tr><tr><td>무엇이 찾아내나</td><td>몬테카를로</td><td>레이아웃 검토, 그리고 실리콘에서의 측정</td></tr><tr><td>무엇이 없애나</td><td>면적, 오버드라이브, 보정</td><td><b>레이아웃</b>. 공통 중심, 더미, 같은 방향과 같은 둘레</td></tr><tr><td>흔한 크기</td><td>0.8&nbsp;µm² 거울에서 7.17&nbsp;% (위에서 잰 것)</td><td>수백 µm 에 걸친 기울기에서 0.1–1 %</td></tr></tbody></table>
+<div class="개념"><div class="개념머리">공통 중심 배치 (common-centroid layout) 와 더미</div>
+<div class="개념이론"><p>맞춰야 하는 쌍의 소자를 저마다 조각으로 쪼개 서로 엮어서, 두 소자가
+        같은 질량 중심을 갖게 한다. A B B A 이거나, 2차원 기울기라면
+        바둑판이다. 그러면 <b>선형</b> 기울기가 두 쪽에 똑같이 걸려 1차까지
+        지워진다.</p>
+        <p><b>더미 소자</b>는 다른 문제를 푼다. 맨 바깥의 진짜 소자는 안쪽
+        것들과 이웃이 달라서 식각과 응력이 다르다. 더미는 모든 진짜 소자에
+        똑같은 둘레를 주는데, 전기적으로는 아무 일도 안 하는 면적이 그
+        값이다.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>중요한 모든 정합 쌍. 차동쌍, 전류 거울 어레이, 변환기의 커패시터 어레이(T6), 밴드갭 BJT 어레이(T11).</td></tr>
+<tr><th>언제 쓰나</th><td>레이아웃에서. 그리고 그것은 <b>설계자가</b> 지정해야 한다 — 레이아웃 기술자는 넷리스트만 보고 어느 소자가 맞아야 하는지 미루어 낼 수 없다.</td></tr>
+<tr><th>어떻게 쓰나</th><td>회로도에 정합 묶음을 표시하고, 더미를 붙인 공통 중심을 요구하고, 방향을 똑같이 두고(면적 아끼자고 소자를 거울로 뒤집지 마라), 두 쪽을 대칭으로 배선하고, 쌍을 패키지 응력이 가장 큰 자리 — 보통 다이 모서리 — 에서 떼어 놓는다.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>// The instruction that must reach the layout engineer. A netlist
+// does not carry it, so it goes in the constraint file AND the schematic.
+//   match_group  : M1 M2      common_centroid = ABBA, dummies = 2 each side
+//   orientation  : identical (NO mirroring -- STI stress is not symmetric)
+//   routing      : symmetric; equal parasitic on both gates
+//   keep_out     : &gt; 50 um from the die seal ring and from any power device
+// Verified by an LVS-with-matching check, not by inspection:
+//   assert centroid(M1) == centroid(M2) within 0.5 um</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> 공통 중심은 <b>선형</b> 기울기를 지운다. 2차 기울기 — 가까운
+            열원이 낳는 것이 그것이다 — 는 안 지워지고, 엮어 놓으면 소자를
+            곡률 위로 더 넓게 펴서 되레 나빠질 수도 있다. 열 기울기에는 답이
+            엮기가 아니라 거리와 등온선에 대한 방향이다.</div>
+</div>
+<div class="사고"><b>실제로 난 일</b><br>SRAM 의 V<sub>min</sub>(T4) 이 설계점 문제가 아니라 수율 문제인
+    까닭도 불일치다. 천만 개(10 의 7 제곱)짜리 셀 어레이는 <b>가장 나쁜</b> 셀이 돌아야
+    하는데, 그것이 대략 −5.5σ 사건이다. 표본 천 개짜리 보통 몬테카를로는
+    그 꼬리를 아예 못 본다 — 10<sup>8</sup> 정도의 표본이 들 것이다.
+    그래서 양산 흐름은 <b>중요도 표본</b>이나 해석적 꼬리 방법을 쓰고,
+    메모리를 두고 '몬테카를로 통과, 표본 1000개' 라고 하는 보고서는 자기가
+    받은 물음에 답하지 않은 것이다.</div>
+<h2>T12.4 월요일에 이걸로 무엇을 하나</h2>
+<table><caption>표 12. 이 장의 개념이 실제로 쓰이는 자리</caption><thead><tr><th>개념</th><th>쓰이는 블록</th><th>무엇을 정하나</th></tr></thead><tbody><tr><td>펠그롬법칙 · 일치도면적</td><td>정합 소자의 치수 잡기</td><td>최소 면적 — 그것이 다시 기생과 속도를 정한다</td></tr><tr><td>트랜스컨덕턴스 · 랜덤불일치</td><td>바이어스 점 고르기</td><td>효율적인 동작점을 감당할 수 있는지</td></tr><tr><td>계통불일치 · 공통중심 · 더미소자</td><td>설계자가 쓰는 레이아웃 제약</td><td>레이아웃 기술자에게 무엇을 말해 줘야 하는지. 넷리스트가 말해 주지 않으니까</td></tr><tr><td>수율시그마 · 중요도표본</td><td>메모리와 모든 큰 어레이</td><td>설계가 몇 σ 를 살아남아야 하는지, 그리고 어느 방법이 거기까지 볼 수 있는지</td></tr><tr><td>트림 · 디지털보정</td><td>면적을 감당 못 하게 될 때</td><td>실리콘으로 치를지 시험 시간으로 치를지</td></tr></tbody></table>
+<p>가지고 갈 잰 결과. 전류 거울 불일치는 면적의 제곱근으로 줄고 —
+    면적을 네 번 두 배로 하는 동안 14.16&nbsp;% →
+    7.17&nbsp;% → 3.61&nbsp;% →
+    1.81&nbsp;% 다 — 전류의 제곱근으로도 준다.
+    1 µA 에서 22.1&nbsp;% 이고 100 µA 에서
+    2.29&nbsp;% 다. <b>두 손잡이 다 값이 제곱이고</b>, 그 사실
+    하나가 보정이 있는 까닭이다.</p>
+<p>다음 장은 소자를 떠나 그것들 전부를 먹이는 회로망 — 전원 공급 회로망 —
+    을 다룬다. 거기서 '그것은 분포다' 라는 같은 논증이 임피던스와 시간에
+    관한 물음으로 다시 나타난다.</p>
+<div class="특허"><div class="특허머리">특허로 가는 길 &mdash; 이 주제에서 발명이 일어나는 자리</div><div class="특허속">정합 자체는 특허가 안 된다 — 통계이니까 — 그런데 <b>면적 없이
+        정확도를 사는</b> 모든 방식은 된다. 동적 소자 정합, 초퍼와 자동 영점
+        오프셋 상쇄, 디지털 전경·배경 보정, 그리고 기울기를 지우는 레이아웃
+        기법. 무늬가 또 보인다. σ 가 1/√면적 으로밖에 안 줄므로 면적으로
+        정확도를 4배 사면 실리콘이 <b>16배</b> 든다 — 그래서 정밀 아날로그에서
+        상업적으로 재미있는 생각은 거의 전부 그 값을 안 치르는 대안이다.</div></div>

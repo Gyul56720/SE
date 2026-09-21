@@ -41,10 +41,20 @@ def 차례만들기(본문):
     return '<div class="tocwrap"><h2>차례</h2>' + "\n".join(줄) + "</div>"
 
 
-def 묶기():
+def 묶기(이론만=False):
+    """`이론만` 이면 대학원 이론서(T 계열)만 센다.
+
+    왜 나누나: `IP_Theory.pdf` 가 T 계열만 묶은 책이므로, 그 한국어판도 같은
+    범위여야 표지의 '옮긴 장 N / 전체' 가 **뜻이 맞는다.**  전체 192장을
+    분모로 쓰면 이론서를 다 옮기고도 영영 '아직 다 옮기지 않았다' 가 된다.
+    """
+    import re as _re
     import 원문내기
     차례 = json.load(open(원문내기.차례경로, encoding="utf-8"))["장"] \
         if os.path.exists(원문내기.차례경로) else []
+    if 이론만:
+        차례 = [c for c in 차례 if _re.fullmatch(r"T\d+_\w+", c["모듈"])]
+        차례.sort(key=lambda c: int(_re.match(r"T(\d+)", c["모듈"]).group(1)))
     전체 = len(차례)
     본문, 있는것 = [], 0
     본순서 = []
@@ -60,15 +70,18 @@ def 묶기():
     return "\n".join(본문), 있는것, len(본순서)
 
 
-def 내기(out=낼곳):
-    본문, 있는것, 전체 = 묶기()
+def 내기(out=낼곳, 이론만=False):
+    본문, 있는것, 전체 = 묶기(이론만)
     if not 본문.strip():
         print(f"옮긴 것이 없다 -- 먼저 `bash scripts/번역돌리기.sh` (VM 에서)."
               f"\n  본 곳: {한국어}", file=sys.stderr)
         return 2
     표지 = (f'<div class="cover"><div class="docno">SE · {time.strftime("%Y-%m-%d")}</div>'
           f'<h1 class="ctitle">IP 설계 이론</h1>'
-          f'<div class="csub">반도체 IP 개발을 위한 이론서 — 한국어판</div>'
+          f'<div class="csub">'
+          + ('혼성신호·디지털 IC 설계 — 대학원 이론서 · 한국어판'
+             if 이론만 else '반도체 IP 개발을 위한 이론서 — 한국어판')
+          + '</div>'
           f'<div class="cline"></div>'
           f'<div class="cmeta">옮긴 장 {있는것} / {전체}'
           + ("" if 있는것 == 전체 else " · <b>아직 다 옮기지 않았다</b>")
@@ -88,4 +101,7 @@ def 내기(out=낼곳):
 
 
 if __name__ == "__main__":
-    sys.exit(내기())
+    이론 = "--이론" in sys.argv or "--theory" in sys.argv
+    낼 = os.path.join(뿌리, "edu",
+                     "IP_Theory_KR.pdf" if 이론 else "IP_KR.pdf")
+    sys.exit(내기(낼, 이론만=이론))

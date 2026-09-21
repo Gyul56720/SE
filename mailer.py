@@ -152,8 +152,13 @@ def _적기(repo, 줄: dict) -> None:
         pass
 
 
-def 보내기(to: str, subject: str, body: str, repo=None, 초: int = 30) -> dict:
-    """{"보냈나", "필요한것", "말"}. 말은 사람에게 그대로 보여도 되는 글이다(값 없음)."""
+def 보내기(to: str, subject: str, body: str, repo=None, 초: int = 30,
+        첨부: "list | None" = None) -> dict:
+    """{"보냈나", "필요한것", "말"}. 말은 사람에게 그대로 보여도 되는 글이다(값 없음).
+
+    `첨부` 는 파일 경로들이다. 보고서는 그림이 본문이라 PDF 로만 전해진다 --
+    첨부가 없으면 보고가 아니라 말이다(house/report.py 의 규칙).
+    """
     to = (to or "").strip()
     if to.lower() in ("me", "나", "내 메일", "내메일", "본인", "self"):
         내 = 내정보(repo)["주소"]
@@ -192,7 +197,30 @@ def 보내기(to: str, subject: str, body: str, repo=None, 초: int = 30) -> dic
     msg = EmailMessage()
     msg["From"], msg["To"], msg["Subject"] = user, to, subject.strip()
     msg.set_content(body or "")
+    붙인것 = []
+    for a in (첨부 or []):
+        길 = Path(a)
+        if not 길.exists():
+            return {"보냈나": False, "필요한것": [], "말": f"첨부가 없다: {길}"}
+        원 = 길.read_bytes()
+        if len(원) > 20 * 1024 * 1024:
+            return {"보냈나": False, "필요한것": [],
+                    "말": f"첨부가 너무 크다({len(원)/1e6:.1f} MB > 20 MB): {길.name}"}
+        확장 = 길.suffix.lower()
+        maj, sub = ("application", "octet-stream")
+        if 확장 == ".pdf":
+            sub = "pdf"
+        elif 확장 in (".html", ".htm"):
+            maj, sub = "text", "html"
+        elif 확장 in (".png", ".jpg", ".jpeg", ".svg"):
+            maj, sub = "image", ("svg+xml" if 확장 == ".svg" else 확장.lstrip(".").replace("jpg", "jpeg"))
+        elif 확장 in (".json", ".txt", ".log", ".csv", ".sv", ".v"):
+            maj, sub = "text", "plain"
+        msg.add_attachment(원, maintype=maj, subtype=sub, filename=길.name)
+        붙인것.append(f"{길.name} ({len(원)/1024:.0f} KB)")
     줄 = {"때": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "to": to, "subject": subject[:120]}
+    if 붙인것:
+        줄["첨부"] = 붙인것
     try:
         s = (smtp열기 or _기본열기)(host, port, 초)
         try:
@@ -222,7 +250,18 @@ def 보내기(to: str, subject: str, body: str, repo=None, 초: int = 30) -> dic
         return {"보냈나": False, "필요한것": [], "말": 말}
     _적기(repo, dict(줄, 보냈나=True))
     return {"보냈나": True, "필요한것": [],
-            "말": f"보냈다 -> {to} ({host}:{port}, 제목 {subject.strip()[:40]!r})" + ("; " + "; ".join(옮김) if 옮김 else "")}
+            "말": f"보냈다 -> {to} ({host}:{port}, 제목 {subject.strip()[:40]!r})"
+                 + (f"; 첨부 {', '.join(붙인것)}" if 붙인것 else "")
+                 + ("; " + "; ".join(옮김) if 옮김 else "")}
+
+
+def 보내기_첨부(to: str, subject: str, body: str, 첨부, repo=None, 초: int = 60) -> dict:
+    """보고서 전용 입구. 첨부가 비면 **보내지 않는다** -- 그림 없는 보고는 보고가 아니다."""
+    첨부 = list(첨부 or [])
+    if not 첨부:
+        return {"보냈나": False, "필요한것": [],
+                "말": "첨부(보고서 PDF)가 없다 -- 이 회사는 글만 보내지 않는다"}
+    return 보내기(to, subject, body, repo=repo, 초=초, 첨부=첨부)
 
 
 # ---------------------------------------------------------------- 진단: 인증 실패를 스스로 좁힌다

@@ -1,0 +1,62 @@
+# =====================================================================
+#  nsw_fir.upf -- IEEE 1801 (UPF) 전원 의도
+#  Owner : Marcus Webb
+#
+#  전원 의도는 RTL 에 없다.  RTL 은 "무엇을 셈하나" 만 적고, "어느 블록이 언제
+#  꺼지나" 는 여기 적는다.  house/syn/upf.py 가 이 파일을 파싱해서
+#  **아이솔레이션과 리테션이 빠진 자리를 찾아낸다** -- 그것이 UPF 검증이다.
+# =====================================================================
+
+upf_version 2.1
+set_design_top nsw_fir
+
+# ---------------------------------------------------------------- 전원 도메인
+create_power_domain PD_TOP
+create_power_domain PD_DP   -elements {u_mac}                 ;# 데이터패스 -- 꺼진다
+create_power_domain PD_CFG  -elements {u_coef_fifo}           ;# 설정 -- 늘 켜져 있다
+
+# ---------------------------------------------------------------- 공급망
+create_supply_port  VDD    -domain PD_TOP
+create_supply_port  VDD_DP -domain PD_TOP
+create_supply_port  VSS    -domain PD_TOP
+create_supply_net   VDD    -domain PD_TOP
+create_supply_net   VDD_DP -domain PD_TOP
+create_supply_net   VSS    -domain PD_TOP
+connect_supply_net  VDD    -ports {VDD}
+connect_supply_net  VDD_DP -ports {VDD_DP}
+connect_supply_net  VSS    -ports {VSS}
+
+set_domain_supply_net PD_TOP -primary_power_net VDD    -primary_ground_net VSS
+set_domain_supply_net PD_DP  -primary_power_net VDD_DP -primary_ground_net VSS
+set_domain_supply_net PD_CFG -primary_power_net VDD    -primary_ground_net VSS
+
+# ---------------------------------------------------------------- 전원 상태표
+add_power_state VDD    -state {ON  -supply_expr {power == FULL_ON 1.80}}
+add_power_state VDD_DP -state {ON  -supply_expr {power == FULL_ON 1.80}} \
+                       -state {OFF -supply_expr {power == OFF}}
+
+create_pst nsw_pst -supplies {VDD VDD_DP}
+add_pst_state ACTIVE  -pst nsw_pst -state {ON ON}
+add_pst_state IDLE_LP -pst nsw_pst -state {ON OFF}
+
+# ---------------------------------------------------------------- 아이솔레이션
+# PD_DP 가 꺼지면 그 출력이 뜬다.  받는 쪽(늘 켜진 도메인)이 부유 입력을 보면
+# 반쯤 켜진 인버터로 관통 전류가 흐른다 -- 기능 시험은 다 통과한다.
+set_isolation iso_dp -domain PD_DP \
+    -isolation_power_net VDD -isolation_ground_net VSS \
+    -clamp_value 0 -applies_to outputs
+set_isolation_control iso_dp -domain PD_DP \
+    -isolation_signal iso_en -isolation_sense high -location parent
+
+# ---------------------------------------------------------------- 리테션
+# 누산기는 살린다 -- 꺼졌다 켜질 때 거래를 이어서 해야 한다.
+set_retention ret_acc -domain PD_DP \
+    -retention_power_net VDD -retention_ground_net VSS \
+    -elements {u_mac/a_s2 u_mac/a_s3}
+set_retention_control ret_acc -domain PD_DP \
+    -save_signal {ret_save high} -restore_signal {ret_restore low}
+
+# ---------------------------------------------------------------- 레벨 시프터
+# 지금은 두 도메인이 같은 1.8 V 다.  전압이 갈라지면 이 줄이 필요해진다 --
+# 미리 적어 두고 검사가 "지금은 필요 없다" 를 확인하게 한다.
+# set_level_shifter ls_dp -domain PD_DP -applies_to outputs -rule low_to_high

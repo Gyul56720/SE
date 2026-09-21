@@ -1,0 +1,156 @@
+<h1 id="T14">T14. 신뢰성 &mdash; 십 년 뒤 회로는 어떤 꼴인가</h1>
+<p class="한줄">이 책의 모든 변수가 흐른다. 시각 0 에서 사인오프한 설계는 엉뚱한 날짜로 사인오프한 것이다.</p>
+<div class="사다리"><div class="사다리앞"><b>읽기 전에 알아야 하는 것</b><br>전압 · 전류 · 온도 · 지수함수 · 로그 · 확률 · 정규분포 · 문턱전압 · 트랜스컨덕턴스 · 슬랙 · 정착시간 · 펠그롬법칙 · 오프셋 · 최소동작전압 · 전압강하</div><div class="사다리뒤"><b>이 장에서 새로 나오는 것</b><br>BTI · HCI · TDDB · 일렉트로마이그레이션 · 아레니우스 · 가속계수 · 활성화에너지 · 블랙식 · 와이블 · 번인 · 노화인지설계 · 수명목표</div></div>
+<p>만들어진 날에 규격을 맞추는 트랜지스터는 십 년 뒤에는 못 맞춘다.
+    문턱은 옮겨 가고, 산화막은 무너지고, 금속 원자는 움직인다. 이 가운데
+    어느 것도 결함이 아니다. 재료가 늙는 보통의 일이고, 파운드리가 특성화해
+    모형으로 준다. 그리고 <b>그것을 예산에 넣는 것이 당신 몫이다</b> —
+    시각 0 의 타이밍 사인오프는 아직 출하되지도 않은 칩에 대한 사인오프이기
+    때문이다.</p>
+<h2>T14.1 네 가지 기구, 그리고 저마다 무엇을 먹는가</h2>
+<table><caption>표 17. 예산에 넣어야 하는 기구들</caption><thead><tr><th>기구</th><th>물리적으로 무슨 일이 나나</th><th>무엇을 깎나</th><th>언제 가장 나쁜가</th></tr></thead><tbody><tr><td><b>BTI</b> (bias temperature instability)</td><td>게이트 바이어스 아래에서 산화막 경계면에 전하가 갇힌다</td><td>|V<sub>th</sub>| 가 올라 → 속도가 떨어지고 오프셋이 흐른다</td><td>높은 온도, 높은 V<sub>GS</sub>, DC 바이어스(회복이 없음)</td></tr><tr><td><b>HCI</b> (hot carrier injection)</td><td>기운 센 운반자가 드레인 쪽 산화막을 상하게 한다</td><td>구동 전류가 떨어지고 불일치가 커진다</td><td><i>뒤집히는 동안</i> 높은 V<sub>DS</sub> — 빠른 에지, 높은 활동도</td></tr><tr><td><b>TDDB</b> (time-dependent dielectric breakdown)</td><td>게이트 산화막이 끝내 전류를 흘리고, 영영 그렇다</td><td>소자 자체 — 흐름이 아니라 <b>딱딱한 고장</b>이다</td><td>높은 전계, 얇은 산화막, 큰 전체 게이트 면적</td></tr><tr><td><b>일렉트로마이그레이션</b></td><td>전자가 운동량을 넘겨 금속 원자를 옮긴다</td><td>배선이 끊기거나 단락된다 — 이것도 딱딱한 고장이다</td><td>높은 전류 밀도, DC(한 방향) 전류, 높은 온도</td></tr></tbody></table>
+<div class="짚기">이 가운데 둘은 <b>흐름</b>이고 둘은 <b>고장</b>인데, 둘은 셈법이
+    다르다. 흐름은 여유로 예산 잡는다. 깎인 라이브러리로 타이밍을
+    사인오프하고 그 면적 값을 받아들인다. 고장은 <i>확률</i>로 예산 잡는다.
+    수명 목표 전에 지는 부품의 몫을 셈해 허용된 FIT 율과 견준다. 둘을
+    뒤섞는 것 — 이를테면 TDDB 를 'V<sub>th</sub> 흐름이 좀 더 있는 것' 으로
+    다루는 것 — 은 타이밍은 맞추고 인증에는 지는 설계를 낳는다.</div>
+<h2>T14.2 가속: 1000시간 시험이 어떻게 십 년을 예측하나</h2>
+<div class="개념"><div class="개념머리">아레니우스 가속 (Arrhenius acceleration)</div>
+<div class="개념이론"><p>닳는 속도는 exp(−E<sub>a</sub>/kT) 를 따르므로, 온도를 올리면 속도가
+        셈할 수 있는 배수로 곱해진다.
+        AF = exp[(E<sub>a</sub>/k)(1/T<sub>use</sub> − 1/T<sub>stress</sub>)] 다.</p>
+        <p>E<sub>a</sub> = 0.9 eV 로 85 °C 대신 125 °C 에서 몰면
+        <b>18.7배 빠르다</b> — 1000시간 오븐 시험이 현장에서의
+        여러 해를 대신하는 방식이 그것이다. 같은 셈을 거꾸로 돌린 것이 낯익은
+        어림이다. 10 °C 를 식힐 때마다 수명이 대략
+        2.08배다.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>인증 계획, 그리고 접합부 온도를 두고 열 담당자와 하는 다툼.</td></tr>
+<tr><th>언제 쓰나</th><td>수명을 주장할 때마다. 온도 없는 수명은 규격이 아니다.</td></tr>
+<tr><th>어떻게 쓰나</th><td>E<sub>a</sub> 를 그 기구에 대한 파운드리 모형에서 가져오고 — <b>두루뭉술한 0.7 eV 가 아니다</b> — 결과 옆에 같이 적는다. 답이 거기에 세게 달려 있기 때문이다.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code># The same 1000-hour test, read with three different activation energies.
+# This is why Ea must be quoted with any lifetime claim.
+Ea = {0.7: 9.8, 0.9: 18.7, 1.1: 35.9}     # AF from 85 C to 125 C
+# 1000 h at 125 C therefore stands for 9800 h / 18700 h / 35900 h at 85 C
+#   -&gt; 1.1 years / 2.1 years / 4.1 years.
+# The SAME DATA supports "passes 1 year" or "passes 4 years" depending on a
+# number the report often does not state.</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> 활성화 에너지는 <b>기구마다</b> 다르고, 뒤섞인 고장 모집단에 수
+            하나를 쓰는 것은 수명을 3.68배 틀리게
+            하는 표준적인 방법이다. 인증 보고서가 어느 기구이고 어느
+            E<sub>a</sub> 인지 말하지 않으면, 그것은 당신이 확인할 수 있는
+            주장을 한 것이 아니다.</div>
+</div>
+<table><caption>표 18. 85 °C 사용에서 125 °C 스트레스로의 가속 계수</caption><thead><tr><th>E_a</th><th>AF (125 °C 대 85 °C)</th><th>10 °C 식히면</th><th>1000 h 스트레스가 대신하는 것</th></tr></thead><tbody><tr><td>0.7&nbsp;eV</td><td>9.76×</td><td>1.77×</td><td>1.11&nbsp;년</td></tr><tr><td>0.9&nbsp;eV</td><td>18.7×</td><td>2.08×</td><td>2.14&nbsp;년</td></tr><tr><td>1.1&nbsp;eV</td><td>35.9×</td><td>2.44×</td><td>4.1&nbsp;년</td></tr></tbody></table>
+<div class="예제"><div class="예제머리">예제 2. 1000시간 BTI 스트레스: 그것이 십 년에 대해 무엇을 말하나?</div><div class="예제줄"><b>주어진 것.</b> BTI 의 문턱 이동은 시간에 대해 거듭제곱 법칙으로 자란다.
+        ΔV<sub>th</sub> ∝ t<sup>n</sup> 이고 n 은 보통 0.15–0.25 다. 부품을
+        1000시간 몰아 어떤 이동을 보였다.</div><div class="예제줄"><b>푸는 법.</b> 십 년은 87,600 시간이고 스트레스 시간의 87.6배다.
+        이동은 그 비의 n 제곱만큼 자란다.</div><div class="예제답"><b>답.</b> n = 0.15 → 1.96배,
+        n = 0.2 → 2.45배,
+        n = 0.25 → 3.06배다.
+        <b>같은 측정이, 이 시험에서 아무도 재지 않은 지수에 따라
+        1.56배나 다른 이동을 예측한다.</b></div><div class="예제덧"><table><caption>표 19. 같은 까닭으로, 전압 가속</caption><thead><tr><th>γ</th><th>100 mV 과전압이 늙히는 배수</th></tr></thead><tbody><tr><td>8&nbsp;/V</td><td>2.23×</td></tr><tr><td>12&nbsp;/V</td><td>3.32×</td></tr><tr><td>16&nbsp;/V</td><td>4.95×</td></tr></tbody></table></div><div class="예제함정"><b>여기서 틀린다.</b> 시간 점 하나에서 거듭제곱 법칙을 외삽하는 것. 스트레스 길이가 하나뿐이면
+        n 은 측정이 아니라 가정인데 — 답은 거기에 대략 선형이다.
+        믿을 만한 BTI 특성화는 <b>여러 길이</b>로 몰아 n 을 맞춘다.
+        그 밖의 것은 밝히지 않은 배수가 붙은 수다.</div></div>
+<div class="짚기">전압 가속은 설계를 공칭에서만 특성화해서는 절대 안 되는
+    까닭이다. γ = 12&nbsp;/V — 흔한 값이다 — 에서 공칭보다
+    100 mV 위로 돌리면 소자가 3.32배 빨리 늙는다.
+    그러니 DVFS 전환 동안 넘실대는 레일은 몇 초에 여러 해의 예산을 먹어 치울
+    수 있다. <b>DVFS 에 대한 신뢰성 물음은 평균 전압이 아니라
+    과도 현상이다.</b></div>
+<h2>T14.3 일렉트로마이그레이션, 그리고 디지털 설계자를 놀라게 하는 규칙</h2>
+<div class="개념"><div class="개념머리">블랙 식 (Black's equation) 과 왜 AC 가 DC 보다 수월한가</div>
+<div class="개념이론"><p>MTF = A·J<sup>−n</sup>·exp(E<sub>a</sub>/kT) 이고, 흔한 영역에서
+        n ≈ 2 다. 수명은 전류 밀도의 <b>제곱</b>으로 줄고 온도가 내려가면
+        지수로 는다. E<sub>a</sub> = 0.9 eV 에서 배선을
+        110&nbsp;°C 에서 85&nbsp;°C 로 식히면
+        수명이 6.7배가 된다.</p>
+        <p>디지털 설계자를 놀라게 하는 대목은 이것이다. <b>양방향(AC) 전류는
+        한방향(DC) 전류보다 훨씬 덜 상하게 한다.</b> 한쪽으로 밀린 원자가
+        일부 되밀리기 때문이다. 그래서 EM 규칙은 신호 넷에 전원 넷보다 훨씬
+        높은 한계를 준다 — 그리고 지는 넷은 거의 언제나 전원이거나 클럭
+        드라이버이거나 듀티가 50 % 에서 한참 먼 신호다.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>전원 격자 치수, 클럭 트리 드라이버 출력, 그리고 정적 전류가 흐르는 모든 드라이버의 출력단.</td></tr>
+<tr><th>언제 쓰나</th><td>사인오프에서 EM/IR 도구가 자동으로 본다 — 그런데 격자의 폭이 플로어플랜 결정이므로 <b>설계는</b> 그보다 한참 전에 한다.</td></tr>
+<tr><th>어떻게 쓰나</th><td>전류 밀도를 <b>최대</b> 접합부 온도에서 파운드리 한계 아래로 두고, 그 한계가 듀티와 방향에 달려 있다는 것을 잊지 마라. 묶는 제약은 보통 배선이 아니라 비아다. 비아 하나는 그것이 잇는 배선보다 훨씬 적게 나른다.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code># What the EM report actually flags, in order of frequency:
+#   1. VIAS on power straps -- a single via where four were needed
+#   2. Clock driver outputs -- high activity, high capacitance, one direction of
+#      net current per edge
+#   3. Long thin nets from a pad to a block at the far side of the die
+# The fix for (1) and (2) is always the same: more parallel vias, wider metal,
+# and it is FREE if done at floorplan time and expensive after routing.</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> EM 한계는 어떤 온도에서 규정된 것이다. 85 °C 에서 점검하고
+            110 °C 에서 도는 설계는 보고서가 말하는 것보다 여유가
+            6.7배 적다 — 그리고 막 잠에서 깬 블록의
+            접합부 온도는 누가 시뮬레이션한 평균 온도가 아니다.</div>
+</div>
+<h2>T14.4 첫해가 아니라 열째 해를 두고 설계하기</h2>
+<table><caption>표 20. 기구마다 설계 흐름에 어떻게 들어오나</caption><thead><tr><th>기구</th><th>무엇으로 들어오나</th><th>누가 임자인가</th></tr></thead><tbody><tr><td>BTI / HCI</td><td><b>깎인 타이밍 라이브러리</b> — 사인오프를 시각 0 과 수명 끝에서 두 번 돌린다</td><td>타이밍 사인오프. 그 여유는 설계의 몫이다</td></tr><tr><td>TDDB</td><td>주어진 전계에서의 게이트 면적 한계, 그리고 FIT 예산</td><td>파운드리 규칙. 설계자는 산화막 종류를 고른다</td></tr><tr><td>일렉트로마이그레이션</td><td>모든 넷에 대한 전류 밀도 점검</td><td>물리 설계. 그런데 격자는 플로어플랜에서 정해졌다</td></tr><tr><td>노화 불일치</td><td>σ(ΔV<sub>th</sub>) 가 수명에 걸쳐 커져서 오프셋과 V<sub>min</sub> 이 나빠진다</td><td>아날로그 설계자 — 그리고 자주 잊힌다</td></tr></tbody></table>
+<div class="사고"><b>실제로 난 일</b><br>마지막 줄이 아날로그 설계를 걸어 넘어뜨리는 것이다. BTI 는 평균
+    이동만이 아니다. <b>퍼짐</b>이 있고, 그 퍼짐이 T12 의 불일치에 더해진다.
+    시험에서 오프셋을 트리밍한 비교기는 다시 흘러간다. 두 쪽이 다르게 늙기
+    때문이고, 다르게 늙는 까닭은 바로 두 쪽이 다른 듀티를 지고 있기
+    때문이다. <b>트리밍한 오프셋은 트리밍한 그날에 대해 트리밍된 것이다.</b>
+    오프셋을 십 년 동안 붙들어야 하는 설계는 현장에서 다시 트리밍하거나
+    (자동 영점, T10) 지어진 방식상 두 쪽이 똑같이 늙게 만든다.</div>
+<div class="개념"><div class="개념머리">노화 인지 설계 (ageing-aware design)</div>
+<div class="개념이론"><p>설계가 열째 해를 살아남게 하는 것이 셋인데, 어느 것도 여유 하나만은
+        아니다.</p>
+        <ul>
+        <li><b>스트레스를 고르게 한다.</b> 차동쌍의 두 쪽이 다른 듀티를 보면
+        갈라진다. 역할을 주기적으로 바꾸면(초핑, T10) 같이 늙는다.</li>
+        <li><b>늙은 소자들의 비를 쓴다.</b> 똑같이 늙는 두 소자로 지은 기준은
+        절대량으로 지은 것보다 훨씬 덜 흐른다.</li>
+        <li><b>회복을 허락한다.</b> BTI 는 바이어스를 걷으면 일부 회복한다.
+        십 년 동안 DC 로 바이어스된 회로는 최악의 경우를 받고, 듀티를 나눠
+        쓰는 회로는 안 그렇다.</li>
+        </ul></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>십 년이나 차량용 수명 목표가 있는 모든 IP, 그리고 정확도를 트리밍하는 모든 아날로그 블록.</td></tr>
+<tr><th>언제 쓰나</th><td>구조를 고를 때. 이 가운데 어느 것도 나중에 끼워 넣을 수 없다.</td></tr>
+<tr><th>어떻게 쓰나</th><td>PDK 가 주는 노화 시뮬레이션(깎인 모형 덱)을 <b>진짜</b> 듀티로 — 전부 DC 로 두지 말고 — 돌리고, 타이밍만이 아니라 수명 끝의 오프셋과 V<sub>min</sub> 을 확인한다.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>* Ageing simulation: the same netlist, twice, with the PDK's aged models.
+.lib 'models/pdk.lib' tt
+.option reliability_analysis          $ vendor-specific; every PDK has one
+.param age_years = 10
+.param duty_cycle = 0.5               $ THIS is the parameter people get wrong --
+                                      $ a DC-biased device is duty_cycle = 1.0
+.op
+.measure op vth_shift param='v(m1.vth_aged) - v(m1.vth_fresh)'
+* Sign off BOTH decks. A design that only passes fresh is a design that only
+* passes on the day it is made.</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> 노화 모형은 통계적이고 보수적이라, 최악의 코너 <i>와</i> 최악의 듀티
+            <i>와</i> 최악의 온도를 한꺼번에 걸고 돌리면 지을 수 없는 설계가
+            나온다. 솜씨는 어느 조합이 물리적으로 가능한지를 고르는 데
+            있다 — 최고 온도에서 DC 로 바이어스된 소자는 가능하지만, 최고
+            온도에 최대 활동도에 최저 전압은 대개 가능하지 않다.</div>
+</div>
+<h2>T14.5 월요일에 이걸로 무엇을 하나</h2>
+<table><caption>표 21. 이 장의 개념이 실제로 쓰이는 자리</caption><thead><tr><th>개념</th><th>쓰이는 블록</th><th>무엇을 정하나</th></tr></thead><tbody><tr><td>BTI · HCI</td><td>두 번 돌리는 타이밍 사인오프</td><td>수명 끝의 여유, 따라서 면적</td></tr><tr><td>아레니우스 · 가속계수</td><td>인증 계획과 데이터시트의 주장</td><td>1000시간 시험이 무엇을 말해도 되는지</td></tr><tr><td>블랙식 · 일렉트로마이그레이션</td><td>플로어플랜에서의 전원 격자와 드라이버 치수</td><td>배선 폭과 비아 수 — 일찍 하면 공짜, 늦으면 비싸다</td></tr><tr><td>노화인지설계</td><td>트리밍하는 모든 것의 구조 고르기</td><td>그 트리밍이 열째 해까지 사는지</td></tr><tr><td>수명목표</td><td>데이터시트</td><td>수명, <b>그 온도와 듀티와 함께</b> — 아니면 아무 말도 안 한 것이다</td></tr></tbody></table>
+<p>가지고 갈 수들. E<sub>a</sub> = 0.9&nbsp;eV 에서 125 °C 스트레스는
+    85 °C 사용보다 18.7배 빠르므로 1000시간이
+    2.14&nbsp;년 을 대신한다 — 그리고 E<sub>a</sub> 가 다르면
+    같은 데이터가 1.11&nbsp;년 이라고도
+    4.1&nbsp;년 이라고도 한다. E<sub>a</sub> 와 온도와 듀티가
+    없는 수명 주장은 주장이 아니다. 그리고 과전압 100 mV 는 소자를
+    3.32배 빨리 늙히는데, DVFS 방식의 과도 현상이
+    그 평균보다 중요한 까닭이 그것이다.</p>
+<p>다음 장은 이 모든 것이 기하가 되는 자리다. 레이아웃이다. 어느 모로
+    보나 옳은 회로도가 그래도 질 수 있는 곳이다.</p>
+<div class="특허"><div class="특허머리">특허로 가는 길 &mdash; 이 주제에서 발명이 일어나는 자리</div><div class="특허속">신뢰성 물리는 파운드리의 것이다. IP 쪽 청구항은 <b>그것을 살아남는
+        것</b>에 관한 것이다. 제 퇴화를 스스로 감지해 보상하는 회로(적응
+        바디 바이어스, 다이 위 노화 감시기가 모는 적응 전압 조정), 결정적인
+        변수가 절대량이 아니라 똑같이 늙은 두 소자의 비인 구조, 그리고 소자가
+        회복하게 두는 듀티 나눔 방식. 마지막 것은 눈여겨볼 만하다 —
+        <b>BTI 는 스트레스를 걷으면 일부 회복하는데</b>, 그것이 물리 상수를
+        설계 변수로 바꿔 놓는다.</div></div>

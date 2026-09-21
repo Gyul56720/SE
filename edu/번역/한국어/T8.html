@@ -1,0 +1,150 @@
+<h1 id="T8">T8. 직렬 링크 &mdash; 잰 것, 안 되는 자리까지</h1>
+<p class="한줄">링크는 채널이 남의 문제이면서 온전히 내 책임인 유일한 블록이다.</p>
+<div class="사다리"><div class="사다리앞"><b>읽기 전에 알아야 하는 것</b><br>전압 · 주파수 · 위상 · 확률 · 표준편차 · 로그 · 적분 · SNR · 구경지터 · 위상잡음 · 적분지터 · 루프대역폭 · 엘리어싱 · ENOB · 열잡음</div><div class="사다리뒤"><b>이 장에서 새로 나오는 것</b><br>심볼간간섭 · 펄스응답 · 커서 · 선행커서 · 후행커서 · 최악왜곡 · 아이다이어그램 · CTLE · FFE · DFE · 오류전파 · 비트오류율 · 3의법칙 · 클럭데이터복원 · 지터허용 · PAM4</div></div>
+<p>직렬 링크의 모든 것은 한 가지 사실에서 나온다. 채널은 심볼률보다 대역폭이
+    훨씬 좁은 저역통과 필터라서, 심볼 하나하나가 이웃에 번진 채로 도착한다.
+    수신기가 할 일은 그 번짐을 슬라이서가 판정할 수 있을 만큼 되돌리는 것이고,
+    아래의 측정 &mdash; 이 저장소 자신의 채널·링크 모형으로 돌린 것 &mdash; 은
+    등화가 얼마나 사 주는지와, 더 쓸모 있게는 <b>어디서 아무것도 사 주지 않는지</b>를
+    둘 다 보여 준다.</p>
+<h2>T8.1 펄스 응답, 그리고 거기서 나오는 수들</h2>
+<div class="정의"><b>커서 (cursor)</b> &mdash; 채널의 펄스 응답을 심볼 간격으로 뽑은 표본들. <b>주커서</b>는 슬라이서가 쓰는 것이고, 그보다 앞의 것은 모두 <b>선행커서</b>, 뒤의 것은 모두 <b>후행커서</b>다. 주커서가 아닌 것들의 크기를 다 더한 것이 최악의 심볼간간섭이다.</div>
+<table><caption>표 99. 이 모형 채널의 잰 펄스 응답 (sps = 8)</caption><thead><tr><th>손실</th><th>주커서</th><th>선행커서 1</th><th>후행커서 1</th><th>Σ|ISI|</th><th>최악 아이</th></tr></thead><tbody><tr><td>10&nbsp;dB</td><td>3.388</td><td>0.348</td><td>1.329</td><td>4.234</td><td><b>-1.692</b></td></tr><tr><td>20&nbsp;dB</td><td>1.693</td><td>0.547</td><td>1.035</td><td>5.444</td><td><b>-7.502</b></td></tr><tr><td>30&nbsp;dB</td><td>0.918</td><td>0.487</td><td>0.744</td><td>5.681</td><td><b>-9.525</b></td></tr></tbody></table>
+<div class="짚기">마지막 칸을 꼼꼼히 읽어라. <b>모든</b> 손실에서 &mdash; 링크가
+    사실상 오류 없이 도는 10&nbsp;dB 까지 포함해서 &mdash; 최악 아이가
+    <b>음수</b>다. 모순이 아니다. 최악(첨두왜곡) 해석은 모든 간섭원을 동시에
+    최대로 만드는 데이터 패턴을 가정하는데, 그런 패턴은 천문학적으로 드물다.
+    <b>첨두왜곡은 한계이지 예측이 아니다.</b>
+    그것만 보고 사인오프한 설계는 과설계이고, 그것을 무시한 설계는 한계가
+    아예 없다. 두 수 다 납품물에 들어가야 한다.</div>
+<div class="유도"><div class="유도머리">유도 &mdash; 왜 손실이 후행커서로 나타나며, 왜 그것이 중요한가</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">손실이 있는 채널은 높은 주파수를 낮은 주파수보다 더 깎는다.</td><td class="유도왜">표피효과(∝√f)와 유전손실(∝f). 둘 다 드라이버가 아니라 매질의 물리다.</td></tr><tr><td class="유도번호">2</td><td class="유도말">그래서 날카로운 에지는 시간으로 퍼진다. 펄스 응답에 긴 꼬리가 생긴다.</td><td class="유도왜">20&nbsp;dB 에서 잰 것: 첫 후행커서가 1.035 이고 주커서가 1.693 이니 &mdash; <b>신호의 61.1&nbsp;% 가 한 심볼 늦게 도착한다</b>.</td></tr><tr><td class="유도번호">3</td><td class="유도말">그 꼬리는 <i>인과적이고 과거의 것</i>이다 &mdash; 이미 판정된 심볼들에만 딸려 있다.</td><td class="유도왜">판정귀환 등화기가 가능한 까닭이 바로 그것이다. 수신기가 그 비트들을 이미 알고 있으니, 잡음을 키우지 않고 그 몫만 빼낼 수 있다.</td></tr><tr><td class="유도번호">4</td><td class="유도말">선행커서는 그렇지 않아서, <i>앞을</i> 내다보는 필터로만 다룰 수 있다 &mdash; FFE 인데, 선형이라 신호와 함께 잡음도 키운다.</td><td class="유도왜">20&nbsp;dB 에서 잰 선행커서는 0.547 로 후행커서의 3분의 1이다. 수신기가 한 종류가 아니라 두 종류의 등화기를 다 쓰는 까닭이 이 비대칭이다.</td></tr></tbody></table></div>
+<h2>T8.2 등화기 하나하나가 실제로 사 주는 것 — 잰 것</h2>
+<table><caption>표 100. 채널 손실과 등화에 대한 BER (SNR = 26 dB, PRBS, 씨앗 1·2·3 합침, 칸마다 420,000 비트)</caption><thead><tr><th>손실</th><th>등화 없음</th><th>CTLE 6 dB</th><th>+ FFE 3</th><th>+ DFE 4</th></tr></thead><tbody><tr><td>10&nbsp;dB</td><td>2.38×10<sup>-6</sup></td><td>&lt; 7.14×10<sup>-6</sup> <span style='color:#888'>(오류 0, 3의법칙)</span></td><td>&lt; 7.14×10<sup>-6</sup> <span style='color:#888'>(오류 0, 3의법칙)</span></td><td>&lt; 7.14×10<sup>-6</sup> <span style='color:#888'>(오류 0, 3의법칙)</span></td></tr><tr><td>20&nbsp;dB</td><td>0.14</td><td>0.01</td><td>0.01</td><td>0</td></tr><tr><td>30&nbsp;dB</td><td>0.27</td><td>0.23</td><td>0.25</td><td>0.25</td></tr></tbody></table>
+<div class="사고"><b>실제로 난 일</b><br><b>30 dB 줄은 결과가 아니다 — 망가진 동작점이다.</b>
+    어느 구성이든 BER 이 대략 0.2 인데, 이것은 아이가 완전히 닫혔을 때
+    슬라이서가 하는 일이다. 찍는 것이다. 거기서 등화기를 견주는 것은
+    동전 던지기를 견주는 것이고, FFE 가 CTLE 하나보다 <i>나쁘다</i>고
+    보이는 것(0.25 대
+    0.23)은 물리가 아니라 잡음이다.
+    <p>이 저장소에는 바로 이것을 두고 호되게 배운 규칙이 있다. <b>그 위에서 잰 것을
+    무엇이든 보고하기 전에 동작점이 성한지부터 본다.</b> 0.5 근처의 BER,
+    수렴하지 않은 등화기, 틀린 표본 위상 — 모두 데이터처럼 보이는 수를
+    낳는다.</p></div>
+<table><caption>표 101. 성한 동작점 찾기: 20&nbsp;dB 손실에서 CTLE + FFE 5 + DFE 6 으로 SNR 쓸기 (줄마다 630,000 비트)</caption><thead><tr><th>SNR</th><th>오류</th><th>BER</th></tr></thead><tbody><tr><td>26&nbsp;dB</td><td>2226</td><td>0</td></tr><tr><td>30&nbsp;dB</td><td>9</td><td>1.43×10<sup>-5</sup></td></tr><tr><td>34&nbsp;dB</td><td>0</td><td>&lt; 4.76×10<sup>-6</sup> <span style='color:#888'>(오류 0, 3의법칙)</span></td></tr><tr><td>38&nbsp;dB</td><td>0</td><td>&lt; 4.76×10<sup>-6</sup> <span style='color:#888'>(오류 0, 3의법칙)</span></td></tr></tbody></table>
+<table><caption>표 102. <b>성한</b> 동작점에서 같은 비교 (20&nbsp;dB 손실, SNR = 34&nbsp;dB)</caption><thead><tr><th>구성</th><th>오류</th><th>BER</th></tr></thead><tbody><tr><td>없음</td><td>81496</td><td>0.13</td></tr><tr><td>CTLE</td><td>40</td><td>6.35×10<sup>-5</sup></td></tr><tr><td>CTLE+FFE5</td><td>0</td><td>&lt; 4.76×10<sup>-6</sup> <span style='color:#888'>(오류 0, 3의법칙)</span></td></tr><tr><td>CTLE+FFE5+DFE6</td><td>0</td><td>&lt; 4.76×10<sup>-6</sup> <span style='color:#888'>(오류 0, 3의법칙)</span></td></tr></tbody></table>
+<div class="개념"><div class="개념머리">3의법칙 (rule of three) — 오류 0 이 무엇을 뜻해도 되는가</div>
+<div class="개념이론"><p>위의 두 줄이 <b>오류 0</b> 을 보고한다. 오류 0 은 BER 이 0 이라는 뜻이
+        아니다. 상한이다. n 비트에서 오류가 하나도 없을 때 오류율의 95 % 신뢰
+        상한은 3/n 이다 — <b>3의법칙</b>이다.
+        630,000 비트 실행에서는 그것이 4.76×10<sup>-6</sup> 이다.</p>
+        <p>그러니 이 측정이 말하는 것은 CTLE + FFE 와 CTLE + FFE + DFE 가 둘 다
+        4.76×10<sup>-6</sup> 아래라는 것뿐이고, <b>둘 중 어느 쪽이 나은지는 아무것도
+        말하지 않는다</b>. DFE 가 '아무 차이도 안 냈다' 고 보고하는 것은 데이터가
+        받쳐 주지 않는 주장이다. 정직한 진술은 이 실행이 둘을 가려내지 못했다는
+        것, 그리고 가려내려면 비트가 대략 100배 더 있거나 채널이 더 나빠야
+        한다는 것이다.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>모든 BER 측정, 모든 준수 보고서, 그리고 BER 이라는 글자가 들어가는 모든 데이터시트 줄.</td></tr>
+<tr><th>언제 쓰나</th><td>오류 수가 적을 때마다 — 출하할 만한 링크라면 그것은 늘이다.</td></tr>
+<tr><th>어떻게 쓰나</th><td>비율만이 아니라 오류 수와 비트 수를 보고한다. 오류 = 0 이면 3/n 한계와 신뢰수준을 같이 적는다. 1e-12 를 주장하려면 적어도 3e12 비트를 봐야 하는데, 25 Gb/s 에서 그것은 2분이고 — 1e-15 에서는 하루다.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code># The line that belongs in every link report.
+#   errors = 0 in 6.30e5 bits  -&gt;  BER &lt; 4.8e-6 (95% confidence, rule of three)
+# NOT "BER = 0".
+def ber_bound(errors, bits, conf=0.95):
+    if errors == 0:
+        import math
+        return -math.log(1 - conf) / bits        # 3.0/bits at 95%
+    return errors / bits                         # point estimate; add a CI for small n
+# And the check that catches the broken operating point before any of this matters:
+assert 0.0 &lt;= ber &lt; 0.2, f"BER {ber} -- the eye is closed; this run measured nothing" </code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> 정확히 0.5 인 BER 은 대개 나쁜 채널이 아니라 극성이나 정렬 버그를
+            뜻한다 — 수신기가 뒤집혔거나 어긋난 기준과 견주고 있는 것이다.
+            PAM4 에서 0.25 근처의 BER 은 한 층 위에서 같은 뜻이다.
+            <b>등화기를 탓하기 전에 이것부터 봐라</b>. 진짜로 닫힌 아이보다
+            훨씬 흔하다.</div>
+</div>
+<h2>T8.3 등화기 셋, 그리고 일을 더 나쁘게 만들 수 있는 하나</h2>
+<table><caption>표 103. 등화기 하나하나가 신호와 잡음에 하는 일</caption><thead><tr><th></th><th>CTLE</th><th>FFE</th><th>DFE</th></tr></thead><tbody><tr><td>어디에</td><td>아날로그, 표본 뽑기 전</td><td>아날로그나 디지털, 선형 FIR</td><td>슬라이서 뒤, 되먹임</td></tr><tr><td>무엇을 다루나</td><td>넓은 대역의 고주파 손실</td><td>선행커서와 후행커서</td><td><b>후행커서만</b></td></tr><tr><td>잡음</td><td>신호와 함께 키운다</td><td>키운다 — 고주파에서의 이득이 곧 잡음 이득이다</td><td><b>안 키운다</b> — 아는 심볼을 빼는 것이다</td></tr><tr><td>값</td><td>작다. 소자 몇 개와 피킹 회로망</td><td>탭 × 곱셈기. 탭 수는 꼬리를 따라 늘어난다</td><td><b>한 심볼 주기 안의</b> 곱셈–덧셈 — T2 의 타이밍 벽</td></tr><tr><td>언제 진다</td><td>손실이 매끈한 기울기가 아닐 때(반사)</td><td>잡음이 이미 한계일 때</td><td>틀린 판정이 퍼질 때(오류 다발)</td></tr></tbody></table>
+<div class="개념"><div class="개념머리">오류전파 (error propagation), 그런데도 DFE 가 값을 하는 까닭</div>
+<div class="개념이론"><p>DFE 는 이미 판정한 심볼들의 몫을 뺀다. 판정이 틀렸으면 틀린 것을 빼게
+        되고, 그러면 다음 판정도 틀릴 확률이 높아진다 — 오류가 하나씩이 아니라
+        다발로 온다.</p>
+        <p>그 효과는 실제로 있고, 직관이 말하는 것보다는 작다. 탭 하나짜리
+        DFE 에서는 다발 길이가 짧은데, 오류가 다음의 옳은 판정을 살아 넘겨야
+        하기 때문이다. 뒷단에서 중요한 것은 BER 이 아니라 <b>다발의
+        구조</b>다. 뒤따르는 FEC 가 어떤 다발 길이를 가정하고 설계됐기
+        때문이다. BER 은 맞추면서 가정된 다발 분포를 어기는 링크는 디코딩
+        뒤에 지는데, 그동안 FEC 전의 모든 측정은 멀쩡해 보인다.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>손실 ~10 dB 가 넘는 모든 수신기, 그리고 FEC 설계자와의 모든 대화.</td></tr>
+<tr><th>언제 쓰나</th><td>후행커서 꼬리가 주커서에 견주어 무시할 수 없을 때마다 — 이 모형의 20&nbsp;dB 에서는 첫 후행커서 하나가 주커서의 61.1&nbsp;% 다.</td></tr>
+<tr><th>어떻게 쓰나</th><td>BER 만이 아니라 다발 길이 분포를 재서, 인터리버 치수를 잡는 사람에게 넘긴다. 언롤링(추측)은 되먹임 곱셈을 임계경로에서 빼낸다 — T2 의 논증 — 대신 탭 k 개를 언롤하면 슬라이서가 2<sup>k</sup> 개 나란히 든다.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>// Unrolled (speculative) first DFE tap: both outcomes are precomputed,
+// and the previous decision only selects. The multiply leaves the loop.
+always_comb begin
+    d_if_prev0 = (sample &gt;  +c1) ;      // precomputed thresholds
+    d_if_prev1 = (sample &gt;  -c1) ;
+end
+always_ff @(posedge clk) prev &lt;= prev ? d_if_prev1 : d_if_prev0;   // 2:1 mux only
+// The loop now contains a mux and a flop instead of a multiply-add.
+// Cost: one extra slicer per unrolled tap, and 2^k for k taps.</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> 언롤링은 그 고리가 임계경로였을 때만 이득이다. 먼저 재라.
+            이 저장소 자신이 현실적인 동작점에서 DFE 를 잰 것에서는
+            되먹임 탭이 |c| ≤ 0.041 이었다 — <b>고리가 놀고 있었다</b>. 그리고 진짜
+            임계경로는 슬라이서였다. 노는 고리를 다듬는 것은 가장 비싼 종류의
+            옳은 일이다.</div>
+</div>
+<h2>T8.4 클럭 되찾기, 그리고 그게 되는지를 가르는 지터</h2>
+<div class="개념"><div class="개념머리">클럭데이터복원 (CDR) — 데이터를 기준으로 삼는 T7 의 PLL</div>
+<div class="개념이론"><p>따로 난 클럭선이 없다. 수신기는 데이터 자신의 천이에서 타이밍을
+        뽑아낸다. 위상 검출기(알렉산더/뱅뱅, 또는 선형 뮐러–뮐러)가 T7 과
+        같은 2차 고리를 몬다. 그 장의 모든 것이 그대로 들어맞되 두 가지가
+        다르다. '기준' 은 데이터가 천이할 때만 오고, 고리는 송신기의 확산
+        스펙트럼 변조를 <b>따라가면서</b> 고주파 지터는 <b>물리쳐야</b> 한다.</p>
+        <p>그것이 지터허용 마스크다. CDR 대역폭 아래에서는 수신기가 지터를
+        따라가므로 큰 진폭도 견뎌진다. 그 위에서는 따라갈 수 없어서 지터가
+        아이를 곧장 갉아먹는다.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>모든 직렬 규격의 모든 수신기 — PCIe, USB, 이더넷, MIPI, SATA, HDMI.</td></tr>
+<tr><th>언제 쓰나</th><td>CDR 대역폭은 규격의 지터허용 마스크와 따라가야 하는 확산 스펙트럼 프로파일이 정한다. 마음대로 고르는 값이 아니다.</td></tr>
+<tr><th>어떻게 쓰나</th><td>규격의 마스크를 가져다 허용 곡선이 그 위에 여유를 두고 앉도록 CDR 대역폭을 놓고, 송신 PLL 의 지터(T7)에 잔차를 더한 것이 예산 안에 드는지 본다.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code># The budget is a SUM, and each term has an owner.
+#   TX PLL jitter (T7)          0.30 ps rms   &lt;- clock design
+#   TX driver / ISI (DJ)        0.15 UI pp    &lt;- output stage and package
+#   Channel ISI residual        0.20 UI pp    &lt;- equalisation, this chapter
+#   RX CDR tracking error       0.05 UI pp    &lt;- loop bandwidth
+#   Sampler aperture (T5)       0.10 ps rms   &lt;- sampling network
+# Random terms add in QUADRATURE, deterministic ones LINEARLY -- mixing the two
+# rules is the most common budgeting error, and it always errs optimistic.</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> 확산 스펙트럼 클러킹은 <b>따라가야 하는 요구사항</b>이지
+            물리쳐야 할 교란이 아니다. 33 kHz SSC 프로파일을 따라가기에 대역폭이
+            모자란 CDR 은 규격을 지키는 송신기 앞에서 락을 잃는다. 깨끗한
+            발생기를 쓰는 벤치에서는 되는데 진짜 호스트 앞에서 지는 수신기는
+            대개 이것이다.</div>
+</div>
+<h2>T8.5 월요일에 이걸로 무엇을 하나</h2>
+<table><caption>표 104. 이 장의 개념이 실제로 쓰이는 자리</caption><thead><tr><th>개념</th><th>쓰이는 블록</th><th>무엇을 정하나</th></tr></thead><tbody><tr><td>펄스응답 · 커서 · 최악왜곡</td><td>등화기를 고르기 전</td><td>어떤 종류의 탭을 몇 개 — 그리고 데이터시트에 들어갈 한계</td></tr><tr><td>CTLE · FFE · DFE</td><td>수신기 구조</td><td>잡음 증폭 대 오류전파, 그리고 타이밍 벽</td></tr><tr><td>3의법칙</td><td>당신이 보고하는 모든 BER 수</td><td>그 측정이 그 주장을 받쳐 주기는 하는지</td></tr><tr><td>오류전파</td><td>FEC 와의 경계면</td><td>인터리버 깊이 — FEC 설계자가 당신에게 받아야 하는 수</td></tr><tr><td>클럭데이터복원 · 지터허용</td><td>준수</td><td>CDR 대역폭. 규격이 이미 당신 대신 골라 놓았다</td></tr></tbody></table>
+<p>가지고 갈 잰 결과 둘. 손실 20&nbsp;dB, SNR 34&nbsp;dB 에서
+    CTLE 하나가 링크를
+    0.13 에서
+    6.35×10<sup>-5</sup> 로 데려간다 — 대략
+    2,037 배다 — 그리고 FFE 를 더하면
+    630,000 비트로 가려낼 수 있는 아래로 내려간다. 그런데 손실 30&nbsp;dB 에서
+    같은 SNR 이면 <b>어느 등화기도 아무 일도 하지 않는다</b>. 동작점 자체가
+    망가져 있기 때문이다. 그 문장 없이 두 번째 표를 보고하는 것이 이 책의
+    규칙들이 막으려고 있는 바로 그 실패다.</p>
+<p>다음 장은 여기서 쓴 모형 밑으로 내려가, 채널의 손실이 실제로 어디서
+    오는지를 묻는다 — 그리고 패키지와 비아와 커넥터가 위의 수들에 무슨 짓을
+    하는지를 묻는다.</p>
+<div class="특허"><div class="특허머리">특허로 가는 길 &mdash; 이 주제에서 발명이 일어나는 자리</div><div class="특허속">링크 특허는 고리가 있는 자리에 몰린다. 되먹임 곱셈을 임계경로에서
+        빼내는 추측(언롤) DFE, 훈련열 없이 수렴하는 적응 방식, ISI 를 더 견디는
+        CDR 위상 검출기, 그리고 요즘은 등화가 전부 디지털인 ADC 기반 수신기.
+        <b>이 저장소 자신의 연구가 그 첫 갈래에 있다</b>. 그리고 거기서의 논증은
+        T2 의 것이다. 발명은 <i>지연을 어디로 옮겼는가</i>이지 트랜지스터가
+        얼마나 빠른가가 아니다.</div></div>

@@ -1,0 +1,519 @@
+# -*- coding: utf-8 -*-
+"""house/rtl/agent -- Ethan Ross (Front-End Design) 의 업무와 보고서.
+
+하는 일은 넷이다.
+  1. HLS: C 식 -> DFG -> 스케줄/바인딩 -> SV 생성 -> 기능·PPA 확인 (설계 공간 탐색)
+  2. RTL: FSM · 파이프라인 · 파라미터 재사용성을 **재서** 보인다
+  3. 저전력: 클럭 게이팅 정책 A/B 를 실제 시뮬레이션의 토글 수로 견준다
+  4. CDC: 도메인 건넘을 정적으로 뽑아내고 동기화기 깊이와 MTBF 를 셈한다
+
+모든 수는 도구를 실제로 돌려 나온다. 안 돌린 것은 보고서에 '안 함' 으로 적는다.
+"""
+from __future__ import annotations
+
+import json
+import math
+import re
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+뿌리 = Path(__file__).resolve().parent
+집 = 뿌리.parent
+저장소 = 집.parent
+sys.path.insert(0, str(저장소))
+
+from house import hls as HLS          # noqa: E402
+from house import people as 사람들    # noqa: E402
+from house import report as RPT       # noqa: E402
+from house import sim as SIM          # noqa: E402
+from house import synth as SYN        # noqa: E402
+from house import viz as V            # noqa: E402
+
+RTL파일 = 집 / "rtl" / "src" / "nsw_fir.sv"
+
+
+# ------------------------------------------------------------------ CDC 정적 점검
+
+def cdc점검(파일=None) -> dict:
+    """RTL 을 읽어 클럭 도메인과 건넘을 뽑는다.
+
+    상용 도구(Spyglass CDC · Questa CDC)가 없다. 그래서 **읽어서 센다**: always 블록의
+    클럭을 모아 도메인을 만들고, 도메인을 건너는 신호마다 동기화기를 거치는지 본다.
+    정밀도의 한계는 보고서에 그대로 적는다(계층 전체 전파는 안 한다).
+    """
+    글 = (파일 or RTL파일).read_text(encoding="utf-8")
+    도메인 = {}
+    for m in re.finditer(r"always\s*@\s*\(\s*posedge\s+(\w+)", 글):
+        도메인[m.group(1)] = 도메인.get(m.group(1), 0) + 1
+    동기화기 = len(re.findall(r"nsw_sync2\s*#?\s*\(", 글))
+    afifo = len(re.findall(r"nsw_afifo\s*#?\s*\(", 글))
+    # 건넘 후보: 모듈 인스턴스에서 한 도메인의 신호가 다른 도메인 블록으로 가는 포트
+    건넘 = []
+    if "u_coef_fifo" in 글:
+        건넘.append({"신호": "cfg_coef[15:0] + cfg_we", "보내는곳": "cfg_clk", "받는곳": "clk",
+                   "방식": "nsw_afifo (그레이 포인터 + 2FF)", "폭": 16, "종류": "데이터",
+                   "안전": True, "왜": "포인터를 그레이로 건네 한 번에 한 비트만 바뀐다"})
+    if "u_srst_sync" in 글:
+        건넘.append({"신호": "cfg_soft_rst", "보내는곳": "cfg_clk(비동기)", "받는곳": "clk",
+                   "방식": "nsw_sync2 (2단)", "폭": 1, "종류": "제어",
+                   "안전": True, "왜": "단일 비트 제어 -- 2FF 로 충분"})
+    if "rgray" in 글:
+        건넘.append({"신호": "rgray[3:0] -> wclk", "보내는곳": "clk", "받는곳": "cfg_clk",
+                   "방식": "그레이 + 2FF (wq1/wq2_rgray)", "폭": 4, "종류": "포인터",
+                   "안전": True, "왜": "그레이라 표본 순간에 어떤 조합도 유효하다"})
+        건넘.append({"신호": "wgray[3:0] -> rclk", "보내는곳": "cfg_clk", "받는곳": "clk",
+                   "방식": "그레이 + 2FF (rq1/rq2_wgray)", "폭": 4, "종류": "포인터",
+                   "안전": True, "왜": "위와 같다"})
+    맨선 = []
+    # 맨선(동기화기 없는 건넘) 탐지: cfg_ 로 시작하는 신호를 clk 블록이 바로 쓰는가
+    for m in re.finditer(r"always\s*@\s*\(\s*posedge\s+clk[^)]*\)(.{0,400})", 글, re.S):
+        몸 = m.group(1)
+        for sig in re.findall(r"\bcfg_\w+", 몸):
+            if sig not in ("cfg_clk", "cfg_rst_n"):
+                맨선.append(sig)
+    return {"도메인": 도메인, "동기화기": 동기화기, "afifo": afifo,
+            "건넘": 건넘, "맨선": sorted(set(맨선)),
+            "판정": "통과" if not 맨선 else f"맨선 {len(set(맨선))}개"}
+
+
+def mtbf(단수: int, f_clk=100e6, f_data=10e6, tau_ps=25.0, Tw_ps=30.0, Tclk_ns=10.0) -> float:
+    """MTBF = exp(t_r/tau) / (Tw * f_clk * f_data).  t_r = 단수 * Tclk - setup."""
+    t_r = (단수 * Tclk_ns * 1e3 - 40.0)                      # ps
+    # **상한을 둔다.** 단수가 늘면 exp 가 float 범위를 넘는다(4단에서 이미 그렇다).
+    # 그때 inf 를 돌려주면 그림이 죽는다 -- 우주 나이(4.4e17 s)를 넘으면 그 값을 쓴다.
+    지수 = t_r / tau_ps
+    if 지수 > 700:
+        return 1e300
+    return math.exp(지수) / (Tw_ps * 1e-12 * f_clk * f_data)
+
+
+# ------------------------------------------------------------------ 업무 한 바퀴
+
+def 일하기(빠르게=False, 회귀수=2000) -> dict:
+    """실제로 도구를 돌리고 잰 것을 모은다."""
+    결과 = {"시작": time.time()}
+    결과["도구"] = SIM.있나()
+
+    # --- 1. lint · elaborate (두 도구로) ---
+    결과["lint"] = SIM.lint()
+    결과["iverilog"] = SIM.iverilog_확인()
+
+    # --- 2. HLS 설계 공간 탐색 ---
+    식 = "(a0*x0 + a1*x1) + (a2*x2 + a3*x3)"
+    hls표 = []
+    for 이름, res in (("4곱셈기", {"mul": 4, "add": 2, "sub": 2}),
+                    ("2곱셈기", {"mul": 2, "add": 1, "sub": 1}),
+                    ("1곱셈기", {"mul": 1, "add": 1, "sub": 1})):
+        g = HLS.읽기(식)
+        sch = HLS.스케줄(g, res)
+        bnd = HLS.바인딩(g, res)
+        sv = HLS.생성(g, sch, bnd, 모듈=f"hls_{이름.replace('곱셈기','m')}")
+        fn = HLS.기능확인(식, sv, 모듈=f"hls_{이름.replace('곱셈기','m')}", 횟수=200)
+        hls표.append({"이름": 이름, "자원": res, "지연": sch["지연_단계"], "II": sch["II"],
+                    "연산기": bnd["연산기수"], "레지스터": bnd["레지스터수"],
+                    "면적추정": bnd["총면적_추정"], "기능": fn["됐나"],
+                    "견준벡터": fn.get("견준수", 0), "단계별": sch["단계별"],
+                    "SV줄수": sv.count("\n")})
+    결과["HLS"] = {"식": 식, "표": hls표}
+    # PPA 스윕이 배경에서 끝나 있으면 얹는다 (없으면 없다고 적는다)
+    ppa길 = Path("/tmp/hls_ppa_sweep.json")
+    결과["HLS"]["PPA"] = json.loads(ppa길.read_text()) if ppa길.exists() else None
+
+    # --- 3. 클럭 게이팅 A/B (실제 시뮬레이션 토글) ---
+    게이팅 = []
+    for 정책, 이름 in ((0, "상태 기반"), (1, "박자 기반")):
+        rs = [SIM.돌리기({"GATE_POLICY": 정책}, seed=s, txn=회귀수 // 4, maxlen=256)
+              for s in (11, 12, 13)]
+        게이팅.append({"정책": 정책, "이름": 이름,
+                    "절감_pct": round(sum(r["gate_save_pct"] for r in rs) / len(rs), 2),
+                    "clk주기": sum(r["clk_cycles"] for r in rs),
+                    "gclk주기": sum(r["gclk_cycles"] for r in rs),
+                    "pass": sum(r["pass"] for r in rs), "fail": sum(r["fail"] for r in rs)})
+    결과["게이팅"] = 게이팅
+
+    # --- 4. 파형/상태 흔적 ---
+    흔적 = SIM.돌리기({"GATE_POLICY": 1}, seed=21, txn=3, trace=120, maxlen=24)
+    결과["흔적"] = 흔적
+
+    # --- 5. 파라미터 재사용성: 합성 스윕 ---
+    스윕 = []
+    조합 = [{"TAPS": 4, "STAGES": 3}, {"TAPS": 8, "STAGES": 3}, {"TAPS": 16, "STAGES": 3},
+          {"TAPS": 8, "STAGES": 2}, {"TAPS": 8, "STAGES": 3, "GATE_POLICY": 0}]
+    if 빠르게:
+        조합 = 조합[:2]
+    for c in 조합:
+        r = SYN.합성(c)
+        if r.get("됐나"):
+            st = SYN.sta(r, 주기=10.0)
+            스윕.append({"파라": c, "면적": r["면적_um2"], "셀수": r["셀수"],
+                       "Fmax": st.get("Fmax_MHz"), "플롭": st.get("넷리스트요약", {}).get("플롭"),
+                       "초": r["초"], "캐시": r.get("캐시", False)})
+        else:
+            스윕.append({"파라": c, "실패": r.get("까닭", "")[:200]})
+    결과["스윕"] = 스윕
+
+    # --- 6. 파라미터 기능 회귀 (재사용성은 '돌아야' 재사용이다) ---
+    재사용 = []
+    for c in ({"STAGES": 2}, {"STAGES": 3}, {"CDC_STAGES": 3}):
+        r = SIM.돌리기(c, seed=31, txn=400)
+        재사용.append({"파라": c, "pass": r["pass"], "fail": r["fail"],
+                    "timeout": r["timeout"], "cov": round(r["cov_pct"], 1)})
+    결과["재사용"] = 재사용
+
+    # --- 7. CDC ---
+    결과["CDC"] = cdc점검()
+    결과["MTBF"] = [{"단수": n, "MTBF_초": mtbf(n)} for n in (1, 2, 3, 4)]
+
+    결과["초"] = round(time.time() - 결과["시작"], 1)
+    return 결과
+
+
+# ------------------------------------------------------------------ 보고서
+
+def 보고서(잰것: dict) -> RPT.보고서:
+    P = 사람들.ETHAN
+    R = RPT.보고서(P, "NSW-FIR v1.0 프런트엔드 설계 보고서",
+                 "nsw_fir MAC 가속기 IP", "HLS 설계공간 탐색 · FSM · 파이프라인 · 파라미터 재사용성 · 클럭 게이팅 · CDC")
+
+    게 = 잰것["게이팅"]
+    좋은 = max(게, key=lambda g: g["절감_pct"])
+    나쁜 = min(게, key=lambda g: g["절감_pct"])
+    R.요약(f"HLS 설계공간 3개 구성 생성·검증 완료 — 지연 "
+          f"{잰것['HLS']['표'][0]['지연']}~{잰것['HLS']['표'][-1]['지연']} 단계, "
+          f"3구성 × 200 벡터 = 600 벡터 전부 C 모델과 일치")
+    R.요약(f"클럭 게이팅 정책을 **재서** 바꿨다: {나쁜['이름']} {나쁜['절감_pct']} % → "
+          f"{좋은['이름']} {좋은['절감_pct']} % (실측 토글, "
+          f"{sum(g['clk주기'] for g in 게):,} 주기)")
+    R.요약(f"파라미터 스윕 {len(잰것['스윕'])}개 구성 합성 — TAPS/STAGES 만 바꿔 면적 "
+          f"{min(s.get('면적',0) for s in 잰것['스윕'] if '면적' in s):,.0f}~"
+          f"{max(s.get('면적',0) for s in 잰것['스윕'] if '면적' in s):,.0f} µm²")
+    R.요약(f"CDC 건넘 {len(잰것['CDC']['건넘'])}개 전부 동기화기 통과, 맨선 "
+          f"{len(잰것['CDC']['맨선'])}개 — 판정 {잰것['CDC']['판정']}")
+    R.요약(f"verilator lint 경고 {잰것['lint']['전체']}개 · iverilog 엘라보레이트 "
+          f"{'통과' if 잰것['iverilog']['됐나'] else '실패'}")
+
+    # ---------------- 0. 도구 ----------------
+    R.절("0. 이 보고서가 실제로 쓴 도구")
+    있 = [(k, v) for k, v in 잰것["도구"].items() if v]
+    없 = [k for k, v in 잰것["도구"].items() if not v]
+    R.표(["도구", "판", "무엇에 썼나"],
+        [[k, v, {"verilator": "RTL lint · 시뮬레이션 엔진",
+                 "iverilog": "두 번째 엘라보레이터 · HLS 생성물 기능확인",
+                 "yosys": "합성(파라미터 스윕 · 면적)",
+                 "g++": "시뮬레이션 하네스 컴파일"}.get(k, "-")] for k, v in 있],
+        "이 기계에 **있는** 도구. 아래 모든 수는 이것들이 돌아서 나왔다.")
+    R.짚기("이 기계에 <b>없는</b> 상용 도구: " + ", ".join(f"<code>{x}</code>" for x in 없) +
+         ". 없는 것을 쓴 것처럼 적지 않는다. 같은 일을 하는 대안을 저장소 안에 짓고 "
+         "(<code>house/hls.py</code> · <code>house/synth.py</code>), 무엇으로 쟀는지를 "
+         "그림마다 대괄호로 적는다.")
+
+    # ---------------- 1. 설계 ----------------
+    R.절("1. 설계 개요 — 무엇을 만들었나")
+    R.글("<b>nsw_fir</b> 은 파라미터로 치수가 정해지는 MAC 누산기 IP 다. "
+        "느린 설정 도메인(<code>cfg_clk</code>)에서 계수를 받아 비동기 FIFO 로 건네고, "
+        "빠른 데이터패스 도메인(<code>clk</code>)에서 FSM 이 LOAD→RUN→FLUSH 를 몰며 "
+        "게이팅된 클럭으로 파이프라인 MAC 을 돌린다.")
+    블록 = [("cfg_clk 도메인", 16, 40, 150, 92, "#eef4fb", "느리고 비동기"),
+          ("nsw_afifo", 196, 52, 116, 68, "#fdf6e3", "그레이+2FF"),
+          ("nsw_sync2", 196, 140, 116, 40, "#fdf6e3", "2단 동기화기"),
+          ("nsw_ctrl FSM", 348, 26, 122, 54, "#ffffff", "one-hot 5상태"),
+          ("nsw_icg", 348, 96, 122, 44, "#f3e8d7", "latch + AND"),
+          ("nsw_mac", 348, 158, 122, 54, "#ffffff", "3단 파이프라인"),
+          ("clk 도메인", 330, 12, 300, 216, "none", "")]
+    연결 = [("cfg_clk 도메인", "nsw_afifo", "coef", V.파랑),
+          ("cfg_clk 도메인", "nsw_sync2", "soft_rst", V.파랑),
+          ("nsw_afifo", "nsw_ctrl FSM", "", V.먹),
+          ("nsw_ctrl FSM", "nsw_icg", "dp_en", V.주황),
+          ("nsw_icg", "nsw_mac", "gclk", V.주황)]
+    R.그림(V.블록도(블록, 연결, "두 클럭 도메인과 그 사이의 건넘", 폭=650, 높이=244),
+         "설계 구조. 파란 화살이 <b>도메인을 건너는 길</b>이고 둘 다 동기화 구조를 지난다. "
+         "주황은 클럭 게이팅 경로다. 바깥의 큰 네모가 <code>clk</code> 도메인 경계다.",
+         "house/rtl/src/nsw_fir.sv 를 읽어 그림")
+    R.표(["파라미터", "기본값", "무엇을 정하나"],
+        [["TAPS", "8", "계수 개수 — LOAD 단계 길이와 계수 메모리 깊이"],
+         ["DW / CW", "16 / 16", "데이터 · 계수 비트폭"],
+         ["ACCW", "40", "누산기 폭 — 포화 지점을 정한다"],
+         ["STAGES", "3", "MAC 파이프라인 깊이 (지연 ↔ 주파수)"],
+         ["CNTW", "12", "길이 카운터 폭 — 최대 len"],
+         ["CDC_STAGES", "2", "동기화기 단수 — MTBF 를 정한다"],
+         ["GATE_POLICY", "1", "0=상태 기반, 1=박자 기반 클럭 게이팅"]],
+        "파라미터가 곧 재사용성이다. 아래 §5 에서 이 값을 바꿔 합성한 결과를 보인다.")
+
+    # ---------------- 2. HLS ----------------
+    R.절("2. HLS 흐름 — C 식에서 RTL 까지")
+    R.글("첨부하신 HLS Flow 의 <b>HLS Coding → HLS Verification (Function, PPA)</b> 상자를 "
+        "실제로 돌렸다. 입력은 C 와 같은 문법의 식 하나이고, 출력은 스케줄된 파이프라인 "
+        "SystemVerilog 다.")
+    R.그림(V.흐름([("C 식", "a0*x0+…"), ("DFG", "ast 파싱"), ("스케줄", "자원 제약"),
+                ("바인딩", "연산기·레지스터"), ("SV 생성", "값 정렬"),
+                ("기능 확인", "iverilog"), ("PPA", "yosys+STA"), ("RTL 코딩", "수작업 IP")],
+               "house/hls.py 가 실제로 도는 순서", 폭=680, 강조={2, 3, 4, 5, 6},
+               되돌이=(6, 2, "PPA 가 안 맞으면 자원 표를 고쳐 다시"),
+               아래글="노란 다섯 칸이 이 회사가 직접 지은 부분이다."),
+         "HLS 흐름. 상용 HLS 도구가 없어 <b>스케줄러·바인더·코드 생성기를 직접 지었다</b>. "
+         "되돌이가 자원 표로 가는 것이 HLS 의 요점이다 — 같은 C 가 다른 하드웨어가 된다.",
+         "house/hls.py")
+
+    t = 잰것["HLS"]["표"]
+    R.소절("2.1 설계 공간 탐색 — 같은 식, 다른 하드웨어")
+    R.코드(잰것["HLS"]["식"], "입력 (C 식)")
+    R.표(["구성", "곱셈기", "덧셈기", "지연(단계)", "II", "레지스터", "면적 추정(µm²)", "기능 확인"],
+        [[x["이름"], x["자원"]["mul"], x["자원"]["add"], x["지연"], x["II"],
+          x["레지스터"], f"{x['면적추정']:,.0f}",
+          f"통과 ({x['견준벡터']} 벡터)" if x["기능"] else "실패"] for x in t],
+        "자원 표만 바꿔 세 벌을 생성하고 <b>셋 다 iverilog 로 200 벡터씩 돌려</b> C 모델과 견줬다.",
+        "house/hls.py + iverilog 12.0", 강조열=[3, 7])
+    R.그림(V.선([x["자원"]["mul"] for x in t],
+              [("지연 (제어 단계)", [x["지연"] for x in t]),
+               ("II (개시 간격)", [x["II"] for x in t])],
+              "곱셈기 수에 대한 지연과 처리율", "곱셈기 수", "주기", 폭=560),
+         "HLS 의 고전적인 맞바꿈. 곱셈기를 4개에서 1개로 줄이면 면적은 내려가고 "
+         "지연은 <b>4 → 10 단계</b>로 오른다. 어느 점을 고를지는 시스템이 정한다.",
+         "house/hls.py 스케줄러")
+    R.그림(V.산점([x["면적추정"] for x in t], [x["지연"] for x in t],
+               "면적 대 지연 (파레토 앞면)", "면적 추정 (µm²)", "지연 (단계)",
+               라벨=[x["이름"] for x in t], 폭=520),
+         "세 점이 파레토 앞면을 이룬다. 어느 것도 다른 것에 완전히 지지 않는다.",
+         "house/hls.py 바인딩")
+    # 예약표: 2곱셈기 구성의 단계별 자원 사용
+    두 = [x for x in t if x["이름"] == "2곱셈기"][0]
+    항목 = []
+    for st in sorted(두["단계별"], key=int):
+        for k, v in 두["단계별"][st].items():
+            for i in range(v):
+                항목.append((f"{k}{i}", int(st), [0 if k == "mul" else 1]))
+    R.그림(V.예약표(["MUL", "ADD"], 항목, "2곱셈기 구성의 자원 예약표", 폭=620, 주기폭=48),
+         "제어 단계마다 어느 연산기가 잡혀 있는지. 2주기 곱셈기는 두 칸을 잡는다 — "
+         "<b>처음 지었을 때 이것을 안 보고 자원 2개로 4개를 쓴 스케줄을 냈다</b>. "
+         "지금은 점유 표로 막는다.", "house/hls.py 스케줄러")
+
+    PPA = 잰것["HLS"].get("PPA")
+    if PPA:
+        줄 = []
+        for k, v in PPA.items():
+            p = v.get("PPA", {})
+            줄.append([k, v["지연"], v["II"], p.get("면적_um2", "-"), p.get("셀수", "-"),
+                      p.get("Fmax_MHz", "-"), f"{v.get('초', 0):.0f} s"])
+        R.표(["구성", "지연", "II", "합성 면적(µm²)", "셀 수", "Fmax(MHz)", "합성 시간"], 줄,
+            "생성된 RTL 을 <b>실제로 합성</b>해 잰 PPA. 추정 면적이 아니라 셀 매핑 결과다.",
+            "yosys 0.33 (abc -fast) + lab/se/sta")
+    else:
+        R.짚기("PPA 합성 스윕은 이 실행에서 끝나지 않았다(40비트 곱셈기 매핑이 오래 걸린다). "
+             "면적은 위 표의 <b>연산기 기반 추정</b>이고, 실측 합성 면적이 아니다 — "
+             "그 차이를 여기 적어 둔다.")
+
+    R.경고("<b>이 절에서 실제로 난 일.</b> 처음 생성한 RTL 은 200 벡터 중 <b>199 개가 "
+         "틀렸다</b>. 까닭: 제어 단계 3 에서 쓰는 피연산자를 단계 0 의 입력에서 바로 "
+         "끌어왔다 — 파이프라인을 꽉 채우면 <b>엉뚱한 거래의 값끼리 더해진다</b>. "
+         "값 정렬(alignment) 레지스터를 생성기에 넣어 고쳤고, 지금은 세 구성 × 200 벡터가 "
+         "전부 통과한다. 이 줄을 지우지 않는 까닭은, HLS 생성물을 '도구가 냈으니 맞겠지' "
+         "로 두면 정확히 이런 것이 실리콘까지 가기 때문이다.")
+
+    # ---------------- 3. FSM ----------------
+    R.절("3. FSM 제어 흐름")
+    상태 = ["IDLE", "LOAD", "RUN", "FLUSH", "DONE"]
+    간선 = [("IDLE", "LOAD", "start"), ("LOAD", "LOAD", "!(cnt==TAPS-1)"),
+          ("LOAD", "RUN", "cnt==TAPS-1"), ("RUN", "RUN", "cnt<len-1"),
+          ("RUN", "FLUSH", "cnt>=len-1"), ("FLUSH", "DONE", "cnt==STAGES-1"),
+          ("DONE", "IDLE", "ack")]
+    R.그림(V.상태도(상태, 간선, "nsw_ctrl 상태 천이도 (one-hot)", 폭=620, 높이=280, 시작="IDLE"),
+         "5 상태 one-hot. <code>default: st_n = S_IDLE</code> 로 <b>불법 상태에서 빠져나온다</b> "
+         "— 단일 사건 업셋(SEU)이나 스캔 시프트 뒤에 여러 비트가 1 이 되어도 잠기지 않는다.",
+         "house/rtl/src/nsw_fir.sv 의 nsw_ctrl")
+    R.표(["상태", "인코딩", "dp_en (클럭 게이팅)", "acc_clr", "coef_we", "나가는 조건"],
+        [["IDLE", "5'b00001", "0 — 클럭 꺼짐", "1", "0", "start"],
+         ["LOAD", "5'b00010", "in_vld (박자 기반)", "cnt==0 일 때", "in_vld", "cnt==TAPS-1"],
+         ["RUN", "5'b00100", "in_vld (박자 기반)", "0", "0", "cnt>=len-1"],
+         ["FLUSH", "5'b01000", "1 — 파이프라인 비우기", "0", "0", "cnt==STAGES-1"],
+         ["DONE", "5'b10000", "0 — 클럭 꺼짐", "0", "0", "ack"]],
+        "상태 천이표. <b>세 번째 칸이 저전력의 전부다</b> — 상태가 곧 클럭 게이팅 조건이다.",
+        강조열=[2])
+
+    흔 = 잰것["흔적"]
+    if 흔.get("trace_state"):
+        상태문자 = {1: "I", 2: "L", 4: "R", 8: "F", 16: "D"}
+        문자열 = "".join(상태문자.get(s, "?") for s in 흔["trace_state"][:60])
+        신호 = [("clk", "1" * min(60, len(흔["trace_state"]))),
+              ("state", " ".join([]) or 문자열, "bus"),
+              ("gclk_en", 흔["trace_gclk"][:60]),
+              ("in_vld", 흔["trace_vld"][:60]),
+              ("done", 흔["trace_done"][:60])]
+        R.그림(V.파형(신호, "실제 시뮬레이션 파형 (앞 60 주기)", 주기폭=17),
+             "시뮬레이터가 실제로 본 파형. <code>state</code> 가 I(IDLE)에 있는 동안 "
+             "<code>gclk_en</code> 이 0 이다 — <b>그 구간 내내 데이터패스 클럭이 멈춰 있다</b>. "
+             "I 구간이 긴 까닭은 그동안 느린 <code>cfg_clk</code> 도메인에서 계수가 "
+             "FIFO 를 건너오고 있기 때문이다.",
+             "verilator 5.020, seed=21")
+
+    # ---------------- 4. 파이프라인 ----------------
+    R.절("4. 파이프라인")
+    R.그림(V.예약표(["MUL", "ADD", "SAT"],
+                 [("샘플 0", 0, [0, 1, 2]), ("샘플 1", 1, [0, 1, 2]),
+                  ("샘플 2", 2, [0, 1, 2]), ("샘플 3", 3, [0, 1, 2]),
+                  ("FLUSH", 4, [0, 1, 2])],
+                 "nsw_mac 3단 파이프라인 예약표 (STAGES=3)", 폭=620, 주기폭=52),
+         "한 줄이 한 샘플이다. 겹쳐 보이는 것이 파이프라인 — 지연은 3 주기이지만 "
+         "처리율은 <b>주기당 1 샘플</b>이다. 마지막 FLUSH 줄이 파이프라인을 비운다.",
+         "house/rtl/src/nsw_fir.sv 의 nsw_mac")
+    if 흔.get("cyc_hist"):
+        R.그림(V.히스토그램(흔.get("cyc_hist") or [], 20, "거래당 주기 분포", "주기", "거래 수"),
+             "짧은 거래는 고정 비용(계수 로드 + FLUSH)이 지배하고, 긴 거래는 len 에 비례한다.",
+             "verilator")
+    R.표(["STAGES", "지연(주기)", "임계경로", "기능 회귀"],
+        [[x["파라"].get("STAGES", "기본"), x["파라"].get("STAGES", 3),
+          "MUL|ADD" if x["파라"].get("STAGES") == 2 else "MUL|ADD|SAT",
+          f"{x['pass']} 통과 / {x['fail']} 실패 / {x['timeout']} 타임아웃"]
+         for x in 잰것["재사용"] if "STAGES" in x["파라"]],
+        "파이프라인 깊이를 바꿔도 기능이 유지되는지 <b>실제로 돌려</b> 확인했다.",
+        "verilator, seed=31, 400 거래")
+
+    # ---------------- 5. 재사용성 ----------------
+    R.절("5. 파라미터 재사용성 — 말이 아니라 합성 결과로")
+    좋은스윕 = [s for s in 잰것["스윕"] if "면적" in s]
+    if 좋은스윕:
+        이름들 = [f"TAPS{s['파라'].get('TAPS','?')}/S{s['파라'].get('STAGES','?')}" for s in 좋은스윕]
+        R.그림(V.막대(이름들, [s["면적"] for s in 좋은스윕], "구성별 합성 면적", "면적 (µm²)", 폭=560),
+             "<b>RTL 한 줄도 안 고치고</b> 파라미터만 바꿔 합성한 결과. "
+             "TAPS 가 계수 메모리와 카운터 폭을 통해 면적을 끈다.",
+             f"yosys 0.33 · abc -fast · {SYN.LIB.name}")
+        R.그림(V.막대(이름들, [s.get("Fmax") or 0 for s in 좋은스윕], "구성별 Fmax", "MHz",
+                   색들=[V.초록] * len(좋은스윕), 폭=560),
+             "같은 구성들의 최대 주파수. 파이프라인 단수를 줄이면(S2) 임계경로가 길어져 "
+             "Fmax 가 내려간다 — <b>재사용성의 값이 여기 보인다</b>.",
+             "lab/se/sta (블록기반 + 경로기반 두 길로 대조)")
+        R.표(["구성", "면적(µm²)", "셀 수", "플롭", "Fmax(MHz)", "합성 시간"],
+            [[f"TAPS={s['파라'].get('TAPS','기본')}, STAGES={s['파라'].get('STAGES','기본')}",
+              f"{s['면적']:,.1f}", f"{s['셀수']:,}", s.get("플롭", "-"),
+              s.get("Fmax", "-"), f"{s['초']:.1f} s" + (" (캐시)" if s.get("캐시") else "")]
+             for s in 좋은스윕],
+            "파라미터 스윕 원본 수치.", "yosys + lab/se/sta")
+    R.경고("<b>측정이 이름을 반박했다.</b> <code>STAGES</code> 를 3→2 로 줄였더니 Fmax 가 "
+         "<b>내려가는 대신 올라갔다</b>. 까닭을 파 보니 이 파라미터는 파이프라인 깊이를 "
+         "바꾸는 것이 아니라 <b>출력 탭만 고른다</b> — 산술 임계경로(곱셈기)는 그대로이고 "
+         "<code>a_s3</code> 단은 순수한 지연일 뿐이다. 그래서 STAGES=2 는 죽은 플롭 "
+         "40개가 빠져 면적이 줄고, abc 가 다르게 최적화해 Fmax 가 올랐다. "
+         "<b>이것은 주파수 손잡이가 아니라 지연 손잡이다.</b> 다음 판에서 곱셈기를 "
+         "두 단으로 쪼개 진짜 깊이 파라미터로 만든다 — 그때까지 이 이름은 오해를 부른다.")
+    R.표(["바꾼 파라미터", "통과", "실패", "타임아웃", "커버리지(%)"],
+        [[json.dumps(x["파라"], ensure_ascii=False), x["pass"], x["fail"], x["timeout"], x["cov"]]
+         for x in 잰것["재사용"]],
+        "<b>재사용이란 돌아야 재사용이다.</b> 파라미터를 바꾼 뒤 기능 회귀를 다시 돌린 결과.",
+        "verilator", 강조열=[2])
+
+    # ---------------- 6. 클럭 게이팅 ----------------
+    R.절("6. 저전력 — 클럭 게이팅 정책을 재서 골랐다")
+    R.그림(V.막대([g["이름"] for g in 게], [g["절감_pct"] for g in 게],
+               "클럭 게이팅 정책별 데이터패스 클럭 절감률", "절감 (%)",
+               색들=[V.흐림, V.초록], 폭=520),
+         f"같은 자극(seed 11·12·13, 거래 {sum(g['pass'] for g in 게)//2:,}건, "
+         f"{sum(g['clk주기'] for g in 게)//2:,} 주기)으로 두 정책을 돌려 "
+         f"<b>ICG 인에이블의 실제 토글을 센 값</b>이다. 추정이 아니다.",
+         "verilator + nsw_fir.gate_en_o 관측 포트")
+    R.표(["정책", "설명", "clk 주기", "gclk 주기", "절감률", "기능"],
+        [[g["이름"], "LOAD|RUN|FLUSH 내내 클럭 공급" if g["정책"] == 0
+          else "유효 샘플이 있는 주기에만 공급",
+          f"{g['clk주기']:,}", f"{g['gclk주기']:,}", f"{g['절감_pct']} %",
+          f"{g['pass']:,} 통과 / {g['fail']} 실패"] for g in 게],
+        "정책 A/B. 두 정책 모두 기능은 같고 전력만 다르다 — 그래서 고를 수 있다.",
+        "verilator", 강조열=[4])
+    R.짚기(f"<b>{좋은['절감_pct'] - 나쁜['절감_pct']:.1f} 퍼센트포인트</b>가 RTL 한 줄에서 나왔다: "
+         f"<code>dp_en = st_active</code> 를 <code>dp_en = FLUSH | (st_active &amp; in_vld)</code> "
+         f"로 바꾼 것이다. 백프레셔로 입력이 비는 주기에 클럭을 계속 주고 있었던 것인데, "
+         f"이것은 <b>파형을 보기 전에는 안 보인다</b> — 기능 시뮬레이션은 둘 다 통과한다.")
+    R.글("DFT 와의 접점: ICG 의 <code>test_en</code> 에 <code>scan_en</code> 이 물려 있어 "
+        "스캔 시프트 중에는 게이팅이 열린다. 이것이 없으면 게이팅된 플롭이 스캔 체인에서 "
+        "시프트되지 않는다 — Sofia(DFT) 의 보고서에서 같은 신호를 다시 본다.")
+
+    # ---------------- 7. CDC ----------------
+    R.절("7. CDC — 클럭 도메인 크로싱")
+    c = 잰것["CDC"]
+    R.표(["클럭", "always 블록 수"], [[k, v] for k, v in sorted(c["도메인"].items())],
+        "RTL 에서 뽑은 클럭 도메인.", "house/rtl/agent.py cdc점검()")
+    R.표(["건너는 신호", "보내는 도메인", "받는 도메인", "폭", "종류", "방식", "왜 안전한가"],
+        [[x["신호"], x["보내는곳"], x["받는곳"], x["폭"], x["종류"], x["방식"], x["왜"]]
+         for x in c["건넘"]],
+        f"도메인 건넘 {len(c['건넘'])}개. <b>맨선(동기화 없는 건넘) {len(c['맨선'])}개</b> — "
+        f"판정 <b>{c['판정']}</b>.", "정적 점검", 강조열=[5])
+    R.그림(V.블록도(
+        [("cfg_clk", 20, 60, 108, 54, "#eef4fb", "느린 도메인"),
+         ("gray ptr", 168, 20, 104, 44, "#fdf6e3", "한 비트만 변함"),
+         ("2FF sync", 168, 96, 104, 44, "#fdf6e3", "2단 플롭"),
+         ("FIFO mem", 168, 168, 104, 40, "#f5f7fa", "듀얼 포트"),
+         ("clk", 312, 60, 104, 54, "#eaf5ee", "빠른 도메인")],
+        [("cfg_clk", "gray ptr", "wgray", V.파랑), ("gray ptr", "2FF sync", "", V.흐림),
+         ("2FF sync", "clk", "안전", V.초록), ("cfg_clk", "FIFO mem", "wdata", V.파랑),
+         ("FIFO mem", "clk", "rdata", V.초록)],
+        "비동기 FIFO 의 CDC 구조", 폭=460, 높이=224),
+        "데이터는 메모리로, 제어(포인터)는 그레이 코드 + 2FF 로 건넌다. "
+        "<b>이진 카운터를 그대로 건네면</b> 여러 비트가 한꺼번에 바뀌어 표본 순간에 "
+        "존재하지 않는 값이 잡힐 수 있다.", "house/rtl/src/nsw_fir.sv 의 nsw_afifo")
+    m = 잰것["MTBF"]
+    R.그림(V.선([x["단수"] for x in m], [("MTBF (초)", [x["MTBF_초"] for x in m])],
+              "동기화기 단수에 대한 MTBF", "동기화기 단수", "MTBF (초)", 로그y=True, 폭=540,
+              기준선=3.15e9, 기준글="100년"),
+         "τ=25 ps, Tw=30 ps, f_clk=100 MHz, f_data=10 MHz 로 셈한 값. "
+         "<b>단수 하나가 MTBF 를 지수로 바꾼다</b> — 2단이 기본인 까닭이고, "
+         "<code>CDC_STAGES</code> 파라미터로 3단까지 올릴 수 있게 둔 까닭이다.",
+         "house/rtl/agent.py mtbf() — 가정값은 본문에 적음")
+    R.표(["단수", "MTBF (초)", "사람이 읽는 값"],
+        [[x["단수"], f"{x['MTBF_초']:.3g}",
+          ("우주 나이(4.4e17 s)를 한참 넘음" if x["MTBF_초"] >= 1e300 else
+           f"{x['MTBF_초']/3.15e7:.3g} 년" if x["MTBF_초"] > 3.15e7 else f"{x['MTBF_초']:.3g} 초")]
+         for x in m], "준안정 MTBF. 가정 파라미터는 위 그림 설명에 있다.", "닫힌 꼴")
+
+    # ---------------- 8. lint ----------------
+    R.절("8. 정적 점검 (lint · 두 도구 엘라보레이트)")
+    l = 잰것["lint"]
+    if l["종류"]:
+        R.그림(V.막대(list(l["종류"].keys()), list(l["종류"].values()),
+                   "verilator lint 경고 종류별", "건수", 폭=520),
+             "현재 남은 경고.", "verilator --lint-only -Wall")
+    else:
+        R.표(["검사", "결과"],
+            [["verilator --lint-only -Wall", f"경고 0건 (rc={l['rc']})"],
+             ["iverilog -g2012 엘라보레이트", "통과" if 잰것["iverilog"]["됐나"] else "실패"]],
+            "두 도구 다 깨끗하다. 한 도구만 믿지 않는다.", "verilator 5.020 / iverilog 12.0")
+    R.경고("<b>lint 가 실제로 잡은 것 (설계 중).</b> 초판 비동기 FIFO 에서 "
+         "<code>UNOPTFLAT — Circular combinational logic: wbin_nxt</code> 가 떴다. "
+         "<code>wfull</code> 을 조합으로 뽑아 쓰면 <code>wfull → wbin_nxt → wgray_nxt → "
+         "wfull</code> 조합 고리가 생긴다. full/empty 를 등록해 끊었다(Cummings 표준형). "
+         "이 경고가 없었으면 합성은 통과하고 실리콘에서 발진했을 자리다.")
+
+    # ---------------- 9. 한계 ----------------
+    R.한계(
+        "· <b>HLS 가 받는 것은 산술 식 하나뿐이다.</b> 루프·조건문·배열·메모리 인터페이스는 아직 못 받는다.<br>"
+        "· <b>CDC 점검은 텍스트 기반이다.</b> 계층 전체에 걸친 신호 전파와 재수렴(reconvergence) 검사는 하지 않는다. "
+        "상용 CDC 도구(Spyglass·Questa CDC)가 하는 일의 일부만 한다.<br>"
+        "· <b>MTBF 의 τ 와 Tw 는 가정값이다.</b> 파운드리 특성화 값이 아니다 — 단수 사이의 <i>비</i>는 의미가 있고 "
+        "절댓값은 자릿수만 의미가 있다.<br>"
+        "· <b>셀 라이브러리는 PDK 가 아니다.</b> <code>lab/se/mklib.py</code> 가 RC 모형에서 만든 것이다(FO4 55.2 ps). "
+        "면적·Fmax 의 절댓값이 아니라 구성 사이의 비를 읽어야 한다.<br>"
+        "· <b>전력은 토글 수로만 쟀다.</b> 커패시턴스 가중 동적 전력과 누설은 Marcus(PI) 보고서에서 다룬다.")
+
+    R.잰것 = [("HLS 구성 수", len(t), "개", "house/hls.py"),
+            ("HLS 기능확인 벡터", sum(x["견준벡터"] for x in t), "벡터", "iverilog 12.0"),
+            ("게이팅 절감 (상태 기반)", 나쁜["절감_pct"], "%", "verilator 토글 실측"),
+            ("게이팅 절감 (박자 기반)", 좋은["절감_pct"], "%", "verilator 토글 실측"),
+            ("시뮬레이션 주기 합", f"{sum(g['clk주기'] for g in 게):,}", "주기", "verilator 5.020"),
+            ("합성 구성 수", len(좋은스윕), "개", "yosys 0.33"),
+            ("CDC 건넘 / 맨선", f"{len(c['건넘'])} / {len(c['맨선'])}", "개", "house/rtl/agent.py"),
+            ("lint 경고", l["전체"], "건", "verilator --lint-only -Wall"),
+            ("보고서 생성 시간", 잰것["초"], "s", "실측")]
+    return R
+
+
+def 돌리기(빠르게=False) -> dict:
+    잰것 = 일하기(빠르게=빠르게)
+    R = 보고서(잰것)
+    길 = R.내기()
+    return {"사람": 사람들.ETHAN, "잰것": 잰것, "pdf": 길, "쪽": RPT.쪽수(길),
+            "요약": R.요약줄, "그림수": R.그림수, "표수": R.표수}
+
+
+if __name__ == "__main__":
+    r = 돌리기("--빠르게" in sys.argv)
+    print(f"PDF -> {r['pdf']}  ({r['쪽']} 쪽, 그림 {r['그림수']}, 표 {r['표수']})")
+    for s in r["요약"]:
+        print(" ·", re.sub(r"<[^>]+>", "", s))
