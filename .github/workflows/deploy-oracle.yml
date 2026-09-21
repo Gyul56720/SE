@@ -11,6 +11,13 @@ on:
       # 트리거되지 않았다 -- searcher.py 때와 같은 '코드가 서버에 도달하지 못하는' 경로다.
       - "bot_tools.py"
       - "quota_tracker.py"
+      # 후보 순회의 순서·멈춤(poolpick)과 분당 한도 간격(rpmgate). bot_tools 가 이것들을
+      # 부른다. 여기만 고치고 배포가 안 되면 서버는 계속 옛 순회를 돌며 같은 후보를
+      # 처음부터 다시 두드린다 -- 고치려던 바로 그 증상이 그대로 남는다.
+      - "poolpick.py"
+      - "rpmgate.py"
+      # 메일 첨부 가드. send_email 이 부른다.
+      - "mailattach.py"
       - "main_public.py"
       - "channels.py"
       - "agent_context.py"
