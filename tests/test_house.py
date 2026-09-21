@@ -394,6 +394,62 @@ ok("제안서" in _설, "제안서를 먼저 낸다고 말한다")
 _막 = C.run("!회사 설계 뭔가", allow_write=False)
 ok(_막 and "쓰기" in _막, "쓰기가 막히면 설계도 안 한다")
 
+# ------------------------------------------------------------------ 18. VM 에서 깨진 자리
+#
+# **실측 2026-09-21, VM 로그.** 다섯 에이전트가 줄줄이 죽었다:
+#
+#   Ethan   ValueError: min() iterable argument is empty
+#   Marcus  KeyError: '코너'
+#   Priya · Sofia · Kenji   ModuleNotFoundError: No module named 'weasyprint'
+#
+# 뿌리는 하나였다 -- `house/lib/nsw10.lib` 을 **.gitignore 에 넣어 놓고** 그것이
+# 없을 때 만들지 않았다. 새로 받은 저장소(= VM)에는 그 파일이 없고, yosys 가
+# `Can't open liberty file` 로 죽고, 그 위의 집계가 빈 목록에서 터졌다.
+#
+# **생성물을 커밋 안 하는 것은 옳다. 만들지 않은 것이 틀렸다.**
+# 이 검사는 precheck 의 임시 워크트리(= HEAD 만 꺼낸 새 저장소)에서 돌므로,
+# 바로 그 상황을 재현한다.
+from house import synth as SYN  # noqa: E402
+
+ok(not (뿌리 / "house" / "lib" / "nsw10.lib").exists()
+   or True, "(참고) 이 저장소에 nsw10.lib 이 있든 없든 아래가 통과해야 한다")
+_lib = SYN.라이브러리확인()
+ok(_lib["있었나"] or _lib["만들었나"],
+   "**표준셀 라이브러리가 없으면 스스로 만든다** — 커밋 안 된 생성물에 기대도 안 깨진다")
+ok(SYN.LIB.exists(), f"만든 뒤에는 실제로 파일이 있다: {SYN.LIB.name}")
+ok((뿌리 / "lab" / "lib" / "se10.lib").exists(),
+   "**원본(lab/lib/se10.lib)은 커밋되어 있다** — 없으면 만들 수가 없다")
+
+# 합성이 실제로 돈다 (라이브러리 자동 생성 뒤)
+import shutil as _sh  # noqa: E402
+if _sh.which("yosys"):
+    _r = SYN.합성({"TAPS": 4, "STAGES": 2})
+    ok(_r.get("됐나"), f"라이브러리 자동 생성 뒤 합성이 돈다 (셀 {_r.get('셀수')}개)")
+else:
+    ok(True, "(yosys 가 없다 — 합성 검사는 건너뛴다. CI 가 본다)")
+
+# weasyprint 를 requirements 가 싣고 있나 -- **사람에게 설치를 시키지 않는다**
+_req = (뿌리 / "requirements.txt").read_text(encoding="utf-8")
+ok("weasyprint" in _req,
+   "**weasyprint 가 requirements.txt 에 있다** — 배포가 깐다, 사람을 시키지 않는다")
+ok(RPT.PDF된다().get("된다") is not None, "PDF 가 되는지 미리 물을 수 있다")
+_pd = RPT.PDF된다()
+ok("고치는법" in _pd or _pd["된다"], "안 되면 고치는 법을 같이 말한다")
+
+# 집계가 빈 목록에서 안 죽는다 (Ethan 이 죽은 그 줄)
+_빈스윕 = [{"파라": {"TAPS": 4}, "실패": "liberty 없음"}]
+_면적들 = [x.get("면적") for x in _빈스윕 if isinstance(x.get("면적"), (int, float))]
+ok(_면적들 == [], "스윕이 다 실패하면 면적 목록이 빈다 (이때 min() 을 부르면 죽는다)")
+_rtl = (뿌리 / "house" / "rtl" / "agent.py").read_text(encoding="utf-8")
+ok("면적들 = [" in _rtl and "if 면적들:" in _rtl,
+   "**Ethan 의 보고서가 빈 목록을 막는다** — 실패는 죽을 일이 아니라 적을 일이다")
+_syn = (뿌리 / "house" / "syn" / "agent.py").read_text(encoding="utf-8")
+ok('"코너" not in m' in _syn,
+   "**Marcus 의 보고서가 '코너' 없는 경우를 받는다** — 합성 실패도 보고서로 낸다")
+_rep = (뿌리 / "house" / "report.py").read_text(encoding="utf-8")
+ok("htm.write_text" in _rep and _rep.index("htm.write_text") < _rep.index("from weasyprint"),
+   "**HTML 을 PDF 보다 먼저 쓴다** — PDF 단계가 죽어도 내용은 남는다")
+
 print()
 if FAIL:
     print(f"실패 {len(FAIL)}개")

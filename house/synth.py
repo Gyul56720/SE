@@ -39,6 +39,31 @@ def _키(파라: dict, top: str, 빠르게: bool) -> str:
     return h.hexdigest()[:12]
 
 
+def 라이브러리확인() -> dict:
+    """**없으면 만든다.** nsw10.lib 은 생성물이라 커밋하지 않는다 -- 그래서 새로 받은
+    저장소(= VM)에는 없다.
+
+    실측 2026-09-21: 이 한 줄이 없어서 VM 에서 다섯 에이전트가 줄줄이 죽었다.
+
+        yosys: ERROR: Can't open liberty file `house/lib/nsw10.lib'
+          -> 합성 실패 -> Ethan `min() arg is an empty sequence`
+          -> 합성 실패 -> Marcus `KeyError: '코너'`
+
+    **생성물을 커밋하지 않는 것은 옳다. 만들지 않은 것이 틀렸다.**
+    원본(`lab/lib/se10.lib`)은 커밋되어 있으므로 여기서 만들 수 있다.
+    """
+    if LIB.exists():
+        return {"있었나": True, "만들었나": False, "길": str(LIB)}
+    try:
+        from house.lib import mk
+        만든 = mk.만들기()
+        return {"있었나": False, "만들었나": LIB.exists(),
+                "길": str(LIB), "같이만든것": [str(x) for x in 만든]}
+    except Exception as e:                                   # noqa: BLE001
+        return {"있었나": False, "만들었나": False, "길": str(LIB),
+                "까닭": f"{type(e).__name__}: {e}"[:200]}
+
+
 def 합성(파라: dict | None = None, top=None, 빠르게=True, 초=1800, 설계=None) -> dict:
     """yosys 로 매핑까지 한다.  결과는 캐시한다(같은 파라미터면 다시 안 돈다).
 
@@ -48,6 +73,12 @@ def 합성(파라: dict | None = None, top=None, 빠르게=True, 초=1800, 설�
     """
     from house import designs as DES
     d = 설계 or DES.NSW_FIR
+    _lib = 라이브러리확인()
+    if not (_lib["있었나"] or _lib["만들었나"]):
+        return {"됐나": False, "초": 0.0,
+                "까닭": (f"표준셀 라이브러리가 없고 만들지도 못했다: {LIB}\n"
+                       f"{_lib.get('까닭', '')}\n"
+                       "`python3 house/lib/mk.py` 가 lab/lib/se10.lib 에서 만든다.")}
     top = top or d.top
     파라 = {**d.파라, **(파라 or {})}
     키 = _키(파라, f"{top}|" + "|".join(str(x) for x in d.RTL), 빠르게)

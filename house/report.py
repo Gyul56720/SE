@@ -204,14 +204,41 @@ class 보고서:
 </body></html>"""
 
     def 내기(self, 파일이름=None) -> Path:
+        """**HTML 을 먼저 쓰고** PDF 를 만든다.  순서가 중요하다 --
+        PDF 단계가 죽어도 내용은 남아야 한다."""
         내는곳.mkdir(parents=True, exist_ok=True)
         이름 = 파일이름 or f"{time.strftime('%Y%m%d')}_{self.담당.이름.replace(' ', '')}_{self.담당.키.upper()}.pdf"
         길 = 내는곳 / 이름
         h = self.html()
-        (내는곳 / (길.stem + ".html")).write_text(h, encoding="utf-8")
-        from weasyprint import HTML  # 무거워서 여기서 들인다
+        htm = 내는곳 / (길.stem + ".html")
+        htm.write_text(h, encoding="utf-8")            # 무슨 일이 있어도 이건 남는다
+        try:
+            from weasyprint import HTML                # 무거워서 여기서 들인다
+        except ImportError as e:
+            raise RuntimeError(
+                f"weasyprint 가 없어 PDF 를 못 만들었다 ({e}). "
+                f"HTML 은 남겼다: {htm}\n"
+                "**사람에게 설치를 시키지 마라** -- requirements.txt 에 "
+                "`weasyprint>=60` 을 넣고 main 에 머지하면 배포가 깐다 "
+                "(CLAUDE.md '사람에게 설치를 시키지 마라 -- 배포가 이미 깐다')."
+            ) from e
         HTML(string=h, base_url=str(뿌리)).write_pdf(str(길))
         return 길
+
+
+def PDF된다() -> dict:
+    """**다섯이 줄줄이 같은 까닭으로 죽기 전에 한 번 묻는다.**
+
+    실측 2026-09-21: VM 에서 Priya · Sofia · Kenji 가 각자 보고서를 다 만들고
+    마지막 한 줄에서 똑같이 `ModuleNotFoundError: weasyprint` 로 죽었다.
+    세 번 같은 말을 듣는 것보다 시작할 때 한 번 아는 것이 낫다.
+    """
+    try:
+        import weasyprint
+        return {"된다": True, "판": getattr(weasyprint, "__version__", "?")}
+    except ImportError as e:
+        return {"된다": False, "까닭": str(e)[:120],
+                "고치는법": "requirements.txt 에 `weasyprint>=60` -> main 머지 -> 배포가 깐다"}
 
 
 # -------------------------------------------------------------- 메일
