@@ -1,0 +1,239 @@
+<h1 id="T3">T3. 준안정 — 설계로 없앨 수 없는 단 하나의 실패</h1>
+<p class="한줄">다른 모든 타이밍 양은 통과하게 만들 수 있다. 이것만은 드물게 만들 수 있을 뿐이고, 얼마나 드문지를 당신이 말해야 한다.</p>
+<div class="사다리"><div class="사다리앞"><b>읽기 전에 알아야 하는 것</b><br>전압 · 전류 · 미분 · 지수함수 · 로그 · 확률 · 평균 · 트랜스컨덕턴스 · 출력저항 · 게이트용량 · RC지연 · 도착시각 · 요구시각 · 슬랙 · FO4</div><div class="사다리뒤"><b>이 장에서 새로 나오는 것</b><br>준안정 · 결정시간상수 · 해결시간 · 준안정창 · MTBF · 동기화기깊이 · 다중비트문제 · 재수렴 · 그레이코드 · 핸드셰이크 · 비동기FIFO · 리셋동기화기 · 리커버리 · 리무벌 · CDC검증 · 준정적신호</div></div>
+<p>셋업 위반은 일정 문제다. 데이터가 늦었고, 클럭을 늦추거나 논리를 줄이면
+    고쳐진다. 준안정은 그것이 아니다. 플립플롭이 클럭 에지 바로 그 순간에 변하고
+    있는 입력을 표본화하면, 출력이 두 합법적인 준위 사이에 무한정 머물 수 있다.
+    아무리 느리게 해도 없어지지 않는다 — 표본화 순간과 데이터 천이는 서로
+    무관하므로 그 나쁜 우연은 또 일어난다. <b>물음은 얼마나 자주냐, 그리고 그것을
+    예산에 넣었느냐뿐이다.</b></p>
+<p>이 장은 그 물음에 수로 답한 다음, 나머지 분량을 더 흔한 실패에 쓴다.
+    수를 바르게 계산하고 2 단 동기화기를 넣고도 멈추는 칩을 내보내는 기술자들 —
+    경계를 건넌 것이 한 비트가 아니었기 때문이다.</p>
+<h2>T3.1 결정이 왜 무한정 걸릴 수 있나</h2>
+<div class="유도"><div class="유도머리">유도 &mdash; 교차 결합 쌍에서 지수함수까지</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">플립플롭의 저장 소자는 고리를 이룬 인버터 둘이다. 각각의 출력이 다른 쪽의 입력을 몬다.</td><td class="유도왜">그 고리가 클럭 없이 상태를 붙드는 것이다 — 축전기를 따로 이름 붙이지 않고도 기억을 갖는 디지털 설계의 유일한 구조다.</td></tr><tr><td class="유도번호">2</td><td class="유도말">그 고리에는 평형점이 셋 있다. 단단한 0, 단단한 1, 그리고 두 인버터가 각자의 스위칭 문턱에 앉는 가운데 한 점.</td><td class="유도왜">V<sub>out1</sub> 대 V<sub>in1</sub> 과 두 번째 인버터의 거울 곡선을 그리면 세 번 만난다. 가운데 교점이 준안정점이다.</td></tr><tr><td class="유도번호">3</td><td class="유도말">가운데 평형은 <b>불안정</b>하다. 거기서 고리 이득이 A² > 1 이므로 어떤 벗어남이든 자란다.</td><td class="유도왜">인버터마다 문턱에서 소신호 이득 A = −g<sub>m</sub>(r<sub>o,n</sub> ∥ r<sub>o,p</sub>) 를 갖고, T1 이 두 항을 다 줬다.</td></tr><tr><td class="유도번호">4</td><td class="유도말">그 둘레에서 선형화하면 C·dv/dt = (A − 1)·v/R, 즉 v(t) = v<sub>0</sub>·e<sup>t/τ</sup> 이고 τ = RC/(A − 1) 이다.</td><td class="유도왜">여기서 <b>τ, 결정 시간상수가 나온다.</b> 그것은 회로의 성질이고 — 대략 고리의 RC 를 그 남는 이득으로 나눈 것 — 당신이 고를 수 있는 규격이 <i>아니다</i>.</td></tr><tr><td class="유도번호">5</td><td class="유도말">올바른 준위로 결판나려면 고리가 벗어남을 v<sub>0</sub> 에서 대략 V<sub>DD</sub>/2 까지 키워야 하고, 그것이 t = τ·ln(V<sub>DD</sub>/2v<sub>0</sub>) 걸린다.</td><td class="유도왜">시간은 <b>표본이 가운데에 얼마나 가까이 떨어졌는지의 로그</b>다 — 그리고 v<sub>0</sub> 는 얼마든지 작을 수 있으므로 t 에 상한이 없다. 대비할 최악의 경우가 없고 분포만 있다.</td></tr><tr><td class="유도번호">6</td><td class="유도말">결판나는 데 t<sub>r</sub> 보다 오래 걸리는 창 안에 표본이 떨어질 확률은 e<sup>−t<sub>r</sub>/τ</sup> 로 준다.</td><td class="유도왜">클럭 주기 안에서 도착이 고르고 v<sub>0</sub> 가 에지에 얼마나 가까웠는지에 비례하므로, 지수가 곧바로 나온다.</td></tr></tbody></table></div>
+<figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="40 8 380 284" width="100%" style="max-width:420px;height:auto" font-family="ui-monospace,monospace" font-size="11"><path d="M176,30 L176,38" fill="none" stroke="#c0392b" stroke-width="1.6"/><path d="M167,30 L185,30" fill="none" stroke="#c0392b" stroke-width="2.2"/><text x="176" y="25" fill="#c0392b" font-size="10" text-anchor="middle">VDD</text><path d="M150,80 L160,80" fill="none" stroke="#111" stroke-width="1.6"/><circle cx="164" cy="80" r="3.5" fill="#fff" stroke="#111" stroke-width="1.6"/><path d="M168,67 L168,93" fill="none" stroke="#111" stroke-width="2.0"/><path d="M173,67 L173,93" fill="none" stroke="#111" stroke-width="2.0"/><path d="M173,69 L176,69 L176,62" fill="none" stroke="#111" stroke-width="1.6"/><path d="M173,91 L176,91 L176,98" fill="none" stroke="#111" stroke-width="1.6"/><path d="M150,170 L164,170" fill="none" stroke="#111" stroke-width="1.6"/><path d="M168,157 L168,183" fill="none" stroke="#111" stroke-width="2.0"/><path d="M173,157 L173,183" fill="none" stroke="#111" stroke-width="2.0"/><path d="M173,159 L176,159 L176,152" fill="none" stroke="#111" stroke-width="1.6"/><path d="M173,181 L176,181 L176,188" fill="none" stroke="#111" stroke-width="1.6"/><path d="M176,38 L176,62" fill="none" stroke="#111" stroke-width="1.6"/><path d="M176,98 L176,152" fill="none" stroke="#111" stroke-width="1.6"/><path d="M176,188 L176,215" fill="none" stroke="#111" stroke-width="1.6"/><path d="M176,215 L176,221" fill="none" stroke="#137333" stroke-width="1.6"/><path d="M166,221 L186,221" fill="none" stroke="#137333" stroke-width="2.0"/><path d="M169.5,225 L182.5,225" fill="none" stroke="#137333" stroke-width="2.0"/><path d="M173,229 L179,229" fill="none" stroke="#137333" stroke-width="2.0"/><path d="M150,80 L110,80 L110,170 L150,170" fill="none" stroke="#111" stroke-width="1.6"/><path d="M110,125 L62,125" fill="none" stroke="#111" stroke-width="1.6"/><circle cx="110" cy="125" r="2.6" fill="#111"/><text x="56" y="129" fill="#111" font-size="11" text-anchor="end" font-weight="bold">A</text><path d="M176,125 L268,125" fill="none" stroke="#111" stroke-width="1.6"/><circle cx="176" cy="125" r="2.6" fill="#111"/><text x="274" y="129" fill="#111" font-size="11" text-anchor="start" font-weight="bold">Y = NOT A</text><text x="196" y="84" fill="#c0392b" font-size="9.5" text-anchor="start">PMOS = 풀업</text><text x="196" y="174" fill="#137333" font-size="9.5" text-anchor="start">NMOS = 풀다운</text><text x="58" y="252" fill="#888" font-size="9.5" text-anchor="start">입력이 0 -> 위(PMOS)가 켜짐 -> Y 를 VDD 로 당겨 올린다</text><text x="58" y="265" fill="#888" font-size="9.5" text-anchor="start">입력이 1 -> 아래(NMOS)가 켜짐 -> Y 를 GND 로 당겨 내린다</text><text x="58" y="278" fill="#888" font-size="9.5" text-anchor="start">둘이 동시에 켜지지 않는다 -> 정상상태 전류가 0 이다</text></svg><figcaption><b>그림 30.</b> 고리를 이룬 두 인버터 가운데 하나. 준안정점에서 그것은 자기 스위칭 문턱에 앉아 있고 두 소자가 모두 포화에 있다 — 그 인버터가 가질 수 있는 가장 이득이 크고, 가장 전류가 크고, 가장 불안정한 동작점이다.</figcaption></figure>
+<div class="짚기">저 유도에서 결론 둘이 떨어지고 둘 다 실무에서 중요하다.
+    <b>첫째, τ 는 소신호 양이다.</b> 그래서 이득이 나빠지는 바로 그 자리에서
+    나빠진다 — 느린 코너, 낮은 전압, 높은 온도. <b>둘째, 준안정점은 플롭이 전류를
+    가장 많이 태우는 자리다</b> — 두 소자가 다 켜져 있다. 자주 준안정에 빠지는
+    설계는 논리적으로만 실패하는 것이 아니라, 예산에 없던 전류까지 끌어간다.</div>
+<h2>T3.2 MTBF, 그리고 그 안의 기호 하나하나가 실제로 무엇인가</h2>
+<div class="정의"><b>MTBF (mean time between failures)</b> &mdash; 동기화기가 주어진 시간 안에 결판내지 못하는 사건 둘 사이의 평균 시간. <b>보장이 아니라 비율이다</b> — MTBF 1000 년은 첫 실패가 1000 년째에 난다는 뜻이 아니라, 실패가 그 평균을 갖는 포아송이라는 뜻이다.</div>
+<div class="개념"><div class="개념머리">MTBF 식</div>
+<div class="개념이론"><p>MTBF = e<sup>t<sub>r</sub>/τ</sup> / (T<sub>0</sub>·f<sub>c</sub>·f<sub>d</sub>)</p>
+        <p><b>t<sub>r</sub></b> — 해결 시간: 무엇인가가 읽기 전에 동기화기 플롭에게
+        정착하라고 준 시간. 한 단 건넘이라면 T<sub>clk</sub> 에서 그 플롭 자신의
+        t<sub>cq</sub> 를 빼고, 그것을 읽는 쪽의 셋업을 빼고, 사이의 논리를 뺀 것이다.
+        <b>τ</b> — 결정 시간상수, T3.1 에서 왔고 여기서는 25&nbsp;ps.
+        <b>T<sub>0</sub></b> — 표본이 준안정에 빠질 수 있는 구경의 실효 폭,
+        여기서는 1&nbsp;ps. 둘 다 유도된 것이 아니라 셀마다 코너마다 잰 것이다.
+        <b>f<sub>c</sub></b> — 표본화(목적지) 클럭 주파수.
+        <b>f<sub>d</sub></b> — 비동기 입력이 변하는 비율.</p>
+        <p>지수에 들어 있는 것은 t<sub>r</sub> 뿐이고, 이 식의 공학적 내용은 전부
+        그것이다: <b>당신이 할 수 있는 것은 전부 선형이고, 당신이 제어할 수 없는
+        것이 지수다.</b> f<sub>d</sub> 를 두 배로 하면 MTBF 가 반이 된다.
+        동기화기 단을 하나 더하면 <i>지수가 곱해진다</i>.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>설계의 모든 비동기 경계: 바깥 인터럽트, 리셋 해제, 누름 버튼, 클럭 도메인을 건너가는 FIFO 포인터, PHY 의 복원 클럭 도메인이 코어와 만나는 자리.</td></tr>
+<tr><th>언제 쓰나</th><td>아키텍처 단계에서 깊이를 고르고, 사인오프에서 수를 적는다. <b>MTBF 와 그것을 계산한 조건 없이 'CDC 안전' 이라고 적은 IP 데이터시트는 아무것도 주장하지 않은 것이다.</b></td></tr>
+<tr><th>어떻게 쓰나</th><td>τ 와 T<sub>0</sub> 를 라이브러리의 동기화기 셀 특성화에서 받는다(코너마다 공개돼 있다). t<sub>r</sub> 은 이상적인 클럭 주기가 아니라 실제 경로에서 낸다. 그리고 MTBF 를 <b>느린 코너</b>에서 적는다. τ 가 거기서 가장 나쁘기 때문이다.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>// The synchroniser, written so the tools recognise it.
+// The attribute is not decoration: it tells the tool to keep the two flops
+// adjacent and out of retiming, and it tells CDC checkers this is intentional.
+(* ASYNC_REG = "TRUE" *) reg [1:0] sync_q;          // Xilinx; Intel: altera_attribute
+always_ff @(posedge clk_dst or negedge rst_n) begin
+    if (!rst_n) sync_q &lt;= 2'b00;
+    else        sync_q &lt;= {sync_q[0], async_in};    // 2-stage
+end
+wire safe_in = sync_q[1];
+
+// And the constraint, without which STA tries to time an impossible path:
+// set_max_delay -datapath_only 2.0 -from [get_pins u_src/*/Q] -to [get_pins u_sync/sync_q_reg[0]/D]
+// NOT set_false_path -- a false path lets the tool put unbounded wire delay there,
+// and then the first stage's own setup window is no longer what you assumed.</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> 건넘에 <code>set_false_path</code> 를 거는 것이 가장 흔한
+            CDC 제약 잘못이다. 타이밍 보고서를 조용하게 만들지만, 동기화기로
+            들어가는 배선 지연의 한계도 같이 없앤다 — 그래서 원천이 목적지 에지에
+            얼마든지 가까이 변할 수 있게 되고 <i>게다가</i> 버스의 두 비트 사이
+            스큐에 상한이 없어진다. <code>set_max_delay -datapath_only</code> 를 쓰라.</div>
+</div>
+<table><caption>표 76. 클럭 주파수와 동기화기 깊이에 따른 MTBF (τ = 25&nbsp;ps, T₀ = 1&nbsp;ps, f_d = f_c/10, 부대비용 15&nbsp;ps)</caption><thead><tr><th>f_clk</th><th>단마다 t_r</th><th>1 단</th><th>2 단</th><th>3 단</th></tr></thead><tbody><tr><td>0.5&nbsp;GHz</td><td>1,85&nbsp;ps</td><td>1.7e+18 yr</td><td>2.4e+50 yr</td><td>3.3e+82 yr</td></tr><tr><td>1&nbsp;GHz</td><td>85&nbsp;ps</td><td>1.85&nbsp;년</td><td>1.1e+15 yr</td><td>6.3e+29 yr</td></tr><tr><td>2&nbsp;GHz</td><td>35&nbsp;ps</td><td>9.53×10<sup>-10</sup>&nbsp;년</td><td>0&nbsp;년</td><td>1,378&nbsp;년</td></tr></tbody></table>
+<div class="예제"><div class="예제머리">예제 12. 왜 2 단이 기본이고, 어디서부터 그것으로 모자라나</div><div class="예제줄"><b>주어진 것.</b> 목적지 클럭 1 GHz, 100 MHz 로 변하는 입력, 단마다 부대비용
+        15&nbsp;ps 이므로 t<sub>r</sub> =
+        85&nbsp;ps.</div><div class="예제줄"><b>푸는 법.</b> 깊이마다 수를 식에 한 번씩 넣는다. 단마다 자기 몫의 t<sub>r</sub>
+        을 통째로 받으므로 지수가 단 수에 비례해 커진다.</div><div class="예제답"><b>답.</b> 1 단: 1.85&nbsp;년 — <b>건넘 하나당 몇 해에 한 번
+        실패한다.</b> 2 단:
+        1.1e+15 yr. 3 단:
+        6.3e+29 yr.</div><div class="예제덧"><table><caption>표 77. 1 GHz 에서 같은 2 단 건넘, τ 가 나빠질 때</caption><thead><tr><th>τ</th><th>MTBF</th></tr></thead><tbody><tr><td>1×</td><td>1.08e+15 yr</td></tr><tr><td>1.2×</td><td>1.34e+09 yr</td></tr><tr><td>1.5×</td><td>1.54e+05 yr</td></tr><tr><td>2×</td><td>1.85 yr</td></tr></tbody></table></div><div class="예제함정"><b>여기서 틀린다.</b> 2 단 수치를 코너의 성질이 아니라 설계의 성질로 읽는 것.
+        τ 가 겨우 2 배 나빠진 값으로 — 느린 코너, 낮은 전압에서 충분히 있을 수 있는
+        열화다 — 다시 계산하면 같은 2 단 건넘이
+        <b>1.85 yr</b> 을 준다. 지수가
+        무너진 것이다. <b>MTBF 는 당신이 제어하지 못하는 바로 그 하나의 매개변수에
+        지수적으로 민감하다.</b> 그 수를 느린 코너에서 적어야 하는 까닭이고,
+        세 번째 단이 있는 까닭이다.</div></div>
+<div class="짚기">2 GHz 에서 그 표가 멈춰 볼 만한 것을 말한다.
+    <b>1 단</b> 건넘의 MTBF 가
+    0.0301 초다. 해가 아니라 초다. 그 주파수에서 1 단으로 100 년에
+    닿으려면 t<sub>r</sub> = 984.4&nbsp;ps 가 있어야 하는데, 그것은 클럭 주기
+    자체(500&nbsp;ps)보다 길다. <b>한 주기로는 요구를 아예 못 맞춘다</b> —
+    깊이가 안전 여유이기를 그만두고 회로가 도는 유일한 방법이 되는 영역이다.</div>
+<h2>T3.3 동기화기는 CDC 의 해답이 아니다</h2>
+<p>지금까지는 전부 한 비트 이야기다. 실제로 실리콘까지 닿는 실패는 MTBF 를
+    잘못 잡아서 나는 일이 거의 없다. 버스의 비트마다 제대로 동기화해 놓고도
+    진 설계자들에게서 난다.</p>
+<figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 468 236" width="100%" style="max-width:468px;height:auto" font-family="ui-monospace,monospace" font-size="11"><path d="M104,10 L104,230" fill="none" stroke="#e3e3e3" stroke-width="1" stroke-dasharray="3,3"/><path d="M190,10 L190,230" fill="none" stroke="#e3e3e3" stroke-width="1" stroke-dasharray="3,3"/><path d="M276,10 L276,230" fill="none" stroke="#e3e3e3" stroke-width="1" stroke-dasharray="3,3"/><path d="M362,10 L362,230" fill="none" stroke="#e3e3e3" stroke-width="1" stroke-dasharray="3,3"/><path d="M448,10 L448,230" fill="none" stroke="#e3e3e3" stroke-width="1" stroke-dasharray="3,3"/><text x="96" y="33.0" fill="#111" font-size="11" text-anchor="end">cnt[2:0] (A)</text><path d="M104,16 L190,16" fill="none" stroke="#111" stroke-width="1.6"/><path d="M190,16 L276,16" fill="none" stroke="#111" stroke-width="1.6"/><path d="M276,16 L362,16" fill="none" stroke="#111" stroke-width="1.6"/><path d="M362,16 L448,16" fill="none" stroke="#111" stroke-width="1.6"/><text x="96" y="75.0" fill="#111" font-size="11" text-anchor="end">bit0 도착</text><path d="M104,84 L190,84" fill="none" stroke="#111" stroke-width="1.6"/><path d="M190,84 L190,58" fill="none" stroke="#111" stroke-width="1.6"/><path d="M190,58 L276,58" fill="none" stroke="#111" stroke-width="1.6"/><path d="M276,58 L362,58" fill="none" stroke="#111" stroke-width="1.6"/><path d="M362,58 L448,58" fill="none" stroke="#111" stroke-width="1.6"/><text x="96" y="117.0" fill="#111" font-size="11" text-anchor="end">bit1 도착</text><path d="M104,126 L190,126" fill="none" stroke="#111" stroke-width="1.6"/><path d="M190,126 L276,126" fill="none" stroke="#111" stroke-width="1.6"/><path d="M276,126 L276,100" fill="none" stroke="#111" stroke-width="1.6"/><path d="M276,100 L362,100" fill="none" stroke="#111" stroke-width="1.6"/><path d="M362,100 L448,100" fill="none" stroke="#111" stroke-width="1.6"/><text x="96" y="159.0" fill="#111" font-size="11" text-anchor="end">bit2 도착</text><path d="M104,168 L190,168" fill="none" stroke="#111" stroke-width="1.6"/><path d="M190,168 L276,168" fill="none" stroke="#111" stroke-width="1.6"/><path d="M276,168 L276,142" fill="none" stroke="#111" stroke-width="1.6"/><path d="M276,142 L362,142" fill="none" stroke="#111" stroke-width="1.6"/><path d="M362,142 L448,142" fill="none" stroke="#111" stroke-width="1.6"/><text x="96" y="201.0" fill="#111" font-size="11" text-anchor="end">받은 값</text><path d="M104,184 L190,210" fill="none" stroke="#111" stroke-width="1.3"/><path d="M104,210 L190,184" fill="none" stroke="#111" stroke-width="1.3"/><path d="M190,184 L276,210" fill="none" stroke="#111" stroke-width="1.3"/><path d="M190,210 L276,184" fill="none" stroke="#111" stroke-width="1.3"/><path d="M276,184 L362,184" fill="none" stroke="#111" stroke-width="1.6"/><path d="M362,184 L448,184" fill="none" stroke="#111" stroke-width="1.6"/></svg><figcaption><b>그림 31.</b> 각자의 동기화기를 거쳐 건너는 두 비트. 비트 하나하나는 안전하다. 그 쌍은 안전하지 않다. 하나는 이번 주기에 결판나고 다른 하나는 다음 주기에 결판나서, 받는 쪽은 한 번도 보내진 적 없는 값을 본다.</figcaption></figure>
+<div class="개념"><div class="개념머리">다중 비트 문제, 그리고 빠져나가는 세 길</div>
+<div class="개념이론"><p>서로 독립인 동기화기는 서로 독립으로 결정한다. 같은 원천 주기에 두
+        비트가 변하면 각각이 경계의 어느 쪽으로든 결판날 수 있으므로, 목적지는
+        중간값을 볼 수 있다 — <b>원천이 한 번도 몰지 않은 코드</b>를. 이진
+        계수기가 0111 → 1000 으로 건너가는 것을 1111 로도 0000 으로도, 그 사이
+        아무것으로도 볼 수 있다. 어떤 MTBF 계산도 이것을 못 잡는다. 플롭은
+        하나하나 다 옳게 동작했다.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>클럭 경계를 건너는 모든 버스, 계수기, 포인터, 상태 워드, 설정 필드. 실제로는 FIFO 포인터, 인터럽트 상태 레지스터, 그리고 느린 설정 도메인이 쓰고 빠른 데이터패스가 읽는 '모드' 필드.</td></tr>
+<tr><th>언제 쓰나</th><td>비트가 하나를 넘는 순간부터. 3 비트라고 32 비트보다 안전하지 않다 — 중요한 것은 폭이 아니라 <i>동시성</i>이다.</td></tr>
+<tr><th>어떻게 쓰나</th><td>하나를 고르라. <b>(1) 그레이 코드</b> — 하나 셀 때마다 한 비트만
+             변하므로 중간에 잡힌 표본은 옛 값 아니면 새 값이고 둘 다 올바르다.
+             계수기와 포인터에는 되고 임의의 데이터에는 안 된다. <b>(2) 핸드셰이크</b>
+             — 데이터를 안정하게 붙들고 요청 비트 하나만 건넨다. 받는 쪽이
+             응답한다. 왕복 지연이 들지만 무엇에든 된다.
+             <b>(3) 비동기 FIFO</b> — 그레이 코드 포인터를 갖는 이중 포트 메모리.
+             (1) 과 (2) 를 합친 것이고, 흐르는 데이터에는 이것을 내보낸다.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>// Gray-coded pointer crossing -- the standard async FIFO core.
+// The pointer is converted to gray BEFORE crossing and back AFTER.
+function automatic [PW:0] bin2gray(input [PW:0] b); return b ^ (b &gt;&gt; 1); endfunction
+
+always_ff @(posedge wclk or negedge wrst_n)
+    if (!wrst_n) {wbin, wgray} &lt;= '0;
+    else         {wbin, wgray} &lt;= {wbin_next, bin2gray(wbin_next)};
+
+// crossing: gray value only, two stages, one synchroniser per bit is now SAFE
+// because at most one bit differs between consecutive gray values.
+(* ASYNC_REG = "TRUE" *) reg [PW:0] wq1_rgray, wq2_rgray;
+always_ff @(posedge wclk or negedge wrst_n)
+    if (!wrst_n) {wq2_rgray, wq1_rgray} &lt;= '0;
+    else         {wq2_rgray, wq1_rgray} &lt;= {wq1_rgray, rgray};
+
+// FULL is computed from the SYNCHRONISED read pointer, so it is CONSERVATIVE:
+// it can be asserted when the FIFO has already been drained, never the reverse.
+assign wfull = (wgray_next == {~wq2_rgray[PW:PW-1], wq2_rgray[PW-2:0]});</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> 그레이 코드는 <i>포인터</i>를 지키지 <i>데이터</i>를
+            지키지 않는다. 비동기 FIFO 의 데이터 경로는 이중 포트 RAM 이고, 그것이
+            안전한 까닭은 오직 읽기 주소가 쓰기 쪽이 아직 다 쓰지 못한 자리에
+            닿는 것이 허용되지 않기 때문이다 — 보수적인 full/empty 비교가 사 주는
+            것이 그것이다. 그레이 코드 수법을 데이터 버스에 베껴 놓아도 아무 소용이
+            없다. 이어지는 데이터 워드는 여러 비트가 한꺼번에 다르다.</div>
+</div>
+<div class="사고"><b>실제로 난 일</b><br>건넘은 준안정 사건이 <b>하나도</b> 없이도
+    실패할 수 있다. 원천 펄스가 목적지 클럭 주기 하나보다 짧으면 목적지는 그것을
+    영영 표본화하지 못할 수 있다 — 동기화기는 매번 깨끗하게 옛 값으로 결판난다.
+    이것은 확률적 실패가 아니라 확정적 실패이고, MTBF 분석에는 안 보인다.
+    그것을 막는 규칙: <b>느린 도메인으로 건너가는 신호는 목적지 주기의 1.5 배
+    이상 붙들어야 한다</b>. 아니면 레벨 토글로 바꾸고 돌아오는 핸드셰이크를 둔다.</div>
+<table><caption>표 78. 건넘 방식마다 값과 지키는 것</caption><thead><tr><th>방식</th><th>지연 (목적지 주기)</th><th>처리량</th><th>지키는 것</th><th>실패하는 때</th></tr></thead><tbody><tr><td>2 플롭 동기화기</td><td>2</td><td>주기당 1 비트</td><td>레벨이 안정한 한 비트</td><td>한 비트를 넘게 같이 변할 때. 1.5 주기보다 짧은 펄스</td></tr><tr><td>펄스 동기화기 (토글)</td><td>2–3</td><td>3 주기당 사건 1</td><td>어떤 비율에서든 단일 사건</td><td>사건이 왕복보다 빨리 올 때</td></tr><tr><td>그레이 포인터</td><td>2</td><td>주기당 1 증가</td><td>단조 계수기와 포인터</td><td>임의의 데이터에 쓸 때</td></tr><tr><td>req/ack 핸드셰이크</td><td>왕복 4–6</td><td>왕복당 1 워드</td><td>폭에 관계없이 임의의 데이터</td><td>지연 예산이 왕복을 못 삼킬 때</td></tr><tr><td>비동기 FIFO</td><td>2–3 + 채움</td><td>주기당 1 워드 지속</td><td>흐르는 데이터, 속도 불일치</td><td>깊이가 그 버스트 모양에 비해 작을 때</td></tr><tr><td>준정적 (설정 필드)</td><td>0</td><td>한 번 쓴다</td><td>쓰는 쪽이 놀고 있거나 리셋 중일 때만 변하는 필드</td><td>데이터패스가 도는 동안 누가 그것을 쓸 때</td></tr></tbody></table>
+<div class="정의"><b>준정적신호 (quasi-static signal)</b> &mdash; 목적지가 그것을 쓰지 않는 동안에만 변하도록 <b>규약으로 보장된</b> 건넘 신호 — 보통 블록이 켜지기 전에 쓰는 설정 필드다. 동기화기는 필요 없지만, <b>데이터시트에 적힌 규칙</b>과 그렇다고 말하는 CDC 예외는 필요하다. 적어 두지 않은 준정적 가정이야말로 IP 가 실험실에서는 되고 고객 시스템에서는 안 되는 길이다.</div>
+<figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 450 170" width="100%" style="max-width:450px;height:auto" font-family="ui-monospace,monospace" font-size="11"><text x="16" y="26" fill="#111" font-size="11" text-anchor="start">d</text><path d="M24,40 L54,40" fill="none" stroke="#111" stroke-width="1.6"/><path d="M54.0,40.0 L47.0,36.4 L47.0,43.6 Z" fill="#111"/><rect x="54" y="20" width="44" height="50" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="60" y="39.0" fill="#111" font-size="10" text-anchor="start">D</text><text x="92" y="39.0" fill="#111" font-size="10" text-anchor="end">Q</text><path d="M54,51.5 L63,57.5 L54,63.5" fill="none" stroke="#111" stroke-width="1.6"/><text x="76.0" y="14" fill="#888" font-size="10" text-anchor="middle"></text><text x="106" y="36" fill="#111" font-size="11" text-anchor="start">q1</text><path d="M98,40 L132,40" fill="none" stroke="#111" stroke-width="1.6"/><path d="M132.0,40.0 L125.0,36.4 L125.0,43.6 Z" fill="#111"/><rect x="132" y="20" width="44" height="50" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="138" y="39.0" fill="#111" font-size="10" text-anchor="start">D</text><text x="170" y="39.0" fill="#111" font-size="10" text-anchor="end">Q</text><path d="M132,51.5 L141,57.5 L132,63.5" fill="none" stroke="#111" stroke-width="1.6"/><text x="154.0" y="14" fill="#888" font-size="10" text-anchor="middle"></text><text x="184" y="36" fill="#111" font-size="11" text-anchor="start">q2</text><path d="M176,40 L210,40" fill="none" stroke="#111" stroke-width="1.6"/><path d="M210.0,40.0 L203.0,36.4 L203.0,43.6 Z" fill="#111"/><rect x="210" y="20" width="44" height="50" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="216" y="39.0" fill="#111" font-size="10" text-anchor="start">D</text><text x="248" y="39.0" fill="#111" font-size="10" text-anchor="end">Q</text><path d="M210,51.5 L219,57.5 L210,63.5" fill="none" stroke="#111" stroke-width="1.6"/><text x="232.0" y="14" fill="#888" font-size="10" text-anchor="middle"></text><text x="262" y="36" fill="#111" font-size="11" text-anchor="start">q3</text><rect x="46" y="6" width="116" height="82" fill="none" stroke="#888" stroke-width="1.6" rx="3" stroke-dasharray="5,4"/><text x="104" y="102" fill="#888" font-size="10" text-anchor="middle">sync2 — two flops</text><path d="M302,24 Q321.2,24 338,41.0 Q321.2,58 302,58 Q307.76,41.0 302,24 Z" fill="#fff" stroke="#111" stroke-width="1.6"/><path d="M296,24 Q305.24,41.0 296,58" fill="none" stroke="#111" stroke-width="1.6"/><path d="M132,40 L132,120" fill="none" stroke="#111" stroke-width="1.6"/><path d="M132,120 L284,120" fill="none" stroke="#111" stroke-width="1.6"/><path d="M284,120 L284,48" fill="none" stroke="#111" stroke-width="1.6"/><path d="M284,48 L296,48" fill="none" stroke="#111" stroke-width="1.6"/><path d="M296.0,48.0 L289.0,44.4 L289.0,51.6 Z" fill="#111"/><circle cx="132" cy="40" r="2.6" fill="#111"/><path d="M288,34 L296,34" fill="none" stroke="#111" stroke-width="1.6"/><path d="M296.0,34.0 L289.0,30.4 L289.0,37.6 Z" fill="#111"/><path d="M254,40 L288,40" fill="none" stroke="#111" stroke-width="1.6"/><path d="M288,40 L288,34" fill="none" stroke="#111" stroke-width="1.6"/><path d="M338,41 L376,41" fill="none" stroke="#111" stroke-width="2"/><path d="M376.0,41.0 L369.0,37.4 L369.0,44.6 Z" fill="#111"/><text x="380" y="37" fill="#111" font-size="11" text-anchor="start" font-weight="bold">pulse</text><text x="380" y="52" fill="#888" font-size="9.5" text-anchor="start">one cycle</text><text x="16" y="150" fill="#888" font-size="10" text-anchor="start">Different input–output levels across one flop → exactly one cycle of difference.</text></svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 442 194" width="100%" style="max-width:442px;height:auto" font-family="ui-monospace,monospace" font-size="11"><path d="M62,10 L62,188" fill="none" stroke="#e3e3e3" stroke-width="1" stroke-dasharray="3,3"/><path d="M92,10 L92,188" fill="none" stroke="#e3e3e3" stroke-width="1" stroke-dasharray="3,3"/><path d="M122,10 L122,188" fill="none" stroke="#e3e3e3" stroke-width="1" stroke-dasharray="3,3"/><path d="M152,10 L152,188" fill="none" stroke="#e3e3e3" stroke-width="1" stroke-dasharray="3,3"/><path d="M182,10 L182,188" fill="none" stroke="#e3e3e3" stroke-width="1" stroke-dasharray="3,3"/><path d="M212,10 L212,188" fill="none" stroke="#e3e3e3" stroke-width="1" stroke-dasharray="3,3"/><path d="M242,10 L242,188" fill="none" stroke="#e3e3e3" stroke-width="1" stroke-dasharray="3,3"/><path d="M272,10 L272,188" fill="none" stroke="#e3e3e3" stroke-width="1" stroke-dasharray="3,3"/><path d="M302,10 L302,188" fill="none" stroke="#e3e3e3" stroke-width="1" stroke-dasharray="3,3"/><path d="M332,10 L332,188" fill="none" stroke="#e3e3e3" stroke-width="1" stroke-dasharray="3,3"/><path d="M362,10 L362,188" fill="none" stroke="#e3e3e3" stroke-width="1" stroke-dasharray="3,3"/><path d="M392,10 L392,188" fill="none" stroke="#e3e3e3" stroke-width="1" stroke-dasharray="3,3"/><path d="M422,10 L422,188" fill="none" stroke="#e3e3e3" stroke-width="1" stroke-dasharray="3,3"/><text x="54" y="29.0" fill="#111" font-size="11" text-anchor="end">clk</text><path d="M62,16 L92,16" fill="none" stroke="#1f6feb" stroke-width="1.6"/><path d="M92,16 L92,34" fill="none" stroke="#1f6feb" stroke-width="1.6"/><path d="M92,34 L122,34" fill="none" stroke="#1f6feb" stroke-width="1.6"/><path d="M122,34 L122,16" fill="none" stroke="#1f6feb" stroke-width="1.6"/><path d="M122,16 L152,16" fill="none" stroke="#1f6feb" stroke-width="1.6"/><path d="M152,16 L152,34" fill="none" stroke="#1f6feb" stroke-width="1.6"/><path d="M152,34 L182,34" fill="none" stroke="#1f6feb" stroke-width="1.6"/><path d="M182,34 L182,16" fill="none" stroke="#1f6feb" stroke-width="1.6"/><path d="M182,16 L212,16" fill="none" stroke="#1f6feb" stroke-width="1.6"/><path d="M212,16 L212,34" fill="none" stroke="#1f6feb" stroke-width="1.6"/><path d="M212,34 L242,34" fill="none" stroke="#1f6feb" stroke-width="1.6"/><path d="M242,34 L242,16" fill="none" stroke="#1f6feb" stroke-width="1.6"/><path d="M242,16 L272,16" fill="none" stroke="#1f6feb" stroke-width="1.6"/><path d="M272,16 L272,34" fill="none" stroke="#1f6feb" stroke-width="1.6"/><path d="M272,34 L302,34" fill="none" stroke="#1f6feb" stroke-width="1.6"/><path d="M302,34 L302,16" fill="none" stroke="#1f6feb" stroke-width="1.6"/><path d="M302,16 L332,16" fill="none" stroke="#1f6feb" stroke-width="1.6"/><path d="M332,16 L332,34" fill="none" stroke="#1f6feb" stroke-width="1.6"/><path d="M332,34 L362,34" fill="none" stroke="#1f6feb" stroke-width="1.6"/><path d="M362,34 L362,16" fill="none" stroke="#1f6feb" stroke-width="1.6"/><path d="M362,16 L392,16" fill="none" stroke="#1f6feb" stroke-width="1.6"/><path d="M392,16 L392,34" fill="none" stroke="#1f6feb" stroke-width="1.6"/><path d="M392,34 L422,34" fill="none" stroke="#1f6feb" stroke-width="1.6"/><text x="54" y="57.0" fill="#111" font-size="11" text-anchor="end">d</text><path d="M62,62 L92,62" fill="none" stroke="#111" stroke-width="1.6"/><path d="M92,62 L92,44" fill="none" stroke="#111" stroke-width="1.6"/><path d="M92,44 L122,44" fill="none" stroke="#111" stroke-width="1.6"/><path d="M122,44 L152,44" fill="none" stroke="#111" stroke-width="1.6"/><path d="M152,44 L182,44" fill="none" stroke="#111" stroke-width="1.6"/><path d="M182,44 L212,44" fill="none" stroke="#111" stroke-width="1.6"/><path d="M212,44 L242,44" fill="none" stroke="#111" stroke-width="1.6"/><path d="M242,44 L272,44" fill="none" stroke="#111" stroke-width="1.6"/><path d="M272,44 L302,44" fill="none" stroke="#111" stroke-width="1.6"/><path d="M302,44 L332,44" fill="none" stroke="#111" stroke-width="1.6"/><path d="M332,44 L332,62" fill="none" stroke="#111" stroke-width="1.6"/><path d="M332,62 L362,62" fill="none" stroke="#111" stroke-width="1.6"/><path d="M362,62 L392,62" fill="none" stroke="#111" stroke-width="1.6"/><path d="M392,62 L422,62" fill="none" stroke="#111" stroke-width="1.6"/><text x="54" y="85.0" fill="#111" font-size="11" text-anchor="end">q1</text><path d="M62,90 L92,90" fill="none" stroke="#111" stroke-width="1.6"/><path d="M92,90 L122,90" fill="none" stroke="#111" stroke-width="1.6"/><path d="M122,90 L122,72" fill="none" stroke="#111" stroke-width="1.6"/><path d="M122,72 L152,72" fill="none" stroke="#111" stroke-width="1.6"/><path d="M152,72 L182,72" fill="none" stroke="#111" stroke-width="1.6"/><path d="M182,72 L212,72" fill="none" stroke="#111" stroke-width="1.6"/><path d="M212,72 L242,72" fill="none" stroke="#111" stroke-width="1.6"/><path d="M242,72 L272,72" fill="none" stroke="#111" stroke-width="1.6"/><path d="M272,72 L302,72" fill="none" stroke="#111" stroke-width="1.6"/><path d="M302,72 L332,72" fill="none" stroke="#111" stroke-width="1.6"/><path d="M332,72 L362,72" fill="none" stroke="#111" stroke-width="1.6"/><path d="M362,72 L362,90" fill="none" stroke="#111" stroke-width="1.6"/><path d="M362,90 L392,90" fill="none" stroke="#111" stroke-width="1.6"/><path d="M392,90 L422,90" fill="none" stroke="#111" stroke-width="1.6"/><text x="54" y="113.0" fill="#111" font-size="11" text-anchor="end">q2</text><path d="M62,118 L92,118" fill="none" stroke="#111" stroke-width="1.6"/><path d="M92,118 L122,118" fill="none" stroke="#111" stroke-width="1.6"/><path d="M122,118 L152,118" fill="none" stroke="#111" stroke-width="1.6"/><path d="M152,118 L152,100" fill="none" stroke="#111" stroke-width="1.6"/><path d="M152,100 L182,100" fill="none" stroke="#111" stroke-width="1.6"/><path d="M182,100 L212,100" fill="none" stroke="#111" stroke-width="1.6"/><path d="M212,100 L242,100" fill="none" stroke="#111" stroke-width="1.6"/><path d="M242,100 L272,100" fill="none" stroke="#111" stroke-width="1.6"/><path d="M272,100 L302,100" fill="none" stroke="#111" stroke-width="1.6"/><path d="M302,100 L332,100" fill="none" stroke="#111" stroke-width="1.6"/><path d="M332,100 L362,100" fill="none" stroke="#111" stroke-width="1.6"/><path d="M362,100 L392,100" fill="none" stroke="#111" stroke-width="1.6"/><path d="M392,100 L392,118" fill="none" stroke="#111" stroke-width="1.6"/><path d="M392,118 L422,118" fill="none" stroke="#111" stroke-width="1.6"/><text x="54" y="141.0" fill="#111" font-size="11" text-anchor="end">q3</text><path d="M62,146 L92,146" fill="none" stroke="#111" stroke-width="1.6"/><path d="M92,146 L122,146" fill="none" stroke="#111" stroke-width="1.6"/><path d="M122,146 L152,146" fill="none" stroke="#111" stroke-width="1.6"/><path d="M152,146 L182,146" fill="none" stroke="#111" stroke-width="1.6"/><path d="M182,146 L182,128" fill="none" stroke="#111" stroke-width="1.6"/><path d="M182,128 L212,128" fill="none" stroke="#111" stroke-width="1.6"/><path d="M212,128 L242,128" fill="none" stroke="#111" stroke-width="1.6"/><path d="M242,128 L272,128" fill="none" stroke="#111" stroke-width="1.6"/><path d="M272,128 L302,128" fill="none" stroke="#111" stroke-width="1.6"/><path d="M302,128 L332,128" fill="none" stroke="#111" stroke-width="1.6"/><path d="M332,128 L362,128" fill="none" stroke="#111" stroke-width="1.6"/><path d="M362,128 L392,128" fill="none" stroke="#111" stroke-width="1.6"/><path d="M392,128 L422,128" fill="none" stroke="#111" stroke-width="1.6"/><text x="54" y="169.0" fill="#111" font-size="11" text-anchor="end">pulse</text><path d="M62,174 L92,174" fill="none" stroke="#111" stroke-width="1.6"/><path d="M92,174 L122,174" fill="none" stroke="#111" stroke-width="1.6"/><path d="M122,174 L152,174" fill="none" stroke="#111" stroke-width="1.6"/><path d="M152,174 L152,156" fill="none" stroke="#111" stroke-width="1.6"/><path d="M152,156 L182,156" fill="none" stroke="#111" stroke-width="1.6"/><path d="M182,156 L182,174" fill="none" stroke="#111" stroke-width="1.6"/><path d="M182,174 L212,174" fill="none" stroke="#111" stroke-width="1.6"/><path d="M212,174 L242,174" fill="none" stroke="#111" stroke-width="1.6"/><path d="M242,174 L272,174" fill="none" stroke="#111" stroke-width="1.6"/><path d="M272,174 L302,174" fill="none" stroke="#111" stroke-width="1.6"/><path d="M302,174 L302,156" fill="none" stroke="#111" stroke-width="1.6"/><path d="M302,156 L332,156" fill="none" stroke="#111" stroke-width="1.6"/><path d="M332,156 L332,174" fill="none" stroke="#111" stroke-width="1.6"/><path d="M332,174 L362,174" fill="none" stroke="#111" stroke-width="1.6"/><path d="M362,174 L392,174" fill="none" stroke="#111" stroke-width="1.6"/><path d="M392,174 L422,174" fill="none" stroke="#111" stroke-width="1.6"/></svg><figcaption><b>그림 32.</b> 한 주기짜리 사건을 클럭 경계 너머로 나르는 표준적인 방법. 플롭 둘이 준안정을 걷어 내고, 세 번째가 앞의 값을 붙든다. 그 둘의 XOR 가 어떤 레벨 변화든 목적지 도메인의 정확히 한 펄스로 바꾼다. 파형이 그 증거다. 넓은 펄스가 들어가고 한 주기짜리 펄스가 나오는데, 양쪽 에지에서 다 그렇다.</figcaption></figure>
+<h2>T3.4 리셋: 모두가 잊는 건넘</h2>
+<p>리셋은 본디 비동기다 — 어떤 클럭도 돌기 전에 동작해야 한다 — 그리고 어쩔
+    수 없이 동기이기도 하다. 엉뚱한 순간에 풀면 플롭의 리커버리 시간을 어겨서
+    상태 기계를 첫 주기에 준안정 상태로 만들기 때문이다. 해법은 모든 설계에서
+    같고, 한 문장으로 외워 둘 값어치가 있다: <b>비동기로 걸고, 동기로 푼다.</b></p>
+<figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="-6 4 526 208" width="100%" style="max-width:520px;height:auto" font-family="ui-monospace,monospace" font-size="11"><rect x="120" y="60" width="46" height="54" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="126" y="80.2" fill="#111" font-size="10" text-anchor="start">D</text><text x="160" y="80.2" fill="#111" font-size="10" text-anchor="end">Q</text><path d="M120,94.5 L129,100.5 L120,106.5" fill="none" stroke="#111" stroke-width="1.6"/><text x="143.0" y="54" fill="#888" font-size="10" text-anchor="middle"></text><rect x="240" y="60" width="46" height="54" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="246" y="80.2" fill="#111" font-size="10" text-anchor="start">D</text><text x="280" y="80.2" fill="#111" font-size="10" text-anchor="end">Q</text><path d="M240,94.5 L249,100.5 L240,106.5" fill="none" stroke="#111" stroke-width="1.6"/><text x="263.0" y="54" fill="#888" font-size="10" text-anchor="middle"></text><path d="M84,76.2 L120,76.2" fill="none" stroke="#111" stroke-width="1.6"/><text x="78" y="80.2" fill="#111" font-size="11" text-anchor="end" font-weight="bold">1</text><path d="M166,76.2 L240,76.2" fill="none" stroke="#111" stroke-width="1.6"/><path d="M286,76.2 L356,76.2" fill="none" stroke="#111" stroke-width="1.6"/><text x="362" y="80.2" fill="#111" font-size="11" text-anchor="start" font-weight="bold">rst_sync_n</text><path d="M120,130.5 L286,130.5" fill="none" stroke="#1f6feb" stroke-width="1.6"/><path d="M120,100.5 L120,130.5" fill="none" stroke="#1f6feb" stroke-width="1.6"/><path d="M240,100.5 L240,130.5" fill="none" stroke="#1f6feb" stroke-width="1.6"/><text x="116" y="146.5" fill="#1f6feb" font-size="10" text-anchor="start">clk</text><path d="M84,138 L143,138 L143,114" fill="none" stroke="#c0392b" stroke-width="1.6"/><path d="M84,138 L263,138 L263,114" fill="none" stroke="#c0392b" stroke-width="1.6"/><circle cx="143" cy="138" r="2.6" fill="#c0392b"/><text x="78" y="142" fill="#c0392b" font-size="11" text-anchor="end" font-weight="bold">rst_n</text><text x="300" y="142" fill="#c0392b" font-size="9.5" text-anchor="start">비동기 인가 (CLR)</text><text x="6" y="184" fill="#888" font-size="9.5" text-anchor="start">인가는 즉시 (클럭 없이도 리셋이 걸린다)</text><text x="6" y="197" fill="#888" font-size="9.5" text-anchor="start">해제는 클럭에 맞춰 (두 클럭 뒤) -- recovery/removal 위반을 막는다</text></svg><figcaption><b>그림 33.</b> 리셋 동기화기. 비동기로 거는 경로에는 클럭이 하나도 없다. 푸는 경로는 목적지 도메인으로 클럭되는 플롭 둘을 지난다.</figcaption></figure>
+<div class="개념"><div class="개념머리">리커버리 · 리무벌 (recovery and removal)</div>
+<div class="개념이론"><p>리커버리 시간은 리셋 <b>해제</b>에 걸리는 셋업 제약이다. 리셋은
+        활성 클럭 에지보다 최소한 t<sub>recovery</sub> 앞서 풀려야 한다. 리무벌
+        시간은 그에 대응하는 홀드 제약이다. 다른 타이밍 이음과 똑같이 특성화되어
+        .lib 에 들어 있다 — 그 말은 STA 가 그것을 <b>그 플롭에서 리셋이 타이밍이
+        걸린 동기 신호일 때만</b> 검사한다는 뜻이다.</p>
+        <p>동기화기 없이 풀리는 비동기 리셋은 클럭과 그런 관계가 없으므로 STA 는
+        아무것도 보고하지 않고, 실패는 전원을 올린 뒤 상태 기계가 가끔 불법
+        상태에서 출발하는 꼴로 나타난다 — 대개 한 코너에서, 어떤 보드에서만,
+        어떤 전원 상승 모양에서만.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>모든 클럭 도메인. 클럭이 셋인 설계는 리셋 동기화기가 셋 필요하고, 각각 자기 도메인으로 클럭되며 모두 같은 비동기 원천을 받는다.</td></tr>
+<tr><th>언제 쓰나</th><td>늘. 값은 도메인마다 플롭 둘이고, 그것이 막아 주는 실패는 재현하기 가장 어려운 부류다.</td></tr>
+<tr><th>어떻게 쓰나</th><td>거는 것은 바로 통과시키고(클럭 없이), 푸는 것은 플롭 둘을 거치게 한다. 그러고 나서 제약한다. 해제는 이제 동기 신호이므로 STA 가 그것이 닿는 모든 플롭에서 리커버리/리무벌을 검사한다.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>// Reset synchroniser -- one per clock domain.
+module reset_sync (input clk, input arst_n, output rst_n);
+    (* ASYNC_REG = "TRUE" *) reg [1:0] q;
+    always_ff @(posedge clk or negedge arst_n)
+        if (!arst_n) q &lt;= 2'b00;          // ASSERT: asynchronous, no clock needed
+        else         q &lt;= {q[0], 1'b1};   // RELEASE: two clocked stages
+    assign rst_n = q[1];
+endmodule
+
+// SDC: the asynchronous assertion is not a timed path; the release is.
+set_false_path -from [get_ports arst_n] -to [get_pins u_rsync/q_reg[0]/CLR]
+// and every flop fed by rst_n gets a normal recovery/removal check -- verify with:
+//   report_timing -delay_type max -check_type recovery -from [get_pins u_rsync/q_reg[1]/Q]</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> 동기화기 자신의 플롭을 <i>동기화된</i> 리셋으로
+            리셋하는 것은 빠져나갈 길 없는 고리다. 해제 에지를 놓치면 블록이 영영
+            리셋에서 못 나온다. 동기화기는 클리어 핀에 <b>날것의 비동기</b> 리셋을
+            받아야 한다. 리셋 동기화기의 두 플롭이 0 으로 리셋되고 1 을 밀어
+            넣는 것이지 그 반대가 아닌 까닭도 이것이다.</div>
+</div>
+<h2>T3.5 STA 가 못 보는 것, 그리고 CDC 도구가 대신 하는 것</h2>
+<table><caption>표 79. 도구 둘, 물음 둘</caption><thead><tr><th>물음</th><th>STA</th><th>CDC 분석</th></tr></thead><tbody><tr><td>주어진 클럭 관계에서 이 경로가 셋업을 맞추나?</td><td>본다</td><td>안 본다</td></tr><tr><td>클럭 관계라는 것이 있기는 한가?</td><td>있다고 가정한다</td><td><b>이것이 그 일이다</b></td></tr><tr><td>모든 건넘에 동기화기가 있나?</td><td>안 본다</td><td>본다 (구조적으로)</td></tr><tr><td>여러 비트가 같이 건너나?</td><td>안 본다</td><td>본다 — 재수렴과 버스 일관성 검사</td></tr><tr><td>원천이 충분히 오래 안정한가?</td><td>안 본다</td><td>본다 — 규약 검사, 보통 시뮬레이션의 생성된 어서션으로</td></tr><tr><td>이 건넘은 일부러 동기화를 안 한 것인가?</td><td>안 본다</td><td>당신이 이름과 까닭을 적어 <b>예외로 두었을</b> 때만</td></tr></tbody></table>
+<div class="짚기">예외 파일이야말로 CDC 사인오프에서 그 분석에 뜻이 있었는지를
+    정하는 부분이다. 예외 이백 개를 달고 돌려서 나온 초록 요약은 증거가 아니다.
+    그것은 기술자 한 사람의 주장 이백 개다. <b>IP 납품물은 CDC 예외를 읽을 수 있는
+    문서로 같이 내보내야 한다.</b> 하나마다 까닭 한 줄씩. 통합하는 쪽이 그 전부를
+    물려받는데, 넷리스트에서 그것을 되살려 낼 수는 없기 때문이다.</div>
+<div class="개념"><div class="개념머리">구조뿐 아니라 시뮬레이션으로도 건넘을 증명하기</div>
+<div class="개념이론"><p>구조적 CDC 분석은 동기화기가 <i>있다</i>는 것을 증명한다. 원천이
+        그 동기화기가 가정하는 규약을 지키는지는 증명하지 못한다 — 요청이 높은
+        동안 데이터가 안정한지, 펄스가 충분히 긴지, 준정적 필드가 데이터패스가
+        도는 동안 쓰이지 않는지. 그것들은 <b>시간적 성질</b>이고, 손으로 쓰거나
+        CDC 도구가 생성한 어서션으로 검사한다.</p>
+        <p>쓸 수 있는 가장 강한 검사는 준안정 <i>주입</i>까지 더한다. 시뮬레이터가
+        동기화기 출력을 무작위로 한 주기 늦춰서, 건넘이 즉시 결판날 때만 도는
+        설계가 실리콘이 아니라 회귀에서 실패하게 만든다.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>클럭이 하나를 넘는 모든 것의 블록 수준 검증, 그리고 남의 클럭 구조 안으로 팔 생각인 모든 IP.</td></tr>
+<tr><th>언제 쓰나</th><td>RTL 을 얼릴 때마다 구조적 CDC 를 돌리고, 야간 회귀에서 주입을 돌린다. 둘은 서로 다른 버그를 찾고 어느 쪽도 다른 쪽을 대신하지 못한다.</td></tr>
+<tr><th>어떻게 쓰나</th><td>어서션을 건넘 모듈에 묶고, 주입을 켠 채 회귀를 돌리고, 결과를 납품물의 검증 절에 건넘 수와 예외 수와 함께 적는다.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>// The protocol the handshake crossing assumes, stated as a checkable property.
+property data_stable_while_req;
+    @(posedge clk_src) disable iff (!rst_n)
+        req |-&gt; ##0 $stable(data) throughout (req [*1:$] ##1 ack_sync);
+endproperty
+assert property (data_stable_while_req)
+    else $error("CDC: data changed while req was asserted -- the receiver may latch a mix");
+
+// Metastability injection (simulation only): the synchroniser may take one extra cycle.
+`ifdef CDC_INJECT
+    always_ff @(posedge clk_dst)
+        if ($urandom_range(0,99) &lt; 5) sync_q[1] &lt;= sync_q[1];   // hold: resolve later
+`endif</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> 원천 도메인 신호에 대해 목적지 도메인에서 쓴 어서션은
+            그 자체가 클럭 도메인 건넘이고, 테스트벤치가 만들어 낸 가짜 실패를
+            보고할 수 있다. 원천 신호는 원천 도메인에서 표본화하고
+            (<code>@(posedge clk_src)</code>) 불리언 결과만 건네라.</div>
+</div>
+<h2>T3.6 월요일에 무엇을 할 것인가</h2>
+<table><caption>표 80. 이 장의 개념이 실제로 쓰이는 자리</caption><thead><tr><th>개념</th><th>쓰이는 블록</th><th>무엇을 정하나</th></tr></thead><tbody><tr><td>MTBF · 결정시간상수</td><td>모든 비동기 경계</td><td>동기화기 깊이, 그리고 데이터시트에 적는 수</td></tr><tr><td>동기화기깊이</td><td>아키텍처, 건넘마다</td><td>기본은 둘. 1 GHz 위이거나 τ 특성화가 시원치 않으면 셋</td></tr><tr><td>다중비트문제 · 그레이코드</td><td>FIFO 포인터, 계수기, 상태 워드</td><td>그 건넘에 부호화가 필요한가, 핸드셰이크인가, FIFO 인가</td></tr><tr><td>핸드셰이크 · 비동기FIFO</td><td>도메인 사이로 흐르는 데이터</td><td>지연과 깊이, 따라서 면적</td></tr><tr><td>리셋동기화기 · 리커버리</td><td>모든 클럭 도메인</td><td>모든 코너에서 블록이 합법 상태로 출발하는가</td></tr><tr><td>CDC검증 · 준정적신호</td><td>사인오프와 납품물</td><td>통합하는 쪽이 물려받는 예외 목록</td></tr></tbody></table>
+<p>이 장을 끝내는 수는 둘이고, 들고 갈 것이 그 둘이다. 1 GHz 에서 1 단
+    건넘은 대략 1.8 년에 한 번 실패하고, τ 가 두 배인 같은 건넘은 2 단으로도
+    대략 1.8 년에 한 번 실패한다. 첫 번째 수가 동기화기가 존재하는
+    까닭이고, 두 번째 수가 답을 늘 그 코너와 함께 적어야 하는 까닭이다.</p>
+<p>다음 장은 이 장이 내내 가정하고 있던 것 — 표본은 맞거나 틀리거나 둘 중
+    하나라는 것 — 을 분포로 바꾼다. 잡음은 혼성신호 IP 의 모든 아날로그 측정
+    아래에 바닥을 깔고, 준안정과 달리 전력·면적과 곧바로 맞바꿀 수 있다.</p>
+<div class="특허"><div class="특허머리">특허로 가는 길 &mdash; 이 주제에서 발명이 일어나는 자리</div><div class="특허속">준안정 자체는 물리이고, 2 플롭 동기화기는 이 글을 읽는
+        누구보다도 오래됐다. <b>지금도 청구되고 있는 것은 그 둘레의 배치다</b>:
+        다중 비트 건넘을 N 개가 아니라 동기화기 하나로 안전하게 만드는 포인터
+        부호화(그레이 코드와 그 후예들). 동작 모드에 따라 동기화기 깊이를 바꾸는
+        지연 대 MTBF 방식. 자격 신호 하나만 동기화하고 데이터는 경계 너머로
+        <i>안정하게</i> 붙들어서 데이터를 아예 동기화하지 않는 데이터 경로 건넘.
+        이 하나하나가 플롭에 대한 논의가 아니라 <i>무엇이 건너야 하는가</i> 에 대한
+        논의다. 이 장을 이렇게 물으며 읽으라: 내 신호 가운데 정말로 건너야 하는
+        것은 무엇이고, 나머지는 무엇이 있으면 한쪽에 머물 수 있는가?</div></div>
