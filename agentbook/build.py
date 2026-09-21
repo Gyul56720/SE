@@ -102,7 +102,14 @@ import bookK                                   # noqa: E402
         ("P2_frontier",  ["ch_frontier"]),
         ("P3_repro",     ["ch_repro"]),
     ]),
-    ("13부. 현장", [
+    ("13부. 직접 짓기 — 다섯 엔지니어를 혼자 세운다", [
+        ("W1_skeleton",  ["ch_skeleton"]),
+        ("W2_figures",   ["ch_figures"]),
+        ("W3_substitute", ["ch_substitute"]),
+        ("W4_bite",      ["ch_bite"]),
+        ("W5_wiring",    ["ch_wiring"]),
+    ]),
+    ("14부. 현장", [
         ("A21_thisagent", ["ch_thisagent"]),
         ("A22_se",       ["ch_se"]),
         ("A23_incident", ["ch_incident"]),
