@@ -208,6 +208,92 @@ ok("<svg" in V.히트맵([[0, 1], [1, 0]], "x"), "히트맵")
 ok("<svg" in V.선([1, 2], [("x", [1e0, float("inf")])], 로그y=True),
    "**무한대가 들어와도 눈금이 안 터진다** (MTBF 가 실제로 그랬다)")
 
+# ------------------------------------------------------------------ 11. VCD 파서
+# **파형을 지어내지 않는다**를 붙드는 검사다. VCD 규격대로 적은 파일을 읽어
+# 값이 그대로 나오는지, 그리고 **없는 것을 있다고 하지 않는지** 본다.
+from house.dv import vcd as VCD  # noqa: E402
+
+_vcd = """$timescale 1ps $end
+$scope module TOP $end
+$scope module dut $end
+$var wire 1 ! clk $end
+$var wire 1 " en $end
+$var wire 4 # cnt [3:0] $end
+$upscope $end
+$upscope $end
+$enddefinitions $end
+#0
+0!
+0"
+b0000 #
+#10
+1!
+1"
+b0011 #
+#20
+0!
+#30
+1!
+b1010 #
+"""
+_f = 임시 / "t.vcd"
+_f.write_text(_vcd, encoding="utf-8")
+_d = VCD.읽기(_f)
+ok(_d["눈금"] == "1ps", "VCD 의 timescale 을 읽는다")
+ok(_d["신호수"] == 3 and _d["끝시각"] == 30, "신호 3개 · 끝시각 30 을 읽는다")
+ok(VCD.찾기(_d, "clk") == "TOP.dut.clk", "꼬리 이름으로 풀이름을 찾는다 ($scope 를 쌓는다)")
+ok(_d["폭"][VCD.찾기(_d, "cnt")] == 4, "다비트 폭을 읽는다")
+ok(VCD.찾기(_d, "없는신호") is None, "**없는 신호에는 None** — 없는 것을 지어내지 않는다")
+ok(VCD.클럭엣지(_d, "clk") == [10, 30], "상승 엣지 시각이 정확하다")
+_뽑 = dict((n, v) for n, v, _t in VCD.뽑기(_d, ["clk", "en", "cnt"], 주기수=2))
+ok(_뽑["en"] == "11", "클럭 엣지에서 뜬 표본이 맞다")
+ok(_뽑["cnt"] == "3A", "다비트를 16진수로 접는다 (0b0011=3, 0b1010=A)")
+_원 = dict((n, v) for n, v, _t in VCD.원시(_d, ["clk"], 끝시각=30, 점=4))
+ok(set(_원["clk"]) <= set("01x"), "원시 표본이 0/1/x 만 낸다")
+_a, _b = VCD.구간찾기(_d, "en", "1", 앞=5, 뒤=5)
+ok(_a == 5 and _b == 15, "**구간을 규칙으로 고른다** — 그 사건이 처음 나는 자리 둘레")
+_띠 = VCD.띠만들기(_d, "cnt", 0, 30, 점=30, 이름표={"0011": "RUN"})
+ok(isinstance(_띠, list), "주석 띠를 만든다")
+# 값이 아직 안 바뀐 구간은 x 여야 한다 -- 0 으로 채우면 없는 것을 있다고 하는 것이다
+ok(VCD.값([(10, "1")], 0) == "x", "**변화 전은 x 다** — 0 으로 채우지 않는다")
+
+# ------------------------------------------------------------------ 12. 새 그림들
+ok("<svg" in V.파형뷰어([("clk", "0101", "bit"), ("d", "3A5F", "bus")], "x",
+                    시작시각=0, 끝시각=40), "파형 뷰어가 SVG 를 낸다")
+ok("<svg" in V.파형뷰어([("q", "01x1", "bit")], "x",
+                    표시=[(2, "커서")], 주석띠=[(0, 2, "LOAD")]),
+   "파형 뷰어가 커서와 주석 띠를 받는다 (x 구간 포함)")
+_cg = V.커버그룹([(0, "pkg", "p", 92.3, 100, ""), (2, "cvp", "cp_len", 100.0, 100, "5/5"),
+              (2, "cross", "cr", 50.0, 100, "10/20")], "Covergroups")
+ok("<svg" in _cg and "% of Goal" in _cg and "Status" in _cg,
+   "**커버그룹 창에 Name/Coverage/Goal/% of Goal/Status 칸이 있다**")
+ok("<svg" in V.플로어플랜도([500, 500], [344, 343], [120, 250, 380], 0.6, 제목="x"),
+   "플로어플랜 그림 (패드·링·스트라이프 라벨)")
+ok("<svg" in V.레이아웃뷰어([344, 343], [(1, 1, 2, 5, "seq")],
+                      배선=[(0, 0, 10, 10, 1)], 클럭=[(0, 0, 5, 5)], 제목="x"),
+   "레이아웃 뷰어 (배선 층 · 클럭 하이라이트)")
+from house import sch as SCH  # noqa: E402
+ok("<svg" in SCH.uvm구조({"랜덤": 1, "지시": 1, "대조": 2, "불일치": 0,
+                        "커버리지": 90.0, "빈맞은": 1, "빈전체": 2}),
+   "UVM 구조도")
+ok("<svg" in SCH.ate({"패턴수": 512, "메모리_kB": 1, "시간_ms": 1, "체인": 1, "압축": 1}),
+   "ATE 그림")
+ok("<svg" in SCH.하이브리드bist({"서명": "0x0", "mbist_ms": 1, "lbist_ms": 1}), "Hybrid BIST")
+ok("<svg" in SCH.스캔체인({"체인": 4, "압축": 4, "플롭": 425}), "스캔 체인")
+ok("<svg" in SCH.cgic({"잰것": "x"}), "CGIC 회로도")
+ok("<svg" in SCH.동기화기(2, "x"), "2FF 동기화기 회로도")
+ok("<svg" in SCH.데이터패스(["S1", "S2"], [("MUL", 1, 90, 60, 40)]), "파이프라인 데이터패스")
+ok("<svg" in SCH.경로도([{"셀": "DFFX1", "증분_ps": 0, "도착_ps": 0},
+                      {"셀": "NAND2X1", "증분_ps": 28.4, "도착_ps": 28.4}],
+                     "x", 주기_ps=10000, 슬랙_ps=-120), "사인오프 임계경로 회로도")
+ok("<svg" in SCH.사인오프판([("타이밍", "NG", "-120 ps", "≥0", "sta")]), "사인오프 판정표")
+for _꼴 in ("inv", "buf", "and", "nand", "or", "nor", "xor", "xnor", "mux",
+           "aoi", "oai", "dff", "dffr", "lat", "box"):
+    ok(len(SCH.기호(_꼴, 0, 0)) > 40, f"게이트 기호 {_꼴}")
+ok(SCH.꼴찾기("NAND2X1") == "nand" and SCH.꼴찾기("INVX4") == "inv"
+   and SCH.꼴찾기("DFFRX1") == "dffr" and SCH.꼴찾기("XNOR2X1") == "xnor",
+   "**셀 이름에서 기호 꼴을 고른다** (DFFR 이 DFF 보다 먼저, XNOR 이 XOR 보다 먼저)")
+
 print()
 if FAIL:
     print(f"실패 {len(FAIL)}개")
