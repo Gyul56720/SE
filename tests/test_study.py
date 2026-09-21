@@ -61,7 +61,8 @@ BODIES = {
 
 def skeleton(i, year, cited):
     return {"id": i, "title": f"paper {i}", "year": year, "doi": f"10.1/{i}",
-            "venue": "IEEE JSSC", "cited_by": cited, "abstract": "abstract text",
+            "venue": "IEEE JSSC", "cited_by": cited,
+            "abstract": "a CMOS converter circuit", "oa_locations": [f"https://example.org/{i}"],
             "references": [], "n_references": 0, "oa_status": "gold",
             "oa_url": f"https://example.org/{i}", "license": "cc-by", "authors": []}
 
@@ -70,7 +71,9 @@ FOUND = [skeleton("W1", 2024, 90), skeleton("W2", 2023, 70),
          skeleton("W3", 2022, 50), skeleton("W4", 2021, 30)]
 
 _search, _walk = OA.search, OA.walk_back
-OA.search = lambda q, n=10, since=None, until=None, open_only=False: FOUND[:n]
+# The fixture papers must look like our field, or dig/domain drops them as
+# belonging to the other tenant of the acronym -- which is the whole point of it.
+OA.search = lambda q, n=10, since=None, until=None, open_only=False, sort="relevance": FOUND[:n]
 OA.walk_back = lambda seed, depth=1, per_level=5: {
     "seed": FOUND[0], "levels": [[skeleton("W9", 1998, 800)]], "all": {}}
 
@@ -241,7 +244,74 @@ ok(DISPATCH.앞세울것("8탭 FIR 필터 논문 분석해줘")[0] == "!논문 8
 
 
 print()
+print("[domain] the acronym is taken -- say which field you mean")
+from dig import domain as DOM        # noqa: E402
+
+# 실측 2026-09-21: `dig/study.py "SAR ADC calibration"` 이 돌려준 세 편이 전부
+# 다른 분야였다 -- 무인기 사진측량 · 원격탐사 영상융합 · 5G 밀리미터파. 문헌 전체에서
+# SAR 은 synthetic aperture radar 를 훨씬 더 자주 뜻하고, 피인용 순 정렬이 그 분야의
+# **리뷰 논문**을 맨 위로 올린다.
+q = DOM.expand("SAR ADC calibration")
+ok("successive approximation" in q,
+   f"**약어를 풀어 질의를 모호하지 않게 만든다** ({q[:70]})")
+ok(DOM.expand("PLL jitter").endswith("phase-locked loop"), "PLL 도 마찬가지")
+ok(DOM.expand("successive approximation register calibration")
+   == "successive approximation register calibration",
+   "이미 풀려 있으면 덧붙이지 않는다")
+ok(DOM.expand("protein folding") == "protein folding", "우리 분야가 아닌 말은 안 건드린다")
+
+실측결과 = [
+    {"title": "Unmanned aerial systems for photogrammetry and remote sensing: A review",
+     "abstract": "UAV imagery for mapping", "venue": "ISPRS Journal"},
+    {"title": "Multisensor image fusion in remote sensing", "abstract": "fusion methods",
+     "venue": "Information Fusion"},
+    {"title": "A 12-bit SAR ADC with redundancy",
+     "abstract": "capacitive DAC in 28nm CMOS", "venue": "IEEE JSSC"},
+]
+kept, dropped = DOM.keep(실측결과, 6)
+ok([p["title"][:20] for p in kept] == ["A 12-bit SAR ADC wit"],
+   "**사용자가 실제로 받은 그 세 편에서 회로 논문만 남는다**")
+ok(len(dropped) == 2, "버린 것도 세어 둔다 -- 조용히 거르면 검사할 수 없다")
+남, 버 = DOM.keep(실측결과[:2], 6)
+ok(len(남) == 2 and 버 == [],
+   "**다 걸러질 상황이면 거르지 않는다** -- 우리 낱말 밖 주제도 돌아가야 한다")
+ok(DOM.keep([], 5) == ([], []), "빈 결과는 빈 결과")
+
+print()
+print("[sort] 피인용 순이 기본이면 그 분야 리뷰가 올라온다")
+잡 = {}
+def _spy(q, n=10, since=None, until=None, open_only=False, sort="relevance"):
+    잡["sort"] = sort
+    잡["q"] = q
+    잡["n"] = n
+    return []
+_prev = OA.search
+OA.search = _spy
+ST.study("SAR ADC calibration", n=5)
+ok(잡["sort"] == "relevance", "**기본은 관련도 순이다**")
+ok("successive approximation" in 잡["q"], "풀린 질의가 실제로 나간다")
+ok(잡["n"] > 5, f"거를 것을 감안해 더 많이 받아 온다 ({잡['n']}) -- 딱 n 개만 받으면 늘 모자란다")
+ST.study("SAR ADC calibration", n=5, sort="cited")
+ok(잡["sort"] == "cited", "피인용 순은 고를 수 있게 남겨 둔다")
+OA.search = _prev
+
+print()
+print("[locations] 403 하나로 그 논문을 포기하지 않는다")
+두곳 = {"title": "x", "doi": "10.1/x", "abstract": "cmos circuit",
+       "oa_locations": ["https://publisher/landing", "https://repo.univ/paper.html"]}
+FT.search_arxiv = lambda title: []
+def _fetch(url):
+    if "publisher" in url:
+        raise Exception("HTTPError: HTTP Error 403: Forbidden")
+    return ("Abstract\nA.\n\n1 Introduction\n" + ("word " * 500), "html")
+FT.get_text = _fetch
+r5 = FT.get_body(두곳)
+ok(r5["evidence"] == "full",
+   "**앞의 자리가 403 이어도 다음 열린 자리를 두드린다** (실측: 여기서 세 편을 잃었다)")
+ok(any("403" in m for m in r5["misses"]), "403 을 맞은 자리도 기록에 남는다")
+
+print()
 if fails:
     print(f"{len(fails)} failed: {fails}")
     raise SystemExit(1)
-print("study: pipeline · themes · honesty · report · ledger · command · routing · front -- passed")
+print("study: pipeline · themes · honesty · report · ledger · command · routing · front · domain -- passed")

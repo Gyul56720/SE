@@ -55,6 +55,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 
+from dig import domain as DOM       # noqa: E402
 from dig import fulltext as FT       # noqa: E402
 from dig import openalex as OA       # noqa: E402
 from dig import sections as SEC      # noqa: E402
@@ -142,14 +143,24 @@ def read_paper(p: dict, want_body: bool = True) -> dict:
 
 
 def study(topic: str, n: int = 5, since: "int | None" = None, depth: int = 1,
-          want_body: bool = True, open_only: bool = False) -> dict:
+          want_body: bool = True, open_only: bool = False,
+          sort: str = "relevance") -> dict:
     """Run the whole method over one topic.
 
     n defaults to 5 because the method does: fewer than five and a repeated phrase
     is a coincidence rather than a pattern.
     """
     t0 = time.time()
-    found = OA.search(topic, n=n, since=since, open_only=open_only)
+    # **Say which field you mean before you search.** Measured 2026-09-21: asking
+    # for "SAR ADC calibration" returned photogrammetry, remote-sensing image
+    # fusion and 5G millimetre-wave -- not one circuit paper, because SAR means
+    # synthetic aperture radar to the literature at large. See dig/domain.py.
+    query = DOM.expand(topic)
+    # Ask for more than we need, then drop the ones from the other field. Asking
+    # for exactly n and filtering would leave us short every time.
+    raw = OA.search(query, n=min(50, max(n * 3, n + 4)), since=since,
+                    open_only=open_only, sort=sort)
+    found, dropped = DOM.keep(raw, n)
     papers = [read_paper(p, want_body=want_body) for p in found]
     walked = {}
     if found:
@@ -159,7 +170,8 @@ def study(topic: str, n: int = 5, since: "int | None" = None, depth: int = 1,
             walked = {"error": f"{type(e).__name__}: {e}"[:160]}
     full = [p for p in papers if p["evidence"] == "full"]
     res = {
-        "topic": topic, "asked": n, "found": len(papers),
+        "topic": topic, "query": query, "asked": n, "found": len(papers),
+        "dropped": [p.get("title", "")[:70] for p in dropped],
         "read_full": len(full),
         "papers": papers,
         "techniques": themes(papers, field="techniques"),
@@ -246,6 +258,12 @@ def report(res: dict) -> str:
     """One screen. Every number here was counted, not estimated."""
     out = [f"**{res['topic']}** -- {res['found']} papers, "
            f"**body read for {res['read_full']}** ({res['seconds']}s)"]
+    if res.get("query") and res["query"] != res["topic"]:
+        out.append(f"_asked OpenAlex for:_ `{res['query']}`")
+    if res.get("dropped"):
+        # **A filter that works silently is a filter you cannot check.**
+        out.append(f"_dropped {len(res['dropped'])} result(s) from another field "
+                   f"(e.g. \"{res['dropped'][0]}\")_")
     if res["found"] and not res["read_full"]:
         out.append("\n⚠ **Nothing below rests on a body** -- abstracts only. "
                    "A pattern across abstracts is weaker than one across introductions.")
@@ -317,10 +335,13 @@ def main(argv=None) -> int:
     ap.add_argument("--open-only", action="store_true",
                     help="only papers with an open version -- fewer, but readable")
     ap.add_argument("--no-body", action="store_true", help="skeletons only, no fetching")
+    ap.add_argument("--cited", action="store_true",
+                    help="sort by citations instead of relevance (surfaces reviews)")
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args(argv)
     res = study(a.topic, n=a.n, since=a.since, depth=a.depth,
-                want_body=not a.no_body, open_only=a.open_only)
+                want_body=not a.no_body, open_only=a.open_only,
+                sort="cited" if a.cited else "relevance")
     print(json.dumps(res, ensure_ascii=False, indent=2) if a.json else report(res))
     record(res)
     return 0 if res["found"] else 3

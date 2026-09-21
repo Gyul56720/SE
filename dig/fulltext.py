@@ -150,16 +150,23 @@ def get_body(paper: dict, try_twin: bool = True) -> dict:
             except Exception as e:                            # noqa: BLE001
                 res["misses"].append(f"arxiv: {type(e).__name__}: {e}"[:160])
 
-    # 2) the open location OpenAlex gave us
-    if oa_url:
+    # 2) every open location OpenAlex knows, not just the best one.
+    #
+    # Measured 2026-09-21: three papers were lost to "HTTP Error 403: Forbidden"
+    # from a publisher landing page while **other open copies were never tried**.
+    # A repository or preprint copy of the same paper is often readable when the
+    # publisher's page is not. (We do not dress the request up as a browser to get
+    # past a 403 -- that block is deliberate, and going around it is not ours to do.)
+    for url in (paper.get("oa_locations") or ([oa_url] if oa_url else [])):
         try:
-            text, kind = _fetch(oa_url)
+            text, kind = _fetch(url)
             if len(text.strip()) > BODY_MIN_CHARS:
                 return accept(text, "oa")
             res["misses"].append(
-                f"oa({kind or '?'}): only {len(text.strip())} chars -- landing page, not a body")
+                f"oa({kind or '?'}): only {len(text.strip())} chars -- "
+                f"landing page, not a body [{url[:60]}]")
         except Exception as e:                                # noqa: BLE001
-            res["misses"].append(f"oa: {type(e).__name__}: {e}"[:160])
+            res["misses"].append(f"oa: {type(e).__name__}: {e} [{url[:60]}]"[:200])
 
     # 3) preprint twin, matched by title
     if try_twin and title:
