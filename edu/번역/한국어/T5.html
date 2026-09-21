@@ -1,0 +1,117 @@
+<h1 id="T5">T5. 표본화 — 연속 신호가 수가 되는 자리</h1>
+<p class="한줄">클럭 둘이 모든 것을 정한다. 언제 표본화하는가, 그리고 그 '언제' 를 얼마나 정확히 아는가. 오늘 팔리는 모든 고속 변환기를 묶는 것은 두 번째다.</p>
+<div class="사다리"><div class="사다리앞"><b>읽기 전에 알아야 하는 것</b><br>전압 · 주파수 · 위상 · 적분 · 미분 · 확률 · 표준편차 · 로그 · RC지연 · 슬루 · kTC잡음 · 열잡음 · SNR · SNDR · ENOB · 잡음대역폭</div><div class="사다리뒤"><b>이 장에서 새로 나오는 것</b><br>표본화정리 · 엘리어싱 · 나이키스트 · 대역통과표본화 · 구경시간 · 구경지터 · 지터한계SNR · 추적유지 · 트래킹대역폭 · 차지인젝션 · 클럭피드스루 · 부트스트랩스위치 · 오버샘플링비 · 잡음성형 · 데시메이션</div></div>
+<p>표본화는 보통 이상화로 가르친다 — 임펄스 열을 곱하고, 스펙트럼이 되풀이되는
+    것을 보고, 겹치지 않게 한다. 그 이야기는 맞고, 하드웨어를 묶는 것은 그 이야기가
+    아니다. 진짜 표본화기는 스위치를 유한한 시간 동안, 유한한 저항을 통해, 몇
+    피코초 안에서만 알 수 있는 순간에 닫아서, T4 의 kT/C 가 이미 크기를 정해 놓은
+    축전기에 얹는다. 그 네 낱말 — 유한, 유한, 순간, 축전기 — 하나하나가 해상도를
+    치르고, 몇백 메가헤르츠 위에서 지배하는 것은 세 번째다.</p>
+<h2>T5.1 엘리어싱은 지켜야 하는 정리가 아니라 사야 하는 필터다</h2>
+<div class="유도"><div class="유도머리">유도 &mdash; 임펄스 열에서 접힌 스펙트럼까지</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">f<sub>s</sub> 로 표본화하는 것은 신호에 T<sub>s</sub> = 1/f<sub>s</sub> 간격의 임펄스 열을 곱하는 것이다.</td><td class="유도왜">이상화다. 엘리어싱에 관한 모든 것이 이 한 걸음에서 따라 나온다. 비이상성은 나중에 오고 이것을 바꾸지 않는다.</td></tr><tr><td class="유도번호">2</td><td class="유도말">시간에서의 곱은 주파수에서의 합성곱이고, 임펄스 열의 스펙트럼은 그 자체가 f<sub>s</sub> 간격의 임펄스 열이다.</td><td class="유도왜">그래서 입력 스펙트럼이 f<sub>s</sub> 의 모든 배수 자리로 <b>복사된다</b>.</td></tr><tr><td class="유도번호">3</td><td class="유도말">입력이 f<sub>s</sub>/2 보다 좁은 대역에 갇혀 있지 않으면 복사본이 겹친다.</td><td class="유도왜">나이퀴스트. 그것이 <i>말하지 않는</i> 것을 눈여겨보라. 대역이 어디에 앉는지는 아무 말도 안 하고, 얼마나 넓은지만 말한다.</td></tr><tr><td class="유도번호">4</td><td class="유도말">f<sub>s</sub>/2 위의 모든 것이 아래로 접히고, 그 뒤로는 진짜 신호와 <b>구별되지 않는다</b>.</td><td class="유도왜">어떤 디지털 처리로도 되돌릴 수 없다 — 둘을 가르던 정보가 표본화기에서 이미 없어졌다. 안티엘리어스 필터가 아날로그 부품이고 소프트웨어로 옮길 수 없는 까닭이다.</td></tr><tr><td class="유도번호">5</td><td class="유도말"><b>잡음도 접힌다</b>, 같은 규칙으로.</td><td class="유도왜">대역폭 5 GHz 인 전단을 200 MHz 로 표본화하면 열잡음 50 대역이 신호 위로 접힌다 — 17 dB 벌점이다. <b>필요 없는 대역폭은 공짜가 아니다.</b> 값을 치르는 잡음이다.</td></tr></tbody></table></div>
+<div class="개념"><div class="개념머리">대역통과 표본화 — 접힘을 일부러 쓰기</div>
+<div class="개념이론"><p>나이퀴스트는 대역의 <i>폭</i>을 묶지 그 자리를 묶지 않는다. 2.4 GHz
+        중심의 100 MHz 를 차지하는 신호는 250 MS/s 로 표본화할 수 있다. 대역이
+        나이퀴스트 구역 하나 안에 온전히 들어가고 표본화기의 입력 대역폭이
+        2.4 GHz 까지 닿기만 하면 된다. 그 알리아스가 <i>곧</i> 원하는 신호이고,
+        공짜로 아래로 옮겨져 있다.</p>
+        <p>값은 분명하다. 표본화 <b>구경</b>이 표본화율은 250 MHz 인데도
+        2.4 GHz 에 걸맞게 좋아야 한다 — 지터는 클럭 속도가 아니라 입력 주파수에
+        환산된다. 그 맞바꿈(믹서는 없애지만 훨씬 어려운 클럭)이 공학적 결정의
+        전부다.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>IF 에서 디지털화하는 RF 수신기, 소프트웨어 정의 라디오 전단, 그리고 높은 주파수에 앉은 좁은 대역을 잡아야 하는 모든 계측기.</td></tr>
+<tr><th>언제 쓰나</th><td>대역이 중심 주파수에 견주어 좁고, 그러지 않으면 하향 변환 믹서와 그 LO 값을 치러야 할 때.</td></tr>
+<tr><th>어떻게 쓰나</th><td>대역이 구역 하나 안에 엄격히 들어가도록 f<sub>s</sub> 를 고르고(k·f<sub>s</sub>/2 에서 (k+1)·f<sub>s</sub>/2 까지), <b>대역통과</b> 안티엘리어스 필터를 단다 — 여기서 저역통과는 쓸모가 없다 — 그리고 지터를 RF 반송파에 견주어 예산 잡는다.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>// Zone check, written as an assertion rather than a comment.
+// A band that straddles a zone boundary is a silent failure: it still samples,
+// and the output is two overlapped copies.
+localparam real FS = 250e6, FC = 2.4e9, BW = 100e6;
+initial begin
+    int k = $floor(2.0*(FC - BW/2)/FS);
+    assert ($floor(2.0*(FC + BW/2)/FS) == k)
+        else $fatal(1, "band straddles a Nyquist zone boundary -- pick another FS");
+end</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> 대역통과 표본화의 안티엘리어스 필터는 f<sub>s</sub>/2
+            위의 주파수만이 아니라 <b>다른 모든 구역</b>을 막아야 한다. 여기에
+            저역통과 필터를 재활용하는 기술자는 실험실에서는 되고(거기에는 원하는
+            신호밖에 없다) 현장에서는 안 되는 수신기를 얻는다.</div>
+</div>
+<h2>T5.2 구경 지터 — 벽</h2>
+<div class="정의"><b>구경지터 (aperture jitter)</b> &mdash; 표본화기가 신호를 실제로 잡는 순간의 rms 불확실도. 클럭 경로(위상 잡음, 전원이 일으키는 지연 변조, 마지막 버퍼의 열잡음)와 표본화기 자신에게서 오고, 표본화율이 아니라 <b>입력 주파수에 환산된다</b>.</div>
+<div class="유도"><div class="유도머리">유도 &mdash; 신호가 빨라질수록 지터가 왜 더 비싸지나</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">사인파 v(t) = A·sin(2πf<sub>in</sub>t) 의 기울기는 dv/dt = 2πf<sub>in</sub>A·cos(…) 다.</td><td class="유도왜">기울기가 시간 오차를 전압 오차로 바꾸는 것이다 — 기구가 그것뿐이다.</td></tr><tr><td class="유도번호">2</td><td class="유도말">그러므로 시간 오차 Δt 는 전압 오차 Δv = (dv/dt)·Δt 를 낳고, 기울기가 가장 큰 영교차에서 가장 나쁘다.</td><td class="유도왜">가장 큰 오차는 신호가 가장 클 때가 아니라 가장 빨리 <i>변할</i> 때 난다.</td></tr><tr><td class="유도번호">3</td><td class="유도말">rms 지터 σ<sub>t</sub> 와 전체 눈금 사인파에서 rms 오차는 2πf<sub>in</sub>·(A/√2)·σ<sub>t</sub> 이고, 신호 rms 는 A/√2 다.</td><td class="유도왜">진폭이 사라진다 — <b>지터가 묶는 SNR 은 신호 진폭과 무관하다</b>. 크기를 줄여서 거기서 물러날 수 없는 까닭이다.</td></tr><tr><td class="유도번호">4</td><td class="유도말">SNR = −20·log<sub>10</sub>(2πf<sub>in</sub>σ<sub>t</sub>).</td><td class="유도왜">식 하나, 변수 둘, 소자 매개변수는 없다. 오로지 클럭과 입력 주파수만의 성질이다.</td></tr><tr><td class="유도번호">5</td><td class="유도말">f<sub>in</sub> = 1 GHz 에서 지터 100 fs 면 64&nbsp;dB — 10.3 비트다.</td><td class="유도왜"><b>100 fs 는 이미 어려운 클럭이다.</b> 기가헤르츠 12 비트 변환기가 비교기와는 아무 상관 없는 방식으로 어려운 까닭이다.</td></tr></tbody></table></div>
+<table><caption>표 86. 지터가 묶는 SNR 과 ENOB (서로 무관한 구경 지터만)</caption><thead><tr><th>f_in</th><th>1 ps</th><th>300 fs</th><th>100 fs</th><th>30 fs</th></tr></thead><tbody><tr><td>0.1&nbsp;GHz</td><td>64.0 dB / 10.3 b</td><td>74.5 dB / 12.1 b</td><td>84.0 dB / 13.7 b</td><td>94.5 dB / 15.4 b</td></tr><tr><td>1&nbsp;GHz</td><td>44.0 dB / 7.0 b</td><td>54.5 dB / 8.8 b</td><td>64.0 dB / 10.3 b</td><td>74.5 dB / 12.1 b</td></tr><tr><td>5&nbsp;GHz</td><td>30.1 dB / 4.7 b</td><td>40.5 dB / 6.4 b</td><td>50.1 dB / 8.0 b</td><td>60.5 dB / 9.8 b</td></tr></tbody></table>
+<div class="예제"><div class="예제머리">예제 14. 입력 1 GHz 12 비트 변환기에는 어떤 클럭이 필요한가?</div><div class="예제줄"><b>주어진 것.</b> 설계 목표는 입력 1 GHz 에서 실효 12 비트다. 지터가 유일한 오차원이라고
+        하자 — 낙관적인 가정이고, 그래서 답은 클럭이 얼마나 좋아야 하는가의
+        <b>하한</b>이 된다.</div><div class="예제줄"><b>푸는 법.</b> SNR 식을 뒤집는다: σ<sub>t</sub> = 1/(2π·f<sub>in</sub>·2<sup>N</sup>).</div><div class="예제답"><b>답.</b> σ<sub>t</sub> = 38.9&nbsp;fs rms. 14 비트면
+        9.71&nbsp;fs 다.</div><div class="예제덧"><table><caption>표 87. f_in = 1 GHz 에서 필요한 rms 구경 지터</caption><thead><tr><th>비트</th><th>필요한 σ_t</th></tr></thead><tbody><tr><td>8</td><td>622&nbsp;fs</td></tr><tr><td>10</td><td>155&nbsp;fs</td></tr><tr><td>12</td><td>38.9&nbsp;fs</td></tr><tr><td>14</td><td>9.71&nbsp;fs</td></tr><tr><td>16</td><td>2.43&nbsp;fs</td></tr></tbody></table></div><div class="예제함정"><b>여기서 틀린다.</b> 그 수를 클럭 <i>소스</i>에 적힌 지터와 견주는 것.
+        중요한 규격은 분배 경로 전체 — 버퍼, 레벨 시프터, 분주기, 그리고 디지털
+        쪽이 거기에 집어넣은 전원 잡음 — 를 지난 뒤 <b>표본화 스위치에서의</b>
+        지터다. 시끄러운 버퍼 사슬 뒤에 있는 20 fs 소스는 200 fs 표본화기이고,
+        소스의 데이터시트는 그것을 말해 주지 않는다.</div></div>
+<div class="짚기">지터와 kT/C 는 진폭이 아니라 <b>전력</b>으로 더해지고, 주파수에
+    대해 서로 반대로 비례한다. kT/C 는 평평한데 지터는 입력 주파수 한 옥타브마다
+    6 dB 씩 나빠진다. 그러므로 갈림 주파수가 늘 있고, 자신이 그 어느 쪽에 있는지를
+    아는 것이 어느 손잡이가 무언가를 하는지 말해 준다. 아래쪽이면 면적을 용량에
+    쓰라. 위쪽이면 전력을 클럭에 쓰라 — <b>지터가 묶는 설계에서 표본화 축전기를
+    키우는 것은 아무것도 사지 못하고</b>, 재설계를 낭비하는 가장 흔한 길이다.</div>
+<h2>T5.3 스위치 자체: 차지 인젝션, 피드스루, 그리고 부트스트랩</h2>
+<figure><path d="M150,90 L164,90" fill="none" stroke="#111" stroke-width="1.6"/><path d="M168,77 L168,103" fill="none" stroke="#111" stroke-width="2.0"/><path d="M173,77 L173,103" fill="none" stroke="#111" stroke-width="2.0"/><path d="M173,79 L176,79 L176,72" fill="none" stroke="#111" stroke-width="1.6"/><path d="M173,101 L176,101 L176,108" fill="none" stroke="#111" stroke-width="1.6"/><path d="M240,30 L240,38" fill="none" stroke="#c0392b" stroke-width="1.6"/><path d="M231,30 L249,30" fill="none" stroke="#c0392b" stroke-width="2.2"/><text x="240" y="25" fill="#c0392b" font-size="10" text-anchor="middle">VDD</text><figcaption><b>그림 35.</b> 표본화 스위치. 그 온저항이 트래킹 대역폭을 정하고, 그 채널 전하는 스위치가 꺼질 때 표본화 축전기에 얹힌다.</figcaption></figure>
+<table><caption>표 88. 스위치가 더하는 오차 셋, 그리고 각각이 무엇에 달려 있나</caption><thead><tr><th>오차</th><th>기구</th><th>무엇에 비례하나</th><th>신호 의존?</th></tr></thead><tbody><tr><td>차지 인젝션</td><td>소자가 꺼질 때 채널의 반전 전하가 어디론가 가야 한다. 대략 절반이 C<sub>s</sub> 에 얹힌다</td><td>W·L·C<sub>ox</sub>·(V<sub>GS</sub>−V<sub>th</sub>) / C<sub>s</sub></td><td><b>그렇다</b> — V<sub>GS</sub> 가 표본화된 준위에 달려 있으므로 오프셋이 아니라 왜곡이 된다</td></tr><tr><td>클럭 피드스루</td><td>C<sub>gd</sub> 가 떨어지는 클럭 에지를 축전기로 결합시킨다</td><td>C<sub>ov</sub>/(C<sub>ov</sub>+C<sub>s</sub>) · V<sub>clk</sub></td><td>아니다 (1 차로) — 대체로 고정 오프셋이다</td></tr><tr><td>R<sub>on</sub> 변조</td><td>스위치의 온저항이 V<sub>GS</sub> = V<sub>clk</sub> − v<sub>in</sub> 에 달려 있다</td><td>1/(μC<sub>ox</sub>(W/L)(V<sub>GS</sub>−V<sub>th</sub>))</td><td><b>그렇다</b> — 신호에 따라 변하는 시간상수는 신호에 따라 변하는 정착이고, 그것이 왜곡이다</td></tr></tbody></table>
+<div class="개념"><div class="개념머리">부트스트랩 스위치</div>
+<div class="개념이론"><p>스위치의 게이트를 V<sub>DD</sub> 가 아니라 v<sub>in</sub> + V<sub>DD</sub>
+        에 붙들어 둔다. V<sub>DD</sub> 로 미리 충전한 축전기를 트래킹 구간에
+        게이트로 뒤집어 붙여서 그렇게 한다. 그러면 V<sub>GS</sub> 가 신호와
+        무관하게 일정하므로 R<sub>on</sub> 이 일정하고 꺼질 때 주입되는 전하도
+        일정하다 — <b>신호에 따라 변하던 오차가 오프셋이 되고</b>, 차동 설계에서
+        오프셋은 해롭지 않다.</p>
+        <p>놓치기 쉬운 신뢰성 문제도 같이 풀린다. 부트스트랩이 없으면 접지 근처
+        신호를 지나보내는 스위치가 V<sub>GS</sub> = V<sub>DD</sub> 를 보게 되는데,
+        진보한 노드에서는 그것이 소자 수명에 걸쳐 산화막의 정격을 넘을 수
+        있다(T14).</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>10 비트를 넘는 사실상 모든 SAR 과 파이프라인 ADC 의 입력 표본화 회로망, 그리고 선형성이 높은 스위치드 커패시터 필터.</td></tr>
+<tr><th>언제 쓰나</th><td>면적보다 THD 나 SFDR 이 중요할 때. 맨 NMOS 스위치는 8 비트에는 괜찮고 12 비트에는 가망이 없다.</td></tr>
+<tr><th>어떻게 쓰나</th><td>부트스트랩 축전기를 그것이 몰아야 할 게이트 용량보다 훨씬 크게 잡고, 클럭 구간마다 모든 마디의 신뢰성을 확인하고, 왜곡을 단일 톤이 아니라 <b>두 톤</b> 과도로 검증한다 — 상호변조가 단일 톤이 감추는 잔여 신호 의존을 드러낸다.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>* The check that matters, and the one people skip.
+* A single tone can look clean while IM3 is terrible.
+Vin1 in1 0 SIN(0 0.45 100.1MEG)
+Vin2 in2 0 SIN(0 0.45 103.3MEG)
+.tran 10p 20u
+.four 100.1MEG v(sampled)          $ harmonic distortion
+* and post-process the FFT for IM3 at 2*f1-f2 = 96.9 MHz -- the number the
+* customer will measure and the one that exposes Ron modulation.</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> 부트스트랩은 게이트 전압을 전원 위로 올리므로, 부트스트랩
+            회로망의 모든 마디를 <b>빠르고, 전압이 높고, 온도가 낮은 코너</b>에서
+            산화막 한계에 견주어 확인해야 한다 — 성능을 묶는 코너와 반대쪽
+            코너다. 전형 코너에서만 검증한 부트스트랩 회로는 신뢰성 보고서가
+            기다리고 있는 것이다.</div>
+</div>
+<h2>T5.4 오버샘플링: 시간으로 비트를 사기</h2>
+<div class="유도"><div class="유도머리">유도 &mdash; 오버샘플링이 왜 도움이 되고, 얼마나 되나</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">양자화 잡음 전력은 <b>표본화율과 무관하게</b> LSB²/12 다.</td><td class="유도왜">양자화기는 자기가 얼마나 빨리 클럭되는지 모른다. 표본마다의 오차는 같은 분포를 갖는다.</td></tr><tr><td class="유도번호">2</td><td class="유도말">그 고정된 전력이 나이퀴스트 대역 0 에서 f<sub>s</sub>/2 에 펼쳐진다.</td><td class="유도왜">그래서 잡음 <i>밀도</i>는 LSB²/12 를 f<sub>s</sub>/2 로 나눈 것이다 — 빨리 표본화하면 묽어진다.</td></tr><tr><td class="유도번호">3</td><td class="유도말">신호 대역 B 까지 걸러 내면 그중 2B/f<sub>s</sub> 만 남는다.</td><td class="유도왜">오버샘플링비를 OSR = f<sub>s</sub>/(2B) 로 정의한다.</td></tr><tr><td class="유도번호">4</td><td class="유도말">SNR 이 10·log<sub>10</sub>(OSR) 만큼 좋아진다: <b>두 배마다 3 dB, 곧 반 비트</b>.</td><td class="유도왜">되먹임이 없는 맨 오버샘플링이다. 이 방식으로 8 비트에서 12 비트로 가려면 OSR = 256 이 필요하다 — 비싸지만 느린 센서에는 가끔 맞는 답이다.</td></tr><tr><td class="유도번호">5</td><td class="유도말">ΔΣ 변조기는 잡음을 그저 펼치는 것이 아니라 <b>모양 지운다</b>. L 차 고리면 두 배마다 (6L+3) dB 다.</td><td class="유도왜">고리가 양자화 잡음을 대역 밖으로 밀어낸다. 2 차 변조기는 OSR 한 옥타브마다 15 dB 를 번다 — ΔΣ 가 오디오와 정밀 감지를 지배하는 까닭이고, 기가헤르츠 신호 대역폭에서는 쓸모가 없는 까닭이다.</td></tr></tbody></table></div>
+<table><caption>표 89. OSR 을 두 배로 할 때마다 오버샘플링이 사 주는 것</caption><thead><tr><th>구조</th><th>OSR 2 배당 SNR 이득</th><th>OSR 2 배당 비트</th><th>어디서 이기나</th></tr></thead><tbody><tr><td>맨 오버샘플링 + 데시메이션</td><td>3 dB</td><td>0.5</td><td>느린 신호에서 값싼 해상도. 안티엘리어스 필터 부담 덜기</td></tr><tr><td>ΔΣ, 1 차</td><td>9 dB</td><td>1.5</td><td>간단하다. 다만 유휴 톤이 있다</td></tr><tr><td>ΔΣ, 2 차</td><td>15 dB</td><td>2.5</td><td>오디오, 정밀 센서</td></tr><tr><td>ΔΣ, 3 차 이상 / MASH</td><td>21 dB+</td><td>3.5+</td><td>안정성 공학을 치를 값어치가 있는 자리</td></tr></tbody></table>
+<div class="짚기">오버샘플링은 해상도를 사 주는 만큼이나 <b>안티엘리어스 필터</b>의
+    부담을 덜어 주고, 흔히 그것이 진짜 이유다. 20 kHz 오디오 대역을 44.1 kHz 로
+    표본화하려면 20 kHz 에서 평평하고 22.05 kHz 에서 죽은 필터가 있어야 한다 —
+    잔인한 아날로그 문제다. 2.8 MHz 로 표본화하면 요구가 '1.4 MHz 에서 죽어라'
+    로 옮겨 가고, 그것은 RC 하나다. <b>사라지는 그 필터가 대개 반 비트보다
+    값어치가 크다.</b></div>
+<h2>T5.5 월요일에 무엇을 할 것인가</h2>
+<table><caption>표 90. 이 장의 개념이 실제로 쓰이는 자리</caption><thead><tr><th>개념</th><th>쓰이는 블록</th><th>무엇을 정하나</th></tr></thead><tbody><tr><td>엘리어싱 · 나이키스트</td><td>f_s 와 안티엘리어스 필터 고르기</td><td>필터 차수 — 그리고 그것이 아날로그인지 오버샘플링과 나눠 질 수 있는지</td></tr><tr><td>구경지터</td><td>변환기를 설계하기 전의 클럭 구조</td><td>그 입력 주파수에서 목표 ENOB 에 닿는 것이 가능하기나 한가</td></tr><tr><td>대역통과표본화</td><td>RF 와 IF 수신기 전단</td><td>믹서를 뺄 수 있는가, 그리고 그러면 클럭에 얼마를 치러야 하는가</td></tr><tr><td>차지인젝션 · 부트스트랩스위치</td><td>10 비트 이상 변환기의 표본화 회로망</td><td>THD 와 SFDR, 그리고 그에 딸린 산화막 신뢰성 검사</td></tr><tr><td>오버샘플링비 · 잡음성형</td><td>느리고 정밀한 신호 경로</td><td>용량 대신 시간으로 해상도를 살 수 있는가</td></tr></tbody></table>
+<p>들고 갈 수: 입력 1 GHz 에서 <b>실효 12 비트는 rms 구경 지터
+    38.9&nbsp;fs 를 요구한다</b>. 클럭 소스가 아니라
+    스위치에서 잰 값으로. 고속 변환기의 모든 구조 결정 — 인터리빙, 대역통과
+    표본화, 클럭 버퍼가 어디에 앉는가 — 이 그 한 줄의 아래에 있다.</p>
+<p>다음 장은 표본화된 전압을 코드로 바꾸고, 구조들이 정확도에서 다른 것보다
+    같은 근본 한계를 <i>어디에</i> 쓰는지에서 더 다르다는 것을 알아낸다.</p>
+<div class="특허"><div class="특허머리">특허로 가는 길 &mdash; 이 주제에서 발명이 일어나는 자리</div><div class="특허속">표본화 순간은 고속 변환기에서 가장 많이 다투는 1 제곱
+        밀리미터이고, 특허가 그것을 보여 준다. 온저항이 신호에 안 달리도록
+        V<sub>GS</sub> 를 일정하게 붙드는 부트스트랩 스위치. 다른 무엇과도 버퍼를
+        일부러 <i>안</i> 나누는 클럭 경로. 트리밍이 아니라 대칭으로 차지 인젝션을
+        상쇄하는 표본화 방식. 그리고 한 단계 위에서, 조각마다 조금씩 틀린 순간에
+        표본화한다는 것이 어려움의 전부인 시간 인터리브 구조.
+        <b>그 하나하나가 증폭기가 아니라 구경에 대한 논의다.</b></div></div>
