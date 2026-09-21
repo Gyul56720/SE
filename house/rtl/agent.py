@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import math
+import pathlib
 import re
 import subprocess
 import sys
@@ -29,7 +30,9 @@ from house import people as 사람들    # noqa: E402
 from house import report as RPT       # noqa: E402
 from house import sim as SIM          # noqa: E402
 from house import synth as SYN        # noqa: E402
+from house import sch as SCH          # noqa: E402
 from house import viz as V            # noqa: E402
+from house.dv import vcd as VCD        # noqa: E402
 
 RTL파일 = 집 / "rtl" / "src" / "nsw_fir.sv"
 
@@ -165,6 +168,42 @@ def 일하기(빠르게=False, 회귀수=2000) -> dict:
     # --- 7. CDC ---
     결과["CDC"] = cdc점검()
     결과["MTBF"] = [{"단수": n, "MTBF_초": mtbf(n)} for n in (1, 2, 3, 4)]
+
+    # --- VCD: 파형은 시뮬레이터가 쓴 파일에서 읽는다 (지어내지 않는다) ---
+    try:
+        _길 = str(RPT.내는곳 / "nsw_fir_rtl.vcd")
+        RPT.내는곳.mkdir(parents=True, exist_ok=True)
+        SIM.돌리기({"TAPS": 8, "STAGES": 3, "GATE_POLICY": 1},
+                seed=21, txn=6, cap=6000, cfg=3, maxlen=6, dir=2, vcd=_길)
+        _d = VCD.읽기(_길)
+        _a, _b = VCD.구간찾기(_d, "u_ctrl.busy", "1", 앞=60, 뒤=520)
+        _c, _e = VCD.구간찾기(_d, "u_icg.en", "1", 앞=30, 뒤=210)
+        _f, _g = VCD.구간찾기(_d, "u_coef_fifo.wpush", "1", 앞=40, 뒤=340)
+        _이름표 = {"1": "IDLE", "10": "LOAD", "100": "RUN", "1000": "FLUSH",
+                "10000": "DONE"}
+        결과["vcd"] = {
+            "됐나": True, "파일": _길, "바이트": pathlib.Path(_길).stat().st_size,
+            "신호수": _d["신호수"], "변화수": _d["변화수"], "눈금": _d["눈금"],
+            "fsm": {"신호": VCD.구간뽑기(_d, ["u_srst_sync.clk", "u_ctrl.start",
+                                          "u_ctrl.in_vld", "u_ctrl.state_o",
+                                          "u_ctrl.busy", "u_ctrl.done"], _a, _b, 점=240),
+                    "띠": VCD.띠만들기(_d, "u_ctrl.state_o", _a, _b, 점=240, 이름표=_이름표),
+                    "구간": [_a, _b]},
+            "파이프": {"신호": VCD.구간뽑기(_d, ["u_mac.clk", "u_mac.push", "u_mac.prod",
+                                            "u_mac.p_s1", "u_mac.a_s2", "u_mac.a_s3",
+                                            "u_mac.v_s1", "u_mac.v_s2", "u_mac.v_s3"],
+                                          _a, _b, 점=200), "구간": [_a, _b]},
+            "게이팅": {"신호": VCD.구간뽑기(_d, ["u_srst_sync.clk", "u_icg.en",
+                                            "u_icg.en_lat", "u_mac.clk"], _c, _e, 점=220),
+                    "구간": [_c, _e]},
+            "cdc": {"신호": VCD.구간뽑기(_d, ["u_coef_fifo.wclk", "u_coef_fifo.wpush",
+                                           "u_coef_fifo.wgray", "u_coef_fifo.rq1_wgray",
+                                           "u_coef_fifo.rq2_wgray",
+                                           "u_coef_fifo.rempty_r"], _f, _g, 점=240),
+                    "구간": [_f, _g]},
+        }
+    except Exception as _err:                                # noqa: BLE001
+        결과["vcd"] = {"됐나": False, "까닭": f"{type(_err).__name__}: {_err}"[:180]}
 
     결과["초"] = round(time.time() - 결과["시작"], 1)
     return 결과
@@ -332,23 +371,81 @@ def 보고서(잰것: dict) -> RPT.보고서:
         강조열=[2])
 
     흔 = 잰것["흔적"]
-    if 흔.get("trace_state"):
-        상태문자 = {1: "I", 2: "L", 4: "R", 8: "F", 16: "D"}
-        문자열 = "".join(상태문자.get(s, "?") for s in 흔["trace_state"][:60])
-        신호 = [("clk", "1" * min(60, len(흔["trace_state"]))),
-              ("state", " ".join([]) or 문자열, "bus"),
-              ("gclk_en", 흔["trace_gclk"][:60]),
-              ("in_vld", 흔["trace_vld"][:60]),
-              ("done", 흔["trace_done"][:60])]
-        R.그림(V.파형(신호, "실제 시뮬레이션 파형 (앞 60 주기)", 주기폭=17),
-             "시뮬레이터가 실제로 본 파형. <code>state</code> 가 I(IDLE)에 있는 동안 "
-             "<code>gclk_en</code> 이 0 이다 — <b>그 구간 내내 데이터패스 클럭이 멈춰 있다</b>. "
-             "I 구간이 긴 까닭은 그동안 느린 <code>cfg_clk</code> 도메인에서 계수가 "
-             "FIFO 를 건너오고 있기 때문이다.",
-             "verilator 5.020, seed=21")
+    vc = 잰것.get("vcd") or {}
+    if vc.get("됐나") and (vc.get("fsm") or {}).get("신호"):
+        f = vc["fsm"]
+        R.그림(V.파형뷰어(f["신호"], "FSM 천이 — 시뮬레이터가 쓴 VCD 에서 읽은 것",
+                      폭=680, 시작시각=f["구간"][0], 끝시각=f["구간"][1],
+                      주석띠=[(x, y, g, "#c0392b") for x, y, g in (f.get("띠") or [])]),
+             f"<b>파형을 지어내지 않았다.</b> verilator 에 <code>--trace</code> 를 걸어 "
+             f"VCD 를 쓰고(<code>{pathlib.Path(vc['파일']).name}</code>, {vc['바이트']:,} 바이트, "
+             f"신호 {vc['신호수']}개, 값 변화 {vc['변화수']:,}회) 그 파일을 파서로 되읽었다. "
+             "아래 빨간 띠는 <code>state_o</code> 가 실제로 지난 상태를 구간으로 묶은 것이다 — "
+             "<b>IDLE 에서 LOAD 로 가려면 start 가 떠야 하고, DONE 은 ack 를 기다린다</b>. "
+             "원핫이라 <code>state_o</code> 의 값이 곧 상태 번호다.",
+             "house/dv/vcd.py 로 읽은 VCD")
+    R.코드("""// house/rtl/src/nsw_fir.sv -- 원핫 FSM (발췌)
+localparam [4:0] S_IDLE=5'b00001, S_LOAD=5'b00010, S_RUN=5'b00100,
+                 S_FLUSH=5'b01000, S_DONE=5'b10000;
+reg [4:0] st, st_n;
+
+always @(*) begin
+    st_n = st;
+    case (1'b1)                       // one-hot: 한 비트만 본다
+      st[0]: if (start)              st_n = S_LOAD;
+      st[1]: if (cnt == TAPS-1)      st_n = S_RUN;
+      st[2]: if (cnt == len-1 && in_vld) st_n = S_FLUSH;
+      st[3]: if (cnt == STAGES-1)    st_n = S_DONE;
+      st[4]: if (ack)                st_n = S_IDLE;
+      default:                       st_n = S_IDLE;   // 불법 상태 -> 복구
+    endcase
+end
+
+always @(posedge clk or negedge rst_n)
+    if (!rst_n) st <= S_IDLE; else st <= st_n;""",
+        "FSM 코드 — 이 코드가 위 파형을 만든다")
 
     # ---------------- 4. 파이프라인 ----------------
     R.절("4. 파이프라인")
+    R.그림(SCH.데이터패스(
+        ["S1", "S2", "S3"],
+        [("din / coef", 0, 96, 92, 40, "#dce8f5", "16b × 16b"),
+         ("MUL", 1, 96, 78, 40, "#f5c9c2", "16×16 → 32b"),
+         ("ADD", 2, 96, 78, 40, "#f5c9c2", "acc + p (40b)"),
+         ("SAT", 3, 96, 78, 40, "#f5c9c2", "±2^39 클램프"),
+         ("tap_ptr", 0, 158, 92, 30, "#eef3d8", "TAPS 에서 감김"),
+         ("acc_o / vld_o", 3, 158, 92, 30, "#cfe9d8", "출력")],
+        "nsw_mac 3단 파이프라인 데이터패스 (STAGES=3)", 폭=660, 높이=240),
+         "강의 화면의 데이터패스 그림과 같은 꼴이다 — <b>빨간 기둥이 파이프라인 "
+         "레지스터</b>이고, 기둥 사이가 한 주기 안에 끝나야 하는 조합 논리다. "
+         "<code>p_s1</code>(곱) → <code>a_s2</code>(합) → <code>a_s3</code>(포화)로 "
+         "값이 밀려가고, 유효 비트 <code>v_s1/v_s2/v_s3</code> 가 같이 따라간다 — "
+         "<b>유효 비트를 같이 밀지 않으면 FLUSH 때 쓰레기가 출력으로 나간다</b>. "
+         "임계경로는 곱셈기 단(§8 의 STA 가 그것을 확인한다).",
+         "house/rtl/src/nsw_fir.sv 의 nsw_mac")
+    if vc.get("됐나") and (vc.get("파이프") or {}).get("신호"):
+        pp = vc["파이프"]
+        R.그림(V.파형뷰어(pp["신호"], "파이프라인이 실제로 미는 장면 (VCD)",
+                      폭=680, 시작시각=pp["구간"][0], 끝시각=pp["구간"][1]),
+             "<b>파이프라인이 도는 것을 값으로 본다.</b> <code>push</code> 가 뜬 주기의 "
+             "<code>prod</code> 가 다음 주기 <code>p_s1</code> 에 들어가고, 그것이 "
+             "<code>a_s2</code> 에서 누산되어 <code>a_s3</code> 로 나온다 — "
+             "<b>세 칸 밀려 있는 것이 곧 3단 지연</b>이다. "
+             "<code>v_s1/v_s2/v_s3</code> 가 같은 모양으로 따라가는 것이 유효 비트다. "
+             "맨 윗줄은 <b>게이팅된 클럭</b>이라 쉬는 구간에는 엣지 자체가 없다.",
+             "house/dv/vcd.py — u_mac.* ")
+    R.코드("""// nsw_mac -- 3단 파이프라인 (발췌).  en 과 push 를 **가른다**.
+always @(posedge clk or negedge rst_n) begin
+  if (!rst_n) begin p_s1 <= '0; v_s1 <= 1'b0; end
+  else if (en) begin
+    p_s1 <= push ? prod : '0;      // FLUSH 때 새 곱을 넣지 않는다
+    v_s1 <= push;                  // 유효 비트도 같이 민다
+  end
+end
+// s2: 누산,  s3: 포화
+wire signed [ACCW:0] raw = a_s2 + ext;
+assign sum = (raw > SAT_HI) ? SAT_HI : (raw < SAT_LO) ? SAT_LO : raw[ACCW-1:0];""",
+        "파이프라인 코드 — `en` 과 `push` 를 가른 것이 FLUSH 버그를 고친 한 줄이다")
     R.그림(V.예약표(["MUL", "ADD", "SAT"],
                  [("샘플 0", 0, [0, 1, 2]), ("샘플 1", 1, [0, 1, 2]),
                   ("샘플 2", 2, [0, 1, 2]), ("샘플 3", 3, [0, 1, 2]),
@@ -404,6 +501,37 @@ def 보고서(잰것: dict) -> RPT.보고서:
 
     # ---------------- 6. 클럭 게이팅 ----------------
     R.절("6. 저전력 — 클럭 게이팅 정책을 재서 골랐다")
+    R.그림(SCH.cgic({"잰것": f"이 설계에서 실측: 데이터패스 클럭 {좋은['절감_pct']} % 절감 "
+                          f"({좋은['clk주기']:,} → {좋은['gclk주기']:,} 주기)"}, 폭=560),
+         "<b>래치가 왜 있나.</b> EN 을 AND 에 바로 물리면, EN 이 <b>클럭이 높은 구간</b>에 "
+         "바뀔 때 게이팅된 클럭에 <b>짧은 펄스(글리치)</b>가 나간다 — 플롭이 엉뚱한 값을 "
+         "잡는다. 래치가 EN 을 <b>클럭이 낮은 동안에만</b> 통과시키므로, 게이팅된 클럭은 "
+         "언제나 온전한 펄스이거나 아예 없다. "
+         "<code>test_en</code>(=<code>scan_en</code>)은 스캔 시프트 중 게이팅을 여는 "
+         "우회로다 — 이것이 없으면 게이팅된 플롭이 스캔 체인에서 안 밀린다.",
+         "house/rtl/src/nsw_fir.sv 의 nsw_icg")
+    if vc.get("됐나") and (vc.get("게이팅") or {}).get("신호"):
+        gg = vc["게이팅"]
+        R.그림(V.파형뷰어(gg["신호"], "CGIC 실측 파형 — CLK · EN · 래치 출력 · 게이팅된 클럭",
+                      폭=680, 시작시각=gg["구간"][0], 끝시각=gg["구간"][1]),
+             "<b>위 회로도가 실제로 그렇게 동작하는 것을 VCD 에서 확인한 것</b>이다. "
+             "<code>u_icg.en</code> 이 뜨면 <code>en_lat</code> 이 <b>클럭이 낮은 구간에</b> "
+             "따라 올라가고, 그때부터 <code>u_mac.clk</code>(게이팅된 클럭)이 토글한다. "
+             "중간에 EN 이 한 주기 빠지는 자리를 보면 게이팅된 클럭이 "
+             "<b>펄스 하나를 통째로 건너뛴다</b> — 반쪽 펄스가 없다. 그것이 래치가 하는 일이다.",
+             "house/dv/vcd.py — u_icg.en / en_lat / u_mac.clk")
+    R.코드("""// nsw_icg -- 통합 클럭 게이팅 셀.  래치 + AND.
+module nsw_icg (input wire clk, input wire en, input wire test_en,
+                output wire gclk);
+    reg en_lat;
+    always @(*) if (!clk) en_lat = en | test_en;   // 클럭 낮을 때만 연다
+    assign gclk = clk & en_lat;
+endmodule
+
+// 정책 B (GATE_POLICY=1) -- 유효 샘플이 있는 주기에만 클럭을 준다
+assign dp_en = (GATE_POLICY == 0) ? st_active
+                                  : ((st == S_FLUSH) | (st_active & in_vld));""",
+        "ICG 코드와 게이팅 정책 — 아래 A/B 비교가 이 한 줄의 값이다")
     R.그림(V.막대([g["이름"] for g in 게], [g["절감_pct"] for g in 게],
                "클럭 게이팅 정책별 데이터패스 클럭 절감률", "절감 (%)",
                색들=[V.흐림, V.초록], 폭=520),
@@ -429,6 +557,26 @@ def 보고서(잰것: dict) -> RPT.보고서:
     # ---------------- 7. CDC ----------------
     R.절("7. CDC — 클럭 도메인 크로싱")
     c = 잰것["CDC"]
+    R.그림(SCH.동기화기(2, f"이 설계: 건넘 {len(c['건넘'])}개 전부 동기화기 통과 · "
+                    f"맨선 {len(c['맨선'])}개", 폭=580),
+         "두 클럭이 서로 무관하면 한쪽 신호를 다른 쪽에서 <b>그냥 잡으면 안 된다</b> — "
+         "셋업/홀드를 못 지켜 플롭이 <b>준안정</b>에 빠진다. 2단 동기화기는 그 확률을 "
+         "지수로 줄인다(§7.2 의 MTBF). 레벨 신호를 <b>한 주기 펄스</b>로 바꾸려면 "
+         "동기화기 뒤에 플롭 하나를 더 두고 XOR 한다 — 입력과 출력의 레벨이 다른 "
+         "한 주기 동안만 1 이다.",
+         "house/rtl/src/nsw_fir.sv 의 nsw_sync2")
+    if vc.get("됐나") and (vc.get("cdc") or {}).get("신호"):
+        cc = vc["cdc"]
+        R.그림(V.파형뷰어(cc["신호"], "CDC 실측 파형 — 그레이 포인터가 2FF 를 건넌다",
+                      폭=680, 시작시각=cc["구간"][0], 끝시각=cc["구간"][1]),
+             "비동기 FIFO 의 쓰기 포인터 <code>wgray</code> 가 읽기 도메인으로 "
+             "건너오는 장면이다. <code>rq1_wgray</code> → <code>rq2_wgray</code> 가 "
+             "2단 동기화기이고, 값이 <b>한 주기씩 밀려</b> 도착한다. "
+             "<b>그레이 코드라서 한 번에 한 비트만 바뀐다</b> — 그래서 샘플링 순간에 "
+             "걸려도 결과는 옛 값 아니면 새 값이지, 그 사이의 없는 값이 아니다. "
+             "<b>이 파형은 준안정을 보이지 않는다</b> — 2상태 시뮬레이터에는 준안정이 "
+             "없다. 보이는 것은 지연 구조이고, 준안정은 아래 MTBF 로만 다룬다.",
+             "house/dv/vcd.py — u_coef_fifo.wgray / rq1 / rq2")
     R.표(["클럭", "always 블록 수"], [[k, v] for k, v in sorted(c["도메인"].items())],
         "RTL 에서 뽑은 클럭 도메인.", "house/rtl/agent.py cdc점검()")
     R.표(["건너는 신호", "보내는 도메인", "받는 도메인", "폭", "종류", "방식", "왜 안전한가"],

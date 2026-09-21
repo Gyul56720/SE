@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import json
+import pathlib
 import re
 import sys
 import time
@@ -27,7 +28,9 @@ from house import people as 사람들    # noqa: E402
 from house import report as RPT       # noqa: E402
 from house import sim as SIM          # noqa: E402
 from house import viz as V            # noqa: E402
+from house import sch as SCH          # noqa: E402
 from house.dv import mutate as MUT     # noqa: E402
+from house.dv import vcd as VCD        # noqa: E402
 
 
 def 일하기(규모="보통") -> dict:
@@ -84,8 +87,69 @@ def 일하기(규모="보통") -> dict:
                    "cov": d["cov_pct"]})
     R["구성"] = 구성
 
+    # --- 7. 파형: 시뮬레이터가 쓴 VCD 를 실제로 읽는다 ---
+    t2 = time.time()
+    R["파형"] = _파형뜨기()
+    R["파형초"] = round(time.time() - t2, 2)
+
     R["초"] = round(time.time() - R["시작"], 1)
     return R
+
+
+def _파형뜨기() -> dict:
+    """VCD 를 한 번 뜨고 세 장면을 뽑는다 -- **구간은 규칙으로 고른다**.
+
+    "잘 나온 데를 골랐다" 를 막으려고, 각 장면의 구간은 `vcd.구간찾기` 가
+    **그 사건이 처음 일어나는 자리**로 정한다. 손으로 고르지 않는다.
+    """
+    out = {"됐나": False}
+    try:
+        길 = str(RPT.내는곳 / "nsw_fir.vcd")
+        RPT.내는곳.mkdir(parents=True, exist_ok=True)
+        r = SIM.돌리기({"TAPS": 8, "STAGES": 3, "GATE_POLICY": 1},
+                    seed=1, txn=6, cap=6000, cfg=3, maxlen=6, dir=2, vcd=길)
+        d = VCD.읽기(길)
+        out["파일"] = 길
+        out["바이트"] = pathlib.Path(길).stat().st_size
+        out["눈금"] = d["눈금"]
+        out["신호수"] = d["신호수"]
+        out["변화수"] = d["변화수"]
+        out["끝시각"] = d["끝시각"]
+        out["실행"] = {k: r.get(k) for k in ("pass", "fail", "timeout", "proto_err",
+                                            "clk_cycles", "gclk_cycles", "gate_save_pct")}
+
+        # (1) 거래 한 건: FSM 이 IDLE->LOAD->RUN->FLUSH->DONE 을 지나는 구간
+        a, b = VCD.구간찾기(d, "u_ctrl.busy", "1", 앞=60, 뒤=520)
+        out["거래"] = {
+            "신호": VCD.구간뽑기(d, ["u_srst_sync.clk", "u_ctrl.start", "u_ctrl.in_vld",
+                                 "u_ctrl.state_o", "u_mac.push", "u_mac.acc_o",
+                                 "u_mac.vld_o", "u_ctrl.done"], a, b, 점=240),
+            "띠": VCD.띠만들기(d, "u_ctrl.state_o", a, b, 점=240,
+                            이름표={"1": "IDLE", "10": "LOAD", "100": "RUN",
+                                 "1000": "FLUSH", "10000": "DONE",
+                                 "00001": "IDLE", "00010": "LOAD", "00100": "RUN",
+                                 "01000": "FLUSH", "10000": "DONE"}),
+            "구간": [a, b]}
+
+        # (2) 클럭 게이팅: CGIC 의 EN · 래치 출력 · 게이팅된 클럭
+        a2, b2 = VCD.구간찾기(d, "u_icg.en", "1", 앞=30, 뒤=210)
+        out["게이팅"] = {
+            "신호": VCD.구간뽑기(d, ["u_srst_sync.clk", "u_icg.en", "u_icg.en_lat",
+                                 "u_mac.clk"], a2, b2, 점=220),
+            "구간": [a2, b2]}
+
+        # (3) CDC: 느린 도메인의 그레이 포인터가 2FF 를 지나온다
+        a3, b3 = VCD.구간찾기(d, "u_coef_fifo.wpush", "1", 앞=40, 뒤=340)
+        out["cdc"] = {
+            "신호": VCD.구간뽑기(d, ["u_coef_fifo.wclk", "u_coef_fifo.wpush",
+                                 "u_coef_fifo.wgray", "u_coef_fifo.rq1_wgray",
+                                 "u_coef_fifo.rq2_wgray", "u_coef_fifo.rempty_r"],
+                                a3, b3, 점=240),
+            "구간": [a3, b3]}
+        out["됐나"] = True
+    except Exception as e:                                   # noqa: BLE001
+        out["까닭"] = f"{type(e).__name__}: {e}"[:200]
+    return out
 
 
 def 보고서(m: dict) -> RPT.보고서:
@@ -142,36 +206,184 @@ def 보고서(m: dict) -> RPT.보고서:
         "아무것도 안 보는 검사기도 여섯 줄을 다 통과한다.", 강조열=[0])
 
     # ---------------- 2. 환경 ----------------
-    R.절("2. 검증 환경 구조")
-    R.글("VCS·Questa 가 없어 UVM 을 그대로 쓸 수 없다. 그래서 <b>UVM 의 구조를 C++ 로 옮겼다</b>: "
-        "sequence / driver / monitor / reference model / scoreboard / coverage 가 따로 있고, "
-        "<b>monitor 는 driver 의 의도를 모른다</b> — 핀만 본다. 이 분리가 없으면 "
-        "드라이버가 엉뚱한 것을 몰아도 스코어보드가 그것을 모른다.")
-    블록 = [("Sequence", 16, 30, 104, 42, "#eef4fb", "제약 랜덤"),
-          ("Driver", 150, 30, 104, 42, "#eef4fb", "핀을 흔든다"),
-          ("DUT", 292, 84, 104, 56, "#fdf6e3", "nsw_fir"),
-          ("Monitor", 150, 158, 104, 42, "#eaf5ee", "핀만 본다"),
-          ("Reference", 16, 96, 104, 42, "#ffffff", "독립 C 모델"),
-          ("Scoreboard", 16, 158, 104, 42, "#f9ecec", "판정은 여기서만"),
-          ("Coverage", 430, 158, 104, 42, "#f5f7fa", "무엇을 해봤나")]
-    연결 = [("Sequence", "Driver", "txn", V.파랑), ("Driver", "DUT", "in_vld/data", V.파랑),
-          ("DUT", "Monitor", "out_acc/done", V.초록), ("Monitor", "Scoreboard", "관측", V.초록),
-          ("Reference", "Scoreboard", "기대", V.먹), ("Monitor", "Coverage", "표본", V.흐림)]
-    R.그림(V.블록도(블록, 연결, "UVM 꼴 검증 환경", 폭=560, 높이=224),
-         "위 경로가 몰고 아래 경로가 본다. <b>둘은 이어져 있지 않다</b> — "
-         "드라이버의 의도를 믿는 모니터는 엉뚱한 것을 몬 드라이버를 못 잡는다. "
-         "판정을 내리는 상자는 빨간 것(Scoreboard) 하나뿐이다.",
-         "house/dv/tb_nsw_fir.cpp")
-    R.표(["구성요소", "무엇을 하나", "소스"],
-        [["Sequence", "거래 모양 10종을 확률로 고른다(아주 짧은 것·정확히 한 바퀴·최장·최대 크기 등)",
-          "tb_nsw_fir.cpp `shape`"],
-         ["Driver", "cfg_clk 도메인으로 계수를 밀고, clk 도메인으로 샘플을 던진다(백프레셔 포함)",
-          "`push_coefs` / `run_txn`"],
-         ["Monitor", "state_o · out_acc · done 을 핀에서 읽고 done 상승 에지를 센다", "`run_txn` 관측부"],
-         ["Reference", "스펙을 보고 따로 적은 C 누산 모델(포화 포함)", "`golden_model`"],
-         ["Scoreboard", "값 비교 + 프로토콜(done 정확히 1) 비교", "`main` 의 판정부"],
-         ["Coverage", "커버포인트 6종 + 크로스 2종", "`struct Coverage`"]],
-        "환경 구성. 각 상자가 실제 코드의 어디인지 적는다.", "house/dv/tb_nsw_fir.cpp")
+    R.절("2. 검증 환경 구조 — UVM 의 그 구조 그대로")
+    R.글("VCS·Questa 가 없어 SystemVerilog UVM 을 그대로 쓸 수 없다. "
+        "그래서 <b>UVM 의 구조를 verilator 위의 C++ 로 옮겼다</b> — "
+        "sequence / sequencer / driver / monitor / reference model / scoreboard / "
+        "functional coverage 가 따로 있고, <b>monitor 는 driver 의 의도를 모른 채 핀만 본다</b>. "
+        "이 분리가 없으면 드라이버가 엉뚱한 것을 몰아도 스코어보드가 그것을 모른다. "
+        "<b>UVM 을 썼다고 적지 않는다</b> — 구조가 같을 뿐이다.")
+    큰 = m.get("큰실행") or {}
+    R.그림(SCH.uvm구조({
+        "시험": "main() — 랜덤 구간 + 지시 구간",
+        "랜덤": 큰.get("txn", 0) - 큰.get("directed", 0),
+        "지시": 큰.get("directed", 0),
+        "대조": 큰.get("pass", 0) + 큰.get("fail", 0),
+        "불일치": 큰.get("fail", 0),
+        "커버리지": 큰.get("cov_pct", 0.0),
+        "빈맞은": int(round(큰.get("cov_pct", 0) / 100 * 52)), "빈전체": 52,
+        "에이전트": ["Agent 1 — cfg 도메인 (느린 클럭)", "Agent 2 — data 도메인 (clk)"],
+        "드라이버글": ["push_coefs()", "run_txn()"],
+        "모니터글": ["rempty/full 관측", "state_o/done 관측"],
+        "dut": f"nsw_fir  TAPS=8 · STAGES=3",
+        "dut부제": "비동기 두 도메인 · ICG 클럭게이팅 · 원핫 FSM · 포화 MAC",
+    }, 폭=660),
+         "강의 화면의 그 구조도다. <b>상자 안의 수는 전부 이번 실행에서 실제로 잰 것</b>이다 — "
+         f"랜덤 시퀀스 {큰.get('txn',0)-큰.get('directed',0):,}건 · 지시 시퀀스 "
+         f"{큰.get('directed',0):,}건 · 스코어보드 대조 "
+         f"{큰.get('pass',0)+큰.get('fail',0):,}건 · 불일치 {큰.get('fail',0)}건. "
+         "<b>판정을 내리는 상자는 Scoreboard 하나뿐이다</b> — 드라이버도 시퀀스도 "
+         "'맞다'고 말할 권한이 없다.",
+         "house/dv/tb_nsw_fir.cpp + house/sch.py uvm구조()")
+    R.표(["UVM 구성요소", "이 하니스의 실제 자리", "무엇을 하나"],
+        [["uvm_sequence", "<code>main()</code> 의 shape 0–9 / 10–11", "거래 모양을 제약 안에서 고른다"],
+         ["uvm_sequencer", "<code>Rng</code> (xorshift128)", "씨앗 하나로 되풀이 가능한 난수"],
+         ["uvm_driver (Agent 1)", "<code>push_coefs()</code>", "cfg_clk 도메인으로 계수를 FIFO 에 민다"],
+         ["uvm_driver (Agent 2)", "<code>run_txn()</code> 구동부", "clk 도메인으로 샘플 · 백프레셔"],
+         ["uvm_monitor", "<code>run_txn()</code> 관측부", "<b>핀만 읽는다</b> — state_o · out_acc · done"],
+         ["reference model", "<code>golden_model()</code>", "스펙에서 따로 적은 독립 C 모델"],
+         ["uvm_scoreboard", "<code>main()</code> 판정부", "값 비교 + 프로토콜(done 정확히 1회)"],
+         ["covergroup", "<code>struct Coverage</code>", "커버포인트 6 + 크로스 2 = 빈 52개"],
+         ["virtual interface", "<code>Vnsw_fir*</code> 핀", "verilator 가 낸 DUT 핸들"]],
+        "<b>왼쪽이 UVM 의 이름, 가운데가 이 저장소의 실제 코드</b>다. "
+        "이름만 빌린 자리를 숨기지 않으려고 둘을 나란히 적는다.",
+        "house/dv/tb_nsw_fir.cpp", 강조열=[1])
+
+    # ---- 검증 시나리오 ----
+    R.소절("2.1 검증 시나리오 — 무엇을 어떤 모양으로 던지나")
+    시나 = [
+        ["0", "랜덤", "아주 짧은 거래", "len ∈ [1,4]", "파이프라인이 채워지기 전에 끝나는 경우 — FLUSH 경계"],
+        ["1", "랜덤", "정확히 한 바퀴", "len = TAPS = 8", "탭 포인터가 정확히 한 바퀴 돌고 0 으로 감기는 경계"],
+        ["2", "랜덤", "최장 거래", "len = maxlen", "카운터 폭 · 누산기 폭의 상한"],
+        ["3", "랜덤", "최대 크기 데이터", "|data| ≤ 32767", "누산기 상위 비트 · 포화 근처"],
+        ["4", "랜덤", "번갈아 극값 계수", "coef = ±32768 교대", "부호 교대에서 부분곱이 상쇄되는 경로"],
+        ["5–9", "랜덤", "일반 랜덤", "len·크기·백프레셔 모두 랜덤", "대부분의 거래 — 넓게 훑는다"],
+        ["—", "랜덤", "백프레셔", "gap 0–70 %", "in_vld 가 비는 주기 — 게이팅과 FSM 유지"],
+        ["10", "<b>지시</b>", "양의 포화", "모든 곱 +32767×+32767", "<b>누산기 상한 포화</b> — 랜덤으로는 안 닿는다"],
+        ["11", "<b>지시</b>", "음의 포화", "모든 곱 −32768 방향", "<b>누산기 하한 포화</b>"],
+    ]
+    R.표(["shape", "갈래", "시나리오", "제약", "무엇을 노리나"], 시나,
+        "<b>랜덤만으로는 안 닿는 데가 있다.</b> 포화는 모든 부분곱이 같은 부호여야 "
+        "닿는데, 랜덤 데이터에서 그 확률은 길이에 따라 2^-len 으로 준다 — "
+        "실측으로 랜덤 구간에서 포화 거래가 0 건이었다. 그래서 shape 10·11 을 "
+        "<b>지시 시험</b>으로 따로 둔다(§4 가 그 효과를 수로 보인다).",
+        "house/dv/tb_nsw_fir.cpp `shape`", 강조열=[1])
+
+    # ---------------- 2.2 골든 모델 ----------------
+    R.소절("2.2 골든 모델 — 무슨 알고리즘과 맞대었나")
+    R.글("스코어보드가 '맞다'고 말하려면 <b>맞는 답을 따로 아는 곳</b>이 있어야 한다. "
+        "그 답을 RTL 에서 가져오면 아무것도 증명하지 못한다 — 같은 실수를 두 번 하는 것뿐이다. "
+        "그래서 기준모델은 <b>스펙을 보고 따로 적은 C 함수</b>이고, RTL 의 파이프라인·"
+        "게이팅·FSM 을 하나도 흉내 내지 않는다. 그것이 독립의 뜻이다.")
+    R.코드("""알고리즘: 포화 누산 FIR / MAC
+
+  입력: data[0..len-1] (int16), coef[0..TAPS-1] (int16), len
+  출력: acc (int40, 포화)
+
+  acc ← 0
+  for i in 0 .. len-1:
+      p ← data[i] × coef[i mod TAPS]        // int32 곱, 부호 있음
+      n ← acc + p                           // int64 로 넓혀 더한다
+      if n > SAT_HI: n ← SAT_HI             // SAT_HI = +2^39 − 1
+      if n < SAT_LO: n ← SAT_LO             // SAT_LO = −2^39
+      acc ← n                               // **매 걸음마다 포화**한다
+  return acc
+
+  ※ 포화를 마지막에 한 번만 하면 답이 달라진다. 중간에 넘쳤다가
+     되돌아오는 경우 RTL 은 붙들린 값에서 이어가고, 마지막에만
+     포화하는 모델은 안 붙들린 값에서 이어간다. 스펙은 전자다.""",
+        "기준모델 알고리즘 (스펙에서 적은 것)")
+    R.코드("""static int64_t golden_model(const std::vector<int16_t>& data,
+                            const std::vector<int16_t>& coef, int len) {
+    int64_t acc = 0;
+    for (int i = 0; i < len; i++) {
+        int64_t p = (int64_t)data[i] * (int64_t)coef[i % TAPS];
+        int64_t n = acc + p;
+        if (n > SAT_HI) n = SAT_HI;
+        if (n < SAT_LO) n = SAT_LO;
+        acc = n;
+    }
+    return acc;
+}""", "house/dv/tb_nsw_fir.cpp — 실제 기준모델 코드 (전문)")
+    큰2 = m.get("큰실행") or {}
+    R.표(["항목", "RTL (DUT)", "골든 모델", "같은가"],
+        [["구현", "3단 파이프라인 + FSM + 클럭게이팅", "단순 루프", "다르다 (그래야 독립이다)"],
+         ["곱셈", "16×16 → 32 비트 하드웨어 곱셈기", "int64 곱", "값은 같아야 한다"],
+         ["누산 폭", "ACCW = 40 비트", "int64 로 계산 후 40비트 포화", "같다"],
+         ["포화 시점", "매 누산마다 (p_s1→a_s2→a_s3)", "매 걸음마다", "<b>같다 — 여기가 핵심</b>"],
+         ["계수 접근", "tap_ptr 가 TAPS 에서 감긴다", "<code>i % TAPS</code>", "같아야 한다"],
+         ["대조 건수", f"{큰2.get('pass',0)+큰2.get('fail',0):,} 거래", "같은 수", ""],
+         ["불일치", f"<b>{큰2.get('fail',0)} 건</b>", "", "0 이어야 한다"]],
+        "<b>구현이 다르고 답이 같아야 한다.</b> 구현까지 같으면 대조가 아니라 복사다. "
+        f"이번 실행에서 {큰2.get('pass',0)+큰2.get('fail',0):,} 거래를 맞대어 "
+        f"불일치 {큰2.get('fail',0)} 건이다.",
+        "house/dv/tb_nsw_fir.cpp", 강조열=[3])
+
+    # ---------------- 2.3 시뮬레이션 파형 ----------------
+    파 = m.get("파형") or {}
+    R.절("3. 시뮬레이션 결과 — 파형 (VCD 에서 실제로 읽은 것)")
+    if not 파.get("됐나"):
+        R.그림(V.빈그림(f"VCD 를 못 떴다: {파.get('까닭','')}"[:80]))
+    else:
+        실 = 파.get("실행") or {}
+        R.글(f"verilator 에 <code>--trace</code> 를 걸어 <b>VCD 파일을 실제로 쓰고</b>, "
+            f"그 파일을 파서로 되읽어 아래 파형을 그린다"
+            f"(<code>{pathlib.Path(파['파일']).name}</code>, {파['바이트']:,} 바이트, "
+            f"신호 {파['신호수']}개, 값 변화 {파['변화수']:,}회, 눈금 {파['눈금']}). "
+            "<b>그림을 지어내지 않는다</b> — 시각과 값은 전부 그 파일에서 온다. "
+            "구간도 손으로 고르지 않는다: 각 장면은 <b>그 사건이 처음 일어나는 자리</b>를 "
+            "규칙으로 잡는다(house/dv/vcd.py 구간찾기).")
+
+        # (1) 거래 한 건
+        거 = 파.get("거래") or {}
+        if 거.get("신호"):
+            R.그림(V.파형뷰어(거["신호"], "거래 한 건 — IDLE → LOAD → RUN → FLUSH → DONE",
+                          폭=680, 시작시각=거["구간"][0], 끝시각=거["구간"][1],
+                          주석띠=[(a_, b_, g, "#c0392b") for a_, b_, g in (거.get("띠") or [])]),
+                 "<b>거래 한 건의 전체 수명</b>이다. 아래 빨간 띠는 FSM 이 실제로 지난 상태를 "
+                 "VCD 의 <code>state_o</code> 에서 읽어 구간으로 묶은 것이다 — 강의 화면의 "
+                 "<i>Start / Address / Ack / Stop</i> 띠와 같은 자리다. "
+                 "<code>u_mac.acc_o</code> 가 누산되어 가다가 <code>vld_o</code> 와 "
+                 "<code>done</code> 이 뜨는 것이 보인다. <b>done 은 거래마다 정확히 한 번</b>이어야 "
+                 "하고, 그것이 프로토콜 검사다(위반 "
+                 f"{(m.get('큰실행') or {}).get('proto_err', 0)}건).",
+                 "house/dv/vcd.py 로 읽은 VCD")
+
+        # (2) 클럭 게이팅
+        게 = 파.get("게이팅") or {}
+        if 게.get("신호"):
+            실2 = 파.get("실행") or {}
+            R.그림(V.파형뷰어(게["신호"], "클럭 게이팅 (ICG) — CLK · EN · 래치 출력 · 게이팅된 클럭",
+                          폭=680, 시작시각=게["구간"][0], 끝시각=게["구간"][1]),
+                 "<b>강의 화면의 CGIC 파형을 이 설계에서 실제로 잰 것</b>이다. "
+                 "<code>u_icg.en</code> 이 뜨면 <code>en_lat</code>(래치 출력)이 "
+                 "<b>클럭이 낮은 구간에</b> 따라 올라가고, 그다음부터 "
+                 "<code>u_mac.clk</code>(게이팅된 클럭)이 토글한다. "
+                 "래치가 없으면 EN 이 클럭 높은 구간에 바뀔 때 <b>짧은 펄스(글리치)</b>가 "
+                 "나가는데, 이 파형에서 EN 이 한 주기 빠질 때도 게이팅된 클럭은 "
+                 "<b>온전한 펄스 하나를 통째로 건너뛴다</b> — 그것이 래치가 하는 일이다. "
+                 f"이번 실행 전체에서 원클럭 {실2.get('clk_cycles',0):,} 주기 중 "
+                 f"데이터패스가 받은 것은 {실2.get('gclk_cycles',0):,} 주기, "
+                 f"<b>{실2.get('gate_save_pct',0):.1f} % 를 껐다</b>.",
+                 "house/dv/vcd.py — u_icg.en / en_lat / u_mac.clk")
+
+        # (3) CDC
+        c = 파.get("cdc") or {}
+        if c.get("신호"):
+            R.그림(V.파형뷰어(c["신호"], "CDC — 그레이 포인터가 2FF 동기화기를 지난다",
+                          폭=680, 시작시각=c["구간"][0], 끝시각=c["구간"][1]),
+                 "비동기 FIFO 의 쓰기 포인터(<code>wgray</code>)가 읽기 도메인으로 건너오는 "
+                 "장면이다. <code>rq1_wgray</code> → <code>rq2_wgray</code> 가 "
+                 "<b>2단 동기화기</b>이고, 값이 <b>한 주기씩 밀려 도착</b>하는 것이 보인다. "
+                 "<b>그레이 코드라서 한 번에 한 비트만 바뀐다</b> — 그래서 샘플링 순간에 "
+                 "걸려도 결과는 옛 값 아니면 새 값이지 그 사이의 엉뚱한 값이 아니다. "
+                 "이 파형이 <b>준안정을 보이는 것은 아니다</b>(2상태 시뮬레이터에는 "
+                 "준안정이 없다) — 보이는 것은 <b>지연 구조</b>다.",
+                 "house/dv/vcd.py — u_coef_fifo.wgray / rq1 / rq2")
+        R.짚기("<b>이 파형들이 못 보이는 것.</b> verilator 는 2상태 · 주기 정확 "
+             "시뮬레이터다. 준안정(metastability) · 글리치 · 셋업/홀드 위반이 "
+             "원리적으로 안 보인다. §6 의 자해 검사에서 동기화기를 1단으로 줄여도 "
+             "이 환경이 못 잡는 까닭이 그것이고, 그것을 검사 구멍과 섞어 적지 않는다.")
 
     # ---------------- 3. 회귀 ----------------
     R.절("3. 회귀 — 수천, 수만 번")
@@ -235,6 +447,40 @@ def 보고서(m: dict) -> RPT.보고서:
              f"<b>빈 칸이 어디인지가 다음에 쓸 지시 시험을 정한다</b> — "
              f"크로스는 커버리지 모형에 더하는 것이 아니라 닫는 노력에 곱하는 것이다.",
              "verilator, seed=7")
+    # 커버리지 창 -- 상용 커버리지 뷰어가 내는 그 칸으로
+    _cg = [
+        ("cp_len", "거래 길이", 큰.get("cov_len") or 0, 5, "<8 / <32 / <128 / <512 / ≥512"),
+        ("cp_bp", "백프레셔 비율", 큰.get("cov_bp") or 0, 4, "0 % / <20 % / <50 % / ≥50 %"),
+        ("cp_mag", "데이터 크기", 큰.get("cov_mag") or 0, 4, "<64 / <1k / <16k / ≥16k"),
+        ("cp_sat", "포화 발생", 큰.get("cov_sat") or 0, 2, "안 남 / 남"),
+        ("cp_sign", "계수 부호 조합", 큰.get("cov_sign") or 0, 4, "음만/양만/섞임/전부0"),
+        ("cp_state", "FSM 상태", 큰.get("cov_state") or 0, 5, "IDLE/LOAD/RUN/FLUSH/DONE"),
+    ]
+    _cross = [
+        ("cross_len_bp", "len × 백프레셔", 큰.get("cross_len_bp") or 0, 20, "5 × 4"),
+        ("cross_mag_sat", "mag × 포화", 큰.get("cross_mag_sat") or 0, 8, "4 × 2"),
+    ]
+    _맞 = sum(x[2] for x in _cg + _cross)
+    _전 = sum(x[3] for x in _cg + _cross)
+    줄들 = [(0, "pkg", "/nsw_fir_pkg/nsw_fir_cov", _맞 / max(_전, 1) * 100, 100,
+           f"{_맞}/{_전} bins"),
+          (1, "type", "TYPE nsw_fir_cg", _맞 / max(_전, 1) * 100, 100, f"{_전} bins")]
+    for 키, 설명, 맞, 전, 빈 in _cg:
+        줄들.append((2, "cvp", f"CVP {키}  ({설명})", 맞 / 전 * 100, 100, f"{맞}/{전} — {빈}"))
+    for 키, 설명, 맞, 전, 빈 in _cross:
+        줄들.append((2, "cross", f"CROSS {키}  ({설명})", 맞 / 전 * 100, 100, f"{맞}/{전} — {빈}"))
+    R.그림(V.커버그룹(줄들, "Covergroups — nsw_fir 기능 커버리지", 폭=640),
+         f"<b>커버리지 뷰어가 내는 그 칸을 그대로 낸다</b> — Name / Coverage / Goal / "
+         f"% of Goal / Status. 초록 막대가 목표를 채운 커버포인트이고, 빨강·노랑이 "
+         f"남은 것이다. 전체 {_맞}/{_전} 빈 = <b>{_맞/max(_전,1)*100:.1f} %</b>. "
+         "<b>퍼센트는 시뮬레이터가 실제로 센 빈 개수에서 나온다</b> — "
+         "<code>struct Coverage</code> 의 <code>std::set</code> 크기다. "
+         + ("<b>아직 닫히지 않은 줄이 있다</b>: "
+            + ", ".join(f"<code>{k}</code>({a}/{b})"
+                        for k, _, a, b, _ in _cg + _cross if a < b)
+            if any(a < b for _, _, a, b, _ in _cg + _cross)
+            else "<b>모든 줄이 목표를 채웠다.</b>"),
+         "house/dv/tb_nsw_fir.cpp `struct Coverage` + house/viz.py 커버그룹()")
     R.표(["커버포인트", "맞은 칸", "전체 칸", "비고"],
         [["거래 길이 (len)", 큰.get("cov_len"), 5, "<8 / <32 / <128 / <512 / ≥512"],
          ["백프레셔 비율", 큰.get("cov_bp"), 4, "0 % / <20 % / <50 % / ≥50 %"],

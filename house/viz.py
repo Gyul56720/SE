@@ -690,3 +690,257 @@ def 전원계획(다이, 코어, 스트라이프x, 스트라이프폭, 링폭=2.
     if 제목:
         몸.append(_글(폭 / 2, 17, 제목, 12, 먹, "middle", 굵게=True))
     return svg(폭, 높이, "".join(몸), 제목)
+
+
+# ================================================================== 실제 도구 화면
+#
+# 아래 셋은 **상용 도구의 화면을 흉내 낸 것이 아니라, 같은 정보를 같은 꼴로 내는
+# 것**이다. 파형 뷰어는 VCD 에서 읽은 시각과 값만 그리고, 커버그룹 창은 시뮬이
+# 낸 빈 개수만 그린다. 흉내 낸 것은 배치와 색뿐이다.
+
+def 파형뷰어(신호들, 제목="", 폭=680, 칸=22, 시작시각=0, 끝시각=None,
+          눈금="ps", 표시=None, 주석띠=None) -> str:
+    """파형 뷰어 화면.  검은 판에 초록 파형 -- ModelSim/Verdi 가 내는 그 꼴이다.
+
+    신호들 = [(이름, "0011xx", "bit"|"bus")]  (house/dv/vcd.뽑기 · 원시 가 내는 꼴)
+    표시   = [(칸번호, 글, 색)]      세로 커서
+    주석띠 = [(시작칸, 끝칸, 글, 색)] 아래에 구간을 표시한다 -- 강의 화면의
+             Start / Address / Ack / Stop 띠가 그것이다
+    """
+    if not 신호들:
+        return 빈그림("VCD 에서 뽑은 신호가 없다")
+    이름폭 = 118
+    N = max(len(v) for _, v, *_ in 신호들)
+    그릴폭 = 폭 - 이름폭 - 16
+    주기폭 = 그릴폭 / max(N, 1)
+    y0 = 34 if 제목 else 12
+    머리 = 18
+    띠높이 = 20 * (1 + max([0] + [i for i, _ in enumerate(주석띠 or [])]) // 8) if 주석띠 else 0
+    높이 = y0 + 머리 + len(신호들) * 칸 + (26 if 표시 else 8) + (띠높이 + 10 if 주석띠 else 0)
+    판위 = y0 + 머리
+    판아래 = 판위 + len(신호들) * 칸
+    m = [_네모(이름폭, 판위 - 2, 그릴폭, 판아래 - 판위 + 4, "#101418", "#2b3138", 1.0, 2),
+         _네모(6, 판위 - 2, 이름폭 - 8, 판아래 - 판위 + 4, "#f7f8fa", "#d7dce2", 1.0, 2)]
+    # 시각 눈금자
+    칸수 = max(1, N // 8)
+    for c in range(0, N + 1, 칸수):
+        x = 이름폭 + c * 주기폭
+        m.append(_선(x, 판위 - 2, x, 판아래, "#232a31", 0.8))
+        t = 시작시각 + (끝시각 - 시작시각) * c / max(N, 1) if 끝시각 else c
+        m.append(_글(x, 판위 - 6, f"{t:,.0f}{눈금 if 끝시각 else ''}", 7.2, 흐림, "middle"))
+    for i, sg in enumerate(신호들):
+        nm, v = sg[0], sg[1]
+        종류 = sg[2] if len(sg) > 2 else "bit"
+        y = 판위 + i * 칸
+        hi, lo = y + 4, y + 칸 - 5
+        if i % 2:
+            m.append(_네모(이름폭, y, 그릴폭, 칸, "#161b20", "none", 0, 0))
+        m.append(_글(이름폭 - 14, y + 칸 / 2 + 3.5, nm, 8.4, 먹, "end", 글꼴이름=등폭))
+        if 종류 == "bit":
+            앞 = None
+            d = []
+            for c, ch in enumerate(v):
+                x = 이름폭 + c * 주기폭
+                if ch in "xXzZ":
+                    m.append(_네모(x, hi, 주기폭, lo - hi, "#5a2323", "#c0392b", 0.6, 0))
+                    앞 = None
+                    continue
+                lvl = hi if ch in "1H" else lo
+                if 앞 is not None and 앞 != lvl:
+                    d.append(f"L{x:.2f},{lvl:.2f}")
+                d.append(("M" if 앞 is None else "L") + f"{x:.2f},{lvl:.2f}")
+                d.append(f"L{x+주기폭:.2f},{lvl:.2f}")
+                앞 = lvl
+            if d:
+                m.append(f'<path d="{" ".join(d)}" fill="none" stroke="#35d07f" '
+                         f'stroke-width="1.5"/>')
+        else:
+            c = 0
+            while c < len(v):
+                j = c
+                while j + 1 < len(v) and v[j + 1] == v[c]:
+                    j += 1
+                x0 = 이름폭 + c * 주기폭
+                x1 = 이름폭 + (j + 1) * 주기폭
+                ch = v[c]
+                색 = "#c0392b" if ch == "x" else "#35d07f"
+                채 = "#5a2323" if ch == "x" else "#12301f"
+                꺾 = min(3.0, (x1 - x0) / 3)
+                m.append(f'<path d="M{x0+꺾:.2f},{hi:.2f} L{x1-꺾:.2f},{hi:.2f} '
+                         f'L{x1:.2f},{(hi+lo)/2:.2f} L{x1-꺾:.2f},{lo:.2f} '
+                         f'L{x0+꺾:.2f},{lo:.2f} L{x0:.2f},{(hi+lo)/2:.2f} Z" '
+                         f'fill="{채}" stroke="{색}" stroke-width="1.1"/>')
+                if x1 - x0 > 13:
+                    m.append(_글((x0 + x1) / 2, (hi + lo) / 2 + 3, ch, 7.4, "#9fe8c2",
+                                "middle", 글꼴이름=등폭))
+                c = j + 1
+    for t in (표시 or []):
+        c, g = t[0], t[1]
+        col = t[2] if len(t) > 2 else "#e8c547"
+        x = 이름폭 + c * 주기폭
+        m.append(_선(x, 판위 - 2, x, 판아래, col, 1.3, "3,2"))
+        m.append(_글(x, 판아래 + 13, g, 8, col, "middle", 굵게=True))
+    for k, b in enumerate(주석띠 or []):
+        c0, c1, g = b[0], b[1], b[2]
+        col = b[3] if len(b) > 3 else "#c0392b"
+        x0 = 이름폭 + c0 * 주기폭
+        x1 = 이름폭 + c1 * 주기폭
+        yy = 판아래 + 6 + (k % 2) * 18
+        m.append(_네모(x0, yy, max(x1 - x0, 2), 15, "none", col, 1.2, 2))
+        m.append(_글((x0 + x1) / 2, yy + 11, g, 7.6, col, "middle", 굵게=True))
+    if 제목:
+        m.append(_글(폭 / 2, 18, 제목, 11.5, 먹, "middle", 굵게=True))
+    return svg(폭, 높이, "".join(m), 제목)
+
+
+def 커버그룹(줄들, 제목="Covergroups", 폭=620, 칸=21) -> str:
+    """커버리지 창.  줄들 = [(들여쓰기, 종류, 이름, 퍼센트, 목표, 빈설명)].
+
+    종류: "pkg"(꾸러미) · "type"(커버그룹) · "cvp"(커버포인트) · "cross"(교차).
+    상용 커버리지 뷰어가 내는 것과 **같은 칸**을 낸다 -- Name / Coverage /
+    Goal / % of Goal / Status.  퍼센트는 시뮬이 실제로 센 빈 수에서 온다.
+    """
+    if not 줄들:
+        return 빈그림("커버리지 줄이 없다")
+    y0 = 30 if 제목 else 8
+    머리 = 20
+    높이 = y0 + 머리 + len(줄들) * 칸 + 12
+    이름폭, 값폭, 목표폭, 비폭 = 246, 62, 46, 58
+    막대x = 이름폭 + 값폭 + 목표폭 + 비폭 + 16
+    막대폭 = 폭 - 막대x - 46
+    m = [_네모(8, y0, 폭 - 16, 머리 + len(줄들) * 칸 + 4, "#ffffff", "#b9c0c8", 1.0, 2),
+         _네모(9, y0 + 1, 폭 - 18, 머리 - 2, "#dfe4ea", "none", 0, 0)]
+    for t, x, a in (("Name", 16, "start"), ("Coverage", 이름폭 + 값폭, "end"),
+                    ("Goal", 이름폭 + 값폭 + 목표폭, "end"),
+                    ("% of Goal", 이름폭 + 값폭 + 목표폭 + 비폭, "end"),
+                    ("Status", 막대x + 2, "start")):
+        m.append(_글(x, y0 + 14, t, 8.2, "#31383f", a, 굵게=True))
+    for i, r in enumerate(줄들):
+        들, 종, 이름, 퍼, 목, 설 = (list(r) + ["", "", "", 0, 100, ""])[:6]
+        y = y0 + 머리 + i * 칸
+        if i % 2:
+            m.append(_네모(9, y, 폭 - 18, 칸, "#f6f8fa", "none", 0, 0))
+        표 = {"pkg": "▣", "type": "▤", "cvp": "▫", "cross": "✕"}.get(종, "·")
+        m.append(_글(16 + 들 * 14, y + 14, f"{표} {이름}", 8.2,
+                    먹 if 종 in ("pkg", "type") else "#454b54",
+                    굵게=(종 in ("pkg", "type")), 글꼴이름=등폭))
+        m.append(_글(이름폭 + 값폭, y + 14, f"{퍼:.1f}%", 8.2, 먹, "end", 글꼴이름=등폭))
+        m.append(_글(이름폭 + 값폭 + 목표폭, y + 14, f"{목:.0f}", 8.2, 흐림, "end"))
+        비 = min(100.0, 퍼 / max(목, 1e-9) * 100)
+        m.append(_글(이름폭 + 값폭 + 목표폭 + 비폭, y + 14, f"{비:.1f}%", 8.2,
+                    먹 if 비 >= 100 else 빨강, "end", 글꼴이름=등폭,
+                    굵게=(비 < 100)))
+        m.append(_네모(막대x, y + 4, 막대폭, 13, "#ffffff", "#9aa2ab", 0.8, 1))
+        찬 = 막대폭 * min(1.0, 비 / 100)
+        색 = "#1fc35a" if 비 >= 100 else ("#e8c547" if 비 >= 70 else "#e05c3e")
+        if 찬 > 0:
+            m.append(_네모(막대x, y + 4, 찬, 13, 색, "none", 0, 1))
+        m.append(_글(폭 - 14, y + 14, f"{설}", 7.4, 흐림, "end"))
+    if 제목:
+        m.append(_글(폭 / 2, 17, 제목, 11.5, 먹, "middle", 굵게=True))
+    return svg(폭, 높이, "".join(m), 제목)
+
+
+def 플로어플랜도(다이, 코어, 스트라이프x, 스트라이프폭, 가로스트라이프=5, 링폭=2.0,
+            패드수=32, 제목="", 폭=470) -> str:
+    """강의 화면의 플로어플랜 그림 -- Corner cell · I/O Pad · Filler · Power Ring ·
+    Stripe · Core Area 를 **라벨까지** 붙여 그린다.  치수는 실제 값이다."""
+    DW, DH = 다이
+    CW, CH = 코어
+    y0 = 30 if 제목 else 10
+    그릴 = 폭 - 170
+    s_ = 그릴 / max(DW, 1e-9)
+    높이 = y0 + DH * s_ + 30
+    ox, oy = (DW - CW) / 2, (DH - CH) / 2
+    X0 = 14
+    m = [_네모(X0, y0, DW * s_, DH * s_, "#ffffff", 흐림, 1.0, 1)]
+    패드 = max((DW - CW) / 2 * 0.42 * s_, 7)
+    칸 = max(4, 패드수 // 4)
+    # I/O 패드와 필러
+    for i in range(칸):
+        for (px, py, w, h) in ((X0 + 패드 + i * (DW * s_ - 2 * 패드) / 칸, y0,
+                                (DW * s_ - 2 * 패드) / 칸 - 1, 패드),
+                               (X0 + 패드 + i * (DW * s_ - 2 * 패드) / 칸,
+                                y0 + DH * s_ - 패드, (DW * s_ - 2 * 패드) / 칸 - 1, 패드),
+                               (X0, y0 + 패드 + i * (DH * s_ - 2 * 패드) / 칸, 패드,
+                                (DH * s_ - 2 * 패드) / 칸 - 1),
+                               (X0 + DW * s_ - 패드,
+                                y0 + 패드 + i * (DH * s_ - 2 * 패드) / 칸, 패드,
+                                (DH * s_ - 2 * 패드) / 칸 - 1)):
+            m.append(_네모(px, py, w, h,
+                          "#d6f0f2" if i % 2 else "#dcdfe3", "#b6bcc4", 0.5, 0))
+    for (cx, cy) in ((X0, y0), (X0 + DW * s_ - 패드, y0),
+                     (X0, y0 + DH * s_ - 패드), (X0 + DW * s_ - 패드, y0 + DH * s_ - 패드)):
+        m.append(_네모(cx, cy, 패드, 패드, "#a8d8e0", "#7fa8b4", 0.7, 0))
+    # 전원 링 2겹
+    for k, 여 in enumerate((6, 11)):
+        m.append(_네모(X0 + ox * s_ - 여, y0 + oy * s_ - 여,
+                      CW * s_ + 2 * 여, CH * s_ + 2 * 여, "none", "#8a8f98", 1.2, 0))
+    # 코어
+    m.append(_네모(X0 + ox * s_, y0 + oy * s_, CW * s_, CH * s_, "#f2f8f4", "#9aa2ab", 0.9, 0))
+    # 스트라이프
+    for x in 스트라이프x:
+        m.append(_네모(X0 + x * s_ - max(스트라이프폭 * s_, 2.2) / 2, y0 + oy * s_ - 11,
+                      max(스트라이프폭 * s_, 2.2), CH * s_ + 22, "#7b3fbf", "none", 0, 0))
+    for k in range(가로스트라이프):
+        yy = oy + CH * (k + 0.5) / max(가로스트라이프, 1)
+        m.append(_네모(X0 + ox * s_ - 11, y0 + yy * s_ - 1.6,
+                      CW * s_ + 22, 3.2, "#7b3fbf", "none", 0, 0))
+    # 라벨
+    라벨 = [("Corner cell", X0 + DW * s_ - 패드 / 2, y0 + 패드 / 2),
+          ("Power Rings", X0 + ox * s_ + CW * s_ + 9, y0 + oy * s_ - 8),
+          ("Power Stripes", X0 + (스트라이프x[len(스트라이프x) // 2] if 스트라이프x else ox) * s_,
+           y0 + oy * s_ + CH * s_ * 0.24),
+          ("Core Area", X0 + ox * s_ + CW * s_ * 0.6, y0 + oy * s_ + CH * s_ * 0.5),
+          ("I/O Pad", X0 + DW * s_ - 패드 / 2, y0 + DH * s_ * 0.66),
+          ("I/O Filler", X0 + DW * s_ - 패드 / 2, y0 + DH * s_ * 0.8)]
+    for i, (t, ax, ay) in enumerate(라벨):
+        tx = 폭 - 150
+        ty = y0 + 16 + i * 17
+        m.append(_선(ax, ay, tx - 4, ty - 3, "#6b7076", 0.6))
+        m.append(_글(tx, ty, t, 7.6, 먹))
+    m.append(_글(X0, 높이 - 8, f"다이 {DW:.0f} × {DH:.0f} µm · 코어 {CW:.0f} × {CH:.0f} µm · "
+                f"스트라이프 {len(스트라이프x)} × {스트라이프폭:.3f} µm · 패드 {패드수}개",
+                7.4, 흐림))
+    if 제목:
+        m.append(_글(폭 / 2, 18, 제목, 11.5, 먹, "middle", 굵게=True))
+    return svg(폭, 높이, "".join(m), 제목)
+
+
+def 레이아웃뷰어(코어_um, 셀들, 배선=None, 클럭=None, 제목="", 폭=560, 층수=4) -> str:
+    """레이아웃 뷰어 화면 -- 검은 판에 금속 층을 색으로 겹쳐 그린다.
+
+    강의 화면의 그 빽빽한 그림이다.  `배선` = [(x1,y1,x2,y2,층)],
+    `클럭` = [(x1,y1,x2,y2)] 는 흰 선으로 따로 그린다(CTS 뷰어의 그 하이라이트).
+    """
+    W, H = 코어_um
+    y0 = 30 if 제목 else 10
+    판폭 = 폭 - 108
+    s_ = 판폭 / max(W, 1e-9)
+    높이 = y0 + H * s_ + 26
+    층색 = ["#c0392b", "#2e86c1", "#27ae60", "#d4ac0d", "#8e44ad", "#16a085"]
+    m = [_네모(96, y0, W * s_, H * s_, "#07090b", "#3b4148", 1.0, 1)]
+    # 왼쪽 층 목록 (뷰어의 그 패널)
+    m.append(_네모(8, y0, 82, min(H * s_, 16 + 층수 * 13 + 8), "#eceff3", "#b9c0c8", 0.9, 2))
+    m.append(_글(14, y0 + 12, "Layers", 7.6, 먹, 굵게=True))
+    for i in range(층수):
+        m.append(_네모(14, y0 + 17 + i * 13, 9, 9, 층색[i % len(층색)], "none", 0, 1))
+        m.append(_글(28, y0 + 25 + i * 13, f"M{i+1}", 7.2, 먹))
+    for c in 셀들:
+        x, y, w, h = c[0], c[1], c[2], c[3]
+        종 = c[4] if len(c) > 4 else "comb"
+        색 = {"seq": "#7b241c", "icg": "#7d6608"}.get(종, "#1a3b2a")
+        m.append(_네모(96 + x * s_, y0 + y * s_, max(w * s_, 0.6),
+                      max(h * s_ - 0.5, 0.9), 색, "none", 0, 0))
+    for ln in (배선 or []):
+        x1, y1, x2, y2 = ln[0], ln[1], ln[2], ln[3]
+        L = ln[4] if len(ln) > 4 else 0
+        m.append(_선(96 + x1 * s_, y0 + y1 * s_, 96 + x2 * s_, y0 + y2 * s_,
+                     층색[L % len(층색)], 0.45))
+    for ln in (클럭 or []):
+        m.append(_선(96 + ln[0] * s_, y0 + ln[1] * s_, 96 + ln[2] * s_, y0 + ln[3] * s_,
+                     "#ffffff", 0.5))
+    m.append(_글(폭 - 8, 높이 - 8, f"{W:.0f} × {H:.0f} µm", 7.4, 흐림, "end"))
+    if 제목:
+        m.append(_글(폭 / 2, 18, 제목, 11.5, 먹, "middle", 굵게=True))
+    return svg(폭, 높이, "".join(m), 제목)
