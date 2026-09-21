@@ -1,0 +1,155 @@
+<h1 id="T21">T21. 검증 환경 &mdash; 무엇을 증명하나</h1>
+<p class="한줄">커버리지는 해 봤다고 말한다. 됐다고 말하는 것은 검사기뿐이다. 둘을 헷갈리는 것이 검증에서 가장 비싼 잘못이다.</p>
+<div class="사다리"><div class="사다리앞"><b>읽기 전에 알아야 하는 것</b><br>구현흐름 · 넷리스트 · CDC검증 · 준안정 · 동기화기깊이 · 비동기FIFO · 핸드셰이크 · 그레이코드 · 사인오프 · ECO · 정적타이밍분석 · 타이밍수렴</div><div class="사다리뒤"><b>이 장에서 새로 나오는 것</b><br>검증환경 · 테스트벤치 · 에이전트 · 시퀀스 · 시퀀서 · 드라이버 · 모니터 · 스코어보드 · 참조모델 · 가상인터페이스 · 기능커버리지 · 커버그룹 · 커버포인트 · 크로스커버리지 · 제약랜덤 · 어서션 · 커버리지닫기 · 지시시험 · 회귀</div></div>
+<p>흐름에서 이 장의 단계 뒤에 오는 모든 것이 RTL 이 옳다고 가정한다.
+    합성은 버그를 충실히 구현할 것이고, 배치·배선은 그것 위에서 타이밍을
+    닫을 것이며, 사인오프는 그것을 제조할 수 있다고 증명해 줄 것이다.
+    <b>설계가 하기로 한 일을 하는지에 답할 수 있는 단계는 검증뿐이고</b>,
+    거의 모든 프로젝트에서 공학적 노력을 가장 많이 먹는 단계가 그것이다.
+    이 장은 그 노력이 갖는 구조에 관한 것이고, 그 노력이 값을 했는지를
+    정하는 구별 하나에 관한 것이다.</p>
+<h2>T21.1 구조, 그리고 왜 그렇게 나뉘어 있나</h2>
+<figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 636 208" width="100%" style="max-width:636px;height:auto" font-family="ui-monospace,monospace" font-size="11"><rect x="10" y="14" width="120" height="46" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="70.0" y="41.0" fill="#111" font-size="11" text-anchor="middle">시퀀스</text><text x="70.0" y="73" fill="#888" font-size="9.5" text-anchor="middle">추상적으로</text><text x="70.0" y="85" fill="#888" font-size="9.5" text-anchor="middle">무엇을 할지를</text><path d="M130,37.0 L158,37.0" fill="none" stroke="#111" stroke-width="1.6"/><path d="M158,33.0 L164,37.0 L158,41.0 Z" fill="#111"/><rect x="164" y="14" width="120" height="46" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="224.0" y="41.0" fill="#111" font-size="11" text-anchor="middle">시퀀서</text><text x="224.0" y="73" fill="#888" font-size="9.5" text-anchor="middle">시퀀스들 사이를</text><text x="224.0" y="85" fill="#888" font-size="9.5" text-anchor="middle">조정한다</text><path d="M284,37.0 L312,37.0" fill="none" stroke="#111" stroke-width="1.6"/><path d="M312,33.0 L318,37.0 L312,41.0 Z" fill="#111"/><rect x="318" y="14" width="120" height="46" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="378.0" y="41.0" fill="#111" font-size="11" text-anchor="middle">드라이버</text><text x="378.0" y="73" fill="#888" font-size="9.5" text-anchor="middle">항목을 바꾼다</text><text x="378.0" y="85" fill="#888" font-size="9.5" text-anchor="middle">핀 흔들기로</text><path d="M438,37.0 L466,37.0" fill="none" stroke="#111" stroke-width="1.6"/><path d="M466,33.0 L472,37.0 L466,41.0 Z" fill="#111"/><rect x="472" y="14" width="120" height="46" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="532.0" y="41.0" fill="#111" font-size="11" text-anchor="middle">DUT</text><text x="532.0" y="73" fill="#888" font-size="9.5" text-anchor="middle">설계를</text><rect x="10" y="106" width="120" height="46" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="70.0" y="133.0" fill="#111" font-size="11" text-anchor="middle">DUT </text><text x="70.0" y="165" fill="#888" font-size="9.5" text-anchor="middle">같은 설계를</text><path d="M130,129.0 L158,129.0" fill="none" stroke="#111" stroke-width="1.6"/><path d="M158,125.0 L164,129.0 L158,133.0 Z" fill="#111"/><rect x="164" y="106" width="120" height="46" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="224.0" y="133.0" fill="#111" font-size="11" text-anchor="middle">모니터</text><text x="224.0" y="165" fill="#888" font-size="9.5" text-anchor="middle">핀을 보고</text><text x="224.0" y="177" fill="#888" font-size="9.5" text-anchor="middle">항목을 되살린다</text><path d="M284,129.0 L312,129.0" fill="none" stroke="#111" stroke-width="1.6"/><path d="M312,125.0 L318,129.0 L312,133.0 Z" fill="#111"/><rect x="318" y="106" width="120" height="46" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="378.0" y="133.0" fill="#111" font-size="11" text-anchor="middle">스코어보드</text><text x="378.0" y="165" fill="#888" font-size="9.5" text-anchor="middle">견준다</text><text x="378.0" y="177" fill="#888" font-size="9.5" text-anchor="middle">참조 모델과</text><path d="M438,129.0 L466,129.0" fill="none" stroke="#111" stroke-width="1.6"/><path d="M466,125.0 L472,129.0 L466,133.0 Z" fill="#111"/><rect x="472" y="106" width="120" height="46" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="532.0" y="133.0" fill="#111" font-size="11" text-anchor="middle">통과 / 실패</text><text x="532.0" y="165" fill="#888" font-size="9.5" text-anchor="middle">뜻이 있는</text><text x="532.0" y="177" fill="#888" font-size="9.5" text-anchor="middle">유일한 판정</text></svg><figcaption><b>그림 17.</b> 에이전트의 두 쪽. 위쪽 길은 몰고, 아래쪽 길은 보고 판정한다. 둘은 일부러 서로 안 이어져 있다 — 모니터가 핀에서 무슨 일이 났는지를 되살리므로, 드라이버 버그가 스코어보드에 제 의도를 일러 주며 제 몸을 숨길 수 없다.</figcaption></figure>
+<figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 470" width="100%" style="max-width:640px;height:auto" font-family="ui-monospace,monospace" font-size="11"><rect x="10" y="10" width="620" height="400" fill="#f2f2f2" stroke="#111" stroke-width="1.6" rx="3"/><text x="320" y="28" fill="#111" font-size="12" text-anchor="middle" font-weight="bold">테스트벤치</text><rect x="24" y="36" width="592" height="292" fill="#dfe8f5" stroke="#111" stroke-width="1.6" rx="3"/><text x="320" y="54" fill="#111" font-size="12" text-anchor="middle" font-weight="bold">테스트</text><rect x="38" y="62" width="564" height="254" fill="#ece2f6" stroke="#111" stroke-width="1.6" rx="3"/><text x="320" y="80" fill="#111" font-size="11.5" text-anchor="middle" font-weight="bold">검증 환경</text><rect x="52" y="92" width="212" height="206" fill="#dbe7f5" stroke="#111" stroke-width="1.6" rx="3"/><text x="158" y="110" fill="#111" font-size="11" text-anchor="middle" font-weight="bold">에이전트 1</text><rect x="200" y="96" width="52" height="22" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="226.0" y="111.0" fill="#111" font-size="11" text-anchor="middle">CFG</text><rect x="64" y="120" width="88" height="26" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="108.0" y="137.0" fill="#111" font-size="11" text-anchor="middle">시퀀서</text><rect x="64" y="158" width="88" height="46" fill="#f6c99b" stroke="#111" stroke-width="1.6" rx="3"/><text x="108.0" y="185.0" fill="#111" font-size="11" text-anchor="middle">드라이버</text><rect x="162" y="158" width="88" height="46" fill="#fbe6d2" stroke="#111" stroke-width="1.6" rx="3"/><text x="206.0" y="185.0" fill="#111" font-size="11" text-anchor="middle">모니터</text><rect x="64" y="216" width="60" height="30" fill="#bcd4ef" stroke="#111" stroke-width="1.6" rx="3"/><text x="94.0" y="228.5" fill="#111" font-size="11" text-anchor="middle">가상</text><text x="94.0" y="241.5" fill="#111" font-size="11" text-anchor="middle">인터페이스</text><rect x="162" y="216" width="60" height="30" fill="#bcd4ef" stroke="#111" stroke-width="1.6" rx="3"/><text x="192.0" y="228.5" fill="#111" font-size="11" text-anchor="middle">가상</text><text x="192.0" y="241.5" fill="#111" font-size="11" text-anchor="middle">인터페이스</text><path d="M108,146 L108,158" fill="none" stroke="#111" stroke-width="1.6"/><path d="M108.0,158.0 L111.6,151.0 L104.4,151.0 Z" fill="#111"/><path d="M94,204 L94,216" fill="none" stroke="#111" stroke-width="1.6"/><path d="M94.0,216.0 L97.6,209.0 L90.4,209.0 Z" fill="#111"/><path d="M192,216 L192,204" fill="none" stroke="#111" stroke-width="1.6"/><path d="M192.0,204.0 L188.4,211.0 L195.6,211.0 Z" fill="#111"/><rect x="58" y="40" width="96" height="22" fill="#e9f0d8" stroke="#111" stroke-width="1.6" rx="3"/><text x="106.0" y="55.0" fill="#111" font-size="11" text-anchor="middle">시퀀스</text><path d="M106,62 L106,120" fill="none" stroke="#111" stroke-width="1.6"/><path d="M106.0,120.0 L109.6,113.0 L102.4,113.0 Z" fill="#111"/><rect x="372" y="92" width="212" height="206" fill="#dbe7f5" stroke="#111" stroke-width="1.6" rx="3"/><text x="478" y="110" fill="#111" font-size="11" text-anchor="middle" font-weight="bold">에이전트 2</text><rect x="520" y="96" width="52" height="22" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="546.0" y="111.0" fill="#111" font-size="11" text-anchor="middle">CFG</text><rect x="384" y="120" width="88" height="26" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="428.0" y="137.0" fill="#111" font-size="11" text-anchor="middle">시퀀서</text><rect x="384" y="158" width="88" height="46" fill="#f6c99b" stroke="#111" stroke-width="1.6" rx="3"/><text x="428.0" y="185.0" fill="#111" font-size="11" text-anchor="middle">드라이버</text><rect x="482" y="158" width="88" height="46" fill="#fbe6d2" stroke="#111" stroke-width="1.6" rx="3"/><text x="526.0" y="185.0" fill="#111" font-size="11" text-anchor="middle">모니터</text><rect x="384" y="216" width="60" height="30" fill="#bcd4ef" stroke="#111" stroke-width="1.6" rx="3"/><text x="414.0" y="228.5" fill="#111" font-size="11" text-anchor="middle">가상</text><text x="414.0" y="241.5" fill="#111" font-size="11" text-anchor="middle">인터페이스</text><rect x="482" y="216" width="60" height="30" fill="#bcd4ef" stroke="#111" stroke-width="1.6" rx="3"/><text x="512.0" y="228.5" fill="#111" font-size="11" text-anchor="middle">가상</text><text x="512.0" y="241.5" fill="#111" font-size="11" text-anchor="middle">인터페이스</text><path d="M428,146 L428,158" fill="none" stroke="#111" stroke-width="1.6"/><path d="M428.0,158.0 L431.6,151.0 L424.4,151.0 Z" fill="#111"/><path d="M414,204 L414,216" fill="none" stroke="#111" stroke-width="1.6"/><path d="M414.0,216.0 L417.6,209.0 L410.4,209.0 Z" fill="#111"/><path d="M512,216 L512,204" fill="none" stroke="#111" stroke-width="1.6"/><path d="M512.0,204.0 L508.4,211.0 L515.6,211.0 Z" fill="#111"/><rect x="378" y="40" width="96" height="22" fill="#e9f0d8" stroke="#111" stroke-width="1.6" rx="3"/><text x="426.0" y="55.0" fill="#111" font-size="11" text-anchor="middle">시퀀스</text><path d="M426,62 L426,120" fill="none" stroke="#111" stroke-width="1.6"/><path d="M426.0,120.0 L429.6,113.0 L422.4,113.0 Z" fill="#111"/><rect x="276" y="118" width="108" height="40" fill="#dff0dc" stroke="#111" stroke-width="1.6" rx="3"/><text x="330.0" y="142.0" fill="#111" font-size="11" text-anchor="middle">스코어보드</text><rect x="268" y="172" width="124" height="44" fill="#dff0dc" stroke="#111" stroke-width="1.6" rx="3"/><text x="330.0" y="191.5" fill="#111" font-size="11" text-anchor="middle">기능</text><text x="330.0" y="204.5" fill="#111" font-size="11" text-anchor="middle">커버리지</text><rect x="300" y="232" width="56" height="24" fill="#fff" stroke="#111" stroke-width="1.6" rx="3"/><text x="328.0" y="248.0" fill="#111" font-size="11" text-anchor="middle">CFG</text><path d="M250,172 L276,138" fill="none" stroke="#111" stroke-width="1.6"/><path d="M276.0,138.0 L268.9,141.4 L274.6,145.7 Z" fill="#111"/><path d="M250,188 L268,192" fill="none" stroke="#111" stroke-width="1.6"/><path d="M268.0,192.0 L261.9,187.0 L260.4,194.0 Z" fill="#111"/><path d="M482,172 L392,138" fill="none" stroke="#111" stroke-width="1.6"/><path d="M392.0,138.0 L397.3,143.8 L399.8,137.1 Z" fill="#111"/><path d="M482,188 L392,192" fill="none" stroke="#111" stroke-width="1.6"/><path d="M392.0,192.0 L399.2,195.3 L398.8,188.1 Z" fill="#111"/><rect x="60" y="334" width="196" height="26" fill="#c9c9c9" stroke="#111" stroke-width="1.6" rx="3"/><text x="158.0" y="351.0" fill="#111" font-size="11" text-anchor="middle">인터페이스</text><path d="M130,316 L130,334" fill="none" stroke="#111" stroke-width="1.6" stroke-dasharray="3,3"/><path d="M186,316 L186,334" fill="none" stroke="#111" stroke-width="1.6" stroke-dasharray="3,3"/><path d="M158,360 L158,372" fill="none" stroke="#111" stroke-width="1.6"/><path d="M158.0,372.0 L161.6,365.0 L154.4,365.0 Z" fill="#111"/><rect x="380" y="334" width="196" height="26" fill="#c9c9c9" stroke="#111" stroke-width="1.6" rx="3"/><text x="478.0" y="351.0" fill="#111" font-size="11" text-anchor="middle">인터페이스</text><path d="M450,316 L450,334" fill="none" stroke="#111" stroke-width="1.6" stroke-dasharray="3,3"/><path d="M506,316 L506,334" fill="none" stroke="#111" stroke-width="1.6" stroke-dasharray="3,3"/><path d="M478,360 L478,372" fill="none" stroke="#111" stroke-width="1.6"/><path d="M478.0,372.0 L481.6,365.0 L474.4,365.0 Z" fill="#111"/><rect x="60" y="372" width="516" height="30" fill="#f5d3d3" stroke="#111" stroke-width="1.6" rx="3"/><text x="318.0" y="391.0" fill="#111" font-size="11" text-anchor="middle">DUT</text><text x="10" y="428" fill="#888" font-size="10" text-anchor="start">위쪽 길은 몰고 아래쪽 길은 본다. 둘은 일부러 서로 안 이어져 있다 —</text><text x="10" y="442" fill="#888" font-size="10" text-anchor="start">드라이버의 의도를 믿는 모니터는 엉뚱한 것을 몬 드라이버를 못 잡아낸다.</text><text x="10" y="458" fill="#c0392b" font-size="10.5" text-anchor="start">커버리지는 해 봤다고 말한다. 됐다고 말하는 것은 스코어보드뿐이다.</text></svg><figcaption><b>그림 18.</b> 환경 전체. DUT 에서만 만나는 두 쪽으로 읽어라. 시퀀스가 에이전트마다 왼쪽으로 내려가며 몰고, 모니터가 오른쪽으로 올라오며 보고, 가운데의 스코어보드가 설계가 틀렸다고 말하는 유일한 것이다.</figcaption></figure>
+<table><caption>표 54. 구성요소마다, 그리고 그것이 답하는 물음 하나</caption><thead><tr><th>구성요소</th><th>무엇에 답하나</th><th>왜 이웃과 떨어져 있나</th></tr></thead><tbody><tr><td><b>시퀀스</b></td><td>어떤 거래가 일어나야 하나?</td><td>시험마다 쓰이고 핀에 대해서는 아무것도 모른다 — 그래서 같은 시퀀스가 다른 버스 프로토콜에서도 돈다</td></tr><tr><td><b>시퀀서</b></td><td>여러 시퀀스가 다툴 때 어느 차례로?</td><td>조정은 정책이고, 정책은 시험마다 바뀌는데 드라이버는 안 바뀐다</td></tr><tr><td><b>드라이버</b></td><td>거래 하나를 선 위에서 어떻게 나타내나?</td><td>프로토콜의 타이밍을 아는 유일한 구성요소다. 그 위의 모든 것은 프로토콜을 모른다</td></tr><tr><td><b>모니터</b></td><td>선 위에서 실제로 무슨 일이 났나?</td><td><b>드라이버와 독립이어야 한다.</b> 드라이버의 의도를 믿는 모니터는 엉뚱한 것을 몬 드라이버를 잡아낼 수 없다</td></tr><tr><td><b>스코어보드</b></td><td>옳았나?</td><td>참조 모델을 지고 있다. 그것이 지는 것만이 DUT 가 틀렸다는 뜻인 유일한 구성요소다</td></tr><tr><td><b>커버리지 수집기</b></td><td>무엇을 해 봤나?</td><td>판정하면 안 된다. 커버리지와 검사를 섞으면 아무것도 아닌 것의 100 % 를 보고하는 테스트벤치가 나온다</td></tr><tr><td><b>설정 객체</b></td><td>위의 것 가운데 어느 것이 있고, 어떻게 차려지나?</td><td>환경 하나가 블록과 서브시스템과 칩을 다 섬기게 하려고. 해당 없는 에이전트는 지우는 것이 아니라 꺼 둔다</td></tr></tbody></table>
+<div class="개념"><div class="개념머리">가상 인터페이스 (virtual interface) &mdash; 소프트웨어에 대응물이 없는 유일한 구성물</div>
+<div class="개념이론"><p>테스트벤치의 드라이버와 모니터는 <b>클래스 객체</b>다. 실행 시간에
+        만들어지고, 쓰레기 수집되고, 핸들로 건네진다. 그것들이 흔들어야 하는
+        핀은 <b>모듈 인스턴스</b>의 것인데, 그것은 엘라보레이션에서 만들어져
+        시뮬레이션 내내 존재한다. 클래스는 정적으로 엘라보레이션된 객체를
+        곧바로 가리킬 수 없다. 클래스를 쓰는 시점에 그 인스턴스가 아직
+        없기 때문이다.</p>
+        <p>가상 인터페이스가 그 다리다. 클래스가 쥐고 있는 핸들이, 엘라보레이션
+        <i>된</i> 인터페이스 인스턴스를 가리킨다. 테스트벤치의 설정 단계가
+        그것을 채워 주고, 그다음부터 드라이버는 동적인 코드에서 진짜 핀을
+        몰 수 있다.</p>
+        <p>새 환경에서 가장 흔한 실패는 널인 가상 인터페이스다 — 아무것도
+        그것을 채워 주기 전에 드라이버가 지어진 것이다. 미묘한 버그는
+        아닌데 낯설다. 보통의 소프트웨어 언어에는 두 객체 수명이 이렇게
+        갈라지는 일이 없기 때문이다.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>DUT 에 닿는 모든 에이전트.</td></tr>
+<tr><th>언제 쓰나</th><td>어떤 시퀀스가 돌기 전, build/connect 단계에서 채운다.</td></tr>
+<tr><th>어떻게 쓰나</th><td>최상위 모듈에서 설정 데이터베이스로 넣고, 드라이버와 모니터마다 build 에서 꺼내 오게 한다 — 그다음 천 주기 뒤에 첫 핀 접근이 널 핸들 오류로 죽게 두지 말고 <b>널이 아님을 단언해라</b>.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>// Top level, where both worlds meet:
+my_if  dut_if (.clk(clk));                 // elaborated: exists for the run
+my_dut u_dut  (.p(dut_if));
+
+initial begin
+  // Hand the elaborated thing to the dynamic world, by name:
+  uvm_config_db#(virtual my_if)::set(null, "*", "vif", dut_if);
+  run_test();
+end
+
+// In the driver's build phase -- and check it, do not assume it:
+if (!uvm_config_db#(virtual my_if)::get(this, "", "vif", vif))
+  `uvm_fatal("NOVIF", "virtual interface was never set")</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> 여기서는 클러킹 블록이 중요하다. 그것 없이 테스트벤치에서 DUT
+            입력을 몰면 클럭 에지에서 DUT 자신의 평가와 경합이 나고, 그
+            경합은 시뮬레이터마다 다르게 풀린다. 한 시뮬레이터에서 통과하고
+            다른 데서 지는 테스트벤치는 거의 언제나 도구 버그가 아니라
+            빠뜨린 클러킹 블록이다.</div>
+</div>
+<h2>T21.2 커버리지는 자극의 척도이지 옳음의 척도가 아니다</h2>
+<div class="정의"><b>기능 커버리지 (functional coverage) · 커버포인트 · 크로스</b> &mdash; <b>커버포인트</b>는 값을 표본으로 떠 <b>칸</b>에 갈라 넣는다. <b>커버그룹</b>은 커버포인트를 모아 정해진 사건에서 표본을 뜬다. <b>크로스</b>는 커버포인트 둘 이상의 칸 조합 묶음이다. 커버리지는 적어도 한 번 맞은 칸의 몫이다. 그 정의에 <b>없는</b> 것을 눈여겨보라. 그 칸이 맞았을 때 설계가 옳게 거동했는지에 대한 언급이 하나도 없다.</div>
+<div class="짚기"><b>한 번도 안 터지는 스코어보드를 달고 얻은 기능 커버리지
+    100 % 는 아무것도 아닌 것의 100 % 짜리 증거다.</b> 커버리지는 '자극이
+    이 상황에 닿았나' 에 답한다. 옳음은 스코어보드와 어서션만이 답한다.
+    둘은 나란히 보고되고, 비슷해 보이고, 전혀 다른 것을 잰다 — 그리고
+    초록인 커버리지 보고서는 버그를 내보내는 가장 설득력 있는 방법이다.
+    수이고, 높고, 그것이 무엇을 셌는지 아무도 안 묻기 때문이다.</div>
+<div class="사고"><b>실제로 난 일</b><br>모든 커버그룹이 100 % 인 채로 블록이 나갔다. 스코어보드의 비교
+    메서드에 디버깅하다 넣은 이른 <code>return</code> 이 있었고 안 지워졌다.
+    버스트마다 첫 박만 검사하고 나머지는 소리 없이 통과시켰다. 모든 칸이
+    맞았다. 아무것도 견주지 않았다. 그 새어 나감은 고객이 찾았고, 그것을
+    놓친 테스트벤치는 내내 완벽한 커버리지 보고서를 갖고 있었다.
+    <b>그것을 잡았을 검사는 커버리지를 더 하는 것이 아니다 — 자해 검사다.
+    DUT 출력의 비트 하나를 바꾸고 스코어보드가 빨개지는지 확인하는
+    것이다.</b></div>
+<div class="개념"><div class="개념머리">자해 검사 (mutation testing) 를 테스트벤치에</div>
+<div class="개념이론"><p>테스트벤치는 설계가 틀렸을 때 져야 하는 프로그램이다. 보통의
+        회귀에서는 그 성질을 한 번도 부려 보지 않는다 — 실행마다 (그때쯤엔)
+        옳은 설계를 상대하므로 실패 경로를 한 번도 안 탄다.</p>
+        <p>고침은 설계를 일부러 망가뜨리는 것이다. 응답의 비트 하나를
+        뒤집고, 거래 하나를 떨어뜨리고, 핸드셰이크를 한 주기 늦추고,
+        버스트 가운데 바이트 하나를 망가뜨린다. 그다음 회귀를 돌려 빨개지는
+        것을 확인하고, <b>어느</b> 검사가 잡았는지를 확인한다. 아무것도
+        못 잡는 변이는 검사의 구멍이고, 그 자리가 정확히 짚인다.</p>
+        <p>이 책이 제 수들에 적용하는 것과 같은 규율이다. 틀리게 나올 수
+        없는 측정은 아무것도 잰 것이 아니다.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>모든 환경에서, 큰 블록마다 적어도 한 번씩. 실행 시간을 감당할 수 있으면 CI 에서도.</td></tr>
+<tr><th>언제 쓰나</th><td>커버리지 보고서를 믿기 전에. 변이 작업은 그 커버리지 수가 검사기에 붙어 있기는 한지에 대한 유일한 증거다.</td></tr>
+<tr><th>어떻게 쓰나</th><td>변이 목록을 파일로 두고, 저마다 그것을 잡아야 하는 검사를 적어 둔다. 돌려 본다. <i>어느</i> 검사도 못 잡았거나 시간 초과로만 잡힌 변이는 발견이다.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code># mutations.txt -- and the expected catcher, which is the real content
+#   id  mutation                          expected catcher
+#   m1  invert resp[0]                    scoreboard data compare
+#   m2  drop every 8th write              scoreboard transaction count
+#   m3  delay ready by 1 cycle            protocol assertion a_ready_stable
+#   m4  return wrong burst length         scoreboard length compare
+#   m5  corrupt byte 3 of burst           scoreboard data compare
+#
+# Result column after the run. Any row whose catcher is "none" or
+# "test timeout" is a hole -- a timeout means nothing noticed, it just
+# stopped.</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> 모든 검사가 다 잡는 변이도 좋은 결과가 아니다 — 그 변이가 너무
+            거칠어서 아무 자리도 짚어 주지 못했다는 뜻이다. 쓸모 있는 변이는
+            정확히 검사 하나가 잡는 것들이다. 그것들이 검사와 그 검사가
+            책임지는 실패를 맞대어 주기 때문이다.</div>
+</div>
+<h2>T21.3 왜 크로스가 터지나: 무작위 닫기의 산수</h2>
+<figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 300" width="100%" style="max-width:600px;height:auto" font-family="ui-monospace,monospace" font-size="11"><text x="300" y="20" fill="#111" font-size="13" text-anchor="middle" font-weight="bold">커버포인트는 찬다. 크로스는 안 찬다.</text><rect x="120" y="42" width="34" height="34" fill="#cde8d3" stroke="#ddd" stroke-width="1.6" rx="3"/><rect x="120" y="76" width="34" height="34" fill="#cde8d3" stroke="#ddd" stroke-width="1.6" rx="3"/><rect x="120" y="110" width="34" height="34" fill="#cde8d3" stroke="#ddd" stroke-width="1.6" rx="3"/><rect x="120" y="144" width="34" height="34" fill="#cde8d3" stroke="#ddd" stroke-width="1.6" rx="3"/><rect x="120" y="178" width="34" height="34" fill="#cde8d3" stroke="#ddd" stroke-width="1.6" rx="3"/><rect x="154" y="42" width="34" height="34" fill="#cde8d3" stroke="#ddd" stroke-width="1.6" rx="3"/><rect x="154" y="76" width="34" height="34" fill="#cde8d3" stroke="#ddd" stroke-width="1.6" rx="3"/><rect x="154" y="110" width="34" height="34" fill="#f2f2f2" stroke="#ddd" stroke-width="1.6" rx="3"/><rect x="154" y="144" width="34" height="34" fill="#f2f2f2" stroke="#ddd" stroke-width="1.6" rx="3"/><rect x="154" y="178" width="34" height="34" fill="#f2f2f2" stroke="#ddd" stroke-width="1.6" rx="3"/><rect x="188" y="42" width="34" height="34" fill="#cde8d3" stroke="#ddd" stroke-width="1.6" rx="3"/><rect x="188" y="76" width="34" height="34" fill="#f2f2f2" stroke="#ddd" stroke-width="1.6" rx="3"/><rect x="188" y="110" width="34" height="34" fill="#cde8d3" stroke="#ddd" stroke-width="1.6" rx="3"/><rect x="188" y="144" width="34" height="34" fill="#f2f2f2" stroke="#ddd" stroke-width="1.6" rx="3"/><rect x="188" y="178" width="34" height="34" fill="#f2f2f2" stroke="#ddd" stroke-width="1.6" rx="3"/><rect x="222" y="42" width="34" height="34" fill="#cde8d3" stroke="#ddd" stroke-width="1.6" rx="3"/><rect x="222" y="76" width="34" height="34" fill="#f2f2f2" stroke="#ddd" stroke-width="1.6" rx="3"/><rect x="222" y="110" width="34" height="34" fill="#f2f2f2" stroke="#ddd" stroke-width="1.6" rx="3"/><rect x="222" y="144" width="34" height="34" fill="#f2f2f2" stroke="#ddd" stroke-width="1.6" rx="3"/><rect x="222" y="178" width="34" height="34" fill="#cde8d3" stroke="#ddd" stroke-width="1.6" rx="3"/><rect x="256" y="42" width="34" height="34" fill="#f2f2f2" stroke="#ddd" stroke-width="1.6" rx="3"/><rect x="256" y="76" width="34" height="34" fill="#f2f2f2" stroke="#ddd" stroke-width="1.6" rx="3"/><rect x="256" y="110" width="34" height="34" fill="#f2f2f2" stroke="#ddd" stroke-width="1.6" rx="3"/><rect x="256" y="144" width="34" height="34" fill="#f2f2f2" stroke="#ddd" stroke-width="1.6" rx="3"/><rect x="256" y="178" width="34" height="34" fill="#cde8d3" stroke="#ddd" stroke-width="1.6" rx="3"/><text x="205.0" y="34" fill="#111" font-size="10" text-anchor="middle">커버포인트 a  (칸 5개)</text><text x="110" y="127.0" fill="#111" font-size="10" text-anchor="end">b</text><rect x="124" y="220" width="26" height="12" fill="#cde8d3" stroke="#9cc9a8" stroke-width="1.6" rx="3"/><rect x="158" y="220" width="26" height="12" fill="#cde8d3" stroke="#9cc9a8" stroke-width="1.6" rx="3"/><rect x="192" y="220" width="26" height="12" fill="#cde8d3" stroke="#9cc9a8" stroke-width="1.6" rx="3"/><rect x="226" y="220" width="26" height="12" fill="#cde8d3" stroke="#9cc9a8" stroke-width="1.6" rx="3"/><rect x="260" y="220" width="26" height="12" fill="#cde8d3" stroke="#9cc9a8" stroke-width="1.6" rx="3"/><rect x="94" y="46" width="12" height="26" fill="#cde8d3" stroke="#9cc9a8" stroke-width="1.6" rx="3"/><rect x="94" y="80" width="12" height="26" fill="#cde8d3" stroke="#9cc9a8" stroke-width="1.6" rx="3"/><rect x="94" y="114" width="12" height="26" fill="#cde8d3" stroke="#9cc9a8" stroke-width="1.6" rx="3"/><rect x="94" y="148" width="12" height="26" fill="#cde8d3" stroke="#9cc9a8" stroke-width="1.6" rx="3"/><rect x="94" y="182" width="12" height="26" fill="#cde8d3" stroke="#9cc9a8" stroke-width="1.6" rx="3"/><text x="120" y="252" fill="#111" font-size="11.5" text-anchor="start" font-weight="bold">a: 5/5 = 100 %      b: 5/5 = 100 %      a x b: 12/25 = 48 %</text><text x="16" y="268" fill="#888" font-size="10" text-anchor="start">고른 무작위 자극으로 칸 K 개를 채우는 데 시험이 K.lnK 번쯤 든다. 100 칸짜리 둘을 크로스하면 K = 10,000 이다.</text><text x="16" y="284" fill="#c0392b" font-size="10" text-anchor="start">시험 519 번이 97,876 번이 된다. 크로스는 모형에 더하는 것이 아니라 닫는 노력에 곱하는 것이다.</text></svg><figcaption><b>그림 19.</b> 축마다 온전히 덮였는데 크로스는 안 덮였다. 가장자리의 막대가 커버포인트 보고서가 보이는 것이고, 격자가 닫기가 실제로 요구하는 것이다.</figcaption></figure>
+<div class="유도"><div class="유도머리">유도 &mdash; 무작위 자극이 칸 K 개를 채우는 데 얼마나 걸리나</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">시험마다 K 개의 칸 중 하나에 고르게, 서로 독립으로 떨어진다고 하자.</td><td class="유도왜"><b>따져 볼 가정이 이것이다.</b> 진짜 제약 랜덤 자극은 고르지도 독립이지도 않다 — 그런데 이 경우가 낙관적인 쪽이므로, 여기서 셈하는 것은 드는 노력의 하한이다.</td></tr><tr><td class="유도번호">2</td><td class="유도말">이미 j 개가 맞았을 때 시험 하나가 새 칸을 맞출 확률은 (K−j)/K 다.</td><td class="유도왜">세기다. 남은 칸이 K 개 중 K−j 개다.</td></tr><tr><td class="유도번호">3</td><td class="유도말">그러니 j 에서 j+1 로 가는 데 드는 기대 시험 수는 K/(K−j) 다.</td><td class="유도왜">기하 대기 시간의 평균은 1/p 다.</td></tr><tr><td class="유도번호">4</td><td class="유도말">j = 0…K−1 에 걸쳐 더하면 K·(1 + 1/2 + … + 1/K) = K·H<sub>K</sub> 다.</td><td class="유도왜">기다림들이 서로의 결과와 독립이 아니어도 기댓값은 더해진다.</td></tr><tr><td class="유도번호">5</td><td class="유도말">H<sub>K</sub> ≈ ln K + 0.577 이므로 값은 K·ln K 쯤이다.</td><td class="유도왜">칸 수에 대해 선형보다 아주 조금 나쁠 뿐이고, 그것은 괜찮다. 문제는 이 인자가 아니라 크로스할 때 <b>K 자체가 곱</b>이라는 것이다.</td></tr></tbody></table></div>
+<table><caption>표 55. 모든 칸을 채우는 데 드는 기대 시험 수, 서로 독립인 두 길로</caption><thead><tr><th>칸 K</th><th>K·H<sub>K</sub></th><th>찰 때까지 뽑아 보는 시늉</th><th>어긋남</th></tr></thead><tbody><tr><td>10</td><td>29.29</td><td>29.564</td><td>0.94&nbsp; %</td></tr><tr><td>100</td><td>518.74</td><td>519.18</td><td>0.08&nbsp; %</td></tr><tr><td>1,000</td><td>7,485.5</td><td>7,356</td><td>1.73&nbsp; %</td></tr><tr><td>10,000</td><td>97,876.1</td><td><i>시늉 안 함</i></td><td><i>요점이 그것이다. 이미 10⁵ 번쯤이다</i></td></tr></tbody></table>
+<div class="짚기">두 칸은 서로 다른 수단으로 셈한 것이다 — 더한 급수와, 그것을 하나도
+    안 쓰는 진짜 되풀이 뽑기 — 그리고 몇 퍼센트 안에서 맞는데, 남는 것은
+    가장 큰 경우에서 시행 300 번의 몬테카를로 표본 오차다. 그것이
+    마지막 줄을 허락하는 것이고, 중요한 것이 그 줄이다. <b>100 칸짜리
+    커버포인트 둘을 크로스하면 K = 10,000 이 되고, 시험
+    518.7 번짜리 일이
+    97,876.1 번짜리가 된다.</b> 크로스는 커버리지 모형에
+    조금 보태는 것이 아니라 닫는 노력에 곱하는 것이다.</div>
+<table><caption>표 56. 그리고 그것이 낙관적인 경우였다 &mdash; 드문 칸 하나가 전부를 지배한다</caption><thead><tr><th>가장 드문 칸의 확률</th><th>한 번 맞히는 데 드는 기대 시험 수</th><th>실무에서 무슨 뜻인가</th></tr></thead><tbody><tr><td>0.01</td><td>100</td><td>넉넉하다</td></tr><tr><td>0.001</td><td>1,000</td><td>밤새 도는 회귀</td></tr><tr><td>1.000×10<sup>-4</sup></td><td>10,</td><td>밤새 도는 회귀</td></tr><tr><td>1.000×10<sup>-5</sup></td><td>100,</td><td>밤새 도는 회귀</td></tr><tr><td>1.000×10<sup>-6</sup></td><td>1.0000×10<sup>6</sup></td><td><b>영영 안 난다 — 지시 시험을 써라</b></td></tr></tbody></table>
+<div class="짚기">고른 경우의 셈은 문제를 한참 과소평가한다. 무작위 닫기를 다스리는
+    것이 평균이 아니라 <b>가장 드문</b> 칸이기 때문이다. 마지막 줄들이
+    제약 랜덤 흐름에서도 지시 시험이 여전히 있는 정량적인 까닭이다.
+    그 제약 아래에서 확률이 10⁻⁶ 인 구석에는 기계를 더 붙여서 닿지 못한다.
+    거기에는 시험 하나를 위해 제약을 바꾸어 닿거나 그 시험을 손으로 써서
+    닿는다 — 그리고 어느 쪽이든 누군가 그것이 중요하다고 결정해서 닿는
+    것인데, 그것은 검증 결정이 아니라 설계 결정이다.</div>
+<div class="예제"><div class="예제머리">예제 9. 이 크로스를 더해야 하나?</div><div class="예제줄"><b>주어진 것.</b> '전송 크기'(칸 8개)와 '주소 정렬'(칸 4개)과 '미해결 거래 수'(칸 16개)를 크로스하자는 제안.</div><div class="예제줄"><b>푸는 법.</b> K = 8 × 4 × 16 = 512 다. 고른 무작위 자극 아래에서 채우는 데 시험이 3,490.1 번쯤이다. 그런데 합법성부터 확인해라. 1 바이트 전송은 8 바이트 어긋남일 수 없으니, 512 칸의 꽤 많은 몫이 지어진 방식상 닿을 수 없다.</div><div class="예제답"><b>답.</b> 더하되, 불법 조합을 비워 두지 말고 <code>illegal_bins</code> 로 선언해라. 닫기를 재는 기준은 닿을 수 있는 수다. 분모로 512 를 남겨 두면 보고서가 영영 100 % 에 못 닿고, 모두가 그것을 무시하도록 길들인다.</div><div class="예제덧">불법 칸을 선언하는 데는 첫째보다 값이 더한 둘째 이득이 있다.
+        <i>터지는</i> <code>illegal_bins</code> 는 즉각 오류다. 무엇이
+        일어날 수 없다는 진술을, 그것이 일어나지 않았다는 검사로 바꾼다.</div><div class="예제함정"><b>여기서 틀린다.</b> 함정은 뻔한 것의 반대다. 위험은 크로스가 너무 비싸다는 것이 아니라, 가지치기 안 한 크로스가 제 목표에 영영 못 닿는 커버리지 수를 낳는다는 것이다. 그리고 못 닿는 줄 아는 목표는 목표이기를 그만둔다. <b>닿을 수 있는 칸에 대한 정직한 100 % 가 아무도 안 믿는 분모에 대한 정직한 87 % 보다 값이 있다.</b></div></div>
+<h2>T21.4 언제 멈출지 알기</h2>
+<p>커버리지 닫기는 멈추기 위한 필요조건이지 충분조건이 아니다. 프로젝트가
+    실제로 답해야 하는 물음은 다르다. <i>아직 몇 개나 남아 있나?</i> 그것은
+    곧바로 잴 수 없지만 버그가 발견되는 속도는 잴 수 있고, 잦아드는 속도에는
+    정보가 실려 있다.</p>
+<div class="유도"><div class="유도머리">유도 &mdash; 아직 못 찾은 버그를 어림하기</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">주마다 새로 찾는 버그 수가 일정한 비 q 로 준다고 하자.</td><td class="유도왜">많은 프로젝트에서의 경험적 관찰이고, 이 어림이 얹혀 있는 가정이다. 법칙이 아니다.</td></tr><tr><td class="유도번호">2</td><td class="유도말">그러면 앞으로 나올 버그는 n·q + n·q² + … = n·q/(1−q) 다. n 은 이번 주의 수다.</td><td class="유도왜">등비급수. T17 의 ECO 수렴과 같은 것이고 — q 가 1 에 다가가면 같은 방식으로 진다.</td></tr><tr><td class="유도번호">3</td><td class="유도말">이번 주에 n = 4 를 찾았고 q = 0.7 이면 9.33 개 더다.</td><td class="유도왜">대입이다. 그 수는 기운 날 만큼 작고 위험할 만큼 불확실한데, 그래서 다음 걸음이 중요한 것이다.</td></tr><tr><td class="유도번호">4</td><td class="유도말"><b>이제 사소한 설명을 죽인다.</b> 속도는 버그가 떨어져서 줄 수도, 노력이 줄어서 줄 수도, 시험이 안 바뀌게 돼서 줄 수도 있다.</td><td class="유도왜">원인 셋에 관측은 하나다. 가려내는 것은 고를 수 있는 것이 아니다 — 셋 중 둘이면 그 어림은 뜻이 없다.</td></tr><tr><td class="유도번호">5</td><td class="유도말">버그 수 옆에 노력과 새 자극의 속도를 같이 재라.</td><td class="유도왜">시뮬레이션 시간이 일정하고 커버리지가 오르는데 버그 속도가 주는 것은 증거다. 회귀 수가 줄면서 버그 속도가 주는 것은 설계가 아니라 <b>팀 일정에 대한 측정</b>이다.</td></tr></tbody></table></div>
+<table><caption>표 57. 이번 주에 버그 넷: 감쇠율이 뜻하는 것</caption><thead><tr><th>q (주 대비 비)</th><th>기대되는 남은 버그</th><th>읽기</th></tr></thead><tbody><tr><td>0.5</td><td>4</td><td>수렴 중</td></tr><tr><td>0.7</td><td>9.333</td><td>수렴 중</td></tr><tr><td>0.85</td><td>22.67</td><td>느리다</td></tr><tr><td>0.95</td><td>76</td><td><b>정보 없음 — 이걸 근거로 내보내지 마라</b></td></tr></tbody></table>
+<div class="짚기">마지막 줄이 정직한 줄이다. q = 0.95 에서 어림은
+    76 개 더인데, 모형의 오차 막대가 그 수보다 훨씬 넓다 — 등비
+    가정이 일을 다 하고 있다. <b>값이 확인되지 않은 가정에 지배되는 어림은
+    어림이 아니라 가정으로 보고해야 한다.</b> 이 책이 제 안의 모든 수에
+    적용하는 그 규칙이다.</div>
+<h2>T21.5 월요일에 이걸로 무엇을 하나</h2>
+<table><caption>표 58. 이 장의 개념이 실제로 쓰이는 자리</caption><thead><tr><th>개념</th><th>쓰이는 블록</th><th>무엇을 정하나</th></tr></thead><tbody><tr><td>검증환경 · 테스트벤치 · 에이전트 · 시퀀스 · 시퀀서 · 드라이버 · 모니터</td><td>환경을 지을 때</td><td>한 층 위에서 다시 쓸 수 있는지</td></tr><tr><td>스코어보드 · 참조모델 · 어서션</td><td>모든 환경에서, 맨 먼저</td><td>설계가 틀렸다고 말할 수 있는 유일한 구성요소들</td></tr><tr><td>기능커버리지 · 커버그룹 · 커버포인트 · 크로스커버리지</td><td>커버리지 모형을 계획할 때</td><td>자극이 어디까지 닿았는지 — 그리고 그것뿐</td></tr><tr><td>제약랜덤 · 지시시험 · 커버리지닫기 · 회귀</td><td>시뮬레이션 시간을 어디 쓸지 정할 때</td><td>무작위가 영영 못 닿을 칸이 어느 것인지, 그래서 손으로 쓸 것</td></tr><tr><td>가상인터페이스</td><td>환경을 DUT 에 잇기</td><td>보통 소프트웨어에 대응물이 없는 유일한 구성물</td></tr></tbody></table>
+<p>가지고 갈 수들. 고른 무작위 자극으로 칸 K 개를 채우는 데 시험이
+    K·ln K 번쯤 드니, 100 칸짜리 둘의 크로스는 518.7 이
+    아니라 97,876.1 이 든다 — 크로스는 닫는 노력에
+    곱해지고, 그래서 불법 조합을 쳐내는 것은 깔끔함이 아니라 공학이다.
+    그리고 확률 10⁻⁶ 인 칸에 한 번 닿는 데 시험이
+    1.00000×10<sup>6</sup> 번 드는데, 그 산수가 지시 시험을 살려
+    두는 것이다.</p>
+<p>검증은 설계가 옳다는 것을 세운다. 낱낱의 실리콘 조각이 제대로
+    제조됐는지에 대해서는 아무 말도 안 한다 — 그 물음은 다이를 물고 있는
+    기계가 답하고, 그것에 싸게 답하는 것이 마지막 장의 주제다.</p>
+<div class="특허"><div class="특허머리">특허로 가는 길 &mdash; 이 주제에서 발명이 일어나는 자리</div><div class="특허속">검증 방법론은 특허가 아니라 공개된다 — 방법론 라이브러리가 오픈
+        소스인 것이 그 요점이다. 출원되는 것은 <b>커버리지 주도 시험
+        생성</b> 둘레다. 커버리지 결과로 제약 풀이기를 아직 빈 칸 쪽으로
+        몰아가는 것인데, 이 장에서 셈한 쿠폰 수집가 산수를 곧바로 치는
+        것이다.</div></div>
