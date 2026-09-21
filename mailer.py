@@ -117,8 +117,21 @@ def 내정보(repo=None) -> dict:
     return {"이름": 값찾기("USER_NAME", repo)[0], "주소": 값찾기("USER_EMAIL", repo)[0]}
 
 
-def 자리표들(글: str) -> "list[str]":
-    return list(dict.fromkeys(m.group(0) for m in 자리표.finditer(글 or "")))
+def 자리표들(글: str, 허용=()) -> "list[str]":
+    """안 채운 `[자리]` 를 찾는다.
+
+    `허용` 은 **부르는 쪽이 책임지는 말머리**다 -- 사내 메일 제목의 `[보고]` 처럼
+    자리표가 아니라 분류표인 것들. 기본은 빈 목록이라 아무것도 안 봐준다.
+
+    실측 2026-09-21: Priya 의 보고 메일이 안 나갔다. 제목이
+    `[보고] 2026년 09월 21일 TDC_Design Verification Priya Raghavan` 인데
+    `[보고]` 를 안 채운 자리로 읽었다. 이 장치가 옳게 동작한 것이지만,
+    **말머리까지 자리표로 세면 이 회사는 메일을 한 통도 못 보낸다.**
+    그래서 봐주는 자리를 열되, **부르는 쪽이 글자를 명시**해야만 봐준다.
+    """
+    봐줌 = {str(x) for x in (허용 or ())}
+    return list(dict.fromkeys(m.group(0) for m in 자리표.finditer(글 or "")
+                              if m.group(0) not in 봐줌))
 
 
 def 묻는말(빠진: "list[str]") -> str:
@@ -153,7 +166,7 @@ def _적기(repo, 줄: dict) -> None:
 
 
 def 보내기(to: str, subject: str, body: str, repo=None, 초: int = 30,
-        첨부: "list | None" = None) -> dict:
+        첨부: "list | None" = None, 허용자리표=()) -> dict:
     """{"보냈나", "필요한것", "말"}. 말은 사람에게 그대로 보여도 되는 글이다(값 없음).
 
     `첨부` 는 파일 경로들이다. 보고서는 그림이 본문이라 PDF 로만 전해진다 --
@@ -169,13 +182,20 @@ def 보내기(to: str, subject: str, body: str, repo=None, 초: int = 30,
         to = 내
     if not _주소꼴.match(to):
         return {"보냈나": False, "필요한것": [], "말": f"받는 주소 꼴이 아니다: {to[:40]!r}"}
-    빈자리 = 자리표들((subject or "") + "\n" + (body or ""))
+    제목빈 = 자리표들(subject, 허용자리표)
+    본문빈 = 자리표들(body, 허용자리표)
+    빈자리 = list(dict.fromkeys(제목빈 + 본문빈))
     if 빈자리:
+        # **어디에 있는지를 말한다.** 실측 2026-09-21: `[보고]` 는 제목에 있었는데
+        # 말은 "본문에" 라고 했다. 틀린 자리를 가리키는 진단은 사람을 헤매게 한다.
+        어디 = " · ".join(x for x in (f"제목 {len(제목빈)}" if 제목빈 else "",
+                                    f"본문 {len(본문빈)}" if 본문빈 else "") if x)
         내 = 내정보(repo)
         힌트 = ("USER_NAME/USER_EMAIL 은 set_key 로 한 번 받아 기억하고, 기관·주제·날짜는 dig/search_memory 로 채워라. "
-              "실존 인물의 이름을 지어 서명하지 마라 -- 위원회·직함으로 서명하라.")
+              "실존 인물의 이름을 지어 서명하지 마라 -- 위원회·직함으로 서명하라. "
+              "`[보고]` 같은 **말머리**라면 부르는 쪽에서 허용자리표로 명시해라.")
         return {"보냈나": False, "필요한것": [],
-                "말": f"본문에 안 채운 자리표 {len(빈자리)}개가 있어 보내지 않았다: {', '.join(빈자리[:8])}. "
+                "말": f"안 채운 자리표 {len(빈자리)}개가 있어 보내지 않았다 ({어디}): {', '.join(빈자리[:8])}. "
                      + (f"(내 이름: {내['이름']}) " if 내["이름"] else "") + 힌트}
     if not (subject or "").strip():
         return {"보냈나": False, "필요한것": [], "말": "제목이 비었다"}
@@ -255,13 +275,14 @@ def 보내기(to: str, subject: str, body: str, repo=None, 초: int = 30,
                  + ("; " + "; ".join(옮김) if 옮김 else "")}
 
 
-def 보내기_첨부(to: str, subject: str, body: str, 첨부, repo=None, 초: int = 60) -> dict:
+def 보내기_첨부(to: str, subject: str, body: str, 첨부, repo=None, 초: int = 60,
+           허용자리표=()) -> dict:
     """보고서 전용 입구. 첨부가 비면 **보내지 않는다** -- 그림 없는 보고는 보고가 아니다."""
     첨부 = list(첨부 or [])
     if not 첨부:
         return {"보냈나": False, "필요한것": [],
                 "말": "첨부(보고서 PDF)가 없다 -- 이 회사는 글만 보내지 않는다"}
-    return 보내기(to, subject, body, repo=repo, 초=초, 첨부=첨부)
+    return 보내기(to, subject, body, repo=repo, 초=초, 첨부=첨부, 허용자리표=허용자리표)
 
 
 # ---------------------------------------------------------------- 진단: 인증 실패를 스스로 좁힌다
