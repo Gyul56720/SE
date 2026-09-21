@@ -1174,6 +1174,26 @@ async def on_message(message: discord.Message):
     may_write = admin and (not ADMIN_ALLOWED_USER_IDS
                            or message.author.id in ADMIN_ALLOWED_USER_IDS)
     reply = await asyncio.to_thread(dispatch.run, message.content, None, may_write)
+
+    # **자연어도 몇 갈래는 앞세운다.** 실측 2026-09-21: 사용자가 "SAR ADC calibration
+    # 논문" 을 물었는데 봇이 `!논문` 이 아니라 **교재 여덟 칸**으로 답했다 -- 논문을 한
+    # 편도 안 찾고 모델이 기억으로 쓴 글이었다. 표(dispatch.고르기)가 LLM **뒤에** 있어서,
+    # 에이전트가 `dispatch_command` 를 부르기로 결심해야만 닿았기 때문이다.
+    #
+    # 전부 앞세우지는 않는다 -- 표의 패턴이 넓어 평범한 물음까지 납치한다. 흰 목록
+    # (dispatch.앞세우는규칙)에 든 갈래만, 그리고 "에이전트:" 로 시작하면 건너뛴다.
+    if reply is None:
+        앞, 왜 = await asyncio.to_thread(dispatch.앞세울것, message.content)
+        if 앞:
+            print(f"[앞세움] {왜} <- {message.content[:60]!r} -> {앞[:80]!r}")
+            reply = await asyncio.to_thread(dispatch.run, 앞, None, may_write)
+            if reply is not None:
+                reply = (f"_({왜} 갈래로 알아듣고 `{앞[:60]}` 을 돌렸습니다. "
+                         f"에이전트에게 직접 물으시려면 앞에 `에이전트:` 를 붙이세요.)_\n\n"
+                         + reply)
+        elif 왜 and "주제" in 왜:
+            reply = 왜
+
     if reply is not None:
         await message.reply(reply[:2000])
         # 백그라운드로 띄운 일은 끝나면 알린다 (실측: 끝났는지 알 길이 없었다).

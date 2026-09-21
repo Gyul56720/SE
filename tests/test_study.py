@@ -208,14 +208,40 @@ ok("관리 채널" in CMD.run("!논문 sar adc", allow_write=False),
 print()
 print("[routing] plain Korean reaches the command -- and does not steal other work")
 ok(DISPATCH.고르기("SAR ADC 논문 좀 읽어줘")[0].startswith("!논문"), "논문 읽어줘 -> !논문")
-ok(DISPATCH.고르기("문헌 조사 해줘")[0].startswith("!논문"), "문헌 조사 -> !논문")
+ok(DISPATCH.고르기("SAR ADC 문헌 조사 해줘")[0].startswith("!논문"), "문헌 조사 -> !논문")
+ok(DISPATCH.고르기("문헌 조사 해줘")[0] is None,
+   "**주제가 없으면 명령을 안 만든다** -- 빈 질의로 검색하면 아무거나 올라온다")
 ok(DISPATCH.고르기("RIS 최신 논문 좀 모아줘")[0].startswith("!연구"),
    "**collecting is still 연구** -- the new rule must not swallow the old one")
 ok(DISPATCH.고르기("오늘 날씨")[0] is None, "unrelated talk routes nowhere")
+
+
+
+
+print()
+print("[front] the router runs BEFORE the agent -- that is why the wrong answer happened")
+# 실측 2026-09-21: "SAR ADC calibration 논문" 에 봇이 **교재 여덟 칸**으로 답했다
+# (What Is Being Addressed / The Governing Relation / Where It Is Used ...) -- 논문을
+# 한 편도 안 찾고 모델이 기억으로 쓴 글이다. 표가 LLM 뒤에 있어 안 불리면 안 닿았다.
+앞, 왜 = DISPATCH.앞세울것("SAR ADC calibration 논문 찾아줘")
+ok(앞 == "!논문 SAR ADC calibration",
+   f"**그 물음이 이제 `!논문` 으로 앞질러 간다** ({앞!r})")
+ok("논문" == 왜, "어느 갈래로 알아들었는지 남긴다")
+ok(DISPATCH.앞세울것("에이전트: 논문 찾아줘")[0] is None,
+   "**끄는 길이 있다** -- `에이전트:` 로 시작하면 표를 건너뛴다")
+ok(DISPATCH.앞세울것("RIS 최신 논문 좀 모아줘")[0] is None,
+   "흰 목록 밖(연구)은 앞세우지 않는다 -- 넓은 패턴이 평범한 물음을 납치하면 안 된다")
+ok(DISPATCH.앞세울것("저장소 고쳐줘")[0] is None, "고치기·계획도 예전대로 에이전트가 받는다")
+ok(DISPATCH.앞세울것("!논문 상태")[0] is None, "이미 고정 명령이면 앞세울 것이 없다")
+없, 까닭 = DISPATCH.앞세울것("문헌 조사 해줘")
+ok(없 is None and "주제" in 까닭,
+   "**주제 없는 부탁은 되묻는다** -- 빈 질의로 검색하면 아무거나 올라온다")
+ok(DISPATCH.앞세울것("8탭 FIR 필터 논문 분석해줘")[0] == "!논문 8탭 FIR 필터",
+   "**부탁하는 말이 검색어에서 빠진다** -- '논문 분석해줘' 가 질의에 섞이면 안 된다")
 
 
 print()
 if fails:
     print(f"{len(fails)} failed: {fails}")
     raise SystemExit(1)
-print("study: pipeline · themes · honesty · report · ledger · command · routing -- passed")
+print("study: pipeline · themes · honesty · report · ledger · command · routing · front -- passed")
