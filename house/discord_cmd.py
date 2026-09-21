@@ -42,6 +42,8 @@ import sys
 import time
 from pathlib import Path
 
+import relay
+
 PREFIX = "!회사"
 REPO = Path(__file__).resolve().parent.parent
 집 = REPO / "house"
@@ -100,7 +102,55 @@ def _띄우기(인자: "list[str]", 이름: str) -> dict:
         산것 = _도나()
         if 산것:
             break
-    return {"떴나": bool(산것), "로그": 로그, "프로세스": 산것[:3]}
+    떴 = {"떴나": bool(산것), "로그": 로그, "프로세스": 산것[:3]}
+    # **끝나면 알린다.** 실측 2026-09-21: `!회사 설계` 는 "짓고 있습니다" 로 끝나고,
+    # 다 돼도 아무 말이 없었다 -- 사람이 `!회사 상태` 를 쳐야 알았다. `!평가`·`!수집` 은
+    # 이미 relay 에 등록해서 서버가 pgrep 으로 지켜보다 끝나면 로그 끝을 붙여 보낸다.
+    # 하우스만 제 발사대를 따로 써서 그 줄이 빠져 있었다.
+    #
+    # 로그 파일은 실행마다 새 이름이라 시작바이트는 0 이다. 찾을말은 **아스키**여야
+    # 한다 -- `pgrep -f` 는 이 로캘에서 한글 패턴에 영영 안 맞고, 안 맞는 것은 "끝났다"
+    # 로 읽혀 빈 로그를 보고하게 된다(CLAUDE.md 의 실측).
+    if 떴["떴나"]:
+        try:
+            relay.배경등록(f"house-{이름}", str(로그), 명령=" ".join(인자)[:120],
+                        시작바이트=0, 찾을말=표식)
+        except Exception as e:                                # noqa: BLE001
+            print(f"[house] 배경 등록 실패: {type(e).__name__}: {e}")
+    return 떴
+
+
+def _메일줄(메일: bool) -> str:
+    """답 끝에 붙이는 한 줄. **보낼 수 있는지 지금 확인해서 적는다** -- 나중에 조용히
+    실패하면 사람은 기다리기만 한다."""
+    if not 메일:
+        return "_메일은 끄고 돌립니다(`메일없이`). 끝나면 채널로 알립니다._"
+    m = 메일된다()
+    if m["된다"]:
+        return "📧 **끝나면 보고서 PDF 를 첨부해 메일로 보냅니다.** 채널에도 알립니다."
+    return (f"⚠ **끝나도 메일은 못 나갑니다** — {m['말']}\n"
+            f"  (일은 그대로 돌고, 보고서 PDF 는 `house/out/` 에 남습니다. "
+            f"채널로도 알립니다.)")
+
+
+def 메일된다() -> dict:
+    """**보내기 전에 미리 묻는다.** 여섯 분을 돌고 나서 "받는 주소를 모른다" 로 끝나면
+    그 여섯 분이 버려진다 -- 사람은 메일을 기다리고 있는데 아무것도 안 온다.
+
+    `mailer.필요한것()` 이 빠진 열쇠를 돌려주고, `USER_EMAIL` 이 없으면 보낼 곳이 없다.
+    둘 다 사람이 `!열쇠 이름=값` 한 줄로 준다."""
+    sys.path.insert(0, str(REPO))
+    try:
+        import mailer
+    except Exception as e:                                    # noqa: BLE001
+        return {"된다": False, "빠진": ["mailer"], "말": f"{type(e).__name__}: {e}"}
+    빠진 = list(mailer.필요한것() or [])
+    if not (mailer.내정보() or {}).get("주소"):
+        빠진.append("USER_EMAIL")
+    빠진 = list(dict.fromkeys(빠진))
+    return {"된다": not 빠진, "빠진": 빠진,
+            "말": ("보낼 수 있다" if not 빠진 else
+                  "메일을 못 보낸다 -- " + " · ".join(f"`!열쇠 {k}=<값>`" for k in 빠진))}
 
 
 def _표(줄들: "list[dict]") -> str:
@@ -145,7 +195,10 @@ def run(text: str, runner=None, allow_write: bool = True) -> "str | None":
 
     낱말 = 나머지.split()
     머리 = 낱말[0].lower()
-    메일 = any(w in ("메일", "mail", "보내", "gmail") for w in 낱말)
+    # **메일은 기본으로 켠다.** 사용자(2026-09-21): "이메일로 보고서 자동으로 보내야지."
+    # 다 된 보고서가 디스크에만 남아 있는 것은 낸 것이 아니다. 끄고 싶으면 `메일없이`.
+    메일없이 = any(w in ("메일없이", "nomail", "메일빼고") for w in 낱말)
+    메일 = not 메일없이
 
     # ---- 상태 ----
     if 머리 in ("상태", "status"):
@@ -183,7 +236,7 @@ def run(text: str, runner=None, allow_write: bool = True) -> "str | None":
             return "`!회사 설계` 는 파일을 냅니다 — 지금은 쓰기가 막혀 있습니다."
         if _도나():
             return "**이미 돌고 있다.** `!회사 상태` 로 확인해라."
-        r = _띄우기(["--설계", 요청], "arch")
+        r = _띄우기(["--설계", 요청] + (["--메일"] if 메일 else []), "arch")
         if not r["떴나"]:
             return f"**못 띄웠다.** 로그: `{r['로그']}`"
         sys.path.insert(0, str(REPO))
@@ -209,6 +262,7 @@ def run(text: str, runner=None, allow_write: bool = True) -> "str | None":
                      "요청 판독까지는 그래도 됩니다."]
         줄 += ["", "_RTL 은 아직 한 줄도 짓지 않습니다. 제안서를 보시고 "
                "승인하시면 그때 짓습니다._"]
+        줄 += ["", _메일줄(메일)]
         return "\n".join(줄)
 
     # ---- 보고서 목록 ----
@@ -240,12 +294,13 @@ def run(text: str, runner=None, allow_write: bool = True) -> "str | None":
         return (f"**다섯 명을 백그라운드로 시작했다** (살아있는 것을 `pgrep` 으로 확인했다).\n"
                 f"· 로그: `{r['로그']}`\n"
                 f"· 프로세스: `{r['프로세스'][0][:120]}`\n"
-                + ("· 끝나면 각자 PDF 를 첨부해 메일로 보낸다.\n" if 메일 else "")
+                + ("· " + _메일줄(메일) + "\n")
                 + "`!회사 상태` 로 진행을 본다. 다섯 명 다 도는 데 수십 분 걸린다.")
 
     # ---- 한 사람 ----
     people = _people()
-    후보 = " ".join(w for w in 낱말 if w not in ("메일", "mail", "보내", "gmail", "빠르게"))
+    후보 = " ".join(w for w in 낱말 if w not in ("메일", "mail", "보내", "gmail", "빠르게",
+                                                "메일없이", "nomail", "메일빼고"))
     p = people.find(후보)
     if p is None:
         return (f"**누구를 말하는지 모르겠다**: `{후보}`\n\n" + _도움())

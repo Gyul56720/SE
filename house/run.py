@@ -38,13 +38,38 @@ from house import report as RPT       # noqa: E402
 차례 = ["rtl", "dv", "syn", "dft", "pd"]      # 흐름 순서 (설계 -> 검증 -> 합성 -> DFT -> PD)
 
 
-def 설계하기(요청: str) -> dict:
-    """자연어 요청 -> 제안서.  **RTL 은 짓지 않는다** -- 사람이 승인해야 짓는다."""
+def 설계하기(요청: str, 메일: bool = False, to=None) -> dict:
+    """자연어 요청 -> 제안서.  **RTL 은 짓지 않는다** -- 사람이 승인해야 짓는다.
+
+    제안서도 **메일로 나간다.** 사용자(2026-09-21): "이메일로 보고서 자동으로 보내야지."
+    백그라운드로 도는 일의 결과를 사람이 보려면 채널을 다시 뒤지거나 `!회사 상태` 를
+    쳐야 했다 -- 다 된 보고서가 디스크에만 남아 있는 것은 낸 것이 아니다.
+    """
     from house import arch as ARCH
     r = ARCH.돌리기(요청)
+    r.setdefault("사람", people.ETHAN)     # 스펙에서 RTL 로 가는 자리가 Ethan 이다
+    r.setdefault("과제", 요청.strip()[:60] or "새 회로")
+    r["키"] = "arch"
+    if 메일:
+        m = 메일보내기(r, to=to, 특이사항=_제안서특이사항(r))
+        r["메일"] = m
+        print(f"    메일: {m}", flush=True)
     _적기({"키": "arch", "이름": "설계 제안서", "됐나": True, "pdf": str(r["pdf"]),
-         "쪽": r.get("쪽"), "요청": 요청[:200], "선행조사": str(r.get("선행조사"))})
+         "쪽": r.get("쪽"), "요청": 요청[:200], "선행조사": str(r.get("선행조사")),
+         "메일": bool(메일) and bool(r.get("메일", {}).get("됐나"))})
     return r
+
+
+def _제안서특이사항(r: dict) -> list:
+    """제안서 메일의 2번 항목. **아직 모르는 칸을 맨 앞에 올린다** -- 그것이 사람이
+    해야 할 일의 전부이고, 안 올리면 첨부를 안 열고 '됐구나' 로 읽힌다."""
+    줄 = [f"This is a proposal, not a design. No RTL has been written yet.",
+         f"Report: {r.get('쪽', '?')} pages, {r.get('그림수', '?')} figures."]
+    for x in (r.get("모른다") or [])[:6]:
+        줄.append("Needs your decision: " + str(x))
+    if r.get("선행조사"):
+        줄.append(f"Prior-art file: {r['선행조사']}")
+    return 줄
 
 
 def 한명(키: str, 빠르게=False, 회로=None) -> dict:
@@ -181,11 +206,14 @@ def 요약글(낸것: list) -> str:
 if __name__ == "__main__":
     av = sys.argv[1:]
     if "--설계" in av:
-        요청 = " ".join(av[av.index("--설계") + 1:]).strip()
+        # **깃발은 요청이 아니다.** `--설계 … --메일` 에서 `--메일` 이 요청 글에 섞이면
+        # 스펙 판독기가 그것까지 읽는다.
+        요청 = " ".join(x for x in av[av.index("--설계") + 1:]
+                      if not x.startswith("--")).strip()
         if not 요청:
             print("!! `--설계` 뒤에 무엇을 만들지 적어라")
             raise SystemExit(2)
-        r = 설계하기(요청)
+        r = 설계하기(요청, 메일=("--메일" in sys.argv))
         print(f"제안서 -> {r['pdf']}  ({r.get('쪽')} 쪽, 그림 {r.get('그림수')}, "
               f"표 {r.get('표수')})")
         print(f"선행조사 -> {r.get('선행조사')}")
