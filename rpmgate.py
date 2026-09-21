@@ -55,6 +55,51 @@ import time
 )
 
 
+# ---------------------------------------------------------------- 부를 값이 있는가
+# **pro 계열은 후보에서 뺀다.** 무료 티어에서 pro 의 분당 한도는 flash 계열의 몇 분의
+# 일이라, 후보에 끼워 두면 거의 매번 429 만 받아 오면서 그 키의 벌점만 올린다 -- 답을
+# 주지도 않고 다음 시도를 늦추기만 하는 후보다.
+#
+# 이 저장소는 이 교훈을 **이미 배웠다.** `orchestrator/llm_pool.py` 가 같은 문장을 적어
+# 두고 같은 모델들을 거른다. 그런데 디스코드 에이전트 경로(bot_tools.build_agent_pool)는
+# 그 거름망을 안 거쳤고, 게다가 `_model_quality_rank` 가 pro 를 **1순위**로 친다 --
+# 그래서 매 메시지가 pro 부터 두드리고 429 를 먹었다. 사용자가 보낸 로그 그대로다:
+#
+#     candidate=key-…:gemini-3.1-pro-preview-customtools 분당 한도(RPM) 초과
+#     candidate=key-…:gemini-pro-latest 분당 한도(RPM) 초과
+#     candidate=key-…:gemini-pro-latest 분당 한도(RPM) 초과
+#
+# llm_pool 이 실측으로 적어 둔 것과 **같은 두 이름**이다. 한 저장소에서 같은 교훈을 두
+# 번 배우지 않으려면 거름망이 두 경로에 다 있어야 한다.
+#
+# 답의 품질은 프롬프트와 도구가 정하지 모델 등급이 정하지 않는다. 되살리려면
+# `GEMINI_ALLOW_PRO=1`.
+SKIP_MODEL = re.compile(os.environ.get("GEMINI_SKIP_MODEL", r"pro"), re.I)
+ALLOW_PRO = os.environ.get("GEMINI_ALLOW_PRO", "") not in ("", "0", "false")
+
+
+def worth_calling(model: str) -> bool:
+    """Is this model worth having in the pool at all?
+
+    A candidate that answers 429 every time is worse than no candidate: it costs a
+    round trip, raises that key's penalty, and delays the one that would have
+    answered."""
+    if ALLOW_PRO:
+        return True
+    return not SKIP_MODEL.search((model or "").split(":", 1)[-1])
+
+
+def usable_models(names) -> list:
+    """Filter a model list, **but never hand back an empty pool.**
+
+    If the filter would remove everything, the filter is wrong about this account,
+    not the account about the filter -- an empty pool means the bot cannot answer at
+    all, which is strictly worse than a slow answer."""
+    names = [n for n in (names or []) if n]
+    kept = [n for n in names if worth_calling(n)]
+    return kept or names
+
+
 def 모델한도(model: str) -> int:
     """이 모델을 분당 몇 번까지 부를 것인가."""
     if 덮어쓰기:
