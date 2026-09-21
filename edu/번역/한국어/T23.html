@@ -1,0 +1,74 @@
+<h1 id="T23">T23. 흐름을 끝에서 끝까지 돌리기 &mdash; 블록 하나, 아홉 단계, 진짜 수</h1>
+<p class="한줄">이 장의 모든 수는 이 저장소에서 흐름을 돌려 나온 것이다. 어느 것도 남의 것을 옮겨 적지 않았다.</p>
+<div class="사다리"><div class="사다리앞"><b>읽기 전에 알아야 하는 것</b><br>구현흐름 · 합성 · 넷리스트 · 정적타이밍분석 · 슬랙 · 표준셀행 · SITE · 점유율 · 코어영역 · 파워스트라이프 · 배치 · 합법화 · HPWL · 클럭트리합성 · 삽입지연 · 클럭스큐 · 전역배선 · 상세배선 · 탐색수리 · 혼잡도 · 사인오프 · 물리검증 · 코너 · 스캔 · 스캔체인 · ATPG · 고착고장 · 결함커버리지 · 결함수준 · DPPM · 시험시간 · 스캔압축 · 검증환경 · 스코어보드 · 기능커버리지 · 크로스커버리지 · 제약랜덤 · 지시시험 · 일렉트로마이그레이션 · 전압강하</div><div class="사다리뒤"><b>이 장에서 새로 나오는 것</b><br>실습흐름 · 회귀기준</div></div>
+<p>앞의 다섯 장은 흐름의 양들을 모형에서 셈했다. 이 장은 그것을 돌린다.
+    설계는 제어 FSM 과 두 플롭 동기화기와 게이팅된 누산기를 단 작은 MAC 이다.
+    T2 의 RC 모형에서 만든 셀 라이브러리에 대고 <b>yosys</b> 가 합성하고,
+    이 기계에 상용 배치·배선 도구가 없어서 나머지 여덟 단계는 이 저장소 안에
+    구현했다. 그 제약이 되레 이점이었다. <b>모든 중간 양이 보이고 다시 잴
+    수 있다</b>는 것인데, 그것이 바로 상용 도구가 주지 않는 것이다.</p>
+<div class="짚기">이 장의 모든 것을 명령 하나로 재현한다.
+    <code>python3 lab/run.py</code>. 8 초쯤 걸린다. 단계 하나씩은
+    <code>python3 lab/run.py --stage sta</code>(또는
+    <code>fp place cts route signoff dft dv</code>)다. 아래의 수들은 그
+    명령이 쓰는 <code>lab/기준.json</code> 에서 읽은 것이고,
+    <code>tests/test_lab.py</code> 가 흐름을 다시 돌려 그 수들이 여전히
+    맞는지 확인한다 — 그러니 <b>이 장이 낡으면 검사가 빨개진다</b>.</div>
+<h2>T23.1 아홉 단계, 그리고 저마다 무엇을 쟀나</h2>
+<table><caption>표 65. 한 번의 실행, 끝에서 끝까지</caption><thead><tr><th>단계</th><th>무엇을 했나</th><th>중요한 수</th></tr></thead><tbody><tr><td><b>01 합성</b> (yosys)</td><td>RTL → 셀 538 개, 플롭 29 개</td><td>셀 면적 10,794.2&nbsp; µm² — 뒤의 모든 면적 결정에 들어가는 입력</td></tr><tr><td><b>02 STA</b> (배선 전)</td><td>52 단짜리 임계경로</td><td>F<sub>max</sub> = 158.04&nbsp; MHz, 그리고 서로 독립인 두 방법이 0&nbsp; ps 까지 맞는다</td></tr><tr><td><b>03 플로어플랜</b></td><td>점유율 70&nbsp; % 로 25 행 × 185 자리</td><td>코어 122.1&nbsp; µm × 126&nbsp; µm. 스트라이프 폭은 <b>최소폭</b>이 정한다</td></tr><tr><td><b>04 배치</b></td><td>힘 주도, 그다음 두 번 쓸어 합법화</td><td>HPWL 16,640.8&nbsp; µm → 22,951&nbsp; µm, 겹침 0</td></tr><tr><td><b>05 CTS</b></td><td>2 단 트리, 버퍼 5 개</td><td>삽입 832.14&nbsp; ps, 스큐 122.7&nbsp; ps</td></tr><tr><td><b>06 배선</b></td><td>21×21 gcell 격자에서 전역, 그다음 뜯어내고 다시 배선</td><td>배선 27,942&nbsp; µm — HPWL 에 대한 우회 계수 1.217&nbsp;×</td></tr><tr><td><b>07 사인오프</b></td><td>다시 추출해 진짜 RC 로 STA 를 다시 돌림</td><td>F<sub>max</sub> 158.04&nbsp; MHz → <b>99.31&nbsp; MHz</b></td></tr><tr><td><b>08 DFT</b></td><td>고착 고장 1112 개, 병렬 패턴 고장 시뮬레이션</td><td>무작위 패턴 384 개로 커버리지 99.19&nbsp; %</td></tr><tr><td><b>09 DV</b></td><td>UVM 꼴 환경으로 거래 32 건</td><td>불일치 0. 변이 5 개 중 새어 나간 것 0</td></tr></tbody></table>
+<figure><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 406" width="100%" style="max-width:620px;height:auto" font-family="ui-monospace,monospace" font-size="11"><text x="300" y="22" fill="#111" font-size="12.5" text-anchor="middle" font-weight="bold">python3 lab/run.py  —  아홉 단계, 8 초쯤</text><rect x="16" y="40" width="110" height="26" fill="#fdf6e3" stroke="#111" stroke-width="1.6" rx="3"/><text x="71.0" y="57.0" fill="#111" font-size="11" text-anchor="middle">01  합성</text><rect x="134" y="40" width="470" height="26" fill="#fff" stroke="#ddd" stroke-width="1.6" rx="3"/><text x="369.0" y="57.0" fill="#111" font-size="11" text-anchor="middle">셀 538 개, 플롭 29 개, 10794 um2</text><path d="M71,66 L71,74" fill="none" stroke="#888" stroke-width="1.2"/><path d="M71.0,74.0 L74.6,67.0 L67.4,67.0 Z" fill="#888"/><rect x="16" y="74" width="110" height="26" fill="#eef4fb" stroke="#111" stroke-width="1.6" rx="3"/><text x="71.0" y="91.0" fill="#111" font-size="11" text-anchor="middle">02  STA</text><rect x="134" y="74" width="470" height="26" fill="#fff" stroke="#ddd" stroke-width="1.6" rx="3"/><text x="369.0" y="91.0" fill="#111" font-size="11" text-anchor="middle">Fmax 158.04 MHz, 52 단, 두 방법이 0.0 ps 까지 맞는다</text><path d="M71,100 L71,108" fill="none" stroke="#888" stroke-width="1.2"/><path d="M71.0,108.0 L74.6,101.0 L67.4,101.0 Z" fill="#888"/><rect x="16" y="108" width="110" height="26" fill="#eef4fb" stroke="#111" stroke-width="1.6" rx="3"/><text x="71.0" y="125.0" fill="#111" font-size="11" text-anchor="middle">03  플로어플랜</text><rect x="134" y="108" width="470" height="26" fill="#fff" stroke="#ddd" stroke-width="1.6" rx="3"/><text x="369.0" y="125.0" fill="#111" font-size="11" text-anchor="middle">코어 122.1 x 126.0 um, 행 25 개, 스트라이프 폭은 최소폭이 정한다</text><path d="M71,134 L71,142" fill="none" stroke="#888" stroke-width="1.2"/><path d="M71.0,142.0 L74.6,135.0 L67.4,135.0 Z" fill="#888"/><rect x="16" y="142" width="110" height="26" fill="#eef4fb" stroke="#111" stroke-width="1.6" rx="3"/><text x="71.0" y="159.0" fill="#111" font-size="11" text-anchor="middle">04  배치</text><rect x="134" y="142" width="470" height="26" fill="#fff" stroke="#ddd" stroke-width="1.6" rx="3"/><text x="369.0" y="159.0" fill="#111" font-size="11" text-anchor="middle">HPWL 16641 -> 22951 um, 겹침 0</text><path d="M71,168 L71,176" fill="none" stroke="#888" stroke-width="1.2"/><path d="M71.0,176.0 L74.6,169.0 L67.4,169.0 Z" fill="#888"/><rect x="16" y="176" width="110" height="26" fill="#eef4fb" stroke="#111" stroke-width="1.6" rx="3"/><text x="71.0" y="193.0" fill="#111" font-size="11" text-anchor="middle">05  CTS</text><rect x="134" y="176" width="470" height="26" fill="#fff" stroke="#ddd" stroke-width="1.6" rx="3"/><text x="369.0" y="193.0" fill="#111" font-size="11" text-anchor="middle">삽입 832 ps, 스큐 123 ps. 균형 맞추기에 버퍼 25 개</text><path d="M71,202 L71,210" fill="none" stroke="#888" stroke-width="1.2"/><path d="M71.0,210.0 L74.6,203.0 L67.4,203.0 Z" fill="#888"/><rect x="16" y="210" width="110" height="26" fill="#eef4fb" stroke="#111" stroke-width="1.6" rx="3"/><text x="71.0" y="227.0" fill="#111" font-size="11" text-anchor="middle">06  배선</text><rect x="134" y="210" width="470" height="26" fill="#fff" stroke="#ddd" stroke-width="1.6" rx="3"/><text x="369.0" y="227.0" fill="#111" font-size="11" text-anchor="middle">27942 um, 우회 1.217배, 넘침 1</text><path d="M71,236 L71,244" fill="none" stroke="#888" stroke-width="1.2"/><path d="M71.0,244.0 L74.6,237.0 L67.4,237.0 Z" fill="#888"/><rect x="16" y="244" width="110" height="26" fill="#eef4fb" stroke="#111" stroke-width="1.6" rx="3"/><text x="71.0" y="261.0" fill="#111" font-size="11" text-anchor="middle">07  사인오프</text><rect x="134" y="244" width="470" height="26" fill="#fff" stroke="#ddd" stroke-width="1.6" rx="3"/><text x="369.0" y="261.0" fill="#111" font-size="11" text-anchor="middle">Fmax 158.0 -> 99.3 MHz, 흐름 -1156 ps</text><path d="M71,270 L71,278" fill="none" stroke="#888" stroke-width="1.2"/><path d="M71.0,278.0 L74.6,271.0 L67.4,271.0 Z" fill="#888"/><rect x="16" y="278" width="110" height="26" fill="#eef4fb" stroke="#111" stroke-width="1.6" rx="3"/><text x="71.0" y="295.0" fill="#111" font-size="11" text-anchor="middle">08  DFT</text><rect x="134" y="278" width="470" height="26" fill="#fff" stroke="#ddd" stroke-width="1.6" rx="3"/><text x="369.0" y="295.0" fill="#111" font-size="11" text-anchor="middle">고장 1112 개, 패턴 384 개, 커버리지 99.19 %</text><path d="M71,304 L71,312" fill="none" stroke="#888" stroke-width="1.2"/><path d="M71.0,312.0 L74.6,305.0 L67.4,305.0 Z" fill="#888"/><rect x="16" y="312" width="110" height="26" fill="#eef4fb" stroke="#111" stroke-width="1.6" rx="3"/><text x="71.0" y="329.0" fill="#111" font-size="11" text-anchor="middle">09  DV</text><rect x="134" y="312" width="470" height="26" fill="#fff" stroke="#ddd" stroke-width="1.6" rx="3"/><text x="369.0" y="329.0" fill="#111" font-size="11" text-anchor="middle">거래 32 건, 불일치 0, 새어 나간 변이 0</text><text x="16" y="366" fill="#888" font-size="10" text-anchor="start">노란 것이 바깥 도구(yosys)를 부르는 유일한 단계다. 나머지 여덟은 이 저장소 안에 있고,</text><text x="16" y="382" fill="#888" font-size="10" text-anchor="start">그래서 위의 중간 양을 전부 다시 잴 수 있다 — 그리고 tests/test_lab.py 가 실제로 잰다.</text></svg><figcaption><b>그림 24.</b> 이 장이 보고하는 실행을 단계별로. 명령 하나로 재현된다. 상자 하나하나가 검사가 다시 재는 수다.</figcaption></figure>
+<h2>T23.2 따져 볼 값이 있는 네 가지 결과</h2>
+<h2>T23.2 따져 볼 값이 있는 네 가지 결과</h2>
+<div class="유도"><div class="유도머리">유도 &mdash; 1. 배선 전 타이밍은 조금 낙관적인 것이 아니다</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">합성과 배선 전 STA 가 슬랙 3,672.4&nbsp; ps 로 158.04&nbsp; MHz 를 보고한다.</td><td class="유도왜">배선 RC 가 아예 없다 — T17.2 의 낙관적 한계다.</td></tr><tr><td class="유도번호">2</td><td class="유도말">배선 뒤에 같은 끝점들이 99.31&nbsp; MHz 와 -69.14&nbsp; ps 를 보고한다.</td><td class="유도왜">같은 넷리스트, 같은 라이브러리, 같은 제약이다. 새로 들어온 정보는 배선이 실제로 어디로 갔는가뿐이다.</td></tr><tr><td class="유도번호">3</td><td class="유도말">F<sub>max</sub> 의 37.2&nbsp; % 이고, 끝점이 평균 -1,155.5&nbsp; ps 움직였다.</td><td class="유도왜">최악이 아니라 <b>평균</b>이다. 넷마다 없던 저항과 용량이 붙었으므로 모든 끝점이 나빠졌다.</td></tr><tr><td class="유도번호">4</td><td class="유도말">이제 설계가 <b>진다</b>. 목표 주기에서 끝점 1 개가 위반한다.</td><td class="유도왜">물리 인지 합성 단계 없이 흐름을 돌린 것의 정직한 결말이고 — 그것을 두어야 한다는 정량적 논거다.</td></tr></tbody></table></div>
+<div class="짚기"><b>사소한 설명을 죽인다.</b> 37.2&nbsp; % 가
+    떨어진 것은 그저 배선 모형이 너무 비관적이라는 뜻일 수도 있다. 두 가지가
+    그렇지 않다고 말한다. 우회 계수가 HPWL 에 대해
+    1.217&nbsp;× 인데 그것은 진짜 배선기가 내는 범위 안에 있고,
+    배선 지연이 전원 격자 치수를 잡는 데 쓴 것과 같은 마이크로미터당 R 과
+    C 에서 나오는데 거기서 나온 IR 강하가 멀쩡했다. 둘 다 증명은 아니다.
+    증명이 될 것은 두 번째 추출 방법인데 이 실습에는 그것이 없다 —
+    <b>그래서 그 한계를 붙여서 수를 보고한다.</b></div>
+<div class="유도"><div class="유도머리">유도 &mdash; 2. 스큐는 주어지는 것이 아니라 사는 것이다</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">기하만으로 지은 트리는 삽입 지연 832.14&nbsp; ps 에 스큐가 122.7&nbsp; ps — 14.74&nbsp; % 다.</td><td class="유도왜">자리로 묶는 것은 배선을 최소로 하지 도착 시각을 최소로 하지 않는다. 짓는 과정의 무엇도 아무것을 균형 잡지 않는다.</td></tr><tr><td class="유도번호">2</td><td class="유도말">그것을 2 % 쯤으로 균형 잡는 데 버퍼 25 개가 더 든다.</td><td class="유도왜">이른 가지에 늦은 가지와 맞을 때까지 지연을 더한다. CTS 도구가 트리를 짓고 나서 하는 일이 그것이다.</td></tr><tr><td class="유도번호">3</td><td class="유도말">그 버퍼들이 클럭 회로망 전력을 21.09&nbsp; % 올린다.</td><td class="유도왜">클럭 위의 다른 모든 것처럼 주기마다 뒤집힌다. <b>맞바꿈은 스큐 대 전력이고 정량적이다.</b></td></tr><tr><td class="유도번호">4</td><td class="유도말">결과: 19.6&nbsp; ps, 곧 삽입 지연의 2.35&nbsp; % 다.</td><td class="유도왜">업계가 대는 수치가 그것인데, 이제 값표가 붙었다.</td></tr></tbody></table></div>
+<table><caption>표 66. 3. 수리 되돌이가 수렴하지 않는다 &mdash; 잰 것</caption><thead><tr><th>바퀴</th><th>열린 위반</th><th>앞 바퀴에 대한 비</th></tr></thead><tbody><tr><td>0</td><td>2</td><td>—</td></tr><tr><td>1</td><td>4</td><td>2</td></tr><tr><td>2</td><td>15</td><td>3.75</td></tr><tr><td>3</td><td>16</td><td>1.067</td></tr><tr><td>4</td><td>13</td><td>0.812</td></tr><tr><td>5</td><td>7</td><td>0.538</td></tr><tr><td>6</td><td>10</td><td>1.429</td></tr><tr><td>7</td><td>7</td><td>0.7</td></tr><tr><td>8</td><td>9</td><td>1.286</td></tr></tbody></table>
+<div class="짚기">수열은 [2, 4, 15, 16, 13, 7, 10, 7, 9] 이고 비가 되풀이해서 1 을
+    넘으므로, 이 되돌이는 위반을 수리하는 것이 아니라 <b>옮기고</b> 있다 —
+    T19.4 가 기술하는 바로 그 표시다. 그것 때문에 실습에 두 가지를 넣어
+    두었다. 배선기는 마지막 것이 아니라 지금까지 본 가장 좋은 해를 붙든다
+    (가장 좋은 것 2, 마지막 것
+    9). 진짜 배선기가 하는 일이 그것이고,
+    "되풀이를 더 하면 더 나빠진다" 를 결론에서 인공물로 바꾸는 것이 그것이다.
+    그리고 수렴하지 않는 되돌이에 대한 옳은 대응은 한 바퀴를 더 도는 것이
+    아니라 흐름의 위로 올라가는 것이다 — 점유율을 낮추고, 배치를 펴고,
+    층을 더한다.</div>
+<table><caption>표 67. 4. 변이 작업이 찾아낸 구멍은 자극이 아니라 검사에 있었다</caption><thead><tr><th>변이</th><th>무엇을 망가뜨리나</th><th>무엇이 잡았나</th></tr></thead><tbody><tr><td>m1_cnt</td><td>RUN 이 한 주기 짧다 — 누산 하나를 잃는다</td><td>acc 비교</td></tr><tr><td>m2_load</td><td>LOAD 가 곱을 안 싣는다</td><td>acc 비교</td></tr><tr><td>m3_pulse</td><td>펄스 대신 레벨 — start 가 다시 걸린다</td><td>done 개수</td></tr><tr><td>m4_done</td><td>done 이 한 번도 안 뜬다</td><td>done 없음</td></tr><tr><td>m5_prod</td><td>곱 대신 합</td><td>acc 비교</td></tr></tbody></table>
+<div class="사고"><b>실제로 난 일</b><br><code>m3_pulse</code> 변이 — 한 주기 펄스를 레벨로 바꾼 것 —
+    를 첫 회귀가 <b>못 잡았고</b>, <code>start</code> 를 스무 주기 동안
+    높게 붙드는 지시 시험을 더한 뒤에도 못 잡았다. 까닭이 배울 만하다.
+    레벨이면 FSM 이 유휴로 돌아오자마자 다시 걸리는데, <i>첫</i> 완료의
+    누산기 값은 여전히 옳다. 값 비교로는 그것을 볼 수 없다.
+    <b>구멍은 자극이 아니라 검사에 있었고</b>, 스코어보드가 거래마다
+    <code>done</code> 이 정확히 하나 난다고 단언하기 시작하고서야 닫혔다.
+    그 프로토콜 검사 하나가 작업을 새어 나감 하나에서
+    0 으로 데려간다.</div>
+<h2>T23.3 이 실습이 하지 않는 것</h2>
+<table><caption>표 68. 정직한 한계 &mdash; 위의 수를 대기 전에 이것부터 읽어라</caption><thead><tr><th>안 한 것</th><th>왜 중요한가</th><th>무엇이 고칠까</th></tr></thead><tbody><tr><td><b>상용 P&amp;R 없음</b></td><td>여기의 배치기·배선기·CTS 는 가르치기 위한 구현이다. 절대적인 품질은 양산 도구와 견줄 것이 못 된다</td><td>OpenROAD 가 이 같은 넷리스트를 돌릴 수 있다. 흐름은 그것을 갈아 끼울 수 있도록 일부러 짜 두었다</td></tr><tr><td><b>추출 모형 하나</b></td><td>배선 R 과 C 가 마이크로미터당 상수 하나에서 나온다. 그래서 F<sub>max</sub> 가 37.2&nbsp; % 떨어진 것에 독립 대조가 없다</td><td>두 번째 추출(장 풀이기나 다른 모형)과 둘의 비교</td></tr><tr><td><b>DRC 없음, LVS 없음</b></td><td>배선이 기하가 아니라 트랙 수를 내놓으므로, 여기의 무엇도 제조 가능성을 주장할 수 없다(T20.1)</td><td>진짜 레이아웃 데이터베이스와 규칙 덱 — 이 기계에는 둘 다 없다</td></tr><tr><td><b>고착 고장만</b></td><td>99.19&nbsp; % 커버리지는 고착 커버리지다. 천이와 브리징 고장은 시뮬레이션하지 않는다</td><td>동작속도 패턴과 레이아웃에서 뽑은 브리징 목록(T22.1)</td></tr><tr><td><b>무작위 ATPG 만</b></td><td>고장 9 개가 남아 있고 무작위 패턴은 거기에 못 닿는다 — T21.3 의 드문 칸 문제가 시험의 꼴로 나타난 것이다</td><td>남은 것에 대한 결정적 ATPG(D 알고리즘이나 SAT 호출)</td></tr><tr><td><b>전력은 재지 않고 가정한다</b></td><td>플로어플랜의 전류가 가정한 W/mm² 에서 나오므로, IR 과 EM 결론이 그 가정을 물려받는다</td><td>DV 실행에서 나온 토글률을 전력 어림으로 되먹이는 것 — 두 단계가 같은 저장소에 있으면서 아직 안 이어져 있다</td></tr></tbody></table>
+<div class="짚기">마지막 줄은 곱씹을 만하다. 여러 해를 살아남는 종류의 틈이기
+    때문이다. 검증 실행은 마디마다 얼마나 자주 뒤집히는지를 정확히 안다.
+    플로어플랜에 필요한 것이 바로 그 수다. 둘은 같은 프로그램 안에, 같은
+    언어로, 8 초 떨어져 있다 — 그런데 안 이어져 있어서, 그것을 대신할
+    정보가 바로 옆 디렉터리에 앉아 있는 동안 전력 수는 가정으로 남는다.
+    <b>진짜 흐름에서 해석이 빠진 것처럼 보이는 것의 대부분이 이것이다.
+    서로가 필요로 하는 것을 가진 두 단계와, 그 사이에 없는 길.</b></div>
+<h2>T23.4 월요일에 이걸로 무엇을 하나</h2>
+<table><caption>표 69. 이 장의 개념이 실제로 쓰이는 자리</caption><thead><tr><th>개념</th><th>쓰이는 블록</th><th>무엇을 정하나</th></tr></thead><tbody><tr><td>실습흐름</td><td>흐름을 배우거나 그것에 가한 변경을 시험할 때</td><td>읽고 망가뜨리고 8 초 만에 다시 잴 수 있는 아홉 단계</td></tr><tr><td>회귀기준</td><td>lab/ 이나 이 장에 가하는 모든 변경</td><td>책의 수들이 진짜 실행과 아직 맞는지</td></tr></tbody></table>
+<p>돌려 보고, 그다음 일부러 망가뜨려 봐라. <code>lab/se/floorplan.py</code>
+    에서 합법화가 질 때까지 점유율을 올려 봐라. 합법화가 배치를 망가뜨릴
+    때까지 펴는 힘을 약하게 해 봐라. <code>lab/se/dv.py</code> 에서
+    done 개수 검사를 지우고 변이가 새어 나가는 것을 봐라.
+    <b>그 하나하나가 앞 장의 교훈이 당신이 낸 실패로 도착하는 것</b>이고,
+    이 재료가 사실의 목록이기를 그만두는 유일한 길이 그것이다. 명령 하나는
+    <code>python3 lab/run.py</code> 이고, 흐름을 정직하게 붙들어 두는
+    파일 하나는 <code>tests/test_lab.py</code> 다.</p>
+<div class="특허"><div class="특허머리">특허로 가는 길 &mdash; 이 주제에서 발명이 일어나는 자리</div><div class="특허속">여기에는 특허 낼 것이 하나도 없고, 그것이 요점이다. 흐름은
+        범용품이고, 값어치는 수마다 무슨 뜻인지, 그리고 그중 어느 것이
+        당신에게 거짓말하고 있는지를 아는 데 있다.</div></div>
