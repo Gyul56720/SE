@@ -226,3 +226,5 @@ work/
 # 그림 맛보기 -- `python3 edu/sch_flow.py` 가 언제든 다시 낸다.
 # 검사는 재는 것이지 남기는 것이 아니다 (CLAUDE.md).
 edu/원문/그림맛보기.html
+
+edu/번역/조각/
