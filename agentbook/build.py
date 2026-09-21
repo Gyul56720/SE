@@ -41,50 +41,56 @@ import bookK                                   # noqa: E402
         ("B3_ensemble",  ["ch_ensemble"]),
         ("B4_search",    ["ch_search"]),
     ]),
-    ("4부. 검색과 지식 — RAG", [
+    ("4부. 모델을 최대로 쓰는 법 — 가중치를 못 바꿀 때", [
+        ("M1_ceiling",   ["ch_ceiling"]),
+        ("M2_spec",      ["ch_spec"]),
+        ("M3_thinking",  ["ch_thinking"]),
+        ("M4_kaggle",    ["ch_kaggle"]),
+    ]),
+    ("5부. 검색과 지식 — RAG", [
         ("D1_vector",    ["ch_vector"]),
         ("D2_lexical",   ["ch_lexical"]),
         ("D3_ann",       ["ch_ann"]),
         ("D4_graphrag",  ["ch_graphrag"]),
     ]),
-    ("5부. 학습 — 에이전트를 정책으로 본다", [
+    ("6부. 학습 — 에이전트를 정책으로 본다", [
         ("E1_mdp",       ["ch_mdp"]),
         ("E2_pg",        ["ch_pg"]),
         ("E3_ppo",       ["ch_ppo"]),
         ("E4_grpo",      ["ch_grpo"]),
         ("E5_reward",    ["ch_reward"]),
     ]),
-    ("6부. 신뢰성", [
+    ("7부. 신뢰성", [
         ("A10_failure",  ["ch_failure"]),
         ("A11_quota",    ["ch_quota"]),
         ("A12_eval",     ["ch_eval"]),
         ("A13_observe",  ["ch_observe"]),
         ("A14_safety",   ["ch_safety"]),
     ]),
-    ("7부. 분산과 상태", [
+    ("8부. 분산과 상태", [
         ("C1_replay",    ["ch_replay"]),
         ("C2_impossible", ["ch_impossible"]),
         ("C3_crdt",      ["ch_crdt"]),
         ("C4_checkpoint", ["ch_checkpoint"]),
     ]),
-    ("8부. 개발자 인터페이스 — SDK · CLI · 그리고 파일 하나", [
+    ("9부. 개발자 인터페이스 — SDK · CLI · 그리고 파일 하나", [
         ("A15_sdk",      ["ch_sdk"]),
         ("A16_cli",      ["ch_cli"]),
         ("A17_mcp",      ["ch_mcp"]),
         ("S1_decl",      ["ch_decl"]),
         ("S2_invent",    ["ch_invent"]),
     ]),
-    ("9부. 규모와 비용", [
+    ("10부. 규모와 비용", [
         ("A18_cost",     ["ch_cost"]),
         ("A19_tenancy",  ["ch_tenancy"]),
         ("A20_deploy",   ["ch_deploy"]),
     ]),
-    ("10부. 말과 문법 — 여섯 언어", [
+    ("11부. 말과 문법 — 여섯 언어", [
         ("L1_langs",     ["ch_langs"]),
         ("L2_types",     ["ch_types"]),
         ("L3_shell",     ["ch_shell"]),
     ]),
-    ("11부. 레포 해부 — 읽은 커밋만 인용한다", [
+    ("12부. 레포 해부 — 읽은 커밋만 인용한다", [
         ("R0_langchain", ["ch_langchain"]),
         ("R1_langgraph", ["ch_langgraph"]),
         ("R2_mcp_sdk",   ["ch_mcp_sdk"]),
@@ -97,19 +103,19 @@ import bookK                                   # noqa: E402
         ("R9_multi",     ["ch_multi"]),
         ("R10_sdks",     ["ch_sdks"]),
     ]),
-    ("12부. 최신 논문을 읽는 법", [
+    ("13부. 최신 논문을 읽는 법", [
         ("P1_read",      ["ch_read"]),
         ("P2_frontier",  ["ch_frontier"]),
         ("P3_repro",     ["ch_repro"]),
     ]),
-    ("13부. 직접 짓기 — 다섯 엔지니어를 혼자 세운다", [
+    ("14부. 직접 짓기 — 다섯 엔지니어를 혼자 세운다", [
         ("W1_skeleton",  ["ch_skeleton"]),
         ("W2_figures",   ["ch_figures"]),
         ("W3_substitute", ["ch_substitute"]),
         ("W4_bite",      ["ch_bite"]),
         ("W5_wiring",    ["ch_wiring"]),
     ]),
-    ("14부. 현장", [
+    ("15부. 현장", [
         ("A21_thisagent", ["ch_thisagent"]),
         ("A22_se",       ["ch_se"]),
         ("A23_incident", ["ch_incident"]),

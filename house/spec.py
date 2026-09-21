@@ -40,6 +40,12 @@ from dataclasses import dataclass, field
     "소비자": ["소비자", "스마트폰", "웨어러블", "이어폰", "consumer", "휴대"],
     "우주항공": ["위성", "우주", "항공", "방사선", "rad-hard"],
     "통신": ["통신", "모뎀", "SerDes", "serdes", "이더넷", "5G", "기지국"],
+    # Measured 2026-09-21: a request to scale the FIR/MAC into an NPU PE array
+    # came back with an **empty** use-case list. The edge-inference market --
+    # which is where a MAC array is actually sold -- had no entry at all.
+    "엣지추론": ["엣지", "edge", "온디바이스", "on-device", "추론", "inference",
+              "NPU", "npu", "신경망", "뉴럴", "TOPS", "tops", "AI 가속"],
+    "데이터센터": ["데이터센터", "datacenter", "서버", "학습 가속", "HBM", "hbm"],
 }
 
 문제표 = {
@@ -62,7 +68,14 @@ from dataclasses import dataclass, field
     "SPI": ["SPI", "spi"],
     "I2C": ["I2C", "i2c", "IIC"],
     "AXI": ["AXI", "axi", "APB", "apb", "AHB", "ahb", "버스", "레지스터 맵"],
-    "CPU": ["CPU", "cpu", "RISC-V", "risc-v", "프로세서", "코어", "파이프라인 코어"],
+    # **"코어" 를 CPU 로 읽지 않는다.** 실측 2026-09-21: "NPU 코어로 확장" 이라는
+    # 요청이 CPU 로 잡혔다. 이 저장소에서 "코어" 는 IP 코어를 뜻하는 일이 훨씬 많다.
+    "CPU": ["CPU", "cpu", "RISC-V", "risc-v", "프로세서", "마이크로프로세서",
+            "명령어 세트", "ISA"],
+    "NPU": ["NPU", "npu", "신경망 가속", "뉴럴 가속", "AI 가속", "추론 가속",
+            "PE 어레이", "PE array", "시스톨릭", "systolic", "텐서 코어",
+            "MAC 어레이", "TOPS", "tops"],
+    "가속기": ["가속기", "accelerator", "오프로드", "offload", "코프로세서"],
     "암호": ["AES", "aes", "SHA", "sha", "암호", "crypto"],
     "CRC": ["CRC", "crc", "체크섬"],
     "PWM": ["PWM", "pwm", "모터 구동"],
@@ -84,6 +97,15 @@ _수패턴 = [
     ("거리_m", r"(\d+(?:\.\d+)?)\s*(mm|cm|m)\b", {"mm": 1e-3, "cm": 1e-2, "m": 1}),
     ("온도_C", r"(-?\d+(?:\.\d+)?)\s*(?:°\s*)?C\b", None),
     ("비트", r"(\d+)\s*(?:비트|bit|b)\b", None),
+    # These three decide the whole shape of an NPU request and were all missed.
+    ("PE수", r"(\d+)\s*(?:개\s*)?(?:PE|pe|MAC|mac)\b", None),
+    # Commercial IP specs quote a *menu* of configurations, not one number --
+    # Ethos-U55 is sold as 32/64/128/256 MACs per cycle. A plain "(\d+) PE"
+    # pattern grabs only the last one, so the other three configurations are
+    # silently dropped and the proposal designs for one point instead of four.
+    ("설정목록", r"\b(\d+(?:\s*/\s*\d+){1,6})\s*(?:개\s*)?(?:PE|pe|MAC|mac|탭|tap)", None),
+    ("정밀도_비트", r"\bINT\s?(\d+)\b|\bint(\d+)\b", None),
+    ("TOPS", r"(\d+(?:\.\d+)?)\s*(?:TOPS|tops|TOPs)\b", None),
 ]
 
 
@@ -135,14 +157,25 @@ def 읽기(요청: str) -> 스펙:
 
     for 이름, 패, 배수 in _수패턴:
         for m in re.finditer(패, 글):
-            try:
-                v = float(m.group(1))
-            except (ValueError, IndexError):
+            잡힌 = m.group(1)
+            if 잡힌 is None:                 # 갈래가 여럿인 패턴(INT8|int8)의 빈 쪽
+                잡힌 = next((g for g in m.groups() if g), None)
+            if 잡힌 is None:
                 continue
-            if 배수:
-                단위 = m.group(2)
-                v *= 배수.get(단위, 1)
-            s.수.setdefault(이름, []).append(v)
+            # A configuration *menu* ("32/64/128/256") is one match holding
+            # several numbers. float() throws on it and the old loop swallowed
+            # that with `continue` -- so the whole menu vanished without a word.
+            조각 = [x.strip() for x in str(잡힌).split("/")] if "/" in str(잡힌) \
+                else [str(잡힌)]
+            for 조 in 조각:
+                try:
+                    v = float(조)
+                except ValueError:
+                    continue
+                if 배수:
+                    단위 = m.group(2) if m.lastindex and m.lastindex >= 2 else None
+                    v *= 배수.get(단위, 1)
+                s.수.setdefault(이름, []).append(v)
 
     for 칸, 값 in (("쓰임새", s.쓰임새), ("문제", s.문제), ("회로", s.회로)):
         if 값:
