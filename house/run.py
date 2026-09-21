@@ -109,7 +109,7 @@ def 메일보내기(r: dict, 특이사항=None, to=None) -> dict:
         p, 과제,
         [s.replace("<b>", "").replace("</b>", "") for s in (r.get("요약") or [])],
         특이사항 or _특이사항(r),
-        첨부이름=pdf.name)
+        attachment_name=pdf.name)
     r = RPT.보내기(p, 제목, 본문, [pdf], to=to)
     # mailer 는 {"보냈나": ...} 로 답한다. 위쪽은 "됐나" 로 읽으므로 맞춰 준다.
     if "됐나" not in r:
