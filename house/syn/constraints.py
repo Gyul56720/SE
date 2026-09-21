@@ -124,11 +124,11 @@ def upf점검(u: dict, rtl글: str = "") -> list:
     ret제어 = {x["이름"] for x in u["리테션"] if x.get("제어")}
 
     for nm in iso정의 - iso제어:
-        문제.append({"심각도": "치명", "무엇": f"아이솔레이션 `{nm}` 에 제어 신호가 없다",
-                   "왜": "언제 클램프할지 모르면 셀이 삽입돼도 안 켜진다"})
+        문제.append({"심각도": "CRITICAL", "무엇": f"isolation `{nm}` has no control signal",
+                   "왜": "without knowing when to clamp, the cell gets inserted and never engages"})
     for nm in ret정의 - ret제어:
-        문제.append({"심각도": "치명", "무엇": f"리테션 `{nm}` 에 save/restore 가 없다",
-                   "왜": "저장 시점이 없으면 리테션 플롭은 그냥 큰 플롭이다"})
+        문제.append({"심각도": "CRITICAL", "무엇": f"retention `{nm}` has no save/restore",
+                   "왜": "with no save point a retention flop is just a larger flop"})
 
     꺼지는도메인 = set()
     for st in u["전원상태"]:
@@ -137,19 +137,22 @@ def upf점검(u: dict, rtl글: str = "") -> list:
                 꺼지는도메인.add(dmn["이름"])
     실제꺼짐 = [d for d in u["도메인"] if d["이름"] == "PD_DP"]
     if 실제꺼짐 and not iso정의:
-        문제.append({"심각도": "치명", "무엇": "꺼지는 도메인이 있는데 아이솔레이션이 없다",
-                   "왜": "부유 출력 -> 받는 쪽 관통 전류. 기능 시험은 통과한다"})
+        문제.append({"심각도": "CRITICAL",
+                   "무엇": "a switchable domain exists but has no isolation",
+                   "왜": "floating outputs -> crowbar current in the receiver. Every functional test still passes"})
     if 실제꺼짐 and not ret정의:
-        문제.append({"심각도": "경고", "무엇": "꺼지는 도메인에 리테션이 없다",
-                   "왜": "꺼졌다 켜지면 상태를 잃는다. 의도면 괜찮다"})
+        문제.append({"심각도": "WARNING",
+                   "무엇": "a switchable domain has no retention",
+                   "왜": "state is lost across an off/on cycle. Fine if intended"})
     if not u["레벨시프터"]:
-        문제.append({"심각도": "확인", "무엇": "레벨 시프터가 하나도 없다",
-                   "왜": f"지금은 두 도메인이 같은 1.8 V 라 맞다. 전압이 갈라지면 필요해진다"
-                        + (f" (UPF 에 주석으로 준비됨: {len(u['주석처리'])}줄)" if u["주석처리"] else "")})
+        문제.append({"심각도": "CHECKED",
+                   "무엇": "no level shifters are declared",
+                   "왜": "correct for now \u2014 both domains sit at the same 1.8 V. One becomes mandatory the moment those voltages diverge"
+                        + (f" (prepared as comments in the UPF: {len(u['주석처리'])} lines)" if u["주석처리"] else "")})
     if rtl글:
         for dmn in u["도메인"]:
             for e in dmn["요소"]:
                 if e and e not in rtl글:
-                    문제.append({"심각도": "치명", "무엇": f"UPF 가 가리키는 `{e}` 가 RTL 에 없다",
-                               "왜": "이름이 안 맞으면 도메인이 비어 있는 채로 조용히 통과한다"})
+                    문제.append({"심각도": "CRITICAL", "무엇": f"UPF references `{e}`, which does not exist in the RTL",
+                               "왜": "a name mismatch leaves the domain empty and passes silently"})
     return 문제

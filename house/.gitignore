@@ -8,3 +8,8 @@ lib/nsw10.lib
 lib/nsw10_dft.lib
 gen/
 designs.json
+
+# 사인오프 꾸러미는 **산출물**이다 -- `python3 house/signoff.py` 가 언제든 다시 낸다.
+# 넷리스트 JSON 2 MB · GDS · VCD 가 매번 바뀌므로 커밋하면 저장소만 부푼다.
+# 원본(RTL · TB · SDC · UPF)은 제자리에 이미 커밋돼 있다.
+signoff/

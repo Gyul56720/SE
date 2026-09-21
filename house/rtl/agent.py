@@ -26,7 +26,7 @@ from pathlib import Path
 sys.path.insert(0, str(저장소))
 
 from house import hls as HLS          # noqa: E402
-from house import people as 사람들    # noqa: E402
+from house import people    # noqa: E402
 from house import report as RPT       # noqa: E402
 from house import sim as SIM          # noqa: E402
 from house import synth as SYN        # noqa: E402
@@ -212,7 +212,7 @@ def 일하기(빠르게=False, 회귀수=2000) -> dict:
 # ------------------------------------------------------------------ 보고서
 
 def 보고서(잰것: dict) -> RPT.보고서:
-    P = 사람들.ETHAN
+    P = people.ETHAN
     R = RPT.보고서(P, "NSW-FIR v1.0 프런트엔드 설계 보고서",
                  "nsw_fir MAC 가속기 IP", "HLS 설계공간 탐색 · FSM · 파이프라인 · 파라미터 재사용성 · 클럭 게이팅 · CDC")
 
@@ -666,7 +666,7 @@ def 돌리기(빠르게=False) -> dict:
     잰것 = 일하기(빠르게=빠르게)
     R = 보고서(잰것)
     길 = R.내기()
-    return {"사람": 사람들.ETHAN, "잰것": 잰것, "pdf": 길, "쪽": RPT.쪽수(길),
+    return {"사람": people.ETHAN, "잰것": 잰것, "pdf": 길, "쪽": RPT.쪽수(길),
             "요약": R.요약줄, "그림수": R.그림수, "표수": R.표수}
 
 

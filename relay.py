@@ -181,6 +181,9 @@ def 턴기록(thread_id: str, messages) -> "list[str]":
           "지금 한 호흡에 실행하고(dig/paper 로 논문을 읽고, codify 로 수식을 코드로 바꾸고, "
           "harvest 로 수집하고) 그 **출력·파일·원장 줄을 답에 붙여라.** 못 한 것이 있으면 무엇을 왜 "
           "못 했는지 적어라. 사람에게는 최종 승인만 남겨라.")
+안잼표 = ("**[검사] 이 답의 f_max · 면적 · 지연은 잰 값이 아니다** -- 되물었는데도 "
+       "재는 도구(run_rtl · synth_rtl · place_rtl · ip_signoff · house/run.py)가 한 번도 "
+       "안 돌았다. 아래 수는 **주장**이지 측정이 아니다.")
 도구없음표 = ("**[검사] 이 답은 되물었는데도 도구 호출 0회로 나왔다** -- 실측 없는 답이다. "
           "숫자·상태를 근거로 쓰기 전에 의심하라.")
 # 실측 2026-09-11: 봇이 일(수집·논문 읽기·코드화)을 **소개만 하고** "필요하면 말씀해 주세요" 로
@@ -201,6 +204,65 @@ def 턴기록(thread_id: str, messages) -> "list[str]":
 무거운셸 = ("dig/paper", "codify/run", "codify.py", "harvest --논문", "harvest --틈",
           "harvest.py --말", "research/run", "eval/tasks", "repair/run",
           "dispatch !수집", "dispatch !연구", "dispatch !코드화", "dispatch !고치기", "dispatch !평가", "dispatch !점검")
+
+
+# ---------------------------------------------------------------- 설계는 재야 한다
+# 실측 2026-09-21. 사용자가 8탭 FIR MAC 데이터패스(3단 파이프라인, 0.9V, 500MHz)를 물었는데
+# 봇이 **교재 여덟 칸**(되짚기 · 지배식 · 어디에 쓰나 · 언제 묶이나 …)으로 답했다. 글은
+# 훌륭했다. 그런데 f_max · 면적 · 지연이 **전부 모델이 지어낸 수**였다 -- 이 저장소에
+# yosys 도 verilator 도 lab/se 도 house/ 도 있는데 한 번도 안 돌았다. 사용자의 말:
+#
+#     "에이전트가 안하고 LLM이 하는데?"
+#
+# 기존 검사가 왜 못 잡았나. `textbook()` 은 도구다 -- 부르면 '도구 0회' 가 아니게 된다.
+# 그런데 그건 **읽은 것**이지 **잰 것**이 아니다. 그래서 '재는 도구' 를 따로 센다.
+읽기도구 = ("textbook", "concept", "search_memory", "read_file", "list_files", "read_pdf")
+재는도구 = ("run_rtl", "lint_rtl", "synth_rtl", "prove_rtl", "place_rtl", "ip_signoff",
+        "run_spice", "monte_carlo", "serdes_link", "eq_area", "nn_equalizer",
+        "quant_sweep", "adc_sweep", "loss_sweep", "run_experiment")
+재는셸 = ("house/run.py", "house/signoff.py", "lab/se", "yosys", "verilator", "iverilog",
+       "vvp", "openroad", "ngspice", "dispatch !회사", "house.run")
+# 물음이 '우리 회로의 수' 를 요구하는가. 재는 양의 이름이 들어 있으면 그렇다.
+잴것말 = ("f_max", "fmax", "최대 주파수", "최대주파수", "임계경로", "critical path", "slack",
+       "면적", "area", "게이트 수", "셀 수", "cell count", "LUT", "전력", "power",
+       "지연", "latency", "throughput", "커버리지", "coverage", "타이밍", "timing",
+       "합성", "synthes", "사인오프", "sign-off", "signoff", "GDS", "tape out", "tapeout")
+# 그리고 '지어내 달라' 가 아니라 '지어 달라' 인가.
+지으란말 = ("설계", "design", "구현", "implement", "만들", "짜줘", "짜 줘", "RTL", "rtl",
+        "데이터패스", "datapath", "파이프라인", "pipeline", "필터", "filter", "가속기",
+        "accelerator", "IP", "회로")
+
+
+def 잰적있나(thread_id: str, 셸줄들=None) -> bool:
+    """이번 턴에 **재는 도구**가 하나라도 돌았는가. 읽기 도구는 세지 않는다."""
+    names = 마지막도구.get(thread_id) or []
+    if any(n in 재는도구 for n in names):
+        return True
+    for 줄 in (셸줄들 or []):
+        명령 = 줄[0] if isinstance(줄, (list, tuple)) else str(줄)
+        if any(s in 명령 for s in 재는셸):
+            return True
+    return False
+
+
+def 설계요구(prompt: str) -> bool:
+    """이 물음이 '우리 회로를 지어서 수를 내라' 인가 (= 재야만 답할 수 있는가).
+
+    개념 물음("CDC 동기화가 왜 두 단이냐")과 갈라야 한다 -- 그쪽은 교재로 답하는 것이
+    맞다. 재는 양의 이름과 짓는 말이 **둘 다** 있을 때만 참으로 본다."""
+    t = (prompt or "")
+    return any(w in t for w in 잴것말) and any(w in t for w in 지으란말)
+
+
+설계되묻는말 = (
+    "[하네스 검사] 앞의 답은 **재지 않고 수를 적었다.** f_max · 면적 · 지연 · 커버리지는 "
+    "도구가 재야 나오는 값이지, 글로 정할 수 있는 값이 아니다. 교재 여덟 칸은 개념 물음의 "
+    "꼴이지 설계 요청의 답이 아니다.\n"
+    "지금 한 호흡에 **실제로 돌려라**: RTL 을 쓰고 `run_rtl`(기능) → `lint_rtl` → "
+    "`synth_rtl`(셀 수) → `place_rtl`(진짜 f_max) → 필요하면 `ip_signoff`. 규모가 크면 "
+    "`run_shell` 로 `python3 house/run.py --설계 <요청>` 을 돌려 다섯 직무에 넘겨라.\n"
+    "그리고 **도구 출력을 그대로 답에 붙여라** -- 어느 명령으로 잰 수인지 같이 적는다. "
+    "못 잰 것은 '못 잼' 이라고 적고 왜 못 쟀는지 쓴다. **지어낸 수를 잰 수처럼 내지 마라.**")
 
 
 def 무거운일(thread_id: str, 셸줄들=None) -> bool:

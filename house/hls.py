@@ -186,7 +186,10 @@ def 스케줄(g: DFG, 자원: dict) -> dict:
         for k, v in d.items():
             쓴합[k] = 쓴합.get(k, 0) + v
     II = max([int(-(-쓴합[k] // max(자원.get(k, 1), 1))) for k in 쓴합] or [1])
-    return {"지연_단계": 지연, "II": II, "단계별": 쓴것, "쓴합": 쓴합, "상한": asap_알랍}
+    # 보유(자원 표)를 결과에 같이 담는다 -- 생성된 RTL 머리에 **둘을 나란히** 찍어야
+    # '연산 4개' 와 '곱셈기 2개' 가 헷갈리지 않는다.
+    return {"지연_단계": 지연, "II": II, "단계별": 쓴것, "쓴합": 쓴합,
+            "보유": dict(자원), "상한": asap_알랍}
 
 
 # ---------------------------------------------------------------- 3. 바인딩
@@ -277,7 +280,14 @@ def 생성(g: DFG, 스케줄결과: dict, 바인딩결과: dict, 모듈="hls_dut
     줄 = []
     a = 줄.append
     a(f"// 자동 생성 -- house/hls.py  ({time.strftime('%Y-%m-%d %H:%M:%S')})")
-    a(f"// 자원: {json.dumps(스케줄결과['쓴합'])}  지연 {T} 단계  II {스케줄결과['II']}")
+    # **라벨을 정확히 쓴다.** 실측 2026-09-21: 여기가 `// 자원: {"mul": 4, ...}` 를
+    # 찍고 있었는데, 그 4 는 **보유한 곱셈기 수가 아니라 식에 든 곱셈의 개수**다
+    # (`쓴합`). 곱셈기를 2개만 주고 생성했는데 머리에 4 가 찍히니, 이 RTL 을 받은
+    # 사람은 "곱셈기 4개짜리" 로 읽는다 -- 사인오프 산출물에 남길 라벨이 아니다.
+    a(f"// 연산 수: {json.dumps(스케줄결과['쓴합'])}"
+      f"  (식에 든 연산의 개수이지 연산기 수가 아니다)")
+    a(f"// 연산기 보유: {json.dumps(스케줄결과.get('보유', {}))}"
+      f"  지연 {T} 단계  II {스케줄결과['II']}")
     a("// **손으로 고치지 마라.** 식과 자원 표를 고치고 다시 생성한다.")
     a(f"module {모듈} #(parameter integer DW = {DW}, parameter integer ACCW = {ACCW}) (")
     a("    input  wire clk,")
@@ -362,15 +372,36 @@ def C모델(식: str, 값: dict) -> int:
     return int(eval(compile(ast.parse(식, mode="eval"), "<hls>", "eval"), {"__builtins__": {}}, dict(값)))
 
 
-def 기능확인(식: str, sv글: str, 모듈="hls_dut", 횟수=200, 씨앗=1) -> dict:
-    """생성 RTL 을 iverilog 로 돌려 C 모델과 **바이트 단위로** 견준다."""
+def 기능확인(식: str, sv글: str, 모듈="hls_dut", 횟수=200, 씨앗=1,
+         지연=None) -> dict:
+    """생성 RTL 을 iverilog 로 돌려 C 모델과 **바이트 단위로** 견준다.
+
+    `지연` 은 파이프라인 깊이다. **인자로 받는 것이 옳다** -- 예전 판은 생성된
+    RTL 의 머리 주석(`// 자원: ... 지연 6 단계`)을 정규식 비슷하게 파싱해서 얻었다.
+    실측 2026-09-21: 그 주석의 **라벨만** 고쳤더니(자원 -> 연산 수) 이 파싱이 조용히
+    실패해 `T = T or 4` 의 기본값 4 로 떨어졌다. 지연이 6 인 RTL 을 4 로 견주면
+    **엉뚱한 주기의 값끼리 맞춰 보게 된다** -- 터지지 않고 틀린다.
+
+    이것이 하이럼의 법칙의 교과서적인 꼴이다: 주석은 명세가 아닌데 누군가 의존했고,
+    그래서 주석이 사실상 API 가 되어 있었다. 지금은 인자가 먼저이고, 주석 파싱은
+    **옛 글꼴과 새 글꼴을 둘 다 받는** 뒷길로만 남긴다.
+    """
     import random
     g = 읽기(식)
-    T = None
-    for line in sv글.splitlines():
-        if line.startswith("// 자원:"):
-            T = int(line.split("지연")[1].split("단계")[0])
-    T = T or 4
+    T = 지연
+    if T is None:
+        for line in sv글.splitlines():
+            # 옛 글꼴("// 자원: ... 지연 N 단계")과 새 글꼴("// 연산기 보유: ...")을 둘 다 받는다
+            if line.startswith("//") and "지연" in line and "단계" in line:
+                try:
+                    T = int(line.split("지연")[1].split("단계")[0])
+                    break
+                except ValueError:
+                    pass
+    if T is None:
+        raise ValueError(
+            "파이프라인 지연을 못 알아냈다 -- 기능확인(..., 지연=T) 로 넘겨라. "
+            "기본값으로 넘어가면 엉뚱한 주기끼리 견주게 된다")
     rng = random.Random(씨앗)
     벡터 = []
     for _ in range(횟수):
@@ -468,7 +499,7 @@ def 한바퀴(식: str, 자원: dict, 모듈="hls_dut", 확인횟수=200) -> dic
     sch = 스케줄(g, 자원)
     bnd = 바인딩(g, 자원)
     sv = 생성(g, sch, bnd, 모듈)
-    fn = 기능확인(식, sv, 모듈, 횟수=확인횟수)
+    fn = 기능확인(식, sv, 모듈, 횟수=확인횟수, 지연=sch["지연_단계"])
     ppa = PPA(sv, 모듈)
     return {"식": 식, "자원": dict(자원), "스케줄": sch, "바인딩": bnd,
             "SV": sv, "기능": fn, "PPA": ppa, "초": round(time.time() - t0, 2),

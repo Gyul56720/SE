@@ -37,16 +37,16 @@ def ok(cond, what):
 # ------------------------------------------------------------------ 1. 사람
 from house import people as P  # noqa: E402
 
-ok(len(P.모두) == 5, "다섯 명을 채용했다")
-ok(len({p.키 for p in P.모두}) == 5, "직무 키가 겹치지 않는다")
-ok(sum(1 for p in P.모두 if p.대명사 == "she/her") >= 1,
+ok(len(P.EVERYONE) == 5, "다섯 명을 채용했다")
+ok(len({p.key for p in P.EVERYONE}) == 5, "직무 키가 겹치지 않는다")
+ok(sum(1 for p in P.EVERYONE if p.pronouns == "she/her") >= 1,
    "여자가 한 명 이상 있다 (사용자 요구)")
-ok(all("@" in p.메일 for p in P.모두), "모두 메일 주소가 있다")
-ok(P.찾기("검증") is P.PRIYA and P.찾기("priya") is P.PRIYA
-   and P.찾기("dv") is P.PRIYA, "한글·영문이름·직무키 셋 다로 사람을 찾는다")
-ok(P.찾기("물리설계") is P.KENJI and P.찾기("gds") is P.KENJI, "PD 별칭")
-ok(P.찾기("") is None and P.찾기("점심메뉴") is None, "모르는 말에는 None")
-ok(all(k in P.별칭 for k in ("rtl", "dv", "syn", "dft", "pd")),
+ok(all("@" in p.email for p in P.EVERYONE), "모두 메일 주소가 있다")
+ok(P.find("검증") is P.PRIYA and P.find("priya") is P.PRIYA
+   and P.find("dv") is P.PRIYA, "한글·영문이름·직무키 셋 다로 사람을 찾는다")
+ok(P.find("물리설계") is P.KENJI and P.find("gds") is P.KENJI, "PD 별칭")
+ok(P.find("") is None and P.find("점심메뉴") is None, "모르는 말에는 None")
+ok(all(k in P.ALIASES for k in ("rtl", "dv", "syn", "dft", "pd")),
    "다섯 직무가 다 별칭에 있다")
 
 # ------------------------------------------------------------------ 2. 보고서
@@ -65,8 +65,9 @@ ok(터졌나, "**그림이 0 장인 보고서는 내지 않는다** (사용자�
 
 R.그림(V.막대(["a", "b"], [1, 2], "검사"), "설명", "검사도구")
 h = R.html()
-ok("<svg" in h and "그림 1." in h, "그림을 넣으면 HTML 이 나오고 번호가 붙는다")
-ok(P.ETHAN.이름 in h and P.ETHAN.팀 in h, "작성자(누가 한 일인지)가 문서에 박힌다")
+ok("<svg" in h and "Figure 1." in h,
+   "a figure renders and gets numbered (captions are English now)")
+ok(P.ETHAN.name in h and P.ETHAN.team in h, "작성자(누가 한 일인지)가 문서에 박힌다")
 
 # **마크다운 별표가 날것으로 안 나간다** (실측: 보고서 1쪽에 `**있는**` 이 찍혔다)
 R2 = RPT.보고서(P.PRIYA, "검사2", "과제")
@@ -76,19 +77,35 @@ ok("<b>굵게</b>" in R2.html() and "**굵게**" not in R2.html(),
    "`**x**` 가 굵게 바뀐다 -- 별표가 PDF 에 날것으로 안 찍힌다")
 
 # ------------------------------------------------------------------ 3. 메일 양식
-본문 = RPT.메일본문(P.SOFIA, "NSW-FIR v1.0", ["커버리지 94.9 %", "남은 고장 442개"],
-                ["결정적 ATPG 를 표본으로만 쳤습니다"], 첨부이름="보고서.pdf")
-for 조각 in ("안녕하세요", "1. 주요 진행 상황 (요약)", "2. 특이사항 및 요청/문의 사항",
-           "소속:", "이메일:", "올림"):
-    ok(조각 in 본문, f"메일 양식에 «{조각}» 이 있다 (사용자가 준 양식)")
-ok(P.SOFIA.이름 in 본문 and P.SOFIA.팀 in 본문 and P.SOFIA.직급 in 본문,
-   "**어떤 직원인지 명시한다** (이름·팀·직급)")
-ok("보고서.pdf" in 본문, "첨부 이름이 본문에 적힌다")
-ok("커버리지 94.9 %" in 본문 and "표본으로만" in 본문,
-   "요약과 특이사항이 둘 다 본문에 들어간다")
-제목 = RPT.메일제목(P.SOFIA, "NSW-FIR v1.0")
-ok(제목.startswith("[보고]") and P.SOFIA.이름 in 제목 and P.SOFIA.팀 in 제목,
-   "메일 제목이 `[보고] ... _팀 이름` 꼴이다")
+본문 = RPT.mail_body(P.SOFIA, "NSW-FIR v1.0",
+                ["Fault coverage 94.9 %", "442 faults remaining"],
+                ["Deterministic ATPG was run on a sample, not the full residual set"],
+                attachment_name="report.pdf")
+# The company writes in English now (user instruction, 2026-09-21). The *shape*
+# of the template is unchanged -- greeting, who is writing, numbered sections,
+# signature block with affiliation and address. Only the language moved.
+for 조각 in ("Dear ", "1. Progress summary",
+           "2. Issues, requests and open questions",
+           "Kind regards,", "Email:", "Scope:"):
+    ok(조각 in 본문, f"mail template contains «{조각}»")
+ok("안녕하세요" not in 본문 and "올림" not in 본문,
+   "**no Korean left in the outgoing mail** -- the company is English-only")
+ok(P.SOFIA.name in 본문 and P.SOFIA.team in 본문 and P.SOFIA.title in 본문,
+   "**the mail says which engineer wrote it** (name, team, title)")
+ok("report.pdf" in 본문, "the attachment name appears in the body")
+ok("Fault coverage 94.9 %" in 본문 and "not the full residual set" in 본문,
+   "**both the summary and the caveats reach the body** -- a summary without "
+   "its caveats is the failure mode this template exists to prevent")
+제목 = RPT.mail_subject(P.SOFIA, "NSW-FIR v1.0")
+ok(제목.startswith(RPT.SUBJECT_TAG) and P.SOFIA.name in 제목
+   and P.SOFIA.team in 제목,
+   f"메일 제목이 `{RPT.SUBJECT_TAG} <날짜> <과제> / <팀> / <이름>` 꼴이다 ({제목[:46]})")
+import mailattach as _MA  # noqa: E402
+ok(RPT.SUBJECT_TAG in _MA.말머리,
+   "**house 의 말머리를 봇의 첨부 가드도 안다** -- 둘이 어긋나면 메일이 한 통도 안 나간다")
+import mailer as _MAIL  # noqa: E402
+ok(_MAIL.자리표들(제목, _MA.말머리) == [],
+   "그 제목이 자리표 관문을 통과한다 (실측 2026-09-21 에 여기서 막혔었다)")
 
 # ------------------------------------------------------------------ 4. 첨부 없는 메일 거부
 import mailer  # noqa: E402
@@ -149,6 +166,38 @@ for 한계 in (1, 2, 3):
     잰것.append((한계, s_["지연_단계"], s_["II"]))
 ok(잰것[0][1] >= 잰것[-1][1],
    f"**자원을 줄이면 지연이 는다** {잰것} -- 이것이 HLS 설계공간탐색의 축이다")
+
+# --- 사인오프 산출물의 라벨과 결합 (실측 2026-09-21) --------------------------
+# 생성된 RTL 머리가 `// 자원: {"mul": 4, ...}` 를 찍고 있었다. 그 4 는 **식에 든
+# 곱셈의 개수**(쓴합)이지 보유한 곱셈기 수가 아니다 -- 곱셈기 2개를 주고 생성했는데
+# 머리에 4 가 찍히니 받는 사람이 "곱셈기 4개짜리" 로 읽는다. 사인오프 산출물이라
+# 그대로 둘 수 없었다.
+#
+# 그런데 그 주석을 **`기능확인` 이 파싱하고 있었다** -- 라벨만 고쳤더니 지연을 못 읽고
+# `T = T or 4` 의 기본값으로 조용히 떨어졌다. 지연 6 짜리를 4 로 견주면 엉뚱한
+# 주기끼리 맞춰 보게 된다(터지지 않고 틀린다). 하이럼의 법칙의 교과서적인 꼴이다.
+# 모듈 이름은 **아스키여야 한다** -- SV 식별자에 한글을 쓰면 문법오류다
+_자원 = {"mul": 2, "add": 1, "sub": 1}
+_g = H.읽기("(a0*x0 + a1*x1) + (a2*x2 + a3*x3)")
+_s = H.스케줄(_g, _자원)
+_sv = H.생성(_g, _s, H.바인딩(_g, _자원), "label_chk")
+ok("보유" in _s and _s["보유"] == _자원,
+   f"스케줄 결과가 **보유한 연산기 수**를 따로 들고 있다 ({_s.get('보유')})")
+ok(_s["쓴합"]["mul"] == 4 and _s["보유"]["mul"] == 2,
+   f"연산 수 {_s['쓴합']['mul']} 와 연산기 수 {_s['보유']['mul']} 는 **다른 값**이다")
+ok("// 자원:" not in _sv,
+   "**생성된 RTL 이 연산 개수를 '자원' 이라 부르지 않는다** -- 오해할 라벨을 안 남긴다")
+ok("연산 수" in _sv and "연산기 보유" in _sv,
+   "머리에 둘을 나란히 찍는다 (연산 수 · 연산기 보유)")
+try:
+    H.기능확인("a+b", "module m; endmodule", "m", 횟수=2)
+    ok(False, "지연을 못 알아냈는데 기본값으로 넘어갔다 -- 조용히 틀릴 자리")
+except ValueError as _e:
+    ok("지연" in str(_e),
+       "**지연을 못 알아내면 기본값으로 안 넘어가고 터진다** (틀린 주기로 견주지 않는다)")
+_r = H.기능확인("(a0*x0 + a1*x1) + (a2*x2 + a3*x3)", _sv, "label_chk",
+            횟수=40, 지연=_s["지연_단계"])
+ok(_r["됐나"], f"지연을 인자로 넘기면 생성 RTL 이 C 모델과 맞는다 ({_r.get('견준수')} 벡터)")
 ok(잰것[0][2] >= 잰것[-1][2], "자원을 줄이면 II(개시 간격)도 는다")
 
 # ------------------------------------------------------------------ 7. 디스코드 명령
@@ -158,7 +207,7 @@ ok(C.run("안녕") is None and C.run("!소설 상태") is None,
    "**모르는 말에는 None** -- 기존 동작을 뺏지 않는다")
 ok(C.PREFIX == "!회사", "PREFIX 는 !회사")
 조 = C.run("!회사")
-ok(조 and all(p.이름 in 조 for p in P.모두), "`!회사` 가 다섯 명을 다 보인다")
+ok(조 and all(p.name in 조 for p in P.EVERYONE), "`!회사` 가 다섯 명을 다 보인다")
 ok("!회사 상태" in 조 and "!회사 전체" in 조, "쓰는 법이 같이 나온다")
 쓰기막힘 = C.run("!회사 dv", allow_write=False)
 ok(쓰기막힘 and "쓰기" in 쓰기막힘, "쓰기가 막혀 있으면 돌리지 않고 그렇게 말한다")

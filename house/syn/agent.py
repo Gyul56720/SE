@@ -21,7 +21,7 @@ from pathlib import Path
 저장소 = 집.parent
 sys.path.insert(0, str(저장소))
 
-from house import people as 사람들    # noqa: E402
+from house import people    # noqa: E402
 from house import report as RPT       # noqa: E402
 from house import sim as SIM          # noqa: E402
 from house import synth as SYN        # noqa: E402
@@ -133,129 +133,158 @@ def 일하기(빠르게=False) -> dict:
 
 
 def 보고서(m: dict) -> RPT.보고서:
-    P = 사람들.MARCUS
-    R = RPT.보고서(P, "NSW-FIR v1.0 합성 · 타이밍 · 전력 사인오프 보고서",
-                 "nsw_fir MAC 가속기 IP",
-                 "yosys 합성 · SDC 제약 · 27 PVT 코너 STA · 실측 토글 기반 전력 · UPF 점검")
+    P = people.MARCUS
+    R = RPT.보고서(P, "NSW-FIR v1.0 — Synthesis, Timing and Power Sign-off",
+                 "nsw_fir MAC accelerator IP",
+                 "yosys synthesis · SDC constraints · 27 PVT corner STA · "
+                 "power from measured toggles · UPF audit")
     R.업무초 = m.get("초")
     합 = m.get("합성") or {}
-    # **일하기() 는 합성이 실패하면 일찍 돌아온다.** 그때 m 에는 "코너" 가 없다 --
-    # 실측 2026-09-21: VM 에서 `KeyError: '코너'` 로 보고서가 안 나왔다.
-    # 보고서가 못 나오면 **무엇이 왜 실패했는지 아무도 못 본다**. 그래서 여기서 받는다.
+    # **일하기() returns early when synthesis fails.** In that case m has no
+    # "코너" key -- measured 2026-09-21: the VM died with `KeyError: '코너'` and
+    # no report came out. When no report comes out, **nobody can see what failed
+    # or why**. So we catch it here and report the failure instead.
     if not 합.get("됐나") or "코너" not in m:
-        R.요약("<b>합성이 실패해 이 보고서는 타이밍·전력·코너를 담지 못한다.</b>")
-        R.요약(f"까닭: {str(합.get('까닭', '합성 결과가 없다'))[:200]}")
-        R.절("합성 실패 — 무엇이 막혔나")
-        R.그림(V.빈그림("합성이 실패해 그릴 수 있는 것이 없다", 폭=520))
-        R.표(["항목", "값"],
-            [["합성 됐나", str(합.get("됐나"))],
-             ["까닭", str(합.get("까닭", ""))[:400]],
-             ["표준셀 라이브러리", str(SYN.LIB)],
-             ["라이브러리 있나", str(SYN.LIB.exists())],
+        R.요약("<b>Synthesis failed, so this report carries no timing, power or "
+              "corner data.</b>")
+        R.요약(f"Reason: {str(합.get('까닭', 'no synthesis result'))[:200]}")
+        R.절("Synthesis failure — what blocked")
+        R.그림(V.빈그림("Synthesis failed; there is nothing to plot", 폭=520))
+        R.표(["Item", "Value"],
+            [["Synthesis succeeded", str(합.get("됐나"))],
+             ["Reason", str(합.get("까닭", ""))[:400]],
+             ["Standard-cell library", str(SYN.LIB)],
+             ["Library present", str(SYN.LIB.exists())],
              ["RTL", ", ".join(str(x) for x in (m.get("설계RTL") or []))
               or str(SYN.RTL)],
-             ["걸린 시간", f"{m.get('초')} s"]],
-            "<b>이 표가 이 보고서의 전부다.</b> 합성이 안 되면 STA·전력·UPF 는 "
-            "아무것도 못 낸다 — 없는 수를 지어내지 않는다.", "house/synth.py", 강조열=[1])
-        R.한계("· <b>아무것도 재지 못했다.</b> 이 문서는 실패 보고이지 결과 보고가 아니다.<br>"
-             "· 표준셀 라이브러리(`house/lib/nsw10.lib`)는 생성물이라 커밋하지 않는다. "
-             "없으면 `house/synth.py 라이브러리확인()` 이 "
-             "`lab/lib/se10.lib` 에서 만든다 — 그것도 실패했다면 원본이 없는 것이다.")
-        R.잰것 = [("합성", "실패", "", "yosys"),
-                ("까닭", str(합.get("까닭", ""))[:60], "", "yosys stderr")]
+             ["Elapsed", f"{m.get('초')} s"]],
+            "<b>This table is the whole report.</b> With no netlist there is no "
+            "STA, no power and no UPF audit \u2014 and we do not invent numbers "
+            "we did not measure.", "house/synth.py", 강조열=[1])
+        R.한계("\u00b7 <b>Nothing was measured.</b> This is a failure report, not a "
+             "results report.<br>"
+             "\u00b7 The standard-cell library (`house/lib/nsw10.lib`) is generated, "
+             "so it is not committed. When absent, "
+             "`house/synth.py ensure_library()` builds it from "
+             "`lab/lib/se10.lib`. If that also failed, the source is missing.")
+        R.잰것 = [("Synthesis", "failed", "", "yosys"),
+                ("Reason", str(합.get("까닭", ""))[:60], "", "yosys stderr")]
         return R
     코너 = m["코너"]
     통과 = [c for c in 코너 if c["통과"]]
     실패 = [c for c in 코너 if not c["통과"]]
-    최악 = min([c for c in 코너 if c["슬랙_ns"] is not None], key=lambda c: c["슬랙_ns"], default=None)
+    최악 = min([c for c in 코너 if c["슬랙_ns"] is not None],
+             key=lambda c: c["슬랙_ns"], default=None)
 
-    R.요약(f"합성 완료 — 셀 {합['셀수']:,}개, 면적 {합['면적_um2']:,.0f} µm² "
+    R.요약(f"Synthesis complete \u2014 {합['셀수']:,} cells, "
+          f"{합['면적_um2']:,.0f} \u00b5m\u00b2 "
           f"(yosys 0.33, abc -{합['abc']}, {합['라이브러리']})")
-    R.요약(f"SDC {m['sdc']['줄수']}줄을 실제로 파싱 — 클럭 "
-          f"{', '.join(f'{c[chr(51060)+chr(47492)]} {c[chr(51452)+chr(44592)+chr(95)+chr(110)+chr(115)]} ns' for c in m['sdc']['클럭'])}, "
-          f"예외 {len(m['sdc']['예외'])}개, 디레이트 early {m['sdc']['디레이트'].get('early')} / "
-          f"late {m['sdc']['디레이트'].get('late')}")
-    R.요약(f"<b>{len(코너)} PVT 코너 STA</b> — {len(통과)}개 통과 / {len(실패)}개 실패. "
-          + (f"최악 코너 {최악['P']} {최악['V']} V {최악['T']} °C, 슬랙 {최악['슬랙_ns']} ns"
-             if 최악 else ""))
-    R.요약(f"온도 반전 전압 <b>{m['반전전압']['닫힌꼴']:.4f} V</b> — 닫힌 꼴과 수치 이분법이 "
-          f"{abs(m['반전전압']['닫힌꼴']-m['반전전압']['수치'])*1e3:.2e} mV 안에서 일치")
-    R.요약(f"전력 {m['전력'][1]['합_mW']:.2f} mW (동적 {m['전력'][1]['동적_mW']:.2f} + "
-          f"클럭 {m['전력'][1]['클럭_mW']:.2f} + 누설 {m['전력'][1]['누설_mW']:.3f}) — "
-          f"활동도 α={m['전력'][1]['알파']} 는 <b>DV 가 잰 토글</b>에서 나왔다")
-    치명 = [x for x in m["upf점검"] if x["심각도"] == "치명"]
-    R.요약(f"UPF 점검 — 치명 {len(치명)}건, 전체 {len(m['upf점검'])}건")
+    _clk = ", ".join(f"{c['이름']} {c['주기_ns']} ns" for c in m["sdc"]["클럭"])
+    R.요약(f"{m['sdc']['줄수']} lines of SDC actually parsed \u2014 clocks {_clk}, "
+          f"{len(m['sdc']['예외'])} timing exceptions, derate early "
+          f"{m['sdc']['디레이트'].get('early')} / late {m['sdc']['디레이트'].get('late')}")
+    R.요약(f"<b>{len(코너)} PVT corner STA</b> \u2014 {len(통과)} pass / "
+          f"{len(실패)} fail. "
+          + (f"Worst corner {최악['P']} {최악['V']} V {최악['T']} \u00b0C, "
+             f"slack {최악['슬랙_ns']} ns" if 최악 else ""))
+    R.요약(f"Temperature-inversion voltage <b>{m['반전전압']['닫힌꼴']:.4f} V</b> "
+          f"\u2014 closed form and numerical bisection agree to within "
+          f"{abs(m['반전전압']['닫힌꼴']-m['반전전압']['수치'])*1e3:.2e} mV")
+    R.요약(f"Power {m['전력'][1]['합_mW']:.2f} mW (dynamic "
+          f"{m['전력'][1]['동적_mW']:.2f} + clock {m['전력'][1]['클럭_mW']:.2f} + "
+          f"leakage {m['전력'][1]['누설_mW']:.3f}) \u2014 the activity factor "
+          f"\u03b1={m['전력'][1]['알파']} comes from <b>toggles DV measured</b>, "
+          f"not from an assumption")
+    치명 = [x for x in m["upf점검"] if x["심각도"] == "CRITICAL"]
+    R.요약(f"UPF audit \u2014 {len(치명)} critical, {len(m['upf점검'])} findings total")
 
-    # ---------------- 1. 도구 ----------------
-    R.절("1. 이 보고서가 실제로 쓴 도구")
+    # ---------------- 1. tools ----------------
+    R.절("1. What this report actually ran")
     있 = [(k, v) for k, v in m["도구"].items() if v]
     없 = [k for k, v in m["도구"].items() if not v]
-    R.표(["도구", "판", "무엇에 썼나"],
-        [[k, v, {"yosys": "RTL → 게이트 넷리스트 매핑 (실제 합성)",
-                 "verilator": "전력 셈에 쓸 **실제 토글 수** 측정",
-                 "iverilog": "-", "g++": "시뮬레이션 하네스"}.get(k, "-")] for k, v in 있],
-        "있는 도구.")
-    R.경고("<b>없는 도구와 그 대안.</b> "
-         f"{', '.join(f'<code>{x}</code>' for x in 없)} 가 이 기계에 없다. "
-         "그래서 이렇게 대신했다:<br>"
-         "· <b>Design Compiler → yosys</b> (실제 합성 도구. 최적화 수준은 다르다)<br>"
-         "· <b>PrimeTime/OpenSTA → lab/se/sta + house/syn/pvt</b> "
-         "(블록기반·경로기반 두 길로 재서 서로 맞는지 확인한다)<br>"
-         "· <b>코너별 .lib → 소자 모형에서 셈한 지연 배수</b> "
-         "(공정 .lib 이 하나뿐이다. 코너 <i>사이의 비</i>는 α 제곱 법칙에서 나오고 "
-         "절댓값은 공칭 .lib 에 묶여 있다)<br>"
-         "· <b>PrimePower → α·C·V²·f</b>, 단 <b>α 는 가정이 아니라 DV 가 잰 값</b>이다")
+    R.표(["Tool", "Version", "Used for"],
+        [[k, v, {"yosys": "RTL \u2192 gate netlist mapping (real synthesis)",
+                 "verilator": "measuring the <b>actual toggle counts</b> "
+                              "the power numbers are built from",
+                 "iverilog": "-", "g++": "simulation harness"}.get(k, "-")]
+         for k, v in 있],
+        "Tools present on this machine.")
+    R.경고("<b>What is missing, and what stood in for it.</b> "
+         f"{', '.join(f'<code>{x}</code>' for x in 없)} are not on this machine. "
+         "The substitutions were:<br>"
+         "\u00b7 <b>Design Compiler \u2192 yosys</b> (a real synthesis tool; the "
+         "optimisation level differs)<br>"
+         "\u00b7 <b>PrimeTime/OpenSTA \u2192 lab/se/sta + house/syn/pvt</b> "
+         "(measured two independent ways and cross-checked)<br>"
+         "\u00b7 <b>per-corner .lib \u2192 delay multipliers derived from a device "
+         "model</b> (only one process .lib exists. The <i>ratios between</i> "
+         "corners come from the alpha-power law; the absolute values stay tied "
+         "to the nominal .lib)<br>"
+         "\u00b7 <b>PrimePower \u2192 \u03b1\u00b7C\u00b7V\u00b2\u00b7f</b>, "
+         "except <b>\u03b1 is measured by DV, not assumed</b>")
 
-    # ---------------- 2. 합성 ----------------
-    R.절("2. 합성 결과")
+    # ---------------- 2. synthesis ----------------
+    R.절("2. Synthesis result")
     상위 = sorted(m["셀분포"].items(), key=lambda kv: -kv[1])[:12]
-    R.그림(V.막대([k for k, _ in 상위], [v for _, v in 상위], "셀 종류별 인스턴스 수", "개",
-               폭=620, 값글=False),
-         f"총 {합['셀수']:,}개 셀. 조합 셀이 대부분이고 플롭은 "
-         f"{m['전력'][1]['플롭']}개다 — 곱셈기가 면적을 지배한다.",
+    R.그림(V.막대([k for k, _ in 상위], [v for _, v in 상위],
+               "Instance count by cell type", "cells", 폭=620, 값글=False),
+         f"{합['셀수']:,} cells in total. Combinational cells dominate and there "
+         f"are {m['전력'][1]['플롭']} flops \u2014 the multiplier owns the area.",
          f"yosys stat -liberty {합['라이브러리']} -top nsw_fir")
-    R.표(["항목", "값", "비고"],
-        [["셀 수", f"{합['셀수']:,}", ""],
-         ["면적", f"{합['면적_um2']:,.1f} µm²", "셀 면적 합 (배선 제외)"],
-         ["배선 수", f"{합['배선수']:,}", ""],
-         ["플롭", f"{m['전력'][1]['플롭']:,}", "DFFX1 + DFFRX1"],
-         ["라이브러리", 합["라이브러리"], "PDK 가 아니다 — RC 모형에서 생성 (FO4 55.2 ps)"],
-         ["abc 설정", 합["abc"], "40비트 곱셈기 전체 매핑은 분 단위라 -fast 로 통일"],
-         ["합성 시간", f"{합['초']:.1f} s", ""]],
-        "합성 요약.", "yosys 0.33")
+    R.표(["Item", "Value", "Note"],
+        [["Cells", f"{합['셀수']:,}", ""],
+         ["Area", f"{합['면적_um2']:,.1f} \u00b5m\u00b2", "sum of cell area, routing excluded"],
+         ["Wires", f"{합['배선수']:,}", ""],
+         ["Flops", f"{m['전력'][1]['플롭']:,}", "DFFX1 + DFFRX1"],
+         ["Library", 합["라이브러리"],
+          "not a PDK \u2014 generated from an RC model (FO4 55.2 ps)"],
+         ["abc setting", 합["abc"],
+          "full mapping of the 40-bit multiplier takes minutes, so -fast "
+          "is used consistently"],
+         ["Synthesis time", f"{합['초']:.1f} s", ""]],
+        "Synthesis summary.", "yosys 0.33")
 
     # ---------------- 3. SDC ----------------
-    R.절("3. 제약 (SDC) — 흐름에서 도구가 못 만드는 유일한 파일")
-    R.표(["클럭", "주기 (ns)", "주파수 (MHz)", "핀"],
+    R.절("3. Constraints (SDC) — the one file no tool can write for you")
+    R.표(["Clock", "Period (ns)", "Frequency (MHz)", "Pin"],
         [[c["이름"], c["주기_ns"], c["주파수_MHz"], c["핀"]] for c in m["sdc"]["클럭"]],
-        "정의된 클럭.", "house/syn/nsw_fir.sdc 를 house/syn/constraints.py 가 파싱")
-    R.표(["종류", "제약"], [[x["종류"], f"<code>{x['글']}</code>"] for x in m["sdc"]["예외"]],
-        "타이밍 예외. <b>여기 한 줄이 검사 하나를 없앤다</b> — 그래서 예외는 "
-        "'왜 안전한가' 와 함께만 들어간다.", 강조열=[0])
-    R.짚기("<b>리셋에 통째로 <code>set_false_path</code> 를 걸지 않았다.</b> 리셋은 걸릴 때는 "
-         "비동기이지만 <b>풀릴 때는 동기</b>다. 통째로 예외를 걸면 리커버리 검사가 사라지고, "
-         "그 블록은 저온 시동에서만 진다. SDC 에는 <code>-fall_from</code> 으로 "
-         "걸리는 쪽만 예외로 뒀다.")
-    R.표(["항목", "값"],
-        [["입력 지연 제약", f"{len(m['sdc']['입력지연'])}개"],
-         ["출력 지연 제약", f"{len(m['sdc']['출력지연'])}개"],
-         ["클럭 불확실성 (setup)", f"{[x['값_ns'] for x in m['sdc']['불확실성'] if x['종류']=='setup']} ns"],
-         ["클럭 불확실성 (hold)", f"{[x['값_ns'] for x in m['sdc']['불확실성'] if x['종류']=='hold']} ns"],
-         ["OCV 디레이트", f"early {m['sdc']['디레이트'].get('early')} / late {m['sdc']['디레이트'].get('late')}"],
-         ["비동기 클럭 그룹", f"{len(m['sdc']['클럭그룹'])}개"]],
-        "제약 요약.")
+        "Defined clocks.",
+        "house/syn/nsw_fir.sdc parsed by house/syn/constraints.py")
+    R.표(["Kind", "Constraint"],
+        [[x["종류"], f"<code>{x['글']}</code>"] for x in m["sdc"]["예외"]],
+        "Timing exceptions. <b>Each line here deletes a check</b> \u2014 which is "
+        "why an exception only goes in together with the argument for why it is "
+        "safe.", 강조열=[0])
+    R.짚기("<b>Reset does not get a blanket <code>set_false_path</code>.</b> Reset is "
+         "asynchronous on assertion but <b>synchronous on release</b>. A blanket "
+         "exception deletes the recovery check, and that block then fails only on "
+         "a cold start. The SDC excepts the assertion edge alone, via "
+         "<code>-fall_from</code>.")
+    R.표(["Item", "Value"],
+        [["Input delay constraints", f"{len(m['sdc']['입력지연'])}"],
+         ["Output delay constraints", f"{len(m['sdc']['출력지연'])}"],
+         ["Clock uncertainty (setup)",
+          f"{[x['값_ns'] for x in m['sdc']['불확실성'] if x['종류']=='setup']} ns"],
+         ["Clock uncertainty (hold)",
+          f"{[x['값_ns'] for x in m['sdc']['불확실성'] if x['종류']=='hold']} ns"],
+         ["OCV derate",
+          f"early {m['sdc']['디레이트'].get('early')} / "
+          f"late {m['sdc']['디레이트'].get('late')}"],
+         ["Asynchronous clock groups", f"{len(m['sdc']['클럭그룹'])}"]],
+        "Constraint summary.")
 
     # ---------------- 4. STA ----------------
-    R.절("4. 정적 타이밍 분석 — 27 PVT 코너")
+    R.절("4. Static timing analysis — 27 PVT corners")
     st = m["sta공칭"]
-    R.표(["항목", "값", "비고"],
-        [["목표 주기", f"{m['주기_ns']} ns", "SDC 의 create_clock"],
-         ["공칭 Fmax", f"{st.get('Fmax_MHz')} MHz", "tt, 1.8 V, 25 °C"],
-         ["블록기반 vs 경로기반 차", f"{st.get('두길_차이_ps')} ps",
-          "<b>두 길로 재서 맞는지 본다</b> — 한 길만 믿지 않는다"],
-         ["인스턴스", f"{st.get('넷리스트요약',{}).get('인스턴스'):,}", ""],
-         ["플롭", f"{st.get('넷리스트요약',{}).get('플롭'):,}", ""]],
-        "공칭 코너 STA.", "lab/se/sta", 강조열=[1])
+    R.표(["Item", "Value", "Note"],
+        [["Target period", f"{m['주기_ns']} ns", "create_clock in the SDC"],
+         ["Nominal Fmax", f"{st.get('Fmax_MHz')} MHz", "tt, 1.8 V, 25 \u00b0C"],
+         ["Block-based vs path-based difference", f"{st.get('두길_차이_ps')} ps",
+          "<b>measured two ways to see whether they agree</b> \u2014 one method "
+          "alone is not trusted"],
+         ["Instances", f"{st.get('넷리스트요약',{}).get('인스턴스'):,}", ""],
+         ["Flops", f"{st.get('넷리스트요약',{}).get('플롭'):,}", ""]],
+        "Nominal-corner STA.", "lab/se/sta", 강조열=[1])
 
     좋은코너 = [c for c in 코너 if c["슬랙_ns"] is not None]
     격자, y라벨 = [], []
@@ -263,184 +292,233 @@ def 보고서(m: dict) -> RPT.보고서:
         for Vv in (1.62, 1.80, 1.98):
             줄 = []
             for Tt in (-40.0, 25.0, 125.0):
-                c = next((x for x in 코너 if x["P"] == Pp and x["V"] == Vv and x["T"] == Tt), None)
+                c = next((x for x in 코너 if x["P"] == Pp and x["V"] == Vv
+                          and x["T"] == Tt), None)
                 줄.append(c["슬랙_ns"] if c and c["슬랙_ns"] is not None else 0.0)
             격자.append(줄)
             y라벨.append(f"{Pp} {Vv}")
-    R.그림(V.히트맵(격자, "코너별 셋업 슬랙 (ns)", 폭=440,
-                x라벨=["-40 °C", "25 °C", "125 °C"], y라벨=y라벨,
+    R.그림(V.히트맵(격자, "Setup slack by corner (ns)", 폭=440,
+                x라벨=["-40 \u00b0C", "25 \u00b0C", "125 \u00b0C"], y라벨=y라벨,
                 색낮음="#c0392b", 색높음="#137333", 값글=True),
-         f"빨간 칸이 음의 슬랙(위반)이다. {len(통과)}/{len(코너)} 코너가 통과한다. "
-         f"<b>한 코너에서 도는 것은 도는 것이 아니다</b> — 이 표 전체가 '돈다' 의 정의다.",
+         f"Red cells are negative slack, i.e. violations. {len(통과)}/{len(코너)} "
+         f"corners pass. <b>Closing in one corner is not closing</b> \u2014 this "
+         f"whole grid is the definition of 'it works'.",
          "house/syn/pvt.py + lab/se/sta")
     if 최악:
-        R.표(["P", "V (V)", "T (°C)", "지연 배수", "경로 (ns)", "슬랙 (ns)", "판정"],
+        R.표(["P", "V (V)", "T (\u00b0C)", "Delay mult.", "Path (ns)",
+             "Slack (ns)", "Verdict"],
             [[c["P"], c["V"], c["T"], c["지연배수"], c.get("경로_ns"), c["슬랙_ns"],
-              "통과" if c["통과"] else "<b>위반</b>"]
+              "pass" if c["통과"] else "<b>VIOLATION</b>"]
              for c in sorted(좋은코너, key=lambda x: x["슬랙_ns"])[:8]],
-            "슬랙이 가장 나쁜 8개 코너.", "house/syn/pvt.py", 강조열=[5, 6])
+            "The eight worst corners by slack.", "house/syn/pvt.py", 강조열=[5, 6])
 
     if 실패:
-        # 닫히는 주기를 찾는다 -- '안 된다' 가 아니라 '얼마면 되나' 를 낸다
+        # Report the period that *would* close -- "it does not work" is not a
+        # finding; "here is what it would take" is.
         최악배수 = max(c["지연배수"] for c in 좋은코너)
         공칭지연2 = 1e3 / (st.get("Fmax_MHz") or 1e9)
         불 = {x["종류"]: x["값_ns"] for x in m["sdc"]["불확실성"]}
         필요주기 = 공칭지연2 * 최악배수 + 불.get("setup", 0)
-        R.경고(f"<b>권고: 목표 주기를 고쳐야 한다.</b> SDC 는 {m['주기_ns']} ns "
-             f"({1e3/m['주기_ns']:.1f} MHz)를 요구하는데, 최악 코너"
-             f"(ss / 1.62 V / 125 °C, 지연 배수 ×{최악배수:.3f})에서 경로가 "
-             f"{공칭지연2*최악배수:.2f} ns 다. {len(실패)}/{len(코너)} 코너가 위반한다.<br><br>"
-             f"길은 셋이다:<br>"
-             f"① <b>주기를 {필요주기:.1f} ns ({1e3/필요주기:.1f} MHz) 로 늦춘다</b> — 가장 싸다<br>"
-             f"② <b>최악 코너를 좁힌다</b> — 1.62 V 를 안 쓰기로 하면(전압 규격 1.71 V 이상) "
-             f"위반이 크게 준다. 시스템 결정이다<br>"
-             f"③ <b>임계경로를 고친다</b> — 곱셈기를 두 단으로 쪼갠다. "
-             f"Ethan 의 §5 가 말한 그 일이고, RTL 변경이 필요하다<br><br>"
-             f"이 보고서는 ①을 권고한다. 이 IP 의 목표 시장(오디오/센서 전처리)에서 "
-             f"{1e3/필요주기:.0f} MHz 는 충분하고, ③은 면적과 지연을 더 쓴다.")
-    R.소절("4.1 온도 반전 — '느린 것은 뜨거운 것' 이 언제 거짓이 되나")
+        R.경고(f"<b>Recommendation: the target period has to change.</b> The SDC "
+             f"asks for {m['주기_ns']} ns ({1e3/m['주기_ns']:.1f} MHz), but in the "
+             f"worst corner (ss / 1.62 V / 125 \u00b0C, delay "
+             f"\u00d7{최악배수:.3f}) the path is {공칭지연2*최악배수:.2f} ns. "
+             f"{len(실패)}/{len(코너)} corners violate.<br><br>"
+             f"There are three routes:<br>"
+             f"\u2460 <b>Relax the period to {필요주기:.1f} ns "
+             f"({1e3/필요주기:.1f} MHz)</b> \u2014 cheapest<br>"
+             f"\u2461 <b>Narrow the corner set</b> \u2014 dropping 1.62 V "
+             f"(spec the supply at \u2265 1.71 V) removes most of the violations. "
+             f"That is a system-level decision<br>"
+             f"\u2462 <b>Fix the critical path</b> \u2014 split the multiplier "
+             f"into two stages. That is the change Ethan's \u00a75 describes, and "
+             f"it needs an RTL edit<br><br>"
+             f"This report recommends \u2460. For this IP's target market "
+             f"(audio and sensor pre-processing) {1e3/필요주기:.0f} MHz is ample, "
+             f"and \u2462 costs both area and latency.")
+    R.소절("4.1 Temperature inversion — when 'slow means hot' stops being true")
     ti = m["온도반전"]
     R.그림(V.선([x["V"] for x in ti if x["cold"]],
-              [("−40 °C", [x["cold"] for x in ti if x["cold"]]),
-               ("125 °C", [x["hot"] for x in ti if x["cold"]])],
-              "전압에 대한 지연 배수 (공칭=1)", "전원 전압 (V)", "지연 배수", 폭=580),
-         f"두 곡선이 <b>{m['반전전압']['닫힌꼴']:.3f} V</b> 에서 교차한다. 그 아래에서는 "
-         f"<b>차가울 때 더 느리다</b> — 문턱이 온도를 따라 내려가는 효과가 이동도 효과를 "
-         f"이긴다. 저전압 유지 모드가 있는 칩이면 셋업 코너에 <b>−40 °C 를 반드시</b> "
-         f"넣어야 하는 까닭이다.", "house/syn/pvt.py (α 제곱 법칙)")
-    R.짚기(f"<b>독립 대조.</b> 교차 전압을 두 길로 구했다: 닫힌 꼴 "
-         f"V = V<sub>th</sub> + α·|dV<sub>th</sub>/dT|·T/1.5 = "
-         f"<b>{m['반전전압']['닫힌꼴']:.6f} V</b>, 그리고 그 대수를 하나도 안 쓰고 "
-         f"<i>수치 미분</i>한 지연의 부호를 이분법으로 좁혀 "
-         f"<b>{m['반전전압']['수치']:.6f} V</b>. 차이 "
-         f"{abs(m['반전전압']['닫힌꼴']-m['반전전압']['수치'])*1e3:.2e} mV. "
-         f"한 길만 썼으면 이 수를 못 믿는다.")
+              [("\u221240 \u00b0C", [x["cold"] for x in ti if x["cold"]]),
+               ("125 \u00b0C", [x["hot"] for x in ti if x["cold"]])],
+              "Delay multiplier vs supply voltage (nominal = 1)",
+              "Supply voltage (V)", "Delay multiplier", 폭=580),
+         f"The two curves cross at <b>{m['반전전압']['닫힌꼴']:.3f} V</b>. Below "
+         f"that point <b>cold is slower</b> \u2014 the threshold falling with "
+         f"temperature beats the mobility effect. This is exactly why a chip with "
+         f"a low-voltage retention mode <b>must</b> carry \u221240 \u00b0C in "
+         f"its setup corner list.", "house/syn/pvt.py (alpha-power law)")
+    R.짚기(f"<b>Independent cross-check.</b> The crossing voltage was obtained two "
+         f"ways: the closed form V = V<sub>th</sub> + "
+         f"\u03b1\u00b7|dV<sub>th</sub>/dT|\u00b7T/1.5 = "
+         f"<b>{m['반전전압']['닫힌꼴']:.6f} V</b>, and \u2014 using none of that "
+         f"algebra \u2014 bisection on the sign of a <i>numerically</i> "
+         f"differentiated delay, giving <b>{m['반전전압']['수치']:.6f} V</b>. "
+         f"Difference {abs(m['반전전압']['닫힌꼴']-m['반전전압']['수치'])*1e3:.2e} mV. "
+         f"With only one method this number would not be trustworthy.")
 
-    R.소절("4.2 OCV — 공통 경로가 지워지지 않는 몫")
+    R.소절("4.2 OCV — the part of the common path that does not cancel")
     o = m["OCV"]
-    R.표(["항목", "값"],
-        [["공통 경로 몫", f"{o['공통몫']*100:.0f} %"],
-         ["늦은 디레이트", f"×{o['늦은배수']}"],
-         ["이른 디레이트", f"×{o['이른배수']}"],
-         ["실효 비", f"{o['실효비']:.4f}"],
-         ["삽입 지연 0.8 ns 에 대한 실효 스큐", f"<b>{o['실효스큐_ps']} ps</b>"]],
-        "1.00×1.07 − 0.98×0.93 = 0.1586. <b>공통 경로에 걸린 두 디레이트가 다르므로 "
-        "지워지지 않는다</b> — 완벽히 균형 잡힌 트리도 삽입 지연의 15.9 % 를 스큐로 쓴다.",
-        "house/syn/pvt.py ocv스큐()", 강조열=[1])
+    R.표(["Item", "Value"],
+        [["Common-path fraction", f"{o['공통몫']*100:.0f} %"],
+         ["Late derate", f"\u00d7{o['늦은배수']}"],
+         ["Early derate", f"\u00d7{o['이른배수']}"],
+         ["Effective ratio", f"{o['실효비']:.4f}"],
+         ["Effective skew for 0.8 ns insertion delay",
+          f"<b>{o['실효스큐_ps']} ps</b>"]],
+        "1.00\u00d71.07 \u2212 0.98\u00d70.93 = 0.1586. <b>The two derates "
+        "applied to the common path differ, so they do not cancel</b> \u2014 even "
+        "a perfectly balanced tree spends 15.9 % of its insertion delay as skew.",
+        "house/syn/pvt.py ocv_skew()", 강조열=[1])
 
-    # ---------------- 5. 전력 ----------------
-    R.절("5. 전력 — 가정한 활동도가 아니라 잰 활동도로")
+    # ---------------- 5. power ----------------
+    R.절("5. Power — from measured activity, not assumed activity")
     pw0, pw1 = m["전력"][0], m["전력"][1]
-    R.그림(V.막대(["동적", "클럭", "누설"], [pw1["동적_mW"], pw1["클럭_mW"], pw1["누설_mW"]],
-               "전력 분해 (tt, 1.8 V, 25 °C, 박자 기반 게이팅)", "mW",
+    R.그림(V.막대(["Dynamic", "Clock", "Leakage"],
+               [pw1["동적_mW"], pw1["클럭_mW"], pw1["누설_mW"]],
+               "Power breakdown (tt, 1.8 V, 25 \u00b0C, beat-based gating)", "mW",
                색들=[V.파랑, V.주황, V.빨강], 폭=460),
-         f"합 {pw1['합_mW']:.2f} mW. 클럭 회로망이 큰 몫을 차지하는 것이 "
-         f"플롭 {pw1['플롭']}개짜리 설계의 전형이다 — 그래서 게이팅이 듣는다.",
-         "α·C·V²·f, α 는 verilator 실측 토글")
-    R.그림(V.막대(["상태 기반 게이팅", "박자 기반 게이팅"], [pw0["합_mW"], pw1["합_mW"]],
-               "게이팅 정책별 총 전력", "mW", 색들=[V.흐림, V.초록], 폭=460),
-         f"Ethan 이 RTL 에서 바꾼 한 줄이 전력에서 "
-         f"<b>{(1-pw1['합_mW']/max(pw0['합_mW'],1e-9))*100:.1f} %</b> 로 나타난다. "
-         f"활동도 α 가 {pw0['알파']} → {pw1['알파']} 로 내려간 것이 원인이고, "
-         f"그 α 는 <b>추정이 아니라 {m['토글'][1]['clk_cycles']:,} 주기를 세서 나온 값</b>이다.",
-         "verilator 토글 + α·C·V²·f")
-    R.표(["항목", "상태 기반", "박자 기반", "출처"],
-        [["clk 주기", f"{m['토글'][0]['clk_cycles']:,}", f"{m['토글'][1]['clk_cycles']:,}", "verilator"],
-         ["gclk 주기", f"{m['토글'][0]['gclk_cycles']:,}", f"{m['토글'][1]['gclk_cycles']:,}", "verilator"],
-         ["클럭이 열린 비", f"{pw0['열린비']:.4f}", f"{pw1['열린비']:.4f}", "실측"],
-         ["활동도 α", f"{pw0['알파']}", f"{pw1['알파']}", "실측 × 노드 토글 0.18 (가정)"],
-         ["동적 (mW)", f"{pw0['동적_mW']:.3f}", f"{pw1['동적_mW']:.3f}", "α·C·V²·f"],
-         ["클럭 (mW)", f"{pw0['클럭_mW']:.3f}", f"{pw1['클럭_mW']:.3f}", "2·열린비·C_clk·V²·f"],
-         ["누설 (mW)", f"{pw0['누설_mW']:.4f}", f"{pw1['누설_mW']:.4f}", "셀수 × 1.2 nW × 코너배수"],
-         ["합 (mW)", f"<b>{pw0['합_mW']:.3f}</b>", f"<b>{pw1['합_mW']:.3f}</b>", ""]],
-        "전력 분해. <b>출처 칸을 보라</b> — 실측과 가정이 갈라져 있다.", "", 강조열=[1, 2])
-    R.그림(V.막대([f"{p['P']} {p['V']}V {p['T']:.0f}°C" for p in m["전력코너"]],
-               [p["누설_mW"] for p in m["전력코너"]], "코너별 누설 전력", "mW",
+         f"{pw1['합_mW']:.2f} mW total. The clock network taking a large share is "
+         f"typical of a design with {pw1['플롭']} flops \u2014 which is precisely "
+         f"why gating works here.",
+         "\u03b1\u00b7C\u00b7V\u00b2\u00b7f, \u03b1 from verilator toggles")
+    R.그림(V.막대(["State-based gating", "Beat-based gating"],
+               [pw0["합_mW"], pw1["합_mW"]],
+               "Total power by gating policy", "mW", 색들=[V.흐림, V.초록], 폭=460),
+         f"One line Ethan changed in the RTL shows up as "
+         f"<b>{(1-pw1['합_mW']/max(pw0['합_mW'],1e-9))*100:.1f} %</b> of power. "
+         f"The cause is the activity factor dropping from {pw0['알파']} to "
+         f"{pw1['알파']}, and that \u03b1 is <b>not an estimate \u2014 it is "
+         f"{m['토글'][1]['clk_cycles']:,} counted cycles</b>.",
+         "verilator toggles + \u03b1\u00b7C\u00b7V\u00b2\u00b7f")
+    R.표(["Item", "State-based", "Beat-based", "Source"],
+        [["clk cycles", f"{m['토글'][0]['clk_cycles']:,}",
+          f"{m['토글'][1]['clk_cycles']:,}", "verilator"],
+         ["gclk cycles", f"{m['토글'][0]['gclk_cycles']:,}",
+          f"{m['토글'][1]['gclk_cycles']:,}", "verilator"],
+         ["Fraction of cycles the clock is open",
+          f"{pw0['열린비']:.4f}", f"{pw1['열린비']:.4f}", "measured"],
+         ["Activity factor \u03b1", f"{pw0['알파']}", f"{pw1['알파']}",
+          "measured \u00d7 node toggle rate 0.18 (assumed)"],
+         ["Dynamic (mW)", f"{pw0['동적_mW']:.3f}", f"{pw1['동적_mW']:.3f}",
+          "\u03b1\u00b7C\u00b7V\u00b2\u00b7f"],
+         ["Clock (mW)", f"{pw0['클럭_mW']:.3f}", f"{pw1['클럭_mW']:.3f}",
+          "2\u00b7open\u00b7C_clk\u00b7V\u00b2\u00b7f"],
+         ["Leakage (mW)", f"{pw0['누설_mW']:.4f}", f"{pw1['누설_mW']:.4f}",
+          "cells \u00d7 1.2 nW \u00d7 corner multiplier"],
+         ["Total (mW)", f"<b>{pw0['합_mW']:.3f}</b>",
+          f"<b>{pw1['합_mW']:.3f}</b>", ""]],
+        "Power breakdown. <b>Read the source column</b> \u2014 measured and "
+        "assumed are kept apart.", "", 강조열=[1, 2])
+    R.그림(V.막대([f"{p['P']} {p['V']}V {p['T']:.0f}\u00b0C" for p in m["전력코너"]],
+               [p["누설_mW"] for p in m["전력코너"]], "Leakage power by corner", "mW",
                색들=[V.계열[i % 6] for i in range(len(m["전력코너"]))], 폭=520),
-         "누설은 문턱에 지수로 붙는다. ff/고온 코너에서 "
-         f"tt 공칭의 <b>{max(p['누설_mW'] for p in m['전력코너'])/max(min(p['누설_mW'] for p in m['전력코너']),1e-12):,.0f}배</b> "
-         "가 된다 — 저전력 설계에서 누설 코너를 따로 보는 까닭이다.",
-         "house/syn/pvt.py 누설배수()")
+         "Leakage is exponential in threshold voltage. At the ff / hot corner it "
+         f"reaches <b>{max(p['누설_mW'] for p in m['전력코너'])/max(min(p['누설_mW'] for p in m['전력코너']),1e-12):,.0f}\u00d7</b> "
+         "the tt nominal value \u2014 which is why low-power designs sign off "
+         "leakage corners separately.", "house/syn/pvt.py leakage_multiplier()")
 
     # ---------------- 6. UPF ----------------
-    R.절("6. UPF — 전원 의도와 그 구멍")
+    R.절("6. UPF — power intent, and the holes in it")
     u = m["upf"]
     R.그림(V.블록도(
         [("PD_TOP", 14, 20, 300, 180, "none", ""),
-         ("PD_CFG", 30, 54, 110, 54, "#eef4fb", "늘 켜짐 (VDD)"),
-         ("PD_DP", 178, 54, 110, 54, "#fdf6e3", "꺼진다 (VDD_DP)"),
+         ("PD_CFG", 30, 54, 110, 54, "#eef4fb", "always on (VDD)"),
+         ("PD_DP", 178, 54, 110, 54, "#fdf6e3", "switchable (VDD_DP)"),
          ("ISO", 178, 130, 110, 38, "#eaf5ee", "clamp 0"),
-         ("RET", 330, 54, 96, 54, "#f9ecec", "a_s2 · a_s3")],
-        [("PD_CFG", "PD_DP", "coef", V.파랑), ("PD_DP", "ISO", "출력", V.주황),
+         ("RET", 330, 54, 96, 54, "#f9ecec", "a_s2 / a_s3")],
+        [("PD_CFG", "PD_DP", "coef", V.파랑), ("PD_DP", "ISO", "outputs", V.주황),
          ("PD_DP", "RET", "save/restore", V.빨강)],
-        "전원 도메인과 보호 구조", 폭=460, 높이=210),
-        "<code>PD_DP</code> 가 꺼질 때 <b>아이솔레이션이 출력을 0 으로 물고</b>, "
-        "<b>리테션이 누산기를 살린다</b>. 둘 중 하나라도 빠지면 기능 시험은 다 통과하고 "
-        "실리콘에서 관통 전류가 흐르거나 상태를 잃는다.",
-        "house/syn/nsw_fir.upf 를 house/syn/constraints.py 가 파싱")
-    R.표(["도메인", "요소", "주 전원"],
+        "Power domains and their protection", 폭=460, 높이=210),
+        "When <code>PD_DP</code> switches off, <b>isolation clamps its outputs "
+        "to 0</b> and <b>retention keeps the accumulator alive</b>. Omit either "
+        "one and every functional test still passes while silicon draws crowbar "
+        "current or loses state.",
+        "house/syn/nsw_fir.upf parsed by house/syn/constraints.py")
+    R.표(["Domain", "Elements", "Primary supply"],
         [[d["이름"], ", ".join(d["요소"]) or "(top)",
-          "VDD_DP (꺼짐)" if d["이름"] == "PD_DP" else "VDD (늘 켜짐)"] for d in u["도메인"]],
-        "전원 도메인.", "UPF 파싱")
-    R.표(["상태", "VDD", "VDD_DP", "언제"],
-        [[p["이름"]] + p["상태"].split() + ["데이터패스가 도는 동안" if p["이름"] == "ACTIVE"
-                                          else "IDLE/DONE 에서 길게 쉴 때"] for p in u["PST"]],
-        "전원 상태표 (PST). 클럭 게이팅이 <i>주기</i> 단위라면 전원 게이팅은 <i>거래</i> 단위다.",
-        "UPF 파싱")
+          "VDD_DP (switchable)" if d["이름"] == "PD_DP" else "VDD (always on)"]
+         for d in u["도메인"]],
+        "Power domains.", "UPF parse")
+    R.표(["State", "VDD", "VDD_DP", "When"],
+        [[p["이름"]] + p["상태"].split()
+         + ["while the datapath is running" if p["이름"] == "ACTIVE"
+            else "during long idle in IDLE/DONE"] for p in u["PST"]],
+        "Power state table (PST). Clock gating works at <i>cycle</i> granularity; "
+        "power gating works at <i>transaction</i> granularity.", "UPF parse")
     if m["upf점검"]:
-        R.표(["심각도", "무엇", "왜 문제인가"],
+        R.표(["Severity", "Finding", "Why it matters"],
             [[x["심각도"], x["무엇"], x["왜"]] for x in m["upf점검"]],
-            f"UPF 점검 결과 — 치명 {len(치명)}건. "
-            f"<b>'문제 없음' 이 아니라 '무엇을 확인했는지' 를 적는다.</b>",
-            "house/syn/constraints.py upf점검()", 강조열=[0])
+            f"UPF audit \u2014 {len(치명)} critical. "
+            f"<b>We do not write 'no issues'; we write what was checked.</b>",
+            "house/syn/constraints.py upf_audit()", 강조열=[0])
     if not 치명:
-        R.짚기("치명 항목 0건. 아이솔레이션·리테션이 정의와 <b>제어 신호</b>를 둘 다 가지고 있고, "
-             "UPF 가 가리키는 인스턴스 이름이 RTL 에 실제로 있다. "
-             "레벨 시프터가 없는 것은 지금 두 도메인이 같은 1.8 V 이기 때문이며, "
-             "전압이 갈라지는 순간 필요해진다(UPF 에 주석으로 준비해 뒀다).")
+        R.짚기("No critical findings. Isolation and retention each have both a "
+             "definition and a <b>control signal</b>, and every instance name the "
+             "UPF references exists in the RTL. There is no level shifter because "
+             "both domains currently sit at 1.8 V; the moment those voltages "
+             "diverge one becomes mandatory (the UPF carries a comment marking "
+             "the spot).")
 
-    # ---------------- 7. 구성 비교 ----------------
-    R.절("7. 설계팀에 돌려주는 표 — 구성별 PPA")
+    # ---------------- 7. configuration comparison ----------------
+    R.절("7. What PI hands back to the design team — PPA by configuration")
     if m["비교"]:
-        R.표(["구성", "면적 (µm²)", "셀 수", "Fmax (MHz)", "슬랙 (ns)"],
-            [[json.dumps(x["파라"], ensure_ascii=False), f"{x['면적']:,.1f}", f"{x['셀수']:,}",
-              x["Fmax"], x["슬랙_ns"]] for x in m["비교"]],
-            "PI 가 프런트엔드에 돌려주는 값. <b>이 표가 설계 결정의 근거가 된다.</b>",
-            "yosys + lab/se/sta", 강조열=[3, 4])
-        R.그림(V.산점([x["면적"] for x in m["비교"]], [x["Fmax"] or 0 for x in m["비교"]],
-                   "면적 대 Fmax", "면적 (µm²)", "Fmax (MHz)",
-                   라벨=[json.dumps(x["파라"], ensure_ascii=False)[:14] for x in m["비교"]], 폭=540),
-             "구성별 PPA 점. 왼쪽 위가 좋다.", "yosys + lab/se/sta")
+        R.표(["Configuration", "Area (\u00b5m\u00b2)", "Cells", "Fmax (MHz)",
+             "Slack (ns)"],
+            [[json.dumps(x["파라"], ensure_ascii=False), f"{x['면적']:,.1f}",
+              f"{x['셀수']:,}", x["Fmax"], x["슬랙_ns"]] for x in m["비교"]],
+            "The numbers PI returns to the front end. <b>This table is what a "
+            "design decision gets made on.</b>", "yosys + lab/se/sta", 강조열=[3, 4])
+        R.그림(V.산점([x["면적"] for x in m["비교"]],
+                   [x["Fmax"] or 0 for x in m["비교"]],
+                   "Area vs Fmax", "Area (\u00b5m\u00b2)", "Fmax (MHz)",
+                   라벨=[json.dumps(x["파라"], ensure_ascii=False)[:14]
+                       for x in m["비교"]], 폭=540),
+             "One PPA point per configuration. Up and to the left is better.",
+             "yosys + lab/se/sta")
 
-    # ---------------- 8. 한계 ----------------
+    # ---------------- 8. limits ----------------
     R.한계(
-        "· <b>코너별 .lib 이 없다.</b> 공정 코너를 <i>모형</i>으로 셈했다(α 제곱 법칙 + "
-        "이동도 T<sup>−1.5</sup> + dV<sub>th</sub>/dT). 코너 사이의 비는 물리에서 나오지만 "
-        "절댓값은 공칭 .lib 에 묶여 있다. 파운드리 .lib 이 생기면 그것으로 바꾼다.<br>"
-        "· <b>배선 기생이 없다.</b> 배선 전 STA 다 — Kenji(PD) 의 보고서가 배선 뒤 값을 낸다. "
-        "T23 의 실측으로는 그 차이가 Fmax 의 30~40 %다.<br>"
-        "· <b>SDC 의 와일드카드를 전개하지 않는다.</b> <code>[get_ports in_data*]</code> 를 "
-        "글자 그대로 읽고 STA 에 <i>모든</i> 입력으로 건다. 정밀한 포트 매칭은 안 한다.<br>"
-        "· <b>노드 토글률 0.18 은 가정이다.</b> 게이팅 열린 비는 실측이지만, 열려 있는 동안 "
-        "조합 노드가 얼마나 뒤집히는지는 VCD 토글 카운트가 필요하다. 다음 판에서 "
-        "verilator <code>--trace</code> 로 붙인다.<br>"
-        "· <b>UPF 를 실제로 적용하지 않았다.</b> 파싱하고 정합성을 봤을 뿐, "
-        "아이솔레이션/리테션 셀을 넷리스트에 삽입하지는 않았다(그것은 상용 도구의 일이다).")
+        "\u00b7 <b>There are no per-corner .lib files.</b> Process corners were "
+        "computed from a <i>model</i> (alpha-power law + mobility "
+        "T<sup>\u22121.5</sup> + dV<sub>th</sub>/dT). The ratios between corners "
+        "follow from physics, but the absolute values stay tied to the nominal "
+        ".lib. Swap in foundry .lib files the moment they exist.<br>"
+        "\u00b7 <b>There is no wire parasitic.</b> This is pre-route STA \u2014 "
+        "Kenji (PD) reports the post-route numbers. Measured in T23, that gap is "
+        "30\u201340 % of Fmax.<br>"
+        "\u00b7 <b>SDC wildcards are not expanded.</b> "
+        "<code>[get_ports in_data*]</code> is taken literally and applied to "
+        "<i>all</i> inputs in STA. There is no precise port matching.<br>"
+        "\u00b7 <b>The node toggle rate of 0.18 is an assumption.</b> The "
+        "fraction of cycles the gate is open is measured, but how often "
+        "combinational nodes flip while it is open needs a VCD toggle count. "
+        "The next revision attaches that via verilator <code>--trace</code>.<br>"
+        "\u00b7 <b>UPF was not actually applied.</b> It was parsed and checked "
+        "for consistency; no isolation or retention cells were inserted into the "
+        "netlist (that is a commercial tool's job).")
 
     R.잰것 = [
-        ("셀 수", f"{합['셀수']:,}", "개", "yosys stat"),
-        ("면적", f"{합['면적_um2']:,.1f}", "µm²", f"yosys stat -liberty {합['라이브러리']}"),
-        ("공칭 Fmax", st.get("Fmax_MHz"), "MHz", "lab/se/sta (두 길 대조)"),
-        ("두 길 차이", st.get("두길_차이_ps"), "ps", "블록기반 vs 경로기반"),
-        ("PVT 코너 수", len(코너), "개", "house/syn/pvt.py"),
-        ("통과 코너", f"{len(통과)}/{len(코너)}", "개", "슬랙 ≥ 0"),
-        ("온도 반전 전압(닫힌꼴)", f"{m['반전전압']['닫힌꼴']:.6f}", "V", "α 제곱 법칙"),
-        ("온도 반전 전압(수치)", f"{m['반전전압']['수치']:.6f}", "V", "수치 미분 + 이분법"),
-        ("OCV 실효 스큐", o["실효스큐_ps"], "ps", "1.00×1.07 − 0.98×0.93"),
-        ("총 전력", f"{pw1['합_mW']:.3f}", "mW", "α·C·V²·f (α 는 실측 토글)"),
-        ("게이팅 전력 절감", f"{(1-pw1['합_mW']/max(pw0['합_mW'],1e-9))*100:.1f}", "%", "A/B 실측"),
-        ("UPF 치명 항목", len(치명), "건", "house/syn/constraints.py"),
-        ("도구 실행 시간", m["초"], "s", "실측"),
+        ("Cells", f"{합['셀수']:,}", "", "yosys stat"),
+        ("Area", f"{합['면적_um2']:,.1f}", "\u00b5m\u00b2",
+         f"yosys stat -liberty {합['라이브러리']}"),
+        ("Nominal Fmax", st.get("Fmax_MHz"), "MHz", "lab/se/sta (two methods)"),
+        ("Two-method difference", st.get("두길_차이_ps"), "ps",
+         "block-based vs path-based"),
+        ("PVT corners", len(코너), "", "house/syn/pvt.py"),
+        ("Corners passing", f"{len(통과)}/{len(코너)}", "", "slack \u2265 0"),
+        ("Temperature inversion (closed form)",
+         f"{m['반전전압']['닫힌꼴']:.6f}", "V", "alpha-power law"),
+        ("Temperature inversion (numerical)",
+         f"{m['반전전압']['수치']:.6f}", "V", "numerical derivative + bisection"),
+        ("OCV effective skew", o["실효스큐_ps"], "ps",
+         "1.00\u00d71.07 \u2212 0.98\u00d70.93"),
+        ("Total power", f"{pw1['합_mW']:.3f}", "mW",
+         "\u03b1\u00b7C\u00b7V\u00b2\u00b7f (\u03b1 measured)"),
+        ("Gating power saving",
+         f"{(1-pw1['합_mW']/max(pw0['합_mW'],1e-9))*100:.1f}", "%", "measured A/B"),
+        ("UPF critical findings", len(치명), "", "house/syn/constraints.py"),
+        ("Tool runtime", m["초"], "s", "measured"),
     ]
     return R
 
@@ -449,7 +527,7 @@ def 돌리기(빠르게=False) -> dict:
     m = 일하기(빠르게)
     R = 보고서(m)
     길 = R.내기()
-    return {"사람": 사람들.MARCUS, "잰것": m, "pdf": 길, "쪽": RPT.쪽수(길),
+    return {"사람": people.MARCUS, "잰것": m, "pdf": 길, "쪽": RPT.쪽수(길),
             "요약": R.요약줄, "그림수": R.그림수, "표수": R.표수}
 
 

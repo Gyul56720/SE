@@ -24,7 +24,7 @@ from pathlib import Path
 저장소 = 집.parent
 sys.path.insert(0, str(저장소))
 
-from house import people as 사람들    # noqa: E402
+from house import people    # noqa: E402
 from house import report as RPT       # noqa: E402
 from house import sim as SIM          # noqa: E402
 from house import viz as V            # noqa: E402
@@ -153,7 +153,7 @@ def _파형뜨기() -> dict:
 
 
 def 보고서(m: dict) -> RPT.보고서:
-    P = 사람들.PRIYA
+    P = people.PRIYA
     R = RPT.보고서(P, "NSW-FIR v1.0 검증 보고서", "nsw_fir MAC 가속기 IP",
                  "제약 랜덤 회귀 · 커버리지 닫기 · 자해 검사(mutation) · 프로토콜 검사")
 
@@ -625,7 +625,7 @@ def 돌리기(규모="보통") -> dict:
     m = 일하기(규모)
     R = 보고서(m)
     길 = R.내기()
-    return {"사람": 사람들.PRIYA, "잰것": m, "pdf": 길, "쪽": RPT.쪽수(길),
+    return {"사람": people.PRIYA, "잰것": m, "pdf": 길, "쪽": RPT.쪽수(길),
             "요약": R.요약줄, "그림수": R.그림수, "표수": R.표수}
 
 

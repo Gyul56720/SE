@@ -53,7 +53,7 @@ REPO = Path(__file__).resolve().parent.parent
 표식 = "house/run.py"
 
 
-def _사람들():
+def _people():
     sys.path.insert(0, str(REPO))
     from house import people
     return people
@@ -120,8 +120,8 @@ def _표(줄들: "list[dict]") -> str:
 
 
 def _도움() -> str:
-    people = _사람들()
-    return (people.조직도글() + "\n\n"
+    people = _people()
+    return (people.org_chart() + "\n\n"
             "**쓰기**\n"
             "`!회사 <사람>` 그 사람을 돌린다 (보고서 PDF)\n"
             "`!회사 <사람> 메일` 돌리고 PDF 를 메일로 보낸다\n"
@@ -244,9 +244,9 @@ def run(text: str, runner=None, allow_write: bool = True) -> "str | None":
                 + "`!회사 상태` 로 진행을 본다. 다섯 명 다 도는 데 수십 분 걸린다.")
 
     # ---- 한 사람 ----
-    people = _사람들()
+    people = _people()
     후보 = " ".join(w for w in 낱말 if w not in ("메일", "mail", "보내", "gmail", "빠르게"))
-    p = people.찾기(후보)
+    p = people.find(후보)
     if p is None:
         return (f"**누구를 말하는지 모르겠다**: `{후보}`\n\n" + _도움())
     if _도나():
@@ -270,9 +270,9 @@ def run(text: str, runner=None, allow_write: bool = True) -> "str | None":
     r = _띄우기(인자, p.키)
     if not r["떴나"]:
         return f"**못 띄웠다.** 로그: `{r['로그']}`"
-    return (f"**{p.이름}** ({p.팀} / {p.직급}) 에게 "
+    return (f"**{p.name}** ({p.team} / {p.title}) 에게 "
             + (f"회로 `{회로}` 를 " if 회로 else "") + "넘겼다.\n"
-            f"· 맡은 것: {p.한줄}\n"
+            f"· 맡은 것: {p.tagline}\n"
             f"· 로그: `{r['로그']}`\n"
             + ("· 끝나면 보고서 PDF 를 첨부해 메일로 보낸다.\n" if 메일
                else "· 끝나면 `house/out/` 에 PDF 가 생긴다. 메일까지 보내려면 "
