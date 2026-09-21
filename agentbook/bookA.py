@@ -160,3 +160,60 @@ def 직무(줄들, 장번호=None):
         항.append(f"<b>{jd.어디(k)}</b> {jd.글(k)}")
     return ('<div class="직무"><b>이 장이 감당하는 채용 요구</b><br>'
             + "<br>".join(항) + '</div>')
+
+
+def 소스(열쇠, 설명="", 풀이=(), 접기=()):
+    """**남의 코드를 줄 단위로 읽힌다.**
+
+    `agentbook/snips/` 에 박아 둔 발췌를 꺼내 줄 번호와 함께 찍고, 줄마다 풀이를
+    붙인다. 사용자 지시(2026-09-21): "코드도 다 분석해줘 일일이."
+
+    열쇠 : 발췌의 이름 (`발췌.py` 가 만든 것)
+    풀이 : [(줄번호, "이 줄이 무엇을 하나"), ...] -- 번호는 **원본 파일의 줄 번호**
+    접기 : 지면을 아끼려고 `...` 로 줄일 줄 범위들 [(a, b), ...]
+    """
+    import 발췌
+    메타, 줄들 = 발췌.읽기(열쇠)
+    풀이표 = dict(풀이)
+    접을것 = set()
+    for a, b in 접기:
+        접을것 |= set(range(a, b + 1))
+    몸 = []
+    접힘중 = False
+    for n, 글 in 줄들:
+        if n in 접을것:
+            if not 접힘중:
+                몸.append('<tr><td class="소스번호">&#8942;</td>'
+                         '<td class="소스글">&#8230;</td></tr>')
+                접힘중 = True
+            continue
+        접힘중 = False
+        강조 = ' class="소스짚"' if n in 풀이표 else ""
+        몸.append(f'<tr{강조}><td class="소스번호">{n}</td>'
+                 f'<td class="소스글">{안전(글)}</td></tr>')
+    풀h = ""
+    if 풀이:
+        풀h = ('<table class="소스풀이"><thead><tr><th>줄</th><th>이 줄이 하는 일</th>'
+              '</tr></thead><tbody>'
+              + "".join(f'<tr><td class="소스번호">{n}</td><td>{t}</td></tr>'
+                        for n, t in 풀이) + '</tbody></table>')
+    설h = f'<div class="소스설명">{설명}</div>' if 설명 else ""
+    return (f'<div class="소스"><div class="소스머리">{안전(메타["저장소"])}'
+            f'<span class="소스경로">{안전(메타["경로"])}:'
+            f'{메타["시작"]}&ndash;{메타["끝"]} @ {안전(메타["커밋"])}</span></div>'
+            f'{설h}<table class="소스표"><tbody>{"".join(몸)}</tbody></table>'
+            f'{풀h}</div>')
+
+
+def 말풀이(줄들):
+    """**용어를 한 표로.** 사용자 지시: "무슨 뭐로 감싼다 뭐로 한다 이해가 안되는데"
+
+    줄 하나는 (말, 영어, 무슨 뜻인가, 왜 그렇게 부르나) 다. 네 번째 칸이 중요하다 --
+    이름의 유래를 알면 그 말이 다시 나왔을 때 안 막힌다.
+    """
+    return ('<table class="말풀이"><caption>이 절에서 처음 나오는 말. '
+            '<b>이름이 왜 그런지까지 적는다</b> &mdash; 그래야 다음에 안 막힌다.</caption>'
+            '<thead><tr><th>말</th><th>영어</th><th>무슨 뜻인가</th>'
+            '<th>왜 그렇게 부르나</th></tr></thead><tbody>'
+            + "".join("<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>"
+                      for r in 줄들) + '</tbody></table>')

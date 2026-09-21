@@ -507,20 +507,43 @@ def repair(command: str, symptom: str) -> str:
 
 
 @tool
-def send_email(to: str, subject: str, body: str) -> str:
+def send_email(to: str, subject: str, body: str, attach: str = "") -> str:
     """메일을 보낸다 -- SMTP 접속은 여기가 한다. **네가 smtplib 코드를 짜거나 발급 절차를
     설명하지 마라.** 수단(보내는 주소·앱 비밀번호)이 없으면 이 도구가 "무엇이 없고 어떻게
     주는지" 를 돌려준다 -- 그 말을 사용자에게 **그대로** 전하라(선택지를 나열하지 말고).
     사용자가 `!열쇠 이름=값` 으로 줬다고 하면 같은 인자로 다시 불러라 -- 바로 나간다.
     .env 는 이 도구가 별칭·값의 꼴로 알아서 뒤진다 -- 네가 read_file 로 .env 를 읽지 마라.
     to 에 "me" 를 주면 USER_EMAIL 로 간다. 본문에 [교수님 성함] 같은 자리표가 남아 있으면 안 보낸다
-    -- 네가 다 채워서 다시 불러라(실존 인물 이름을 지어 서명하지 말고 직함·위원회로)."""
+    -- 네가 다 채워서 다시 불러라(실존 인물 이름을 지어 서명하지 말고 직함·위원회로).
+    제목 앞의 `[보고]`·`[공유]`·`[안내]`·`[긴급]`·`[회신]` 은 말머리라 자리표로 안 센다.
+
+    **attach 로 파일을 붙인다** -- 저장소 기준 상대경로를 쉼표나 띄어쓰기로 여럿,
+    글롭도 된다(`house/signoff/*`). 보고서 PDF·회로 소스·넷리스트·GDS 를 이걸로 보낸다.
+    첨부를 달라는 부탁(도면·회로도·보고서를 메일로)에 본문만 보내지 마라 -- **첨부가
+    없으면 그건 보고가 아니다.** 저장소 밖 경로와 비밀값 자리는 도구가 거절한다."""
     if agent_context.is_blocked():
         return "실패: 게스트는 send_email 을 사용할 수 없습니다."
     import mailer
-    r = mailer.보내기(to, subject, body)
-    relay.적기(f"✉ {to[:40]} {'보냄' if r['보냈나'] else '못 보냄'} -- {r['말'].splitlines()[0][:60]}")
-    return r["말"]
+    import mailattach
+    붙일것, 거절 = mailattach.풀기(attach)
+    if 거절 and not 붙일것:
+        return "[첨부 거절] " + " · ".join(거절[:4])
+    막힘 = mailattach.막히나(붙일것)
+    if 막힘:
+        return f"[첨부 거절] {막힘}"
+    총 = mailattach.재기(붙일것)
+    if 붙일것:
+        r = mailer.보내기_첨부(to, subject, body, 붙일것,
+                          허용자리표=mailattach.말머리)
+    else:
+        r = mailer.보내기(to, subject, body, 허용자리표=mailattach.말머리)
+    꼬리 = (f" (첨부 {len(붙일것)}개 {총/1e6:.1f} MB)" if 붙일것 else "")
+    relay.적기(f"✉ {to[:40]} {'보냄' if r['보냈나'] else '못 보냄'}{꼬리} -- "
+             f"{r['말'].splitlines()[0][:60]}")
+    말 = r["말"]
+    if 거절:
+        말 += "\n(붙이지 못한 것: " + " · ".join(거절[:3]) + ")"
+    return 말
 
 
 @tool

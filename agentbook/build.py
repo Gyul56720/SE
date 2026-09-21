@@ -33,6 +33,7 @@ import bookK                                   # noqa: E402
         ("A7_tools",     ["ch_tools"]),
         ("A8_memory",    ["ch_memory"]),
         ("A9_state",     ["ch_state"]),
+        ("H1_harness",   ["ch_harness"]),
     ]),
     ("3부. 디코딩과 표본의 수학", [
         ("B1_grammar",   ["ch_grammar"]),
@@ -84,6 +85,7 @@ import bookK                                   # noqa: E402
         ("L3_shell",     ["ch_shell"]),
     ]),
     ("11부. 레포 해부 — 읽은 커밋만 인용한다", [
+        ("R0_langchain", ["ch_langchain"]),
         ("R1_langgraph", ["ch_langgraph"]),
         ("R2_mcp_sdk",   ["ch_mcp_sdk"]),
         ("R3_swe",       ["ch_swe"]),

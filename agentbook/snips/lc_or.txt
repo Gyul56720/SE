@@ -1,0 +1,27 @@
+    def __or__(
+        self,
+        other: Runnable[Output, Other]
+        | Callable[[Iterator[Output]], Iterator[Other]]
+        | Callable[[AsyncIterator[Output]], AsyncIterator[Other]]
+        | Callable[[Output], Other]
+        | Mapping[str, Runnable[Output, Any] | Callable[[Output], Any] | Any],
+    ) -> RunnableSerializable[Input, Any]:
+        """Runnable "or" operator.
+
+        Compose this `Runnable` with another object to create a
+        `RunnableSequence`.
+
+        Args:
+            other: Another `Runnable` or a `Runnable`-like object.
+
+        Returns:
+            A new `Runnable`.
+
+        Raises:
+            TypeError: If `other` cannot be coerced to a `Runnable`. This method does
+                not return `NotImplemented`, to avoid delegating LCEL composition to
+                unrelated reflected `|` implementations. To interoperate, implement
+                `Runnable`, make the object callable, or define `__or__` on the left.
+        """
+        return RunnableSequence(self, coerce_to_runnable(other))
+

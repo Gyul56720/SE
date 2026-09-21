@@ -136,3 +136,33 @@ p  { margin:5pt 0; text-align:justify; }
 .직무 { margin:9pt 0; border-left:2.6pt solid #3f8f63; background:#f2faf5;
         padding:5pt 9pt; font-size:8.8pt; }
 .직무 b { color:#2a6b49; }
+
+/* 남의 코드를 줄 단위로 */
+.소스 { margin:11pt 0; border:0.8pt solid #b9c2cc; border-radius:3pt;
+        break-inside:avoid; }
+.소스머리 { background:#2e3b47; color:#fff; font-size:8.8pt; font-weight:bold;
+           padding:3pt 8pt; border-radius:2pt 2pt 0 0; }
+.소스머리 .소스경로 { float:right; font-weight:normal; color:#b8c6d4;
+           font-family:"DejaVu Sans Mono",monospace; font-size:7.8pt; }
+.소스설명 { padding:5pt 9pt; font-size:9.2pt; background:#f7f9fb; }
+table.소스표 { width:100%; margin:0; border-collapse:collapse;
+           font-family:"NanumGothicCoding","DejaVu Sans Mono",monospace;
+           font-size:7.9pt; line-height:1.34; }
+table.소스표 td { border:0; padding:0.6pt 4pt; vertical-align:top; }
+td.소스번호 { width:26pt; text-align:right; color:#93a3b3; background:#f2f5f8;
+           border-right:0.4pt solid #dde3ea; }
+td.소스글 { white-space:pre-wrap; word-break:break-all; }
+tr.소스짚 td.소스글 { background:#fffbe9; }
+tr.소스짚 td.소스번호 { background:#f6efd4; color:#8a6d3b; font-weight:bold; }
+table.소스풀이 { width:100%; margin:0; font-size:8.8pt;
+           border-top:0.6pt solid #dde3ea; }
+table.소스풀이 th { background:#eef2f7; color:#123f6d; text-align:left;
+           padding:2pt 6pt; }
+table.소스풀이 td { padding:2.6pt 6pt; vertical-align:top; border:0;
+           border-bottom:0.3pt dotted #d5dde6; }
+
+/* 용어 풀이 */
+table.말풀이 { font-size:8.9pt; }
+table.말풀이 td:first-child { font-weight:bold; color:#123f6d; width:70pt; }
+table.말풀이 td:nth-child(2) { font-family:"DejaVu Sans Mono",monospace;
+           font-size:8.2pt; color:#555; width:88pt; }
