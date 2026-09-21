@@ -1,0 +1,107 @@
+<h1 id="T10">T10. 스위치드 커패시터 &mdash; 시간으로 산 정확도</h1>
+<p class="한줄">값이 커패시터 비와 클럭인 저항. 그 치환 하나 덕에 정밀 아날로그가 디지털 공정으로의 이사를 살아남았다.</p>
+<div class="사다리"><div class="사다리앞"><b>읽기 전에 알아야 하는 것</b><br>전압 · 전류 · 전하 · 저항 · 주파수 · 적분 · 로그 · kTC잡음 · 차지인젝션 · 부트스트랩스위치 · 표본화정리 · RC지연 · 논리적노력 · 정합 · INL · DNL</div><div class="사다리뒤"><b>이 장에서 새로 나오는 것</b><br>등가저항 · 두상클럭 · 겹침없음 · 바닥판표본화 · SC적분기 · 되먹임계수 · 정착시간 · 유한이득오차 · 상관이중표본화 · 자동영점 · 전하보존 · 기생무감</div></div>
+<p>정밀 아날로그 회로에는 정확한 계수가 필요한데, 집적 공정에서 정확한 것은
+    딱 하나다. 똑같이 그린 두 구조물의 <b>비</b>다. 절대 저항은 공정에 걸쳐
+    ±20 % 로 흔들린다. 절대 용량도 마찬가지다. 그런데 나란히 그린 두
+    커패시터의 비는 1 퍼센트의 몇 분의 일까지 맞는다. 스위치드 커패시터
+    기법은 필요한 모든 것을 그 비로 표현하는 규율이다 — 그리고 그 값을
+    표본화로, 따라서 시간으로 치른다.</p>
+<h2>T10.1 커패시터와 클럭으로 만든 저항</h2>
+<div class="유도"><div class="유도머리">유도 &mdash; 전하 옮김에서 등가저항으로</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">커패시터 C 를 V₁ 까지 채운 다음 V₂ 인 마디에 쏟는다. 옮겨진 전하는 ΔQ = C(V₁ − V₂) 다.</td><td class="유도왜">회로 전체가 이것이다. 스위치 둘과 커패시터 하나를 겹치지 않는 클럭이 몬다.</td></tr><tr><td class="유도번호">2</td><td class="유도말">f<sub>s</sub> 로 되풀이한다. 평균 전류는 I = f<sub>s</sub>·C·(V₁ − V₂) 다.</td><td class="유도왜">주기당 전하 곱하기 초당 주기.</td></tr><tr><td class="유도번호">3</td><td class="유도말">그것이 R<sub>eq</sub> = 1/(f<sub>s</sub>C) 인 옴의 법칙이다.</td><td class="유도왜">C = 1&nbsp;pF 에 f<sub>s</sub> = 10&nbsp;MHz 이면 R<sub>eq</sub> = 100&nbsp;kΩ — 실리콘에서라면 어마어마했을 저항을, 그렇지 않은 커패시터로 지은 것이다.</td></tr><tr><td class="유도번호">4</td><td class="유도말">이렇게 만든 시정수는 R<sub>eq</sub>C₂ = C₂/(f<sub>s</sub>C₁) 이다 — <b>커패시터 비를 클럭 주파수로 나눈 것</b>이다.</td><td class="유도왜">절댓값이 지워진다. 이제 회로의 정확도는 절대 RC 의 정확도(수십 퍼센트)가 아니라 비의 정확도(퍼센트의 몇 분의 일)와 수정 발진기의 정확도(백만분의 몇)다.</td></tr></tbody></table></div>
+<table><caption>표 1. 스위치드 커패시터의 등가저항</caption><thead><tr><th>C</th><th>f_s</th><th>R_eq</th><th>메모</th></tr></thead><tbody><tr><td>1&nbsp;pF</td><td>10&nbsp;MHz</td><td>100&nbsp;kΩ</td><td>이만한 폴리 저항은 수백 µm² 다</td></tr><tr><td>1&nbsp;pF</td><td>100&nbsp;MHz</td><td>10&nbsp;kΩ</td><td></td></tr><tr><td>0.5&nbsp;pF</td><td>500&nbsp;MHz</td><td>4&nbsp;kΩ</td><td>이 속도에서는 아래의 정착 요구가 묶는 제약이 된다</td></tr></tbody></table>
+<div class="개념"><div class="개념머리">두 상 겹침 없는 클럭 (two-phase non-overlapping clocks)</div>
+<div class="개념이론"><p>두 스위치가 <b>동시에 켜져서는 절대 안 된다</b>. 그러면 근원과 목적지가
+        단락되고, 옮겨진 전하가 겹친 만큼 틀리는데 — 그 겹침은 공정과 온도를
+        따라 흔들린다. 그래서 클럭은 일부러 죽은 시간을 두고 만들어진다.
+        보통은 지연 사슬이 그 틈을 정하는 교차결합 NAND 짝에서 나온다.</p>
+        <p><b>바닥판 표본화</b>가 중요한 손질이다. <i>고정된</i> 판에 붙은
+        스위치를 조금 먼저 연다. 그 스위치는 일정한 전압을 보므로 주입하는
+        전하가 일정하고, 그러면 신호에 따라 달라지는 왜곡이 아니라 오프셋이
+        된다(T5 의 차지 인젝션 문제를 회로가 아니라 순서로 푼 것이다).</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>모든 스위치드 커패시터 회로. SC 필터, SAR 과 파이프라인 ADC 단, 표본유지, 기준 버퍼.</td></tr>
+<tr><th>언제 쓰나</th><td>늘. 죽은 시간은 최적화가 아니다 — 상이 겹치는 설계는 어느 코너에서 지고, 눈에 띄게 부러지는 대신 느린 정확도 흐름으로 진다.</td></tr>
+<tr><th>어떻게 쓰나</th><td>두 상을 한 셀 안에서 클럭 하나로 만들고, 겹침이 가장 작은 빠른 코너에서 시뮬레이션하고, 두 상을 같이 돌려서 지연 변동을 함께 겪게 한다.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>// Two-phase non-overlapping clock. The feedback is what guarantees
+// the gap: neither output can rise until the other has fallen.
+module clk_2ph (input clk, output logic p1, p1d, p2, p2d);
+    wire n1 = ~(clk    &amp; p2);          // cross-coupled NAND pair
+    wire n2 = ~((~clk) &amp; p1);
+    assign p1 = delay_chain(n1);       // the chain sets the dead time
+    assign p2 = delay_chain(n2);
+    assign p1d = delay_small(p1);      // 'delayed' phases for BOTTOM-PLATE sampling:
+    assign p2d = delay_small(p2);      // the fixed-plate switch opens FIRST
+endmodule
+// Verify at the FAST corner -- that is where the dead time is smallest and
+// where overlap, if it exists at all, appears.</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> 상 발생기만 시뮬레이션하는 것은 아무것도 증명하지 못한다.
+            중요한 겹침은 배선을 마친 뒤 진짜 부하를 단 <b>스위치</b>에서의
+            겹침이다. 한 상은 칩을 가로질러 돌리고 다른 상은 가까이서 돌리는
+            레이아웃은 회로도가 주던 보장을 이미 깨뜨린 것이다.</div>
+</div>
+<h2>T10.2 증폭기가 클럭 반 주기 안에 해내야 하는 일</h2>
+<div class="유도"><div class="유도머리">유도 &mdash; 연산증폭기 하나에 걸린 두 요구, 그리고 왜 서로 싸우는가</div><table class="유도표"><thead><tr><th></th><th>이렇게 된다</th><th>왜냐하면</th></tr></thead><tbody><tr><td class="유도번호">1</td><td class="유도말">옮김 상에서 증폭기는 출력을 ½ LSB 안으로 정착시켜야 한다.</td><td class="유도왜">그보다 못하면 전하가 다 안 옮겨진 것인데 — 그 오차는 <i>이득 같은</i> 것이라 잡음이 아니라 INL 로 나타난다.</td></tr><tr><td class="유도번호">2</td><td class="유도말">정착은 지수적이라, N 비트 정확도에 닿는 데 시정수가 ln(2<sup>N</sup>) 개 든다.</td><td class="유도왜">12 비트에 8.32 개, 16 비트에 11.1 개 — <b>요구는 분해능을 따라 로그로만 늘어난다</b>. 그것이 좋은 소식이다.</td></tr><tr><td class="유도번호">3</td><td class="유도말">쓸 수 있는 시간은 클럭 반 주기이므로 닫힌 고리 대역폭이 적어도 ln(2<sup>N</sup>)/(π·T<sub>s</sub>) 여야 하고 — 열린 고리 단위이득 주파수는 그것을 되먹임 계수 β 로 나눈 것이다.</td><td class="유도왜">β 는 출력에서 되먹여지는 몫인데, 이득단에서 보통 1/2 에서 1/4 다. β 가 작으면 요구가 그만큼 곱해진다.</td></tr><tr><td class="유도번호">4</td><td class="유도말">따로, <b>정적</b> 정확도에는 고리 이득이 든다. 남는 오차가 1/(Aβ) 이므로 A 가 2<sup>N+1</sup>/β 를 넘어야 한다.</td><td class="유도왜">β = 1 에서 12 비트에 78.3&nbsp;dB, 16 비트에 102&nbsp;dB — <b>그리고 이것은 분해능을 따라 지수로 늘어난다</b>. 이것이 나쁜 소식이고, 본디 이득이 낮은 공정에서 고분해능 SC 설계가 어려운 까닭이다.</td></tr><tr><td class="유도번호">5</td><td class="유도말">대역폭은 짧은 채널과 많은 전류를 원하고, 이득은 긴 채널과 캐스코드를 원하는데 캐스코드는 헤드룸을 먹는다.</td><td class="유도왜">어느 공정 마디에서나 두 요구가 반대로 당기고, 미세화와 함께 그 틈이 벌어졌다 — 예전 같으면 더 나은 증폭기를 썼을 설계에 요즘은 보정과 오차 상쇄가 나오는 까닭이다.</td></tr></tbody></table></div>
+<table><caption>표 2. 분해능별로 증폭기가 내놓아야 하는 것</caption><thead><tr><th>비트</th><th>정착에 드는 시정수</th><th>최소 DC 이득 (β = 1)</th><th>최소 DC 이득 (β = ¼)</th></tr></thead><tbody><tr><td>10</td><td>6.93</td><td>66.23&nbsp;dB</td><td>78.27&nbsp;dB</td></tr><tr><td>12</td><td>8.32</td><td>78.27&nbsp;dB</td><td>90.31&nbsp;dB</td></tr><tr><td>14</td><td>9.7</td><td>90.31&nbsp;dB</td><td>102.4&nbsp;dB</td></tr><tr><td>16</td><td>11.1</td><td>102.4&nbsp;dB</td><td>114.4&nbsp;dB</td></tr></tbody></table>
+<div class="짚기">두 칸이 늘어나는 모양을 견줘 보라. 10 비트에서 16 비트로 가면
+    정착 요구는 1.6 배가 되고 이득 요구는
+    64 배가 된다. <b>속도는 분해능을 따라 순하게
+    커지고, 정적 정확도는 그렇지 않다.</b> 그 비대칭 때문에 고분해능 쪽
+    시장이, 더 나은 증폭기를 요구하는 구조 대신 증폭기의 모자람을
+    <i>재서</i> 디지털로 바로잡는 구조로 옮겨 갔다.</div>
+<div class="개념"><div class="개념머리">상관 이중 표본화 (correlated double sampling)</div>
+<div class="개념이론"><p>한 상에서 증폭기의 오차 — 오프셋과 저주파(플리커) 잡음 — 를 표본으로
+        뜨고, 신호 상 동안 그 표본을 뺀다. 가까이 붙은 두 표본 사이에서 그
+        오차는 상관돼 있으므로, 빼기가 그 대부분을 걷어낸다.</p>
+        <p>값은 이것이다. 두 표본의 상관 없는(열) 잡음은 전력으로 더해지므로
+        <b>광대역 잡음이 √2 만큼 나빠지고</b>, 오프셋과 플리커는 훨씬 좋아진다.
+        또 표본화율 위의 잡음을 대역 안으로 접어 넣으므로(T5), 증폭기의
+        대역폭을 일부러 묶어 두어야 한다.</p></div>
+<table class="개념표"><tbody>
+<tr><th>어디에 쓰나</th><td>정밀 SC 이득단, 이미지센서 읽기(거기서는 보편적이다), 입력이 DC 근처이고 증폭기에 플리커 문제가 있는 모든 회로(T4).</td></tr>
+<tr><th>언제 쓰나</th><td>오프셋과 1/f 가 지배할 때 — 곧 신호 대역이 플리커 모퉁이 아래까지 닿을 때.</td></tr>
+<tr><th>어떻게 쓰나</th><td>상 하나와 커패시터 하나를 더한다. 그리고 잡음 예산을 다시 본다. 설계가 이미 열잡음에 묶여 있었다면 열잡음의 √2 벌금이 이득을 지워 버릴 수 있다.</td></tr>
+</tbody></table>
+<div class="개념코드머리">실제 코드는 이렇게 생겼다</div>
+<pre><code>* The measurement that shows whether CDS helped -- run BOTH.
+.noise v(out) VIN dec 20 1 100MEG      $ with CDS disabled
+* ... then with CDS enabled, and compare the INTEGRATED noise over the signal band.
+* Reporting only the 1/f improvement while the broadband floor rose by 3 dB is
+* the kind of half-truth that gets found in the customer's lab.</code></pre>
+<div class="개념주의"><b>여기서 틀린다.</b> CDS 는 <b>두 표본 사이에서 상관된 것</b>을 걷어낸다. 표본화율에
+            견줄 만한 주파수의 잡음은 상관돼 있지 않아서 걷히지 않는다 —
+            오히려 접혀 들어온다. 오차를 쓰기 한참 전에 표본으로 뜨는 설계는
+            값은 다 치르고 이득은 거의 못 본다.</div>
+</div>
+<h2>T10.3 잡음: kT/C 를 한 번만 치르지 않는다</h2>
+<table><caption>표 3. 두 상 회로에서의 kT/C</caption><thead><tr><th>C</th><th>kT/C (표본 하나)</th><th>두 상 (√2)</th><th>풀스케일 1 V 에서의 비트</th></tr></thead><tbody><tr><td>0.5&nbsp;pF</td><td>91&nbsp;µV</td><td>129&nbsp;µV</td><td>11.1</td></tr><tr><td>1&nbsp;pF</td><td>64.4&nbsp;µV</td><td>91&nbsp;µV</td><td>11.6</td></tr><tr><td>4&nbsp;pF</td><td>32.2&nbsp;µV</td><td>45.5&nbsp;µV</td><td>12.6</td></tr></tbody></table>
+<div class="짚기">스위치드 커패시터 단은 한 주기에 적어도 두 번 표본을 뜬다 — 입력
+    커패시터에서 한 번, 되먹임 커패시터에서 한 번 — 그래서 잡음 전력이
+    더해진다. <b>√2 는 최솟값이다.</b> 커패시터가 여럿이고 기준 경로가 있는
+    파이프라인 단은 2배에 쉽게 닿는다. T4 의 표본 하나짜리 kT/C 를 가져다
+    거기에 맞춰 치수를 잡는 것은 잡음 전력에서 두 배의 오차이고, 그것은
+    반 비트다 — 그리고 반 비트는 테이프아웃 뒤에 발견되기 딱 좋은 종류의
+    모자람이다.</div>
+<h2>T10.4 월요일에 이걸로 무엇을 하나</h2>
+<table><caption>표 4. 이 장의 개념이 실제로 쓰이는 자리</caption><thead><tr><th>개념</th><th>쓰이는 블록</th><th>무엇을 정하나</th></tr></thead><tbody><tr><td>등가저항</td><td>디지털 공정에서의 필터와 바이어스 설계</td><td>저항이 필요하기는 한지</td></tr><tr><td>두상클럭 · 바닥판표본화</td><td>모든 SC 회로, 회로도 단계에서</td><td>차지 인젝션이 오프셋인지 왜곡인지</td></tr><tr><td>정착시간 · 유한이득오차</td><td>연산증폭기 규격</td><td>대역폭과 DC 이득 — 그리고 그 공정이 그 이득을 댈 수 있는지</td></tr><tr><td>상관이중표본화 · 자동영점</td><td>DC 근처의 정밀 경로</td><td>플리커 문제를 회로에서 푸는지 구조에서 푸는지</td></tr><tr><td>kTC잡음</td><td>커패시터 치수</td><td>교과서 공식에 빠져 있는 √2 라는 인자</td></tr></tbody></table>
+<p>가지고 갈 수들. 16 비트에 닿으려면 정착 시정수가
+    11.1 개 드는데 — 12 비트보다
+    1.33배 더일 뿐이다 — DC 이득은
+    78.27&nbsp;dB 에 맞서
+    102.4&nbsp;dB 가 들고, 그것은
+    16배 더다. <b>분해능은 시간으로는 싸고
+    이득으로는 비싸다.</b> 이 바닥의 현대 구조는 전부 그 한 문장에 대한
+    대답이다.</p>
+<p>다음 장은 이 회로들이 전부 가지고 있다고 가정하는 양 — 전원이나 온도를
+    따라 움직이지 않는 안정한 바이어스 전류 — 을 가져다, 그것 하나를 만드는
+    데 무엇이 드는지를 보인다.</p>
+<div class="특허"><div class="특허머리">특허로 가는 길 &mdash; 이 주제에서 발명이 일어나는 자리</div><div class="특허속">스위치드 커패시터 분야는 오래됐고 기본 회로들은 특허가 진작 풀렸지만,
+        두 갈래가 계속 청구항을 낳는다. <b>오차 상쇄 방식</b>(상관 이중 표본화,
+        자동 영점, 초퍼 안정화 증폭기, 그리고 한 상에서 오차를 재어 다음 상에서
+        빼는 모든 변종)과 <b>증폭기 대체물</b> — 링 증폭기, 동적 증폭기,
+        비교기 기반 스위치드 커패시터 회로 — 인데, 뒤엣것의 요점은 현대
+        공정이 교과서가 가정하는 고이득 연산증폭기를 못 짓는다는 것이다.
+        두 갈래가 같은 물음에 답한다. <i>연산증폭기가 모자랄 때 무엇을
+        하는가?</i></div></div>
