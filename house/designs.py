@@ -140,6 +140,22 @@ def 등록(d: 설계) -> 설계:
     return d
 
 
+def 최근() -> "str | None":
+    """**마지막으로 등록된 회로의 키.** 없으면 None.
+
+    실측 2026-09-22: `!회사 승인` 으로 새 회로를 지어 등록해 놓고 `!회사 전체` 를
+    치면 **붙박이 회로(`fir`)가 돌았다** -- 승인한 스펙이 다섯 명에게 안 갔다.
+    `등록()` 이 목록 끝에 붙이므로 마지막 줄이 가장 새것이다.
+    """
+    if not 등록부길.exists():
+        return None
+    try:
+        있 = json.loads(등록부길.read_text(encoding="utf-8"))
+    except Exception:                                        # noqa: BLE001
+        return None
+    return (있[-1].get("키") or None) if 있 else None
+
+
 def 찾기(키: "str | None") -> 설계:
     """키로 고른다.  없으면 기본(fir).  **모르는 키는 조용히 기본으로 넘기지 않는다.**"""
     표 = 읽기()
