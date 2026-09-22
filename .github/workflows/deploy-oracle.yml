@@ -208,6 +208,16 @@ on:
       # 여기 .py 만 거는 것은 novel/ 과 같은 까닭이다 -- study/ 는 원장(json)을
       # 봇이 직접 고쳐 커밋하므로, 그것까지 걸면 문제 하나 풀 때마다 봇이 재시작된다.
       - "dig/**.py"
+      # 설계 하우스. `!회사` 가 `house/run.py` 를 셸로 띄우므로 G013 의 임포트 폐포에
+      # 안 잡힌다 -- searcher · bot_tools · gatekeeper · novel · gemini_http · dig 에
+      # 이어 **일곱 번째** '코드가 서버에 도달하지 못하는' 경로다(실측 2026-09-22:
+      # house/arch.py 의 메일 버그를 고쳐 머지했는데 VM 은 계속 옛 코드로 돌아
+      # 같은 오류를 다시 냈다. house/ 는 이 목록에 한 줄도 없었다).
+      #
+      # `.py` 만 건다 -- `house/ledger.jsonl` · `designs.json` · `out/*.pdf` 는
+      # 하우스가 돌 때마다 늘어나는 산출물이라, 그것까지 걸면 보고서 한 장마다
+      # 봇이 재시작된다(novel/ · study/ 를 그렇게 둔 것과 같은 까닭).
+      - "house/**.py"
       - "study/**.py"
       - "coin/**.py"
       - "brief/**.py"
