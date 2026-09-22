@@ -1,14 +1,21 @@
 # 선행조사 — mera1_event_recorder_core
 
-요청: MERA-1 v1.0 Event Recorder Core
+요청: 계측·시험장비용 MERA-1 v1.0 Event Recorder Core. AMD Versal RF VR1952 의 RF Data Converter 가 내보내는 AXI4-Stream 을 받아, 트리거 전후 구간을 하나의 record 로 잘라 DDR 에 저장하는 독립 IP 다. 단순 DMA 나 ADC capture 가 아니다. 1채널, I/Q 각 16-bit container = complex sample 32-bit. 내부 canonical interface 는 256-bit AXI4-Stream 이고 RFDC 폭과 그 사이는 adapter 가 packing 한다. RFDC TDATA 폭과 I/Q 비트 정렬은 Vivado 생성 결과를 봐야 하므로 TBD 로 남긴다. 평상시 circular buffer 로 유지하다 트리거가 오면 post-trigger capture 를 하고 record 를 완성한다. PRE 4096 POST 16384 complex sample, payload 80 KiB. 트리거는 external hardware 와 software 둘만. RFDC 데이터 인터페이스와 capture core 를 같은 클럭 도메인에 두어 CDC 를 만들지 않고 외부 트리거만 synchronizer 를 거친다. timestamp 는 내부 free-running counter 이고 RF ADC sample clock 과 같다고 가정하지 않는다 — 관계는 sample counter 와 configuration 으로 record metadata 에 남긴다. header 64 byte 고정: event ID, channel mask, timestamp, pre/post sample 수, sample width, sample format, alignment status, payload size. DDR 은 AXI4-MM master 64-bit address 128-bit data 64-beat burst. 제어는 AXI4-Lite. 가장 중요한 것은 트리거 시점의 sample ordering 이다 — circular buffer 가 wrap 해도 pre 구간이 정확한 순서로 들어가야 하고, DDR 이 순간 stall 해도 capture 가 안 깨지게 capture buffer 와 DDR writer 를 분리한다. 나중에 4/8 채널로 늘리므로 채널 간 sample index alignment 를 처음부터 구조에 넣고 채널별 고정 offset 을 레지스터로 보정한다. overflow 와 DDR write error 는 조용히 버리지 말고 sticky flag 로 남긴다. junction 0~100도 Extended, functional safety 인증은 없다. 목표 주파수 500 MHz, 공급 전압 0.8 V. 속도보다 결정성이 중요하다. 온칩 80 KiB 를 플립플롭으로 할지 SRAM 매크로로 할지 면적으로 비교해서 제안서로 내줘.
 
 ## 무엇을 짓기 전인가
 
-MERA-1 v1.0 Event Recorder Core
+AMD Versal RF VR1952 RFDC 스트림을 받아 트리거 전후 80 KiB 레코드를 DDR에 저장하는 1채널(확장 대비) Event Recorder Core
 
 ## 찾아본 질의
 
-- `digital IP architecture low power CMOS`
+- `ADC architecture low power CMOS`
+- `ADC high speed design`
+- `ADC area efficient design`
+- `ADC high resolution design`
+- `ADC fault tolerant design`
+- `계측/시험장비 ADC ASIC power reduction`
+- `AXI architecture low power CMOS`
+- `AXI high speed design`
 
 ## 가장 가까운 선행연구
 
@@ -28,7 +35,9 @@ MERA-1 v1.0 Event Recorder Core
 
 ## 아직 못 지운 가능성
 
-- (모델이 위험을 못 냈다)
+- RFDC TDATA 폭과 비트 정렬이 Vivado 생성 결과에 따라 달라져 어댑터 로직 수정 필요
+- 500 MHz 타이밍 클로저 실패 가능성
+- 온칩 80 KiB 메모리를 플립플롭으로 구현 시 면적 과다 소모 또는 SRAM 매크로(UltraRAM/Block RAM) 배치 제약 발생 가능성
 
 ---
 _이 파일은 `house/arch.py` 가 틀만 만든 것이다. 표를 채우는 것은 사람이나
