@@ -67,8 +67,11 @@ def 일하기(빠르게=False, 설계=None) -> dict:
     d = 설계 or DES.NSW_FIR
     R = {"시작": time.time(), "설계": d.키, "설계이름": d.이름, "top": d.top}
     R["도구"] = SIM.있나()
-    R["sdc"] = C.sdc읽기()
-    R["upf"] = C.upf읽기()
+    # **이 회로의 제약을 읽는다.** 실측 2026-09-22: 늘 `nsw_fir.sdc` 를 읽어서
+    # MERA 를 넘겨도 FIR 의 클럭(13 ns · 40 ns)으로 STA 를 걸었다. 다른 회로의
+    # 제약으로 잰 타이밍은 수가 아니다.
+    R["sdc"] = C.sdc읽기(설계=d)
+    R["upf"] = C.upf읽기(설계=d)
     # UPF 점검은 **그 회로의 RTL** 을 읽어야 한다. 없으면 건너뛰고 그렇게 적는다.
     소스 = [Path(x) for x in (d.RTL or []) if Path(x).exists()]
     소스글 = "\n".join(x.read_text(encoding="utf-8", errors="replace") for x in 소스)

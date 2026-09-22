@@ -31,6 +31,7 @@ from house import viz as V            # noqa: E402
 from house import sch as SCH          # noqa: E402
 from house.dv import mutate as MUT     # noqa: E402
 from house.dv import vcd as VCD        # noqa: E402
+from house.dv import plan as PLAN2     # noqa: E402
 
 
 def 일하기(규모="보통", 설계=None) -> dict:
@@ -43,6 +44,10 @@ def 일하기(규모="보통", 설계=None) -> dict:
     d0 = 설계 or DES.NSW_FIR
     R = {"시작": time.time(), "규모": 규모, "설정": 설정,
         "설계": d0.키, "설계이름": d0.이름, "top": d0.top}
+    # **검증 계획을 회로에서 세운다.** 무엇을 시험할지는 인터페이스에서 따라 나온다.
+    # (무엇이 옳은 값인지는 여전히 스펙에서 나온다 -- 그것은 기준모델의 일이다.)
+    from house.dv import plan as PLAN
+    R["계획"] = PLAN.세우기(d0)
 
     # --- 1. 커버리지 닫기 곡선 (같은 씨앗, 거래 수만 늘린다) ---
     곡선 = []
@@ -163,6 +168,22 @@ def 보고서(m: dict) -> RPT.보고서:
     R = RPT.보고서(P, f"{_이름} 검증 보고서", f"{_탑} IP",
                  "제약 랜덤 회귀 · 커버리지 닫기 · 자해 검사(mutation) · 프로토콜 검사")
 
+    _계 = m.get("계획") or {}
+    if _계.get("됐나"):
+        R.요약(f"검증 계획 — {PLAN2.요약글(_계)}")
+        R.절("0. 검증 계획 — 이 회로의 인터페이스에서 세운 것")
+        R.글("무엇이 옳은 값인지는 스펙에서 나온다(기준모델). <b>무엇을 시험할지는 "
+             "인터페이스에서 따라 나온다</b> -- 핸드셰이크가 있으면 백프레셔를, 리셋이 "
+             "있으면 트래픽 중 리셋을, 클럭이 둘이면 클럭비 쓸기를. 아래는 "
+             "<code>house/dv/plan.py</code> 가 이 회로의 RTL 을 읽어 세운 것이고, "
+             "<b>줄마다 어디서 나왔는지(출처)가 적혀 있다</b> -- 출처가 없으면 그것은 "
+             "설계한 것이 아니라 지어낸 것이다.")
+        R.표(["시나리오", "왜 필요한가", "어디서 나왔나", "커버 빈"],
+            [[x["이름"], x["왜"], x["출처"], ", ".join(x["빈"])]
+             for x in _계["시나리오"]],
+            f"<b>커버리지의 분모가 이 표다</b> — 빈 {len(_계['빈'])}개. 분모를 자극에서 "
+            f"뽑으면 100% 가 공짜가 된다.", "house/dv/plan.py 세우기()", 강조열=[0])
+        R.짚기("<b>여기서 못 뽑는 것:</b> " + " · ".join(_계.get("못뽑는것") or []))
     회 = m["회귀"]
     총실패 = sum(x["fail"] for x in 회)
     총타임 = sum(x["timeout"] for x in 회)

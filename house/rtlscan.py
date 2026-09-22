@@ -231,7 +231,34 @@ def 훑기(RTL, top: str = "") -> dict:
                   - set(리셋들))
 
     파라 = {k: v.strip() for k, v in _파라.findall(sv)}
-    로컬 = {k: v.strip() for k, v in _로컬.findall(sv)}
+    # **한 `localparam` 이 이름을 여럿 선언한다.** 실측 2026-09-22: nsw_fir 의
+    # FSM 상태가 이렇게 적혀 있다.
+    #
+    #     localparam [4:0] S_IDLE = 5'b00001,
+    #                      S_LOAD = 5'b00010, ... S_DONE = 5'b10000;
+    #
+    # 첫 이름만 잡으면 **상태 다섯 중 하나만** 나오고, FSM 커버 빈이 한 개가 된다.
+    # 그러면 "모든 상태 방문" 이라고 적고 한 상태만 세는 꼴이 된다.
+    로컬 = {}
+    for m in re.finditer(r"\blocalparam\b([^;]*);", sv):
+        몸 = m.group(1)
+        몸 = re.sub(r"^\s*(?:integer|signed|unsigned|logic|bit|int)\b", " ", 몸)
+        몸 = re.sub(r"^\s*\[[^\]]*\]", " ", 몸)
+        깊이, 조각, 버퍼 = 0, [], []
+        for ch in 몸:                       # 중괄호 안의 쉼표는 구분자가 아니다
+            if ch in "{([":
+                깊이 += 1
+            elif ch in "})]":
+                깊이 -= 1
+            if ch == "," and 깊이 == 0:
+                조각.append("".join(버퍼)); 버퍼 = []
+            else:
+                버퍼.append(ch)
+        조각.append("".join(버퍼))
+        for 한 in 조각:
+            mm = re.match(r"\s*(?:\[[^\]]*\]\s*)?(\w+)\s*=\s*(.+)", 한, re.S)
+            if mm and not mm.group(1).isdigit():
+                로컬[mm.group(1)] = mm.group(2).strip()
 
     # **톱 모듈의 파라미터만 따로 센다.** 실측 2026-09-22: 스윕이 저장소 전체에서
     # 파라미터를 긁어 `-GADDRW=...` 를 넘겼는데, `ADDRW` 는 하위 모듈(`nsw_afifo`)의
@@ -268,11 +295,16 @@ def 훑기(RTL, top: str = "") -> dict:
             건넘.append({"신호": 신호, "보내는곳": sorted(쓴), "받는곳": sorted(읽)})
 
     # FSM 후보
+    # **`NAME:` 을 저장소 전체에서 찾으면 안 된다.** 실측 2026-09-22: 포화 상수
+    # `SAT_LO` 가 삼항연산자 `? SAT_LO : SAT_HI` 의 콜론에 걸려 **FSM 상태**로
+    # 잡혔다. 그럴듯하지만 틀린 줄이고, 그 줄로 커버 빈까지 만들어진다.
+    # **그 case 문 안에서만** 찾는다.
     fsm = []
     for m in _케이스.finditer(sv):
         신호 = m.group(1).strip()
-        밑 = 신호.split("[")[0]
-        상태 = [k for k in 로컬 if re.search(rf"\b{re.escape(k)}\b\s*:", sv)]
+        끝 = re.search(r"\bendcase\b", sv[m.end():])
+        몸 = sv[m.end(): m.end() + 끝.start()] if 끝 else ""
+        상태 = [k for k in 로컬 if re.search(rf"\b{re.escape(k)}\b\s*:", 몸)]
         fsm.append({"신호": 신호, "상태후보": 상태[:16], "상태수": len(상태)})
 
     # 산술: 데이터패스의 크기를 가늠한다
