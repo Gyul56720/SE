@@ -51,6 +51,7 @@ on:
       # sandbox/ <- bot_tools.run_experiment 와 !실험). out/ 은 .gitignore 라 안 걸린다.
       - "dispatch.py"
       # 도구 중계(!중계). 서버와 bot_tools 둘 다 임포트한다.
+      - "inbox.py"
       - "relay.py"
       # 도구 호출 시점 게이트와 정확 편집. bot_tools 가 임포트한다.
       - "toolgate.py"
