@@ -326,6 +326,38 @@ ok(not (규칙들(C.검사(_빈)) & {"S023", "S024"}),
    "**요청 글이 없으면 대조하지 않는다** -- 모르는 것을 틀렸다고 하지 않는다")
 
 print()
+print("[인터페이스 이름] AXI4-Lite 가 두 묶음으로 쪼개지지 않는가")
+# **실측 2026-09-22 — 제안서 포트표에 이렇게 나왔다.**
+#
+#     AXI4 (Memory Mapped)   s_axi_awaddr   input   32   제어용 AXI4-Lite 쓰기 주소
+#
+# `s_axi_awaddr` 는 AXI4-Lite 인데 Memory Mapped 로 찍혔다. 까닭은 내가 쓴 줄이
+#
+#     if n.startswith("m_axi") or 꼬.startswith(("aw", "ar")) and "axi" in n:
+#
+# 였고, 파이썬이 이것을 `A or (B and C)` 로 읽기 때문이다 -- `s_axi_awaddr` 는
+# A 가 거짓이어도 B·C 가 참이라 MM 으로 갔다. **AXI4-Lite 가 두 묶음으로 쪼개져**
+# `s_axi_wdata` 는 Lite, `s_axi_awaddr` 는 MM 으로 나왔다. 블록 디자인을 그리는
+# 사람이 그대로 믿으면 틀리게 잇는다.
+_묶 = A._인터페이스
+ok(_묶({"이름": "s_axi_awaddr"}) == "AXI4-Lite",
+   f"**`s_axi_awaddr` 는 Lite 다** ({_묶({'이름': 's_axi_awaddr'})})")
+ok(_묶({"이름": "s_axi_araddr"}) == "AXI4-Lite", "`s_axi_araddr` 도 Lite")
+ok(_묶({"이름": "s_axi_wdata"}) == "AXI4-Lite", "`s_axi_wdata` 도 Lite -- 같은 묶음이다")
+ok(_묶({"이름": "m_axi_awaddr"}) == "AXI4 (Memory Mapped)", "`m_axi_*` 는 MM 그대로")
+ok(_묶({"이름": "s_axis_tdata"}) == "AXI4-Stream",
+   "**`s_axis_` 가 `s_axi_` 를 삼키므로 스트림을 먼저 본다**")
+ok(_묶({"이름": "s_axis_tready"}) == "AXI4-Stream", "스트림의 ready 도 스트림")
+ok(_묶({"이름": "tdata"}) == "AXI4-Stream", "접두사가 없으면 꼬리로 본다")
+ok(_묶({"이름": "rst_n"}) == "", "규약 밖은 빈 값 -- 표에서 '(개별 신호)' 가 된다")
+
+# **한 인터페이스가 한 묶음으로 모인다.** 쪼개지면 표가 거짓말을 한다.
+_라이트 = ["s_axi_awaddr", "s_axi_awvalid", "s_axi_awready", "s_axi_wdata",
+         "s_axi_wstrb", "s_axi_bresp", "s_axi_araddr", "s_axi_rdata"]
+ok(len({_묶({"이름": n}) for n in _라이트}) == 1,
+   f"**AXI4-Lite 포트 8개가 전부 한 묶음이다** ({ {_묶({'이름': n}) for n in _라이트} })")
+
+print()
 if fails:
     print(f"실패 {len(fails)}개: {fails}")
     raise SystemExit(1)

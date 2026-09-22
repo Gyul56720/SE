@@ -460,12 +460,25 @@ def _인터페이스(p) -> str:
         return ""
     n = _글(p.get("이름")).lower()
     꼬 = n.rsplit("_", 1)[-1]
+    # **접두사를 먼저, 그리고 긴 것부터 본다.** 실측 2026-09-22: 첫 판이
+    #
+    #     if n.startswith("m_axi") or 꼬.startswith(("aw", "ar")) and "axi" in n:
+    #
+    # 였는데 파이썬은 이것을 `A or (B and C)` 로 읽는다. `s_axi_awaddr` 는 A 가
+    # 거짓이어도 B·C 가 참이라 **Memory Mapped 로 갔다.** 그래서 제안서 포트표에서
+    # AXI4-Lite 가 **두 묶음으로 쪼개져** 나왔다(`s_axi_wdata` 는 Lite, `s_axi_awaddr`
+    # 는 MM). 블록 디자인을 그리는 사람이 그대로 믿으면 틀리게 잇는다.
+    #
+    # `s_axis_` 가 `s_axi_` 를 삼키므로 스트림을 먼저 본다.
+    if n.startswith("s_axis_"):
+        return "AXI4-Stream"
+    if n.startswith("m_axi_"):
+        return "AXI4 (Memory Mapped)"
+    if n.startswith("s_axi_"):
+        return "AXI4-Lite"
+    # 접두사가 없으면 꼬리로만 본다 -- 스트림 꼬리는 다른 인터페이스에 안 쓰인다.
     if 꼬 in ("tdata", "tvalid", "tready", "tlast", "tkeep", "tstrb", "tuser"):
         return "AXI4-Stream"
-    if n.startswith("m_axi") or 꼬.startswith(("aw", "ar")) and "axi" in n:
-        return "AXI4 (Memory Mapped)"
-    if n.startswith("s_axi"):
-        return "AXI4-Lite"
     return ""
 
 
