@@ -76,6 +76,75 @@ def _늦은임포트(나무: ast.AST, 제것: str, 꾸: "set[str]") -> "list[str
     return out
 
 
+def _이른임포트(나무: ast.AST, 본: str, 제것: str, 꾸: "set[str]") -> "list[str]":
+    """**뿌리를 넣기 전에** 뿌리의 모듈을 꼭대기에서 임포트하는 자리.
+
+    실측 2026-09-22. `secaudit/run.py` 와 `improve/run.py` 가 둘 다 이랬다.
+
+        import ledgerroot                    <- 여기서 죽는다
+        REPO = Path(__file__).resolve().parent.parent
+        sys.path.insert(0, str(REPO))
+
+    `python3 secaudit/run.py --json` 이 **첫 줄에서** 통째로 죽었다
+    (`ModuleNotFoundError: No module named 'ledgerroot'`). 스크립트로 돌 때
+    `sys.path[0]` 은 그 파일의 디렉터리이지 뿌리가 아니다.
+
+    **왜 기존 검사가 못 봤나.** 두 가지가 겹쳤다.
+
+    1. `_늦은임포트` 는 함수 안만 본다 -- "꼭대기 임포트는 임포트하자마자 터지므로
+       어떤 검사에도 걸린다" 는 생각이었다. **틀렸다.** 터지려면 누가 돌려 봐야 하는데,
+       `improve/run.py` 는 아무도 안 돌려서 며칠을 죽은 채로 있었다.
+    2. `뿌리넣나` 가 `"sys.path.insert" in 본` 이었다 -- **글자만 본다.** 그 줄이
+       임포트보다 **아래**에 있어도 "넣는다" 로 읽혔다. 이 저장소가 여러 번 앓은 병이다.
+
+    그래서 줄 번호로 잰다.
+    """
+    # **글자가 아니라 나무로 찾는다.** 첫 판이 `"sys.path.insert" in 줄` 로 찾았더니
+    # `tests/test_gf.py` 가 걸렸다 -- 그 파일의 insert 는 **함수 안**에 있고
+    # `os.path.dirname(__file__)` 을 넣는 전혀 다른 줄이었다(94줄). 멀쩡한 파일
+    # 아홉 개가 위험으로 찍혔고, **늘 우는 경보는 아무도 안 듣는다.**
+    # 그래서 (1) 함수 밖이고 (2) `str(<이름>)` 을 넣는 것만 센다.
+    속 = [(n.lineno, max(getattr(x, "lineno", n.lineno) for x in ast.walk(n)))
+         for n in ast.walk(나무)
+         if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+    줄 = None
+    for n in ast.walk(나무):
+        if not (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                and n.func.attr == "insert" and len(n.args) == 2):
+            continue
+        if ast.unparse(n.func.value) not in ("sys.path", "path"):
+            continue
+        if not (isinstance(n.args[0], ast.Constant) and n.args[0].value == 0):
+            continue                                  # 맨 앞에 넣는 것만 뿌리 넣기로 본다
+        # **두 번째 인자의 꼴은 안 따진다.** 첫 판이 `str(<이름>)` 만 받았더니
+        # `sys.path.insert(0, str(Path(__file__).resolve().parent.parent))` 를 못 알아보고
+        # 멀쩡한 파일 열둘을 위험이라 했다(실측 2026-09-22). 꼴을 좁게 보는 검사는
+        # 그 꼴을 안 쓴 자리에서 거짓 경보를 낸다.
+        if any(a <= n.lineno <= b for a, b in 속):
+            continue                                  # 함수 안이면 모듈 임포트와 상관없다
+        if 줄 is None or n.lineno < 줄:
+            줄 = n.lineno
+    if 줄 is None:
+        # **뿌리를 넣는 줄이 아예 없다.** 그러면 꼭대기의 저장소 임포트는 **전부**
+        # 이르다. 실측 2026-09-22: `eval/run.py` 가 이 꼴이었고(`import ledgerroot`
+        # 만 있고 insert 가 없다), `discord_bot_server.py` 가 그것을 스크립트로 부른다.
+        # 첫 판은 이 자리에서 `[]` 를 돌려주어 그 고장을 놓쳤다.
+        줄 = 10 ** 9
+    out = []
+    for n in getattr(나무, "body", []):          # **꼭대기만** -- 함수 안은 _늦은임포트 몫
+        if n.lineno >= 줄:
+            continue
+        이름들 = []
+        if isinstance(n, ast.Import):
+            이름들 = [a.name.split(".")[0] for a in n.names]
+        elif isinstance(n, ast.ImportFrom) and n.module and not n.level:
+            이름들 = [n.module.split(".")[0]]
+        for x in 이름들:
+            if x in 꾸 and x != 제것 and x not in out:
+                out.append(x)
+    return out
+
+
 def _깃발들(나무: ast.AST) -> "list[str]":
     out = []
     for n in ast.walk(나무):
@@ -109,6 +178,7 @@ def 진입점들(repo=None) -> "list[dict]":
             "꾸러미": 제것 if len(조각) > 1 else "",
             "깃발": _깃발들(나무),
             "늦은임포트": _늦은임포트(나무, 제것, 꾸),
+            "이른임포트": _이른임포트(나무, 본, 제것, 꾸),
             "뿌리넣나": "sys.path.insert" in 본,
         })
     return out
@@ -145,11 +215,30 @@ def 안전한가(진입점: dict, 부름: dict) -> "tuple[bool, str]":
 
     둘 다 아니면 그 갈래를 밟는 순간 ModuleNotFoundError 다 -- 모듈 임포트는 멀쩡하므로
     얕은 점검(`--help` · 안 밟는 깃발)에는 안 걸린다. 그것이 이 사고의 꼴이었다."""
+    # **뿌리를 넣기 전에 뿌리 모듈을 임포트하면 그것만으로 죽는다** -- 부르는 자리를
+    # 따질 것도 없다. `sys.path.insert` 를 적어 두었다는 것 자체가 스크립트로 부를
+    # 작정이라는 뜻이다. 실측 2026-09-22(secaudit/run.py · improve/run.py).
     if not 진입점["꾸러미"]:
         # **뿌리에 있는 파일은 본디 안전하다.** 스크립트의 디렉터리가 곧 뿌리이므로
         # sys.path[0] 이 이미 뿌리다(어느 cwd 에서 불러도). 위험한 것은 하위 꾸러미 안의 진입점뿐이다.
         # (첫 판이 이것을 안 갈라 뿌리 파일 6개를 위험이라 했다 -- 늘 우는 경보는 아무도 안 듣는다.)
         return True, ""
+    # ---- 이른 임포트: 뿌리를 넣기 **전에** 뿌리 모듈을 꼭대기에서 부른다 ----
+    # 실측 2026-09-22, 진입점 일곱 개가 죽은 채로 있었다 -- 전부 `import ledgerroot`
+    # 가 `sys.path.insert` 위에 있거나 그 줄이 아예 없었다.
+    #
+    # **`tests/` 는 뺀다.** `scripts/tests.sh` 와 `precheck.sh` 가
+    # `export PYTHONPATH="$PWD"` 로 뿌리를 놓아 주므로, 검사 파일은 그 꼴로 돈다
+    # (첫 판이 이것을 몰라 멀쩡한 검사 아홉 개를 위험이라 했다 -- 늘 우는 경보는
+    # 아무도 안 듣는다). 위험한 것은 **PYTHONPATH 없이 스크립트로 불리는** 진입점뿐이다.
+    if 진입점.get("이른임포트") and 진입점["꾸러미"] != "tests":
+        스0 = [x for x in 부름["스크립트"].get(진입점["파일"], []) if not x.startswith("tests/")]
+        if 진입점["뿌리넣나"] or 스0:
+            어디 = "`sys.path.insert` **위**에서" if 진입점["뿌리넣나"] else "뿌리를 안 넣고"
+            return False, (f"뿌리({', '.join(진입점['이른임포트'][:4])})를 {어디} 임포트한다 -- "
+                           f"스크립트로 부르면 첫 줄에서 ModuleNotFoundError 다"
+                           + (f" (부르는 자리: {', '.join(스0[:3])})" if 스0 else "")
+                           + ". 임포트를 뿌리 넣는 줄 아래로 옮겨라")
     if not 진입점["늦은임포트"]:
         return True, ""
     if 진입점["뿌리넣나"]:

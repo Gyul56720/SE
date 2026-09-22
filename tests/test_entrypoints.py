@@ -13,6 +13,7 @@
 """
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
@@ -188,6 +189,112 @@ _run = (뿌리 / "improve" / "run.py").read_text(encoding="utf-8")
 ok("entrypoints" in _run and "진입점위험" in _run, "자가개선이 진입점 위험을 틈 출처로 쓴다")
 ok("핵심모듈들" in _run and "임포트그래프" in _run,
    "**핵심 모듈도 손으로 안 적는다** -- 봇의 임포트 그래프에서 센다")
+
+print("\n== 이른 임포트: 뿌리를 넣기 **전에** 뿌리 모듈을 부르는가 ==")
+# **실측 2026-09-22.** 진입점 여섯 개가 죽은 채로 있었다:
+#   secaudit/run.py · improve/run.py · codify/run.py · eval/tasks.py ·
+#   eval/wire.py · router/call.py   -- 전부 `import ledgerroot` 가
+#   `sys.path.insert(0, str(REPO))` **위**에 있었다.
+#
+#     ModuleNotFoundError: No module named 'ledgerroot'
+#
+# 두 가지가 겹쳐서 못 봤다.
+#   1. `_늦은임포트` 는 함수 안만 본다 -- "꼭대기 임포트는 터지자마자 걸린다" 고
+#      생각했는데, **터지려면 누가 돌려 봐야 한다.** 아무도 안 돌려서 며칠을 몰랐다.
+#   2. `뿌리넣나` 가 `"sys.path.insert" in 본` 이었다 -- **글자만 본다.** 그 줄이
+#      임포트보다 아래에 있어도 "넣는다" 로 읽혔다.
+_사고 = Path(tempfile.mkdtemp(prefix="test-ep2-"))
+try:
+    (_사고 / "ledgerroot.py").write_text("X = 1\n", encoding="utf-8")
+    (_사고 / "pkg").mkdir(); (_사고 / "pkg" / "__init__.py").write_text("", encoding="utf-8")
+    _나쁜 = ("import sys\nfrom pathlib import Path\n\nimport ledgerroot\n\n"
+           "REPO = Path(__file__).resolve().parent.parent\n"
+           "sys.path.insert(0, str(REPO))\n\n"
+           'if __name__ == "__main__":\n    print(ledgerroot.X)\n')
+    (_사고 / "pkg" / "run.py").write_text(_나쁜, encoding="utf-8")
+    (_사고 / "부르는곳.py").write_text(
+        'import subprocess\nsubprocess.run(["python3", "pkg/run.py"])\n', encoding="utf-8")
+    _위 = E.위험들(_사고)
+    ok(any("pkg/run.py" == w["파일"] for w in _위),
+       f"**되살린 사고를 잡는다** ({[w['파일'] for w in _위]})")
+    ok(any("ledgerroot" in (w.get("왜") or "") for w in _위), "무엇을 언제 임포트했는지 말한다")
+    # 그리고 **진짜로 죽는지** 확인한다 -- 검사가 무는 것이 실제 고장인지 재 본다
+    _죽 = subprocess.run([sys.executable, "pkg/run.py"], cwd=str(_사고),
+                        capture_output=True, text=True, timeout=60)
+    ok("ModuleNotFoundError" in _죽.stderr,
+       "**그 꼴은 실제로 죽는다** -- 검사가 무는 것이 진짜 고장이다")
+
+    # 임포트를 아래로 옮기면 위험이 사라지고 실제로 돈다
+    (_사고 / "pkg" / "run.py").write_text(
+        _나쁜.replace("\nimport ledgerroot\n", "\n").replace(
+            "sys.path.insert(0, str(REPO))\n", "sys.path.insert(0, str(REPO))\nimport ledgerroot\n"),
+        encoding="utf-8")
+    ok(not [w for w in E.위험들(_사고) if w["파일"] == "pkg/run.py"], "옮기면 위험이 사라진다")
+    _산 = subprocess.run([sys.executable, "pkg/run.py"], cwd=str(_사고),
+                        capture_output=True, text=True, timeout=60)
+    ok(_산.returncode == 0, f"그리고 실제로 돈다 ({_산.stderr.strip()[-60:]!r})")
+
+    # **거짓 경보를 안 낸다.** 첫 판은 두 번 우는 경보를 냈고, 둘 다 꼴을 좁게 본 탓이다.
+    #
+    #   · `"sys.path.insert" in 줄` 로 찾아 **함수 안의 딴 insert** 에 걸렸다
+    #   · 두 번째 인자를 `str(<이름>)` 으로만 받아
+    #     `sys.path.insert(0, str(Path(__file__).resolve().parent.parent))` 를 못 알아봤다
+    #
+    # 그 두 꼴을 여기서 못박는다 -- 멀쩡한 것을 위험이라 하면 아무도 안 듣는다.
+    (_사고 / "pkg" / "긴꼴.py").write_text(
+        "import sys\nfrom pathlib import Path\n\n"
+        "sys.path.insert(0, str(Path(__file__).resolve().parent.parent))\n\n"
+        "import ledgerroot  # noqa: E402\n\n"
+        'if __name__ == "__main__":\n    print(ledgerroot.X)\n', encoding="utf-8")
+    _긴 = [w for w in E.위험들(_사고) if w["파일"] == "pkg/긴꼴.py"]
+    ok(not _긴, f"**`str(Path(...).parent.parent)` 꼴도 '뿌리를 넣는다' 로 읽는다** ({_긴})")
+
+    # `tests/` 는 뺀다 -- `scripts/tests.sh` 가 `PYTHONPATH=$PWD` 로 돌린다.
+    (_사고 / "tests").mkdir()
+    (_사고 / "tests" / "test_x.py").write_text(
+        "import ledgerroot\nimport sys\nfrom pathlib import Path\n"
+        "sys.path.insert(0, str(Path(__file__).resolve().parent.parent))\n"
+        'if __name__ == "__main__":\n    print(ledgerroot.X)\n', encoding="utf-8")
+    _t = [w for w in E.위험들(_사고) if w["파일"].startswith("tests/")]
+    ok(not _t, f"**검사 파일은 위험으로 안 센다** -- 검사 돌리개가 뿌리를 놓아 준다 ({_t})")
+finally:
+    shutil.rmtree(_사고, ignore_errors=True)
+
+print("\n== 진짜 저장소의 진입점을 **돌려 본다** ==")
+# 읽는 검사가 위의 사고를 못 봤다. 그러니 **돌려 본다.** `--help` 는 argparse 가
+# 인자를 읽자마자 나가므로 싸다 -- 그런데 모듈 꼭대기는 그 전에 다 돈다.
+# 그 자리가 이 사고가 난 자리다. `ModuleNotFoundError` 만 실패로 센다(느린 것 ·
+# --help 를 안 받는 것은 이 검사의 몫이 아니다).
+# **부르는 꼴 그대로 돌린다.** `-m` 으로만 불리는 것을 스크립트로 돌리면 없는 고장을
+# 만든다(novel/manga.py 가 그 꼴이다 -- `-m` 이면 cwd 가 뿌리라 멀쩡히 돈다).
+# 그리고 **PYTHONPATH 를 지운다** -- 봇이 자식 프로세스를 띄울 때 그것이 있으리라고
+# 기대할 수 없다. 검사 파일은 뺀다(`scripts/tests.sh` 가 뿌리를 놓아 주고 돌린다).
+_부름 = E.부르는자리()
+_깨 = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+_꾸진입 = [e for e in E.진입점들() if e["꾸러미"] and e["꾸러미"] != "tests" and e["깃발"]]
+_죽은 = []
+_센것 = 0
+for _e in _꾸진입:
+    _스 = [x for x in _부름["스크립트"].get(_e["파일"], []) if not x.startswith("tests/")]
+    _모 = _부름["모듈"].get(_e["모듈"], [])
+    # 스크립트로 부르는 자리가 있으면 그 꼴로. 없고 `-m` 만 있으면 `-m` 으로.
+    # **둘 다 없으면 스크립트 꼴이 맞다** -- 실측 2026-09-22:
+    # `orchestrator/orchestrator.py` 는 아무 데서도 안 불리는데 `from plan_schema import
+    # Plan` 으로 **옆 파일**을 부른다. 그것은 스크립트일 때만 되는 꼴이고, `-m` 으로
+    # 돌린 검사가 없는 고장을 만들어 냈다.
+    _argv = ([sys.executable, "-m", _e["모듈"], "--help"] if (not _스 and _모)
+             else [sys.executable, _e["파일"], "--help"])
+    try:
+        _p = subprocess.run(_argv, cwd=str(뿌리), capture_output=True, text=True,
+                            timeout=60, env=_깨)
+    except subprocess.TimeoutExpired:
+        continue
+    _센것 += 1
+    if "ModuleNotFoundError" in (_p.stderr or ""):
+        _죽은.append((_e["파일"], (_p.stderr or "").strip().split("\n")[-1]))
+ok(_센것 >= 10, f"**실제로 돌려 본 것이 있다** ({_센것}/{len(_꾸진입)}개) -- 0개를 돌리고 초록이면 안 된다")
+ok(not _죽은, "**꾸러미 진입점이 스크립트로 전부 돈다** -- " + (
+    "; ".join(f"{f}: {왜}" for f, 왜 in _죽은[:5]) if _죽은 else f"{len(_꾸진입)}개 확인"))
 
 print()
 if FAIL:

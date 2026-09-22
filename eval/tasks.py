@@ -47,10 +47,11 @@ import tempfile
 import time
 from pathlib import Path
 
-import ledgerroot
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
+
+import ledgerroot  # noqa: E402   # **뿌리를 넣고 나서** -- 위에 두면 스크립트로 죽는다
 
 from sandbox import run as SB  # noqa: E402  격리 실행의 고삐·환경을 그대로 쓴다(두 벌 금지)
 

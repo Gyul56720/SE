@@ -39,10 +39,11 @@ import sys
 import time
 from pathlib import Path
 
-import ledgerroot
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
+
+import ledgerroot  # noqa: E402   # **뿌리를 넣고 나서** -- 위에 두면 스크립트로 죽는다
 원장상대 = "router/ledger.jsonl"
 
 # 닫힌 역할표. 여기 없는 역할은 거절한다 -- 표가 열리면 표를 검사할 것이 없어진다.

@@ -30,12 +30,20 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
+import sys
 import time
 from pathlib import Path
 
-import ledgerroot
-
 REPO = Path(__file__).resolve().parent.parent
+# **뿌리를 넣고 나서 뿌리 모듈을 임포트한다.** 스크립트로 돌 때 `sys.path[0]` 은
+# `eval/` 이지 뿌리가 아니다. 실측 2026-09-22: `import ledgerroot` 가 위에 있고
+# 뿌리를 넣는 줄이 아예 없어서, `python3 eval/run.py` 가 첫 줄에서 죽었다 --
+# 그리고 `discord_bot_server.py` 와 `eval/discord_cmd.py` 가 그 꼴로 부른다.
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
+
+import ledgerroot  # noqa: E402
+
 원장상대 = "eval/ledger.jsonl"
 
 못돌림표지 = ("ModuleNotFoundError", "No module named", "GEMINI_API_KEY",

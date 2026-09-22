@@ -33,10 +33,11 @@ import sys
 import time
 from pathlib import Path
 
-import ledgerroot
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
+
+import ledgerroot  # noqa: E402   # **뿌리를 넣고 나서** -- 위에 두면 스크립트로 죽는다
 
 from eval import tasks as ET  # noqa: E402  실행판정·코드뽑기 재사용(두 벌 금지)
 

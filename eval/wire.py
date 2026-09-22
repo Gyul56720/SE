@@ -31,11 +31,12 @@ import subprocess
 import sys
 import tempfile
 
-import ledgerroot
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
+
+import ledgerroot  # noqa: E402   # **뿌리를 넣고 나서** -- 위에 두면 스크립트로 죽는다
 
 # (이름, argv, 기대끝값들, 무엇을 보는가)
 읽기점검 = [

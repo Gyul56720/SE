@@ -37,6 +37,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -179,9 +180,115 @@ def _도움() -> str:
             "`!회사 상태` 지금 도나 · 마지막에 무엇을 냈나\n"
             "`!회사 보고서` 낸 보고서 목록\n"
             "`!회사 회로` 맡고 있는 회로 목록\n"
-            "**`!회사 설계 <자연어>`** 새 회로를 구상한다 — 제안서를 먼저 낸다\n\n"
+            "**`!회사 설계 <자연어>`** 새 회로를 구상한다 — 제안서를 먼저 낸다\n"
+            "**`!회사 준비`** 지금 무엇이 되고 무엇이 막혔나 — **재서** 보인다\n\n"
             "_보고서는 그림이 0장이면 안 나간다. 메일은 첨부가 없으면 안 나간다 — "
             "이 회사는 글만 보내지 않는다._")
+
+
+# ---------------------------------------------------------------- 설계 준비
+# 사용자(2026-09-22): "이제 진짜 설계 들어가야하니깐 준비시켜줘."
+#
+# **준비됐다고 말하지 않는다 -- 칸마다 재서 보인다.** 이 저장소가 여러 번 앓은 병이
+# 그것이다: "준비했습니다" 로 답해 놓고 정작 그 자리에서 막혔다(메일 자리표 네 번,
+# 진입점 일곱 개, 헤더 줄바꿈). 그래서 여기서는 **한 줄에 하나씩, 재서** 적는다.
+#
+# 세 갈래로 나눈다.
+#   짓는다  -- RTL 을 지어 내는 데 필요한 것 (모델 키)
+#   잰다    -- 그 RTL 을 재는 데 필요한 것 (yosys · iverilog · verilator · 표준셀)
+#   낸다    -- 잰 것을 사람에게 보내는 데 필요한 것 (PDF · 메일)
+#
+# **못 재는 칸은 '모름' 으로 적는다.** 모르는 것을 '됨' 으로 적으면 이 표가 거짓말이
+# 되고, 거짓말하는 표는 없느니만 못하다.
+def 준비(repo=None) -> dict:
+    """{"칸": [{"갈래","무엇","됨","말"}…], "짓나","재나","내나","도나"}."""
+    sys.path.insert(0, str(REPO))
+    칸 = []
+
+    def 적기(갈래, 무엇, 됨, 말=""):
+        칸.append({"갈래": 갈래, "무엇": 무엇, "됨": 됨, "말": 말})
+
+    # ---- 짓는다 ----
+    try:
+        from house import gen as _GEN
+        쓸 = _GEN.쓸수있나() or {}
+    except Exception as e:                                   # noqa: BLE001
+        쓸 = {"도구없음": None, "모델키": None, "말": f"못 물어봤다: {e}"}
+    키 = 쓸.get("모델키")
+    적기("짓는다", "모델 키 (GEMINI_API_KEY)", None if 키 is None else 키 > 0,
+       "못 물어봤다" if 키 is None else
+       (f"{키}개" if 키 else "없다 -- `!열쇠 GEMINI_API_KEY=<값>`. "
+                          "**없어도 규칙 판독까지는 돈다**(제안서가 얇아질 뿐이다)"))
+
+    # ---- 잰다 ----
+    없 = 쓸.get("도구없음")
+    for c in ("yosys", "iverilog", "vvp", "verilator", "g++"):
+        있 = shutil.which(c)
+        적기("잰다", c, bool(있), 있 or "없다 -- requirements/apt 에 넣고 머지하면 배포가 깐다")
+    if 없:
+        적기("잰다", "house/gen 이 본 것", False, "없다: " + ", ".join(없))
+    셀 = 집 / "lib" / "nsw10.lib"
+    적기("잰다", "표준셀 nsw10.lib", 셀.exists(),
+       f"{셀.stat().st_size/1024:.0f} kB" if 셀.exists() else
+       "없다 -- lab/lib/se10.lib 에서 스스로 만든다(house 검사가 그것을 붙든다)")
+
+    # ---- 낸다 ----
+    try:
+        from house import report as _RPT
+        pdf = _RPT.PDF된다() or {}
+        적기("낸다", "PDF (weasyprint)", pdf.get("된다"),
+           pdf.get("말") or ("보고서를 PDF 로 낼 수 있다" if pdf.get("된다") else "못 낸다"))
+    except Exception as e:                                   # noqa: BLE001
+        적기("낸다", "PDF (weasyprint)", None, f"못 물어봤다: {e}")
+    m = 메일된다()
+    적기("낸다", "메일 (SMTP)", m.get("된다"), m.get("말") or "보낼 수 있다")
+
+    # ---- 관문 ----
+    try:
+        from house import speccheck as _SC
+        수 = len(_SC.AXI규약)
+        적기("관문", "스펙 검사(speccheck)", True,
+           f"AXI 규약 {수}칸 + 집 규칙 -- 제안서 전에 결함을 잡고 고친다")
+    except Exception as e:                                   # noqa: BLE001
+        적기("관문", "스펙 검사(speccheck)", None, f"못 물어봤다: {e}")
+    도 = _도나()
+    적기("관문", "지금 도는 일", not 도,
+       "없다 -- 바로 시작할 수 있다" if not 도 else f"{len(도)}개 돌고 있다 (`!회사 상태`)")
+
+    갈 = lambda g: [c for c in 칸 if c["갈래"] == g]          # noqa: E731
+    다됨 = lambda g: all(c["됨"] for c in 갈(g))               # noqa: E731
+    return {"칸": 칸, "짓나": 다됨("짓는다"), "재나": 다됨("잰다"),
+            "내나": 다됨("낸다"), "도나": bool(도)}
+
+
+def 준비글(r: dict) -> str:
+    """준비표를 사람이 읽는 글로. **'준비됐다' 라고 안 쓴다 -- 칸을 보인다.**"""
+    표 = {True: "✅", False: "❌", None: "❓"}
+    줄 = ["**설계 준비 상태** — 각 칸은 지금 **재 본 것**입니다."]
+    for g in ("짓는다", "잰다", "낸다", "관문"):
+        칸들 = [c for c in r["칸"] if c["갈래"] == g]
+        if not 칸들:
+            continue
+        줄.append(f"\n__{g}__")
+        for c in 칸들:
+            줄.append(f"{표.get(c['됨'], '❓')} `{c['무엇']}` — {c['말']}")
+    줄.append("")
+    if r["재나"]:
+        줄.append("**재는 길은 열려 있습니다** — RTL 을 지으면 yosys·iverilog·verilator 가 "
+                 "실제로 돌아 셀 수와 기능을 냅니다. 지어낸 수가 아닙니다.")
+    else:
+        줄.append("⚠ **재는 도구가 빕니다** — 이 상태로는 수를 못 냅니다. "
+                 "제안서(판독·아키텍처·검증 계획)까지만 나옵니다.")
+    if not r["짓나"]:
+        줄.append("⚠ **모델 키가 없습니다** — 규칙이 읽는 칸까지만 채워집니다. "
+                 "낱말표에 없는 말은 '모름' 으로 남습니다.")
+    if not r["내나"]:
+        줄.append("⚠ **낼 길이 막혀 있습니다** — 보고서를 지어도 손에 안 들어옵니다.")
+    줄.append("")
+    줄.append("**시작하려면** 만들 것을 그냥 적으세요 — `!회사` 도, `설계` 도 없어도 됩니다.\n"
+             "예) `500MHz 8탭 FIR 필터 만들어줘. 셀 수랑 f_max 알려줘`\n"
+             "_제안서를 먼저 냅니다. RTL 은 사람이 승인한 뒤에 짓습니다._")
+    return "\n".join(줄)
 
 
 # ---------------------------------------------------------------- 자연어를 요청으로 읽는다
@@ -353,6 +460,10 @@ def run(text: str, runner=None, allow_write: bool = True) -> "str | None":
     # 다 된 보고서가 디스크에만 남아 있는 것은 낸 것이 아니다. 끄고 싶으면 `메일없이`.
     메일없이 = any(w in ("메일없이", "nomail", "메일빼고") for w in 낱말)
     메일 = not 메일없이
+
+    # ---- 준비 ----
+    if 머리 in ("준비", "ready", "점검", "준비됐나"):
+        return 준비글(준비())
 
     # ---- 상태 ----
     if 머리 in ("상태", "status"):

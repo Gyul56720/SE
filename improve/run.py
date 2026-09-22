@@ -53,7 +53,6 @@ import sys
 import time
 from pathlib import Path
 
-import ledgerroot
 
 REPO = Path(__file__).resolve().parent.parent
 # **스크립트로 돌 때 sys.path[0] 은 이 파일의 디렉터리(improve/)다 -- 뿌리가 아니다.**
@@ -62,6 +61,11 @@ REPO = Path(__file__).resolve().parent.parent
 # 배선 읽기점검이 초록이었다 -- 얕은 점검이 깊은 길을 못 봤다. 뿌리를 먼저 넣는다.
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
+
+# **뿌리의 모듈은 이 줄 아래에서 임포트한다.** 실측 2026-09-22: `import ledgerroot` 가
+# 위 주석의 교훈을 적어 둔 바로 그 자리 **위**에 끼어 들어가 있었고, 그 뒤로
+# `python3 improve/run.py` 가 통째로 죽어 있었다 -- 아무도 안 돌려 봐서 몰랐다.
+import ledgerroot  # noqa: E402
 원장상대 = "improve/ledger.jsonl"
 메모곳 = "public_agent_memory"
 기본후보 = 3
