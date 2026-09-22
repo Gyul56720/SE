@@ -127,6 +127,7 @@ class 스펙:
     검증계획: list = field(default_factory=list)  # [{"시나리오","노리는 것"}]
     위험: list = field(default_factory=list)
     모른다: list = field(default_factory=list)    # **채우지 못한 칸**
+    못박힌수: list = field(default_factory=list)  # [(항목, 값)] 요청 표에서 그대로
     출처: dict = field(default_factory=dict)      # 칸 -> "글에서 읽음" | "모델 제안"
 
     def 사전(self) -> dict:
@@ -154,11 +155,48 @@ def 요청다듬기(요청: str) -> str:
     return _첨부줄.sub("", 요청 or "").strip()
 
 
+# 요청의 마크다운 표에서 **사람이 못박은 수**를 그대로 들고 온다.
+#
+# **실측 2026-09-22.** MERA 요청은 값을 표로 적었다 -- PRE 4096 · POST 16384 ·
+# payload 80 KiB · header 64 byte · burst 64-beat · address 64-bit · data 128-bit.
+# 그런데 제안서의 판독표에는 **주파수·전압·온도 셋만** 실렸다. 나머지는 낱말표에
+# 없어서 통째로 안 보였고, 사람은 "내가 못박은 수를 읽기는 했나" 를 알 길이 없었다.
+#
+# 낱말표를 늘리는 것으로는 안 된다 -- 다음 IP 는 또 다른 이름을 쓴다. **표는
+# 사람이 이미 칸을 갈라 놓은 자리다.** 거기 있는 것을 그대로 옮긴다.
+_표줄 = re.compile(r"^\s*\|(?P<항목>[^|]+)\|(?P<값>[^|]+)\|\s*$", re.M)
+_수있나 = re.compile(r"\d")
+_칸머리 = ("항목", "값", "이름", "규격", "---", "===")
+
+
+def 표에서읽기(요청: str) -> list:
+    """[(항목, 값)] -- 요청의 `| 항목 | 값 |` 표에서 **수가 든 줄만**.
+
+    **고치지도 풀지도 않는다.** 사람이 쓴 그대로 옮긴다. 여기서 해석하면 그
+    해석이 틀렸을 때 사람은 제가 무엇을 적었는지조차 못 되짚는다.
+    """
+    난것, 본것 = [], set()
+    for m in _표줄.finditer(요청 or ""):
+        항 = m.group("항목").strip().strip("*` ")
+        값 = m.group("값").strip().strip("` ")
+        if not 항 or not 값 or not _수있나.search(값):
+            continue
+        if any(항.startswith(h) or set(항) <= set("-: ") for h in _칸머리):
+            continue
+        열쇠 = (항.lower(), 값.lower())
+        if 열쇠 in 본것:
+            continue
+        본것.add(열쇠)
+        난것.append((항, 값.replace("**", "")))
+    return 난것
+
+
 def 읽기(요청: str) -> 스펙:
     """모델 없이 도는 판독기.  **넘겨짚지 않는다** -- 못 읽은 것은 `모른다` 로 남는다."""
     글 = 요청다듬기(요청)
     낮 = 글.lower()
     s = 스펙(요청=글.strip())
+    s.못박힌수 = 표에서읽기(글)
 
     for 갈래, 말들 in 쓰임새표.items():
         if any(w.lower() in 낮 for w in 말들):
