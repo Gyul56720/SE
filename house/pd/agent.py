@@ -34,7 +34,7 @@ from house import sch as SCH          # noqa: E402
 from house.pd import gds as GDS       # noqa: E402
 
 
-def 일하기(빠르게=False) -> dict:
+def 일하기(빠르게=False, 설계=None) -> dict:
     import liberty as L
     import netlist as NL
     import floorplan as FP
@@ -43,8 +43,10 @@ def 일하기(빠르게=False) -> dict:
     import route as RT
     import signoff as SO
 
-    R = {"시작": time.time()}
-    합 = SYN.합성({"TAPS": 8, "STAGES": 3, "GATE_POLICY": 1})
+    from house import designs as DES
+    d = 설계 or DES.NSW_FIR
+    R = {"시작": time.time(), "설계": d.키, "설계이름": d.이름, "top": d.top}
+    합 = SYN.합성(d.파라 or {"TAPS": 8, "STAGES": 3, "GATE_POLICY": 1}, 설계=d)
     R["합성"] = 합
     if not 합.get("됐나"):
         R["초"] = round(time.time() - R["시작"], 1)
@@ -190,8 +192,9 @@ def 일하기(빠르게=False) -> dict:
                                                           float(str(W).split("x")[-1])))
     except Exception:                                        # noqa: BLE001
         폭, 높이 = 120.0, 126.0
-    lib = GDS.라이브러리("NSW_FIR")
-    lib.구조시작("nsw_fir")
+    _탑 = R.get("top") or "nsw_fir"
+    lib = GDS.라이브러리(_탑.upper())
+    lib.구조시작(_탑)
     lib.사각("BOUNDARY", 0, 0, 폭, 높이)
     for y in R["행들"]:
         lib.사각("M1", 0, y, 폭, 0.6)                       # 전원 레일
@@ -202,8 +205,10 @@ def 일하기(빠르게=False) -> dict:
     for (x, y, w, h, 종) in 셀들[:4000]:
         lib.사각("POLY" if 종 == "comb" else ("DIFF" if 종 == "seq" else "CONT"),
                 x, y, max(w, 0.2), 4.2)
-    lib.글("TEXT", 1.0, 높이 - 2.0, "NSW_FIR v1.0 / Nowon Silicon Works")
-    R["gds"] = GDS.왕복확인(lib, RPT.내는곳 / "nsw_fir.gds")
+    lib.글("TEXT", 1.0, 높이 - 2.0,
+          f"{R.get('설계이름') or 'NSW-FIR v1.0'} / Nowon Silicon Works")
+    R["gds길"] = str(RPT.내는곳 / f"{_탑}.gds")
+    R["gds"] = GDS.왕복확인(lib, RPT.내는곳 / f"{_탑}.gds")
     R["gds초"] = round(time.time() - t0, 2)
     R["코어"] = (폭, 높이)
 
@@ -213,8 +218,11 @@ def 일하기(빠르게=False) -> dict:
 
 def 보고서(m: dict) -> RPT.보고서:
     P = people.KENJI
-    R = RPT.보고서(P, "NSW-FIR v1.0 물리 설계 · 사인오프 · GDSII 보고서",
-                 "nsw_fir MAC 가속기 IP",
+    # **제목이 회로 이름을 따라간다** -- 실측 2026-09-22 의 그 사고.
+    _이름 = m.get("설계이름") or "NSW-FIR v1.0"
+    _탑2 = m.get("top") or "nsw_fir"
+    R = RPT.보고서(P, f"{_이름} 물리 설계 · 사인오프 · GDSII 보고서",
+                 f"{_탑2} IP",
                  "플로어플랜 · 전원계획 · 배치 · CTS · 배선 · 사인오프 · GDSII")
     R.업무초 = m.get("초")
     if not m.get("합성", {}).get("됐나"):
@@ -547,10 +555,10 @@ def 보고서(m: dict) -> RPT.보고서:
                [g["층별도형"][k] for k in sorted(g["층별도형"])],
                "GDSII 층별 도형 수", "도형", 폭=520, 값글=False),
          "실제로 파일에 들어간 층별 도형 수. 되읽어서 센 값이다.", "house/pd/gds.py 읽기()")
-    R.코드(f"""$ ls -la {RPT.내는곳 / 'nsw_fir.gds'}
+    R.코드(f"""$ ls -la {m.get('gds길') or (RPT.내는곳 / 'nsw_fir.gds')}
   {g['바이트']:,} bytes
 
-$ python3 -c "from house.pd import gds; print(gds.읽기('{RPT.내는곳 / 'nsw_fir.gds'}'))"
+$ python3 -c "from house.pd import gds; print(gds.읽기('{m.get('gds길') or (RPT.내는곳 / 'nsw_fir.gds')}'))"
   라이브러리: {g['라이브러리']}
   구조: {json.dumps(g['구조'], ensure_ascii=False)}
   도형: {json.dumps(g['읽은것'], ensure_ascii=False)}
@@ -622,8 +630,9 @@ $ python3 -c "from house.pd import gds; print(gds.읽기('{RPT.내는곳 / 'nsw_
     return R
 
 
-def 돌리기(빠르게=False) -> dict:
-    m = 일하기(빠르게)
+def 돌리기(빠르게=False, 회로=None) -> dict:
+    from house import designs as DES
+    m = 일하기(빠르게, 설계=DES.찾기(회로))
     R = 보고서(m)
     길 = R.내기()
     return {"사람": people.KENJI, "잰것": m, "pdf": 길, "쪽": RPT.쪽수(길),

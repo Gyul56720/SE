@@ -62,15 +62,24 @@ def 전력(합성결과: dict, 토글: dict, 주파수_MHz: float, P="tt", Vdd=1
             "플롭": 플롭, "P": P, "V": Vdd, "T": T}
 
 
-def 일하기(빠르게=False) -> dict:
-    R = {"시작": time.time()}
+def 일하기(빠르게=False, 설계=None) -> dict:
+    from house import designs as DES
+    d = 설계 or DES.NSW_FIR
+    R = {"시작": time.time(), "설계": d.키, "설계이름": d.이름, "top": d.top}
     R["도구"] = SIM.있나()
     R["sdc"] = C.sdc읽기()
     R["upf"] = C.upf읽기()
-    R["upf점검"] = C.upf점검(R["upf"], (집 / "rtl" / "src" / "nsw_fir.sv").read_text(encoding="utf-8"))
+    # UPF 점검은 **그 회로의 RTL** 을 읽어야 한다. 없으면 건너뛰고 그렇게 적는다.
+    소스 = [Path(x) for x in (d.RTL or []) if Path(x).exists()]
+    소스글 = "\n".join(x.read_text(encoding="utf-8", errors="replace") for x in 소스)
+    if 소스글:
+        R["upf점검"] = C.upf점검(R["upf"], 소스글)
+    else:
+        R["upf점검"] = {"됐나": False,
+                      "까닭": f"`{d.키}` 의 RTL 을 못 읽어 UPF 점검을 건너뛴다"}
 
     # --- 합성 (기본 구성) ---
-    합 = SYN.합성({"TAPS": 8, "STAGES": 3, "GATE_POLICY": 1})
+    합 = SYN.합성(d.파라 or {"TAPS": 8, "STAGES": 3, "GATE_POLICY": 1}, 설계=d)
     R["합성"] = 합
     if not 합.get("됐나"):
         R["초"] = round(time.time() - R["시작"], 1)
@@ -134,8 +143,11 @@ def 일하기(빠르게=False) -> dict:
 
 def 보고서(m: dict) -> RPT.보고서:
     P = people.MARCUS
-    R = RPT.보고서(P, "NSW-FIR v1.0 — Synthesis, Timing and Power Sign-off",
-                 "nsw_fir MAC accelerator IP",
+    # **제목이 회로 이름을 따라간다** -- 실측 2026-09-22 의 그 사고.
+    _이름 = m.get("설계이름") or "NSW-FIR v1.0"
+    _탑 = m.get("top") or "nsw_fir"
+    R = RPT.보고서(P, f"{_이름} — Synthesis, Timing and Power Sign-off",
+                 f"{_탑} IP",
                  "yosys synthesis · SDC constraints · 27 PVT corner STA · "
                  "power from measured toggles · UPF audit")
     R.업무초 = m.get("초")
@@ -230,7 +242,7 @@ def 보고서(m: dict) -> RPT.보고서:
                "Instance count by cell type", "cells", 폭=620, 값글=False),
          f"{합['셀수']:,} cells in total. Combinational cells dominate and there "
          f"are {m['전력'][1]['플롭']} flops \u2014 the multiplier owns the area.",
-         f"yosys stat -liberty {합['라이브러리']} -top nsw_fir")
+         f"yosys stat -liberty {합['라이브러리']} -top {m.get('top') or 'nsw_fir'}")
     R.표(["Item", "Value", "Note"],
         [["Cells", f"{합['셀수']:,}", ""],
          ["Area", f"{합['면적_um2']:,.1f} \u00b5m\u00b2", "sum of cell area, routing excluded"],
@@ -523,8 +535,9 @@ def 보고서(m: dict) -> RPT.보고서:
     return R
 
 
-def 돌리기(빠르게=False) -> dict:
-    m = 일하기(빠르게)
+def 돌리기(빠르게=False, 회로=None) -> dict:
+    from house import designs as DES
+    m = 일하기(빠르게, 설계=DES.찾기(회로))
     R = 보고서(m)
     길 = R.내기()
     return {"사람": people.MARCUS, "잰것": m, "pdf": 길, "쪽": RPT.쪽수(길),

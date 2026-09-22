@@ -94,14 +94,22 @@ def mtbf(단수: int, f_clk=100e6, f_data=10e6, tau_ps=25.0, Tw_ps=30.0, Tclk_ns
 
 # ------------------------------------------------------------------ 업무 한 바퀴
 
-def 일하기(빠르게=False, 회귀수=2000) -> dict:
+def 일하기(빠르게=False, 회귀수=2000, 설계=None) -> dict:
     """실제로 도구를 돌리고 잰 것을 모은다."""
-    결과 = {"시작": time.time()}
+    from house import designs as DES
+    d0 = 설계 or DES.NSW_FIR
+    결과 = {"시작": time.time(), "설계": d0.키, "설계이름": d0.이름, "top": d0.top}
     결과["도구"] = SIM.있나()
+    # **이 보고서의 어느 장이 이 회로를 실제로 본 것인지 갈라 둔다.**
+    # lint · elaborate · 합성은 `d0.RTL` 을 읽으므로 회로를 따라간다.
+    # HLS 설계공간 탐색은 아래 `식` 하나를 푸는 것이라 **회로와 무관하다** --
+    # 그것을 이 회로의 결과처럼 보이게 두면 어제 그 사고와 같은 꼴이 된다.
+    결과["회로를본장"] = ["lint", "elaborate", "합성", "CDC"]
+    결과["회로와무관한장"] = ["HLS 설계공간 탐색"]
 
     # --- 1. lint · elaborate (두 도구로) ---
-    결과["lint"] = SIM.lint()
-    결과["iverilog"] = SIM.iverilog_확인()
+    결과["lint"] = SIM.lint(설계=d0)
+    결과["iverilog"] = SIM.iverilog_확인(설계=d0)
 
     # --- 2. HLS 설계 공간 탐색 ---
     식 = "(a0*x0 + a1*x1) + (a2*x2 + a3*x3)"
@@ -213,8 +221,11 @@ def 일하기(빠르게=False, 회귀수=2000) -> dict:
 
 def 보고서(잰것: dict) -> RPT.보고서:
     P = people.ETHAN
-    R = RPT.보고서(P, "NSW-FIR v1.0 프런트엔드 설계 보고서",
-                 "nsw_fir MAC 가속기 IP", "HLS 설계공간 탐색 · FSM · 파이프라인 · 파라미터 재사용성 · 클럭 게이팅 · CDC")
+    # **제목이 회로 이름을 따라간다** -- 실측 2026-09-22 의 그 사고.
+    _이름 = 잰것.get("설계이름") or "NSW-FIR v1.0"
+    _탑 = 잰것.get("top") or "nsw_fir"
+    R = RPT.보고서(P, f"{_이름} 프런트엔드 설계 보고서",
+                 f"{_탑} IP", "HLS 설계공간 탐색 · FSM · 파이프라인 · 파라미터 재사용성 · 클럭 게이팅 · CDC")
 
     게 = 잰것["게이팅"]
     좋은 = max(게, key=lambda g: g["절감_pct"])
@@ -662,8 +673,9 @@ assign dp_en = (GATE_POLICY == 0) ? st_active
     return R
 
 
-def 돌리기(빠르게=False) -> dict:
-    잰것 = 일하기(빠르게=빠르게)
+def 돌리기(빠르게=False, 회로=None) -> dict:
+    from house import designs as DES
+    잰것 = 일하기(빠르게=빠르게, 설계=DES.찾기(회로))
     R = 보고서(잰것)
     길 = R.내기()
     return {"사람": people.ETHAN, "잰것": 잰것, "pdf": 길, "쪽": RPT.쪽수(길),
