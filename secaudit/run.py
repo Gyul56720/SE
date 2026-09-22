@@ -26,11 +26,15 @@ import sys
 import time
 from pathlib import Path
 
-import ledgerroot
 
 REPO = Path(__file__).resolve().parent.parent
+# **뿌리를 먼저 넣고 나서 뿌리의 모듈을 임포트한다.** 스크립트로 돌 때 `sys.path[0]` 은
+# 이 파일의 디렉터리(`secaudit/`)이지 뿌리가 아니다. 실측 2026-09-22: `import ledgerroot`
+# 가 이 줄 **위**에 있어서 `python3 secaudit/run.py --json` 이 통째로 죽었다
+# (`ModuleNotFoundError: No module named 'ledgerroot'`).
 sys.path.insert(0, str(REPO))
 
+import ledgerroot  # noqa: E402
 from secaudit import checks as C  # noqa: E402
 
 원장상대 = "secaudit/ledger.jsonl"
