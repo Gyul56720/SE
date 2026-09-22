@@ -51,8 +51,9 @@ module tiny #(parameter W = 8, parameter DEPTH = 4) (
   input  wire [W-1:0]      din,
   output reg  [W-1:0]      dout
 );
-  localparam S_IDLE = 2'd0;
-  localparam S_RUN  = 2'd1;
+  localparam [1:0] S_IDLE = 2'd0,
+                   S_RUN  = 2'd1,
+                   S_HOLD = 2'd2;
   reg [1:0] st;
   reg [W-1:0] wptr;
   reg [W-1:0] wptr_sync;
@@ -72,11 +73,15 @@ module tiny #(parameter W = 8, parameter DEPTH = 4) (
   always @(*)
     if (st == S_RUN) dout = prod;
 
+  // **콜론 앞에 공백을 둔다** -- 이 저장소의 RTL 이 그렇게 쓴다.
+  // 첫 판은 `S_IDLE:` 로만 경계를 찾아 한 번도 안 맞았고, 그래서 각 가지가
+  // case 문 끝까지 흘러 **없는 천이**를 만들었다.
   always @(posedge wclk or negedge arst_n) begin
     if (!arst_n) st <= S_IDLE;
     else case (st)
-      S_IDLE: st <= S_RUN;
-      S_RUN:  st <= S_IDLE;
+      S_IDLE : if (srst) st <= S_RUN;
+      S_RUN  : if (wptr[0]) st <= S_HOLD;
+      S_HOLD : st <= S_IDLE;
       default: st <= S_IDLE;
     endcase
   end
@@ -113,6 +118,23 @@ ok(r["조합블록"] == 1, f"조합 블록 1개 ({r['조합블록']})")
 ok(len(r["래치위험"]) == 1,
    f"**`else` 없는 조합 블록을 래치 위험으로 짚는다** ({len(r['래치위험'])}개)")
 ok(len(r["FSM"]) == 1, f"FSM 후보 하나 ({len(r['FSM'])})")
+_f0 = r["FSM"][0]
+# **한 `localparam` 이 이름을 여럿 선언한다.** 첫 이름만 잡으면 상태가 하나로 보인다.
+ok(_f0["상태후보"] == ["S_IDLE", "S_RUN", "S_HOLD"],
+   f"**상태 셋을 다 찾는다** ({_f0['상태후보']}) — 한 줄에 여럿 선언돼 있다")
+# **라벨 뒤의 공백.** `S_IDLE : ...` 을 못 끊으면 가지가 case 끝까지 흘러
+# 없는 천이(`S_IDLE -> S_HOLD`)가 그려진다. 그림은 사람이 믿는다.
+_전 = {(a, b) for a, b, _ in _f0["전이"]}
+ok(_전 == {("S_IDLE", "S_RUN"), ("S_RUN", "S_HOLD"), ("S_HOLD", "S_IDLE")},
+   f"**천이를 정확히 셋만 찾는다** ({sorted(_전)}) — "
+   "콜론 앞 공백을 못 읽으면 없는 천이가 생긴다")
+ok(not any(b == "S_HOLD" for a, b, _ in _f0["전이"] if a == "S_IDLE"),
+   "**`S_IDLE -> S_HOLD` 같은 없는 천이를 안 만든다**")
+_조건 = {a: c for a, b, c in _f0["전이"]}
+ok(_조건.get("S_IDLE") == "srst",
+   f"**조건도 RTL 에서 읽는다** ({_조건.get('S_IDLE')!r}) — 지어내지 않는다")
+ok(_조건.get("S_HOLD") == "",
+   f"**조건이 없으면 빈 글이다** ({_조건.get('S_HOLD')!r}) — 없는 조건을 안 적는다")
 ok(set(r["파라미터"]) == {"W", "DEPTH"}, f"파라미터 둘 ({sorted(r['파라미터'])})")
 ok(r["파라미터"].get("W", "").strip() == "8", f"기본값도 읽는다 (W={r['파라미터'].get('W')})")
 ok({p["이름"] for p in r["포트"]} == {"wclk", "rclk", "arst_n", "srst", "din", "dout"},
@@ -137,6 +159,11 @@ ok(_f["됐나"] and len(_f["클럭"]) >= 2,
 ok(len(_f["CDC건넘"]) >= 1,
    f"**nsw_fir: CDC 건넘을 찾는다** ({len(_f['CDC건넘'])}개) — "
    "비동기 FIFO 가 있는 회로에서 0개가 나오면 안 읽은 것이다")
+_ffsm = (_f.get("FSM") or [{}])[0]
+ok(sorted(x[0] for x in _ffsm.get("전이", [])) ==
+   ["S_DONE", "S_FLUSH", "S_IDLE", "S_LOAD", "S_RUN"],
+   f"**nsw_fir: 다섯 상태에서 각각 나가는 천이를 찾는다** "
+   f"({[(a, b) for a, b, _ in _ffsm.get('전이', [])]})")
 ok(len(_f["래치위험"]) >= 1,
    "nsw_fir: 클럭게이팅 래치를 짚는다 (이 회로에서는 **일부러 넣은** 래치다)")
 
@@ -155,6 +182,47 @@ ok(S.데이터패스식({"산술": {"곱셈": 4}}).count("*") == 4, "곱셈 수�
 ok(S.데이터패스식({"산술": {"곱셈": 0}}).count("*") >= 2,
    f"**0 이어도 두 항 이상** ({S.데이터패스식({'산술': {'곱셈': 0}})}) — 한 항이면 표가 퇴화한다")
 ok(S.데이터패스식({"산술": {"곱셈": 99}}).count("*") == 4, "위로는 4개에서 멈춘다")
+
+
+# ============================== 보고서가 훑기 결과로 서는가 (손으로 적은 글 걷어내기)
+# **실측 2026-09-22.** `cdc점검()` 이 건넘 목록을 이렇게 만들고 있었다.
+#
+#     if "u_coef_fifo" in 글:
+#         건넘.append({"신호": "cfg_coef[15:0] + cfg_we", ...})
+#
+# `nsw_fir` 의 **인스턴스 이름**이 코드에 박혀 있다. 다른 회로를 넘기면 건넘이
+# 0개가 되고, 보고서는 "맨선 0개 · 판정 통과" 라고 적는다 -- **안 본 것을 통과로
+# 적는 것**이다. 그것이 가장 나쁜 꼴이다.
+print("\n[보고서가 회로를 따라가는가]")
+from house.rtl import agent as AG      # noqa: E402
+
+with tempfile.TemporaryDirectory() as _d3:
+    _p3 = Path(_d3) / "tiny.sv"
+    _p3.write_text(답아는회로, encoding="utf-8")
+    _설계3 = DES.설계(키="tiny", 이름="TINY", top="tiny", RTL=[_p3])
+    _훑3 = S.훑기(_설계3.RTL, _설계3.top)
+    _c = AG.cdc점검(설계=_설계3, 훑기=_훑3)
+
+ok(_c["도메인"] == {"wclk": 2, "rclk": 1},
+   f"**클럭 도메인을 이 회로에서 센다** ({_c['도메인']})")
+ok([x["신호"] for x in _c["건넘"]] == ["wptr"],
+   f"**건넘도 이 회로에서 찾는다** ({[x['신호'] for x in _c['건넘']]}) — "
+   "`u_coef_fifo` 같은 FIR 의 인스턴스 이름에 안 기댄다")
+ok(_c["판정"] != "통과",
+   f"**안 본 것을 '통과' 로 안 적는다** (판정: {_c['판정']})")
+ok(all(x.get("안전") is None for x in _c["건넘"]),
+   "**'안전하다' 고 안 적는다** — 이 훑기는 모양만 본다. "
+   "다단이라고 안전한 것이 아니다(여러 비트가 같이 건너면 2FF 로도 깨진다)")
+ok(_c.get("못보는것"), "못 보는 것을 같이 돌려준다")
+
+# 건넘이 없는 회로에서는 '건넘 없음' 이라고 한다 -- '통과' 가 아니다
+_민2 = "module one(input c, input d, output reg q);\n always @(posedge c) q <= d;\nendmodule\n"
+with tempfile.TemporaryDirectory() as _d4:
+    _p4 = Path(_d4) / "one.sv"
+    _p4.write_text(_민2, encoding="utf-8")
+    _c2 = AG.cdc점검(설계=DES.설계(키="one", 이름="one", top="one", RTL=[_p4]))
+ok(_c2["건넘"] == [] and "없음" in _c2["판정"],
+   f"**클럭이 하나면 '건넘 없음'** ({_c2['판정']}) — 검사했다는 뜻이 아니다")
 
 print()
 if FAIL:
