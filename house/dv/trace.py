@@ -78,6 +78,9 @@ _물음id = re.compile(r"물음\s+(q_[a-z_]+)")
 _톱파라 = re.compile(r"톱 파라미터\s+([A-Za-z_][0-9A-Za-z_]*)\s*=")
 
 
+from house.dv import plan as PLAN      # noqa: E402
+
+
 def _물음에서(r: dict) -> str:
     """요구사항 줄의 출처에서 물음 id 를 꺼낸다."""
     m = _물음id.search(str(r.get("출처") or ""))
@@ -98,12 +101,14 @@ def 걸기(요구: dict, 계획: dict) -> dict:
         for 꼴 in 이음표.get(q, ()):
             걸린 += [x for x in 시나리오 if re.search(꼴, x["id"])]
 
-        # 요청 표가 못박은 수 ↔ **이름이 똑같은** 톱 파라미터.
-        # 이름이 같을 때만 잇는다 -- 비슷한 이름으로 이으면 거짓 링크가 난다.
-        if not 걸린 and r.get("상태") == "못박힘":
-            항 = str(r.get("글") or "").split(":")[0].strip()
+        # 요청 표가 못박은 수 ↔ **그 줄에서 나온 시나리오**.
+        # `plan.표에서()` 가 시나리오에 `표항목` 을 적어 두므로 글자가 아니라
+        # **같은 줄인지**로 잇는다. 그 다음이 이름이 똑같은 톱 파라미터다.
+        항 = str(r.get("글") or "").split(":")[0].split(" = ")[0].strip()
+        if not 걸린 and r.get("상태") == "못박힘" and 항:
+            걸린 += [x for x in 시나리오 if str(x.get("표항목") or "") == 항]
             열쇠 = re.sub(r"[^0-9A-Za-z]+", "", 항).lower()
-            if 열쇠:
+            if not 걸린 and 열쇠:
                 for x in 시나리오:
                     m = _톱파라.search(str(x.get("출처") or ""))
                     if m and m.group(1).lower() == 열쇠:
@@ -119,15 +124,30 @@ def 걸기(요구: dict, 계획: dict) -> dict:
         r["빈"] = [b for x in 고른것 for b in x["빈"]]
         이은시나리오 |= 본것
 
+        # **테스트벤치가 안 재는 것도 있다.** 동작 주파수는 시나리오가 아니라
+        # 관문 7(STA 슬랙 ≥ 0)이 잰다 -- 그것을 "시험 없음" 으로 적으면 거짓
+        # 빨간불이다. 다만 **없는 관문을 있다고 하지 않는다**: 처리율·샘플레이트
+        # 에는 잴 관문이 아예 없고, 그것은 그대로 적는다.
+        r["관문"] = ""
+        if not 고른것 and r.get("상태") == "못박힘" and 항:
+            값 = str(r.get("글") or "")
+            갈래, _ = PLAN.표줄갈래(항, 값)
+            if 갈래 == "클럭":
+                r["관문"] = "관문 7 (STA 슬랙 ≥ 0)"
+            elif 갈래 == "속도":
+                r["관문"] = "— 처리율을 재는 관문이 없다"
+
     걸린줄 = [r for r in 줄들 if r["검증"]]
     # **TBD 는 따로 센다.** 아직 요구사항이 아닌 것을 "시험이 없다" 로 세면
     # 그 수가 사실은 "아직 안 물어본 것" 의 수가 된다 (req.py 가 배운 것과 같다).
-    안걸린 = [r for r in 줄들 if not r["검증"] and r.get("상태") != "TBD"]
+    안걸린 = [r for r in 줄들 if not r["검증"] and r.get("상태") != "TBD"
+           and not (r.get("관문") or "").startswith("관문")]
+    관문이잰다 = [r for r in 줄들 if (r.get("관문") or "").startswith("관문")]
     안걸린TBD = [r for r in 줄들 if not r["검증"] and r.get("상태") == "TBD"]
     떠있는 = [x for x in 시나리오 if x["id"] not in 이은시나리오]
     return {"됐나": True, "요구사항": 줄들,
             "걸린수": len(걸린줄), "안걸린": 안걸린, "안걸린수": len(안걸린),
-            "안걸린TBD": 안걸린TBD,
+            "안걸린TBD": 안걸린TBD, "관문이잰다": 관문이잰다,
             "떠있는시나리오": 떠있는, "떠있는수": len(떠있는),
             "시나리오수": len(시나리오),
             "못하는것": [
@@ -158,6 +178,8 @@ def 요약글(t: dict) -> str:
     if not t.get("됐나"):
         return "요구사항에 시나리오를 못 걸었다"
     조각 = [f"시나리오가 걸린 요구사항 {t['걸린수']}개"]
+    if t.get("관문이잰다"):
+        조각.append(f"관문이 재는 것 {len(t['관문이잰다'])}개")
     if t.get("안걸린수"):
         조각.append(f"**시험이 없는 요구사항 {t['안걸린수']}개**")
     if t.get("안걸린TBD"):
@@ -185,6 +207,6 @@ if __name__ == "__main__":
     print(요약글(t))
     print()
     for r in t["요구사항"]:
-        표 = ", ".join(r["검증"]) if r["검증"] else "— 시험 없음"
+        표 = ", ".join(r["검증"]) or r.get("관문") or "— 시험 없음"
         print(f"  {r['id']}  {r['글'][:52]}")
         print(f"      {표}")
