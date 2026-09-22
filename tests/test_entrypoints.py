@@ -269,6 +269,14 @@ print("\n== 진짜 저장소의 진입점을 **돌려 본다** ==")
 # 만든다(novel/manga.py 가 그 꼴이다 -- `-m` 이면 cwd 가 뿌리라 멀쩡히 돈다).
 # 그리고 **PYTHONPATH 를 지운다** -- 봇이 자식 프로세스를 띄울 때 그것이 있으리라고
 # 기대할 수 없다. 검사 파일은 뺀다(`scripts/tests.sh` 가 뿌리를 놓아 주고 돌린다).
+# **흔적을 남기면 그것은 검사가 아니다**(CLAUDE.md). 그리고 `-uno` 로 보면
+# **안 담긴 파일은 안 보인다** -- 실측 2026-09-22: 이 되돌이가 돈 뒤
+# `public_agent_memory/…자가개선.md` 가 하나 생겼는데 `git status --porcelain -uno`
+# 는 깨끗하다고 했다. 그래서 `-uno` 없이, 앞뒤로 재서 **실패로 낸다.**
+def _작업판():
+    return subprocess.run(["git", "status", "--porcelain"], cwd=str(뿌리),
+                          capture_output=True, text=True, timeout=120).stdout
+_판전 = _작업판()
 _부름 = E.부르는자리()
 _깨 = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
 _꾸진입 = [e for e in E.진입점들() if e["꾸러미"] and e["꾸러미"] != "tests" and e["깃발"]]
@@ -293,6 +301,9 @@ for _e in _꾸진입:
     if "ModuleNotFoundError" in (_p.stderr or ""):
         _죽은.append((_e["파일"], (_p.stderr or "").strip().split("\n")[-1]))
 ok(_센것 >= 10, f"**실제로 돌려 본 것이 있다** ({_센것}/{len(_꾸진입)}개) -- 0개를 돌리고 초록이면 안 된다")
+_판후 = _작업판()
+_늘 = [l for l in _판후.splitlines() if l not in _판전.splitlines()]
+ok(not _늘, f"**돌려 봐도 작업판이 안 늘어난다** -- 늘었으면 검사가 아니라 흔적이다 ({_늘[:3]})")
 ok(not _죽은, "**꾸러미 진입점이 스크립트로 전부 돈다** -- " + (
     "; ".join(f"{f}: {왜}" for f, 왜 in _죽은[:5]) if _죽은 else f"{len(_꾸진입)}개 확인"))
 
