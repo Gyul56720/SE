@@ -65,9 +65,10 @@ from graph import night, store  # noqa: E402
 def env값(이름: str, repo=None) -> str:
     """환경 변수, 없으면 .env 의 그 줄. dotenv 없이 -- 값에 `=` 가 있어도 첫 것만 가른다.
     mailer 도 이것을 쓴다(두 벌 금지)."""
-    v = os.environ.get(이름, "")
-    if v:
-        return v
+    if repo is None:
+        v = os.environ.get(이름, "")
+        if v:
+            return v
     p = Path(repo or REPO) / ".env"
     if not p.is_file():
         return ""

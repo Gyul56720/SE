@@ -521,3 +521,10 @@
 {"때": "2026-09-21T19:09:52Z", "꼴": "채택", "id": "20260921190949-ec771f", "채택": true}
 {"때": "2026-09-21T19:09:55Z", "id": "20260921190952-1d627e", "역할": "풀이기", "바탕": "gemini", "라벨": "key-1d299f32:gemini-3.1-flash-lite-preview", "걸린초": 3.77, "성공": true, "프롬프트글자": 137, "답글자": 153}
 {"때": "2026-09-21T19:09:55Z", "꼴": "채택", "id": "20260921190952-1d627e", "채택": true}
+{"때": "2026-09-21T19:31:43Z", "id": "20260921193143-261337", "역할": "수리기", "바탕": "gemini", "라벨": "", "걸린초": 0.0, "성공": false, "프롬프트글자": 1365, "답글자": 0, "오류": "ImportError: cannot import name 'llm_pool' from 'orchestrator' (/home/ubuntu/SE/orchestrator/orchestrator.py)"}
+{"때": "2026-09-21T19:42:21Z", "id": "20260921194221-98f963", "역할": "수리기", "바탕": "gemini", "라벨": "", "걸린초": 0.0, "성공": false, "프롬프트글자": 2299, "답글자": 0, "오류": "ImportError: cannot import name 'llm_pool' from 'orchestrator' (/home/ubuntu/SE/orchestrator/orchestrator.py)"}
+{"때": "2026-09-21T19:42:21Z", "id": "20260921194221-b624ca", "역할": "수리기", "바탕": "gemini", "라벨": "", "걸린초": 0.0, "성공": false, "프롬프트글자": 2511, "답글자": 0, "오류": "ImportError: cannot import name 'llm_pool' from 'orchestrator' (/home/ubuntu/SE/orchestrator/orchestrator.py)"}
+{"때": "2026-09-21T19:42:22Z", "id": "20260921194222-269da5", "역할": "수리기", "바탕": "gemini", "라벨": "", "걸린초": 0.0, "성공": false, "프롬프트글자": 8280, "답글자": 0, "오류": "ImportError: cannot import name 'llm_pool' from 'orchestrator' (/home/ubuntu/SE/orchestrator/orchestrator.py)"}
+{"때": "2026-09-22T01:06:59Z", "id": "20260922010654-6462b4", "역할": "수리기", "바탕": "gemini", "라벨": "key-d87ae5f9:gemini-3.1-flash-lite", "걸린초": 4.97, "성공": true, "프롬프트글자": 2356, "답글자": 311}
+{"때": "2026-09-22T01:07:02Z", "id": "20260922010700-f2694f", "역할": "수리기", "바탕": "gemini", "라벨": "key-29ca714b:gemini-3.1-flash-lite", "걸린초": 2.02, "성공": true, "프롬프트글자": 2578, "답글자": 418}
+{"때": "2026-09-22T01:07:05Z", "id": "20260922010703-97aa28", "역할": "수리기", "바탕": "gemini", "라벨": "key-1d299f32:gemini-flash-lite-latest", "걸린초": 1.73, "성공": true, "프롬프트글자": 8238, "답글자": 874}
