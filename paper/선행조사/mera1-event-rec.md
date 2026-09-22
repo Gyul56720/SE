@@ -1,14 +1,21 @@
 # 선행조사 — mera1_event_rec
 
-요청: MERA-1 v1.0 Event Recorder Core
+요청: 계측·시험장비용 MERA-1 v1.0 Event Recorder Core 를 ASIC 으로 설계한다. 256-bit AXI4-Stream 입력, 1채널 I/Q 16+16bit 32bit 샘플, 한 beat 에 8 샘플. 목표 500 MHz, 0.8V, 동작온도 -40~105도. PRE 4096 POST 16384 샘플 환형버퍼 채널당 80 KiB, 64bit 타임스탬프, 32bit event ID, 64 byte 헤더, AXI4-MM 128bit 64 beat burst 로 DDR 에 쓴다. 트리거는 external 과 software 둘만, alignment 는 bypass. 속도가 문제다 — 트리거 시점 기준 정확한 샘플 윈도우를 잘라내는 결정성이 핵심이다. 온칩 80 KiB 를 플립플롭으로 할지 SRAM 매크로로 할지 면적으로 비교해줘.
 
 ## 무엇을 짓기 전인가
 
-MERA-1 v1.0 Event Recorder Core
+계측·시험장비용 MERA-1 v1.0 Event Recorder Core ASIC 설계
 
 ## 찾아본 질의
 
-- `digital IP architecture low power CMOS`
+- `AXI architecture low power CMOS`
+- `AXI high speed design`
+- `AXI area efficient design`
+- `AXI high resolution design`
+- `FIFO architecture low power CMOS`
+- `FIFO high speed design`
+- `FIFO area efficient design`
+- `FIFO high resolution design`
 
 ## 가장 가까운 선행연구
 
@@ -28,7 +35,10 @@ MERA-1 v1.0 Event Recorder Core
 
 ## 아직 못 지운 가능성
 
-- 제공된 입력 정보(쓰임새, 문제, 회로, 수)가 비어있어 디지털 RTL 구현을 위한 구체적인 기능 및 사양을 확정할 수 없음.
+- 500 MHz 고주파수 및 0.8V 저전압 조건에서 PVT variation으로 인한 셋업/홀드 타이밍 위반
+- 트리거 인가 시점부터 링버퍼 읽기 제어 로직 간의 파이프라인 지연으로 인한 결정성(Determinism) 상실
+- 플립플롭으로 80 KiB 구현 시 과도한 면적 및 동적 전력 소모 발생
+- AXI4-MM 128-bit 64 beat burst 쓰기 과정에서 내부 FIFO 오버플로우 발생 가능성
 
 ---
 _이 파일은 `house/arch.py` 가 틀만 만든 것이다. 표를 채우는 것은 사람이나
