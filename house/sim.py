@@ -66,7 +66,7 @@ def _서명(파라: dict, 추가: str = "", 설계=None) -> str:
     return h.hexdigest()[:12]
 
 
-def 빌드(파라: dict | None = None, 추적=False, 설계=None) -> Path:
+def 빌드(파라: dict | None = None, 추적=False, 설계=None, 깃발=None) -> Path:
     """verilator 로 시뮬레이터를 짓고 실행 파일 경로를 돌려준다.
 
     **회로를 인자로 받는다.** 캐시 키에 top 이름과 RTL 바이트가 들어가므로
@@ -77,7 +77,12 @@ def 빌드(파라: dict | None = None, 추적=False, 설계=None) -> Path:
         raise RuntimeError(f"{d.키}: 테스트벤치가 없다 -- 시뮬레이션을 못 돈다. "
                            "회로마다 정답이 다르므로 테스트벤치는 회로마다 있어야 한다.")
     파라 = {**d.파라, **(파라 or {})}
-    키 = _서명(파라, "trace" if 추적 else "", 설계=d)
+    # **깃발이 캐시 키에 들어가야 한다.** 안 넣으면 `--x-assign unique` 로 지은
+    # 실행 파일과 그냥 지은 것이 **같은 방을 쓴다** -- 먼저 지은 쪽이 재사용되어
+    # X 검사가 X 없이 돌고도 초록이 된다. 검사하지 않은 초록불이 검사한
+    # 빨간불보다 나쁘다.
+    깃발 = list(깃발 or [])
+    키 = _서명(파라, ("trace" if 추적 else "") + "|" + " ".join(깃발), 설계=d)
     방 = 빌드방 / 키
     실행 = 방 / "simv"
     if 실행.exists():
@@ -90,6 +95,7 @@ def 빌드(파라: dict | None = None, 추적=False, 설계=None) -> Path:
         cmd += [f"-G{k}={v}"]          # verilator 는 붙여 써야 한다 (-G NAME=V 는 파일로 읽는다)
     if 추적:
         cmd += ["--trace"]
+    cmd += 깃발
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
     if r.returncode != 0:
         raise RuntimeError("verilator 빌드 실패:\n" + (r.stderr or r.stdout)[-2000:])
@@ -102,7 +108,8 @@ def 빌드(파라: dict | None = None, 추적=False, 설계=None) -> Path:
 
 def 돌리기(파라: dict | None = None, **옵션) -> dict:
     """한 번 돌리고 JSON 을 돌려준다.  옵션: seed · txn · cap · cfg · trace · maxlen · vcd"""
-    실행 = 빌드(파라, 추적=bool(옵션.get("vcd")), 설계=옵션.get("설계"))
+    실행 = 빌드(파라, 추적=bool(옵션.get("vcd")), 설계=옵션.get("설계"),
+             깃발=옵션.get("깃발"))
     cmd = [str(실행)]
     for k in ("seed", "txn", "cap", "cfg", "trace", "maxlen", "dir"):
         if k in 옵션 and 옵션[k] is not None:
