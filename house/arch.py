@@ -525,6 +525,39 @@ def _묶음(값, 빈말="없음") -> str:
     return " · ".join(str(x) for x in 값) or 빈말
 
 
+스펙방 = 저장소 / "house" / "스펙"
+
+
+def 스펙두기(키: str, s) -> Path:
+    """제안서를 낸 스펙을 그대로 둔다. 승인하면 **이것으로** 짓는다."""
+    스펙방.mkdir(parents=True, exist_ok=True)
+    길 = 스펙방 / f"{키}.json"
+    길.write_text(json.dumps(s.사전(), ensure_ascii=False, indent=1), encoding="utf-8")
+    return 길
+
+
+def 스펙꺼내기(키: str):
+    """둔 스펙을 되살린다. 없으면 None -- **없는 것을 지어내지 않는다.**"""
+    길 = 스펙방 / f"{키}.json"
+    if not 길.is_file():
+        return None
+    try:
+        d = json.loads(길.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    s = SPEC.스펙()
+    for k, v in d.items():
+        if hasattr(s, k):
+            setattr(s, k, v)
+    return s
+
+
+def 둔스펙들() -> "list[str]":
+    if not 스펙방.is_dir():
+        return []
+    return sorted(p.stem for p in 스펙방.glob("*.json"))
+
+
 def 돌리기(요청: str, 묻기=None) -> dict:
     m = 일하기(요청, 묻기=묻기)
     s = m["_s"]
@@ -532,8 +565,14 @@ def 돌리기(요청: str, 묻기=None) -> dict:
     조 = 선행조사쓰기(s, 키)
     R = 보고서(m)
     길 = R.내기(f"{time.strftime('%Y%m%d')}_제안서_{키}.pdf")
+    # **승인하면 짓는다 -- 그러려면 스펙이 남아 있어야 한다.**
+    # 사용자(2026-09-22): 제안서를 보고 "하나로 진행"(이대로 승인). 그런데 그 다음
+    # 칸(`사람 승인` -> `RTL·TB 생성`)을 탈 길이 없었다. 그림에는 있는데 명령이 없었다.
+    # 제안서를 낸 그 스펙을 그대로 두어야 **승인한 것과 짓는 것이 같은 것**이 된다.
+    # 다시 읽으면 모델이 또 다르게 채우고, 그러면 사람이 본 것과 다른 것을 짓는다.
+    스펙길 = 스펙두기(키, s)
     return {"사람": people.ETHAN, "잰것": m, "pdf": 길, "쪽": RPT.쪽수(길),
-            "선행조사": 조, "스펙": s, "요약": R.요약줄,
+            "선행조사": 조, "스펙": s, "스펙길": str(스펙길), "키": 키, "요약": R.요약줄,
             "그림수": R.그림수, "표수": R.표수}
 
 
