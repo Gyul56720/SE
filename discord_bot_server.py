@@ -47,6 +47,7 @@ import bot_tools  # noqa: E402
 import dispatch  # noqa: E402
 import time  # noqa: E402
 import keys  # noqa: E402
+import inbox  # noqa: E402
 import relay  # noqa: E402
 from bot_tools import (  # noqa: E402
     REPO_DIR, run_shell, run_experiment, run_probes, read_file, read_image, read_pdf, draw_circuit, run_rtl, lint_rtl, synth_rtl, prove_rtl, place_rtl, ip_signoff, serdes_link, quant_sweep, adc_sweep, loss_sweep, nn_equalizer, eq_area, run_spice, spice_example, monte_carlo, concept, textbook, edit_file, delegate, send_email, repair, set_key, security_audit, codify_paper, research, create_pr, dispatch_command, search_memory, save_memory,
@@ -1164,6 +1165,58 @@ async def _handle_public_message(message: discord.Message) -> None:
         await message.channel.send(integrity_note)
 
 
+# ---------------------------------------------------------------- 2000자 벽
+# 사용자(2026-09-22): "2000자 제한 때문에 스펙이 전부 안들어가 이건 어떻게 해결해야할까?"
+#
+# 벽은 **양쪽**에 있다. 들어오는 쪽은 첨부 파일로 넘긴다(`inbox.py`). 나가는 쪽이
+# 여기다 -- 전에는 `reply[:2000]` 이었다. **말없이 잘랐다.** 제안서 요약이 길면
+# 뒤가 통째로 사라지는데 아무도 그것을 모른다. 이 저장소의 규율로 치면 가장 나쁜 꼴
+# 이다: 사람이 보는 것(답)과 실제(답 전체)가 다르고, 다르다는 표시가 없다.
+#
+# 그래서 **쪼개 보낸다.** 줄 경계에서 자르고(코드블록·표가 덜 깨진다), 몇 쪽 중
+# 몇 쪽인지 적는다. 너무 길면 그때는 자르되 **잘랐다고 적는다.**
+답한도 = 1900          # 2000 에서 쪽 표시 자리를 뺀다
+최대쪽 = 6             # 이보다 길면 자른다 -- 채널을 도배하지 않는다
+
+
+def 쪼개기(글: str, 한도: int = 답한도, 최대: int = 최대쪽) -> "list[str]":
+    """긴 글을 디스코드 한 통에 들어가게 쪼갠다. **줄 경계에서 자른다.**"""
+    글 = 글 or ""
+    if len(글) <= 한도:
+        return [글] if 글 else []
+    쪽들, 이번 = [], ""
+    for 줄 in 글.split("\n"):
+        while len(줄) > 한도:                    # 한 줄이 한도를 넘으면 그 줄만 자른다
+            if 이번:
+                쪽들.append(이번)
+                이번 = ""
+            쪽들.append(줄[:한도])
+            줄 = 줄[한도:]
+        if len(이번) + len(줄) + 1 > 한도:
+            쪽들.append(이번)
+            이번 = 줄
+        else:
+            이번 = (이번 + "\n" + 줄) if 이번 else 줄
+    if 이번:
+        쪽들.append(이번)
+    if len(쪽들) > 최대:
+        쪽들 = 쪽들[:최대]
+        쪽들[-1] += f"\n\n**[여기서 잘랐다 — {최대}쪽 상한]** 전체는 첨부/로그에 있다."
+    if len(쪽들) > 1:
+        쪽들 = [f"{t}\n_({i+1}/{len(쪽들)})_" for i, t in enumerate(쪽들)]
+    return 쪽들
+
+
+async def _길게답하기(message, 글: str):
+    """`reply[:2000]` 대신. 첫 통은 답글로, 나머지는 이어서 보낸다."""
+    쪽들 = 쪼개기(글)
+    if not 쪽들:
+        return
+    await message.reply(쪽들[0])
+    for t in 쪽들[1:]:
+        await message.channel.send(t)
+
+
 @client.event
 async def on_message(message: discord.Message):
     if message.author.bot:
@@ -1199,7 +1252,17 @@ async def on_message(message: discord.Message):
     # 공개 채널은 누구나 치므로 읽는 것만 -- `멈춤` 하나로 밤새 도는 런이 죽는다.
     may_write = admin and (not ADMIN_ALLOWED_USER_IDS
                            or message.author.id in ADMIN_ALLOWED_USER_IDS)
-    reply = await asyncio.to_thread(dispatch.run, message.content, None, may_write)
+    # **첨부 파일을 요청 글에 이어 붙인다.** 사용자(2026-09-22): "2000자 제한 때문에
+    # 스펙이 전부 안들어가." 디스코드 한 메시지는 2000자인데 진짜 IP 요구사항서는
+    # 그보다 길다(2026-09-21 MERA HAS 편지가 4천 자 넘었다). **첨부에는 그 벽이 없다.**
+    # 전에는 이 길(고정 명령)이 `message.content` 만 봤으므로, `!회사 설계` 에 스펙
+    # 파일을 붙여도 그 파일은 아무도 안 읽었다.
+    본문 = message.content
+    첨부말 = []
+    if message.attachments:
+        _첨 = await _save_attachments(message)
+        본문, 첨부말 = await asyncio.to_thread(inbox.붙이기, message.content, _첨)
+    reply = await asyncio.to_thread(dispatch.run, 본문, None, may_write)
 
     # **자연어도 몇 갈래는 앞세운다.** 실측 2026-09-21: 사용자가 "SAR ADC calibration
     # 논문" 을 물었는데 봇이 `!논문` 이 아니라 **교재 여덟 칸**으로 답했다 -- 논문을 한
@@ -1209,9 +1272,9 @@ async def on_message(message: discord.Message):
     # 전부 앞세우지는 않는다 -- 표의 패턴이 넓어 평범한 물음까지 납치한다. 흰 목록
     # (dispatch.앞세우는규칙)에 든 갈래만, 그리고 "에이전트:" 로 시작하면 건너뛴다.
     if reply is None:
-        앞, 왜 = await asyncio.to_thread(dispatch.앞세울것, message.content)
+        앞, 왜 = await asyncio.to_thread(dispatch.앞세울것, 본문)
         if 앞:
-            print(f"[앞세움] {왜} <- {message.content[:60]!r} -> {앞[:80]!r}")
+            print(f"[앞세움] {왜} <- {본문[:60]!r} -> {앞[:80]!r}")
             reply = await asyncio.to_thread(dispatch.run, 앞, None, may_write)
             if reply is not None:
                 reply = (f"_({왜} 갈래로 알아듣고 `{앞[:60]}` 을 돌렸습니다. "
@@ -1220,8 +1283,12 @@ async def on_message(message: discord.Message):
         elif 왜 and "주제" in 왜:
             reply = 왜
 
+    if reply is not None and 첨부말:
+        # **무엇을 몇 자 읽었는지 적는다.** 말없이 자르는 것이 2000자 벽의 병이다.
+        reply = "_첨부: " + " · ".join(첨부말) + "_\n\n" + reply
+
     if reply is not None:
-        await message.reply(reply[:2000])
+        await _길게답하기(message, reply)
         # 백그라운드로 띄운 일은 끝나면 알린다 (실측: 끝났는지 알 길이 없었다).
         for 배경 in relay.배경꺼내기():
             asyncio.create_task(_배경지켜보기(message.channel, 배경))
