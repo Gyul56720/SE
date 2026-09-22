@@ -128,9 +128,14 @@ SOFIA = Person(
 
 KENJI = Person(
     "pd", "Kenji Tanaka", "Staff Engineer", "Physical Design",
-    role="Places the blocks and the power grid in the floorplan, connects them "
-         "through placement and routing, spreads the clock evenly with CTS, "
-         "passes the sign-off checks and emits GDSII.",
+    # **경계를 적는다.** 이 단계는 보통 고객 SoC 쪽 일이다 -- IP 하우스의 인도물은
+    # RTL · 테스트벤치 · 제약 · PPA 표까지다. 우리는 이 단계를 실제로 돌리지만
+    # 그것은 **시연**이지 인도물이 아니다(house/flow.py 의 갈래).
+    role="Runs the back-end flow end to end as a DEMONSTRATION, not as a "
+         "deliverable: floorplan and power grid, placement and routing, CTS, "
+         "sign-off checks, and a GDSII stream written to spec. In an IP house "
+         "this stage normally belongs to the customer's SoC team -- what we "
+         "hand over is RTL, testbench, constraints and a PPA table.",
     tools=["house/pd (extends lab/se floorplan, place, cts, route, signoff)",
            "house/pd/gds.py (writes the GDSII stream binary directly -- real spec)",
            "house/pd/drc.py (spacing, minimum width, density rule checks)",
@@ -138,7 +143,9 @@ KENJI = Person(
            "round-trip check"],
     artifacts=["floorplan and placement drawings", "congestion heat map",
                "clock-tree drawing and skew distribution", "IR-drop map",
-               "GDSII file with per-layer shape counts"],
+               "GDSII file with per-layer shape counts "
+               "(a demonstration that the writer follows the stream spec -- "
+               "NOT an IP deliverable)"],
     tagline="The other four can be right and the chip still dies here. "
             "Geometry does not negotiate.",
     pronouns="he/him")
