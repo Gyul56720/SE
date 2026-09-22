@@ -209,7 +209,13 @@ class 보고서:
                    '<p class="tool">Every number below came out of a tool that <b>actually ran</b>. '
                    'Anything assumed is marked <b>assumed</b> in the source column.</p>'
                    + viz.표(["Quantity", "Value", "Unit", "Measured with"], 줄들))
+        # **없는 수를 'Tool runtime' 이라고 부르지 않는다.** 실측 2026-09-22:
+        # Ethan 의 RTL 보고서 표지가 `Tool runtime: 0.1 s` 였는데, 같은 문서
+        # 부록에는 `보고서 생성 시간 3.4 s` 가 있었고 그 안에서 verilator ·
+        # iverilog · yosys 가 실제로 돌았다. 0.1 초는 **보고서를 조립한 시간**이지
+        # 도구를 돌린 시간이 아니다. 이름이 틀리면 수가 맞아도 거짓말이 된다.
         걸린 = self.업무초 if self.업무초 is not None else (time.time() - self.시작)
+        걸린이름 = "Tool runtime" if self.업무초 is not None else "Report build"
         return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <title>{_e(self.제목)}</title><style>{CSS}</style></head><body>
 <div class="head">
@@ -221,7 +227,7 @@ class 보고서:
     <span>Project: <b>{_e(self.과제)}</b></span>
     <span>Date: {오늘}</span>
     <span>Document: {_e(self.담당.key.upper())}-RPT</span>
-    <span>Tool runtime: {걸린:.1f} s</span>
+    <span>{걸린이름}: {걸린:.1f} s</span>
   </div>
 </div>
 <div class="sum"><b>1. Progress summary</b><ul>{요약}</ul></div>
