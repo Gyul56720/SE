@@ -79,6 +79,96 @@ def _글(x, y, s, 크기=11, 색=None, 맞춤="start", 굵게=False, 기울임=F
             f'text-anchor="{맞춤}"{w}{i}{f}>{_e(s)}</text>')
 
 
+# ---------------------------------------------------------------- 상자 안에 글 앉히기
+# **실측 2026-09-22 (제안서 `mera_rec`).** 그림 두 장의 글자가 상자 밖으로 넘쳐
+# 서로 겹쳤다. SVG `<text>` 는 **저 혼자 안 줄어들고 안 접힌다** -- 넘치면 그냥 넘친다.
+# 흐름도의 칸은 70 px 인데 "스펙 판독(코드, 모델 없이)" 는 10.5 px 에서 150 px 가 넘는다.
+#
+# 같은 그림에 markup 찌꺼기도 같이 찍혀 있었다. 원본이 `"스펙 판독\\n(코드…)"` 라
+# 파이썬 글자에 **역슬래시와 n 이 그대로** 들어 있었고, SVG 는 그것을 줄바꿈으로
+# 안 읽으니 `판독\n(코드` 로 보였다. `**이 제안서**` 의 별표도 마찬가지다 --
+# SVG 에 markdown 은 없다. **찍히는 자리에서 턴다.**
+_넓은글자 = ((0x1100, 0x115F), (0x2E80, 0xA4CF), (0xAC00, 0xD7A3), (0xF900, 0xFAFF),
+         (0xFE30, 0xFE6F), (0xFF00, 0xFF60), (0xFFE0, 0xFFE6))
+
+
+def 글자너비(s: str, 크기: float) -> float:
+    """대충의 렌더 너비(px). **정확한 값이 아니라 어림이다** -- 글꼴 메트릭이 없다.
+
+    한글·한자·전각은 한 칸, 나머지는 반 칸 조금 넘게 잡는다. 어림이지만 "넘치는가"
+    를 가리기에는 넉넉하다(넘침은 대개 두 배씩 난다).
+    """
+    w = 0.0
+    for ch in s or "":
+        o = ord(ch)
+        w += 1.0 if any(a <= o <= b for a, b in _넓은글자) else 0.55
+    return w * 크기
+
+
+def 군말털기(s: str) -> str:
+    """찍기 전에 markup 찌꺼기를 턴다. `\n` 두 글자와 `**` 를 없앤다."""
+    t = (s or "").replace("\\n", " ").replace("\n", " ")
+    while "**" in t:
+        t = t.replace("**", "")
+    return " ".join(t.split())
+
+
+def 앉히기(s: str, 크기: float, 최대너비: float, 줄수: int = 1) -> "tuple[list, float]":
+    """(줄들, 쓸 글자크기). 상자에 들어가게 접고 줄이고, 그래도 넘치면 자른다.
+
+    순서가 있다. **접기 -> 줄이기 -> 자르기.** 자르는 것이 마지막인 까닭은 자르면
+    뜻이 사라지기 때문이다. 줄이기는 6.5 px 에서 멈춘다 -- 그 아래는 읽을 수 없고,
+    읽을 수 없는 글자는 안 찍은 것과 같다.
+    """
+    s = 군말털기(s)
+    if not s:
+        return [], 크기
+    낱말 = s.split(" ")
+    for 시도 in (크기, 크기 * 0.9, 크기 * 0.8, max(6.5, 크기 * 0.7)):
+        줄, 이번 = [], ""
+        넘 = False
+        for w in 낱말:
+            후보 = f"{이번} {w}".strip()
+            if 글자너비(후보, 시도) <= 최대너비 or not 이번:
+                이번 = 후보
+            else:
+                줄.append(이번)
+                이번 = w
+            if len(줄) >= 줄수:
+                넘 = True
+                break
+        if 이번 and not 넘:
+            줄.append(이번)
+        if not 넘 and len(줄) <= 줄수 and all(글자너비(x, 시도) <= 최대너비 for x in 줄):
+            return 줄, 시도
+    # 여기까지 왔으면 접어도 줄여도 안 들어간다 -- 자른다
+    크 = max(6.5, 크기 * 0.7)
+    줄 = []
+    남 = s
+    for _ in range(줄수):
+        if not 남:
+            break
+        take = 남
+        while take and 글자너비(take, 크) > 최대너비:
+            take = take[:-1]
+        줄.append(take)
+        남 = 남[len(take):].strip()
+    if 남 and 줄:
+        꼬 = 줄[-1]
+        while 꼬 and 글자너비(꼬 + "…", 크) > 최대너비:
+            꼬 = 꼬[:-1]
+        줄[-1] = 꼬 + "…"
+    return 줄, 크
+
+
+def _칸글(cx, y, s, 크기, 색, 최대너비, 줄수=1, 굵게=False, 줄간격=None):
+    """상자 가운데에 앉힌 글. 여러 줄이면 `y` 를 첫 줄의 기준선으로 쓴다."""
+    줄, 크 = 앉히기(s, 크기, 최대너비, 줄수)
+    간 = 줄간격 or (크 + 1.5)
+    return "".join(_글(cx, y + i * 간, t, 크, 색, "middle", 굵게=굵게)
+                   for i, t in enumerate(줄))
+
+
 def _선(x1, y1, x2, y2, 색=None, 굵기=1.0, 점선=None):
     색 = 색 or 선색
     d = f' stroke-dasharray="{점선}"' if 점선 else ""
@@ -393,17 +483,31 @@ def 흐름(단계들, 제목="", 폭=640, 강조=None, 아래글="", 되돌이=N
     칸 = max(70, (폭 - 여백 * 2 - 간격 * (n - 1)) / n)
     실폭 = 여백 * 2 + 칸 * n + 간격 * (n - 1)
     y0 = 58 if (제목 or 되돌이) else 20
-    높이 = y0 + 54 + (26 if 아래글 else 8)
+    # **상자 높이는 글이 정한다.** 46 으로 박아 두면 두 줄짜리 이름이 상자를 뚫는다.
+    속폭 = 칸 - 8
+    앉은것 = []
+    for a, b in 단계들:
+        A, ca = 앉히기(a, 10.5, 속폭, 2)
+        B, cb = 앉히기(b, 9, 속폭, 1) if b else ([], 9)
+        앉은것.append((A, ca, B, cb))
+    줄수최대 = max((len(A) + len(B)) for A, _, B, _ in 앉은것) if 앉은것 else 1
+    상자높이 = max(46, 14 + 줄수최대 * 13)
+    높이 = y0 + 상자높이 + 8 + (26 if 아래글 else 8)
     몸 = []
     for i, (a, b) in enumerate(단계들):
+        A, ca, B, cb = 앉은것[i]
         x = 여백 + i * (칸 + 간격)
         칠 = "#fdf6e3" if (강조 and i in 강조) else "#ffffff"
-        몸.append(_네모(x, y0, 칸, 46, 칠, 먹, 1.5))
-        몸.append(_글(x + 칸 / 2, y0 + (21 if b else 27), a, 10.5, 먹, "middle", 굵게=True))
-        if b:
-            몸.append(_글(x + 칸 / 2, y0 + 35, b, 9, 흐림, "middle"))
+        가운데 = y0 + 상자높이 / 2
+        몸.append(_네모(x, y0, 칸, 상자높이, 칠, 먹, 1.5))
+        총 = len(A) + len(B)
+        첫 = 가운데 - (총 - 1) * 6.5 + 3.5
+        for j, t in enumerate(A):
+            몸.append(_글(x + 칸 / 2, 첫 + j * 13, t, ca, 먹, "middle", 굵게=True))
+        for j, t in enumerate(B):
+            몸.append(_글(x + 칸 / 2, 첫 + (len(A) + j) * 13, t, cb, 흐림, "middle"))
         if i < n - 1:
-            몸.append(_화살(x + 칸, y0 + 23, x + 칸 + 간격, y0 + 23))
+            몸.append(_화살(x + 칸, 가운데, x + 칸 + 간격, 가운데))
     if 되돌이:
         i, j, lab = 되돌이
         xi = 여백 + i * (칸 + 간격) + 칸 / 2
@@ -574,9 +678,12 @@ def 블록도(블록들, 연결들, 제목="", 폭=640, 높이=300) -> str:
         부제 = b[6] if len(b) > 6 else ""
         자리[nm] = (x, y, w, h)
         몸.append(_네모(x, y, w, h, 색칠, 먹, 1.5))
-        몸.append(_글(x + w / 2, y + (h / 2 + 3 if not 부제 else h / 2 - 3), nm, 10, 먹, "middle", 굵게=True))
+        # **상자 폭에 맞춰 앉힌다.** 실측 2026-09-22: 부제가 26자에서 잘려 있었는데도
+        # 142 px 상자를 220 px 로 뚫고 나가 옆 상자와 겹쳤다. 글자 수가 아니라 **폭**이다.
+        몸.append(_칸글(x + w / 2, y + (h / 2 + 3 if not 부제 else h / 2 - 4), nm,
+                      10, 먹, w - 8, 1, 굵게=True))
         if 부제:
-            몸.append(_글(x + w / 2, y + h / 2 + 11, 부제, 8.5, 흐림, "middle"))
+            몸.append(_칸글(x + w / 2, y + h / 2 + 8, 부제, 8.5, 흐림, w - 8, 2))
     for c in 연결들:
         a, b = c[0], c[1]
         라벨 = c[2] if len(c) > 2 else ""
