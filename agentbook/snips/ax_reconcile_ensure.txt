@@ -1,0 +1,17 @@
+
+	// 1. Ensure the Atespace exists in Substrate
+	if err := r.client.EnsureAtespace(ctx, atespace); err != nil {
+		r.setCondition(task, "Ready", "False", "AtespaceCreationFailed", err.Error(), now)
+		task.Status.Phase = "Failed"
+		return task, fmt.Errorf("ensuring atespace: %w", err)
+	}
+
+	// 2. The actor is always named after the task, so the two can be used
+	// interchangeably (for example in the router's ate-target-actor header).
+	// Whatever a client put in status.actor is overwritten.
+	actorName := task.Metadata.Name
+	task.Status.Actor = actorName
+	if task.Status.Id == "" {
+		task.Status.Id = fmt.Sprintf("task-%s-%d", task.Metadata.Name, now.Unix())
+	}
+

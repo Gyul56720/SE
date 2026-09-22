@@ -1,0 +1,18 @@
+
+// YAML encoding.
+//
+// The API kinds are protobuf messages, so protojson is the single source of
+// truth for their wire names (lowerCamelCase), timestamp format (RFC 3339), and
+// which fields are omitted when unset. YAML is bridged through it: manifests are
+// decoded generically, converted to JSON, and then decoded strictly by protojson,
+// so unknown or misspelled fields are rejected. Output is protojson rendered as
+// a yaml.Node so field order follows the proto definition instead of being
+// sorted.
+//
+// A few legacy manifest shapes are still accepted. They are rewritten on the
+// generic document before strict decoding by the per-kind normalizers below.
+
+var (
+	protoMarshal   = protojson.MarshalOptions{}
+	protoUnmarshal = protojson.UnmarshalOptions{} // unknown fields are errors
+)

@@ -1,0 +1,15 @@
+
+const (
+	geminiSecretName = "gemini-api-secret"
+	geminiSecretKey  = "GEMINI_API_KEY"
+	// secretLookupTimeout bounds the Kubernetes secret lookup so a slow or
+	// unreachable cluster cannot stall reconciliation.
+	secretLookupTimeout = 2 * time.Second
+	// templateDigestBytes is how many bytes of the spec digest go into a
+	// per-task ActorTemplate name.
+	templateDigestBytes = 4
+	// defaultWorkspaceReadyTimeout is how long Reconcile waits for a freshly
+	// resumed actor to finish workspace setup.
+	defaultWorkspaceReadyTimeout = 15 * time.Second
+	workspaceReadyPollInterval   = 500 * time.Millisecond
+)

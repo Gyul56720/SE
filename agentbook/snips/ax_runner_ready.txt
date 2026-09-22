@@ -1,0 +1,25 @@
+	metadataURL := fmt.Sprintf("http://127.0.0.1:%d", port)
+	_ = os.Setenv("AX_METADATA_URL", metadataURL)
+	for _, e := range cfg.Task.GetSpec().GetEnv() {
+		_ = os.Setenv(e.GetName(), e.GetValue())
+	}
+
+	metaServer := metadata.NewServer(port, cfg.Task, workspaces, metadata.ServerOptions{WorkspacePath: wsPath})
+	if err := metaServer.Start(); err != nil {
+		return fmt.Errorf("starting metadata server: %w", err)
+	}
+	defer func() {
+		slog.Info("shutting down metadata server")
+		_ = metaServer.Stop(context.Background())
+	}()
+
+	ready := true
+	for _, m := range mounts {
+		if _, err := workspace.SetupWorkspace(ctx, m.ws, m.path, m.ref.GetGoal()); err != nil {
+			slog.Error("workspace maiden run setup failed", "workspace", m.ref.GetName(), "path", m.path, "error", err)
+			ready = false
+		}
+	}
+	if ready {
+		metaServer.SetWorkspaceReady(true)
+		slog.Info("workspace maiden run setup marked ready", "count", len(mounts))
