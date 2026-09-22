@@ -277,13 +277,42 @@ def 요약글(낸것: list) -> str:
     return "\n".join(줄)
 
 
+# **깃발은 이름으로 안다 -- 생김새로 알지 않는다.**
+#
+# 실측 2026-09-22. 첨부를 이어 붙인 요청은 이렇게 시작한다:
+#
+#     ----- 첨부: 1551960619576459374_spec.md -----
+#     # MERA-1 v1.0 Event Recorder Core ...
+#
+# 이것은 argv 한 덩어리인데 `--` 로 시작한다. 그래서 `x.startswith("--")` 로 깃발을
+# 거르던 줄이 **요청 전체를 버렸다.** 요청이 빈 글이 되어 종료코드 2 로 즉사했고,
+# 디스코드에는 "못 띄웠다" 만 떴다 -- 2,851자를 제대로 읽어 놓고 그 다음 칸에서 졌다.
+#
+# 생김새로 거르면 사용자 글이 깃발처럼 보이는 날 진다. 이름으로 거른다.
+_깃발 = {"--메일", "--메일없이", "--빠르게", "--전부", "--설계", "--승인", "--회로"}
+
+
+def 요청읽기(av: "list[str]") -> "str | None":
+    """`--설계` 의 값. 깃발이 없으면 None, 있는데 비었으면 빈 글.
+
+    **이 조각이 함수인 까닭**: 첫 판은 `__main__` 안에 있었고, 그래서 검사가 닿지
+    못했다. 닿지 못하는 자리에서 요청 전체를 버리는 버그가 났다(실측 2026-09-22).
+    두 꼴을 다 받는다 -- `--설계 <글…>` 과 `--설계=<글>`.
+    """
+    for i, x in enumerate(av):
+        if x == "--설계":
+            return " ".join(y for y in av[i + 1:] if y not in _깃발).strip()
+        if x.startswith("--설계="):
+            return x[len("--설계="):].strip()
+    return None
+
+
 if __name__ == "__main__":
     av = sys.argv[1:]
-    if "--설계" in av:
-        # **깃발은 요청이 아니다.** `--설계 … --메일` 에서 `--메일` 이 요청 글에 섞이면
-        # 스펙 판독기가 그것까지 읽는다.
-        요청 = " ".join(x for x in av[av.index("--설계") + 1:]
-                      if not x.startswith("--")).strip()
+    # 두 꼴을 다 받는다. `--설계=<글>` 은 그 글이 그 깃발의 값이라는 것이 argv 안에서
+    # 확정되므로 **글이 무엇으로 시작하든 안 잃는다** -- 봇은 이 꼴로 준다.
+    요청 = 요청읽기(av)
+    if 요청 is not None:
         if not 요청:
             print("!! `--설계` 뒤에 무엇을 만들지 적어라")
             raise SystemExit(2)
@@ -296,7 +325,7 @@ if __name__ == "__main__":
         raise SystemExit(0)
     if "--승인" in av:
         i = av.index("--승인")
-        키 = av[i + 1] if i + 1 < len(av) and not av[i + 1].startswith("--") else ""
+        키 = av[i + 1] if i + 1 < len(av) and av[i + 1] not in _깃발 else ""
         r = 승인하기(키, 메일=("--메일" in sys.argv))
         if not r.get("됐나"):
             print(f"!! 못 지었다: {r.get('까닭')}")
