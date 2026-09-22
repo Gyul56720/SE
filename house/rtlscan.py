@@ -305,7 +305,49 @@ def 훑기(RTL, top: str = "") -> dict:
         끝 = re.search(r"\bendcase\b", sv[m.end():])
         몸 = sv[m.end(): m.end() + 끝.start()] if 끝 else ""
         상태 = [k for k in 로컬 if re.search(rf"\b{re.escape(k)}\b\s*:", 몸)]
-        fsm.append({"신호": 신호, "상태후보": 상태[:16], "상태수": len(상태)})
+        # **천이도 RTL 에서 읽는다.** 손으로 그린 상태도는 회로가 바뀌어도 안 바뀐다
+        # -- 그러면 그림이 코드와 달라지고, 사람은 그림을 믿는다.
+        #
+        # `S_X: ... st_n = S_Y;` 꼴에서 (X -> Y, 조건) 을 뽑는다. 조건은 그 대입을
+        # 감싼 `if (...)` 에서 가져온다. 없으면 빈 글 -- **지어내지 않는다.**
+        # **라벨 뒤의 공백을 잊으면 가지가 안 끊긴다.** 실측 2026-09-22: 이 저장소의
+        # RTL 은 `S_IDLE : if (start) ...` 처럼 **콜론 앞에 공백**을 둔다.
+        # `뒤.find(st + ":")` 로 경계를 찾았더니 한 번도 안 맞았고, 그래서 각 가지가
+        # **case 문 끝까지 흘러** 뒤에 나오는 대입을 전부 제 것으로 삼켰다. 결과가
+        # 이랬다: `S_IDLE -> S_FLUSH` · `S_LOAD -> S_FLUSH` -- **없는 천이**다.
+        #
+        # 없는 천이가 그려진 상태도는 없느니보다 나쁘다. 사람은 그림을 믿는다.
+        라벨 = []
+        for st in 상태 + ["default"]:
+            for m2 in re.finditer(rf"(?<![\w.]){re.escape(st)}\s*:(?!:)", 몸):
+                라벨.append((m2.start(), m2.end(), st))
+        라벨.sort()
+        전이 = []
+        for 자리, (시작, 끝, st) in enumerate(라벨):
+            if st == "default":
+                continue
+            다음시작 = 라벨[자리 + 1][0] if 자리 + 1 < len(라벨) else len(몸)
+            가지 = 몸[끝:다음시작]
+            for m3 in re.finditer(r"(\w+)\s*<?=\s*(\w+)\s*;", 가지):
+                목적 = m3.group(2)
+                if 목적 not in 상태:
+                    continue
+                앞글 = 가지[:m3.start()]
+                조건 = ""
+                m4 = None
+                for m4 in re.finditer(r"\bif\s*\(([^;{]*?)\)", 앞글):
+                    pass
+                if m4:
+                    조건 = " ".join(m4.group(1).split())[:40]
+                전이.append((st, 목적, 조건))
+        # 겹치는 것은 뺀다
+        본것, 깔끔 = set(), []
+        for a, b, c in 전이:
+            if (a, b) not in 본것:
+                본것.add((a, b))
+                깔끔.append((a, b, c))
+        fsm.append({"신호": 신호, "상태후보": 상태[:16], "상태수": len(상태),
+                   "전이": 깔끔[:24]})
 
     # 산술: 데이터패스의 크기를 가늠한다
     산술 = {"곱셈": len(re.findall(r"(?<![*/(@\s])\s*\*(?![*/)])", sv)),
