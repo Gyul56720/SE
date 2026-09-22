@@ -130,6 +130,103 @@ def _탄력이름(이름: str) -> str:
     return "_".join(깎)
 
 
+# ---------------------------------------------------------------- 요청과 대조한다
+# **실측 2026-09-22 — 이 관문이 없어서 틀린 제안서가 나갔다.**
+#
+# 사용자가 2,851자 스펙을 첨부로 줬는데 `dispatch.py` 의 `[:900]` 이 그것을 900자에서
+# 잘랐다. 모델은 §5(`AXI4-MM ... data 128-bit` · `제어는 AXI4-Lite`)를 **아예 못 봤고**,
+# 빈 칸을 제 기본값으로 채웠다.
+#
+#     스펙   m_axi_wdata 128-bit · wstrb 16 · AXI4-Lite 제어 있음
+#     제안서 m_axi_wdata 256-bit · wstrb 32 · AXI4-Lite 포트 통째로 없음
+#
+# **S016~S022 가 한 건도 안 걸렸다.** 까닭은 그것들이 *스펙 안의 일관성*만 보기
+# 때문이다 -- 32 == 256/8 이라 S017 은 만족한다. 관문이 **요청을 안 봤다.**
+#
+# 그래서 요청 글과 대조한다. 모델이 요청에 적힌 수를 **조용히 바꾸는 것**이
+# 이 파이프라인에서 가장 비싼 고장이다: 아래 모든 수(면적·타이밍·전력)가 그 위에 쌓인다.
+#
+# **애매하면 안 문다.** 요청에 "256-bit AXI4-Stream" 과 "128-bit MM data" 가 같이
+# 있으므로, 수만 긁으면 짝을 잘못 맞춘다. 그래서 **인터페이스 이름이 같은 줄에
+# 있을 때만** 그 줄의 수를 그 인터페이스 것으로 본다.
+_인터페이스말 = {
+    "s_axis": ("axi4-stream", "axi-stream", "axis", "스트림"),
+    "m_axi":  ("axi4-mm", "axi4 mm", "axi-mm", "memory mapped", "memory-mapped", "ddr"),
+    "s_axi":  ("axi4-lite", "axi4 lite", "axi-lite", "lite"),
+}
+# 그 줄 안에서 '무엇의 폭인가' 를 가르는 말 -> 인터페이스별 포트 꼬리.
+# **꼬리를 인터페이스마다 따로 둔다** -- `tdata` 는 스트림 것이지 MM 것이 아니다.
+_폭말 = (
+    (("data", "데이터"), {"m_axi": ("wdata", "rdata"),
+                        "s_axi": ("wdata", "rdata"),
+                        "s_axis": ("tdata",)}),
+    (("addr", "address", "주소"), {"m_axi": ("awaddr", "araddr"),
+                                 "s_axi": ("awaddr", "araddr")}),
+)
+_수꼴 = re.compile(r"(\d{1,4})\s*[-\u2011]?\s*(?:bit|비트)", re.I)
+
+
+def _요청폭(요청: str) -> dict:
+    """요청 글에서 (인터페이스, 포트꼬리) -> 폭.
+
+    **두 단으로 가른다.**
+      줄     어느 인터페이스 이야기인가 (`AXI4-MM` · `AXI4-Stream` · `AXI4-Lite`)
+      토막   그 줄을 쉼표·막대로 쪼갠 조각 하나 -- 여기서 낱말과 수를 짝짓는다
+
+    한 줄 안에서 '가장 가까운 낱말' 로 짝지으면 틀린다. 실측 2026-09-22:
+
+        address **64-bit**, data **128-bit**
+
+    여기서 64 는 `address` 것인데, `data` 가 4자 뒤에 있고 `address` 는 10자 앞에
+    있어서 **64 가 data 로 갔다.** 쉼표로 먼저 쪼개면 토막마다 낱말 하나 수 하나가
+    되어 그 일이 안 난다.
+
+    **애매하면 안 문다** -- 토막에 낱말이 둘 이상이거나 인터페이스가 둘 이상 걸리면
+    건너뛴다. 없는 결함을 만드는 관문은 없느니만 못하다.
+    """
+    out = {}
+    for 줄 in re.split(r"[\n.。]", 요청 or ""):
+        낮줄 = 줄.lower()
+        무슨 = [k for k, 말들 in _인터페이스말.items() if any(w in 낮줄 for w in 말들)]
+        if len(무슨) != 1:
+            continue
+        iface = 무슨[0]
+        for 토막 in re.split(r"[,，|·/]", 줄):
+            낮 = 토막.lower()
+            수들 = [int(m.group(1)) for m in _수꼴.finditer(토막)]
+            if len(수들) != 1:
+                continue                  # 수가 없거나 둘 이상이면 짝을 못 정한다
+            걸린 = [꼬리맵 for 말들, 꼬리맵 in _폭말 if any(w in 낮 for w in 말들)]
+            if len(걸린) != 1:
+                continue                  # 낱말이 없거나 둘 다면 건너뛴다
+            for 꼬 in 걸린[0].get(iface, ()):
+                out.setdefault((iface, 꼬), 수들[0])
+
+    # **스트림은 데이터 버스가 하나뿐이다.** 그래서 `AXI4-Stream, canonical 256-bit`
+    # 처럼 'data' 라는 낱말 없이 폭만 적는 일이 흔하다(실측: 이 스펙이 그랬다).
+    # 위 규칙은 낱말이 없으면 안 물므로 그 줄을 놓친다. 스트림에 한해 **줄에 폭이
+    # 딱 하나일 때만** 그것을 `tdata` 로 본다 -- 둘 이상이면 여전히 안 문다.
+    if ("s_axis", "tdata") not in out:
+        for 줄 in re.split(r"[\n.。]", 요청 or ""):
+            낮줄 = 줄.lower()
+            무슨 = [k for k, 말들 in _인터페이스말.items() if any(w in 낮줄 for w in 말들)]
+            if 무슨 != ["s_axis"]:
+                continue
+            수들 = [int(m.group(1)) for m in _수꼴.finditer(줄)]
+            if len(수들) == 1:
+                out.setdefault(("s_axis", "tdata"), 수들[0])
+                break
+    return out
+
+
+def _요청인터페이스(요청: str) -> set:
+    """요청이 이름을 대고 요구한 인터페이스."""
+    낮 = (요청 or "").lower()
+    return {k for k, 말들 in _인터페이스말.items()
+            if any(w in 낮 for w in 말들) and k != "m_axi"} | (
+           {"m_axi"} if any(w in 낮 for w in _인터페이스말["m_axi"]) else set())
+
+
 def 검사(s) -> list:
     """스펙 -> [문제]. 문제 하나는 다음 칸을 갖는다.
 
@@ -301,6 +398,43 @@ def 검사(s) -> list:
                "AMD IP 규약으로는 `aresetn` 이다 — 이름이 다르면 IP Integrator 가 "
                "인터페이스로 못 알아보고, 블록 디자인에서 손으로 이어야 한다",
                "고침", {"이름": "aresetn"})
+
+    # ---------------------------------------------------------------- 요청과 대조
+    # **S016~S022 는 스펙 안의 일관성만 본다.** 모델이 요청에 적힌 수를 조용히
+    # 바꿔도 그것들은 통과한다 -- 실측 2026-09-22: 요청은 `data 128-bit` 인데
+    # 제안서가 `m_axi_wdata 256` · `wstrb 32` 로 나왔고, 32 == 256/8 이라
+    # S017 이 만족했다. **관문이 요청을 안 봤다.** 여기서 본다.
+    요청글 = _글(getattr(s, "요청", ""))
+    if 요청글:
+        폭표 = {_글(p.get("이름")).lower(): _폭(p) for p in 포트}
+        for (iface, 꼬), 바른 in _요청폭(요청글).items():
+            for 이름, 폭 in 폭표.items():
+                if 폭 is None or not 이름.startswith(iface) or _꼬리(이름) != 꼬:
+                    continue
+                if 폭 != 바른:
+                    적기("S023", f"포트 {이름}",
+                       f"폭이 {폭} 인데 **요청 글에는 {바른} 으로 적혀 있다** — "
+                       f"모델이 요청의 수를 바꿨다. 아래 수(면적·타이밍·전력)가 "
+                       f"전부 이 위에 쌓이므로 여기서 틀리면 다 틀린다",
+                       "고침", {"폭": 바른})
+        # 요청이 이름을 대고 요구한 인터페이스가 포트표에 아예 없다
+        # **`s_axis_tdata`.startswith(`s_axi`) 는 참이다.** 첫 판이 그래서
+        # AXI4-Lite 가 통째로 없는데도 "있다" 로 읽었다(실측 2026-09-22).
+        # 밑줄까지 붙여 보고, `s_axi` 는 `s_axis` 를 빼고 센다.
+        def _묶음있나(i):
+            for n in 폭표:
+                if i == "s_axi" and n.startswith("s_axis_"):
+                    continue
+                if n.startswith(i + "_"):
+                    return True
+            return False
+
+        있는묶음 = {i for i in _인터페이스말 if _묶음있나(i)}
+        for i in sorted(_요청인터페이스(요청글) - 있는묶음):
+            적기("S024", f"인터페이스 {i}",
+               f"요청 글이 `{i}_*` 인터페이스를 요구하는데 **포트표에 한 개도 없다** — "
+               f"통째로 빠뜨린 것이다",
+               "되물음")
 
     return 난것
 
