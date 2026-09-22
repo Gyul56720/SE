@@ -48,6 +48,12 @@ def _수(x, 자리=4) -> str:
     if v != v or v in (float("inf"), float("-inf")):
         return "-"
     a = abs(v)
+    # **G 위로는 접미사를 안 쓴다.** 실측 2026-09-22 (Ethan 의 RTL 보고서 Figure 20):
+    # 준안정 MTBF 는 1e+300 까지 간다. G 로만 줄이면 눈금이 `565440.00G` 처럼
+    # 열 자리가 넘는 글이 되어 **서로 겹쳐 읽을 수 없는 축**이 나왔다.
+    # 축 눈금은 짧아야 축이다 -- 큰 수는 지수 꼴이 짧다.
+    if a >= 1e12:
+        return f"{v:.1e}"
     if a >= 1e9:
         return f"{v/1e9:.2f}G"
     if a >= 1e6:

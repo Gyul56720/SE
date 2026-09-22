@@ -82,6 +82,43 @@ def _제안서특이사항(r: dict) -> list:
     return 줄
 
 
+# **누가 회로를 받고 누가 못 받는지 묻는 길.**
+#
+# 실측 2026-09-22. 사용자가 MERA 스펙을 넣고 다섯 명을 돌렸는데 **`NSW-FIR v1.0`
+# 보고서 13쪽**이 왔다. 따라가 보니 끊긴 데가 세 겹이었다.
+#
+#   1. `!회사 전체` 가 `--회로` 를 안 넘겼다           (고침)
+#   2. `한명()` 이 넘기려 해도 **에이전트가 그 인자를 안 받는다** (TypeError)
+#   3. 그래서 기본 회로로 돌고, 그 사실이 **로그에만** 적혔다
+#
+# 3번이 가장 나쁘다. 사람은 제 스펙이 돈 줄 알고 13쪽을 읽는다. 제목이
+# `NSW-FIR` 인 것을 봐도 "회사가 붙인 이름인가" 로 읽힌다 -- 다른 회로라고
+# 아무 데도 안 적혀 있으니까.
+#
+# **못 하는 것을 못 한다고 말하는 길을 먼저 낸다.** 다섯 에이전트를 회로마다
+# 돌게 만드는 것은 각자의 RTL·테스트벤치·분석이 걸린 큰 일이고, 그 전에
+# **엉뚱한 보고서 다섯 장을 내는 것부터 막아야 한다.**
+def 회로를받나(키: str) -> bool:
+    """그 직무의 `돌리기()` 가 `회로=` 를 받나. 못 물어보면 **안 받는 것으로 본다**."""
+    import importlib
+    import inspect
+    if 키 not in 직무:
+        return False
+    try:
+        m = importlib.import_module(직무[키][0])
+        서명 = inspect.signature(getattr(m, 직무[키][1]))
+    except Exception:                                        # noqa: BLE001
+        return False
+    p = 서명.parameters.get("회로")
+    return p is not None or any(
+        x.kind is inspect.Parameter.VAR_KEYWORD for x in 서명.parameters.values())
+
+
+def 회로되는사람들() -> dict:
+    """{직무키: 받나}. 봇이 **돌리기 전에** 물어서 사람에게 말한다."""
+    return {k: 회로를받나(k) for k in 직무}
+
+
 def 한명(키: str, 빠르게=False, 회로=None) -> dict:
     import importlib
     if 키 not in 직무:
