@@ -37,13 +37,15 @@ DFT_LIB = 집 / "lib" / "nsw10_dft.lib"
 잰것길 = RPT.내는곳 / "dft_잰것.json"
 
 
-def 일하기(묶음=8, atpg상한=120, 빠르게=False, 표본=None) -> dict:
+def 일하기(묶음=8, atpg상한=120, 빠르게=False, 표본=None, 설계=None) -> dict:
     import liberty as L
     import netlist as NL
     import dft as DFT
+    from house import designs as DES
 
-    R = {"시작": time.time()}
-    합 = SYN.합성({"TAPS": 8, "STAGES": 3, "GATE_POLICY": 1})
+    d = 설계 or DES.NSW_FIR
+    R = {"시작": time.time(), "설계": d.키, "설계이름": d.이름, "top": d.top}
+    합 = SYN.합성(d.파라 or {"TAPS": 8, "STAGES": 3, "GATE_POLICY": 1}, 설계=d)
     R["합성"] = 합
     if not 합.get("됐나"):
         R["초"] = round(time.time() - R["시작"], 1)
@@ -174,8 +176,13 @@ def _고장떨구기(sc, 묶음=8, 표본=None, 씨=11) -> dict:
 
 def 보고서(m: dict) -> RPT.보고서:
     P = people.SOFIA
-    R = RPT.보고서(P, "NSW-FIR v1.0 DFT · 스캔 · ATPG · BIST 보고서",
-                 "nsw_fir MAC 가속기 IP",
+    # **제목이 회로 이름을 따라간다.** 실측 2026-09-22: MERA 를 달라고 했는데
+    # `NSW-FIR v1.0` 이라고 적힌 보고서가 나갔다. 제목이 회로를 안 따라가면
+    # **받는 사람이 무엇을 읽고 있는지 알 수 없다.**
+    _이름 = m.get("설계이름") or "NSW-FIR v1.0"
+    _탑 = m.get("top") or "nsw_fir"
+    R = RPT.보고서(P, f"{_이름} DFT · 스캔 · ATPG · BIST 보고서",
+                 f"{_탑} IP",
                  "스캔 삽입 · 고장 시뮬 · 결정적 ATPG · MBIST/LBIST · 결함수준")
     R.업무초 = m.get("초")
     if not m.get("합성", {}).get("됐나"):
@@ -561,8 +568,11 @@ def 보고서(m: dict) -> RPT.보고서:
     return R
 
 
-def 돌리기(빠르게=False, 묶음=8, 표본=None) -> dict:
-    m = 일하기(묶음=묶음, 빠르게=빠르게, 표본=(표본 or (1200 if 빠르게 else None)))
+def 돌리기(빠르게=False, 묶음=8, 표본=None, 회로=None) -> dict:
+    from house import designs as DES
+    d = DES.찾기(회로)
+    m = 일하기(묶음=묶음, 빠르게=빠르게, 표본=(표본 or (1200 if 빠르게 else None)),
+            설계=d)
     try:
         잰것길.parent.mkdir(parents=True, exist_ok=True)
         잰것길.write_text(json.dumps(m, ensure_ascii=False, default=str)[:4_000_000],

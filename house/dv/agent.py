@@ -33,18 +33,21 @@ from house.dv import mutate as MUT     # noqa: E402
 from house.dv import vcd as VCD        # noqa: E402
 
 
-def 일하기(규모="보통") -> dict:
+def 일하기(규모="보통", 설계=None) -> dict:
     """규모: 빠르게 | 보통 | 밤새"""
     설정 = {"빠르게": dict(닫기=[10, 30, 100, 300, 1000], 회귀씨앗=8, 회귀거래=500, 변이거래=200),
           "보통": dict(닫기=[10, 30, 100, 300, 1000, 3000, 10000], 회귀씨앗=30, 회귀거래=2000, 변이거래=400),
           "밤새": dict(닫기=[10, 30, 100, 300, 1000, 3000, 10000, 30000], 회귀씨앗=200, 회귀거래=5000, 변이거래=1000),
           }[규모]
-    R = {"시작": time.time(), "규모": 규모, "설정": 설정}
+    from house import designs as DES
+    d0 = 설계 or DES.NSW_FIR
+    R = {"시작": time.time(), "규모": 규모, "설정": 설정,
+        "설계": d0.키, "설계이름": d0.이름, "top": d0.top}
 
     # --- 1. 커버리지 닫기 곡선 (같은 씨앗, 거래 수만 늘린다) ---
     곡선 = []
     for n in 설정["닫기"]:
-        d = SIM.돌리기(None, seed=99, txn=n, maxlen=256, cap=200000)
+        d = SIM.돌리기(None, seed=99, txn=n, maxlen=256, cap=200000, 설계=d0)
         곡선.append({"거래": n, "cov": d["cov_pct"], "주기": d["clk_cycles"],
                    "초": d["_초"], "pass": d["pass"], "fail": d["fail"]})
     R["닫기곡선"] = 곡선
@@ -154,7 +157,10 @@ def _파형뜨기() -> dict:
 
 def 보고서(m: dict) -> RPT.보고서:
     P = people.PRIYA
-    R = RPT.보고서(P, "NSW-FIR v1.0 검증 보고서", "nsw_fir MAC 가속기 IP",
+    # **제목이 회로 이름을 따라간다** -- 실측 2026-09-22 의 그 사고.
+    _이름 = m.get("설계이름") or "NSW-FIR v1.0"
+    _탑 = m.get("top") or "nsw_fir"
+    R = RPT.보고서(P, f"{_이름} 검증 보고서", f"{_탑} IP",
                  "제약 랜덤 회귀 · 커버리지 닫기 · 자해 검사(mutation) · 프로토콜 검사")
 
     회 = m["회귀"]
@@ -621,8 +627,9 @@ def 보고서(m: dict) -> RPT.보고서:
     return R
 
 
-def 돌리기(규모="보통") -> dict:
-    m = 일하기(규모)
+def 돌리기(규모="보통", 회로=None) -> dict:
+    from house import designs as DES
+    m = 일하기(규모, 설계=DES.찾기(회로))
     R = 보고서(m)
     길 = R.내기()
     return {"사람": people.PRIYA, "잰것": m, "pdf": 길, "쪽": RPT.쪽수(길),
