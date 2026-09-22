@@ -135,8 +135,15 @@ ok("asyncio.to_thread(dispatch.run" in _bot,
    "on_message 가 **딴 실에서** 부른다  ← subprocess 가 게이트웨이를 막으면 봇이 통째로 멎는다")
 ok("may_write = admin and (not ADMIN_ALLOWED_USER_IDS" in _bot,
    "쓸 수 있는가를 관리 채널 + 화이트리스트로 정한다")
-ok("dispatch.run, message.content, None, may_write" in _bot,
+ok("dispatch.run, 본문, None, may_write" in _bot,
    "그 값을 그대로 넘긴다  ← 계산해 놓고 안 쓰면 아무 뜻이 없다")
+# **`본문` 은 `message.content` 에서 나온 것이어야 한다.** 이름만 바뀐 것인지,
+# 딴 값이 들어간 것인지 갈라 본다 -- 2026-09-22 에 첨부 글을 이어 붙이면서
+# `message.content` -> `본문` 으로 바뀌었다(디스코드 2000자 벽, `inbox.py`).
+ok("본문 = message.content" in _bot,
+   "**그 `본문` 은 사람이 친 글에서 시작한다**  ← 이름만 보면 딴 값이 들어가도 모른다")
+ok("inbox.붙이기, message.content" in _bot,
+   "첨부가 있으면 그 글을 거기에 이어 붙인다 (2000자 벽을 넘는 길)")
 
 # **이것이 이 검사의 핵심이다.** 고정 명령을 앞에 세우면서 에이전트 길을 끊으면,
 # 셸로 VM 을 만지던 일이 통째로 막힌다. 사용자가 그 길을 계속 쓴다.
