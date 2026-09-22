@@ -154,6 +154,106 @@ ok("모델이 같은 결함을" in 검["요약"],
    "**모델이 고쳐 준 결함을 다시 내면 그렇게 적는다** — 합쳐서 숨기지 않는다")
 
 print()
+print("[AMD 규약] 산업 스펙을 그대로 차용했는가 — AXI4 필드 폭")
+# 사용자(2026-09-22): "산업에서 쓰이는 AMD 나 xillinx 스펙을 그대로 차용해.
+# 실제로 제공하는 카탈로그 처럼."
+#
+# **이 검사의 요점은 '맞는 것을 안 흔든다' 가 먼저다.** 규약 검사는 거짓 양성을
+# 내는 순간 못 쓰게 된다 -- 제안서마다 없는 결함이 뜨면 사람이 표를 안 읽는다.
+def AXI스펙(포트, 이름="mera1"):
+    return S.스펙(요청="x", 문제=["속도"], 회로=["AXI"],
+                 블록=[{"이름": "ddr_axi_master", "하는일": "x"}],
+                 포트=포트,
+                 클럭=[{"이름": "m_axi_aclk", "주기_ns": 4.0, "도메인": "axi"}],
+                 목표=[{"항목": "클럭 주파수", "값": "250 MHz", "어떻게 잴 것인가": "STA"}],
+                 검증계획=[{"시나리오": f"s{i}", "노리는 것": "t"} for i in range(5)],
+                 위험=["a", "b"], 이름=이름)
+
+
+def 포트(이름, 폭, 방향="input"):
+    return {"이름": 이름, "방향": 방향, "폭": 폭, "뜻": "x"}
+
+
+맞는AXI = [포트("m_axi_aclk", 1), 포트("m_axi_aresetn", 1),
+          포트("m_axi_awlen", 8, "output"), 포트("m_axi_awsize", 3, "output"),
+          포트("m_axi_awburst", 2, "output"), 포트("m_axi_awvalid", 1, "output"),
+          포트("m_axi_awready", 1), 포트("m_axi_wdata", 128, "output"),
+          포트("m_axi_wstrb", 16, "output"), 포트("m_axi_wvalid", 1, "output"),
+          포트("m_axi_wready", 1), 포트("m_axi_bresp", 2),
+          포트("s_axis_tdata", 256), 포트("s_axis_tkeep", 32),
+          포트("s_axis_tvalid", 1), 포트("s_axis_tready", 1, "output")]
+난A = 규칙들(C.검사(AXI스펙(맞는AXI)))
+ok(not 난A & {"S016", "S017", "S018", "S019", "S020", "S021", "S022"},
+   f"**AMD 규약대로 적힌 포트표는 한 건도 안 걸린다** ({sorted(난A)})")
+
+틀린AXI = [포트("m_axi_aclk", 1), 포트("m_axi_aresetn", 1),
+          포트("m_axi_awlen", 4, "output"),          # AXI3 의 4 비트다
+          포트("m_axi_wdata", 128, "output"),
+          포트("m_axi_wstrb", 4, "output"),          # 128/8 = 16 이어야 한다
+          포트("m_axi_bresp", 2),
+          포트("s_axis_tdata", 256), 포트("s_axis_tkeep", 8),
+          포트("s_axis_tvalid", 1), 포트("s_axis_tready", 1, "output")]
+난B = C.검사(AXI스펙(틀린AXI))
+말B = " ".join(m["말"] for m in 난B)
+ok("S016" in 규칙들(난B), "**AWLEN 이 4 비트면 잡는다** — AXI3 의 폭이다, AXI4 는 8 이다")
+ok("S017" in 규칙들(난B) and "16" in 말B,
+   "**WSTRB 가 데이터폭/8 이 아니면 잡고 옳은 값을 말한다** (wdata 128 -> wstrb 16)")
+ok("32" in 말B, "**TKEEP 도 같은 산수로 잡는다** (tdata 256 -> tkeep 32)")
+sB, 고친B = C.고치기(AXI스펙(틀린AXI), 난B)
+폭들 = {p["이름"]: p["폭"] for p in sB.포트}
+ok((폭들["m_axi_awlen"], 폭들["m_axi_wstrb"], 폭들["s_axis_tkeep"]) == (8, 16, 32),
+   f"**기계가 규약 폭으로 고친다** ({폭들['m_axi_awlen']}, {폭들['m_axi_wstrb']}, "
+   f"{폭들['s_axis_tkeep']})")
+ok(not 규칙들(C.검사(sB)) & {"S016", "S017"}, "고친 뒤에는 다시 안 걸린다")
+
+print()
+print("[AMD 규약] 악수 짝과 리셋 이름")
+짝없음 = [포트("m_axi_aclk", 1), 포트("m_axi_aresetn", 1),
+        포트("s_axis_tdata", 256), 포트("s_axis_tkeep", 32),
+        포트("s_axis_tvalid", 1)]              # tready 가 없다
+ok("S020" in 규칙들(C.검사(AXI스펙(짝없음))),
+   "**valid 만 있고 ready 가 없으면 잡는다** — 역압이 없는 AXI-Stream 은 규약이 아니다")
+
+나쁜리셋 = [포트("m_axi_aclk", 1), 포트("rst_n", 1),
+          포트("s_axis_tdata", 256), 포트("s_axis_tkeep", 32),
+          포트("s_axis_tvalid", 1), 포트("s_axis_tready", 1, "output")]
+난C = C.검사(AXI스펙(나쁜리셋))
+ok(규칙들(난C) & {"S021", "S022"},
+   "**rst_n 을 잡는다** — AMD 가 인터페이스를 자동으로 묶는 근거가 이름 규약이다")
+sC, _ = C.고치기(AXI스펙(나쁜리셋), 난C)
+이름들 = [p["이름"] for p in sC.포트]
+ok("aresetn" in " ".join(이름들) and "rst_n" not in 이름들,
+   f"**기계가 AMD 이름으로 바꾼다** ({이름들})")
+
+print()
+print("[IP Facts] 제안서가 카탈로그 첫 표를 낸다")
+# AMD 제품 가이드(PG###)는 IP Facts 표로 시작한다. 그 꼴을 빌리되 **안 만든 것을
+# 만들었다고 쓰지 않는다** — 그것이 이 저장소가 다섯 번 앓은 병이다.
+import re                                                        # noqa: E402
+글A = A.보고서({"_s": AXI스펙(맞는AXI)}).html()
+칸 = lambda h, t: len(re.findall(r"<td[^>]*>" + re.escape(t), h))  # noqa: E731
+ok("IP Facts" in 글A, "제안서에 IP Facts 절이 있다")
+ok("AXI4-Stream" in 글A and "AXI4 (Memory Mapped)" in 글A,
+   "**포트 이름에서 인터페이스를 알아내 적는다** — Vivado 가 묶는 근거와 같은 규약이다")
+# **표 칸만 센다.** 설명글에도 '아직 없음' 이 들어 있어 글 전체를 훑으면 늘 걸린다.
+ok(칸(글A, "아직 없음") >= 5,
+   f"**안 만든 칸은 '아직 없음' 이다** — 꼴만 빌리고 다 된 척하지 않는다 "
+   f"({칸(글A, '아직 없음')}칸)")
+ok("FPGA LUT" in 글A,
+   "**Synthesis 칸이 ASIC 표준셀임을 못박는다** — 사용자 지시가 'FPGA가 아니고 ASIC' 이다")
+
+# AMD PG 의 Port Descriptions 표는 인터페이스로 묶여 있다. 규약을 벗어난 포트가
+# **눈에 띄게** 남는 것이 이 묶음의 값어치다 -- 그것이 손으로 이어야 하는 것들이다.
+# 실측 2026-09-22: 처음에 `"(개별 신호)" not in 글A` 로 썼더니 **맞는 포트표에서도
+# 걸렸다** -- 표 설명글에 그 말이 들어 있어서다. 아무것도 안 재는 거짓 초록이었다.
+개별 = lambda h: len(re.findall(r"<td[^>]*>\(개별 신호\)</td>", h))  # noqa: E731
+글B = A.보고서({"_s": AXI스펙(나쁜리셋)}).html()
+ok(개별(글B) == 1,
+   f"**규약을 벗어난 포트는 '(개별 신호)' 칸으로 남아 눈에 띈다** (rst_n, {개별(글B)}칸)")
+ok(개별(글A) == 0,
+   f"**규약을 지킨 포트표에는 개별 신호가 없다** — 전부 묶인다 ({개별(글A)}칸)")
+
+print()
 if fails:
     print(f"실패 {len(fails)}개: {fails}")
     raise SystemExit(1)

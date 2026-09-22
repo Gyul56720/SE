@@ -189,6 +189,36 @@ def 보고서(m: dict) -> RPT.보고서:
          "house/arch.py")
 
     # ---- 1. 코드가 읽은 것 ----
+    # **IP Facts.** AMD 제품 가이드(PG###)는 이 표로 시작한다 -- 이 IP 가 무엇을
+    # 지원하고 무엇이 같이 오는지를 한 화면에 박는다. 사용자(2026-09-22): "산업에서
+    # 쓰이는 AMD 나 xillinx 스펙을 그대로 차용해. 실제로 제공하는 카탈로그 처럼."
+    #
+    # **없는 것을 있다고 쓰지 않는다.** 아직 안 만든 칸은 '아직 없음' 이다 --
+    # 카탈로그 꼴을 빌리는 것이지 다 된 척하는 것이 아니다.
+    R.절("0. IP Facts")
+    _있 = lambda x: x or "아직 없음"                                    # noqa: E731
+    R.표(["항목", "값"],
+        [["Core Name", s.이름 or "(모델이 이름을 못 냈다)"],
+         ["Supported User Interfaces",
+          _있(" · ".join(sorted({_인터페이스(p) for p in (s.포트 or [])} - {""})))],
+         ["Clock Domains",
+          _있(" · ".join(f"{_글(c.get('이름'))} {_글(c.get('주기_ns'))} ns"
+                        for c in (s.클럭 or []) if isinstance(c, dict)))],
+         ["Resources", "아직 없음 — 합성 뒤 Marcus 가 채운다"],
+         ["Provided with Core", "설계 제안서(이 문서) · 선행조사 표"],
+         ["Design Files", "아직 없음 — 사람 승인 뒤 생성"],
+         ["Example Design", "아직 없음"],
+         ["Test Bench", "아직 없음 — 검증 계획은 5절"],
+         ["Constraints File", "아직 없음"],
+         ["Simulation Model", "아직 없음"],
+         ["Supported S/W Driver", "해당 없음"],
+         ["Design Entry", "SystemVerilog (house/gen 이 짓고 관문 7개가 붙든다)"],
+         ["Simulation", "verilator · iverilog (둘 다 돌린다 — 한 도구만 믿지 않는다)"],
+         ["Synthesis", "yosys + nsw10.lib (ASIC 표준셀 — FPGA LUT 수가 아니다)"]],
+        "AMD 제품 가이드(PG###)의 첫 표와 같은 꼴이다. "
+        "<b>안 만든 칸은 '아직 없음' 으로 적는다</b> — 꼴만 빌리고 내용을 지어내지 않는다.",
+        "house/arch.py IP Facts")
+
     R.절("1. 요청에서 코드가 읽어 낸 것 — 모델 없이")
     R.글("아래는 <b>모델을 안 쓰고</b> 규칙으로 뽑은 것이다. 모델 키가 없어도 여기까지는 "
         "돈다. <b>낱말표에 없는 말은 '모른다' 로 남긴다</b> — 넘겨짚어 채우면 스펙이 "
@@ -267,10 +297,21 @@ def 보고서(m: dict) -> RPT.보고서:
             "블록 분할. <b>모델이 제안한 것</b>이고, 사람이 고치는 것이 정상이다.",
             "모델 제안")
     if s.포트:
-        R.표(["포트", "방향", "폭", "뜻"],
-            [[p.get("이름"), p.get("방향"), p.get("폭"), p.get("뜻", "")] for p in s.포트],
+        # **AMD 제품 가이드의 Port Descriptions 표는 인터페이스로 묶여 있다.**
+        # 묶이는 근거가 이름 규약이고, 그 규약을 지켰는지는 speccheck S016~S022 가
+        # 본다. 여기서는 **묶인 결과를 보인다** — 규약을 벗어난 포트는 '(개별 신호)'
+        # 로 남아 눈에 띈다. 그것이 Vivado 블록 디자인에서 손으로 이어야 하는 것들이다.
+        _묶 = lambda p: _인터페이스(p) or "(개별 신호)"      # noqa: E731
+        줄 = sorted(((_묶(p), p) for p in s.포트 if isinstance(p, dict)),
+                   key=lambda x: (x[0] == "(개별 신호)", x[0]))
+        R.표(["인터페이스", "포트", "방향", "폭", "뜻"],
+            [[이, p.get("이름"), p.get("방향"), p.get("폭"), p.get("뜻", "")]
+             for 이, p in 줄],
             "인터페이스. <b>이것이 확정되어야 테스트벤치를 쓸 수 있다</b> — "
-            "검증은 핀만 보기 때문이다.", "모델 제안", 강조열=[0])
+            "검증은 핀만 보기 때문이다. 첫 칸은 <b>AMD 이름 규약으로 알아낸 묶음</b>"
+            "이다(Vivado IP Integrator 가 쓰는 것과 같은 근거). "
+            "<b>'(개별 신호)' 로 남은 것은 블록 디자인에서 손으로 이어야 한다.</b>",
+            "모델 제안 + house/arch.py _인터페이스()", 강조열=[0])
     if s.클럭:
         R.표(["클럭", "주기 (ns)", "도메인"],
             [[c.get("이름"), c.get("주기_ns"), c.get("도메인", "")] for c in s.클럭],
@@ -399,6 +440,30 @@ def _언제(위험: str) -> str:
     if any(k in t for k in ("시험", "커버리지", "고장")):
         return "DFT 고장 시뮬 (Sofia §1)"
     return "기능 검증 (Priya)"
+
+
+def _글(x) -> str:
+    return "" if x is None else str(x)
+
+
+def _인터페이스(p) -> str:
+    """포트 이름에서 AMD 가 부르는 인터페이스 이름을 알아낸다.
+
+    Vivado IP Integrator 가 포트를 인터페이스로 묶는 근거가 이 이름 규약이다 --
+    `s_axi_*` 는 AXI4-Lite 슬레이브, `m_axi_*` 는 AXI4 마스터, `*_t*` 는 AXI4-Stream.
+    이름이 규약을 벗어나면 블록 디자인에서 손으로 이어야 하고, 그 순간 '카탈로그에
+    올릴 수 있는 IP' 가 아니게 된다."""
+    if not isinstance(p, dict):          # 모델이 문자열 목록을 내놓는 일이 있다
+        return ""
+    n = _글(p.get("이름")).lower()
+    꼬 = n.rsplit("_", 1)[-1]
+    if 꼬 in ("tdata", "tvalid", "tready", "tlast", "tkeep", "tstrb", "tuser"):
+        return "AXI4-Stream"
+    if n.startswith("m_axi") or 꼬.startswith(("aw", "ar")) and "axi" in n:
+        return "AXI4 (Memory Mapped)"
+    if n.startswith("s_axi"):
+        return "AXI4-Lite"
+    return ""
 
 
 def 판독줄(s) -> str:

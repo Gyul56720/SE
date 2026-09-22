@@ -49,6 +49,56 @@ _문제말 = {
 검증최소 = 5
 
 
+# ---------------------------------------------------------------- AMD/AXI 규약
+# 사용자(2026-09-22): "산업에서 쓰이는 AMD 나 xillinx 스펙을 그대로 차용해. 실제로
+# 제공하는 카탈로그 처럼."
+#
+# AMD(Xilinx) IP 는 이름과 폭에 **규약**이 있고, 그 규약은 대개 **산수**라서 기계가
+# 본다. Vivado IP Integrator 가 포트를 자동으로 묶어 주는 것도 이 이름 규약 덕이다 --
+# 이름이 어긋나면 블록 디자인에서 선을 손으로 이어야 하고, 그 순간 "카탈로그에 올릴
+# 수 있는 IP" 가 아니게 된다.
+#
+# 여기 적은 폭 규칙은 **AMBA AXI4 명세의 산수**다(TKEEP = TDATA/8 처럼 바이트당 한
+# 비트). 이름 규약은 AMD IP 의 관행이다. 둘 다 이 저장소가 문서를 통째로 읽고 적은
+# 것이 아니라 **널리 쓰이는 꼴을 적은 것**이므로, 어긋났다고 해서 틀렸다고 단정하지
+# 않고 **'카탈로그 꼴이 아니다' 로 올린다.**
+AXI규약 = {
+    # 이름꼴                      폭    까닭
+    "awlen":   (8, "AXI4 버스트 길이는 8비트다 (beats-1, 최대 256)"),
+    "arlen":   (8, "AXI4 버스트 길이는 8비트다"),
+    "awsize":  (3, "전송 크기는 3비트다 (2^n 바이트)"),
+    "arsize":  (3, "전송 크기는 3비트다"),
+    "awburst": (2, "버스트 타입은 2비트다 (FIXED/INCR/WRAP)"),
+    "arburst": (2, "버스트 타입은 2비트다"),
+    "bresp":   (2, "응답은 2비트다 (OKAY/EXOKAY/SLVERR/DECERR)"),
+    "rresp":   (2, "응답은 2비트다"),
+    "awlock":  (1, "AXI4 의 lock 은 1비트다 (AXI3 은 2비트였다)"),
+    "arlock":  (1, "AXI4 의 lock 은 1비트다"),
+    "awcache": (4, "캐시 속성은 4비트다"),
+    "arcache": (4, "캐시 속성은 4비트다"),
+    "awprot":  (3, "보호 속성은 3비트다"),
+    "arprot":  (3, "보호 속성은 3비트다"),
+    "awqos":   (4, "QoS 는 4비트다"),
+    "arqos":   (4, "QoS 는 4비트다"),
+}
+# 데이터 폭에서 바이트 하나당 한 비트가 나오는 칸들.
+_바이트당 = {"wstrb": "wdata", "rstrb": "rdata", "tkeep": "tdata", "tstrb": "tdata"}
+# AXI4-Lite 가 받는 데이터 폭.
+_LITE폭 = (32, 64)
+_핸드셰이크 = ("valid", "ready")
+
+
+def _꼬리(이름: str) -> str:
+    """`m_axi_awlen` -> `awlen`.  접두사를 떼고 마지막 토막만."""
+    return (이름 or "").rsplit("_", 1)[-1].lower()
+
+
+def _묶음이름(이름: str) -> str:
+    """`m_axi_awlen` -> `m_axi`.  같은 인터페이스에 속한 포트를 묶는 열쇠."""
+    조각 = (이름 or "").split("_")
+    return "_".join(조각[:-1]) if len(조각) > 1 else ""
+
+
 def _글(x) -> str:
     return "" if x is None else str(x)
 
@@ -194,6 +244,64 @@ def 검사(s) -> list:
            "위험이 비었다 — 주장이 깨지는 조건을 못 적으면 그것은 주장이 아니라 광고다",
            "되물음")
 
+    # ---------------------------------------------------------------- AMD/AXI 규약
+    폭맵 = {_글(p.get("이름")).lower(): _폭(p) for p in 포트}
+    for p in 포트:
+        이름 = _글(p.get("이름"))
+        꼬 = _꼬리(이름)
+        w = _폭(p)
+        if w is None:
+            continue
+        # 고정 폭 칸
+        바른, 까닭 = AXI규약.get(꼬, (None, ""))
+        if 바른 is not None and w != 바른:
+            적기("S016", f"포트 {이름}",
+               f"폭이 {w} 인데 AXI4 규약은 {바른} 이다 — {까닭}",
+               "고침", {"폭": 바른})
+        # 바이트당 한 비트인 칸 (TKEEP = TDATA/8)
+        짝 = _바이트당.get(꼬)
+        if 짝:
+            묶 = _묶음이름(이름)
+            데이터 = 폭맵.get(f"{묶}_{짝}".lower())
+            if 데이터:
+                바른2 = 데이터 // 8
+                if w != 바른2:
+                    적기("S017", f"포트 {이름}",
+                       f"폭이 {w} 인데 `{묶}_{짝}` 가 {데이터} 비트이므로 "
+                       f"{바른2} 여야 한다 — 바이트 하나당 한 비트다",
+                       "고침", {"폭": 바른2})
+        # AXI4-Lite 의 데이터 폭
+        if "axi" in 이름.lower() and "lite" in _글(p.get("뜻")).lower() \
+                and 꼬 in ("wdata", "rdata") and w not in _LITE폭:
+            적기("S018", f"포트 {이름}",
+               f"AXI4-Lite 데이터 폭은 32 또는 64 여야 한다 (지금 {w})", "남김")
+        if 꼬 in ("awaddr", "araddr") and w > 64:
+            적기("S019", f"포트 {이름}", f"주소 폭 {w} 는 64 를 넘는다", "남김")
+
+    # 핸드셰이크 짝: valid 가 있으면 ready 가 있어야 한다
+    있는것 = {n for n in 폭맵}
+    for n in sorted(있는것):
+        if not n.endswith("valid"):
+            continue
+        짝 = n[:-5] + "ready"
+        if 짝 not in 있는것:
+            적기("S020", f"포트 {n}",
+               f"`{짝}` 가 없다 — AXI 핸드셰이크는 valid/ready 한 쌍이다", "되물음")
+
+    # 이름 규약: 리셋은 active-low 이고 AMD IP 는 `aresetn` 으로 쓴다
+    for n in sorted(있는것):
+        if n in ("rst", "reset") or n.endswith("_rst"):
+            적기("S021", f"포트 {n}",
+               "AMD IP 규약은 active-low 리셋 `aresetn` 이다 — "
+               "`rst`/`reset` 은 Vivado IP Integrator 가 자동으로 못 묶는다",
+               "남김")
+        if n in ("rst_n", "resetn", "reset_n") and not any(
+                x.endswith("aresetn") for x in 있는것):
+            적기("S022", f"포트 {n}",
+               "AMD IP 규약으로는 `aresetn` 이다 — 이름이 다르면 IP Integrator 가 "
+               "인터페이스로 못 알아보고, 블록 디자인에서 손으로 이어야 한다",
+               "고침", {"이름": "aresetn"})
+
     return 난것
 
 
@@ -214,12 +322,20 @@ def 고치기(s, 난것: list) -> "tuple[object, list]":
             for p in (s.포트 or []):
                 if _글(p.get("이름")) != 이름:
                     continue
-                전 = p.get("폭")
                 if "폭" in 값:
+                    전 = p.get("폭")
                     p["폭"] = 값["폭"]
+                    고친것.append(f"포트 `{이름}` 폭 {전} → {p['폭']} ({문['규칙']})")
                 if 값.get("뜻꼬리") and 값["뜻꼬리"] not in _글(p.get("뜻")):
                     p["뜻"] = _글(p.get("뜻")) + 값["뜻꼬리"]
-                고친것.append(f"포트 `{이름}` 폭 {전} → {p['폭']} ({문['규칙']})")
+                if "이름" in 값 and 값["이름"] != 이름:
+                    # **이름을 바꾸면 그 이름을 쓰던 곳이 있는지 봐야 한다.** 포트
+                    # 이름은 블록의 '하는일' 글에도 나온다 -- 거기도 같이 고친다.
+                    p["이름"] = 값["이름"]
+                    for b in (s.블록 or []):
+                        if 이름 in _글(b.get("하는일")):
+                            b["하는일"] = _글(b["하는일"]).replace(이름, 값["이름"])
+                    고친것.append(f"포트 `{이름}` → `{값['이름']}` ({문['규칙']})")
         elif 자리.startswith("블록 "):
             이름 = 자리[3:]
             for b in (s.블록 or []):
