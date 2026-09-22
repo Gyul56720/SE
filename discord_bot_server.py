@@ -647,6 +647,27 @@ def _git_sync_locked() -> str | None:
     return f"({why} 뒤 재시도) " + _verify_pushed()
 
 
+def _회사로넘기기(prompt: str, 지어낸답: str) -> str:
+    """재지 않고 수를 지어낸 답을 버리고, 그 요청을 회사(`house/`)에 넘긴다.
+
+    **못 넘기면 버리지 않는다.** 회사가 안 돌면(이미 돌고 있다 · 쓰기 막힘 · 아무것도
+    못 읽음) 답이 통째로 사라지는 것이 더 나쁘다 -- 그때는 예전처럼 `안잼표` 를 붙여
+    내보내고 왜 못 넘겼는지 같이 적는다."""
+    _HOUSE = None
+    try:
+        from house import discord_cmd as _HOUSE
+        r = _HOUSE.설계로넘기기(prompt)
+    except Exception as e:                                   # noqa: BLE001
+        r = {"돌았나": False, "까닭": f"회사를 못 불렀다: {e}", "글": ""}
+    relay.적기(f"→ 회사로 넘김: {'떴다' if r['돌았나'] else r['까닭']}")
+    if r["돌았나"] and _HOUSE is not None:
+        return _HOUSE.넘김글(prompt, r)
+    꼬리 = f"\n\n_(회사로 넘기려 했으나 못 넘겼습니다: {r['까닭']}.)_"
+    if r.get("글"):
+        꼬리 += "\n" + r["글"]
+    return f"{지어낸답}\n\n{relay.안잼표}{꼬리}"
+
+
 def run_admin_agent(prompt: str, thread_id: str, 중계판=None) -> str:
     """관리 채널용 -- LangGraph ReAct 에이전트(Gemini, run_shell 전권)로 답한다.
     중계판이 있으면 이 실행기 스레드에 묶어, 도구가 돌 때마다 진행 메시지가 갱신된다."""
@@ -694,7 +715,12 @@ def run_admin_agent(prompt: str, thread_id: str, 중계판=None) -> str:
             reply = run_with_fallback_pool(ADMIN_AGENT_POOL, _admin_thread_map, thread_id,
                                            relay.설계되묻는말, "[admin-agent]")
             if _설계인데안쟀나():
-                reply = f"{reply}\n\n{relay.안잼표}"
+                # **두 번째도 안 쟀으면 모델에게 세 번째로 부탁하지 않는다 -- 회사가 받는다.**
+                # 실측 2026-09-22: 에이전트가 `iverilog ... && vvp` · `yosys -s ...` 를
+                # 적으며 "PASS · 셀 2,474개" 로 답했는데 **그 명령은 한 줄도 안 돌았다.**
+                # 사용자의 말: "왜 회사로 답변안하지?" 지어낸 수에 경고표를 붙여 내보내는
+                # 대신 요청을 `house/` 에 넘기고, 넘어갔으면 지어낸 답은 **버린다.**
+                reply = _회사로넘기기(prompt, reply)
         elif _더필요():
             print(f"[admin-agent] thread={thread_id} 실행이 비었다(떠넘김/도구0) -- 되묻기")
             relay.적기("↺ 실행이 비었다(떠넘김/도구0) -- 한 호흡에 실행하라고 한 번 되묻는다")
