@@ -80,6 +80,8 @@ verilator 로 컴파일된 DUT 를 구동한다.
 DUT 의 포트 (이것만 존재한다. 다른 신호를 건드리지 마라):
 {포트}
 
+{시나리오}
+
 {되먹임}
 
 **너는 RTL 구현을 보지 못한다. 그것이 의도다.** 기준모델(golden model)은 스펙만
@@ -440,10 +442,24 @@ def 짓기(s, 키: str, 바퀴=3, 벡터=400, 주기_ns=10.0, 묻기=None, 등�
                    f"그 모듈을 못 찾았다. 정확히 `module {top} (...)` 으로 써라.\n")
             continue
         try:
+            # **시나리오를 회로에서 뽑아 넘긴다.** 무엇을 시험할지는 인터페이스에서
+            # 따라 나온다 -- 핸드셰이크가 있으면 백프레셔를, 리셋이 있으면 트래픽 중
+            # 리셋을, CDC 가 있으면 클럭비 쓸기를. 모델의 상상력에 맡기지 않는다.
+            # (기준모델이 무엇이 옳은 값인지는 여전히 스펙에서 나온다 -- 그것은 다른 일이다.)
+            from house.dv import plan as PLAN
+            시나리오글 = ""
+            try:
+                _계 = PLAN.세우기(DES.설계(키=키, 이름=키, top=top, RTL=[sv길],
+                                       TB=None, 파라={}), 스펙=s)
+                시나리오글 = PLAN.계획글(_계)
+                한바퀴["시나리오수"] = len(_계.get("시나리오") or [])
+                한바퀴["커버빈수"] = len(_계.get("빈") or [])
+            except Exception as e:                           # noqa: BLE001
+                한바퀴["시나리오오류"] = f"{type(e).__name__}: {e}"[:120]
             tb = _코드뽑기(묻기(TB프롬프트.format(
                 스펙=스펙글, top=top,
                 포트=json.dumps(포트, ensure_ascii=False, indent=1),
-                변이문턱=기본문턱["변이점수"],
+                변이문턱=기본문턱["변이점수"], 시나리오=시나리오글,
                 되먹임=되먹임), "house_gen_tb"), "cpp")
         except Exception as e:                               # noqa: BLE001
             한바퀴["오류"] = f"TB 생성 실패: {type(e).__name__}: {e}"[:200]
