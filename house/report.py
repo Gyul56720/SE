@@ -152,6 +152,34 @@ class 보고서:
         return self
 
     def 표(self, 머리, 줄들, 설명="", 도구="", 강조열=None):
+        # **인자 순서를 틀리면 조용히 쓰레기가 나온다 -- 그래서 여기서 막는다.**
+        #
+        # 실측 2026-09-22 (제안서 `mera1_event_rec`). `R.표(설명, 머리, 줄들)` 로 부른
+        # 자리가 둘 있었다. 그러면 설명 글이 `머리` 가 되어 **글자 하나가 열 하나**가
+        # 되고, 줄 목록이 `설명` 이 되어 파이썬 repr 이 캡션에 찍힌다. 나온 표가
+        # 이랬다:
+        #
+        #     기 | 계 | 가 | 고 | 친 | 것 | . | < | b | > | 조 | 용 | 히 | ...
+        #
+        # **읽을 수 없는 표를 낸 것이 아니라, 읽을 수 없는 표를 내고도 초록이었다.**
+        # 그 두 자리는 '고친 것이 있을 때' 만 도는 가지여서 그날까지 한 번도 안 돌았다.
+        # 같은 실수를 IP Facts 표에서도 한 번 했다 -- 세 번째다. 규칙으로는 안 멈춘다.
+        if isinstance(머리, str) or not isinstance(머리, (list, tuple)):
+            raise TypeError(
+                f"표(머리, 줄들, 설명=…) -- `머리` 는 열 이름 목록이어야 한다. "
+                f"받은 것: {type(머리).__name__} {str(머리)[:60]!r}. "
+                f"`R.표(설명, 머리, 줄들)` 로 부르지 않았는지 보라")
+        if isinstance(줄들, str):
+            raise TypeError(f"표(…) -- `줄들` 은 줄의 목록이어야 한다. "
+                            f"받은 것: {str(줄들)[:60]!r}")
+        for 줄 in (줄들 or []):
+            if isinstance(줄, str) or not isinstance(줄, (list, tuple)):
+                raise TypeError(
+                    f"표(…) -- 줄 하나는 칸의 목록이어야 한다 (열 {len(머리)}개). "
+                    f"받은 것: {type(줄).__name__} {str(줄)[:60]!r}")
+        if not isinstance(설명, str):
+            raise TypeError(f"표(…) -- `설명` 은 글이어야 한다. "
+                            f"받은 것: {type(설명).__name__} {str(설명)[:60]!r}")
         self.표수 += 1
         t = viz.표(머리, 줄들, 강조열)
         cap = ""
