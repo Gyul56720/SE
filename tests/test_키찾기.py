@@ -103,6 +103,35 @@ ok("GEMINI_API_KEY 를 찾지 못했다" not in _글,
 ok("이름은 아무것이나 된다" in _글, "이름이 아니라 값의 꼴이라고 말해 준다")
 
 print()
+print("[환경 변수] repo 를 줘도 환경 변수가 먼저다")
+# 실측 2026-09-22: `fda3646` 이 env값 에 `if repo is None:` 을 끼워 넣어, repo 를
+# 주면 환경 변수를 아예 안 보게 만들었다. mailer 의 길은 거의 다 `repo=` 를 달고
+# 부르므로 **배포 VM 의 USER_EMAIL/SMTP_* 가 통째로 안 보였다.**
+# 그날 test_mail.py 가 셋 빨개진 것이 유일한 신호였다 -- 그 신호를 여기 못박는다.
+import os as _os                                                  # noqa: E402
+import tempfile as _tf                                            # noqa: E402
+from pathlib import Path as _P                                     # noqa: E402
+from dig.harvest import env값 as _env                              # noqa: E402
+
+with _tf.TemporaryDirectory() as _d:
+    (_P(_d) / ".env").write_text("SE_TEST_KEY=env파일값\n", encoding="utf-8")
+    _옛 = _os.environ.get("SE_TEST_KEY")
+    try:
+        _os.environ.pop("SE_TEST_KEY", None)
+        ok(_env("SE_TEST_KEY", _d) == "env파일값",
+           "환경 변수가 없으면 그 repo 의 .env 를 읽는다")
+        _os.environ["SE_TEST_KEY"] = "환경변수값"
+        ok(_env("SE_TEST_KEY", _d) == "환경변수값",
+           "**repo 를 줘도 환경 변수가 이긴다** -- repo 는 '어느 .env 냐' 이지 "
+           "'환경 변수를 무시하라' 가 아니다")
+        ok(_env("SE_TEST_KEY") == "환경변수값", "repo 없이도 환경 변수를 본다")
+    finally:
+        if _옛 is None:
+            _os.environ.pop("SE_TEST_KEY", None)
+        else:
+            _os.environ["SE_TEST_KEY"] = _옛
+
+print()
 if FAIL:
     print(f"실패 {len(FAIL)}개 -- {FAIL}")
     raise SystemExit(1)

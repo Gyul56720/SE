@@ -64,11 +64,19 @@ from graph import night, store  # noqa: E402
 # ---------------------------------------------------------------- 환경
 def env값(이름: str, repo=None) -> str:
     """환경 변수, 없으면 .env 의 그 줄. dotenv 없이 -- 값에 `=` 가 있어도 첫 것만 가른다.
-    mailer 도 이것을 쓴다(두 벌 금지)."""
-    if repo is None:
-        v = os.environ.get(이름, "")
-        if v:
-            return v
+    mailer 도 이것을 쓴다(두 벌 금지).
+
+    **`repo` 를 줘도 환경 변수가 먼저다.** `repo` 는 "어느 .env 를 볼 것이냐" 이지
+    "환경 변수를 무시하라" 가 아니다.
+
+    실측 2026-09-22: `fda3646` 이 이 자리에 `if repo is None:` 을 끼워 넣어
+    **repo 를 주면 환경 변수를 아예 안 보게** 만들었다. mailer 의 길은 거의 다
+    `repo=` 를 달고 부르므로(`내정보(repo)` · `필요한것(repo)` · `보내기(..., repo=)`),
+    그 한 줄이 **배포 VM 의 USER_EMAIL/SMTP_* 를 통째로 안 보이게** 했다.
+    `tests/test_mail.py` 가 그날로 세 개 빨개졌고 그것이 유일한 신호였다."""
+    v = os.environ.get(이름, "")
+    if v:
+        return v
     p = Path(repo or REPO) / ".env"
     if not p.is_file():
         return ""

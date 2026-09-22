@@ -1,14 +1,16 @@
 # 선행조사 — mera1
 
-요청: MERA-1
+요청: 계측장비용 이벤트 레코더 500MHz 0.8V
 
 ## 무엇을 짓기 전인가
 
-제공된 입력 데이터 기반으로 동작하는 디지털 IP 블록
+x
 
 ## 찾아본 질의
 
-- `digital IP architecture low power CMOS`
+- `AXI architecture low power CMOS`
+- `AXI area efficient design`
+- `계측/시험장비 AXI ASIC power reduction`
 
 ## 가장 가까운 선행연구
 
@@ -28,8 +30,7 @@
 
 ## 아직 못 지운 가능성
 
-- 입력 데이터 및 회로 명세의 부재로 인한 기능 구현 오류
-- 타이밍 제약 조건 미정으로 인한 셋업/홀드 위반 가능성
+- a
 
 ---
 _이 파일은 `house/arch.py` 가 틀만 만든 것이다. 표를 채우는 것은 사람이나
