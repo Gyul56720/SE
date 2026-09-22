@@ -56,6 +56,26 @@ _주소꼴 = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 # 사람이 받는다는 것은 다르다 -- 흔한 오타는 보내기 전에 되묻는다.
 흔한오타 = {"gamil.com": "gmail.com", "gmial.com": "gmail.com", "gmai.com": "gmail.com", "gmail.co": "gmail.com",
         "hotmial.com": "hotmail.com", "naver.co": "naver.com", "navr.com": "naver.com", "outlok.com": "outlook.com"}
+# **메일을 받지 않는다고 규격이 못 박은 도메인.** 실측 2026-09-22: 보고서가 실제로
+# 나갔는데 받는 주소가 `test@example.com` 이었다. SMTP 는 받았고 우리는 성공이라
+# 적었지만, 구글이 되돌려 보냈다:
+#
+#     DNS type 'mx' lookup of example.com responded with code NOERROR
+#     The domain example.com doesn't receive email ... returned Null MX (RFC 7505)
+#
+# `gamil.com` 때와 **같은 병**이다 -- SMTP 가 받았다는 것과 사람이 받는다는 것은 다르다.
+# 그때는 오타였고 이번은 자리표 주소다. 둘 다 보내기 전에 아는 것이다:
+# example.com/net/org 은 RFC 2606 이 예약했고 RFC 7505 의 Null MX 를 달고 있다.
+안받는도메인 = {
+    "example.com": "RFC 2606 예약 도메인 -- Null MX(RFC 7505) 라 메일을 아예 안 받는다",
+    "example.net": "RFC 2606 예약 도메인 -- 메일을 안 받는다",
+    "example.org": "RFC 2606 예약 도메인 -- 메일을 안 받는다",
+    "example.edu": "RFC 2606 예약 도메인 -- 메일을 안 받는다",
+    "test": "도메인이 아니다 (RFC 6761 예약)",
+    "invalid": "도메인이 아니다 (RFC 6761 예약 -- 일부러 안 되게 만든 이름)",
+    "localhost": "이 기계 자신이다 -- 바깥으로 안 나간다",
+    "localdomain": "이 기계 자신이다 -- 바깥으로 안 나간다",
+}
 원장상대 = "logs/mail_ledger.jsonl"
 
 smtp열기 = None       # 검사 주입: (host, port, 초) -> login(u, p) · send_message(msg) · quit()
@@ -200,6 +220,11 @@ def 보내기(to: str, subject: str, body: str, repo=None, 초: int = 30,
     if not (subject or "").strip():
         return {"보냈나": False, "필요한것": [], "말": "제목이 비었다"}
     도메인 = to.rsplit("@", 1)[-1].lower()
+    if 도메인 in 안받는도메인:
+        return {"보냈나": False, "필요한것": ["USER_EMAIL"],
+                "말": f"받는 주소 `{to}` 로는 못 보낸다 -- {안받는도메인[도메인]}. "
+                     f"진짜 주소를 `!열쇠 USER_EMAIL=<주소>` 로 한 번 주면 된다. "
+                     f"**SMTP 가 받아도 사람에겐 안 간다**"}
     if 도메인 in 흔한오타:
         return {"보냈나": False, "필요한것": [],
                 "말": f"받는 주소의 도메인 `{도메인}` 은 흔한 오타다 -- `{흔한오타[도메인]}` 이 맞으면 그쪽으로 다시 불러라. "

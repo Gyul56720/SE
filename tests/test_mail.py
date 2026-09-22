@@ -236,6 +236,27 @@ ok(p.returncode in (0, 3) and ("!열쇠" in p.stdout or "다 있다" in p.stdout
 import relay  # noqa: E402
 ok("✉" in relay.도구표지, "✉ 는 도구 줄로 센다")
 
+# ---------------------------------------------------------------- 안 받는 도메인
+# 실측 2026-09-22: 보고서가 **실제로 나갔는데** 받는 주소가 `test@example.com` 이었다.
+# SMTP 는 받았고 우리는 성공이라 적었지만 구글이 되돌려 보냈다:
+#
+#     The domain example.com doesn't receive email ... returned Null MX (RFC 7505)
+#
+# `gamil.com` 때와 **같은 병**이다 -- SMTP 가 받았다는 것과 사람이 받는다는 것은 다르다.
+# 그때는 오타였고 이번은 자리표 주소다. 둘 다 **보내기 전에** 아는 것이다.
+for _주소, _낱말 in (("test@example.com", "example.com"),
+                  ("a@example.org", "example.org"),
+                  ("b@invalid", "invalid")):
+    _r = mailer.보내기(_주소, "제목", "본문")
+    ok(_r.get("보냈나") is False, f"{_주소} 로는 안 보낸다")
+    ok(_낱말 in str(_r.get("말", "")) or "꼴이 아니다" in str(_r.get("말", "")),
+       f"왜 못 보내는지 그 도메인을 들어 말한다 ({_주소})")
+_r = mailer.보내기("test@example.com", "제목", "본문")
+ok("USER_EMAIL" in (_r.get("필요한것") or []),
+   "**무엇을 주면 되는지까지 말한다** -- `!열쇠 USER_EMAIL=<주소>`")
+ok("사람에겐 안 간다" in str(_r.get("말", "")),
+   "SMTP 성공과 사람이 받는 것은 다르다고 적는다 -- 2026-09-11 에 배운 그 줄")
+
 print()
 if FAIL:
     print(f"실패 {len(FAIL)}개 -- {FAIL}")
