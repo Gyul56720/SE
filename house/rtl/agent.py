@@ -94,6 +94,46 @@ def mtbf(단수: int, f_clk=100e6, f_data=10e6, tau_ps=25.0, Tw_ps=30.0, Tclk_ns
 
 # ------------------------------------------------------------------ 업무 한 바퀴
 
+def _스윕조합(훑: dict, 설계, 빠르게=False) -> list:
+    """이 회로의 파라미터를 반/두 배로 흔든 조합. **회로 이름을 안 박는다.**
+
+    실측 2026-09-22: 여기에 `{"TAPS": 4}` 처럼 FIR 의 파라미터 이름이 박혀 있었다.
+    MERA 를 넘겨도 그대로라 **이름만 바뀐 FIR 보고서**가 된다.
+
+    수로 된 기본값을 가진 파라미터만 흔든다 -- 글자 파라미터를 반으로 나눌 수는 없다.
+    흔들 것이 없으면 **기본 구성 하나만** 돌리고 그렇게 적는다(빈 표보다 낫다).
+    """
+    기본 = dict(getattr(설계, "파라", {}) or {})
+    # **톱 모듈의 파라미터만 쓴다.** 하위 모듈 것을 섞으면 verilator 가
+    # "Parameters from the command line were not found in the design" 으로 죽는다.
+    for k, v in (훑.get("톱파라미터") or {}).items():
+        if k in 기본:
+            continue
+        v = str(v).strip()
+        if re.fullmatch(r"\d+", v):
+            기본[k] = int(v)
+    수파라 = {k: v for k, v in 기본.items() if isinstance(v, int) and v > 0}
+    if not 수파라:
+        return [{}]
+    # 큰 것부터 -- 치수를 정하는 파라미터일 가능성이 높다
+    이름들 = sorted(수파라, key=lambda k: -수파라[k])[:2 if 빠르게 else 3]
+    조합 = [dict(기본)]
+    for k in 이름들:
+        for 배 in ((2,) if 빠르게 else (2, 0.5)):
+            새값 = max(1, int(수파라[k] * 배))
+            if 새값 == 수파라[k]:
+                continue
+            조합.append({**기본, k: 새값})
+    # 같은 것이 겹치면 뺀다
+    본것, 난것 = set(), []
+    for c in 조합:
+        열쇠 = tuple(sorted(c.items()))
+        if 열쇠 not in 본것:
+            본것.add(열쇠)
+            난것.append(c)
+    return 난것[:3 if 빠르게 else 6]
+
+
 def 일하기(빠르게=False, 회귀수=2000, 설계=None) -> dict:
     """실제로 도구를 돌리고 잰 것을 모은다."""
     from house import designs as DES
@@ -107,12 +147,23 @@ def 일하기(빠르게=False, 회귀수=2000, 설계=None) -> dict:
     결과["회로를본장"] = ["lint", "elaborate", "합성", "CDC"]
     결과["회로와무관한장"] = ["HLS 설계공간 탐색"]
 
+    # --- 0. **이 회로를 실제로 읽는다.** 회로를 안 가리는 유일한 길은 RTL 글에서
+    #        읽어 내는 것이다. 손으로 적어 둔 FIR 의 CDC 표 · 파라미터 조합 ·
+    #        데이터패스 식은 MERA 를 넘겨도 그대로다 -- 이름만 바뀐 FIR 보고서가 된다.
+    from house import rtlscan as SCAN
+    결과["훑기"] = SCAN.훑기(d0.RTL, d0.top)
+
     # --- 1. lint · elaborate (두 도구로) ---
     결과["lint"] = SIM.lint(설계=d0)
     결과["iverilog"] = SIM.iverilog_확인(설계=d0)
 
     # --- 2. HLS 설계 공간 탐색 ---
-    식 = "(a0*x0 + a1*x1) + (a2*x2 + a3*x3)"
+    # **식을 이 회로의 크기에서 뽑는다.** 박아 둔 FIR 의 식을 쓰면 어느 회로를
+    # 넘겨도 같은 표가 나온다. 다만 이것은 **크기만 흉내낸 식**이지 이 회로의
+    # 데이터패스가 아니다 -- 보고서에 그렇게 적는다(`회로와무관한장`).
+    식 = SCAN.데이터패스식(결과["훑기"]) if 결과["훑기"].get("됐나") \
+        else "(a0*x0 + a1*x1) + (a2*x2 + a3*x3)"
+    결과["HLS식"] = 식
     hls표 = []
     for 이름, res in (("4곱셈기", {"mul": 4, "add": 2, "sub": 2}),
                     ("2곱셈기", {"mul": 2, "add": 1, "sub": 1}),
@@ -149,13 +200,18 @@ def 일하기(빠르게=False, 회귀수=2000, 설계=None) -> dict:
     결과["흔적"] = 흔적
 
     # --- 5. 파라미터 재사용성: 합성 스윕 ---
+    # **이 회로의 파라미터를 쓴다.** `TAPS`/`STAGES` 는 FIR 의 이름이다 -- MERA 에
+    # 그것을 넘기면 verilator 가 "그런 파라미터 없다" 로 죽거나 조용히 무시한다.
+    # 수로 된 기본값을 가진 파라미터를 골라 **반/두 배**로 흔든다.
     스윕 = []
-    조합 = [{"TAPS": 4, "STAGES": 3}, {"TAPS": 8, "STAGES": 3}, {"TAPS": 16, "STAGES": 3},
-          {"TAPS": 8, "STAGES": 2}, {"TAPS": 8, "STAGES": 3, "GATE_POLICY": 0}]
-    if 빠르게:
-        조합 = 조합[:2]
+    조합 = _스윕조합(결과["훑기"], d0, 빠르게)
+    결과["스윕조합"] = 조합
     for c in 조합:
-        r = SYN.합성(c)
+        try:
+            r = SYN.합성(c, 설계=d0)
+        except Exception as e:                               # noqa: BLE001
+            스윕.append({"파라": c, "실패": f"{type(e).__name__}: {str(e)[-160:]}"})
+            continue
         if r.get("됐나"):
             st = SYN.sta(r, 주기=10.0)
             스윕.append({"파라": c, "면적": r["면적_um2"], "셀수": r["셀수"],
@@ -166,9 +222,20 @@ def 일하기(빠르게=False, 회귀수=2000, 설계=None) -> dict:
     결과["스윕"] = 스윕
 
     # --- 6. 파라미터 기능 회귀 (재사용성은 '돌아야' 재사용이다) ---
+    # **스윕이 에이전트를 죽이면 안 된다.** 실측 2026-09-22: `ACCW` 를 두 배(80)로
+    # 흔들었더니 출력이 64비트를 넘어 테스트벤치가 컴파일에서 죽었다.
+    #
+    #     error: invalid cast from type 'VlWide<3>' to type 'int64_t'
+    #
+    # 그 구성이 **안 돌아간다는 것은 참말**이고 적을 값어치가 있다. 그러나 그것 때문에
+    # 보고서 전체가 안 나오면 안 된다 -- 한 구성의 한계가 열세 쪽을 삼킨다.
     재사용 = []
-    for c in ({"STAGES": 2}, {"STAGES": 3}, {"CDC_STAGES": 3}):
-        r = SIM.돌리기(c, seed=31, txn=400)
+    for c in (조합[:3] or [{}]):
+        try:
+            r = SIM.돌리기(c, seed=31, txn=400, 설계=d0)
+        except Exception as e:                               # noqa: BLE001
+            재사용.append({"파라": c, "못돌림": f"{type(e).__name__}: {str(e)[-160:]}"})
+            continue
         재사용.append({"파라": c, "pass": r["pass"], "fail": r["fail"],
                     "timeout": r["timeout"], "cov": round(r["cov_pct"], 1)})
     결과["재사용"] = 재사용
@@ -483,7 +550,7 @@ assign sum = (raw > SAT_HI) ? SAT_HI : (raw < SAT_LO) ? SAT_LO : raw[ACCW-1:0];"
         [[x["파라"].get("STAGES", "기본"), x["파라"].get("STAGES", 3),
           "MUL|ADD" if x["파라"].get("STAGES") == 2 else "MUL|ADD|SAT",
           f"{x['pass']} 통과 / {x['fail']} 실패 / {x['timeout']} 타임아웃"]
-         for x in 잰것["재사용"] if "STAGES" in x["파라"]],
+         for x in 잰것["재사용"] if "STAGES" in x["파라"] and "pass" in x],
         "파이프라인 깊이를 바꿔도 기능이 유지되는지 <b>실제로 돌려</b> 확인했다.",
         "verilator, seed=31, 400 거래")
 
@@ -514,10 +581,14 @@ assign sum = (raw > SAT_HI) ? SAT_HI : (raw < SAT_LO) ? SAT_LO : raw[ACCW-1:0];"
          "40개가 빠져 면적이 줄고, abc 가 다르게 최적화해 Fmax 가 올랐다. "
          "<b>이것은 주파수 손잡이가 아니라 지연 손잡이다.</b> 다음 판에서 곱셈기를 "
          "두 단으로 쪼개 진짜 깊이 파라미터로 만든다 — 그때까지 이 이름은 오해를 부른다.")
+    # **못 돌린 구성도 줄로 남긴다.** 빼 버리면 표가 "다 돌았다" 로 읽힌다.
     R.표(["바꾼 파라미터", "통과", "실패", "타임아웃", "커버리지(%)"],
-        [[json.dumps(x["파라"], ensure_ascii=False), x["pass"], x["fail"], x["timeout"], x["cov"]]
+        [[json.dumps(x["파라"], ensure_ascii=False),
+          x.get("pass", "—"), x.get("fail", "—"), x.get("timeout", "—"),
+          x.get("cov", x.get("못돌림", "—"))]
          for x in 잰것["재사용"]],
-        "<b>재사용이란 돌아야 재사용이다.</b> 파라미터를 바꾼 뒤 기능 회귀를 다시 돌린 결과.",
+        "<b>재사용이란 돌아야 재사용이다.</b> 파라미터를 바꾼 뒤 기능 회귀를 다시 돌린 결과. "
+        "<b>못 돌린 구성은 까닭을 적는다</b> — 빼 버리면 이 표가 '다 돌았다' 로 읽힌다.",
         "verilator", 강조열=[2])
 
     # ---------------- 6. 클럭 게이팅 ----------------
