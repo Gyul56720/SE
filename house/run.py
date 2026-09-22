@@ -12,6 +12,7 @@ house/report.py 의 `보내기_첨부` 가 첨부 없는 발송을 거부한다(
 """
 from __future__ import annotations
 
+import re
 import json
 import sys
 import time
@@ -105,6 +106,70 @@ def 한명(키: str, 빠르게=False, 회로=None) -> dict:
     r["키"] = 키
     r["초"] = round(time.time() - t0, 1)
     return r
+
+
+def 승인하기(키: str = "", 바퀴: int = 3, 메일: bool = False, to=None) -> dict:
+    """**사람이 승인한 스펙으로 RTL·TB 를 짓는다.** 제안서 다음 칸이다.
+
+    사용자(2026-09-22): 제안서를 보고 "하나로 진행" -- 이대로 승인.
+    그런데 그 칸을 탈 길이 없었다. 흐름 그림에는 `사람 승인 -> RTL·TB 생성` 이
+    있는데 명령이 없었고, `!회사 rtl` 은 **고정 회로**를 돌릴 뿐 승인한 스펙을
+    안 본다. 그림이 약속한 것을 코드가 안 하고 있었다.
+
+    **제안서를 낸 그 스펙 그대로 짓는다**(`arch.스펙두기` 가 둔 것). 요청 글을
+    다시 읽지 않는다 -- 다시 읽으면 모델이 또 다르게 채우고, 그러면 **사람이 본
+    것과 다른 것을 짓게 된다.**
+
+    관문 7개는 `gen.짓기` 안에 있다. 하나라도 빨가면 **등록하지 않는다** --
+    반쯤 된 RTL 위에 다음 단계를 쌓지 않는다.
+    """
+    t0 = time.time()
+    from house import arch as ARCH
+    from house import gen as GEN
+    키 = (키 or "").strip()
+    if not 키:
+        둔것 = ARCH.둔스펙들()
+        if len(둔것) != 1:
+            return {"됐나": False, "까닭":
+                    ("승인할 제안서가 없다 -- 먼저 `!회사 설계 <요청>` 을 돌려라"
+                     if not 둔것 else
+                     f"둔 스펙이 {len(둔것)}개다. 어느 것인지 대라: {', '.join(둔것)}"),
+                    "둔것": 둔것}
+        키 = 둔것[0]
+    s = ARCH.스펙꺼내기(키)
+    if s is None:
+        return {"됐나": False, "까닭": f"`{키}` 로 둔 스펙이 없다", "둔것": ARCH.둔스펙들()}
+    쓸 = GEN.쓸수있나()
+    if not 쓸["됨"]:
+        # **못 지으면 못 짓는다고 한다.** 빈 RTL 을 내놓지 않는다.
+        return {"됐나": False, "까닭": 쓸["말"], "키": 키}
+    주기 = 10.0
+    for 목 in (s.목표 or []):
+        m = re.search(r"([\d.]+)\s*(?:MHz|㎒)", str(목.get("값", "")), re.I)
+        if m:
+            try:
+                주기 = 1000.0 / float(m.group(1))       # MHz -> ns
+            except (ValueError, ZeroDivisionError):
+                pass
+            break
+    r = GEN.짓기(s, 키, 바퀴=바퀴, 주기_ns=주기)
+    r["키"] = 키
+    r["초"] = round(time.time() - t0, 1)
+    r["주기_ns"] = 주기
+    _원장적기({"키": f"gen:{키}", "됐나": r.get("됐나"), "바퀴수": r.get("바퀴수"),
+             "top": r.get("top"), "RTL": r.get("RTL"), "TB": r.get("TB"),
+             "초": r["초"]})
+    return r
+
+
+def _원장적기(줄: dict):
+    try:
+        원장.parent.mkdir(parents=True, exist_ok=True)
+        줄 = dict(줄, 때=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
+        with open(원장, "a", encoding="utf-8") as f:
+            f.write(json.dumps(줄, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
 
 
 def 메일보내기(r: dict, 특이사항=None, to=None) -> dict:
@@ -228,6 +293,19 @@ if __name__ == "__main__":
         print(f"선행조사 -> {r.get('선행조사')}")
         for t in (r.get("요약") or []):
             print(" · " + t.replace("<b>", "").replace("</b>", ""))
+        raise SystemExit(0)
+    if "--승인" in av:
+        i = av.index("--승인")
+        키 = av[i + 1] if i + 1 < len(av) and not av[i + 1].startswith("--") else ""
+        r = 승인하기(키, 메일=("--메일" in sys.argv))
+        if not r.get("됐나"):
+            print(f"!! 못 지었다: {r.get('까닭')}")
+            for 바 in (r.get("이력") or [])[-2:]:
+                print(f"   바퀴 {바.get('바퀴')}: {바.get('오류') or 바.get('관문')}")
+            raise SystemExit(1)
+        print(f"RTL -> {r.get('RTL')}\nTB  -> {r.get('TB')}")
+        print(f"관문 7개 통과 · {r.get('바퀴수')} 바퀴 · {r.get('초')} s "
+              f"· 목표 주기 {r.get('주기_ns')} ns")
         raise SystemExit(0)
     회 = None
     if "--회로" in av:
