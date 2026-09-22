@@ -48,7 +48,16 @@ def 설계하기(요청: str, 메일: bool = False, to=None) -> dict:
     from house import arch as ARCH
     r = ARCH.돌리기(요청)
     r.setdefault("사람", people.ETHAN)     # 스펙에서 RTL 로 가는 자리가 Ethan 이다
-    r.setdefault("과제", 요청.strip()[:60] or "새 회로")
+    # **사람 글을 그대로 제목에 넣지 않는다.** 이 값이 메일 제목이 된다.
+    # `.strip()[:60]` 은 가운데 줄바꿈을 그대로 남기고, 실측 2026-09-22 에 그것이
+    # 메일을 터뜨렸다 -- 제안서는 멀쩡히 나왔는데:
+    #
+    #     ValueError: Header values may not contain linefeed or carriage return characters
+    #
+    # 자연어 요청이 회사에 바로 닿게 되면서(#356) 요청이 **여러 줄**로 들어온 것이다.
+    # `mailer.바깥글()` 이 줄바꿈을 누르고 대괄호를 괄호로 바꾼다(자리표 관문).
+    import mailer as _M
+    r.setdefault("과제", _M.바깥글(요청, 60) or "새 회로")
     r["키"] = "arch"
     if 메일:
         m = 메일보내기(r, to=to, 특이사항=_제안서특이사항(r))

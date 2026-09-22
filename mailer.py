@@ -154,6 +154,50 @@ def 자리표들(글: str, 허용=()) -> "list[str]":
                               if m.group(0) not in 봐줌))
 
 
+def 바깥글(값, 상한: "int | None" = None) -> str:
+    """**사람이 보낸 글**을 제목·본문에 옮겨 적을 때 한 번 눌러 준다.
+
+    자리표 관문(`자리표들`)은 모델이 **안 채운 칸**(`[기관]` · `[날짜]`)을 잡으려고
+    있다. 그런데 사람이 보낸 요청 글이 그대로 제목·본문에 실리면서, 그 안의 대괄호가
+    같은 꼴로 읽혔다. 실측 2026-09-21~22 에 이 자리에서 메일이 **네 번** 막혔다
+    (`[보고]` · `['속도','면적','정밀도']` · `[모델]` · 요청 글의 `[MERA-1]`).
+
+    사람 글의 대괄호는 자리표가 아니다. 그러니 **옮겨 적을 때 괄호로 바꾼다** --
+    관문을 느슨하게 하는 것이 아니라(그러면 진짜 안 채운 칸을 놓친다), 관문에
+    걸릴 꼴로 옮겨 적는 쪽을 고친다.
+
+    줄바꿈도 같이 눌러 준다 -- 제목에 들어가면 헤더가 터진다(`_머리값` 참고).
+    """
+    t = " ".join(("" if 값 is None else str(값)).split())
+    t = t.replace("[", "(").replace("]", ")")
+    return t[:상한].strip() if 상한 else t
+
+
+def _머리값(값, 상한: int = 998) -> str:
+    """메일 **머리 한 줄**에 넣어도 되는 꼴로 눌러 준다.
+
+    실측 2026-09-22. 제안서는 멀쩡히 나왔는데 메일 단계에서 이렇게 터졌다.
+
+        ValueError: Header values may not contain linefeed or carriage return characters
+
+    까닭은 제목이 **요청 글 앞 60자**인데(`house/run.py`), 자연어 요청이 회사에
+    바로 닿게 되면서(#356) 그 글이 **여러 줄**로 들어왔기 때문이다. `.strip()` 은
+    앞뒤만 떼지 **가운데 줄바꿈은 그대로 남긴다.**
+
+    **그런데 이것은 죽는 문제만이 아니다.** 머리값에 `\n` 을 넣을 수 있다는 것은
+    거기에 `Bcc:` 한 줄을 끼워 넣을 수 있다는 뜻이다(헤더 인젝션). 제목은 사람이
+    보낸 글에서 온다 -- 즉 **남이 정하는 값**이다. 그래서 부르는 쪽이 조심하기를
+    기대하지 않고 **여기서** 막는다. 이 함수가 마지막 방벽이다.
+
+    줄바꿈·탭·널·제어문자를 전부 공백으로 바꾸고, 이어진 공백을 하나로 줄이고,
+    RFC 5322 의 한 줄 상한(998 옥텟)보다 짧게 자른다.
+    """
+    t = "" if 값 is None else str(값)
+    t = "".join(" " if (c in "\r\n\t\x00" or ord(c) < 32) else c for c in t)
+    t = " ".join(t.split())
+    return t[:상한].strip()
+
+
 def 묻는말(빠진: "list[str]") -> str:
     설명 = {"SMTP_USER": "보내는 gmail 주소", "SMTP_APP_PASSWORD": "16자리 앱 비밀번호"}
     줄 = ["보내려면 이것이 필요하다 -- **딱 이것만** 달라 (관리 채널에서, 값은 안 보여준다):"]
@@ -240,7 +284,9 @@ def 보내기(to: str, subject: str, body: str, repo=None, 초: int = 30,
     except ValueError:
         port = int(기본["SMTP_PORT"])
     msg = EmailMessage()
-    msg["From"], msg["To"], msg["Subject"] = user, to, subject.strip()
+    msg["From"] = _머리값(user)
+    msg["To"] = _머리값(to)
+    msg["Subject"] = _머리값(subject, 상한=180) or "(제목 없음)"
     msg.set_content(body or "")
     붙인것 = []
     for a in (첨부 or []):

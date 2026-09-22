@@ -258,6 +258,69 @@ ok("사람에겐 안 간다" in str(_r.get("말", "")),
    "SMTP 성공과 사람이 받는 것은 다르다고 적는다 -- 2026-09-11 에 배운 그 줄")
 
 print()
+print("[머리 한 줄] 줄바꿈이 든 제목은 메일을 터뜨린다")
+# **실측 2026-09-22.** 제안서는 멀쩡히 나왔는데(`끝 house-arch 0.3분`) 메일에서 터졌다:
+#
+#     msg["From"], msg["To"], msg["Subject"] = user, to, subject.strip()
+#     ValueError: Header values may not contain linefeed or carriage return characters
+#
+# 까닭은 제목이 **요청 글 앞 60자**인데(house/run.py), 자연어 요청이 회사에 바로
+# 닿게 되면서(#356) 그 글이 **여러 줄**로 들어왔기 때문이다. `.strip()` 은 앞뒤만
+# 뗀다 -- 가운데 줄바꿈은 그대로 남는다.
+ok(mailer._머리값("가\n나") == "가 나", "줄바꿈을 공백으로 누른다")
+ok(mailer._머리값("가\r\n나\t다") == "가 나 다", "CR·탭도 같이 누른다")
+ok("\n" not in mailer._머리값("a\nBcc: evil@x.com"),
+   "**헤더 인젝션 자리이기도 하다** -- 제목은 남이 정하는 값이고, 줄바꿈을 넣을 수 "
+   "있다는 것은 `Bcc:` 한 줄을 끼워 넣을 수 있다는 뜻이다")
+ok(len(mailer._머리값("가" * 3000)) == 998, "RFC 5322 의 한 줄 상한보다 짧게 자른다")
+ok(mailer._머리값(None) == "" and mailer._머리값("") == "", "None·빈 값에도 안 죽는다")
+
+print()
+print("[바깥글] 사람 글의 대괄호는 자리표가 아니다")
+# 이 자리에서 메일이 **네 번** 막혔다: `[보고]` · `['속도','면적','정밀도']` ·
+# `[모델]` · 그리고 요청 글의 대괄호. 관문을 느슨하게 하면 진짜 안 채운 칸을
+# 놓치므로, **옮겨 적는 쪽**을 고친다.
+ok(mailer.바깥글("(MERA-1) 요구\n사항") == "(MERA-1) 요구 사항", "줄바꿈을 누른다")
+ok(mailer.바깥글("[MERA-1] 요구사항") == "(MERA-1) 요구사항", "대괄호를 괄호로 바꾼다")
+ok(mailer.자리표들("[REPORT] " + mailer.바깥글("[MERA-1] 8탭 FIR"), ["[REPORT]"]) == [],
+   "**그러고 나면 자리표 관문을 지난다** -- 말머리만 허용하고도")
+ok(mailer.자리표들("[REPORT] [기관] 보고서", ["[REPORT]"]) == ["[기관]"],
+   "**관문은 그대로 문다** -- 모델이 안 채운 칸은 여전히 걸린다")
+ok(mailer.바깥글("가" * 300, 60) == "가" * 60, "상한을 주면 자른다")
+
+print()
+print("[끝에서 끝까지] 여러 줄 요청이 메일까지 간다")
+# 글자만 보는 검사는 이 자리에서 이미 거짓 초록을 냈다 -- **house/run.py 가 실제로
+# 짓는 제목**을 만들어, 터지던 그 줄에 그대로 넣어 본다.
+import house.report as _RPT                                       # noqa: E402
+from house import people as _PEOPLE                               # noqa: E402
+from email.message import EmailMessage as _EM                     # noqa: E402
+_여러줄 = """### 3. FIR Functional Requirements
+
+본 IP는 [AXI4-Stream] 기반의 실시간 FIR 필터 IP이며,
+500 MHz 에서 돌아야 합니다."""
+_제목 = _RPT.메일제목(_PEOPLE.ETHAN, mailer.바깥글(_여러줄, 60) or "새 회로")
+ok("\n" not in _제목 and "\r" not in _제목, f"제목에 줄바꿈이 없다 ({_제목[:50]!r})")
+ok(mailer.자리표들(_제목, [_RPT.SUBJECT_TAG]) == [],
+   f"**그 제목이 자리표 관문을 지난다** ({_제목[:60]!r})")
+try:
+    _m = _EM()
+    _m["Subject"] = mailer._머리값(_제목, 상한=180)
+    _탔나 = False
+except ValueError:
+    _탔나 = True
+ok(not _탔나, "**EmailMessage 가 실제로 받는다** -- 터지던 그 줄을 그대로 돌려 본다")
+
+# **고치기 전에는 정말 터졌나.** 안 무는 검사는 없느니만 못하다.
+try:
+    _m2 = _EM()
+    _m2["Subject"] = _여러줄.strip()[:60]        # 고치기 전의 그 식
+    _옛날탔나 = False
+except ValueError:
+    _옛날탔나 = True
+ok(_옛날탔나, "**고치기 전의 식(`.strip()[:60]`)은 실제로 터진다** -- 그것이 이 검사의 근거다")
+
+print()
 if FAIL:
     print(f"실패 {len(FAIL)}개 -- {FAIL}")
     raise SystemExit(1)
