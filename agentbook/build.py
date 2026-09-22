@@ -93,6 +93,7 @@ import bookK                                   # noqa: E402
     ("12부. 레포 해부 — 읽은 커밋만 인용한다", [
         ("R0_langchain", ["ch_langchain"]),
         ("R1_langgraph", ["ch_langgraph"]),
+        ("R2_ax", ["ch_ax"]),
         ("R2_mcp_sdk",   ["ch_mcp_sdk"]),
         ("R3_swe",       ["ch_swe"]),
         ("R4_aider",     ["ch_aider"]),
