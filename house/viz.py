@@ -69,11 +69,25 @@ def _수(x, 자리=4) -> str:
 
 
 def svg(폭, 높이, 몸, 제목="") -> str:
-    """바깥 틀.  max-width 로 PDF 와 브라우저 둘 다에서 안 넘친다."""
+    """바깥 틀.  max-width 로 PDF 와 브라우저 둘 다에서 안 넘친다.
+
+    **`font-family` 에 따옴표가 없었다.** 실측 2026-09-23: 이 저장소가 내는
+    **그림 전부**가 XML 로 안 읽혔다.
+
+        font-family=&#x27;NanumGothic&#x27;,&#x27;Noto Sans CJK KR&#x27;,sans-serif
+                    ^ 따옴표 없이 시작해서 공백에서 잘린다
+
+    보고서 PDF 는 멀쩡해 보였다 -- HTML 안에 박힌 SVG 는 너그럽게 읽히기
+    때문이다. 그래서 **아무도 몰랐다.** 그런데 같은 글을 `.svg` 파일 하나로
+    내면 브라우저가 통째로 거절한다(빈 쪽이 나온다). 그림을 파일로 건네는
+    길이 막혀 있었던 것이고, 그것을 해 보기 전에는 드러나지 않았다.
+
+    `tests/test_그림XML.py` 가 그림마다 실제로 XML 파서에 넣어 본다.
+    """
     t = f"<title>{_e(제목)}</title>" if 제목 else ""
     return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {폭} {높이}" '
             f'width="100%" style="max-width:{폭}px;height:auto" '
-            f'font-family={_e(글꼴)!s} font-size="11">{t}{몸}</svg>')
+            f'font-family="{_e(글꼴)}" font-size="11">{t}{몸}</svg>')
 
 
 def _글(x, y, s, 크기=11, 색=None, 맞춤="start", 굵게=False, 기울임=False, 글꼴이름=None):
