@@ -7,7 +7,7 @@
 증명하지 않는다 -- 이 저장소가 반복해서 진 자리가 정확히 거기다
 (CLAUDE.md: "검사하지 않은 초록불이 검사한 빨간불보다 나쁘다").
 
-그래서 생성물은 **관문 열다섯 개**를 지나야 등록된다:
+그래서 생성물은 **관문 열여섯 개**를 지나야 등록된다:
 
     1.  문법        verilator --lint-only -Wall      (경고도 본다)
     2.  두번째도구  iverilog -g2012 엘라보레이트     (한 도구만 믿지 않는다)
@@ -15,6 +15,7 @@
     4.  골든대조    무작위 벡터 N개, 기준모델과 값 비교
     4b. 커버리지    자극이 거기까지 닿았나 (**기능** 빈)
     4c. 코드커버리지 RTL 의 줄·가지·비트에 닿았나 (verilator --coverage)
+    4d. 어서션     RTL 안의 규칙이 있고, 켜서 돌려도 안 터지나 (SVA)
     5.  회귀        씨앗 여럿 (씨앗 둘은 회귀가 아니다)
     5b. 초기화      리셋 직후 출력이 확정인가 (X 전파 없나)
     5c. 자해검사    변이를 심어 **검사기가 정말 무는지**
@@ -70,6 +71,19 @@ RTL프롬프트 = """너는 디지털 RTL 설계자다. 아래 스펙대로 **�
 1. **톱 모듈 이름은 `{top}`** 이다. 필요한 하위 모듈은 같은 파일에 써라.
 2. **합성 가능한 것만.** initial · delay(#) · $display · real · 동적 배열 금지.
    (테스트벤치가 아니다. 칩에 들어갈 코드다.)
+2b. **어서션을 넣어라 (최소 4개).** 반드시 `` `ifdef SVA_ON `` ~ `` `endif ``
+   로 감싸라 -- 안 감싸면 iverilog 와 yosys 가 **파싱에서 죽는다**(실측).
+   verilator 5.020 이 받는 것만 써라:
+
+       받는다   |->  |=>  $past  $rose/$fell/$stable  $onehot  즉시 assert
+       거부한다  ##n (지연)   [*n] (반복)
+
+   꼴: ``이름: assert property (@(posedge clk) disable iff (!rst_n) 성질)
+   else $error("무엇이 깨졌나 %b", 신호);``
+   **참말만 적어라** -- 돌려서 터지면 관문 4d 가 빨갛다. 리셋에 대해서는
+   *리셋 창 내내* 가 아니라 **리셋을 놓는 순간**을 적어라
+   (`$rose(rst_n) |-> 초기상태`). 엣지로만 도는 플롭은 첫 엣지 전까지
+   초기값이라 전자는 시간 0 에서 터진다.
 3. **리셋은 비동기 assert · 동기 deassert**, active-low `rst_n`. 모든 플롭이
    리셋에서 확정 값을 가져야 한다 -- X 가 남으면 안 된다.
 4. **래치를 만들지 마라.** 조합 always 는 모든 갈래에서 값을 준다(default 를 둬라).
@@ -267,6 +281,25 @@ def 포트뽑기(sv: str, top: str) -> list:
     "토글_pct": None,
     "커버리지벡터": 400,
     "커버리지씨": 1,
+
+    # ---- 어서션 (관문 4d) ----
+    #
+    # 실측 2026-09-23. **verilator 5.020 이 받는 것만 쓸 수 있다.**
+    #
+    #     받는다  |-> · |=> · $past · $rose/$fell/$stable · $onehot ·
+    #             cover property · assume property · 즉시 assert
+    #     거부한다 ##n (cycle delay) · [*n] (boolean abbrev)
+    #
+    # 그리고 **어서션은 다른 관문을 깨뜨린다** -- `assert property` 를 그냥 두면
+    # iverilog(관문 2)도 yosys(관문 6)도 파싱에서 죽는다. 그래서 RTL 이
+    # `` `ifdef SVA_ON `` 으로 감싸고 이 관문만 `-DSVA_ON` 으로 켠다.
+    #
+    # 문턱은 **개수**다. 수를 고른 근거: nsw_fir 에 10개를 넣어 보니 상태 one-hot ·
+    # 리셋 탈출 · busy/done 배타 · done 유지 · 카운터 상한 둘 · coef_we 조건 ·
+    # dp_en 조건 · 포트 one-hot · 게이트 조건이 나왔다. **4 는 그 절반 아래**라
+    # 회로가 작아도 넘길 수 있고, 0 개짜리 RTL 은 확실히 문다.
+    "어서션수": 4,
+    "어서션씨앗": (1, 2, 3),
 
     # ---- 다중 코너 STA · OCV (관문 7b) ----
     #
@@ -500,6 +533,16 @@ def 관문(설계, 벡터=400, 주기_ns=10.0, 문턱=None, 빠르게=False) -> 
     # 사람에게 간다. 빨간 것은 빨갛다고 적고 계속 잰다 -- 통과 여부는 끝에서
     # `all(...)` 이 정하므로 느슨해지지 않는다.
 
+    # 4d. **어서션.** 스코어보드는 바깥에서 값을 견주고, 어서션은 **안에서**
+    # 규칙을 붙든다. 둘은 다른 자리를 본다. 여기서 사슬을 안 끊는다.
+    try:
+        A = 어서션(설계, 문턱)
+        결과["어서션"] = A
+        for 이름, 됐나, 말, 수 in 어서션판정(A, 문턱):
+            적기(이름, 됐나, 말, 수)
+    except Exception as e:                                   # noqa: BLE001
+        적기("4d. 어서션 (SVA)", False, f"{type(e).__name__}: {e}")
+
     # 5. **제약 랜덤 회귀.** 씨앗 둘은 회귀가 아니다 -- 씨앗을 타는 버그가 그대로
     #    통과한다. 업계의 회귀는 밤새 수백 씨앗을 돈다. 여기서는 N 씨앗을 돌고
     #    **몇 번째 씨앗에서 깨졌는지**를 적는다(재현에 그 수가 필요하다).
@@ -611,6 +654,93 @@ def 관문(설계, 벡터=400, 주기_ns=10.0, 문턱=None, 빠르게=False) -> 
 
     결과["통과"] = all(x["됐나"] for x in 결과["단계"])
     return 결과
+
+
+_어서션꼴 = (
+    ("동시", re.compile(r"\bassert\s+property\s*\(")),
+    ("커버", re.compile(r"\bcover\s+property\s*\(")),
+    ("가정", re.compile(r"\bassume\s+property\s*\(")),
+    ("즉시", re.compile(r"\bassert\s*\((?!\s*property)")),
+)
+
+
+def 어서션(설계, 문턱: dict) -> dict:
+    """RTL 의 어서션을 **세고, 켜서 돌려 본다.**
+
+    ## 세는 것만으로는 관문이 아니다
+
+    개수만 보면 `assert property (@(posedge clk) 1'b1)` 열 줄로 통과한다.
+    그래서 **켜고 돌린다** -- `--assert -DSVA_ON` 으로 지어 회귀 자극을 먹이고,
+    하나라도 터지면 빨갛다. 어서션이 터지면 verilator 는 `$stop` 으로 죽으므로
+    (실측: rc=134, JSON 이 안 나온다) 여기서는 `sim.돌리기` 를 안 쓰고
+    직접 돌려 종료 코드와 글을 본다.
+
+    ## 켜는 것 자체가 한 번 틀렸었다
+
+    첫 판의 리셋 어서션은 `!rst_n |-> st == S_IDLE` 이었는데 **시간 0 에서
+    터졌다**. `always @(posedge clk or negedge rst_n)` 은 엣지로만 도는데
+    rst_n 이 처음부터 0 이면 내려간 엣지가 없어 플롭이 초기값인 채로 첫 엣지를
+    맞는다. 어떤 설계든 그렇다 -- 그러니 그것을 흠이라 적은 **어서션이 틀렸다.**
+    지금은 `$rose(rst_n) |-> st == S_IDLE`(리셋 탈출)로 적는다.
+    """
+    from house import sim as SIM
+    t0 = time.time()
+    갈래 = {이름: 0 for 이름, _ in _어서션꼴}
+    for 길 in (설계.RTL or []):
+        글 = Path(길).read_text(encoding="utf-8", errors="replace")
+        for 이름, 꼴 in _어서션꼴:
+            갈래[이름] += len(꼴.findall(글))
+    개수 = sum(갈래.values())
+    난것 = {"개수": 개수, "갈래": 갈래, "초": 0.0}
+    if 개수 == 0:
+        난것["초"] = round(time.time() - t0, 1)
+        return 난것
+    try:
+        실행 = SIM.빌드(설계=설계, 깃발=["--assert", "-DSVA_ON"])
+    except Exception as e:                                   # noqa: BLE001
+        난것["오류"] = f"어서션을 켜고 못 지었다 -- {type(e).__name__}: {str(e)[-400:]}"
+        난것["초"] = round(time.time() - t0, 1)
+        return 난것
+    터진것, 돈씨앗 = [], []
+    for 씨 in 문턱["어서션씨앗"]:
+        r = subprocess.run([str(실행), "--txn", "400", "--seed", str(씨)],
+                           capture_output=True, text=True, timeout=600)
+        돈씨앗.append({"씨": 씨, "rc": r.returncode})
+        for 줄 in (r.stdout + r.stderr).splitlines():
+            if "Assertion failed" in 줄:
+                터진것.append({"씨": 씨, "글": 줄.strip()[:240]})
+    난것.update({"돈씨앗": 돈씨앗, "터진것": 터진것, "터진수": len(터진것),
+               "초": round(time.time() - t0, 1)})
+    return 난것
+
+
+def 어서션판정(A: dict, 문턱: dict) -> list:
+    """**[(이름, 됐나, 말, 수)]**.  시뮬레이션을 안 돈다."""
+    if A.get("오류"):
+        return [("4d. 어서션 (SVA)", False, A["오류"], A.get("개수"))]
+    개수 = A["개수"]
+    갈래글 = " · ".join(f"{k} {v}" for k, v in A["갈래"].items() if v)
+    모자람 = 개수 < 문턱["어서션수"]
+    터짐 = A.get("터진수", 0)
+    말 = (f"<b>어서션 {개수}개</b>" + (f" ({갈래글})" if 갈래글 else "")
+         + f" · 문턱 {문턱['어서션수']}개\n")
+    if 개수:
+        말 += (f"<b>{len(A.get('돈씨앗', []))} 씨앗을 돌려 터진 것 {터짐}개</b> "
+              f"({A['초']} s)\n")
+        for x in A.get("터진것", [])[:4]:
+            말 += f"  씨{x['씨']}: {x['글']}\n"
+    말 += ("**세는 것만으로는 관문이 아니다** — 개수만 보면 "
+          "<code>assert property (@(posedge clk) 1'b1)</code> 열 줄로 통과한다. "
+          "그래서 <code>--assert -DSVA_ON</code> 으로 켜서 실제로 돌린다.\n"
+          "verilator 5.020 은 <code>|-></code> · <code>|=></code> · "
+          "<code>$past</code> · <code>$rose/$stable</code> · <code>$onehot</code> 을 "
+          "받고 <code>##n</code> 과 <code>[*n]</code> 은 <b>거부한다</b>. 그리고 "
+          "어서션을 그냥 두면 iverilog(관문 2)와 yosys(관문 6)가 파싱에서 죽으므로 "
+          "RTL 이 <code>`ifdef SVA_ON</code> 으로 감싸야 한다.")
+    if 모자람:
+        말 += f"\n**어서션이 {문턱['어서션수']}개보다 적다** — {개수}개뿐이다."
+    return [(f"4d. 어서션 (SVA) ≥ {문턱['어서션수']}개 · 터진 것 0",
+             not 모자람 and 터짐 == 0, 말, 개수)]
 
 
 def 코너타이밍(합성: dict, 주기_ns: float, 문턱: dict) -> dict:
