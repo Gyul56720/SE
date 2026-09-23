@@ -62,6 +62,37 @@ def 전력(합성결과: dict, 토글: dict, 주파수_MHz: float, P="tt", Vdd=1
             "플롭": 플롭, "P": P, "V": Vdd, "T": T}
 
 
+def _비교구성(기본: dict, 정책: "str | None", 몇=4) -> list:
+    """PI 가 설계팀에 돌려줄 **구성별 합성 비교**의 구성들. 회로에서 뽑는다.
+
+    실측 2026-09-23: `{"GATE_POLICY": 0}` · `{"STAGES": 2}` · `{"TAPS": 16}` 이
+    박혀 있었다 -- FIR 의 이름이다. 다른 회로에 넘기면 네 구성이 전부 **같은 것**이
+    되어(없는 파라미터는 무시된다), 표가 "파라미터를 바꿔도 면적이 비슷하다" 로
+    읽힌다. **거짓 초록이다.**
+
+    고르는 차례: 정책 깃발(0/1 양쪽) -> 값이 큰 파라미터를 반으로 -> 두 배로.
+    면적을 끄는 것은 대개 폭·개수처럼 값이 큰 쪽이다.
+    """
+    난것 = []
+    if 정책 is not None:
+        난것 += [{정책: 0}, {정책: 1}]
+    큰것 = sorted((k for k, v in (기본 or {}).items()
+                 if isinstance(v, int) and v > 1 and k != 정책),
+                key=lambda k: -기본[k])
+    for k in 큰것:
+        난것.append({k: max(1, 기본[k] // 2)})
+    for k in 큰것:
+        난것.append({k: 기본[k] * 2})
+    본것, 남 = set(), []
+    for c in 난것:
+        열 = tuple(sorted(c.items()))
+        if 열 in 본것:
+            continue
+        본것.add(열)
+        남.append(c)
+    return 남[:몇]
+
+
 def 일하기(빠르게=False, 설계=None) -> dict:
     from house import designs as DES
     d = 설계 or DES.NSW_FIR
@@ -82,7 +113,14 @@ def 일하기(빠르게=False, 설계=None) -> dict:
                       "까닭": f"`{d.키}` 의 RTL 을 못 읽어 UPF 점검을 건너뛴다"}
 
     # --- 합성 (기본 구성) ---
-    합 = SYN.합성(d.파라 or {"TAPS": 8, "STAGES": 3, "GATE_POLICY": 1}, 설계=d)
+    # **FIR 의 파라미터 이름을 되돌이값으로 쓰지 않는다.** `d.파라` 는 대개 비어
+    # 있으므로(실측: nsw_fir 도 `{}`) 이 되돌이값이 **늘 쓰이고 있었다** --
+    # 다른 회로에도 `TAPS=8 · STAGES=3` 이 넘어간다.
+    기본파라 = DES.파라기본(d)
+    R["기본파라"] = 기본파라
+    정책 = DES.정책파라(기본파라)
+    R["정책파라"] = 정책
+    합 = SYN.합성(기본파라 or None, 설계=d)
     R["합성"] = 합
     if not 합.get("됐나"):
         R["초"] = round(time.time() - R["시작"], 1)
@@ -114,23 +152,37 @@ def 일하기(빠르게=False, 설계=None) -> dict:
     R["OCV"] = PVT.ocv스큐(0.8)          # SDC 의 set_clock_latency -source 0.8
 
     # --- 전력 (DV 가 잰 토글로) ---
-    토글 = {}
-    for 정책 in (0, 1):
-        d = SIM.돌리기({"GATE_POLICY": 정책}, seed=17, txn=800, maxlen=256, cap=400000)
-        토글[정책] = {"clk_cycles": d["clk_cycles"], "gclk_cycles": d["gclk_cycles"],
-                   "절감": d["gate_save_pct"]}
+    # **`d` 를 덮어쓰고 있었다.** `d` 는 설계 객체인데 시뮬 결과 dict 로 가려져,
+    # 바로 그 줄에서 `설계=d` 를 넘길 수가 없었다 (그래서 안 넘어갔다 -- 어떤
+    # 회로를 넘겨도 nsw_fir 을 돌았다). 이름을 가르고 설계를 넘긴다.
+    def _토글재기(덮기=None):
+        r = SIM.돌리기(dict(기본파라, **(덮기 or {})) or None,
+                    seed=17, txn=800, maxlen=256, cap=400000, 설계=d)
+        return {"clk_cycles": r["clk_cycles"], "gclk_cycles": r["gclk_cycles"],
+                "절감": r["gate_save_pct"]}
+
+    # **전력은 게이팅 정책이 없어도 나와야 한다.** 옛 판은 `토글[0]`·`토글[1]` 을
+    # 그냥 찾아 썼는데, 그 칸은 `GATE_POLICY` 가 있는 회로에만 생긴다.
+    # 그리고 `for 정책 in (0, 1)` 이 **정책 파라미터 이름을 담은 변수를 가렸다**.
+    토글 = {값: _토글재기({정책: 값}) for 값 in ((0, 1) if 정책 else ())}
+    기준토글 = 토글.get(1) or 토글.get(0) or _토글재기()
     R["토글"] = 토글
-    R["전력"] = {}
-    for 정책 in (0, 1):
-        R["전력"][정책] = 전력(합, 토글[정책], 기본Fmax)
-    R["전력코너"] = [전력(합, 토글[1], 기본Fmax, P=P, Vdd=V, T=T)
+    R["기준토글"] = 기준토글
+    R["기본Fmax"] = 기본Fmax
+    R["전력"] = {값: 전력(합, t, 기본Fmax) for 값, t in 토글.items()}
+    # **A/B 가 없어도 전력 한 벌은 낸다.** 보고서가 그것을 쓴다.
+    R["전력기준"] = 전력(합, 기준토글, 기본Fmax)
+    R["전력코너"] = [전력(합, 기준토글, 기본Fmax, P=P, Vdd=V, T=T)
                  for P, V, T in (("ss", 1.62, 125.0), ("tt", 1.80, 25.0), ("ff", 1.98, 125.0),
                                  ("ff", 1.98, -40.0))]
 
     # --- 구성별 합성 비교 (PI 가 설계팀에 돌려주는 표) ---
+    # **비교 구성도 회로에서 뽑는다.** `{"STAGES": 2}` · `{"TAPS": 16}` 는 FIR 의
+    # 이름이다. 없는 회로에 넘기면 네 구성이 전부 **같은 것**이 되어, 표가
+    # "파라미터를 바꿔도 면적이 비슷하다" 로 읽힌다.
     비교 = []
-    for c in ({"GATE_POLICY": 0}, {"GATE_POLICY": 1}, {"STAGES": 2}, {"TAPS": 16}):
-        s = SYN.합성(dict({"TAPS": 8, "STAGES": 3, "GATE_POLICY": 1}, **c))
+    for c in _비교구성(기본파라, 정책):
+        s = SYN.합성(dict(기본파라, **c), 설계=d)
         if s.get("됐나"):
             st = SYN.sta(s, 주기=주기)
             비교.append({"파라": c, "면적": s["면적_um2"], "셀수": s["셀수"],
@@ -388,7 +440,11 @@ def 보고서(m: dict) -> RPT.보고서:
 
     # ---------------- 5. power ----------------
     R.절("5. Power — from measured activity, not assumed activity")
-    pw0, pw1 = m["전력"][0], m["전력"][1]
+    # **A/B 는 정책 파라미터가 있을 때만 있다.** 없는 회로에서 `전력[0]`·`전력[1]`
+    # 을 그냥 찾으면 KeyError 로 **보고서가 통째로 안 나온다** -- 틀린 수보다 나쁘다.
+    _쌍 = 0 in m["전력"] and 1 in m["전력"]
+    pw1 = m["전력"].get(1) or m["전력"].get(0) or m["전력기준"]
+    pw0 = m["전력"].get(0) if _쌍 else None
     R.그림(V.막대(["Dynamic", "Clock", "Leakage"],
                [pw1["동적_mW"], pw1["클럭_mW"], pw1["누설_mW"]],
                "Power breakdown (tt, 1.8 V, 25 \u00b0C, beat-based gating)", "mW",
@@ -397,7 +453,12 @@ def 보고서(m: dict) -> RPT.보고서:
          f"typical of a design with {pw1['플롭']} flops \u2014 which is precisely "
          f"why gating works here.",
          "\u03b1\u00b7C\u00b7V\u00b2\u00b7f, \u03b1 from verilator toggles")
-    R.그림(V.막대(["State-based gating", "Beat-based gating"],
+    if not _쌍:
+        R.짚기("<b>게이팅 정책 A/B 는 안 돌렸다.</b> 이 회로에는 0/1 로 모드를 "
+               "고르는 파라미터가 없다 — <code>house/designs.py 정책파라()</code> 가 "
+               "못 찾았다. <b>없는 비교를 지어내지 않는다.</b>")
+    if _쌍:
+      R.그림(V.막대(["State-based gating", "Beat-based gating"],
                [pw0["합_mW"], pw1["합_mW"]],
                "Total power by gating policy", "mW", 색들=[V.흐림, V.초록], 폭=460),
          f"One line Ethan changed in the RTL shows up as "
@@ -406,25 +467,25 @@ def 보고서(m: dict) -> RPT.보고서:
          f"{pw1['알파']}, and that \u03b1 is <b>not an estimate \u2014 it is "
          f"{m['토글'][1]['clk_cycles']:,} counted cycles</b>.",
          "verilator toggles + \u03b1\u00b7C\u00b7V\u00b2\u00b7f")
-    R.표(["Item", "State-based", "Beat-based", "Source"],
-        [["clk cycles", f"{m['토글'][0]['clk_cycles']:,}",
-          f"{m['토글'][1]['clk_cycles']:,}", "verilator"],
-         ["gclk cycles", f"{m['토글'][0]['gclk_cycles']:,}",
-          f"{m['토글'][1]['gclk_cycles']:,}", "verilator"],
-         ["Fraction of cycles the clock is open",
-          f"{pw0['열린비']:.4f}", f"{pw1['열린비']:.4f}", "measured"],
-         ["Activity factor \u03b1", f"{pw0['알파']}", f"{pw1['알파']}",
-          "measured \u00d7 node toggle rate 0.18 (assumed)"],
-         ["Dynamic (mW)", f"{pw0['동적_mW']:.3f}", f"{pw1['동적_mW']:.3f}",
-          "\u03b1\u00b7C\u00b7V\u00b2\u00b7f"],
-         ["Clock (mW)", f"{pw0['클럭_mW']:.3f}", f"{pw1['클럭_mW']:.3f}",
-          "2\u00b7open\u00b7C_clk\u00b7V\u00b2\u00b7f"],
-         ["Leakage (mW)", f"{pw0['누설_mW']:.4f}", f"{pw1['누설_mW']:.4f}",
-          "cells \u00d7 1.2 nW \u00d7 corner multiplier"],
-         ["Total (mW)", f"<b>{pw0['합_mW']:.3f}</b>",
-          f"<b>{pw1['합_mW']:.3f}</b>", ""]],
-        "Power breakdown. <b>Read the source column</b> \u2014 measured and "
-        "assumed are kept apart.", "", 강조열=[1, 2])
+      R.표(["Item", "State-based", "Beat-based", "Source"],
+          [["clk cycles", f"{m['토글'][0]['clk_cycles']:,}",
+            f"{m['토글'][1]['clk_cycles']:,}", "verilator"],
+           ["gclk cycles", f"{m['토글'][0]['gclk_cycles']:,}",
+            f"{m['토글'][1]['gclk_cycles']:,}", "verilator"],
+           ["Fraction of cycles the clock is open",
+            f"{pw0['열린비']:.4f}", f"{pw1['열린비']:.4f}", "measured"],
+           ["Activity factor \u03b1", f"{pw0['알파']}", f"{pw1['알파']}",
+            "measured \u00d7 node toggle rate 0.18 (assumed)"],
+           ["Dynamic (mW)", f"{pw0['동적_mW']:.3f}", f"{pw1['동적_mW']:.3f}",
+            "\u03b1\u00b7C\u00b7V\u00b2\u00b7f"],
+           ["Clock (mW)", f"{pw0['클럭_mW']:.3f}", f"{pw1['클럭_mW']:.3f}",
+            "2\u00b7open\u00b7C_clk\u00b7V\u00b2\u00b7f"],
+           ["Leakage (mW)", f"{pw0['누설_mW']:.4f}", f"{pw1['누설_mW']:.4f}",
+            "cells \u00d7 1.2 nW \u00d7 corner multiplier"],
+           ["Total (mW)", f"<b>{pw0['합_mW']:.3f}</b>",
+            f"<b>{pw1['합_mW']:.3f}</b>", ""]],
+          "Power breakdown. <b>Read the source column</b> \u2014 measured and "
+          "assumed are kept apart.", "", 강조열=[1, 2])
     R.그림(V.막대([f"{p['P']} {p['V']}V {p['T']:.0f}\u00b0C" for p in m["전력코너"]],
                [p["누설_mW"] for p in m["전력코너"]], "Leakage power by corner", "mW",
                색들=[V.계열[i % 6] for i in range(len(m["전력코너"]))], 폭=520),
