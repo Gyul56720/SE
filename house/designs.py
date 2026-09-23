@@ -181,3 +181,47 @@ def 목록글() -> str:
         할 = " ".join(k for k in ("RTL", "DV", "합성", "DFT", "PD") if ㄱ[k])
         줄.append(f"· **{d.키}** — {d.이름}  [{할}]\n   {d.한줄}")
     return "\n".join(줄) or "_등록된 회로가 없다._"
+
+
+# ------------------------------------------------------------------ 파라미터
+#
+# **회로마다 파라미터 이름이 다르다.** 그런데 에이전트들이 `{"TAPS": 8,
+# "STAGES": 3, "GATE_POLICY": 1}` 처럼 FIR 의 이름을 박아 두고 있었다 --
+# 다섯 에이전트에 같은 꼴로(실측 2026-09-23). 다른 회로를 넘기면 없는
+# 파라미터를 넘기게 되고, verilator 는 그것을 조용히 무시하거나 죽는다.
+#
+# 그리고 같은 코드가 `dv/agent.py` 와 `rtl/agent.py` 에 따로 있었다.
+# 한 군데에 둔다 -- 규칙을 여러 곳에 적으면 한 곳만 고치게 된다.
+
+_정책말 = ("policy", "정책", "gate", "게이팅", "mode", "모드", "enable", "en_")
+
+
+def 파라기본(설계) -> dict:
+    """이 회로의 파라미터 기본값. `설계.파라` + **톱 모듈의 파라미터**.
+
+    `설계.파라` 는 대개 비어 있다(실측: nsw_fir 도 `{}` 다) -- 값은 RTL 에 있다.
+    **톱 모듈 것만** 쓴다. 하위 모듈 것을 섞으면 verilator 가
+    "Parameters from the command line were not found in the design" 으로 죽는다.
+    """
+    기본 = dict(getattr(설계, "파라", {}) or {})
+    try:
+        from house import rtlscan as _SCAN
+        훑 = _SCAN.훑기(getattr(설계, "RTL", []), getattr(설계, "top", ""))
+        for k, v in (훑.get("톱파라미터") or {}).items():
+            if k not in 기본 and str(v).strip().isdigit():
+                기본[k] = int(str(v).strip())
+    except Exception:                                        # noqa: BLE001
+        pass
+    return 기본
+
+
+def 정책파라(기본: dict) -> "str | None":
+    """클럭 게이팅 정책처럼 **0/1 로 모드를 고르는** 파라미터 이름. 없으면 None.
+
+    없으면 **없다고 답한다** -- A/B 비교를 지어내지 않는다.
+    """
+    for k, v in sorted((기본 or {}).items()):
+        if isinstance(v, int) and v in (0, 1) and \
+           any(w in k.lower() for w in _정책말):
+            return k
+    return None

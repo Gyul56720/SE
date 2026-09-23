@@ -358,9 +358,15 @@ def 일하기(빠르게=False, 회귀수=2000, 설계=None) -> dict:
     결과["HLS"]["PPA"] = json.loads(ppa길.read_text()) if ppa길.exists() else None
 
     # --- 3. 클럭 게이팅 A/B (실제 시뮬레이션 토글) ---
+    # **정책 파라미터 이름을 회로에서 찾는다.** `GATE_POLICY` 는 FIR 의 이름이다.
+    # 없는 회로에 그것을 넘기면 verilator 가 조용히 무시하고, 그러면 A/B 두 쪽이
+    # **같은 구성**이 되어 «정책을 바꿨더니 절감이 늘었다» 가 거짓이 된다.
+    _기본 = DES.파라기본(d0)
+    _정책 = DES.정책파라(_기본)
+    결과["정책파라"] = _정책
     게이팅 = []
-    for 정책, 이름 in ((0, "상태 기반"), (1, "박자 기반")):
-        rs = [SIM.돌리기({"GATE_POLICY": 정책}, seed=s, txn=회귀수 // 4, maxlen=256)
+    for 정책, 이름 in (((0, "상태 기반"), (1, "박자 기반")) if _정책 else ()):
+        rs = [SIM.돌리기({_정책: 정책}, seed=s, txn=회귀수 // 4, maxlen=256, 설계=d0)
               for s in (11, 12, 13)]
         게이팅.append({"정책": 정책, "이름": 이름,
                     "절감_pct": round(sum(r["gate_save_pct"] for r in rs) / len(rs), 2),
@@ -370,7 +376,8 @@ def 일하기(빠르게=False, 회귀수=2000, 설계=None) -> dict:
     결과["게이팅"] = 게이팅
 
     # --- 4. 파형/상태 흔적 ---
-    흔적 = SIM.돌리기({"GATE_POLICY": 1}, seed=21, txn=3, trace=120, maxlen=24)
+    흔적 = SIM.돌리기({_정책: 1} if _정책 else None,
+                  seed=21, txn=3, trace=120, maxlen=24, 설계=d0)
     결과["흔적"] = 흔적
 
     # --- 5. 파라미터 재사용성: 합성 스윕 ---
@@ -421,9 +428,9 @@ def 일하기(빠르게=False, 회귀수=2000, 설계=None) -> dict:
 
     # --- VCD: 파형은 시뮬레이터가 쓴 파일에서 읽는다 (지어내지 않는다) ---
     try:
-        _길 = str(RPT.내는곳 / "nsw_fir_rtl.vcd")
+        _길 = str(RPT.내는곳 / f"{getattr(d0, 'top', 'dut')}_rtl.vcd")
         RPT.내는곳.mkdir(parents=True, exist_ok=True)
-        SIM.돌리기({"TAPS": 8, "STAGES": 3, "GATE_POLICY": 1},
+        SIM.돌리기(_기본 or None, 설계=d0,
                 seed=21, txn=6, cap=6000, cfg=3, maxlen=6, dir=2, vcd=_길)
         _d = VCD.읽기(_길)
         _a, _b = VCD.구간찾기(_d, "u_ctrl.busy", "1", 앞=60, 뒤=520)

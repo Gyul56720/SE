@@ -45,7 +45,10 @@ def 일하기(묶음=8, atpg상한=120, 빠르게=False, 표본=None, 설계=Non
 
     d = 설계 or DES.NSW_FIR
     R = {"시작": time.time(), "설계": d.키, "설계이름": d.이름, "top": d.top}
-    합 = SYN.합성(d.파라 or {"TAPS": 8, "STAGES": 3, "GATE_POLICY": 1}, 설계=d)
+    # **FIR 의 이름을 되돌이값으로 쓰지 않는다.** `d.파라` 는 대개 비어 있어서
+    # (실측: nsw_fir 도 `{}`) 이 되돌이값이 **늘 쓰이고 있었다** -- 다른 회로에도
+    # `TAPS=8 · STAGES=3 · GATE_POLICY=1` 이 넘어간다.
+    합 = SYN.합성(DES.파라기본(d) or None, 설계=d)
     R["합성"] = 합
     if not 합.get("됐나"):
         R["초"] = round(time.time() - R["시작"], 1)
