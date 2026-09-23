@@ -115,35 +115,16 @@ ok("서로 다른 점은 3개" in 민글(RA._파레토글(_t3)),
 # **docstring 을 걷어내고 본다.** 고친 함수들의 docstring 이 옛 문장을 그대로
 # 인용해 둬서(무엇이 틀렸었는지 남기려고) 글자만 보면 「아직 있다」로 읽힌다 --
 # 글자를 보는 검사는 **산 주장과 사후 기록을 못 가른다**. 주석도 같이 턴다.
-import ast          # noqa: E402
-import io           # noqa: E402
-import tokenize     # noqa: E402
+sys.path.insert(0, str(뿌리 / "tests"))
+import _소스보기                                             # noqa: E402
+
+# **도우미부터 스스로를 검사한다.** 첫 판(이 파일에 있던 `_독스트링뺀소스`)은
+# 토큰을 줄바꿈으로 이어 붙여 소스를 뭉갰다 -- 그러면 아래 「지웠다」 여섯 줄은
+# **원문에 그 글이 살아 있어도 통과한다**. 실측 2026-09-23 에 잡았다.
+_소스보기.자기검사()
 
 _원소스 = (뿌리 / "house" / "rtl" / "agent.py").read_text(encoding="utf-8")
-
-
-def _독스트링뺀소스(글: str) -> str:
-    나무 = ast.parse(글)
-    뺄자리 = []
-    for n in ast.walk(나무):
-        if isinstance(n, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef,
-                          ast.ClassDef)) and ast.get_docstring(n, clean=False):
-            d = n.body[0]
-            뺄자리.append((d.lineno, d.end_lineno))
-    줄 = 글.splitlines()
-    for a, b in 뺄자리:
-        for i in range(a - 1, b):
-            줄[i] = ""
-    남 = "\n".join(줄)
-    # 주석도 턴다
-    나온것 = []
-    for tok in tokenize.generate_tokens(io.StringIO(남).readline):
-        if tok.type != tokenize.COMMENT:
-            나온것.append(tok.string)
-    return "\n".join(나온것)
-
-
-_소스 = _독스트링뺀소스(_원소스)
+_소스 = _소스보기.산주장(_원소스)
 ok(len(_소스) < len(_원소스), "docstring·주석을 걷어내고 본다 (산 주장만 남긴다)")
 ok("4 → 10 단계" in _원소스,
    "**옛 문장은 docstring 에 기록으로 남아 있다** — 무엇이 틀렸었는지 지우지 않는다")
