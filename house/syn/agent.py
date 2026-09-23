@@ -26,6 +26,7 @@ from house import report as RPT       # noqa: E402
 from house import sim as SIM          # noqa: E402
 from house import synth as SYN        # noqa: E402
 from house import viz as V            # noqa: E402
+from house import tapeout as TO       # noqa: E402
 from house.syn import constraints as C  # noqa: E402
 from house.syn import pvt as PVT      # noqa: E402
 
@@ -576,6 +577,11 @@ def 보고서(m: dict) -> RPT.보고서:
         "\u00b7 <b>UPF was not actually applied.</b> It was parsed and checked "
         "for consistency; no isolation or retention cells were inserted into the "
         "netlist (that is a commercial tool's job).")
+
+    # **테이프아웃까지 남은 것을 제 보고서에 싣는다.** 표는 house/tapeout.py
+    # 한 군데에 있고 여기서는 이 사람 몫만 걸러 보인다 -- 다섯 보고서가 저마다
+    # 적으면 한 군데만 고치게 된다.
+    TO.절(R, "syn")
 
     R.잰것 = [
         ("Cells", f"{합['셀수']:,}", "", "yosys stat"),

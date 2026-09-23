@@ -28,6 +28,7 @@ from house import people    # noqa: E402
 from house import report as RPT       # noqa: E402
 from house import sim as SIM          # noqa: E402
 from house import viz as V            # noqa: E402
+from house import tapeout as TO       # noqa: E402
 from house import sch as SCH          # noqa: E402
 from house.dv import mutate as MUT     # noqa: E402
 from house.dv import vcd as VCD        # noqa: E402
@@ -757,6 +758,11 @@ def 보고서(m: dict) -> RPT.보고서:
         "SVA 는 상용 시뮬레이터가 있어야 한다.<br>"
         "· <b>커버리지는 기능 커버리지뿐이다.</b> 코드 커버리지(라인·토글·FSM 아크)는 "
         "verilator <code>--coverage</code> 로 붙일 수 있고, 아직 안 붙였다.")
+
+    # **테이프아웃까지 남은 것을 제 보고서에 싣는다.** 표는 house/tapeout.py
+    # 한 군데에 있고 여기서는 이 사람 몫만 걸러 보인다 -- 다섯 보고서가 저마다
+    # 적으면 한 군데만 고치게 된다.
+    TO.절(R, "dv")
 
     R.잰것 = [
         ("총 거래", f"{m['총거래']:,}", "거래", "verilator 5.020"),

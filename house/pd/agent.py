@@ -30,6 +30,7 @@ from house import people    # noqa: E402
 from house import report as RPT       # noqa: E402
 from house import synth as SYN        # noqa: E402
 from house import viz as V            # noqa: E402
+from house import tapeout as TO       # noqa: E402
 from house import sch as SCH          # noqa: E402
 from house.pd import gds as GDS       # noqa: E402
 
@@ -619,6 +620,11 @@ $ python3 -c "from house.pd import gds; print(gds.읽기('{m.get('gds길') or (R
         "그 되돌이는 아직 안 돈다.<br>"
         "· <b>GDSII 에 실제 셀 기하가 없다.</b> 셀을 직사각형으로 그렸다 — "
         "표준셀 GDS 라이브러리가 없기 때문이다. 층 배정과 좌표는 진짜다.")
+
+    # **테이프아웃까지 남은 것을 제 보고서에 싣는다.** 표는 house/tapeout.py
+    # 한 군데에 있고 여기서는 이 사람 몫만 걸러 보인다 -- 다섯 보고서가 저마다
+    # 적으면 한 군데만 고치게 된다.
+    TO.절(R, "pd")
 
     R.잰것 = [
         ("코어 치수", f"{m['코어'][0]:.1f} × {m['코어'][1]:.1f}", "µm", "lab/se/floorplan.py"),
