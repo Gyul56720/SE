@@ -265,6 +265,69 @@ module nsw_ctrl #(
     assign done    = st[4];
     assign cnt_o   = cnt;
     assign state_o = st;
+
+    // ------------------------------------------------------------------
+    // **어서션 (SVA).**  `SVA_ON` 이 서 있을 때만 켠다.
+    //
+    // **왜 매크로로 감싸나.** 실측 2026-09-23: `assert property` 를 그냥 두면
+    // iverilog 도 yosys 도 **파싱에서 죽는다.**
+    //
+    //     iverilog -g2012 : Error in property_spec of concurrent assertion item
+    //     yosys read_verilog -sv : syntax error, unexpected '@'
+    //
+    // 그 둘은 관문 2 와 관문 6 이다. 어서션을 넣자고 다른 관문을 깨뜨릴 수는
+    // 없다. verilator 만 `--assert -DSVA_ON` 으로 켜서 본다(관문 4d).
+    //
+    // **verilator 5.020 이 받는 것만 쓴다.** 같은 실측에서 `##n` 과 `[*n]` 은
+    // 거부했다. `|->` · `|=>` · `$past` · `$rose/$stable` · `$onehot` 은 받는다.
+`ifdef SVA_ON
+    // 상태는 one-hot 이다 -- 불법 상태로 새면 default 가지가 IDLE 로 되돌리는데,
+    // 그 되돌림이 **일어났다는 사실 자체**를 여기서 잡는다
+    sva_onehot: assert property (@(posedge clk) disable iff (!rst_n) $onehot(st))
+        else $error("상태가 one-hot 이 아니다: st=%b", st);
+    // **리셋을 빠져나오는 순간** IDLE 이고 카운터가 0 이다.
+    //
+    // 첫 판은 `!rst_n |-> st == S_IDLE` 이었다 -- *리셋 창 내내* IDLE 이라고
+    // 적은 것인데, **시간 0 에서 바로 터졌다**(실측 2026-09-23).
+    //
+    //     [0] Assertion failed in ...sva_reset: 리셋 중인데 st=00000 cnt=0
+    //
+    // 까닭은 흠이 아니라 정의다. `always @(posedge clk or negedge rst_n)` 은
+    // **엣지**로만 돈다. rst_n 이 처음부터 0 이면 내려간 엣지가 없어서 그 블록이
+    // 한 번도 안 돌고, 플롭은 초기값 00000 인 채로 첫 클럭 엣지를 맞는다.
+    // 어떤 설계든 그렇다 -- 그러니 그것을 흠이라고 적은 어서션이 틀렸다.
+    //
+    // 리셋에 대해 말할 수 있는 참말은 **"리셋을 놓았을 때 IDLE 에서 시작한다"**
+    // 이다. 그것이 실제로 우리가 지켜야 하는 성질이기도 하다.
+    sva_reset_exit: assert property (@(posedge clk)
+                   $rose(rst_n) |-> ((st == S_IDLE) && (cnt == {CNTW{1'b0}})))
+        else $error("리셋을 놓았는데 st=%b cnt=%0d", st, cnt);
+    // busy 와 done 은 같이 설 수 없다 (busy=~(st[0]|st[4]), done=st[4])
+    sva_busy_done: assert property (@(posedge clk) disable iff (!rst_n)
+                   !(busy && done))
+        else $error("busy 와 done 이 같이 섰다");
+    // done 은 ack 을 받을 때까지 안 내려간다 -- 놓치는 완료가 없어야 한다
+    sva_done_hold: assert property (@(posedge clk) disable iff (!rst_n)
+                   (done && !ack) |=> done)
+        else $error("ack 없이 done 이 내려갔다");
+    // LOAD 에서 카운터는 TAPS 를 못 넘는다
+    sva_load_cnt: assert property (@(posedge clk) disable iff (!rst_n)
+                   (st == S_LOAD) |-> (cnt < TAPS[CNTW-1:0]))
+        else $error("LOAD 에서 cnt=%0d >= TAPS=%0d", cnt, TAPS);
+    // FLUSH 에서 카운터는 STAGES 를 못 넘는다
+    sva_flush_cnt: assert property (@(posedge clk) disable iff (!rst_n)
+                   (st == S_FLUSH) |-> (cnt < STAGES[CNTW-1:0]))
+        else $error("FLUSH 에서 cnt=%0d >= STAGES=%0d", cnt, STAGES);
+    // 계수는 LOAD 에서 유효한 샘플이 있을 때만 써진다
+    sva_coef_we: assert property (@(posedge clk) disable iff (!rst_n)
+                   coef_we |-> ((st == S_LOAD) && in_vld))
+        else $error("LOAD 밖에서 coef_we 가 섰다: st=%b", st);
+    // 데이터패스 클럭은 쉬는 상태(IDLE/DONE)에서 안 열린다 -- 게이팅의 핵심 주장
+    sva_dp_en: assert property (@(posedge clk) disable iff (!rst_n)
+                   dp_en |-> ((st != S_IDLE) && (st != S_DONE)))
+        else $error("쉬는 상태인데 dp_en 이 섰다: st=%b", st);
+`endif
+
 endmodule
 
 // ---------------------------------------------------------------------
@@ -364,6 +427,18 @@ module nsw_fir #(
         .clk(gclk), .rst_n(rst_n_i), .en(run_beat | state_o[3]), .push(run_beat), .clr(acc_clr),
         .din(in_data), .coef(coef_sel), .acc_o(out_acc), .vld_o(out_vld)
     );
+
+`ifdef SVA_ON
+    // 포트로 나가는 상태도 one-hot 이다 -- 안쪽 st 와 포트가 갈라지면 여기서 잡힌다
+    sva_state_o: assert property (@(posedge clk) disable iff (!rst_n)
+                   $onehot(state_o))
+        else $error("state_o 가 one-hot 이 아니다: %b", state_o);
+    // 게이트 인에이블은 busy 없이 서지 않는다 (scan 시프트는 ICG 안에서 따로 연다)
+    sva_gate: assert property (@(posedge clk) disable iff (!rst_n)
+                   gate_en_o |-> busy)
+        else $error("busy 가 아닌데 gate_en_o 가 섰다");
+`endif
+
 endmodule
 
 /* verilator lint_on DECLFILENAME */
