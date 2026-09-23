@@ -16,6 +16,9 @@
 #if VM_TRACE
 #include "verilated_vcd_c.h"
 #endif
+#if VM_COVERAGE
+#include "verilated_cov.h"
+#endif
 
 #include <cstdio>
 #include <cstdint>
@@ -414,5 +417,32 @@ int main(int argc, char** argv) {
     { for (size_t i = 0; i < errs.size(); i++) { if (i) printf(","); printf("\"%s\"", errs[i].c_str()); } }
     printf("]}");
     printf("\n");
+
+    // **코드 커버리지는 여기서 낸다 -- 모델이 아직 살아 있을 때.**
+    //
+    // verilator `--coverage` 의 계수기는 **모델 객체 안**에 있고
+    // `VerilatedCovImp` 는 그 자리를 가리키는 포인터만 들고 있다. 그래서
+    // `Harness` 가 `delete dut` 한 뒤에 쓰면 **해제된 메모리를 읽는다.**
+    //
+    // 실측 2026-09-23. 링커로 `main` 을 감싸 main 이 돌아온 뒤에 써 봤더니
+    // 파일은 나왔는데 수가 거짓이었다:
+    //
+    //     nsw_fir.sv:253 (always @(posedge clk)) 카운트 1,563,439,451
+    //     txn 400 -> 선 20/21 · txn 2000 -> 선 18/21   (늘렸는데 줄었다)
+    //
+    // 누적 계수기에서 자극을 늘렸는데 맞은 점이 **줄 수는 없다.** 10^5 사이클에
+    // 15억이 찍힐 수도 없다. 둘 다 해제된 자리를 읽은 표시였다. 소멸자를
+    // 링커로 감싸는 길도 막혔다 -- `delete dut` 는 가상 소멸자라 vtable 로
+    // 가고, `--wrap` 은 심볼 호출만 가로챈다.
+    //
+    // 그래서 테스트벤치가 낸다. `house/gen.py` 가 짓는 테스트벤치도 이 네 줄을
+    // 넣는다(TB프롬프트). 안 넣으면 파일이 안 생기고 **관문 4c 가 빨갛게 낸다** --
+    // 커버리지를 못 쟀는데 통과시키지 않는다.
+#if VM_COVERAGE
+    {
+        const char* covp = getenv("SE_COV_OUT");
+        if (covp && *covp) VerilatedCov::write(covp);
+    }
+#endif
     return (fail || timeout) ? 1 : 0;
 }
