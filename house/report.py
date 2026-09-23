@@ -66,6 +66,11 @@ table.d { border-collapse: collapse; width: 100%; font-size: 8.5pt; margin: 2mm 
           page-break-inside: avoid; }
 table.d th { background: #1b1b1f; color: #fff; text-align: left; padding: 1.5mm 2mm;
              font-weight: bold; }
+/* **한 줄이 쪽 사이에서 갈라지지 않게 한다.** 실측 2026-09-23 (MERA 제안서):
+   `REQ-MERA1-015` 가 앞쪽 끝에 **번호만** 남고 내용은 다음 쪽 첫 줄로 갔다 --
+   빈 줄 하나가 표에 생긴 것처럼 보인다. 머리줄은 다음 쪽에도 되풀이한다. */
+table.d tr { page-break-inside: avoid; break-inside: avoid; }
+table.d thead { display: table-header-group; }
 table.d td { border-bottom: 1px solid #e3e7ec; padding: 1.4mm 2mm; vertical-align: top; }
 table.d tr:nth-child(even) td { background: #fafbfc; }
 table.d td.hi { font-weight: bold; }

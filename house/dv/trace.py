@@ -181,7 +181,7 @@ def 요약글(t: dict) -> str:
     if t.get("관문이잰다"):
         조각.append(f"관문이 재는 것 {len(t['관문이잰다'])}개")
     if t.get("안걸린수"):
-        조각.append(f"**시험이 없는 요구사항 {t['안걸린수']}개**")
+        조각.append(f"<b>시험이 없는 요구사항 {t['안걸린수']}개</b>")
     if t.get("안걸린TBD"):
         조각.append(f"아직 TBD {len(t['안걸린TBD'])}개")
     if t.get("떠있는수"):
