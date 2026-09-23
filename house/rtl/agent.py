@@ -443,31 +443,52 @@ def 일하기(빠르게=False, 회귀수=2000, 설계=None) -> dict:
         SIM.돌리기(_기본 or None, 설계=d0,
                 seed=21, txn=6, cap=6000, cfg=3, maxlen=6, dir=2, vcd=_길)
         _d = VCD.읽기(_길)
-        _a, _b = VCD.구간찾기(_d, "u_ctrl.busy", "1", 앞=60, 뒤=520)
-        _c, _e = VCD.구간찾기(_d, "u_icg.en", "1", 앞=30, 뒤=210)
-        _f, _g = VCD.구간찾기(_d, "u_coef_fifo.wpush", "1", 앞=40, 뒤=340)
-        _이름표 = {"1": "IDLE", "10": "LOAD", "100": "RUN", "1000": "FLUSH",
-                "10000": "DONE"}
+        # **신호를 이름으로 박지 않는다.** 여기 `u_ctrl.*` · `u_mac.*` ·
+        # `u_icg.*` · `u_coef_fifo.*` 가 박혀 있었다 -- nsw_fir 의 인스턴스
+        # 이름이다. 다른 회로에서는 하나도 못 찾아 **파형 넷이 통째로 빠졌다.**
+        # `dv/scenes.py` 가 VCD 에 **실제로 있는 것 중에서 역할로** 고른다.
+        from house.dv import scenes as SCENE
+        _장 = SCENE.장면들(_d, 결과.get("훑기"))
+        결과["장면"] = {k: v for k, v in _장.items() if k not in ("fsm", "파이프",
+                                                             "게이팅", "cdc")}
+
+        def _구간(키, 값="1", 앞=40, 뒤=300):
+            """그 장면의 **1비트 신호가 처음 뜨는 자리**를 구간으로 잡는다."""
+            for n in (_장.get(키) or {}).get("신호", []):
+                if int(_d.get("폭", {}).get(n, 1) or 1) != 1 or "clk" in n.lower():
+                    continue
+                a, b = VCD.구간찾기(_d, n, 값, 앞=앞, 뒤=뒤)
+                if a is not None:
+                    return a, b
+            return VCD.구간찾기(_d, _장.get("으뜸클럭") or "clk", "1", 앞=앞, 뒤=뒤)
+
+        _a, _b = _구간("fsm", 앞=60, 뒤=520)
+        _c, _e = _구간("게이팅", 앞=30, 뒤=210)
+        _f, _g = _구간("cdc", 앞=40, 뒤=340)
+        _띠 = SCENE.띠신호(_d, 결과.get("훑기"))
+        _이름표 = SCENE.이름표(결과.get("훑기"))
         결과["vcd"] = {
             "됐나": True, "파일": _길, "바이트": pathlib.Path(_길).stat().st_size,
             "신호수": _d["신호수"], "변화수": _d["변화수"], "눈금": _d["눈금"],
-            "fsm": {"신호": VCD.구간뽑기(_d, ["u_srst_sync.clk", "u_ctrl.start",
-                                          "u_ctrl.in_vld", "u_ctrl.state_o",
-                                          "u_ctrl.busy", "u_ctrl.done"], _a, _b, 점=240),
-                    "띠": VCD.띠만들기(_d, "u_ctrl.state_o", _a, _b, 점=240, 이름표=_이름표),
+            "fsm": {"신호": VCD.구간뽑기(_d, (_장.get("fsm") or {}).get("신호", []),
+                                      _a, _b, 점=240),
+                    "띠": (VCD.띠만들기(_d, _띠, _a, _b, 점=240, 이름표=_이름표)
+                         if _띠 else []),
+                    "어디서": (_장.get("fsm") or {}).get("어디서", ""),
                     "구간": [_a, _b]},
-            "파이프": {"신호": VCD.구간뽑기(_d, ["u_mac.clk", "u_mac.push", "u_mac.prod",
-                                            "u_mac.p_s1", "u_mac.a_s2", "u_mac.a_s3",
-                                            "u_mac.v_s1", "u_mac.v_s2", "u_mac.v_s3"],
-                                          _a, _b, 점=200), "구간": [_a, _b]},
-            "게이팅": {"신호": VCD.구간뽑기(_d, ["u_srst_sync.clk", "u_icg.en",
-                                            "u_icg.en_lat", "u_mac.clk"], _c, _e, 점=220),
+            "파이프": {"신호": VCD.구간뽑기(_d, (_장.get("파이프") or {}).get("신호", []),
+                                        _a, _b, 점=200),
+                    "어디서": (_장.get("파이프") or {}).get("어디서", ""),
+                    "구간": [_a, _b]},
+            "게이팅": {"신호": VCD.구간뽑기(_d, (_장.get("게이팅") or {}).get("신호", []),
+                                        _c, _e, 점=220),
+                    "어디서": (_장.get("게이팅") or {}).get("어디서", ""),
                     "구간": [_c, _e]},
-            "cdc": {"신호": VCD.구간뽑기(_d, ["u_coef_fifo.wclk", "u_coef_fifo.wpush",
-                                           "u_coef_fifo.wgray", "u_coef_fifo.rq1_wgray",
-                                           "u_coef_fifo.rq2_wgray",
-                                           "u_coef_fifo.rempty_r"], _f, _g, 점=240),
+            "cdc": {"신호": VCD.구간뽑기(_d, (_장.get("cdc") or {}).get("신호", []),
+                                      _f, _g, 점=240),
+                    "어디서": (_장.get("cdc") or {}).get("어디서", ""),
                     "구간": [_f, _g]},
+            "못찾은것": _장.get("못찾은것") or [],
         }
     except Exception as _err:                                # noqa: BLE001
         결과["vcd"] = {"됐나": False, "까닭": f"{type(_err).__name__}: {_err}"[:180]}
