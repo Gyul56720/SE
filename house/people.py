@@ -138,9 +138,11 @@ KENJI = Person(
          "hand over is RTL, testbench, constraints and a PPA table.",
     tools=["house/pd (extends lab/se floorplan, place, cts, route, signoff)",
            "house/pd/gds.py (writes the GDSII stream binary directly -- real spec)",
-           "house/pd/drc.py (spacing, minimum width, density rule checks)",
            "no klayout -> the GDS is read back with our own parser for a "
-           "round-trip check"],
+           "round-trip check",
+           "metal density only (lab/se/signoff.py) -- there is NO DRC and NO "
+           "LVS checker here; this line used to name a house/pd/drc.py that "
+           "does not exist"],
     artifacts=["floorplan and placement drawings", "congestion heat map",
                "clock-tree drawing and skew distribution", "IR-drop map",
                "GDSII file with per-layer shape counts "

@@ -145,7 +145,11 @@ SOC = "고객 SoC"
     ("DRC / LVS", ["Placement / CTS / Routing"],
      ["레이아웃"],
      ["규칙 위반 목록"],
-     SOC, 시연, "house/pd/drc.py", "상용 서명 도구가 아니다"),
+     SOC, 없음, "",
+     "<b>칸 자체가 없다.</b> 밀도만 잰다(lab/se/signoff.py 밀도()) — "
+     "기하 규칙도 LVS 도 안 본다. "
+     "여기에 <code>house/pd/drc.py</code> 라고 적혀 있었는데 <b>그런 파일이 없다</b> "
+     "(house/tapeout.py 흐름이가리키는파일() 이 잡았다)"),
 
     ("ECO", ["STA / IR / EM", "DRC / LVS"],
      ["위반 목록"],

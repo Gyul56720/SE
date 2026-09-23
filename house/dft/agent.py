@@ -31,6 +31,7 @@ from house import report as RPT       # noqa: E402
 from house import synth as SYN        # noqa: E402
 from house import sch as SCH          # noqa: E402
 from house import viz as V            # noqa: E402
+from house import tapeout as TO       # noqa: E402
 from house.dft import extra as X      # noqa: E402
 
 DFT_LIB = 집 / "lib" / "nsw10_dft.lib"
@@ -556,6 +557,11 @@ def 보고서(m: dict) -> RPT.보고서:
         "수이고 이 IP 에 붙일 메모리가 아직 없다. 그렇게 적는다.<br>"
         "· <b>시험 모드 라이브러리를 따로 썼다.</b> ICG 의 래치를 투명하게 본 "
         "nsw10_dft.lib 이다. 기능 모드 타이밍은 이 파일로 보면 안 된다.")
+
+    # **테이프아웃까지 남은 것을 제 보고서에 싣는다.** 표는 house/tapeout.py
+    # 한 군데에 있고 여기서는 이 사람 몫만 걸러 보인다 -- 다섯 보고서가 저마다
+    # 적으면 한 군데만 고치게 된다.
+    TO.절(R, "dft")
 
     R.잰것 = [
         ("스캔 플롭", f"{m['플롭수']:,}", "개", "lab/se/dft.py"),

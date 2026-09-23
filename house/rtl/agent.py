@@ -32,6 +32,7 @@ from house import sim as SIM          # noqa: E402
 from house import synth as SYN        # noqa: E402
 from house import sch as SCH          # noqa: E402
 from house import viz as V            # noqa: E402
+from house import tapeout as TO       # noqa: E402
 from house.dv import vcd as VCD        # noqa: E402
 
 RTL파일 = 집 / "rtl" / "src" / "nsw_fir.sv"
@@ -1109,6 +1110,11 @@ assign dp_en = (GATE_POLICY == 0) ? st_active
         "· <b>셀 라이브러리는 PDK 가 아니다.</b> <code>lab/se/mklib.py</code> 가 RC 모형에서 만든 것이다(FO4 55.2 ps). "
         "면적·Fmax 의 절댓값이 아니라 구성 사이의 비를 읽어야 한다.<br>"
         "· <b>전력은 토글 수로만 쟀다.</b> 커패시턴스 가중 동적 전력과 누설은 Marcus(PI) 보고서에서 다룬다.")
+
+    # **테이프아웃까지 남은 것을 제 보고서에 싣는다.** 표는 house/tapeout.py
+    # 한 군데에 있고 여기서는 이 사람 몫만 걸러 보인다 -- 다섯 보고서가 저마다
+    # 적으면 한 군데만 고치게 된다.
+    TO.절(R, "rtl")
 
     R.잰것 = [("HLS 구성 수", len(t), "개", "house/hls.py"),
             ("HLS 기능확인 벡터", sum(x["견준벡터"] for x in t), "벡터", "iverilog 12.0"),
