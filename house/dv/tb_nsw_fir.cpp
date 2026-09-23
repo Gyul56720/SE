@@ -102,14 +102,19 @@ struct Coverage {
     }
     void state(int oh) { cp_state.insert(oh); }
 
-    double pct() const {
-        // 닿을 수 있는 칸: len 5 · bp 4 · mag 4 · sat 2 · sign 4(00 은 계수가 전부 0 일 때) ·
-        // state 5 · cross(5x4=20) · cross(4x2=8)
-        int hit = (int)(cp_len.size() + cp_bp.size() + cp_mag.size() + cp_sat.size() +
-                        cp_sign.size() + cp_state.size() + cross_len_bp.size() + cross_mag_sat.size());
-        int all = 5 + 4 + 4 + 2 + 4 + 5 + 20 + 8;
-        return 100.0 * hit / all;
+    // 닿을 수 있는 칸: len 5 · bp 4 · mag 4 · sat 2 · sign 4(00 은 계수가 전부 0 일 때) ·
+    // state 5 · cross(5x4=20) · cross(4x2=8)
+    //
+    // **이 수는 여기 한 군데에만 있어야 한다.** 실측 2026-09-23: 파이썬 쪽
+    // (house/dv/agent.py) 이 `52` 를 두 군데에 따로 적고 있었다 -- 여기서 칸을
+    // 하나 늘리면 보고서의 구조도와 표는 **조용히 틀린 수**를 계속 보인다.
+    // 그래서 hit 과 all 을 JSON 으로 내보내고 파이썬은 그것을 읽는다.
+    int hit() const {
+        return (int)(cp_len.size() + cp_bp.size() + cp_mag.size() + cp_sat.size() +
+                     cp_sign.size() + cp_state.size() + cross_len_bp.size() + cross_mag_sat.size());
     }
+    static int all() { return 5 + 4 + 4 + 2 + 4 + 5 + 20 + 8; }
+    double pct() const { return 100.0 * hit() / all(); }
 };
 
 // ---------------------------------------------------------------- 주 하네스
@@ -379,7 +384,8 @@ int main(int argc, char** argv) {
     printf("\"sat_txn\":%d,\"worst_diff\":%lld,", sat_cnt, (long long)worst_diff);
     printf("\"clk_cycles\":%llu,\"gclk_cycles\":%llu,\"gate_save_pct\":%.4f,",
            (unsigned long long)H.clk_edges, (unsigned long long)H.gclk_edges, gate_save);
-    printf("\"cov_pct\":%.4f,", H.cov.pct());
+    printf("\"cov_pct\":%.4f,\"cov_hit\":%d,\"cov_all\":%d,",
+           H.cov.pct(), H.cov.hit(), Coverage::all());
     printf("\"cov_len\":%d,\"cov_bp\":%d,\"cov_mag\":%d,\"cov_sat\":%d,\"cov_sign\":%d,\"cov_state\":%d,",
            (int)H.cov.cp_len.size(), (int)H.cov.cp_bp.size(), (int)H.cov.cp_mag.size(),
            (int)H.cov.cp_sat.size(), (int)H.cov.cp_sign.size(), (int)H.cov.cp_state.size());

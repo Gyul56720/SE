@@ -34,6 +34,86 @@ from house.dv import vcd as VCD        # noqa: E402
 from house.dv import plan as PLAN2     # noqa: E402
 
 
+# 구조를 바꾸는 파라미터의 이름꼴. 깊이·동기화단수·정책처럼 **회로의 모양**을
+# 바꾸는 것들이다 (폭 파라미터는 여기서 안 흔든다 -- 그것은 합성 쪽 일이다).
+_구조말 = ("stage", "pipe", "cdc", "sync", "policy", "gate", "mode", "depth")
+
+
+def _기본파라(설계) -> dict:
+    """설계의 톱 파라미터 기본값. **표지와 구조도에 쓸 이름이 여기서 나온다.**"""
+    기본 = dict(getattr(설계, "파라", {}) or {})
+    try:
+        from house import rtlscan as _SCAN
+        훑 = _SCAN.훑기(getattr(설계, "RTL", []), getattr(설계, "top", ""))
+        for k, v in (훑.get("톱파라미터") or {}).items():
+            if k not in 기본 and str(v).strip().isdigit():
+                기본[k] = int(str(v).strip())
+    except Exception:                                        # noqa: BLE001
+        pass
+    return 기본
+
+
+def _보일파라(m: dict, 몇=3) -> list:
+    """구조도에 보일 파라미터 이름들. **이 실행이 흔든 것**을 먼저."""
+    기본 = m.get("기본파라") or {}
+    흔든 = [k for c in (m.get("구성조합") or []) for k in c]
+    차례 = [k for k in dict.fromkeys(흔든) if k in 기본]
+    for k in 기본:
+        if k not in 차례:
+            차례.append(k)
+    return 차례[:몇]
+
+
+def _회로부제(m: dict) -> str:
+    """구조도 밑에 붙는 한 줄. **RTL 에서 읽은 것만** 적는다."""
+    훑 = m.get("훑기") or {}
+    조각 = []
+    클 = len(훑.get("클럭") or [])
+    건 = len(훑.get("CDC건넘") or [])
+    if 클 >= 2:
+        조각.append(f"클럭 {클}개 · 도메인 건넘 {건}개")
+    if 훑.get("FSM"):
+        조각.append(f"FSM {len(훑['FSM'])}개")
+    if 훑.get("비동기리셋"):
+        조각.append("비동기 리셋")
+    if 훑.get("래치위험"):
+        조각.append(f"래치 위험 {len(훑['래치위험'])}곳")
+    return " · ".join(조각) or "RTL 스캔에서 읽은 구조 정보가 없다"
+
+
+def _구성글(파라: dict) -> str:
+    """구성 한 줄의 이름. **바꾼 칸만** 적는다."""
+    return " · ".join(f"{k}={v}" for k, v in sorted((파라 or {}).items())) or "기본"
+
+
+def _구조구성(설계, 최대=5) -> list:
+    """이 회로의 **구조 파라미터**를 흔든 구성들. 없으면 빈 목록.
+
+    실측 2026-09-23: 여기에 `{"STAGES": 2}` · `{"CDC_STAGES": 3}` ·
+    `{"GATE_POLICY": 0}` 이 박혀 있었다 -- FIR 의 이름이다. 다른 회로를 넘기면
+    **없는 파라미터를 흔들거나**, 흔들지도 않은 이름으로 「바꿔도 돈다」고
+    적게 된다. Ethan 의 스윕에서 똑같은 일이 났다(PR #381).
+    """
+    # **파라미터는 RTL 에 있다.** `설계.파라` 는 대개 비어 있다(실측: nsw_fir 도
+    # `{}` 다) -- 톱 모듈의 파라미터를 스캔해서 쓴다.
+    기본 = _기본파라(설계)
+    첫판, 둘째판 = [], []
+    for k, v in sorted(기본.items()):
+        if not isinstance(v, int) or not any(w in k.lower() for w in _구조말):
+            continue
+        if v in (0, 1):                      # 정책 깃발: 뒤집는다
+            첫판.append({k: 1 - v})
+        elif v > 1:                          # 단수/깊이: 하나 줄이고 하나 늘린다
+            첫판.append({k: v - 1})
+            둘째판.append({k: v + 1})
+    # **파라미터마다 하나씩 먼저 넣는다.** 앞에서부터 자르면 한 파라미터가 자리를
+    # 다 먹고 뒤엣것은 한 번도 안 흔들린다 (GATE_POLICY 가 그렇게 잘렸다).
+    #
+    # 옛 판에는 `{"STAGES": 3}` 도 있었는데 그것이 **기본값**이었다 -- 네 구성 중
+    # 하나가 아무것도 안 바꾸고 돌았다. 기본과 같은 구성은 여기서 안 난다.
+    return (첫판 + 둘째판)[:최대]
+
+
 def 일하기(규모="보통", 설계=None) -> dict:
     """규모: 빠르게 | 보통 | 밤새"""
     설정 = {"빠르게": dict(닫기=[10, 30, 100, 300, 1000], 회귀씨앗=8, 회귀거래=500, 변이거래=200),
@@ -61,7 +141,8 @@ def 일하기(규모="보통", 설계=None) -> dict:
     t0 = time.time()
     회귀 = []
     for s in range(1, 설정["회귀씨앗"] + 1):
-        d = SIM.돌리기(None, seed=s, txn=설정["회귀거래"], maxlen=256, cap=200000)
+        d = SIM.돌리기(None, seed=s, txn=설정["회귀거래"], maxlen=256, cap=200000,
+                    설계=d0)
         회귀.append({"seed": s, "pass": d["pass"], "fail": d["fail"], "timeout": d["timeout"],
                    "proto": d["proto_err"], "cov": d["cov_pct"], "주기": d["clk_cycles"],
                    "초": d["_초"], "sat": d["sat_txn"], "cyc_med": d["cyc_med"],
@@ -72,9 +153,10 @@ def 일하기(규모="보통", 설계=None) -> dict:
     R["총주기"] = sum(x["주기"] for x in 회귀)
 
     # --- 3. 지시 시험으로 구멍 닫기 (랜덤만 vs 랜덤+지시) ---
-    랜덤만 = SIM.돌리기(None, seed=7, txn=max(설정["닫기"]), maxlen=2000, cap=900000)
+    랜덤만 = SIM.돌리기(None, seed=7, txn=max(설정["닫기"]), maxlen=2000, cap=900000,
+                  설계=d0)
     지시포함 = SIM.돌리기(None, seed=7, txn=max(설정["닫기"]), maxlen=2000, cap=900000,
-                     dir=max(20, max(설정["닫기"]) // 50))
+                     dir=max(20, max(설정["닫기"]) // 50), 설계=d0)
     R["랜덤만"] = 랜덤만
     R["지시포함"] = 지시포함
     R["큰실행"] = 지시포함
@@ -88,23 +170,35 @@ def 일하기(규모="보통", 설계=None) -> dict:
     R["변이초"] = round(time.time() - t1, 2)
 
     # --- 6. 파라미터 구성별 회귀 (IP 는 한 구성이 아니다) ---
+    # **회로 이름을 안 박는다.** 실측 2026-09-23: 여기에 `{"STAGES": 2}` 처럼
+    # FIR 의 파라미터 이름이 박혀 있었다. 다른 회로를 넘겨도 그대로라, 없는
+    # 파라미터를 흔들거나 **흔들지도 않은 이름으로 «바꿔도 돈다»** 고 적게 된다.
+    조합 = _구조구성(d0)
+    R["구성조합"] = 조합
+    R["기본파라"] = _기본파라(d0)
+    try:
+        from house import rtlscan as _SCAN
+        R["훑기"] = _SCAN.훑기(getattr(d0, "RTL", []), getattr(d0, "top", ""))
+    except Exception:                                        # noqa: BLE001
+        R["훑기"] = {}
     구성 = []
-    for c in ({"STAGES": 2}, {"STAGES": 3}, {"CDC_STAGES": 3}, {"GATE_POLICY": 0}):
-        d = SIM.돌리기(c, seed=55, txn=설정["회귀거래"] // 2, maxlen=256, cap=200000)
+    for c in 조합:
+        d = SIM.돌리기(c, seed=55, txn=설정["회귀거래"] // 2, maxlen=256, cap=200000,
+                    설계=d0)
         구성.append({"파라": c, "pass": d["pass"], "fail": d["fail"], "timeout": d["timeout"],
                    "cov": d["cov_pct"]})
     R["구성"] = 구성
 
     # --- 7. 파형: 시뮬레이터가 쓴 VCD 를 실제로 읽는다 ---
     t2 = time.time()
-    R["파형"] = _파형뜨기()
+    R["파형"] = _파형뜨기(d0)
     R["파형초"] = round(time.time() - t2, 2)
 
     R["초"] = round(time.time() - R["시작"], 1)
     return R
 
 
-def _파형뜨기() -> dict:
+def _파형뜨기(설계=None) -> dict:
     """VCD 를 한 번 뜨고 세 장면을 뽑는다 -- **구간은 규칙으로 고른다**.
 
     "잘 나온 데를 골랐다" 를 막으려고, 각 장면의 구간은 `vcd.구간찾기` 가
@@ -112,10 +206,11 @@ def _파형뜨기() -> dict:
     """
     out = {"됐나": False}
     try:
-        길 = str(RPT.내는곳 / "nsw_fir.vcd")
+        길 = str(RPT.내는곳 / f"{getattr(설계, 'top', 'dut')}.vcd")
         RPT.내는곳.mkdir(parents=True, exist_ok=True)
-        r = SIM.돌리기({"TAPS": 8, "STAGES": 3, "GATE_POLICY": 1},
-                    seed=1, txn=6, cap=6000, cfg=3, maxlen=6, dir=2, vcd=길)
+        r = SIM.돌리기(dict(getattr(설계, "파라", {}) or {}) or None,
+                    seed=1, txn=6, cap=6000, cfg=3, maxlen=6, dir=2, vcd=길,
+                    설계=설계)
         d = VCD.읽기(길)
         out["파일"] = 길
         out["바이트"] = pathlib.Path(길).stat().st_size
@@ -211,7 +306,21 @@ def 보고서(m: dict) -> RPT.보고서:
           f"{m['랜덤만']['cov_pct']:.2f} % → {m['지시포함']['cov_pct']:.2f} %, "
           f"포화 거래 {m['랜덤만']['sat_txn']} → {m['지시포함']['sat_txn']}건 "
           f"— 포화 로직은 랜덤으로 영영 안 닿는다")
-    R.요약(f"파라미터 구성 {len(m['구성'])}개 각각 회귀 통과 — IP 는 한 구성이 아니다")
+    # **통과를 세어서 적는다.** 옛 판은 실패를 안 보고 «각각 회귀 통과» 라고
+    # 적었다 -- 깨진 구성이 있어도 요약은 초록이었다(Ethan 의 385 실패와 같은 자리).
+    _깨 = [x for x in m["구성"] if x.get("fail") or x.get("timeout")]
+    if not m["구성"]:
+        R.요약("<b>파라미터 구성 회귀를 못 돌렸다</b> — 이 회로에 흔들 구조 "
+              "파라미터(단수·동기화단수·정책)가 없다")
+    elif _깨:
+        R.요약(f"파라미터 구성 {len(m['구성'])}개 중 <b>{len(_깨)}개가 깨졌다</b>: "
+              + " · ".join(f"<code>{_구성글(x['파라'])}</code> {x['fail']} 실패"
+                           for x in _깨[:3])
+              + " — IP 는 한 구성이 아니다")
+    else:
+        R.요약(f"파라미터 구성 {len(m['구성'])}개 각각 회귀 통과 "
+              f"({' · '.join(_구성글(x['파라']) for x in m['구성'])}) "
+              f"— IP 는 한 구성이 아니다")
     R.요약(f"시뮬레이션 속도 {m['총주기']/max(m['회귀초'],1e-9)/1e6:.2f} M주기/초 "
           f"(verilator, {m['회귀초']:.1f} s 에 {len(회)} 시드)")
 
@@ -228,8 +337,11 @@ def 보고서(m: dict) -> RPT.보고서:
           "백프레셔 커버포인트 4칸"],
          ["CDC", "느린 설정 도메인의 계수가 안 깨진다", "cfg_clk 을 비동기 주기로 돌린다",
           "계수 오류로 인한 불일치 0"],
-         ["파라미터", "STAGES·CDC_STAGES·GATE_POLICY 를 바꿔도 돈다", "구성별 회귀",
-          "구성마다 실패 0"],
+         ["파라미터",
+          (" · ".join(sorted({k for x in m["구성"] for k in x["파라"]}))
+           + " 를 바꿔도 돈다") if m.get("구성")
+          else "<b>흔들 구조 파라미터가 없다</b>",
+          "구성별 회귀", "구성마다 실패 0"],
          ["검사기 자체", "검사기가 정말로 무는가", "RTL 변이 주입", "변이마다 빨개짐"]],
         "검증 계획. <b>마지막 줄이 없으면 위의 여섯 줄은 증거가 아니다</b> — "
         "아무것도 안 보는 검사기도 여섯 줄을 다 통과한다.", 강조열=[0])
@@ -250,12 +362,22 @@ def 보고서(m: dict) -> RPT.보고서:
         "대조": 큰.get("pass", 0) + 큰.get("fail", 0),
         "불일치": 큰.get("fail", 0),
         "커버리지": 큰.get("cov_pct", 0.0),
-        "빈맞은": int(round(큰.get("cov_pct", 0) / 100 * 52)), "빈전체": 52,
+        # **분모를 여기 적지 않는다.** 테스트벤치가 `cov_all` 로 내보낸다 --
+        # 파이썬에 `52` 를 따로 적어 두면 TB 에서 칸이 늘어도 조용히 안 바뀐다.
+        "빈맞은": 큰.get("cov_hit", int(round(큰.get("cov_pct", 0) / 100
+                                          * (큰.get("cov_all") or 52)))),
+        "빈전체": 큰.get("cov_all") or 52,
         "에이전트": ["Agent 1 — cfg 도메인 (느린 클럭)", "Agent 2 — data 도메인 (clk)"],
         "드라이버글": ["push_coefs()", "run_txn()"],
         "모니터글": ["rempty/full 관측", "state_o/done 관측"],
-        "dut": f"nsw_fir  TAPS=8 · STAGES=3",
-        "dut부제": "비동기 두 도메인 · ICG 클럭게이팅 · 원핫 FSM · 포화 MAC",
+        # **회로 이름을 안 박는다.** `nsw_fir  TAPS=8 · STAGES=3` 이 박혀 있었다.
+        # 보일 파라미터는 **이 보고서가 실제로 흔든 것**을 먼저 고른다 -- 알파벳
+        # 순으로 셋을 자르면 ACCW·CDC_STAGES·CNTW 처럼 아무 이야기도 없는 셋이 뽑힌다.
+        "dut": (m.get("top") or "dut") + (
+            "  " + " · ".join(f"{k}={(m.get('기본파라') or {})[k]}"
+                              for k in _보일파라(m)) if m.get("기본파라") else ""),
+        # **부제도 회로에서 읽는다.** FIR 을 적어 두면 다른 회로에서 거짓말이 된다.
+        "dut부제": _회로부제(m),
     }, 폭=660),
          "강의 화면의 그 구조도다. <b>상자 안의 수는 전부 이번 실행에서 실제로 잰 것</b>이다 — "
          f"랜덤 시퀀스 {큰.get('txn',0)-큰.get('directed',0):,}건 · 지시 시퀀스 "
@@ -272,7 +394,8 @@ def 보고서(m: dict) -> RPT.보고서:
          ["uvm_monitor", "<code>run_txn()</code> 관측부", "<b>핀만 읽는다</b> — state_o · out_acc · done"],
          ["reference model", "<code>golden_model()</code>", "스펙에서 따로 적은 독립 C 모델"],
          ["uvm_scoreboard", "<code>main()</code> 판정부", "값 비교 + 프로토콜(done 정확히 1회)"],
-         ["covergroup", "<code>struct Coverage</code>", "커버포인트 6 + 크로스 2 = 빈 52개"],
+         ["covergroup", "<code>struct Coverage</code>",
+          f"커버포인트 6 + 크로스 2 = 빈 {큰.get('cov_all') or 52}개"],
          ["virtual interface", "<code>Vnsw_fir*</code> 핀", "verilator 가 낸 DUT 핸들"]],
         "<b>왼쪽이 UVM 의 이름, 가운데가 이 저장소의 실제 코드</b>다. "
         "이름만 빌린 자리를 숨기지 않으려고 둘을 나란히 적는다.",
