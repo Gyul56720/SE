@@ -7,7 +7,7 @@
 증명하지 않는다 -- 이 저장소가 반복해서 진 자리가 정확히 거기다
 (CLAUDE.md: "검사하지 않은 초록불이 검사한 빨간불보다 나쁘다").
 
-그래서 생성물은 **관문 열일곱 개**를 지나야 등록된다:
+그래서 생성물은 **관문 열여덟 개**를 지나야 등록된다:
 
     1.  문법        verilator --lint-only -Wall      (경고도 본다)
     2.  두번째도구  iverilog -g2012 엘라보레이트     (한 도구만 믿지 않는다)
@@ -21,6 +21,7 @@
     5c. 자해검사    변이를 심어 **검사기가 정말 무는지**
     6.  합성        yosys 로 셀에 매핑되나 (래치 안 생기나)
     6b. 게이트시뮬  **합성이 낸 넷리스트**가 RTL 과 같은 답을 내나 (지연 0)
+    6c. LEC        RTL 과 넷리스트가 같은 회로임을 **증명**하나 (모듈마다)
     7.  STA         임계경로가 목표 주기 안에 드나 (**공칭 한 코너**)
     7b. 코너·OCV    PVT 코너를 다 보고 OCV 까지 뺀 슬랙이 ≥ 0 인가
     8.  고장커버리지 스캔을 넣고 떨궈 봐서 **얼마나 보이나**
@@ -51,6 +52,7 @@ import json
 import re
 import shutil
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 
@@ -301,6 +303,33 @@ def 포트뽑기(sv: str, top: str) -> list:
     # 회로가 작아도 넘길 수 있고, 0 개짜리 RTL 은 확실히 문다.
     "어서션수": 4,
     "어서션씨앗": (1, 2, 3),
+
+    # ---- LEC · 논리 등가 (관문 6c) ----
+    #
+    # 실측 2026-09-23 (yosys 0.33, nsw_fir). **경계가 뚜렷하다.**
+    #
+    #     nsw_icg     증명됨   0.02 s
+    #     nsw_sync2   증명됨   0.03 s
+    #     nsw_ctrl    증명됨   0.16 s   <- FSM. 가장 값진 자리다
+    #     nsw_mac     못 끝냄  240 s 예산 초과 (16x16 곱셈 + 40비트 누산)
+    #     nsw_fir     못 끝냄  18분에도 equiv_induct 가 안 끝난다 (클럭 둘)
+    #
+    # 먼저 **async2sync 가 없으면 아무것도 못 한다** -- "No SAT model available
+    # for async FF cell" 이 191번 나고 전부 미증명으로 끝난다. 우리 플롭이 전부
+    # 비동기 리셋이기 때문이다.
+    #
+    # **부분 증명을 전체 증명으로 세지 않는다.** 그래서 관문은 이렇게 죈다:
+    #
+    #     반례(Inequivalent)가 하나라도 나오면   -> 빨강. 이건 진짜 다르다는 뜻이다
+    #     증명된 모듈이 문턱보다 적으면          -> 빨강. 장치가 죽은 것이다
+    #     예산을 넘겨 못 끝낸 것                 -> **이름을 적고 넘어간다**
+    #
+    # 못 끝낸 것을 빨갛게 하면 관문이 영영 빨갛고, 초록으로 세면 거짓이다.
+    # 셋째 칸(모른다)을 그대로 남기는 것이 맞다 -- `pr_merged.sh` 의 '모르겠다'
+    # 와 다른 점은, 거기서는 모르는 것을 안 된 것으로 다루지만 여기서는 **다른
+    # 관문(6b 게이트 시뮬)이 같은 자리를 자극으로 이미 덮고 있다**는 것이다.
+    "lec예산_초": 20.0,
+    "lec증명수": 3,
 
     # ---- 게이트 레벨 시뮬 (관문 6b) ----
     #
@@ -642,6 +671,17 @@ def 관문(설계, 벡터=400, 주기_ns=10.0, 문턱=None, 빠르게=False) -> 
     except Exception as e:                                   # noqa: BLE001
         적기("6b. 게이트 레벨 시뮬", False, f"{type(e).__name__}: {e}")
 
+    # 6c. **LEC.** 6b 는 *자극으로* 같은 답이 나오는지 보고, 여기서는 *증명*한다.
+    # 둘은 다른 일이다 -- 자극이 안 닿은 자리는 6b 가 못 본다. 여기서 사슬을
+    # 안 끊는다.
+    try:
+        L = 등가검사(설계, 문턱)
+        결과["등가"] = L
+        for 이름, 됐나, 말, 수 in 등가검사판정(L, 문턱):
+            적기(이름, 됐나, 말, 수)
+    except Exception as e:                                   # noqa: BLE001
+        적기("6c. LEC (논리 등가)", False, f"{type(e).__name__}: {e}")
+
     # 7. STA
     try:
         T = SYN.sta(결과["합성"], 주기=주기_ns)
@@ -693,6 +733,128 @@ _어서션꼴 = (
     ("가정", re.compile(r"\bassume\s+property\s*\(")),
     ("즉시", re.compile(r"\bassert\s*\((?!\s*property)")),
 )
+
+
+_모듈꼴 = re.compile(r"^\s*module\s+([A-Za-z_][A-Za-z0-9_$]*)", re.M)
+
+
+def 등가검사(설계, 문턱: dict) -> dict:
+    """**RTL 과 합성 넷리스트가 같은 회로인가 -- 모듈마다 증명해 본다.**
+
+    모듈마다 따로 합성해서 yosys `equiv_make` + `equiv_simple` + `equiv_induct`
+    를 건다. 셋으로 갈린다: **증명됨 · 반례 · 못 끝냄(예산)**.
+
+    한 군데 옮겨 적을 것: `async2sync` 가 없으면 아무것도 못 한다. 우리 플롭이
+    전부 비동기 리셋이라 "No SAT model available for async FF cell" 이 191번
+    나고 전부 미증명으로 끝난다(실측).
+    """
+    from house import synth as SYN
+    t0 = time.time()
+    # **라이브러리는 생성물이라 커밋되지 않는다.** 없으면 만든다 -- 안 그러면
+    # 깨끗한 나무(precheck 의 임시 워크트리)에서 합성이 조용히 실패하고
+    # **증명 0개**가 나온다. 실측 2026-09-23: precheck 가 그것을 잡아 줬다.
+    if not Path(SYN.LIB).exists():
+        from house.lib import mk
+        mk.만들기()
+    셀 = 뿌리 / "lib" / "cells.v"
+    rtl들 = [str(x) for x in (설계.RTL or [])]
+    if not rtl들 or not 셀.exists():
+        return {"오류": "RTL 이나 셀 모델이 없다", "초": 0.0}
+    글 = "\n".join(Path(x).read_text(encoding="utf-8", errors="replace") for x in rtl들)
+    모듈들 = [m for m in _모듈꼴.findall(글) if not m.startswith("\\$")]
+    예산 = float(문턱["lec예산_초"])
+    방 = Path(tempfile.mkdtemp(prefix="nsw_lec_"))
+    난것 = []
+    try:
+        for M in 모듈들:
+            넷 = 방 / f"{M}.v"
+            합 = subprocess.run(
+                ["yosys", "-q", "-p", (
+                    f"read_verilog -sv {' '.join(rtl들)}; hierarchy -top {M}; "
+                    f"synth -top {M} -flatten; "
+                    f"dfflibmap -liberty {SYN.LIB}; abc -liberty {SYN.LIB}; "
+                    f"opt_clean; write_verilog -noattr {넷}")],
+                capture_output=True, text=True, timeout=600)
+            if not 넷.exists():
+                난것.append({"모듈": M, "상태": "합성실패",
+                           "말": (합.stderr or 합.stdout)[-200:], "초": 0.0})
+                continue
+            t1 = time.time()
+            # **예산 초과를 모듈마다 잡는다.** 첫 판은 이 try 가 for 바깥에
+            # 있어서, nsw_mac 이 20 s 를 넘기자 **뒤 모듈이 통째로 빠졌다** --
+            # "모듈 6개" 라고 적으면서 줄은 4개였고, 가장 값진 nsw_ctrl 이
+            # 아예 안 돌았다(실측 2026-09-23). 관문이 덜 보고 초록을 낸 것이다.
+            try:
+                r = subprocess.run(
+                    ["yosys", "-p", (
+                        f"read_verilog -sv {' '.join(rtl들)}; hierarchy -top {M}; "
+                        "proc; memory; flatten; async2sync; opt_clean; "
+                        f"rename {M} gold; design -stash gold; "
+                        f"read_verilog {넷} {셀}; hierarchy -top {M}; "
+                        "proc; memory; flatten; async2sync; opt_clean; "
+                        f"rename {M} gate; design -stash gate; "
+                        "design -copy-from gold -as gold gold; "
+                        "design -copy-from gate -as gate gate; "
+                        "equiv_make gold gate equiv; hierarchy -top equiv; "
+                        "equiv_simple -seq 5; equiv_induct -seq 10; equiv_status")],
+                    # **예산이 곧 벽시계 시간이다.** 첫 판은 `예산 + 30` 을
+                    # 줘서 20 s 예산이 실제로는 50 s 를 먹었다(실측).
+                    capture_output=True, text=True, timeout=예산)
+                글r = r.stdout + r.stderr
+            except subprocess.TimeoutExpired:
+                난것.append({"모듈": M, "상태": "못끝냄",
+                           "말": f"{예산:.0f} s 예산 초과",
+                           "초": round(time.time() - t1, 2)})
+                continue
+            초 = round(time.time() - t1, 2)
+            if "Equivalence successfully proven" in 글r:
+                상태, 말 = "증명됨", ""
+            elif "Inequivalent" in 글r or "not equivalent" in 글r.lower():
+                상태 = "반례"
+                말 = next((l.strip() for l in 글r.splitlines()
+                          if "Inequivalent" in l), "")[:200]
+            else:
+                m2 = re.search(r"Found a total of (\d+) unproven", 글r)
+                상태 = "못끝냄"
+                말 = (f"미증명 {m2.group(1)}개" if m2 else "예산 안에 못 끝냈다")
+            난것.append({"모듈": M, "상태": 상태, "말": 말, "초": 초})
+    finally:
+        shutil.rmtree(방, ignore_errors=True)
+    셈 = {k: sum(1 for x in 난것 if x["상태"] == k)
+         for k in ("증명됨", "반례", "못끝냄", "합성실패")}
+    return {"모듈별": 난것, "셈": 셈, "모듈수": len(모듈들),
+            "예산_초": 예산, "초": round(time.time() - t0, 1)}
+
+
+def 등가검사판정(L: dict, 문턱: dict) -> list:
+    """**[(이름, 됐나, 말, 수)]**.  yosys 를 안 돈다."""
+    if L.get("오류"):
+        return [("6c. LEC (논리 등가)", False, L["오류"], None)]
+    셈 = L["셈"]
+    반례 = [x for x in L["모듈별"] if x["상태"] == "반례"]
+    모자람 = 셈["증명됨"] < 문턱["lec증명수"]
+    줄 = " · ".join(f"{x['모듈']} {x['상태']}({x['초']}s)" for x in L["모듈별"])
+    깨진합성 = [x for x in L["모듈별"] if x["상태"] == "합성실패"]
+    말 = (f"<b>모듈 {L['모듈수']}개 중 증명됨 {셈['증명됨']} · 반례 {셈['반례']} · "
+         f"못 끝냄 {셈['못끝냄']}</b> (모듈당 예산 {L['예산_초']:.0f} s · {L['초']} s)\n"
+         f"{줄}\n")
+    for x in 반례:
+        말 += f"  <b>반례</b> {x['모듈']}: {x['말']}\n"
+    for x in 깨진합성:
+        말 += f"  <b>합성 실패</b> {x['모듈']}: {x['말'][:160]}\n"
+    말 += ("**부분 증명을 전체 증명으로 세지 않는다.** 이 관문이 빨간 것은 "
+          "<b>반례가 나왔을 때</b>와 <b>증명된 모듈이 문턱보다 적을 때</b>뿐이다. "
+          "예산을 넘겨 못 끝낸 것은 이름을 적고 넘어간다 — 그것을 빨갛게 하면 "
+          "관문이 영영 빨갛고, 초록으로 세면 거짓이다.\n"
+          "실측에서 <b>제어·글루는 몇 십 ms 에 증명되고</b>(icg 0.02 s · sync2 "
+          "0.03 s · ctrl 0.16 s) <b>넓은 산술과 두 클럭 최상위는 수렴하지 "
+          "않는다</b>(mac 240 s 초과 · 최상위 18분 초과). 그 자리는 관문 6b"
+          "(게이트 시뮬)가 자극으로 덮는다 — 증명은 아니다.")
+    if 모자람:
+        말 += (f"\n**증명된 모듈이 {문턱['lec증명수']}개보다 적다** — "
+              f"{셈['증명됨']}개뿐이다. 장치가 죽었을 수 있다.")
+    return [(f"6c. LEC (반례 0 · 증명 ≥ {문턱['lec증명수']}개)",
+             not 반례 and not 모자람, 말, 셈["증명됨"])]
 
 
 def 게이트시뮬(설계, 문턱: dict, 합성결과: dict) -> dict:
