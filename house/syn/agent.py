@@ -431,11 +431,14 @@ def 보고서(m: dict) -> RPT.보고서:
          ["Late derate", f"\u00d7{o['늦은배수']}"],
          ["Early derate", f"\u00d7{o['이른배수']}"],
          ["Effective ratio", f"{o['실효비']:.4f}"],
-         ["Effective skew for 0.8 ns insertion delay",
+         [f"Effective skew for {o.get('삽입지연_ns', 0.8):g} ns insertion delay",
           f"<b>{o['실효스큐_ps']} ps</b>"]],
-        "1.00\u00d71.07 \u2212 0.98\u00d70.93 = 0.1586. <b>The two derates "
-        "applied to the common path differ, so they do not cancel</b> \u2014 even "
-        "a perfectly balanced tree spends 15.9 % of its insertion delay as skew.",
+        # **산술을 글에 적지 않는다.** `1.00×1.07 − 0.98×0.93 = 0.1586` 이
+        # 박혀 있었다 -- 지금은 맞지만 derate 를 하나 고치면 캡션만 옛 수를 말한다.
+        f"1.00\u00d7{o['늦은배수']} \u2212 {o['공통몫']}\u00d7{o['이른배수']} = "
+        f"{o['실효비']:.4f}. <b>The two derates applied to the common path "
+        f"differ, so they do not cancel</b> \u2014 even a perfectly balanced tree "
+        f"spends {o['실효비']*100:.1f} % of its insertion delay as skew.",
         "house/syn/pvt.py ocv_skew()", 강조열=[1])
 
     # ---------------- 5. power ----------------
