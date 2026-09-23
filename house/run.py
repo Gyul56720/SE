@@ -157,7 +157,7 @@ def 승인하기(키: str = "", 바퀴: int = 3, 메일: bool = False, to=None) 
     다시 읽지 않는다 -- 다시 읽으면 모델이 또 다르게 채우고, 그러면 **사람이 본
     것과 다른 것을 짓게 된다.**
 
-    관문 7개는 `gen.짓기` 안에 있다. 하나라도 빨가면 **등록하지 않는다** --
+    관문은 `gen.짓기` 안에 있다(몇 개인지는 `gen.관문번호들()` 이 센다). 하나라도 빨가면 **등록하지 않는다** --
     반쯤 된 RTL 위에 다음 단계를 쌓지 않는다.
     """
     t0 = time.time()
@@ -370,7 +370,8 @@ if __name__ == "__main__":
                 print(f"   바퀴 {바.get('바퀴')}: {바.get('오류') or 바.get('관문')}")
             raise SystemExit(1)
         print(f"RTL -> {r.get('RTL')}\nTB  -> {r.get('TB')}")
-        print(f"관문 7개 통과 · {r.get('바퀴수')} 바퀴 · {r.get('초')} s "
+        from house import gen as _G
+        print(f"관문 {len(_G.관문번호들())}개 통과 · {r.get('바퀴수')} 바퀴 · {r.get('초')} s "
               f"· 목표 주기 {r.get('주기_ns')} ns")
         raise SystemExit(0)
     회 = None
