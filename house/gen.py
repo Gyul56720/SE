@@ -7,7 +7,7 @@
 증명하지 않는다 -- 이 저장소가 반복해서 진 자리가 정확히 거기다
 (CLAUDE.md: "검사하지 않은 초록불이 검사한 빨간불보다 나쁘다").
 
-그래서 생성물은 **관문 열여섯 개**를 지나야 등록된다:
+그래서 생성물은 **관문 열일곱 개**를 지나야 등록된다:
 
     1.  문법        verilator --lint-only -Wall      (경고도 본다)
     2.  두번째도구  iverilog -g2012 엘라보레이트     (한 도구만 믿지 않는다)
@@ -20,6 +20,7 @@
     5b. 초기화      리셋 직후 출력이 확정인가 (X 전파 없나)
     5c. 자해검사    변이를 심어 **검사기가 정말 무는지**
     6.  합성        yosys 로 셀에 매핑되나 (래치 안 생기나)
+    6b. 게이트시뮬  **합성이 낸 넷리스트**가 RTL 과 같은 답을 내나 (지연 0)
     7.  STA         임계경로가 목표 주기 안에 드나 (**공칭 한 코너**)
     7b. 코너·OCV    PVT 코너를 다 보고 OCV 까지 뺀 슬랙이 ≥ 0 인가
     8.  고장커버리지 스캔을 넣고 떨궈 봐서 **얼마나 보이나**
@@ -300,6 +301,23 @@ def 포트뽑기(sv: str, top: str) -> list:
     # 회로가 작아도 넘길 수 있고, 0 개짜리 RTL 은 확실히 문다.
     "어서션수": 4,
     "어서션씨앗": (1, 2, 3),
+
+    # ---- 게이트 레벨 시뮬 (관문 6b) ----
+    #
+    # 관문 4 는 **RTL** 을 골든 모델과 견준다. 합성이 바꾼 것은 안 본다.
+    # 여기서는 **합성이 낸 넷리스트**를 같은 테스트벤치로 돌려 RTL 과 견준다.
+    #
+    # 잰 값 (nsw_fir): 빌드 18.5 s · 씨앗 둘에서 여덟 칸 전부 같았다.
+    #
+    # **SDF 역주석은 안 한다** -- verilator 에 타이밍이 없다. 이것은 지연 0 의
+    # 기능 시뮬이라 합성이 바꾼 *논리*는 잡고 *타이밍*은 못 잡는다. 그 한계를
+    # 관문 글에 적고, 테이프아웃 표에도 따로 칸을 둔다.
+    "게이트시뮬씨앗": (1, 2),
+    "게이트시뮬벡터": 200,
+    # 견줄 칸. **cov_pct 를 넣는다** -- 커버리지까지 같아야 같은 자극을 같은
+    # 길로 돈 것이다. 시간 관련 칸(_초)은 당연히 다르므로 안 넣는다.
+    "게이트비교칸": ("pass", "fail", "timeout", "proto_err", "sat_txn",
+                "worst_diff", "clk_cycles", "gclk_cycles", "cov_pct"),
 
     # ---- 다중 코너 STA · OCV (관문 7b) ----
     #
@@ -611,6 +629,19 @@ def 관문(설계, 벡터=400, 주기_ns=10.0, 문턱=None, 빠르게=False) -> 
         적기("6. yosys 합성", False, f"{type(e).__name__}: {e}")
         return 결과
 
+    # 6b. **게이트 레벨 시뮬.** 번호가 6b 인 까닭: 합성(6) 뒤에 온다 -- 넷리스트가
+    # 있어야 돌기 때문이다. 처음엔 4e 로 적었는데 `관문번호들()` 이 소스 차례로
+    # 세므로 목록이 `6 · 4e · 7` 로 나와 읽는 사람이 헷갈렸다. 관문 4 는 RTL 을
+    # 골든과 견주고, 여기서는
+    # **합성이 낸 것**을 RTL 과 견준다. 여기서 사슬을 안 끊는다.
+    try:
+        GL = 게이트시뮬(설계, 문턱, 결과["합성"])
+        결과["게이트시뮬"] = GL
+        for 이름, 됐나, 말, 수 in 게이트시뮬판정(GL, 문턱):
+            적기(이름, 됐나, 말, 수)
+    except Exception as e:                                   # noqa: BLE001
+        적기("6b. 게이트 레벨 시뮬", False, f"{type(e).__name__}: {e}")
+
     # 7. STA
     try:
         T = SYN.sta(결과["합성"], 주기=주기_ns)
@@ -662,6 +693,119 @@ _어서션꼴 = (
     ("가정", re.compile(r"\bassume\s+property\s*\(")),
     ("즉시", re.compile(r"\bassert\s*\((?!\s*property)")),
 )
+
+
+def 게이트시뮬(설계, 문턱: dict, 합성결과: dict) -> dict:
+    """**합성이 낸 넷리스트를 같은 테스트벤치로 돌려 RTL 과 견준다.**
+
+    ## 왜 이 관문이 없었나 -- 셀 모델이 없었다
+
+    합성 넷리스트는 `INVX1` · `DFFRX1` 같은 셀을 부르는데, 이 저장소에는
+    Liberty(타이밍·면적)만 있고 **Verilog 모델이 없었다.** 그래서 넷리스트를
+    돌릴 방법이 아예 없었다. `house/lib/cells.v` 를 Liberty 의 `function` 에서
+    그대로 옮겨 적어 그 자리를 메웠다.
+
+    ## 지연 0 이다 -- SDF 역주석이 아니다
+
+    verilator 에 타이밍이 없다. 이것이 잡는 것은 **합성이 바꾼 논리**다 --
+    래치가 끼었나, 리셋이 빠졌나, X 가 다르게 퍼지나. **타이밍은 못 잡는다.**
+    그쪽은 관문 7·7b(STA)가 보고, 진짜 SDF 시뮬은 아직 없다(테이프아웃 표에
+    따로 적어 둔다).
+    """
+    import hashlib
+    from house import sim as SIM
+    t0 = time.time()
+    if not 합성결과.get("됐나") or not 합성결과.get("v"):
+        return {"오류": "합성 넷리스트가 없다", "초": 0.0}
+    셀 = 뿌리 / "lib" / "cells.v"
+    if not 셀.exists():
+        return {"오류": f"셀 모델이 없다: {셀}", "초": 0.0}
+    넷 = Path(합성결과["v"])
+    키 = hashlib.sha1((str(넷) + str(설계.TB) + 셀.read_text(encoding="utf-8")
+                      ).encode()).hexdigest()[:12]
+    방 = Path(SIM.빌드방) / f"gl_{키}"
+    실행 = 방 / "simv"
+    if not 실행.exists():
+        방.mkdir(parents=True, exist_ok=True)
+        cmd = ["verilator", "--cc", str(넷), str(셀), "--top-module", 설계.top,
+               "--exe", str(설계.TB), "-Mdir", str(방), "-o", "simv",
+               "-CFLAGS", "-O2", "-Wno-fatal", "-Wno-MULTITOP", "-Wno-LATCH"]
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
+        if r.returncode != 0:
+            return {"오류": "게이트 넷리스트를 못 지었다:\n" + (r.stderr or r.stdout)[-600:],
+                    "초": round(time.time() - t0, 1)}
+        m = subprocess.run(["make", "-C", str(방), "-f", f"V{설계.top}.mk",
+                            "simv", "-s", "-j4"],
+                           capture_output=True, text=True, timeout=900)
+        if m.returncode != 0 or not 실행.exists():
+            return {"오류": "게이트 시뮬을 못 링크했다:\n" + (m.stderr or m.stdout)[-600:],
+                    "초": round(time.time() - t0, 1)}
+    칸 = tuple(문턱["게이트비교칸"])
+    벡터 = int(문턱["게이트시뮬벡터"])
+    씨앗별, 다른수 = [], 0
+    for 씨 in 문턱["게이트시뮬씨앗"]:
+        g = subprocess.run([str(실행), "--txn", str(벡터), "--seed", str(씨)],
+                           capture_output=True, text=True, timeout=900)
+        줄 = [l for l in g.stdout.splitlines() if l.startswith("{")]
+        gj = json.loads(줄[-1]) if 줄 else None
+        try:
+            rj = SIM.돌리기(설계=설계, txn=벡터, seed=씨)
+        except Exception as e:                               # noqa: BLE001
+            return {"오류": f"RTL 쪽을 못 돌렸다: {type(e).__name__}: {e}",
+                    "초": round(time.time() - t0, 1)}
+        다른칸 = 견주기(gj, rj, 칸)
+        다른수 += len(다른칸)
+        씨앗별.append({"씨": 씨, "rc": g.returncode,
+                    "게이트JSON있나": gj is not None,
+                    "게이트fail": (gj or {}).get("fail"),
+                    "다른칸": 다른칸})
+    return {"씨앗별": 씨앗별, "다른수": 다른수, "칸": list(칸), "벡터": 벡터,
+            "셀수": 합성결과.get("셀수"), "초": round(time.time() - t0, 1)}
+
+
+def 견주기(게이트: "dict | None", rtl: dict, 칸) -> list:
+    """**칸마다 견준다.**  JSON 이 없으면 그 자체가 전부 다른 것이다.
+
+    `게이트` 가 None 이면 시뮬이 죽어 결과를 못 낸 것이다 -- 그것을 '다른 것
+    없음' 으로 읽으면 **죽은 시뮬이 초록이 된다.**
+    """
+    if 게이트 is None:
+        return [{"칸": k, "게이트": None, "RTL": rtl.get(k),
+                 "왜": "게이트 시뮬이 JSON 을 안 냈다"} for k in 칸]
+    난것 = []
+    for k in 칸:
+        a, b = 게이트.get(k), rtl.get(k)
+        if a != b:
+            난것.append({"칸": k, "게이트": a, "RTL": b, "왜": ""})
+    return 난것
+
+
+def 게이트시뮬판정(G: dict, 문턱: dict) -> list:
+    """**[(이름, 됐나, 말, 수)]**.  시뮬레이션을 안 돈다."""
+    if G.get("오류"):
+        return [("6b. 게이트 레벨 시뮬", False, G["오류"], None)]
+    씨앗들 = G["씨앗별"]
+    깨진씨앗 = [x for x in 씨앗들 if x["rc"] != 0 or not x["게이트JSON있나"]
+              or x["게이트fail"]]
+    말 = (f"<b>넷리스트를 같은 테스트벤치로 {len(씨앗들)} 씨앗 돌려 RTL 과 "
+         f"견줬다 — 다른 칸 {G['다른수']}개</b> "
+         f"(셀 {G['셀수']:,}개 · 벡터 {G['벡터']} · {G['초']} s)\n"
+         f"견준 칸: <code>{' · '.join(G['칸'])}</code>\n")
+    for x in 씨앗들:
+        말 += (f"  씨{x['씨']}: rc={x['rc']} · fail={x['게이트fail']}"
+              + (f" · 다른 칸 {len(x['다른칸'])}개" if x["다른칸"] else " · 전부 같다") + "\n")
+        for d in x["다른칸"][:4]:
+            말 += (f"     {d['칸']}: 게이트={d['게이트']} RTL={d['RTL']}"
+                  + (f" ({d['왜']})" if d["왜"] else "") + "\n")
+    말 += ("**이것은 지연 0 의 기능 시뮬이지 SDF 역주석이 아니다.** verilator 에 "
+          "타이밍이 없다. 여기서 잡는 것은 <b>합성이 바꾼 논리</b>다 — 래치가 "
+          "끼었나 · 리셋이 빠졌나 · X 가 다르게 퍼지나. 타이밍은 관문 7·7b 가 "
+          "보고, 진짜 SDF 시뮬은 아직 없다.\n"
+          "셀 모델은 <code>house/lib/cells.v</code> 이고 Liberty 의 "
+          "<code>function</code> 을 그대로 옮긴 것이다 — 둘이 갈라지면 이 관문이 "
+          "거짓말을 한다(합성 탓인지 모델 탓인지 못 가린다).")
+    return [("6b. 게이트 레벨 시뮬 (넷리스트 = RTL)",
+             G["다른수"] == 0 and not 깨진씨앗, 말, G["다른수"])]
 
 
 def 어서션(설계, 문턱: dict) -> dict:
