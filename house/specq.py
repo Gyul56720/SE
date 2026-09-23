@@ -92,6 +92,27 @@ def _있나(이름들, *꼬리들) -> str:
 _문장쪼개기 = __import__("re").compile(r"[.!?。\n]+")
 
 
+_굵게꼴 = re.compile(r"\*\*([^*\n]{1,120}?)\*\*")
+
+
+def 따온글(글: str) -> str:
+    """요청 글에서 **따온 문장**을 보고서에 실을 꼴로.
+
+    실측 2026-09-23: 사용자의 `spec.md` 가 마크다운이라 따온 문장에
+    `**같은 클럭 도메인**` 이 그대로 딸려 왔고, 보고서가 HTML 이라 별표가
+    **글자로 찍혔다**. 우리 글은 다 고쳤는데 **남의 글이 새는 자리**가 남아 있었다.
+
+    강조는 살린다(그 사람이 굵게 쓴 데가 곧 중요한 데다) -- 꼴만 바꾼다.
+    """
+    t = 굵게꼴변환(글)
+    return t
+
+
+def 굵게꼴변환(글: str) -> str:
+    t = _굵게꼴.sub(r"<b>\1</b>", str(글 or ""))
+    return t.replace("**", "")          # 짝이 안 맞고 남은 것은 턴다
+
+
 def _답있나(요청: str, 단서) -> str:
     """요청 글에 이 물음의 답이 적혀 있나. 맞으면 그 문장 토막을 돌려준다.
 
@@ -105,7 +126,7 @@ def _답있나(요청: str, 단서) -> str:
             낮 = 문.lower()
             if any(t.lower() in 낮 for t in 주제들) and \
                any(a.lower() in 낮 for a in 답들):
-                return 문[:70]
+                return 따온글(문[:70])
     return ""
 
 
@@ -337,7 +358,7 @@ def 제안서에시킨것(요청: str, 몇=8) -> list:
     for 덩 in re.split(r"\n\s*\n", 요청 or ""):
         낮 = 덩.lower()
         if any(w in 낮 for w in _시킨말) and any(w in 덩 for w in _답하라):
-            줄 = " ".join(덩.split()).lstrip("# ").strip()
+            줄 = 따온글(" ".join(덩.split()).lstrip("# ").strip())
             # 제목만 있고 몸이 없는 덩어리는 다음 덩어리가 몸이다 -- 짧으면 버린다
             if len(줄) < 20 or 줄 in 난것:
                 continue
@@ -378,13 +399,85 @@ def 어긋난것(스펙=None, 미정: dict = None) -> list:
         if len(도메인) >= 2 and 비동기:
             난것.append({
                 "무엇": "클럭 도메인",
-                "요청글": 답[:90],
+                "요청글": 따온글(답[:90]),
                 "모델": " · ".join(f"{c.get('이름')} {c.get('주기_ns')} ns "
                                  f"({c.get('도메인')})" for c in 클[:4]),
                 "왜": "요청 글은 CDC 를 안 만든다고 했는데 모델은 비동기 도메인을 "
                      "둘 이상 제안했다. 둘 다 말이 될 수는 있다 — 제어를 따로 두는 "
                      "설계는 흔하다. 다만 <b>사람이 골라야 하고</b>, 고르기 전에 "
                      "CDC 시나리오와 동기화기가 설계에 들어가야 한다"})
+    return 난것
+
+
+# ------------------------------------------------------------------ 출처 없는 수
+#
+# **실측 2026-09-23 (MERA).** 제안서 Table 11 «클럭 계획» 이 이랬다.
+#
+#     s_axis_aclk   2.0 ns   RFDC / Capture Core 공통 도메인 (500 MHz)
+#     s_axi_aclk   10.0 ns   AXI4-Lite 제어 도메인 (비동기)
+#
+# 2.0 ns 는 요청 글의 «목표 주파수 500 MHz» 에서 나온다. **10.0 ns 는 어디에서도
+# 안 나온다** -- 요청 글에 제어 클럭 주파수가 한 줄도 없다(grep 으로 확인했다).
+# `s.클럭` 은 `spec.py` 의 «모델이 채우는 칸» 이고, 모델이 지어낸 것이다.
+#
+# 표에 `[모델 제안]` 이라고 적혀 있기는 했다. 그런데 **ns 단위 수를 표에 박아
+# 놓으면 잰 값처럼 읽힌다** -- 그리고 그 아래 STA·전력 수가 전부 그 위에 쌓인다.
+# 사용자: "모든 수치는 검증된 걸로 가져와. 10ns 도 출처를 밝혀."
+
+def _수뽑기(글: str) -> set:
+    """글에 적힌 주파수를 MHz 로. `500 MHz` · `2.0 ns` · `2 GHz` 를 다 본다."""
+    난것 = set()
+    for m in re.finditer(r"([0-9]+(?:\.[0-9]+)?)\s*(GHz|MHz|kHz|ns|ps|us)", 글 or "",
+                       re.I):
+        v, 단 = float(m.group(1)), m.group(2).lower()
+        if 단 == "ghz":
+            난것.add(v * 1000)
+        elif 단 == "mhz":
+            난것.add(v)
+        elif 단 == "khz":
+            난것.add(v / 1000)
+        elif 단 == "ns" and v > 0:
+            난것.add(1000.0 / v)
+        elif 단 == "ps" and v > 0:
+            난것.add(1e6 / v)
+        elif 단 == "us" and v > 0:
+            난것.add(1.0 / v)
+    return 난것
+
+
+def 출처없는수(스펙=None) -> list:
+    """모델이 채운 클럭 주기 가운데 **요청 글에서 안 나오는** 것.
+
+    [{"이름","주기_ns","MHz","까닭"}]. 요청 글이 준 주파수와 1 % 안에서 맞으면
+    출처가 있는 것으로 본다.
+
+    **여기서 값을 고치지 않는다.** 고치면 그 고침이 또 출처 없는 수가 된다.
+    «출처가 없다» 고 적고 사람에게 넘긴다.
+    """
+    s = 스펙
+    글 = str(getattr(s, "요청", "") or "")
+    있는것 = _수뽑기(글)
+    for v in (getattr(s, "수", {}) or {}).get("주파수_Hz", []):
+        try:
+            있는것.add(float(v) / 1e6)
+        except (TypeError, ValueError):
+            continue
+    난것 = []
+    for c in (getattr(s, "클럭", None) or []):
+        try:
+            주기 = float(c.get("주기_ns"))
+        except (TypeError, ValueError):
+            continue
+        if 주기 <= 0:
+            continue
+        mhz = 1000.0 / 주기
+        if any(abs(mhz - x) <= max(x, mhz) * 0.01 for x in 있는것):
+            continue
+        난것.append({
+            "이름": str(c.get("이름") or "?"), "주기_ns": 주기,
+            "MHz": round(mhz, 3),
+            "까닭": f"요청 글에 {mhz:g} MHz 도 {주기:g} ns 도 없다 — "
+                   f"모델이 채운 수다"})
     return 난것
 
 
