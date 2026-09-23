@@ -112,6 +112,55 @@ def 반전전압_수치(P="tt", T=25.0, lo=0.4, hi=3.0) -> float:
     return 0.5 * (lo + hi)
 
 
+def 코너타이밍(공칭경로_ns: float, 주기_ns: float, setup불확실_ns: float = 0.0,
+           ocv: "dict | None" = None, 코너들=None) -> dict:
+    """**코너마다 슬랙을 셈한다 -- OCV 까지 넣어서.**
+
+    ## 왜 한 군데로 모았나
+
+    실측 2026-09-23. `house/syn/agent.py` 가 제 안에서 코너 슬랙을 셈하고
+    있었는데 **OCV 를 안 넣고 있었다.** 같은 함수 안에서 `PVT.ocv스큐(0.8)` 을
+    불러 보고서에 127 ps 라고 적어 놓고, 슬랙에는 안 뺐다. 읽는 사람은 OCV 가
+    들어간 슬랙을 본다고 읽는다.
+
+    그래서 슬랙을 셈하는 자리를 여기 하나만 둔다. 관문(`house/gen.py` 7b)과
+    보고서가 같은 함수를 부른다 -- **두 군데서 재면 같은 실행에서 다른 슬랙이
+    나오고, 그러면 어느 쪽이 참인지 아무도 모른다.**
+
+        슬랙 = 주기 − 경로·지연배수 − setup 불확실 − OCV 실효스큐
+
+    OCV 는 클럭 쪽을 깎으므로 셋업 슬랙에서 빠진다. 공통 경로가 지워지지
+    않는 몫만 남는다(`ocv스큐()` 가 그 몫을 셈한다).
+    """
+    코너들 = 코너들 if 코너들 is not None else 코너표()
+    ocv스큐_ns = (float(ocv["실효스큐_ps"]) / 1e3) if ocv else 0.0
+    난것 = []
+    for c in 코너들:
+        배 = c.get("지연배수")
+        if 배 is None:
+            난것.append(dict(c, 경로_ns=None, 슬랙_ns=None, Fmax_MHz=None,
+                           통과=False, 까닭="오버드라이브 없음 — 이 전압에서 안 돈다"))
+            continue
+        경로 = 공칭경로_ns * float(배)
+        슬랙 = 주기_ns - 경로 - setup불확실_ns - ocv스큐_ns
+        난것.append(dict(c, 경로_ns=round(경로, 4), 슬랙_ns=round(슬랙, 4),
+                       Fmax_MHz=(round(1e3 / 경로, 2) if 경로 > 0 else None),
+                       통과=bool(슬랙 >= 0), 까닭=""))
+    잰것 = [x for x in 난것 if x["슬랙_ns"] is not None]
+    최악 = min(잰것, key=lambda x: x["슬랙_ns"]) if 잰것 else None
+    # **닫으려면 공칭을 얼마로 잡아야 하나** -- 막기만 하지 않고 길을 적는다
+    최대배수 = max((float(x["지연배수"]) for x in 잰것), default=1.0)
+    여유 = 주기_ns - setup불확실_ns - ocv스큐_ns
+    필요공칭 = (여유 / 최대배수) if 최대배수 > 0 else None
+    return {"코너": 난것, "최악": 최악, "잰코너수": len(잰것), "전체코너수": len(난것),
+            "못센코너": [x for x in 난것 if x["슬랙_ns"] is None],
+            "통과": bool(최악 is not None and 최악["슬랙_ns"] >= 0),
+            "ocv실효스큐_ns": round(ocv스큐_ns, 6), "setup불확실_ns": setup불확실_ns,
+            "최대지연배수": round(최대배수, 4),
+            "필요공칭경로_ns": (round(필요공칭, 4) if 필요공칭 else None),
+            "공칭경로_ns": round(공칭경로_ns, 6), "주기_ns": 주기_ns}
+
+
 def ocv스큐(삽입지연_ns: float, 공통몫=0.98, 늦은=1.07, 이른=0.93) -> dict:
     """공통 경로가 지워지지 않는 몫.  실효 스큐 = (1.00·늦은 − 공통몫·이른)·삽입지연."""
     비 = 1.00 * 늦은 - 공통몫 * 이른

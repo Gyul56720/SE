@@ -136,21 +136,19 @@ def 일하기(빠르게=False, 설계=None) -> dict:
     기본Fmax = R["sta공칭"].get("Fmax_MHz") or 0.0
     공칭지연 = 1e3 / 기본Fmax if 기본Fmax else 0.0      # ns
     불확실 = {x["종류"]: x["값_ns"] for x in R["sdc"]["불확실성"]}
-    코너 = []
-    for c in PVT.코너표():
-        배 = c["지연배수"]
-        if 배 is None:
-            코너.append(dict(c, 슬랙_ns=None, Fmax_MHz=None, 통과=False, 까닭="오버드라이브 없음"))
-            continue
-        경로 = 공칭지연 * 배
-        슬랙 = 주기 - 경로 - 불확실.get("setup", 0.0)
-        코너.append(dict(c, 경로_ns=round(경로, 4), 슬랙_ns=round(슬랙, 4),
-                       Fmax_MHz=round(1e3 / 경로, 2) if 경로 > 0 else None,
-                       통과=bool(슬랙 >= 0), 까닭=""))
+    # **OCV 를 슬랙에 실제로 넣는다.** 실측 2026-09-23: 여기서 `ocv스큐(0.8)` 을
+    # 불러 보고서에 127 ps 라고 적어 놓고 **슬랙에는 안 빼고 있었다.** 읽는
+    # 사람은 OCV 가 들어간 슬랙을 본다고 읽는다. 그리고 셈하는 자리를
+    # `pvt.코너타이밍()` 하나로 모은다 -- 관문(gen 7b)과 이 보고서가 같은
+    # 함수를 부른다. 두 군데서 재면 같은 실행에서 다른 슬랙이 나온다.
+    R["OCV"] = PVT.ocv스큐(0.8)          # SDC 의 set_clock_latency -source 0.8
+    _K = PVT.코너타이밍(공칭지연, 주기, setup불확실_ns=불확실.get("setup", 0.0),
+                   ocv=R["OCV"])
+    코너 = _K["코너"]
     R["코너"] = 코너
+    R["코너요약"] = {k: v for k, v in _K.items() if k not in ("코너", "못센코너")}
     R["온도반전"] = PVT.온도반전점()
     R["반전전압"] = {"닫힌꼴": PVT.반전전압_닫힌꼴(), "수치": PVT.반전전압_수치()}
-    R["OCV"] = PVT.ocv스큐(0.8)          # SDC 의 set_clock_latency -source 0.8
 
     # --- 전력 (DV 가 잰 토글로) ---
     # **`d` 를 덮어쓰고 있었다.** `d` 는 설계 객체인데 시뮬 결과 dict 로 가려져,
