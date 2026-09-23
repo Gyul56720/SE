@@ -747,6 +747,28 @@ def 레이아웃(코어_um, 행들, 셀들, 배선=None, 제목="", 폭=560, 스
     return svg(폭, 높이, "".join(몸), 제목)
 
 
+# 표 칸에서 살려 두는 태그. **꾸미기만 하는 것**뿐이다 -- 링크도 스크립트도 없다.
+_칸태그 = ("b", "i", "code", "small", "br", "sub", "sup")
+_칸태그꼴 = __import__("re").compile(
+    r"&lt;(/?)(" + "|".join(_칸태그) + r")&gt;")
+
+
+def _칸(v) -> str:
+    """칸 하나를 HTML 로. **전부 escape 한 뒤 꾸미기 태그만 되살린다.**
+
+    옛 판은 `v if v.startswith("<") else _e(v)` 였다 -- 칸이 `<` 로 **시작할
+    때만** 원시 HTML 로 나갔다. 그래서 문장 **중간**의 태그는 글자로 찍혔다.
+
+        실측 2026-09-22  `기본 <small>{"TAPS": 8…}</small>` -> 태그가 그대로 보임
+        실측 2026-09-23  `비동기로 걸고 <b>동기로 푸는</b> 것이…` -> `&lt;b&gt;`
+
+    **덫이다.** 첫 글자가 무엇이냐로 칸 전체의 뜻이 갈리니, 쓰는 쪽은 그것을
+    모르고 두 번 걸렸다. 이제 자리를 안 가린다.
+    """
+    글 = _e(v)
+    return _칸태그꼴.sub(r"<\1\2>", 글)
+
+
 def 표(머리, 줄들, 강조열=None, 폭=None) -> str:
     """HTML 표.  그림이 아닌 것은 표로 낸다 -- 수를 그림으로만 내면 못 읽는다."""
     th = "".join(f"<th>{_e(h)}</th>" for h in 머리)
@@ -755,7 +777,7 @@ def 표(머리, 줄들, 강조열=None, 폭=None) -> str:
         tds = []
         for i, v in enumerate(r):
             cls = ' class="hi"' if (강조열 and i in 강조열) else ""
-            tds.append(f"<td{cls}>{v if isinstance(v, str) and v.startswith('<') else _e(v)}</td>")
+            tds.append(f"<td{cls}>{_칸(v)}</td>")
         tr.append("<tr>" + "".join(tds) + "</tr>")
     st = f' style="max-width:{폭}px"' if 폭 else ""
     return f'<table class="d"{st}><thead><tr>{th}</tr></thead><tbody>{"".join(tr)}</tbody></table>'
