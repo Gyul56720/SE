@@ -848,6 +848,10 @@ def 스펙두기(키: str, s) -> Path:
     스펙방.mkdir(parents=True, exist_ok=True)
     길 = 스펙방 / f"{키}.json"
     길.write_text(json.dumps(s.사전(), ensure_ascii=False, indent=1), encoding="utf-8")
+    # **그때의 스펙 해시와 모르는 칸을 같이 박는다.** 승인 때 이것과 견준다 --
+    # 그래야 "사람이 본 것 그대로 짓는다" 가 말이 아니라 확인이 된다.
+    from house import approve as _AP
+    _AP.제안적기(키, s)
     return 길
 
 
