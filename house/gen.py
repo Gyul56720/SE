@@ -7,11 +7,12 @@
 증명하지 않는다 -- 이 저장소가 반복해서 진 자리가 정확히 거기다
 (CLAUDE.md: "검사하지 않은 초록불이 검사한 빨간불보다 나쁘다").
 
-그래서 생성물은 **관문 열아홉 개**를 지나야 등록된다:
+그래서 생성물은 **관문 스무 개**를 지나야 등록된다:
 
     1.  문법        verilator --lint-only -Wall      (경고도 본다)
     2.  두번째도구  iverilog -g2012 엘라보레이트     (한 도구만 믿지 않는다)
     2b. RDC        리셋 도메인이 몇이고, 건너는 것이 **선언돼 있나**
+    2c. CDC·준안정  클럭 도메인 건넘이 선언돼 있고 **깊이와 가정에 근거가 있나**
     3.  빌드        verilator --cc + C++ 컴파일
     4.  골든대조    무작위 벡터 N개, 기준모델과 값 비교
     4b. 커버리지    자극이 거기까지 닿았나 (**기능** 빈)
@@ -305,6 +306,32 @@ def 포트뽑기(sv: str, top: str) -> list:
     # 아무도 안 봤나"** 다. 그것이 텍스트로 정직하게 잴 수 있는 전부다.
     "rdc선언필수": True,
 
+    # ---- CDC · 준안정 (관문 2c) ----
+    #
+    # CDC 는 세기만 하고 아무도 그 수로 막지 않았다. RDC(2b)와 같은 규율로
+    # 선언을 죄되, **CDC 에는 축이 하나 더 있다 -- 동기화 깊이**다.
+    #
+    # **MTBF 수 자체에는 문턱을 안 건다.** 실측 2026-09-23 (nsw_fir, 100 MHz,
+    # tau 25 ps): **1단만으로 log10(MTBF/s) = 168.6** 이 나온다. 우주 나이가
+    # 10^17 초다. 여기에 목표를 세우면 **동기화기가 없어도 통과한다** -- 장식이다.
+    #
+    # 그 수가 사소한 까닭은 동작점이다. 뒤집히는 자리를 재 보았다.
+    #
+    #     100 MHz  1단 168.55   2단 342.26
+    #     1 GHz    1단  10.20   2단  27.57
+    #     2 GHz    1단   0.91   2단   9.60    <- 1단이 8초로 무너진다
+    #     tau 800 ps (100 MHz)  1단 0.93      <- 가정 하나로 결론이 뒤집힌다
+    #
+    # 그래서 관문이 죄는 것은 셋이다.
+    #
+    #     선언에 없는 건넘이 없나        (2b 와 같은 규율)
+    #     동기화 깊이가 최소를 넘나      **구조적 제약. 이것이 진짜다**
+    #     가정마다 출처가 적혀 있나      tau·Tw·f_data 는 전부 가정이다
+    #
+    # 그리고 **뒤집히는 클럭을 관문 글에 적는다** -- 수가 사소하다는 것을
+    # 숨기지 않는다.
+    "cdc선언필수": True,
+
     # ---- 어서션 (관문 4d) ----
     #
     # 실측 2026-09-23. **verilator 5.020 이 받는 것만 쓸 수 있다.**
@@ -548,6 +575,16 @@ def 관문(설계, 벡터=400, 주기_ns=10.0, 문턱=None, 빠르게=False) -> 
             적기(이름, 됐나, 말, 수)
     except Exception as e:                                   # noqa: BLE001
         적기("2b. RDC (리셋 도메인 건넘)", False, f"{type(e).__name__}: {e}")
+
+    # 2c. **CDC · 준안정.** 2b 가 리셋 도메인을 보듯 여기는 클럭 도메인을 본다.
+    # 축이 하나 더 있다 -- 동기화 깊이. 사슬을 안 끊는다.
+    try:
+        CD = cdc점검(설계, 문턱)
+        결과["CDC"] = CD
+        for 이름, 됐나, 말, 수 in cdc판정(CD, 문턱):
+            적기(이름, 됐나, 말, 수)
+    except Exception as e:                                   # noqa: BLE001
+        적기("2c. CDC · 준안정", False, f"{type(e).__name__}: {e}")
 
     # 3. 빌드
     try:
@@ -1054,6 +1091,142 @@ def rdc점검(설계, 문턱: dict) -> dict:
             "리셋도메인수": len({x["받는곳"] for x in 찾은}
                           | {x["보내는곳"] for x in 찾은}),
             "초": round(time.time() - t0, 2)}
+
+
+def cdc점검(설계, 문턱: dict) -> dict:
+    """CDC 건넘을 **선언과 대조하고, 동기화 깊이와 준안정 가정을 본다.**
+
+    MTBF 수에는 문턱을 안 건다 -- 이 동작점에서 1단만으로 10^168 초가 나와
+    **동기화기 없이도 통과하는** 수이기 때문이다. 대신 깊이와 가정의 출처를
+    죄고, **뒤집히는 클럭**을 같이 낸다.
+    """
+    from house import rtlscan as SCAN
+    from house.rtl import agent as RA
+    t0 = time.time()
+    rtl들 = [Path(x) for x in (설계.RTL or [])]
+    if not rtl들:
+        return {"오류": "RTL 이 없다", "초": 0.0}
+    훑 = SCAN.훑기([str(x) for x in rtl들], 설계.top or "")
+    점 = RA.cdc점검(설계=설계, 훑기=훑)
+    찾은 = 점["건넘"]
+    선언길 = rtl들[0].parent / f"{설계.top}.cdc.json"
+    선언, 준안정, 선언오류 = [], {}, ""
+    if 선언길.exists():
+        try:
+            d = json.loads(선언길.read_text(encoding="utf-8")) or {}
+            선언, 준안정 = d.get("건넘") or [], d.get("준안정") or {}
+        except Exception as e:                               # noqa: BLE001
+            선언오류 = f"{선언길.name} 을 못 읽었다: {type(e).__name__}: {e}"
+
+    def _열쇠(신호, 보, 받):
+        return (str(신호), str(보), str(받))
+
+    선언집 = {_열쇠(x.get("신호"), x.get("보내는곳"), x.get("받는곳")) for x in 선언}
+    안선언 = [x for x in 찾은
+            if _열쇠(x["신호"], x["보내는곳"], x["받는곳"]) not in 선언집]
+    빈칸 = [x.get("신호") for x in 선언
+          if not (x.get("방식") or "").strip() or not (x.get("까닭") or "").strip()]
+
+    # 동기화 깊이 -- `cdc점검` 의 "N단으로 보임" 에서 수를 뽑는다. **모양이다.**
+    최소단수 = int(준안정.get("최소단수", 2) or 2)
+    얕은것 = []
+    for x in 찾은:
+        m = re.search(r"(\d+)단", x.get("방식", ""))
+        단 = int(m.group(1)) if m else 1
+        if 단 < 최소단수 and "그레이" not in x.get("방식", ""):
+            얕은것.append({"신호": x["신호"], "단": 단})
+
+    # 가정마다 출처
+    수칸 = ("tau_ps", "Tw_ps", "f_data_MHz")
+    출처없음 = [k for k in 수칸
+             if not str(((준안정.get(k) or {}) if isinstance(준안정.get(k), dict)
+                        else {}).get("출처", "")).strip()]
+    if not 준안정:
+        출처없음 = list(수칸)
+
+    def _값(k, 기본):
+        v = 준안정.get(k)
+        return float(v.get("값", 기본)) if isinstance(v, dict) else float(기본)
+
+    tau, Tw, f_data = _값("tau_ps", 25.0), _값("Tw_ps", 30.0), _값("f_data_MHz", 10.0)
+    주기_ns = float((설계.클럭 or {}).get("주기_ns", 10.0)) if getattr(
+        설계, "클럭", None) else 10.0
+    f_clk = 1e3 / 주기_ns * 1e6
+    깊이 = 최소단수
+    L = RA.mtbf_log10(깊이, f_clk=f_clk, f_data=f_data * 1e6, tau_ps=tau,
+                    Tw_ps=Tw, Tclk_ns=주기_ns)
+    목표 = float(준안정.get("목표_log10_초", 20.0) or 20.0)
+    # **뒤집히는 자리를 찾는다** -- 이 수가 사소한 까닭은 동작점이다
+    뒤집힘 = None
+    for f_MHz in (100, 200, 500, 1000, 1500, 2000, 3000, 4000, 6000, 8000):
+        T = 1e3 / f_MHz
+        if RA.mtbf_log10(깊이, f_clk=f_MHz * 1e6, f_data=f_MHz * 1e6 / 10,
+                       tau_ps=tau, Tw_ps=Tw, Tclk_ns=T) < 목표:
+            뒤집힘 = f_MHz
+            break
+    tau뒤집힘 = None
+    for t in (25, 50, 100, 200, 300, 500, 800, 1200):
+        if RA.mtbf_log10(깊이, f_clk=f_clk, f_data=f_data * 1e6, tau_ps=t,
+                       Tw_ps=Tw, Tclk_ns=주기_ns) < 목표:
+            tau뒤집힘 = t
+            break
+    return {"찾은수": len(찾은), "찾은것": 찾은, "선언수": len(선언),
+            "안선언": 안선언, "빈칸": 빈칸, "얕은것": 얕은것,
+            "최소단수": 최소단수, "출처없음": 출처없음, "선언오류": 선언오류,
+            "선언파일": str(선언길), "선언있나": 선언길.exists(),
+            "tau_ps": tau, "Tw_ps": Tw, "f_data_MHz": f_data, "주기_ns": 주기_ns,
+            "mtbf_log10": round(L, 2), "목표_log10": 목표,
+            "뒤집히는_MHz": 뒤집힘, "뒤집히는_tau_ps": tau뒤집힘,
+            "맨선": 점["맨선"], "동기화기": 점["동기화기"],
+            "초": round(time.time() - t0, 2)}
+
+
+def cdc판정(C: dict, 문턱: dict) -> list:
+    """**[(이름, 됐나, 말, 수)]**.  훑기를 안 돈다."""
+    if C.get("오류"):
+        return [("2c. CDC · 준안정", False, C["오류"], None)]
+    깨진것 = []
+    if C["안선언"]:
+        깨진것.append(f"선언에 없는 건넘 {len(C['안선언'])}개")
+    if C["빈칸"]:
+        깨진것.append(f"방식·까닭이 빈 선언 {len(C['빈칸'])}개")
+    if C["얕은것"]:
+        깨진것.append(f"{C['최소단수']}단 미만 건넘 {len(C['얕은것'])}개")
+    if C["출처없음"]:
+        깨진것.append(f"출처 없는 가정 {len(C['출처없음'])}개: "
+                   + " · ".join(C["출처없음"]))
+    if C["선언오류"]:
+        깨진것.append(C["선언오류"])
+    말 = (f"<b>클럭 도메인 건넘 {C['찾은수']}개 · 선언 {C['선언수']}개 · "
+         f"선언에 없는 것 {len(C['안선언'])}개</b> "
+         f"(동기화기 {C['동기화기']}개 · {C['초']} s)\n")
+    for x in C["찾은것"]:
+        선 = "<b>선언에 없다</b>" if x in C["안선언"] else "선언됨"
+        말 += (f"  {x['신호']}: {x['보내는곳']} → {x['받는곳']} · "
+              f"{x['방식']} — {선}\n")
+    말 += (f"준안정: tau {C['tau_ps']:g} ps · Tw {C['Tw_ps']:g} ps · "
+          f"f_data {C['f_data_MHz']:g} MHz · 주기 {C['주기_ns']:g} ns → "
+          f"<b>{C['최소단수']}단에서 log10(MTBF/s) = {C['mtbf_log10']}</b> "
+          f"(목표 {C['목표_log10']:g})\n")
+    말 += ("**이 수에는 문턱을 안 건다 — 여기서는 사소하기 때문이다.** 같은 "
+          "가정으로 <b>1단만 써도</b> 목표를 넘는다. 목표를 세우면 동기화기가 "
+          "없어도 통과하므로 장식이 된다. 관문이 죄는 것은 <b>깊이(구조)</b>와 "
+          "<b>가정의 출처</b>다.\n"
+          + (f"<b>뒤집히는 자리:</b> 같은 깊이에서 클럭이 "
+             f"{C['뒤집히는_MHz']} MHz 를 넘으면"
+             if C["뒤집히는_MHz"] else "<b>뒤집히는 자리:</b> 잰 범위(≤8 GHz)에서는 "
+             "클럭으로 안 뒤집히고")
+          + (f", tau 가 {C['뒤집히는_tau_ps']} ps 를 넘으면"
+             if C["뒤집히는_tau_ps"] else ", tau 로도(≤1.2 ns) 안 뒤집히고")
+          + " 목표 아래로 내려간다. **tau 와 Tw 는 파운드리 특성화 값이 아니다** — "
+          "그 가정 하나가 결론을 뒤집는다.")
+    if C["얕은것"]:
+        말 += ("\n<b>얕은 건넘:</b> "
+              + " · ".join(f"{x['신호']}({x['단']}단)" for x in C["얕은것"]))
+    if 깨진것:
+        말 += "\n**깨진 것:** " + " · ".join(깨진것)
+    return [(f"2c. CDC (선언 · {C['최소단수']}단 · 가정 출처)",
+             not 깨진것, 말, C["mtbf_log10"])]
 
 
 def rdc판정(R: dict, 문턱: dict) -> list:
