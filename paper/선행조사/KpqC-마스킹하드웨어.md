@@ -91,6 +91,82 @@
 
 ---
 
+## 2판 (2026-09-24) -- 큰 칸 셋을 닫았다. 빈 자리가 훨씬 좁아졌다
+
+### (닫힘) "Kyber/Saber 뿐" 은 **죽은 문장이다**
+
+1판이 인용한 문장은 **2022년** 것이었다. 2023~2026 으로 좁혀 다시 보니 폭발적이다.
+
+- **마스킹 ML-DSA 하드웨어**: eprint 2024/1817 *Improved ML-DSA Hardware Implementation
+  With First Order Masking* [출처:목록]
+- **ML-DSA + ML-KEM 통합 마스킹 하드웨어**: PeerJ CS *Two birds, one mask:
+  side-channel-resistant unified hardware for ML-DSA and ML-KEM* [출처:조각]
+- **마스킹 HQC**: eprint 2025/1344 *Side-Channel Sensitivity Analysis on HQC: Towards a
+  Fully Masked Implementation*, *Masked Vector Sampling for HQC* (2025) [출처:조각]
+- **eprint 2026/1265** *A Billion Hard CRYSTALS: Exploring Practical Aspects of Arithmetic
+  Masking for PQC in Hardware* [출처:목록]
+- **HADES (CHES 2025)**: 임의 차수 마스킹의 설계공간탐색을 **자동화**하는 프레임워크
+  [출처:조각]. -- 1판의 못지운칸 8번(자동생성 도구)이 **현실이었다.**
+  "손으로 마스킹한다" 는 기여가 크게 줄어든다.
+- Reed-Solomon 부호 기반 마스킹의 ML-KEM 적용 (IACR CiC) [출처:목록]
+- **PoSyn** (arXiv:2506.08252) *Secure Power Side-Channel Aware Synthesis* [출처:목록]
+
+### (닫힘·중요) **1차 마스킹 하드웨어는 이미 깨지고 있다**
+
+- *A side-channel attack on a masked hardware implementation of CRYSTALS-Kyber*,
+  J. Cryptographic Engineering **2025**: **1차 마스킹 Kyber-512 FPGA 구현**에 대해
+  해밍거리 누출 모형으로 **실용적 메시지 복구**. 복호화 중 **마스킹된 메시지 디코딩
+  함수의 취약점**을 쓴다 [출처:조각]
+- *Revisiting the Masking Strategy: A Side-Channel Attack on CRYSTALS-Kyber*,
+  IEEE TIFS **2025** [출처:목록]
+
+**그러니 "1차 마스킹 하드웨어를 만들었다" 는 2026 에 방어로서 불충분하다.**
+
+### (닫힘) 국내 -- 이미 하는 연구실이 있다
+
+- **DGIST PAC Lab**: KpqC 알고리즘의 소프트웨어 및 **하드웨어(PIM/FPGA) 효율적 구현**
+  연구 중 [출처:조각, 연구실 홈페이지]. 다만 목록상 **"효율적 구현" 이지 마스킹이 아니다**
+- **국민대 암호및보안공학연구실**: KpqC 선정 알고리즘의 **검증 방법론** [출처:조각]
+- 정보보호학회논문지: NCC/MQ-Sign 키복구 부채널 분석(2024), MEDS 하드웨어 가속 부채널
+  동향(KIPS 2024), NIST PQC Round 3 격자 부채널 대응 동향(2021) [출처:목록]
+- 국내 리뷰가 적고 있다: **"KpqC 후보 알고리즘에 대한 부채널 공격 연구는 아직 초기 단계이고,
+  대응기법 연구도 불충분하다"** [출처:조각]
+
+### (**안 닫힘**) KCMVP 가 방산에 요구하는 보안수준
+
+확인한 것: **소프트웨어·펌웨어는 최대 보안수준 2, 수준 3·4 는 하드웨어만 도달 가능**
+[출처:조각]. 수준 1 은 "비밀이 아닌 업무자료 보호" 수준 [출처:조각]. 올해 국방·금융·우주 등
+5개 핵심 산업으로 확대됐고 KSE 보안칩이 군용 무전기에 적용 [출처:조각].
+
+**그러나 방산 모듈이 수준 3 이상을 요구한다는 직접 근거는 못 찾았다.**
+수준 1·2 면 ISO 17825 부채널 시험이 안 걸리고, **이 주제의 제도 근거가 사라진다.**
+이 칸은 여전히 빨강이다.
+
+---
+
+## 3판 -- 남은 자리를 다시 좁힌다: AIMer(MPCitH)
+
+위를 겪고 나면 "SMAUG-T 에 마스킹을 붙인다" 는 **적용 연구**다. NIST 알고리즘 쪽 방법이
+이미 있고 자동화 도구까지 있으므로, 2026 물결과 겨루면 약하다. 대신 한 칸이 남는다.
+
+| | 있는가 |
+|---|---|
+| MPCitH **하드웨어** | **있다** -- TCHES 2024 *High-Performance Hardware Implementation of MPCitH and Picnic3*; *Efficient FPGA Implementations of LowMC and Picnic*(2019); *MPSpeed: Accelerating Mirath on FPGA*(eprint 2026/206) |
+| MPCitH **마스킹** | **있다, 다만 소프트웨어** -- *Side-Channel Protections for Picnic Signatures*(2021), KKW 영지식 증명을 임의 차수로 마스킹, **ARM Cortex-M4 1차**, 오버헤드 1.8~5.5배 |
+| **둘의 교집합(마스킹 MPCitH 하드웨어)** | **찾지 못했다** |
+| AIMer 전용 | **찾지 못했다** |
+
+왜 이 칸이 구조적으로 다른가:
+
+1. **AIMer 에는 NTT 가 없다.** 2026 형식검증 물결(Prime-Field PINI, 마스킹 Barrett 축약,
+   NTT 파이프라인 합성성, 구조적 의존성 분석)은 **전부 격자의 NTT·모듈러 산술**을 겨눈다.
+   AIMer 는 GF(2^λ) 곱과 해시가 본체라 **그 정리들이 통째로 안 닿는다.**
+   -- **이것은 내 추론이다. 재 보지 않았다.**
+2. **MPCitH 는 값 하나만 새어도 프로토콜 보안이 깨진다** [출처:조각, eprint 2024/1882].
+   마스킹 필요성이 구조적으로 강하다.
+3. 마스킹 비용이 **해시 호출에 몰린다**(1.8~5.5배). 하드웨어에서 이 구조가 어떻게 되는지는
+   소프트웨어 결과로 예측되지 않는다.
+
 ## 우리가 그것과 다른 점
 
 1. **소프트웨어 1차 마스킹은 하드웨어로 그대로 옮겨지지 않는다.** 글리치와 전이 때문이다 --
@@ -142,3 +218,31 @@ SMAUG-T 는 sparse secret 과 LWE/LWR 혼합 구조라 Kyber 의 마스킹 부�
    "손으로 마스킹한다" 는 기여가 줄어든다.
 
 **여덟 칸이 비어 있다. 특히 1번과 3번을 닫기 전에는 "없다" 고 말하지 않는다.**
+
+---
+
+# 못 지운 가능성 -- 2판 갱신
+
+**닫힌 것**: (2) "Kyber/Saber 뿐" -- 죽었다. 2024~2026 에 ML-DSA·ML-KEM 통합·HQC 까지
+있고 자동화 프레임워크(HADES, CHES 2025)도 있다. / (3) 국내 -- DGIST PAC Lab 이 KpqC
+하드웨어 구현을, 국민대가 검증 방법론을 하고 있다. / (8) 자동 생성 도구 -- 현실이었다.
+
+**여전히 빨강**
+
+1. **KCMVP 가 방산에 요구하는 보안수준 (제일 크다).** 수준 1·2 면 ISO 17825 가 안 걸리고
+   제도 근거가 무너진다. 웹 검색으로는 안 나온다 -- **국가정보원/KISA 에 직접 묻거나
+   검증필 암호모듈 목록의 실제 보안수준 분포를 봐야 한다.**
+2. **DGIST PAC Lab 의 실제 발표물을 못 찾았다.** 연구실 소개만 봤다. 이미 마스킹까지
+   했는지, 어느 알고리즘인지 모른다. **직접 확인해야 한다(논문 목록·학위논문).**
+3. **"마스킹 MPCitH 하드웨어가 없다" 는 한 번의 검색 결과다.** TCHES·CHES·eprint 를
+   연도별로 훑지 않았다.
+4. **AIMer 에 NTT 검증 정리가 안 닿는다는 것은 내 추론이다.** 재지 않았다.
+5. Saarinen, *Applicability of ISO Standard Side-Channel Leakage Tests to PQC* --
+   `mjos.fi` 망 차단으로 여전히 못 읽음.
+6. NTRU+ 부채널·마스킹을 따로 검색하지 않았다.
+7. HAETAE 의 거절/hyperball 샘플링 누출 -- 확인 안 했다.
+   (Dilithium 계열 거절 샘플링 마스킹은 이미 연구가 있다 [출처:조각])
+8. ISO/IEC 17825:2024 · 19790 부속서 F 본문 미열람(유료).
+
+**1번과 2번을 닫기 전에는 이 주제를 시작하지 않는다.** 1번이 빨강이면 제도 근거가 없고,
+2번이 빨강이면 국내에서 이미 하고 있는 것이다 -- CRPA 에서 무너진 것과 같은 자리다.
