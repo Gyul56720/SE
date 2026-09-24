@@ -8,7 +8,9 @@ from pathlib import Path
 
 뿌리 = Path(__file__).resolve().parent.parent
 R = 뿌리 / "aim" / "rtl"
-차례 = ["gf128_sqr.v", "gf128_mul.v", "gf128_frob.v", "aim_mer_inv.v"]
+# gf128_frob.v(배럴)은 **재서 버렸다** -- 깊이가 커서 SYN 이 -368 ns 를 냈다.
+# 지금 쓰는 것은 gf128_frob_sel.v(고정 선형맵 8개 + 8:1 먹스)다.
+차례 = ["gf128_sqr.v", "gf128_mul.v", "gf128_frob_sel.v", "aim_mer_inv.v"]
 
 
 def 내기() -> Path:

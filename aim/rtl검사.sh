@@ -3,7 +3,7 @@
 # 셸 변수 이름은 아스키만 쓴다 (CLAUDE.md).
 set -euo pipefail
 cd "$(dirname "$0")/.."
-RTL="aim/rtl/gf128_mul.v aim/rtl/gf128_sqr.v aim/rtl/mer7.v"
+RTL="aim/rtl/gf128_mul.v aim/rtl/gf128_sqr.v aim/rtl/mer7.v aim/rtl/gf128_frob_sel.v aim/rtl/aim_mer_inv.v"
 BIN=$(mktemp -d); trap 'rm -rf "$BIN"' EXIT
 
 build_run () { iverilog -g2012 -I aim/rtl -o "$BIN/tb" aim/dv/tb_gf128.v $RTL && "$BIN/tb"; }

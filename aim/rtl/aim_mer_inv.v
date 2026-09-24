@@ -48,12 +48,13 @@ module aim_mer_inv #(parameter MODE = 1) (
 
   wire [7:0]   st      = step_rom(i);
   wire         is_add  = st[7];
-  wire [6:0]   fexp    = st[6:0];
 
   wire [127:0] frob_in = is_add ? xr : acc;
   wire [127:0] frob_o, mul_o, sqr_o;
 
-  gf128_frob u_frob (.a(frob_in), .m(fexp), .z(frob_o));
+  // 걸음마다 Frobenius 지수가 하나씩이므로 **걸음 번호가 곧 선택자**다.
+  // 배럴(7단 직렬) 대신 고정 선형맵 8 개 + 8:1 먹스 -- 깊이가 1 맵으로 준다.
+  gf128_frob_sel u_frob (.a(frob_in), .sel(i[2:0]), .z(frob_o));
   gf128_sqr  u_sqr  (.a(t),                 .z(sqr_o));
   gf128_mul  u_mul  (.a(MODE ? acc : acc), .b(MODE ? frob_o : t), .z(mul_o));
 

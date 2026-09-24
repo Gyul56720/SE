@@ -2,9 +2,8 @@
 //  nsw_aim.sv -- Nowon Silicon Works
 //  AIM2 (KpqC AIMer v2.0) 의 역 Mersenne S-box, GF(2^128)
 //
-//  **이 파일은 생성물이다.** 진실은 aim/rtl/ 이고, `aim/흐름용_RTL만들기.py`
-//  가 `include 를 펴서 여기에 낸다. 흐름의 합성·DFT·PD 는 -I 를 안 주므로
-//  자립형이어야 한다. 손으로 고치지 마라 -- aim/rtl 을 고치고 다시 내라.
+//  **이 파일은 생성물이다.** 진실은 aim/rtl/ 이고 aim/흐름용_RTL만들기.py
+//  가 `include 를 펴서 여기에 낸다. 손으로 고치지 마라.
 // =====================================================================
 // ---------------------------------------------------------------- gf128_sqr.v
 // GF(2^128) 제곱 -- 선형이다. 랜덤이 들지 않는다.
@@ -122,16 +121,18 @@ endfunction
   assign z = gf128_reduce(gf128_clmul(a, b));
 endmodule
 
-// ---------------------------------------------------------------- gf128_frob.v
-// GF(2^128) 의 **Frobenius 거듭제곱** sigma^m(x) = x^(2^m), m in [0,128).
+// ---------------------------------------------------------------- gf128_frob_sel.v
+// GF(2^128) Frobenius -- **이 설계가 실제로 쓰는 지수만** 고른다.
 //
-// 왜 이 모듈이 따로 있나: AIM2 의 역 Mersenne S-box 를 가수로 펴면
-// x^e~ = x * s(x) * ... * s^(d-1)(x) 가 되는데, 여기 s 가 이것이다.
-// **선형이라 마스킹에서 신선한 랜덤이 0비트**다 -- 그것이 이 설계의 전제다.
+// 왜 배럴을 버렸나(실측): 배럴은 sigma^(2^j) 7 단을 **직렬로** 지난다. 각 단이
+// XOR 트리 한 겹이라 깊이가 7 단 x 한 겹 + 먹스가 된다. SYN 이 낸 최악 슬랙이
+// 가수 -368.4 ns 대 이진법 -57.6 ns 로 **5.0 배**였고, 그 5 배가 곧 이 캐스케이드다.
 //
-// 꼴: 배럴. m 의 비트마다 sigma^(2^j) 한 단을 지나거나 건너뛴다. 7 단이면 된다.
-// 각 단은 제곱을 2^j 번 편 것이므로 **상수 GF(2) 선형 회로**다(합성이 접는다).
-module gf128_frob (input wire [127:0] a, input wire [6:0] m, output wire [127:0] z);
+// 그런데 이 회로가 쓰는 Frobenius 지수는 **정해진 8 개**다(가수의 걸음표에서 나온다):
+//     49  98  68  117  106  84  40  80
+// 고정 선형맵 8 개를 나란히 두고 8:1 먹스로 고르면 **깊이가 1 맵 + 먹스**로 준다.
+// 면적은 비슷하고(맵 8 개 대 7 개) 깊이는 크게 준다.
+module gf128_frob_sel (input wire [127:0] a, input wire [2:0] sel, output wire [127:0] z);
 // GF(2^128), 축약 다항식 f(x) = x^128 + x^7 + x^2 + x + 1
 //
 // 출처: KpqC AIMer 레퍼런스 field128.c 의 축약부.
@@ -185,7 +186,7 @@ function automatic [254:0] gf128_spread(input [127:0] a);
 endfunction
 
 
-  // sigma^k(x) -- 정수 k 는 상수여야 한다(생성 시각에 펴진다)
+  // sigma^k(x) = x^(2^k). k 가 상수라 생성 시각에 펴지고 합성이 **선형 XOR 망**으로 접는다.
   function automatic [127:0] frob_pow(input [127:0] v, input integer k);
     integer i;
     begin
@@ -194,17 +195,19 @@ endfunction
     end
   endfunction
 
-  wire [127:0] s [0:7];
-  assign s[0] = a;
-  genvar j;
-  generate
-    for (j = 0; j < 7; j = j + 1) begin : stage
-      wire [127:0] hop;
-      assign hop    = frob_pow(s[j], 1 << j);
-      assign s[j+1] = m[j] ? hop : s[j];
-    end
-  endgenerate
-  assign z = s[7];
+  wire [127:0] u0 = frob_pow(a,  49);
+  wire [127:0] u1 = frob_pow(a,  98);
+  wire [127:0] u2 = frob_pow(a,  68);
+  wire [127:0] u3 = frob_pow(a, 117);
+  wire [127:0] u4 = frob_pow(a, 106);
+  wire [127:0] u5 = frob_pow(a,  84);
+  wire [127:0] u6 = frob_pow(a,  40);
+  wire [127:0] u7 = frob_pow(a,  80);
+
+  assign z = (sel == 3'd0) ? u0 : (sel == 3'd1) ? u1 :
+             (sel == 3'd2) ? u2 : (sel == 3'd3) ? u3 :
+             (sel == 3'd4) ? u4 : (sel == 3'd5) ? u5 :
+             (sel == 3'd6) ? u6 :                 u7;
 endmodule
 
 // ---------------------------------------------------------------- aim_mer_inv.v
@@ -258,12 +261,13 @@ module aim_mer_inv #(parameter MODE = 1) (
 
   wire [7:0]   st      = step_rom(i);
   wire         is_add  = st[7];
-  wire [6:0]   fexp    = st[6:0];
 
   wire [127:0] frob_in = is_add ? xr : acc;
   wire [127:0] frob_o, mul_o, sqr_o;
 
-  gf128_frob u_frob (.a(frob_in), .m(fexp), .z(frob_o));
+  // 걸음마다 Frobenius 지수가 하나씩이므로 **걸음 번호가 곧 선택자**다.
+  // 배럴(7단 직렬) 대신 고정 선형맵 8 개 + 8:1 먹스 -- 깊이가 1 맵으로 준다.
+  gf128_frob_sel u_frob (.a(frob_in), .sel(i[2:0]), .z(frob_o));
   gf128_sqr  u_sqr  (.a(t),                 .z(sqr_o));
   gf128_mul  u_mul  (.a(MODE ? acc : acc), .b(MODE ? frob_o : t), .z(mul_o));
 
