@@ -45,8 +45,13 @@ _th = np.deg2rad(45); _th2 = np.deg2rad(50); _th3 = np.deg2rad(20)
 ]
 
 
-def 검사경로():
-    """상부 동체(±검사각도)를 세로 패스로 훑는 serpentine. 표준거리 유지."""
+def 검사경로(조밀=1):
+    """상부 동체(±검사각도)를 세로 패스로 훑는 serpentine. 표준거리 유지.
+
+    조밀>1 이면 이웃 웨이포인트 사이를 그 배수로 보간해 촘촘하게 만든다. 손 PI 는 큰
+    간격도 잘 따라가지만, **학습 Mamba 는 목표가 ±3 안(학습 분포)일 때 정밀**하다 --
+    간격이 6m 넘으면 분포 밖이라 표준거리가 흔들린다(실측: 밴드 0.69~4.44m 로 벗어남).
+    촘촘히 하면 스텝 오차가 작아 분포 안이라 밴드를 지킨다(실측: 1.06~2.48m 로 통과)."""
     rho = R + SPEC["표준거리_m"]
     각도 = np.deg2rad(np.linspace(-AC["검사각도deg"], AC["검사각도deg"], SPEC["패스수"]))
     x0, x1 = AC["코x"]+3, AC["꼬리x"]-3
@@ -56,7 +61,14 @@ def 검사경로():
         if k % 2 == 1: xs = xs[::-1]                 # 지그재그
         for x in xs:
             wp.append([x, rho*np.cos(th), rho*np.sin(th)])
-    return np.array(wp)
+    wp = np.array(wp)
+    if 조밀 > 1:
+        out = [wp[0]]
+        for a, b in zip(wp[:-1], wp[1:]):
+            for k in range(1, 조밀+1):
+                out.append(a + (b-a)*k/조밀)
+        wp = np.array(out)
+    return wp
 
 
 def 표면거리_m(p):
@@ -64,20 +76,31 @@ def 표면거리_m(p):
     return float(max(0.05, np.hypot(p[1], p[2]) - R))
 
 
-def 추종(dt=0.02, Kp=3.2, Ki=1.0, 도달=0.6, 최대T=120.0):
-    wp = 검사경로()
+def 추종(dt=0.02, Kp=3.2, Ki=1.0, 도달=0.6, 최대T=120.0, 정책=None, 조밀=1):
+    """검사 경로를 제어 정책이 따라 난다.
+
+    정책=None 이면 손 PI(베이스라인). 정책이 주어지면 그 스텝 함수가 속도 지령을 낸다
+    -- 맘바정책() 을 넣으면 **학습된 신경망 Mamba** 가 실제로 검사 경로를 난다.
+    스텝 함수 규약: (오차, 내부상태, dt) -> (속도지령u, 새내부상태, 기록용h[3])."""
+    wp = 검사경로(조밀)
     p = np.array(wp[0], dtype=float) + np.array([0.8, 0.0, 0.0])
-    h = np.zeros(3); vmax = SPEC["v_max_ms"]
+    h = np.zeros(3); vmax = SPEC["v_max_ms"]; 상태 = None
+    이름 = "PI-SSM (베이스라인)" if 정책 is None else getattr(정책, "이름", "학습 정책")
     ts, ps, hs, standoffs, speeds = [], [], [], [], []
     wi, t = 0, 0.0
     for _ in range(int(최대T/dt)):
         목표 = wp[wi]; 오차 = 목표 - p
-        h = h + 오차*dt
-        u = Kp*오차 + Ki*h
+        if 정책 is None:
+            h = h + 오차*dt
+            u = Kp*오차 + Ki*h
+            hrec = h
+        else:
+            u, 상태, hrec = 정책(오차, 상태, dt)
         s = np.linalg.norm(u)
         if s > vmax: u = u*(vmax/s)                  # 속도 포화
         p = p + u*dt
-        ts.append(round(t,3)); ps.append([round(v,4) for v in p]); hs.append([round(v,4) for v in h])
+        ts.append(round(t,3)); ps.append([round(v,4) for v in p])
+        hs.append([round(float(v),4) for v in hrec])
         standoffs.append(round(표면거리_m(p),4)); speeds.append(round(float(np.linalg.norm(u)),4))
         if np.linalg.norm(p-목표) < 도달:
             wi += 1
@@ -116,7 +139,41 @@ def 추종(dt=0.02, Kp=3.2, Ki=1.0, 도달=0.6, 최대T=120.0):
            "스와스표준_m": round(스와스_m(SPEC["표준거리_m"]),3),
            "속도max_ms": round(v_max_meas,3), "커버리지pct": round(커버,1), "검증": 검증}
     return {"AC": AC, "CAM": CAM, "SPEC": SPEC, "t": ts, "p": ps, "h": hs,
-            "standoff": standoffs, "웨이포인트": wp.tolist(), "결함": 결함출력, "지표": 지표}
+            "standoff": standoffs, "웨이포인트": wp.tolist(), "결함": 결함출력, "지표": 지표,
+            "정책이름": 이름}
+
+
+def 맘바정책(iters=400):
+    """**학습된 신경망 Mamba 정책**의 스텝 함수를 만든다 -- 추종(정책=맘바정책()) 으로 태운다.
+
+    mamba_policy 가 PI 를 모방학습한 그 정책(손 Kp/Ki 아님, 대각 SSM 재귀 + SiLU 게이트)이
+    검사 경로를 실제로 난다. 재귀 h=a⊙h+b⊙x 는 ssm/scan_mac 하드웨어에 그대로 매핑되는
+    바로 그 재귀다. 관측은 오차(목표-위치), 행동은 속도지령."""
+    import ctrl.model.mamba_policy as MP
+    P, loss = MP.train(iters=iters)
+    a = MP.sig(P["a_raw"])
+
+    def step(오차, 상태, dt):
+        h = np.zeros(MP.M) if 상태 is None else 상태
+        o = np.asarray(오차, float)
+        x = P["W_in"] @ o
+        h = a*h + P["b"]*x
+        y = P["C"] * h
+        gt = MP.silu(P["W_g"] @ o + P["bg"])
+        act = P["W_out"] @ (y*gt) + P["D"] @ o          # 신경망 정책의 속도지령
+        return act, h, np.array([float(np.linalg.norm(h)), 0.0, 0.0])
+
+    step.이름 = f"학습 신경망 Mamba (모방손실 {loss:.4f})"
+    step.모방손실 = float(loss)
+    return step
+
+
+def 추종_맘바(iters=400):
+    """학습된 Mamba 정책이 검사 경로를 나는 실측을 낸다(viz 형식 그대로).
+
+    Mamba 는 DT=0.05 로 학습됐으니 그 dt 로 돌리고, 경로를 촘촘히(조밀=5) 해 스텝 오차를
+    학습 분포(±3) 안에 둔다 -- 그래야 표준거리 밴드를 지킨다(위 검사경로 주석의 실측)."""
+    return 추종(dt=0.05, 정책=맘바정책(iters), 도달=0.35, 최대T=240.0, 조밀=5)
 
 
 def 요약(r):

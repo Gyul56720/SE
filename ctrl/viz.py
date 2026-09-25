@@ -130,7 +130,7 @@ input[type=range]{flex:1;accent-color:var(--accent);min-width:70px}
       <div id="veriflist" style="margin-top:8px"></div>
     </div>
     <div class="sec tel">
-      <h3>제어 텔레메트리 (PI-SSM)</h3>
+      <h3>제어 텔레메트리 (<span id="polname">PI-SSM</span>)</h3>
       <div class="r"><span class="lab">위치 X·Y·Z</span><span id="tp">0,0,0</span></div>
       <div class="r"><span class="lab">추종 오차</span><span id="te">0.00 m</span></div>
       <div class="r"><span class="lab">상태 h (‖적분‖)</span><span id="th">0.00</span></div>
@@ -141,7 +141,7 @@ input[type=range]{flex:1;accent-color:var(--accent);min-width:70px}
       <input type="range" id="scrub" min="0" value="0">
       <button class="spd" id="spd">1×</button>
     </div>
-    <div class="note">드론 궤적은 <code>3축 PI-SSM</code> 제어 정책이 검사 경로를 추종한 실측.
+    <div class="note">드론 궤적은 <code id="polnote">3축 PI-SSM</code> 제어 정책이 검사 경로를 추종한 실측.
     결함 표식은 근접검출 데모(실제 비전 아님). 이 재귀는 <code>ssm/scan_mac</code> 하드웨어가 처리.</div>
   </div>
 </div>
@@ -168,6 +168,7 @@ function build(){
   const d2=new THREE.DirectionalLight(0x3a5878,0.4);d2.position.set(-10,4,-8);scene.add(d2);
   buildAircraft();buildGround();buildPath();buildDrone();buildFeed();
   document.getElementById("scrub").max=N-1;buildDefList();buildSpec();
+  if(D.정책이름){document.getElementById("polname").textContent=D.정책이름;document.getElementById("polnote").textContent=D.정책이름;}
   resize();update();loop();
 }
 function buildGround(){
