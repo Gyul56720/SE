@@ -96,6 +96,39 @@ selective-scan·DDR 상태 스트리밍·exp 근사·Hadamard 이상치 제거�
 - `state space model hardware accelerator FPGA associative scan discretization exp resource DSP 2026 Mamba2 edge`
 - (추가 예정: 순차 vs 병렬 스캔 자원 비교, 방산/레이더 SSM, Mamba HLS 오픈소스)
 
+## 6b. 적용처 조사 -- 어디에 쓰나 (2026-09-25 추가, 전부 `[조각]`/`[목록]`)
+
+### 왜 FPGA 인가 (GPU 아니라)
+SSM 은 **상태 하나 들고 한 표본씩** 처리하는 스트리밍 구조 -> GPU(배치 최적) 와 안 맞고
+FPGA 와 맞다. **결정론적(cycle-accurate) 지연** · 선형어텐션 디코드에서 **>60× 에너지효율
+<10W** [조각]. SpecMamba(FPGA) 가 GPU 2.27×, 기존 FPGA 2.85× [조각]. "메모리바운드 +
+지연민감 + 계산량 적당" 이 FPGA 가 이기는 자리 [조각].
+
+### Mamba 응용 -- 레이더/RF (센서 인지)
+RadMamba(레이더 마이크로도플러 인간행동인식, 77GHz FMCW) [조각] · SAMBA(SAR 표적인식) ·
+MaDiNet(SAR 표적탐지) · Radar-Mamba(4D mmWave) · RFMamba(RF 인간감지) · SSMRadNet(경량
+레이더 분할) [목록]. **RadMamba 는 이 저장소 `cuas/` 마이크로도플러와 같은 문제.**
+
+### Mamba 응용 -- Physical AI (제어 정책) ★ **본 서사로 택함**
+Physical AI = 센서->인지->세계모델->정책/행동 실시간 루프. Mamba 가 셋 다에:
+- **인지·융합**: LocoMamba(4족 보행, proprioception+깊이 선택스캔 융합, near-linear 지연,
+  "자원제약 로봇/자율체계 실용 백본") [조각]
+- **세계모델**: Ctrl-world(ICLR'26 조작) · Riemann-1.0(physical AI world-action) [조각]
+- **정책·행동**: SpatialVLA-Mamba(VLA 디코더를 트랜스포머->Mamba, 긴 rollout 더 빠름) ·
+  HuMam(휴머노이드) · Decision Mamba(오프라인 RL) · SSD-Mamba2(end-to-end 모션제어) [조각]
+- 행동은 **한 스텝씩 인과적**으로 나옴 = "상태 하나 들고 한 표본씩" 스트리밍과 동일 구조.
+
+**⚠️ 정직한 관찰(주장 아님)**: 위 로봇-제어 Mamba 는 거의 다 GPU 학습·추론이고, 검색이
+"이 로봇 제어 Mamba 의 **FPGA 엣지 구현은 특정해 다루지 않는다**" 고 답했다 [조각]. **못
+봤다는 뜻이지 없다는 뜻이 아니다**(전문 미열람). 다만 LLM/레이더 Mamba FPGA 만큼 붐비지
+않았을 가능성 -- 재확인 필요.
+
+### 결정 (사용자, 2026-09-25)
+- **갈래 B(SSM), 서사 ⓑ 무인체계 제어 정책** 확정. LIG 무인기·자율협업 도메인.
+- 코어는 **selective-scan 유닛 하나**. Physical AI 세 응용은 "이 유닛이 어디 쓰이나" 서사로.
+- 몇 달 규모라 Physical AI 전체(인지+세계모델+정책) FPGA 는 불가 -- 한 조각을 완제품까지.
+- 시작: **순차 스캔**(스트리밍 디코드, 난도 낮음)부터. 첫 측정 = **이산화 exp 근사**.
+
 ## 7. 결론 -- 범위를 좁혀 시작
 
 **Selective-scan 유닛 하나**부터. 순차 스캔(스트리밍 디코드, 난도 낮음)을 완제품으로
