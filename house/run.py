@@ -130,13 +130,17 @@ def 한명(키: str, 빠르게=False, 회로=None) -> dict:
     # 수만 번 던지는 것이 이 직무의 본업이라 켜고 끄는 값이 아니라 눈금이다.
     함 = getattr(m, 함수)
     인자 = ("빠르게" if 빠르게 else "보통",) if 키 == "dv" else (빠르게,)
-    try:
-        r = 함(*인자, 회로=회로) if 회로 else 함(*인자)
-    except TypeError:
-        # 아직 회로 인자를 안 받는 에이전트 -- 기본 회로로 돈다. **조용히 넘어가지 않는다.**
-        if 회로:
-            print(f"!! {키}: 아직 `회로=` 를 안 받는다 -- 기본 회로로 돌린다", flush=True)
-        r = 함(*인자)
+    # **`회로=` 를 받는지는 서명으로 본다. TypeError 로 판단하지 않는다.**
+    #
+    # 실측 2026-09-25: 옛 판은 `except TypeError` 로 잡아서 기본 회로로 넘어갔다.
+    # 그런데 에이전트 **안에서** 난 TypeError(`sum(None)`)도 똑같이 잡혔고,
+    # aim_chain 을 맡겼는데 **FIR 보고서가 그 이름표를 달고 나왔다.**
+    # 안에서 난 오류를 '인자를 못 받는다' 로 읽는 것은 거짓 초록을 만드는 길이다.
+    import inspect as _insp
+    받나 = 회로를받나(키)
+    if 회로 and not 받나:
+        print(f"!! {키}: `회로=` 를 안 받는다 -- 기본 회로로 돌린다", flush=True)
+    r = 함(*인자, 회로=회로) if (회로 and 받나) else 함(*인자)
     if not isinstance(r, dict):                  # 예전 꼴 -- 경로만 돌려주던 것
         r = {"pdf": r}
     r.setdefault("사람", people.BY_KEY[키])
