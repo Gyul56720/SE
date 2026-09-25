@@ -65,6 +65,21 @@ ok(str(m["웨이포인트수"]) in html, "검증 지표가 시뮬 결과 그대�
 import shutil  # noqa: E402
 shutil.rmtree(임시, ignore_errors=True)
 
+print("\n== 2-b. 학습된 Mamba 정책이 검사 경로를 난다(손 PI 아님) ==")
+# 도구가 실제로 쓰는 설정 그대로(추종_맘바 기본 iters=400, seed 7 로 결정적).
+# **덜 학습하면(예: 200 iters) 표준거리 밴드를 못 지킨다** -- 이건 정직한 한계다:
+# 모방정책의 정밀도는 학습량에 달렸다. 그래서 도구는 400 을 쓴다.
+rm = I.추종_맘바()
+mm = rm["지표"]
+ok("Mamba" in rm["정책이름"] and "PI" not in rm["정책이름"],
+   f"정책이름이 학습 Mamba 다 -- 손 PI 아님 ({rm['정책이름']})")
+ok(mm["검출수"] == mm["결함수"], f"학습 정책도 결함 전부 검출 ({mm['검출수']}/{mm['결함수']})")
+ok(mm["커버리지pct"] >= I.SPEC["커버리지목표pct"], f"커버리지 목표 달성 ({mm['커버리지pct']}%)")
+ok(mm["검증"]["표준거리_밴드"],
+   f"**학습 정책이 표준거리 밴드를 지킨다** ({mm['표준거리min_m']}~{mm['표준거리max_m']}m) "
+   f"-- 촘촘한 경로로 스텝오차를 학습분포(±3) 안에 둔 덕. 성긴 경로면 벗어난다(실측 0.69~4.44)")
+ok(mm["검증"]["속도_한계"], f"속도 한계도 지킨다 (max {mm['속도max_ms']}m/s)")
+
 print("\n== 3. 도구가 두 채널에 등록되고 파일로 올린다(소스로 확인) ==")
 도구원 = (루트 / "bot_tools.py").read_text(encoding="utf-8")
 서버 = (루트 / "discord_bot_server.py").read_text(encoding="utf-8")
@@ -73,6 +88,7 @@ _함수 = 도구원.split("def simulate_inspection")[1].split("\n@tool")[0]
 ok("_그림남기기(h)" in _함수, "**HTML 을 _그림남기기 로 올린다** -- 서버가 discord.File 로 붙인다")
 ok("ctrl.model.inspect3d" in _함수 and "ctrl.viz" in _함수,
    "제어 정책 시뮬과 뷰를 실제로 부른다(빈 껍데기 아님)")
+ok("추종_맘바" in _함수, "**정책=mamba 면 학습된 Mamba 를 태운다** -- 손 PI 만이 아니다")
 ok("simulate_inspection" in 서버.split("ADMIN_TOOLS = [")[1].split("]")[0],
    "ADMIN_TOOLS 에 있다")
 ok("simulate_inspection" in 공개.split("PUBLIC_TOOLS = [")[1].split("]")[0],
