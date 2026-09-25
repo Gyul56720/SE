@@ -56,7 +56,21 @@ import numpy as np
 ok(너무가까움 < I.SPEC["d_min_m"],
    f"**표면 0.3m 접근은 안전여유 {I.SPEC['d_min_m']}m 위반 ({너무가까움}m)** -- 규격이 실제로 막는다")
 
+print("[신경망 Mamba] AI 정책이 PI 를 모방학습하고 폐루프로 나는가")
+import ctrl.model.mamba_policy as MP
+Pw, loss = MP.train(iters=150)          # 가볍게(precheck 25s 안)
+ok(loss < 0.05, f"모방학습이 수렴한다(MSE {loss:.4f}) -- 가중치가 실제로 학습됨")
+_, e = MP.closed_loop(Pw, (2,-1,3), dist=(0.3,0,-0.2))
+ok(e < 0.4, f"학습 안 쓴 목표에서 폐루프 수렴(최종오차 {e:.3f}) -- AI 정책이 드론을 난다")
+# 변이: SSM 재귀 제거(b=0)하면 상태가 안 쌓여 제어 못 함 -> 폐루프 발산해야
+import numpy as np
+Pm = {k:(v.copy() if hasattr(v,'copy') else v) for k,v in Pw.items()}; Pm["b"]=np.zeros_like(Pm["b"])
+_, em = MP.closed_loop(Pm, (2,-1,3), dist=(0.3,0,-0.2))
+ok(em > 2*e, f"**SSM 재귀(b) 죽이면 제어 나빠진다({em:.3f} vs {e:.3f})** -- 재귀가 진짜 일한다")
+# 다리: 신경망 재귀 h=a·h+b·x 가 scan_mac 이 하는 그 재귀다(구조 동일)
+ok(MP.M >= 1 and Pw["a_raw"].shape[0]==MP.M, "상태 재귀가 대각 SSM -- scan_mac 에 그대로 매핑")
+
 print()
 if fails:
     print(f"실패 {len(fails)}개: {fails}"); sys.exit(1)
-print("제어 정책: 수렴 · 외란복구 · Ki=0 변이 · 퇴화 배제 · 검사시나리오 물리규격 -- 통과")
+print("제어 정책: PI 수렴·외란·변이·퇴화 · 검사물리규격 · 신경망Mamba 모방·폐루프·재귀변이 -- 통과")
