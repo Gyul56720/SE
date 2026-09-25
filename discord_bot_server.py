@@ -626,6 +626,15 @@ def _git_sync_locked() -> str | None:
     if add.returncode != 0:
         return f"[git add 실패] {add.stderr.strip()}"
 
+    # **검사가 낳은 원장은 커밋에서 뺀다(§303 재발방지, 2026-09-25).** 봇이 답하는 중에
+    # eval/run.py·gatekeeper.py 같은 하네스를 직접 돌리면 그 검사들이 추적되는 원장에
+    # 줄을 쌓고, 바로 위 add -A 가 그것을 자동 커밋에 쓸어 담는다(실측: eval·improve·
+    # router 원장이 커밋에 담겼다). 스테이지에서만 빼므로 남의 워크트리 일은 안 지운다.
+    빠진원장 = gitsync.검사원장_스테이지에서빼기(
+        lambda a: subprocess.run(["git", *a], cwd=REPO_DIR, capture_output=True, text=True))
+    if 빠진원장:
+        print(f"[git_sync] 검사가 낳은 원장을 커밋에서 뺐다: {빠진원장}")
+
     commit = subprocess.run(
         ["git", "commit", "-m", "SE-agent: Discord 요청 처리 결과 자동 반영"],
         cwd=REPO_DIR, capture_output=True, text=True,

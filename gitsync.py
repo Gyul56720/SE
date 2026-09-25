@@ -10,6 +10,42 @@ r"""origin 이 앞섰을 때 따라잡는 법. **한 군데에만 있다.**
 from __future__ import annotations
 
 
+# **검사가 낳는 다섯 원장.** test_되돌이_끊기.py 의 '다섯 원장' 과 같은 목록이다
+# (codify 1 · eval답 4 · improve 4 · router 10 · secaudit 4 로 실측된 그 다섯).
+검사원장 = (
+    "codify/ledger.jsonl", "eval/ledger.jsonl", "improve/ledger.jsonl",
+    "router/ledger.jsonl", "secaudit/ledger.jsonl",
+)
+
+
+def 검사원장_스테이지에서빼기(git) -> list:
+    """`git add -A` 로 스테이지된 것 중 **검사가 낳는 원장**을 스테이지에서만 뺀다.
+
+    실측 2026-09-25(재발방지): 봇이 한 턴 안에서 `eval/run.py`·`gatekeeper.py` 같은
+    하네스를 **직접** 돌렸다. wire 를 안 타서 `SE_LEDGER_ROOT` 이 안 섰고, 그 검사들이
+    추적되는 원장(eval·improve·router)에 줄을 쌓았다. `git add -A` 가 그것을 자동
+    커밋('SE-agent: … 자동 반영')에 쓸어 담았다. `ledgerroot` 는 **wire 로 부른 검사만**
+    막으므로(test_되돌이_끊기.py), 직접 돌린 것은 안 막힌다. 그래서 **커밋 문턱에서 한 번
+    더** 막는다 -- 검사는 재는 것이지 남기는 것이 아니다(CLAUDE.md §303).
+
+    **`--worktree` 는 쓰지 않는다.** 이 나무는 improve_agent(별 프로세스)가 같이 쓴다.
+    워크트리를 HEAD 로 되돌리면 그 프로세스가 아직 커밋 안 한 원장 작업이 통째로
+    사라진다 -- reconcile 이 `--force` 를 안 쓰는 것과 같은 결(남의 일을 안 지운다).
+    스테이지에서만 빼면: 커밋엔 안 담기고, 워크트리의 줄은 그 원장의 임자(improve 등)가
+    제 손으로 커밋하거나, 순수 검사 흔적이면 그대로 남았다가 다음 턴에 또 빠진다.
+
+    HEAD 를 안 건드리므로 G020(원장은 지울 수 없다)에도 안 걸린다 -- 이미 커밋된 줄은
+    그대로 있고, 아직 커밋 안 한 줄만 스테이지에서 뺄 뿐이다.
+
+    돌려주는 것: 실제로 스테이지에서 뺀 원장 목록(순서는 `검사원장` 순).
+    """
+    staged = set(git(["diff", "--cached", "--name-only"]).stdout.split())
+    대상 = [f for f in 검사원장 if f in staged]
+    if 대상:
+        git(["restore", "--staged", "--", *대상])
+    return 대상
+
+
 def reconcile(git) -> tuple:
     """origin 이 앞섰을 때 따라잡는다. **rebase 가 아니라 merge 다. 그리고 origin/main
     이 아니라 지금 브랜치의 origin 이다.**
