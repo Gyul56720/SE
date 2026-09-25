@@ -428,8 +428,11 @@ def 일하기(빠르게=False, 회귀수=2000, 설계=None) -> dict:
         except Exception as e:                               # noqa: BLE001
             재사용.append({"파라": c, "못돌림": f"{type(e).__name__}: {str(e)[-160:]}"})
             continue
+        # **커버리지를 안 내는 회로가 있다.** 0 으로 채우지 않는다 -- 안 잰 것을
+        # 0 으로 적으면 "검증이 약하다" 로 읽힌다. 없으면 없다고 둔다.
         재사용.append({"파라": c, "pass": r["pass"], "fail": r["fail"],
-                    "timeout": r["timeout"], "cov": round(r["cov_pct"], 1)})
+                    "timeout": r["timeout"],
+                    "cov": (round(r["cov_pct"], 1) if "cov_pct" in r else None)})
     결과["재사용"] = 재사용
 
     # --- 7. CDC ---
@@ -934,7 +937,7 @@ assign sum = (raw > SAT_HI) ? SAT_HI : (raw < SAT_LO) ? SAT_LO : raw[ACCW-1:0];"
         # 구성마다 한 칸씩만 다르므로 스물여덟 번 되풀이할 까닭이 없다.
         [[_구성이름(x["파라"], (잰것.get("스윕조합") or [{}])[0]),
           x.get("pass", "—"), x.get("fail", "—"), x.get("timeout", "—"),
-          x.get("cov", x.get("못돌림", "—"))]
+          (x.get("못돌림") or ("—" if x.get("cov") is None else x["cov"]))]
          for x in 잰것["재사용"]],
         "<b>재사용이란 돌아야 재사용이다.</b> 파라미터를 바꾼 뒤 기능 회귀를 다시 돌린 결과. "
         "<b>못 돌린 구성은 까닭을 적는다</b> — 빼 버리면 이 표가 '다 돌았다' 로 읽힌다. "
