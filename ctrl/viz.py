@@ -139,7 +139,7 @@ input[type=range]{flex:1;accent-color:var(--accent);min-width:70px}
     <div class="ctrls">
       <button class="play" id="play">❚❚</button>
       <input type="range" id="scrub" min="0" value="0">
-      <button class="spd" id="spd">1×</button>
+      <button class="spd" id="spd">0.5×</button>
     </div>
     <div class="note">드론 궤적은 <code id="polnote">3축 PI-SSM</code> 제어 정책이 검사 경로를 추종한 실측.
     결함 표식은 근접검출 데모(실제 비전 아님). 이 재귀는 <code>ssm/scan_mac</code> 하드웨어가 처리.</div>
@@ -152,7 +152,7 @@ const AC=D.AC,P=D.p,H=D.h,WP=D.웨이포인트,DEF=D.결함,T=D.t,N=T.length,tma
 const cv=document.getElementById("cv");
 let renderer,scene,camera,drone,props=[],ac,pathLine,trailLine,shadow;
 let feedR,feedS,feedC,feedCam;
-let idx=0,playing=true,speed=1,last=performance.now(),cam="orbit";
+let idx=0,playing=true,speed=0.5,last=performance.now(),cam="orbit";
 let orbit={theta:0.7,phi:1.0,r:20,tgt:new THREE.Vector3(0,1,0)};
 const V=a=>new THREE.Vector3(a[0],a[1],a[2]);
 const col=v=>new THREE.Color(v);
@@ -245,7 +245,7 @@ function buildFeed(){
 function buildDefList(){
   const box=document.getElementById("deflist");box.innerHTML="";
   DEF.forEach((d,i)=>{
-    const icon=d.종류==="균열"?"⚡":d.종류==="눌림"?"🔨":d.종류==="부식"?"🟤":"🔩";
+    const icon=/균열|긁힘|번개/.test(d.종류)?"⚡":/눌림/.test(d.종류)?"🔨":/부식/.test(d.종류)?"🟤":/도장/.test(d.종류)?"🎨":/틈|패널/.test(d.종류)?"📏":"🔩";
     const c=d.심각==="높음"?"var(--bad)":d.심각==="중간"?"var(--warn)":"var(--muted)";
     const el=document.createElement("div");el.className="def";el.id="def"+i;
     el.innerHTML=`<div class="ic" style="background:${c};color:#fff">${icon}</div>
@@ -341,7 +341,7 @@ cv.addEventListener("pointerup",()=>drag=null);
 cv.addEventListener("wheel",e=>{e.preventDefault();orbit.r=Math.max(8,Math.min(45,orbit.r*(1+Math.sign(e.deltaY)*0.08)));},{passive:false});
 document.getElementById("play").onclick=function(){playing=!playing;this.textContent=playing?"❚❚":"▶";};
 document.getElementById("scrub").oninput=function(){playing=false;document.getElementById("play").textContent="▶";idx=+this.value;update();};
-document.getElementById("spd").onclick=function(){speed=speed>=2?0.5:speed*2;this.textContent=speed+"×";};
+document.getElementById("spd").onclick=function(){speed=speed>=2?0.25:speed*2;this.textContent=speed+"×";};
 function setCam(m){cam=m;["orbit","follow","drone"].forEach(k=>document.getElementById("c_"+k).classList.toggle("on",k===m));if(m==="orbit")orbit={theta:0.7,phi:1.0,r:20,tgt:new THREE.Vector3(0,1,0)};}
 document.getElementById("c_orbit").onclick=()=>setCam("orbit");
 document.getElementById("c_follow").onclick=()=>setCam("follow");
