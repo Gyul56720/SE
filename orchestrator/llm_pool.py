@@ -55,7 +55,9 @@ ROSTER = os.environ.get("GEMINI_ROSTER", "")
 # 명부는 **낡는다.** 소진은 자정에 풀리고 모델 목록도 바뀐다. 오래된 명부는 "어제 답한 것"
 # 이지 "지금 답하는 것" 이 아니므로, 지나면 무시하고 전 후보로 돈다.
 ROSTER_AGE = float(os.environ.get("GEMINI_ROSTER_AGE", "43200"))   # 12시간
-SKIP_MODEL = re.compile(os.environ.get("GEMINI_SKIP_MODEL", r"pro"), re.I)
+# 2026-09-25: 기본값을 `pro|gemma|omni` 로 넓힌다 -- 위 실측("omni-* 가 전부 429")과
+# 사용자 로그(gemma-4-31b-it RPM)를 따라 두 경로(여기 · rpmgate)의 거름망을 같게 맞춘다.
+SKIP_MODEL = re.compile(os.environ.get("GEMINI_SKIP_MODEL", r"pro|gemma|omni"), re.I)
 ALLOW_PRO = os.environ.get("GEMINI_ALLOW_PRO", "") not in ("", "0", "false")
 
 # 후보 하나에 얼마나 버틸 것인가. bot_tools 가 실측으로 얻은 값과 같은 규칙을 여기서도 갖는다
