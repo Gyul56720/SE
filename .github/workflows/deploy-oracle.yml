@@ -293,6 +293,21 @@ jobs:
             # (추적 안 되는 런타임 상태는 -f 도 reset 도 안 건드린다.)
             git checkout -q -f -B main origin/main
             git reset --hard origin/main
+            # 디스크 회수(재발방지) -- 사람에게 rm 을 시키지 않는다. 강제종료(OOM·타임아웃
+            # kill·컨테이너 회수)로 finally 를 놓친 sandbox 실행이 /tmp 에 워크트리를 남긴다
+            # (실측: 한 컨테이너에 95벌이 쌓여 VM 이 [Errno 28] 로 죽었다). sandbox/run.py 가
+            # 이제 실행마다 묵은 것을 쓸어내지만, 이미 꽉 찬 VM 은 그 코드가 돌기 전에 여기서
+            # 한 번 비워 준다. 곧 봇을 재시작하므로 도는 판을 지워도 그 판은 어차피 죽는다.
+            # 배포를 막지 않도록 전부 실패 허용(|| true).
+            for d in /tmp/sandbox-* /tmp/tmp.* /tmp/se-*; do
+              [ -e "$d" ] || continue
+              git worktree remove --force "$d" 2>/dev/null || true
+              rm -rf "$d" 2>/dev/null || true
+            done
+            git worktree prune 2>/dev/null || true
+            pip3 cache purge 2>/dev/null || true
+            sudo journalctl --vacuum-size=200M 2>/dev/null || true
+            df -h / | tail -1 || true
             # G021: 코드(discord_pdf)가 기대는 한글 글꼴은 배포가 깐다 -- 사람에게 apt 를 시키지 않는다.
             sudo apt-get install -y fonts-nanum || (sudo apt-get update -qq && sudo apt-get install -y fonts-nanum)
             # RTL 흐름(run_rtl · lint_rtl · synth_rtl). **사람에게 시키지 않는다** --
