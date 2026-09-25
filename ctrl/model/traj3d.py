@@ -19,7 +19,9 @@ def 돌리기3d(웨이포인트=(3.0, 2.0, 4.0), 바람=(0.4, 0.0, -0.3), 바람
                     외란=바람[i], 외란시작=바람시작, p0=0.0)
         축들.append(r)
     t = 축들[0]["t"]
-    p = np.stack([축들[i]["p"] for i in range(3)], axis=1)   # [N,3]
+    p = np.stack([축들[i]["p"] for i in range(3)], axis=1)   # [N,3] 위치
+    h = np.stack([축들[i]["h"] for i in range(3)], axis=1)   # [N,3] SSM 상태(오차 적분)
+    u = np.stack([축들[i]["u"] for i in range(3)], axis=1)   # [N,3] 제어 출력
     목표 = np.array(웨이포인트)
     # 3D 지표: 목표까지 유클리드 거리
     거리 = np.linalg.norm(p - 목표, axis=1)
@@ -36,7 +38,8 @@ def 돌리기3d(웨이포인트=(3.0, 2.0, 4.0), 바람=(0.4, 0.0, -0.3), 바람
            "바람최대편차": round(float(np.max(거리[바람후])), 4),
            "바람복구잔차": round(float(거리[-1]), 4),
            "웨이포인트": list(웨이포인트), "바람시작": 바람시작}
-    return {"t": t, "p": p, "목표": 목표, "지표": 지표}
+    return {"t": t, "p": p, "h": h, "u": u, "목표": 목표, "바람": list(바람),
+            "바람시작": 바람시작, "지표": 지표}
 
 
 def 요약(r):
@@ -54,13 +57,15 @@ def 요약(r):
 
 
 def 저장(r, 경로="ctrl/model/궤적3d.json"):
-    ds = 4  # 다운샘플
+    ds = 2  # 다운샘플(더 촘촘히 -- 자세한 시뮬)
+    rows = lambda a, n: [[round(v, n) for v in row] for row in a[::ds].tolist()]
     간 = {"t": [round(x, 3) for x in r["t"][::ds].tolist()],
-         "p": [[round(v, 4) for v in row] for row in r["p"][::ds].tolist()],
+         "p": rows(r["p"], 4), "h": rows(r["h"], 4), "u": rows(r["u"], 4),
          "목표": [round(v, 3) for v in r["목표"].tolist()],
+         "바람": [round(v, 3) for v in r["바람"]], "바람시작": r["바람시작"],
          "지표": r["지표"]}
     pathlib.Path(경로).write_text(json.dumps(간, ensure_ascii=False))
-    print(f"  저장: {경로} ({len(간['t'])} 스텝)")
+    print(f"  저장: {경로} ({len(간['t'])} 스텝, 위치·상태h·제어u 3축)")
     return 간
 
 
