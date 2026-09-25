@@ -41,6 +41,7 @@ import agent_memory
 import gitsync  # noqa: E402
 import gatekeeper  # noqa: E402
 import commit_guard  # noqa: E402
+import poolpick  # noqa: E402  -- 막힌답인가(): 풀 고갈 안내엔 되묻기/검사표 안 붙인다
 import ci_watch  # noqa: E402
 import main_public  # noqa: E402
 import bot_tools  # noqa: E402
@@ -600,6 +601,16 @@ def _git_sync_locked() -> str | None:
     통과, 보고 = commit_guard.검사(Path(REPO_DIR), 빠름=True)      # 답변 경로 -- 망 안 타고, 코드 변경 때만 검사
     print(f"[git_sync] 문지기\n{보고}")
     if not 통과:
+        # **코드를 안 바꾼 턴이면 게이트 차단을 사용자 답에 안 붙인다(D, 2026-09-25).**
+        # 실측: 사용자가 관세 회사를 물었는데(연구 턴, 원장·기억만 변경) 답 뒤에
+        # "[게이트 차단] 커밋하지 않았다" 가 붙었다. 그 게이트가 막은 것은 이 턴 탓이
+        # 아니라 저장소에 남아 있던 **잠재 위반**이다 -- 물어본 사용자가 고칠 것도,
+        # 알 이유도 없다. 로그(위 print)와 관리자가 볼 자리다. 코드(.py)를 실제로 바꾼
+        # 턴이면 그대로 붙인다 -- 그건 그 턴이 만든 것이고 봐야 한다.
+        바뀐py = commit_guard._바뀐py(Path(REPO_DIR)) or []
+        if not 바뀐py:
+            print("[git_sync] 코드 변경 없는 턴 -- 게이트 차단은 로그에만 남기고 답에 안 붙인다")
+            return None
         # **표 전체를 답에 붙이지 않는다.** 사용자(2026-09-20): "디스코드 답변에
         # 계속 딸려와." 무엇이 막았는지 한두 줄만 보내고 표는 위 로그에 남긴다.
         return commit_guard.요약(보고, 통과)
@@ -710,12 +721,17 @@ def run_admin_agent(prompt: str, thread_id: str, 중계판=None) -> str:
             if not 도구들 and not bot_tools.이번셸() and relay.실측필요(prompt, reply):
                 return True
             return relay.떠넘김(reply) and not 무거웠나
-        if _설계인데안쟀나():
+        # **풀 고갈 안내는 되묻지도 벌주지도 않는다(D, 2026-09-25).** 모델이 하나도 못
+        # 돌아 "다 쉬는 중" 안내만 나간 것인데, 그 뒤에 "설계인데 안 쟀다"·"도구 0회" 로
+        # 되물으면 그 되묻기가 또 고갈된 풀을 두드리고 또 안내를 받아 벌표만 붙는다.
+        if poolpick.막힌답인가(reply):
+            print(f"[admin-agent] thread={thread_id} 풀 고갈 안내 -- 되묻기/검사표 건너뜀")
+        elif _설계인데안쟀나():
             print(f"[admin-agent] thread={thread_id} 설계를 물었는데 잰 도구가 0회 -- 되묻기")
             relay.적기("↺ 설계인데 잰 것이 없다 -- 실제로 돌려서 다시 답하라고 되묻는다")
             reply = run_with_fallback_pool(ADMIN_AGENT_POOL, _admin_thread_map, thread_id,
                                            relay.설계되묻는말, "[admin-agent]")
-            if _설계인데안쟀나():
+            if not poolpick.막힌답인가(reply) and _설계인데안쟀나():
                 # **두 번째도 안 쟀으면 모델에게 세 번째로 부탁하지 않는다 -- 회사가 받는다.**
                 # 실측 2026-09-22: 에이전트가 `iverilog ... && vvp` · `yosys -s ...` 를
                 # 적으며 "PASS · 셀 2,474개" 로 답했는데 **그 명령은 한 줄도 안 돌았다.**
@@ -727,7 +743,7 @@ def run_admin_agent(prompt: str, thread_id: str, 중계판=None) -> str:
             relay.적기("↺ 실행이 비었다(떠넘김/도구0) -- 한 호흡에 실행하라고 한 번 되묻는다")
             reply = run_with_fallback_pool(ADMIN_AGENT_POOL, _admin_thread_map, thread_id,
                                            relay.되묻는말, "[admin-agent]")
-            if _더필요():
+            if not poolpick.막힌답인가(reply) and _더필요():
                 reply = f"{reply}\n\n{relay.도구없음표}"
         print(f"[admin-agent] thread={thread_id} reply={reply[:200]!r}")
         return reply

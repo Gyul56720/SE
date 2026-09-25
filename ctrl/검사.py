@@ -1,0 +1,76 @@
+#!/usr/bin/env python3
+# 가장 쉬운 제어 정책(PI as SSM)이 실제로 제어하는가 -- 거짓초록 방지.
+#
+# 세 가지를 본다:
+#   1) 정상: 목표에 수렴하고(정상오차<2%) 외란을 밀어낸다(잔차<0.05).
+#   2) 변이: Ki=0 이면 적분이 없어 **외란을 못 밀어낸다** -> 검사가 물어야(FAIL) 한다.
+#      (Ki=0 은 P 제어기다. 상수 외란에 정상상태 오차가 남는다 -- 그게 PI 의 존재 이유다.)
+#   3) 퇴화: 목표=시작이면 아무 일 안 해도 오차 0 -- 그 시시한 통과를 배제한다.
+import sys, pathlib
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+import ctrl.model.closed_loop as C
+
+fails = []
+def ok(cond, label):
+    print(f"    {'OK  ' if cond else '실패'} {label}")
+    if not cond: fails.append(label)
+
+print("[정상] 목표 수렴 + 외란 복구")
+r = C.돌리기()
+m = r["지표"]
+ok(m["정상오차"] < 0.02, f"목표 ±2% 안으로 수렴 (정상오차 {m['정상오차']})")
+ok(m["외란복구잔차"] < 0.05, f"외란을 밀어내 잔차 작다 ({m['외란복구잔차']})")
+ok(m["외란최대편차"] > 0.02, f"외란이 실제로 밀긴 밀었다 ({m['외란최대편차']}) -- 안 밀렸으면 시험이 시시하다")
+
+print("[변이] Ki=0 이면 적분이 없어 외란을 못 민다")
+r0 = C.돌리기(Ki=0.0)
+m0 = r0["지표"]
+# P 제어의 정상오차 = d/Kp = 0.4/4.5 = 0.089 (물리). PI(0.0085)와 10배 갈린다.
+ok(m0["외란복구잔차"] > 0.05,
+   f"**적분 없으니 외란 잔차가 크다 ({m0['외란복구잔차']} ≈ d/Kp)** -- 정상판(0.009)과 10배 갈린다. 검사가 문다")
+ok(m0["외란복구잔차"] > 5 * m["외란복구잔차"],
+   f"변이가 정상판보다 확실히 나쁘다 ({m0['외란복구잔차']} vs {m['외란복구잔차']}) -- 우연이 아니다")
+
+print("[퇴화] 시작=목표면 아무것도 안 해도 오차 0 -- 배제")
+rd = C.돌리기(p0=1.0, 목표=1.0, 외란=0.0)
+import numpy as np
+움직임 = float(np.max(np.abs(np.diff(rd["p"]))))
+ok(움직임 < 1e-6, f"시작=목표·무외란이면 위치가 안 움직인다 ({움직임:.2e}) -- 이건 '제어'가 아니다")
+# 반대로, 진짜 시험(정상판)은 위치가 크게 움직였어야 한다
+움직임_진짜 = float(np.max(r["p"]) - np.min(r["p"]))
+ok(움직임_진짜 > 0.5, f"진짜 시험은 위치가 크게 움직인다 ({움직임_진짜:.3f}) -- 0→목표를 실제로 갔다")
+
+print("[검사 시나리오] 항공기 결함검사 -- 물리 규격을 만족하나")
+import ctrl.model.inspect3d as I
+r = I.추종()
+v = r["지표"]["검증"]
+ok(v["표준거리_밴드"], f"표준거리가 [{I.SPEC['d_min_m']},{I.SPEC['d_max_m']}]m 밴드 안 (실제 {r['지표']['표준거리min_m']}~{r['지표']['표준거리max_m']})")
+ok(v["속도_한계"], f"속도 ≤ v_max {I.SPEC['v_max_ms']}m/s (실제 {r['지표']['속도max_ms']})")
+ok(v["결함_전부검출"], f"결함 전부 검출 ({r['지표']['검출수']}/{r['지표']['결함수']}) -- 광학 분해능(3화소) 근거")
+ok(v["커버리지_목표"], f"커버리지 ≥ {I.SPEC['커버리지목표pct']}% (실제 {r['지표']['커버리지pct']})")
+# 물리 근거 점검: GSD 가 거리에 비례하는가 (멀수록 큰 결함만 보임)
+ok(I.GSD_mm(3.0) > I.GSD_mm(1.5) > 0, "GSD 가 거리에 비례한다(광학 근거) -- 상수면 물리가 틀린 것")
+# 변이: 표준거리를 반으로 줄이면(카메라를 표면에 붙이면) 안전여유 위반 -> 밴드 FAIL 나야
+import numpy as np
+너무가까움 = I.표면거리_m([0, I.R+0.3, 0])  # d_min 0.8 보다 작음
+ok(너무가까움 < I.SPEC["d_min_m"],
+   f"**표면 0.3m 접근은 안전여유 {I.SPEC['d_min_m']}m 위반 ({너무가까움}m)** -- 규격이 실제로 막는다")
+
+print("[신경망 Mamba] AI 정책이 PI 를 모방학습하고 폐루프로 나는가")
+import ctrl.model.mamba_policy as MP
+Pw, loss = MP.train(iters=150)          # 가볍게(precheck 25s 안)
+ok(loss < 0.05, f"모방학습이 수렴한다(MSE {loss:.4f}) -- 가중치가 실제로 학습됨")
+_, e = MP.closed_loop(Pw, (2,-1,3), dist=(0.3,0,-0.2))
+ok(e < 0.4, f"학습 안 쓴 목표에서 폐루프 수렴(최종오차 {e:.3f}) -- AI 정책이 드론을 난다")
+# 변이: SSM 재귀 제거(b=0)하면 상태가 안 쌓여 제어 못 함 -> 폐루프 발산해야
+import numpy as np
+Pm = {k:(v.copy() if hasattr(v,'copy') else v) for k,v in Pw.items()}; Pm["b"]=np.zeros_like(Pm["b"])
+_, em = MP.closed_loop(Pm, (2,-1,3), dist=(0.3,0,-0.2))
+ok(em > 2*e, f"**SSM 재귀(b) 죽이면 제어 나빠진다({em:.3f} vs {e:.3f})** -- 재귀가 진짜 일한다")
+# 다리: 신경망 재귀 h=a·h+b·x 가 scan_mac 이 하는 그 재귀다(구조 동일)
+ok(MP.M >= 1 and Pw["a_raw"].shape[0]==MP.M, "상태 재귀가 대각 SSM -- scan_mac 에 그대로 매핑")
+
+print()
+if fails:
+    print(f"실패 {len(fails)}개: {fails}"); sys.exit(1)
+print("제어 정책: PI 수렴·외란·변이·퇴화 · 검사물리규격 · 신경망Mamba 모방·폐루프·재귀변이 -- 통과")

@@ -53,7 +53,10 @@ print("[한도] 모델마다 다르게 본다 (이름으로 -- API 가 수를 �
 ok(R.모델한도("key-a:gemini-3.5-flash-lite") == 15, "flash-lite 가 가장 넉넉")
 ok(R.모델한도("key-a:gemini-3.5-flash") == 10, "flash")
 ok(R.모델한도("key-a:gemini-3.1-pro") == 5, "pro 가 가장 빡빡 -- 여기가 제일 자주 터졌다")
+ok(R.모델한도("key-a:gemini-omni-1.1-flash") == 5,
+   "**omni 는 flash 앞에서 5 로 잡힌다** -- 이름에 flash 가 들었지만 RPM 은 낮다(실측)")
 ok(R.모델한도("key-a:듣보모델") == R.기본RPM, "모르는 이름은 보수적으로 기본값")
+ok(R.기본RPM <= 6, f"기본값은 보수적이다({R.기본RPM}) -- 프로세스별 계수라 margin 을 남긴다")
 ok(R.모델한도("flash-lite") == 15, "라벨 없이 모델 이름만 줘도 읽는다")
 
 print()
@@ -147,9 +150,14 @@ ok("gemini-pro-latest" not in 남은,
 ok("gemini-3.1-pro-preview-customtools" not in 남은,
    "preview·customtools 꼬리가 붙어도 pro 는 pro 다")
 ok("gemini-3.5-flash" in 남은 and "gemini-3.5-flash-lite" in 남은, "flash 계열은 남는다")
-ok("gemma-4-26b" in 남은, "pro 가 아닌 것은 안 건드린다")
+ok("gemma-4-26b" not in 남은,
+   "**gemma 도 뺀다(A, 2026-09-25)** -- 오픈웨이트로 약하고 RPM 도 터졌다(로그: gemma-4-31b-it)")
+ok(not R.worth_calling("key-a:gemini-omni-1.1-flash"),
+   "**omni 도 뺀다(A)** -- 실측 'omni-* 가 전부 429'. flash 가 이름에 들어도 skip 이 이긴다")
 ok(R.usable_models(["gemini-pro-latest", "gemini-3.1-pro"]) == ["gemini-pro-latest", "gemini-3.1-pro"],
    "**다 걸러지면 거르지 않는다** -- 빈 풀은 느린 답보다 나쁘다(아예 답을 못 한다)")
+ok(R.usable_models(["gemma-4-26b", "gemma-4-9b"]) == ["gemma-4-26b", "gemma-4-9b"],
+   "**gemma 만 있으면 gemma 를 쓴다** -- 빈 풀 방지는 gemma 스킵에도 그대로. 폭풍 땐 최후 후보")
 ok(R.usable_models([]) == [] and R.usable_models(None) == [], "빈 목록은 빈 목록")
 ok(R.worth_calling("key-abc:gemini-3.5-flash") and not R.worth_calling("key-abc:gemini-pro-latest"),
    "라벨 꼴(key:model)로 줘도 모델 이름만 본다")

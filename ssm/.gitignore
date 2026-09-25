@@ -1,0 +1,5 @@
+# 측정 산출물 -- 검사가 낳는 것이지 남기는 것이 아니다 (CLAUDE.md)
+dv/exp_lut_*.memh
+dv/exp_vec_*.txt
+dv/scan_in_*.txt
+dv/scan_out_*.txt

@@ -43,15 +43,23 @@ import threading
 import time
 
 창 = 60.0                       # 한도가 걸리는 시간 창 (초)
-기본RPM = int(os.environ.get("GEMINI_RPM_DEFAULT", "10"))
+# **B(2026-09-25): 기본값을 보수적으로 낮춘다(10->6).** 사용자 로그에서 한도를 하나도
+# 안 쓴 상태인데도 RPM 이 터졌다. 두 가지가 겹친다: (1) 이 계수기는 **프로세스별**이라
+# 다른 프로세스(야간 런 등)가 같은 키를 쓰면 못 본다 -- 그만큼 margin 을 남겨야 한다.
+# (2) 이름을 모르는 모델은 실험/preview 판일 때가 많고 그쪽 무료티어 RPM 이 낮다.
+# 낮추는 것은 RPM 오류를 **늘리지 않는다** -- 간격만 더 둔다(느려질 뿐 안전).
+기본RPM = int(os.environ.get("GEMINI_RPM_DEFAULT", "6"))
 덮어쓰기 = os.environ.get("GEMINI_RPM", "")      # 있으면 모델을 안 보고 이 값
 
 # 이름 -> 분당 한도. 위에서부터 먼저 맞는 것을 쓴다(flash-lite 가 flash 보다 앞이어야 한다).
+# **omni 는 flash 보다 앞이어야 한다** -- 이름에 'flash' 가 들어가서(gemini-omni-1.1-flash)
+# 뒤에 두면 flash=10 으로 잡힌다. 실측 로그에서 omni 가 RPM 을 터뜨렸으니 보수적으로 5.
 한도표 = (
     (re.compile(r"flash-?lite", re.I), 15),
+    (re.compile(r"omni", re.I), 5),
     (re.compile(r"flash", re.I), 10),
     (re.compile(r"\bpro\b|-pro", re.I), 5),
-    (re.compile(r"gemma", re.I), 10),
+    (re.compile(r"gemma", re.I), 8),
 )
 
 
@@ -74,7 +82,15 @@ import time
 #
 # 답의 품질은 프롬프트와 도구가 정하지 모델 등급이 정하지 않는다. 되살리려면
 # `GEMINI_ALLOW_PRO=1`.
-SKIP_MODEL = re.compile(os.environ.get("GEMINI_SKIP_MODEL", r"pro"), re.I)
+#
+# **A(2026-09-25): gemma·omni 도 뺀다.** 사용자 로그에서 gemma-4-31b-it 와
+# gemini-omni-1.1-flash 가 RPM 을 터뜨렸고, llm_pool 주석에도 VM 실측이 남아 있다
+# ("omni-* 가 전부 429 [RPM/60초]"). gemma 는 오픈웨이트라 품질 등급이 바닥
+# (_model_quality_rank family=3), omni 도 무료티어 RPM 이 빡빡하다 -- pro 와 같은 이유
+# (답도 못 주면서 라운드트립·벌점만 쌓는 후보)다. **단, 빈 풀 방지는 그대로다**
+# (usable_models 가 다 걸러지면 안 거른다) -- 폭풍으로 flash 가 다 죽으면 이들도 최후
+# 후보로 다시 쓰인다. 평소에만 안 두드린다. 더/덜 빼려면 `GEMINI_SKIP_MODEL=<정규식>`.
+SKIP_MODEL = re.compile(os.environ.get("GEMINI_SKIP_MODEL", r"pro|gemma|omni"), re.I)
 ALLOW_PRO = os.environ.get("GEMINI_ALLOW_PRO", "") not in ("", "0", "false")
 
 
