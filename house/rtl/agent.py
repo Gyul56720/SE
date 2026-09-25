@@ -288,6 +288,22 @@ def _스윕조합(훑: dict, 설계, 빠르게=False) -> list:
     흔들 것이 없으면 **기본 구성 하나만** 돌리고 그렇게 적는다(빈 표보다 낫다).
     """
     기본 = dict(getattr(설계, "파라", {}) or {})
+    # **회로가 스윕을 직접 말하면 그것을 쓴다.** 반/두 배 어림은 갈래를 고르는
+    # 파라미터(MODE 같은)에는 뜻이 없다 -- 1 을 두 배 해서 2 가 나오고, RTL 이
+    # `MODE != 0` 로 가르면 **같은 갈래를 두 번** 돌고 "흔들었다" 고 적게 된다.
+    선언 = dict(getattr(설계, "스윕", {}) or {})
+    if 선언:
+        조합 = [dict(기본)]
+        for k, 값들 in 선언.items():
+            for v in 값들:
+                if 기본.get(k) != v:
+                    조합.append({**기본, k: v})
+        본것, 난것 = set(), []
+        for c in 조합:
+            열쇠 = tuple(sorted(c.items()))
+            if 열쇠 not in 본것:
+                본것.add(열쇠); 난것.append(c)
+        return 난것[:3 if 빠르게 else 6]
     # **톱 모듈의 파라미터만 쓴다.** 하위 모듈 것을 섞으면 verilator 가
     # "Parameters from the command line were not found in the design" 으로 죽는다.
     for k, v in (훑.get("톱파라미터") or {}).items():

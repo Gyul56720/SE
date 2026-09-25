@@ -48,6 +48,15 @@ class 설계:
     UPF: "Path | None" = None
     한줄: str = ""
     클럭: dict = field(default_factory=dict)  # {"clk": 주기_ns, ...}
+    # **이 회로에서 흔들어야 뜻이 있는 파라미터.** {이름: [값들]}
+    #
+    # 실측 2026-09-25: RTL 직무의 스윕은 "수 파라미터를 반/두 배로 흔든다" 는
+    # 어림으로 돈다. 그런데 `MODE` 처럼 **갈래를 고르는 파라미터**에는 그 어림이
+    # 뜻이 없다 -- MODE=1 을 두 배 해서 MODE=2 가 나왔고, RTL 이 `MODE != 0` 로
+    # 가르므로 **같은 갈래 두 판**을 돌고는 "MODE 를 흔들어 면적 1,528,910~
+    # 1,584,717 µm²" 라고 적었다. MODE=0(이진법)은 한 번도 안 돌았다.
+    # 회로가 직접 말하게 한다.
+    스윕: dict = field(default_factory=dict)
     출처: str = "손으로 쓴 것"                 # 또는 "gen.py 가 <요청> 에서 지음"
     메모: str = ""
 
@@ -81,7 +90,7 @@ class 설계:
                 "SDC": str(self.SDC) if self.SDC else None,
                 "UPF": str(self.UPF) if self.UPF else None,
                 "한줄": self.한줄, "클럭": self.클럭, "출처": self.출처,
-                "메모": self.메모}
+                "메모": self.메모, "스윕": self.스윕}
 
     @staticmethod
     def 사전에서(d: dict) -> "설계":
@@ -92,7 +101,8 @@ class 설계:
                   SDC=Path(d["SDC"]) if d.get("SDC") else None,
                   UPF=Path(d["UPF"]) if d.get("UPF") else None,
                   한줄=d.get("한줄", ""), 클럭=d.get("클럭") or {},
-                  출처=d.get("출처", ""), 메모=d.get("메모", ""))
+                  출처=d.get("출처", ""), 메모=d.get("메모", ""),
+                  스윕=d.get("스윕") or {})
 
 
 # ------------------------------------------------------------------ 붙박이
