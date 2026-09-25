@@ -152,7 +152,7 @@ const AC=D.AC,P=D.p,H=D.h,WP=D.웨이포인트,DEF=D.결함,T=D.t,N=T.length,tma
 const cv=document.getElementById("cv");
 let renderer,scene,camera,drone,props=[],ac,pathLine,trailLine,shadow;
 let feedR,feedS,feedC,feedCam;
-let idx=0,playing=true,speed=0.5,last=performance.now(),cam="orbit";
+let idx=0,idxf=0,playing=true,speed=0.5,last=performance.now(),cam="orbit";
 let orbit={theta:0.7,phi:1.0,r:20,tgt:new THREE.Vector3(0,1,0)};
 const V=a=>new THREE.Vector3(a[0],a[1],a[2]);
 const col=v=>new THREE.Color(v);
@@ -330,7 +330,9 @@ function renderFeed(){
 function loop(){
   requestAnimationFrame(loop);const now=performance.now(),dt=(now-last)/1000;last=now;
   props.forEach(pr=>pr.rotation.z+=0.8*speed);
-  if(playing){idx+=Math.max(1,Math.round(dt/0.06*speed));if(idx>=N)idx=0;update();}
+  // **float 누적**으로 나아간다 -- 예전엔 Math.max(1,…) 로 매 프레임 최소 1칸씩 뛰어
+  // 속도를 낮춰도 ~2.5초에 다 끝났다(60fps×1칸). 이제 0.5×·0.25× 가 실제로 느려진다.
+  if(playing){idxf+=(dt/0.10)*speed;if(idxf>=N)idxf=0;idx=Math.floor(idxf);update();}
   camPos();renderer.render(scene,camera);renderFeed();
 }
 // 조작
@@ -340,7 +342,7 @@ cv.addEventListener("pointermove",e=>{if(!drag)return;orbit.theta-=(e.clientX-dr
 cv.addEventListener("pointerup",()=>drag=null);
 cv.addEventListener("wheel",e=>{e.preventDefault();orbit.r=Math.max(8,Math.min(45,orbit.r*(1+Math.sign(e.deltaY)*0.08)));},{passive:false});
 document.getElementById("play").onclick=function(){playing=!playing;this.textContent=playing?"❚❚":"▶";};
-document.getElementById("scrub").oninput=function(){playing=false;document.getElementById("play").textContent="▶";idx=+this.value;update();};
+document.getElementById("scrub").oninput=function(){playing=false;document.getElementById("play").textContent="▶";idx=+this.value;idxf=idx;update();};
 document.getElementById("spd").onclick=function(){speed=speed>=2?0.25:speed*2;this.textContent=speed+"×";};
 function setCam(m){cam=m;["orbit","follow","drone"].forEach(k=>document.getElementById("c_"+k).classList.toggle("on",k===m));if(m==="orbit")orbit={theta:0.7,phi:1.0,r:20,tgt:new THREE.Vector3(0,1,0)};}
 document.getElementById("c_orbit").onclick=()=>setCam("orbit");
