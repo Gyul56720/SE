@@ -585,6 +585,53 @@ def _그림남기기(경로: str) -> None:
         _그림기록.setdefault(threading.get_ident(), []).append(경로)
 
 
+검사시뮬자리 = "inbox/시뮬"   # 회당 45KB HTML -- .gitignore 로 커밋에서 뺀다
+
+
+@tool
+def simulate_inspection(dt: float = 0.02) -> str:
+    """**항공기 결함검사 드론의 3D 동적 시뮬레이션 HTML 을 만든다.**
+
+    무인 체계 제어 정책(3축 PI-SSM)이 B737-800 검사 경로를 실제로 추종한 궤적을,
+    Three.js 로 **움직이는 인터랙티브 HTML** 로 낸다 -- 드론이 경로를 날고, 재생/일시정지 ·
+    타임 슬라이더 · 속도 · 궤도/추적/드론뷰 카메라, 실시간 텔레메트리(위치 · 상태 h · 속도 ·
+    표면거리)와 물리 규격 검증(GSD · 스와스 · 표준거리 밴드 · 커버리지)이 함께 뜬다.
+
+    이 HTML 은 **답과 함께 자동으로 디스코드에 올라간다** -- 받아서 브라우저로 열면 실제로
+    애니메이션이 돈다(정지 이미지가 아니다). 경로를 답에 적을 필요 없다.
+
+    수치는 지어내지 않는다 -- inspect3d 가 제어 정책을 실제로 돌려 낸 궤적· 규격이다.
+    dt: 제어 시뮬 시간간격(초). 작을수록 촘촘하다(기본 0.02).
+    """
+    if agent_context.is_blocked():
+        return "실패: 게스트는 simulate_inspection 을 사용할 수 없습니다."
+    import ctrl.model.inspect3d as I
+    import ctrl.viz as V
+    자리 = os.path.join(REPO_DIR, 검사시뮬자리)
+    os.makedirs(자리, exist_ok=True)
+    stem = uuid.uuid4().hex[:8]
+    j = os.path.join(자리, f"검사3d-{stem}.json")
+    h = os.path.join(자리, f"검사3d-{stem}.html")
+    try:
+        r = I.추종(dt=float(dt))
+        I.저장(r, j)
+        V.만들기("검사3d", j, h)
+    except Exception as e:                                   # noqa: BLE001
+        return f"[시뮬 실패] {type(e).__name__}: {e}"
+    _그림남기기(h)
+    m = r["지표"]; v = m["검증"]; 통과 = sum(1 for x in v.values() if x)
+    return "\n".join([
+        f"[시뮬 생성] {os.path.basename(h)} -- **답과 함께 자동으로 올라간다.** "
+        f"받아서 브라우저로 열면 드론이 실제로 난다(움직이는 3D, 정지 이미지 아님).",
+        f"비행 {m['비행시간s']}s · 웨이포인트 {m['웨이포인트수']} · "
+        f"표준거리 {m['표준거리min_m']}~{m['표준거리max_m']}m · 커버리지 {m['커버리지pct']}%",
+        f"결함 검출 {m['검출수']}/{m['결함수']} · 물리 규격 {통과}/{len(v)} PASS · "
+        f"GSD@표준 {m['GSD표준_mm']}mm(최소검출 {m['최소검출표준_mm']}mm)",
+        "제어 정책은 3축 PI-SSM -- 같은 재귀 h=Ā·h+B̄·x 가 ssm/scan_mac 하드웨어에 매핑. "
+        "결함 표식은 근접검출 데모(실제 비전 아님).",
+    ])
+
+
 @tool
 def draw_circuit(code: str = "", example: str = "", check: bool = True) -> str:
     """**회로도를 그린다.** CMOS·NMOS·PMOS·저항·축전기·코일·전류원·연산증폭기 등.
