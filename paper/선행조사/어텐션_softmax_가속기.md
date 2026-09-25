@@ -104,9 +104,60 @@ DSP 로 간다 -- **자원 자리가 유리함이 이미 확인됨.**
 - `vision transformer edge FPGA resource LUT DSP BRAM deit tiny ImageNet 2026 SoC`
 - `국내 트랜스포머 어텐션 FPGA softmax 국방 온디바이스 AI 반도체 2026`
 
+---
+
+## 2026 최전선 -- 추가 조사 (2026-09-25, 전부 `[조각]`/`[목록]`, 전문 미열람)
+
+사용자 요청: "최신기술 2026 기준으로." 위 조사(2025~2026 초 기준)에 2026 최신을 얹는다.
+
+### 갈래 A -- softmax 를 **더 잘 근사**한다 (기존 노선 유지)
+- **FlashAttention-2**: online-softmax 를 타일 단위로. 여전히 exp/합/나눗셈이 급소.
+  엣지 FPGA 이식이 2026 에도 활발 [조각].
+- **TeLLMe v2**: **삼진(ternary) LLM** prefill+decode 를 FPGA 에 올림. 곱셈을 **테이블
+  룩업**으로 치환. FPGA'26 (ISFPGA) [조각, arXiv 2510.15926].
+- **COBRA**: 이진(binary) 트랜스포머 가속 [조각].
+- **INT4 양자화 (2026)**: 4-bit 8B 모델이 정확도 95%+ 유지 -- 엣지 실전 가능 근거 [조각].
+- **KV 캐시 가속기**: HiKV [2607.22389] · MeshKV [2609.19207] · VEDA · LUT-LLM
+  [2511.06174] · EdgeLLM. **디코드 단계의 병목은 softmax 가 아니라 KV 캐시 대역폭**이라는
+  2026 의 관점 이동 [조각].
+
+### 갈래 B -- softmax 를 **아예 버린다** (2026 의 큰 물결) ★
+- **Mamba / SSM (State Space Model)**: **선형 어텐션**. softmax·QK^T 행렬을 없애고 상태
+  재귀로 대체. 복잡도 **O(n²) -> O(n)**, 처리량 ~5배. FastMamba 가 FPGA 구현 [조각,
+  arXiv 2505.18975].
+- **DROPS / 선형 어텐션 계열**: softmax 를 커널 근사로 제거 [조각].
+- 함의: "softmax 가 병목" 이라는 **우리 논지의 전제 자체를 2026 의 한 갈래가 흔든다.**
+  softmax 를 최적화하는 대신 **없애는** 아키텍처가 뜨고 있다.
+
+### 이 갈래들이 포트폴리오 논지에 주는 뜻 -- **사용자 결정 필요**
+
+| | 갈래 A (softmax 근사) | 갈래 B (SSM/선형) |
+|---|---|---|
+| 논지 | "softmax 병목을 HW 로 푼다" | "softmax 를 구조로 없앤 최신 아키텍처를 HW 로" |
+| 성숙도 | 검증된 밭, 자료 많음 | 2026 최전선, 자료 적음, 구현 어려움 |
+| 실행 위험 | 낮음 (레퍼런스 풍부) | 높음 (재귀·스캔의 HW 병렬화가 새 급소) |
+| "중고신입" 어필 | "실전 급소를 손으로 구현" | "가장 최신을 따라감" |
+| 방산 적합 | 표적인식 ViT 에 직결 | 시계열/센서 스트림(레이더·SIGINT)에 SSM 이 자연스러움 |
+
+**정직한 판단**: 갈래 B(Mamba/SSM)는 "2026 최신"에 가장 부합하고 **방산의 스트리밍 센서
+신호(레이더 펄스열·SIGINT 시퀀스)에 O(n) 선형 재귀가 오히려 더 맞는다.** 다만 HW 구현
+난도가 높다(재귀의 병렬 스캔). 갈래 A 는 안전하고 자료가 많다. **둘을 배타로 볼 필요는 없다**
+-- softmax 유닛을 먼저 완제품으로 만들고(A, 실행력 증명), 그 위에서 "그런데 2026 은 이걸
+없애는 방향(B)"을 분석 章으로 붙이면 **깊이까지 보인다.**
+
+### 2026 추가 질의
+- `FlashAttention hardware accelerator FPGA 2026 KV cache LLM edge inference softmax mamba state space model linear attention`
+- `2026 edge LLM small language model FPGA accelerator on-device transformer inference latest technique quantization state-of-the-art`
+
+---
+
 ## 결론 -- 범위를 좁혀 시작
 
 **Attention 의 softmax 하드웨어 근사**를 핵심으로, **정확도-자원 파레토를 재는 co-design**
 으로 겨룬다. 전체 ViT 가 아니라 **softmax 유닛 하나 -> attention 블록**부터. 붐비는 밭이라
 신규성은 없으나 목표(취업·실행력)에 맞다. System 2단계에서 **softmax 유닛의 exp 근사가
 LUT 로 가는지, 자원이 얼마인지**부터 잰다 -- AIM·채널화에서 한 그대로.
+
+**2026 을 얹은 뒤 남는 갈림길(사용자 결정)**: 갈래 A(softmax 근사, 안전)로 완제품을 짓고
+갈래 B(SSM/선형, 최신·방산 스트림 적합)를 분석으로 붙이는 것을 권한다. B 를 본 노선으로
+삼으려면 실행 난도가 오르는 것을 감수해야 한다.
