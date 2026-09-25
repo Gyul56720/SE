@@ -191,6 +191,33 @@ def _치우기(repo: Path, tmp: Path, 워크트리등록: bool = True) -> None:
     shutil.rmtree(tmp, ignore_errors=True)
 
 
+def _묵은판치우기(repo: Path, 나이초: float = 7200, tmp뿌리: "Path | None" = None) -> int:
+    """앞선 실행이 **강제종료**되면(OOM · 타임아웃 kill · 컨테이너 회수) 위 finally 가
+    안 돌아 `sandbox-` 워크트리가 /tmp 에 남는다 -- 실측: 한 컨테이너에 95벌이 쌓여
+    디스크를 먹었다(VM 은 [Errno 28] 로 봇이 죽었다). 그래서 **새 판을 깔기 전에** 묵은
+    것을 쓸어낸다: kill 로 트랩을 놓쳐도 다음 실행이 스스로 치운다.
+
+    **나이로 거른다.** 지금 도는 형제 판을 지우면 안 되므로, 만든 지 오래된 것만
+    지운다(기본 2시간 -- 어떤 판도 그만큼 안 돈다: --시간 기본 180초, 전체검사도 6분).
+    돌려주는 것: 치운 개수."""
+    n = 0
+    subprocess.run(["git", "-C", str(repo), "worktree", "prune"], capture_output=True, text=True)
+    이제 = time.time()
+    try:
+        찌꺼기 = list(Path(tmp뿌리 or tempfile.gettempdir()).glob("sandbox-*"))
+    except OSError:
+        return 0
+    for d in 찌꺼기:
+        try:
+            if not d.is_dir() or 이제 - d.stat().st_mtime < 나이초:
+                continue          # 갓 만든 것 = 지금 도는 판일 수 있다 -- 안 건드린다
+        except OSError:
+            continue
+        _치우기(repo, d)
+        n += 1
+    return n
+
+
 # ---------------------------------------------------------------- 새 의존성: 캐시 자리에 한 번 깐다
 # 실측 2026-09-12(VM): `!개선` 이 fpdf 로 PDF 를 만드는 새 모듈과 requirements.txt 한 줄을 붙였는데
 # 시뮬이 `ModuleNotFoundError: fpdf` 로 빨갰다. 기능은 다 됐는데 판정이 "안 깔린 라이브러리" 를
@@ -303,6 +330,7 @@ def 실행(argv: "list[str]", *, 지금트리: bool = False, 초: int = 180,
                     "메모": "망을 못 끊는 환경이다 -- 끊은 척하고 돌리지 않는다 (unshare -r -n 불가)"}
         argv = ["unshare", "-r", "-n", "--"] + list(argv)
     repo = Path(repo or REPO)
+    _묵은판치우기(repo)          # 강제종료로 남은 묵은 판을 먼저 쓸어낸다(디스크 재발방지)
     tmp = Path(tempfile.mkdtemp(prefix="sandbox-"))
     워크트리등록 = False
     try:
