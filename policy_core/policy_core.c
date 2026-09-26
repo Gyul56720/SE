@@ -67,12 +67,15 @@ PC_Action pc_policy_step(const PC_Belief *b, const PC_Vehicle *veh,
         cx = clampf(cx, 0, PC_GRID_W - 1);
         cy = clampf(cy, 0, PC_GRID_H - 1);
         float move_m = cell_dist(cx, cy, veh->x, veh->y) * cfg->cell_m;
+        /* T_search[s] = t_move + tau*t_obs. t_move = 이동거리[m]/v_nom[m/s]. */
+        float t_move = (cfg->v_nom > 1e-6f) ? (move_m / cfg->v_nom) : 0.0f;
         for (si = 0; si < n_models; ++si) {
             for (nl = 1; nl <= cfg->n_look_max; ++nl) {
                 float ev = expected_value(b, cx, cy, &models[si], nl, env, cfg);
                 /* J = alpha*P_detect - beta*T_search - gamma*E_motion.
-                 * T_search ~ 관측횟수(nl), E_motion ~ 이동거리[m]. */
-                float J = cfg->alpha * ev - cfg->beta * (float)nl - cfg->gamma * move_m;
+                 * T_search = t_move + nl*t_obs [s] (실제 시간), E_motion = 이동거리[m]. */
+                float t_search = t_move + (float)nl * cfg->t_obs;
+                float J = cfg->alpha * ev - cfg->beta * t_search - cfg->gamma * move_m;
                 if (J > bestJ) {
                     bestJ = J;
                     best.sensor = si; best.n_look = nl;

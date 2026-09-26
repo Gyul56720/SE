@@ -55,12 +55,22 @@ typedef struct {
     uint8_t rta_tripped; /* RTA 가 안전행동으로 대체했나 */
 } PC_Action;
 
-/* 목적 J 가중치 + 물리 스케일 + 후보 탐색 파라미터. */
+/* 목적 J 가중치 + 물리 스케일 + 후보 탐색 파라미터.
+ * J = alpha*P_detect - beta*T_search - gamma*E_motion.
+ *   T_search[s] = t_move + tau*t_obs  (실제 경과시간 -- nl 이 아니라 초).
+ *     t_move = 이동거리[m] / v_nom[m/s],  tau*t_obs = 관측시간[s].
+ *   beta = '초당 탐지가치'(임무 긴급도). 크면 -> 덜 보고 이동(급함), 작으면 -> 더 봄.
+ *   gamma = 이동 에너지/마모(거리[m] 당). 시간(beta)과 별개의 물리량이라 둘 다 남긴다.
+ * tau(관측횟수)가 진짜 트레이드오프가 되는 이유: EV(tau)는 diminishing(1-(1-p1)^tau,
+ *   오목)인데 시간비용은 tau 에 선형 -> 한계정보가 시간비용(beta*t_obs) 밑으로 내려가는
+ *   지점에서 멈춘다(최적 포식/MVT). 근거리·고p1 장면은 빨리 포화 -> tau* 작고, 원거리·
+ *   열화 장면은 정보가 덜 차 tau* 크다. 손코딩 없이 장면·긴급도에서 창발. */
 typedef struct {
-    float alpha, beta, gamma;  /* J = alpha*P_detect - beta*T - gamma*E_motion */
+    float alpha, beta, gamma;  /* J 가중치 (beta = 초당 가치) */
     float cell_m;              /* 셀 한 칸[m] */
     float r_max_cells;         /* 관측 반경[셀] */
-    float v_nom;               /* 이동명령 산출용 명목 속도 */
+    float v_nom;               /* 이동속도[m/s] -- t_move = 거리/v_nom */
+    float t_obs;               /* 관측 한 번의 시간[s] -- 관측시간 = tau*t_obs */
     uint8_t n_look_max;        /* 시도할 최대 관측횟수(1..n) */
 } PC_Cfg;
 

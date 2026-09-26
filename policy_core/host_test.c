@@ -28,7 +28,9 @@ static int inside_keepout(float x, float y, float tx, float ty, float ko) {
 }
 static PC_Cfg mkcfg(void) {
     PC_Cfg c; c.alpha = 1.f; c.beta = 0.02f; c.gamma = 0.01f;
-    c.cell_m = 5.f; c.r_max_cells = 9.f; c.v_nom = 1.f; c.n_look_max = 3;
+    c.cell_m = 5.f; c.r_max_cells = 9.f; c.v_nom = 1.f;   /* 5m/셀, 1m/s -> 5s/셀 이동 */
+    c.t_obs = 0.5f;                                        /* 관측 한 번 0.5s */
+    c.n_look_max = 6;                                      /* 내부 tau* 가 보이게 */
     return c;
 }
 static void belief_bump(PC_Belief *b, float cx, float cy, float s) {
@@ -68,6 +70,50 @@ int main(void) {
     if (night_sensor != 2) { printf("FAIL: night 에 Thermal 안 고름(=%d)\n", night_sensor); fails++; }
     printf("  => day=%s, night=%s  (창발: 조명서 센서선택이 손코딩 없이 뒤바뀜)\n",
            NAME[day_sensor], NAME[night_sensor]);
+
+    /* 1b. tau 트레이드오프: 관측시간 tau 가 긴급도(beta)·장면에서 손코딩 없이 갈린다.
+     * (예전엔 항상 최대로 포화 -- T_search 를 실제 시간 t_move+tau*t_obs 로 바꿔 고침) */
+    printf("\n[tau-sweep] beta(초당가치) 올리며 pi 가 고르는 n_look (day, blob@(9,9)):\n");
+    {
+        float betas[] = {0.005f, 0.01f, 0.02f, 0.05f, 0.1f, 0.2f, 0.5f, 1.0f};
+        int nb = (int)(sizeof(betas)/sizeof(betas[0]));
+        PC_Env day = { 0.f, 1.f, 0.f, 0.f };
+        uint8_t nl[8]; int i2;
+        for (i2 = 0; i2 < nb; ++i2) {
+            PC_Cfg cc = cfg; cc.beta = betas[i2];
+            PC_Action a = pc_policy_step(&b, &veh, M, 3, &day, &cc);
+            nl[i2] = a.n_look;
+            printf("   beta=%.3f -> n_look=%u\n", betas[i2], a.n_look);
+        }
+        /* (a) 저긴급이면 최대까지 본다 */
+        if (nl[0] != cfg.n_look_max) { printf("FAIL: 저긴급(beta=0.005)서 최대 관측 안 함\n"); fails++; }
+        /* (b) 고긴급이면 한 번 보고 뜬다 */
+        if (nl[nb-1] != 1) { printf("FAIL: 고긴급(beta=1.0)서 n_look=1 아님(=%u)\n", nl[nb-1]); fails++; }
+        /* (c) 긴급도에 단조 반응(잡음 아님) */
+        for (i2 = 1; i2 < nb; ++i2)
+            if (nl[i2] > nl[i2-1]) { printf("FAIL: n_look 이 beta 에 단조감소 아님\n"); fails++; break; }
+        /* (d) 내부값이 실제로 존재(1<tau*<max) -- 포화도 1도 아닌 진짜 트레이드오프 */
+        { int interior = 0; for (i2 = 0; i2 < nb; ++i2) if (nl[i2] > 1 && nl[i2] < cfg.n_look_max) interior = 1;
+          if (!interior) { printf("FAIL: 내부 tau*(1<tau<max) 가 어느 beta 서도 안 나옴\n"); fails++; } }
+        printf("  => tau* 가 6..1 로 갈림(긴급도서 창발). 이유: EV(tau)=1-(1-p1)^tau 오목,\n"
+               "     시간비용 beta*t_obs 선형 -> 한계정보 < 시간비용서 멈춤(MVT).\n");
+    }
+    printf("[scene-sweep] 고정 beta=0.05, 표적 거리별 n_look (근접=정보 빨리 포화):\n");
+    {
+        float nl_near, nl_far;
+        PC_Env day = { 0.f, 1.f, 0.f, 0.f };
+        PC_Cfg cc = cfg; cc.beta = 0.05f;
+        PC_Belief bn; belief_bump(&bn, 6.f, 6.f, 1.2f);   /* 근접(약1.4셀) */
+        PC_Belief bf; belief_bump(&bf, 5.f, 12.f, 1.2f);  /* 원거리(7셀) */
+        PC_Action an = pc_policy_step(&bn, &veh, M, 3, &day, &cc);
+        PC_Action af = pc_policy_step(&bf, &veh, M, 3, &day, &cc);
+        nl_near = an.n_look; nl_far = af.n_look;
+        printf("   근접 blob@(6,6) -> n_look=%u,  원거리 blob@(5,12) -> n_look=%u\n",
+               an.n_look, af.n_look);
+        /* 근접(고p1, 정보 포화)은 원거리(저p1)보다 덜 본다 */
+        if (!(nl_near < nl_far)) { printf("FAIL: 근접이 원거리보다 덜 보지 않음(%g>=%g)\n", nl_near, nl_far); fails++; }
+        printf("  => 근접일수록 덜 본다(정보 포화). 장면서 tau 창발, 손코딩 없음.\n");
+    }
 
     /* 2. RTA: 위협 keep-out 이 표적 방향에 있으면 안전행동으로 대체 */
     float dx[PC_MAX_MOVES], dy[PC_MAX_MOVES]; uint8_t nmv; pc_default_moves(dx, dy, &nmv);
