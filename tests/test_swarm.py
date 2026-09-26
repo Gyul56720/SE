@@ -117,3 +117,10 @@ def test_편대는_유지되지만_중심계획만으론_관통():
     assert clr["편대폭+실행마진"] > 0
     # 마진을 키울수록 여유가 단조 증가
     assert clr["중심만"] < clr["편대폭"] < clr["편대폭+실행마진"]
+
+
+if __name__ == "__main__":
+    import os
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import _run
+    _run.돌리기(globals())
