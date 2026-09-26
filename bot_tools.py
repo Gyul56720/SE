@@ -642,7 +642,7 @@ def simulate_inspection(정책: str = "pi", dt: float = 0.02) -> str:
 
 
 @tool
-def simulate_formation() -> str:
+def simulate_formation(메일: str = "") -> str:
     """**무인체계 편대(스웜)의 위협회피 동적 시뮬레이션 HTML 을 만든다.**
 
     5대 V편대가 바람 외란 속에서 전술 스택(계획 → MPC 중심궤적 → 편대 수행)으로
@@ -657,6 +657,10 @@ def simulate_formation() -> str:
 
     이 HTML 은 **답과 함께 자동으로 디스코드에 올라간다** -- 받아서 브라우저로 열면
     편대가 실제로 난다(정지 이미지 아님).
+
+    **메일=<주소>**(또는 "me" -> USER_EMAIL)를 주면 이 HTML 을 **첨부 메일로 보낸다.**
+    디스코드는 HTML 을 채널에서 렌더 못 하니(보안), 메일로 받아 브라우저로 여는 게 편하다.
+    SMTP 수단이 없으면 도구가 무엇이 없는지 돌려준다 -- 그 말을 그대로 전하라.
     """
     if agent_context.is_blocked():
         return "실패: 게스트는 simulate_formation 을 사용할 수 없습니다."
@@ -675,6 +679,22 @@ def simulate_formation() -> str:
         판정 = f"관통 {(-v['clr']):.2f}m ✗" if v["clr"] < 0 else f"전원회피 +{v['clr']}m ✓"
         줄.append(f"  {이름}(Rplan {v['Rplan']}): 편대유지 {v['fe']}m · {판정}")
     줄.append("필요 마진 = 위협반경 + 편대 반폭 + 실행오차(바람+유지). 세 층이 얽힌다.")
+    if str(메일).strip():
+        import mailer
+        import mailattach
+        rel = os.path.relpath(h, REPO_DIR)
+        붙일것, 거절 = mailattach.풀기(rel)
+        막힘 = mailattach.막히나(붙일것) if 붙일것 else ""
+        if 붙일것 and not 막힘:
+            본문 = ("무인체계 편대 위협회피 동적 시뮬레이션 HTML 입니다. 첨부를 브라우저로 열면 "
+                  "애니메이션이 돕니다(디스코드는 HTML 을 렌더 못 해 메일로 보냅니다).\n\n"
+                  + "\n".join(줄[1:]))
+            r = mailer.보내기_첨부(str(메일).strip(), "[공유] 무인체계 편대 위협회피 시뮬",
+                              본문, 붙일것, 허용자리표=mailattach.말머리)
+            줄.append(f"✉ 메일 {'보냄' if r['보냈나'] else '못 보냄'} → {str(메일).strip()[:40]} "
+                     f"-- {r['말'].splitlines()[0][:90]}")
+        else:
+            줄.append(f"[메일 첨부 거절] {막힘 or ' · '.join(거절[:2]) or '첨부 없음'}")
     return "\n".join(줄)
 
 
