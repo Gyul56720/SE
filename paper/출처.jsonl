@@ -1,0 +1,5 @@
+# 출처 원장 (G022): paper/*.html 의 <div class="ref"> 안 <li> 인용마다 한 행.
+# 확인수준: 전문|초록|목록|조각. 그 수준이 문서의 그 <li> 안에 [출처:<수준>] 로 보여야 한다.
+{"논문":"센서불가지_능동탐색.html","번호":1,"확인수준":"조각","날짜":"2026-09-26","질의":"Charnov marginal value theorem optimal foraging 1976","어디서":"교과서 수준 귀속(널리 확립된 결과) -- 이번 작업에서 원문을 다시 읽지 않음. τ 정지 규칙의 개념 귀속으로만 인용"}
+{"논문":"센서불가지_능동탐색.html","번호":2,"확인수준":"조각","날짜":"2026-09-26","질의":"Elfes occupancy grid mobile robot perception navigation 1989","어디서":"교과서 수준 귀속 -- 원문 미열람. belief 격자 표현의 개념 귀속으로만 인용"}
+{"논문":"센서불가지_능동탐색.html","번호":3,"확인수준":"조각","날짜":"2026-09-26","질의":"Sha using simplicity to control complexity Simplex architecture 2001","어디서":"교과서 수준 귀속 -- 원문 미열람. RTA/Simplex 안전층의 개념 귀속으로만 인용"}

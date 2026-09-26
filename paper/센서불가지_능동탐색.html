@@ -1,0 +1,331 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Sensor-Agnostic Active Search Policy</title>
+<style>
+@page { size: A4; margin: 15mm 12mm 16mm 12mm;
+  @bottom-center { content: counter(page) " / " counter(pages); font: 8pt DejaVu Sans; color:#555; } }
+* { box-sizing: border-box; }
+body { font-family:"DejaVu Serif",Georgia,serif; font-size:9.1pt; line-height:1.34; color:#111; margin:0; }
+h1 { font-size:17pt; text-align:center; margin:0 0 2pt; font-family:"DejaVu Sans"; }
+.authors { text-align:center; font-size:9.5pt; margin:2pt 0; }
+.aff { text-align:center; font-size:8.4pt; color:#333; font-style:italic; margin-bottom:6pt; }
+h2 { font-size:10.3pt; font-family:"DejaVu Sans"; border-bottom:1.4px solid #222; padding-bottom:1px;
+     margin:9pt 0 4pt; text-transform:uppercase; letter-spacing:.3px; }
+h3 { font-size:9.4pt; font-family:"DejaVu Sans"; margin:6pt 0 2pt; color:#1e3a8a; }
+p { margin:0 0 4.5pt; text-align:justify; }
+.cols { column-count:2; column-gap:7mm; column-fill:auto; }
+.abs { font-size:8.7pt; margin:0 6mm 7pt; padding:6pt 9pt; background:#f4f6fb;
+     border-left:3px solid #2563EB; border-radius:2px; }
+.abs b { font-family:"DejaVu Sans"; }
+figure { margin:6pt 0; break-inside:avoid; text-align:center; }
+figure img { width:100%; border:1px solid #e2e8f0; border-radius:2px; }
+figure.wide { column-span:all; }
+figcaption { font-size:7.8pt; color:#333; margin-top:2pt; text-align:left; }
+table { border-collapse:collapse; width:100%; font-size:7.7pt; margin:5pt 0; break-inside:avoid; }
+th,td { border:1px solid #cbd5e1; padding:2px 4px; text-align:center; }
+th { background:#e8edf6; font-family:"DejaVu Sans"; }
+td.l,th.l { text-align:left; }
+.eq { text-align:center; font-family:"DejaVu Serif"; margin:4pt 0; font-size:9.4pt; }
+.eq .n { float:right; color:#666; font-size:8pt; }
+code,.mono { font-family:"DejaVu Sans Mono"; font-size:7.7pt; }
+pre { background:#0f172a; color:#e2e8f0; font-family:"DejaVu Sans Mono"; font-size:6.9pt; line-height:1.28;
+      padding:6pt 8pt; border-radius:3px; overflow:hidden; white-space:pre-wrap; break-inside:avoid; }
+.tag { display:inline-block; background:#2563EB; color:#fff; font-family:"DejaVu Sans"; font-size:6.6pt;
+       padding:1px 5px; border-radius:8px; vertical-align:middle; }
+.honest { background:#fff7ed; border-left:3px solid #ea580c; padding:5pt 8pt; margin:5pt 0; font-size:8.5pt; break-inside:avoid; }
+.honest b { font-family:"DejaVu Sans"; color:#9a3412; }
+ul { margin:2pt 0 4pt 14pt; padding:0; } li { margin-bottom:1.5pt; }
+.small { font-size:7.8pt; color:#444; }
+</style></head><body>
+
+<h1 class="title">A Sensor-Agnostic Active Search Policy for OS-Independent, Bare-Metal Autonomous Search</h1>
+<div class="authors">Myeonghyun Ko (고명현)</div>
+<div class="aff">Kwangwoon University — RF / Radar / Autonomy portfolio · policy core in portable C (no ROS / Linux / Jetson)</div>
+
+<div class="abs"><b>Abstract —</b> We present an active target-search policy <span class="mono">&pi;(s)&rarr;a</span> whose
+contribution is the <i>decision layer</i>, not any single sensor. A modality-independent belief <span class="mono">b(x)</span> is
+updated by physics-grounded observation models exposed to the core only through a function-pointer interface, so that
+which sensor wins each step <i>emerges</i> from an objective maximization rather than a hand-coded rule (e.g. camera by day,
+thermal at night). The policy jointly selects sensor <span class="mono">m</span>, motion <span class="mono">u</span>, and
+observation time <span class="mono">&tau;</span>. The entire core is implemented in OS-independent C (no heap, no
+recursion, deterministic; portable to a bare-metal MCU) and validated across three environmental conditions, six
+baselines, and thousands of paired-seed episodes driven by the identical C core. We report honestly: (i) observation
+time <span class="mono">&tau;</span> becomes a genuine trade-off once search time is modeled as real elapsed time, a
+marginal-value-theorem stop; (ii) a myopic additive objective <b>freezes at cold start</b> under a diffuse prior —
+scoring <b>0.0%</b> success — which we diagnose and repair with a belief-adaptive cost that recovers <b>83.5%</b>,
+matching the cost-free ceiling of <b>84.0%</b>, and turns the urgency weight into a usable economy dial; (iii) fixing
+the freeze <b>reveals that an earlier "sensor blindness" number was partly a freeze artifact</b>, so the true
+sensor-agnostic advantage is real but modest at a generous budget. All figures and tables are regenerated from the
+committed code; every headline number carries its invalidation condition.</div>
+
+<div class="cols">
+
+<h2>I. Introduction</h2>
+<p>Most robotic active-search systems are built on a heavy Linux/ROS/Jetson stack and demonstrate that a particular sensor
+finds a target well. We invert both choices. First, we target <b>OS-independent, bare-metal execution</b>: the policy core
+must link on a microcontroller with no dynamic memory, no recursion, and deterministic timing. Second, we make the policy
+<b>sensor-agnostic</b>: the core never names a sensor; it sees only an abstract observation model. The research claim is
+therefore not "sensor X is good" but "the decision layer is portable, sensor-neutral, and its sensor/time choices emerge
+from physics."</p>
+<p>This paper provides the full <b>Methods</b> and <b>Results</b>, the simulation environment, conditions, mathematics,
+physics models, and code. Prior-art positioning (GoalSwarm, AGOS, SEArch, and how our policy-centric, OS-independent framing
+differs) is maintained separately in the repository survey and is out of scope here. Contributions:</p>
+<ul>
+<li><b>C1</b> A modality-independent belief + objective in which <i>sensor selection emerges</i> (no "if night then thermal").</li>
+<li><b>C2</b> A physically honest observation-time term <span class="mono">&tau;</span> that trades information against real time (MVT stopping).</li>
+<li><b>C3</b> Diagnosis and repair of a <b>cold-start freeze</b> in myopic active search via a belief-adaptive cost.</li>
+<li><b>C4</b> A 6-baseline, 3-condition measurement with explicit anti-exaggeration controls and self-corrected numbers.</li>
+</ul>
+
+<h2>II. System Architecture</h2>
+<p>Fig. 1 shows the five-layer stack. Physics defines detectability and precision; an <i>observation model</i> layer exposes
+these to the core through two function pointers only; the core maintains belief, runs the policy, and hands its action to a
+runtime-assurance (RTA) filter. The core file <span class="mono">policy_core.c</span> contains no sensor, hardware, or OS
+dependency, so swapping a sensor means swapping an adapter, and moving UGV&rarr;UAV changes only the adapter that translates
+<span class="mono">(v,&omega;)</span> into <span class="mono">(v<sub>x</sub>,v<sub>y</sub>,v<sub>z</sub>,&psi;&#775;)</span>;
+the policy is unchanged.</p>
+
+<figure class="wide"><img src="센서불가지_figs/fig1_architecture.png">
+<figcaption><b>Fig. 1.</b> Policy stack. Only the observation-model layer (function pointers) is sensor-specific; the core
+is OS/sensor/hardware agnostic, heap-free, recursion-free, and deterministic.</figcaption></figure>
+
+<h2>III. Methods</h2>
+
+<h3>A. Belief and Bayesian update</h3>
+<p>The world is a <span class="mono">24&times;24</span> grid (1 cell = 5 m). Belief <span class="mono">b(x)</span> is a
+normalized posterior over the target cell, independent of sensing modality. Given an observation from cell
+<span class="mono">c</span> with model <span class="mono">m</span> in environment <span class="mono">e</span>, the update is
+Bayesian with a modality-supplied likelihood:</p>
+<div class="eq">detect: L(x) = exp(&minus;&#8741;x&minus;z&#8741;&sup2;/2&sigma;&sup2;) + &epsilon;<span class="n">(1)</span></div>
+<div class="eq">miss: L(x) = 1 &minus; 0.85&middot;p<sub>useful</sub>(x)&nbsp;&nbsp;for x in footprint<span class="n">(2)</span></div>
+<div class="eq">b&prime;(x) = L(x)b(x) / &Sigma;<sub>x&prime;</sub>L(x&prime;)b(x&prime;)<span class="n">(3)</span></div>
+<p>where <span class="mono">z</span> is the measured location and <span class="mono">&sigma;</span> the model's precision.
+A detection sharpens belief toward <span class="mono">z</span>; a miss attenuates the observed footprint, which pushes
+probability mass toward unobserved cells — the implicit exploration signal. Belief entropy
+<span class="mono">H(b) = &minus;&Sigma; b log b</span> quantifies uncertainty (used below).</p>
+
+<h3>B. Observation models (physics)</h3>
+<p>Each sensor is an adapter exposing <span class="mono">p<sub>useful</sub>(r,&theta;,e)</span> (single-look useful-detection
+probability) and <span class="mono">precision(r)</span> (localization sharpness, m). Table II lists the models used; Fig. 3
+plots them. Camera detectability scales with illumination and a health factor (lens fouling / backlight); LiDAR and thermal
+are illumination-invariant (active / emissive). Fig. 3c shows the camera surface collapsing at low light — the physical fact
+that later drives the emergent sensor switch. These curves are stylized and <i>must be replaced by field calibration before
+hardware trials</i> (Sec. V).</p>
+
+<figure class="wide"><img src="센서불가지_figs/fig3_obsmodel.png">
+<figcaption><b>Fig. 3.</b> Observation-model adapters: (a) detection probability vs range for camera (day/night/degraded),
+LiDAR, thermal; (b) localization precision vs range. These functions are the <i>only</i> sensor-specific code.</figcaption></figure>
+
+<figure><img src="센서불가지_figs/fig3b_cam3d.png">
+<figcaption><b>Fig. 3c.</b> Camera <span class="mono">p<sub>useful</sub>(range, illumination)</span>. The collapse toward low
+illumination is what makes an <i>emergent</i> switch to an illumination-invariant sensor rational — no rule is coded.</figcaption></figure>
+
+<table><caption class="small" style="text-align:left"><b>TABLE II.</b> Observation models (r in metres).</caption>
+<tr><th class="l">Sensor</th><th class="l">p<sub>useful</sub>(r)</th><th class="l">precision &sigma;(r) [m]</th><th>illum?</th></tr>
+<tr><td class="l">Camera</td><td class="l">0.92&middot;e<sup>&minus;(r/25)&sup2;</sup>&middot;illum&middot;health</td><td class="l">0.30+0.010r</td><td>yes</td></tr>
+<tr><td class="l">LiDAR</td><td class="l">0.80&middot;e<sup>&minus;(r/18)&sup2;</sup></td><td class="l">0.50+0.020r</td><td>no</td></tr>
+<tr><td class="l">Thermal</td><td class="l">0.85&middot;e<sup>&minus;(r/22)&sup2;</sup></td><td class="l">0.40+0.015r</td><td>no</td></tr>
+</table>
+
+<h3>C. Objective and active policy</h3>
+<p>The action is <span class="mono">a = (m, u, &tau;)</span>: sensor index <span class="mono">m</span>, motion
+<span class="mono">u=(v,&omega;)</span> toward a target cell, and observation count <span class="mono">&tau;</span>. The policy
+enumerates candidate moves &times; sensors &times; <span class="mono">&tau;</span> and maximizes</p>
+<div class="eq">J = &alpha;&middot;EV &minus; &beta;&middot;T<sub>search</sub> &minus; &gamma;&middot;E<sub>motion</sub><span class="n">(4)</span></div>
+<div class="eq">EV = &Sigma;<sub>x</sub> b(x)&middot;[1&minus;(1&minus;p<sub>useful</sub>(x))<sup>&tau;</sup>] / &sigma;(x)<span class="n">(5)</span></div>
+<p>EV is the belief-weighted expected detection value, sharper sensors (smaller <span class="mono">&sigma;</span>) preferred.
+Because EV depends on the sensor only through physics, the argmax over sensors <i>is</i> the emergent sensor choice.</p>
+
+<h3>D. Observation time &tau; and the MVT stop</h3>
+<p>Search time is modeled as <b>real elapsed time</b>, not a step count:</p>
+<div class="eq">T<sub>search</sub> = t<sub>move</sub> + &tau;&middot;t<sub>obs</sub>,&nbsp;&nbsp; t<sub>move</sub> = dist/v<sub>nom</sub><span class="n">(6)</span></div>
+<p>so <span class="mono">&beta;</span> is a <i>value per second</i> (mission urgency). Since
+<span class="mono">EV(&tau;)&prop;1&minus;(1&minus;p<sub>1</sub>)<sup>&tau;</sup></span> is concave and time cost is linear, the optimum
+stops when marginal information falls below <span class="mono">&beta;&middot;t<sub>obs</sub></span> — Charnov's marginal-value
+theorem. Thus <span class="mono">&tau;</span> emerges from urgency and scene (Fig. 5), not a hand-set constant.</p>
+
+<h3>E. Belief-adaptive cost (cold-start fix)</h3>
+<p>A purely myopic (one-step) maximization of (4) has a failure mode: under a diffuse prior EV is nearly flat, so any motion
+costs more than its immediate EV gain and the vehicle <b>freezes</b>, never reaching distant belief mass (Sec. IV-C). We scale
+the cost by belief uncertainty:</p>
+<div class="eq">&beta;<sub>eff</sub> = &beta;&middot;(1&minus;H<sub>norm</sub>)<sup>p</sup>,&nbsp; H<sub>norm</sub>=H(b)/log N<span class="n">(7)</span></div>
+<p>with <span class="mono">&gamma;<sub>eff</sub></span> analogous. When belief is diffuse (<span class="mono">H<sub>norm</sub>&rarr;1</span>)
+cost&darr; and the policy explores freely; when concentrated cost&uarr; and it confirms economically. The exponent
+<span class="mono">p</span> is an integer power (no <span class="mono">powf</span>; MCU-friendly);
+<span class="mono">p=0</span> disables the adaptation.</p>
+
+<h3>F. Runtime assurance (RTA)</h3>
+<p>Every action passes an RTA filter: if the target cell violates a keep-out set, it is projected to the nearest safe
+candidate and the step is flagged. Sensor and <span class="mono">&tau;</span> are preserved. This is a Simplex-style safety
+layer and is measured as an intervention rate.</p>
+
+<h3>G. Objective measurability audit</h3>
+<p>Before reporting we audited whether each objective term is measurable in a real outdoor trial (Table IV). Three terms are
+field-observable; the information term is a model-internal quantity. We therefore <b>split the objective</b>: the online
+<i>drive</i> objective may include information gain, but the reported <i>score</i> uses only field-measurable
+<span class="mono">P, T, C</span>. Conflating the two would let a policy be graded on its own belief.</p>
+
+<table><caption class="small" style="text-align:left"><b>TABLE IV.</b> Objective-term measurability.</caption>
+<tr><th class="l">Term</th><th class="l">Field measurement</th><th>Score?</th></tr>
+<tr><td class="l">P<sub>detect</sub></td><td class="l">ground-truth target, count detections</td><td>yes</td></tr>
+<tr><td class="l">T<sub>search</sub></td><td class="l">wall clock to detection</td><td>yes</td></tr>
+<tr><td class="l">C<sub>motion</sub></td><td class="l">odometry distance / motor energy</td><td>yes</td></tr>
+<tr><td class="l">I(b;b&prime;)</td><td class="l">belief entropy — model-internal</td><td><b>drive only</b></td></tr>
+</table>
+
+<h3>H. Simulation environment and protocol</h3>
+<p>The evaluation simulator (Fig. 2) draws a language-guided prior blob (&sigma;=5 cells) and samples the true target from it
+(&sigma;=3 cells), placed beyond the initial observation radius so search is required; a fixed keep-out zone makes RTA a live
+metric. Every policy observes through the <i>same</i> adapters (model = truth is the fair common ground); the proposed policy's
+only advantage is its decision. Table I lists parameters; Table III lists the six policies. Per condition we run 200 episodes
+with paired seeds (identical target/start across policies).</p>
+
+<figure><img src="센서불가지_figs/fig2_environment.png">
+<figcaption><b>Fig. 2.</b> Environment: NL-guided prior (blue), true target (star, drawn from the prior), vehicle start,
+keep-out (RTA), and observation radius.</figcaption></figure>
+
+<table><caption class="small" style="text-align:left"><b>TABLE I.</b> Simulation parameters.</caption>
+<tr><td class="l">grid / cell</td><td class="l">24&times;24 / 5 m</td><td class="l">r<sub>max</sub></td><td class="l">9 cells (45 m)</td></tr>
+<tr><td class="l">v<sub>nom</sub></td><td class="l">1 m/s</td><td class="l">t<sub>obs</sub></td><td class="l">0.5 s</td></tr>
+<tr><td class="l">&tau;<sub>max</sub></td><td class="l">6</td><td class="l">&alpha;,&beta;,&gamma;</td><td class="l">1, 0.05, 0.01</td></tr>
+<tr><td class="l">cost pow p</td><td class="l">2</td><td class="l">keep-out</td><td class="l">(12,12) r=3</td></tr>
+<tr><td class="l">steps/ep</td><td class="l">25</td><td class="l">episodes</td><td class="l">200 &times; 3 cond</td></tr>
+<tr><td class="l">prior &sigma;</td><td class="l">5 cells</td><td class="l">target &sigma;</td><td class="l">3 cells</td></tr>
+</table>
+
+<p>Conditions: <b>day-clear</b> (illum 1.0, health 1.0), <b>night</b> (illum 0.05), <b>day-degraded</b> (health 0.2 — camera
+alive but degraded, breaking any "day&rarr;camera" rule). Policies: <b>Proposed</b> (full J, emergent sensor+&tau;);
+<b>Info/EV-only</b> (&beta;=&gamma;=0); <b>Fixed-Camera</b>, <b>Fixed-LiDAR</b> (single-sensor, full policy);
+<b>Hand-rule</b> (illum&gt;0.5&rArr;camera else thermal); <b>Random</b>.</p>
+
+<h2>IV. Results</h2>
+
+<h3>A. Observation time &tau; emerges</h3>
+<p>Fig. 5(a): as urgency <span class="mono">&beta;</span> rises from 0.005 to 1.0, chosen
+<span class="mono">&tau;*</span> falls monotonically 6&rarr;6&rarr;6&rarr;6&rarr;5&rarr;3&rarr;1&rarr;1 — low urgency looks
+to saturation, high urgency glances once, with a genuine interior region. Fig. 5(b) shows the concave detection value and the
+marginal gain crossing the time-cost line (MVT). Scene also matters: a near target (fast saturation)
+uses <span class="mono">&tau;*=4</span> vs 6 for a far target. No rule is coded; the trade-off is physical.</p>
+
+<figure class="wide"><img src="센서불가지_figs/fig5_tau.png">
+<figcaption><b>Fig. 5.</b> (a) &tau;* vs urgency &beta; (concentrated belief). (b) Diminishing detection value and the
+marginal-vs-cost crossing that sets the stopping point (MVT).</figcaption></figure>
+
+<h3>B. Baseline comparison</h3>
+<p>Table III and Fig. 6 give the canonical run (&beta;=0.05, p=2). The structural findings: (i) the emergent policies
+(Proposed, Info/EV-only) select the right sensor per condition without a rule and keep the highest worst-case floor; (ii)
+Fixed-Camera is the clear laggard, dragged down at night; (iii) Hand-rule matches the emergent policies where its rule is
+correct but loses at day-degraded, where its "day&rarr;camera" assumption is false and the emergent policy switches to thermal.</p>
+
+<table><caption class="small" style="text-align:left"><b>TABLE III.</b> Success rate [%] (&beta;=0.05, p=2, 200 ep/cond). RTA = interventions/ep.</caption>
+<tr><th class="l">Policy</th><th>day</th><th>night</th><th>degr.</th><th>floor</th><th>overall</th><th>RTA</th></tr>
+<tr><td class="l"><b>Proposed</b></td><td>79.0</td><td>87.5</td><td>84.0</td><td>79.0</td><td><b>83.5</b></td><td>3.61</td></tr>
+<tr><td class="l">Info/EV-only</td><td>81.0</td><td>87.5</td><td>83.5</td><td><b>81.0</b></td><td>84.0</td><td>4.07</td></tr>
+<tr><td class="l">Fixed-Camera</td><td>79.0</td><td>67.5</td><td>80.0</td><td>67.5</td><td>75.5</td><td>3.44</td></tr>
+<tr><td class="l">Fixed-LiDAR</td><td>78.5</td><td>86.0</td><td>79.0</td><td>78.5</td><td>81.2</td><td>2.45</td></tr>
+<tr><td class="l">Hand-rule</td><td>79.0</td><td>87.5</td><td>80.0</td><td>79.0</td><td>82.2</td><td>3.65</td></tr>
+<tr><td class="l">Random</td><td>60.0</td><td>55.5</td><td>52.0</td><td>52.0</td><td>55.8</td><td>0.42</td></tr>
+</table>
+
+<figure class="wide"><img src="센서불가지_figs/fig6_baseline.png">
+<figcaption><b>Fig. 6.</b> Success across three conditions, six policies, 200 episodes each. Fixed-Camera degrades at night;
+Hand-rule at day-degraded; the emergent policies stay robust.</figcaption></figure>
+
+<div class="honest"><b>Honest note (C4).</b> Info/EV-only <i>beats</i> Proposed on raw success (84.0 vs 83.5). We do not hide
+this: with no cost it explores freely and is the success ceiling. Proposed's value is not a higher ceiling but a controllable
+one — see IV-C. At this success-matching setting the two are near-identical on economy as well; the cost term's benefit
+appears only when economy is deliberately dialed in.</div>
+
+<h3>C. Cold-start freeze and the belief-adaptive fix (C3)</h3>
+<p>Fig. 7(a): at <span class="mono">&beta;=0.05</span> the myopic additive policy (<span class="mono">p=0</span>) scores
+<b>0.0%</b> — it freezes under the diffuse prior. Raising the belief-adaptive power recovers it: <span class="mono">p=1</span>
+&rarr;58.3%, <span class="mono">p=2</span>&rarr;<b>83.5%</b> (essentially the cost-free ceiling of 84.0%),
+<span class="mono">p=3</span>&rarr;84.0%. Fig. 7(b): with the fix, <span class="mono">&beta;</span> becomes a smooth
+economy dial — 0.05&rarr;83.5% (RTA 3.61), 0.2&rarr;77.2% (RTA 2.12), 0.5&rarr;59.3%, 1.0&rarr;45.3% — instead of the
+all-or-nothing 0% cliff. The fix separates "do not freeze" from "be economical," a knob the cost-free Info policy lacks.</p>
+
+<figure class="wide"><img src="센서불가지_figs/fig7_freezefix.png">
+<figcaption><b>Fig. 7.</b> (a) Belief-adaptive power p turns a frozen 0% policy into 83.5% at the same &beta;. (b) With the fix,
+&beta; trades success for economy (RTA halved at &beta;=0.2) without freezing.</figcaption></figure>
+
+<h3>D. Belief evolution</h3>
+<p>Fig. 4 shows one search traced directly from the C core: a broad NL-guided prior, a depleting belief after five
+non-detections (note the observed-region notch), and a sharp peak at detection. Fig. 4b overlays the RTA-aware trajectory,
+which routes around the keep-out zone before localizing.</p>
+
+<figure class="wide"><img src="센서불가지_figs/fig4_belief3d.png">
+<figcaption><b>Fig. 4.</b> Belief <span class="mono">b(x)</span> evolution (per-panel z-scale) dumped from
+<span class="mono">policy_core.c</span>: prior &rarr; depleting &rarr; peaked at detection.</figcaption></figure>
+
+<figure><img src="센서불가지_figs/fig4b_traj.png">
+<figcaption><b>Fig. 4b.</b> RTA-aware trajectory over the final belief; the path avoids the keep-out disk.</figcaption></figure>
+
+<h3>E. Self-corrected result (anti-exaggeration)</h3>
+<div class="honest"><b>Correction.</b> An earlier, pre-fix run (&beta;=0.002, p=0) reported Fixed-Camera at night collapsing to
+<b>25.5%</b>. After fixing the freeze, Fixed-Camera at night recovers to <b>67.5%</b>: the 25.5% conflated true sensor
+weakness with the freeze artifact. The honest sensor-agnostic advantage is therefore <i>real but modest</i> at this generous
+25-step / 6-look budget: a 20-point night gap (Proposed 87.5 vs Fixed-Camera 67.5) but near-parity at day-clear
+(camera 79.0 &asymp; LiDAR 78.5). We report the corrected numbers.</div>
+
+<h2>V. Limitations &amp; Threats to Validity</h2>
+<ul>
+<li><b>Model = truth.</b> The simulator uses the same adapters as the policy; real trials have model &ne; truth, and the
+<span class="mono">p<sub>useful</sub></span> curves need field calibration (first task of a hardware phase).</li>
+<li><b>Myopia.</b> The belief-adaptive cost fixes cold-start freeze but the policy is still one-step greedy; a short budget or
+larger grid may favor lookahead / rate objectives (untested).</li>
+<li><b>Modeling choices.</b> pfa = 0; a simple precision-noise belief update; static conditions within an episode (so sensor
+switching &asymp; 0 — adaptation is <i>across</i> conditions, not within; a day&rarr;tunnel&rarr;night episode is unmeasured).</li>
+<li><b>Generous budget.</b> 25 steps &times; 6 looks makes even a weak sensor eventually succeed, compressing the spread; a
+tighter budget would sharpen (and is future work, not claimed here).</li>
+</ul>
+
+<h2>VI. Reproducibility</h2>
+<p class="small">Repository <span class="mono">policy_core/</span>: <span class="mono">policy_core.{h,c}</span> (core),
+<span class="mono">host_test.c</span> (regression: emergence, &tau;-sweep, freeze-fix, RTA, belief), <span class="mono">sim.c</span>
+(this evaluation), <span class="mono">RESULTS.md</span> (measured numbers with invalidation conditions).
+Commands: <span class="mono">make test</span>; <span class="mono">make baselines</span>;
+<span class="mono">./sim &lt;beta&gt; &lt;gamma&gt; [pow]</span>; <span class="mono">./sim --trace</span>. All figures/tables in
+this paper were regenerated from these binaries.</p>
+
+<h2>Appendix A. Core Interface</h2>
+<pre>typedef struct {            /* the ONLY sensor-specific object */
+  float (*p_useful)(const void*cfg,float r,float ang,const PC_Env*e);
+  float (*precision)(const void*cfg,float r);
+  const void *cfg; uint8_t id;
+} PC_ObsModel;
+typedef struct { uint8_t sensor; float v,w; uint8_t n_look;
+                 float tgt_x,tgt_y; uint8_t rta_tripped; } PC_Action;  /* a=(m,u,tau) */
+PC_Action pc_policy_step(const PC_Belief*, const PC_Vehicle*,
+      const PC_ObsModel* models, uint8_t n, const PC_Env*, const PC_Cfg*);
+PC_Action pc_rta_filter(PC_Action, const PC_Vehicle*, const PC_Safety*, ...);</pre>
+
+<h2>Appendix B. Policy core (J max + belief-adaptive cost)</h2>
+<pre>/* belief-adaptive cost: beta_eff = beta*(1-H_norm)^p */
+float Hn = pc_belief_entropy(b)/logf((float)PC_GRID_N);
+float scale=1.0f; for(j=0;j&lt;cfg-&gt;cost_uncert_pow;++j) scale*=(1.0f-Hn);
+float beta_eff=cfg-&gt;beta*scale, gamma_eff=cfg-&gt;gamma*scale;
+for(move) { t_move = move_m/v_nom;
+ for(sensor) for(nl=1..n_look_max) {
+   ev = sum_x b(x)*(1-(1-p_useful)^nl)/precision;      /* Eq.5 */
+   t  = t_move + nl*t_obs;                             /* Eq.6 */
+   J  = alpha*ev - beta_eff*t - gamma_eff*move_m;      /* Eq.4,7 */
+   if(J&gt;bestJ) best=(sensor,move,nl); } }             /* argmax */</pre>
+
+<h2>Appendix C. Observation-model adapters</h2>
+<pre>float cam_p(const void*c,float r,float a,const PC_Env*e){
+  return 0.92f*expf(-(r/25.f)*(r/25.f))*e-&gt;illum*e-&gt;extra0; } /* health */
+float lid_p(const void*c,float r,float a,const PC_Env*e){
+  return 0.80f*expf(-(r/18.f)*(r/18.f)); }   /* illumination-invariant */
+float thr_p(const void*c,float r,float a,const PC_Env*e){
+  return 0.85f*expf(-(r/22.f)*(r/22.f)); }   /* illumination-invariant */</pre>
+
+<h2>References (foundational)</h2>
+<div class="ref"><ol class="small" style="margin-left:14pt">
+<li>E. Charnov, "Optimal foraging, the marginal value theorem," <i>Theor. Popul. Biol.</i>, 1976 (&tau; stopping). <span class="tag" style="background:#64748b">[출처:조각]</span></li>
+<li>A. Elfes, "Using occupancy grids for mobile robot perception and navigation," <i>Computer</i>, 1989 (belief grid). <span class="tag" style="background:#64748b">[출처:조각]</span></li>
+<li>L. Sha, "Using simplicity to control complexity," <i>IEEE Software</i>, 2001 (Simplex / RTA). <span class="tag" style="background:#64748b">[출처:조각]</span></li>
+</ol></div>
+<p class="small">Confirmation level <span class="mono">조각</span> (textbook-level attribution, sources not re-read in this
+work) is recorded per citation in <span class="mono">paper/출처.jsonl</span>. Detailed active-search prior art (GoalSwarm,
+AGOS, SEArch) and our differentiation are maintained in the repository survey
+<span class="mono">paper/선행조사/센서불가지_능동탐색.md</span>; no unread specific claim is asserted here.</p>
+
+</div></body></html>
