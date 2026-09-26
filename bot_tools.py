@@ -642,6 +642,43 @@ def simulate_inspection(정책: str = "pi", dt: float = 0.02) -> str:
 
 
 @tool
+def simulate_formation() -> str:
+    """**무인체계 편대(스웜)의 위협회피 동적 시뮬레이션 HTML 을 만든다.**
+
+    5대 V편대가 바람 외란 속에서 전술 스택(계획 → MPC 중심궤적 → 편대 수행)으로
+    위협원(비행금지구역)을 회피하는 것을 Canvas 애니메이션으로 낸다 -- 편대가 실제로
+    날고, 재생/일시정지 · 속도 · 타임 슬라이더가 있다. 상단 버튼으로 세 계획을 토글:
+    **중심만** · **편대폭** · **폭+실행마진**. 바깥 드론이 위협에 닿으면 빨강으로 뜬다.
+
+    정직한 시연: 계획이 편대의 폭·하위 실행오차(바람+편대유지)를 덜 반영하면 바깥
+    드론이 위협을 관통한다. 필요 안전마진 = 위협반경 + 편대 반폭 + 실행오차. 세 층이
+    얽혀 있음을 눈으로 보여 준다. 수치는 지어내지 않는다 -- ctrl.model.tactical 이
+    실제로 돌린 궤적· 여유다(재현/시연, paper/선행조사/무인체계_편대제어_MPC.md).
+
+    이 HTML 은 **답과 함께 자동으로 디스코드에 올라간다** -- 받아서 브라우저로 열면
+    편대가 실제로 난다(정지 이미지 아님).
+    """
+    if agent_context.is_blocked():
+        return "실패: 게스트는 simulate_formation 을 사용할 수 없습니다."
+    import ctrl.swarm_viz as SV
+    자리 = os.path.join(REPO_DIR, 검사시뮬자리)
+    os.makedirs(자리, exist_ok=True)
+    h = os.path.join(자리, f"편대-{uuid.uuid4().hex[:8]}.html")
+    try:
+        _, 요약 = SV.만들기(h)
+    except Exception as e:                                   # noqa: BLE001
+        return f"[편대 시뮬 실패] {type(e).__name__}: {e}"
+    _그림남기기(h)
+    줄 = [f"[편대 시뮬 생성] {os.path.basename(h)} -- **답과 함께 자동으로 올라간다.** "
+          f"받아서 브라우저로 열면 편대가 실제로 난다(움직이는 2D, 정지 이미지 아님)."]
+    for 이름, v in 요약.items():
+        판정 = f"관통 {(-v['clr']):.2f}m ✗" if v["clr"] < 0 else f"전원회피 +{v['clr']}m ✓"
+        줄.append(f"  {이름}(Rplan {v['Rplan']}): 편대유지 {v['fe']}m · {판정}")
+    줄.append("필요 마진 = 위협반경 + 편대 반폭 + 실행오차(바람+유지). 세 층이 얽힌다.")
+    return "\n".join(줄)
+
+
+@tool
 def draw_circuit(code: str = "", example: str = "", check: bool = True) -> str:
     """**회로도를 그린다.** CMOS·NMOS·PMOS·저항·축전기·코일·전류원·연산증폭기 등.
 
