@@ -61,15 +61,15 @@ def 밀기(repo=None) -> "tuple[bool, str, str]":
     br = git(["rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
     if not br or br in ("HEAD", "main", "master"):
         return False, br, f"`{br or 'HEAD'}` 에서는 PR 을 못 연다 -- 갈래를 만들어 거기서 열어라"
-    p = git(["push", "-u", "origin", br])
-    if p.returncode == 0:
+    rc, msg = gitsync.인증푸시(git, br, repo=repo)   # 토큰 인증 push(없으면 평범)
+    if rc == 0:
         return True, br, "밀었다"
     caught, why = gitsync.reconcile(git)
     if not caught:
-        return False, br, f"밀기 실패 뒤 따라잡기도 실패: {why}"
-    p2 = git(["push", "-u", "origin", br])
-    if p2.returncode != 0:
-        return False, br, f"따라잡고도 밀기 실패: {p2.stderr.strip()[:200]}"
+        return False, br, f"밀기 실패 뒤 따라잡기도 실패: {why} ({msg[:160]})"
+    rc2, msg2 = gitsync.인증푸시(git, br, repo=repo)
+    if rc2 != 0:
+        return False, br, f"따라잡고도 밀기 실패: {msg2[:200]}"
     return True, br, f"{why} 뒤 밀었다"
 
 

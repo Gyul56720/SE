@@ -645,8 +645,9 @@ def _git_sync_locked() -> str | None:
             # 다른 작성자가 먼저 커밋해 갔다. 남길 변경이 없으니 할 일이 끝난 것이다.
             return None
         return f"[git commit 실패] {combined.strip()[:500]}"
-    push = subprocess.run(["git", "push"], cwd=REPO_DIR, capture_output=True, text=True)
-    if push.returncode == 0:
+    _git = lambda a: subprocess.run(["git", *a], cwd=REPO_DIR, capture_output=True, text=True)  # noqa: E731
+    push_rc, push_msg = gitsync.인증푸시(_git, repo=REPO_DIR)   # 토큰 인증 push(없으면 평범)
+    if push_rc == 0:
         # `보고` 는 위 commit_guard.검사 가 준 문지기 보고다. 전에 여기 없는 이름(`report`)을 불러 **밀기가
         # 성공한 경로에서만** NameError 가 터졌다 -- 사용자는 커밋·푸시가 다 된 뒤에 "[git 동기화 실패]" 를
         # 보았다(실측 2026-09-12). 그 결은 rehearsal.미정의이름 이 패치마다 잡는다.
@@ -656,15 +657,14 @@ def _git_sync_locked() -> str | None:
         # `_verify_pushed()` -- "저장했다" 는 말이 참인지 재는 장치라 끄지 않는다.
         return _verify_pushed()
 
-    caught, why = gitsync.reconcile(
-        lambda a: subprocess.run(["git", *a], cwd=REPO_DIR, capture_output=True, text=True))
+    caught, why = gitsync.reconcile(_git)
     if not caught:
         return (f"[git push 실패] origin이 앞서 있어 따라잡으려 했으나 안 됐다: {why}\n"
-                f"{push.stderr.strip()}")
+                f"{push_msg}")
 
-    retry = subprocess.run(["git", "push"], cwd=REPO_DIR, capture_output=True, text=True)
-    if retry.returncode != 0:
-        return f"[git push 실패] {why} 뒤에도 실패: {retry.stderr.strip()}"
+    retry_rc, retry_msg = gitsync.인증푸시(_git, repo=REPO_DIR)
+    if retry_rc != 0:
+        return f"[git push 실패] {why} 뒤에도 실패: {retry_msg}"
     return f"({why} 뒤 재시도) " + _verify_pushed()
 
 
