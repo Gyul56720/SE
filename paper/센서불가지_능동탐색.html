@@ -54,7 +54,8 @@ scoring <b>0.0%</b> success — which we diagnose and repair with a belief-adapt
 matching the cost-free ceiling of <b>84.0%</b>, and turns the urgency weight into a usable economy dial; (iii) fixing
 the freeze <b>reveals that an earlier "sensor blindness" number was partly a freeze artifact</b>, so the true
 sensor-agnostic advantage is modest at a generous budget but <b>sharpens markedly as the budget tightens</b>. All figures
-and tables are regenerated from the committed code; every headline number carries its invalidation condition.</div>
+and tables are regenerated from the committed code; every headline number carries its invalidation condition, and a calibration protocol maps the observation
+model to hardware.</div>
 
 <div class="cols">
 
@@ -298,10 +299,38 @@ detection likelihood with sequential confirmation; we therefore report this as a
 sensor-agnostic gap rather than compressing it. What remains untested is a larger grid combined with a tight budget.</li>
 </ul>
 
-<h2>VI. Reproducibility</h2>
+<h2>VI. Calibration Plan (toward hardware)</h2>
+<p>The <span class="mono">model = truth</span> limitation is closed only in the field, so we specify a calibration protocol
+(repository <span class="mono">CALIBRATION.md</span>) as the first hardware task. Its structure follows directly from the
+abstraction: because the core sees only two functions per sensor, calibration fills exactly those two — nothing else changes,
+and the protocol is itself <b>sensor-agnostic</b>.</p>
+<p><b>What to fill.</b> For each sensor, place a standardized target at a known pose <span class="mono">(r,&theta;)</span>
+under a controlled environment, take repeated observations, and estimate (a) the detection fraction &rarr;
+<span class="mono">p<sub>useful</sub></span>, and (b) the spread of reported-position error &rarr;
+<span class="mono">precision</span>. Only the environment axis differs by sensor (Table V); the measurement recipe is
+identical, and the fitted coefficients load into the adapter's <span class="mono">cfg</span> slot with no core recompile.</p>
+
+<table><caption class="small" style="text-align:left"><b>TABLE V.</b> Calibration axes and physics anchors per sensor.</caption>
+<tr><th class="l">Sensor</th><th class="l">Dominant environment axis</th><th class="l">Physics anchor (cross-check)</th></tr>
+<tr><td class="l">Camera (EO)</td><td class="l">illumination [lux]; health (fouling/backlight)</td><td class="l">optical 1/R&sup2;; Koschmieder &beta;=3.912/V</td></tr>
+<tr><td class="l">Thermal (IR)</td><td class="l">target&ndash;background &Delta;T [K]; humidity</td><td class="l">thermal emission; atmospheric IR attenuation</td></tr>
+<tr><td class="l">LiDAR</td><td class="l">reflectance &rho;; incidence angle; fog visibility</td><td class="l">1/R&sup2;; Mie scattering</td></tr>
+<tr><td class="l">FMCW-SAR</td><td class="l">weather w (fog/rain); target RCS</td><td class="l">SNR 1/R&#8308;; &delta;<sub>az</sub>=&lambda;R/2L<sub>sa</sub>; ITU-R fog</td></tr>
+</table>
+
+<p><b>Estimators, anchoring, validation.</b> Each cell's <span class="mono">p<sub>useful</sub></span> is a Bernoulli rate
+reported with a Wilson 95% confidence interval (not a bare point), and precision with its sample dispersion; one environment
+axis is varied at a time to control confounds. Fitted curves are cross-checked against the physics anchors above (a fit that
+disagrees even qualitatively signals a measurement error, not a discovery). Validation uses hold-out trials, a reliability
+diagram / Brier score for <span class="mono">p<sub>useful</sub></span>, and — crucially — the residual between the
+calibrated model in simulation and the same hardware measured directly, reported rather than assumed to be zero. A six-item
+anti-exaggeration checklist gates every reported curve.</p>
+
+<h2>VII. Reproducibility</h2>
 <p class="small">Repository <span class="mono">policy_core/</span>: <span class="mono">policy_core.{h,c}</span> (core),
 <span class="mono">host_test.c</span> (regression: emergence, &tau;-sweep, freeze-fix, RTA, belief), <span class="mono">sim.c</span>
-(this evaluation), <span class="mono">RESULTS.md</span> (measured numbers with invalidation conditions).
+(this evaluation), <span class="mono">RESULTS.md</span> (measured numbers with invalidation conditions),
+<span class="mono">CALIBRATION.md</span> (field-calibration protocol).
 Commands: <span class="mono">make test</span>; <span class="mono">make baselines</span>;
 <span class="mono">./sim &lt;beta&gt; &lt;gamma&gt; [pow]</span>; <span class="mono">./sim --trace</span>. All figures/tables in
 this paper were regenerated from these binaries.</p>
