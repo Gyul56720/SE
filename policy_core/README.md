@@ -41,7 +41,8 @@ host_test 의 `[tau-sweep]`(β 6→1 로 τ* 갈림)·`[scene-sweep]`(근접 4 <
 ## 돌리기 (host)
 
 ```sh
-make test      # 데스크톱서 코어를 돌려 창발·RTA·belief 회귀를 붙든다
+make test        # 코어 회귀: 센서선택 창발·τ 트레이드오프·RTA·belief 를 붙든다
+make baselines   # Phase-1 측정: 6 정책 x 3 조건 성공률·시간·거리·전환·RTA 표 (-> RESULTS.md)
 ```
 host_test 가 붙드는 것: (1) 조명 쓸기서 센서선택 창발(낮→Camera, 밤→Thermal, 손코딩 0),
 (2) RTA 가 keep-out 침범 행동을 안전행동으로 대체, (3) 탐지 관측이 belief 엔트로피를 줄임.

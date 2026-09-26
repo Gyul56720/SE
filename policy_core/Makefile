@@ -8,12 +8,19 @@ LDLIBS  ?= -lm
 host_test: host_test.c policy_core.c policy_core.h
 	$(CC) $(CFLAGS) -o $@ host_test.c policy_core.c $(LDLIBS)
 
-.PHONY: test clean
+# sim: Phase-1 측정 -- 6 정책을 같은 시뮬레이터로 돌려 성공률·시간·거리·전환·RTA 표
+sim: sim.c policy_core.c policy_core.h
+	$(CC) $(CFLAGS) -o $@ sim.c policy_core.c $(LDLIBS)
+
+.PHONY: test baselines clean
 test: host_test
 	./host_test
 
+baselines: sim
+	./sim
+
 clean:
-	rm -f host_test
+	rm -f host_test sim
 
 # MCU 이식 예 (코어만, host_test 제외):
 #   arm-none-eabi-gcc -std=c99 -Os -mcpu=cortex-m4 -c policy_core.c
