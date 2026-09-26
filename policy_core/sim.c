@@ -15,6 +15,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 /* ── 결정적 RNG (xorshift32) : 재현 가능 ── */
 static uint32_t RNG = 0;
@@ -82,7 +83,16 @@ static PC_Action step_policy(int pol, const PC_Belief *b, const PC_Vehicle *veh,
     return a;
 }
 
-typedef struct { int success; float t_search, dist_m; int switches, rta; } Metrics;
+typedef struct { int success; float t_search, dist_m; int switches, rta, steps; } Metrics;
+
+/* 트레이스(그림용): 켜지면 한 에피소드의 belief 그리드·궤적을 stdout 에 덤프한다.
+ * 측정 경로엔 영향 없음(NULL 이면 아무것도 안 함). 그림은 실 C 코어 출력에서 나온다. */
+static FILE *g_trace = NULL;
+static void dump_grid(const char *tag, const PC_Belief *b) {
+    int i; fprintf(g_trace, "GRID %s", tag);
+    for (i = 0; i < PC_GRID_N; ++i) fprintf(g_trace, " %.6f", b->p[i]);
+    fprintf(g_trace, "\n");
+}
 
 /* 에피소드 하나. 표적은 시작 관측반경 밖 무작위 셀(탐색이 필요하도록).
  * ep_seed 로 시드해 표적/시작을 정책과 무관하게 만든다 -> 모든 정책이 같은 시나리오를
@@ -90,7 +100,7 @@ typedef struct { int success; float t_search, dist_m; int switches, rta; } Metri
 static Metrics run_episode(int pol, PC_Env env, const PC_Cfg *cfg,
                            const PC_Safety *saf, const PC_ObsModel M[NSENS],
                            uint32_t ep_seed) {
-    Metrics m = {0, 0.f, 0.f, 0, 0};
+    Metrics m = {0, 0.f, 0.f, 0, 0, 0};
     seed(ep_seed);
     float dx[PC_MAX_MOVES], dy[PC_MAX_MOVES]; uint8_t nmv; pc_default_moves(dx, dy, &nmv);
     PC_Vehicle veh = { 2.f, 2.f, 0.f, 1.f };
@@ -116,6 +126,13 @@ static Metrics run_episode(int pol, PC_Env env, const PC_Cfg *cfg,
             b.p[gy*PC_GRID_W + gx] = v; sum += v;
         }
         { int i; for (i = 0; i < PC_GRID_N; ++i) b.p[i] /= sum; }
+    }
+    if (g_trace) {
+        fprintf(g_trace, "META tx %.3f ty %.3f vx %.3f vy %.3f pcx %.3f pcy %.3f "
+                "kox %.2f koy %.2f kor %.2f rmax %.2f cellm %.2f\n",
+                tx, ty, veh.x, veh.y, pcx, pcy, saf->thr_x, saf->thr_y,
+                saf->keepout_cells, cfg->r_max_cells, cfg->cell_m);
+        dump_grid("prior", &b);
     }
     int prev_sensor = -1;
     const int MAXSTEP = 25;   /* 커버리지 예산: 24x24 격자를 footprint(r=9)로 덮는 데 충분 */
@@ -147,11 +164,19 @@ static Metrics run_episode(int pol, PC_Env env, const PC_Cfg *cfg,
             float mx = tx + nrand() * sig, my = ty + nrand() * sig;
             pc_belief_update(&b, &veh, &M[cur], &env, cfg, 1, mx, my);
             float ax, ay, ap; pc_belief_argmax(&b, &ax, &ay, &ap);
-            if (sqrtf((ax-tx)*(ax-tx)+(ay-ty)*(ay-ty)) <= 2.0f) { m.success = 1; break; }
+            if (g_trace) { fprintf(g_trace, "TRAJ %d %.3f %.3f %d %d %d\n", s, veh.x, veh.y, cur, a.n_look, detected); }
+            if (sqrtf((ax-tx)*(ax-tx)+(ay-ty)*(ay-ty)) <= 2.0f) {
+                m.success = 1; m.steps = s + 1;
+                if (g_trace) { fprintf(g_trace, "STEPS %d\n", s + 1); dump_grid("final", &b); }
+                break;
+            }
         } else {
             pc_belief_update(&b, &veh, &M[cur], &env, cfg, 0, 0.f, 0.f);   /* 미탐지: footprint 감쇠 */
+            if (g_trace) { fprintf(g_trace, "TRAJ %d %.3f %.3f %d %d %d\n", s, veh.x, veh.y, cur, a.n_look, detected); }
         }
+        if (g_trace && s == 4) dump_grid("mid", &b);   /* 탐색 중간 스냅샷 */
     }
+    if (!m.success) m.steps = MAXSTEP;
     return m;
 }
 
@@ -168,11 +193,27 @@ int main(int argc, char **argv) {
     PC_Cfg cfg; cfg.alpha = 1.f; cfg.beta = 0.05f; cfg.gamma = 0.01f;
     cfg.cell_m = 5.f; cfg.r_max_cells = 9.f; cfg.v_nom = 1.f; cfg.t_obs = 0.5f; cfg.n_look_max = 6;
     cfg.cost_uncert_pow = 2;
+    PC_Safety saf = { 12.f, 12.f, 3.f, 1 };   /* 중앙 근처 위협 keep-out (모든 정책 동일) */
+
+    /* --trace: 한 에피소드(Proposed, day-clear)의 belief·궤적을 덤프(그림용). 성공하는
+     * seed 를 골라 검색이 끝까지 진행된 사례를 보인다. 측정 경로와 무관, 실 C 코어 출력. */
+    if (argc >= 2 && strcmp(argv[1], "--trace") == 0) {
+        PC_Env day = { 0.f, 1.f, 1.f, 0.f };
+        uint32_t sd, chosen = 0;
+        for (sd = 1; sd <= 400 && !chosen; ++sd) {   /* 검색이 충분히 진행된 성공 사례(6~16 스텝) */
+            Metrics mm = run_episode(P_PROP, day, &cfg, &saf, M, 0xC0FFEEu + sd);
+            if (mm.success && mm.steps >= 6 && mm.steps <= 16) chosen = 0xC0FFEEu + sd;
+        }
+        if (!chosen) chosen = 0xC0FFEEu + 1;
+        g_trace = stdout;
+        run_episode(P_PROP, day, &cfg, &saf, M, chosen);
+        return 0;
+    }
+
     if (argc >= 3) { cfg.beta = (float)atof(argv[1]); cfg.gamma = (float)atof(argv[2]); }
     if (argc >= 4) { cfg.cost_uncert_pow = (uint8_t)atoi(argv[3]); }
     printf("(cfg: alpha=%.3f beta=%.4f gamma=%.5f cost_uncert_pow=%u)\n",
            cfg.alpha, cfg.beta, cfg.gamma, cfg.cost_uncert_pow);
-    PC_Safety saf = { 12.f, 12.f, 3.f, 1 };   /* 중앙 근처 위협 keep-out (모든 정책 동일) */
 
     struct { const char *name; float illum, cam_health; } COND[3] = {
         { "day-clear",     1.00f, 1.0f },
