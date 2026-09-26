@@ -38,6 +38,11 @@ PC_Action pc_rta_filter(PC_Action, const PC_Vehicle*, const PC_Safety*, ...);
 (최적 포식/MVT). 긴급하면(β↑) 덜 보고 이동, 근거리·고 p1 장면은 정보가 빨리 차 τ* 가 작다.
 host_test 의 `[tau-sweep]`(β 6→1 로 τ* 갈림)·`[scene-sweep]`(근접 4 < 원거리 6)이 붙든다.
 
+**belief-적응 비용(`cost_uncert_pow=p`)**: `β_eff=β·(1−H_norm)^p` (`H_norm=H(belief)/log(N)`).
+확산 belief(불확실)면 비용↓ → 자유 탐색, 집중되면 비용↑ → 절제. 근시안 정책의 cold-start
+freeze(확산 prior 서 이동비용이 EV 이득보다 커 제자리에 얼던 것)를 고친다. `p=0` 이면 끔.
+host_test `[freeze-fix]`·`sim` β/pow 스윕(RESULTS.md)이 붙든다. 정수 거듭제곱이라 powf 불필요.
+
 ## 돌리기 (host)
 
 ```sh

@@ -62,6 +62,18 @@ PC_Action pc_policy_step(const PC_Belief *b, const PC_Vehicle *veh,
     best.sensor = 0; best.v = 0; best.w = 0; best.n_look = 1;
     best.tgt_x = veh->x; best.tgt_y = veh->y; best.rta_tripped = 0;
 
+    /* belief-적응 비용: beta_eff = beta*(1-H_norm)^p (gamma 동일). 확산하면 비용↓(탐색),
+     * 집중하면 비용↑(확인). p=0 이면 scale=1 로 적응 꺼짐(하위호환). */
+    float beta_eff = cfg->beta, gamma_eff = cfg->gamma;
+    if (cfg->cost_uncert_pow > 0) {
+        float logN = logf((float)PC_GRID_N);
+        float Hn = (logN > 0.0f) ? (pc_belief_entropy(b) / logN) : 0.0f;
+        Hn = clampf(Hn, 0.0f, 1.0f);
+        float scale = 1.0f; uint8_t j;
+        for (j = 0; j < cfg->cost_uncert_pow; ++j) scale *= (1.0f - Hn);
+        beta_eff = cfg->beta * scale; gamma_eff = cfg->gamma * scale;
+    }
+
     for (i = 0; i < nmv; ++i) {
         float cx = veh->x + dx[i], cy = veh->y + dy[i];
         cx = clampf(cx, 0, PC_GRID_W - 1);
@@ -75,7 +87,7 @@ PC_Action pc_policy_step(const PC_Belief *b, const PC_Vehicle *veh,
                 /* J = alpha*P_detect - beta*T_search - gamma*E_motion.
                  * T_search = t_move + nl*t_obs [s] (실제 시간), E_motion = 이동거리[m]. */
                 float t_search = t_move + (float)nl * cfg->t_obs;
-                float J = cfg->alpha * ev - cfg->beta * t_search - cfg->gamma * move_m;
+                float J = cfg->alpha * ev - beta_eff * t_search - gamma_eff * move_m;
                 if (J > bestJ) {
                     bestJ = J;
                     best.sensor = si; best.n_look = nl;

@@ -72,6 +72,12 @@ typedef struct {
     float v_nom;               /* 이동속도[m/s] -- t_move = 거리/v_nom */
     float t_obs;               /* 관측 한 번의 시간[s] -- 관측시간 = tau*t_obs */
     uint8_t n_look_max;        /* 시도할 최대 관측횟수(1..n) */
+    /* belief-적응 비용(cold-start freeze 방지): 비용을 belief 불확실도로 스케일한다.
+     *   beta_eff = beta*(1-H_norm)^p,  gamma_eff = gamma*(1-H_norm)^p,
+     *   H_norm = H(belief)/log(N) in [0,1].  불확실(확산)하면 비용↓ -> 자유 탐색,
+     *   확신(집중)하면 비용↑ -> 절제된 확인. 근시안 정책이 두 국면을 다 서게 한다.
+     *   p(정수 거듭제곱, powf 불필요): 0 = 적응 끔(항상 full 비용, 하위호환), 1 선형, 2+ 급. */
+    uint8_t cost_uncert_pow;
 } PC_Cfg;
 
 /* 안전집합: 위협 keep-out (RTA). */

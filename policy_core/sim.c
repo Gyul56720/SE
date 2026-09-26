@@ -161,14 +161,17 @@ int main(int argc, char **argv) {
     M[LID].p_useful = lid_p; M[LID].precision = lid_s; M[LID].cfg = 0; M[LID].id = LID;
     M[THR].p_useful = thr_p; M[THR].precision = thr_s; M[THR].cfg = 0; M[THR].id = THR;
 
-    /* 탐색 영역 기본값: β(초당가치) 작음 = 표적 발견가치 >> 시간가치(탐색 임무 본성).
-     * β 를 키우면(시간 급박) cold-start 탐색이 근시안적으로 얼어 성공률이 떨어진다 --
-     * 이건 버그가 아니라 시간-급박 영역의 올바른 거동. 전체 β-sweep 은 RESULTS.md.
-     * (argv 로 β,γ 덮어써 스윕 가능: ./sim 0.002 0.0004) */
-    PC_Cfg cfg; cfg.alpha = 1.f; cfg.beta = 0.002f; cfg.gamma = 0.0004f;
+    /* NOW-3: belief-적응 비용으로 cold-start freeze 를 고친다. base β=0.05 는 NOW-2 에서
+     * 근시안 정책을 얼려 0% 였던 바로 그 값이다. cost_uncert_pow=2 면 확산 belief 서 비용이
+     * 낮아져 자유 탐색하고, 집중되면 비용이 살아나 절제된 확인을 한다.
+     * (argv 스윕: ./sim <beta> <gamma> [pow].  pow=0 이면 적응 끔 = NOW-2 의 얼었던 거동) */
+    PC_Cfg cfg; cfg.alpha = 1.f; cfg.beta = 0.05f; cfg.gamma = 0.01f;
     cfg.cell_m = 5.f; cfg.r_max_cells = 9.f; cfg.v_nom = 1.f; cfg.t_obs = 0.5f; cfg.n_look_max = 6;
+    cfg.cost_uncert_pow = 2;
     if (argc >= 3) { cfg.beta = (float)atof(argv[1]); cfg.gamma = (float)atof(argv[2]); }
-    printf("(cfg: alpha=%.3f beta=%.4f gamma=%.5f  [탐색영역])\n", cfg.alpha, cfg.beta, cfg.gamma);
+    if (argc >= 4) { cfg.cost_uncert_pow = (uint8_t)atoi(argv[3]); }
+    printf("(cfg: alpha=%.3f beta=%.4f gamma=%.5f cost_uncert_pow=%u)\n",
+           cfg.alpha, cfg.beta, cfg.gamma, cfg.cost_uncert_pow);
     PC_Safety saf = { 12.f, 12.f, 3.f, 1 };   /* 중앙 근처 위협 keep-out (모든 정책 동일) */
 
     struct { const char *name; float illum, cam_health; } COND[3] = {

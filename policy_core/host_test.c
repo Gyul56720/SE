@@ -31,6 +31,7 @@ static PC_Cfg mkcfg(void) {
     c.cell_m = 5.f; c.r_max_cells = 9.f; c.v_nom = 1.f;   /* 5m/셀, 1m/s -> 5s/셀 이동 */
     c.t_obs = 0.5f;                                        /* 관측 한 번 0.5s */
     c.n_look_max = 6;                                      /* 내부 tau* 가 보이게 */
+    c.cost_uncert_pow = 0;                                 /* NOW-1 τ 잠금: 적응 끔(full 비용) */
     return c;
 }
 static void belief_bump(PC_Belief *b, float cx, float cy, float s) {
@@ -113,6 +114,30 @@ int main(void) {
         /* 근접(고p1, 정보 포화)은 원거리(저p1)보다 덜 본다 */
         if (!(nl_near < nl_far)) { printf("FAIL: 근접이 원거리보다 덜 보지 않음(%g>=%g)\n", nl_near, nl_far); fails++; }
         printf("  => 근접일수록 덜 본다(정보 포화). 장면서 tau 창발, 손코딩 없음.\n");
+    }
+
+    /* 1c. cold-start freeze 고침: 확산 belief(먼 곳에 질량) + 비용 β=0.05 에서
+     * 적응 끄면(pow=0) 근시안 정책이 제자리에 얼고, 켜면(pow=2) 질량 쪽으로 움직인다. */
+    printf("[freeze-fix] 확산 belief(blob@(18,18)), veh@(5,5), beta=0.05:\n");
+    {
+        PC_Env day = { 0.f, 1.f, 0.f, 0.f };
+        PC_Belief bd; belief_bump(&bd, 18.f, 18.f, 5.0f);   /* 넓고 먼 질량(고엔트로피) */
+        PC_Cfg c_off = cfg; c_off.beta = 0.05f; c_off.gamma = 0.01f; c_off.cost_uncert_pow = 0;
+        PC_Cfg c_on  = c_off; c_on.cost_uncert_pow = 2;
+        PC_Action a_off = pc_policy_step(&bd, &veh, M, 3, &day, &c_off);
+        PC_Action a_on  = pc_policy_step(&bd, &veh, M, 3, &day, &c_on);
+        float mv_off = sqrtf((a_off.tgt_x-veh.x)*(a_off.tgt_x-veh.x)+(a_off.tgt_y-veh.y)*(a_off.tgt_y-veh.y));
+        float mv_on  = sqrtf((a_on.tgt_x -veh.x)*(a_on.tgt_x -veh.x)+(a_on.tgt_y -veh.y)*(a_on.tgt_y -veh.y));
+        float d_off  = sqrtf((a_off.tgt_x-18.f)*(a_off.tgt_x-18.f)+(a_off.tgt_y-18.f)*(a_off.tgt_y-18.f));
+        float d_on   = sqrtf((a_on.tgt_x -18.f)*(a_on.tgt_x -18.f)+(a_on.tgt_y -18.f)*(a_on.tgt_y -18.f));
+        float d_veh  = sqrtf((veh.x-18.f)*(veh.x-18.f)+(veh.y-18.f)*(veh.y-18.f));
+        printf("   pow=0 -> tgt=(%.0f,%.0f) 이동 %.1f셀 | pow=2 -> tgt=(%.0f,%.0f) 이동 %.1f셀\n",
+               a_off.tgt_x, a_off.tgt_y, mv_off, a_on.tgt_x, a_on.tgt_y, mv_on);
+        if (mv_off > 0.5f) { printf("FAIL: pow=0 인데 얼지 않음(이동 %.1f)\n", mv_off); fails++; }
+        if (mv_on <= 1.0f) { printf("FAIL: pow=2 인데 안 움직임(이동 %.1f)\n", mv_on); fails++; }
+        if (!(d_on < d_veh)) { printf("FAIL: pow=2 가 질량 쪽으로 안 감(%.1f>=%.1f)\n", d_on, d_veh); fails++; }
+        (void)d_off;
+        printf("  => pow=0 얼음, pow=2 질량 쪽으로 탐색(불확실할 때 비용↓ -> freeze 고침).\n");
     }
 
     /* 2. RTA: 위협 keep-out 이 표적 방향에 있으면 안전행동으로 대체 */
