@@ -52,6 +52,10 @@ make baselines   # Phase-1 측정: 6 정책 x 3 조건 성공률·시간·거리
 host_test 가 붙드는 것: (1) 조명 쓸기서 센서선택 창발(낮→Camera, 밤→Thermal, 손코딩 0),
 (2) RTA 가 keep-out 침범 행동을 안전행동으로 대체, (3) 탐지 관측이 belief 엔트로피를 줄임.
 
+추가 모드: `./sim --lookahead`(greedy vs 2-스텝 lookahead), `./sim --dynamic [pfa]`(에피소드 내
+조건변화), `./sim --trace`(belief·궤적 덤프). 결과 해석은 `RESULTS.md`.
+현장 캘리브(하드웨어) 준비: `CALIBRATION.md` — sim 의 model=truth 를 실측 곡선으로 바꾸는 절차.
+
 ## MCU 이식
 
 `policy_core.c` 는 stdio 를 안 쓰고 힙 할당·재귀가 없다 → bare-metal 링크 가능.
