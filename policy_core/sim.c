@@ -26,6 +26,7 @@ static float nrand(void) { /* 표준정규(Box-Muller) */
     float u1 = urand() + 1e-7f, u2 = urand();
     return sqrtf(-2.0f * logf(u1)) * cosf(6.2831853f * u2);
 }
+static float clampf(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
 /* ── 관측모델 어댑터: 유일한 센서-특정 조각. env->extra0 = 카메라 건강도[0..1]
  *    (렌즈오염/역광 등 물리적 열화). LiDAR/Thermal 은 조명·건강도 무관(능동/열). ── */
@@ -89,6 +90,23 @@ typedef struct { int success; float t_search, dist_m; int switches, rta, steps; 
  * 측정 경로엔 영향 없음(NULL 이면 아무것도 안 함). 그림은 실 C 코어 출력에서 나온다. */
 static FILE *g_trace = NULL;
 static int g_maxstep = 25;   /* 탐색 예산(스텝). argv 로 조일 수 있다(한계④ 검증). */
+static float g_pfa = 0.0f;   /* 오경보 확률(관측당). 0 이면 기존과 동일.
+   ⚠ 한계③-a: 이 순진한 모델로는 '오경보 강건성'을 못 잰다. detect 업데이트가 belief 를
+   단일 탐지에 붕괴시켜, 스퓨리어스 탐지가 근시안 greedy 에 '무작위 재시작' 탐색 부스트로
+   작용해 성공률이 *올라간다*(pfa=0.1 서 83.5->89.2, 균일격자 클러터로도 재현 -> 표적상관 아님).
+   제대로 재려면 순차 확인(단일 탐지에 붕괴 안 하는 우도)이 필요. pfa 는 인프라일 뿐 아직
+   유효한 강건성 손잡이가 아니다. RESULTS.md [한계③] 참고. */
+static int g_dynamic = 0;    /* 1 이면 에피소드 내 illum 스케줄(낮->터널->밤)(한계③-b). */
+
+/* 동적 조건 스케줄: 에피소드 진행(스텝)에 따라 낮->터널(암흑)->밤. 정책이 센서를
+ * 에피소드 *안에서* 전환하는지 보려는 것 -- 정적 조건(switch~0)과 대비. */
+static void dyn_env(int s, int maxstep, PC_Env *e) {
+    float f = (maxstep > 0) ? (float)s / (float)maxstep : 0.0f;   /* 0..1 */
+    if (f < 0.34f)      { e->illum = 1.00f; }   /* 낮: 카메라 유효 */
+    else if (f < 0.67f) { e->illum = 0.00f; }   /* 터널: 암흑, 카메라 실명 */
+    else                { e->illum = 0.05f; }   /* 밤: 잔광 */
+    e->extra0 = 1.0f; e->extra1 = 0.0f;         /* 카메라 건강도 1(열화 아님) */
+}
 static void dump_grid(const char *tag, const PC_Belief *b) {
     int i; fprintf(g_trace, "GRID %s", tag);
     for (i = 0; i < PC_GRID_N; ++i) fprintf(g_trace, " %.6f", b->p[i]);
@@ -139,7 +157,10 @@ static Metrics run_episode(int pol, PC_Env env, const PC_Cfg *cfg,
     const int MAXSTEP = g_maxstep;   /* 탐색 예산(스텝). 기본 25 = 넉넉. argv 로 조인다(한계④) */
     int s;
     for (s = 0; s < MAXSTEP; ++s) {
-        PC_Action a = step_policy(pol, &b, &veh, M, &env, cfg, dx, dy, nmv);
+        /* 이 스텝의 환경: 동적이면 스케줄(낮->터널->밤), 아니면 정적. 정책·관측 모두 이걸 본다 */
+        PC_Env env_s = env;
+        if (g_dynamic) dyn_env(s, MAXSTEP, &env_s);
+        PC_Action a = step_policy(pol, &b, &veh, M, &env_s, cfg, dx, dy, nmv);
         a = pc_rta_filter(a, &veh, saf, dx, dy, nmv);
         if (a.rta_tripped) m.rta++;
         /* 이동 */
@@ -150,30 +171,41 @@ static Metrics run_episode(int pol, PC_Env env, const PC_Cfg *cfg,
         int cur = a.sensor;
         if (prev_sensor >= 0 && cur != prev_sensor) m.switches++;
         prev_sensor = cur;
-        /* τ 회 관측: 진실 표적이 footprint 안이면 p_useful 로 탐지 샘플 */
+        /* τ 회 관측: 진짜 탐지(표적 footprint 안 + p_useful) 우선. 없으면 오경보(pfa)로
+         * footprint 내 무작위 클러터 셀에 오탐이 날 수 있다. pfa=0 이면 기존과 동일. */
         float r_true = sqrtf((veh.x-tx)*(veh.x-tx)+(veh.y-ty)*(veh.y-ty)) * cfg->cell_m;
-        int detected = 0; int k;
+        int true_det = 0, false_det = 0; float fmx = 0.f, fmy = 0.f; int k;
         for (k = 0; k < (int)a.n_look; ++k) {
             m.t_search += cfg->t_obs;
-            if (r_true <= cfg->r_max_cells * cfg->cell_m) {
-                float p = M[cur].p_useful(M[cur].cfg, r_true, 0.f, &env);
-                if (urand() < p) { detected = 1; break; }
+            if (r_true <= cfg->r_max_cells * cfg->cell_m &&
+                urand() < M[cur].p_useful(M[cur].cfg, r_true, 0.f, &env_s)) {
+                true_det = 1; break;                       /* 진짜 탐지 -> 이 스텝 종료 */
+            }
+            if (g_pfa > 0.f && urand() < g_pfa) {          /* 오경보: footprint 내 클러터 */
+                float ang = urand() * 6.2831853f, rr = urand() * cfg->r_max_cells;
+                fmx = clampf(veh.x + rr * cosf(ang), 0.f, PC_GRID_W - 1);
+                fmy = clampf(veh.y + rr * sinf(ang), 0.f, PC_GRID_H - 1);
+                false_det = 1;                             /* 마지막 오경보 위치 기억, 계속 관측 */
             }
         }
-        if (detected) {
+        if (true_det) {
             float sig = M[cur].precision(M[cur].cfg, r_true) / cfg->cell_m;   /* [셀] */
             float mx = tx + nrand() * sig, my = ty + nrand() * sig;
-            pc_belief_update(&b, &veh, &M[cur], &env, cfg, 1, mx, my);
+            pc_belief_update(&b, &veh, &M[cur], &env_s, cfg, 1, mx, my);
             float ax, ay, ap; pc_belief_argmax(&b, &ax, &ay, &ap);
-            if (g_trace) { fprintf(g_trace, "TRAJ %d %.3f %.3f %d %d %d\n", s, veh.x, veh.y, cur, a.n_look, detected); }
-            if (sqrtf((ax-tx)*(ax-tx)+(ay-ty)*(ay-ty)) <= 2.0f) {
+            if (g_trace) { fprintf(g_trace, "TRAJ %d %.3f %.3f %d %d %d\n", s, veh.x, veh.y, cur, a.n_look, 1); }
+            if (sqrtf((ax-tx)*(ax-tx)+(ay-ty)*(ay-ty)) <= 2.0f) {   /* 진짜 표적 국소화 = 성공 */
                 m.success = 1; m.steps = s + 1;
                 if (g_trace) { fprintf(g_trace, "STEPS %d\n", s + 1); dump_grid("final", &b); }
                 break;
             }
+        } else if (false_det) {
+            /* 오경보를 탐지로 믿고 belief 가 엉뚱한 데로 쏠림(성공 아님). 이후 미탐지로 복구 */
+            pc_belief_update(&b, &veh, &M[cur], &env_s, cfg, 1, fmx, fmy);
+            if (g_trace) { fprintf(g_trace, "TRAJ %d %.3f %.3f %d %d 2\n", s, veh.x, veh.y, cur, a.n_look); }
         } else {
-            pc_belief_update(&b, &veh, &M[cur], &env, cfg, 0, 0.f, 0.f);   /* 미탐지: footprint 감쇠 */
-            if (g_trace) { fprintf(g_trace, "TRAJ %d %.3f %.3f %d %d %d\n", s, veh.x, veh.y, cur, a.n_look, detected); }
+            pc_belief_update(&b, &veh, &M[cur], &env_s, cfg, 0, 0.f, 0.f);   /* 미탐지: footprint 감쇠 */
+            if (g_trace) { fprintf(g_trace, "TRAJ %d %.3f %.3f %d %d 0\n", s, veh.x, veh.y, cur, a.n_look); }
         }
         if (g_trace && s == 4) dump_grid("mid", &b);   /* 탐색 중간 스냅샷 */
     }
@@ -211,38 +243,51 @@ int main(int argc, char **argv) {
         return 0;
     }
 
-    if (argc >= 3) { cfg.beta = (float)atof(argv[1]); cfg.gamma = (float)atof(argv[2]); }
-    if (argc >= 4) { cfg.cost_uncert_pow = (uint8_t)atoi(argv[3]); }
-    if (argc >= 5) { g_maxstep = atoi(argv[4]); }               /* 탐색 예산(스텝) */
-    if (argc >= 6) { cfg.n_look_max = (uint8_t)atoi(argv[5]); } /* 스텝당 관측 예산 */
-    printf("(cfg: alpha=%.3f beta=%.4f gamma=%.5f cost_uncert_pow=%u maxstep=%d n_look_max=%u)\n",
-           cfg.alpha, cfg.beta, cfg.gamma, cfg.cost_uncert_pow, g_maxstep, cfg.n_look_max);
+    /* --dynamic [pfa]: 에피소드 내 조건변화(낮->터널->밤). 위치인자 대신 이 플래그. */
+    if (argc >= 2 && strcmp(argv[1], "--dynamic") == 0) {
+        g_dynamic = 1;
+        if (argc >= 3) g_pfa = (float)atof(argv[2]);
+    } else {
+        if (argc >= 3) { cfg.beta = (float)atof(argv[1]); cfg.gamma = (float)atof(argv[2]); }
+        if (argc >= 4) { cfg.cost_uncert_pow = (uint8_t)atoi(argv[3]); }
+        if (argc >= 5) { g_maxstep = atoi(argv[4]); }               /* 탐색 예산(스텝) */
+        if (argc >= 6) { cfg.n_look_max = (uint8_t)atoi(argv[5]); } /* 스텝당 관측 예산 */
+        if (argc >= 7) { g_pfa = (float)atof(argv[6]); }            /* 오경보 확률(관측당) */
+    }
+    printf("(cfg: alpha=%.3f beta=%.4f gamma=%.5f pow=%u maxstep=%d n_look_max=%u pfa=%.3f dynamic=%d)\n",
+           cfg.alpha, cfg.beta, cfg.gamma, cfg.cost_uncert_pow, g_maxstep, cfg.n_look_max, g_pfa, g_dynamic);
 
-    struct { const char *name; float illum, cam_health; } COND[3] = {
+    typedef struct { const char *name; float illum, cam_health; } Cond;
+    Cond COND_S[3] = {
         { "day-clear",     1.00f, 1.0f },
         { "night",         0.05f, 1.0f },
         { "day-degraded",  1.00f, 0.2f },   /* 낮이지만 카메라 열화 -> hand-rule 가정 깨짐 */
     };
+    Cond COND_D[1] = {
+        { "dynamic(day->tunnel->night)", 1.00f, 1.0f },   /* illum 은 dyn_env 가 스텝별로 덮음 */
+    };
+    int NCOND = g_dynamic ? 1 : 3;
+    #define COND(i) (g_dynamic ? COND_D[i] : COND_S[i])
     const int NEP = 200;   /* 조건당 에피소드 */
 
-    /* 조건별 표 + 전체 평균 */
-    printf("=== Phase-1 baseline 측정: 6 정책 x 3 조건 x %d 에피소드 ===\n", NEP);
-    printf("(성공률=예산 내 국소화; T/거리=성공 에피소드 한정 평균; 전환/RTA=전 에피소드 평균)\n\n");
+    printf("=== 측정: 6 정책 x %d 조건 x %d 에피소드%s ===\n",
+           NCOND, NEP, g_dynamic ? " [동적 조건]" : "");
+    printf("(성공률=예산 내 국소화; T/거리=성공 한정; 전환/RTA=전 에피소드 평균)\n\n");
 
     double succ_all[NPOL] = {0}, t_all[NPOL] = {0}, d_all[NPOL] = {0};
     int    tn_all[NPOL] = {0};
     double sw_all[NPOL] = {0}, rta_all[NPOL] = {0};
 
     int c, p, e;
-    for (c = 0; c < 3; ++c) {
-        printf("[%s]  illum=%.2f cam_health=%.1f\n", COND[c].name, COND[c].illum, COND[c].cam_health);
+    for (c = 0; c < NCOND; ++c) {
+        printf("[%s]  illum=%.2f cam_health=%.1f\n", COND(c).name, COND(c).illum, COND(c).cam_health);
         printf("  %-13s  succ%%   T[s]|succ  dist[m]|succ  switch  RTA\n", "policy");
         for (p = 0; p < NPOL; ++p) {
             int succ = 0, tn = 0, sw = 0, rta = 0; double tsum = 0, dsum = 0;
             for (e = 0; e < NEP; ++e) {
                 /* ep_seed 는 (조건,에피소드)로만 정해짐 -> 모든 정책이 같은 표적/시작을 본다 */
                 uint32_t ep_seed = 0xC0FFEEu + (uint32_t)(c * 100000 + e);
-                PC_Env env = { 0.f, COND[c].illum, COND[c].cam_health, 0.f };
+                PC_Env env = { 0.f, COND(c).illum, COND(c).cam_health, 0.f };
                 Metrics m = run_episode(p, env, &cfg, &saf, M, ep_seed);
                 succ += m.success; sw += m.switches; rta += m.rta;
                 if (m.success) { tn++; tsum += m.t_search; dsum += m.dist_m; }
@@ -260,11 +305,11 @@ int main(int argc, char **argv) {
     printf("[전체 평균 (3 조건 혼합, 조건 강건성)]\n");
     printf("  %-13s  succ%%   T[s]|succ  dist[m]|succ  switch  RTA\n", "policy");
     for (p = 0; p < NPOL; ++p) {
-        double sr = 100.0 * succ_all[p] / (3.0 * NEP);
+        double sr = 100.0 * succ_all[p] / ((double)NCOND * NEP);
         double mt = tn_all[p] ? t_all[p] / tn_all[p] : 0.0;
         double md = tn_all[p] ? d_all[p] / tn_all[p] : 0.0;
         printf("  %-13s  %5.1f   %8.1f  %10.1f   %5.2f  %4.2f\n",
-               POLNAME[p], sr, mt, md, sw_all[p] / (3.0 * NEP), rta_all[p] / (3.0 * NEP));
+               POLNAME[p], sr, mt, md, sw_all[p] / ((double)NCOND * NEP), rta_all[p] / ((double)NCOND * NEP));
     }
     return 0;
 }

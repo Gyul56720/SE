@@ -284,8 +284,14 @@ the step budget tightens.</figcaption></figure>
 <span class="mono">p<sub>useful</sub></span> curves need field calibration (first task of a hardware phase).</li>
 <li><b>Myopia.</b> The belief-adaptive cost fixes cold-start freeze but the policy is still one-step greedy; a short budget or
 larger grid may favor lookahead / rate objectives (untested).</li>
-<li><b>Modeling choices.</b> pfa = 0; a simple precision-noise belief update; static conditions within an episode (so sensor
-switching &asymp; 0 — adaptation is <i>across</i> conditions, not within; a day&rarr;tunnel&rarr;night episode is unmeasured).</li>
+<li><b>Within-episode dynamics (measured).</b> A day&rarr;tunnel&rarr;night schedule <i>within</i> an episode makes the
+emergent policies switch sensors mid-episode (0.21 switches/ep vs 0 for fixed sensors; success impact modest, as search
+often finishes in the first phase). So the near-zero switch count in the static tables reflects static conditions, not an
+inability to adapt within an episode.</li>
+<li><b>False alarms (naive model invalid).</b> An in-footprint clutter model <i>cannot</i> measure false-alarm robustness
+here: a spurious detection collapses the belief on a single hit and acts as exploration noise that a myopic greedy benefits
+from (success <i>rises</i> with pfa, confirmed target-independent via a grid-uniform control). A valid study needs a
+detection likelihood with sequential confirmation; we therefore report this as a modeling gap, not robustness.</li>
 <li><b>Grid scale.</b> The generous-budget worry is now <i>measured</i> (Sec. IV-F): tightening the step budget widens the
 sensor-agnostic gap rather than compressing it. What remains untested is a larger grid combined with a tight budget.</li>
 </ul>
