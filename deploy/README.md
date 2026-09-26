@@ -40,7 +40,7 @@ git push가 되려면 VM에 GitHub 쓰기 권한이 있는 자격증명(예: `gh
 
 | Secret 이름 | 값 |
 |---|---|
-| `ORACLE_SSH_HOST` | `168.110.32.28` |
+| `ORACLE_SSH_HOST` | Oracle VM 공인 IP — **여기 커밋 금지**, Actions Secret 에만 등록 |
 | `ORACLE_SSH_USER` | Oracle VM의 SSH 유저명 (보통 `ubuntu` 또는 `opc`) |
 | `ORACLE_SSH_KEY` | SSH **개인키** 전체 내용 (`cat ~/.ssh/id_rsa` 등) |
 | `ORACLE_SSH_PORT` | SSH 포트 (기본 22, 다르면 지정) |
