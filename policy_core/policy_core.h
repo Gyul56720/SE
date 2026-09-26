@@ -91,6 +91,12 @@ PC_Action pc_policy_step(const PC_Belief *b, const PC_Vehicle *veh,
                          const PC_ObsModel *models, uint8_t n_models,
                          const PC_Env *env, const PC_Cfg *cfg);
 
+/* 2-스텝 lookahead(첫 이동에 대해). 첫 이동+greedy value-to-go 로 첫 이동을 고른다.
+ * 실험 변형(greedy 대비 비용 검증용): 힙/재귀 없으나 greedy 보다 무겁다. disc=미래 할인. */
+PC_Action pc_policy_step_la2(const PC_Belief *b, const PC_Vehicle *veh,
+                             const PC_ObsModel *models, uint8_t n_models,
+                             const PC_Env *env, const PC_Cfg *cfg, float disc);
+
 /* a_safe = RTA(a). keep-out 침범이면 가장 가까운 안전 후보로 대체(센서/관측시간 유지). */
 PC_Action pc_rta_filter(PC_Action a, const PC_Vehicle *veh, const PC_Safety *saf,
                         const float dx[], const float dy[], uint8_t n_moves);

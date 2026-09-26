@@ -51,9 +51,24 @@ static float expected_value(const PC_Belief *b, float cx, float cy,
     return ev;
 }
 
-PC_Action pc_policy_step(const PC_Belief *b, const PC_Vehicle *veh,
+/* belief-적응 비용 스케일 계산(greedy·lookahead 공용). */
+static void adaptive_cost(const PC_Belief *b, const PC_Cfg *cfg, float *beta_eff, float *gamma_eff) {
+    *beta_eff = cfg->beta; *gamma_eff = cfg->gamma;
+    if (cfg->cost_uncert_pow > 0) {
+        float logN = logf((float)PC_GRID_N);
+        float Hn = (logN > 0.0f) ? (pc_belief_entropy(b) / logN) : 0.0f;
+        Hn = clampf(Hn, 0.0f, 1.0f);
+        float scale = 1.0f; uint8_t j;
+        for (j = 0; j < cfg->cost_uncert_pow; ++j) scale *= (1.0f - Hn);
+        *beta_eff = cfg->beta * scale; *gamma_eff = cfg->gamma * scale;
+    }
+}
+
+/* 한 스텝 greedy 평가: 최적 행동을 *out 에 채우고 그 최댓값 J 를 반환.
+ * pc_policy_step 과 lookahead 의 value-to-go 가 공유한다(거동 동일). */
+static float greedy_eval(const PC_Belief *b, const PC_Vehicle *veh,
                          const PC_ObsModel *models, uint8_t n_models,
-                         const PC_Env *env, const PC_Cfg *cfg) {
+                         const PC_Env *env, const PC_Cfg *cfg, PC_Action *out) {
     float dx[PC_MAX_MOVES], dy[PC_MAX_MOVES];
     uint8_t nmv, i, si, nl;
     float bestJ = -1e30f;
@@ -61,43 +76,86 @@ PC_Action pc_policy_step(const PC_Belief *b, const PC_Vehicle *veh,
     pc_default_moves(dx, dy, &nmv);
     best.sensor = 0; best.v = 0; best.w = 0; best.n_look = 1;
     best.tgt_x = veh->x; best.tgt_y = veh->y; best.rta_tripped = 0;
-
-    /* belief-적응 비용: beta_eff = beta*(1-H_norm)^p (gamma 동일). 확산하면 비용↓(탐색),
-     * 집중하면 비용↑(확인). p=0 이면 scale=1 로 적응 꺼짐(하위호환). */
-    float beta_eff = cfg->beta, gamma_eff = cfg->gamma;
-    if (cfg->cost_uncert_pow > 0) {
-        float logN = logf((float)PC_GRID_N);
-        float Hn = (logN > 0.0f) ? (pc_belief_entropy(b) / logN) : 0.0f;
-        Hn = clampf(Hn, 0.0f, 1.0f);
-        float scale = 1.0f; uint8_t j;
-        for (j = 0; j < cfg->cost_uncert_pow; ++j) scale *= (1.0f - Hn);
-        beta_eff = cfg->beta * scale; gamma_eff = cfg->gamma * scale;
-    }
+    float beta_eff, gamma_eff; adaptive_cost(b, cfg, &beta_eff, &gamma_eff);
 
     for (i = 0; i < nmv; ++i) {
         float cx = veh->x + dx[i], cy = veh->y + dy[i];
         cx = clampf(cx, 0, PC_GRID_W - 1);
         cy = clampf(cy, 0, PC_GRID_H - 1);
         float move_m = cell_dist(cx, cy, veh->x, veh->y) * cfg->cell_m;
-        /* T_search[s] = t_move + tau*t_obs. t_move = 이동거리[m]/v_nom[m/s]. */
         float t_move = (cfg->v_nom > 1e-6f) ? (move_m / cfg->v_nom) : 0.0f;
         for (si = 0; si < n_models; ++si) {
             for (nl = 1; nl <= cfg->n_look_max; ++nl) {
                 float ev = expected_value(b, cx, cy, &models[si], nl, env, cfg);
-                /* J = alpha*P_detect - beta*T_search - gamma*E_motion.
-                 * T_search = t_move + nl*t_obs [s] (실제 시간), E_motion = 이동거리[m]. */
                 float t_search = t_move + (float)nl * cfg->t_obs;
                 float J = cfg->alpha * ev - beta_eff * t_search - gamma_eff * move_m;
                 if (J > bestJ) {
                     bestJ = J;
                     best.sensor = si; best.n_look = nl;
                     best.tgt_x = cx; best.tgt_y = cy;
-                    /* 이동명령: 목표 방향 단위벡터 * 명목속도, 회전은 상위 제어가 */
                     float d = cell_dist(cx, cy, veh->x, veh->y);
                     if (d > 1e-3f) { best.v = cfg->v_nom; best.w = 0.0f; }
                     else           { best.v = 0.0f;       best.w = 0.0f; }
                 }
             }
+        }
+    }
+    *out = best;
+    return bestJ;
+}
+
+PC_Action pc_policy_step(const PC_Belief *b, const PC_Vehicle *veh,
+                         const PC_ObsModel *models, uint8_t n_models,
+                         const PC_Env *env, const PC_Cfg *cfg) {
+    PC_Action a; greedy_eval(b, veh, models, n_models, env, cfg, &a);
+    a.rta_tripped = 0;
+    return a;
+}
+
+/* 2-스텝 lookahead(첫 이동에 대해). 각 첫 이동 후보마다 (센서·τ 는 greedy) J1 을 구하고,
+ * 그 셀에서 '기대 미탐지' belief 갱신 후 남은 greedy value-to-go(J2)를 더해 최적 첫 이동 선택.
+ * 탐색에서 계획이 가장 이득인 건 '어디로 갈지'라 이동에만 lookahead 를 건다.
+ * MCU 주의: 힙 없음(스택 belief 복사 1개)·재귀 없음이나 greedy 의 ~후보수배 무겁다 -- 실험
+ * 변형이며 배포 코어(pc_policy_step)는 greedy 유지. disc: 미래 할인(0..1). */
+PC_Action pc_policy_step_la2(const PC_Belief *b, const PC_Vehicle *veh,
+                             const PC_ObsModel *models, uint8_t n_models,
+                             const PC_Env *env, const PC_Cfg *cfg, float disc) {
+    float dx[PC_MAX_MOVES], dy[PC_MAX_MOVES];
+    uint8_t nmv, i, si, nl;
+    pc_default_moves(dx, dy, &nmv);
+    float beta_eff, gamma_eff; adaptive_cost(b, cfg, &beta_eff, &gamma_eff);
+    float bestTotal = -1e30f;
+    PC_Action best;
+    best.sensor = 0; best.v = 0; best.w = 0; best.n_look = 1;
+    best.tgt_x = veh->x; best.tgt_y = veh->y; best.rta_tripped = 0;
+    PC_Belief b1;   /* 스택 복사(재사용), 힙 없음 */
+
+    for (i = 0; i < nmv; ++i) {
+        float cx = clampf(veh->x + dx[i], 0, PC_GRID_W - 1);
+        float cy = clampf(veh->y + dy[i], 0, PC_GRID_H - 1);
+        float move_m = cell_dist(cx, cy, veh->x, veh->y) * cfg->cell_m;
+        float t_move = (cfg->v_nom > 1e-6f) ? (move_m / cfg->v_nom) : 0.0f;
+        /* 이 셀서의 restricted greedy: 최적 (sensor,τ) 와 J1 */
+        float bestJ1 = -1e30f; uint8_t bs = 0, bnl = 1;
+        for (si = 0; si < n_models; ++si) {
+            for (nl = 1; nl <= cfg->n_look_max; ++nl) {
+                float ev = expected_value(b, cx, cy, &models[si], nl, env, cfg);
+                float J1 = cfg->alpha * ev - beta_eff * (t_move + (float)nl * cfg->t_obs) - gamma_eff * move_m;
+                if (J1 > bestJ1) { bestJ1 = J1; bs = si; bnl = nl; }
+            }
+        }
+        /* value-to-go: (cx,cy,bs) 에서 기대 미탐지 갱신 후 greedy 값 */
+        b1 = *b;
+        PC_Vehicle v1; v1.x = cx; v1.y = cy; v1.theta = 0.0f; v1.batt = veh->batt;
+        pc_belief_update(&b1, &v1, &models[bs], env, cfg, 0, 0.0f, 0.0f);
+        PC_Action ja; float J2 = greedy_eval(&b1, &v1, models, n_models, env, cfg, &ja);
+        float total = bestJ1 + disc * J2;
+        if (total > bestTotal) {
+            bestTotal = total;
+            best.sensor = bs; best.n_look = bnl; best.tgt_x = cx; best.tgt_y = cy;
+            float d = cell_dist(cx, cy, veh->x, veh->y);
+            if (d > 1e-3f) { best.v = cfg->v_nom; best.w = 0.0f; }
+            else           { best.v = 0.0f;       best.w = 0.0f; }
         }
     }
     best.rta_tripped = 0;

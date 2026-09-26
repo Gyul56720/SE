@@ -44,10 +44,11 @@ static float thr_p(const void *c, float r, float a, const PC_Env *e) {
 static float thr_s(const void *c, float r) { (void)c; return 0.40f + 0.015f * r; }
 
 enum { CAM = 0, LID = 1, THR = 2, NSENS = 3 };
-enum { P_PROP = 0, P_INFO, P_FCAM, P_FLID, P_HAND, P_RAND, NPOL };
-static const char *POLNAME[NPOL] = {
-    "Proposed", "Info/EV-only", "Fixed-Camera", "Fixed-LiDAR", "Hand-rule", "Random"
+enum { P_PROP = 0, P_INFO, P_FCAM, P_FLID, P_HAND, P_RAND, NPOL, P_LA2 = NPOL };
+static const char *POLNAME[NPOL + 1] = {
+    "Proposed", "Info/EV-only", "Fixed-Camera", "Fixed-LiDAR", "Hand-rule", "Random", "Lookahead-2"
 };
+static float g_disc = 0.9f;   /* lookahead 미래 할인 */
 
 /* 정책 한 스텝. 반환 a.sensor 는 항상 '전역 센서 id'(CAM/LID/THR)로 맞춘다.
  * models[i].id == i 로 정렬되어 full/info 는 그대로, fixed/hand 는 사후 remap. */
@@ -71,6 +72,8 @@ static PC_Action step_policy(int pol, const PC_Belief *b, const PC_Vehicle *veh,
     case P_HAND: { /* 손코딩 규칙: 밝으면 카메라, 어두우면 열화상 (건강도는 모른다) */
         int idx = (env->illum > 0.5f) ? CAM : THR;
         a = pc_policy_step(b, veh, &M[idx], 1, env, cfg); a.sensor = (uint8_t)idx; break; }
+    case P_LA2:   /* Lookahead-2: 같은 전체 J·센서 3종, 첫 이동에 2-스텝 lookahead */
+        a = pc_policy_step_la2(b, veh, M, NSENS, env, cfg, g_disc); break;
     default: {    /* Random: 무작위 이동·센서·관측횟수 */
         uint8_t mi = (uint8_t)(xr() % nmv);
         float cx = veh->x + dx[mi], cy = veh->y + dy[mi];
@@ -240,6 +243,35 @@ int main(int argc, char **argv) {
         if (!chosen) chosen = 0xC0FFEEu + 1;
         g_trace = stdout;
         run_episode(P_PROP, day, &cfg, &saf, M, chosen);
+        return 0;
+    }
+
+    /* --lookahead: Greedy(Proposed) vs Lookahead-2 를 예산별로 집중 비교(한계②).
+     * 근시안 1-스텝이 정말 손해인지 -- 특히 타이트 예산에서 -- 재는 것. */
+    if (argc >= 2 && strcmp(argv[1], "--lookahead") == 0) {
+        struct { const char *n; float il, h; } CC[3] = {
+            {"day",1.0f,1.0f}, {"night",0.05f,1.0f}, {"deg",1.0f,0.2f} };
+        int budgets[3] = {25, 10, 6};
+        int pols[2] = {P_PROP, P_LA2};
+        const int NEP_LA = 150;
+        printf("=== 한계②: Greedy(Proposed) vs Lookahead-2 (disc=%.2f, %d ep x 3 조건) ===\n", g_disc, NEP_LA);
+        printf("  budget  policy         succ%%   steps|succ\n");
+        int bi, pi, c2, e2;
+        for (bi = 0; bi < 3; ++bi) {
+            g_maxstep = budgets[bi];
+            for (pi = 0; pi < 2; ++pi) {
+                int succ = 0, tn = 0; double stp = 0;
+                for (c2 = 0; c2 < 3; ++c2) {
+                    for (e2 = 0; e2 < NEP_LA; ++e2) {
+                        PC_Env env = { 0.f, CC[c2].il, CC[c2].h, 0.f };
+                        Metrics mm = run_episode(pols[pi], env, &cfg, &saf, M, 0xBEEF00u + c2*100000 + e2);
+                        succ += mm.success; if (mm.success) { tn++; stp += mm.steps; }
+                    }
+                }
+                printf("  %4d    %-12s  %5.1f   %6.2f\n", budgets[bi], POLNAME[pols[pi]],
+                       100.0 * succ / (3.0 * NEP_LA), tn ? stp / tn : 0.0);
+            }
+        }
         return 0;
     }
 

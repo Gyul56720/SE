@@ -282,8 +282,10 @@ the step budget tightens.</figcaption></figure>
 <ul>
 <li><b>Model = truth.</b> The simulator uses the same adapters as the policy; real trials have model &ne; truth, and the
 <span class="mono">p<sub>useful</sub></span> curves need field calibration (first task of a hardware phase).</li>
-<li><b>Myopia.</b> The belief-adaptive cost fixes cold-start freeze but the policy is still one-step greedy; a short budget or
-larger grid may favor lookahead / rate objectives (untested).</li>
+<li><b>Myopia (measured).</b> A 2-step first-move lookahead gives <i>no</i> benefit over the one-step greedy across budgets
+(84.4 vs 83.8% at 25 steps; 80.7 vs 79.8% at 6), at ~11&times; the compute — validating the greedy core. The single-cluster
+language prior means greedy's myopia rarely bites; a multi-modal prior (target in one of several regions) and a much larger
+grid remain untested, where lookahead could still matter.</li>
 <li><b>Within-episode dynamics (measured).</b> A day&rarr;tunnel&rarr;night schedule <i>within</i> an episode makes the
 emergent policies switch sensors mid-episode (0.21 switches/ep vs 0 for fixed sensors; success impact modest, as search
 often finishes in the first phase). So the near-zero switch count in the static tables reflects static conditions, not an
