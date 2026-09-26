@@ -53,8 +53,8 @@ marginal-value-theorem stop; (ii) a myopic additive objective <b>freezes at cold
 scoring <b>0.0%</b> success — which we diagnose and repair with a belief-adaptive cost that recovers <b>83.5%</b>,
 matching the cost-free ceiling of <b>84.0%</b>, and turns the urgency weight into a usable economy dial; (iii) fixing
 the freeze <b>reveals that an earlier "sensor blindness" number was partly a freeze artifact</b>, so the true
-sensor-agnostic advantage is real but modest at a generous budget. All figures and tables are regenerated from the
-committed code; every headline number carries its invalidation condition.</div>
+sensor-agnostic advantage is modest at a generous budget but <b>sharpens markedly as the budget tightens</b>. All figures
+and tables are regenerated from the committed code; every headline number carries its invalidation condition.</div>
 
 <div class="cols">
 
@@ -263,7 +263,20 @@ which routes around the keep-out zone before localizing.</p>
 <b>25.5%</b>. After fixing the freeze, Fixed-Camera at night recovers to <b>67.5%</b>: the 25.5% conflated true sensor
 weakness with the freeze artifact. The honest sensor-agnostic advantage is therefore <i>real but modest</i> at this generous
 25-step / 6-look budget: a 20-point night gap (Proposed 87.5 vs Fixed-Camera 67.5) but near-parity at day-clear
-(camera 79.0 &asymp; LiDAR 78.5). We report the corrected numbers.</div>
+(camera 79.0 &asymp; LiDAR 78.5). We report the corrected numbers &mdash; and, in F, show the budget that hid the gap.</div>
+
+<h3>F. Tight-budget re-measurement (addressing the generous-budget limitation)</h3>
+<p>We re-ran the evaluation at successively tighter step budgets (Fig. 8). Proposed is nearly budget-invariant (overall
+83.5% at 25 steps to 79.8% at 6), whereas Fixed-Camera collapses (75.5% to 60.3%; at night 67.5% to 36.0%) and Random
+falls hardest (55.8% to 19.7%). The night-time sensor-agnostic gap therefore <b>widens from 20 to 48 points</b> as the
+budget tightens &mdash; the opposite of compression. The generous budget was <i>hiding</i> the advantage: emergent sensor
+selection matters most exactly when time is scarce, since a weak or wrong sensor needs many attempts that a tight budget
+denies. Info/EV-only converges to Proposed under tight budgets (no room to waste), consistent with IV-C. This turns the
+former "generous-budget" caveat from an untested worry into a measured, favorable result.</p>
+<figure class="wide"><img src="센서불가지_figs/fig8_budget.png">
+<figcaption><b>Fig. 8.</b> Tight-budget re-measurement (&beta;=0.05, p=2). (a) Proposed is budget-robust while
+weak-sensor and random policies collapse. (b) The night-time Proposed vs Fixed-Camera gap widens 20&rarr;48 points as
+the step budget tightens.</figcaption></figure>
 
 <h2>V. Limitations &amp; Threats to Validity</h2>
 <ul>
@@ -273,8 +286,8 @@ weakness with the freeze artifact. The honest sensor-agnostic advantage is there
 larger grid may favor lookahead / rate objectives (untested).</li>
 <li><b>Modeling choices.</b> pfa = 0; a simple precision-noise belief update; static conditions within an episode (so sensor
 switching &asymp; 0 — adaptation is <i>across</i> conditions, not within; a day&rarr;tunnel&rarr;night episode is unmeasured).</li>
-<li><b>Generous budget.</b> 25 steps &times; 6 looks makes even a weak sensor eventually succeed, compressing the spread; a
-tighter budget would sharpen (and is future work, not claimed here).</li>
+<li><b>Grid scale.</b> The generous-budget worry is now <i>measured</i> (Sec. IV-F): tightening the step budget widens the
+sensor-agnostic gap rather than compressing it. What remains untested is a larger grid combined with a tight budget.</li>
 </ul>
 
 <h2>VI. Reproducibility</h2>

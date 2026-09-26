@@ -88,6 +88,7 @@ typedef struct { int success; float t_search, dist_m; int switches, rta, steps; 
 /* 트레이스(그림용): 켜지면 한 에피소드의 belief 그리드·궤적을 stdout 에 덤프한다.
  * 측정 경로엔 영향 없음(NULL 이면 아무것도 안 함). 그림은 실 C 코어 출력에서 나온다. */
 static FILE *g_trace = NULL;
+static int g_maxstep = 25;   /* 탐색 예산(스텝). argv 로 조일 수 있다(한계④ 검증). */
 static void dump_grid(const char *tag, const PC_Belief *b) {
     int i; fprintf(g_trace, "GRID %s", tag);
     for (i = 0; i < PC_GRID_N; ++i) fprintf(g_trace, " %.6f", b->p[i]);
@@ -135,7 +136,7 @@ static Metrics run_episode(int pol, PC_Env env, const PC_Cfg *cfg,
         dump_grid("prior", &b);
     }
     int prev_sensor = -1;
-    const int MAXSTEP = 25;   /* 커버리지 예산: 24x24 격자를 footprint(r=9)로 덮는 데 충분 */
+    const int MAXSTEP = g_maxstep;   /* 탐색 예산(스텝). 기본 25 = 넉넉. argv 로 조인다(한계④) */
     int s;
     for (s = 0; s < MAXSTEP; ++s) {
         PC_Action a = step_policy(pol, &b, &veh, M, &env, cfg, dx, dy, nmv);
@@ -212,8 +213,10 @@ int main(int argc, char **argv) {
 
     if (argc >= 3) { cfg.beta = (float)atof(argv[1]); cfg.gamma = (float)atof(argv[2]); }
     if (argc >= 4) { cfg.cost_uncert_pow = (uint8_t)atoi(argv[3]); }
-    printf("(cfg: alpha=%.3f beta=%.4f gamma=%.5f cost_uncert_pow=%u)\n",
-           cfg.alpha, cfg.beta, cfg.gamma, cfg.cost_uncert_pow);
+    if (argc >= 5) { g_maxstep = atoi(argv[4]); }               /* 탐색 예산(스텝) */
+    if (argc >= 6) { cfg.n_look_max = (uint8_t)atoi(argv[5]); } /* 스텝당 관측 예산 */
+    printf("(cfg: alpha=%.3f beta=%.4f gamma=%.5f cost_uncert_pow=%u maxstep=%d n_look_max=%u)\n",
+           cfg.alpha, cfg.beta, cfg.gamma, cfg.cost_uncert_pow, g_maxstep, cfg.n_look_max);
 
     struct { const char *name; float illum, cam_health; } COND[3] = {
         { "day-clear",     1.00f, 1.0f },
