@@ -55,6 +55,7 @@ host_test 가 붙드는 것: (1) 조명 쓸기서 센서선택 창발(낮→Came
 추가 모드: `./sim --lookahead`(greedy vs 2-스텝 lookahead), `./sim --dynamic [pfa]`(에피소드 내
 조건변화), `./sim --trace`(belief·궤적 덤프). 결과 해석은 `RESULTS.md`.
 현장 캘리브(하드웨어) 준비: `CALIBRATION.md` — sim 의 model=truth 를 실측 곡선으로 바꾸는 절차.
+응용 정의: `PROJECT_SAR.md` — 재난 수색구조(SAR) 능동수색 로버로 논문·캘리브·측정을 하나로 묶은 상위 정의서.
 
 ## MCU 이식
 
