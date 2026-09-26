@@ -74,6 +74,8 @@ print("\n== 4. 도구가 두 채널에 등록되고 파일로 올린다(소스�
 _함수 = 도구원.split("def simulate_formation")[1].split("\n@tool")[0]
 ok("_그림남기기(h)" in _함수, "**HTML 을 _그림남기기 로 올린다** -- 서버가 discord.File 로 붙인다")
 ok("ctrl.swarm_viz" in _함수, "편대 시뮬·뷰를 실제로 부른다(빈 껍데기 아님)")
+ok("메일" in _함수 and "보내기_첨부" in _함수,
+   "**메일=<주소> 면 HTML 을 첨부 메일로 보낸다** -- 디스코드가 HTML 을 렌더 못 하니")
 ok("simulate_formation" in 서버.split("ADMIN_TOOLS = [")[1].split("]")[0],
    "ADMIN_TOOLS 에 있다")
 ok("simulate_formation" in 공개.split("PUBLIC_TOOLS = [")[1].split("]")[0],
