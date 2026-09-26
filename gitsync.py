@@ -9,6 +9,61 @@ r"""origin 이 앞섰을 때 따라잡는 법. **한 군데에만 있다.**
 """
 from __future__ import annotations
 
+import os
+
+
+def _토큰(repo=None) -> str:
+    """`.env` 의 GITHUB_TOKEN (github_write 와 같은 자리). 없으면 빈 문자열."""
+    try:
+        from dig.harvest import env값
+        return (env값("GITHUB_TOKEN", repo) or "").strip()
+    except Exception:                                  # noqa: BLE001
+        return (os.environ.get("GITHUB_TOKEN") or "").strip()
+
+
+def _인증url(원격: str, 토큰: str) -> "str | None":
+    """https origin URL 에 토큰을 심은 URL. https 이고 토큰이 있을 때만(아니면 None).
+    **git 설정(remote URL)은 안 바꾼다** -- 이 URL 은 push 한 번에만 쓰고 버린다."""
+    if not 토큰 or not 원격.startswith("https://"):
+        return None
+    나머지 = 원격[len("https://"):]
+    if "@" in 나머지.split("/", 1)[0]:                 # 기존 자격증명 제거
+        나머지 = 나머지.split("@", 1)[1]
+    return f"https://x-access-token:{토큰}@{나머지}"
+
+
+def _적출(글: str, 토큰: str) -> str:
+    """반환 메시지에서 토큰을 지운다 -- git 이 실패 시 URL 을 그대로 뱉기 때문."""
+    return 글.replace(토큰, "***") if 토큰 else 글
+
+
+def 인증푸시(git, 브랜치: str = "", repo=None, 토큰=None) -> tuple:
+    """지금 브랜치를 origin 에 민다. **토큰이 있으면 인증 URL 로**(없으면 평범한 push).
+
+    실측 2026-09-26(재발방지): VM 봇의 `git push` 가
+    `fatal: could not read Username for 'https://github.com'` 로 계속 실패했다.
+    origin 이 자격증명 없는 https 라 git 이 대화형으로 username 을 물었고, TTY 가 없어
+    죽었다. 이 모듈은 API 호출엔 토큰을 쓰면서 **git push 엔 안 썼다** -- 그 구멍을 메운다.
+
+    · 토큰은 push URL 에만 심고 git 설정엔 안 남긴다(디스크·로그 유출 최소화).
+    · `--force` 는 없다 -- reconcile 과 같은 결(남의 일을 안 지운다).
+    · 반환 메시지에서 토큰을 적출한다(git 이 실패 시 URL 을 뱉는다).
+
+    돌려주는 것: (returncode, 토큰이 지워진 메시지).
+    """
+    br = 브랜치 or git(["rev-parse", "--abbrev-ref", "HEAD"]).stdout.strip()
+    tok = _토큰(repo) if 토큰 is None else (토큰 or "")
+    원격 = git(["remote", "get-url", "origin"]).stdout.strip()
+    url = _인증url(원격, tok)
+    if url:
+        p = git(["push", url, f"HEAD:refs/heads/{br}"])
+    else:
+        p = git(["push", "-u", "origin", br])
+    msg = _적출((p.stderr or p.stdout or "").strip(), tok)
+    if p.returncode != 0 and not tok and not url:
+        msg += " (GITHUB_TOKEN 이 없다 -- `.env` 에 넣거나 `!열쇠 GITHUB_TOKEN=<값>`)"
+    return p.returncode, msg
+
 
 # **검사가 낳는 다섯 원장.** test_되돌이_끊기.py 의 '다섯 원장' 과 같은 목록이다
 # (codify 1 · eval답 4 · improve 4 · router 10 · secaudit 4 로 실측된 그 다섯).
