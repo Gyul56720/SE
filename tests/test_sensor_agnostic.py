@@ -95,6 +95,29 @@ def test_융합_안개서_최고최속():
     assert f_step <= _평균스텝("EO", 1.0), f"융합({f_step:.1f})이 EO 안개({_평균스텝('EO',1.0):.1f})보다 빨라야"
 
 
+# ── 9. 통합정책: 센서선택이 창발한다(손코딩 규칙 아님) ──────────
+def test_통합정책_센서선택_창발():
+    # 맑음이면 EO, 짙은안개면 SAR 를 '고르게 된다' -- J 최대만으로. 손코딩 임계값 없음.
+    assert S.고른센서(4.0, 0.0) == "EO", "맑음서 EO 안 고름 -- 창발 실패"
+    assert S.고른센서(4.0, 1.0) == "SAR", "짙은안개서 SAR 안 고름 -- 창발 실패"
+
+
+# ── 10. 통합정책이 안개서 최선 고정센서를 따라간다 ───────────────
+def test_통합정책_안개서_최선센서추종():
+    ji = np.mean([S.통합에피소드(1.0, s)[0] for s in 시드])
+    je = np.mean([S.고정센서에피소드("EO", 1.0, s)[0] for s in 시드])
+    js = np.mean([S.고정센서에피소드("SAR", 1.0, s)[0] for s in 시드])
+    assert ji > je + 0.03, f"통합 J({ji:.3f})이 EO전용({je:.3f})을 안개서 크게 앞서야"
+    assert ji >= js - 0.02, f"통합 J({ji:.3f})이 최선(SAR {js:.3f})을 따라가야"
+
+
+# ── 11. RTA: 위협 keep-out 접근을 차단한다 ───────────────────────
+def test_통합정책_RTA_keepout_차단():
+    위협 = np.array([S.G * 0.55, S.G * 0.72])
+    trips = sum(S.통합에피소드(1.0, s, 위협, 4.0)[4] for s in 시드)
+    assert trips > 0, "RTA 가 한 번도 keep-out 접근을 차단 안 함"
+
+
 if __name__ == "__main__":
     import os
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

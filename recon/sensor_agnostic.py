@@ -158,6 +158,92 @@ def 융합성공률(w: float, seeds=range(16)):
     return float(np.mean([f < STEP_BUDGET for f in fs]))
 
 
+# ══ 통합 정책 π(s) → (센서, 행동) : 센서선택까지 정책이 결정 ══
+# 목적 J = α·기대탐지가치 − β·시간 − γ·이동에너지.  '안개면 SAR' 를 손코딩하지 않는다 --
+# 물리 접지 우도 + 목적에서 센서선택이 *창발*한다(검사가 창발을 붙듦). a_safe = RTA(π(s)).
+SENSORS = ("EO", "IR", "SAR")
+ALPHA, BETA, GAMMA = 1.0, 0.02, 0.01
+
+
+def _가치가중(이름):
+    """정밀도 가치 κ: 국소화가 날카로울수록(σs 작을수록) 탐지 1건의 가치가 크다."""
+    return 1.0 / _정밀도셀(이름)
+
+
+def 기대가치(b, c, 이름, w):
+    """센서 '이름' 을 위치 c 서 쓸 때 기대 탐지가치 ~ Σ b(x)·pd(r,w)·κ (정보이득 대리)."""
+    R = np.sqrt((_XX - c[0]) ** 2 + (_YY - c[1]) ** 2)
+    pd = 탐지율(이름, R * CELL_M, w) * (R <= R_MAX)
+    return float((b * pd).sum()) * _가치가중(이름)
+
+
+def 통합정책(logb, d, w, cands, 위협=None, keepout=0.0):
+    """π(s) → (센서*, 위치*, RTA차단여부). J 최대 행동을 고르고, RTA 로 keep-out 접근을 대체.
+    ★ 센서선택 규칙을 손코딩하지 않는다 -- J 최대만. 결정표는 물리+목적에서 창발한다."""
+    b = np.exp(logb - logb.max()); b = b / b.sum()
+    best, bj, bsen = np.array(d, float), -1e9, "EO"
+    for c in cands:
+        move = np.hypot(c[0] - d[0], c[1] - d[1])
+        for m in SENSORS:
+            J = ALPHA * 기대가치(b, c, m, w) - BETA - GAMMA * move
+            if J > bj:
+                bj, best, bsen = J, np.array(c, float), m
+    tripped = False
+    if 위협 is not None and np.hypot(best[0] - 위협[0], best[1] - 위협[1]) < keepout:      # RTA
+        safe = [c for c in cands if np.hypot(c[0] - 위협[0], c[1] - 위협[1]) >= keepout]
+        if safe:
+            best = np.array(min(safe, key=lambda c: np.hypot(c[0] - d[0], c[1] - d[1])), float)
+            tripped = True
+    return bsen, best, tripped
+
+
+def 고른센서(거리셀: float, w: float):
+    """진단용: 표적 질량이 거리셀 만큼 떨어진 정지 상태에서 정책이 고르는 센서(결정표 창발 확인)."""
+    tx, ty = G * 0.2 + 거리셀, G * 0.2
+    logb = -((_XX - tx) ** 2 + (_YY - ty) ** 2) / (2 * 1.0 ** 2)
+    d = np.array([G * 0.2, G * 0.2])
+    return 통합정책(logb, d, w, [d])[0]
+
+
+def 통합에피소드(w: float, seed: int, 위협=None, keepout=0.0):
+    """한 에피소드 → (J, 스텝T, 이동E_m, 성공, RTA차단수). 통합정책이 센서+행동을 스스로 정함."""
+    rs = np.random.default_rng(seed)
+    t = (rs.uniform(G * 0.55, G * 0.9), rs.uniform(G * 0.55, G * 0.9))
+    logb = 사전(G * 0.72, G * 0.72); d = np.array([G * 0.15, G * 0.15])
+    T = 0; E = 0.0; trips = 0; b = np.exp(logb); est = d
+    for _ in range(STEP_BUDGET):
+        cands = [np.clip(d + m, 0, G - 1) for m in MOVES]
+        sen, c, tr = 통합정책(logb, d, w, cands, 위협, keepout)
+        E += np.hypot(c[0] - d[0], c[1] - d[1]); trips += int(tr); d = c; T += 1
+        logb, _ = 관측(logb, d, 센서모델(sen), w, t, rs)
+        b = np.exp(logb - logb.max()); b /= b.sum()
+        est = np.array([_XX.flatten()[b.argmax()], _YY.flatten()[b.argmax()]])
+        if b.max() > 0.4 and np.hypot(est[0] - t[0], est[1] - t[1]) < 2.5:
+            break
+    성공 = float(b.max() > 0.4 and np.hypot(est[0] - t[0], est[1] - t[1]) < 2.5)
+    J = ALPHA * 성공 - BETA * T - GAMMA * (E * CELL_M / 50)
+    return J, T, E * CELL_M, 성공, trips
+
+
+def 고정센서에피소드(sensor: str, w: float, seed: int):
+    """대조군: 센서를 고정하고 위치만 정보이득으로. J 등 같은 형식 반환."""
+    rs = np.random.default_rng(seed)
+    t = (rs.uniform(G * 0.55, G * 0.9), rs.uniform(G * 0.55, G * 0.9))
+    logb = 사전(G * 0.72, G * 0.72); d = np.array([G * 0.15, G * 0.15]); sm = 센서모델(sensor)
+    T = 0; E = 0.0; b = np.exp(logb); est = d
+    for _ in range(STEP_BUDGET):
+        cands = [np.clip(d + m, 0, G - 1) for m in MOVES]
+        c = 정책_다음(logb, d, sm, w, cands)
+        E += np.hypot(c[0] - d[0], c[1] - d[1]); d = c; T += 1
+        logb, _ = 관측(logb, d, sm, w, t, rs)
+        b = np.exp(logb - logb.max()); b /= b.sum()
+        est = np.array([_XX.flatten()[b.argmax()], _YY.flatten()[b.argmax()]])
+        if b.max() > 0.4 and np.hypot(est[0] - t[0], est[1] - t[1]) < 2.5:
+            break
+    성공 = float(b.max() > 0.4 and np.hypot(est[0] - t[0], est[1] - t[1]) < 2.5)
+    return ALPHA * 성공 - BETA * T - GAMMA * (E * CELL_M / 50), T, E * CELL_M, 성공, 0
+
+
 if __name__ == "__main__":
     import inspect
     print(f"[정책 불변] 정책_다음 인자 = {list(inspect.signature(정책_다음).parameters)} (센서 이름 없음)")
